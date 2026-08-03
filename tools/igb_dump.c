@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "igb.h"
+#include "igb_anim.h"
 
 static void dump_types(const igb *f)
 {
@@ -156,7 +157,13 @@ static void dump_scan(const igb *f, const char *want, const char *slots_csv)
         for (int k = 0; k < nslots; ++k) {
             const igb_fieldval *fv = igb_object_field(o, (uint16_t)slots[k]);
             if (fv) {
-                printf("    slot=%d %s i32=%d\n", slots[k], fv->short_name, fv->i32);
+                if (fv->blob && fv->short_name && strstr(fv->short_name, "String")) {
+                    printf("    slot=%d %s str=\"%.*s\"\n", slots[k], fv->short_name,
+                           fv->blob_len > 0 ? (int)fv->blob_len : 1,
+                           fv->blob_len > 0 ? (const char *)fv->blob : "");
+                } else {
+                    printf("    slot=%d %s i32=%d\n", slots[k], fv->short_name, fv->i32);
+                }
             }
         }
     }
@@ -225,6 +232,62 @@ static void dump_parents(const igb *f, int target)
     free(parent);
 }
 
+static void dump_anims(const igb *f, int want_idx, int want_frame)
+{
+    int found = 0;
+    for (int i = 0; i < f->n_objects; ++i) {
+        const igb_object *o = &f->objects[i];
+        if (o->is_mem || !o->type_name ||
+            strcmp(o->type_name, "igEnbayaAnimationSource") != 0) {
+            continue;
+        }
+        if (want_idx >= 0 && want_idx != i) {
+            continue;
+        }
+        ++found;
+        const igb_fieldval *fv = igb_object_field(o, 2);
+        if (!fv || fv->i32 < 0 || fv->i32 >= f->n_objects) {
+            printf("anim[%d] igEnbayaAnimationSource: no MemoryRef\n", i);
+            continue;
+        }
+        const igb_object *mo = &f->objects[fv->i32];
+        if (!mo->is_mem || !mo->mem || mo->mem_size < 0x50) {
+            printf("anim[%d] igEnbayaAnimationSource: blob obj=%d not mem (mem=%zu)\n",
+                   i, fv->i32, mo->mem_size);
+            continue;
+        }
+        igb_enbaya_anim a;
+        if (igb_enbaya_decode(mo->mem, mo->mem_size, &a) != 0) {
+            printf("anim[%d] igEnbayaAnimationSource: decode failed (blob obj=%d, %zu bytes)\n",
+                   i, fv->i32, mo->mem_size);
+            continue;
+        }
+        printf("anim[%d] source=%d blob=%d bytes=%zu tracks=%d duration=%.3fs fps=%.1f frames=%d\n",
+               i, i, fv->i32, mo->mem_size, a.track_count, a.duration,
+               1.0f / a.interval, a.frame_count);
+        if (want_frame < 0) {
+            igb_enbaya_free(&a);
+            continue;
+        }
+        if (want_frame >= a.frame_count) {
+            want_frame = a.frame_count - 1;
+        }
+        for (int t = 0; t < a.track_count; ++t) {
+            const igb_enbaya_pose *p = &a.poses[(size_t)want_frame * a.track_count + t];
+            printf("  t%-3d quat(% .4f,% .4f,% .4f,% .4f) pos(% .3f,% .3f,% .3f)\n",
+                   t, p->quat[0], p->quat[1], p->quat[2], p->quat[3],
+                   p->pos[0], p->pos[1], p->pos[2]);
+        }
+        igb_enbaya_free(&a);
+        if (want_idx >= 0) {
+            break;
+        }
+    }
+    if (want_idx >= 0 && !found) {
+        printf("no igEnbayaAnimationSource object at %d\n", want_idx);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
@@ -245,6 +308,9 @@ int main(int argc, char **argv)
     const char *scan_slots = NULL;
     int parents_mode = 0;
     int parents_idx = -1;
+    int anim_mode = 0;
+    int anim_idx = -1;
+    int anim_frame = -1;
     if (strcmp(path, "-types") == 0) {
         types_mode = 1;
         if (argc < 3) {
@@ -299,6 +365,20 @@ int main(int argc, char **argv)
         path = argv[2];
         parents_idx = atoi(argv[3]);
         parents_mode = 1;
+    } else if (strcmp(path, "-anim") == 0) {
+        /* usage: igb_dump -anim <file.igb> [source_index] [frame_index] */
+        if (argc < 3) {
+            fprintf(stderr, "usage: igb_dump -anim <file.igb> [source_index] [frame_index]\n");
+            return 1;
+        }
+        path = argv[2];
+        if (argc >= 4) {
+            anim_idx = atoi(argv[3]);
+        }
+        if (argc >= 5) {
+            anim_frame = atoi(argv[4]);
+        }
+        anim_mode = 1;
     }
     igb f;
     if (igb_open(&f, path) != 0) {
@@ -336,6 +416,11 @@ int main(int argc, char **argv)
     }
     if (parents_mode) {
         dump_parents(&f, parents_idx);
+        igb_close(&f);
+        return 0;
+    }
+    if (anim_mode) {
+        dump_anims(&f, anim_idx, anim_frame);
         igb_close(&f);
         return 0;
     }

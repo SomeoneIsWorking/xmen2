@@ -14,8 +14,10 @@ add_library(x2_core
     src/core/igb.c
     src/core/igb_mesh.c
     src/core/igb_raster.c
+    src/core/igb_anim.c
 )
 target_include_directories(x2_core PUBLIC src/core)
+target_link_libraries(x2_core PUBLIC m)
 
 add_library(x2_display
     src/display/ig_controller.c
@@ -32,6 +34,10 @@ enable_testing()
 add_executable(test_controller tests/test_controller.c)
 target_link_libraries(test_controller PRIVATE x2_display)
 add_test(NAME controller COMMAND test_controller)
+
+add_executable(test_enbaya tests/test_enbaya.c)
+target_link_libraries(test_enbaya PRIVATE x2_core)
+add_test(NAME enbaya COMMAND test_enbaya)
 
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
