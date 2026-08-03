@@ -12,6 +12,7 @@ endif()
 
 add_library(x2_core
     src/core/igb.c
+    src/core/igb_mesh.c
 )
 target_include_directories(x2_core PUBLIC src/core)
 
@@ -40,4 +41,12 @@ if(TARGET SDL2::SDL2)
     target_link_libraries(x2view PRIVATE SDL2::SDL2)
 else()
     target_link_libraries(x2view PRIVATE PkgConfig::SDL2)
+endif()
+
+add_executable(meshview src/app/meshview.c)
+target_link_libraries(meshview PRIVATE x2_core m)
+if(TARGET SDL2::SDL2)
+    target_link_libraries(meshview PRIVATE SDL2::SDL2)
+else()
+    target_link_libraries(meshview PRIVATE PkgConfig::SDL2)
 endif()

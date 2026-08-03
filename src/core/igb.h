@@ -38,6 +38,21 @@ typedef struct {
 } igb_object;
 
 typedef struct {
+    char *name;
+    int32_t parent;
+    int n_fields;
+    struct {
+        uint16_t type_idx;
+        uint16_t slot;
+        uint16_t size;
+    } *fields;
+} igb_meta;
+
+typedef struct {
+    char *name;
+} igb_metafield;
+
+typedef struct {
     uint32_t header[12];
     int version;
     int has_info;
@@ -51,6 +66,10 @@ typedef struct {
     int info_list_index;
     int slot_offset;
     int is_le;
+    igb_meta *meta;
+    int n_meta;
+    igb_metafield *metafields;
+    int n_metafields;
 } igb;
 
 typedef struct {
@@ -71,5 +90,7 @@ const igb_object *igb_object_by_index(const igb *f, int index);
 const igb_fieldval *igb_object_field(const igb_object *obj, uint16_t slot);
 int igb_find_images(const igb *f, igb_image *out, int max);
 uint8_t *igb_image_to_rgba(const igb_image *img, int *out_len);
+const igb_meta *igb_meta_by_index(const igb *f, int index);
+const char *igb_metafield_name(const igb *f, uint16_t type_idx);
 
 #endif

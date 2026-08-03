@@ -505,8 +505,45 @@ int igb_open(igb *f, const char *path)
     free(mem_sizes);
     free(mem_types);
     free(obj_types);
+
+    /* ---- Expose the meta-object schema to callers ---- */
+    f->n_meta = (int)c.n_meta_objs;
+    f->meta = calloc(c.n_meta_objs ? c.n_meta_objs : 1, sizeof(igb_meta));
+    for (uint32_t i = 0; i < c.n_meta_objs; ++i) {
+        f->meta[i].name = c.meta_objs[i].name ? strdup(c.meta_objs[i].name) : NULL;
+        f->meta[i].parent = c.meta_objs[i].parent;
+        f->meta[i].n_fields = (int)c.meta_objs[i].n_fields;
+        f->meta[i].fields = calloc(c.meta_objs[i].n_fields ? c.meta_objs[i].n_fields : 1,
+                                   sizeof(igb_meta_field_desc));
+        for (uint32_t j = 0; j < c.meta_objs[i].n_fields; ++j) {
+            f->meta[i].fields[j].type_idx = c.meta_objs[i].fields[j].type_idx;
+            f->meta[i].fields[j].slot = c.meta_objs[i].fields[j].slot;
+            f->meta[i].fields[j].size = c.meta_objs[i].fields[j].size;
+        }
+    }
+    f->n_metafields = (int)c.n_meta_fields;
+    f->metafields = calloc(c.n_meta_fields ? c.n_meta_fields : 1, sizeof(igb_metafield));
+    for (uint32_t i = 0; i < c.n_meta_fields; ++i) {
+        f->metafields[i].name = c.meta_fields[i].short_name ? strdup(c.meta_fields[i].short_name) : NULL;
+    }
     ctx_free(&c);
     return 0;
+}
+
+const igb_meta *igb_meta_by_index(const igb *f, int index)
+{
+    if (!f || index < 0 || index >= f->n_meta) {
+        return NULL;
+    }
+    return &f->meta[index];
+}
+
+const char *igb_metafield_name(const igb *f, uint16_t type_idx)
+{
+    if (!f || type_idx >= (uint16_t)f->n_metafields || !f->metafields[type_idx].name) {
+        return "?";
+    }
+    return f->metafields[type_idx].name;
 }
 
 void igb_close(igb *f)
@@ -525,6 +562,19 @@ void igb_close(igb *f)
         free(f->objects[i].mem);
     }
     free(f->objects);
+    if (f->meta) {
+        for (int i = 0; i < f->n_meta; ++i) {
+            free(f->meta[i].name);
+            free(f->meta[i].fields);
+        }
+        free(f->meta);
+    }
+    if (f->metafields) {
+        for (int i = 0; i < f->n_metafields; ++i) {
+            free(f->metafields[i].name);
+        }
+        free(f->metafields);
+    }
     free(f->data);
     memset(f, 0, sizeof(*f));
 }
