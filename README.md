@@ -41,13 +41,34 @@ rejected as a multi-year research project with no precedent on x86).
 ## Roadmap
 
 - [x] **M0** Repo + plan (this file)
-- [ ] **M1** Acquire Alchemy 5.0 Kit reference
+- [x] **M1** Acquire Alchemy 5.0 Kit reference
+- [x] **M3a** Data layer READ: XMLB/engb decompile via raven-formats (MIT); fb/zsnd also covered
+- [ ] **M3b** Data layer WRITE: compile path verified (need round-trip test on a real asset)
 - [ ] **M2** Oracle baseline — PC build headless under Wine, deterministic capture
-- [ ] **M3** Data layer — XMLB/engb/file-package readers (loose files + assetsfb.wad)
 - [ ] **M4** Input layer — SDL_GameController → engine callbacks; the 3 features land here
 - [ ] **M5** Render layer — IGB textures/meshes → SDL renderer
 - [ ] **M6** Audio layer
 - [ ] **M7** Main loop + game boots to title
+
+## Reference materials (M1)
+
+- **Alchemy 5.0 Kit** at `scratch/ref/alchemy5/Alchemy50/` (gitignored; re-download from
+  archive.org `alchemy-kit_202309` if lost). Contents:
+  - `include/` — **full engine header suite** (igCore/igDisplay/igSg/igGfx/...). Verified:
+    `igController::BUTTONS`, `igControllerManager::initializeControllers` match the XML2
+    `libIGDisplay.dll` binary exactly → Alchemy 3.2 class API ≡ 5.0 headers.
+  - `DirectX9/lib/` — precompiled Alchemy 5.0 engine DLLs (reference behavior).
+  - `sources/` — app source only (insight/viewer/libMovie/animationProducer), NOT the
+    engine core source.
+  - `bin/` — tools: `igen.exe`, `igbTypes.exe`, `sgOptimizer.exe`, `lua.exe`, `eventTracker.exe`.
+  - `docs/` — PDFs (GettingStarted, UsersGuide).
+  - `.igo` files beside headers are compiled meta-object descriptors (serialization schema).
+- **raven-formats** (nikita488, MIT) at `tools/raven-formats/` — Python XMLB/engb/fb/zsnd
+  read+write. Installed with `pip install -e tools/raven-formats`; CLI: `python3 -m raven_formats.xmlb -d in out`. Verified on PC `Data/colors.XMLB`, `herostat.engb/XMLB`.
+- XMLB vs engb are the same format; engb uses global `@DATA@...` string-pool refs, XMLB
+  inlines strings. Both decompile to identical XML modulo those refs.
+- Community: XMLBCUI (old compiler), alchemymarvel.miraheze.org wiki, serptools IGB docs,
+  igb-blender addon, `EthanReed517/XML2-Ultimate-Patch`.
 
 ## Conventions
 

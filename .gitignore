@@ -1,6 +1,9 @@
 .env
 scratch/
 build/
+tools/raven-formats/
 *.o
 *.a
 *.so
+*.egg-info
+__pycache__/
