@@ -1,0 +1,6 @@
+.env
+scratch/
+build/
+*.o
+*.a
+*.so
