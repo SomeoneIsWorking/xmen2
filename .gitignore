@@ -12,3 +12,6 @@ __pycache__/
 src/recomp/*.c
 scratch/recomp/
 src/recomp/difftest_cases.h
+
+# vendored upstream; clone with tools/get_xboxrecomp.sh (fork before modifying)
+vendor/
