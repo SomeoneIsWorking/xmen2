@@ -15,6 +15,13 @@ project(xml2_xbox_recomp C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Everything, including the runtime libraries added below, must be
+# position-independent: the final executable is PIE so it loads clear of the
+# guest's 0x10000-0x4010000 base view (see the -pie note further down).
+if(NOT WIN32)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # Common definitions
 add_compile_definitions(
     WIN32_LEAN_AND_MEAN
@@ -70,6 +77,16 @@ add_executable(${PROJECT_NAME}
 
 # Link against the xboxrecomp umbrella target (all 6 runtime libraries)
 target_link_libraries(${PROJECT_NAME} PRIVATE xboxrecomp)
+
+# The Xbox memory layout maps its 64MB base view at 0x10000 with MAP_FIXED,
+# covering 0x10000-0x4010000. A non-PIE executable loads at 0x400000 and sits
+# INSIDE that range, so the mapping silently unmaps our own code and the process
+# dies inside mmap. Build position-independent so the loader places us high,
+# clear of the guest's address space.
+if(NOT WIN32)
+    set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_link_options(${PROJECT_NAME} PRIVATE -pie)
+endif()
 
 # Include paths for generated recomp headers
 target_include_directories(${PROJECT_NAME} PRIVATE
