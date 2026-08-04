@@ -180,9 +180,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-exe-run — Recompiled XMen2.exe executes; stops at first untranslated indirect target
 - status: re-partial
 - deps: rc-exe
-- evidence: C026; 43+ functions deep into CRT startup
+- evidence: C030; recompiled game reaches display init and draws its own modal dialog; 1 fallback remaining
 - where: 
-- gap: Hang localised to a hybrid fallback into ORIGINAL code at 0x0065adcc (CRT, near CPUID detection) that never returns. Watchdog silence unexplained -- resolve that first, then test whether x86_call_host's ESP switch survives a callee that does not return normally. Recompiling 0x0065adcc and 0x00656745 would remove the fallback entirely and is the cleaner fix.
+- gap: Display init fails in the headless environment for reasons not yet identified (multiSampleType=0 did not help). No game loop or frame from recompiled code yet.
 - notes: 
 
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
@@ -190,6 +190,6 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe-run
 - evidence: 
 - where: 
-- gap: DEBT by construction. The original image is mapped executable at its correct base, so untranslated targets can run as original code -- which keeps the program alive but means the binary is not fully recompiled. Every distinct address is reported and X2_NO_FALLBACK=1 disables it. Remove by recompiling those addresses.
+- gap: Down from 7 fallback addresses to 1 after feeding runtime-discovered targets back through AddFunctions.py. The loop works: run -> collect -> add -> re-export -> re-recompile. Still DEBT until it reaches 0.
 - notes: 
 
