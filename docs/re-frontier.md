@@ -118,7 +118,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: abi
 - evidence: C019; 521/521 functions, 8754/8754 instructions, 0 blockers
 - where: 
-- gap: 100% TRANSLATED is not 100% verified: 156 of 521 differentially verified. x87 correctness is essentially untested because difftest cannot compare ST(0) returns.
+- gap: x87 is written but ENTIRELY UNVERIFIED (C021): 0 of 8 x87 functions are differentially verified, and random-object fuzzing cannot reach them -- the original overflows its own stack on a garbage vtable. Needs constructed valid objects. 156 of 521 functions verified overall.
 - notes: 
 
 ### rc-lift — Emit C per function from Ghidra-identified boundaries

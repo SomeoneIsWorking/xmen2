@@ -844,14 +844,30 @@ RUNTIME_BODY = '''
    the preferred base so a process that gets it needs no special handling. */
 uint32_t g_imgbase = 0x10000000U;
 
-void x86_dispatch(CPU *C, uint32_t target)
+/* Overridable so a TEST binary can skip a trial whose random object produced a
+   nonsense vtable pointer, instead of aborting the whole run. The DLL keeps the
+   aborting default: in production an unresolved indirect call is a hard error,
+   never something to continue past. */
+void __attribute__((weak)) x86_dispatch_miss(uint32_t target)
 {
-    int i;
-    for (i = 0; i < g_fn_count; i++)
-        if (g_fns[i].ep == target) { g_fns[i].fn(C); return; }
     fprintf(stderr, "x86_dispatch: no recompiled function at 0x%08x "
                     "(indirect call target outside the translated set)\\n", target);
     abort();
+}
+
+int __attribute__((weak)) g_dispatch_depth;
+
+void x86_dispatch(CPU *C, uint32_t target)
+{
+    int i;
+    if (++g_dispatch_depth > 64) { g_dispatch_depth = 0;
+                                   x86_dispatch_miss(target); }
+    for (i = 0; i < g_fn_count; i++)
+        if (g_fns[i].ep == target) {
+            g_fns[i].fn(C); g_dispatch_depth--; return;
+        }
+    g_dispatch_depth--;
+    x86_dispatch_miss(target);
 }
 
 void x86_untranslated(uint32_t ep, const char *name, const char *reason)

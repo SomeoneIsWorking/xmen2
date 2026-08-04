@@ -57,6 +57,24 @@ static LONG CALLBACK fault_handler(EXCEPTION_POINTERS *ep)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+/* An indirect call whose target came from a random object is not a defect --
+   it means the input was invalid, exactly like a page fault. Skip the trial via
+   the same path. Overrides the aborting default in the runtime. */
+void x86_dispatch_miss(uint32_t target)
+{
+    (void)target;
+    if (g_expect_fault) longjmp(g_jmp, 1);
+    abort();
+}
+
+/* A random object yields a random vtable pointer, which can dispatch into an
+   arbitrary recompiled function and recurse without bound -- that overflowed
+   the real stack and killed a whole run after 106 cases, which no fault handler
+   can recover from. Cap the nesting and treat exceeding it as an invalid input,
+   the same as a page fault. */
+int g_dispatch_depth;
+#define MAX_DISPATCH_DEPTH 16
+
 static uint32_t rng_state = 0x12345678U;   /* fixed seed: failures reproduce */
 static uint32_t rnd(void)
 {
@@ -217,6 +235,7 @@ int main(void)
                 mism++;
                 continue;
             }
+            g_dispatch_depth = 0;
             got = call_recomp(CASES[ci].recomp, obj_r, arg, stack);
             g_expect_fault = 0;
             ran++;

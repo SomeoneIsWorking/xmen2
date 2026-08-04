@@ -156,6 +156,8 @@ static inline void x87_cmp(CPU *C, long double a, long double b)
  * unresolved call produces a plausible-looking run that is wrong.
  */
 void x86_dispatch(CPU *C, uint32_t target);
+/* called when an indirect target has no recompiled body; aborts by default */
+void x86_dispatch_miss(uint32_t target);
 
 /* A function the recompiler could not translate. Emitted as its whole body so
    the module links; reaching one aborts naming the function and the exact
