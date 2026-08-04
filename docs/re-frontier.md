@@ -182,7 +182,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe
 - evidence: C030; recompiled game reaches display init and draws its own modal dialog; 1 fallback remaining
 - where: 
-- gap: Display init fails in the headless environment for reasons not yet identified (multiSampleType=0 did not help). No game loop or frame from recompiled code yet.
+- gap: Display init fails because recompiled code passes garbage D3DPRESENT_PARAMETERS (C032), NOT for environmental reasons as previously concluded.
 - notes: 
 
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
@@ -191,5 +191,13 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - evidence: 
 - where: 
 - gap: Down from 7 fallback addresses to 1 after feeding runtime-discovered targets back through AddFunctions.py. The loop works: run -> collect -> add -> re-export -> re-recompile. Still DEBT until it reaches 0.
+- notes: 
+
+### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage
+- status: hack
+- deps: rc-exe-run
+- evidence: C032
+- where: 
+- gap: Width=1, Height=43253760 vs 800x600. First CONFIRMED translation defect in the exe, found by differential log comparison rather than hypothesis-guessing. Trace to the writing instruction.
 - notes: 
 
