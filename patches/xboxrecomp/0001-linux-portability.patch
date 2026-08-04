@@ -27,22 +27,20 @@ index 66e1085..a46608d 100644
          DestinationString->MaximumLength = len + sizeof(WCHAR);
          DestinationString->Buffer = (PWCHAR)SourceString;
 diff --git a/src/platform/win32_compat.h b/src/platform/win32_compat.h
-index 3e81a19..b49f41a 100644
+index 3e81a19..0bfda8e 100644
 --- a/src/platform/win32_compat.h
 +++ b/src/platform/win32_compat.h
-@@ -355,6 +355,17 @@ int   WideCharToMultiByte(UINT cp, DWORD flags, LPCWSTR wide, int wideCount,
+@@ -355,6 +355,15 @@ int   WideCharToMultiByte(UINT cp, DWORD flags, LPCWSTR wide, int wideCount,
  #define ERROR_GEN_FAILURE             31u
  #define ERROR_HANDLE_EOF              38u
  #define ERROR_NOT_SUPPORTED           50u
-+/* Returned by ReleaseMutex when the caller does not own the mutex. Present in
-+   winerror.h but missing from this Win32 vocabulary header, so kernel_sync.c
-+   would not build on Linux. */
++/* Returned by ReleaseMutex when the caller does not own the mutex; present in
++   winerror.h but missing here, so kernel_sync.c would not build on Linux. */
 +#define ERROR_NOT_OWNER               288u
 +
-+/* Debugger primitives the kernel HAL calls. On Linux there is no Win32
-+   debugger to ask, so report "no debugger" and raise SIGTRAP -- which is what
-+   DebugBreak does on x86 anyway (int3). Reporting TRUE would make the game take
-+   its debug paths. */
++/* Debugger primitives the kernel HAL calls. There is no Win32 debugger to ask
++   on Linux, so report none and trap -- DebugBreak is int3 on x86 anyway.
++   Reporting TRUE would send the game down its debug paths. */
 +static inline int IsDebuggerPresent(void) { return 0; }
 +static inline void DebugBreak(void) { __builtin_trap(); }
  #define ERROR_FILE_EXISTS             80u
