@@ -41,11 +41,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ## engine
 
 ### ark — Alchemy ARK meta-object system: how a class registers with libIGCore
-- status: todo
+- status: re-verified
 - deps: abi
-- evidence: 
-- where: scratch/ref/alchemy5/.../igCore/igObjectMacros.h
-- gap: Understood as a CONTRACT from the Alchemy 5.0 headers, not as behaviour: we cannot yet construct an object the original libIGCore accepts. THIS IS THE FRONTIER.
+- evidence: C008/C009; docs/RE/ark.md; decompiled from libIGDisplay.dll and libIGCore.dll
+- where: docs/RE/ark.md
+- gap: Mechanism is READ, not yet EXERCISED -- no class has been registered by our own code. igObject::constructDerived is still unread.
 - notes: 
 
 ### vtable — MSVC vtable layout for a replaced igDisplay class
@@ -53,7 +53,15 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: ark
 - evidence: 
 - where: tools/ghidra_scripts/DumpVtab.py
-- gap: 150 vftables exported as DATA; igInterfaceManager's is imported by another module. Layout must match MSVC exactly; not yet read out of the binary.
+- gap: Cheaper than assumed (C009): only the vtable POINTER must be supplied, via retrieveVTablePointer, so MSVC layout need not be reproduced. What remains is slot ORDER within the vtable, which virtual callers index by. Read it with DumpVtab.py.
+- notes: 
+
+### constructderived — igObject::constructDerived -- how libIGCore finishes an object
+- status: todo
+- deps: ark
+- evidence: 
+- where: 
+- gap: Where the captured vtable pointer is stamped and per-class construction runs. Needed before our own class can be handed to libIGCore.
 - notes: 
 
 

@@ -91,13 +91,29 @@ dispatch or calls internal to the original DLL (C007), so behaviour is replaced
 by owning **construction**, not by hooking methods — which is why whole classes
 are the unit of replacement.
 
-**The frontier is now `ark`** (`tools/re_frontier.py next`): the Alchemy
-meta-object registration system. The Alchemy 5.0 headers give it as a contract
-(`arkRegister` / `arkRegisterInternal` / `getClassTypeLazy` / `_Meta` /
-`_instantiateFromPool`, in `igCore/igObjectMacros.h`), but we cannot yet
-construct an object the original `libIGCore` accepts. Everything downstream —
-vtable layout, a native controller manager, the SDL input backend — is blocked
-on it.
+**ARK is decoded** — see [`docs/RE/ark.md`](RE/ark.md). Class registration is a
+single 11-argument `igArkRegister` call into libIGCore; construction is entirely
+delegated to `igMetaObject::createInstance`; and an abstract class points at its
+platform implementation through `igMetaObject+0x3c`, which `createInstance`
+follows in a loop.
+
+Two consequences change the plan for the better:
+
+- **`_Meta+0x3c` is a supported substitution point.** `igControllerManager`
+  writes `igWin32ControllerManager::getClassMetaSafe` there, and `igWindow`
+  writes `igWin32Window`'s. Repointing it redirects every instantiation of the
+  abstraction to a different concrete class — so a native
+  `igSDLControllerManager` can be substituted without replacing `libIGDisplay`
+  wholesale.
+- **MSVC vtable placement does not have to be reproduced.** Alchemy captures a
+  class's vtable pointer through a `retrieveVTablePointer` hook that discovers
+  the vptr offset at runtime; libIGCore stamps that pointer into every instance.
+  Hand-rolled C vtables suffice. Slot *order* within the vtable is still a
+  constraint and still has to be read out of the binary.
+
+The frontier is now `vtable` (slot order) and `constructderived` (how libIGCore
+finishes an object). The ARK mechanism is **read, not yet exercised** — nothing
+has been registered by our own code.
 
 ### Known limits of the harness, honestly
 
