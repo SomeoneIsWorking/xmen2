@@ -195,7 +195,12 @@ int main(int argc, char **argv)
     static uint8_t *stack;
     CPU C;
     uint32_t sp;
-    const char *img = (argc > 1) ? argv[1] : "XMen2_orig.exe";
+    /* The guest parses its OWN command line via the CRT, and it is OUR command
+       line -- so an extra argv token is visible to game code and could steer it
+       down a different path. Take the image from the environment instead, and
+       leave argv clean. */
+    const char *img = getenv("X2_IMAGE");
+    if (!img) img = (argc > 1) ? argv[1] : "XMen2_orig.exe";
 
     map_image(img);
 
