@@ -115,6 +115,38 @@ class PE:
             out.append((base + i, rva, kind, by_ord.get(i), target))
         return out
 
+    def iat(self):
+        """{iat_va: (module, symbol)} -- the address each import thunk lives at.
+
+        A `CALL dword ptr [0x100091c8]` in recompiled code is not an unresolvable
+        indirect call: 0x100091c8 is an IAT slot and the callee is known here.
+        """
+        if len(self.dirs) < 2 or self.dirs[1][0] == 0:
+            return None
+        d = self.data
+        o = self.off(self.dirs[1][0])
+        out = {}
+        while True:
+            oft, _, _, nrva, first = struct.unpack_from("<IIIII", d, o)
+            if nrva == 0:
+                break
+            mod = self.cstr(nrva)
+            names = self.off(oft or first)
+            slot = first
+            while True:
+                v = struct.unpack_from("<I", d, names)[0]
+                if v == 0:
+                    break
+                if v & 0x80000000:
+                    sym = "@%d" % (v & 0xFFFF)
+                else:
+                    sym = self.cstr(v + 2)
+                out[self.image_base + slot] = (mod, sym)
+                names += 4
+                slot += 4
+            o += 20
+        return out
+
     def imports(self):
         """[(module, symbol_or_None, ordinal_or_None)]."""
         if len(self.dirs) < 2 or self.dirs[1][0] == 0:
@@ -245,8 +277,19 @@ def cmd_proxydef(argv):
               "INCOMPLETE" % noname, file=sys.stderr)
 
 
+def cmd_iat(argv):
+    pe = PE(argv[0])
+    t = pe.iat()
+    if t is None:
+        sys.exit("pe.py: %s has NO import directory -- scanned NOTHING" % pe.path)
+    for va in sorted(t):
+        mod, sym = t[va]
+        print("0x%08x %s %s" % (va, mod, sym))
+    print("-- %d IAT slots in %s" % (len(t), pe.path), file=sys.stderr)
+
+
 CMDS = dict(sections=cmd_sections, exports=cmd_exports, imports=cmd_imports,
-            surface=cmd_surface, proxydef=cmd_proxydef)
+            surface=cmd_surface, proxydef=cmd_proxydef, iat=cmd_iat)
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in CMDS:

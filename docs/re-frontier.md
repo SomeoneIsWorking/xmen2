@@ -114,19 +114,19 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ## recomp
 
 ### rc-decode — x86-32 decoder covering the mnemonics that actually occur
-- status: todo
+- status: re-partial
 - deps: abi
-- evidence: C011
+- evidence: C011/C012; tools/recomp.py; 96% of libIGDisplay functions, compiles clean
 - where: 
-- gap: 186 mnemonics in XMen2.exe, 54 in libIGDisplay; top-80 covers 99.71%. Integer core plus 41 x87 mnemonics (5.83%). Nothing written yet.
+- gap: x87 (FILD/FLD), SBB and REP string ops still untranslatable -- 21 of 521 functions. And NOTHING HAS EXECUTED: coverage is a translation statistic, not a correctness one.
 - notes: 
 
 ### rc-lift — Emit C per function from Ghidra-identified boundaries
-- status: todo
+- status: re-partial
 - deps: rc-decode
-- evidence: 
+- evidence: src/recomp/libIGDisplay.c, 20349 lines, compiles clean with -Wall
 - where: 
-- gap: One C function per identified function over a CPU-state struct; direct calls where known, dispatch table for indirect.
+- gap: Emits per-function C over a CPU struct with lazy flags and a dispatch hook, but the interop layer does not exist: 163 import stubs are declared and unimplemented, and no entry shim marshals a real call into a recompiled body.
 - notes: 
 
 ### rc-imports — Host implementations of the imported Win32/D3D8/DInput/CRT surface
