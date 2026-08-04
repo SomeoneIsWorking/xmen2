@@ -14,6 +14,7 @@
 #define X86RT_H
 
 #include <stdint.h>
+#include <intrin.h>
 
 enum {
     FK_NONE = 0, FK_ADD, FK_SUB, FK_LOGIC, FK_INC, FK_DEC, FK_SHIFT
@@ -29,6 +30,8 @@ typedef struct CPU {
     int      top;        /* index of ST(0) */
     int      depth;      /* live registers; guards under/overflow */
     uint32_t fsw;        /* status word bits set by FCOM, read by FNSTSW */
+    uint32_t fcw;        /* control word; only the rounding-control bits matter */
+    uint64_t mm[8];      /* MMX registers, kept SEPARATE from st[] -- see below */
 } CPU;
 
 /* Runtime base of the ORIGINAL module. Absolute references into the module's
@@ -39,6 +42,17 @@ extern uint32_t g_imgbase;
 #define G_IMGBASE (g_imgbase)
 
 /* ---- memory: guest address == host address (see header comment) ---- */
+/* FS/GS-relative access. Not modelled: this code runs as a genuine 32-bit PE,
+   so FS still addresses the TIB and FS:[0] is the real SEH chain. MSVC emits
+   these in the prologue of every function with a try/catch or a destructor --
+   825 functions in XMen2.exe -- so faking them would break unwinding wholesale. */
+#define SEGRD32(seg, a)     __read##seg##dword((unsigned long)(a))
+#define SEGWR32(seg, a, v)  __write##seg##dword((unsigned long)(a), (unsigned long)(v))
+#define __readFSdword(o)     __readfsdword(o)
+#define __writeFSdword(o, v) __writefsdword((o), (v))
+#define __readGSdword(o)     __readgsdword(o)
+#define __writeGSdword(o, v) __writegsdword((o), (v))
+
 #define RDF32(a)    ((long double)(*(volatile float  *)(uintptr_t)(a)))
 #define RDF64(a)    ((long double)(*(volatile double *)(uintptr_t)(a)))
 #define WRF32(a, v) (*(volatile float  *)(uintptr_t)(a) = (float)(v))
@@ -50,6 +64,8 @@ extern uint32_t g_imgbase;
 #define RD32(a)     (*(volatile uint32_t *)(uintptr_t)(a))
 #define WR8(a, v)   (*(volatile uint8_t  *)(uintptr_t)(a) = (uint8_t)(v))
 #define WR16(a, v)  (*(volatile uint16_t *)(uintptr_t)(a) = (uint16_t)(v))
+#define RD64(a)     (*(volatile uint64_t *)(uintptr_t)(a))
+#define WR64(a, v)  (*(volatile uint64_t *)(uintptr_t)(a) = (uint64_t)(v))
 #define WR32(a, v)  (*(volatile uint32_t *)(uintptr_t)(a) = (uint32_t)(v))
 
 /* ---- lazy flags ---- */
@@ -127,6 +143,27 @@ static inline int FLAG_P(const CPU *C)
 #define X87_ST(C, i)  ((C)->st[((C)->top + (i)) & 7])
 
 void x87_fault(const char *what);
+/* call/jump into the region with no identified function; aborts by address */
+void x86_call_unknown(CPU *C, uint32_t target);
+
+/* FIST/FISTP round per the control word's RC bits (11:10). MSVC's float->int
+   cast sets RC=truncate, does the store, then restores -- so treating FLDCW as
+   a no-op and always truncating would be right for that idiom and WRONG for
+   everything else. Model it rather than assume the common case. */
+static inline int32_t x87_to_int(const CPU *C, long double v)
+{
+    switch ((C->fcw >> 10) & 3) {
+    case 1:  return (int32_t)__builtin_floorl(v);          /* round down */
+    case 2:  return (int32_t)__builtin_ceill(v);           /* round up   */
+    case 3:  return (int32_t)v;                            /* truncate   */
+    default: return (int32_t)__builtin_rintl(v);           /* to nearest */
+    }
+}
+
+/* On real hardware MMX registers ALIAS the x87 stack, which is why EMMS exists.
+   Modelling them separately is only safe because code that mixes the two
+   without an intervening EMMS is malformed; EMMS is therefore a no-op here. If
+   a module is ever found interleaving them, this must become an error. */
 
 static inline void x87_push(CPU *C, long double v)
 {

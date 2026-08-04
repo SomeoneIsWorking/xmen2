@@ -88,6 +88,8 @@ class Operand(object):
             return r if r else "0x%xU" % (self.val & 0xFFFFFFFF)
         if self.kind == "mem":
             return "RD%d(%s)" % (self.size * 8, self.addr())
+        if self.kind == "seg":
+            return "SEGRD32(%s, %s)" % (self.seg, self.addr())
         raise Unsupported("read %s" % self.kind)
 
     def write(self, expr):
@@ -104,6 +106,8 @@ class Operand(object):
             return "C->%s = (C->%s & 0xFFFF00FFU) | (((%s) & 0xFFU) << 8);" % (r, r, expr)
         if self.kind == "mem":
             return "WR%d(%s, %s);" % (self.size * 8, self.addr(), expr)
+        if self.kind == "seg":
+            return "SEGWR32(%s, %s, %s);" % (self.seg, self.addr(), expr)
         raise Unsupported("write %s" % self.kind)
 
     def addr(self):
@@ -117,6 +121,8 @@ class Operand(object):
             return 2
         if self.kind in ("reg8lo", "reg8hi"):
             return 1
+        if self.kind == "seg":
+            return 4
         return self.size
 
 
@@ -136,6 +142,8 @@ def parse_operand(tok):
 
     m = re.match(r"^(byte|word|dword|qword|float\d*|double|tbyte|longdouble"
                  r"|undefined\d*)\s+ptr\s+(.*)$", tok, re.I)
+    if m and re.match(r"^(FS|GS):", m.group(2).strip(), re.I):
+        return parse_operand(m.group(2).strip())
     if m:
         size = PTR_SIZE.get(m.group(1).lower())
         if size is None:
@@ -146,8 +154,18 @@ def parse_operand(tok):
         o.inferred = True          # width not stated; caller must reconcile it
         return o
 
-    # segment-relative -- FS: is used for SEH and we do not model it
-    if re.match(r"^(FS|GS|CS|DS|ES|SS):", up):
+    # FS-relative access is MSVC's SEH prologue (MOV EAX,FS:[0] etc.). We run
+    # as a real 32-bit PE, so FS still addresses the TIB and the exception chain
+    # there is the genuine one -- read/write it directly rather than model it.
+    m2 = re.match(r"^(FS|GS):(.*)$", tok, re.I)
+    if m2:
+        seg = m2.group(1).upper()
+        inner = m2.group(2).strip()
+        mm = re.match(r"^\[(.*)\]$", inner)
+        off = mm.group(1) if mm else inner
+        mo = parse_mem("[%s]" % off, 4)
+        return Operand("seg", seg=seg, size=4, addr_expr=mo.addr_expr)
+    if re.match(r"^(CS|DS|ES|SS):", up):
         raise Unsupported("segment override %s" % up.split(":")[0])
 
     try:
@@ -169,7 +187,7 @@ def parse_mem(tok, size):
         return Operand("mem", size=size, inferred=False,
                        addr_expr=img_rel(v) or "0x%xU" % v)
     inner = m.group(1).strip()
-    if re.match(r"^(FS|GS|CS|DS|ES|SS):", inner, re.I):
+    if re.match(r"^(CS|DS|ES|SS):", inner, re.I):
         raise Unsupported("segment-relative memory")
 
     # base [+ index*scale] [+/- disp]
@@ -260,6 +278,9 @@ FLAGKIND = {"ADD": "FK_ADD", "SUB": "FK_SUB", "AND": "FK_LOGIC",
 
 IAT = {}          # absolute VA of an import slot -> (module, symbol)
 IMG = [0, 0]      # [preferred base, end] of the module being recompiled
+KNOWN_EPS = set()  # entry points Ghidra identified; a call to anything else is
+                   # a target inside the region it could not resolve into
+                   # functions, and must not be emitted as a direct C call
 
 
 def img_rel(val):
@@ -377,9 +398,16 @@ def emit_instruction(ins, ctx):
     # ---- x87. Memory operand sizes: Ghidra prints `float ptr` / `dword ptr`
     # for m32 and `qword ptr` for m64; integer forms (FILD/FIDIV/FIMUL) take
     # the value as a signed integer, not as a float.
-    if m in ("FLD", "FILD", "FSTP", "FADD", "FSUB", "FSUBR", "FMUL", "FDIV",
-             "FDIVR", "FIDIV", "FIMUL", "FIADD", "FISUB", "FCOM", "FCOMP",
-             "FNSTSW", "FCHS", "FABS", "FISTP", "FLDZ", "FLD1"):
+    if m in ("FLD", "FILD", "FSTP", "FST", "FADD", "FSUB", "FSUBR", "FMUL",
+             "FDIV", "FDIVR", "FIDIV", "FIDIVR", "FIMUL", "FIADD", "FISUB",
+             "FCOM", "FCOMP", "FCOMPP", "FUCOM", "FUCOMP", "FUCOMPP",
+             "FNSTSW", "FCHS", "FABS", "FSQRT", "FISTP", "FIST", "FLDZ",
+             "FLD1", "FLDPI", "FLDLG2", "FLDLN2", "FLDL2E", "FLDL2T",
+             "FXCH", "FADDP", "FSUBP", "FSUBRP", "FMULP", "FDIVP", "FDIVRP",
+             "FRNDINT", "FPREM", "FSCALE", "FXTRACT", "FNSTCW", "FLDCW",
+             "FYL2X", "FYL2XP1", "FPATAN", "F2XM1", "FSIN", "FCOS",
+             "FSINCOS", "FTST",
+             "FFREE", "FINCSTP", "FDECSTP", "FNCLEX", "FNINIT"):
         def fsrc(o, integer):
             if o.kind == "mem":
                 if integer:
@@ -387,6 +415,68 @@ def emit_instruction(ins, ctx):
                 return ("RDF64(%s)" % o.addr()) if o.size == 8 else "RDF32(%s)" % o.addr()
             raise Unsupported("%s from %s" % (m, o.kind))
 
+        # constants
+        CONST = {"FLDZ": "0.0L", "FLD1": "1.0L",
+                 "FLDPI": "3.14159265358979323846L",
+                 "FLDLG2": "0.30102999566398119521L",   # log10(2)
+                 "FLDLN2": "0.69314718055994530942L",   # ln(2)
+                 "FLDL2E": "1.44269504088896340736L",   # log2(e)
+                 "FLDL2T": "3.32192809488736234787L"}   # log2(10)
+        if m in CONST:
+            return [A, "x87_push(C, %s);" % CONST[m]]
+        if m == "FXCH":
+            i2 = re.fullmatch(r"ST(\d)", ops[0].strip().upper()).group(1) if ops else "1"
+            return [A,
+                    "{ long double _t = X87_ST(C, 0);",
+                    "  X87_ST(C, 0) = X87_ST(C, %s); X87_ST(C, %s) = _t; }" % (i2, i2)]
+        if m in ("FADDP", "FSUBP", "FSUBRP", "FMULP", "FDIVP", "FDIVRP"):
+            o2 = {"FADDP": "+", "FSUBP": "-", "FSUBRP": "-", "FMULP": "*",
+                  "FDIVP": "/", "FDIVRP": "/"}[m]
+            dst = re.fullmatch(r"ST(\d)", ops[0].strip().upper()).group(1) if ops else "1"
+            if m in ("FSUBRP", "FDIVRP"):
+                expr = "X87_ST(C, 0) %s X87_ST(C, %s)" % (o2, dst)
+            else:
+                expr = "X87_ST(C, %s) %s X87_ST(C, 0)" % (dst, o2)
+            return [A, "X87_ST(C, %s) = %s;" % (dst, expr), "(void)x87_pop(C);"]
+        if m in ("FCOMPP", "FUCOMPP"):
+            return [A, "x87_cmp(C, X87_ST(C, 0), X87_ST(C, 1));",
+                    "(void)x87_pop(C); (void)x87_pop(C);"]
+        if m in ("FYL2X", "FYL2XP1"):
+            arg = "X87_ST(C, 0)" if m == "FYL2X" else "(X87_ST(C, 0) + 1.0L)"
+            return [A,
+                    "X87_ST(C, 1) = X87_ST(C, 1) * __builtin_log2l(%s);" % arg,
+                    "(void)x87_pop(C);"]
+        if m == "FPATAN":
+            return [A,
+                    "X87_ST(C, 1) = __builtin_atan2l(X87_ST(C, 1), X87_ST(C, 0));",
+                    "(void)x87_pop(C);"]
+        if m == "F2XM1":
+            return [A, "X87_ST(C, 0) = __builtin_exp2l(X87_ST(C, 0)) - 1.0L;"]
+        if m in ("FSIN", "FCOS"):
+            fn_ = "__builtin_sinl" if m == "FSIN" else "__builtin_cosl"
+            return [A, "X87_ST(C, 0) = %s(X87_ST(C, 0));" % fn_]
+        if m == "FSINCOS":
+            return [A, "{ long double _s = __builtin_sinl(X87_ST(C, 0));",
+                    "  long double _c = __builtin_cosl(X87_ST(C, 0));",
+                    "  X87_ST(C, 0) = _s; x87_push(C, _c); }"]
+        if m == "FTST":
+            return [A, "x87_cmp(C, X87_ST(C, 0), 0.0L);"]
+        if m == "FSQRT":
+            return [A, "X87_ST(C, 0) = __builtin_sqrtl(X87_ST(C, 0));"]
+        if m == "FRNDINT":
+            return [A, "X87_ST(C, 0) = __builtin_rintl(X87_ST(C, 0));"]
+        if m in ("FINCSTP", "FDECSTP", "FFREE", "FNCLEX"):
+            # Stack-pointer housekeeping with no value semantics we model.
+            return [A, "/* %s: no modelled effect */" % m]
+        if m == "FNINIT":
+            return [A, "C->top = 0; C->depth = 0; C->fsw = 0;"]
+        if m in ("FNSTCW", "FLDCW"):
+            o = O(0)
+            if o.kind != "mem":
+                raise Unsupported("%s with %s operand" % (m, o.kind))
+            if m == "FNSTCW":
+                return [A, "WR16(%s, (uint16_t)C->fcw);" % o.addr()]
+            return [A, "C->fcw = RD16(%s);" % o.addr()]
         if m == "FNSTSW":
             return [A, "C->eax = (C->eax & 0xFFFF0000U) | (C->fsw & 0xFFFFU);"]
         if m == "FLDZ":
@@ -398,6 +488,20 @@ def emit_instruction(ins, ctx):
         if m == "FABS":
             return [A, "X87_ST(C, 0) = (X87_ST(C, 0) < 0) ? -X87_ST(C, 0) : X87_ST(C, 0);"]
         if not ops:
+            # FCOM/FCOMP with no operand compare ST(0) against ST(1)
+            if m in ("FCOM", "FCOMP", "FUCOM", "FUCOMP"):
+                L2 = [A, "x87_cmp(C, X87_ST(C, 0), X87_ST(C, 1));"]
+                if m in ("FCOMP", "FUCOMP"):
+                    L2.append("(void)x87_pop(C);")
+                return L2
+            if m in ("FADD", "FSUB", "FSUBR", "FMUL", "FDIV", "FDIVR"):
+                o2 = {"FADD": "+", "FSUB": "-", "FSUBR": "-", "FMUL": "*",
+                      "FDIV": "/", "FDIVR": "/"}[m]
+                if m in ("FSUBR", "FDIVR"):
+                    return [A, "X87_ST(C, 1) = X87_ST(C, 0) %s X87_ST(C, 1);" % o2,
+                            "(void)x87_pop(C);"]
+                return [A, "X87_ST(C, 1) = X87_ST(C, 1) %s X87_ST(C, 0);" % o2,
+                        "(void)x87_pop(C);"]
             raise Unsupported("%s with no operand" % m)
 
         st = re.fullmatch(r"ST(\d)", ops[0].strip().upper())
@@ -405,27 +509,31 @@ def emit_instruction(ins, ctx):
             if st:
                 return [A, "x87_push(C, X87_ST(C, %s));" % st.group(1)]
             return [A, "x87_push(C, %s);" % fsrc(O(0), m == "FILD")]
-        if m in ("FSTP", "FISTP"):
+        if m in ("FSTP", "FST", "FISTP", "FIST"):
             if st:
                 return [A, "X87_ST(C, %s) = x87_pop(C);" % st.group(1)]
             o = O(0)
             if o.kind != "mem":
                 raise Unsupported("%s to %s" % (m, o.kind))
-            if m == "FISTP":
-                return [A, "WR32(%s, (uint32_t)(int32_t)x87_pop(C));" % o.addr()]
-            return [A, "%s(%s, x87_pop(C));"
-                    % ("WRF64" if o.size == 8 else "WRF32", o.addr())]
-        if m in ("FCOM", "FCOMP"):
+            pop = m in ("FSTP", "FISTP")
+            val = "x87_pop(C)" if pop else "X87_ST(C, 0)"
+            if m in ("FISTP", "FIST"):
+                w = "WR16" if o.size == 2 else "WR32"
+                return [A, "%s(%s, (uint32_t)x87_to_int(C, %s));"
+                        % (w, o.addr(), val)]
+            return [A, "%s(%s, %s);"
+                    % ("WRF64" if o.size == 8 else "WRF32", o.addr(), val)]
+        if m in ("FCOM", "FCOMP", "FUCOM", "FUCOMP"):
             src = "X87_ST(C, %s)" % st.group(1) if st else fsrc(O(0), False)
             L2 = [A, "x87_cmp(C, X87_ST(C, 0), %s);" % src]
-            if m == "FCOMP":
+            if m in ("FCOMP", "FUCOMP"):
                 L2.append("(void)x87_pop(C);")
             return L2
         # arithmetic: ST(0) op= src, or the two-register form
         opc = {"FADD": "+", "FIADD": "+", "FSUB": "-", "FISUB": "-",
                "FSUBR": "-", "FMUL": "*", "FIMUL": "*", "FDIV": "/",
-               "FIDIV": "/", "FDIVR": "/"}[m]
-        rev = m in ("FSUBR", "FDIVR")
+               "FIDIV": "/", "FIDIVR": "/", "FDIVR": "/"}[m]
+        rev = m in ("FSUBR", "FDIVR", "FIDIVR")
         if st and len(ops) >= 2:
             st2 = re.fullmatch(r"ST(\d)", ops[1].strip().upper())
             if not st2:
@@ -452,6 +560,15 @@ def emit_instruction(ins, ctx):
                     "  SETFLAGS(C, FK_LOGIC, 0U, 0U, (uint32_t)_r, 4);",
                     "  " + d.write("(uint32_t)_r") + " }"]
         src = O(0)
+        if src.width == 1:
+            # AX = AL * src8
+            cast = "uint32_t" if m == "MUL" else "int32_t"
+            conv = "(uint8_t)" if m == "MUL" else "(int8_t)"
+            return [A,
+                    "{ %s _p = (%s)%s(C->eax) * (%s)%s(%s);"
+                    % (cast, cast, conv, cast, conv, src.read()),
+                    "  C->eax = (C->eax & 0xFFFF0000U) | ((uint32_t)_p & 0xFFFFU);",
+                    "  SETFLAGS(C, FK_LOGIC, 0U, 0U, (uint32_t)_p, 4); }"]
         if src.width != 4:
             raise Unsupported("%s with %d-byte operand" % (m, src.width))
         if m in ("MUL", "IMUL"):
@@ -469,13 +586,13 @@ def emit_instruction(ins, ctx):
                     "{ uint64_t _n = ((uint64_t)C->edx << 32) | C->eax;",
                     "  uint32_t _d = %s;" % src.read(),
                     "  if (!_d) x87_fault(\"DIV by zero\");",
-                    "  C->eax = (uint32_t)(_n / _d); C->edx = (uint32_t)(_n %% _d); }"]
+                    "  C->eax = (uint32_t)(_n / _d); C->edx = (uint32_t)(_n % _d); }"]
         return [A,
                 "{ int64_t _n = (int64_t)(((uint64_t)C->edx << 32) | C->eax);",
                 "  int32_t _d = (int32_t)%s;" % src.read(),
                 "  if (!_d) x87_fault(\"IDIV by zero\");",
                 "  C->eax = (uint32_t)(int32_t)(_n / _d);",
-                "  C->edx = (uint32_t)(int32_t)(_n %% _d); }"]
+                "  C->edx = (uint32_t)(int32_t)(_n % _d); }"]
 
     if m in ("ADC", "SBB"):
         d, s2 = reconcile(O(0), O(1))
@@ -493,8 +610,10 @@ def emit_instruction(ins, ctx):
     # convention: this module contains no STD or CLD at all, so DF is whatever
     # the ABI guarantees on entry (clear). If a module with STD appears, this
     # must become an error rather than keep assuming.
-    if m in ("STOSD.REP", "STOSB.REP", "MOVSD.REP", "MOVSB.REP"):
-        unit = 1 if "B." in m else 4
+    if m in ("STOSD.REP", "STOSB.REP", "STOSW.REP", "MOVSD.REP", "MOVSB.REP",
+             "MOVSW.REP", "STOSD", "STOSB", "STOSW", "MOVSD", "MOVSB", "MOVSW"):
+        rep = ".REP" in m
+        unit = 1 if m[4] == "B" else (2 if m[4] == "W" else 4)
         bits = unit * 8
         if m.startswith("STOS"):
             src = "(uint8_t)C->eax" if unit == 1 else "C->eax"
@@ -502,8 +621,9 @@ def emit_instruction(ins, ctx):
         else:
             body = ("WR%d(C->edi, RD%d(C->esi)); C->esi += %d; C->edi += %d;"
                     % (bits, bits, unit, unit))
-        return [A,
-                "while (C->ecx) { %s C->ecx--; }" % body]
+        if rep:
+            return [A, "while (C->ecx) { %s C->ecx--; }" % body]
+        return [A, body]        # single-step form, no REP prefix
 
     if m in ("CMPSD.REPE", "CMPSB.REPE"):
         unit = 1 if "B." in m else 4
@@ -555,6 +675,47 @@ def emit_instruction(ins, ctx):
                 "  _r = %s;" % body,
                 "  if (_c) SETFLAGS_SHIFT(C, _a, _c, _r, %d);" % w,
                 "  " + d.write("_r") + " }"]
+
+    if m in ("SHLD", "SHRD"):
+        d, s2 = O(0), O(1)
+        cnt = O(2).read() if len(ops) > 2 else "(C->ecx & 31)"
+        if m == "SHLD":
+            body = ("(_a << _c) | (_c ? (_b >> (32 - _c)) : 0U)")
+        else:
+            body = ("(_a >> _c) | (_c ? (_b << (32 - _c)) : 0U)")
+        return [A,
+                "{ uint32_t _a = %s, _b = %s, _c = (%s) & 31, _r;"
+                % (d.read(), s2.read(), cnt),
+                "  _r = %s;" % body,
+                "  if (_c) SETFLAGS_SHIFT(C, _a, _c, _r, 4);",
+                "  " + d.write("_r") + " }"]
+
+    # MMX: registers modelled separately from the x87 stack (see x86rt.h).
+    if m in ("MOVQ", "MOVD", "EMMS", "FEMMS"):
+        if m in ("EMMS", "FEMMS"):
+            return [A, "/* %s: MMX/x87 aliasing not modelled; see x86rt.h */" % m]
+        def mmx(tok):
+            mm = re.fullmatch(r"MM(\d)", tok.strip().upper())
+            return mm.group(1) if mm else None
+        a_, b_ = ops[0].strip(), ops[1].strip()
+        ma, mb = mmx(a_), mmx(b_)
+        if ma and mb:
+            return [A, "C->mm[%s] = C->mm[%s];" % (ma, mb)]
+        if ma:
+            o = parse_operand(b_)
+            if o.kind == "mem":
+                sz = 8 if m == "MOVQ" else 4
+                return [A, "C->mm[%s] = %s;" % (ma,
+                        "RD64(%s)" % o.addr() if sz == 8 else "(uint64_t)RD32(%s)" % o.addr())]
+            return [A, "C->mm[%s] = (uint64_t)(%s);" % (ma, o.read())]
+        if mb:
+            o = parse_operand(a_)
+            if o.kind == "mem":
+                sz = 8 if m == "MOVQ" else 4
+                return [A, ("WR64(%s, C->mm[%s]);" % (o.addr(), mb)) if sz == 8
+                        else ("WR32(%s, (uint32_t)C->mm[%s]);" % (o.addr(), mb))]
+            return [A, o.write("(uint32_t)C->mm[%s]" % mb)]
+        raise Unsupported("%s %s,%s" % (m, a_, b_))
 
     if m == "XCHG":
         a, b = reconcile(O(0), O(1))
@@ -623,6 +784,8 @@ def emit_instruction(ins, ctx):
         if ins.get("ind") or "flow" not in ins:
             raise Unsupported("indirect JMP")
         if ins["flow"] not in ctx["_addrs"]:
+            if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
+                return [A, "x86_call_unknown(C, 0x%08xU); return;" % ins["flow"]]
             return [A, "fn_%08x(C); return;" % ins["flow"]]
         return [A, "goto L_%08x;" % ins["flow"]]
 
@@ -630,6 +793,9 @@ def emit_instruction(ins, ctx):
         if "flow" not in ins:
             raise Unsupported("conditional jump with no resolved target")
         if ins["flow"] not in ctx["_addrs"]:
+            if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
+                return [A, "if (%s) { x86_call_unknown(C, 0x%08xU); return; }"
+                        % (CC[m[1:]], ins["flow"])]
             return [A, "if (%s) { fn_%08x(C); return; }" % (CC[m[1:]], ins["flow"])]
         return [A, "if (%s) goto L_%08x;" % (CC[m[1:]], ins["flow"])]
 
@@ -637,6 +803,14 @@ def emit_instruction(ins, ctx):
         if ins.get("ind") or "flow" not in ins:
             raise Unsupported("indirect CALL")
         ret = ins["a"] + ins["n"]
+        if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
+            # Ghidra did not identify a function at this target. Emitting
+            # fn_<addr> would simply fail to link; routing it through the
+            # runtime keeps the module buildable and makes reaching it a
+            # located, named failure instead of a silent one.
+            return [A,
+                    "C->esp -= 4; WR32(C->esp, 0x%xU);" % ret,
+                    "x86_call_unknown(C, 0x%08xU);" % ins["flow"]]
         return [A,
                 "C->esp -= 4; WR32(C->esp, 0x%xU);" % ret,
                 "fn_%08x(C);" % ins["flow"]]
@@ -672,6 +846,8 @@ def load(path):
         d = json.load(f)
     # tools/pe.py iat <dll> > <same-stem>.iat
     iat_path = re.sub(r"\.json$", ".iat", path)
+    KNOWN_EPS.clear()
+    KNOWN_EPS.update(fn["ep"] for fn in d["functions"])
     IMG[0] = d["image_base"]
     IMG[1] = max((b["start"] + b["size"]) for b in d["blocks"])
     try:
@@ -889,6 +1065,17 @@ uint32_t x86_enter(uint32_t ep, uint32_t guest_esp, uint32_t ecx)
     for (i = 0; i < g_fn_count; i++)
         if (g_fns[i].ep == ep) { g_fns[i].fn(&C); return C.eax; }
     fprintf(stderr, "x86_enter: no recompiled body at 0x%08x\\n", ep);
+    abort();
+}
+
+/* A call target inside the region Ghidra could not resolve into functions.
+   Aborting names the address so it can be added to the analysis, rather than
+   letting an unresolved target link to something plausible. */
+void x86_call_unknown(CPU *C, uint32_t target)
+{
+    (void)C;
+    fprintf(stderr, "x86_call_unknown: 0x%08x has no identified function\\n",
+            target);
     abort();
 }
 

@@ -154,11 +154,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### rc-exe — Recompiled XMen2.exe
-- status: todo
+- status: re-partial
 - deps: rc-first-dll
-- evidence: 
+- evidence: C023; 11,061 of 11,106 functions translate and compile
 - where: 
-- gap: 11,106 functions, 77.5% byte coverage, 643,647 instructions. The eventual target.
+- gap: Compiles but has never executed: no entry shim, no host layer for its 989 imports, no differential test.
 - notes: 
 
 ### rc-defect-listscan — OPEN: recompiled igTObjectList find/removeAllByValue fault where the original does not
@@ -167,5 +167,13 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - evidence: C022
 - where: 
 - gap: C022 falsified as overstated: 54 constructed combinations of find() including edge cases show ZERO mismatches, so this is probably a harness asymmetry rather than a translation bug. Still unexplained under the fuzzer and the two functions stay excluded. Next: log the actual count/base/start on a faulting trial instead of inferring.
+- notes: 
+
+### rc-modules — Recompiler generalises across modules
+- status: re-partial
+- deps: rc-decode
+- evidence: C023; libIGDisplay/libIGAudio/libIGCollision 100%, XMen2.exe 99.6%, all compiling
+- where: 
+- gap: Translation only. 12 of 16 DLLs not yet imported; nothing outside libIGDisplay is differentially verified or executed.
 - notes: 
 
