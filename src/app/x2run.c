@@ -161,17 +161,31 @@ static DWORD WINAPI watchdog(LPVOID p)
 {
     unsigned long last = 0;
     int i;
+    /* Write to a FILE and flush every line. The previous version used stderr
+       and produced nothing: the process is killed by a timeout, so anything
+       still sitting in a buffer is lost. A diagnostic that only survives a
+       clean exit is useless for diagnosing a hang. */
+    FILE *w = fopen("watchdog.log", "w");
     (void)p;
-    for (i = 0; i < 60; i++) {
+    if (!w) return 0;
+    fprintf(w, "watchdog: started\n"); fflush(w);
+    for (i = 0; i < 200; i++) {
         unsigned long now;
-        Sleep(5000);
+        Sleep(3000);
         now = x86_fn_calls;
-        fprintf(stderr, "watchdog: %lu recompiled calls (+%lu in 5s) -- %s\n",
-                now, now - last, now == last ? "BLOCKED in host code"
-                                             : "guest code is running");
-        if (now != last) x86_dump_history();
+        fprintf(w, "watchdog: %lu recompiled calls (+%lu in 3s) -- %s\n",
+                now, now - last, now == last ? "NO guest code ran: blocked in a "
+                "host call or a tight loop with no calls" : "guest code running");
+        if (now != last) {
+            unsigned k, n = x86_hist_n < 64 ? x86_hist_n : 64;
+            for (k = 1; k <= 6 && k <= n; k++)
+                fprintf(w, "    recent 0x%08x\n",
+                        x86_hist[(x86_hist_n - k) & 63]);
+        }
+        fflush(w);
         last = now;
     }
+    fclose(w);
     return 0;
 }
 #endif

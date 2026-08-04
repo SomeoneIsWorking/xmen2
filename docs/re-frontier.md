@@ -182,7 +182,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe
 - evidence: C026; 43+ functions deep into CRT startup
 - where: 
-- gap: Runs continuously with no untranslated instruction and only 7 fallbacks, but renders nothing after 70s. Watchdog thread meant to distinguish looping from blocked produced no output -- debug that first.
+- gap: Hang localised to a hybrid fallback into ORIGINAL code at 0x0065adcc (CRT, near CPUID detection) that never returns. Watchdog silence unexplained -- resolve that first, then test whether x86_call_host's ESP switch survives a callee that does not return normally. Recompiling 0x0065adcc and 0x00656745 would remove the fallback entirely and is the cleaner fix.
 - notes: 
 
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
