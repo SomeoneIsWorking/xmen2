@@ -140,9 +140,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-first-dll — Recompiled libIGDisplay.dll runs in the real game
 - status: re-partial
 - deps: rc-imports
-- evidence: C014; hybrid DLL loads and the game reaches the intro cinematic
+- evidence: C014/C016; 116 verified functions recompiled, game renders 3D scenes
 - where: 
-- gap: 82 of 748 exported entry points recompiled, 745 exports still forwarded. The all-500 build page-faults and needs bisection.
+- gap: 116 of 748 exported entry points recompiled, 704 still forwarded. The all-500 build page-faults and is not yet bisected.
 - notes: 
 
 ### rc-overrides — Native overrides replacing recompiled functions, A/B toggleable
