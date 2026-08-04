@@ -162,10 +162,10 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### rc-defect-listscan — OPEN: recompiled igTObjectList find/removeAllByValue fault where the original does not
-- status: hack
+- status: todo
 - deps: rc-decode
 - evidence: C022
 - where: 
-- gap: First genuine translation defect (C022). Reproducible: 10/21 and 11/19 trials. Suspect the signed-compare flag model (SF/OF) or loop flag state. If it IS the flag model, the 156 verified results need re-examination for the same pattern.
+- gap: C022 falsified as overstated: 54 constructed combinations of find() including edge cases show ZERO mismatches, so this is probably a harness asymmetry rather than a translation bug. Still unexplained under the fuzzer and the two functions stay excluded. Next: log the actual count/base/start on a faulting trial instead of inferring.
 - notes: 
 
