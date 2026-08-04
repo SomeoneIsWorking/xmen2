@@ -1,138 +1,115 @@
-# Strategy: recomp vs reimplementation — decided, with the measurements
+# Strategy: static recompilation + native overrides
 
-**Decision: reimplementation, driven by a per-DLL differential harness. Static
-recompilation is rejected, and it is rejected on evidence, not taste.**
+**Decision: recompile the PC build to native C, then replace functions with
+hand-written native code incrementally. Target is the PC build, not the Xbox
+build.**
 
-The measurements behind this live in `docs/info/claims/` (C001–C005) with their
-falsifiers. Reproduce any of them with `tools/pe.py` and `tools/run_shim.sh`.
+Measurements behind this are in `docs/info/claims/` with their falsifiers.
+Reproduce them with `tools/pe.py`, `tools/ghidra_scripts/InstrHisto.py`, and
+`tools/run_shim.sh`.
 
-## Why not a recomp
+## Why recomp rather than clean reimplementation
 
-Recompilation pays for itself when the source ISA is one you cannot execute —
-that is the whole reason N64 and PS2 recomps exist. **Both shipped builds of this
-game are already x86:** the PC build is 32-bit PE, and the Xbox build is a 32-bit
-XBE. There is no alien ISA to escape, and the mature tool for running x86 PE code
-on Linux (Wine) already exists and, as of this session, demonstrably runs the
-game. A recomp would spend years rebuilding a worse Wine.
+A clean reimplementation is bounded but *long*: the exe→engine contract is 794
+named symbols (C001), yet behind it sit a scene graph, renderer, animation
+system and the game's own logic. Nothing runs until a great deal of it exists,
+and the first playable build is person-years away.
 
-The x86-specific difficulties are real too — variable-length instructions make
-code/data separation undecidable, and this engine dispatches through C++ vtables
-everywhere (150 exported vftables in `libIGDisplay` alone) — but they are not the
-main argument. The main argument is that a successful recomp would produce
-something we can already do.
+Recompilation inverts that. The whole binary is translated mechanically, so the
+game runs from early on, and each subsystem is replaced with native code *while
+the rest keeps working*. What you buy is **ownership**: a native, buildable,
+portable codebase where any function can be single-stepped, edited, or swapped —
+none of which Wine gives you, because Wine runs the original binary rather than
+yielding source.
 
-## Why the reimplementation is bounded
+An earlier claim (C003) said recomp was "value-negative" here because both
+shipped builds are already x86 so Wine already solves the problem. **That was
+wrong and has been falsified.** It scored recomp only on escaping an alien ISA
+and ignored ownership. What survives from it is the *difficulty* argument, which
+is real: x86 has variable-length instructions, so code/data separation is
+undecidable in general, and this engine dispatches through C++ vtables
+throughout.
 
-The engine's DLLs export **49,357** symbols in total, which sounds like an
-open-ended rewrite. It is not, because `XMen2.exe` only ever calls **794** of
-them:
+## Why the PC build, not the Xbox build
 
-| module | symbols the exe imports |
-|---|---|
-| libIGSg | 290 |
-| libIGCore | 160 |
-| libIGAttrs | 134 |
-| libIGMath | 125 |
-| libIGGfx | 61 |
-| libIGUtils | 15 |
-| libIGDisplay | 9 |
+| | PC build | Xbox build |
+|---|---|---|
+| code | 5.58 MB (exe + 16 DLLs) | 4.05 MB `.text`, one static image |
+| named entry points | 50,581 (export tables) | **0** (no export table; kernel imports by ordinal) |
+| GPU boundary | D3D8 COM API — documented, dxvk-d3d8 exists as reference | NV2A push buffers — this is the xemu problem |
+| oracle | already working (C005) | would have to be stood up |
 
-Every symbol is exported **by name**, MSVC-mangled, so each one carries its full
-C++ signature — and the Alchemy 5.0 headers in `scratch/ref/alchemy5/` give the
-class model behind them. That is a specification, not a guess.
+The GPU boundary alone would decide it: replacing D3D8 API calls is tractable
+work, whereas the XBE statically links D3D/DSOUND/XGRPH/DOLBY and drives the
+hardware directly.
 
-## The harness: swap one DLL at a time
+## Feasibility, measured
 
-The trap in a from-scratch reimplementation is that nothing runs until everything
-runs, so there is no oracle and no way to know a subsystem is wrong until the
-whole thing boots. The fix is to keep the original game as the test harness:
+`InstrHisto.py` counts instructions inside Ghidra-identified function bodies —
+*not* a linear sweep, which decodes padding and data as code (objdump reported
+29% `nop` and 146 `aas` for libIGDisplay, both artefacts).
 
-1. Run the original `XMen2.exe` under Wine — this works today,
-   headless and capturable (`tools/run_shim.sh`).
-2. Build our engine as a PE DLL that exports the *exact* mangled names, and drop
-   it in for one `libIG*.dll`. **Everything else stays original**, so any
-   divergence is localised to the DLL just swapped.
-3. Repeat per DLL. When the last one is native, only `XMen2.exe` is still
-   original; reimplement it last, against an engine that already works.
+| | XMen2.exe | libIGDisplay.dll |
+|---|---|---|
+| functions identified | 11,106 | 521 |
+| exec bytes covered | 2,025,452 / 2,613,248 = **77.5%** | 26,220 / 32,768 = **80.0%** |
+| instructions | 643,647 | 8,754 |
+| distinct mnemonics | 186 | 54 |
+| top-50 mnemonics cover | 98.76% | 99.95% |
 
-Wine is scaffolding for the *harness*, not a dependency of the *product*. The
-shipped result is still the native SDL engine, which needs no Wine.
+The headline worry — that `XMen2.exe` exports nothing and so has the Xbox's
+discovery problem — **did not survive measurement.** Coverage of the symbol-free
+exe (77.5%) matches the fully-symbolised DLL (80.0%). Symbols supply *names and
+types*; boundaries come from analysis, and analysis works.
 
-**Start with `libIGDisplay`.** Nothing else in the program imports more than 24
-symbols from it (the exe uses 9; Gui, Viewer, Insight, Audio and Movie account
-for the rest), it is the smallest replaceable module, and it is exactly where all
-three target features live — controller hotswap, auto-mapping, Xbox prompts.
-By comparison `libIGCore` has 784 inbound symbols and must come last.
+Instruction mix is benign: the integer core (MOV/PUSH/CALL/LEA/POP/TEST/ADD/JZ/
+CMP/JNZ) is 80% of the exe, x87 is 41 mnemonics at 5.83%, SSE is 0.18%. A
+decoder covering ~80 mnemonics reaches 99.7%.
 
-## Status
+**What this does not establish:** that the identified boundaries are *correct*
+rather than merely present; what the remaining 22.5% of exec bytes is (data,
+padding, or reachable code); and — most importantly — instruction-count coverage
+is not semantic coverage. One mis-modelled flag or x87 precision case breaks
+execution regardless of histogram share.
 
-Two shims exist, both reproducible with `tools/build_shim.sh <mode> <dll>`:
+## Shape of the work
 
-- **`proxy`** — all 898 exports forwarded to the original. **Verified transparent
-  in the real game** (C004): the swap mechanism works end to end before a single
-  line of behaviour is reimplemented.
-- **`trace`** — the 22 code symbols of the boundary surface routed through naked
-  asm thunks that log the call and then `jmp` to the original. This retires the
-  biggest risk to the whole strategy (C006): **mingw-built code receives real
-  MSVC `__thiscall` calls from the game and passes them through intact**, with
-  the game running past the splash into the intro cinematic.
+- **Recompiler** (offline): PE + Ghidra-derived function boundaries → C. One C
+  function per identified function, operating on a CPU state struct. Direct
+  calls where the target is known; a dispatch table for indirect calls.
+- **Generated output**: gitignored, regenerable, never hand-edited.
+- **Runtime**: host implementations of the imported Win32 / D3D8 / DirectInput /
+  msvcr71 surface (989 named imports total, C001).
+- **Overrides**: hand-written native C replacing recompiled functions one at a
+  time, with the recompiled body kept alive and A/B-toggleable.
+- **Harness**: the recompiled build diffed against the Wine oracle.
 
-The tracer also gave the boot order of the display layer:
+### Order
 
-    igWindow::getClassTypeLazy
-    igWindow::arkRegister
-    igWindow::_instantiateRefFromPool -> _instantiateFromPool
-    igWin32Window::hideCursor
-    igDefaultInterfaceManager::_instantiateRefFromPool -> _instantiateFromPool
-    igControllerManager::_instantiateRefFromPool -> _instantiateFromPool
+`libIGDisplay.dll` is the first recompiler target — 32 KB, 521 functions, 54
+mnemonics — because the drop-in swap and tracing infrastructure for it already
+exists and works (C004, C006). It is a proving ground for the recompiler, not a
+milestone in itself. `XMen2.exe` is the eventual target.
 
-`_instantiateFromPool` is the wedge. An export proxy cannot intercept virtual
-dispatch or calls internal to the original DLL (C007), so behaviour is replaced
-by owning **construction**, not by hooking methods — which is why whole classes
-are the unit of replacement.
+## What carries over from the reimplementation work
 
-**ARK is decoded** — see [`docs/RE/ark.md`](RE/ark.md). Class registration is a
-single 11-argument `igArkRegister` call into libIGCore; construction is entirely
-delegated to `igMetaObject::createInstance`; and an abstract class points at its
-platform implementation through `igMetaObject+0x3c`, which `createInstance`
-follows in a loop.
+Nothing built so far is wasted:
 
-Two consequences change the plan for the better:
+- `tools/pe.py` — PE sections/imports/exports; the recompiler needs all of it.
+- `tools/run_shim.sh` — the Wine oracle (C005), now the differential reference.
+- `tools/build_shim.sh` + `tools/gen_trace.py` — drop a replacement DLL into the
+  running game and trace the boundary. A recompiled DLL is dropped in exactly
+  the same way, and the tracer gives ground-truth call sequences from the
+  original to diff a recompiled build against.
+- `docs/RE/ark.md` — the ARK meta-object system (C008, C009). Recompiled code
+  reproduces it automatically, but overrides need it understood.
+- `src/core/` — IGB/DXT/mesh/Enbaya decoders, for asset-level work and overrides.
 
-- **`_Meta+0x3c` is a supported substitution point.** `igControllerManager`
-  writes `igWin32ControllerManager::getClassMetaSafe` there, and `igWindow`
-  writes `igWin32Window`'s. Repointing it redirects every instantiation of the
-  abstraction to a different concrete class — so a native
-  `igSDLControllerManager` can be substituted without replacing `libIGDisplay`
-  wholesale.
-- **MSVC vtable placement does not have to be reproduced.** Alchemy captures a
-  class's vtable pointer through a `retrieveVTablePointer` hook that discovers
-  the vptr offset at runtime; libIGCore stamps that pointer into every instance.
-  Hand-rolled C vtables suffice. Slot *order* within the vtable is still a
-  constraint and still has to be read out of the binary.
+## Known limits carried forward
 
-The frontier is now `vtable` (slot order) and `constructderived` (how libIGCore
-finishes an object). The ARK mechanism is **read, not yet exercised** — nothing
-has been registered by our own code.
-
-### Known limits of the harness, honestly
-
-- **Frame-level A/B is not deterministic yet.** The boot movies advance at
-  different rates under llvmpipe, so two runs land on different frames. Only
-  module-load sets and error logs are currently comparable. A deterministic
-  scenario (fixed frame count, seeded RNG, scripted input) is still to be built.
-- **Only boot and the intro cinematic have been exercised.** Nothing
-  interactive has been driven, so transparency is proven for load and early init
-  only.
-- **"Never called" is not yet measurable.** The tracer's end-of-run summary runs
-  on `DLL_PROCESS_DETACH`, which never happens because the harness SIGKILLs the
-  game — so a symbol's absence from the trace does not distinguish *never called*
-  from *not called yet*.
-- The harness needs the Lutris prefix (`WINE_PREFIX` in `.env`) for DXVK's
-  d3d8; this Wine build ships no builtin d3d8 at all.
-
-## What is explicitly NOT being done
-
-- No static recompilation of `XMen2.exe` or the DLLs.
-- No emulation of the Xbox build; `assetsfb.wad` is an *asset* source only.
-- No shipping dependency on Wine.
+- Frame-level A/B is not deterministic yet (boot-movie timing varies run to run).
+  Only module-load sets and error logs are currently comparable.
+- The harness needs the Lutris prefix (`WINE_PREFIX` in `.env`) for DXVK's d3d8;
+  this Wine build ships no builtin d3d8.
+- `tools/gen_trace.py`'s "never called" summary never runs, because the harness
+  SIGKILLs the game.

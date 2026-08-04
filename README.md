@@ -1,16 +1,18 @@
-# X-Men Legends II — Alchemy SDL Remaster
+# X-Men Legends II — native PC port
 
-Reimplement the Alchemy engine that runs X-Men Legends II: Rise of Apocalypse (2005,
-Activision / Raven / Vicarious Visions) as **native SDL2 code**, driven by the PC
-build's game data and the Xbox build's authentic assets. The game runs without any of
-the original Windows binaries.
+Turn X-Men Legends II: Rise of Apocalypse (2005, Activision / Raven / Vicarious
+Visions) into a **native, buildable codebase** by statically recompiling the PC
+build's x86 machine code to C and then replacing subsystems with hand-written
+native code. The end state runs without Wine and without the original binaries;
+the Xbox build supplies authentic assets (button glyphs).
 
-**Direction is decided and measured — see [`docs/strategy.md`](docs/strategy.md).**
-Reimplementation, driven by a per-DLL differential harness that swaps one
-`libIG*.dll` at a time into the *running original game*, so every step has an
-oracle. Static recompilation is rejected: both shipped builds are already x86, so
-a recomp would rebuild a worse Wine for no gain. The exe→engine contract is only
-794 named, MSVC-mangled C++ symbols out of the 49,357 the DLLs export.
+**Direction: static recompilation of the PC build to native C, then native
+overrides — see [`docs/strategy.md`](docs/strategy.md).** The whole binary is
+translated mechanically so the game runs early, then subsystems are replaced
+with hand-written C while the rest keeps working. Measured feasible: Ghidra
+identifies function bodies covering 77.5% of `XMen2.exe` (11,106 functions,
+643,647 instructions) despite the exe exporting no symbols at all, and a decoder
+covering ~80 x86 mnemonics reaches 99.7% of them.
 
 ## Sources
 
@@ -57,10 +59,12 @@ a recomp would rebuild a worse Wine for no gain. The exe→engine contract is on
       deterministic: boot-movie timing varies between runs.
 - [x] **M2b** DLL-swap mechanism — pass-through proxy `libIGDisplay.dll` (898
       forwarded exports) verified transparent in the real game
-- [ ] **M4** Input layer — SDL_GameController → engine callbacks; the 3 features land here
-- [ ] **M5** Render layer — IGB textures/meshes → SDL renderer
-- [ ] **M6** Audio layer
-- [ ] **M7** Main loop + game boots to title
+- [x] **M3c** ARK meta-object system reverse-engineered (`docs/RE/ark.md`)
+- [ ] **M4** Recompiler: x86-32 decoder + C emitter (`tools/re_frontier.py next`)
+- [ ] **M5** Host layer for the 989 imported Win32/D3D8/DInput/CRT symbols
+- [ ] **M6** Recompiled `libIGDisplay.dll` runs in the real game (proving ground)
+- [ ] **M7** Recompiled `XMen2.exe`
+- [ ] **M8** Native overrides — the 3 controller features land here
 
 ## Reference materials (M1)
 

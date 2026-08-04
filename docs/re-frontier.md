@@ -49,38 +49,38 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### vtable — MSVC vtable layout for a replaced igDisplay class
-- status: todo
+- status: skip-by-design
 - deps: ark
 - evidence: 
 - where: tools/ghidra_scripts/DumpVtab.py
-- gap: Cheaper than assumed (C009): only the vtable POINTER must be supplied, via retrieveVTablePointer, so MSVC layout need not be reproduced. What remains is slot ORDER within the vtable, which virtual callers index by. Read it with DumpVtab.py.
+- gap: Superseded by the recomp direction: recompiled code reproduces the original vtables byte-for-byte, so their layout no longer has to be reverse-engineered. Re-open only if a hand-written OVERRIDE needs to construct an Alchemy object itself.
 - notes: 
 
 ### constructderived — igObject::constructDerived -- how libIGCore finishes an object
-- status: todo
+- status: skip-by-design
 - deps: ark
 - evidence: 
 - where: 
-- gap: Where the captured vtable pointer is stamped and per-class construction runs. Needed before our own class can be handed to libIGCore.
+- gap: Superseded by recomp; only needed if an override constructs objects itself.
 - notes: 
 
 
 ## input
 
 ### ctrlmgr — Native igControllerManager / igWin32ControllerManager
-- status: todo
+- status: skip-by-design
 - deps: vtable
 - evidence: 
 - where: 
-- gap: Replacing behaviour requires owning construction (C007); intercepting exports is not enough.
+- gap: Superseded: under recomp+overrides the controller manager is replaced as an override on recompiled functions, not as a hand-built class registered with libIGCore.
 - notes: 
 
 ### sdl-input — SDL_GameController backend + the three shipped features
 - status: todo
-- deps: ctrlmgr
+- deps: rc-overrides
 - evidence: 
 - where: 
-- gap: Hotswap / auto-mapping / Xbox prompts all land here.
+- gap: Now lands as a native override over recompiled input functions.
 - notes: 
 
 
@@ -108,5 +108,56 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - evidence: C006; 22 asm thunks, 9 calls traced in boot order, game reached the intro cinematic
 - where: tools/gen_trace.py
 - gap: 
+- notes: 
+
+
+## recomp
+
+### rc-decode — x86-32 decoder covering the mnemonics that actually occur
+- status: todo
+- deps: abi
+- evidence: C011
+- where: 
+- gap: 186 mnemonics in XMen2.exe, 54 in libIGDisplay; top-80 covers 99.71%. Integer core plus 41 x87 mnemonics (5.83%). Nothing written yet.
+- notes: 
+
+### rc-lift — Emit C per function from Ghidra-identified boundaries
+- status: todo
+- deps: rc-decode
+- evidence: 
+- where: 
+- gap: One C function per identified function over a CPU-state struct; direct calls where known, dispatch table for indirect.
+- notes: 
+
+### rc-imports — Host implementations of the imported Win32/D3D8/DInput/CRT surface
+- status: todo
+- deps: rc-lift
+- evidence: 
+- where: 
+- gap: 989 named imports across the module set (C001).
+- notes: 
+
+### rc-first-dll — Recompiled libIGDisplay.dll runs in the real game
+- status: todo
+- deps: rc-imports
+- evidence: 
+- where: 
+- gap: Proving ground: 32KB, 521 functions, 54 mnemonics, and the drop-in swap harness already works (C004/C006).
+- notes: 
+
+### rc-overrides — Native overrides replacing recompiled functions, A/B toggleable
+- status: todo
+- deps: rc-first-dll
+- evidence: 
+- where: 
+- gap: Recomp body kept alive so each override stays diffable.
+- notes: 
+
+### rc-exe — Recompiled XMen2.exe
+- status: todo
+- deps: rc-first-dll
+- evidence: 
+- where: 
+- gap: 11,106 functions, 77.5% byte coverage, 643,647 instructions. The eventual target.
 - notes: 
 
