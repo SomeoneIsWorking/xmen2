@@ -27,10 +27,43 @@ index 66e1085..a46608d 100644
          DestinationString->MaximumLength = len + sizeof(WCHAR);
          DestinationString->Buffer = (PWCHAR)SourceString;
 diff --git a/src/platform/win32_compat.c b/src/platform/win32_compat.c
-index 96a96fe..64f5cfb 100644
+index 96a96fe..6d28b2b 100644
 --- a/src/platform/win32_compat.c
 +++ b/src/platform/win32_compat.c
-@@ -1454,3 +1454,38 @@ PVOID AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handl
+@@ -1259,6 +1259,16 @@ HANDLE CreateFileMappingA(HANDLE file, LPSECURITY_ATTRIBUTES sa, DWORD protect,
+     }
+ 
+     w32_object *o = obj_alloc(K_FILEMAP);
++    if (!o) {
++        /* obj_alloc can fail (handle table exhausted). Writing through the NULL
++           it returns crashes here, and returning it unchecked crashes later in
++           MapViewOfFileEx with no clue where the bad handle came from. */
++        close(fd);
++        fprintf(stderr, "CreateFileMappingA: obj_alloc failed (handle table "
++                        "exhausted?)\n");
++        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
++        return NULL;
++    }
+     o->fd       = fd;
+     o->map_size = size;
+     return (HANDLE)o;
+@@ -1275,7 +1285,14 @@ LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow
+                        SIZE_T count, LPVOID baseAddr)
+ {
+     w32_object *o = (w32_object *)mapping;
+-    if (!o || o->kind != K_FILEMAP) { SetLastError(ERROR_INVALID_HANDLE); return NULL; }
++    /* A handle that is neither NULL nor a real object -- e.g. a Win32
++       pseudo-handle like INVALID_HANDLE_VALUE -- would fault on o->kind, which
++       is how this first showed up. Reject small integers before dereferencing. */
++    if (!o || (uintptr_t)o < 0x10000) {
++        fprintf(stderr, "MapViewOfFileEx: bogus mapping handle %p\n", (void *)o);
++        SetLastError(ERROR_INVALID_HANDLE); return NULL;
++    }
++    if (o->kind != K_FILEMAP) { SetLastError(ERROR_INVALID_HANDLE); return NULL; }
+ 
+     off_t  off = ((off_t)offHigh << 32) | offLow;
+     SIZE_T len = count ? count : (o->map_size - (SIZE_T)off);
+@@ -1454,3 +1471,38 @@ PVOID AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handl
  ULONG RemoveVectoredExceptionHandler(PVOID h) { (void)h; return 1; }
  
  #endif /* !_WIN32 */

@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-05
 tags: 
+reconfirmed: 2026-08-05
 ---
 
 ## Claim
@@ -17,3 +18,7 @@ scratch/build-xbox/xml2_xbox_recomp links and runs. Output: 'X-Men Legends II (X
 ## What would falsify it
 
 It crashes almost immediately and no game code has run. MapViewOfFileEx is implemented and faults dereferencing its mapping handle, so xbox_MemoryLayoutInit is passing an invalid one -- that is the next thing to debug, and nothing about the game booting or rendering is shown.
+
+## Re-confirmed 2026-08-05
+
+Narrowed but not fixed. Added a NULL check on obj_alloc in CreateFileMappingA (its result was written through unchecked -- a latent crash) and a guard in MapViewOfFileEx rejecting handles below 0x10000 before dereferencing. NEITHER GUARD FIRED, so the mapping handle is not NULL and not a Win32 pseudo-handle: it is a plausible-looking pointer that is nonetheless invalid when dereferenced. That rules out the two cheap explanations and leaves the object-table lifetime or a second MapViewOfFileEx call site (xbox_memory_layout.c:452, the mirror views) as where to look.
