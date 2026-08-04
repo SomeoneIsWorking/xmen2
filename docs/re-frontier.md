@@ -182,6 +182,6 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe
 - evidence: C024; x2run.c reaches the CRT startup
 - where: 
-- gap: Stops at an indirect call to 0x002d28a8 (below image base). Diagnose whether that is an uninitialised pointer, a section-layout defect in the loader, or a genuinely missing function.
+- gap: ROOT-CAUSED (C025): RET is modelled as a C return, but __SEH_prolog rewrites its own return address. Fix: pass each function its expected return address; if the popped value differs, tail-dispatch instead of returning. Affects all SEH-using functions.
 - notes: 
 

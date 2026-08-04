@@ -143,6 +143,21 @@ static inline int FLAG_P(const CPU *C)
 #define X87_ST(C, i)  ((C)->st[((C)->top + (i)) & 7])
 
 void x87_fault(const char *what);
+
+/* Call history. Without it, "x86_dispatch: no function at 0xX" says nothing
+   about how execution got there, and 11,061 functions is far too many to
+   bisect by hand. Compiled out entirely unless X86_TRACE_CALLS is defined, so
+   the shipping build pays nothing. */
+#ifdef X86_TRACE_CALLS
+# define X86_HIST 64
+extern uint32_t x86_hist[X86_HIST];
+extern unsigned x86_hist_n;
+# define X86_ENTER_FN(a) (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a))
+void x86_dump_history(void);
+#else
+# define X86_ENTER_FN(a) ((void)0)
+# define x86_dump_history() ((void)0)
+#endif
 /* call/jump into the region with no identified function; aborts by address */
 void x86_call_unknown(CPU *C, uint32_t target);
 

@@ -929,6 +929,7 @@ def cmd_emit(argv):
         lines.append("/* %s  @ 0x%08x  (%d instrs) */"
                      % (fn["qname"], fn["ep"], len(fn["ins"])))
         lines.append("void fn_%08x(CPU *C) {" % fn["ep"])
+        lines.append("  X86_ENTER_FN(0x%08xU);" % fn["ep"])
         lines.extend(body)
         lines.append("}")
         lines.append("")
@@ -1028,10 +1029,30 @@ void __attribute__((weak)) x86_dispatch_miss(uint32_t target)
 {
     fprintf(stderr, "x86_dispatch: no recompiled function at 0x%08x "
                     "(indirect call target outside the translated set)\\n", target);
+    x86_dump_history();
     abort();
 }
 
 int __attribute__((weak)) g_dispatch_depth;
+
+#ifdef X86_TRACE_CALLS
+uint32_t x86_hist[X86_HIST];
+unsigned x86_hist_n;
+void x86_dump_history(void)
+{
+    unsigned i, n = x86_hist_n < X86_HIST ? x86_hist_n : X86_HIST;
+    fprintf(stderr, "  last %u recompiled functions entered (most recent "
+                    "first):\\n", n);
+    for (i = 1; i <= n; i++) {
+        uint32_t a = x86_hist[(x86_hist_n - i) & (X86_HIST - 1)];
+        int j;
+        const char *nm = "?";
+        for (j = 0; j < g_fn_count; j++)
+            if (g_fns[j].ep == a) { nm = g_fns[j].name; break; }
+        fprintf(stderr, "    0x%08x %s\\n", a, nm);
+    }
+}
+#endif
 
 void x86_dispatch(CPU *C, uint32_t target)
 {
