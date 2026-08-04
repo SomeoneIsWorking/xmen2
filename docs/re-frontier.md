@@ -114,11 +114,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ## recomp
 
 ### rc-decode — x86-32 decoder covering the mnemonics that actually occur
-- status: re-partial
+- status: re-verified
 - deps: abi
-- evidence: C011/C012; tools/recomp.py; 96% of libIGDisplay functions, compiles clean
+- evidence: C012/C013; 82 functions match the original over 292,700 trials, negative control fires
 - where: 
-- gap: x87 (FILD/FLD), SBB and REP string ops still untranslatable -- 21 of 521 functions. And NOTHING HAS EXECUTED: coverage is a translation statistic, not a correctness one.
+- gap: x87 (FILD/FLD), SBB and REP string ops still untranslatable: 21 of 521 functions. Verification covers only call-free, write-free functions comparing EAX.
 - notes: 
 
 ### rc-lift — Emit C per function from Ghidra-identified boundaries
