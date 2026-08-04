@@ -113,6 +113,11 @@ int main(void)
                         "-- tested NOTHING\n", (unsigned long)GetLastError());
         return 2;
     }
+    /* Rebase absolute image references onto wherever the DLL actually landed.
+       Without this the test only happens to pass when the loader grants the
+       preferred base -- which it does here but does NOT inside the game. */
+    g_imgbase = (uint32_t)(uintptr_t)h;
+    printf("-- libIGDisplay_orig.dll at 0x%08x (preferred 0x10000000)\n", g_imgbase);
     stack = (uint8_t *)VirtualAlloc(NULL, STACK_SIZE, MEM_COMMIT, PAGE_READWRITE);
     if (!stack) { fprintf(stderr, "difftest: no stack\n"); return 2; }
     AddVectoredExceptionHandler(1, fault_handler);

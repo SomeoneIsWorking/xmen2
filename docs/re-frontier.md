@@ -130,19 +130,19 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### rc-imports — Host implementations of the imported Win32/D3D8/DInput/CRT surface
-- status: todo
+- status: re-verified
 - deps: rc-lift
-- evidence: 
+- evidence: C014; 163 import stubs + 82 export shims, ESP-switch calling with callee-driven cleanup; game runs
 - where: 
-- gap: 989 named imports across the module set (C001).
+- gap: Stubs resolve by name at load and abort if unresolved; no host reimplementation of any Win32/D3D8 API yet -- they still call the real ones.
 - notes: 
 
 ### rc-first-dll — Recompiled libIGDisplay.dll runs in the real game
-- status: todo
+- status: re-partial
 - deps: rc-imports
-- evidence: 
+- evidence: C014; hybrid DLL loads and the game reaches the intro cinematic
 - where: 
-- gap: Proving ground: 32KB, 521 functions, 54 mnemonics, and the drop-in swap harness already works (C004/C006).
+- gap: 82 of 748 exported entry points recompiled, 745 exports still forwarded. The all-500 build page-faults and needs bisection.
 - notes: 
 
 ### rc-overrides — Native overrides replacing recompiled functions, A/B toggleable

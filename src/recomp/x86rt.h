@@ -27,6 +27,13 @@ typedef struct CPU {
     int      f_w;        /* operand width in bytes: 1, 2 or 4 */
 } CPU;
 
+/* Runtime base of the ORIGINAL module. Absolute references into the module's
+   own image are emitted relative to this, because the DLL is relocated inside
+   the game (observed at 0x001C0000 rather than its preferred 0x10000000) and a
+   hardcoded address would then read unrelated, still-mapped memory. */
+extern uint32_t g_imgbase;
+#define G_IMGBASE (g_imgbase)
+
 /* ---- memory: guest address == host address (see header comment) ---- */
 #define RD8(a)      (*(volatile uint8_t  *)(uintptr_t)(a))
 #define RD16(a)     (*(volatile uint16_t *)(uintptr_t)(a))
@@ -110,6 +117,11 @@ void x86_dispatch(CPU *C, uint32_t target);
    the module links; reaching one aborts naming the function and the exact
    instruction form that blocked it, which is the work item. */
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
+
+/* real code -> recompiled body; returns EAX */
+uint32_t x86_enter(uint32_t ep, uint32_t guest_esp, uint32_t ecx);
+/* recompiled body -> real code, running on the guest stack */
+void x86_call_host(CPU *C, void *fn, const char *what);
 #define DISPATCH(C, t) x86_dispatch((C), (uint32_t)(t))
 
 #endif /* X86RT_H */
