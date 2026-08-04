@@ -116,9 +116,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-decode — x86-32 decoder covering the mnemonics that actually occur
 - status: re-verified
 - deps: abi
-- evidence: C012/C013; 82 functions match the original over 292,700 trials, negative control fires
+- evidence: C019; 521/521 functions, 8754/8754 instructions, 0 blockers
 - where: 
-- gap: x87 (FILD/FLD), SBB and REP string ops still untranslatable: 21 of 521 functions. Verification covers only call-free, write-free functions comparing EAX.
+- gap: 100% TRANSLATED is not 100% verified: 156 of 521 differentially verified. x87 correctness is essentially untested because difftest cannot compare ST(0) returns.
 - notes: 
 
 ### rc-lift — Emit C per function from Ghidra-identified boundaries
@@ -140,9 +140,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-first-dll — Recompiled libIGDisplay.dll runs in the real game
 - status: re-partial
 - deps: rc-imports
-- evidence: C014/C016/C017; 154 verified functions recompiled, game runs and renders
+- evidence: C020; 156 verified functions live in the game
 - where: 
-- gap: 154 of 748 exported entry points; 656 forwarded. 232 cases untestable by random-object fuzzing; 6 unverifiable by double-execution. All-500 build still page-faults, unbisected.
+- gap: 156 of 748 exported entry points recompiled, 652 forwarded. 237 cases untestable by random-object fuzzing.
 - notes: 
 
 ### rc-overrides — Native overrides replacing recompiled functions, A/B toggleable

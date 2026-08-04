@@ -25,6 +25,10 @@ typedef struct CPU {
     uint32_t f_a, f_b, f_r;
     int      f_kind;
     int      f_w;        /* operand width in bytes: 1, 2 or 4 */
+    long double st[8];   /* x87 register stack */
+    int      top;        /* index of ST(0) */
+    int      depth;      /* live registers; guards under/overflow */
+    uint32_t fsw;        /* status word bits set by FCOM, read by FNSTSW */
 } CPU;
 
 /* Runtime base of the ORIGINAL module. Absolute references into the module's
@@ -35,6 +39,12 @@ extern uint32_t g_imgbase;
 #define G_IMGBASE (g_imgbase)
 
 /* ---- memory: guest address == host address (see header comment) ---- */
+#define RDF32(a)    ((long double)(*(volatile float  *)(uintptr_t)(a)))
+#define RDF64(a)    ((long double)(*(volatile double *)(uintptr_t)(a)))
+#define WRF32(a, v) (*(volatile float  *)(uintptr_t)(a) = (float)(v))
+#define WRF64(a, v) (*(volatile double *)(uintptr_t)(a) = (double)(v))
+#define RDI32(a)    ((long double)(int32_t)RD32(a))
+
 #define RD8(a)      (*(volatile uint8_t  *)(uintptr_t)(a))
 #define RD16(a)     (*(volatile uint16_t *)(uintptr_t)(a))
 #define RD32(a)     (*(volatile uint32_t *)(uintptr_t)(a))
@@ -104,6 +114,40 @@ static inline int FLAG_P(const CPU *C)
     uint32_t v = C->f_r & 0xFFU;
     v ^= v >> 4; v ^= v >> 2; v ^= v >> 1;
     return (int)(~v & 1U);
+}
+
+/* ---- x87 ----
+ * A modelled register stack. `long double` is 80-bit on x86 with GCC, matching
+ * the hardware's internal precision, so intermediate results round the same way
+ * as the original -- using `double` here would diverge on long expressions in a
+ * way no single-instruction test would reveal.
+ * Stack faults are hard errors: silently wrapping TOP would turn a translation
+ * bug into slightly-wrong arithmetic instead of a stop.
+ */
+#define X87_ST(C, i)  ((C)->st[((C)->top + (i)) & 7])
+
+void x87_fault(const char *what);
+
+static inline void x87_push(CPU *C, long double v)
+{
+    C->top = (C->top - 1) & 7;
+    if (++C->depth > 8) x87_fault("x87 stack overflow");
+    C->st[C->top] = v;
+}
+
+static inline long double x87_pop(CPU *C)
+{
+    long double v;
+    if (--C->depth < 0) x87_fault("x87 stack underflow");
+    v = C->st[C->top];
+    C->top = (C->top + 1) & 7;
+    return v;
+}
+
+/* C3/C2/C0 of the status word, as FNSTSW AX delivers them. */
+static inline void x87_cmp(CPU *C, long double a, long double b)
+{
+    C->fsw = (a > b) ? 0x0000U : (a < b) ? 0x0100U : (a == b) ? 0x4000U : 0x4500U;
 }
 
 /* ---- indirect dispatch ----

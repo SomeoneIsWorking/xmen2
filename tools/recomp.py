@@ -43,7 +43,10 @@ W16 = {"AX": "EAX", "CX": "ECX", "DX": "EDX", "BX": "EBX",
        "SP": "ESP", "BP": "EBP", "SI": "ESI", "DI": "EDI"}
 
 PTR_SIZE = {"byte": 1, "word": 2, "dword": 4, "qword": 8, "undefined": 4,
-            "undefined1": 1, "undefined2": 2, "undefined4": 4, "undefined8": 8}
+            "undefined1": 1, "undefined2": 2, "undefined4": 4, "undefined8": 8,
+            # Ghidra renders x87 memory operands with the real type, not a width
+            "float": 4, "float4": 4, "double": 8, "float8": 8, "tbyte": 10,
+            "longdouble": 10}
 
 
 def _num(tok):
@@ -131,7 +134,8 @@ def parse_operand(tok):
     if up in HIGH:
         return Operand("reg8hi", reg=up)
 
-    m = re.match(r"^(byte|word|dword|qword|undefined\d*)\s+ptr\s+(.*)$", tok, re.I)
+    m = re.match(r"^(byte|word|dword|qword|float\d*|double|tbyte|longdouble"
+                 r"|undefined\d*)\s+ptr\s+(.*)$", tok, re.I)
     if m:
         size = PTR_SIZE.get(m.group(1).lower())
         if size is None:
@@ -369,6 +373,161 @@ def emit_instruction(ins, ctx):
                 "{ uint32_t _a = %s, _r = _a %s;" % (d.read(), delta),
                 "  SETFLAGS_NC(C, %s, _a, 1, _r, %d);" % (FLAGKIND[m], w),
                 "  " + d.write("_r") + " }"]
+
+    # ---- x87. Memory operand sizes: Ghidra prints `float ptr` / `dword ptr`
+    # for m32 and `qword ptr` for m64; integer forms (FILD/FIDIV/FIMUL) take
+    # the value as a signed integer, not as a float.
+    if m in ("FLD", "FILD", "FSTP", "FADD", "FSUB", "FSUBR", "FMUL", "FDIV",
+             "FDIVR", "FIDIV", "FIMUL", "FIADD", "FISUB", "FCOM", "FCOMP",
+             "FNSTSW", "FCHS", "FABS", "FISTP", "FLDZ", "FLD1"):
+        def fsrc(o, integer):
+            if o.kind == "mem":
+                if integer:
+                    return "RDI32(%s)" % o.addr()
+                return ("RDF64(%s)" % o.addr()) if o.size == 8 else "RDF32(%s)" % o.addr()
+            raise Unsupported("%s from %s" % (m, o.kind))
+
+        if m == "FNSTSW":
+            return [A, "C->eax = (C->eax & 0xFFFF0000U) | (C->fsw & 0xFFFFU);"]
+        if m == "FLDZ":
+            return [A, "x87_push(C, 0.0L);"]
+        if m == "FLD1":
+            return [A, "x87_push(C, 1.0L);"]
+        if m == "FCHS":
+            return [A, "X87_ST(C, 0) = -X87_ST(C, 0);"]
+        if m == "FABS":
+            return [A, "X87_ST(C, 0) = (X87_ST(C, 0) < 0) ? -X87_ST(C, 0) : X87_ST(C, 0);"]
+        if not ops:
+            raise Unsupported("%s with no operand" % m)
+
+        st = re.fullmatch(r"ST(\d)", ops[0].strip().upper())
+        if m in ("FLD", "FILD"):
+            if st:
+                return [A, "x87_push(C, X87_ST(C, %s));" % st.group(1)]
+            return [A, "x87_push(C, %s);" % fsrc(O(0), m == "FILD")]
+        if m in ("FSTP", "FISTP"):
+            if st:
+                return [A, "X87_ST(C, %s) = x87_pop(C);" % st.group(1)]
+            o = O(0)
+            if o.kind != "mem":
+                raise Unsupported("%s to %s" % (m, o.kind))
+            if m == "FISTP":
+                return [A, "WR32(%s, (uint32_t)(int32_t)x87_pop(C));" % o.addr()]
+            return [A, "%s(%s, x87_pop(C));"
+                    % ("WRF64" if o.size == 8 else "WRF32", o.addr())]
+        if m in ("FCOM", "FCOMP"):
+            src = "X87_ST(C, %s)" % st.group(1) if st else fsrc(O(0), False)
+            L2 = [A, "x87_cmp(C, X87_ST(C, 0), %s);" % src]
+            if m == "FCOMP":
+                L2.append("(void)x87_pop(C);")
+            return L2
+        # arithmetic: ST(0) op= src, or the two-register form
+        opc = {"FADD": "+", "FIADD": "+", "FSUB": "-", "FISUB": "-",
+               "FSUBR": "-", "FMUL": "*", "FIMUL": "*", "FDIV": "/",
+               "FIDIV": "/", "FDIVR": "/"}[m]
+        rev = m in ("FSUBR", "FDIVR")
+        if st and len(ops) >= 2:
+            st2 = re.fullmatch(r"ST(\d)", ops[1].strip().upper())
+            if not st2:
+                raise Unsupported("%s %s,%s" % (m, ops[0], ops[1]))
+            a_, b_ = "X87_ST(C, %s)" % st.group(1), "X87_ST(C, %s)" % st2.group(1)
+            return [A, "%s = %s %s %s;" % (a_, a_, opc, b_)]
+        src = "X87_ST(C, %s)" % st.group(1) if st else fsrc(O(0), m[:2] == "FI")
+        if rev:
+            return [A, "X87_ST(C, 0) = %s %s X87_ST(C, 0);" % (src, opc)]
+        return [A, "X87_ST(C, 0) = X87_ST(C, 0) %s %s;" % (opc, src)]
+
+    if m in ("MUL", "IMUL", "DIV", "IDIV"):
+        # One-operand forms use EDX:EAX implicitly. IMUL also has 2- and
+        # 3-operand forms that do NOT touch EDX -- they are handled separately
+        # because treating them as the implicit form would clobber EDX.
+        if m == "IMUL" and len(ops) >= 2:
+            d, s2 = reconcile(O(0), O(1))
+            if len(ops) == 3:
+                a_, b_ = O(1).read(), O(2).read()
+            else:
+                a_, b_ = d.read(), s2.read()
+            return [A,
+                    "{ int32_t _r = (int32_t)(%s) * (int32_t)(%s);" % (a_, b_),
+                    "  SETFLAGS(C, FK_LOGIC, 0U, 0U, (uint32_t)_r, 4);",
+                    "  " + d.write("(uint32_t)_r") + " }"]
+        src = O(0)
+        if src.width != 4:
+            raise Unsupported("%s with %d-byte operand" % (m, src.width))
+        if m in ("MUL", "IMUL"):
+            cast = "uint64_t" if m == "MUL" else "int64_t"
+            conv = "(uint32_t)" if m == "MUL" else "(int32_t)"
+            return [A,
+                    "{ %s _p = (%s)%s(C->eax) * (%s)%s(%s);"
+                    % (cast, cast, conv, cast, conv, src.read()),
+                    "  C->eax = (uint32_t)_p; C->edx = (uint32_t)(_p >> 32);",
+                    "  SETFLAGS(C, FK_LOGIC, 0U, 0U, C->edx, 4); }"]
+        # DIV / IDIV: divide-by-zero is #DE on hardware; aborting is the honest
+        # analogue -- returning a made-up quotient would corrupt silently.
+        if m == "DIV":
+            return [A,
+                    "{ uint64_t _n = ((uint64_t)C->edx << 32) | C->eax;",
+                    "  uint32_t _d = %s;" % src.read(),
+                    "  if (!_d) x87_fault(\"DIV by zero\");",
+                    "  C->eax = (uint32_t)(_n / _d); C->edx = (uint32_t)(_n %% _d); }"]
+        return [A,
+                "{ int64_t _n = (int64_t)(((uint64_t)C->edx << 32) | C->eax);",
+                "  int32_t _d = (int32_t)%s;" % src.read(),
+                "  if (!_d) x87_fault(\"IDIV by zero\");",
+                "  C->eax = (uint32_t)(int32_t)(_n / _d);",
+                "  C->edx = (uint32_t)(int32_t)(_n %% _d); }"]
+
+    if m in ("ADC", "SBB"):
+        d, s2 = reconcile(O(0), O(1))
+        w = d.width
+        op = "+" if m == "ADC" else "-"
+        return [A,
+                "{ uint32_t _a = %s, _b = %s, _c = FLAG_C(C) ? 1U : 0U, _r;"
+                % (d.read(), s2.read()),
+                "  _r = _a %s _b %s _c;" % (op, op),
+                "  SETFLAGS(C, %s, _a, (uint32_t)(_b %s _c), _r, %d);"
+                % ("FK_ADD" if m == "ADC" else "FK_SUB", op, w),
+                "  " + d.write("_r") + " }"]
+
+    # REP string ops. DF is assumed clear -- justified by measurement, not
+    # convention: this module contains no STD or CLD at all, so DF is whatever
+    # the ABI guarantees on entry (clear). If a module with STD appears, this
+    # must become an error rather than keep assuming.
+    if m in ("STOSD.REP", "STOSB.REP", "MOVSD.REP", "MOVSB.REP"):
+        unit = 1 if "B." in m else 4
+        bits = unit * 8
+        if m.startswith("STOS"):
+            src = "(uint8_t)C->eax" if unit == 1 else "C->eax"
+            body = "WR%d(C->edi, %s); C->edi += %d;" % (bits, src, unit)
+        else:
+            body = ("WR%d(C->edi, RD%d(C->esi)); C->esi += %d; C->edi += %d;"
+                    % (bits, bits, unit, unit))
+        return [A,
+                "while (C->ecx) { %s C->ecx--; }" % body]
+
+    if m in ("CMPSD.REPE", "CMPSB.REPE"):
+        unit = 1 if "B." in m else 4
+        bits = unit * 8
+        return [A,
+                "{ uint32_t _a = 0, _b = 0;",
+                "  while (C->ecx) {",
+                "    _a = RD%d(C->esi); _b = RD%d(C->edi);" % (bits, bits),
+                "    C->esi += %d; C->edi += %d; C->ecx--;" % (unit, unit),
+                "    if (_a != _b) break;",
+                "  }",
+                "  SETFLAGS(C, FK_SUB, _a, _b, (uint32_t)(_a - _b), %d); }" % unit]
+
+    if m in ("SCASB.REPNE", "SCASD.REPNE"):
+        unit = 1 if "B." in m else 4
+        bits = unit * 8
+        acc = "(uint8_t)C->eax" if unit == 1 else "C->eax"
+        return [A,
+                "{ uint32_t _a = %s, _b = 0;" % acc,
+                "  while (C->ecx) {",
+                "    _b = RD%d(C->edi); C->edi += %d; C->ecx--;" % (bits, unit),
+                "    if (_a == _b) break;",
+                "  }",
+                "  SETFLAGS(C, FK_SUB, _a, _b, (uint32_t)(_a - _b), %d); }" % unit]
 
     if m == "NEG":
         d = O(0)
@@ -714,6 +873,12 @@ uint32_t x86_enter(uint32_t ep, uint32_t guest_esp, uint32_t ecx)
     for (i = 0; i < g_fn_count; i++)
         if (g_fns[i].ep == ep) { g_fns[i].fn(&C); return C.eax; }
     fprintf(stderr, "x86_enter: no recompiled body at 0x%08x\\n", ep);
+    abort();
+}
+
+void x87_fault(const char *what)
+{
+    fprintf(stderr, "%s\\n", what);
     abort();
 }
 
