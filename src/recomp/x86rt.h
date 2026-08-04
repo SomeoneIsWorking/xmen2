@@ -17,7 +17,11 @@
 #include <intrin.h>
 
 enum {
-    FK_NONE = 0, FK_ADD, FK_SUB, FK_LOGIC, FK_INC, FK_DEC, FK_SHIFT
+    FK_NONE = 0, FK_ADD, FK_SUB, FK_LOGIC, FK_INC, FK_DEC, FK_SHIFT,
+    /* Flags restored from a real EFLAGS word (POPFD) rather than derived from
+       an operation. PUSHFD/POPFD appear in CPU-feature detection, which the CRT
+       runs at startup, so the lazy model has to be able to round-trip. */
+    FK_EXPLICIT
 };
 
 typedef struct CPU {
@@ -90,6 +94,9 @@ static inline uint32_t x86_mask(int w)
     return w == 1 ? 0xFFU : w == 2 ? 0xFFFFU : 0xFFFFFFFFU;
 }
 
+/* Materialise a real EFLAGS word from the lazy state. Bit 1 is always set. */
+static inline uint32_t x86_eflags(const CPU *C);
+
 static inline int x86_msb(uint32_t v, int w)
 {
     return (int)((v >> (w * 8 - 1)) & 1U);
@@ -97,16 +104,22 @@ static inline int x86_msb(uint32_t v, int w)
 
 static inline int FLAG_Z(const CPU *C)
 {
+    if (C->f_kind == FK_EXPLICIT)
+        return (int)((C->f_a >> 6) & 1U);
     return (C->f_r & x86_mask(C->f_w)) == 0;
 }
 
 static inline int FLAG_S(const CPU *C)
 {
+    if (C->f_kind == FK_EXPLICIT)
+        return (int)((C->f_a >> 7) & 1U);
     return x86_msb(C->f_r, C->f_w);
 }
 
 static inline int FLAG_C(const CPU *C)
 {
+    if (C->f_kind == FK_EXPLICIT)
+        return (int)((C->f_a >> 0) & 1U);
     uint32_t m = x86_mask(C->f_w);
     switch (C->f_kind) {
     case FK_ADD:   return (C->f_r & m) < (C->f_a & m);
@@ -118,6 +131,8 @@ static inline int FLAG_C(const CPU *C)
 
 static inline int FLAG_O(const CPU *C)
 {
+    if (C->f_kind == FK_EXPLICIT)
+        return (int)((C->f_a >> 11) & 1U);
     int sa = x86_msb(C->f_a, C->f_w);
     int sb = x86_msb(C->f_b, C->f_w);
     int sr = x86_msb(C->f_r, C->f_w);
@@ -134,9 +149,22 @@ static inline int FLAG_O(const CPU *C)
 
 static inline int FLAG_P(const CPU *C)
 {
+    if (C->f_kind == FK_EXPLICIT)
+        return (int)((C->f_a >> 2) & 1U);
     uint32_t v = C->f_r & 0xFFU;
     v ^= v >> 4; v ^= v >> 2; v ^= v >> 1;
     return (int)(~v & 1U);
+}
+
+static inline uint32_t x86_eflags(const CPU *C)
+{
+    uint32_t f = 0x00000202U;          /* bit 1 reserved-1, IF set */
+    if (FLAG_C(C)) f |= 1U << 0;
+    if (FLAG_P(C)) f |= 1U << 2;
+    if (FLAG_Z(C)) f |= 1U << 6;
+    if (FLAG_S(C)) f |= 1U << 7;
+    if (FLAG_O(C)) f |= 1U << 11;
+    return f;
 }
 
 /* ---- x87 ----
@@ -159,7 +187,9 @@ void x87_fault(const char *what);
 # define X86_HIST 64
 extern uint32_t x86_hist[X86_HIST];
 extern unsigned x86_hist_n;
-# define X86_ENTER_FN(a) (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a))
+extern volatile unsigned long x86_fn_calls;
+# define X86_ENTER_FN(a) (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a), \
+                          x86_fn_calls++)
 void x86_dump_history(void);
 #else
 # define X86_ENTER_FN(a) ((void)0)

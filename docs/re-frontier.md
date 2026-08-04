@@ -182,7 +182,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe
 - evidence: C026; 43+ functions deep into CRT startup
 - where: 
-- gap: Reaches D3D device creation and Cg load but renders nothing and exits; undiagnosed. Hybrid fallback runs 5+ addresses as ORIGINAL code -- that count is the remaining translation debt and must shrink.
+- gap: Runs continuously with no untranslated instruction and only 7 fallbacks, but renders nothing after 70s. Watchdog thread meant to distinguish looping from blocked produced no output -- debug that first.
 - notes: 
 
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code

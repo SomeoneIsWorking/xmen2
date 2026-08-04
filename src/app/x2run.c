@@ -153,6 +153,29 @@ static void map_image(const char *path)
            imgbase, imgsize, nsec);
 }
 
+#ifdef X86_TRACE_CALLS
+/* Is it looping or blocked? "Nothing renders" cannot distinguish the two, and
+   the answer decides where to look next: a climbing call count means guest code
+   is spinning, a static one means it is parked inside a host call. */
+static DWORD WINAPI watchdog(LPVOID p)
+{
+    unsigned long last = 0;
+    int i;
+    (void)p;
+    for (i = 0; i < 60; i++) {
+        unsigned long now;
+        Sleep(5000);
+        now = x86_fn_calls;
+        fprintf(stderr, "watchdog: %lu recompiled calls (+%lu in 5s) -- %s\n",
+                now, now - last, now == last ? "BLOCKED in host code"
+                                             : "guest code is running");
+        if (now != last) x86_dump_history();
+        last = now;
+    }
+    return 0;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     static uint8_t *stack;
@@ -186,6 +209,9 @@ int main(int argc, char **argv)
            x86_allow_fallback ? "ENABLED (untranslated targets run original code)"
                               : "disabled");
     atexit(x86_fallback_report);
+#ifdef X86_TRACE_CALLS
+    CreateThread(NULL, 0, watchdog, NULL, 0, NULL);
+#endif
     printf("x2run: entering recompiled XMen2.exe at 0x006725f4\n");
     fflush(stdout);
     fn_006725f4(&C);

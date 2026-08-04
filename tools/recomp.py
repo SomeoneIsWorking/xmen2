@@ -657,6 +657,41 @@ def emit_instruction(ins, ctx):
                 "  SETFLAGS(C, FK_SUB, 0U, _a, _r, %d);" % w,
                 "  " + d.write("_r") + " }"]
 
+    if m == "CPUID":
+        # Report the REAL CPU. Faking a minimal feature set would push the CRT
+        # onto its generic paths and hide the SSE/MMX routines rather than
+        # translate them; if it selects a routine we have not translated, the
+        # hybrid fallback runs the original for it, which is correct.
+        return [A,
+                "{ unsigned _r[4];",
+                "  __cpuid((int *)_r, (int)C->eax);",
+                "  C->eax = _r[0]; C->ebx = _r[1];",
+                "  C->ecx = _r[2]; C->edx = _r[3]; }"]
+    if m == "RDTSC":
+        return [A,
+                "{ unsigned long long _t = __rdtsc();",
+                "  C->eax = (uint32_t)_t; C->edx = (uint32_t)(_t >> 32); }"]
+
+    if m in ("PUSHFD", "PUSHF"):
+        return [A, "C->esp -= 4; WR32(C->esp, x86_eflags(C));"]
+    if m in ("POPFD", "POPF"):
+        return [A,
+                "{ uint32_t _f = RD32(C->esp); C->esp += 4;",
+                "  SETFLAGS(C, FK_EXPLICIT, _f, 0U, 0U, 4); }"]
+    if m in ("CLC", "STC", "CMC"):
+        op = {"CLC": "& ~1U", "STC": "| 1U", "CMC": "^ 1U"}[m]
+        return [A,
+                "{ uint32_t _f = x86_eflags(C) %s;" % op,
+                "  SETFLAGS(C, FK_EXPLICIT, _f, 0U, 0U, 4); }"]
+    if m == "LAHF":
+        return [A, "C->eax = (C->eax & 0xFFFF00FFU) | "
+                   "((x86_eflags(C) & 0xFFU) << 8);"]
+    if m == "SAHF":
+        return [A,
+                "{ uint32_t _f = (x86_eflags(C) & 0xFFFFFF00U) | "
+                "((C->eax >> 8) & 0xFFU);",
+                "  SETFLAGS(C, FK_EXPLICIT, _f, 0U, 0U, 4); }"]
+
     if m == "NOT":
         d = O(0)
         return [A, d.write("~(%s)" % d.read())]
@@ -1091,6 +1126,7 @@ int __attribute__((weak)) g_dispatch_depth;
 #ifdef X86_TRACE_CALLS
 uint32_t x86_hist[X86_HIST];
 unsigned x86_hist_n;
+volatile unsigned long x86_fn_calls;
 void x86_dump_history(void)
 {
     unsigned i, n = x86_hist_n < X86_HIST ? x86_hist_n : X86_HIST;
