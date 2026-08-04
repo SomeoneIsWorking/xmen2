@@ -3,9 +3,14 @@
 Reimplement the Alchemy engine that runs X-Men Legends II: Rise of Apocalypse (2005,
 Activision / Raven / Vicarious Visions) as **native SDL2 code**, driven by the PC
 build's game data and the Xbox build's authentic assets. The game runs without any of
-the original Windows binaries. This is the decided direction (option B: SDL engine
-reimplementation) — not a byte-for-byte static recompile of the x86 binaries (option A,
-rejected as a multi-year research project with no precedent on x86).
+the original Windows binaries.
+
+**Direction is decided and measured — see [`docs/strategy.md`](docs/strategy.md).**
+Reimplementation, driven by a per-DLL differential harness that swaps one
+`libIG*.dll` at a time into the *running original game*, so every step has an
+oracle. Static recompilation is rejected: both shipped builds are already x86, so
+a recomp would rebuild a worse Wine for no gain. The exe→engine contract is only
+794 named, MSVC-mangled C++ symbols out of the 49,357 the DLLs export.
 
 ## Sources
 
@@ -33,10 +38,13 @@ rejected as a multi-year research project with no precedent on x86).
 
 ## Verification
 
-- **Oracle**: the original PC build under Wine (Lutris config exists). A differential
-  harness runs oracle + our build through the same deterministic scenario and compares.
-  Oracle baseline is M2; the harness is built before any engine code (recomp-harness
-  discipline: verify before you declare done).
+- **Oracle**: the original PC build under Wine. `tools/run_shim.sh <rundir>` runs it
+  headless on Xvfb and captures a frame; `scratch/run/stock` is the unmodified
+  reference and `scratch/run/proxy` swaps in our DLL. Both are symlink farms — the
+  real game install is never modified.
+- **Ledgers**: `docs/info/` holds what has been *proven* (claims, each with the
+  observation that would falsify it) and which tools can be *trusted* (instruments).
+  Query with `info.py brief <words>` before re-deriving anything.
 
 ## Roadmap
 
@@ -44,7 +52,11 @@ rejected as a multi-year research project with no precedent on x86).
 - [x] **M1** Acquire Alchemy 5.0 Kit reference
 - [x] **M3a** Data layer READ: XMLB/engb decompile via raven-formats (MIT); fb/zsnd also covered
 - [ ] **M3b** Data layer WRITE: compile path verified (need round-trip test on a real asset)
-- [ ] **M2** Oracle baseline — PC build headless under Wine, deterministic capture
+- [x] **M2** Oracle baseline — PC build runs headless under Wine (DXVK + lavapipe
+      + virtual desktop), frames captured. `tools/run_shim.sh`. NOT yet
+      deterministic: boot-movie timing varies between runs.
+- [x] **M2b** DLL-swap mechanism — pass-through proxy `libIGDisplay.dll` (898
+      forwarded exports) verified transparent in the real game
 - [ ] **M4** Input layer — SDL_GameController → engine callbacks; the 3 features land here
 - [ ] **M5** Render layer — IGB textures/meshes → SDL renderer
 - [ ] **M6** Audio layer
@@ -76,6 +88,8 @@ rejected as a multi-year research project with no precedent on x86).
   (gitignored), template in `.env.example`.
 - All run artifacts go to gitignored `scratch/` (structured by type), never `/tmp`.
 - RE scripts in `tools/`; Ghidra project in `build/ghidra/`.
+- `tools/pe.py` reads PE32 exports/imports/sections and generates proxy `.def`
+  files; `tools/run_shim.sh` runs the game headless for A/B comparison.
 - No copyrighted game assets committed to git; they stay in the game dirs referenced
   by `.env`.
 
