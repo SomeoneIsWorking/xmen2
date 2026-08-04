@@ -182,6 +182,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe
 - evidence: C026; 43+ functions deep into CRT startup
 - where: 
-- gap: Stops at 0x00597b30, inside the image but not a Ghidra-identified function. Needs the feedback loop: collect missed indirect targets at runtime -> add as function starts in Ghidra -> re-export -> re-recompile.
+- gap: Reaches D3D device creation and Cg load but renders nothing and exits; undiagnosed. Hybrid fallback runs 5+ addresses as ORIGINAL code -- that count is the remaining translation debt and must shrink.
+- notes: 
+
+### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
+- status: hack
+- deps: rc-exe-run
+- evidence: 
+- where: 
+- gap: DEBT by construction. The original image is mapped executable at its correct base, so untranslated targets can run as original code -- which keeps the program alive but means the binary is not fully recompiled. Every distinct address is reported and X2_NO_FALLBACK=1 disables it. Remove by recompiling those addresses.
 - notes: 
 

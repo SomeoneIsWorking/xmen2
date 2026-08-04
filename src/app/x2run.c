@@ -178,6 +178,14 @@ int main(int argc, char **argv)
     C.esp = sp;
     C.fcw = 0x027FU;                                /* x87 default control word */
 
+    /* Hybrid: addresses static analysis never resolved into functions run as
+       original code. Each one is reported, and the summary at exit is the
+       honest measure of how much is still not recompiled. */
+    x86_allow_fallback = (getenv("X2_NO_FALLBACK") == NULL);
+    printf("x2run: hybrid fallback %s\n",
+           x86_allow_fallback ? "ENABLED (untranslated targets run original code)"
+                              : "disabled");
+    atexit(x86_fallback_report);
     printf("x2run: entering recompiled XMen2.exe at 0x006725f4\n");
     fflush(stdout);
     fn_006725f4(&C);

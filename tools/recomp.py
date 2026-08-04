@@ -1048,6 +1048,32 @@ uint32_t g_imgbase = 0x10000000U;
    silently calling into arbitrary addresses. */
 uint32_t g_image_lo, g_image_hi;
 
+/* Hybrid execution: run original machine code for targets with no recompiled
+   body. Off by default so nothing falls back unnoticed; the runner opts in. */
+int x86_allow_fallback;
+#define X86_FB_MAX 4096
+static uint32_t x86_fb[X86_FB_MAX];
+static int x86_fb_n;
+
+void x86_note_fallback(uint32_t target)
+{
+    int i;
+    for (i = 0; i < x86_fb_n; i++)
+        if (x86_fb[i] == target) return;
+    if (x86_fb_n < X86_FB_MAX) x86_fb[x86_fb_n++] = target;
+    fprintf(stderr, "x86_fallback: 0x%08x has no recompiled body -- running "
+                    "ORIGINAL code\\n", target);
+}
+
+void x86_fallback_report(void)
+{
+    int i;
+    fprintf(stderr, "x86: %d distinct addresses ran as ORIGINAL code, not "
+                    "recompiled:\\n", x86_fb_n);
+    for (i = 0; i < x86_fb_n; i++)
+        fprintf(stderr, "    0x%08x\\n", x86_fb[i]);
+}
+
 /* Overridable so a TEST binary can skip a trial whose random object produced a
    nonsense vtable pointer, instead of aborting the whole run. The DLL keeps the
    aborting default: in production an unresolved indirect call is a hard error,
@@ -1109,10 +1135,22 @@ void x86_dispatch(CPU *C, uint32_t target)
     g_dispatch_depth--;
     /* An indirect call through the IAT lands on HOST code -- the CRT does this
        in the first few instructions. Anything outside the guest image is a real
-       Windows function and must be called on the guest stack, not looked up in
-       the recompiled table. */
+       Windows function and must be called on the guest stack. */
     if (g_image_lo && (target < g_image_lo || target >= g_image_hi)) {
         x86_call_host(C, (void *)(uintptr_t)target, "indirect host call");
+        return;
+    }
+    /* HYBRID EXECUTION. The target is inside the image but has no recompiled
+       body -- one of the addresses static analysis never resolved into a
+       function. The original image is mapped executable at its correct base, so
+       the ORIGINAL machine code can simply be run for it. That keeps the
+       program alive instead of aborting, and it is honest only because it is
+       LOUD: every distinct fallback address is reported once, and the count is
+       the remaining work. Silently falling back would let a binary that is
+       mostly original code masquerade as a recompilation. */
+    if (g_image_lo && x86_allow_fallback) {
+        x86_note_fallback(target);
+        x86_call_host(C, (void *)(uintptr_t)target, "original code (not recompiled)");
         return;
     }
     x86_dispatch_miss(target);

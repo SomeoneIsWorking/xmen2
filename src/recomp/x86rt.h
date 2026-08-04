@@ -40,6 +40,12 @@ typedef struct CPU {
    hardcoded address would then read unrelated, still-mapped memory. */
 extern uint32_t g_imgbase;
 extern uint32_t g_image_lo, g_image_hi;   /* guest image bounds; outside = host */
+/* Hybrid execution: run ORIGINAL machine code where no recompiled body exists.
+   Opt-in, and every distinct fallback address is reported -- a recompilation
+   that quietly runs the original is not a recompilation. */
+extern int x86_allow_fallback;
+void x86_note_fallback(uint32_t target);
+void x86_fallback_report(void);
 #define G_IMGBASE (g_imgbase)
 
 /* ---- memory: guest address == host address (see header comment) ---- */

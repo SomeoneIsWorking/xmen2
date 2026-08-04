@@ -13,8 +13,8 @@ ROOT=$PWD
 NAME=${1:?usage: run_shim.sh <rundir-name> [seconds]}
 SECS=${2:-40}
 RUNDIR=$ROOT/scratch/run/$NAME
-[ -x "$RUNDIR/XMen2.exe" ] || [ -f "$RUNDIR/XMen2.exe" ] || {
-  echo "run_shim: $RUNDIR/XMen2.exe missing -- ran NOTHING" >&2; exit 2; }
+[ -f "$RUNDIR/${X2_EXE:-XMen2.exe}" ] || {
+  echo "run_shim: $RUNDIR/${X2_EXE:-XMen2.exe} missing -- ran NOTHING" >&2; exit 2; }
 
 # Machine-specific paths live only in .env (gitignored).
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
@@ -30,6 +30,8 @@ SHOT=$ROOT/scratch/screenshots/$NAME.png
 # desktop satisfies the mode change without touching the X screen, and pins the
 # framebuffer size so A/B frames are comparable.
 : "${X2_RES:=800x600}"
+: "${X2_EXE:=XMen2.exe}"          # which image to launch in the run dir
+: "${X2_ARGS:=}"
 
 DISP=:$((90 + RANDOM % 8))
 Xvfb "$DISP" -screen 0 "${X2_RES}x24" >/dev/null 2>&1 &
@@ -53,7 +55,7 @@ export X2_TRACE=${X2_TRACE:-}
 ( cd "$RUNDIR" && DISPLAY=$DISP WINEDEBUG=+loaddll \
     WINEDLLOVERRIDES="d3d8,d3d9=$X2_D3D;$X2_MUTE" \
     VK_DRIVER_FILES="$X2_VK_ICD" VK_ICD_FILENAMES="$X2_VK_ICD" \
-    wine explorer /desktop=x2,"$X2_RES" "$(cd "$RUNDIR" && winepath -w ./XMen2.exe)" \
+    wine explorer /desktop=x2,"$X2_RES" "$(cd "$RUNDIR" && winepath -w ./$X2_EXE)" $X2_ARGS \
       >"$LOG" 2>&1 ) &
 RUNPID=$!
 
@@ -73,7 +75,7 @@ done
 # RUNPID is the `wine explorer` wrapper, NOT the game -- it stays alive even if
 # XMen2.exe never loaded, so asking it is worthless. Ask the log whether the
 # game image was actually mapped.
-if grep -q 'XMen2\.exe" at' "$LOG"; then GAME_LOADED=yes; else GAME_LOADED=no; fi
+if grep -q "$X2_EXE\" at" "$LOG"; then GAME_LOADED=yes; else GAME_LOADED=no; fi
 if kill -0 $RUNPID 2>/dev/null; then ALIVE=yes; else ALIVE=no; fi
 kill -TERM $RUNPID 2>/dev/null
 sleep 1
