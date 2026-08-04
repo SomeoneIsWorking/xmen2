@@ -39,6 +39,7 @@ typedef struct CPU {
    the game (observed at 0x001C0000 rather than its preferred 0x10000000) and a
    hardcoded address would then read unrelated, still-mapped memory. */
 extern uint32_t g_imgbase;
+extern uint32_t g_image_lo, g_image_hi;   /* guest image bounds; outside = host */
 #define G_IMGBASE (g_imgbase)
 
 /* ---- memory: guest address == host address (see header comment) ---- */
@@ -160,6 +161,8 @@ void x86_dump_history(void);
 #endif
 /* call/jump into the region with no identified function; aborts by address */
 void x86_call_unknown(CPU *C, uint32_t target);
+/* RET popped an address other than the one the function was entered with */
+void x86_return_to(CPU *C, uint32_t target);
 
 /* FIST/FISTP round per the control word's RC bits (11:10). MSVC's float->int
    cast sets RC=truncate, does the store, then restores -- so treating FLDCW as

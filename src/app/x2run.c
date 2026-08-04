@@ -103,6 +103,8 @@ static void map_image(const char *path)
             }
             free(raw);
             g_imgbase = imgbase;
+            g_image_lo = imgbase;
+            g_image_hi = imgbase + imgsize;
             printf("x2run: guest image written into the runner's own reserved "
                    "range at 0x%08x (%u bytes), %u sections\n",
                    imgbase, imgsize, nsec);

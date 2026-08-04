@@ -732,12 +732,21 @@ def emit_instruction(ins, ctx):
         return [A, "C->esp = C->ebp; C->ebp = RD32(C->esp); C->esp += 4;"]
 
     if m == "RET":
+        # A function may deliberately alter its own return address --
+        # __SEH_prolog does exactly that, and it is the second function the exe
+        # executes. Returning to the C caller regardless would silently resume
+        # in the wrong place, so compare the popped value against the address
+        # this function was entered with and tail-dispatch when they differ.
+        n = 0
         if ops:
-            n = parse_operand(ops[0])
-            if n.kind != "imm":
+            o = parse_operand(ops[0])
+            if o.kind != "imm":
                 raise Unsupported("RET with non-immediate")
-            return [A, "C->esp += 4 + %d; return;" % n.val]
-        return [A, "C->esp += 4; return;"]
+            n = o.val
+        return [A,
+                "{ uint32_t _rt = RD32(C->esp); C->esp += 4 + %d;" % n,
+                "  if (_rt != _retaddr) { x86_return_to(C, _rt); }",
+                "  return; }"]
 
     if m.startswith("SET"):
         cc = m[3:]
@@ -929,6 +938,7 @@ def cmd_emit(argv):
         lines.append("/* %s  @ 0x%08x  (%d instrs) */"
                      % (fn["qname"], fn["ep"], len(fn["ins"])))
         lines.append("void fn_%08x(CPU *C) {" % fn["ep"])
+        lines.append("  const uint32_t _retaddr = RD32(C->esp);")
         lines.append("  X86_ENTER_FN(0x%08xU);" % fn["ep"])
         lines.extend(body)
         lines.append("}")
@@ -1005,6 +1015,18 @@ def cmd_runtime(argv):
             L.append('  "%s",' % sym.replace('"', "'"))
         L.append("};")
         L.append("#define N_IMP %d" % len(names))
+        # The mapped image is a copy of the FILE, whose IAT slots still hold
+        # hint/name RVAs rather than addresses. Code that calls through the IAT
+        # (`MOV EDI,[iat]; CALL EDI` -- the CRT does this immediately) would
+        # otherwise jump to an RVA. Patch every slot after resolution.
+        L.append("static const struct { uint32_t rva; int imp; } g_iat[] = {")
+        n_iat = 0
+        for va in sorted(IAT):
+            mod, sym = IAT[va]
+            L.append("  { 0x%08xU, %d }," % (va - IMG[0], byid[c_ident(mod, sym)]))
+            n_iat += 1
+        L.append("};")
+        L.append("#define N_IAT %d" % n_iat)
         L.append(HOSTIMP_BODY)
         for mod, sym, ident in names:
             L.append('void %s(CPU *C) { x86_call_host(C, g_imp[%d], "%s!%s"); }'
@@ -1020,6 +1042,11 @@ RUNTIME_BODY = '''
 /* Runtime base of the original module; set by whoever loads it. Defaults to
    the preferred base so a process that gets it needs no special handling. */
 uint32_t g_imgbase = 0x10000000U;
+/* Bounds of the guest image; anything outside is host code. Set by the loader;
+   while zero, every indirect target is treated as guest code (the old
+   behaviour), so a loader that forgets to set it fails loudly rather than
+   silently calling into arbitrary addresses. */
+uint32_t g_image_lo, g_image_hi;
 
 /* Overridable so a TEST binary can skip a trial whose random object produced a
    nonsense vtable pointer, instead of aborting the whole run. The DLL keeps the
@@ -1054,6 +1081,22 @@ void x86_dump_history(void)
 }
 #endif
 
+/* A RET whose popped address is not the one the function was entered with.
+   Resolve it as a call target and continue there. */
+void x86_return_to(CPU *C, uint32_t target)
+{
+    int i;
+    for (i = 0; i < g_fn_count; i++)
+        if (g_fns[i].ep == target) { g_fns[i].fn(C); return; }
+    /* Not a function entry: it is a resume point INSIDE a function, which this
+       translation unit cannot jump into. Report it rather than continue. */
+    fprintf(stderr, "x86_return_to: 0x%08x is not a function entry -- a RET "
+                    "redirected into the middle of a function, which the "
+                    "current translation cannot express\\n", target);
+    x86_dump_history();
+    abort();
+}
+
 void x86_dispatch(CPU *C, uint32_t target)
 {
     int i;
@@ -1064,6 +1107,14 @@ void x86_dispatch(CPU *C, uint32_t target)
             g_fns[i].fn(C); g_dispatch_depth--; return;
         }
     g_dispatch_depth--;
+    /* An indirect call through the IAT lands on HOST code -- the CRT does this
+       in the first few instructions. Anything outside the guest image is a real
+       Windows function and must be called on the guest stack, not looked up in
+       the recompiled table. */
+    if (g_image_lo && (target < g_image_lo || target >= g_image_hi)) {
+        x86_call_host(C, (void *)(uintptr_t)target, "indirect host call");
+        return;
+    }
     x86_dispatch_miss(target);
 }
 
@@ -1350,6 +1401,12 @@ int x86_resolve_imports(void)
             fprintf(stderr, "unresolved import %s!%s\\n", g_imp_mod[i], sym);
             bad++;
         }
+    }
+    if (!bad) {
+        int k;
+        for (k = 0; k < N_IAT; k++)
+            *(void **)(uintptr_t)(g_imgbase + g_iat[k].rva) = g_imp[g_iat[k].imp];
+        fprintf(stderr, "x86: patched %d IAT slots\\n", N_IAT);
     }
     return bad;
 }

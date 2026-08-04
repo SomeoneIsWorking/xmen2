@@ -180,8 +180,8 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-exe-run — Recompiled XMen2.exe executes; stops at first untranslated indirect target
 - status: re-partial
 - deps: rc-exe
-- evidence: C024; x2run.c reaches the CRT startup
+- evidence: C026; 43+ functions deep into CRT startup
 - where: 
-- gap: ROOT-CAUSED (C025): RET is modelled as a C return, but __SEH_prolog rewrites its own return address. Fix: pass each function its expected return address; if the popped value differs, tail-dispatch instead of returning. Affects all SEH-using functions.
+- gap: Stops at 0x00597b30, inside the image but not a Ghidra-identified function. Needs the feedback loop: collect missed indirect targets at runtime -> add as function starts in Ghidra -> re-export -> re-recompile.
 - notes: 
 
