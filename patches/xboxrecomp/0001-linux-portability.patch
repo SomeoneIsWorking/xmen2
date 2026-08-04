@@ -26,17 +26,69 @@ index 66e1085..a46608d 100644
          DestinationString->Length = len;
          DestinationString->MaximumLength = len + sizeof(WCHAR);
          DestinationString->Buffer = (PWCHAR)SourceString;
+diff --git a/src/platform/win32_compat.c b/src/platform/win32_compat.c
+index 96a96fe..64f5cfb 100644
+--- a/src/platform/win32_compat.c
++++ b/src/platform/win32_compat.c
+@@ -1454,3 +1454,38 @@ PVOID AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handl
+ ULONG RemoveVectoredExceptionHandler(PVOID h) { (void)h; return 1; }
+ 
+ #endif /* !_WIN32 */
++
++/* ---- Entry-point helpers ----------------------------------------------
++ * A game's main.c synthesises WinMain arguments from these. On Linux there is
++ * no Win32 process command line, so reconstruct one from /proc/self/cmdline;
++ * returning an empty string would silently drop arguments the game parses.
++ */
++static char g_cmdline[4096];
++
++LPSTR GetCommandLineA(void)
++{
++    if (!g_cmdline[0]) {
++        FILE *f = fopen("/proc/self/cmdline", "rb");
++        size_t n = 0;
++        if (f) {
++            n = fread(g_cmdline, 1, sizeof g_cmdline - 1, f);
++            fclose(f);
++            /* /proc gives NUL-separated argv; Win32 wants one space-separated
++               string. */
++            for (size_t i = 0; i + 1 < n; i++)
++                if (g_cmdline[i] == '\0') g_cmdline[i] = ' ';
++        }
++        g_cmdline[n] = '\0';
++    }
++    return g_cmdline;
++}
++
++HMODULE GetModuleHandleA(LPCSTR name)
++{
++    /* NULL means "this process's image base". Nothing in the recompiled game
++       dereferences it as a real PE base -- it is passed straight back into
++       WinMain as hInstance -- so a stable non-NULL token is sufficient, and a
++       named lookup has no meaning here. */
++    (void)name;
++    return (HMODULE)(void *)&g_cmdline;
++}
 diff --git a/src/platform/win32_compat.h b/src/platform/win32_compat.h
-index 3e81a19..0bfda8e 100644
+index 3e81a19..b5aa7d1 100644
 --- a/src/platform/win32_compat.h
 +++ b/src/platform/win32_compat.h
-@@ -355,6 +355,15 @@ int   WideCharToMultiByte(UINT cp, DWORD flags, LPCWSTR wide, int wideCount,
+@@ -355,6 +355,24 @@ int   WideCharToMultiByte(UINT cp, DWORD flags, LPCWSTR wide, int wideCount,
  #define ERROR_GEN_FAILURE             31u
  #define ERROR_HANDLE_EOF              38u
  #define ERROR_NOT_SUPPORTED           50u
 +/* Returned by ReleaseMutex when the caller does not own the mutex; present in
 +   winerror.h but missing here, so kernel_sync.c would not build on Linux. */
 +#define ERROR_NOT_OWNER               288u
++
++/* Entry-point helpers a game's main.c uses to synthesise WinMain arguments. */
++#ifndef SW_SHOW
++#define SW_HIDE 0
++#define SW_SHOW 5
++#endif
++LPSTR GetCommandLineA(void);
++HMODULE GetModuleHandleA(LPCSTR name);
++#define GetModuleHandle GetModuleHandleA
 +
 +/* Debugger primitives the kernel HAL calls. There is no Win32 debugger to ask
 +   on Linux, so report none and trap -- DebugBreak is int3 on x86 anyway.
@@ -46,3 +98,36 @@ index 3e81a19..0bfda8e 100644
  #define ERROR_FILE_EXISTS             80u
  #define ERROR_INVALID_PARAMETER       87u
  #define ERROR_CALL_NOT_IMPLEMENTED    120u
+@@ -402,10 +420,29 @@ VOID RtlUnwind(PVOID TargetFrame, PVOID TargetIp,
+                PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue);
+ VOID RaiseException(DWORD code, DWORD flags, DWORD nargs, const ULONG_PTR *args);
+ 
+-/* Win32 VEH: opaque PEXCEPTION_POINTERS + AddVectoredExceptionHandler stub.
++/* Win32 VEH: AddVectoredExceptionHandler stub.
+  * On Linux the equivalent goes through sigaction(SIGSEGV/SIGFPE) +
+- * ucontext_t; for now we accept the registration and never fire. */
+-typedef void *PEXCEPTION_POINTERS;
++ * ucontext_t; for now we accept the registration and never fire.
++ *
++ * PEXCEPTION_POINTERS was an opaque void*, which is enough to REGISTER a
++ * handler but not to write one: a crash handler reads ExceptionRecord and
++ * ContextRecord, so a game's main.c does not compile against it. Give both
++ * structures shape. CONTEXT carries the x86-64 register names the host handler
++ * reports (Rip/Rsp), not the guest's 32-bit ones -- the handler is reporting
++ * where the HOST process faulted. */
++/* xbox_winnt.h already typedefs PCONTEXT as an opaque void*, so this cannot
++   reuse that name; the struct is named XR_CONTEXT and EXCEPTION_POINTERS points
++   at it directly. Register names are the x86-64 host's (Rip/Rsp): a crash
++   handler reports where the HOST process faulted, not the 32-bit guest. */
++typedef struct _XR_CONTEXT {
++    unsigned long long Rip, Rsp, Rbp, Rax, Rbx, Rcx, Rdx, Rsi, Rdi;
++    DWORD              EFlags;
++} XR_CONTEXT;
++
++typedef struct _EXCEPTION_POINTERS {
++    PEXCEPTION_RECORD ExceptionRecord;
++    XR_CONTEXT       *ContextRecord;
++} EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
+ typedef LONG (*PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS info);
+ PVOID AddVectoredExceptionHandler(ULONG FirstHandler, PVECTORED_EXCEPTION_HANDLER Handler);
+ ULONG RemoveVectoredExceptionHandler(PVOID Handle);

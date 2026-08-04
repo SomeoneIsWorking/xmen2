@@ -67,9 +67,11 @@ extern ptrdiff_t g_xbox_mem_offset;
  * TODO: Set these from your xbe_parser output.
  * Run: py -3 -m tools.xbe_parser game/default.xbe
  */
-#define YOUR_GAME_ENTRY_POINT   0x00000000  /* XBE entry point VA */
-#define YOUR_GAME_XBE_PATH      "game\\Your Game Title\\default.xbe"
-#define YOUR_GAME_DIR            "game\\Your Game Title"
+#define YOUR_GAME_ENTRY_POINT   0x00225A09  /* XBE entry point VA, from tools.xbe_parser */
+/* Forward slashes: this build runs on Linux too, where a backslash is a
+   legal filename character rather than a separator. */
+#define YOUR_GAME_XBE_PATH      "game/default.xbe"
+#define YOUR_GAME_DIR            "game"
 
 /* ── Forward declarations ──────────────────────────────────── */
 
@@ -164,7 +166,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
 
-    printf("=== YOUR_GAME_NAME - Static Recompilation ===\n");
+    printf("=== X-Men Legends II (Xbox) - Static Recompilation ===\n");
     printf("Loading XBE...\n");
 
     /* Install VEH handler (first handler in chain) */

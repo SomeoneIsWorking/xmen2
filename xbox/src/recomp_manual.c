@@ -33,9 +33,12 @@
  * If your recomp_types.h defines these as extern, they must be
  * defined here (or in xbox_memory_layout.c if you use that pattern).
  */
-volatile uint32_t g_icall_trace[16]  = {0};
-volatile uint32_t g_icall_trace_idx  = 0;
-volatile uint64_t g_icall_count      = 0;
+/* Defined by libxbox_kernel (xbox_memory_layout.c). Defining them here too is
+   a tentative-definition clash: MSVC merges them, but GCC 10+ defaults to
+   -fno-common and rejects it. Declare, do not define. */
+extern volatile uint32_t g_icall_trace[16];
+extern volatile uint32_t g_icall_trace_idx;
+extern volatile uint64_t g_icall_count      ;   /* owned by libxbox_kernel */
 
 typedef void (*recomp_func_t)(void);
 
