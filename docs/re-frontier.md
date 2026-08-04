@@ -198,6 +198,6 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe-run
 - evidence: C032
 - where: 
-- gap: Width=1, Height=43253760 vs 800x600. First CONFIRMED translation defect in the exe, found by differential log comparison rather than hypothesis-guessing. Trace to the writing instruction.
+- gap: CONFIRMED by control: the ORIGINAL exe in the same dir with the same env produces 800x600 R5G6B5; only the executable differs. Two competing hypotheses (C033 field offset, C034 struct-by-value stack shift). Settle by tracing engine-call arguments for both exes and diffing -- not by more reasoning about the numbers.
 - notes: 
 
