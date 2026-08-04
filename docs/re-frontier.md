@@ -177,3 +177,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: Translation only. 12 of 16 DLLs not yet imported; nothing outside libIGDisplay is differentially verified or executed.
 - notes: 
 
+### rc-exe-run — Recompiled XMen2.exe executes; stops at first untranslated indirect target
+- status: re-partial
+- deps: rc-exe
+- evidence: C024; x2run.c reaches the CRT startup
+- where: 
+- gap: Stops at an indirect call to 0x002d28a8 (below image base). Diagnose whether that is an uninitialised pointer, a section-layout defect in the loader, or a genuinely missing function.
+- notes: 
+

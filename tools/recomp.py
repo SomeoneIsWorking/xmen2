@@ -1289,6 +1289,7 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID r)
 '''
 
 HOSTIMP_BODY = '''
+#include <stdlib.h>
 void x86_call_host(CPU *C, void *fn, const char *what)
 {
     uint32_t eax, after, gsp = C->esp + 4;   /* +4: drop our fake return addr */
@@ -1314,10 +1315,18 @@ int x86_resolve_imports(void)
     int i, bad = 0;
     for (i = 0; i < N_IMP; i++) {
         HMODULE m = LoadLibraryA(g_imp_mod[i]);
-        g_imp[i] = m ? (void *)GetProcAddress(m, g_imp_sym[i]) : NULL;
+        const char *sym = g_imp_sym[i];
+        /* "@N" is an import BY ORDINAL: GetProcAddress takes the ordinal as an
+           integer cast to a pointer, not as the literal string "@N". WS2_32 and
+           OLEAUT32 are imported this way here. */
+        if (sym[0] == '@') {
+            unsigned long ord = strtoul(sym + 1, NULL, 10);
+            g_imp[i] = m ? (void *)GetProcAddress(m, (LPCSTR)(uintptr_t)ord) : NULL;
+        } else {
+            g_imp[i] = m ? (void *)GetProcAddress(m, sym) : NULL;
+        }
         if (!g_imp[i]) {
-            fprintf(stderr, "unresolved import %s!%s\\n",
-                    g_imp_mod[i], g_imp_sym[i]);
+            fprintf(stderr, "unresolved import %s!%s\\n", g_imp_mod[i], sym);
             bad++;
         }
     }
