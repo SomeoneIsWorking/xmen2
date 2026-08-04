@@ -1,10 +1,11 @@
 ---
 id: C010
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-04
 tags: 
 reconfirmed: 2026-08-04
+falsified_on: 2026-08-05
 ---
 
 ## Claim
@@ -22,3 +23,9 @@ Finding that the PC export tables do not actually cover the code -- e.g. that mo
 ## Re-confirmed 2026-08-04
 
 MEASURED the falsifier's demand -- and it splits. XMen2.exe: 2,611,125 code bytes, ZERO named functions (an exe has no export table), i.e. 47% of the PC code has exactly the Xbox's discovery problem. The 16 engine DLLs: 2,968,332 code bytes with 44,283 named CODE entry points -- roughly one symbol per 67 bytes, effectively full coverage. So the claim SURVIVES but not as originally worded: the PC advantage is that its unsymbolised region (2.61MB) is 36% smaller than the XBE's (4.05MB), AND that the exe's 794 calls into the engine all carry full C++ signatures from the mangling, which constrains its analysis in a way nothing constrains the XBE. The engine is well-conditioned for recomp; XMen2.exe is not, and that is where the game logic lives.
+
+## FALSIFIED 2026-08-05
+
+Wrong on its main premise. C010 argued the Xbox target was infeasible because the XBE statically links D3D/DSOUND and drives NV2A at the push-buffer level, i.e. 'this is the xemu problem'. That cost does not have to be paid: sp00nznet/xboxrecomp is an existing static recompiler for original-Xbox titles that already provides the XBE parser, function identification, x86->C lifter, 115 of 366 kernel ordinals mapped to Win32, D3D8->D3D11 (and an OpenGL backend for Linux), and NV2A plus MCPX audio taken from xemu. It lists Burnout 3 as playable with 22,097 functions lifted and Blood Wake at 99.1% lift success. The 'no symbols in the XBE' half of C010 also matters far less than I claimed, since that project does its own function identification -- exactly as Ghidra did for XMen2.exe, where the symbol-free exe reached the same coverage as the symbol-rich DLLs. What survives is only that the PC work already exists here.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.
