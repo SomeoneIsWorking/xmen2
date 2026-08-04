@@ -43,6 +43,8 @@ sleep 2
 # because the game is a 32-bit process.
 : "${X2_D3D:=n}"
 : "${X2_VK_ICD:=/usr/share/vulkan/icd.d/lvp_icd.i686.json:/usr/share/vulkan/icd.d/lvp_icd.x86_64.json}"
+# X2_TRACE, if set, is the shim's trace-log path (relative to the run dir).
+export X2_TRACE=${X2_TRACE:-}
 ( cd "$RUNDIR" && DISPLAY=$DISP WINEDEBUG=+loaddll \
     WINEDLLOVERRIDES="d3d8,d3d9=$X2_D3D" \
     VK_DRIVER_FILES="$X2_VK_ICD" VK_ICD_FILENAMES="$X2_VK_ICD" \

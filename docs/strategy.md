@@ -66,11 +66,38 @@ By comparison `libIGCore` has 784 inbound symbols and must come last.
 
 ## Status
 
-A pass-through proxy `libIGDisplay.dll` — all 898 exports forwarded to the
-original via PE export forwarding — is built and **verified transparent in the
-real game** (C004). That validates the swap mechanism end to end before a single
-line of behaviour is reimplemented. Replacing forwarders with real code, one at a
-time, is the next step.
+Two shims exist, both reproducible with `tools/build_shim.sh <mode> <dll>`:
+
+- **`proxy`** — all 898 exports forwarded to the original. **Verified transparent
+  in the real game** (C004): the swap mechanism works end to end before a single
+  line of behaviour is reimplemented.
+- **`trace`** — the 22 code symbols of the boundary surface routed through naked
+  asm thunks that log the call and then `jmp` to the original. This retires the
+  biggest risk to the whole strategy (C006): **mingw-built code receives real
+  MSVC `__thiscall` calls from the game and passes them through intact**, with
+  the game running past the splash into the intro cinematic.
+
+The tracer also gave the boot order of the display layer:
+
+    igWindow::getClassTypeLazy
+    igWindow::arkRegister
+    igWindow::_instantiateRefFromPool -> _instantiateFromPool
+    igWin32Window::hideCursor
+    igDefaultInterfaceManager::_instantiateRefFromPool -> _instantiateFromPool
+    igControllerManager::_instantiateRefFromPool -> _instantiateFromPool
+
+`_instantiateFromPool` is the wedge. An export proxy cannot intercept virtual
+dispatch or calls internal to the original DLL (C007), so behaviour is replaced
+by owning **construction**, not by hooking methods — which is why whole classes
+are the unit of replacement.
+
+**The frontier is now `ark`** (`tools/re_frontier.py next`): the Alchemy
+meta-object registration system. The Alchemy 5.0 headers give it as a contract
+(`arkRegister` / `arkRegisterInternal` / `getClassTypeLazy` / `_Meta` /
+`_instantiateFromPool`, in `igCore/igObjectMacros.h`), but we cannot yet
+construct an object the original `libIGCore` accepts. Everything downstream —
+vtable layout, a native controller manager, the SDL input backend — is blocked
+on it.
 
 ### Known limits of the harness, honestly
 
@@ -78,8 +105,13 @@ time, is the next step.
   different rates under llvmpipe, so two runs land on different frames. Only
   module-load sets and error logs are currently comparable. A deterministic
   scenario (fixed frame count, seeded RNG, scripted input) is still to be built.
-- **Only the splash has been exercised.** Nothing past the boot movies has been
-  driven, so transparency is proven for load and early init only.
+- **Only boot and the intro cinematic have been exercised.** Nothing
+  interactive has been driven, so transparency is proven for load and early init
+  only.
+- **"Never called" is not yet measurable.** The tracer's end-of-run summary runs
+  on `DLL_PROCESS_DETACH`, which never happens because the harness SIGKILLs the
+  game — so a symbol's absence from the trace does not distinguish *never called*
+  from *not called yet*.
 - The harness needs the Lutris prefix (`WINE_PREFIX` in `.env`) for DXVK's
   d3d8; this Wine build ships no builtin d3d8 at all.
 
