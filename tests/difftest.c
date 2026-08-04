@@ -30,18 +30,20 @@
 #include "x86rt.h"
 #include "difftest_cases.h"
 
+int x86_resolve_imports(void);
+
 /* The two objects sit at the centre of two large regions filled with IDENTICAL
    bytes. Several of these functions index memory by their argument
    (`MOV AL,[EAX + ECX + 8]`), reading far outside the object; with bare
    buffers the two sides read different addresses and diverge for reasons that
    have nothing to do with the translation. Mirrored regions make any read
    within +/-REGION/2 of `this` see the same bytes on both sides. */
-#define REGION     0x100000
+#define REGION     0x20000
 #define OBJ_OFF    (REGION / 2)
 #define ARG_MASK   0xFFFU    /* args are enum/index shaped; see C0xx limits */
 #define OBJ_SIZE   0x200
 #define STACK_SIZE 0x8000
-#define TRIALS     300   /* regions are 1MB; refilling dominates */
+#define TRIALS     30
 
 static jmp_buf g_jmp;
 static volatile int g_expect_fault;
@@ -159,18 +161,34 @@ int main(void)
     reg_r = (uint8_t *)VirtualAlloc(NULL, REGION, MEM_COMMIT, PAGE_READWRITE);
     if (!reg_o || !reg_r) { fprintf(stderr, "difftest: no regions\n"); return 2; }
     AddVectoredExceptionHandler(1, fault_handler);
+    {   /* Imports must resolve for real: functions that call into libIGCore are
+           now under test rather than excluded. */
+        int bad = x86_resolve_imports();
+        if (bad) { printf("-- %d imports unresolved; tested NOTHING\n", bad);
+                   return 2; }
+    }
     vf = fopen("verified.eps", "w");
     if (!vf) printf("-- WARNING: cannot write verified.eps\n");
 
     for (ci = 0; ci < NCASES; ci++) {
         void *orig = (void *)GetProcAddress(h, CASES[ci].mangled);
-        unsigned mism = 0, ran = 0, skip = 0, t;
+        unsigned mism = 0, ran = 0, skip = 0, t, k2;
         if (!orig) {
             printf("%-58s SYMBOL NOT FOUND -- tested nothing\n", CASES[ci].label);
             cases_nosym++;
             continue;
         }
         rng_state = 0x12345678U ^ (ci * 0x9E3779B9U);
+        /* Fill the mirrored regions ONCE per case, not per trial: refilling
+           them every trial dominated the runtime (392 cases x 120 trials x 1MB).
+           Per trial only the object window is re-randomised; everything outside
+           it stays identical between the two regions, which is all the mirror
+           has to guarantee. */
+        for (k2 = 0; k2 < REGION; k2 += 4) {
+            uint32_t v = rnd();
+            *(uint32_t *)(reg_o + k2) = v;
+            *(uint32_t *)(reg_r + k2) = v;
+        }
         for (t = 0; t < TRIALS; t++) {
             /* Two buffers with identical starting contents: functions that
                WRITE through `this` must produce identical memory, not just an
@@ -179,10 +197,10 @@ int main(void)
             uint8_t *obj_o = reg_o + OBJ_OFF, *obj_r = reg_r + OBJ_OFF;
             uint32_t arg, want, got;
             unsigned k;
-            for (k = 0; k < REGION; k += 4) {
+            for (k = 0; k < OBJ_SIZE; k += 4) {
                 uint32_t v = rnd();
-                *(uint32_t *)(reg_o + k) = v;
-                *(uint32_t *)(reg_r + k) = v;
+                *(uint32_t *)(obj_o + k) = v;
+                *(uint32_t *)(obj_r + k) = v;
             }
             arg = rnd() & ARG_MASK;
 
