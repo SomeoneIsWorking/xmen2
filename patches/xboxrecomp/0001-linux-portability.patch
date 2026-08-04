@@ -1,0 +1,50 @@
+diff --git a/src/kernel/kernel_rtl.c b/src/kernel/kernel_rtl.c
+index 66e1085..a46608d 100644
+--- a/src/kernel/kernel_rtl.c
++++ b/src/kernel/kernel_rtl.c
+@@ -31,10 +31,22 @@ VOID __stdcall xbox_RtlInitAnsiString(PXBOX_ANSI_STRING DestinationString, const
+     }
+ }
+ 
++/* Xbox WCHAR is UTF-16 (2 bytes). glibc's wchar_t is 4 bytes, so wcslen() is
++   the wrong function on Linux -- it reads 32-bit units and walks off the end of
++   a 16-bit string. MSVC happens to agree with WCHAR, which is why this compiled
++   on Windows. Count 16-bit units explicitly instead of relying on the host's
++   wchar_t width. */
++static size_t xbox_wcslen16(const WCHAR *s)
++{
++    size_t n = 0;
++    while (s[n]) n++;
++    return n;
++}
++
+ VOID __stdcall xbox_RtlInitUnicodeString(PXBOX_UNICODE_STRING DestinationString, const WCHAR* SourceString)
+ {
+     if (SourceString) {
+-        USHORT len = (USHORT)(wcslen(SourceString) * sizeof(WCHAR));
++        USHORT len = (USHORT)(xbox_wcslen16(SourceString) * sizeof(WCHAR));
+         DestinationString->Length = len;
+         DestinationString->MaximumLength = len + sizeof(WCHAR);
+         DestinationString->Buffer = (PWCHAR)SourceString;
+diff --git a/src/platform/win32_compat.h b/src/platform/win32_compat.h
+index 3e81a19..b49f41a 100644
+--- a/src/platform/win32_compat.h
++++ b/src/platform/win32_compat.h
+@@ -355,6 +355,17 @@ int   WideCharToMultiByte(UINT cp, DWORD flags, LPCWSTR wide, int wideCount,
+ #define ERROR_GEN_FAILURE             31u
+ #define ERROR_HANDLE_EOF              38u
+ #define ERROR_NOT_SUPPORTED           50u
++/* Returned by ReleaseMutex when the caller does not own the mutex. Present in
++   winerror.h but missing from this Win32 vocabulary header, so kernel_sync.c
++   would not build on Linux. */
++#define ERROR_NOT_OWNER               288u
++
++/* Debugger primitives the kernel HAL calls. On Linux there is no Win32
++   debugger to ask, so report "no debugger" and raise SIGTRAP -- which is what
++   DebugBreak does on x86 anyway (int3). Reporting TRUE would make the game take
++   its debug paths. */
++static inline int IsDebuggerPresent(void) { return 0; }
++static inline void DebugBreak(void) { __builtin_trap(); }
+ #define ERROR_FILE_EXISTS             80u
+ #define ERROR_INVALID_PARAMETER       87u
+ #define ERROR_CALL_NOT_IMPLEMENTED    120u
