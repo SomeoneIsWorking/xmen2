@@ -43,7 +43,7 @@ int x86_resolve_imports(void);
 #define ARG_MASK   0xFFFU    /* args are enum/index shaped; see C0xx limits */
 #define OBJ_SIZE   0x200
 #define STACK_SIZE 0x8000
-#define TRIALS     30
+#define TRIALS     36   /* multiple of 3: see object shapes */
 
 static jmp_buf g_jmp;
 static volatile int g_expect_fault;
@@ -215,8 +215,18 @@ int main(void)
             uint8_t *obj_o = reg_o + OBJ_OFF, *obj_r = reg_r + OBJ_OFF;
             uint32_t arg, want, got;
             unsigned k;
+            /* Three object shapes, not one. Fully-random bytes almost never
+               form a VALID object: 237 of 394 cases faulted in the original on
+               every trial and so proved nothing. Most of these functions
+               null-check their pointers and take a safe path, so a mostly-zero
+               object reaches real code instead of faulting, and small values
+               keep counts and indices in range. */
+            int shape = t % 3;
             for (k = 0; k < OBJ_SIZE; k += 4) {
-                uint32_t v = rnd();
+                uint32_t v;
+                if (shape == 0) v = rnd();                    /* random */
+                else if (shape == 1) v = 0;                   /* all NULL */
+                else v = rnd() & 0x7U;                        /* small */
                 *(uint32_t *)(obj_o + k) = v;
                 *(uint32_t *)(obj_r + k) = v;
             }

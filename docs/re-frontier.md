@@ -161,3 +161,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: 11,106 functions, 77.5% byte coverage, 643,647 instructions. The eventual target.
 - notes: 
 
+### rc-defect-listscan — OPEN: recompiled igTObjectList find/removeAllByValue fault where the original does not
+- status: hack
+- deps: rc-decode
+- evidence: C022
+- where: 
+- gap: First genuine translation defect (C022). Reproducible: 10/21 and 11/19 trials. Suspect the signed-compare flag model (SF/OF) or loop flag state. If it IS the flag model, the 156 verified results need re-examination for the same pattern.
+- notes: 
+

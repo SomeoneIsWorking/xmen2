@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-04
 tags: 
+reconfirmed: 2026-08-04
 ---
 
 ## Claim
@@ -17,3 +18,7 @@ Functions with GLOBAL side effects cannot be verified by double-execution, and t
 ## What would falsify it
 
 Not all 6 are proven to be this: userConstruct and setAll were classified by inspection of what they touch, not by isolating the shared state. If either turns out to be a genuine translation bug it would be masked by this explanation -- they stay OUT of the verified set either way.
+
+## Re-confirmed 2026-08-04
+
+Widening the object shapes raised failures from 1 to 6, and 4 of the 5 new ones are the same global-state category, now with clearer evidence: igWin32Window::getNativeDeviceHandle returns 0x5b01004a vs 0x0e010040 (distinct HDC/HWND handles -- GetDC hands out a new one per call), getKeyState reads live keyboard state, repos calls a window-positioning API, setCursorPositionNormalized moves the real cursor. None are comparable by double-execution.
