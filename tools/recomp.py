@@ -940,9 +940,24 @@ def cmd_report(argv):
 
 
 def cmd_emit(argv):
+    """Emit the recompiled bodies.
+
+    `--split N` writes N functions per translation unit instead of one giant
+    file. XMen2.exe is 13,426 functions -- 72 MB and 2.05 million lines as a
+    single unit, which cc1 chews through at 3.3 GB resident and cannot
+    parallelise at all. Splitting bounds the memory per process and lets make
+    -j use every core, and it costs nothing in generated code: the chunks
+    share one prologue and one set of forward declarations, so a call between
+    two functions in different chunks is the same call it always was.
+    """
     d = load(argv[0])
     set_fn_prefix(d["program"])
     out = argv[1]
+    split = 0
+    if "--split" in argv:
+        split = int(argv[argv.index("--split") + 1])
+        if split < 1:
+            raise Unsupported("--split needs a positive function count")
     fns = d["functions"]
     mod_ident = c_mod_ident(d["program"])
     base_sym = "g_imgbase_" + mod_ident
@@ -961,35 +976,60 @@ def cmd_emit(argv):
             seen.add(ident)
             lines.append("void %s(CPU *C);   /* %s!%s */" % (ident, mod, sym))
     lines.append("")
+    hdr_end = len(lines)          # everything above is shared by every chunk
     done = skipped = 0
+    bodies = []                   # one list of lines per function
     for fn in fns:
         body, why = translate(fn)
+        b = []
         if body is None:
             skipped += 1
-            lines.append("/* NOT TRANSLATED: %s @ 0x%08x -- %s */"
-                         % (fn["qname"], fn["ep"], why))
-            lines.append("void %s(CPU *C) { (void)C; "
-                         "x86_untranslated(0x%08xU, \"%s\", \"%s\"); }"
-                         % (fname(fn["ep"]), fn["ep"],
-                            fn["qname"].replace('"', "'"),
-                            why.replace('"', "'")))
-            lines.append("")
-            continue
-        lines.append("/* %s  @ 0x%08x  (%d instrs) */"
+            b.append("/* NOT TRANSLATED: %s @ 0x%08x -- %s */"
+                     % (fn["qname"], fn["ep"], why))
+            b.append("void %s(CPU *C) { (void)C; "
+                     "x86_untranslated(0x%08xU, \"%s\", \"%s\"); }"
+                     % (fname(fn["ep"]), fn["ep"],
+                        fn["qname"].replace('"', "'"),
+                        why.replace('"', "'")))
+            b.append("")
+        else:
+            b.append("/* %s  @ 0x%08x  (%d instrs) */"
                      % (fn["qname"], fn["ep"], len(fn["ins"])))
-        lines.append("void %s(CPU *C) {" % fname(fn["ep"]))
-        lines.append("  const uint32_t _x86_fn_ep = 0x%08xU; (void)_x86_fn_ep;"
+            b.append("void %s(CPU *C) {" % fname(fn["ep"]))
+            b.append("  const uint32_t _x86_fn_ep = 0x%08xU; (void)_x86_fn_ep;"
                      % fn["ep"])
-        lines.append("  const uint32_t _retaddr = RD32(C->esp);")
-        lines.append("  X86_ENTER_FN(_x86_fn_ep);")
-        lines.extend(body)
-        lines.append("}")
-        lines.append("")
-        done += 1
-    with open(out, "w") as f:
-        f.write("\n".join(lines))
-    print("emitted %d functions to %s; %d NOT emitted (see `report`)"
-          % (done, out, skipped))
+            b.append("  const uint32_t _retaddr = RD32(C->esp);")
+            b.append("  X86_ENTER_FN(_x86_fn_ep);")
+            b.extend(body)
+            b.append("}")
+            b.append("")
+            done += 1
+        bodies.append(b)
+        lines.extend(b)
+    if not split:
+        with open(out, "w") as f:
+            f.write("\n".join(lines) + "\n")
+        print("emitted %d functions to %s; %d NOT emitted (see `report`)"
+              % (done, out, skipped))
+        return
+
+    # header = prologue + every forward declaration, repeated in each chunk so
+    # a chunk can call into any other without knowing which one holds it.
+    head = lines[:hdr_end]
+    stem = out[:-2] if out.endswith(".c") else out
+    nchunk = 0
+    for start in range(0, len(bodies), split):
+        nchunk += 1
+        with open("%s_%03d.c" % (stem, nchunk - 1), "w") as f:
+            f.write("\n".join(head) + "\n")
+            for b in bodies[start:start + split]:
+                f.write("\n".join(b) + "\n")
+    # The un-split name must not be left behind holding a stale full copy: the
+    # build globs, and it would compile both and collide on every symbol.
+    if os.path.exists(out):
+        os.remove(out)
+    print("emitted %d functions to %d chunks %s_NNN.c; %d NOT emitted "
+          "(see `report`)" % (done, nchunk, stem, skipped))
 
 
 # Every libIG*.dll is linked for 0x10000000, so entry points -- and therefore

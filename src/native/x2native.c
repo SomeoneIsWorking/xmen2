@@ -18,6 +18,7 @@
 #include "pe_map.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "guest_heap.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -237,6 +238,15 @@ static int module_init_one(X86Module *m)
 {
     CPU C;
     uint32_t entry = *m->base + pe_entry_rva(*m->base);
+    if (!pe_is_dll(*m->base)) {
+        /* An EXE's entry point is the program itself. Running it here would
+           mean "initialising" a module by playing the game, which is a very
+           different act from calling DllMain -- so it is a separate, explicit
+           step (--run), not something module init does on the way past. */
+        printf("  skip %-18s it is an EXE; its entry point is the program "
+               "(use --run)\n", m->name);
+        return 0;
+    }
     const char *nm = x86_native_name_at(entry);
     if (!nm) {
         fprintf(stderr, "module_init: %s has no recompiled body at its entry "
@@ -550,6 +560,40 @@ static void case_cross_module(void)
            "      system, which the exe initialises (rc-exe), not in module init\n");
 }
 
+/*
+ * The guest heap. Checked because a pointer that does not fit in 32 bits is
+ * exactly the class of bug that survives review: it looks like a pointer, and
+ * the truncation only shows up when something dereferences it.
+ */
+static void case_guest_heap(void)
+{
+    uint32_t a, b, c, used0, free0, blocks0, used1, free1, blocks1;
+    printf("  guest heap\n");
+    guest_heap_stats(&used0, &free0, &blocks0);
+    a = guest_malloc(100);
+    b = guest_malloc(200);
+    check("malloc fits in a guest pointer", (a >> 24) != 0u && a < 0xFFFFFFFFu, 1u);
+    check("two allocations differ", a != b && a != 0u && b != 0u, 1u);
+    /* Writing through it must not disturb the other block. */
+    memset((void *)(uintptr_t)a, 0xAB, 100);
+    memset((void *)(uintptr_t)b, 0xCD, 200);
+    check("no overlap after writes",
+          *(volatile uint8_t *)(uintptr_t)a == 0xABu
+          && *(volatile uint8_t *)(uintptr_t)(b + 199u) == 0xCDu, 1u);
+    guest_free(a);
+    guest_free(b);
+    guest_heap_stats(&used1, &free1, &blocks1);
+    check("free returns every byte", used1, used0);
+    check("freed space coalesces back", free1, free0);
+    c = guest_realloc(0, 64);
+    memset((void *)(uintptr_t)c, 0x5A, 64);
+    c = guest_realloc(c, 4096);                 /* forces a move + copy */
+    check("realloc preserves contents",
+          *(volatile uint8_t *)(uintptr_t)c == 0x5Au
+          && *(volatile uint8_t *)(uintptr_t)(c + 63u) == 0x5Au, 1u);
+    guest_free(c);
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -595,6 +639,7 @@ static int run_battery(void)
     case_findmouse();
     case_arkinit();
     case_import_abi();
+    case_guest_heap();
     case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"
@@ -659,6 +704,8 @@ int main(int argc, char **argv)
        module that has not been placed yet would be bound to a stale base. */
     if (poison_init() != 0) return 1;
     if (pe_map_anon_low(DATA_ARENA, DATA_SIZE) != 0) return 1;
+    /* 256 MB, reserved not committed, well clear of every image base. */
+    if (guest_heap_init(0x40000000u, 0x10000000u) != 0) return 1;
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {
         int bound = 0, poisoned = 0;

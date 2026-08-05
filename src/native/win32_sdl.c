@@ -35,6 +35,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "guest_heap.h"
+
 /* ---- guest ABI helpers ------------------------------------------------- */
 
 #define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
@@ -108,22 +110,17 @@ static void desktop_size(int *w, int *h)
 
 void imp_MSVCRT_malloc(CPU *C)
 {
-    /* Guest pointers are host pointers under the current identity mapping, but
-       malloc can hand back an address above 4 GB, which the guest cannot hold.
-       Refusing loudly beats truncating a pointer. */
-    uint32_t n = A(0);
-    void *p = malloc(n ? n : 1);
-    if (p && (uintptr_t)p > 0xFFFFFFFFu) {
-        fprintf(stderr, "win32_sdl: malloc returned %p, which does not fit in a "
-                        "guest pointer. The heap has to live below 4 GB.\n", p);
-        abort();
-    }
-    ret_cdecl(C, (uint32_t)(uintptr_t)p);
+    /* The guest heap, not the host's: a host malloc on x86-64 returns an
+       address above 4 GB and a guest pointer is 32 bits. */
+    uint32_t p = guest_malloc(A(0));
+    if (!p)
+        fprintf(stderr, "win32_sdl: guest heap exhausted on malloc(%u)\n", A(0));
+    ret_cdecl(C, p);
 }
 
 void imp_MSVCRT_free(CPU *C)
 {
-    free((void *)(uintptr_t)A(0));
+    guest_free(A(0));
     ret_cdecl(C, 0);
 }
 
@@ -467,13 +464,8 @@ void imp_MSVCRT___dllonexit(CPU *C)
     void *nt;
 
     if (!func) { ret_cdecl(C, 0); return; }
-    nt = realloc(b ? (void *)(uintptr_t)b : NULL, (size_t)(count + 1u) * 4u);
+    nt = (void *)(uintptr_t)guest_realloc(b, (count + 1u) * 4u);
     if (!nt) { ret_cdecl(C, 0); return; }
-    if ((uintptr_t)nt > 0xFFFFFFFFu) {
-        fprintf(stderr, "win32_sdl: __dllonexit table landed at %p, above the "
-                        "4 GB a guest pointer can hold\n", nt);
-        abort();
-    }
     b = (uint32_t)(uintptr_t)nt;
     WR32(b + count * 4u, func);
     WR32(pbegin, b);

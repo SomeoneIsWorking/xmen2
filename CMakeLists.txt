@@ -97,15 +97,25 @@ endif()
 # Each recompiled module contributes two generated files and is optional: a
 # module that has not been exported yet simply is not linked, and x2native says
 # which ones it has at run time rather than pretending to a full set.
-set(X2_MODULES libIGDisplay libIGCore)
+set(X2_MODULES libIGDisplay libIGCore XMen2)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
 foreach(m ${X2_MODULES})
+    # A module is emitted either as one file or, for the big ones, as numbered
+    # chunks (tools/recomp.py emit --split). Globbing the chunks explicitly by
+    # digits so that <m>_native.c is never swept in with them.
     set(_b ${CMAKE_SOURCE_DIR}/src/recomp/${m}.c)
     set(_n ${CMAKE_SOURCE_DIR}/src/recomp/${m}_native.c)
-    if(EXISTS ${_b} AND EXISTS ${_n})
-        list(APPEND X2_MODULE_SRCS ${_b} ${_n})
-        list(APPEND X2_MODULE_HAVE ${m})
+    file(GLOB _chunks ${CMAKE_SOURCE_DIR}/src/recomp/${m}_[0-9][0-9][0-9].c)
+    if(EXISTS ${_b})
+        set(_bodies ${_b})
+    else()
+        set(_bodies ${_chunks})
+    endif()
+    if(_bodies AND EXISTS ${_n})
+        list(LENGTH _bodies _nb)
+        list(APPEND X2_MODULE_SRCS ${_bodies} ${_n})
+        list(APPEND X2_MODULE_HAVE "${m}(${_nb} TU)")
     else()
         message(STATUS "x2native: ${m} NOT linked -- run tools/ghidra_export.sh "
                        "${m} then tools/recomp.py emit/native for it")
@@ -117,12 +127,19 @@ if(X2_MODULE_HAVE)
         src/native/x2native.c
         src/native/pe_map.c
         src/native/win32_sdl.c
+        src/native/guest_heap.c
         src/native/x86rt_native.c
         ${X2_MODULE_SRCS}
     )
     target_include_directories(x2native PRIVATE src/recomp src/native)
     target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
-    target_link_libraries(x2native PRIVATE ${X2_SDL})
+    # PIE, so this binary does not sit at 0x400000 -- which is exactly where
+    # XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
+    # and forces it to relocate for no reason.
+    set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_link_options(x2native PRIVATE -pie)
+    # libm: the exe's x87 translations use atan2l/fmodl and friends.
+    target_link_libraries(x2native PRIVATE ${X2_SDL} m)
     # No $ENV{} here: CMake would bake in whatever GAME_PC_DIR was at CONFIGURE
     # time, which is how this test first "failed" against an empty path. x2native
     # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,

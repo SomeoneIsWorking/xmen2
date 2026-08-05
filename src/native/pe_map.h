@@ -36,4 +36,7 @@ uint32_t pe_entry_rva(uint32_t base);
 /* Does the image import anything from `modname`? Orders module init. */
 int pe_imports_module(uint32_t base, const char *modname);
 
+/* IMAGE_FILE_DLL: an EXE's entry point is the program, not DllMain. */
+int pe_is_dll(uint32_t base);
+
 #endif /* PE_MAP_H */
