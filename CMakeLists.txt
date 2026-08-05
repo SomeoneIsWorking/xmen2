@@ -97,7 +97,8 @@ endif()
 # Each recompiled module contributes two generated files and is optional: a
 # module that has not been exported yet simply is not linked, and x2native says
 # which ones it has at run time rather than pretending to a full set.
-set(X2_MODULES libIGDisplay libIGCore XMen2)
+set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
+               libIGGfx libIGUtils XMen2)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
 foreach(m ${X2_MODULES})
@@ -106,7 +107,12 @@ foreach(m ${X2_MODULES})
     # digits so that <m>_native.c is never swept in with them.
     set(_b ${CMAKE_SOURCE_DIR}/src/recomp/${m}.c)
     set(_n ${CMAKE_SOURCE_DIR}/src/recomp/${m}_native.c)
-    file(GLOB _chunks ${CMAKE_SOURCE_DIR}/src/recomp/${m}_[0-9][0-9][0-9].c)
+    # CONFIGURE_DEPENDS so the glob is re-checked at BUILD time. Without it the
+    # chunk list is frozen at configure time, and re-emitting with a different
+    # --split silently builds a stale set -- or fails on a chunk that no longer
+    # exists, which is how this was found.
+    file(GLOB _chunks CONFIGURE_DEPENDS
+         ${CMAKE_SOURCE_DIR}/src/recomp/${m}_[0-9][0-9][0-9].c)
     if(EXISTS ${_b})
         set(_bodies ${_b})
     else()
@@ -128,6 +134,7 @@ if(X2_MODULE_HAVE)
         src/native/pe_map.c
         src/native/win32_sdl.c
         src/native/guest_heap.c
+        src/native/crt.c
         src/native/x86rt_native.c
         ${X2_MODULE_SRCS}
     )

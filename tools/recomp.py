@@ -331,6 +331,25 @@ def emit_instruction(ins, ctx):
     if m == "NOP":
         return ["%s" % A]
 
+    if m == "INT3":
+        # MSVC emits INT3 as an unreachable trap after a call to a noreturn
+        # function, and as inter-block padding. It is not padding BETWEEN
+        # functions here -- these occurrences are inside real bodies, and
+        # refusing to translate them blocked 545 of libIGSg's 6118 functions
+        # (9%) over an instruction that, in a correct run, never executes.
+        # Translated as a stop that names its address: if it ever DOES execute,
+        # control reached code the compiler proved unreachable, and that is
+        # worth knowing loudly rather than skipping the whole function for.
+        return ["%s" % A, "  x86_int3(0x%08xU);" % ins["a"]]
+
+    if m == "CLD":
+        # Clears the direction flag, which this runtime does not model: string
+        # operations are emitted in the ascending form unconditionally. CLD is
+        # therefore asserting what is already assumed. STD would NOT be, and is
+        # not translated -- so a module that sets DF still refuses rather than
+        # quietly running backwards.
+        return ["%s" % A]
+
     if m == "MOV":
         if len(ops) != 2:
             raise Unsupported("MOV with %d operands" % len(ops))

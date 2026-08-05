@@ -68,6 +68,8 @@ static uint32_t poison_for(const char *mod, const char *sym, uint32_t ordinal)
     return a;
 }
 
+const char *x86_poison_name(uint32_t addr, const char **mod);
+
 static const char *poison_name(uint32_t addr, const char **mod)
 {
     int i;
@@ -123,6 +125,12 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
     }
     fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot)\n", si->si_addr);
     _exit(3);
+}
+
+/* The runtime's hook (weak default in x86rt_native.c). */
+const char *x86_poison_name(uint32_t addr, const char **mod)
+{
+    return poison_name(addr, mod);
 }
 
 static int poison_init(void)
@@ -657,13 +665,14 @@ static int run_battery(void)
 int main(int argc, char **argv)
 {
     const char *dir = NULL;
-    int window = 1, i, rc, mapped = 0;
+    int window = 1, i, rc, mapped = 0, run = 0;
     X86Module *m;
     static PeImage imgs[8];
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-window") == 0) window = 0;
         else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;
+        else if (strcmp(argv[i], "--run") == 0) run = 1;
         else dir = argv[i];
     }
     if (!dir) dir = getenv("GAME_PC_DIR");
@@ -755,6 +764,35 @@ int main(int argc, char **argv)
     (void)window;
     printf("SDL: not compiled in\n");
 #endif
+
+    if (run) {
+        /* Call the program's entry point: WinMainCRTStartup, which brings up
+           the CRT and then the engine. Everything the battery checks is
+           machinery; this is the thing the machinery is for. */
+        X86Module *x = NULL;
+        CPU C;
+        for (m = x86_modules(); m; m = m->next)
+            if (!pe_is_dll(*m->base)) x = m;
+        if (!x) {
+            fprintf(stderr, "x2native: --run needs an EXE module linked in, "
+                            "and none is\n");
+            return 1;
+        }
+        {
+            uint32_t entry = *x->base + pe_entry_rva(*x->base);
+            const char *nm = x86_native_name_at(entry);
+            printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
+                   nm ? nm : "(NO RECOMPILED BODY)");
+            if (!nm) return 1;
+            memset(&C, 0, sizeof C);
+            C.esp = guest_stack_top - 4u;
+            gw32(C.esp, 0xDEADBEEFu);
+            x86_native_call_at(entry, &C);
+            printf("run: returned eax=0x%08x\n", C.eax);
+        }
+        for (i = 0; i < mapped; i++) pe_unmap(&imgs[i]);
+        return 0;
+    }
 
     printf("\n");
     rc = run_battery();

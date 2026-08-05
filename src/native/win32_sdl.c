@@ -145,6 +145,11 @@ void imp_MSVCRT__ftol(CPU *C)
 }
 
 const char *x86_native_name_at(uint32_t addr);
+/* Report a constructor target as its module and GUEST address: the modules are
+   relocated now, and Ghidra seeds have to be given the address the module was
+   LINKED for, not where it happens to be mapped. Printing the mapped address
+   produced seeds that pointed nowhere. */
+void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
 
 void imp_MSVCRT__initterm(CPU *C)
 {
@@ -172,7 +177,11 @@ void imp_MSVCRT__initterm(CPU *C)
                                 "saw them as code.\n    Seed them and re-lift; "
                                 "the full list follows so this costs one pass, "
                                 "not one per rebuild.\n");
-            fprintf(stderr, "    0x%08x\n", fn);
+            {
+                const char *mn = NULL; uint32_t g = fn;
+                x86_guest_addr_of(fn, &mn, &g);
+                fprintf(stderr, "    %-18s 0x%08x\n", mn ? mn : "(no module)", g);
+            }
             missing++;
         }
     }

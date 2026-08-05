@@ -139,6 +139,8 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
    RET will pop. Dispatching without it leaks guest stack, upward, silently. */
 void x86_guest_call(CPU *C, uint32_t target);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
+/* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
+void x86_int3(uint32_t addr);
 void x86_fallback_report(void);
 #define G_IMGBASE (X86_IMGBASE)
 
@@ -371,6 +373,8 @@ void x86_dispatch_miss(uint32_t target);
    the module links; reaching one aborts naming the function and the exact
    instruction form that blocked it, which is the work item. */
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
+/* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
+void x86_int3(uint32_t addr);
 
 /* real code -> recompiled body; returns EAX */
 /* Entry from host code into a recompiled body. Reached by `jmp` from a naked

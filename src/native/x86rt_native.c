@@ -78,9 +78,31 @@ const char *x86_native_name_at(uint32_t addr)
  * and no Windows loader resolved anything, so there is nothing honest to fall
  * back TO. A recompilation that quietly ran something else would not be one.
  */
+/*
+ * An address may be a poisoned import slot rather than code. The host owns
+ * that table, so it supplies this; the weak default keeps the runtime usable
+ * on its own. Without it, a poisoned slot reached by DISPATCH (a `call [iat]`
+ * the recompiler turned into an indirect call rather than a named stub) is
+ * reported as "no registered module", which reads as a linking problem rather
+ * than as the unimplemented import it is -- measured, on the exe's first run.
+ */
+__attribute__((weak))
+const char *x86_poison_name(uint32_t addr, const char **mod)
+{
+    (void)addr; (void)mod;
+    return NULL;
+}
+
 static void where(uint32_t addr)
 {
     X86Module *m = x86_module_for(addr);
+    const char *mod = NULL, *sym = x86_poison_name(addr, &mod);
+    if (sym) {
+        fprintf(stderr, "  that address is an UNBOUND IMPORT: %s!%s\n"
+                        "  it was reached as a call target, so something took "
+                        "its address from the IAT\n", mod, sym);
+        return;
+    }
     if (m)
         fprintf(stderr, "  address is in %s (guest 0x%08x)\n",
                 m->name, m->preferred + (addr - *m->base));
@@ -138,6 +160,24 @@ void x86_note_fallback(uint32_t target)
 }
 
 void x86_fallback_report(void) { }
+
+void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest)
+{
+    X86Module *m = x86_module_for(addr);
+    if (!m) { *mod = NULL; *guest = addr; return; }
+    *mod = m->name;
+    *guest = m->preferred + (addr - *m->base);
+}
+
+void x86_int3(uint32_t addr)
+{
+    fprintf(stderr, "x86_int3: execution reached the compiler's unreachable "
+                    "trap at guest 0x%08x.\n"
+                    "  MSVC emits INT3 after a call it proved never returns, "
+                    "so a noreturn function returned.\n", addr);
+    where(addr);
+    abort();
+}
 
 void x87_fault(const char *what)
 {
