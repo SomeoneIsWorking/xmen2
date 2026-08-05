@@ -996,6 +996,7 @@ def cmd_emit(argv):
             lines.append("void %s(CPU *C);   /* %s!%s */" % (ident, mod, sym))
     lines.append("")
     hdr_end = len(lines)          # everything above is shared by every chunk
+    all_eps = set(f["ep"] for f in fns)
     done = skipped = 0
     bodies = []                   # one list of lines per function
     for fn in fns:
@@ -1020,6 +1021,25 @@ def cmd_emit(argv):
             b.append("  const uint32_t _retaddr = RD32(C->esp);")
             b.append("  X86_ENTER_FN(_x86_fn_ep);")
             b.extend(body)
+            # A body whose last instruction is not a terminator FALLS THROUGH
+            # to the next address -- that is what the hardware does, and it is
+            # what a function sharing a tail with the next one relies on.
+            # Falling off the end of the emitted C instead returns with
+            # whatever ESP the partial body left, and the failure lands at some
+            # later RET popping the wrong word (issue #13). So the fall-through
+            # is emitted explicitly: a tail call to whatever is at the next
+            # address, or a named stop if nothing is.
+            last = fn["ins"][-1]
+            lm = last["m"].upper()
+            if not (lm.startswith("RET") or lm.startswith("JMP")
+                    or lm in ("INT3", "UD2", "HLT")):
+                nxt = last["a"] + last.get("n", 1)
+                b.append("  /* falls through to 0x%08x */" % nxt)
+                if nxt in all_eps:
+                    b.append("  %s(C); return;" % fname(nxt))
+                else:
+                    b.append("  x86_fallthrough(0x%08xU, 0x%08xU);"
+                             % (fn["ep"], nxt))
             b.append("}")
             b.append("")
             done += 1
@@ -1308,6 +1328,14 @@ void x86_untranslated(uint32_t ep, const char *name, const char *reason)
 {
     fprintf(stderr, "x86_untranslated: reached 0x%08x %s -- blocked by: %s\\n",
             ep, name, reason);
+    abort();
+}
+
+void x86_fallthrough(uint32_t fn_ep, uint32_t next)
+{
+    fprintf(stderr, "x86_fallthrough: 0x%08x ended without a terminator and "
+                    "falls through to 0x%08x, which is not a known function\\n",
+            fn_ep, next);
     abort();
 }
 

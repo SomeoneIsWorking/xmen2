@@ -106,96 +106,10 @@ static void desktop_size(int *w, int *h)
     *h = m->h;
 }
 
-/* ---- MSVCRT ------------------------------------------------------------ */
-
-void imp_MSVCRT_malloc(CPU *C)
-{
-    /* The guest heap, not the host's: a host malloc on x86-64 returns an
-       address above 4 GB and a guest pointer is 32 bits. */
-    uint32_t p = guest_malloc(A(0));
-    if (!p)
-        fprintf(stderr, "win32_sdl: guest heap exhausted on malloc(%u)\n", A(0));
-    ret_cdecl(C, p);
-}
-
-void imp_MSVCRT_free(CPU *C)
-{
-    guest_free(A(0));
-    ret_cdecl(C, 0);
-}
-
-void imp_MSVCRT__ftol(CPU *C)
-{
-    /* __ftol takes its argument on the x87 stack and returns the truncated
-       64-bit result in EDX:EAX. It pops one register, which the lazy x87 model
-       tracks in `depth`. */
-    long double v;
-    int64_t r;
-    if (C->depth < 1) {
-        fprintf(stderr, "win32_sdl: _ftol with an empty x87 stack\n");
-        abort();
-    }
-    v = X87_ST(C, 0);
-    C->top = (C->top + 1) & 7;
-    C->depth--;
-    r = (int64_t)v;
-    C->eax = (uint32_t)(uint64_t)r;
-    C->edx = (uint32_t)((uint64_t)r >> 32);
-    C->esp += 4u;                        /* __cdecl, no stack arguments */
-}
-
-const char *x86_native_name_at(uint32_t addr);
-/* Report a constructor target as its module and GUEST address: the modules are
-   relocated now, and Ghidra seeds have to be given the address the module was
-   LINKED for, not where it happens to be mapped. Printing the mapped address
-   produced seeds that pointed nowhere. */
-void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
-
-void imp_MSVCRT__initterm(CPU *C)
-{
-    /* Walk the function-pointer table and call each non-NULL entry through the
-       recompiled dispatcher -- these are the module's static constructors, and
-       skipping them would leave every global unconstructed.
-     *
-     * The pre-pass is the point. These tables are the ONLY reference to most
-     * of their targets: they are data pointers in .rdata, so static analysis
-     * never marked them as code and they have no recompiled body. Running the
-     * table straight through would stop at the first one, and each rebuild
-     * would reveal exactly one more. Listing every missing target first turns
-     * that into one seed list.
-     */
-    uint32_t p = A(0), end = A(1), n = 0, missing = 0;
-    for (p = A(0); p < end; p += 4u) {
-        uint32_t fn = RD32(p);
-        if (!fn) continue;
-        n++;
-        if (!x86_native_name_at(fn)) {
-            if (!missing)
-                fprintf(stderr, "\n*** _initterm: constructor targets with no "
-                                "recompiled body.\n    These are reachable only "
-                                "through this table, so static analysis never "
-                                "saw them as code.\n    Seed them and re-lift; "
-                                "the full list follows so this costs one pass, "
-                                "not one per rebuild.\n");
-            {
-                const char *mn = NULL; uint32_t g = fn;
-                x86_guest_addr_of(fn, &mn, &g);
-                fprintf(stderr, "    %-18s 0x%08x\n", mn ? mn : "(no module)", g);
-            }
-            missing++;
-        }
-    }
-    if (missing) {
-        fprintf(stderr, "*** %u of %u constructor targets are missing bodies\n",
-                missing, n);
-        abort();
-    }
-    for (p = A(0); p < end; p += 4u) {
-        uint32_t fn = RD32(p);
-        if (fn) x86_guest_call(C, fn);
-    }
-    ret_cdecl(C, 0);
-}
+/* The C runtime lives in src/native/crt.c, under both its MSVCRT and MSVCR71
+   spellings. It was here first, which put CRT functions in the file named for
+   the Win32/SDL surface; moving them removed a duplicate definition and the
+   confusion that came with it. */
 
 /* ---- KERNEL32 ---------------------------------------------------------- */
 
@@ -467,31 +381,3 @@ uint32_t x86_native_data_export(const char *mod, const char *sym)
     return 0;
 }
 
-/*
- * MSVCRT!__dllonexit -- register a static destructor.
- *
- *   _PVFV __dllonexit(_PVFV func, _PVFV **pbegin, _PVFV **pend)
- *
- * Implemented rather than stubbed, even though nothing here runs the
- * destructors yet. A stub returning `func` would look identical from the
- * caller's side while quietly dropping every registration, and the table it
- * maintains is guest-visible: the CRT reads it. Growing it by one entry per
- * call is not how MSVCRT does it (it doubles), but the OBSERVABLE state --
- * *pbegin, *pend and the entries between them -- is the same.
- */
-void imp_MSVCRT___dllonexit(CPU *C)
-{
-    uint32_t func = A(0), pbegin = A(1), pend = A(2);
-    uint32_t b = RD32(pbegin), e = RD32(pend);
-    uint32_t count = b ? (e - b) / 4u : 0u;
-    void *nt;
-
-    if (!func) { ret_cdecl(C, 0); return; }
-    nt = (void *)(uintptr_t)guest_realloc(b, (count + 1u) * 4u);
-    if (!nt) { ret_cdecl(C, 0); return; }
-    b = (uint32_t)(uintptr_t)nt;
-    WR32(b + count * 4u, func);
-    WR32(pbegin, b);
-    WR32(pend, b + (count + 1u) * 4u);
-    ret_cdecl(C, func);
-}

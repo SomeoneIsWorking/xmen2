@@ -143,6 +143,19 @@ uint32_t guest_realloc(uint32_t p, uint32_t n)
     return q;
 }
 
+/* Is this address inside the arena, and what does the block around it look
+   like? VirtualQuery needs a guest-side answer; a host one would describe
+   mappings the guest cannot see. */
+uint32_t guest_heap_base(void) { return g_base; }
+
+int guest_heap_contains(uint32_t a, uint32_t *base, uint32_t *size)
+{
+    if (!g_base || a < g_base || a >= g_base + g_size) return 0;
+    *base = g_base;
+    *size = g_size;
+    return 1;
+}
+
 void guest_heap_stats(uint32_t *used, uint32_t *free_, uint32_t *blocks)
 {
     uint32_t a = g_base, end = g_base + g_size;

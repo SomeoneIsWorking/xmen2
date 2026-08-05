@@ -403,6 +403,17 @@ void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest)
     *guest = m->preferred + (addr - *m->base);
 }
 
+void x86_fallthrough(uint32_t fn_ep, uint32_t next)
+{
+    fprintf(stderr, "x86_fallthrough: the body of 0x%08x ended without a "
+                    "terminator and falls through to 0x%08x, which is not a "
+                    "known function.\n"
+                    "  Its detected boundaries are wrong and the code it runs "
+                    "into has never been translated.\n", fn_ep, next);
+    where(next);
+    abort();
+}
+
 void x86_int3(uint32_t addr)
 {
     fprintf(stderr, "x86_int3: execution reached the compiler's unreachable "

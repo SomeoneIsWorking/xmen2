@@ -20,6 +20,7 @@
  */
 #include "x86rt.h"
 #include "guest_heap.h"
+#include "x86rt_native.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -433,4 +434,173 @@ void imp_KERNEL32_WideCharToMultiByte(CPU *C)
     if (n > dstlen) { ret_std(C, 0, 8); return; }
     for (i = 0; i < n; i++) WR8(dst + (uint32_t)i, (uint8_t)w[i]);
     ret_std(C, (uint32_t)n, 8);
+}
+
+/* ---- the Win32 heap ----------------------------------------------------
+ *
+ * All of it on the guest heap, because these hand out pointers the guest
+ * stores. There is one heap, and GetProcessHeap returns a token rather than a
+ * pointer so that a handle the guest invented is caught rather than followed.
+ *
+ * HEAP_ZERO_MEMORY is honoured. It would be easy to ignore -- most callers do
+ * not set it -- and the failure from ignoring it is uninitialised memory that
+ * happens to be zero in testing and is not in the field.
+ */
+#define PROCESS_HEAP_TOK  0x00020001u
+#define HEAP_ZERO_MEMORY  0x00000008u
+
+static uint32_t heap_check(uint32_t h)
+{
+    if (h != PROCESS_HEAP_TOK) {
+        fprintf(stderr, "kernel32: heap handle 0x%08x is not the process heap; "
+                        "this build has exactly one heap\n", h);
+        abort();
+    }
+    return h;
+}
+
+void imp_KERNEL32_GetProcessHeap(CPU *C) { ret_std(C, PROCESS_HEAP_TOK, 0); }
+
+void imp_KERNEL32_HeapAlloc(CPU *C)
+{
+    uint32_t flags = A(1), n = A(2), p;
+    heap_check(A(0));
+    p = guest_malloc(n);
+    if (p && (flags & HEAP_ZERO_MEMORY)) memset((void *)(uintptr_t)p, 0, n);
+    ret_std(C, p, 3);
+}
+
+void imp_KERNEL32_HeapFree(CPU *C)
+{
+    heap_check(A(0));
+    guest_free(A(2));
+    ret_std(C, 1, 3);
+}
+
+void imp_KERNEL32_LocalFree(CPU *C) { guest_free(A(0)); ret_std(C, 0, 1); }
+
+/* ---- virtual memory ----------------------------------------------------
+ *
+ * Served from the guest heap rather than a real mmap: the guest stores these
+ * pointers, so they must be 32-bit, and the arena already guarantees that.
+ * The page-level semantics (reserve then commit separately, protection
+ * changes) are NOT modelled -- if the game depends on them this will be
+ * wrong, so MEM_RESERVE without MEM_COMMIT stops rather than pretending.
+ */
+#define MEM_COMMIT  0x1000u
+#define MEM_RESERVE 0x2000u
+
+void imp_KERNEL32_VirtualAlloc(CPU *C)
+{
+    uint32_t addr = A(0), size = A(1), type = A(2), p;
+    if (addr) {
+        /* A fixed address is directly implementable here in a way it is not in
+           an emulator: guest addresses ARE host addresses, so the request can
+           be passed to mmap as-is. The game asks for one to place its own
+           heap. Rounded out to pages, because mmap requires it and Win32 does
+           it silently. */
+        uint32_t base = addr & ~0xFFFu;
+        uint32_t len = ((addr - base) + size + 0xFFFu) & ~0xFFFu;
+        void *got = mmap((void *)(uintptr_t)base, len, PROT_READ | PROT_WRITE,
+                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE
+                         | MAP_NORESERVE, -1, 0);
+        if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)base) {
+            /* Already mapped is not failure: Win32 returns the address for a
+               commit over an existing reservation, which is what a two-step
+               reserve-then-commit looks like. Anything else is a real error. */
+            if (got != MAP_FAILED) munmap(got, len);
+            if (errno == EEXIST) { ret_std(C, addr, 4); return; }
+            fprintf(stderr, "kernel32: VirtualAlloc could not place %u bytes at "
+                            "0x%08x: %s\n", size, base, strerror(errno));
+            ret_std(C, 0, 4);
+            return;
+        }
+        ret_std(C, addr, 4);
+        return;
+    }
+    if (!(type & MEM_COMMIT)) {
+        fprintf(stderr, "kernel32: VirtualAlloc with MEM_RESERVE but not "
+                        "MEM_COMMIT needs real page semantics, which this "
+                        "layer does not model\n");
+        abort();
+    }
+    p = guest_malloc(size);
+    if (p) memset((void *)(uintptr_t)p, 0, size);   /* VirtualAlloc zeroes */
+    ret_std(C, p, 4);
+}
+
+void imp_KERNEL32_VirtualFree(CPU *C) { guest_free(A(0)); ret_std(C, 1, 3); }
+
+void imp_KERNEL32_GlobalMemoryStatus(CPU *C)
+{
+    /* MEMORYSTATUS. Reported consistently: the game sizes caches from it, so
+       the numbers have to agree with each other even though they are not the
+       host's real figures. 512 MB total, half free. */
+    uint32_t p = A(0);
+    WR32(p +  0u, 32);                    /* dwLength */
+    WR32(p +  4u, 50);                    /* dwMemoryLoad, percent */
+    WR32(p +  8u, 0x20000000u);           /* dwTotalPhys   512 MB */
+    WR32(p + 12u, 0x10000000u);           /* dwAvailPhys   256 MB */
+    WR32(p + 16u, 0x20000000u);           /* dwTotalPageFile */
+    WR32(p + 20u, 0x10000000u);           /* dwAvailPageFile */
+    WR32(p + 24u, 0x7FFF0000u);           /* dwTotalVirtual */
+    WR32(p + 28u, 0x40000000u);           /* dwAvailVirtual */
+    ret_std(C, 0, 1);
+}
+
+void imp_KERNEL32_VirtualQuery(CPU *C)
+{
+    /* MEMORY_BASIC_INFORMATION, for a guest address. The game uses it to ask
+       "is this pointer valid and how big is the region", so the answer has to
+       be about the GUEST address space, not the host's -- a host VirtualQuery
+       equivalent would describe mappings the guest cannot see and would call
+       our own runtime's memory "committed" to the guest.
+       Only the fields the game reads are filled, and the rest are zeroed
+       rather than left as whatever was in the buffer. */
+    uint32_t addr = A(0), buf = A(1), len = A(2);
+    X86Module *m;
+    uint32_t base = 0, size = 0, state, protect;
+    if (len < 28u) { ret_std(C, 0, 3); return; }
+    m = x86_module_for(addr);
+    if (m) { base = *m->base; size = m->size; state = 0x1000u; protect = 0x02u; }
+    else {
+        /* Not in a module. The guest heap and stacks are committed and
+           writable; anything else is genuinely unmapped as far as the guest is
+           concerned, and saying so is the useful answer. */
+        extern int guest_heap_contains(uint32_t a, uint32_t *b, uint32_t *n);
+        if (guest_heap_contains(addr, &base, &size)) { state = 0x1000u; protect = 0x04u; }
+        else {
+            /* FREE. The size must be the whole free span, not one page: a
+               caller walking the address space advances by RegionSize, and
+               reporting 4 KB turns a scan of a 4 GB space into a million
+               iterations that never finish. Measured -- libIGCore's memory
+               scan sat in exactly that loop. The span is the distance to the
+               next thing the guest can see. */
+            X86Module *k;
+            uint32_t next = 0xFFFFF000u, hb, hn;
+            for (k = x86_modules(); k; k = k->next)
+                if (*k->base > addr && *k->base < next) next = *k->base;
+            if (guest_heap_contains(addr + 1u, &hb, &hn) == 0) {
+                /* the heap starts somewhere above? find it the same way */
+                if (guest_heap_contains(0, &hb, &hn) || 1) {
+                    extern uint32_t guest_heap_base(void);
+                    uint32_t gb = guest_heap_base();
+                    if (gb > addr && gb < next) next = gb;
+                }
+            }
+            base = addr & ~0xFFFu;
+            size = next > base ? next - base : 0x1000u;
+            state = 0x10000u;            /* MEM_FREE */
+            protect = 0x01u;             /* PAGE_NOACCESS */
+        }
+    }
+    memset((void *)(uintptr_t)buf, 0, 28);
+    WR32(buf +  0u, base);               /* BaseAddress */
+    WR32(buf +  4u, base);               /* AllocationBase */
+    WR32(buf +  8u, protect);            /* AllocationProtect */
+    WR32(buf + 12u, size);               /* RegionSize */
+    WR32(buf + 16u, state);              /* State */
+    WR32(buf + 20u, protect);            /* Protect */
+    WR32(buf + 24u, 0x1000000u);         /* Type: MEM_IMAGE/PRIVATE */
+    ret_std(C, 28, 3);
 }

@@ -372,13 +372,61 @@ NOT_IMPL(vsprintf, VA_WHY)
  * _initterm would be two things to keep in step, and the one that drifts is
  * the one nobody is looking at.
  */
-void imp_MSVCRT__initterm(CPU *C);
-void imp_MSVCRT___dllonexit(CPU *C);
-void imp_MSVCRT__ftol(CPU *C);
+/* ---- moved from win32_sdl.c: the CRT pieces the DLLs reach ------------- */
 
-void imp_MSVCR71__initterm(CPU *C)   { imp_MSVCRT__initterm(C); }
-void imp_MSVCR71___dllonexit(CPU *C) { imp_MSVCRT___dllonexit(C); }
-void imp_MSVCR71__ftol(CPU *C)       { imp_MSVCRT__ftol(C); }
+const char *x86_native_name_at(uint32_t addr);
+/* Report a constructor target as its module and GUEST address: the modules are
+   relocated now, and Ghidra seeds have to be given the address the module was
+   LINKED for, not where it happens to be mapped. Printing the mapped address
+   produced seeds that pointed nowhere. */
+void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
+
+void imp_MSVCR71__initterm(CPU *C)
+{
+    /* Walk the function-pointer table and call each non-NULL entry through the
+       recompiled dispatcher -- these are the module's static constructors, and
+       skipping them would leave every global unconstructed.
+     *
+     * The pre-pass is the point. These tables are the ONLY reference to most
+     * of their targets: they are data pointers in .rdata, so static analysis
+     * never marked them as code and they have no recompiled body. Running the
+     * table straight through would stop at the first one, and each rebuild
+     * would reveal exactly one more. Listing every missing target first turns
+     * that into one seed list.
+     */
+    uint32_t p = A(0), end = A(1), n = 0, missing = 0;
+    for (p = A(0); p < end; p += 4u) {
+        uint32_t fn = RD32(p);
+        if (!fn) continue;
+        n++;
+        if (!x86_native_name_at(fn)) {
+            if (!missing)
+                fprintf(stderr, "\n*** _initterm: constructor targets with no "
+                                "recompiled body.\n    These are reachable only "
+                                "through this table, so static analysis never "
+                                "saw them as code.\n    Seed them and re-lift; "
+                                "the full list follows so this costs one pass, "
+                                "not one per rebuild.\n");
+            {
+                const char *mn = NULL; uint32_t g = fn;
+                x86_guest_addr_of(fn, &mn, &g);
+                fprintf(stderr, "    %-18s 0x%08x\n", mn ? mn : "(no module)", g);
+            }
+            missing++;
+        }
+    }
+    if (missing) {
+        fprintf(stderr, "*** %u of %u constructor targets are missing bodies\n",
+                missing, n);
+        abort();
+    }
+    for (p = A(0); p < end; p += 4u) {
+        uint32_t fn = RD32(p);
+        if (fn) x86_guest_call(C, fn);
+    }
+    ret_c(C, 0);
+}
+
 
 /*
  * __getmainargs(&argc, &argv, &envp, doWildCard, startupInfo)
@@ -453,3 +501,167 @@ void imp_MSVCR71___security_error_handler(CPU *C)
                     "overrun was detected inside recompiled code\n");
     abort();
 }
+
+/* ---- memory and string primitives -------------------------------------- */
+
+void imp_MSVCR71_memcpy(CPU *C)  { memcpy(AP(0), AP(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_memset(CPU *C)  { memset(AP(0), (int)A(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_strlen(CPU *C)  { ret_c(C, (uint32_t)strlen(ACS(0))); }
+void imp_MSVCR71_strcpy(CPU *C)  { strcpy(AS(0), ACS(1)); ret_c(C, A(0)); }
+void imp_MSVCR71_strcat(CPU *C)  { strcat(AS(0), ACS(1)); ret_c(C, A(0)); }
+void imp_MSVCR71_strcmp(CPU *C)  { ret_c(C, (uint32_t)strcmp(ACS(0), ACS(1))); }
+void imp_MSVCR71_isalpha(CPU *C) { ret_c(C, (uint32_t)isalpha((int)A(0))); }
+
+void imp_MSVCR71__strdup(CPU *C)
+{
+    /* Guest heap, not strdup(): the result is a guest pointer. */
+    const char *s = ACS(0);
+    uint32_t n = (uint32_t)strlen(s) + 1u, p = guest_malloc(n);
+    if (p) memcpy((void *)(uintptr_t)p, s, n);
+    ret_c(C, p);
+}
+
+/* ---- math -------------------------------------------------------------- */
+
+void imp_MSVCR71_atan2(CPU *C) { ret_d(C, atan2(argd(C, 0), argd(C, 2))); }
+void imp_MSVCR71_exp(CPU *C)   { ret_d(C, exp(argd(C, 0))); }
+void imp_MSVCR71_log(CPU *C)   { ret_d(C, log(argd(C, 0))); }
+void imp_MSVCR71_pow(CPU *C)   { ret_d(C, pow(argd(C, 0), argd(C, 2))); }
+void imp_MSVCR71_sqrt(CPU *C)  { ret_d(C, sqrt(argd(C, 0))); }
+void imp_MSVCR71_fabs(CPU *C)  { ret_d(C, fabs(argd(C, 0))); }
+void imp_MSVCR71_strtod(CPU *C)
+{
+    char *end = NULL;
+    double v = strtod(ACS(0), &end);
+    if (A(1)) WR32(A(1), (uint32_t)(uintptr_t)end);
+    ret_d(C, v);
+}
+
+void imp_MSVCR71__CIasin(CPU *C)
+{
+    long double x = crt_x87_pop(C);
+    crt_x87_push(C, asinl(x));
+    C->esp += 4u;
+}
+
+/* ---- misc -------------------------------------------------------------- */
+
+void imp_MSVCR71_abort(CPU *C)
+{
+    (void)C;
+    fprintf(stderr, "crt: the recompiled program called abort()\n");
+    abort();
+}
+
+void imp_MSVCR71__errno(CPU *C)
+{
+    /* Returns a POINTER to errno, so it needs a real guest word. One shared
+       cell: this build is single-threaded, and errno is per-thread only
+       because threads exist. */
+    static uint32_t cell;
+    if (!cell) { cell = guest_malloc(4); if (cell) WR32(cell, 0); }
+    ret_c(C, cell);
+}
+
+void imp_MSVCR71_getenv(CPU *C)
+{
+    /* The host environment, copied into guest memory so the pointer fits. The
+       copies are never freed, which is correct: getenv's result is meant to
+       stay valid for the life of the program. */
+    const char *v = getenv(ACS(0));
+    uint32_t p;
+    if (!v) { ret_c(C, 0); return; }
+    p = guest_malloc((uint32_t)strlen(v) + 1u);
+    if (p) memcpy((void *)(uintptr_t)p, v, strlen(v) + 1);
+    ret_c(C, p);
+}
+
+void imp_MSVCR71_setlocale(CPU *C)
+{
+    /* Only the C locale exists here, and returning its name is the truth
+       rather than a placeholder -- the game checks the result for NULL. */
+    static uint32_t name;
+    if (!name) {
+        name = guest_malloc(2);
+        if (name) { WR8(name, 'C'); WR8(name + 1u, 0); }
+    }
+    ret_c(C, name);
+}
+
+/*
+ * ---- one implementation, two module names ------------------------------
+ *
+ * The DLLs import MSVCRT.dll and the exe imports MSVCR71.dll. Same runtime,
+ * two spellings, and the recompiler names a stub after each. Aliasing rather
+ * than reimplementing: two copies of anything here would be two things to keep
+ * in step, and the one that drifts is the one nobody is looking at.
+ *
+ * Only functions that are actually implemented above appear here. An MSVCRT
+ * import with no entry keeps its generated stub and stops by name, which is
+ * the behaviour that has been finding these one honest step at a time.
+ */
+
+/* __ftol: the argument arrives on the x87 stack and the truncated 64-bit
+   result goes back in EDX:EAX. It pops one register, which the lazy x87 model
+   tracks in `depth`. */
+void imp_MSVCR71__ftol(CPU *C)
+{
+    long double v = crt_x87_pop(C);
+    int64_t r = (int64_t)v;
+    C->eax = (uint32_t)(uint64_t)r;
+    C->edx = (uint32_t)((uint64_t)r >> 32);
+    C->esp += 4u;                        /* __cdecl, no stack arguments */
+}
+
+/*
+ * __dllonexit(func, pbegin, pend) -- register a static destructor.
+ *
+ * Implemented rather than stubbed even though nothing runs the destructors
+ * yet: a stub returning `func` looks identical from the caller's side while
+ * dropping every registration, and the table it maintains is guest-visible.
+ * Growing by one entry per call is not how MSVCRT does it (it doubles), but
+ * the observable state -- *pbegin, *pend, and the entries between -- matches.
+ */
+void imp_MSVCR71___dllonexit(CPU *C)
+{
+    uint32_t func = A(0), pbegin = A(1), pend = A(2);
+    uint32_t b = RD32(pbegin), e = RD32(pend);
+    uint32_t count = b ? (e - b) / 4u : 0u;
+    uint32_t nt;
+
+    if (!func) { ret_c(C, 0); return; }
+    nt = guest_realloc(b, (count + 1u) * 4u);
+    if (!nt) { ret_c(C, 0); return; }
+    WR32(nt + count * 4u, func);
+    WR32(pbegin, nt);
+    WR32(pend, nt + (count + 1u) * 4u);
+    ret_c(C, func);
+}
+
+#define CRT_ALIAS(n) \
+    void imp_MSVCRT_##n(CPU *C) { imp_MSVCR71_##n(C); }
+
+CRT_ALIAS(malloc)   CRT_ALIAS(calloc)   CRT_ALIAS(realloc)
+CRT_ALIAS(memcpy)   CRT_ALIAS(memset)   CRT_ALIAS(memmove)
+CRT_ALIAS(strlen)   CRT_ALIAS(strcpy)   CRT_ALIAS(strcat)
+CRT_ALIAS(strcmp)   CRT_ALIAS(strchr)   CRT_ALIAS(strrchr)
+CRT_ALIAS(strstr)   CRT_ALIAS(strtok)   CRT_ALIAS(strncat)
+CRT_ALIAS(strncpy)  CRT_ALIAS(strncmp)  CRT_ALIAS(_strdup)
+CRT_ALIAS(_stricmp) CRT_ALIAS(_strnicmp) CRT_ALIAS(_strlwr)
+CRT_ALIAS(_strupr)  CRT_ALIAS(_itoa)
+CRT_ALIAS(isalnum)  CRT_ALIAS(isalpha)  CRT_ALIAS(isdigit)
+CRT_ALIAS(isspace)  CRT_ALIAS(tolower)
+CRT_ALIAS(atoi)     CRT_ALIAS(atof)     CRT_ALIAS(strtod)
+CRT_ALIAS(ceil)     CRT_ALIAS(floor)    CRT_ALIAS(fabs)
+CRT_ALIAS(atan2)    CRT_ALIAS(exp)      CRT_ALIAS(log)
+CRT_ALIAS(pow)      CRT_ALIAS(sqrt)     CRT_ALIAS(_finite)
+CRT_ALIAS(_CIpow)   CRT_ALIAS(_CIfmod)  CRT_ALIAS(_CIacos)
+CRT_ALIAS(_CIasin)
+CRT_ALIAS(rand)     CRT_ALIAS(srand)    CRT_ALIAS(qsort)
+CRT_ALIAS(fopen)    CRT_ALIAS(fclose)   CRT_ALIAS(fread)
+CRT_ALIAS(fseek)    CRT_ALIAS(ftell)
+CRT_ALIAS(exit)     CRT_ALIAS(_exit)    CRT_ALIAS(_purecall)
+CRT_ALIAS(abort)    CRT_ALIAS(_errno)   CRT_ALIAS(getenv)
+CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
+CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)
+CRT_ALIAS(__dllonexit)

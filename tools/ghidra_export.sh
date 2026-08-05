@@ -5,6 +5,7 @@
 #   tools/ghidra_export.sh <module-basename> [--reanalyze]
 #   tools/ghidra_export.sh <module-basename> --seed <file-of-hex-addresses>
 #   tools/ghidra_export.sh <module-basename> --split-at <file-of-hex-addresses>
+#   tools/ghidra_export.sh <module-basename> --merge <file-of-truncated-fns>
 #   tools/ghidra_export.sh libIGCore
 #
 # This existed only as a sequence of commands somebody ran once. The result is
@@ -28,10 +29,12 @@ MOD=${1:?usage: ghidra_export.sh <module-basename> [--reanalyze|--seed <file>]}
 REANALYZE=""
 SEEDFILE=""
 SPLITFILE=""
+MERGEFILE=""
 case ${2:-} in
     --reanalyze) REANALYZE=1 ;;
     --seed)      SEEDFILE=${3:?--seed needs a file of hex addresses} ;;
     --split-at)  SPLITFILE=${3:?--split-at needs a file of hex addresses} ;;
+    --merge)     MERGEFILE=${3:?--merge needs a file of hex addresses} ;;
     "")          ;;
     *)           echo "ghidra_export: unknown option $2" >&2; exit 2 ;;
 esac
@@ -140,6 +143,22 @@ if [ -n "${SEED_TABLES:-}" ]; then
         -postScript SeedPointerTables.py \
         >>"$LOG" 2>&1 || { echo "ghidra_export: table seeding failed, see $LOG" >&2; exit 1; }
     grep -E "^SEED:" "$LOG" | tail -3
+fi
+
+# Merging: a function cut off by a spurious one starting inside it. The
+# inverse of --split-at, and the check that keeps it honest lives in the
+# script: an inner function with real CALL references is a genuine entry point
+# and is skipped rather than deleted.
+if [ -n "$MERGEFILE" ]; then
+    [ -s "$MERGEFILE" ] || { echo "ghidra_export: $MERGEFILE is empty -- merged NOTHING" >&2; exit 2; }
+    ADDRS=$(tr -s ' \n' ',' < "$MERGEFILE" | sed 's/,$//')
+    echo "== merge $(grep -c . "$MERGEFILE") truncated function(s) =="
+    MERGE_FUNCS="$ADDRS" "$HEADLESS" "$PROJ" xmen2 \
+        -process "$(basename "$BIN")" -noanalysis \
+        -scriptPath "$ROOT/tools/ghidra_scripts" \
+        -postScript MergeTruncated.py \
+        >>"$LOG" 2>&1 || { echo "ghidra_export: merging failed, see $LOG" >&2; exit 1; }
+    grep -E "^MERGE: [0-9]+ repaired" "$LOG" | tail -1
 fi
 
 echo "== export functions -> $OUT =="

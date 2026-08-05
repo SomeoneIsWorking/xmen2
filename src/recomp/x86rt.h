@@ -143,6 +143,9 @@ void x86_ring_dump(void);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
 /* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
 void x86_int3(uint32_t addr);
+/* A function body ended without a terminator and the address it falls through
+   to is not a known function. */
+void x86_fallthrough(uint32_t fn_ep, uint32_t next);
 void x86_fallback_report(void);
 #define G_IMGBASE (X86_IMGBASE)
 
@@ -395,6 +398,9 @@ void x86_dispatch_miss(uint32_t target);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
 /* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
 void x86_int3(uint32_t addr);
+/* A function body ended without a terminator and the address it falls through
+   to is not a known function. */
+void x86_fallthrough(uint32_t fn_ep, uint32_t next);
 
 /* real code -> recompiled body; returns EAX */
 /* Entry from host code into a recompiled body. Reached by `jmp` from a naked
