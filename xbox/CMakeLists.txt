@@ -98,9 +98,11 @@ if(NOT WIN32)
     #
     #   sub_002241E1  RtlAllocateHeap  } see the C056 note in recomp_manual.c
     #   sub_00222433  RtlFreeHeap      }
+    #   sub_00224B50  RtlReAllocateHeap|
     target_link_options(${PROJECT_NAME} PRIVATE
         -Wl,--wrap=sub_002241E1
         -Wl,--wrap=sub_00222433
+        -Wl,--wrap=sub_00224B50   # RtlReAllocateHeap, ret 16
     )
 endif()
 

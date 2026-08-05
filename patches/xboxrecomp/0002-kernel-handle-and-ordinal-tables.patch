@@ -1,5 +1,5 @@
 diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
-index eafbf96..b157af5 100644
+index eafbf96..0083715 100644
 --- a/src/kernel/kernel_bridge.c
 +++ b/src/kernel/kernel_bridge.c
 @@ -73,24 +73,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
@@ -64,7 +64,41 @@ index eafbf96..b157af5 100644
  /* Read Xbox stack arg as uint32_t.
   * After kernel_thunk_dispatch pops the dummy return address (g_esp += 4),
   * arg0 is at g_esp+0, arg1 at g_esp+4, etc. */
-@@ -401,11 +415,28 @@ static void bridge_NtAllocateVirtualMemory(void)
+@@ -217,9 +231,31 @@ static void bridge_PsCreateSystemThreadEx(void)
+             g_thread_call_count, start_routine, start_context1, start_context2);
+     fflush(stderr);
+ 
+-    /* Write a fake handle to the output pointer */
++    /* Give the thread handle a real, dereferenceable backing object.
++     *
++     * This used to write the constant 0xBEEF0001. On Xbox a thread handle
++     * resolves (via ObReferenceObjectByHandle, or directly in titles that
++     * treat handles as object pointers) to a KTHREAD/ETHREAD in kernel space,
++     * and this title does dereference it: the run faulted reading Xbox VA
++     * 0xBEEF0001 with esi holding exactly that constant. A magic number that
++     * cannot be dereferenced is not a handle, it is a landmine.
++     *
++     * A zeroed guest block is not a real thread object either -- the fields
++     * mean nothing -- but reads land in mapped memory and return zero instead
++     * of killing the process, and the address is unique per thread. */
+     if (xbox_handle_ptr) {
+-        BRIDGE_MEM32(xbox_handle_ptr) = 0xBEEF0001;  /* fake handle */
++        uint32_t thread_obj = xbox_HeapAlloc(0x200, 16);
++        if (!thread_obj) {
++            fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx: no memory for a"
++                            " thread object; handle would be undereferenceable\n");
++            fflush(stderr);
++            g_eax = 0xC0000017u;   /* STATUS_NO_MEMORY */
++            return;
++        }
++        BRIDGE_MEM32(xbox_handle_ptr) = thread_obj;
++        fprintf(stderr, "  [KERNEL] PsCreateSystemThreadEx: thread handle ="
++                        " 0x%08X (a real 0x200-byte zeroed object)\n", thread_obj);
++        fflush(stderr);
+     }
+ 
+     /* Call the start routine synchronously through the recomp dispatch.
+@@ -401,11 +437,28 @@ static void bridge_NtAllocateVirtualMemory(void)
       * Only allocate new memory when MEM_RESERVE is requested.
       */
      if (base_hint != 0 && (alloc_type & 0x2000) == 0) {
@@ -97,7 +131,7 @@ index eafbf96..b157af5 100644
              fflush(stderr);
          }
          g_eax = 0; /* STATUS_SUCCESS */
-@@ -419,9 +450,11 @@ static void bridge_NtAllocateVirtualMemory(void)
+@@ -419,9 +472,11 @@ static void bridge_NtAllocateVirtualMemory(void)
          return;
      }
  
@@ -111,7 +145,7 @@ index eafbf96..b157af5 100644
  
      g_eax = 0; /* STATUS_SUCCESS */
  }
-@@ -743,6 +776,30 @@ static void bridge_ExQueryPoolBlockSize(void)
+@@ -743,6 +798,30 @@ static void bridge_ExQueryPoolBlockSize(void)
      g_eax = 0;
  }
  
@@ -142,7 +176,7 @@ index eafbf96..b157af5 100644
  /* ── RtlNtStatusToDosError (ordinal 301) ─────────────────
   * ULONG RtlNtStatusToDosError(NTSTATUS Status)
   *
-@@ -845,10 +902,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
+@@ -845,10 +924,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
          BRIDGE_MEM32(handle_va) = bridge_handle_token(h);
  }
  
@@ -164,7 +198,7 @@ index eafbf96..b157af5 100644
      if ((token & 0xFF000000u) == BRIDGE_HANDLE_TAG) {
          uint32_t i = token & BRIDGE_HANDLE_MASK;
          return (i > 0 && i < BRIDGE_HANDLE_MAX) ? s_handle_table[i] : NULL;
-@@ -906,6 +971,14 @@ static NTSTATUS bridge_create_file_impl(
+@@ -906,6 +993,14 @@ static NTSTATUS bridge_create_file_impl(
      st = xbox_NtCreateFile(&h, access, &oa, &ios, NULL,
                             file_attrs, share, disposition, options);
  
@@ -179,7 +213,7 @@ index eafbf96..b157af5 100644
      if (NT_SUCCESS(st)) {
          bridge_write_handle(handle_va, h);
          bridge_write_iostatus(iostatus_va, ios.Status, (uint32_t)ios.Information);
-@@ -1307,46 +1380,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1307,46 +1402,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case   4: return  4;  /* AvSetSavedDataAddress(1) */
  
      /* ── Unknown stubs ── */
@@ -250,7 +284,7 @@ index eafbf96..b157af5 100644
      case 107: return 12;  /* KeInitializeDpc(3) */
      case 109: return 28;  /* KeInitializeInterrupt(7) */
      case 113: return  8;  /* KeInitializeTimerEx(2) */
-@@ -1418,8 +1489,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1418,8 +1511,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 225: return  8;  /* NtSetEvent(2) */
      case 226: return 20;  /* NtSetInformationFile(5) */
      case 228: return  8;  /* NtSetSystemTime(2) */
@@ -261,7 +295,7 @@ index eafbf96..b157af5 100644
      case 236: return 32;  /* NtWriteFile(8) */
      case 238: return  0;  /* NtYieldExecution(void) */
  
-@@ -1434,7 +1505,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1434,7 +1527,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
  
      /* ── Threading ── */
      case 255: return 40;  /* PsCreateSystemThreadEx(10) */
@@ -270,7 +304,7 @@ index eafbf96..b157af5 100644
      case 258: return  4;  /* PsTerminateSystemThread(1) */
      /* case 259: DATA export - PsThreadObjectType */
  
-@@ -1452,28 +1523,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1452,28 +1545,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 305: return  8;  /* RtlTimeToTimeFields(2) */
      case 308: return 12;  /* RtlUnicodeStringToAnsiString(3) */
      case 312: return 16;  /* RtlUnwind(4) */
@@ -354,7 +388,7 @@ index eafbf96..b157af5 100644
      }
  }
  
-@@ -1514,9 +1625,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1514,9 +1647,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 199: return bridge_NtFreeVirtualMemory;
  
      /* Pool */
@@ -367,7 +401,7 @@ index eafbf96..b157af5 100644
  
      /* IRQL */
      case 160: return bridge_KfRaiseIrql;
-@@ -1546,14 +1657,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1546,14 +1679,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 238: return bridge_NtYieldExecution;
  
      /* Hardware */
@@ -385,7 +419,7 @@ index eafbf96..b157af5 100644
      case 188: return bridge_NtCreateDirectoryObject;
      case 246: return bridge_ObReferenceObjectByHandle;
  
-@@ -1562,6 +1673,7 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1562,6 +1695,7 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 178: return bridge_MmPersistContiguousMemory;
  
      /* RTL */
@@ -393,7 +427,7 @@ index eafbf96..b157af5 100644
      case 301: return bridge_RtlNtStatusToDosError;
      case 302: return bridge_RtlRaiseException;
  
-@@ -1733,6 +1845,9 @@ void xbox_kernel_bridge_init(void)
+@@ -1733,6 +1867,9 @@ void xbox_kernel_bridge_init(void)
      /* Initialize kernel data export values first */
      kernel_data_init();
  
@@ -403,7 +437,7 @@ index eafbf96..b157af5 100644
      for (i = 0; i < g_thunk_table_count; i++) {
          uint32_t va = g_thunk_table_base + i * 4;
          uint32_t current = BRIDGE_MEM32(va);
-@@ -1755,7 +1870,19 @@ void xbox_kernel_bridge_init(void)
+@@ -1755,7 +1892,19 @@ void xbox_kernel_bridge_init(void)
  
              /* FUNCTION export: use synthetic VA for dispatch */
              g_slot_bridges[i] = bridge_for_ordinal(ordinal);
@@ -424,7 +458,7 @@ index eafbf96..b157af5 100644
              if (g_slot_bridges[i]) {
                  bridged++;
              } else {
-@@ -1779,6 +1906,24 @@ void xbox_kernel_bridge_init(void)
+@@ -1779,6 +1928,24 @@ void xbox_kernel_bridge_init(void)
  
      fprintf(stderr, "  Kernel thunk bridge: %d/%d resolved (%d bridged, %d stub)\n",
              resolved, g_thunk_table_count, bridged, unbridged);

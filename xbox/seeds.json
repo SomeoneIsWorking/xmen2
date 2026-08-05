@@ -7841,5 +7841,10 @@
     "name": "vtable_0048751F",
     "why": "Entry in a vtable-shaped run of >= 3 consecutive code pointers in the .rdata section, landing in an unclaimed hole. Harvested by tools/xbox_vtable_seeds.py -- nothing references it, so the detector could not find it, but the table is the evidence that it is a function.",
     "source": "harvest"
+  },
+  {
+    "start": "0x0010C470",
+    "name": "stub_hit_0010C470",
+    "why": "Called directly by translated code but never detected as a function, so it was an EMPTY STUB doing nothing while the caller read back a stale eax as its return value. Found by the stub-hit reporter -- the indirect-call tally cannot see direct calls."
   }
 ]

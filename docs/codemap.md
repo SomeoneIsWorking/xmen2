@@ -57,7 +57,8 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | NV2A GPU emulation | `vendor/xboxrecomp/src/nv2a`, wired in `xbox/src/main.c` | **partial** — initialises (VRAM 64 MB, RAMIN 1 MB, MMIO hook) and the VEH routes GPU faults to it; the decoder is no longer `#if _WIN32`. Not yet exercised: the title dies in the CRT heap first (C053, C055) |
 | Host D3D8 → OpenGL | `vendor/xboxrecomp/src/d3d` | reference — the NV2A PGRAPH translator emits onto this device; not called directly by game code |
 | Native CRT heap override | `xbox/src/recomp_manual.c` (`-Wl,--wrap`) | **debt** — bypasses the C056 heap defect; recompiled bodies still linked, `XBOX_NATIVE_HEAP=0` restores them (C057, `xb-nheap`) |
-| Xbox game execution | — | **partial** — 25,777 functions, 531 kernel calls, 4157 indirect calls; past the CRT and running its own engine code. Stops on a virtual call through a code address. Nothing renders |
+| Empty-stub reporter | generated `recomp_stubs_unresolved.c` | **verified** — the 276 undetected-call stubs report themselves; found 0x0010C470 immediately (C058) |
+| Xbox game execution | — | **partial** — 25,778 functions, 1050 kernel calls, 8228 indirect calls, deep in its own engine. Stops on a virtual call through a null object. Nothing renders |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.

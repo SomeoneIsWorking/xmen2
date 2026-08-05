@@ -22,7 +22,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>   /* getenv, abort */
-#include <string.h>   /* memset */
+#include <string.h>   /* memset, memcpy */
 
 #define MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
@@ -258,6 +258,12 @@ static int nh_free(uint32_t ptr)
    body reachable as __real_X, which is what makes the A/B toggle real. */
 extern void __real_sub_002241E1(void);
 extern void __real_sub_00222433(void);
+extern void __real_sub_00224B50(void);
+
+static int nh_owns(uint32_t ptr)
+{
+    return ptr >= nh_arena + sizeof(nh_header) && ptr < nh_arena_end;
+}
 
 /* stdcall(Heap, Flags, Size) -> pointer in eax, ret 12 */
 void __wrap_sub_002241E1(void)
@@ -268,6 +274,50 @@ void __wrap_sub_002241E1(void)
     uint32_t size  = MEM32(g_esp + 12);
     g_eax = nh_alloc(size, (flags & 8) != 0);   /* 8 = HEAP_ZERO_MEMORY */
     g_esp += 16;                                /* dummy retaddr + 12 args */
+    }
+}
+
+/* stdcall(Heap, Flags, Ptr, Size) -> pointer in eax, ret 16.
+ *
+ * Closing the gap C057 recorded: without this, the CRT's realloc reaches the
+ * RECOMPILED heap with a pointer from the native arena, reads the native
+ * block header as its own, and corrupts it with nothing to show for it. */
+void __wrap_sub_00224B50(void)
+{
+    if (!nh_enabled()) { __real_sub_00224B50(); return; }
+    {
+        uint32_t ptr  = MEM32(g_esp + 12);
+        uint32_t size = MEM32(g_esp + 16);
+        uint32_t out  = 0;
+
+        if (!ptr) {
+            out = nh_alloc(size, 0);
+        } else if (nh_owns(ptr)) {
+            uint32_t old = nh_hdr(ptr - (uint32_t)sizeof(nh_header))->size;
+            if (old >= size) {
+                out = ptr;                    /* shrink in place */
+            } else {
+                out = nh_alloc(size, 0);
+                if (out) {
+                    memcpy((void *)((uintptr_t)out + g_xbox_mem_offset),
+                           (void *)((uintptr_t)ptr + g_xbox_mem_offset), old);
+                    nh_free(ptr);
+                }
+            }
+        } else {
+            /* Not ours and not NULL: refuse rather than hand it to either
+               allocator, and say why -- this would be silent corruption. */
+            static int warned;
+            if (!warned++) {
+                fprintf(stderr, "[NHEAP] realloc of 0x%08X, which is not in the"
+                                " native arena -- refused. A pointer predating"
+                                " the override has reached realloc.\n", ptr);
+                fflush(stderr);
+            }
+            out = 0;
+        }
+        g_eax = out;
+        g_esp += 20;                           /* dummy retaddr + 16 args */
     }
 }
 
@@ -310,6 +360,7 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
            recompiled bodies still built and reachable via XBOX_NATIVE_HEAP=0. */
         if (xbox_va == 0x002241E1) return __wrap_sub_002241E1;
         if (xbox_va == 0x00222433) return __wrap_sub_00222433;
+        if (xbox_va == 0x00224B50) return __wrap_sub_00224B50;
     }
 
     /*
@@ -404,6 +455,8 @@ static void icall_miss_record(uint32_t va, int kind)
  * game's behaviour).
  */
 void recomp_icall_report(void);   /* defined below */
+void nh_report(void);             /* defined below */
+extern void recomp_stub_report(void);  /* generated stub tally */
 
 static int icall_should_continue(void)
 {
@@ -427,6 +480,8 @@ static void icall_miss_fatal(uint32_t va, const char *kind)
         "        Re-run with XBOX_ICALL_CONTINUE=1 to survey further targets.\n",
         kind, va);
     recomp_icall_report();
+    nh_report();
+    recomp_stub_report();
     abort();
 }
 
