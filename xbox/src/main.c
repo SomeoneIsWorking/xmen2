@@ -153,6 +153,11 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
                 return EXCEPTION_CONTINUE_EXECUTION;
         }
 
+        /* Print the run totals here too. A crash used to skip the end-of-run
+           report entirely, so a run that died could not be compared against
+           one that finished -- the two looked like different experiments. */
+        recomp_icall_report();
+
         fprintf(stderr, "[CRASH] Access violation at RIP=0x%llX, fault addr=0x%llX (%s)\n",
             (unsigned long long)ep->ContextRecord->Rip,
             (unsigned long long)fault_addr,

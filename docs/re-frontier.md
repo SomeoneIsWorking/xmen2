@@ -255,8 +255,8 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### xb-d3d — NV2A GPU emulation wired into the VEH
 - status: re-partial
 - deps: xb-run
-- evidence: C053; nv2a_hook_init + nv2a_hook_handle_mmio installed; main.c no longer passes GPU faults through
+- evidence: C053/C055; NV2A initialised and the VEH implemented on sigaction -- the GPU path exists end to end for the first time
 - where: 
-- gap: Wired but never exercised: the title stops on an unresolved indirect call before it issues a GPU write, so not one register access has been decoded yet. Nothing renders.
+- gap: Not one GPU register fault has been decoded: the title dies in the CRT heap before its first draw. Whether the decoder handles this title's access patterns is untested; main.c counts and prints any it cannot decode.
 - notes: 
 

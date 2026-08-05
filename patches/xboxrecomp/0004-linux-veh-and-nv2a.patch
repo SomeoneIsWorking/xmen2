@@ -1,0 +1,380 @@
+diff --git a/src/nv2a/CMakeLists.txt b/src/nv2a/CMakeLists.txt
+index 20075a9..a1f0d8d 100644
+--- a/src/nv2a/CMakeLists.txt
++++ b/src/nv2a/CMakeLists.txt
+@@ -29,7 +29,11 @@ else()
+     target_compile_options(xbox_nv2a PRIVATE -Wall -Wextra -Wno-unused-parameter -O2)
+ endif()
+ 
+-target_link_libraries(xbox_nv2a PRIVATE platform)
++# The PGRAPH translator emits onto the toolkit's IDirect3DDevice8
++# (xbox_GetD3DDevice), so the GPU emulation depends on the D3D8 backend --
++# D3D11 on Windows, OpenGL on Linux. Previously the whole MMIO path was
++# compiled out on Linux, which hid this edge.
++target_link_libraries(xbox_nv2a PRIVATE platform xbox_d3d8)
+ if(WIN32)
+     target_link_libraries(xbox_nv2a PRIVATE kernel32)
+ endif()
+diff --git a/src/nv2a/nv2a_mmio_hook.c b/src/nv2a/nv2a_mmio_hook.c
+index d2b401d..4d34c37 100644
+--- a/src/nv2a/nv2a_mmio_hook.c
++++ b/src/nv2a/nv2a_mmio_hook.c
+@@ -28,9 +28,14 @@ static int g_mmio_decode_fail = 0;
+  * (regardless of whether the MMIO hook is active). Keep its definition
+  * outside the Win32 guard. */
+ 
+-#if defined(_WIN32)
+-
+-/* ============================================================
++/* Not guarded by _WIN32 any more.
++ *
++ * Everything below is x86-64 instruction decoding plus PCONTEXT register
++ * access and VirtualAlloc, all of which the platform layer provides on
++ * Linux. The Linux build used to get stubs returning false, so a title that
++ * renders by faulting on GPU register writes could not draw at all -- the
++ * decoder was compiled out on the only platform this project builds for.
++ * ============================================================
+  * x86-64 register access helpers
+  * ============================================================ */
+ 
+@@ -417,16 +422,4 @@ bool nv2a_hook_handle_vram(uintptr_t fault_addr, uint32_t fault_xbox_va)
+     return false;
+ }
+ 
+-#else /* !_WIN32 -- SIGSEGV-based MMIO trapping deferred to main.c port */
+-
+-void nv2a_hook_init(ptrdiff_t xbox_mem_offset)
+-{ (void)xbox_mem_offset; }
+-
+-bool nv2a_hook_handle_mmio(PCONTEXT ctx, uintptr_t fault_addr,
+-                           uint32_t fault_xbox_va, int is_write)
+-{ (void)ctx; (void)fault_addr; (void)fault_xbox_va; (void)is_write; return false; }
+-
+-bool nv2a_hook_handle_vram(uintptr_t fault_addr, uint32_t fault_xbox_va)
+-{ (void)fault_addr; (void)fault_xbox_va; return false; }
+ 
+-#endif /* _WIN32 */
+diff --git a/src/platform/win32_compat.c b/src/platform/win32_compat.c
+index 96a96fe..d9baf1b 100644
+--- a/src/platform/win32_compat.c
++++ b/src/platform/win32_compat.c
+@@ -22,6 +22,8 @@
+ #include <stdio.h>
+ #include <time.h>
+ #include <errno.h>
++#include <signal.h>
++#include <ucontext.h>   /* VEH is implemented on sigaction; see below */
+ #include <unistd.h>
+ #include <sched.h>
+ #include <fenv.h>
+@@ -1259,6 +1261,16 @@ HANDLE CreateFileMappingA(HANDLE file, LPSECURITY_ATTRIBUTES sa, DWORD protect,
+     }
+ 
+     w32_object *o = obj_alloc(K_FILEMAP);
++    if (!o) {
++        /* obj_alloc can fail (handle table exhausted). Writing through the NULL
++           it returns crashes here, and returning it unchecked crashes later in
++           MapViewOfFileEx with no clue where the bad handle came from. */
++        close(fd);
++        fprintf(stderr, "CreateFileMappingA: obj_alloc failed (handle table "
++                        "exhausted?)\n");
++        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
++        return NULL;
++    }
+     o->fd       = fd;
+     o->map_size = size;
+     return (HANDLE)o;
+@@ -1275,7 +1287,14 @@ LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow
+                        SIZE_T count, LPVOID baseAddr)
+ {
+     w32_object *o = (w32_object *)mapping;
+-    if (!o || o->kind != K_FILEMAP) { SetLastError(ERROR_INVALID_HANDLE); return NULL; }
++    /* A handle that is neither NULL nor a real object -- e.g. a Win32
++       pseudo-handle like INVALID_HANDLE_VALUE -- would fault on o->kind, which
++       is how this first showed up. Reject small integers before dereferencing. */
++    if (!o || (uintptr_t)o < 0x10000) {
++        fprintf(stderr, "MapViewOfFileEx: bogus mapping handle %p\n", (void *)o);
++        SetLastError(ERROR_INVALID_HANDLE); return NULL;
++    }
++    if (o->kind != K_FILEMAP) { SetLastError(ERROR_INVALID_HANDLE); return NULL; }
+ 
+     off_t  off = ((off_t)offHigh << 32) | offLow;
+     SIZE_T len = count ? count : (o->map_size - (SIZE_T)off);
+@@ -1449,8 +1468,186 @@ VOID RaiseException(DWORD code, DWORD flags, DWORD nargs, const ULONG_PTR *args)
+     /* TODO: on Windows this does not return; SEH dispatch unimplemented. */
+ }
+ 
++/* ---- Vectored exception handling on Linux ------------------------------
++ *
++ * This was a stub returning NULL. Everything built on it was therefore dead:
++ * the crash reporter never printed, and -- the reason this matters -- the
++ * NV2A MMIO hook never ran, so a title that drives the GPU by faulting on
++ * 0xFD000000 register writes could not render one pixel no matter how far it
++ * booted.
++ *
++ * SIGSEGV carries what a VEH handler needs: si_addr is the faulting address,
++ * the page-fault error code's bit 1 is write-vs-read, and ucontext_t holds
++ * the full x86-64 register state. A handler that returns
++ * EXCEPTION_CONTINUE_EXECUTION has its (possibly edited -- the MMIO decoder
++ * advances RIP and writes a destination register) context copied back before
++ * the signal returns.
++ */
++#define XR_MAX_VEH 8
++static PVECTORED_EXCEPTION_HANDLER g_veh[XR_MAX_VEH];
++static int g_veh_count;
++static int g_veh_installed;
++
++static void xr_ctx_from_uc(XR_CONTEXT *c, const ucontext_t *uc)
++{
++    const greg_t *g = uc->uc_mcontext.gregs;
++    c->Rip = (unsigned long long)g[REG_RIP];
++    c->Rsp = (unsigned long long)g[REG_RSP];
++    c->Rbp = (unsigned long long)g[REG_RBP];
++    c->Rax = (unsigned long long)g[REG_RAX];
++    c->Rbx = (unsigned long long)g[REG_RBX];
++    c->Rcx = (unsigned long long)g[REG_RCX];
++    c->Rdx = (unsigned long long)g[REG_RDX];
++    c->Rsi = (unsigned long long)g[REG_RSI];
++    c->Rdi = (unsigned long long)g[REG_RDI];
++    c->R8  = (unsigned long long)g[REG_R8];
++    c->R9  = (unsigned long long)g[REG_R9];
++    c->R10 = (unsigned long long)g[REG_R10];
++    c->R11 = (unsigned long long)g[REG_R11];
++    c->R12 = (unsigned long long)g[REG_R12];
++    c->R13 = (unsigned long long)g[REG_R13];
++    c->R14 = (unsigned long long)g[REG_R14];
++    c->R15 = (unsigned long long)g[REG_R15];
++    c->EFlags = (DWORD)g[REG_EFL];
++}
++
++static void xr_ctx_to_uc(const XR_CONTEXT *c, ucontext_t *uc)
++{
++    greg_t *g = uc->uc_mcontext.gregs;
++    g[REG_RIP] = (greg_t)c->Rip;   g[REG_RSP] = (greg_t)c->Rsp;
++    g[REG_RBP] = (greg_t)c->Rbp;   g[REG_RAX] = (greg_t)c->Rax;
++    g[REG_RBX] = (greg_t)c->Rbx;   g[REG_RCX] = (greg_t)c->Rcx;
++    g[REG_RDX] = (greg_t)c->Rdx;   g[REG_RSI] = (greg_t)c->Rsi;
++    g[REG_RDI] = (greg_t)c->Rdi;   g[REG_R8]  = (greg_t)c->R8;
++    g[REG_R9]  = (greg_t)c->R9;    g[REG_R10] = (greg_t)c->R10;
++    g[REG_R11] = (greg_t)c->R11;   g[REG_R12] = (greg_t)c->R12;
++    g[REG_R13] = (greg_t)c->R13;   g[REG_R14] = (greg_t)c->R14;
++    g[REG_R15] = (greg_t)c->R15;   g[REG_EFL] = (greg_t)c->EFlags;
++}
++
++static void xr_sigsegv(int sig, siginfo_t *si, void *ucv)
++{
++    ucontext_t *uc = (ucontext_t *)ucv;
++    XR_CONTEXT ctx;
++    EXCEPTION_RECORD rec;
++    EXCEPTION_POINTERS ep;
++
++    xr_ctx_from_uc(&ctx, uc);
++    memset(&rec, 0, sizeof rec);
++    rec.ExceptionCode = EXCEPTION_ACCESS_VIOLATION;
++    rec.ExceptionAddress = (PVOID)(uintptr_t)ctx.Rip;
++    rec.NumberParameters = 2;
++    /* x86-64 page-fault error code bit 1 = write. */
++    rec.ExceptionInformation[0] =
++        (ULONG_PTR)((uc->uc_mcontext.gregs[REG_ERR] & 2) ? 1 : 0);
++    rec.ExceptionInformation[1] = (ULONG_PTR)si->si_addr;
++    ep.ExceptionRecord = &rec;
++    ep.ContextRecord = &ctx;
++
++    for (int i = 0; i < g_veh_count; i++) {
++        if (!g_veh[i]) continue;
++        if (g_veh[i](&ep) == EXCEPTION_CONTINUE_EXECUTION) {
++            xr_ctx_to_uc(&ctx, uc);
++            return;
++        }
++    }
++
++    /* Nobody claimed it. Restore the default action and return so the process
++       dies at the original instruction with a faithful core, rather than
++       looping on the same fault forever. */
++    {
++        struct sigaction dfl;
++        memset(&dfl, 0, sizeof dfl);
++        dfl.sa_handler = SIG_DFL;
++        sigaction(sig, &dfl, NULL);
++    }
++}
++
+ PVOID AddVectoredExceptionHandler(ULONG First, PVECTORED_EXCEPTION_HANDLER Handler)
+-{ (void)First; (void)Handler; return NULL; }   /* TODO: wire to sigaction */
+-ULONG RemoveVectoredExceptionHandler(PVOID h) { (void)h; return 1; }
++{
++    if (!Handler || g_veh_count >= XR_MAX_VEH)
++        return NULL;
++
++    if (First && g_veh_count) {
++        memmove(&g_veh[1], &g_veh[0], (size_t)g_veh_count * sizeof g_veh[0]);
++        g_veh[0] = Handler;
++    } else {
++        g_veh[g_veh_count] = Handler;
++    }
++    g_veh_count++;
++
++    if (!g_veh_installed) {
++        /* An alternate stack: a fault deep in recompiled code can arrive with
++           very little stack left, and the handler must still run. */
++        /* glibc's SIGSTKSZ is not a constant expression; size it ourselves. */
++        static char altstack[256 * 1024];
++        stack_t ss = { .ss_sp = altstack, .ss_size = sizeof altstack, .ss_flags = 0 };
++        struct sigaction sa;
++        sigaltstack(&ss, NULL);
++        memset(&sa, 0, sizeof sa);
++        sa.sa_sigaction = xr_sigsegv;
++        sa.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_NODEFER;
++        sigemptyset(&sa.sa_mask);
++        if (sigaction(SIGSEGV, &sa, NULL) != 0 ||
++            sigaction(SIGBUS, &sa, NULL) != 0) {
++            fprintf(stderr, "[VEH] sigaction failed (%s): exception handlers "
++                            "are NOT installed, so GPU MMIO faults will kill "
++                            "the process instead of being emulated\n",
++                    strerror(errno));
++            fflush(stderr);
++            return NULL;
++        }
++        g_veh_installed = 1;
++    }
++    return (PVOID)Handler;
++}
++
++ULONG RemoveVectoredExceptionHandler(PVOID h)
++{
++    for (int i = 0; i < g_veh_count; i++) {
++        if (g_veh[i] == (PVECTORED_EXCEPTION_HANDLER)h) {
++            memmove(&g_veh[i], &g_veh[i + 1],
++                    (size_t)(g_veh_count - i - 1) * sizeof g_veh[0]);
++            g_veh_count--;
++            return 1;
++        }
++    }
++    return 0;
++}
+ 
+ #endif /* !_WIN32 */
++
++/* ---- Entry-point helpers ----------------------------------------------
++ * A game's main.c synthesises WinMain arguments from these. On Linux there is
++ * no Win32 process command line, so reconstruct one from /proc/self/cmdline;
++ * returning an empty string would silently drop arguments the game parses.
++ */
++static char g_cmdline[4096];
++
++LPSTR GetCommandLineA(void)
++{
++    if (!g_cmdline[0]) {
++        FILE *f = fopen("/proc/self/cmdline", "rb");
++        size_t n = 0;
++        if (f) {
++            n = fread(g_cmdline, 1, sizeof g_cmdline - 1, f);
++            fclose(f);
++            /* /proc gives NUL-separated argv; Win32 wants one space-separated
++               string. */
++            for (size_t i = 0; i + 1 < n; i++)
++                if (g_cmdline[i] == '\0') g_cmdline[i] = ' ';
++        }
++        g_cmdline[n] = '\0';
++    }
++    return g_cmdline;
++}
++
++HMODULE GetModuleHandleA(LPCSTR name)
++{
++    /* NULL means "this process's image base". Nothing in the recompiled game
++       dereferences it as a real PE base -- it is passed straight back into
++       WinMain as hInstance -- so a stable non-NULL token is sufficient, and a
++       named lookup has no meaning here. */
++    (void)name;
++    return (HMODULE)(void *)&g_cmdline;
++}
+diff --git a/src/platform/win32_compat.h b/src/platform/win32_compat.h
+index 3e81a19..d51c32d 100644
+--- a/src/platform/win32_compat.h
++++ b/src/platform/win32_compat.h
+@@ -355,6 +355,24 @@ int   WideCharToMultiByte(UINT cp, DWORD flags, LPCWSTR wide, int wideCount,
+ #define ERROR_GEN_FAILURE             31u
+ #define ERROR_HANDLE_EOF              38u
+ #define ERROR_NOT_SUPPORTED           50u
++/* Returned by ReleaseMutex when the caller does not own the mutex; present in
++   winerror.h but missing here, so kernel_sync.c would not build on Linux. */
++#define ERROR_NOT_OWNER               288u
++
++/* Entry-point helpers a game's main.c uses to synthesise WinMain arguments. */
++#ifndef SW_SHOW
++#define SW_HIDE 0
++#define SW_SHOW 5
++#endif
++LPSTR GetCommandLineA(void);
++HMODULE GetModuleHandleA(LPCSTR name);
++#define GetModuleHandle GetModuleHandleA
++
++/* Debugger primitives the kernel HAL calls. There is no Win32 debugger to ask
++   on Linux, so report none and trap -- DebugBreak is int3 on x86 anyway.
++   Reporting TRUE would send the game down its debug paths. */
++static inline int IsDebuggerPresent(void) { return 0; }
++static inline void DebugBreak(void) { __builtin_trap(); }
+ #define ERROR_FILE_EXISTS             80u
+ #define ERROR_INVALID_PARAMETER       87u
+ #define ERROR_CALL_NOT_IMPLEMENTED    120u
+@@ -402,10 +420,29 @@ VOID RtlUnwind(PVOID TargetFrame, PVOID TargetIp,
+                PEXCEPTION_RECORD ExceptionRecord, PVOID ReturnValue);
+ VOID RaiseException(DWORD code, DWORD flags, DWORD nargs, const ULONG_PTR *args);
+ 
+-/* Win32 VEH: opaque PEXCEPTION_POINTERS + AddVectoredExceptionHandler stub.
++/* Win32 VEH: AddVectoredExceptionHandler stub.
+  * On Linux the equivalent goes through sigaction(SIGSEGV/SIGFPE) +
+- * ucontext_t; for now we accept the registration and never fire. */
+-typedef void *PEXCEPTION_POINTERS;
++ * ucontext_t; for now we accept the registration and never fire.
++ *
++ * PEXCEPTION_POINTERS was an opaque void*, which is enough to REGISTER a
++ * handler but not to write one: a crash handler reads ExceptionRecord and
++ * ContextRecord, so a game's main.c does not compile against it. Give both
++ * structures shape. CONTEXT carries the x86-64 register names the host handler
++ * reports (Rip/Rsp), not the guest's 32-bit ones -- the handler is reporting
++ * where the HOST process faulted. */
++/* xbox_winnt.h already typedefs PCONTEXT as an opaque void*, so this cannot
++   reuse that name; the struct is named XR_CONTEXT and EXCEPTION_POINTERS points
++   at it directly. Register names are the x86-64 host's (Rip/Rsp): a crash
++   handler reports where the HOST process faulted, not the 32-bit guest. */
++/* ONE definition, in platform/xbox_winnt.h (included above), reused here.
++   Two layout-identical-but-distinct structs is how the NV2A hook ended up
++   taking a different pointer type from the one the VEH handler produces. */
++typedef XR_CONTEXT64 XR_CONTEXT;
++
++typedef struct _EXCEPTION_POINTERS {
++    PEXCEPTION_RECORD ExceptionRecord;
++    XR_CONTEXT       *ContextRecord;
++} EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
+ typedef LONG (*PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS info);
+ PVOID AddVectoredExceptionHandler(ULONG FirstHandler, PVECTORED_EXCEPTION_HANDLER Handler);
+ ULONG RemoveVectoredExceptionHandler(PVOID Handle);
+diff --git a/src/platform/xbox_winnt.h b/src/platform/xbox_winnt.h
+index b760880..e9f12c0 100644
+--- a/src/platform/xbox_winnt.h
++++ b/src/platform/xbox_winnt.h
+@@ -137,9 +137,19 @@ typedef void             **PHANDLE, **LPHANDLE;
+ typedef void              *HMODULE, *HINSTANCE, *HKEY, *HLOCAL, *HGLOBAL;
+ typedef void              *HWND, *HDC, *HBITMAP, *HICON, *HMENU, *HCURSOR;
+ 
+-/* PCONTEXT: Windows VEH register state. On Linux the equivalent is
+- * ucontext_t*; we leave it opaque here since Linux callers don't use it. */
+-typedef void              *PCONTEXT;
++/* PCONTEXT: VEH register state.
++ *
++ * This used to be an opaque void* on Linux "since Linux callers don't use
++ * it". They do: the NV2A MMIO hook decodes the faulting instruction out of
++ * Rip and reads/writes the general registers, which is the only way a title
++ * that drives the GPU directly can render at all. It is now the same layout
++ * on both platforms, filled from ucontext_t on Linux. */
++typedef struct _XR_CONTEXT64 {
++    unsigned long long Rip, Rsp, Rbp, Rax, Rbx, Rcx, Rdx, Rsi, Rdi;
++    unsigned long long R8, R9, R10, R11, R12, R13, R14, R15;
++    unsigned int       EFlags;
++} XR_CONTEXT64;
++typedef XR_CONTEXT64 *PCONTEXT;
+ 
+ /* Xbox/UTF-16 wide char is 16-bit, unlike the 32-bit Linux wchar_t. */
+ typedef uint16_t           WCHAR, *PWCHAR, *LPWSTR, *PWSTR;

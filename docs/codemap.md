@@ -53,9 +53,10 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Branch conditions | `patches/xboxrecomp/0003-*.patch` | **verified** — deferred `cmp` operands snapshotted at the flag setter; 216 wrong-direction branches fixed (C050) |
 | Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |
 | Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection; silently-empty stubs 7998 → 348 (C048) |
-| NV2A GPU emulation | `vendor/xboxrecomp/src/nv2a`, wired in `xbox/src/main.c` | **partial** — the VEH routes 0xFD000000 register and VRAM faults to xemu's NV2A instead of passing them through, and reports any instruction it cannot decode. Never exercised yet: the title stops before its first GPU write (C053) |
+| Vectored exception handling on Linux | `patches/xboxrecomp/0004-*.patch` | **verified** — `sigaction`-based; was a stub returning NULL, so every handler was discarded. The crash reporter now fires (C055) |
+| NV2A GPU emulation | `vendor/xboxrecomp/src/nv2a`, wired in `xbox/src/main.c` | **partial** — initialises (VRAM 64 MB, RAMIN 1 MB, MMIO hook) and the VEH routes GPU faults to it; the decoder is no longer `#if _WIN32`. Not yet exercised: the title dies in the CRT heap first (C053, C055) |
 | Host D3D8 → OpenGL | `vendor/xboxrecomp/src/d3d` | reference — the NV2A PGRAPH translator emits onto this device; not called directly by game code |
-| Xbox game execution | — | **partial** — 25,777 functions, 469 kernel calls, 4067+ indirect calls with **zero unresolved**; faults in the CRT heap unlinking a block whose header is a .text address. Nothing renders |
+| Xbox game execution | — | **partial** — 25,777 functions, 476 kernel calls, 4077 indirect calls with **zero unresolved**; faults in the CRT heap unlinking a block whose header is a .text address, so its forward pointer is int3 padding. Nothing renders |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.
