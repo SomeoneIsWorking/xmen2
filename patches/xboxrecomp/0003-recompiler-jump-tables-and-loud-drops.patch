@@ -1,0 +1,318 @@
+diff --git a/tools/recomp/__main__.py b/tools/recomp/__main__.py
+index 2fc7a68..e629557 100644
+--- a/tools/recomp/__main__.py
++++ b/tools/recomp/__main__.py
+@@ -297,6 +297,24 @@ def main():
+             print(f"{stats['unresolved_stubs']} unresolved call targets stubbed "
+                   f"(addresses called but not detected as functions)",
+                   file=sys.stderr)
++
++        # Always printed, zero included: a translation that deleted jumps to
++        # make itself compile must not be reported the same way as one that
++        # did not.
++        dropped = stats.get("dropped_gotos", [])
++        if dropped:
++            by_func = {}
++            for func_start, label in dropped:
++                by_func.setdefault(func_start, []).append(label)
++            print(f"{len(dropped)} JUMPS DELETED across {len(by_func)} functions "
++                  f"-- target label absent, control flow silently lost:",
++                  file=sys.stderr)
++            for func_start in sorted(by_func):
++                print(f"  sub_{func_start:08X}: {', '.join(sorted(set(by_func[func_start])))}",
++                      file=sys.stderr)
++        else:
++            print("0 jumps deleted (every goto resolved to a label in its function)",
++                  file=sys.stderr)
+         for f_path in stats.get("files", []):
+             print(f"  {f_path}", file=sys.stderr)
+     else:
+diff --git a/tools/recomp/disasm.py b/tools/recomp/disasm.py
+index 86c4364..a299392 100644
+--- a/tools/recomp/disasm.py
++++ b/tools/recomp/disasm.py
+@@ -136,6 +136,33 @@ def _parse_operand(cs, cs_op, insn_obj):
+         return Operand(type="reg", reg=_reg_names.get(cs_op.reg, f"r{cs_op.reg}"))
+ 
+ 
++def _code_spans(start_va, end_va, data_ranges):
++    """[start_va, end_va) minus the data_ranges, as ordered code spans."""
++    if not data_ranges:
++        return [(start_va, end_va)]
++
++    holes = []
++    for lo, hi in sorted(data_ranges):
++        lo = max(lo, start_va)
++        hi = min(hi, end_va)
++        if hi <= lo:
++            continue
++        if holes and lo <= holes[-1][1]:
++            holes[-1] = (holes[-1][0], max(holes[-1][1], hi))
++        else:
++            holes.append((lo, hi))
++
++    spans = []
++    cur = start_va
++    for lo, hi in holes:
++        if lo > cur:
++            spans.append((cur, lo))
++        cur = max(cur, hi)
++    if cur < end_va:
++        spans.append((cur, end_va))
++    return spans
++
++
+ class Disassembler:
+     """Capstone-based x86-32 disassembler."""
+ 
+@@ -144,17 +171,36 @@ class Disassembler:
+         self._cs.detail = True
+         _init_reg_names(self._cs)
+ 
+-    def disassemble_function(self, raw_bytes, start_va, end_va):
++    def disassemble_function(self, raw_bytes, start_va, end_va, data_ranges=None):
+         """
+         Disassemble bytes for a single function.
+         Returns list of Instruction objects.
++
++        data_ranges: iterable of (lo_va, hi_va) byte spans inside the function
++        that are DATA, not code -- MSVC embeds a switch's jump table in .text
++        between code chunks. A linear sweep that decodes those bytes as
++        instructions desynchronises and never produces an instruction at the
++        switch targets that follow, so those targets get no basic block, no
++        label, and their `goto`s are dropped. Decoding resumes at the end of
++        each span.
+         """
+         size = end_va - start_va
+         if size <= 0 or size > len(raw_bytes):
+             return []
+ 
++        spans = _code_spans(start_va, end_va, data_ranges)
++
++        instructions = []
++        for span_lo, span_hi in spans:
++            off = span_lo - start_va
++            n = span_hi - span_lo
++            instructions.extend(
++                self._decode_span(raw_bytes[off:off + n], span_lo))
++        return instructions
++
++    def _decode_span(self, raw_bytes, start_va):
+         instructions = []
+-        for cs_insn in self._cs.disasm(raw_bytes[:size], start_va):
++        for cs_insn in self._cs.disasm(raw_bytes, start_va):
+             insn = Instruction(
+                 address=cs_insn.address,
+                 size=cs_insn.size,
+diff --git a/tools/recomp/translator.py b/tools/recomp/translator.py
+index a5890d7..019d891 100644
+--- a/tools/recomp/translator.py
++++ b/tools/recomp/translator.py
+@@ -111,6 +111,10 @@ class FunctionTranslator:
+         self.classification_db = classification_db or {}
+         self.abi_db = abi_db or {}
+         self.disasm = Disassembler()
++        # (func_start, label) for every jump this translator had to delete to
++        # make the C compile. Reported at the end of a batch -- a run that
++        # deletes control flow must never look like a clean one.
++        self.dropped_gotos = []
+         self.lifter = Lifter(func_db=func_db, label_db=label_db, abi_db=abi_db,
+                              xbe_data=xbe_data, seh_prolog=seh_prolog,
+                              seh_epilog=seh_epilog)
+@@ -171,14 +175,46 @@ class FunctionTranslator:
+         if not instructions:
+             return None
+ 
+-        # Collect switch table targets as extra block leaders
+-        switch_leaders = set()
+-        for insn in instructions:
+-            if insn.mnemonic == "jmp" and not insn.jump_target and insn.operands:
++        # Switch tables: MSVC stores them in .text inside the function body, so
++        # the linear sweep above decoded table bytes as instructions and lost
++        # sync with the real code that follows. Find the tables, then decode
++        # again with those spans excluded -- otherwise the switch targets have
++        # no instruction, hence no basic block, no label, and their `goto`s get
++        # deleted by the missing-label pass below. (That is how memcpy,
++        # sub_003D5890, silently became a no-op for unaligned sizes.)
++        def _switch_tables(insns):
++            tables, leaders = [], set()
++            for insn in insns:
++                if insn.mnemonic != "jmp" or insn.jump_target or not insn.operands:
++                    continue
+                 targets = self.lifter._analyze_switch_table(insn.operands)
++                if not targets:
++                    continue
++                table_va = insn.operands[0].mem_disp
++                if table_va and start <= table_va < end:
++                    tables.append((table_va, table_va + 4 * len(targets)))
+                 for t in targets:
+                     if start <= t < end:
+-                        switch_leaders.add(t)
++                        leaders.add(t)
++            return tables, leaders
++
++        tables, switch_leaders = _switch_tables(instructions)
++        if tables:
++            instructions = self.disasm.disassemble_function(
++                raw_bytes, start, end, data_ranges=tables)
++            # The re-decode can expose further switches that the desynced
++            # first pass never reached. One extra round settles the common
++            # case; anything still hidden shows up as a dropped goto below,
++            # which is now reported rather than silently swallowed.
++            more_tables, more_leaders = _switch_tables(instructions)
++            switch_leaders |= more_leaders
++            if set(more_tables) - set(tables):
++                tables = sorted(set(tables) | set(more_tables))
++                instructions = self.disasm.disassemble_function(
++                    raw_bytes, start, end, data_ranges=tables)
++                _, switch_leaders = _switch_tables(instructions)
++            if not instructions:
++                return None
+ 
+         # Build basic blocks
+         blocks = self.disasm.build_basic_blocks(
+@@ -390,9 +426,14 @@ class FunctionTranslator:
+                 goto_lines.append((idx, goto_match.group(1)))
+         for idx, target in goto_lines:
+             if target not in defined_labels:
++                # Deleting a jump to make the C compile is a silent correctness
++                # hole, not a formatting fix: the function keeps running down a
++                # path the original never takes. Count it so the run reports it.
++                self.dropped_gotos.append((start, target))
+                 lines[idx] = lines[idx].replace(
+                     f"goto {target};",
+-                    f"(void)0; /* goto {target} - dead code, label not in function */")
++                    f"(void)0; /* DROPPED JUMP to {target}: no such label in this"
++                    f" function -- control flow deleted, see translation summary */")
+ 
+         # Ensure labels at end of function have a statement after them.
+         # In C, a label must be followed by a statement; a comment alone is not
+@@ -730,6 +771,7 @@ class BatchTranslator:
+             if name not in defined
+         }
+         stats["unresolved_stubs"] = len(unresolved)
++        stats["dropped_gotos"] = list(self.translator.dropped_gotos)
+ 
+         # Generate header with all forward declarations
+         header_path = os.path.join(output_dir, header_name)
+diff --git a/tools/validate_ordinals.py b/tools/validate_ordinals.py
+index 04601e8..ab9f2e2 100644
+--- a/tools/validate_ordinals.py
++++ b/tools/validate_ordinals.py
+@@ -24,6 +24,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ PARSER = os.path.join(ROOT, 'tools/xbe_parser/xbe_parser.py')
+ THUNKS = os.path.join(ROOT, 'src/kernel/kernel_thunks.c')
+ DOCS = os.path.join(ROOT, 'docs/formats/kernel-exports.md')
++BRIDGE = os.path.join(ROOT, 'src/kernel/kernel_bridge.c')
++
++# Ordinals whose bridge deliberately shares one implementation with a
++# neighbour, so the name will not match. Each needs a reason.
++BRIDGE_ALIASES = {
++    150: ('KeSetTimer', 'KeSetTimerEx shares the KeSetTimer no-op bridge'),
++}
+ 
+ 
+ def canonical():
+@@ -49,6 +56,47 @@ def doc_rows():
+     return out
+ 
+ 
++def bridge_cases():
++    """ordinal -> bridge function name, from kernel_bridge.c's dispatch."""
++    src = open(BRIDGE, encoding='utf-8', errors='replace').read()
++    return {int(o): fn for o, fn in
++            re.findall(r'case\s+(\d+):\s*return\s+bridge_(\w+);', src)}
++
++
++def argsize_cases():
++    """ordinal -> (bytes, name) from stdcall_args_for_ordinal's comments.
++
++    The stack cleanup size is per-FUNCTION, so a row labelled with the wrong
++    function is a wrong `ret N`: the simulated ESP drifts by the difference
++    and the caller resumes on a corrupted stack, far from the call.
++    """
++    src = open(BRIDGE, encoding='utf-8', errors='replace').read()
++    i = src.find('stdcall_args_for_ordinal')
++    if i < 0:
++        return {}
++    body = src[i:]
++    body = body[:body.find('\n}')]
++    return {int(o): (int(n), name) for o, n, name in
++            re.findall(r'case\s+(\d+):\s*return\s*(\d+);\s*/\*\s*(\w+)', body)}
++
++
++def dataexport_cases():
++    """ordinal -> name, from kernel_data_va_for_ordinal's trailing comments.
++
++    A shifted row here is worse than a wrong function: the game reads the
++    thunk and dereferences it, so a FUNCTION ordinal handed a data VA (or a
++    data ordinal handed the wrong struct) corrupts silently.
++    """
++    src = open(BRIDGE, encoding='utf-8', errors='replace').read()
++    i = src.find('kernel_data_va_for_ordinal')
++    if i < 0:
++        return {}
++    body = src[i:]
++    body = body[:body.find('\n}')]
++    return {int(o): name for o, name in
++            re.findall(r'case\s+(\d+):\s*return[^;]+;\s*/\*\s*(\w+)', body)}
++
++
+ def main():
+     table = canonical()
+     errors = []
+@@ -72,14 +120,53 @@ def main():
+         if want and name != want:
+             errors.append(f"docs:   ordinal {ordinal} is {want}, but documented as {name}")
+ 
++    for ordinal, fn in sorted(bridge_cases().items()):
++        want = table.get(ordinal)
++        alias = BRIDGE_ALIASES.get(ordinal)
++        if alias and alias[0] == fn:
++            continue
++        if want is None:
++            errors.append(f"bridge: ordinal {ordinal} (bridge_{fn}) is not in the export table")
++        elif fn != want:
++            belongs = next((o for o, n in table.items() if n == fn), None)
++            errors.append(
++                f"bridge: ordinal {ordinal} is {want}, but dispatches bridge_{fn}"
++                + (f" (which belongs at {belongs})" if belongs else ""))
++
++    for ordinal, (nbytes, name) in sorted(argsize_cases().items()):
++        want = table.get(ordinal)
++        if name.startswith('Unknown_'):
++            continue
++        if want is None:
++            errors.append(f"argsz:  ordinal {ordinal} ({name}) is not in the export table")
++        elif name != want:
++            belongs = next((o for o, n in table.items() if n == name), None)
++            errors.append(
++                f"argsz:  ordinal {ordinal} is {want}, but sized as {name} ({nbytes} bytes)"
++                + (f" (which belongs at {belongs})" if belongs else ""))
++
++    for ordinal, name in sorted(dataexport_cases().items()):
++        want = table.get(ordinal)
++        if want is None:
++            errors.append(f"kdata:  ordinal {ordinal} ({name}) is not in the export table")
++        elif name != want:
++            belongs = next((o for o, n in table.items() if n == name), None)
++            errors.append(
++                f"kdata:  ordinal {ordinal} is {want}, but returns data for {name}"
++                + (f" (which belongs at {belongs})" if belongs else ""))
++
+     if errors:
+         print(f"FAIL: {len(errors)} ordinal mismatch(es)\n")
+         for e in errors:
+             print("  " + e)
+         return 1
+ 
+-    print(f"OK: {len(thunk_cases())} thunk cases and {len(doc_rows())} doc rows "
++    print(f"OK: {len(thunk_cases())} thunk cases, {len(doc_rows())} doc rows, "
++          f"{len(bridge_cases())} bridge dispatches, {len(argsize_cases())} "
++          f"arg-size rows and {len(dataexport_cases())} data-export rows "
+           f"agree with the {len(table)}-entry export table")
++    print("  Not checked: whether each bridge BODY implements the semantics of "
++          "the name it carries -- only that the names line up.")
+     return 0
+ 
+ 

@@ -217,7 +217,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: xb-lift
 - evidence: C039/C040/C041; gdb backtrace shows kernel calls originating in sub_00225995 via sub_0022286B; 16 kernel calls incl. NtOpenFile/NtQueryVolumeInformationFile/MmAllocateContiguousMemory
 - where: 
-- gap: The main thread still bails: it reaches HalReturnToFirmware (ordinal 49, the Xbox reboot-to-dashboard call) via sub_002269A9 -> sub_00220021 -> sub_00226039 -> sub_00220144. Nothing renders; no window. Why that path is taken is the open question.
+- gap: The main thread runs the CRT heap create, mounts and validates the HDD cache partition, and creates a symbolic link -- then still reboots (HalReturnToFirmware). Root cause is now named and measured: xb-bounds. Nothing renders.
 - notes: 
 
 ### xb-discovery — Runtime discovery loop for statically-invisible functions
@@ -233,6 +233,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: xb-run
 - evidence: C042/C043; validate_ordinals.py now covers the bridge dispatch and stdcall arg-size tables and reports OK
 - where: 
-- gap: Names line up; SEMANTICS are unaudited. Bodies were written against the shifted numbering, so a body may still implement the wrong function under a correct name. ExQueryNonVolatileSetting (24) and HalReturnToFirmware (49) have no bridge at all and return 0.
+- gap: Names validated across five tables (C043/C044). Bodies still unaudited. Volume geometry corrected to FATX 16 KB clusters (C046); ExQueryNonVolatileSetting (24) still has no bridge.
+- notes: 
+
+### xb-bounds — OPEN: function boundaries under-sized, so 6288 function tails are empty stubs
+- status: hack
+- deps: xb-lift
+- evidence: C047
+- where: 
+- gap: 7995 of 7998 stubbed addresses are in the hole after a detected function's end. The tail holds the __SEH_epilog that restores ebx/esi/edi/esp/ebp, so an affected function returns with callee-saved registers clobbered -- measured on sub_00223DBD. Fix belongs in the detector: extend a function's end over jump targets that fall before the next detected function.
 - notes: 
 
