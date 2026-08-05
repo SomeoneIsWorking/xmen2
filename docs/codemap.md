@@ -52,6 +52,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Runtime discovery loop, automated | `tools/xbox_discover.sh` | **verified** — run → seed → re-lift → repeat; stops on convergence, on a repeat, or on an out-of-image target, and says which |
 | Register model | `xbox/src/recomp_types.h` | **verified** — every register global including ebp; the g_seh_ebp bridge is gone (C051) |
 | Branch conditions | `patches/xboxrecomp/0003-*.patch` | **verified** — operands snapshotted at the flag setter (C050); flag state propagated over the CFG, not just fall-through, killing always-false branches (C059) |
+| Vendor patch reproduction check | `tools/check_patches.sh` | **verified** — applies the patches to the pinned upstream commit and diffs against `vendor/`; caught patch 0003 missing six files. Fails loudly when the clone is pristine (nothing verified) |
 | Recompiler test suite | `vendor/xboxrecomp/tools/recomp/test_*.py` | **verified** — I010; 15 tests in ~1s, real-binary regressions skip loudly when the XBE is absent; `tools/xbox_relift.sh` refuses to lift if they fail |
 | Callee-saved + stack-bounds checks | `xbox/src/recomp_manual.c` | **verified** — I011; every indirect call checked, clean case stated; found the ordinal-217 defect (C060) |
 | Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |

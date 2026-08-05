@@ -20,5 +20,15 @@ readability:
 | `0004-linux-veh-and-nv2a` | `src/platform/`, `src/nv2a/` | `AddVectoredExceptionHandler` implemented on `sigaction` (it returned NULL); NV2A MMIO decoder no longer `#if _WIN32`; one shared `CONTEXT` with R8–R15 |
 | `0005-placed-virtual-reservations` | `src/kernel/xbox_memory_layout.{c,h}` | `xbox_HeapReserveAt` — a reservation that NAMES its address comes back at that address or not at all (C070) |
 
-Verify a patch still applies cleanly rather than assuming:
-`git apply --check <patch>` exits non-zero if the toolkit moved underneath it.
+Verify that the patches REPRODUCE the vendor tree rather than assuming:
+
+```sh
+tools/check_patches.sh      # exits non-zero on missing, extra or differing files
+```
+
+It extracts the pinned upstream commit, applies these patches, and diffs the
+result against `vendor/xboxrecomp`. Run it before committing a vendor change --
+on its first run it found that `0003` was missing six files, so a fresh clone
+plus patches produced a different recompiler from the one every result came
+from. `git apply --check <patch>` only says a patch still applies; it cannot
+see a change that never reached a patch at all.
