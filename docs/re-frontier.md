@@ -142,7 +142,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-imports
 - evidence: C080; C020; ALL 521 translatable functions recompiled and the game renders (scratch/screenshots/all.png, 2307 colours, zero fault blocks)
 - where: 
-- gap: The blocker was NOT which functions to recompile -- it was the entry path (C080): the runtime kept its own state below the guest stack pointer, so the guest and every host callee overwrote it, and any recompiled function that ran a host call died. With a private runtime stack the FULL translatable set runs. What is left is coverage and faithfulness, not survival: 357 exported entry points are still untranslated and therefore still forwarded, and the recompiled bodies that DO run are few (17 entries over 9 entry points in a 30s intro run) -- so most of them remain unexercised rather than verified.
+- gap: The blocker was NOT which functions to recompile -- it was the entry path (C080): the runtime kept its own state below the guest stack pointer, so the guest and every host callee overwrote it, and any recompiled function that ran a host call died. With a private runtime stack the FULL translatable set runs. What is left is coverage and faithfulness, not survival: 150 of the 748 exported names are still forwarded (514 shims cover the other 598), and the recompiled bodies that DO run are few (17 entries over 9 entry points in a 30s intro run) -- so most of them remain unexercised rather than verified.
 - notes: 
 
 ### rc-overrides — Native overrides replacing recompiled functions, A/B toggleable

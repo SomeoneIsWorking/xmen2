@@ -37,6 +37,7 @@ file) but it is not the shortest road to a playable port. Status words mean:
 | Entry/exit watch on recompiled entry points | `src/x86watch.c` | **verified** — I019; `X2_WATCH=0x…`, both directions self-tested in the shipping DLL. Writes to a FILE: the game is a GUI-subsystem process with no stderr, and the stderr version was silently empty. Also reports where the runtime's C frame sits relative to `guest_esp` (`[STACK]`), which is what caught C080 |
 | In-process crash reporter | `src/x86fault.c` | **verified** — I020; names the module a fault EIP falls in, annotates stack slots with the call site that pushed them, and dumps the last 64 recompiled/host boundary crossings. Exists because winedbg under `wine explorer /desktop=` produces no output at all |
 | Wine oracle, headless, muted, multi-sample | `tools/run_shim.sh` | **verified** — I007 (supersedes distrusted I002) |
+| Play a build on a real screen, with sound | `run.sh` | **verified** — `./run.sh` plays the ALL build, `./run.sh stock` the untouched install as a control. The looking counterpart to `tools/run_shim.sh`, which is headless and for measuring |
 | DLL drop-in staging | `tools/build_shim.sh` | **partial** — proxy and trace modes; recomp staged by hand |
 | Boundary call tracer | `tools/gen_trace.py` | **verified** — I004; "never called" summary still unreachable (harness SIGKILLs) |
 
@@ -44,7 +45,7 @@ file) but it is not the shortest road to a playable port. Status words mean:
 
 | module | status |
 |---|---|
-| `libIGDisplay.dll` | **partial** — ALL 521 translatable functions recompiled and the game renders (C080, issue #9 resolved). 357 exported entry points remain untranslated and forwarded. Survival is no longer the question; coverage is: only 9 distinct recompiled entry points are actually entered in a 30-second intro run, so most bodies are unexercised rather than verified |
+| `libIGDisplay.dll` | **partial** — ALL 521 translatable functions recompiled and the game renders (C080, issue #9 resolved). 514 export shims cover 598 of the 748 exported names; 150 are still forwarded. Survival is no longer the question; coverage is: only 9 distinct recompiled entry points are actually entered in a 30-second intro run, so most bodies are unexercised rather than verified |
 | `XMen2.exe` | **untouched** — 11,106 functions, 643,647 instructions, the eventual target |
 | other 15 `libIG*.dll` | **untouched** |
 
