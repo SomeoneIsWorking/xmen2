@@ -1006,38 +1006,43 @@ void __wrap_sub_0026B390(void)
 {
     uint32_t self    = g_ecx;
     uint32_t name_va = MEM32(g_esp + 4);
-    uint32_t idx_va  = MEM32(g_esp + 12);
+    uint32_t flag_va = MEM32(g_esp + 8);    /* out: caller inits it to 0 */
+    uint32_t idx_va  = MEM32(g_esp + 12);   /* out: index */
     uint32_t count   = self ? MEM32(self + 4) : 0;
 
     fnd_calls++;
     __real_sub_0026B390();
 
     {
-        uint32_t idx = idx_va ? MEM32(idx_va) : 0xFFFFFFFFu;
+        uint32_t idx  = idx_va ? MEM32(idx_va) : 0xFFFFFFFFu;
+        uint32_t flag = flag_va ? MEM32(flag_va) : 0;
         char name[64];
 
-        /* idx == count is the NORMAL answer for an insert: "not present,
-           append at the end". 821 of 826 calls on this run were that, so a
-           bare "MISS" label here read as 826 failures when almost all of them
-           were healthy -- the discriminator fired on the wrong class. Only the
-           REMOVE path turns a no-match into the underflowing shift, and the
-           remove is one caller among 22. Report the shape, not a verdict. */
+        /* No verdict here. Twice now a verdict on this line has been wrong:
+           first "MISS" for every idx == count, which is the normal
+           append-here answer; then "hit" for every idx < count, which is just
+           as often a sorted INSERTION POINT -- "_refCount" lands at index 0 of
+           a table holding "igObject" because '_' sorts before 'i', and nothing
+           was found. This is a binary search, so the index alone cannot say
+           whether the key was there. Print the numbers and let the reader
+           decide; idx == count is still worth flagging because that is the one
+           shape the remove path turns into a ~4GB memcpy. */
         if (idx >= count) {
             fnd_miss++;
             ls_guest_str(name_va, name, sizeof name);
-            fprintf(stderr, "[LISTSCAN] find NO-MATCH #%llu (normal for an"
-                            " insert; fatal only on the remove path):"
-                            " this=0x%08X count=%u"
-                            " idx=%u name@0x%08X=\"%s\" eax=0x%08X"
-                            " -- a remove here would shift ((count-1)-idx)*4"
-                            " = 0x%08X bytes\n",
-                    (unsigned long long)fnd_miss, self, count, idx, name_va, name,
-                    g_eax, (uint32_t)(((count - 1) - idx) * 4));
+            fprintf(stderr, "[LISTSCAN] find #%llu idx==count: this=0x%08X"
+                            " count=%u idx=%u flag=%u eax=0x%08X name=\"%s\""
+                            " -- a remove here would shift"
+                            " ((count-1)-idx)*4 = 0x%08X bytes\n",
+                    (unsigned long long)fnd_calls, self, count, idx, flag,
+                    g_eax, name, (uint32_t)(((count - 1) - idx) * 4));
             fflush(stderr);
         } else if (fnd_calls <= 5) {
             ls_guest_str(name_va, name, sizeof name);
-            fprintf(stderr, "[LISTSCAN] find hit  #%llu: count=%u idx=%u name=\"%s\"\n",
-                    (unsigned long long)fnd_calls, count, idx, name);
+            fprintf(stderr, "[LISTSCAN] find #%llu idx<count: count=%u idx=%u"
+                            " flag=%u eax=0x%08X name=\"%s\" (insertion point"
+                            " or match -- the index alone does not say which)\n",
+                    (unsigned long long)fnd_calls, count, idx, flag, g_eax, name);
             fflush(stderr);
         }
     }
@@ -1050,10 +1055,9 @@ void listfind_report(void)
                         " 0 calls. Not evidence of anything -- check the link"
                         " line and issue #4 before reading this as a negative.\n");
     } else {
-        fprintf(stderr, "[LISTSCAN] %llu find calls, %llu returned no match"
-                        " (idx == count, the normal append-here answer -- NOT"
-                        " an error count; only a remove on one of these"
-                        " underflows)\n",
+        fprintf(stderr, "[LISTSCAN] %llu find calls, %llu returned idx =="
+                        " count (the append-at-the-end answer -- NOT an error"
+                        " count; only a remove on one of these underflows)\n",
                 (unsigned long long)fnd_calls, (unsigned long long)fnd_miss);
     }
     fflush(stderr);
@@ -1082,13 +1086,19 @@ void __wrap_sub_00275920(void)
     uint32_t self  = g_ecx;                       /* __thiscall this */
     uint32_t count = self ? MEM32(self + 4) : 0;
 
-    rm_calls++;
-    if (count == 0) {
-        rm_underflow++;
-        fprintf(stderr, "[LISTSCAN] remove #%llu on an EMPTY list this=0x%08X:"
-                        " count-1 underflows and the tail-shift gets a ~4GB"
-                        " length\n",
-                (unsigned long long)rm_calls, self);
+    {
+        /* Only a couple of removes happen on the boot path, so print every one
+           rather than sampling: the interesting call is the last one, and a
+           cap would drop exactly that. The key is the string at item+8, the
+           same one the find looks up. */
+        uint32_t item = MEM32(g_esp + 4);
+        char name[64];
+        rm_calls++;
+        ls_guest_str(item ? item + 8 : 0, name, sizeof name);
+        fprintf(stderr, "[LISTSCAN] remove #%llu this=0x%08X count=%u"
+                        " item=0x%08X name=\"%s\"\n",
+                (unsigned long long)rm_calls, self, count, item, name);
+        if (count == 0) rm_underflow++;
         fflush(stderr);
     }
 

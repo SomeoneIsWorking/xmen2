@@ -162,12 +162,12 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### rc-defect-listscan — OPEN: recompiled igTObjectList find/removeAllByValue fault where the original does not
-- status: todo
+- status: re-verified
 - deps: rc-decode
-- evidence: C074; scratch/logs/xbox_run_final.log; xbox/src/recomp_manual.c __wrap_sub_003D5890 + __wrap_sub_0026B390
+- evidence: C074; C075; issue #5; scratch/logs/xbox_run_cf.log (0 implausible memcpy, run continues past the old blocker)
 - where: 
-- gap: ROOT-CAUSED to an upstream state divergence, not a translation bug (C074). The original x86 at 0x0027595B computes ((count-1) - idx) << 2 and calls memcpy UNCONDITIONALLY, ignoring the find result -- verified instruction for instruction against tools/disasm/output/asm/text.asm -- so the real binary underflows identically when idx == count. Measured on the run: memcpy #413 dst=0x029021B4 src=dst+4 size=0xFFFFFFFC, after find #821 name="DefaultFileName" count=409 idx=409 on the table at 0x02901B30. NOTE for whoever picks this up: idx == count is the NORMAL append-here answer and 821 of 826 finds return it; only the remove path turns it fatal. Next: find which insert of that name never happened, i.e. who populates the table at 0x02901B30 and what our run skipped.
-- notes: 
+- gap: 
+- notes: CLOSED 2026-08-05. Root cause was not this list at all: the recompiler never set the carry flag, so MSVC's sbb-sign strcmp idiom always answered greater and the name-table binary search could not find keys that were present (C075, issue #5). With CF materialised the ~4GB tail-shift memcpy is gone from the boot -- 0 implausible copies where there was reliably 1 -- and the run proceeds past it into new code. The list remove and its caller were faithful all along (C074).
 
 ### rc-modules — Recompiler generalises across modules
 - status: re-partial
@@ -190,7 +190,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe-run
 - evidence: scratch/logs/xbox_discover_run_2.log; xbox/seeds.json (1320 seeds); I013
 - where: 
-- gap: The runtime-discovery loop reached its FIXED POINT on 2026-08-05: 66264 indirect calls, 0 unresolved, 0 distinct missing targets (scratch/logs/xbox_discover_run_2.log; the tally really printed, so this is not an absent report read as a zero). 1320 seeds. STILL DEBT, for two reasons: the fallback code path is merely unused, not removed; and the run only reaches an access violation at Xbox VA 0x02902194, so game code past that point has never executed and may yet name targets the static detector cannot see.
+- gap: The runtime-discovery loop reached a fixed point on the OLD code path (66271 indirect calls, 0 unresolved). The carry-flag fix (C075) changed the path the boot takes, and the run now stops at a NEW unresolved target, 0x003D5B54 -- expected, and exactly what the loop is for. Still DEBT: the fallback path is unused rather than removed, and code past the current stopping point has never executed.
 - notes: 
 
 ### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage
