@@ -49,6 +49,45 @@ static inline void __writegsdword(unsigned long o, uint32_t v)
     if (!g_gsbase) x86_seg_unset("GS");
     *(volatile uint32_t *)(uintptr_t)(g_gsbase + (uint32_t)o) = v;
 }
+
+/*
+ * CPUID and RDTSC, which the MSVC CRT uses for feature detection and timing.
+ *
+ * On an x86-64 host the honest answer is the host's own: the recompiled code
+ * IS running on this CPU, so reporting its features is not a fake. On a
+ * non-x86 host there is no answer to give, and inventing a feature word would
+ * make the CRT take a code path the machine cannot execute -- so it stops
+ * instead, which is the failure this project would rather have.
+ */
+#if defined(__i386__) || defined(__x86_64__)
+/* Written out rather than taken from <cpuid.h>: glibc defines __cpuid there as
+   a five-argument macro, which collides with the MSVC-shaped __cpuid(int[4],
+   int) the emitted code calls. */
+static inline void __cpuid(int regs[4], int leaf)
+{
+    __asm__ __volatile__("cpuid"
+                         : "=a"(regs[0]), "=b"(regs[1]),
+                           "=c"(regs[2]), "=d"(regs[3])
+                         : "a"(leaf), "c"(0));
+}
+static inline uint64_t __rdtsc(void)
+{
+    uint32_t lo, hi;
+    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
+#else
+void x86_no_host_cpuid(const char *what);
+static inline void __cpuid(int regs[4], int leaf)
+{
+    (void)regs; (void)leaf; x86_no_host_cpuid("CPUID");
+}
+static inline uint64_t __rdtsc(void)
+{
+    x86_no_host_cpuid("RDTSC");
+    return 0;
+}
+#endif
 #endif
 
 enum {
@@ -77,15 +116,26 @@ typedef struct CPU {
    own image are emitted relative to this, because the DLL is relocated inside
    the game (observed at 0x001C0000 rather than its preferred 0x10000000) and a
    hardcoded address would then read unrelated, still-mapped memory. */
+/* Each recompiled module resolves its own absolute references against its own
+   base: they are all linked for 0x10000000 and cannot all be there. A module's
+   generated .c defines X86_IMGBASE before including this; anything that does
+   not (the hosted single-module DLL build) keeps the plain global. */
 extern uint32_t g_imgbase;
+#ifndef X86_IMGBASE
+#define X86_IMGBASE g_imgbase
+#endif
 extern uint32_t g_image_lo, g_image_hi;   /* guest image bounds; outside = host */
 /* Hybrid execution: run ORIGINAL machine code where no recompiled body exists.
    Opt-in, and every distinct fallback address is reported -- a recompilation
    that quietly runs the original is not a recompilation. */
 extern int x86_allow_fallback;
 void x86_note_fallback(uint32_t target);
+/* An import with no native implementation. Names it and stops -- there is
+   nothing honest to return. */
+void x86_missing_import(const char *mod, const char *sym);
+void x86_untranslated(uint32_t ep, const char *name, const char *reason);
 void x86_fallback_report(void);
-#define G_IMGBASE (g_imgbase)
+#define G_IMGBASE (X86_IMGBASE)
 
 /* ---- memory: guest address == host address (see header comment) ---- */
 /* FS/GS-relative access. Not modelled: this code runs as a genuine 32-bit PE,

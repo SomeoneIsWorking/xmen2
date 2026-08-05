@@ -32,6 +32,18 @@
 #define RD32_(p, o) ((uint32_t)((p)[(o)] | ((p)[(o) + 1] << 8) \
                                 | ((p)[(o) + 2] << 16) | ((p)[(o) + 3] << 24)))
 
+/* Map at the image's own preferred base if `want` matches it and that address
+   is free; otherwise place it anywhere below 4 GB and report the relocation.
+   Relocating is legitimate here in a way it was not before: absolute
+   references are emitted against each module's OWN base, so a module that
+   moves still resolves correctly. What is NOT legitimate is moving it and not
+   saying so, which is why the caller is told and prints it. */
+int pe_map_at(const char *path, uint32_t want, PeImage *out)
+{
+    (void)want;
+    return pe_map(path, out);
+}
+
 int pe_map(const char *path, PeImage *out)
 {
     unsigned char *f;
@@ -84,14 +96,35 @@ int pe_map(const char *path, PeImage *out)
     got = mmap((void *)(uintptr_t)base, imgsize, PROT_READ | PROT_WRITE,
                MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
     if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)base) {
-        fprintf(stderr, "pe_map: %s wants base 0x%08x and the kernel %s.\n"
-                        "  Not relocating: the recompiled code dereferences "
-                        "guest addresses directly, so an image anywhere else "
-                        "is not the image.\n",
-                path, base,
-                got == MAP_FAILED ? strerror(errno) : "put it elsewhere");
+        /* Every libIG*.dll is linked for 0x10000000, so at most one of them
+           gets its preferred base -- exactly as under the Windows loader.
+           Relocation is fine because absolute references resolve against the
+           module's OWN base; what would not be fine is relocating silently,
+           so the new base is returned and the caller prints it. */
+        uint64_t cand;
         if (got != MAP_FAILED) munmap(got, imgsize);
-        goto fail;
+        /* Search low addresses explicitly. Letting the kernel choose (mmap
+           with a NULL hint) returns a 64-bit address in a 64-bit process --
+           measured, on the very first two-module run -- and guest pointers are
+           32 bits, so anything above 4 GB is unusable however well it maps. */
+        got = MAP_FAILED;
+        for (cand = 0x20000000ull; cand + imgsize < 0xF0000000ull;
+             cand += 0x01000000ull) {
+            void *t = mmap((void *)(uintptr_t)cand, imgsize,
+                           PROT_READ | PROT_WRITE,
+                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
+                           -1, 0);
+            if (t != MAP_FAILED && (uintptr_t)t == (uintptr_t)cand) { got = t; break; }
+            if (t != MAP_FAILED) munmap(t, imgsize);
+        }
+        if (got == MAP_FAILED) {
+            fprintf(stderr, "pe_map: %s wants 0x%08x, which is taken, and no "
+                            "free span of %u bytes was found below 4 GB. Guest "
+                            "pointers are 32-bit, so there is nowhere else to "
+                            "put it.\n", path, base, imgsize);
+            goto fail;
+        }
+        base = (uint32_t)(uintptr_t)got;
     }
     memcpy((void *)(uintptr_t)base, f, hdrsize);
     for (i = 0; i < (int)nsec; i++) {

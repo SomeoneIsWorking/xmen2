@@ -94,15 +94,31 @@ endif()
 # target -- a missing native build that looks like a clean configure is how
 # "the native path does not build" turns into "there is no native path".
 # ---------------------------------------------------------------------------
-set(X2_RECOMP_BODIES ${CMAKE_SOURCE_DIR}/src/recomp/libIGDisplay.c)
-set(X2_RECOMP_NATIVE ${CMAKE_SOURCE_DIR}/src/recomp/libIGDisplay_native.c)
-if(EXISTS ${X2_RECOMP_BODIES} AND EXISTS ${X2_RECOMP_NATIVE})
+# Each recompiled module contributes two generated files and is optional: a
+# module that has not been exported yet simply is not linked, and x2native says
+# which ones it has at run time rather than pretending to a full set.
+set(X2_MODULES libIGDisplay libIGCore)
+set(X2_MODULE_SRCS "")
+set(X2_MODULE_HAVE "")
+foreach(m ${X2_MODULES})
+    set(_b ${CMAKE_SOURCE_DIR}/src/recomp/${m}.c)
+    set(_n ${CMAKE_SOURCE_DIR}/src/recomp/${m}_native.c)
+    if(EXISTS ${_b} AND EXISTS ${_n})
+        list(APPEND X2_MODULE_SRCS ${_b} ${_n})
+        list(APPEND X2_MODULE_HAVE ${m})
+    else()
+        message(STATUS "x2native: ${m} NOT linked -- run tools/ghidra_export.sh "
+                       "${m} then tools/recomp.py emit/native for it")
+    endif()
+endforeach()
+if(X2_MODULE_HAVE)
+    message(STATUS "x2native: linking recompiled modules: ${X2_MODULE_HAVE}")
     add_executable(x2native
         src/native/x2native.c
         src/native/pe_map.c
         src/native/win32_sdl.c
-        ${X2_RECOMP_BODIES}
-        ${X2_RECOMP_NATIVE}
+        src/native/x86rt_native.c
+        ${X2_MODULE_SRCS}
     )
     target_include_directories(x2native PRIVATE src/recomp src/native)
     target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
@@ -116,6 +132,6 @@ if(EXISTS ${X2_RECOMP_BODIES} AND EXISTS ${X2_RECOMP_NATIVE})
     set_tests_properties(native_battery PROPERTIES SKIP_RETURN_CODE 77)
 else()
     message(STATUS
-        "x2native: SKIPPED -- generated recompiler output is missing. "
+        "x2native: SKIPPED -- no module has generated output. "
         "Run tools/recomp.py emit and tools/recomp.py native (see above).")
 endif()

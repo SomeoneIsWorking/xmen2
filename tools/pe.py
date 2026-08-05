@@ -13,6 +13,8 @@ Subcommands:
   surface  <target.dll> <pe>...
                            union of symbols the given PEs import from target.dll
   proxydef <pe> <fwdname>  emit a .def forwarding every export to <fwdname>
+  iat      <pe>            address of each import thunk -> module!symbol
+                           (the recompiler needs this to resolve import calls)
 
 Every subcommand reports its denominator and exits non-zero if the input is
 missing or has no table of the requested kind, so an empty result can never be

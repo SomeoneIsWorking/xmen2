@@ -12,6 +12,8 @@ typedef struct PeImage {
 } PeImage;
 
 int  pe_map(const char *path, PeImage *out);
+/* As pe_map, naming the base the caller hoped for (reporting only). */
+int  pe_map_at(const char *path, uint32_t want, PeImage *out);
 /* A fixed low anonymous mapping (guest stack, scratch objects). Same refusal
    rule: it lands where asked or it fails. */
 int  pe_map_anon_low(uint32_t want, uint32_t size);

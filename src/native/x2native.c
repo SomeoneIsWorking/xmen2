@@ -17,6 +17,7 @@
  */
 #include "pe_map.h"
 #include "x86rt.h"
+#include "x86rt_native.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,11 +27,25 @@
 #include <SDL3/SDL.h>
 #endif
 
-int         x86_native_call(uint32_t ep, CPU *C);
-const char *x86_native_name(uint32_t ep);
-extern const int g_fn_count;
-
 uint32_t g_fsbase, g_gsbase;
+
+/* Each module's base, defined by its generated native file. The host maps the
+   images and fills these in; nothing else knows where a module went. */
+extern uint32_t g_imgbase_libIGDisplay;
+
+/* The battery talks in libIGDisplay's guest addresses, so it needs that
+   module's base to turn one into the address the dispatcher uses. */
+#define DISP(ep) (g_imgbase_libIGDisplay + ((ep) - 0x10000000u))
+
+static int x86_native_call(uint32_t ep, CPU *C)
+{
+    return x86_native_call_at(DISP(ep), C);
+}
+
+static const char *x86_native_name(uint32_t ep)
+{
+    return x86_native_name_at(DISP(ep));
+}
 
 void x86_seg_unset(const char *seg)
 {
@@ -330,37 +345,49 @@ static int run_battery(void)
 
 int main(int argc, char **argv)
 {
-    PeImage img;
-    const char *dll = NULL;
-    int window = 1, i, rc;
+    const char *dir = NULL;
+    int window = 1, i, rc, mapped = 0;
+    X86Module *m;
+    static PeImage imgs[8];
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-window") == 0) window = 0;
         else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;
-        else dll = argv[i];
+        else dir = argv[i];
     }
-    /* No path given: fall back to the install named by GAME_PC_DIR, the same
-       variable the Wine-side harness uses. If it is unset there is nothing to
-       run against, and this exits 77 -- ctest's SKIP code -- saying why. A
-       skip that announces itself, rather than a pass over an empty battery. */
-    if (!dll) {
-        const char *dir = getenv("GAME_PC_DIR");
-        static char path[4096];
-        if (!dir || !*dir) {
-            printf("SKIP x2native: GAME_PC_DIR is unset, so there is no "
-                   "libIGDisplay.dll to map. NOTHING was checked.\n");
-            return 77;
+    if (!dir) dir = getenv("GAME_PC_DIR");
+    if (!dir || !*dir) {
+        printf("SKIP x2native: no install directory given and GAME_PC_DIR is "
+               "unset, so there is nothing to map. NOTHING was checked.\n");
+        return 77;
+    }
+
+    /* Map every module that was linked in. They are all linked for 0x10000000
+       and cannot all be there, so the first one to ask gets its preferred base
+       and the rest are relocated -- which is exactly what the loader does in
+       the hosted build, and why absolute references are emitted against each
+       module's own base rather than a shared one. */
+    for (m = x86_modules(); m; m = m->next) {
+        char path[4096];
+        if (mapped == (int)(sizeof imgs / sizeof imgs[0])) {
+            fprintf(stderr, "x2native: more modules than image slots\n");
+            return 1;
         }
-        snprintf(path, sizeof path, "%s/libIGDisplay.dll", dir);
-        dll = path;
+        snprintf(path, sizeof path, "%s/%s", dir, m->name);
+        if (pe_map_at(path, m->preferred, &imgs[mapped]) != 0) return 1;
+        *m->base = imgs[mapped].base;
+        m->size = imgs[mapped].size;   /* the mapped truth, not a guess */
+        printf("mapped %-18s at 0x%08x (%u bytes, %d recompiled bodies)%s\n",
+               m->name, imgs[mapped].base, imgs[mapped].size, m->nfns,
+               imgs[mapped].base == m->preferred ? "" : "  [relocated]");
+        mapped++;
     }
-    if (pe_map(dll, &img) != 0) return 1;
-    g_imgbase = img.base;
-    g_image_lo = img.base;
-    g_image_hi = img.base + img.size;
-    printf("mapped %s at 0x%08x (%u bytes, %d sections)\n",
-           dll, img.base, img.size, img.nsections);
-    printf("function table: %d recompiled bodies linked in\n", g_fn_count);
+    if (!mapped) {
+        fprintf(stderr, "x2native: NO recompiled module is linked in -- this "
+                        "binary would check nothing\n");
+        return 1;
+    }
+    g_imgbase = g_imgbase_libIGDisplay;      /* the battery's frame of reference */
 
     if (guest_stack_init() != 0) {
         fprintf(stderr, "x2native: could not place the guest stack\n");
@@ -396,6 +423,6 @@ int main(int argc, char **argv)
 
     printf("\n");
     rc = run_battery();
-    pe_unmap(&img);
+    for (i = 0; i < mapped; i++) pe_unmap(&imgs[i]);
     return rc;
 }
