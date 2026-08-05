@@ -104,6 +104,13 @@ if(NOT WIN32)
         -Wl,--wrap=sub_00222433
         -Wl,--wrap=sub_00224B50   # RtlReAllocateHeap, ret 16
     )
+
+    # -rdynamic puts the recompiled sub_XXXXXXXX symbols in .dynsym, which is
+    # what lets the crash handler's dladdr turn a faulting RIP into the name
+    # of the guest function -- and the name carries the original Xbox VA. It
+    # costs binary size; without it every crash report says UNRESOLVED and the
+    # only way to place a fault is by hand in a debugger.
+    target_link_options(${PROJECT_NAME} PRIVATE -rdynamic)
 endif()
 
 # Include paths for generated recomp headers

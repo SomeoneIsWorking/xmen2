@@ -37,6 +37,12 @@ EXE="$BUILD/xml2_xbox_recomp"
                     echo "  The XBE is copyrighted and gitignored; provide it yourself" >&2
                     echo "  or set GAME=/path/to/extracted/disc." >&2; exit 1; }
 
+# This script cds into RUNDIR before it runs the binary, so a RELATIVE LOG=
+# would be created under the run directory -- or, more often, not created at
+# all, because its parent does not exist there and tee fails while the run
+# proceeds and its output goes nowhere. Anchor it to the invoking cwd first.
+case "$LOG" in /*) ;; *) LOG="$PWD/$LOG";; esac
+
 mkdir -p "$RUNDIR" "$(dirname "$LOG")"
 ln -sfn "$GAME" "$RUNDIR/game"
 

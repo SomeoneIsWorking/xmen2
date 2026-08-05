@@ -30,6 +30,12 @@
  *   Kernel imports: ??
  */
 
+/* dladdr (used by the crash handler to name the faulting recompiled
+   function) is a GNU extension, so this must precede every include. */
+#ifndef _WIN32
+#define _GNU_SOURCE
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -39,6 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <dlfcn.h>   /* dladdr: name the recompiled function that faulted */
 
 /* xboxrecomp runtime headers */
 #include <xbox/xboxrecomp.h>
@@ -193,15 +200,55 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
          *   fprintf(stderr, "  Game state: %u\n", state);
          */
 
-        /* Print native stack return addresses for debugging */
+        /*
+         * Name the recompiled function that faulted, and the ones that called
+         * it.
+         *
+         * This used to filter the stack for 0x140000000..0x150000000, the
+         * default image base of a Windows PE. Nothing on Linux is ever mapped
+         * there (this binary lands around 0x55...), so the loop matched
+         * nothing and the report printed a header with no rows under it --
+         * indistinguishable from "the stack was empty", and read for several
+         * runs as if there were simply nothing to show.
+         *
+         * dladdr resolves a return address to the nearest exported symbol,
+         * which for generated code is the sub_XXXXXXXX whose name carries the
+         * original Xbox VA. That is the thing worth knowing; an unresolved hex
+         * address is not. Needs -rdynamic so the symbols are in .dynsym.
+         */
         {
             uintptr_t *sp = (uintptr_t *)ep->ContextRecord->Rsp;
-            fprintf(stderr, "  Native stack (first 8 return addrs):\n");
-            for (int i = 0; i < 64 && sp[i]; i++) {
-                if (sp[i] >= 0x140000000ULL && sp[i] < 0x150000000ULL) {
-                    fprintf(stderr, "    [%d] 0x%llX\n", i, (unsigned long long)sp[i]);
+            Dl_info info;
+            int shown = 0, scanned = 0;
+
+            if (dladdr((void *)(uintptr_t)ep->ContextRecord->Rip, &info) &&
+                info.dli_sname) {
+                fprintf(stderr, "  Faulting function: %s (+0x%lX)\n",
+                        info.dli_sname,
+                        (unsigned long)((uintptr_t)ep->ContextRecord->Rip -
+                                        (uintptr_t)info.dli_saddr));
+            } else {
+                fprintf(stderr, "  Faulting function: UNRESOLVED at RIP=0x%llX"
+                        " (build without -rdynamic?)\n",
+                        (unsigned long long)ep->ContextRecord->Rip);
+            }
+
+            fprintf(stderr, "  Native call stack (nearest symbol per return address):\n");
+            for (int i = 0; i < 256; i++, scanned++) {
+                if (!sp[i]) continue;
+                if (dladdr((void *)sp[i], &info) && info.dli_sname) {
+                    /* Only code addresses resolve to a function symbol; stack
+                       garbage that happens to be a valid pointer resolves to
+                       a data symbol or not at all. */
+                    fprintf(stderr, "    [%d] %s +0x%lX\n", i, info.dli_sname,
+                            (unsigned long)(sp[i] - (uintptr_t)info.dli_saddr));
+                    if (++shown >= 24) break;
                 }
             }
+            /* A negative result states its denominator, so "no frames" cannot
+               be confused with "never looked". */
+            fprintf(stderr, "    %d frame(s) resolved from %d stack slots scanned\n",
+                    shown, scanned);
         }
         fflush(stderr);
     }
