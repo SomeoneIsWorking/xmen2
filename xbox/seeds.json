@@ -4316,9 +4316,9 @@
   },
   {
     "start": "0x00269CA0",
-    "name": "vtable_00269CA0",
-    "why": "Entry in a vtable-shaped run of >= 3 consecutive code pointers in the .rdata section, landing in an unclaimed hole. Harvested by tools/xbox_vtable_seeds.py -- nothing references it, so the detector could not find it, but the table is the evidence that it is a function.",
-    "source": "harvest"
+    "name": "icall_00269CA0",
+    "why": "Indirect-call target OBSERVED at runtime by tools/xbox_discover.sh. It was first guessed by the vtable harvest and did not land: a 20-byte jump table at 0x00269C8C desynchronises the linear sweep, so no instruction started at 0x00269CA0 and the candidate decoded to nothing. Provenance upgraded from harvest to observed so a relift that loses it fails loudly instead of calling it a harmless miss.",
+    "source": "observed"
   },
   {
     "start": "0x00269E40",
@@ -7846,5 +7846,20 @@
     "start": "0x0010C470",
     "name": "stub_hit_0010C470",
     "why": "Called directly by translated code but never detected as a function, so it was an EMPTY STUB doing nothing while the caller read back a stale eax as its return value. Found by the stub-hit reporter -- the indirect-call tally cannot see direct calls."
+  },
+  {
+    "start": "0x0029A250",
+    "name": "icall_0029A250",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 1 from the ICALL miss tally."
+  },
+  {
+    "start": "0x00297720",
+    "name": "icall_00297720",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 2 from the ICALL miss tally."
+  },
+  {
+    "start": "0x0029FA30",
+    "name": "icall_0029FA30",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 1 from the ICALL miss tally."
   }
 ]

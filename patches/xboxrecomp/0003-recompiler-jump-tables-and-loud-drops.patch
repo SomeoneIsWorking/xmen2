@@ -1,8 +1,150 @@
+diff --git a/tools/disasm/engine.py b/tools/disasm/engine.py
+index 5cce260..35f8697 100644
+--- a/tools/disasm/engine.py
++++ b/tools/disasm/engine.py
+@@ -208,6 +208,57 @@ class DisasmEngine:
+ 
+         return count
+ 
++    def decode_from(self, addr: int, end: int) -> int:
++        """
++        Decode starting EXACTLY at `addr`, replacing whatever the linear
++        sweep believed about [addr, end).
++
++        The sweep decodes bytes in order, so anything that is not code
++        desynchronises it: an embedded jump table is five dwords that decode
++        as some number of nonsense instructions, and the boundary it resumes
++        on is wherever those happen to end. Measured: the 20-byte table at
++        0x00269C8C left a boundary at 0x00269C9F spanning six bytes, so the
++        real function at 0x00269CA0 had no instruction starting there at all.
++        A candidate at that address then decoded to nothing and was dropped.
++
++        A known function start is authoritative over the sweep's guess, so
++        any cached instruction STRADDLING addr is provably wrong and goes.
++
++        Returns the number of instructions decoded.
++        """
++        section = self.image.get_section_at_va(addr)
++        if not section:
++            return 0
++        data = self.image.get_section_data(section)
++        if not data:
++            return 0
++
++        va_start = section.virtual_addr
++        sec_end = va_start + len(data)
++        end = min(end, sec_end)
++        if end <= addr:
++            return 0
++
++        # Drop the straddler, if any: an instruction that starts before addr
++        # and covers it cannot coexist with a function starting at addr.
++        self._ensure_sorted_addrs()
++        import bisect
++        i = bisect.bisect_left(self._sorted_addrs, addr) - 1
++        if i >= 0:
++            prev = self.instructions.get(self._sorted_addrs[i])
++            if prev is not None and prev.address + prev.size > addr:
++                del self.instructions[prev.address]
++
++        chunk = data[addr - va_start:end - va_start]
++        count = 0
++        for cs_insn in self._cs.disasm(chunk, addr):
++            insn = self._classify_instruction(cs_insn)
++            self.instructions[insn.address] = insn
++            count += 1
++
++        self._sorted_addrs = None
++        return count
++
+     def recursive_descent(self, start_addresses: List[int],
+                           section_bounds: List[Tuple[int, int]]) -> Set[int]:
+         """
 diff --git a/tools/disasm/functions.py b/tools/disasm/functions.py
-index 26ca037..072f1bd 100644
+index 26ca037..9d04f2e 100644
 --- a/tools/disasm/functions.py
 +++ b/tools/disasm/functions.py
-@@ -322,39 +322,51 @@ class FunctionDetector:
+@@ -79,6 +79,11 @@ class FunctionDetector:
+         # Final function list
+         self.functions: Dict[int, Function] = {}
+ 
++        # Instrument state. A candidate that yields no function is the one
++        # outcome this pass used to have no words for.
++        self._redecoded = 0
++        self._empty_candidates: List[Tuple[int, str]] = []
++
+     def detect_all(self, sections: Optional[List[SectionInfo]] = None) -> int:
+         """
+         Run all detection passes and build the function database.
+@@ -109,11 +114,34 @@ class FunctionDetector:
+         # Pass 5: Build functions from candidates
+         self._build_functions(sections)
+ 
++        self._report_candidates()
++
+         # Populate call graph
+         self._build_call_graph()
+ 
+         return len(self.functions)
+ 
++    def _report_candidates(self) -> None:
++        """Say what happened to the candidates, including when nothing did.
++
++        Printed unconditionally, with its denominator. A pass that only
++        speaks when it has something to complain about is indistinguishable
++        from a pass that never ran.
++        """
++        print(f"  candidates: {len(self._candidates)} -> "
++              f"{len(self.functions)} functions"
++              f" ({self._redecoded} needed decoding from their own address"
++              f" because the linear sweep had desynchronised)")
++        if not self._empty_candidates:
++            return
++        print(f"  {len(self._empty_candidates)} candidate(s) decoded to NO"
++              f" instructions and produced no function -- a seed among these"
++              f" did not land:")
++        for addr, method in self._empty_candidates[:20]:
++            print(f"    0x{addr:08X}  ({method})")
++        if len(self._empty_candidates) > 20:
++            print(f"    ... and {len(self._empty_candidates) - 20} more")
++
+     def _add_candidate(self, addr: int, confidence: float, method: str) -> None:
+         """Add a function start candidate, keeping highest confidence."""
+         existing = self._candidates.get(addr)
+@@ -278,6 +306,21 @@ class FunctionDetector:
+             if section:
+                 sec_end = section.virtual_addr + section.virtual_size
+ 
++            # A candidate with no instruction starting exactly at its address
++            # is not evidence that it is not a function: the linear sweep
++            # desynchronises on any embedded data and resumes on whatever
++            # boundary falls out, so a real function start can simply be
++            # missing from the cache. Decode from the address itself and let
++            # THAT decide. (0x00269CA0 -- a clean 0x30-byte thiscall reached
++            # at runtime -- was invisible because a jump table five dwords
++            # long sat in front of it.)
++            if self.engine.get_instruction(start_addr) is None:
++                limit = next_func if next_func is not None else sec_end
++                if limit is None:
++                    limit = start_addr + 0x1000
++                if self.engine.decode_from(start_addr, limit):
++                    self._redecoded += 1
++
+             end_addr = self._find_function_end(start_addr, next_func, sec_end)
+ 
+             # Count instructions
+@@ -285,6 +328,10 @@ class FunctionDetector:
+             num_insns = len(insns)
+ 
+             if num_insns == 0:
++                # Dropping this silently is how a seed "did nothing" with no
++                # way to tell that from "the address was wrong". Record it;
++                # the tally below is printed either way.
++                self._empty_candidates.append((start_addr, method))
+                 continue
+ 
+             # Check for prologue
+@@ -322,39 +369,51 @@ class FunctionDetector:
          Walks forward from start, tracking the furthest reachable point
          through fall-through and internal jumps.
          """
@@ -646,10 +788,10 @@ index 0000000..7222fc9
 +        "the two calls do not get separate scopes:\n" + c)
 diff --git a/tools/recomp/test_regressions.py b/tools/recomp/test_regressions.py
 new file mode 100644
-index 0000000..b5b2474
+index 0000000..1066566
 --- /dev/null
 +++ b/tools/recomp/test_regressions.py
-@@ -0,0 +1,153 @@
+@@ -0,0 +1,184 @@
 +"""Regression tests over real functions from a real title.
 +
 +Run:  python3 -m pytest tools/recomp/test_regressions.py -q
@@ -803,6 +945,37 @@ index 0000000..b5b2474
 +    assert always_false_branches(c) == [], (
 +        f"sub_{addr:08X} has branches that can never be taken:\n  "
 +        + "\n  ".join(always_false_branches(c)))
++
++
++def test_a_function_behind_a_jump_table_is_detected():
++    """0x00269CA0 must exist as a function.
++
++    It is a clean 0x30-byte thiscall -- mov eax,[ecx+8] ... rep movsd ...
++    ret 8 -- and the runtime reaches it through an indirect call. It was
++    invisible to the detector because a 20-byte jump table sits at
++    0x00269C8C, immediately in front of it: the linear sweep decoded those
++    five dwords as instructions, resumed on a boundary at 0x00269C9F that
++    spans six bytes, and so no instruction started at 0x00269CA0 at all. The
++    candidate decoded to zero instructions and was dropped SILENTLY, which
++    made a seeded address look like a wrong guess.
++
++    The discovery loop stopped on it twice -- "0x00269CA0 came back after
++    being seeded" -- which is what a detector defect looks like from the
++    outside.
++    """
++    _require_binary()
++    with open(FUNCS) as f:
++        db = json.load(f)
++    fns = db["functions"] if isinstance(db, dict) and "functions" in db else db
++    starts = set()
++    for k, v in (fns.items() if isinstance(fns, dict) else
++                 ((e["start"], e) for e in fns)):
++        starts.add(int(k, 0) if isinstance(k, str) else k)
++
++    assert 0x00269CA0 in starts, (
++        "0x00269CA0 is not a detected function. The linear sweep desynchronises"
++        " on the jump table in front of it, so a candidate there must be"
++        " decoded from its own address (DisasmEngine.decode_from).")
 diff --git a/tools/recomp/translator.py b/tools/recomp/translator.py
 index a5890d7..c573972 100644
 --- a/tools/recomp/translator.py

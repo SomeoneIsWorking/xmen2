@@ -47,6 +47,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Lift pipeline: disasm → func_id → recomp | `tools/xbox_relift.sh` | **verified** — 24,663/24,663 functions across all 11 executable sections, 0 failures; fails loudly if a seed does not land (C049) |
 | Runtime discovery of statically-invisible functions | `xbox/seeds.json`, `tools/xbox_discover.sh` | **verified** — 23 functions observed at runtime and fed back (C040, C041) |
 | Bulk vtable harvest | `tools/xbox_vtable_seeds.py` | **verified** — 1288 missing functions in one pass, every filter's rejection count printed (C054) |
+| Function detection behind embedded data | `patches/xboxrecomp/0003-*.patch` | **verified** — a candidate the linear sweep desynchronised past is decoded from its own address; 148 recovered, and the 34 that still decode to nothing are printed by address rather than dropped (C073) |
 | Unresolved-indirect-call tally | `xbox/src/recomp_manual.c` | **verified** — I008; fatal by default (`XBOX_ICALL_CONTINUE=1` to survey); `XBOX_ICALL_SELFTEST=1` proves both miss paths fire |
 | Indirect-call argument/return watch | `xbox/src/recomp_manual.c` | **verified** — I012; `XBOX_ICALL_WATCH=0x…,0x…` prints args and eax per call, `XBOX_ICALL_WATCH_SELFTEST=1` proves both the positive and the NEVER-CALLED negative. Use it instead of gdb line breakpoints, which lie on this -O2 build |
 | Runtime discovery loop, automated | `tools/xbox_discover.sh` | **verified** — run → seed → re-lift → repeat; stops on convergence, on a repeat, or on an out-of-image target, and says which |
