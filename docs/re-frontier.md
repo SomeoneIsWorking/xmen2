@@ -215,9 +215,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### xb-run — Recompiled Xbox build executes the game's main thread
 - status: re-partial
 - deps: xb-lift
-- evidence: C048/C049/C054/C057/C058/C060/C061; 12,931 calls with the callee-saved contract clean, stack balanced, 0 unresolved indirect calls, 0 stubs entered
+- evidence: C048/C049/C054/C057/C058/C060/C061/C070/C071/C072; the registry NULL that stood here is gone -- it was a symptom of our own NtAllocateVirtualMemory ignoring a placed base (C070), and of an esp-relative indirect-call target read four bytes low (C072)
 - where: 
-- gap: C062: the engine registry at 0x0071037C is NULL when used -- an initialisation-order problem, with corruption now ruled out by the contract checks. Nothing renders.
+- gap: Still nothing renders. The run now reaches the runtime-discovery loop's territory again: unresolved indirect calls into functions the static detector cannot see. C062's "initialisation order" diagnosis was FALSIFIED -- do not re-derive it.
 - notes: 
 
 ### xb-discovery — Runtime discovery loop for statically-invisible functions
