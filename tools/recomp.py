@@ -1828,12 +1828,19 @@ def cmd_native(argv):
         if ident in seen:
             continue
         seen.add(ident)
-        L.append('void %s(CPU *C) { (void)C; x86_missing_import("%s", "%s"); }'
+        # WEAK, so a real native implementation (src/native/win32_sdl.c)
+        # overrides it just by existing. The alternative -- a list of names to
+        # skip -- would have to be kept in step with that file by hand, and the
+        # failure mode of getting it wrong is a duplicate symbol at best and a
+        # silently-preferred abort stub at worst.
+        L.append('__attribute__((weak)) void %s(CPU *C) '
+                 '{ (void)C; x86_missing_import("%s", "%s"); }'
                  % (ident, mod, sym.replace('"', "'")))
     with open(out, "w") as f:
         f.write("\n".join(L) + "\n")
-    print("native: %d function-table entries, %d imports STUBBED to abort by "
-          "name -> %s" % (len(fns), len(seen), out))
+    print("native: %d function-table entries, %d imports stubbed WEAK to abort "
+          "by name (a native implementation overrides one by existing) -> %s"
+          % (len(fns), len(seen), out))
 
 
 CMDS = {"report": cmd_report, "emit": cmd_emit, "runtime": cmd_runtime,

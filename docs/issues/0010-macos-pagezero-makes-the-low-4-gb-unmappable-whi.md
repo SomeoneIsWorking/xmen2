@@ -25,14 +25,41 @@ A 64-bit Mach-O executable is linked with a `__PAGEZERO` segment of 4 GB by
 default. That reservation is unmapped and unmappable, so every address the
 guest image needs is unavailable for the life of the process.
 
+## Correction: this is a choice, not a constraint
+
+The first version of this entry called `-pagezero_size` "the standard approach
+for emulators that need low addresses", which understated our position. An
+emulator is stuck with identity mapping because it cannot change how the guest
+addresses memory. We generate the accessors, so we can.
+
+`RD32(a)` is `*(uint32_t *)a` only because the PC recomp began as a DLL swap,
+where the guest and host really were one address space and a guest pointer WAS
+a host pointer. In a native build nothing forces that. A base-offset form --
+`*(uint32_t *)(g_mem + a)` -- removes the low-4-GB requirement completely, on
+macOS and everywhere else, and costs an add per access that the compiler will
+usually fold into the addressing mode.
+
+What identity mapping actually buys, and what base-offset would therefore cost,
+is POINTER TRANSLATION AT THE HOST BOUNDARY: today a guest string handed to a
+host `printf`, or a guest buffer handed to SDL, needs no conversion. Under
+base-offset every pointer crossing that boundary has to be translated. Since we
+are writing that boundary ourselves anyway (43 Win32 calls plus SDL), the
+translation belongs there and is bounded -- it is a cost, not a blocker.
+
+So the decision to make is which of the two to pay for, and it should be made on
+the boundary's shape rather than on macOS's page zero. Deferring it is fine
+while the boundary is small; it gets more expensive the more of it exists.
+
 ## The mitigation, and its status
 
 Link the native host with a small page zero:
 
     -Wl,-pagezero_size,0x1000
 
-This is the standard approach for emulators and JITs that need low addresses on
-macOS. It is NOT verified here: this machine is Linux, and nothing in this repo
+This is the standard approach for anything that needs fixed low addresses on
+macOS. Nothing here interprets or emulates instructions -- the guest code was
+statically recompiled to C and runs as native code; what it needs the low 4 GB
+for is that its DATA addresses are baked into that C. It is NOT verified here: this machine is Linux, and nothing in this repo
 has been built or run on macOS. Treat the mitigation as the thing to try first,
 not as a known-good fix.
 

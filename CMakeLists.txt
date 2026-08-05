@@ -100,6 +100,7 @@ if(EXISTS ${X2_RECOMP_BODIES} AND EXISTS ${X2_RECOMP_NATIVE})
     add_executable(x2native
         src/native/x2native.c
         src/native/pe_map.c
+        src/native/win32_sdl.c
         ${X2_RECOMP_BODIES}
         ${X2_RECOMP_NATIVE}
     )

@@ -92,8 +92,11 @@ static int call_body(uint32_t ep, CPU *C)
     return x86_native_call(ep, C);
 }
 
+static int checks;
+
 static void check(const char *what, uint32_t got, uint32_t want)
 {
+    checks++;
     if (got == want) {
         printf("    ok    %-34s 0x%08x\n", what, got);
     } else {
@@ -187,6 +190,92 @@ static void case_arkinit(void)
     check("[meta+0x3c] rebased immediate", gr32(SCRATCH + 0x3cu), g_imgbase + 0x2370u);
 }
 
+/*
+ * The import ABI, which is the easiest thing here to get quietly wrong.
+ *
+ * A recompiled body calls an import with a fake return address on the guest
+ * stack; the implementation has to leave ESP where the real callee would.
+ * Win32 is __stdcall (callee pops the arguments), the CRT is __cdecl (it does
+ * not). Confusing the two shifts the guest stack by a word per call and the
+ * damage shows up somewhere with no connection to the cause, so both are
+ * checked here against a known-answer call rather than reasoned about.
+ */
+void imp_KERNEL32_GetModuleHandleA(CPU *C);
+void imp_KERNEL32_MultiByteToWideChar(CPU *C);
+void imp_MSVCRT_malloc(CPU *C);
+void imp_MSVCRT_free(CPU *C);
+
+/* Call an import the way a recompiled body does. Returns the ESP delta. */
+static uint32_t call_import(void (*fn)(CPU *), CPU *C, const uint32_t *args,
+                            int nargs)
+{
+    uint32_t esp0;
+    int i;
+    C->esp = guest_stack_top - (uint32_t)(nargs + 1) * 4u;
+    gw32(C->esp, 0xDEADBEEFu);                     /* the fake return address */
+    for (i = 0; i < nargs; i++) gw32(C->esp + 4u + (uint32_t)i * 4u, args[i]);
+    esp0 = C->esp;
+    if (!skip_body) fn(C);
+    return C->esp - esp0;
+}
+
+static void case_import_abi(void)
+{
+    CPU C; uint32_t d;
+    printf("  native import ABI (stdcall vs cdecl stack cleanup)\n");
+
+    {   /* KERNEL32!GetModuleHandleA(NULL) -- __stdcall, 1 argument.
+           The module's own handle IS its image base in a PE. */
+        uint32_t args[1] = { 0 };
+        memset(&C, 0, sizeof C);
+        C.eax = 0xBADF00Du;
+        d = call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
+        check("GetModuleHandleA(NULL) -> imgbase", C.eax, g_imgbase);
+        check("  stdcall esp delta (4+1*4)", d, 8u);
+    }
+    {   /* KERNEL32!MultiByteToWideChar -- __stdcall, 6 arguments. Measuring
+           form first (cchWideChar 0 returns the length needed). */
+        static const char msg[] = "SDL3";
+        uint32_t src = SCRATCH + 0x100u, dst = SCRATCH + 0x200u;
+        uint32_t args[6] = { 0, 0, 0, 0xFFFFFFFFu, 0, 0 };
+        unsigned i;
+        for (i = 0; i < sizeof msg; i++)
+            *(volatile uint8_t *)(uintptr_t)(src + i) = (uint8_t)msg[i];
+        args[2] = src; args[4] = dst;
+        memset(&C, 0, sizeof C);
+        C.eax = 0xBADF00Du;
+        d = call_import(imp_KERNEL32_MultiByteToWideChar, &C, args, 6);
+        check("MB2WC measure -> strlen+1", C.eax, 5u);
+        check("  stdcall esp delta (4+6*4)", d, 28u);
+
+        args[5] = 16;                              /* now actually convert */
+        for (i = 0; i < 8; i++) gw32(dst + i * 4u, 0xBADF00Du);
+        memset(&C, 0, sizeof C);
+        d = call_import(imp_KERNEL32_MultiByteToWideChar, &C, args, 6);
+        check("MB2WC convert -> count", C.eax, 5u);
+        check("  wide 'S'", *(volatile uint16_t *)(uintptr_t)dst, (uint16_t)'S');
+        check("  wide 'D'", *(volatile uint16_t *)(uintptr_t)(dst + 2u), (uint16_t)'D');
+        check("  wide NUL terminator", *(volatile uint16_t *)(uintptr_t)(dst + 8u), 0u);
+    }
+    {   /* MSVCRT!malloc/free -- __cdecl, so the CALLER cleans up and esp moves
+           by the return address only. This is the case that would silently
+           differ from the Win32 ones. */
+        uint32_t args[1] = { 64 }, p;
+        memset(&C, 0, sizeof C);
+        C.eax = 0xBADF00Du;
+        d = call_import(imp_MSVCRT_malloc, &C, args, 1);
+        p = C.eax;
+        check("malloc(64) != 0", p != 0u && p != 0xBADF00Du, 1u);
+        check("  cdecl esp delta (4 only)", d, 4u);
+        if (p && p != 0xBADF00Du) {
+            args[0] = p;
+            memset(&C, 0, sizeof C);
+            d = call_import(imp_MSVCRT_free, &C, args, 1);
+            check("  free cdecl esp delta (4)", d, 4u);
+        }
+    }
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -206,15 +295,18 @@ static int run_battery(void)
         case_getscreensize();
         case_findmouse();
         case_arkinit();
+        case_import_abi();
         skip_body = 0;
-        if (fails - before == 14) {
-            printf("\n  SELFTEST passed: all 14 checks failed with the bodies\n"
-                   "  skipped, so a pass below means the bodies did the work.\n\n");
+        if (fails - before == checks) {
+            printf("\n  SELFTEST passed: all %d checks failed with the bodies\n"
+                   "  skipped, so a pass below means the bodies did the work.\n\n",
+                   checks);
             fails = before;
+            checks = 0;
         } else {
-            printf("\n  SELFTEST FAILED: only %d of 14 checks noticed that the\n"
+            printf("\n  SELFTEST FAILED: only %d of %d checks noticed that the\n"
                    "  bodies never ran. Every result below is unreliable.\n\n",
-                   fails - before);
+                   fails - before, checks);
             return 1;
         }
     }
@@ -222,12 +314,17 @@ static int run_battery(void)
     case_getscreensize();
     case_findmouse();
     case_arkinit();
-    printf("\nbattery: %d check(s) FAILED\n", fails);
-    printf("What this establishes: the original image maps at its own base in a\n"
-           "64-bit process, the emitted C runs there natively, image-relative\n"
-           "immediates are rebased, and stack arguments and RET N cleanup are\n"
-           "right. What it does NOT: anything about the 107 imports, which are\n"
-           "stubbed to abort by name. That is the work rc-native tracks.\n");
+    case_import_abi();
+    printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
+    printf("Established: the original image maps at its own base in a 64-bit\n"
+           "process, the emitted C runs there natively, image-relative\n"
+           "immediates are rebased, guest stack arguments and RET N cleanup are\n"
+           "right, and the native import layer gets stdcall and cdecl cleanup\n"
+           "right on a known-answer call.\n"
+           "NOT established: the game running. Of the 107 imports the bodies\n"
+           "reach, 64 are other game modules still to be recompiled and the\n"
+           "rest of the Win32 surface is unimplemented -- every one of those\n"
+           "aborts by name if reached. rc-native tracks the remainder.\n");
     return fails ? 1 : 0;
 }
 
