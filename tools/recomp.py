@@ -799,7 +799,7 @@ def emit_instruction(ins, ctx):
             n = o.val
         return [A,
                 "{ uint32_t _rt = RD32(C->esp); C->esp += 4 + %d;" % n,
-                "  if (_rt != _retaddr) { x86_return_to(C, _rt); }",
+                "  if (_rt != _retaddr) { x86_return_to(C, _rt, _x86_fn_ep, _retaddr); }",
                 "  X86_EXIT_FN(_x86_fn_ep);",
                 "  return; }"]
 
@@ -1256,9 +1256,10 @@ void x86_dump_history(void)
 
 /* A RET whose popped address is not the one the function was entered with.
    Resolve it as a call target and continue there. */
-void x86_return_to(CPU *C, uint32_t target)
+void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
 {
     int i;
+    (void)fn_ep; (void)expected;
     for (i = 0; i < g_fn_count; i++)
         if (g_fns[i].ep == target) { g_fns[i].fn(C); return; }
     /* Not a function entry: it is a resume point INSIDE a function, which this

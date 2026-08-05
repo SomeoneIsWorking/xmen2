@@ -15,6 +15,7 @@ static X86Module *g_head;
 
 static int thunk_call(uint32_t addr, CPU *C);
 static void ring_note(const char *what, uint32_t addr, uint32_t in, uint32_t out);
+static unsigned long g_return_to_calls;
 
 /* Not used by the shared runtime itself, but the emitted bodies of a
    single-module build still reference the plain symbol. */
@@ -178,7 +179,14 @@ static int thunk_call(uint32_t addr, CPU *C)
  * at some later RET that picks up the wrong word entirely. The imbalance is
  * invisible in a backtrace and obvious in a column of ESP values.
  */
+/* Large, because with X86_NATIVE_TRACE every body entry and exit lands here
+   and 96 entries covers a few microseconds of startup. It is a static array in
+   a diagnostic build; the memory is not worth economising. */
+#ifdef X86_NATIVE_TRACE
+#define RING 8192
+#else
 #define RING 96
+#endif
 static struct {
     const char *what;
     uint32_t    addr, esp_in, esp_out;
@@ -214,6 +222,27 @@ static void ring_note(const char *what, uint32_t addr, uint32_t in, uint32_t out
     g_ring[i].repeat = 0;
 }
 
+#ifdef X86_NATIVE_TRACE
+/*
+ * Entry and exit of every recompiled body.
+ *
+ * Exit records the ESP the body is LEAVING with, so a mismatched prologue and
+ * epilogue shows up as a body whose exit ESP is not its entry ESP plus the
+ * bytes its RET should have popped. That is the failure this exists to find,
+ * and it is invisible without it: an ordinary guest-to-guest call is a direct
+ * C call and crosses no boundary at all.
+ */
+void x86_trace_enter(uint32_t ep, const CPU *C)
+{
+    ring_note("enter", ep, C->esp, C->esp);
+}
+
+void x86_trace_exit(uint32_t ep, const CPU *C)
+{
+    ring_note("exit", ep, C->esp, C->esp);
+}
+#endif
+
 void x86_ring_dump(void)
 {
     unsigned n = g_ring_n < RING ? g_ring_n : RING, i;
@@ -223,8 +252,10 @@ void x86_ring_dump(void)
         return;
     }
     fprintf(stderr, "[TRACE] last %u of %u crossings (esp in -> out; a delta "
-                    "that is not 4+4N for a stdcall import is the bug):\n",
-            n, g_ring_n);
+                    "that is not 4+4N for a stdcall import is the bug).\n"
+                    "[TRACE] x86_return_to fired %lu time(s) -- a correct "
+                    "translation should almost never need it:\n",
+            n, g_ring_n, g_return_to_calls);
     for (i = g_ring_n - n; i < g_ring_n; i++) {
         unsigned k = i % RING;
         fprintf(stderr, "[TRACE]   %-22s 0x%08x  esp %08x -> %08x  (%+d)%s",
@@ -300,11 +331,32 @@ void x86_dispatch(CPU *C, uint32_t target)
     abort();
 }
 
-void x86_return_to(CPU *C, uint32_t target)
+/*
+ * How often this fires is itself a measurement.
+ *
+ * A correct translation should reach it almost never: it means a function's
+ * RET popped something OTHER than the value that was on the stack when it was
+ * entered, i.e. the guest deliberately rewrote its own return address. If it
+ * is firing in a loop, the interesting question is not where control went but
+ * why the epilogue disagreed with the prologue.
+ */
+unsigned long x86_return_to_count(void) { return g_return_to_calls; }
+
+void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
 {
+    const char *nm;
+    g_return_to_calls++;
+    ring_note("RET-to", target, C->esp, C->esp);
     if (x86_native_call_at(target, C)) return;
+    nm = x86_native_name_at(fn_ep);
     fprintf(stderr, "x86_return_to: 0x%08x is not a function entry -- a RET "
-                    "popped something that is not a return address\n", target);
+                    "popped something that is not a return address.\n"
+                    "  The RET is in 0x%08x (%s), which was ENTERED with "
+                    "0x%08x on the stack and left with 0x%08x there.\n"
+                    "  So that function's epilogue does not match its "
+                    "prologue: its detected boundaries are wrong, or an\n"
+                    "  instruction in it was mistranslated.\n",
+                    target, fn_ep, nm ? nm : "?", expected, target);
     where(target);
     x86_ring_dump();
     abort();
@@ -414,7 +466,39 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
  */
 void x86_guest_call(CPU *C, uint32_t target)
 {
+    uint32_t before = C->esp;
     C->esp -= 4;
     *(volatile uint32_t *)(uintptr_t)C->esp = 0xDEADBEEFu;   /* popped by RET */
     x86_dispatch(C, target);
+    /*
+     * The balance check. This is the ONE place host code calls guest code, so
+     * it is the one place the guest stack can be checked against a value the
+     * host knows independently: a called function must leave ESP exactly where
+     * it was, having popped only the return address pushed above.
+     *
+     * A `ret N` leaves it HIGHER, which is legitimate for a stdcall body whose
+     * arguments the host did not push -- so that is reported once and allowed.
+     * LOWER is never legitimate: the body consumed stack that was not its own,
+     * and the caller's frame is now wrong. Left unchecked it drifts, and the
+     * failure lands many calls later at a RET that pops a frame pointer.
+     */
+    if (C->esp != before) {
+        static int said;
+        if ((int32_t)(C->esp - before) < 0) {
+            fprintf(stderr, "x86_guest_call: 0x%08x left ESP %d bytes LOWER "
+                            "than it started (%08x -> %08x). It consumed stack "
+                            "that was not its own.\n",
+                    target, (int)(before - C->esp), before, C->esp);
+            x86_ring_dump();
+            abort();
+        }
+        if (!said++) {
+            const char *nm = x86_native_name_at(target);
+            fprintf(stderr, "x86_guest_call: 0x%08x (%s) returned with ESP %d "
+                            "bytes higher -- a `ret N` whose N arguments the "
+                            "host never pushed. Reported once.\n",
+                    target, nm ? nm : "?", (int)(C->esp - before));
+        }
+        C->esp = before;
+    }
 }

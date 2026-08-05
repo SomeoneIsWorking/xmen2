@@ -141,6 +141,13 @@ if(X2_MODULE_HAVE)
     )
     target_include_directories(x2native PRIVATE src/recomp src/native)
     target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
+    # -DX2_NATIVE_TRACE=ON traces every recompiled body into the boundary ring.
+    # Off by default: it costs a ring write per call, and the generated bodies
+    # are otherwise IDENTICAL between the two builds, so what a traced run shows
+    # applies to an untraced one.
+    if(X2_NATIVE_TRACE)
+        target_compile_definitions(x2native PRIVATE X86_NATIVE_TRACE)
+    endif()
     # PIE, so this binary does not sit at 0x400000 -- which is exactly where
     # XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
     # and forces it to relocate for no reason.

@@ -309,6 +309,20 @@ void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned 
 # define X86_ENTER_FN(a) x86_watch_enter((a), C)
 # define X86_EXIT_FN(a)  x86_watch_exit((a), C)
 # define x86_dump_history() ((void)0)
+#elif defined(X86_NATIVE_TRACE)
+/* Native build, tracing every recompiled body.
+ *
+ * The boundary ring only sees DISPATCHED calls, because a guest-to-guest call
+ * inside a module is emitted as a direct C call and never touches the
+ * dispatcher. That is most of them -- which is why a stack imbalance in an
+ * ordinary function left no trace at all. This makes every entry and exit
+ * visible, at the cost of a ring write per call, so it is a build option
+ * rather than the default. */
+void x86_trace_enter(uint32_t ep, const CPU *C);
+void x86_trace_exit(uint32_t ep, const CPU *C);
+# define X86_ENTER_FN(a) x86_trace_enter((a), C)
+# define X86_EXIT_FN(a)  x86_trace_exit((a), C)
+# define x86_dump_history() ((void)0)
 #else
 # define X86_ENTER_FN(a) ((void)0)
 # define x86_dump_history() ((void)0)
@@ -319,7 +333,11 @@ void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned 
 /* call/jump into the region with no identified function; aborts by address */
 void x86_call_unknown(CPU *C, uint32_t target);
 /* RET popped an address other than the one the function was entered with */
-void x86_return_to(CPU *C, uint32_t target);
+/* A RET popped something other than the value the function was entered with.
+   Carries the function's own entry point and that expected value, because
+   "which function's epilogue disagreed with its prologue" is the question, and
+   the popped address alone cannot answer it. */
+void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected);
 
 /* FIST/FISTP round per the control word's RC bits (11:10). MSVC's float->int
    cast sets RC=truncate, does the store, then restores -- so treating FLDCW as

@@ -83,8 +83,31 @@ def check(mod, game_dir):
     if bad:
         print("  %-14s FAIL -- %s" % (mod, "; ".join(bad)))
         return False
-    print("  %-14s ok (%d sections agree, %d functions)"
-          % (mod, len(sects), len(d.get("functions", []))))
+    # Truncated bodies. A function whose last instruction is not a terminator
+    # was cut off -- almost always clamped at the next detected start, which
+    # means that "next" function sits inside this one. The emitted C then just
+    # falls off the end and returns with whatever ESP the partial body left,
+    # and the failure lands at some later RET popping the wrong word. Measured
+    # rather than assumed: it is how the native run's stall was finally
+    # located, at FUN_00554ba0.
+    trunc = []
+    for f in d.get("functions", []):
+        ins = f.get("ins")
+        if not ins:
+            continue
+        m = ins[-1]["m"].upper()
+        if not (m.startswith("RET") or m.startswith("JMP")
+                or m in ("INT3", "UD2", "HLT")):
+            trunc.append(f["ep"])
+    n = len(d.get("functions", []))
+    print("  %-14s ok (%d sections agree, %d functions, %d truncated %s)"
+          % (mod, len(sects), n, len(trunc),
+             "(%.2f%%)" % (100.0 * len(trunc) / n) if n else ""))
+    if trunc and os.environ.get("VERIFY_TRUNC_OUT"):
+        fh = open(os.environ["VERIFY_TRUNC_OUT"], "a")
+        for t in trunc:
+            fh.write("%s 0x%08x\n" % (mod, t))
+        fh.close()
     return True
 
 

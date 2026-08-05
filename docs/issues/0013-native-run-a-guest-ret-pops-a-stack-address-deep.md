@@ -1,7 +1,7 @@
 ---
 id: 13
 title: Native run: a guest RET pops a stack address deep in the exe's startup
-status: open
+status: resolved
 symptom: x86_return_to: 0x300ffef4 is not a function entry -- the popped value is an address in the GUEST STACK, not code. Happens after all seven DLLs initialise and the exe's CRT startup completes
 tags: pc,recomp,native,esp,translation,rc-exe
 created: 2026-08-06
@@ -56,3 +56,48 @@ function detection has been corrected in this module already.
   whose popped value differs from the entry return address, which is a tail-call
   emulation. If it fires spuriously it would consume return addresses and make
   ESP climb exactly like this.
+
+### Resolution (2026-08-06)
+ROOT CAUSE FOUND: FUN_00554ba0 in XMen2.exe is TRUNCATED -- its last instruction is 'MOV ECX,ESI', not a RET.
+
+The emitted C therefore falls off the end of the body and returns with whatever
+ESP the partial body left (two un-popped pushes and an un-torn-down SEH frame).
+Its caller FUN_0067c850 -- a static constructor -- then does 'pop ecx; ret' on a
+shifted stack, and the RET pops a saved frame pointer instead of its return
+address. That is the 0x300ffef4 the run died on.
+
+The function is clamped just before the next detected start at 0x00555024, so
+the 'next function' sits inside its real body. Same class as issue #8 / C077 on
+the Xbox side.
+
+## How it was found
+
+Not by reading code. Three instruments in sequence, each answering one question
+the previous could not:
+
+  1. A boundary ring with ESP on both sides ruled OUT the hand-written Win32
+     and CRT layer -- every crossing before the failure was guest-to-guest.
+  2. x86_return_to gained a fire counter, which killed the leading hypothesis:
+     it fired exactly ONCE, so it was not looping and consuming return
+     addresses.
+  3. The emitted epilogue now passes its OWN entry point and expected return
+     address to x86_return_to, which named FUN_0067c850 directly; from there
+     its two callees were three minutes of reading.
+
+## Scope, measured
+
+tools/verify_export.py now counts truncated bodies:
+
+    XMen2       42 of 14929 (0.28%)
+    libIGGfx     4 of 4742  (0.08%)
+    libIGCore    1 of 5966  (0.02%)
+    everything else 0
+
+53 functions across the project. Small, bounded, and now visible on every run
+of the checker rather than discovered by a crash.
+
+## Fix, not yet done
+
+Each truncated function needs the spurious function inside it removed and the
+outer one re-created over its full body -- the inverse of SplitFunction.py.
+VERIFY_TRUNC_OUT=<file> writes the list.
