@@ -69,6 +69,7 @@ static uint32_t poison_for(const char *mod, const char *sym, uint32_t ordinal)
 }
 
 const char *x86_poison_name(uint32_t addr, const char **mod);
+const char *x86_thunk_name(uint32_t addr, const char **mod);
 
 static const char *poison_name(uint32_t addr, const char **mod)
 {
@@ -105,6 +106,13 @@ static uint32_t resolve_import(const char *mod, const char *sym,
             break;                            /* right module, no such export */
         }
     }
+    /* Not another recompiled module. If some module implements it natively,
+       bind the slot to a thunk so a call THROUGH the slot works the same as a
+       call to the named stub. */
+    if (!by_ordinal && sym) {
+        uint32_t t = x86_native_thunk(mod, sym);
+        if (t) { g_nbound++; return t; }
+    }
     return poison_for(mod, sym, ordinal);
 }
 
@@ -114,6 +122,17 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
     uint32_t a = (uint32_t)(uintptr_t)si->si_addr;
     const char *mod = NULL, *sym;
     (void)sig; (void)uc;
+    sym = x86_thunk_name(a, &mod);
+    if (sym) {
+        fprintf(stderr, "\n*** a native import THUNK was dereferenced: %s!%s\n"
+                        "    The guest read through import slot 0x%08x instead "
+                        "of calling it, so this import is DATA, not a "
+                        "function.\n"
+                        "    A thunk cannot serve data: it needs a real value "
+                        "in guest memory (see x86_native_data_export).\n",
+                mod, sym, a);
+        _exit(3);
+    }
     sym = poison_name(a, &mod);
     if (sym) {
         fprintf(stderr, "\n*** unbound import used: %s!%s\n"
@@ -143,9 +162,24 @@ static int poison_init(void)
                         "unresolved imports would read as plausible values\n");
         return -1;
     }
+    /* On an alternate stack, so a fault caused by the guest stack running out
+       -- or by runaway recursion in the runtime itself -- can still be
+       reported. Without it the handler needs the very stack that just died and
+       the process dumps core silently, which is how an infinite
+       import-dispatch loop first appeared: as nothing at all. */
+    {
+        static char altstack[65536];   /* >= SIGSTKSZ on every target here */
+        stack_t ss;
+        ss.ss_sp = altstack;
+        ss.ss_size = sizeof altstack;
+        ss.ss_flags = 0;
+        if (sigaltstack(&ss, NULL) != 0)
+            fprintf(stderr, "x2native: no alternate signal stack; a stack "
+                            "overflow will die silently\n");
+    }
     memset(&sa, 0, sizeof sa);
     sa.sa_sigaction = poison_sigsegv;
-    sa.sa_flags = SA_SIGINFO;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     return sigaction(SIGSEGV, &sa, NULL);
 }
 

@@ -1833,7 +1833,8 @@ static X86Module g_this_module = {
        top of the address space, so "highest block minus image base" was not
        the image size, and every dispatch lookup silently missed. */
     "%(program)s", &X86_IMGBASE, %(preferred)#010xU, 0U,
-    g_fns, %(nfns)d, NULL
+    g_fns, %(nfns)d, g_imports,
+    (int)(sizeof g_imports / sizeof g_imports[0]), NULL
 };
 
 /* Registered before main() so a module cannot be linked in and then forgotten;
@@ -1881,6 +1882,28 @@ def cmd_native(argv):
     for fn in fns:
         L.append('  { 0x%08xU, %s, "%s" },'
                  % (fn["ep"], fname(fn["ep"]), fn["qname"].replace('"', "'")))
+    L.append("};")
+    L.append("")
+    seen_decl = set()
+    # Every import slot with the stub that serves it. The host needs this to
+    # bind a slot whose target is NOT another recompiled module but IS
+    # implemented natively: the guest sometimes takes an import's ADDRESS from
+    # the IAT and calls through it, which never reaches the named stub.
+    # Declared first: the table names every stub, and the definitions come
+    # after it.
+    for va in sorted(IAT):
+        mod, sym = IAT[va]
+        ident = c_ident(mod, sym)
+        if ident not in seen_decl:
+            seen_decl.add(ident)
+            L.append("void %s(CPU *C);" % ident)
+    L.append("")
+    L.append("static const X86Import g_imports[] = {")
+    for va in sorted(IAT):
+        mod, sym = IAT[va]
+        L.append('  { 0x%08xU, %s, "%s", "%s" },'
+                 % (va - IMG[0], c_ident(mod, sym), mod,
+                    sym.replace('"', "'")))
     L.append("};")
     L.append("")
     L.append(NATIVE_BODY_TAIL % dict(program=d["program"],

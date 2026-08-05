@@ -20,10 +20,20 @@ ROOT=$PWD
 MAX=${1:-8}
 BIN=$ROOT/scratch/build-native/x2native
 SPLIT=${SPLIT:-1500}
+RUN=${RUN-1}
 
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 : "${GAME_PC_DIR:?set GAME_PC_DIR in .env}"
 [ -x "$BIN" ] || { echo "native_discover: $BIN is not built -- discovered NOTHING" >&2; exit 2; }
+
+# Refuse to seed against an export that does not describe the shipped binary.
+# Seeding addresses into the wrong image produces functions at meaningless
+# places, and the loop would happily converge on them (issue #12).
+python3 tools/verify_export.py >/dev/null 2>&1 || {
+    echo "native_discover: an export does not match its shipped binary --" >&2
+    python3 tools/verify_export.py >&2
+    exit 2
+}
 
 # Remembering the previous round's seed set, because a loop that keeps
 # requesting the same address is not converging -- it is stuck, and saying
@@ -36,8 +46,12 @@ round=0
 while [ "$round" -lt "$MAX" ]; do
     round=$((round + 1))
     SEEDS=$ROOT/scratch/recomp/.discover.seeds
-    "$BIN" --no-window >"$SEEDS.raw" 2>&1
-    awk '/^    lib.*\.dll +0x/ {print $1, $2}' "$SEEDS.raw" | sort -u > "$SEEDS"
+    # --run by default: the exe's own CRT startup has constructor tables too,
+    # and stopping at module init would leave them undiscovered. RUN=0 limits
+    # the loop to module initialisation.
+    "$BIN" --no-window ${RUN:+--run} >"$SEEDS.raw" 2>&1
+    awk '/^    [A-Za-z0-9_]+\.(dll|exe) +0x/ {print $1, $2}' "$SEEDS.raw" \
+        | sort -u > "$SEEDS"
 
     if [ ! -s "$SEEDS" ]; then
         # Report the negative with its denominator: "nothing found" has to be
@@ -67,7 +81,7 @@ while [ "$round" -lt "$MAX" ]; do
     PREV=$NOW
     echo "== round $round: $(wc -l < "$SEEDS") missing target(s) in $(cut -d' ' -f1 "$SEEDS" | sort -u | tr '\n' ' ')"
     cut -d' ' -f1 "$SEEDS" | sort -u | while read -r mod; do
-        base=${mod%.dll}
+        base=${mod%.dll}; base=${base%.exe}
         grep "^$mod " "$SEEDS" | awk '{print $2}' > "$ROOT/scratch/recomp/$base.seeds"
         tools/ghidra_export.sh "$base" --seed "$ROOT/scratch/recomp/$base.seeds" 2>&1 | tail -1
         rm -f "$ROOT/src/recomp/${base}_"[0-9][0-9][0-9].c "$ROOT/src/recomp/$base.c"

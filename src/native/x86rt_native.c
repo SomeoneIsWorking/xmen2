@@ -7,9 +7,13 @@
 #include "x86rt_native.h"
 
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 
 static X86Module *g_head;
+
+static int thunk_call(uint32_t addr, CPU *C);
 
 /* Not used by the shared runtime itself, but the emitted bodies of a
    single-module build still reference the plain symbol. */
@@ -57,7 +61,9 @@ static const X86Fn *find(X86Module *m, uint32_t addr)
 
 int x86_native_call_at(uint32_t addr, CPU *C)
 {
-    X86Module *m = x86_module_for(addr);
+    X86Module *m;
+    if (thunk_call(addr, C)) return 1;
+    m = x86_module_for(addr);
     const X86Fn *f = m ? find(m, addr) : NULL;
     if (!f) return 0;
     f->fn(C);
@@ -69,6 +75,88 @@ const char *x86_native_name_at(uint32_t addr)
     X86Module *m = x86_module_for(addr);
     const X86Fn *f = m ? find(m, addr) : NULL;
     return f ? f->name : NULL;
+}
+
+/* ---- native import thunks ---------------------------------------------
+ *
+ * Some imports are implemented natively but are not another recompiled module,
+ * so binding cannot point their IAT slot at a guest body. Most of the time
+ * that is harmless -- the emitted code calls the NAMED stub and never reads
+ * the slot -- but the exe's CRT startup takes GetModuleHandleA's address from
+ * the IAT and calls through it, which reaches no stub at all.
+ *
+ * So each such slot gets a synthetic address in a range this dispatcher owns,
+ * and a call to one runs the stub. The range is deliberately NOT mapped: it is
+ * never executed as code and never dereferenced, so leaving it unmapped means
+ * a stray READ of one faults instead of returning a plausible word.
+ *
+ * The test for "implemented natively" is the one thing here that must not be
+ * assumed: it compares the stub's address against the aborting default. A
+ * module whose import is still the weak stub gets no thunk, and stays
+ * poisoned, so nothing is silently promoted to "working".
+ */
+#define THUNK_BASE 0x000C0000u
+#define THUNK_MAX  1024
+
+static struct { void (*stub)(CPU *); const char *mod, *sym; } g_thunk[THUNK_MAX];
+static int g_nthunk;
+
+/*
+ * A thunk is created whether or not the import is actually implemented, because
+ * the generated stubs are weak symbols and an implemented one cannot be told
+ * from an unimplemented one by address.
+ *
+ * That is safe only because of the cycle-break in x86_import_call below. An
+ * IMPLEMENTED stub does the work and never looks at its slot. An UNIMPLEMENTED
+ * one dispatches through its slot -- which now holds this thunk, which calls
+ * the stub, which dispatches through the slot... The first version of this
+ * recursed until the stack died, and the comment here claimed it would "report
+ * by name and stop". It did not. Wanting a design to be safe is not the same as
+ * it being safe, so the break is explicit and tested rather than argued.
+ */
+uint32_t x86_native_thunk(const char *mod, const char *sym)
+{
+    X86Module *m;
+    int i;
+    for (m = g_head; m; m = m->next) {
+        for (i = 0; i < m->nimports; i++) {
+            const X86Import *im = &m->imports[i];
+            if (strcasecmp(im->mod, mod) != 0 || strcmp(im->sym, sym) != 0)
+                continue;
+            if (g_nthunk == THUNK_MAX) return 0;
+            g_thunk[g_nthunk].stub = im->stub;
+            g_thunk[g_nthunk].mod = im->mod;
+            g_thunk[g_nthunk].sym = im->sym;
+            g_nthunk++;
+            return THUNK_BASE + (uint32_t)(g_nthunk - 1) * 16u;
+        }
+    }
+    return 0;
+}
+
+/* Which import a thunk address belongs to, for diagnostics. A thunk that is
+   DEREFERENCED rather than called means the import is data, not a function --
+   and a thunk cannot serve data, so that import needs a real value. */
+const char *x86_thunk_name(uint32_t addr, const char **mod)
+{
+    uint32_t i;
+    if (addr < THUNK_BASE || addr >= THUNK_BASE + (uint32_t)THUNK_MAX * 16u)
+        return NULL;
+    i = (addr - THUNK_BASE) / 16u;
+    if ((int)i >= g_nthunk) return NULL;
+    *mod = g_thunk[i].mod;
+    return g_thunk[i].sym;
+}
+
+static int thunk_call(uint32_t addr, CPU *C)
+{
+    uint32_t i;
+    if (addr < THUNK_BASE || addr >= THUNK_BASE + (uint32_t)THUNK_MAX * 16u)
+        return 0;
+    i = (addr - THUNK_BASE) / 16u;
+    if ((int)i >= g_nthunk || !g_thunk[i].stub) return 0;
+    g_thunk[i].stub(C);
+    return 1;
 }
 
 /* ---- the abort paths ---------------------------------------------------
@@ -113,9 +201,23 @@ static void where(uint32_t addr)
 
 void x86_dispatch(CPU *C, uint32_t target)
 {
+    X86Module *m;
     if (x86_native_call_at(target, C)) return;
     fprintf(stderr, "x86_dispatch: no recompiled body at 0x%08x\n", target);
     where(target);
+    /* If it is inside a module, it is a function static analysis missed --
+       exactly what the constructor-table report describes, so it is printed in
+       the SAME shape and tools/native_discover.sh seeds it without needing to
+       know that an indirect call target is a different kind of gap. */
+    m = x86_module_for(target);
+    if (m) {
+        fprintf(stderr, "\n*** dispatch target with no recompiled body.\n"
+                        "    Reached as an indirect call, so nothing in the "
+                        "database references it as code.\n");
+        fprintf(stderr, "    %-18s 0x%08x\n", m->name,
+                m->preferred + (target - *m->base));
+        fprintf(stderr, "*** 1 of 1 dispatch target is missing a body\n");
+    }
     abort();
 }
 
@@ -194,9 +296,19 @@ void x87_fault(const char *what)
  * case: an unbound slot holds a poison address, and reporting "libIGCore.dll!
  * ?createInstance@..." is worth far more than reporting 0x00090120.
  */
+int x86_is_thunk(uint32_t addr)
+{
+    return addr >= THUNK_BASE && addr < THUNK_BASE + (uint32_t)THUNK_MAX * 16u;
+}
+
 void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
 {
     uint32_t target = *(volatile uint32_t *)(uintptr_t)slot_va;
+    /* The cycle break. Reaching here means the generated stub is running,
+       which only happens when nothing implements this import natively -- so a
+       slot pointing back at the thunk that calls this very stub is not a
+       target, it is the loop. Report it instead of taking it. */
+    if (x86_is_thunk(target)) x86_missing_import(mod, sym);
     if (x86_native_call_at(target, C)) return;
     fprintf(stderr, "x86_import_call: %s!%s\n"
                     "  slot 0x%08x holds 0x%08x, which is not a recompiled "

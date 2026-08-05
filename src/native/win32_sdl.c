@@ -444,11 +444,25 @@ static uint32_t data_alloc(uint32_t v)
 
 uint32_t x86_native_data_export(const char *mod, const char *sym)
 {
-    if (strcasecmp(mod, "MSVCRT.dll") == 0) {
+    /* The DLLs import MSVCRT and the exe imports MSVCR71: the same runtime
+       under two names, so both spellings map to the same data. Checking only
+       one is how _adjust_fdiv resolved for the DLLs and fell through to a
+       function thunk for the exe, which then faulted when the guest read
+       through it. */
+    if (strcasecmp(mod, "MSVCRT.dll") == 0
+        || strcasecmp(mod, "MSVCR71.dll") == 0) {
         /* int __adjust_fdiv: non-zero only on a Pentium with the FDIV erratum.
            The CRT branches on it to pick a software divide. Zero is the true
            answer here, not a placeholder. */
         if (strcmp(sym, "_adjust_fdiv") == 0) return data_alloc(0);
+        /* char *_acmdln: the raw command line the CRT parses. Empty rather
+           than invented -- the game parses its own arguments, and a fabricated
+           one is something it could branch on. */
+        if (strcmp(sym, "_acmdln") == 0) {
+            uint32_t s2 = guest_malloc(1);
+            if (s2) *(volatile uint8_t *)(uintptr_t)s2 = 0;
+            return data_alloc(s2);
+        }
     }
     return 0;
 }

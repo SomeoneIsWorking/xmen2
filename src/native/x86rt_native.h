@@ -27,6 +27,13 @@ typedef struct X86Fn {
     const char *name;
 } X86Fn;
 
+typedef struct X86Import {
+    uint32_t    slot_rva;            /* where the IAT slot lives in the image */
+    void      (*stub)(struct CPU *); /* the native (or aborting) stub for it */
+    const char *mod;
+    const char *sym;
+} X86Import;
+
 typedef struct X86Module {
     const char     *name;
     uint32_t       *base;            /* where it actually got mapped */
@@ -34,6 +41,8 @@ typedef struct X86Module {
     uint32_t        size;            /* SizeOfImage */
     const X86Fn    *fns;
     int             nfns;
+    const X86Import *imports;
+    int             nimports;
     struct X86Module *next;
 } X86Module;
 
@@ -49,6 +58,12 @@ int x86_native_call_at(uint32_t addr, struct CPU *C);
 
 /* Name of the body at a mapped address, or NULL. */
 const char *x86_native_name_at(uint32_t addr);
+
+/* Bind an IAT slot to a callable address when the import is implemented
+   natively but is not another recompiled module: the guest sometimes takes an
+   import's address and calls through it, bypassing the named stub. Returns 0
+   if there is no native implementation for that slot. */
+uint32_t x86_native_thunk(const char *mod, const char *sym);
 
 /* Every registered module, for reporting. */
 X86Module *x86_modules(void);
