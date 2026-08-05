@@ -138,6 +138,8 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
 /* Call a guest function from HOST code: pushes the return address the body's
    RET will pop. Dispatching without it leaks guest stack, upward, silently. */
 void x86_guest_call(CPU *C, uint32_t target);
+/* Dump the last crossings between guest and host, with ESP on both sides. */
+void x86_ring_dump(void);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
 /* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
 void x86_int3(uint32_t addr);

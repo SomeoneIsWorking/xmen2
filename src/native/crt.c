@@ -404,19 +404,24 @@ void imp_MSVCR71___getmainargs(CPU *C)
     ret_c(C, 0);
 }
 
-/* _onexit(func): register an atexit handler. The table is the same one
-   __dllonexit maintains, and the CRT keeps its head in __onexitbegin/end,
-   which this build does not expose -- so registration is recorded here and
-   the handlers run at exit(). */
-#define MAX_ONEXIT 64
-static uint32_t g_onexit[MAX_ONEXIT];
-static int g_nonexit;
+/* _onexit(func): register an atexit handler.
+ *
+ * Grows rather than capping. The first version stopped at 64 on the grounds
+ * that a fixed limit is honest -- and it is, but only if the limit is a real
+ * property of the thing. This one was a number I picked, and the game sailed
+ * past it during startup. A cap that exists only because someone guessed is
+ * not a constraint, it is a bug with an error message. */
+static uint32_t *g_onexit;
+static int g_nonexit, g_onexit_cap;
 
 void imp_MSVCR71__onexit(CPU *C)
 {
-    if (g_nonexit == MAX_ONEXIT) {
-        fprintf(stderr, "crt: more than %d _onexit handlers\n", MAX_ONEXIT);
-        abort();
+    if (g_nonexit == g_onexit_cap) {
+        int cap = g_onexit_cap ? g_onexit_cap * 2 : 64;
+        uint32_t *nt = realloc(g_onexit, (size_t)cap * sizeof *nt);
+        if (!nt) { ret_c(C, 0); return; }
+        g_onexit = nt;
+        g_onexit_cap = cap;
     }
     g_onexit[g_nonexit++] = A(0);
     ret_c(C, A(0));
