@@ -966,3 +966,95 @@ void listscan_report(void)
             (unsigned long long)ls_bad, LS_IMPLAUSIBLE);
     fflush(stderr);
 }
+
+/* ── listscan part 2: the name lookup whose miss produces the bad length ───
+ *
+ * sub_00275920 does not take an index; it asks for one:
+ *
+ *     find(this, name = item+8, &out_b, &out_idx)   -- sub_0026B390
+ *     memcpy(base + idx*4, base + idx*4 + 4, ((count-1) - idx) * 4)
+ *
+ * and the measured length says idx == count exactly, i.e. the lookup MISSED
+ * and the caller shifted anyway. The key is a STRING at item+8 (the caller
+ * sub_00289F50 takes strlen of it and re-registers under it), so a miss is
+ * either a name that is empty/garbage by the time we get here -- an upstream
+ * data problem -- or a compare that is wrong. Printing the name and the count
+ * separates those two without further inference.
+ *
+ * sub_0026B390 is in recomp_0013.c and has no callers in that chunk, so
+ * --wrap really binds here (issue #4).
+ */
+extern void __real_sub_0026B390(void);
+
+static uint64_t fnd_calls, fnd_miss;
+
+/* Copy a guest NUL-terminated string out for printing, bounded. Reports what
+   it truncated rather than silently shortening. */
+static void ls_guest_str(uint32_t va, char *out, size_t cap)
+{
+    size_t i = 0;
+    if (!va) { snprintf(out, cap, "<NULL>"); return; }
+    for (; i + 1 < cap; i++) {
+        uint8_t c = *(volatile uint8_t *)((uintptr_t)(uint32_t)(va + i) + g_xbox_mem_offset);
+        if (!c) break;
+        out[i] = (c >= 0x20 && c < 0x7F) ? (char)c : '?';
+    }
+    out[i] = 0;
+}
+
+void __wrap_sub_0026B390(void)
+{
+    uint32_t self    = g_ecx;
+    uint32_t name_va = MEM32(g_esp + 4);
+    uint32_t idx_va  = MEM32(g_esp + 12);
+    uint32_t count   = self ? MEM32(self + 4) : 0;
+
+    fnd_calls++;
+    __real_sub_0026B390();
+
+    {
+        uint32_t idx = idx_va ? MEM32(idx_va) : 0xFFFFFFFFu;
+        char name[64];
+
+        /* idx == count is the NORMAL answer for an insert: "not present,
+           append at the end". 821 of 826 calls on this run were that, so a
+           bare "MISS" label here read as 826 failures when almost all of them
+           were healthy -- the discriminator fired on the wrong class. Only the
+           REMOVE path turns a no-match into the underflowing shift, and the
+           remove is one caller among 22. Report the shape, not a verdict. */
+        if (idx >= count) {
+            fnd_miss++;
+            ls_guest_str(name_va, name, sizeof name);
+            fprintf(stderr, "[LISTSCAN] find NO-MATCH #%llu (normal for an"
+                            " insert; fatal only on the remove path):"
+                            " this=0x%08X count=%u"
+                            " idx=%u name@0x%08X=\"%s\" eax=0x%08X"
+                            " -- a remove here would shift ((count-1)-idx)*4"
+                            " = 0x%08X bytes\n",
+                    (unsigned long long)fnd_miss, self, count, idx, name_va, name,
+                    g_eax, (uint32_t)(((count - 1) - idx) * 4));
+            fflush(stderr);
+        } else if (fnd_calls <= 5) {
+            ls_guest_str(name_va, name, sizeof name);
+            fprintf(stderr, "[LISTSCAN] find hit  #%llu: count=%u idx=%u name=\"%s\"\n",
+                    (unsigned long long)fnd_calls, count, idx, name);
+            fflush(stderr);
+        }
+    }
+}
+
+void listfind_report(void)
+{
+    if (fnd_calls == 0) {
+        fprintf(stderr, "[LISTSCAN] the find wrapper at 0x0026B390 never fired:"
+                        " 0 calls. Not evidence of anything -- check the link"
+                        " line and issue #4 before reading this as a negative.\n");
+    } else {
+        fprintf(stderr, "[LISTSCAN] %llu find calls, %llu returned no match"
+                        " (idx == count, the normal append-here answer -- NOT"
+                        " an error count; only a remove on one of these"
+                        " underflows)\n",
+                (unsigned long long)fnd_calls, (unsigned long long)fnd_miss);
+    }
+    fflush(stderr);
+}

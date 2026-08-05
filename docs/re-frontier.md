@@ -164,9 +164,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-defect-listscan — OPEN: recompiled igTObjectList find/removeAllByValue fault where the original does not
 - status: todo
 - deps: rc-decode
-- evidence: scratch/logs/xbox_run_ls2.log ([LISTSCAN] memcpy #413); xbox/src/recomp_manual.c __wrap_sub_003D5890
+- evidence: C074; scratch/logs/xbox_run_final.log; xbox/src/recomp_manual.c __wrap_sub_003D5890 + __wrap_sub_0026B390
 - where: 
-- gap: MEASURED on the real game 2026-08-05, no longer inferred. The run dies in the CRT memcpy at 0x003D5890 called from the list-remove at 0x00275920+0x318, with dst=0x029021B4 src=0x029021B8 size=0xFFFFFFFC. src == dst+4 is the tail-shift signature, and the length is exact arithmetic: size = ((count-1) - idx) << 2 = -4, so (count-1) - idx = -1, so idx == count EXACTLY. That is the not-found outcome of the scan (the index ends one past the last element) and the remove proceeds without guarding it. So the defect is NOT in the shift and not in the flag model (C022 already falsified that): something asks the list to remove an element the list does not contain. Next: find who calls it -- stack frame above is sub_00289F50+0xB9 -- and why that element is absent, i.e. which earlier add never happened.
+- gap: ROOT-CAUSED to an upstream state divergence, not a translation bug (C074). The original x86 at 0x0027595B computes ((count-1) - idx) << 2 and calls memcpy UNCONDITIONALLY, ignoring the find result -- verified instruction for instruction against tools/disasm/output/asm/text.asm -- so the real binary underflows identically when idx == count. Measured on the run: memcpy #413 dst=0x029021B4 src=dst+4 size=0xFFFFFFFC, after find #821 name="DefaultFileName" count=409 idx=409 on the table at 0x02901B30. NOTE for whoever picks this up: idx == count is the NORMAL append-here answer and 821 of 826 finds return it; only the remove path turns it fatal. Next: find which insert of that name never happened, i.e. who populates the table at 0x02901B30 and what our run skipped.
 - notes: 
 
 ### rc-modules — Recompiler generalises across modules
