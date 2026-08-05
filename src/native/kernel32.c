@@ -159,6 +159,7 @@ static const char *win_path(const char *in)
 /* ---- error reporting --------------------------------------------------- */
 
 static uint32_t g_last_error;
+static uint64_t g_reserved_bytes;   /* see VirtualAlloc */
 
 void imp_KERNEL32_GetLastError(CPU *C) { ret_std(C, g_last_error, 0); }
 
@@ -490,9 +491,68 @@ void imp_KERNEL32_LocalFree(CPU *C) { guest_free(A(0)); ret_std(C, 0, 1); }
 #define MEM_COMMIT  0x1000u
 #define MEM_RESERVE 0x2000u
 
+/* How much memory this machine has, as far as the guest is concerned. Used by
+   BOTH GlobalMemoryStatus and VirtualAlloc, because a budget the allocator
+   does not enforce is not a budget -- the game allocates until allocation
+   fails, and with the two disagreeing it took 937 MB after being told 512. */
+static uint64_t phys_bytes(void)
+{
+    /* X2_PHYS_MB overrides it. How much memory to claim is an empirical
+       question -- the game allocates until allocation fails, so the number
+       decides how much it takes and possibly whether it gets far enough to
+       finish initialising. A constant would have made that untestable. */
+    static uint64_t v;
+    if (!v) {
+        const char *e = getenv("X2_PHYS_MB");
+        unsigned mb = e && *e ? (unsigned)strtoul(e, NULL, 10) : 512u;
+        if (mb < 64u) mb = 64u;
+        v = (uint64_t)mb * 1048576ULL;
+    }
+    return v;
+}
+#define X2_PHYS_BYTES phys_bytes()
+
+/* Memory layout is worth seeing: which arena the game placed where, and how
+   big. X2_VERBOSE=1 prints it. Silent by default, because a shipping run
+   should not narrate. */
+static int verbose(void)
+{
+    static int v = -1;
+    if (v < 0) { const char *e = getenv("X2_VERBOSE"); v = e && *e == '1'; }
+    return v;
+}
+
+/*
+ * What the guest has reserved, so a later commit over its OWN reservation can
+ * be told from a request that collides with the runtime's memory.
+ *
+ * The first version returned success on any EEXIST, reasoning that a commit
+ * over an existing reservation looks exactly like that. It does -- but so does
+ * a request landing on the guest heap or a mapped module, and answering
+ * "granted" there hands the game memory that belongs to us. That is the
+ * plausible-value failure this layer refuses everywhere else, and it took
+ * writing the runaway-allocation diagnostic to notice it.
+ */
+#define MAX_RESERVED 256
+static struct { uint32_t base, size; } g_reserved[MAX_RESERVED];
+static int g_nreserved;
+
+static int guest_reserved(uint32_t base, uint32_t len)
+{
+    int i;
+    for (i = 0; i < g_nreserved; i++)
+        if (base >= g_reserved[i].base
+            && base + len <= g_reserved[i].base + g_reserved[i].size)
+            return 1;
+    return 0;
+}
+
 void imp_KERNEL32_VirtualAlloc(CPU *C)
 {
     uint32_t addr = A(0), size = A(1), type = A(2), p;
+    if (verbose())
+        fprintf(stderr, "[mem] VirtualAlloc(0x%08x, %u = %.1f MB, type 0x%x)\n",
+                addr, size, size / 1048576.0, type);
     if (addr) {
         /* A fixed address is directly implementable here in a way it is not in
            an emulator: guest addresses ARE host addresses, so the request can
@@ -505,13 +565,52 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
                          MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE
                          | MAP_NORESERVE, -1, 0);
         if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)base) {
-            /* Already mapped is not failure: Win32 returns the address for a
-               commit over an existing reservation, which is what a two-step
-               reserve-then-commit looks like. Anything else is a real error. */
             if (got != MAP_FAILED) munmap(got, len);
-            if (errno == EEXIST) { ret_std(C, addr, 4); return; }
-            fprintf(stderr, "kernel32: VirtualAlloc could not place %u bytes at "
-                            "0x%08x: %s\n", size, base, strerror(errno));
+            /* Already mapped: fine ONLY if the guest reserved it. Anything
+               else is our own memory and must be refused. */
+            if (errno == EEXIST && guest_reserved(base, len)) {
+                ret_std(C, addr, 4);
+                return;
+            }
+            if (errno == EEXIST)
+                fprintf(stderr, "kernel32: VirtualAlloc(0x%08x, %u) collides "
+                                "with memory the guest never reserved -- that "
+                                "is the runtime's, and granting it would hand "
+                                "the game our own heap or a mapped module\n",
+                        base, size);
+            else
+                fprintf(stderr, "kernel32: VirtualAlloc could not place %u "
+                                "bytes at 0x%08x: %s\n",
+                        size, base, strerror(errno));
+            g_last_error = 8u;                       /* ERROR_NOT_ENOUGH_MEMORY */
+            ret_std(C, 0, 4);
+            return;
+        }
+        if (g_nreserved < MAX_RESERVED) {
+            g_reserved[g_nreserved].base = base;
+            g_reserved[g_nreserved].size = len;
+            g_nreserved++;
+        }
+        g_reserved_bytes += len;
+        /* The game is told 512 MB exists (GlobalMemoryStatus). Reserving far
+           past that is not a memory-pressure problem, it is a runaway loop,
+           and saying so beats silently consuming the address space until
+           something unrelated collides. */
+        if (g_reserved_bytes > X2_PHYS_BYTES) {
+            /* Refuse, do not abort. GlobalMemoryStatus told the guest how much
+               memory exists; a game that allocates until allocation fails is
+               doing the normal thing, and the two APIs have to agree or the
+               budget it was given means nothing. Failing here is the honest
+               answer to "is there more?" -- and it is what makes such a loop
+               terminate. */
+            if (verbose())
+                fprintf(stderr, "[mem] refusing: %.0f MB reserved already, and "
+                                "GlobalMemoryStatus reports %.0f MB of "
+                                "physical memory\n",
+                        g_reserved_bytes / 1048576.0,
+                        X2_PHYS_BYTES / 1048576.0);
+            munmap((void *)(uintptr_t)base, len);
+            g_last_error = 8u;                       /* ERROR_NOT_ENOUGH_MEMORY */
             ret_std(C, 0, 4);
             return;
         }
@@ -539,10 +638,14 @@ void imp_KERNEL32_GlobalMemoryStatus(CPU *C)
     uint32_t p = A(0);
     WR32(p +  0u, 32);                    /* dwLength */
     WR32(p +  4u, 50);                    /* dwMemoryLoad, percent */
-    WR32(p +  8u, 0x20000000u);           /* dwTotalPhys   512 MB */
-    WR32(p + 12u, 0x10000000u);           /* dwAvailPhys   256 MB */
-    WR32(p + 16u, 0x20000000u);           /* dwTotalPageFile */
-    WR32(p + 20u, 0x10000000u);           /* dwAvailPageFile */
+    WR32(p +  8u, (uint32_t)X2_PHYS_BYTES);          /* dwTotalPhys */
+    WR32(p + 12u, (uint32_t)(X2_PHYS_BYTES - g_reserved_bytes
+                             > X2_PHYS_BYTES ? 0
+                             : X2_PHYS_BYTES - g_reserved_bytes)); /* avail */
+    WR32(p + 16u, (uint32_t)X2_PHYS_BYTES);          /* dwTotalPageFile */
+    WR32(p + 20u, (uint32_t)(X2_PHYS_BYTES - g_reserved_bytes
+                             > X2_PHYS_BYTES ? 0
+                             : X2_PHYS_BYTES - g_reserved_bytes));
     WR32(p + 24u, 0x7FFF0000u);           /* dwTotalVirtual */
     WR32(p + 28u, 0x40000000u);           /* dwAvailVirtual */
     ret_std(C, 0, 1);

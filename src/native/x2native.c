@@ -251,14 +251,20 @@ static int tib_init(void)
  * different memory by construction.
  */
 #define GUEST_STACK 0x00100000u
+/* The runtime's own memory lives above everything the guest asks for. */
+#define X2_RUNTIME_BASE 0x70000000u
 static uint32_t guest_stack_top;
 
 static int guest_stack_init(void)
 {
     /* Below 4 GB like everything else the guest addresses, and mapped rather
        than malloc'd so its address is predictable in a fault report. */
-    if (pe_map_anon_low(0x30000000u, GUEST_STACK) != 0) return -1;
-    guest_stack_top = 0x30000000u + GUEST_STACK - 64u;
+    /* High, deliberately. The game manages its own address space and walks
+       upward from just above its image reserving arenas; anything of ours in
+       that path collides with it. Measured: with the stack at 0x30000000 the
+       guest's arena walk ran straight into it. */
+    if (pe_map_anon_low(X2_RUNTIME_BASE, GUEST_STACK) != 0) return -1;
+    guest_stack_top = X2_RUNTIME_BASE + GUEST_STACK - 64u;
     return 0;
 }
 
@@ -365,7 +371,7 @@ static int modules_init(void)
  * touch registers would pass against a blank page and would say nothing about
  * the thing this binary exists to establish.
  */
-#define SCRATCH 0x30200000u          /* a guest-addressable scratch object */
+#define SCRATCH (X2_RUNTIME_BASE + 0x00200000u)          /* a guest-addressable scratch object */
 
 static int fails;
 /*
@@ -755,7 +761,7 @@ int main(int argc, char **argv)
     if (poison_init() != 0) return 1;
     if (pe_map_anon_low(DATA_ARENA, DATA_SIZE) != 0) return 1;
     /* 256 MB, reserved not committed, well clear of every image base. */
-    if (guest_heap_init(0x40000000u, 0x10000000u) != 0) return 1;
+    if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x08000000u) != 0) return 1;
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {
         int bound = 0, poisoned = 0;
