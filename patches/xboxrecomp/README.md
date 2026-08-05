@@ -18,6 +18,7 @@ readability:
 | `0002-kernel-handle-and-ordinal-tables` | `src/kernel/kernel_bridge.c`, `kernel_file.c` | `bridge_read_handle` indirection; 45 ordinals bound to the wrong function across three tables; FATX volume geometry; loud `HalReturnToFirmware`; file-open logging |
 | `0003-recompiler-jump-tables-and-loud-drops` | `tools/` | embedded jump tables decoded as code; function boundaries ending at the last fall-through; deferred `cmp` operands re-read at the `jcc`; deleted jumps and ordinal tables now reported |
 | `0004-linux-veh-and-nv2a` | `src/platform/`, `src/nv2a/` | `AddVectoredExceptionHandler` implemented on `sigaction` (it returned NULL); NV2A MMIO decoder no longer `#if _WIN32`; one shared `CONTEXT` with R8–R15 |
+| `0005-placed-virtual-reservations` | `src/kernel/xbox_memory_layout.{c,h}` | `xbox_HeapReserveAt` — a reservation that NAMES its address comes back at that address or not at all (C070) |
 
 Verify a patch still applies cleanly rather than assuming:
 `git apply --check <patch>` exits non-zero if the toolkit moved underneath it.

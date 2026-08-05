@@ -1,5 +1,5 @@
 diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
-index eafbf96..f25cf4f 100644
+index eafbf96..0e11aaa 100644
 --- a/src/kernel/kernel_bridge.c
 +++ b/src/kernel/kernel_bridge.c
 @@ -73,24 +73,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
@@ -98,7 +98,7 @@ index eafbf96..f25cf4f 100644
      }
  
      /* Call the start routine synchronously through the recomp dispatch.
-@@ -401,11 +437,28 @@ static void bridge_NtAllocateVirtualMemory(void)
+@@ -401,27 +437,80 @@ static void bridge_NtAllocateVirtualMemory(void)
       * Only allocate new memory when MEM_RESERVE is requested.
       */
      if (base_hint != 0 && (alloc_type & 0x2000) == 0) {
@@ -131,27 +131,52 @@ index eafbf96..f25cf4f 100644
              fflush(stderr);
          }
          g_eax = 0; /* STATUS_SUCCESS */
-@@ -419,9 +472,27 @@ static void bridge_NtAllocateVirtualMemory(void)
+         return;
+     }
+ 
++    uint32_t xbox_va;
++
++    /* A PLACED reservation -- one that NAMES the address it wants -- must come
++       back at that address or not at all. The caller picked it from a
++       preceding NtQueryVirtualMemory walk and compares what it gets against
++       what it asked for; a different address reads as failure, not as a near
++       miss. This used to fall through to xbox_HeapAlloc, which answers only
++       "the next address", and that is what blocked the title (C070).
++       It is never boring, so it always prints -- the ordinary trace is capped
++       at 200 kernel calls, which is precisely why it went unseen. */
++    if (base_hint && (alloc_type & 0x2000)) {
++        uint32_t page_base = base_hint & ~0xFFFu;
++        uint32_t want      = (base_hint + size + 0xFFFu) & ~0xFFFu;
++
++        xbox_va = xbox_HeapReserveAt(page_base, want - page_base);
++        fprintf(stderr, "  [KERNEL] PLACED reserve at 0x%08X size=%u -> %s\n",
++                base_hint, size,
++                xbox_va ? "granted at the requested address" : "REFUSED");
++        fflush(stderr);
++
++        if (!xbox_va) {
++            /* STATUS_CONFLICTING_ADDRESSES. Callers that walk the address
++               space treat the matching Win32 error (ERROR_INVALID_ADDRESS,
++               487) as "try higher" and re-query, which is the behaviour we
++               want: refusing one address must not abort the whole walk. */
++            g_eax = 0xC0000018u;
++            return;
++        }
++        if (base_ptr) BRIDGE_MEM32(base_ptr) = xbox_va;
++        if (size_ptr) BRIDGE_MEM32(size_ptr) = want - page_base;
++        g_eax = 0; /* STATUS_SUCCESS */
++        return;
++    }
++
+     /* Allocate from Xbox heap (MEM_RESERVE or MEM_RESERVE|MEM_COMMIT) */
+-    uint32_t xbox_va = xbox_HeapAlloc(size, 4096);
++    xbox_va = xbox_HeapAlloc(size, 4096);
+     if (!xbox_va) {
+         g_eax = 0xC0000017u; /* STATUS_NO_MEMORY */
          return;
      }
  
 -    /* Write back the allocated address and actual size */
-+    /* A PLACED reservation -- one that names the address it wants -- is rare
-+       and is never boring: the caller picked that address from a preceding
-+       NtQueryVirtualMemory walk and, in every caller seen so far, REQUIRES
-+       the address back unchanged. The bump allocator cannot honour a placed
-+       request, so this is where such a caller fails. The ordinary trace is
-+       capped at 200 kernel calls, which is precisely why this one went
-+       unseen -- so cap the boring case, not this one. */
-+    if (base_hint && (alloc_type & 0x2000)) {
-+        fprintf(stderr, "  [KERNEL] PLACED reserve at 0x%08X size=%u:"
-+                        " returning 0x%08X instead%s\n",
-+                base_hint, size, xbox_va,
-+                xbox_va == base_hint ? "" :
-+                " -- a caller that compares the two will treat this as failure");
-+        fflush(stderr);
-+    }
-+
 +    /* Write back the allocated address and the PAGE-ROUNDED size, which is
 +       what the caller is entitled to use -- xbox_HeapAlloc already rounds the
 +       allocation up, so reporting the unrounded request understates it. */
@@ -161,7 +186,7 @@ index eafbf96..f25cf4f 100644
  
      g_eax = 0; /* STATUS_SUCCESS */
  }
-@@ -743,6 +814,97 @@ static void bridge_ExQueryPoolBlockSize(void)
+@@ -743,6 +832,115 @@ static void bridge_ExQueryPoolBlockSize(void)
      g_eax = 0;
  }
  
@@ -185,11 +210,18 @@ index eafbf96..f25cf4f 100644
 +    uint32_t addr    = STACK_ARG(0);
 +    uint32_t info_va = STACK_ARG(1);
 +
-+    /* [lo, hi) of the guest's committed regions, in address order. */
-+    static const struct { uint32_t lo, hi; } regions[] = {
-+        { XBOX_BASE_ADDRESS, XBOX_STACK_BASE },  /* image + its data */
-+        { XBOX_STACK_BASE,  XBOX_HEAP_BASE  },   /* thread stack */
-+        { XBOX_HEAP_BASE,   XBOX_TOTAL_RAM  },   /* heap */
++    /* [lo, hi) of the guest's committed regions, in address order.
++     *
++     * The arena's UNUSED TAIL is deliberately not here. It is the one range a
++     * caller may place a reservation in, so it must read as MEM_FREE -- and
++     * conversely, nothing outside the 64 MB map may read as free, because
++     * xbox_HeapReserveAt could not honour a reservation there and the caller
++     * would fail on the address it got back (C070). What this function
++     * advertises and what the allocator can deliver are the same set. */
++    const struct { uint32_t lo, hi; } regions[] = {
++        { XBOX_BASE_ADDRESS, XBOX_STACK_BASE },   /* image + its data */
++        { XBOX_STACK_BASE,   XBOX_HEAP_BASE  },   /* thread stack      */
++        { XBOX_HEAP_BASE,    xbox_HeapNext() },   /* arena, handed out */
 +    };
 +    const int n = (int)(sizeof regions / sizeof regions[0]);
 +    uint32_t page = addr & ~0xFFFu;
@@ -207,10 +239,21 @@ index eafbf96..f25cf4f 100644
 +        state   = 0x1000;      /* MEM_COMMIT  */
 +        protect = 0x04;        /* PAGE_READWRITE */
 +        type    = 0x20000;     /* MEM_PRIVATE */
++    } else if (page >= xbox_HeapLimit()) {
++        /* Past the end of the 64 MB the console has. Not free: we cannot back
++           a reservation here, and saying "free" is what sent the title to
++           0x04000000 and then failed it. Report it RESERVED so the walk keeps
++           moving instead of trying to place here. RegionSize must still reach
++           something and must never be zero -- a zero made the caller spin. */
++        base    = page;
++        size    = 0xFFFFF000u - page;
++        state   = 0x2000;      /* MEM_RESERVE */
++        protect = 0x01;        /* PAGE_NOACCESS */
++        type    = 0x20000;     /* MEM_PRIVATE */
 +    } else {
 +        /* Free. RegionSize must reach the next region, and must never be
 +           zero -- that is what made the caller spin. */
-+        uint32_t next = 0xFFFFF000u;
++        uint32_t next = xbox_HeapLimit();
 +        for (i = 0; i < n; i++)
 +            if (regions[i].lo > page && regions[i].lo < next) next = regions[i].lo;
 +        base    = page;
@@ -259,7 +302,7 @@ index eafbf96..f25cf4f 100644
  /* ── RtlNtStatusToDosError (ordinal 301) ─────────────────
   * ULONG RtlNtStatusToDosError(NTSTATUS Status)
   *
-@@ -845,10 +1007,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
+@@ -845,10 +1043,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
          BRIDGE_MEM32(handle_va) = bridge_handle_token(h);
  }
  
@@ -281,7 +324,7 @@ index eafbf96..f25cf4f 100644
      if ((token & 0xFF000000u) == BRIDGE_HANDLE_TAG) {
          uint32_t i = token & BRIDGE_HANDLE_MASK;
          return (i > 0 && i < BRIDGE_HANDLE_MAX) ? s_handle_table[i] : NULL;
-@@ -906,6 +1076,14 @@ static NTSTATUS bridge_create_file_impl(
+@@ -906,6 +1112,14 @@ static NTSTATUS bridge_create_file_impl(
      st = xbox_NtCreateFile(&h, access, &oa, &ios, NULL,
                             file_attrs, share, disposition, options);
  
@@ -296,7 +339,7 @@ index eafbf96..f25cf4f 100644
      if (NT_SUCCESS(st)) {
          bridge_write_handle(handle_va, h);
          bridge_write_iostatus(iostatus_va, ios.Status, (uint32_t)ios.Information);
-@@ -1307,46 +1485,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1307,46 +1521,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case   4: return  4;  /* AvSetSavedDataAddress(1) */
  
      /* ── Unknown stubs ── */
@@ -367,7 +410,7 @@ index eafbf96..f25cf4f 100644
      case 107: return 12;  /* KeInitializeDpc(3) */
      case 109: return 28;  /* KeInitializeInterrupt(7) */
      case 113: return  8;  /* KeInitializeTimerEx(2) */
-@@ -1411,15 +1587,21 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1411,15 +1623,21 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 210: return  8;  /* NtQueryFullAttributesFile(2) */
      case 211: return 20;  /* NtQueryInformationFile(5) */
      case 215: return 12;  /* NtQuerySymbolicLinkObject(3) */
@@ -392,7 +435,7 @@ index eafbf96..f25cf4f 100644
      case 236: return 32;  /* NtWriteFile(8) */
      case 238: return  0;  /* NtYieldExecution(void) */
  
-@@ -1434,7 +1616,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1434,7 +1652,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
  
      /* ── Threading ── */
      case 255: return 40;  /* PsCreateSystemThreadEx(10) */
@@ -401,7 +444,7 @@ index eafbf96..f25cf4f 100644
      case 258: return  4;  /* PsTerminateSystemThread(1) */
      /* case 259: DATA export - PsThreadObjectType */
  
-@@ -1452,28 +1634,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1452,28 +1670,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 305: return  8;  /* RtlTimeToTimeFields(2) */
      case 308: return 12;  /* RtlUnicodeStringToAnsiString(3) */
      case 312: return 16;  /* RtlUnwind(4) */
@@ -485,7 +528,7 @@ index eafbf96..f25cf4f 100644
      }
  }
  
-@@ -1514,9 +1736,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1514,9 +1772,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 199: return bridge_NtFreeVirtualMemory;
  
      /* Pool */
@@ -498,7 +541,7 @@ index eafbf96..f25cf4f 100644
  
      /* IRQL */
      case 160: return bridge_KfRaiseIrql;
-@@ -1546,14 +1768,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1546,14 +1804,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 238: return bridge_NtYieldExecution;
  
      /* Hardware */
@@ -516,7 +559,7 @@ index eafbf96..f25cf4f 100644
      case 188: return bridge_NtCreateDirectoryObject;
      case 246: return bridge_ObReferenceObjectByHandle;
  
-@@ -1562,6 +1784,8 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1562,6 +1820,8 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 178: return bridge_MmPersistContiguousMemory;
  
      /* RTL */
@@ -525,7 +568,7 @@ index eafbf96..f25cf4f 100644
      case 301: return bridge_RtlNtStatusToDosError;
      case 302: return bridge_RtlRaiseException;
  
-@@ -1733,6 +1957,9 @@ void xbox_kernel_bridge_init(void)
+@@ -1733,6 +1993,9 @@ void xbox_kernel_bridge_init(void)
      /* Initialize kernel data export values first */
      kernel_data_init();
  
@@ -535,7 +578,7 @@ index eafbf96..f25cf4f 100644
      for (i = 0; i < g_thunk_table_count; i++) {
          uint32_t va = g_thunk_table_base + i * 4;
          uint32_t current = BRIDGE_MEM32(va);
-@@ -1755,7 +1982,19 @@ void xbox_kernel_bridge_init(void)
+@@ -1755,7 +2018,19 @@ void xbox_kernel_bridge_init(void)
  
              /* FUNCTION export: use synthetic VA for dispatch */
              g_slot_bridges[i] = bridge_for_ordinal(ordinal);
@@ -556,7 +599,7 @@ index eafbf96..f25cf4f 100644
              if (g_slot_bridges[i]) {
                  bridged++;
              } else {
-@@ -1779,6 +2018,24 @@ void xbox_kernel_bridge_init(void)
+@@ -1779,6 +2054,24 @@ void xbox_kernel_bridge_init(void)
  
      fprintf(stderr, "  Kernel thunk bridge: %d/%d resolved (%d bridged, %d stub)\n",
              resolved, g_thunk_table_count, bridged, unbridged);

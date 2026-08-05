@@ -1,0 +1,102 @@
+diff --git a/src/kernel/xbox_memory_layout.c b/src/kernel/xbox_memory_layout.c
+index c1f977b..8592eee 100644
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -568,6 +568,69 @@ void xbox_HeapFree(uint32_t xbox_va)
+     (void)xbox_va;
+ }
+ 
++uint32_t xbox_HeapNext(void)  { return g_heap_next; }
++uint32_t xbox_HeapLimit(void) { return XBOX_HEAP_BASE + XBOX_HEAP_SIZE; }
++
++/*
++ * PLACED reservation: give back exactly the address that was asked for, or
++ * nothing.
++ *
++ * A caller that reserves address space by NAME has already decided where the
++ * region goes -- it walked the address space with NtQueryVirtualMemory, chose
++ * a free range, and (in every caller seen so far) compares the address it gets
++ * back against the one it asked for. Handing it a different address is not a
++ * near miss; it reads as failure. xbox_HeapAlloc cannot express this, because
++ * a bump allocator only ever answers "the next address".
++ *
++ * The only addresses this can honour are the unused tail of the arena, which
++ * is exactly the range xbox_NtQueryVirtualMemory reports as MEM_FREE. Those
++ * two must agree: advertising free space that cannot then be reserved is the
++ * defect this pair exists to close (C070).
++ *
++ * Returns `va` on success, 0 on failure -- and says which of the reasons it
++ * was, because "returned 0" alone cannot distinguish "already handed out"
++ * from "off the end of the arena".
++ */
++uint32_t xbox_HeapReserveAt(uint32_t va, uint32_t size)
++{
++    uint32_t limit = XBOX_HEAP_BASE + XBOX_HEAP_SIZE;
++
++    if (size == 0) size = 4096;
++
++    if (va < g_heap_next) {
++        fprintf(stderr, "  [HEAP] placed reserve 0x%08X+%u REFUSED:"
++                        " that range is already handed out (arena reaches"
++                        " 0x%08X)\n", va, size, g_heap_next);
++        fflush(stderr);
++        return 0;
++    }
++    if (va >= limit || size > limit - va) {
++        fprintf(stderr, "  [HEAP] placed reserve 0x%08X+%u REFUSED:"
++                        " it does not fit below the arena end 0x%08X\n",
++                va, size, limit);
++        fflush(stderr);
++        return 0;
++    }
++
++    /* Everything skipped over is consumed too: the bump pointer cannot leave
++       a hole behind it, so say how much was lost rather than lose it quietly. */
++    if (va > g_heap_next)
++        fprintf(stderr, "  [HEAP] placed reserve skips %u bytes at 0x%08X;"
++                        " a bump allocator cannot reuse them\n",
++                va - g_heap_next, g_heap_next);
++
++    g_heap_next = va + size;
++    memset((void *)((uintptr_t)va + g_memory_offset), 0, size);
++
++    g_heap_alloc_count++;
++    fprintf(stderr, "  [HEAP] #%d: PLACED 0x%08X..0x%08X (%u bytes,"
++                    " used %u/%u)\n",
++            g_heap_alloc_count, va, va + size, size,
++            g_heap_next - XBOX_HEAP_BASE, XBOX_HEAP_SIZE);
++    fflush(stderr);
++    return va;
++}
++
+ HANDLE xbox_GetMappingHandle(void)
+ {
+     return g_mapping_handle;
+diff --git a/src/kernel/xbox_memory_layout.h b/src/kernel/xbox_memory_layout.h
+index 1e35916..6ea5156 100644
+--- a/src/kernel/xbox_memory_layout.h
++++ b/src/kernel/xbox_memory_layout.h
+@@ -170,6 +170,23 @@ uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
+  */
+ void xbox_HeapFree(uint32_t xbox_va);
+ 
++/**
++ * The arena's unused tail: [xbox_HeapNext(), xbox_HeapLimit()).
++ *
++ * This is the ONLY range a placed reservation can be honoured in, and it is
++ * therefore the only range NtQueryVirtualMemory may report as MEM_FREE.
++ */
++uint32_t xbox_HeapNext(void);
++uint32_t xbox_HeapLimit(void);
++
++/**
++ * Reserve exactly [va, va+size) in the arena's unused tail.
++ * Returns va on success, 0 if that range is already handed out or does not
++ * fit. Never returns a different address: a caller that names an address is
++ * comparing what it gets back against what it asked for.
++ */
++uint32_t xbox_HeapReserveAt(uint32_t va, uint32_t size);
++
+ /**
+  * Get the file mapping handle for the Xbox memory region.
+  * Used by the VEH handler to map additional mirror views on demand.
