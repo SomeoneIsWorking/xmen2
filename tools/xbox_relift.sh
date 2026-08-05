@@ -51,6 +51,17 @@ echo "xbox_relift: seeding $seed_count runtime-discovered function(s) from $SEED
 
 cd "$XBOXRECOMP"
 
+# Tests before the ten-minute lift, not after. The suite runs in ~1s and each
+# case is anchored to a defect that really happened; a lift that starts with a
+# known-broken translator wastes ten minutes and produces a binary whose
+# failure tells you nothing new.
+echo "== 0/3 recompiler tests =="
+if ! python3 -m pytest tools/recomp/test_lifter.py tools/recomp/test_regressions.py -q 2>&1 | tail -5; then
+    echo "xbox_relift: RECOMPILER TESTS FAILED -- not lifting." >&2
+    echo "  Set SKIP_TESTS=1 to lift anyway (and expect the result to be wrong)." >&2
+    [ "${SKIP_TESTS:-0}" = "1" ] || exit 1
+fi
+
 # NOT --text-only: this XBE has TEN executable sections, not one. Beyond
 # .text there are D3D, DSOUND, WMADEC, PSFD00/_I/_B/_P, XONLINE, XNET, D3DX,
 # XGRPH and XPP, together ~430 KB of shipped code ending at 0x0048EEC8. With

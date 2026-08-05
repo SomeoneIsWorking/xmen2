@@ -50,7 +50,8 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Unresolved-indirect-call tally | `xbox/src/recomp_manual.c` | **verified** — I008; fatal by default (`XBOX_ICALL_CONTINUE=1` to survey); `XBOX_ICALL_SELFTEST=1` proves both miss paths fire |
 | Runtime discovery loop, automated | `tools/xbox_discover.sh` | **verified** — run → seed → re-lift → repeat; stops on convergence, on a repeat, or on an out-of-image target, and says which |
 | Register model | `xbox/src/recomp_types.h` | **verified** — every register global including ebp; the g_seh_ebp bridge is gone (C051) |
-| Branch conditions | `patches/xboxrecomp/0003-*.patch` | **verified** — deferred `cmp` operands snapshotted at the flag setter; 216 wrong-direction branches fixed (C050) |
+| Branch conditions | `patches/xboxrecomp/0003-*.patch` | **verified** — operands snapshotted at the flag setter (C050); flag state propagated over the CFG, not just fall-through, killing always-false branches (C059) |
+| Recompiler test suite | `vendor/xboxrecomp/tools/recomp/test_*.py` | **verified** — I010; 15 tests in ~1s, real-binary regressions skip loudly when the XBE is absent; `tools/xbox_relift.sh` refuses to lift if they fail |
 | Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |
 | Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection; silently-empty stubs 7998 → 348 (C048) |
 | Vectored exception handling on Linux | `patches/xboxrecomp/0004-*.patch` | **verified** — `sigaction`-based; was a stub returning NULL, so every handler was discarded. The crash reporter now fires (C055) |

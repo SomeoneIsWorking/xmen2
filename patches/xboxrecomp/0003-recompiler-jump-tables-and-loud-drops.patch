@@ -346,8 +346,364 @@ index 57d7e83..a8883b5 100644
          elif curr.mnemonic in _EFLAGS_PRESERVE:
              pass  # These don't affect EFLAGS
          elif curr.mnemonic in ("fcompi", "fcomip", "fucomi", "fucompi",
+diff --git a/tools/recomp/test_lifter.py b/tools/recomp/test_lifter.py
+new file mode 100644
+index 0000000..7a012a8
+--- /dev/null
++++ b/tools/recomp/test_lifter.py
+@@ -0,0 +1,191 @@
++"""Unit tests for the x86 -> C lifter and translator.
++
++Run:  python3 -m pytest tools/recomp/test_lifter.py -q
++
++These exist because the alternative oracle was re-lifting all 25,778 functions
++of a real title (~10 minutes) and grepping the output for a pattern count. A
++count that moves the wrong way tells you something regressed but not what.
++Each test here names one behaviour, runs in well under a second, and keeps the
++regression from coming back.
++
++Every test assembles a short instruction sequence with an assembler-free
++encoding helper, runs the real FunctionTranslator over it, and asserts on the
++C it produces.
++"""
++
++import os
++import struct
++import sys
++
++import pytest
++
++sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
++
++from recomp import config as recomp_config          # noqa: E402
++from recomp.translator import FunctionTranslator     # noqa: E402
++
++
++# ── A minimal fake image ────────────────────────────────────────────────
++#
++# The translator reads function bytes through config.va_to_file_offset, so a
++# test only has to place its code at a known VA and make that mapping the
++# identity minus a base.
++
++TEST_BASE = 0x00011000
++
++
++@pytest.fixture(autouse=True)
++def _flat_image(monkeypatch):
++    """Map VA -> offset as a flat image starting at TEST_BASE."""
++    monkeypatch.setattr(recomp_config, "va_to_file_offset",
++                        lambda va: va - TEST_BASE if va >= TEST_BASE else None)
++    monkeypatch.setattr("recomp.translator.va_to_file_offset",
++                        lambda va: va - TEST_BASE if va >= TEST_BASE else None)
++    monkeypatch.setattr("recomp.translator.is_code_address",
++                        lambda va: TEST_BASE <= va < TEST_BASE + 0x100000)
++
++
++def translate(code: bytes, start: int = TEST_BASE) -> str:
++    """Translate `code` placed at `start` and return the generated C."""
++    image = bytearray(0x1000)
++    image[start - TEST_BASE:start - TEST_BASE + len(code)] = code
++    t = FunctionTranslator(bytes(image), func_db={})
++    out = t.translate_function(start, {"end": start + len(code),
++                                       "name": f"sub_{start:08X}"})
++    assert out is not None, "translator returned nothing"
++    return out
++
++
++def body_after(c: str, label: str) -> str:
++    """The generated C from `label:` to the end."""
++    i = c.index(label + ":")
++    return c[i:]
++
++
++# ── Encoding helpers (no assembler dependency) ──────────────────────────
++
++def rel8(delta):
++    return struct.pack("<b", delta)
++
++
++CMP_EBX_EAX = b"\x39\xc3"        # cmp ebx, eax
++TEST_EAX_EAX = b"\x85\xc0"       # test eax, eax
++RET = b"\xc3"
++NOP = b"\x90"
++MOV_ECX_1 = b"\xb9\x01\x00\x00\x00"
++
++
++def jne(delta):                  # 75 cb
++    return b"\x75" + rel8(delta)
++
++
++def ja(delta):                   # 77 cb
++    return b"\x77" + rel8(delta)
++
++
++def jmp(delta):                  # eb cb
++    return b"\xeb" + rel8(delta)
++
++
++# ── The behaviour that matters ──────────────────────────────────────────
++
++def test_adjacent_cmp_jcc_emits_a_real_condition():
++    """The simplest case: cmp immediately followed by its jcc."""
++    # cmp ebx, eax ; jne +1 ; nop ; ret
++    c = translate(CMP_EBX_EAX + jne(1) + NOP + RET)
++    assert "CMP_NE(" in c
++    assert "if (_flags" not in c
++
++
++def test_flags_survive_a_jump_edge():
++    """A jcc reached by a JUMP must still see the flags its predecessor set.
++
++    This is the case that was silently broken. Flag state propagated only
++    along the fall-through chain, so a block entered by a jump had none, and
++    the lifter fell back to `if (_flags ...)` -- where _flags is declared 0
++    and never assigned, making the branch impossible to take. 426 branches in
++    one real title were dead this way.
++
++    Layout, chosen so the `ja` block is reachable ONLY by the jne:
++
++        cmp ebx, eax
++        jne  L2
++        ret                 <- fall-through path ends here
++      L2:
++        ja   L3
++        ret
++      L3:
++        ret
++    """
++    # rel8 is relative to the END of the jcc, so a jump from offset 2 to
++    # offset 6 is delta 2, not 1.
++    code = (CMP_EBX_EAX +        # 0  (2)
++            jne(2) +             # 2  (2) end 4, target 6
++            RET +                # 4  (1)
++            NOP +                # 5  (1)  padding so L2 = 6
++            ja(2) +              # 6  (2) end 8, target 10
++            RET +                # 8  (1)
++            NOP +                # 9  (1)
++            RET)                 # 10 (1)  L3
++    c = translate(code)
++    tail = body_after(c, f"loc_{TEST_BASE + 6:08X}")
++    assert "if (_flags" not in tail, (
++        "the ja was emitted as the always-false fallback:\n" + tail)
++    assert "CMP_A(" in tail, "expected an 'above' comparison:\n" + tail
++
++
++def test_stale_flags_do_not_cross_a_ret():
++    """A block after a `ret` must not inherit the previous block's flags.
++
++    The mirror of the test above, and the reason the first attempt at fixing
++    it made things worse: preferring the linear fall-through state carried a
++    state across a `ret` into a block the CFG says is unrelated.
++
++        test eax, eax
++        jne  L2             <- consumes the flags
++        ret
++      L2:                   <- entered only by the jne, flags still valid
++        ja   L3
++        ...
++    """
++    code = (TEST_EAX_EAX + jne(2) + RET + NOP + ja(2) + RET + NOP + RET)
++    c = translate(code)
++    tail = body_after(c, f"loc_{TEST_BASE + 6:08X}")
++    assert "if (_flags" not in tail, tail
++
++
++def test_operands_are_snapshotted_when_the_jcc_is_not_adjacent():
++    """A deferred cmp must be evaluated on the values the FLAGS held.
++
++    `cmp eax, imm` then an instruction that overwrites eax, then the jcc: the
++    branch must test the snapshot, not the new eax.
++
++        cmp ecx, 1          (81 f9 01 00 00 00)
++        mov ecx, 1          (b9 01 00 00 00)   <- clobbers an operand
++        jne +0
++        ret
++    """
++    cmp_ecx_1 = b"\x83\xf9\x01"          # cmp ecx, 1
++    c = translate(cmp_ecx_1 + MOV_ECX_1 + jne(0) + RET)
++    assert "_flg0 = ecx;" in c, "operand was not snapshotted:\n" + c
++    # The condition must not read the register that was just overwritten.
++    cond = [l for l in c.splitlines() if "CMP_NE(" in l]
++    assert cond, "no comparison emitted:\n" + c
++    assert "_flg0" in cond[0], "condition re-read the clobbered register: " + cond[0]
++
++
++def test_no_register_is_declared_as_a_local():
++    """Every x86 register is a global; a local would break register passing."""
++    c = translate(CMP_EBX_EAX + jne(0) + RET)
++    for reg in ("eax", "ebx", "ecx", "edx", "esi", "edi", "ebp", "esp"):
++        assert f"uint32_t {reg};" not in c, f"{reg} declared as a local:\n" + c
++        assert f", {reg};" not in c, f"{reg} declared as a local:\n" + c
++
++
++def test_unconditional_jump_target_gets_a_label():
++    """A forward `jmp` inside the function must produce a reachable label."""
++    code = jmp(2) + NOP + NOP + RET   # end 2, target 4
++    c = translate(code)
++    assert f"goto loc_{TEST_BASE + 4:08X};" in c, c
++    assert f"loc_{TEST_BASE + 4:08X}:" in c, c
++    assert "DROPPED JUMP" not in c, "control flow was deleted:\n" + c
+diff --git a/tools/recomp/test_regressions.py b/tools/recomp/test_regressions.py
+new file mode 100644
+index 0000000..b5b2474
+--- /dev/null
++++ b/tools/recomp/test_regressions.py
+@@ -0,0 +1,153 @@
++"""Regression tests over real functions from a real title.
++
++Run:  python3 -m pytest tools/recomp/test_regressions.py -q
++
++test_lifter.py builds tiny synthetic sequences. Those are fast and precise but
++they only test the cases you thought of -- the first synthetic attempt at the
++flag-propagation bug passed on the BROKEN code, because the shape that
++actually breaks is not the shape that is obvious to write.
++
++So these translate named functions out of the shipped binary and assert on the
++result. Each one is anchored to a defect that really happened, with the
++observed symptom in the docstring.
++
++The binary is copyrighted and gitignored. When it is absent these SKIP with a
++reason -- they never pass quietly, because a regression suite that silently
++finds nothing to test is worse than no suite.
++"""
++
++import json
++import os
++import sys
++
++import pytest
++
++TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
++ROOT = os.path.dirname(TOOLS)
++sys.path.insert(0, TOOLS)
++sys.path.insert(0, ROOT)
++
++XBE = os.path.join(ROOT, "game_files", "default.xbe")
++FUNCS = os.path.join(TOOLS, "disasm", "output", "functions.json")
++
++
++def _require_binary():
++    for path, what in ((XBE, "the game XBE"), (FUNCS, "disasm output")):
++        if not os.path.exists(path):
++            pytest.skip(f"{what} not present at {path}; these tests need the "
++                        f"real binary and were NOT run")
++
++
++@pytest.fixture(scope="module")
++def translator():
++    _require_binary()
++    from recomp import config
++    from recomp.translator import FunctionTranslator
++
++    config.configure_from_xbe(XBE)
++    data = open(XBE, "rb").read()
++
++    db = json.load(open(FUNCS))
++    db = db["functions"] if isinstance(db, dict) and "functions" in db else db
++    items = db.values() if isinstance(db, dict) else db
++    funcs = {}
++    for f in items:
++        s = f.get("start")
++        e = f.get("end")
++        s = int(s, 16) if isinstance(s, str) else s
++        e = int(e, 16) if isinstance(e, str) else e
++        if s:
++            funcs[s] = dict(f, start=s, end=e)
++    return FunctionTranslator(data, func_db=funcs), funcs
++
++
++def translate(translator, addr):
++    t, funcs = translator
++    if addr not in funcs:
++        pytest.skip(f"0x{addr:08X} is not in the current functions.json; "
++                    f"re-run tools/xbox_relift.sh")
++    out = t.translate_function(addr, funcs[addr])
++    assert out is not None, f"sub_{addr:08X} failed to translate"
++    return out
++
++
++def always_false_branches(c):
++    return [l.strip() for l in c.splitlines() if "if (_flags" in l]
++
++
++def dropped_jumps(c):
++    return [l.strip() for l in c.splitlines() if "DROPPED JUMP" in l]
++
++
++# ── Anchored regressions ────────────────────────────────────────────────
++
++def test_flag_state_reaches_a_block_entered_only_by_a_jump(translator):
++    """sub_0026E740 emitted `if (_flags /* ja */) goto loc_0026E801;`.
++
++    _flags is declared 0 and never assigned, so that branch could not be
++    taken. The block at loc_0026E7CE is reached only by a `jne` from
++    loc_0026E790, whose `cmp ebx, eax` sets the flags the `ja` consumes -- but
++    flag state propagated only along the fall-through chain, and the block
++    sitting before it in address order ends in `ret`.
++
++    Verified to discriminate: 1 always-false branch before the fix, 0 after.
++    """
++    c = translate(translator, 0x0026E740)
++    assert always_false_branches(c) == [], (
++        "a branch that can never be taken was emitted:\n  "
++        + "\n  ".join(always_false_branches(c)))
++
++
++def test_memcpy_switch_targets_are_real_gotos(translator):
++    """sub_003D5890 is the CRT memcpy.
++
++    Its tail dispatches through a jump table embedded in .text. The lifter
++    decoded the table bytes as instructions, lost sync, and the switch targets
++    got no labels -- so the missing-label pass DELETED the gotos and memcpy
++    became a no-op for any size not a multiple of 4.
++    """
++    c = translate(translator, 0x003D5890)
++    assert dropped_jumps(c) == [], (
++        "control flow was deleted from memcpy:\n  "
++        + "\n  ".join(dropped_jumps(c)))
++    assert "goto loc_003D59EC;" in c, (
++        "the switch target was not emitted as a real goto:\n" + c[:2000])
++
++
++def test_seh_function_tail_is_inside_the_function(translator):
++    """sub_00223DBD is the CRT heap create, an __SEH_prolog function.
++
++    Its boundary used to end at the last fall-through, leaving the
++    __SEH_epilog tail -- which restores ebx/esi/edi/esp/ebp -- outside the
++    function. A jump into that tail became an empty stub, so the function
++    returned with its caller's non-volatile registers destroyed.
++    """
++    _, funcs = translator
++    if 0x00223DBD not in funcs:
++        pytest.skip("0x00223DBD not in functions.json")
++    f = funcs[0x00223DBD]
++    assert f["end"] > 0x0022416C, (
++        f"function ends at 0x{f['end']:08X}, cutting off the epilogue tail "
++        f"that starts at 0x0022416C")
++
++
++def test_no_register_is_a_local_in_real_code(translator):
++    """Every register must be global, ebp included.
++
++    As a per-function local, ebp silently dropped values that FPO code carries
++    in it across an ordinary call.
++    """
++    c = translate(translator, 0x0026E740)
++    assert "uint32_t ebp;" not in c, "ebp is declared as a local:\n" + c[:800]
++
++
++@pytest.mark.parametrize("addr", [0x0026E740, 0x003D5890, 0x00223DBD,
++                                  0x002241E1, 0x00225995])
++def test_hot_functions_translate_without_deleting_control_flow(translator, addr):
++    """Nothing on the boot path may reach the "delete the jump" fallback."""
++    c = translate(translator, addr)
++    assert dropped_jumps(c) == [], (
++        f"sub_{addr:08X} lost control flow:\n  " + "\n  ".join(dropped_jumps(c)))
++    assert always_false_branches(c) == [], (
++        f"sub_{addr:08X} has branches that can never be taken:\n  "
++        + "\n  ".join(always_false_branches(c)))
 diff --git a/tools/recomp/translator.py b/tools/recomp/translator.py
-index a5890d7..f1d38aa 100644
+index a5890d7..c573972 100644
 --- a/tools/recomp/translator.py
 +++ b/tools/recomp/translator.py
 @@ -111,6 +111,10 @@ class FunctionTranslator:
@@ -487,7 +843,103 @@ index a5890d7..f1d38aa 100644
  
          lines.append(f"")
  
-@@ -390,9 +421,14 @@ class FunctionTranslator:
+@@ -350,7 +381,58 @@ class FunctionTranslator:
+                 for t in switch_targets:
+                     label_addrs.add(t)
+ 
++        # ── Flag state across the CFG ────────────────────────────────
++        #
++        # Flag state used to propagate only along the FALL-THROUGH chain, so a
++        # block entered by a jump started with none -- and a jcc with no
++        # tracked setter falls back to `if (_flags ...)`, where _flags is
++        # declared 0 and never assigned. That is a branch which silently never
++        # happens: 426 of them in this title, including the one that skipped
++        # past a `this` pointer's initialisation.
++        #
++        # Two passes. The first lifts every block with no incoming state to
++        # learn which blocks SET flags (gen) and which merely pass them
++        # through. Then a fixpoint over the predecessor map gives each block
++        # its incoming state -- a block inherits it only when every
++        # predecessor agrees, otherwise it stays unknown. The second pass is
++        # the one that is emitted.
++        #
++        # Safe across blocks because a flag setter's operands are snapshotted
++        # into _flg0/_flg1 at the setter, so a consumer in another block reads
++        # the values the flags were computed from, not whatever the registers
++        # hold by then.
++        gen = {}
++        for bb in blocks:
++            _, out = lift_basic_block(self.lifter, bb, flag_state=None)
++            gen[bb.start] = out
++
++        preds = {bb.start: [] for bb in blocks}
++        by_start = {bb.start: bb for bb in blocks}
++        for bb in blocks:
++            for succ in bb.successors:
++                if succ in preds:
++                    preds[succ].append(bb.start)
++
++        in_state = {bb.start: None for bb in blocks}
++
++        def out_of(addr):
++            return gen[addr] if gen[addr] is not None else in_state[addr]
++
++        for _ in range(8):                      # converges well inside this
++            changed = False
++            for bb in blocks:
++                if bb.start == start or not preds[bb.start]:
++                    continue
++                outs = [out_of(p) for p in preds[bb.start]]
++                merged = outs[0] if outs and all(o == outs[0] for o in outs) else None
++                if merged != in_state[bb.start]:
++                    in_state[bb.start] = merged
++                    changed = True
++            if not changed:
++                break
++
+         flag_state = None
++        falls_through = False
+         for bb in blocks:
+             # Emit label if this block is a branch target
+             if bb.start in label_addrs or bb.start == start:
+@@ -361,11 +443,33 @@ class FunctionTranslator:
+                 # compile. The null statement costs nothing and is always valid.
+                 lines.append(f"loc_{bb.start:08X}: ;")
+ 
+-            # Propagate flag state from previous block (fallthrough path).
+-            # This handles patterns like: test eax,eax / ja X / jb Y
+-            # where jb uses the same flags as ja from the preceding block.
++            # Incoming flag state, from both directions:
++            #
++            #  - the previous block's outgoing state, but ONLY if it actually
++            #    falls through into this one. Carrying it across a `ret` or an
++            #    unconditional `jmp` is how a stale state beat the correct
++            #    incoming one and the jcc still emitted the always-false
++            #    _flags fallback.
++            #  - otherwise the state the CFG pass proved every predecessor
++            #    agrees on.
++            #
++            # Both, because each finds cases the other misses: dropping the
++            # fall-through chain entirely took the always-false branch count
++            # from 395 up to 722, and the CFG merge alone cannot see a state
++            # that only one linear path establishes.
++            if bb.start == start:
++                flag_state = None
++            elif not falls_through:
++                flag_state = in_state[bb.start]
++            elif flag_state is None:
++                flag_state = in_state[bb.start]
++
+             stmts, flag_state = lift_basic_block(
+                 self.lifter, bb, flag_state=flag_state)
++            last = bb.last_insn if bb.instructions else None
++            falls_through = bool(
++                last and not last.is_ret
++                and not (last.is_jump and not last.is_cond_jump))
+             for stmt in stmts:
+                 lines.append(f"    {stmt}")
+ 
+@@ -390,9 +494,14 @@ class FunctionTranslator:
                  goto_lines.append((idx, goto_match.group(1)))
          for idx, target in goto_lines:
              if target not in defined_labels:
@@ -503,7 +955,7 @@ index a5890d7..f1d38aa 100644
  
          # Ensure labels at end of function have a statement after them.
          # In C, a label must be followed by a statement; a comment alone is not
-@@ -730,6 +766,7 @@ class BatchTranslator:
+@@ -730,6 +839,7 @@ class BatchTranslator:
              if name not in defined
          }
          stats["unresolved_stubs"] = len(unresolved)
@@ -511,7 +963,7 @@ index a5890d7..f1d38aa 100644
  
          # Generate header with all forward declarations
          header_path = os.path.join(output_dir, header_name)
-@@ -799,15 +836,55 @@ class BatchTranslator:
+@@ -799,15 +909,55 @@ class BatchTranslator:
                  f" * {len(unresolved)} addresses called by translated code but not",
                  " * detected as functions - typically mid-function entry points.",
                  " * Auto-generated by tools/recomp.",
