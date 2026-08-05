@@ -4,10 +4,14 @@ Consult at the start of a task; update in the SAME commit that changes a
 subsystem. Companion registries: `docs/re-frontier.md` (ordered RE progress,
 real vs hack) and `docs/info/` (claims + instruments).
 
-Direction is **static recompilation + native overrides**. The PC build was the
-original target; since C010 was falsified the **Xbox build is the live front**
-(an existing recompiler, `vendor/xboxrecomp`, removes the cost that argument
-rested on) — see [`strategy.md`](strategy.md). Status words mean:
+Direction is **static recompilation + native overrides**, and as of 2026-08-05
+the **PC build is the live front again** (C078). The reason is not preference:
+on the PC path the game *already runs*, so functions move from "forwarded to
+the original DLL" to "our recompiled C" while it keeps working; on the Xbox
+path nothing works until everything does, and its GPU boundary is NV2A push
+buffers, which [`strategy.md`](strategy.md) calls "the xemu problem". The Xbox
+work is real and kept (it boots deep into engine setup with a clean register
+file) but it is not the shortest road to a playable port. Status words mean:
 **verified** = checked against the original on real data, with the check cited ·
 **partial** = works, with a named gap · **untouched** = not started.
 
@@ -27,6 +31,9 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | what | where | status |
 |---|---|---|
 | Differential test vs the original DLL | `tests/difftest.c` | **verified** — 116 functions, forced relocation, memory-write comparison; negative controls fire (I006, C016) |
+| Hybrid recomp DLL build, one command | `tools/build_recomp.sh` | **verified** — emit + runtime + dll + compile + stage, parameterised by the entry-point set; reproduces the running 156-function build (C078) |
+| Grow the recompiled set / find what breaks it | `tools/bisect_recomp.sh` | **verified** — delta-debugging with the real game as the verdict (loaded / alive / not-uniform), both controls measured first; loops over independent culprits (issue #9) |
+| Entry/exit watch on recompiled entry points | `src/x86watch.c` | **verified** — I019; `X2_WATCH=0x…`, both directions self-tested in the shipping DLL. Writes to a FILE: the game is a GUI-subsystem process with no stderr, and the stderr version was silently empty |
 | Wine oracle, headless, muted, multi-sample | `tools/run_shim.sh` | **verified** — I007 (supersedes distrusted I002) |
 | DLL drop-in staging | `tools/build_shim.sh` | **partial** — proxy and trace modes; recomp staged by hand |
 | Boundary call tracer | `tools/gen_trace.py` | **verified** — I004; "never called" summary still unreachable (harness SIGKILLs) |
@@ -35,7 +42,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 
 | module | status |
 |---|---|
-| `libIGDisplay.dll` | **partial** — 116 verified functions live in the game, 704 exports forwarded to the original. All-500 build page-faults, not yet bisected |
+| `libIGDisplay.dll` | **partial** — 156 entry points recompiled and live in the running game, the rest forwarded. The all-521 build page-faults; bisected to `0x10002c00 igWindow::_instantiateFromPool` and then to MORE, independent culprits — the fault is inside its `igArkRegister` call (issue #9) |
 | `XMen2.exe` | **untouched** — 11,106 functions, 643,647 instructions, the eventual target |
 | other 15 `libIG*.dll` | **untouched** |
 
