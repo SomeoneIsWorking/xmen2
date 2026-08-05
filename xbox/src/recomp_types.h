@@ -85,20 +85,14 @@ extern ptrdiff_t g_xbox_mem_offset;
  *   through them. The callee-save contract is enforced by generated
  *   PUSH32/POP32 instructions.
  *
- * NOT global: ebp - stays local in each function because FPO
- * functions use it as scratch. For SEH, g_seh_ebp bridges the gap.
+ * ebp is global too; its storage is g_seh_ebp, for the reasons given at the
+ * `#define ebp` below.
  */
 extern uint32_t g_eax, g_ecx, g_edx, g_esp;
 extern uint32_t g_ebx, g_esi, g_edi;
 
-/**
- * SEH frame pointer bridge.
- *
- * __SEH_prolog sets up ebp for the caller, but since ebp is a local
- * variable in each function, the caller can't see the prolog's change.
- * The prolog writes g_seh_ebp, and the caller reads it after the call.
- * Similarly, __SEH_epilog reads g_seh_ebp at entry and writes it at exit.
- */
+/** ebp's storage. Generated code reaches it through `#define ebp g_seh_ebp`;
+ *  hand-written code (and a debugger) must name g_seh_ebp directly. */
 extern uint32_t g_seh_ebp;
 
 /* ================================================================
@@ -397,6 +391,26 @@ recomp_func_t recomp_lookup_kernel(uint32_t xbox_va);
 recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
 #endif
 
+/* ================================================================
+ * Indirect-call watch (XBOX_ICALL_WATCH=0x...,0x...)
+ *
+ * Prints the arguments and return value of every indirect call to a watched
+ * target. Off unless the environment variable is set: g_icall_watch_n is 0,
+ * so the cost on an unwatched run is one global load per indirect call.
+ * Implementation and the reasoning for it live in recomp_manual.c.
+ * ================================================================ */
+extern int g_icall_watch_n;
+void recomp_icall_watch_init(void);
+void recomp_icall_watch_pre(uint32_t va);
+void recomp_icall_watch_post(uint32_t va);
+void recomp_icall_watch_report(void);
+void recomp_icall_watch_selftest(void);
+
+#define RECOMP_WATCH_PRE(va) \
+    do { if (g_icall_watch_n) recomp_icall_watch_pre(va); } while(0)
+#define RECOMP_WATCH_POST(va) \
+    do { if (g_icall_watch_n) recomp_icall_watch_post(va); } while(0)
+
 /**
  * RECOMP_ICALL - Indirect call through the dispatch table.
  *
@@ -427,7 +441,11 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     recomp_func_t _fn = recomp_lookup_manual(_va); \
     if (!_fn) _fn = recomp_lookup(_va); \
     if (!_fn) _fn = recomp_lookup_kernel(_va); \
-    if (_fn) _fn(); \
+    if (_fn) { \
+        RECOMP_WATCH_PRE(_va); \
+        _fn(); \
+        RECOMP_WATCH_POST(_va); \
+    } \
     else { recomp_icall_fail_log(_va); g_esp += 4; eax = 0; } \
 } while(0)
 
@@ -452,6 +470,7 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     if (!_fn) _fn = recomp_lookup(_va); \
     if (!_fn) _fn = recomp_lookup_kernel(_va); \
     if (_fn) { \
+        RECOMP_WATCH_PRE(_va); \
         if (recomp_abicheck_enabled()) { \
             uint32_t _sb = g_ebx, _ss = g_esi, _sd = g_edi, _sp = g_seh_ebp; \
             _fn(); \
@@ -462,6 +481,7 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
             RECOMP_ABI_ONE(_va, "edi", _sd, g_edi); \
             RECOMP_ABI_ONE(_va, "ebp", _sp, g_seh_ebp); \
         } else _fn(); \
+        RECOMP_WATCH_POST(_va); \
     } \
     else { recomp_icall_fail_log(_va); g_esp = (saved_esp); eax = 0; } \
 } while(0)

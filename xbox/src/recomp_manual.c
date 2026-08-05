@@ -50,6 +50,7 @@ typedef void (*recomp_func_t)(void);
 /* ── Register state (defined in xbox_memory_layout.c) ──────── */
 
 extern uint32_t g_eax;
+extern uint32_t g_ecx;
 extern uint32_t g_esp;
 extern ptrdiff_t g_xbox_mem_offset;
 
@@ -703,5 +704,190 @@ void recomp_icall_selftest(void)
     g_miss_total -= 2;
     g_icall_selftest_active = 0;
     fprintf(stderr, "[ICALL] SELFTEST passed: both miss paths report.\n");
+    fflush(stderr);
+}
+
+/* ── Indirect-call watch ────────────────────────────────────
+ *
+ * The ABI and ESP checks answer "did this call break the contract". They do
+ * not answer the question that actually blocks an investigation: WHAT did
+ * this call receive, and what did it hand back. Line breakpoints cannot
+ * answer it either -- the generated C is built at -O2, statements are
+ * reordered across labels, and a breakpoint on the line after a call fires
+ * before the call in one block and three times in another. Measured: a
+ * breakpoint on the `if` following an icall reported the CALLER's register,
+ * and one on a call line fired three times for a single execution.
+ *
+ * So the watch lives where the call really happens -- inside the ICALL
+ * macros -- and prints target, `this`, the first four stdcall arguments off
+ * the guest stack, and the returned eax.
+ *
+ *     XBOX_ICALL_WATCH=0x0027BEF0,0x0027A9B0    (0x optional, comma or space)
+ *
+ * A watched address that is NEVER called is reported by name at exit. That
+ * is the negative this instrument must be able to print: silence from a
+ * watch list is otherwise indistinguishable from "the address was wrong".
+ */
+
+#define ICALL_WATCH_MAX 16
+int             g_icall_watch_n;            /* 0 = disabled; read by the macro */
+static uint32_t icall_watch_va[ICALL_WATCH_MAX];
+static uint64_t icall_watch_hits[ICALL_WATCH_MAX];
+static int      icall_watch_depth;
+static uint64_t icall_watch_printed;
+static uint64_t icall_watch_cap = 200;      /* XBOX_ICALL_WATCH_MAX overrides */
+
+static int icall_watch_index(uint32_t va)
+{
+    for (int i = 0; i < g_icall_watch_n; i++)
+        if (icall_watch_va[i] == va) return i;
+    return -1;
+}
+
+void recomp_icall_watch_init(void)
+{
+    const char *e = getenv("XBOX_ICALL_WATCH");
+    if (!e || !e[0]) return;
+
+    const char *cap = getenv("XBOX_ICALL_WATCH_MAX");
+    if (cap && cap[0]) icall_watch_cap = strtoull(cap, NULL, 0);
+
+    /* Parse loudly: a typo'd address must not be silently skipped, because a
+       silently-dropped entry makes the watch report "never called" about an
+       address it was never actually watching. */
+    const char *p = e;
+    int dropped = 0;
+    while (*p) {
+        while (*p == ',' || *p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+        char *end = NULL;
+        unsigned long long v = strtoull(p, &end, 16);
+        if (end == p) {
+            fprintf(stderr, "[WATCH] cannot parse \"%s\" as a hex VA --"
+                            " nothing after it was parsed either\n", p);
+            dropped++;
+            break;
+        }
+        if (g_icall_watch_n >= ICALL_WATCH_MAX) {
+            fprintf(stderr, "[WATCH] more than %d addresses given; 0x%08X"
+                            " and everything after it is IGNORED\n",
+                    ICALL_WATCH_MAX, (uint32_t)v);
+            dropped++;
+            break;
+        }
+        icall_watch_va[g_icall_watch_n++] = (uint32_t)v;
+        p = end;
+    }
+
+    fprintf(stderr, "[WATCH] watching %d indirect-call target%s"
+                    " (first %llu calls printed)%s:\n",
+            g_icall_watch_n, g_icall_watch_n == 1 ? "" : "s",
+            (unsigned long long)icall_watch_cap,
+            dropped ? ", SOME ENTRIES DROPPED (see above)" : "");
+    for (int i = 0; i < g_icall_watch_n; i++)
+        fprintf(stderr, "  0x%08X\n", icall_watch_va[i]);
+    fflush(stderr);
+}
+
+void recomp_icall_watch_pre(uint32_t va)
+{
+    int i = icall_watch_index(va);
+    if (i < 0) return;
+    icall_watch_hits[i]++;
+    icall_watch_depth++;
+    if (icall_watch_printed >= icall_watch_cap) return;
+    icall_watch_printed++;
+
+    /* g_esp points at the dummy return address the macro's caller pushed;
+       the stdcall arguments start one slot above it. */
+    if (!g_xbox_mem_offset) {
+        /* Guest memory is not mapped yet, so the argument slots cannot be
+           read. Say that rather than print zeros that look like arguments. */
+        fprintf(stderr, "[WATCH] %*s-> 0x%08X(this=0x%08X) args=UNREADABLE"
+                        " (guest memory not mapped yet) esp=0x%08X\n",
+                (icall_watch_depth - 1) * 2, "", va, g_ecx, g_esp);
+        fflush(stderr);
+        return;
+    }
+    const volatile uint32_t *a =
+        (const volatile uint32_t *)((uintptr_t)(g_esp + 4) + g_xbox_mem_offset);
+    fprintf(stderr, "[WATCH] %*s-> 0x%08X(this=0x%08X)"
+                    " args=[0x%08X, 0x%08X, 0x%08X, 0x%08X] esp=0x%08X\n",
+            (icall_watch_depth - 1) * 2, "",
+            va, g_ecx, a[0], a[1], a[2], a[3], g_esp);
+    fflush(stderr);
+}
+
+void recomp_icall_watch_post(uint32_t va)
+{
+    int i = icall_watch_index(va);
+    if (i < 0) return;
+    if (icall_watch_printed <= icall_watch_cap) {
+        fprintf(stderr, "[WATCH] %*s<- 0x%08X returned eax=0x%08X"
+                        " (al=0x%02X) esp=0x%08X\n",
+                (icall_watch_depth - 1) * 2, "",
+                va, g_eax, g_eax & 0xFF, g_esp);
+        fflush(stderr);
+    }
+    icall_watch_depth--;
+}
+
+void recomp_icall_watch_report(void)
+{
+    if (!g_icall_watch_n) return;
+    fprintf(stderr, "[WATCH] call counts for the %d watched target%s:\n",
+            g_icall_watch_n, g_icall_watch_n == 1 ? "" : "s");
+    for (int i = 0; i < g_icall_watch_n; i++) {
+        if (icall_watch_hits[i])
+            fprintf(stderr, "  0x%08X  x%llu\n", icall_watch_va[i],
+                    (unsigned long long)icall_watch_hits[i]);
+        else
+            fprintf(stderr, "  0x%08X  NEVER CALLED -- this run never reached"
+                            " it INDIRECTLY. A direct call to it is not"
+                            " counted here, and neither is a call made before"
+                            " the watch was initialised.\n",
+                    icall_watch_va[i]);
+    }
+    if (icall_watch_printed >= icall_watch_cap)
+        fprintf(stderr, "  print cap of %llu reached; later calls were counted"
+                        " but not printed (XBOX_ICALL_WATCH_MAX raises it)\n",
+                (unsigned long long)icall_watch_cap);
+    fflush(stderr);
+}
+
+/* Self-test: watch an address, drive both hooks by hand, and assert the
+   counter moved and the never-called path reports. Proves the instrument
+   fires in the shipping binary, not in a test build nobody runs. */
+void recomp_icall_watch_selftest(void)
+{
+    int      saved_n = g_icall_watch_n;
+    uint32_t saved_va[ICALL_WATCH_MAX];
+    uint64_t saved_hits[ICALL_WATCH_MAX];
+    memcpy(saved_va, icall_watch_va, sizeof saved_va);
+    memcpy(saved_hits, icall_watch_hits, sizeof saved_hits);
+
+    g_icall_watch_n = 2;
+    icall_watch_va[0] = 0x00111111u;   /* driven below: must count */
+    icall_watch_va[1] = 0x00222222u;   /* never driven: must say NEVER CALLED */
+    icall_watch_hits[0] = icall_watch_hits[1] = 0;
+
+    recomp_icall_watch_pre(0x00111111u);
+    recomp_icall_watch_post(0x00111111u);
+    recomp_icall_watch_pre(0x00333333u);   /* unwatched: must NOT count */
+
+    int ok = (icall_watch_hits[0] == 1 && icall_watch_hits[1] == 0
+              && icall_watch_depth == 0);
+    fprintf(stderr, "[WATCH] SELFTEST %s: watched target counted %llu (want 1),"
+                    " unwatched target counted 0, depth %d (want 0)."
+                    " The NEVER CALLED line below is the expected negative.\n",
+            ok ? "passed" : "FAILED",
+            (unsigned long long)icall_watch_hits[0], icall_watch_depth);
+    recomp_icall_watch_report();
+
+    g_icall_watch_n = saved_n;
+    memcpy(icall_watch_va, saved_va, sizeof saved_va);
+    memcpy(icall_watch_hits, saved_hits, sizeof saved_hits);
+    icall_watch_depth = 0;
+    icall_watch_printed = 0;
     fflush(stderr);
 }
