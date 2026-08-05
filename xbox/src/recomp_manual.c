@@ -891,3 +891,78 @@ void recomp_icall_watch_selftest(void)
     icall_watch_printed = 0;
     fflush(stderr);
 }
+
+/* ── listscan: catch the tail-shift memcpy before it walks off the heap ────
+ *
+ * The run ends in the CRT memcpy at 0x003D5890 reading Xbox VA 0x02902194,
+ * called from the list-remove at 0x00275920+0x318, which computes
+ *
+ *     memcpy(base + idx*4, base + idx*4 + 4, ((count - 1) - idx) * 4)
+ *
+ * UNSIGNED. If idx is not strictly below the decremented count -- an empty
+ * list gives count-1 = 0xFFFFFFFF -- the length is near 4 GB and the copy
+ * walks off the end of the heap. This is rc-defect-listscan, whose recorded
+ * next step is to LOG the real count/base/idx on a faulting trial instead of
+ * inferring them.
+ *
+ * The observer sits on memcpy, NOT on the list-remove. --wrap only redirects
+ * references that cross an object-file boundary, and the list-remove's caller
+ * (sub_00289F50) sits in the same generated chunk as the list-remove itself,
+ * so a wrapper there is bound at compile time and never fires -- the first
+ * version of this instrument reported "0 calls" while the stack showed the
+ * function running. memcpy lives in recomp_0021.c and its callers do not, so
+ * this boundary is real. It only observes: it prints and delegates.
+ */
+extern void __real_sub_003D5890(void);
+
+/* Anything at or above this is not a copy any of this game's structures make;
+   the heap itself is 48 MB. Picked to be far below the ~4 GB underflow and
+   far above a legitimate buffer copy. */
+#define LS_IMPLAUSIBLE 0x01000000u
+
+static uint64_t ls_calls, ls_bad, ls_max;
+
+void __wrap_sub_003D5890(void)
+{
+    uint32_t dst  = MEM32(g_esp + 4);
+    uint32_t src  = MEM32(g_esp + 8);
+    uint32_t size = MEM32(g_esp + 12);
+
+    ls_calls++;
+    if (size > ls_max) ls_max = size;
+
+    if (size >= LS_IMPLAUSIBLE) {
+        ls_bad++;
+        /* Every one of these, uncapped: this is the interesting case, and the
+           run does not survive many of them. */
+        fprintf(stderr, "[LISTSCAN] memcpy #%llu IMPLAUSIBLE LENGTH:"
+                        " dst=0x%08X src=0x%08X size=0x%08X (%u)\n",
+                (unsigned long long)ls_calls, dst, src, size, size);
+        /* src = dst + 4 is the tail-shift signature; then dst is base+idx*4,
+           and the length says how far past the end it is about to read. */
+        if (src == dst + 4)
+            fprintf(stderr, "  tail-shift shape (src == dst+4): this is the"
+                            " list-remove at 0x00275920. size/4 = %u elements,"
+                            " i.e. (count-1) - idx underflowed.\n", size / 4);
+        fflush(stderr);
+    }
+
+    __real_sub_003D5890();
+}
+
+void listscan_report(void)
+{
+    if (ls_calls == 0) {
+        fprintf(stderr, "[LISTSCAN] the memcpy wrapper at 0x003D5890 never"
+                        " fired: 0 calls. That is NOT evidence of a healthy"
+                        " run -- check that --wrap=sub_003D5890 is in the link"
+                        " line and that its callers are in other chunks.\n");
+        fflush(stderr);
+        return;
+    }
+    fprintf(stderr, "[LISTSCAN] %llu memcpy calls, largest length 0x%llX,"
+                    " %llu at or above the 0x%X implausible threshold\n",
+            (unsigned long long)ls_calls, (unsigned long long)ls_max,
+            (unsigned long long)ls_bad, LS_IMPLAUSIBLE);
+    fflush(stderr);
+}

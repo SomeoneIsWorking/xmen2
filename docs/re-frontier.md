@@ -164,9 +164,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-defect-listscan — OPEN: recompiled igTObjectList find/removeAllByValue fault where the original does not
 - status: todo
 - deps: rc-decode
-- evidence: C022
+- evidence: scratch/logs/xbox_run_ls2.log ([LISTSCAN] memcpy #413); xbox/src/recomp_manual.c __wrap_sub_003D5890
 - where: 
-- gap: C022 falsified as overstated: 54 constructed combinations of find() including edge cases show ZERO mismatches, so this is probably a harness asymmetry rather than a translation bug. Still unexplained under the fuzzer and the two functions stay excluded. Next: log the actual count/base/start on a faulting trial instead of inferring.
+- gap: MEASURED on the real game 2026-08-05, no longer inferred. The run dies in the CRT memcpy at 0x003D5890 called from the list-remove at 0x00275920+0x318, with dst=0x029021B4 src=0x029021B8 size=0xFFFFFFFC. src == dst+4 is the tail-shift signature, and the length is exact arithmetic: size = ((count-1) - idx) << 2 = -4, so (count-1) - idx = -1, so idx == count EXACTLY. That is the not-found outcome of the scan (the index ends one past the last element) and the remove proceeds without guarding it. So the defect is NOT in the shift and not in the flag model (C022 already falsified that): something asks the list to remove an element the list does not contain. Next: find who calls it -- stack frame above is sub_00289F50+0xB9 -- and why that element is absent, i.e. which earlier add never happened.
 - notes: 
 
 ### rc-modules — Recompiler generalises across modules
@@ -265,6 +265,6 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: xb-run
 - evidence: C057
 - where: 
-- gap: Bypasses C056 rather than fixing it. The recompiled RtlAllocateHeap/RtlFreeHeap are still linked and run under XBOX_NATIVE_HEAP=0, so the defect stays reproducible. RtlReAllocateHeap and RtlSizeHeap are not overridden -- a realloc of a native-arena pointer would corrupt it undetected.
+- gap: Bypasses C056 rather than fixing it. The recompiled RtlAllocateHeap/RtlFreeHeap are still linked and run under XBOX_NATIVE_HEAP=0, so the defect stays reproducible. RtlReAllocateHeap and RtlSizeHeap are not overridden -- a realloc of a native-arena pointer would corrupt it undetected. ALSO (issue #4): the override is wired with -Wl,--wrap, which only redirects references that CROSS an object file. 2 of the 11 direct call sites of RtlAllocateHeap sit in recomp_0011.c, the same chunk that defines it, so they bypass the override entirely and reach the recompiled heap even with XBOX_NATIVE_HEAP=1. Whether those two are reached at runtime is NOT established -- that is a call-site count, not a fire counter.
 - notes: 
 

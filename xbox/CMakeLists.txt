@@ -103,6 +103,7 @@ if(NOT WIN32)
         -Wl,--wrap=sub_002241E1
         -Wl,--wrap=sub_00222433
         -Wl,--wrap=sub_00224B50   # RtlReAllocateHeap, ret 16
+        -Wl,--wrap=sub_003D5890   # CRT memcpy; observer, see listscan
     )
 
     # -rdynamic puts the recompiled sub_XXXXXXXX symbols in .dynsym, which is
