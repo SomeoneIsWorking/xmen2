@@ -188,9 +188,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
 - status: hack
 - deps: rc-exe-run
-- evidence: issue #6; scratch/logs/xbox_run_itail2.log; test_memcpys_later_switch_tables_are_enumerated (xfail strict)
+- evidence: scratch/logs/xbox_run_null.log; scratch/logs/xbox_discover_run_2.log
 - where: 
-- gap: Blocked on a REAL gap now, and it stops there instead of being seeded past it. The boot ends at a tail jump through one of memcpy's nine switch tables (0x003D5B54); only two of the nine are enumerated because the detector under-sizes sub_003D5890 as 0x003D5890-0x003D5A7F while its own targets live at 0x003D5B44+ (C047). Issue #6: the loop previously seeded three of those targets as functions, which resolved the dispatch and left the run executing mid-function fragments with no prologue -- it now refuses, because RECOMP_ITAIL reports a tail-jump miss distinctly from a missing call. NEXT REAL STEP: extend the function detector so a function covers its own jump-table targets.
+- gap: NO LONGER the blocker. The runtime-discovery loop is at a fixed point again after the jump-table fix: 66968 indirect calls, and the loop STOPS correctly rather than seeding, because the first miss is now a NULL function pointer (out-of-image 0x00000000), not a missing function. Still DEBT only in that the fallback path exists and code past the current stop has never run. NEW BLOCKER, tracked here until it gets its own entry: sub_002A9570 dispatches through vtable slots at +0x54/+0x5C/+0x60 and one of them is NULL -- an object whose vtable is not fully populated. Stack: sub_002A9570+0x1066 <- sub_002AF0D0 <- sub_002AFBB0 <- sub_000132F0 <- sub_00225995. The game still opens NO data files (only TDATA/UDATA save metadata), so this is early engine setup.
 - notes: 
 
 ### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage

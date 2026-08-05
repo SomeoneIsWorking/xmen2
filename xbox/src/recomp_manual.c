@@ -18,8 +18,16 @@
  *   - Intercept D3D/audio calls for custom rendering or sound
  */
 
+/* dladdr, used to name recompiled frames, is a GNU extension. */
+#ifndef _WIN32
+#define _GNU_SOURCE
+#endif
+
 #include <stddef.h>   /* ptrdiff_t */
 #include <stdio.h>
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
 #include <stdint.h>
 #include <stdlib.h>   /* getenv, abort */
 #include <string.h>   /* memset, memcpy */
@@ -618,6 +626,39 @@ static int icall_should_continue(void)
     return cached;
 }
 
+/*
+ * Print the recompiled call stack, resolving each return address to the
+ * sub_XXXXXXXX whose name carries the original Xbox VA (needs -rdynamic).
+ *
+ * The crash handler has had this since it stopped filtering for a Windows
+ * image base that never matches on Linux. The INDIRECT-CALL failure path did
+ * not, so the one question that matters there -- who was about to call this
+ * address -- had no answer in the log, and a call through a NULL pointer named
+ * only itself. Both paths share it now.
+ */
+void recomp_print_native_stack(void)
+{
+#ifndef _WIN32
+    uintptr_t *sp = (uintptr_t *)__builtin_frame_address(0);
+    Dl_info info;
+    int shown = 0, scanned = 0;
+
+    fprintf(stderr, "  Recompiled call stack (nearest symbol per return address):\n");
+    for (int i = 0; i < 256; i++, scanned++) {
+        if (!sp[i]) continue;
+        if (dladdr((void *)sp[i], &info) && info.dli_sname) {
+            fprintf(stderr, "    [%d] %s +0x%lX\n", i, info.dli_sname,
+                    (unsigned long)(sp[i] - (uintptr_t)info.dli_saddr));
+            if (++shown >= 24) break;
+        }
+    }
+    /* The denominator, so "no frames" cannot be read as "never looked". */
+    fprintf(stderr, "    %d frame(s) resolved from %d stack slots scanned\n",
+            shown, scanned);
+    fflush(stderr);
+#endif
+}
+
 static void icall_miss_fatal(uint32_t va, const char *kind)
 {
     if (icall_should_continue() || g_icall_selftest_active)
@@ -629,6 +670,7 @@ static void icall_miss_fatal(uint32_t va, const char *kind)
         "        in this log, not the symptom.\n"
         "        Re-run with XBOX_ICALL_CONTINUE=1 to survey further targets.\n",
         kind, va);
+    recomp_print_native_stack();
     recomp_icall_report();
     nh_report();
     recomp_stub_report();

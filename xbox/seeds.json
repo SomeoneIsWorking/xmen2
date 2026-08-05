@@ -7891,5 +7891,10 @@
     "start": "0x0029C460",
     "name": "icall_0029C460",
     "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 1 from the ICALL miss tally."
+  },
+  {
+    "start": "0x00293740",
+    "name": "icall_00293740",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 1 from the ICALL miss tally."
   }
 ]
