@@ -91,9 +91,19 @@ else
 fi
 
 echo "== 4/4 compile =="
-i686-w64-mingw32-gcc -shared "$OPT" -o "$OUTDLL" \
+# WATCH=1 adds the entry-point watch (src/x86watch.c, X2_WATCH=...). It changes
+# only what X86_ENTER_FN expands to; the translated bodies are otherwise the
+# same code, so what a watch build shows applies to the shipping build.
+WATCH_SRC=""
+WATCH_DEF=""
+if [ "${WATCH:-0}" = "1" ]; then
+    WATCH_SRC="$ROOT/src/x86watch.c"
+    WATCH_DEF="-DX86_WATCH"
+    echo "   (watch build: set X2_WATCH=0x… to report entry points)"
+fi
+i686-w64-mingw32-gcc -shared "$OPT" $WATCH_DEF -o "$OUTDLL" \
     "$ROOT/scratch/recomp/${MOD}_dll.def" \
-    "$GEN/$MOD.c" "$GEN/${MOD}_dll.c" "$GEN/${MOD}_rtd.c" \
+    "$GEN/$MOD.c" "$GEN/${MOD}_dll.c" "$GEN/${MOD}_rtd.c" $WATCH_SRC \
     -I "$GEN" -static-libgcc
 [ -f "$OUTDLL" ] || { echo "build_recomp: compile produced no $OUTDLL" >&2; exit 1; }
 

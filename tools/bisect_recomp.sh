@@ -108,46 +108,77 @@ if try "$WORK/cand.eps" "control-all"; then
     exit 0
 fi
 
-# Binary search on the candidate list. If a half passes, the culprit is in the
-# other half; if BOTH halves pass alone, the failure needs two functions
-# together and this search says so instead of naming an innocent one.
-cp "$WORK/cand.eps" "$WORK/cur.eps"
-while [ "$(wc -l < "$WORK/cur.eps")" -gt 1 ]; do
-    n=$(wc -l < "$WORK/cur.eps")
-    half=$(( (n + 1) / 2 ))
-    head -n "$half" "$WORK/cur.eps" > "$WORK/lo.eps"
-    tail -n +"$((half + 1))" "$WORK/cur.eps" > "$WORK/hi.eps"
+# Outer loop: find a culprit, exclude it, and go again. One bisection answers
+# "which function breaks the good set"; it does NOT answer "which set is the
+# largest that works", because the culprits are independent -- removing the
+# first one from the full set still failed here, on the real game. So the
+# search repeats until what remains passes, and the exclusions accumulate.
+: > "$WORK/excluded.eps"
+cp "$WORK/cand.eps" "$WORK/pool.eps"
 
-    if try "$WORK/lo.eps" "lo $half/$n"; then
-        if try "$WORK/hi.eps" "hi $((n - half))/$n"; then
-            echo
-            echo "bisect: BOTH halves pass on their own but the union fails."
-            echo "  This failure needs more than one function together, so a"
-            echo "  single-culprit search cannot name it. The two halves are"
-            echo "  $WORK/lo.eps and $WORK/hi.eps."
-            exit 4
-        fi
-        cp "$WORK/hi.eps" "$WORK/cur.eps"
-    else
-        cp "$WORK/lo.eps" "$WORK/cur.eps"
+while : ; do
+    if [ ! -s "$WORK/pool.eps" ]; then
+        echo
+        echo "bisect: every candidate ended up excluded -- the good set could"
+        echo "  not be grown at all. Exclusions: $WORK/excluded.eps"
+        exit 5
     fi
-done
+    if try "$WORK/pool.eps" "pool $(wc -l < "$WORK/pool.eps")"; then
+        cat "$WORK/good.eps" "$WORK/pool.eps" | sort -u > "$WORK/grown.eps"
+        echo
+        echo "bisect: DONE. $(wc -l < "$WORK/grown.eps") entry points run the game;"
+        echo "  $(wc -l < "$WORK/excluded.eps") excluded and still forwarded to the original."
+        echo "  grown set : $WORK/grown.eps"
+        echo "  exclusions: $WORK/excluded.eps"
+        sed 's/^/    /' "$WORK/excluded.eps"
+        exit 0
+    fi
 
-CULPRIT=$(cat "$WORK/cur.eps")
-echo
-echo "bisect: adding $CULPRIT to the good set breaks the game."
-python3 - "$JSON" "$CULPRIT" <<'PY'
-import json, sys
+    # Narrow this pool to one culprit.
+    cp "$WORK/pool.eps" "$WORK/cur.eps"
+    stuck=0
+    while [ "$(wc -l < "$WORK/cur.eps")" -gt 1 ]; do
+        n=$(wc -l < "$WORK/cur.eps")
+        half=$(( (n + 1) / 2 ))
+        head -n "$half" "$WORK/cur.eps" > "$WORK/lo.eps"
+        tail -n +"$((half + 1))" "$WORK/cur.eps" > "$WORK/hi.eps"
+        if try "$WORK/lo.eps" "lo $half/$n"; then
+            if try "$WORK/hi.eps" "hi $((n - half))/$n"; then
+                # Neither half breaks it alone: the failure needs a combination.
+                # Say so rather than blaming whichever function the split landed
+                # on, and stop -- a single-culprit search cannot go further.
+                echo
+                echo "bisect: both halves of the remaining $n pass alone but their"
+                echo "  union fails, so this failure needs more than one function"
+                echo "  together. Halves: $WORK/lo.eps and $WORK/hi.eps"
+                echo "  Excluded so far: $(wc -l < "$WORK/excluded.eps")"
+                stuck=1
+                break
+            fi
+            cp "$WORK/hi.eps" "$WORK/cur.eps"
+        else
+            cp "$WORK/lo.eps" "$WORK/cur.eps"
+        fi
+    done
+    [ "$stuck" = 1 ] && exit 4
+
+    CULPRIT=$(cat "$WORK/cur.eps")
+    echo "$CULPRIT" >> "$WORK/excluded.eps"
+    grep -v -x "$CULPRIT" "$WORK/pool.eps" > "$WORK/pool.next" || true
+    mv "$WORK/pool.next" "$WORK/pool.eps"
+    printf 'bisect: culprit #%d = %s  ' "$(wc -l < "$WORK/excluded.eps")" "$CULPRIT"
+    python3 - "$JSON" "$CULPRIT" <<'PY_INNER'
+import sys
 sys.path.insert(0, "tools")
 import recomp
 d = recomp.load(sys.argv[1])
 ep = int(sys.argv[2], 16)
 for fn in d["functions"]:
     if fn["ep"] == ep:
-        print("  %s" % fn["qname"])
-        print("  %d instructions" % len(fn["ins"]))
+        print("%s (%d instrs)" % (fn["qname"], len(fn["ins"])))
         break
 else:
-    print("  (not found in %s)" % sys.argv[1])
-PY
-echo "  rounds: $round   per-round logs: $LOGDIR"
+    print("(not in the function database)")
+PY_INNER
+    echo "bisect: $(wc -l < "$WORK/pool.eps") candidate(s) left; going again"
+done

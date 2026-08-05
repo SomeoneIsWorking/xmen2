@@ -191,9 +191,25 @@ extern volatile unsigned long x86_fn_calls;
 # define X86_ENTER_FN(a) (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a), \
                           x86_fn_calls++)
 void x86_dump_history(void);
+#elif defined(X86_WATCH)
+/* Entry-point watch (src/x86watch.c). The macro is expanded inside a
+   recompiled body, where the CPU pointer is always the parameter `C`, so the
+   register state reaches the watch without changing what the generator emits
+   -- the generated code stays byte-identical between a watch build and a
+   shipping one, which is the property that makes a watch build's evidence
+   apply to the shipping build. */
+void x86_watch_enter(uint32_t ep, const CPU *C);
+void x86_watch_exit(uint32_t ep, const CPU *C);
+void x86_watch_selftest(void);
+# define X86_ENTER_FN(a) x86_watch_enter((a), C)
+# define X86_EXIT_FN(a)  x86_watch_exit((a), C)
+# define x86_dump_history() ((void)0)
 #else
 # define X86_ENTER_FN(a) ((void)0)
 # define x86_dump_history() ((void)0)
+#endif
+#ifndef X86_EXIT_FN
+# define X86_EXIT_FN(a) ((void)0)
 #endif
 /* call/jump into the region with no identified function; aborts by address */
 void x86_call_unknown(CPU *C, uint32_t target);

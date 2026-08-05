@@ -781,6 +781,7 @@ def emit_instruction(ins, ctx):
         return [A,
                 "{ uint32_t _rt = RD32(C->esp); C->esp += 4 + %d;" % n,
                 "  if (_rt != _retaddr) { x86_return_to(C, _rt); }",
+                "  X86_EXIT_FN(_x86_fn_ep);",
                 "  return; }"]
 
     if m.startswith("SET"):
@@ -973,8 +974,10 @@ def cmd_emit(argv):
         lines.append("/* %s  @ 0x%08x  (%d instrs) */"
                      % (fn["qname"], fn["ep"], len(fn["ins"])))
         lines.append("void fn_%08x(CPU *C) {" % fn["ep"])
+        lines.append("  const uint32_t _x86_fn_ep = 0x%08xU; (void)_x86_fn_ep;"
+                     % fn["ep"])
         lines.append("  const uint32_t _retaddr = RD32(C->esp);")
-        lines.append("  X86_ENTER_FN(0x%08xU);" % fn["ep"])
+        lines.append("  X86_ENTER_FN(_x86_fn_ep);")
         lines.extend(body)
         lines.append("}")
         lines.append("")
@@ -1419,6 +1422,11 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID r)
                   return FALSE; }
         g_imgbase = (uint32_t)(uintptr_t)o;
     }
+#ifdef X86_WATCH
+    /* Before any game code runs, so a failing watch is the FIRST thing in the
+       log rather than a conclusion drawn from it. */
+    x86_watch_selftest();
+#endif
     for (i = 0; i < N_IMP; i++) {
         HMODULE m = LoadLibraryA(g_imp_mod[i]);
         g_imp[i] = m ? (void *)GetProcAddress(m, g_imp_sym[i]) : NULL;
