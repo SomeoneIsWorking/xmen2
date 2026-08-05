@@ -61,7 +61,7 @@ index 5cce260..35f8697 100644
                            section_bounds: List[Tuple[int, int]]) -> Set[int]:
          """
 diff --git a/tools/disasm/functions.py b/tools/disasm/functions.py
-index 26ca037..7f3e8d5 100644
+index 26ca037..2d0e4c4 100644
 --- a/tools/disasm/functions.py
 +++ b/tools/disasm/functions.py
 @@ -9,6 +9,8 @@ Implements multi-pass function detection with confidence scoring:
@@ -73,7 +73,7 @@ index 26ca037..7f3e8d5 100644
  from dataclasses import dataclass, field
  from typing import Dict, List, Optional, Set, Tuple
  
-@@ -79,6 +81,12 @@ class FunctionDetector:
+@@ -79,6 +81,13 @@ class FunctionDetector:
          # Final function list
          self.functions: Dict[int, Function] = {}
  
@@ -81,12 +81,13 @@ index 26ca037..7f3e8d5 100644
 +        # outcome this pass used to have no words for.
 +        self._redecoded = 0
 +        self._crossed_inner_func = 0
++        self._refused_cross = 0
 +        self._empty_candidates: List[Tuple[int, str]] = []
 +
      def detect_all(self, sections: Optional[List[SectionInfo]] = None) -> int:
          """
          Run all detection passes and build the function database.
-@@ -109,11 +117,40 @@ class FunctionDetector:
+@@ -109,11 +118,43 @@ class FunctionDetector:
          # Pass 5: Build functions from candidates
          self._build_functions(sections)
  
@@ -113,7 +114,10 @@ index 26ca037..7f3e8d5 100644
 +        # from the crossing rule not running at all.
 +        print(f"  {self._crossed_inner_func} function body/bodies extended past"
 +              f" a detected function that sits INSIDE them (an interior branch"
-+              f" landing mid-block, not a tail call to a function start)")
++              f" landing mid-block, not a tail call to a function start);"
++              f" {self._refused_cross} branch(es) past the clamp REFUSED"
++              f" (a tail call, a second crossing, or a target more than one"
++              f" detected function away)")
 +        if not self._empty_candidates:
 +            return
 +        print(f"  {len(self._empty_candidates)} candidate(s) decoded to NO"
@@ -127,7 +131,7 @@ index 26ca037..7f3e8d5 100644
      def _add_candidate(self, addr: int, confidence: float, method: str) -> None:
          """Add a function start candidate, keeping highest confidence."""
          existing = self._candidates.get(addr)
-@@ -278,13 +315,33 @@ class FunctionDetector:
+@@ -278,13 +319,33 @@ class FunctionDetector:
              if section:
                  sec_end = section.virtual_addr + section.virtual_size
  
@@ -162,7 +166,7 @@ index 26ca037..7f3e8d5 100644
                  continue
  
              # Check for prologue
-@@ -315,49 +372,171 @@ class FunctionDetector:
+@@ -315,49 +376,193 @@ class FunctionDetector:
              self.functions[start_addr] = func
  
      def _find_function_end(self, start: int, next_func: Optional[int],
@@ -210,24 +214,46 @@ index 26ca037..7f3e8d5 100644
 +        # NULL vtable slot.
 +        #
 +        # So: crossing an intervening start is allowed, but only on the
-+        # evidence that distinguishes interior code from a neighbour. A TAIL
-+        # CALL jumps to a function's first instruction; an interior branch
-+        # lands in the MIDDLE of a block. Extend only for a target that is not
-+        # itself a detected start, and only as far as the next detected start
-+        # above it -- never to the end of the section.
++        # evidence that distinguishes interior code from a neighbour, and only
++        # as far as that evidence reaches. THREE conditions, and dropping any
++        # one of them is not a smaller version of this rule -- it is a runaway.
++        #
++        #   1. The target is not itself a detected start. A TAIL CALL jumps to
++        #      a function's first instruction; an interior branch lands in the
++        #      MIDDLE of a block.
++        #   2. At most ONE detected function may be swallowed -- the interior
++        #      helper itself. The ceiling is the next start ABOVE next_func,
++        #      never further.
++        #   3. At most one crossing per function. Chained crossings are what
++        #      makes this unbounded: the moment the walk steps into foreign
++        #      code, every branch THERE also looks like an interior branch, and
++        #      each one licenses the next.
++        #
++        # Conditions 2 and 3 are not belt-and-braces, they were measured. With
++        # only condition 1, a five-byte thunk at 0x00239910 grew to 872741
++        # bytes and 0x003010C0 grew from 26 bytes to 878539; eight functions
++        # passed 64 KB when the true maximum in this binary is 8484. The
++        # boundary walk had eaten most of .text.
 +        starts = sorted_starts or []
++        crossed = False
++
++        # The ceiling: one detected function past the original clamp. Computed
++        # from next_func, NOT from the target, so a distant target cannot pull
++        # the ceiling along with it.
++        cross_ceiling = hard_upper
++        if next_func is not None:
++            nxt = bisect.bisect_right(starts, next_func)
++            if nxt < len(starts):
++                cross_ceiling = min(starts[nxt], hard_upper)
 +
 +        def _extend_over(target: int) -> bool:
-+            """Widen `upper` to admit `target`, or refuse and say nothing."""
-+            nonlocal upper
-+            if target in self._candidates:
-+                return False        # a function start: a tail call, not our body
-+            nxt = bisect.bisect_right(starts, target)
-+            limit = starts[nxt] if nxt < len(starts) else hard_upper
-+            limit = min(limit, hard_upper)
-+            if limit <= upper:
++            """Widen `upper` to admit `target`, or refuse and count the refusal."""
++            nonlocal upper, crossed
++            if crossed or target in self._candidates or target >= cross_ceiling:
++                self._refused_cross += 1
 +                return False
-+            upper = limit
++            upper = cross_ceiling
++            crossed = True
 +            self._crossed_inner_func += 1
 +            return True
 +
@@ -363,10 +389,10 @@ index 26ca037..7f3e8d5 100644
          func_starts = set(self.functions.keys())
 diff --git a/tools/disasm/test_inner_func.py b/tools/disasm/test_inner_func.py
 new file mode 100644
-index 0000000..27b80c5
+index 0000000..1af4232
 --- /dev/null
 +++ b/tools/disasm/test_inner_func.py
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,154 @@
 +"""Self-check for function bodies that CONTAIN another detected function.
 +
 +MSVC emits small helpers in the middle of a function's body and `call`s them
@@ -428,6 +454,7 @@ index 0000000..27b80c5
 +    d.engine = FakeEngine(insns)
 +    d._candidates = {a: (0.9, "call_target") for a in candidates}
 +    d._crossed_inner_func = 0
++    d._refused_cross = 0
 +    return d
 +
 +
@@ -481,8 +508,41 @@ index 0000000..27b80c5
 +        f" {d._crossed_inner_func}")
 +    checks += 2
 +
-+    print(f"test_inner_func: {checks} checks passed"
-+          f" (positive: interior branch crosses; negative: tail call does not)")
++    # RUNAWAY: a branch landing more than ONE detected function away must be
++    # refused. Without this bound the rule is unbounded in practice, because
++    # once the walk steps into foreign code every branch there also looks like
++    # an interior branch and licenses the next crossing. Measured, not feared:
++    # a five-byte thunk at 0x00239910 grew to 872741 bytes and 0x003010C0 grew
++    # from 26 bytes to 878539, against a true maximum of 8484 for this binary.
++    far = 0x1200
++    starts_with_far = [OUTER, INNER, NEIGHBOUR, 0x1100]
++    # OUTER branches past INNER *and* past 0x1100 -- two functions away.
++    d2 = detector(build(far) + [Insn(far, 2, is_ret=True)], starts_with_far)
++    end = d2._find_function_end(OUTER, INNER, SEC_END, starts_with_far)
++    assert end == OUTER + 4, (
++        f"a branch two detected functions away extended the body:"
++        f" end=0x{end:X}, want 0x{OUTER + 4:X}")
++    assert d2._crossed_inner_func == 0, "the runaway crossing was allowed"
++    assert d2._refused_cross >= 1, "the refusal was not counted"
++    checks += 3
++
++    # ONE crossing per function, not a chain: after crossing once, a second
++    # out-of-clamp branch must be refused even if it would otherwise qualify.
++    d3 = detector(build(TAIL_BLOCK) + [
++        # TAIL_BLOCK branches on again, past NEIGHBOUR.
++        Insn(TAIL_BLOCK, 2, jump_target=0x1050, is_cond_jump=True),
++        Insn(0x1050, 2, is_ret=True),
++    ], starts)
++    end = d3._find_function_end(OUTER, INNER, SEC_END, starts)
++    assert end <= NEIGHBOUR, (
++        f"a second crossing chained past the next function: end=0x{end:X}")
++    assert d3._crossed_inner_func == 1, (
++        f"expected exactly one crossing, got {d3._crossed_inner_func}")
++    checks += 2
++
++    print(f"test_inner_func: {checks} checks passed (interior branch crosses;"
++          f" tail call does not; a branch two functions away does not;"
++          f" crossings do not chain)")
 +
 +
 +if __name__ == "__main__":

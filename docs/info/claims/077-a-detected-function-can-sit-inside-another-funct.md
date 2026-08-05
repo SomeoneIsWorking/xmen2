@@ -12,7 +12,13 @@ A detected function can sit INSIDE another function's body, and clamping the out
 
 ## Evidence
 
-Before/after on the same XBE, one lift apart: [ABI] 22 violations across 7 distinct targets -> '94088 calls checked, every one restored ebx/esi/edi/ebp'. [STUB] '1 calls into empty stubs (of 320)' -> 'none of the 168 empty stubs was called'. The out-of-image indirect call to 0x00000000 from guest 0x002A975F is gone; boot advanced 511->525 kernel calls and 66968->67262 indirect calls. Logs scratch/logs/xbox_run_site.log (before) and scratch/logs/xbox_run_bounds.log (after). The rule fired on 205 function bodies binary-wide, not just this one. Unit test vendor/xboxrecomp/tools/disasm/test_inner_func.py covers both directions.
+Before/after on the same XBE, one lift apart: [ABI] 22 violations across 7 distinct targets -> '94088 calls checked, every one restored ebx/esi/edi/ebp'. [STUB] '1 calls into empty stubs (of 320)' -> 'none of the 277 empty stubs was called'. The out-of-image indirect call to 0x00000000 from guest 0x002A975F is gone; boot advanced 511->525 kernel calls and 66968->67262 indirect calls. Logs scratch/logs/xbox_run_site.log (before) and scratch/logs/xbox_run_bounded.log (after).
+
+The rule fires on 30 function bodies binary-wide and REFUSES 623 other branches past the clamp. Both numbers are printed every lift.
+
+CORRECTION, same session: the first version of this rule had only the 'target is not a detected start' condition, reported 205 crossings, and was a RUNAWAY -- its own falsifier caught it one lift later. Measured by re-running the disasm stage with the crossing disabled: the true maximum function size in this binary is 8484 bytes, but with the unbounded rule eight functions passed 64 KB, a five-byte thunk at 0x00239910 grew to 872741 bytes and 0x003010C0 grew from 26 bytes to 878539. Once the walk steps into foreign code every branch THERE also looks like an interior branch and licenses the next crossing. Two further conditions bound it: at most ONE detected function may be swallowed (the ceiling is computed from next_func, never pulled along by a distant target), and at most one crossing per function. With those, the largest function is 8484 again -- identical to the crossing-disabled baseline -- and the runtime result is unchanged from the runaway build (same 67262 indirect calls, same 0 ABI violations, same next blocker), so every real benefit came from the 30 legitimate crossings.
+
+Unit test vendor/xboxrecomp/tools/disasm/test_inner_func.py covers four classes: an interior branch crosses, a tail call does not, a branch two functions away does not, and crossings do not chain.
 
 ## What would falsify it
 

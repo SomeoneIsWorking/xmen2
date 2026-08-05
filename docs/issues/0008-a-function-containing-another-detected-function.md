@@ -48,16 +48,33 @@ section address -- was never restored. Hence `ebx: 0x00000080 -> 0x01082134`.
 
 ## Fix
 
-`_find_function_end` may now cross an intervening detected start, but only on
-the evidence that separates interior code from a neighbour: a TAIL CALL jumps
-to a function's FIRST instruction, an interior branch lands MID-BLOCK. It
-extends only for a target that is not itself a detected start, and only as far
-as the next detected start above it. 205 function bodies were extended.
+`_find_function_end` may now cross an intervening detected start, under THREE
+conditions -- dropping any one of them is not a smaller rule, it is a runaway:
+
+1. The target is not itself a detected start. A TAIL CALL jumps to a
+   function's FIRST instruction; an interior branch lands MID-BLOCK.
+2. At most ONE detected function may be swallowed -- the interior helper. The
+   ceiling is computed from `next_func`, never pulled along by the target.
+3. At most one crossing per function.
+
+30 bodies were extended and 623 branches past the clamp refused; both numbers
+print every lift.
+
+**Conditions 2 and 3 were measured, not feared.** The first version had only
+condition 1, and the very next discovery-loop round refused to seed because
+`0x0029CA50 is INSIDE the existing function 0x00239910..0x0030EA35` -- an
+852 KB "function". Re-running the disasm stage with the crossing disabled put
+the true maximum at 8484 bytes; the unbounded rule pushed eight functions past
+64 KB, grew a five-byte thunk at 0x00239910 to 872741 bytes, and 0x003010C0
+from 26 bytes to 878539. Once the walk steps into foreign code, every branch
+there also looks like an interior branch and licenses the next crossing.
+The bounded rule gives byte-identical runtime results to the runaway one, so
+every real benefit came from the 30 legitimate crossings.
 
 ## Result
 
     [ABI]  22 violations / 7 targets   ->  94088 calls checked, 0 violations
-    [STUB] 1 call into empty stubs (of 320) -> none of 168 stubs called
+    [STUB] 1 call into empty stubs (of 320) -> none of 277 stubs called
     NULL indirect call                  ->  gone
     boot                                ->  511 -> 525 kernel calls
 
