@@ -75,20 +75,29 @@ python3 -m tools.recomp "$XBE" --all --split 1000 \
 echo
 echo "xbox_relift: seeded addresses now in the dispatch table:"
 missing=0
-while read -r addr; do
+harvest_missing=0
+while read -r addr src; do
     # recomp_dispatch.c holds the address as a hex literal; a seed that does
     # not appear there was NOT lifted, and the loop has not closed.
     if grep -qi "0x${addr}" "$GEN_DIR/recomp_dispatch.c"; then
-        echo "  0x${addr}  present"
+        : # present; only the misses are worth a line at this volume
+    elif [ "$src" = "harvest" ]; then
+        # Inferred from a vtable-shaped run, not seen being called. A few
+        # false positives are expected and are not a failure.
+        echo "  0x${addr}  not a function (harvested candidate, no match)"
+        harvest_missing=$((harvest_missing + 1))
     else
-        echo "  0x${addr}  MISSING -- seed did not produce a function" >&2
+        echo "  0x${addr}  MISSING -- a RUNTIME-OBSERVED seed did not land" >&2
         missing=1
     fi
 done < <(python3 -c '
 import json, sys
 for e in json.load(open(sys.argv[1])):
-    print(e["start"][2:].upper().zfill(8))
+    print(e["start"][2:].upper().zfill(8), e.get("source", "observed"))
 ' "$SEEDS")
 
-[ "$missing" -eq 0 ] || { echo "xbox_relift: at least one seed did not land." >&2; exit 1; }
+total=$(python3 -c 'import json,sys;print(len(json.load(open(sys.argv[1]))))' "$SEEDS")
+echo "xbox_relift: $total seeds, $harvest_missing harvested candidates did not resolve to a function"
+
+[ "$missing" -eq 0 ] || { echo "xbox_relift: a runtime-observed seed did not land." >&2; exit 1; }
 echo "xbox_relift: done. Rebuild with: cmake --build <build-dir>"

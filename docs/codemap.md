@@ -45,7 +45,8 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 |---|---|---|
 | Xbox game project (entry, VEH, ICALL diagnostics) | `xbox/src/main.c`, `recomp_manual.c`, `recomp_types.h` | **partial** — builds a 19 MB native PIE Linux executable that runs game code (C038, C039) |
 | Lift pipeline: disasm → func_id → recomp | `tools/xbox_relift.sh` | **verified** — 24,663/24,663 functions across all 11 executable sections, 0 failures; fails loudly if a seed does not land (C049) |
-| Runtime discovery of statically-invisible functions | `xbox/seeds.json` | **verified** — 15 functions reachable only as function-pointer arguments, each found from a run and fed back (C040, C041) |
+| Runtime discovery of statically-invisible functions | `xbox/seeds.json`, `tools/xbox_discover.sh` | **verified** — 23 functions observed at runtime and fed back (C040, C041) |
+| Bulk vtable harvest | `tools/xbox_vtable_seeds.py` | **verified** — 1288 missing functions in one pass, every filter's rejection count printed (C054) |
 | Unresolved-indirect-call tally | `xbox/src/recomp_manual.c` | **verified** — I008; fatal by default (`XBOX_ICALL_CONTINUE=1` to survey); `XBOX_ICALL_SELFTEST=1` proves both miss paths fire |
 | Runtime discovery loop, automated | `tools/xbox_discover.sh` | **verified** — run → seed → re-lift → repeat; stops on convergence, on a repeat, or on an out-of-image target, and says which |
 | Register model | `xbox/src/recomp_types.h` | **verified** — every register global including ebp; the g_seh_ebp bridge is gone (C051) |
@@ -54,7 +55,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection; silently-empty stubs 7998 → 348 (C048) |
 | NV2A GPU emulation | `vendor/xboxrecomp/src/nv2a`, wired in `xbox/src/main.c` | **partial** — the VEH routes 0xFD000000 register and VRAM faults to xemu's NV2A instead of passing them through, and reports any instruction it cannot decode. Never exercised yet: the title stops before its first GPU write (C053) |
 | Host D3D8 → OpenGL | `vendor/xboxrecomp/src/d3d` | reference — the NV2A PGRAPH translator emits onto this device; not called directly by game code |
-| Xbox game execution | — | **partial** — 469 kernel calls, 4067 indirect calls, creates its TDATA/UDATA save dirs, runs its D3D static initialisers. Stops at each newly-discovered indirect target; nothing renders |
+| Xbox game execution | — | **partial** — 25,777 functions, 469 kernel calls, 4067+ indirect calls with **zero unresolved**; faults in the CRT heap unlinking a block whose header is a .text address. Nothing renders |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.

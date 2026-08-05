@@ -215,16 +215,16 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### xb-run — Recompiled Xbox build executes the game's main thread
 - status: re-partial
 - deps: xb-lift
-- evidence: C048/C049; 200+ kernel calls, TDATA/UDATA created under title id 41560047, zero unresolved indirect calls
+- evidence: C048/C049/C054; 25,777 functions, 469 kernel calls, 4067+ indirect calls with zero unresolved
 - where: 
-- gap: Crashes in the game's own engine code: sub_00225995 -> sub_00227456 -> sub_003EB320 (D3D section) -> sub_00163240 -> sub_001630C0 -> recursive sub_00208D10. Nothing renders yet.
+- gap: Now faults inside the CRT heap: sub_002241E1 unlinks a block whose header sits at a .text address (0x003ECDD8), so its forward pointer is int3 padding (0xCCCCCCCC) and the unlink write faults. Reached from game code sub_000132F0 -> sub_002AFBB0 -> malloc. Nothing renders.
 - notes: 
 
 ### xb-discovery — Runtime discovery loop for statically-invisible functions
 - status: re-verified
 - deps: xb-lift
-- evidence: C040/C041/C048; 15 seeds, each found from a run and fed back; the relift script fails loudly when a seed does not land (it caught two landing in unlifted sections)
-- where: tools/xbox_relift.sh, xbox/seeds.json
+- evidence: C040/C041/C054; 1311 seeds -- 23 observed at runtime, 1288 harvested from vtables in one pass
+- where: tools/xbox_relift.sh, tools/xbox_discover.sh, tools/xbox_vtable_seeds.py, xbox/seeds.json
 - gap: 
 - notes: 
 
