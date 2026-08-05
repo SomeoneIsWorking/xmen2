@@ -10,6 +10,14 @@
 # back twice (seeding it did not help -- a real problem to look at), or after
 # MAX_ROUNDS. Every outcome is printed; a quiet exit is not one of them.
 #
+# ONE loop at a time. Two of these racing share xbox/seeds.json, the generated
+# C directory and the build directory, and the damage is not obvious: the
+# rounds interleave in one log, a re-lift half-writes the JSON another re-lift
+# is reading, and a link picks up an object file a stray compiler is still
+# writing (which reads as "undefined reference to sub_xxxxxxxx", a translator
+# bug that is not there). The lock below makes a second loop refuse and say who
+# holds it, instead of quietly corrupting the first one.
+#
 #   ROUNDS    maximum iterations (default 8)
 #   BUILD_DIR cmake build directory (default scratch/build-xbox)
 #   RUN_DIR   directory holding default.xbe + game/ (default scratch/run/xbox)
@@ -22,6 +30,23 @@ BUILD_DIR="${BUILD_DIR:-$REPO/scratch/build-xbox}"
 RUN_DIR="${RUN_DIR:-$REPO/scratch/run/xbox}"
 SEEDS="$REPO/xbox/seeds.json"
 LOG="$REPO/scratch/logs/xbox_discover.log"
+LOCK="$REPO/scratch/.xbox_discover.lock"
+
+mkdir -p "$(dirname "$LOG")"
+# `<>` not `>`: `>` truncates on open, which erases the holder line BEFORE
+# flock reports the conflict -- the refusal would then name nobody.
+touch "$LOCK"
+exec 9<>"$LOCK"
+if ! flock -n 9; then
+    holder="$(cat "$LOCK" 2>/dev/null)"
+    echo "xbox_discover: another discovery loop is already running." >&2
+    echo "  lock: $LOCK  holder: ${holder:-<lock held but unnamed>}" >&2
+    echo "  Two loops corrupt each other's seeds, lift and build. Wait for it," >&2
+    echo "  or kill THAT pid (never pkill -f; it matches this shell too)." >&2
+    exit 1
+fi
+: > "$LOCK"                                    # ours now; drop the stale holder
+echo "pid $$ started $(date -Is)" >&9
 
 : > "$LOG"
 seen=""
@@ -81,7 +106,7 @@ d.append({"start": va, "name": f"icall_{va[2:]}",
 open(path, "w").write(json.dumps(d, indent=2) + "\n")
 PY
 
-    if ! "$REPO/tools/xbox_relift.sh" >>"$LOG" 2>&1; then
+    if ! XBOX_DISCOVER_PID=$$ "$REPO/tools/xbox_relift.sh" >>"$LOG" 2>&1; then
         echo "round $round: RE-LIFT FAILED (a seed did not land) -- see $LOG" >&2
         exit 1
     fi

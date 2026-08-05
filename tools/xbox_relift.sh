@@ -45,6 +45,37 @@ done
 
 mkdir -p "$LOG_DIR" "$GEN_DIR"
 
+# The lift rewrites every file in GEN_DIR. A second lift running at the same
+# time -- or a discovery loop that is between its own lift and its build --
+# reads half-written JSON and links half-written objects, and the failure looks
+# like a translator bug rather than a collision. Refuse, loudly, naming the
+# holder. xbox_discover.sh sets XBOX_DISCOVER_PID when it calls us; that is the
+# one caller allowed to hold the loop lock while this runs.
+LIFT_LOCK="$REPO/scratch/.xbox_lift.lock"
+DISCOVER_LOCK="$REPO/scratch/.xbox_discover.lock"
+mkdir -p "$(dirname "$LIFT_LOCK")"
+
+# `<>` not `>`: `>` truncates on open, so the holder line would be gone before
+# we could print who holds it, and the refusal would name nobody.
+touch "$LIFT_LOCK"
+exec 8<>"$LIFT_LOCK"
+if ! flock -n 8; then
+    echo "xbox_relift: another lift is already running (holder: $(cat "$LIFT_LOCK" 2>/dev/null))." >&2
+    echo "  Nothing was lifted. Two lifts overwrite each other's generated C." >&2
+    exit 1
+fi
+: > "$LIFT_LOCK"                               # ours now; drop the stale holder
+echo "pid $$ started $(date -Is)" >&8
+
+if [ -z "${XBOX_DISCOVER_PID:-}" ] && [ -e "$DISCOVER_LOCK" ]; then
+    if ! ( exec 7<>"$DISCOVER_LOCK"; flock -n 7 ); then
+        echo "xbox_relift: a discovery loop is running (holder: $(cat "$DISCOVER_LOCK" 2>/dev/null))." >&2
+        echo "  Nothing was lifted. It owns the generated C and the build dir;" >&2
+        echo "  lifting under it corrupts its next round." >&2
+        exit 1
+    fi
+fi
+
 seed_count=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$SEEDS")
 echo "xbox_relift: XBE=$XBE"
 echo "xbox_relift: seeding $seed_count runtime-discovered function(s) from $SEEDS"

@@ -188,9 +188,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
 - status: hack
 - deps: rc-exe-run
-- evidence: 
+- evidence: scratch/logs/xbox_discover_run_2.log; xbox/seeds.json (1320 seeds); I013
 - where: 
-- gap: Down from 7 fallback addresses to 1 after feeding runtime-discovered targets back through AddFunctions.py. The loop works: run -> collect -> add -> re-export -> re-recompile. Still DEBT until it reaches 0.
+- gap: The runtime-discovery loop reached its FIXED POINT on 2026-08-05: 66264 indirect calls, 0 unresolved, 0 distinct missing targets (scratch/logs/xbox_discover_run_2.log; the tally really printed, so this is not an absent report read as a zero). 1320 seeds. STILL DEBT, for two reasons: the fallback code path is merely unused, not removed; and the run only reaches an access violation at Xbox VA 0x02902194, so game code past that point has never executed and may yet name targets the static detector cannot see.
 - notes: 
 
 ### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage
