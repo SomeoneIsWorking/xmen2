@@ -64,6 +64,18 @@ static unsigned long w_hits[WATCH_MAX_EPS];
 static int           w_n = -1;          /* -1 = not yet parsed */
 static uint32_t      w_mem;             /* guest address, 0 = none */
 static int           w_cap = 8;
+/*
+ * X2_WATCH=all: report EVERY recompiled entry point, capped globally.
+ *
+ * Needed because "watch these specific addresses" cannot supply its own
+ * positive control. On the known-good build, watching six entry points from
+ * the verified set produced no output at all -- which could mean the hook is
+ * broken, or that none of those six is called during the intro. Only a trace
+ * of everything distinguishes those, and it is also what shows which function
+ * ran last before a crash.
+ */
+static int           w_all;
+static unsigned long w_all_seen;
 
 static void x86_watch_report(void);
 
@@ -76,6 +88,13 @@ static void watch_parse(void)
     if (c && *c) w_cap = atoi(c);
     if (m && *m) w_mem = (uint32_t)strtoul(m, NULL, 0);
     if (!s || !*s) return;
+    if (s[0] == 'a' && s[1] == 'l' && s[2] == 'l' && s[3] == '\0') {
+        w_all = 1;
+        fprintf(watch_out(), "[WATCH] watching ALL entry points, global cap %d\n",
+                w_cap);
+        atexit(x86_watch_report);
+        return;
+    }
     while (*s && w_n < WATCH_MAX_EPS) {
         char *end;
         unsigned long v = strtoul(s, &end, 0);
@@ -111,7 +130,16 @@ static int watch_slot(uint32_t ep)
  */
 void x86_watch_exit(uint32_t ep, const CPU *C)
 {
-    int i = watch_slot(ep);
+    int i;
+    if (w_n < 0) watch_parse();
+    if (w_all) {
+        if (w_all_seen > (unsigned long)w_cap) return;
+        fprintf(watch_out(), "[WATCH] 0x%08x RETURNED  eax=0x%08x esp=0x%08x\n",
+                ep, C->eax, C->esp);
+        fflush(watch_out());
+        return;
+    }
+    i = watch_slot(ep);
     if (i < 0 || (int)w_hits[i] > w_cap) return;
     fprintf(watch_out(), "[WATCH] 0x%08x #%lu RETURNED  eax=0x%08x esp=0x%08x\n",
             ep, w_hits[i], C->eax, C->esp);
@@ -120,7 +148,18 @@ void x86_watch_exit(uint32_t ep, const CPU *C)
 
 void x86_watch_enter(uint32_t ep, const CPU *C)
 {
-    int i = watch_slot(ep);
+    int i;
+    if (w_n < 0) watch_parse();
+    if (w_all) {
+        if (++w_all_seen > (unsigned long)w_cap) return;
+        fprintf(watch_out(), "[WATCH] 0x%08x ENTER  esp=0x%08x ecx=0x%08x "
+                             "ret=0x%08x arg0=0x%08x\n",
+                ep, C->esp, C->ecx,
+                C->esp ? RD32(C->esp) : 0u, C->esp ? RD32(C->esp + 4) : 0u);
+        fflush(watch_out());
+        return;
+    }
+    i = watch_slot(ep);
     if (i < 0) return;
     w_hits[i]++;
     if ((int)w_hits[i] > w_cap) return;
@@ -140,6 +179,12 @@ void x86_watch_enter(uint32_t ep, const CPU *C)
 static void x86_watch_report(void)
 {
     int i;
+    if (w_all) {
+        fprintf(watch_out(), "[WATCH] %lu recompiled entry point call(s) total"
+                             " (printed the first %d)\n", w_all_seen, w_cap);
+        fflush(watch_out());
+        return;
+    }
     if (w_n <= 0) return;
     fprintf(watch_out(), "[WATCH] final tally:\n");
     for (i = 0; i < w_n; i++) {
@@ -168,6 +213,17 @@ void x86_watch_selftest(void)
     const char *e = getenv("X2_WATCH_SELFTEST");
     if (!e || e[0] != '1') return;
     if (w_n < 0) watch_parse();
+    if (w_all) {
+        /* Say so rather than returning quietly: a self-test that silently
+           declines in one mode is the same lie it exists to prevent. */
+        fprintf(watch_out(), "[WATCH] SELFTEST: X2_WATCH=all has no per-address"
+                        " table to check, so only the SINK is proven here --"
+                        " this line reaching the log IS that proof. Zero ENTER"
+                        " lines after it therefore means zero entries, not a"
+                        " dead instrument.\n");
+        fflush(watch_out());
+        return;
+    }
     if (w_n < 1) {
         fprintf(watch_out(), "[WATCH] SELFTEST cannot run: X2_WATCH is empty, so "
                         "there is nothing to prove\n");
