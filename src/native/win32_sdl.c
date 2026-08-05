@@ -147,15 +147,46 @@ void imp_MSVCRT__ftol(CPU *C)
     C->esp += 4u;                        /* __cdecl, no stack arguments */
 }
 
+const char *x86_native_name_at(uint32_t addr);
+
 void imp_MSVCRT__initterm(CPU *C)
 {
     /* Walk the function-pointer table and call each non-NULL entry through the
        recompiled dispatcher -- these are the module's static constructors, and
-       skipping them would leave every global unconstructed. */
-    uint32_t p = A(0), end = A(1);
-    for (; p < end; p += 4u) {
+       skipping them would leave every global unconstructed.
+     *
+     * The pre-pass is the point. These tables are the ONLY reference to most
+     * of their targets: they are data pointers in .rdata, so static analysis
+     * never marked them as code and they have no recompiled body. Running the
+     * table straight through would stop at the first one, and each rebuild
+     * would reveal exactly one more. Listing every missing target first turns
+     * that into one seed list.
+     */
+    uint32_t p = A(0), end = A(1), n = 0, missing = 0;
+    for (p = A(0); p < end; p += 4u) {
         uint32_t fn = RD32(p);
-        if (fn) x86_dispatch(C, fn);
+        if (!fn) continue;
+        n++;
+        if (!x86_native_name_at(fn)) {
+            if (!missing)
+                fprintf(stderr, "\n*** _initterm: constructor targets with no "
+                                "recompiled body.\n    These are reachable only "
+                                "through this table, so static analysis never "
+                                "saw them as code.\n    Seed them and re-lift; "
+                                "the full list follows so this costs one pass, "
+                                "not one per rebuild.\n");
+            fprintf(stderr, "    0x%08x\n", fn);
+            missing++;
+        }
+    }
+    if (missing) {
+        fprintf(stderr, "*** %u of %u constructor targets are missing bodies\n",
+                missing, n);
+        abort();
+    }
+    for (p = A(0); p < end; p += 4u) {
+        uint32_t fn = RD32(p);
+        if (fn) x86_guest_call(C, fn);
     }
     ret_cdecl(C, 0);
 }
@@ -373,4 +404,79 @@ void imp_USER32_ReleaseCapture(CPU *C)
 {
     SDL_CaptureMouse(false);
     ret_std(C, 1, 0);
+}
+
+/* ---- native DATA exports ----------------------------------------------
+ *
+ * Not every import is a function. The CRT exports variables, and the guest
+ * reads them straight through its IAT slot -- so a slot bound to a function,
+ * or left poisoned, is wrong in different ways. These need a real, guest-
+ * addressable word holding a real value.
+ *
+ * Each one is listed with what it means, because "return 0" is only correct
+ * when 0 is the answer, and here it happens to be: _adjust_fdiv is the
+ * Pentium FDIV-bug fixup flag, and no CPU this will ever run on has that bug.
+ */
+static uint32_t g_data_arena, g_data_used, g_data_size;
+
+void x86_native_data_arena(uint32_t base, uint32_t size)
+{
+    g_data_arena = base;
+    g_data_used = 0;
+    g_data_size = size;
+}
+
+static uint32_t data_alloc(uint32_t v)
+{
+    uint32_t a;
+    if (!g_data_arena || g_data_used + 4u > g_data_size) return 0;
+    a = g_data_arena + g_data_used;
+    g_data_used += 4u;
+    *(volatile uint32_t *)(uintptr_t)a = v;
+    return a;
+}
+
+uint32_t x86_native_data_export(const char *mod, const char *sym)
+{
+    if (strcasecmp(mod, "MSVCRT.dll") == 0) {
+        /* int __adjust_fdiv: non-zero only on a Pentium with the FDIV erratum.
+           The CRT branches on it to pick a software divide. Zero is the true
+           answer here, not a placeholder. */
+        if (strcmp(sym, "_adjust_fdiv") == 0) return data_alloc(0);
+    }
+    return 0;
+}
+
+/*
+ * MSVCRT!__dllonexit -- register a static destructor.
+ *
+ *   _PVFV __dllonexit(_PVFV func, _PVFV **pbegin, _PVFV **pend)
+ *
+ * Implemented rather than stubbed, even though nothing here runs the
+ * destructors yet. A stub returning `func` would look identical from the
+ * caller's side while quietly dropping every registration, and the table it
+ * maintains is guest-visible: the CRT reads it. Growing it by one entry per
+ * call is not how MSVCRT does it (it doubles), but the OBSERVABLE state --
+ * *pbegin, *pend and the entries between them -- is the same.
+ */
+void imp_MSVCRT___dllonexit(CPU *C)
+{
+    uint32_t func = A(0), pbegin = A(1), pend = A(2);
+    uint32_t b = RD32(pbegin), e = RD32(pend);
+    uint32_t count = b ? (e - b) / 4u : 0u;
+    void *nt;
+
+    if (!func) { ret_cdecl(C, 0); return; }
+    nt = realloc(b ? (void *)(uintptr_t)b : NULL, (size_t)(count + 1u) * 4u);
+    if (!nt) { ret_cdecl(C, 0); return; }
+    if ((uintptr_t)nt > 0xFFFFFFFFu) {
+        fprintf(stderr, "win32_sdl: __dllonexit table landed at %p, above the "
+                        "4 GB a guest pointer can hold\n", nt);
+        abort();
+    }
+    b = (uint32_t)(uintptr_t)nt;
+    WR32(b + count * 4u, func);
+    WR32(pbegin, b);
+    WR32(pend, b + (count + 1u) * 4u);
+    ret_cdecl(C, func);
 }

@@ -78,12 +78,22 @@ static const char *poison_name(uint32_t addr, const char **mod)
     return NULL;
 }
 
+uint32_t x86_native_data_export(const char *mod, const char *sym);
+void x86_native_data_arena(uint32_t base, uint32_t size);
+
+#define DATA_ARENA 0x000B0000u
+#define DATA_SIZE  0x1000u
+
 static uint32_t resolve_import(const char *mod, const char *sym,
                                int by_ordinal, uint32_t ordinal, void *ctx)
 {
     X86Module *m;
     (void)ctx;
     if (!by_ordinal && sym) {
+        /* A DATA export the native layer supplies: it must be a real word in
+           guest memory, because the guest reads it through the slot. */
+        uint32_t d = x86_native_data_export(mod, sym);
+        if (d) { g_nbound++; return d; }
         for (m = x86_modules(); m; m = m->next) {
             uint32_t rva;
             if (strcasecmp(m->name, mod) != 0) continue;
@@ -157,6 +167,38 @@ void x86_seg_unset(const char *seg)
     abort();
 }
 
+/* Guest memory, as the guest addresses it. */
+static uint32_t gr32(uint32_t a) { return *(volatile uint32_t *)(uintptr_t)a; }
+static void gw32(uint32_t a, uint32_t v) { *(volatile uint32_t *)(uintptr_t)a = v; }
+static uint8_t gr8(uint32_t a) { return *(volatile uint8_t *)(uintptr_t)a; }
+static void gw8(uint32_t a, uint8_t v) { *(volatile uint8_t *)(uintptr_t)a = v; }
+
+/* ---- the thread block (FS) --------------------------------------------
+ *
+ * libIGCore's code touches FS:[0] twelve times and nothing else -- the head of
+ * the SEH exception-registration chain, from MSVC's try/except prologue
+ * (`mov eax, fs:[0]` / `mov fs:[0], esp`). So FS needs one real word of guest
+ * memory, not a stub: the chain is a linked list living in the guest's own
+ * stack frames, and maintaining it correctly costs nothing.
+ *
+ * What this does NOT provide is exception DELIVERY. If guest code ever raises
+ * an exception expecting the chain to be walked, nothing here walks it. That
+ * is a real gap and it is recorded rather than papered over -- the chain being
+ * well-formed is necessary for the prologues to run, not sufficient for SEH.
+ */
+#define TIB_BASE 0x000A0000u
+#define TIB_SIZE 0x1000u
+
+static int tib_init(void)
+{
+    if (pe_map_anon_low(TIB_BASE, TIB_SIZE) != 0) return -1;
+    g_fsbase = TIB_BASE;
+    /* Win32's end-of-chain sentinel. A zero here would look like a valid
+       record at address 0 to anything that did walk the chain. */
+    *(volatile uint32_t *)(uintptr_t)TIB_BASE = 0xFFFFFFFFu;
+    return 0;
+}
+
 /* ---- the guest stack ---------------------------------------------------
  *
  * Ours, not the C stack. This is the one place the native build is simpler
@@ -174,6 +216,82 @@ static int guest_stack_init(void)
        than malloc'd so its address is predictable in a fault report. */
     if (pe_map_anon_low(0x30000000u, GUEST_STACK) != 0) return -1;
     guest_stack_top = 0x30000000u + GUEST_STACK - 64u;
+    return 0;
+}
+
+/* ---- module initialisation --------------------------------------------
+ *
+ * A DLL's globals are built by its entry point: the Windows loader calls
+ * DllMainCRTStartup, which runs _initterm over the static-constructor tables
+ * and then DllMain. Natively there is no loader, so nothing had run them --
+ * which is why a cross-module call reached libIGCore's igGetMemoryPool and
+ * found a null memory-pool table.
+ *
+ * Order matters: a module's constructors can call into another module, so
+ * dependencies go first. That is read from the import tables rather than
+ * hardcoded, and a cycle is reported rather than resolved arbitrarily.
+ */
+#define DLL_PROCESS_ATTACH 1
+
+static int module_init_one(X86Module *m)
+{
+    CPU C;
+    uint32_t entry = *m->base + pe_entry_rva(*m->base);
+    const char *nm = x86_native_name_at(entry);
+    if (!nm) {
+        fprintf(stderr, "module_init: %s has no recompiled body at its entry "
+                        "point 0x%08x -- it cannot be initialised\n",
+                m->name, entry);
+        return -1;
+    }
+    /* __stdcall DllMain(hinstDLL, fdwReason, lpvReserved): three arguments
+       plus the return address, and the callee pops them. */
+    memset(&C, 0, sizeof C);
+    C.esp = guest_stack_top - 16u;
+    gw32(C.esp +  0u, 0xDEADBEEFu);
+    gw32(C.esp +  4u, *m->base);              /* hinstDLL IS the image base */
+    gw32(C.esp +  8u, DLL_PROCESS_ATTACH);
+    gw32(C.esp + 12u, 0);
+    printf("  init %-18s entry 0x%08x %s\n", m->name, entry, nm);
+    if (!x86_native_call_at(entry, &C)) {
+        fprintf(stderr, "module_init: %s entry vanished between lookup and "
+                        "call\n", m->name);
+        return -1;
+    }
+    printf("       returned eax=0x%08x\n", C.eax);
+    return C.eax ? 0 : -1;
+}
+
+static int modules_init(void)
+{
+    X86Module *m, *d;
+    int done[16], n = 0, i, pass, inited = 0, total = 0;
+    X86Module *list[16];
+    for (m = x86_modules(); m; m = m->next) {
+        if (total == 16) { fprintf(stderr, "module_init: too many modules\n"); return -1; }
+        list[total] = m; done[total] = 0; total++;
+    }
+    for (pass = 0; pass < total; pass++) {
+        int progress = 0;
+        for (i = 0; i < total; i++) {
+            int ready = 1;
+            if (done[i]) continue;
+            for (n = 0; n < total; n++) {
+                if (n == i || done[n]) continue;
+                if (pe_imports_module(*list[i]->base, list[n]->name)) ready = 0;
+            }
+            if (!ready) continue;
+            if (module_init_one(list[i]) != 0) return -1;
+            done[i] = 1; progress = 1; inited++;
+        }
+        if (!progress) break;
+    }
+    if (inited != total) {
+        fprintf(stderr, "module_init: %d of %d modules initialised; the rest "
+                        "import each other in a cycle, which this cannot "
+                        "order\n", inited, total);
+        return -1;
+    }
     return 0;
 }
 
@@ -221,10 +339,6 @@ static void check(const char *what, uint32_t got, uint32_t want)
     }
 }
 
-static uint32_t gr32(uint32_t a) { return *(volatile uint32_t *)(uintptr_t)a; }
-static void gw32(uint32_t a, uint32_t v) { *(volatile uint32_t *)(uintptr_t)a = v; }
-static uint8_t gr8(uint32_t a) { return *(volatile uint8_t *)(uintptr_t)a; }
-static void gw8(uint32_t a, uint8_t v) { *(volatile uint8_t *)(uintptr_t)a = v; }
 
 /* Set up a guest frame: return address plus `nargs` stack arguments. */
 static void frame(CPU *C, const uint32_t *args, int nargs)
@@ -422,19 +536,18 @@ static void case_cross_module(void)
               (slot >= g_imgbase_libIGCore) &&
               (slot - g_imgbase_libIGCore < 0x200000u), 1u);
     }
+    /* Still not run end to end, and the reason has MOVED, which is the result
+       of this build. It is no longer "no module initialisation exists": both
+       modules now run their entry points and their static constructors, and
+       DllMain returns TRUE for each. The path stops one layer further in, at
+       libIGCore's igGetCurrentMemoryPoolContext returning 0 -- the engine's
+       memory system, which XMen2.exe brings up as part of ENGINE init, not
+       something a DLL's constructors do.
+       Reaching into the engine's init sequence by picking exports that look
+       right would be jumping ahead of the frontier, so it waits for rc-exe. */
     (void)meta_slot;
-    /* Deliberately NOT run end to end here. Executing across the boundary
-       reaches libIGCore's igGetMemoryPool, which dereferences a global its
-       static constructors were supposed to fill -- and nothing has run them:
-       there is no Windows loader to call DllMain or _initterm per module. The
-       transfer itself is confirmed (a gdb backtrace shows
-       fn_libIGDisplay_10002c20 -> imp stub -> x86_import_call ->
-       fn_libIGCore_10040480), so what the checks above assert is the BINDING,
-       which is what this build added. Module initialisation is the next step,
-       and claiming a working end-to-end call before it exists would be exactly
-       the kind of pass this battery is built to refuse. */
-    printf("      transfer confirmed by backtrace; running it end to end needs\n"
-           "      module initialisation, which does not exist yet\n");
+    printf("      transfer works; execution now stops in the ENGINE's memory\n"
+           "      system, which the exe initialises (rc-exe), not in module init\n");
 }
 
 static int run_battery(void)
@@ -545,6 +658,8 @@ int main(int argc, char **argv)
     /* Bind imports only once every module is mapped: a slot pointing into a
        module that has not been placed yet would be bound to a stale base. */
     if (poison_init() != 0) return 1;
+    if (pe_map_anon_low(DATA_ARENA, DATA_SIZE) != 0) return 1;
+    x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {
         int bound = 0, poisoned = 0;
         pe_bind_imports(*m->base, resolve_import, NULL, &bound, &poisoned);
@@ -552,8 +667,18 @@ int main(int argc, char **argv)
     printf("imports: %d bound to recompiled modules, %d unresolved and poisoned"
            " (using one faults by name)\n", g_nbound, g_npoison);
 
+    /* Before module init, not after: the entry points run ON the guest stack,
+       and with none placed their frames land at guest_stack_top - N, i.e. just
+       below zero. That is how this first appeared -- a SIGSEGV at 0xfffffff0. */
     if (guest_stack_init() != 0) {
         fprintf(stderr, "x2native: could not place the guest stack\n");
+        return 1;
+    }
+    if (tib_init() != 0) return 1;
+    printf("modules: initialising (dependencies first)\n");
+    if (modules_init() != 0) {
+        fprintf(stderr, "x2native: module initialisation failed -- globals are "
+                        "not built, so nothing below would mean anything\n");
         return 1;
     }
 

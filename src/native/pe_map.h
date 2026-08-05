@@ -30,4 +30,10 @@ int pe_bind_imports(uint32_t base,
                                         void *ctx),
                     void *ctx, int *out_bound, int *out_poisoned);
 
+/* AddressOfEntryPoint of a mapped image (DllMainCRTStartup for these DLLs). */
+uint32_t pe_entry_rva(uint32_t base);
+
+/* Does the image import anything from `modname`? Orders module init. */
+int pe_imports_module(uint32_t base, const char *modname);
+
 #endif /* PE_MAP_H */

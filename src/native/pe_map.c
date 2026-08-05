@@ -19,6 +19,8 @@
  */
 #include "pe_map.h"
 
+#include <strings.h>   /* strcasecmp */
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -261,5 +263,30 @@ int pe_bind_imports(uint32_t base,
     }
     if (out_bound) *out_bound = bound;
     if (out_poisoned) *out_poisoned = poisoned;
+    return 0;
+}
+
+uint32_t pe_entry_rva(uint32_t base)
+{
+    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    uint32_t pe = RD32_(p, 0x3C);
+    return RD32_(p, pe + 24 + 16);
+}
+
+/* Does this image import anything from `modname`? Used to order module
+   initialisation: a module's constructors may call into another module, so the
+   one it depends on has to be initialised first. */
+int pe_imports_module(uint32_t base, const char *modname)
+{
+    uint32_t dir = data_dir(base, DIR_IMPORT, NULL);
+    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    if (!dir) return 0;
+    for (;; dir += 20) {
+        uint32_t oft = RD32_(p, dir + 0), nameR = RD32_(p, dir + 12);
+        uint32_t ft = RD32_(p, dir + 16);
+        if (!oft && !ft && !nameR) break;
+        if (strcasecmp((const char *)(uintptr_t)(base + nameR), modname) == 0)
+            return 1;
+    }
     return 0;
 }

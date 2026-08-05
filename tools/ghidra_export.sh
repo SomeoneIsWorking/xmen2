@@ -3,6 +3,7 @@
 # Export one module's functions to JSON for the offline recompiler.
 #
 #   tools/ghidra_export.sh <module-basename> [--reanalyze]
+#   tools/ghidra_export.sh <module-basename> --seed <file-of-hex-addresses>
 #   tools/ghidra_export.sh libIGCore
 #
 # This existed only as a sequence of commands somebody ran once. The result is
@@ -20,8 +21,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 
-MOD=${1:?usage: ghidra_export.sh <module-basename> [--reanalyze]}
-REANALYZE=${2:-}
+MOD=${1:?usage: ghidra_export.sh <module-basename> [--reanalyze|--seed <file>]}
+REANALYZE=""
+SEEDFILE=""
+case ${2:-} in
+    --reanalyze) REANALYZE=1 ;;
+    --seed)      SEEDFILE=${3:?--seed needs a file of hex addresses} ;;
+    "")          ;;
+    *)           echo "ghidra_export: unknown option $2" >&2; exit 2 ;;
+esac
 
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 : "${GAME_PC_DIR:?set GAME_PC_DIR in .env (see .env.example)}"
@@ -56,6 +64,22 @@ if [ -n "$REANALYZE" ] || ! grep -q ":$(basename "$BIN"):" "$PROJ/xmen2.rep/idat
         >"$LOG" 2>&1 || { echo "ghidra_export: import failed, see $LOG" >&2; exit 1; }
 else
     echo "== $(basename "$BIN") already in the project; skipping analysis =="
+fi
+
+# Seeding: addresses the RUNTIME found that static analysis never marked as
+# code. The CRT's static-constructor tables are the usual source -- their
+# targets are referenced only by a data pointer in .rdata, so nothing in the
+# database points at them and a reference-driven pass cannot find them.
+if [ -n "$SEEDFILE" ]; then
+    [ -s "$SEEDFILE" ] || { echo "ghidra_export: $SEEDFILE is empty -- seeded NOTHING" >&2; exit 2; }
+    ADDRS=$(tr -s ' \n' ',' < "$SEEDFILE" | sed 's/,$//')
+    echo "== seed $(grep -c . "$SEEDFILE") address(es) from $SEEDFILE =="
+    ADD_FUNCS="$ADDRS" "$HEADLESS" "$PROJ" xmen2 \
+        -process "$(basename "$BIN")" -noanalysis \
+        -scriptPath "$ROOT/tools/ghidra_scripts" \
+        -postScript AddFunctions.py \
+        >>"$LOG" 2>&1 || { echo "ghidra_export: seeding failed, see $LOG" >&2; exit 1; }
+    grep -E "^ADD:" "$LOG" | tail -3
 fi
 
 echo "== export functions -> $OUT =="

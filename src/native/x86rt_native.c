@@ -163,3 +163,22 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
                     "body.\n", mod, sym, slot_va, target);
     x86_missing_import(mod, sym);
 }
+
+/*
+ * Call a guest function FROM host code.
+ *
+ * A recompiled body is entered with its return address already on the guest
+ * stack -- every emitted call site pushes one -- and its RET pops it. Host
+ * code that dispatches without pushing one therefore leaks 4 bytes of guest
+ * stack per call, upward, and the damage is silent until ESP walks off the
+ * top: measured as a SIGSEGV 64 bytes above the stack top after 51 static
+ * constructors, which reads as stack corruption rather than a missing push.
+ *
+ * So the convention lives here once instead of at each call site.
+ */
+void x86_guest_call(CPU *C, uint32_t target)
+{
+    C->esp -= 4;
+    *(volatile uint32_t *)(uintptr_t)C->esp = 0xDEADBEEFu;   /* popped by RET */
+    x86_dispatch(C, target);
+}

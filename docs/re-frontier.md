@@ -210,11 +210,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: The native CMake build (src/core, src/display, src/app) is unrelated to the recomp -- asset tooling and an SDL controller backend. Nothing links the two today.
 
 ### rc-modinit — Native module initialisation: nothing runs DllMain or the CRT per module
-- status: todo
+- status: re-verified
 - deps: rc-native
-- evidence: 
-- where: 
-- gap: NOT STARTED, and it is the immediate blocker on executing a cross-module call natively. In the hosted build the Windows loader runs each DLL's entry point, which runs _initterm over the module's static-constructor table and fills its globals. Natively nobody does, so libIGCore's globals are zero: a confirmed cross-module call (libIGDisplay getClassTypeLazy -> the bound IAT slot -> libIGCore igGetMemoryPool) faults on 'C->edx = RD32(C->eax)' with eax=0 because the memory-pool table was never built. The pieces already exist -- imp_MSVCRT__initterm walks a function-pointer table through x86_dispatch, and each module's entry point is in its PE header -- so this is running them in the right order, per module, before anything else.
+- evidence: x2native output: both modules run their PE entry point (DllMainCRTStartup) and DllMain returns TRUE; libIGCore's 51 static constructors execute
+- where: src/native/x2native.c (modules_init), src/native/win32_sdl.c (_initterm, __dllonexit), tools/ghidra_export.sh --seed
+- gap: DONE. Modules initialise in dependency order read from their import tables, on the guest stack, with FS:[0] backed by a real TIB word for the SEH prologues. Two things were needed: the 51 static-constructor targets are referenced ONLY by a data pointer in .rdata, so Ghidra never marked them as code -- _initterm now enumerates every missing target in one pass and ghidra_export.sh --seed feeds them back (5818 -> 5918 functions); and MSVCRT __dllonexit is implemented for real rather than stubbed, because a stub returning func looks identical while dropping every registration. NOT covered: exception DELIVERY. The SEH chain is kept well-formed but nothing walks it, so a guest exception would go nowhere.
 - notes: Evidence: gdb backtrace on x2native shows the transfer working and the fault landing inside libIGCore's own body, not in the dispatch path.
 
 

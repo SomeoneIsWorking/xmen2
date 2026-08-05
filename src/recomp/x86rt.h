@@ -135,6 +135,9 @@ void x86_note_fallback(uint32_t target);
 void x86_missing_import(const char *mod, const char *sym);
 /* Call an import through its (loader-bound) IAT slot; names it if unbound. */
 void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym);
+/* Call a guest function from HOST code: pushes the return address the body's
+   RET will pop. Dispatching without it leaks guest stack, upward, silently. */
+void x86_guest_call(CPU *C, uint32_t target);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
 void x86_fallback_report(void);
 #define G_IMGBASE (X86_IMGBASE)
