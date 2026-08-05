@@ -52,6 +52,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Register model | `xbox/src/recomp_types.h` | **verified** — every register global including ebp; the g_seh_ebp bridge is gone (C051) |
 | Branch conditions | `patches/xboxrecomp/0003-*.patch` | **verified** — operands snapshotted at the flag setter (C050); flag state propagated over the CFG, not just fall-through, killing always-false branches (C059) |
 | Recompiler test suite | `vendor/xboxrecomp/tools/recomp/test_*.py` | **verified** — I010; 15 tests in ~1s, real-binary regressions skip loudly when the XBE is absent; `tools/xbox_relift.sh` refuses to lift if they fail |
+| Callee-saved + stack-bounds checks | `xbox/src/recomp_manual.c` | **verified** — I011; every indirect call checked, clean case stated; found the ordinal-217 defect (C060) |
 | Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |
 | Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection; silently-empty stubs 7998 → 348 (C048) |
 | Vectored exception handling on Linux | `patches/xboxrecomp/0004-*.patch` | **verified** — `sigaction`-based; was a stub returning NULL, so every handler was discarded. The crash reporter now fires (C055) |
@@ -59,7 +60,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Host D3D8 → OpenGL | `vendor/xboxrecomp/src/d3d` | reference — the NV2A PGRAPH translator emits onto this device; not called directly by game code |
 | Native CRT heap override | `xbox/src/recomp_manual.c` (`-Wl,--wrap`) | **debt** — bypasses the C056 heap defect; recompiled bodies still linked, `XBOX_NATIVE_HEAP=0` restores them (C057, `xb-nheap`) |
 | Empty-stub reporter | generated `recomp_stubs_unresolved.c` | **verified** — the 276 undetected-call stubs report themselves; found 0x0010C470 immediately (C058) |
-| Xbox game execution | — | **partial** — 25,778 functions, 1050 kernel calls, 8228 indirect calls, deep in its own engine. Stops on a virtual call through a null object. Nothing renders |
+| Xbox game execution | — | **partial** — 7648 indirect calls with zero unresolved, **every callee-saved register round-trips**, stack balanced, 8 MB game allocation. Faults reading 0x81ED8BCD. Nothing renders |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.

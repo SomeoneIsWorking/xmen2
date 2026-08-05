@@ -215,9 +215,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### xb-run — Recompiled Xbox build executes the game's main thread
 - status: re-partial
 - deps: xb-lift
-- evidence: C048/C049/C054/C057/C058; 1050 kernel calls, 8228 indirect calls
+- evidence: C048/C049/C054/C057/C058/C060; ABI and stack contracts verified clean across 7642 indirect calls
 - where: 
-- gap: A factory called through vtable+0x3C on the singleton at 0x0070F7E4 returns a null object, and the next virtual call through it has no vtable. Nothing renders.
+- gap: Faults reading 0x81ED8BCD. Nothing renders.
 - notes: 
 
 ### xb-discovery — Runtime discovery loop for statically-invisible functions

@@ -1,5 +1,5 @@
 diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
-index eafbf96..0083715 100644
+index eafbf96..6c19497 100644
 --- a/src/kernel/kernel_bridge.c
 +++ b/src/kernel/kernel_bridge.c
 @@ -73,24 +73,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
@@ -145,10 +145,77 @@ index eafbf96..0083715 100644
  
      g_eax = 0; /* STATUS_SUCCESS */
  }
-@@ -743,6 +798,30 @@ static void bridge_ExQueryPoolBlockSize(void)
+@@ -743,6 +798,97 @@ static void bridge_ExQueryPoolBlockSize(void)
      g_eax = 0;
  }
  
++/* ── NtQueryVirtualMemory (ordinal 217, 2 args = 8 bytes) ──
++ *
++ * NTSTATUS NtQueryVirtualMemory(PVOID BaseAddress,
++ *                               PMEMORY_BASIC_INFORMATION MemoryInformation)
++ *
++ * The Xbox form takes two arguments, not the six of the NT one, and the
++ * struct is written into GUEST memory. There was no bridge at all, so the
++ * call returned 0 with the caller's buffer untouched -- and the caller walks
++ * the address space by adding RegionSize, so a RegionSize of zero is an
++ * infinite loop. It spun over two billion times.
++ *
++ * The answer has to come from OUR memory layout: the host's VirtualQuery
++ * knows nothing about guest VAs. Regions are reported page-granular from the
++ * layout the loader actually built.
++ */
++static void bridge_NtQueryVirtualMemory(void)
++{
++    uint32_t addr    = STACK_ARG(0);
++    uint32_t info_va = STACK_ARG(1);
++
++    /* [lo, hi) of the guest's committed regions, in address order. */
++    static const struct { uint32_t lo, hi; } regions[] = {
++        { XBOX_BASE_ADDRESS, XBOX_STACK_BASE },  /* image + its data */
++        { XBOX_STACK_BASE,  XBOX_HEAP_BASE  },   /* thread stack */
++        { XBOX_HEAP_BASE,   XBOX_TOTAL_RAM  },   /* heap */
++    };
++    const int n = (int)(sizeof regions / sizeof regions[0]);
++    uint32_t page = addr & ~0xFFFu;
++    uint32_t base = 0, size = 0, state, protect, type;
++    int i, found = -1;
++
++    if (!info_va) { g_eax = 0xC000000Du; return; }   /* STATUS_INVALID_PARAMETER */
++
++    for (i = 0; i < n; i++)
++        if (page >= regions[i].lo && page < regions[i].hi) { found = i; break; }
++
++    if (found >= 0) {
++        base    = regions[found].lo;
++        size    = regions[found].hi - page;
++        state   = 0x1000;      /* MEM_COMMIT  */
++        protect = 0x04;        /* PAGE_READWRITE */
++        type    = 0x20000;     /* MEM_PRIVATE */
++    } else {
++        /* Free. RegionSize must reach the next region, and must never be
++           zero -- that is what made the caller spin. */
++        uint32_t next = 0xFFFFF000u;
++        for (i = 0; i < n; i++)
++            if (regions[i].lo > page && regions[i].lo < next) next = regions[i].lo;
++        base    = page;
++        size    = next - page;
++        state   = 0x10000;     /* MEM_FREE */
++        protect = 0x01;        /* PAGE_NOACCESS */
++        type    = 0;
++    }
++    if (size == 0) size = 0x1000;
++
++    BRIDGE_MEM32(info_va + 0x00) = page;      /* BaseAddress       */
++    BRIDGE_MEM32(info_va + 0x04) = base;      /* AllocationBase    */
++    BRIDGE_MEM32(info_va + 0x08) = protect;   /* AllocationProtect */
++    BRIDGE_MEM32(info_va + 0x0C) = size;      /* RegionSize        */
++    BRIDGE_MEM32(info_va + 0x10) = state;     /* State             */
++    BRIDGE_MEM32(info_va + 0x14) = protect;   /* Protect           */
++    BRIDGE_MEM32(info_va + 0x18) = type;      /* Type              */
++
++    g_eax = 0;   /* STATUS_SUCCESS */
++}
++
 +/* ── HalReturnToFirmware (ordinal 49) ─────────────────────
 + * VOID HalReturnToFirmware(FIRMWARE_REENTRY Routine)
 + *
@@ -176,7 +243,7 @@ index eafbf96..0083715 100644
  /* ── RtlNtStatusToDosError (ordinal 301) ─────────────────
   * ULONG RtlNtStatusToDosError(NTSTATUS Status)
   *
-@@ -845,10 +924,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
+@@ -845,10 +991,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
          BRIDGE_MEM32(handle_va) = bridge_handle_token(h);
  }
  
@@ -198,7 +265,7 @@ index eafbf96..0083715 100644
      if ((token & 0xFF000000u) == BRIDGE_HANDLE_TAG) {
          uint32_t i = token & BRIDGE_HANDLE_MASK;
          return (i > 0 && i < BRIDGE_HANDLE_MAX) ? s_handle_table[i] : NULL;
-@@ -906,6 +993,14 @@ static NTSTATUS bridge_create_file_impl(
+@@ -906,6 +1060,14 @@ static NTSTATUS bridge_create_file_impl(
      st = xbox_NtCreateFile(&h, access, &oa, &ios, NULL,
                             file_attrs, share, disposition, options);
  
@@ -213,7 +280,7 @@ index eafbf96..0083715 100644
      if (NT_SUCCESS(st)) {
          bridge_write_handle(handle_va, h);
          bridge_write_iostatus(iostatus_va, ios.Status, (uint32_t)ios.Information);
-@@ -1307,46 +1402,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1307,46 +1469,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case   4: return  4;  /* AvSetSavedDataAddress(1) */
  
      /* ── Unknown stubs ── */
@@ -284,7 +351,21 @@ index eafbf96..0083715 100644
      case 107: return 12;  /* KeInitializeDpc(3) */
      case 109: return 28;  /* KeInitializeInterrupt(7) */
      case 113: return  8;  /* KeInitializeTimerEx(2) */
-@@ -1418,8 +1511,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1411,15 +1571,21 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+     case 210: return  8;  /* NtQueryFullAttributesFile(2) */
+     case 211: return 20;  /* NtQueryInformationFile(5) */
+     case 215: return 12;  /* NtQuerySymbolicLinkObject(3) */
+-    case 217: return 16;  /* NtQueryVirtualMemory(4) */
++    /* Xbox's NtQueryVirtualMemory is the SHORT form -- (BaseAddress,
++       MemoryInformation), 2 args -- not the 6-arg NT one. Sized as 4 args it
++       over-popped 8 bytes on every call: 504 of the 505 calls that returned
++       with esp outside the guest stack came from this one entry, and the
++       damage surfaced hundreds of calls later as a POP reading heap memory
++       into a callee-saved register. */
++    case 217: return  8;  /* NtQueryVirtualMemory(2) */
+     case 218: return 20;  /* NtQueryVolumeInformationFile(5) */
+     case 219: return 32;  /* NtReadFile(8) */
+     case 222: return 12;  /* NtReleaseSemaphore(3) */
      case 225: return  8;  /* NtSetEvent(2) */
      case 226: return 20;  /* NtSetInformationFile(5) */
      case 228: return  8;  /* NtSetSystemTime(2) */
@@ -295,7 +376,7 @@ index eafbf96..0083715 100644
      case 236: return 32;  /* NtWriteFile(8) */
      case 238: return  0;  /* NtYieldExecution(void) */
  
-@@ -1434,7 +1527,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1434,7 +1600,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
  
      /* ── Threading ── */
      case 255: return 40;  /* PsCreateSystemThreadEx(10) */
@@ -304,7 +385,7 @@ index eafbf96..0083715 100644
      case 258: return  4;  /* PsTerminateSystemThread(1) */
      /* case 259: DATA export - PsThreadObjectType */
  
-@@ -1452,28 +1545,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1452,28 +1618,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 305: return  8;  /* RtlTimeToTimeFields(2) */
      case 308: return 12;  /* RtlUnicodeStringToAnsiString(3) */
      case 312: return 16;  /* RtlUnwind(4) */
@@ -388,7 +469,7 @@ index eafbf96..0083715 100644
      }
  }
  
-@@ -1514,9 +1647,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1514,9 +1720,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 199: return bridge_NtFreeVirtualMemory;
  
      /* Pool */
@@ -401,7 +482,7 @@ index eafbf96..0083715 100644
  
      /* IRQL */
      case 160: return bridge_KfRaiseIrql;
-@@ -1546,14 +1679,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1546,14 +1752,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 238: return bridge_NtYieldExecution;
  
      /* Hardware */
@@ -419,15 +500,16 @@ index eafbf96..0083715 100644
      case 188: return bridge_NtCreateDirectoryObject;
      case 246: return bridge_ObReferenceObjectByHandle;
  
-@@ -1562,6 +1695,7 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1562,6 +1768,8 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 178: return bridge_MmPersistContiguousMemory;
  
      /* RTL */
 +    case  49: return bridge_HalReturnToFirmware;
++    case 217: return bridge_NtQueryVirtualMemory;
      case 301: return bridge_RtlNtStatusToDosError;
      case 302: return bridge_RtlRaiseException;
  
-@@ -1733,6 +1867,9 @@ void xbox_kernel_bridge_init(void)
+@@ -1733,6 +1941,9 @@ void xbox_kernel_bridge_init(void)
      /* Initialize kernel data export values first */
      kernel_data_init();
  
@@ -437,7 +519,7 @@ index eafbf96..0083715 100644
      for (i = 0; i < g_thunk_table_count; i++) {
          uint32_t va = g_thunk_table_base + i * 4;
          uint32_t current = BRIDGE_MEM32(va);
-@@ -1755,7 +1892,19 @@ void xbox_kernel_bridge_init(void)
+@@ -1755,7 +1966,19 @@ void xbox_kernel_bridge_init(void)
  
              /* FUNCTION export: use synthetic VA for dispatch */
              g_slot_bridges[i] = bridge_for_ordinal(ordinal);
@@ -458,7 +540,7 @@ index eafbf96..0083715 100644
              if (g_slot_bridges[i]) {
                  bridged++;
              } else {
-@@ -1779,6 +1928,24 @@ void xbox_kernel_bridge_init(void)
+@@ -1779,6 +2002,24 @@ void xbox_kernel_bridge_init(void)
  
      fprintf(stderr, "  Kernel thunk bridge: %d/%d resolved (%d bridged, %d stub)\n",
              resolved, g_thunk_table_count, bridged, unbridged);

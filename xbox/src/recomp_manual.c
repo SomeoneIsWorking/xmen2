@@ -50,6 +50,7 @@ typedef void (*recomp_func_t)(void);
 /* ── Register state (defined in xbox_memory_layout.c) ──────── */
 
 extern uint32_t g_eax;
+extern uint32_t g_esp;
 extern ptrdiff_t g_xbox_mem_offset;
 
 /* ── Manual function overrides ─────────────────────────────── */
@@ -89,6 +90,120 @@ extern ptrdiff_t g_xbox_mem_offset;
  *   }
  */
 
+/* ── Callee-saved register contract check ───────────────────
+ *
+ * In the MSVC/x86 ABI ebx, esi, edi and ebp are CALLEE-SAVED: a function must
+ * leave them as it found them. The recompiled code models registers as
+ * globals, so a callee that fails to restore one silently corrupts its
+ * caller -- and the caller then uses a `this` pointer, a loop counter or a
+ * saved base that belongs to nobody. That is invisible until something
+ * dereferences it, by which point the trail is cold.
+ *
+ * So every indirect call checks the contract and reports the FIRST violation
+ * per target, with which register and what it became. Costs four compares per
+ * indirect call; set XBOX_ABICHECK=0 to turn it off.
+ */
+
+#define ABI_MISS_MAX 32
+static uint32_t abi_va[ABI_MISS_MAX];
+static int      abi_count;
+static uint64_t abi_violations, abi_checked;
+
+int recomp_abicheck_enabled(void)
+{
+    static int cached = -1;
+    if (cached < 0) {
+        const char *e = getenv("XBOX_ABICHECK");
+        cached = (e && e[0] == '0') ? 0 : 1;
+    }
+    return cached;
+}
+
+void recomp_abicheck_report_violation(uint32_t va, const char *reg,
+                                      uint32_t before, uint32_t after)
+{
+    abi_violations++;
+    for (int i = 0; i < abi_count; i++)
+        if (abi_va[i] == va) return;
+    if (abi_count < ABI_MISS_MAX) abi_va[abi_count++] = va;
+
+    fprintf(stderr, "[ABI] 0x%08X did not restore %s: 0x%08X -> 0x%08X."
+                    " It is callee-saved, so the CALLER is now corrupt.\n",
+            va, reg, before, after);
+    fflush(stderr);
+}
+
+void recomp_abicheck_count(void) { abi_checked++; }
+
+/* ── Simulated stack bounds ─────────────────────────────────
+ *
+ * The guest stack is a known, fixed region. ESP leaving it means the
+ * simulated stack went out of balance -- too many pops, a `ret N` with the
+ * wrong N, a callee that did not clean what it pushed. By the time that
+ * surfaces (a POP reading heap memory as a saved register) the cause is long
+ * gone, so report the FIRST departure with the call that was in flight.
+ */
+#define STACK_LO  0x00780000u
+#define STACK_HI  0x00F80000u
+
+#define ESP_MISS_MAX 32
+static uint64_t esp_violations;
+static uint32_t esp_va[ESP_MISS_MAX];
+static uint64_t esp_hits[ESP_MISS_MAX];
+static int      esp_count;
+
+void recomp_esp_check(uint32_t va)
+{
+    if (g_esp >= STACK_LO && g_esp < STACK_HI) return;
+    esp_violations++;
+    for (int i = 0; i < esp_count; i++)
+        if (esp_va[i] == va) { esp_hits[i]++; return; }
+    if (esp_count >= ESP_MISS_MAX) return;
+    esp_va[esp_count] = va;
+    esp_hits[esp_count] = 1;
+    esp_count++;
+
+    fprintf(stderr, "[ESP] esp = 0x%08X is OUTSIDE the guest stack"
+                    " (0x%08X..0x%08X) after the call to 0x%08X."
+                    " The simulated stack is out of balance; every POP from"
+                    " here reads memory that is not a saved register.\n",
+            g_esp, STACK_LO, STACK_HI, va);
+    fflush(stderr);
+}
+
+void recomp_esp_report(void)
+{
+    if (!esp_violations) {
+        fprintf(stderr, "[ESP] esp stayed inside the guest stack for every"
+                        " checked call\n");
+        return;
+    }
+    fprintf(stderr, "[ESP] %llu calls returned with esp outside the guest"
+                    " stack, across %d distinct targets:\n",
+            (unsigned long long)esp_violations, esp_count);
+    for (int i = 0; i < esp_count; i++)
+        fprintf(stderr, "  0x%08X  x%llu\n", esp_va[i],
+                (unsigned long long)esp_hits[i]);
+}
+
+void recomp_abicheck_report(void)
+{
+    if (!recomp_abicheck_enabled()) {
+        fprintf(stderr, "[ABI] callee-saved checking DISABLED"
+                        " (XBOX_ABICHECK=0)\n");
+        return;
+    }
+    if (!abi_violations) {
+        fprintf(stderr, "[ABI] %llu indirect calls checked, every one restored"
+                        " ebx/esi/edi/ebp\n", (unsigned long long)abi_checked);
+        return;
+    }
+    fprintf(stderr, "[ABI] %llu violations across %d distinct targets"
+                    " (%llu indirect calls checked)\n",
+            (unsigned long long)abi_violations, abi_count,
+            (unsigned long long)abi_checked);
+}
+
 /* ── Native CRT heap override ───────────────────────────────
  *
  * DEBT, not a fix. C056 records a real defect in the recompiled MSVC heap:
@@ -114,7 +229,6 @@ extern ptrdiff_t g_xbox_mem_offset;
  */
 
 extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
-extern uint32_t g_esp;
 
 #define NH_ARENA_SIZE   (24u * 1024u * 1024u)
 #define NH_ALIGN        16u
@@ -457,6 +571,8 @@ static void icall_miss_record(uint32_t va, int kind)
 void recomp_icall_report(void);   /* defined below */
 void nh_report(void);             /* defined below */
 extern void recomp_stub_report(void);  /* generated stub tally */
+void recomp_abicheck_report(void);     /* defined below */
+void recomp_esp_report(void);          /* defined below */
 
 static int icall_should_continue(void)
 {
@@ -482,6 +598,8 @@ static void icall_miss_fatal(uint32_t va, const char *kind)
     recomp_icall_report();
     nh_report();
     recomp_stub_report();
+    recomp_abicheck_report();
+    recomp_esp_report();
     abort();
 }
 

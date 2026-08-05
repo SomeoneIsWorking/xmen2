@@ -141,6 +141,21 @@ void recomp_icall_report(void);
 /** Prove both miss paths fire (XBOX_ICALL_SELFTEST=1). */
 void recomp_icall_selftest(void);
 
+/* Callee-saved contract checking for indirect calls; see recomp_manual.c. */
+int  recomp_abicheck_enabled(void);
+void recomp_abicheck_count(void);
+void recomp_abicheck_report_violation(uint32_t va, const char *reg,
+                                      uint32_t before, uint32_t after);
+void recomp_abicheck_report(void);
+void recomp_esp_check(uint32_t va);
+void recomp_esp_report(void);
+
+/* Compare one callee-saved register across a call. */
+#define RECOMP_ABI_ONE(va, name, saved, now) \
+    do { if ((saved) != (now)) \
+             recomp_abicheck_report_violation((va), name, (saved), (now)); \
+    } while (0)
+
 /* ================================================================
  * Executable image extent (GAME-SPECIFIC)
  *
@@ -416,7 +431,18 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     recomp_func_t _fn = recomp_lookup_manual(_va); \
     if (!_fn) _fn = recomp_lookup(_va); \
     if (!_fn) _fn = recomp_lookup_kernel(_va); \
-    if (_fn) _fn(); \
+    if (_fn) { \
+        if (recomp_abicheck_enabled()) { \
+            uint32_t _sb = g_ebx, _ss = g_esi, _sd = g_edi, _sp = g_seh_ebp; \
+            _fn(); \
+            recomp_abicheck_count(); \
+            recomp_esp_check(_va); \
+            RECOMP_ABI_ONE(_va, "ebx", _sb, g_ebx); \
+            RECOMP_ABI_ONE(_va, "esi", _ss, g_esi); \
+            RECOMP_ABI_ONE(_va, "edi", _sd, g_edi); \
+            RECOMP_ABI_ONE(_va, "ebp", _sp, g_seh_ebp); \
+        } else _fn(); \
+    } \
     else { recomp_icall_fail_log(_va); g_esp = (saved_esp); eax = 0; } \
 } while(0)
 
