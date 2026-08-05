@@ -201,6 +201,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: CONFIRMED by control: the ORIGINAL exe in the same dir with the same env produces 800x600 R5G6B5; only the executable differs. Two competing hypotheses (C033 field offset, C034 struct-by-value stack shift). Settle by tracing engine-call arguments for both exes and diffing -- not by more reasoning about the numbers.
 - notes: 
 
+### rc-native — The PC recomp produces an artefact that runs WITHOUT Wine
+- status: todo
+- deps: rc-exe-run
+- evidence: 
+- where: 
+- gap: NOT STARTED, and until 2026-08-05 not even tracked -- the word Wine appeared nowhere in this roadmap, so nothing measured progress toward the one thing strategy.md says the whole direction is for ('ownership: a native, buildable, portable codebase ... none of which Wine gives you'). Every PC milestone so far, INCLUDING the full 521-function libIGDisplay build (C080), is a 32-bit PE loaded by Wine into the ORIGINAL XMen2.exe. That is a fidelity harness, not a port. Staging through one is defensible only while a named path off it exists; there was none. Six concrete dependencies, each measurable: (1) output is an i686-w64-mingw32 PE, not an ELF; (2) x86_call_host calls real Win32 DLLs resolved by LoadLibraryA/GetProcAddress -- 163 imports for libIGDisplay alone; (3) g_imgbase points at libIGDisplay_orig.dll as mapped by the Windows loader, so every image-absolute reference resolves into the ORIGINAL PE; (4) 150 of 748 exported names are still forwarded to the original DLL; (5) the host process is still the unrecompiled XMen2.exe; (6) x86rt.h deliberately does NOT model FS, because 'this code runs as a genuine 32-bit PE' and FS:[0] is the real SEH chain. (3) and (6) are load-bearing: they assume a Windows process rather than being gaps that shrink as more functions are recompiled.
+- notes: The native CMake build (src/core, src/display, src/app) is unrelated to the recomp -- asset tooling and an SDL controller backend. Nothing links the two today.
+
 
 ## xbox
 
