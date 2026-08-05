@@ -73,5 +73,35 @@
     "start": "0x0042E52F",
     "name": "icall_0042E52F",
     "why": "XONLINE section: the VA that exposed the wrong code-range bound. Named by the ICALL miss tally."
+  },
+  {
+    "start": "0x004051C7",
+    "name": "icall_004051C7",
+    "why": "DSOUND-section indirect-call target with no static reference. Surfaced once the flag-snapshot fix stopped an earlier branch going the wrong way. Named by the ICALL miss tally."
+  },
+  {
+    "start": "0x004051D2",
+    "name": "icall_004051D2",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 1 from the ICALL miss tally."
+  },
+  {
+    "start": "0x00407D65",
+    "name": "icall_00407D65",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 2 from the ICALL miss tally."
+  },
+  {
+    "start": "0x00407D70",
+    "name": "icall_00407D70",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 3 from the ICALL miss tally."
+  },
+  {
+    "start": "0x003EC750",
+    "name": "icall_003EC750",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 2 from the ICALL miss tally."
+  },
+  {
+    "start": "0x0048822B",
+    "name": "icall_0048822B",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 3 from the ICALL miss tally."
   }
 ]

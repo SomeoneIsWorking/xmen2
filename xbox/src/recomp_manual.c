@@ -21,6 +21,7 @@
 #include <stddef.h>   /* ptrdiff_t */
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>   /* getenv, abort */
 
 /* ── ICALL trace ring buffer ───────────────────────────────── */
 
@@ -129,6 +130,7 @@ static uint32_t g_miss_va[ICALL_MISS_MAX];
 static uint64_t g_miss_hits[ICALL_MISS_MAX];
 static int      g_miss_kind[ICALL_MISS_MAX];   /* 0 = unresolved, 1 = range-skipped */
 static int      g_miss_count;                  /* distinct VAs recorded */
+static int      g_icall_selftest_active;       /* suppress the fatal path in the self-test */
 static uint64_t g_miss_total;                  /* all misses, incl. overflow */
 static uint64_t g_miss_dropped;                /* misses past ICALL_MISS_MAX */
 
@@ -163,19 +165,69 @@ static void icall_miss_record(uint32_t va, int kind)
     fflush(stderr);
 }
 
+/*
+ * Continuing past an unresolvable indirect call is a FALLBACK: the macro
+ * restores ESP, sets eax=0 and runs on as though a function had returned 0.
+ * On real hardware the console would have jumped to that address. So the
+ * game state at that moment is already wrong, and every instruction after it
+ * is fiction -- which is how one bad vtable pointer turned into a segfault
+ * 200 kernel calls later, in a place with no relation to the cause.
+ *
+ * Default is therefore to stop at the first one, with the ring buffer as the
+ * trail. Set XBOX_ICALL_CONTINUE=1 to survey how many distinct targets a run
+ * would hit (the triage mode; its results are a wandering process, not the
+ * game's behaviour).
+ */
+void recomp_icall_report(void);   /* defined below */
+
+static int icall_should_continue(void)
+{
+    static int cached = -1;
+    if (cached < 0) {
+        const char *e = getenv("XBOX_ICALL_CONTINUE");
+        cached = (e && e[0] == '1') ? 1 : 0;
+    }
+    return cached;
+}
+
+static void icall_miss_fatal(uint32_t va, const char *kind)
+{
+    if (icall_should_continue() || g_icall_selftest_active)
+        return;
+    fprintf(stderr,
+        "[ICALL] FATAL: %s indirect call to 0x%08X. The original would have\n"
+        "        jumped there; we cannot, and continuing would execute code the\n"
+        "        game never runs. Stopping here so the cause is the last thing\n"
+        "        in this log, not the symptom.\n"
+        "        Re-run with XBOX_ICALL_CONTINUE=1 to survey further targets.\n",
+        kind, va);
+    recomp_icall_report();
+    abort();
+}
+
 void recomp_icall_fail_log(uint32_t va)
 {
     icall_miss_record(va, 0);
+    icall_miss_fatal(va, "unresolved");
 }
 
 void recomp_icall_range_skip_log(uint32_t va)
 {
     icall_miss_record(va, 1);
+    icall_miss_fatal(va, "out-of-image");
 }
+
+extern int xbox_kernel_call_count(void);
 
 void recomp_icall_report(void)
 {
-    fprintf(stderr, "\n[ICALL] %llu indirect calls, %llu did NOT execute"
+    /* The per-call kernel trace is capped at 200 printed lines. A cap on the
+       LOG must not be read as the run's length -- print the real total. */
+    fprintf(stderr, "\n[KERNEL] %d kernel calls total"
+                    " (the per-call trace above stops at 200)\n",
+            xbox_kernel_call_count());
+
+    fprintf(stderr, "[ICALL] %llu indirect calls, %llu did NOT execute"
                     " (%d distinct target%s%s)\n",
             (unsigned long long)g_icall_count,
             (unsigned long long)g_miss_total,
@@ -209,6 +261,8 @@ void recomp_icall_selftest(void)
     int    before_count = g_miss_count;
     uint64_t before_tot = g_miss_total;
 
+    g_icall_selftest_active = 1;
+
     recomp_icall_fail_log(0x00123457u);        /* odd, unaligned, not a function */
     recomp_icall_range_skip_log(0x00500000u);  /* inside the skipped window */
 
@@ -218,12 +272,14 @@ void recomp_icall_selftest(void)
                 before_count, g_miss_count,
                 (unsigned long long)before_tot, (unsigned long long)g_miss_total);
         fflush(stderr);
+        g_icall_selftest_active = 0;
         return;
     }
 
     /* Roll the two synthetic entries back so the real tally stays honest. */
     g_miss_count -= 2;
     g_miss_total -= 2;
+    g_icall_selftest_active = 0;
     fprintf(stderr, "[ICALL] SELFTEST passed: both miss paths report.\n");
     fflush(stderr);
 }

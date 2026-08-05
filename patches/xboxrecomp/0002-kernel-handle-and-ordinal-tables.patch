@@ -1,5 +1,5 @@
 diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
-index eafbf96..a296f12 100644
+index eafbf96..8bfb9c3 100644
 --- a/src/kernel/kernel_bridge.c
 +++ b/src/kernel/kernel_bridge.c
 @@ -73,24 +73,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
@@ -48,7 +48,23 @@ index eafbf96..a296f12 100644
  }
  
  /**
-@@ -743,6 +748,30 @@ static void bridge_ExQueryPoolBlockSize(void)
+@@ -165,6 +170,15 @@ static ULONG g_slot_ordinals[XBOX_KERNEL_THUNK_TABLE_SIZE];
+ /* Log counter - limit output to avoid flooding */
+ static int g_kernel_call_count = 0;
+ 
++/* The per-call trace above is capped at 200 lines. A cap on the LOG must not
++   become a cap on the reported TOTAL: a run that made 40,000 kernel calls and
++   one that made 200 look identical in the trace. Callers ask for the real
++   number and print it at exit. */
++int xbox_kernel_call_count(void)
++{
++    return g_kernel_call_count;
++}
++
+ /* Read Xbox stack arg as uint32_t.
+  * After kernel_thunk_dispatch pops the dummy return address (g_esp += 4),
+  * arg0 is at g_esp+0, arg1 at g_esp+4, etc. */
+@@ -743,6 +757,30 @@ static void bridge_ExQueryPoolBlockSize(void)
      g_eax = 0;
  }
  
@@ -79,7 +95,7 @@ index eafbf96..a296f12 100644
  /* ── RtlNtStatusToDosError (ordinal 301) ─────────────────
   * ULONG RtlNtStatusToDosError(NTSTATUS Status)
   *
-@@ -845,10 +874,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
+@@ -845,10 +883,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
          BRIDGE_MEM32(handle_va) = bridge_handle_token(h);
  }
  
@@ -101,7 +117,7 @@ index eafbf96..a296f12 100644
      if ((token & 0xFF000000u) == BRIDGE_HANDLE_TAG) {
          uint32_t i = token & BRIDGE_HANDLE_MASK;
          return (i > 0 && i < BRIDGE_HANDLE_MAX) ? s_handle_table[i] : NULL;
-@@ -906,6 +943,14 @@ static NTSTATUS bridge_create_file_impl(
+@@ -906,6 +952,14 @@ static NTSTATUS bridge_create_file_impl(
      st = xbox_NtCreateFile(&h, access, &oa, &ios, NULL,
                             file_attrs, share, disposition, options);
  
@@ -116,7 +132,7 @@ index eafbf96..a296f12 100644
      if (NT_SUCCESS(st)) {
          bridge_write_handle(handle_va, h);
          bridge_write_iostatus(iostatus_va, ios.Status, (uint32_t)ios.Information);
-@@ -1307,46 +1352,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1307,46 +1361,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case   4: return  4;  /* AvSetSavedDataAddress(1) */
  
      /* ── Unknown stubs ── */
@@ -187,7 +203,7 @@ index eafbf96..a296f12 100644
      case 107: return 12;  /* KeInitializeDpc(3) */
      case 109: return 28;  /* KeInitializeInterrupt(7) */
      case 113: return  8;  /* KeInitializeTimerEx(2) */
-@@ -1418,8 +1461,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1418,8 +1470,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 225: return  8;  /* NtSetEvent(2) */
      case 226: return 20;  /* NtSetInformationFile(5) */
      case 228: return  8;  /* NtSetSystemTime(2) */
@@ -198,7 +214,7 @@ index eafbf96..a296f12 100644
      case 236: return 32;  /* NtWriteFile(8) */
      case 238: return  0;  /* NtYieldExecution(void) */
  
-@@ -1434,7 +1477,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1434,7 +1486,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
  
      /* ── Threading ── */
      case 255: return 40;  /* PsCreateSystemThreadEx(10) */
@@ -207,7 +223,7 @@ index eafbf96..a296f12 100644
      case 258: return  4;  /* PsTerminateSystemThread(1) */
      /* case 259: DATA export - PsThreadObjectType */
  
-@@ -1452,28 +1495,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1452,28 +1504,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 305: return  8;  /* RtlTimeToTimeFields(2) */
      case 308: return 12;  /* RtlUnicodeStringToAnsiString(3) */
      case 312: return 16;  /* RtlUnwind(4) */
@@ -291,7 +307,7 @@ index eafbf96..a296f12 100644
      }
  }
  
-@@ -1514,9 +1597,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1514,9 +1606,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 199: return bridge_NtFreeVirtualMemory;
  
      /* Pool */
@@ -304,7 +320,7 @@ index eafbf96..a296f12 100644
  
      /* IRQL */
      case 160: return bridge_KfRaiseIrql;
-@@ -1546,14 +1629,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1546,14 +1638,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 238: return bridge_NtYieldExecution;
  
      /* Hardware */
@@ -322,7 +338,7 @@ index eafbf96..a296f12 100644
      case 188: return bridge_NtCreateDirectoryObject;
      case 246: return bridge_ObReferenceObjectByHandle;
  
-@@ -1562,6 +1645,7 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1562,6 +1654,7 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 178: return bridge_MmPersistContiguousMemory;
  
      /* RTL */
@@ -330,7 +346,7 @@ index eafbf96..a296f12 100644
      case 301: return bridge_RtlNtStatusToDosError;
      case 302: return bridge_RtlRaiseException;
  
-@@ -1733,6 +1817,9 @@ void xbox_kernel_bridge_init(void)
+@@ -1733,6 +1826,9 @@ void xbox_kernel_bridge_init(void)
      /* Initialize kernel data export values first */
      kernel_data_init();
  
@@ -340,7 +356,7 @@ index eafbf96..a296f12 100644
      for (i = 0; i < g_thunk_table_count; i++) {
          uint32_t va = g_thunk_table_base + i * 4;
          uint32_t current = BRIDGE_MEM32(va);
-@@ -1755,7 +1842,19 @@ void xbox_kernel_bridge_init(void)
+@@ -1755,7 +1851,19 @@ void xbox_kernel_bridge_init(void)
  
              /* FUNCTION export: use synthetic VA for dispatch */
              g_slot_bridges[i] = bridge_for_ordinal(ordinal);
@@ -361,7 +377,7 @@ index eafbf96..a296f12 100644
              if (g_slot_bridges[i]) {
                  bridged++;
              } else {
-@@ -1779,6 +1878,24 @@ void xbox_kernel_bridge_init(void)
+@@ -1779,6 +1887,24 @@ void xbox_kernel_bridge_init(void)
  
      fprintf(stderr, "  Kernel thunk bridge: %d/%d resolved (%d bridged, %d stub)\n",
              resolved, g_thunk_table_count, bridged, unbridged);

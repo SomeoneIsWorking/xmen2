@@ -455,8 +455,23 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
 #define ebx g_ebx
 #define esi g_esi
 #define edi g_edi
-/* ebp is NOT global - it's local in each function.
- * For __SEH_prolog/epilog, use g_seh_ebp to bridge. */
+/* ebp is a register like any other, so it is global like any other.
+ *
+ * It used to be a per-function C local, on the reasoning that FPO functions
+ * use it as scratch without save/restore. That reasoning is inverted: when
+ * real x86 code clobbers ebp without saving it, the caller's ebp IS
+ * destroyed, and a per-function local hides that instead of reproducing it.
+ * What the local definitely broke is the opposite case -- FPO code that
+ * carries a live VALUE in ebp across an ordinary call. sub_00208950 walks a
+ * list through ebp; as a local it started from the SEH frame pointer, and
+ * the object writes that followed went to the wrong addresses and zeroed a
+ * live vtable pointer.
+ *
+ * g_seh_ebp is that storage: the __SEH_prolog/__SEH_epilog bridge collapses
+ * into plain register semantics, so the helpers need no special casing.
+ * Save/restore round-trips through the generated PUSH32/POP32, exactly as it
+ * already does for ebx, esi and edi. */
+#define ebp g_seh_ebp
 #endif
 
 /* ================================================================

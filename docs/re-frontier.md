@@ -244,3 +244,19 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: 
 - notes: 
 
+### xb-flags — Branch conditions evaluate the flags that were actually set
+- status: re-verified
+- deps: xb-lift
+- evidence: C050; 216 deferred cmp/jcc pairs read a reassigned operand; snapshotting takes it to 0 and removes a live-vtable corruption in the D3D static initialiser
+- where: 
+- gap: 
+- notes: 
+
+### xb-d3d — OPEN: the game's statically-linked Xbox D3D8 library is executed, not overridden
+- status: hack
+- deps: xb-run
+- evidence: C052; 73 distinct D3D entry points, 215 call sites, measured from xrefs
+- where: 
+- gap: The toolkit ships a host D3D8-on-OpenGL layer (vendor/xboxrecomp/src/d3d) precisely so the Xbox D3D8 library -- which drives NV2A registers directly -- does not have to run. Right now the recompiled library code runs instead. Rendering needs the D3D API boundary routed to the host layer through recomp_lookup_manual, not more fixes to the recompiled D3D internals.
+- notes: 
+

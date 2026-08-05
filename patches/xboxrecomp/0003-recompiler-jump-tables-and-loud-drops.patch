@@ -186,8 +186,168 @@ index 86c4364..a299392 100644
              insn = Instruction(
                  address=cs_insn.address,
                  size=cs_insn.size,
+diff --git a/tools/recomp/lifter.py b/tools/recomp/lifter.py
+index 57d7e83..a8883b5 100644
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -139,8 +139,27 @@ def _fmt_mem_write(op, value_expr):
+     return f"{accessor}({addr}) = {value_expr};"
+ 
+ 
++class _SnapshotOperand:
++    """A flag operand whose VALUE was captured at the flag-setting
++    instruction, not re-read at the jcc that consumes it.
++
++    A deferred `cmp eax, ebx` used to be re-evaluated at the jcc from the
++    operand descriptors, so any instruction between the two that reassigned
++    eax or ebx silently flipped the branch. 216 such pairs existed in this
++    title's lift. The snapshot temporaries make the C read what the flags
++    actually held."""
++    __slots__ = ("type", "expr_text", "size")
++
++    def __init__(self, expr_text, size=4):
++        self.type = "expr"
++        self.expr_text = expr_text
++        self.size = size
++
++
+ def _fmt_operand_read(op):
+     """Format reading any operand type."""
++    if op.type == "expr":
++        return op.expr_text
+     if op.type == "reg":
+         return _fmt_reg(op.reg)
+     elif op.type == "imm":
+@@ -1172,9 +1191,9 @@ class Lifter:
+             args.append(f"0 /* a{i+1} */")
+         return ", ".join(args)
+ 
+-    # SEH prolog/epilog addresses - these functions modify ebp for their
+-    # caller.  After calling __SEH_prolog, the caller must read back ebp
+-    # from g_seh_ebp.  Before returning, __SEH_prolog writes g_seh_ebp.
++    # SEH prolog/epilog addresses. These functions set up the caller's frame
++    # pointer; since ebp is a global register like every other, that needs no
++    # bridging. Kept because the frame-type analysis still keys off them.
+     #
+     # Per-title addresses, detected from the binary by detect_seh_helpers()
+     # and assigned to the instance. The class values are only a fallback for
+@@ -1189,9 +1208,8 @@ class Lifter:
+         if insn.call_target:
+             name = self._call_target_name(insn.call_target)
+             lines = [f"PUSH32(esp, 0); {name}(); /* call 0x{insn.call_target:08X} */"]
+-            # After __SEH_prolog/__SEH_epilog, read back the frame pointer.
+-            if insn.call_target in (self.SEH_PROLOG, self.SEH_EPILOG):
+-                lines.append("ebp = g_seh_ebp; /* read back frame from SEH helper */")
++            # No frame-pointer read-back: ebp is a global, so whatever
++            # __SEH_prolog/__SEH_epilog does to it is already visible here.
+             return lines
+         elif len(ops) >= 1:
+             target = _fmt_operand_read(ops[0])
+@@ -1202,11 +1220,9 @@ class Lifter:
+     def _lift_ret(self, insn, ops):
+         # x86 'ret' pops return address from stack.
+         # 'ret N' also pops N extra bytes (stdcall cleanup).
+-        # If this function IS __SEH_prolog or __SEH_epilog, bridge ebp
+-        # so the caller can read back the frame pointer.
++        # No ebp bridging: ebp is a global, so the SEH helpers' writes to it
++        # are visible to their caller without help.
+         prefix = ""
+-        if self.func_start in (self.SEH_PROLOG, self.SEH_EPILOG):
+-            prefix = "g_seh_ebp = ebp; "
+         if len(ops) >= 1 and ops[0].type == "imm":
+             n = ops[0].imm
+             return [f"{prefix}esp += {4 + n}; return; /* ret {n} */"]
+@@ -1262,7 +1278,7 @@ class Lifter:
+                 # Tail call - no return address push (reuses current frame's)
+                 # Bridge ebp so the target function can inherit our frame pointer.
+                 name = self._call_target_name(insn.jump_target)
+-                return [f"g_seh_ebp = ebp; {name}(); return; /* tail jmp 0x{insn.jump_target:08X} */"]
++                return [f"{name}(); return; /* tail jmp 0x{insn.jump_target:08X} */"]
+             return [f"goto loc_{insn.jump_target:08X};"]
+         elif len(ops) >= 1:
+             # Detect intra-function switch tables (computed gotos)
+@@ -1273,10 +1289,10 @@ class Lifter:
+                 lines = [f"{{ uint32_t _jt = {target_expr}; /* switch: {len(switch_targets)} entries, {len(unique_targets)} targets */"]
+                 for t in unique_targets:
+                     lines.append(f"if (_jt == 0x{t:08X}u) goto loc_{t:08X};")
+-                lines.append(f"g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }}")
++                lines.append(f"RECOMP_ITAIL(_jt); return; }}")
+                 return lines
+             target = _fmt_operand_read(ops[0])
+-            return [f"g_seh_ebp = ebp; RECOMP_ITAIL({target}); return; /* indirect tail jmp */"]
++            return [f"RECOMP_ITAIL({target}); return; /* indirect tail jmp */"]
+         return ["/* jmp: no target */"]
+ 
+     def _lift_jcc(self, insn):
+@@ -1627,6 +1643,28 @@ class Lifter:
+         return [f"/* FPU: {m} {insn.op_str} */"]
+ 
+ 
++def _snapshot_flag_ops(insn, stmts):
++    """Capture a flag setter's operand values into temporaries.
++
++    Returns the operand list to remember for whatever jcc/setcc/cmovcc
++    consumes these flags. Only reg/mem operands need capturing -- an
++    immediate cannot change, and capturing it would only add noise.
++    """
++    ops = list(insn.operands)
++    if not (1 <= len(ops) <= 2):
++        return ops
++
++    out = []
++    for idx, op in enumerate(ops):
++        if op.type == "imm":
++            out.append(op)
++            continue
++        tmp = f"_flg{idx}"
++        stmts.append(f"{tmp} = {_fmt_operand_read(op)}; /* snapshot for the jcc */")
++        out.append(_SnapshotOperand(tmp, getattr(op, "size", 4)))
++    return out
++
++
+ def lift_basic_block(lifter, bb, flag_state=None):
+     """
+     Lift a basic block to C statements.
+@@ -1660,12 +1698,15 @@ def lift_basic_block(lifter, bb, flag_state=None):
+         match = try_match_cmp_jcc(insns, i, lifter=lifter)
+         if match:
+             stmt, consumed = match
+-            stmts.append(stmt)
+-            # Preserve the flag-setter from the cmp/test since jcc
+-            # doesn't modify flags - subsequent jcc can reuse them
++            # The matched jcc is already correct (it is adjacent to the cmp),
++            # but a LATER jcc may reuse these same flags, so snapshot the
++            # operands BEFORE emitting the branch.
+             flag_insn = insns[i]
++            snap = []
++            last_flag_ops = _snapshot_flag_ops(flag_insn, snap)
++            stmts.extend(snap)
++            stmts.append(stmt)
+             last_flag_setter = flag_insn.mnemonic
+-            last_flag_ops = list(flag_insn.operands)
+             i += consumed
+             continue
+ 
+@@ -1725,7 +1766,7 @@ def lift_basic_block(lifter, bb, flag_state=None):
+         # Track flag-setting instructions
+         if curr.mnemonic in FLAG_SETTERS:
+             last_flag_setter = curr.mnemonic
+-            last_flag_ops = list(curr.operands)
++            last_flag_ops = _snapshot_flag_ops(curr, stmts)
+         elif curr.mnemonic in _FLAGS_UNDEFINED:
+             # Flags are undefined after these - clear tracking
+             last_flag_setter = None
+@@ -1733,7 +1774,7 @@ def lift_basic_block(lifter, bb, flag_state=None):
+         elif curr.mnemonic in _EFLAGS_SETTERS:
+             # Additional flag-setting instructions
+             last_flag_setter = curr.mnemonic
+-            last_flag_ops = list(curr.operands)
++            last_flag_ops = _snapshot_flag_ops(curr, stmts)
+         elif curr.mnemonic in _EFLAGS_PRESERVE:
+             pass  # These don't affect EFLAGS
+         elif curr.mnemonic in ("fcompi", "fcomip", "fucomi", "fucompi",
 diff --git a/tools/recomp/translator.py b/tools/recomp/translator.py
-index a5890d7..019d891 100644
+index a5890d7..cdbb93f 100644
 --- a/tools/recomp/translator.py
 +++ b/tools/recomp/translator.py
 @@ -111,6 +111,10 @@ class FunctionTranslator:
@@ -253,7 +413,81 @@ index a5890d7..019d891 100644
  
          # Build basic blocks
          blocks = self.disasm.build_basic_blocks(
-@@ -390,9 +426,14 @@ class FunctionTranslator:
+@@ -216,8 +252,7 @@ class FunctionTranslator:
+         if any(insn.mnemonic == "leave" for insn in instructions):
+             used_regs.add("ebp")
+ 
+-        # Ensure ebp tracked if function has tail jumps (lifter emits
+-        # g_seh_ebp = ebp before external jmp and indirect jmp).
++        # Ensure ebp tracked if function has tail jumps.
+         has_tail_jump = any(
+             insn.mnemonic == "jmp" and (
+                 (insn.jump_target and not (start <= insn.jump_target < end))
+@@ -228,8 +263,7 @@ class FunctionTranslator:
+         if has_tail_jump:
+             used_regs.add("ebp")
+ 
+-        # Ensure ebp tracked if function calls __SEH_prolog or __SEH_epilog
+-        # (lifter emits ebp = g_seh_ebp readback after these calls).
++        # Ensure ebp tracked if function calls __SEH_prolog or __SEH_epilog.
+         SEH_FUNCS = {0x00244784, 0x002447BF}
+         if any(insn.call_target in SEH_FUNCS for insn in instructions):
+             used_regs.add("ebp")
+@@ -268,16 +302,11 @@ class FunctionTranslator:
+         lines.append(f"{ret_type} {name}({param_str})")
+         lines.append(f"{{")
+ 
+-        # ebp is the only callee-saved register declared as a local.
+-        # ebx, esi, edi are global via #define macros (g_ebx, g_esi, g_edi)
+-        # and must NOT be declared locally, otherwise the local shadows
+-        # the global and cross-function register passing breaks.
+-        # Volatile registers (eax, ecx, edx, esp) are also global via macros.
+-        reg_decls = []
+-        if "ebp" in used_regs:
+-            reg_decls.append("ebp")
+-        if reg_decls:
+-            lines.append(f"    uint32_t {', '.join(reg_decls)};")
++        # NO register is declared as a local. Every x86 register -- ebp
++        # included -- is a global via the #define macros in recomp_types.h.
++        # A local would shadow the global and break register passing across
++        # calls, which is exactly what a per-function `ebp` used to do to FPO
++        # code carrying a live value in ebp.
+ 
+         # Add _flags variable if function has conditional instructions
+         has_conditionals = any(
+@@ -287,6 +316,14 @@ class FunctionTranslator:
+         if has_conditionals:
+             lines.append(f"    int _flags = 0; /* fallback flag var */")
+ 
++        # Snapshot slots for deferred flag setters, declared unconditionally:
++        # any flag-setting instruction captures its operands here, and the
++        # flags can be consumed in a later basic block (or by a setcc/cmovcc
++        # in a function with no conditional jump at all). The jcc reads these
++        # rather than the registers, so an instruction between the cmp and
++        # the jcc cannot change which way the branch goes.
++        lines.append(f"    uint32_t _flg0 = 0, _flg1 = 0; (void)_flg0; (void)_flg1;")
++
+         # Add _cf for carry-dependent instructions (sbb, adc)
+         has_carry = any(insn.mnemonic in ("sbb", "adc")
+                         for insn in instructions)
+@@ -322,14 +359,8 @@ class FunctionTranslator:
+             lines.append(f"    #define fp_top() _fp_stack[_fp_top & 7]")
+             lines.append(f"    #define fp_st1() _fp_stack[(_fp_top + 1) & 7]")
+ 
+-        # For fpo_leaf functions that use ebp: initialize from g_seh_ebp.
+-        # In x86, these functions inherit EBP from their caller (typically
+-        # via a tail jump that shares the caller's frame). In our C translation,
+-        # ebp is a local variable that would start uninitialized, causing
+-        # crashes when the function reads MEM32(ebp + offset). The g_seh_ebp
+-        # global bridges ebp across function boundaries.
+-        if frame_type == "fpo_leaf" and "ebp" in used_regs and not has_prologue:
+-            lines.append(f"    ebp = g_seh_ebp; /* fpo_leaf: inherit caller's frame */")
++        # No ebp initialisation: an FPO function inherits its caller's ebp
++        # because ebp IS the caller's, not because anything copies it.
+ 
+         lines.append(f"")
+ 
+@@ -390,9 +421,14 @@ class FunctionTranslator:
                  goto_lines.append((idx, goto_match.group(1)))
          for idx, target in goto_lines:
              if target not in defined_labels:
@@ -269,7 +503,7 @@ index a5890d7..019d891 100644
  
          # Ensure labels at end of function have a statement after them.
          # In C, a label must be followed by a statement; a comment alone is not
-@@ -730,6 +771,7 @@ class BatchTranslator:
+@@ -730,6 +766,7 @@ class BatchTranslator:
              if name not in defined
          }
          stats["unresolved_stubs"] = len(unresolved)
