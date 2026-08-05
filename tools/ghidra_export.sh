@@ -17,6 +17,8 @@
 #   GAME_PC_DIR   the game install (from .env)
 #   GHIDRA_HOME   Ghidra install; otherwise analyzeHeadless is found on PATH
 #   GHIDRA_PROJ   project directory (default: scratch/ghidra)
+#   SEED_TABLES=1 also create functions from runs of code pointers in .rdata
+#                 (vtables); SEED_MIN_RUN tunes how many consecutive it needs
 #   FUNCS_MAX     stop after N functions (quick iteration; 0 = all)
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -122,6 +124,20 @@ if [ -n "$SPLITFILE" ]; then
         -postScript SplitFunction.py \
         >>"$LOG" 2>&1 || { echo "ghidra_export: splitting failed, see $LOG" >&2; exit 1; }
     grep -E "^SPLIT:" "$LOG" | tail -4
+fi
+
+# Bulk seeding from vtables and dispatch tables. The runtime finds indirect
+# call targets one at a time, which for virtual calls means one function per
+# rebuild; the tables holding them can be enumerated statically instead.
+if [ -n "${SEED_TABLES:-}" ]; then
+    echo "== seed from pointer tables (runs of >=${SEED_MIN_RUN:-3} code pointers) =="
+    SEED_MIN_RUN=${SEED_MIN_RUN:-3} SEED_MAX=${SEED_MAX:-0} \
+    "$HEADLESS" "$PROJ" xmen2 \
+        -process "$(basename "$BIN")" -noanalysis \
+        -scriptPath "$ROOT/tools/ghidra_scripts" \
+        -postScript SeedPointerTables.py \
+        >>"$LOG" 2>&1 || { echo "ghidra_export: table seeding failed, see $LOG" >&2; exit 1; }
+    grep -E "^SEED:" "$LOG" | tail -3
 fi
 
 echo "== export functions -> $OUT =="
