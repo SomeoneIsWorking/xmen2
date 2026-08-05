@@ -257,9 +257,16 @@ static int module_init_one(X86Module *m)
     }
     const char *nm = x86_native_name_at(entry);
     if (!nm) {
-        fprintf(stderr, "module_init: %s has no recompiled body at its entry "
-                        "point 0x%08x -- it cannot be initialised\n",
-                m->name, entry);
+        /* Reported in the SAME format the constructor-target list uses, so
+           tools/native_discover.sh picks it up and seeds it without needing to
+           know that entry points are a separate case. One report shape, one
+           loop. */
+        fprintf(stderr, "\n*** module entry point with no recompiled body.\n"
+                        "    Static analysis did not mark it as code. Seed it "
+                        "and re-lift; the address is the module's own.\n");
+        fprintf(stderr, "    %-18s 0x%08x\n", m->name,
+                m->preferred + (entry - *m->base));
+        fprintf(stderr, "*** 1 of 1 entry point is missing a body\n");
         return -1;
     }
     /* __stdcall DllMain(hinstDLL, fdwReason, lpvReserved): three arguments

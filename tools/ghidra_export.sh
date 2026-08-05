@@ -4,6 +4,7 @@
 #
 #   tools/ghidra_export.sh <module-basename> [--reanalyze]
 #   tools/ghidra_export.sh <module-basename> --seed <file-of-hex-addresses>
+#   tools/ghidra_export.sh <module-basename> --split-at <file-of-hex-addresses>
 #   tools/ghidra_export.sh libIGCore
 #
 # This existed only as a sequence of commands somebody ran once. The result is
@@ -24,9 +25,11 @@ ROOT=$PWD
 MOD=${1:?usage: ghidra_export.sh <module-basename> [--reanalyze|--seed <file>]}
 REANALYZE=""
 SEEDFILE=""
+SPLITFILE=""
 case ${2:-} in
     --reanalyze) REANALYZE=1 ;;
     --seed)      SEEDFILE=${3:?--seed needs a file of hex addresses} ;;
+    --split-at)  SPLITFILE=${3:?--split-at needs a file of hex addresses} ;;
     "")          ;;
     *)           echo "ghidra_export: unknown option $2" >&2; exit 2 ;;
 esac
@@ -53,6 +56,27 @@ OUT=$ROOT/scratch/recomp/$MOD.json
 mkdir -p "$PROJ" "$ROOT/scratch/recomp" "$ROOT/scratch/logs"
 LOG=$ROOT/scratch/logs/ghidra-$MOD.log
 
+# Provenance. "Already in the project" is NOT the same as "imported from THIS
+# file", and treating them as the same silently recompiled a libIGSg.dll that
+# was not the shipped one for a whole session (issue #12). The hash of the file
+# each program was imported from is recorded here, and a mismatch re-imports
+# rather than reusing.
+STAMP=$PROJ/imported-from.sha256
+mkdir -p "$PROJ"
+touch "$STAMP"
+WANT=$(sha256sum "$BIN" | cut -d' ' -f1)
+HAVE=$(awk -v m="$(basename "$BIN")" '$2==m {print $1}' "$STAMP" | tail -1)
+if [ -n "$HAVE" ] && [ "$HAVE" != "$WANT" ]; then
+    echo "ghidra_export: the project's $(basename "$BIN") came from a DIFFERENT file"
+    echo "  (recorded $HAVE, want $WANT) -- re-importing rather than reusing it." >&2
+    REANALYZE=1
+fi
+if [ -z "$HAVE" ] && grep -q ":$(basename "$BIN"):" "$PROJ/xmen2.rep/idata/~index.dat" 2>/dev/null; then
+    echo "ghidra_export: the project already has $(basename "$BIN") but nothing"
+    echo "  records which file it came from -- re-importing to be sure." >&2
+    REANALYZE=1
+fi
+
 # Import once, then reuse the analysed program. Re-importing an already-imported
 # binary makes Ghidra create "libIGCore.dll_1", which then gets analysed from
 # scratch and silently diverges from the one everything else refers to.
@@ -62,6 +86,9 @@ if [ -n "$REANALYZE" ] || ! grep -q ":$(basename "$BIN"):" "$PROJ/xmen2.rep/idat
         -import "$BIN" -overwrite \
         -scriptPath "$ROOT/tools/ghidra_scripts" \
         >"$LOG" 2>&1 || { echo "ghidra_export: import failed, see $LOG" >&2; exit 1; }
+    grep -v " $(basename "$BIN")\$" "$STAMP" > "$STAMP.new" 2>/dev/null || true
+    mv "$STAMP.new" "$STAMP"
+    echo "$WANT $(basename "$BIN")" >> "$STAMP"
 else
     echo "== $(basename "$BIN") already in the project; skipping analysis =="
 fi
@@ -80,6 +107,21 @@ if [ -n "$SEEDFILE" ]; then
         -postScript AddFunctions.py \
         >>"$LOG" 2>&1 || { echo "ghidra_export: seeding failed, see $LOG" >&2; exit 1; }
     grep -E "^ADD:" "$LOG" | tail -3
+fi
+
+# Splitting: an address Ghidra swallowed into an EARLIER function. Seeding
+# cannot fix these -- AddFunctions.py reports "already inside a function" and
+# creates nothing, so a discovery loop spins on them forever.
+if [ -n "$SPLITFILE" ]; then
+    [ -s "$SPLITFILE" ] || { echo "ghidra_export: $SPLITFILE is empty -- split NOTHING" >&2; exit 2; }
+    ADDRS=$(tr -s ' \n' ',' < "$SPLITFILE" | sed 's/,$//')
+    echo "== split $(grep -c . "$SPLITFILE") address(es) out of their containing functions =="
+    SPLIT_FUNCS="$ADDRS" "$HEADLESS" "$PROJ" xmen2 \
+        -process "$(basename "$BIN")" -noanalysis \
+        -scriptPath "$ROOT/tools/ghidra_scripts" \
+        -postScript SplitFunction.py \
+        >>"$LOG" 2>&1 || { echo "ghidra_export: splitting failed, see $LOG" >&2; exit 1; }
+    grep -E "^SPLIT:" "$LOG" | tail -4
 fi
 
 echo "== export functions -> $OUT =="

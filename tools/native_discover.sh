@@ -25,6 +25,13 @@ SPLIT=${SPLIT:-1500}
 : "${GAME_PC_DIR:?set GAME_PC_DIR in .env}"
 [ -x "$BIN" ] || { echo "native_discover: $BIN is not built -- discovered NOTHING" >&2; exit 2; }
 
+# Remembering the previous round's seed set, because a loop that keeps
+# requesting the same address is not converging -- it is stuck, and saying
+# "stopped after N rounds" would report that as a budget problem when it is a
+# seeding failure. Observed: Ghidra refuses an address that falls INSIDE an
+# already-detected function, so the seed silently does nothing and the round
+# repeats forever.
+PREV=""
 round=0
 while [ "$round" -lt "$MAX" ]; do
     round=$((round + 1))
@@ -47,6 +54,17 @@ while [ "$round" -lt "$MAX" ]; do
         exit 0
     fi
 
+    NOW=$(cat "$SEEDS")
+    if [ "$NOW" = "$PREV" ]; then
+        echo "native_discover: round $round asked for exactly the same targets as"
+        echo "  the round before, so the seeding did NOT take. This is a stuck"
+        echo "  loop, not a slow one. The usual cause is in the Ghidra log:" >&2
+        grep -E "^ADD:" "$ROOT/scratch/logs/ghidra-"*.log 2>/dev/null | tail -3 >&2
+        echo "  An address that falls inside an already-detected function needs" >&2
+        echo "  the function SPLIT, which seeding cannot do." >&2
+        exit 1
+    fi
+    PREV=$NOW
     echo "== round $round: $(wc -l < "$SEEDS") missing target(s) in $(cut -d' ' -f1 "$SEEDS" | sort -u | tr '\n' ' ')"
     cut -d' ' -f1 "$SEEDS" | sort -u | while read -r mod; do
         base=${mod%.dll}
