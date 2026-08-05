@@ -209,6 +209,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: IN PROGRESS. Done: the original PE maps at its own base in a 64-bit process and the emitted C runs there; 25 of the 43 non-game imports are implemented on SDL3/libc; the native import ABI is checked against known answers for both stdcall and cdecl. Remaining, measured rather than guessed: 18 Win32 calls still abort by name (GetDC, the GetMessageA/DefWindowProcA message path, the dialog calls, GetKeyState, LoadIconA/LoadCursorA, GetWindowLongA/SetWindowLongA, SetWindowPos, EnableWindow, GetMenu, GetDlgItem, EndDialog, GetWindowTextA and friends, DirectInputCreateEx), and 64 imports are other game modules -- libIGCore is now exported (5818 functions) and is the next one to recompile. FS is modelled but unset; libIGDisplay never reads it, XMen2.exe does 2743 times, so it becomes real work at rc-exe.
 - notes: The native CMake build (src/core, src/display, src/app) is unrelated to the recomp -- asset tooling and an SDL controller backend. Nothing links the two today.
 
+### rc-modinit — Native module initialisation: nothing runs DllMain or the CRT per module
+- status: todo
+- deps: rc-native
+- evidence: 
+- where: 
+- gap: NOT STARTED, and it is the immediate blocker on executing a cross-module call natively. In the hosted build the Windows loader runs each DLL's entry point, which runs _initterm over the module's static-constructor table and fills its globals. Natively nobody does, so libIGCore's globals are zero: a confirmed cross-module call (libIGDisplay getClassTypeLazy -> the bound IAT slot -> libIGCore igGetMemoryPool) faults on 'C->edx = RD32(C->eax)' with eax=0 because the memory-pool table was never built. The pieces already exist -- imp_MSVCRT__initterm walks a function-pointer table through x86_dispatch, and each module's entry point is in its PE header -- so this is running them in the right order, per module, before anything else.
+- notes: Evidence: gdb backtrace on x2native shows the transfer working and the fault landing inside libIGCore's own body, not in the dispatch path.
+
 
 ## xbox
 

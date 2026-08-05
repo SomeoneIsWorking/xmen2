@@ -133,6 +133,8 @@ void x86_note_fallback(uint32_t target);
 /* An import with no native implementation. Names it and stops -- there is
    nothing honest to return. */
 void x86_missing_import(const char *mod, const char *sym);
+/* Call an import through its (loader-bound) IAT slot; names it if unbound. */
+void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
 void x86_fallback_report(void);
 #define G_IMGBASE (X86_IMGBASE)

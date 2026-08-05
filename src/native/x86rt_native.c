@@ -144,3 +144,22 @@ void x87_fault(const char *what)
     fprintf(stderr, "x87_fault: %s\n", what);
     abort();
 }
+
+/*
+ * Call an import through its IAT slot.
+ *
+ * The slot is bound at startup by the host, the way a loader would bind it, so
+ * a call into another recompiled module lands on that module's body at its
+ * mapped address. The module and symbol are carried along only for the failure
+ * case: an unbound slot holds a poison address, and reporting "libIGCore.dll!
+ * ?createInstance@..." is worth far more than reporting 0x00090120.
+ */
+void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
+{
+    uint32_t target = *(volatile uint32_t *)(uintptr_t)slot_va;
+    if (x86_native_call_at(target, C)) return;
+    fprintf(stderr, "x86_import_call: %s!%s\n"
+                    "  slot 0x%08x holds 0x%08x, which is not a recompiled "
+                    "body.\n", mod, sym, slot_va, target);
+    x86_missing_import(mod, sym);
+}

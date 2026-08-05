@@ -19,15 +19,116 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 #endif
 
 uint32_t g_fsbase, g_gsbase;
+
+/* ---- import binding ----------------------------------------------------
+ *
+ * A loader's job, and nobody else was doing it. Calls reach their target
+ * through the named imp_* stubs, but 40 of libIGDisplay's IAT slots are READ
+ * AS DATA in 113 places -- ArkCore, kSuccess, the memory-pool adaptor -- and in
+ * a file image those slots still hold hint/name RVAs. Unbound, every one of
+ * those reads returns a small integer that looks like a pointer and nothing
+ * complains.
+ *
+ * Unresolvable slots get a distinct address in a PROT_NONE page rather than 0,
+ * so using one faults immediately at an address that identifies WHICH import
+ * -- instead of reading as NULL and taking a plausible early-out.
+ */
+#define POISON_BASE 0x00090000u
+#define POISON_SIZE 0x00010000u
+#define POISON_STRIDE 16u
+
+static struct { uint32_t addr; const char *mod; char sym[192]; } g_poison[512];
+static int g_npoison, g_nbound;
+
+static uint32_t poison_for(const char *mod, const char *sym, uint32_t ordinal)
+{
+    uint32_t a;
+    if (g_npoison == (int)(sizeof g_poison / sizeof g_poison[0]))
+        return POISON_BASE;                  /* out of slots: share the first */
+    a = POISON_BASE + (uint32_t)g_npoison * POISON_STRIDE;
+    g_poison[g_npoison].addr = a;
+    g_poison[g_npoison].mod = mod;
+    if (sym) snprintf(g_poison[g_npoison].sym, sizeof g_poison[g_npoison].sym,
+                      "%s", sym);
+    else snprintf(g_poison[g_npoison].sym, sizeof g_poison[g_npoison].sym,
+                  "#%u (by ordinal)", ordinal);
+    g_npoison++;
+    return a;
+}
+
+static const char *poison_name(uint32_t addr, const char **mod)
+{
+    int i;
+    for (i = 0; i < g_npoison; i++)
+        if (addr >= g_poison[i].addr && addr < g_poison[i].addr + POISON_STRIDE) {
+            *mod = g_poison[i].mod;
+            return g_poison[i].sym;
+        }
+    return NULL;
+}
+
+static uint32_t resolve_import(const char *mod, const char *sym,
+                               int by_ordinal, uint32_t ordinal, void *ctx)
+{
+    X86Module *m;
+    (void)ctx;
+    if (!by_ordinal && sym) {
+        for (m = x86_modules(); m; m = m->next) {
+            uint32_t rva;
+            if (strcasecmp(m->name, mod) != 0) continue;
+            rva = pe_export_rva(*m->base, sym);
+            if (rva) { g_nbound++; return *m->base + rva; }
+            break;                            /* right module, no such export */
+        }
+    }
+    return poison_for(mod, sym, ordinal);
+}
+
+/* A fault in the poison region is an unbound import being used. Say which. */
+static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
+{
+    uint32_t a = (uint32_t)(uintptr_t)si->si_addr;
+    const char *mod = NULL, *sym;
+    (void)sig; (void)uc;
+    sym = poison_name(a, &mod);
+    if (sym) {
+        fprintf(stderr, "\n*** unbound import used: %s!%s\n"
+                        "    The guest read or called import slot 0x%08x, which "
+                        "nothing could resolve.\n"
+                        "    That module is either not linked into this binary "
+                        "or does not export that symbol.\n", mod, sym, a);
+        _exit(3);
+    }
+    fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot)\n", si->si_addr);
+    _exit(3);
+}
+
+static int poison_init(void)
+{
+    struct sigaction sa;
+    void *p = mmap((void *)(uintptr_t)POISON_BASE, POISON_SIZE, PROT_NONE,
+                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+    if (p == MAP_FAILED || (uintptr_t)p != POISON_BASE) {
+        fprintf(stderr, "x2native: could not reserve the unbound-import page; "
+                        "unresolved imports would read as plausible values\n");
+        return -1;
+    }
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = poison_sigsegv;
+    sa.sa_flags = SA_SIGINFO;
+    return sigaction(SIGSEGV, &sa, NULL);
+}
 
 /* Each module's base, defined by its generated native file. The host maps the
    images and fills these in; nothing else knows where a module went. */
@@ -291,6 +392,51 @@ static void case_import_abi(void)
     }
 }
 
+/*
+ * The point of linking two modules: a call that leaves one and lands in the
+ * other, with no Wine and no original code anywhere.
+ *
+ * igWindow::getClassTypeLazy reads the class meta slot, and when it is empty
+ * calls libIGCore's igGetMemoryPool and _instantiateFromPool through the IAT.
+ * Poisoning the slot first means the cross-module path MUST be taken -- if the
+ * import were unbound this faults by name instead of quietly returning.
+ */
+extern uint32_t g_imgbase_libIGCore;
+
+static void case_cross_module(void)
+{
+    CPU C;
+    uint32_t meta_slot = g_imgbase + 0x21b80u;
+    const char *nm;
+    printf("  cross-module call: libIGDisplay -> libIGCore\n");
+
+    /* The import this path uses must be bound to a libIGCore body, not to a
+       poison slot. Check that before relying on it, so a failure reads as
+       "the import is unbound" rather than as a wrong result. */
+    {
+        uint32_t slot = gr32(g_imgbase + 0x91f4u);   /* _instantiateFromPool */
+        nm = x86_native_name_at(slot);
+        check("IAT slot -> a libIGCore body", nm != NULL, 1u);
+        if (nm) printf("      bound to: %s\n", nm);
+        check("  target is inside libIGCore",
+              (slot >= g_imgbase_libIGCore) &&
+              (slot - g_imgbase_libIGCore < 0x200000u), 1u);
+    }
+    (void)meta_slot;
+    /* Deliberately NOT run end to end here. Executing across the boundary
+       reaches libIGCore's igGetMemoryPool, which dereferences a global its
+       static constructors were supposed to fill -- and nothing has run them:
+       there is no Windows loader to call DllMain or _initterm per module. The
+       transfer itself is confirmed (a gdb backtrace shows
+       fn_libIGDisplay_10002c20 -> imp stub -> x86_import_call ->
+       fn_libIGCore_10040480), so what the checks above assert is the BINDING,
+       which is what this build added. Module initialisation is the next step,
+       and claiming a working end-to-end call before it exists would be exactly
+       the kind of pass this battery is built to refuse. */
+    printf("      transfer confirmed by backtrace; running it end to end needs\n"
+           "      module initialisation, which does not exist yet\n");
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -314,7 +460,13 @@ static int run_battery(void)
         skip_body = 0;
         if (fails - before == checks) {
             printf("\n  SELFTEST passed: all %d checks failed with the bodies\n"
-                   "  skipped, so a pass below means the bodies did the work.\n\n",
+                   "  skipped, so a pass below means the bodies did the work.\n"
+                   "  The full run has more checks than that, and the extra ones\n"
+                   "  are deliberately outside this control: the cross-module\n"
+                   "  checks test IMPORT BINDING, which does not depend on any\n"
+                   "  body running, so skipping bodies could not falsify them.\n"
+                   "  They fail if the slot is unbound, which is their own\n"
+                   "  negative.\n\n",
                    checks);
             fails = before;
             checks = 0;
@@ -330,6 +482,7 @@ static int run_battery(void)
     case_findmouse();
     case_arkinit();
     case_import_abi();
+    case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"
            "process, the emitted C runs there natively, image-relative\n"
@@ -388,6 +541,16 @@ int main(int argc, char **argv)
         return 1;
     }
     g_imgbase = g_imgbase_libIGDisplay;      /* the battery's frame of reference */
+
+    /* Bind imports only once every module is mapped: a slot pointing into a
+       module that has not been placed yet would be bound to a stale base. */
+    if (poison_init() != 0) return 1;
+    for (m = x86_modules(); m; m = m->next) {
+        int bound = 0, poisoned = 0;
+        pe_bind_imports(*m->base, resolve_import, NULL, &bound, &poisoned);
+    }
+    printf("imports: %d bound to recompiled modules, %d unresolved and poisoned"
+           " (using one faults by name)\n", g_nbound, g_npoison);
 
     if (guest_stack_init() != 0) {
         fprintf(stderr, "x2native: could not place the guest stack\n");

@@ -19,4 +19,15 @@ int  pe_map_at(const char *path, uint32_t want, PeImage *out);
 int  pe_map_anon_low(uint32_t want, uint32_t size);
 void pe_unmap(PeImage *img);
 
+/* Export RVA for a name in a MAPPED image, or 0. */
+uint32_t pe_export_rva(uint32_t base, const char *name);
+
+/* Bind every import slot of a mapped image. `resolve` returns the address to
+   write, or 0 when it cannot -- see pe_map.c for why 0 must not stay 0. */
+int pe_bind_imports(uint32_t base,
+                    uint32_t (*resolve)(const char *mod, const char *sym,
+                                        int by_ordinal, uint32_t ordinal,
+                                        void *ctx),
+                    void *ctx, int *out_bound, int *out_poisoned);
+
 #endif /* PE_MAP_H */

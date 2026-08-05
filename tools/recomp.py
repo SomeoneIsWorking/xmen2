@@ -1828,14 +1828,20 @@ def cmd_native(argv):
         if ident in seen:
             continue
         seen.add(ident)
+        # Dispatch through this import's own IAT slot, which the host binds
+        # at startup exactly as a loader would. That is what makes a call into
+        # another RECOMPILED module work: the slot holds the target's mapped
+        # address, and x86_import_call runs the body there. If nothing could
+        # bind the slot it holds a poison address, and the call is reported
+        # with the module and symbol rather than as a bad address.
+        #
         # WEAK, so a real native implementation (src/native/win32_sdl.c)
-        # overrides it just by existing. The alternative -- a list of names to
-        # skip -- would have to be kept in step with that file by hand, and the
-        # failure mode of getting it wrong is a duplicate symbol at best and a
-        # silently-preferred abort stub at worst.
+        # overrides it just by existing. A hand-maintained skip list would have
+        # to be kept in step with that file, and getting it wrong yields a
+        # silently-preferred stub.
         L.append('__attribute__((weak)) void %s(CPU *C) '
-                 '{ (void)C; x86_missing_import("%s", "%s"); }'
-                 % (ident, mod, sym.replace('"', "'")))
+                 '{ x86_import_call(C, X86_IMGBASE + 0x%xU, "%s", "%s"); }'
+                 % (ident, va - IMG[0], mod, sym.replace('"', "'")))
     with open(out, "w") as f:
         f.write("\n".join(L) + "\n")
     print("native: %d function-table entries, %d imports stubbed WEAK to abort "

@@ -174,3 +174,92 @@ int pe_map_anon_low(uint32_t want, uint32_t size)
     }
     return 0;
 }
+
+/* ---- export and import directories of a MAPPED image -------------------
+ *
+ * The hosted build never needed these: the Windows loader resolved libIGCore's
+ * exports into libIGDisplay's IAT before any game code ran. Natively nobody
+ * does, and the consequence is not a link error -- it is silence. 40 of
+ * libIGDisplay's IAT slots are READ AS DATA in 113 places in the emitted code
+ * (they are data exports: ArkCore, kSuccess, the memory-pool adaptor). In a
+ * file image those slots still hold hint/name RVAs, so every one of those
+ * reads would return a small integer that looks like a pointer.
+ */
+#define DIR_EXPORT 0
+#define DIR_IMPORT 1
+
+static uint32_t data_dir(uint32_t base, int which, uint32_t *size)
+{
+    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    uint32_t pe = RD32_(p, 0x3C), opt = pe + 24;
+    uint32_t d = opt + 96 + (uint32_t)which * 8;
+    if (size) *size = RD32_(p, d + 4);
+    return RD32_(p, d);
+}
+
+uint32_t pe_export_rva(uint32_t base, const char *name)
+{
+    uint32_t dir = data_dir(base, DIR_EXPORT, NULL), n, i;
+    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    uint32_t names, ords, funcs;
+    if (!dir) return 0;
+    n     = RD32_(p, dir + 0x18);
+    funcs = RD32_(p, dir + 0x1C);
+    names = RD32_(p, dir + 0x20);
+    ords  = RD32_(p, dir + 0x24);
+    for (i = 0; i < n; i++) {
+        uint32_t nr = RD32_(p, names + i * 4);
+        if (strcmp((const char *)(uintptr_t)(base + nr), name) == 0) {
+            uint16_t o = (uint16_t)RD16(p, ords + i * 2);
+            return RD32_(p, funcs + (uint32_t)o * 4);
+        }
+    }
+    return 0;
+}
+
+/*
+ * Bind every import slot, the way a loader would.
+ *
+ * `resolve` returns the address to write, or 0 when it cannot resolve one. A 0
+ * is NOT written as 0: the caller supplies a poison address instead, so that a
+ * slot nobody could resolve faults the moment it is used rather than reading as
+ * NULL and taking a plausible-looking early-out branch.
+ */
+int pe_bind_imports(uint32_t base,
+                    uint32_t (*resolve)(const char *mod, const char *sym,
+                                        int by_ordinal, uint32_t ordinal,
+                                        void *ctx),
+                    void *ctx, int *out_bound, int *out_poisoned)
+{
+    uint32_t dir = data_dir(base, DIR_IMPORT, NULL);
+    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    int bound = 0, poisoned = 0;
+    if (!dir) { if (out_bound) *out_bound = 0;
+                if (out_poisoned) *out_poisoned = 0; return 0; }
+    for (;; dir += 20) {
+        uint32_t oft = RD32_(p, dir + 0), nameR = RD32_(p, dir + 12);
+        uint32_t ft = RD32_(p, dir + 16), t;
+        const char *mod;
+        if (!oft && !ft && !nameR) break;
+        mod = (const char *)(uintptr_t)(base + nameR);
+        if (!oft) oft = ft;                    /* some linkers omit the INT */
+        for (t = 0;; t += 4) {
+            uint32_t thunk = RD32_(p, oft + t), addr;
+            if (!thunk) break;
+            if (thunk & 0x80000000u)
+                addr = resolve(mod, NULL, 1, thunk & 0xFFFFu, ctx);
+            else
+                addr = resolve(mod,
+                               (const char *)(uintptr_t)(base + thunk + 2),
+                               0, 0, ctx);
+            if (addr) bound++; else poisoned++;
+            /* The caller's poison value arrives as resolve() returning 0; it
+               is filled in by the caller afterwards via out_poisoned bookkeeping
+               only if it chose to. Here a 0 is left for the caller to overwrite. */
+            *(volatile uint32_t *)(uintptr_t)(base + ft + t) = addr;
+        }
+    }
+    if (out_bound) *out_bound = bound;
+    if (out_poisoned) *out_poisoned = poisoned;
+    return 0;
+}
