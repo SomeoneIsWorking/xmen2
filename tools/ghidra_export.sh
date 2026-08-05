@@ -132,6 +132,8 @@ fi
 if [ -n "${SEED_TABLES:-}" ]; then
     echo "== seed from pointer tables (runs of >=${SEED_MIN_RUN:-3} code pointers) =="
     SEED_MIN_RUN=${SEED_MIN_RUN:-3} SEED_MAX=${SEED_MAX:-0} \
+    SEED_SCAN_DATA=${SEED_SCAN_DATA:-} \
+    SEED_INSIDE_OUT="$ROOT/scratch/recomp/$MOD.split" \
     "$HEADLESS" "$PROJ" xmen2 \
         -process "$(basename "$BIN")" -noanalysis \
         -scriptPath "$ROOT/tools/ghidra_scripts" \

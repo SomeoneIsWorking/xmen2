@@ -24,6 +24,9 @@
 # ENV:
 #   SEED_MIN_RUN   consecutive pointers required (default 3)
 #   SEED_MAX       stop after creating this many (default 0 = no limit)
+#   SEED_INSIDE_OUT  write the targets that need a SPLIT to this file
+#   SEED_SCAN_DATA=1  also scan writable data (dispatch tables), which is
+#                 noisier than .rdata and therefore opt-in
 import os
 from ghidra.app.cmd.disassemble import DisassembleCommand
 from ghidra.app.cmd.function import CreateFunctionCmd
@@ -37,6 +40,7 @@ af = prog.getAddressFactory().getDefaultAddressSpace()
 
 MIN_RUN = int(os.environ.get("SEED_MIN_RUN", "3"))
 MAX_NEW = int(os.environ.get("SEED_MAX", "0"))
+SCAN_DATA = os.environ.get("SEED_SCAN_DATA", "") == "1"
 
 exec_ranges = []
 scan_blocks = []
@@ -47,12 +51,19 @@ for b in mem.getBlocks():
         exec_ranges.append((b.getStart().getOffset(), b.getEnd().getOffset()))
     elif b.isRead() and not b.isWrite():
         scan_blocks.append(b)          # .rdata: where vtables live
+    elif b.isRead() and b.isWrite() and SCAN_DATA:
+        # .data too, on request. Statically-initialised function-pointer tables
+        # live here (dispatch tables the program later overwrites), and the
+        # runtime's remaining misses were not in .rdata. Riskier: .data also
+        # holds integers that can look like code addresses, which is why this
+        # is opt-in and why the run threshold still applies.
+        scan_blocks.append(b)
 
 if not exec_ranges:
     print("SEED: no executable blocks -- scanned NOTHING")
     raise SystemExit
 if not scan_blocks:
-    print("SEED: no read-only data blocks -- scanned NOTHING, which is not the "
+    print("SEED: no data blocks to scan -- scanned NOTHING, which is not the "
           "same as finding nothing")
     raise SystemExit
 
@@ -65,6 +76,7 @@ def is_code(v):
 
 
 scanned = runs = cand = already = created = failed = inside = 0
+inside_list = []
 
 for b in scan_blocks:
     start, end = b.getStart().getOffset(), b.getEnd().getOffset()
@@ -88,7 +100,14 @@ for b in scan_blocks:
                         already += 1
                         continue
                     if fm.getFunctionContaining(ta) is not None:
-                        inside += 1        # needs a split, not a create
+                        # Needs a SPLIT, not a create. Counting these and
+                        # moving on left them invisible: they are real
+                        # functions the runtime will dispatch to, and the only
+                        # record of them was a number in a summary line. They
+                        # are written out so they can be fed to
+                        # SplitFunction.py in bulk.
+                        inside += 1
+                        inside_list.append(t)
                         continue
                     DisassembleCommand(ta, None, True).applyTo(prog, monitor)
                     if CreateFunctionCmd(ta).applyTo(prog, monitor):
@@ -107,10 +126,22 @@ for b in scan_blocks:
 
 # Every number, every time. "created 0" and "scanned 0" mean completely
 # different things and must never print the same way.
-print("SEED: scanned %d aligned dwords in %d read-only block(s)"
-      % (scanned, len(scan_blocks)))
+print("SEED: scanned %d aligned dwords in %d %s block(s)"
+      % (scanned, len(scan_blocks),
+         "read-only and writable" if SCAN_DATA else "read-only"))
 print("SEED: %d run(s) of >=%d consecutive code pointers, %d target(s) in them"
       % (runs, MIN_RUN, cand))
 print("SEED: %d already functions, %d inside an existing function (need a "
       "SPLIT, not a create), %d created, %d failed"
       % (already, inside, created, failed))
+
+out = os.environ.get("SEED_INSIDE_OUT", "")
+if out and inside_list:
+    fh = open(out, "w")
+    for t in sorted(set(inside_list)):
+        fh.write("0x%08x\n" % t)
+    fh.close()
+    print("SEED: wrote %d split candidate(s) to %s"
+          % (len(set(inside_list)), out))
+elif out:
+    print("SEED: no split candidates; %s not written" % out)

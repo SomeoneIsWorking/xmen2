@@ -84,6 +84,19 @@ while [ "$round" -lt "$MAX" ]; do
         base=${mod%.dll}; base=${base%.exe}
         grep "^$mod " "$SEEDS" | awk '{print $2}' > "$ROOT/scratch/recomp/$base.seeds"
         tools/ghidra_export.sh "$base" --seed "$ROOT/scratch/recomp/$base.seeds" 2>&1 | tail -1
+        # Seeding cannot create a function at an address Ghidra has already
+        # swallowed into an earlier one -- it reports "already inside a
+        # function" and does nothing, which is what made this loop spin. Those
+        # need a SPLIT, so escalate automatically instead of stalling.
+        SPLITS=$ROOT/scratch/recomp/$base.autosplit
+        grep -E "^ADD: 0x0x[0-9a-f]+ already inside a function" \
+            "$ROOT/scratch/logs/ghidra-$base.log" 2>/dev/null \
+            | sed 's/^ADD: 0x//; s/ already.*//' | sort -u > "$SPLITS"
+        if [ -s "$SPLITS" ]; then
+            echo "   escalating $(grep -c . "$SPLITS") seed(s) to a split"
+            tools/ghidra_export.sh "$base" --split-at "$SPLITS" 2>&1 \
+                | grep -E "^SPLIT: [0-9]+ split|^ghidra_export:" | tail -2
+        fi
         rm -f "$ROOT/src/recomp/${base}_"[0-9][0-9][0-9].c "$ROOT/src/recomp/$base.c"
         python3 tools/recomp.py emit "$ROOT/scratch/recomp/$base.json" \
                 "$ROOT/src/recomp/$base.c" --split "$SPLIT" | tail -1
