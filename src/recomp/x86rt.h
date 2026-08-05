@@ -201,6 +201,17 @@ void x86_dump_history(void);
 void x86_watch_enter(uint32_t ep, const CPU *C);
 void x86_watch_exit(uint32_t ep, const CPU *C);
 void x86_watch_selftest(void);
+/* Crash reporter (src/x86fault.c): names the module a fault EIP falls in and
+   dumps the annotated stack, which is the only way to see who transferred
+   control once execution has left recompiled code for a host callee. */
+void x86_fault_install(void);
+/* Ring of recompiled/host boundary crossings, dumped by the fault reporter.
+   kind: 0 entered a body, 1 called host, 2 host returned, 3 body returned. */
+void x86_watch_note(int kind, uint32_t a, uint32_t b);
+/* Reports where a recompiled body's C frame sits relative to the guest stack
+   pointer it was entered with -- the fact that decides whether a guest PUSH
+   overwrites live C state. */
+void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned long cpu_size);
 # define X86_ENTER_FN(a) x86_watch_enter((a), C)
 # define X86_EXIT_FN(a)  x86_watch_exit((a), C)
 # define x86_dump_history() ((void)0)
@@ -272,7 +283,19 @@ void x86_dispatch_miss(uint32_t target);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
 
 /* real code -> recompiled body; returns EAX */
-uint32_t x86_enter(uint32_t ep, uint32_t guest_esp, uint32_t ecx);
+/* Entry from host code into a recompiled body. Reached by `jmp` from a naked
+   export shim with the guest's own ESP still in place -- see x86_enter_tramp in
+   the generated runtime for why nothing may be pushed before the switch. */
+void     x86_enter_tramp(void);
+uint32_t x86_enter_body(uint32_t ep, uint32_t guest_esp, uint32_t ecx);
+/* The runtime's private per-thread stack. Everything below a recompiled
+   function's entry esp belongs to the GUEST -- guest pushes descend into it and
+   host callees run their frames there -- so the runtime's own C frames cannot
+   live there too. init in DLL_PROCESS_ATTACH, free in DLL_THREAD_DETACH. */
+int  x86_rt_stack_init(void);
+void x86_rt_stack_free(void);
+uint32_t x86_rt_stack_take(void);
+void x86_rt_stack_give(void);
 /* recompiled body -> real code, running on the guest stack */
 void x86_call_host(CPU *C, void *fn, const char *what);
 #define DISPATCH(C, t) x86_dispatch((C), (uint32_t)(t))

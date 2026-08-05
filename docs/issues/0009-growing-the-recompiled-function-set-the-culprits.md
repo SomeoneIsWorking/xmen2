@@ -1,7 +1,7 @@
 ---
 id: 9
 title: Growing the recompiled function set: the culprits are independent, so one bisection is not enough
-status: open
+status: resolved
 symptom: A hybrid libIG*.dll with every translatable function recompiled loads and then page-faults (read access to 000000B4, or write to 0102519B at an EIP that is in no module); the 156-function set runs fine
 tags: pc,recomp,bisect,libigdisplay,tooling
 created: 2026-08-05
@@ -65,3 +65,25 @@ sets `%ecx` from `C->ecx` before `call *%[f]` for every import, including
 0x02429ee0, the value that becomes EIP. Worth disassembling
 `x86_call_host` in the built DLL and the original code at RVA 0x2c80 (the
 callback handed to igArkRegister).
+
+### Resolution (2026-08-05)
+ROOT CAUSE (C080): the entry path kept the runtime's own state BELOW the guest stack pointer, where the guest and every host function it calls write.
+
+Two places, one rule broken:
+  * x86_enter's `CPU C` sat 36 bytes below guest_esp (measured by the new
+    x86_watch_stack report). libIGCore's igArkRegister does `sub esp,0x108`
+    and overlapped 196 of the struct's 232 bytes; the fault EIP was the CPU
+    struct's own base address.
+  * the export shim's return address sat 20 bytes below the entry ESP, so
+    after the last host callee had used that memory the shim returned into it.
+
+Fix: a private per-thread runtime stack (x86_rt_stack_take/give) and
+x86_enter_tramp, reached by `jmp` from a shim that pushes nothing that has to
+outlive the body. The three scratch words it does put below the entry ESP are
+consumed before the body runs.
+
+The bisection this issue describes was therefore looking for the wrong thing:
+the culprits were not independent and there was no largest-working-set to find.
+Every 'culprit' was simply a function that CALLS A HOST FUNCTION, which is what
+triggers the overwrite. tools/build_recomp.sh ALL now renders (2307 colours,
+17 recompiled entries over 9 entry points, zero fault blocks).

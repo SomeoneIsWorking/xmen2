@@ -27,6 +27,8 @@
  */
 #include "x86rt.h"
 
+#include <windows.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,6 +60,11 @@ static FILE *watch_out(void)
     }
     return w_out;
 }
+
+/* The crash reporter (src/x86fault.c) writes into the SAME log, so its block
+   lands in sequence with the ENTER lines that lead up to the fault. Two files
+   would lose exactly the ordering that localises the fault. */
+FILE *x86_watch_log(void) { return watch_out(); }
 
 static uint32_t      w_ep[WATCH_MAX_EPS];
 static unsigned long w_hits[WATCH_MAX_EPS];
@@ -132,6 +139,7 @@ void x86_watch_exit(uint32_t ep, const CPU *C)
 {
     int i;
     if (w_n < 0) watch_parse();
+    x86_watch_note(3, ep, C->esp);
     if (w_all) {
         if (w_all_seen > (unsigned long)w_cap) return;
         fprintf(watch_out(), "[WATCH] 0x%08x RETURNED  eax=0x%08x esp=0x%08x\n",
@@ -150,6 +158,7 @@ void x86_watch_enter(uint32_t ep, const CPU *C)
 {
     int i;
     if (w_n < 0) watch_parse();
+    x86_watch_note(0, ep, C->esp);
     if (w_all) {
         if (++w_all_seen > (unsigned long)w_cap) return;
         fprintf(watch_out(), "[WATCH] 0x%08x ENTER  esp=0x%08x ecx=0x%08x "
@@ -174,6 +183,98 @@ void x86_watch_enter(uint32_t ep, const CPU *C)
     }
     fprintf(watch_out(), "\n");
     fflush(watch_out());
+}
+
+/*
+ * Where does the runtime's own C frame sit relative to the guest stack?
+ *
+ * The recompiled bodies keep the guest stack pointer in C->esp and push to it
+ * with WR32(C->esp -= 4, …). If the C frame holding the CPU struct lies just
+ * BELOW the guest stack pointer, then the first guest push writes into it, and
+ * every host call made through x86_call_host runs its whole frame over the top
+ * of it. That is a property of the two addresses, so it is worth measuring
+ * once rather than deducing: this prints the gap, and prints it whichever way
+ * it comes out -- a large positive gap would mean the runtime has a stack of
+ * its own and there is no collision to chase.
+ *
+ * Reported once per process. The gap is a property of the entry mechanism, not
+ * of the entry point, so the second report would say the same thing.
+ */
+void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu,
+                     unsigned long cpu_size)
+{
+    static int done;
+    uint32_t c_lo = (uint32_t)(uintptr_t)cpu;
+    uint32_t c_hi = c_lo + (uint32_t)cpu_size;
+    if (done) return;
+    done = 1;
+    if (w_n < 0) watch_parse();
+    fprintf(watch_out(),
+            "[STACK] entry 0x%08x: guest_esp=0x%08x, this frame's CPU struct is "
+            "0x%08x..0x%08x (%lu bytes)\n", ep, guest_esp, c_lo, c_hi, cpu_size);
+    if (c_hi <= guest_esp && guest_esp - c_hi < 0x10000u)
+        fprintf(watch_out(),
+                "[STACK] SHARED STACK: the CPU struct ends %u bytes BELOW "
+                "guest_esp, so guest pushes descend straight into this frame "
+                "and any host call made from recompiled code runs its own "
+                "frame over it.\n", (unsigned)(guest_esp - c_hi));
+    else if (c_lo > guest_esp)
+        fprintf(watch_out(),
+                "[STACK] the CPU struct is ABOVE guest_esp by %u bytes -- guest "
+                "pushes move away from it.\n", (unsigned)(c_lo - guest_esp));
+    else
+        fprintf(watch_out(),
+                "[STACK] SEPARATE STACKS: the CPU struct is %u bytes from "
+                "guest_esp, far enough that they are different regions.\n",
+                (unsigned)(guest_esp - c_hi));
+    fflush(watch_out());
+}
+
+/*
+ * A ring of the last few control transfers across the recompiled/host boundary.
+ *
+ * A snapshot at the fault says where execution ended up; it does not say how it
+ * got there, and on this boundary the interesting transfers happen in HOST code
+ * that no watch can see from the inside. Three faults in a row were read by
+ * hand-simulating the stack from one register dump, and the reading was wrong
+ * twice. The sequence is cheap to record and is what the fault report prints.
+ *
+ * Kinds: 0 = entered a recompiled body, 3 = it returned, 1 = called a host
+ * function, 2 = that host function returned.
+ */
+#define NOTE_RING 64
+static struct { int kind; uint32_t a, b; unsigned long tid; } w_note[NOTE_RING];
+static unsigned w_note_n;
+
+void x86_watch_note(int kind, uint32_t a, uint32_t b)
+{
+    unsigned i = w_note_n++ % NOTE_RING;
+    w_note[i].kind = kind;
+    w_note[i].a = a;
+    w_note[i].b = b;
+    w_note[i].tid = (unsigned long)GetCurrentThreadId();
+}
+
+void x86_watch_note_dump(FILE *o)
+{
+    static const char *k[] = { "ENTER guest", "CALL host  ", "host RET   ",
+                               "guest RET  " };
+    unsigned n = w_note_n < NOTE_RING ? w_note_n : NOTE_RING;
+    unsigned i;
+    if (!w_note_n) {
+        fprintf(o, "[TRACE] the boundary ring is EMPTY: no recompiled body was "
+                   "entered and no host call was made before this point, so "
+                   "this fault is not downstream of one.\n");
+        return;
+    }
+    fprintf(o, "[TRACE] last %u of %u boundary crossings, oldest first:\n",
+            n, w_note_n);
+    for (i = w_note_n - n; i < w_note_n; i++) {
+        const char *lbl = k[w_note[i % NOTE_RING].kind & 3];
+        fprintf(o, "[TRACE]   tid %-5lu %s  addr=0x%08x esp=0x%08x\n",
+                w_note[i % NOTE_RING].tid, lbl,
+                w_note[i % NOTE_RING].a, w_note[i % NOTE_RING].b);
+    }
 }
 
 static void x86_watch_report(void)

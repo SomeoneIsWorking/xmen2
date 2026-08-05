@@ -22,8 +22,9 @@ file) but it is not the shortest road to a playable port. Status words mean:
 | PE32 reader: sections, imports, exports, IAT, proxy `.def` | `tools/pe.py` | **verified** — export count agrees with winedump; ordinal-import detector run against both classes (I003) |
 | Function/instruction export from Ghidra | `tools/ghidra_scripts/ExportFuncs.py` | **partial** — boundaries+instructions+call targets; 77–80% of exec bytes covered |
 | x86-32 → C translator | `tools/recomp.py` | **partial** — 500/521 libIGDisplay functions (96%); x87, SBB, REP string ops unhandled (I005) |
-| Interop: export shims + import stubs | `tools/recomp.py dll` | **verified** — ESP-switch both ways, callee-driven cleanup; no arg counts needed (C014) |
+| Interop: export shims + import stubs | `tools/recomp.py dll` | **verified** — ESP-switch both ways, callee-driven cleanup; no arg counts needed (C014). The shim now `jmp`s to `x86_enter_tramp` and pushes nothing that has to outlive the body: everything below the entry ESP belongs to the guest and to any host callee (C080) |
 | Runtime: CPU state, lazy flags, dispatch | `src/recomp/x86rt.h` | **partial** — flags verified indirectly via difftest; x87 state absent |
+| Private per-thread runtime stack | `tools/recomp.py` (`x86_rt_stack_*`, `x86_enter_tramp`) | **verified** — C080; the CPU struct and every runtime frame moved off the guest stack, which is what made the full 521-function build run. Refuses to run a body without one rather than falling back |
 | Instruction histogram (sound, not linear sweep) | `tools/ghidra_scripts/InstrHisto.py` | **verified** — C011 |
 
 ## Verification
@@ -32,8 +33,9 @@ file) but it is not the shortest road to a playable port. Status words mean:
 |---|---|---|
 | Differential test vs the original DLL | `tests/difftest.c` | **verified** — 116 functions, forced relocation, memory-write comparison; negative controls fire (I006, C016) |
 | Hybrid recomp DLL build, one command | `tools/build_recomp.sh` | **verified** — emit + runtime + dll + compile + stage, parameterised by the entry-point set; reproduces the running 156-function build (C078) |
-| Grow the recompiled set / find what breaks it | `tools/bisect_recomp.sh` | **verified** — delta-debugging with the real game as the verdict (loaded / alive / not-uniform), both controls measured first; loops over independent culprits (issue #9) |
-| Entry/exit watch on recompiled entry points | `src/x86watch.c` | **verified** — I019; `X2_WATCH=0x…`, both directions self-tested in the shipping DLL. Writes to a FILE: the game is a GUI-subsystem process with no stderr, and the stderr version was silently empty |
+| Grow the recompiled set / find what breaks it | `tools/bisect_recomp.sh` | **verified but no longer needed for this** — delta-debugging with the real game as the verdict (loaded / alive / not-uniform), both controls measured first. Its premise was wrong: the 'independent culprits' were all just functions that call a host function, and the defect was the entry path (C080), not the set |
+| Entry/exit watch on recompiled entry points | `src/x86watch.c` | **verified** — I019; `X2_WATCH=0x…`, both directions self-tested in the shipping DLL. Writes to a FILE: the game is a GUI-subsystem process with no stderr, and the stderr version was silently empty. Also reports where the runtime's C frame sits relative to `guest_esp` (`[STACK]`), which is what caught C080 |
+| In-process crash reporter | `src/x86fault.c` | **verified** — I020; names the module a fault EIP falls in, annotates stack slots with the call site that pushed them, and dumps the last 64 recompiled/host boundary crossings. Exists because winedbg under `wine explorer /desktop=` produces no output at all |
 | Wine oracle, headless, muted, multi-sample | `tools/run_shim.sh` | **verified** — I007 (supersedes distrusted I002) |
 | DLL drop-in staging | `tools/build_shim.sh` | **partial** — proxy and trace modes; recomp staged by hand |
 | Boundary call tracer | `tools/gen_trace.py` | **verified** — I004; "never called" summary still unreachable (harness SIGKILLs) |
@@ -42,7 +44,7 @@ file) but it is not the shortest road to a playable port. Status words mean:
 
 | module | status |
 |---|---|
-| `libIGDisplay.dll` | **partial** — 156 entry points recompiled and live in the running game, the rest forwarded. The all-521 build page-faults; bisected to `0x10002c00 igWindow::_instantiateFromPool` and then to MORE, independent culprits — the fault is inside its `igArkRegister` call (issue #9) |
+| `libIGDisplay.dll` | **partial** — ALL 521 translatable functions recompiled and the game renders (C080, issue #9 resolved). 357 exported entry points remain untranslated and forwarded. Survival is no longer the question; coverage is: only 9 distinct recompiled entry points are actually entered in a 30-second intro run, so most bodies are unexercised rather than verified |
 | `XMen2.exe` | **untouched** — 11,106 functions, 643,647 instructions, the eventual target |
 | other 15 `libIG*.dll` | **untouched** |
 

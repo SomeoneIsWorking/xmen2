@@ -97,7 +97,7 @@ echo "== 4/4 compile =="
 WATCH_SRC=""
 WATCH_DEF=""
 if [ "${WATCH:-0}" = "1" ]; then
-    WATCH_SRC="$ROOT/src/x86watch.c"
+    WATCH_SRC="$ROOT/src/x86watch.c $ROOT/src/x86fault.c"
     WATCH_DEF="-DX86_WATCH"
     echo "   (watch build: set X2_WATCH=0x… to report entry points)"
 fi
