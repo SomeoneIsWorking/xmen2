@@ -1,5 +1,5 @@
 diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
-index eafbf96..0e11aaa 100644
+index eafbf96..80db2f1 100644
 --- a/src/kernel/kernel_bridge.c
 +++ b/src/kernel/kernel_bridge.c
 @@ -73,24 +73,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
@@ -98,7 +98,15 @@ index eafbf96..0e11aaa 100644
      }
  
      /* Call the start routine synchronously through the recomp dispatch.
-@@ -401,27 +437,80 @@ static void bridge_NtAllocateVirtualMemory(void)
+@@ -289,6 +325,7 @@ static void bridge_PsCreateSystemThreadEx(void)
+  * referenced by tagged 32-bit tokens. */
+ static void   bridge_write_handle(uint32_t handle_va, HANDLE h);
+ static HANDLE bridge_take_handle(uint32_t token);
++static HANDLE bridge_read_handle(uint32_t token);
+ 
+ static void bridge_NtClose(void)
+ {
+@@ -401,27 +438,80 @@ static void bridge_NtAllocateVirtualMemory(void)
       * Only allocate new memory when MEM_RESERVE is requested.
       */
      if (base_hint != 0 && (alloc_type & 0x2000) == 0) {
@@ -186,7 +194,250 @@ index eafbf96..0e11aaa 100644
  
      g_eax = 0; /* STATUS_SUCCESS */
  }
-@@ -743,6 +832,115 @@ static void bridge_ExQueryPoolBlockSize(void)
+@@ -600,6 +690,242 @@ static void bridge_KeWaitForSingleObject(void)
+         (BOOLEAN)alertable, XBOX_TO_NATIVE(timeout_ptr));
+ }
+ 
++/*
++ * Semaphores, mutants and handle waits (ordinals 192, 193, 197, 222, 234).
++ *
++ * The implementations in kernel_sync.c / kernel_thread.c were always here;
++ * only these bridges were missing, so every one of those five calls fell
++ * through to "no bridge, returning 0" -- which reads as STATUS_SUCCESS while
++ * leaving the caller's out-parameter untouched. A game that creates a
++ * semaphore, is told it succeeded, and then waits on the uninitialised handle
++ * slot is not synchronised at all; it is running with every wait satisfied
++ * instantly. The five arrived together the moment the game reached its
++ * threading setup.
++ *
++ * Handles cross the boundary as 32-bit tokens (bridge_write_handle /
++ * bridge_read_handle), because a native HANDLE does not fit the 4-byte slot
++ * the guest reserves for it.
++ */
++
++/* ── NtCreateSemaphore (ordinal 193) ─────────────────────── */
++static void bridge_NtCreateSemaphore(void)
++{
++    uint32_t handle_ptr    = STACK_ARG(0);
++    uint32_t obj_attr_ptr  = STACK_ARG(1);
++    uint32_t initial_count = STACK_ARG(2);
++    uint32_t maximum_count = STACK_ARG(3);
++
++    HANDLE local_handle = NULL;
++    NTSTATUS status = xbox_NtCreateSemaphore(
++        &local_handle, XBOX_TO_NATIVE(obj_attr_ptr),
++        (LONG)initial_count, (LONG)maximum_count);
++
++    if (handle_ptr)
++        bridge_write_handle(handle_ptr, local_handle);
++
++    fprintf(stderr, "  [BRIDGE] NtCreateSemaphore: initial=%d max=%d → status=0x%08X token=0x%08X\n",
++            (int)initial_count, (int)maximum_count, (uint32_t)status,
++            handle_ptr ? (uint32_t)BRIDGE_MEM32(handle_ptr) : 0u);
++    fflush(stderr);
++
++    g_eax = (uint32_t)status;
++}
++
++/* ── NtReleaseSemaphore (ordinal 222) ────────────────────── */
++static void bridge_NtReleaseSemaphore(void)
++{
++    uint32_t token         = STACK_ARG(0);
++    uint32_t release_count = STACK_ARG(1);
++    uint32_t prev_count_va = STACK_ARG(2);
++
++    /* PreviousCount is a 32-bit LONG in guest memory; LONG is 32-bit on the
++     * host too, so the out-parameter can be written in place. */
++    NTSTATUS status = xbox_NtReleaseSemaphore(
++        bridge_read_handle(token), (LONG)release_count,
++        (PLONG)XBOX_TO_NATIVE(prev_count_va));
++
++    g_eax = (uint32_t)status;
++}
++
++/* ── NtCreateMutant (ordinal 192) ────────────────────────── */
++static void bridge_NtCreateMutant(void)
++{
++    uint32_t handle_ptr   = STACK_ARG(0);
++    uint32_t obj_attr_ptr = STACK_ARG(1);
++    uint32_t initial_owner = STACK_ARG(2);
++
++    HANDLE local_handle = NULL;
++    NTSTATUS status = xbox_NtCreateMutant(
++        &local_handle, XBOX_TO_NATIVE(obj_attr_ptr), (BOOLEAN)initial_owner);
++
++    if (handle_ptr)
++        bridge_write_handle(handle_ptr, local_handle);
++
++    fprintf(stderr, "  [BRIDGE] NtCreateMutant: initial_owner=%u → status=0x%08X token=0x%08X\n",
++            initial_owner, (uint32_t)status,
++            handle_ptr ? (uint32_t)BRIDGE_MEM32(handle_ptr) : 0u);
++    fflush(stderr);
++
++    g_eax = (uint32_t)status;
++}
++
++/* ── NtReleaseMutant (ordinal 221) ───────────────────────── */
++static void bridge_NtReleaseMutant(void)
++{
++    uint32_t token         = STACK_ARG(0);
++    uint32_t prev_count_va = STACK_ARG(1);
++
++    /* PreviousCount is a 32-bit LONG, same width in guest and host. */
++    g_eax = (uint32_t)xbox_NtReleaseMutant(
++        bridge_read_handle(token), (PLONG)XBOX_TO_NATIVE(prev_count_va));
++}
++
++/* ── NtDuplicateObject (ordinal 197) ─────────────────────── */
++static void bridge_NtDuplicateObject(void)
++{
++    uint32_t source_token  = STACK_ARG(0);
++    uint32_t target_ptr    = STACK_ARG(1);
++    uint32_t options       = STACK_ARG(2);
++
++    /* The duplicate must be tokenised like any other handle, so take it into
++     * a local rather than letting DuplicateHandle write a 64-bit pointer into
++     * the guest's 4-byte slot. */
++    HANDLE duplicate = NULL;
++    NTSTATUS status = xbox_NtDuplicateObject(
++        bridge_read_handle(source_token), &duplicate, options);
++
++    if (target_ptr && status == 0)
++        bridge_write_handle(target_ptr, duplicate);
++
++    g_eax = (uint32_t)status;
++}
++
++/* ── NtWaitForSingleObjectEx (ordinal 234) ───────────────── */
++static void bridge_NtWaitForSingleObjectEx(void)
++{
++    uint32_t token       = STACK_ARG(0);
++    uint32_t wait_mode   = STACK_ARG(1);
++    uint32_t alertable   = STACK_ARG(2);
++    uint32_t timeout_ptr = STACK_ARG(3);
++
++    g_eax = (uint32_t)xbox_NtWaitForSingleObjectEx(
++        bridge_read_handle(token), (KPROCESSOR_MODE)wait_mode,
++        (BOOLEAN)alertable, XBOX_TO_NATIVE(timeout_ptr));
++}
++
++/*
++ * ANSI_STRING marshalling (ordinals 279, 289, 215).
++ *
++ * The guest's ANSI_STRING is 8 bytes: Length(2) MaximumLength(2) Buffer(4, a
++ * guest VA). The host's XBOX_ANSI_STRING is 16, because PCHAR is an 8-byte
++ * pointer with padding to match. So a guest ANSI_STRING can NEVER be handed
++ * to the kernel_rtl.c implementation by pointer: doing so would read the
++ * length from the right place, the buffer from the wrong one, and write eight
++ * bytes past the end of the guest's struct. These bridges convert field by
++ * field, and keep Buffer a guest VA on the guest side of the boundary.
++ */
++
++/* Read a guest ANSI_STRING into a native one whose Buffer points into the
++ * guest image. Read-only uses (compare, print) -- do not write it back. */
++static void bridge_read_ansi_string(uint32_t str_va, XBOX_ANSI_STRING* out)
++{
++    if (!str_va) {
++        out->Length = out->MaximumLength = 0;
++        out->Buffer = NULL;
++        return;
++    }
++    out->Length        = (USHORT)BRIDGE_MEM16(str_va + 0);
++    out->MaximumLength = (USHORT)BRIDGE_MEM16(str_va + 2);
++    {
++        uint32_t buf_va = BRIDGE_MEM32(str_va + 4);
++        out->Buffer = buf_va ? (PCHAR)XBOX_TO_NATIVE(buf_va) : NULL;
++    }
++}
++
++/* ── RtlInitAnsiString (ordinal 289) ─────────────────────── */
++static void bridge_RtlInitAnsiString(void)
++{
++    uint32_t dest_va = STACK_ARG(0);
++    uint32_t src_va  = STACK_ARG(1);
++
++    if (!dest_va) {
++        g_eax = 0;
++        return;
++    }
++
++    /* Written here rather than by calling xbox_RtlInitAnsiString, because the
++     * destination lives in guest memory and its Buffer field is a 4-byte VA.
++     * The whole point of this call is to leave a usable pointer behind: while
++     * it was unbridged the caller's struct kept whatever was on its stack and
++     * the next write through Buffer went to a near-null address. */
++    if (src_va) {
++        const char* src = (const char*)XBOX_TO_NATIVE(src_va);
++        USHORT len = (USHORT)strlen(src);
++        BRIDGE_MEM16(dest_va + 0) = len;
++        BRIDGE_MEM16(dest_va + 2) = (USHORT)(len + 1);
++        BRIDGE_MEM32(dest_va + 4) = src_va;
++    } else {
++        BRIDGE_MEM16(dest_va + 0) = 0;
++        BRIDGE_MEM16(dest_va + 2) = 0;
++        BRIDGE_MEM32(dest_va + 4) = 0;
++    }
++
++    g_eax = 0;   /* VOID; leave eax defined rather than stale */
++}
++
++/* ── RtlEqualString (ordinal 279) ────────────────────────── */
++static void bridge_RtlEqualString(void)
++{
++    uint32_t str1_va = STACK_ARG(0);
++    uint32_t str2_va = STACK_ARG(1);
++    uint32_t case_insensitive = STACK_ARG(2);
++
++    XBOX_ANSI_STRING s1, s2;
++    bridge_read_ansi_string(str1_va, &s1);
++    bridge_read_ansi_string(str2_va, &s2);
++
++    g_eax = (uint32_t)xbox_RtlEqualString(&s1, &s2, (BOOLEAN)case_insensitive);
++}
++
++/* NtQuerySymbolicLinkObject (ordinal 215) is bridged further down, next to
++ * NtOpenSymbolicLinkObject whose synthetic handle it answers. It was written
++ * but never entered in bridge_for_ordinal, which is why it warned. */
++
++/* ── ExQueryNonVolatileSetting (ordinal 24) ──────────────── */
++static void bridge_ExQueryNonVolatileSetting(void)
++{
++    uint32_t value_index = STACK_ARG(0);
++    uint32_t type_va     = STACK_ARG(1);
++    uint32_t value_va    = STACK_ARG(2);
++    uint32_t value_len   = STACK_ARG(3);
++    uint32_t retlen_va   = STACK_ARG(4);
++
++    /* Every out-parameter here is a plain ULONG or a raw byte buffer, so the
++     * guest addresses can be translated and passed straight through. */
++    NTSTATUS status = xbox_ExQueryNonVolatileSetting(
++        value_index, (PULONG)XBOX_TO_NATIVE(type_va),
++        XBOX_TO_NATIVE(value_va), value_len,
++        (PULONG)XBOX_TO_NATIVE(retlen_va));
++
++    fprintf(stderr, "  [BRIDGE] ExQueryNonVolatileSetting: index=%u len=%u → status=0x%08X\n",
++            value_index, value_len, (uint32_t)status);
++    fflush(stderr);
++
++    g_eax = (uint32_t)status;
++}
++
++/* ── HalRegisterShutdownNotification (ordinal 47) ─────────── */
++static void bridge_HalRegisterShutdownNotification(void)
++{
++    uint32_t registration_va = STACK_ARG(0);
++    uint32_t do_register     = STACK_ARG(1);
++
++    xbox_HalRegisterShutdownNotification(
++        XBOX_TO_NATIVE(registration_va), (BOOLEAN)do_register);
++
++    g_eax = 0;   /* VOID */
++}
++
+ /* ── NtYieldExecution (ordinal 238) ──────────────────────── */
+ static void bridge_NtYieldExecution(void)
+ {
+@@ -743,6 +1069,115 @@ static void bridge_ExQueryPoolBlockSize(void)
      g_eax = 0;
  }
  
@@ -302,7 +553,7 @@ index eafbf96..0e11aaa 100644
  /* ── RtlNtStatusToDosError (ordinal 301) ─────────────────
   * ULONG RtlNtStatusToDosError(NTSTATUS Status)
   *
-@@ -845,10 +1043,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
+@@ -845,14 +1280,37 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
          BRIDGE_MEM32(handle_va) = bridge_handle_token(h);
  }
  
@@ -324,7 +575,26 @@ index eafbf96..0e11aaa 100644
      if ((token & 0xFF000000u) == BRIDGE_HANDLE_TAG) {
          uint32_t i = token & BRIDGE_HANDLE_MASK;
          return (i > 0 && i < BRIDGE_HANDLE_MAX) ? s_handle_table[i] : NULL;
-@@ -906,6 +1112,14 @@ static NTSTATUS bridge_create_file_impl(
+     }
++    /*
++     * NT pseudo-handles are NEGATIVE numbers: -1 is the current process, -2
++     * the current thread, and the host side spells them (HANDLE)(LONG_PTR)-1
++     * and -2, which on x86-64 are 0xFFFFFFFFFFFFFFFF and ...FE. The guest
++     * spells them in 32 bits, so a plain widening conversion produces
++     * 0x00000000FFFFFFFE, which equals neither -- and win32_compat, seeing a
++     * value that is not one of its pseudo-handles, treats it as a pointer to
++     * a w32_object. NtDuplicateObject(NtCurrentThread(), ...) -- the ordinary
++     * way a title gets a real handle to itself -- then incremented a refcount
++     * at 0xFFFFFFFE + 4, which is exactly the 0x100000002 write that crashed
++     * the run. Sign-extend so a negative handle stays negative.
++     */
++    if ((int32_t)token < 0 && (int32_t)token >= -2)
++        return (HANDLE)(intptr_t)(int32_t)token;
++
+     /* Untagged value: synthetic/dummy handle -- pass through unchanged. */
+     return (HANDLE)(uintptr_t)token;
+ }
+@@ -906,6 +1364,14 @@ static NTSTATUS bridge_create_file_impl(
      st = xbox_NtCreateFile(&h, access, &oa, &ios, NULL,
                             file_attrs, share, disposition, options);
  
@@ -339,7 +609,7 @@ index eafbf96..0e11aaa 100644
      if (NT_SUCCESS(st)) {
          bridge_write_handle(handle_va, h);
          bridge_write_iostatus(iostatus_va, ios.Status, (uint32_t)ios.Information);
-@@ -1307,46 +1521,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1307,46 +1773,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case   4: return  4;  /* AvSetSavedDataAddress(1) */
  
      /* ── Unknown stubs ── */
@@ -410,7 +680,7 @@ index eafbf96..0e11aaa 100644
      case 107: return 12;  /* KeInitializeDpc(3) */
      case 109: return 28;  /* KeInitializeInterrupt(7) */
      case 113: return  8;  /* KeInitializeTimerEx(2) */
-@@ -1411,15 +1623,21 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1411,15 +1875,21 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 210: return  8;  /* NtQueryFullAttributesFile(2) */
      case 211: return 20;  /* NtQueryInformationFile(5) */
      case 215: return 12;  /* NtQuerySymbolicLinkObject(3) */
@@ -435,7 +705,7 @@ index eafbf96..0e11aaa 100644
      case 236: return 32;  /* NtWriteFile(8) */
      case 238: return  0;  /* NtYieldExecution(void) */
  
-@@ -1434,7 +1652,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1434,7 +1904,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
  
      /* ── Threading ── */
      case 255: return 40;  /* PsCreateSystemThreadEx(10) */
@@ -444,7 +714,7 @@ index eafbf96..0e11aaa 100644
      case 258: return  4;  /* PsTerminateSystemThread(1) */
      /* case 259: DATA export - PsThreadObjectType */
  
-@@ -1452,28 +1670,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1452,28 +1922,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 305: return  8;  /* RtlTimeToTimeFields(2) */
      case 308: return 12;  /* RtlUnicodeStringToAnsiString(3) */
      case 312: return 16;  /* RtlUnwind(4) */
@@ -528,7 +798,7 @@ index eafbf96..0e11aaa 100644
      }
  }
  
-@@ -1514,9 +1772,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1514,9 +2024,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 199: return bridge_NtFreeVirtualMemory;
  
      /* Pool */
@@ -541,8 +811,23 @@ index eafbf96..0e11aaa 100644
  
      /* IRQL */
      case 160: return bridge_KfRaiseIrql;
-@@ -1546,14 +1804,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1544,16 +2054,29 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+     case 145: return bridge_KeSetEvent;
+     case 159: return bridge_KeWaitForSingleObject;
      case 238: return bridge_NtYieldExecution;
++    case 192: return bridge_NtCreateMutant;
++    case 221: return bridge_NtReleaseMutant;
++    case 193: return bridge_NtCreateSemaphore;
++    case 197: return bridge_NtDuplicateObject;
++    case 222: return bridge_NtReleaseSemaphore;
++    case 234: return bridge_NtWaitForSingleObjectEx;
++
++    /* Strings / settings */
++    case 279: return bridge_RtlEqualString;
++    case 289: return bridge_RtlInitAnsiString;
++    case 215: return bridge_NtQuerySymbolicLinkObject;
++    case  24: return bridge_ExQueryNonVolatileSetting;
++    case  47: return bridge_HalRegisterShutdownNotification;
  
      /* Hardware */
 -    case  47: return bridge_HalReadSMCTrayState;
@@ -559,7 +844,7 @@ index eafbf96..0e11aaa 100644
      case 188: return bridge_NtCreateDirectoryObject;
      case 246: return bridge_ObReferenceObjectByHandle;
  
-@@ -1562,6 +1820,8 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1562,6 +2085,8 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 178: return bridge_MmPersistContiguousMemory;
  
      /* RTL */
@@ -568,7 +853,7 @@ index eafbf96..0e11aaa 100644
      case 301: return bridge_RtlNtStatusToDosError;
      case 302: return bridge_RtlRaiseException;
  
-@@ -1733,6 +1993,9 @@ void xbox_kernel_bridge_init(void)
+@@ -1733,6 +2258,9 @@ void xbox_kernel_bridge_init(void)
      /* Initialize kernel data export values first */
      kernel_data_init();
  
@@ -578,7 +863,7 @@ index eafbf96..0e11aaa 100644
      for (i = 0; i < g_thunk_table_count; i++) {
          uint32_t va = g_thunk_table_base + i * 4;
          uint32_t current = BRIDGE_MEM32(va);
-@@ -1755,7 +2018,19 @@ void xbox_kernel_bridge_init(void)
+@@ -1755,7 +2283,19 @@ void xbox_kernel_bridge_init(void)
  
              /* FUNCTION export: use synthetic VA for dispatch */
              g_slot_bridges[i] = bridge_for_ordinal(ordinal);
@@ -599,7 +884,7 @@ index eafbf96..0e11aaa 100644
              if (g_slot_bridges[i]) {
                  bridged++;
              } else {
-@@ -1779,6 +2054,24 @@ void xbox_kernel_bridge_init(void)
+@@ -1779,6 +2319,24 @@ void xbox_kernel_bridge_init(void)
  
      fprintf(stderr, "  Kernel thunk bridge: %d/%d resolved (%d bridged, %d stub)\n",
              resolved, g_thunk_table_count, bridged, unbridged);

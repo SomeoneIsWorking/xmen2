@@ -49,6 +49,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Bulk vtable harvest | `tools/xbox_vtable_seeds.py` | **verified** — 1288 missing functions in one pass, every filter's rejection count printed (C054) |
 | Function detection behind embedded data | `patches/xboxrecomp/0003-*.patch` | **verified** — a candidate the linear sweep desynchronised past is decoded from its own address; 148 recovered, and the 34 that still decode to nothing are printed by address rather than dropped (C073) |
 | Unresolved-indirect-call tally | `xbox/src/recomp_manual.c` | **verified** — I008; fatal by default (`XBOX_ICALL_CONTINUE=1` to survey); `XBOX_ICALL_SELFTEST=1` proves both miss paths fire |
+| Guest call-site attribution on every call | `xbox/src/recomp_manual.c`, lifter | **verified** — I018; every `RECOMP_DCALL`/`ICALL_SAFE`/`ITAIL` carries the call instruction's own VA, so a failure reads `guest 0x002A975F (sub_002A9570+0x1EF)`. The native stack cannot supply this: a compiled-C offset does not map to a guest offset |
 | Indirect-call argument/return watch | `xbox/src/recomp_manual.c` | **verified** — I012; `XBOX_ICALL_WATCH=0x…,0x…` prints args and eax per call, `XBOX_ICALL_WATCH_SELFTEST=1` proves both the positive and the NEVER-CALLED negative. Use it instead of gdb line breakpoints, which lie on this -O2 build |
 | Runtime discovery loop, automated | `tools/xbox_discover.sh` | **verified** — run → seed → re-lift → repeat; stops on convergence, on a repeat, or on an out-of-image target, and says which |
 | Register model | `xbox/src/recomp_types.h` | **verified** — every register global including ebp; the g_seh_ebp bridge is gone (C051) |
@@ -58,13 +59,13 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Callee-saved + stack-bounds checks | `xbox/src/recomp_manual.c` | **verified** — I011; every indirect call checked, clean case stated; found the ordinal-217 defect (C060) |
 | Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |
 | Placed virtual reservations | `patches/xboxrecomp/0005-*.patch` | **verified** — the query and the allocator describe the SAME address space: only the arena's unused tail is MEM_FREE, and a reservation that names its address gets that address or nothing (C070, C071) |
-| Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection; silently-empty stubs 7998 → 348 (C048) |
+| Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection, and a body may now cross a detected function that sits INSIDE it (an interior branch lands mid-block; a tail call lands on a function start). Silently-empty stubs 7998 → 348 → 168, and none is called (C048, C077, issue #8) |
 | Vectored exception handling on Linux | `patches/xboxrecomp/0004-*.patch` | **verified** — `sigaction`-based; was a stub returning NULL, so every handler was discarded. The crash reporter now fires (C055) |
 | NV2A GPU emulation | `vendor/xboxrecomp/src/nv2a`, wired in `xbox/src/main.c` | **partial** — initialises (VRAM 64 MB, RAMIN 1 MB, MMIO hook) and the VEH routes GPU faults to it; the decoder is no longer `#if _WIN32`. Not yet exercised: the title dies in the CRT heap first (C053, C055) |
 | Host D3D8 → OpenGL | `vendor/xboxrecomp/src/d3d` | reference — the NV2A PGRAPH translator emits onto this device; not called directly by game code |
 | Native CRT heap override | `xbox/src/recomp_manual.c` (`-Wl,--wrap`) | **debt** — bypasses the C056 heap defect; recompiled bodies still linked, `XBOX_NATIVE_HEAP=0` restores them (C057, `xb-nheap`) |
 | Empty-stub reporter | generated `recomp_stubs_unresolved.c` | **verified** — the 276 undetected-call stubs report themselves; found 0x0010C470 immediately (C058) |
-| Xbox game execution | — | **partial** — 7648 indirect calls with zero unresolved, **every callee-saved register round-trips**, stack balanced, 8 MB game allocation. Faults reading 0x81ED8BCD. Nothing renders |
+| Xbox game execution | — | **partial** — 67262 indirect calls, **every one of 94088 checked calls restores ebx/esi/edi/ebp**, esp stayed in the guest stack throughout, no empty stub called. Stops on one missing function (0x0029CA50), which is ordinary discovery-loop input. Nothing renders yet |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.

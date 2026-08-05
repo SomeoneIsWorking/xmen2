@@ -57,6 +57,12 @@ typedef void (*recomp_func_t)(void);
 
 /* ── Register state (defined in xbox_memory_layout.c) ──────── */
 
+/* Generated alongside the dispatch table: the start VA of the function
+   containing an address, or 0 when the address is below every function. This
+   file is not a consumer of recomp_types.h, so it declares what it uses. */
+extern uint32_t recomp_enclosing_func(uint32_t xbox_va);
+const char *recomp_site_str(uint32_t site);
+
 extern uint32_t g_eax;
 extern uint32_t g_ecx;
 extern uint32_t g_esp;
@@ -145,7 +151,7 @@ int recomp_abicheck_enabled(void)
    against the bytes rather than assumed. */
 #define AULLDVRM_VA   0x003DC1B0u
 
-void recomp_abicheck_report_violation(uint32_t va, const char *reg,
+void recomp_abicheck_report_violation(uint32_t va, uint32_t site, const char *reg,
                                       uint32_t before, uint32_t after)
 {
     if (va == SEH_PROLOG_VA || va == SEH_EPILOG_VA ||
@@ -157,8 +163,9 @@ void recomp_abicheck_report_violation(uint32_t va, const char *reg,
     if (abi_count < ABI_MISS_MAX) abi_va[abi_count++] = va;
 
     fprintf(stderr, "[ABI] 0x%08X did not restore %s: 0x%08X -> 0x%08X."
-                    " It is callee-saved, so the CALLER is now corrupt.\n",
-            va, reg, before, after);
+                    " It is callee-saved, so the CALLER is now corrupt."
+                    " Called from %s.\n",
+            va, reg, before, after, recomp_site_str(site));
     fflush(stderr);
 }
 
@@ -181,7 +188,7 @@ static uint32_t esp_va[ESP_MISS_MAX];
 static uint64_t esp_hits[ESP_MISS_MAX];
 static int      esp_count;
 
-void recomp_esp_check(uint32_t va)
+void recomp_esp_check(uint32_t va, uint32_t site)
 {
     if (g_esp >= STACK_LO && g_esp < STACK_HI) return;
     esp_violations++;
@@ -193,10 +200,10 @@ void recomp_esp_check(uint32_t va)
     esp_count++;
 
     fprintf(stderr, "[ESP] esp = 0x%08X is OUTSIDE the guest stack"
-                    " (0x%08X..0x%08X) after the call to 0x%08X."
+                    " (0x%08X..0x%08X) after the call to 0x%08X from %s."
                     " The simulated stack is out of balance; every POP from"
                     " here reads memory that is not a saved register.\n",
-            g_esp, STACK_LO, STACK_HI, va);
+            g_esp, STACK_LO, STACK_HI, va, recomp_site_str(site));
     fflush(stderr);
 }
 
@@ -659,17 +666,46 @@ void recomp_print_native_stack(void)
 #endif
 }
 
-static void icall_miss_fatal(uint32_t va, const char *kind)
+/*
+ * Render a guest call-site VA as "0x........ (sub_XXXXXXXX+0xNN)".
+ *
+ * The enclosing function comes from the generated dispatch table, which is
+ * sorted by VA, so this is the same data the run dispatches through -- not a
+ * second list that can drift out of step with it.
+ *
+ * A site of 0 means the caller had none to give (a hand-written call site, or
+ * the self-test). Say that instead of printing "0x00000000", which reads as a
+ * real address and sends the reader looking for an instruction there.
+ */
+const char *recomp_site_str(uint32_t site)
+{
+    static char buf[64];
+    if (!site) {
+        snprintf(buf, sizeof buf, "an unrecorded call site");
+        return buf;
+    }
+    uint32_t owner = recomp_enclosing_func(site);
+    if (owner)
+        snprintf(buf, sizeof buf, "guest 0x%08X (sub_%08X+0x%X)",
+                 site, owner, site - owner);
+    else
+        snprintf(buf, sizeof buf, "guest 0x%08X (no known enclosing function)",
+                 site);
+    return buf;
+}
+
+static void icall_miss_fatal(uint32_t va, uint32_t site, const char *kind)
 {
     if (icall_should_continue() || g_icall_selftest_active)
         return;
     fprintf(stderr,
-        "[ICALL] FATAL: %s indirect call to 0x%08X. The original would have\n"
+        "[ICALL] FATAL: %s indirect call to 0x%08X, from %s.\n"
+        "        The original would have\n"
         "        jumped there; we cannot, and continuing would execute code the\n"
         "        game never runs. Stopping here so the cause is the last thing\n"
         "        in this log, not the symptom.\n"
         "        Re-run with XBOX_ICALL_CONTINUE=1 to survey further targets.\n",
-        kind, va);
+        kind, va, recomp_site_str(site));
     recomp_print_native_stack();
     recomp_icall_report();
     nh_report();
@@ -679,16 +715,16 @@ static void icall_miss_fatal(uint32_t va, const char *kind)
     abort();
 }
 
-void recomp_icall_fail_log(uint32_t va)
+void recomp_icall_fail_log(uint32_t va, uint32_t site)
 {
     icall_miss_record(va, 0);
-    icall_miss_fatal(va, "unresolved");
+    icall_miss_fatal(va, site, "unresolved");
 }
 
-void recomp_icall_range_skip_log(uint32_t va)
+void recomp_icall_range_skip_log(uint32_t va, uint32_t site)
 {
     icall_miss_record(va, 1);
-    icall_miss_fatal(va, "out-of-image");
+    icall_miss_fatal(va, site, "out-of-image");
 }
 
 /*
@@ -712,7 +748,7 @@ void recomp_icall_range_skip_log(uint32_t va)
  * unenumerated switch table), never a missing function, and must never be
  * seeded.
  */
-void recomp_itail_fail_log(uint32_t va)
+void recomp_itail_fail_log(uint32_t va, uint32_t site)
 {
     icall_miss_record(va, 2);
     fprintf(stderr,
@@ -723,9 +759,10 @@ void recomp_itail_fail_log(uint32_t va)
         "        DO NOT SEED IT. Seeding builds a function with no prologue\n"
         "        and the run continues corrupted. Fix the table instead: find\n"
         "        the 'indirect tail jmp' fallback in the caller's generated C\n"
-        "        and see _analyze_switch_table in the lifter.\n", va);
+        "        and see _analyze_switch_table in the lifter.\n"
+        "        The jump is at %s.\n", va, recomp_site_str(site));
     fflush(stderr);
-    icall_miss_fatal(va, "unresolved tail-jump");
+    icall_miss_fatal(va, site, "unresolved tail-jump");
 }
 
 extern int xbox_kernel_call_count(void);
@@ -777,8 +814,28 @@ void recomp_icall_selftest(void)
 
     g_icall_selftest_active = 1;
 
-    recomp_icall_fail_log(0x00123457u);        /* odd, unaligned, not a function */
-    recomp_icall_range_skip_log(0x00500000u);  /* inside the skipped window */
+    recomp_icall_fail_log(0x00123457u, SEH_PROLOG_VA + 4);  /* odd, unaligned, not a function */
+    recomp_icall_range_skip_log(0x00500000u, 0);             /* inside the skipped window */
+
+    /* The call-site attribution is an instrument too, so prove it against
+       BOTH classes rather than trusting that it looks right. A VA four bytes
+       into a known function must resolve to that function; a VA below every
+       function must resolve to nothing. Getting only the positive right would
+       still pass with a lookup that returns the nearest entry unconditionally,
+       and that lookup names a wrong function for every unmapped site. */
+    uint32_t owner = recomp_enclosing_func(SEH_PROLOG_VA + 4);
+    uint32_t none  = recomp_enclosing_func(1u);
+    if (owner != SEH_PROLOG_VA || none != 0) {
+        fprintf(stderr, "[ICALL] SELFTEST FAILED: call-site attribution is"
+                        " wrong. Inside 0x%08X resolved to 0x%08X (want"
+                        " 0x%08X); below the image resolved to 0x%08X"
+                        " (want 0). Every 'called from' in this log is"
+                        " unreliable.\n",
+                SEH_PROLOG_VA, owner, SEH_PROLOG_VA, none);
+        fflush(stderr);
+        g_icall_selftest_active = 0;
+        return;
+    }
 
     if (g_miss_count != before_count + 2 || g_miss_total != before_tot + 2) {
         fprintf(stderr, "[ICALL] SELFTEST FAILED: miss counters did not move"
@@ -794,7 +851,9 @@ void recomp_icall_selftest(void)
     g_miss_count -= 2;
     g_miss_total -= 2;
     g_icall_selftest_active = 0;
-    fprintf(stderr, "[ICALL] SELFTEST passed: both miss paths report.\n");
+    fprintf(stderr, "[ICALL] SELFTEST passed: both miss paths report, and"
+                    " call-site attribution is right in both directions"
+                    " (inside a function, and below every function).\n");
     fflush(stderr);
 }
 

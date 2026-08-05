@@ -116,15 +116,15 @@ extern volatile uint64_t g_icall_count;
  * Implement this in your game-specific code to log diagnostics.
  * The va parameter is the Xbox VA that failed to resolve.
  */
-void recomp_icall_fail_log(uint32_t va);
-void recomp_itail_fail_log(uint32_t va);   /* unenumerated switch table, NOT a missing function */
+void recomp_icall_fail_log(uint32_t va, uint32_t site);
+void recomp_itail_fail_log(uint32_t va, uint32_t site);   /* unenumerated switch table, NOT a missing function */
 
 /**
  * Called when an indirect call target is discarded unlooked-at because it
  * fell in the macro's "garbage VA" window. Counted separately from a real
  * dispatch miss so that a hidden real target cannot hide in that window.
  */
-void recomp_icall_range_skip_log(uint32_t va);
+void recomp_icall_range_skip_log(uint32_t va, uint32_t site);
 
 /**
  * Print the tally of indirect calls that did NOT execute. Called at the end
@@ -139,10 +139,10 @@ void recomp_icall_selftest(void);
 /* Callee-saved contract checking for indirect calls; see recomp_manual.c. */
 int  recomp_abicheck_enabled(void);
 void recomp_abicheck_count(void);
-void recomp_abicheck_report_violation(uint32_t va, const char *reg,
+void recomp_abicheck_report_violation(uint32_t va, uint32_t site, const char *reg,
                                       uint32_t before, uint32_t after);
 void recomp_abicheck_report(void);
-void recomp_esp_check(uint32_t va);
+void recomp_esp_check(uint32_t va, uint32_t site);
 void recomp_esp_report(void);
 
 /**
@@ -152,23 +152,28 @@ void recomp_esp_report(void);
  * means a callee that fails to restore ebx/esi/edi/ebp is named at the call,
  * instead of corrupting its caller and surfacing somewhere unrelated. When
  * checking is off this is exactly a bare call.
+ *
+ * `site` is the guest VA of the call instruction itself. Without it a report
+ * names the callee and nothing else, and the native return address cannot
+ * fill the gap -- an offset into the compiled C body does not map back to an
+ * offset into the guest function.
  */
-#define RECOMP_DCALL(fn, va) do { \
+#define RECOMP_DCALL(fn, va, site) do { \
     if (recomp_abicheck_enabled()) { \
         uint32_t _sb = g_ebx, _ss = g_esi, _sd = g_edi, _sp = g_seh_ebp; \
         fn(); \
         recomp_abicheck_count(); \
-        RECOMP_ABI_ONE((va), "ebx", _sb, g_ebx); \
-        RECOMP_ABI_ONE((va), "esi", _ss, g_esi); \
-        RECOMP_ABI_ONE((va), "edi", _sd, g_edi); \
-        RECOMP_ABI_ONE((va), "ebp", _sp, g_seh_ebp); \
+        RECOMP_ABI_ONE((va), (site), "ebx", _sb, g_ebx); \
+        RECOMP_ABI_ONE((va), (site), "esi", _ss, g_esi); \
+        RECOMP_ABI_ONE((va), (site), "edi", _sd, g_edi); \
+        RECOMP_ABI_ONE((va), (site), "ebp", _sp, g_seh_ebp); \
     } else fn(); \
 } while (0)
 
 /* Compare one callee-saved register across a call. */
-#define RECOMP_ABI_ONE(va, name, saved, now) \
+#define RECOMP_ABI_ONE(va, site, name, saved, now) \
     do { if ((saved) != (now)) \
-             recomp_abicheck_report_violation((va), name, (saved), (now)); \
+             recomp_abicheck_report_violation((va), (site), name, (saved), (now)); \
     } while (0)
 
 /* ================================================================
@@ -376,6 +381,14 @@ typedef void (*recomp_func_t)(void);
  */
 recomp_func_t recomp_lookup(uint32_t xbox_va);
 
+/** Start VA of the function containing xbox_va, or 0 if none is below it.
+ *  Generated alongside the dispatch table, so it cannot drift from it. */
+uint32_t recomp_enclosing_func(uint32_t xbox_va);
+
+/** Format a guest call-site VA as "guest 0x… (sub_…+0xNN)" for diagnostics.
+ *  Returns a pointer to a static buffer: one call per fprintf. */
+const char *recomp_site_str(uint32_t site);
+
 /**
  * Look up a kernel thunk function by its synthetic VA.
  * Kernel thunks live at 0xFE000000+ (synthetic addresses assigned
@@ -429,14 +442,15 @@ void recomp_icall_watch_selftest(void);
  * Your .text section typically spans 0x00010000 to ~0x003XXXXX.
  * Any VA outside .text and below 0xFE000000 is likely garbage.
  */
-#define RECOMP_ICALL(xbox_va) do { \
+#define RECOMP_ICALL(xbox_va, site) do { \
     uint32_t _va = (uint32_t)(xbox_va); \
+    uint32_t _site = (uint32_t)(site); \
     g_icall_trace[g_icall_trace_idx & (ICALL_TRACE_SIZE-1)] = _va; \
     g_icall_trace_idx++; \
     g_icall_count++; \
     /* Skip garbage VAs outside code section + kernel thunk range */ \
     if (!XBOX_VA_IS_CODE(_va) && _va < 0xFE000000) { \
-        recomp_icall_range_skip_log(_va); \
+        recomp_icall_range_skip_log(_va, _site); \
         g_esp += 4; eax = 0; break; \
     } \
     recomp_func_t _fn = recomp_lookup_manual(_va); \
@@ -447,7 +461,7 @@ void recomp_icall_watch_selftest(void);
         _fn(); \
         RECOMP_WATCH_POST(_va); \
     } \
-    else { recomp_icall_fail_log(_va); g_esp += 4; eax = 0; } \
+    else { recomp_icall_fail_log(_va, _site); g_esp += 4; eax = 0; } \
 } while(0)
 
 /**
@@ -458,13 +472,14 @@ void recomp_icall_watch_selftest(void);
  * Use this when the caller pushes arguments that the callee would
  * normally clean up (stdcall convention).
  */
-#define RECOMP_ICALL_SAFE(xbox_va, saved_esp) do { \
+#define RECOMP_ICALL_SAFE(xbox_va, saved_esp, site) do { \
     uint32_t _va = (uint32_t)(xbox_va); \
+    uint32_t _site = (uint32_t)(site); \
     g_icall_trace[g_icall_trace_idx & (ICALL_TRACE_SIZE-1)] = _va; \
     g_icall_trace_idx++; \
     g_icall_count++; \
     if (!XBOX_VA_IS_CODE(_va) && _va < 0xFE000000) { \
-        recomp_icall_range_skip_log(_va); \
+        recomp_icall_range_skip_log(_va, _site); \
         g_esp = (saved_esp); eax = 0; break; \
     } \
     recomp_func_t _fn = recomp_lookup_manual(_va); \
@@ -476,15 +491,15 @@ void recomp_icall_watch_selftest(void);
             uint32_t _sb = g_ebx, _ss = g_esi, _sd = g_edi, _sp = g_seh_ebp; \
             _fn(); \
             recomp_abicheck_count(); \
-            recomp_esp_check(_va); \
-            RECOMP_ABI_ONE(_va, "ebx", _sb, g_ebx); \
-            RECOMP_ABI_ONE(_va, "esi", _ss, g_esi); \
-            RECOMP_ABI_ONE(_va, "edi", _sd, g_edi); \
-            RECOMP_ABI_ONE(_va, "ebp", _sp, g_seh_ebp); \
+            recomp_esp_check(_va, _site); \
+            RECOMP_ABI_ONE(_va, _site, "ebx", _sb, g_ebx); \
+            RECOMP_ABI_ONE(_va, _site, "esi", _ss, g_esi); \
+            RECOMP_ABI_ONE(_va, _site, "edi", _sd, g_edi); \
+            RECOMP_ABI_ONE(_va, _site, "ebp", _sp, g_seh_ebp); \
         } else _fn(); \
         RECOMP_WATCH_POST(_va); \
     } \
-    else { recomp_icall_fail_log(_va); g_esp = (saved_esp); eax = 0; } \
+    else { recomp_icall_fail_log(_va, _site); g_esp = (saved_esp); eax = 0; } \
 } while(0)
 
 /**
@@ -494,12 +509,12 @@ void recomp_icall_watch_selftest(void);
  * Used for tail-call optimization where the original code uses
  * jmp [reg] instead of call [reg].
  */
-#define RECOMP_ITAIL(xbox_va) do { \
+#define RECOMP_ITAIL(xbox_va, site) do { \
     recomp_func_t _fn = recomp_lookup_manual((uint32_t)(xbox_va)); \
     if (!_fn) _fn = recomp_lookup((uint32_t)(xbox_va)); \
     if (!_fn) _fn = recomp_lookup_kernel((uint32_t)(xbox_va)); \
     if (_fn) _fn(); \
-    else recomp_itail_fail_log((uint32_t)(xbox_va)); \
+    else recomp_itail_fail_log((uint32_t)(xbox_va), (uint32_t)(site)); \
 } while(0)
 
 /* ================================================================

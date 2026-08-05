@@ -61,22 +61,32 @@ index 5cce260..35f8697 100644
                            section_bounds: List[Tuple[int, int]]) -> Set[int]:
          """
 diff --git a/tools/disasm/functions.py b/tools/disasm/functions.py
-index 26ca037..9d04f2e 100644
+index 26ca037..7f3e8d5 100644
 --- a/tools/disasm/functions.py
 +++ b/tools/disasm/functions.py
-@@ -79,6 +79,11 @@ class FunctionDetector:
+@@ -9,6 +9,8 @@ Implements multi-pass function detection with confidence scoring:
+ 5. Cross-validation and overlap resolution
+ """
+ 
++import bisect
++import re
+ from dataclasses import dataclass, field
+ from typing import Dict, List, Optional, Set, Tuple
+ 
+@@ -79,6 +81,12 @@ class FunctionDetector:
          # Final function list
          self.functions: Dict[int, Function] = {}
  
 +        # Instrument state. A candidate that yields no function is the one
 +        # outcome this pass used to have no words for.
 +        self._redecoded = 0
++        self._crossed_inner_func = 0
 +        self._empty_candidates: List[Tuple[int, str]] = []
 +
      def detect_all(self, sections: Optional[List[SectionInfo]] = None) -> int:
          """
          Run all detection passes and build the function database.
-@@ -109,11 +114,34 @@ class FunctionDetector:
+@@ -109,11 +117,40 @@ class FunctionDetector:
          # Pass 5: Build functions from candidates
          self._build_functions(sections)
  
@@ -98,6 +108,12 @@ index 26ca037..9d04f2e 100644
 +              f"{len(self.functions)} functions"
 +              f" ({self._redecoded} needed decoding from their own address"
 +              f" because the linear sweep had desynchronised)")
++        # Stated even at zero: "no function was cut in half by an interior
++        # helper" is a result, and silence here would be indistinguishable
++        # from the crossing rule not running at all.
++        print(f"  {self._crossed_inner_func} function body/bodies extended past"
++              f" a detected function that sits INSIDE them (an interior branch"
++              f" landing mid-block, not a tail call to a function start)")
 +        if not self._empty_candidates:
 +            return
 +        print(f"  {len(self._empty_candidates)} candidate(s) decoded to NO"
@@ -111,10 +127,11 @@ index 26ca037..9d04f2e 100644
      def _add_candidate(self, addr: int, confidence: float, method: str) -> None:
          """Add a function start candidate, keeping highest confidence."""
          existing = self._candidates.get(addr)
-@@ -278,6 +306,21 @@ class FunctionDetector:
+@@ -278,13 +315,33 @@ class FunctionDetector:
              if section:
                  sec_end = section.virtual_addr + section.virtual_size
  
+-            end_addr = self._find_function_end(start_addr, next_func, sec_end)
 +            # A candidate with no instruction starting exactly at its address
 +            # is not evidence that it is not a function: the linear sweep
 +            # desynchronises on any embedded data and resumes on whatever
@@ -130,10 +147,11 @@ index 26ca037..9d04f2e 100644
 +                if self.engine.decode_from(start_addr, limit):
 +                    self._redecoded += 1
 +
-             end_addr = self._find_function_end(start_addr, next_func, sec_end)
++            end_addr = self._find_function_end(start_addr, next_func, sec_end,
++                                               sorted_starts)
  
              # Count instructions
-@@ -285,6 +328,10 @@ class FunctionDetector:
+             insns = self.engine.get_instructions_in_range(start_addr, end_addr)
              num_insns = len(insns)
  
              if num_insns == 0:
@@ -144,7 +162,16 @@ index 26ca037..9d04f2e 100644
                  continue
  
              # Check for prologue
-@@ -322,39 +369,51 @@ class FunctionDetector:
+@@ -315,49 +372,171 @@ class FunctionDetector:
+             self.functions[start_addr] = func
+ 
+     def _find_function_end(self, start: int, next_func: Optional[int],
+-                           sec_end: Optional[int]) -> int:
++                           sec_end: Optional[int],
++                           sorted_starts: Optional[List[int]] = None) -> int:
+         """
+         Determine where a function ends.
+ 
          Walks forward from start, tracking the furthest reachable point
          through fall-through and internal jumps.
          """
@@ -152,7 +179,9 @@ index 26ca037..9d04f2e 100644
 -        addr = start
 -
          # Upper bound
-         upper = sec_end if sec_end else start + 0x100000
+-        upper = sec_end if sec_end else start + 0x100000
++        hard_upper = sec_end if sec_end else start + 0x100000
++        upper = hard_upper
          if next_func and next_func < upper:
              upper = next_func
  
@@ -164,17 +193,44 @@ index 26ca037..9d04f2e 100644
 -            end = insn.end_address
 -            if end > max_addr:
 -                max_addr = end
--
--            # Track internal forward jumps to extend function bounds
--            if insn.is_cond_jump and insn.jump_target is not None:
--                target = insn.jump_target
--                if start <= target < upper and target > max_addr:
--                    # This jump goes forward within bounds, extend
--                    max_addr = target
--
--            if insn.is_ret or (insn.is_jump and not insn.is_cond_jump):
--                # Check if we've covered all internal jump targets
--                if addr + insn.size >= max_addr:
++        # A detected function can sit INSIDE another one's body, and when it
++        # does, clamping at "the next detected start" cuts the outer function
++        # in half.
++        #
++        # MSVC does this: _alloc_osfhnd (0x003DF47D) contains a nine-byte
++        # unlock helper at 0x003DF556 that it also `call`s directly, so the
++        # helper is a real call target AND real interior code. The outer
++        # function's `je 0x003DF55F` then pointed past `upper`, the walk did
++        # not follow it, and everything from 0x003DF55F on was left outside
++        # every function. The recompiler turned that in-function branch into
++        # `sub_003DF55F(); return;` -- a tail call into an EMPTY STUB -- so the
++        # branch silently returned instead of running the block, and ebx
++        # (holding a critical-section address) was never restored. The caller
++        # continued with a corrupt register file and died 30 calls later on a
++        # NULL vtable slot.
++        #
++        # So: crossing an intervening start is allowed, but only on the
++        # evidence that distinguishes interior code from a neighbour. A TAIL
++        # CALL jumps to a function's first instruction; an interior branch
++        # lands in the MIDDLE of a block. Extend only for a target that is not
++        # itself a detected start, and only as far as the next detected start
++        # above it -- never to the end of the section.
++        starts = sorted_starts or []
++
++        def _extend_over(target: int) -> bool:
++            """Widen `upper` to admit `target`, or refuse and say nothing."""
++            nonlocal upper
++            if target in self._candidates:
++                return False        # a function start: a tail call, not our body
++            nxt = bisect.bisect_right(starts, target)
++            limit = starts[nxt] if nxt < len(starts) else hard_upper
++            limit = min(limit, hard_upper)
++            if limit <= upper:
++                return False
++            upper = limit
++            self._crossed_inner_func += 1
++            return True
++
 +        # Follow control flow rather than sweeping linearly to the first
 +        # terminator. Two rules matter, and both were previously missing:
 +        #
@@ -201,12 +257,14 @@ index 26ca037..9d04f2e 100644
 +                visited.add(addr)
 +                insn = self.engine.get_instruction(addr)
 +                if insn is None:
-                     break
--                # There might be more code after (jumped over)
--                addr = insn.end_address
--                continue
++                    break
  
--            addr = insn.end_address
+-            # Track internal forward jumps to extend function bounds
+-            if insn.is_cond_jump and insn.jump_target is not None:
+-                target = insn.jump_target
+-                if start <= target < upper and target > max_addr:
+-                    # This jump goes forward within bounds, extend
+-                    max_addr = target
 +                if insn.end_address > max_addr:
 +                    max_addr = insn.end_address
 +
@@ -214,19 +272,261 @@ index 26ca037..9d04f2e 100644
 +                    target = insn.jump_target
 +                    if start <= target < upper and target not in visited:
 +                        pending.append(target)
++                    elif (start < target < hard_upper
++                            and target not in visited
++                            and _extend_over(target)):
++                        pending.append(target)
++
++                #  * A JUMP TABLE extends the function through its targets.
++                #    `jmp [reg*4 + table]` has no decodable jump_target, so a
++                #    block reached only through the table was never walked and
++                #    the function ended before it. The CRT's unrolled copy
++                #    tails live there: memcpy ended at 0x003D5A7F while its own
++                #    switch targets are at 0x003D5B44 and beyond. Everything
++                #    past the detected end was then outside every function --
++                #    so the recompiler could not emit labels for those targets,
++                #    the dispatch fell back to an indirect tail jump, and at
++                #    runtime that looked like a call to a function nobody had
++                #    detected. Three of them were seeded as functions before
++                #    anyone noticed they were `mov eax,[esi+ecx*4+0x10]`.
++                elif insn.is_jump and insn.jump_target is None:
++                    for t in self._read_jump_table_targets(insn, start, upper):
++                        if t not in visited:
++                            pending.append(t)
 +
 +                if insn.is_ret or (insn.is_jump and not insn.is_cond_jump):
 +                    break   # terminator: this path ends, others may remain
-+
-+                addr = insn.end_address
+ 
+-            if insn.is_ret or (insn.is_jump and not insn.is_cond_jump):
+-                # Check if we've covered all internal jump targets
+-                if addr + insn.size >= max_addr:
+-                    break
+-                # There might be more code after (jumped over)
+                 addr = insn.end_address
+-                continue
+-
+-            addr = insn.end_address
  
          return max_addr
  
++    def _read_jump_table_targets(self, insn, start: int, upper: int) -> List[int]:
++        """
++        Targets of an indirect `jmp [reg*scale + table]`, bounded by (start, upper).
++
++        Reads dwords at the operand's displacement while each one points inside
++        this function's window. That window IS the definition of the table's
++        extent here: an intra-function switch table is a run of pointers into
++        its own function, so the first pointer that leaves it ends the table.
++        Returns [] when the displacement is not readable or the first entry is
++        already outside -- an indirect jump through a register, or a real tail
++        call, both of which must NOT extend anything.
++        """
++        # insn.memory_ref is only set for a plain [addr] reference, never for
++        # the indexed form a jump table uses, so the displacement is parsed
++        # from the operand text here rather than widening memory_ref -- xrefs
++        # reads that field, and turning every indexed access into a data
++        # reference would be a different change with its own consequences.
++        #
++        # The SCALED INDEX is required: `jmp [eax*4 + 0x18c60]` is a table,
++        # while `jmp [edx + 0x30]` is a vtable-style dispatch through a live
++        # pointer and has no table in the image to read.
++        m = re.search(r"\[\s*e[a-z][a-z]\s*\*\s*4\s*\+\s*(0x[0-9a-fA-F]+)\s*\]",
++                      insn.op_str or "")
++        if not m:
++            return []
++        disp = int(m.group(1), 16)
++        # Walk BOTH ways from the displacement.
++        #
++        # MSVC indexes these tables with a NEGATIVE register, so the
++        # displacement is the LAST entry, not the first: memcpy's
++        # `jmp [ecx*4 + 0x3d5b28]` has its entries at 0x3d5b14..0x3d5b28
++        # (0x3d5b3c, 0x3d5b44, 0x3d5b4c, 0x3d5b54, 0x3d5b5c, 0x3d5b6f) because
++        # ecx counts the remaining dwords down through zero. Reading forward
++        # only found the single entry AT the base and stopped, which is why
++        # 0x003D5B54 -- the address the running binary asked for -- was never
++        # among the targets.
++        targets: List[int] = []
++        for i in range(256):
++            val = self.image.read_u32_at_va(disp + i * 4)
++            if val is None or not (start <= val < upper):
++                break
++            targets.append(val)
++        for i in range(1, 256):
++            val = self.image.read_u32_at_va(disp - i * 4)
++            if val is None or not (start <= val < upper):
++                break
++            targets.append(val)
++        return targets
++
+     def _build_call_graph(self) -> None:
+         """Populate calls_to and called_by for all functions."""
+         func_starts = set(self.functions.keys())
+diff --git a/tools/disasm/test_inner_func.py b/tools/disasm/test_inner_func.py
+new file mode 100644
+index 0000000..27b80c5
+--- /dev/null
++++ b/tools/disasm/test_inner_func.py
+@@ -0,0 +1,120 @@
++"""Self-check for function bodies that CONTAIN another detected function.
++
++MSVC emits small helpers in the middle of a function's body and `call`s them
++directly, so the helper is a real call target AND real interior code. Clamping
++the outer function at "the next detected start" then cuts it in half: every
++block past the helper falls outside every function, and the recompiler turns an
++interior branch into a tail call to an empty stub.
++
++That is not hypothetical. _alloc_osfhnd at 0x003DF47D contains a nine-byte
++unlock helper at 0x003DF556, and its `je 0x003DF55F` pointed past the clamp.
++The branch became `sub_003DF55F(); return;` -- a silent return that skipped the
++block and left ebx (a critical-section address) unrestored.
++
++The rule under test: crossing an interior start is allowed when the branch
++target is NOT itself a detected start (an interior branch lands mid-block; a
++tail call lands on a function's first instruction).
++
++    py -3 tools/disasm/test_inner_func.py
++"""
++import os
++import sys
++
++sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
++    os.path.abspath(__file__)))))
++
++from tools.disasm.functions import FunctionDetector
++
++OUTER = 0x1000
++INNER = 0x1020          # detected function sitting inside OUTER's body
++TAIL_BLOCK = 0x1030     # interior block AFTER the inner function
++NEIGHBOUR = 0x1040      # a genuinely separate function
++SEC_END = 0x2000
++
++
++class Insn:
++    """Only the fields _find_function_end reads."""
++
++    def __init__(self, addr, size=2, jump_target=None,
++                 is_cond_jump=False, is_jump=False, is_ret=False):
++        self.address = addr
++        self.end_address = addr + size
++        self.jump_target = jump_target
++        self.is_cond_jump = is_cond_jump
++        self.is_jump = is_jump
++        self.is_ret = is_ret
++        self.op_str = ""
++
++
++class FakeEngine:
++    def __init__(self, insns):
++        self._insns = {i.address: i for i in insns}
++
++    def get_instruction(self, addr):
++        return self._insns.get(addr)
++
++
++def detector(insns, candidates):
++    d = FunctionDetector.__new__(FunctionDetector)
++    d.engine = FakeEngine(insns)
++    d._candidates = {a: (0.9, "call_target") for a in candidates}
++    d._crossed_inner_func = 0
++    return d
++
++
++def build(outer_branch_target):
++    """OUTER branches to `outer_branch_target`, then falls into a ret.
++
++    Layout:
++      0x1000  cond jump -> outer_branch_target
++      0x1002  jmp 0x1000              (unconditional: ends the fall-through)
++      0x1020  ret                     (INNER, a detected function)
++      0x1030  ret                     (TAIL_BLOCK, interior code)
++      0x1040  ret                     (NEIGHBOUR, a separate function)
++    """
++    return [
++        Insn(OUTER, 2, jump_target=outer_branch_target, is_cond_jump=True),
++        Insn(OUTER + 2, 2, jump_target=OUTER, is_jump=True),
++        Insn(INNER, 2, is_ret=True),
++        Insn(TAIL_BLOCK, 2, is_ret=True),
++        Insn(NEIGHBOUR, 2, is_ret=True),
++    ]
++
++
++def main():
++    starts = [OUTER, INNER, NEIGHBOUR]
++    checks = 0
++
++    # POSITIVE: the branch lands mid-block, past the inner function. The body
++    # must extend over INNER and cover TAIL_BLOCK -- and stop at NEIGHBOUR.
++    d = detector(build(TAIL_BLOCK), starts)
++    end = d._find_function_end(OUTER, INNER, SEC_END, starts)
++    assert end == TAIL_BLOCK + 2, (
++        f"interior branch past an inner function did not extend the body:"
++        f" end=0x{end:X}, want 0x{TAIL_BLOCK + 2:X}")
++    assert end <= NEIGHBOUR, (
++        f"the body swallowed the next real function: end=0x{end:X}")
++    assert d._crossed_inner_func == 1, (
++        f"the crossing was not counted: {d._crossed_inner_func}")
++    checks += 2
++
++    # NEGATIVE: the same shape, but the branch targets a detected function
++    # START -- a tail call. Nothing may be extended, or every tail call would
++    # merge two functions into one. Without this case the rule above would
++    # also pass with "always extend", which is wrong in the other direction.
++    d = detector(build(NEIGHBOUR), starts)
++    end = d._find_function_end(OUTER, INNER, SEC_END, starts)
++    assert end == OUTER + 4, (
++        f"a tail call to a function start extended the body: end=0x{end:X},"
++        f" want 0x{OUTER + 4:X}")
++    assert d._crossed_inner_func == 0, (
++        f"a tail call was counted as an interior crossing:"
++        f" {d._crossed_inner_func}")
++    checks += 2
++
++    print(f"test_inner_func: {checks} checks passed"
++          f" (positive: interior branch crosses; negative: tail call does not)")
++
++
++if __name__ == "__main__":
++    main()
 diff --git a/tools/recomp/__main__.py b/tools/recomp/__main__.py
-index 2fc7a68..e629557 100644
+index 2fc7a68..2211923 100644
 --- a/tools/recomp/__main__.py
 +++ b/tools/recomp/__main__.py
-@@ -297,6 +297,24 @@ def main():
+@@ -127,6 +127,13 @@ def main():
+                         help="Generate C header file")
+     parser.add_argument("--split", type=int, metavar="N",
+                         help="Split output into files of N functions each")
++    parser.add_argument("--isolate", metavar="FILE",
++                        help="JSON list of functions to emit into their own "
++                             "translation unit each (entries with a \"start\" "
++                             "hex address). Required for any function wrapped "
++                             "with -Wl,--wrap: --wrap only intercepts calls "
++                             "that cross an object file, so a caller sharing a "
++                             "chunk with the callee bypasses the override.")
+     parser.add_argument("--gen-dir",
+                         help="Output dir for split generated files "
+                              "(default: src/game/recomp/gen)")
+@@ -278,11 +285,20 @@ def main():
+         if args.max_funcs:
+             funcs = funcs[:args.max_funcs]
+ 
++        isolate = []
++        if args.isolate:
++            import json as _json
++            with open(args.isolate, encoding="utf-8") as f:
++                isolate = [int(e["start"], 16) for e in _json.load(f)]
++            print(f"Isolating {len(isolate)} overridden function(s) from "
++                  f"{args.isolate}", file=sys.stderr)
++
+         stats = translator.translate_batch_split(
+             funcs,
+             output_dir=gen_dir,
+             chunk_size=args.split,
+             verbose=args.verbose,
++            isolate=isolate,
+         )
+ 
+         t_translate = time.time() - t0
+@@ -297,6 +313,24 @@ def main():
              print(f"{stats['unresolved_stubs']} unresolved call targets stubbed "
                    f"(addresses called but not detected as functions)",
                    file=sys.stderr)
@@ -329,7 +629,7 @@ index 86c4364..a299392 100644
                  address=cs_insn.address,
                  size=cs_insn.size,
 diff --git a/tools/recomp/lifter.py b/tools/recomp/lifter.py
-index 57d7e83..460ec06 100644
+index 57d7e83..873bfcc 100644
 --- a/tools/recomp/lifter.py
 +++ b/tools/recomp/lifter.py
 @@ -139,8 +139,27 @@ def _fmt_mem_write(op, value_expr):
@@ -373,7 +673,7 @@ index 57d7e83..460ec06 100644
      #
      # Per-title addresses, detected from the binary by detect_seh_helpers()
      # and assigned to the instance. The class values are only a fallback for
-@@ -1188,25 +1207,46 @@ class Lifter:
+@@ -1188,25 +1207,55 @@ class Lifter:
          # The callee's 'ret' will pop it back off.
          if insn.call_target:
              name = self._call_target_name(insn.call_target)
@@ -386,7 +686,15 @@ index 57d7e83..460ec06 100644
 +            # name the offender. Direct calls are the majority, and leaving
 +            # them unchecked left the contract enforced only where it was
 +            # cheapest to enforce, not where it was broken.
-+            lines = [f"PUSH32(esp, 0); RECOMP_DCALL({name}, 0x{insn.call_target:08X}u);"
++            #
++            # It also carries the CALL SITE's VA. Naming only the callee
++            # answers "who misbehaved" but not "who was calling", and the
++            # native return address cannot supply it: the compiled offset
++            # inside a generated C function has no relation to the guest
++            # instruction's offset inside the guest function, so a symbolized
++            # native stack gives "sub_002A9570 +0x1066" and stops there.
++            lines = [f"PUSH32(esp, 0); RECOMP_DCALL({name}, 0x{insn.call_target:08X}u,"
++                     f" 0x{insn.address:08X}u);"
 +                     f" /* call 0x{insn.call_target:08X} */"]
 +            # No frame-pointer read-back: ebp is a global, so whatever
 +            # __SEH_prolog/__SEH_epilog does to it is already visible here.
@@ -412,7 +720,8 @@ index 57d7e83..460ec06 100644
              # Mark indirect calls for post-processing by _fixup_icall_esp_save
 -            return [f"PUSH32(esp, 0); RECOMP_ICALL_SAFE({target}, _icall_esp); /* indirect call */"]
 +            return [f"uint32_t _icall_tgt = {target};"
-+                    f" PUSH32(esp, 0); RECOMP_ICALL_SAFE(_icall_tgt, _icall_esp);"
++                    f" PUSH32(esp, 0); RECOMP_ICALL_SAFE(_icall_tgt, _icall_esp,"
++                    f" 0x{insn.address:08X}u);"
 +                    f" /* indirect call */"]
          return ["/* call: no target */"]
  
@@ -429,7 +738,128 @@ index 57d7e83..460ec06 100644
          if len(ops) >= 1 and ops[0].type == "imm":
              n = ops[0].imm
              return [f"{prefix}esp += {4 + n}; return; /* ret {n} */"]
-@@ -1262,7 +1302,7 @@ class Lifter:
+@@ -1216,26 +1265,77 @@ class Lifter:
+         """Check if a jump target is outside the current function."""
+         return not (self.func_start <= addr < self.func_end)
+ 
+-    def _read_jump_table(self, table_va, max_entries=256):
++    def _read_jump_table(self, table_va, max_entries=256, within=None):
+         """Read 32-bit jump table entries from the XBE at a given VA.
+-        Returns list of target addresses. Stops when an entry is not a
+-        valid code address or max_entries is reached."""
++
++        Stops at max_entries, at end of image, at the first entry that is not
++        a code address -- and, when `within` is given, at the first entry that
++        falls outside that (start, end) range.
++
++        The `within` stop is what makes an intra-function table readable at
++        all. is_code_address() alone accepts anything in .text, so the walk ran
++        past the end of the table into whatever followed and collected entries
++        belonging to nothing. The caller then rejected the WHOLE table because
++        those trailing entries were outside the function, and the switch fell
++        back to an indirect tail jump. An intra-function switch table is by
++        definition a run of pointers into this function, so the first pointer
++        that leaves it is the end of the table."""
+         if not self.xbe_data:
+             return []
+         offset = va_to_file_offset(table_va)
+         if offset is None:
+             return []
++        def entry(o):
++            if o < 0 or o + 4 > len(self.xbe_data):
++                return None
++            val = struct.unpack_from('<I', self.xbe_data, o)[0]
++            if not is_code_address(val):
++                return None
++            if within is not None and not (within[0] <= val < within[1]):
++                return None
++            return val
++
++        # Both directions: MSVC indexes with a NEGATIVE register for the CRT's
++        # unrolled copy tails, so the displacement is the LAST entry. memcpy's
++        # `jmp [ecx*4 + 0x3d5b28]` keeps its entries at 0x3d5b14..0x3d5b28, and
++        # reading forward alone found one of six -- missing 0x003D5B54, the
++        # address the running binary actually jumped to.
+         targets = []
++        lo_off = hi_off = offset
+         for i in range(max_entries):
+-            o = offset + i * 4
+-            if o + 4 > len(self.xbe_data):
++            val = entry(offset + i * 4)
++            if val is None:
+                 break
+-            val = struct.unpack_from('<I', self.xbe_data, o)[0]
+-            if not is_code_address(val):
++            targets.append(val)
++            hi_off = offset + i * 4 + 4
++        for i in range(1, max_entries):
++            val = entry(offset - i * 4)
++            if val is None:
+                 break
+             targets.append(val)
++            lo_off = offset - i * 4
++
++        # The caller marks these bytes as DATA before re-decoding, so it needs
++        # the range actually read, not table_va + 4*len(targets). With entries
++        # below the displacement that forward-only arithmetic marks the wrong
++        # bytes: memcpy's table at 0x3d5b14..0x3d5b2c would be recorded as
++        # 0x3d5b28..0x3d5b40, leaving the real table decoded as instructions
++        # and the code after it still misaligned.
++        self.last_table_span = (table_va - (offset - lo_off),
++                                table_va + (hi_off - offset))
+         return targets
+ 
++    def _next_function_start(self, start):
++        """VA of the first detected function after `start`, or func_end.
++
++        Used as the upper bound for an intra-function jump table, because a
++        function cannot extend past where the next one begins. Falls back to
++        the detected end when nothing follows, which is the conservative
++        answer rather than an unbounded one.
++        """
++        later = [a for a in self.func_db if a > start]
++        return min(later) if later else self.func_end
++
+     def _analyze_switch_table(self, ops):
+         """Detect if an indirect jmp operand is an intra-function switch table.
+         Pattern: jmp [reg*scale + table_base] or jmp [reg + table_base]
+@@ -1248,13 +1348,30 @@ class Lifter:
+         if not op.mem_disp or not (op.mem_index or op.mem_base):
+             return []
+         table_va = op.mem_disp
+-        targets = self._read_jump_table(table_va)
++        self.last_table_span = None
++        # Bounded by this function -- but by its REAL extent, not the detected
++        # one. The detector under-sizes a function when it ends at the first
++        # return it sees (C047: 6288 of 21909), and the CRT's unrolled copy
++        # tails sit past that point with their tables interleaved: memcpy is
++        # detected as 0x003D5890-0x003D5A7F while its own switch targets live
++        # at 0x003D5B44 and beyond. Bounding by func_end would reject exactly
++        # the entries the table is made of. Nothing of this function can extend
++        # past the next function's start, so that is the honest upper bound.
++        upper = self._next_function_start(self.func_start)
++        targets = self._read_jump_table(
++            table_va, within=(self.func_start, max(self.func_end, upper)))
+         if not targets:
++            # Nothing readable at the table base that points into this
++            # function. Counted so the report can say how many dispatches fell
++            # back to an indirect tail jump instead of becoming real gotos --
++            # each of those looks like an unresolved indirect call at runtime,
++            # and the addresses it names are mid-function fragments, not
++            # functions. Seeding those is how a jump table turns into fake
++            # functions that execute without a prologue.
++            self.switch_fallbacks = getattr(self, "switch_fallbacks", 0) + 1
+             return []
+-        # Check that ALL targets are within the current function
+-        if all(self.func_start <= t < self.func_end for t in targets):
+-            return targets
+-        return []
++        self.switch_enumerated = getattr(self, "switch_enumerated", 0) + 1
++        return targets
+ 
+     def _lift_jmp(self, insn, ops):
+         if insn.jump_target:
+@@ -1262,21 +1379,41 @@ class Lifter:
                  # Tail call - no return address push (reuses current frame's)
                  # Bridge ebp so the target function can inherit our frame pointer.
                  name = self._call_target_name(insn.jump_target)
@@ -438,20 +868,44 @@ index 57d7e83..460ec06 100644
              return [f"goto loc_{insn.jump_target:08X};"]
          elif len(ops) >= 1:
              # Detect intra-function switch tables (computed gotos)
-@@ -1273,10 +1313,10 @@ class Lifter:
+             switch_targets = self._analyze_switch_table(ops)
+             if switch_targets:
+                 target_expr = _fmt_operand_read(ops[0])
+-                unique_targets = sorted(set(switch_targets))
++                # A goto may only name a label that exists in THIS body. The
++                # table walk is bounded by the next function's start, because
++                # the detector under-sizes functions (C047) and the real table
++                # runs past the detected end -- but a target past func_end has
++                # no label here, and emitting a goto to it gets the whole
++                # statement deleted by the missing-label pass, which is how
++                # memcpy lost its control flow. Those targets stay with the
++                # tail-jump fallback, which now says out loud that it is an
++                # unenumerated table rather than posing as a missing function.
++                in_body = [t for t in switch_targets
++                           if self.func_start <= t < self.func_end]
++                if not in_body:
++                    self.switch_fallbacks = getattr(
++                        self, "switch_fallbacks", 0) + 1
++                    return [f"RECOMP_ITAIL({target_expr}, 0x{insn.address:08X}u);"
++                            f" return;"
++                            f" /* indirect tail jmp: {len(switch_targets)}"
++                            f" table entries, none inside this function's"
++                            f" detected body */"]
++                unique_targets = sorted(set(in_body))
                  lines = [f"{{ uint32_t _jt = {target_expr}; /* switch: {len(switch_targets)} entries, {len(unique_targets)} targets */"]
                  for t in unique_targets:
                      lines.append(f"if (_jt == 0x{t:08X}u) goto loc_{t:08X};")
 -                lines.append(f"g_seh_ebp = ebp; RECOMP_ITAIL(_jt); return; }}")
-+                lines.append(f"RECOMP_ITAIL(_jt); return; }}")
++                lines.append(f"RECOMP_ITAIL(_jt, 0x{insn.address:08X}u); return; }}")
                  return lines
              target = _fmt_operand_read(ops[0])
 -            return [f"g_seh_ebp = ebp; RECOMP_ITAIL({target}); return; /* indirect tail jmp */"]
-+            return [f"RECOMP_ITAIL({target}); return; /* indirect tail jmp */"]
++            return [f"RECOMP_ITAIL({target}, 0x{insn.address:08X}u); return;"
++                    f" /* indirect tail jmp */"]
          return ["/* jmp: no target */"]
  
      def _lift_jcc(self, insn):
-@@ -1627,6 +1667,28 @@ class Lifter:
+@@ -1627,6 +1764,104 @@ class Lifter:
          return [f"/* FPU: {m} {insn.op_str} */"]
  
  
@@ -477,10 +931,86 @@ index 57d7e83..460ec06 100644
 +    return out
 +
 +
++# ── Carry flag materialisation ────────────────────────────────────────────
++#
++# The flag model is lazy: a cmp snapshots its operands into _flg0/_flg1 and the
++# following jcc recomputes the condition from them. That covers every
++# conditional jump, including the unsigned ones, so it looked complete.
++#
++# It is not. `sbb reg, reg` and `adc` read CF ITSELF, and nothing ever set it.
++# `_cf` was declared, initialised to 0, and never assigned -- in 896 sites
++# across 701 functions, every one of them. MSVC emits `sbb eax,eax / sbb eax,-1`
++# as the standard way to turn a byte comparison into -1/+1, which is how every
++# inlined strcmp in this game computes its sign; with CF stuck at 0 that
++# sequence always yields +1, so a mismatch could only ever report "greater".
++# A binary search over a string table then descends one way only and fails to
++# find keys that are present -- which is what killed the boot (see the list
++# remove at 0x00275920 asking for "DefaultFileName").
++#
++# So CF is materialised here, but ONLY in functions that actually consume it:
++# emitting it everywhere would add an assignment to every cmp in 26k functions
++# for nothing. Instructions whose CF this does not model exactly are marked in
++# the output rather than left to look correct -- grep for "CF NOT MODELLED".
++
++# CF is well-defined and cheap for these.
++_CF_MODELLED = ("cmp", "sub", "add", "test", "and", "or", "xor", "neg")
++
++# These write CF too, and the model does not reproduce it. They must be
++# announced, not silently skipped: a stale _cf reads exactly like a correct one.
++_CF_UNMODELLED = ("shl", "shr", "sar", "sal", "rol", "ror", "rcl", "rcr",
++                  "shld", "shrd", "mul", "imul", "div", "idiv",
++                  "bt", "bts", "btr", "btc", "bsf", "bsr")
++
++
++def _cf_assignment(mnemonic, ops):
++    """
++    C statement setting _cf after a flag-writing instruction, or None.
++
++    `ops` are the SNAPSHOT operands the jcc will use, so CF and the branch
++    cannot disagree. Note which instructions have already written their
++    destination by the time this runs: cmp and test do not, the arithmetic
++    ones do, so their CF is expressed in terms of the RESULT.
++    """
++    m = mnemonic
++    if m == "cmp" and len(ops) >= 2:
++        a, b = _fmt_operand_read(ops[0]), _fmt_operand_read(ops[1])
++        return f"_cf = ((uint32_t)({a}) < (uint32_t)({b})); /* CF from cmp */"
++    if m == "sub" and len(ops) >= 2:
++        # Destination already holds a-b. A borrow happened iff result+b wrapped.
++        r, b = _fmt_operand_read(ops[0]), _fmt_operand_read(ops[1])
++        return (f"_cf = ((uint32_t)((uint32_t)({r}) + (uint32_t)({b}))"
++                f" < (uint32_t)({b})); /* CF from sub (dst holds the result) */")
++    if m == "add" and len(ops) >= 2:
++        # Destination already holds a+b; it wrapped iff the sum is below either.
++        r, b = _fmt_operand_read(ops[0]), _fmt_operand_read(ops[1])
++        return (f"_cf = ((uint32_t)({r}) < (uint32_t)({b}));"
++                f" /* CF from add (dst holds the result) */")
++    if m in ("test", "and", "or", "xor"):
++        return f"_cf = 0; /* {m} clears CF */"
++    if m == "neg" and len(ops) >= 1:
++        # neg sets CF = (operand != 0), and -x is nonzero exactly when x is.
++        r = _fmt_operand_read(ops[0])
++        return f"_cf = ((uint32_t)({r}) != 0); /* CF from neg */"
++    if m in _CF_UNMODELLED:
++        return f"/* CF NOT MODELLED after {m} -- _cf is stale from here */"
++    return None
++
++
++def _emit_cf(lifter, stmts, mnemonic, ops):
++    """Append the _cf assignment, if this function consumes CF at all."""
++    if not getattr(lifter, "emit_cf", False):
++        return
++    line = _cf_assignment(mnemonic, ops)
++    if line:
++        stmts.append(line)
++        if line.startswith("/* CF NOT MODELLED"):
++            lifter.cf_unmodelled = getattr(lifter, "cf_unmodelled", 0) + 1
++
++
  def lift_basic_block(lifter, bb, flag_state=None):
      """
      Lift a basic block to C statements.
-@@ -1660,12 +1722,15 @@ def lift_basic_block(lifter, bb, flag_state=None):
+@@ -1660,12 +1895,18 @@ def lift_basic_block(lifter, bb, flag_state=None):
          match = try_match_cmp_jcc(insns, i, lifter=lifter)
          if match:
              stmt, consumed = match
@@ -494,36 +1024,41 @@ index 57d7e83..460ec06 100644
 +            snap = []
 +            last_flag_ops = _snapshot_flag_ops(flag_insn, snap)
 +            stmts.extend(snap)
++            # CF before the branch: a later sbb/adc reads it, and the branch
++            # itself does not set it.
++            _emit_cf(lifter, stmts, flag_insn.mnemonic, last_flag_ops)
 +            stmts.append(stmt)
              last_flag_setter = flag_insn.mnemonic
 -            last_flag_ops = list(flag_insn.operands)
              i += consumed
              continue
  
-@@ -1725,7 +1790,7 @@ def lift_basic_block(lifter, bb, flag_state=None):
+@@ -1725,7 +1966,8 @@ def lift_basic_block(lifter, bb, flag_state=None):
          # Track flag-setting instructions
          if curr.mnemonic in FLAG_SETTERS:
              last_flag_setter = curr.mnemonic
 -            last_flag_ops = list(curr.operands)
 +            last_flag_ops = _snapshot_flag_ops(curr, stmts)
++            _emit_cf(lifter, stmts, curr.mnemonic, last_flag_ops)
          elif curr.mnemonic in _FLAGS_UNDEFINED:
              # Flags are undefined after these - clear tracking
              last_flag_setter = None
-@@ -1733,7 +1798,7 @@ def lift_basic_block(lifter, bb, flag_state=None):
+@@ -1733,7 +1975,8 @@ def lift_basic_block(lifter, bb, flag_state=None):
          elif curr.mnemonic in _EFLAGS_SETTERS:
              # Additional flag-setting instructions
              last_flag_setter = curr.mnemonic
 -            last_flag_ops = list(curr.operands)
 +            last_flag_ops = _snapshot_flag_ops(curr, stmts)
++            _emit_cf(lifter, stmts, curr.mnemonic, last_flag_ops)
          elif curr.mnemonic in _EFLAGS_PRESERVE:
              pass  # These don't affect EFLAGS
          elif curr.mnemonic in ("fcompi", "fcomip", "fucomi", "fucompi",
 diff --git a/tools/recomp/test_lifter.py b/tools/recomp/test_lifter.py
 new file mode 100644
-index 0000000..7222fc9
+index 0000000..0740270
 --- /dev/null
 +++ b/tools/recomp/test_lifter.py
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,292 @@
 +"""Unit tests for the x86 -> C lifter and translator.
 +
 +Run:  python3 -m pytest tools/recomp/test_lifter.py -q
@@ -777,6 +1312,36 @@ index 0000000..7222fc9
 +        "_icall_tgt is declared outside the _icall_esp block:\n" + c)
 +
 +
++def test_calls_carry_their_own_guest_address_as_the_call_site():
++    """A failure report must be able to name WHICH call failed.
++
++    The native return address cannot supply it: an offset into the compiled C
++    body has no relation to an offset into the guest function, so a symbolized
++    native stack stops at "sub_002A9570 +0x1066". The call site therefore has
++    to be baked in at translation time, when it is still known exactly.
++    """
++    push_edi = b"\x57"                   # 1 byte, at TEST_BASE
++    icall    = b"\xff\x54\x24\x08"       # call dword ptr [esp+8]
++    dcall    = b"\xe8\x00\x00\x00\x00"   # call rel32 +0 -> the next instruction
++    code = push_edi + icall + dcall + RET
++    c = translate(code)
++
++    icall_site = TEST_BASE + len(push_edi)
++    dcall_site = icall_site + len(icall)
++
++    assert f"RECOMP_ICALL_SAFE(_icall_tgt, _icall_esp, 0x{icall_site:08X}u)" in c, (
++        f"the indirect call does not carry its own address 0x{icall_site:08X}"
++        f" as the call site:\n" + c)
++    assert f"0x{dcall_site:08X}u)" in c, (
++        f"the direct call does not carry its own address 0x{dcall_site:08X}"
++        f" as the call site:\n" + c)
++    # The site must be the CALL's address, not the function's start -- those
++    # coincide only for a call in the first byte of a function, which is why
++    # the fixture puts a push in front of both.
++    assert f"RECOMP_ICALL_SAFE(_icall_tgt, _icall_esp, 0x{TEST_BASE:08X}u)" not in c, (
++        "the call site is the function start, not the call instruction:\n" + c)
++
++
 +def test_two_indirect_calls_in_one_function_still_compile():
 +    """Each indirect call gets its own scope, so the temporaries cannot clash."""
 +    icall_esp8 = b"\xff\x54\x24\x08"      # call dword ptr [esp+8]
@@ -788,10 +1353,10 @@ index 0000000..7222fc9
 +        "the two calls do not get separate scopes:\n" + c)
 diff --git a/tools/recomp/test_regressions.py b/tools/recomp/test_regressions.py
 new file mode 100644
-index 0000000..1066566
+index 0000000..8308864
 --- /dev/null
 +++ b/tools/recomp/test_regressions.py
-@@ -0,0 +1,184 @@
+@@ -0,0 +1,261 @@
 +"""Regression tests over real functions from a real title.
 +
 +Run:  python3 -m pytest tools/recomp/test_regressions.py -q
@@ -976,8 +1541,85 @@ index 0000000..1066566
 +        "0x00269CA0 is not a detected function. The linear sweep desynchronises"
 +        " on the jump table in front of it, so a candidate there must be"
 +        " decoded from its own address (DisasmEngine.decode_from).")
++
++
++def test_carry_flag_is_set_before_an_sbb_reads_it(translator):
++    """sub_0026B390 is the binary search over the name table.
++
++    Its string compare ends in MSVC's sign idiom, `sbb eax,eax / sbb eax,-1`,
++    which reads CF from the preceding byte `cmp`. The lazy flag model
++    snapshotted the cmp's operands for the following jcc but never set CF, and
++    `_cf` was declared, initialised to 0, and never assigned -- in 896 sites
++    across 701 functions. With CF stuck at 0 the idiom always yields +1, so a
++    mismatch could only ever report "greater", the search descended one way
++    only, and it failed to find keys that were present.
++
++    Observed: the boot died in a list remove asking for a key ("DefaultFileName")
++    the search could not find, computing a tail-shift length of 0xFFFFFFFC and
++    memcpy'ing ~4GB.
++    """
++    c = translate(translator, 0x0026B390)
++
++    assert "sbb self (CF extend)" in c, (
++        "sub_0026B390 no longer contains the sbb sign idiom this test is "
++        "about; re-anchor the test rather than deleting it:\n" + c[:2000])
++
++    reads = [ln for ln in c.splitlines() if "_cf" in ln and "int _cf" not in ln]
++    assigns = [ln for ln in reads if ln.strip().startswith("_cf =")]
++    assert assigns, (
++        "_cf is read but never assigned -- the carry flag is stale:\n  "
++        + "\n  ".join(reads[:10]))
++
++    # The assignment must come from the cmp, not from anywhere convenient.
++    assert any("CF from cmp" in ln for ln in assigns), (
++        "no CF was materialised from a cmp:\n  " + "\n  ".join(assigns[:10]))
++
++
++def test_functions_without_carry_get_no_cf_code(translator):
++    """CF materialisation is per-function on purpose.
++
++    Emitting it for every cmp in 26k functions would be pure cost: the jcc
++    path recomputes its condition from the operand snapshots and never reads
++    CF. Only functions containing sbb/adc need it.
++    """
++    c = translate(translator, 0x00275920)   # the list remove: no sbb, no adc
++    assert "sbb" not in c and "adc" not in c, (
++        "0x00275920 now contains a carry-consuming instruction; pick another "
++        "function for this test")
++    assert "_cf" not in c, (
++        "CF code was emitted into a function that never consumes it:\n"
++        + "\n".join(ln for ln in c.splitlines() if "_cf" in ln))
++
++
++def test_memcpys_later_switch_tables_are_enumerated(translator):
++    """sub_003D5890 (CRT memcpy) dispatches through NINE jump tables.
++
++    Only two were enumerated. The table reader walked past the end of each
++    table -- is_code_address() accepts anything in .text -- collected entries
++    belonging to whatever followed, and the caller then rejected the WHOLE
++    table because those trailing entries were outside the function. Seven
++    dispatches fell back to an indirect tail jump.
++
++    At runtime that reads as an unresolved indirect call, and the addresses it
++    names (0x003D5B44, 0x003D5B54, 0x003D5B88) are mid-function instructions in
++    memcpy's unrolled copy tail -- `mov eax,[esi+ecx*4+0x10]`, not function
++    entries. Seeding them as functions made the dispatch resolve while
++    executing a fragment with no prologue, and the run continued with a
++    corrupted frame: a name lookup was handed a `this` pointing into the stack.
++    """
++    c = translate(translator, 0x003D5890)
++
++    assert "goto loc_003D5B44;" in c, (
++        "the table at 0x3D5B28 is still not enumerated; its target "
++        "0x003D5B44 did not become a real goto")
++
++    tails = [ln for ln in c.splitlines() if "indirect tail jmp" in ln]
++    assert len(tails) <= 2, (
++        f"{len(tails)} switch dispatches still fall back to an indirect tail "
++        f"jump; each one invites a mid-function address to be seeded as a "
++        f"function:\n  " + "\n  ".join(tails))
 diff --git a/tools/recomp/translator.py b/tools/recomp/translator.py
-index a5890d7..c573972 100644
+index a5890d7..498c45d 100644
 --- a/tools/recomp/translator.py
 +++ b/tools/recomp/translator.py
 @@ -111,6 +111,10 @@ class FunctionTranslator:
@@ -991,7 +1633,7 @@ index a5890d7..c573972 100644
          self.lifter = Lifter(func_db=func_db, label_db=label_db, abi_db=abi_db,
                               xbe_data=xbe_data, seh_prolog=seh_prolog,
                               seh_epilog=seh_epilog)
-@@ -171,14 +175,46 @@ class FunctionTranslator:
+@@ -171,14 +175,52 @@ class FunctionTranslator:
          if not instructions:
              return None
  
@@ -1014,8 +1656,14 @@ index a5890d7..c573972 100644
                  targets = self.lifter._analyze_switch_table(insn.operands)
 +                if not targets:
 +                    continue
++                span = getattr(self.lifter, "last_table_span", None)
 +                table_va = insn.operands[0].mem_disp
-+                if table_va and start <= table_va < end:
++                if span and start <= span[0] < end:
++                    # The range the reader actually walked -- MSVC indexes some
++                    # tables with a negative register, so entries sit BELOW the
++                    # displacement and the span does not start at table_va.
++                    tables.append(span)
++                elif table_va and start <= table_va < end:
 +                    tables.append((table_va, table_va + 4 * len(targets)))
                  for t in targets:
                      if start <= t < end:
@@ -1043,7 +1691,7 @@ index a5890d7..c573972 100644
  
          # Build basic blocks
          blocks = self.disasm.build_basic_blocks(
-@@ -216,8 +252,7 @@ class FunctionTranslator:
+@@ -216,8 +258,7 @@ class FunctionTranslator:
          if any(insn.mnemonic == "leave" for insn in instructions):
              used_regs.add("ebp")
  
@@ -1053,7 +1701,7 @@ index a5890d7..c573972 100644
          has_tail_jump = any(
              insn.mnemonic == "jmp" and (
                  (insn.jump_target and not (start <= insn.jump_target < end))
-@@ -228,8 +263,7 @@ class FunctionTranslator:
+@@ -228,8 +269,7 @@ class FunctionTranslator:
          if has_tail_jump:
              used_regs.add("ebp")
  
@@ -1063,7 +1711,7 @@ index a5890d7..c573972 100644
          SEH_FUNCS = {0x00244784, 0x002447BF}
          if any(insn.call_target in SEH_FUNCS for insn in instructions):
              used_regs.add("ebp")
-@@ -268,16 +302,11 @@ class FunctionTranslator:
+@@ -268,16 +308,11 @@ class FunctionTranslator:
          lines.append(f"{ret_type} {name}({param_str})")
          lines.append(f"{{")
  
@@ -1085,10 +1733,11 @@ index a5890d7..c573972 100644
  
          # Add _flags variable if function has conditional instructions
          has_conditionals = any(
-@@ -287,6 +316,14 @@ class FunctionTranslator:
+@@ -287,9 +322,25 @@ class FunctionTranslator:
          if has_conditionals:
              lines.append(f"    int _flags = 0; /* fallback flag var */")
  
+-        # Add _cf for carry-dependent instructions (sbb, adc)
 +        # Snapshot slots for deferred flag setters, declared unconditionally:
 +        # any flag-setting instruction captures its operands here, and the
 +        # flags can be consumed in a later basic block (or by a setcc/cmovcc
@@ -1097,10 +1746,21 @@ index a5890d7..c573972 100644
 +        # the jcc cannot change which way the branch goes.
 +        lines.append(f"    uint32_t _flg0 = 0, _flg1 = 0; (void)_flg0; (void)_flg1;")
 +
-         # Add _cf for carry-dependent instructions (sbb, adc)
++        # Add _cf for carry-dependent instructions (sbb, adc).
++        #
++        # Declaring it was never the hard part: nothing SET it. See the
++        # _cf_assignment note in lifter.py -- with CF stuck at 0, MSVC's
++        # `sbb eax,eax / sbb eax,-1` strcmp-sign idiom always answered
++        # "greater". emit_cf tells the lifter to materialise CF while lifting
++        # this function's blocks; it is per-function so the 25k functions that
++        # never read CF get no extra code.
          has_carry = any(insn.mnemonic in ("sbb", "adc")
                          for insn in instructions)
-@@ -322,14 +359,8 @@ class FunctionTranslator:
++        self.lifter.emit_cf = has_carry
+         if has_carry:
+             lines.append(f"    int _cf = 0; /* carry flag */")
+ 
+@@ -322,14 +373,8 @@ class FunctionTranslator:
              lines.append(f"    #define fp_top() _fp_stack[_fp_top & 7]")
              lines.append(f"    #define fp_st1() _fp_stack[(_fp_top + 1) & 7]")
  
@@ -1117,7 +1777,7 @@ index a5890d7..c573972 100644
  
          lines.append(f"")
  
-@@ -350,7 +381,58 @@ class FunctionTranslator:
+@@ -350,7 +395,58 @@ class FunctionTranslator:
                  for t in switch_targets:
                      label_addrs.add(t)
  
@@ -1176,7 +1836,7 @@ index a5890d7..c573972 100644
          for bb in blocks:
              # Emit label if this block is a branch target
              if bb.start in label_addrs or bb.start == start:
-@@ -361,11 +443,33 @@ class FunctionTranslator:
+@@ -361,11 +457,33 @@ class FunctionTranslator:
                  # compile. The null statement costs nothing and is always valid.
                  lines.append(f"loc_{bb.start:08X}: ;")
  
@@ -1213,7 +1873,7 @@ index a5890d7..c573972 100644
              for stmt in stmts:
                  lines.append(f"    {stmt}")
  
-@@ -390,9 +494,14 @@ class FunctionTranslator:
+@@ -390,9 +508,14 @@ class FunctionTranslator:
                  goto_lines.append((idx, goto_match.group(1)))
          for idx, target in goto_lines:
              if target not in defined_labels:
@@ -1229,7 +1889,16 @@ index a5890d7..c573972 100644
  
          # Ensure labels at end of function have a statement after them.
          # In C, a label must be followed by a statement; a comment alone is not
-@@ -730,6 +839,7 @@ class BatchTranslator:
+@@ -672,7 +795,7 @@ class BatchTranslator:
+ 
+     def translate_batch_split(self, func_list, output_dir, chunk_size=1000,
+                               header_name="recomp_funcs.h",
+-                              prefix="recomp", verbose=False):
++                              prefix="recomp", verbose=False, isolate=None):
+         """
+         Translate functions into multiple .c files + a shared header.
+ 
+@@ -730,6 +853,7 @@ class BatchTranslator:
              if name not in defined
          }
          stats["unresolved_stubs"] = len(unresolved)
@@ -1237,7 +1906,80 @@ index a5890d7..c573972 100644
  
          # Generate header with all forward declarations
          header_path = os.path.join(output_dir, header_name)
-@@ -799,15 +909,55 @@ class BatchTranslator:
+@@ -760,10 +884,31 @@ class BatchTranslator:
+         with open(header_path, "w", encoding="utf-8") as f:
+             f.write("\n".join(header_lines))
+ 
++        # Pull the OVERRIDDEN functions out into one translation unit each.
++        #
++        # A native override is wired with -Wl,--wrap=<name>, and --wrap only
++        # rewrites references that CROSS an object file. A call from another
++        # function in the SAME chunk is bound by the compiler and the wrapper
++        # never sees it -- so whether an override fires depended on which
++        # --split bucket the caller happened to land in. That is luck, not a
++        # mechanism: an observer on sub_00275920 reported "0 calls" on a run
++        # whose crash stack contained sub_00275920+0x318, and two of the
++        # eleven RtlAllocateHeap call sites bypassed the native heap the same
++        # way. Emitting each overridden function alone makes every call site
++        # cross-object by construction.
++        isolate = {int(a) for a in (isolate or ())}
++        iso_translations, rest = [], []
++        for t in translations:
++            (iso_translations if t[0] in isolate else rest).append(t)
++
++        stats["isolated"] = [addr for addr, _, _ in iso_translations]
++        stats["isolate_missing"] = sorted(
++            isolate - {addr for addr, _, _ in iso_translations})
++
+         # Split translations into chunks and write .c files
+         generated_files = [header_path]
+-        chunks = [translations[i:i+chunk_size]
+-                  for i in range(0, len(translations), chunk_size)]
++        chunks = [rest[i:i+chunk_size]
++                  for i in range(0, len(rest), chunk_size)]
+ 
+         for ci, chunk in enumerate(chunks):
+             c_path = os.path.join(output_dir, f"{prefix}_{ci:04d}.c")
+@@ -790,6 +935,38 @@ class BatchTranslator:
+                 print(f"  Wrote {c_path} ({len(chunk)} functions)",
+                       file=sys.stderr)
+ 
++        # One file per overridden function, so --wrap has a boundary to bind.
++        for addr, name, code in iso_translations:
++            c_path = os.path.join(output_dir, f"{prefix}_iso_{addr:08X}.c")
++            with open(c_path, "w", encoding="utf-8") as f:
++                f.write("\n".join([
++                    "/**",
++                    f" * {name} (0x{addr:08X}) -- ISOLATED translation unit.",
++                    " *",
++                    " * Alone in this file on purpose: a native override wired",
++                    " * with -Wl,--wrap only intercepts calls that cross an",
++                    " * object file. Do not merge this back into a chunk, and",
++                    " * do not add functions here -- a caller sharing this file",
++                    " * would bypass the override with nothing to show for it.",
++                    " */",
++                    "",
++                    "#define RECOMP_GENERATED_CODE",
++                    f'#include "{header_name}"',
++                    "#include <math.h>",
++                    "",
++                    code,
++                ]))
++            generated_files.append(c_path)
++            print(f"  isolated {name} at 0x{addr:08X} -> {os.path.basename(c_path)}",
++                  file=sys.stderr)
++
++        # A requested address that is not a translated function would otherwise
++        # vanish quietly, and its override would go on not firing. Say it.
++        for addr in stats["isolate_missing"]:
++            print(f"  ISOLATE REQUESTED BUT NOT A TRANSLATED FUNCTION: "
++                  f"0x{addr:08X} -- any --wrap on it will NOT fire",
++                  file=sys.stderr)
++
+         # Emit the stub bodies for call targets with no definition.
+         if unresolved:
+             stub_path = os.path.join(output_dir, f"{prefix}_stubs_unresolved.c")
+@@ -799,15 +976,55 @@ class BatchTranslator:
                  f" * {len(unresolved)} addresses called by translated code but not",
                  " * detected as functions - typically mid-function entry points.",
                  " * Auto-generated by tools/recomp.",
@@ -1295,6 +2037,35 @@ index a5890d7..c573972 100644
                  )
              stub_lines.append("")
  
+@@ -882,6 +1099,28 @@ class BatchTranslator:
+             "    return NULL;",
+             "}",
+             "",
++            "/* Greatest table entry <= xbox_va, or 0 if there is none.",
++            " *",
++            " * A call-site VA is an address INSIDE a function, so the exact",
++            " * lookup above always misses it. Diagnostics need the enclosing",
++            " * function to turn a bare address into `sub_XXXXXXXX+0xNN`.",
++            " * Returns 0 rather than the nearest entry when the VA is below",
++            " * the first function: reporting a site as belonging to a",
++            " * function that starts after it would be a confident lie. */",
++            "uint32_t recomp_enclosing_func(uint32_t xbox_va)",
++            "{",
++            "    size_t lo = 0, hi = g_recomp_table_size;",
++            "    if (!hi || xbox_va < g_recomp_table[0].xbox_va) return 0;",
++            "    while (hi - lo > 1) {",
++            "        size_t mid = lo + (hi - lo) / 2;",
++            "        if (g_recomp_table[mid].xbox_va <= xbox_va)",
++            "            lo = mid;",
++            "        else",
++            "            hi = mid;",
++            "    }",
++            "    return g_recomp_table[lo].xbox_va;",
++            "}",
++            "",
+             "/* Get the number of registered functions */",
+             "size_t recomp_get_count(void)",
+             "{",
 diff --git a/tools/validate_ordinals.py b/tools/validate_ordinals.py
 index 04601e8..ab9f2e2 100644
 --- a/tools/validate_ordinals.py

@@ -188,9 +188,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
 - status: hack
 - deps: rc-exe-run
-- evidence: scratch/logs/xbox_run_null.log; scratch/logs/xbox_discover_run_2.log
+- evidence: C077; issue #8; scratch/logs/xbox_run_bounds.log (0 ABI violations, 0 empty-stub calls, the NULL indirect call gone)
 - where: 
-- gap: NO LONGER the blocker. The runtime-discovery loop is at a fixed point again after the jump-table fix: 66968 indirect calls, and the loop STOPS correctly rather than seeding, because the first miss is now a NULL function pointer (out-of-image 0x00000000), not a missing function. Still DEBT only in that the fallback path exists and code past the current stop has never run. NEW BLOCKER, tracked here until it gets its own entry: sub_002A9570 dispatches through vtable slots at +0x54/+0x5C/+0x60 and one of them is NULL -- an object whose vtable is not fully populated. Stack: sub_002A9570+0x1066 <- sub_002AF0D0 <- sub_002AFBB0 <- sub_000132F0 <- sub_00225995. The game still opens NO data files (only TDATA/UDATA save metadata), so this is early engine setup.
+- gap: NO LONGER the blocker, and the register file is now clean for the first time: 94088 checked calls all restore ebx/esi/edi/ebp, and none of the 168 empty stubs is called. The NULL vtable slot was not an initialisation-order problem at all -- it was register corruption from a function whose detected body had been cut in half by an interior helper (C077, issue #8). Still DEBT only in that the fallback path exists and code past the current stop has never run. The run now stops on an ORDINARY discovery-loop input, 0x0029CA50 "unresolved (seed candidate)" -- a missing function, which is what the loop is for.
 - notes: 
 
 ### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage
