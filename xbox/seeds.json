@@ -1,0 +1,7 @@
+[
+  { "start": "0x0022286B", "name": "crt_thread_trampoline",
+    "why": "PsCreateSystemThreadEx start routine. Nothing references it statically -- it reaches the kernel only as an argument -- so the detector never found it. Discovered from the runtime log line 'start routine 0x0022286B not found in dispatch'." },
+
+  { "start": "0x00225995", "name": "game_main_thread",
+    "why": "The real main-thread body. sub_0022286B calls it indirectly through its first argument (StartContext1 of PsCreateSystemThreadEx), so again nothing references it statically. Discovered from '[ICALL] UNRESOLVED VA 0x00225995 -- the call did NOT execute'; before that the run printed 'main thread returned' as though it had run." }
+]

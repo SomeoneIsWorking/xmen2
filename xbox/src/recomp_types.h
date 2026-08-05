@@ -124,6 +124,23 @@ extern volatile uint64_t g_icall_count;
  */
 void recomp_icall_fail_log(uint32_t va);
 
+/**
+ * Called when an indirect call target is discarded unlooked-at because it
+ * fell in the macro's "garbage VA" window. Counted separately from a real
+ * dispatch miss so that a hidden real target cannot hide in that window.
+ */
+void recomp_icall_range_skip_log(uint32_t va);
+
+/**
+ * Print the tally of indirect calls that did NOT execute. Called at the end
+ * of the run -- unconditionally, including the zero case, so that a clean
+ * report is something the run states rather than something it omits.
+ */
+void recomp_icall_report(void);
+
+/** Prove both miss paths fire (XBOX_ICALL_SELFTEST=1). */
+void recomp_icall_selftest(void);
+
 /* ================================================================
  * Memory access helpers
  * ================================================================ */
@@ -342,13 +359,14 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     g_icall_count++; \
     /* Skip garbage VAs outside code section + kernel thunk range */ \
     if (_va >= 0x00400000 && _va < 0xFE000000) { \
+        recomp_icall_range_skip_log(_va); \
         g_esp += 4; eax = 0; break; \
     } \
     recomp_func_t _fn = recomp_lookup_manual(_va); \
     if (!_fn) _fn = recomp_lookup(_va); \
     if (!_fn) _fn = recomp_lookup_kernel(_va); \
     if (_fn) _fn(); \
-    else { g_esp += 4; eax = 0; } \
+    else { recomp_icall_fail_log(_va); g_esp += 4; eax = 0; } \
 } while(0)
 
 /**
@@ -365,13 +383,14 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     g_icall_trace_idx++; \
     g_icall_count++; \
     if (_va >= 0x00400000 && _va < 0xFE000000) { \
+        recomp_icall_range_skip_log(_va); \
         g_esp = (saved_esp); eax = 0; break; \
     } \
     recomp_func_t _fn = recomp_lookup_manual(_va); \
     if (!_fn) _fn = recomp_lookup(_va); \
     if (!_fn) _fn = recomp_lookup_kernel(_va); \
     if (_fn) _fn(); \
-    else { g_esp = (saved_esp); eax = 0; } \
+    else { recomp_icall_fail_log(_va); g_esp = (saved_esp); eax = 0; } \
 } while(0)
 
 /**
@@ -386,6 +405,7 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     if (!_fn) _fn = recomp_lookup((uint32_t)(xbox_va)); \
     if (!_fn) _fn = recomp_lookup_kernel((uint32_t)(xbox_va)); \
     if (_fn) _fn(); \
+    else recomp_icall_fail_log((uint32_t)(xbox_va)); \
 } while(0)
 
 /* ================================================================

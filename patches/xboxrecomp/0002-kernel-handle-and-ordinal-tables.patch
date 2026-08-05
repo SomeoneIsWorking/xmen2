@@ -1,0 +1,282 @@
+diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
+index eafbf96..dbfd820 100644
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -845,10 +845,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
+         BRIDGE_MEM32(handle_va) = bridge_handle_token(h);
+ }
+ 
+-/* Resolve a 32-bit Xbox handle slot back to a native HANDLE. */
+-static HANDLE bridge_read_handle(uint32_t va)
++/* Resolve a 32-bit Xbox handle token back to a native HANDLE.
++ *
++ * Takes the token BY VALUE, like bridge_take_handle. The Nt*File calls
++ * receive their HANDLE as a value argument (only the create/open calls take
++ * a PHANDLE out-parameter), so the caller's STACK_ARG(0) is already the
++ * token. This used to take a VA and load the token from Xbox memory, which
++ * added an indirection nothing supplied: a valid token 0x48000001 was used
++ * as an address, the word at Xbox VA 0x48000001 came back 0x0000F7FE, that
++ * failed the tag test and so was passed through as a native HANDLE --
++ * crashing in w32_handle_fd on the first NtQueryVolumeInformationFile. */
++static HANDLE bridge_read_handle(uint32_t token)
+ {
+-    uint32_t token = BRIDGE_MEM32(va);
+     if ((token & 0xFF000000u) == BRIDGE_HANDLE_TAG) {
+         uint32_t i = token & BRIDGE_HANDLE_MASK;
+         return (i > 0 && i < BRIDGE_HANDLE_MAX) ? s_handle_table[i] : NULL;
+@@ -1307,46 +1315,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+     case   4: return  4;  /* AvSetSavedDataAddress(1) */
+ 
+     /* ── Unknown stubs ── */
+-    case   8: return  0;  /* Unknown_8(void) */
+-    case  23: return  0;  /* Unknown_23(void) */
+-    case  42: return  0;  /* Unknown_42(void) */
++    case   8: return  0;  /* DbgPrint(cdecl, caller cleans) */
+ 
+     /* ── Pool Allocator ── */
+-    case  15: return  4;  /* ExAllocatePool(1) */
+-    case  16: return  8;  /* ExAllocatePoolWithTag(2) */
++    case  14: return  4;  /* ExAllocatePool(1) */
++    case  15: return  8;  /* ExAllocatePoolWithTag(2) */
+     /* case  17: DATA export - ExEventObjectType */
+-    case  24: return  4;  /* ExQueryPoolBlockSize(1) */
++    case  23: return  4;  /* ExQueryPoolBlockSize(1) */
+ 
+     /* ── HAL ── */
+-    case  40: return  4;  /* HalClearSoftwareInterrupt(1) */
+-    case  41: return  8;  /* HalDisableSystemInterrupt(2) */
++    case  38: return  4;  /* HalClearSoftwareInterrupt(1) */
++    case  39: return  8;  /* HalDisableSystemInterrupt(2) */
+     case  44: return  8;  /* HalGetInterruptVector(2) */
+-    case  46: return  8;  /* HalReadSMCTrayState(2) */
+-    case  47: return 24;  /* HalReadWritePCISpace(6) */
+-    case  49: return  4;  /* HalRequestSoftwareInterrupt(1) */
++    case   9: return  8;  /* HalReadSMCTrayState(2) */
++    case  46: return 24;  /* HalReadWritePCISpace(6) */
++    case  48: return  4;  /* HalRequestSoftwareInterrupt(1) */
+     case 358: return  0;  /* HalIsResetOrShutdownPending(void) */
+ 
+     /* ── I/O Manager ── */
+-    case  62: return 36;  /* IoBuildDeviceIoControlRequest(9) */
++    case  61: return 36;  /* IoBuildDeviceIoControlRequest(9) */
+     /* case  65: DATA export - IoCompletionObjectType */
+-    case  67: return 40;  /* IoCreateFile(10) */
+-    case  69: return  4;  /* IoDeleteDevice(1) */
++    case  66: return 40;  /* IoCreateFile(10) */
++    case  68: return  4;  /* IoDeleteDevice(1) */
+     /* case  71: DATA export - IoDeviceObjectType */
+-    case  74: return 12;  /* IoInitializeIrp(3) */
+-    case  81: return 20;  /* IoSetIoCompletion(5) */
+-    case  83: return  8;  /* IoStartNextPacket(2) */
+-    case  84: return 12;  /* IoStartNextPacketByKey(3) */
+-    case  85: return 16;  /* IoStartPacket(4) */
+-    case  86: return 32;  /* IoSynchronousDeviceIoControlRequest(8) */
+-    case  87: return 20;  /* IoSynchronousFsdRequest(5) */
++    case  73: return 12;  /* IoInitializeIrp(3) */
++    case  79: return 20;  /* IoSetIoCompletion(5) */
++    case  81: return  8;  /* IoStartNextPacket(2) */
++    case  82: return 12;  /* IoStartNextPacketByKey(3) */
++    case  83: return 16;  /* IoStartPacket(4) */
++    case  84: return 32;  /* IoSynchronousDeviceIoControlRequest(8) */
++    case  85: return 20;  /* IoSynchronousFsdRequest(5) */
+     case 359: return  4;  /* IoMarkIrpMustComplete(1) */
+ 
+     /* ── Kernel Synchronization ── */
+-    case  95: return  8;  /* KeAlertThread(2) */
+-    case  97: return  4;  /* KeBugCheck(1) */
+-    case  98: return 20;  /* KeBugCheckEx(5) */
+-    case  99: return  4;  /* KeCancelTimer(1) */
+-    case 100: return  4;  /* KeConnectInterrupt(1) */
++    case  93: return  8;  /* KeAlertThread(2) */
++    case  95: return  4;  /* KeBugCheck(1) */
++    case  96: return 20;  /* KeBugCheckEx(5) */
++    case  97: return  4;  /* KeCancelTimer(1) */
++    case  98: return  4;  /* KeConnectInterrupt(1) */
+     case 107: return 12;  /* KeInitializeDpc(3) */
+     case 109: return 28;  /* KeInitializeInterrupt(7) */
+     case 113: return  8;  /* KeInitializeTimerEx(2) */
+@@ -1418,8 +1424,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+     case 225: return  8;  /* NtSetEvent(2) */
+     case 226: return 20;  /* NtSetInformationFile(5) */
+     case 228: return  8;  /* NtSetSystemTime(2) */
+-    case 233: return 20;  /* NtWaitForMultipleObjectsEx(5) */
+-    case 234: return 12;  /* NtWaitForSingleObject(3) */
++    case 235: return 20;  /* NtWaitForMultipleObjectsEx(5) */
++    case 233: return 12;  /* NtWaitForSingleObject(3) */
+     case 236: return 32;  /* NtWriteFile(8) */
+     case 238: return  0;  /* NtYieldExecution(void) */
+ 
+@@ -1434,7 +1440,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+ 
+     /* ── Threading ── */
+     case 255: return 40;  /* PsCreateSystemThreadEx(10) */
+-    case 256: return 12;  /* KeDelayExecutionThread(3) */
++    case  99: return 12;  /* KeDelayExecutionThread(3) */
+     case 258: return  4;  /* PsTerminateSystemThread(1) */
+     /* case 259: DATA export - PsThreadObjectType */
+ 
+@@ -1452,26 +1458,26 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+     case 305: return  8;  /* RtlTimeToTimeFields(2) */
+     case 308: return 12;  /* RtlUnicodeStringToAnsiString(3) */
+     case 312: return 16;  /* RtlUnwind(4) */
+-    case 354: return 12;  /* RtlRip(3) */
++    case 352: return 12;  /* RtlRip(3) */
+ 
+     /* ── Xbox Identity (data exports) ── */
+     /* cases 322-328, 355-357: DATA exports */
+ 
+     /* ── Port I/O ── */
+-    case 335: return 12;  /* WRITE_PORT_BUFFER_USHORT(3) */
+-    case 336: return 12;  /* WRITE_PORT_BUFFER_ULONG(3) */
++    case 333: return 12;  /* WRITE_PORT_BUFFER_USHORT(3) */
++    case 334: return 12;  /* WRITE_PORT_BUFFER_ULONG(3) */
+ 
+     /* ── Crypto ── */
+-    case 337: return  4;  /* XcSHAInit(1) */
+-    case 338: return 12;  /* XcSHAUpdate(3) */
+-    case 339: return  8;  /* XcSHAFinal(2) */
+-    case 340: return 12;  /* XcRC4Key(3) */
+-    case 344: return 12;  /* XcPKDecPrivate(3) */
+-    case 345: return  4;  /* XcPKGetKeyLen(1) */
+-    case 346: return 12;  /* XcVerifyPKCS1Signature(3) */
+-    case 347: return 20;  /* XcModExp(5) */
+-    case 349: return 12;  /* XcKeyTable(3) */
+-    case 353: return  8;  /* XcUpdateCrypto(2) */
++    case 335: return  4;  /* XcSHAInit(1) */
++    case 336: return 12;  /* XcSHAUpdate(3) */
++    case 337: return  8;  /* XcSHAFinal(2) */
++    case 338: return 12;  /* XcRC4Key(3) */
++    case 342: return 12;  /* XcPKDecPrivate(3) */
++    case 343: return  4;  /* XcPKGetKeyLen(1) */
++    case 344: return 12;  /* XcVerifyPKCS1Signature(3) */
++    case 345: return 20;  /* XcModExp(5) */
++    case 347: return 12;  /* XcKeyTable(3) */
++    case 351: return  8;  /* XcUpdateCrypto(2) */
+ 
+     default:  return  0;  /* DATA exports or truly unknown */
+     }
+@@ -1514,9 +1520,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+     case 199: return bridge_NtFreeVirtualMemory;
+ 
+     /* Pool */
+-    case  15: return bridge_ExAllocatePool;
+-    case  16: return bridge_ExAllocatePoolWithTag;
+-    case  24: return bridge_ExQueryPoolBlockSize;
++    case  14: return bridge_ExAllocatePool;
++    case  15: return bridge_ExAllocatePoolWithTag;
++    case  23: return bridge_ExQueryPoolBlockSize;
+ 
+     /* IRQL */
+     case 160: return bridge_KfRaiseIrql;
+@@ -1546,14 +1552,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+     case 238: return bridge_NtYieldExecution;
+ 
+     /* Hardware */
+-    case  47: return bridge_HalReadSMCTrayState;
++    case   9: return bridge_HalReadSMCTrayState;
+ 
+     /* Display */
+     case   3: return bridge_AvSetDisplayMode;
+ 
+     /* I/O */
+-    case  63: return bridge_IoCreateSymbolicLink;
+-    case  67: return bridge_IoCreateFile;
++    case  67: return bridge_IoCreateSymbolicLink;
++    case  66: return bridge_IoCreateFile;
+     case 188: return bridge_NtCreateDirectoryObject;
+     case 246: return bridge_ObReferenceObjectByHandle;
+ 
+diff --git a/tools/validate_ordinals.py b/tools/validate_ordinals.py
+index 04601e8..fc35707 100644
+--- a/tools/validate_ordinals.py
++++ b/tools/validate_ordinals.py
+@@ -24,6 +24,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ PARSER = os.path.join(ROOT, 'tools/xbe_parser/xbe_parser.py')
+ THUNKS = os.path.join(ROOT, 'src/kernel/kernel_thunks.c')
+ DOCS = os.path.join(ROOT, 'docs/formats/kernel-exports.md')
++BRIDGE = os.path.join(ROOT, 'src/kernel/kernel_bridge.c')
++
++# Ordinals whose bridge deliberately shares one implementation with a
++# neighbour, so the name will not match. Each needs a reason.
++BRIDGE_ALIASES = {
++    150: ('KeSetTimer', 'KeSetTimerEx shares the KeSetTimer no-op bridge'),
++}
+ 
+ 
+ def canonical():
+@@ -49,6 +56,30 @@ def doc_rows():
+     return out
+ 
+ 
++def bridge_cases():
++    """ordinal -> bridge function name, from kernel_bridge.c's dispatch."""
++    src = open(BRIDGE, encoding='utf-8', errors='replace').read()
++    return {int(o): fn for o, fn in
++            re.findall(r'case\s+(\d+):\s*return\s+bridge_(\w+);', src)}
++
++
++def argsize_cases():
++    """ordinal -> (bytes, name) from stdcall_args_for_ordinal's comments.
++
++    The stack cleanup size is per-FUNCTION, so a row labelled with the wrong
++    function is a wrong `ret N`: the simulated ESP drifts by the difference
++    and the caller resumes on a corrupted stack, far from the call.
++    """
++    src = open(BRIDGE, encoding='utf-8', errors='replace').read()
++    i = src.find('stdcall_args_for_ordinal')
++    if i < 0:
++        return {}
++    body = src[i:]
++    body = body[:body.find('\n}')]
++    return {int(o): (int(n), name) for o, n, name in
++            re.findall(r'case\s+(\d+):\s*return\s*(\d+);\s*/\*\s*(\w+)', body)}
++
++
+ def main():
+     table = canonical()
+     errors = []
+@@ -72,14 +103,42 @@ def main():
+         if want and name != want:
+             errors.append(f"docs:   ordinal {ordinal} is {want}, but documented as {name}")
+ 
++    for ordinal, fn in sorted(bridge_cases().items()):
++        want = table.get(ordinal)
++        alias = BRIDGE_ALIASES.get(ordinal)
++        if alias and alias[0] == fn:
++            continue
++        if want is None:
++            errors.append(f"bridge: ordinal {ordinal} (bridge_{fn}) is not in the export table")
++        elif fn != want:
++            belongs = next((o for o, n in table.items() if n == fn), None)
++            errors.append(
++                f"bridge: ordinal {ordinal} is {want}, but dispatches bridge_{fn}"
++                + (f" (which belongs at {belongs})" if belongs else ""))
++
++    for ordinal, (nbytes, name) in sorted(argsize_cases().items()):
++        want = table.get(ordinal)
++        if name.startswith('Unknown_'):
++            continue
++        if want is None:
++            errors.append(f"argsz:  ordinal {ordinal} ({name}) is not in the export table")
++        elif name != want:
++            belongs = next((o for o, n in table.items() if n == name), None)
++            errors.append(
++                f"argsz:  ordinal {ordinal} is {want}, but sized as {name} ({nbytes} bytes)"
++                + (f" (which belongs at {belongs})" if belongs else ""))
++
+     if errors:
+         print(f"FAIL: {len(errors)} ordinal mismatch(es)\n")
+         for e in errors:
+             print("  " + e)
+         return 1
+ 
+-    print(f"OK: {len(thunk_cases())} thunk cases and {len(doc_rows())} doc rows "
+-          f"agree with the {len(table)}-entry export table")
++    print(f"OK: {len(thunk_cases())} thunk cases, {len(doc_rows())} doc rows, "
++          f"{len(bridge_cases())} bridge dispatches and {len(argsize_cases())} "
++          f"arg-size rows agree with the {len(table)}-entry export table")
++    print("  Not checked: whether each bridge BODY implements the semantics of "
++          "the name it carries -- only that the names line up.")
+     return 0
+ 
+ 

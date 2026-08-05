@@ -201,3 +201,38 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: CONFIRMED by control: the ORIGINAL exe in the same dir with the same env produces 800x600 R5G6B5; only the executable differs. Two competing hypotheses (C033 field offset, C034 struct-by-value stack shift). Settle by tracing engine-call arguments for both exes and diffing -- not by more reasoning about the numbers.
 - notes: 
 
+
+## xbox
+
+### xb-lift — Xbox XBE lifts to C and builds a native Linux executable
+- status: re-verified
+- deps: 
+- evidence: C035/C036/C037/C038; 21,909/21,909 functions translated, 0 failures; 19MB PIE executable
+- where: xbox/, vendor/xboxrecomp (patches/xboxrecomp/*.patch)
+- gap: 
+- notes: 
+
+### xb-run — Recompiled Xbox build executes the game's main thread
+- status: re-partial
+- deps: xb-lift
+- evidence: C039/C040/C041; gdb backtrace shows kernel calls originating in sub_00225995 via sub_0022286B; 16 kernel calls incl. NtOpenFile/NtQueryVolumeInformationFile/MmAllocateContiguousMemory
+- where: 
+- gap: The main thread still bails: it reaches HalReturnToFirmware (ordinal 49, the Xbox reboot-to-dashboard call) via sub_002269A9 -> sub_00220021 -> sub_00226039 -> sub_00220144. Nothing renders; no window. Why that path is taken is the open question.
+- notes: 
+
+### xb-discovery — Runtime discovery loop for statically-invisible functions
+- status: re-verified
+- deps: xb-lift
+- evidence: C040/C041; two functions found this way (0x0022286B thread trampoline, 0x00225995 main thread body), each reachable only as a function-pointer argument
+- where: tools/xbox_relift.sh, xbox/seeds.json
+- gap: 
+- notes: 
+
+### xb-kernel — Xbox kernel bridge: ordinals bound to the right functions
+- status: re-partial
+- deps: xb-run
+- evidence: C042/C043; validate_ordinals.py now covers the bridge dispatch and stdcall arg-size tables and reports OK
+- where: 
+- gap: Names line up; SEMANTICS are unaudited. Bodies were written against the shifted numbering, so a body may still implement the wrong function under a correct name. ExQueryNonVolatileSetting (24) and HalReturnToFirmware (49) have no bridge at all and return 0.
+- notes: 
+

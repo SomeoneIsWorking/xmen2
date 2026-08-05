@@ -4,8 +4,10 @@ Consult at the start of a task; update in the SAME commit that changes a
 subsystem. Companion registries: `docs/re-frontier.md` (ordered RE progress,
 real vs hack) and `docs/info/` (claims + instruments).
 
-Direction is **static recompilation of the PC build + native overrides** —
-see [`strategy.md`](strategy.md). Status words mean:
+Direction is **static recompilation + native overrides**. The PC build was the
+original target; since C010 was falsified the **Xbox build is the live front**
+(an existing recompiler, `vendor/xboxrecomp`, removes the cost that argument
+rested on) — see [`strategy.md`](strategy.md). Status words mean:
 **verified** = checked against the original on real data, with the check cited ·
 **partial** = works, with a named gap · **untouched** = not started.
 
@@ -36,6 +38,20 @@ see [`strategy.md`](strategy.md). Status words mean:
 | `libIGDisplay.dll` | **partial** — 116 verified functions live in the game, 704 exports forwarded to the original. All-500 build page-faults, not yet bisected |
 | `XMen2.exe` | **untouched** — 11,106 functions, 643,647 instructions, the eventual target |
 | other 15 `libIG*.dll` | **untouched** |
+
+## Xbox recompilation (`xbox/`, `vendor/xboxrecomp` — gitignored, see `patches/`)
+
+| what | where | status |
+|---|---|---|
+| Xbox game project (entry, VEH, ICALL diagnostics) | `xbox/src/main.c`, `recomp_manual.c`, `recomp_types.h` | **partial** — builds a 19 MB native PIE Linux executable that runs game code (C038, C039) |
+| Lift pipeline: disasm → func_id → recomp | `tools/xbox_relift.sh` | **verified** — 21,909/21,909 functions, 0 failures; the script fails loudly if a seed does not land |
+| Runtime discovery of statically-invisible functions | `xbox/seeds.json` | **verified** — two functions reachable only as function-pointer arguments, each found from a run and fed back (C040, C041) |
+| Unresolved-indirect-call tally | `xbox/src/recomp_manual.c` | **verified** — I008; `XBOX_ICALL_SELFTEST=1` proves both miss paths fire |
+| Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |
+| Xbox game execution | — | **partial** — the main thread runs file I/O and allocation, then bails to `HalReturnToFirmware`; nothing renders |
+
+Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
+`vendor/` is gitignored; re-apply them after re-cloning the toolkit.
 
 ## Assets and engine RE (pre-dates the recomp direction, still valid)
 
