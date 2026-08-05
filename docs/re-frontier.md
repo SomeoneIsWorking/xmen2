@@ -202,11 +202,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### rc-native — The PC recomp produces an artefact that runs WITHOUT Wine
-- status: todo
+- status: re-partial
 - deps: rc-exe-run
-- evidence: 
-- where: 
-- gap: NOT STARTED, and until 2026-08-05 not even tracked -- the word Wine appeared nowhere in this roadmap, so nothing measured progress toward the one thing strategy.md says the whole direction is for ('ownership: a native, buildable, portable codebase ... none of which Wine gives you'). Every PC milestone so far, INCLUDING the full 521-function libIGDisplay build (C080), is a 32-bit PE loaded by Wine into the ORIGINAL XMen2.exe. That is a fidelity harness, not a port. Staging through one is defensible only while a named path off it exists; there was none. Six concrete dependencies, each measurable: (1) output is an i686-w64-mingw32 PE, not an ELF; (2) x86_call_host calls real Win32 DLLs resolved by LoadLibraryA/GetProcAddress -- 163 imports for libIGDisplay alone; (3) g_imgbase points at libIGDisplay_orig.dll as mapped by the Windows loader, so every image-absolute reference resolves into the ORIGINAL PE; (4) 150 of 748 exported names are still forwarded to the original DLL; (5) the host process is still the unrecompiled XMen2.exe; (6) x86rt.h deliberately does NOT model FS, because 'this code runs as a genuine 32-bit PE' and FS:[0] is the real SEH chain. (3) and (6) are load-bearing: they assume a Windows process rather than being gaps that shrink as more functions are recompiled.
+- evidence: C081; src/native/x2native.c battery -- 14 postcondition checks pass natively, and --selftest proves they bind (with the bodies skipped all 14 fail); scratch/build-native/x2native is an 'ELF 64-bit LSB executable, x86-64'
+- where: src/native/, tools/recomp.py native, CMakeLists.txt target x2native
+- gap: STARTED. What now works: the original PE maps at its own base in a 64-bit process (MAP_FIXED_NOREPLACE, refuses to relocate), all 521 emitted bodies link and RUN natively against it, image-relative immediates rebase correctly, and stack args plus RET N cleanup are right -- all measured, with a negative control. What remains is the import surface and the other modules: 107 imports are referenced by the compiled bodies and every one is stubbed to abort by name. They break down as 61 libIGCore + 2 libIGGfx + 1 libIGUtils (other game modules, i.e. more recompilation) and 35 USER32 + 4 MSVCRT + 3 KERNEL32 + 1 DINPUT (the Win32 surface SDL replaces). FS is modelled but unset and aborts if read -- libIGDisplay never reads it (0 uses), XMen2.exe does (2743 uses), so it becomes real work at rc-exe.
 - notes: The native CMake build (src/core, src/display, src/app) is unrelated to the recomp -- asset tooling and an SDL controller backend. Nothing links the two today.
 
 

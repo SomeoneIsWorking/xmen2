@@ -65,3 +65,43 @@ if(TARGET SDL2::SDL2)
 else()
     target_link_libraries(flyview PRIVATE PkgConfig::SDL2)
 endif()
+
+# ---------------------------------------------------------------------------
+# x2native -- recompiled game code as a NATIVE binary (rc-native)
+#
+# The first artefact that is not hosted by Wine. It needs the generated
+# recompiler output, which is gitignored, so the target only exists once
+# `tools/recomp.py emit` and `tools/recomp.py native` have been run:
+#
+#   python3 tools/recomp.py emit   scratch/recomp/libIGDisplay.json \
+#                                  src/recomp/libIGDisplay.c
+#   python3 tools/recomp.py native scratch/recomp/libIGDisplay.json \
+#                                  src/recomp/libIGDisplay_native.c
+#
+# Configured without them, CMake SAYS so rather than quietly omitting the
+# target -- a missing native build that looks like a clean configure is how
+# "the native path does not build" turns into "there is no native path".
+# ---------------------------------------------------------------------------
+set(X2_RECOMP_BODIES ${CMAKE_SOURCE_DIR}/src/recomp/libIGDisplay.c)
+set(X2_RECOMP_NATIVE ${CMAKE_SOURCE_DIR}/src/recomp/libIGDisplay_native.c)
+if(EXISTS ${X2_RECOMP_BODIES} AND EXISTS ${X2_RECOMP_NATIVE})
+    add_executable(x2native
+        src/native/x2native.c
+        src/native/pe_map.c
+        ${X2_RECOMP_BODIES}
+        ${X2_RECOMP_NATIVE}
+    )
+    target_include_directories(x2native PRIVATE src/recomp src/native)
+    target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
+    if(TARGET SDL2::SDL2)
+        target_link_libraries(x2native PRIVATE SDL2::SDL2)
+    else()
+        target_link_libraries(x2native PRIVATE PkgConfig::SDL2)
+    endif()
+    add_test(NAME native_battery
+             COMMAND x2native $ENV{GAME_PC_DIR}/libIGDisplay.dll --no-window)
+else()
+    message(STATUS
+        "x2native: SKIPPED -- generated recompiler output is missing. "
+        "Run tools/recomp.py emit and tools/recomp.py native (see above).")
+endif()

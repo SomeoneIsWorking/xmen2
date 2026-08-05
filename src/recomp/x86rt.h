@@ -14,7 +14,42 @@
 #define X86RT_H
 
 #include <stdint.h>
+#ifdef _WIN32
 #include <intrin.h>
+#else
+/*
+ * intrin.h is used for exactly one thing here: the FS/GS accessors below.
+ * Off Windows there is no TIB, so FS-relative access is modelled as a flat
+ * block the runtime owns -- the same choice the Xbox build makes, and the only
+ * honest one once no Windows loader is involved.
+ *
+ * g_fsbase is deliberately 0 until a native host sets it: FS:[0] is the SEH
+ * chain, and silently reading address 0 would be a crash with a misleading
+ * cause. x86_fs_check() makes it say so instead.
+ */
+extern uint32_t g_fsbase, g_gsbase;
+void x86_seg_unset(const char *seg);
+static inline uint32_t __readfsdword(unsigned long o)
+{
+    if (!g_fsbase) x86_seg_unset("FS");
+    return *(volatile uint32_t *)(uintptr_t)(g_fsbase + (uint32_t)o);
+}
+static inline void __writefsdword(unsigned long o, uint32_t v)
+{
+    if (!g_fsbase) x86_seg_unset("FS");
+    *(volatile uint32_t *)(uintptr_t)(g_fsbase + (uint32_t)o) = v;
+}
+static inline uint32_t __readgsdword(unsigned long o)
+{
+    if (!g_gsbase) x86_seg_unset("GS");
+    return *(volatile uint32_t *)(uintptr_t)(g_gsbase + (uint32_t)o);
+}
+static inline void __writegsdword(unsigned long o, uint32_t v)
+{
+    if (!g_gsbase) x86_seg_unset("GS");
+    *(volatile uint32_t *)(uintptr_t)(g_gsbase + (uint32_t)o) = v;
+}
+#endif
 
 enum {
     FK_NONE = 0, FK_ADD, FK_SUB, FK_LOGIC, FK_INC, FK_DEC, FK_SHIFT,
