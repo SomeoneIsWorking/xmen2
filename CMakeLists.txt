@@ -4,10 +4,22 @@ project(xmen2_sdl LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-find_package(SDL2 QUIET)
-if(NOT SDL2_FOUND)
+# SDL3, for its GPU abstraction: it is the layer that will stand in for D3D8,
+# and it maps onto Metal on macOS rather than needing MoltenVK underneath.
+find_package(SDL3 QUIET)
+if(NOT SDL3_FOUND)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+    pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+endif()
+if(TARGET SDL3::SDL3)
+    set(X2_SDL SDL3::SDL3)
+else()
+    set(X2_SDL PkgConfig::SDL3)
+endif()
+
+find_package(SDL2 QUIET)          # asset viewers only -- see below
+if(NOT SDL2_FOUND)
+    pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
 endif()
 
 add_library(x2_core
@@ -24,11 +36,7 @@ add_library(x2_display
     src/display/ig_sdl_controller.c
 )
 target_include_directories(x2_display PUBLIC src/display)
-if(TARGET SDL2::SDL2)
-    target_link_libraries(x2_display PUBLIC SDL2::SDL2)
-else()
-    target_link_libraries(x2_display PUBLIC PkgConfig::SDL2)
-endif()
+target_link_libraries(x2_display PUBLIC ${X2_SDL})
 
 enable_testing()
 add_executable(test_controller tests/test_controller.c)
@@ -42,6 +50,10 @@ add_test(NAME enbaya COMMAND test_enbaya)
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
 
+# The asset viewers stay on SDL2 deliberately. They are separate binaries that
+# do not link x2_display, so there is no two-SDLs-in-one-process hazard, and
+# converting ~90 call sites of SDL_Renderer code buys the port nothing. The
+# PORT path -- x2_display and x2native -- is SDL3.
 add_executable(x2view src/app/x2view.c)
 target_link_libraries(x2view PRIVATE x2_core)
 if(TARGET SDL2::SDL2)
@@ -93,13 +105,14 @@ if(EXISTS ${X2_RECOMP_BODIES} AND EXISTS ${X2_RECOMP_NATIVE})
     )
     target_include_directories(x2native PRIVATE src/recomp src/native)
     target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
-    if(TARGET SDL2::SDL2)
-        target_link_libraries(x2native PRIVATE SDL2::SDL2)
-    else()
-        target_link_libraries(x2native PRIVATE PkgConfig::SDL2)
-    endif()
+    target_link_libraries(x2native PRIVATE ${X2_SDL})
+    # No $ENV{} here: CMake would bake in whatever GAME_PC_DIR was at CONFIGURE
+    # time, which is how this test first "failed" against an empty path. x2native
+    # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,
+    # saying so -- a skip that announces itself, not a silent pass.
     add_test(NAME native_battery
-             COMMAND x2native $ENV{GAME_PC_DIR}/libIGDisplay.dll --no-window)
+             COMMAND x2native --no-window --selftest)
+    set_tests_properties(native_battery PROPERTIES SKIP_RETURN_CODE 77)
 else()
     message(STATUS
         "x2native: SKIPPED -- generated recompiler output is missing. "

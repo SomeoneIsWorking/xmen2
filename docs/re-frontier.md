@@ -76,11 +76,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### sdl-input — SDL_GameController backend + the three shipped features
-- status: todo
+- status: re-partial
 - deps: rc-overrides
-- evidence: 
+- evidence: src/display/ig_sdl_controller.c on the SDL3 gamepad API; tests/test_controller.c drives a real SDL3 virtual joystick and passes
 - where: 
-- gap: Now lands as a native override over recompiled input functions.
+- gap: Backend converted to SDL3 (chosen over SDL2+Vulkan because SDL3 GPU maps onto Metal on macOS). Still a standalone backend: it is not yet wired as a native override over the recompiled input functions, and the DINPUT import is still one of the 107 stubs that abort by name.
 - notes: 
 
 

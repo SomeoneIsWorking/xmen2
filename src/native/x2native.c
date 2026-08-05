@@ -23,7 +23,7 @@
 #include <string.h>
 
 #ifdef X2_WITH_SDL
-#include <SDL2/SDL.h>
+#include <SDL3/SDL.h>
 #endif
 
 int         x86_native_call(uint32_t ep, CPU *C);
@@ -242,10 +242,20 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;
         else dll = argv[i];
     }
+    /* No path given: fall back to the install named by GAME_PC_DIR, the same
+       variable the Wine-side harness uses. If it is unset there is nothing to
+       run against, and this exits 77 -- ctest's SKIP code -- saying why. A
+       skip that announces itself, rather than a pass over an empty battery. */
     if (!dll) {
-        fprintf(stderr, "usage: x2native <libIGDisplay.dll> "
-                        "[--no-window] [--selftest]\n");
-        return 2;
+        const char *dir = getenv("GAME_PC_DIR");
+        static char path[4096];
+        if (!dir || !*dir) {
+            printf("SKIP x2native: GAME_PC_DIR is unset, so there is no "
+                   "libIGDisplay.dll to map. NOTHING was checked.\n");
+            return 77;
+        }
+        snprintf(path, sizeof path, "%s/libIGDisplay.dll", dir);
+        dll = path;
     }
     if (pe_map(dll, &img) != 0) return 1;
     g_imgbase = img.base;
@@ -263,12 +273,12 @@ int main(int argc, char **argv)
 #ifdef X2_WITH_SDL
     if (window) {
         SDL_Window *w;
-        if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+        /* SDL3 returns true on success, where SDL2 returned 0. */
+        if (!SDL_Init(SDL_INIT_VIDEO)) {
             fprintf(stderr, "x2native: SDL_Init failed: %s\n", SDL_GetError());
             return 1;
         }
-        w = SDL_CreateWindow("x2native", SDL_WINDOWPOS_CENTERED,
-                             SDL_WINDOWPOS_CENTERED, 800, 600, 0);
+        w = SDL_CreateWindow("x2native", 800, 600, 0);
         if (!w) {
             fprintf(stderr, "x2native: SDL_CreateWindow failed: %s\n",
                     SDL_GetError());

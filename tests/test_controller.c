@@ -1,4 +1,4 @@
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <assert.h>
 #include <stdio.h>
 
@@ -24,27 +24,27 @@ static void on_disconnect(x2_controller_manager *man, x2_controller *c)
 
 static void test_mapping(void)
 {
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_A) == X2_BUTTON_RIGHT_PAD_DOWN);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_B) == X2_BUTTON_RIGHT_PAD_RIGHT);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_X) == X2_BUTTON_RIGHT_PAD_LEFT);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_Y) == X2_BUTTON_RIGHT_PAD_UP);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_BACK) == X2_BUTTON_SELECT);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_START) == X2_BUTTON_START);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_LEFTSTICK) == X2_BUTTON_LEFT_JOYSTICK_BUTTON);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_RIGHTSTICK) == X2_BUTTON_RIGHT_JOYSTICK_BUTTON);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_LEFTSHOULDER) == X2_BUTTON_UPPER_LEFT_TRIGGER);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) == X2_BUTTON_UPPER_RIGHT_TRIGGER);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_DPAD_UP) == X2_BUTTON_LEFT_PAD_UP);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_DPAD_DOWN) == X2_BUTTON_LEFT_PAD_DOWN);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_DPAD_LEFT) == X2_BUTTON_LEFT_PAD_LEFT);
-    assert(x2_sdl_controller_button_to_ig(SDL_CONTROLLER_BUTTON_DPAD_RIGHT) == X2_BUTTON_LEFT_PAD_RIGHT);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_SOUTH) == X2_BUTTON_RIGHT_PAD_DOWN);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_EAST) == X2_BUTTON_RIGHT_PAD_RIGHT);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_WEST) == X2_BUTTON_RIGHT_PAD_LEFT);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_NORTH) == X2_BUTTON_RIGHT_PAD_UP);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_BACK) == X2_BUTTON_SELECT);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_START) == X2_BUTTON_START);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_LEFT_STICK) == X2_BUTTON_LEFT_JOYSTICK_BUTTON);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_RIGHT_STICK) == X2_BUTTON_RIGHT_JOYSTICK_BUTTON);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) == X2_BUTTON_UPPER_LEFT_TRIGGER);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) == X2_BUTTON_UPPER_RIGHT_TRIGGER);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_DPAD_UP) == X2_BUTTON_LEFT_PAD_UP);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_DPAD_DOWN) == X2_BUTTON_LEFT_PAD_DOWN);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_DPAD_LEFT) == X2_BUTTON_LEFT_PAD_LEFT);
+    assert(x2_sdl_controller_button_to_ig(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) == X2_BUTTON_LEFT_PAD_RIGHT);
     for (int i = X2_BUTTON_SELECT; i < X2_BUTTON_16; ++i) {
         if (i == X2_BUTTON_LOWER_LEFT_TRIGGER || i == X2_BUTTON_LOWER_RIGHT_TRIGGER) {
             continue;
         }
         int found = 0;
-        for (int b = 0; b < SDL_CONTROLLER_BUTTON_MAX; ++b) {
-            if (x2_sdl_controller_button_to_ig((SDL_GameControllerButton)b) == i) {
+        for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b) {
+            if (x2_sdl_controller_button_to_ig((SDL_GamepadButton)b) == i) {
                 found = 1;
                 break;
             }
@@ -168,16 +168,25 @@ static void test_virtual_controller(void)
         return;
     }
 
-    SDL_JoystickID jid = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER, 4, 14, 4);
-    if (jid < 0) {
+    /* SDL3 attaches a virtual joystick from a descriptor rather than from a
+       (type, naxes, nbuttons, nhats) tuple, and returns 0 -- not a negative
+       number -- when it fails. */
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = 4;
+    desc.nbuttons = 14;
+    desc.nhats = 4;
+    SDL_JoystickID jid = SDL_AttachVirtualJoystick(&desc);
+    if (jid == 0) {
         printf("SKIP virtual controller: %s\n", SDL_GetError());
         x2_controller_manager_shutdown(&man);
         return;
     }
 
-    SDL_JoystickGUID g = SDL_JoystickGetDeviceGUID(0);
+    SDL_GUID g = SDL_GetJoystickGUIDForID(jid);
     char gs[64];
-    SDL_JoystickGetGUIDString(g, gs, sizeof(gs));
+    SDL_GUIDToString(g, gs, sizeof(gs));
     char map[512];
     snprintf(map, sizeof(map),
              "%s,Virtual Controller,a:b0,b:b1,x:b2,y:b3,back:b4,start:b6,"
@@ -185,7 +194,7 @@ static void test_virtual_controller(void)
              "dpup:h0.1,dpleft:h0.8,dpdown:h0.4,dpright:h0.2,"
              "leftx:a0,lefty:a1,rightx:a2,righty:a3,",
              gs);
-    SDL_GameControllerAddMapping(map);
+    SDL_AddGamepadMapping(map);
 
     x2_sdl_controller_poll(&man);
     assert(x2_controller_manager_get_count(&man) == 1);
@@ -194,31 +203,31 @@ static void test_virtual_controller(void)
     assert(c->connected);
     assert(c->is_console);
 
-    SDL_Joystick *joy = SDL_JoystickOpen(jid);
+    SDL_Joystick *joy = SDL_OpenJoystick(jid);
     assert(joy);
 
-    SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_A, 1);
+    SDL_SetJoystickVirtualButton(joy, SDL_GAMEPAD_BUTTON_SOUTH, 1);
     x2_sdl_controller_poll(&man);
     assert(x2_controller_get_button_state(c, X2_BUTTON_RIGHT_PAD_DOWN));
-    SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_A, 0);
+    SDL_SetJoystickVirtualButton(joy, SDL_GAMEPAD_BUTTON_SOUTH, 0);
     x2_sdl_controller_poll(&man);
     assert(!x2_controller_get_button_state(c, X2_BUTTON_RIGHT_PAD_DOWN));
 
-    SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_BACK, 1);
-    SDL_JoystickSetVirtualButton(joy, SDL_CONTROLLER_BUTTON_START, 1);
+    SDL_SetJoystickVirtualButton(joy, SDL_GAMEPAD_BUTTON_BACK, 1);
+    SDL_SetJoystickVirtualButton(joy, SDL_GAMEPAD_BUTTON_START, 1);
     x2_sdl_controller_poll(&man);
     assert(x2_controller_get_button_state(c, X2_BUTTON_SELECT));
     assert(x2_controller_get_button_state(c, X2_BUTTON_START));
 
-    SDL_JoystickSetVirtualAxis(joy, SDL_CONTROLLER_AXIS_RIGHTX, 32767);
+    SDL_SetJoystickVirtualAxis(joy, SDL_GAMEPAD_AXIS_RIGHTX, 32767);
     x2_sdl_controller_poll(&man);
     float x, y;
     x2_controller_get_joystick(c, 1, &x, &y);
     assert(x > 0.99f);
     assert(y == 0.0f);
 
-    SDL_JoystickClose(joy);
-    SDL_JoystickDetachVirtual(jid);
+    SDL_CloseJoystick(joy);
+    SDL_DetachVirtualJoystick(jid);
     x2_sdl_controller_poll(&man);
     assert(x2_controller_manager_get_count(&man) == 0);
     assert(s_disconnect_count == 1);
