@@ -142,6 +142,33 @@ void recomp_icall_report(void);
 void recomp_icall_selftest(void);
 
 /* ================================================================
+ * Executable image extent (GAME-SPECIFIC)
+ *
+ * An indirect call to a VA outside the image is a garbage function
+ * pointer and must not be dispatched. The bounds are the game's own,
+ * read from its XBE section table -- NOT a round number.
+ *
+ * X-Men Legends II (Xbox) has TEN executable sections, not one:
+ *   .text    0x00011000 + 4049732
+ *   D3D      0x003EDB60   DSOUND  0x00402140   WMADEC  0x0040E2A0
+ *   PSFD00   0x004277E0   PSFD_I  0x00428F60   PSFD_B  0x00429380
+ *   PSFD_P   0x00429C60   XONLINE 0x0042A2C0   XNET    0x0044B060
+ *   D3DX     0x0045DE40   XGRPH   0x004650C0   XPP     0x00486280 + 36008
+ * ending at 0x0048EEC8, immediately before .rdata at 0x0048EF40.
+ *
+ * The template's default treated everything at or above 0x00400000 as
+ * garbage, which silently discarded every indirect call into DSOUND,
+ * WMADEC, XONLINE, XNET, D3DX, XGRPH and XPP -- 430 KB of shipped code.
+ * The ICALL miss tally caught it on VA 0x0042E52F (XONLINE).
+ * ================================================================ */
+
+#define XBOX_IMAGE_CODE_LO  0x00011000u
+#define XBOX_IMAGE_CODE_HI  0x0048EF40u   /* exclusive: start of .rdata */
+
+#define XBOX_VA_IS_CODE(va) \
+    ((uint32_t)(va) >= XBOX_IMAGE_CODE_LO && (uint32_t)(va) < XBOX_IMAGE_CODE_HI)
+
+/* ================================================================
  * Memory access helpers
  * ================================================================ */
 
@@ -358,7 +385,7 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     g_icall_trace_idx++; \
     g_icall_count++; \
     /* Skip garbage VAs outside code section + kernel thunk range */ \
-    if (_va >= 0x00400000 && _va < 0xFE000000) { \
+    if (!XBOX_VA_IS_CODE(_va) && _va < 0xFE000000) { \
         recomp_icall_range_skip_log(_va); \
         g_esp += 4; eax = 0; break; \
     } \
@@ -382,7 +409,7 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
     g_icall_trace[g_icall_trace_idx & (ICALL_TRACE_SIZE-1)] = _va; \
     g_icall_trace_idx++; \
     g_icall_count++; \
-    if (_va >= 0x00400000 && _va < 0xFE000000) { \
+    if (!XBOX_VA_IS_CODE(_va) && _va < 0xFE000000) { \
         recomp_icall_range_skip_log(_va); \
         g_esp = (saved_esp); eax = 0; break; \
     } \

@@ -1,3 +1,85 @@
+diff --git a/tools/disasm/functions.py b/tools/disasm/functions.py
+index 26ca037..072f1bd 100644
+--- a/tools/disasm/functions.py
++++ b/tools/disasm/functions.py
+@@ -322,39 +322,51 @@ class FunctionDetector:
+         Walks forward from start, tracking the furthest reachable point
+         through fall-through and internal jumps.
+         """
+-        max_addr = start
+-        addr = start
+-
+         # Upper bound
+         upper = sec_end if sec_end else start + 0x100000
+         if next_func and next_func < upper:
+             upper = next_func
+ 
+-        while addr < upper:
+-            insn = self.engine.get_instruction(addr)
+-            if insn is None:
+-                break
+-
+-            end = insn.end_address
+-            if end > max_addr:
+-                max_addr = end
+-
+-            # Track internal forward jumps to extend function bounds
+-            if insn.is_cond_jump and insn.jump_target is not None:
+-                target = insn.jump_target
+-                if start <= target < upper and target > max_addr:
+-                    # This jump goes forward within bounds, extend
+-                    max_addr = target
+-
+-            if insn.is_ret or (insn.is_jump and not insn.is_cond_jump):
+-                # Check if we've covered all internal jump targets
+-                if addr + insn.size >= max_addr:
++        # Follow control flow rather than sweeping linearly to the first
++        # terminator. Two rules matter, and both were previously missing:
++        #
++        #  * UNCONDITIONAL jumps extend the function. `upper` is already
++        #    clamped to the next detected function, so a jmp landing below it
++        #    is intra-function control flow -- MSVC puts error paths and the
++        #    shared __SEH_epilog tail after the last `ret`, reached only by
++        #    `jmp`. Ending at the last fall-through orphaned that tail, and a
++        #    jump into an orphaned tail became an empty stub, so the epilog
++        #    that restores ebx/esi/edi/esp/ebp never ran and the function
++        #    returned with its caller's non-volatile registers destroyed.
++        #
++        #  * A jump target must be DECODED, not merely counted. Setting the
++        #    end to the target address leaves the instructions AT the target
++        #    outside the function (end is exclusive), which is how a two-
++        #    instruction tail after a `jmp` stayed orphaned.
++        max_addr = start
++        pending = [start]
++        visited = set()
++
++        while pending:
++            addr = pending.pop()
++            while addr < upper and addr not in visited:
++                visited.add(addr)
++                insn = self.engine.get_instruction(addr)
++                if insn is None:
+                     break
+-                # There might be more code after (jumped over)
+-                addr = insn.end_address
+-                continue
+ 
+-            addr = insn.end_address
++                if insn.end_address > max_addr:
++                    max_addr = insn.end_address
++
++                if (insn.is_cond_jump or insn.is_jump) and insn.jump_target is not None:
++                    target = insn.jump_target
++                    if start <= target < upper and target not in visited:
++                        pending.append(target)
++
++                if insn.is_ret or (insn.is_jump and not insn.is_cond_jump):
++                    break   # terminator: this path ends, others may remain
++
++                addr = insn.end_address
+ 
+         return max_addr
+ 
 diff --git a/tools/recomp/__main__.py b/tools/recomp/__main__.py
 index 2fc7a68..e629557 100644
 --- a/tools/recomp/__main__.py

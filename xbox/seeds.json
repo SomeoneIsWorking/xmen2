@@ -1,7 +1,77 @@
 [
-  { "start": "0x0022286B", "name": "crt_thread_trampoline",
-    "why": "PsCreateSystemThreadEx start routine. Nothing references it statically -- it reaches the kernel only as an argument -- so the detector never found it. Discovered from the runtime log line 'start routine 0x0022286B not found in dispatch'." },
-
-  { "start": "0x00225995", "name": "game_main_thread",
-    "why": "The real main-thread body. sub_0022286B calls it indirectly through its first argument (StartContext1 of PsCreateSystemThreadEx), so again nothing references it statically. Discovered from '[ICALL] UNRESOLVED VA 0x00225995 -- the call did NOT execute'; before that the run printed 'main thread returned' as though it had run." }
+  {
+    "start": "0x0022286B",
+    "name": "crt_thread_trampoline",
+    "why": "PsCreateSystemThreadEx start routine. Nothing references it statically -- it reaches the kernel only as an argument -- so the detector never found it. Discovered from the runtime log line 'start routine 0x0022286B not found in dispatch'."
+  },
+  {
+    "start": "0x00225995",
+    "name": "game_main_thread",
+    "why": "The real main-thread body. sub_0022286B calls it indirectly through its first argument (StartContext1 of PsCreateSystemThreadEx), so again nothing references it statically. Discovered from '[ICALL] UNRESOLVED VA 0x00225995 -- the call did NOT execute'; before that the run printed 'main thread returned' as though it had run."
+  },
+  {
+    "start": "0x003D3A0D",
+    "name": "crt_icall_003D3A0D",
+    "why": "CRT function reached only through a function pointer; no static reference, so the detector left it in the unclaimed hole after sub_003D39D5. Discovered from the ICALL miss tally."
+  },
+  {
+    "start": "0x003D4162",
+    "name": "crt_icall_003D4162",
+    "why": "Same class: indirect-call target in the hole after sub_003D40E2, named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003D68B2",
+    "name": "crt_icall_003D68B2",
+    "why": "Same class: indirect-call target in the hole after sub_003D68A8, named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003D964F",
+    "name": "crt_icall_003D964F",
+    "why": "Same class: indirect-call target in the hole after sub_003D95FD, named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003DD0F7",
+    "name": "crt_icall_003DD0F7",
+    "why": "Same class: indirect-call target in the hole after sub_003DD0DC, named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003DDBD2",
+    "name": "crt_icall_003DDBD2",
+    "why": "Same class: indirect-call target in the hole after sub_003DDB8C, named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003DECB6",
+    "name": "crt_icall_003DECB6",
+    "why": "Same class: indirect-call target in the hole after sub_003DECAD, named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003E7F70",
+    "name": "crt_icall_003E7F70",
+    "why": "Same class: indirect-call target in a large unclaimed region before sub_003E7F80, named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003DE99D",
+    "name": "crt_icall_003DE99D",
+    "why": "Same class: indirect-call target with no static reference, named by the ICALL miss tally once the earlier eight were seeded."
+  },
+  {
+    "start": "0x000477B0",
+    "name": "icall_000477B0",
+    "why": "game .text indirect-call target with no static reference. Named by the ICALL miss tally."
+  },
+  {
+    "start": "0x003EA5D0",
+    "name": "icall_003EA5D0",
+    "why": "game .text indirect-call target with no static reference. Named by the ICALL miss tally."
+  },
+  {
+    "start": "0x0042B547",
+    "name": "icall_0042B547",
+    "why": "XONLINE section: only reachable once the ICALL code-range test stopped discarding VAs above 0x400000. Named by the ICALL miss tally."
+  },
+  {
+    "start": "0x0042E52F",
+    "name": "icall_0042E52F",
+    "why": "XONLINE section: the VA that exposed the wrong code-range bound. Named by the ICALL miss tally."
+  }
 ]

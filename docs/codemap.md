@@ -44,11 +44,12 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | what | where | status |
 |---|---|---|
 | Xbox game project (entry, VEH, ICALL diagnostics) | `xbox/src/main.c`, `recomp_manual.c`, `recomp_types.h` | **partial** — builds a 19 MB native PIE Linux executable that runs game code (C038, C039) |
-| Lift pipeline: disasm → func_id → recomp | `tools/xbox_relift.sh` | **verified** — 21,909/21,909 functions, 0 failures; the script fails loudly if a seed does not land |
-| Runtime discovery of statically-invisible functions | `xbox/seeds.json` | **verified** — two functions reachable only as function-pointer arguments, each found from a run and fed back (C040, C041) |
+| Lift pipeline: disasm → func_id → recomp | `tools/xbox_relift.sh` | **verified** — 24,663/24,663 functions across all 11 executable sections, 0 failures; fails loudly if a seed does not land (C049) |
+| Runtime discovery of statically-invisible functions | `xbox/seeds.json` | **verified** — 15 functions reachable only as function-pointer arguments, each found from a run and fed back (C040, C041) |
 | Unresolved-indirect-call tally | `xbox/src/recomp_manual.c` | **verified** — I008; `XBOX_ICALL_SELFTEST=1` proves both miss paths fire |
 | Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |
-| Xbox game execution | — | **partial** — the main thread runs file I/O and allocation, then bails to `HalReturnToFirmware`; nothing renders |
+| Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection; silently-empty stubs 7998 → 348 (C048) |
+| Xbox game execution | — | **partial** — 200+ kernel calls, creates its TDATA/UDATA save dirs, zero unresolved indirect calls; crashes in its own engine code. Nothing renders |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.

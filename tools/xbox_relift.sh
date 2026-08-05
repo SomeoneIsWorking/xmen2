@@ -51,8 +51,15 @@ echo "xbox_relift: seeding $seed_count runtime-discovered function(s) from $SEED
 
 cd "$XBOXRECOMP"
 
+# NOT --text-only: this XBE has TEN executable sections, not one. Beyond
+# .text there are D3D, DSOUND, WMADEC, PSFD00/_I/_B/_P, XONLINE, XNET, D3DX,
+# XGRPH and XPP, together ~430 KB of shipped code ending at 0x0048EEC8. With
+# --text-only the detector reported "functions_by_section: {.text: 21908}" and
+# every one of those sections had ZERO functions lifted -- an indirect call
+# into them could not resolve, and seeds landing there silently produced no
+# function (which is what the seed check at the end of this script caught).
 echo "== 1/3 disasm (function detection) =="
-python3 -m tools.disasm "$XBE" --text-only --force \
+python3 -m tools.disasm "$XBE" --force \
     --seed-functions "$SEEDS" 2>&1 | tee "$LOG_DIR/xbox_relift_disasm.log" | tail -20
 
 echo "== 2/3 func_id (categorisation) =="

@@ -207,23 +207,23 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### xb-lift — Xbox XBE lifts to C and builds a native Linux executable
 - status: re-verified
 - deps: 
-- evidence: C035/C036/C037/C038; 21,909/21,909 functions translated, 0 failures; 19MB PIE executable
+- evidence: C035/C036/C038/C049; 24,663/24,663 functions across all ELEVEN executable sections, 0 failures
 - where: xbox/, vendor/xboxrecomp (patches/xboxrecomp/*.patch)
-- gap: 
+- gap: 239 jumps still deleted in 2 functions of the newly-covered sections (sub_0048447E in XGRPH, sub_0040C4E0) -- reported loudly by the translator, not yet diagnosed.
 - notes: 
 
 ### xb-run — Recompiled Xbox build executes the game's main thread
 - status: re-partial
 - deps: xb-lift
-- evidence: C039/C040/C041; gdb backtrace shows kernel calls originating in sub_00225995 via sub_0022286B; 16 kernel calls incl. NtOpenFile/NtQueryVolumeInformationFile/MmAllocateContiguousMemory
+- evidence: C048/C049; 200+ kernel calls, TDATA/UDATA created under title id 41560047, zero unresolved indirect calls
 - where: 
-- gap: The main thread runs the CRT heap create, mounts and validates the HDD cache partition, and creates a symbolic link -- then still reboots (HalReturnToFirmware). Root cause is now named and measured: xb-bounds. Nothing renders.
+- gap: Crashes in the game's own engine code: sub_00225995 -> sub_00227456 -> sub_003EB320 (D3D section) -> sub_00163240 -> sub_001630C0 -> recursive sub_00208D10. Nothing renders yet.
 - notes: 
 
 ### xb-discovery — Runtime discovery loop for statically-invisible functions
 - status: re-verified
 - deps: xb-lift
-- evidence: C040/C041; two functions found this way (0x0022286B thread trampoline, 0x00225995 main thread body), each reachable only as a function-pointer argument
+- evidence: C040/C041/C048; 15 seeds, each found from a run and fed back; the relift script fails loudly when a seed does not land (it caught two landing in unlifted sections)
 - where: tools/xbox_relift.sh, xbox/seeds.json
 - gap: 
 - notes: 
@@ -237,10 +237,10 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### xb-bounds — OPEN: function boundaries under-sized, so 6288 function tails are empty stubs
-- status: hack
+- status: re-verified
 - deps: xb-lift
-- evidence: C047
+- evidence: C048; stub count 7998 -> 348, 0 jumps deleted, title stops rebooting
 - where: 
-- gap: 7995 of 7998 stubbed addresses are in the hole after a detected function's end. The tail holds the __SEH_epilog that restores ebx/esi/edi/esp/ebp, so an affected function returns with callee-saved registers clobbered -- measured on sub_00223DBD. Fix belongs in the detector: extend a function's end over jump targets that fall before the next detected function.
+- gap: 
 - notes: 
 
