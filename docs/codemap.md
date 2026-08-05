@@ -56,7 +56,7 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Vectored exception handling on Linux | `patches/xboxrecomp/0004-*.patch` | **verified** — `sigaction`-based; was a stub returning NULL, so every handler was discarded. The crash reporter now fires (C055) |
 | NV2A GPU emulation | `vendor/xboxrecomp/src/nv2a`, wired in `xbox/src/main.c` | **partial** — initialises (VRAM 64 MB, RAMIN 1 MB, MMIO hook) and the VEH routes GPU faults to it; the decoder is no longer `#if _WIN32`. Not yet exercised: the title dies in the CRT heap first (C053, C055) |
 | Host D3D8 → OpenGL | `vendor/xboxrecomp/src/d3d` | reference — the NV2A PGRAPH translator emits onto this device; not called directly by game code |
-| Xbox game execution | — | **partial** — 25,777 functions, 476 kernel calls, 4077 indirect calls with **zero unresolved**; faults in the CRT heap unlinking a block whose header is a .text address, so its forward pointer is int3 padding. Nothing renders |
+| Xbox game execution | — | **partial** — 25,777 functions, 476 kernel calls, 4077 indirect calls with **zero unresolved**. Blocked on a CRT heap defect with an exact reproduction (C056): the allocator returns a block overlapping the heap's own free-list array and the zero-fill destroys it. Nothing renders |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.

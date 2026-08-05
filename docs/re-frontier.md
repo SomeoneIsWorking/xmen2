@@ -217,7 +217,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: xb-lift
 - evidence: C048/C049/C054; 25,777 functions, 469 kernel calls, 4067+ indirect calls with zero unresolved
 - where: 
-- gap: Now faults inside the CRT heap: sub_002241E1 unlinks a block whose header sits at a .text address (0x003ECDD8), so its forward pointer is int3 padding (0xCCCCCCCC) and the unlink write faults. Reached from game code sub_000132F0 -> sub_002AFBB0 -> malloc. Nothing renders.
+- gap: CRT heap defect with an exact reproduction (C056): sub_002241E1 returns a block overlapping the heap's own free-list array and the HEAP_ZERO_MEMORY memset destroys the list heads; a later walk faults on int3 padding. Nothing renders.
 - notes: 
 
 ### xb-discovery — Runtime discovery loop for statically-invisible functions
