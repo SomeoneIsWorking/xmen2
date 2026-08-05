@@ -1,0 +1,32 @@
+[
+  {
+    "start": "0x002241E1",
+    "name": "RtlAllocateHeap",
+    "why": "Native CRT heap override (XBOX_NATIVE_HEAP). Replaces the recompiled MSVC allocator; the recompiled body stays linked as __real_ so the A/B toggle is real."
+  },
+  {
+    "start": "0x00222433",
+    "name": "RtlFreeHeap",
+    "why": "Pairs with RtlAllocateHeap: a pointer from the native arena must not reach the recompiled free path."
+  },
+  {
+    "start": "0x00224B50",
+    "name": "RtlReAllocateHeap",
+    "why": "Closes C057: without it the CRT's realloc reads a native-arena block header as its own and corrupts it."
+  },
+  {
+    "start": "0x003D5890",
+    "name": "memcpy",
+    "why": "Observer only (listscan): reports any copy whose length is implausible, which is how the list tail-shift underflow was measured. Delegates to the recompiled body."
+  },
+  {
+    "start": "0x0026B390",
+    "name": "list_find_by_name",
+    "why": "Observer only (listscan): reports the name, count and returned index of each lookup. Delegates to the recompiled body."
+  },
+  {
+    "start": "0x00275920",
+    "name": "list_remove_shift",
+    "why": "Observer only (listscan), and the SELF-TEST for isolation: its caller sub_00289F50 shares a generated chunk with it, so before --isolate existed this wrapper measurably never fired (issue #4). If it reports 0 calls on a run that reaches the ARK symbol table, isolation has regressed."
+  }
+]

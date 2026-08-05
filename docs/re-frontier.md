@@ -146,11 +146,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - notes: 
 
 ### rc-overrides — Native overrides replacing recompiled functions, A/B toggleable
-- status: todo
+- status: re-partial
 - deps: rc-first-dll
-- evidence: 
+- evidence: xbox/overrides.json; vendor/xboxrecomp/tools/recomp (--isolate); xbox/src/recomp/gen/recomp_overrides.cmake; scratch/logs/xbox_run_iso.log isolation self-test
 - where: 
-- gap: Recomp body kept alive so each override stays diffable.
+- gap: The MECHANISM is now sound rather than lucky (issue #4, I015): xbox/overrides.json is the single source of truth, recomp --isolate gives every overridden function its own translation unit so -Wl,--wrap always binds, the lift generates the wrap flags from the same file and exits non-zero if an override was not isolated, and CMake refuses to build without the generated list. Proven on both classes -- the wrapper that measurably never fired now fires, and it is kept as the standing regression test. What is still missing is coverage: only 3 real overrides exist (the heap trio) plus 3 observers. The faithfulness work has not started.
 - notes: 
 
 ### rc-exe — Recompiled XMen2.exe
@@ -265,6 +265,6 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: xb-run
 - evidence: C057
 - where: 
-- gap: Bypasses C056 rather than fixing it. The recompiled RtlAllocateHeap/RtlFreeHeap are still linked and run under XBOX_NATIVE_HEAP=0, so the defect stays reproducible. RtlReAllocateHeap and RtlSizeHeap are not overridden -- a realloc of a native-arena pointer would corrupt it undetected. ALSO (issue #4): the override is wired with -Wl,--wrap, which only redirects references that CROSS an object file. 2 of the 11 direct call sites of RtlAllocateHeap sit in recomp_0011.c, the same chunk that defines it, so they bypass the override entirely and reach the recompiled heap even with XBOX_NATIVE_HEAP=1. Whether those two are reached at runtime is NOT established -- that is a call-site count, not a fire counter.
+- gap: Bypasses C056 rather than fixing it. The recompiled RtlAllocateHeap/RtlFreeHeap are still linked and run under XBOX_NATIVE_HEAP=0, so the defect stays reproducible. RtlSizeHeap is not overridden. The --wrap bypass recorded here on 2026-08-05 is FIXED (issue #4): recomp --isolate now emits each overridden function into its own translation unit, so all 11 RtlAllocateHeap call sites reach the override, not 9 of 11.
 - notes: 
 

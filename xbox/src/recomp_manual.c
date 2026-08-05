@@ -1058,3 +1058,58 @@ void listfind_report(void)
     }
     fflush(stderr);
 }
+
+/* ── listscan part 3: the isolation self-test ─────────────────────────────
+ *
+ * sub_00275920 is the list remove+tail-shift, and its caller sub_00289F50 is
+ * one of the functions the recompiler grouped into the same chunk. Before
+ * `recomp --isolate` existed, a --wrap here was bound at compile time and this
+ * wrapper measurably never fired: it reported "0 calls" on a run whose crash
+ * stack contained sub_00275920+0x318 (issue #4).
+ *
+ * So it doubles as the self-test for isolation. It is in xbox/overrides.json,
+ * which makes the recompiler emit it alone in recomp_iso_00275920.c; if this
+ * ever reports 0 calls again on a run that reaches the ARK symbol table, the
+ * isolation has regressed and EVERY other override is suspect too -- including
+ * the native heap.
+ */
+extern void __real_sub_00275920(void);
+
+static uint64_t rm_calls, rm_underflow;
+
+void __wrap_sub_00275920(void)
+{
+    uint32_t self  = g_ecx;                       /* __thiscall this */
+    uint32_t count = self ? MEM32(self + 4) : 0;
+
+    rm_calls++;
+    if (count == 0) {
+        rm_underflow++;
+        fprintf(stderr, "[LISTSCAN] remove #%llu on an EMPTY list this=0x%08X:"
+                        " count-1 underflows and the tail-shift gets a ~4GB"
+                        " length\n",
+                (unsigned long long)rm_calls, self);
+        fflush(stderr);
+    }
+
+    __real_sub_00275920();
+}
+
+void listremove_report(void)
+{
+    if (rm_calls == 0) {
+        fprintf(stderr, "[LISTSCAN] ISOLATION SELF-TEST FAILED: the wrapper on"
+                        " sub_00275920 recorded 0 calls. Either the run died"
+                        " before the ARK symbol table, or recomp --isolate did"
+                        " not emit recomp_iso_00275920.c and --wrap was bound"
+                        " intra-chunk again (issue #4). In the second case"
+                        " EVERY override is silently absent, including the"
+                        " native heap.\n");
+    } else {
+        fprintf(stderr, "[LISTSCAN] isolation self-test passed: %llu calls"
+                        " reached the wrapper on sub_00275920 (%llu on an empty"
+                        " list). --wrap is binding across the object boundary.\n",
+                (unsigned long long)rm_calls, (unsigned long long)rm_underflow);
+    }
+    fflush(stderr);
+}

@@ -100,6 +100,7 @@ extern void recomp_icall_watch_init(void);   /* XBOX_ICALL_WATCH argument/return
 extern void recomp_icall_watch_report(void);
 extern void listscan_report(void);   /* list-remove tail-shift observer */
 extern void listfind_report(void); /* list find-by-name observer */
+extern void listremove_report(void); /* --wrap isolation self-test */
 extern void recomp_icall_watch_selftest(void);
 extern void recomp_icall_selftest(void);
 
@@ -179,8 +180,8 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
         recomp_esp_report();
         recomp_icall_watch_report();
         listscan_report();
-    listfind_report();
         listfind_report();
+        listremove_report();
 
         fprintf(stderr, "[CRASH] Access violation at RIP=0x%llX, fault addr=0x%llX (%s)\n",
             (unsigned long long)ep->ContextRecord->Rip,
@@ -384,6 +385,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     recomp_icall_watch_report();
     listscan_report();
     listfind_report();
+    listremove_report();
 
     /* Cleanup */
     xbox_kernel_shutdown();

@@ -65,3 +65,15 @@ in a different chunk than the callee:
 
     grep -ln '^void sub_XXXXXXXX' recomp_*.c        # the definition's chunk
     grep -c 'RECOMP_DCALL(sub_XXXXXXXX,' <that file>  # calls that bypass --wrap
+
+### Note (2026-08-05)
+FIXED 2026-08-05, by construction rather than by care.
+
+`recomp --isolate <overrides.json>` emits every overridden function into its own translation unit (`recomp_iso_<ADDR>.c`), so every call site is cross-object and --wrap always binds. `xbox/overrides.json` is the single source of truth: tools/xbox_relift.sh feeds it to the recompiler AND generates the --wrap link flags from it into `recomp_overrides.cmake`, so the isolation list and the wrap list cannot drift. The lift EXITS NON-ZERO if any listed override did not get an isolated file, and CMake FATAL_ERRORs if the generated file is absent -- building a binary whose overrides are all silently missing is no longer possible.
+
+Verified both classes:
+- BEFORE: the wrapper on sub_00275920 reported 0 calls on a run whose crash stack contained sub_00275920+0x318.
+- AFTER: `[LISTSCAN] isolation self-test passed: 2 calls reached the wrapper on sub_00275920`. That wrapper stays in overrides.json permanently as the regression test -- it is the case that was broken.
+- Structurally: all six overridden functions now have 0 intra-chunk callers (was 2 for RtlAllocateHeap).
+
+The two RtlAllocateHeap sites that bypassed the native heap are now wrapped. NHEAP still reports 17 allocs on this run, unchanged, which suggests those two sites are not reached on the boot path -- consistent with the earlier note that the hole's size was unknown; it is now closed either way.
