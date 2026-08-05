@@ -52,8 +52,9 @@ rested on) — see [`strategy.md`](strategy.md). Status words mean:
 | Branch conditions | `patches/xboxrecomp/0003-*.patch` | **verified** — deferred `cmp` operands snapshotted at the flag setter; 216 wrong-direction branches fixed (C050) |
 | Kernel bridge ordinal tables | `patches/xboxrecomp/0002-*.patch` | **partial** — names validated against the 371-entry export table (I009, C043); bridge *semantics* unaudited |
 | Function boundary detection | `patches/xboxrecomp/0003-*.patch` | **verified** — flow-following end detection; silently-empty stubs 7998 → 348 (C048) |
-| Xbox D3D | `vendor/xboxrecomp/src/d3d` (host D3D8→GL) | **untouched** — the game's own statically-linked Xbox D3D8 library is being executed instead of routed to this layer. See `xb-d3d`; this is what stands between here and rendering |
-| Xbox game execution | — | **partial** — 200+ kernel calls, ~4000 indirect calls, creates its TDATA/UDATA save dirs; runs into the D3D static initialiser. Nothing renders |
+| NV2A GPU emulation | `vendor/xboxrecomp/src/nv2a`, wired in `xbox/src/main.c` | **partial** — the VEH routes 0xFD000000 register and VRAM faults to xemu's NV2A instead of passing them through, and reports any instruction it cannot decode. Never exercised yet: the title stops before its first GPU write (C053) |
+| Host D3D8 → OpenGL | `vendor/xboxrecomp/src/d3d` | reference — the NV2A PGRAPH translator emits onto this device; not called directly by game code |
+| Xbox game execution | — | **partial** — 469 kernel calls, 4067 indirect calls, creates its TDATA/UDATA save dirs, runs its D3D static initialisers. Stops at each newly-discovered indirect target; nothing renders |
 
 Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 `vendor/` is gitignored; re-apply them after re-cloning the toolkit.

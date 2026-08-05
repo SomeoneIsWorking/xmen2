@@ -94,6 +94,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/recomp
     ${XBOXRECOMP_DIR}/include
     ${XBOXRECOMP_DIR}/src/platform      # win32_compat.h for Linux builds
+    ${XBOXRECOMP_DIR}/src                # nv2a_mmio_hook.h reaches platform/ from here
+    ${XBOXRECOMP_DIR}/src/nv2a           # NV2A GPU emulation: the VEH routes GPU
+                                         # register faults here, which is the only
+                                         # way this title's draw calls reach a GPU
     ${CMAKE_CURRENT_SOURCE_DIR}/src/recomp/gen
 )
 

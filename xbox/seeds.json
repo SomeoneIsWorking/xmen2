@@ -103,5 +103,15 @@
     "start": "0x0048822B",
     "name": "icall_0048822B",
     "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 3 from the ICALL miss tally."
+  },
+  {
+    "start": "0x0048825B",
+    "name": "icall_0048825B",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 4 from the ICALL miss tally."
+  },
+  {
+    "start": "0x00488A8A",
+    "name": "icall_00488A8A",
+    "why": "Indirect-call target with no static reference, found by tools/xbox_discover.sh round 1 from the ICALL miss tally."
   }
 ]

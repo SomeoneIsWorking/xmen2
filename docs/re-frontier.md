@@ -252,11 +252,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: 
 - notes: 
 
-### xb-d3d — OPEN: the game's statically-linked Xbox D3D8 library is executed, not overridden
-- status: hack
+### xb-d3d — NV2A GPU emulation wired into the VEH
+- status: re-partial
 - deps: xb-run
-- evidence: C052; 73 distinct D3D entry points, 215 call sites, measured from xrefs
+- evidence: C053; nv2a_hook_init + nv2a_hook_handle_mmio installed; main.c no longer passes GPU faults through
 - where: 
-- gap: The toolkit ships a host D3D8-on-OpenGL layer (vendor/xboxrecomp/src/d3d) precisely so the Xbox D3D8 library -- which drives NV2A registers directly -- does not have to run. Right now the recompiled library code runs instead. Rendering needs the D3D API boundary routed to the host layer through recomp_lookup_manual, not more fixes to the recompiled D3D internals.
+- gap: Wired but never exercised: the title stops on an unresolved indirect call before it issues a GPU write, so not one register access has been decoded yet. Nothing renders.
 - notes: 
 
