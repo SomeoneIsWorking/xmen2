@@ -85,6 +85,7 @@ extern void xbe_entry_point(void);
 
 /* ICALL miss accounting (recomp_manual.c) */
 extern void recomp_icall_report(void);
+extern void nh_report(void);   /* native CRT heap tally */
 extern void recomp_icall_selftest(void);
 
 /* ── VEH crash handler ─────────────────────────────────────── */
@@ -157,6 +158,7 @@ static LONG CALLBACK veh_handler(PEXCEPTION_POINTERS ep)
            report entirely, so a run that died could not be compared against
            one that finished -- the two looked like different experiments. */
         recomp_icall_report();
+        nh_report();
 
         fprintf(stderr, "[CRASH] Access violation at RIP=0x%llX, fault addr=0x%llX (%s)\n",
             (unsigned long long)ep->ContextRecord->Rip,
@@ -302,6 +304,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
        ICALL macros, so "the game returned" says nothing about whether it ran.
        Print the miss tally before anything else -- always, zero included. */
     recomp_icall_report();
+    nh_report();
 
     /* Cleanup */
     xbox_kernel_shutdown();

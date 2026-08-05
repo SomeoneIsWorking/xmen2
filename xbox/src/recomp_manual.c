@@ -22,6 +22,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>   /* getenv, abort */
+#include <string.h>   /* memset */
+
+#define MEM32(a) (*(volatile uint32_t *)((uintptr_t)(uint32_t)(a) + g_xbox_mem_offset))
 
 /* ── ICALL trace ring buffer ───────────────────────────────── */
 
@@ -85,8 +88,230 @@ extern ptrdiff_t g_xbox_mem_offset;
  *       g_eax = result;
  *   }
  */
+
+/* ── Native CRT heap override ───────────────────────────────
+ *
+ * DEBT, not a fix. C056 records a real defect in the recompiled MSVC heap:
+ * RtlAllocateHeap eventually returns a block that overlaps the heap's own
+ * free-list array, the HEAP_ZERO_MEMORY fill destroys the list heads, and the
+ * next allocation walks into .text padding. The heap is provably healthy at
+ * the first allocation -- 127 of 128 list heads self-pointing, the 0xEEFFEEFF
+ * signature in place -- so this is not missing initialisation, and the cause
+ * is still unfound.
+ *
+ * This replaces the three Rtl entry points with a native allocator so that
+ * everything downstream of malloc can be worked on. The recompiled bodies are
+ * untouched and still built: XBOX_NATIVE_HEAP=0 runs them instead, which is
+ * how the underlying defect stays reproducible.
+ *
+ * Identified by their ABI and confirmed at runtime:
+ *   0x002241E1  RtlAllocateHeap(Heap, Flags, Size)   stdcall, ret 12
+ *   0x00222433  RtlFreeHeap(Heap, Flags, Ptr)        stdcall, ret 12, BOOLEAN
+ *   0x0022244A  GetProcessHeap()                     returns MEM32(0x731568)
+ *
+ * The arena lives in guest address space (xbox_HeapAlloc), so every pointer
+ * handed back is a real Xbox VA the recompiled code can dereference.
+ */
+
+extern uint32_t xbox_HeapAlloc(uint32_t size, uint32_t alignment);
+extern uint32_t g_esp;
+
+#define NH_ARENA_SIZE   (24u * 1024u * 1024u)
+#define NH_ALIGN        16u
+#define NH_MAGIC        0x4E484150u   /* 'NHAP' */
+
+/* Block header, immediately before the pointer handed to the guest.
+   16 bytes so the payload keeps 16-byte alignment. */
+typedef struct {
+    uint32_t magic;
+    uint32_t size;      /* payload bytes */
+    uint32_t next_free; /* guest VA of the next free block's header, 0 = end */
+    uint32_t in_use;
+} nh_header;
+
+static uint32_t nh_arena, nh_arena_end, nh_next, nh_free_list;
+static uint64_t nh_allocs, nh_frees, nh_bytes, nh_reused, nh_failed;
+
+static nh_header *nh_hdr(uint32_t hdr_va)
+{
+    return (nh_header *)(uintptr_t)((uintptr_t)hdr_va + g_xbox_mem_offset);
+}
+
+static int nh_enabled(void)
+{
+    static int cached = -1;
+    if (cached < 0) {
+        const char *e = getenv("XBOX_NATIVE_HEAP");
+        cached = (e && e[0] == '0') ? 0 : 1;
+    }
+    return cached;
+}
+
+static int nh_init(void)
+{
+    if (nh_arena) return 1;
+    nh_arena = xbox_HeapAlloc(NH_ARENA_SIZE, 4096);
+    if (!nh_arena) {
+        fprintf(stderr, "[NHEAP] could not reserve a %u-byte arena; the native "
+                        "heap override is INACTIVE and the recompiled heap "
+                        "will run instead\n", NH_ARENA_SIZE);
+        fflush(stderr);
+        return 0;
+    }
+    nh_arena_end = nh_arena + NH_ARENA_SIZE;
+    nh_next = (nh_arena + NH_ALIGN - 1) & ~(NH_ALIGN - 1);
+    fprintf(stderr, "[NHEAP] native CRT heap active: arena 0x%08X..0x%08X"
+                    " (XBOX_NATIVE_HEAP=0 to use the recompiled heap)\n",
+            nh_arena, nh_arena_end);
+    fflush(stderr);
+    return 1;
+}
+
+static uint32_t nh_alloc(uint32_t size, int zero)
+{
+    uint32_t need, prev = 0, cur;
+
+    if (!nh_init()) return 0;
+    if (size == 0) size = 1;
+    need = (size + NH_ALIGN - 1) & ~(NH_ALIGN - 1);
+
+    /* First fit over the free list. */
+    for (cur = nh_free_list; cur; prev = cur, cur = nh_hdr(cur)->next_free) {
+        nh_header *h = nh_hdr(cur);
+        if (h->size < need) continue;
+        if (prev) nh_hdr(prev)->next_free = h->next_free;
+        else      nh_free_list = h->next_free;
+        h->next_free = 0;
+        h->in_use = 1;
+        nh_allocs++; nh_reused++; nh_bytes += size;
+        if (zero) memset((void *)((uintptr_t)(cur + sizeof(nh_header))
+                                  + g_xbox_mem_offset), 0, h->size);
+        return cur + (uint32_t)sizeof(nh_header);
+    }
+
+    /* Bump. */
+    if (nh_next + sizeof(nh_header) + need > nh_arena_end) {
+        nh_failed++;
+        fprintf(stderr, "[NHEAP] OUT OF ARENA: request %u, %u of %u bytes used,"
+                        " %llu live allocations. Returning NULL, which the"
+                        " caller will almost certainly mishandle.\n",
+                size, nh_next - nh_arena, NH_ARENA_SIZE,
+                (unsigned long long)(nh_allocs - nh_frees));
+        fflush(stderr);
+        return 0;
+    }
+    {
+        uint32_t hdr_va = nh_next;
+        nh_header *h = nh_hdr(hdr_va);
+        nh_next = hdr_va + (uint32_t)sizeof(nh_header) + need;
+        h->magic = NH_MAGIC; h->size = need; h->next_free = 0; h->in_use = 1;
+        nh_allocs++; nh_bytes += size;
+        if (zero) memset((void *)((uintptr_t)(hdr_va + sizeof(nh_header))
+                                  + g_xbox_mem_offset), 0, need);
+        return hdr_va + (uint32_t)sizeof(nh_header);
+    }
+}
+
+static int nh_free(uint32_t ptr)
+{
+    uint32_t hdr_va;
+    nh_header *h;
+
+    if (!ptr) return 1;                      /* free(NULL) is a no-op */
+    if (ptr < nh_arena + sizeof(nh_header) || ptr >= nh_arena_end) {
+        /* Not ours. Say so rather than corrupting something: a pointer from
+           the recompiled heap reaching here means the override was enabled
+           after allocations had already been served. */
+        static int warned;
+        if (!warned++) {
+            fprintf(stderr, "[NHEAP] free of 0x%08X which is OUTSIDE the native"
+                            " arena -- ignored, and this should not happen\n", ptr);
+            fflush(stderr);
+        }
+        return 0;
+    }
+    hdr_va = ptr - (uint32_t)sizeof(nh_header);
+    h = nh_hdr(hdr_va);
+    if (h->magic != NH_MAGIC) {
+        static int warned;
+        if (!warned++) {
+            fprintf(stderr, "[NHEAP] free of 0x%08X whose header magic is"
+                            " 0x%08X, not 'NHAP' -- heap corruption, ignored\n",
+                    ptr, h->magic);
+            fflush(stderr);
+        }
+        return 0;
+    }
+    if (!h->in_use) return 1;                /* double free: tolerate */
+    h->in_use = 0;
+    h->next_free = nh_free_list;
+    nh_free_list = hdr_va;
+    nh_frees++;
+    return 1;
+}
+
+/* These are reached through the linker's --wrap, not recomp_lookup_manual:
+   the generated code calls RtlAllocateHeap DIRECTLY as a C function, and the
+   manual dispatch hook only covers INDIRECT calls -- the first attempt at
+   this override reported "0 allocations, nothing called RtlAllocateHeap".
+   --wrap redirects every call site to __wrap_X while keeping the recompiled
+   body reachable as __real_X, which is what makes the A/B toggle real. */
+extern void __real_sub_002241E1(void);
+extern void __real_sub_00222433(void);
+
+/* stdcall(Heap, Flags, Size) -> pointer in eax, ret 12 */
+void __wrap_sub_002241E1(void)
+{
+    if (!nh_enabled()) { __real_sub_002241E1(); return; }
+    {
+    uint32_t flags = MEM32(g_esp + 8);
+    uint32_t size  = MEM32(g_esp + 12);
+    g_eax = nh_alloc(size, (flags & 8) != 0);   /* 8 = HEAP_ZERO_MEMORY */
+    g_esp += 16;                                /* dummy retaddr + 12 args */
+    }
+}
+
+/* stdcall(Heap, Flags, Ptr) -> BOOLEAN in eax, ret 12 */
+void __wrap_sub_00222433(void)
+{
+    if (!nh_enabled()) { __real_sub_00222433(); return; }
+    {
+        uint32_t ptr = MEM32(g_esp + 12);
+        g_eax = (uint32_t)nh_free(ptr);
+        g_esp += 16;
+    }
+}
+
+void nh_report(void)
+{
+    if (!nh_enabled()) {
+        fprintf(stderr, "[NHEAP] native heap DISABLED (XBOX_NATIVE_HEAP=0);"
+                        " the recompiled MSVC heap ran instead\n");
+        return;
+    }
+    if (!nh_arena) {
+        fprintf(stderr, "[NHEAP] native heap never initialised: 0 allocations"
+                        " -- nothing called RtlAllocateHeap\n");
+        return;
+    }
+    fprintf(stderr, "[NHEAP] %llu allocs (%llu from the free list), %llu frees,"
+                    " %llu live, %u of %u arena bytes used, %llu failures\n",
+            (unsigned long long)nh_allocs, (unsigned long long)nh_reused,
+            (unsigned long long)nh_frees,
+            (unsigned long long)(nh_allocs - nh_frees),
+            nh_next - nh_arena, NH_ARENA_SIZE,
+            (unsigned long long)nh_failed);
+}
+
 recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
 {
+    if (nh_enabled()) {
+        /* See the native CRT heap block above: DEBT bypassing C056, with the
+           recompiled bodies still built and reachable via XBOX_NATIVE_HEAP=0. */
+        if (xbox_va == 0x002241E1) return __wrap_sub_002241E1;
+        if (xbox_va == 0x00222433) return __wrap_sub_00222433;
+    }
+
     /*
      * TODO: Add your overrides here. Examples:
      *

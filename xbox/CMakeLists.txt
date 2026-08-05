@@ -86,6 +86,22 @@ target_link_libraries(${PROJECT_NAME} PRIVATE xboxrecomp)
 if(NOT WIN32)
     set_target_properties(${PROJECT_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_link_options(${PROJECT_NAME} PRIVATE -pie)
+
+    # Native overrides of DIRECTLY-called recompiled functions.
+    #
+    # recomp_lookup_manual only sees INDIRECT calls; the generated code calls
+    # these as ordinary C functions, so the first attempt at this override
+    # never fired. --wrap redirects every call site to __wrap_<name> while
+    # keeping the recompiled body linked and callable as __real_<name>, so the
+    # override stays A/B-toggleable at runtime (XBOX_NATIVE_HEAP=0) and the
+    # original body stays diffable rather than deleted.
+    #
+    #   sub_002241E1  RtlAllocateHeap  } see the C056 note in recomp_manual.c
+    #   sub_00222433  RtlFreeHeap      }
+    target_link_options(${PROJECT_NAME} PRIVATE
+        -Wl,--wrap=sub_002241E1
+        -Wl,--wrap=sub_00222433
+    )
 endif()
 
 # Include paths for generated recomp headers

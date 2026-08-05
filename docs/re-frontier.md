@@ -215,9 +215,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### xb-run — Recompiled Xbox build executes the game's main thread
 - status: re-partial
 - deps: xb-lift
-- evidence: C048/C049/C054; 25,777 functions, 469 kernel calls, 4067+ indirect calls with zero unresolved
+- evidence: C048/C049/C054/C057; 531 kernel calls, 4157 indirect calls, past the CRT and into engine code
 - where: 
-- gap: CRT heap defect with an exact reproduction (C056): sub_002241E1 returns a block overlapping the heap's own free-list array and the HEAP_ZERO_MEMORY memset destroys the list heads; a later walk faults on int3 padding. Nothing renders.
+- gap: Stops on a virtual call whose object pointer is 0x00225995, a code address, in sub_0026E740. Nothing renders.
 - notes: 
 
 ### xb-discovery — Runtime discovery loop for statically-invisible functions
@@ -258,5 +258,13 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - evidence: C053/C055; NV2A initialised and the VEH implemented on sigaction -- the GPU path exists end to end for the first time
 - where: 
 - gap: Not one GPU register fault has been decoded: the title dies in the CRT heap before its first draw. Whether the decoder handles this title's access patterns is untested; main.c counts and prints any it cannot decode.
+- notes: 
+
+### xb-nheap — DEBT: native CRT heap override bypassing the recompiled MSVC heap
+- status: hack
+- deps: xb-run
+- evidence: C057
+- where: 
+- gap: Bypasses C056 rather than fixing it. The recompiled RtlAllocateHeap/RtlFreeHeap are still linked and run under XBOX_NATIVE_HEAP=0, so the defect stays reproducible. RtlReAllocateHeap and RtlSizeHeap are not overridden -- a realloc of a native-arena pointer would corrupt it undetected.
 - notes: 
 
