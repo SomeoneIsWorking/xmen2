@@ -1,8 +1,85 @@
 diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
-index eafbf96..dbfd820 100644
+index eafbf96..d9524aa 100644
 --- a/src/kernel/kernel_bridge.c
 +++ b/src/kernel/kernel_bridge.c
-@@ -845,10 +845,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
+@@ -73,24 +73,29 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va);
+ static uint32_t kernel_data_va_for_ordinal(ULONG ordinal)
+ {
+     switch (ordinal) {
+-    case  17: return XBOX_KERNEL_DATA_BASE + KDATA_EVENT_OBJ_TYPE;
+-    case  65: return XBOX_KERNEL_DATA_BASE + KDATA_IO_COMPLETION_TYPE;
+-    case  71: return XBOX_KERNEL_DATA_BASE + KDATA_IO_DEVICE_TYPE;
+-    case 156: return XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT;
+-    case 164: return XBOX_KERNEL_DATA_BASE + KDATA_LAUNCH_DATA_PAGE;
+-    case 259: return XBOX_KERNEL_DATA_BASE + KDATA_THREAD_OBJ_TYPE;
+-    case 322: return XBOX_KERNEL_DATA_BASE + KDATA_HARDWARE_INFO;
+-    case 323: return XBOX_KERNEL_DATA_BASE + KDATA_HD_KEY;
+-    case 324: return XBOX_KERNEL_DATA_BASE + KDATA_KRNL_VERSION;
+-    case 325: return XBOX_KERNEL_DATA_BASE + KDATA_SIGNATURE_KEY;
+-    case 326: return XBOX_KERNEL_DATA_BASE + KDATA_LAN_KEY;
+-    case 327: return XBOX_KERNEL_DATA_BASE + KDATA_ALT_SIGNATURE_KEYS;
+-    case 328: return XBOX_KERNEL_DATA_BASE + KDATA_XE_IMAGE_FILENAME;
+-    case 355: return XBOX_KERNEL_DATA_BASE + KDATA_LAN_KEY;         /* alias */
+-    case 356: return XBOX_KERNEL_DATA_BASE + KDATA_ALT_SIGNATURE_KEYS; /* alias */
+-    case 357: return XBOX_KERNEL_DATA_BASE + KDATA_XE_PUBLIC_KEY;
++    case  16: return XBOX_KERNEL_DATA_BASE + KDATA_EVENT_OBJ_TYPE;   /* ExEventObjectType */
++    case  64: return XBOX_KERNEL_DATA_BASE + KDATA_IO_COMPLETION_TYPE; /* IoCompletionObjectType */
++    case  71: return XBOX_KERNEL_DATA_BASE + KDATA_IO_DEVICE_TYPE;   /* IoFileObjectType */
++    case 156: return XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT;       /* KeTickCount */
++    case 164: return XBOX_KERNEL_DATA_BASE + KDATA_LAUNCH_DATA_PAGE; /* LaunchDataPage */
++    case 259: return XBOX_KERNEL_DATA_BASE + KDATA_THREAD_OBJ_TYPE;  /* PsThreadObjectType */
++    case 322: return XBOX_KERNEL_DATA_BASE + KDATA_HARDWARE_INFO;    /* XboxHardwareInfo */
++    case 323: return XBOX_KERNEL_DATA_BASE + KDATA_HD_KEY;           /* XboxHDKey */
++    case 324: return XBOX_KERNEL_DATA_BASE + KDATA_KRNL_VERSION;     /* XboxKrnlVersion */
++    case 325: return XBOX_KERNEL_DATA_BASE + KDATA_SIGNATURE_KEY;    /* XboxSignatureKey */
++    case 326: return XBOX_KERNEL_DATA_BASE + KDATA_XE_IMAGE_FILENAME;/* XeImageFileName */
++    case 353: return XBOX_KERNEL_DATA_BASE + KDATA_LAN_KEY;          /* XboxLANKey */
++    case 354: return XBOX_KERNEL_DATA_BASE + KDATA_ALT_SIGNATURE_KEYS; /* XboxAlternateSignatureKeys */
++    case 355: return XBOX_KERNEL_DATA_BASE + KDATA_XE_PUBLIC_KEY;    /* XePublicKeyData */
+     default:  return 0;  /* Not a data export */
+     }
++    /* Every row above was shifted against the export table: ordinal 17 is
++     * ExFreePool (a FUNCTION) but returned the ExEventObjectType data VA, 65
++     * is IoCreateDevice, and 327/328 are XeLoadSection/XeUnloadSection --
++     * three functions the game imports were being handed a data pointer.
++     * Ordinals 356/357 (HalBootSMCVideoMode, IdexChannelObject) are real data
++     * exports with no backing storage here; they are deliberately absent
++     * rather than aliased onto unrelated data. */
+ }
+ 
+ /**
+@@ -743,6 +748,30 @@ static void bridge_ExQueryPoolBlockSize(void)
+     g_eax = 0;
+ }
+ 
++/* ── HalReturnToFirmware (ordinal 49) ─────────────────────
++ * VOID HalReturnToFirmware(FIRMWARE_REENTRY Routine)
++ *
++ * On hardware this NEVER RETURNS -- it halts or reboots the console. With no
++ * bridge it returned 0 and execution carried on into code the title never
++ * intended to run, which reads in a log like a game that merely "finished".
++ * Say what happened and stop the thread's forward progress here.
++ */
++static void bridge_HalReturnToFirmware(void)
++{
++    static const char *routine[] = {
++        "HalHaltRoutine", "HalRebootRoutine", "HalQuickRebootRoutine",
++        "HalFatalErrorRebootRoutine", "HalResetSMCRoutine"
++    };
++    uint32_t r = STACK_ARG(0);
++
++    fprintf(stderr, "  [KERNEL] HalReturnToFirmware(%u = %s): THE TITLE ASKED TO "
++                    "REBOOT. It did not crash and it did not finish -- it gave up.\n",
++            r, r < 5 ? routine[r] : "unknown routine");
++    fflush(stderr);
++
++    g_eax = 0;
++}
++
+ /* ── RtlNtStatusToDosError (ordinal 301) ─────────────────
+  * ULONG RtlNtStatusToDosError(NTSTATUS Status)
+  *
+@@ -845,10 +874,18 @@ static void bridge_write_handle(uint32_t handle_va, HANDLE h)
          BRIDGE_MEM32(handle_va) = bridge_handle_token(h);
  }
  
@@ -24,7 +101,7 @@ index eafbf96..dbfd820 100644
      if ((token & 0xFF000000u) == BRIDGE_HANDLE_TAG) {
          uint32_t i = token & BRIDGE_HANDLE_MASK;
          return (i > 0 && i < BRIDGE_HANDLE_MAX) ? s_handle_table[i] : NULL;
-@@ -1307,46 +1315,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1307,46 +1344,44 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case   4: return  4;  /* AvSetSavedDataAddress(1) */
  
      /* ── Unknown stubs ── */
@@ -95,7 +172,7 @@ index eafbf96..dbfd820 100644
      case 107: return 12;  /* KeInitializeDpc(3) */
      case 109: return 28;  /* KeInitializeInterrupt(7) */
      case 113: return  8;  /* KeInitializeTimerEx(2) */
-@@ -1418,8 +1424,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1418,8 +1453,8 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 225: return  8;  /* NtSetEvent(2) */
      case 226: return 20;  /* NtSetInformationFile(5) */
      case 228: return  8;  /* NtSetSystemTime(2) */
@@ -106,7 +183,7 @@ index eafbf96..dbfd820 100644
      case 236: return 32;  /* NtWriteFile(8) */
      case 238: return  0;  /* NtYieldExecution(void) */
  
-@@ -1434,7 +1440,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1434,7 +1469,7 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
  
      /* ── Threading ── */
      case 255: return 40;  /* PsCreateSystemThreadEx(10) */
@@ -115,7 +192,7 @@ index eafbf96..dbfd820 100644
      case 258: return  4;  /* PsTerminateSystemThread(1) */
      /* case 259: DATA export - PsThreadObjectType */
  
-@@ -1452,26 +1458,26 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
+@@ -1452,28 +1487,68 @@ static int stdcall_args_for_ordinal(ULONG ordinal)
      case 305: return  8;  /* RtlTimeToTimeFields(2) */
      case 308: return 12;  /* RtlUnicodeStringToAnsiString(3) */
      case 312: return 16;  /* RtlUnwind(4) */
@@ -142,6 +219,8 @@ index eafbf96..dbfd820 100644
 -    case 347: return 20;  /* XcModExp(5) */
 -    case 349: return 12;  /* XcKeyTable(3) */
 -    case 353: return  8;  /* XcUpdateCrypto(2) */
+-
+-    default:  return  0;  /* DATA exports or truly unknown */
 +    case 335: return  4;  /* XcSHAInit(1) */
 +    case 336: return 12;  /* XcSHAUpdate(3) */
 +    case 337: return  8;  /* XcSHAFinal(2) */
@@ -152,10 +231,52 @@ index eafbf96..dbfd820 100644
 +    case 345: return 20;  /* XcModExp(5) */
 +    case 347: return 12;  /* XcKeyTable(3) */
 +    case 351: return  8;  /* XcUpdateCrypto(2) */
- 
-     default:  return  0;  /* DATA exports or truly unknown */
++
++    /* ── Imported by X-Men Legends II and previously unsized ──
++     * Standard xboxkrnl signatures; 224/231/360 are also in
++     * docs/formats/kernel-exports.md. 86/87 are FASTCALL (args in ecx/edx),
++     * so they clean nothing off the stack, like KfRaiseIrql above.
++     * Ordinals 40/41/42 (HalDisk*) and 356/357 are DATA exports with no
++     * backing storage here -- deliberately left unsized so the init report
++     * names them rather than pretending a cleanup size. */
++    case  17: return  4;  /* ExFreePool(1) */
++    case  24: return 20;  /* ExQueryNonVolatileSetting(5) */
++    case  47: return  8;  /* HalRegisterShutdownNotification(2) */
++    case  49: return  4;  /* HalReturnToFirmware(1) */
++    case  62: return 28;  /* IoBuildSynchronousFsdRequest(7) */
++    case  65: return 24;  /* IoCreateDevice(6) */
++    case  67: return  8;  /* IoCreateSymbolicLink(2) */
++    case  69: return  4;  /* IoDeleteSymbolicLink(1) */
++    case  74: return  8;  /* IoInvalidDeviceRequest(2) */
++    case  86: return  0;  /* IofCallDriver(fastcall) */
++    case  87: return  0;  /* IofCompleteRequest(fastcall) */
++    case 100: return  4;  /* KeDisconnectInterrupt(1) */
++    case 144: return  8;  /* KeSetDisableBoostThread(2) */
++    case 167: return  8;  /* MmAllocateSystemMemory(2) */
++    case 172: return  8;  /* MmFreeSystemMemory(2) */
++    case 186: return  4;  /* NtClearEvent(1) */
++    case 192: return 12;  /* NtCreateMutant(3) */
++    case 221: return  8;  /* NtReleaseMutant(2) */
++    case 224: return  8;  /* NtResumeThread(2) */
++    case 231: return  8;  /* NtSuspendThread(2) */
++    case 234: return 16;  /* NtWaitForSingleObjectEx(4) */
++    case 327: return  4;  /* XeLoadSection(1) */
++    case 328: return  4;  /* XeUnloadSection(1) */
++    case 339: return 12;  /* XcRC4Crypt(3) */
++    case 340: return 28;  /* XcHMAC(7) */
++    case 346: return  8;  /* XcDESKeyParity(2) */
++    case 349: return 28;  /* XcBlockCryptCBC(7) */
++    case 360: return  0;  /* HalInitiateShutdown(void) */
++
++    /* Not a size of 0 -- "we do not know". A called ordinal with an unknown
++     * arg size leaves its arguments on the simulated stack, and the caller
++     * resumes with ESP off by that many bytes and fails somewhere unrelated.
++     * The init loop reports every imported ordinal that lands here. */
++    default:  return -1;
      }
-@@ -1514,9 +1520,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+ }
+ 
+@@ -1514,9 +1589,9 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 199: return bridge_NtFreeVirtualMemory;
  
      /* Pool */
@@ -168,7 +289,7 @@ index eafbf96..dbfd820 100644
  
      /* IRQL */
      case 160: return bridge_KfRaiseIrql;
-@@ -1546,14 +1552,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+@@ -1546,14 +1621,14 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
      case 238: return bridge_NtYieldExecution;
  
      /* Hardware */
@@ -186,8 +307,72 @@ index eafbf96..dbfd820 100644
      case 188: return bridge_NtCreateDirectoryObject;
      case 246: return bridge_ObReferenceObjectByHandle;
  
+@@ -1562,6 +1637,7 @@ static bridge_func_t bridge_for_ordinal(ULONG ordinal)
+     case 178: return bridge_MmPersistContiguousMemory;
+ 
+     /* RTL */
++    case  49: return bridge_HalReturnToFirmware;
+     case 301: return bridge_RtlNtStatusToDosError;
+     case 302: return bridge_RtlRaiseException;
+ 
+@@ -1733,6 +1809,9 @@ void xbox_kernel_bridge_init(void)
+     /* Initialize kernel data export values first */
+     kernel_data_init();
+ 
++    ULONG unsized[64];
++    int   unsized_count = 0;
++
+     for (i = 0; i < g_thunk_table_count; i++) {
+         uint32_t va = g_thunk_table_base + i * 4;
+         uint32_t current = BRIDGE_MEM32(va);
+@@ -1755,7 +1834,19 @@ void xbox_kernel_bridge_init(void)
+ 
+             /* FUNCTION export: use synthetic VA for dispatch */
+             g_slot_bridges[i] = bridge_for_ordinal(ordinal);
+-            g_slot_arg_bytes[i] = stdcall_args_for_ordinal(ordinal);
++            {
++                int nbytes = stdcall_args_for_ordinal(ordinal);
++                if (nbytes < 0) {
++                    /* Record it, do not guess. Cleaning 0 bytes is wrong for
++                       any ordinal that takes arguments, but guessing a size is
++                       wrong in a way nothing would ever print. */
++                    if (unsized_count < (int)(sizeof unsized / sizeof unsized[0]))
++                        unsized[unsized_count] = ordinal;
++                    unsized_count++;
++                    nbytes = 0;
++                }
++                g_slot_arg_bytes[i] = nbytes;
++            }
+             if (g_slot_bridges[i]) {
+                 bridged++;
+             } else {
+@@ -1779,6 +1870,24 @@ void xbox_kernel_bridge_init(void)
+ 
+     fprintf(stderr, "  Kernel thunk bridge: %d/%d resolved (%d bridged, %d stub)\n",
+             resolved, g_thunk_table_count, bridged, unbridged);
++
++    /* Always printed, zero case included: silence here would read as "every
++       import has a known stack cleanup", which is the thing worth knowing. */
++    if (unsized_count == 0) {
++        fprintf(stderr, "  Kernel thunk bridge: stdcall cleanup known for all "
++                        "%d function imports\n", resolved);
++    } else {
++        int shown = unsized_count < (int)(sizeof unsized / sizeof unsized[0])
++                  ? unsized_count : (int)(sizeof unsized / sizeof unsized[0]);
++        fprintf(stderr, "  Kernel thunk bridge: UNKNOWN stdcall arg size for %d "
++                        "of %d function imports -- if any is CALLED, its args stay "
++                        "on the stack and ESP drifts:\n    ", unsized_count, resolved);
++        for (i = 0; i < shown; i++)
++            fprintf(stderr, "%lu%s", (unsigned long)unsized[i],
++                    i + 1 < shown ? ", " : "\n");
++        if (shown < unsized_count)
++            fprintf(stderr, "    ... and %d more\n", unsized_count - shown);
++    }
+     fprintf(stderr, "  Synthetic VA range: 0x%08X-0x%08X\n",
+             KERNEL_VA_BASE, KERNEL_VA_BASE + (resolved - 1) * 4);
+ 
 diff --git a/tools/validate_ordinals.py b/tools/validate_ordinals.py
-index 04601e8..fc35707 100644
+index 04601e8..ab9f2e2 100644
 --- a/tools/validate_ordinals.py
 +++ b/tools/validate_ordinals.py
 @@ -24,6 +24,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -204,7 +389,7 @@ index 04601e8..fc35707 100644
  
  
  def canonical():
-@@ -49,6 +56,30 @@ def doc_rows():
+@@ -49,6 +56,47 @@ def doc_rows():
      return out
  
  
@@ -232,10 +417,27 @@ index 04601e8..fc35707 100644
 +            re.findall(r'case\s+(\d+):\s*return\s*(\d+);\s*/\*\s*(\w+)', body)}
 +
 +
++def dataexport_cases():
++    """ordinal -> name, from kernel_data_va_for_ordinal's trailing comments.
++
++    A shifted row here is worse than a wrong function: the game reads the
++    thunk and dereferences it, so a FUNCTION ordinal handed a data VA (or a
++    data ordinal handed the wrong struct) corrupts silently.
++    """
++    src = open(BRIDGE, encoding='utf-8', errors='replace').read()
++    i = src.find('kernel_data_va_for_ordinal')
++    if i < 0:
++        return {}
++    body = src[i:]
++    body = body[:body.find('\n}')]
++    return {int(o): name for o, name in
++            re.findall(r'case\s+(\d+):\s*return[^;]+;\s*/\*\s*(\w+)', body)}
++
++
  def main():
      table = canonical()
      errors = []
-@@ -72,14 +103,42 @@ def main():
+@@ -72,14 +120,53 @@ def main():
          if want and name != want:
              errors.append(f"docs:   ordinal {ordinal} is {want}, but documented as {name}")
  
@@ -264,6 +466,16 @@ index 04601e8..fc35707 100644
 +                f"argsz:  ordinal {ordinal} is {want}, but sized as {name} ({nbytes} bytes)"
 +                + (f" (which belongs at {belongs})" if belongs else ""))
 +
++    for ordinal, name in sorted(dataexport_cases().items()):
++        want = table.get(ordinal)
++        if want is None:
++            errors.append(f"kdata:  ordinal {ordinal} ({name}) is not in the export table")
++        elif name != want:
++            belongs = next((o for o, n in table.items() if n == name), None)
++            errors.append(
++                f"kdata:  ordinal {ordinal} is {want}, but returns data for {name}"
++                + (f" (which belongs at {belongs})" if belongs else ""))
++
      if errors:
          print(f"FAIL: {len(errors)} ordinal mismatch(es)\n")
          for e in errors:
@@ -271,10 +483,10 @@ index 04601e8..fc35707 100644
          return 1
  
 -    print(f"OK: {len(thunk_cases())} thunk cases and {len(doc_rows())} doc rows "
--          f"agree with the {len(table)}-entry export table")
 +    print(f"OK: {len(thunk_cases())} thunk cases, {len(doc_rows())} doc rows, "
-+          f"{len(bridge_cases())} bridge dispatches and {len(argsize_cases())} "
-+          f"arg-size rows agree with the {len(table)}-entry export table")
++          f"{len(bridge_cases())} bridge dispatches, {len(argsize_cases())} "
++          f"arg-size rows and {len(dataexport_cases())} data-export rows "
+           f"agree with the {len(table)}-entry export table")
 +    print("  Not checked: whether each bridge BODY implements the semantics of "
 +          "the name it carries -- only that the names line up.")
      return 0
