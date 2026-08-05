@@ -543,7 +543,9 @@ recomp_func_t recomp_lookup_manual(uint32_t xbox_va)
 
 static uint32_t g_miss_va[ICALL_MISS_MAX];
 static uint64_t g_miss_hits[ICALL_MISS_MAX];
-static int      g_miss_kind[ICALL_MISS_MAX];   /* 0 = unresolved, 1 = range-skipped */
+static int      g_miss_kind[ICALL_MISS_MAX];   /* 0 = unresolved call, 1 = range-skipped,
+                                                  2 = tail jump through an unenumerated
+                                                  switch table (never a seed) */
 static int      g_miss_count;                  /* distinct VAs recorded */
 static int      g_icall_selftest_active;       /* suppress the fatal path in the self-test */
 static uint64_t g_miss_total;                  /* all misses, incl. overflow */
@@ -567,10 +569,17 @@ static void icall_miss_record(uint32_t va, int kind)
     g_miss_kind[g_miss_count] = kind;
     g_miss_count++;
 
-    /* First sighting is loud: with the ring buffer of how we got here. */
-    fprintf(stderr, "[ICALL] %s VA 0x%08X (icall #%llu) -- the call did NOT execute\n",
-            kind ? "range-skipped" : "UNRESOLVED",
-            va, (unsigned long long)g_icall_count);
+    /* First sighting is loud: with the ring buffer of how we got here.
+       The KIND is part of the line, because tooling greps this: the discovery
+       loop seeds whatever "UNRESOLVED VA" names, and a tail jump through an
+       unenumerated switch table names a jump-table target in the middle of a
+       function. Printing that as an unresolved CALL is what got three
+       mid-function fragments seeded as functions. */
+    fprintf(stderr, "[ICALL] %s VA 0x%08X (icall #%llu) -- the %s did NOT execute\n",
+            kind == 1 ? "range-skipped"
+                      : (kind == 2 ? "UNRESOLVED-TAIL-JUMP" : "UNRESOLVED"),
+            va, (unsigned long long)g_icall_count,
+            kind == 2 ? "jump" : "call");
     fprintf(stderr, "  Recent ICALL targets (oldest first):\n");
     for (int i = 0; i < ICALL_TRACE_SIZE; i++) {
         int idx = (g_icall_trace_idx - ICALL_TRACE_SIZE + i) & (ICALL_TRACE_SIZE - 1);
@@ -640,6 +649,43 @@ void recomp_icall_range_skip_log(uint32_t va)
     icall_miss_fatal(va, "out-of-image");
 }
 
+/*
+ * A tail JUMP that could not be resolved -- not a call.
+ *
+ * This used to log through recomp_icall_fail_log, which made the two
+ * indistinguishable, and that cost real damage. RECOMP_ITAIL is what a jump
+ * table falls back to when the recompiler could not enumerate its entries, so
+ * the address it reports is a jump-table TARGET: an instruction in the middle
+ * of the function that was dispatching. memcpy's unrolled copy tail is full of
+ * them (0x003D5B44 = `mov eax,[esi+ecx*4+0x10]`).
+ *
+ * Reported as "unresolved indirect call", those addresses look exactly like
+ * functions the detector missed, so the discovery loop seeded three of them.
+ * Each became a "function" with no prologue: the dispatch resolved, the
+ * fragment ran on the caller's frame, and the boot continued with a corrupted
+ * state -- a name lookup was handed a `this` pointing into the stack. The
+ * symptom moved and the port got further while being more wrong.
+ *
+ * So say which one it is. A tail-jump miss is a TRANSLATOR gap (an
+ * unenumerated switch table), never a missing function, and must never be
+ * seeded.
+ */
+void recomp_itail_fail_log(uint32_t va)
+{
+    icall_miss_record(va, 2);
+    fprintf(stderr,
+        "[ICALL] 0x%08X is a TAIL-JUMP miss, not a missing function.\n"
+        "        This is a JUMP, not a call: it is the fallback of a switch\n"
+        "        table the recompiler could not enumerate, so this address is\n"
+        "        a jump-table TARGET inside some function, not a function.\n"
+        "        DO NOT SEED IT. Seeding builds a function with no prologue\n"
+        "        and the run continues corrupted. Fix the table instead: find\n"
+        "        the 'indirect tail jmp' fallback in the caller's generated C\n"
+        "        and see _analyze_switch_table in the lifter.\n", va);
+    fflush(stderr);
+    icall_miss_fatal(va, "unresolved tail-jump");
+}
+
 extern int xbox_kernel_call_count(void);
 
 void recomp_icall_report(void)
@@ -660,7 +706,10 @@ void recomp_icall_report(void)
     for (int i = 0; i < g_miss_count; i++)
         fprintf(stderr, "  0x%08X  x%-6llu  %s\n",
                 g_miss_va[i], (unsigned long long)g_miss_hits[i],
-                g_miss_kind[i] ? "range-skipped" : "unresolved (seed candidate)");
+                g_miss_kind[i] == 1 ? "range-skipped (garbage pointer)"
+                : g_miss_kind[i] == 2
+                    ? "unenumerated switch table -- NOT a seed candidate"
+                    : "unresolved (seed candidate)");
 
     if (g_miss_dropped)
         fprintf(stderr, "  ... and %llu further misses beyond the first %d targets\n",
@@ -987,6 +1036,8 @@ void listscan_report(void)
 extern void __real_sub_0026B390(void);
 
 static uint64_t fnd_calls, fnd_miss;
+static uint32_t fnd_last_self, fnd_last_count, fnd_last_name, fnd_last_base;
+static int fnd_in_flight;
 
 /* Copy a guest NUL-terminated string out for printing, bounded. Reports what
    it truncated rather than silently shortening. */
@@ -1011,7 +1062,20 @@ void __wrap_sub_0026B390(void)
     uint32_t count   = self ? MEM32(self + 4) : 0;
 
     fnd_calls++;
+
+    /* Record the call BEFORE making it. The interesting lookup is the one that
+       does not come back -- the search faulted inside __real_ with a wild
+       element pointer, and because this wrapper only logged on return, the
+       fatal call was the one call that printed nothing. listfind_report runs
+       from the crash handler, so this is what it prints. */
+    fnd_last_self  = self;
+    fnd_last_count = count;
+    fnd_last_name  = name_va;
+    fnd_last_base  = self ? MEM32(self + 0x10) : 0;
+    fnd_in_flight  = 1;
+
     __real_sub_0026B390();
+    fnd_in_flight = 0;
 
     {
         uint32_t idx  = idx_va ? MEM32(idx_va) : 0xFFFFFFFFu;
@@ -1050,6 +1114,15 @@ void __wrap_sub_0026B390(void)
 
 void listfind_report(void)
 {
+    if (fnd_in_flight) {
+        char name[64];
+        ls_guest_str(fnd_last_name, name, sizeof name);
+        fprintf(stderr, "[LISTSCAN] the search was IN FLIGHT when this ended:"
+                        " call #%llu this=0x%08X count=%u base=0x%08X"
+                        " name=\"%s\" -- it did not return\n",
+                (unsigned long long)fnd_calls, fnd_last_self, fnd_last_count,
+                fnd_last_base, name);
+    }
     if (fnd_calls == 0) {
         fprintf(stderr, "[LISTSCAN] the find wrapper at 0x0026B390 never fired:"
                         " 0 calls. Not evidence of anything -- check the link"

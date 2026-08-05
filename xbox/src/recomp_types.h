@@ -117,6 +117,7 @@ extern volatile uint64_t g_icall_count;
  * The va parameter is the Xbox VA that failed to resolve.
  */
 void recomp_icall_fail_log(uint32_t va);
+void recomp_itail_fail_log(uint32_t va);   /* unenumerated switch table, NOT a missing function */
 
 /**
  * Called when an indirect call target is discarded unlooked-at because it
@@ -498,7 +499,7 @@ void recomp_icall_watch_selftest(void);
     if (!_fn) _fn = recomp_lookup((uint32_t)(xbox_va)); \
     if (!_fn) _fn = recomp_lookup_kernel((uint32_t)(xbox_va)); \
     if (_fn) _fn(); \
-    else recomp_icall_fail_log((uint32_t)(xbox_va)); \
+    else recomp_itail_fail_log((uint32_t)(xbox_va)); \
 } while(0)
 
 /* ================================================================

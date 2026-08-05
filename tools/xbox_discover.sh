@@ -29,6 +29,7 @@ ROUNDS="${ROUNDS:-8}"
 BUILD_DIR="${BUILD_DIR:-$REPO/scratch/build-xbox}"
 RUN_DIR="${RUN_DIR:-$REPO/scratch/run/xbox}"
 SEEDS="$REPO/xbox/seeds.json"
+XBOXRECOMP_FUNCS="${XBOXRECOMP_FUNCS:-$REPO/vendor/xboxrecomp/tools/disasm/output/functions.json}"
 LOG="$REPO/scratch/logs/xbox_discover.log"
 LOCK="$REPO/scratch/.xbox_discover.lock"
 
@@ -71,7 +72,23 @@ for round in $(seq 1 "$ROUNDS"); do
     kernel="${kernel:-unreported}"
     echo "round $round: exit=$status, ${calls:-0} indirect calls, $kernel kernel calls" | tee -a "$LOG"
 
-    va=$(grep -oE 'UNRESOLVED VA 0x[0-9A-F]+' "$out" | head -1 | grep -oE '0x[0-9A-F]+')
+    # A tail-jump miss is a translator gap, not a missing function. Seeding it
+    # builds a function with no prologue out of a jump-table target in the
+    # middle of another function, and the run continues corrupted. Check for it
+    # BEFORE the seed-candidate grep, and stop.
+    tail=$(grep -oE 'UNRESOLVED-TAIL-JUMP VA 0x[0-9A-F]+' "$out" | head -1 | grep -oE '0x[0-9A-F]+')
+    if [ -n "$tail" ]; then
+        echo "round $round: STOP -- first miss is a TAIL JUMP ($tail)." | tee -a "$LOG"
+        echo "  That address is a switch-table target inside some function," | tee -a "$LOG"
+        echo "  not a function the detector missed. Seeding it would make the" | tee -a "$LOG"
+        echo "  symptom vanish and leave the run executing a fragment with no" | tee -a "$LOG"
+        echo "  prologue. Fix the table: find the 'indirect tail jmp' fallback" | tee -a "$LOG"
+        echo "  in the dispatching function's generated C, and see" | tee -a "$LOG"
+        echo "  _analyze_switch_table in the lifter." | tee -a "$LOG"
+        exit 1
+    fi
+
+    va=$(grep -oE '\bUNRESOLVED VA 0x[0-9A-F]+' "$out" | head -1 | grep -oE '0x[0-9A-F]+')
     if [ -z "$va" ]; then
         skipped=$(grep -oE 'range-skipped VA 0x[0-9A-F]+' "$out" | head -1 | grep -oE '0x[0-9A-F]+')
         if [ -n "$skipped" ]; then
@@ -92,6 +109,60 @@ for round in $(seq 1 "$ROUNDS"); do
             exit 1;;
     esac
     seen="$seen $va"
+
+    # Refuse to seed an address that lands INSIDE a function we already
+    # detected. Such an address is not a function the detector missed; it is a
+    # jump-table target in the middle of one -- memcpy's unrolled copy tail is
+    # full of them. Seeding it manufactures a "function" with no prologue: the
+    # dispatch resolves, the fragment executes on the caller's frame, and the
+    # run continues corrupted (a name lookup was handed a `this` pointing into
+    # the stack). The symptom disappears and the port gets further while being
+    # more wrong, which is the exact failure this loop must not produce.
+    inside=$(python3 - "$XBOXRECOMP_FUNCS" "$va" <<'PYIN'
+import json, sys
+
+# functions.json is a LIST of records with hex-string start/end. Anything else
+# means the format moved: say so and let the caller decide, rather than
+# reporting "not mid-function" for a file this cannot read.
+try:
+    funcs = json.load(open(sys.argv[1]))
+    if not isinstance(funcs, list):
+        raise TypeError("expected a list of functions, got %s" % type(funcs).__name__)
+except Exception as e:
+    print("UNKNOWN %s: %s" % (sys.argv[1], e))
+    sys.exit(0)
+
+va = int(sys.argv[2], 16)
+checked = 0
+for f in funcs:
+    try:
+        start = int(f["start"], 16)
+        end = int(f["end"], 16)
+    except (KeyError, TypeError, ValueError):
+        continue
+    checked += 1
+    if start < va < end:
+        print("0x%08X 0x%08X" % (start, end))
+        break
+else:
+    if checked == 0:
+        print("UNKNOWN %s: no readable function records" % sys.argv[1])
+PYIN
+)
+    case "$inside" in
+        UNKNOWN*)
+            echo "round $round: cannot check whether $va is mid-function:" | tee -a "$LOG"
+            echo "  ${inside#UNKNOWN } -- seeding anyway, VERIFY IT BY HAND." | tee -a "$LOG";;
+        0x*)
+            set -- $inside
+            echo "round $round: STOP -- $va is INSIDE the existing function $1..$2." | tee -a "$LOG"
+            echo "  That is a jump-table target, not a missed function. Seeding it" | tee -a "$LOG"
+            echo "  would build a function with no prologue and let the run continue" | tee -a "$LOG"
+            echo "  corrupted. The real fix is to enumerate that function's jump" | tee -a "$LOG"
+            echo "  table so the dispatch becomes a goto -- see _analyze_switch_table" | tee -a "$LOG"
+            echo "  and the 'indirect tail jmp' fallbacks in its generated C." | tee -a "$LOG"
+            exit 1;;
+    esac
 
     echo "round $round: seeding $va" | tee -a "$LOG"
     python3 - "$SEEDS" "$va" "$round" <<'PY'

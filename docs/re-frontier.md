@@ -188,9 +188,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
 - status: hack
 - deps: rc-exe-run
-- evidence: scratch/logs/xbox_discover_run_2.log; xbox/seeds.json (1320 seeds); I013
+- evidence: issue #6; scratch/logs/xbox_run_itail2.log; test_memcpys_later_switch_tables_are_enumerated (xfail strict)
 - where: 
-- gap: The runtime-discovery loop reached a fixed point on the OLD code path (66271 indirect calls, 0 unresolved). The carry-flag fix (C075) changed the path the boot takes, and the run now stops at a NEW unresolved target, 0x003D5B54 -- expected, and exactly what the loop is for. Still DEBT: the fallback path is unused rather than removed, and code past the current stopping point has never executed.
+- gap: Blocked on a REAL gap now, and it stops there instead of being seeded past it. The boot ends at a tail jump through one of memcpy's nine switch tables (0x003D5B54); only two of the nine are enumerated because the detector under-sizes sub_003D5890 as 0x003D5890-0x003D5A7F while its own targets live at 0x003D5B44+ (C047). Issue #6: the loop previously seeded three of those targets as functions, which resolved the dispatch and left the run executing mid-function fragments with no prologue -- it now refuses, because RECOMP_ITAIL reports a tail-jump miss distinctly from a missing call. NEXT REAL STEP: extend the function detector so a function covers its own jump-table targets.
 - notes: 
 
 ### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage
