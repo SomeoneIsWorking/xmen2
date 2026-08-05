@@ -150,6 +150,26 @@ void recomp_abicheck_report(void);
 void recomp_esp_check(uint32_t va);
 void recomp_esp_report(void);
 
+/**
+ * RECOMP_DCALL - Direct call with the callee-saved contract checked.
+ *
+ * The generated code calls translated functions directly. Wrapping them here
+ * means a callee that fails to restore ebx/esi/edi/ebp is named at the call,
+ * instead of corrupting its caller and surfacing somewhere unrelated. When
+ * checking is off this is exactly a bare call.
+ */
+#define RECOMP_DCALL(fn, va) do { \
+    if (recomp_abicheck_enabled()) { \
+        uint32_t _sb = g_ebx, _ss = g_esi, _sd = g_edi, _sp = g_seh_ebp; \
+        fn(); \
+        recomp_abicheck_count(); \
+        RECOMP_ABI_ONE((va), "ebx", _sb, g_ebx); \
+        RECOMP_ABI_ONE((va), "esi", _ss, g_esi); \
+        RECOMP_ABI_ONE((va), "edi", _sd, g_edi); \
+        RECOMP_ABI_ONE((va), "ebp", _sp, g_seh_ebp); \
+    } else fn(); \
+} while (0)
+
 /* Compare one callee-saved register across a call. */
 #define RECOMP_ABI_ONE(va, name, saved, now) \
     do { if ((saved) != (now)) \

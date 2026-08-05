@@ -119,9 +119,29 @@ int recomp_abicheck_enabled(void)
     return cached;
 }
 
+/* __SEH_prolog and __SEH_epilog exist precisely to rewrite the caller's frame
+   -- establishing ebp and restoring ebx/esi/edi is their job, not a contract
+   breach. Excluding them is not weakening the check: including them buries
+   the real violations under hundreds of expected ones. Addresses are this
+   title's, as reported by the lifter: "SEH helpers: __SEH_prolog 0x003D62F4,
+   __SEH_epilog 0x003D632F". */
+#define SEH_PROLOG_VA 0x003D62F4u
+#define SEH_EPILOG_VA 0x003D632Fu
+
+/* _aulldvrm: the CRT's 64-bit divide-with-remainder. It RETURNS the remainder
+   in ecx:ebx -- read its epilogue, which ends `edx = ebx; ebx = ecx; ecx =
+   eax; eax = esi;` before a single `pop esi`. Clobbering ebx is its calling
+   convention, not a contract breach, and it starts at 0x003DC1B0 with `push
+   esi` (0x003DC1AF is 0xCC padding), so no `push ebx` is missing. Verified
+   against the bytes rather than assumed. */
+#define AULLDVRM_VA   0x003DC1B0u
+
 void recomp_abicheck_report_violation(uint32_t va, const char *reg,
                                       uint32_t before, uint32_t after)
 {
+    if (va == SEH_PROLOG_VA || va == SEH_EPILOG_VA ||
+        va == AULLDVRM_VA) return;
+
     abi_violations++;
     for (int i = 0; i < abi_count; i++)
         if (abi_va[i] == va) return;
@@ -194,8 +214,12 @@ void recomp_abicheck_report(void)
         return;
     }
     if (!abi_violations) {
-        fprintf(stderr, "[ABI] %llu indirect calls checked, every one restored"
-                        " ebx/esi/edi/ebp\n", (unsigned long long)abi_checked);
+        fprintf(stderr, "[ABI] %llu calls checked, every one restored"
+                        " ebx/esi/edi/ebp. Exempt by convention, not by"
+                        " weakening: the two SEH helpers (rewriting the frame"
+                        " is their job) and _aulldvrm (returns its remainder"
+                        " in ecx:ebx)\n",
+                (unsigned long long)abi_checked);
         return;
     }
     fprintf(stderr, "[ABI] %llu violations across %d distinct targets"
