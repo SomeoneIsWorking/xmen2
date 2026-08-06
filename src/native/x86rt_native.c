@@ -275,14 +275,87 @@ static void ring_note(const char *what, uint32_t addr, uint32_t base,
  * and it is invisible without it: an ordinary guest-to-guest call is a direct
  * C call and crosses no boundary at all.
  */
+/*
+ * Argument watch: X2_ARGS=0x10056330,0x1005ae50
+ *
+ * The native counterpart of the hosted build's X2_WATCH (I019), which the
+ * native build did not have -- so "how many times was it called" was
+ * answerable (the reached set) and "what was it called WITH" was not.
+ *
+ * On entry it prints ECX (the __thiscall `this`) and the first four stack
+ * words above the return address; on exit, EAX. It CANNOT know a function's
+ * real argument count -- nothing here does, which is why the export shims are
+ * built not to need it -- so it prints a fixed four and says so. Words beyond
+ * the real count are whatever the caller's frame holds, not arguments.
+ */
+#define ARGS_MAX 16
+static uint32_t g_args_ep[ARGS_MAX];
+static int g_args_n = -1, g_args_hits;
+
+static void args_init(void)
+{
+    const char *e = getenv("X2_ARGS");
+    char buf[256], *p, *save;
+    g_args_n = 0;
+    if (!e || !*e) return;
+    snprintf(buf, sizeof buf, "%s", e);
+    for (p = strtok_r(buf, ",", &save); p && g_args_n < ARGS_MAX;
+         p = strtok_r(NULL, ",", &save))
+        g_args_ep[g_args_n++] = (uint32_t)strtoul(p, NULL, 0);
+    fprintf(stderr, "[ARGS] watching %d entry point(s); ECX and 4 stack words "
+                    "per call. The real argument count is unknown, so trailing "
+                    "words may be the caller's frame rather than arguments.\n",
+            g_args_n);
+}
+
+static int args_watched(uint32_t ep)
+{
+    int i;
+    if (g_args_n < 0) args_init();
+    for (i = 0; i < g_args_n; i++) if (g_args_ep[i] == ep) return 1;
+    return 0;
+}
+
+/* Reported at exit so a watch that never fired cannot be read as "it was
+   called with nothing interesting". */
+void x86_args_report(void)
+{
+    if (g_args_n < 0) args_init();
+    if (!g_args_n) return;
+    if (!g_args_hits)
+        fprintf(stderr, "[ARGS] NONE of the %d watched entry point(s) was "
+                        "entered -- this run says nothing about their "
+                        "arguments.\n", g_args_n);
+    else
+        fprintf(stderr, "[ARGS] %d call(s) reported across %d watched entry "
+                        "point(s).\n", g_args_hits, g_args_n);
+}
+
 void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
 {
     ring_note("enter", ep, base, C->esp, C->esp);
+    if (args_watched(ep)) {
+        /* Resolve through the module that HAS this base, never by assuming a
+           preferred address: the exe is linked for 0x400000, not 0x10000000,
+           and hardcoding one is how a report names the wrong function. */
+        X86Module *m;
+        const char *nm = NULL;
+        for (m = x86_modules(); m; m = m->next)
+            if (*m->base == base) { nm = x86_native_name_at(base + (ep - m->preferred)); break; }
+        g_args_hits++;
+        fprintf(stderr, "[ARGS] -> 0x%08x %-38s ecx %08x  args %08x %08x "
+                        "%08x %08x  (ret to %08x)\n",
+                ep, nm ? nm : "", C->ecx,
+                RD32(C->esp + 4), RD32(C->esp + 8),
+                RD32(C->esp + 12), RD32(C->esp + 16), RD32(C->esp));
+    }
 }
 
 void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
 {
     ring_note("exit", ep, base, C->esp, C->esp);
+    if (args_watched(ep))
+        fprintf(stderr, "[ARGS] <- 0x%08x  eax %08x\n", ep, C->eax);
 }
 #endif
 

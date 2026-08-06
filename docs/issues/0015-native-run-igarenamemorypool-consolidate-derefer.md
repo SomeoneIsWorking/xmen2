@@ -147,7 +147,39 @@ What still stands from C090: `ms->top` is 0x00a8002c while the arena's actual
 top chunk header is at 0x00a8001c, and the chunk walk from 0x00a80004 (span 24)
 lands on 0x00a8001c, so the walk and the heap agree and `ms->top` does not.
 
+## The whole allocator history, measured (C091, I027)
+
+The native build had no argument watch, so "how often" was answerable and "with
+what" was not. Added one (`X2_ARGS`, trace builds). The complete history before
+the crash is four calls:
+
+    igArena_malloc(0x10)          -> 0x00a80008
+    igArena_free (0x00a80008)                     <- so the fastbin entry is legitimate
+    igArena_malloc(0x0c)          -> 0x00a80028
+    igArena_malloc(0x100)         -> consolidate -> SIGSEGV
+
+That yields one statement needing **no** header decoding: allocation #2 has a
+12-byte payload at 0x00a80028, so it occupies 0x00a80028..0x00a80034, and
+`ms->top` is 0x00a8002c -- **four bytes inside a live allocation**. A top chunk
+overlapping a live block is corruption whatever the encoding is, and it is why
+`consolidate`'s walk never matches `ms->top`.
+
+Also measured, decode-free: payload #1 is 0x00a80008 and payload #2 is
+0x00a80028, so a 16-byte request consumed 32 bytes of arena.
+
+My own header-span arithmetic (which said chunk #1 spans 24) disagrees with that
+32, so **the decode formula I derived by reading `consolidate` is itself
+suspect** and nothing above rests on it.
+
 ## Next
+
+`tests/difftest.c` against the shipped `libIGCore.dll`, unchanged as the
+priority and now with a concrete script to reproduce: malloc(0x10), free it,
+malloc(0x0c), malloc(0x100). Comparing the arena bytes and `ms->top` after that
+sequence against the original decides the encoding, the 32-vs-24 question and
+C091's falsifier in one run.
+
+## Earlier next (superseded)
 
 Unchanged in priority, and the retraction is the argument for it: hand-tracing
 this allocator has now produced one correct localisation and one wrong story.
