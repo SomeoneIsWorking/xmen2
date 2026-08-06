@@ -213,6 +213,51 @@ static inline int FLAG_S(const CPU *C)
     return x86_msb(C->f_r, C->f_w);
 }
 
+/*
+ * ADC and SBB need the carry IN as well as the two operands, which the lazy
+ * triple (a, b, r) cannot express. Modelling `a - b - c` as a SUB of `b - c`
+ * gets the borrow wrong whenever a != b, and modelling it as a SUB of `b + c`
+ * is wrong when b + c wraps. The first of those shipped, and it made MSVC's
+ * sign idiom
+ *
+ *     sbb eax, eax        ; eax = CF ? -1 : 0, and CF_out = CF_in
+ *     sbb eax, -1         ; -> -1 (less) or +1 (greater)
+ *
+ * yield 0 -- "equal" -- whenever CF was set and eax was non-zero, because the
+ * first SBB reported CF_out = 0. Every binary search over a string table then
+ * took a mismatch for a hit: the engine's string pool interned "_refCount" and
+ * handed back "igObject", so ARK field names were never bound (issue #16).
+ *
+ * So these compute the real flags once, at the instruction, and hand back an
+ * EFLAGS word for FK_EXPLICIT. Correctness here is cheap; getting it wrong is
+ * invisible until something reads CF three instructions later.
+ */
+static inline uint32_t x86_flags_adc(uint32_t a, uint32_t b, uint32_t c,
+                                     uint32_t r, int w)
+{
+    uint32_t m = x86_mask(w), f = 0;
+    uint64_t full = (uint64_t)(a & m) + (uint64_t)(b & m) + (uint64_t)c;
+    a &= m; b &= m; r &= m;
+    if ((full >> (w * 8)) & 1U)                 f |= 1U << 0;   /* CF */
+    if (r == 0)                                 f |= 1U << 6;   /* ZF */
+    if (x86_msb(r, w))                          f |= 1U << 7;   /* SF */
+    if (((~(a ^ b) & (a ^ r)) >> (w * 8 - 1)) & 1U) f |= 1U << 11; /* OF */
+    return f;
+}
+
+static inline uint32_t x86_flags_sbb(uint32_t a, uint32_t b, uint32_t c,
+                                     uint32_t r, int w)
+{
+    uint32_t m = x86_mask(w), f = 0;
+    uint64_t full = (uint64_t)(a & m) - (uint64_t)(b & m) - (uint64_t)c;
+    a &= m; b &= m; r &= m;
+    if ((full >> (w * 8)) & 1U)                 f |= 1U << 0;   /* CF (borrow) */
+    if (r == 0)                                 f |= 1U << 6;   /* ZF */
+    if (x86_msb(r, w))                          f |= 1U << 7;   /* SF */
+    if ((((a ^ b) & (a ^ r)) >> (w * 8 - 1)) & 1U) f |= 1U << 11; /* OF */
+    return f;
+}
+
 static inline int FLAG_C(const CPU *C)
 {
     if (C->f_kind == FK_EXPLICIT)

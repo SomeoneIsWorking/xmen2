@@ -47,6 +47,14 @@ add_executable(test_enbaya tests/test_enbaya.c)
 target_link_libraries(test_enbaya PRIVATE x2_core)
 add_test(NAME enbaya COMMAND test_enbaya)
 
+# Known-answer tests for the ADC/SBB flag model (tests/test_flags.c). Header-
+# only, so it needs no recompiled output and runs in the ordinary test suite --
+# the defect it covers was invisible for as long as nothing tested the runtime
+# in isolation.
+add_executable(test_flags tests/test_flags.c)
+target_include_directories(test_flags PRIVATE src/recomp)
+add_test(NAME flags COMMAND test_flags)
+
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
 

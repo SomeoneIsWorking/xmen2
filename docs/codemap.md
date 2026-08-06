@@ -26,7 +26,7 @@ file) but it is not the shortest road to a playable port. Status words mean:
 | Bulk vtable seeding | `tools/ghidra_scripts/SeedPointerTables.py` | **verified** — C085; runs of >=3 consecutive code pointers in read-only data. 3,024 new functions in XMen2.exe from one pass where the runtime finds one per rebuild. 99.9% of the resulting functions start with a plausible prologue; 2 spurious of 14,840 |
 | Native discovery loop | `tools/native_discover.sh` | **verified** — feeds the runtime's missing-constructor report back into Ghidra as seeds and rebuilds, until a round finds nothing. Reports module + GUEST address, since modules are relocated and a seed must name the linked address |
 | Interop: export shims + import stubs | `tools/recomp.py dll` | **verified** — ESP-switch both ways, callee-driven cleanup; no arg counts needed (C014). The shim now `jmp`s to `x86_enter_tramp` and pushes nothing that has to outlive the body: everything below the entry ESP belongs to the guest and to any host callee (C080) |
-| Runtime: CPU state, lazy flags, dispatch | `src/recomp/x86rt.h` | **partial** — flags verified indirectly via difftest; x87 state absent |
+| Runtime: CPU state, lazy flags, dispatch | `src/recomp/x86rt.h` | **partial** — x87 state absent. ADC/SBB now compute exact flags at the instruction (C095): the lazy (a,b,r) triple cannot hold the carry-in, and modelling SBB as a SUB of `b-c` made MSVC's `sbb/sbb` sign idiom return "equal" for every mismatch, so the engine's string pool interned the wrong entry. Covered by `tests/test_flags.c`, 22 known-answer checks, proven to fail against the old model |
 | Private per-thread runtime stack | `tools/recomp.py` (`x86_rt_stack_*`, `x86_enter_tramp`) | **verified** — C080; the CPU struct and every runtime frame moved off the guest stack, which is what made the full 521-function build run. Refuses to run a body without one rather than falling back |
 | Instruction histogram (sound, not linear sweep) | `tools/ghidra_scripts/InstrHisto.py` | **verified** — C011 |
 
@@ -34,6 +34,7 @@ file) but it is not the shortest road to a playable port. Status words mean:
 
 | what | where | status |
 |---|---|---|
+| ADC/SBB flag model, known-answer | `tests/test_flags.c` | **verified** — 22 checks at byte and dword width, including MSVC's sign idiom. Runs in the ordinary suite (header-only, no recompiled output needed). Validated by discrimination: the idiom case was run against a reimplementation of the OLD model and yields 0 where x86 gives -1. Gap: no word-width (w=2) case |
 | Differential test vs the original DLL | `tests/difftest.c` | **verified** — 116 functions, forced relocation, memory-write comparison; negative controls fire (I006, C016) |
 | Hybrid recomp DLL build, one command | `tools/build_recomp.sh` | **verified** — emit + runtime + dll + compile + stage, parameterised by the entry-point set; reproduces the running 156-function build (C078) |
 | Grow the recompiled set / find what breaks it | `tools/bisect_recomp.sh` | **verified but no longer needed for this** — delta-debugging with the real game as the verdict (loaded / alive / not-uniform), both controls measured first. Its premise was wrong: the 'independent culprits' were all just functions that call a host function, and the defect was the entry path (C080), not the set |

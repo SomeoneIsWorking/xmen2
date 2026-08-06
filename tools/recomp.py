@@ -659,12 +659,16 @@ def emit_instruction(ins, ctx):
         d, s2 = reconcile(O(0), O(1))
         w = d.width
         op = "+" if m == "ADC" else "-"
+        # Flags computed EXACTLY, not squeezed into the lazy (a, b, r) triple:
+        # the carry IN does not fit it, and the approximation that did ship got
+        # the borrow wrong -- see x86_flags_sbb in x86rt.h.
+        helper = "x86_flags_adc" if m == "ADC" else "x86_flags_sbb"
         return [A,
                 "{ uint32_t _a = %s, _b = %s, _c = FLAG_C(C) ? 1U : 0U, _r;"
                 % (d.read(), s2.read()),
                 "  _r = _a %s _b %s _c;" % (op, op),
-                "  SETFLAGS(C, %s, _a, (uint32_t)(_b %s _c), _r, %d);"
-                % ("FK_ADD" if m == "ADC" else "FK_SUB", op, w),
+                "  SETFLAGS(C, FK_EXPLICIT, %s(_a, _b, _c, _r, %d), 0U, _r, %d);"
+                % (helper, w, w),
                 "  " + d.write("_r") + " }"]
 
     # REP string ops. DF is assumed clear -- justified by measurement, not
