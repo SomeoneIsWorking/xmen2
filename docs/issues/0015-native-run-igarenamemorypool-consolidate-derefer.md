@@ -171,7 +171,54 @@ My own header-span arithmetic (which said chunk #1 spans 24) disagrees with that
 32, so **the decode formula I derived by reading `consolidate` is itself
 suspect** and nothing above rests on it.
 
+## The defect, measured across every call (C091 re-confirmed)
+
+`X2_PEEK` now fires on each `X2_ARGS`-watched call, so the arena can be watched
+evolving rather than inspected once at the wreck. That settles it.
+
+    after malloc(0x10) -> 0x00a80008
+        0x00a80004  0x00000203      chunk1 head
+        0x00a8001c  0x940ffb05      top header
+        ms->top     0x00a8001c      <- consistent: chunk1 spans 24
+
+    after malloc(0x0c) -> 0x00a80028
+        0x00a8001c  0x80000181      chunk2 head, SIGN BIT SET (extension form,
+                                    12-byte header) -> payload = header + 12
+                                    = 0x00a80028, matching the return
+        ms->top     0x00a8002c      <- header + 16, as if the header were 4 bytes
+
+So the 12-byte payload occupies 0x00a80028..0x00a80034 and **overlaps the top
+chunk at 0x00a8002c by 8 bytes**. Confirmed downstream: by the next call
+[0x00a8002c] has been overwritten with 0 -- the caller's own writes destroyed
+the top header, which is why `consolidate` later walks into garbage and unlinks
+a chunk whose `fd` is NULL.
+
+Two things this settles:
+
+* **The header-span decode I flagged as suspect was right.** malloc #1 is fully
+  self-consistent under it (span 24, top at 0x00a8001c, `ms->top` agreeing).
+  The 32-vs-24 puzzle was mine: chunk2's header is 12 bytes, not 4, so payload
+  #2 sits 8 higher than a 4-byte header would put it.
+* **This is a defect, not a convention mismatch.** A payload overlapping the
+  allocator's own top chunk is self-contradictory; no correct allocator emits
+  it, whatever its encoding. So it no longer needs the shipped DLL to convict
+  it, which removes difftest from the critical path.
+
+`[pool+0xb4]` is 0 across all three calls, so the branch that selects the
+extension form (`[pool+0xb4] >> 1 >= 0x20`, at 0x10057320) should NOT have been
+taken for a 12-byte request -- yet the sign bit is set.
+
 ## Next
+
+Bounded now, and inside one function. In `igArena_malloc`, find the two places
+that must agree: the one deciding the payload offset (4-byte vs 12-byte header)
+and the one advancing `ms->top` (`LEA EDI,[ESI + EBX]` at 0x100572ce). Compare
+the emitted C for that region against the x86 semantics instruction by
+instruction -- particularly the sign-bit handling at 0x10057318-0x10057368,
+since chunk2 took the extension path when `[pool+0xb4] = 0` says it should not
+have.
+
+## Earlier next (superseded)
 
 `tests/difftest.c` against the shipped `libIGCore.dll`, unchanged as the
 priority and now with a concrete script to reproduce: malloc(0x10), free it,

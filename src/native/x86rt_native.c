@@ -348,14 +348,20 @@ void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
                 ep, nm ? nm : "", C->ecx,
                 RD32(C->esp + 4), RD32(C->esp + 8),
                 RD32(C->esp + 12), RD32(C->esp + 16), RD32(C->esp));
+        /* X2_PEEK at every watched call, not only at the fault. A dump taken
+           once at the end shows the wreckage; what identifies WHICH call broke
+           an invariant is the same addresses before and after each one. */
+        x86_peek_report();
     }
 }
 
 void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
 {
     ring_note("exit", ep, base, C->esp, C->esp);
-    if (args_watched(ep))
+    if (args_watched(ep)) {
         fprintf(stderr, "[ARGS] <- 0x%08x  eax %08x\n", ep, C->eax);
+        x86_peek_report();
+    }
 }
 #endif
 
@@ -529,7 +535,11 @@ void x86_peek_report(void)
     char buf[512], *p, *save;
     if (!spec || !*spec) return;
     snprintf(buf, sizeof buf, "%s", spec);
-    fprintf(stderr, "[PEEK] X2_PEEK=%s\n", spec);
+    {   /* banner once: this now runs per watched call, and repeating the
+           spec every time would bury the values it exists to show */
+        static int banner;
+        if (!banner) { fprintf(stderr, "[PEEK] X2_PEEK=%s\n", spec); banner = 1; }
+    }
     for (p = strtok_r(buf, ",", &save); p; p = strtok_r(NULL, ",", &save)) {
         char item[128], *colon, *plus;
         unsigned size = 4;
