@@ -1245,7 +1245,69 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
     ret_std(C, p, 4);
 }
 
-void imp_KERNEL32_VirtualFree(CPU *C) { guest_free(A(0)); ret_std(C, 1, 3); }
+/*
+ * VirtualFree -- the counterpart of the mmap VirtualAlloc does, NOT a guest
+ * heap free.
+ *
+ * It used to call guest_free(), which is wrong in a way that only showed up
+ * once the game ran far enough to release memory: VirtualAlloc never allocates
+ * from the guest heap, it mmaps, so every VirtualFree handed guest_free a
+ * pointer it had never issued. guest_free caught it -- "free of a pointer
+ * outside the guest heap" -- and that refusal is the only reason this was
+ * found rather than corrupting the heap's free list.
+ */
+void imp_KERNEL32_VirtualFree(CPU *C)
+{
+    /* (lpAddress, dwSize, dwFreeType) */
+    uint32_t addr = A(0), size = A(1), type = A(2);
+    const uint32_t MEM_DECOMMIT = 0x4000u, MEM_RELEASE = 0x8000u;
+    int i;
+    if (verbose())
+        fprintf(stderr, "[mem] VirtualFree(0x%08x, %u, type 0x%x)\n",
+                addr, size, type);
+    if (type & MEM_RELEASE) {
+        /* Win32 requires dwSize == 0 and releases the WHOLE reservation, so
+           the size comes from the table rather than from the caller. */
+        if (size != 0) {
+            fprintf(stderr, "kernel32: VirtualFree(MEM_RELEASE) with size %u; "
+                            "Win32 requires 0 and releases the whole "
+                            "reservation\n", size);
+            g_last_error = 87u;
+            ret_std(C, 0, 3);
+            return;
+        }
+        for (i = 0; i < g_nreserved; i++)
+            if (g_reserved[i].base == addr) {
+                munmap((void *)(uintptr_t)addr, g_reserved[i].size);
+                g_reserved_bytes -= g_reserved[i].size;
+                g_reserved[i] = g_reserved[--g_nreserved];
+                ret_std(C, 1, 3);
+                return;
+            }
+        fprintf(stderr, "kernel32: VirtualFree(MEM_RELEASE) of 0x%08x, which "
+                        "this host never reserved -- refusing rather than "
+                        "unmapping something it does not own\n", addr);
+        g_last_error = 487u;                      /* ERROR_INVALID_ADDRESS */
+        ret_std(C, 0, 3);
+        return;
+    }
+    if (type & MEM_DECOMMIT) {
+        /* Decommitted pages must fault on access; the reservation stays, so
+           VirtualQuery still reports the range as the guest's. Leaving them
+           readable would let a use-after-decommit read stale data silently. */
+        uint32_t base = addr & ~0xFFFu;
+        uint32_t len = ((addr - base) + size + 0xFFFu) & ~0xFFFu;
+        if (len && mprotect((void *)(uintptr_t)base, len, PROT_NONE) != 0)
+            fprintf(stderr, "kernel32: VirtualFree(MEM_DECOMMIT) could not "
+                            "protect 0x%08x+%u: %s\n", base, len, strerror(errno));
+        ret_std(C, 1, 3);
+        return;
+    }
+    fprintf(stderr, "kernel32: VirtualFree(0x%08x) with type 0x%x, which is "
+                    "neither MEM_DECOMMIT nor MEM_RELEASE\n", addr, type);
+    g_last_error = 87u;
+    ret_std(C, 0, 3);
+}
 
 void imp_KERNEL32_GlobalMemoryStatus(CPU *C)
 {
