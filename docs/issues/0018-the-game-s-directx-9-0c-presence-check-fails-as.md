@@ -69,3 +69,30 @@ the Win32/COM layer beneath it. So the honest ordering is:
 Making MessageBoxA's caller skip the dialog, or returning a fabricated success
 from whatever it probes, would move the failure to the first real D3D call and
 lose the clear diagnosis.
+
+## Scoping the boundary, measured (C108)
+
+**The whole DirectX surface is two imports.** Across every shipped module:
+
+    libIGGfx.dll    -> d3d8.dll!Direct3DCreate8
+    libIGDisplay.dll -> DINPUT.dll!DirectInputCreateEx
+
+Everything else goes through COM vtables on the objects those return. So the
+D3D8-level boundary is two entry points plus the methods the game actually
+calls -- much narrower than "implement D3D8" sounds.
+
+**The vendored translator is a real asset, but not a drop-in.**
+`vendor/xboxrecomp/src/d3d` is 6741 lines with a POSIX/OpenGL backend
+(`d3d8_gl.c`) and genuine COM objects. Its vtable, however, is the **Xbox** D3D8
+layout:
+
+    vendored (Xbox):  ... Release, GetDirect3D, GetDeviceCaps, ...
+    PC D3D8:          ... Release, TestCooperativeLevel, GetAvailableTextureMem,
+                          ResourceManagerDiscardBytes, GetDirect3D, ...
+
+and it omits the cursor and additional-swap-chain methods. Slot N is a different
+method in each, so libIGGfx calling through a PC vtable would land on the wrong
+function. The bodies -- state translation, combiners, shaders, the GL backend --
+are reusable; the interface layer has to be rebuilt to the PC layout.
+
+That is the trade to weigh, and it is now measured rather than guessed.
