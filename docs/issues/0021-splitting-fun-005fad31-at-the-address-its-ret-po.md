@@ -192,3 +192,14 @@ STOP seeding in this region until the first is done.
 
 ### Resolution (2026-08-06)
 ROOT CAUSE FOUND (C123): the reported 'missing indirect call targets' are SWITCH CASE LABELS from jump tables at 0x005fb240 and 0x005fb250, and the recompiler dispatches the indirect JMP through them as if it were a call. Not a boundary problem, not exception handling. The fix is in recomp.py plus a jump-table guard in native_discover.sh; see the final note for both. Resolved as diagnosed, not as fixed.
+
+### Note (2026-08-06)
+CORRECTION to the fix, and it is cheaper than stated above.
+
+**recomp.py already handles this correctly.** `fn['_has_injmp']` is set when a function contains an indirect JMP; it then emits a C label for EVERY instruction address in the function, plus an `L_injmp` switch mapping module-relative offsets to those labels, falling through to the global dispatcher only for a genuine tail call out of the module. A whole function with a switch resolves its own case labels internally and never reaches the dispatcher at all.
+
+So the translator is NOT the defect, and the note above was wrong to say it must be changed. The defect is that the function is not whole: once a case label is seeded and Ghidra carves the function, that label is no longer in `fn['_addrs']`, the `L_injmp` switch has no case for it, and it falls through to DISPATCH -- reporting 'no recompiled body'. **The carve manufactures the very symptom that prompts the next carve.** That is the feedback loop, stated exactly.
+
+**The fix is therefore one place, not two**: native_discover.sh must refuse to seed any address that appears in a jump table, and the damage already done in this region has to be undone so 0x005fac10 is one function again.
+
+One practical warning for whoever writes the guard: the tables at 0x005fb240 and 0x005fb250 are ADJACENT, so reading a fixed number of entries from the first runs straight into the second. Take each table's length from the switch's own bound check -- the `JA` immediately above the `JMP` -- rather than assuming one.

@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-06
 tags: pc,recomp,rc-lift,rc-exe,switch
+reconfirmed: 2026-08-06
 ---
 
 ## Claim
@@ -21,3 +22,13 @@ This also explains why the exception-handling readings were dead ends. The funct
 ## What would falsify it
 
 Finding a reported 'missing indirect target' in this exe that is NOT an entry of any jump table -- i.e. scanning every JMP dword ptr [reg*4 + <imm>] in the image, collecting the tables' contents, and finding a runtime-reported address absent from that set. The two addresses checked here were both present; a third that is not would show this is only part of the story.
+
+## Re-confirmed 2026-08-06
+
+REFINED, and the fix is cheaper than the claim first said. recomp.py ALREADY handles this correctly: fn['_has_injmp'] is set when a function contains an indirect JMP, and it then emits a C label for EVERY instruction address in the function plus an L_injmp switch mapping module-relative offsets to those labels, falling through to the global dispatcher only for genuine tail calls out of the module. A whole function with a switch therefore resolves its own case labels internally and never reaches the dispatcher.
+
+So the translator is not the defect. The defect is that the function is not whole: once the discovery loop seeds a case label and Ghidra carves the function, the label is no longer among fn['_addrs'], the L_injmp switch has no case for it, and it falls through to DISPATCH -- which reports 'no recompiled body'. The carve creates the very symptom that prompts the next carve.
+
+CORRECTION to the previous note and commit, which said recomp.py must be changed: it must NOT. The fix is entirely in native_discover.sh -- refuse to seed any address that appears in a jump table -- plus repairing the damage already done in this region. That is a much smaller change and it does not touch the translator.
+
+Also noted for whoever does it: the tables at 0x005fb240 and 0x005fb250 are adjacent, so a fixed-count read of the first runs into the second. Their lengths have to come from the switch's own bound check (the JA above the JMP), not be assumed.
