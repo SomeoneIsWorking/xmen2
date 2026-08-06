@@ -48,3 +48,32 @@ function's body, not a design question.
 
 Do not seed or split `0x1002ead0` on the strength of the address in the
 message. That is exactly the loop issue #21 documents.
+
+### Note (2026-08-06)
+READING (1) REFUTED, AND THE FAULT IS OURS.
+
+0x1002ead0 is `Gap::Gfx::igDxVisualContext::setupDrawing`, and it is a clean function: 28 instructions, 0x1002ead0..0x1002eb25, **no indirect JMP, no holes in its body, one plain RET**. So the boundary/switch reading -- the issue #21 shape -- does not apply here. Checked before doing anything else, as the note above said to.
+
+Its whole body is two vtable calls on ITSELF:
+
+    1002ead3  MOV EAX,[ESI+0x17c]        ; current render destination
+    1002ead9  MOV ECX,[ESI+0x184]
+    1002eae1  JZ  0x1002eaf0             ; equal -> skip
+    1002eae5  PUSH 0x0
+    1002eae7  PUSH EAX
+    1002eaea  CALL dword ptr [EDX + 0xbc]   ; slot 47  setRenderDestination
+    ...
+    1002eb1e  CALL dword ptr [EAX + 0x2e8]  ; slot 186 setViewport (6 args)
+    1002eb25  RET
+
+**Both of those are slots this backend implements**, and both were implemented in the commit that produced this symptom. So the guest stack is being shifted by one of our own stubs, not by a mistranslation: setupDrawing's RET then pops whatever is left.
+
+Reading (2) in the note above is therefore also wrong as stated -- it is not DX_OPEN_HELPER_B reaching the device. The caller identification stands (0x2502ca42 is inside 0x1002ca30) but the DAMAGE is in the callees.
+
+**Where to look, in order:**
+
+1. `vk_set_render_destination` pops 2 args on every path (`ark_ret(C, 0, 2)`), matching RET 8. Verify every early return does too -- there are three.
+2. `vk_set_viewport` pops 6, matching RET 0x18.
+3. **The most suspicious thing, and it is new in the same commit**: `vk_set_render_destination` re-enters the object's OWN vtable, `ark_call_this(RD32(vt + 186*4), self, vp, 6)`, to make the trailing setViewport. That dispatches a SYNTHETIC stub address through x86_guest_call on the scratch stack. If that path does not restore the scratch stack pointer the way a real body would, or if the synthetic address does not route to the native stub, the corruption starts there. Test it by having slot 47 call igvk_frame_viewport directly instead of re-entering the vtable, and see whether the imbalance moves.
+
+That third one is a design choice I made deliberately (so an override of slot 186 would be honoured) and it is the first thing to suspect precisely because it is the unusual part.
