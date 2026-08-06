@@ -21,6 +21,14 @@ MAX=${1:-8}
 BIN=$ROOT/scratch/build-native/x2native
 SPLIT=${SPLIT:-1500}
 RUN=${RUN-1}
+# Extra x2native arguments for the discovery run.
+#
+# Defaults to --vk because that IS the live path: without the Vulkan
+# substitution the run stops at Direct3DCreate8, which is not a missing
+# function and which no amount of seeding can fix, so the loop would converge
+# on "nothing found" while every target past the renderer stayed invisible.
+# Set X2_ARGS= (empty) to discover along the un-substituted path instead.
+X2_ARGS=${X2_ARGS---vk}
 
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 : "${GAME_PC_DIR:?set GAME_PC_DIR in .env}"
@@ -84,7 +92,7 @@ while [ "$round" -lt "$MAX" ]; do
     # --run by default: the exe's own CRT startup has constructor tables too,
     # and stopping at module init would leave them undiscovered. RUN=0 limits
     # the loop to module initialisation.
-    "$BIN" --no-window ${RUN:+--run} >"$SEEDS.raw" 2>&1
+    "$BIN" --no-window ${RUN:+--run} ${X2_ARGS:-} >"$SEEDS.raw" 2>&1
     awk '/^    [A-Za-z0-9_]+\.(dll|exe) +0x/ {print $1, $2}' "$SEEDS.raw" \
         | sort -u > "$SEEDS"
 
@@ -96,9 +104,12 @@ while [ "$round" -lt "$MAX" ]; do
             echo "  parsed -- the report format changed and this loop is BLIND." >&2
             exit 1
         fi
-        echo "native_discover: round $round found no missing constructor targets."
-        echo "  The run got as far as it can on this axis; whatever stops it now"
-        echo "  is not a function static analysis missed. Last output:"
+        echo "native_discover: round $round found no missing constructor targets"
+        echo "  on the path taken by: $BIN --no-window ${RUN:+--run} ${X2_ARGS:-}"
+        echo "  That is the blind spot to keep in mind -- targets reachable only"
+        echo "  under OTHER arguments were never executed and so never reported."
+        echo "  Whatever stops the run now is not a function static analysis"
+        echo "  missed. Last output:"
         tail -3 "$SEEDS.raw"
         exit 0
     fi

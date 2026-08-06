@@ -894,8 +894,8 @@ int main(int argc, char **argv)
            on the engine's own first createInstance -- and deliberately on that
            rather than a guessed moment, because it is defined by the engine
            being ready rather than by an ordering we assumed. */
-        extern int igvk_visualcontext_arm(void);
-        if (igvk_visualcontext_arm()) return 1;
+        extern int igvk_context_arm(void);
+        if (igvk_context_arm()) return 1;
         run = 1;
     }
 

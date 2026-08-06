@@ -77,6 +77,10 @@ static int         g_win_live;
 static int         g_cursor_shown = 1;   /* Win32 starts the count at 0 */
 static int         g_cursor_count;
 
+/* The renderer needs the window to put a swapchain on; see win32_sdl.h. It is
+   reported only while live, so a destroyed window cannot be presented to. */
+SDL_Window *win32_sdl_window(void) { return g_win_live ? g_win : NULL; }
+
 /* The desktop is a valid target for size queries and nothing else. */
 static int hwnd_is_main(uint32_t h)    { return h == HWND_MAIN_TOK && g_win_live; }
 static int hwnd_is_desktop(uint32_t h) { return h == HWND_DESKTOP_TOK; }

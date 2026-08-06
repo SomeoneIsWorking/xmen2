@@ -162,7 +162,10 @@ if(X2_MODULE_HAVE)
         src/native/overrides.c
         src/vulkan/igvk_ark.c
         src/vulkan/igvk_probe.c
-        src/vulkan/igvk_visualcontext.c
+        src/vulkan/igvk_context.c
+        src/vulkan/igvk_device.c
+        src/vulkan/igvk_slots_lifecycle.c
+        src/vulkan/igvk_slots_frame.c
         ${X2_MODULE_SRCS}
     )
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan)
