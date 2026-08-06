@@ -1,7 +1,7 @@
 ---
 id: I038
 kind: instrument
-status: trusted
+status: DISTRUSTED (unsound for this purpose -- see below)
 created: 2026-08-06
 ---
 
