@@ -103,3 +103,16 @@ split was correct -- so it should not simply be removed. What it must not do
 is carve silently. A seed that lands inside a function whose entry has an SEH
 prologue is the case to refuse, and the loop should say which function it is
 about to carve and what that function's first instructions are.
+
+### Note (2026-08-06)
+REPAIRED, and the repair makes the run stop EARLIER -- which is correct, not a regression.
+
+Four `--merge` rounds reassembled the function. FUN_005fac10 went from 56 instructions to 426. Rounds 3 and 4 both reported '1 skipped (the inner function is real)' for the 5-instruction 0x005face5, so the merge tool's own guard declined to absorb it; that fragment is left alone deliberately.
+
+With correct boundaries the run now stops BEFORE the renderer, on an indirect call to 0x005fb270 -- an address INSIDE the repaired function, reported as 'dispatch target with no recompiled body'. Previously, with the function carved up, 0x005fb270 happened to be a fragment entry and the call resolved, so the run got as far as setVideoMode.
+
+That is the confirmation, not a setback. The carved database was letting a mistranslated indirect call resolve by accident. The real defect is that something computes 0x005fb270 as a call target at all, and it is inside an SEH-protected function -- so the suspicion in the note above (the target is a handler or scope-table pointer from a mishandled exception frame, not a function) now has a second instance supporting it.
+
+**Do not seed 0x005fb270.** That is the loop's instinct and it is what produced this issue. `tools/whose_function.py` will now flag it, since it falls inside a function with an SEH prologue.
+
+The next step is to read how recomp.py translates FUN_005fac10's SEH prologue -- `PUSH -1; PUSH 0x679141; MOV EAX,FS:[0]` and the matching `MOV FS:[0],ESP` -- and the indirect call that produces 0x005fb270. This is an rc-lift defect and it is now the single thing standing between the renderer and its first frame: everything on the renderer side is in place and the host frame path is verified to present (see the vk_frame_path test).
