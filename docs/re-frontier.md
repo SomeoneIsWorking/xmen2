@@ -311,3 +311,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: No textures, no vertex/index buffers, no draw path, and the state mirror programs no pipeline. But the renderer is NO LONGER THE FRONTIER: with SetPixelShader, SetTexture and SetGammaRamp ignored under --d3d8-permissive the engine walks clean out of renderer init and stops in kernel32!CreateFileMappingA, which is a Win32 gap and not a graphics one. 34 of 97 device methods and 7 of 11 IDirect3DSurface8 are written; every unwritten one reports its interface and method NAME. The caps block (src/d3d8/d3d8_caps.c) is a DECLARED profile, not a measured one -- see its file comment. LockRect on the back buffer or the depth surface is refused, which is honest for a backend that does no readback but would have to change if the engine ever depends on reading one back.
 - notes: This supersedes the plan in C128 rather than following it: the device does not need installing at this+0x144, because the engine installs it there itself once Direct3DCreate8 answers. See vk-substitute for the path this replaces.
 
+
+## rc-native
+
+### crt-setjmp — setjmp/longjmp across recompiled frames
+- status: hack
+- deps: rc-native
+- evidence: STOPGAP, and it is marked one in the code. _setjmp3 records the guest register file against the guest's jmp_buf and returns 0, so a protected call runs; longjmp REFUSES by name, naming both call sites, because resuming cannot be faked.
+- where: src/native/crt.c
+- gap: The real mechanism: tools/recomp.py must special-case a call to _setjmp3 and emit an INLINE HOST setjmp in the generated body. A host longjmp needs the frame it resumes into to still be alive, and the guest's setjmp call site is in the middle of a generated C function -- an import stub's frame is dead the moment it returns, so the generated function is the only legal home for it. Translator work plus a regeneration. Issue #24 records what running the stopgap taught: the longjmp is on the NORMAL startup path, not an error path, and its call site is in a function Ghidra never detected.
+- notes: 
+

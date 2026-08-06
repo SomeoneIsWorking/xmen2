@@ -588,9 +588,106 @@ NOT_IMPL(_CxxThrowException, EH_WHY)
 NOT_IMPL(_except_handler3, EH_WHY)
 NOT_IMPL(_XcptFilter, EH_WHY)
 NOT_IMPL(__RTDynamicCast, EH_WHY)
-NOT_IMPL(_setjmp3, "setjmp/longjmp across recompiled frames needs the guest "
-                   "register file saved, not the host's")
-NOT_IMPL(longjmp, "see _setjmp3")
+/* ---- setjmp / longjmp --------------------------------------------------
+ *
+ * STOPGAP: setjmp is real, longjmp STOPS by name. Read this before using it.
+ *
+ * PROPER FIX: tools/recomp.py must special-case a call to _setjmp3 and emit an
+ * inline host `setjmp` in the GENERATED BODY, not a call to a stub -- because
+ * the frame a host longjmp resumes into has to still be alive, and the guest's
+ * setjmp call site lives in the middle of a generated C function. The stub's
+ * own frame is dead the moment it returns, so a host setjmp taken here could
+ * never be jumped back to. Nothing about that is hard; it is translator work
+ * plus a regeneration, and it is not the renderer.
+ *
+ * WHAT THIS DOES INSTEAD: _setjmp3 records the guest register file against the
+ * guest's jmp_buf and returns 0, so the protected call proceeds exactly as it
+ * would on Windows. longjmp refuses, naming the buffer and the value, because
+ * resuming is the half that cannot be faked -- returning from longjmp, or
+ * returning 0 from it, would carry on in a function whose invariants the guest
+ * believes were abandoned.
+ *
+ * WHAT THAT RISKS: every longjmp is an error path here. libIGLua takes one on
+ * a Lua error (setjmp is per pcall, longjmp only on failure), and XMen2.exe and
+ * libIGGfx use the pair too. So a run that never errors never reaches the half
+ * that is missing -- and a run that does errors stops with this message rather
+ * than continuing wrongly, which is the point.
+ */
+#define JMP_SLOTS 16
+
+static struct { uint32_t env; CPU regs; uint32_t caller; int used; } g_jmp[JMP_SLOTS];
+
+/* Named so the two halves of a setjmp/longjmp pair can be attributed. Without
+   it the report says only that the guest unwound, which is the one thing the
+   reader already knows. */
+const char *x86_native_name_at(uint32_t addr);
+void x86_diag_dump(void);
+
+static void say_where(const char *what, uint32_t ret_addr)
+{
+    const char *nm = x86_native_name_at(ret_addr);
+    fprintf(stderr, "    %s was called from 0x%08x%s%s\n", what, ret_addr,
+            nm ? " -- " : " (in no recompiled body this host can name)",
+            nm ? nm : "");
+}
+
+void imp_MSVCR71__setjmp3(CPU *C)
+{
+    uint32_t env = A(0);
+    int i, slot = -1;
+
+    for (i = 0; i < JMP_SLOTS; i++) {
+        if (g_jmp[i].used && g_jmp[i].env == env) { slot = i; break; }
+        if (slot < 0 && !g_jmp[i].used) slot = i;
+    }
+    if (slot < 0) {
+        fprintf(stderr, "crt: more than %d live setjmp buffers; refusing "
+                        "rather than dropping one.\n", JMP_SLOTS);
+        crt_unimpl("_setjmp3", "out of jmp_buf slots");
+        return;
+    }
+    g_jmp[slot].env = env;
+    g_jmp[slot].regs = *C;
+    g_jmp[slot].caller = RD32(C->esp);
+    g_jmp[slot].used = 1;
+    /* The guest's jmp_buf is left alone apart from a marker: nothing in the
+       guest reads its fields, and writing MSVC's exact layout would claim a
+       fidelity this does not have. */
+    if (env) WR32(env, 0x53544F50u);            /* "STOP", visible in a dump */
+    ret_c(C, 0);                                /* the direct return */
+}
+
+void imp_MSVCR71_longjmp(CPU *C)
+{
+    uint32_t env = A(0), value = A(1);
+    int i, known = 0;
+    uint32_t set_from = 0;
+    for (i = 0; i < JMP_SLOTS; i++)
+        if (g_jmp[i].used && g_jmp[i].env == env) {
+            known = 1;
+            set_from = g_jmp[i].caller;
+        }
+    fprintf(stderr,
+            "\n*** longjmp(0x%08x, %u) -- the guest is unwinding to a setjmp "
+            "this host recorded but cannot resume.\n"
+            "    That buffer %s. The missing half is a translator feature: "
+            "recomp.py has to emit an inline\n"
+            "    host setjmp at the call site inside the generated body, "
+            "because the frame a longjmp lands in\n"
+            "    must still be alive and an import stub's is not. See "
+            "src/native/crt.c.\n"
+            "    Every longjmp here is an ERROR path -- something upstream "
+            "failed, and that is worth finding too.\n",
+            env, value, known ? "was recorded by _setjmp3"
+                              : "was NEVER recorded, so the guest may also be "
+                                "unwinding to a frame that never ran");
+    say_where("longjmp", RD32(C->esp));
+    if (set_from) say_where("the setjmp it unwinds to", set_from);
+    fflush(stderr);
+    x86_diag_dump();
+    crt_unimpl("longjmp", "resuming needs an inline host setjmp in the "
+                          "generated body; see the comment in crt.c");
+}
 
 /* ---- shared with the DLLs' MSVCRT --------------------------------------
  *
@@ -603,6 +700,7 @@ NOT_IMPL(longjmp, "see _setjmp3")
 /* ---- moved from win32_sdl.c: the CRT pieces the DLLs reach ------------- */
 
 const char *x86_native_name_at(uint32_t addr);
+void x86_diag_dump(void);
 /* Report a constructor target as its module and GUEST address: the modules are
    relocated now, and Ghidra seeds have to be given the address the module was
    LINKED for, not where it happens to be mapped. Printing the mapped address
