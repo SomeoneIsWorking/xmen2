@@ -153,7 +153,10 @@ static int resolve_ci(char *path)
     return access(path, F_OK) == 0;
 }
 
-static const char *win_path(const char *in)
+/* Shared with the CRT: crt.c's fopen was passing the guest's path straight to
+   the host, so a "Data\\foo.XMLB" never opened and surfaced as a missing asset
+   rather than as a failed open. One translation, one place. */
+const char *win_path(const char *in)
 {
     static char buf[1024];
     const char *game = getenv("GAME_PC_DIR");

@@ -110,6 +110,11 @@ typedef struct CPU {
     uint32_t fsw;        /* status word bits set by FCOM, read by FNSTSW */
     uint32_t fcw;        /* control word; only the rounding-control bits matter */
     uint64_t mm[8];      /* MMX registers, kept SEPARATE from st[] -- see below */
+    /* SSE. Present so that packed-logic instructions are translated for real
+       rather than special-cased: the engine probes for SSE by executing
+       ORPS XMM0,XMM0, and a no-op would be right for that one operand pair and
+       wrong for any other. */
+    uint64_t xmm[8][2];
 } CPU;
 
 /* Runtime base of the ORIGINAL module. Absolute references into the module's

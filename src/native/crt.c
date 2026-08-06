@@ -230,13 +230,56 @@ void imp_MSVCR71_time(CPU *C)
  * small handle and this side keeps the table. Handles start at 1 so that 0
  * stays "failed", which is what the caller tests.
  */
+/* Defined further down (the format walker) and in kernel32.c (path
+   translation); declared here so stdio can use both. */
+int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
+const char *win_path(const char *in);
+
 #define MAX_FILES 64
 static FILE *g_files[MAX_FILES];
 
+/*
+ * _iob -- the guest's stdin/stdout/stderr.
+ *
+ * MSVCRT exports it as DATA, and the guest reaches a standard stream by taking
+ * the address of an element: stderr is &_iob[2]. So a FILE* here is EITHER one
+ * of our small handles from fopen, or a pointer into that array, and fh() has
+ * to accept both. They cannot be confused: a handle is 1..64 and the array
+ * lives on the guest heap.
+ *
+ * MSVC's FILE (struct _iobuf) is 32 bytes. Nothing here reads its fields -- the
+ * array exists so the ADDRESS arithmetic works and the pointer can be
+ * recognised -- so it is zeroed rather than filled with a fake buffer.
+ */
+#define IOB_N 3
+#define IOB_SIZEOF_FILE 32u
+static uint32_t g_iob;                 /* guest address of _iob[0] */
+
+uint32_t crt_iob_base(void)
+{
+    if (!g_iob) {
+        g_iob = guest_malloc(IOB_N * IOB_SIZEOF_FILE);
+        if (!g_iob) {
+            fprintf(stderr, "crt: could not allocate _iob on the guest heap\n");
+            abort();
+        }
+        memset((void *)(uintptr_t)g_iob, 0, IOB_N * IOB_SIZEOF_FILE);
+    }
+    return g_iob;
+}
+
 static FILE *fh(uint32_t h)
 {
+    if (g_iob && h >= g_iob && h < g_iob + IOB_N * IOB_SIZEOF_FILE) {
+        uint32_t i = (h - g_iob) / IOB_SIZEOF_FILE;
+        /* stdin is not readable in this host -- it is not connected to
+           anything -- so a read from it must not silently return EOF as if the
+           stream were merely empty. */
+        return i == 0 ? stdin : i == 1 ? stdout : stderr;
+    }
     if (h == 0 || h > MAX_FILES || !g_files[h - 1]) {
-        fprintf(stderr, "crt: file handle %u is not open\n", h);
+        fprintf(stderr, "crt: file handle %u is not open, and it is not a "
+                        "pointer into _iob either\n", h);
         abort();
     }
     return g_files[h - 1];
@@ -247,7 +290,9 @@ void imp_MSVCR71_fopen(CPU *C)
     int i;
     for (i = 0; i < MAX_FILES; i++) {
         if (g_files[i]) continue;
-        g_files[i] = fopen(ACS(0), ACS(1));
+        /* Through win_path, like every other open in this host: the game
+           ships Windows paths whose case does not match the extracted files. */
+        g_files[i] = fopen(win_path(ACS(0)), ACS(1));
         ret_c(C, g_files[i] ? (uint32_t)(i + 1) : 0u);
         return;
     }
@@ -275,7 +320,38 @@ void imp_MSVCR71_fseek(CPU *C)
 
 void imp_MSVCR71_ftell(CPU *C) { ret_c(C, (uint32_t)ftell(fh(A(0)))); }
 
-void imp_MSVCR71__mkdir(CPU *C) { ret_c(C, (uint32_t)mkdir(ACS(0), 0777)); }
+void imp_MSVCR71__mkdir(CPU *C) { ret_c(C, (uint32_t)mkdir(win_path(ACS(0)), 0777)); }
+
+/* ---- the rest of stdio -------------------------------------------------- */
+
+void imp_MSVCR71_fflush(CPU *C)  { ret_c(C, (uint32_t)fflush(A(0) ? fh(A(0)) : NULL)); }
+void imp_MSVCR71_fputc(CPU *C)   { ret_c(C, (uint32_t)fputc((int)A(0), fh(A(1)))); }
+void imp_MSVCR71_fputs(CPU *C)   { ret_c(C, (uint32_t)fputs(ACS(0), fh(A(1)))); }
+void imp_MSVCR71_fgetc(CPU *C)   { ret_c(C, (uint32_t)fgetc(fh(A(0)))); }
+void imp_MSVCR71_ungetc(CPU *C)  { ret_c(C, (uint32_t)ungetc((int)A(0), fh(A(1)))); }
+void imp_MSVCR71_fwrite(CPU *C)
+{
+    ret_c(C, (uint32_t)fwrite(AP(0), A(1), A(2), fh(A(3))));
+}
+void imp_MSVCR71_fgets(CPU *C)
+{
+    char *r = fgets(AS(0), (int)A(1), fh(A(2)));
+    ret_c(C, r ? A(0) : 0u);
+}
+void imp_MSVCR71_fprintf(CPU *C)
+{
+    char buf[4096];
+    int n = guest_vformat(buf, sizeof buf, ACS(1), C->esp + 4u + 2u * 4u);
+    if (n >= 0) fputs(buf, fh(A(0)));
+    ret_c(C, (uint32_t)n);
+}
+void imp_MSVCR71_vfprintf(CPU *C)
+{
+    char buf[4096];
+    int n = guest_vformat(buf, sizeof buf, ACS(1), A(2));
+    if (n >= 0) fputs(buf, fh(A(0)));
+    ret_c(C, (uint32_t)n);
+}
 
 /* ---- startup and exit -------------------------------------------------- */
 
@@ -849,6 +925,9 @@ CRT_ALIAS(abort)    CRT_ALIAS(_errno)   CRT_ALIAS(getenv)
 /* the varargs family, on the format walker */
 CRT_ALIAS(printf)   CRT_ALIAS(vprintf)  CRT_ALIAS(sprintf)
 CRT_ALIAS(vsprintf) CRT_ALIAS(_snprintf) CRT_ALIAS(_vsnprintf)
+CRT_ALIAS(fflush)   CRT_ALIAS(fputc)    CRT_ALIAS(fputs)
+CRT_ALIAS(fgetc)    CRT_ALIAS(fgets)    CRT_ALIAS(ungetc)
+CRT_ALIAS(fwrite)   CRT_ALIAS(fprintf)  CRT_ALIAS(vfprintf)
 CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
 CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)
 CRT_ALIAS(__dllonexit)

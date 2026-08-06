@@ -34,6 +34,7 @@ class Unsupported(Exception):
 # --------------------------------------------------------------- operands
 
 REG32 = ["EAX", "ECX", "EDX", "EBX", "ESP", "EBP", "ESI", "EDI"]
+XMM = ["XMM%d" % i for i in range(8)]
 REG16 = ["AX", "CX", "DX", "BX", "SP", "BP", "SI", "DI"]
 REG8 = ["AL", "CL", "DL", "BL", "AH", "CH", "DH", "BH"]
 
@@ -133,6 +134,8 @@ def parse_operand(tok):
     up = tok.upper()
     if up in REG32:
         return Operand("reg32", reg=up)
+    if up in XMM:
+        return Operand("xmm", reg=up, idx=int(up[3:]))
     if up in REG16:
         return Operand("reg16", reg=up)
     if up in LOW:
@@ -654,6 +657,34 @@ def emit_instruction(ins, ctx):
                 "  if (!_d) x87_fault(\"IDIV by zero\");",
                 "  C->eax = (uint32_t)(int32_t)(_n / _d);",
                 "  C->edx = (uint32_t)(int32_t)(_n % _d); }"]
+
+    #
+    # SSE packed logic, on a real 128-bit register file.
+    #
+    # These arrived because Gap::Core::igGetCPUCaps PROBES for SSE by executing
+    # `ORPS XMM0,XMM0` under SEH -- an identity by value, there only to fault if
+    # the OS will not allow SSE. It would have been easy to special-case that one
+    # instruction as a no-op, and wrong: the no-op would be right by accident and
+    # the next ORPS with different operands would be silently incorrect. A real
+    # register file makes the probe a no-op BECAUSE x|x == x, which is the same
+    # answer for the right reason.
+    #
+    if m in ("ORPS", "ANDPS", "XORPS", "ORPD", "ANDPD", "XORPD"):
+        d, s2 = O(0), O(1)
+        op = {"ORPS": "|", "ORPD": "|", "ANDPS": "&", "ANDPD": "&",
+              "XORPS": "^", "XORPD": "^"}[m]
+        if d.kind != "xmm":
+            raise Unsupported("%s with a non-XMM destination" % m)
+        if s2.kind == "xmm":
+            return [A,
+                    "C->xmm[%d][0] %s= C->xmm[%d][0];" % (d.idx, op, s2.idx),
+                    "C->xmm[%d][1] %s= C->xmm[%d][1];" % (d.idx, op, s2.idx)]
+        if s2.kind == "mem":
+            return [A,
+                    "{ uint32_t _a128 = %s;" % s2.addr(),
+                    "  C->xmm[%d][0] %s= RD64(_a128);" % (d.idx, op),
+                    "  C->xmm[%d][1] %s= RD64(_a128 + 8U); }" % (d.idx, op)]
+        raise Unsupported("%s with an unsupported source operand" % m)
 
     if m in ("ADC", "SBB"):
         d, s2 = reconcile(O(0), O(1))

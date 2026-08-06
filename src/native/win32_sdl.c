@@ -369,6 +369,12 @@ uint32_t x86_native_data_export(const char *mod, const char *sym)
            The CRT branches on it to pick a software divide. Zero is the true
            answer here, not a placeholder. */
         if (strcmp(sym, "_adjust_fdiv") == 0) return data_alloc(0);
+        /* _iob is an ARRAY, not a word: the guest reaches stderr as &_iob[2],
+           so the slot must hold the array's base and the array must be real
+           guest memory. crt.c owns it, because it is the code that has to
+           recognise a pointer into it as a stream. */
+        if (strcmp(sym, "_iob") == 0) { extern uint32_t crt_iob_base(void);
+                                        return crt_iob_base(); }
         /* char *_acmdln: the raw command line the CRT parses. Empty rather
            than invented -- the game parses its own arguments, and a fabricated
            one is something it could branch on. */
