@@ -147,3 +147,14 @@ So the 'enumerate funclets from the FuncInfo tables' tool proposed in the previo
 **Where it points now**, and it is the simpler reading: the exception-frame prologue -- `PUSH -1; PUSH <handler>; MOV EAX,FS:[0]` and the matching `MOV FS:[0],ESP` -- is mistranslated, so state is already wrong when an indirect call is reached, and 0x005fb270 is a garbage target that merely happens to land inside the same function. A consequence, not a cause.
 
 **Next**: read what recomp.py emits for those FS-segment instructions and for the indirect call in FUN_005fac10, and compare against the original. Do not seed, do not split, and do not go looking for EH tables.
+
+### Note (2026-08-06)
+THIRD HYPOTHESIS CHECKED -- the exception-frame prologue is NOT mistranslated either.
+
+recomp.py emits FS-relative access through the runtime's FS base, and src/native/x2native.c's tib_init maps a flat TIB block at 0x000A0000 with the 0xFFFFFFFF end-of-chain sentinel. `MOV EAX,FS:[0]` and `MOV FS:[0],ESP` therefore read and write real, owned memory. The prologue works; it is not the corruption source.
+
+(One thing WAS wrong and is fixed: recomp.py's comment there claimed 'we run as a real 32-bit PE, so FS still addresses the TIB and the exception chain there is the genuine one'. True under Wine, false for x2native, and it contradicted x86rt.h's own comment two files away. Corrected to name both hosts and to repeat the gap both files already state -- the chain is well-formed but nothing DELIVERS an exception if the guest throws.)
+
+So three readings of 0x005fb270 have now been tested and refuted: catch funclet (no try blocks), destructor funclet (not in the unwind map), mistranslated exception prologue (the prologue is fine).
+
+**What has NOT been checked, and is where to start next**: the indirect call site itself. Find which instruction in FUN_005fac10 performs the indirect call, read the C recomp.py emitted for it and for whatever computes its target register, and compare against the original. Everything upstream of the call site has been eliminated; the call site has not been looked at once.

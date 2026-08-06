@@ -157,9 +157,19 @@ def parse_operand(tok):
         o.inferred = True          # width not stated; caller must reconcile it
         return o
 
-    # FS-relative access is MSVC's SEH prologue (MOV EAX,FS:[0] etc.). We run
-    # as a real 32-bit PE, so FS still addresses the TIB and the exception chain
-    # there is the genuine one -- read/write it directly rather than model it.
+    # FS-relative access is MSVC's exception-frame prologue (MOV EAX,FS:[0],
+    # MOV FS:[0],ESP). Emitted as a read/write through the runtime's FS base
+    # rather than modelled per-field.
+    #
+    # WHICH host that base belongs to differs, and the earlier note here named
+    # only one of them: under Wine the code really does run as a 32-bit PE and
+    # FS is the genuine TIB, but x2native is a 64-bit ELF host with no TIB at
+    # all, and there src/recomp/x86rt.h resolves this to a flat block the
+    # runtime owns (x2native.c's TIB_BASE). Both work for the prologue.
+    #
+    # NEITHER provides exception DELIVERY. The chain is well-formed enough to
+    # be pushed and popped; nothing walks it if the guest actually throws.
+    # x2native.c states the same gap at the other end.
     m2 = re.match(r"^(FS|GS):(.*)$", tok, re.I)
     if m2:
         seg = m2.group(1).upper()
