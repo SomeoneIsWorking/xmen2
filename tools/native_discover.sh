@@ -72,10 +72,29 @@ while [ "$round" -lt "$MAX" ]; do
     if [ "$NOW" = "$PREV" ]; then
         echo "native_discover: round $round asked for exactly the same targets as"
         echo "  the round before, so the seeding did NOT take. This is a stuck"
-        echo "  loop, not a slow one. The usual cause is in the Ghidra log:" >&2
-        grep -E "^ADD:" "$ROOT/scratch/logs/ghidra-"*.log 2>/dev/null | tail -3 >&2
-        echo "  An address that falls inside an already-detected function needs" >&2
-        echo "  the function SPLIT, which seeding cannot do." >&2
+        echo "  loop, not a slow one. What Ghidra said about THESE seeds:" >&2
+        # Only the logs of the modules in this round's seed set. Globbing
+        # ghidra-*.log printed a STALE log from a different module -- XMen2's,
+        # while the seed being diagnosed was libIGUtils' -- which reads as an
+        # explanation and is not one.
+        for mod in $(cut -d' ' -f1 "$SEEDS" | sort -u); do
+            base=${mod%.dll}; base=${base%.exe}
+            log=$ROOT/scratch/logs/ghidra-$base.log
+            if [ ! -f "$log" ]; then
+                echo "    $base: NO ghidra log at $log, so nothing is known about" >&2
+                echo "      why its seed did not take" >&2
+                continue
+            fi
+            echo "    --- $base ($log)" >&2
+            grep -E "^ADD:" "$log" 2>/dev/null | tail -4 | sed 's/^/      /' >&2
+        done
+        echo "  Two causes look different in that output and need different fixes:" >&2
+        echo "    'already inside a function' -- needs a SPLIT, which seeding" >&2
+        echo "      cannot do; the escalation below handles it." >&2
+        echo "    'did NOT disassemble -- it may be data' -- the address is not" >&2
+        echo "      code in THAT module. Usually the target was never a real" >&2
+        echo "      address: check whether it is an unrelocated linked address" >&2
+        echo "      belonging to a module mapped elsewhere (C093)." >&2
         exit 1
     fi
     PREV=$NOW
