@@ -141,6 +141,12 @@ void x86_guest_call(CPU *C, uint32_t target);
 /* Dump the last crossings between guest and host, with ESP on both sides. */
 void x86_ring_dump(void);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);
+/* A single instruction the translator could not handle, reached at run time.
+   The rest of its function IS translated -- see translate() in recomp.py for
+   why that is sound -- so this names the exact instruction rather than the
+   whole body. */
+void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
+                          const char *reason);
 /* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
 void x86_int3(uint32_t addr);
 /* A function body ended without a terminator and the address it falls through

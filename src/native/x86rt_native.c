@@ -849,6 +849,18 @@ void x86_missing_import(const char *mod, const char *sym)
     abort();
 }
 
+void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
+                          const char *reason)
+{
+    fprintf(stderr, "x86_unsupported_insn: reached 0x%08x, inside 0x%08x %s\n"
+                    "  the translator could not handle it: %s\n"
+                    "  The rest of that function IS translated; this is the one "
+                    "instruction, and it was actually executed.\n",
+            addr, ep, name, reason);
+    x86_diag_dump();
+    abort();
+}
+
 void x86_untranslated(uint32_t ep, const char *name, const char *reason)
 {
     fprintf(stderr, "x86_untranslated: reached 0x%08x %s -- blocked by: %s\n",

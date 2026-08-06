@@ -876,12 +876,16 @@ def emit_instruction(ins, ctx):
             ret = ins["a"] + ins["n"]
             if m == "CALL":
                 return [A] + icall(t, ret)
-            return [A, "DISPATCH(C, %s); return;" % t.read()]
+            return [A, "{ _injmp = %s; goto L_injmp; }" % t.read()] \
+                   if ctx.get("_has_injmp") else \
+                   [A, "DISPATCH(C, %s); return;" % t.read()]
         if t is not None and t.kind in ("reg32",):
             ret = ins["a"] + ins["n"]
             if m == "CALL":
                 return [A] + icall(t, ret)
-            return [A, "DISPATCH(C, %s); return;" % t.read()]
+            return [A, "{ _injmp = %s; goto L_injmp; }" % t.read()] \
+                   if ctx.get("_has_injmp") else \
+                   [A, "DISPATCH(C, %s); return;" % t.read()]
 
     # A JMP whose target lies outside this function is a TAIL CALL, not a
     # branch -- MSVC emits these for one-line wrappers. Treating it as a goto
@@ -933,15 +937,72 @@ def translate(fn):
         if "flow" in ins and ins["m"].upper().startswith("J"):
             if ins["flow"] in fn["_addrs"]:
                 targets.add(ins["flow"])
-    try:
-        for ins in fn["ins"]:
-            if ins["a"] in targets:
-                body.append("L_%08x:;" % ins["a"])
+    #
+    # A computed JMP -- a switch -- lands on a case label INSIDE this function,
+    # which is not a function entry, so dispatching it globally can only fail:
+    # `igGetCPUCaps` is a 59-case switch and the run stopped on "no recompiled
+    # body at 0x1006790e", an address 0x9e into the function it was already in.
+    #
+    # So a function containing one gets a label on EVERY instruction and one
+    # dispatcher at the end that resolves the target locally, falling back to
+    # the global dispatcher for a genuine tail call through a register.
+    # Restricted to functions that actually have an indirect JMP -- 1299 of
+    # them, 72k instructions -- so nothing else pays for it.
+    #
+    fn["_has_injmp"] = any(i["m"] == "JMP" and i.get("ind") for i in fn["ins"])
+    if fn["_has_injmp"]:
+        targets |= fn["_addrs"]
+    #
+    # An instruction this translator does not understand does NOT sink the
+    # whole function any more. It is replaced, in place, by a call that stops
+    # by name if control ever reaches it.
+    #
+    # The design rule is unchanged -- an unhandled instruction must fail loudly
+    # rather than become a no-op -- but refusing the entire body enforced it far
+    # more broadly than the rule requires, and that cost real coverage.
+    # Gap::Core::igGetCPUCaps is 898 instructions implementing a 59-case query;
+    # ONE of those cases uses SSE to detect SSE, and the engine only ever asks
+    # for cases 0 and 1. Refusing the function made the run stop on a case it
+    # never executes, while a per-instruction refusal stops only if the SSE
+    # case is genuinely reached (issue #17).
+    #
+    # This is sound because the replacement ABORTS: an unsupported instruction
+    # that is never executed cannot affect the state, and one that is executed
+    # never returns, so no later instruction runs on state it corrupted.
+    #
+    unsupported = []
+    for ins in fn["ins"]:
+        if ins["a"] in targets:
+            body.append("L_%08x:;" % ins["a"])
+        try:
             body.extend("  " + l for l in emit_instruction(ins, fn))
-    except Unsupported as e:
-        return None, str(e)
+        except Unsupported as e:
+            unsupported.append((ins["a"], ins["m"], str(e)))
+            body.append("  /* NOT TRANSLATED: %s -- %s */"
+                        % (ins["t"].replace("*/", "* /"), str(e).replace("*/", "* /")))
+            body.append("  x86_unsupported_insn(0x%08xU, 0x%08xU, \"%s\", \"%s\");"
+                        % (fn["ep"], ins["a"],
+                           fn["qname"].replace('"', "'"),
+                           str(e).replace('"', "'")))
     if not fn["ins"]:
         return None, "no decoded instructions"
+    if fn["_has_injmp"]:
+        # Reached only by an explicit goto, so it cannot be fallen into.
+        # Switch on the OFFSET from the module base, not the address. The
+        # jump table lives in the module's .rdata and its entries are RELOCATED
+        # by the loader, so at run time they hold mapped addresses -- 0x2406790e
+        # where the table in the file says 0x1006790e -- and a case label
+        # cannot contain G_IMGBASE because it is a runtime value. Subtracting it
+        # first makes the label a constant again, and a genuine tail call out of
+        # this module underflows to something no case matches, so it falls
+        # through to the global dispatcher exactly as it should.
+        body.append("  if (0) { L_injmp:;")
+        body.append("    switch ((uint32_t)(_injmp - G_IMGBASE)) {")
+        for a in sorted(fn["_addrs"]):
+            body.append("    case 0x%xU: goto L_%08x;" % (a - IMG[0], a))
+        body.append("    default: break; }")
+        body.append("    DISPATCH(C, _injmp); return; }")
+    fn["_unsupported"] = unsupported
     return body, None
 
 
@@ -1019,30 +1080,49 @@ def load(path):
 def cmd_report(argv):
     d = load(argv[0])
     fns = d["functions"]
-    ok, reasons, blocked = 0, Counter(), Counter()
-    ok_ins = tot_ins = 0
+    ok, reasons, blocked, dead = 0, Counter(), Counter(), Counter()
+    ok_ins = tot_ins = bad_ins = 0
+    withbad = 0
     for fn in fns:
         tot_ins += len(fn["ins"])
         body, why = translate(fn)
-        if body is not None:
-            ok += 1
-            ok_ins += len(fn["ins"])
-        else:
+        if body is None:
             key = re.sub(r"'[^']*'|\"[^\"]*\"|0x[0-9a-f]+", "…", why)
-            reasons[key] += 1
-            blocked[key] += len(fn["ins"])
+            dead[key] += 1
+            continue
+        bad = fn.get("_unsupported") or []
+        ok += 1
+        ok_ins += len(fn["ins"]) - len(bad)
+        bad_ins += len(bad)
+        if bad:
+            withbad += 1
+            for _a, _m, whyi in bad:
+                key = re.sub(r"'[^']*'|\"[^\"]*\"|0x[0-9a-f]+", "…", whyi)
+                reasons[key] += 1
+                blocked[key] += 1
     print("program: %s" % d["program"])
-    print("functions fully translatable: %d of %d (%.1f%%)"
+    print("functions emitted: %d of %d (%.1f%%)"
           % (ok, len(fns), 100.0 * ok / len(fns) if fns else 0))
-    print("instructions in those functions: %d of %d (%.1f%%)"
+    print("instructions translated: %d of %d (%.2f%%)"
           % (ok_ins, tot_ins, 100.0 * ok_ins / tot_ins if tot_ins else 0))
     print("")
-    print("BLOCKERS, by functions blocked (each is a real gap, not a rounding "
-          "error -- nothing is silently skipped):")
+    # The unit is now the INSTRUCTION, not the function. An unsupported
+    # instruction no longer sinks its whole body -- it is emitted as a call
+    # that stops by name if reached -- so the honest measure of the gap is how
+    # many instructions are unreachable-or-fatal, and in how many functions.
+    print("UNSUPPORTED INSTRUCTIONS: %d, in %d function(s). Each aborts by name"
+          % (bad_ins, withbad))
+    print("  IF EXECUTED; the rest of those functions runs. Nothing is skipped "
+          "silently.")
     for why, n in reasons.most_common(25):
-        print("  %5d fns  %7d instrs  %s" % (n, blocked[why], why))
+        print("  %5d instr(s)  %s" % (n, why))
     if not reasons:
         print("  (none)")
+    if dead:
+        print("")
+        print("FUNCTIONS NOT EMITTED AT ALL:")
+        for why, n in dead.most_common(10):
+            print("  %5d fns  %s" % (n, why))
 
 
 def cmd_emit(argv):
@@ -1106,6 +1186,8 @@ def cmd_emit(argv):
             b.append("  const uint32_t _x86_fn_ep = 0x%08xU; (void)_x86_fn_ep;"
                      % fn["ep"])
             b.append("  const uint32_t _retaddr = RD32(C->esp);")
+            if fn.get("_has_injmp"):
+                b.append("  uint32_t _injmp = 0; (void)_injmp;")
             b.append("  X86_ENTER_FN(_x86_fn_ep);")
             b.extend(body)
             # A body whose last instruction is not a terminator FALLS THROUGH

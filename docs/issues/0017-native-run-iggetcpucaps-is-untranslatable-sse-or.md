@@ -1,7 +1,7 @@
 ---
 id: 17
 title: Native run: igGetCPUCaps is untranslatable (SSE ORPS), and it is the routine that detects SSE
-status: open
+status: resolved
 symptom: x86_untranslated: reached 0x10067870 Gap::Core::igGetCPUCaps -- blocked by: mnemonic ORPS. Reached after the CRT varargs family was implemented
 tags: pc,recomp,translator,sse,rc-exe
 created: 2026-08-06
@@ -38,3 +38,6 @@ Three options, and picking one carelessly would be a hack:
 
 The cheap mnemonics (RCR, PUSHAD, ENTER, AAS, CMPSW.REPE) are ordinary
 translator work and independent of this choice.
+
+### Resolution (2026-08-06)
+Resolved differently from all three options the issue listed -- none of them was necessary. The premise was wrong: recomp.py refused the WHOLE function for one unsupported instruction, so igGetCPUCaps's 897 translatable instructions were blocked by one SSE instruction in a case the engine never asks for (it calls indices 0 and 1 only). An unsupported instruction is now emitted in place as a call that aborts by name if executed, which keeps the loud-failure guarantee exactly where it matters and stops blocking unreached code. No CPUID masking, no premature override, no XMM work. A second defect surfaced immediately behind it: the function's computed JMP (a 59-case switch) dispatched globally to 0x1006790e, an address inside the function itself, which is jump-table entry [0]. Functions with an indirect JMP now carry a local dispatcher. One bug of mine on the way: the first version switched on the linked address, but jump tables live in .rdata and are RELOCATED, so at run time the entry reads 0x2406790e -- it now switches on the offset from the module base, which also makes the case labels constant again. VERIFIED: the run clears igGetCPUCaps; libIGCore emits 5968 of 5968 functions; pairs entered 2121 -> 2314. Now stops on MSVCRT!fflush, an ordinary host import.
