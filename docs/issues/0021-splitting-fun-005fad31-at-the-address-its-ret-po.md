@@ -203,3 +203,23 @@ So the translator is NOT the defect, and the note above was wrong to say it must
 **The fix is therefore one place, not two**: native_discover.sh must refuse to seed any address that appears in a jump table, and the damage already done in this region has to be undone so 0x005fac10 is one function again.
 
 One practical warning for whoever writes the guard: the tables at 0x005fb240 and 0x005fb250 are ADJACENT, so reading a fixed number of entries from the first runs straight into the second. Take each table's length from the switch's own bound check -- the `JA` immediately above the `JMP` -- rather than assuming one.
+
+### Note (2026-08-06)
+TRANSLATOR FIXED AND TESTED; ONE THING LEFT, AND IT IS IN THE DATABASE.
+
+The `_has_injmp` gate is fixed (commit 'Test the translator, and fix the switch dispatch it never covered'): it gated on the exporter's `ind` flag, which Ghidra does not set on `JMP dword ptr [reg*4 + <table>]`, so the local dispatcher was never generated for ANY switch in the image. tests/test_recomp.py pins it -- 4 of 6 cases fail on the old predicate, naming the emitted `DISPATCH(C, RD32(...))` where `goto L_injmp;` belonged.
+
+Re-lifted with the fix, and the run is UNCHANGED: still 'no recompiled body at 0x005facd5'. The reason is separate and now measured:
+
+    FUN_005fac10: 426 ins, spanning 0x005fac10..0x005fb23c
+       contains 0x005facd5: False
+       contains 0x005face5: False
+       contains 0x005facf6: False
+       contains 0x005fad07: False
+    0x005facd5 belongs to: NO FUNCTION
+
+**The function body has HOLES exactly where its own switch cases are.** Those addresses sit inside its address range and belong to no function, so the translator has no instruction to label and `L_injmp` cannot have a case for them. The fix is correct and cannot help until the body is whole.
+
+This is residue from the seeding and carving: the blocks were pulled out into split-off functions, and `--merge` (which absorbs inner FUNCTIONS) cannot reabsorb them now that they are not functions at all.
+
+**Next, and it is a Ghidra-database operation, not a code change**: make FUN_005fac10's body cover its whole range. Deleting the function and re-creating it at 0x005fac10 lets Ghidra re-walk the flow including the jump tables; `--reanalyze` may do it. Verify with the snippet above -- 'contains 0x005facd5: True' is the gate -- and only then re-run. Do not seed.
