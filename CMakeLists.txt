@@ -148,6 +148,20 @@ if(X2_MODULE_HAVE)
     if(X2_NATIVE_TRACE)
         target_compile_definitions(x2native PRIVATE X86_NATIVE_TRACE)
     endif()
+    # -DX2_NATIVE_REACHED=ON records WHICH bodies were ever entered -- a set,
+    # not a history, so it answers "was this function ever reached?" which the
+    # ring cannot: the ring evicts, so a startup call is gone by the time
+    # anything fails. Mutually exclusive with the trace: both claim
+    # X86_ENTER_FN, and a build that silently honoured only one would report a
+    # ring while the caller believed they had a reached set.
+    if(X2_NATIVE_REACHED)
+        if(X2_NATIVE_TRACE)
+            message(FATAL_ERROR
+                "x2native: X2_NATIVE_TRACE and X2_NATIVE_REACHED both use the "
+                "body-entry hook and cannot be enabled together. Pick one.")
+        endif()
+        target_compile_definitions(x2native PRIVATE X86_NATIVE_REACHED)
+    endif()
     # PIE, so this binary does not sit at 0x400000 -- which is exactly where
     # XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
     # and forces it to relocate for no reason.

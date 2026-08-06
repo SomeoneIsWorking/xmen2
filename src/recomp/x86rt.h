@@ -326,6 +326,22 @@ void x86_trace_exit(uint32_t ep, const CPU *C);
 # define X86_ENTER_FN(a) x86_trace_enter((a), C)
 # define X86_EXIT_FN(a)  x86_trace_exit((a), C)
 # define x86_dump_history() ((void)0)
+#elif defined(X86_NATIVE_REACHED)
+/* Native build, recording WHICH bodies were ever entered.
+ *
+ * A different question from the trace ring, and the ring cannot answer it: the
+ * ring holds the last N crossings, so a function called once during startup is
+ * evicted long before the failure and its absence from the ring means nothing.
+ * "Was 0x1003d900 ever reached?" is exactly the question issue #14 turns on,
+ * and answering it from a ring would have been a guess dressed as evidence.
+ *
+ * So this keeps a SET, not a history: entered-or-not for every entry point,
+ * with no eviction, reported with the total distinct count as its denominator
+ * so that NEVER is distinguishable from "the instrument never ran". */
+void x86_reached_enter(uint32_t ep);
+void x86_reached_report(void);
+# define X86_ENTER_FN(a) x86_reached_enter(a)
+# define x86_dump_history() ((void)0)
 #else
 # define X86_ENTER_FN(a) ((void)0)
 # define x86_dump_history() ((void)0)

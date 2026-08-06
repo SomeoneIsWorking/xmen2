@@ -10,6 +10,8 @@
 #include <string.h>
 #include <strings.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/uio.h>
 
 static X86Module *g_head;
 
@@ -243,6 +245,206 @@ void x86_trace_exit(uint32_t ep, const CPU *C)
 }
 #endif
 
+#ifdef X86_NATIVE_REACHED
+/* ---- the reached set --------------------------------------------------
+ *
+ * Open-addressed, power-of-two, never resized: 36,340 functions across the
+ * eight modules, so 131,072 slots keeps the load factor under 0.28 and the
+ * probe count near one. Never resized means never allocating from a hook that
+ * runs inside guest execution.
+ *
+ * The key is the entry point as LINKED, which is what the generated bodies
+ * carry. Every libIG*.dll is linked for 0x10000000, so two modules CAN have a
+ * function at the same linked address -- the report says so rather than
+ * quietly reporting a hit in one module as a hit in another.
+ */
+#define REACHED_SLOTS (1u << 17)
+/* seq is the ORDER of first entry, 1-based. Reached-or-not alone cannot answer
+   "did the exe set the flag before the engine read it?", which is the question
+   an ordering bug always reduces to, and a ring cannot answer it either
+   because it evicts. One counter turns the set into a first-touch ordering at
+   no extra cost. */
+static struct { uint32_t ep, seq; } g_reached[REACHED_SLOTS];
+static unsigned g_reached_n;
+
+void x86_reached_enter(uint32_t ep)
+{
+    uint32_t h = (ep * 2654435761u) >> 15;
+    for (;;) {
+        unsigned i = h & (REACHED_SLOTS - 1);
+        if (g_reached[i].ep == ep) return;
+        if (g_reached[i].ep == 0) {
+            g_reached[i].ep = ep;
+            g_reached[i].seq = ++g_reached_n;
+            return;
+        }
+        h++;
+    }
+}
+
+/* Returns the 1-based first-entry order, or 0 for never entered. */
+static uint32_t reached_seq(uint32_t ep)
+{
+    uint32_t h = (ep * 2654435761u) >> 15;
+    for (;;) {
+        unsigned i = h & (REACHED_SLOTS - 1);
+        if (g_reached[i].ep == ep) return g_reached[i].seq;
+        if (g_reached[i].ep == 0) return 0;
+        h++;
+    }
+}
+
+/* Which modules define a function at this LINKED address. An answer that is
+   ambiguous has to say so: a hit is a hit in one of these, and this instrument
+   cannot tell which. */
+static void reached_where(uint32_t ep)
+{
+    X86Module *m;
+    int n = 0;
+    for (m = x86_modules(); m; m = m->next) {
+        /* Only modules whose LINKED range actually contains this address.
+           Without the range test the subtraction wraps and probes a random
+           mapped address in every other module -- which reported an exe
+           address as also being in libIGUtils, an ambiguity that did not
+           exist. A false ambiguity is as bad as a hidden one. */
+        if (ep < m->preferred || ep - m->preferred >= m->size) continue;
+        if (x86_native_name_at(*m->base + (ep - m->preferred)))
+            fprintf(stderr, "%s%s", n++ ? ", " : "", m->name);
+    }
+    if (!n) fprintf(stderr, "NO MODULE defines a function at that address");
+    else if (n > 1) fprintf(stderr, "  <-- AMBIGUOUS: %d modules, and this "
+                                    "instrument keys on the linked address", n);
+}
+
+/*
+ * Both classes, every run. A discriminator that has only been seen to say
+ * "reached" has not been shown to be capable of saying "never", and this one
+ * exists precisely to be believed when it says NEVER.
+ */
+static void reached_selftest(void)
+{
+    const uint32_t a = 0xDEAD0001u, b = 0xDEAD0002u, miss = 0xDEAD0003u;
+    int ok_pos, ok_neg, ok_ord;
+    x86_reached_enter(a);
+    x86_reached_enter(b);
+    ok_pos = reached_seq(a) != 0;
+    ok_neg = reached_seq(miss) == 0;
+    /* The ordering is a claim this instrument makes, so it is tested too: a
+       seq that is merely non-zero would pass the two checks above while
+       ordering everything wrongly. */
+    ok_ord = reached_seq(a) < reached_seq(b);
+    fprintf(stderr, "[REACHED] selftest: inserted 0x%08x -> %s; never-inserted "
+                    "0x%08x -> %s; order %u < %u -> %s\n",
+            a, ok_pos ? "REACHED (correct)" : "NEVER (WRONG)",
+            miss, ok_neg ? "NEVER (correct)" : "REACHED (WRONG)",
+            reached_seq(a), reached_seq(b), ok_ord ? "correct" : "WRONG");
+    if (!ok_pos || !ok_neg || !ok_ord) {
+        fprintf(stderr, "[REACHED] the reached set is BROKEN in at least one "
+                        "direction -- every answer below is worthless.\n");
+        _exit(4);
+    }
+}
+
+void x86_reached_report(void)
+{
+    const char *want = getenv("X2_REACHED");
+    char buf[1024], *p, *save;
+    if (getenv("X2_REACHED_SELFTEST")) reached_selftest();
+    fprintf(stderr, "[REACHED] %u distinct entry points were entered.\n",
+            g_reached_n);
+    if (!g_reached_n)
+        fprintf(stderr, "[REACHED] That is ZERO, so no body ran at all and a "
+                        "NEVER below says nothing about the guest.\n");
+    if (!want || !*want) {
+        fprintf(stderr, "[REACHED] X2_REACHED is unset, so no specific address "
+                        "was asked about. Set it to a comma-separated list of "
+                        "0x… to get a verdict per address.\n");
+        return;
+    }
+    snprintf(buf, sizeof buf, "%s", want);
+    fprintf(stderr, "[REACHED] '#n' is the ORDER of first entry, so a smaller "
+                    "one ran first.\n");
+    for (p = strtok_r(buf, ",", &save); p; p = strtok_r(NULL, ",", &save)) {
+        uint32_t ep = (uint32_t)strtoul(p, NULL, 0), seq = reached_seq(ep);
+        if (seq) fprintf(stderr, "[REACHED]   0x%08x  REACHED  #%-6u in ", ep, seq);
+        else     fprintf(stderr, "[REACHED]   0x%08x  NEVER    %-7s in ", ep, "");
+        reached_where(ep);
+        fputc('\n', stderr);
+    }
+}
+#endif /* X86_NATIVE_REACHED */
+
+/* ---- guest-memory peek ------------------------------------------------
+ *
+ * "What was actually in that slot when it died?" -- the question every
+ * cross-module data bug reduces to, and one the ring and the reached set
+ * cannot answer because both record control flow, not state.
+ *
+ *   X2_PEEK=libIGCore+0x15f3fc:1,0x0067f708:4
+ *
+ * A bare 0x… is a GUEST/mapped address as-is; <module>+0x… is an offset from
+ * that module's LINKED base, resolved through wherever it actually got mapped,
+ * which is the form a Ghidra address can be pasted into.
+ *
+ * The read goes through process_vm_readv rather than a dereference: this runs
+ * from a SIGSEGV handler, where a second fault would be a silent recursive
+ * crash and the report would be lost -- so an unreadable address has to come
+ * back as an error value, not as a signal.
+ */
+void x86_peek_report(void)
+{
+    const char *spec = getenv("X2_PEEK");
+    char buf[512], *p, *save;
+    if (!spec || !*spec) return;
+    snprintf(buf, sizeof buf, "%s", spec);
+    fprintf(stderr, "[PEEK] X2_PEEK=%s\n", spec);
+    for (p = strtok_r(buf, ",", &save); p; p = strtok_r(NULL, ",", &save)) {
+        char item[128], *colon, *plus;
+        unsigned size = 4;
+        uint32_t addr = 0;
+        int resolved = 0;
+        unsigned char val[8];
+        struct iovec loc, rem;
+        snprintf(item, sizeof item, "%s", p);
+        if ((colon = strrchr(item, ':')) != NULL) { size = (unsigned)strtoul(colon + 1, NULL, 0); *colon = 0; }
+        if (size != 1 && size != 2 && size != 4) {
+            fprintf(stderr, "[PEEK]   %s: size must be 1, 2 or 4 -- NOT read\n", item);
+            continue;
+        }
+        if ((plus = strchr(item, '+')) != NULL) {
+            X86Module *m;
+            *plus = 0;
+            for (m = x86_modules(); m; m = m->next)
+                if (strcasecmp(m->name, item) == 0
+                    || (strncasecmp(m->name, item, strlen(item)) == 0
+                        && strchr(m->name, '.') == m->name + strlen(item))) {
+                    addr = *m->base + (uint32_t)strtoul(plus + 1, NULL, 0);
+                    resolved = 1;
+                    break;
+                }
+            if (!resolved) {
+                fprintf(stderr, "[PEEK]   %s+%s: NO module of that name is "
+                                "registered -- nothing was read\n", item, plus + 1);
+                continue;
+            }
+            fprintf(stderr, "[PEEK]   %s+%s -> mapped 0x%08x: ", item, plus + 1, addr);
+        } else {
+            addr = (uint32_t)strtoul(item, NULL, 0);
+            fprintf(stderr, "[PEEK]   0x%08x: ", addr);
+        }
+        loc.iov_base = val; loc.iov_len = size;
+        rem.iov_base = (void *)(uintptr_t)addr; rem.iov_len = size;
+        if (process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) != (ssize_t)size) {
+            fprintf(stderr, "UNREADABLE (not mapped)\n");
+            continue;
+        }
+        if (size == 1)      fprintf(stderr, "0x%02x\n", val[0]);
+        else if (size == 2) fprintf(stderr, "0x%04x\n", (unsigned)(val[0] | val[1] << 8));
+        else fprintf(stderr, "0x%08x\n",
+                     (unsigned)(val[0] | val[1] << 8 | val[2] << 16 | (unsigned)val[3] << 24));
+    }
+}
+
 void x86_ring_dump(void)
 {
     unsigned n = g_ring_n < RING ? g_ring_n : RING, i;
@@ -258,13 +460,25 @@ void x86_ring_dump(void)
             n, g_ring_n, g_return_to_calls);
     for (i = g_ring_n - n; i < g_ring_n; i++) {
         unsigned k = i % RING;
-        fprintf(stderr, "[TRACE]   %-22s 0x%08x  esp %08x -> %08x  (%+d)%s",
-                g_ring[k].what, g_ring[k].addr, g_ring[k].esp_in,
-                g_ring[k].esp_out,
-                (int)(g_ring[k].esp_out - g_ring[k].esp_in),
-                g_ring[k].repeat ? "" : "\n");
-        if (g_ring[k].repeat)
-            fprintf(stderr, "  x%u identical\n", g_ring[k].repeat + 1);
+        uint32_t a = g_ring[k].addr;
+        /* The ring records the MAPPED address, but every module here is linked
+           for 0x10000000 and relocated elsewhere, so a mapped address matches
+           nothing in Ghidra, in docs/, or in a seed file. Print the guest
+           address it corresponds to, and its name when one is known -- without
+           this the reader has to redo the relocation arithmetic by hand for
+           every line, which is how a 96-line ring stayed unread. */
+        X86Module *m = x86_module_for(a);
+        const char *nm = x86_native_name_at(a);   /* keyed on the MAPPED addr */
+        fprintf(stderr, "[TRACE]   %-22s esp %08x -> %08x  (%+d)  ",
+                g_ring[k].what, g_ring[k].esp_in, g_ring[k].esp_out,
+                (int)(g_ring[k].esp_out - g_ring[k].esp_in));
+        if (m)
+            fprintf(stderr, "%s!0x%08x %s", m->name,
+                    m->preferred + (a - *m->base), nm ? nm : "(unnamed)");
+        else
+            fprintf(stderr, "0x%08x (no registered module)", a);
+        if (g_ring[k].repeat) fprintf(stderr, "  x%u identical", g_ring[k].repeat + 1);
+        fputc('\n', stderr);
     }
 }
 

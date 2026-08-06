@@ -20,17 +20,23 @@
 #include "x86rt_native.h"
 #include "guest_heap.h"
 
+#include <dlfcn.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <ucontext.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 #endif
 
 uint32_t g_fsbase, g_gsbase;
+
+/* argv[0], so the fault reporter can print an addr2line command that is
+   runnable as printed rather than one the reader has to complete. */
+static const char *g_argv0;
 
 /* ---- import binding ----------------------------------------------------
  *
@@ -142,7 +148,53 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
                         "or does not export that symbol.\n", mod, sym, a);
         _exit(3);
     }
+    /*
+     * Not an import slot, so this is the guest faulting on its own terms and
+     * the address alone says nothing -- "SIGSEGV at 0x4" was the entire report
+     * for the failure in issue #14, which is indistinguishable from a crash
+     * with no context at all. Everything the process still knows goes out
+     * here, and what it CANNOT know is stated rather than left as silence.
+     */
     fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot)\n", si->si_addr);
+    {
+#if defined(__x86_64__) && defined(REG_RIP)
+        ucontext_t *u = (ucontext_t *)uc;
+        unsigned long rip = (unsigned long)u->uc_mcontext.gregs[REG_RIP];
+        Dl_info di;
+        int known = dladdr((void *)rip, &di) && di.dli_fbase;
+        fprintf(stderr, "    host rip 0x%lx", rip);
+        if (known && di.dli_sname) fprintf(stderr, "  in %s", di.dli_sname);
+        fputc('\n', stderr);
+        /* This binary is PIE, so the runtime rip is NOT a file offset and an
+           addr2line on it silently answers "??" -- a command that looks
+           runnable and quietly says nothing. Subtract the load base. */
+        if (known)
+            fprintf(stderr, "    name the generated body with:  addr2line -fCe "
+                            "%s 0x%lx\n", g_argv0 ? g_argv0 : "<this binary>",
+                    rip - (unsigned long)di.dli_fbase);
+        else
+            fprintf(stderr, "    (dladdr could not give the load base, so this "
+                            "rip cannot be turned into a file offset here)\n");
+#else
+        (void)uc;
+        fprintf(stderr, "    (no host rip: this reporter reads the fault "
+                        "context only on x86-64)\n");
+#endif
+    }
+    x86_peek_report();
+    x86_ring_dump();
+#ifdef X86_NATIVE_REACHED
+    x86_reached_report();
+#endif
+#ifndef X86_NATIVE_TRACE
+    fprintf(stderr,
+        "[TRACE] BLIND SPOT: this build has X2_NATIVE_TRACE=OFF, so the ring "
+        "above holds ONLY guest/host boundary crossings --\n"
+        "[TRACE] not guest-to-guest calls, which are plain C calls and cross "
+        "nothing. The faulting function is very likely NOT in it.\n"
+        "[TRACE] Reconfigure with -DX2_NATIVE_TRACE=ON to record every "
+        "recompiled body entry and exit.\n");
+#endif
     _exit(3);
 }
 
@@ -716,6 +768,14 @@ int main(int argc, char **argv)
     X86Module *m;
     static PeImage imgs[8];
 
+    g_argv0 = argv[0];
+#ifdef X86_NATIVE_REACHED
+    /* Also on the ordinary exit path: a run that ends without faulting must
+       still say what it reached, or the instrument only ever speaks when
+       something else already went wrong. The fault handler _exit()s and so
+       calls it directly. */
+    atexit(x86_reached_report);
+#endif
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-window") == 0) window = 0;
         else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;

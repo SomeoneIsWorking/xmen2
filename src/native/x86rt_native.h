@@ -65,6 +65,11 @@ const char *x86_native_name_at(uint32_t addr);
    if there is no native implementation for that slot. */
 uint32_t x86_native_thunk(const char *mod, const char *sym);
 
+/* Dump guest memory named by X2_PEEK (see the definition for the format).
+   Safe from a signal handler: reads via process_vm_readv, so an unmapped
+   address reports itself instead of faulting again. */
+void x86_peek_report(void);
+
 /* Every registered module, for reporting. */
 X86Module *x86_modules(void);
 
