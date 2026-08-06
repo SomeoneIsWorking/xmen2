@@ -173,6 +173,22 @@ if(X2_MODULE_HAVE)
     # time, which is how this test first "failed" against an empty path. x2native
     # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,
     # saying so -- a skip that announces itself, not a silent pass.
+    # -DX2_NATIVE_O0=<file> compiles ONE generated chunk at -O0, so addr2line
+    # names the exact guest instruction in it. At -O2 the line attribution
+    # inside a 200k-line translated body is approximate, and reading a fault as
+    # being at the wrong instruction is worse than admitting it is unknown --
+    # a nearby line looks like an answer. Whole-build -O0 is not an option:
+    # 2M lines of translated code, so this is per-chunk and opt-in.
+    if(X2_NATIVE_O0)
+        if(NOT EXISTS ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0})
+            message(FATAL_ERROR "X2_NATIVE_O0: no such generated chunk: "
+                                "src/recomp/${X2_NATIVE_O0}")
+        endif()
+        message(STATUS "x2native: ${X2_NATIVE_O0} at -O0 for exact fault lines")
+        set_source_files_properties(
+            ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0}
+            PROPERTIES COMPILE_OPTIONS "-O0")
+    endif()
     add_test(NAME native_battery
              COMMAND x2native --no-window --selftest)
     set_tests_properties(native_battery PROPERTIES SKIP_RETURN_CODE 77)

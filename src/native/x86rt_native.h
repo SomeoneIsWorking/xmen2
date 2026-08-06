@@ -70,6 +70,10 @@ uint32_t x86_native_thunk(const char *mod, const char *sym);
    address reports itself instead of faulting again. */
 void x86_peek_report(void);
 
+/* Guest registers at a fault: the file of the last body to cross the host
+   boundary, which guest-to-guest calls share. */
+void x86_regs_dump(void);
+
 /* Every registered module, for reporting. */
 X86Module *x86_modules(void);
 

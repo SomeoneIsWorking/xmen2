@@ -18,6 +18,7 @@ static X86Module *g_head;
 static int thunk_call(uint32_t addr, CPU *C);
 static void ring_note(const char *what, uint32_t addr, uint32_t in, uint32_t out);
 static unsigned long g_return_to_calls;
+extern const CPU *g_cpu_current;
 
 /* Not used by the shared runtime itself, but the emitted bodies of a
    single-module build still reference the plain symbol. */
@@ -72,10 +73,41 @@ int x86_native_call_at(uint32_t addr, CPU *C)
     if (!f) return 0;
     {
         uint32_t in = C->esp;
+        g_cpu_current = C;
         f->fn(C);
         ring_note("guest", addr, in, C->esp);
     }
     return 1;
+}
+
+/*
+ * The CPU state at a fault.
+ *
+ * A guest-to-guest call is a direct C call passing the SAME CPU pointer down,
+ * so the pointer recorded at the last boundary crossing is still the live
+ * register file however deep the guest has gone since. Without it a fault
+ * report can name the instruction and not one operand -- which is how
+ * "MOV EDI,[EAX] faulted at 0" and "but EAX was dereferenced fine two
+ * instructions earlier" sat as a contradiction with no way to settle it.
+ */
+const CPU *g_cpu_current;
+
+void x86_regs_dump(void)
+{
+    const CPU *C = g_cpu_current;
+    if (!C) {
+        fprintf(stderr, "[REGS] no CPU has crossed the host boundary yet, so "
+                        "there is no register file to show.\n");
+        return;
+    }
+    fprintf(stderr,
+            "[REGS] eax %08x  ecx %08x  edx %08x  ebx %08x\n"
+            "[REGS] esp %08x  ebp %08x  esi %08x  edi %08x\n",
+            C->eax, C->ecx, C->edx, C->ebx, C->esp, C->ebp, C->esi, C->edi);
+    fprintf(stderr, "[REGS] (the register file of the last body to cross the "
+                    "boundary; guest-to-guest calls share it, so these are "
+                    "live -- but a body that saved a register to its own C "
+                    "locals is not reflected here)\n");
 }
 
 const char *x86_native_name_at(uint32_t addr)

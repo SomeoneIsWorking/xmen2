@@ -181,6 +181,7 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
                         "context only on x86-64)\n");
 #endif
     }
+    x86_regs_dump();
     x86_peek_report();
     x86_ring_dump();
 #ifdef X86_NATIVE_REACHED
