@@ -237,10 +237,29 @@ them via a generated import library.
 2. `igWin32Window::arkRegisterInitialize` writes ~28 consecutive function
    pointers into a table before registering; what is that table? (likely the
    per-field instantiators for its many meta fields)
-4. Does the **slot order** inside a class's vtable have to match MSVC's, given
-   that only the vtable *pointer* is handed over? Callers that dispatch
-   virtually index by slot, so almost certainly yes — needs the layout read out
-   of the binary (`tools/ghidra_scripts/DumpVtab.py`).
+4. ~~Does the **slot order** inside a class's vtable have to match MSVC's?~~
+   **Answered (2026-08-06): yes, and the layout is now readable.**
+   `tools/ark_vtables.py` recovers it. Each concrete class's vtable address is
+   the immediate stored by its `retrieveVTablePointer`, and each vtable's END
+   comes from the next vtable start — harvested from *every* vptr store in the
+   module, not just ARK-registered ones, because abstract classes emit a vtable
+   too and would otherwise sit unseen between two registered ones.
+
+   For the renderer chain:
+
+   | class | vtable | slots | note |
+   |---|---|---|---|
+   | `igVisualContext` | `0x100da630` | 334 | abstract; **209 slots are `_purecall`** |
+   | `igDxVisualContext` | `0x100dc438` | 334 | implements all 209; differs from the base in 291 slots |
+   | `igDx8VisualContext` | `0x100dd0a0` | 334 | overrides only **6** — a version specialisation, not the DirectX layer |
+
+   The 334 count is bracketed from both sides rather than guessed: the array
+   ends exactly where `igDx8VertexStream`'s vtable begins, and slot 333 is
+   actually dispatched by a `CALL dword ptr [reg + 0x534]` in the module.
+
+   **So a platform backend owes 209 methods.** The remaining 125 slots are
+   concrete platform-neutral code inherited from `igVisualContext` and above,
+   which the recompiled x86 already implements correctly.
 
 ## `igMetaField` — where a field's NAME lives (2026-08-06)
 
