@@ -682,3 +682,140 @@ uint32_t x86_native_data_export(const char *mod, const char *sym)
     return 0;
 }
 
+
+/* ---- keyboard layout ---------------------------------------------------
+ *
+ * MapVirtualKeyA, which XMen2.exe uses to build a scancode -> character table
+ * for all 256 scancodes at input init (FUN_00629210, the loop at 0x006292e0):
+ * MapVirtualKeyA(scancode, MAPVK_VSC_TO_VK) then MapVirtualKeyA(vk,
+ * MAPVK_VK_TO_CHAR), once per scancode, so it can print a key's name.
+ *
+ * THE LAYOUT IS US, AND THAT IS A CHOICE, not a fact about the machine. Win32
+ * answers from the active keyboard layout; this host has none, and reading the
+ * X11/Wayland layout through SDL would still not give the VK numbering this
+ * function is defined in terms of. US is what the game's own fixups assume --
+ * it special-cases the result 0xb4 (an acute accent, which is what VK_OEM_7
+ * produces on several European layouts) and rewrites it to 0x27, an
+ * apostrophe -- so answering as US is answering the way the caller expects.
+ * A non-US user sees key NAMES from a US layout; the keys themselves come from
+ * SDL scancodes and are unaffected.
+ *
+ * Everything outside the table answers 0, which is what Win32 returns for a
+ * code with no mapping. That matters here: 256 scancodes are queried and most
+ * of them do not exist.
+ */
+#define MAPVK_VK_TO_VSC     0
+#define MAPVK_VSC_TO_VK     1
+#define MAPVK_VK_TO_CHAR    2
+#define MAPVK_VSC_TO_VK_EX  3
+
+/* Set-1 scancode -> virtual-key code. Index is the scancode; 0 means none.
+   This is the same numbering DirectInput indexes its keyboard block by, which
+   is why the DIK_ table in dinput_device.c and this one agree by construction
+   rather than by coincidence. */
+static const unsigned char VK_OF_SCANCODE[128] = {
+    /* 00 */ 0,    0x1B, '1',  '2',  '3',  '4',  '5',  '6',
+    /* 08 */ '7',  '8',  '9',  '0',  0xBD, 0xBB, 0x08, 0x09,
+    /* 10 */ 'Q',  'W',  'E',  'R',  'T',  'Y',  'U',  'I',
+    /* 18 */ 'O',  'P',  0xDB, 0xDD, 0x0D, 0x11, 'A',  'S',
+    /* 20 */ 'D',  'F',  'G',  'H',  'J',  'K',  'L',  0xBA,
+    /* 28 */ 0xDE, 0xC0, 0x10, 0xDC, 'Z',  'X',  'C',  'V',
+    /* 30 */ 'B',  'N',  'M',  0xBC, 0xBE, 0xBF, 0x10, 0x6A,
+    /* 38 */ 0x12, ' ',  0x14, 0x70, 0x71, 0x72, 0x73, 0x74,
+    /* 40 */ 0x75, 0x76, 0x77, 0x78, 0x79, 0x90, 0x91, 0x67,
+    /* 48 */ 0x68, 0x69, 0x6D, 0x64, 0x65, 0x66, 0x6B, 0x61,
+    /* 50 */ 0x62, 0x63, 0x60, 0x6E, 0,    0,    0,    0x7A,
+    /* 58 */ 0x7B, 0,    0,    0,    0,    0,    0,    0,
+    /* 60 */ 0,0,0,0,0,0,0,0,
+    /* 68 */ 0,0,0,0,0,0,0,0,
+    /* 70 */ 0,0,0,0,0,0,0,0,
+    /* 78 */ 0,0,0,0,0,0,0,0
+};
+
+/* The EXTENDED half, which DirectInput encodes at scancode | 0x80 and which
+   Win32 reaches through MAPVK_VSC_TO_VK_EX. Listed as pairs because it is
+   sparse -- a 128-entry array of mostly zeros would hide how few there are. */
+static const struct { unsigned char sc, vk; } VK_OF_SCANCODE_EXT[] = {
+    { 0x9C, 0x0D },   /* numpad enter */
+    { 0x9D, 0x11 },   /* right control */
+    { 0xB5, 0x6F },   /* numpad divide */
+    { 0xB8, 0x12 },   /* right alt */
+    { 0xC7, 0x24 },   /* home */
+    { 0xC8, 0x26 },   /* up */
+    { 0xC9, 0x21 },   /* page up */
+    { 0xCB, 0x25 },   /* left */
+    { 0xCD, 0x27 },   /* right */
+    { 0xCF, 0x23 },   /* end */
+    { 0xD0, 0x28 },   /* down */
+    { 0xD1, 0x22 },   /* page down */
+    { 0xD2, 0x2D },   /* insert */
+    { 0xD3, 0x2E },   /* delete */
+    { 0xDB, 0x5B }, { 0xDC, 0x5C }, { 0xDD, 0x5D }
+};
+
+/* Virtual key -> the UNSHIFTED character it produces, or 0 for a key that
+   produces none. Letters answer uppercase, which is what Win32 does. */
+static uint32_t vk_to_char(uint32_t vk)
+{
+    if ((vk >= 'A' && vk <= 'Z') || (vk >= '0' && vk <= '9')) return vk;
+    switch (vk) {
+    case 0x20: return ' ';
+    case 0x0D: return '\r';
+    case 0x08: return '\b';
+    case 0x09: return '\t';
+    case 0x1B: return 0x1B;
+    case 0xBA: return ';';   case 0xBB: return '=';
+    case 0xBC: return ',';   case 0xBD: return '-';
+    case 0xBE: return '.';   case 0xBF: return '/';
+    case 0xC0: return '`';
+    case 0xDB: return '[';   case 0xDC: return '\\';
+    case 0xDD: return ']';   case 0xDE: return '\'';
+    case 0x6A: return '*';   case 0x6B: return '+';
+    case 0x6D: return '-';   case 0x6E: return '.';
+    case 0x6F: return '/';
+    default:
+        if (vk >= 0x60 && vk <= 0x69) return (uint32_t)('0' + (vk - 0x60));
+        return 0;            /* F-keys, modifiers, arrows: no character */
+    }
+}
+
+void imp_USER32_MapVirtualKeyA(CPU *C)
+{
+    uint32_t code = A(0), type = A(1), i;
+
+    switch (type) {
+    case MAPVK_VSC_TO_VK:
+    case MAPVK_VSC_TO_VK_EX:
+        if (code < 128u) { ret_std(C, VK_OF_SCANCODE[code], 2); return; }
+        for (i = 0; i < sizeof VK_OF_SCANCODE_EXT / sizeof VK_OF_SCANCODE_EXT[0]; i++)
+            if (VK_OF_SCANCODE_EXT[i].sc == code) {
+                ret_std(C, VK_OF_SCANCODE_EXT[i].vk, 2);
+                return;
+            }
+        ret_std(C, 0, 2);
+        return;
+    case MAPVK_VK_TO_VSC:
+        for (i = 1; i < 128u; i++)
+            if (VK_OF_SCANCODE[i] == code) { ret_std(C, i, 2); return; }
+        ret_std(C, 0, 2);
+        return;
+    case MAPVK_VK_TO_CHAR:
+        ret_std(C, vk_to_char(code), 2);
+        return;
+    default:
+        /* A map type this host does not know. Answering 0 would be
+           indistinguishable from "no mapping" and the caller would believe
+           it, so say which. */
+        {
+            static uint32_t said = 0xFFFFFFFFu;
+            if (said != type) {
+                said = type;
+                fprintf(stderr, "win32_sdl: MapVirtualKeyA map type %u is not "
+                                "implemented; answering 0, which the caller "
+                                "will read as 'no mapping'.\n", type);
+            }
+        }
+        ret_std(C, 0, 2);
+        return;
+    }
+}

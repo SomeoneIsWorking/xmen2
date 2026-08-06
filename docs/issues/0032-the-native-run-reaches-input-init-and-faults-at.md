@@ -1,7 +1,7 @@
 ---
 id: 32
 title: The native run faults at NULL+0x18 in input init -- a NULL DirectInput8Create disables the whole input subsystem
-status: investigating
+status: resolved
 symptom: "*** SIGSEGV at 0x18 (not an import slot), in FUN_006276d0, shortly after kernel32: LoadLibraryA(\"C:\\Windows\\System32\\dinput8.dll\") -> NULL"
 tags: pc,native,input,dinput,controller,rc-exe
 created: 2026-08-06
@@ -92,9 +92,21 @@ Input is no longer disabled wholesale, and the game asks for devices by FIXED GU
     00628ec2  CALL [EDX+0x1c] ; Acquire
     00628ef4  PUSH 0x6a15f4   ; GUID_SysMouse, then c_dfDIMouse (0x6a652c), level 6, Acquire
 
-## Next step
+## Resolved
 
-Implement `IDirectInputDevice8` for the system keyboard and mouse, backed by SDL3: `GetCapabilities`(3) `SetProperty`(6) `Acquire`(7) `Unacquire`(8) `GetDeviceState`(9) `GetDeviceData`(10) `SetDataFormat`(11) `SetCooperativeLevel`(13). Those slot numbers are confirmed by the offsets the game dispatches through, above.
+`src/native/dinput_device.c` implements `IDirectInputDevice8` for both, backed by SDL3, and the run now completes input initialisation. C138.
+
+* `CreateDevice` recognises the two GUIDs by all sixteen bytes -- they differ only in the first dword, so a four-byte match would make every GUID in that family look like a keyboard.
+* **The state layout is not assumed.** `SetDataFormat` is handed the game's own `DIDATAFORMAT` and `dwDataSize` is read out of it, which is how the mouse turned out to be **20 bytes over 11 objects** -- `DIMOUSESTATE2`, with 8 buttons, not the 16-byte `DIMOUSESTATE` the name `c_dfDIMouse` implies. A hardcoded 16 would have written short and left four buttons as whatever was on the stack.
+* The keyboard maps SDL scancodes to `DIK_*` (PS/2 set 1) through an explicit table -- the two numberings are unrelated, so a key missing from that table is a key the game can never see.
+* `USER32!MapVirtualKeyA` was needed immediately after: the exe queries all 256 scancodes at init (`VSC_TO_VK` then `VK_TO_CHAR`) to build its key-name table. Implemented in `win32_sdl.c` for a **US layout**, which is a stated choice -- the game's own fixup of the result `0xb4` to an apostrophe assumes it.
+* Reading a device with no SDL video subsystem up says so once and is counted, because 256 zero bytes is also what a working keyboard nobody is touching returns.
+
+13 battery checks (`case_dinput`) drive the device through its own vtable, and the three that matter are refusals: a state read before `Acquire`, an `Acquire` before `SetDataFormat`, and a `cbData` the caller's own format did not declare. Dropping two of them fails exactly two checks.
+
+## Where the run goes now
+
+Past input entirely, to `x86_call_unknown: 0x0057b02c has no identified function` -- an ordinary lift/discovery input, not an input defect.
 
 Joysticks are a SEPARATE path through DirectInput 7 (`src/native/dinput.c`): `igWin32ControllerManager::initializeControllers` enumerates class 4 with `createControllers` (0x100052a0), which reads `guidProduct` at `+0x14` of the `DIDEVICEINSTANCE` and then drives the same device interface. `igWin32Window::enumerateMouseAndKeyboard` (0x10005660) only sets a presence flag and returns DIENUM_STOP -- it never reads the instance.
 

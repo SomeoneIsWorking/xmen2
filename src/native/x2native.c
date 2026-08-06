@@ -562,6 +562,8 @@ static void case_arkinit(void)
 void imp_KERNEL32_GetModuleHandleA(CPU *C);
 void imp_KERNEL32_LoadLibraryA(CPU *C);
 void imp_KERNEL32_GetProcAddress(CPU *C);
+void imp_USER32_MapVirtualKeyA(CPU *C);
+void imp_DINPUT8_DirectInput8Create(CPU *C);
 void imp_KERNEL32_MultiByteToWideChar(CPU *C);
 void imp_MSVCRT_malloc(CPU *C);
 void imp_MSVCRT_free(CPU *C);
@@ -888,6 +890,130 @@ static void case_runtime_module(void)
     guest_free(sym);
 }
 
+/*
+ * The keyboard layout table, and the DirectInput device driven THROUGH its
+ * vtable -- which is the path the guest takes, and the only one that proves
+ * the slot numbering.
+ *
+ * The negatives are the reason this exists. A device that answers every call
+ * with S_OK and a block of zeros looks exactly like a working one that nobody
+ * is touching, so what is checked is the REFUSALS: a state read before Acquire,
+ * an Acquire before the data format is known, and a size that disagrees with
+ * the format the caller itself declared. Each of those has a correct answer
+ * that is not success.
+ */
+static uint32_t com_call(uint32_t obj, int slot, const uint32_t *args, int n)
+{
+    CPU C;
+    int i;
+    uint32_t vt = RD32(obj);
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x400u - (uint32_t)(n + 2) * 4u;
+    WR32(C.esp, 0xD1A10000u);                        /* return address */
+    WR32(C.esp + 4u, obj);                           /* this */
+    for (i = 0; i < n; i++) WR32(C.esp + 8u + (uint32_t)i * 4u, args[i]);
+    x86_dispatch(&C, RD32(vt + (uint32_t)slot * 4u));
+    return C.eax;
+}
+
+static void case_dinput(void)
+{
+    /* GUID_SysKeyboard, byte for byte as XMen2.exe holds it at 0x6a15e4. */
+    static const unsigned char KBD[16] = {
+        0x61,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
+        0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+    };
+    uint32_t guid = guest_malloc(16), out = guest_malloc(4);
+    uint32_t df = guest_malloc(24), state = guest_malloc(256);
+    uint32_t args[4], di, dev, hr;
+    CPU C;
+
+    printf("  keyboard layout and DirectInput device\n");
+
+    /* MapVirtualKeyA, the table the game builds its key names from. */
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x300u;
+    WR32(C.esp, 0); WR32(C.esp + 4u, 0x1Eu); WR32(C.esp + 8u, 1u);
+    imp_USER32_MapVirtualKeyA(&C);
+    check("scancode 0x1e maps to VK 'A'", C.eax, (uint32_t)'A');
+
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x300u;
+    WR32(C.esp, 0); WR32(C.esp + 4u, (uint32_t)'A'); WR32(C.esp + 8u, 2u);
+    imp_USER32_MapVirtualKeyA(&C);
+    check("VK 'A' maps to the character 'A'", C.eax, (uint32_t)'A');
+
+    /* A key that produces NO character must answer 0, not a plausible byte:
+       the game stores whatever comes back as the key's printed name. */
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x300u;
+    WR32(C.esp, 0); WR32(C.esp + 4u, 0x10u); WR32(C.esp + 8u, 2u);
+    imp_USER32_MapVirtualKeyA(&C);
+    check("VK_SHIFT has no character", C.eax, 0u);
+
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x300u;
+    WR32(C.esp, 0); WR32(C.esp + 4u, 0x66u); WR32(C.esp + 8u, 1u);
+    imp_USER32_MapVirtualKeyA(&C);
+    check("an unassigned scancode maps to nothing", C.eax, 0u);
+
+    /* The device, through the IDirectInput8 vtable. */
+    memcpy((void *)(uintptr_t)guid, KBD, 16);
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x300u;
+    WR32(C.esp, 0);
+    WR32(C.esp +  4u, 0);            /* hinst */
+    WR32(C.esp +  8u, 0x800u);       /* version */
+    WR32(C.esp + 12u, 0);            /* riid */
+    WR32(C.esp + 16u, out);          /* ppvOut */
+    WR32(C.esp + 20u, 0);            /* punkOuter */
+    WR32(out, 0);
+    imp_DINPUT8_DirectInput8Create(&C);
+    di = RD32(out);
+    check("DirectInput8Create yields an object", di != 0u, 1u);
+
+    args[0] = guid; args[1] = out; args[2] = 0;
+    hr = com_call(di, 3 /* CreateDevice */, args, 3);
+    dev = RD32(out);
+    check("CreateDevice(GUID_SysKeyboard) succeeds", hr == 0u && dev != 0u, 1u);
+
+    /* A state read before Acquire must be refused. */
+    args[0] = 256; args[1] = state;
+    hr = com_call(dev, 9 /* GetDeviceState */, args, 2);
+    check("a state read before Acquire is refused", hr, 0x8007000Cu);
+
+    /* And an Acquire before the data format is known. */
+    hr = com_call(dev, 7 /* Acquire */, NULL, 0);
+    check("Acquire before SetDataFormat is refused", hr, 0x80070057u);
+
+    /* DIDATAFORMAT: dwSize, dwObjSize, dwFlags, dwDataSize, dwNumObjs, rgodf */
+    WR32(df +  0u, 24); WR32(df +  4u, 16); WR32(df +  8u, 2);
+    WR32(df + 12u, 256); WR32(df + 16u, 256); WR32(df + 20u, 0);
+    args[0] = df;
+    hr = com_call(dev, 11 /* SetDataFormat */, args, 1);
+    check("SetDataFormat is accepted", hr, 0u);
+
+    hr = com_call(dev, 7, NULL, 0);
+    check("Acquire then succeeds", hr, 0u);
+
+    memset((void *)(uintptr_t)state, 0xA5, 256);
+    args[0] = 256; args[1] = state;
+    hr = com_call(dev, 9, args, 2);
+    check("GetDeviceState fills the declared size", hr, 0u);
+    check("and cleared the buffer it was given",
+          *(volatile uint8_t *)(uintptr_t)state, 0u);
+
+    /* A size the caller's own format did not declare is a layout
+       disagreement, and filling the smaller of the two would put the fields
+       somewhere else. */
+    args[0] = 16; args[1] = state;
+    hr = com_call(dev, 9, args, 2);
+    check("a size the format did not declare is refused", hr, 0x80070057u);
+
+    com_call(dev, 8 /* Unacquire */, NULL, 0);
+    guest_free(guid); guest_free(out); guest_free(df); guest_free(state);
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -936,6 +1062,7 @@ static int run_battery(void)
     case_guest_heap();
     case_setjmp_table();
     case_runtime_module();
+    case_dinput();
     case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"
@@ -1096,6 +1223,8 @@ int main(int argc, char **argv)
     { extern void dinput_report(void); atexit(dinput_report); }
     { extern void dinput8_install(void), dinput8_report(void);
       dinput8_install(); atexit(dinput8_report); }
+    { extern void dinput_device_report(void);
+      atexit(dinput_device_report); }
     atexit(x86_native_export_report);
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {

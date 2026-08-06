@@ -28,6 +28,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "dinput_device.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,8 @@ static void ret_com(CPU *C, uint32_t hr, int nargs)
 #define S_OK          0x00000000u
 #define S_FALSE       0x00000001u
 #define DIERR_INVALIDPARAM 0x80070057u
+#define DIERR_DEVICENOTREG 0x80040154u
+#define DIERR_OUTOFMEMORY  0x8007000Eu
 
 /*
  * The IDirectInput8 vtable, in order.
@@ -169,6 +172,74 @@ static void m_EnumDevices(CPU *C)
     ret_com(C, S_OK, 4);
 }
 
+/*
+ * The two system devices, recognised by GUID.
+ *
+ * GUID_SysKeyboard {6F1D2B61-D5A0-11CF-BFC7-444553540000} and GUID_SysMouse
+ * {...2B60...} differ only in the first dword, which is why all sixteen bytes
+ * are compared: matching on the first four would make every DirectInput GUID
+ * in that family look like a keyboard.
+ *
+ * Verified against XMen2.exe's own data at 0x6a15e4 and 0x6a15f4 -- the exact
+ * pointers FUN_00628e20 passes to CreateDevice -- rather than taken on trust
+ * from a header.
+ */
+static const unsigned char GUID_SYS_KEYBOARD[16] = {
+    0x61,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
+    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+};
+static const unsigned char GUID_SYS_MOUSE[16] = {
+    0x60,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
+    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+};
+
+static void guid_text(uint32_t g, char *out, size_t n)
+{
+    const unsigned char *b = (const unsigned char *)(uintptr_t)g;
+    snprintf(out, n, "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
+                     "%02X%02X%02X%02X%02X%02X}",
+             b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9],
+             b[10], b[11], b[12], b[13], b[14], b[15]);
+}
+
+static void m_CreateDevice(CPU *C)
+{
+    /* (this, rguid, lplpDirectInputDevice, pUnkOuter) */
+    uint32_t guid = A(1), out = A(2), outer = A(3);
+    uint32_t obj = 0;
+
+    if (!out) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
+    WR32(out, 0);
+    if (outer || !guid) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
+
+    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_KEYBOARD, 16) == 0)
+        obj = dinput_device_new(DINPUT_DEV_KEYBOARD);
+    else if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
+        obj = dinput_device_new(DINPUT_DEV_MOUSE);
+    else {
+        /*
+         * NOT a system device, so it is one that enumeration would have had to
+         * produce -- and enumeration reports none. DIERR_DEVICENOTREG is the
+         * truthful answer and the caller checks it (FUN_00628e20 tests the
+         * HRESULT with JL before touching the pointer).
+         *
+         * Named, because "a device this host does not have" and "a GUID this
+         * host failed to recognise" are the same return value and different
+         * bugs.
+         */
+        char t[64];
+        guid_text(guid, t, sizeof t);
+        fprintf(stderr, "DINPUT8: CreateDevice(%s) -- not the system keyboard "
+                        "or mouse, and no enumerated device can match it "
+                        "because EnumDevices reports none.\n", t);
+        ret_com(C, DIERR_DEVICENOTREG, 3);
+        return;
+    }
+    if (!obj) { ret_com(C, DIERR_OUTOFMEMORY, 3); return; }
+    WR32(out, obj);
+    ret_com(C, S_OK, 3);
+}
+
 static void m_GetDeviceStatus(CPU *C)
 {
     /* (this, rguidInstance) -- S_FALSE is DirectInput's "not attached". */
@@ -211,7 +282,7 @@ static void build(void)
 {
     static void (*const impl[VT_COUNT])(CPU *) = {
         m_QueryInterface, m_AddRef, m_Release,
-        NULL,                       /* CreateDevice */
+        m_CreateDevice,
         m_EnumDevices, m_GetDeviceStatus, m_RunControlPanel, m_Initialize,
         NULL,                       /* FindDevice */
         NULL,                       /* EnumDevicesBySemantics */

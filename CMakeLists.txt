@@ -227,6 +227,7 @@ if(X2_MODULE_HAVE)
         src/native/gdi32.c
         src/native/dinput.c
         src/native/dinput8.c
+        src/native/dinput_device.c
         src/native/x86rt_native.c
         src/native/overrides.c
         src/d3d8/d3d8_com.c
