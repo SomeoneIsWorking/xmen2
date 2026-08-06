@@ -56,3 +56,12 @@ question is answered.
 `tools/whose_function.py` now refuses a split whose candidate address does not
 begin with an instruction a function plausibly starts with, not only one whose
 container has an SEH prologue. The SEH check alone passed 0x005fafc1.
+
+### Note (2026-08-06)
+PARTLY RESOLVED, and the boundary work was the wrong lever throughout.
+
+The abort that made this region look broken was a FALSE POSITIVE: x86_return_to aborted on a tail-called body's RET, which mismatches its entry [esp] by construction. Fixed (see the commit 'A tail-called body's RET is not corruption'). With that, the region needs NO carving: seeding the two functions the runtime genuinely could not find (0x005fad31, 0x005fb270) is enough, and the discovery loop then converged in 3 rounds instead of thrashing.
+
+STILL OPEN, and it is a different problem in a different place: XMen2.exe 0x0066cf4e is a SWITCH. --recreate wired its jump table (10 entries, table at 0x0066d645) and grew the function from 1 to 501 instructions. One case label, 0x0066cf79, is also a detected function whose body ends with no terminator and falls through to 0x0066cf7d. --merge REFUSES to absorb it ('the inner function is real'), so the case label cannot currently be un-made through the existing tools.
+
+That is the next thing to fix, and it is the same class C124 and Xbox issue #6 record: a switch case label seeded as a function. The tool gap is that MergeTruncated has no way to be told 'this one is a case label, absorb it anyway'.
