@@ -130,14 +130,23 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
     (void)sig; (void)uc;
     sym = x86_thunk_name(a, &mod);
     if (sym) {
-        fprintf(stderr, "\n*** a native import THUNK was dereferenced: %s!%s\n"
-                        "    The guest read through import slot 0x%08x instead "
-                        "of calling it, so this import is DATA, not a "
-                        "function.\n"
-                        "    A thunk cannot serve data: it needs a real value "
-                        "in guest memory (see x86_native_data_export).\n",
-                mod, sym, a);
-        _exit(3);
+        /*
+         * Report the OBSERVATION, then the two readings of it -- the original
+         * message asserted "this import is DATA", which is one conclusion and
+         * was the wrong one the first time a class callback landed here. What
+         * is actually known is that the synthetic range is unmapped and
+         * something touched this address instead of calling it.
+         */
+        fprintf(stderr, "\n*** the synthetic address 0x%08x was ACCESSED, not "
+                        "called: %s!%s\n"
+                        "    That range is deliberately unmapped, so any read, "
+                        "write or jump into it faults here.\n"
+                        "    Either the guest wants this symbol's VALUE (an "
+                        "import that is data, not a function -- see\n"
+                        "    x86_native_data_export), or a call reached it by a "
+                        "path that bypasses the dispatcher.\n",
+                a, mod, sym);
+        goto where;
     }
     sym = poison_name(a, &mod);
     if (sym) {
@@ -156,6 +165,7 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
      * here, and what it CANNOT know is stated rather than left as silence.
      */
     fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot)\n", si->si_addr);
+where:
     {
 #if defined(__x86_64__) && defined(REG_RIP)
         ucontext_t *u = (ucontext_t *)uc;
@@ -764,7 +774,7 @@ static int run_battery(void)
 int main(int argc, char **argv)
 {
     const char *dir = NULL;
-    int window = 1, i, rc, mapped = 0, run = 0;
+    int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
        and the recompiled set grows one module at a time (libMovie was the
@@ -784,6 +794,7 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "--no-window") == 0) window = 0;
         else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;
         else if (strcmp(argv[i], "--run") == 0) run = 1;
+        else if (strcmp(argv[i], "--ark-probe") == 0) arkprobe = 1;
         else dir = argv[i];
     }
     if (!dir) dir = getenv("GAME_PC_DIR");
@@ -876,6 +887,14 @@ int main(int argc, char **argv)
     printf("SDL: not compiled in\n");
 #endif
 
+    if (arkprobe) {
+        /* Arm only -- the probe itself runs mid-run, when the engine's pools
+           and ARK exist. See igvk_probe.c for why it cannot run here. */
+        extern int igvk_ark_probe_arm(void);
+        if (igvk_ark_probe_arm()) return 1;
+        run = 1;
+    }
+
     if (run) {
         /* Call the program's entry point: WinMainCRTStartup, which brings up
            the CRT and then the engine. Everything the battery checks is
@@ -900,6 +919,15 @@ int main(int argc, char **argv)
             gw32(C.esp, 0xDEADBEEFu);
             x86_native_call_at(entry, &C);
             printf("run: returned eax=0x%08x\n", C.eax);
+            if (arkprobe) {
+                extern int igvk_ark_probe_result(void);
+                int prc = igvk_ark_probe_result();
+                if (x86_triggers_report() || prc != 0) {
+                    printf("ark-probe: FAILED (rc=%d)\n", prc);
+                    for (i = 0; i < mapped; i++) pe_unmap(&imgs[i]);
+                    return 1;
+                }
+            }
         }
         for (i = 0; i < mapped; i++) pe_unmap(&imgs[i]);
         return 0;

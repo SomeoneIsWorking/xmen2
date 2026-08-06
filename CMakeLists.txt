@@ -157,9 +157,11 @@ if(X2_MODULE_HAVE)
         src/native/advapi32.c
         src/native/ole32.c
         src/native/x86rt_native.c
+        src/vulkan/igvk_ark.c
+        src/vulkan/igvk_probe.c
         ${X2_MODULE_SRCS}
     )
-    target_include_directories(x2native PRIVATE src/recomp src/native)
+    target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan)
     target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
     # -DX2_NATIVE_TRACE=ON traces every recompiled body into the boundary ring.
     # Off by default: it costs a ring write per call, and the generated bodies

@@ -65,9 +65,68 @@ static const X86Fn *find(X86Module *m, uint32_t addr)
     return NULL;
 }
 
+/*
+ * One-shot triggers: run host code the first time the guest calls a given
+ * address.
+ *
+ * Substituting an engine class cannot happen at module-init time -- ARK
+ * registration goes through igGetMemoryPool, and the pools do not exist until
+ * the exe's engine startup has run, so registering early faults on a NULL pool
+ * inside libIGCore. Nor can it happen after --run returns, by which point the
+ * engine has torn down. It has to happen at a MOMENT DURING the run, and the
+ * only reliable way to name that moment is an address the engine itself
+ * reaches once it is ready.
+ *
+ * Deliberately fires BEFORE the body, and deliberately once: a trigger that
+ * refires would re-register a class on every call.
+ */
+#define MAX_TRIG 8
+static struct { uint32_t addr; void (*fn)(void); const char *why; int fired; }
+    g_trig[MAX_TRIG];
+static int g_ntrig;
+
+void x86_at_first_call(uint32_t addr, void (*fn)(void), const char *why)
+{
+    if (g_ntrig == MAX_TRIG) {
+        fprintf(stderr, "x86_at_first_call: no room for a trigger on 0x%08x\n",
+                addr);
+        abort();
+    }
+    g_trig[g_ntrig].addr = addr;
+    g_trig[g_ntrig].fn = fn;
+    g_trig[g_ntrig].why = why;
+    g_trig[g_ntrig].fired = 0;
+    g_ntrig++;
+}
+
+/* Whether every armed trigger actually fired. A trigger that never fires is
+   the failure mode that looks like success: the run completes, nothing was
+   substituted, and nothing said so. */
+int x86_triggers_report(void)
+{
+    int i, unfired = 0;
+    for (i = 0; i < g_ntrig; i++)
+        if (!g_trig[i].fired) {
+            fprintf(stderr, "trigger NEVER FIRED: 0x%08x (%s) -- the guest "
+                            "never called that address, so the host code "
+                            "waiting on it did not run.\n",
+                    g_trig[i].addr, g_trig[i].why);
+            unfired++;
+        }
+    return unfired;
+}
+
 int x86_native_call_at(uint32_t addr, CPU *C)
 {
     X86Module *m;
+    if (g_ntrig) {
+        int i;
+        for (i = 0; i < g_ntrig; i++)
+            if (!g_trig[i].fired && g_trig[i].addr == addr) {
+                g_trig[i].fired = 1;
+                g_trig[i].fn();
+            }
+    }
     if (thunk_call(addr, C)) return 1;
     m = x86_module_for(addr);
     const X86Fn *f = m ? find(m, addr) : NULL;
@@ -137,10 +196,17 @@ const char *x86_native_name_at(uint32_t addr)
  * poisoned, so nothing is silently promoted to "working".
  */
 #define THUNK_BASE 0x000C0000u
-#define THUNK_MAX  1024
+#define THUNK_MAX  2048
 
-static struct { void (*stub)(CPU *); const char *mod, *sym; } g_thunk[THUNK_MAX];
+static struct { void (*stub)(CPU *); const char *mod, *sym; void *ctx; }
+    g_thunk[THUNK_MAX];
 static int g_nthunk;
+
+/* The context of the callback currently executing, for x86_callback_ctx. A
+   native class's hooks are shared C functions -- what distinguishes one
+   class's getClassMetaSafe from another's is the synthetic address the guest
+   called, so the dispatcher hands that identity to the callee. */
+static void *g_cb_ctx;
 
 /*
  * A thunk is created whether or not the import is actually implemented, because
@@ -175,6 +241,49 @@ uint32_t x86_native_thunk(const char *mod, const char *sym)
     return 0;
 }
 
+/*
+ * A synthetic guest address for a native C function that is NOT an import.
+ *
+ * The thunk range above exists so guest code can call native implementations of
+ * things it imports. Substituting an engine class through ARK needs the same
+ * trick for a different reason: libIGCore is handed function POINTERS at
+ * registration (getClassMetaSafe, retrieveVTablePointer, arkRegisterInitialize)
+ * and calls them back later, and every slot of the class's vtable is a pointer
+ * the engine will dispatch through. Those must be addresses the guest can call,
+ * and a host function pointer is 64 bits and in the wrong address space.
+ *
+ * Same table, same dispatch, same ring entries -- the only difference is that
+ * the slot is claimed directly rather than found by import name. `owner` and
+ * `name` are what a boundary-ring line or a fault report will say, so they are
+ * required: an anonymous callback is one that cannot be identified in the very
+ * report that needs to name it.
+ */
+uint32_t x86_native_callback(void (*fn)(CPU *), const char *owner,
+                             const char *name, void *ctx)
+{
+    if (!fn || !owner || !name) {
+        fprintf(stderr, "x86_native_callback: refusing to register an "
+                        "unnamed or NULL callback (fn=%p owner=%s name=%s)\n",
+                (void *)fn, owner ? owner : "(null)", name ? name : "(null)");
+        abort();
+    }
+    if (g_nthunk == THUNK_MAX) {
+        fprintf(stderr, "x86_native_callback: the %d-entry synthetic address "
+                        "table is full; %s::%s cannot be given a guest "
+                        "address. Raise THUNK_MAX.\n",
+                THUNK_MAX, owner, name);
+        abort();
+    }
+    g_thunk[g_nthunk].stub = fn;
+    g_thunk[g_nthunk].mod = owner;
+    g_thunk[g_nthunk].sym = name;
+    g_thunk[g_nthunk].ctx = ctx;
+    g_nthunk++;
+    return THUNK_BASE + (uint32_t)(g_nthunk - 1) * 16u;
+}
+
+void *x86_callback_ctx(void) { return g_cb_ctx; }
+
 /* Which import a thunk address belongs to, for diagnostics. A thunk that is
    DEREFERENCED rather than called means the import is data, not a function --
    and a thunk cannot serve data, so that import needs a real value. */
@@ -197,7 +306,12 @@ static int thunk_call(uint32_t addr, CPU *C)
     i = (addr - THUNK_BASE) / 16u;
     if ((int)i >= g_nthunk || !g_thunk[i].stub) return 0;
     in = C->esp;
-    g_thunk[i].stub(C);
+    {
+        void *save = g_cb_ctx;
+        g_cb_ctx = g_thunk[i].ctx;
+        g_thunk[i].stub(C);
+        g_cb_ctx = save;
+    }
     ring_note(g_thunk[i].sym, addr, 0, in, C->esp);
     return 1;
 }
