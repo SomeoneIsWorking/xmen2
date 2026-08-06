@@ -115,7 +115,7 @@ endif()
 # module that has not been exported yet simply is not linked, and x2native says
 # which ones it has at run time rather than pretending to a full set.
 set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
-               libIGGfx libIGUtils XMen2)
+               libIGGfx libIGUtils libMovie XMen2)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
 foreach(m ${X2_MODULES})

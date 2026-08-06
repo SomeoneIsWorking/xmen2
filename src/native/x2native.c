@@ -766,7 +766,11 @@ int main(int argc, char **argv)
     const char *dir = NULL;
     int window = 1, i, rc, mapped = 0, run = 0;
     X86Module *m;
-    static PeImage imgs[8];
+    /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
+       and the recompiled set grows one module at a time (libMovie was the
+       ninth). The bound is checked below and reported, so overflowing it stops
+       rather than corrupting -- but there is no reason to keep it tight. */
+    static PeImage imgs[20];
 
     g_argv0 = argv[0];
 #ifdef X86_NATIVE_REACHED
