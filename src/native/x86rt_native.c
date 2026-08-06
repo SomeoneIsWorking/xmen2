@@ -769,8 +769,8 @@ static void where(uint32_t addr)
         return;
     }
     if (m)
-        fprintf(stderr, "  address is in %s (guest 0x%08x)\n",
-                m->name, m->preferred + (addr - *m->base));
+        fprintf(stderr, "  mapped 0x%08x is in %s (guest 0x%08x)\n",
+                addr, m->name, m->preferred + (addr - *m->base));
     else
         fprintf(stderr, "  address is in NO registered module -- either it is "
                         "host memory or a module was never linked in\n");
@@ -867,7 +867,9 @@ void x86_missing_import(const char *mod, const char *sym)
 void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
                           const char *reason)
 {
-    fprintf(stderr, "x86_unsupported_insn: reached 0x%08x, inside 0x%08x %s\n"
+    /* Guest (linked) addresses, labelled -- see x86_untranslated. */
+    fprintf(stderr, "x86_unsupported_insn: reached guest 0x%08x, inside guest "
+                    "0x%08x %s\n"
                     "  the translator could not handle it: %s\n"
                     "  The rest of that function IS translated; this is the one "
                     "instruction, and it was actually executed.\n",
@@ -878,7 +880,11 @@ void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
 
 void x86_untranslated(uint32_t ep, const char *name, const char *reason)
 {
-    fprintf(stderr, "x86_untranslated: reached 0x%08x %s -- blocked by: %s\n",
+    /* A GUEST (linked) address deliberately: it is what a reader pastes into
+       Ghidra. It is labelled because three separate reporters have already
+       named the wrong module by leaving that ambiguous (C101). */
+    fprintf(stderr, "x86_untranslated: reached guest 0x%08x %s -- blocked by: "
+                    "%s\n",
             ep, name, reason);
     x86_diag_dump();
     abort();

@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-06
 tags: pc,recomp,translator,diagnostics
+reconfirmed: 2026-08-06
 ---
 
 ## Claim
@@ -17,3 +18,7 @@ The emitted call for a direct branch to an unidentified address passed a raw LIN
 ## What would falsify it
 
 Every emitted site that passes an address to the RUNTIME should now be checked for this, not just the ones a failure has pointed at. x86_untranslated, x86_fallthrough and x86_unsupported_insn all take an ep and have not been audited -- if any of them also passes a linked address, its reports name the wrong module too and nothing has noticed yet.
+
+## Re-confirmed 2026-08-06
+
+Falsifier acted on: the three unaudited reporters were checked and TWO had the same defect. x86_fallthrough and x86_int3 both call where(), which resolves against the module table, and both were emitted with LINKED addresses -- so both would have named the wrong module, exactly as x86_call_unknown did, with nothing to show it. Both now receive mapped addresses. The other two, x86_untranslated and x86_unsupported_insn, only PRINT their address; that is deliberately the guest (linked) address because it is what a reader pastes into Ghidra, and they now say 'guest' rather than leaving the space ambiguous. where() also now prints the mapped address alongside the guest one, so a report cannot be read in the wrong space.

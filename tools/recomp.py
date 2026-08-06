@@ -385,7 +385,11 @@ def emit_instruction(ins, ctx):
         # Translated as a stop that names its address: if it ever DOES execute,
         # control reached code the compiler proved unreachable, and that is
         # worth knowing loudly rather than skipping the whole function for.
-        return ["%s" % A, "  x86_int3(0x%08xU);" % ins["a"]]
+        # MAPPED: x86_int3 calls where(), which resolves the address against
+        # the module table, and a linked address names whichever module happens
+        # to occupy 0x10000000 (C101).
+        return ["%s" % A, "  x86_int3(%s);"
+                % (img_rel(ins["a"]) or "0x%08xU" % ins["a"])]
 
     if m == "CLD":
         # Clears the direction flag, which this runtime does not model: string
@@ -1247,8 +1251,10 @@ def cmd_emit(argv):
                 if nxt in all_eps:
                     b.append("  %s(C); return;" % fname(nxt))
                 else:
-                    b.append("  x86_fallthrough(0x%08xU, 0x%08xU);"
-                             % (fn["ep"], nxt))
+                    # Both MAPPED, for the same reason as x86_int3 (C101).
+                    b.append("  x86_fallthrough(%s, %s);"
+                             % (img_rel(fn["ep"]) or "0x%08xU" % fn["ep"],
+                                img_rel(nxt) or "0x%08xU" % nxt))
             b.append("}")
             b.append("")
             done += 1

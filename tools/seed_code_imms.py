@@ -97,9 +97,21 @@ def main(argv):
     cand = {}          # addr -> (module-relative site, mnemonic)
     already = 0
     outside = 0
+    ncallflow = 0
     for fn in fns:
         for i in fn.get("ins", []):
             ninstr += 1
+            # A DIRECT call or jump to an address Ghidra did not make a
+            # function. The translator already knows about these -- it emits
+            # x86_call_unknown for exactly this case -- so the running game
+            # should never have to discover them one at a time, which is what
+            # it was doing: four rounds, one per round, all in XMen2.exe.
+            flow = i.get("flow")
+            if flow is not None and i["m"] in ("CALL", "JMP") \
+                    and not i.get("ind") and flow not in eps and is_exec(flow):
+                if flow not in cand:
+                    ncallflow += 1
+                cand.setdefault(flow, (i["a"], i["m"]))
             # Only IMMEDIATE operands, and only where the immediate is the
             # SOURCE. Skipping any instruction containing a bracket was the
             # first cut and it was too blunt: the engine also builds callback
@@ -134,6 +146,8 @@ def main(argv):
              ", ".join("%s 0x%08x-0x%08x" % (n, s, e) for s, e, n in execs)))
     print("  code immediates pointing into it: %d already a function entry, "
           "%d not executable (ignored)" % (already, outside))
+    print("  of those, %d came from a DIRECT call/jump to an address that is "
+          "not a function" % ncallflow)
     print("  NEW function starts to seed: %d" % len(fresh))
     print("  inside an existing function, need a SPLIT not a seed: %d"
           % len(need_split))
