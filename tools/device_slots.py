@@ -49,6 +49,50 @@ import sys
 DISP = re.compile(r"\[\s*E[A-Z]{2}\s*\+\s*(0x[0-9a-fA-F]+)\s*\]")
 CALL = re.compile(r"^CALL\s+(0x[0-9a-fA-F]+)$")
 RET = re.compile(r"^RET(?:\s+(0x[0-9a-fA-F]+))?$")
+DEV_READ = re.compile(r"^MOV\s+(E[A-Z]{2}),dword ptr \[E[A-Z]{2} \+ (0x14[048c])\]$")
+TESTJ = re.compile(r"^TEST\s+(E[A-Z]{2}),\1$")
+
+
+def guards_device(fn):
+    """Does every read of a device field get NULL-checked right after it?
+
+    The pattern the engine uses is literally
+
+        MOV EAX,dword ptr [ESI + 0x144]
+        TEST EAX,EAX
+        JZ  <skip>
+
+    so this looks for a TEST of the SAME register within three instructions,
+    followed by a conditional jump. That is what makes a slot safe to
+    super-call with the device left NULL.
+
+    DELIBERATELY CONSERVATIVE, and the direction matters: a slot reported
+    unguarded may still be safe, but a slot reported guarded has the check
+    in the instruction stream. Getting it wrong the safe way costs a
+    transcription; the other way costs a SIGSEGV. Slots with no device read
+    at all are reported "-" rather than guarded, because the question does
+    not apply to them.
+    """
+    ins = fn.get("ins", ())
+    reads = 0
+    for k, i in enumerate(ins):
+        m = DEV_READ.match(i.get("t", "").strip())
+        if not m:
+            continue
+        reads += 1
+        reg = m.group(1)
+        ok = False
+        for j in range(k + 1, min(k + 4, len(ins))):
+            t = ins[j].get("t", "").strip()
+            if TESTJ.match(t) and t.split()[1].split(",")[0] == reg:
+                nxt = ins[j + 1].get("t", "").strip() if j + 1 < len(ins) else ""
+                if nxt.startswith("J"):
+                    ok = True
+            if ok:
+                break
+        if not ok:
+            return "UNGUARDED"
+    return "guarded" if reads else "-"
 
 
 def ret_bytes(fn):
@@ -190,8 +234,9 @@ def main(argv):
             else:
                 nb, why = ret_bytes(fn)
                 sig = "ret %d" % nb if nb is not None else "RET? %s" % why
-            print("  %3d  0x%08x  %-9s  %-10s  %s"
+            print("  %3d  0x%08x  %-9s  %-10s  %-9s  %s"
                   % (i, ep, verdict, sig,
+                     guards_device(fn) if fn else "?",
                      fn["qname"] if fn else "(no function)"))
 
     print("device_slots: %s -- %d of %d slots reach %s; %d unscanned"
