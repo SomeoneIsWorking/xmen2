@@ -73,6 +73,7 @@ file) but it is not the shortest road to a playable port. Status words mean:
 | DLL drop-in staging | `tools/build_shim.sh` | **partial** — proxy and trace modes; recomp staged by hand |
 | Boundary call tracer | `tools/gen_trace.py` | **verified** — I004; "never called" summary still unreachable (harness SIGKILLs) |
 | Renderer work queue: what the backend owes | `tools/device_slots.py` | **verified** — I036. Names every vtable slot of a renderer class, whether it reaches the DirectX device fields, and its `RET N` read out of the body. Regenerates `src/vulkan/igvk_device_slots.h`, which before this was a committed artifact with no committed generator. Reports its denominators and all three ways its answer is a lower bound |
+| What a split is about to destroy | `tools/whose_function.py` | **verified** — I037. Names the function containing an address and flags an MSVC SEH prologue at its entry, where a split would destroy a real function rather than repair one. Validated on both classes (flags an interior address of an SEH function, exit 1; clears an entry address and an address in no function, exit 0). Wired into `native_discover.sh` ahead of every split escalation — issue #21 is what that escalation did with no output at all |
 
 ## Recompiled output (`src/recomp/`, gitignored — regenerate, never edit)
 

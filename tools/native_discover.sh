@@ -158,7 +158,25 @@ while [ "$round" -lt "$MAX" ]; do
             "$ROOT/scratch/logs/ghidra-$base.log" 2>/dev/null \
             | sed 's/^ADD: 0x//; s/ already.*//' | sort -u > "$SPLITS"
         if [ -s "$SPLITS" ]; then
-            echo "   escalating $(grep -c . "$SPLITS") seed(s) to a split"
+            # A split CARVES a function that analysis already found, on the
+            # assumption that the runtime is right and the database is wrong.
+            # That is sometimes true (commit 8b15fec) and sometimes exactly
+            # backwards (issue #21, where this carved one SEH-protected
+            # function into five pieces across three sessions and each piece's
+            # RET then popped part of the exception frame).
+            #
+            # So it must not carve SILENTLY. Say which function is about to be
+            # cut and show its first instructions: an MSVC SEH prologue
+            # (`PUSH -1; PUSH <handler>; MOV EAX,FS:[0]`) means the seed is
+            # almost certainly a handler or scope-table pointer that only
+            # LOOKS like a call target, and the split will make things worse.
+            echo "   escalating $(grep -c . "$SPLITS") seed(s) to a split --"
+            echo "   each of these CARVES an existing function. Check the"
+            echo "   containing function's first instructions before believing"
+            echo "   the result; an SEH prologue there means DO NOT split"
+            echo "   (issue #21):"
+            python3 tools/whose_function.py \
+                "$ROOT/scratch/recomp/$base.json" "$SPLITS" || true
             tools/ghidra_export.sh "$base" --split-at "$SPLITS" 2>&1 \
                 | grep -E "^SPLIT: [0-9]+ split|^ghidra_export:" | tail -2
         fi
