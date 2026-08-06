@@ -55,6 +55,15 @@ add_executable(test_flags tests/test_flags.c)
 target_include_directories(test_flags PRIVATE src/recomp)
 add_test(NAME flags COMMAND test_flags)
 
+# The guest printf format walker. It builds crt.c against a stub runtime, so it
+# needs no recompiled output and runs in the ordinary suite.
+add_executable(test_vformat tests/test_vformat.c src/native/crt.c
+               src/native/guest_heap.c)
+target_include_directories(test_vformat PRIVATE src/recomp src/native)
+target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE)
+target_link_libraries(test_vformat PRIVATE m)
+add_test(NAME vformat COMMAND test_vformat)
+
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
 

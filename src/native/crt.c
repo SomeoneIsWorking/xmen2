@@ -341,6 +341,146 @@ void imp_MSVCR71_qsort(CPU *C)
 
 /* ---- deliberately not implemented -------------------------------------- */
 
+
+/* ---- the format walker -------------------------------------------------
+ *
+ * A va_list on x86-32 cdecl IS a pointer into the guest stack: arguments are
+ * pushed right-to-left, each padded to 4 bytes, doubles taking 8. So the
+ * varargs family does not need a synthesised va_list at all -- it needs this,
+ * a walk of the format string that pulls each argument from guest memory by
+ * hand and formats it one directive at a time with the host's snprintf.
+ *
+ * Everything it cannot handle STOPS by name. That matters more here than
+ * usual: the alternative to refusing an unknown conversion is emitting
+ * something plausible into a string the game then uses as a path, a key or a
+ * displayed line, and the damage would surface far away from the cause.
+ */
+static uint32_t g_vfmt_va;                 /* the walking guest va pointer */
+
+static uint32_t va_dword(void)  { uint32_t v = RD32(g_vfmt_va); g_vfmt_va += 4u; return v; }
+static uint64_t va_qword(void)
+{
+    uint64_t lo = RD32(g_vfmt_va), hi = RD32(g_vfmt_va + 4u);
+    g_vfmt_va += 8u;
+    return lo | (hi << 32);
+}
+static double va_double(void)
+{
+    union { uint64_t u; double d; } u;
+    u.u = va_qword();
+    return u.d;
+}
+
+/*
+ * Returns the length that WOULD have been written (snprintf semantics), and
+ * writes at most cap bytes including the NUL. MSVC's _snprintf family differs
+ * from C99 -- it returns -1 on truncation and does not always NUL-terminate --
+ * so the callers below adjust rather than this doing it two ways.
+ */
+int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va)
+{
+    size_t used = 0;
+    char spec[64], tmp[512];
+    const char *p = fmt;
+    g_vfmt_va = va;
+    if (!fmt) {
+        crt_unimpl("_vsnprintf", "the format string pointer is NULL");
+        return -1;
+    }
+    while (*p) {
+        int n = 0, si = 0, star_w = 0, star_p = 0, lng = 0;
+        if (*p != '%') {
+            if (used + 1 < cap) out[used] = *p;
+            used++; p++;
+            continue;
+        }
+        spec[si++] = *p++;                                  /* '%' */
+        if (*p == '%') { if (used + 1 < cap) out[used] = '%'; used++; p++; continue; }
+        while (*p && strchr("-+ #0", *p) && si < 40) spec[si++] = *p++;   /* flags */
+        if (*p == '*') { star_w = 1; p++; }
+        else while (*p >= '0' && *p <= '9' && si < 40) spec[si++] = *p++; /* width */
+        if (*p == '.') {
+            spec[si++] = *p++;
+            if (*p == '*') { star_p = 1; p++; }
+            else while (*p >= '0' && *p <= '9' && si < 50) spec[si++] = *p++;
+        }
+        /* length modifiers; MSVC also spells 64-bit as I64 */
+        if (p[0] == 'I' && p[1] == '6' && p[2] == '4') { lng = 2; p += 3; }
+        else if (p[0] == 'l' && p[1] == 'l') { lng = 2; p += 2; }
+        else if (*p == 'l' || *p == 'L') { lng = (*p == 'L') ? 3 : 1; p++; }
+        else if (*p == 'h') { lng = -1; p++; }
+        if (star_w) {
+            int w = (int)va_dword();
+            si += snprintf(spec + si, sizeof spec - si, "%d", w);
+        }
+        if (star_p) {
+            int pr = (int)va_dword();
+            si += snprintf(spec + si, sizeof spec - si, ".%d", pr);
+        }
+        switch (*p) {
+        case 'd': case 'i': case 'u': case 'x': case 'X': case 'o':
+            if (lng == 2) {
+                spec[si++] = 'l'; spec[si++] = 'l'; spec[si++] = *p; spec[si] = 0;
+                n = snprintf(tmp, sizeof tmp, spec, (long long)va_qword());
+            } else {
+                spec[si++] = *p; spec[si] = 0;
+                n = snprintf(tmp, sizeof tmp, spec, (int)va_dword());
+            }
+            break;
+        case 'f': case 'F': case 'e': case 'E': case 'g': case 'G':
+            spec[si++] = *p; spec[si] = 0;
+            n = snprintf(tmp, sizeof tmp, spec, va_double());
+            break;
+        case 'c':
+            spec[si++] = 'c'; spec[si] = 0;
+            n = snprintf(tmp, sizeof tmp, spec, (int)(va_dword() & 0xFF));
+            break;
+        case 'p':
+            spec[si++] = 'p'; spec[si] = 0;
+            n = snprintf(tmp, sizeof tmp, spec, (void *)(uintptr_t)va_dword());
+            break;
+        case 's': {
+            uint32_t sp = va_dword();
+            spec[si++] = 's'; spec[si] = 0;
+            /* A NULL string is printed as MSVC prints it rather than crashing
+               the host on a guest bug. */
+            n = snprintf(tmp, sizeof tmp, spec,
+                         sp ? (const char *)(uintptr_t)sp : "(null)");
+            break;
+        }
+        default:
+            /* Refuse: see the header comment. The conversion is named so the
+               next one can be added deliberately. */
+            fprintf(stderr, "crt: format walker met %%%c, which it does not "
+                            "implement -- refusing rather than inventing "
+                            "output for it\n", *p ? *p : '?');
+            crt_unimpl("_vsnprintf", "unimplemented printf conversion");
+            return -1;
+        }
+        p++;
+        if (n < 0) return -1;
+        {   int i;
+            for (i = 0; i < n; i++) {
+                if (used + 1 < cap) out[used] = tmp[i];
+                used++;
+            }
+        }
+    }
+    if (cap) out[used < cap ? used : cap - 1] = 0;
+    return (int)used;
+}
+
+/* MSVC's _snprintf/_vsnprintf: return -1 when the result did not fit, and do
+   not NUL-terminate in that case. C99's snprintf differs on both counts, so
+   the difference is applied here rather than left as a subtle mismatch. */
+static int msvc_trunc(int want, uint32_t buf, uint32_t count)
+{
+    if (want < 0) return -1;
+    if ((uint32_t)want >= count) return -1;
+    (void)buf;
+    return want;
+}
+
 #define NOT_IMPL(name, why) \
     void imp_MSVCR71_##name(CPU *C) { (void)C; crt_unimpl(#name, why); }
 
@@ -358,11 +498,7 @@ NOT_IMPL(__RTDynamicCast, EH_WHY)
 NOT_IMPL(_setjmp3, "setjmp/longjmp across recompiled frames needs the guest "
                    "register file saved, not the host's")
 NOT_IMPL(longjmp, "see _setjmp3")
-NOT_IMPL(printf, VA_WHY)
-NOT_IMPL(sprintf, VA_WHY)
 NOT_IMPL(sscanf, VA_WHY)
-NOT_IMPL(_vsnprintf, VA_WHY)
-NOT_IMPL(vsprintf, VA_WHY)
 
 /* ---- shared with the DLLs' MSVCRT --------------------------------------
  *
@@ -638,6 +774,54 @@ void imp_MSVCR71___dllonexit(CPU *C)
     ret_c(C, func);
 }
 
+/* ---- the varargs family, on the walker --------------------------------- */
+
+void imp_MSVCR71__vsnprintf(CPU *C)
+{
+    /* (buf, count, fmt, va_list) -- cdecl */
+    uint32_t buf = A(0), count = A(1);
+    int n = guest_vformat(AS(0), count, ACS(2), A(3));
+    ret_c(C, (uint32_t)msvc_trunc(n, buf, count));
+}
+
+void imp_MSVCR71__snprintf(CPU *C)
+{
+    /* (buf, count, fmt, ...) -- the variadic args start at slot 3 */
+    uint32_t buf = A(0), count = A(1);
+    int n = guest_vformat(AS(0), count, ACS(2), C->esp + 4u + 3u * 4u);
+    ret_c(C, (uint32_t)msvc_trunc(n, buf, count));
+}
+
+void imp_MSVCR71_vsprintf(CPU *C)
+{
+    /* (buf, fmt, va_list) -- no bound, which is the caller's problem and the
+       reason a huge cap is used rather than a guessed one. */
+    int n = guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1), A(2));
+    ret_c(C, (uint32_t)n);
+}
+
+void imp_MSVCR71_sprintf(CPU *C)
+{
+    int n = guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1), C->esp + 4u + 2u * 4u);
+    ret_c(C, (uint32_t)n);
+}
+
+void imp_MSVCR71_printf(CPU *C)
+{
+    char buf[4096];
+    int n = guest_vformat(buf, sizeof buf, ACS(0), C->esp + 4u + 1u * 4u);
+    if (n >= 0) fputs(buf, stdout);
+    ret_c(C, (uint32_t)n);
+}
+
+void imp_MSVCR71_vprintf(CPU *C)
+{
+    char buf[4096];
+    int n = guest_vformat(buf, sizeof buf, ACS(0), A(1));
+    if (n >= 0) fputs(buf, stdout);
+    ret_c(C, (uint32_t)n);
+}
+
 #define CRT_ALIAS(n) \
     void imp_MSVCRT_##n(CPU *C) { imp_MSVCR71_##n(C); }
 
@@ -662,6 +846,9 @@ CRT_ALIAS(fopen)    CRT_ALIAS(fclose)   CRT_ALIAS(fread)
 CRT_ALIAS(fseek)    CRT_ALIAS(ftell)
 CRT_ALIAS(exit)     CRT_ALIAS(_exit)    CRT_ALIAS(_purecall)
 CRT_ALIAS(abort)    CRT_ALIAS(_errno)   CRT_ALIAS(getenv)
+/* the varargs family, on the format walker */
+CRT_ALIAS(printf)   CRT_ALIAS(vprintf)  CRT_ALIAS(sprintf)
+CRT_ALIAS(vsprintf) CRT_ALIAS(_snprintf) CRT_ALIAS(_vsnprintf)
 CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
 CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)
 CRT_ALIAS(__dllonexit)

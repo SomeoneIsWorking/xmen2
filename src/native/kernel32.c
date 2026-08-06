@@ -705,6 +705,111 @@ void imp_KERNEL32_DeleteFileA(CPU *C) { ret_std(C, unlink(win_path(ACS(0))) == 0
 void imp_KERNEL32_CreateDirectoryA(CPU *C) { ret_std(C, mkdir(win_path(ACS(0)), 0777) == 0, 2); }
 void imp_KERNEL32_RemoveDirectoryA(CPU *C) { ret_std(C, rmdir(win_path(ACS(0))) == 0, 1); }
 
+void imp_KERNEL32_GetModuleFileNameA(CPU *C)
+{
+    /* (hModule, lpFilename, nSize). A HANDLE here is an image base, and every
+       module this host mapped came from GAME_PC_DIR, so the real path is
+       known. NULL means the exe, which is what the CRT asks for at startup.
+       Win32 returns a path with backslashes and the game may parse it, so the
+       shape is preserved even though the file lives on a POSIX filesystem. */
+    uint32_t h = A(0), buf = A(1), size = A(2);
+    const char *dir = getenv("GAME_PC_DIR");
+    const char *name = NULL;
+    char path[1024];
+    uint32_t n, i;
+    if (h == 0) name = "XMen2.exe";
+    else {
+        X86Module *m;
+        for (m = x86_modules(); m; m = m->next)
+            if (*m->base == h) { name = m->name; break; }
+    }
+    if (!name) {
+        fprintf(stderr, "kernel32: GetModuleFileNameA(0x%08x) -- no mapped "
+                        "module has that base, so there is no name to give\n", h);
+        g_last_error = 6u;                        /* ERROR_INVALID_HANDLE */
+        ret_std(C, 0, 3);
+        return;
+    }
+    snprintf(path, sizeof path, "%s\\%s", dir ? dir : ".", name);
+    for (i = 0; path[i]; i++) if (path[i] == '/') path[i] = '\\';
+    n = (uint32_t)strlen(path);
+    if (size == 0) { ret_std(C, 0, 3); return; }
+    if (n >= size) {
+        memcpy((void *)(uintptr_t)buf, path, size - 1);
+        ((char *)(uintptr_t)buf)[size - 1] = 0;
+        g_last_error = 122u;                      /* ERROR_INSUFFICIENT_BUFFER */
+        ret_std(C, size, 3);
+        return;
+    }
+    memcpy((void *)(uintptr_t)buf, path, n + 1);
+    ret_std(C, n, 3);
+}
+
+/* ---- process and thread bookkeeping ------------------------------------
+ *
+ * Priorities are STORED and returned rather than applied: this host does not
+ * reschedule anything, and reporting back a value the caller never set would
+ * be the lie. The times are real -- taken from the process clock -- because
+ * inventing them would show up as nonsense in any profiling the game does.
+ */
+static uint32_t g_priority_class = 0x00000020u;   /* NORMAL_PRIORITY_CLASS */
+static int32_t  g_thread_priority;                /* THREAD_PRIORITY_NORMAL */
+
+void imp_KERNEL32_GetPriorityClass(CPU *C)  { ret_std(C, g_priority_class, 1); }
+void imp_KERNEL32_SetPriorityClass(CPU *C)
+{
+    g_priority_class = A(1);
+    ret_std(C, 1, 2);
+}
+void imp_KERNEL32_GetThreadPriority(CPU *C) { ret_std(C, (uint32_t)g_thread_priority, 1); }
+void imp_KERNEL32_SetThreadPriority(CPU *C)
+{
+    g_thread_priority = (int32_t)A(1);
+    ret_std(C, 1, 2);
+}
+
+/* FILETIME from a POSIX clock value in nanoseconds. */
+static void wr_filetime(uint32_t p, uint64_t ns)
+{
+    uint64_t ft = ns / 100ULL;
+    if (!p) return;
+    WR32(p, (uint32_t)ft);
+    WR32(p + 4u, (uint32_t)(ft >> 32));
+}
+
+static void times_common(CPU *C, int nargs)
+{
+    /* (handle, lpCreation, lpExit, lpKernel, lpUser) */
+    struct timespec cpu;
+    uint64_t ns;
+    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &cpu);
+    ns = (uint64_t)cpu.tv_sec * 1000000000ULL + (uint64_t)cpu.tv_nsec;
+    wr_filetime(A(1), 0);                 /* creation: process start, unknown */
+    wr_filetime(A(2), 0);                 /* exit: still running */
+    wr_filetime(A(3), 0);                 /* kernel time not separated here */
+    wr_filetime(A(4), ns);                /* user time: the real CPU time */
+    ret_std(C, 1, nargs);
+}
+
+void imp_KERNEL32_GetProcessTimes(CPU *C) { times_common(C, 5); }
+void imp_KERNEL32_GetThreadTimes(CPU *C)  { times_common(C, 5); }
+
+void imp_KERNEL32_FormatMessageA(CPU *C)
+{
+    /* (flags, source, messageId, langId, lpBuffer, nSize, args)
+       There is no Windows message table here. The ID is rendered rather than
+       invented as prose: a caller that prints it gets something true and
+       traceable instead of a sentence this host made up. */
+    uint32_t id = A(2), buf = A(4), size = A(5);
+    char msg[64];
+    uint32_t n;
+    snprintf(msg, sizeof msg, "Win32 error %u", id);
+    n = (uint32_t)strlen(msg);
+    if (!buf || size <= n) { g_last_error = 122u; ret_std(C, 0, 7); return; }
+    memcpy((void *)(uintptr_t)buf, msg, n + 1);
+    ret_std(C, n, 7);
+}
+
 void imp_KERNEL32_GetSystemDirectoryA(CPU *C)
 {
     /* There is no Windows system directory. Returning a path that does not
