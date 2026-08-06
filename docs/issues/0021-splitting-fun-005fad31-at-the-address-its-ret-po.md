@@ -131,3 +131,19 @@ So the loop's escalation is wrong here for a structural reason, not a heuristic 
 **What to build instead of seeding**: parse the FuncInfo tables and enumerate funclets as a known category. Every `MOV EAX,<imm>; JMP <__CxxFrameHandler thunk>` stub in the image names a FuncInfo; each FuncInfo's TryBlockMap names its catch handler addresses. That turns 'mysterious indirect target' into 'catch funclet of function F', which the recompiler can then model deliberately -- and it enumerates them all at once instead of one per discovery round.
 
 C122 records the falsifier: the FuncInfo parse itself is UNVERIFIED (a throwaway script hit a VA-to-file-offset bug), so confirming 0x005fb270 appears in that TryBlockMap is step one.
+
+### Note (2026-08-06)
+C122 TESTED AND FALSIFIED -- record the dead end so nobody builds the tool it proposed.
+
+The funclet hypothesis was checkable and it is wrong. Parsing the FuncInfo at 0x6c3d58 (magic 0x19930520, so it IS a real C++ EH FuncInfo):
+
+  * nTryBlocks = 0, TryBlockMap = NULL. The function has no catch handlers at all, so 0x005fb270 is not a catch funclet.
+  * UnwindMap at 0x006c3d38, maxState 4. Its four actions are 0x00679110 / 0x00679118 / 0x00679120 / 0x00679128 -- small thunks beside the handler stub. 0x005fb270 is not among them, so it is not a destructor funclet either.
+
+So the 'enumerate funclets from the FuncInfo tables' tool proposed in the previous note would NOT have found this address and should not be built for this reason.
+
+**What still stands**: FUN_005fac10 is genuinely an MSVC C++ EH function, and seeding inside it genuinely carves it apart. Everything this issue records about the discovery loop is unaffected.
+
+**Where it points now**, and it is the simpler reading: the exception-frame prologue -- `PUSH -1; PUSH <handler>; MOV EAX,FS:[0]` and the matching `MOV FS:[0],ESP` -- is mistranslated, so state is already wrong when an indirect call is reached, and 0x005fb270 is a garbage target that merely happens to land inside the same function. A consequence, not a cause.
+
+**Next**: read what recomp.py emits for those FS-segment instructions and for the indirect call in FUN_005fac10, and compare against the original. Do not seed, do not split, and do not go looking for EH tables.
