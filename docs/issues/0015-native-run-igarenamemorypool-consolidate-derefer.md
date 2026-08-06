@@ -77,7 +77,59 @@ The two debug validators (`igArenaDoCheckInUseChunk`,
 make the allocator check its own invariants and is worth trying before reading
 more disassembly.
 
+## Why the NULL is reached (C090, 2026-08-06)
+
+`consolidate` pulls a freed chunk off a fastbin, walks to the chunk after it,
+and at `0x10057efb` compares that against `ms->top`. If they are equal it takes
+a merge path that never unlinks. They are not equal, so it unlinks the top
+chunk and reads its `fd` -- which is zero.
+
+    esi        = 0x00a80004   freed chunk, head 0x203, decoded span 24 bytes
+    walk lands = 0x00a8001c
+    ms->top    = 0x00a8002c   (malloc state 0x71002328, field +0x2c)
+                              16 bytes higher
+
+Arena bytes at the failure say the walk is right and `ms->top` is not:
+
+    0x00a80004  0x00000203   freed chunk in a fastbin
+    0x00a8001c  0x80000180   head; with its +8 word (0x94000027) decodes to
+                             size 0x138000C -- the full 19.5 MB arena, so this
+                             IS the top chunk
+    0x00a80024  0x94000027   high size bits for the chunk at 0x00a8001c
+    0x00a80028  0x00000000   <-- read as fd, hence the NULL
+    0x00a8002c  0x00000000   where ms->top points: head is ZERO, not a chunk
+    0x00a80030  0x00000040
+    0x00a80034  0x94000027   the same high size word again, 16 bytes on
+
+`igArenaInitState` sets `ms->top` from the aligned arena base returned by the
+pool's virtual at `[vtable+0x60]`, then writes the top header at `[ms->top]`
+and ORs bit 0 into it. The header at `ms->top` is zero, so either that write
+did not land where `ms->top` says, or `ms->top` was moved afterwards by a carve
+that wrote its new header 16 bytes low.
+
+## What this does NOT establish
+
+Which side is wrong. This is a hand-trace of bit-packed header arithmetic
+against a memory dump, not a comparison with the original. If the shipped DLL
+produces the same `ms->top` and the same 0x203 header, the defect is in neither
+and `consolidate` is being reached in a state the stock build never gets into.
+
 ## Next
+
+1. **`tests/difftest.c` against the shipped `libIGCore.dll`** for
+   `igArenaInitState` and the malloc path. It already does forced relocation and
+   memory-write comparison and its negative controls fire (I006, C016); it is
+   currently wired for libIGDisplay only. This decides translation-vs-real
+   directly and is the only step here that does not rest on my reading of the
+   header encoding.
+2. The allocator's own `igArenaDoCheckMallocState` would audit these invariants,
+   but `bootstrapInit` hardcodes the pool's debug level to 0 at `pool+0xb8`
+   (`igArenaMemoryPool::setHeapIntegrityCheckLevel` @0x10018c90 is the setter,
+   and `configureFromInfo` is the path that would set it from config). Enabling
+   it needs a host-side diagnostic call, which is worth doing only if (1) is
+   inconclusive.
+
+## Earlier next (superseded)
 
 1. Set the arena pool's debug level (`pool+0xb8`) so `igArenaDoCheckMallocState`
    runs, and let the allocator's own consistency checks say what is wrong.
