@@ -70,11 +70,71 @@
 #define IGVISUALCONTEXT_VTABLE  0x100da630u
 #define IGGFX_PURECALL          0x100ce258u
 
+/*
+ * The engine's igStatus singletons.
+ *
+ * libIGGfx returns status by MSVC's hidden-pointer convention: the caller
+ * passes an out-slot as the first stack argument, the callee stores a status
+ * pointer into it and returns that same out-slot in EAX. The two singletons
+ * live behind these globals -- `*(*(0x100cf4d4))` is the OK one and
+ * `*(*(0x100cf4d0))` the failure one, which is how igDxVisualContext's own
+ * setVideoMode and the Cg loader both spell success and failure.
+ *
+ * Reading them from the engine rather than inventing a value matters: the
+ * caller compares the returned pointer against its own copy of the same
+ * singleton, so a fabricated non-NULL would read as an unrecognised failure.
+ */
+#define IGGFX_STATUS_OK_PP      0x100cf4d4u
+#define IGGFX_STATUS_FAIL_PP    0x100cf4d0u
+
+static uint32_t status_value(uint32_t pp_linked)
+{
+    uint32_t pp = ark_lifted(GFX, pp_linked);
+    uint32_t p = pp ? RD32(pp) : 0;
+    return p ? RD32(p) : 0;
+}
+
+/*
+ * Return an igStatus by the hidden-pointer convention.
+ * `stack_args` counts the out-slot too, so RET 0x8 is stack_args = 2.
+ */
+static void ret_status(CPU *C, uint32_t out, uint32_t status, int stack_args)
+{
+    if (out) WR32(out, status);
+    ark_ret(C, out, stack_args);
+}
+
 static ArkClass g_vk;   /* tentative; defined with its initialiser below */
 
 static void vk_get_class_meta(CPU *C)
 {
     ark_ret(C, RD32(g_vk.meta_slot), 0);
+}
+
+/*
+ * Slot 254 -- setVideoMode(igStatus *out, const VideoMode *desc).
+ *
+ * igDxVisualContext's version (libIGGfx 0x1002f040, RET 0x8) caches the mode
+ * byte at this+0x180, derives two flags from desc+0x14, and returns the OK
+ * status singleton. Nothing here creates a device yet, so this records the
+ * request and accepts it -- accepting is the truthful answer for a renderer
+ * that has not yet been asked to present anything, and refusing would stop the
+ * engine before it reveals the rest of the interface.
+ */
+static uint32_t g_video_mode, g_video_flags;
+
+static void vk_set_video_mode(CPU *C)
+{
+    uint32_t out = RD32(C->esp + 4u);
+    uint32_t desc = RD32(C->esp + 8u);
+    static int told;
+    g_video_mode = desc ? RD8(desc) : 0;
+    g_video_flags = desc ? RD32(desc + 0x14u) : 0;
+    if (!told++)
+        printf("igVk: setVideoMode(mode=%u, flags=0x%x) accepted; no device is "
+               "created yet.\n", g_video_mode, g_video_flags);
+    fflush(stdout);   /* the run may abort in a later slot before a flush */
+    ret_status(C, out, status_value(IGGFX_STATUS_OK_PP), 2);
 }
 
 static ArkClass g_vk = {
@@ -147,6 +207,8 @@ int igvk_visualcontext_install(void)
     /* Ours regardless of what the base had: the meta must be OUR class's. */
     igvk_vtable_set(g_vk.vtable, 20, vk_get_class_meta, g_vk.name,
                     "getClassMeta", &g_vk);
+    igvk_vtable_set(g_vk.vtable, 254, vk_set_video_mode, g_vk.name,
+                    "setVideoMode", &g_vk);
     igvk_vtable_fill_unimplemented(g_vk.vtable, g_vk.name, IGVK_SLOTS);
 
     if (!ark_register_class(&g_vk)) {
