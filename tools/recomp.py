@@ -463,17 +463,36 @@ def emit_instruction(ins, ctx):
             raise Unsupported("LEA from non-memory")
         return [A, d.write(s.addr())]
 
+    #
+    # PUSH and POP read their operand BEFORE moving ESP, and write it AFTER.
+    #
+    # Intel is explicit and it is not a detail: `PUSH r/m32` computes the
+    # effective address of a memory operand using the ORIGINAL ESP, and `POP
+    # r/m32` computes a destination address using ESP as it is AFTER the
+    # increment. Emitting `C->esp -= 4; WR32(C->esp, RD32(C->esp + 8));` reads
+    # [esp-4+8] = [esp+4] -- one dword off, and only for operands based on ESP.
+    #
+    # This was live. XMen2.exe 0x0065e314 is a four-instruction allocator whose
+    # whole body is `PUSH dword ptr [ESP+8]; CALL malloc`, and it passed the
+    # WRONG stack slot: a caller's pointer instead of the size 0x50 its caller
+    # had pushed. malloc got 0x700ff678, failed, and the game took its own
+    # out-of-memory path and died calling a handler it had never installed --
+    # three issues (#24, #25, #26) away from the instruction that caused it.
+    #
     if m == "PUSH":
         s = O(0)
         if s.width != 4:
             raise Unsupported("PUSH width %d" % s.width)
-        return [A, "C->esp -= 4; WR32(C->esp, %s);" % s.read()]
+        return [A, "{ uint32_t _v = %s;" % s.read(),
+                "  C->esp -= 4; WR32(C->esp, _v); }"]
 
     if m == "POP":
         d = O(0)
         if d.width != 4:
             raise Unsupported("POP width %d" % d.width)
-        return [A, d.write("RD32(C->esp)"), "C->esp += 4;"]
+        return [A, "{ uint32_t _v = RD32(C->esp);",
+                "  C->esp += 4;",
+                "  " + d.write("_v"), "}"]
 
     if m in ARITH:
         d, s = reconcile(O(0), O(1))

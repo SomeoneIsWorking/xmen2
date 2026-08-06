@@ -193,6 +193,45 @@ class SetjmpIsEmittedInline(unittest.TestCase):
         self.assertEqual(recomp.find_setjmp_thunks([thunk]), set())
 
 
+class StackOperandsMoveEspAtTheRightMoment(unittest.TestCase):
+    """PUSH reads before ESP moves; POP writes after it moves.
+
+    Only operands BASED ON ESP can tell the difference, which is why this went
+    unnoticed: every register push is identical either way. XMen2.exe
+    0x0065e314 is four instructions long and passed the wrong stack slot to
+    malloc because of it."""
+
+    def test_push_of_an_esp_relative_operand_reads_the_original_esp(self):
+        c = translate([
+            ins(0x00401000, "PUSH", "PUSH dword ptr [ESP + 0x8]", n=4),
+            ins(0x00401004, "RET", "RET", n=1),
+        ])
+        body = c[c.index("00401000"):c.index("00401004")]
+        self.assertNotIn("WR32(C->esp, RD32((uint32_t)(C->esp + 0x8U)))", body,
+                         "the operand must not be read after ESP has moved")
+        # the read has to happen before the decrement, in source order
+        self.assertLess(body.index("RD32"), body.index("C->esp -= 4"),
+                        "PUSH must read its operand before moving ESP")
+
+    def test_pop_into_an_esp_relative_operand_writes_the_new_esp(self):
+        c = translate([
+            ins(0x00401000, "POP", "POP dword ptr [ESP + 0x4]", n=4),
+            ins(0x00401004, "RET", "RET", n=1),
+        ])
+        body = c[c.index("00401000"):c.index("00401004")]
+        self.assertLess(body.index("C->esp += 4"), body.index("WR32"),
+                        "POP must move ESP before computing the destination")
+
+    def test_pushing_esp_itself_pushes_the_value_before_the_decrement(self):
+        c = translate([
+            ins(0x00401000, "PUSH", "PUSH ESP", n=1),
+            ins(0x00401001, "RET", "RET", n=1),
+        ])
+        body = c[c.index("00401000"):c.index("00401001")]
+        self.assertLess(body.index("C->esp;"), body.index("C->esp -= 4"),
+                        "PUSH ESP stores the value ESP had before the push")
+
+
 class Refusals(unittest.TestCase):
     """The translator's central rule: what it does not understand must fail
     loudly by name, never become a no-op."""

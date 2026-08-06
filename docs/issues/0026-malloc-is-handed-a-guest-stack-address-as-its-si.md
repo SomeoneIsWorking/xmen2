@@ -1,7 +1,7 @@
 ---
 id: 26
 title: malloc is handed a guest stack address as its size, on the code path that runs after a longjmp resume
-status: open
+status: resolved
 symptom: malloc(1880094328 = 0x700ff678) -- that is not a size, it looks like an ADDRESS. Asked for by guest 0x0065e31d. The guest then takes its own out-of-memory path and dies calling an uninstalled handler at object+0x40 (issue #25).
 tags: pc,native,rc-exe,setjmp,stack,memory
 created: 2026-08-06
@@ -70,3 +70,10 @@ Not by reading code. Two diagnostics, added in the commit that records this:
 
 Before them, this failure surfaced as issue #25: a crash calling an
 uninitialised callback in a function with no visible connection to memory.
+
+### Resolution (2026-08-06)
+ROOT CAUSE: a translator defect, not the exe. recomp.py emitted PUSH of an ESP-relative operand as 'C->esp -= 4; WR32(C->esp, RD32(C->esp + 8))', which reads [esp+4] because the read uses the already-decremented ESP. Intel computes the address from the ORIGINAL ESP. POP had the mirror defect: its destination must be computed AFTER the increment.
+
+So XMen2.exe 0x0065e314 -- four instructions, 'PUSH dword ptr [ESP+8]; CALL malloc' -- passed the slot next to the size. The guest stack dump at the failing call is what settled it: +04 (the value pushed) held a pointer while +16 held the 0x50 its caller had pushed.
+
+Fixed in tools/recomp.py with three unit tests, every module re-emitted. Issues #24, #25 and #26 were all downstream of this one instruction.

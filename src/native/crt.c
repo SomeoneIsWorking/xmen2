@@ -120,6 +120,17 @@ void imp_MSVCR71_malloc(CPU *C)
                     "    offset. The allocation fails, and the guest will take "
                     "its own out-of-memory path from here.\n",
                     n, n, ra, nm ? nm : "in no body this host can name");
+            {
+                /* The guest stack as it actually is at the failing call, so
+                   the layout is read rather than reconstructed from a ring
+                   that may be showing a different invocation. */
+                int k;
+                fprintf(stderr, "    guest stack at esp=0x%08x:", C->esp);
+                for (k = 0; k < 10; k++)
+                    fprintf(stderr, "%s +%02d 0x%08x", (k % 4) ? "" : "\n     ",
+                            k * 4, RD32(C->esp + (uint32_t)k * 4u));
+                fputc('\n', stderr);
+            }
             fflush(stderr);
         }
     }
