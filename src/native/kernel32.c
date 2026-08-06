@@ -923,16 +923,38 @@ void imp_KERNEL32_LoadLibraryA(CPU *C)
         uint32_t h = sysmod_handle(nm);
         if (h) { ret_std(C, h, 1); return; }
     }
-    fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -- that module is not one "
-                    "of the recompiled ones this host has mapped.\n"
-                    "  Returning a handle would make GetProcAddress hand back "
-                    "fake functions, so this stops instead.\n"
+    /*
+     * NULL, not abort -- and the distinction is the whole point.
+     *
+     * A fake HANDLE is what must never be returned: GetProcAddress would then
+     * hand back fake functions and the failure would surface far away. NULL is
+     * different. It is what Win32 itself returns when a DLL cannot be loaded,
+     * it is what every correct caller checks for, and here it is TRUE: this
+     * module genuinely is not in the address space.
+     *
+     * Aborting made that truthful answer unreachable. libIGGfx's initCg
+     * (0x1002fa60) loads cg.dll, compares the loader's status against the
+     * engine's own failure singleton, and on failure SKIPS the whole Cg setup
+     * and returns -- the engine is written to run without Cg. Aborting turned
+     * a path the engine handles into a dead stop.
+     *
+     * Said loudly every time rather than once, because a missing module is not
+     * a normal condition and the consequence is specific to which one it was.
+     */
+    fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -> NULL. That module is "
+                    "not one of the recompiled ones this host has mapped, so "
+                    "it genuinely cannot be loaded.\n"
+                    "  This is Win32's own failure answer and callers must "
+                    "check it; a fake HANDLE is what would be dishonest, "
+                    "because GetProcAddress would then invent functions.\n"
+                    "  Whatever this module provides is NOT AVAILABLE to the "
+                    "game from here on.\n"
                     "  Mapped modules are:", nm ? nm : "(null)");
     {   X86Module *m;
         for (m = x86_modules(); m; m = m->next) fprintf(stderr, " %s", m->name);
     }
     fputc('\n', stderr);
-    abort();
+    ret_std(C, 0, 1);
 }
 
 void imp_KERNEL32_GetProcAddress(CPU *C)
