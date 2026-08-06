@@ -11,7 +11,7 @@
  * the failure lands in an unrelated function.
  */
 #include "igvk_context.h"
-#include "igvk_device.h"
+#include "gpu_device.h"
 #include "guest_heap.h"
 #include "win32_sdl.h"
 
@@ -99,7 +99,7 @@ static void vk_user_instantiate(CPU *C)
 
     if (basefn) r = ark_call_this(basefn, self, &arg, 1);
 
-    igvk_device_create();
+    gpu_device_create();
 
     /*
      * The parameter blocks at this+0x150, this+0x154 and this+0x148.
@@ -222,8 +222,8 @@ static void vk_user_instantiate(CPU *C)
  */
 static void vk_user_release(CPU *C)
 {
-    igvk_device_report();
-    igvk_device_destroy();
+    gpu_device_report();
+    gpu_device_destroy();
     ark_ret(C, igvk_super(C, DX_USER_RELEASE, 0), 0);
 }
 
@@ -237,7 +237,7 @@ static void vk_user_release(CPU *C)
  * For this backend that whole question reduces to "is there a GPU device",
  * because SDL_GPU has no lost-device state to recover from -- a swapchain
  * that cannot be acquired is a per-frame condition handled in
- * igvk_frame_begin, not a persistent error. So this is implemented directly
+ * gpu_frame_begin, not a persistent error. So this is implemented directly
  * rather than super-called: super-calling would report a permanent error,
  * since this+0x144 is NULL by design and always will be.
  *
@@ -245,7 +245,7 @@ static void vk_user_release(CPU *C)
  */
 static void vk_get_last_error(CPU *C)
 {
-    ark_ret(C, igvk_device_ready() ? 0u : 1u, 0);
+    ark_ret(C, gpu_device_ready() ? 0u : 1u, 0);
 }
 
 /* ---- slot 36: setNativeWindowHandle ----------------------------------- */
@@ -267,7 +267,7 @@ static void vk_set_native_window_handle(CPU *C)
     if (!told++)
         printf("igVk: setNativeWindowHandle(0x%08x) -- the swapchain follows "
                "the host's SDL window, not this handle\n", IGVK_ARG(C, 0));
-    igvk_device_attach_window(win32_sdl_window());
+    gpu_device_attach_window(win32_sdl_window());
     ark_ret(C, r, 1);
 }
 
@@ -324,7 +324,7 @@ static void vk_open(CPU *C)
     uint32_t minus1 = 0xFFFFFFFFu;
     static int told;
 
-    if (!igvk_device_ready()) {
+    if (!gpu_device_ready()) {
         /* The one honest failure: no GPU device means the display genuinely
            did not come up, and saying OK would move the symptom elsewhere. */
         fprintf(stderr, "igVk: open() refused -- there is no GPU device.\n");

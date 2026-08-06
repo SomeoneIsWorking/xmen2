@@ -3,13 +3,13 @@
  *
  * igDxVisualContext's frame is D3D8-shaped -- BeginScene, Clear, SetViewport,
  * draws, EndScene, Present -- and these four slots are where it touches the
- * device. igvk_device.c maps that shape onto SDL_GPU's; see its file comment
+ * device. gpu_device.c maps that shape onto SDL_GPU's; see its file comment
  * for why the clear has to be deferred to the render pass.
  *
  * Slot numbers and `RET N` from tools/device_slots.py --list.
  */
 #include "igvk_context.h"
-#include "igvk_device.h"
+#include "gpu_device.h"
 
 #include <stdio.h>
 
@@ -55,7 +55,7 @@ static void apply_viewport_from_fields(uint32_t self)
     if (minz < 0.0f) minz = 0.0f; else if (minz > 1.0f) minz = 1.0f;
     if (maxz < 0.0f) maxz = 0.0f; else if (maxz > 1.0f) maxz = 1.0f;
 
-    igvk_frame_viewport((int32_t)RD32(self + F_VIEW_X),
+    gpu_frame_viewport((int32_t)RD32(self + F_VIEW_X),
                         (int32_t)RD32(self + F_VIEW_Y),
                         (int32_t)RD32(self + F_VIEW_W),
                         (int32_t)RD32(self + F_VIEW_H), minz, maxz);
@@ -81,8 +81,8 @@ static void apply_viewport_from_fields(uint32_t self)
  */
 static void vk_begin_draw(CPU *C)
 {
-    if (!igvk_device_ready()) { ark_ret(C, 0, 0); return; }
-    ark_ret(C, igvk_frame_begin() ? 1u : 0u, 0);
+    if (!gpu_device_ready()) { ark_ret(C, 0, 0); return; }
+    ark_ret(C, gpu_frame_begin() ? 1u : 0u, 0);
 }
 
 /* ---- slot 175: endDraw ------------------------------------------------- */
@@ -134,7 +134,7 @@ static void vk_end_draw(CPU *C)
         WR32(lo_va, lo);
         if (lo == 0u) WR32(lo_va + 4u, RD32(lo_va + 4u) + 1u);
     }
-    igvk_frame_end();
+    gpu_frame_end();
     ark_ret(C, 0, 0);
 }
 
@@ -163,7 +163,7 @@ static void vk_clear_render_destination(CPU *C)
     uint32_t self = IGVK_SELF(C);
     unsigned mask = IGVK_ARG(C, 0) & 0x7u;
 
-    igvk_frame_clear(mask,
+    gpu_frame_clear(mask,
                      igvk_fieldf(self, F_CLEAR_R),
                      igvk_fieldf(self, F_CLEAR_G),
                      igvk_fieldf(self, F_CLEAR_B),
@@ -256,12 +256,12 @@ static void vk_set_render_destination(CPU *C)
      * replaces.
      *
      * OFF-SCREEN destinations are the case this does not cover, and
-     * igvk_frame_bind_target says so by index rather than letting them draw
+     * gpu_frame_bind_target says so by index rather than letting them draw
      * silently to the wrong place.
      */
     (void)chk; (void)args;
 
-    igvk_frame_bind_target(idx);
+    gpu_frame_bind_target(idx);
     WR32(self + F_RD_CURRENT, idx);
 
     /*

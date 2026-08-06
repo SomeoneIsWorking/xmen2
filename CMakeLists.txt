@@ -75,6 +75,14 @@ add_test(NAME recomp
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tests/test_recomp.py)
 
+# The host D3D8 interface tables, against a real d3d8.h and against the game's
+# own call sites. Runs the checker's SELF-TEST, not the check: the check needs
+# scratch/recomp/libIGGfx.json, which is generated and gitignored, while the
+# self-test proves the checks can fail and is meaningful with or without it.
+add_test(NAME d3d8_abi
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/d3d8_abi_check.py --selftest)
+
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
 
@@ -171,16 +179,24 @@ if(X2_MODULE_HAVE)
         src/native/dinput.c
         src/native/x86rt_native.c
         src/native/overrides.c
+        src/d3d8/d3d8_com.c
+        src/d3d8/d3d8_caps.c
+        src/d3d8/d3d8_state.c
+        src/d3d8/d3d8_d3d8.c
+        src/d3d8/d3d8_device.c
+        src/d3d8/d3d8_report.c
         src/vulkan/igvk_ark.c
         src/vulkan/igvk_probe.c
         src/vulkan/igvk_context.c
-        src/vulkan/igvk_device.c
+        src/gpu/gpu_device.c
+        src/gpu/gpu_selftest.c
         src/vulkan/igvk_slots_lifecycle.c
         src/vulkan/igvk_slots_frame.c
-        src/vulkan/igvk_selftest.c
+        
         ${X2_MODULE_SRCS}
     )
-    target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan)
+    target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
+                                              src/gpu src/d3d8)
 
     # Native overrides of DIRECTLY-called recompiled functions.
     #
@@ -265,6 +281,12 @@ if(X2_MODULE_HAVE)
     add_test(NAME vk_frame_path
              COMMAND x2native --vk-selftest)
     set_tests_properties(vk_frame_path PROPERTIES SKIP_RETURN_CODE 77)
+    # The host D3D8's ABI tables, vtable dispatch and caps block. Also needs
+    # no game: what it checks is that slot N reaches method N and that an
+    # unimplemented method REPORTS, which are host-side facts.
+    add_test(NAME d3d8_host
+             COMMAND x2native --d3d8-selftest)
+    set_tests_properties(d3d8_host PROPERTIES SKIP_RETURN_CODE 77)
 else()
     message(STATUS
         "x2native: SKIPPED -- no module has generated output. "

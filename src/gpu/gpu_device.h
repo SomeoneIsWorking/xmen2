@@ -12,8 +12,8 @@
  * "clear", "present" -- not an SDL_GPUDevice. Keeping SDL inside the .c means
  * the slot modules cannot start reaching around this interface.
  */
-#ifndef IGVK_DEVICE_H
-#define IGVK_DEVICE_H
+#ifndef GPU_DEVICE_H
+#define GPU_DEVICE_H
 
 #include <stdint.h>
 
@@ -25,12 +25,12 @@
  * symptom to attribute. Called from the engine's own userInstantiate, so the
  * failure is reported at the moment the engine asked for a renderer.
  */
-int igvk_device_create(void);
-void igvk_device_destroy(void);
+int gpu_device_create(void);
+void gpu_device_destroy(void);
 
 /* 1 once a device exists. This is what igDxVisualContext::getLastError's
    `this+0x144 == 0 -> error` test becomes for this backend. */
-int igvk_device_ready(void);
+int gpu_device_ready(void);
 
 /*
  * The window the swapchain presents to.
@@ -40,7 +40,7 @@ int igvk_device_ready(void);
  * connected. Passing NULL detaches. Returns 1 if the swapchain was claimed.
  */
 struct SDL_Window;
-int igvk_device_attach_window(struct SDL_Window *w);
+int gpu_device_attach_window(struct SDL_Window *w);
 
 /*
  * The frame.
@@ -49,14 +49,14 @@ int igvk_device_attach_window(struct SDL_Window *w);
  * by slots 174 and 175. These are the same boundary: begin acquires the
  * swapchain texture and opens a command buffer, end submits it.
  *
- * igvk_frame_begin returns 0 when there is nothing to draw into (no device,
+ * gpu_frame_begin returns 0 when there is nothing to draw into (no device,
  * no window, or the swapchain had no texture ready this frame). A 0 must be
  * propagated -- the engine's beginDraw returns a bool for exactly this and
  * skips the frame when it is false.
  */
-int  igvk_frame_begin(void);
-void igvk_frame_end(void);
-int  igvk_frame_in_progress(void);
+int  gpu_frame_begin(void);
+void gpu_frame_end(void);
+int  gpu_frame_in_progress(void);
 
 /*
  * Clear the current render destination.
@@ -69,7 +69,7 @@ int  igvk_frame_in_progress(void);
  * the pass has already begun cannot be honoured that way and says so instead
  * of silently doing nothing.
  */
-void igvk_frame_clear(unsigned mask, float r, float g, float b, float a,
+void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
                       float depth, uint32_t stencil);
 
 /*
@@ -81,11 +81,11 @@ void igvk_frame_clear(unsigned mask, float r, float g, float b, float a,
  * drawing would silently go to the wrong place. That case reports itself
  * rather than being ignored.
  */
-void igvk_frame_bind_target(unsigned index);
+void gpu_frame_bind_target(unsigned index);
 
 /* Viewport in pixels, already clamped by the engine to the render
    destination. minz/maxz are the depth range. */
-void igvk_frame_viewport(int x, int y, int w, int h, float minz, float maxz);
+void gpu_frame_viewport(int x, int y, int w, int h, float minz, float maxz);
 
 /*
  * How many frames were presented, and how many were skipped for want of a
@@ -95,6 +95,6 @@ void igvk_frame_viewport(int x, int y, int w, int h, float minz, float maxz);
  * that was never called look identical on a black screen, and this is what
  * tells them apart.
  */
-void igvk_device_report(void);
+void gpu_device_report(void);
 
-#endif /* IGVK_DEVICE_H */
+#endif /* GPU_DEVICE_H */

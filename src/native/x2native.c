@@ -19,6 +19,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "d3d8_host.h"
+#include "d3d8_com.h"
 
 #include <dlfcn.h>
 #include <signal.h>
@@ -776,6 +778,7 @@ int main(int argc, char **argv)
     const char *dir = NULL;
     int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0, vk = 0;
     int vkselftest = 0, vkpermissive = 0;
+    int d3d8 = 0, d3d8selftest = 0, d3d8permissive = 0;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
        and the recompiled set grows one module at a time (libMovie was the
@@ -799,6 +802,9 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--vk") == 0) vk = 1;
         else if (strcmp(argv[i], "--vk-selftest") == 0) vkselftest = 1;
         else if (strcmp(argv[i], "--vk-permissive") == 0) vkpermissive = 1;
+        else if (strcmp(argv[i], "--d3d8") == 0) d3d8 = 1;
+        else if (strcmp(argv[i], "--d3d8-selftest") == 0) d3d8selftest = 1;
+        else if (strcmp(argv[i], "--d3d8-permissive") == 0) d3d8permissive = 1;
         else if (argv[i][0] == '-') {
             /*
              * Refuse an unrecognised option rather than treat it as the
@@ -810,7 +816,9 @@ int main(int argc, char **argv)
             fprintf(stderr, "x2native: unknown option '%s'. Refusing rather "
                             "than treating it as the install directory.\n"
                             "  Known: --no-window --run --selftest --ark-probe "
-                            "--vk --vk-selftest\n", argv[i]);
+                            "--vk --vk-selftest --vk-permissive\n"
+                            "         --d3d8 --d3d8-selftest "
+                            "--d3d8-permissive\n", argv[i]);
             return 2;
         }
         else dir = argv[i];
@@ -818,15 +826,29 @@ int main(int argc, char **argv)
     /*
      * The renderer's host half stands alone, so it is checked alone.
      *
-     * src/vulkan/igvk_device.c takes no guest state, which means its frame
+     * src/vulkan/gpu_device.c takes no guest state, which means its frame
      * path can be driven with no engine, no ARK and no game install -- and it
      * needs to be, because the game has never reached a frame, so nothing
      * else has ever run that code. Handled before the GAME_PC_DIR check for
      * the same reason: it does not need the install.
      */
     if (vkselftest) {
-        extern int igvk_device_selftest(void);
-        return igvk_device_selftest();
+        extern int gpu_device_selftest(void);
+        return gpu_device_selftest();
+    }
+    /*
+     * Same reasoning for the host D3D8: its ABI tables, its vtable dispatch
+     * and its caps block are host-side facts that need no game to check.
+     *
+     * It does need guest-addressable memory, because a vtable the guest could
+     * dispatch through has to live where the guest could reach it -- so the
+     * arena comes up here exactly as it does for a real run. Nothing else of
+     * the run is started.
+     */
+    if (d3d8selftest) {
+        if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x08000000u) != 0)
+            return 1;
+        return d3d8_host_selftest();
     }
 
     if (!dir) dir = getenv("GAME_PC_DIR");
@@ -918,6 +940,34 @@ int main(int argc, char **argv)
     (void)window;
     printf("SDL: not compiled in\n");
 #endif
+
+    if (d3d8) {
+        /*
+         * No arming and no waiting: the guest enters this host through an
+         * IMPORT, and an import is already bound before the first instruction
+         * runs. That is the whole practical difference from --vk, which has to
+         * wait for ARK to come up before it can substitute a class.
+         */
+        if (vk) {
+            fprintf(stderr, "x2native: --d3d8 and --vk are two different "
+                            "renderers for the same engine. Pick one: --vk "
+                            "replaces igVisualContext's vtable, --d3d8 answers "
+                            "the DirectX the engine's own vtable calls.\n");
+            return 2;
+        }
+        if (d3d8permissive) {
+            d3d8_permissive(1);
+            printf("d3d8: PERMISSIVE MODE -- unimplemented D3D8 methods will "
+                   "be IGNORED (returning 0) instead of stopping.\n"
+                   "  This exists to see what the engine asks for NEXT. "
+                   "Anything drawn is missing whatever those methods do; the "
+                   "list is printed at exit.\n");
+        }
+        d3d8_host_enable();
+        atexit(d3d8_host_report);
+        printf("d3d8: host Direct3D 8 armed on d3d8.dll!Direct3DCreate8\n");
+        run = 1;
+    }
 
     if (vk) {
         /* Same timing constraint as the probe: ARK registration needs the

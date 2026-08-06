@@ -1,7 +1,7 @@
 /*
  * The host GPU device and the frame, on SDL3's GPU API (Vulkan on Linux).
  *
- * See igvk_device.h for why this knows nothing about the guest.
+ * See gpu_device.h for why this knows nothing about the guest.
  *
  * ## The frame, and why the clear is deferred
  *
@@ -19,7 +19,7 @@
  * reported rather than dropped, because dropping it would show up as
  * smearing between frames and be attributed to anything but this.
  */
-#include "igvk_device.h"
+#include "gpu_device.h"
 #include "win32_sdl.h"
 
 #include <stdio.h>
@@ -49,37 +49,37 @@ static unsigned long g_frames_presented, g_frames_no_swapchain,
                      g_frames_no_window, g_late_clears;
 #endif
 
-int igvk_device_create(void)
+int gpu_device_create(void)
 {
 #ifndef X2_WITH_SDL
-    fprintf(stderr, "igVk: built without SDL; no GPU device can be made.\n");
+    fprintf(stderr, "gpu: built without SDL; no GPU device can be made.\n");
     return 0;
 #else
     if (g_gpu) return 1;
     if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_Init(SDL_INIT_VIDEO))
-        fprintf(stderr, "igVk: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
+        fprintf(stderr, "gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
 
     g_gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
     if (!g_gpu) {
         fprintf(stderr,
-                "igVk: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"
+                "gpu: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"
                 "  No GPU device means nothing can be drawn. Reported here "
                 "rather than later as a blank frame.\n", SDL_GetError());
         return 0;
     }
-    printf("igVk: GPU device created -- backend \"%s\"\n",
+    printf("gpu: GPU device created -- backend \"%s\"\n",
            SDL_GetGPUDeviceDriver(g_gpu));
     fflush(stdout);
 
     /* Attach immediately if the guest has already made its window. It usually
        has: CreateWindowExA runs well before the renderer is instantiated.
        setNativeWindowHandle re-attaches if that order ever changes. */
-    igvk_device_attach_window(win32_sdl_window());
+    gpu_device_attach_window(win32_sdl_window());
     return 1;
 #endif
 }
 
-void igvk_device_destroy(void)
+void gpu_device_destroy(void)
 {
 #ifdef X2_WITH_SDL
     if (!g_gpu) return;
@@ -90,7 +90,7 @@ void igvk_device_destroy(void)
 #endif
 }
 
-int igvk_device_ready(void)
+int gpu_device_ready(void)
 {
 #ifdef X2_WITH_SDL
     return g_gpu != NULL;
@@ -99,7 +99,7 @@ int igvk_device_ready(void)
 #endif
 }
 
-int igvk_device_attach_window(struct SDL_Window *w)
+int gpu_device_attach_window(struct SDL_Window *w)
 {
 #ifndef X2_WITH_SDL
     (void)w;
@@ -114,14 +114,14 @@ int igvk_device_attach_window(struct SDL_Window *w)
     }
     if (!win) return 0;
     if (!SDL_ClaimWindowForGPUDevice(g_gpu, win)) {
-        fprintf(stderr, "igVk: SDL_ClaimWindowForGPUDevice failed: %s\n"
+        fprintf(stderr, "gpu: SDL_ClaimWindowForGPUDevice failed: %s\n"
                         "  There is a window and a device but no swapchain "
                         "between them, so nothing can reach the screen.\n",
                 SDL_GetError());
         return 0;
     }
     g_win = win;
-    printf("igVk: swapchain claimed on window %p\n", (void *)win);
+    printf("gpu: swapchain claimed on window %p\n", (void *)win);
     fflush(stdout);
     return 1;
 #endif
@@ -168,7 +168,7 @@ static void apply_viewport(void)
     if (w < 1 || h < 1) {
         static int told;
         if (!told++)
-            fprintf(stderr, "igVk: the requested viewport %dx%d at (%d,%d) "
+            fprintf(stderr, "gpu: the requested viewport %dx%d at (%d,%d) "
                             "does not intersect the %ux%u target; leaving the "
                             "previous one.\n", g_viewport.w, g_viewport.h,
                     g_viewport.x, g_viewport.y, g_swap_w, g_swap_h);
@@ -185,7 +185,7 @@ static void apply_viewport(void)
  * Open the render pass, clearing as the engine asked.
  *
  * Everything that draws goes through here first. Called at most once per
- * frame; the pass stays open until igvk_frame_end.
+ * frame; the pass stays open until gpu_frame_end.
  */
 static void pass_begin(void)
 {
@@ -212,7 +212,7 @@ static void pass_begin(void)
 
     g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, NULL);
     if (!g_pass) {
-        fprintf(stderr, "igVk: SDL_BeginGPURenderPass failed: %s\n",
+        fprintf(stderr, "gpu: SDL_BeginGPURenderPass failed: %s\n",
                 SDL_GetError());
         return;
     }
@@ -220,7 +220,7 @@ static void pass_begin(void)
 }
 #endif
 
-int igvk_frame_begin(void)
+int gpu_frame_begin(void)
 {
 #ifndef X2_WITH_SDL
     return 0;
@@ -231,29 +231,29 @@ int igvk_frame_begin(void)
     if (!g_win) {
         /* Re-try the attach: the guest may have created its window after the
            renderer was instantiated. */
-        if (!igvk_device_attach_window(win32_sdl_window())) {
+        if (!gpu_device_attach_window(win32_sdl_window())) {
             g_frames_no_window++;
             if (!told_no_window++)
-                printf("igVk: frames are being driven with no window to "
+                printf("gpu: frames are being driven with no window to "
                        "present to (--no-window, or the guest made none). "
                        "The frame loop runs; nothing reaches a screen.\n");
             return 0;
         }
     }
     if (g_cmd) {
-        fprintf(stderr, "igVk: beginDraw while a frame is already open -- the "
+        fprintf(stderr, "gpu: beginDraw while a frame is already open -- the "
                         "previous one was never ended. Ending it.\n");
-        igvk_frame_end();
+        gpu_frame_end();
     }
     g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
     if (!g_cmd) {
-        fprintf(stderr, "igVk: SDL_AcquireGPUCommandBuffer failed: %s\n",
+        fprintf(stderr, "gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
                 SDL_GetError());
         return 0;
     }
     if (!SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_swap,
                                                &g_swap_w, &g_swap_h)) {
-        fprintf(stderr, "igVk: acquiring the swapchain texture failed: %s\n",
+        fprintf(stderr, "gpu: acquiring the swapchain texture failed: %s\n",
                 SDL_GetError());
         SDL_CancelGPUCommandBuffer(g_cmd);
         g_cmd = NULL;
@@ -273,7 +273,7 @@ int igvk_frame_begin(void)
 #endif
 }
 
-void igvk_frame_end(void)
+void gpu_frame_end(void)
 {
 #ifdef X2_WITH_SDL
     if (!g_cmd) return;
@@ -297,7 +297,7 @@ void igvk_frame_end(void)
 #endif
 }
 
-int igvk_frame_in_progress(void)
+int gpu_frame_in_progress(void)
 {
 #ifdef X2_WITH_SDL
     return g_cmd != NULL;
@@ -306,7 +306,7 @@ int igvk_frame_in_progress(void)
 #endif
 }
 
-void igvk_frame_clear(unsigned mask, float r, float g, float b, float a,
+void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
                       float depth, uint32_t stencil)
 {
 #ifndef X2_WITH_SDL
@@ -318,7 +318,7 @@ void igvk_frame_clear(unsigned mask, float r, float g, float b, float a,
            Reported, not dropped -- see the file comment for why. */
         if (!g_late_clears++)
             fprintf(stderr,
-                    "igVk: clearRenderDestination arrived AFTER the render "
+                    "gpu: clearRenderDestination arrived AFTER the render "
                     "pass was opened, and SDL_GPU clears only on pass entry, "
                     "so this clear did NOT happen. Reported once; the total "
                     "is in the shutdown report.\n");
@@ -331,7 +331,7 @@ void igvk_frame_clear(unsigned mask, float r, float g, float b, float a,
 #endif
 }
 
-void igvk_frame_bind_target(unsigned index)
+void gpu_frame_bind_target(unsigned index)
 {
 #ifndef X2_WITH_SDL
     (void)index;
@@ -341,7 +341,7 @@ void igvk_frame_bind_target(unsigned index)
     if (told_index != index) {
         told_index = index;
         fprintf(stderr,
-                "igVk: the engine bound render destination %u, which is an "
+                "gpu: the engine bound render destination %u, which is an "
                 "OFF-SCREEN target this backend does not have -- there is only "
                 "the swapchain. Drawing that follows goes to the back buffer "
                 "instead of where the engine intends.\n", index);
@@ -349,7 +349,7 @@ void igvk_frame_bind_target(unsigned index)
 #endif
 }
 
-void igvk_frame_viewport(int x, int y, int w, int h, float minz, float maxz)
+void gpu_frame_viewport(int x, int y, int w, int h, float minz, float maxz)
 {
 #ifndef X2_WITH_SDL
     (void)x; (void)y; (void)w; (void)h; (void)minz; (void)maxz;
@@ -362,11 +362,11 @@ void igvk_frame_viewport(int x, int y, int w, int h, float minz, float maxz)
 #endif
 }
 
-void igvk_device_report(void)
+void gpu_device_report(void)
 {
 #ifdef X2_WITH_SDL
     if (!g_gpu && !g_frames_no_window) return;
-    printf("igVk: %lu frame(s) presented, %lu skipped for no swapchain "
+    printf("gpu: %lu frame(s) presented, %lu skipped for no swapchain "
            "texture, %lu with no window, %lu clear(s) lost to a pass that was "
            "already open\n",
            g_frames_presented, g_frames_no_swapchain, g_frames_no_window,

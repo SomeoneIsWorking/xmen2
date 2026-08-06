@@ -9,7 +9,7 @@
  * module's real load base.
  */
 #include "igvk_context.h"
-#include "igvk_device.h"
+#include "gpu_device.h"
 #include "igvk_device_slots.h"
 
 #include "x86rt_native.h"

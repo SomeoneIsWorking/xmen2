@@ -3,7 +3,7 @@
  *
  * ## Where the file layout comes from
  *
- * The split across igvk_device / igvk_context / igvk_slots_* is taken from
+ * The split across gpu_device / igvk_context / igvk_slots_* is taken from
  * DUSKLIGHT (https://github.com/TwilitRealm/dusklight, CC0), a shipping PC
  * port of Twilight Princess built on the zeldaret/tp decomp -- the same
  * architecture as this one, several years further along. Its src/dusk/ is one

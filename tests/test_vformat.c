@@ -248,3 +248,5 @@ const char *win_path(const char *in)
 { (void)in; fprintf(stderr, "test_vformat: win_path reached\n"); abort(); }
 const char *x86_native_name_at(uint32_t a)
 { (void)a; fprintf(stderr, "test_vformat: x86_native_name_at reached\n"); abort(); }
+void x86_diag_dump(void)
+{ fprintf(stderr, "test_vformat: x86_diag_dump reached\n"); abort(); }
