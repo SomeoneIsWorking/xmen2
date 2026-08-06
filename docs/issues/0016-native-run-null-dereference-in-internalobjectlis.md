@@ -38,33 +38,45 @@ Everything that lookup depends on is present and correctly relocated (X2_PEEK):
 `getMetaField` is a 7-instruction forwarder to
 `__internalNonRefCountedObjectList::searchMetas(list, [0x1015e418], name)`.
 
-The list has **exactly one** entry:
+The list:
 
     list+0x00  0x240832c8   vtable
-    list+0x04  0x00000001   count
+    list+0x04  0x00000001   igObject REFCOUNT -- not the count
     list+0x08  0x00a87500   array  -- matches edx
-    list+0x0c  0x00000004   capacity
+    list+0x0c  0x00000004   COUNT
 
-So one meta field is registered on this meta object at the moment `"_data"` is
-looked up, and it is not the one wanted. The single entry is at 0x00a86c60; its
-name is not a plain `char *` in its first 18 words, so it is presumably an
-interned string-pool reference and identifying it needs the `igMetaField`
-layout, which `docs/RE/ark.md` does not record.
+**Corrected.** An earlier version of this note read `list+0x04` as the count and
+concluded that only one field was registered. It is the refcount:
+`instantiateAndAppendFields` does `MOV ECX,[ESI+0x4]; DEC ECX` on a field it has
+just appended, which is a refcount decrement, and `igMetaObject::setMetaField
+BasicPropertiesAndValidateAll` reads the array as `[[meta+0x28]+8]` indexed by
+`i*4`. The array does hold four non-null entries -- 0x00a86c60, 0x00a86ca8,
+0x00a87698, 0x00a876f0 -- which agrees with `+0xc` and not with `+0x04`.
+
+So **four** meta fields are registered when `"_data"` is looked up, and the
+lookup still fails. That is a different question from the one the earlier note
+posed: not "why was nothing registered" but "why is `_data` not among these
+four, or why does `searchMetas` not find it".
 
 Nineteen classes look up `"_data"` in their own `arkRegisterInitialize`
 (igStringRefList, igObjectList, igIGBFile, igIntList, ... ), so field
-REGISTRATION is a separate step that must precede it. For
-`__internalObjectList` that step did not add `"_data"`.
+REGISTRATION is a separate step that must precede it -- and it DID run, in the
+right order: the base `__internalNonRefCountedObjectList::arkRegisterInitialize`
+is first entered at #1495 and the derived one at #1546.
 
 ## Next
 
-1. Find `__internalObjectList`'s field-registration function (the counterpart to
-   `arkRegisterInitialize`), check with the reached set whether it ran, and with
-   `X2_ARGS` what it registered. That separates "registration never ran" from
-   "registration ran and added the wrong thing".
-2. If it ran, the `igMetaField` name layout has to be read to identify the one
-   entry that IS present -- and that belongs in `docs/RE/ark.md`, which
-   currently documents `igMetaObject` offsets but not `igMetaField`'s.
+1. Identify the four registered fields by NAME. Blocked on the `igMetaField`
+   name offset, which `docs/RE/ark.md` does not record (it has `igMetaObject`'s
+   offsets only). Field 0x00a86c60 has a heap string pointer at `+0x54`
+   ("igOb..."), but that offset was found by poking and is not established.
+   `setMetaFieldBasicPropertiesAndValidateAll` at 0x10044a40 is where the name
+   is bound and is the function to read.
+2. `X2_PEEK` can only read 1/2/4 bytes, so identifying a name means one run per
+   guess. A string mode would turn this into a single run and is worth adding
+   before the next attempt.
+3. Then: is `_data` among the four (so `searchMetas` is at fault) or absent (so
+   registration added the wrong set)?
 
 ## Earlier next (superseded)
 
