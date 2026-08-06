@@ -191,6 +191,19 @@ HEADER = """\
  * this list is inherited, and an inherited device-touching slot calls through
  * a device this host never made.
  */
+/*
+ * How many STACK ARGUMENTS each slot's function pops, from its own RET N.
+ * -1 where the body has no RET of its own (a tail jump) or its RETs disagree
+ * -- those cannot be answered from the binary and must not be guessed, so a
+ * consumer has to refuse rather than pick a number.
+ *
+ * This exists so a slot can be answered without being implemented: popping
+ * the right count is the difference between "did nothing" and "corrupted the
+ * guest stack".
+ */
+static const signed char IGVK_SLOT_ARGS[%(total)d] = {
+%(argbody)s};
+
 #define IGVK_DEVICE_SLOT_COUNT %(count)d
 static const short IGVK_DEVICE_SLOTS[IGVK_DEVICE_SLOT_COUNT] = {
 %(body)s};
@@ -250,8 +263,17 @@ def main(argv):
         body = ""
         for n in range(0, len(hits), 12):
             body += "    " + "".join("%4d," % s for s in hits[n:n + 12]) + "\n"
+        nargs = []
+        for ep in slots:
+            fn = fns.get(ep)
+            nb, _ = ret_bytes(fn) if fn else (None, "")
+            nargs.append(-1 if nb is None else nb // 4)
+        argbody = ""
+        for n in range(0, len(nargs), 16):
+            argbody += "    " + "".join("%3d," % a for a in nargs[n:n + 16]) + "\n"
         with open(a.header, "w") as f:
             f.write(HEADER % dict(cls=a.cls, depth=a.depth, count=len(hits),
+                                  argbody=argbody,
                                   total=len(slots), unscanned=len(unscanned),
                                   fieldlist="/".join("0x%x" % x
                                                      for x in sorted(fields)),

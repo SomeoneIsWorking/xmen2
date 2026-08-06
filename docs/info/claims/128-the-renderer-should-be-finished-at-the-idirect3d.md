@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-06
 tags: graphics,vulkan,scoping,architecture
+reconfirmed: 2026-08-06
 ---
 
 ## Claim
@@ -23,3 +24,13 @@ This supersedes the backend's original working assumption. Super-calling was ado
 ## What would falsify it
 
 Finding that the 46 offsets span several DIFFERENT COM interfaces whose vtables cannot be told apart at the call site -- C108 measured 73 offsets across device, texture, surface and buffer objects, so some of these 46 may not be the device's. Each offset must be attributed to an interface before any of them is implemented; assuming they are all IDirect3DDevice8 would put methods at the wrong slots, which is the failure C108 already records for the vendored Xbox translator.
+
+## Re-confirmed 2026-08-06
+
+CONFIRMED BY EXPERIMENT, and more strongly than the static count suggested. A permissive staging mode was added (--vk-permissive) in which an unimplemented slot returns 0 and pops its arguments correctly -- using the per-slot RET N that tools/device_slots.py now emits -- instead of aborting, so the engine can be driven THROUGH the unwritten state calls to see whether it reaches the frame boundary.
+
+It does not. The engine asked for slot 147, that was ignored, and the very next thing was a SIGSEGV at NULL inside Gap::Gfx::igDxVisualContext::setupTextureStages (libIGGfx 0x10044e90) -- a 130-instruction helper that is NOT one of the 334 vtable slots and is therefore INHERITED verbatim, running the engine's own code, which reaches the device itself.
+
+That is the decisive point. Answering the renderer at the slot layer cannot be complete no matter how many of the 98 are written, because inherited engine bodies below the vtable also dereference this+0x144. The only cut that covers all of them is a real object at this+0x144. It also explains the 15 slots device_slots.py classifies as 'reaches the device only through a call': the call is to helpers exactly like this one.
+
+So the plan is not a preference between two workable designs. Installing a host IDirect3DDevice8 is the only one of the two that can work.

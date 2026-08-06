@@ -169,7 +169,7 @@ int igvk_ark_probe(void)
             igvk_vtable_set(g_probe.vtable, IGOBJ_TRUE1[k], ig_true1,
                             g_probe.name, "igObject:<return true>", &g_probe);
     }
-    igvk_vtable_fill_unimplemented(g_probe.vtable, g_probe.name, PROBE_SLOTS);
+    igvk_vtable_fill_unimplemented(g_probe.vtable, g_probe.name, PROBE_SLOTS, NULL);
 
     if (!ark_register_class(&g_probe)) {
         printf("  FAIL  registration did not complete\n");

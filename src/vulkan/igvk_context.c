@@ -198,7 +198,8 @@ static int build_vtable(void)
     /* Ours regardless of what the base had: the meta must be OUR class's. */
     igvk_slot(20, vk_get_class_meta, "getClassMeta");
     install_slots();
-    igvk_vtable_fill_unimplemented(g_vk.vtable, g_vk.name, IGVK_SLOTS);
+    igvk_vtable_fill_unimplemented(g_vk.vtable, g_vk.name, IGVK_SLOTS,
+                                   IGVK_SLOT_ARGS);
     return 1;
 }
 

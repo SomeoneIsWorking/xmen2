@@ -20,6 +20,40 @@
  * this list is inherited, and an inherited device-touching slot calls through
  * a device this host never made.
  */
+/*
+ * How many STACK ARGUMENTS each slot's function pops, from its own RET N.
+ * -1 where the body has no RET of its own (a tail jump) or its RETs disagree
+ * -- those cannot be answered from the binary and must not be guessed, so a
+ * consumer has to refuse rather than pick a number.
+ *
+ * This exists so a slot can be answered without being implemented: popping
+ * the right count is the difference between "did nothing" and "corrupted the
+ * guest stack".
+ */
+static const signed char IGVK_SLOT_ARGS[334] = {
+     -1, -1, -1, -1, -1, -1, -1,  1, -1, -1, -1, -1, -1, -1, -1, -1,
+     -1, -1, -1, -1,  0, -1, -1, -1, -1,  1,  2,  1,  3,  0,  1,  0,
+      0, -1,  0,  1,  1,  0,  1,  0,  1,  0,  1,  0,  1,  1,  3,  2,
+      0,  1,  3,  3,  1,  1,  1,  1,  1,  2,  1,  1,  1,  0,  0,  1,
+      0,  1,  1,  0,  1,  1,  1,  3,  5,  3,  4,  1,  0,  1,  1,  2,
+      1,  1,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  1,  2,  1,
+      2,  2,  1,  0,  1,  0,  1,  1,  1,  1,  1,  1,  1,  1,  1,  0,
+      5,  1,  0,  1,  1,  2,  1,  5,  6,  6,  6,  5,  7,  4,  6,  2,
+      1,  1,  1,  1,  2,  2,  3,  2,  1,  3,  3,  2,  1,  2,  1, -1,
+      1,  0,  1,  1,  0,  2,  1,  3,  3,  1,  0,  1,  0,  1,  0,  2,
+      1,  0,  1,  0,  1,  0, -1,  3,  1,  0,  1,  0,  8,  6,  0,  0,
+      0,  1,  1,  1,  0,  1,  1,  0,  1,  0,  6,  6,  4,  4,  4,  1,
+      0,  0,  1,  1,  0,  1,  2,  0,  2,  1,  1,  1,  2,  2,  2,  2,
+      2,  2,  2,  1,  1,  0,  1,  1,  1,  1,  1,  0,  1,  0,  1,  0,
+      1,  0,  4,  4,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,  1,  0,
+      1,  0,  1,  0,  1,  0,  1,  0,  1,  1,  1,  0,  1,  0,  2,  1,
+      2,  0, -1,  1,  1,  1,  4,  4,  3,  2,  2,  0,  1,  1,  1,  1,
+      8,  3,  0,  1,  0,  1,  1,  2,  1,  1,  0,  2,  1,  7,  6,  2,
+     -1,  3,  2,  3,  2,  5,  5,  3,  3,  8,  3,  1,  1, -1,  1,  1,
+      1,  1,  6,  6,  4,  1, -1,  0,  1,  0,  3, -1,  3, -1,  6,  8,
+      5,  8,  8,  1, -1,  0,  1,  0,  3,  3,  0,  1,  4,  4,
+};
+
 #define IGVK_DEVICE_SLOT_COUNT 98
 static const short IGVK_DEVICE_SLOTS[IGVK_DEVICE_SLOT_COUNT] = {
        7,   8,  25,  30,  34,  35,  36,  38,  46,  47,  50,  72,

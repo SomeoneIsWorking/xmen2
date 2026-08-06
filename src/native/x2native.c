@@ -775,7 +775,7 @@ int main(int argc, char **argv)
 {
     const char *dir = NULL;
     int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0, vk = 0;
-    int vkselftest = 0;
+    int vkselftest = 0, vkpermissive = 0;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
        and the recompiled set grows one module at a time (libMovie was the
@@ -798,6 +798,7 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--ark-probe") == 0) arkprobe = 1;
         else if (strcmp(argv[i], "--vk") == 0) vk = 1;
         else if (strcmp(argv[i], "--vk-selftest") == 0) vkselftest = 1;
+        else if (strcmp(argv[i], "--vk-permissive") == 0) vkpermissive = 1;
         else if (argv[i][0] == '-') {
             /*
              * Refuse an unrecognised option rather than treat it as the
@@ -925,6 +926,26 @@ int main(int argc, char **argv)
            rather than a guessed moment, because it is defined by the engine
            being ready rather than by an ordering we assumed. */
         extern int igvk_context_arm(void);
+        if (vkpermissive) {
+            /*
+             * A STAGING switch, and it is announced because a run made with
+             * it is not a run of the renderer -- it is a run of the renderer
+             * with an unknown amount missing. What was missing is listed at
+             * exit.
+             */
+            extern void igvk_vtable_permissive(int);
+            extern void igvk_vtable_permissive_report(void);
+            igvk_vtable_permissive(1);
+            atexit(igvk_vtable_permissive_report);
+            printf("igVk: PERMISSIVE MODE -- unimplemented renderer slots will "
+                   "be IGNORED (returning 0, popping their arguments) instead "
+                   "of stopping.\n"
+                   "  This exists to drive the engine THROUGH the state calls "
+                   "that are not written yet and see whether it reaches the "
+                   "frame boundary.\n"
+                   "  Anything it draws is missing whatever those slots do. "
+                   "The list is printed at exit.\n");
+        }
         if (igvk_context_arm()) return 1;
         run = 1;
     }

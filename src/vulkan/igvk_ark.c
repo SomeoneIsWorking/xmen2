@@ -182,11 +182,30 @@ static int g_nvt;
    addresses; it fired correctly and said only "some slot", which is the one
    thing the reader already knew. Saving 63 table entries was not worth a
    diagnostic that cannot answer its own question. */
-typedef struct { const char *owner; int slot; } Unimpl;
+typedef struct { const char *owner; int slot; int nargs; unsigned long hits; } Unimpl;
+
+static int g_permissive;
+static Unimpl *g_recs;
+static int g_nrecs;
+
+void igvk_vtable_permissive(int on) { g_permissive = on; }
 
 static void unimplemented(CPU *C)
 {
-    const Unimpl *u = (const Unimpl *)x86_callback_ctx();
+    Unimpl *u = (Unimpl *)x86_callback_ctx();
+
+    if (g_permissive && u && u->nargs >= 0) {
+        if (!u->hits++)
+            fprintf(stderr, "igVk: PERMISSIVE -- slot %d (%s) ignored, "
+                            "returning 0 and popping %d argument(s).\n",
+                    u->slot, u->owner, u->nargs);
+        ark_ret(C, 0, u->nargs);
+        return;
+    }
+    if (g_permissive && u)
+        fprintf(stderr, "\n*** slot %d cannot be ignored even in permissive "
+                        "mode: its argument count is unknown, and guessing it "
+                        "would shift the guest stack.\n", u->slot);
     fprintf(stderr,
             "\n*** %s: the engine dispatched vtable SLOT %d, which this host "
             "class does not implement.\n"
@@ -227,16 +246,41 @@ void igvk_vtable_set(uint32_t vtable, int slot, void (*fn)(CPU *),
          x86_native_callback(fn, owner, name, ctx));
 }
 
+void igvk_vtable_permissive_report(void)
+{
+    int k, ignored = 0;
+    unsigned long total = 0;
+    if (!g_permissive || !g_recs) return;
+    printf("\nigVk: PERMISSIVE MODE ignored these slots -- the frame below was "
+           "produced WITHOUT them:\n");
+    for (k = 0; k < g_nrecs; k++)
+        if (g_recs[k].hits) {
+            printf("        slot %3d  x%lu\n", g_recs[k].slot, g_recs[k].hits);
+            ignored++;
+            total += g_recs[k].hits;
+        }
+    if (!ignored)
+        printf("        (none -- every slot the engine asked for was "
+               "implemented)\n");
+    else
+        printf("      %d distinct slot(s), %lu call(s). Anything drawn is "
+               "missing whatever these do.\n", ignored, total);
+    fflush(stdout);
+}
+
 void igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
-                                    int nslots)
+                                    int nslots, const signed char *slot_args)
 {
     Unimpl *recs = (Unimpl *)calloc((size_t)nslots, sizeof *recs);
     int k, n = 0;
     if (!recs) { fprintf(stderr, "ark: out of memory\n"); abort(); }
+    g_recs = recs;
+    g_nrecs = nslots;
     for (k = 0; k < nslots; k++)
         if (RD32(vtable + (uint32_t)k * 4u) == 0) {
             recs[k].owner = owner;
             recs[k].slot = k;
+            recs[k].nargs = slot_args ? slot_args[k] : -1;
             WR32(vtable + (uint32_t)k * 4u,
                  x86_native_callback(unimplemented, owner,
                                      "<unimplemented slot>", &recs[k]));
