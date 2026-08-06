@@ -5,14 +5,41 @@ status: trusted
 created: 2026-08-06
 ---
 
-## Instrument
+## Correction (2026-08-06, same session)
 
-Ad-hoc vtable-slot occupant scan over libIGCore (inline in a session shell, NOT a committed tool) -- DISTRUSTED
+**The reasoning that condemned this was WRONG, and the note is fixed rather
+than left standing.**
 
-## Validated by
+The scan was distrusted because its output looked impossible:
+`igMetaField::commission` as the majority occupant of slots 1, 3, 4, 7, 11, 17
+and 18, and one destructor across most of the rest. "One function cannot hold
+seven different slots across nearly every class" -- except it can, and here it
+does.
 
-CAUGHT LYING, do not reuse. It collected 'vtable starts' as any code immediate pointing at 21+ consecutive function entries, then reported the most common occupant per slot index. The output is self-evidently impossible: Gap::Core::igMetaField::commission appears as the majority occupant of slots 1, 3, 4, 7, 11, 17 AND 18 in 216-217 of 222 sampled vtables, and igClassNameMemoryTrackingScope::~igClassNameMemoryTrackingScope in most of the rest. One function cannot hold seven different slots across nearly every class. The defect is that a pointer INTO the middle of a function-pointer array passes the same test as its START, so most candidates are arbitrary offsets and the slot index is meaningless. Anything derived from it must be re-established. Note the one conclusion drawn before it was caught -- 'slot 20 is getClassMeta' -- happens to be independently corroborated by igObject::constructDerived, which dispatches [vptr+0x50] and then increments +0x2c and calls [+0x30] on the result, both meta-shaped; and implementing it advanced construction past that slot. That corroboration, not this scan, is why the slot 20 identification stands. A trustworthy replacement needs the same treatment tools/ark_vtables.py got: boundaries bracketed from both sides and disagreements printed.
+The cause is **identical COMDAT folding**. MSVC's linker merges functions with
+identical bodies, so every do-nothing virtual in the engine collapses to a
+single address and Ghidra names that address after one arbitrary contributing
+symbol. Measured on `igErrorHandler`'s 21-slot vtable: only **5 distinct
+addresses** fill it.
 
-## Known failure modes
+    0x10020770   `RET`                    fills 10 slots
+    0x1004f580   `RET 0x4`                fills  7 slots
+    0x100459d0   `MOV AL,0x1 ; RET 0x4`   fills  2 slots
+    0x10046d00   igObject::createCopy
+    0x1000eba0   igErrorHandler::getClassMeta
 
-(none recorded yet)
+So the repeated names were the truth about the binary, not a defect in the
+scan. Anything discarded on the strength of that argument should be revisited.
+
+## Status
+
+The scan's *other* stated weakness is real and unfixed: it accepts a pointer
+INTO a function-pointer array as a vtable START, so slot indices from it are
+only meaningful for candidates that genuinely are starts. Use
+`tools/ark_vtables.py` instead, which takes vtable addresses from each class's
+`retrieveVTablePointer` and brackets the length from both sides.
+
+What this episode actually teaches is narrower and worth keeping: **a repeated
+function address across vtable slots is evidence of ICF, not of a broken
+reader**, and any tool reporting "slot occupants" by NAME will look incoherent
+on an ICF-folded binary while being perfectly correct.

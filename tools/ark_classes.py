@@ -75,6 +75,39 @@ class PE:
                 return ptr + r
         return None
 
+    def export_rva(self, name):
+        """RVA of an exported name, or 0. Needed because the module that
+           DEFINES igArkRegister does not import it."""
+        d, base = self.d, self.base
+        pe = struct.unpack_from("<I", d, 0x3C)[0]
+        magic = struct.unpack_from("<H", d, pe + 24)[0]
+        dd = pe + 24 + (96 if magic == 0x20B else 96)
+        edir = struct.unpack_from("<I", d, dd)[0]
+        if not edir:
+            return 0
+        o = self.off(base + edir)
+        if o is None:
+            return 0
+        nnames = struct.unpack_from("<I", d, o + 24)[0]
+        afn = struct.unpack_from("<I", d, o + 28)[0]
+        anm = struct.unpack_from("<I", d, o + 32)[0]
+        aord = struct.unpack_from("<I", d, o + 36)[0]
+        onm = self.off(base + anm)
+        oord = self.off(base + aord)
+        ofn = self.off(base + afn)
+        if None in (onm, oord, ofn):
+            return 0
+        for i in range(nnames):
+            nrva = struct.unpack_from("<I", d, onm + i * 4)[0]
+            no = self.off(base + nrva)
+            if no is None:
+                continue
+            e = d.find(b"\0", no)
+            if d[no:e].decode("latin1") == name:
+                oi = struct.unpack_from("<H", d, oord + i * 2)[0]
+                return struct.unpack_from("<I", d, ofn + oi * 4)[0]
+        return 0
+
     def cstr(self, va, limit=192):
         o = self.off(va)
         if o is None:
@@ -165,31 +198,45 @@ def main(argv):
     jpath, pepath, iatpath = argv[0], argv[1], argv[2]
     outp = argv[argv.index("--json") + 1] if "--json" in argv else None
 
-    slot = iat_slot(iatpath, ARK11)
-    if slot is None:
-        sys.exit("ark_classes: %s has NO IAT entry for the 11-argument "
-                 "igArkRegister overload\n  searched for: %s\n"
-                 "  This module registers no ARK classes through that call, or "
-                 "the .iat is stale. Refusing rather than reporting an empty "
-                 "class table." % (iatpath, ARK11))
-
     pe = PE(pepath)
     j = json.load(open(jpath))
     fns = j["functions"]
 
-    call_pat = "CALL dword ptr [0x%08x]" % slot
+    # Two ways a module reaches igArkRegister/11, and libIGCore is the second.
+    #
+    # Every other module IMPORTS it, so the call is `CALL dword ptr [iat]`.
+    # libIGCore DEFINES it, so its own registrars call it directly -- and the
+    # first version of this tool simply refused there, which meant the one
+    # module that still carries real symbols was the one module whose class
+    # table could not be read. That is backwards: libIGCore's names are what
+    # make a vtable slot identifiable at all.
+    slot = iat_slot(iatpath, ARK11)
     sites = []
-    for f in fns:
-        for n, i in enumerate(f.get("ins", [])):
-            if i["t"] == call_pat:
-                sites.append((f, n))
-
+    how = None
+    if slot is not None:
+        call_pat = "CALL dword ptr [0x%08x]" % slot
+        for f in fns:
+            for n, i in enumerate(f.get("ins", [])):
+                if i["t"] == call_pat:
+                    sites.append((f, n))
+        how = "imported, IAT slot 0x%08x" % slot
     if not sites:
-        sys.exit("ark_classes: IAT slot 0x%08x (igArkRegister/11) exists but "
-                 "NOTHING in %s calls it across %d decoded function(s). Either "
-                 "the registrars were not decoded or the call is indirect; "
-                 "refusing rather than reporting zero classes."
-                 % (slot, jpath, len(fns)))
+        rva = pe.export_rva(ARK11)
+        if rva:
+            ep = pe.base + rva
+            for f in fns:
+                for n, i in enumerate(f.get("ins", [])):
+                    if i["m"] == "CALL" and i.get("flow") == ep \
+                            and not i.get("ind"):
+                        sites.append((f, n))
+            if sites:
+                how = "defined here, direct calls to 0x%08x" % ep
+    if not sites:
+        sys.exit("ark_classes: %s neither imports nor defines a reachable "
+                 "11-argument igArkRegister\n  searched for: %s\n"
+                 "  Refusing rather than reporting an empty class table."
+                 % (jpath, ARK11))
+    print("  igArkRegister/11: %s" % how)
 
     classes, broken = {}, []
     for f, n in sites:
@@ -262,8 +309,7 @@ def main(argv):
     nunk = sum(1 for c in classes.values()
                if not isinstance(c["isAbstract"], int))
     print("ark_classes: %s" % j.get("program", jpath))
-    print("  igArkRegister/11 IAT slot 0x%08x, %d call site(s) in %d function(s)"
-          % (slot, len(sites), len(fns)))
+    print("  %d call site(s) in %d function(s)" % (len(sites), len(fns)))
     print("  classes recovered: %d  (%d abstract, %d concrete, %d whose "
           "isAbstract stayed a register)"
           % (len(classes), nabs, len(classes) - nabs - nunk, nunk))

@@ -52,6 +52,29 @@ static void probe_slot0(CPU *C)
 }
 
 /*
+ * igObject's 21-slot interface, implemented from what the binary actually does
+ * (C116). libIGCore still carries symbols, and igErrorHandler -- instance size
+ * 0x8, i.e. igObject plus no fields -- has its whole vtable filled by five
+ * distinct addresses, because MSVC folded every identical trivial body:
+ *
+ *     RET                       10 slots   do nothing, no stack argument
+ *     RET 0x4                    7 slots   do nothing, one stack argument
+ *     MOV AL,1 ; RET 0x4         2 slots   return true, one stack argument
+ *     igObject::createCopy       slot 19
+ *     getClassMeta               slot 20
+ *
+ * So the inherited behaviour is genuinely nothing for 17 of 21, and copying it
+ * is not stubbing: it is what igObject itself does.
+ */
+static const unsigned char IGOBJ_RET0[]  = {0,2,8,9,10,12,13,14,15,16};
+static const unsigned char IGOBJ_RET1[]  = {1,3,4,7,11,17,18};
+static const unsigned char IGOBJ_TRUE1[] = {5,6};
+
+static void ig_ret0(CPU *C)  { ark_ret(C, 0, 0); }
+static void ig_ret1(CPU *C)  { ark_ret(C, 0, 1); }
+static void ig_true1(CPU *C) { ark_ret(C, 1, 1); }
+
+/*
  * Slot 20 is getClassMeta -- the object's own igMetaObject*.
  *
  * Identified, not guessed: 55 of libIGCore's own vtables carry a
@@ -129,6 +152,18 @@ int igvk_ark_probe(void)
                     "slot0", &g_probe);
     igvk_vtable_set(g_probe.vtable, 20, probe_get_class_meta, g_probe.name,
                     "getClassMeta", &g_probe);
+    {
+        size_t k;
+        for (k = 0; k < sizeof IGOBJ_RET0; k++)
+            igvk_vtable_set(g_probe.vtable, IGOBJ_RET0[k], ig_ret0,
+                            g_probe.name, "igObject:<ret>", &g_probe);
+        for (k = 0; k < sizeof IGOBJ_RET1; k++)
+            igvk_vtable_set(g_probe.vtable, IGOBJ_RET1[k], ig_ret1,
+                            g_probe.name, "igObject:<ret 4>", &g_probe);
+        for (k = 0; k < sizeof IGOBJ_TRUE1; k++)
+            igvk_vtable_set(g_probe.vtable, IGOBJ_TRUE1[k], ig_true1,
+                            g_probe.name, "igObject:<return true>", &g_probe);
+    }
     igvk_vtable_fill_unimplemented(g_probe.vtable, g_probe.name, PROBE_SLOTS);
 
     if (!ark_register_class(&g_probe)) {
