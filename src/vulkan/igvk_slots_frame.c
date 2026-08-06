@@ -39,6 +39,28 @@
 #define F_VIEW_MINZ    0x1b8u        /* float */
 #define F_VIEW_MAXZ    0x1bcu        /* float */
 
+/*
+ * Program the GPU viewport from the fields the engine's setViewport stored.
+ *
+ * Shared by slot 186 and by slot 47's trailing call, because both have to do
+ * the same thing after the engine's body has run: the fields hold the
+ * REQUEST, the clamped rectangle only ever existed in the engine's stack
+ * frame, and the depth range is clamped to [0,1] exactly as the body does.
+ */
+static void apply_viewport_from_fields(uint32_t self)
+{
+    float minz = igvk_fieldf(self, F_VIEW_MINZ);
+    float maxz = igvk_fieldf(self, F_VIEW_MAXZ);
+
+    if (minz < 0.0f) minz = 0.0f; else if (minz > 1.0f) minz = 1.0f;
+    if (maxz < 0.0f) maxz = 0.0f; else if (maxz > 1.0f) maxz = 1.0f;
+
+    igvk_frame_viewport((int32_t)RD32(self + F_VIEW_X),
+                        (int32_t)RD32(self + F_VIEW_Y),
+                        (int32_t)RD32(self + F_VIEW_W),
+                        (int32_t)RD32(self + F_VIEW_H), minz, maxz);
+}
+
 /* ---- slot 174: beginDraw ---------------------------------------------- */
 
 /*
@@ -174,16 +196,7 @@ static void vk_set_viewport(CPU *C)
 {
     uint32_t self = IGVK_SELF(C);
     uint32_t r = igvk_super(C, DX_SET_VIEWPORT, 6);
-    float minz = igvk_fieldf(self, F_VIEW_MINZ);
-    float maxz = igvk_fieldf(self, F_VIEW_MAXZ);
-
-    if (minz < 0.0f) minz = 0.0f; else if (minz > 1.0f) minz = 1.0f;
-    if (maxz < 0.0f) maxz = 0.0f; else if (maxz > 1.0f) maxz = 1.0f;
-
-    igvk_frame_viewport((int32_t)RD32(self + F_VIEW_X),
-                        (int32_t)RD32(self + F_VIEW_Y),
-                        (int32_t)RD32(self + F_VIEW_W),
-                        (int32_t)RD32(self + F_VIEW_H), minz, maxz);
+    apply_viewport_from_fields(self);
     ark_ret(C, r, 6);
 }
 
@@ -251,18 +264,35 @@ static void vk_set_render_destination(CPU *C)
     igvk_frame_bind_target(idx);
     WR32(self + F_RD_CURRENT, idx);
 
-    /* The engine's own trailing setViewport, through our vtable. */
-    vt = RD32(self);
+    /*
+     * The engine's own trailing setViewport.
+     *
+     * This used to re-enter the object's OWN vtable -- ark_call_this on
+     * RD32(vt + 186*4) -- so that an override of slot 186 would be honoured.
+     * That was the wrong call, and it is what shifted the guest stack: slot
+     * 186's entry is this backend's SYNTHETIC stub address, and dispatching
+     * one of those through the guest-call path re-enters a native stub which
+     * then pops its own arguments a second time. igDxVisualContext::setupDrawing
+     * (0x1002ead0), whose whole body is a call to slot 47 followed by a call to
+     * slot 186, then RETed on a stack four words out (issue #23).
+     *
+     * So it calls the ENGINE's body directly and applies the viewport itself --
+     * which is exactly what slot 186 does, minus the round trip. The cost is
+     * that a future override of slot 186 is bypassed from here; that is a real
+     * limitation and it is written down rather than left to be discovered.
+     */
     {
-        uint32_t vp[6];
-        vp[0] = RD32(self + 0x1a8u);
-        vp[1] = RD32(self + 0x1acu);
-        vp[2] = RD32(self + 0x1b0u);
-        vp[3] = RD32(self + 0x1b4u);
+        uint32_t vp[6], fn = ark_lifted(IGVK_GFX, DX_SET_VIEWPORT);
+        vp[0] = RD32(self + F_VIEW_X);
+        vp[1] = RD32(self + F_VIEW_Y);
+        vp[2] = RD32(self + F_VIEW_W);
+        vp[3] = RD32(self + F_VIEW_H);
         vp[4] = 0u;
         vp[5] = 0x3f800000u;                 /* 1.0f */
-        ark_call_this(RD32(vt + 186u * 4u), self, vp, 6);
+        if (fn) ark_call_this(fn, self, vp, 6);
+        apply_viewport_from_fields(self);
     }
+    (void)vt;
     ark_ret(C, 0, 2);
 }
 

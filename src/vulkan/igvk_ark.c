@@ -83,15 +83,48 @@ static void ensure_stack(void)
     }
 }
 
+/*
+ * NESTING. g_call_sp is one pointer, and every host-to-guest call used to
+ * start its frame at the same address -- so a guest function called from here
+ * that calls BACK into a native slot, which calls out again, laid its
+ * arguments on top of the outer call's frame.
+ *
+ * That is not hypothetical: vk_open calls one of the engine's open helpers,
+ * which calls igDxVisualContext::setupDrawing, whose entire body is a call to
+ * slot 47 and a call to slot 186 -- both ours -- and slot 47 calls out again.
+ * setupDrawing then RETed on a stack four words out of place (issue #23). The
+ * first suspect was the synthetic-vtable dispatch in slot 47; replacing it
+ * changed nothing, which is what pointed here.
+ *
+ * So each call reserves a frame below the current top and restores the top
+ * afterwards. The reservation is a FIXED window rather than the callee's real
+ * frame size, which nothing here can know -- 8 KiB, giving 32 levels of
+ * nesting in the 256 KiB arena. Overflow is not silent: it would walk off the
+ * bottom of the arena, which is unmapped, and fault at an address the arena
+ * owns rather than corrupting the engine's stack.
+ */
+#define ARK_FRAME_WINDOW  (8u * 1024u)
+
+static uint32_t ark_enter(uint32_t *saved, int n)
+{
+    uint32_t base;
+    ensure_stack();
+    *saved = g_call_sp;
+    base = g_call_sp - (uint32_t)n * 4u;
+    g_call_sp = base - ARK_FRAME_WINDOW;
+    return base;
+}
+
 uint32_t ark_call_cdecl(uint32_t target, const uint32_t *args, int n)
 {
     CPU C;
+    uint32_t saved;
     int i;
-    ensure_stack();
     memset(&C, 0, sizeof C);
-    C.esp = g_call_sp - (uint32_t)n * 4u;
+    C.esp = ark_enter(&saved, n);
     for (i = 0; i < n; i++) WR32(C.esp + (uint32_t)i * 4u, args[i]);
     x86_guest_call(&C, target);
+    g_call_sp = saved;
     return C.eax;
 }
 
@@ -99,13 +132,14 @@ uint32_t ark_call_this(uint32_t target, uint32_t self,
                        const uint32_t *args, int n)
 {
     CPU C;
+    uint32_t saved;
     int i;
-    ensure_stack();
     memset(&C, 0, sizeof C);
     C.ecx = self;
-    C.esp = g_call_sp - (uint32_t)n * 4u;
+    C.esp = ark_enter(&saved, n);
     for (i = 0; i < n; i++) WR32(C.esp + (uint32_t)i * 4u, args[i]);
     x86_guest_call(&C, target);
+    g_call_sp = saved;
     return C.eax;
 }
 
