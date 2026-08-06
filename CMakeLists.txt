@@ -154,6 +154,7 @@ if(X2_MODULE_HAVE)
         src/native/guest_heap.c
         src/native/crt.c
         src/native/kernel32.c
+        src/native/advapi32.c
         src/native/x86rt_native.c
         ${X2_MODULE_SRCS}
     )
