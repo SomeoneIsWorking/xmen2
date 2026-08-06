@@ -1,4 +1,5 @@
 #@runtime Jython
+from x2out import outpath
 from ghidra.program.model.listing import Function
 from ghidra.program.model.address import AddressSet
 
@@ -27,7 +28,7 @@ for fn in found:
     body = fn.getBody()
     out.append("### %s @ %s (%d bytes)" % (fn.getName(), fn.getEntryPoint(), body.getNumAddresses()))
 
-with open("/path/to/X-Men Legends II/scratch/logs/controllers_funcs.txt", "w") as f:
+with open(outpath("controllers_funcs.txt"), "w") as f:
     f.write("\n".join(out))
 print("found %d functions" % len(found))
 for fn in found:

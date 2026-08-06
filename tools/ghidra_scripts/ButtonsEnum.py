@@ -1,4 +1,5 @@
 #@runtime Jython
+from x2out import outpath
 from ghidra.program.model.listing import Function
 from ghidra.program.model.symbol import SourceType
 
@@ -31,6 +32,6 @@ for fn in fm.getFunctions(True):
     if "igController" in n or "Controller" in n:
         out.append("%s @ %s (%d)" % (n, fn.getEntryPoint(), fn.getBody().getNumAddresses()))
 
-with open("/path/to/X-Men Legends II/scratch/logs/buttons_enum.txt", "w") as f:
+with open(outpath("buttons_enum.txt"), "w") as f:
     f.write("\n".join(out))
 print("\n".join(out))

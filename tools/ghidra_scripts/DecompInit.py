@@ -1,4 +1,5 @@
 #@runtime Jython
+from x2out import outpath
 from ghidra.app.decompiler import DecompInterface, DecompileOptions
 from ghidra.util.task import ConsoleTaskMonitor
 
@@ -20,6 +21,6 @@ for fn in currentProgram.getFunctionManager().getFunctions(True):
         else:
             out.append("DECOMP FAILED: " + str(res.getErrorMessage()))
 
-with open("/path/to/X-Men Legends II/scratch/logs/init_decomp.txt", "w") as f:
+with open(outpath("init_decomp.txt"), "w") as f:
     f.write("\n".join(out))
 print("wrote %d chars" % sum(len(x) for x in out))

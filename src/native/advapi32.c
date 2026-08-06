@@ -12,10 +12,12 @@
  * would start, take its defaults, and appear to work, while every setting it
  * saved vanished. That is a bug the player finds, not the developer.
  *
- * WHERE IT LIVES: $X2_REGISTRY if set, else ./x2registry.txt in the working
- * directory. Deliberately NOT inside the game install -- the install is never
- * written to, and a port keeping its state there is how a "read-only game
- * directory" assumption breaks silently.
+ * WHERE IT LIVES: $X2_REGISTRY if set, else scratch/x2registry.txt. Deliberately
+ * NOT inside the game install -- the install is never written to, and a port
+ * keeping its state there is how a "read-only game directory" assumption breaks
+ * silently. It also does not default to the repository ROOT, which is how the
+ * first version of this file got its store committed as a tracked artifact:
+ * scratch/ is gitignored, so run state cannot reach a commit by accident.
  *
  * A key that does not exist reads back as ERROR_FILE_NOT_FOUND, which is what
  * Windows does and what the engine already handles as "not configured yet".
@@ -28,6 +30,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #define A(i)  RD32(C->esp + 4u + (uint32_t)(i) * 4u)
 #define ACS(i) ((const char *)(uintptr_t)A(i))
@@ -66,7 +70,11 @@ static int g_loaded, g_dirty;
 static const char *reg_path(void)
 {
     const char *p = getenv("X2_REGISTRY");
-    return (p && *p) ? p : "x2registry.txt";
+    if (p && *p) return p;
+    /* scratch/ is gitignored; the repository root is not. Create it rather
+       than failing the first write, since the caller has nowhere else to go. */
+    (void)mkdir("scratch", 0777);
+    return "scratch/x2registry.txt";
 }
 
 /* One line per value: key<TAB>name<TAB>type<TAB>hex. Text on purpose -- this

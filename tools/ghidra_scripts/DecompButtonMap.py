@@ -1,4 +1,5 @@
 #@runtime Jython
+from x2out import outpath
 from ghidra.app.decompiler import DecompInterface, DecompileOptions
 from ghidra.util.task import ConsoleTaskMonitor
 
@@ -27,6 +28,6 @@ for s in sym.getAllSymbols(True):
             else:
                 out.append("  NONE @ %s refs _buttonMap" % ref.getFromAddress())
 
-with open("/path/to/X-Men Legends II/scratch/logs/buttonmap.txt", "w") as f:
+with open(outpath("buttonmap.txt"), "w") as f:
     f.write("\n".join(out))
 print("done")

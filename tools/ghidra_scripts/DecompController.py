@@ -1,4 +1,5 @@
 #@runtime Jython
+from x2out import outpath
 from ghidra.app.decompiler import DecompInterface, DecompileOptions
 from ghidra.util.task import ConsoleTaskMonitor
 
@@ -20,6 +21,6 @@ for addr in targets:
     out.append("===== %s @ %s =====" % (fn.getName(), fn.getEntryPoint()))
     out.append(res.getDecompiledFunction().getC() if res.decompileCompleted() else "FAILED: "+str(res.getErrorMessage()))
 
-with open("/path/to/X-Men Legends II/scratch/logs/controller_decomp.txt", "w") as f:
+with open(outpath("controller_decomp.txt"), "w") as f:
     f.write("\n".join(out))
 print("done")

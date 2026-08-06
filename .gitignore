@@ -15,3 +15,8 @@ src/recomp/difftest_cases.h
 
 # vendored upstream; clone with tools/get_xboxrecomp.sh (fork before modifying)
 vendor/
+
+# host run state -- the emulated Windows registry (see src/native/advapi32.c).
+# It now defaults into scratch/, but keep the old root-level name ignored so a
+# stale binary cannot re-commit it.
+x2registry.txt

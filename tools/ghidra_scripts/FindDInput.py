@@ -1,4 +1,5 @@
 #@runtime Jython
+from x2out import outpath
 from ghidra.program.model.listing import Function
 from ghidra.program.model.symbol import RefType
 
@@ -32,6 +33,6 @@ for it in ["CreateDeviceA", "CreateDeviceW", "EnumDevicesA", "EnumDevicesW",
                 fn = fm.getFunctionContaining(addr)
                 out.append("%s: ref from %s in fn %s" % (it, addr, fn.getName() if fn else "NONE"))
 
-with open("/path/to/X-Men Legends II/scratch/logs/dinput_xrefs.txt", "w") as f:
+with open(outpath("dinput_xrefs.txt"), "w") as f:
     f.write("\n".join(out))
 print("\n".join(out[:60]))
