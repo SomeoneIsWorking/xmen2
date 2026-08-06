@@ -13,6 +13,7 @@
 #ifndef X86RT_H
 #define X86RT_H
 
+#include <setjmp.h>
 #include <stdint.h>
 #ifdef _WIN32
 #include <intrin.h>
@@ -143,6 +144,28 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
 /* Call a guest function from HOST code: pushes the return address the body's
    RET will pop. Dispatching without it leaks guest stack, upward, silently. */
 void x86_guest_call(CPU *C, uint32_t target);
+
+/* ---- setjmp / longjmp --------------------------------------------------
+ *
+ * These are NOT an import stub, and cannot be: a host longjmp resumes into a
+ * frame that must still be alive, and an import stub's frame is dead the
+ * moment it returns. The guest's setjmp call site is in the middle of a
+ * generated body, so the host setjmp has to be emitted THERE -- which is what
+ * recomp.py does when it sees a call to _setjmp3:
+ *
+ *     ret_push(<return address>);
+ *     { int _sj = setjmp(*x86_setjmp_buf(C)); x86_setjmp_done(C, _sj); }
+ *
+ * x86_setjmp_buf snapshots the guest register file against the guest's own
+ * jmp_buf pointer (read from the stack, where _setjmp3's first argument sits)
+ * and hands back the host buffer to jump into. x86_setjmp_done finishes the
+ * call either way: rc == 0 is the direct return, anything else means a longjmp
+ * arrived, so the snapshot is restored and rc becomes the return value.
+ *
+ * Both are __cdecl, so only the return address is popped.
+ */
+jmp_buf *x86_setjmp_buf(CPU *C);
+void x86_setjmp_done(CPU *C, int rc);
 /* Dump the last crossings between guest and host, with ESP on both sides. */
 void x86_ring_dump(void);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);

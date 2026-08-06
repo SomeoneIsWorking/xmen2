@@ -794,6 +794,13 @@ int main(int argc, char **argv)
        calls it directly. */
     atexit(x86_reached_report);
 #endif
+    /* setjmp/longjmp crosses generated frames now (see crt.c). How many times
+       it actually resumed is the difference between the mechanism working and
+       the run merely getting further. */
+    {
+        extern void x86_setjmp_report(void);
+        atexit(x86_setjmp_report);
+    }
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-window") == 0) window = 0;
         else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;

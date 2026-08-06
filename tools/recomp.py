@@ -370,6 +370,36 @@ def c_ident(mod, sym):
                           re.sub(r"\W", "_", sym))
 
 
+# Import thunks, by entry point.
+#
+# MSVC routes a call to an import through a one-instruction thunk -- `JMP
+# dword ptr [IAT]` -- so the call site reads `CALL 0x0067281a`, not `CALL
+# [IAT]`. That matters for exactly one import: _setjmp3 has to be emitted
+# INLINE in the body that calls it (see x86rt.h), and the body calls the
+# thunk. Without this map the special case never fired, and the emitted code
+# called a stub whose frame cannot be jumped back into.
+SETJMP_THUNKS = set()
+
+
+def find_setjmp_thunks(functions):
+    """Entry points of thunks that forward to _setjmp3."""
+    SETJMP_THUNKS.clear()
+    for f in functions:
+        ins = f.get("ins") or []
+        if len(ins) != 1:
+            continue
+        i = ins[0]
+        if i["m"].upper() != "JMP" or not i.get("ind"):
+            continue
+        m = re.search(r"\[(0x[0-9a-f]+)\]", i["t"])
+        if not m:
+            continue
+        sym = IAT.get(int(m.group(1), 16))
+        if sym and sym[1] == "_setjmp3":
+            SETJMP_THUNKS.add(f["ep"])
+    return SETJMP_THUNKS
+
+
 def emit_instruction(ins, ctx):
     """Return a list of C lines, or raise Unsupported."""
     m = ins["m"].upper()
@@ -914,6 +944,26 @@ def emit_instruction(ins, ctx):
             if sym:
                 ret = ins["a"] + ins["n"]
                 call = "%s(C);" % c_ident(*sym)
+                if sym[1] == "_setjmp3":
+                    # NOT a call to a stub, and it cannot be one.
+                    #
+                    # A host longjmp resumes into a frame that must still be
+                    # alive. An import stub's frame is dead the moment it
+                    # returns, so a setjmp taken inside one could never be
+                    # jumped back to -- which is why this is emitted HERE, in
+                    # the body that contains the guest's own setjmp call site.
+                    # x86rt.h documents the pair; crt.c implements it.
+                    body = ["{ int _sj = setjmp(*x86_setjmp_buf(C));",
+                            "  x86_setjmp_done(C, _sj); }"]
+                    if m == "CALL":
+                        return [A, ret_push(ret)] + body
+                    # The IMPORT THUNK itself -- one instruction, JMP [IAT].
+                    # Its frame is as dead as the stub's, so a setjmp taken
+                    # here could not be resumed either; it falls through to the
+                    # stub, which records the buffer as unresumable and says so
+                    # by name if a longjmp ever arrives at it. Real call sites
+                    # do not come through here: setjmp_thunks() below routes
+                    # them to the inline form in their own body.
                 if m == "CALL":
                     return [A, ret_push(ret), call]
                 return [A, call, "return;"]     # tail-jump thunk
@@ -966,6 +1016,14 @@ def emit_instruction(ins, ctx):
         if ins.get("ind") or "flow" not in ins:
             raise Unsupported("indirect CALL")
         ret = ins["a"] + ins["n"]
+        if ins["flow"] in SETJMP_THUNKS:
+            # Before the known-entry-point test, not after: this is decided by
+            # what the target IS, and routing it through x86_call_unknown first
+            # would emit a call to a stub whose frame cannot be resumed into.
+            # See the _setjmp3 case in the indirect branch above.
+            return [A, ret_push(ret),
+                    "{ int _sj = setjmp(*x86_setjmp_buf(C));",
+                    "  x86_setjmp_done(C, _sj); }"]
         if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
             # Ghidra did not identify a function at this target. Emitting
             # fn_<addr> would simply fail to link; routing it through the
@@ -1144,6 +1202,12 @@ def load(path):
         sys.exit("recomp: %s missing -- generate it with `pe.py iat <dll>`; "
                  "without it import calls cannot be resolved and the coverage "
                  "number would be meaningless" % iat_path)
+    # Import thunks have to be known before any body is emitted: a call to the
+    # _setjmp3 thunk is emitted differently from every other call.
+    n = len(find_setjmp_thunks(d["functions"]))
+    if n:
+        sys.stderr.write("%d _setjmp3 import thunk(s) found; calls to them are "
+                         "emitted as an inline host setjmp\n" % n)
     return d
 
 

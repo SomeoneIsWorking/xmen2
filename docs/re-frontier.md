@@ -315,10 +315,10 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ## rc-native
 
 ### crt-setjmp — setjmp/longjmp across recompiled frames
-- status: hack
+- status: re-verified
 - deps: rc-native
-- evidence: STOPGAP, and it is marked one in the code. _setjmp3 records the guest register file against the guest's jmp_buf and returns 0, so a protected call runs; longjmp REFUSES by name, naming both call sites, because resuming cannot be faked.
+- evidence: REAL MECHANISM, not a stopgap. tools/recomp.py detects the one-instruction JMP-through-IAT thunk that forwards to _setjmp3 and emits, at every DIRECT CALL to it, an inline host setjmp in the CALLING body -- which is the only frame a host longjmp may resume into. x86_setjmp_buf snapshots the guest register file against the guest's own jmp_buf pointer; x86_setjmp_done finishes the call either way, restoring the snapshot (ESP included) when a longjmp arrives. 31 inline setjmps emitted across XMen2, libIGGfx and libIGLua. VERIFIED ON A REAL RUN, not by inspection: 'crt: longjmp RESUMED into a generated body (rc=1, guest esp restored to 0x700ff598)' -- and the run continues past it, where before it stopped there. The thunk-detection step was the part that was initially missing and it failed SILENTLY: MSVC routes the call through a thunk, so the emitter never saw a call to the import and emitted 0 inline setjmps while reporting success.
 - where: src/native/crt.c
-- gap: The real mechanism: tools/recomp.py must special-case a call to _setjmp3 and emit an INLINE HOST setjmp in the generated body. A host longjmp needs the frame it resumes into to still be alive, and the guest's setjmp call site is in the middle of a generated C function -- an import stub's frame is dead the moment it returns, so the generated function is the only legal home for it. Translator work plus a regeneration. Issue #24 records what running the stopgap taught: the longjmp is on the NORMAL startup path, not an error path, and its call site is in a function Ghidra never detected.
+- gap: The import stub form remains for a call that reaches _setjmp3 indirectly rather than through generated code. It records the buffer as UNRESUMABLE and longjmp refuses by name if one ever arrives there, so the case cannot pass silently -- but it is not implemented. Also unhandled: host-side state owned by frames the longjmp destroys (the ark scratch-stack pointer, for one) is not unwound.
 - notes: 
 

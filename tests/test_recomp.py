@@ -136,6 +136,63 @@ class OrdinaryJumps(unittest.TestCase):
                       "an out-of-function target must still dispatch")
 
 
+class SetjmpIsEmittedInline(unittest.TestCase):
+    """setjmp cannot be an import stub.
+
+    A host longjmp resumes into a frame that must still be alive, and an
+    import stub's frame is dead the moment it returns -- so the host setjmp
+    has to be emitted in the body that contains the guest's call site. These
+    check both halves of that, and the SECOND is the one that matters: the
+    first version of this feature hooked the import call site, MSVC routes
+    the call through a thunk instead, and it emitted nothing at all while
+    reporting success."""
+
+    def setUp(self):
+        recomp.IAT.clear()
+        recomp.SETJMP_THUNKS.clear()
+
+    def tearDown(self):
+        recomp.IAT.clear()
+        recomp.SETJMP_THUNKS.clear()
+
+    def test_a_call_through_the_iat_becomes_an_inline_setjmp(self):
+        recomp.IAT[0x0067F000] = ("MSVCR71.dll", "_setjmp3")
+        c = translate([
+            ins(0x00401000, "CALL", "CALL dword ptr [0x0067f000]", n=6),
+            ins(0x00401006, "RET", "RET", n=1),
+        ])
+        self.assertIn("x86_setjmp_buf(C)", c)
+        self.assertIn("x86_setjmp_done(C, _sj)", c)
+        self.assertNotIn("imp_MSVCR71__setjmp3(C);", c,
+                         "the stub must NOT be called: its frame cannot be "
+                         "resumed into")
+
+    def test_a_call_to_the_jmp_thunk_becomes_an_inline_setjmp(self):
+        """MSVC calls the import through a one-instruction thunk, so the call
+        site reads `CALL 0x0067281a` and nothing in the body mentions the
+        import at all. Missing this made the whole feature a silent no-op."""
+        recomp.IAT[0x0067F000] = ("MSVCR71.dll", "_setjmp3")
+        thunk = {"ep": 0x0067281A, "thunk": True, "ins": [
+            ins(0x0067281A, "JMP", "JMP dword ptr [0x0067f000]", n=6, ind=1)]}
+        found = recomp.find_setjmp_thunks([thunk])
+        self.assertEqual(found, {0x0067281A},
+                         "the thunk that forwards to _setjmp3 must be found")
+        c = translate([
+            ins(0x00401000, "CALL", "CALL 0x0067281a", n=5, flow=0x0067281A),
+            ins(0x00401005, "RET", "RET", n=1),
+        ])
+        self.assertIn("x86_setjmp_buf(C)", c)
+
+    def test_a_thunk_to_anything_else_is_not_mistaken_for_setjmp(self):
+        """The negative case. Run against a thunk forwarding to a DIFFERENT
+        import, the detector must find nothing -- a detector only ever run on
+        its positive case has not been shown to discriminate."""
+        recomp.IAT[0x0067F004] = ("MSVCR71.dll", "malloc")
+        thunk = {"ep": 0x00672900, "thunk": True, "ins": [
+            ins(0x00672900, "JMP", "JMP dword ptr [0x0067f004]", n=6, ind=1)]}
+        self.assertEqual(recomp.find_setjmp_thunks([thunk]), set())
+
+
 class Refusals(unittest.TestCase):
     """The translator's central rule: what it does not understand must fail
     loudly by name, never become a no-op."""
