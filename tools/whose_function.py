@@ -49,6 +49,31 @@ def looks_seh(fn):
     return False
 
 
+# Instruction forms a real function ENTRY starts with. Not exhaustive, and it
+# does not need to be: it is used to REFUSE a split, so a false "looks like an
+# entry" costs nothing and a false "does not" costs a refusal that a human
+# reads.
+ENTRY_FORMS = (
+    "PUSH EBP", "MOV EBP,ESP", "SUB ESP", "PUSH EBX", "PUSH ESI", "PUSH EDI",
+    "MOV EAX,dword ptr [ESP", "MOV ECX,dword ptr [ESP", "MOV EDX,dword ptr [ESP",
+    "PUSH 0x", "PUSH dword ptr [ESP", "LEA EAX,[ESP", "XOR EAX,EAX",
+    "MOV EAX,", "JMP ", "RET", "TEST ", "CMP ",
+)
+
+
+def looks_like_entry(text):
+    """Would a compiler have started a function with this instruction?
+
+    A split at an address that fails this carves a real function in half. That
+    is the issue #21 dead end, and the SEH check alone does not catch it:
+    XMen2.exe 0x005fafc1 begins `LEA EDI,[ESI + 0x28]` -- ESI holding a live
+    object from the CALLER -- which no function entry does, and splitting there
+    produced a body whose RET popped something that was not a return address.
+    """
+    t = text.strip()
+    return any(t.startswith(f) for f in ENTRY_FORMS)
+
+
 def main(argv):
     if len(argv) < 2:
         sys.exit(__doc__)
@@ -91,17 +116,23 @@ def main(argv):
         ins = fn.get("ins", ())
         at = [i["t"] for i in ins if i["a"] >= a][:3]
         seh = looks_seh(fn)
-        if seh:
+        # The candidate's own first instruction decides whether a split makes a
+        # FUNCTION or carves one. See looks_like_entry.
+        entryish = looks_like_entry(at[0]) if at else False
+        if seh or not entryish:
             flagged += 1
+        why = ("   <<< container has an SEH prologue" if seh else
+               "   <<< does NOT look like a function entry" if not entryish
+               else "")
         print("      0x%08x  inside %s (entry 0x%08x, %d ins)%s\n"
               "                  container starts: %s\n"
               "                  candidate starts: %s"
-              % (a, fn["qname"], fn["ep"], len(ins),
-                 "   <<< container has an SEH prologue" if seh else "",
+              % (a, fn["qname"], fn["ep"], len(ins), why,
                  first, " | ".join(at) or "(no instructions at or after it)"))
 
-    print("      %d of %d address(es) fall inside a function with an SEH "
-          "prologue." % (flagged, len(set(addrs))))
+    print("      %d of %d address(es) must NOT be split -- an SEH prologue in "
+          "the container, or a candidate\n      whose first instruction is "
+          "not one a function begins with." % (flagged, len(set(addrs))))
     if flagged:
         print("      That is a REASON TO LOOK, not a verdict. Carving such a "
               "function is how issue #21\n"
