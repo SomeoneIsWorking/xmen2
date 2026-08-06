@@ -94,6 +94,23 @@ void imp_MSVCR71_malloc(CPU *C)  { ret_c(C, guest_malloc(A(0))); }
 void imp_MSVCR71_free(CPU *C)    { guest_free(A(0)); ret_c(C, 0); }
 void imp_MSVCR71_realloc(CPU *C) { ret_c(C, guest_realloc(A(0), A(1))); }
 
+/*
+ * C++ operator new / delete / delete[].
+ *
+ * The mangled names become C identifiers by replacing every non-word character
+ * with '_', which is why these read as they do:
+ *     ??2@YAPAXI@Z   operator new(unsigned int)     -> __2_YAPAXI_Z
+ * (delete and delete[] were already here; only new was missing.)
+ *
+ * They are malloc and free on the guest heap, which is the whole of it: the
+ * engine overrides operator new for its own pools where it wants to (igMemory
+ * has its own), and the global one is the plain allocator underneath. A NULL
+ * return is honest here -- the C++ standard would throw std::bad_alloc, and
+ * this build has no working throw, so a caller that does not check gets a NULL
+ * dereference at the point of use rather than silent corruption.
+ */
+void imp_MSVCR71___2_YAPAXI_Z(CPU *C) { ret_c(C, guest_malloc(A(0))); }
+
 void imp_MSVCR71_calloc(CPU *C)
 {
     uint32_t n = A(0) * A(1), p = guest_malloc(n);
@@ -928,6 +945,8 @@ CRT_ALIAS(vsprintf) CRT_ALIAS(_snprintf) CRT_ALIAS(_vsnprintf)
 CRT_ALIAS(fflush)   CRT_ALIAS(fputc)    CRT_ALIAS(fputs)
 CRT_ALIAS(fgetc)    CRT_ALIAS(fgets)    CRT_ALIAS(ungetc)
 CRT_ALIAS(fwrite)   CRT_ALIAS(fprintf)  CRT_ALIAS(vfprintf)
+/* C++ operator new / delete / delete[] */
+CRT_ALIAS(__2_YAPAXI_Z)
 CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
 CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)
 CRT_ALIAS(__dllonexit)

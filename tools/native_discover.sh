@@ -35,6 +35,41 @@ python3 tools/verify_export.py >/dev/null 2>&1 || {
     exit 2
 }
 
+# Before the per-round loop: seed every function whose address appears as a CODE
+# IMMEDIATE (`push <addr>; call [registrar]`), in bulk.
+#
+# The loop below learns ONE function per round, because the runtime stops at the
+# first dispatch target it cannot resolve and each round costs a Ghidra
+# re-analysis, a re-emit and a relink. On libIGGfx that found exactly one per
+# round for eight rounds and was still going. Those addresses are callbacks
+# handed to a registrar, and nothing branches to them, so no reference-driven
+# pass can see them -- but they are trivially findable in the instruction
+# stream. One pass found 138 in libIGGfx and 988 in XMen2.exe.
+#
+# Set SKIP_BULK=1 to go straight to the loop.
+if [ "${SKIP_BULK:-0}" != "1" ]; then
+    for m in libIGDisplay libIGCore libIGSg libIGMath libIGAttrs \
+             libIGGfx libIGUtils XMen2; do
+        J=$ROOT/scratch/recomp/$m.json
+        [ -f "$J" ] || continue
+        S=$ROOT/scratch/recomp/$m.codeimm
+        n=$(python3 tools/seed_code_imms.py "$J" -o "$S" \
+            | sed -n 's/.*NEW function starts to seed: //p')
+        if [ "${n:-0}" -gt 0 ]; then
+            echo "== bulk: $m has $n code-immediate function start(s) to seed"
+            tools/ghidra_export.sh "$m" --seed "$S" 2>&1 | tail -1
+            rm -f "$ROOT/src/recomp/${m}_"[0-9][0-9][0-9].c "$ROOT/src/recomp/$m.c"
+            python3 tools/recomp.py emit "$J" "$ROOT/src/recomp/$m.c" \
+                    --split "$SPLIT" | tail -1
+            python3 tools/recomp.py native "$J" \
+                    "$ROOT/src/recomp/${m}_native.c" >/dev/null
+        fi
+    done
+    cmake --build "$ROOT/scratch/build-native" --target x2native -j"$(nproc)" \
+        >"$ROOT/scratch/logs/discover-build.log" 2>&1 \
+        || { echo "native_discover: bulk-seed rebuild failed, see scratch/logs/discover-build.log" >&2; exit 1; }
+fi
+
 # Remembering the previous round's seed set, because a loop that keeps
 # requesting the same address is not converging -- it is stuck, and saying
 # "stopped after N rounds" would report that as a budget problem when it is a
