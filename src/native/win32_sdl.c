@@ -186,6 +186,213 @@ void imp_USER32_GetDesktopWindow(CPU *C) { ret_std(C, HWND_DESKTOP_TOK, 0); }
 void imp_USER32_LoadIconA(CPU *C)   { static uint32_t t = 0x00E10000u; ret_std(C, ++t, 2); }
 void imp_USER32_LoadCursorA(CPU *C) { static uint32_t t = 0x00E20000u; ret_std(C, ++t, 2); }
 
+
+/* ---- the message pump ---------------------------------------------------
+ *
+ * The guest runs a Win32 message loop and expects to drive the window through
+ * it. SDL owns the real event queue here, so this pumps SDL and translates the
+ * few events the game's loop actually reacts to into Win32 messages.
+ *
+ * PeekMessageA returning FALSE means "no messages", which is the normal state
+ * of an idle frame -- so this is one of the few places where returning nothing
+ * is the correct answer rather than a stub. The distinction that matters is
+ * WM_QUIT: it must be delivered when SDL says the window closed, or the game
+ * never exits and the port looks hung.
+ */
+#define WM_QUIT     0x0012u
+#define WM_CLOSE    0x0010u
+#define WM_ACTIVATE 0x0006u
+
+static int g_quit_posted;
+
+/* MSG: hwnd, message, wParam, lParam, time, pt.x, pt.y */
+static void put_msg(uint32_t p, uint32_t msg, uint32_t wp, uint32_t lp)
+{
+    if (!p) return;
+    WR32(p +  0u, HWND_MAIN_TOK);
+    WR32(p +  4u, msg);
+    WR32(p +  8u, wp);
+    WR32(p + 12u, lp);
+    WR32(p + 16u, 0);
+    WR32(p + 20u, 0);
+    WR32(p + 24u, 0);
+}
+
+/* Drain SDL and note anything the guest's loop needs to hear about. */
+static int pump_sdl(void)
+{
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_EVENT_QUIT ||
+            e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
+            g_quit_posted = 1;
+    }
+    return g_quit_posted;
+}
+
+void imp_USER32_PeekMessageA(CPU *C)
+{
+    /* (lpMsg, hWnd, filterMin, filterMax, wRemoveMsg) */
+    if (pump_sdl()) {
+        put_msg(A(0), WM_QUIT, 0, 0);
+        ret_std(C, 1, 5);
+        return;
+    }
+    ret_std(C, 0, 5);                     /* no messages -- the idle case */
+}
+
+void imp_USER32_GetMessageA(CPU *C)
+{
+    /* Blocking in Win32. Returns 0 on WM_QUIT, which is how the loop ends. */
+    while (!pump_sdl()) SDL_Delay(1);
+    put_msg(A(0), WM_QUIT, 0, 0);
+    ret_std(C, 0, 4);
+}
+
+void imp_USER32_TranslateMessage(CPU *C) { ret_std(C, 0, 1); }
+
+void imp_USER32_DispatchMessageA(CPU *C)
+{
+    /* The guest's own WndProc is registered but never invoked here: nothing
+       synthesises the messages it would need, and calling it with an invented
+       one would run game code on an event that did not happen. */
+    ret_std(C, 0, 1);
+}
+
+void imp_USER32_DefWindowProcA(CPU *C) { ret_std(C, 0, 4); }
+
+/* ---- window state ------------------------------------------------------ */
+
+/* GWL_* are read and written by the engine to stash its own pointers; keeping
+   them per-window rather than discarding them is the whole contract. */
+#define GWL_SLOTS 8
+static uint32_t g_gwl[GWL_SLOTS];
+
+static int gwl_index(int32_t idx)
+{
+    /* GWL_USERDATA (-21), GWL_WNDPROC (-4), GWL_STYLE (-16), GWL_EXSTYLE (-20) */
+    switch (idx) {
+    case -21: return 0;
+    case -4:  return 1;
+    case -16: return 2;
+    case -20: return 3;
+    case -6:  return 4;                   /* GWL_HINSTANCE */
+    case -8:  return 5;                   /* GWL_HWNDPARENT */
+    case -12: return 6;                   /* GWL_ID */
+    default:  return -1;
+    }
+}
+
+void imp_USER32_GetWindowLongA(CPU *C)
+{
+    int i = gwl_index((int32_t)A(1));
+    if (i < 0) {
+        fprintf(stderr, "win32_sdl: GetWindowLongA index %d is not one this "
+                        "host tracks -- returning 0, which may be wrong\n",
+                (int)(int32_t)A(1));
+        ret_std(C, 0, 2);
+        return;
+    }
+    ret_std(C, g_gwl[i], 2);
+}
+
+void imp_USER32_SetWindowLongA(CPU *C)
+{
+    int i = gwl_index((int32_t)A(1));
+    uint32_t old = 0;
+    if (i >= 0) { old = g_gwl[i]; g_gwl[i] = A(2); }
+    ret_std(C, old, 3);
+}
+
+void imp_USER32_SetClassLongA(CPU *C)
+{
+    /* Class-level icon and cursor changes, which this host does not draw. The
+       previous value is what Win32 returns and nothing here kept one. */
+    ret_std(C, 0, 3);
+}
+
+void imp_USER32_SetWindowPos(CPU *C)
+{
+    /* (hWnd, hWndInsertAfter, X, Y, cx, cy, uFlags) */
+    const uint32_t SWP_NOMOVE = 0x0002u, SWP_NOSIZE = 0x0001u;
+    uint32_t flags = A(6);
+    if (g_win && hwnd_is_main(A(0))) {
+        if (!(flags & SWP_NOMOVE)) SDL_SetWindowPosition(g_win, (int)A(2), (int)A(3));
+        if (!(flags & SWP_NOSIZE)) SDL_SetWindowSize(g_win, (int)A(4), (int)A(5));
+    }
+    ret_std(C, 1, 7);
+}
+
+void imp_USER32_SetWindowTextA(CPU *C)
+{
+    if (g_win && hwnd_is_main(A(0)) && A(1))
+        SDL_SetWindowTitle(g_win, (const char *)(uintptr_t)A(1));
+    ret_std(C, 1, 2);
+}
+
+void imp_USER32_IsWindow(CPU *C)
+{
+    ret_std(C, (hwnd_is_main(A(0)) || hwnd_is_desktop(A(0))) ? 1u : 0u, 1);
+}
+
+void imp_USER32_GetParent(CPU *C) { ret_std(C, 0, 1); }   /* top-level */
+void imp_USER32_EnableWindow(CPU *C) { ret_std(C, 0, 2); }
+void imp_USER32_GetMenu(CPU *C) { ret_std(C, 0, 1); }     /* no menu bar */
+
+void imp_USER32_GetDC(CPU *C)
+{
+    /* A device context is a GDI concept this host has none of. Returning NULL
+       is what Win32 does on failure, and every caller must check it -- a
+       non-NULL token would be dereferenced by GDI calls that do not exist. */
+    ret_std(C, 0, 1);
+}
+
+void imp_USER32_GetSystemMetrics(CPU *C)
+{
+    /* SM_CXSCREEN 0, SM_CYSCREEN 1, SM_CXFULLSCREEN 16, SM_CYFULLSCREEN 17 */
+    uint32_t idx = A(0), v = 0;
+    const SDL_DisplayMode *dm = NULL;
+    SDL_DisplayID d = SDL_GetPrimaryDisplay();
+    if (d) dm = SDL_GetCurrentDisplayMode(d);
+    switch (idx) {
+    case 0: case 16: v = dm ? (uint32_t)dm->w : 800u; break;
+    case 1: case 17: v = dm ? (uint32_t)dm->h : 600u; break;
+    case 4:  v = 0; break;                /* SM_CYCAPTION -- borderless */
+    case 32: case 33: v = 0; break;       /* SM_CXSIZEFRAME / SM_CYSIZEFRAME */
+    default:
+        fprintf(stderr, "win32_sdl: GetSystemMetrics(%u) is not one this host "
+                        "answers -- returning 0, which may be wrong\n", idx);
+        v = 0;
+    }
+    ret_std(C, v, 1);
+}
+
+void imp_USER32_ScreenToClient(CPU *C)
+{
+    /* One fullscreen window at the origin, so screen and client coincide. If
+       the window is ever moved this becomes wrong, and SetWindowPos above is
+       where that would start. */
+    int x = 0, y = 0;
+    if (g_win && hwnd_is_main(A(0))) SDL_GetWindowPosition(g_win, &x, &y);
+    if (A(1)) {
+        WR32(A(1),      (uint32_t)((int32_t)RD32(A(1))      - x));
+        WR32(A(1) + 4u, (uint32_t)((int32_t)RD32(A(1) + 4u) - y));
+    }
+    ret_std(C, 1, 2);
+}
+
+void imp_USER32_PtInRect(CPU *C)
+{
+    /* (lprc, pt) -- POINT is passed BY VALUE, so it is two stack dwords. */
+    uint32_t r = A(0);
+    int32_t x = (int32_t)A(1), y = (int32_t)A(2);
+    int32_t l, t, ri, b;
+    if (!r) { ret_std(C, 0, 3); return; }
+    l = (int32_t)RD32(r); t = (int32_t)RD32(r + 4u);
+    ri = (int32_t)RD32(r + 8u); b = (int32_t)RD32(r + 12u);
+    ret_std(C, (x >= l && x < ri && y >= t && y < b) ? 1u : 0u, 3);
+}
+
 void imp_USER32_MessageBoxA(CPU *C)
 {
     /* (hWnd, lpText, lpCaption, uType) */

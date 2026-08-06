@@ -18,6 +18,7 @@
  * corrupting the arena and surfacing somewhere unrelated much later.
  */
 #include "guest_heap.h"
+#include "x86rt_native.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +63,10 @@ int guest_heap_init(uint32_t base, uint32_t size)
 static void die(const char *what, uint32_t a)
 {
     fprintf(stderr, "guest_heap: %s (guest pointer 0x%08x)\n", what, a);
+    /* Report before stopping: abort() skips atexit, and without this the
+       reached set and the ring are silent on exactly the failures worth
+       reading. Same fix as the kernel32 and runtime stop paths. */
+    x86_diag_dump();
     abort();
 }
 
