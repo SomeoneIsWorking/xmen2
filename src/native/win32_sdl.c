@@ -28,6 +28,7 @@
  * separate functions with the count spelled out at every call site.
  */
 #include "x86rt.h"
+#include "x86rt_native.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -405,6 +406,22 @@ void imp_USER32_MessageBoxA(CPU *C)
     uint32_t type = A(3);
     fprintf(stderr, "\n*** MessageBox [%s]\n    %s\n",
             cap ? cap : "(no caption)", text ? text : "(no text)");
+    /*
+     * WHO decided this. The text says what the game concluded; without the
+     * caller it does not say which check concluded it, and that is the whole
+     * question -- "Display failed!" (issue #22) named a symptom nobody could
+     * attribute to a function. The return address is on the guest stack
+     * because every emitted call site pushes one, so it costs nothing.
+     */
+    {
+        uint32_t ra = RD32(C->esp);
+        const char *nm = x86_native_name_at(ra);
+        fprintf(stderr, "    raised from 0x%08x%s%s -- that is the function "
+                        "that decided it, and\n"
+                        "    what it tested is the thing to look at, not the "
+                        "message.\n",
+                ra, nm ? " " : "", nm ? nm : "");
+    }
     if ((type & 0xFu) != 0u)
         fprintf(stderr, "    (button style 0x%x -- this host answers IDOK "
                         "without asking anyone)\n", type & 0xFu);
