@@ -51,32 +51,24 @@
 #define IGVK_SLOTS  334
 
 /*
- * The inherited igObject slots -- but NOT all 21 of them.
+ * igVisualContext's own vtable, and the _purecall stub that marks a slot as
+ * something a platform backend owes.
  *
- * Reading igVisualContext's own vtable (0x100da630) rather than assuming
- * C116's igObject map applies unchanged: slots 0,2,3,4,5,6,9..19 are import
- * thunks straight into libIGCore, i.e. igObject's behaviour, which is the
- * folded RET / RET 0x4 / return-true set. Those may safely do nothing.
+ * C114: 334 slots, 209 of them _purecall, 125 real. Those 125 are ordinary
+ * platform-neutral engine code, and the cheapest correct way to inherit them is
+ * to point our vtable straight at them -- which is exactly what a C++ subclass
+ * of igVisualContext would contain. libIGCore stamps whatever vtable pointer we
+ * hand it (C009), so we are free to build ours out of the engine's own
+ * functions.
  *
- * Slots 1, 7, 8 and 20 are OVERRIDDEN by igVisualContext:
- *
- *     1   igVisualContext::userAll...     (userAllocate)
- *     7   igVisualContext::userInstantiate
- *     8   igVisualContext::userRel...     (userRelease)
- *    20   igVisualContext::getClassMeta
- *
- * Slot 7 is the one that matters most: igDxVisualContext's override of it is
- * what calls Direct3DCreate8. Stubbing it as an igObject no-op -- which the
- * first version of this file did, by applying the igObject map wholesale --
- * would silently skip renderer creation rather than implement it.
+ * This replaces an earlier hand-rolled map of igObject's 21 slots. That map was
+ * both too small and wrong here: it stubbed slot 7, which igVisualContext
+ * implements as userInstantiate and igDxVisualContext overrides to call
+ * Direct3DCreate8, so a "do nothing" there skipped renderer creation while
+ * looking like it worked.
  */
-static const unsigned char IGOBJ_RET0[]  = {0,2,9,10,12,13,14,15,16};
-static const unsigned char IGOBJ_RET1[]  = {3,4,11,17,18,19};
-static const unsigned char IGOBJ_TRUE1[] = {5,6};
-
-static void ig_ret0(CPU *C)  { ark_ret(C, 0, 0); }
-static void ig_ret1(CPU *C)  { ark_ret(C, 0, 1); }
-static void ig_true1(CPU *C) { ark_ret(C, 1, 1); }
+#define IGVISUALCONTEXT_VTABLE  0x100da630u
+#define IGGFX_PURECALL          0x100ce258u
 
 static ArkClass g_vk;   /* tentative; defined with its initialiser below */
 
@@ -100,7 +92,7 @@ static int g_done;
 int igvk_visualcontext_install(void)
 {
     uint32_t meta_slot, meta;
-    size_t k;
+    int k;
 
     if (g_done) return 1;
 
@@ -132,18 +124,29 @@ int igvk_visualcontext_install(void)
     printf("  igVisualContext meta            0x%08x\n", meta);
     fflush(stdout);
 
-    g_vk.vtable = igvk_vtable_new(g_vk.name, IGVK_SLOTS);
+    /* Seed from igVisualContext's own vtable: every non-pure slot becomes a
+       direct pointer to the engine's implementation. */
+    {
+        uint32_t src = ark_lifted(GFX, IGVISUALCONTEXT_VTABLE);
+        uint32_t pure = ark_lifted(GFX, IGGFX_PURECALL);
+        int inherited = 0, owed = 0;
+        if (!src || !pure) {
+            fprintf(stderr, "igVk: cannot map igVisualContext's vtable\n");
+            return 1;
+        }
+        g_vk.vtable = igvk_vtable_new(g_vk.name, IGVK_SLOTS);
+        for (k = 0; k < IGVK_SLOTS; k++) {
+            uint32_t e = RD32(src + (uint32_t)k * 4u);
+            if (e == pure) { owed++; continue; }   /* left 0; filled below */
+            WR32(g_vk.vtable + (uint32_t)k * 4u, e);
+            inherited++;
+        }
+        printf("  vtable seeded from igVisualContext 0x%08x: %d inherited, "
+               "%d pure-virtual owed\n", src, inherited, owed);
+    }
+    /* Ours regardless of what the base had: the meta must be OUR class's. */
     igvk_vtable_set(g_vk.vtable, 20, vk_get_class_meta, g_vk.name,
                     "getClassMeta", &g_vk);
-    for (k = 0; k < sizeof IGOBJ_RET0; k++)
-        igvk_vtable_set(g_vk.vtable, IGOBJ_RET0[k], ig_ret0, g_vk.name,
-                        "igObject:<ret>", &g_vk);
-    for (k = 0; k < sizeof IGOBJ_RET1; k++)
-        igvk_vtable_set(g_vk.vtable, IGOBJ_RET1[k], ig_ret1, g_vk.name,
-                        "igObject:<ret 4>", &g_vk);
-    for (k = 0; k < sizeof IGOBJ_TRUE1; k++)
-        igvk_vtable_set(g_vk.vtable, IGOBJ_TRUE1[k], ig_true1, g_vk.name,
-                        "igObject:<return true>", &g_vk);
     igvk_vtable_fill_unimplemented(g_vk.vtable, g_vk.name, IGVK_SLOTS);
 
     if (!ark_register_class(&g_vk)) {

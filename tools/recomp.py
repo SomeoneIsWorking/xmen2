@@ -1188,8 +1188,26 @@ def cmd_emit(argv):
     set_fn_prefix(d["program"])
     out = argv[1]
     isolate = set()
+    # Default to the module's own generated list, if one exists.
+    #
+    # Three call sites re-emit modules (add_module.sh and two in
+    # native_discover.sh) and none of them passed --isolate. Any one of them
+    # would have re-emitted XMen2 without isolating the overridden function,
+    # which does not fail: it links, and every native override silently stops
+    # firing. Making the emitter find the list itself is the only version of
+    # this that cannot be forgotten.
+    ipath = None
     if "--isolate" in argv:
         ipath = argv[argv.index("--isolate") + 1]
+    else:
+        stem = d["program"].rsplit(".", 1)[0] if "." in d["program"] \
+            else d["program"]
+        auto = os.path.join(os.path.dirname(argv[0]), stem + ".isolate")
+        if os.path.exists(auto):
+            ipath = auto
+            print("emit: using %s automatically (native overrides declared in "
+                  "src/native/overrides.json)" % auto)
+    if ipath:
         try:
             with open(ipath) as f:
                 for line in f:
