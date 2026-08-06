@@ -926,7 +926,14 @@ def emit_instruction(ins, ctx):
             raise Unsupported("indirect JMP")
         if ins["flow"] not in ctx["_addrs"]:
             if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
-                return [A, "x86_call_unknown(C, 0x%08xU); return;" % ins["flow"]]
+                # MAPPED, not linked: every libIG*.dll is linked for
+                # 0x10000000, so a raw linked address makes the runtime name
+                # whichever module happens to occupy that range. It reported a
+                # missing function in libCriMovie that was really libIGGui's,
+                # and the discovery loop then seeded and split the wrong module
+                # -- successfully, and to no effect. Same class as C093.
+                return [A, "x86_call_unknown(C, %s); return;"
+                        % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
             return [A, "%s(C); return;" % fname(ins["flow"])]
         return [A, "goto L_%08x;" % ins["flow"]]
 
@@ -935,8 +942,9 @@ def emit_instruction(ins, ctx):
             raise Unsupported("conditional jump with no resolved target")
         if ins["flow"] not in ctx["_addrs"]:
             if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
-                return [A, "if (%s) { x86_call_unknown(C, 0x%08xU); return; }"
-                        % (CC[m[1:]], ins["flow"])]
+                return [A, "if (%s) { x86_call_unknown(C, %s); return; }"
+                        % (CC[m[1:]],
+                           img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
             return [A, "if (%s) { %s(C); return; }" % (CC[m[1:]], fname(ins["flow"]))]
         return [A, "if (%s) goto L_%08x;" % (CC[m[1:]], ins["flow"])]
 
@@ -951,7 +959,8 @@ def emit_instruction(ins, ctx):
             # located, named failure instead of a silent one.
             return [A,
                     ret_push(ret),
-                    "x86_call_unknown(C, 0x%08xU);" % ins["flow"]]
+                    "x86_call_unknown(C, %s);"
+                    % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
         return [A,
                 ret_push(ret),
                 "%s(C);" % fname(ins["flow"])]

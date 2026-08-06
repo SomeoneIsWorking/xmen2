@@ -832,10 +832,25 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
 
 void x86_call_unknown(CPU *C, uint32_t target)
 {
+    X86Module *m;
     (void)C;
     fprintf(stderr, "x86_call_unknown: 0x%08x has no identified function\n",
             target);
     where(target);
+    /* Report it in the SAME shape as a missing dispatch target and a missing
+       constructor target, because tools/native_discover.sh parses that shape
+       and is otherwise blind to this one -- a direct call to an address Ghidra
+       did not identify is the same kind of gap and the same kind of seed, and
+       the loop having three reporters and understanding two of them is how a
+       stop reads as "nothing more to discover" when it is not. */
+    m = x86_module_for(target);
+    if (m) {
+        fprintf(stderr, "\n*** direct call to an address with no identified "
+                        "function.\n");
+        fprintf(stderr, "    %-18s 0x%08x\n", m->name,
+                m->preferred + (target - *m->base));
+        fprintf(stderr, "*** 1 of 1 call target is missing a body\n");
+    }
     x86_diag_dump();
     abort();
 }
