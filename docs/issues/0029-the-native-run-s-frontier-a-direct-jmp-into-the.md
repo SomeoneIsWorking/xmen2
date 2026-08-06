@@ -1,7 +1,7 @@
 ---
 id: 29
 title: The native run's frontier: a direct JMP into the INTERIOR of another function has nowhere to jump to
-status: open
+status: resolved
 symptom: x86_call_unknown: 0x0066cf3c has no identified function -- 'direct call to an address with no identified function', where the address is inside a function but is not its entry
 tags: pc,recomp,native,rc-exe,rc-lift,translator
 created: 2026-08-06
@@ -46,3 +46,25 @@ That last point matters: several sessions of splitting and merging around 0x005f
 ## Do NOT
 
 Split these 28 addresses out into functions. It carves a real body, truncates the predecessor, and has to be undone -- see issues #21 and #27 for what that costs.
+
+### Resolution (2026-08-06)
+IMPLEMENTED. A generated body can now be entered at a LABEL from outside it, so a JMP into another function's interior is emitted as a real transfer instead of a named stop.
+
+THE MECHANISM. The machinery already existed for INDIRECT jumps: a function with a computed jump emits `L_injmp` and a switch over (address - G_IMGBASE) mapping every address in its body to a goto. What was missing was a way IN from outside. Added:
+
+- `CPU.enter_at` (src/recomp/x86rt.h): the MAPPED address to resume at.
+- `recomp.interior_entries()`: the scan, run in load() so both the jump site and the owner are emitted knowing about it.
+- The jump site emits `{ C->enter_at = <mapped>; fn_<owner>(C); return; }`; the owner emits, in its prologue, `if (C->enter_at) { _injmp = C->enter_at; C->enter_at = 0; goto L_injmp; }`. CLEARED on consumption, or the next ORDINARY call would jump to the same label and silently skip the prologue.
+- Owning an interior label is on its own enough to need the label switch: 0x0066ced2 has no computed jump of its own.
+- `recomp.py native` emits one shim per interior target and registers it in the dispatch table, so an INDIRECT dispatch to one resolves too -- which is what the boundary surgery around 0x005fac10 was standing in for across three sessions.
+
+SCOPE, measured rather than assumed. Unconditional AND conditional jumps: 13 targets from 16 JMP sites, 17 from 22 Jcc sites, 28 distinct addresses in XMen2.exe. A Jcc is a predicated jump -- no return address, no stack change -- so it is the same mechanism. CALLs are EXCLUDED: there are none (0 sites), a call needs its return address pushed before the entry, and including it would ship a path no run has exercised. One that appears keeps reporting itself by name. Other modules: libCriMovie 1, libIGGfx 1, the rest 0.
+
+Tested first, in CPython: 12 cases in tests/test_recomp.py (ctest 'recomp'), covering the scan (interior vs local vs entry vs CALL), both jump forms, the entry check being consumed, and the three no-regression cases -- a jump to a real entry is still a plain tail call, a jump into no function at all still reports by name, and a function nobody enters interior is emitted unchanged.
+
+WHERE THE RUN GOES NOW. Past 0x0066cf3c, and past two more stops fixed on the way:
+
+- `GetModuleHandleA` was a second implementation in win32_sdl.c that knew only the caller's own handle and abort()ed on any other name, disagreeing with LoadLibraryA about what is in the address space. The game probes GetModuleHandleA("d3d8.dll"/"d3d8d.dll") -> LoadLibraryA -> GetProcAddress("DebugSetMute") to pick up D3D8's DEBUG runtime if present, and every branch is written for NULL. Moved beside LoadLibraryA, answering from the same table; NULL for a module that is not here. Three battery checks, which FAIL in the skipped pass.
+- `IDirect3DDevice8::GetDirect3D` refused because 'the AddRef cannot be balanced'. The object layer refcounts already, and refusing was not safe: the engine writes the out-pointer and uses it, so INVALIDCALL with NULL there became SIGSEGV at (nil) one call later.
+
+The run now reaches `IDirect3DTexture8::GetSurfaceLevel` -- resource work in the renderer, past the whole lift frontier.

@@ -883,6 +883,18 @@ static uint32_t module_base_by_name(const char *want)
 static char g_sysmod[MAX_SYSMOD][32];
 static int g_nsysmod;
 
+/* Already handed out? GetModuleHandleA must NOT create one: it answers "is
+   this module in the address space", and allocating on the way would make the
+   answer yes for anything ever asked about. */
+static uint32_t sysmod_lookup(const char *name)
+{
+    int i;
+    for (i = 0; i < g_nsysmod; i++)
+        if (strcasecmp(g_sysmod[i], name) == 0)
+            return SYSMOD_BASE + (uint32_t)i * SYSMOD_STRIDE;
+    return 0;
+}
+
 static uint32_t sysmod_handle(const char *name)
 {
     int i;
@@ -915,6 +927,59 @@ static int is_native_sysmod(const char *n)
     int i;
     for (i = 0; known[i]; i++) if (strcasecmp(known[i], n) == 0) return 1;
     return 0;
+}
+
+/*
+ * GetModuleHandleA -- "is this module already in the address space, and what
+ * is its handle".
+ *
+ * It lives HERE, beside LoadLibraryA, because the two answer the same question
+ * about the same table and must not disagree. They did: this was a separate
+ * implementation in win32_sdl.c that knew only the caller's own handle and
+ * abort()ed on every other name.
+ *
+ * What that cost: the game probes GetModuleHandleA("d3d8.dll") /
+ * ("d3d8d.dll"), and on success LoadLibraryA + GetProcAddress("DebugSetMute"),
+ * to pick up D3D8's DEBUG runtime if it happens to be loaded. Every branch is
+ * written for a NULL answer -- the pointers stay null and the game runs
+ * without them. The abort turned that ordinary negative into a dead run.
+ *
+ * NULL is not a fake handle. It is Win32's own answer for a module that is not
+ * loaded, it is TRUE here, and the caller checks for it. A handle would be the
+ * dishonest reply, because GetProcAddress would then be asked for functions
+ * from a module that does not exist.
+ */
+void imp_KERNEL32_GetModuleHandleA(CPU *C)
+{
+    const char *nm = ACS(0);
+    uint32_t b;
+    /* NULL asks for the running program's own handle, which in a PE IS the
+       image base -- and that is what the guest uses it as. */
+    if (A(0) == 0) { ret_std(C, G_IMGBASE, 1); return; }
+    b = module_base_by_name(nm);
+    if (!b && nm) b = sysmod_lookup(nm);
+    if (!b) {
+        /* Reported once per name: a run that answers NULL for a module the
+           host was supposed to provide looks identical, from the game's side,
+           to one where the module genuinely is absent. */
+        static char said[8][32];
+        static int nsaid;
+        int i;
+        for (i = 0; i < nsaid; i++)
+            if (strcasecmp(said[i], nm ? nm : "") == 0) break;
+        if (i == nsaid && nsaid < 8) {
+            snprintf(said[nsaid], sizeof said[0], "%s", nm ? nm : "");
+            nsaid++;
+            fprintf(stderr, "kernel32: GetModuleHandleA(\"%s\") -> NULL. That "
+                            "module is not in this address space.\n"
+                            "  This is Win32's own answer for a module that is "
+                            "not loaded, and callers check for it -- a handle "
+                            "here would\n"
+                            "  make GetProcAddress invent functions from a "
+                            "module that does not exist.\n", nm ? nm : "(null)");
+        }
+    }
+    ret_std(C, b, 1);
 }
 
 void imp_KERNEL32_LoadLibraryA(CPU *C)

@@ -292,9 +292,51 @@ FLAGKIND = {"ADD": "FK_ADD", "SUB": "FK_SUB", "AND": "FK_LOGIC",
 IAT = {}          # absolute VA of an import slot -> (module, symbol)
 IMG = [0, 0]      # [preferred base, end] of the module being recompiled
 IMG_REBASED = [0]  # immediates rewritten as image-relative; reported by emit
+# A branch target that is INSIDE a function but is not its entry: target ->
+# owning entry point. MSVC shares one epilogue between paths, so `JMP` lands in
+# the middle of another function -- 28 targets from 38 sites in XMen2.exe, the
+# worked example being 0x0066cf3c inside FUN_0066ced2 (issue #29). Such a
+# target has no function name, so it used to become x86_call_unknown and stop
+# the run; now the owning body can be ENTERED AT THAT LABEL.
+INTERIOR = {}
 KNOWN_EPS = set()  # entry points Ghidra identified; a call to anything else is
                    # a target inside the region it could not resolve into
                    # functions, and must not be emitted as a direct C call
+
+
+def interior_entries(functions):
+    """{interior target -> owning entry point} for direct JMPs across bodies.
+
+    Jumps only -- unconditional and conditional alike, since a Jcc is just a
+    predicated jump: no return address, no stack change, same mechanism. Both
+    occur: 13 targets from 16 JMP sites and 17 from 22 Jcc sites, 28 distinct
+    addresses in all.
+
+    Only ACROSS functions. A jump within a function is already a goto, and a
+    jump to a function's entry is already a tail call -- routing either through
+    an entry check would be slower and no more correct.
+
+    CALLs are deliberately excluded. There are none in this image (measured: 0
+    sites), and a call needs its return address pushed before the entry, so
+    including it would ship a path no run has ever exercised. One that appears
+    keeps reporting itself by name.
+    """
+    eps = set(f["ep"] for f in functions)
+    owner = {}
+    for f in functions:
+        for i in f["ins"]:
+            owner[i["a"]] = f["ep"]
+    out = {}
+    for f in functions:
+        body = set(i["a"] for i in f["ins"])
+        for i in f["ins"]:
+            t = i.get("flow")
+            if t is None or not i["m"].upper().startswith("J"):
+                continue
+            if t in body or t in eps or t not in owner:
+                continue
+            out[t] = owner[t]
+    return out
 
 
 def img_rel(val):
@@ -1008,6 +1050,15 @@ def emit_instruction(ins, ctx):
         if ins.get("ind") or "flow" not in ins:
             raise Unsupported("indirect JMP")
         if ins["flow"] not in ctx["_addrs"]:
+            if ins["flow"] in INTERIOR:
+                # Into the MIDDLE of another body: a shared MSVC epilogue. The
+                # owner is entered at the label rather than at its entry, using
+                # the same offset switch its computed jumps already use. The
+                # address is MAPPED (img_rel), because that switch subtracts
+                # G_IMGBASE and a linked address would match no case.
+                return [A, "{ C->enter_at = %s; %s(C); return; }"
+                        % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"],
+                           fname(INTERIOR[ins["flow"]]))]
             if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
                 # MAPPED, not linked: every libIG*.dll is linked for
                 # 0x10000000, so a raw linked address makes the runtime name
@@ -1024,6 +1075,13 @@ def emit_instruction(ins, ctx):
         if "flow" not in ins:
             raise Unsupported("conditional jump with no resolved target")
         if ins["flow"] not in ctx["_addrs"]:
+            if ins["flow"] in INTERIOR:
+                # Into another body at a label -- see the JMP case above. A Jcc
+                # is a predicated jump, so nothing else about it differs.
+                return [A, "if (%s) { C->enter_at = %s; %s(C); return; }"
+                        % (CC[m[1:]],
+                           img_rel(ins["flow"]) or "0x%08xU" % ins["flow"],
+                           fname(INTERIOR[ins["flow"]]))]
             if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
                 return [A, "if (%s) { x86_call_unknown(C, %s); return; }"
                         % (CC[m[1:]],
@@ -1097,7 +1155,14 @@ def translate(fn):
     # them.
     fn["_has_injmp"] = any(i["m"] == "JMP" and (i.get("ind") or "flow" not in i)
                            for i in fn["ins"])
-    if fn["_has_injmp"]:
+    # Labels another function jumps INTO. The way in is the same offset switch,
+    # so owning one is enough on its own to need it -- this function may have
+    # no computed jump at all. 0x0066ced2 does not: it is entered at 0x0066cf3c
+    # by the switch in the block after it (issue #29).
+    fn["_entered_at"] = sorted(a for a, ep in INTERIOR.items()
+                               if ep == fn["ep"] and a in fn["_addrs"])
+    if fn["_has_injmp"] or fn["_entered_at"]:
+        fn["_has_injmp"] = True
         targets |= fn["_addrs"]
     #
     # An instruction this translator does not understand does NOT sink the
@@ -1118,6 +1183,20 @@ def translate(fn):
     # never returns, so no later instruction runs on state it corrupted.
     #
     unsupported = []
+    if fn["_entered_at"]:
+        # Entered at a LABEL rather than at the entry: a shared MSVC epilogue
+        # reached by a JMP out of another body (issue #29). The way in is the
+        # same offset switch a computed jump uses.
+        #
+        # CLEARED before jumping. A value left set would send the next ORDINARY
+        # call to the same label and silently skip this function's prologue --
+        # which is the kind of defect that surfaces thousands of instructions
+        # later as a stack that does not balance.
+        body.append("  /* entered at a label by: %s */"
+                    % ", ".join("0x%08x" % a for a in fn["_entered_at"]))
+        body.append("  if (C->enter_at) {")
+        body.append("    _injmp = C->enter_at; C->enter_at = 0;")
+        body.append("    goto L_injmp; }")
     for ins in fn["ins"]:
         if ins["a"] in targets:
             body.append("L_%08x:;" % ins["a"])
@@ -1227,6 +1306,14 @@ def load(path):
     if n:
         sys.stderr.write("%d _setjmp3 import thunk(s) found; calls to them are "
                          "emitted as an inline host setjmp\n" % n)
+    # Branch targets inside another function -- shared MSVC epilogues. Known
+    # before any body is emitted, because both the jump site and the owner are
+    # emitted differently because of them.
+    INTERIOR.clear()
+    INTERIOR.update(interior_entries(d["functions"]))
+    sys.stderr.write("%d address(es) are jumped into from ANOTHER function's "
+                     "body (shared epilogues); their owners get an entry "
+                     "label\n" % len(INTERIOR))
     return d
 
 
@@ -2310,10 +2397,27 @@ def cmd_native(argv):
     for fn in fns:
         L.append("void %s(CPU *C);" % fname(fn["ep"]))
     L.append("")
+    # An address jumped into from another body is also a DISPATCH target: an
+    # indirect jump can compute one just as a direct one can name it. Each gets
+    # a shim that sets the entry label and calls the owner, so the dispatcher
+    # resolves it exactly like a function -- which is what the boundary surgery
+    # around 0x005fac10 was standing in for across three sessions (issue #29).
+    for tgt in sorted(INTERIOR):
+        L.append("static void %s_at_%08x(CPU *C) { C->enter_at = "
+                 "X86_IMGBASE + 0x%xU; %s(C); }"
+                 % (fname(INTERIOR[tgt]), tgt, tgt - IMG[0],
+                    fname(INTERIOR[tgt])))
+    if INTERIOR:
+        L.append("")
     L.append("static const X86Fn g_fns[] = {")
     for fn in fns:
         L.append('  { 0x%08xU, %s, "%s" },'
                  % (fn["ep"], fname(fn["ep"]), fn["qname"].replace('"', "'")))
+    for tgt in sorted(INTERIOR):
+        L.append('  { 0x%08xU, %s_at_%08x, "%s (entered at 0x%08x)" },'
+                 % (tgt, fname(INTERIOR[tgt]), tgt,
+                    next(f["qname"] for f in fns
+                         if f["ep"] == INTERIOR[tgt]).replace('"', "'"), tgt))
     L.append("};")
     L.append("")
     seen_decl = set()
@@ -2365,10 +2469,12 @@ def cmd_native(argv):
     with open(out, "w") as f:
         f.write("\n".join(L) + "\n")
     n_untr = sum(1 for fn in fns if translate(fn)[0] is None)
-    print("native: %d function-table entries (%d of them untranslated, and they "
-          "say so when called), %d imports stubbed WEAK to abort "
+    print("native: %d function-table entries -- %d function(s), %d of them "
+          "untranslated (and they say so when called), plus %d interior entry "
+          "point(s) into a shared epilogue; %d imports stubbed WEAK to abort "
           "by name (a native implementation overrides one by existing) -> %s"
-          % (len(fns), n_untr, len(seen), out))
+          % (len(fns) + len(INTERIOR), len(fns), n_untr, len(INTERIOR),
+             len(seen), out))
 
 
 CMDS = {"report": cmd_report, "emit": cmd_emit, "runtime": cmd_runtime,

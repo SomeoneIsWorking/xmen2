@@ -91,6 +91,7 @@ D3D8Object *d3d8_object_from_guest(uint32_t guest_addr);
  * USE AFTER RELEASE by name instead of landing in reused memory.
  */
 long d3d8_object_addref(D3D8Object *o);
+long d3d8_object_refs(const D3D8Object *o);
 long d3d8_object_release(D3D8Object *o);
 
 /* Called by Release when the count reaches zero, before the object is retired.

@@ -356,6 +356,40 @@ void imp_d3d8_Direct3DCreate8(CPU *C)
     C->esp += 4u + 4u;                      /* __stdcall, one argument */
 }
 
+/*
+ * The IDirect3D8 this host handed out, for the one caller that legitimately
+ * needs it back: IDirect3DDevice8::GetDirect3D.
+ *
+ * `ensure` creates it WITHOUT going through the import, so the self-test can
+ * exercise GetDirect3D with no guest and no CPU state. It deliberately does
+ * not touch the reference count -- Direct3DCreate8 owns that side.
+ */
+uint32_t d3d8_the_direct3d8(void)
+{
+    return g_d3d8_obj ? d3d8_object_guest(g_d3d8_obj) : 0;
+}
+
+unsigned d3d8_the_direct3d8_refs(void)
+{
+    return g_d3d8_obj ? (unsigned)d3d8_object_refs(g_d3d8_obj) : 0u;
+}
+
+void d3d8_the_direct3d8_ensure(void)
+{
+    if (g_d3d8_obj) return;
+    d3d8_caps_limits_default(&g_d3d8.limits);
+    d3d8_iface_implement(D3D8_IF_IDirect3D8, g_impl,
+                         (int)(sizeof g_impl / sizeof g_impl[0]));
+    g_d3d8_obj = d3d8_object_new(D3D8_IF_IDirect3D8, &g_d3d8);
+}
+
+int d3d8_the_direct3d8_addref(void)
+{
+    if (!g_d3d8_obj) return 0;
+    d3d8_object_addref(g_d3d8_obj);
+    return 1;
+}
+
 void d3d8_host_enable(void)
 {
     g_enabled = 1;

@@ -202,6 +202,11 @@ long d3d8_object_release(D3D8Object *o)
     return o->refs;
 }
 
+long d3d8_object_refs(const D3D8Object *o)
+{
+    return o ? o->refs : 0;
+}
+
 void d3d8_object_report(void)
 {
     int i, live = 0, retired = 0;

@@ -59,4 +59,12 @@ void d3d8_host_report(void);
    the caps block. Returns the number of failures. */
 int d3d8_host_selftest(void);
 
+/* The IDirect3D8 singleton this host handed out: its guest address, its
+   reference count, a way to create it without the import (for the self-test),
+   and a counted reference for IDirect3DDevice8::GetDirect3D. */
+uint32_t d3d8_the_direct3d8(void);
+unsigned d3d8_the_direct3d8_refs(void);
+void     d3d8_the_direct3d8_ensure(void);
+int      d3d8_the_direct3d8_addref(void);
+
 #endif /* D3D8_HOST_H */

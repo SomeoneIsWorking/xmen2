@@ -125,19 +125,6 @@ void imp_KERNEL32_DisableThreadLibraryCalls(CPU *C)
     ret_std(C, 1, 1);
 }
 
-void imp_KERNEL32_GetModuleHandleA(CPU *C)
-{
-    /* Only the module's own handle is meaningful here, and in a PE that handle
-       IS the image base -- which is what the guest uses it as. A request for
-       any other module is a real question this layer cannot answer. */
-    uint32_t name = A(0);
-    if (name == 0) { ret_std(C, G_IMGBASE, 1); return; }
-    fprintf(stderr, "win32_sdl: GetModuleHandleA(\"%s\") -- only the calling "
-                    "module's own handle exists natively\n",
-            (const char *)(uintptr_t)name);
-    abort();
-}
-
 void imp_KERNEL32_MultiByteToWideChar(CPU *C)
 {
     /* The game uses it for ASCII only. Anything else would need a real

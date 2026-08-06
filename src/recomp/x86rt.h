@@ -116,6 +116,20 @@ typedef struct CPU {
        ORPS XMM0,XMM0, and a no-op would be right for that one operand pair and
        wrong for any other. */
     uint64_t xmm[8][2];
+    /* Enter the next body at a LABEL rather than at its entry point.
+     *
+     * MSVC shares one epilogue between paths, so a JMP lands in the middle of
+     * another function -- 28 such targets in XMen2.exe, the worked example
+     * being 0x0066cf3c inside FUN_0066ced2, reached by the switch in the block
+     * after it (issue #29). The target has no function name, so before this it
+     * became x86_call_unknown and stopped the run.
+     *
+     * Set by the jumping body (or by a dispatch shim) to the MAPPED address to
+     * resume at; the entered body consumes it -- CLEARING it -- and jumps
+     * through the same offset switch its computed jumps use. Cleared on
+     * consumption because a value left set would send the next ordinary call
+     * to that label and silently skip the prologue. */
+    uint32_t enter_at;
 } CPU;
 
 /* Runtime base of the ORIGINAL module. Absolute references into the module's

@@ -32,14 +32,19 @@ def ins(a, m, t, n=2, **kw):
     return d
 
 
-def translate(instructions, ep=None):
-    """Translate a synthetic function and return its C body as one string."""
+def translate(instructions, ep=None, extra_eps=()):
+    """Translate a synthetic function and return its C body as one string.
+
+    `extra_eps` names other functions the module is supposed to contain, so a
+    branch out of this one can be a tail call rather than an unknown target.
+    """
     fn = {"ep": ep if ep is not None else instructions[0]["a"],
           "qname": "Test::fn", "name": "fn", "thunk": False,
           "size": sum(i["n"] for i in instructions), "ins": instructions}
     recomp.IMG[0], recomp.IMG[1] = 0x00400000, 0x00a75000
     recomp.KNOWN_EPS.clear()
     recomp.KNOWN_EPS.add(fn["ep"])
+    recomp.KNOWN_EPS.update(extra_eps)
     body, reason = recomp.translate(fn)
     if body is None:
         raise AssertionError("translate refused: %s" % reason)
@@ -243,6 +248,149 @@ class Refusals(unittest.TestCase):
         ])
         self.assertIn("x86_unsupported_insn(", c)
         self.assertIn("NOT TRANSLATED", c)
+
+
+class InteriorEntries(unittest.TestCase):
+    """Entering a generated body at a label, from outside it.
+
+    MSVC shares one epilogue between paths, so a `JMP` lands in the MIDDLE of
+    another function. XMen2.exe 0x0066cf3c is the worked example: `PUSH ESI /
+    PUSH EBX / CALL / ADD ESP,0xc / POP EDI / POP ESI / POP EBX / LEAVE / RET`,
+    inside FUN_0066ced2 (which falls through into it) and jumped to from the
+    switch at 0x0066d633. Image-wide: 28 such targets from 38 sites, 0 calls.
+
+    Before this there was nothing to emit -- the target has no function name --
+    so it became `x86_call_unknown` and the run stopped. It is NOT a boundary
+    defect: FUN_0066ced2 ends in RET, so it is complete, and carving the block
+    out would truncate its predecessor instead (issues #21, #27, #29).
+
+    Note what these tests do NOT cover: a direct CALL to an interior address.
+    There are none in this image, so it still reports by name rather than
+    shipping a path nothing has ever run.
+    """
+
+    def setUp(self):
+        recomp.INTERIOR.clear()
+
+    def owner_and_jumper(self):
+        """A body of two functions: 0x00402000 jumps into 0x00401000's middle."""
+        owner = [ins(0x00401000, "PUSH", "PUSH ESI", n=1),
+                 ins(0x00401001, "PUSH", "PUSH EBX", n=1),
+                 ins(0x00401002, "RET", "RET", n=1)]
+        recomp.INTERIOR[0x00401001] = 0x00401000
+        return owner
+
+    def test_a_jump_into_another_body_enters_it_at_that_label(self):
+        self.owner_and_jumper()
+        c = translate([
+            ins(0x00402000, "JMP", "JMP 0x00401001", n=5, flow=0x00401001),
+        ], ep=0x00402000)
+        self.assertIn("C->enter_at", c)
+        self.assertIn("0x00401001", c)
+        self.assertIn("fn_00401000(C)", c)
+        self.assertNotIn("x86_call_unknown", c,
+                         "the target is known: it is inside a function this "
+                         "module emits, and can now be entered at a label")
+
+    def test_the_owner_gets_a_label_and_an_entry_check(self):
+        owner = self.owner_and_jumper()
+        c = translate(owner, ep=0x00401000)
+        self.assertIn("L_00401001:", c)
+        self.assertIn("L_injmp", c,
+                      "the label switch is how an outside entry reaches the "
+                      "label, so the owner needs one even with no computed "
+                      "jump of its own")
+        self.assertIn("C->enter_at", c)
+
+    def test_the_entry_is_consumed_so_the_body_cannot_re_enter_itself(self):
+        # A body that left enter_at set would jump to the same label again the
+        # next time it is called normally -- silently skipping its prologue.
+        owner = self.owner_and_jumper()
+        c = translate(owner, ep=0x00401000)
+        self.assertIn("C->enter_at = 0", c)
+
+    def test_a_function_nobody_enters_interior_is_unchanged(self):
+        c = translate([
+            ins(0x00401000, "PUSH", "PUSH ESI", n=1),
+            ins(0x00401001, "RET", "RET", n=1),
+        ], ep=0x00401000)
+        self.assertNotIn("L_injmp", c,
+                         "labelling every instruction in the image is what "
+                         "the _has_injmp restriction exists to avoid")
+        self.assertNotIn("enter_at", c)
+
+    def test_a_jump_to_a_real_entry_point_is_still_a_plain_tail_call(self):
+        c = translate([
+            ins(0x00402000, "JMP", "JMP 0x00401000", n=5, flow=0x00401000),
+        ], ep=0x00402000, extra_eps=[0x00401000])
+        self.assertIn("fn_00401000(C)", c)
+        self.assertNotIn("enter_at", c)
+
+    def test_a_jump_into_no_function_at_all_still_reports_by_name(self):
+        c = translate([
+            ins(0x00402000, "JMP", "JMP 0x00409999", n=5, flow=0x00409999),
+        ], ep=0x00402000)
+        self.assertIn("x86_call_unknown", c,
+                      "an address in no function is a genuinely missing "
+                      "body and must stay a named stop")
+
+    def test_the_scan_finds_a_cross_function_interior_target(self):
+        fns = [{"ep": 0x00401000, "ins": [
+                    ins(0x00401000, "PUSH", "PUSH ESI", n=1),
+                    ins(0x00401001, "RET", "RET", n=1)]},
+               {"ep": 0x00402000, "ins": [
+                    ins(0x00402000, "JMP", "JMP 0x00401001", n=5,
+                        flow=0x00401001)]}]
+        self.assertEqual(recomp.interior_entries(fns), {0x00401001: 0x00401000})
+
+    def test_the_scan_ignores_a_jump_inside_the_same_function(self):
+        fns = [{"ep": 0x00401000, "ins": [
+                    ins(0x00401000, "JMP", "JMP 0x00401002", n=2,
+                        flow=0x00401002),
+                    ins(0x00401002, "RET", "RET", n=1)]}]
+        self.assertEqual(recomp.interior_entries(fns), {},
+                         "a local jump is already a goto; routing it through "
+                         "an entry would be slower and no more correct")
+
+    def test_the_scan_ignores_a_jump_to_a_function_entry(self):
+        fns = [{"ep": 0x00401000, "ins": [
+                    ins(0x00401000, "RET", "RET", n=1)]},
+               {"ep": 0x00402000, "ins": [
+                    ins(0x00402000, "JMP", "JMP 0x00401000", n=5,
+                        flow=0x00401000)]}]
+        self.assertEqual(recomp.interior_entries(fns), {})
+
+    def test_a_conditional_jump_into_another_body_enters_it_too(self):
+        # 22 of the 38 sites are conditional. A Jcc is a predicated jump --
+        # no return address, no stack change -- so it is the same mechanism.
+        self.owner_and_jumper()
+        c = translate([
+            ins(0x00402000, "JZ", "JZ 0x00401001", n=6, flow=0x00401001),
+            ins(0x00402006, "RET", "RET", n=1),
+        ], ep=0x00402000)
+        self.assertIn("C->enter_at", c)
+        self.assertIn("fn_00401000(C)", c)
+        self.assertNotIn("x86_call_unknown", c)
+
+    def test_the_scan_finds_a_conditional_interior_target(self):
+        fns = [{"ep": 0x00401000, "ins": [
+                    ins(0x00401000, "PUSH", "PUSH ESI", n=1),
+                    ins(0x00401001, "RET", "RET", n=1)]},
+               {"ep": 0x00402000, "ins": [
+                    ins(0x00402000, "JNZ", "JNZ 0x00401001", n=6,
+                        flow=0x00401001)]}]
+        self.assertEqual(recomp.interior_entries(fns), {0x00401001: 0x00401000})
+
+    def test_the_scan_ignores_a_CALL_to_an_interior_address(self):
+        # Measured: there are none. Were one to appear it must keep reporting
+        # by name rather than take a path no run has exercised.
+        fns = [{"ep": 0x00401000, "ins": [
+                    ins(0x00401000, "PUSH", "PUSH ESI", n=1),
+                    ins(0x00401001, "RET", "RET", n=1)]},
+               {"ep": 0x00402000, "ins": [
+                    ins(0x00402000, "CALL", "CALL 0x00401001", n=5,
+                        flow=0x00401001)]}]
+        self.assertEqual(recomp.interior_entries(fns), {})
 
 
 if __name__ == "__main__":

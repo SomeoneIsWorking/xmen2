@@ -560,6 +560,7 @@ static void case_arkinit(void)
  * checked here against a known-answer call rather than reasoned about.
  */
 void imp_KERNEL32_GetModuleHandleA(CPU *C);
+void imp_KERNEL32_LoadLibraryA(CPU *C);
 void imp_KERNEL32_MultiByteToWideChar(CPU *C);
 void imp_MSVCRT_malloc(CPU *C);
 void imp_MSVCRT_free(CPU *C);
@@ -591,6 +592,50 @@ static void case_import_abi(void)
         d = call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
         check("GetModuleHandleA(NULL) -> imgbase", C.eax, g_imgbase);
         check("  stdcall esp delta (4+1*4)", d, 8u);
+    }
+    {   /* A module that is NOT in the address space.
+     *
+     * NULL is Win32's own answer and the game is written for it: it probes
+     * `GetModuleHandleA("d3d8d.dll")` -> LoadLibraryA -> GetProcAddress
+     * ("DebugSetMute") to pick up the D3D8 DEBUG runtime if it happens to be
+     * loaded, and skips the whole block when the first call returns 0. This
+     * used to abort() -- treating an ordinary negative answer as fatal and
+     * stopping the run on a debug convenience the game does not need.
+     *
+     * Checked with a name that must NEVER resolve, so the check cannot pass
+     * by accident on a host that gained the module. */
+        static const char miss[] = "d3d8d.dll";
+        uint32_t nm = SCRATCH + 0x300u, args[1];
+        unsigned i;
+        for (i = 0; i < sizeof miss; i++)
+            *(volatile uint8_t *)(uintptr_t)(nm + i) = (uint8_t)miss[i];
+        args[0] = nm;
+        memset(&C, 0, sizeof C);
+        C.eax = 0xBADF00Du;
+        d = call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
+        check("GetModuleHandleA(\"d3d8d.dll\") -> 0, not an abort", C.eax, 0);
+        check("  stdcall esp delta (4+1*4)", d, 8u);
+    }
+    {   /* A module that IS here. GetModuleHandleA and LoadLibraryA must agree
+     * about what is in the address space -- they were separate implementations
+     * with separate ideas of it, which is how the abort above survived. */
+        static const char have[] = "libIGCore.dll";
+        uint32_t nm = SCRATCH + 0x320u, args[1], viaload;
+        unsigned i;
+        for (i = 0; i < sizeof have; i++)
+            *(volatile uint8_t *)(uintptr_t)(nm + i) = (uint8_t)have[i];
+        args[0] = nm;
+        memset(&C, 0, sizeof C);
+        C.eax = 0xBADF00Du;                  /* so the SKIPPED pass fails too */
+        call_import(imp_KERNEL32_LoadLibraryA, &C, args, 1);
+        viaload = C.eax;
+        memset(&C, 0, sizeof C);
+        C.eax = 0xBADD00Du;                  /* a DIFFERENT sentinel: equal
+                                                sentinels would agree when
+                                                neither call ran */
+        call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
+        check("GetModuleHandleA agrees with LoadLibraryA on a mapped module",
+              C.eax, viaload);
     }
     {   /* KERNEL32!MultiByteToWideChar -- __stdcall, 6 arguments. Measuring
            form first (cchWideChar 0 returns the length needed). */

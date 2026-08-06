@@ -15,6 +15,7 @@
  * for cutting at this boundary (see d3d8_host.h).
  */
 #include "d3d8_device.h"
+#include "d3d8_host.h"
 #include "d3d8_com.h"
 #include "d3d8_caps.h"
 #include "d3d8_state.h"
@@ -152,19 +153,34 @@ static void dev_GetCreationParameters(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
+/*
+ * The IDirect3D8 that made this device, with a reference of its own.
+ *
+ * This used to refuse, on the grounds that the AddRef could not be balanced.
+ * Both halves of that were wrong. The object layer refcounts already --
+ * Direct3DCreate8 AddRefs the singleton on every repeat call, exactly as the
+ * real one does -- and refusing is not the safe option: the engine writes the
+ * out-pointer and uses it, so INVALIDCALL with a NULL there became a SIGSEGV
+ * at (nil) one call later. A refusal is only honest when the caller can act on
+ * it, and this caller cannot.
+ *
+ * With no IDirect3D8 in existence there is genuinely nothing to hand back, and
+ * that answer stays INVALIDCALL with a NULL out-pointer.
+ */
 static void dev_GetDirect3D(D3D8Object *self, CPU *C)
 {
     uint32_t out = d3d8_arg(C, 0);
     (void)self;
     if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
-    /* Deliberately not implemented as "return the singleton and skip the
-       AddRef": the caller will Release it, and an unbalanced count is exactly
-       the class of bug that makes teardown fail in a way nothing explains. */
-    fprintf(stderr, "d3d8: IDirect3DDevice8::GetDirect3D is not implemented; "
-                    "handing back the IDirect3D8 needs an AddRef this device "
-                    "cannot yet balance.\n");
-    WR32(out, 0);
-    d3d8_ret(C, D3DERR_INVALIDCALL);
+    if (!d3d8_the_direct3d8_addref()) {
+        fprintf(stderr, "d3d8: GetDirect3D, but no IDirect3D8 exists in this "
+                        "process -- this device was not made by one.\n");
+        WR32(out, 0);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    WR32(out, d3d8_the_direct3d8());
+    d3d8_ret(C, D3D_OK);
 }
 
 /* ---- the cursor -------------------------------------------------------- */

@@ -403,6 +403,72 @@ static int gamma_selftest(void)
     return fails;
 }
 
+/*
+ * IDirect3DDevice8::GetDirect3D -- hand the engine back the object that made
+ * this device, with a reference of its own.
+ *
+ * It was refused, on the grounds that the AddRef could not be balanced. That
+ * was wrong twice over: the object layer refcounts already (Direct3DCreate8
+ * AddRefs the singleton on every repeat call, exactly as the real one does),
+ * and REFUSING is not free -- the engine writes the returned pointer and uses
+ * it, so a failed HRESULT with a NULL out-pointer became a SIGSEGV at (nil)
+ * one call later.
+ *
+ * The two cases are both real and are both checked, because they are answered
+ * differently: with no IDirect3D8 in existence there is nothing to hand back
+ * and INVALIDCALL with a NULL out-pointer is the truth; with one, D3D_OK and a
+ * counted reference.
+ */
+static int getdirect3d_selftest(void)
+{
+    D3D8Object *dev;
+    uint32_t args[1], out, hr, before;
+    int fails = 0;
+
+    printf("\n=== d3d8 GetDirect3D selftest: through the device vtable ===\n");
+    d3d8_device_install();
+    dev = d3d8_object_new(D3D8_IF_IDirect3DDevice8, NULL);
+    out = guest_malloc(4);
+
+    /* No Direct3DCreate8 has run in this process. */
+    WR32(out, 0xA5A5A5A5u);
+    args[0] = out;
+    hr = call_method(dev, 6, args, 1);
+    if (d3d8_the_direct3d8() == 0) {
+        if (hr != D3DERR_INVALIDCALL || RD32(out) != 0) {
+            printf("d3d8 GetDirect3D selftest: FAILED -- with no IDirect3D8 in "
+                   "existence it returned 0x%08x and wrote 0x%08x; expected "
+                   "INVALIDCALL and a NULL out-pointer.\n", hr, RD32(out));
+            fails++;
+        }
+    }
+
+    /* And with one. Created directly rather than through the import, so this
+       needs no guest and no CPU state. */
+    before = d3d8_the_direct3d8_refs();
+    d3d8_the_direct3d8_ensure();
+    WR32(out, 0xA5A5A5A5u);
+    args[0] = out;
+    hr = call_method(dev, 6, args, 1);
+    if (hr != D3D_OK || RD32(out) != d3d8_the_direct3d8()) {
+        printf("d3d8 GetDirect3D selftest: FAILED -- returned 0x%08x and wrote "
+               "0x%08x; expected D3D_OK and the IDirect3D8 at 0x%08x.\n",
+               hr, RD32(out), d3d8_the_direct3d8());
+        fails++;
+    }
+    if (d3d8_the_direct3d8_refs() <= before) {
+        printf("d3d8 GetDirect3D selftest: FAILED -- the reference count did "
+               "not rise (%u then %u). The engine will Release what it was "
+               "given, and an unbalanced count makes teardown fail with "
+               "nothing to explain it.\n", before, d3d8_the_direct3d8_refs());
+        fails++;
+    }
+    printf("d3d8 GetDirect3D selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- the IDirect3D8 is handed back with a reference of its "
+             "own, and refused honestly when there is none");
+    return fails;
+}
+
 int d3d8_host_selftest(void)
 {
     int fails = 0;
@@ -410,6 +476,7 @@ int d3d8_host_selftest(void)
     fails += caps_selftest();
     fails += pixel_shader_selftest();
     fails += gamma_selftest();
+    fails += getdirect3d_selftest();
     fails += d3d8_draw_selftest();
     printf("d3d8: SELF-TEST %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);
