@@ -116,3 +116,18 @@ That is the confirmation, not a setback. The carved database was letting a mistr
 **Do not seed 0x005fb270.** That is the loop's instinct and it is what produced this issue. `tools/whose_function.py` will now flag it, since it falls inside a function with an SEH prologue.
 
 The next step is to read how recomp.py translates FUN_005fac10's SEH prologue -- `PUSH -1; PUSH 0x679141; MOV EAX,FS:[0]` and the matching `MOV FS:[0],ESP` -- and the indirect call that produces 0x005fb270. This is an rc-lift defect and it is now the single thing standing between the renderer and its first frame: everything on the renderer side is in place and the host frame path is verified to present (see the vk_frame_path test).
+
+### Note (2026-08-06)
+CLASS IDENTIFIED -- C122. These are MSVC C++ **catch funclets**, and that changes what the fix is.
+
+FUN_005fac10's handler, 0x679141, is `MOV EAX,0x6c3d58; JMP 0x0067208c`, and 0x0067208c is `JMP dword ptr [0x0067f154]` which XMen2.iat resolves to **MSVCR71.dll __CxxFrameHandler**. That is the canonical C++ EH stub, so this function has try/catch and 0x6c3d58 is its FuncInfo. 0x005fb270 is an address inside the function that Ghidra places in no function -- a catch funclet, called indirectly by MSVCR71's unwinder from the FuncInfo TryBlockMap.
+
+**Both halves of the trap now have names:**
+  * A funclet is invisible to static analysis, because its only reference is a DATA table. That is why the discovery loop keeps reporting it -- the loop is doing its job.
+  * A funclet is NOT a function. It runs on its PARENT's frame. Seeding it as one carves the parent, which is what produced this issue.
+
+So the loop's escalation is wrong here for a structural reason, not a heuristic one, and `whose_function.py`'s SEH-prologue flag is catching the right thing.
+
+**What to build instead of seeding**: parse the FuncInfo tables and enumerate funclets as a known category. Every `MOV EAX,<imm>; JMP <__CxxFrameHandler thunk>` stub in the image names a FuncInfo; each FuncInfo's TryBlockMap names its catch handler addresses. That turns 'mysterious indirect target' into 'catch funclet of function F', which the recompiler can then model deliberately -- and it enumerates them all at once instead of one per discovery round.
+
+C122 records the falsifier: the FuncInfo parse itself is UNVERIFIED (a throwaway script hit a VA-to-file-offset bug), so confirming 0x005fb270 appears in that TryBlockMap is step one.
