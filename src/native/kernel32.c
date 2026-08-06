@@ -687,7 +687,10 @@ void imp_KERNEL32_CloseHandle(CPU *C)
     Handle *hh = h_get(A(0), 0);
     if (hh->kind == H_FILE && hh->fd >= 0) close(hh->fd);
     if (hh->kind == H_FIND && hh->dir) closedir(hh->dir);
-    if (hh->kind == H_MAP && hh->map) munmap(hh->map, hh->maplen);
+    /* A mapping handle owns its duplicated descriptor. Its VIEWS are not
+       unmapped here: on Windows a view outlives the mapping handle, and the
+       guest unmaps it explicitly. */
+    if (hh->kind == H_MAP && hh->fd >= 0) close(hh->fd);
     hh->kind = 0;
     ret_std(C, 1, 1);
 }
@@ -1001,14 +1004,140 @@ void imp_KERNEL32_CreateFileW(CPU *C)
                "code on a path nothing exercises");
 }
 
+/* ---- file mapping ------------------------------------------------------
+ *
+ * A real mmap, not a read into a buffer. The guest holds the returned pointer
+ * and reads through it, so the view must live below 4 GB where a 32-bit
+ * pointer can reach it -- which is the whole difficulty, and why this was
+ * unimplemented until there was an arena to put it in.
+ *
+ * Views are placed by a bump cursor in a region above the guest heap and
+ * mapped with MAP_FIXED_NOREPLACE, so a collision with anything already there
+ * FAILS rather than silently replacing it. Nothing is reserved up front: the
+ * region is an address range this host promises not to use for anything else,
+ * not committed memory.
+ *
+ * Windows requires the view offset to be a multiple of the allocation
+ * granularity and mmap requires a multiple of the page size, so the offset is
+ * rounded DOWN and the difference added back to the returned pointer -- which
+ * is what the guest would get from Windows for the same call.
+ */
+#define VIEW_ARENA_BASE  0x7A000000u
+#define VIEW_ARENA_END   0xF0000000u
+
+static uint32_t g_view_cursor = VIEW_ARENA_BASE;
+
+#define MAX_VIEWS 64
+static struct { uint32_t addr; size_t len; } g_views[MAX_VIEWS];
+
 void imp_KERNEL32_CreateFileMappingA(CPU *C)
 {
-    k32_unimpl("CreateFileMappingA", "file mapping needs the guest to hold the "
-               "view below 4 GB, which needs a guest-address arena of its own");
+    Handle *hf = h_get(A(0), H_FILE);
+    uint32_t size_hi = A(3), size_lo = A(4);
+    struct stat st;
+    uint32_t h;
+    int fd;
+
+    if (size_hi) {
+        /* A mapping larger than 4 GB cannot be addressed by the guest at all,
+           so there is no honest answer -- and silently truncating the size
+           would map a prefix and read garbage past it. */
+        fprintf(stderr, "kernel32: CreateFileMappingA asked for a %u:%u byte "
+                        "mapping. A 32-bit guest cannot address that; "
+                        "refusing.\n", size_hi, size_lo);
+        g_last_error = 8;                              /* NOT_ENOUGH_MEMORY */
+        ret_std(C, 0, 6);
+        return;
+    }
+    if (fstat(hf->fd, &st) != 0) {
+        g_last_error = ERROR_FILE_NOT_FOUND;
+        ret_std(C, 0, 6);
+        return;
+    }
+    /* The mapping outlives the file handle on Windows, so the descriptor is
+       duplicated: the guest closing the file must not unmap the view. */
+    fd = dup(hf->fd);
+    if (fd < 0) { g_last_error = 8; ret_std(C, 0, 6); return; }
+
+    h = h_alloc(H_MAP);
+    g_h[h - 1].fd = fd;
+    g_h[h - 1].maplen = size_lo ? (size_t)size_lo : (size_t)st.st_size;
+    ret_std(C, h, 6);
 }
 
-void imp_KERNEL32_MapViewOfFile(CPU *C) { k32_unimpl("MapViewOfFile", "see CreateFileMappingA"); }
-void imp_KERNEL32_UnmapViewOfFile(CPU *C) { k32_unimpl("UnmapViewOfFile", "see CreateFileMappingA"); }
+void imp_KERNEL32_MapViewOfFile(CPU *C)
+{
+    Handle *hm = h_get(A(0), H_MAP);
+    uint32_t off_hi = A(2), off_lo = A(3), want = A(4);
+    long page = sysconf(_SC_PAGESIZE);
+    uint32_t aligned = off_lo & ~(uint32_t)(page - 1);
+    uint32_t delta = off_lo - aligned;
+    size_t len = (want ? (size_t)want : hm->maplen - (size_t)off_lo) + delta;
+    void *got;
+    int i;
+
+    if (off_hi) {
+        fprintf(stderr, "kernel32: MapViewOfFile at offset %u:%u -- beyond "
+                        "what a 32-bit guest can address.\n", off_hi, off_lo);
+        g_last_error = 8;
+        ret_std(C, 0, 5);
+        return;
+    }
+    len = (len + (size_t)page - 1) & ~((size_t)page - 1);
+    if ((uint64_t)g_view_cursor + len > VIEW_ARENA_END) {
+        fprintf(stderr, "kernel32: no room for a %zu byte view: the file-view "
+                        "arena 0x%08x..0x%08x is full at 0x%08x.\n",
+                len, VIEW_ARENA_BASE, VIEW_ARENA_END, g_view_cursor);
+        g_last_error = 8;
+        ret_std(C, 0, 5);
+        return;
+    }
+    got = mmap((void *)(uintptr_t)g_view_cursor, len, PROT_READ | PROT_WRITE,
+               MAP_PRIVATE | MAP_FIXED_NOREPLACE, hm->fd, (off_t)aligned);
+    if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)g_view_cursor) {
+        fprintf(stderr, "kernel32: MapViewOfFile could not place a %zu byte "
+                        "view at 0x%08x: %s\n", len, g_view_cursor,
+                got == MAP_FAILED ? strerror(errno) : "the kernel chose "
+                "another address, which the guest could not reach");
+        if (got != MAP_FAILED) munmap(got, len);
+        g_last_error = 8;
+        ret_std(C, 0, 5);
+        return;
+    }
+    for (i = 0; i < MAX_VIEWS; i++)
+        if (!g_views[i].addr) {
+            g_views[i].addr = g_view_cursor;
+            g_views[i].len = len;
+            break;
+        }
+    if (i == MAX_VIEWS)
+        fprintf(stderr, "kernel32: more than %d views mapped at once; this one "
+                        "cannot be unmapped later.\n", MAX_VIEWS);
+
+    ret_std(C, g_view_cursor + delta, 5);
+    g_view_cursor += (uint32_t)len;
+}
+
+void imp_KERNEL32_UnmapViewOfFile(CPU *C)
+{
+    uint32_t addr = A(0);
+    int i;
+    for (i = 0; i < MAX_VIEWS; i++)
+        if (g_views[i].addr && addr >= g_views[i].addr &&
+            addr < g_views[i].addr + g_views[i].len) {
+            munmap((void *)(uintptr_t)g_views[i].addr, g_views[i].len);
+            g_views[i].addr = 0;
+            ret_std(C, 1, 1);
+            return;
+        }
+    /* The address space is not reclaimed -- the cursor only goes up. That is
+       deliberate for now: reusing a range means a stale guest pointer lands in
+       a DIFFERENT file's contents, which reads as corrupt data rather than as
+       a use-after-unmap. */
+    fprintf(stderr, "kernel32: UnmapViewOfFile(0x%08x) is not the base of any "
+                    "view this host mapped.\n", addr);
+    ret_std(C, 0, 1);
+}
 
 void imp_KERNEL32_FindFirstFileA(CPU *C)
 {
