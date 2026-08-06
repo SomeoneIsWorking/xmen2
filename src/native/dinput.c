@@ -99,26 +99,87 @@ static void m_Release(CPU *C)
     C->esp += 4u + 4u;
 }
 
+/* DIDEVTYPE_*, the DirectInput 7 numbering (dwVersion 0x700). */
+#define DIDEVTYPE_DEVICE   1
+#define DIDEVTYPE_MOUSE    2
+#define DIDEVTYPE_KEYBOARD 3
+#define DIDEVTYPE_JOYSTICK 4
+
+static const char *devtype_name(uint32_t t)
+{
+    switch (t & 0xffu) {
+    case 0:                  return "ALL";
+    case DIDEVTYPE_DEVICE:   return "DEVICE";
+    case DIDEVTYPE_MOUSE:    return "MOUSE";
+    case DIDEVTYPE_KEYBOARD: return "KEYBOARD";
+    case DIDEVTYPE_JOYSTICK: return "JOYSTICK";
+    default:                 return "(unknown)";
+    }
+}
+
+/*
+ * Reported once PER (devType, flags), not once in total.
+ *
+ * It used to be a single `static int told`, and that is a diagnostic that
+ * cannot print what matters: the engine calls EnumDevices from two places with
+ * different device classes, and only the first was ever named. "Reports zero
+ * devices" then read as one missing list when it is several. The count is
+ * carried too, so a caller that enumerates every frame is distinguishable from
+ * one that enumerates at startup.
+ */
+#define ENUM_SEEN 8
+static struct { uint32_t devtype, flags, cb; unsigned long n; } g_enum[ENUM_SEEN];
+static int g_nenum;
+
 static void m_EnumDevices(CPU *C)
 {
     /* (this, dwDevType, lpCallback, pvRef, dwFlags) */
     uint32_t devtype = A(1), cb = A(2), flags = A(4);
-    static int told;
-    if (!told++) {
+    int i;
+
+    for (i = 0; i < g_nenum; i++)
+        if (g_enum[i].devtype == devtype && g_enum[i].flags == flags
+            && g_enum[i].cb == cb) { g_enum[i].n++; break; }
+    if (i == g_nenum && g_nenum < ENUM_SEEN) {
+        const char *nm = x86_native_name_at(cb);
+        g_enum[g_nenum].devtype = devtype;
+        g_enum[g_nenum].flags = flags;
+        g_enum[g_nenum].cb = cb;
+        g_enum[g_nenum].n = 1;
+        g_nenum++;
         fprintf(stderr,
-                "DINPUT: EnumDevices(devType=%u, flags=0x%x) is reporting ZERO "
-                "devices.\n"
+                "DINPUT: EnumDevices(devType=%u %s, flags=0x%x) is reporting "
+                "ZERO devices.\n"
                 "  The enumeration protocol is real -- the callback at 0x%08x "
-                "would be invoked once per device --\n"
+                "(%s) would be invoked once per device --\n"
                 "  but no device list is wired up yet, so the game starts with "
                 "no keyboard, mouse or pad.\n"
                 "  This is a missing subsystem, not an empty machine. See "
-                "src/native/dinput.c.\n",
-                devtype, flags, cb);
+                "src/native/dinput.c and issue #32.\n",
+                devtype, devtype_name(devtype), flags, cb,
+                nm ? nm : "in no body this host can name");
     }
     /* Enumerating nothing is a successful enumeration: DirectInput returns
        DI_OK and simply never calls the callback. */
     ret_com(C, S_OK, 4);
+}
+
+void dinput_report(void)
+{
+    int i;
+    if (!g_nenum) {
+        printf("  dinput: EnumDevices was never called, so no device list was "
+               "even asked for.\n");
+        return;
+    }
+    printf("  dinput: %d distinct EnumDevices call(s), all answered with ZERO "
+           "devices:\n", g_nenum);
+    for (i = 0; i < g_nenum; i++) {
+        const char *nm = x86_native_name_at(g_enum[i].cb);
+        printf("        devType %u %-9s flags 0x%-4x  x%-5lu  callback "
+               "0x%08x %s\n", g_enum[i].devtype, devtype_name(g_enum[i].devtype),
+               g_enum[i].flags, g_enum[i].n, g_enum[i].cb, nm ? nm : "");
+    }
 }
 
 static void m_GetDeviceStatus(CPU *C)

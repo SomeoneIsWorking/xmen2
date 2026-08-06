@@ -916,8 +916,30 @@ static const char *sysmod_name(uint32_t h)
     return (int)i < g_nsysmod ? g_sysmod[i] : NULL;
 }
 
+/*
+ * The FILE NAME of a module, however it was asked for.
+ *
+ * Win32 takes a path here and callers use one: XMen2.exe builds
+ * "C:\Windows\System32\dinput8.dll" from GetSystemDirectoryA and loads THAT.
+ * Comparing the whole string against a module name never matches, so the module
+ * was reported missing even when this host implements it (issue #32). Both
+ * separators are accepted because a guest string may carry either.
+ */
+static const char *module_leaf(const char *p)
+{
+    const char *s;
+    if (!p) return NULL;
+    for (s = p; *s; s++)
+        if (*s == '\\' || *s == '/') p = s + 1;
+    return p;
+}
+
 /* Which module names this host answers for natively. Anything else has no
-   implementation at all, and saying so is the point. */
+   implementation at all, and saying so is the point.
+
+   The list covers modules whose imports are bound statically; a module reached
+   only by a run-time lookup declares itself through x86_native_export, and
+   asking THAT is what keeps the two from drifting apart. */
 static int is_native_sysmod(const char *n)
 {
     static const char *known[] = {
@@ -925,8 +947,9 @@ static int is_native_sysmod(const char *n)
         "MSVCRT.DLL", "MSVCR71.DLL", "SHELL32.DLL", "OLE32.DLL", NULL
     };
     int i;
+    if (!n) return 0;
     for (i = 0; known[i]; i++) if (strcasecmp(known[i], n) == 0) return 1;
-    return 0;
+    return x86_native_module_implemented(n);
 }
 
 /*
@@ -951,7 +974,7 @@ static int is_native_sysmod(const char *n)
  */
 void imp_KERNEL32_GetModuleHandleA(CPU *C)
 {
-    const char *nm = ACS(0);
+    const char *nm = module_leaf(ACS(0));
     uint32_t b;
     /* NULL asks for the running program's own handle, which in a PE IS the
        image base -- and that is what the guest uses it as. */
@@ -984,7 +1007,7 @@ void imp_KERNEL32_GetModuleHandleA(CPU *C)
 
 void imp_KERNEL32_LoadLibraryA(CPU *C)
 {
-    const char *nm = ACS(0);
+    const char *nm = module_leaf(ACS(0));
     uint32_t b = module_base_by_name(nm);
     if (b) { ret_std(C, b, 1); return; }
     if (nm && is_native_sysmod(nm)) {
@@ -1038,8 +1061,15 @@ void imp_KERNEL32_GetProcAddress(CPU *C)
     }
     if (sm) {
         /* A natively implemented system DLL: hand back a real thunk, or NULL
-           if this host does not implement that entry point. */
+           if this host does not implement that entry point.
+
+           Two registries, asked in order, because they answer different
+           questions: x86_native_thunk finds a symbol some mapped module
+           IMPORTS, and x86_native_export_addr finds one this host publishes
+           that nothing imports -- which is the only kind a run-time lookup
+           like dinput8's can be. */
         uint32_t t = x86_native_thunk(sm, sym);
+        if (!t) t = x86_native_export_addr(sm, sym);
         if (t) { ret_std(C, t, 2); return; }
         fprintf(stderr, "kernel32: GetProcAddress(%s, \"%s\") -- this host does "
                         "not implement that entry point, so NULL\n",

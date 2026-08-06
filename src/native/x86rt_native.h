@@ -69,6 +69,22 @@ uint32_t x86_native_callback(void (*fn)(struct CPU *), const char *owner,
    serve many objects, told apart by which synthetic address the guest called. */
 void *x86_callback_ctx(void);
 
+/*
+ * Publish an entry point of a module this host implements but nothing
+ * statically imports, so a run-time LoadLibraryA + GetProcAddress can find it.
+ *
+ * x86_native_thunk resolves through the mapped modules' import tables, which
+ * cannot see a symbol the guest looks up by name at run time -- and that is how
+ * XMen2.exe reaches dinput8.dll (issue #32). Registering here is the single
+ * source of truth for BOTH questions: which entry points exist, and therefore
+ * which modules LoadLibraryA may honestly hand back a handle for.
+ */
+void     x86_native_export(const char *mod, const char *sym,
+                           void (*fn)(struct CPU *));
+uint32_t x86_native_export_addr(const char *mod, const char *sym);
+int      x86_native_module_implemented(const char *mod);
+void     x86_native_export_report(void);
+
 /* Head of the registered-module list. */
 X86Module *x86_modules(void);
 

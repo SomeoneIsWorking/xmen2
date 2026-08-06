@@ -296,6 +296,77 @@ uint32_t x86_native_callback(void (*fn)(CPU *), const char *owner,
 
 void *x86_callback_ctx(void) { return g_cb_ctx; }
 
+/*
+ * Entry points of a module this host implements but NOTHING statically imports.
+ *
+ * x86_native_thunk above answers by searching the mapped modules' IMPORT
+ * tables, which is right for a symbol some module links against -- and useless
+ * for one the guest resolves at run time. XMen2.exe builds the path to
+ * dinput8.dll from GetSystemDirectoryA, LoadLibraryAs it and asks for
+ * DirectInput8Create by name; no import table mentions either, so there was
+ * nothing for GetProcAddress to find and input was disabled wholesale
+ * (issue #32).
+ *
+ * Registering here is also what makes "does this host implement that module"
+ * answerable from ONE place: LoadLibraryA used to consult a hand-written list
+ * of module names, which is a second source of truth that drifts from the set
+ * of functions actually implemented.
+ */
+#define NATIVE_EXPORT_MAX 32
+static struct {
+    const char *mod, *sym;
+    uint32_t    addr;
+} g_nexport[NATIVE_EXPORT_MAX];
+static int g_nnexport;
+
+void x86_native_export(const char *mod, const char *sym, void (*fn)(CPU *))
+{
+    if (g_nnexport == NATIVE_EXPORT_MAX) {
+        fprintf(stderr, "x86_native_export: the %d-entry table is full; "
+                        "%s!%s cannot be published.\n",
+                NATIVE_EXPORT_MAX, mod, sym);
+        abort();
+    }
+    g_nexport[g_nnexport].mod = mod;
+    g_nexport[g_nnexport].sym = sym;
+    g_nexport[g_nnexport].addr = x86_native_callback(fn, mod, sym, NULL);
+    g_nnexport++;
+}
+
+uint32_t x86_native_export_addr(const char *mod, const char *sym)
+{
+    int i;
+    if (!mod || !sym) return 0;
+    for (i = 0; i < g_nnexport; i++)
+        if (strcasecmp(g_nexport[i].mod, mod) == 0
+            && strcmp(g_nexport[i].sym, sym) == 0)
+            return g_nexport[i].addr;
+    return 0;
+}
+
+int x86_native_module_implemented(const char *mod)
+{
+    int i;
+    if (!mod) return 0;
+    for (i = 0; i < g_nnexport; i++)
+        if (strcasecmp(g_nexport[i].mod, mod) == 0) return 1;
+    return 0;
+}
+
+void x86_native_export_report(void)
+{
+    int i;
+    if (!g_nnexport) {
+        printf("  native exports: none registered -- no module is offered to "
+               "LoadLibraryA beyond the ones this host maps.\n");
+        return;
+    }
+    printf("  native exports (resolvable by LoadLibraryA + GetProcAddress):\n");
+    for (i = 0; i < g_nnexport; i++)
+        printf("        %-14s %-24s 0x%08x\n", g_nexport[i].mod,
+               g_nexport[i].sym, g_nexport[i].addr);
+}
+
 /* Which import a thunk address belongs to, for diagnostics. A thunk that is
    DEREFERENCED rather than called means the import is data, not a function --
    and a thunk cannot serve data, so that import needs a real value. */

@@ -561,6 +561,7 @@ static void case_arkinit(void)
  */
 void imp_KERNEL32_GetModuleHandleA(CPU *C);
 void imp_KERNEL32_LoadLibraryA(CPU *C);
+void imp_KERNEL32_GetProcAddress(CPU *C);
 void imp_KERNEL32_MultiByteToWideChar(CPU *C);
 void imp_MSVCRT_malloc(CPU *C);
 void imp_MSVCRT_free(CPU *C);
@@ -832,6 +833,61 @@ static void case_setjmp_table(void)
     guest_free(frame);
 }
 
+/*
+ * A module this host implements but nothing imports must be loadable BY PATH.
+ *
+ * Both halves failed before, and each on its own is enough to disable input
+ * wholesale (issue #32): LoadLibraryA compared the caller's full path
+ * "C:\...\dinput8.dll" against a bare module name and never matched, and even
+ * a match would have found nothing, because GetProcAddress resolved only
+ * symbols that appear in some mapped module's IMPORT table -- which a run-time
+ * lookup never does.
+ *
+ * The negative is the point of the last check: a symbol this host does NOT
+ * implement must still come back NULL, or "the module loaded" would mean
+ * "every function in it exists".
+ */
+static void case_runtime_module(void)
+{
+    uint32_t path = guest_malloc(64), sym = guest_malloc(64), h, p;
+    CPU C;
+
+    printf("  run-time module lookup\n");
+    strcpy((char *)(uintptr_t)path, "C:\\Windows\\System32\\dinput8.dll");
+
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x200u;
+    WR32(C.esp, 0);                                  /* return address */
+    WR32(C.esp + 4u, path);
+    imp_KERNEL32_LoadLibraryA(&C);
+    h = C.eax;
+    check("dinput8.dll loads by full path", h != 0u, 1u);
+
+    strcpy((char *)(uintptr_t)sym, "DirectInput8Create");
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x200u;
+    WR32(C.esp, 0);
+    WR32(C.esp + 4u, h);
+    WR32(C.esp + 8u, sym);
+    imp_KERNEL32_GetProcAddress(&C);
+    p = C.eax;
+    check("DirectInput8Create resolves", p != 0u, 1u);
+    check("and to the address it was published at",
+          p, x86_native_export_addr("DINPUT8.DLL", "DirectInput8Create"));
+
+    strcpy((char *)(uintptr_t)sym, "DirectInput8CreateNoSuchThing");
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x200u;
+    WR32(C.esp, 0);
+    WR32(C.esp + 4u, h);
+    WR32(C.esp + 8u, sym);
+    imp_KERNEL32_GetProcAddress(&C);
+    check("a symbol this host lacks is still NULL", C.eax, 0u);
+
+    guest_free(path);
+    guest_free(sym);
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -879,6 +935,7 @@ static int run_battery(void)
     case_import_abi();
     case_guest_heap();
     case_setjmp_table();
+    case_runtime_module();
     case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"
@@ -1036,6 +1093,10 @@ int main(int argc, char **argv)
     if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x20000000u) != 0)
         return 1;
     atexit(guest_heap_report);
+    { extern void dinput_report(void); atexit(dinput_report); }
+    { extern void dinput8_install(void), dinput8_report(void);
+      dinput8_install(); atexit(dinput8_report); }
+    atexit(x86_native_export_report);
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {
         int bound = 0, poisoned = 0;
