@@ -145,3 +145,25 @@ The other store, 0x005fb194, sits immediately after a `RET 0x4` and is on a sepa
 **NEXT**: identify the receiver — the object at [ESP+0x14] — and what its slot 23 is. Note the receiver is NOT igVkVisualContext: slot 23 of igVisualContext's vtable is one of the inherited platform-neutral ones (0x100513c2, shared by 9 classes), and our unimplemented reporter never fired. So this is a different object, most likely the display/window side rather than the renderer. Read 0x6a3a70 as a string first; it will probably name it outright.
 
 This is where the renderer work resumes, and it is a read rather than a search.
+
+### Note (2026-08-06)
+HOP 7 — THE GATE IS igWin32Window::open, AND ITS ARGUMENT NAMES IT.
+
+The constant pushed at 0x005faf43 reads, out of the PE:
+
+    0x006a3a70 -> "X-Men Legends 2"
+
+That is the WINDOW TITLE. So the slot-23 virtual is the display object's open -- `Gap::Display::igWin32Window::open`, which the boundary trace has shown being called all along -- taking (title, width, height) from [ESI+0x20]/[ESI+0x24]. The whole chain is now:
+
+    igWin32Window::open("X-Men Legends 2", w, h) returns FALSE
+      -> FUN_005fac10 latches 0x006f3a2d
+      -> FUN_005fb270 reads it, sets 0x00a09f94
+      -> FUN_00403420 raises "Display failed!"
+
+**This is a WINDOW failure, not a renderer one.** It is consistent with the renderer evidence throughout: no slot we owe was ever dispatched, and the Vulkan device is created successfully every run.
+
+**WHAT I COULD NOT SETTLE, and why** -- this matters before anyone spends time on it. Every run in this session was headless: the log says "GDI32: GetDeviceCaps answering from BUILT-IN DEFAULTS -- SDL could not report a display mode". Running WITHOUT --no-window still failed, but that proves nothing here, because there is no display for SDL to create a window on either way.
+
+**So the first thing to do is re-run it on a real screen**: `./run.sh` (which is the native build, on your display, with sound). If "Display failed!" disappears, the whole chain above was the headless environment and the renderer's next demand is whatever comes after. If it persists WITH a display, then igWin32Window::open is genuinely failing and its own body is the thing to read.
+
+Do that before implementing any renderer slot. Everything above is measured; this one question is not, and it decides whether there is a bug here at all.
