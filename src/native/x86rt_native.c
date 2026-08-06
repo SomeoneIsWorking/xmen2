@@ -967,8 +967,46 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
     ring_note("RET-to", target, 0, C->esp, C->esp);
     if (x86_native_call_at(target, C)) return;
     nm = x86_native_name_at(fn_ep);
-    fprintf(stderr, "x86_return_to: 0x%08x is not a function entry -- a RET "
-                    "popped something that is not a return address.\n"
+    /*
+     * A RET whose popped value is INSIDE a mapped module is an ordinary
+     * return, not corruption.
+     *
+     * This used to abort, and it was wrong for every TAIL-CALLED body. A
+     * function reached by a tail JMP is entered with whatever the jumping
+     * function left at [esp] -- not its own return address -- so `_rt !=
+     * _retaddr` is true by construction, and the value popped is the
+     * legitimate return address of the function that jumped. Returning is
+     * correct: the emitted tail call is `call; return;`, so the host call
+     * chain mirrors the guest one and the guest ESP is already right.
+     *
+     * XMen2.exe 0x005fac10 tail-jumps into 0x005fafc1, whose RET pops
+     * 0x005fb2bc -- a perfectly good return address, mid-function as every
+     * return address is. Aborting on it killed a run that was fine, and sent
+     * two sessions into re-splitting and re-merging the containing function
+     * (issue #27).
+     *
+     * A value in NO module is still fatal: that is real corruption, and it is
+     * the case this check was built for.
+     */
+    if (x86_module_for(target)) {
+        static int said;
+        if (!said++)
+            fprintf(stderr,
+                    "x86_return_to: 0x%08x (in %s) was popped by the RET in "
+                    "0x%08x (%s), which\n"
+                    "  had 0x%08x at [esp] on entry. That is what a TAIL CALL "
+                    "looks like -- the body was jumped\n"
+                    "  into, so its entry [esp] is not its own return address "
+                    "-- and returning is correct.\n"
+                    "  Reported once; the total is in the RET-to counter "
+                    "above.\n",
+                    target, x86_module_for(target)->name, fn_ep,
+                    nm ? nm : "?", expected);
+        return;
+    }
+    fprintf(stderr, "x86_return_to: 0x%08x is not a function entry, and is in "
+                    "NO mapped module -- a RET popped something that cannot be "
+                    "a return address.\n"
                     "  The RET is in 0x%08x (%s), which was ENTERED with "
                     "0x%08x on the stack and left with 0x%08x there.\n"
                     "  So that function's epilogue does not match its "
