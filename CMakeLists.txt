@@ -157,6 +157,7 @@ if(X2_MODULE_HAVE)
         src/native/advapi32.c
         src/native/ole32.c
         src/native/gdi32.c
+        src/native/dinput.c
         src/native/x86rt_native.c
         src/native/overrides.c
         src/vulkan/igvk_ark.c
