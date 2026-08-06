@@ -163,6 +163,43 @@ void imp_KERNEL32_MultiByteToWideChar(CPU *C)
 
 void imp_USER32_GetDesktopWindow(CPU *C) { ret_std(C, HWND_DESKTOP_TOK, 0); }
 
+/*
+ * MessageBoxA -- printed, never swallowed.
+ *
+ * There is no dialog to put up here, but the TEXT is the point: the game uses
+ * this to report a condition it thinks the player must see, and a port that
+ * silently returns IDOK turns "your video card is unsupported" into a feature
+ * that mysteriously does not work. So it goes to stderr, loudly, with its
+ * caption.
+ *
+ * The RETURN is the part that cannot be honest, and it is worth being clear
+ * about which way it is dishonest. A message box asking a question gets IDOK
+ * here -- the default, and what a player clicking through would most often
+ * pick -- but nothing has established that OK is the right answer for any
+ * particular prompt, and a Yes/No that means "delete your save?" would be
+ * answered without being asked. The button style is printed so that case is
+ * visible rather than silent.
+ */
+/* Icons and cursors are window decoration this host does not draw. A distinct
+   non-zero token per call keeps them telling apart if anything compares them,
+   and nothing here pretends to load an image. */
+void imp_USER32_LoadIconA(CPU *C)   { static uint32_t t = 0x00E10000u; ret_std(C, ++t, 2); }
+void imp_USER32_LoadCursorA(CPU *C) { static uint32_t t = 0x00E20000u; ret_std(C, ++t, 2); }
+
+void imp_USER32_MessageBoxA(CPU *C)
+{
+    /* (hWnd, lpText, lpCaption, uType) */
+    const char *text = (const char *)(uintptr_t)A(1);
+    const char *cap  = (const char *)(uintptr_t)A(2);
+    uint32_t type = A(3);
+    fprintf(stderr, "\n*** MessageBox [%s]\n    %s\n",
+            cap ? cap : "(no caption)", text ? text : "(no text)");
+    if ((type & 0xFu) != 0u)
+        fprintf(stderr, "    (button style 0x%x -- this host answers IDOK "
+                        "without asking anyone)\n", type & 0xFu);
+    ret_std(C, 1, 4);                     /* IDOK */
+}
+
 void imp_USER32_RegisterClassA(CPU *C)
 {
     /* NO-OP with a real return: there is no class registry natively, and the
