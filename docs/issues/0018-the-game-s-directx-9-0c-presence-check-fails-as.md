@@ -96,3 +96,30 @@ function. The bodies -- state translation, combiners, shaders, the GL backend --
 are reusable; the interface layer has to be rebuilt to the PC layout.
 
 That is the trade to weigh, and it is now measured rather than guessed.
+
+### Settled from the game's side
+
+`igDxVisualContext::userInstantiate` (libIGGfx 0x1002c210) calls
+`Direct3DCreate8` and then immediately does
+
+    CALL dword ptr [EDX + 0x34]      ; three args pushed, plus `this`
+
+PC D3D8's `IDirect3D8` slot 0x34 is `GetDeviceCaps(Adapter, DeviceType, pCaps)`
+-- three arguments. So the game does use the PC layout, confirmed from the
+caller rather than recalled.
+
+And the vendored `IDirect3D8Vtbl` has **four** entries in total
+(QueryInterface, AddRef, Release, CreateDevice), so it is sixteen bytes long and
+offset 0x34 lies off the end of it. It is not a reordering of PC D3D8 -- it is a
+minimal subset of whatever the Xbox recomp needed.
+
+### How big the work is
+
+The `igDx*` wrapper classes make **648 indirect calls at 73 distinct vtable
+offsets** (<= 0x18c), across 219 functions. Those offsets span the whole COM
+family -- device, texture, surface, vertex and index buffers -- so 73 is the
+total method surface, not 73 device methods.
+
+That is a bounded piece of work of roughly the scale of a small dxvk-d3d8, with
+the vendored state translation, combiners, shaders and GL backend reusable
+underneath a new PC-shaped interface layer.

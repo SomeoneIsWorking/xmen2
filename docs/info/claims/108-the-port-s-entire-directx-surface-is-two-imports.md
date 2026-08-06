@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-06
 tags: pc,recomp,graphics,scoping
+reconfirmed: 2026-08-06
 ---
 
 ## Claim
@@ -17,3 +18,7 @@ Measured across every shipped module: the ONLY DirectX imports in the whole game
 ## What would falsify it
 
 The vtable comparison is against my knowledge of PC D3D8's method order, not against a header or a diff with the shipped d3d8.dll's interface. Before any work is planned on it, that order should be checked against a real d3d8.h or against what libIGGfx actually calls -- the offsets it uses on the device object are measurable from the recompiled code and would settle it from the game's side rather than from memory.
+
+## Re-confirmed 2026-08-06
+
+Falsifier RESOLVED, and from both sides rather than from memory. FROM THE GAME: Gap::Gfx::igDxVisualContext::userInstantiate at 0x1002c210 calls Direct3DCreate8, stores the result, then makes its first vtable call as  with three arguments pushed plus . PC D3D8's IDirect3D8 slot 0x34 is GetDeviceCaps(Adapter, DeviceType, pCaps) -- three arguments. The layout is confirmed from the caller, not recalled. FROM THE VENDORED SIDE: its IDirect3D8Vtbl has FOUR entries -- QueryInterface, AddRef, Release, CreateDevice -- so it is 16 bytes long and offset 0x34 is off the end of it entirely. The interface is therefore not merely reordered relative to PC D3D8, it is a minimal subset covering what the Xbox recomp happened to need. SIZE, measured: the igDx* wrapper classes make 648 indirect calls at 73 distinct vtable offsets <= 0x18c, across 219 functions. Those offsets span the whole COM family (device, texture, surface, vertex and index buffers), not one interface, so 73 is the total method surface to implement rather than 73 device methods.
