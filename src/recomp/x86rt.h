@@ -337,10 +337,17 @@ void x86_trace_exit(uint32_t ep, const CPU *C);
  *
  * So this keeps a SET, not a history: entered-or-not for every entry point,
  * with no eviction, reported with the total distinct count as its denominator
- * so that NEVER is distinguishable from "the instrument never ran". */
-void x86_reached_enter(uint32_t ep);
+ * so that NEVER is distinguishable from "the instrument never ran".
+ *
+ * Keyed on (entry point, MODULE BASE), not the entry point alone. Every
+ * libIG*.dll is linked for 0x10000000, so the same linked address exists in
+ * several of them and a set keyed on it alone reports one module's count under
+ * another's name -- observed: FUN_1006a500 came back as a single x52 spanning
+ * libIGCore and libIGSg. X86_IMGBASE is this module's own runtime base and is
+ * already defined in every generated translation unit, so the pair is free. */
+void x86_reached_enter(uint32_t ep, uint32_t base);
 void x86_reached_report(void);
-# define X86_ENTER_FN(a) x86_reached_enter(a)
+# define X86_ENTER_FN(a) x86_reached_enter((a), X86_IMGBASE)
 # define x86_dump_history() ((void)0)
 #else
 # define X86_ENTER_FN(a) ((void)0)

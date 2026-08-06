@@ -547,6 +547,43 @@ static int guest_reserved(uint32_t base, uint32_t len)
     return 0;
 }
 
+/*
+ * The span containing an address, for VirtualQuery.
+ *
+ * This table is the ONLY record that a guest reservation exists -- the address
+ * is in no module and in no guest heap -- so a VirtualQuery that does not
+ * consult it calls the guest's own memory FREE. That is not a cosmetic
+ * inaccuracy: libIGCore's CRT grows its heap by scanning for a free region and
+ * reserving it, so being told its own reservations are still free makes the
+ * scan never finish. It reserved ~527 MB in 28 grows and only stopped when the
+ * budget refused (C088). The allocator and the query have to describe the same
+ * address space, which is the same defect as C070/C071 on the Xbox side.
+ */
+static int guest_reserved_span(uint32_t addr, uint32_t *base, uint32_t *size)
+{
+    int i;
+    for (i = 0; i < g_nreserved; i++)
+        if (addr >= g_reserved[i].base
+            && addr - g_reserved[i].base < g_reserved[i].size) {
+            *base = g_reserved[i].base;
+            *size = g_reserved[i].size;
+            return 1;
+        }
+    return 0;
+}
+
+/* Lowest reservation strictly above addr, or 0 -- so a FREE span stops at the
+   next thing the guest owns instead of running through it. */
+static uint32_t guest_reserved_next(uint32_t addr)
+{
+    uint32_t next = 0;
+    int i;
+    for (i = 0; i < g_nreserved; i++)
+        if (g_reserved[i].base > addr && (!next || g_reserved[i].base < next))
+            next = g_reserved[i].base;
+    return next;
+}
+
 void imp_KERNEL32_VirtualAlloc(CPU *C)
 {
     uint32_t addr = A(0), size = A(1), type = A(2), p;
@@ -666,6 +703,14 @@ void imp_KERNEL32_VirtualQuery(CPU *C)
     if (len < 28u) { ret_std(C, 0, 3); return; }
     m = x86_module_for(addr);
     if (m) { base = *m->base; size = m->size; state = 0x1000u; protect = 0x02u; }
+    else if (guest_reserved_span(addr, &base, &size)) {
+        /* Memory the guest itself reserved through VirtualAlloc. Reported as
+           COMMIT rather than RESERVE because that is what we actually did:
+           the reservation is mapped PROT_READ|PROT_WRITE, so it is readable
+           and writable, and describing it as reserved-but-uncommitted would be
+           the inaccuracy in the other direction. */
+        state = 0x1000u; protect = 0x04u;
+    }
     else {
         /* Not in a module. The guest heap and stacks are committed and
            writable; anything else is genuinely unmapped as far as the guest is
@@ -680,9 +725,15 @@ void imp_KERNEL32_VirtualQuery(CPU *C)
                scan sat in exactly that loop. The span is the distance to the
                next thing the guest can see. */
             X86Module *k;
-            uint32_t next = 0xFFFFF000u, hb, hn;
+            uint32_t next = 0xFFFFF000u, hb, hn, rnext;
             for (k = x86_modules(); k; k = k->next)
                 if (*k->base > addr && *k->base < next) next = *k->base;
+            /* ...and at the next guest RESERVATION. Without this the free span
+               is reported as running straight through memory the guest already
+               owns, so a caller that trusts RegionSize reserves on top of
+               itself. */
+            rnext = guest_reserved_next(addr);
+            if (rnext && rnext < next) next = rnext;
             if (guest_heap_contains(addr + 1u, &hb, &hn) == 0) {
                 /* the heap starts somewhere above? find it the same way */
                 if (guest_heap_contains(0, &hb, &hn) || 1) {
@@ -697,6 +748,11 @@ void imp_KERNEL32_VirtualQuery(CPU *C)
             protect = 0x01u;             /* PAGE_NOACCESS */
         }
     }
+    if (verbose())
+        fprintf(stderr, "[mem] VirtualQuery(0x%08x) -> base 0x%08x size %u "
+                        "(%.1f MB) state %s\n", addr, base, size,
+                size / 1048576.0,
+                state == 0x10000u ? "FREE" : "COMMIT");
     memset((void *)(uintptr_t)buf, 0, 28);
     WR32(buf +  0u, base);               /* BaseAddress */
     WR32(buf +  4u, base);               /* AllocationBase */

@@ -266,69 +266,43 @@ void x86_trace_exit(uint32_t ep, const CPU *C)
    no extra cost. */
 /* n is the CALL COUNT, not just presence. "Reached" and "reached 31 times" are
    different findings: a loop that fails to advance re-runs the same body, and
-   presence alone reports that as indistinguishable from running it once. */
-static struct { uint32_t ep, seq, n; } g_reached[REACHED_SLOTS];
+   presence alone reports that as indistinguishable from running it once.
+   The key is (ep, base) -- see x86rt.h for why the ep alone is not unique. */
+static struct { uint32_t ep, base, seq, n; } g_reached[REACHED_SLOTS];
 static unsigned g_reached_n;
 
-void x86_reached_enter(uint32_t ep)
+static unsigned reached_slot(uint32_t ep, uint32_t base)
 {
-    uint32_t h = (ep * 2654435761u) >> 15;
+    uint32_t h = (ep * 2654435761u + base * 40503u) >> 11;
     for (;;) {
         unsigned i = h & (REACHED_SLOTS - 1);
-        if (g_reached[i].ep == ep) { g_reached[i].n++; return; }
-        if (g_reached[i].ep == 0) {
-            g_reached[i].ep = ep;
-            g_reached[i].seq = ++g_reached_n;
-            g_reached[i].n = 1;
-            return;
-        }
+        if (g_reached[i].ep == 0) return i;
+        if (g_reached[i].ep == ep && g_reached[i].base == base) return i;
         h++;
     }
 }
 
-/* Returns the 1-based first-entry order, or 0 for never entered. */
-static uint32_t reached_seq(uint32_t ep)
+void x86_reached_enter(uint32_t ep, uint32_t base)
 {
-    uint32_t h = (ep * 2654435761u) >> 15;
-    for (;;) {
-        unsigned i = h & (REACHED_SLOTS - 1);
-        if (g_reached[i].ep == ep) return g_reached[i].seq;
-        if (g_reached[i].ep == 0) return 0;
-        h++;
-    }
+    unsigned i = reached_slot(ep, base);
+    if (g_reached[i].ep) { g_reached[i].n++; return; }
+    g_reached[i].ep = ep;
+    g_reached[i].base = base;
+    g_reached[i].seq = ++g_reached_n;
+    g_reached[i].n = 1;
 }
 
-static uint32_t reached_count(uint32_t ep)
+/* 1-based order of first entry, or 0 for never entered. */
+static uint32_t reached_seq(uint32_t ep, uint32_t base)
 {
-    uint32_t h = (ep * 2654435761u) >> 15;
-    for (;;) {
-        unsigned i = h & (REACHED_SLOTS - 1);
-        if (g_reached[i].ep == ep) return g_reached[i].n;
-        if (g_reached[i].ep == 0) return 0;
-        h++;
-    }
+    unsigned i = reached_slot(ep, base);
+    return g_reached[i].ep ? g_reached[i].seq : 0;
 }
 
-/* Which modules define a function at this LINKED address. An answer that is
-   ambiguous has to say so: a hit is a hit in one of these, and this instrument
-   cannot tell which. */
-static void reached_where(uint32_t ep)
+static uint32_t reached_count(uint32_t ep, uint32_t base)
 {
-    X86Module *m;
-    int n = 0;
-    for (m = x86_modules(); m; m = m->next) {
-        /* Only modules whose LINKED range actually contains this address.
-           Without the range test the subtraction wraps and probes a random
-           mapped address in every other module -- which reported an exe
-           address as also being in libIGUtils, an ambiguity that did not
-           exist. A false ambiguity is as bad as a hidden one. */
-        if (ep < m->preferred || ep - m->preferred >= m->size) continue;
-        if (x86_native_name_at(*m->base + (ep - m->preferred)))
-            fprintf(stderr, "%s%s", n++ ? ", " : "", m->name);
-    }
-    if (!n) fprintf(stderr, "NO MODULE defines a function at that address");
-    else if (n > 1) fprintf(stderr, "  <-- AMBIGUOUS: %d modules, and this "
-                                    "instrument keys on the linked address", n);
+    unsigned i = reached_slot(ep, base);
+    return g_reached[i].ep ? g_reached[i].n : 0;
 }
 
 /*
@@ -339,26 +313,30 @@ static void reached_where(uint32_t ep)
 static void reached_selftest(void)
 {
     const uint32_t a = 0xDEAD0001u, b = 0xDEAD0002u, miss = 0xDEAD0003u;
-    int ok_pos, ok_neg, ok_ord, ok_cnt;
-    x86_reached_enter(a);
-    x86_reached_enter(b);
-    ok_pos = reached_seq(a) != 0;
-    ok_neg = reached_seq(miss) == 0;
-    /* The ordering is a claim this instrument makes, so it is tested too: a
-       seq that is merely non-zero would pass the two checks above while
-       ordering everything wrongly. */
-    ok_ord = reached_seq(a) < reached_seq(b);
-    x86_reached_enter(a);                      /* a second time: count must move */
-    ok_cnt = reached_count(a) == 2 && reached_count(b) == 1;
-    fprintf(stderr, "[REACHED] selftest: inserted 0x%08x -> %s; never-inserted "
-                    "0x%08x -> %s; order %u < %u -> %s\n",
-            a, ok_pos ? "REACHED (correct)" : "NEVER (WRONG)",
-            miss, ok_neg ? "NEVER (correct)" : "REACHED (WRONG)",
-            reached_seq(a), reached_seq(b), ok_ord ? "correct" : "WRONG");
-    fprintf(stderr, "[REACHED] selftest: count after 2 entries -> %u, after 1 "
-                    "-> %u: %s\n", reached_count(a), reached_count(b),
-            ok_cnt ? "correct" : "WRONG");
-    if (!ok_pos || !ok_neg || !ok_ord || !ok_cnt) {
+    const uint32_t B1 = 0x10000000u, B2 = 0x20000000u;
+    int ok_pos, ok_neg, ok_ord, ok_cnt, ok_mod;
+    x86_reached_enter(a, B1);
+    x86_reached_enter(b, B1);
+    ok_pos = reached_seq(a, B1) != 0;
+    ok_neg = reached_seq(miss, B1) == 0;
+    /* Ordering is a claim this instrument makes, so it is tested too: a seq
+       that is merely non-zero would pass the checks above while ordering
+       everything wrongly. */
+    ok_ord = reached_seq(a, B1) < reached_seq(b, B1);
+    x86_reached_enter(a, B1);                  /* a second time: count must move */
+    ok_cnt = reached_count(a, B1) == 2 && reached_count(b, B1) == 1;
+    /* And the whole point of the (ep, base) key: the SAME ep in a different
+       module must be a different entry, not the same counter. */
+    x86_reached_enter(a, B2);
+    ok_mod = reached_count(a, B1) == 2 && reached_count(a, B2) == 1;
+    fprintf(stderr, "[REACHED] selftest: inserted -> %s; never-inserted -> %s; "
+                    "order %u<%u -> %s; counts 2/1 -> %s; same ep in two "
+                    "modules kept apart -> %s\n",
+            ok_pos ? "REACHED (correct)" : "NEVER (WRONG)",
+            ok_neg ? "NEVER (correct)" : "REACHED (WRONG)",
+            reached_seq(a, B1), reached_seq(b, B1), ok_ord ? "correct" : "WRONG",
+            ok_cnt ? "correct" : "WRONG", ok_mod ? "correct" : "WRONG");
+    if (!ok_pos || !ok_neg || !ok_ord || !ok_cnt || !ok_mod) {
         fprintf(stderr, "[REACHED] the reached set is BROKEN in at least one "
                         "direction -- every answer below is worthless.\n");
         _exit(4);
@@ -370,29 +348,48 @@ void x86_reached_report(void)
     const char *want = getenv("X2_REACHED");
     char buf[1024], *p, *save;
     if (getenv("X2_REACHED_SELFTEST")) reached_selftest();
-    fprintf(stderr, "[REACHED] %u distinct entry points were entered.\n",
-            g_reached_n);
+    fprintf(stderr, "[REACHED] %u distinct (entry point, module) pairs were "
+                    "entered.\n", g_reached_n);
     if (!g_reached_n)
         fprintf(stderr, "[REACHED] That is ZERO, so no body ran at all and a "
                         "NEVER below says nothing about the guest.\n");
     if (!want || !*want) {
         fprintf(stderr, "[REACHED] X2_REACHED is unset, so no specific address "
                         "was asked about. Set it to a comma-separated list of "
-                        "0x… to get a verdict per address.\n");
+                        "0x... to get a verdict per address.\n");
         return;
     }
-    snprintf(buf, sizeof buf, "%s", want);
     fprintf(stderr, "[REACHED] '#n' is the ORDER of first entry (smaller ran "
-                    "first); 'xN' is how many times it was entered.\n");
+                    "first); 'xN' is how many times it was entered. One line "
+                    "per module defining that address.\n");
+    snprintf(buf, sizeof buf, "%s", want);
     for (p = strtok_r(buf, ",", &save); p; p = strtok_r(NULL, ",", &save)) {
-        uint32_t ep = (uint32_t)strtoul(p, NULL, 0), seq = reached_seq(ep);
-        if (seq) fprintf(stderr, "[REACHED]   0x%08x  REACHED  #%-6u x%-6u in ",
-                         ep, seq, reached_count(ep));
-        else     fprintf(stderr, "[REACHED]   0x%08x  NEVER    %-7s %-7s in ", ep, "", "");
-        reached_where(ep);
-        fputc('\n', stderr);
+        uint32_t ep = (uint32_t)strtoul(p, NULL, 0);
+        X86Module *m;
+        int nmod = 0;
+        for (m = x86_modules(); m; m = m->next) {
+            uint32_t seq;
+            /* Only modules whose LINKED range contains this address. Without
+               the range test the subtraction wraps and probes a random mapped
+               address in every other module. */
+            if (ep < m->preferred || ep - m->preferred >= m->size) continue;
+            if (!x86_native_name_at(*m->base + (ep - m->preferred))) continue;
+            nmod++;
+            seq = reached_seq(ep, *m->base);
+            if (seq)
+                fprintf(stderr, "[REACHED]   0x%08x  REACHED  #%-6u x%-6u %s\n",
+                        ep, seq, reached_count(ep, *m->base), m->name);
+            else
+                fprintf(stderr, "[REACHED]   0x%08x  NEVER            %-7s %s\n",
+                        ep, "", m->name);
+        }
+        if (!nmod)
+            fprintf(stderr, "[REACHED]   0x%08x  -- NO registered module "
+                            "defines a function at that address, so there is "
+                            "nothing this could have counted\n", ep);
     }
 }
+
 #endif /* X86_NATIVE_REACHED */
 
 /* ---- guest-memory peek ------------------------------------------------

@@ -1,7 +1,7 @@
 ---
 id: 14
 title: Native run: the arena allocator is used before the memory system is bootstrapped
-status: open
+status: resolved
 symptom: SIGSEGV reading address 0x4 inside Gap::Core::igMemoryPool::trimAll, reached from igArenaMemoryPool::memoryOperation -> igArena_malloc -> igArenaSystemMalloc. The pool-list global at libIGCore+0x15f3f0 is zero
 tags: pc,recomp,native,engine-init,memory,rc-exe
 created: 2026-08-06
@@ -127,7 +127,14 @@ Malloc` produced ~527 MB, because the CRT heap beneath it grows and grows
 without ever satisfying the request. `FUN_1006aa50` and `FUN_1006ae10` are
 libIGCore's only two VirtualAlloc call sites, and the latter is never entered.
 
-## Next
+## Next — ANSWERED, see Resolution at the end of this file
+
+All three were done and the issue is fixed; kept for the trail, not as work.
+(1) was the right thread: the predicate is the `MEM_FREE` test in the
+`VirtualQuery` scan, and it was our answer that was wrong, not the translation.
+(2) was resolved by keying the reached set on (entry point, module base) —
+both counts are libIGCore's, libIGSg was never entered. (3) was a red herring:
+the reserve/commit size difference is incidental.
 
 1. Read `FUN_1006aa50` and find its termination condition — what it checks after
    a successful VirtualAlloc to decide the request is still unsatisfied. That
@@ -152,3 +159,6 @@ libIGCore's only two VirtualAlloc call sites, and the latter is never entered.
     X2_REACHED=0x00403420,0x1003d900,0x1003ab00,0x1005bdc0,0x100548a0,0x1005d8a0,0x1003b540,0x1003c1f0 \
     X2_PEEK='XMen2+0x27f708:4,libIGCore+0x15f3fc:1,libIGCore+0x15f3f0:4' \
     scratch/build-reached/x2native --no-window --run
+
+### Resolution (2026-08-06)
+ROOT CAUSE: imp_KERNEL32_VirtualQuery never consulted the reservation table that imp_KERNEL32_VirtualAlloc maintains (g_reserved[], same file, ~100 lines apart). It reported an address as MEM_FREE unless it fell in a mapped module or the guest heap -- so memory the guest had just reserved through VirtualAlloc read back as free. libIGCore's statically-linked MSVC CRT grows its heap by scanning with VirtualQuery for a free region and reserving it (FUN_1006aa50), so it was told its own reservations were still free and the scan never finished: 28 grows, ~527 MB, stopping only when the budget refused. That failure returned -1 to igArenaSystemMalloc, which took its OOM path into trimAll, which dereferences a pool list bootstrap had not built yet -- the SIGSEGV at 0x4. FIX: VirtualQuery now answers from the same table, reporting a reservation as MEM_COMMIT (honest: the reservation is mapped PROT_READ|PROT_WRITE), and a FREE span now stops at the next reservation as well as the next module, so RegionSize no longer runs through memory the guest owns. MEASURED: VirtualAlloc calls 67 -> 2, one 19.6 MB reserve plus its commit, at 0x00a80000 (low, like the stock build's 0x2410000). initBootstrap is now REACHED and trimAll is NEVER called. The run advances past the whole memory-pool bootstrap and now stops in igArenaMemoryPool::consolidate (0x10057dc0) on a NULL dereference -- filed separately. Same defect class as commit ee9707a and Xbox C070/C071: the allocator and the query must describe the same address space.
