@@ -167,3 +167,21 @@ That is the WINDOW TITLE. So the slot-23 virtual is the display object's open --
 **So the first thing to do is re-run it on a real screen**: `./run.sh` (which is the native build, on your display, with sound). If "Display failed!" disappears, the whole chain above was the headless environment and the renderer's next demand is whatever comes after. If it persists WITH a display, then igWin32Window::open is genuinely failing and its own body is the thing to read.
 
 Do that before implementing any renderer slot. Everything above is measured; this one question is not, and it decides whether there is a bug here at all.
+
+### Note (2026-08-06)
+HOP 8 — SETTLED UNDER A REAL DISPLAY, and it is upstream of the renderer entirely.
+
+Ran under a private Xvfb (:77, 1024x768x24) rather than headless, so the 'there is no display' caveat in the note above is now DISCHARGED: SDL windows demonstrably work in this environment -- the vk_frame_path selftest creates one and presents 3 frames through it.
+
+With a display, 'Display failed!' still appears, and the log says why:
+
+    SDL: a real window exists; this is where the USER32/DINPUT/D3D8 surface lands.
+    igVk: 0 frame(s) presented, 0 skipped for no swapchain texture, 0 with no window, ...
+
+There is **no 'igVk: swapchain claimed on window ...' line**. That call only prints when `igvk_device_attach_window(win32_sdl_window())` succeeds, and `win32_sdl_window()` returns NULL unless `g_win_live` is set -- which only `CreateWindowExA` sets. So **the guest never called CreateWindowExA**. The window x2native reports at startup is its own, not the game's.
+
+That is fully consistent with igWin32Window::open returning false, and it puts the failure UPSTREAM of the renderer: the game never got as far as asking for a window.
+
+**So the question is now: what does igWin32Window::open do before CreateWindowExA, and which part of it fails?** It is in libIGDisplay, it is recompiled, and the boundary trace already shows it being entered -- so put X2_ARGS on it (needs the X2_NATIVE_TRACE build, which scratch/build-native currently is) and read its body. This is one function, entered, with a false return: the narrowest possible target.
+
+Still true, and worth repeating because it has held through eight hops: NO renderer slot we owe has ever been dispatched. Implementing slots cannot move this.
