@@ -241,3 +241,39 @@ them via a generated import library.
    that only the vtable *pointer* is handed over? Callers that dispatch
    virtually index by slot, so almost certainly yes — needs the layout read out
    of the binary (`tools/ghidra_scripts/DumpVtab.py`).
+
+## `igMetaField` — where a field's NAME lives (2026-08-06)
+
+`igMetaObject::getMetaField(this, name)` is a forwarder:
+
+```
+getMetaField:              searchMetas(this->[0x28], k_fieldName, name)
+searchMetas:               for i in 0 .. list[0x0c]:
+                               f    = ((char **)list[0x08])[i]
+                               nm   = *(char **)(f + *(int *)(k_fieldName + 8))
+                               if strcmp(nm, name) == 0: return f
+```
+
+So the field-name offset is **not a constant** — it is read at run time from
+`igMetaField::k_fieldName + 8`, an exported DATA symbol at `libIGCore+0x15e418`.
+Observed value: **`0x0c`**, i.e. a field's name is `*(char **)(field + 0x0c)`.
+
+| offset | meaning |
+|---|---|
+| `+0x00` | vtable |
+| `+0x04` | igObject refcount — **not** a count; misreading this as the field count is easy and was done once |
+| `+0x0c` | field name (`char *`), per `k_fieldName + 8` |
+
+And for the list at `igMetaObject + 0x28`:
+
+| offset | meaning |
+|---|---|
+| `+0x00` | vtable |
+| `+0x04` | igObject refcount |
+| `+0x08` | array of `igMetaField *` |
+| `+0x0c` | count |
+
+Registration is driven by three parallel arrays passed to
+`setMetaFieldBasicPropertiesAndValidateAll(meta, names, knames, offsets, base)`.
+For `__internalNonRefCountedObjectList` those are, at `libIGCore+0x15b330`:
+names `{"_data", "_count"}`, and offsets `{8, 0x0c}`.

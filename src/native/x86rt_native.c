@@ -529,10 +529,63 @@ void x86_reached_report(void)
  * crash and the report would be lost -- so an unreadable address has to come
  * back as an error value, not as a signal.
  */
+/* One safe read; 0 on failure. Never dereferences -- see x86_peek_report. */
+static int peek_read(uint32_t addr, void *dst, size_t n)
+{
+    struct iovec loc, rem;
+    loc.iov_base = dst;                        loc.iov_len = n;
+    rem.iov_base = (void *)(uintptr_t)addr;    rem.iov_len = n;
+    return process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) == (ssize_t)n;
+}
+
+/* Print up to `max` bytes at addr as a C string. Says why it printed nothing
+   rather than printing an empty pair of quotes, which reads as "the string is
+   empty" when it usually means the address was wrong. */
+static void peek_string(uint32_t addr, unsigned max)
+{
+    char s[129];
+    unsigned i;
+    if (max > sizeof s - 1) max = sizeof s - 1;
+    for (i = 0; i < max; i++) {
+        unsigned char c;
+        if (!peek_read(addr + i, &c, 1)) {
+            if (i == 0) { fprintf(stderr, "UNREADABLE (not mapped)\n"); return; }
+            break;
+        }
+        if (!c) break;
+        s[i] = (c >= 32 && c < 127) ? (char)c : '.';
+    }
+    s[i] = 0;
+    if (!i) fprintf(stderr, "\"\" (empty: first byte is NUL)\n");
+    else    fprintf(stderr, "\"%s\"%s\n", s, i == max ? " (truncated)" : "");
+}
+
+/*
+ * X2_PEEK=<place>[:<how>],...
+ *
+ *   <place>  0xABS                  a guest/mapped address as-is
+ *            <module>+0xOFF         offset from that module's LINKED base,
+ *                                   resolved through where it actually mapped,
+ *                                   so a Ghidra address can be pasted in
+ *   <how>    1 | 2 | 4              that many bytes, as a number (default 4)
+ *            s | sN                 a C string AT that address, N bytes max
+ *            *s | *sN               follow the dword there, then the string
+ *            dN                     N consecutive dwords
+ *
+ * The *s and dN forms exist because the 4-byte-only version cost one whole run
+ * per guess: identifying a meta field's name meant re-running the game once
+ * for every candidate offset (issue #16).
+ *
+ * Every read goes through process_vm_readv rather than a dereference: this runs
+ * from a SIGSEGV handler, where a second fault would be a silent recursive
+ * crash and the report would be lost.
+ */
 void x86_peek_report(void)
 {
     const char *spec = getenv("X2_PEEK");
-    char buf[512], *p, *save;
+    /* 2 KB: a whole-object sweep is ~64 items and 512 bytes silently TRUNCATED
+       the spec, so the tail of the sweep was simply not read. */
+    char buf[2048], *p, *save;
     if (!spec || !*spec) return;
     snprintf(buf, sizeof buf, "%s", spec);
     {   /* banner once: this now runs per watched call, and repeating the
@@ -541,17 +594,30 @@ void x86_peek_report(void)
         if (!banner) { fprintf(stderr, "[PEEK] X2_PEEK=%s\n", spec); banner = 1; }
     }
     for (p = strtok_r(buf, ",", &save); p; p = strtok_r(NULL, ",", &save)) {
-        char item[128], *colon, *plus;
-        unsigned size = 4;
+        char item[128], *colon, *plus, how[24] = "4";
+        unsigned size = 4, count = 1, i;
         uint32_t addr = 0;
-        int resolved = 0;
+        int resolved = 0, str = 0, deref = 0;
         unsigned char val[8];
-        struct iovec loc, rem;
         snprintf(item, sizeof item, "%s", p);
-        if ((colon = strrchr(item, ':')) != NULL) { size = (unsigned)strtoul(colon + 1, NULL, 0); *colon = 0; }
-        if (size != 1 && size != 2 && size != 4) {
-            fprintf(stderr, "[PEEK]   %s: size must be 1, 2 or 4 -- NOT read\n", item);
-            continue;
+        if ((colon = strrchr(item, ':')) != NULL) {
+            snprintf(how, sizeof how, "%s", colon + 1);
+            *colon = 0;
+        }
+        {   const char *h = how;
+            if (*h == '*') { deref = 1; h++; }
+            if (*h == 's') { str = 1; count = h[1] ? (unsigned)strtoul(h + 1, NULL, 0) : 48; }
+            else if (*h == 'd') { count = h[1] ? (unsigned)strtoul(h + 1, NULL, 0) : 1; size = 4; }
+            else if (deref) { str = 1; count = 48; }   /* bare '*' means *s */
+            else {
+                size = (unsigned)strtoul(h, NULL, 0);
+                if (size != 1 && size != 2 && size != 4) {
+                    fprintf(stderr, "[PEEK]   %s: '%s' is not a size (1,2,4), a "
+                                    "string (s/sN/*s) or a dword run (dN) -- "
+                                    "NOT read\n", item, how);
+                    continue;
+                }
+            }
         }
         if ((plus = strchr(item, '+')) != NULL) {
             X86Module *m;
@@ -574,16 +640,29 @@ void x86_peek_report(void)
             addr = (uint32_t)strtoul(item, NULL, 0);
             fprintf(stderr, "[PEEK]   0x%08x: ", addr);
         }
-        loc.iov_base = val; loc.iov_len = size;
-        rem.iov_base = (void *)(uintptr_t)addr; rem.iov_len = size;
-        if (process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) != (ssize_t)size) {
-            fprintf(stderr, "UNREADABLE (not mapped)\n");
-            continue;
+        if (deref) {
+            if (!peek_read(addr, val, 4)) {
+                fprintf(stderr, "UNREADABLE (not mapped)\n");
+                continue;
+            }
+            addr = (uint32_t)(val[0] | val[1] << 8 | val[2] << 16 | (unsigned)val[3] << 24);
+            fprintf(stderr, "-> 0x%08x ", addr);
+            if (!addr) { fprintf(stderr, "(NULL, so no string to read)\n"); continue; }
         }
-        if (size == 1)      fprintf(stderr, "0x%02x\n", val[0]);
-        else if (size == 2) fprintf(stderr, "0x%04x\n", (unsigned)(val[0] | val[1] << 8));
-        else fprintf(stderr, "0x%08x\n",
-                     (unsigned)(val[0] | val[1] << 8 | val[2] << 16 | (unsigned)val[3] << 24));
+        if (str) { peek_string(addr, count); continue; }
+        for (i = 0; i < count; i++) {
+            if (!peek_read(addr + i * size, val, size)) {
+                fprintf(stderr, "%sUNREADABLE (not mapped)", i ? " " : "");
+                break;
+            }
+            if (size == 1)      fprintf(stderr, "%s0x%02x", i ? " " : "", val[0]);
+            else if (size == 2) fprintf(stderr, "%s0x%04x", i ? " " : "",
+                                        (unsigned)(val[0] | val[1] << 8));
+            else fprintf(stderr, "%s0x%08x", i ? " " : "",
+                         (unsigned)(val[0] | val[1] << 8 | val[2] << 16
+                                    | (unsigned)val[3] << 24));
+        }
+        fputc('\n', stderr);
     }
 }
 
@@ -592,10 +671,8 @@ void x86_peek_report(void)
  *
  * The abort paths called only x86_ring_dump(), and abort() does not run atexit
  * handlers -- so the reached set and the argument watch were silent on exactly
- * the failures worth reporting: a run that stopped on a missing body printed a
- * ring and nothing else, while the report saying WHICH bodies had run was
- * registered with atexit and never fired. An instrument that goes quiet when
- * the run fails is not an instrument.
+ * the failures worth reporting. An instrument that goes quiet when the run
+ * fails is not an instrument.
  */
 void x86_diag_dump(void)
 {
