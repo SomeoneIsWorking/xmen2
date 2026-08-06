@@ -11,19 +11,25 @@ three sessions, and every piece's RET then popped part of the exception frame
 instead of a return address. Nothing in the loop's output said a function was
 being destroyed.
 
-## The signal to look for
+## What it shows, and what it does NOT decide
 
-An MSVC function that installs an exception frame begins
+Two things, side by side, because neither alone settles it:
 
-    PUSH -0x1
-    PUSH <handler address>
-    MOV EAX,FS:[0x0]
+  * the CONTAINING function's first instructions. `PUSH -0x1; PUSH <handler>;
+    MOV EAX,FS:[0x0]` is an MSVC exception frame being linked into the chain
+    at `FS:[0]`, and carving such a function is how issue #21 happened.
+  * the CANDIDATE's own first instructions. An address that begins mid-flow
+    (`LEA EDX,[ESP + 0x18]` reading a slot it never established) is not a
+    function. One that begins `PUSH EBP; PUSH <imm>` plausibly is.
 
-`FS:[0]` is the thread's exception-registration chain, and the two pushes are
-the record being linked into it. A seed landing INSIDE such a function is
-almost always a handler or scope-table pointer that only looks like a call
-target, so splitting there is destructive. This flags it rather than deciding:
-the call is the operator's.
+An earlier version printed only the first and called it "DO NOT SPLIT". That
+was too strong and it was wrong in this very region: after FUN_005fac10 was
+merged back together, 0x005facd5 -- which begins `PUSH EBP; PUSH 0x6a3d08;
+PUSH 0x4` and is dispatched to indirectly at run time -- sits inside it and
+would have been refused. The region holds a MIX of real indirectly-called
+entries and bad boundaries, so the SEH prologue is EVIDENCE, not a verdict.
+
+The call is the operator's. This prints what the call needs.
 
 An address that is its own function's entry, or that no function contains, is
 reported as such -- both are fine and neither is a carve.
@@ -79,19 +85,32 @@ def main(argv):
                   % (a, fn["qname"]))
             continue
         first = " | ".join(i["t"] for i in fn.get("ins", ())[:3])
+        # The candidate's OWN first instructions: this is what distinguishes a
+        # real indirectly-called entry from a mid-flow address, and the earlier
+        # version never showed it.
+        ins = fn.get("ins", ())
+        at = [i["t"] for i in ins if i["a"] >= a][:3]
         seh = looks_seh(fn)
         if seh:
             flagged += 1
         print("      0x%08x  inside %s (entry 0x%08x, %d ins)%s\n"
-              "                  first: %s"
-              % (a, fn["qname"], fn["ep"], len(fn.get("ins", ())),
-                 "   <<< SEH PROLOGUE -- DO NOT SPLIT" if seh else "",
-                 first))
+              "                  container starts: %s\n"
+              "                  candidate starts: %s"
+              % (a, fn["qname"], fn["ep"], len(ins),
+                 "   <<< container has an SEH prologue" if seh else "",
+                 first, " | ".join(at) or "(no instructions at or after it)"))
 
     print("      %d of %d address(es) fall inside a function with an SEH "
           "prologue." % (flagged, len(set(addrs))))
     if flagged:
-        print("      Splitting those destroys a real function; see issue #21.")
+        print("      That is a REASON TO LOOK, not a verdict. Carving such a "
+              "function is how issue #21\n"
+              "      happened -- and the same region also holds real "
+              "indirectly-called entries that\n"
+              "      were wrongly absorbed. Compare the two 'starts:' lines: a "
+              "candidate beginning\n"
+              "      mid-flow is not a function; one beginning with a prologue "
+              "probably is.")
     return 1 if flagged else 0
 
 
