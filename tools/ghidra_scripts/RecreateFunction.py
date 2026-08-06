@@ -40,11 +40,22 @@
 # and only then re-create. The flow walk then follows them.
 #
 # HOW THE TABLE'S LENGTH IS DECIDED, since guessing it wrong either misses
-# cases or drags unrelated code in: entries are taken while they stay inside
-# the SAME address range as the jump itself and disassemble as code. The
-# tables at 0x005fb240 and 0x005fb250 in XMen2.exe are adjacent, so a fixed
-# count would run from one into the next -- this stops at the first entry that
-# is not a plausible in-range target, and REPORTS how many it took.
+# cases or drags unrelated code in: from the SWITCH'S OWN RANGE CHECK. MSVC
+# emits `CMP <index>,N` / `JA <default>` immediately before
+# `JMP [<index>*4 + <table>]`, so the count is N + 1 -- read out of the code.
+#
+# It used to be decided by plausibility -- take entries while they point into
+# the same executable block -- and that comment claimed it kept adjacent tables
+# apart. It does not, and this is the case that proves it: 0x005fb240 holds 4
+# entries and 0x005fb250 holds 7, back to back, and all eleven dwords are valid
+# in-block code addresses. The read ran through the first table into the
+# second, wired 0x005fafc1 as a case of the WRONG switch, un-made it, and left
+# it in no function at all. The next run dispatched to it and found no body.
+#
+# Plausibility is still the fallback for a jump whose range check is not in
+# this function (0x0066cf4e's is in its caller) -- and which of the two decided
+# it is PRINTED, because a bound that was guessed and a bound that was read
+# must not look the same in the log.
 #
 # AND HANDING THE TABLE OVER IS STILL NOT ENOUGH when a case label has itself
 # been seeded as a FUNCTION. Ghidra will not absorb another function's entry
@@ -99,7 +110,7 @@ def body_addrs(fn):
     return out
 
 
-DISP = re.compile(r"\[\s*[A-Z]{3}\s*\*\s*0x4\s*\+\s*(0x[0-9a-fA-F]+)\s*\]")
+DISP = re.compile(r"\[\s*([A-Z]{2,3})\s*\*\s*0x4\s*\+\s*(0x[0-9a-fA-F]+)\s*\]")
 mem = prog.getMemory()
 rm = prog.getReferenceManager()
 
@@ -111,26 +122,36 @@ def resolve_jump_tables(fn):
     "0 tables" and "never looked" have to be distinguishable.
     """
     tables = entries = 0
+    unmade_all = []
     body = fn.getBody()
     it = listing.getInstructions(body, True)
     jumps = []
+    recent = []                      # the last few instructions, in order
     while it.hasNext():
         ins = it.next()
-        if ins.getMnemonicString().upper() != "JMP":
-            continue
-        m = DISP.search(ins.toString())
+        m = (DISP.search(ins.toString())
+             if ins.getMnemonicString().upper() == "JMP" else None)
         if m:
-            jumps.append((ins, int(m.group(1), 16)))
+            # The register the jump indexes with, and what precedes the jump:
+            # together these are the switch's own range check, which is what
+            # says how long the table is. See caselabel.table_bound.
+            jumps.append((ins, int(m.group(2), 16), m.group(1).upper(),
+                          list(recent)))
+        recent.append(ins.toString())
+        if len(recent) > 12:
+            recent.pop(0)
 
     if not jumps:
         print("RECREATE:   no computed jumps of the form JMP [reg*4 + <imm>] "
               "in this function -- nothing to resolve")
-        return 0, 0
+        return 0, 0, []
 
-    for ins, tbl in jumps:
+    for ins, tbl, index_reg, prior in jumps:
         n = 0
         cases = []
-        while True:
+        limit, why = caselabel.table_bound(index_reg, prior)
+        print("RECREATE:   table 0x%08x: %s" % (tbl, why))
+        while limit is None or n < limit:
             slot = addr(tbl + n * 4)
             if not mem.contains(slot):
                 break
@@ -164,10 +185,11 @@ def resolve_jump_tables(fn):
               % (ins.getAddress().getOffset(), tbl, n,
                  "y" if n == 1 else "ies"))
         unmade, kept = unmake_case_functions(fn, tbl, cases)
+        unmade_all.extend(unmade)
         if n:
             tables += 1
             entries += n
-    return tables, entries
+    return tables, entries, unmade_all
 
 
 def unmake_case_functions(fn, tbl, cases):
@@ -183,7 +205,7 @@ def unmake_case_functions(fn, tbl, cases):
     tests/test_caselabel.py. This function only gathers the facts it weighs
     and carries out the verdict.
     """
-    unmade = kept = 0
+    unmade, kept = [], 0
     for tgt in cases:
         inner = fm.getFunctionAt(tgt)
         callers = 0
@@ -200,11 +222,12 @@ def unmake_case_functions(fn, tbl, cases):
         if action == "absorb":
             print("RECREATE:   %s" % msg)
             fm.removeFunction(tgt)
-            unmade += 1
+            unmade.append(tgt.getOffset())
         elif action in ("keep-called", "keep-named"):
             print("RECREATE:   %s" % msg)
             kept += 1
-    print("RECREATE:   %s" % caselabel.summarize(tbl, len(cases), unmade, kept))
+    print("RECREATE:   %s"
+          % caselabel.summarize(tbl, len(cases), len(unmade), kept))
     return unmade, kept
 
 
@@ -217,10 +240,10 @@ if not spec:
 expect = [int(x, 16) for x in
           os.environ.get("RECREATE_EXPECT", "").replace(",", " ").split()]
 
-fixed = skipped = failed = 0
+fixed = skipped = failed = orphaned = 0
 recreated = []
 for tok in spec.replace(",", " ").split():
-    # The caller writes these as 0x… or bare; normalise so the log never says
+    # The caller writes these with or without an 0x; normalise so the log never says
     # "0x0x0066cf4e".
     tok = tok[2:] if tok.lower().startswith("0x") else tok
     ep = addr(int(tok, 16))
@@ -237,8 +260,9 @@ for tok in spec.replace(",", " ").split():
         continue
 
     before = body_addrs(fn)
+    unmade = []
     if os.environ.get("RECREATE_JUMPTABLES") == "1":
-        resolve_jump_tables(fn)
+        _, _, unmade = resolve_jump_tables(fn)
     fm.removeFunction(ep)
     cmd = CreateFunctionCmd(None, ep, None, ghidra.program.model.symbol
                             .SourceType.ANALYSIS)
@@ -256,11 +280,25 @@ for tok in spec.replace(",", " ").split():
     lost = len(before - after)
     print("RECREATE: 0x%s %s -> %d instructions (+%d, -%d)"
           % (tok, name, len(after), gained, lost))
+    # Un-making a case label the body then does NOT take in is worse than
+    # leaving it alone: it is no longer a function and belongs to none, so the
+    # runtime dispatches to it and finds nothing. Checked here, per function,
+    # while the two facts are still in hand.
+    ok, msg = caselabel.check_absorbed(unmade, after)
+    if not ok:
+        print("RECREATE:   %s" % msg)
+        orphaned += 1
     recreated.append(ep)
     fixed += 1
 
 print("RECREATE: %d recreated, %d skipped, %d failed, of %d requested"
       % (fixed, skipped, failed, len(spec.replace(",", " ").split())))
+if orphaned:
+    print("RECREATE: %d function(s) LEFT AN ORPHANED CASE LABEL -- see the "
+          "ORPHANED lines above. Each is an address the runtime will reach "
+          "with no body." % orphaned)
+else:
+    print("RECREATE: no case label was left orphaned")
 
 # The postcondition. Without this the script can run cleanly, change nothing,
 # and read as a repair.

@@ -131,12 +131,16 @@ class Summary(unittest.TestCase):
 
 
 class TableLength(unittest.TestCase):
-    """Where a jump table ends, decided rather than guessed.
+    """Where a jump table ends, when only plausibility is available.
 
-    The tables in this image are adjacent (0x005fb240 and 0x005fb250), so a
-    fixed count runs from one into the next; and past the end of the last one
-    the "entries" are just instruction bytes (0x24748b56 followed 0x0066d645's
-    ten real entries).
+    Past the last table the "entries" are instruction bytes -- 0x0066d645's ten
+    real entries are followed by 0x24748b56. This test is about that stop.
+
+    What it CANNOT do is separate two adjacent tables, and the comment in
+    RecreateFunction.py claimed for weeks that it could. 0x005fb240 (4 entries)
+    is immediately followed by 0x005fb250 (7 entries) and every one of the
+    eleven dwords is a valid in-block code address, so this heuristic reads
+    straight through. See TableBound for what actually decides it.
     """
 
     def test_a_target_outside_the_executable_block_ends_the_table(self):
@@ -150,6 +154,161 @@ class TableLength(unittest.TestCase):
     def test_a_target_in_the_same_executable_block_continues_it(self):
         self.assertTrue(caselabel.plausible_entry(
             0x0066D043, in_same_block=True, is_executable=True))
+
+    def test_it_cannot_see_the_boundary_between_two_adjacent_tables(self):
+        # 0x005fb250 is the second table's first entry and is a perfectly good
+        # in-block code address. Recorded as a test so nobody re-derives the
+        # blind spot from the failure it causes.
+        self.assertTrue(caselabel.plausible_entry(
+            0x005FAFC1, in_same_block=True, is_executable=True))
+
+
+class TableBound(unittest.TestCase):
+    """How many entries a table REALLY has: the switch's own range check.
+
+    MSVC guards a jump table with `CMP <index>, N` / `JA <default>` immediately
+    before `JMP [<index>*4 + <table>]`, so the entry count is N + 1 -- a fact
+    read out of the code rather than a guess about where the data ends. Both
+    worked examples below are transcribed from XMen2.exe.
+    """
+
+    FIRST = ["MOV byte ptr [EDI + 0x4],0x1",
+             "MOV EAX,[0x0067f698]",
+             "MOV ECX,dword ptr [EAX]",
+             "MOV EAX,[0x00a68c98]",
+             "CMP EAX,0x3",
+             "MOV ECX,dword ptr [ECX + 0x38]",
+             "MOV byte ptr [ESP + 0x78],0x2",
+             "JA 0x005fad18"]
+
+    SECOND = ["MOV EAX,dword ptr [ESP + 0x4c]",
+              "AND EAX,0x7",
+              "CMP EAX,0x6",
+              "JA 0x005fb03f"]
+
+    def test_the_first_table_bounds_at_four(self):
+        n, why = caselabel.table_bound("EAX", self.FIRST)
+        self.assertEqual(n, 4)
+        self.assertIn("CMP EAX,0x3", why)
+
+    def test_the_second_table_bounds_at_seven(self):
+        n, why = caselabel.table_bound("EAX", self.SECOND)
+        self.assertEqual(n, 7)
+
+    def test_the_two_bounds_together_do_not_overlap(self):
+        # The whole point: 4 + 7 = the 11 dwords the plausibility scan reads as
+        # one table.
+        a, _ = caselabel.table_bound("EAX", self.FIRST)
+        b, _ = caselabel.table_bound("EAX", self.SECOND)
+        self.assertEqual(a + b, 11)
+
+    def test_no_conditional_jump_before_the_table_jump_is_no_bound(self):
+        # 0x0066cf4e: the JMP is the first instruction of the function; its
+        # range check is in the caller. The answer must be "I cannot tell",
+        # not a number.
+        n, why = caselabel.table_bound("EAX", [])
+        self.assertIsNone(n)
+        self.assertIn("no range check", why)
+
+    def test_a_bound_on_a_different_register_is_not_this_switch_s(self):
+        n, why = caselabel.table_bound(
+            "ECX", ["CMP EAX,0x3", "JA 0x005fad18"])
+        self.assertIsNone(n)
+        self.assertIn("ECX", why)
+
+    def test_an_intervening_write_to_the_index_register_voids_the_bound(self):
+        # CMP EAX,3 no longer describes the value the JMP indexes with.
+        n, why = caselabel.table_bound(
+            "EAX", ["CMP EAX,0x3", "MOV EAX,dword ptr [ESI]", "JA 0x1000"])
+        self.assertIsNone(n)
+        self.assertIn("MOV EAX", why)
+
+    def test_a_read_of_the_index_register_does_not_void_the_bound(self):
+        n, _ = caselabel.table_bound(
+            "EAX", ["CMP EAX,0x3", "MOV ECX,dword ptr [EAX]", "JA 0x1000"])
+        self.assertEqual(n, 4)
+
+    def test_jbe_is_not_the_shape_and_is_not_guessed_at(self):
+        # The inverted form jumps TO the table path; reading its immediate as a
+        # count would be off by more than one.
+        n, why = caselabel.table_bound("EAX", ["CMP EAX,0x3", "JBE 0x1000"])
+        self.assertIsNone(n)
+        self.assertIn("JBE", why)
+
+    def test_a_single_case_table_is_one_entry_not_zero(self):
+        n, _ = caselabel.table_bound("EAX", ["CMP EAX,0x0", "JA 0x1000"])
+        self.assertEqual(n, 1)
+
+
+class Absorbed(unittest.TestCase):
+    """Un-making a case label is only half the repair.
+
+    0x005fafc1 was un-made as a case label of the table at 0x005fb240 -- it was
+    read out of that table, because the read had run past the table's end into
+    0x005fb250. It really is a case label, but of a switch in ANOTHER function,
+    so the container being re-created could not absorb it and it became an
+    orphan in no function at all. The runtime then dispatched to it and found
+    no body: strictly worse than before the repair.
+
+    So the verdict on a repair is not "did it un-make something" but "is every
+    label it un-made now inside the body".
+    """
+
+    def test_all_absorbed_is_a_pass(self):
+        ok, msg = caselabel.check_absorbed([0x0066CF79], [0x0066CF79])
+        self.assertTrue(ok)
+        self.assertIn("1", msg)
+
+    def test_an_orphan_fails_and_is_named(self):
+        ok, msg = caselabel.check_absorbed([0x005FAFC1], [])
+        self.assertFalse(ok)
+        self.assertIn("005fafc1", msg)
+        self.assertIn("ORPHAN", msg.upper())
+
+    def test_nothing_un_made_is_not_reported_as_success(self):
+        ok, msg = caselabel.check_absorbed([], [])
+        self.assertTrue(ok)
+        self.assertIn("no case label", msg)
+
+
+class MergePrecondition(unittest.TestCase):
+    """A merge only makes sense on a body that was CUT OFF.
+
+    MergeTruncated.py printed "0x0066ced2 ends at 0066cf4a without a
+    terminator" about a body whose last instruction is a RET, absorbed the
+    3-byte padding function after it, re-created a body of exactly the same
+    length, and reported "1 repaired". Nothing was repaired. The claim in that
+    message was never checked -- it was asserted.
+    """
+
+    def test_a_ret_ends_a_function(self):
+        self.assertTrue(caselabel.is_terminator("RET"))
+
+    def test_an_unconditional_jump_ends_a_function(self):
+        # A tail call: the body is complete, control leaves and does not return.
+        self.assertTrue(caselabel.is_terminator("JMP"))
+
+    def test_a_conditional_jump_does_not_end_a_function(self):
+        self.assertFalse(caselabel.is_terminator("JZ"))
+
+    def test_an_ordinary_instruction_does_not_end_a_function(self):
+        self.assertFalse(caselabel.is_terminator("MOV"))
+
+    def test_a_body_that_grew_is_a_repair(self):
+        ok, msg = caselabel.merge_outcome("FUN_0066cf24", 34, 52)
+        self.assertTrue(ok)
+        self.assertIn("52", msg)
+
+    def test_a_body_that_did_not_grow_is_NOT_a_repair(self):
+        ok, msg = caselabel.merge_outcome("FUN_0066cf4b", 52, 52)
+        self.assertFalse(ok)
+        self.assertIn("FUN_0066cf4b", msg)
+        self.assertIn("did not grow", msg)
+
+    def test_a_body_that_shrank_is_reported_as_worse(self):
+        ok, msg = caselabel.merge_outcome("FUN_x", 52, 40)
+        self.assertFalse(ok)
+        self.assertIn("SHRANK", msg.upper())
 
 
 if __name__ == "__main__":

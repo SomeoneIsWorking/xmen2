@@ -25,6 +25,74 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 
+# Run one headless step, and PROVE it ran.
+#
+# Every step below appends to the SAME log and then greps the WHOLE file, so a
+# step that died still printed the PREVIOUS run's lines and read as success.
+# That is not hypothetical: a Jython SyntaxError in RecreateFunction.py (one
+# non-ASCII character in a comment) announced "recreate 42 function bodies",
+# showed six lines from the run before it, and the pipeline went on to export,
+# re-emit and rebuild as though 42 bodies had been repaired. analyzeHeadless
+# exits 0 when a script fails to compile, so the `||` guard never fired.
+#
+# So: remember where the log ended, run, and look ONLY at what this run added.
+# No lines matching the step's own prefix means the step did nothing, which is
+# a refusal -- never a silent pass onto the next stage.
+#
+#   run_step <label> <line-prefix regex> <lines to show> <command...>
+run_step() {
+    _label=$1; _prefix=$2; _keep=$3; shift 3
+    _before=$(wc -l < "$LOG" 2>/dev/null || echo 0)
+    "$@" >>"$LOG" 2>&1 || {
+        echo "ghidra_export: $_label failed, see $LOG" >&2; exit 1; }
+    _added=$(tail -n +$((_before + 1)) "$LOG")
+    if printf '%s\n' "$_added" | grep -qE '^(SyntaxError|Traceback|[A-Za-z]*Error):'; then
+        echo "ghidra_export: $_label -- the Ghidra script did not RUN:" >&2
+        printf '%s\n' "$_added" |
+            grep -E '^(SyntaxError|Traceback|[A-Za-z]*Error):' | head -3 >&2
+        exit 1
+    fi
+    printf '%s\n' "$_added" | grep -E "$_prefix" | tail -"$_keep"
+    printf '%s\n' "$_added" | grep -qE "$_prefix" || {
+        echo "ghidra_export: $_label produced NO '$_prefix' output of its own." >&2
+        echo "  Whatever is in $LOG above belongs to an EARLIER run. Refusing" >&2
+        echo "  rather than exporting a database this step did not change." >&2
+        exit 1
+    }
+}
+
+if [ "${1:-}" = "--selftest" ]; then
+    # Proof that the step guard FIRES. It exists because the failure it catches
+    # is invisible by construction: a step that dies still prints an earlier
+    # run's lines, so "it looked fine" is exactly what a broken run looks like.
+    # Needs no Ghidra and no game install, so it is wired in as a ctest.
+    LOG=$(mktemp); fails=0
+    run_step_selftest() {                 # <name> <expect-exit> <prefill> <emit>
+        printf '%s' "$3" > "$LOG"
+        if ( run_step "$1" '^ADD:' 3 sh -c "printf '%s' \"\$0\"" "$4" ) \
+                >/dev/null 2>&1; then got=0; else got=1; fi
+        if [ "$got" != "$2" ]; then
+            echo "  FAIL: $1 -- run_step exited $got, expected $2"; fails=$((fails+1))
+        else
+            echo "  ok: $1"
+        fi
+    }
+    echo "ghidra_export --selftest: does the step guard fire?"
+    run_step_selftest "a step that reports its work"    0 ""                 "ADD: 3 created
+"
+    run_step_selftest "a step that reports NOTHING"     1 ""                 "some noise
+"
+    run_step_selftest "a Jython script that would not compile" 1 ""          "SyntaxError: Non-ASCII character
+"
+    run_step_selftest "a silent step after an EARLIER run's output" \
+                                                        1 "ADD: 7 created
+"                                                                            "some noise
+"
+    echo "ghidra_export --selftest: $([ $fails -eq 0 ] && echo PASSED || echo FAILED) ($fails failure(s))"
+    rm -f "$LOG"
+    exit $fails
+fi
+
 MOD=${1:?usage: ghidra_export.sh <module-basename> [--reanalyze|--seed <file>]}
 REANALYZE=""
 SEEDFILE=""
@@ -107,12 +175,11 @@ if [ -n "$SEEDFILE" ]; then
     [ -s "$SEEDFILE" ] || { echo "ghidra_export: $SEEDFILE is empty -- seeded NOTHING" >&2; exit 2; }
     ADDRS=$(tr -s ' \n' ',' < "$SEEDFILE" | sed 's/,$//')
     echo "== seed $(grep -c . "$SEEDFILE") address(es) from $SEEDFILE =="
-    ADD_FUNCS="$ADDRS" "$HEADLESS" "$PROJ" xmen2 \
+    ADD_FUNCS="$ADDRS" run_step seeding '^ADD:' 3 \
+        "$HEADLESS" "$PROJ" xmen2 \
         -process "$(basename "$BIN")" -noanalysis \
         -scriptPath "$ROOT/tools/ghidra_scripts" \
-        -postScript AddFunctions.py \
-        >>"$LOG" 2>&1 || { echo "ghidra_export: seeding failed, see $LOG" >&2; exit 1; }
-    grep -E "^ADD:" "$LOG" | tail -3
+        -postScript AddFunctions.py
 fi
 
 # Splitting: an address Ghidra swallowed into an EARLIER function. Seeding
@@ -122,12 +189,11 @@ if [ -n "$SPLITFILE" ]; then
     [ -s "$SPLITFILE" ] || { echo "ghidra_export: $SPLITFILE is empty -- split NOTHING" >&2; exit 2; }
     ADDRS=$(tr -s ' \n' ',' < "$SPLITFILE" | sed 's/,$//')
     echo "== split $(grep -c . "$SPLITFILE") address(es) out of their containing functions =="
-    SPLIT_FUNCS="$ADDRS" "$HEADLESS" "$PROJ" xmen2 \
+    SPLIT_FUNCS="$ADDRS" run_step splitting '^SPLIT:' 4 \
+        "$HEADLESS" "$PROJ" xmen2 \
         -process "$(basename "$BIN")" -noanalysis \
         -scriptPath "$ROOT/tools/ghidra_scripts" \
-        -postScript SplitFunction.py \
-        >>"$LOG" 2>&1 || { echo "ghidra_export: splitting failed, see $LOG" >&2; exit 1; }
-    grep -E "^SPLIT:" "$LOG" | tail -4
+        -postScript SplitFunction.py
 fi
 
 # Bulk seeding from vtables and dispatch tables. The runtime finds indirect
@@ -138,12 +204,11 @@ if [ -n "${SEED_TABLES:-}" ]; then
     SEED_MIN_RUN=${SEED_MIN_RUN:-3} SEED_MAX=${SEED_MAX:-0} \
     SEED_SCAN_DATA=${SEED_SCAN_DATA:-} \
     SEED_INSIDE_OUT="$ROOT/scratch/recomp/$MOD.split" \
-    "$HEADLESS" "$PROJ" xmen2 \
+    run_step "table seeding" '^SEED:' 3 \
+        "$HEADLESS" "$PROJ" xmen2 \
         -process "$(basename "$BIN")" -noanalysis \
         -scriptPath "$ROOT/tools/ghidra_scripts" \
-        -postScript SeedPointerTables.py \
-        >>"$LOG" 2>&1 || { echo "ghidra_export: table seeding failed, see $LOG" >&2; exit 1; }
-    grep -E "^SEED:" "$LOG" | tail -3
+        -postScript SeedPointerTables.py
 fi
 
 # Merging: a function cut off by a spurious one starting inside it. The
@@ -154,12 +219,11 @@ if [ -n "$MERGEFILE" ]; then
     [ -s "$MERGEFILE" ] || { echo "ghidra_export: $MERGEFILE is empty -- merged NOTHING" >&2; exit 2; }
     ADDRS=$(tr -s ' \n' ',' < "$MERGEFILE" | sed 's/,$//')
     echo "== merge $(grep -c . "$MERGEFILE") truncated function(s) =="
-    MERGE_FUNCS="$ADDRS" "$HEADLESS" "$PROJ" xmen2 \
+    MERGE_FUNCS="$ADDRS" run_step merging '^MERGE: [0-9]+ repaired' 1 \
+        "$HEADLESS" "$PROJ" xmen2 \
         -process "$(basename "$BIN")" -noanalysis \
         -scriptPath "$ROOT/tools/ghidra_scripts" \
-        -postScript MergeTruncated.py \
-        >>"$LOG" 2>&1 || { echo "ghidra_export: merging failed, see $LOG" >&2; exit 1; }
-    grep -E "^MERGE: [0-9]+ repaired" "$LOG" | tail -1
+        -postScript MergeTruncated.py
 fi
 
 # Rebuilding a body that has HOLES -- a switch whose case blocks belong to no
@@ -170,12 +234,11 @@ if [ -n "${RECREATE:-}" ]; then
     echo "== recreate $(echo "$RECREATE" | tr ',' '\n' | grep -c .) function body/bodies from control flow =="
     RECREATE_FUNCS="$RECREATE" RECREATE_EXPECT="${RECREATE_EXPECT:-}" \
     RECREATE_JUMPTABLES="${RECREATE_JUMPTABLES:-1}" \
-    "$HEADLESS" "$PROJ" xmen2 \
+    run_step recreate '^RECREATE: ([0-9]+ recreated|POSTCONDITION|postcondition|no case label|[0-9]+ function\(s\) LEFT)' 4 \
+        "$HEADLESS" "$PROJ" xmen2 \
         -process "$(basename "$BIN")" -noanalysis \
         -scriptPath "$ROOT/tools/ghidra_scripts" \
-        -postScript RecreateFunction.py \
-        >>"$LOG" 2>&1 || { echo "ghidra_export: recreate failed, see $LOG" >&2; exit 1; }
-    grep -E "^RECREATE:" "$LOG" | tail -6
+        -postScript RecreateFunction.py
 fi
 
 echo "== export functions -> $OUT =="

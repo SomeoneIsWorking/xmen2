@@ -288,28 +288,52 @@ void d3d8_ret(CPU *C, uint32_t hr)
     g_returned++;
 }
 
+/* The arguments the call was made with, as the guest pushed them.
+ *
+ * The name of an unimplemented method is the work item, but the ARGUMENTS are
+ * what says how much work it is: `SetPixelShader(0)` is the engine turning the
+ * fixed-function pipeline back on, while `SetPixelShader(<handle>)` means a
+ * whole shader translator. Without these the only way to tell the two apart is
+ * to implement something, rebuild and run again -- which is how this project
+ * keeps spending forty minutes to learn one dword. */
+static void print_args(const MethodAbi *abi, CPU *C, const char *lead)
+{
+    int i;
+    if (!abi->args) {
+        fprintf(stderr, "%sit takes no arguments.\n", lead);
+        return;
+    }
+    fprintf(stderr, "%sarguments as pushed:", lead);
+    for (i = 0; i < abi->args; i++)
+        fprintf(stderr, " [%d]=0x%08x", i, d3d8_arg(C, i));
+    fprintf(stderr, "\n");
+}
+
 static void report_unimplemented(MethodRec *r, const MethodAbi *abi, CPU *C)
 {
     if (g_permissive) {
-        if (!r->hits++)
+        if (!r->hits++) {
             fprintf(stderr, "d3d8: PERMISSIVE -- %s::%s (slot %d) ignored, "
                             "returning 0.\n",
                     g_iface[r->id].name, r->name, r->slot);
+            print_args(abi, C, "  ");
+        }
         d3d8_ret(C, 0);
         return;
     }
     fprintf(stderr,
             "\n*** the engine called %s::%s (slot %d, offset 0x%x), which this "
-            "host D3D8 does not implement.\n"
+            "host D3D8 does not implement.\n",
+            g_iface[r->id].name, r->name, r->slot, r->slot * 4);
+    print_args(abi, C, "    ");
+    fprintf(stderr,
             "    That name IS the work item. Implement it in src/d3d8/, or run "
             "with --d3d8-permissive to\n"
             "    walk past it and see what the engine asks for next -- knowing "
-            "that whatever is drawn is missing it.\n",
-            g_iface[r->id].name, r->name, r->slot, r->slot * 4);
+            "that whatever is drawn is missing it.\n");
     fflush(stderr);
     x86_diag_dump();
     abort();
-    (void)abi;
 }
 
 static void dispatch(CPU *C)

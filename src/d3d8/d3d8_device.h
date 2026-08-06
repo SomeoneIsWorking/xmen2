@@ -25,6 +25,11 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
                                uint32_t focus_window, uint32_t behaviour,
                                const D3DPRESENT_PARAMETERS *pp);
 
+/* Whether the gamma ramp the engine last set would actually change the
+   picture. The backend cannot programme a ramp, so this is what tells a
+   silent no-op (identity) apart from a visible difference (curved). */
+int d3d8_device_gamma_curved(void);
+
 /* Frames presented, and what the engine asked for that was not there. */
 void d3d8_device_report(void);
 

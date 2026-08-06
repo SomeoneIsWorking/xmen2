@@ -84,6 +84,14 @@ add_test(NAME caselabel
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tests/test_caselabel.py)
 
+# The lift pipeline's step guard. Every Ghidra step appends to one log and then
+# greps the WHOLE file, so a step that DIED still printed the previous run's
+# lines and read as success -- which is how a Jython SyntaxError announced
+# "recreate 42 function bodies" and repaired none. This runs the guard's own
+# self-test, which needs neither Ghidra nor the game install.
+add_test(NAME lift_step_guard
+         COMMAND ${CMAKE_SOURCE_DIR}/tools/ghidra_export.sh --selftest)
+
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
 # own call sites. Runs the checker's SELF-TEST, not the check: the check needs
 # scratch/recomp/libIGGfx.json, which is generated and gitignored, while the

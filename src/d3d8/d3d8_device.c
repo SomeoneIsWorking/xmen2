@@ -38,6 +38,10 @@ typedef struct {
     D3D8CapsLimits        limits;
     D3D8State             state;
 
+    uint16_t              gamma[3 * 256]; /* the ramp as D3D8 lays it out */
+    int                   gamma_set, gamma_curved;
+    unsigned              gamma_warned;
+
     unsigned long         scenes;         /* BeginScene calls */
     unsigned long         presents;
     unsigned long         clears;
@@ -618,6 +622,121 @@ static void dev_GetVertexShader(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
+/*
+ * The pixel-shader handle. Unlike SetVertexShader there is no overloading
+ * here: a pixel-shader handle is only ever a handle, and 0 means "none --
+ * texture-stage cascade, i.e. the fixed-function pipeline".
+ *
+ * What the engine actually does, measured rather than assumed: its first call
+ * is SetPixelShader(0), which is it selecting fixed function. This backend
+ * implements exactly that, so answering D3D_OK is faithful and the draw path
+ * built from the state mirror is what the engine asked for.
+ *
+ * A NON-ZERO handle is refused, and the refusal is the important half. No
+ * handle can exist -- CreatePixelShader is not implemented, and it will report
+ * itself by name if the engine ever calls it. So a non-zero handle arriving
+ * here means either a shader was created by something this host does not know
+ * about, or the argument is wrong. Recording it and carrying on would leave
+ * the fixed-function path drawing in place of a shader, which is the failure
+ * this project keeps writing down: output that cannot be attributed, because
+ * nothing said it was missing.
+ */
+static void dev_SetPixelShader(D3D8Object *self, CPU *C)
+{
+    uint32_t handle = d3d8_arg(C, 0);
+    (void)self;
+    if (handle) {
+        fprintf(stderr,
+                "d3d8: SetPixelShader(0x%08x) -- this host has never created a "
+                "pixel shader, so that handle cannot be one of its.\n"
+                "  There is no ps.1.x translator here; CreatePixelShader "
+                "reports itself by name and is the work item.\n"
+                "  Refusing rather than binding nothing, which would draw the "
+                "fixed-function result in a shader's place.\n", handle);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    g_dev.state.pixel_shader = 0;
+    d3d8_ret(C, D3D_OK);
+}
+
+/* ---- the gamma ramp ---------------------------------------------------- */
+
+/*
+ * D3D8's gamma ramp is three arrays of 256 16-bit entries, applied by the
+ * display hardware between the back buffer and the monitor. This backend
+ * presents through a Vulkan swapchain and has no such control, so the ramp is
+ * RECORDED and not programmed.
+ *
+ * That is only acceptable because of what is checked here. An IDENTITY ramp --
+ * entry i = i * 257, spanning 0..0xffff -- changes nothing, so ignoring it
+ * costs nothing and there is no debt to record. A CURVED one is a visible
+ * difference from the original game: the scene will be brighter or darker than
+ * the engine intended and no pixel comparison would explain why. So the curved
+ * case says so, once, by name.
+ *
+ * Applying it for real belongs in the presentation pass (src/gpu), as a lookup
+ * on the way to the swapchain image; nothing here fakes that.
+ */
+static int ramp_is_identity(const uint16_t *r)
+{
+    int i;
+    for (i = 0; i < 3 * 256; i++)
+        if (r[i] != (uint16_t)((i % 256) * 257))
+            return 0;
+    return 1;
+}
+
+static void dev_SetGammaRamp(D3D8Object *self, CPU *C)
+{
+    const uint16_t *ramp =
+        (const uint16_t *)guest_ptr(d3d8_arg(C, 1), "gamma ramp");
+    (void)self;
+    if (!ramp) { d3d8_ret(C, 0); return; }         /* SetGammaRamp returns void */
+
+    memcpy(g_dev.gamma, ramp, sizeof g_dev.gamma);
+    g_dev.gamma_set = 1;
+    g_dev.gamma_curved = !ramp_is_identity(ramp);
+    if (g_dev.gamma_curved && !g_dev.gamma_warned++)
+        fprintf(stderr,
+                "d3d8: SetGammaRamp was given a CURVED ramp, and this backend "
+                "cannot programme one.\n"
+                "  It presents through a Vulkan swapchain; there is no "
+                "hardware ramp to set, and applying it belongs in the "
+                "presentation pass.\n"
+                "  The ramp is recorded and readable, but the picture will be "
+                "brighter or darker than the game intends until it is.\n");
+    d3d8_ret(C, 0);
+}
+
+static void dev_GetGammaRamp(D3D8Object *self, CPU *C)
+{
+    uint16_t *out = (uint16_t *)guest_ptr(d3d8_arg(C, 0), "gamma ramp");
+    (void)self;
+    if (!out) { d3d8_ret(C, 0); return; }
+    /* Never set: D3D hands back the identity ramp, which is what the hardware
+       would be doing. Inventing zeroes here would read as "the screen is
+       black" to anything that asks. */
+    if (!g_dev.gamma_set) {
+        int i;
+        for (i = 0; i < 3 * 256; i++) out[i] = (uint16_t)((i % 256) * 257);
+    } else {
+        memcpy(out, g_dev.gamma, sizeof g_dev.gamma);
+    }
+    d3d8_ret(C, 0);
+}
+
+int d3d8_device_gamma_curved(void) { return g_dev.gamma_curved; }
+
+static void dev_GetPixelShader(D3D8Object *self, CPU *C)
+{
+    uint32_t *out = (uint32_t *)guest_ptr(d3d8_arg(C, 0), "handle");
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    *out = g_dev.state.pixel_shader;
+    d3d8_ret(C, D3D_OK);
+}
+
 /* ---- the draws --------------------------------------------------------- */
 
 static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count)
@@ -721,8 +840,8 @@ static const D3D8MethodFn g_impl[] = {
     dev_Present,                        /* 15 */
     dev_GetBackBuffer,                  /* 16 */
     NULL,                               /* 17 GetRasterStatus */
-    NULL,                               /* 18 SetGammaRamp */
-    NULL,                               /* 19 GetGammaRamp */
+    dev_SetGammaRamp,                   /* 18 */
+    dev_GetGammaRamp,                   /* 19 */
     dev_CreateTexture,                  /* 20 */
     NULL,                               /* 21 CreateVolumeTexture */
     NULL,                               /* 22 CreateCubeTexture */
@@ -791,8 +910,8 @@ static const D3D8MethodFn g_impl[] = {
     dev_SetIndices,                     /* 85 */
     NULL,                               /* 86 GetIndices */
     NULL,                               /* 87 CreatePixelShader */
-    NULL,                               /* 88 SetPixelShader */
-    NULL,                               /* 89 GetPixelShader */
+    dev_SetPixelShader,                 /* 88 */
+    dev_GetPixelShader,                 /* 89 */
     NULL,                               /* 90 DeletePixelShader */
     NULL,                               /* 91 SetPixelShaderConstant */
     NULL,                               /* 92 GetPixelShaderConstant */

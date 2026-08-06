@@ -19,6 +19,7 @@
 #
 # ENV: MERGE_FUNCS = comma-separated hex addresses of the TRUNCATED functions
 import os
+import caselabel
 from ghidra.app.cmd.disassemble import DisassembleCommand
 from ghidra.app.cmd.function import CreateFunctionCmd
 from ghidra.util.task import ConsoleTaskMonitor
@@ -35,6 +36,17 @@ spec = os.environ.get("MERGE_FUNCS", "").strip()
 if not spec:
     print("MERGE: MERGE_FUNCS is empty -- merged NOTHING")
     raise SystemExit
+
+def count_body(fn):
+    """Instructions actually in the body -- the only measure of whether a
+    merge repaired anything."""
+    if fn is None:
+        return 0
+    n = 0
+    for _ in listing.getInstructions(fn.getBody(), True):
+        n += 1
+    return n
+
 
 fixed = skipped = failed = absorbed = 0
 targets = spec.replace(",", " ").split()
@@ -55,6 +67,24 @@ for tok in targets:
             print("MERGE: %s is not a function start and is in no function" % tok)
             failed += 1
         continue
+    # Is this body actually TRUNCATED? A body ending in a terminator ends for
+    # a reason, and absorbing what follows it is not a repair -- it deletes a
+    # neighbouring function and re-creates the same body. This check did not
+    # exist: the message asserted "without a terminator" and never looked, and
+    # on that basis a 3-byte padding function was absorbed into a body ending
+    # in RET and reported as "1 repaired".
+    last = None
+    for i in listing.getInstructions(fn.getBody(), True):
+        last = i
+    if last is not None and caselabel.is_terminator(last.getMnemonicString()):
+        print("MERGE: %s ends at %s with `%s`, which is a TERMINATOR -- the "
+              "body is complete, not truncated, so there is nothing here to "
+              "absorb. Skipped."
+              % (tok, last.getAddress(), last.toString()))
+        skipped += 1
+        continue
+    before_n = count_body(fn)
+
     end = fn.getBody().getMaxAddress()
     nxt = fm.getFunctionContaining(end.add(1))
     if nxt is None:
@@ -81,6 +111,7 @@ for tok in targets:
         continue
 
     inner = nxt.getEntryPoint()
+    nxt_name = nxt.getName()
     inner_end = nxt.getBody().getMaxAddress()
     print("MERGE: %s ends at %s without a terminator; absorbing %s (%s..%s)"
           % (tok, end, nxt.getName(), inner, inner_end))
@@ -90,14 +121,18 @@ for tok in targets:
     DisassembleCommand(addr, None, True).applyTo(prog, monitor)
     if CreateFunctionCmd(addr).applyTo(prog, monitor):
         f2 = fm.getFunctionAt(addr)
-        newend = f2.getBody().getMaxAddress() if f2 else None
-        print("MERGE:   re-created %s, now ending at %s" % (tok, newend))
-        fixed += 1
+        ok, msg = caselabel.merge_outcome(nxt_name, before_n, count_body(f2))
+        print("MERGE:   %s" % msg)
+        if ok:
+            fixed += 1
+        else:
+            failed += 1
     else:
         print("MERGE:   FAILED to re-create a function at %s -- its body is "
               "now unattributed, which is worse than before" % tok)
         failed += 1
 
 print("MERGE: %d repaired, %d already absorbed by an earlier merge, %d skipped "
-      "(the inner function is real), %d failed, of %d"
+      "(complete, or the inner function is real), %d that changed nothing or "
+      "failed, of %d"
       % (fixed, absorbed, skipped, failed, len(targets)))
