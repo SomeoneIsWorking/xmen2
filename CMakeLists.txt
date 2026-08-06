@@ -64,6 +64,17 @@ target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE)
 target_link_libraries(test_vformat PRIVATE m)
 add_test(NAME vformat COMMAND test_vformat)
 
+# The translator, tested as a unit.
+#
+# tools/recomp.py had no tests, and it is the most defect-prone thing here: a
+# mistranslation produces a binary that runs and is wrong. The only oracle was
+# a full re-lift and a game run -- ~40 minutes, reporting "stopped at
+# <address>" rather than which rule is wrong. These run in milliseconds and
+# name the case. See tests/test_recomp.py.
+add_test(NAME recomp
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tests/test_recomp.py)
+
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
 

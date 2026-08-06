@@ -1003,7 +1003,23 @@ def translate(fn):
     # Restricted to functions that actually have an indirect JMP -- 1299 of
     # them, 72k instructions -- so nothing else pays for it.
     #
-    fn["_has_injmp"] = any(i["m"] == "JMP" and i.get("ind") for i in fn["ins"])
+    # A JMP is indirect if the exporter SAID so, or if it simply has no
+    # resolved target -- and the second half matters more than the first.
+    #
+    # Ghidra does not set `ind` on the classic MSVC switch dispatch,
+    # `JMP dword ptr [EAX*0x4 + <table>]`: that form arrives with no `ind`
+    # and no `flow`. Testing `ind` alone therefore left _has_injmp FALSE for
+    # every switch in the image, so the dispatch fell through to the GLOBAL
+    # dispatcher -- and a case label, which is code in the middle of this very
+    # function, was reported as "no recompiled body at <addr>".
+    #
+    # That report is what sent three sessions of the discovery loop seeding
+    # case labels and carving this function into five pieces (issue #21,
+    # C123). The switch tables at 0x005fb240/0x005fb250 in XMen2.exe are the
+    # worked example: every entry is an address inside the function that reads
+    # them.
+    fn["_has_injmp"] = any(i["m"] == "JMP" and (i.get("ind") or "flow" not in i)
+                           for i in fn["ins"])
     if fn["_has_injmp"]:
         targets |= fn["_addrs"]
     #
