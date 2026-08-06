@@ -72,10 +72,12 @@ void *x86_callback_ctx(void);
 /* Head of the registered-module list. */
 X86Module *x86_modules(void);
 
-/* Run `fn` the first time the guest calls `addr`, before the body. Used to act
-   at a moment during the run -- engine startup completes long after module
-   init, and some host work (ARK registration) is only legal once it has. */
-void x86_at_first_call(uint32_t addr, void (*fn)(void), const char *why);
+/* Run `fn` when the guest calls `addr`, before the body, RETRYING on every
+   call until it returns non-zero. Used to act at a moment during the run --
+   engine startup completes long after module init, and some host work (ARK
+   registration) is only legal once the subsystem it touches has registered,
+   which is a state the handler must test rather than a call site we can name. */
+void x86_at_first_call(uint32_t addr, int (*fn)(void), const char *why);
 
 /* Complain about every armed trigger that never fired; returns how many. */
 int x86_triggers_report(void);

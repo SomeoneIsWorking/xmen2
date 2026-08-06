@@ -88,13 +88,17 @@ static void ig_true1(CPU *C) { ark_ret(C, 1, 1); }
  */
 static void probe_get_class_meta(CPU *C);
 
+/* Designated, so adding a field to ArkClass cannot silently shift these --
+   which it already did once: the two lifted-address fields landed in the middle
+   and turned base_get_class_meta into an integer. */
 static ArkClass g_probe = {
-    "igVkProbe",
-    0x10,                        /* instance size, comfortably over igObject's */
-    0,                           /* concrete */
-    CORE, IGOBJ_REGINTERNAL, IGOBJ_GETCLASSMETA,
-    0, 0, PROBE_SLOTS,
-    NULL
+    .name = "igVkProbe",
+    .instance_size = 0x10,       /* comfortably over igObject's 8 */
+    .is_abstract = 0,
+    .base_module = CORE,
+    .base_register_internal = IGOBJ_REGINTERNAL,
+    .base_get_class_meta = IGOBJ_GETCLASSMETA,
+    .nslots = PROBE_SLOTS
 };
 
 /*
@@ -114,10 +118,11 @@ static ArkClass g_probe = {
  */
 static int g_probe_rc = -1;
 
-static void probe_trigger(void)
+static int probe_trigger(void)
 {
     extern int igvk_ark_probe(void);
     g_probe_rc = igvk_ark_probe();
+    return 1;                    /* runs once; it needs nothing but pools */
 }
 
 int igvk_ark_probe_arm(void)

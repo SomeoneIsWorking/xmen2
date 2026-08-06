@@ -81,11 +81,11 @@ static const X86Fn *find(X86Module *m, uint32_t addr)
  * refires would re-register a class on every call.
  */
 #define MAX_TRIG 8
-static struct { uint32_t addr; void (*fn)(void); const char *why; int fired; }
-    g_trig[MAX_TRIG];
+static struct { uint32_t addr; int (*fn)(void); const char *why;
+                int fired, active; } g_trig[MAX_TRIG];
 static int g_ntrig;
 
-void x86_at_first_call(uint32_t addr, void (*fn)(void), const char *why)
+void x86_at_first_call(uint32_t addr, int (*fn)(void), const char *why)
 {
     if (g_ntrig == MAX_TRIG) {
         fprintf(stderr, "x86_at_first_call: no room for a trigger on 0x%08x\n",
@@ -122,9 +122,21 @@ int x86_native_call_at(uint32_t addr, CPU *C)
     if (g_ntrig) {
         int i;
         for (i = 0; i < g_ntrig; i++)
-            if (!g_trig[i].fired && g_trig[i].addr == addr) {
-                g_trig[i].fired = 1;
-                g_trig[i].fn();
+            if (!g_trig[i].fired && !g_trig[i].active
+                    && g_trig[i].addr == addr) {
+                /*
+                 * RETRIED, not one-shot. "The engine is ready" is a state, not
+                 * a call site: arming on the first createInstance fired before
+                 * libIGGfx had registered igVisualContext, so the substitution
+                 * found a NULL meta and correctly declined. The handler decides
+                 * when it is ready and returns non-zero to disarm.
+                 *
+                 * `active` guards re-entry -- the handler calls guest code that
+                 * itself reaches createInstance.
+                 */
+                g_trig[i].active = 1;
+                if (g_trig[i].fn()) g_trig[i].fired = 1;
+                g_trig[i].active = 0;
             }
     }
     if (thunk_call(addr, C)) return 1;

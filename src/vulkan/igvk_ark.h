@@ -28,6 +28,18 @@ uint32_t ark_module_base(const char *name);
 /* Mapped address of an export, or 0. Names are the MSVC-mangled ones. */
 uint32_t ark_export(const char *module, const char *mangled);
 
+/*
+ * Mapped address of a LINKED address in a module.
+ *
+ * The libIG*.dll files export almost nothing by name -- their ARK hooks are
+ * static functions -- so a class's parent hooks cannot be reached the way
+ * libIGCore's can. They CAN be named as linked addresses, which is what
+ * tools/ark_classes.py recovers from each igArkRegister call, and every module
+ * is linked for 0x10000000 and relocated at load, so mapping one is base
+ * arithmetic. Returns 0 if the module is not loaded.
+ */
+uint32_t ark_lifted(const char *module, uint32_t linked_va);
+
 /* Same, but abort with the name if it is missing. A registration built on a
    silently-zero function pointer fails much later and somewhere else. */
 uint32_t ark_export_req(const char *module, const char *mangled);
@@ -68,10 +80,15 @@ typedef struct ArkClass {
     uint32_t    instance_size;    /* bytes, before the pool prefix */
     int         is_abstract;
 
-    /* The parent, by module + mangled name of its two static hooks. */
+    /* The parent's two static hooks. Either by mangled export name (libIGCore
+       exports its own), or -- when the module exports neither, which is every
+       libIG*.dll but Core -- as LINKED addresses recovered by ark_classes.py.
+       Exactly one pair must be set. */
     const char *base_module;
-    const char *base_register_internal;
-    const char *base_get_class_meta;
+    const char *base_register_internal;      /* mangled name, or NULL */
+    const char *base_get_class_meta;         /* mangled name, or NULL */
+    uint32_t    base_register_internal_va;   /* linked address, or 0 */
+    uint32_t    base_get_class_meta_va;      /* linked address, or 0 */
 
     /* Filled in by ark_register_class. */
     uint32_t    meta_slot;        /* guest address of our igMetaObject* */

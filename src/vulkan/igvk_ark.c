@@ -33,6 +33,15 @@ uint32_t ark_export(const char *module, const char *mangled)
     return rva ? base + rva : 0;
 }
 
+uint32_t ark_lifted(const char *module, uint32_t linked_va)
+{
+    uint32_t base = ark_module_base(module);
+    /* Every libIG*.dll is linked for 0x10000000; pe_map relocates all but the
+       first. Anything outside that span is a caller error, not a relocation. */
+    if (!base || linked_va < 0x10000000u) return 0;
+    return base + (linked_va - 0x10000000u);
+}
+
 uint32_t ark_export_req(const char *module, const char *mangled)
 {
     uint32_t a = ark_export(module, mangled);
@@ -291,8 +300,23 @@ int ark_register_class(ArkClass *c)
     g_registering = c;
     args[0]  = (uint32_t)(c->is_abstract ? 1 : 0);
     args[1]  = c->meta_slot;
-    args[2]  = ark_export_req(c->base_module, c->base_register_internal);
-    args[3]  = ark_export_req(c->base_module, c->base_get_class_meta);
+    if (c->base_register_internal) {
+        args[2] = ark_export_req(c->base_module, c->base_register_internal);
+        args[3] = ark_export_req(c->base_module, c->base_get_class_meta);
+    } else {
+        args[2] = ark_lifted(c->base_module, c->base_register_internal_va);
+        args[3] = ark_lifted(c->base_module, c->base_get_class_meta_va);
+        if (!args[2] || !args[3]) {
+            fprintf(stderr,
+                    "ark: cannot map %s's parent hooks (linked 0x%08x / "
+                    "0x%08x) -- is the module loaded?\n  Registration on a "
+                    "NULL parent would be accepted here and fail much later "
+                    "inside libIGCore.\n",
+                    c->name, c->base_register_internal_va,
+                    c->base_get_class_meta_va);
+            return 0;
+        }
+    }
     args[4]  = x86_native_callback(hook_get_class_meta_safe, c->name,
                                    "getClassMetaSafe", c);
     args[5]  = name_va;

@@ -774,7 +774,7 @@ static int run_battery(void)
 int main(int argc, char **argv)
 {
     const char *dir = NULL;
-    int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0;
+    int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0, vk = 0;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
        and the recompiled set grows one module at a time (libMovie was the
@@ -795,6 +795,7 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;
         else if (strcmp(argv[i], "--run") == 0) run = 1;
         else if (strcmp(argv[i], "--ark-probe") == 0) arkprobe = 1;
+        else if (strcmp(argv[i], "--vk") == 0) vk = 1;
         else dir = argv[i];
     }
     if (!dir) dir = getenv("GAME_PC_DIR");
@@ -886,6 +887,17 @@ int main(int argc, char **argv)
     (void)window;
     printf("SDL: not compiled in\n");
 #endif
+
+    if (vk) {
+        /* Same timing constraint as the probe: ARK registration needs the
+           engine's pools, which do not exist until the exe has started. Armed
+           on the engine's own first createInstance -- and deliberately on that
+           rather than a guessed moment, because it is defined by the engine
+           being ready rather than by an ordering we assumed. */
+        extern int igvk_visualcontext_arm(void);
+        if (igvk_visualcontext_arm()) return 1;
+        run = 1;
+    }
 
     if (arkprobe) {
         /* Arm only -- the probe itself runs mid-run, when the engine's pools
