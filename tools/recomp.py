@@ -299,6 +299,46 @@ def img_rel(val):
     return None
 
 
+def ret_push(ret):
+    """The return address a CALL pushes, as the guest will SEE it.
+
+    It goes through img_rel like every other address into this module. It did
+    not, and pushed the LINKED address instead -- which is self-consistent as
+    long as nothing looks at it, because the matching RET pops the same value
+    and compares it against the same constant. Anything that USES it breaks:
+    Gap::Core::igMetaObject::arkRegister pushes a function pointer, calls
+    igArkRegister, and the ARK machinery ends up transferring to the stacked
+    return address. With libIGCore relocated to 0x24000000 that address was
+    0x100177da, which resolves into whichever module occupies 0x10000000 --
+    libIGUtils -- and the dispatcher reported a missing body in the wrong
+    module entirely (issue #15 follow-on). The guest stack has to hold real
+    addresses.
+    """
+    return "C->esp -= 4; WR32(C->esp, %s);" % (img_rel(ret) or "0x%xU" % ret)
+
+
+def icall(t, ret):
+    """An indirect CALL: read the target with the ESP the instruction was
+    REACHED with, then push the return address.
+
+    On real x86 the memory operand is computed before the push. Emitting the
+    push first shifts ESP by four, so every esp-relative target -- `call dword
+    ptr [esp+8]`, the shape MSVC gives a callback invoked through a stack
+    argument -- is read four bytes low and dispatches to whatever is there. In
+    Gap::Core::igArkRegister that is the caller's return address, so ARK
+    registration jumped into the middle of arkRegister instead of calling the
+    registration function it was handed.
+
+    This is the SAME defect that 8a70f81 fixed in the Xbox lifter
+    (vendor/xboxrecomp) on 2026-08-05. It was never fixed here: the two
+    translators are separate codebases and nothing checked the second one when
+    the first was corrected. Worth remembering as a class, not an incident.
+    """
+    return ["{ uint32_t _icall = %s;" % t.read(),
+            ret_push(ret),
+            "DISPATCH(C, _icall); }"]
+
+
 def iat_symbol(addr_expr):
     """If a memory operand is a bare absolute address that is an IAT slot,
     return its (module, symbol); else None."""
@@ -826,21 +866,17 @@ def emit_instruction(ins, ctx):
                 ret = ins["a"] + ins["n"]
                 call = "%s(C);" % c_ident(*sym)
                 if m == "CALL":
-                    return [A, "C->esp -= 4; WR32(C->esp, 0x%xU);" % ret, call]
+                    return [A, ret_push(ret), call]
                 return [A, call, "return;"]     # tail-jump thunk
             # otherwise it is real indirect dispatch (vtable etc.)
             ret = ins["a"] + ins["n"]
             if m == "CALL":
-                return [A,
-                        "C->esp -= 4; WR32(C->esp, 0x%xU);" % ret,
-                        "DISPATCH(C, %s);" % t.read()]
+                return [A] + icall(t, ret)
             return [A, "DISPATCH(C, %s); return;" % t.read()]
         if t is not None and t.kind in ("reg32",):
             ret = ins["a"] + ins["n"]
             if m == "CALL":
-                return [A,
-                        "C->esp -= 4; WR32(C->esp, 0x%xU);" % ret,
-                        "DISPATCH(C, %s);" % t.read()]
+                return [A] + icall(t, ret)
             return [A, "DISPATCH(C, %s); return;" % t.read()]
 
     # A JMP whose target lies outside this function is a TAIL CALL, not a
@@ -875,10 +911,10 @@ def emit_instruction(ins, ctx):
             # runtime keeps the module buildable and makes reaching it a
             # located, named failure instead of a silent one.
             return [A,
-                    "C->esp -= 4; WR32(C->esp, 0x%xU);" % ret,
+                    ret_push(ret),
                     "x86_call_unknown(C, 0x%08xU);" % ins["flow"]]
         return [A,
-                "C->esp -= 4; WR32(C->esp, 0x%xU);" % ret,
+                ret_push(ret),
                 "%s(C);" % fname(ins["flow"])]
 
     raise Unsupported("mnemonic %s" % m)
