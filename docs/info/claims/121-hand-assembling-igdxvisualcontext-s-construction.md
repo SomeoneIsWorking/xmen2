@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-06
 tags: graphics,vulkan,ark
+reconfirmed: 2026-08-06
 ---
 
 ## Claim
@@ -17,3 +18,7 @@ igVkVisualContext registers with igVisualContext's parent hooks (arkRegisterInte
 ## What would falsify it
 
 Registering igVkVisualContext with igDx8VisualContext's parent hooks instead, and finding +0x534/+0x53c still zero -- which would show those fields are set by something other than the constructor chain. Also falsified if ARK refuses a class whose parent is concrete.
+
+## Re-confirmed 2026-08-06
+
+FIX APPLIED AND VERIFIED. igVkVisualContext now registers with igDx8VisualContext's parent hooks -- registrar linked 0x10014a60, getClassMeta linked 0x10009870 -- instead of igVisualContext's. The blocking question (a child passes the parent's NON-safe getClassMeta, and igDx8VisualContext's was unknown) was settled by search rather than guess: every getClassMeta in libIGGfx is literally two instructions, MOV EAX,[<the class's meta slot>]; RET, so searching libIGGfx for that exact body reading igDx8VisualContext's meta slot 0x10189450 found 0x10009870 uniquely. It is also vtable slot 20 of igDx8VisualContext, an independent confirmation. ARK accepts a CONCRETE parent: registration succeeded and all three chain rebinds took. On a real --vk run the field report goes from 5 zeros to 3, with +0x534 = 0x046725c8 and +0x53c = 0x04672600 now built, and the SIGSEGV at NULL in the engine's teardown is gone. The run now stops further on, on an unrelated recompiler boundary defect in XMen2.exe FUN_005fad31.

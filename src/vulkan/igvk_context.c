@@ -23,10 +23,32 @@
    The last two are exactly the pair igDxVisualContext passes as ITS parent
    hooks, which is the cross-check that they are igVisualContext's. */
 #define IGVISUALCONTEXT_META_SLOT      0x10188ba0u
-#define IGVISUALCONTEXT_REGINTERNAL    0x1000b440u
-#define IGVISUALCONTEXT_GETCLASSMETA   0x1004afc0u
 #define IGDXVISUALCONTEXT_META_SLOT    0x10189048u
 #define IGDX8VISUALCONTEXT_META_SLOT   0x10189450u
+
+/*
+ * OUR parent is igDx8VisualContext, the concrete class we replace -- not the
+ * abstract igVisualContext at the top of the chain.
+ *
+ * This was igVisualContext's pair, and that was the bug behind issue #20.
+ * libIGCore runs the PARENT's construction, so inheriting from the abstract
+ * root meant igDxVisualContext's constructor never ran: the capability
+ * manager at this+0x534 and the shader manager at this+0x53c were never
+ * built, and the engine's own teardown dereferenced the latter unguarded
+ * (C121). Inheriting from the leaf runs the whole chain, and only the vtable
+ * is ours -- which is what a C++ subclass of igDx8VisualContext would be.
+ *
+ * Both addresses come from the class's OWN igArkRegister call, recovered by
+ * tools/ark_classes.py: a child passes its parent's registrar and its
+ * parent's getClassMeta. getClassMeta is the non-"safe" form -- every one is
+ * literally `MOV EAX,[<the class's meta slot>]; RET`, and this one was found
+ * by searching libIGGfx for that exact two-instruction body reading
+ * igDx8VisualContext's meta slot. It is also vtable slot 20 of
+ * igDx8VisualContext, which is an independent confirmation that it is the
+ * right function.
+ */
+#define IGDX8_REGINTERNAL              0x10014a60u
+#define IGDX8_GETCLASSMETA             0x10009870u
 
 /* igDxVisualContext and igDx8VisualContext are both 0x558, and the Dx8 leaf
    adds no fields (C113). Matching it means the engine gets an object the same
@@ -119,8 +141,8 @@ static ArkClass g_vk = {
     .instance_size = IGVK_INSTANCE_SIZE,
     .is_abstract = 0,
     .base_module = IGVK_GFX,
-    .base_register_internal_va = IGVISUALCONTEXT_REGINTERNAL,
-    .base_get_class_meta_va = IGVISUALCONTEXT_GETCLASSMETA,
+    .base_register_internal_va = IGDX8_REGINTERNAL,
+    .base_get_class_meta_va = IGDX8_GETCLASSMETA,
     .nslots = IGVK_SLOTS
 };
 

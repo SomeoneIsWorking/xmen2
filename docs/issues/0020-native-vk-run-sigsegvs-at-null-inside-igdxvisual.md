@@ -1,7 +1,7 @@
 ---
 id: 20
 title: Native --vk run SIGSEGVs at NULL inside igDxVisualContext::releaseVolatileResources / userRelease
-status: open
+status: resolved
 symptom: SIGSEGV at (nil) with ecx=0 during the --vk run's teardown; addr2line names fn_libIGGfx_1002b7b0 releaseVolatileResources. The engine's userRelease does MOV ECX,[ESI+0x53c]; MOV EDX,[ECX]; CALL [EDX+0x58] on a NULL shader manager.
 tags: pc,recomp,native,graphics,vulkan,ark,rc-exe
 created: 2026-08-06
@@ -61,3 +61,15 @@ disassembly. The 0xd4 block is the D3DCAPS8 that `IDirect3D8::GetDeviceCaps`
 fills -- which independently confirms C108's finding that this build uses the
 PC D3D8 vtable layout -- and it is currently left ZEROED, so every capability
 the game queries reads "not supported".
+
+### Note (2026-08-06)
+FIXED. The class now registers as a subclass of igDx8VisualContext (parent hooks: registrar linked 0x10014a60, getClassMeta linked 0x10009870), so libIGCore runs the whole Dx constructor chain and only the vtable is ours.
+
+The blocking question in this issue -- that a child passes the parent's NON-safe getClassMeta, and igDx8VisualContext's was unknown -- was settled by SEARCH, not by guessing the pattern. Every getClassMeta in libIGGfx is exactly two instructions, `MOV EAX,[<the class's meta slot>]; RET`. Searching for that body reading igDx8VisualContext's meta slot 0x10189450 found 0x10009870 uniquely, and it is also vtable slot 20 of igDx8VisualContext, which confirms it independently.
+
+The other open question is answered too: **ARK does accept a class whose parent is concrete.** Registration succeeded and all three chain rebinds took.
+
+Verified on a real `--vk` run: the slot-7 field report goes from 5 zeros to 3 (the two NULL-BY-DESIGN device pointers plus this+0x14), with +0x534 = 0x046725c8 and +0x53c = 0x04672600 now built. The SIGSEGV is gone and the run proceeds past teardown into the exe, where it stops on an UNRELATED recompiler boundary defect: `x86_return_to` reports XMen2.exe FUN_005fad31's RET popping 0x005fb2bc, which is the issue #8 class of defect, not a renderer one.
+
+### Resolution (2026-08-06)
+Registered as a subclass of igDx8VisualContext instead of igVisualContext, so the whole Dx constructor chain runs; +0x534 and +0x53c are built and the SIGSEGV is gone. See the note above for how the blocking getClassMeta question was settled.
