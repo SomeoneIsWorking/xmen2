@@ -14,6 +14,29 @@ identifies function bodies covering 77.5% of `XMen2.exe` (11,106 functions,
 643,647 instructions) despite the exe exporting no symbols at all, and a decoder
 covering ~80 x86 mnemonics reaches 99.7% of them.
 
+## What is in this repository — and what is not
+
+**No game content is distributed here.** This repository contains only original
+code: the recompiler, the native host, the asset readers and the RE notes. It
+ships no executables, no libraries, no textures, no audio and no data files from
+the game, and none has ever been committed — every build reads them from a copy
+you already own, located through a gitignored `.env` (see `.env.example`). The
+install directory is treated as strictly read-only; run directories are symlink
+farms over it and nothing is ever written back.
+
+**You need your own legally obtained copy** of the 2005 PC release to build or
+run anything. Without it the tools refuse rather than degrade: `--selftest`
+exits 77 (SKIP) and says nothing was checked.
+
+X-Men Legends II: Rise of Apocalypse is © Activision, developed by Raven
+Software and Vicarious Visions. Marvel and X-Men are trademarks of Marvel
+Characters, Inc. This project is unaffiliated with, and unendorsed by, any of
+them. The generated C under `src/recomp/` is a mechanical translation of the
+shipped machine code — it is derived from the original binaries, is gitignored,
+and is produced on your machine from your copy. The MIT licence in
+[`LICENSE`](LICENSE) covers **this repository's own code only** and makes no
+claim over the game.
+
 ## Sources
 
 - **PC build** (`$GAME_PC_DIR`): `XMen2.exe` (2.61 MB) + 16 `libIG*.dll` + `cgD3D8.dll` /
