@@ -184,6 +184,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_state.c
         src/d3d8/d3d8_d3d8.c
         src/d3d8/d3d8_device.c
+        src/d3d8/d3d8_surface.c
         src/d3d8/d3d8_report.c
         src/vulkan/igvk_ark.c
         src/vulkan/igvk_probe.c

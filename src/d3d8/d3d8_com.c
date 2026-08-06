@@ -171,6 +171,57 @@ void d3d8_object_set_destructor(D3D8Object *o, void (*fn)(D3D8Object *))
     o->destroy = fn;
 }
 
+long d3d8_object_addref(D3D8Object *o)
+{
+    if (!o->live)
+        fprintf(stderr, "d3d8: AddRef on a %s that was already released to "
+                        "zero.\n", g_iface[o->iface].name);
+    return ++o->refs;
+}
+
+long d3d8_object_release(D3D8Object *o)
+{
+    if (o->refs <= 0) {
+        fprintf(stderr, "d3d8: Release on a %s whose count is already 0. "
+                        "Returning 0 rather than going negative -- but the "
+                        "guest has released it more times than it took it.\n",
+                g_iface[o->iface].name);
+        return 0;
+    }
+    if (--o->refs == 0) {
+        if (o->destroy) o->destroy(o);
+        /*
+         * The object is RETIRED, not freed. Freeing it would return its guest
+         * block to the arena, and a stale guest pointer would then land in
+         * whatever was allocated next -- which reads as memory corruption
+         * rather than as a use-after-release. Keeping it costs twelve bytes
+         * and makes the mistake say its own name.
+         */
+        o->live = 0;
+    }
+    return o->refs;
+}
+
+void d3d8_object_report(void)
+{
+    int i, live = 0, retired = 0;
+    if (!g_nobjs) {
+        printf("  d3d8: no COM object was ever created.\n");
+        return;
+    }
+    for (i = 0; i < g_nobjs; i++) {
+        if (g_objs[i]->live) live++;
+        else retired++;
+    }
+    printf("  d3d8: %d COM object(s) -- %d still referenced, %d released to "
+           "zero\n", g_nobjs, live, retired);
+    for (i = 0; i < g_nobjs; i++)
+        if (g_objs[i]->live && g_objs[i]->refs > 0)
+            printf("        %-26s 0x%08x  %ld reference(s)\n",
+                   g_iface[g_objs[i]->iface].name, g_objs[i]->guest,
+                   g_objs[i]->refs);
+}
+
 D3D8Object *d3d8_object_from_guest(uint32_t g)
 {
     uint32_t idx;

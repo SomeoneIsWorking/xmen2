@@ -18,6 +18,7 @@
 #include "d3d8_com.h"
 #include "d3d8_caps.h"
 #include "d3d8_state.h"
+#include "d3d8_surface.h"
 #include "d3d8_types.h"
 
 #include "gpu_device.h"
@@ -29,7 +30,6 @@
 #include <string.h>
 
 typedef struct {
-    long                  refs;
     uint32_t              adapter, devtype, focus_window, behaviour;
     D3DPRESENT_PARAMETERS pp;
     D3D8CapsLimits        limits;
@@ -65,21 +65,20 @@ static void dev_QueryInterface(D3D8Object *self, CPU *C)
 
 static void dev_AddRef(D3D8Object *self, CPU *C)
 {
-    (void)self;
-    d3d8_ret(C, (uint32_t)++g_dev.refs);
+    d3d8_ret(C, (uint32_t)d3d8_object_addref(self));
+}
+
+static void device_destroyed(D3D8Object *o)
+{
+    (void)o;
+    printf("d3d8: the engine released the device; tearing down the GPU device "
+           "with it.\n");
+    gpu_device_destroy();
 }
 
 static void dev_Release(D3D8Object *self, CPU *C)
 {
-    long n = --g_dev.refs;
-    (void)self;
-    if (n <= 0) {
-        printf("d3d8: the engine released the device; tearing down the GPU "
-               "device with it.\n");
-        gpu_device_destroy();
-        n = 0;
-    }
-    d3d8_ret(C, (uint32_t)n);
+    d3d8_ret(C, (uint32_t)d3d8_object_release(self));
 }
 
 /* ---- what the device is ------------------------------------------------ */
@@ -186,6 +185,126 @@ static void dev_ShowCursor(D3D8Object *self, CPU *C)
 {
     (void)self;
     d3d8_ret(C, 0);                          /* the previous visibility */
+}
+
+/* ---- render destinations ----------------------------------------------- */
+
+/*
+ * The back buffer and the depth/stencil are what igDxVisualContext calls its
+ * render destinations: it fetches them once with GetBackBuffer and
+ * GetDepthStencilSurface, keeps them, and hands them back to SetRenderTarget
+ * whenever it changes where drawing goes. They exist for the life of the
+ * device, so they are created with it rather than on demand -- which also
+ * means GetBackBuffer is a lookup and cannot fail for a reason the caller has
+ * to handle.
+ *
+ * Neither is lockable. They live on the GPU, and src/gpu does no readback; the
+ * surface layer refuses a Lock on them by name rather than handing over a
+ * buffer whose contents would be invented.
+ */
+static D3D8Object *g_backbuffer, *g_depth;
+static D3D8Object *g_render_target, *g_render_depth;
+
+static void dev_GetBackBuffer(D3D8Object *self, CPU *C)
+{
+    uint32_t index = d3d8_arg(C, 0), type = d3d8_arg(C, 1);
+    uint32_t out = d3d8_arg(C, 2);
+
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    /* D3DBACKBUFFER_TYPE_MONO is 0; the stereo types belong to hardware this
+       backend is not. One back buffer, so any other index is the engine
+       asking for something that does not exist. */
+    if (type != 0 || index != 0) {
+        fprintf(stderr, "d3d8: GetBackBuffer(index=%u, type=%u) -- this device "
+                        "presents one mono back buffer.\n", index, type);
+        WR32(out, 0);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    d3d8_object_addref(g_backbuffer);
+    WR32(out, d3d8_object_guest(g_backbuffer));
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_GetDepthStencilSurface(D3D8Object *self, CPU *C)
+{
+    uint32_t out = d3d8_arg(C, 0);
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    if (!g_depth) {
+        /* The engine asked for a depth buffer it did not ask the device to
+           create. Real D3D8 answers D3DERR_NOTFOUND here and the engine has a
+           path for it; inventing one would be a depth buffer nothing renders
+           into. */
+        fprintf(stderr, "d3d8: GetDepthStencilSurface, but CreateDevice was "
+                        "called with EnableAutoDepthStencil false, so there is "
+                        "none.\n");
+        WR32(out, 0);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    d3d8_object_addref(g_depth);
+    WR32(out, d3d8_object_guest(g_depth));
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_GetRenderTarget(D3D8Object *self, CPU *C)
+{
+    uint32_t out = d3d8_arg(C, 0);
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    d3d8_object_addref(g_render_target);
+    WR32(out, d3d8_object_guest(g_render_target));
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_SetRenderTarget(D3D8Object *self, CPU *C)
+{
+    uint32_t rt = d3d8_arg(C, 0), ds = d3d8_arg(C, 1);
+    D3D8Object *rt_obj = rt ? d3d8_object_from_guest(rt) : NULL;
+    D3D8Object *ds_obj = ds ? d3d8_object_from_guest(ds) : NULL;
+
+    (void)self;
+    if (rt && !rt_obj) {
+        fprintf(stderr, "d3d8: SetRenderTarget was given 0x%08x, which is not "
+                        "a surface this host made.\n", rt);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    /* NULL means "keep the current one" for the render target and "no depth
+       buffer" for the stencil -- two different meanings for the same value,
+       which is D3D8's rule and not one to normalise away. */
+    if (rt_obj) g_render_target = rt_obj;
+    g_render_depth = ds_obj;
+
+    {
+        D3D8Surface *s = d3d8_surface_of(g_render_target);
+        /*
+         * src/gpu has exactly one destination, the swapchain. Anything else is
+         * an off-screen target it does not have, and drawing would silently go
+         * to the wrong place -- so it is reported rather than ignored. This is
+         * the same gap the --vk path reported as "render destination 3".
+         */
+        gpu_frame_bind_target(s->kind == D3D8_SURF_BACKBUFFER ? 0u : 1u);
+    }
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_CreateImageSurface(D3D8Object *self, CPU *C)
+{
+    uint32_t w = d3d8_arg(C, 0), h = d3d8_arg(C, 1), fmt = d3d8_arg(C, 2);
+    uint32_t out = d3d8_arg(C, 3);
+    D3D8Object *s;
+
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    /* D3DPOOL_SYSTEMMEM: an image surface is host memory the guest fills and
+       then copies from, which is exactly what this host can do honestly. */
+    s = d3d8_surface_new(D3D8_SURF_SYSTEM, w, h, fmt, 0, 2);
+    if (!s) { WR32(out, 0); d3d8_ret(C, E_OUTOFMEMORY); return; }
+    WR32(out, d3d8_object_guest(s));
+    d3d8_ret(C, D3D_OK);
 }
 
 /* ---- the frame --------------------------------------------------------- */
@@ -399,7 +518,7 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                               /* 13 CreateAdditionalSwapChain */
     NULL,                               /* 14 Reset */
     dev_Present,                        /* 15 */
-    NULL,                               /* 16 GetBackBuffer */
+    dev_GetBackBuffer,                  /* 16 */
     NULL,                               /* 17 GetRasterStatus */
     NULL,                               /* 18 SetGammaRamp */
     NULL,                               /* 19 GetGammaRamp */
@@ -410,13 +529,13 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                               /* 24 CreateIndexBuffer */
     NULL,                               /* 25 CreateRenderTarget */
     NULL,                               /* 26 CreateDepthStencilSurface */
-    NULL,                               /* 27 CreateImageSurface */
+    dev_CreateImageSurface,             /* 27 */
     NULL,                               /* 28 CopyRects */
     NULL,                               /* 29 UpdateTexture */
     NULL,                               /* 30 GetFrontBuffer */
-    NULL,                               /* 31 SetRenderTarget */
-    NULL,                               /* 32 GetRenderTarget */
-    NULL,                               /* 33 GetDepthStencilSurface */
+    dev_SetRenderTarget,                /* 31 */
+    dev_GetRenderTarget,                /* 32 */
+    dev_GetDepthStencilSurface,         /* 33 */
     dev_BeginScene,                     /* 34 */
     dev_EndScene,                       /* 35 */
     dev_Clear,                          /* 36 */
@@ -498,7 +617,6 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
         return NULL;
     }
     memset(&g_dev, 0, sizeof g_dev);
-    g_dev.refs = 1;
     g_dev.adapter = adapter;
     g_dev.devtype = devtype;
     g_dev.focus_window = focus_window;
@@ -528,7 +646,37 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
         fprintf(stderr, "d3d8: no host window to present into yet; the "
                         "swapchain will be claimed when one exists.\n");
 
+    /*
+     * The render destinations exist for the life of the device, because that
+     * is what they are on real D3D8: CreateDevice makes the swapchain and,
+     * when asked, the automatic depth buffer. Making them here rather than on
+     * the first GetBackBuffer means that call is a lookup which cannot fail
+     * for a reason the engine has to handle.
+     */
+    g_backbuffer = d3d8_surface_new(D3D8_SURF_BACKBUFFER,
+                                    pp->BackBufferWidth, pp->BackBufferHeight,
+                                    pp->BackBufferFormat, 1u /* RENDERTARGET */,
+                                    0u /* D3DPOOL_DEFAULT */);
+    if (!g_backbuffer) {
+        fprintf(stderr, "d3d8: the back buffer surface could not be made.\n");
+        return NULL;
+    }
+    g_render_target = g_backbuffer;
+    if (pp->EnableAutoDepthStencil) {
+        g_depth = d3d8_surface_new(D3D8_SURF_DEPTHSTENCIL,
+                                   pp->BackBufferWidth, pp->BackBufferHeight,
+                                   pp->AutoDepthStencilFormat,
+                                   2u /* DEPTHSTENCIL */, 0u);
+        if (!g_depth) {
+            fprintf(stderr, "d3d8: the automatic depth/stencil surface could "
+                            "not be made.\n");
+            return NULL;
+        }
+        g_render_depth = g_depth;
+    }
+
     g_dev_obj = d3d8_object_new(D3D8_IF_IDirect3DDevice8, &g_dev);
+    d3d8_object_set_destructor(g_dev_obj, device_destroyed);
     printf("d3d8: IDirect3DDevice8 at 0x%08x\n", d3d8_object_guest(g_dev_obj));
     fflush(stdout);
     return g_dev_obj;
@@ -544,5 +692,7 @@ void d3d8_device_report(void)
     printf("  d3d8: %lu scene(s) begun, %lu clear(s), %lu present(s)\n",
            g_dev.scenes, g_dev.clears, g_dev.presents);
     d3d8_state_report(&g_dev.state);
+    d3d8_surface_report();
+    d3d8_object_report();
     gpu_device_report();
 }

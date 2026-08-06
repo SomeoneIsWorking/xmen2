@@ -11,6 +11,7 @@
 #include "d3d8_caps.h"
 #include "d3d8_types.h"
 #include "d3d8_device.h"
+#include "d3d8_surface.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -63,15 +64,12 @@ static void *guest_ptr(uint32_t a, const char *what)
 /* ---- IUnknown ---------------------------------------------------------- */
 
 /*
- * Reference counting is real, not a stub returning 1.
- *
- * The engine's release path walks its objects and drops them, and a count that
- * never reaches zero means the backend never learns the device is gone -- so
- * a second createDevice would find the first still holding the swapchain. The
- * count is kept host-side; nothing in the guest may read it.
+ * Reference counting is real, not a stub returning 1 -- the engine's release
+ * path walks its objects and drops them, and a count that never reaches zero
+ * means the backend never learns the device is gone. It lives in d3d8_com.c
+ * so every interface counts the same way.
  */
 typedef struct {
-    long refs;
     D3D8CapsLimits limits;
 } D3D8Ctx;
 
@@ -97,15 +95,12 @@ static void d3d8_QueryInterface(D3D8Object *self, CPU *C)
 
 static void d3d8_AddRef(D3D8Object *self, CPU *C)
 {
-    (void)self;
-    d3d8_ret(C, (uint32_t)++g_d3d8.refs);
+    d3d8_ret(C, (uint32_t)d3d8_object_addref(self));
 }
 
 static void d3d8_Release(D3D8Object *self, CPU *C)
 {
-    long n = --g_d3d8.refs;
-    (void)self;
-    d3d8_ret(C, (uint32_t)(n < 0 ? 0 : n));
+    d3d8_ret(C, (uint32_t)d3d8_object_release(self));
 }
 
 /* ---- adapters ---------------------------------------------------------- */
@@ -342,16 +337,18 @@ void imp_d3d8_Direct3DCreate8(CPU *C)
 
     if (!g_d3d8_obj) {
         d3d8_caps_limits_default(&g_d3d8.limits);
-        g_d3d8.refs = 1;
         d3d8_iface_implement(D3D8_IF_IDirect3D8, g_impl,
                              (int)(sizeof g_impl / sizeof g_impl[0]));
         d3d8_device_install();
+        d3d8_surface_install();
         g_d3d8_obj = d3d8_object_new(D3D8_IF_IDirect3D8, &g_d3d8);
         printf("d3d8: Direct3DCreate8 -> IDirect3D8 at 0x%08x\n",
                d3d8_object_guest(g_d3d8_obj));
         fflush(stdout);
     } else {
-        g_d3d8.refs++;
+        /* Direct3DCreate8 hands out a NEW reference each time, exactly as the
+           real one does; the engine will Release each. */
+        d3d8_object_addref(g_d3d8_obj);
     }
     C->eax = d3d8_object_guest(g_d3d8_obj);
     C->esp += 4u + 4u;                      /* __stdcall, one argument */

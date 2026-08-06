@@ -81,9 +81,26 @@ D3D8IfaceId d3d8_object_iface(const D3D8Object *o);
 /* The object at a guest address, or NULL if that address is not one of ours. */
 D3D8Object *d3d8_object_from_guest(uint32_t guest_addr);
 
-/* Called by Release when the count reaches zero, before the object is freed.
+/*
+ * COM reference counting, kept here rather than in each interface.
+ *
+ * Every interface needs exactly this, and a per-file counter is how one of
+ * them ends up subtly different from the rest. d3d8_object_release returns the
+ * new count and runs the destructor when it reaches zero; the object is kept
+ * (not freed) so that a guest pointer used after its last Release reports a
+ * USE AFTER RELEASE by name instead of landing in reused memory.
+ */
+long d3d8_object_addref(D3D8Object *o);
+long d3d8_object_release(D3D8Object *o);
+
+/* Called by Release when the count reaches zero, before the object is retired.
    NULL means "nothing to undo". */
 void d3d8_object_set_destructor(D3D8Object *o, void (*fn)(D3D8Object *));
+
+/* Objects still holding a reference at shutdown, named. A surface the engine
+   never released is a leak; one released twice is a bug that would otherwise
+   be invisible. */
+void d3d8_object_report(void);
 
 /* ---- inside a method --------------------------------------------------- */
 
