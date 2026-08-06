@@ -121,7 +121,7 @@ int igvk_device_attach_window(struct SDL_Window *w)
         return 0;
     }
     g_win = win;
-    printf("igVk: swapchain claimed on the guest's window\n");
+    printf("igVk: swapchain claimed on window %p\n", (void *)win);
     fflush(stdout);
     return 1;
 #endif

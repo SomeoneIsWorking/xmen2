@@ -166,6 +166,7 @@ if(X2_MODULE_HAVE)
         src/vulkan/igvk_device.c
         src/vulkan/igvk_slots_lifecycle.c
         src/vulkan/igvk_slots_frame.c
+        src/vulkan/igvk_selftest.c
         ${X2_MODULE_SRCS}
     )
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan)
@@ -247,6 +248,12 @@ if(X2_MODULE_HAVE)
     add_test(NAME native_battery
              COMMAND x2native --no-window --selftest)
     set_tests_properties(native_battery PROPERTIES SKIP_RETURN_CODE 77)
+    # The renderer's HOST half, driven with no engine and no game install.
+    # It needs neither, which is the point: the game has never reached a
+    # frame, so without this nothing would ever have run that code.
+    add_test(NAME vk_frame_path
+             COMMAND x2native --vk-selftest)
+    set_tests_properties(vk_frame_path PROPERTIES SKIP_RETURN_CODE 77)
 else()
     message(STATUS
         "x2native: SKIPPED -- no module has generated output. "

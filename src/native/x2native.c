@@ -775,6 +775,7 @@ int main(int argc, char **argv)
 {
     const char *dir = NULL;
     int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0, vk = 0;
+    int vkselftest = 0;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
        and the recompiled set grows one module at a time (libMovie was the
@@ -796,8 +797,37 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--run") == 0) run = 1;
         else if (strcmp(argv[i], "--ark-probe") == 0) arkprobe = 1;
         else if (strcmp(argv[i], "--vk") == 0) vk = 1;
+        else if (strcmp(argv[i], "--vk-selftest") == 0) vkselftest = 1;
+        else if (argv[i][0] == '-') {
+            /*
+             * Refuse an unrecognised option rather than treat it as the
+             * install directory. It used to fall through to `dir`, and a
+             * stale binary given a flag it did not know reported
+             * "cannot open --vk-selftest/XMen2.exe" -- which reads as a
+             * missing game rather than as a binary that predates the flag.
+             */
+            fprintf(stderr, "x2native: unknown option '%s'. Refusing rather "
+                            "than treating it as the install directory.\n"
+                            "  Known: --no-window --run --selftest --ark-probe "
+                            "--vk --vk-selftest\n", argv[i]);
+            return 2;
+        }
         else dir = argv[i];
     }
+    /*
+     * The renderer's host half stands alone, so it is checked alone.
+     *
+     * src/vulkan/igvk_device.c takes no guest state, which means its frame
+     * path can be driven with no engine, no ARK and no game install -- and it
+     * needs to be, because the game has never reached a frame, so nothing
+     * else has ever run that code. Handled before the GAME_PC_DIR check for
+     * the same reason: it does not need the install.
+     */
+    if (vkselftest) {
+        extern int igvk_device_selftest(void);
+        return igvk_device_selftest();
+    }
+
     if (!dir) dir = getenv("GAME_PC_DIR");
     if (!dir || !*dir) {
         printf("SKIP x2native: no install directory given and GAME_PC_DIR is "
