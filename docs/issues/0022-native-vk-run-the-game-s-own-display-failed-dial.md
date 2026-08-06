@@ -1,7 +1,7 @@
 ---
 id: 22
 title: Native --vk run: the game's own 'Display failed!' dialog -- the renderer does not report itself as initialised
-status: open
+status: resolved
 symptom: MessageBox [Display failed!] 'Unable to initialise graphic display. Resolution and FSAA have been reverted to default.' on the --vk run, after igVkVisualContext constructs, creates a real Vulkan device and accepts setVideoMode. Followed by a SIGSEGV in Gap::Core::igArenaMemoryPool::consolidate during the teardown that follows.
 tags: pc,recomp,native,graphics,vulkan,rc-exe
 created: 2026-08-06
@@ -185,3 +185,6 @@ That is fully consistent with igWin32Window::open returning false, and it puts t
 **So the question is now: what does igWin32Window::open do before CreateWindowExA, and which part of it fails?** It is in libIGDisplay, it is recompiled, and the boundary trace already shows it being entered -- so put X2_ARGS on it (needs the X2_NATIVE_TRACE build, which scratch/build-native currently is) and read its body. This is one function, entered, with a false return: the narrowest possible target.
 
 Still true, and worth repeating because it has held through eight hops: NO renderer slot we owe has ever been dispatched. Implementing slots cannot move this.
+
+### Resolution (2026-08-06)
+FIXED, and the cause was USER32::GetDC returning NULL, not the renderer. igWin32Window::open calls CreateWindowExA then GetDC and treats a NULL DC as fatal; GetDC now returns a token for the main window, which is safe because the entire GDI surface this game imports is one function (GetDeviceCaps) and it ignores the HDC. With that the engine drives display init to completion -- swapchain claimed on the GUEST's window -- and demanded slots 38, 30 and 25 in turn, now implemented. The run reaches LoadLibraryA("cg.dll"), the NVIDIA Cg shader path (C112). C125.

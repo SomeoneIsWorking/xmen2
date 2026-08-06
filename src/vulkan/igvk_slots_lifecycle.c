@@ -22,7 +22,13 @@
 #define DX_USER_INSTANTIATE          0x1002c210u   /* slot   7, ret 4  */
 #define DX_USER_RELEASE              0x1002c410u   /* slot   8, ret 0  */
 #define DX_SET_NATIVE_WINDOW_HANDLE  0x1002c970u   /* slot  36, ret 4  */
+#define DX_SET_NATIVE_DEVICE_HANDLE  0x1002c9d0u   /* slot  38, ret 4  */
 #define BASE_USER_INSTANTIATE        0x100247f0u   /* igVisualContext::  */
+
+/* igDxVisualContext::open's own helpers, in its order. See vk_open. */
+#define DX_OPEN_HELPER_A             0x1002fa60u
+#define DX_OPEN_HELPER_B             0x1002ca30u
+#define G_CURRENT_VISUAL_CONTEXT     0x101895a8u
 
 /*
  * What construction actually produced.
@@ -265,6 +271,120 @@ static void vk_set_native_window_handle(CPU *C)
     ark_ret(C, r, 1);
 }
 
+/* ---- slot 38: setNativeDeviceHandle ----------------------------------- */
+
+/*
+ * The counterpart of slot 36, and eight instructions long:
+ *
+ *     if (this->device == NULL || this->f174 != h) this->f174 = h;
+ *
+ * It guards on this+0x144 exactly as setNativeWindowHandle does, so with the
+ * device left NULL by design its body takes the plain store and is safe to
+ * super-call. Nothing on this host has a "native device handle" to speak of --
+ * the Vulkan device is ours and the engine never sees it -- so the store is
+ * the whole of the correct behaviour.
+ */
+static void vk_set_native_device_handle(CPU *C)
+{
+    ark_ret(C, igvk_super(C, DX_SET_NATIVE_DEVICE_HANDLE, 1), 1);
+}
+
+/* ---- slot 30: open ----------------------------------------------------- */
+
+/*
+ * open(igStatus *out), RET 4, hidden-pointer status return.
+ *
+ * The engine's body (libIGGfx 0x1002c5c0) is:
+ *
+ *     if (this->device) return OK;              // already open
+ *     this->vtbl[29]();                         // slot 0x74
+ *     if (!createDevice(this->f17c)) return FAIL;
+ *     helperA(); helperB();                     // 0x1002fa60, 0x1002ca30
+ *     this->vtbl[217](-1);                      // slot 0x364
+ *     g_currentVisualContext = this;            // 0x101895a8
+ *     return OK;
+ *
+ * NOT super-called, and the reason is one call: igDxVisualContext::createDevice
+ * (0x1002cb80) opens with `if (this->f140 == 0) return false`, and this+0x140
+ * is the IDirect3D8 this backend deliberately never creates. Super-calling
+ * would therefore always return FAIL -- which is exactly what the engine was
+ * concluding before this existed.
+ *
+ * So the body is transcribed with that ONE call replaced by "the host device
+ * already exists". Everything else is the engine's own, called through the
+ * object's own vtable so that an override of slot 29 or 217, if one is ever
+ * added, is honoured -- slots 29 and 217 are both inherited today (neither is
+ * among the 98), so this runs igDx8VisualContext's code for them.
+ */
+static void vk_open(CPU *C)
+{
+    uint32_t self = IGVK_SELF(C);
+    uint32_t out = IGVK_ARG(C, 0);
+    uint32_t vt = RD32(self);
+    uint32_t minus1 = 0xFFFFFFFFu;
+    static int told;
+
+    if (!igvk_device_ready()) {
+        /* The one honest failure: no GPU device means the display genuinely
+           did not come up, and saying OK would move the symptom elsewhere. */
+        fprintf(stderr, "igVk: open() refused -- there is no GPU device.\n");
+        igvk_ret_status(C, out, igvk_status_fail(), 1);
+        return;
+    }
+    ark_call_this(RD32(vt + 29u * 4u), self, NULL, 0);
+    {
+        uint32_t f;
+        if ((f = ark_lifted(IGVK_GFX, DX_OPEN_HELPER_A)))
+            ark_call_this(f, self, NULL, 0);
+        if ((f = ark_lifted(IGVK_GFX, DX_OPEN_HELPER_B)))
+            ark_call_this(f, self, NULL, 0);
+    }
+    ark_call_this(RD32(vt + 217u * 4u), self, &minus1, 1);
+    {
+        uint32_t g = ark_lifted(IGVK_GFX, G_CURRENT_VISUAL_CONTEXT);
+        if (g) WR32(g, self);
+    }
+    if (!told++)
+        printf("igVk: open() -- the host device already exists, so the "
+               "engine's createDevice is the one call skipped; the rest of "
+               "its body ran.\n");
+    fflush(stdout);
+    igvk_ret_status(C, out, igvk_status_ok(), 1);
+}
+
+/* ---- slot 25: detectDriverDatabaseProperties --------------------------- */
+
+/*
+ * detectDriverDatabaseProperties(arg), RET 4.
+ *
+ * The engine's 128-instruction body reads the Direct3D ADAPTER IDENTIFIER --
+ * vendor, device and driver version -- and looks the result up in a table of
+ * known-bad DirectX drivers so it can disable features that misbehave on
+ * them. Every input it needs comes from an IDirect3D8 this backend does not
+ * have, which is why it is one of the 98.
+ *
+ * There is no DirectX driver here to have quirks, so the truthful answer is
+ * that no entry applies and the engine's defaults stand. That is a decision,
+ * not a stub, and it has a real consequence worth stating: any workaround the
+ * database would have switched ON for a given card will NOT be applied. On
+ * this backend that is correct -- the workarounds are for D3D drivers -- but
+ * if a Vulkan driver ever needs the same shape of quirk list, it belongs here
+ * and not somewhere else.
+ *
+ * Said once rather than silently, so a later "why is this feature enabled on
+ * hardware that cannot do it" question has somewhere to land.
+ */
+static void vk_detect_driver_database_properties(CPU *C)
+{
+    static int told;
+    if (!told++)
+        printf("igVk: detectDriverDatabaseProperties -- no DirectX adapter to "
+               "identify, so no driver-quirk entry applies and the engine's "
+               "defaults stand.\n");
+    fflush(stdout);
+    ark_ret(C, 0, 1);
+}
+
 /* ---- slot 254: setVideoMode ------------------------------------------- */
 
 /*
@@ -304,7 +424,11 @@ void igvk_install_lifecycle(void)
 {
     igvk_slot(7,   vk_user_instantiate,         "userInstantiate");
     igvk_slot(8,   vk_user_release,             "userRelease");
+    igvk_slot(25,  vk_detect_driver_database_properties,
+                                                "detectDriverDatabaseProperties");
+    igvk_slot(30,  vk_open,                     "open");
     igvk_slot(34,  vk_get_last_error,           "getLastError");
     igvk_slot(36,  vk_set_native_window_handle, "setNativeWindowHandle");
+    igvk_slot(38,  vk_set_native_device_handle, "setNativeDeviceHandle");
     igvk_slot(254, vk_set_video_mode,           "setVideoMode");
 }

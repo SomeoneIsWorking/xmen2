@@ -344,12 +344,55 @@ void imp_USER32_GetParent(CPU *C) { ret_std(C, 0, 1); }   /* top-level */
 void imp_USER32_EnableWindow(CPU *C) { ret_std(C, 0, 2); }
 void imp_USER32_GetMenu(CPU *C) { ret_std(C, 0, 1); }     /* no menu bar */
 
+/*
+ * A device context handle, in the same style as the HWNDs above: a token, not
+ * a pointer, so a handle the guest invented is caught rather than dereferenced.
+ */
+#define HDC_MAIN_TOK 0x00010008u
+
 void imp_USER32_GetDC(CPU *C)
 {
-    /* A device context is a GDI concept this host has none of. Returning NULL
-       is what Win32 does on failure, and every caller must check it -- a
-       non-NULL token would be dereferenced by GDI calls that do not exist. */
+    /*
+     * This USED to return NULL, on the reasoning that a device context is a
+     * GDI concept with nothing behind it and a non-NULL token would be
+     * dereferenced by GDI calls that do not exist.
+     *
+     * The first half is right and the second was wrong, and it cost the whole
+     * display. igWin32Window::open (libIGDisplay 0x10005740) calls
+     * CreateWindowExA, then GetDC, and treats a NULL DC as fatal:
+     *
+     *     100058a9  CALL dword ptr [0x100090d8]   ; GetDC
+     *     100058b1  TEST EBP,EBP
+     *     100058b3  JZ  0x100059f1                ; -> return false
+     *
+     * That false latches the game's startup error byte and surfaces, four
+     * hops later, as the "Display failed!" message box (issue #22). Returning
+     * NULL was not a safe refusal -- it was the failure.
+     *
+     * And the GDI calls it was guarding against do not exist either. The
+     * ENTIRE GDI surface this game imports is one function, GetDeviceCaps
+     * (measured across the module's imports, not assumed), and that one does
+     * not look at the HDC at all -- it answers from SDL's display mode. So
+     * there is nothing a token can be dereferenced by.
+     *
+     * Only the main window and the desktop have one. Anything else still gets
+     * NULL, which is what Win32 returns for an invalid HWND.
+     */
+    uint32_t h = A(0);
+    if (h == 0u || hwnd_is_main(h) || hwnd_is_desktop(h)) {
+        ret_std(C, HDC_MAIN_TOK, 1);
+        return;
+    }
+    fprintf(stderr, "win32_sdl: GetDC for an HWND this layer does not know "
+                    "(0x%08x) -- returning NULL, as Win32 does\n", h);
     ret_std(C, 0, 1);
+}
+
+void imp_USER32_ReleaseDC(CPU *C)
+{
+    /* Nothing was allocated, so nothing is freed. Reported as released so a
+       caller checking the result does not treat it as a leak. */
+    ret_std(C, 1, 2);
 }
 
 void imp_USER32_GetSystemMetrics(CPU *C)
