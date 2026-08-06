@@ -1,7 +1,7 @@
 ---
 id: 21
 title: Splitting FUN_005fad31 at the address its RET popped makes a bogus function, it does not fix the stack imbalance
-status: dead-end
+status: resolved
 symptom: x86_return_to: 0x005fb2bc is not a function entry -- a RET popped something that is not a return address. The RET is in 0x005fad31 (FUN_005fad31), which was ENTERED with 0x000c0260 on the stack and left with 0x005fb2bc there.
 tags: pc,recomp,native,rc-exe,rc-lift,dead-end
 created: 2026-08-06
@@ -158,3 +158,37 @@ recomp.py emits FS-relative access through the runtime's FS base, and src/native
 So three readings of 0x005fb270 have now been tested and refuted: catch funclet (no try blocks), destructor funclet (not in the unwind map), mistranslated exception prologue (the prologue is fine).
 
 **What has NOT been checked, and is where to start next**: the indirect call site itself. Find which instruction in FUN_005fac10 performs the indirect call, read the C recomp.py emitted for it and for whatever computes its target register, and compare against the original. Everything upstream of the call site has been eliminated; the call site has not been looked at once.
+
+### Note (2026-08-06)
+ROOT CAUSE, read out of the binary -- C123. They are SWITCH CASE LABELS.
+
+FUN_005fac10 ends with `JMP dword ptr [EAX*0x4 + 0x5fb240]`, an MSVC switch dispatch. The table at 0x005fb240 -- data sitting immediately after the function's last instruction at 0x005fb23c -- contains:
+
+    0x005facd5  0x005face5  0x005facf6  0x005fad07  0x005fafc1  0x005fafd5
+
+and a second table at 0x005fb250 holds six more. Every entry is inside the function's own range, and **0x005facd5 and 0x005face5 are exactly the two addresses this loop kept reporting and seeding.**
+
+## The whole chain, finally
+
+1. The runtime dispatches the indirect JMP as if it were a CALL, so a case label is reported as 'no recompiled body at <addr>'.
+2. The discovery loop, doing its job, seeds it.
+3. Ghidra makes it a function -- carving the switch statement apart.
+4. The fragment runs on to the real function's epilogue, whose RET pops whatever the parent's frame held: 'x86_return_to: <addr> is not a function entry'.
+
+Every symptom recorded in this issue is one of those four steps. Watched it cycle three times in one session: seed 0x005fb270, stop at 0x005facd5, seed that, and FUN_005facd5's RET pops 0x005fb2bc -- the symptom this issue opened with.
+
+## Why the exception-handling detours were dead ends
+
+The function IS an MSVC C++ EH function, and that is a coincidence of the same function rather than a cause. Its FuncInfo has nTryBlocks = 0 and its unwind actions live at 0x679110-0x679128, so no funclet was ever involved. Both EH readings (C122) were tested and refuted before this one was found.
+
+## The fix
+
+Two places, and both are needed:
+
+  * **recomp.py / the runtime** must treat an indirect JMP through a table as an intra-function branch, not as a dispatch to another function. That is the actual defect.
+  * **native_discover.sh must never seed a jump-table target.** Collect every `JMP dword ptr [reg*4 + <imm>]` in the module, read its table, and refuse any reported address that appears in one -- with the table's address named, so the refusal explains itself.
+
+STOP seeding in this region until the first is done.
+
+### Resolution (2026-08-06)
+ROOT CAUSE FOUND (C123): the reported 'missing indirect call targets' are SWITCH CASE LABELS from jump tables at 0x005fb240 and 0x005fb250, and the recompiler dispatches the indirect JMP through them as if it were a call. Not a boundary problem, not exception handling. The fix is in recomp.py plus a jump-table guard in native_discover.sh; see the final note for both. Resolved as diagnosed, not as fixed.
