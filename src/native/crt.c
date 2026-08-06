@@ -1132,7 +1132,7 @@ CRT_ALIAS(fflush)   CRT_ALIAS(fputc)    CRT_ALIAS(fputs)
 CRT_ALIAS(fgetc)    CRT_ALIAS(fgets)    CRT_ALIAS(ungetc)
 CRT_ALIAS(fwrite)   CRT_ALIAS(fprintf)  CRT_ALIAS(vfprintf)
 /* C++ operator new / delete / delete[] */
-CRT_ALIAS(__2_YAPAXI_Z)
+CRT_ALIAS(__2_YAPAXI_Z) CRT_ALIAS(__3_YAXPAX_Z) CRT_ALIAS(__V_YAXPAX_Z)
 CRT_ALIAS(sscanf)   CRT_ALIAS(fscanf)
 CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
 CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)

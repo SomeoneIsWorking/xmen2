@@ -1265,6 +1265,14 @@ void imp_KERNEL32_VirtualFree(CPU *C)
     if (verbose())
         fprintf(stderr, "[mem] VirtualFree(0x%08x, %u, type 0x%x)\n",
                 addr, size, type);
+    if (!addr) {
+        /* Win32 fails this too, but quietly: freeing NULL is an ordinary no-op
+           in cleanup code and does not deserve a report that reads like a
+           defect. */
+        g_last_error = 487u;
+        ret_std(C, 0, 3);
+        return;
+    }
     if (type & MEM_RELEASE) {
         /* Win32 requires dwSize == 0 and releases the WHOLE reservation, so
            the size comes from the table rather than from the caller. */
