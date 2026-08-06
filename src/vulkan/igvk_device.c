@@ -331,6 +331,24 @@ void igvk_frame_clear(unsigned mask, float r, float g, float b, float a,
 #endif
 }
 
+void igvk_frame_bind_target(unsigned index)
+{
+#ifndef X2_WITH_SDL
+    (void)index;
+#else
+    static unsigned told_index = 0u - 1u;
+    if (index == 0u) return;                 /* the back buffer: what we have */
+    if (told_index != index) {
+        told_index = index;
+        fprintf(stderr,
+                "igVk: the engine bound render destination %u, which is an "
+                "OFF-SCREEN target this backend does not have -- there is only "
+                "the swapchain. Drawing that follows goes to the back buffer "
+                "instead of where the engine intends.\n", index);
+    }
+#endif
+}
+
 void igvk_frame_viewport(int x, int y, int w, int h, float minz, float maxz)
 {
 #ifndef X2_WITH_SDL

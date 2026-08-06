@@ -14,6 +14,13 @@
 #include <stdio.h>
 
 #define DX_SET_VIEWPORT   0x1002ec70u    /* slot 186, ret 0x18 -> 6 args */
+#define DX_RD_IS_USABLE   0x1002b5b0u    /* the pool-entry check setRenderDestination makes */
+
+/* The render-destination pool: this+0x178, entries of 0x38 bytes at [pool+0x10]. */
+#define F_RD_POOL         0x178u
+#define F_RD_CURRENT      0x17cu
+#define RD_STRIDE         0x38u
+#define RD_STATE          0x1cu          /* == 2 means "not usable" */
 
 /*
  * The fields igDxVisualContext keeps the frame state in, read out of its own
@@ -180,10 +187,106 @@ static void vk_set_viewport(CPU *C)
     ark_ret(C, r, 6);
 }
 
+/* ---- slot 47: setRenderDestination ------------------------------------- */
+
+/*
+ * setRenderDestination(index, arg1), RET 8.
+ *
+ * Transcribed from libIGGfx 0x1002aaf0 rather than super-called, because its
+ * device call is UNGUARDED -- `MOV EAX,[ESI+0x144]; MOV ECX,[EAX]` on a NULL
+ * device. Measured, not assumed; slot 50 next door IS guarded and is
+ * super-called for exactly that reason.
+ *
+ * The engine's body, all 47 instructions of it:
+ *
+ *     idx   = arg0 & 0xffff
+ *     entry = [[this+0x178] + 0x10] + idx*0x38
+ *     if (!entry || entry->state == 2)            return;
+ *     if (!this->isUsable(entry, 0))              return;    // 0x1002b5b0
+ *     device->SetRenderTarget(entry->f24, entry->f28);       // vtable +0x7c
+ *     this->current = idx;
+ *     this->vtbl[186](f1a8, f1ac, f1b0, f1b4, 0, 1.0f);      // setViewport
+ *
+ * Only the SetRenderTarget is replaced -- everything else is the engine's own,
+ * including the final setViewport, which goes through the object's own vtable
+ * so it lands on our slot 186 and programs the GPU.
+ *
+ * The two surfaces the engine would have passed (entry+0x24 colour, entry+0x28
+ * depth/stencil) are D3D surface pointers this host never created. What
+ * matters is WHICH destination was selected, so the index is what is handed to
+ * the device layer.
+ */
+static void vk_set_render_destination(CPU *C)
+{
+    uint32_t self = IGVK_SELF(C);
+    uint32_t idx = IGVK_ARG(C, 0) & 0xffffu;
+    uint32_t pool = RD32(self + F_RD_POOL);
+    uint32_t entry = pool ? RD32(pool + 0x10u) + idx * RD_STRIDE : 0;
+    uint32_t chk, args[2], vt;
+
+    if (!entry || RD32(entry + RD_STATE) == 2u) { ark_ret(C, 0, 2); return; }
+
+    /*
+     * The engine calls igDxVisualContext::checkAndCreateSurfaces here
+     * (0x1002b5b0) and bails if it returns false. It is NOT called.
+     *
+     * That function's job is to CREATE the Direct3D colour and depth surfaces
+     * for this destination, and it does so through the device unguarded -- it
+     * took SIGSEGV at NULL the first time this slot called it. It is not a
+     * predicate that can be answered without a device; it is device work.
+     *
+     * For this backend the answer is that the surfaces already exist and are
+     * not D3D's: the swapchain image SDL hands out each frame is the colour
+     * target. So "usable" is true for the back buffer, and the entry's surface
+     * fields at +0x24/+0x28 stay NULL -- which is safe precisely because the
+     * SetRenderTarget that would have consumed them is the call this slot
+     * replaces.
+     *
+     * OFF-SCREEN destinations are the case this does not cover, and
+     * igvk_frame_bind_target says so by index rather than letting them draw
+     * silently to the wrong place.
+     */
+    (void)chk; (void)args;
+
+    igvk_frame_bind_target(idx);
+    WR32(self + F_RD_CURRENT, idx);
+
+    /* The engine's own trailing setViewport, through our vtable. */
+    vt = RD32(self);
+    {
+        uint32_t vp[6];
+        vp[0] = RD32(self + 0x1a8u);
+        vp[1] = RD32(self + 0x1acu);
+        vp[2] = RD32(self + 0x1b0u);
+        vp[3] = RD32(self + 0x1b4u);
+        vp[4] = 0u;
+        vp[5] = 0x3f800000u;                 /* 1.0f */
+        ark_call_this(RD32(vt + 186u * 4u), self, vp, 6);
+    }
+    ark_ret(C, 0, 2);
+}
+
+/* ---- slot 50: setRenderDestinationSize --------------------------------- */
+
+/*
+ * RET 12. Its device call IS guarded (`MOV EAX,[ESI+0x144]; TEST EAX,EAX;
+ * JZ`), so the engine's own body runs and does all the bookkeeping; the
+ * viewport it recomputes reaches the GPU through slot 186.
+ */
+#define DX_SET_RD_SIZE 0x1002ad40u
+
+static void vk_set_render_destination_size(CPU *C)
+{
+    ark_ret(C, igvk_super(C, DX_SET_RD_SIZE, 3), 3);
+}
+
 /* ---- installation ------------------------------------------------------ */
 
 void igvk_install_frame(void)
 {
+    igvk_slot(47,  vk_set_render_destination,   "setRenderDestination");
+    igvk_slot(50,  vk_set_render_destination_size,
+                                                "setRenderDestinationSize");
     igvk_slot(174, vk_begin_draw,               "beginDraw");
     igvk_slot(175, vk_end_draw,                 "endDraw");
     igvk_slot(177, vk_clear_render_destination, "clearRenderDestination");

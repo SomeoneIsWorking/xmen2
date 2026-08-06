@@ -72,6 +72,17 @@ int  igvk_frame_in_progress(void);
 void igvk_frame_clear(unsigned mask, float r, float g, float b, float a,
                       float depth, uint32_t stencil);
 
+/*
+ * Which render destination the engine has bound.
+ *
+ * This backend has exactly one: the swapchain. The engine's render
+ * destinations are a pool it indexes, and index 0 is the back buffer -- so
+ * any OTHER index is an off-screen target that does not exist here, and
+ * drawing would silently go to the wrong place. That case reports itself
+ * rather than being ignored.
+ */
+void igvk_frame_bind_target(unsigned index);
+
 /* Viewport in pixels, already clamped by the engine to the render
    destination. minz/maxz are the depth range. */
 void igvk_frame_viewport(int x, int y, int w, int h, float minz, float maxz);
