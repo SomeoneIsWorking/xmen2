@@ -75,6 +75,15 @@ add_test(NAME recomp
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tests/test_recomp.py)
 
+# The rule that decides when a Ghidra function object may be DELETED, because
+# the address is really a switch case label. It runs inside Ghidra as Jython,
+# where the only oracle is a re-lift; the rule itself lives in
+# tools/ghidra_scripts/caselabel.py with no `ghidra` import so it can be run
+# here in milliseconds. See tests/test_caselabel.py.
+add_test(NAME caselabel
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tests/test_caselabel.py)
+
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
 # own call sites. Runs the checker's SELF-TEST, not the check: the check needs
 # scratch/recomp/libIGGfx.json, which is generated and gitignored, while the

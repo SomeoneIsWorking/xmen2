@@ -46,6 +46,16 @@
 # count would run from one into the next -- this stops at the first entry that
 # is not a plausible in-range target, and REPORTS how many it took.
 #
+# AND HANDING THE TABLE OVER IS STILL NOT ENOUGH when a case label has itself
+# been seeded as a FUNCTION. Ghidra will not absorb another function's entry
+# point, so the flow walk stops there and the case block -- plus everything
+# that falls through from it -- stays outside the container for good.
+# 0x0066cf4e wired all 10 of its entries and still ended with a 127-byte hole,
+# because entry 0 (0x0066cf79) was FUN_0066cf79: one `CMP dword ptr [EBP+8],3`
+# with no terminator (issue #27). So each wired target that is a function is
+# put to caselabel.classify(), and un-made when nothing CALLS it and nobody has
+# named it. That rule is tested in tests/test_caselabel.py.
+#
 # ENV: RECREATE_FUNCS = comma-separated hex entry addresses
 #      RECREATE_EXPECT = optional comma-separated hex addresses that MUST be
 #                        inside a body afterwards; the check that makes a
@@ -53,6 +63,7 @@
 #      RECREATE_JUMPTABLES = 1 to resolve computed jumps first (see above)
 import os
 import re
+import caselabel
 from ghidra.app.cmd.disassemble import DisassembleCommand
 from ghidra.app.cmd.function import CreateFunctionCmd
 from ghidra.program.model.symbol import RefType, SourceType
@@ -64,7 +75,7 @@ listing = prog.getListing()
 fm = prog.getFunctionManager()
 af = prog.getAddressFactory().getDefaultAddressSpace()
 
-DEFAULT_NAME = re.compile(r"^(FUN|SUB)_[0-9a-fA-F]+$")
+DEFAULT_NAME = caselabel.DEFAULT_NAME
 
 
 def addr(x):
@@ -118,6 +129,7 @@ def resolve_jump_tables(fn):
 
     for ins, tbl in jumps:
         n = 0
+        cases = []
         while True:
             slot = addr(tbl + n * 4)
             if not mem.contains(slot):
@@ -128,16 +140,21 @@ def resolve_jump_tables(fn):
                 break
             tgt = addr(tgt_off)
             # Stop at the first entry that is not a plausible in-range target.
-            # This is what keeps two adjacent tables apart.
-            if not mem.contains(tgt) or not mem.getBlock(tgt).isExecute():
+            # This is what keeps two adjacent tables apart. The rule itself is
+            # in caselabel.py, where it is tested.
+            if not mem.contains(tgt):
                 break
-            if mem.getBlock(tgt) != mem.getBlock(ins.getAddress()):
+            blk = mem.getBlock(tgt)
+            if not caselabel.plausible_entry(
+                    tgt_off, blk == mem.getBlock(ins.getAddress()),
+                    blk.isExecute()):
                 break
             if listing.getInstructionAt(tgt) is None:
                 DisassembleCommand(tgt, None, True).applyTo(prog, monitor)
             rm.addMemoryReference(ins.getAddress(), tgt,
                                   RefType.COMPUTED_JUMP,
                                   SourceType.ANALYSIS, 0)
+            cases.append(tgt)
             n += 1
             if n > 512:            # a runaway table is a bug, not a switch
                 print("RECREATE:   table at 0x%08x exceeded 512 entries -- "
@@ -146,10 +163,49 @@ def resolve_jump_tables(fn):
         print("RECREATE:   jump at 0x%08x -> table 0x%08x: %d entr%s wired"
               % (ins.getAddress().getOffset(), tbl, n,
                  "y" if n == 1 else "ies"))
+        unmade, kept = unmake_case_functions(fn, tbl, cases)
         if n:
             tables += 1
             entries += n
     return tables, entries
+
+
+def unmake_case_functions(fn, tbl, cases):
+    """Delete function objects sitting on this switch's own case labels.
+
+    Wiring the table is not enough on its own: Ghidra will not absorb another
+    function's entry point, so a case label that some earlier pass seeded as a
+    function keeps its block -- and everything falling through from it --
+    outside the container permanently. 0x0066cf4e wired 10 entries and still
+    ended with a 127-byte hole because entry 0 was FUN_0066cf79 (issue #27).
+
+    The decision for each target is caselabel.classify(), which is tested in
+    tests/test_caselabel.py. This function only gathers the facts it weighs
+    and carries out the verdict.
+    """
+    unmade = kept = 0
+    for tgt in cases:
+        inner = fm.getFunctionAt(tgt)
+        callers = 0
+        for r in rm.getReferencesTo(tgt):
+            if r.getReferenceType().isCall():
+                callers += 1
+        action, msg = caselabel.classify(
+            container=fn.getEntryPoint().getOffset(),
+            container_name=fn.getName(),
+            table=tbl,
+            target=tgt.getOffset(),
+            inner_name=inner.getName() if inner is not None else None,
+            call_refs=callers)
+        if action == "absorb":
+            print("RECREATE:   %s" % msg)
+            fm.removeFunction(tgt)
+            unmade += 1
+        elif action in ("keep-called", "keep-named"):
+            print("RECREATE:   %s" % msg)
+            kept += 1
+    print("RECREATE:   %s" % caselabel.summarize(tbl, len(cases), unmade, kept))
+    return unmade, kept
 
 
 spec = os.environ.get("RECREATE_FUNCS", "").strip()
@@ -162,7 +218,11 @@ expect = [int(x, 16) for x in
           os.environ.get("RECREATE_EXPECT", "").replace(",", " ").split()]
 
 fixed = skipped = failed = 0
+recreated = []
 for tok in spec.replace(",", " ").split():
+    # The caller writes these as 0x… or bare; normalise so the log never says
+    # "0x0x0066cf4e".
+    tok = tok[2:] if tok.lower().startswith("0x") else tok
     ep = addr(int(tok, 16))
     fn = fm.getFunctionAt(ep)
     if fn is None:
@@ -196,6 +256,7 @@ for tok in spec.replace(",", " ").split():
     lost = len(before - after)
     print("RECREATE: 0x%s %s -> %d instructions (+%d, -%d)"
           % (tok, name, len(after), gained, lost))
+    recreated.append(ep)
     fixed += 1
 
 print("RECREATE: %d recreated, %d skipped, %d failed, of %d requested"
@@ -203,16 +264,25 @@ print("RECREATE: %d recreated, %d skipped, %d failed, of %d requested"
 
 # The postcondition. Without this the script can run cleanly, change nothing,
 # and read as a repair.
+#
+# It asks whether the address is inside one of the functions THIS RUN
+# re-created, not merely inside some function. "Inside some function" is the
+# check that cannot fail for the defect this script now repairs: a case label
+# seeded as a function is already inside a function -- itself -- so the old
+# wording would have certified 0x0066cf79 as fixed while the hole was still
+# there (issue #27).
 if expect:
     missing = []
     for a in expect:
-        if fm.getFunctionContaining(addr(a)) is None:
-            missing.append(a)
+        owner = fm.getFunctionContaining(addr(a))
+        if owner is None or owner.getEntryPoint() not in recreated:
+            missing.append((a, owner.getName() if owner else None))
     if missing:
         print("RECREATE: POSTCONDITION FAILED -- %d of %d expected address(es) "
-              "are STILL in no function: %s"
+              "are NOT inside any function re-created here: %s"
               % (len(missing), len(expect),
-                 ", ".join("0x%08x" % a for a in missing)))
+                 ", ".join("0x%08x (in %s)" % (a, n or "NO function")
+                           for a, n in missing)))
     else:
         print("RECREATE: postcondition OK -- all %d expected address(es) are "
-              "now inside a function" % len(expect))
+              "now inside a function re-created here" % len(expect))
