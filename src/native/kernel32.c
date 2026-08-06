@@ -1022,7 +1022,7 @@ void imp_KERNEL32_CreateFileW(CPU *C)
  * rounded DOWN and the difference added back to the returned pointer -- which
  * is what the guest would get from Windows for the same call.
  */
-#define VIEW_ARENA_BASE  0x7A000000u
+#define VIEW_ARENA_BASE  0x98000000u   /* above the 512 MB guest heap */
 #define VIEW_ARENA_END   0xF0000000u
 
 static uint32_t g_view_cursor = VIEW_ARENA_BASE;

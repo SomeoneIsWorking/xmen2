@@ -1,7 +1,7 @@
 ---
 id: 25
 title: Native --d3d8 run: a callback pointer read from object+0x40 is a code fragment, not a function
-status: open
+status: resolved
 symptom: x86_dispatch: no recompiled body at 0xc0850b74, dispatched from XMen2.exe 0x00656856. Reached after the longjmp resume, during startup, on every --d3d8 run.
 tags: pc,native,rc-exe,dispatch,setjmp
 created: 2026-08-06
@@ -56,3 +56,11 @@ object in this state before any of this.
 Name the object. `0x00656843`'s caller passes it as the first argument, and
 `0x00656756` -- called from the setjmp function at `0x006460e7` in issue #24 --
 is in the same neighbourhood, so the two are probably the same subsystem.
+
+### Note (2026-08-06)
+ROOT CAUSE FOUND, and it is not what this issue guessed. The callback at object+0x40 is the game's OUT-OF-MEMORY handler: XMen2.exe 0x0065ce60 calls it ONLY when malloc has returned NULL. So the object is not uninitialised -- the handler was simply never installed, because the game never expected to reach that path.
+
+What made malloc fail is issue #26: it was handed 0x700ff678, a guest stack address, as a size. This issue is therefore a SYMPTOM of #26, and chasing the callback was chasing the error reporter rather than the error.
+
+### Resolution (2026-08-06)
+Not a defect in its own right: the callback at object+0x40 is the game's out-of-memory handler, reached because malloc failed. The real fault is issue #26.

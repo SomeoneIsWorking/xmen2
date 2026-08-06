@@ -47,6 +47,8 @@
 #define AS(i) ((char *)(uintptr_t)A(i))
 #define ACS(i) ((const char *)(uintptr_t)A(i))
 
+const char *x86_native_name_at(uint32_t addr);
+
 static void ret_c(CPU *C, uint32_t eax) { C->eax = eax; C->esp += 4u; }
 
 /* A double argument occupies two dwords, little-endian. */
@@ -91,7 +93,38 @@ static void crt_unimpl(const char *sym, const char *why)
 
 /* ---- memory ------------------------------------------------------------ */
 
-void imp_MSVCR71_malloc(CPU *C)  { ret_c(C, guest_malloc(A(0))); }
+/*
+ * malloc, with a sanity check on the SIZE.
+ *
+ * Not a limit and not a clamp: an allocation larger than the arena will fail
+ * anyway. The point is WHERE it is reported. A size that is obviously a
+ * pointer -- a guest stack or heap address -- means an argument was shifted
+ * or a field read at the wrong offset, and saying so here names the caller
+ * instead of leaving the guest to take its own out-of-memory path and die
+ * somewhere unrelated. That is exactly how 0x700FF5B8 was found.
+ */
+void imp_MSVCR71_malloc(CPU *C)
+{
+    uint32_t n = A(0);
+    if (n >= 0x40000000u) {
+        static int said;
+        if (!said++) {
+            uint32_t ra = RD32(C->esp);
+            const char *nm = x86_native_name_at(ra);
+            fprintf(stderr,
+                    "\n*** malloc(%u = 0x%08x) -- that is not a size, it looks "
+                    "like an ADDRESS.\n"
+                    "    Asked for by guest 0x%08x (%s).\n"
+                    "    A pointer arriving where a size belongs means an "
+                    "argument was shifted or a field was read at the wrong\n"
+                    "    offset. The allocation fails, and the guest will take "
+                    "its own out-of-memory path from here.\n",
+                    n, n, ra, nm ? nm : "in no body this host can name");
+            fflush(stderr);
+        }
+    }
+    ret_c(C, guest_malloc(n));
+}
 void imp_MSVCR71_free(CPU *C)    { guest_free(A(0)); ret_c(C, 0); }
 void imp_MSVCR71_realloc(CPU *C) { ret_c(C, guest_realloc(A(0), A(1))); }
 

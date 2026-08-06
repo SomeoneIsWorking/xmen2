@@ -858,7 +858,7 @@ int main(int argc, char **argv)
      * the run is started.
      */
     if (d3d8selftest) {
-        if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x08000000u) != 0)
+        if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x20000000u) != 0)
             return 1;
         return d3d8_host_selftest();
     }
@@ -901,8 +901,21 @@ int main(int argc, char **argv)
        module that has not been placed yet would be bound to a stale base. */
     if (poison_init() != 0) return 1;
     if (pe_map_anon_low(DATA_ARENA, DATA_SIZE) != 0) return 1;
-    /* 256 MB, reserved not committed, well clear of every image base. */
-    if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x08000000u) != 0) return 1;
+    /*
+     * The guest's address space above the images, stated in one place:
+     *
+     *   0x71000000 .. 0x91000000   the heap, 512 MB
+     *   0x98000000 .. 0xF0000000   file views (see kernel32.c)
+     *
+     * It was 128 MB, and that was not enough: the game exhausted it during
+     * startup, took its own out-of-memory path, and died calling an
+     * uninstalled handler -- a crash with no visible connection to memory.
+     * The arena is reserved, not committed, so the size costs address space
+     * rather than RAM.
+     */
+    if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x20000000u) != 0)
+        return 1;
+    atexit(guest_heap_report);
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {
         int bound = 0, poisoned = 0;

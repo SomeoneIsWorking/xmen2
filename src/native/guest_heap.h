@@ -8,6 +8,11 @@
 int      guest_heap_init(uint32_t base, uint32_t size);
 uint32_t guest_malloc(uint32_t n);
 void     guest_free(uint32_t p);
+
+/* How much of the arena was used, and how close the run came to the end of it.
+   Printed at exit: a run that peaked at 99% and one that peaked at 4% behave
+   identically until the first fails, and the difference matters. */
+void     guest_heap_report(void);
 uint32_t guest_realloc(uint32_t p, uint32_t n);
 uint32_t guest_heap_base(void);
 int      guest_heap_contains(uint32_t a, uint32_t *base, uint32_t *size);

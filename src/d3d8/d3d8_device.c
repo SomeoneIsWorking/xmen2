@@ -843,6 +843,7 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
     /* The engine's HWND is meaningless here; the host owns one SDL window and
        that is what the swapchain is claimed on. Same reasoning, and the same
        code path, as the --vk backend's setNativeWindowHandle. */
+    gpu_device_set_window_provider(win32_sdl_window);
     if (!gpu_device_attach_window(win32_sdl_window()))
         fprintf(stderr, "d3d8: no host window to present into yet; the "
                         "swapchain will be claimed when one exists.\n");

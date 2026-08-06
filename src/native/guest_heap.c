@@ -36,6 +36,11 @@ typedef struct Blk {
 
 static uint32_t g_base, g_size;
 
+/* What the arena is doing, so exhaustion can be reported with its context and
+   so a run can be asked how close it came. */
+static unsigned long g_live;
+static uint32_t g_used, g_highwater;
+
 #define HDR   ((uint32_t)sizeof(Blk))
 #define BLK(a) ((volatile Blk *)(uintptr_t)(a))
 
@@ -107,17 +112,61 @@ uint32_t guest_malloc(uint32_t n)
                 b->size = n;
             }
             b->magic = MAGIC_USED;
+            g_live++;
+            g_used += b->size + HDR;
+            if (g_used > g_highwater) g_highwater = g_used;
             return a + HDR;
         }
         if (next <= a) break;
         a = next;
     }
-    return 0;                                        /* the caller reports it */
+    /*
+     * EXHAUSTED, and it says so.
+     *
+     * This used to return 0 in silence with a comment saying the caller
+     * reports it. No caller did: the CRT's malloc handed the NULL straight to
+     * the guest, the game called its own out-of-memory handler, and that
+     * handler's callback had never been installed -- so the run died calling a
+     * garbage pointer in a function with no visible connection to memory. The
+     * real cause took a trace and four disassemblies to find, and this line
+     * would have named it.
+     */
+    {
+        static int said;
+        if (!said++)
+            fprintf(stderr,
+                    "\n*** the guest heap is EXHAUSTED: %u bytes requested, "
+                    "and the arena is %u bytes at 0x%08x.\n"
+                    "    %lu allocation(s) live, high-water %u bytes. The "
+                    "guest gets NULL from malloc, which is honest -- but a "
+                    "game\n    that asks for more than it was given usually "
+                    "means the arena is too small, not that the game is "
+                    "wrong.\n"
+                    "    Reported once; every later failure is silent.\n",
+                    n, g_size, g_base, g_live, g_highwater);
+        fflush(stderr);
+    }
+    return 0;
+}
+
+void guest_heap_report(void)
+{
+    printf("  guest heap: %u of %u bytes in use, high-water %u (%.0f%% of the "
+           "arena), %lu live allocation(s)\n",
+           g_used, g_size, g_highwater,
+           g_size ? 100.0 * (double)g_highwater / (double)g_size : 0.0, g_live);
 }
 
 void guest_free(uint32_t p)
 {
     volatile Blk *b;
+    if (p) {
+        volatile Blk *fb = BLK(p - HDR);
+        if (fb->magic == MAGIC_USED) {
+            if (g_live) g_live--;
+            if (g_used >= fb->size + HDR) g_used -= fb->size + HDR;
+        }
+    }
     if (!p) return;                                  /* free(NULL) is legal */
     if (p < g_base + HDR || p >= g_base + g_size)
         die("free of a pointer outside the guest heap", p);

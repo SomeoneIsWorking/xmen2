@@ -267,6 +267,7 @@ static void vk_set_native_window_handle(CPU *C)
     if (!told++)
         printf("igVk: setNativeWindowHandle(0x%08x) -- the swapchain follows "
                "the host's SDL window, not this handle\n", IGVK_ARG(C, 0));
+    gpu_device_set_window_provider(win32_sdl_window);
     gpu_device_attach_window(win32_sdl_window());
     ark_ret(C, r, 1);
 }

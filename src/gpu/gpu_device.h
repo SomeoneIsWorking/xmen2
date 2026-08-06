@@ -43,6 +43,18 @@ struct SDL_Window;
 int gpu_device_attach_window(struct SDL_Window *w);
 
 /*
+ * Where to find a window if none is attached yet.
+ *
+ * The guest creates its window long after the renderer is instantiated, so the
+ * frame path re-tries the attach -- but it must not know WHERE the window
+ * comes from. x2native installs a provider that returns the guest's; a native
+ * front-end attaches its own window and installs nothing. Without this, this
+ * file included the guest's Win32 layer, which contradicts the whole point of
+ * the file comment above.
+ */
+void gpu_device_set_window_provider(struct SDL_Window *(*fn)(void));
+
+/*
  * The frame.
  *
  * igDxVisualContext's frame boundary is BeginScene / EndScene+Present, driven

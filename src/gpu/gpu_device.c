@@ -22,7 +22,6 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_internal.h"
-#include "win32_sdl.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -40,6 +39,7 @@ uint32_t              g_swap_w, g_swap_h;
 /* Where the frame goes when it is not going to the swapchain: the self-test
    and, later, the engine's off-screen render destinations. */
 static SDL_GPUTexture *g_offscreen;
+static SDL_Window *(*g_window_provider)(void);
 
 /* What the next render pass must clear with. */
 static struct {
@@ -77,10 +77,11 @@ int gpu_device_create(void)
            SDL_GetGPUDeviceDriver(g_gpu));
     fflush(stdout);
 
-    /* Attach immediately if the guest has already made its window. It usually
-       has: CreateWindowExA runs well before the renderer is instantiated.
-       setNativeWindowHandle re-attaches if that order ever changes. */
-    gpu_device_attach_window(win32_sdl_window());
+    /* Attach immediately if a window already exists -- under x2native the
+       guest's CreateWindowExA usually runs well before the renderer is
+       instantiated. A front-end that attaches its own window installs no
+       provider and simply does it itself. */
+    if (g_window_provider) gpu_device_attach_window(g_window_provider());
     return 1;
 #endif
 }
@@ -108,6 +109,15 @@ int gpu_device_ready(void)
     return g_gpu != NULL;
 #else
     return 0;
+#endif
+}
+
+void gpu_device_set_window_provider(struct SDL_Window *(*fn)(void))
+{
+#ifdef X2_WITH_SDL
+    g_window_provider = fn;
+#else
+    (void)fn;
 #endif
 }
 
@@ -249,7 +259,8 @@ int gpu_frame_begin(void)
     if (!g_win) {
         /* Re-try the attach: the guest may have created its window after the
            renderer was instantiated. */
-        if (!gpu_device_attach_window(win32_sdl_window())) {
+        if (!g_window_provider ||
+            !gpu_device_attach_window(g_window_provider())) {
             g_frames_no_window++;
             if (!told_no_window++)
                 printf("gpu: frames are being driven with no window to "
