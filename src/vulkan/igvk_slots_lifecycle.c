@@ -333,11 +333,32 @@ static void vk_open(CPU *C)
     }
     ark_call_this(RD32(vt + 29u * 4u), self, NULL, 0);
     {
+        /*
+         * HELPER_A is initCg. It is called: it loads cg.dll, gets NULL, and
+         * takes its own "no Cg" branch, which is the engine handling a case it
+         * was written to handle.
+         *
+         * HELPER_B is setupAll, and it is NOT called. The engine reaches it
+         * only after createDevice has SUCCEEDED, so it runs with a real
+         * device; its job is to push every piece of cached render state into
+         * that device, and its first stop is setupTextureStages, which
+         * dereferences this+0x144 unguarded. Calling it here -- which the
+         * first version of this slot did, because the engine's body does --
+         * was a SIGSEGV at NULL of my own making.
+         *
+         * Nothing is lost by skipping it TODAY: with no D3D device there is
+         * nowhere for that state to be pushed. Pushing the engine's cached
+         * state into the Vulkan pipeline is the state mirror's job, and when
+         * that exists this is where it gets kicked off.
+         */
         uint32_t f;
+        static int told;
         if ((f = ark_lifted(IGVK_GFX, DX_OPEN_HELPER_A)))
             ark_call_this(f, self, NULL, 0);
-        if ((f = ark_lifted(IGVK_GFX, DX_OPEN_HELPER_B)))
-            ark_call_this(f, self, NULL, 0);
+        if (!told++)
+            printf("igVk: open() skips setupAll -- it pushes cached render "
+                   "state into a D3D device, and there is none. That state "
+                   "reaches the GPU when the state mirror exists.\n");
     }
     ark_call_this(RD32(vt + 217u * 4u), self, &minus1, 1);
     {

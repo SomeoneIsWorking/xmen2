@@ -34,3 +34,13 @@ It does not. The engine asked for slot 147, that was ignored, and the very next 
 That is the decisive point. Answering the renderer at the slot layer cannot be complete no matter how many of the 98 are written, because inherited engine bodies below the vtable also dereference this+0x144. The only cut that covers all of them is a real object at this+0x144. It also explains the 15 slots device_slots.py classifies as 'reaches the device only through a call': the call is to helpers exactly like this one.
 
 So the plan is not a preference between two workable designs. Installing a host IDirect3DDevice8 is the only one of the two that can work.
+
+## Re-confirmed 2026-08-06
+
+CORRECTED, and the earlier re-confirmation overstated the case. setupTextureStages was NOT the engine reaching the device on its own -- it is reached from igDxVisualContext::setupAll, which vk_open was calling because the engine's open body calls it. The engine only reaches setupAll AFTER createDevice has succeeded, i.e. with a real device. Calling it with this+0x144 NULL was a fault of my own making, not an architectural wall. Fixed by not calling it: with no D3D device there is nowhere for the cached state to be pushed, and pushing it into the Vulkan pipeline is the state mirror's job.
+
+With that corrected, --vk-permissive walks the engine 34 distinct slots deep into render-state setup before stopping -- and it stops in Gap::Gfx::igDx8DecalExt::setDecalOffset, which is NOT a slot of igVisualContext's vtable at all. It belongs to a DIFFERENT ARK class.
+
+That is the real shape of the remaining work, and it is C113's finding arriving in practice: the substitution surface is TEN abstract ARK classes in libIGGfx -- igVisualContext, igVertexArray/1_1/2, igIndexArray, igVertexStream, igImage, and the render-state extensions igMultiTextureExt, igPointSpriteExt, igDecalExt, igDisableExt. One of the ten is substituted. The others still resolve to their igDx8 implementations, which talk to a device that does not exist.
+
+So a host IDirect3DDevice8 at this+0x144 remains the cut that covers all of them at once -- it is what the OTHER nine classes call through too -- but the alternative is now clearly nine more ARK substitutions rather than 78 slot implementations.

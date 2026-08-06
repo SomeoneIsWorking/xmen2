@@ -300,16 +300,12 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: vk-substitute
 - evidence: The engine's frame boundary is RE'd from its own bodies: beginDraw at libIGGfx 0x1002eb30 is getLastError-then-BeginScene, endDraw at 0x1002eb70 is EndScene + Present with a D3DERR_DEVICELOST check and a 64-bit frame counter at 0x101895b0, clearRenderDestination at 0x1002ee90 reads its colour from this+0x190..0x19c and its flags from a byte mask, setViewport at 0x1002ec70 clamps against the render destination and is super-called. All four slots implemented against SDL_GPU. THE HOST HALF IS VERIFIED TO PRESENT: x2native --vk-selftest, wired in as the vk_frame_path ctest, drives acquire/clear/present with no engine and reports '3 frame(s) presented, 0 skipped'. It is a real discriminator -- it FAILED on its first run (0 of 3, because the window was created hidden and so had no swapchain image) before the setup was corrected.
 - where: src/vulkan/igvk_device.c, src/vulkan/igvk_slots_frame.c
-- gap: 0 frames presented. The engine now drives the renderer through display init and into the frame path -- it currently demands slot 147 setPixelPipelineMode -- but nothing is drawn.
+- gap: 0 frames presented, and --vk-permissive now shows exactly how far the engine gets: 34 distinct render-state slots deep, stopping in Gap::Gfx::igDx8DecalExt::setDecalOffset -- which is NOT a slot of igVisualContext's vtable. It belongs to a DIFFERENT ARK class.
+
+That is C113 arriving in practice. The substitution surface is TEN abstract ARK classes in libIGGfx (igVisualContext, igVertexArray/1_1/2, igIndexArray, igVertexStream, igImage, igMultiTextureExt, igPointSpriteExt, igDecalExt, igDisableExt). ONE is substituted. The other nine still resolve to their igDx8 implementations and talk to a device that does not exist.
+
+So the remaining work is one of two shapes, and C128 argues for the first: (a) a host IDirect3DDevice8 at this+0x144, which covers all ten classes at once because they all call through it; or (b) nine more ARK substitutions plus the 78 slots. (a) is smaller and faithful by construction.
+
+Also owed: this+0x148 is an allocated but ZEROED D3DCAPS8; the engine binds render destination 3, an off-screen target this backend does not have; setupAll is not called, so cached render state is never pushed anywhere -- that is the state mirror's job and it does not exist; Cg is unavailable; endDraw's frame-timing branch is not reproduced; clearRenderDestination does not clamp the stencil value; slot 143 getAvailableTextureMemory tail-jumps and has no call site in libIGGfx, so its argument count is unknown and it aborts if reached.
 - notes: THE PLAN CHANGED, and it is measured (C128). Do not continue implementing slots one at a time.
-
-The 78 unguarded device slots funnel into 46 DISTINCT device vtable offsets, and the distribution is extreme: 0xc8 (SetRenderState) is 53 of the call sites, 0xfc is 14, 0xb0 is 9, then a tail of ones and twos. So 46 COM methods replace 78 hand-written slots -- and the engine's own bodies run unmodified, which is faithful by construction rather than by 78 careful transcriptions.
-
-igDxVisualContext::setBlendingState is the archetype: fifteen instructions that consult a global override, store the value at this+0x2e4, and call SetRenderState(0x1b, value). Only the last call needs an answer from us.
-
-WHAT STAYS: the ARK substitution. It is what owns construction and what makes slot 7 userInstantiate ours -- which is precisely what lets a host IDirect3DDevice8 be installed at this+0x144 in the first place. The 5 guarded slots stay super-called; the frame slots already written (174/175/177/186) stay, and become the fast path for the device methods that back them.
-
-FIRST STEP, and C128's falsifier says it is mandatory: attribute each of the 46 offsets to an INTERFACE before implementing any. C108 measured 73 offsets across device, texture, surface and buffer objects, so some of these 46 belong to other interfaces. Assuming they are all the device puts methods at the wrong slots, which is exactly the failure C108 records for the vendored Xbox translator.
-
-THEN: install the host device in slot 7 instead of leaving this+0x144 NULL, and delete the 78 from igvk_device_slots.h so the engine's own bodies are inherited again. The generator already reports guarded/UNGUARDED per slot, so the split is a query, not a re-derivation.
 

@@ -119,6 +119,30 @@ def ret_bytes(fn):
     return seen.pop(), "ok"
 
 
+# Slots whose own body TAIL-JUMPS, so it has no RET to read, and whose
+# argument count was therefore taken from a CALLER instead -- the same
+# caller-side method used to cross-check the others.
+#
+# Deriving these from the callee is not sound: the tail target pops its own
+# arguments, which overlap the caller's in ways that depend on what the body
+# did to ESP first. So each entry below cites the call site it was read from,
+# and a tail-jump slot NOT listed here stays unknown and keeps aborting --
+# guessing an argument count shifts the guest stack.
+CALLER_DERIVED_ARGS = {
+    # igDxVisualContext::setStencilOps tail-jumps into SetRenderState.
+    # Gap::Gfx::igVisualContext::resetToDefault calls it at 0x10025422 with
+    # three pushes.
+    166: 3,
+    # igDxVisualContext::userRelease tail-jumps to igVisualContext::userRelease
+    # and thence to igObject::userDestruct, whose mangled export is
+    # ?userDestruct@igObject@Core@Gap@@UAEXXZ -- void, no arguments.
+    8: 0,
+    # 143 getAvailableTextureMemory also tail-jumps, and libIGGfx contains NO
+    # direct call site for it, so it is deliberately absent: it stays unknown
+    # and aborts if reached.
+}
+
+
 def load_functions(path):
     with open(path) as f:
         d = json.load(f)
@@ -267,7 +291,10 @@ def main(argv):
         for ep in slots:
             fn = fns.get(ep)
             nb, _ = ret_bytes(fn) if fn else (None, "")
-            nargs.append(-1 if nb is None else nb // 4)
+            n_ = -1 if nb is None else nb // 4
+            if n_ < 0:
+                n_ = CALLER_DERIVED_ARGS.get(len(nargs), -1)
+            nargs.append(n_)
         argbody = ""
         for n in range(0, len(nargs), 16):
             argbody += "    " + "".join("%3d," % a for a in nargs[n:n + 16]) + "\n"
