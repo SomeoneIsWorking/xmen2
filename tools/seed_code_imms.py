@@ -100,14 +100,22 @@ def main(argv):
     for fn in fns:
         for i in fn.get("ins", []):
             ninstr += 1
-            # Only IMMEDIATE operands. A memory displacement that happens to
-            # look like code is not a function pointer being passed anywhere.
+            # Only IMMEDIATE operands, and only where the immediate is the
+            # SOURCE. Skipping any instruction containing a bracket was the
+            # first cut and it was too blunt: the engine also builds callback
+            # tables with `MOV dword ptr [ESP], 0x1006ea90`, where the brackets
+            # are the DESTINATION and the immediate is exactly the function
+            # pointer being looked for. Reading the source operand alone keeps
+            # those and still rejects `MOV EAX, dword ptr [0x1006ea90]`, where
+            # the same number is a load address rather than a code pointer.
             if i["m"] not in ("PUSH", "MOV"):
                 continue
-            if "[" in i["t"]:
+            rest = i["t"][len(i["m"]):].strip()
+            src = rest.split(",", 1)[1].strip() if "," in rest else rest
+            if "[" in src:
                 continue
             for mm in re.finditer(r"(?<![\w.])0x([0-9a-fA-F]{6,8})(?![\w.])",
-                                  i["t"]):
+                                  src):
                 v = int(mm.group(1), 16)
                 if not is_exec(v):
                     outside += 1
