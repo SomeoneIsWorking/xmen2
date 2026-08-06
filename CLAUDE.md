@@ -60,6 +60,7 @@ cmake -S . -B scratch/build-native -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build scratch/build-native --target x2native -j$(nproc)
 scratch/build-native/x2native --no-window --selftest   # postcondition battery; exit 77 = SKIP (no GAME_PC_DIR)
 scratch/build-native/x2native --no-window --run        # run past module init into the exe's CRT startup
+./run.sh                                               # the same --run, on YOUR screen, building first if needed
 ```
 
 Configure `-DX2_NATIVE_TRACE=ON` to trace every recompiled body into the
@@ -80,9 +81,14 @@ swapped in; still the reference for "does it render"):
 ```sh
 tools/build_recomp.sh ALL libIGDisplay     # emit+runtime+dll+compile+stage
 tools/run_shim.sh recomp 30                # HEADLESS, Xvfb, screenshot — for measuring
-./run.sh                                   # on YOUR screen with sound — for looking
+./run.sh wine                              # on YOUR screen with sound — for looking
 ./run.sh stock                             # the untouched install, as the control
 ```
+
+`./run.sh` defaults to the **native** build; the Wine paths keep their own
+names. `stock` is the control every rendering question is settled against and
+`wine` is still the only configuration that draws the game, so neither is
+going away while the renderer is unfinished.
 
 `WATCH=1 tools/build_recomp.sh …` adds the entry-point watch (`X2_WATCH=0x…`,
 writes to a file — the game is a GUI-subsystem process with no stderr) and the
