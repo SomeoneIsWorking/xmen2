@@ -101,3 +101,47 @@ One of those is FUN_00617480 -- the DirectX 9.0c presence check this port alread
 **So stop grepping and watch the byte.** What is needed is a write-watch on 0x006f3a2d that reports the FIRST writer with its address, the same shape as the existing entry-point watch (X2_WATCH). Two of the nine are inside FUN_005fac10, the display-init function itself, which makes them the likely candidates -- but 'likely' is exactly what an instrument is for, and guessing between two branches of a 477-instruction function is how the earlier detours in issue #21 started.
 
 Everything up to here is settled: the dialog's caller, its two gating globals, the single function that sets 0x00a09f94, and the byte that function tests. Only the identity of the writer is open, and it is a one-instrument question rather than an analysis one.
+
+### Note (2026-08-06)
+HOP 5 — THE WRITER IS NAMED, by instrument rather than by reading. Built with -DX2_NATIVE_TRACE=ON (which is what compiles in the X2_ARGS entry watch) and watched all eight candidate functions at once:
+
+    [ARGS] watching 8 entry point(s)
+    [ARGS] -> 0x00403420 FUN_00403420   ...  (ret to 00672779)
+    [ARGS] -> 0x005fac10 FUN_005fac10   ecx 00a0a138  (ret to 005fb2bc)
+    [ARGS] <- 0x005fac10  eax 700ffecc
+    *** MessageBox [Display failed!]
+    [ARGS] 2 call(s) reported across 8 watched entry point(s)
+
+**Only two of the eight ran at all**, and FUN_00403420 is the function that shows the dialog, not a setter of the latch on this path. So **FUN_005fac10 set `0x006f3a2d`** — the display-init function, the same 477-instruction switch this whole saga has been about. It returns to 0x005fb2bc, inside FUN_005fb270, which then reads the latch and raises the flag. The chain is closed end to end with no inference left in it.
+
+Note the negative is as informative as the positive: FUN_00617480 (the retired DirectX check) did NOT run, so the override is not implicated, and neither did the other five.
+
+**REMAINING QUESTION, now narrow**: which of FUN_005fac10's two stores fired — 0x005faf4f or 0x005fb194 — and what did it test. Both are inside one named function whose body is now complete and correct, so this is a read of two branch conditions, not a search. Watch it with X2_ARGS or read the guards directly.
+
+**Build note**: scratch/build-native is currently configured with X2_NATIVE_TRACE=ON so the watch exists. Reconfigure without it for a normal run; the generated bodies are otherwise identical between the two.
+
+### Note (2026-08-06)
+HOP 6 — THE GATE IS ONE VIRTUAL CALL. Of FUN_005fac10's two stores, the reachable one is at 0x005faf4f and its guard is:
+
+    005faf3f  MOV EAX,dword ptr [ESI + 0x20]
+    005faf42  PUSH EAX                        ; [ESI+0x20]
+    005faf43  PUSH 0x6a3a70                   ; a constant, almost certainly a string
+    005faf48  CALL dword ptr [EDX + 0x5c]     ; vtable slot 23 on [ESP+0x14]
+    005faf4b  TEST AL,AL
+    005faf4d  JNZ 0x005faf7a                  ; true  -> carry on
+    005faf4f  MOV byte ptr [0x006f3a2d],0x1   ; FALSE -> latch the failure
+
+(with [ESI+0x24] pushed just before, so three arguments: a constant and two numbers that look like a size.)
+
+The other store, 0x005fb194, sits immediately after a `RET 0x4` and is on a separate path.
+
+**So the whole 'Display failed!' chain reduces to: a virtual call at slot 23 returned FALSE.** Six hops, each measured:
+
+    slot-23 virtual returns false
+      -> FUN_005fac10 sets 0x006f3a2d
+      -> FUN_005fb270 reads it, sets 0x00a09f94
+      -> FUN_00403420 sees that and raises the dialog
+
+**NEXT**: identify the receiver — the object at [ESP+0x14] — and what its slot 23 is. Note the receiver is NOT igVkVisualContext: slot 23 of igVisualContext's vtable is one of the inherited platform-neutral ones (0x100513c2, shared by 9 classes), and our unimplemented reporter never fired. So this is a different object, most likely the display/window side rather than the renderer. Read 0x6a3a70 as a string first; it will probably name it outright.
+
+This is where the renderer work resumes, and it is a read rather than a search.
