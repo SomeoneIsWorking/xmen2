@@ -1,9 +1,10 @@
 ---
 id: C102
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-06
 tags: pc,recomp,discovery,tooling
+falsified_on: 2026-08-06
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ tools/seed_code_imms.py now also collects direct CALL/JMP targets that are not f
 ## What would falsify it
 
 The 6627 are counted, not inspected. If a sample of them turns out to be ordinary intra-function branches that Ghidra folded correctly, the count is harmless noise and the report should say so; if they are genuinely separate functions, the boundary detector is under-splitting at scale and that is a much larger finding than this tool. Nobody has looked yet.
+
+## FALSIFIED 2026-08-06
+
+FALSE, and its own falsifier is what caught it -- it said nobody had looked at the 6627, and looking took one sample. Every candidate examined was a JMP from a function to an address INSIDE ITSELF, at a decoded instruction start, which recomp.py emits as a plain goto. They were never unidentified targets. The defect was in my counting condition, not in the data: I tested 'flow is not a known entry point' where recomp.py tests 'flow is not in THIS function's decoded addresses AND not a known entry point'. Dropping the same-function test turned every ordinary intra-function branch into a false candidate. Corrected counts, with the condition matching recomp.py exactly: XMen2.exe has 14 unresolvable direct targets (9 new function starts, 11 needing a split), libIGGfx 3, libIGGui 0, libIGCore 0 -- against 6672 and 6627 claimed. This is the 'a grep count is text, not code' trap in its exact form: a number was produced, believed, and written into a claim as a finding about the boundary detector, when it was a finding about my predicate. Superseded by C103.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

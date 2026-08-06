@@ -99,16 +99,24 @@ def main(argv):
     outside = 0
     ncallflow = 0
     for fn in fns:
+        own = set(i["a"] for i in fn.get("ins", []))
         for i in fn.get("ins", []):
             ninstr += 1
-            # A DIRECT call or jump to an address Ghidra did not make a
-            # function. The translator already knows about these -- it emits
-            # x86_call_unknown for exactly this case -- so the running game
-            # should never have to discover them one at a time, which is what
-            # it was doing: four rounds, one per round, all in XMen2.exe.
+            # A DIRECT call or jump to an address the translator cannot
+            # resolve. The condition has to match recomp.py's exactly, which is
+            # `flow not in this function's decoded addresses AND not a known
+            # entry point` -- a jump to an instruction inside the SAME function
+            # is emitted as a plain goto and is not a gap at all.
+            #
+            # Getting that wrong is not academic: leaving out the same-function
+            # test counted 6672 "unidentified" targets in XMen2.exe and
+            # classified 6627 of them as needing a SPLIT. A sample showed every
+            # one was an ordinary intra-function branch to a decoded
+            # instruction. The real number is two orders of magnitude smaller.
             flow = i.get("flow")
             if flow is not None and i["m"] in ("CALL", "JMP") \
-                    and not i.get("ind") and flow not in eps and is_exec(flow):
+                    and not i.get("ind") and flow not in eps \
+                    and flow not in own and is_exec(flow):
                 if flow not in cand:
                     ncallflow += 1
                 cand.setdefault(flow, (i["a"], i["m"]))
