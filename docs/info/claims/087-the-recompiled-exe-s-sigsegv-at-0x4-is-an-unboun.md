@@ -4,6 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-06
 tags: pc,recomp,native,engine-init,memory
+reconfirmed: 2026-08-06
 ---
 
 ## Claim
@@ -17,3 +18,7 @@ Measured with the reached set (I021) and X2_PEEK (I022) on scratch/build-reached
 ## What would falsify it
 
 If the stock PC build under Wine also reserves memory until the OS refuses during engine startup, then the walk is the engine's normal strategy and the defect is only trimAll's missing NULL check -- measure VirtualAlloc calls in the Wine oracle before assuming the loop is ours.
+
+## Re-confirmed 2026-08-06
+
+Falsifier RUN and it does not hold, so the claim stands. The stock PC build under Wine (WINEDEBUG=+virtual, env only -- the prefix registry is never modified; scratch/logs/wine-virtual.log) makes exactly FOUR large arena reservations during startup and then proceeds: 0x1390000 (19.6 MB), 0x1380000 (19.5), 0x1000000 (16.0), 0x1580000 (21.5), ~77 MB total, out of 126 NtAllocateVirtualMemory calls overall. It does NOT reserve until the OS refuses. The native run makes 67 VirtualAlloc calls reserving ~527 MB. So the unbounded walk is OURS, not the engine's strategy.

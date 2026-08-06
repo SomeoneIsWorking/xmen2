@@ -97,26 +97,50 @@ room, and the pool registry does not exist yet.
   the game took 937 MB across 120 reservations. A budget the allocator does not
   enforce is not a budget. Both now read the same figure (X2_PHYS_MB).
 
+## The oracle settles it: the loop is ours (C087 confirmed)
+
+The stock PC build under Wine (`WINEDEBUG=+virtual`, environment only — the
+prefix registry is never modified; `scratch/logs/wine-virtual.log`) makes
+exactly **four** large arena reservations during startup and then proceeds:
+
+    reserve 0x2410000  0x1390000 = 19.6 MB   commit 0x1388000
+    reserve 0x37a0000  0x1380000 = 19.5 MB   commit 0x1380000
+    reserve 0x5010000  0x1000000 = 16.0 MB   commit 0x0ff2000
+    reserve 0x6b40000  0x1580000 = 21.5 MB   commit 0x1579000
+
+~77 MB, out of 126 `NtAllocateVirtualMemory` calls overall. It does **not**
+reserve until the OS refuses. The native run makes 67 VirtualAlloc calls for
+~527 MB. So the walk is ours.
+
+## Localised: the loop is in libIGCore's own CRT heap (C088)
+
+Call counts, one run, `X2_REACHED`:
+
+    bootstrapMemoryPoolInitialization  x1     igArenaSystemMalloc  x1
+    igMemoryPool::operator_new         x1     arenaAllocate        x2
+    igArenaMemoryPool ctor             x1     addMemoryPool        NEVER
+    igArenaMemoryPool::bootstrapInit   x1     setPreSize           x1
+    FUN_1006aa50 (CRT heap grow)       x28    FUN_10066730         x27
+
+Every engine-level function runs once or twice. A **single** `igArenaSystem
+Malloc` produced ~527 MB, because the CRT heap beneath it grows and grows
+without ever satisfying the request. `FUN_1006aa50` and `FUN_1006ae10` are
+libIGCore's only two VirtualAlloc call sites, and the latter is never entered.
+
 ## Next
 
-Answered: it is reached (#1322). The open question is now **why the arena
-allocation loop does not terminate**, and the falsifier for the current reading
-has to be measured first:
-
-1. **Run the Wine oracle and count its VirtualAlloc calls during startup.** If
-   the stock build also reserves until the OS refuses, the walk is the engine's
-   normal strategy, the defect is only trimAll's missing pool list, and the
-   question becomes why the real game's list exists by then. If the stock build
-   reserves a bounded amount, the loop is ours and the divergence is inside
-   `igArenaMemoryPool::bootstrapInit` / `setPreSize` (both in the boundary ring
-   at the failure).
-2. The reservations come from libIGCore's own statically-linked MSVC heap
-   (`FUN_1006aa50` and `FUN_1006ae10` are its only VirtualAlloc call sites), so
-   what the guest asks *malloc* for is the number that matters — log the
-   requested size at the CRT boundary, not just the VirtualAlloc size.
-3. `igMemoryPoolContext::bootstrapMemoryPoolInitialization` loops EBX 0..0x2f
-   (48 pools). Confirm whether iteration 0 is the one that never returns, or
-   whether the loop advances at all, before assuming a single arena is at fault.
+1. Read `FUN_1006aa50` and find its termination condition — what it checks after
+   a successful VirtualAlloc to decide the request is still unsatisfied. That
+   predicate is where the translation or the host answer diverges.
+2. Resolve the ambiguity C088 names: `FUN_1006a500` (x52) and `FUN_10066730`
+   (x27) exist at the same linked address in **both** libIGCore and libIGSg, and
+   the reached set keys on the linked address, so those counts may be sums. Only
+   `FUN_1006aa50` x28 is unambiguous. Per-module counts would settle it.
+3. Compare what the host returns for the reserve/commit pair against what Wine
+   returns: stock reserves slightly MORE than it commits (0x1390000 vs
+   0x1388000), ours reserves and commits the same size. If the CRT expects the
+   commit to be a sub-range of a larger reservation, an exact-fit reservation
+   could be what it rejects.
 
 ## Reproduce
 

@@ -264,7 +264,10 @@ void x86_trace_exit(uint32_t ep, const CPU *C)
    an ordering bug always reduces to, and a ring cannot answer it either
    because it evicts. One counter turns the set into a first-touch ordering at
    no extra cost. */
-static struct { uint32_t ep, seq; } g_reached[REACHED_SLOTS];
+/* n is the CALL COUNT, not just presence. "Reached" and "reached 31 times" are
+   different findings: a loop that fails to advance re-runs the same body, and
+   presence alone reports that as indistinguishable from running it once. */
+static struct { uint32_t ep, seq, n; } g_reached[REACHED_SLOTS];
 static unsigned g_reached_n;
 
 void x86_reached_enter(uint32_t ep)
@@ -272,10 +275,11 @@ void x86_reached_enter(uint32_t ep)
     uint32_t h = (ep * 2654435761u) >> 15;
     for (;;) {
         unsigned i = h & (REACHED_SLOTS - 1);
-        if (g_reached[i].ep == ep) return;
+        if (g_reached[i].ep == ep) { g_reached[i].n++; return; }
         if (g_reached[i].ep == 0) {
             g_reached[i].ep = ep;
             g_reached[i].seq = ++g_reached_n;
+            g_reached[i].n = 1;
             return;
         }
         h++;
@@ -289,6 +293,17 @@ static uint32_t reached_seq(uint32_t ep)
     for (;;) {
         unsigned i = h & (REACHED_SLOTS - 1);
         if (g_reached[i].ep == ep) return g_reached[i].seq;
+        if (g_reached[i].ep == 0) return 0;
+        h++;
+    }
+}
+
+static uint32_t reached_count(uint32_t ep)
+{
+    uint32_t h = (ep * 2654435761u) >> 15;
+    for (;;) {
+        unsigned i = h & (REACHED_SLOTS - 1);
+        if (g_reached[i].ep == ep) return g_reached[i].n;
         if (g_reached[i].ep == 0) return 0;
         h++;
     }
@@ -324,7 +339,7 @@ static void reached_where(uint32_t ep)
 static void reached_selftest(void)
 {
     const uint32_t a = 0xDEAD0001u, b = 0xDEAD0002u, miss = 0xDEAD0003u;
-    int ok_pos, ok_neg, ok_ord;
+    int ok_pos, ok_neg, ok_ord, ok_cnt;
     x86_reached_enter(a);
     x86_reached_enter(b);
     ok_pos = reached_seq(a) != 0;
@@ -333,12 +348,17 @@ static void reached_selftest(void)
        seq that is merely non-zero would pass the two checks above while
        ordering everything wrongly. */
     ok_ord = reached_seq(a) < reached_seq(b);
+    x86_reached_enter(a);                      /* a second time: count must move */
+    ok_cnt = reached_count(a) == 2 && reached_count(b) == 1;
     fprintf(stderr, "[REACHED] selftest: inserted 0x%08x -> %s; never-inserted "
                     "0x%08x -> %s; order %u < %u -> %s\n",
             a, ok_pos ? "REACHED (correct)" : "NEVER (WRONG)",
             miss, ok_neg ? "NEVER (correct)" : "REACHED (WRONG)",
             reached_seq(a), reached_seq(b), ok_ord ? "correct" : "WRONG");
-    if (!ok_pos || !ok_neg || !ok_ord) {
+    fprintf(stderr, "[REACHED] selftest: count after 2 entries -> %u, after 1 "
+                    "-> %u: %s\n", reached_count(a), reached_count(b),
+            ok_cnt ? "correct" : "WRONG");
+    if (!ok_pos || !ok_neg || !ok_ord || !ok_cnt) {
         fprintf(stderr, "[REACHED] the reached set is BROKEN in at least one "
                         "direction -- every answer below is worthless.\n");
         _exit(4);
@@ -362,12 +382,13 @@ void x86_reached_report(void)
         return;
     }
     snprintf(buf, sizeof buf, "%s", want);
-    fprintf(stderr, "[REACHED] '#n' is the ORDER of first entry, so a smaller "
-                    "one ran first.\n");
+    fprintf(stderr, "[REACHED] '#n' is the ORDER of first entry (smaller ran "
+                    "first); 'xN' is how many times it was entered.\n");
     for (p = strtok_r(buf, ",", &save); p; p = strtok_r(NULL, ",", &save)) {
         uint32_t ep = (uint32_t)strtoul(p, NULL, 0), seq = reached_seq(ep);
-        if (seq) fprintf(stderr, "[REACHED]   0x%08x  REACHED  #%-6u in ", ep, seq);
-        else     fprintf(stderr, "[REACHED]   0x%08x  NEVER    %-7s in ", ep, "");
+        if (seq) fprintf(stderr, "[REACHED]   0x%08x  REACHED  #%-6u x%-6u in ",
+                         ep, seq, reached_count(ep));
+        else     fprintf(stderr, "[REACHED]   0x%08x  NEVER    %-7s %-7s in ", ep, "", "");
         reached_where(ep);
         fputc('\n', stderr);
     }
