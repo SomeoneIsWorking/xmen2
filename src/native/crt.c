@@ -591,7 +591,6 @@ NOT_IMPL(__RTDynamicCast, EH_WHY)
 NOT_IMPL(_setjmp3, "setjmp/longjmp across recompiled frames needs the guest "
                    "register file saved, not the host's")
 NOT_IMPL(longjmp, "see _setjmp3")
-NOT_IMPL(sscanf, VA_WHY)
 
 /* ---- shared with the DLLs' MSVCRT --------------------------------------
  *
@@ -915,6 +914,193 @@ void imp_MSVCR71_vprintf(CPU *C)
     ret_c(C, (uint32_t)n);
 }
 
+
+/* ---- the scanf walker --------------------------------------------------
+ *
+ * The mirror of guest_vformat: one directive at a time, with the host's sscanf
+ * doing the actual conversion and "%n" reporting how much input it consumed, so
+ * the position advances by what really matched rather than by a guess.
+ *
+ * The results go to POINTERS pulled from the guest stack, and the width of each
+ * store matters -- writing four bytes for a %hd would corrupt whatever follows
+ * it in the guest's struct. So each conversion writes exactly its own size.
+ *
+ * As with the printf side, a conversion this does not implement STOPS by name.
+ * A scanf that silently matches nothing returns a count the caller believes,
+ * and the caller then uses uninitialised locals.
+ */
+int guest_vsscanf(const char *in, const char *fmt, uint32_t va)
+{
+    int filled = 0, pos = 0, n;
+    const char *p = fmt;
+    /* Large enough for a real scanset: the engine parses identifiers with
+       %[_a-zA-Z0-9./\-] spelled out in full, which is 67 characters. At 64
+       this refused with "unterminated scanset" -- the right refusal for the
+       wrong reason, and it would have been read as a malformed format in the
+       game rather than a small buffer here. */
+    char spec[320];
+    if (!in || !fmt) {
+        crt_unimpl("sscanf", "the input or format pointer is NULL");
+        return -1;
+    }
+    g_vfmt_va = va;
+    while (*p) {
+        if (isspace((unsigned char)*p)) {
+            while (isspace((unsigned char)in[pos])) pos++;
+            p++;
+            continue;
+        }
+        if (*p != '%') {
+            /* A literal must match, and a mismatch ends the scan -- that is
+               how the caller learns the input was not what it expected. */
+            if (in[pos] != *p) return filled;
+            pos++; p++;
+            continue;
+        }
+        p++;
+        if (*p == '%') {
+            if (in[pos] != '%') return filled;
+            pos++; p++;
+            continue;
+        }
+        {
+            int suppress = 0, width = 0, lng = 0, si = 0, consumed = 0;
+            if (*p == '*') { suppress = 1; p++; }
+            while (*p >= '0' && *p <= '9') width = width * 10 + (*p++ - '0');
+            if (p[0] == 'l' && p[1] == 'l') { lng = 2; p += 2; }
+            else if (*p == 'l' || *p == 'L') { lng = 1; p++; }
+            else if (*p == 'h') { lng = -1; p++; }
+
+            spec[si++] = '%';
+            if (width) si += snprintf(spec + si, sizeof spec - si, "%d", width);
+
+            switch (*p) {
+            case 'd': case 'i': case 'u': case 'x': case 'X': case 'o': {
+                long long v = 0;
+                spec[si++] = 'l'; spec[si++] = 'l'; spec[si++] = *p;
+                snprintf(spec + si, sizeof spec - si, "%%n");
+                n = sscanf(in + pos, spec, &v, &consumed);
+                if (n < 1) return filled;
+                pos += consumed;
+                if (!suppress) {
+                    uint32_t dst = va_dword();
+                    if (lng == 2) { WR32(dst, (uint32_t)v);
+                                    WR32(dst + 4u, (uint32_t)((uint64_t)v >> 32)); }
+                    else if (lng == -1) WR16(dst, (uint16_t)v);
+                    else WR32(dst, (uint32_t)v);
+                    filled++;
+                }
+                break;
+            }
+            case 'f': case 'e': case 'g': case 'E': case 'G': {
+                double v = 0;
+                spec[si++] = 'l'; spec[si++] = 'f';
+                snprintf(spec + si, sizeof spec - si, "%%n");
+                n = sscanf(in + pos, spec, &v, &consumed);
+                if (n < 1) return filled;
+                pos += consumed;
+                if (!suppress) {
+                    uint32_t dst = va_dword();
+                    /* `%f` stores a float and `%lf` a double -- a four-byte
+                       store for a double would leave half the value behind. */
+                    if (lng) { double dv = v; memcpy((void *)(uintptr_t)dst, &dv, 8); }
+                    else     { float fv = (float)v;
+                               memcpy((void *)(uintptr_t)dst, &fv, 4); }
+                    filled++;
+                }
+                break;
+            }
+            case 's': {
+                char buf[512];
+                snprintf(spec + si, sizeof spec - si, "s%%n");
+                n = sscanf(in + pos, spec, buf, &consumed);
+                if (n < 1) return filled;
+                pos += consumed;
+                if (!suppress) {
+                    uint32_t dst = va_dword();
+                    memcpy((void *)(uintptr_t)dst, buf, strlen(buf) + 1);
+                    filled++;
+                }
+                break;
+            }
+            case '[': {
+                /* A scanset, `%[abc]` or `%[^\n]`. The host's sscanf
+                   implements these, so the bracket expression is copied
+                   through verbatim -- including the two places where a `]` is
+                   a literal member rather than the terminator: immediately
+                   after `[` and immediately after `[^`. */
+                char buf[512];
+                const char *q = p + 1;
+                int depth_ok = 0;
+                spec[si++] = '[';
+                if (*q == '^') spec[si++] = *q++;
+                if (*q == ']') spec[si++] = *q++;
+                while (*q && *q != ']') {
+                    if (si >= (int)sizeof spec - 8) break;
+                    spec[si++] = *q++;
+                }
+                if (*q == ']') { spec[si++] = ']'; q++; depth_ok = 1; }
+                if (!depth_ok) {
+                    fprintf(stderr, "crt: scanf walker met an unterminated "
+                                    "%%[ scanset in format \"%s\" -- "
+                                    "refusing\n", fmt);
+                    crt_unimpl("sscanf", "unterminated scanset");
+                    return -1;
+                }
+                snprintf(spec + si, sizeof spec - si, "%%n");
+                n = sscanf(in + pos, spec, buf, &consumed);
+                if (n < 1) return filled;
+                pos += consumed;
+                if (!suppress) {
+                    uint32_t dst = va_dword();
+                    memcpy((void *)(uintptr_t)dst, buf, strlen(buf) + 1);
+                    filled++;
+                }
+                p = q - 1;      /* the switch advances past *p below */
+                break;
+            }
+            case 'c': {
+                int w = width ? width : 1, k;
+                if (!in[pos]) return filled;
+                if (!suppress) {
+                    uint32_t dst = va_dword();
+                    for (k = 0; k < w && in[pos + k]; k++)
+                        WR8(dst + (uint32_t)k, (uint8_t)in[pos + k]);
+                    filled++;
+                }
+                for (k = 0; k < w && in[pos]; k++) pos++;
+                break;
+            }
+            default:
+                fprintf(stderr, "crt: scanf walker met %%%c in format \"%s\", "
+                                "which it does not implement -- refusing rather "
+                                "than reporting a match it did not make\n",
+                        *p ? *p : '?', fmt);
+                crt_unimpl("sscanf", "unimplemented scanf conversion");
+                return -1;
+            }
+            p++;
+        }
+    }
+    return filled;
+}
+
+void imp_MSVCR71_sscanf(CPU *C)
+{
+    ret_c(C, (uint32_t)guest_vsscanf(ACS(0), ACS(1), C->esp + 4u + 2u * 4u));
+}
+
+void imp_MSVCR71_fscanf(CPU *C)
+{
+    /* Line-oriented: read one line and scan it. Not identical to C's fscanf,
+       which can stop mid-line and leave the rest for the next call -- so the
+       difference is stated here rather than discovered. The engine's uses are
+       line-based config parsing. */
+    char line[1024];
+    if (!fgets(line, sizeof line, fh(A(0)))) { ret_c(C, 0xFFFFFFFFu); return; }
+    ret_c(C, (uint32_t)guest_vsscanf(line, ACS(1), C->esp + 4u + 2u * 4u));
+}
+
 #define CRT_ALIAS(n) \
     void imp_MSVCRT_##n(CPU *C) { imp_MSVCR71_##n(C); }
 
@@ -947,6 +1133,7 @@ CRT_ALIAS(fgetc)    CRT_ALIAS(fgets)    CRT_ALIAS(ungetc)
 CRT_ALIAS(fwrite)   CRT_ALIAS(fprintf)  CRT_ALIAS(vfprintf)
 /* C++ operator new / delete / delete[] */
 CRT_ALIAS(__2_YAPAXI_Z)
+CRT_ALIAS(sscanf)   CRT_ALIAS(fscanf)
 CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
 CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)
 CRT_ALIAS(__dllonexit)

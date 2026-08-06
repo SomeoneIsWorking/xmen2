@@ -16,6 +16,7 @@
 #include <string.h>
 
 int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
+int guest_vsscanf(const char *in, const char *fmt, uint32_t va);
 
 /* The runtime globals the header pulls in. */
 uint32_t g_imgbase = 0x10000000U;
@@ -109,11 +110,123 @@ int main(void)
         }
     }
 
+    /* ---- the scanf walker ------------------------------------------- */
+    /*
+     * Same shape: a stand-in guest argument list of POINTERS, fed exactly what
+     * a real call would give. The count matters as much as the values -- a
+     * caller reads it to decide which of its locals were written, so a walker
+     * that returns 3 having filled 2 corrupts by omission.
+     */
+    {
+        uint32_t a1, a2; int r;
+        static uint32_t v1, v2;
+        nslots = 0; push_d((uint32_t)(uintptr_t)&v1); push_d((uint32_t)(uintptr_t)&v2);
+        v1 = v2 = 0;
+        r = guest_vsscanf("12 34", "%d %d", va());
+        checks++;
+        if (r != 2 || v1 != 12 || v2 != 34) {
+            fails++; printf("  FAIL scanf two ints: r=%d v1=%u v2=%u\n", r, v1, v2);
+        }
+        (void)a1; (void)a2;
+    }
+    {
+        static char sbuf[32]; static uint32_t num;
+        int r;
+        nslots = 0; push_d((uint32_t)(uintptr_t)sbuf); push_d((uint32_t)(uintptr_t)&num);
+        sbuf[0] = 0; num = 0;
+        r = guest_vsscanf("name=alpha 7", "name=%s %d", va());
+        checks++;
+        if (r != 2 || strcmp(sbuf, "alpha") != 0 || num != 7) {
+            fails++; printf("  FAIL scanf literal+%%s+%%d: r=%d s=\"%s\" n=%u\n",
+                            r, sbuf, num);
+        }
+    }
+    {   /* a literal that does not match must stop, and report what it DID fill */
+        static uint32_t got; int r;
+        nslots = 0; push_d((uint32_t)(uintptr_t)&got);
+        got = 0;
+        r = guest_vsscanf("x=5", "y=%d", va());
+        checks++;
+        if (r != 0 || got != 0) {
+            fails++; printf("  FAIL scanf mismatched literal: r=%d got=%u\n", r, got);
+        }
+    }
+    {   /* suppression consumes input WITHOUT consuming an argument -- getting
+           that wrong shifts every later store by one slot */
+        static uint32_t second; int r;
+        nslots = 0; push_d((uint32_t)(uintptr_t)&second);
+        second = 0;
+        r = guest_vsscanf("11 22", "%*d %d", va());
+        checks++;
+        if (r != 1 || second != 22) {
+            fails++; printf("  FAIL scanf %%*d suppression: r=%d second=%u\n",
+                            r, second);
+        }
+    }
+    {   /* %hd must store TWO bytes, not four */
+        static uint32_t box; int r;
+        nslots = 0; push_d((uint32_t)(uintptr_t)&box);
+        box = 0xAAAAAAAAu;
+        r = guest_vsscanf("258", "%hd", va());
+        checks++;
+        if (r != 1 || (box & 0xFFFFu) != 258 || (box >> 16) != 0xAAAAu) {
+            fails++; printf("  FAIL scanf %%hd width: r=%d box=0x%08x\n", r, box);
+        }
+    }
+    {   /* %f stores a float; %lf a double */
+        static float f; static double dd; int r;
+        nslots = 0; push_d((uint32_t)(uintptr_t)&f);
+        f = 0;
+        r = guest_vsscanf("2.5", "%f", va());
+        checks++;
+        if (r != 1 || f != 2.5f) { fails++; printf("  FAIL scanf %%f: r=%d f=%f\n", r, f); }
+        nslots = 0; push_d((uint32_t)(uintptr_t)&dd);
+        dd = 0;
+        r = guest_vsscanf("2.5", "%lf", va());
+        checks++;
+        if (r != 1 || dd != 2.5) { fails++; printf("  FAIL scanf %%lf: r=%d d=%f\n", r, dd); }
+    }
+
+    {   /* a scanset, and the negated form the engine actually uses */
+        static char sc[64]; int r;
+        nslots = 0; push_d((uint32_t)(uintptr_t)sc);
+        sc[0] = 0;
+        r = guest_vsscanf("hello world", "%[^ ]", va());
+        checks++;
+        if (r != 1 || strcmp(sc, "hello") != 0) {
+            fails++; printf("  FAIL scanf %%[^ ]: r=%d s=\"%s\"\n", r, sc);
+        }
+        nslots = 0; push_d((uint32_t)(uintptr_t)sc);
+        sc[0] = 0;
+        r = guest_vsscanf("abc123", "%[a-c]", va());
+        checks++;
+        if (r != 1 || strcmp(sc, "abc") != 0) {
+            fails++; printf("  FAIL scanf %%[a-c]: r=%d s=\"%s\"\n", r, sc);
+        }
+    }
+
+    {   /* the real thing: the engine's identifier scanset, spelled out in
+           full at 67 characters. A spec buffer too small to hold it reports
+           "unterminated", which reads as a bad format in the game. */
+        static char id[128]; int r;
+        nslots = 0; push_d((uint32_t)(uintptr_t)id);
+        id[0] = 0;
+        r = guest_vsscanf(" [ some_Name9./ ]",
+              " [ %[_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./\\-] ]",
+              va());
+        checks++;
+        if (r != 1 || strcmp(id, "some_Name9./") != 0) {
+            fails++; printf("  FAIL scanf long scanset: r=%d s=\"%s\"\n", r, id);
+        }
+    }
+
     printf("vformat: %d of %d check(s) FAILED\n", fails, checks);
     if (!fails)
-        printf("Established: %%d/%%x/%%s/%%c/%%f/%%%%, star width, MSVC's I64, a "
-               "NULL %%s, truncation, and that a double consumes two argument "
-               "slots so the arguments after it stay in step.\n");
+        printf("Established: printf %%d/%%x/%%s/%%c/%%f/%%%%, star width, MSVC's "
+               "I64, a NULL %%s, truncation, and that a double consumes two "
+               "argument slots; scanf ints/string/float, a literal mismatch "
+               "stopping with the right count, %%*d consuming input but not an "
+               "argument, and %%hd storing two bytes rather than four.\n");
     return fails != 0;
 }
 
@@ -131,5 +244,7 @@ void x86_guest_call(struct CPU *C, uint32_t t)
 { (void)C; (void)t; fprintf(stderr, "test_vformat: x86_guest_call reached\n"); abort(); }
 uint32_t x86_guest_addr_of(void *p)
 { (void)p; fprintf(stderr, "test_vformat: x86_guest_addr_of reached\n"); abort(); }
+const char *win_path(const char *in)
+{ (void)in; fprintf(stderr, "test_vformat: win_path reached\n"); abort(); }
 const char *x86_native_name_at(uint32_t a)
 { (void)a; fprintf(stderr, "test_vformat: x86_native_name_at reached\n"); abort(); }
