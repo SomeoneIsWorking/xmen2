@@ -35,6 +35,7 @@ case ${2:-} in
     --seed)      SEEDFILE=${3:?--seed needs a file of hex addresses} ;;
     --split-at)  SPLITFILE=${3:?--split-at needs a file of hex addresses} ;;
     --merge)     MERGEFILE=${3:?--merge needs a file of hex addresses} ;;
+    --recreate)  RECREATE=${3:?--recreate needs a comma-separated hex address list} ;;
     "")          ;;
     *)           echo "ghidra_export: unknown option $2" >&2; exit 2 ;;
 esac
@@ -159,6 +160,22 @@ if [ -n "$MERGEFILE" ]; then
         -postScript MergeTruncated.py \
         >>"$LOG" 2>&1 || { echo "ghidra_export: merging failed, see $LOG" >&2; exit 1; }
     grep -E "^MERGE: [0-9]+ repaired" "$LOG" | tail -1
+fi
+
+# Rebuilding a body that has HOLES -- a switch whose case blocks belong to no
+# function. Neither --split-at nor --merge can fix that: one carves, the other
+# absorbs inner FUNCTIONS, and orphaned blocks are not functions. See
+# RecreateFunction.py and issue #21.
+if [ -n "${RECREATE:-}" ]; then
+    echo "== recreate $(echo "$RECREATE" | tr ',' '\n' | grep -c .) function body/bodies from control flow =="
+    RECREATE_FUNCS="$RECREATE" RECREATE_EXPECT="${RECREATE_EXPECT:-}" \
+    RECREATE_JUMPTABLES="${RECREATE_JUMPTABLES:-1}" \
+    "$HEADLESS" "$PROJ" xmen2 \
+        -process "$(basename "$BIN")" -noanalysis \
+        -scriptPath "$ROOT/tools/ghidra_scripts" \
+        -postScript RecreateFunction.py \
+        >>"$LOG" 2>&1 || { echo "ghidra_export: recreate failed, see $LOG" >&2; exit 1; }
+    grep -E "^RECREATE:" "$LOG" | tail -6
 fi
 
 echo "== export functions -> $OUT =="

@@ -1,6 +1,26 @@
 /*
  * igVkVisualContext -- what a slot module needs in order to be one.
  *
+ * ## Where the file layout comes from
+ *
+ * The split across igvk_device / igvk_context / igvk_slots_* is taken from
+ * DUSKLIGHT (https://github.com/TwilitRealm/dusklight, CC0), a shipping PC
+ * port of Twilight Princess built on the zeldaret/tp decomp -- the same
+ * architecture as this one, several years further along. Its src/dusk/ is one
+ * small .cpp/.h pair per concern with a narrow header each: presentation.hpp
+ * is seven lines, gfx.hpp is ten. Nothing accretes into a renderer.cpp.
+ *
+ * What was taken is that discipline, not code -- theirs is written against the
+ * TP decomp's types and an entirely different graphics stack. Applied here it
+ * says: the host GPU device is one concern and knows nothing about the guest;
+ * the ARK class is another; each group of engine slots is another. The
+ * alternative, and what this replaced, was a single igvk_visualcontext.c about
+ * to grow 98 slot implementations.
+ *
+ * Their frame-interpolation design (record-and-replace, guest state never
+ * mutated) is the other thing worth reading before this backend grows one, and
+ * it is deliberately NOT copied yet: there is no frame to interpolate.
+ *
  * ## The shape of the backend, and why it is this shape
  *
  * The engine is already a multi-platform renderer abstraction (C113):

@@ -28,6 +28,10 @@ python3 ~/.claude/skills/issue-catalog/catalog.py search <symptom>   # docs/issu
   `info.py claim check` detects rot mechanically (has the cited code changed?).
 - `docs/info/instruments/` — a tool that lied is recorded here. Several have.
 - `docs/RE/` — reverse-engineering write-ups (`ark.md`, `enbaya_decode.md`).
+- `docs/prior-art.md` — **Dusklight**, a shipping TP port of the same shape and
+  CC0. Read it BEFORE designing any subsystem a mature port has already solved
+  (interpolation, UI, config, mods, input binding, saves). Cite what you take,
+  in the file that takes it.
 
 ## Setup
 
