@@ -98,6 +98,22 @@ long d3d8_object_release(D3D8Object *o);
    NULL means "nothing to undo". */
 void d3d8_object_set_destructor(D3D8Object *o, void (*fn)(D3D8Object *));
 
+/*
+ * A SUBRESOURCE: an object whose lifetime is its container's.
+ *
+ * A texture's mip levels are the case. They are not independently allocated --
+ * the level surface is a view onto bytes the texture owns -- so an independent
+ * reference count would let the guest release the texture while still holding
+ * a level, and the level's pointer would then be into freed memory.
+ *
+ * So AddRef/Release/refs on an owned object are the CONTAINER's, which is how
+ * the container cannot die under a surface the guest is still holding. The
+ * owned object's own count is inert and it is excluded from the leak listing,
+ * because a permanent count of 1 that nobody can release reads as a leak.
+ */
+void        d3d8_object_set_owner(D3D8Object *o, D3D8Object *owner);
+D3D8Object *d3d8_object_owner(const D3D8Object *o);
+
 /* Objects still holding a reference at shutdown, named. A surface the engine
    never released is a leak; one released twice is a bug that would otherwise
    be invisible. */

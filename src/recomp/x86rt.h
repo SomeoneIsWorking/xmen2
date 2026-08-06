@@ -180,6 +180,15 @@ void x86_guest_call(CPU *C, uint32_t target);
  */
 jmp_buf *x86_setjmp_buf(CPU *C);
 void x86_setjmp_done(CPU *C, int rc);
+/*
+ * The buffer table gives slots back: a jmp_buf living in a guest heap block
+ * that has been freed can no longer be jumped to. That is the ONLY rule -- see
+ * crt.c for the second one the real run refuted. x86_setjmp_reclaim returns how
+ * many it freed, so "reclaimed nothing" and "reclaimed everything" are
+ * distinguishable; x86_setjmp_live is how many are held.
+ */
+int x86_setjmp_reclaim(void);
+int x86_setjmp_live(void);
 /* Dump the last crossings between guest and host, with ESP on both sides. */
 void x86_ring_dump(void);
 void x86_untranslated(uint32_t ep, const char *name, const char *reason);

@@ -646,16 +646,47 @@ NOT_IMPL(__RTDynamicCast, EH_WHY)
  * fake one would claim a fidelity this does not have -- but its ADDRESS is how
  * longjmp finds the matching host buffer.
  */
+/*
+ * A slot is taken per DISTINCT jmp_buf address and was never given back, which
+ * is not a table that is too small -- it is a table that leaks. The game calls
+ * one function per resource load that allocates an object, takes a setjmp on a
+ * jmp_buf INSIDE that object, and frees it again; sixteen loads exhausted the
+ * table with sixteen buffers whose frames had all long since returned (they
+ * were all recorded at the same guest ESP, which is what says they were
+ * sequential and not nested).
+ *
+ * So slots are RECLAIMED, and the rule has to be one that cannot free a buffer
+ * the guest may still jump to. Exactly ONE fact is definitive: a jmp_buf in the
+ * guest heap whose block is no longer allocated cannot be jumped to, because the
+ * object holding it is gone.
+ *
+ * There WAS a second rule -- "a jmp_buf below the current guest stack pointer is
+ * in popped space" -- and the real run REFUTED it: it reclaimed the buffer at
+ * 0x700ff638 taken by FUN_006460d1, and the guest then longjmp'd to it from
+ * 0x0064608d, inside that same function. A stack address below ESP is not
+ * evidence that the frame owning it has returned; the reasoning was plausible
+ * and wrong, and it only showed up because the rule was run against the game
+ * rather than against the case that was built to match it.
+ *
+ * Anything not provably dead is kept. If every slot is live the table GROWS
+ * rather than refusing, because a legitimately deep nest is not an error -- but
+ * it says so, once, because silent growth is how a leak comes back unnoticed.
+ */
 #define JMP_SLOTS 16
+#define JMP_SLOTS_MAX 4096
 
-static struct {
+typedef struct {
     uint32_t env;
     CPU      regs;          /* the guest register file at the setjmp */
     jmp_buf  buf;           /* the host frame to resume into */
     uint32_t caller;
     int      used;
     int      resumable;     /* 0 for a buffer recorded by the stub below */
-} g_jmp[JMP_SLOTS];
+} JmpSlot;
+
+static JmpSlot *g_jmp;
+static int g_jmp_cap;
+static unsigned long g_jmp_reclaimed, g_jmp_taken;
 
 /* Which slot the in-flight longjmp is jumping through. Set immediately before
    the host longjmp and cleared by the setjmp side that catches it, so the
@@ -669,6 +700,42 @@ void x86_setjmp_report(void)
     if (g_jmp_resumes)
         fprintf(stderr, "crt: %lu longjmp(s) resumed into a generated body.\n",
                 g_jmp_resumes);
+    if (g_jmp_taken)
+        fprintf(stderr, "crt: %lu setjmp buffer(s) recorded, %lu slot(s) "
+                        "reclaimed, %d slot(s) in the table.\n",
+                g_jmp_taken, g_jmp_reclaimed, g_jmp_cap);
+}
+
+int x86_setjmp_live(void)
+{
+    int i, n = 0;
+    for (i = 0; i < g_jmp_cap; i++) if (g_jmp[i].used) n++;
+    return n;
+}
+
+/*
+ * Give back every slot whose buffer provably cannot be jumped to any more.
+ * Returns how many, so the caller can tell "reclaimed nothing" from "reclaimed
+ * everything" -- they are the same table state afterwards but completely
+ * different situations.
+ */
+int x86_setjmp_reclaim(void)
+{
+    int i, n = 0;
+    uint32_t base, size;
+    for (i = 0; i < g_jmp_cap; i++) {
+        uint32_t env = g_jmp[i].env;
+        int dead;
+        if (!g_jmp[i].used) continue;
+        if (!env) dead = 1;                     /* nothing can name it */
+        else if (guest_heap_contains(env, &base, &size))
+            dead = !guest_heap_addr_is_live(env);
+        else
+            dead = 0;                           /* not provably anything */
+        if (dead) { g_jmp[i].used = 0; n++; }
+    }
+    g_jmp_reclaimed += (unsigned long)n;
+    return n;
 }
 
 /* Named so the two halves of a setjmp/longjmp pair can be attributed. Without
@@ -685,20 +752,74 @@ static void say_where(const char *what, uint32_t ret_addr)
             nm ? nm : "");
 }
 
-static int jmp_slot_for(uint32_t env)
+static void jmp_dump(const char *why, uint32_t env, uint32_t esp)
 {
-    int i, free_slot = -1;
-    for (i = 0; i < JMP_SLOTS; i++) {
-        if (g_jmp[i].used && g_jmp[i].env == env) return i;
-        if (free_slot < 0 && !g_jmp[i].used) free_slot = i;
+    int i;
+    /*
+     * The table says WHAT it is holding, because the count on its own is the one
+     * fact the reader already has. Which buffers, where they sit relative to the
+     * current stack pointer, and who took each one is the difference between
+     * "the guest really does have this many live frames" and "slots are never
+     * reclaimed" -- and it was that difference this printed out.
+     */
+    fprintf(stderr, "crt: %s. %d setjmp slot(s), all live; the guest ESP is now "
+                    "0x%08x and the buffer being recorded is at 0x%08x:\n",
+            why, g_jmp_cap, esp, env);
+    for (i = 0; i < g_jmp_cap && i < 32; i++) {
+        const char *nm = x86_native_name_at(g_jmp[i].caller);
+        fprintf(stderr, "    [%2d] env 0x%08x  %-14s esp was 0x%08x  taken "
+                        "from 0x%08x %s%s\n",
+                i, g_jmp[i].env,
+                g_jmp[i].env < esp ? "(popped stack)" : "(live or heap)",
+                g_jmp[i].regs.esp,
+                g_jmp[i].caller, nm ? nm : "(unnamed)",
+                g_jmp[i].resumable ? "" : "  [not resumable]");
     }
-    if (free_slot < 0) {
-        fprintf(stderr, "crt: more than %d live setjmp buffers. Refusing "
-                        "rather than dropping one -- a dropped buffer is a "
-                        "longjmp that lands nowhere.\n", JMP_SLOTS);
-        abort();
+    if (g_jmp_cap > 32)
+        fprintf(stderr, "    ... and %d more.\n", g_jmp_cap - 32);
+}
+
+static int jmp_slot_for(uint32_t env, uint32_t esp)
+{
+    int i, free_slot = -1, pass;
+
+    if (!g_jmp) {
+        g_jmp = (JmpSlot *)calloc(JMP_SLOTS, sizeof *g_jmp);
+        if (!g_jmp) { fprintf(stderr, "crt: out of memory\n"); abort(); }
+        g_jmp_cap = JMP_SLOTS;
     }
-    return free_slot;
+    g_jmp_taken++;
+    for (pass = 0; pass < 3; pass++) {
+        for (i = 0; i < g_jmp_cap; i++) {
+            if (g_jmp[i].used && g_jmp[i].env == env) return i;
+            if (free_slot < 0 && !g_jmp[i].used) free_slot = i;
+        }
+        if (free_slot >= 0) return free_slot;
+        /* Pass 0 found the table full: reclaim what provably cannot be jumped
+           to, and only if that frees nothing is the table really too small. */
+        if (pass == 0 && x86_setjmp_reclaim() > 0) continue;
+        if (g_jmp_cap >= JMP_SLOTS_MAX) {
+            jmp_dump("the setjmp table is at its maximum and nothing in it "
+                     "could be reclaimed", env, esp);
+            abort();
+        }
+        {
+            int cap = g_jmp_cap * 2;
+            JmpSlot *p = (JmpSlot *)realloc(g_jmp, (size_t)cap * sizeof *p);
+            if (!p) { fprintf(stderr, "crt: out of memory\n"); abort(); }
+            memset(p + g_jmp_cap, 0, (size_t)(cap - g_jmp_cap) * sizeof *p);
+            g_jmp = p;
+            /* Once, and by name: a table that grows silently is how a leak
+               comes back without anyone noticing it came back. */
+            if (g_jmp_cap == JMP_SLOTS)
+                jmp_dump("every setjmp slot is still live, so the table is "
+                         "GROWING (reported once)", env, esp);
+            g_jmp_cap = cap;
+        }
+    }
+    fprintf(stderr, "crt: the setjmp table could neither find, reclaim nor "
+                    "grow a slot. This is a bug in jmp_slot_for.\n");
+    abort();
 }
 
 jmp_buf *x86_setjmp_buf(CPU *C)
@@ -706,7 +827,7 @@ jmp_buf *x86_setjmp_buf(CPU *C)
     /* ESP points at the return address the generated body just pushed, so
        _setjmp3's first argument -- the guest jmp_buf -- is the next word. */
     uint32_t env = RD32(C->esp + 4u);
-    int i = jmp_slot_for(env);
+    int i = jmp_slot_for(env, C->esp);
 
     g_jmp[i].env = env;
     g_jmp[i].regs = *C;
@@ -765,7 +886,7 @@ void x86_setjmp_done(CPU *C, int rc)
 void imp_MSVCR71__setjmp3(CPU *C)
 {
     uint32_t env = A(0);
-    int i = jmp_slot_for(env);
+    int i = jmp_slot_for(env, C->esp);
 
     g_jmp[i].env = env;
     g_jmp[i].regs = *C;

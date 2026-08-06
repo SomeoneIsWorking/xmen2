@@ -14,6 +14,7 @@
 #include "d3d8_caps.h"
 #include "d3d8_types.h"
 #include "d3d8_resource.h"
+#include "d3d8_surface.h"
 #include "d3d8_drawcall.h"
 #include "d3d8_state.h"
 
@@ -469,6 +470,202 @@ static int getdirect3d_selftest(void)
     return fails;
 }
 
+/*
+ * IDirect3DTexture8::GetSurfaceLevel, driven through the real texture vtable.
+ *
+ * The thing that must not pass is a surface that LOOKS right and owns its own
+ * pixels: every check below would still be satisfiable by one -- it has a size,
+ * a pitch, an HRESULT -- except the two that matter. So those are the ones
+ * designed first:
+ *
+ *   the level surface's Lock pointer IS the texture's own staging pointer for
+ *   that level (a private buffer would give a different address), and
+ *
+ *   unlocking the surface UPLOADS that level (a counter, incremented only when
+ *   the backend accepted the copy -- "returned D3D_OK" and "the texture
+ *   changed" are otherwise indistinguishable, and this backend cannot read a
+ *   texture back to check the pixels).
+ *
+ * The level is deliberately 1, not 0: a surface that describes and uploads
+ * level 0 whatever it was asked for is the natural way to get this wrong, and
+ * level 0 would hide it. 64x32 with 3 levels makes level 1 32x16, so the
+ * dimensions are wrong in both axes if the level is ignored.
+ */
+static int texture_level_selftest(void)
+{
+    D3D8Object *tex;
+    D3D8Object *s0, *s1;
+    uint32_t args[2], out, desc, lr, hr, g0, g0b, g1, texptr, before;
+    unsigned long uploads;
+    int fails = 0;
+
+    printf("\n=== d3d8 texture-level selftest: through the texture vtable ===\n");
+    if (!gpu_device_create()) {
+        printf("d3d8 texlevel selftest: FAILED -- no GPU device, so NOTHING "
+               "about GetSurfaceLevel was checked.\n");
+        return 1;
+    }
+    d3d8_resource_install();
+    d3d8_surface_install();
+    tex = d3d8_texture_new(64, 32, 3, 0, D3DFMT_A8R8G8B8, 0);
+    if (!tex) {
+        printf("d3d8 texlevel selftest: FAILED -- no texture.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    d3d8_resource_attach_destructor(tex);
+    out = guest_malloc(4);
+    desc = guest_malloc(32);
+    lr = guest_malloc(8);
+
+    /* GetSurfaceLevel is slot 15; (level, ppSurfaceLevel). */
+    before = (uint32_t)d3d8_object_refs(tex);
+    args[0] = 0; args[1] = out;
+    WR32(out, 0xA5A5A5A5u);
+    hr = call_method(tex, 15, args, 2);
+    g0 = RD32(out);
+    if (hr != D3D_OK || !g0 || !d3d8_object_from_guest(g0)) {
+        printf("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel(0) returned "
+               "0x%08x and wrote 0x%08x, which is not a COM object of this "
+               "host's.\n", hr, g0);
+        gpu_device_destroy();
+        return fails + 1;
+    }
+    s0 = d3d8_object_from_guest(g0);
+    if (d3d8_object_iface(s0) != D3D8_IF_IDirect3DSurface8) {
+        printf("d3d8 texlevel selftest: FAILED -- what came back is a %s, not "
+               "an IDirect3DSurface8.\n",
+               d3d8_iface_name(d3d8_object_iface(s0)));
+        fails++;
+    }
+    if ((uint32_t)d3d8_object_refs(tex) <= before) {
+        printf("d3d8 texlevel selftest: FAILED -- the texture's reference count "
+               "did not rise (%u then %u). The engine Releases the surface it "
+               "was given, and an unbalanced count destroys the texture early "
+               "or never.\n", before, (uint32_t)d3d8_object_refs(tex));
+        fails++;
+    }
+
+    /* The same level twice is the same surface. */
+    args[0] = 0; args[1] = out;
+    call_method(tex, 15, args, 2);
+    g0b = RD32(out);
+    if (g0b != g0) {
+        printf("d3d8 texlevel selftest: FAILED -- asking for level 0 twice gave "
+               "0x%08x then 0x%08x. D3D8's level surfaces are persistent "
+               "children, and code that compares them would see two.\n",
+               g0, g0b);
+        fails++;
+    }
+    /* and Releasing it gives the texture's count back. */
+    call_method(s0, 2, NULL, 0);
+
+    args[0] = 1; args[1] = out;
+    call_method(tex, 15, args, 2);
+    g1 = RD32(out);
+    if (!g1 || g1 == g0) {
+        printf("d3d8 texlevel selftest: FAILED -- level 1 came back as 0x%08x, "
+               "the same object as level 0.\n", g1);
+        gpu_device_destroy();
+        return fails + 1;
+    }
+    s1 = d3d8_object_from_guest(g1);
+
+    /* Out of range, and nowhere to write. */
+    WR32(out, 0xA5A5A5A5u);
+    args[0] = 3; args[1] = out;
+    hr = call_method(tex, 15, args, 2);
+    if (hr != D3DERR_INVALIDCALL || RD32(out) != 0) {
+        printf("d3d8 texlevel selftest: FAILED -- level 3 of a 3-level texture "
+               "returned 0x%08x and wrote 0x%08x; expected INVALIDCALL and a "
+               "NULL out-pointer.\n", hr, RD32(out));
+        fails++;
+    }
+    args[0] = 0; args[1] = 0;
+    hr = call_method(tex, 15, args, 2);
+    if (hr != D3DERR_INVALIDCALL) {
+        printf("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel with a NULL "
+               "out-pointer returned 0x%08x.\n", hr);
+        fails++;
+    }
+
+    /* GetDesc (slot 8) must describe LEVEL 1, not the texture. */
+    memset((void *)(uintptr_t)desc, 0xA5, 32);
+    args[0] = desc;
+    call_method(s1, 8, args, 1);
+    if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 16u) {
+        printf("d3d8 texlevel selftest: FAILED -- level 1 of a 64x32 texture "
+               "describes itself as %ux%u, not 32x16.\n",
+               RD32(desc + 24u), RD32(desc + 28u));
+        fails++;
+    }
+    if (RD32(desc + 16u) != 32u * 16u * 4u) {
+        printf("d3d8 texlevel selftest: FAILED -- level 1 says it is %u bytes, "
+               "not %u.\n", RD32(desc + 16u), 32u * 16u * 4u);
+        fails++;
+    }
+    if (RD32(desc + 0u) != (uint32_t)D3DFMT_A8R8G8B8) {
+        printf("d3d8 texlevel selftest: FAILED -- level 1 reports format %u, "
+               "not the texture's.\n", RD32(desc + 0u));
+        fails++;
+    }
+
+    /* THE CHECK: the surface's bytes are the texture's bytes. LockRect is
+       slot 9 on the surface (pLockedRect, pRect) and slot 16 on the texture
+       (level, pLockedRect, pRect). */
+    WR32(lr, 0); WR32(lr + 4u, 0);
+    args[0] = lr; args[1] = 0;
+    call_method(s1, 9, args, 2);
+    if (RD32(lr) != 32u * 4u) {
+        printf("d3d8 texlevel selftest: FAILED -- level 1 locked with a pitch "
+               "of %u; 32 pixels of BGRA8 is %u.\n", RD32(lr), 32u * 4u);
+        fails++;
+    }
+    {
+        uint32_t surfptr = RD32(lr + 4u);
+        uint32_t targs[3];
+        targs[0] = 1; targs[1] = lr; targs[2] = 0;
+        WR32(lr, 0); WR32(lr + 4u, 0);
+        call_method(tex, 16, targs, 3);
+        texptr = RD32(lr + 4u);
+        call_method(tex, 17, targs, 1);              /* texture UnlockRect(1) */
+        if (!surfptr || surfptr != texptr) {
+            printf("d3d8 texlevel selftest: FAILED -- the level 1 surface locks "
+                   "at 0x%08x and the texture's own level 1 at 0x%08x. The "
+                   "surface has storage of its own, so everything the engine "
+                   "writes through it is lost.\n", surfptr, texptr);
+            fails++;
+        }
+        if (surfptr) {
+            /* Something recognisable, so the upload has real bytes to move. */
+            memset((void *)(uintptr_t)surfptr, 0x5A, 32u * 16u * 4u);
+        }
+    }
+
+    /* And unlocking the SURFACE uploads that level of the texture. */
+    uploads = d3d8_texture_uploads(tex);
+    call_method(s1, 10, NULL, 0);                    /* surface UnlockRect */
+    if (d3d8_texture_uploads(tex) != uploads + 1u) {
+        printf("d3d8 texlevel selftest: FAILED -- unlocking the level 1 surface "
+               "uploaded nothing (%lu uploads before and after). The engine "
+               "fills textures through these surfaces, so the texture would "
+               "stay empty.\n", uploads);
+        fails++;
+    } else if (d3d8_texture_last_upload_level(tex) != 1u) {
+        printf("d3d8 texlevel selftest: FAILED -- unlocking the level 1 surface "
+               "uploaded level %u instead.\n",
+               d3d8_texture_last_upload_level(tex));
+        fails++;
+    }
+
+    (void)s0;
+    gpu_device_destroy();
+    printf("d3d8 texlevel selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- a level surface is a VIEW on the texture's own bytes, "
+             "describes its own level, and uploads that level on unlock");
+    return fails;
+}
+
 int d3d8_host_selftest(void)
 {
     int fails = 0;
@@ -477,6 +674,7 @@ int d3d8_host_selftest(void)
     fails += pixel_shader_selftest();
     fails += gamma_selftest();
     fails += getdirect3d_selftest();
+    fails += texture_level_selftest();
     fails += d3d8_draw_selftest();
     printf("d3d8: SELF-TEST %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);

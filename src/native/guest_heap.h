@@ -16,6 +16,10 @@ void     guest_heap_report(void);
 uint32_t guest_realloc(uint32_t p, uint32_t n);
 uint32_t guest_heap_base(void);
 int      guest_heap_contains(uint32_t a, uint32_t *base, uint32_t *size);
+
+/* Is `a` inside a block that is still allocated? 0 for a freed block AND for an
+   address outside the arena; conservative the safe way (see guest_heap.c). */
+int      guest_heap_addr_is_live(uint32_t a);
 void     guest_heap_stats(uint32_t *used, uint32_t *free_, uint32_t *blocks);
 
 #endif /* GUEST_HEAP_H */

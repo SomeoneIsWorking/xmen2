@@ -30,6 +30,22 @@ GpuTexture d3d8_resource_texture(D3D8Object *o);
 uint32_t   d3d8_resource_fvf(D3D8Object *o);
 int        d3d8_resource_index_is_32bit(D3D8Object *o);
 
+/*
+ * One mip level of a texture has been unlocked -- upload it.
+ *
+ * Called both by IDirect3DTexture8::UnlockRect and by the UnlockRect of a
+ * surface handed out by GetSurfaceLevel, so that the two routes into the same
+ * bytes cannot drift apart. Says so and uploads nothing if the level is out of
+ * range or the backend refuses the copy.
+ */
+void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t level);
+
+/* How many level uploads this texture has actually completed, and the last
+   level uploaded. The self-test uses them to tell "the unlock uploaded" from
+   "the unlock returned OK and did nothing", which look identical otherwise. */
+unsigned long d3d8_texture_uploads(D3D8Object *o);
+uint32_t      d3d8_texture_last_upload_level(D3D8Object *o);
+
 void d3d8_resource_report(void);
 
 #endif /* D3D8_RESOURCE_H */

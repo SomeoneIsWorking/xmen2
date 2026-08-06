@@ -1,5 +1,6 @@
 /* See d3d8_surface.h. */
 #include "d3d8_surface.h"
+#include "d3d8_resource.h"
 #include "d3d8_types.h"
 
 #include "x86rt.h"
@@ -11,9 +12,11 @@
 
 #define D3DRTYPE_SURFACE 1
 
-static int g_count[4];
-static const char *const KIND[] = { "back buffer", "depth/stencil",
-                                    "render target", "system memory" };
+#define NKIND 5
+static int g_count[NKIND];
+static const char *const KIND[NKIND] = { "back buffer", "depth/stencil",
+                                         "render target", "system memory",
+                                         "texture level" };
 
 uint32_t d3d8_format_bpp(uint32_t format)
 {
@@ -67,6 +70,7 @@ D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
     s->pool = pool;
     s->bytes_per_pixel = bpp;
     s->pitch = w * bpp;
+    s->size = s->pitch * h;
 
     if (kind == D3D8_SURF_SYSTEM) {
         if (!bpp) {
@@ -92,6 +96,54 @@ D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
     }
     g_count[kind]++;
     return d3d8_object_new(D3D8_IF_IDirect3DSurface8, s);
+}
+
+D3D8Object *d3d8_surface_new_texlevel(D3D8Object *owner, uint32_t level,
+                                      uint32_t w, uint32_t h, uint32_t format,
+                                      uint32_t usage, uint32_t pool,
+                                      uint32_t pitch, uint32_t size,
+                                      uint32_t guest_pixels)
+{
+    D3D8Surface *s;
+    D3D8Object *o;
+
+    if (!owner || !guest_pixels || !pitch || !size) {
+        fprintf(stderr, "d3d8: a texture level surface was asked for with no "
+                        "owner (%p), no storage (0x%08x), or no size "
+                        "(pitch %u, %u bytes). Refusing rather than making a "
+                        "surface whose Lock hands back nothing.\n",
+                (void *)owner, guest_pixels, pitch, size);
+        return NULL;
+    }
+    s = (D3D8Surface *)calloc(1, sizeof *s);
+    if (!s) { fprintf(stderr, "d3d8: out of memory\n"); abort(); }
+    s->kind = D3D8_SURF_TEXLEVEL;
+    s->width = w;
+    s->height = h;
+    s->format = format;
+    s->usage = usage;
+    s->pool = pool;
+    /* 0 for a block-compressed format, and that is the truth: there are no
+       bytes per pixel. Nothing on this path divides by it -- pitch and size
+       came from the texture, which knows the block arithmetic. */
+    s->bytes_per_pixel = d3d8_format_bpp(format);
+    s->pitch = pitch;
+    s->size = size;
+    s->owner = owner;
+    s->level = level;
+    s->guest_pixels = guest_pixels;
+    s->pixels = (unsigned char *)(uintptr_t)guest_pixels;
+    g_count[D3D8_SURF_TEXLEVEL]++;
+    o = d3d8_object_new(D3D8_IF_IDirect3DSurface8, s);
+    d3d8_object_set_owner(o, owner);
+    return o;
+}
+
+void d3d8_surface_storage_gone(D3D8Object *o)
+{
+    D3D8Surface *s = d3d8_surface_of(o);
+    s->guest_pixels = 0;
+    s->pixels = NULL;
 }
 
 /* ---- the interface ----------------------------------------------------- */
@@ -143,7 +195,7 @@ static void surf_GetDesc(D3D8Object *self, CPU *C)
     d[1] = D3DRTYPE_SURFACE;
     d[2] = s->usage;
     d[3] = s->pool;
-    d[4] = s->pitch * s->height;             /* Size */
+    d[4] = s->size;                          /* Size */
     d[5] = 0;                                /* D3DMULTISAMPLE_NONE */
     d[6] = s->width;
     d[7] = s->height;
@@ -157,7 +209,14 @@ static void surf_LockRect(D3D8Object *self, CPU *C)
     uint32_t rect = d3d8_arg(C, 1);
 
     if (!lr) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
-    if (s->kind != D3D8_SURF_SYSTEM) {
+    if (s->kind == D3D8_SURF_TEXLEVEL && !s->guest_pixels) {
+        fprintf(stderr, "d3d8: LockRect on level %u of a texture that has "
+                        "already been destroyed. Its staging block is gone, so "
+                        "there is nothing to hand back.\n", s->level);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    if (s->kind != D3D8_SURF_SYSTEM && s->kind != D3D8_SURF_TEXLEVEL) {
         /*
          * REFUSED, and this is the honest answer rather than a gap: the back
          * buffer and the depth surface live on the GPU, and handing back a
@@ -195,6 +254,12 @@ static void surf_UnlockRect(D3D8Object *self, CPU *C)
     if (!s->locked)
         fprintf(stderr, "d3d8: UnlockRect on a surface that was not locked\n");
     s->locked = 0;
+    /* A texture level is the only surface whose bytes have somewhere to go.
+       The unlock is the only moment the guest's writes are known to be
+       finished, so it is where the level is uploaded -- exactly as
+       IDirect3DTexture8::UnlockRect does, and through the same code. */
+    if (s->kind == D3D8_SURF_TEXLEVEL && s->owner)
+        d3d8_texture_level_unlocked(s->owner, s->level);
     d3d8_ret(C, D3D_OK);
 }
 
@@ -221,13 +286,13 @@ void d3d8_surface_install(void)
 void d3d8_surface_report(void)
 {
     int i, any = 0;
-    for (i = 0; i < 4; i++) any += g_count[i];
+    for (i = 0; i < NKIND; i++) any += g_count[i];
     if (!any) {
         printf("  d3d8: no surface was ever created.\n");
         return;
     }
     printf("  d3d8 surfaces:");
-    for (i = 0; i < 4; i++)
+    for (i = 0; i < NKIND; i++)
         if (g_count[i]) printf("  %d %s", g_count[i], KIND[i]);
     printf("\n");
 }

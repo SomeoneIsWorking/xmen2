@@ -210,6 +210,32 @@ int guest_heap_contains(uint32_t a, uint32_t *base, uint32_t *size)
     return 1;
 }
 
+/*
+ * Is this address inside a block that is still allocated?
+ *
+ * CONSERVATIVE in one direction on purpose: a block that was freed and handed
+ * out again for something else answers "live", so a caller using this to decide
+ * that a record is stale keeps it instead of dropping it. Keeping too much is
+ * recoverable; dropping a record that is still needed is not.
+ *
+ * Answers 0 for an address outside the arena, which is NOT the same as "dead" --
+ * ask guest_heap_contains first if the distinction matters.
+ */
+int guest_heap_addr_is_live(uint32_t a)
+{
+    uint32_t p = g_base, end = g_base + g_size;
+    if (!g_base || a < g_base || a >= end) return 0;
+    while (p + HDR <= end) {
+        volatile Blk *b = BLK(p);
+        uint32_t payload = p + HDR, next = payload + b->size;
+        if (b->magic != MAGIC_USED && b->magic != MAGIC_FREE) break;
+        if (a >= payload && a < next) return b->magic == MAGIC_USED;
+        if (next <= p) break;
+        p = next;
+    }
+    return 0;
+}
+
 void guest_heap_stats(uint32_t *used, uint32_t *free_, uint32_t *blocks)
 {
     uint32_t a = g_base, end = g_base + g_size;

@@ -29,7 +29,8 @@ typedef enum {
     D3D8_SURF_BACKBUFFER,      /* the swapchain image; owned by src/gpu */
     D3D8_SURF_DEPTHSTENCIL,    /* the device's automatic depth buffer */
     D3D8_SURF_RENDERTARGET,    /* an off-screen target the engine created */
-    D3D8_SURF_SYSTEM           /* plain host memory: CreateImageSurface */
+    D3D8_SURF_SYSTEM,          /* plain host memory: CreateImageSurface */
+    D3D8_SURF_TEXLEVEL         /* one mip level of a texture: GetSurfaceLevel */
 } D3D8SurfaceKind;
 
 typedef struct {
@@ -41,12 +42,40 @@ typedef struct {
     unsigned char  *pixels;        /* SYSTEM surfaces only; NULL otherwise */
     uint32_t        guest_pixels;  /* guest-addressable copy, for LockRect */
     uint32_t        pitch;
+    uint32_t        size;          /* bytes; NOT pitch*height for DXT */
     int             locked;
+    /* TEXLEVEL only: whose bytes these are, and which level of it. */
+    D3D8Object     *owner;
+    uint32_t        level;
 } D3D8Surface;
 
 void        d3d8_surface_install(void);
 D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
                              uint32_t format, uint32_t usage, uint32_t pool);
+
+/*
+ * A VIEW onto one mip level of a texture -- no storage of its own.
+ *
+ * `guest_pixels` is inside the texture's staging block, so a guest that locks
+ * this surface and writes through it is writing the texture, which is the whole
+ * point: a surface with its own buffer would take the writes and lose them.
+ * `pitch` and `size` are passed in rather than computed, because a block-
+ * compressed level has neither a bytes-per-pixel nor pitch*height, and only the
+ * texture knows its format's block arithmetic.
+ *
+ * The object is owned by `owner` (d3d8_object_set_owner), so its references are
+ * the texture's and the texture cannot be destroyed under it.
+ */
+D3D8Object *d3d8_surface_new_texlevel(D3D8Object *owner, uint32_t level,
+                                      uint32_t w, uint32_t h, uint32_t format,
+                                      uint32_t usage, uint32_t pool,
+                                      uint32_t pitch, uint32_t size,
+                                      uint32_t guest_pixels);
+
+/* The texture's staging block has been freed: a level surface that outlives it
+   must refuse a lock by name rather than hand back a dangling guest pointer. */
+void d3d8_surface_storage_gone(D3D8Object *o);
+
 D3D8Surface *d3d8_surface_of(D3D8Object *o);
 
 /* Bytes per pixel for a D3D8 format, or 0 if this host does not know it --

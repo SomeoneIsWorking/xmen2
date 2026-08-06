@@ -758,6 +758,80 @@ static void case_guest_heap(void)
     guest_free(c);
 }
 
+/*
+ * The setjmp table gives slots back -- and only the right ones.
+ *
+ * Both directions are checked, because a reclaimer that frees everything and a
+ * reclaimer that frees nothing both leave a table that "works" right up until
+ * it does not: the first loses a buffer the guest still jumps to, the second
+ * fills up and aborts sixteen resource loads in. Neither shows up in a run that
+ * takes one setjmp.
+ *
+ * Driven through x86_setjmp_buf itself, at the guest ABI: ESP points at the
+ * return address, and the jmp_buf address is the word above it. The host setjmp
+ * is deliberately NOT taken -- this tests the bookkeeping, and a jmp_buf nobody
+ * jumps to is never read.
+ */
+static void case_setjmp_table(void)
+{
+    uint32_t frame = guest_malloc(64), envs[4], stack_env;
+    CPU C;
+    int i, before, freed;
+
+    printf("  setjmp buffer table\n");
+    before = x86_setjmp_live();
+    for (i = 0; i < 4; i++) {
+        envs[i] = guest_malloc(64);
+        memset(&C, 0, sizeof C);
+        C.esp = frame;
+        WR32(frame, 0x00646b2cu);              /* the return address */
+        WR32(frame + 4u, envs[i]);             /* _setjmp3's jmp_buf */
+        x86_setjmp_buf(&C);
+    }
+    check("four buffers are held", (uint32_t)(x86_setjmp_live() - before), 4u);
+
+    /* The same buffer again is the same slot, not a fifth. */
+    memset(&C, 0, sizeof C);
+    C.esp = frame;
+    WR32(frame, 0x00646b2cu);
+    WR32(frame + 4u, envs[0]);
+    x86_setjmp_buf(&C);
+    check("the same jmp_buf reuses its slot",
+          (uint32_t)(x86_setjmp_live() - before), 4u);
+
+    /* Free two of the four objects. Only those two may be reclaimed: the
+       other two are still allocated and the guest may still jump to them. */
+    guest_free(envs[1]);
+    guest_free(envs[3]);
+    freed = x86_setjmp_reclaim();
+    check("reclaims exactly the freed buffers", (uint32_t)freed, 2u);
+    check("keeps the ones still allocated",
+          (uint32_t)(x86_setjmp_live() - before), 2u);
+
+    /*
+     * A jmp_buf OUTSIDE the heap is never reclaimed, and this check exists
+     * because the opposite rule was tried and the game refuted it: "below the
+     * current ESP means the frame was popped" freed the buffer FUN_006460d1
+     * took, and the guest then longjmp'd to it. Nothing outside the arena is
+     * provably dead, so nothing outside the arena may be dropped.
+     */
+    stack_env = SCRATCH + 0x100u;
+    memset(&C, 0, sizeof C);
+    C.esp = frame;
+    WR32(frame, 0x00646b2cu);
+    WR32(frame + 4u, stack_env);
+    x86_setjmp_buf(&C);
+    check("a non-heap buffer is never reclaimed",
+          (uint32_t)x86_setjmp_reclaim(), 0u);
+    check("and is still held afterwards",
+          (uint32_t)(x86_setjmp_live() - before), 3u);
+
+    guest_free(envs[0]);
+    guest_free(envs[2]);
+    x86_setjmp_reclaim();
+    guest_free(frame);
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -804,6 +878,7 @@ static int run_battery(void)
     case_arkinit();
     case_import_abi();
     case_guest_heap();
+    case_setjmp_table();
     case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"

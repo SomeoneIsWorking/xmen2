@@ -15,6 +15,7 @@
  */
 #include "d3d8_resource.h"
 #include "d3d8_com.h"
+#include "d3d8_surface.h"
 #include "d3d8_types.h"
 
 #include "gpu_draw.h"
@@ -45,6 +46,13 @@ typedef struct {
     uint32_t   guest_size;
     uint32_t   locked_level;
     int        locked;
+    /* textures: the surface handed out for each level, made on first ask and
+       then kept, because D3D8's level surfaces are persistent children -- a
+       fresh object per call would let the engine compare two pointers to the
+       same level and find them different. */
+    D3D8Object **level_surface;
+    unsigned long uploads;
+    uint32_t   last_upload_level;
 } Resource;
 
 static unsigned long g_textures, g_vbuffers, g_ibuffers;
@@ -160,6 +168,15 @@ D3D8Object *d3d8_texture_new(uint32_t w, uint32_t h, uint32_t levels,
         free(r);
         return NULL;
     }
+    r->level_surface = (D3D8Object **)calloc(levels, sizeof *r->level_surface);
+    if (!r->level_surface) {
+        fprintf(stderr, "d3d8: out of memory for a texture's %u level "
+                        "surface slot(s)\n", levels);
+        guest_free(r->guest_bytes);
+        gpu_texture_destroy(r->gtex);
+        free(r);
+        return NULL;
+    }
     memset((void *)(uintptr_t)r->guest_bytes, 0, total);
     g_textures++;
     return d3d8_object_new(D3D8_IF_IDirect3DTexture8, r);
@@ -237,6 +254,14 @@ static void res_AddRef(D3D8Object *self, CPU *C)
 static void res_destroyed(D3D8Object *o)
 {
     Resource *r = res_of(o);
+    uint32_t i;
+    /* The level surfaces are views into guest_bytes, which is about to go
+       back to the arena. Telling them so is what turns a later lock into a
+       named refusal instead of a write into whatever was allocated next.
+       They are not freed, for the same reason d3d8_com.c retires rather than
+       frees an object: a stale guest pointer must stay diagnosable. */
+    for (i = 0; r->level_surface && i < r->levels; i++)
+        if (r->level_surface[i]) d3d8_surface_storage_gone(r->level_surface[i]);
     if (r->gtex) gpu_texture_destroy(r->gtex);
     if (r->gbuf) gpu_buffer_destroy(r->gbuf);
     if (r->guest_bytes) guest_free(r->guest_bytes);
@@ -326,25 +351,100 @@ static void tex_LockRect(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
-static void tex_UnlockRect(D3D8Object *self, CPU *C)
+/*
+ * IDirect3DTexture8::GetSurfaceLevel -- the level as an IDirect3DSurface8.
+ *
+ * The engine asks for this before it fills a texture: igDx8 loads image data
+ * through a surface, not through the texture's own LockRect. So the surface
+ * MUST be a view onto the texture's bytes -- a surface with a buffer of its own
+ * would accept every write and upload none of them, and the texture would
+ * sample as whatever it was cleared to, which reads as an art bug.
+ *
+ * Returned with a reference, as COM requires, and that reference is the
+ * TEXTURE's (see d3d8_object_set_owner): the level cannot outlive the storage
+ * it points into.
+ */
+static void tex_GetSurfaceLevel(D3D8Object *self, CPU *C)
 {
     Resource *r = res_of(self);
     uint32_t level = d3d8_arg(C, 0);
+    uint32_t out = d3d8_arg(C, 1);
     uint32_t lw, lh;
 
-    if (!r->locked) {
-        fprintf(stderr, "d3d8: UnlockRect on a texture that was not locked\n");
+    if (!out) {
+        fprintf(stderr, "d3d8: GetSurfaceLevel(%u) was given nowhere to put "
+                        "the surface.\n", level);
         d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    if (level >= r->levels) {
+        fprintf(stderr, "d3d8: GetSurfaceLevel(%u) on a texture with %u "
+                        "level(s).\n", level, r->levels);
+        WR32(out, 0);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    if (!r->level_surface[level]) {
+        lw = r->w >> level; if (!lw) lw = 1;
+        lh = r->h >> level; if (!lh) lh = 1;
+        r->level_surface[level] = d3d8_surface_new_texlevel(
+            self, level, lw, lh, r->format, r->usage, r->pool,
+            row_pitch(r->format, lw), level_bytes(r->format, lw, lh),
+            r->guest_bytes + level_offset(r, level));
+        if (!r->level_surface[level]) {
+            WR32(out, 0);
+            d3d8_ret(C, D3DERR_INVALIDCALL);
+            return;
+        }
+    }
+    d3d8_object_addref(self);            /* the one the caller will Release */
+    WR32(out, d3d8_object_guest(r->level_surface[level]));
+    d3d8_ret(C, D3D_OK);
+}
+
+void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t level)
+{
+    Resource *r = res_of(tex);
+    uint32_t lw, lh;
+
+    if (level >= r->levels) {
+        fprintf(stderr, "d3d8: an unlock of texture level %u, which has only "
+                        "%u level(s). Nothing was uploaded.\n",
+                level, r->levels);
         return;
     }
     lw = r->w >> level; if (!lw) lw = 1;
     lh = r->h >> level; if (!lh) lh = 1;
     /* The unlock is the only moment the guest's writes are known to be
        finished, so it is where the upload happens. */
-    gpu_texture_upload(r->gtex, level,
-                       (const void *)(uintptr_t)(r->guest_bytes +
-                                                 level_offset(r, level)),
-                       level_bytes(r->format, lw, lh));
+    if (!gpu_texture_upload(r->gtex, level,
+                            (const void *)(uintptr_t)(r->guest_bytes +
+                                                      level_offset(r, level)),
+                            level_bytes(r->format, lw, lh))) {
+        fprintf(stderr, "d3d8: the backend REFUSED the upload of texture level "
+                        "%u (%ux%u). That level will sample as whatever it held "
+                        "before.\n", level, lw, lh);
+        return;
+    }
+    r->uploads++;
+    r->last_upload_level = level;
+}
+
+unsigned long d3d8_texture_uploads(D3D8Object *o) { return res_of(o)->uploads; }
+uint32_t d3d8_texture_last_upload_level(D3D8Object *o)
+{ return res_of(o)->last_upload_level; }
+
+static void tex_UnlockRect(D3D8Object *self, CPU *C)
+{
+    Resource *r = res_of(self);
+    uint32_t level = d3d8_arg(C, 0);
+
+    if (!r->locked) {
+        fprintf(stderr, "d3d8: UnlockRect on a texture that was not locked\n");
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    d3d8_texture_level_unlocked(self, level);
     r->locked = 0;
     d3d8_ret(C, D3D_OK);
 }
@@ -358,7 +458,7 @@ static const D3D8MethodFn g_tex_impl[] = {
     res_SetPriority, res_GetPriority, res_PreLoad, tex_GetType,
     tex_SetLOD, tex_GetLOD, tex_GetLevelCount,
     tex_GetLevelDesc,
-    NULL,                                   /* 15 GetSurfaceLevel */
+    tex_GetSurfaceLevel,
     tex_LockRect, tex_UnlockRect, tex_AddDirtyRect
 };
 
