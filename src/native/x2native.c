@@ -29,6 +29,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <ucontext.h>
+#include <unistd.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
@@ -216,6 +217,48 @@ const char *x86_poison_name(uint32_t addr, const char **mod)
     return poison_name(addr, mod);
 }
 
+/*
+ * A run that has to be KILLED, reported.
+ *
+ * It is the one failure mode with nothing to read afterwards: a crash names a
+ * body, an abort names a symbol, and a run that never returns leaves a log
+ * that stops mid-sentence. tools/native_discover.sh sat on one round for fifty
+ * minutes and then reported CONVERGENCE, because a killed run and a run that
+ * found nothing look identical from outside.
+ *
+ * ASYNC-SIGNAL-SAFE, the hard way, because the obvious version did not work:
+ * fprintf here deadlocks whenever the interrupted code happens to hold the
+ * stdio lock, and it does often enough that the report was being cut off
+ * halfway through its own first line -- a hang diagnostic that hangs. So the
+ * message goes out with write(2), which cannot block on a lock, and the ring
+ * dump (which uses stdio, and resolves a name per entry against 16k functions)
+ * is BEST EFFORT behind an alarm: if it deadlocks or simply takes too long,
+ * SIGALRM ends the process and the message is already out.
+ */
+static void interrupted(int sig)
+{
+    static const char msg[] =
+        "\n*** x2native was INTERRUPTED -- it did not stop on its own.\n"
+        "    Nothing below is a failure the run reported; this is where it\n"
+        "    HAPPENED TO BE. A run that has to be killed is usually spinning:\n"
+        "    read the ring below for a repeating pair of bodies.\n"
+        "    (The ring is best-effort from a signal handler and may be cut\n"
+        "    short; everything above this line is complete.)\n";
+    ssize_t ignored;
+    (void)sig;
+    /* Back to the default first: a second signal must be able to kill this, or
+       a report that itself hangs makes the process unkillable by the very
+       timeout that was trying to bound it. */
+    signal(SIGTERM, SIG_DFL);
+    signal(SIGINT, SIG_DFL);
+    ignored = write(2, msg, sizeof msg - 1);
+    (void)ignored;
+    signal(SIGALRM, SIG_DFL);
+    alarm(5);
+    x86_diag_dump();
+    _exit(4);
+}
+
 static int poison_init(void)
 {
     struct sigaction sa;
@@ -244,7 +287,25 @@ static int poison_init(void)
     memset(&sa, 0, sizeof sa);
     sa.sa_sigaction = poison_sigsegv;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
-    return sigaction(SIGSEGV, &sa, NULL);
+    if (sigaction(SIGSEGV, &sa, NULL) != 0) return -1;
+    /*
+     * A HANG had no report at all, and that is the one failure mode with
+     * nothing to read afterwards: a crash names a body, an abort names a
+     * symbol, and a run that simply never returns produces a log that stops
+     * mid-sentence. tools/native_discover.sh sat on one round for fifty
+     * minutes and then reported CONVERGENCE, because a killed run and a run
+     * that found nothing look identical from outside.
+     *
+     * So SIGTERM and SIGINT dump the boundary ring on the way out -- the same
+     * thing a fault prints, which is what says WHERE the run was spinning.
+     * timeout(1) sends SIGTERM, so this is what the loop now gets.
+     */
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = interrupted;
+    sa.sa_flags = 0;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT, &sa, NULL);
+    return 0;
 }
 
 /* Each module's base, defined by its generated native file. The host maps the

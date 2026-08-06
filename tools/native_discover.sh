@@ -97,7 +97,14 @@ while [ "$round" -lt "$MAX" ]; do
     # --run by default: the exe's own CRT startup has constructor tables too,
     # and stopping at module init would leave them undiscovered. RUN=0 limits
     # the loop to module initialisation.
-    "$BIN" --no-window ${RUN:+--run} ${X2_ARGS:-} >"$SEEDS.raw" 2>&1
+    # BOUNDED. The run used to be unbounded, and once the game got far enough
+    # to reach its own main loop it simply never returned: the loop sat on one
+    # round for fifty minutes, and when that run was killed by hand the round
+    # parsed no seeds and reported CONVERGENCE. "The run found nothing" and
+    # "the run never finished" have to be different answers.
+    timeout -k 10 "${RUN_TIMEOUT:-300}" \
+        "$BIN" --no-window ${RUN:+--run} ${X2_ARGS:-} >"$SEEDS.raw" 2>&1
+    rc=$?
     awk '/^    [A-Za-z0-9_]+\.(dll|exe) +0x/ {print $1, $2}' "$SEEDS.raw" \
         | sort -u > "$SEEDS"
 
@@ -109,13 +116,24 @@ while [ "$round" -lt "$MAX" ]; do
             echo "  parsed -- the report format changed and this loop is BLIND." >&2
             exit 1
         fi
+        # 124 is timeout(1); 137 is a SIGKILL from anywhere. Either way this
+        # round did not finish looking, so it cannot report that it looked.
+        if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ] || [ "$rc" -eq 143 ]; then
+            echo "native_discover: round $round did NOT converge -- the run was" >&2
+            echo "  still going after ${RUN_TIMEOUT:-300}s and was killed (exit $rc)." >&2
+            echo "  It found no missing targets UP TO THAT POINT, which is not the" >&2
+            echo "  same as there being none. Raise RUN_TIMEOUT if the run is" >&2
+            echo "  legitimately long, or find out what it is spinning on:" >&2
+            grep -v '^\[TRACE\]' "$SEEDS.raw" | tail -5 >&2
+            exit 2
+        fi
         echo "native_discover: round $round found no missing constructor targets"
         echo "  on the path taken by: $BIN --no-window ${RUN:+--run} ${X2_ARGS:-}"
         echo "  That is the blind spot to keep in mind -- targets reachable only"
         echo "  under OTHER arguments were never executed and so never reported."
         echo "  Whatever stops the run now is not a function static analysis"
-        echo "  missed. Last output:"
-        tail -3 "$SEEDS.raw"
+        echo "  missed -- the run ended by itself (exit $rc). Last output:"
+        grep -v '^\[TRACE\]' "$SEEDS.raw" | tail -3
         exit 0
     fi
 
