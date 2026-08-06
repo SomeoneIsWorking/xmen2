@@ -1,0 +1,47 @@
+{
+  "_comment": [
+    "Native overrides: recompiled guest functions replaced by host C.",
+    "",
+    "This is the ONE place an override is declared. tools/gen_overrides.py",
+    "turns it into both halves -- the --isolate list that puts each function in",
+    "its own translation unit, and the -Wl,--wrap flags that redirect its call",
+    "sites -- because ld's --wrap only intercepts calls that cross an object",
+    "file. An override whose function shares a chunk with its caller is bound at",
+    "compile time: it links, reports nothing, and never fires. The Xbox side",
+    "lost two call sites and an entire observer to exactly that, which is why",
+    "the two halves are generated from one file rather than maintained by hand.",
+    "",
+    "The recompiled body is NOT deleted. --wrap keeps it linked and callable as",
+    "__real_<name>, so an override can defer to the original and the two stay",
+    "diffable.",
+    "",
+    "Each entry: module, ep (hex string), symbol (the emitted C name), why."
+  ],
+  "overrides": [
+    {
+      "module": "XMen2",
+      "ep": "0x00617480",
+      "symbol": "fn_XMen2_00617480",
+      "why": [
+        "The game's DirectX 9.0c presence check (issue #18).",
+        "",
+        "It CoCreateInstances a version-reporter COM object and, when that",
+        "fails, shows 'DirectX not found' and quits. On this host the failure",
+        "is truthful: there is no DirectX, no COM registry, and nothing",
+        "implements that interface.",
+        "",
+        "It is overridden rather than satisfied because the question is not",
+        "one this port can answer honestly in the affirmative and does not",
+        "need to: the renderer is being written natively, so DirectX's",
+        "presence is irrelevant to whether the game can draw. The two",
+        "alternatives were both worse. Setting Settings\\DXChecked=1 makes the",
+        "game cache a check that never passed and walk into LoadLibraryA of",
+        "d3d9.dll. Returning a fabricated S_OK from CoCreateInstance hands the",
+        "game an interface pointer to a vtable that does not exist.",
+        "",
+        "The override reports the substitution once, so a run never silently",
+        "appears to have passed a check that was actually skipped."
+      ]
+    }
+  ]
+}

@@ -1172,6 +1172,10 @@ def cmd_report(argv):
 def cmd_emit(argv):
     """Emit the recompiled bodies.
 
+    `--isolate <file>` puts each entry point listed in <file> (hex, one per
+    line) into a translation unit of its own, which is what makes a
+    `-Wl,--wrap` native override actually fire.
+
     `--split N` writes N functions per translation unit instead of one giant
     file. XMen2.exe is 13,426 functions -- 72 MB and 2.05 million lines as a
     single unit, which cc1 chews through at 3.3 GB resident and cannot
@@ -1183,6 +1187,23 @@ def cmd_emit(argv):
     d = load(argv[0])
     set_fn_prefix(d["program"])
     out = argv[1]
+    isolate = set()
+    if "--isolate" in argv:
+        ipath = argv[argv.index("--isolate") + 1]
+        try:
+            with open(ipath) as f:
+                for line in f:
+                    line = line.split("#", 1)[0].strip()
+                    if line:
+                        isolate.add(int(line, 16))
+        except IOError as e:
+            raise Unsupported("--isolate %s: %s" % (ipath, e))
+        if not isolate:
+            raise Unsupported(
+                "--isolate %s lists no entry points. A native override only "
+                "fires if its function is in its own translation unit, so an "
+                "empty list would silently link a binary with every override "
+                "absent -- refusing rather than emitting one." % ipath)
     split = 0
     if "--split" in argv:
         split = int(argv[argv.index("--split") + 1])
@@ -1210,6 +1231,7 @@ def cmd_emit(argv):
     all_eps = set(f["ep"] for f in fns)
     done = skipped = 0
     bodies = []                   # one list of lines per function
+    body_eps = []                 # the ep of bodies[i], for --isolate
     for fn in fns:
         body, why = translate(fn)
         b = []
@@ -1259,6 +1281,7 @@ def cmd_emit(argv):
             b.append("")
             done += 1
         bodies.append(b)
+        body_eps.append(fn["ep"])
         lines.extend(b)
     if not split:
         with open(out, "w") as f:
@@ -1275,11 +1298,43 @@ def cmd_emit(argv):
     head = lines[:hdr_end]
     stem = out[:-2] if out.endswith(".c") else out
     nchunk = 0
-    for start in range(0, len(bodies), split):
+
+    # --isolate: each named function goes in a file of its OWN.
+    #
+    # ld's --wrap only redirects calls that CROSS an object file. A function
+    # sharing a chunk with its caller is bound at compile time, so the override
+    # links fine, reports nothing, and never fires -- the Xbox side lost two
+    # call sites and a whole observer to exactly this (xbox issue #4). Both
+    # halves of an override therefore come from one file (src/native/overrides.json)
+    # via tools/gen_overrides.py, so they cannot drift apart by hand.
+    iso_done = set()
+    rest = []
+    for b, ep in zip(bodies, body_eps):
+        if ep in isolate:
+            nchunk += 1
+            with open("%s_%03d.c" % (stem, nchunk - 1), "w") as f:
+                f.write("\n".join(head) + "\n")
+                f.write("\n".join(b) + "\n")
+            iso_done.add(ep)
+        else:
+            rest.append(b)
+    missing = isolate - iso_done
+    if missing:
+        raise Unsupported(
+            "--isolate named %d entry point(s) this module does not emit: %s. "
+            "An override on a function that was never emitted cannot fire, and "
+            "the link would succeed anyway."
+            % (len(missing), ", ".join("0x%08x" % a for a in sorted(missing))))
+    if iso_done:
+        print("isolated %d function(s) into their own translation unit for "
+              "native overrides: %s"
+              % (len(iso_done), ", ".join("0x%08x" % a for a in sorted(iso_done))))
+
+    for start in range(0, len(rest), split):
         nchunk += 1
         with open("%s_%03d.c" % (stem, nchunk - 1), "w") as f:
             f.write("\n".join(head) + "\n")
-            for b in bodies[start:start + split]:
+            for b in rest[start:start + split]:
                 f.write("\n".join(b) + "\n")
     # The un-split name must not be left behind holding a stale full copy: the
     # build globs, and it would compile both and collide on every symbol.
