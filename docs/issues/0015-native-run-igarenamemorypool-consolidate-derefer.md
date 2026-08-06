@@ -114,7 +114,51 @@ against a memory dump, not a comparison with the original. If the shipped DLL
 produces the same `ms->top` and the same 0x203 header, the defect is in neither
 and `consolidate` is being reached in a state the stock build never gets into.
 
+## Correction and current standing (2026-08-06, later)
+
+Two things changed after the trace build, and one of them retracts a guess.
+
+**The boundary ring was misattributing every per-body entry (I026).** Its
+enter/exit hook records the LINKED entry point, while host-side crossings record
+a MAPPED address, and the dump decoded both as mapped -- so libIGCore functions
+came out labelled `libIGUtils.dll!0x1003c420`, and others as "no registered
+module". Fixed by recording the module base alongside the ep. After the fix
+every line resolves to libIGCore with a plausible name and nothing is
+unattributed. Anything read off this ring before the fix is not evidence.
+
+**Retracted:** the guess that `[ESP+0x10]` in `igArena_malloc` (the encoded
+chunk size) and `EBX` (the amount `ms->top` advances) disagreed within one
+carve. The corrected ring shows `consolidate` runs EARLY in `igArena_malloc`,
+before the carve code at 0x100572d3, and `igArena_malloc` has been entered 3
+times. So the malformed chunk was created by an EARLIER call, and this call's
+`[ESP+0x10]` is 0x108 (264) -- unrelated to the 24-byte chunk. The two-quantity
+story was a coincidence of arithmetic, not a measurement.
+
+`igArena_malloc`'s live frame at the fault, for the record (entered with
+esp 0x700ffe60; prologue `SUB ESP,0x20` plus four pushes):
+
+    esp+0x10  0x00000108   this call's request size (264)
+    esp+0x18  0x71002328   the malloc state
+    esp+0x1c  0x00a8001c   the real top chunk
+    esp+0x2c  0x1005d7e2   return address
+    esp+0x30  0x1005d5a4
+
+What still stands from C090: `ms->top` is 0x00a8002c while the arena's actual
+top chunk header is at 0x00a8001c, and the chunk walk from 0x00a80004 (span 24)
+lands on 0x00a8001c, so the walk and the heap agree and `ms->top` does not.
+
 ## Next
+
+Unchanged in priority, and the retraction is the argument for it: hand-tracing
+this allocator has now produced one correct localisation and one wrong story.
+`tests/difftest.c` against the shipped `libIGCore.dll` is the step that does not
+depend on my reading. Failing that, catch the allocation that CREATES the
+24-byte chunk -- it is an earlier `igArena_malloc` call, and the reached set can
+count calls but not record arguments, so this needs an argument watch on
+`igArena_malloc` (the hosted build has one, `X2_WATCH`; the native build does
+not).
+
+## Earlier next (superseded)
 
 1. **`tests/difftest.c` against the shipped `libIGCore.dll`** for
    `igArenaInitState` and the malloc path. It already does forced relocation and

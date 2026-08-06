@@ -320,11 +320,15 @@ void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned 
  * dispatcher. That is most of them -- which is why a stack imbalance in an
  * ordinary function left no trace at all. This makes every entry and exit
  * visible, at the cost of a ring write per call, so it is a build option
- * rather than the default. */
-void x86_trace_enter(uint32_t ep, const CPU *C);
-void x86_trace_exit(uint32_t ep, const CPU *C);
-# define X86_ENTER_FN(a) x86_trace_enter((a), C)
-# define X86_EXIT_FN(a)  x86_trace_exit((a), C)
+ * rather than the default.
+ *
+ * The hook is passed the module's own base as well as the entry point, because
+ * generated code knows only its LINKED ep and the ring has to be able to tell
+ * which module that ep belongs to -- see the ring in x86rt_native.c. */
+void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C);
+void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C);
+# define X86_ENTER_FN(a) x86_trace_enter((a), X86_IMGBASE, C)
+# define X86_EXIT_FN(a)  x86_trace_exit((a), X86_IMGBASE, C)
 # define x86_dump_history() ((void)0)
 #elif defined(X86_NATIVE_REACHED)
 /* Native build, recording WHICH bodies were ever entered.

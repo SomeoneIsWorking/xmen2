@@ -16,7 +16,8 @@
 static X86Module *g_head;
 
 static int thunk_call(uint32_t addr, CPU *C);
-static void ring_note(const char *what, uint32_t addr, uint32_t in, uint32_t out);
+static void ring_note(const char *what, uint32_t addr, uint32_t base,
+                      uint32_t in, uint32_t out);
 static unsigned long g_return_to_calls;
 extern const CPU *g_cpu_current;
 
@@ -75,7 +76,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
         uint32_t in = C->esp;
         g_cpu_current = C;
         f->fn(C);
-        ring_note("guest", addr, in, C->esp);
+        ring_note("guest", addr, 0, in, C->esp);
     }
     return 1;
 }
@@ -197,7 +198,7 @@ static int thunk_call(uint32_t addr, CPU *C)
     if ((int)i >= g_nthunk || !g_thunk[i].stub) return 0;
     in = C->esp;
     g_thunk[i].stub(C);
-    ring_note(g_thunk[i].sym, addr, in, C->esp);
+    ring_note(g_thunk[i].sym, addr, 0, in, C->esp);
     return 1;
 }
 
@@ -221,9 +222,15 @@ static int thunk_call(uint32_t addr, CPU *C)
 #else
 #define RING 96
 #endif
+/* `base` distinguishes the two address spaces this ring records. Host-side
+   crossings note a MAPPED address (base 0); the per-body trace hook is called
+   from generated code, which only knows its own LINKED entry point, so it also
+   notes the module's runtime base. Without that the dump decoded a linked ep as
+   a mapped one and confidently attributed libIGCore functions to libIGUtils --
+   an instrument reporting the wrong module is worse than one reporting none. */
 static struct {
     const char *what;
-    uint32_t    addr, esp_in, esp_out;
+    uint32_t    addr, base, esp_in, esp_out;
     unsigned    repeat;
 } g_ring[RING];
 static unsigned g_ring_n;
@@ -237,13 +244,14 @@ static unsigned g_ring_n;
  * out. Capping the boring case rather than the interesting one is the whole
  * point of a ring this size.
  */
-static void ring_note(const char *what, uint32_t addr, uint32_t in, uint32_t out)
+static void ring_note(const char *what, uint32_t addr, uint32_t base,
+                      uint32_t in, uint32_t out)
 {
     unsigned i;
     if (g_ring_n) {
         i = (g_ring_n - 1) % RING;
-        if (g_ring[i].addr == addr && g_ring[i].esp_in == in
-            && g_ring[i].esp_out == out) {
+        if (g_ring[i].addr == addr && g_ring[i].base == base
+            && g_ring[i].esp_in == in && g_ring[i].esp_out == out) {
             g_ring[i].repeat++;
             return;
         }
@@ -251,6 +259,7 @@ static void ring_note(const char *what, uint32_t addr, uint32_t in, uint32_t out
     i = g_ring_n++ % RING;
     g_ring[i].what = what;
     g_ring[i].addr = addr;
+    g_ring[i].base = base;
     g_ring[i].esp_in = in;
     g_ring[i].esp_out = out;
     g_ring[i].repeat = 0;
@@ -266,14 +275,14 @@ static void ring_note(const char *what, uint32_t addr, uint32_t in, uint32_t out
  * and it is invisible without it: an ordinary guest-to-guest call is a direct
  * C call and crosses no boundary at all.
  */
-void x86_trace_enter(uint32_t ep, const CPU *C)
+void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
 {
-    ring_note("enter", ep, C->esp, C->esp);
+    ring_note("enter", ep, base, C->esp, C->esp);
 }
 
-void x86_trace_exit(uint32_t ep, const CPU *C)
+void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
 {
-    ring_note("exit", ep, C->esp, C->esp);
+    ring_note("exit", ep, base, C->esp, C->esp);
 }
 #endif
 
@@ -517,14 +526,27 @@ void x86_ring_dump(void)
            address it corresponds to, and its name when one is known -- without
            this the reader has to redo the relocation arithmetic by hand for
            every line, which is how a 96-line ring stayed unread. */
-        X86Module *m = x86_module_for(a);
-        const char *nm = x86_native_name_at(a);   /* keyed on the MAPPED addr */
+        uint32_t b = g_ring[k].base;
+        X86Module *m = NULL;
+        uint32_t guest = a;
+        const char *nm = NULL;
+        if (b) {
+            /* `a` is a LINKED entry point in the module whose runtime base is
+               `b`. Resolve by base, never by treating the ep as an address. */
+            for (m = x86_modules(); m; m = m->next) if (*m->base == b) break;
+            nm = m ? x86_native_name_at(b + (a - m->preferred)) : NULL;
+        } else {
+            m = x86_module_for(a);
+            guest = m ? m->preferred + (a - *m->base) : a;
+            nm = x86_native_name_at(a);
+        }
         fprintf(stderr, "[TRACE]   %-22s esp %08x -> %08x  (%+d)  ",
                 g_ring[k].what, g_ring[k].esp_in, g_ring[k].esp_out,
                 (int)(g_ring[k].esp_out - g_ring[k].esp_in));
         if (m)
-            fprintf(stderr, "%s!0x%08x %s", m->name,
-                    m->preferred + (a - *m->base), nm ? nm : "(unnamed)");
+            fprintf(stderr, "%s!0x%08x %s", m->name, guest, nm ? nm : "(unnamed)");
+        else if (b)
+            fprintf(stderr, "0x%08x (linked ep; no module has base 0x%08x)", a, b);
         else
             fprintf(stderr, "0x%08x (no registered module)", a);
         if (g_ring[k].repeat) fprintf(stderr, "  x%u identical", g_ring[k].repeat + 1);
@@ -610,7 +632,7 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
 {
     const char *nm;
     g_return_to_calls++;
-    ring_note("RET-to", target, C->esp, C->esp);
+    ring_note("RET-to", target, 0, C->esp, C->esp);
     if (x86_native_call_at(target, C)) return;
     nm = x86_native_name_at(fn_ep);
     fprintf(stderr, "x86_return_to: 0x%08x is not a function entry -- a RET "
@@ -718,7 +740,7 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
        target, it is the loop. Report it instead of taking it. */
     if (x86_is_thunk(target)) x86_missing_import(mod, sym);
     if (x86_native_call_at(target, C)) {
-        ring_note(sym, slot_va, esp_in, C->esp);
+        ring_note(sym, slot_va, 0, esp_in, C->esp);
         return;
     }
     fprintf(stderr, "x86_import_call: %s!%s\n"
