@@ -564,6 +564,8 @@ void imp_KERNEL32_LoadLibraryA(CPU *C);
 void imp_KERNEL32_GetProcAddress(CPU *C);
 void imp_USER32_MapVirtualKeyA(CPU *C);
 void imp_DINPUT8_DirectInput8Create(CPU *C);
+void imp_MSVCR71___RTDynamicCast(CPU *C);
+void imp_MSVCR71_qsort(CPU *C);
 void imp_KERNEL32_MultiByteToWideChar(CPU *C);
 void imp_MSVCRT_malloc(CPU *C);
 void imp_MSVCRT_free(CPU *C);
@@ -1014,6 +1016,170 @@ static void case_dinput(void)
     guest_free(guid); guest_free(out); guest_free(df); guest_free(state);
 }
 
+/*
+ * dynamic_cast, against an RTTI graph built here in guest memory.
+ *
+ * The walker cannot be checked against the game -- there is no oracle for
+ * "which base did it find" -- so the graph is constructed with a KNOWN answer
+ * and the three outcomes that must differ are all exercised: a cast that
+ * succeeds at a non-zero offset (the one a "return inptr unchanged" stub would
+ * pass), a cast to a type that is not a base (which must be NULL, not the
+ * nearest match), and a cast on a NULL pointer.
+ *
+ * Layout, MSVC 32-bit:
+ *   object   { vftable }              and *(vftable-4) is the locator
+ *   locator  { sig, offset, cdOffset, pTypeDescriptor, pClassDescriptor }
+ *   chd      { sig, attributes, numBaseClasses, pBaseClassArray }
+ *   bcd      { pTypeDescriptor, numContainedBases, mdisp, pdisp, vdisp, attr }
+ *   typedesc { pVFTable, spare, name... }
+ */
+static uint32_t rtti_typedesc(const char *name)
+{
+    uint32_t t = guest_malloc(8u + (uint32_t)strlen(name) + 1u);
+    WR32(t, 0);
+    WR32(t + 4u, 0);
+    strcpy((char *)(uintptr_t)(t + 8u), name);
+    return t;
+}
+
+static uint32_t rtti_bcd(uint32_t td, int32_t mdisp)
+{
+    uint32_t b = guest_malloc(24);
+    WR32(b +  0u, td);
+    WR32(b +  4u, 0);
+    WR32(b +  8u, (uint32_t)mdisp);
+    WR32(b + 12u, 0xFFFFFFFFu);          /* pdisp = -1: not a virtual base */
+    WR32(b + 16u, 0);
+    WR32(b + 20u, 0);
+    return b;
+}
+
+static void case_dynamic_cast(void)
+{
+    uint32_t td_derived = rtti_typedesc(".?AVDerived@@");
+    uint32_t td_base    = rtti_typedesc(".?AVBase@@");
+    uint32_t td_other   = rtti_typedesc(".?AVOther@@");
+    uint32_t arr = guest_malloc(8), chd = guest_malloc(16);
+    uint32_t col = guest_malloc(20), vft = guest_malloc(16), obj = guest_malloc(8);
+    uint32_t args[5];
+    CPU C;
+
+    printf("  dynamic_cast (RTTI walk)\n");
+    WR32(arr + 0u, rtti_bcd(td_derived, 0));
+    WR32(arr + 4u, rtti_bcd(td_base, 8));      /* Base sits 8 bytes in */
+    WR32(chd +  0u, 0); WR32(chd + 4u, 0);
+    WR32(chd +  8u, 2); WR32(chd + 12u, arr);
+    WR32(col +  0u, 0);
+    WR32(col +  4u, 0);                        /* this vftable is at offset 0 */
+    WR32(col +  8u, 0);                        /* cdOffset */
+    WR32(col + 12u, td_derived);
+    WR32(col + 16u, chd);
+    /* The locator sits at vftable-4, so the object points PAST it. */
+    WR32(vft, col);
+    WR32(obj, vft + 4u);
+
+    args[0] = obj; args[1] = 0; args[2] = td_derived;
+    args[3] = td_base; args[4] = 0;
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x500u;
+    WR32(C.esp, 0);
+    { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
+    imp_MSVCR71___RTDynamicCast(&C);
+    check("a base 8 bytes in is found at +8", C.eax, obj + 8u);
+
+    args[3] = td_other;
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x500u;
+    WR32(C.esp, 0);
+    { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
+    imp_MSVCR71___RTDynamicCast(&C);
+    check("a type that is not a base gives NULL", C.eax, 0u);
+
+    args[0] = 0; args[3] = td_base;
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x500u;
+    WR32(C.esp, 0);
+    { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
+    imp_MSVCR71___RTDynamicCast(&C);
+    check("a NULL pointer casts to NULL", C.eax, 0u);
+
+    /* The cross-module case: a DIFFERENT TypeDescriptor with the same
+       decorated name is the same type. Pointer equality alone would fail this,
+       and a type shared between the exe and a libIG DLL has one descriptor in
+       each -- so this is not a hypothetical. */
+    args[0] = obj; args[3] = rtti_typedesc(".?AVBase@@");
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x500u;
+    WR32(C.esp, 0);
+    { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
+    imp_MSVCR71___RTDynamicCast(&C);
+    check("a same-named descriptor from another module matches", C.eax, obj + 8u);
+}
+
+/*
+ * qsort, whose comparator is GUEST code and is handed pointers it dereferences.
+ *
+ * The check that matters is not "did it sort" -- an insertion sort is easy to
+ * get right and was. It is that BOTH pointers the comparator receives are
+ * guest-addressable. One of them was a host malloc truncated to 32 bits, which
+ * sorts perfectly whenever the comparator only compares the pointers and
+ * corrupts everything the moment it dereferences one; the game's scene-graph
+ * comparator dereferences, and it faulted at 0xf7832c60.
+ *
+ * The comparator here is a native callback given a guest address, so the whole
+ * path -- x86_guest_call, the argument frame, the return -- is the real one.
+ */
+static int g_qsort_calls, g_qsort_bad_ptr;
+
+static void qsort_probe(CPU *C)
+{
+    uint32_t a = RD32(C->esp + 4u), b = RD32(C->esp + 8u), base, size;
+    g_qsort_calls++;
+    /* VALIDATED BEFORE DEREFERENCING, so a bad pointer is a reported failure
+       rather than a SIGSEGV. The real comparator has no such luxury -- it
+       just faults, which is how this arrived as a scene-graph crash. */
+    if (!guest_heap_contains(a, &base, &size) ||
+        !guest_heap_contains(b, &base, &size)) {
+        g_qsort_bad_ptr++;
+        C->eax = 0;
+        C->esp += 4u;
+        return;
+    }
+    /* Ascending, by the dword each pointer points AT -- which is what makes
+       this a dereferencing comparator rather than a pointer comparison. */
+    C->eax = (uint32_t)(int32_t)((int32_t)RD32(a) - (int32_t)RD32(b));
+    C->esp += 4u;                                 /* __cdecl: the return addr */
+}
+
+static void case_qsort(void)
+{
+    static const uint32_t IN[6] = { 5, 3, 9, 1, 4, 1 };
+    uint32_t arr = guest_malloc(sizeof IN), cmp, i;
+    int sorted = 1;
+    CPU C;
+
+    printf("  qsort with a guest comparator\n");
+    for (i = 0; i < 6; i++) WR32(arr + i * 4u, IN[i]);
+    cmp = x86_native_callback(qsort_probe, "battery", "qsort_probe", NULL);
+
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x600u;
+    WR32(C.esp, 0);
+    WR32(C.esp +  4u, arr);
+    WR32(C.esp +  8u, 6);
+    WR32(C.esp + 12u, 4);
+    WR32(C.esp + 16u, cmp);
+    imp_MSVCR71_qsort(&C);
+
+    for (i = 1; i < 6; i++)
+        if (RD32(arr + i * 4u) < RD32(arr + (i - 1) * 4u)) sorted = 0;
+    check("the comparator was actually called", g_qsort_calls > 0, 1);
+    check("both arguments are guest-addressable", (uint32_t)g_qsort_bad_ptr, 0u);
+    check("the array comes back sorted", (uint32_t)sorted, 1u);
+    check("and keeps its equal elements", RD32(arr), 1u);
+    guest_free(arr);
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -1063,6 +1229,8 @@ static int run_battery(void)
     case_setjmp_table();
     case_runtime_module();
     case_dinput();
+    case_dynamic_cast();
+    case_qsort();
     case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"
@@ -1223,8 +1391,8 @@ int main(int argc, char **argv)
     { extern void dinput_report(void); atexit(dinput_report); }
     { extern void dinput8_install(void), dinput8_report(void);
       dinput8_install(); atexit(dinput8_report); }
-    { extern void dinput_device_report(void);
-      atexit(dinput_device_report); }
+    { extern void dinput_device_report(void), crt_rtti_report(void);
+      atexit(dinput_device_report); atexit(crt_rtti_report); }
     atexit(x86_native_export_report);
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {

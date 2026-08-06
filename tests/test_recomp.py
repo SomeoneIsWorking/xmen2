@@ -395,3 +395,41 @@ class InteriorEntries(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class X87Transcendentals(unittest.TestCase):
+    """FPTAN, which the game reaches in igCommonTraversal::setPerspective.
+
+    It is the one x87 transcendental whose STACK EFFECT is not the obvious
+    one: it replaces ST(0) with its tangent and then PUSHES 1.0, so the stack
+    grows by one. A translation that only computed the tangent would leave
+    every later ST(n) reference off by one register -- silently, and only in
+    the code paths that use it."""
+
+    def test_fptan_replaces_st0_and_pushes_one(self):
+        c = translate([
+            ins(0x00401000, "FPTAN", "FPTAN", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("__builtin_tanl", c)
+        self.assertIn("x87_push(C, 1.0L)", c)
+        self.assertNotIn("x86_unsupported_insn(", c)
+
+    def test_fptan_computes_the_tangent_before_pushing(self):
+        """The push must come SECOND: pushing first would make the tangent be
+        taken of the 1.0 that was just pushed."""
+        c = translate([
+            ins(0x00401000, "FPTAN", "FPTAN", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertLess(c.index("__builtin_tanl"), c.index("x87_push(C, 1.0L)"))
+
+    def test_fptan_is_not_confused_with_fpatan(self):
+        """FPATAN pops; FPTAN pushes. Sharing a branch would get one wrong."""
+        c = translate([
+            ins(0x00401000, "FPATAN", "FPATAN", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("__builtin_atan2l", c)
+        self.assertIn("x87_pop(C)", c)
+        self.assertNotIn("x87_push(C, 1.0L)", c)

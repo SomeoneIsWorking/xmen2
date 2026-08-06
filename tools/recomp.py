@@ -575,7 +575,7 @@ def emit_instruction(ins, ctx):
              "FXCH", "FADDP", "FSUBP", "FSUBRP", "FMULP", "FDIVP", "FDIVRP",
              "FRNDINT", "FPREM", "FSCALE", "FXTRACT", "FNSTCW", "FLDCW",
              "FYL2X", "FYL2XP1", "FPATAN", "F2XM1", "FSIN", "FCOS",
-             "FSINCOS", "FTST",
+             "FSINCOS", "FTST", "FPTAN",
              "FFREE", "FINCSTP", "FDECSTP", "FNCLEX", "FNINIT"):
         def fsrc(o, integer):
             if o.kind == "mem":
@@ -621,6 +621,13 @@ def emit_instruction(ins, ctx):
                     "(void)x87_pop(C);"]
         if m == "F2XM1":
             return [A, "X87_ST(C, 0) = __builtin_exp2l(X87_ST(C, 0)) - 1.0L;"]
+        if m == "FPTAN":
+            # Replaces ST(0) with its tangent and then PUSHES 1.0, so the
+            # stack GROWS. Computing only the tangent would leave every later
+            # ST(n) off by one, silently and only on this path. (The 1.0 is
+            # there so FDIVP can turn the tangent into a cotangent.)
+            return [A, "X87_ST(C, 0) = __builtin_tanl(X87_ST(C, 0));",
+                    "x87_push(C, 1.0L);"]
         if m in ("FSIN", "FCOS"):
             fn_ = "__builtin_sinl" if m == "FSIN" else "__builtin_cosl"
             return [A, "X87_ST(C, 0) = %s(X87_ST(C, 0));" % fn_]

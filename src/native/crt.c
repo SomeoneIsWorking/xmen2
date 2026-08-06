@@ -451,29 +451,48 @@ void imp_MSVCR71__purecall(CPU *C)
 
 void imp_MSVCR71_qsort(CPU *C)
 {
-    /* The comparator is GUEST code, so this cannot forward to libc qsort: the
-       callback has to go back through the recompiler. An insertion sort keeps
-       the reentrancy trivial; these tables are small and it can be replaced
-       when a measurement says it matters. */
+    /*
+     * The comparator is GUEST code, so this cannot forward to libc qsort: the
+     * callback has to go back through the recompiler. An insertion sort keeps
+     * the reentrancy trivial; these tables are small and it can be replaced
+     * when a measurement says it matters.
+     *
+     * THE HELD-OUT ELEMENT MUST LIVE IN GUEST MEMORY. It was a host malloc,
+     * and the comparator is handed its ADDRESS and dereferences it -- so on a
+     * 64-bit host the pointer truncated to 32 bits and the guest read whatever
+     * was at the low half of it. The symptom was a SIGSEGV at 0xf7832c60
+     * inside a scene-graph comparator that indexes a table by *(int *)arg,
+     * which reads as a corrupt table and not as a bad argument.
+     *
+     * This is the same rule the D3D8 staging buffers follow: anything the
+     * guest dereferences has to be below 4 GB, and a host allocation never is.
+     */
     uint32_t base = A(0), n = A(1), sz = A(2), cmp = A(3), i, j;
-    unsigned char *tmp = malloc(sz);
-    if (!tmp) { ret_c(C, 0); return; }
+    uint32_t tmp = guest_malloc(sz);
+    if (!tmp) {
+        fprintf(stderr, "crt: qsort could not get %u bytes of GUEST memory for "
+                        "the element it holds out; the comparator has to be "
+                        "able to dereference it, so there is nothing to fall "
+                        "back to.\n", sz);
+        ret_c(C, 0);
+        return;
+    }
     for (i = 1; i < n; i++) {
-        memcpy(tmp, (void *)(uintptr_t)(base + i * sz), sz);
+        memcpy((void *)(uintptr_t)tmp, (void *)(uintptr_t)(base + i * sz), sz);
         for (j = i; j > 0; j--) {
             uint32_t prev = base + (j - 1) * sz;
             CPU K = *C;
             K.esp -= 8u;
             WR32(K.esp + 0u, prev);
-            WR32(K.esp + 4u, (uint32_t)(uintptr_t)tmp);
+            WR32(K.esp + 4u, tmp);
             x86_guest_call(&K, cmp);
             if ((int32_t)K.eax <= 0) break;
             memmove((void *)(uintptr_t)(base + j * sz),
                     (void *)(uintptr_t)prev, sz);
         }
-        memcpy((void *)(uintptr_t)(base + j * sz), tmp, sz);
+        memcpy((void *)(uintptr_t)(base + j * sz), (void *)(uintptr_t)tmp, sz);
     }
-    free(tmp);
+    guest_free(tmp);
     ret_c(C, 0);
 }
 
@@ -632,7 +651,125 @@ NOT_IMPL(__CxxFrameHandler, EH_WHY)
 NOT_IMPL(_CxxThrowException, EH_WHY)
 NOT_IMPL(_except_handler3, EH_WHY)
 NOT_IMPL(_XcptFilter, EH_WHY)
-NOT_IMPL(__RTDynamicCast, EH_WHY)
+
+/* ---- RTTI: __RTDynamicCast ---------------------------------------------
+ *
+ * This was grouped with the exception-handling stubs and given their reason --
+ * "needs a real SEH unwinder" -- and that was WRONG, in the way that costs a
+ * reader a session: dynamic_cast walks static tables the compiler emitted and
+ * needs no unwinder at all. Only the REFERENCE form throws, and only when the
+ * cast fails.
+ *
+ * MSVC's layout, 32-bit. Every pointer here is an absolute address in some
+ * module's image, which is correct at run time because pe_map relocates them
+ * with everything else:
+ *
+ *   *(vftable - 4)              -> RTTICompleteObjectLocator
+ *      +0  signature   +4  offset   +8  cdOffset
+ *      +12 pTypeDescriptor        +16 pClassHierarchyDescriptor
+ *   RTTIClassHierarchyDescriptor
+ *      +0  signature   +4  attributes   +8  numBaseClasses
+ *      +12 pBaseClassArray -> RTTIBaseClassDescriptor*[]
+ *   RTTIBaseClassDescriptor
+ *      +0  pTypeDescriptor   +4  numContainedBases
+ *      +8  PMD.mdisp  +12 PMD.pdisp  +16 PMD.vdisp   +20 attributes
+ *   TypeDescriptor
+ *      +0  pVFTable   +4  spare   +8  decorated name (NUL-terminated)
+ */
+static int rtti_same_type(uint32_t a, uint32_t b)
+{
+    /*
+     * Pointer equality FIRST, then the decorated name.
+     *
+     * Both are needed and neither alone is right: within one module the
+     * compiler emits a single TypeDescriptor per type and the pointers match,
+     * but a type shared between XMen2.exe and a libIG DLL has one descriptor
+     * in EACH -- so pointer equality alone would make a legitimate cross-module
+     * cast fail and read as "the object is not that type". MSVC's own
+     * implementation does exactly this.
+     */
+    if (a == b) return 1;
+    if (!a || !b) return 0;
+    return strcmp((const char *)(uintptr_t)(a + 8u),
+                  (const char *)(uintptr_t)(b + 8u)) == 0;
+}
+
+/* The offset of a base within the complete object, from its PMD. */
+static int32_t rtti_pmd_offset(uint32_t base, uint32_t bcd)
+{
+    int32_t mdisp = (int32_t)RD32(bcd + 8u);
+    int32_t pdisp = (int32_t)RD32(bcd + 12u);
+    int32_t vdisp = (int32_t)RD32(bcd + 16u);
+    uint32_t vbtable;
+    if (pdisp < 0) return mdisp;              /* not a virtual base */
+    /* Virtual base: the displacement lives in the vbtable the object points
+       at, which is why this cannot be computed from the descriptor alone. */
+    vbtable = RD32(base + (uint32_t)pdisp);
+    return (int32_t)RD32(vbtable + (uint32_t)vdisp) + mdisp + pdisp;
+}
+
+static unsigned long g_dyncast_ok, g_dyncast_null;
+
+void imp_MSVCR71___RTDynamicCast(CPU *C)
+{
+    uint32_t inptr = A(0);
+    int32_t  vfdelta = (int32_t)A(1);
+    uint32_t target = A(3);
+    uint32_t is_ref = A(4);
+    uint32_t vftable, col, chd, arr, base;
+    uint32_t n, i;
+
+    if (!inptr) { g_dyncast_null++; ret_c(C, 0); return; }
+
+    vftable = RD32(inptr + (uint32_t)vfdelta);
+    col = RD32(vftable - 4u);
+    if (!col) {
+        fprintf(stderr, "crt: __RTDynamicCast on an object at 0x%08x whose "
+                        "vftable 0x%08x has no complete-object locator. That "
+                        "is not an RTTI-bearing object, and there is no answer "
+                        "to give.\n", inptr, vftable);
+        abort();
+    }
+    /* The complete object: this pointer, minus where this subobject sits. */
+    base = inptr - RD32(col + 4u) - RD32(col + 8u);
+    chd = RD32(col + 16u);
+    n = RD32(chd + 8u);
+    arr = RD32(chd + 12u);
+
+    for (i = 0; i < n; i++) {
+        uint32_t bcd = RD32(arr + i * 4u);
+        if (!bcd) continue;
+        if (!rtti_same_type(RD32(bcd), target)) continue;
+        g_dyncast_ok++;
+        ret_c(C, (uint32_t)((int32_t)base + rtti_pmd_offset(base, bcd)));
+        return;
+    }
+
+    /*
+     * No such base. For a POINTER cast that is an ordinary answer -- NULL, and
+     * every caller tests it. For a REFERENCE cast it is a std::bad_cast throw,
+     * which this build cannot perform, and returning NULL there would be
+     * silently wrong: the caller binds a reference and dereferences it.
+     */
+    if (is_ref) {
+        const char *nm = target ? (const char *)(uintptr_t)(target + 8u) : "?";
+        fprintf(stderr, "crt: __RTDynamicCast failed on a REFERENCE cast to "
+                        "%s, which must throw std::bad_cast -- and this build "
+                        "has no unwinder to throw through. Returning NULL "
+                        "would be dereferenced by the caller.\n", nm);
+        abort();
+    }
+    g_dyncast_null++;
+    ret_c(C, 0);
+}
+
+void crt_rtti_report(void)
+{
+    if (g_dyncast_ok || g_dyncast_null)
+        printf("  crt: %lu dynamic_cast(s) matched a base, %lu answered NULL\n",
+               g_dyncast_ok, g_dyncast_null);
+}
+
 /* ---- setjmp / longjmp --------------------------------------------------
  *
  * The host setjmp is NOT taken here. It is emitted INLINE into the generated

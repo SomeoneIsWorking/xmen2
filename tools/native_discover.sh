@@ -23,12 +23,17 @@ SPLIT=${SPLIT:-1500}
 RUN=${RUN-1}
 # Extra x2native arguments for the discovery run.
 #
-# Defaults to --vk because that IS the live path: without the Vulkan
-# substitution the run stops at Direct3DCreate8, which is not a missing
-# function and which no amount of seeding can fix, so the loop would converge
-# on "nothing found" while every target past the renderer stayed invisible.
-# Set X2_ARGS= (empty) to discover along the un-substituted path instead.
-X2_ARGS=${X2_ARGS---vk}
+# Defaults to --d3d8 because that IS the live path now: it answers
+# Direct3DCreate8 with a host IDirect3D8, so the run gets through renderer
+# init, resource loading and input and keeps reporting missing targets the
+# whole way. Under any argument set that stops earlier the loop converges on
+# "nothing found" while every target past the stop stays invisible -- which is
+# a loop that reports success for not having looked.
+#
+# --vk (the ARK-substitution path) and X2_ARGS= (un-substituted, stops at
+# Direct3DCreate8) are still selectable; each has its own blind spot, and the
+# convergence message names which one was used.
+X2_ARGS=${X2_ARGS---d3d8}
 
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 : "${GAME_PC_DIR:?set GAME_PC_DIR in .env}"
