@@ -165,6 +165,38 @@ foreach(m ${X2_MODULES})
     endif()
 endforeach()
 if(X2_MODULE_HAVE)
+    # ---- shaders -------------------------------------------------------
+    #
+    # SDL_GPU takes SPIR-V, so the fixed-function shaders are compiled at build
+    # time and embedded as C arrays. glslc is REQUIRED rather than optional: a
+    # build that silently had no shaders would link, run, and draw nothing --
+    # which is the single hardest rendering failure to attribute.
+    find_program(X2_GLSLC NAMES glslc glslangValidator)
+    if(NOT X2_GLSLC)
+        message(FATAL_ERROR
+            "x2native: no glslc (or glslangValidator) found, so the renderer's "
+            "shaders cannot be built. Install shaderc/glslang. Refusing rather "
+            "than building a binary that would run and draw nothing.")
+    endif()
+    set(X2_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
+    file(MAKE_DIRECTORY ${X2_SHADER_DIR})
+    set(X2_SHADER_HEADERS "")
+    foreach(st vert frag)
+        set(_src ${CMAKE_SOURCE_DIR}/src/gpu/shaders/d3d8_fixed.${st})
+        set(_out ${X2_SHADER_DIR}/d3d8_fixed_${st}.inc)
+        # glslc -mfmt=c emits exactly a braced initialiser, so the .inc is
+        # #included as one rather than assembled by echo and cat -- which is
+        # shell redirection inside a custom command, and it silently produced a
+        # malformed header for one of the two stages.
+        add_custom_command(
+            OUTPUT ${_out}
+            COMMAND ${X2_GLSLC} -fshader-stage=${st} ${_src} -mfmt=c -o ${_out}
+            DEPENDS ${_src}
+            COMMENT "x2native: compiling d3d8_fixed.${st} to SPIR-V")
+        list(APPEND X2_SHADER_HEADERS ${_out})
+    endforeach()
+    add_custom_target(x2_shaders DEPENDS ${X2_SHADER_HEADERS})
+
     message(STATUS "x2native: linking recompiled modules: ${X2_MODULE_HAVE}")
     add_executable(x2native
         src/native/x2native.c
@@ -185,19 +217,24 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_d3d8.c
         src/d3d8/d3d8_device.c
         src/d3d8/d3d8_surface.c
+        src/d3d8/d3d8_resource.c
+        src/d3d8/d3d8_drawcall.c
         src/d3d8/d3d8_report.c
         src/vulkan/igvk_ark.c
         src/vulkan/igvk_probe.c
         src/vulkan/igvk_context.c
         src/gpu/gpu_device.c
+        src/gpu/gpu_draw.c
         src/gpu/gpu_selftest.c
         src/vulkan/igvk_slots_lifecycle.c
         src/vulkan/igvk_slots_frame.c
         
         ${X2_MODULE_SRCS}
     )
+    add_dependencies(x2native x2_shaders)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
-                                              src/gpu src/d3d8)
+                                              src/gpu src/d3d8
+                                              ${CMAKE_BINARY_DIR})
 
     # Native overrides of DIRECTLY-called recompiled functions.
     #

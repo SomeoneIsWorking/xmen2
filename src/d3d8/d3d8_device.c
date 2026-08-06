@@ -19,9 +19,12 @@
 #include "d3d8_caps.h"
 #include "d3d8_state.h"
 #include "d3d8_surface.h"
+#include "d3d8_resource.h"
+#include "d3d8_drawcall.h"
 #include "d3d8_types.h"
 
 #include "gpu_device.h"
+#include "gpu_draw.h"
 #include "win32_sdl.h"
 
 #include "x86rt.h"
@@ -38,6 +41,7 @@ typedef struct {
     unsigned long         scenes;         /* BeginScene calls */
     unsigned long         presents;
     unsigned long         clears;
+    unsigned long         draws;
 } Device;
 
 static Device g_dev;
@@ -493,7 +497,204 @@ static void dev_ValidateDevice(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
+
+/* ---- resources --------------------------------------------------------- */
+
+/*
+ * Create* hands the object straight back; the engine holds it and releases it.
+ * Each gets the destructor that frees its GPU object, declared at the point of
+ * creation so the two cannot drift apart.
+ */
+static void dev_CreateTexture(D3D8Object *self, CPU *C)
+{
+    uint32_t w = d3d8_arg(C, 0), h = d3d8_arg(C, 1), levels = d3d8_arg(C, 2);
+    uint32_t usage = d3d8_arg(C, 3), fmt = d3d8_arg(C, 4), pool = d3d8_arg(C, 5);
+    uint32_t out = d3d8_arg(C, 6);
+    D3D8Object *t;
+
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    t = d3d8_texture_new(w, h, levels, usage, fmt, pool);
+    if (!t) { WR32(out, 0); d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    d3d8_resource_attach_destructor(t);
+    WR32(out, d3d8_object_guest(t));
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_CreateVertexBuffer(D3D8Object *self, CPU *C)
+{
+    uint32_t len = d3d8_arg(C, 0), usage = d3d8_arg(C, 1);
+    uint32_t fvf = d3d8_arg(C, 2), pool = d3d8_arg(C, 3), out = d3d8_arg(C, 4);
+    D3D8Object *b;
+
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    b = d3d8_vertexbuffer_new(len, usage, fvf, pool);
+    if (!b) { WR32(out, 0); d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    d3d8_resource_attach_destructor(b);
+    WR32(out, d3d8_object_guest(b));
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_CreateIndexBuffer(D3D8Object *self, CPU *C)
+{
+    uint32_t len = d3d8_arg(C, 0), usage = d3d8_arg(C, 1);
+    uint32_t fmt = d3d8_arg(C, 2), pool = d3d8_arg(C, 3), out = d3d8_arg(C, 4);
+    D3D8Object *b;
+
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    b = d3d8_indexbuffer_new(len, usage, fmt, pool);
+    if (!b) { WR32(out, 0); d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    d3d8_resource_attach_destructor(b);
+    WR32(out, d3d8_object_guest(b));
+    d3d8_ret(C, D3D_OK);
+}
+
+/* ---- what is bound ----------------------------------------------------- */
+
+static void dev_SetTexture(D3D8Object *self, CPU *C)
+{
+    uint32_t stage = d3d8_arg(C, 0), tex = d3d8_arg(C, 1);
+    (void)self;
+    if (stage >= D3D8_MAX_STAGES) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    if (tex && !d3d8_object_from_guest(tex)) {
+        fprintf(stderr, "d3d8: SetTexture(%u, 0x%08x) -- that is not a texture "
+                        "this host made.\n", stage, tex);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    g_dev.state.texture[stage] = tex;
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_SetStreamSource(D3D8Object *self, CPU *C)
+{
+    uint32_t stream = d3d8_arg(C, 0), buf = d3d8_arg(C, 1);
+    uint32_t stride = d3d8_arg(C, 2);
+    (void)self;
+    if (stream >= D3D8_MAX_STREAMS) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    if (buf && !d3d8_object_from_guest(buf)) {
+        fprintf(stderr, "d3d8: SetStreamSource was given 0x%08x, which is not "
+                        "a buffer this host made.\n", buf);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    g_dev.state.stream[stream].guest_ptr = buf;
+    g_dev.state.stream[stream].stride = stride;
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_SetIndices(D3D8Object *self, CPU *C)
+{
+    uint32_t buf = d3d8_arg(C, 0), base = d3d8_arg(C, 1);
+    (void)self;
+    if (buf && !d3d8_object_from_guest(buf)) {
+        fprintf(stderr, "d3d8: SetIndices was given 0x%08x, which is not a "
+                        "buffer this host made.\n", buf);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    g_dev.state.indices = buf;
+    g_dev.state.base_vertex_index = base;
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_SetVertexShader(D3D8Object *self, CPU *C)
+{
+    /* Below 0x10000 this is an FVF code, not a handle -- see d3d8_build_draw,
+       which is where the distinction is acted on. */
+    (void)self;
+    g_dev.state.vertex_shader = d3d8_arg(C, 0);
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_GetVertexShader(D3D8Object *self, CPU *C)
+{
+    uint32_t *out = (uint32_t *)guest_ptr(d3d8_arg(C, 0), "handle");
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    *out = g_dev.state.vertex_shader;
+    d3d8_ret(C, D3D_OK);
+}
+
+/* ---- the draws --------------------------------------------------------- */
+
+static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count)
+{
+    D3D8Object *vb = g_dev.state.stream[0].guest_ptr
+                         ? d3d8_object_from_guest(g_dev.state.stream[0].guest_ptr)
+                         : NULL;
+    D3D8Object *ib = g_dev.state.indices
+                         ? d3d8_object_from_guest(g_dev.state.indices) : NULL;
+    D3D8Object *tx = g_dev.state.texture[0]
+                         ? d3d8_object_from_guest(g_dev.state.texture[0]) : NULL;
+
+    memset(req, 0, sizeof *req);
+    if (!vb) {
+        fprintf(stderr, "d3d8: a draw with no vertex buffer on stream 0.\n");
+        return 0;
+    }
+    req->vertex_buffer = d3d8_resource_buffer(vb);
+    req->stride = g_dev.state.stream[0].stride;
+    if (ib) {
+        req->index_buffer = d3d8_resource_buffer(ib);
+        req->index_is_32bit = d3d8_resource_index_is_32bit(ib);
+    }
+    if (tx) req->texture = d3d8_resource_texture(tx);
+    req->primitive_type = prim;
+    req->primitive_count = count;
+    return 1;
+}
+
+static void dev_DrawPrimitive(D3D8Object *self, CPU *C)
+{
+    D3D8DrawRequest req;
+    GpuDraw gd;
+
+    (void)self;
+    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 2))) {
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    req.first_vertex = d3d8_arg(C, 1);
+    if (!d3d8_build_draw(&g_dev.state, &req, &gd)) {
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    g_dev.draws += gpu_draw(&gd) ? 1u : 0u;
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_DrawIndexedPrimitive(D3D8Object *self, CPU *C)
+{
+    D3D8DrawRequest req;
+    GpuDraw gd;
+
+    (void)self;
+    /* (PrimitiveType, MinIndex, NumVertices, StartIndex, PrimitiveCount) */
+    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 4))) {
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    if (!req.index_buffer) {
+        fprintf(stderr, "d3d8: DrawIndexedPrimitive with no index buffer "
+                        "bound.\n");
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    req.first_index = d3d8_arg(C, 3);
+    req.base_vertex = g_dev.state.base_vertex_index;
+    if (!d3d8_build_draw(&g_dev.state, &req, &gd)) {
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    g_dev.draws += gpu_draw(&gd) ? 1u : 0u;
+    d3d8_ret(C, D3D_OK);
+}
+
 /* ---- the table --------------------------------------------------------- */
+
 
 /*
  * Indexed by slot. NULL is not an omission -- it is this device saying it does
@@ -522,11 +723,11 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                               /* 17 GetRasterStatus */
     NULL,                               /* 18 SetGammaRamp */
     NULL,                               /* 19 GetGammaRamp */
-    NULL,                               /* 20 CreateTexture */
+    dev_CreateTexture,                  /* 20 */
     NULL,                               /* 21 CreateVolumeTexture */
     NULL,                               /* 22 CreateCubeTexture */
-    NULL,                               /* 23 CreateVertexBuffer */
-    NULL,                               /* 24 CreateIndexBuffer */
+    dev_CreateVertexBuffer,             /* 23 */
+    dev_CreateIndexBuffer,              /* 24 */
     NULL,                               /* 25 CreateRenderTarget */
     NULL,                               /* 26 CreateDepthStencilSurface */
     dev_CreateImageSurface,             /* 27 */
@@ -563,7 +764,7 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                               /* 58 SetClipStatus */
     NULL,                               /* 59 GetClipStatus */
     NULL,                               /* 60 GetTexture */
-    NULL,                               /* 61 SetTexture */
+    dev_SetTexture,                     /* 61 */
     dev_GetTextureStageState,           /* 62 */
     dev_SetTextureStageState,           /* 63 */
     dev_ValidateDevice,                 /* 64 */
@@ -572,22 +773,22 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                               /* 67 GetPaletteEntries */
     NULL,                               /* 68 SetCurrentTexturePalette */
     NULL,                               /* 69 GetCurrentTexturePalette */
-    NULL,                               /* 70 DrawPrimitive */
-    NULL,                               /* 71 DrawIndexedPrimitive */
+    dev_DrawPrimitive,                  /* 70 */
+    dev_DrawIndexedPrimitive,           /* 71 */
     NULL,                               /* 72 DrawPrimitiveUP */
     NULL,                               /* 73 DrawIndexedPrimitiveUP */
     NULL,                               /* 74 ProcessVertices */
     NULL,                               /* 75 CreateVertexShader */
-    NULL,                               /* 76 SetVertexShader */
-    NULL,                               /* 77 GetVertexShader */
+    dev_SetVertexShader,                /* 76 */
+    dev_GetVertexShader,                /* 77 */
     NULL,                               /* 78 DeleteVertexShader */
     NULL,                               /* 79 SetVertexShaderConstant */
     NULL,                               /* 80 GetVertexShaderConstant */
     NULL,                               /* 81 GetVertexShaderDeclaration */
     NULL,                               /* 82 GetVertexShaderFunction */
-    NULL,                               /* 83 SetStreamSource */
+    dev_SetStreamSource,                /* 83 */
     NULL,                               /* 84 GetStreamSource */
-    NULL,                               /* 85 SetIndices */
+    dev_SetIndices,                     /* 85 */
     NULL,                               /* 86 GetIndices */
     NULL,                               /* 87 CreatePixelShader */
     NULL,                               /* 88 SetPixelShader */
@@ -689,10 +890,14 @@ void d3d8_device_report(void)
                "as far as CreateDevice.\n");
         return;
     }
-    printf("  d3d8: %lu scene(s) begun, %lu clear(s), %lu present(s)\n",
-           g_dev.scenes, g_dev.clears, g_dev.presents);
+    printf("  d3d8: %lu scene(s) begun, %lu clear(s), %lu draw(s), %lu "
+           "present(s)\n", g_dev.scenes, g_dev.clears, g_dev.draws,
+           g_dev.presents);
     d3d8_state_report(&g_dev.state);
     d3d8_surface_report();
+    d3d8_resource_report();
+    d3d8_drawcall_report();
+    gpu_draw_report();
     d3d8_object_report();
     gpu_device_report();
 }

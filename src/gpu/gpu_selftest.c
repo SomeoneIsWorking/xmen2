@@ -27,8 +27,10 @@
  * This is a check on the host half, and the report says so in those words.
  */
 #include "gpu_device.h"
+#include "gpu_draw.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
@@ -133,5 +135,118 @@ int gpu_device_selftest(void)
            "  right picture is not tested here and cannot be until a real run "
            "reaches a frame.\n", presented_ok);
     return 0;
+#endif
+}
+
+/* ---- the draw path, proved by reading the pixels back ------------------ */
+
+/*
+ * A frame path that presents and a frame path that DRAWS are different
+ * claims, and the first has been true here for a while without the second.
+ * So this does not check that gpu_draw returned 1 -- that is a mechanism
+ * check. It renders into an off-screen target, copies it back, and looks at
+ * the pixels.
+ *
+ * Designed around its NEGATIVE: the target is cleared to a colour that is not
+ * the triangle's, so "the triangle is there" and "the clear is there" cannot
+ * be confused, and the test fails if the centre is still the clear colour.
+ * Two corners are checked too -- a shader that filled the whole target would
+ * otherwise pass.
+ */
+#define OFF_W 64
+#define OFF_H 64
+
+#ifdef X2_WITH_SDL
+static int px_is(const uint32_t *img, int x, int y, uint32_t bgra,
+                 const char *what)
+{
+    uint32_t got = img[(size_t)y * OFF_W + x];
+    if (got == bgra) return 1;
+    printf("gpu selftest: FAILED -- pixel (%d,%d) is 0x%08x, expected 0x%08x "
+           "(%s)\n", x, y, got, bgra, what);
+    return 0;
+}
+#endif
+
+int gpu_draw_selftest(void)
+{
+#ifndef X2_WITH_SDL
+    printf("gpu draw selftest: SKIPPED -- built without SDL. This is not a "
+           "pass.\n");
+    return 77;
+#else
+    /* A big clockwise triangle covering the middle, pre-transformed so no
+       matrix is involved: this is testing the draw path, not the maths. */
+    struct { float x, y, z, rhw; uint32_t color; } tri[3] = {
+        { OFF_W * 0.5f,  2.0f,          0.0f, 1.0f, 0xFFFF0000u },
+        { OFF_W - 2.0f,  OFF_H - 2.0f,  0.0f, 1.0f, 0xFFFF0000u },
+        { 2.0f,          OFF_H - 2.0f,  0.0f, 1.0f, 0xFFFF0000u }
+    };
+    static uint32_t img[OFF_W * OFF_H];
+    GpuBuffer vb;
+    GpuDraw d;
+    int fails = 0;
+
+    printf("\n=== gpu draw selftest: geometry, with no engine involved ===\n");
+    if (!gpu_device_create()) {
+        printf("gpu draw selftest: FAILED -- no GPU device.\n");
+        return 1;
+    }
+    vb = gpu_buffer_create(GPU_BUF_VERTEX, sizeof tri);
+    if (!vb || !gpu_buffer_upload(vb, 0, tri, sizeof tri)) {
+        printf("gpu draw selftest: FAILED -- the vertex buffer could not be "
+               "made or filled.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    /* Cleared to opaque BLUE; the triangle is opaque RED. Neither can be
+       mistaken for the other, or for uninitialised memory. */
+    if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f)) {
+        printf("gpu draw selftest: FAILED -- no off-screen target.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+
+    memset(&d, 0, sizeof d);
+    d.vertices = vb;
+    d.vertex_stride = sizeof tri[0];
+    d.prim = GPU_PRIM_TRIANGLELIST;
+    d.prim_count = 1;
+    d.pos_offset = 0;
+    d.pretransformed = 1;
+    d.color_offset = 16;
+    d.uv_offset = -1;
+    d.texop = GPU_TEXOP_NONE;
+    d.cull = GPU_CULL_NONE;
+    d.depth_func = GPU_CMP_ALWAYS;
+    if (!gpu_draw(&d)) {
+        printf("gpu draw selftest: FAILED -- the draw was refused.\n");
+        gpu_offscreen_end();
+        gpu_device_destroy();
+        return 1;
+    }
+    if (!gpu_offscreen_read(img, sizeof img)) {
+        printf("gpu draw selftest: FAILED -- the target could not be read "
+               "back, so nothing about the pixels is known.\n");
+        gpu_offscreen_end();
+        gpu_device_destroy();
+        return 1;
+    }
+    gpu_offscreen_end();
+
+    /* B8G8R8A8 in memory, read as a little-endian uint32 -> 0xAARRGGBB. */
+    fails += !px_is(img, OFF_W / 2, OFF_H / 2, 0xFFFF0000u,
+                    "the middle of the triangle");
+    fails += !px_is(img, 1, 1, 0xFF0000FFu,
+                    "a corner OUTSIDE the triangle, which must still be the "
+                    "clear colour");
+    fails += !px_is(img, OFF_W - 2, 1, 0xFF0000FFu,
+                    "the other top corner, outside the triangle");
+
+    gpu_draw_report();
+    gpu_device_destroy();
+    printf("gpu draw selftest: %s\n", fails ? "FAILED" : "PASSED -- a triangle "
+           "was rasterised and read back");
+    return fails ? 1 : 0;
 #endif
 }

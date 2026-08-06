@@ -20,6 +20,8 @@
  * smearing between frames and be attributed to anything but this.
  */
 #include "gpu_device.h"
+#include "gpu_draw.h"
+#include "gpu_internal.h"
 #include "win32_sdl.h"
 
 #include <stdio.h>
@@ -28,12 +30,16 @@
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
-static SDL_GPUDevice     *g_gpu;
-static SDL_Window        *g_win;          /* swapchain claimed on this */
-static SDL_GPUCommandBuffer *g_cmd;
-static SDL_GPUTexture    *g_swap;
-static SDL_GPURenderPass *g_pass;
-static uint32_t           g_swap_w, g_swap_h;
+SDL_GPUDevice        *g_gpu;
+static SDL_Window    *g_win;              /* swapchain claimed on this */
+SDL_GPUCommandBuffer *g_cmd;
+SDL_GPUTexture       *g_swap;
+SDL_GPURenderPass    *g_pass;
+uint32_t              g_swap_w, g_swap_h;
+
+/* Where the frame goes when it is not going to the swapchain: the self-test
+   and, later, the engine's off-screen render destinations. */
+static SDL_GPUTexture *g_offscreen;
 
 /* What the next render pass must clear with. */
 static struct {
@@ -81,6 +87,12 @@ int gpu_device_create(void)
 
 void gpu_device_destroy(void)
 {
+#ifdef X2_WITH_SDL
+    /* Buffers, textures and pipelines belong to the device, so they go before
+       it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
+       that only shows up under a validation layer. */
+    gpu_draw_shutdown();
+#endif
 #ifdef X2_WITH_SDL
     if (!g_gpu) return;
     if (g_win) SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
@@ -187,7 +199,13 @@ static void apply_viewport(void)
  * Everything that draws goes through here first. Called at most once per
  * frame; the pass stays open until gpu_frame_end.
  */
-static void pass_begin(void)
+void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h)
+{
+    g_offscreen = t;
+    if (t) { g_swap = t; g_swap_w = w; g_swap_h = h; }
+}
+
+void gpu_pass_begin(void)
 {
     SDL_GPUColorTargetInfo ct;
 
@@ -285,14 +303,14 @@ void gpu_frame_end(void)
      * clear would never be executed and the window would stay whatever the
      * compositor left in it.
      */
-    pass_begin();
+    gpu_pass_begin();
     if (g_pass) {
         SDL_EndGPURenderPass(g_pass);
         g_pass = NULL;
     }
     SDL_SubmitGPUCommandBuffer(g_cmd);
     g_cmd = NULL;
-    g_swap = NULL;
+    if (!g_offscreen) g_swap = NULL;
     g_frames_presented++;
 #endif
 }

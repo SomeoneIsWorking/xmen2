@@ -12,6 +12,7 @@
 #include "d3d8_types.h"
 #include "d3d8_device.h"
 #include "d3d8_surface.h"
+#include "d3d8_resource.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -341,6 +342,7 @@ void imp_d3d8_Direct3DCreate8(CPU *C)
                              (int)(sizeof g_impl / sizeof g_impl[0]));
         d3d8_device_install();
         d3d8_surface_install();
+        d3d8_resource_install();
         g_d3d8_obj = d3d8_object_new(D3D8_IF_IDirect3D8, &g_d3d8);
         printf("d3d8: Direct3DCreate8 -> IDirect3D8 at 0x%08x\n",
                d3d8_object_guest(g_d3d8_obj));

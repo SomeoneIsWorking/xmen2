@@ -841,7 +841,12 @@ int main(int argc, char **argv)
      */
     if (vkselftest) {
         extern int gpu_device_selftest(void);
-        return gpu_device_selftest();
+        extern int gpu_draw_selftest(void);
+        int r = gpu_device_selftest();
+        if (r) return r;
+        /* Presenting a frame and DRAWING into one are different claims. The
+           first has been true here since before any geometry worked. */
+        return gpu_draw_selftest();
     }
     /*
      * Same reasoning for the host D3D8: its ABI tables, its vtable dispatch
