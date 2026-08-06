@@ -836,6 +836,7 @@ void x86_call_unknown(CPU *C, uint32_t target)
     fprintf(stderr, "x86_call_unknown: 0x%08x has no identified function\n",
             target);
     where(target);
+    x86_diag_dump();
     abort();
 }
 
@@ -844,6 +845,7 @@ void x86_missing_import(const char *mod, const char *sym)
     fprintf(stderr, "x86_missing_import: %s!%s is not implemented natively.\n"
                     "  This is the native import surface -- the work that "
                     "replaces Wine.\n", mod, sym);
+    x86_diag_dump();
     abort();
 }
 
@@ -851,6 +853,7 @@ void x86_untranslated(uint32_t ep, const char *name, const char *reason)
 {
     fprintf(stderr, "x86_untranslated: reached 0x%08x %s -- blocked by: %s\n",
             ep, name, reason);
+    x86_diag_dump();
     abort();
 }
 
@@ -879,6 +882,7 @@ void x86_fallthrough(uint32_t fn_ep, uint32_t next)
                     "  Its detected boundaries are wrong and the code it runs "
                     "into has never been translated.\n", fn_ep, next);
     where(next);
+    x86_diag_dump();
     abort();
 }
 
@@ -889,6 +893,7 @@ void x86_int3(uint32_t addr)
                     "  MSVC emits INT3 after a call it proved never returns, "
                     "so a noreturn function returned.\n", addr);
     where(addr);
+    x86_diag_dump();
     abort();
 }
 

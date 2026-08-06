@@ -21,6 +21,7 @@
 #include "x86rt.h"
 #include "guest_heap.h"
 #include "x86rt_native.h"
+#include "pe_map.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -48,6 +49,10 @@ static void k32_unimpl(const char *sym, const char *why)
 {
     fprintf(stderr, "kernel32: %s is reached but not implemented.\n  %s\n",
             sym, why);
+    /* Report before stopping: abort() does not run atexit handlers, so without
+       this the reached set and the argument watch stay silent on exactly the
+       stop the reader is looking at. */
+    x86_diag_dump();
     abort();
 }
 
@@ -57,6 +62,10 @@ static void k32_unimpl(const char *sym, const char *why)
 #define H_FILE 1
 #define H_FIND 2
 #define H_MAP  3
+#define H_SEM  4
+#define H_EVENT 5
+#define H_MUTEX 6
+#define H_THREAD 7
 
 typedef struct {
     int   kind;
@@ -66,6 +75,12 @@ typedef struct {
     char  dirpath[1024];
     void *map;
     size_t maplen;
+    /* Synchronisation objects. Nothing here creates a guest thread yet, so the
+       state is kept honestly and never actually blocks -- see the wait. */
+    int32_t  count;      /* semaphore count, or event signalled, or mutex depth */
+    int32_t  maxcount;   /* semaphore ceiling */
+    int      manual;     /* event: manual-reset rather than auto-reset */
+    char     name[128];
 } Handle;
 
 static Handle g_h[MAX_HANDLES];
@@ -85,6 +100,7 @@ static Handle *h_get(uint32_t h, int kind)
 {
     if (h == 0 || h > MAX_HANDLES || !g_h[h - 1].kind) {
         fprintf(stderr, "kernel32: handle %u is not open\n", h);
+        x86_diag_dump();
         abort();
     }
     if (kind && g_h[h - 1].kind != kind) {
@@ -327,6 +343,342 @@ void imp_KERNEL32_SetEndOfFile(CPU *C)
     ret_std(C, ftruncate(hh->fd, at) == 0 ? 1u : 0u, 1);
 }
 
+/* ---- synchronisation objects -------------------------------------------
+ *
+ * Semaphores, events and mutexes, on the same terms as the critical sections
+ * above: the STATE is modelled exactly, and nothing blocks, because nothing in
+ * this process creates a guest thread yet. That is the honest position -- a
+ * wait that cannot be satisfied has no other thread that could ever satisfy
+ * it, so pretending it succeeded would hand the guest a lock it does not hold
+ * and the damage would surface somewhere unrelated.
+ *
+ * So a wait that would block says so and stops. When threads exist these
+ * become real POSIX primitives and the refusal goes away; until then it is the
+ * difference between "not implemented yet" and "quietly wrong".
+ */
+#define WAIT_OBJECT_0   0x00000000u
+#define WAIT_TIMEOUT    0x00000102u
+#define WAIT_FAILED     0xFFFFFFFFu
+
+static void sync_name(Handle *hh, uint32_t namep)
+{
+    if (namep) snprintf(hh->name, sizeof hh->name, "%s",
+                        (const char *)(uintptr_t)namep);
+    else       snprintf(hh->name, sizeof hh->name, "%s", "(unnamed)");
+}
+
+void imp_KERNEL32_CreateSemaphoreA(CPU *C)
+{
+    /* (attrs, lInitialCount, lMaximumCount, name) */
+    uint32_t h = h_alloc(H_SEM);
+    Handle *hh = &g_h[h - 1];
+    hh->count = (int32_t)A(1);
+    hh->maxcount = (int32_t)A(2);
+    sync_name(hh, A(3));
+    ret_std(C, h, 4);
+}
+
+void imp_KERNEL32_ReleaseSemaphore(CPU *C)
+{
+    /* (handle, lReleaseCount, lpPreviousCount) */
+    Handle *hh = h_get(A(0), H_SEM);
+    int32_t prev = hh->count;
+    if (A(1) == 0 || (int64_t)hh->count + (int32_t)A(1) > hh->maxcount) {
+        g_last_error = 87u;                       /* ERROR_INVALID_PARAMETER */
+        ret_std(C, 0, 3);
+        return;
+    }
+    hh->count += (int32_t)A(1);
+    if (A(2)) WR32(A(2), (uint32_t)prev);
+    ret_std(C, 1, 3);
+}
+
+void imp_KERNEL32_CreateEventA(CPU *C)
+{
+    /* (attrs, bManualReset, bInitialState, name) */
+    uint32_t h = h_alloc(H_EVENT);
+    Handle *hh = &g_h[h - 1];
+    hh->manual = (int)A(1);
+    hh->count = A(2) ? 1 : 0;
+    sync_name(hh, A(3));
+    ret_std(C, h, 4);
+}
+
+void imp_KERNEL32_SetEvent(CPU *C)
+{
+    h_get(A(0), H_EVENT)->count = 1;
+    ret_std(C, 1, 1);
+}
+
+void imp_KERNEL32_ResetEvent(CPU *C)
+{
+    h_get(A(0), H_EVENT)->count = 0;
+    ret_std(C, 1, 1);
+}
+
+void imp_KERNEL32_CreateMutexA(CPU *C)
+{
+    /* (attrs, bInitialOwner, name) */
+    uint32_t h = h_alloc(H_MUTEX);
+    Handle *hh = &g_h[h - 1];
+    hh->count = A(1) ? 1 : 0;                     /* recursion depth held */
+    sync_name(hh, A(2));
+    ret_std(C, h, 3);
+}
+
+void imp_KERNEL32_ReleaseMutex(CPU *C)
+{
+    Handle *hh = h_get(A(0), H_MUTEX);
+    if (hh->count <= 0) {
+        fprintf(stderr, "kernel32: ReleaseMutex on %s, which this thread does "
+                        "not hold\n", hh->name);
+        g_last_error = 288u;                      /* ERROR_NOT_OWNER */
+        ret_std(C, 0, 1);
+        return;
+    }
+    hh->count--;
+    ret_std(C, 1, 1);
+}
+
+/* Try to take one object. Returns 1 if it was signalled (and consumes it). */
+static int sync_try_take(Handle *hh)
+{
+    switch (hh->kind) {
+    case H_SEM:
+        if (hh->count > 0) { hh->count--; return 1; }
+        return 0;
+    case H_EVENT:
+        if (hh->count) { if (!hh->manual) hh->count = 0; return 1; }
+        return 0;
+    case H_MUTEX:
+        /* Single-threaded: this thread is the only one, so an unheld mutex is
+           acquirable and a held one is held BY US -- Win32 mutexes are
+           recursive for the owning thread. */
+        hh->count++;
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+static const char *sync_kind_name(int k)
+{
+    return k == H_SEM ? "semaphore" : k == H_EVENT ? "event"
+         : k == H_MUTEX ? "mutex" : "non-waitable object";
+}
+
+void imp_KERNEL32_WaitForSingleObject(CPU *C)
+{
+    Handle *hh = h_get(A(0), 0);
+    uint32_t ms = A(1);
+    if (sync_try_take(hh)) { ret_std(C, WAIT_OBJECT_0, 2); return; }
+    if (ms == 0) { ret_std(C, WAIT_TIMEOUT, 2); return; }
+    fprintf(stderr,
+        "kernel32: WaitForSingleObject would BLOCK on %s \"%s\" (timeout %u).\n"
+        "  This process has no guest threads, so nothing could ever signal it "
+        "and the wait cannot be satisfied.\n"
+        "  Returning success here would hand the game a lock it does not hold; "
+        "returning timeout would be a lie about a wait that never happened.\n"
+        "  This is the point at which real threads are needed.\n",
+        sync_kind_name(hh->kind), hh->name, ms);
+    abort();
+}
+
+void imp_KERNEL32_WaitForMultipleObjects(CPU *C)
+{
+    /* (nCount, lpHandles, bWaitAll, dwMilliseconds) */
+    uint32_t n = A(0), arr = A(1), all = A(2), ms = A(3), i;
+    if (n == 0 || n > MAX_HANDLES) {
+        g_last_error = 87u;
+        ret_std(C, WAIT_FAILED, 4);
+        return;
+    }
+    if (!all) {
+        for (i = 0; i < n; i++) {
+            Handle *hh = h_get(RD32(arr + i * 4u), 0);
+            if (sync_try_take(hh)) { ret_std(C, WAIT_OBJECT_0 + i, 4); return; }
+        }
+    } else {
+        /* All-or-nothing: only take them if every one is ready, so a partial
+           take cannot leave the set half-consumed. */
+        int ready = 1;
+        for (i = 0; i < n; i++) {
+            Handle *hh = h_get(RD32(arr + i * 4u), 0);
+            if (hh->kind == H_MUTEX) continue;             /* always takeable */
+            if (hh->count <= 0) { ready = 0; break; }
+        }
+        if (ready) {
+            for (i = 0; i < n; i++) sync_try_take(h_get(RD32(arr + i * 4u), 0));
+            ret_std(C, WAIT_OBJECT_0, 4);
+            return;
+        }
+    }
+    if (ms == 0) { ret_std(C, WAIT_TIMEOUT, 4); return; }
+    fprintf(stderr,
+        "kernel32: WaitForMultipleObjects would BLOCK on %u object(s) "
+        "(waitAll=%u, timeout %u).\n"
+        "  No guest thread exists to signal them -- see WaitForSingleObject.\n",
+        n, all, ms);
+    abort();
+}
+
+/* ---- thread-local storage ----------------------------------------------
+ *
+ * One process-wide array, because this process has one guest thread. That is
+ * the whole implementation and it is exactly right until a second thread
+ * exists -- at which point these become pthread_key_t and the array is the bug
+ * to remove, so it says so here rather than in a commit message.
+ */
+#define MAX_TLS 128
+static uint32_t g_tls[MAX_TLS];
+static unsigned char g_tls_used[MAX_TLS];
+#define TLS_OUT_OF_INDEXES 0xFFFFFFFFu
+
+void imp_KERNEL32_TlsAlloc(CPU *C)
+{
+    unsigned i;
+    for (i = 0; i < MAX_TLS; i++)
+        if (!g_tls_used[i]) {
+            g_tls_used[i] = 1;
+            g_tls[i] = 0;                     /* Win32 guarantees zero */
+            ret_std(C, i, 0);
+            return;
+        }
+    g_last_error = 87u;
+    ret_std(C, TLS_OUT_OF_INDEXES, 0);
+}
+
+void imp_KERNEL32_TlsFree(CPU *C)
+{
+    uint32_t i = A(0);
+    if (i >= MAX_TLS || !g_tls_used[i]) {
+        fprintf(stderr, "kernel32: TlsFree(%u) on an index that was never "
+                        "allocated\n", i);
+        g_last_error = 87u;
+        ret_std(C, 0, 1);
+        return;
+    }
+    g_tls_used[i] = 0;
+    ret_std(C, 1, 1);
+}
+
+void imp_KERNEL32_TlsGetValue(CPU *C)
+{
+    uint32_t i = A(0);
+    if (i >= MAX_TLS || !g_tls_used[i]) {
+        /* Not a fatal error in Win32 -- it sets last-error and returns 0 --
+           but it is always a bug in the caller, so it is reported. */
+        fprintf(stderr, "kernel32: TlsGetValue(%u) on an unallocated index\n", i);
+        g_last_error = 87u;
+        ret_std(C, 0, 1);
+        return;
+    }
+    g_last_error = 0;
+    ret_std(C, g_tls[i], 1);
+}
+
+void imp_KERNEL32_TlsSetValue(CPU *C)
+{
+    uint32_t i = A(0);
+    if (i >= MAX_TLS || !g_tls_used[i]) {
+        fprintf(stderr, "kernel32: TlsSetValue(%u) on an unallocated index\n", i);
+        g_last_error = 87u;
+        ret_std(C, 0, 2);
+        return;
+    }
+    g_tls[i] = A(1);
+    ret_std(C, 1, 2);
+}
+
+/* ---- odds and ends, each actually implemented -------------------------- */
+
+void imp_KERNEL32_InterlockedExchange(CPU *C)
+{
+    /* Single guest thread, so a plain swap IS atomic with respect to it. The
+       guest memory is also host memory, so this is a real exchange on the real
+       word, not a shadow copy. */
+    uint32_t p = A(0), old = RD32(p);
+    WR32(p, A(1));
+    ret_std(C, old, 2);
+}
+
+void imp_KERNEL32_QueryPerformanceFrequency(CPU *C)
+{
+    /* Must agree with QueryPerformanceCounter above, which returns nanoseconds
+       from CLOCK_MONOTONIC. A mismatched pair is a timing bug that looks like a
+       gameplay bug. */
+    WR32(A(0), 1000000000u);
+    WR32(A(0) + 4u, 0);
+    ret_std(C, 1, 1);
+}
+
+/* The Win32 pseudo-handles, which are constants and not table entries. */
+void imp_KERNEL32_GetCurrentProcess(CPU *C) { ret_std(C, 0xFFFFFFFFu, 0); }
+void imp_KERNEL32_GetCurrentThread(CPU *C)  { ret_std(C, 0xFFFFFFFEu, 0); }
+
+void imp_KERNEL32_OutputDebugStringA(CPU *C)
+{
+    const char *s2 = ACS(0);
+    fprintf(stderr, "[guest] %s", s2 ? s2 : "(null)");
+    ret_std(C, 0, 1);
+}
+
+/* The Win32 pseudo-handles are constants, not table entries: (HANDLE)-1 is the
+   current process and (HANDLE)-2 the current thread. DuplicateHandle on one is
+   the standard way to obtain a REAL handle to yourself, so it is turned into a
+   table entry here rather than faulting in h_get. */
+#define PSEUDO_PROCESS 0xFFFFFFFFu
+#define PSEUDO_THREAD  0xFFFFFFFEu
+
+void imp_KERNEL32_DuplicateHandle(CPU *C)
+{
+    /* (hSrcProc, hSrc, hDstProc, lpDst, access, inherit, options)
+       One process here, so "duplicate into another process" is the same table.
+       A file handle gets a real dup() -- sharing one fd would make a close on
+       either handle break the other, which is precisely the bug a duplicate is
+       asked for to avoid. */
+    uint32_t src = A(1), dstp = A(3), options = A(6);
+    Handle *sh;
+    if (src == PSEUDO_THREAD || src == PSEUDO_PROCESS) {
+        uint32_t nh = h_alloc(H_THREAD);
+        snprintf(g_h[nh - 1].name, sizeof g_h[nh - 1].name, "%s",
+                 src == PSEUDO_THREAD ? "current thread" : "current process");
+        if (dstp) WR32(dstp, nh);
+        ret_std(C, 1, 7);
+        return;
+    }
+    sh = h_get(src, 0);
+    uint32_t nh = h_alloc(sh->kind);
+    Handle *dh = &g_h[nh - 1];
+    *dh = *sh;
+    if (sh->kind == H_FILE && sh->fd >= 0) {
+        dh->fd = dup(sh->fd);
+        if (dh->fd < 0) {
+            fprintf(stderr, "kernel32: DuplicateHandle could not dup fd %d: %s\n",
+                    sh->fd, strerror(errno));
+            dh->kind = 0;
+            g_last_error = 8u;
+            ret_std(C, 0, 7);
+            return;
+        }
+    } else if (sh->kind == H_FIND || sh->kind == H_MAP) {
+        /* A directory stream and a mapping cannot be shared by copying the
+           struct -- both would close the same resource. Refuse rather than
+           hand back a handle that breaks on the second close. */
+        fprintf(stderr, "kernel32: DuplicateHandle on a %s handle is not "
+                        "implemented; copying the struct would double-close\n",
+                sh->kind == H_FIND ? "find" : "file-mapping");
+        dh->kind = 0;
+        abort();
+    }
+    if (dstp) WR32(dstp, nh);
+    if (options & 1u) {                  /* DUPLICATE_CLOSE_SOURCE */
+        if (sh->kind == H_FILE && sh->fd >= 0) close(sh->fd);
+        sh->kind = 0;
+    }
+    ret_std(C, 1, 7);
+}
+
 void imp_KERNEL32_CloseHandle(CPU *C)
 {
     Handle *hh = h_get(A(0), 0);
@@ -376,16 +728,136 @@ void imp_KERNEL32_GetDiskFreeSpaceExA(CPU *C)
 
 /* ---- module handles ---------------------------------------------------- */
 
+/*
+ * LoadLibraryA / GetProcAddress, answered from the module table.
+ *
+ * Every module this host knows is already mapped and recompiled, and a Win32
+ * HMODULE *is* the image base -- so for one of ours the honest answer already
+ * exists and no loading is required. For anything else there is nothing to
+ * return: a fake handle would make GetProcAddress hand back fake functions,
+ * which is why this used to refuse outright. It still refuses, but now only
+ * for modules that genuinely are not here, and it says which those are.
+ */
+static uint32_t module_base_by_name(const char *want)
+{
+    X86Module *m;
+    const char *slash;
+    char base[128];
+    size_t n;
+    if (!want) return 0;
+    slash = strrchr(want, '\\');
+    if (!slash) slash = strrchr(want, '/');
+    if (slash) want = slash + 1;
+    snprintf(base, sizeof base, "%s", want);
+    n = strlen(base);
+    /* Win32 appends .dll when the name has no extension; our table holds the
+       shipped file names, so compare both ways. */
+    for (m = x86_modules(); m; m = m->next) {
+        if (strcasecmp(m->name, base) == 0) return *m->base;
+        if (strncasecmp(m->name, base, n) == 0 && m->name[n] == '.') return *m->base;
+    }
+    return 0;
+}
+
+/*
+ * The SYSTEM DLLs this host implements natively have no image to hand back, so
+ * they get a synthetic handle in a range nothing else owns. That is not a fake:
+ * GetProcAddress on one resolves through x86_native_thunk, which returns a
+ * callable thunk for an entry point that is really implemented and 0 for one
+ * that is not -- so a probe for something missing still gets an honest NULL.
+ */
+#define SYSMOD_BASE 0x000D0000u
+#define SYSMOD_STRIDE 0x1000u
+#define MAX_SYSMOD 16
+static char g_sysmod[MAX_SYSMOD][32];
+static int g_nsysmod;
+
+static uint32_t sysmod_handle(const char *name)
+{
+    int i;
+    for (i = 0; i < g_nsysmod; i++)
+        if (strcasecmp(g_sysmod[i], name) == 0)
+            return SYSMOD_BASE + (uint32_t)i * SYSMOD_STRIDE;
+    if (g_nsysmod == MAX_SYSMOD) return 0;
+    snprintf(g_sysmod[g_nsysmod], sizeof g_sysmod[0], "%s", name);
+    g_nsysmod++;
+    return SYSMOD_BASE + (uint32_t)(g_nsysmod - 1) * SYSMOD_STRIDE;
+}
+
+static const char *sysmod_name(uint32_t h)
+{
+    uint32_t i;
+    if (h < SYSMOD_BASE || h >= SYSMOD_BASE + (uint32_t)MAX_SYSMOD * SYSMOD_STRIDE)
+        return NULL;
+    i = (h - SYSMOD_BASE) / SYSMOD_STRIDE;
+    return (int)i < g_nsysmod ? g_sysmod[i] : NULL;
+}
+
+/* Which module names this host answers for natively. Anything else has no
+   implementation at all, and saying so is the point. */
+static int is_native_sysmod(const char *n)
+{
+    static const char *known[] = {
+        "KERNEL32.DLL", "USER32.DLL", "GDI32.DLL", "ADVAPI32.DLL",
+        "MSVCRT.DLL", "MSVCR71.DLL", "SHELL32.DLL", "OLE32.DLL", NULL
+    };
+    int i;
+    for (i = 0; known[i]; i++) if (strcasecmp(known[i], n) == 0) return 1;
+    return 0;
+}
+
 void imp_KERNEL32_LoadLibraryA(CPU *C)
 {
-    k32_unimpl("LoadLibraryA", "a runtime-loaded module would have to be "
-               "recompiled and registered first; returning a fake handle would "
-               "make GetProcAddress return fake functions");
+    const char *nm = ACS(0);
+    uint32_t b = module_base_by_name(nm);
+    if (b) { ret_std(C, b, 1); return; }
+    if (nm && is_native_sysmod(nm)) {
+        uint32_t h = sysmod_handle(nm);
+        if (h) { ret_std(C, h, 1); return; }
+    }
+    fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -- that module is not one "
+                    "of the recompiled ones this host has mapped.\n"
+                    "  Returning a handle would make GetProcAddress hand back "
+                    "fake functions, so this stops instead.\n"
+                    "  Mapped modules are:", nm ? nm : "(null)");
+    {   X86Module *m;
+        for (m = x86_modules(); m; m = m->next) fprintf(stderr, " %s", m->name);
+    }
+    fputc('\n', stderr);
+    abort();
 }
 
 void imp_KERNEL32_GetProcAddress(CPU *C)
 {
-    k32_unimpl("GetProcAddress", "see LoadLibraryA");
+    /* The handle is an image base, so the export table is right there. */
+    uint32_t mod = A(0), namep = A(1), rva;
+    const char *sym = (const char *)(uintptr_t)namep;
+    const char *sm = sysmod_name(mod);
+    if (namep && namep < 0x10000u) {
+        fprintf(stderr, "kernel32: GetProcAddress by ORDINAL (#%u) is not "
+                        "implemented; this layer resolves by name only\n", namep);
+        abort();
+    }
+    if (sm) {
+        /* A natively implemented system DLL: hand back a real thunk, or NULL
+           if this host does not implement that entry point. */
+        uint32_t t = x86_native_thunk(sm, sym);
+        if (t) { ret_std(C, t, 2); return; }
+        fprintf(stderr, "kernel32: GetProcAddress(%s, \"%s\") -- this host does "
+                        "not implement that entry point, so NULL\n",
+                sm, sym ? sym : "(null)");
+        g_last_error = 127u;
+        ret_std(C, 0, 2);
+        return;
+    }
+    rva = pe_export_rva(mod, sym);
+    if (rva) { ret_std(C, mod + rva, 2); return; }
+    /* A miss is not fatal in Win32 -- callers probe for optional entry points
+       -- so report it and return NULL with the error Win32 would set. */
+    fprintf(stderr, "kernel32: GetProcAddress(0x%08x, \"%s\") -> not exported\n",
+            mod, sym ? sym : "(null)");
+    g_last_error = 127u;                          /* ERROR_PROC_NOT_FOUND */
+    ret_std(C, 0, 2);
 }
 
 void imp_KERNEL32_FreeLibrary(CPU *C) { ret_std(C, 1, 1); }
