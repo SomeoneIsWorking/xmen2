@@ -278,6 +278,7 @@ FLAGKIND = {"ADD": "FK_ADD", "SUB": "FK_SUB", "AND": "FK_LOGIC",
 
 IAT = {}          # absolute VA of an import slot -> (module, symbol)
 IMG = [0, 0]      # [preferred base, end] of the module being recompiled
+IMG_REBASED = [0]  # immediates rewritten as image-relative; reported by emit
 KNOWN_EPS = set()  # entry points Ghidra identified; a call to anything else is
                    # a target inside the region it could not resolve into
                    # functions, and must not be emitted as a direct C call
@@ -293,6 +294,7 @@ def img_rel(val):
     memory -- silently, because the address is still mapped. The difftest passed
     only because in that small process the DLL did get its preferred base."""
     if IMG[0] <= val < IMG[1]:
+        IMG_REBASED[0] += 1
         return "(G_IMGBASE + 0x%xU)" % (val - IMG[0])
     return None
 
@@ -905,6 +907,46 @@ def translate(fn):
 
 # --------------------------------------------------------------- commands
 
+def image_bounds(d):
+    """[base, end) of the module's REAL image, excluding Ghidra's synthetic blocks.
+
+    This used to be `max(start + size)` over every block, which is wrong in a
+    way that is invisible in the output and corrupts arithmetic rather than
+    addresses. Ghidra's export carries a synthetic `tdb` block at 0xffdff000
+    (the thread debug block), so the maximum was 0xffe00000 and img_rel() then
+    treated EVERY immediate from the image base up to 4 GB as an address into
+    this module and rebased it. Measured before the fix: 8,460 operands in
+    2,513 functions across the ten exported modules, worst in XMen2.exe (6,400)
+    because its base is 0x400000, so almost any large constant qualified.
+
+    The symptom is not a wild pointer -- it is a BIT MASK silently becoming a
+    different number. `AND ECX,0x7fffffe1` in igArena_malloc was emitted as
+    `AND ECX,(G_IMGBASE + 0x6fffffe1)`, which cleared the wrong bits, left a
+    chunk header in its extension form and made the allocator hand out a block
+    overlapping its own top chunk (issue #15).
+
+    The real image is the run of blocks contiguous from the base; anything that
+    does not join it is not part of this module. Exclusions are RETURNED so the
+    caller can print them -- a bounds computation that silently drops a real
+    section would be the same class of bug in the other direction.
+    """
+    base = d["image_base"]
+    end = base
+    excluded = []
+    for b in sorted(d["blocks"], key=lambda b: b["start"]):
+        # 64 KB of slack: PE section alignment leaves gaps, but nothing that
+        # belongs to the image sits a whole allocation granule away.
+        if b["start"] >= base and b["start"] <= end + 0x10000:
+            end = max(end, b["start"] + b["size"])
+        else:
+            excluded.append(b)
+    IMG_EXCLUDED[:] = excluded
+    return base, end
+
+
+IMG_EXCLUDED = []
+
+
 def load(path):
     with open(path) as f:
         d = json.load(f)
@@ -912,8 +954,13 @@ def load(path):
     iat_path = re.sub(r"\.json$", ".iat", path)
     KNOWN_EPS.clear()
     KNOWN_EPS.update(fn["ep"] for fn in d["functions"])
-    IMG[0] = d["image_base"]
-    IMG[1] = max((b["start"] + b["size"]) for b in d["blocks"])
+    IMG[0], IMG[1] = image_bounds(d)
+    sys.stderr.write("image 0x%08x-0x%08x (%.2f MB)\n"
+                     % (IMG[0], IMG[1], (IMG[1] - IMG[0]) / 1048576.0))
+    for b in IMG_EXCLUDED:
+        sys.stderr.write("  block NOT part of the image, excluded from the "
+                         "address test: %s 0x%08x+0x%x\n"
+                         % (b.get("name", "?"), b["start"], b["size"]))
     try:
         with open(iat_path) as f:
             for line in f:
@@ -1048,6 +1095,9 @@ def cmd_emit(argv):
     if not split:
         with open(out, "w") as f:
             f.write("\n".join(lines) + "\n")
+        print("%d immediate(s) rewritten as image-relative (G_IMGBASE + off); "
+              "a spike here means the image bounds are wrong and BIT MASKS are "
+              "being rebased -- see image_bounds()" % IMG_REBASED[0])
         print("emitted %d functions to %s; %d NOT emitted (see `report`)"
               % (done, out, skipped))
         return
@@ -1067,6 +1117,9 @@ def cmd_emit(argv):
     # build globs, and it would compile both and collide on every symbol.
     if os.path.exists(out):
         os.remove(out)
+    print("%d immediate(s) rewritten as image-relative (G_IMGBASE + off); "
+          "a spike here means the image bounds are wrong and BIT MASKS are "
+          "being rebased -- see image_bounds()" % IMG_REBASED[0])
     print("emitted %d functions to %d chunks %s_NNN.c; %d NOT emitted "
           "(see `report`)" % (done, nchunk, stem, skipped))
 

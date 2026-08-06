@@ -1,7 +1,7 @@
 ---
 id: 15
 title: Native run: igArenaMemoryPool::consolidate dereferences NULL
-status: open
+status: resolved
 symptom: SIGSEGV at (nil) inside Gap::Core::igArenaMemoryPool::consolidate (libIGCore 0x10057dc0), reached from igArenaMemoryPool::malloc -> memoryOperation. Occurs AFTER the memory-pool bootstrap now completes (issue #14 fixed)
 tags: pc,recomp,native,memory,engine-init,rc-exe
 created: 2026-08-06
@@ -271,3 +271,6 @@ not).
 2. `X2_PEEK` the arena descriptor at the fault to see which pointer is NULL.
 3. Compare against the stock build under Wine before assuming the translation is
    at fault.
+
+### Resolution (2026-08-06)
+ROOT CAUSE was not in the allocator at all: a RECOMPILER defect (C092). tools/recomp.py computed the module image as max(start+size) over every Ghidra block, and the export carries a synthetic 'tdb' block at 0xffdff000, so the image end was 0xffe00000 for every module. img_rel() therefore treated every immediate from the image base up to ~4 GB as an address into the module and rewrote it as (G_IMGBASE + offset) -- silently turning BIT MASKS into different numbers. 8,460 operands across 2,513 functions were affected; worst XMen2.exe with 6,400, because its base is 0x400000. The instance behind this issue: 'AND ECX,0x7fffffe1' at 0x10057325 in igArena_malloc became 'AND ECX,(G_IMGBASE + 0x6fffffe1)' = 0x93ffffe1 with libIGCore at 0x24000000, so the small-chunk path never cleared the header's sign bit; the chunk kept its 12-byte extension form (payload = header+12) while ms->top advanced as if the header were 4 bytes, and the returned block overlapped the top chunk by 8 bytes. The caller's writes then destroyed the top header and consolidate walked into it. FIX: image_bounds() takes the run of blocks contiguous from the base and prints what it excluded; emit reports how many immediates it rebased so a regression shows as a spike. VERIFIED after regenerating all eight linked modules: malloc(0x0c) now returns 0x00a80020 = header+4 (was 0x00a80028), chunk head is 0x00000181 with the sign bit cleared (was 0x80000181), ms->top = 0x00a8002c is exactly the payload end rather than 4 bytes inside it, malloc(0x100) follows correctly and a later call reuses the freed chunk at 0x00a80008. The native run no longer faults in consolidate; it advances past the whole arena path and stops on an ordinary missing-function seed at 0x100177da, which native_discover.sh consumes. Battery 33/33.
