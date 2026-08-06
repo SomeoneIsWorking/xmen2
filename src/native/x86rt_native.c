@@ -587,6 +587,28 @@ void x86_peek_report(void)
     }
 }
 
+/*
+ * Everything the process knows, at any stop.
+ *
+ * The abort paths called only x86_ring_dump(), and abort() does not run atexit
+ * handlers -- so the reached set and the argument watch were silent on exactly
+ * the failures worth reporting: a run that stopped on a missing body printed a
+ * ring and nothing else, while the report saying WHICH bodies had run was
+ * registered with atexit and never fired. An instrument that goes quiet when
+ * the run fails is not an instrument.
+ */
+void x86_diag_dump(void)
+{
+    x86_peek_report();
+#ifdef X86_NATIVE_REACHED
+    x86_reached_report();
+#endif
+#ifdef X86_NATIVE_TRACE
+    x86_args_report();
+#endif
+    x86_ring_dump();
+}
+
 void x86_ring_dump(void)
 {
     unsigned n = g_ring_n < RING ? g_ring_n : RING, i;
@@ -687,7 +709,7 @@ void x86_dispatch(CPU *C, uint32_t target)
        exactly what the constructor-table report describes, so it is printed in
        the SAME shape and tools/native_discover.sh seeds it without needing to
        know that an indirect call target is a different kind of gap. */
-    x86_ring_dump();
+    x86_diag_dump();
     m = x86_module_for(target);
     if (m) {
         fprintf(stderr, "\n*** dispatch target with no recompiled body.\n"
@@ -727,7 +749,7 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
                     "  instruction in it was mistranslated.\n",
                     target, fn_ep, nm ? nm : "?", expected, target);
     where(target);
-    x86_ring_dump();
+    x86_diag_dump();
     abort();
 }
 
@@ -869,7 +891,7 @@ void x86_guest_call(CPU *C, uint32_t target)
                             "than it started (%08x -> %08x). It consumed stack "
                             "that was not its own.\n",
                     target, (int)(before - C->esp), before, C->esp);
-            x86_ring_dump();
+            x86_diag_dump();
             abort();
         }
         if (!said++) {

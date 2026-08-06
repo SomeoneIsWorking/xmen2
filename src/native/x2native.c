@@ -182,11 +182,7 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
 #endif
     }
     x86_regs_dump();
-#ifdef X86_NATIVE_TRACE
-    x86_args_report();
-#endif
-    x86_peek_report();
-    x86_ring_dump();
+    x86_diag_dump();
 #ifdef X86_NATIVE_REACHED
     x86_reached_report();
 #endif

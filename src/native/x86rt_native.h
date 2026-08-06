@@ -74,6 +74,11 @@ void x86_peek_report(void);
    boundary, which guest-to-guest calls share. */
 void x86_regs_dump(void);
 
+/* Peek + reached + args + ring, in one call. Every stop path uses this, because
+   abort() does not run atexit handlers and the reports registered there were
+   silent on exactly the failures worth reporting. */
+void x86_diag_dump(void);
+
 /* Argument watch (X2_ARGS), trace builds only. Reports at exit whether any
    watched entry point was entered at all. */
 void x86_args_report(void);
