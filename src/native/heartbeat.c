@@ -4,6 +4,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "d3d8_device.h"
+#include "gpu_draw.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -38,12 +39,13 @@ static double   g_t0;
 static void *heartbeat_thread(void *arg)
 {
     unsigned long p_cross = 0, p_scenes = 0, p_presents = 0, p_clears = 0,
-                  p_draws = 0;
+                  p_draws = 0, p_gpu = 0, p_ref = 0;
     int first = 1, stalled = 0, dumped = 0;
     (void)arg;
     for (;;) {
         struct timespec req;
         unsigned long cross, scenes = 0, presents = 0, clears = 0, draws = 0;
+        unsigned long gpu_draws = 0, gpu_refused = 0;
         int have_dev;
         double t;
 
@@ -54,11 +56,13 @@ static void *heartbeat_thread(void *arg)
         t = now_s() - g_t0;
         cross = x86_crossings();
         have_dev = d3d8_device_counts(&scenes, &presents, &clears, &draws);
+        gpu_draw_counts(&gpu_draws, &gpu_refused);
 
         if (first) {
             first = 0;
             p_cross = cross; p_scenes = scenes; p_presents = presents;
             p_clears = clears; p_draws = draws;
+            p_gpu = gpu_draws; p_ref = gpu_refused;
             fprintf(stderr, "[HB] %6.1fs  the first line is a baseline; the "
                             "deltas below are per %.1fs.\n", t, g_period);
             fprintf(stderr, "[HB] %6.1fs  crossings %lu (%s)%s\n",
@@ -99,6 +103,17 @@ static void *heartbeat_thread(void *arg)
                 fprintf(stderr, "[HB]           ... and NOTHING was drawn in "
                                 "that time (still %lu) -- whatever frames ran "
                                 "submitted no geometry.\n", draws);
+            /* The engine's draw count and the GPU's are different claims: the
+               first is what was asked for, the second what was rasterised. A
+               black screen with both rising is a shading problem; a black
+               screen with the second flat is a backend that refused every
+               draw, and only these two numbers side by side say which. */
+            fprintf(stderr, "[HB]           gpu draws %lu (+%lu)  refused %lu "
+                            "(+%lu)%s\n",
+                    gpu_draws, gpu_draws - p_gpu, gpu_refused,
+                    gpu_refused - p_ref,
+                    gpu_draws == p_gpu && draws != p_draws
+                    ? "  -- the engine asked and the BACKEND drew none" : "");
         }
         /*
          * A stall -- executing, not presenting -- dumps the ring, ONCE.
@@ -136,6 +151,7 @@ static void *heartbeat_thread(void *arg)
 
         p_cross = cross; p_scenes = scenes; p_presents = presents;
         p_clears = clears; p_draws = draws;
+        p_gpu = gpu_draws; p_ref = gpu_refused;
     }
     return NULL;
 }

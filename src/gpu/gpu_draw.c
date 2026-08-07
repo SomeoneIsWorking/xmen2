@@ -30,6 +30,7 @@ int gpu_texture_upload(GpuTexture t, uint32_t l, const void *d, uint32_t n)
 void gpu_texture_destroy(GpuTexture t) { (void)t; }
 int  gpu_draw(const GpuDraw *d) { (void)d; return no_sdl("draw"); }
 void gpu_draw_report(void) { }
+void gpu_draw_counts(unsigned long *s2, unsigned long *r) { *s2 = *r = 0; }
 int  gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
                          float a)
 { (void)w; (void)h; (void)r; (void)g; (void)b; (void)a;
@@ -731,6 +732,12 @@ int gpu_draw(const GpuDraw *d)
     }
     g_draws++;
     return 1;
+}
+
+void gpu_draw_counts(unsigned long *submitted, unsigned long *refused)
+{
+    *submitted = g_draws;
+    *refused = g_refused;
 }
 
 void gpu_draw_report(void)

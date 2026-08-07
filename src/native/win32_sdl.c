@@ -494,6 +494,20 @@ void imp_USER32_CreateWindowExA(CPU *C)
         return;
     }
     g_win_live = 1;
+    /*
+     * WHICH display the window went to, said out loud.
+     *
+     * SDL picks the video driver, and on a Wayland session it prefers Wayland
+     * and ignores DISPLAY -- so a run launched onto an Xvfb screen renders to
+     * the user's real desktop instead, and a screenshot of the Xvfb root comes
+     * back black. That black image reads as "the renderer draws nothing". One
+     * line here is the difference between that and the truth.
+     */
+    printf("win32_sdl: window %dx%d on SDL video driver \"%s\"%s%s\n", w, h,
+           SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)",
+           getenv("DISPLAY") ? "  DISPLAY=" : "",
+           getenv("DISPLAY") ? getenv("DISPLAY") : "");
+    fflush(stdout);
     ret_std(C, HWND_MAIN_TOK, 12);
 }
 

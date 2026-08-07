@@ -148,6 +148,17 @@ int gpu_draw(const GpuDraw *d);
 void gpu_draw_report(void);
 
 /*
+ * The same two counts, live, for the heartbeat.
+ *
+ * The D3D8 layer's draw count is how many draws the ENGINE asked for; this is
+ * how many reached the GPU. A run where those two disagree is drawing less
+ * than it appears to, and a run where they agree and the screen is still black
+ * is a different problem entirely -- the counts have to be separable to tell
+ * the two apart.
+ */
+void gpu_draw_counts(unsigned long *submitted, unsigned long *refused);
+
+/*
  * Render into an off-screen target instead of the swapchain, and read it back.
  *
  * This exists so the draw path can be PROVED rather than asserted: the
