@@ -1337,7 +1337,19 @@ void x86_int3(uint32_t addr)
 
 void x87_fault(const char *what)
 {
-    fprintf(stderr, "x87_fault: %s\n", what);
+    /*
+     * A modelled-x87 fault used to print four words and abort, which says
+     * WHICH invariant broke and nothing about where. The stack depth is a
+     * property of a translated body -- an FSTP the translator emitted without
+     * its matching push, or a body entered at the wrong place -- so the ring,
+     * which names the last bodies entered and who called them, is exactly the
+     * evidence needed and it was being thrown away.
+     */
+    fprintf(stderr, "x87_fault: %s\n"
+                    "  This is the MODELLED x87 stack, so it is a translation "
+                    "defect, not a guest bug: some body pushed or popped a "
+                    "different number of times than the original.\n", what);
+    x86_diag_dump();
     abort();
 }
 

@@ -191,14 +191,50 @@ const char *win_path(const char *in)
 /* ---- error reporting --------------------------------------------------- */
 
 static uint32_t g_last_error;
+
+/*
+ * X2_FILES=1 -- every file operation the guest asks for, with its answer.
+ *
+ * A failed open reports itself (see CreateFileA), and that is not enough when
+ * the question is "what did the game TRY": the game's own dialog said it could
+ * not save while every open in the run SUCCEEDED (issue #39), which only a
+ * trace of the successful ones can explain. There is no strace on this machine
+ * and a game is not a program you can bisect by hand, so the trace lives here.
+ *
+ * Off by default -- it is one line per operation and the asset loader opens
+ * thousands.
+ */
+static int files_traced(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("X2_FILES");
+        on = (e && *e && *e != '0');
+        if (on)
+            fprintf(stderr, "[FILE] tracing every file operation the guest "
+                            "asks for (X2_FILES).\n");
+    }
+    return on;
+}
+
+static void file_trace(const char *what, const char *guest, const char *host,
+                       const char *outcome)
+{
+    if (!files_traced()) return;
+    fprintf(stderr, "[FILE] %-18s \"%s\"\n         -> \"%s\"  %s\n",
+            what, guest ? guest : "(null)", host ? host : "(null)", outcome);
+}
 /* Counted so the report can say how many were never shown. */
 static unsigned long g_failed_opens;
 static uint64_t g_reserved_bytes;   /* see VirtualAlloc */
 
 void imp_KERNEL32_GetLastError(CPU *C) { ret_std(C, g_last_error, 0); }
 
-#define ERROR_FILE_NOT_FOUND 2u
-#define ERROR_NO_MORE_FILES  18u
+#define ERROR_FILE_NOT_FOUND   2u
+#define ERROR_PATH_NOT_FOUND   3u
+#define ERROR_ACCESS_DENIED    5u
+#define ERROR_NO_MORE_FILES   18u
+#define ERROR_ALREADY_EXISTS 183u
 #define INVALID_HANDLE       0xFFFFFFFFu
 
 /* ---- time and identity ------------------------------------------------- */
@@ -366,6 +402,9 @@ void imp_KERNEL32_CreateFileA(CPU *C)
     }
     h = h_alloc(H_FILE);
     g_h[h - 1].fd = fd;
+    file_trace("CreateFile", ACS(0), path,
+               (access_ & GENERIC_WRITE) ? "opened for WRITING"
+                                         : "opened for reading");
     ret_std(C, h, 7);
 }
 
@@ -753,17 +792,53 @@ void imp_KERNEL32_CloseHandle(CPU *C)
 void imp_KERNEL32_GetFileAttributesA(CPU *C)
 {
     struct stat st;
-    const char *p = win_path(ACS(0));
+    const char *g = ACS(0);
+    const char *p = win_path(g);
     if (stat(p, &st) != 0) {
+        file_trace("GetFileAttributes", g, p, "does not exist");
         g_last_error = ERROR_FILE_NOT_FOUND;
         ret_std(C, 0xFFFFFFFFu, 1);      /* INVALID_FILE_ATTRIBUTES */
         return;
     }
+    file_trace("GetFileAttributes", g, p,
+               S_ISDIR(st.st_mode) ? "a directory" : "a file");
     ret_std(C, S_ISDIR(st.st_mode) ? 0x10u : 0x80u, 1);   /* DIRECTORY : NORMAL */
 }
 
-void imp_KERNEL32_DeleteFileA(CPU *C) { ret_std(C, unlink(win_path(ACS(0))) == 0, 1); }
-void imp_KERNEL32_CreateDirectoryA(CPU *C) { ret_std(C, mkdir(win_path(ACS(0)), 0777) == 0, 2); }
+void imp_KERNEL32_DeleteFileA(CPU *C)
+{
+    const char *g = ACS(0), *p = win_path(g);
+    int ok = unlink(p) == 0;
+    if (!ok)
+        g_last_error = errno == ENOENT ? ERROR_FILE_NOT_FOUND
+                                       : ERROR_ACCESS_DENIED;
+    file_trace("DeleteFile", g, p, ok ? "deleted" : strerror(errno));
+    ret_std(C, (uint32_t)ok, 1);
+}
+
+void imp_KERNEL32_CreateDirectoryA(CPU *C)
+{
+    const char *g = ACS(0), *p = win_path(g);
+    int ok = mkdir(p, 0777) == 0;
+    if (!ok) {
+        /*
+         * The LAST ERROR is the whole answer here, not the return value.
+         *
+         * CreateDirectory returns FALSE for a directory that already exists --
+         * on Windows too -- and every caller that creates a tree distinguishes
+         * that from a real failure by ERROR_ALREADY_EXISTS. Leaving the last
+         * error at whatever it happened to be makes "the directory is already
+         * there" read as "the directory could not be made", which is a save
+         * path that reports itself as broken on every run after the first
+         * (issue #39).
+         */
+        g_last_error = errno == EEXIST ? ERROR_ALREADY_EXISTS
+                     : errno == ENOENT ? ERROR_PATH_NOT_FOUND
+                                       : ERROR_ACCESS_DENIED;
+    }
+    file_trace("CreateDirectory", g, p, ok ? "created" : strerror(errno));
+    ret_std(C, (uint32_t)ok, 2);
+}
 void imp_KERNEL32_RemoveDirectoryA(CPU *C) { ret_std(C, rmdir(win_path(ACS(0))) == 0, 1); }
 
 void imp_KERNEL32_GetModuleFileNameA(CPU *C)
@@ -1453,6 +1528,7 @@ void imp_KERNEL32_FindFirstFileA(CPU *C)
         return;
     }
     if (!find_next(hh, data)) {
+        file_trace("FindFirstFile", spec, hh->dirpath, "matched NOTHING");
         closedir(hh->dir);
         hh->dir = NULL;
         hh->kind = 0;
@@ -1460,6 +1536,7 @@ void imp_KERNEL32_FindFirstFileA(CPU *C)
         ret_std(C, INVALID_HANDLE, 2);
         return;
     }
+    file_trace("FindFirstFile", spec, hh->dirpath, "matched at least one");
     ret_std(C, h, 2);
 }
 

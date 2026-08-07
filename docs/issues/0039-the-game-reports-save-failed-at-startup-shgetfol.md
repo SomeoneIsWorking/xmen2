@@ -1,7 +1,7 @@
 ---
 id: 39
 title: The game reports SAVE FAILED at startup -- SHGetFolderPathA is not implemented, so there is no save folder
-status: investigating
+status: resolved
 symptom: The first thing the native run draws is the game's own dialog reading 'SAVE FAILED!' with [Esc] CANCEL / [Enter] RETRY; the log shows GetProcAddress(shell32.dll, "SHGetFolderPathA") -> NULL twice just before it
 tags: pc,native,kernel32,shell32,saves
 created: 2026-08-07
@@ -69,12 +69,42 @@ game built was `S:\\\\Activision\\...`.
 `Activision/X-Men Legends 2/{Save,Screenshots}` and writes a 684-byte
 `Save/settings.dat`. No `CreateFileA` fails anywhere in the run.
 
-## Still open: the dialog is still shown
+## Resolved: CreateDirectoryA never set ERROR_ALREADY_EXISTS
+
+The last piece was not a missing feature -- it was a missing ERROR CODE.
+
+`CreateDirectory` returns FALSE for a directory that already exists, on Windows
+too, and every caller that creates a tree distinguishes that from a real
+failure by `GetLastError() == ERROR_ALREADY_EXISTS`. This host returned FALSE
+and left the last error at whatever it happened to be, so "the directory is
+already there" read as "the directory could not be made" -- and the game
+correctly concluded it had nowhere to save, on every run after the first.
+
+    [FILE] CreateDirectory    "S:\Activision\X-Men Legends 2\Save"
+             -> "scratch/saves/Activision/X-Men Legends 2/Save"  File exists
+
+One line: `errno == EEXIST` now becomes ERROR_ALREADY_EXISTS (and ENOENT
+becomes ERROR_PATH_NOT_FOUND). `DeleteFileA` got the same treatment.
+
+**The dialog is gone** -- `scratch/screenshots/after.png` is the title screen
+with its full legal paragraph and no panel over it -- and the game runs on into
+code it had never reached, where it stops on an x87 stack underflow in
+libIGGfx. That is issue #40.
+
+## What found it
+
+`X2_FILES=1` traces every file operation the guest asks for, with the guest
+path, the host path it became and the outcome. There is no `strace` on this
+machine, and the question here was not "which open failed" -- every open
+SUCCEEDED -- but "what did the game try", which only a trace of the successful
+calls can answer.
+
+## Superseded: the wrong anchor
 
 The settings file writes and no file operation fails, and the game STILL shows
 its dialog. So the failure it is reporting is not the one that was fixed.
 
-A dead end worth recording: the exe contains the string `EMSG_SAVE_FAILED_DEVNUM`
+A dead end worth recording, and it stayed a dead end: the exe contains the string `EMSG_SAVE_FAILED_DEVNUM`
 at 0x0069ad04, selected by `FUN_0055e9b0`, which is a plain
 error-code-to-message-id switch. **That function is never called in a run** (an
 argument watch on it reports zero calls), so it is the wrong anchor -- the
@@ -83,3 +113,11 @@ up is a different one, and it most likely comes from the localised string table
 in `igct.bnx` rather than from the exe.
 
 The next anchor is that string table, not the exe's literals.
+
+
+Both message keys (`EMSG_SAVE_FAILED_DEVNUM` and `EMSG_CREATE_GAME_FAILED_DEVNUM`,
+which are both "Save failed!" in `igct.bnx`) appear ONLY inside `FUN_0055e9b0`,
+and that function is never entered -- verified against a positive control in
+the same run, so the negative is trustworthy. The dialog is raised from data,
+not from an exe literal, which is why chasing the string could not have worked.
+The file-operation trace found it in one run.
