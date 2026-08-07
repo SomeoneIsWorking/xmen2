@@ -1188,6 +1188,31 @@ def translate(fn):
     # by the switch in the block after it (issue #29).
     fn["_entered_at"] = sorted(a for a, ep in INTERIOR.items()
                                if ep == fn["ep"] and a in fn["_addrs"])
+    #
+    # The entry point is not always the LOWEST address in the body.
+    #
+    # MSVC puts an adjustor thunk far from the code it jumps to, and Ghidra
+    # merges the two ranges into one function whose ENTRY is the higher
+    # address:
+    #
+    #     005bee90  MOV EDX,[ESP+4]      <- lowest address, NOT the entry
+    #     ...
+    #     005beeab  JMP 0x005beca0
+    #     005d4d80  ADD ECX,0x867ac      <- the entry point
+    #     005d4d86  JMP 0x005bee90
+    #
+    # Emitting the instructions in address order and falling into the first one
+    # runs the body from the wrong place. Here that skipped `ADD ECX,0x867ac`,
+    # so an array base was never applied, `(ptr - base) / 804` came out as 685
+    # instead of 0, and the run faulted on element 685 of a 175-element array --
+    # two functions and a vtable dispatch away from the instruction that was
+    # skipped (issue #36). It links, it runs, and it is wrong.
+    fn["_ep_first"] = fn["ins"][0]["a"] == fn["ep"] if fn["ins"] else True
+    if not fn["_ep_first"]:
+        if fn["ep"] not in fn["_addrs"]:
+            return None, ("the entry point 0x%08x is not one of this "
+                          "function's instructions" % fn["ep"])
+        targets.add(fn["ep"])
     if fn["_has_injmp"] or fn["_entered_at"]:
         fn["_has_injmp"] = True
         targets |= fn["_addrs"]
@@ -1224,6 +1249,12 @@ def translate(fn):
         body.append("  if (C->enter_at) {")
         body.append("    _injmp = C->enter_at; C->enter_at = 0;")
         body.append("    goto L_injmp; }")
+    if not fn["_ep_first"]:
+        # Ordinary entry, at an address that is not the first instruction. The
+        # label is guaranteed above.
+        body.append("  /* the entry point 0x%08x is not the lowest address in "
+                    "this body */" % fn["ep"])
+        body.append("  goto L_%08x;" % fn["ep"])
     for ins in fn["ins"]:
         if ins["a"] in targets:
             body.append("L_%08x:;" % ins["a"])

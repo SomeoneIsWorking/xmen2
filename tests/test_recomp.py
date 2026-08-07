@@ -495,6 +495,60 @@ class IntegerX87Widths(unittest.TestCase):
         self.assertNotIn("RDI32(", c)
 
 
+class EntryPointIsNotAlwaysTheLowestAddress(unittest.TestCase):
+    """MSVC puts an adjustor thunk far from the code it jumps to, and Ghidra
+    merges the two ranges into one function whose ENTRY is the HIGHER address.
+
+    Emitting in address order and falling into the first instruction then runs
+    the body from the wrong place. Issue #36: `ADD ECX,0x867ac` sat at the
+    entry point and was emitted after a `return`, so an array base was never
+    applied and `(ptr - base) / 804` came out as 685 instead of 0 -- a fault on
+    element 685 of a 175-element array, two functions and a vtable dispatch
+    away from the instruction that was skipped.
+    """
+
+    def _thunk(self):
+        return [
+            ins(0x005bee90, "MOV", "MOV EDX,dword ptr [ESP + 0x4]", n=4),
+            ins(0x005bee94, "SUB", "SUB EDX,ECX", n=2),
+            ins(0x005bee96, "RET", "RET", n=1),
+            ins(0x005d4d80, "ADD", "ADD ECX,0x867ac", n=6),
+            ins(0x005d4d86, "JMP", "JMP 0x005bee90", n=2, flow=0x005bee90),
+        ]
+
+    def test_the_body_jumps_to_its_entry_point_first(self):
+        c = translate(self._thunk(), ep=0x005d4d80)
+        self.assertIn("goto L_005d4d80;", c)
+        # and it does so BEFORE the lowest-address instruction is emitted
+        self.assertLess(c.index("goto L_005d4d80;"), c.index("005bee90 MOV"))
+
+    def test_the_entry_point_gets_a_label(self):
+        c = translate(self._thunk(), ep=0x005d4d80)
+        self.assertIn("L_005d4d80:;", c)
+
+    def test_an_ordinary_body_gets_no_jump(self):
+        """The negative: when the entry point IS the first instruction --
+        which is every other function in the image -- nothing changes."""
+        c = translate([
+            ins(0x00401000, "MOV", "MOV EAX,ECX", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertNotIn("is not the lowest address", c)
+
+    def test_a_body_that_does_not_contain_its_entry_point_is_refused(self):
+        """Not translated with a guess: the body would have no way in at all."""
+        fn = {"ep": 0x00405000, "qname": "Test::fn", "name": "fn",
+              "thunk": False, "size": 3,
+              "ins": [ins(0x00401000, "MOV", "MOV EAX,ECX", n=2),
+                      ins(0x00401002, "RET", "RET", n=1)]}
+        recomp.IMG[0], recomp.IMG[1] = 0x00400000, 0x00a75000
+        recomp.KNOWN_EPS.clear()
+        recomp.KNOWN_EPS.add(fn["ep"])
+        body, reason = recomp.translate(fn)
+        self.assertIsNone(body)
+        self.assertIn("entry point", reason)
+
+
 # unittest.main() LAST, always.
 #
 # It used to sit in the middle of the file, and everything appended after it

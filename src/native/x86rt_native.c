@@ -662,6 +662,14 @@ void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
                 RD32(C->esp + 4), RD32(C->esp + 8),
                 RD32(C->esp + 12), RD32(C->esp + 16), ret,
                 is_new ? ", NEW call site" : "");
+        /* The callee-saved four, at the moment of entry -- so they are still
+           the CALLER's. A caller that indexes off EDI or EBP across a call
+           (issue #36) cannot be diagnosed from the arguments alone: the
+           question there is whether the value the caller is still using is
+           the one it had, and only the register file answers it. */
+        fprintf(stderr, "[ARGS]      caller-live  ebx %08x  ebp %08x  "
+                        "esi %08x  edi %08x\n",
+                C->ebx, C->ebp, C->esi, C->edi);
         /* X2_PEEK at every watched call, not only at the fault. A dump taken
            once at the end shows the wreckage; what identifies WHICH call broke
            an invariant is the same addresses before and after each one. */
@@ -679,9 +687,12 @@ void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
            truncated 64-bit value as a plausible small one. edx is meaningless
            for a 32-bit return, which is why it is labelled rather than merged
            into one number. */
-        fprintf(stderr, "[ARGS] <- 0x%08x  eax %08x  edx %08x  (as int64 %lld)\n",
+        fprintf(stderr, "[ARGS] <- 0x%08x  eax %08x  edx %08x  (as int64 %lld)\n"
+                        "[ARGS]      returned-with ebx %08x  ebp %08x  "
+                        "esi %08x  edi %08x\n",
                 ep, C->eax, C->edx,
-                (long long)(((uint64_t)C->edx << 32) | C->eax));
+                (long long)(((uint64_t)C->edx << 32) | C->eax),
+                C->ebx, C->ebp, C->esi, C->edi);
         x86_peek_report();
     }
 }
