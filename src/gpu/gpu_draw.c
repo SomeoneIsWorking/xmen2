@@ -745,11 +745,13 @@ int gpu_draw(const GpuDraw *d)
                         "of the bound index buffer.\n"
                         "  %u index/indices of %u byte(s) from index %u needs "
                         "%llu byte(s); the buffer is %u.\n"
+                        "  gpu handle %u.\n"
                         "  primitive %d, %u primitive(s), base vertex %d. "
                         "Either the engine bound the wrong buffer or this "
                         "layer sized it wrong.%s\n",
                         n, isz, d->first_index, (unsigned long long)need,
-                        ires->bytes, d->prim, d->prim_count,
+                        ires->bytes, (unsigned)d->indices, d->prim,
+                        d->prim_count,
                         (int)d->base_vertex,
                         told == 4 ? " (further ones are counted only)" : "");
             g_refused++;

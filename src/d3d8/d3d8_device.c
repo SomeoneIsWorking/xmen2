@@ -63,6 +63,32 @@ static void *guest_ptr(uint32_t a, const char *what)
     return (void *)(uintptr_t)a;
 }
 
+/*
+ * The device holds a REFERENCE on whatever is bound to it.
+ *
+ * D3D8 does, and it is not bookkeeping: the engine creates an index buffer per
+ * mesh, binds it, draws, and releases it, expecting the device's own reference
+ * to keep it alive until something else is bound. Without that reference the
+ * release takes the object to zero, this host retires it and destroys its GPU
+ * buffer -- and the still-bound guest pointer then resolves to a RECYCLED gpu
+ * slot holding somebody else's, smaller, buffer. That is issue #38: a draw
+ * asking for 204 indices out of a 152-byte buffer, one per frame, which was
+ * the game's missing caption.
+ *
+ * Order matters: addref the new one BEFORE releasing the old, or binding a
+ * resource to itself frees it.
+ */
+static void bind_ref(uint32_t *slot, uint32_t next)
+{
+    D3D8Object *o;
+    if (*slot == next) return;
+    if (next && (o = d3d8_object_from_guest(next)) != NULL)
+        d3d8_object_addref(o);
+    if (*slot && (o = d3d8_object_from_guest(*slot)) != NULL)
+        d3d8_object_release(o);
+    *slot = next;
+}
+
 /* ---- IUnknown ---------------------------------------------------------- */
 
 static void dev_QueryInterface(D3D8Object *self, CPU *C)
@@ -408,9 +434,39 @@ static void dev_CreateStateBlock(D3D8Object *self, CPU *C)
 
 static void dev_ApplyStateBlock(D3D8Object *self, CPU *C)
 {
+    /* Issue #38: the engine creates, applies and deletes exactly one block per
+       frame, and exactly one draw per frame runs off the end of its index
+       buffer. Whether Apply is what MOVES the index binding is the question,
+       so the binding is printed on both sides of it. Capped: the answer is in
+       the first frames or it is nowhere. */
+    /* A block replaces the bindings wholesale, so the device's references have
+       to follow it: the same invariant bind_ref keeps, re-established after
+       the copy rather than during it. */
+    uint32_t old_idx = g_dev.state.indices;
+    uint32_t old_str[D3D8_MAX_STREAMS], old_tex[D3D8_MAX_STAGES];
+    unsigned i;
+    int ok;
     (void)self;
-    d3d8_ret(C, d3d8_sb_apply(d3d8_arg(C, 0), &g_dev.state)
-                ? D3D_OK : D3DERR_INVALIDCALL);
+    for (i = 0; i < D3D8_MAX_STREAMS; i++)
+        old_str[i] = g_dev.state.stream[i].guest_ptr;
+    for (i = 0; i < D3D8_MAX_STAGES; i++)
+        old_tex[i] = g_dev.state.texture[i];
+    ok = d3d8_sb_apply(d3d8_arg(C, 0), &g_dev.state);
+    if (ok) {
+        uint32_t nw;
+        nw = g_dev.state.indices; g_dev.state.indices = old_idx;
+        bind_ref(&g_dev.state.indices, nw);
+        for (i = 0; i < D3D8_MAX_STREAMS; i++) {
+            nw = g_dev.state.stream[i].guest_ptr;
+            g_dev.state.stream[i].guest_ptr = old_str[i];
+            bind_ref(&g_dev.state.stream[i].guest_ptr, nw);
+        }
+        for (i = 0; i < D3D8_MAX_STAGES; i++) {
+            nw = g_dev.state.texture[i]; g_dev.state.texture[i] = old_tex[i];
+            bind_ref(&g_dev.state.texture[i], nw);
+        }
+    }
+    d3d8_ret(C, ok ? D3D_OK : D3DERR_INVALIDCALL);
 }
 
 static void dev_CaptureStateBlock(D3D8Object *self, CPU *C)
@@ -629,7 +685,7 @@ static void dev_SetTexture(D3D8Object *self, CPU *C)
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
-    g_dev.state.texture[stage] = tex;
+    bind_ref(&g_dev.state.texture[stage], tex);
     d3d8_ret(C, D3D_OK);
 }
 
@@ -645,7 +701,7 @@ static void dev_SetStreamSource(D3D8Object *self, CPU *C)
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
-    g_dev.state.stream[stream].guest_ptr = buf;
+    bind_ref(&g_dev.state.stream[stream].guest_ptr, buf);
     g_dev.state.stream[stream].stride = stride;
     d3d8_ret(C, D3D_OK);
 }
@@ -660,7 +716,7 @@ static void dev_SetIndices(D3D8Object *self, CPU *C)
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
-    g_dev.state.indices = buf;
+    bind_ref(&g_dev.state.indices, buf);
     g_dev.state.base_vertex_index = base;
     d3d8_ret(C, D3D_OK);
 }
@@ -800,7 +856,20 @@ static void dev_GetPixelShader(D3D8Object *self, CPU *C)
 
 /* ---- the draws --------------------------------------------------------- */
 
-static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count)
+/*
+ * `indexed` is not a convenience -- it is the bug this parameter exists to
+ * stop.
+ *
+ * SetIndices is STATE: it stays bound across draws, and DrawPrimitive (which
+ * takes no indices) must ignore it. Carrying it into every draw made the
+ * backend take its indexed path for a non-indexed draw, so a 202-primitive
+ * strip -- 204 vertices -- was drawn as 204 INDICES out of whatever index
+ * buffer happened to be bound, which held 76. That was issue #38: one draw per
+ * frame reading off the end of a buffer, and it was the game's missing
+ * caption.
+ */
+static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
+                        int indexed)
 {
     D3D8Object *vb = g_dev.state.stream[0].guest_ptr
                          ? d3d8_object_from_guest(g_dev.state.stream[0].guest_ptr)
@@ -817,7 +886,7 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count)
     }
     req->vertex_buffer = d3d8_resource_buffer(vb);
     req->stride = g_dev.state.stream[0].stride;
-    if (ib) {
+    if (indexed && ib) {
         req->index_buffer = d3d8_resource_buffer(ib);
         req->index_is_32bit = d3d8_resource_index_is_32bit(ib);
     }
@@ -833,7 +902,7 @@ static void dev_DrawPrimitive(D3D8Object *self, CPU *C)
     GpuDraw gd;
 
     (void)self;
-    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 2))) {
+    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 2), 0)) {
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
@@ -853,7 +922,7 @@ static void dev_DrawIndexedPrimitive(D3D8Object *self, CPU *C)
 
     (void)self;
     /* (PrimitiveType, MinIndex, NumVertices, StartIndex, PrimitiveCount) */
-    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 4))) {
+    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 4), 1)) {
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }

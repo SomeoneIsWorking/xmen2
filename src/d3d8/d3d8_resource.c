@@ -233,6 +233,7 @@ D3D8Object *d3d8_indexbuffer_new(uint32_t bytes, uint32_t usage,
 GpuBuffer  d3d8_resource_buffer(D3D8Object *o)  { return res_of(o)->gbuf; }
 GpuTexture d3d8_resource_texture(D3D8Object *o) { return res_of(o)->gtex; }
 uint32_t   d3d8_resource_fvf(D3D8Object *o)     { return res_of(o)->fvf; }
+uint32_t   d3d8_resource_bytes(D3D8Object *o)   { return res_of(o)->bytes; }
 int d3d8_resource_index_is_32bit(D3D8Object *o)
 {
     /* D3DFMT_INDEX32 is 102; D3DFMT_INDEX16 is 101. */

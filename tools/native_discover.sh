@@ -115,6 +115,13 @@ while [ "$round" -lt "$MAX" ]; do
     # round for fifty minutes, and when that run was killed by hand the round
     # parsed no seeds and reported CONVERGENCE. "The run found nothing" and
     # "the run never finished" have to be different answers.
+    # X2_HEARTBEAT on purpose: the convergence test below reads the present
+    # counts out of this log, so a run with no heartbeat would be judged as
+    # "not presenting" and reported as a spin. X2_UNPACED because a discovery
+    # round has no reason to wait for the game's 60fps cap -- it sees more of
+    # the game per second of wall clock, and the clock the game reads is
+    # unchanged.
+    X2_HEARTBEAT=${X2_HEARTBEAT:-5} X2_UNPACED=${X2_UNPACED:-1} \
     timeout -k 10 "${RUN_TIMEOUT:-300}" \
         "$BIN" --no-window ${RUN:+--run} ${RUN_ARGS:-} >"$SEEDS.raw" 2>&1
     rc=$?
@@ -132,11 +139,28 @@ while [ "$round" -lt "$MAX" ]; do
         # 124 is timeout(1); 137 is a SIGKILL from anywhere. Either way this
         # round did not finish looking, so it cannot report that it looked.
         if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ] || [ "$rc" -eq 143 ]; then
+            # A killed run used to be one answer. It is now two, and the
+            # heartbeat separates them: the game reaches a frame loop and holds
+            # it, so "still going when the clock ran out" is the NORMAL outcome
+            # of a healthy run, not a hang. A run that is still PRESENTING
+            # FRAMES looked as far as this path goes; one that is not is
+            # spinning and has to be reported as such.
+            if grep -qE "presents [0-9]+ \(\+[1-9]" "$SEEDS.raw"; then
+                echo "native_discover: round $round found no missing constructor targets"
+                echo "  on the path taken by: $BIN --no-window ${RUN:+--run} ${RUN_ARGS:-}"
+                echo "  The run was still RENDERING when the ${RUN_TIMEOUT:-300}s limit"
+                echo "  hit -- it did not stop, it was not spinning, and it reported"
+                echo "  no missing target in that time. The blind spot is TIME: a"
+                echo "  target the game only reaches later in a session was never"
+                echo "  executed. Raise RUN_TIMEOUT to look further. Last frames:"
+                grep -E "presents [0-9]+ \(\+" "$SEEDS.raw" | tail -2
+                exit 0
+            fi
             echo "native_discover: round $round did NOT converge -- the run was" >&2
-            echo "  still going after ${RUN_TIMEOUT:-300}s and was killed (exit $rc)." >&2
-            echo "  It found no missing targets UP TO THAT POINT, which is not the" >&2
-            echo "  same as there being none. Raise RUN_TIMEOUT if the run is" >&2
-            echo "  legitimately long, or find out what it is spinning on:" >&2
+            echo "  still going after ${RUN_TIMEOUT:-300}s and was killed (exit $rc)," >&2
+            echo "  and it was NOT presenting frames, so it was not merely long:" >&2
+            echo "  it is spinning or blocked. It found no missing targets UP TO" >&2
+            echo "  THAT POINT, which is not the same as there being none." >&2
             grep -v '^\[TRACE\]' "$SEEDS.raw" | tail -5 >&2
             exit 2
         fi

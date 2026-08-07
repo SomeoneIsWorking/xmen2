@@ -28,6 +28,8 @@ void d3d8_resource_attach_destructor(D3D8Object *o);
 GpuBuffer  d3d8_resource_buffer(D3D8Object *o);
 GpuTexture d3d8_resource_texture(D3D8Object *o);
 uint32_t   d3d8_resource_fvf(D3D8Object *o);
+/* The buffer's length in BYTES, as the guest asked for it. */
+uint32_t   d3d8_resource_bytes(D3D8Object *o);
 int        d3d8_resource_index_is_32bit(D3D8Object *o);
 
 /*

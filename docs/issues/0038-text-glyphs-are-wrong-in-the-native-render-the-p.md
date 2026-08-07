@@ -1,7 +1,7 @@
 ---
 id: 38
 title: Text glyphs are wrong in the native render -- the panel draws correctly, the letters do not
-status: open
+status: resolved
 symptom: scratch/screenshots/native.png: the save/load panel, its border, tabs and cursor are all correct, but the caption renders as broken glyph fragments instead of readable text
 tags: pc,native,graphics,d3d8,text
 created: 2026-08-07
@@ -68,3 +68,51 @@ Two candidates, and the numbers distinguish them:
 The refusal is deliberate: a clamped draw would render a shorter version of
 whatever the engine asked for, which is a subtly wrong picture that leads
 nowhere. Refused, it is a missing caption that leads straight to this line.
+
+
+## Root cause: a NON-indexed draw was taking the indexed path
+
+Not the glyph atlas, not the texture format, not the alpha test -- and not text
+at all. `SetIndices` is STATE: it stays bound across draws, and `DrawPrimitive`
+(which takes no indices) must ignore it. `fill_request` carried the bound index
+buffer into EVERY draw, so the backend saw a non-NULL index buffer and took its
+indexed path for a non-indexed draw: a 202-primitive strip -- 204 VERTICES --
+was drawn as 204 INDICES out of whatever index buffer happened to be bound,
+which held 76.
+
+One line: `fill_request` now takes an `indexed` flag, and `DrawPrimitive`
+passes 0.
+
+After it, `refused 0` and the caption reads **"SAVE FAILED!"** with
+**"[Esc] CANCEL   [Enter] RETRY"** along the bottom -- see
+`scratch/screenshots/native.png`.
+
+## How it was found, and the two wrong turns
+
+The Vulkan validation layer flagged the out-of-range draw; `gpu_draw` now
+refuses it by name with the numbers, which is what made it visible without a
+validation layer at 60fps.
+
+**Wrong turn 1: state blocks.** The engine creates, applies and deletes exactly
+one state block per frame, and exactly one draw per frame was failing. That
+correlation is as strong as a correlation gets and it was a coincidence:
+printing the index binding on both sides of every `ApplyStateBlock` showed it
+`unchanged` every time.
+
+**Wrong turn 2: a stale GPU handle.** The D3D8 layer's record of the buffer's
+size and the GPU layer's disagreed (408+ vs 152), which pointed at a recycled
+handle. That reading was wrong too, but it exposed a REAL defect on the way:
+the device did not hold a reference on what was bound to it, though D3D8 does.
+The engine creates an index buffer per mesh, binds it, draws and releases it,
+expecting the device's own reference to keep it alive -- so without one the
+object is retired and its GPU buffer destroyed while still bound.
+`SetIndices`/`SetStreamSource`/`SetTexture` now addref the new binding and
+release the old, and `ApplyStateBlock` re-establishes the same invariant after
+it replaces the bindings wholesale. That fix is kept: it was not the cause
+here, and it is a use-after-free waiting for a different frame.
+
+The thing that actually identified it was the two layers' probes disagreeing
+about the same draw -- the D3D8-level check never fired while the GPU-level one
+did, every frame. Two instruments contradicting each other is not a tie; it
+means a third thing is true. Here it was that the failing draw never went
+through `DrawIndexedPrimitive` at all.
