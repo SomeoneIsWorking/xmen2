@@ -145,7 +145,7 @@ static void *thread_main(void *p)
     g_fsbase = t->tib;
     *(volatile uint32_t *)(uintptr_t)t->tib = 0xFFFFFFFFu;
 
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     /* The argument, then the return address the thread routine returns to --
        which is never executed, because the return is caught below. */
     C.esp = t->stack_base + t->stack_bytes - 16u;

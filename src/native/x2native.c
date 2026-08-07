@@ -477,7 +477,7 @@ static int module_init_one(X86Module *m)
     }
     /* __stdcall DllMain(hinstDLL, fdwReason, lpvReserved): three arguments
        plus the return address, and the callee pops them. */
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = guest_stack_top - 16u;
     gw32(C.esp +  0u, 0xDEADBEEFu);
     gw32(C.esp +  4u, *m->base);              /* hinstDLL IS the image base */
@@ -495,11 +495,21 @@ static int module_init_one(X86Module *m)
 
 static int modules_init(void)
 {
+    /* One slot per module that can be linked in. It was 16, which the set
+       outgrew the moment cg, cgD3D8, libIGAudio and libIGCollision joined it --
+       and "too many modules" named no number, so it read as a design limit
+       rather than an array to widen. Same bound as `imgs` in main(). */
+#define MAX_INIT_MODULES 24
     X86Module *m, *d;
-    int done[16], n = 0, i, pass, inited = 0, total = 0;
-    X86Module *list[16];
+    int done[MAX_INIT_MODULES], n = 0, i, pass, inited = 0, total = 0;
+    X86Module *list[MAX_INIT_MODULES];
     for (m = x86_modules(); m; m = m->next) {
-        if (total == 16) { fprintf(stderr, "module_init: too many modules\n"); return -1; }
+        if (total == MAX_INIT_MODULES) {
+            fprintf(stderr, "module_init: more than %d modules are linked; "
+                            "raise MAX_INIT_MODULES in src/native/x2native.c. "
+                            "Nothing was initialised.\n", MAX_INIT_MODULES);
+            return -1;
+        }
         list[total] = m; done[total] = 0; total++;
     }
     for (pass = 0; pass < total; pass++) {
@@ -575,7 +585,7 @@ static void check(const char *what, uint32_t got, uint32_t want)
 static void frame(CPU *C, const uint32_t *args, int nargs)
 {
     int i;
-    memset(C, 0, sizeof *C);
+    cpu_reset(C);
     C->esp = guest_stack_top - (uint32_t)(nargs + 1) * 4u;
     gw32(C->esp, 0xDEADBEEFu);                    /* the return address */
     for (i = 0; i < nargs; i++) gw32(C->esp + 4u + (uint32_t)i * 4u, args[i]);
@@ -697,7 +707,7 @@ static void case_import_abi(void)
     {   /* KERNEL32!GetModuleHandleA(NULL) -- __stdcall, 1 argument.
            The module's own handle IS its image base in a PE. */
         uint32_t args[1] = { 0 };
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.eax = 0xBADF00Du;
         d = call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
         check("GetModuleHandleA(NULL) -> imgbase", C.eax, g_imgbase);
@@ -720,7 +730,7 @@ static void case_import_abi(void)
         for (i = 0; i < sizeof miss; i++)
             *(volatile uint8_t *)(uintptr_t)(nm + i) = (uint8_t)miss[i];
         args[0] = nm;
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.eax = 0xBADF00Du;
         d = call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
         check("GetModuleHandleA(\"d3d8d.dll\") -> 0, not an abort", C.eax, 0);
@@ -735,11 +745,11 @@ static void case_import_abi(void)
         for (i = 0; i < sizeof have; i++)
             *(volatile uint8_t *)(uintptr_t)(nm + i) = (uint8_t)have[i];
         args[0] = nm;
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.eax = 0xBADF00Du;                  /* so the SKIPPED pass fails too */
         call_import(imp_KERNEL32_LoadLibraryA, &C, args, 1);
         viaload = C.eax;
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.eax = 0xBADD00Du;                  /* a DIFFERENT sentinel: equal
                                                 sentinels would agree when
                                                 neither call ran */
@@ -756,7 +766,7 @@ static void case_import_abi(void)
         for (i = 0; i < sizeof msg; i++)
             *(volatile uint8_t *)(uintptr_t)(src + i) = (uint8_t)msg[i];
         args[2] = src; args[4] = dst;
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.eax = 0xBADF00Du;
         d = call_import(imp_KERNEL32_MultiByteToWideChar, &C, args, 6);
         check("MB2WC measure -> strlen+1", C.eax, 5u);
@@ -764,7 +774,7 @@ static void case_import_abi(void)
 
         args[5] = 16;                              /* now actually convert */
         for (i = 0; i < 8; i++) gw32(dst + i * 4u, 0xBADF00Du);
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         d = call_import(imp_KERNEL32_MultiByteToWideChar, &C, args, 6);
         check("MB2WC convert -> count", C.eax, 5u);
         check("  wide 'S'", *(volatile uint16_t *)(uintptr_t)dst, (uint16_t)'S');
@@ -775,7 +785,7 @@ static void case_import_abi(void)
            by the return address only. This is the case that would silently
            differ from the Win32 ones. */
         uint32_t args[1] = { 64 }, p;
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.eax = 0xBADF00Du;
         d = call_import(imp_MSVCRT_malloc, &C, args, 1);
         p = C.eax;
@@ -783,7 +793,7 @@ static void case_import_abi(void)
         check("  cdecl esp delta (4 only)", d, 4u);
         if (p && p != 0xBADF00Du) {
             args[0] = p;
-            memset(&C, 0, sizeof C);
+            cpu_reset(&C);
             d = call_import(imp_MSVCRT_free, &C, args, 1);
             check("  free cdecl esp delta (4)", d, 4u);
         }
@@ -892,7 +902,7 @@ static void case_setjmp_table(void)
     before = x86_setjmp_live();
     for (i = 0; i < 4; i++) {
         envs[i] = guest_malloc(64);
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.esp = frame;
         WR32(frame, 0x00646b2cu);              /* the return address */
         WR32(frame + 4u, envs[i]);             /* _setjmp3's jmp_buf */
@@ -901,7 +911,7 @@ static void case_setjmp_table(void)
     check("four buffers are held", (uint32_t)(x86_setjmp_live() - before), 4u);
 
     /* The same buffer again is the same slot, not a fifth. */
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = frame;
     WR32(frame, 0x00646b2cu);
     WR32(frame + 4u, envs[0]);
@@ -926,7 +936,7 @@ static void case_setjmp_table(void)
      * provably dead, so nothing outside the arena may be dropped.
      */
     stack_env = SCRATCH + 0x100u;
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = frame;
     WR32(frame, 0x00646b2cu);
     WR32(frame + 4u, stack_env);
@@ -964,7 +974,7 @@ static void case_runtime_module(void)
     printf("  run-time module lookup\n");
     strcpy((char *)(uintptr_t)path, "C:\\Windows\\System32\\dinput8.dll");
 
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x200u;
     WR32(C.esp, 0);                                  /* return address */
     WR32(C.esp + 4u, path);
@@ -973,7 +983,7 @@ static void case_runtime_module(void)
     check("dinput8.dll loads by full path", h != 0u, 1u);
 
     strcpy((char *)(uintptr_t)sym, "DirectInput8Create");
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x200u;
     WR32(C.esp, 0);
     WR32(C.esp + 4u, h);
@@ -985,7 +995,7 @@ static void case_runtime_module(void)
           p, x86_native_export_addr("DINPUT8.DLL", "DirectInput8Create"));
 
     strcpy((char *)(uintptr_t)sym, "DirectInput8CreateNoSuchThing");
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x200u;
     WR32(C.esp, 0);
     WR32(C.esp + 4u, h);
@@ -1014,7 +1024,7 @@ static uint32_t com_call(uint32_t obj, int slot, const uint32_t *args, int n)
     CPU C;
     int i;
     uint32_t vt = RD32(obj);
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x400u - (uint32_t)(n + 2) * 4u;
     WR32(C.esp, 0xD1A10000u);                        /* return address */
     WR32(C.esp + 4u, obj);                           /* this */
@@ -1038,13 +1048,13 @@ static void case_dinput(void)
     printf("  keyboard layout and DirectInput device\n");
 
     /* MapVirtualKeyA, the table the game builds its key names from. */
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x300u;
     WR32(C.esp, 0); WR32(C.esp + 4u, 0x1Eu); WR32(C.esp + 8u, 1u);
     imp_USER32_MapVirtualKeyA(&C);
     check("scancode 0x1e maps to VK 'A'", C.eax, (uint32_t)'A');
 
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x300u;
     WR32(C.esp, 0); WR32(C.esp + 4u, (uint32_t)'A'); WR32(C.esp + 8u, 2u);
     imp_USER32_MapVirtualKeyA(&C);
@@ -1052,13 +1062,13 @@ static void case_dinput(void)
 
     /* A key that produces NO character must answer 0, not a plausible byte:
        the game stores whatever comes back as the key's printed name. */
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x300u;
     WR32(C.esp, 0); WR32(C.esp + 4u, 0x10u); WR32(C.esp + 8u, 2u);
     imp_USER32_MapVirtualKeyA(&C);
     check("VK_SHIFT has no character", C.eax, 0u);
 
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x300u;
     WR32(C.esp, 0); WR32(C.esp + 4u, 0x66u); WR32(C.esp + 8u, 1u);
     imp_USER32_MapVirtualKeyA(&C);
@@ -1066,7 +1076,7 @@ static void case_dinput(void)
 
     /* The device, through the IDirectInput8 vtable. */
     memcpy((void *)(uintptr_t)guid, KBD, 16);
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x300u;
     WR32(C.esp, 0);
     WR32(C.esp +  4u, 0);            /* hinst */
@@ -1185,7 +1195,7 @@ static void case_dynamic_cast(void)
 
     args[0] = obj; args[1] = 0; args[2] = td_derived;
     args[3] = td_base; args[4] = 0;
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x500u;
     WR32(C.esp, 0);
     { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
@@ -1193,7 +1203,7 @@ static void case_dynamic_cast(void)
     check("a base 8 bytes in is found at +8", C.eax, obj + 8u);
 
     args[3] = td_other;
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x500u;
     WR32(C.esp, 0);
     { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
@@ -1201,7 +1211,7 @@ static void case_dynamic_cast(void)
     check("a type that is not a base gives NULL", C.eax, 0u);
 
     args[0] = 0; args[3] = td_base;
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x500u;
     WR32(C.esp, 0);
     { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
@@ -1213,7 +1223,7 @@ static void case_dynamic_cast(void)
        and a type shared between the exe and a libIG DLL has one descriptor in
        each -- so this is not a hypothetical. */
     args[0] = obj; args[3] = rtti_typedesc(".?AVBase@@");
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x500u;
     WR32(C.esp, 0);
     { int i; for (i = 0; i < 5; i++) WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]); }
@@ -1267,7 +1277,7 @@ static void case_qsort(void)
     for (i = 0; i < 6; i++) WR32(arr + i * 4u, IN[i]);
     cmp = x86_native_callback(qsort_probe, "battery", "qsort_probe", NULL);
 
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x600u;
     WR32(C.esp, 0);
     WR32(C.esp +  4u, arr);
@@ -1306,7 +1316,7 @@ static uint32_t find_count(const char *pattern, uint32_t data)
     uint32_t spec = guest_malloc(512);
 
     snprintf((char *)(uintptr_t)spec, 512, "%s", pattern);
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x700u;
     WR32(C.esp, 0);
     WR32(C.esp + 4u, spec);
@@ -1316,14 +1326,14 @@ static uint32_t find_count(const char *pattern, uint32_t data)
     if (h == 0xFFFFFFFFu) { guest_free(spec); return 0; }
     do {
         n++;
-        memset(&C, 0, sizeof C);
+        cpu_reset(&C);
         C.esp = SCRATCH + 0x700u;
         WR32(C.esp, 0);
         WR32(C.esp + 4u, h);
         WR32(C.esp + 8u, data);
         imp_KERNEL32_FindNextFileA(&C);
     } while (C.eax);
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = SCRATCH + 0x700u;
     WR32(C.esp, 0);
     WR32(C.esp + 4u, h);
@@ -1437,7 +1447,7 @@ int main(int argc, char **argv)
        and the recompiled set grows one module at a time (libMovie was the
        ninth). The bound is checked below and reported, so overflowing it stops
        rather than corrupting -- but there is no reason to keep it tight. */
-    static PeImage imgs[20];
+    static PeImage imgs[24];
 
     g_argv0 = argv[0];
 #ifdef X86_NATIVE_REACHED
@@ -1734,7 +1744,7 @@ int main(int argc, char **argv)
             printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
                    nm ? nm : "(NO RECOMPILED BODY)");
             if (!nm) return 1;
-            memset(&C, 0, sizeof C);
+            cpu_reset(&C);
             C.esp = guest_stack_top - 4u;
             gw32(C.esp, 0xDEADBEEFu);
             /* The main thread is a guest thread too: it holds the global guest

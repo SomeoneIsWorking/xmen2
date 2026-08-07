@@ -120,7 +120,7 @@ uint32_t ark_call_cdecl(uint32_t target, const uint32_t *args, int n)
     CPU C;
     uint32_t saved;
     int i;
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = ark_enter(&saved, n);
     for (i = 0; i < n; i++) WR32(C.esp + (uint32_t)i * 4u, args[i]);
     x86_guest_call(&C, target);
@@ -134,7 +134,7 @@ uint32_t ark_call_this(uint32_t target, uint32_t self,
     CPU C;
     uint32_t saved;
     int i;
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.ecx = self;
     C.esp = ark_enter(&saved, n);
     for (i = 0; i < n; i++) WR32(C.esp + (uint32_t)i * 4u, args[i]);

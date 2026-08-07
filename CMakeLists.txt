@@ -159,7 +159,8 @@ endif()
 # handles, locale, code pages) rather than MSVCR71.
 set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
                libIGGfx libIGUtils libIGGui libIGLua libIGOpt
-               libMovie libCriMovie cg cgD3D8 XMen2)
+               libMovie libCriMovie libIGAudio libIGCollision
+               cg cgD3D8 XMen2)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
 foreach(m ${X2_MODULES})

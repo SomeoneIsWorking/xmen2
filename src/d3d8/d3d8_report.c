@@ -121,7 +121,7 @@ static uint32_t call_method(D3D8Object *o, int slot, const uint32_t *args,
     int i;
 
     if (!stack) stack = guest_malloc(4096) + 2048;
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = stack - (uint32_t)(nargs + 2) * 4u;
     WR32(C.esp, 0xD3D80000u);                       /* return address */
     WR32(C.esp + 4u, d3d8_object_guest(o));         /* this */

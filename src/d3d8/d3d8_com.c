@@ -555,7 +555,7 @@ int d3d8_com_selftest(void)
     slot_addr = RD32(vt + 6u * 4u);
 
     sp = guest_malloc(256);
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = sp + 128u;
     WR32(C.esp, 0xDEADBEEFu);                     /* return address */
     WR32(C.esp + 4u, d3d8_object_guest(o));       /* this */
@@ -590,7 +590,7 @@ int d3d8_com_selftest(void)
     /* The reporter must FIRE. Permissive mode is how it can be observed
        without aborting the process, and the count it keeps is the proof. */
     d3d8_permissive(1);
-    memset(&C, 0, sizeof C);
+    cpu_reset(&C);
     C.esp = sp + 128u;
     WR32(C.esp, 0xDEADBEEFu);
     WR32(C.esp + 4u, d3d8_object_guest(o));

@@ -15,6 +15,7 @@
 
 #include <setjmp.h>
 #include <stdint.h>
+#include <string.h>
 #ifdef _WIN32
 #include <intrin.h>
 #else
@@ -114,7 +115,9 @@ typedef struct CPU {
     int      top;        /* index of ST(0) */
     int      depth;      /* live registers; guards under/overflow */
     uint32_t fsw;        /* status word bits set by FCOM, read by FNSTSW */
-    uint32_t fcw;        /* control word; only the rounding-control bits matter */
+    uint32_t fcw;        /* control word: rounding control AND the exception
+                            masks. Both are read by guest code -- see
+                            X87_CW_INIT and cpu_reset() below. */
     uint64_t mm[8];      /* MMX registers, kept SEPARATE from st[] -- see below */
     /* SSE. Present so that packed-logic instructions are translated for real
        rather than special-cased: the engine probes for SSE by executing
@@ -392,6 +395,33 @@ static inline uint32_t x86_eflags(const CPU *C)
  * bug into slightly-wrong arithmetic instead of a stop.
  */
 #define X87_ST(C, i)  ((C)->st[((C)->top + (i)) & 7])
+
+/*
+ * The x87 control word a real FPU powers up with, and what FINIT restores.
+ *
+ * 0x037F is: every exception MASKED (bits 0-5), precision control 3 (extended,
+ * bits 8-9), rounding to nearest (bits 10-11 = 0).
+ *
+ * The mask bits are the part that was missing. A fresh CPU here is memset to
+ * zero, which meant fcw = 0 -- every FP exception UNMASKED, the opposite of the
+ * hardware default. Nothing noticed while only the rounding bits were read
+ * (they are 0 either way), and then cg.dll's statically-linked CRT read the
+ * control word, correctly concluded that inexact results were unmasked, and
+ * raised EXCEPTION_FLT_INEXACT_RESULT (0xC000008F) on the first rounding
+ * conversion it did. Which was right: it was told they were unmasked.
+ */
+#define X87_CW_INIT 0x037FU
+
+/*
+ * A CPU as the hardware hands it over: zeroed, except for the state that is
+ * NOT zero at power-on. Every fresh guest context has to go through this --
+ * a bare memset leaves the FPU claiming a configuration no real one has.
+ */
+static inline void cpu_reset(struct CPU *C)
+{
+    memset(C, 0, sizeof *C);
+    C->fcw = X87_CW_INIT;
+}
 
 void x87_fault(const char *what);
 

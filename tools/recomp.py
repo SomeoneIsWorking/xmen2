@@ -666,7 +666,12 @@ def emit_instruction(ins, ctx):
             # Stack-pointer housekeeping with no value semantics we model.
             return [A, "/* %s: no modelled effect */" % m]
         if m == "FNINIT":
-            return [A, "C->top = 0; C->depth = 0; C->fsw = 0;"]
+            # FINIT restores the POWER-ON control word too, not just the
+            # stack and status. Leaving fcw alone would let a guest that
+            # unmasked exceptions keep them unmasked across an FINIT that
+            # says otherwise.
+            return [A, "C->top = 0; C->depth = 0; C->fsw = 0;",
+                    "C->fcw = X87_CW_INIT;"]
         # FSTCW/FSTSW are FNSTCW/FNSTSW preceded by an implicit FWAIT: the
         # WAIT checks for a PENDING unmasked x87 exception before storing.
         # This runtime raises nothing lazily -- x87_fault stops at the
