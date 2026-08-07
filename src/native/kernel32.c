@@ -25,6 +25,7 @@
 #include "shell32.h"
 #include "winmm.h"
 #include "threads.h"
+#include "igvk_ark.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -1745,31 +1746,122 @@ void imp_KERNEL32_FindClose(CPU *C)
     ret_std(C, 1, 1);
 }
 
+/*
+ * Windows-1252, the whole table for the part that is not Latin-1.
+ *
+ * 0x00-0x7F is ASCII and 0xA0-0xFF is Latin-1 (the byte IS the code point).
+ * Only 0x80-0x9F differs, where Windows put printable characters in what
+ * ISO-8859-1 leaves as controls. Sixteen bytes of table is the entire cost of
+ * being right, and the alternative -- widening the byte as if it were Latin-1
+ * -- turns a curly quote into a C1 control character.
+ *
+ * This replaces an abort() on the first byte above 0x7F, and lived in
+ * win32_sdl.c until the narrowing direction below needed the same table. That
+ * abort was the right call while nothing produced a high byte; cg.dll's
+ * statically-linked CRT widens its locale and environment strings at startup
+ * and hits 0x80 immediately, and "stop rather than mangle" is not the only
+ * alternative to mangling -- converting correctly is.
+ */
+static const uint16_t cp1252_80_9f[32] = {
+    0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+    0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+    0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+    0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178
+};
+
+static uint16_t cp1252_to_utf16(unsigned char c)
+{
+    return (c >= 0x80 && c <= 0x9F) ? cp1252_80_9f[c - 0x80] : (uint16_t)c;
+}
+
+/* The 0x80-0x9F entry for slot j, for the reverse search when narrowing. */
+static uint16_t cp1252_from_utf16(int j) { return cp1252_80_9f[j]; }
+
+void imp_KERNEL32_MultiByteToWideChar(CPU *C)
+{
+    uint32_t cp = A(0), src = A(2); int32_t srclen = (int32_t)A(3);
+    uint32_t dst = A(4); int32_t dstlen = (int32_t)A(5);
+    const unsigned char *s = (const unsigned char *)(uintptr_t)src;
+    int n, i;
+    /*
+     * CP_ACP (0) and CP_OEMCP (1) both resolve to this host's single code page
+     * -- see the locale block in kernel32.c, which answers 1252/437. UTF-8
+     * (65001) is NOT handled here and says so: a multi-byte sequence widened
+     * one byte at a time produces a different string of the same length, which
+     * is the failure that looks like success.
+     */
+    if (cp != 0u && cp != 1u && cp != 1252u) {
+        fprintf(stderr, "kernel32: MultiByteToWideChar code page %u is not "
+                        "implemented -- this host is single-code-page (1252). "
+                        "UTF-8 in particular is refused rather than widened "
+                        "byte-by-byte, which would silently produce a "
+                        "different string.\n", cp);
+        abort();
+    }
+    n = srclen < 0 ? (int)strlen((const char *)s) + 1 : srclen;
+    if (dstlen == 0) { ret_std(C, (uint32_t)n, 6); return; }
+    if (n > dstlen) { ret_std(C, 0, 6); return; }
+    for (i = 0; i < n; i++) WR16(dst + (uint32_t)i * 2u, cp1252_to_utf16(s[i]));
+    ret_std(C, (uint32_t)n, 6);
+}
+
+/*
+ * The mirror of MultiByteToWideChar, narrowing to Windows-1252.
+ *
+ * Narrowing is the LOSSY direction and that is where the honesty has to live:
+ * a code point with no 1252 byte is replaced with '?' -- which is what Windows
+ * does -- and lpUsedDefaultChar is set so a caller that asked can tell. The
+ * count of lost characters is reported at exit, because a silent '?' in a save
+ * file name is the kind of defect that is only ever noticed much later.
+ */
+static unsigned long g_narrow_lost;
+
 void imp_KERNEL32_WideCharToMultiByte(CPU *C)
 {
-    /* The mirror of MultiByteToWideChar, and ASCII-only for the same reason. */
     uint32_t src = A(2); int32_t srclen = (int32_t)A(3);
     uint32_t dst = A(4); int32_t dstlen = (int32_t)A(5);
-    int n = 0, i;
+    uint32_t defchar = A(6), usedflag = A(7);
+    int n = 0, i, lost = 0;
     const uint16_t *w = (const uint16_t *)(uintptr_t)src;
+    char sub = defchar ? *(const char *)(uintptr_t)defchar : '?';
+
     if (srclen < 0) { while (w[n]) n++; n++; } else n = srclen;
-    for (i = 0; i < n; i++)
-        if (w[i] > 0x7F) {
-            fprintf(stderr, "kernel32: WideCharToMultiByte got U+%04X; this "
-                            "layer only narrows ASCII\n", w[i]);
-            abort();
-        }
     if (dstlen == 0) { ret_std(C, (uint32_t)n, 8); return; }
     if (n > dstlen) { ret_std(C, 0, 8); return; }
-    for (i = 0; i < n; i++) WR8(dst + (uint32_t)i, (uint8_t)w[i]);
+    for (i = 0; i < n; i++) {
+        uint16_t c = w[i];
+        int b = -1, j;
+        if (c < 0x80 || (c >= 0xA0 && c <= 0xFF)) b = c;
+        else for (j = 0; j < 32; j++)
+            if (cp1252_from_utf16(j) == c) { b = 0x80 + j; break; }
+        if (b < 0) { b = (unsigned char)sub; lost++; }
+        WR8(dst + (uint32_t)i, (uint8_t)b);
+    }
+    if (usedflag) WR32(usedflag, lost ? 1u : 0u);
+    g_narrow_lost += (unsigned long)lost;
     ret_std(C, (uint32_t)n, 8);
+}
+
+void kernel32_narrowing_report(void)
+{
+    if (g_narrow_lost)
+        printf("  kernel32: %lu character(s) had no Windows-1252 byte and were "
+               "narrowed to a substitute -- those strings are NOT what the "
+               "guest produced.\n", g_narrow_lost);
 }
 
 /* ---- the Win32 heap ----------------------------------------------------
  *
  * All of it on the guest heap, because these hand out pointers the guest
- * stores. There is one heap, and GetProcessHeap returns a token rather than a
- * pointer so that a handle the guest invented is caught rather than followed.
+ * stores. GetProcessHeap returns a TOKEN rather than a pointer so that a
+ * handle the guest invented is caught rather than followed.
+ *
+ * There is one ARENA but there can be several heap HANDLES: HeapCreate makes
+ * private heaps and a statically-linked CRT allocates everything from one (see
+ * the static-CRT section at the end of this file). The blocks all come from the
+ * same arena -- that is what makes them 32-bit addressable -- so the handles
+ * are bookkeeping, and heap_check's job is to reject a handle that names no
+ * heap AT ALL, which is the case that would otherwise be followed silently.
  *
  * HEAP_ZERO_MEMORY is honoured. It would be easy to ignore -- most callers do
  * not set it -- and the failure from ignoring it is uninitialised memory that
@@ -1777,15 +1869,18 @@ void imp_KERNEL32_WideCharToMultiByte(CPU *C)
  */
 #define PROCESS_HEAP_TOK  0x00020001u
 #define HEAP_ZERO_MEMORY  0x00000008u
+#define PRIVATE_HEAP_TOK  0x00030000u
+static int g_heaps;                      /* how many HeapCreate calls */
 
 static uint32_t heap_check(uint32_t h)
 {
-    if (h != PROCESS_HEAP_TOK) {
-        fprintf(stderr, "kernel32: heap handle 0x%08x is not the process heap; "
-                        "this build has exactly one heap\n", h);
-        abort();
-    }
-    return h;
+    if (h == PROCESS_HEAP_TOK) return h;
+    if (h > PRIVATE_HEAP_TOK && h <= PRIVATE_HEAP_TOK + (uint32_t)g_heaps)
+        return h;
+    fprintf(stderr, "kernel32: heap handle 0x%08x names no heap -- it is "
+                    "neither the process heap nor one of the %d created by "
+                    "HeapCreate.\n", h, g_heaps);
+    abort();
 }
 
 void imp_KERNEL32_GetProcessHeap(CPU *C) { ret_std(C, PROCESS_HEAP_TOK, 0); }
@@ -2060,10 +2155,70 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
         return;
     }
     if (!(type & MEM_COMMIT)) {
-        fprintf(stderr, "kernel32: VirtualAlloc with MEM_RESERVE but not "
-                        "MEM_COMMIT needs real page semantics, which this "
-                        "layer does not model\n");
-        abort();
+        /*
+         * MEM_RESERVE with no address: reserve address space, commit nothing.
+         *
+         * This used to abort as "needs real page semantics". It does, and the
+         * pieces now exist: the reservation table below, the decommit table,
+         * and the MEM_COMMIT-over-a-reservation path above that mprotects
+         * access back. What was missing was only somewhere to PUT a
+         * reservation the caller did not place itself.
+         *
+         * It has to land in the low 4 GB, because the guest stores the
+         * pointer, and it must not collide with the mapped modules
+         * (0x00400000 and 0x20000000+) or the runtime's own arena
+         * (X2_RUNTIME_BASE and up). The window between them is reserved for
+         * this, walked with MAP_FIXED_NOREPLACE so a collision is refused by
+         * the kernel rather than found later by the guest.
+         *
+         * PROT_NONE is the point: reserved-but-not-committed memory must FAULT
+         * on access. Mapping it readable would make the difference between
+         * reserve and commit invisible, which is exactly the bug the old abort
+         * was there to avoid.
+         */
+        const uint32_t RES_LO = 0x30000000u, RES_HI = 0x6F000000u;
+        static uint32_t next = 0x30000000u;
+        uint32_t len = (size + 0xFFFu) & ~0xFFFu;
+        int tries;
+        if (!len) { g_last_error = 87u; ret_std(C, 0, 4); return; }
+        for (tries = 0; tries < 64; tries++) {
+            void *got;
+            if (next + len > RES_HI || next + len < next) next = RES_LO;
+            got = mmap((void *)(uintptr_t)next, len, PROT_NONE,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE
+                       | MAP_NORESERVE, -1, 0);
+            if (got != MAP_FAILED && (uintptr_t)got == (uintptr_t)next) {
+                uint32_t base = next;
+                next += len;
+                if (g_nreserved < MAX_RESERVED) {
+                    g_reserved[g_nreserved].base = base;
+                    g_reserved[g_nreserved].size = len;
+                    g_nreserved++;
+                } else {
+                    /* Untracked: a later MEM_COMMIT over it would be refused
+                       as "memory the guest never reserved". Said rather than
+                       left to surface as that unrelated-looking message. */
+                    fprintf(stderr, "kernel32: the reservation table is full "
+                                    "(%d); 0x%08x+%u is mapped but NOT tracked, "
+                                    "so committing it later will be refused.\n",
+                            MAX_RESERVED, base, len);
+                }
+                if (verbose())
+                    fprintf(stderr, "[mem] reserved 0x%08x+%u (PROT_NONE; it "
+                                    "faults until committed)\n", base, len);
+                ret_std(C, base, 4);
+                return;
+            }
+            if (got != MAP_FAILED) munmap(got, len);
+            next += 0x100000u;           /* step past whatever is there */
+        }
+        fprintf(stderr, "kernel32: VirtualAlloc could not RESERVE %u bytes "
+                        "anywhere in 0x%08x-0x%08x after 64 attempts. That "
+                        "window is the only 32-bit space not already holding a "
+                        "module or the runtime arena.\n", len, RES_LO, RES_HI);
+        g_last_error = 8u;               /* ERROR_NOT_ENOUGH_MEMORY */
+        ret_std(C, 0, 4);
+        return;
     }
     p = guest_malloc(size);
     if (p) memset((void *)(uintptr_t)p, 0, size);   /* VirtualAlloc zeroes */
@@ -2244,4 +2399,670 @@ void imp_KERNEL32_VirtualQuery(CPU *C)
     WR32(buf + 20u, protect);            /* Protect */
     WR32(buf + 24u, 0x1000000u);         /* Type: MEM_IMAGE/PRIVATE */
     ret_std(C, 28, 3);
+}
+
+/* ======================================================================
+ * The STATIC CRT's startup surface.
+ *
+ * Every module before cg.dll linked the MSVC runtime DYNAMICALLY, so its C
+ * library came from MSVCR71.dll and crt.c answers it. cg.dll and cgD3D8.dll --
+ * the NVIDIA Cg runtime the engine loads for shading (issue #45) -- link the
+ * CRT STATICALLY, so that library is inside them, recompiled with everything
+ * else, and it asks Win32 directly for what a C runtime needs: a heap, the
+ * standard handles, the environment, the locale and the code pages.
+ *
+ * So this is not a grab-bag. It is one subsystem with one caller: the code
+ * that runs before main/DllMain in a statically-linked MSVC image. That is
+ * why it is implemented in a block rather than one function per stop, and why
+ * the ones that CANNOT be honestly implemented (RtlUnwind, RaiseException,
+ * DebugBreak) stop by name instead of returning a plausible value -- they are
+ * control transfers, and a no-op RtlUnwind returns into a frame the CRT has
+ * already decided is gone.
+ * ====================================================================== */
+
+/* ---- version ----------------------------------------------------------- */
+
+/*
+ * GetVersion packs what GetVersionExA spells out, and they must AGREE: a CRT
+ * that reads one and a game that reads the other, told different things, take
+ * different paths for the same run. 5.1 build 2600, the same Windows XP this
+ * layer already claims to be.
+ */
+void imp_KERNEL32_GetVersion(CPU *C)
+{
+    ret_std(C, (2600u << 16) | (1u << 8) | 5u, 0);
+}
+
+/* ---- the command line and the environment ------------------------------
+ *
+ * Both have to live in GUEST memory: the CRT keeps the pointers, parses them
+ * in place, and hands them to the program as argv/envp.
+ */
+static uint32_t guest_strdup(const char *s)
+{
+    uint32_t n = (uint32_t)strlen(s) + 1u, p = guest_malloc(n);
+    if (p) memcpy((void *)(uintptr_t)p, s, n);
+    return p;
+}
+
+void imp_KERNEL32_GetCommandLineA(CPU *C)
+{
+    /* The REAL command line, read from /proc/self/cmdline, not an invented
+       one: a CRT that parses this builds the argv the guest sees, and a
+       fabricated line would make the guest disagree with the process it is
+       actually running in. The NULs between arguments become spaces, which is
+       the Win32 form. */
+    static uint32_t p;
+    if (!p) {
+        char buf[4096];
+        ssize_t n = 0;
+        int fd = open("/proc/self/cmdline", O_RDONLY);
+        if (fd >= 0) { n = read(fd, buf, sizeof buf - 1); close(fd); }
+        if (n <= 0) { snprintf(buf, sizeof buf, "x2native"); n = 8; }
+        else { ssize_t i; for (i = 0; i < n - 1; i++) if (!buf[i]) buf[i] = ' '; }
+        buf[n] = 0;
+        p = guest_strdup(buf);
+    }
+    ret_std(C, p, 0);
+}
+
+/*
+ * GetEnvironmentStrings: NUL-separated NAME=VALUE, terminated by an empty
+ * string. The host's own environment, copied -- the guest is running in this
+ * process and inherits it, which is the truthful answer and also the useful
+ * one (it is how X2_* reaches anything inside the guest).
+ */
+static uint32_t env_block(void)
+{
+    extern char **environ;
+    static uint32_t p;
+    size_t total = 1;
+    int i;
+    char *w;
+    if (p) return p;
+    for (i = 0; environ[i]; i++) total += strlen(environ[i]) + 1;
+    p = guest_malloc((uint32_t)total);
+    if (!p) return 0;
+    w = (char *)(uintptr_t)p;
+    for (i = 0; environ[i]; i++) { strcpy(w, environ[i]); w += strlen(w) + 1; }
+    *w = 0;
+    return p;
+}
+
+void imp_KERNEL32_GetEnvironmentStrings(CPU *C) { ret_std(C, env_block(), 0); }
+
+/*
+ * The WIDE form, and it is NOT the same block. A CRT that asked for wide
+ * strings and got the ANSI block reads every other byte as a character and
+ * decides the environment is one letter long -- so it is built as real
+ * UTF-16, from the same source.
+ */
+void imp_KERNEL32_GetEnvironmentStringsW(CPU *C)
+{
+    extern char **environ;
+    static uint32_t p;
+    if (!p) {
+        size_t total = 1;
+        int i;
+        uint16_t *w;
+        for (i = 0; environ[i]; i++) total += strlen(environ[i]) + 1;
+        p = guest_malloc((uint32_t)total * 2u);
+        if (p) {
+            w = (uint16_t *)(uintptr_t)p;
+            for (i = 0; environ[i]; i++) {
+                const char *s = environ[i];
+                while (*s) *w++ = (uint16_t)(unsigned char)*s++;
+                *w++ = 0;
+            }
+            *w = 0;
+        }
+    }
+    ret_std(C, p, 0);
+}
+
+/* Both blocks are process-lifetime, so freeing them is a no-op that succeeds
+   -- not an ignored call: Win32's contract is that the caller may free and
+   must not use it afterwards, and nothing here reuses it. */
+void imp_KERNEL32_FreeEnvironmentStringsA(CPU *C) { ret_std(C, 1, 1); }
+void imp_KERNEL32_FreeEnvironmentStringsW(CPU *C) { ret_std(C, 1, 1); }
+
+void imp_KERNEL32_SetEnvironmentVariableA(CPU *C)
+{
+    const char *name = ACS(0), *val = A(1) ? ACS(1) : NULL;
+    int rc = val ? setenv(name, val, 1) : unsetenv(name);
+    /* The cached blocks above are now stale, and saying so beats silently
+       handing out an environment that disagrees with getenv(). */
+    if (rc == 0)
+        fprintf(stderr, "kernel32: SetEnvironmentVariableA(\"%s\") changed the "
+                        "host environment; any environment BLOCK already handed "
+                        "to the guest still holds the old value.\n", name);
+    ret_std(C, rc == 0 ? 1u : 0u, 2);
+}
+
+/* ---- the standard handles ----------------------------------------------
+ *
+ * Real handles onto fds 0/1/2, so the CRT's own stdout and stderr writes go
+ * through WriteFile above and COME OUT. A token that WriteFile could not use
+ * would silently swallow everything the guest printed, which is the opposite
+ * of what this port needs from a module it is bringing up.
+ */
+#define STD_INPUT_HANDLE  ((uint32_t)-10)
+#define STD_OUTPUT_HANDLE ((uint32_t)-11)
+#define STD_ERROR_HANDLE  ((uint32_t)-12)
+
+static uint32_t g_std[3];                /* by fd: 0, 1, 2 */
+
+void imp_KERNEL32_GetStdHandle(CPU *C)
+{
+    uint32_t which = A(0);
+    int fd;
+    switch (which) {
+    case STD_INPUT_HANDLE:  fd = 0; break;
+    case STD_OUTPUT_HANDLE: fd = 1; break;
+    case STD_ERROR_HANDLE:  fd = 2; break;
+    default:
+        fprintf(stderr, "kernel32: GetStdHandle(0x%08x) is not one of the three "
+                        "standard handles; returning INVALID_HANDLE_VALUE "
+                        "rather than inventing one.\n", which);
+        ret_std(C, INVALID_HANDLE, 1);
+        return;
+    }
+    if (!g_std[fd]) {
+        g_std[fd] = h_alloc(H_FILE);
+        h_get(g_std[fd], H_FILE)->fd = fd;
+    }
+    ret_std(C, g_std[fd], 1);
+}
+
+/* SetStdHandle: accepted and RECORDED as unimplemented redirection. The CRT
+   calls it while wiring up its own streams; honouring it would mean rebinding
+   fd 0/1/2, which affects this whole process and not just the guest. */
+void imp_KERNEL32_SetStdHandle(CPU *C)
+{
+    static int said;
+    if (!said++)
+        fprintf(stderr, "kernel32: SetStdHandle is accepted but NOT honoured -- "
+                        "redirecting it would rebind this process's own stdout, "
+                        "not just the guest's. Guest output keeps going to the "
+                        "real streams.\n");
+    ret_std(C, 1, 2);
+}
+
+/* FILE_TYPE_DISK 1, FILE_TYPE_CHAR 2, FILE_TYPE_PIPE 3, UNKNOWN 0. Asked by
+   the CRT to decide whether a stream is line-buffered; answered from the real
+   fd, so a redirected run and a terminal run differ as they should. */
+void imp_KERNEL32_GetFileType(CPU *C)
+{
+    Handle *hh = h_get(A(0), H_FILE);
+    struct stat st;
+    uint32_t t = 0;
+    if (fstat(hh->fd, &st) == 0) {
+        if (S_ISREG(st.st_mode) || S_ISDIR(st.st_mode)) t = 1;
+        else if (S_ISCHR(st.st_mode))                   t = 2;
+        else if (S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode)) t = 3;
+    }
+    ret_std(C, t, 1);
+}
+
+/* SetHandleCount is a 16-bit-Windows leftover that Win32 keeps as a no-op
+   returning what it was given. This is not a stub -- it is the whole function
+   on the real platform too. */
+void imp_KERNEL32_SetHandleCount(CPU *C) { ret_std(C, A(0), 1); }
+
+void imp_KERNEL32_FlushFileBuffers(CPU *C)
+{
+    Handle *hh = h_get(A(0), H_FILE);
+    ret_std(C, fsync(hh->fd) == 0 ? 1u : 0u, 1);
+}
+
+/* SetFilePointer(h, lo, phi, method): FILE_BEGIN 0, FILE_CURRENT 1, END 2.
+   64-bit when phi is given, and the two halves must come from ONE lseek --
+   computing them separately is how a large-file seek lands somewhere else. */
+void imp_KERNEL32_SetFilePointer(CPU *C)
+{
+    Handle *hh = h_get(A(0), H_FILE);
+    uint32_t phi = A(2), method = A(3);
+    int64_t off = (int32_t)A(1);
+    off_t r;
+    if (phi) off |= (int64_t)(int32_t)RD32(phi) << 32;
+    r = lseek(hh->fd, off, method == 1 ? SEEK_CUR : method == 2 ? SEEK_END
+                                                                : SEEK_SET);
+    if (r == (off_t)-1) {
+        g_last_error = ERROR_ACCESS_DENIED;
+        ret_std(C, 0xFFFFFFFFu, 4);
+        return;
+    }
+    if (phi) WR32(phi, (uint32_t)((uint64_t)r >> 32));
+    ret_std(C, (uint32_t)r, 4);
+}
+
+/* ---- private heaps ------------------------------------------------------
+ *
+ * HeapCreate makes a heap of its OWN, and the CRT uses one for everything it
+ * allocates. Every block still comes from the single guest arena -- the arena
+ * is what makes an allocation 32-bit addressable, and nothing else here can.
+ * What the separate handles buy is that a block freed against the wrong heap
+ * is CAUGHT, which is the only guarantee a caller can actually observe.
+ */
+void imp_KERNEL32_HeapCreate(CPU *C)
+{
+    ret_std(C, PRIVATE_HEAP_TOK + (uint32_t)(++g_heaps), 3);
+}
+
+void imp_KERNEL32_HeapDestroy(CPU *C)
+{
+    /* The blocks are NOT reclaimed, and that is said rather than assumed: this
+       arena has no per-heap bookkeeping to walk. A CRT that destroys its heap
+       at exit leaks it into a process that is ending anyway; one that destroys
+       a heap mid-run and expects the memory back would grow. */
+    static int said;
+    if (!said++)
+        fprintf(stderr, "kernel32: HeapDestroy frees the HANDLE, not the "
+                        "blocks -- the guest arena has no per-heap bookkeeping "
+                        "to walk. Whatever was allocated from it stays "
+                        "allocated.\n");
+    ret_std(C, 1, 1);
+}
+
+void imp_KERNEL32_HeapReAlloc(CPU *C)
+{
+    uint32_t flags = A(1), p = A(2), n = A(3);
+    /* HEAP_REALLOC_IN_PLACE_ONLY (0x10) is a real constraint: a caller that
+       set it is holding interior pointers, so moving the block corrupts them.
+       Refused rather than moved, which is what Win32 does when it cannot. */
+    if (flags & 0x10u) { ret_std(C, 0, 4); return; }
+    ret_std(C, guest_realloc(p, n), 4);
+}
+
+void imp_KERNEL32_HeapSize(CPU *C)
+{
+    uint32_t base, size;
+    if (!guest_heap_contains(A(2), &base, &size)) { ret_std(C, 0xFFFFFFFFu, 3); return; }
+    ret_std(C, size - (A(2) - base), 3);
+}
+
+/* ---- code pages and locale ---------------------------------------------
+ *
+ * The CRT sets up its locale before anything else runs. This host is
+ * single-locale by construction: the game is the US build and every string in
+ * it is single-byte, so the honest answer is the US ANSI/OEM pair and the
+ * neutral locale -- not a translation layer to the host's locale, which would
+ * make the guest's string handling depend on the machine it runs on.
+ */
+#define CP_ACP_US 1252u
+#define CP_OEM_US 437u
+#define LCID_US   0x0409u
+
+void imp_KERNEL32_GetACP(CPU *C)   { ret_std(C, CP_ACP_US, 0); }
+void imp_KERNEL32_GetOEMCP(CPU *C) { ret_std(C, CP_OEM_US, 0); }
+void imp_KERNEL32_GetUserDefaultLCID(CPU *C) { ret_std(C, LCID_US, 0); }
+
+void imp_KERNEL32_IsValidCodePage(CPU *C)
+{
+    uint32_t cp = A(0);
+    ret_std(C, (cp == CP_ACP_US || cp == CP_OEM_US || cp == 0u || cp == 1u) ? 1u : 0u, 1);
+}
+
+void imp_KERNEL32_IsValidLocale(CPU *C)
+{
+    ret_std(C, (A(0) & 0xFFFFu) == LCID_US ? 1u : 0u, 2);
+}
+
+/* CPINFO { UINT MaxCharSize; BYTE DefaultChar[2]; BYTE LeadByte[12]; } --
+   single-byte, no lead bytes, which is what 1252 and 437 both are. */
+void imp_KERNEL32_GetCPInfo(CPU *C)
+{
+    uint32_t p = A(1);
+    if (!p) { ret_std(C, 0, 2); return; }
+    memset((void *)(uintptr_t)p, 0, 20);
+    WR32(p, 1);                          /* MaxCharSize */
+    WR8(p + 4u, '?');                    /* DefaultChar */
+    ret_std(C, 1, 2);
+}
+
+/*
+ * GetLocaleInfoA/W: only the fields a CRT startup actually reads are answered,
+ * and every other LCTYPE is REFUSED BY NUMBER. Answering an unknown one with a
+ * plausible string is how a locale-dependent format silently becomes wrong --
+ * a decimal separator invented here would come out in numbers the game prints.
+ */
+static const char *locale_field(uint32_t lctype)
+{
+    switch (lctype & 0xFFFFu) {
+    case 0x0002: return "en-US";         /* LOCALE_SLOCALIZEDDISPLAYNAME-ish */
+    case 0x0004: return "1252";          /* LOCALE_IDEFAULTANSICODEPAGE */
+    case 0x000B: return "437";           /* LOCALE_IDEFAULTCODEPAGE */
+    case 0x0005: return "ENU";           /* LOCALE_SABBREVLANGNAME */
+    case 0x000E: return ".";             /* LOCALE_SDECIMAL */
+    case 0x000F: return ",";             /* LOCALE_STHOUSAND */
+    case 0x0059: return "en";            /* LOCALE_SISO639LANGNAME */
+    case 0x005A: return "US";            /* LOCALE_SISO3166CTRYNAME */
+    default:     return NULL;
+    }
+}
+
+static void locale_info(CPU *C, int wide)
+{
+    uint32_t lctype = A(1), buf = A(2), cch = A(3);
+    const char *v = locale_field(lctype);
+    uint32_t n;
+    if (!v) {
+        static int said;
+        if (!said++)
+            fprintf(stderr, "kernel32: GetLocaleInfo LCTYPE 0x%x is not "
+                            "answered -- inventing a locale field is how a "
+                            "wrong decimal separator ends up in the game's own "
+                            "output. Reported once; each unknown type returns "
+                            "0.\n", lctype);
+        g_last_error = 87u;              /* ERROR_INVALID_PARAMETER */
+        ret_std(C, 0, 4);
+        return;
+    }
+    n = (uint32_t)strlen(v) + 1u;
+    if (cch == 0) { ret_std(C, n, 4); return; }   /* size query */
+    if (cch < n)  { g_last_error = 122u; ret_std(C, 0, 4); return; }
+    if (wide) {
+        uint16_t *w = (uint16_t *)(uintptr_t)buf;
+        uint32_t i;
+        for (i = 0; i < n; i++) w[i] = (uint16_t)(unsigned char)v[i];
+    } else {
+        memcpy((void *)(uintptr_t)buf, v, n);
+    }
+    ret_std(C, n, 4);
+}
+
+void imp_KERNEL32_GetLocaleInfoA(CPU *C) { locale_info(C, 0); }
+void imp_KERNEL32_GetLocaleInfoW(CPU *C) { locale_info(C, 1); }
+
+/*
+ * EnumSystemLocalesA(lpLocaleEnumProc, dwFlags): the callback is GUEST code
+ * and gets called with one locale -- the only one this host has. Enumerating
+ * nothing would be a different answer: a CRT that finds no locale at all takes
+ * its "the system is broken" path, and this system is not broken, it is
+ * single-locale.
+ */
+void imp_KERNEL32_EnumSystemLocalesA(CPU *C)
+{
+    uint32_t proc = A(0), s = guest_strdup("00000409");
+    static int said;
+    if (!said++)
+        printf("kernel32: EnumSystemLocalesA enumerates exactly ONE locale "
+               "(00000409, en-US) -- this host is single-locale by "
+               "construction, and the callback at 0x%08x is real guest code.\n",
+               proc);
+    if (proc && s) { uint32_t a = s; ark_call_cdecl(proc, &a, 1); }
+    ret_std(C, 1, 2);
+}
+
+/* ---- the C-locale string services --------------------------------------
+ *
+ * ASCII, deliberately and stated: the code page above is single-byte and every
+ * string in this game is. A byte >= 0x80 is passed through unchanged by the
+ * case mappings and sorts by its value, which is 1252's own order for the
+ * letters and is not claimed to be its collation for the rest.
+ */
+#define NORM_IGNORECASE 0x00000001u
+#define LCMAP_LOWERCASE 0x00000100u
+#define LCMAP_UPPERCASE 0x00000200u
+#define LCMAP_SORTKEY   0x00000400u
+
+static int cmp_bytes(const char *a, int na, const char *b, int nb, int fold)
+{
+    int i, n = na < nb ? na : nb;
+    for (i = 0; i < n; i++) {
+        int x = (unsigned char)a[i], y = (unsigned char)b[i];
+        if (fold) { x = tolower(x); y = tolower(y); }
+        if (x != y) return x < y ? -1 : 1;
+    }
+    return na == nb ? 0 : (na < nb ? -1 : 1);
+}
+
+/* CompareStringA(lcid, flags, s1, n1, s2, n2) -> 1 LESS, 2 EQUAL, 3 GREATER,
+   0 on error. -1 for a count means NUL-terminated. */
+void imp_KERNEL32_CompareStringA(CPU *C)
+{
+    const char *a = (const char *)(uintptr_t)A(2);
+    const char *b = (const char *)(uintptr_t)A(4);
+    int na = (int32_t)A(3), nb = (int32_t)A(5), r;
+    if (!a || !b) { ret_std(C, 0, 6); return; }
+    if (na < 0) na = (int)strlen(a);
+    if (nb < 0) nb = (int)strlen(b);
+    r = cmp_bytes(a, na, b, nb, (A(1) & NORM_IGNORECASE) != 0);
+    ret_std(C, (uint32_t)(r < 0 ? 1 : r == 0 ? 2 : 3), 6);
+}
+
+void imp_KERNEL32_CompareStringW(CPU *C)
+{
+    const uint16_t *a = (const uint16_t *)(uintptr_t)A(2);
+    const uint16_t *b = (const uint16_t *)(uintptr_t)A(4);
+    int na = (int32_t)A(3), nb = (int32_t)A(5), i, n;
+    int fold = (A(1) & NORM_IGNORECASE) != 0, r = 0;
+    if (!a || !b) { ret_std(C, 0, 6); return; }
+    if (na < 0) { na = 0; while (a[na]) na++; }
+    if (nb < 0) { nb = 0; while (b[nb]) nb++; }
+    n = na < nb ? na : nb;
+    for (i = 0; i < n && r == 0; i++) {
+        int x = a[i], y = b[i];
+        if (fold) { if (x < 128) x = tolower(x); if (y < 128) y = tolower(y); }
+        if (x != y) r = x < y ? -1 : 1;
+    }
+    if (r == 0 && na != nb) r = na < nb ? -1 : 1;
+    ret_std(C, (uint32_t)(r < 0 ? 1 : r == 0 ? 2 : 3), 6);
+}
+
+/* LCMapStringA(lcid, flags, src, ncsrc, dst, ncdst). Case mapping only:
+   LCMAP_SORTKEY produces a binary blob whose ORDER is the whole contract, and
+   a fabricated one would sort wrongly rather than fail. */
+static void lcmap(CPU *C, int wide)
+{
+    uint32_t flags = A(1), dst = A(4), ncdst = A(5);
+    int nsrc = (int32_t)A(3), i;
+
+    if (flags & LCMAP_SORTKEY) {
+        fprintf(stderr, "kernel32: LCMapString with LCMAP_SORTKEY is NOT "
+                        "implemented -- a sort key's whole contract is its "
+                        "byte order, and an invented one sorts wrongly instead "
+                        "of failing. Returning 0.\n");
+        g_last_error = 87u;
+        ret_std(C, 0, 6);
+        return;
+    }
+    if (wide) {
+        const uint16_t *s = (const uint16_t *)(uintptr_t)A(2);
+        uint16_t *d = (uint16_t *)(uintptr_t)dst;
+        if (nsrc < 0) { nsrc = 0; while (s[nsrc]) nsrc++; nsrc++; }
+        if (ncdst == 0) { ret_std(C, (uint32_t)nsrc, 6); return; }
+        if ((int)ncdst < nsrc) { g_last_error = 122u; ret_std(C, 0, 6); return; }
+        for (i = 0; i < nsrc; i++) {
+            int c = s[i];
+            if (c < 128) c = (flags & LCMAP_UPPERCASE) ? toupper(c)
+                          : (flags & LCMAP_LOWERCASE) ? tolower(c) : c;
+            d[i] = (uint16_t)c;
+        }
+    } else {
+        const char *s = (const char *)(uintptr_t)A(2);
+        char *d = (char *)(uintptr_t)dst;
+        if (nsrc < 0) nsrc = (int)strlen(s) + 1;
+        if (ncdst == 0) { ret_std(C, (uint32_t)nsrc, 6); return; }
+        if ((int)ncdst < nsrc) { g_last_error = 122u; ret_std(C, 0, 6); return; }
+        for (i = 0; i < nsrc; i++) {
+            int c = (unsigned char)s[i];
+            if (c < 128) c = (flags & LCMAP_UPPERCASE) ? toupper(c)
+                          : (flags & LCMAP_LOWERCASE) ? tolower(c) : c;
+            d[i] = (char)c;
+        }
+    }
+    ret_std(C, (uint32_t)nsrc, 6);
+}
+
+void imp_KERNEL32_LCMapStringA(CPU *C) { lcmap(C, 0); }
+void imp_KERNEL32_LCMapStringW(CPU *C) { lcmap(C, 1); }
+
+/* GetStringTypeA/W with CT_CTYPE1: the character-class bits the CRT's isalpha
+   family is built on. */
+#define CT_CTYPE1 1u
+static uint16_t ctype1(int c)
+{
+    uint16_t f = 0;
+    if (c > 0xFF) return 0;
+    if (isupper(c)) f |= 0x0001;
+    if (islower(c)) f |= 0x0002;
+    if (isdigit(c)) f |= 0x0004;
+    if (isspace(c)) f |= 0x0008;
+    if (ispunct(c)) f |= 0x0010;
+    if (iscntrl(c)) f |= 0x0020;
+    if (c == ' ' || c == '\t') f |= 0x0040;
+    if (isxdigit(c)) f |= 0x0080;
+    if (isalpha(c)) f |= 0x0100;
+    return f;
+}
+
+/* The two differ in their ARGUMENT ORDER, not only in width: GetStringTypeA
+   takes an LCID first and GetStringTypeW does not. Getting that wrong reads
+   the string pointer out of the locale slot. */
+static void string_type(CPU *C, int wide, int base, int nargs)
+{
+    uint32_t info = A(base), src = A(base + 1), out = A(base + 3);
+    int n = (int32_t)A(base + 2), i;
+    uint16_t *d = (uint16_t *)(uintptr_t)out;
+    if (info != CT_CTYPE1) {
+        fprintf(stderr, "kernel32: GetStringType info 0x%x is not CT_CTYPE1; "
+                        "only the character-class table is implemented, so "
+                        "this returns 0 rather than a made-up one.\n", info);
+        g_last_error = 87u;
+        ret_std(C, 0, nargs);
+        return;
+    }
+    if (!src || !out) { ret_std(C, 0, nargs); return; }
+    if (wide) {
+        const uint16_t *s = (const uint16_t *)(uintptr_t)src;
+        if (n < 0) { n = 0; while (s[n]) n++; n++; }
+        for (i = 0; i < n; i++) d[i] = ctype1(s[i]);
+    } else {
+        const char *s = (const char *)(uintptr_t)src;
+        if (n < 0) n = (int)strlen(s) + 1;
+        for (i = 0; i < n; i++) d[i] = ctype1((unsigned char)s[i]);
+    }
+    ret_std(C, 1, nargs);
+}
+
+void imp_KERNEL32_GetStringTypeA(CPU *C) { string_type(C, 0, 1, 5); }
+void imp_KERNEL32_GetStringTypeW(CPU *C) { string_type(C, 1, 0, 4); }
+
+/* ---- pointer validation -------------------------------------------------
+ *
+ * IsBadReadPtr and friends are answered by ASKING THE KERNEL, with a write()
+ * of the range to /dev/null: it performs the same access check the real API
+ * does and reports EFAULT instead of raising a signal. Returning "the pointer
+ * is fine" unconditionally is the usual shortcut and it inverts the function's
+ * entire purpose -- a caller uses it precisely because it does not trust the
+ * pointer.
+ */
+static int mem_accessible(uint32_t p, uint32_t n)
+{
+    static int devnull = -2;
+    ssize_t r;
+    if (!p) return 0;
+    if (n == 0) n = 1;
+    if (devnull == -2) devnull = open("/dev/null", O_WRONLY);
+    if (devnull < 0) return 1;           /* cannot check -> do not claim bad */
+    r = write(devnull, (const void *)(uintptr_t)p, (size_t)n);
+    return r == (ssize_t)n;
+}
+
+void imp_KERNEL32_IsBadReadPtr(CPU *C)
+{
+    ret_std(C, mem_accessible(A(0), A(1)) ? 0u : 1u, 2);
+}
+
+void imp_KERNEL32_IsBadCodePtr(CPU *C)
+{
+    ret_std(C, mem_accessible(A(0), 1) ? 0u : 1u, 1);
+}
+
+/*
+ * IsBadWritePtr answers the READ question, and says so once.
+ *
+ * The probe above cannot test writability without writing, and writing to test
+ * would corrupt exactly the buffer being validated. Every mapping the guest
+ * gets from this host is read-write, so read-accessible implies writable here
+ * -- but that is a property of this host, not of the API, and it is stated
+ * rather than assumed silently.
+ */
+void imp_KERNEL32_IsBadWritePtr(CPU *C)
+{
+    static int said;
+    if (!said++)
+        fprintf(stderr, "kernel32: IsBadWritePtr is answered by the READ probe "
+                        "-- testing writability by writing would corrupt the "
+                        "buffer being checked. Every guest mapping this host "
+                        "makes is read-write, so the answers coincide here.\n");
+    ret_std(C, mem_accessible(A(0), A(1)) ? 0u : 1u, 2);
+}
+
+/* ---- the control transfers that CANNOT be faked -------------------------
+ *
+ * Each of these hands control somewhere. A no-op version returns to a caller
+ * that has already decided this call does not return, so the damage lands
+ * later and somewhere else. They stop, by name, with what was asked.
+ */
+void imp_KERNEL32_RtlUnwind(CPU *C)
+{
+    fprintf(stderr, "kernel32: RtlUnwind(target 0x%08x, code 0x%08x) -- SEH "
+                    "unwinding is NOT implemented. The CRT is unwinding out of "
+                    "an exception, and returning from here would resume in a "
+                    "frame it has already discarded.\n"
+                    "  This is a real exception in guest code, not a missing "
+                    "stub: find what threw.\n", A(0), A(1));
+    x86_diag_dump();
+    abort();
+}
+
+void imp_KERNEL32_RaiseException(CPU *C)
+{
+    fprintf(stderr, "kernel32: RaiseException(code 0x%08x, flags 0x%08x) -- "
+                    "guest code is RAISING an exception and this host has no "
+                    "SEH dispatcher to deliver it to.\n"
+                    "  Code 0xE06D7363 is a C++ throw; 0x80000003 is a "
+                    "breakpoint. Either way the guest decided something is "
+                    "wrong before this layer was involved.\n", A(0), A(1));
+    x86_diag_dump();
+    abort();
+}
+
+void imp_KERNEL32_DebugBreak(CPU *C)
+{
+    (void)C;
+    fprintf(stderr, "kernel32: DebugBreak -- guest code asked for a debugger. "
+                    "There is none, and continuing past a deliberate break "
+                    "would run code that expects to have been inspected.\n");
+    x86_diag_dump();
+    abort();
+}
+
+void imp_KERNEL32_TerminateProcess(CPU *C)
+{
+    fprintf(stderr, "kernel32: TerminateProcess(exit code %u) -- guest code is "
+                    "killing the process.\n", A(1));
+    exit((int)A(1));
+}
+
+/*
+ * SetUnhandledExceptionFilter: the filter is RECORDED and never called, and
+ * that is the honest state -- there is no SEH dispatcher here to call it from.
+ * Returns the previous filter, which is the part callers actually use (they
+ * chain to it).
+ */
+static uint32_t g_ueh_filter;
+void imp_KERNEL32_SetUnhandledExceptionFilter(CPU *C)
+{
+    uint32_t prev = g_ueh_filter;
+    static int said;
+    g_ueh_filter = A(0);
+    if (!said++)
+        fprintf(stderr, "kernel32: SetUnhandledExceptionFilter(0x%08x) is "
+                        "recorded but will never be CALLED -- this host has no "
+                        "SEH dispatcher. A crash reports through x2native's own "
+                        "handler instead.\n", A(0));
+    ret_std(C, prev, 1);
 }

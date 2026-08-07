@@ -125,32 +125,6 @@ void imp_KERNEL32_DisableThreadLibraryCalls(CPU *C)
     ret_std(C, 1, 1);
 }
 
-void imp_KERNEL32_MultiByteToWideChar(CPU *C)
-{
-    /* The game uses it for ASCII only. Anything else would need a real
-       codepage conversion, so it stops rather than mangling text. */
-    uint32_t cp = A(0), src = A(2); int32_t srclen = (int32_t)A(3);
-    uint32_t dst = A(4); int32_t dstlen = (int32_t)A(5);
-    const unsigned char *s = (const unsigned char *)(uintptr_t)src;
-    int n, i;
-    if (cp != 0u && cp != 1252u && cp != 65001u) {
-        fprintf(stderr, "win32_sdl: MultiByteToWideChar codepage %u is not "
-                        "ASCII-compatible and is not implemented\n", cp);
-        abort();
-    }
-    n = srclen < 0 ? (int)strlen((const char *)s) + 1 : srclen;
-    for (i = 0; i < n; i++)
-        if (s[i] > 0x7F) {
-            fprintf(stderr, "win32_sdl: MultiByteToWideChar got a non-ASCII "
-                            "byte 0x%02x; this layer only widens ASCII\n", s[i]);
-            abort();
-        }
-    if (dstlen == 0) { ret_std(C, (uint32_t)n, 6); return; }
-    if (n > dstlen) { ret_std(C, 0, 6); return; }
-    for (i = 0; i < n; i++) WR16(dst + (uint32_t)i * 2u, s[i]);
-    ret_std(C, (uint32_t)n, 6);
-}
-
 /* ---- USER32: window lifecycle ------------------------------------------ */
 
 void imp_USER32_GetDesktopWindow(CPU *C) { ret_std(C, HWND_DESKTOP_TOK, 0); }

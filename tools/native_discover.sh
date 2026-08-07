@@ -75,7 +75,7 @@ python3 tools/verify_export.py >/dev/null 2>&1 || {
 # Set SKIP_BULK=1 to go straight to the loop.
 if [ "${SKIP_BULK:-0}" != "1" ]; then
     for m in libIGDisplay libIGCore libIGSg libIGMath libIGAttrs \
-             libIGGfx libIGUtils XMen2; do
+             libIGGfx libIGUtils cg cgD3D8 XMen2; do
         J=$ROOT/scratch/recomp/$m.json
         [ -f "$J" ] || continue
         S=$ROOT/scratch/recomp/$m.codeimm

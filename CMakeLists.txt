@@ -150,9 +150,16 @@ endif()
 # Each recompiled module contributes two generated files and is optional: a
 # module that has not been exported yet simply is not linked, and x2native says
 # which ones it has at run time rather than pretending to a full set.
+#
+# cg and cgD3D8 are the NVIDIA Cg runtime shipped in the install, not Alchemy
+# modules -- libIGGfx loads them by name and the engine's library loader
+# reports a MODAL WARNING when it cannot (issue #45). They recompile like any
+# other guest module; what makes them different is that they link the MSVC CRT
+# STATICALLY, so their imports are the CRT's own startup surface (heap, std
+# handles, locale, code pages) rather than MSVCR71.
 set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
                libIGGfx libIGUtils libIGGui libIGLua libIGOpt
-               libMovie libCriMovie XMen2)
+               libMovie libCriMovie cg cgD3D8 XMen2)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
 foreach(m ${X2_MODULES})
@@ -228,6 +235,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput.c
         src/native/dinput8.c
         src/native/dinput_device.c
+        src/native/advapi32.c
         src/native/shell32.c
         src/native/winmm.c
         src/native/threads.c

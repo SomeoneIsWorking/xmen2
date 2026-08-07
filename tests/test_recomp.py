@@ -603,5 +603,65 @@ class X87RegisterStores(unittest.TestCase):
 # tests/test_recomp.py` reported 24 passing tests while unittest discovery
 # found 33. A test that cannot run is worse than one that fails, because it
 # reports OK.
+
+class WaitingX87Forms(unittest.TestCase):
+    """FSTCW/FSTSW/FWAIT: the forms with the exception check in front.
+
+    The translator handled FNSTCW/FNSTSW and refused FSTCW/FSTSW/WAIT, so a
+    statically-linked MSVC CRT -- which uses the waiting forms when it sets up
+    its floating-point environment -- aborted on the first one it executed.
+    cg.dll stopped there (issue #45): 12 FSTSW, 10 WAIT and 4 FSTCW in that
+    image alone.
+
+    The waiting forms differ only in checking for a PENDING unmasked x87
+    exception first. This runtime raises nothing lazily -- x87_fault stops at
+    the instruction that caused it -- so there is no pending state for the wait
+    to inspect, which is why the two forms translate identically here rather
+    than approximately.
+    """
+
+    def test_fstcw_stores_the_control_word(self):
+        c = translate([
+            ins(0x00401000, "FSTCW", "FSTCW word ptr [ESP + 0x4]", n=4,
+                o=[{"k": "mem", "size": 2, "base": "esp", "disp": 4}]),
+            ins(0x00401004, "RET", "RET", n=1),
+        ])
+        self.assertIn("C->fcw", c)
+        self.assertIn("WR16(", c)
+
+    def test_fstsw_ax_matches_fnstsw(self):
+        want = translate([
+            ins(0x00401000, "FNSTSW", "FNSTSW AX", n=2,
+                o=[{"k": "reg", "size": 2, "reg": "ax"}]),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        got = translate([
+            ins(0x00401000, "FSTSW", "FSTSW AX", n=3,
+                o=[{"k": "reg", "size": 2, "reg": "ax"}]),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("C->fsw", got)
+        self.assertIn("C->eax = (C->eax & 0xFFFF0000U) | (C->fsw & 0xFFFFU);", got)
+        self.assertIn("C->eax = (C->eax & 0xFFFF0000U) | (C->fsw & 0xFFFFU);", want)
+
+    def test_fstsw_memory_form_stores_rather_than_loading_eax(self):
+        """The memory form must NOT be translated as the AX form: it would
+        leave the guest's buffer untouched and clobber EAX instead."""
+        c = translate([
+            ins(0x00401000, "FSTSW", "FSTSW word ptr [ESP]", n=3,
+                o=[{"k": "mem", "size": 2, "base": "esp", "disp": 0}]),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("WR16(", c)
+        self.assertNotIn("C->eax =", c)
+
+    def test_wait_is_a_no_op_not_a_refusal(self):
+        c = translate([
+            ins(0x00401000, "WAIT", "WAIT", n=1),
+            ins(0x00401001, "RET", "RET", n=1),
+        ])
+        self.assertIn("RET", c)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

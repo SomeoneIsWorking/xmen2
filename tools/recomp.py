@@ -473,6 +473,15 @@ def emit_instruction(ins, ctx):
         return ["%s" % A, "  x86_int3(%s);"
                 % (img_rel(ins["a"]) or "0x%08xU" % ins["a"])]
 
+    if m in ("WAIT", "FWAIT"):
+        # FWAIT waits for pending unmasked x87 exceptions. This runtime has
+        # none to wait for: x87_fault stops AT the offending instruction rather
+        # than flagging the status word and deferring. So the wait has nothing
+        # to check, which makes it a genuine no-op here rather than a skipped
+        # instruction -- and if lazy x87 exceptions are ever modelled, this is
+        # the one place that has to change.
+        return ["%s" % A]
+
     if m == "CLD":
         # Clears the direction flag, which this runtime does not model: string
         # operations are emitted in the ascending form unconditionally. CLD is
@@ -574,6 +583,7 @@ def emit_instruction(ins, ctx):
              "FLD1", "FLDPI", "FLDLG2", "FLDLN2", "FLDL2E", "FLDL2T",
              "FXCH", "FADDP", "FSUBP", "FSUBRP", "FMULP", "FDIVP", "FDIVRP",
              "FRNDINT", "FPREM", "FSCALE", "FXTRACT", "FNSTCW", "FLDCW",
+             "FSTCW", "FSTSW",
              "FYL2X", "FYL2XP1", "FPATAN", "F2XM1", "FSIN", "FCOS",
              "FSINCOS", "FTST", "FPTAN",
              "FFREE", "FINCSTP", "FDECSTP", "FNCLEX", "FNINIT"):
@@ -657,14 +667,25 @@ def emit_instruction(ins, ctx):
             return [A, "/* %s: no modelled effect */" % m]
         if m == "FNINIT":
             return [A, "C->top = 0; C->depth = 0; C->fsw = 0;"]
-        if m in ("FNSTCW", "FLDCW"):
+        # FSTCW/FSTSW are FNSTCW/FNSTSW preceded by an implicit FWAIT: the
+        # WAIT checks for a PENDING unmasked x87 exception before storing.
+        # This runtime raises nothing lazily -- x87_fault stops at the
+        # instruction that caused it -- so there is never a pending exception
+        # to wait for, and the waiting and non-waiting forms are the same
+        # instruction here. Not "close enough": the state the wait inspects
+        # does not exist in this model.
+        if m in ("FNSTCW", "FSTCW", "FLDCW"):
             o = O(0)
             if o.kind != "mem":
                 raise Unsupported("%s with %s operand" % (m, o.kind))
-            if m == "FNSTCW":
-                return [A, "WR16(%s, (uint16_t)C->fcw);" % o.addr()]
-            return [A, "C->fcw = RD16(%s);" % o.addr()]
-        if m == "FNSTSW":
+            if m == "FLDCW":
+                return [A, "C->fcw = RD16(%s);" % o.addr()]
+            return [A, "WR16(%s, (uint16_t)C->fcw);" % o.addr()]
+        if m in ("FNSTSW", "FSTSW"):
+            # The AX form is the common one (FCOM then test AH). The memory
+            # form stores the same 16 bits.
+            if ops and O(0).kind == "mem":
+                return [A, "WR16(%s, (uint16_t)C->fsw);" % O(0).addr()]
             return [A, "C->eax = (C->eax & 0xFFFF0000U) | (C->fsw & 0xFFFFU);"]
         if m == "FLDZ":
             return [A, "x87_push(C, 0.0L);"]
