@@ -72,11 +72,29 @@ python3 tools/verify_export.py >/dev/null 2>&1 || {
 # pass can see them -- but they are trivially findable in the instruction
 # stream. One pass found 138 in libIGGfx and 988 in XMen2.exe.
 #
+# The list is DERIVED from what has been exported, not written out by hand.
+# It used to be a hand-kept subset, and the modules missing from it -- libIGOpt,
+# libIGGui, libIGLua, libMovie, libCriMovie -- were exactly the ones that then
+# crawled through the round loop one function at a time: eleven rounds of
+# "1 missing target in libIGOpt.dll", each costing a Ghidra re-analysis and a
+# relink, for addresses a single bulk pass finds instantly. A list that has to
+# be updated by hand every time a module joins the build is a list that will be
+# wrong again.
+#
+# The `.ark`/`.vtab`/`.iat` side-car exports are not modules and are skipped by
+# name; anything else with a .json gets seeded.
+#
 # Set SKIP_BULK=1 to go straight to the loop.
 if [ "${SKIP_BULK:-0}" != "1" ]; then
-    for m in libIGDisplay libIGCore libIGSg libIGMath libIGAttrs \
-             libIGGfx libIGUtils libIGAudio libIGCollision \
-             cg cgD3D8 XMen2; do
+    BULK_MODS=$(ls "$ROOT"/scratch/recomp/*.json 2>/dev/null \
+                | sed 's|.*/||; s|\.json$||' \
+                | grep -v '\.\(ark\|vtab\|iat\)$')
+    [ -n "$BULK_MODS" ] || {
+        echo "native_discover: no exports in scratch/recomp -- there is NOTHING" >&2
+        echo "  to bulk-seed, and that is a broken tree, not an empty result." >&2
+        exit 2; }
+    echo "== bulk: seeding $(echo "$BULK_MODS" | wc -l) exported module(s)"
+    for m in $BULK_MODS; do
         J=$ROOT/scratch/recomp/$m.json
         [ -f "$J" ] || continue
         S=$ROOT/scratch/recomp/$m.codeimm

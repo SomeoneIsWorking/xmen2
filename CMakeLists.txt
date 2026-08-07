@@ -160,6 +160,7 @@ endif()
 set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
                libIGGfx libIGUtils libIGGui libIGLua libIGOpt
                libMovie libCriMovie libIGAudio libIGCollision
+               libIGInsight libIGViewer
                cg cgD3D8 XMen2)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
