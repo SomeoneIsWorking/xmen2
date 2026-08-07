@@ -1703,6 +1703,69 @@ static int guest_reserved(uint32_t base, uint32_t len)
  * budget refused (C088). The allocator and the query have to describe the same
  * address space, which is the same defect as C070/C071 on the Xbox side.
  */
+/*
+ * Pages the guest has DECOMMITTED inside its own reservations.
+ *
+ * VirtualFree(MEM_DECOMMIT) mprotects them PROT_NONE so a use-after-decommit
+ * faults instead of reading stale data. That was right, and it made
+ * VirtualQuery a liar: it reported the whole reservation as MEM_COMMIT on the
+ * grounds that "the reservation is mapped PROT_READ|PROT_WRITE", which stopped
+ * being true the moment the first decommit ran. The guest asked, was told the
+ * range was committed, used it, and faulted -- issue #41.
+ *
+ * On Windows a decommitted page reads back as MEM_RESERVE, and the region size
+ * is the run of pages in that state. So the two calls have to share one record
+ * of what is committed, which is this.
+ */
+#define MAX_DECOMMIT 256
+static struct { uint32_t base, size; } g_decommit[MAX_DECOMMIT];
+static int g_ndecommit, g_decommit_lost;
+
+/* The decommitted range containing `addr`, if any. */
+static int guest_decommitted(uint32_t addr, uint32_t *base, uint32_t *size)
+{
+    int i;
+    for (i = 0; i < g_ndecommit; i++)
+        if (addr >= g_decommit[i].base
+            && addr - g_decommit[i].base < g_decommit[i].size) {
+            if (base) *base = g_decommit[i].base;
+            if (size) *size = g_decommit[i].size;
+            return 1;
+        }
+    return 0;
+}
+
+static void decommit_note(uint32_t base, uint32_t size)
+{
+    int i;
+    for (i = 0; i < g_ndecommit; i++)               /* already recorded */
+        if (g_decommit[i].base == base && g_decommit[i].size == size) return;
+    if (g_ndecommit == MAX_DECOMMIT) {
+        /* Counted and reported rather than dropped silently: a decommit this
+           host forgets is one VirtualQuery will call committed again. */
+        g_decommit_lost++;
+        return;
+    }
+    g_decommit[g_ndecommit].base = base;
+    g_decommit[g_ndecommit].size = size;
+    g_ndecommit++;
+}
+
+/* A commit over decommitted pages takes them off the list. Only whole entries
+   are dropped: a partial re-commit leaves the entry, which errs toward
+   reporting RESERVE for something committed -- the safe direction, because the
+   guest then asks again rather than using memory it was wrongly promised. */
+static void decommit_clear(uint32_t base, uint32_t len)
+{
+    int i;
+    for (i = 0; i < g_ndecommit; ) {
+        if (g_decommit[i].base >= base
+            && g_decommit[i].base + g_decommit[i].size <= base + len)
+            g_decommit[i] = g_decommit[--g_ndecommit];
+        else i++;
+    }
+}
+
 static int guest_reserved_span(uint32_t addr, uint32_t *base, uint32_t *size)
 {
     int i;
@@ -1750,6 +1813,20 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
             /* Already mapped: fine ONLY if the guest reserved it. Anything
                else is our own memory and must be refused. */
             if (errno == EEXIST && guest_reserved(base, len)) {
+                /*
+                 * A COMMIT over a reservation this host already mapped.
+                 *
+                 * The pages may have been DECOMMITTED since, which mprotects
+                 * them PROT_NONE -- so returning success without restoring
+                 * access makes a decommit permanent, and the guest faults on
+                 * the memory Win32 just told it it had. Issue #41.
+                 */
+                if (mprotect((void *)(uintptr_t)base, len,
+                             PROT_READ | PROT_WRITE) != 0)
+                    fprintf(stderr, "kernel32: VirtualAlloc could not restore "
+                                    "access to 0x%08x+%u: %s\n",
+                            base, len, strerror(errno));
+                decommit_clear(base, len);
                 ret_std(C, addr, 4);
                 return;
             }
@@ -1872,6 +1949,8 @@ void imp_KERNEL32_VirtualFree(CPU *C)
         if (len && mprotect((void *)(uintptr_t)base, len, PROT_NONE) != 0)
             fprintf(stderr, "kernel32: VirtualFree(MEM_DECOMMIT) could not "
                             "protect 0x%08x+%u: %s\n", base, len, strerror(errno));
+        else if (len)
+            decommit_note(base, len);
         ret_std(C, 1, 3);
         return;
     }
@@ -1917,12 +1996,17 @@ void imp_KERNEL32_VirtualQuery(CPU *C)
     if (len < 28u) { ret_std(C, 0, 3); return; }
     m = x86_module_for(addr);
     if (m) { base = *m->base; size = m->size; state = 0x1000u; protect = 0x02u; }
+    else if (guest_decommitted(addr, &base, &size)) {
+        /* DECOMMITTED: reserved, not committed, and not accessible. Windows
+           answers MEM_RESERVE here with the run of pages in that state, and so
+           does this -- the alternative is what issue #41 was, a guest told its
+           memory was committed reading a page this host had mprotected away. */
+        state = 0x2000u; protect = 0x01u;             /* RESERVE, NOACCESS */
+    }
     else if (guest_reserved_span(addr, &base, &size)) {
-        /* Memory the guest itself reserved through VirtualAlloc. Reported as
-           COMMIT rather than RESERVE because that is what we actually did:
-           the reservation is mapped PROT_READ|PROT_WRITE, so it is readable
-           and writable, and describing it as reserved-but-uncommitted would be
-           the inaccuracy in the other direction. */
+        /* Memory the guest itself reserved through VirtualAlloc, and not
+           decommitted since (checked above). It is mapped PROT_READ|PROT_WRITE,
+           so COMMIT is what this host actually did. */
         state = 0x1000u; protect = 0x04u;
     }
     else {
