@@ -17,7 +17,7 @@ static X86Module *g_head;
 
 static int thunk_call(uint32_t addr, CPU *C);
 static void ring_note(const char *what, uint32_t addr, uint32_t base,
-                      uint32_t in, uint32_t out);
+                      uint32_t in, uint32_t out, uint32_t ret);
 static unsigned long g_return_to_calls;
 extern const CPU *g_cpu_current;
 
@@ -147,7 +147,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
         uint32_t in = C->esp;
         g_cpu_current = C;
         f->fn(C);
-        ring_note("guest", addr, 0, in, C->esp);
+        ring_note("guest", addr, 0, in, C->esp, 0);
     }
     return 1;
 }
@@ -395,7 +395,7 @@ static int thunk_call(uint32_t addr, CPU *C)
         g_thunk[i].stub(C);
         g_cb_ctx = save;
     }
-    ring_note(g_thunk[i].sym, addr, 0, in, C->esp);
+    ring_note(g_thunk[i].sym, addr, 0, in, C->esp, 0);
     return 1;
 }
 
@@ -428,9 +428,23 @@ static int thunk_call(uint32_t addr, CPU *C)
 static struct {
     const char *what;
     uint32_t    addr, base, esp_in, esp_out;
+    /*
+     * The caller's return address, for a body ENTRY -- 0 where there is none
+     * to record.
+     *
+     * Without it the ring can show a two-body loop and say nothing about who
+     * is running it, because the loop itself never crosses a boundary: issue
+     * #35 sat on "something calls the frame timer forever" for a session
+     * because the only thing the ring named was the timer. It is the one word
+     * the generated prologue already has (`_retaddr`), so it costs a store.
+     */
+    uint32_t    ret;
     unsigned    repeat;
 } g_ring[RING];
-static unsigned g_ring_n;
+/* unsigned long, not unsigned: a run that reaches the main loop passes 2^32
+   crossings in a trace build, and a counter that wraps would have the
+   heartbeat report a negative delta as an enormous positive one. */
+static unsigned long g_ring_n;
 
 /*
  * Consecutive identical crossings collapse into one entry with a count.
@@ -441,14 +455,27 @@ static unsigned g_ring_n;
  * out. Capping the boring case rather than the interesting one is the whole
  * point of a ring this size.
  */
-static void ring_note(const char *what, uint32_t addr, uint32_t base,
-                      uint32_t in, uint32_t out)
+unsigned long x86_crossings(void) { return g_ring_n; }
+
+const char *x86_crossings_what(void)
 {
-    unsigned i;
+#ifdef X86_NATIVE_TRACE
+    return "body entries and exits";
+#else
+    return "host-boundary crossings only (this is not a trace build, so "
+           "guest-to-guest calls are invisible here)";
+#endif
+}
+
+static void ring_note(const char *what, uint32_t addr, uint32_t base,
+                      uint32_t in, uint32_t out, uint32_t ret)
+{
+    unsigned long i;
     if (g_ring_n) {
         i = (g_ring_n - 1) % RING;
         if (g_ring[i].addr == addr && g_ring[i].base == base
-            && g_ring[i].esp_in == in && g_ring[i].esp_out == out) {
+            && g_ring[i].esp_in == in && g_ring[i].esp_out == out
+            && g_ring[i].ret == ret) {
             g_ring[i].repeat++;
             return;
         }
@@ -459,6 +486,7 @@ static void ring_note(const char *what, uint32_t addr, uint32_t base,
     g_ring[i].base = base;
     g_ring[i].esp_in = in;
     g_ring[i].esp_out = out;
+    g_ring[i].ret = ret;
     g_ring[i].repeat = 0;
 }
 
@@ -485,66 +513,155 @@ static void ring_note(const char *what, uint32_t addr, uint32_t base,
  * built not to need it -- so it prints a fixed four and says so. Words beyond
  * the real count are whatever the caller's frame holds, not arguments.
  */
-#define ARGS_MAX 16
-static uint32_t g_args_ep[ARGS_MAX];
-static int g_args_n = -1, g_args_hits;
+/*
+ * Capping: by NOVELTY, not by count.
+ *
+ * A flat cap ("print the first 8 calls") and no cap at all fail the same
+ * function called from a loop -- the first drowns the interesting call sites
+ * under the boring one, the second drowns the log. What identifies a caller is
+ * the RETURN ADDRESS, so the cap is per (entry point, return address): every
+ * distinct call site is always printed the first time it appears, and repeats
+ * from a site already seen stop after X2_ARGS_MAX (default 8).
+ *
+ * The suppressed calls are COUNTED, per site, and printed in the report. A
+ * watch that silently dropped them would make one call site indistinguishable
+ * from a million, which is the whole question when the symptom is a spin.
+ */
+#define ARGS_MAX   16
+#define ARGS_SITES 24
+static struct ArgsWatch {
+    uint32_t      ep;
+    unsigned long calls;                 /* entries seen for this ep */
+    int           nsites;
+    int           lost;                  /* distinct sites past ARGS_SITES */
+    unsigned long lost_calls;
+    struct { uint32_t ret; unsigned long n, shown; } site[ARGS_SITES];
+    int           shown;                 /* the last entry printed (see below) */
+} g_args[ARGS_MAX];
+static int g_args_n = -1, g_args_hits, g_args_cap = 8, g_args_printed;
 
 static void args_init(void)
 {
-    const char *e = getenv("X2_ARGS");
+    const char *e = getenv("X2_ARGS"), *c = getenv("X2_ARGS_MAX");
     char buf[256], *p, *save;
     g_args_n = 0;
+    if (c && *c) g_args_cap = (int)strtol(c, NULL, 0);
     if (!e || !*e) return;
     snprintf(buf, sizeof buf, "%s", e);
     for (p = strtok_r(buf, ",", &save); p && g_args_n < ARGS_MAX;
          p = strtok_r(NULL, ",", &save))
-        g_args_ep[g_args_n++] = (uint32_t)strtoul(p, NULL, 0);
+        g_args[g_args_n++].ep = (uint32_t)strtoul(p, NULL, 0);
     fprintf(stderr, "[ARGS] watching %d entry point(s); ECX and 4 stack words "
                     "per call. The real argument count is unknown, so trailing "
-                    "words may be the caller's frame rather than arguments.\n",
-            g_args_n);
+                    "words may be the caller's frame rather than arguments.\n"
+                    "[ARGS] every distinct return address is printed once; "
+                    "repeats from a known one stop after %d (X2_ARGS_MAX) and "
+                    "are counted in the report.\n",
+            g_args_n, g_args_cap);
 }
 
-static int args_watched(uint32_t ep)
+static struct ArgsWatch *args_watched(uint32_t ep)
 {
     int i;
     if (g_args_n < 0) args_init();
-    for (i = 0; i < g_args_n; i++) if (g_args_ep[i] == ep) return 1;
-    return 0;
+    for (i = 0; i < g_args_n; i++) if (g_args[i].ep == ep) return &g_args[i];
+    return NULL;
+}
+
+/* Returns 1 if this call should be printed, and says whether the call site is
+   one never seen before -- a new site is worth a marker in the line, because
+   it is the only kind of line that can answer "who else calls this". */
+static int args_should_print(struct ArgsWatch *w, uint32_t ret, int *is_new)
+{
+    int i;
+    *is_new = 0;
+    w->calls++;
+    for (i = 0; i < w->nsites; i++)
+        if (w->site[i].ret == ret) {
+            w->site[i].n++;
+            if ((long)w->site[i].shown >= g_args_cap) return 0;
+            w->site[i].shown++;
+            return 1;
+        }
+    if (w->nsites == ARGS_SITES) {       /* a blind spot, so it is reported */
+        w->lost++;
+        w->lost_calls++;
+        return 0;
+    }
+    i = w->nsites++;
+    w->site[i].ret = ret;
+    w->site[i].n = w->site[i].shown = 1;
+    *is_new = 1;
+    return 1;
 }
 
 /* Reported at exit so a watch that never fired cannot be read as "it was
-   called with nothing interesting". */
+   called with nothing interesting". Per watched entry point, so one that was
+   never entered is distinguishable from one that was -- and with the call
+   sites and their counts, which is what turns "it spins" into "it spins from
+   HERE". */
 void x86_args_report(void)
 {
+    int i, j;
     if (g_args_n < 0) args_init();
     if (!g_args_n) return;
-    if (!g_args_hits)
+    if (!g_args_hits) {
         fprintf(stderr, "[ARGS] NONE of the %d watched entry point(s) was "
                         "entered -- this run says nothing about their "
                         "arguments.\n", g_args_n);
-    else
-        fprintf(stderr, "[ARGS] %d call(s) reported across %d watched entry "
-                        "point(s).\n", g_args_hits, g_args_n);
+        return;
+    }
+    fprintf(stderr, "[ARGS] %d call(s), %d printed, across %d watched entry "
+                    "point(s):\n", g_args_hits, g_args_printed, g_args_n);
+    for (i = 0; i < g_args_n; i++) {
+        struct ArgsWatch *w = &g_args[i];
+        if (!w->calls) {
+            fprintf(stderr, "[ARGS]   0x%08x  NEVER ENTERED\n", w->ep);
+            continue;
+        }
+        fprintf(stderr, "[ARGS]   0x%08x  %lu call(s) from %d call site(s):\n",
+                w->ep, w->calls, w->nsites);
+        for (j = 0; j < w->nsites; j++)
+            fprintf(stderr, "[ARGS]       ret to %08x  x%lu\n",
+                    w->site[j].ret, w->site[j].n);
+        if (w->lost)
+            fprintf(stderr, "[ARGS]       ... and %lu call(s) from call sites "
+                            "BEYOND the %d this watch can hold -- those "
+                            "addresses were not recorded.\n",
+                    w->lost_calls, ARGS_SITES);
+    }
 }
 
+/* `w->shown` is set by an entry that printed and read by the matching exit: an
+   exit line for a call whose entry was suppressed is noise with nothing to
+   attach to. Per watched entry point, so a watched function calling another
+   watched function pairs correctly; direct recursion of ONE watched function
+   can still pair an exit with the wrong entry, and only the eax value is at
+   stake there. */
 void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
 {
-    ring_note("enter", ep, base, C->esp, C->esp);
-    if (args_watched(ep)) {
+    struct ArgsWatch *w;
+    ring_note("enter", ep, base, C->esp, C->esp, RD32(C->esp));
+    if ((w = args_watched(ep)) != NULL) {
         /* Resolve through the module that HAS this base, never by assuming a
            preferred address: the exe is linked for 0x400000, not 0x10000000,
            and hardcoding one is how a report names the wrong function. */
         X86Module *m;
         const char *nm = NULL;
+        uint32_t ret = RD32(C->esp);
+        int is_new;
+        g_args_hits++;
+        w->shown = args_should_print(w, ret, &is_new);
+        if (!w->shown) return;
         for (m = x86_modules(); m; m = m->next)
             if (*m->base == base) { nm = x86_native_name_at(base + (ep - m->preferred)); break; }
-        g_args_hits++;
+        g_args_printed++;
         fprintf(stderr, "[ARGS] -> 0x%08x %-38s ecx %08x  args %08x %08x "
-                        "%08x %08x  (ret to %08x)\n",
+                        "%08x %08x  (ret to %08x%s)\n",
                 ep, nm ? nm : "", C->ecx,
                 RD32(C->esp + 4), RD32(C->esp + 8),
-                RD32(C->esp + 12), RD32(C->esp + 16), RD32(C->esp));
+                RD32(C->esp + 12), RD32(C->esp + 16), ret,
+                is_new ? ", NEW call site" : "");
         /* X2_PEEK at every watched call, not only at the fault. A dump taken
            once at the end shows the wreckage; what identifies WHICH call broke
            an invariant is the same addresses before and after each one. */
@@ -554,9 +671,17 @@ void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
 
 void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
 {
-    ring_note("exit", ep, base, C->esp, C->esp);
-    if (args_watched(ep)) {
-        fprintf(stderr, "[ARGS] <- 0x%08x  eax %08x\n", ep, C->eax);
+    ring_note("exit", ep, base, C->esp, C->esp, 0);
+    struct ArgsWatch *w = args_watched(ep);
+    if (w && w->shown) {
+        /* edx as well as eax: a 64-bit return comes back in EDX:EAX, and a
+           watch that prints only the low half reports a saturating or
+           truncated 64-bit value as a plausible small one. edx is meaningless
+           for a 32-bit return, which is why it is labelled rather than merged
+           into one number. */
+        fprintf(stderr, "[ARGS] <- 0x%08x  eax %08x  edx %08x  (as int64 %lld)\n",
+                ep, C->eax, C->edx,
+                (long long)(((uint64_t)C->edx << 32) | C->eax));
         x86_peek_report();
     }
 }
@@ -885,13 +1010,13 @@ void x86_diag_dump(void)
 
 void x86_ring_dump(void)
 {
-    unsigned n = g_ring_n < RING ? g_ring_n : RING, i;
+    unsigned long n = g_ring_n < RING ? g_ring_n : RING, i;
     if (!g_ring_n) {
         fprintf(stderr, "[TRACE] the boundary ring is EMPTY: nothing crossed "
                         "between guest and host before this point.\n");
         return;
     }
-    fprintf(stderr, "[TRACE] last %u of %u crossings (esp in -> out; a delta "
+    fprintf(stderr, "[TRACE] last %lu of %lu crossings (esp in -> out; a delta "
                     "that is not 4+4N for a stdcall import is the bug).\n"
                     "[TRACE] x86_return_to fired %lu time(s) -- a correct "
                     "translation should almost never need it:\n",
@@ -928,6 +1053,16 @@ void x86_ring_dump(void)
             fprintf(stderr, "0x%08x (linked ep; no module has base 0x%08x)", a, b);
         else
             fprintf(stderr, "0x%08x (no registered module)", a);
+        if (g_ring[k].ret) {
+            /* The caller, by return address. Its enclosing function is not
+               resolved here: only entry points are named, and a return address
+               is by definition in the middle of one. The raw address is what a
+               disassembly listing is indexed by, so it is what gets printed. */
+            uint32_t r = g_ring[k].ret;
+            X86Module *rm = x86_module_for(r);
+            fprintf(stderr, "  <- 0x%08x", rm ? rm->preferred + (r - *rm->base) : r);
+            if (rm) fprintf(stderr, " in %s", rm->name);
+        }
         if (g_ring[k].repeat) fprintf(stderr, "  x%u identical", g_ring[k].repeat + 1);
         fputc('\n', stderr);
     }
@@ -1035,7 +1170,7 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
 {
     const char *nm;
     g_return_to_calls++;
-    ring_note("RET-to", target, 0, C->esp, C->esp);
+    ring_note("RET-to", target, 0, C->esp, C->esp, 0);
     if (x86_native_call_at(target, C)) return;
     nm = x86_native_name_at(fn_ep);
     /*
@@ -1219,7 +1354,7 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
        target, it is the loop. Report it instead of taking it. */
     if (x86_is_thunk(target)) x86_missing_import(mod, sym);
     if (x86_native_call_at(target, C)) {
-        ring_note(sym, slot_va, 0, esp_in, C->esp);
+        ring_note(sym, slot_va, 0, esp_in, C->esp, 0);
         return;
     }
     fprintf(stderr, "x86_import_call: %s!%s\n"

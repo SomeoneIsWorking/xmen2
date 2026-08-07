@@ -122,6 +122,16 @@ void x86_diag_dump(void);
    watched entry point was entered at all. */
 void x86_args_report(void);
 
+/*
+ * A monotonic count of everything the ring records, for the heartbeat: it is
+ * the cheapest proof that the guest is still executing. WHAT it counts differs
+ * by build -- every body entry and exit in a trace build, only host-boundary
+ * crossings otherwise -- so x86_crossings_what() says which, and the heartbeat
+ * prints it rather than letting a reader assume.
+ */
+unsigned long x86_crossings(void);
+const char   *x86_crossings_what(void);
+
 /* Every registered module, for reporting. */
 X86Module *x86_modules(void);
 

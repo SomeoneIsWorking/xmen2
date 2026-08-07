@@ -580,7 +580,18 @@ def emit_instruction(ins, ctx):
         def fsrc(o, integer):
             if o.kind == "mem":
                 if integer:
-                    return "RDI32(%s)" % o.addr()
+                    # FILD/FIADD/... take m16, m32 or m64, and the width is
+                    # the operand's -- not a default. Emitting RDI32 for every
+                    # one of them read the low dword of a 64-bit value and
+                    # sign-extended it, which is issue #35: the engine's 64-bit
+                    # nanosecond timer wrapped negative after 2.147 seconds.
+                    if o.size not in (2, 4, 8):
+                        raise Unsupported("%s from a %d-byte integer operand"
+                                          % (m, o.size))
+                    return "RDI%d(%s)" % (o.size * 8, o.addr())
+                if o.size not in (4, 8):
+                    raise Unsupported("%s from a %d-byte float operand"
+                                      % (m, o.size))
                 return ("RDF64(%s)" % o.addr()) if o.size == 8 else "RDF32(%s)" % o.addr()
             raise Unsupported("%s from %s" % (m, o.kind))
 
@@ -694,6 +705,15 @@ def emit_instruction(ins, ctx):
             pop = m in ("FSTP", "FISTP")
             val = "x87_pop(C)" if pop else "X87_ST(C, 0)"
             if m in ("FISTP", "FIST"):
+                # Same width rule as FILD, and the same defect if it is
+                # ignored: `FISTP qword ptr` writing 32 bits leaves the high
+                # half of a 64-bit result whatever it was.
+                if o.size not in (2, 4, 8):
+                    raise Unsupported("%s to a %d-byte integer operand"
+                                      % (m, o.size))
+                if o.size == 8:
+                    return [A, "WR64(%s, (uint64_t)x87_to_i64(C, %s));"
+                            % (o.addr(), val)]
                 w = "WR16" if o.size == 2 else "WR32"
                 return [A, "%s(%s, (uint32_t)x87_to_int(C, %s));"
                         % (w, o.addr(), val)]

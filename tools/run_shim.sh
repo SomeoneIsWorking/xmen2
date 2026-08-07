@@ -31,7 +31,8 @@ SHOT=$ROOT/scratch/screenshots/$NAME.png
 # framebuffer size so A/B frames are comparable.
 : "${X2_RES:=800x600}"
 : "${X2_EXE:=XMen2.exe}"          # which image to launch in the run dir
-: "${X2_ARGS:=}"
+: "${RUN_ARGS:=}"    # the game's command line. NOT X2_ARGS: that is the
+                     # runtime argument watch (an entry-point list).
 
 DISP=:$((90 + RANDOM % 8))
 Xvfb "$DISP" -screen 0 "${X2_RES}x24" >/dev/null 2>&1 &
@@ -55,7 +56,7 @@ export X2_TRACE=${X2_TRACE:-}
 ( cd "$RUNDIR" && DISPLAY=$DISP WINEDEBUG=+loaddll \
     WINEDLLOVERRIDES="d3d8,d3d9=$X2_D3D;$X2_MUTE" \
     VK_DRIVER_FILES="$X2_VK_ICD" VK_ICD_FILENAMES="$X2_VK_ICD" \
-    wine explorer /desktop=x2,"$X2_RES" "$(cd "$RUNDIR" && winepath -w ./$X2_EXE)" $X2_ARGS \
+    wine explorer /desktop=x2,"$X2_RES" "$(cd "$RUNDIR" && winepath -w ./$X2_EXE)" $RUN_ARGS \
       >"$LOG" 2>&1 ) &
 RUNPID=$!
 

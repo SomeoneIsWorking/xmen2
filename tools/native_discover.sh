@@ -30,10 +30,23 @@ RUN=${RUN-1}
 # "nothing found" while every target past the stop stays invisible -- which is
 # a loop that reports success for not having looked.
 #
-# --vk (the ARK-substitution path) and X2_ARGS= (un-substituted, stops at
+# --vk (the ARK-substitution path) and RUN_ARGS= (un-substituted, stops at
 # Direct3DCreate8) are still selectable; each has its own blind spot, and the
 # convergence message names which one was used.
-X2_ARGS=${X2_ARGS---d3d8}
+#
+# NAMED RUN_ARGS, not X2_ARGS: X2_ARGS is the runtime's ARGUMENT WATCH (an
+# entry-point list read by src/native/x86rt_native.c). This script used to take
+# the same name for the run's COMMAND LINE, so exporting the watch turned an
+# entry-point list into a command-line argument and x2native refused it as an
+# unknown option -- two instruments, one name, and the collision only appears
+# when both are in use.
+if [ -n "${X2_ARGS:-}" ] && case ${X2_ARGS} in -*) false;; *) true;; esac; then
+    echo "native_discover: X2_ARGS is set to '$X2_ARGS', which is the runtime"
+    echo "  ARGUMENT WATCH (entry points), not this script's run arguments."
+    echo "  It is passed through to the run as an environment variable and NOT"
+    echo "  used as a command line. Use RUN_ARGS=... for that." >&2
+fi
+RUN_ARGS=${RUN_ARGS---d3d8}
 
 [ -f "$ROOT/.env" ] && { set -a; . "$ROOT/.env"; set +a; }
 : "${GAME_PC_DIR:?set GAME_PC_DIR in .env}"
@@ -103,7 +116,7 @@ while [ "$round" -lt "$MAX" ]; do
     # parsed no seeds and reported CONVERGENCE. "The run found nothing" and
     # "the run never finished" have to be different answers.
     timeout -k 10 "${RUN_TIMEOUT:-300}" \
-        "$BIN" --no-window ${RUN:+--run} ${X2_ARGS:-} >"$SEEDS.raw" 2>&1
+        "$BIN" --no-window ${RUN:+--run} ${RUN_ARGS:-} >"$SEEDS.raw" 2>&1
     rc=$?
     awk '/^    [A-Za-z0-9_]+\.(dll|exe) +0x/ {print $1, $2}' "$SEEDS.raw" \
         | sort -u > "$SEEDS"
@@ -128,7 +141,7 @@ while [ "$round" -lt "$MAX" ]; do
             exit 2
         fi
         echo "native_discover: round $round found no missing constructor targets"
-        echo "  on the path taken by: $BIN --no-window ${RUN:+--run} ${X2_ARGS:-}"
+        echo "  on the path taken by: $BIN --no-window ${RUN:+--run} ${RUN_ARGS:-}"
         echo "  That is the blind spot to keep in mind -- targets reachable only"
         echo "  under OTHER arguments were never executed and so never reported."
         echo "  Whatever stops the run now is not a function static analysis"

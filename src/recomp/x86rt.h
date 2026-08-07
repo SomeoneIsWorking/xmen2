@@ -222,7 +222,19 @@ void x86_fallback_report(void);
 #define RDF64(a)    ((long double)(*(volatile double *)(uintptr_t)(a)))
 #define WRF32(a, v) (*(volatile float  *)(uintptr_t)(a) = (float)(v))
 #define WRF64(a, v) (*(volatile double *)(uintptr_t)(a) = (double)(v))
+/*
+ * The integer x87 loads, ONE PER WIDTH.
+ *
+ * FILD takes m16, m32 or m64 and there is no default: for a whole session
+ * every FILD was translated as RDI32, so `FILD qword ptr` read the LOW dword
+ * of a 64-bit value and sign-extended it. The engine's frame timer is a 64-bit
+ * nanosecond count, so its value wrapped negative at 2^31 ns -- 2.147 seconds
+ * of run time -- and the frame limiter at XMen2.exe 0x00401ff0 spun forever
+ * waiting for a clock that had gone backwards (issue #35).
+ */
+#define RDI16(a)    ((long double)(int16_t)RD16(a))
 #define RDI32(a)    ((long double)(int32_t)RD32(a))
+#define RDI64(a)    ((long double)(int64_t)RD64(a))
 
 #define RD8(a)      (*(volatile uint8_t  *)(uintptr_t)(a))
 #define RD16(a)     (*(volatile uint16_t *)(uintptr_t)(a))
@@ -475,14 +487,23 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected);
    cast sets RC=truncate, does the store, then restores -- so treating FLDCW as
    a no-op and always truncating would be right for that idiom and WRONG for
    everything else. Model it rather than assume the common case. */
-static inline int32_t x87_to_int(const CPU *C, long double v)
+static inline int64_t x87_to_i64(const CPU *C, long double v)
 {
     switch ((C->fcw >> 10) & 3) {
-    case 1:  return (int32_t)__builtin_floorl(v);          /* round down */
-    case 2:  return (int32_t)__builtin_ceill(v);           /* round up   */
-    case 3:  return (int32_t)v;                            /* truncate   */
-    default: return (int32_t)__builtin_rintl(v);           /* to nearest */
+    case 1:  return (int64_t)__builtin_floorl(v);          /* round down */
+    case 2:  return (int64_t)__builtin_ceill(v);           /* round up   */
+    case 3:  return (int64_t)v;                            /* truncate   */
+    default: return (int64_t)__builtin_rintl(v);           /* to nearest */
     }
+}
+
+/* The narrow stores. Rounding happens at full width and the result is then
+   narrowed, which is what the hardware does; a store whose value does not fit
+   is a different question (the hardware writes the integer indefinite) and is
+   not modelled here. */
+static inline int32_t x87_to_int(const CPU *C, long double v)
+{
+    return (int32_t)x87_to_i64(C, v);
 }
 
 /* On real hardware MMX registers ALIAS the x87 stack, which is why EMMS exists.

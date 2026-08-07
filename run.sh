@@ -21,7 +21,10 @@
 #
 # Environment (all optional):
 #   REBUILD=1       rebuild before running
-#   X2_ARGS=...     extra arguments passed through to the game / to x2native
+#   RUN_ARGS=...    extra arguments passed through to the game / to x2native
+#                   (NOT X2_ARGS -- that name belongs to the runtime's argument
+#                   watch, an entry-point list, and passing it as a command
+#                   line makes x2native refuse it as an unknown option)
 #
 #   native only:
 #     BUILD=<dir>   build directory (default scratch/build-native)
@@ -116,7 +119,7 @@ EOM
     # relative to CWD. Launching from inside the game directory would write that
     # into the install, which this project treats as strictly read-only.
     cd "$ROOT" || exit 2
-    exec "$BUILD/x2native" --run ${X2_ARGS:-}
+    exec "$BUILD/x2native" --run ${RUN_ARGS:-}
 fi
 
 # ======================================================================
@@ -164,4 +167,4 @@ fi
 
 cd "$RUNDIR" || exit 2
 exec env WINEDLLOVERRIDES="d3d8,d3d9=$X2_D3D" \
-     wine "${LAUNCH[@]}" "$(winepath -w ./XMen2.exe)" ${X2_ARGS:-}
+     wine "${LAUNCH[@]}" "$(winepath -w ./XMen2.exe)" ${RUN_ARGS:-}

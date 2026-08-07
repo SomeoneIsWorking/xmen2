@@ -33,4 +33,14 @@ int d3d8_device_gamma_curved(void);
 /* Frames presented, and what the engine asked for that was not there. */
 void d3d8_device_report(void);
 
+/*
+ * The same counters, live, for the heartbeat (src/native/heartbeat.c).
+ *
+ * Returns 0 and leaves the outputs at zero when no device has ever been
+ * created -- "no device" and "a device that has drawn nothing" are different
+ * findings and the caller says which.
+ */
+int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
+                       unsigned long *clears, unsigned long *draws);
+
 #endif /* D3D8_DEVICE_H */

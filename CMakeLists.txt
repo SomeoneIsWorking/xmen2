@@ -230,6 +230,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_device.c
         src/native/x86rt_native.c
         src/native/overrides.c
+        src/native/heartbeat.c
         src/d3d8/d3d8_com.c
         src/d3d8/d3d8_caps.c
         src/d3d8/d3d8_state.c
@@ -308,7 +309,9 @@ if(X2_MODULE_HAVE)
     set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_link_options(x2native PRIVATE -pie)
     # libm: the exe's x87 translations use atan2l/fmodl and friends.
-    target_link_libraries(x2native PRIVATE ${X2_SDL} m)
+    # -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
+    # so that a guest stuck anywhere still gets a liveness line.
+    target_link_libraries(x2native PRIVATE ${X2_SDL} m pthread)
     # No $ENV{} here: CMake would bake in whatever GAME_PC_DIR was at CONFIGURE
     # time, which is how this test first "failed" against an empty path. x2native
     # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,

@@ -393,8 +393,6 @@ class InteriorEntries(unittest.TestCase):
         self.assertEqual(recomp.interior_entries(fns), {})
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
 
 
 class X87Transcendentals(unittest.TestCase):
@@ -433,3 +431,76 @@ class X87Transcendentals(unittest.TestCase):
         self.assertIn("__builtin_atan2l", c)
         self.assertIn("x87_pop(C)", c)
         self.assertNotIn("x87_push(C, 1.0L)", c)
+
+
+class IntegerX87Widths(unittest.TestCase):
+    """FILD and FISTP take m16, m32 or m64, and the width is the operand's.
+
+    Every integer x87 memory operand used to be translated at 32 bits. That
+    made `FILD qword ptr` read the LOW dword of a 64-bit value and sign-extend
+    it, which is issue #35: the engine's frame timer is a 64-bit nanosecond
+    count, so it wrapped negative 2.147 seconds into a run and the frame
+    limiter spun forever on a clock that had gone backwards. The failure was
+    two subsystems away from the instruction and cost a session to find.
+    """
+
+    def test_fild_qword_reads_all_64_bits(self):
+        c = translate([
+            ins(0x00401000, "FILD", "FILD qword ptr [ESP]", n=3),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("RDI64(", c)
+        self.assertNotIn("RDI32(", c)
+
+    def test_fild_dword_still_reads_32(self):
+        c = translate([
+            ins(0x00401000, "FILD", "FILD dword ptr [ESP]", n=3),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("RDI32(", c)
+
+    def test_fild_word_reads_16_signed(self):
+        c = translate([
+            ins(0x00401000, "FILD", "FILD word ptr [ESP]", n=3),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("RDI16(", c)
+
+    def test_fistp_qword_writes_all_64_bits(self):
+        c = translate([
+            ins(0x00401000, "FISTP", "FISTP qword ptr [ESP]", n=3),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("WR64(", c)
+        self.assertIn("x87_to_i64(", c)
+
+    def test_fistp_dword_writes_32(self):
+        c = translate([
+            ins(0x00401000, "FISTP", "FISTP dword ptr [ESP]", n=3),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("WR32(", c)
+        self.assertNotIn("WR64(", c)
+
+    def test_fild_of_an_unknown_width_fails_loudly_by_name(self):
+        """An 80-bit integer operand is not a width FILD has. Guessing one is
+        exactly how this defect happened, so the instruction is marked
+        untranslatable WITH ITS WIDTH rather than narrowed to 32 bits."""
+        c = translate([
+            ins(0x00401000, "FILD", "FILD tbyte ptr [ESP]", n=3),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        self.assertIn("x86_unsupported_insn(", c)
+        self.assertIn("FILD from a 10-byte integer operand", c)
+        self.assertNotIn("RDI32(", c)
+
+
+# unittest.main() LAST, always.
+#
+# It used to sit in the middle of the file, and everything appended after it
+# simply never ran when this file was executed directly: `python3
+# tests/test_recomp.py` reported 24 passing tests while unittest discovery
+# found 33. A test that cannot run is worse than one that fails, because it
+# reports OK.
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

@@ -1019,6 +1019,18 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
     return g_dev_obj;
 }
 
+int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
+                       unsigned long *clears, unsigned long *draws)
+{
+    *scenes = *presents = *clears = *draws = 0;
+    if (!g_dev_obj) return 0;
+    *scenes   = g_dev.scenes;
+    *presents = g_dev.presents;
+    *clears   = g_dev.clears;
+    *draws    = g_dev.draws;
+    return 1;
+}
+
 void d3d8_device_report(void)
 {
     if (!g_dev_obj) {

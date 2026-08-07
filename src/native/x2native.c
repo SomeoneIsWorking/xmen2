@@ -18,6 +18,7 @@
 #include "pe_map.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "heartbeat.h"
 #include "guest_heap.h"
 #include "d3d8_host.h"
 #include "d3d8_com.h"
@@ -1588,6 +1589,12 @@ int main(int argc, char **argv)
         {
             uint32_t entry = *x->base + pe_entry_rva(*x->base);
             const char *nm = x86_native_name_at(entry);
+            /* Started here and not earlier: everything before this point is
+               host setup that either succeeds or says why, and a heartbeat
+               over it would only add lines to a log that is already speaking.
+               From the entry point on, the guest owns the thread and silence
+               becomes ambiguous. */
+            heartbeat_start();
             printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
                    nm ? nm : "(NO RECOMPILED BODY)");
             if (!nm) return 1;
