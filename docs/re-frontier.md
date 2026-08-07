@@ -190,7 +190,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe-run
 - evidence: C077; issue #8; scratch/logs/xbox_run_bounds.log (0 ABI violations, 0 empty-stub calls, the NULL indirect call gone)
 - where: 
-- gap: NO LONGER the blocker, and the register file is now clean for the first time: 94088 checked calls all restore ebx/esi/edi/ebp, and none of the 168 empty stubs is called. The NULL vtable slot was not an initialisation-order problem at all -- it was register corruption from a function whose detected body had been cut in half by an interior helper (C077, issue #8). Still DEBT only in that the fallback path exists and code past the current stop has never run. The run now stops on an ORDINARY discovery-loop input, 0x0029CA50 "unresolved (seed candidate)" -- a missing function, which is what the loop is for.
+- gap: NO LONGER the blocker, and the register file is clean: 94088 checked calls all restore ebx/esi/edi/ebp, and none of the 168 empty stubs is called (C077, issue #8). Still DEBT only in that the fallback path exists. The PC native run is past the frame limiter as of C140/issue #35 (FILD qword was translated as a 32-bit load, so the engine's 64-bit clock wrapped at 2.147 s) and now stops on a NULL dereference in XMen2.exe FUN_005beca0, inside scene traversal -- the discovery loop converged in three rounds, so that stop is a real defect and not a missing body.
 - notes: 
 
 ### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage
