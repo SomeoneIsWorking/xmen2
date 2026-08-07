@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/uio.h>
+#include <dlfcn.h>
 
 static X86Module *g_head;
 
@@ -1349,6 +1350,29 @@ void x87_fault(const char *what)
                     "  This is the MODELLED x87 stack, so it is a translation "
                     "defect, not a guest bug: some body pushed or popped a "
                     "different number of times than the original.\n", what);
+    /*
+     * The CALLER, by host return address.
+     *
+     * The ring names the last bodies ENTERED, which is the neighbourhood; it
+     * cannot name the instruction, and "somewhere in a 672-instruction float
+     * routine" is not a place. x87_pop is inlined into the generated body, so
+     * this return address is inside that body, and addr2line turns it into the
+     * emitted line -- whose comment carries the guest address of the exact
+     * instruction. The binary is PIE, so the load base has to come off first
+     * or addr2line silently answers "??".
+     */
+    {
+        unsigned long ra = (unsigned long)__builtin_return_address(0);
+        Dl_info di;
+        if (dladdr((void *)ra, &di) && di.dli_fbase)
+            fprintf(stderr, "  the body that did it:  addr2line -fCe "
+                            "<this binary> 0x%lx\n",
+                    ra - (unsigned long)di.dli_fbase);
+        else
+            fprintf(stderr, "  (dladdr could not give the load base, so the "
+                            "return address 0x%lx cannot be turned into a file "
+                            "offset here)\n", ra);
+    }
     x86_diag_dump();
     abort();
 }

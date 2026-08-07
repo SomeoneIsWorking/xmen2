@@ -549,6 +549,53 @@ class EntryPointIsNotAlwaysTheLowestAddress(unittest.TestCase):
         self.assertIn("entry point", reason)
 
 
+class X87RegisterStores(unittest.TestCase):
+    """FST ST(i) does not pop; FSTP ST(i) pops but stores FIRST.
+
+    Both were wrong. FST ST(i) was emitted as a pop, which drains the modelled
+    stack one slot per execution until it underflows; FSTP ST(i) stored the
+    POPPED value into X87_ST(i), which indexes the post-pop stack, so
+    `FSTP ST(1)` landed in what had been ST(2). 2981 of the second form in the
+    image and 2 of the first (issue #40).
+    """
+
+    def test_fst_register_does_not_pop(self):
+        c = translate([
+            ins(0x00401000, "FST", "FST ST2", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("X87_ST(C, 2) = X87_ST(C, 0);", c)
+        self.assertNotIn("x87_pop", c)
+
+    def test_fstp_register_pops(self):
+        c = translate([
+            ins(0x00401000, "FSTP", "FSTP ST2", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("x87_pop(C)", c)
+
+    def test_fstp_register_stores_before_popping(self):
+        """The store must use the PRE-pop indices, or it lands one register
+        along -- which is silent, and wrong only in the values."""
+        c = translate([
+            ins(0x00401000, "FSTP", "FSTP ST2", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        body = c[c.index("FSTP ST2"):]
+        self.assertLess(body.index("X87_ST(C, 2) = _v;"), body.index("x87_pop(C)"))
+        self.assertNotIn("X87_ST(C, 2) = x87_pop(C);", c)
+
+    def test_fstp_st0_is_a_discarding_pop(self):
+        """FSTP ST(0) stores ST0 into itself and pops, i.e. it discards. It
+        must NOT write the popped value over the new top."""
+        c = translate([
+            ins(0x00401000, "FSTP", "FSTP ST0", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertNotIn("X87_ST(C, 0) = x87_pop(C);", c)
+        self.assertIn("x87_pop(C)", c)
+
+
 # unittest.main() LAST, always.
 #
 # It used to sit in the middle of the file, and everything appended after it

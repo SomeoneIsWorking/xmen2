@@ -698,7 +698,19 @@ def emit_instruction(ins, ctx):
             return [A, "x87_push(C, %s);" % fsrc(O(0), m == "FILD")]
         if m in ("FSTP", "FST", "FISTP", "FIST"):
             if st:
-                return [A, "X87_ST(C, %s) = x87_pop(C);" % st.group(1)]
+                # The REGISTER forms, and both halves of this were wrong.
+                #
+                # FST ST(i) does not pop at all; emitting a pop for it drains
+                # the modelled stack one slot per execution until it
+                # underflows. FSTP ST(i) does pop, but it stores FIRST: writing
+                # the popped value into X87_ST(i) afterwards indexes the
+                # POST-pop stack, so `FSTP ST(1)` landed in what had been
+                # ST(2). 2981 FSTP ST(i) and 2 FST ST(i) in this image.
+                if m == "FST":
+                    return [A, "X87_ST(C, %s) = X87_ST(C, 0);" % st.group(1)]
+                return [A,
+                        "{ long double _v = X87_ST(C, 0);",
+                        "  X87_ST(C, %s) = _v; (void)x87_pop(C); }" % st.group(1)]
             o = O(0)
             if o.kind != "mem":
                 raise Unsupported("%s to %s" % (m, o.kind))
