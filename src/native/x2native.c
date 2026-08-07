@@ -19,6 +19,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "heartbeat.h"
+#include "win32_sdl.h"
+#include "gpu_device.h"
 #include "guest_heap.h"
 #include "d3d8_host.h"
 #include "d3d8_com.h"
@@ -1613,7 +1615,13 @@ int main(int argc, char **argv)
         SDL_DestroyWindow(w);
         SDL_Quit();
     } else {
-        printf("SDL: window skipped (--no-window)\n");
+        printf("SDL: window skipped (--no-window); the guest's own window "
+               "will be created HIDDEN and the renderer goes off-screen\n");
+        win32_sdl_hide_windows(1);
+        /* A hidden window is not enough on its own: SDL hands back no
+           swapchain image for one, so every frame would be refused with "no
+           frame is open" while the run went on counting frames. Measured. */
+        gpu_device_headless(1, 0, 0);
     }
 #else
     (void)window;

@@ -42,6 +42,29 @@
         "The override reports the substitution once, so a run never silently",
         "appears to have passed a check that was actually skipped."
       ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x0055b610",
+      "symbol": "fn_XMen2_0055b610",
+      "why": [
+        "The frame-cap removal hook (X2_UNPACED), and ONLY when that is set.",
+        "",
+        "The game paces itself: the frame function stores a minimum frame time",
+        "(1/30 or 1/60) into its app object at +0x18 at its own top, and then busy-",
+        "waits at 0x00401ff0 until that much has elapsed. Zeroing the cap removes",
+        "the cap without touching the clock, so everything still sees the time it",
+        "actually took -- scaling the clock would make a test that passes at 10x",
+        "say nothing about the game.",
+        "",
+        "It has to be written BETWEEN the store and the limiter, and the only host",
+        "code that runs in that window is this: the limiter's own first",
+        "instruction, CALL 0x0055b610, the timer-singleton accessor. Writing at",
+        "Present instead was tried and does nothing -- Present happens LATER in the",
+        "frame than the limiter, so the value is overwritten before it is read.",
+        "",
+        "Without X2_UNPACED this defers to the original and changes nothing."
+      ]
     }
   ]
 }

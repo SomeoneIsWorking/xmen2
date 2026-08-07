@@ -145,6 +145,7 @@ const char *d3d8_current_method(void);
  * was missing from it.
  */
 void d3d8_permissive(int on);
+
 void d3d8_permissive_report(void);
 
 /* Self-test: builds every vtable and dispatches through it, proving the

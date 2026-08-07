@@ -43,6 +43,26 @@ struct SDL_Window;
 int gpu_device_attach_window(struct SDL_Window *w);
 
 /*
+ * Render with NO window at all.
+ *
+ * A hidden window is not a substitute: SDL hands back no swapchain image for
+ * one, so every frame is refused and a "headless" run draws nothing while
+ * still counting frames. Measured, on Wayland -- 5400 draws refused per five
+ * seconds with "no frame is open".
+ *
+ * In headless mode the frame goes into an off-screen colour target of the
+ * given size instead. Everything downstream is unchanged, because the pass
+ * already targets whatever `g_swap` points at, and it is what makes a
+ * screenshot possible with no X server in the picture.
+ */
+void gpu_device_headless(int on, uint32_t w, uint32_t h);
+
+/* The headless target's pixels, BGRA8, w*h*4 bytes. 0 (and says why) when the
+   run is not headless or no frame has been rendered yet. */
+int  gpu_device_headless_read(void *bgra_out, uint32_t bytes,
+                              uint32_t *w_out, uint32_t *h_out);
+
+/*
  * Where to find a window if none is attached yet.
  *
  * The guest creates its window long after the renderer is instantiated, so the

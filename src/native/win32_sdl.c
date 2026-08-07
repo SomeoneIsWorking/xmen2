@@ -465,12 +465,18 @@ void imp_USER32_RegisterClassA(CPU *C)
        which ignores it here. The WndProc in the struct is NOT dropped silently
        -- it is remembered, because the message path will need it. */
     extern uint32_t g_wndproc;
+
+static int g_hide_windows;
+void win32_sdl_hide_windows(int hide) { g_hide_windows = hide; }
     uint32_t wc = A(0);
     g_wndproc = RD32(wc + 4u);           /* WNDCLASSA.lpfnWndProc */
     ret_std(C, 1, 1);
 }
 
 uint32_t g_wndproc;
+
+static int g_hide_windows;
+void win32_sdl_hide_windows(int hide) { g_hide_windows = hide; }
 
 void imp_USER32_UnregisterClassA(CPU *C) { g_wndproc = 0; ret_std(C, 1, 2); }
 
@@ -486,7 +492,8 @@ void imp_USER32_CreateWindowExA(CPU *C)
     if (w <= 0) w = 800;
     if (h <= 0) h = 600;
     g_win = SDL_CreateWindow(name ? (const char *)(uintptr_t)name : "x2native",
-                             w, h, 0);
+                             w, h,
+                             g_hide_windows ? SDL_WINDOW_HIDDEN : 0);
     if (!g_win) {
         fprintf(stderr, "win32_sdl: SDL_CreateWindow failed: %s\n",
                 SDL_GetError());
@@ -503,7 +510,8 @@ void imp_USER32_CreateWindowExA(CPU *C)
      * back black. That black image reads as "the renderer draws nothing". One
      * line here is the difference between that and the truth.
      */
-    printf("win32_sdl: window %dx%d on SDL video driver \"%s\"%s%s\n", w, h,
+    printf("win32_sdl: %swindow %dx%d on SDL video driver \"%s\"%s%s\n",
+           g_hide_windows ? "HIDDEN " : "", w, h,
            SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)",
            getenv("DISPLAY") ? "  DISPLAY=" : "",
            getenv("DISPLAY") ? getenv("DISPLAY") : "");
@@ -523,7 +531,11 @@ void imp_USER32_DestroyWindow(CPU *C)
 void imp_USER32_ShowWindow(CPU *C)
 {
     if (!hwnd_is_main(A(0))) { ret_std(C, 0, 2); return; }
-    if (A(1) == 0u) SDL_HideWindow(g_win); else SDL_ShowWindow(g_win);
+    /* A headless run stays headless: the guest calls ShowWindow(SW_SHOW) at
+       startup, and honouring it would undo --no-window one instruction after
+       the window was created hidden. */
+    if (A(1) == 0u || g_hide_windows) SDL_HideWindow(g_win);
+    else SDL_ShowWindow(g_win);
     ret_std(C, 1, 2);
 }
 

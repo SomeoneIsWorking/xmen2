@@ -4,5 +4,6 @@
 
 set(RECOMP_OVERRIDE_WRAPS
     -Wl,--wrap=fn_XMen2_00617480        # XMen2 0x00617480
+    -Wl,--wrap=fn_XMen2_0055b610        # XMen2 0x0055b610
 )
 

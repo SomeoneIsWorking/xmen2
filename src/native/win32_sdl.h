@@ -19,4 +19,15 @@ struct SDL_Window;
    harness runs this way on purpose. */
 struct SDL_Window *win32_sdl_window(void);
 
+/*
+ * --no-window: the guest's window is created HIDDEN.
+ *
+ * The flag used to skip only x2native's own probe window, so a "headless" run
+ * still opened the game's window on whatever desktop SDL found -- which is
+ * fine for playing and wrong for a test, because a test that takes over the
+ * screen cannot be run while its author is using the machine. The window still
+ * EXISTS (the swapchain needs one, and so do the input paths); it is not shown.
+ */
+void win32_sdl_hide_windows(int hide);
+
 #endif /* WIN32_SDL_H */

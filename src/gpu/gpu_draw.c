@@ -588,6 +588,9 @@ typedef struct {
 } PixelUniforms;
 
 static unsigned long g_draws, g_refused, g_depth_ignored;
+/* Counted separately: "the index range does not fit" is a specific
+   accusation and must not be lost in the general refusal count. */
+static unsigned long g_refused_index_range;
 
 /* The 1x1 white texture an untextured draw binds. Created once, never inside
    an open render pass -- see gpu_draw. */
@@ -719,6 +722,40 @@ int gpu_draw(const GpuDraw *d)
     SDL_BindGPUFragmentSamplers(g_pass, 0, &tsb, 1);
 
     if (ires) {
+        /*
+         * The index range has to FIT the buffer that is bound.
+         *
+         * Vulkan says so, and a validation layer will say so -- but only if
+         * one is loaded, and only into a log nobody reads during a 60fps run.
+         * Without the layer the draw reads past the end of the buffer and the
+         * result is garbage geometry, which is how issue #38's broken text
+         * looked: a panel that draws perfectly and letters that do not.
+         *
+         * Refused, with every number that identifies the caller, rather than
+         * clamped. Clamping would draw a SHORTER version of whatever the
+         * engine asked for -- a subtly wrong picture that leads nowhere.
+         */
+        uint32_t isz = d->index_is_32bit ? 4u : 2u;
+        uint64_t need = (uint64_t)(d->first_index + n) * isz;
+        if (need > ires->bytes) {
+            static unsigned long told;
+            if (told++ < 4)
+                fprintf(stderr,
+                        "gpu: draw REFUSED -- the index range runs off the end "
+                        "of the bound index buffer.\n"
+                        "  %u index/indices of %u byte(s) from index %u needs "
+                        "%llu byte(s); the buffer is %u.\n"
+                        "  primitive %d, %u primitive(s), base vertex %d. "
+                        "Either the engine bound the wrong buffer or this "
+                        "layer sized it wrong.%s\n",
+                        n, isz, d->first_index, (unsigned long long)need,
+                        ires->bytes, d->prim, d->prim_count,
+                        (int)d->base_vertex,
+                        told == 4 ? " (further ones are counted only)" : "");
+            g_refused++;
+            g_refused_index_range++;
+            return 0;
+        }
         memset(&ib, 0, sizeof ib);
         ib.buffer = ires->buf;
         ib.offset = 0;
@@ -747,6 +784,10 @@ void gpu_draw_report(void)
     if (!g_draws)
         printf("        NOTHING was drawn. Either no draw call reached this "
                "backend, or every one was refused above.\n");
+    if (g_refused_index_range)
+        printf("        %lu of those ran off the end of their index buffer -- "
+               "see issue #38; each said which numbers did not fit.\n",
+               g_refused_index_range);
     if (g_depth_ignored)
         printf("        %lu draw(s) asked for a depth test there is no target "
                "for; they drew in submission order.\n", g_depth_ignored);
