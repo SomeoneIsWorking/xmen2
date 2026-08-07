@@ -22,6 +22,7 @@
 #include "win32_sdl.h"
 #include "gpu_device.h"
 #include "shell32.h"
+#include "threads.h"
 #include "guest_heap.h"
 #include "d3d8_host.h"
 #include "d3d8_com.h"
@@ -39,7 +40,7 @@
 #include <SDL3/SDL.h>
 #endif
 
-uint32_t g_fsbase, g_gsbase;
+__thread uint32_t g_fsbase, g_gsbase;
 
 /* argv[0], so the fault reporter can print an addr2line command that is
    runnable as printed rather than one the reader has to complete. */
@@ -1576,6 +1577,7 @@ int main(int argc, char **argv)
        registry. */
     shell32_install(); atexit(shell32_report);
     { extern void winmm_report(void); atexit(winmm_report); }
+    atexit(guest_thread_report);
     { extern void dinput_device_report(void), crt_rtti_report(void);
       atexit(dinput_device_report); atexit(crt_rtti_report); }
     atexit(x86_native_export_report);
@@ -1730,7 +1732,13 @@ int main(int argc, char **argv)
             memset(&C, 0, sizeof C);
             C.esp = guest_stack_top - 4u;
             gw32(C.esp, 0xDEADBEEFu);
+            /* The main thread is a guest thread too: it holds the global guest
+               lock for as long as it is executing guest code, and releases it
+               only where threads.c says. Taking it here rather than inside the
+               dispatcher keeps it to one acquire for the whole run. */
+            guest_lock();
             x86_native_call_at(entry, &C);
+            guest_unlock();
             printf("run: returned eax=0x%08x\n", C.eax);
             if (arkprobe) {
                 extern int igvk_ark_probe_result(void);

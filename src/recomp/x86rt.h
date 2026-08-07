@@ -28,7 +28,12 @@
  * chain, and silently reading address 0 would be a crash with a misleading
  * cause. x86_fs_check() makes it say so instead.
  */
-extern uint32_t g_fsbase, g_gsbase;
+/*
+ * PER-THREAD. FS:[0] is the SEH chain head and every recompiled prologue
+ * writes it, so two guest threads sharing one base would overwrite each
+ * other's exception chain -- see src/native/threads.c.
+ */
+extern __thread uint32_t g_fsbase, g_gsbase;
 void x86_seg_unset(const char *seg);
 static inline uint32_t __readfsdword(unsigned long o)
 {

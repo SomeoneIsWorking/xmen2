@@ -30,6 +30,7 @@
  *     has to come from the guest heap (C083).
  */
 #include "x86rt.h"
+#include "threads.h"
 #include "guest_heap.h"
 
 #include <ctype.h>
@@ -1308,6 +1309,34 @@ void imp_MSVCR71_setlocale(CPU *C)
  * the behaviour that has been finding these one honest step at a time.
  */
 
+/*
+ * _beginthreadex(security, stack_size, start, arg, initflag, thrdaddr)
+ *
+ * The CRT's thread creator, which is what libCriMovie uses rather than
+ * CreateThread. Returns a HANDLE (0 on failure); the host half is
+ * src/native/threads.c.
+ *
+ * CREATE_SUSPENDED (initflag 4) is refused rather than ignored: a suspended
+ * thread that starts running immediately is the opposite of what the caller
+ * asked for, and there is nothing to resume it with yet.
+ */
+void imp_MSVCR71__beginthreadex(CPU *C)
+{
+    uint32_t stack = A(1), start = A(2), arg = A(3), initflag = A(4);
+    uint32_t tidp = A(5), tid = 0, h;
+
+    h = guest_thread_create_ex(start, arg, stack, (initflag & 4u) != 0, &tid);
+    if (h && tidp) WR32(tidp, tid);
+    ret_c(C, h);
+}
+
+/* _endthreadex(code): ends the CALLING guest thread. Does not return. */
+void imp_MSVCR71__endthreadex(CPU *C)
+{
+    guest_thread_exit(A(0));
+    ret_c(C, 0);                       /* only reached on the main thread */
+}
+
 /* __ftol: the argument arrives on the x87 stack and the truncated 64-bit
    result goes back in EDX:EAX. It pops one register, which the lazy x87 model
    tracks in `depth`. */
@@ -1615,4 +1644,5 @@ CRT_ALIAS(__2_YAPAXI_Z) CRT_ALIAS(__3_YAXPAX_Z) CRT_ALIAS(__V_YAXPAX_Z)
 CRT_ALIAS(sscanf)   CRT_ALIAS(fscanf)
 CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
 CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)
+CRT_ALIAS(_beginthreadex) CRT_ALIAS(_endthreadex)
 CRT_ALIAS(__dllonexit)

@@ -230,6 +230,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_device.c
         src/native/shell32.c
         src/native/winmm.c
+        src/native/threads.c
         src/native/x86rt_native.c
         src/native/overrides.c
         src/native/heartbeat.c

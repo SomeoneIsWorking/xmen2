@@ -24,6 +24,7 @@
 #include "pe_map.h"
 #include "shell32.h"
 #include "winmm.h"
+#include "threads.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -112,6 +113,32 @@ static Handle *h_get(uint32_t h, int kind)
         abort();
     }
     return &g_h[h - 1];
+}
+
+/* ---- guest threads: the handle-table half ------------------------------
+ *
+ * threads.c owns the thread; the handle table owns handles, and a thread
+ * handle has to be one of these because the guest waits on it with
+ * WaitForSingleObject and closes it with CloseHandle like any other.
+ *
+ * The thread is signalled when it EXITS, which is what Win32 means by a
+ * signalled thread handle, so `count` is the same field the events and
+ * semaphores use and sync_try_take works on it unchanged.
+ */
+uint32_t k32_handle_for_thread(void *rec)
+{
+    uint32_t h = h_alloc(H_THREAD);
+    g_h[h - 1].count = 0;                 /* not signalled: still running */
+    g_h[h - 1].manual = 1;                /* a thread stays signalled once done */
+    snprintf(g_h[h - 1].name, sizeof g_h[h - 1].name, "guest thread");
+    (void)rec;
+    return h;
+}
+
+void k32_handle_thread_done(uint32_t handle)
+{
+    if (handle && handle <= MAX_HANDLES && g_h[handle - 1].kind == H_THREAD)
+        g_h[handle - 1].count = 1;        /* signalled, and stays that way */
 }
 
 /* ---- paths -------------------------------------------------------------
@@ -283,7 +310,12 @@ void imp_KERNEL32_Sleep(CPU *C)
     /* The other pump point, and the one that matters most: a guest that sleeps
        waiting for a timer callback would otherwise sleep forever. Pumped
        AFTER the sleep, so a callback due during it fires as soon as it can. */
+    /* The lock is RELEASED across the sleep. Holding it would stop every
+       other guest thread for the duration -- including whichever one this
+       sleep is waiting for. */
+    guest_blocking_begin();
     usleep(A(0) * 1000u);
+    guest_blocking_end();
     winmm_timers_pump();
     ret_std(C, 0, 1);
 }
@@ -490,6 +522,10 @@ void imp_KERNEL32_CreateSemaphoreA(CPU *C)
 
 void imp_KERNEL32_ReleaseSemaphore(CPU *C)
 {
+    /* Something a wait could be blocked on has been signalled: wake the
+       waiters. A signal nothing is told about leaves a guest thread asleep
+       on an object that is already ready. */
+    guest_cond_broadcast();
     /* (handle, lReleaseCount, lpPreviousCount) */
     Handle *hh = h_get(A(0), H_SEM);
     int32_t prev = hh->count;
@@ -516,6 +552,10 @@ void imp_KERNEL32_CreateEventA(CPU *C)
 
 void imp_KERNEL32_SetEvent(CPU *C)
 {
+    /* Something a wait could be blocked on has been signalled: wake the
+       waiters. A signal nothing is told about leaves a guest thread asleep
+       on an object that is already ready. */
+    guest_cond_broadcast();
     h_get(A(0), H_EVENT)->count = 1;
     ret_std(C, 1, 1);
 }
@@ -538,6 +578,10 @@ void imp_KERNEL32_CreateMutexA(CPU *C)
 
 void imp_KERNEL32_ReleaseMutex(CPU *C)
 {
+    /* Something a wait could be blocked on has been signalled: wake the
+       waiters. A signal nothing is told about leaves a guest thread asleep
+       on an object that is already ready. */
+    guest_cond_broadcast();
     Handle *hh = h_get(A(0), H_MUTEX);
     if (hh->count <= 0) {
         fprintf(stderr, "kernel32: ReleaseMutex on %s, which this thread does "
@@ -581,17 +625,39 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C)
 {
     Handle *hh = h_get(A(0), 0);
     uint32_t ms = A(1);
+    unsigned spins = 0;
+
     if (sync_try_take(hh)) { ret_std(C, WAIT_OBJECT_0, 2); return; }
     if (ms == 0) { ret_std(C, WAIT_TIMEOUT, 2); return; }
-    fprintf(stderr,
-        "kernel32: WaitForSingleObject would BLOCK on %s \"%s\" (timeout %u).\n"
-        "  This process has no guest threads, so nothing could ever signal it "
-        "and the wait cannot be satisfied.\n"
-        "  Returning success here would hand the game a lock it does not hold; "
-        "returning timeout would be a lie about a wait that never happened.\n"
-        "  This is the point at which real threads are needed.\n",
-        sync_kind_name(hh->kind), hh->name, ms);
-    abort();
+    /*
+     * A REAL wait now that guest threads exist.
+     *
+     * It used to abort here, and correctly: with nothing else running, no
+     * signal could ever arrive and both plausible answers were lies -- success
+     * hands the game a lock it does not hold, timeout claims a wait happened.
+     * What changed is that something else CAN run, and the wait releases the
+     * guest lock so it can (src/native/threads.c).
+     *
+     * Bounded even for an INFINITE wait, because "nothing will ever signal
+     * this" is still possible -- one guest thread deadlocking against another
+     * has to be reported, not hung on.
+     */
+    for (;;) {
+        guest_cond_wait_ms(ms == 0xFFFFFFFFu ? 1000u : ms);
+        if (sync_try_take(hh)) { ret_std(C, WAIT_OBJECT_0, 2); return; }
+        if (ms != 0xFFFFFFFFu) { ret_std(C, WAIT_TIMEOUT, 2); return; }
+        if (++spins == 30) {
+            fprintf(stderr, "kernel32: WaitForSingleObject(INFINITE) on %s "
+                            "\"%s\" has waited 30 seconds and nothing has "
+                            "signalled it.\n"
+                            "  Reporting rather than hanging: either the guest "
+                            "thread that would signal it is not running, or "
+                            "this host never signals that object.\n",
+                    sync_kind_name(hh->kind), hh->name);
+            x86_diag_dump();
+            abort();
+        }
+    }
 }
 
 void imp_KERNEL32_WaitForMultipleObjects(CPU *C)
@@ -640,9 +706,97 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C)
  * to remove, so it says so here rather than in a commit message.
  */
 #define MAX_TLS 128
-static uint32_t g_tls[MAX_TLS];
+/*
+ * PER-THREAD, which is the entire meaning of the API: TlsGetValue must return
+ * what THIS thread last set. The index allocation is process-wide and stays
+ * shared -- TlsAlloc reserves a slot for everyone.
+ */
+static __thread uint32_t g_tls[MAX_TLS];
 static unsigned char g_tls_used[MAX_TLS];
 #define TLS_OUT_OF_INDEXES 0xFFFFFFFFu
+
+/* ---- thread control ---------------------------------------------------- */
+
+void imp_KERNEL32_ResumeThread(CPU *C)
+{
+    int was = guest_thread_resume(A(0));
+    if (was < 0) {
+        fprintf(stderr, "kernel32: ResumeThread(0x%x) -- that handle names no "
+                        "guest thread\n", A(0));
+        g_last_error = 6u;                        /* ERROR_INVALID_HANDLE */
+        ret_std(C, 0xFFFFFFFFu, 1);
+        return;
+    }
+    ret_std(C, (uint32_t)was, 1);
+}
+
+void imp_KERNEL32_SuspendThread(CPU *C)
+{
+    /* Not implemented, and not stubbed to 0: suspending a thread that keeps
+       running is the kind of lie that surfaces as corruption in whatever the
+       caller was protecting. Nothing in this game has reached it. */
+    (void)C;
+    x86_missing_import("KERNEL32.dll", "SuspendThread");
+}
+
+/*
+ * lstrlenA: the Win32 spelling of strlen, and NUL-safe on a NULL pointer the
+ * way the real one is (it returns 0 rather than faulting).
+ */
+void imp_KERNEL32_lstrlenA(CPU *C)
+{
+    const char *p = ACS(0);
+    ret_std(C, p ? (uint32_t)strlen(p) : 0u, 1);
+}
+
+/*
+ * GetFullPathNameA(name, buflen, buf, &filepart)
+ *
+ * Canonicalises a path IN THE GUEST'S TERMS -- it is a string operation on
+ * Windows paths, and it must stay one: returning a host path here would hand
+ * the guest something win_path() would then resolve against the install a
+ * second time.
+ *
+ * The guest's current directory is the install, which is where the game
+ * believes it is running from, so a relative path is completed against "C:\".
+ * That is the same convention win_path() already uses for a bare relative
+ * path, so the two agree.
+ *
+ * `.` and `..` are NOT collapsed, and this says so rather than pretending:
+ * nothing in this game has been seen to pass one, and a wrong collapse turns a
+ * valid path into a different valid path, which is worse than not collapsing.
+ */
+void imp_KERNEL32_GetFullPathNameA(CPU *C)
+{
+    const char *in = ACS(0);
+    uint32_t buflen = A(1), buf = A(2), partp = A(3);
+    char full[1024];
+    size_t n;
+
+    if (!in) { g_last_error = 87u; ret_std(C, 0, 4); return; }
+    if (in[0] && in[1] == ':')
+        snprintf(full, sizeof full, "%s", in);           /* already absolute */
+    else if (in[0] == '\\' || in[0] == '/')
+        snprintf(full, sizeof full, "C:%s", in);
+    else
+        snprintf(full, sizeof full, "C:\\%s", in);
+    if (strstr(full, "..") || strstr(full, "\\.\\"))
+        fprintf(stderr, "kernel32: GetFullPathNameA(\"%s\") -- this host does "
+                        "not collapse . or .., so the answer keeps them. A "
+                        "wrong collapse would name a DIFFERENT valid file.\n",
+                in);
+    n = strlen(full);
+    /* Win32: the return is the length WITHOUT the NUL when it fits, and the
+       length WITH it when the buffer is too small. Getting that backwards
+       makes a caller size a buffer one byte short, every time. */
+    if (buflen < n + 1u || !buf) { ret_std(C, (uint32_t)n + 1u, 4); return; }
+    memcpy((void *)(uintptr_t)buf, full, n + 1u);
+    if (partp) {
+        const char *slash = strrchr(full, '\\');
+        WR32(partp, slash ? buf + (uint32_t)(slash + 1 - full) : buf);
+    }
+    ret_std(C, (uint32_t)n, 4);
+}
 
 void imp_KERNEL32_TlsAlloc(CPU *C)
 {
@@ -913,9 +1067,26 @@ void imp_KERNEL32_SetPriorityClass(CPU *C)
 void imp_KERNEL32_GetThreadPriority(CPU *C) { ret_std(C, (uint32_t)g_thread_priority, 1); }
 void imp_KERNEL32_SetThreadPriority(CPU *C)
 {
+    /* Recorded and round-tripped, and that is ALL it does: one guest thread
+       runs at a time under a global lock (threads.c), so there is no
+       scheduling here to prioritise. The value is kept because
+       GetThreadPriority must return what was set. */
     g_thread_priority = (int32_t)A(1);
     ret_std(C, 1, 2);
 }
+
+void imp_KERNEL32_SetThreadPriorityBoost(CPU *C) { ret_std(C, 1, 2); }
+
+/*
+ * SetThreadAffinityMask: accepted, and the PREVIOUS mask returned as Win32
+ * does. It cannot mean anything here -- one guest thread runs at a time under
+ * a global lock, so there is one CPU as far as the guest is concerned, which
+ * is exactly what a mask of 1 says.
+ *
+ * Returning 0 (failure) instead would be a lie in the other direction: the
+ * caller asked to be pinned to processors that exist, and it has been.
+ */
+void imp_KERNEL32_SetThreadAffinityMask(CPU *C) { ret_std(C, 1, 2); }
 
 /* FILETIME from a POSIX clock value in nanoseconds. */
 static void wr_filetime(uint32_t p, uint64_t ns)
