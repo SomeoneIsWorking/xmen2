@@ -23,6 +23,7 @@
 #include "x86rt_native.h"
 #include "pe_map.h"
 #include "shell32.h"
+#include "winmm.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -263,6 +264,10 @@ void imp_KERNEL32_GetTickCount(CPU *C)
 void imp_KERNEL32_QueryPerformanceCounter(CPU *C)
 {
     struct timespec ts;
+    /* A pump point. The multimedia timers have no thread of their own (see
+       winmm.c), so they run when the guest next asks the time -- which any
+       loop waiting for one does constantly. */
+    winmm_timers_pump();
     uint64_t v;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     v = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
@@ -273,7 +278,15 @@ void imp_KERNEL32_QueryPerformanceCounter(CPU *C)
 
 void imp_KERNEL32_GetCurrentProcessId(CPU *C) { ret_std(C, (uint32_t)getpid(), 0); }
 void imp_KERNEL32_GetCurrentThreadId(CPU *C)  { ret_std(C, (uint32_t)gettid(), 0); }
-void imp_KERNEL32_Sleep(CPU *C) { usleep(A(0) * 1000u); ret_std(C, 0, 1); }
+void imp_KERNEL32_Sleep(CPU *C)
+{
+    /* The other pump point, and the one that matters most: a guest that sleeps
+       waiting for a timer callback would otherwise sleep forever. Pumped
+       AFTER the sleep, so a callback due during it fires as soon as it can. */
+    usleep(A(0) * 1000u);
+    winmm_timers_pump();
+    ret_std(C, 0, 1);
+}
 
 void imp_KERNEL32_GetVersionExA(CPU *C)
 {

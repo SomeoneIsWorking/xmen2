@@ -1575,6 +1575,7 @@ int main(int argc, char **argv)
        this host actually implements, and that answer comes from the export
        registry. */
     shell32_install(); atexit(shell32_report);
+    { extern void winmm_report(void); atexit(winmm_report); }
     { extern void dinput_device_report(void), crt_rtti_report(void);
       atexit(dinput_device_report); atexit(crt_rtti_report); }
     atexit(x86_native_export_report);

@@ -1,7 +1,7 @@
 ---
 id: 42
 title: libCriMovie needs WINMM timeSetEvent -- a multimedia timer that calls back into guest code
-status: open
+status: investigating
 symptom: x86_missing_import: WINMM.dll!timeSetEvent is not implemented natively -- reached when the game starts its intro movie
 tags: pc,native,winmm,threads,libCriMovie,movie
 created: 2026-08-07
@@ -47,3 +47,26 @@ Two shortcuts, both worse than stopping:
 
 Option 1 first, because it is the only one that is both cheap and answerable
 by experiment.
+
+
+## Done: option 1, and it is UNVERIFIED
+
+`timeSetEvent`/`timeKillEvent` are implemented as DEFERRED callbacks that run
+on the guest's own thread, pumped from `QueryPerformanceCounter` and `Sleep` --
+the two places a loop waiting for a timer reaches constantly. No thread, no
+race on the register file.
+
+The cost is stated in the code and in the exit report rather than left to be
+found: **the resolution is the poll interval, not the millisecond that was
+asked for**, and a callback the guest never reaches a pump point for never
+fires. `winmm_report` prints the average lateness and names any timer that has
+never fired at all.
+
+**It has never run.** libCriMovie asks for a THREAD before it ever sets a
+timer, so the run stops earlier now and the report says exactly that:
+
+    winmm: no multimedia timer was ever set.
+
+That is the honest status: the code exists, its negative reports itself, and
+nothing has exercised it. It is not evidence that deferred timers work for
+libCriMovie -- issue #43 has to be answered before that can be tested at all.
