@@ -254,10 +254,45 @@ static void interrupted(int sig)
     signal(SIGINT, SIG_DFL);
     ignored = write(2, msg, sizeof msg - 1);
     (void)ignored;
+    /*
+     * Hand the reports to the heartbeat thread when there is one.
+     *
+     * Every report in this project is an atexit handler, because the run
+     * always used to END. Now it reaches a frame loop and keeps going, so the
+     * only way it stops is a kill -- and a signal handler cannot run those
+     * reports: they are stdio, and stdio here deadlocks against whatever the
+     * interrupted code was holding. The heartbeat thread is ordinary context.
+     * The alarm is the backstop: if that thread never gets there, the process
+     * still dies rather than becoming unkillable by the very kill that was
+     * trying to stop it.
+     */
     signal(SIGALRM, SIG_DFL);
+    if (heartbeat_running()) {
+        alarm(10);
+        x2_report_now = 1;
+        return;
+    }
     alarm(5);
     x86_diag_dump();
     _exit(4);
+}
+
+/*
+ * What a normal exit would print, from ordinary context.
+ *
+ * exit() itself is NOT used: it was tried, and it died in "terminate called
+ * without an active exception" -- a C++ teardown in the graphics stack that
+ * has nothing to do with the reports. So the reports are called directly and
+ * the process leaves with _exit.
+ */
+void x2_interrupt_reports(void)
+{
+    extern void d3d8_host_report(void);
+    extern void guest_heap_report(void);
+    d3d8_host_report();
+    guest_heap_report();
+    fflush(stdout);
+    x86_diag_dump();
 }
 
 static int poison_init(void)

@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <time.h>
 
 static double now_s(void)
@@ -22,6 +23,23 @@ static double now_s(void)
 
 static double   g_period = 5.0;
 static double   g_t0;
+
+/*
+ * Set by the SIGTERM/SIGINT handler, read here.
+ *
+ * The run used to always END -- on a fault, an abort or an unimplemented
+ * import -- so every report in this project is an atexit handler. Now that it
+ * reaches a frame loop and keeps going, the ONLY way it stops is a kill, and a
+ * signal handler cannot run those reports: they are stdio, and stdio in a
+ * handler deadlocks against whatever the interrupted code was holding (issue
+ * #34). This thread is ordinary context, so it can. The handler hands the job
+ * over and arms an alarm in case this thread never gets there.
+ */
+volatile sig_atomic_t x2_report_now;
+
+/* Whether there is a thread to hand that job to. */
+static int g_running;
+int heartbeat_running(void) { return g_running; }
 
 /*
  * Its own thread, deliberately.
@@ -49,9 +67,24 @@ static void *heartbeat_thread(void *arg)
         int have_dev;
         double t;
 
-        req.tv_sec  = (time_t)g_period;
-        req.tv_nsec = (long)((g_period - (double)req.tv_sec) * 1e9);
-        while (nanosleep(&req, &req) != 0 && errno == EINTR) ;
+        /* Slept in slices, not in one go: an interrupt has to be noticed in
+           a quarter of a second, not at the end of a five-second period. */
+        double slept = 0.0;
+        while (slept < g_period && !x2_report_now) {
+            req.tv_sec = 0;
+            req.tv_nsec = 250000000L;
+            while (nanosleep(&req, &req) != 0 && errno == EINTR) ;
+            slept += 0.25;
+        }
+        if (x2_report_now) {
+            fprintf(stderr, "\n[HB] interrupted -- the shutdown reports "
+                            "follow, taken while the guest is STILL RUNNING, "
+                            "so every count is a snapshot rather than a "
+                            "final total.\n");
+            fflush(stderr);
+            x2_interrupt_reports();
+            _exit(4);
+        }
 
         t = now_s() - g_t0;
         cross = x86_crossings();
@@ -170,10 +203,12 @@ void heartbeat_start(void)
         return;
     }
     g_t0 = now_s();
+    g_running = 1;
     rc = pthread_create(&th, NULL, heartbeat_thread, NULL);
     if (rc != 0) {
         fprintf(stderr, "[HB] could not start the heartbeat thread (%s) -- "
                         "this run has NO liveness reporting.\n", strerror(rc));
+        g_running = 0;
         return;
     }
     pthread_detach(th);

@@ -24,8 +24,20 @@
 #ifndef X2_HEARTBEAT_H
 #define X2_HEARTBEAT_H
 
+#include <signal.h>          /* sig_atomic_t, for the interrupt flag below */
+
 /* Starts the thread. Announces itself (or that it is disabled) on stderr, so a
    run with no [HB] lines cannot be mistaken for a run that produced none. */
 void heartbeat_start(void);
+
+/* Whether the thread is there to be handed the interrupt reports. */
+int heartbeat_running(void);
+
+/* Set by the signal handler; the thread prints the reports and exits. */
+extern volatile sig_atomic_t x2_report_now;
+
+/* Everything a normal exit would print, callable from ordinary context.
+   Defined in x2native.c, which is what knows the full list. */
+void x2_interrupt_reports(void);
 
 #endif /* X2_HEARTBEAT_H */

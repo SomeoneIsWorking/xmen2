@@ -103,14 +103,17 @@ EOM
 
 run: NATIVE build -- no Wine, no original binaries in the loop.
 
-     WHAT YOU WILL SEE, so that the expected outcome is not read as a
-     failure: the engine starts, initialises, and reaches the game's own
-     DirectX 9.0c check, which truthfully reports DirectX absent, and the
-     process exits 0. There is no rendering yet -- the renderer is the
-     work in progress (docs/issues, C113/C114). A window may flash: that
-     is the SDL surface probe, not the game.
+     WHAT YOU WILL SEE: the engine starts, the renderer comes up on
+     SDL3 + Vulkan, and the game draws its own UI in a 800x600 window
+     at 60fps (C142). Text glyphs are still wrong -- issue #38. The run
+     does not end on its own any more; Ctrl-C it, and it prints its
+     reports on the way out.
 
-     For a build that actually draws the game, use:  ./run.sh wine
+     It is not silent about what it is doing: [HB] lines every few
+     seconds carry the frame, draw and present counts.
+
+     ./run.sh wine is still the reference for "what it should look
+     like", and ./run.sh stock is the untouched install as the control.
 
 EOM
     # Deliberately run from the REPO ROOT, not from the install. x2native finds
@@ -119,7 +122,14 @@ EOM
     # relative to CWD. Launching from inside the game directory would write that
     # into the install, which this project treats as strictly read-only.
     cd "$ROOT" || exit 2
-    exec "$BUILD/x2native" --run ${RUN_ARGS:-}
+    # --d3d8 by DEFAULT, because it is the live path: it answers
+    # Direct3DCreate8 with the host IDirect3D8, and everything that draws hangs
+    # off that. Without it the run takes the pre-renderer path, reaches the
+    # game's own DirectX check and exits 0 having drawn nothing -- which is
+    # indistinguishable, from the outside, from a build that is broken. It was
+    # the default here long after the renderer started working, and "./run.sh
+    # shows nothing" was the result.
+    exec "$BUILD/x2native" --run ${RUN_ARGS:---d3d8}
 fi
 
 # ======================================================================
