@@ -1,7 +1,7 @@
 ---
 id: 39
 title: The game reports SAVE FAILED at startup -- SHGetFolderPathA is not implemented, so there is no save folder
-status: open
+status: investigating
 symptom: The first thing the native run draws is the game's own dialog reading 'SAVE FAILED!' with [Esc] CANCEL / [Enter] RETRY; the log shows GetProcAddress(shell32.dll, "SHGetFolderPathA") -> NULL twice just before it
 tags: pc,native,kernel32,shell32,saves
 created: 2026-08-07
@@ -32,3 +32,54 @@ moves the same failure one step later.
 
 The dialog offers RETRY, so the game keeps running either way; this is not a
 blocker, it is the first thing a player sees.
+
+
+## Done: the save folder exists, and the game writes to it
+
+`src/native/shell32.c` implements `SHGetFolderPathA` for the four per-user data
+CSIDLs and refuses every other one BY NUMBER -- each of those means something
+specific, and a program that asked for the Windows directory and got a save
+folder would write into it.
+
+The guest is handed a path on a **virtual drive**, `S:`, not a host path:
+`win_path()` resolves everything the guest says against `$GAME_PC_DIR`, so a
+POSIX path given to the guest comes straight back as the install plus the whole
+thing. `win_path` maps that one letter to the save directory instead. The host
+directory defaults to `scratch/saves` (`X2_SAVE_DIR` overrides) and is CREATED,
+not merely named.
+
+Two more defects fell out of testing it, both real:
+
+* **`CreateFileA` handled ONE of the five dispositions.** Only `CREATE_ALWAYS`
+  created a file; `OPEN_ALWAYS` and `CREATE_NEW` -- which is how a first save is
+  written -- fell through to "open, do not create" and returned
+  ERROR_FILE_NOT_FOUND. All five are handled now, and an unknown one is
+  refused rather than guessed: they differ in whether they CREATE and whether
+  they TRUNCATE, and picking wrong either loses a file or invents one.
+* **A failed open said nothing.** Returning INVALID_HANDLE is the correct Win32
+  answer and a terrible diagnostic. It now names the guest path, the host path
+  it became and the disposition -- which is what showed the double separator
+  below.
+
+`SHGetFolderPathA` returned `"S:\\"` with a trailing separator at first;
+Windows returns none (the caller appends its own), and the very first path the
+game built was `S:\\\\Activision\\...`.
+
+**Result, verified:** the game creates
+`Activision/X-Men Legends 2/{Save,Screenshots}` and writes a 684-byte
+`Save/settings.dat`. No `CreateFileA` fails anywhere in the run.
+
+## Still open: the dialog is still shown
+
+The settings file writes and no file operation fails, and the game STILL shows
+its dialog. So the failure it is reporting is not the one that was fixed.
+
+A dead end worth recording: the exe contains the string `EMSG_SAVE_FAILED_DEVNUM`
+at 0x0069ad04, selected by `FUN_0055e9b0`, which is a plain
+error-code-to-message-id switch. **That function is never called in a run** (an
+argument watch on it reports zero calls), so it is the wrong anchor -- the
+displayed text is "Save failed!" with no device number, so the id being looked
+up is a different one, and it most likely comes from the localised string table
+in `igct.bnx` rather than from the exe.
+
+The next anchor is that string table, not the exe's literals.

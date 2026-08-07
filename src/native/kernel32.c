@@ -22,6 +22,7 @@
 #include "guest_heap.h"
 #include "x86rt_native.h"
 #include "pe_map.h"
+#include "shell32.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -165,7 +166,18 @@ const char *win_path(const char *in)
     if (!in) return NULL;
     /* A drive letter or a leading slash means an absolute Windows path; the
        game uses relative ones for its own data, resolved against the install. */
-    if (in[0] && in[1] == ':')
+    /*
+     * The save drive is not the install.
+     *
+     * SHGetFolderPathA hands the guest "S:\\" (see shell32.c), and everything
+     * the game then builds under it -- "S:\\Activision\\X-Men Legends 2\\..." --
+     * arrives here. Mapping it against $GAME_PC_DIR like every other guest
+     * path would write saves into the install, which this project treats as
+     * strictly read-only.
+     */
+    if ((in[0] == X2_SAVE_DRIVE || in[0] == X2_SAVE_DRIVE + 32) && in[1] == ':')
+        snprintf(buf, sizeof buf, "%s/%s", x2_save_dir(), in + 2);
+    else if (in[0] && in[1] == ':')
         snprintf(buf, sizeof buf, "%s/%s", game ? game : ".", in + 2);
     else if (in[0] == '\\' || in[0] == '/')
         snprintf(buf, sizeof buf, "%s/%s", game ? game : ".", in + 1);
@@ -179,6 +191,8 @@ const char *win_path(const char *in)
 /* ---- error reporting --------------------------------------------------- */
 
 static uint32_t g_last_error;
+/* Counted so the report can say how many were never shown. */
+static unsigned long g_failed_opens;
 static uint64_t g_reserved_bytes;   /* see VirtualAlloc */
 
 void imp_KERNEL32_GetLastError(CPU *C) { ret_std(C, g_last_error, 0); }
@@ -294,8 +308,16 @@ void imp_KERNEL32_LeaveCriticalSection(CPU *C)
 /* ---- files ------------------------------------------------------------- */
 
 #define GENERIC_WRITE 0x40000000u
-#define CREATE_ALWAYS 2u
-#define OPEN_EXISTING 3u
+/* CreateFileA's dwCreationDisposition, all five of them. Only CREATE_ALWAYS
+   used to be handled and everything else fell through to "open, do not
+   create" -- so a game writing a NEW file (OPEN_ALWAYS or CREATE_NEW, which is
+   how a first save is written) got ERROR_FILE_NOT_FOUND and reported that it
+   could not save. Issue #39. */
+#define CREATE_NEW        1u
+#define CREATE_ALWAYS     2u
+#define OPEN_EXISTING     3u
+#define OPEN_ALWAYS       4u
+#define TRUNCATE_EXISTING 5u
 
 void imp_KERNEL32_CreateFileA(CPU *C)
 {
@@ -303,9 +325,41 @@ void imp_KERNEL32_CreateFileA(CPU *C)
     const char *path = win_path(ACS(0));
     int flags = (access_ & GENERIC_WRITE) ? O_RDWR : O_RDONLY;
     int fd;
-    if (disp == CREATE_ALWAYS) flags = O_RDWR | O_CREAT | O_TRUNC;
+    switch (disp) {
+    case CREATE_NEW:        flags = O_RDWR | O_CREAT | O_EXCL;  break;
+    case CREATE_ALWAYS:     flags = O_RDWR | O_CREAT | O_TRUNC; break;
+    case OPEN_ALWAYS:       flags = O_RDWR | O_CREAT;           break;
+    case TRUNCATE_EXISTING: flags = O_RDWR | O_TRUNC;           break;
+    case OPEN_EXISTING:     break;                  /* open, never create */
+    default:
+        /* Refused rather than guessed: the dispositions differ in whether they
+           CREATE and whether they TRUNCATE, and picking wrong either loses a
+           file or invents one. */
+        fprintf(stderr, "kernel32: CreateFileA with disposition %u, which is "
+                        "not one of the five Win32 defines. Refusing.\n", disp);
+        g_last_error = 87u;                     /* ERROR_INVALID_PARAMETER */
+        ret_std(C, INVALID_HANDLE, 7);
+        return;
+    }
     fd = open(path, flags, 0644);
     if (fd < 0) {
+        /*
+         * A failed open is REPORTED, with the path the guest asked for and the
+         * host path it became.
+         *
+         * Returning INVALID_HANDLE silently is the correct Win32 answer and a
+         * terrible diagnostic: the game's own dialog says "SAVE FAILED!" and
+         * nothing anywhere says which file, or whether the failure was the
+         * path translation rather than the disk (issue #39). Capped, because a
+         * game probing for optional files fails opens all day.
+         */
+        static int told;
+        if (told++ < 12)
+            fprintf(stderr, "kernel32: CreateFileA(\"%s\", disposition %u) "
+                            "FAILED -- \"%s\": %s%s\n",
+                    ACS(0) ? ACS(0) : "(null)", disp, path, strerror(errno),
+                    told == 12 ? "  (further ones are silent)" : "");
+        g_failed_opens++;
         g_last_error = ERROR_FILE_NOT_FOUND;
         ret_std(C, INVALID_HANDLE, 7);
         return;

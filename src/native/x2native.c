@@ -21,6 +21,7 @@
 #include "heartbeat.h"
 #include "win32_sdl.h"
 #include "gpu_device.h"
+#include "shell32.h"
 #include "guest_heap.h"
 #include "d3d8_host.h"
 #include "d3d8_com.h"
@@ -1569,6 +1570,11 @@ int main(int argc, char **argv)
     { extern void dinput_report(void); atexit(dinput_report); }
     { extern void dinput8_install(void), dinput8_report(void);
       dinput8_install(); atexit(dinput8_report); }
+    /* SHELL32: the save directory. Installed with the other native system
+       modules, because LoadLibraryA may only hand back a handle for a module
+       this host actually implements, and that answer comes from the export
+       registry. */
+    shell32_install(); atexit(shell32_report);
     { extern void dinput_device_report(void), crt_rtti_report(void);
       atexit(dinput_device_report); atexit(crt_rtti_report); }
     atexit(x86_native_export_report);
