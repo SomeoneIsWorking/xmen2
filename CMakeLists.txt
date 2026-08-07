@@ -234,6 +234,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_com.c
         src/d3d8/d3d8_caps.c
         src/d3d8/d3d8_state.c
+        src/d3d8/d3d8_stateblock.c
         src/d3d8/d3d8_d3d8.c
         src/d3d8/d3d8_device.c
         src/d3d8/d3d8_surface.c

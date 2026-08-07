@@ -23,6 +23,7 @@
 #include "x86rt_native.h"
 #include "pe_map.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1234,14 +1235,200 @@ void imp_KERNEL32_UnmapViewOfFile(CPU *C)
     ret_std(C, 0, 1);
 }
 
+/* ---- directory enumeration ---------------------------------------------
+ *
+ * FindFirstFileA takes a path with wildcards in its LAST component only, and
+ * hands back one entry at a time through a WIN32_FIND_DATAA the caller owns.
+ *
+ * Three things here are correctness requirements rather than detail:
+ *
+ * 1. The wildcard is matched with WINDOWS' rules, not fnmatch's. `*.*` on
+ *    Windows matches every file, INCLUDING ones with no dot in the name --
+ *    fnmatch would drop those silently, and a silently-shorter asset list
+ *    surfaces as a missing model, not as a missing file.
+ * 2. The match is case-insensitive, for the same reason win_path() resolves
+ *    case: the game's patterns do not match the case on disk.
+ * 3. The struct is filled COMPLETELY, including the fields this host has
+ *    nothing real for. A caller reading an uninitialised cAlternateFileName
+ *    gets whatever the guest heap held.
+ */
+#define FILE_ATTRIBUTE_READONLY   0x00000001u
+#define FILE_ATTRIBUTE_DIRECTORY  0x00000010u
+#define FILE_ATTRIBUTE_NORMAL     0x00000080u
+
+/* WIN32_FIND_DATAA, by offset. Stated once, here, because every one of these
+   is a place a wrong number becomes a wrong file name. */
+#define FD_ATTRIBUTES   0u
+#define FD_CREATION     4u       /* FILETIME, 8 bytes */
+#define FD_LASTACCESS  12u
+#define FD_LASTWRITE   20u
+#define FD_SIZE_HIGH   28u
+#define FD_SIZE_LOW    32u
+#define FD_RESERVED0   36u
+#define FD_RESERVED1   40u
+#define FD_FILENAME    44u       /* char[260] */
+#define FD_ALTNAME    304u       /* char[14]  */
+#define FD_SIZEOF     320u
+
+/* Windows' own wildcard rules, case-insensitively.
+
+   `*` any run, `?` any single character. `*.*` is special-cased because on
+   Windows it means "everything", not "everything with a dot". Not modelled:
+   `?` matching ZERO characters at the very end of a name, and the DOS_STAR /
+   DOS_DOT forms the kernel derives from short names -- neither appears in a
+   pattern a game builds, and inventing them would be guessing. */
+static int win_match(const char *pat, const char *name)
+{
+    if (!strcmp(pat, "*.*") || !strcmp(pat, "*")) return 1;
+    while (*pat) {
+        if (*pat == '*') {
+            pat++;
+            if (!*pat) return 1;
+            for (; *name; name++)
+                if (win_match(pat, name)) return 1;
+            return win_match(pat, name);         /* the empty tail */
+        }
+        if (!*name) return 0;
+        if (*pat != '?' &&
+            tolower((unsigned char)*pat) != tolower((unsigned char)*name))
+            return 0;
+        pat++; name++;
+    }
+    return *name == 0;
+}
+
+/* Unix seconds -> FILETIME (100ns ticks since 1601-01-01). */
+static void fd_time(uint32_t dst, time_t t)
+{
+    uint64_t ft = ((uint64_t)t + 11644473600ULL) * 10000000ULL;
+    WR32(dst, (uint32_t)ft);
+    WR32(dst + 4u, (uint32_t)(ft >> 32));
+}
+
+/* Fill the caller's WIN32_FIND_DATAA for one entry. 0 if the entry vanished
+   between readdir and stat, which is a race, not a match. */
+static int fd_fill(uint32_t data, const char *dirpath, const char *name)
+{
+    char full[2048];
+    struct stat st;
+    uint32_t attrs;
+    size_t n;
+
+    snprintf(full, sizeof full, "%s/%s", dirpath, name);
+    if (stat(full, &st) != 0) return 0;
+
+    attrs = S_ISDIR(st.st_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+    if (!(st.st_mode & S_IWUSR)) attrs |= FILE_ATTRIBUTE_READONLY;
+
+    memset((void *)(uintptr_t)data, 0, FD_SIZEOF);
+    WR32(data + FD_ATTRIBUTES, attrs);
+    fd_time(data + FD_CREATION,   st.st_ctime);   /* no birth time on POSIX;
+                                                     ctime is the closest
+                                                     honest answer */
+    fd_time(data + FD_LASTACCESS, st.st_atime);
+    fd_time(data + FD_LASTWRITE,  st.st_mtime);
+    WR32(data + FD_SIZE_HIGH, (uint32_t)((uint64_t)st.st_size >> 32));
+    WR32(data + FD_SIZE_LOW,  (uint32_t)st.st_size);
+    WR32(data + FD_RESERVED0, 0);
+    WR32(data + FD_RESERVED1, 0);
+
+    n = strlen(name);
+    if (n > 259) {
+        /* Truncating would hand back a name that opens nothing. Skipping it
+           and saying so is the only answer that cannot be mistaken for a file
+           that is there. */
+        fprintf(stderr, "kernel32: FindFirstFile skipped \"%s\" -- %zu bytes "
+                        "does not fit MAX_PATH-1 in WIN32_FIND_DATAA.\n",
+                name, n);
+        return 0;
+    }
+    memcpy((void *)(uintptr_t)(data + FD_FILENAME), name, n + 1);
+    /* cAlternateFileName is the 8.3 short name. There is none here, and an
+       empty string is what Windows itself gives on a volume without them. */
+    WR8(data + FD_ALTNAME, 0);
+    return 1;
+}
+
+/* Advance the handle to the next matching entry. 0 at end of directory. */
+static int find_next(Handle *hh, uint32_t data)
+{
+    struct dirent *e;
+    while ((e = readdir(hh->dir)) != NULL) {
+        if (!win_match(hh->pattern, e->d_name)) continue;
+        if (fd_fill(data, hh->dirpath, e->d_name)) return 1;
+    }
+    return 0;
+}
+
 void imp_KERNEL32_FindFirstFileA(CPU *C)
 {
-    k32_unimpl("FindFirstFileA", "directory enumeration needs the WIN32_FIND_DATA "
-               "layout filled exactly; it is reached only by the asset scanner, "
-               "which nothing has run yet");
+    const char *spec = ACS(0);
+    uint32_t data = A(1), h;
+    char win[1024], *slash;
+    const char *pattern;
+    const char *dirpath;
+    Handle *hh;
+
+    if (!spec || !data) {
+        g_last_error = ERROR_FILE_NOT_FOUND;
+        ret_std(C, INVALID_HANDLE, 2);
+        return;
+    }
+    /* Split BEFORE translating: win_path() resolves case one component at a
+       time against the filesystem, and the last component here is a pattern
+       that matches no file, so resolving it would fail the whole path. */
+    snprintf(win, sizeof win, "%s", spec);
+    for (slash = win; *slash; slash++) if (*slash == '\\') *slash = '/';
+    slash = strrchr(win, '/');
+    if (slash) { *slash = 0; pattern = slash + 1; dirpath = win_path(win); }
+    else       { pattern = win;                   dirpath = win_path("."); }
+
+    h = h_alloc(H_FIND);
+    hh = &g_h[h - 1];
+    snprintf(hh->pattern, sizeof hh->pattern, "%s", pattern);
+    snprintf(hh->dirpath, sizeof hh->dirpath, "%s", dirpath);
+    hh->dir = opendir(hh->dirpath);
+    if (!hh->dir) {
+        fprintf(stderr, "kernel32: FindFirstFileA(\"%s\") -- \"%s\" is not a "
+                        "directory this host can open (%s). Returning "
+                        "ERROR_FILE_NOT_FOUND, which is what Windows would.\n",
+                spec, hh->dirpath, strerror(errno));
+        hh->kind = 0;
+        g_last_error = ERROR_FILE_NOT_FOUND;
+        ret_std(C, INVALID_HANDLE, 2);
+        return;
+    }
+    if (!find_next(hh, data)) {
+        closedir(hh->dir);
+        hh->dir = NULL;
+        hh->kind = 0;
+        g_last_error = ERROR_FILE_NOT_FOUND;
+        ret_std(C, INVALID_HANDLE, 2);
+        return;
+    }
+    ret_std(C, h, 2);
 }
-void imp_KERNEL32_FindNextFileA(CPU *C) { k32_unimpl("FindNextFileA", "see FindFirstFileA"); }
-void imp_KERNEL32_FindClose(CPU *C) { k32_unimpl("FindClose", "see FindFirstFileA"); }
+
+void imp_KERNEL32_FindNextFileA(CPU *C)
+{
+    Handle *hh = h_get(A(0), H_FIND);
+    uint32_t data = A(1);
+    if (!data || !find_next(hh, data)) {
+        g_last_error = ERROR_NO_MORE_FILES;
+        ret_std(C, 0, 2);
+        return;
+    }
+    ret_std(C, 1, 2);
+}
+
+void imp_KERNEL32_FindClose(CPU *C)
+{
+    Handle *hh = h_get(A(0), H_FIND);
+    if (hh->dir) closedir(hh->dir);
+    hh->dir = NULL;
+    hh->kind = 0;
+    ret_std(C, 1, 1);
+}
 
 void imp_KERNEL32_WideCharToMultiByte(CPU *C)
 {

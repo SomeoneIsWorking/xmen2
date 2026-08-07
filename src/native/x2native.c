@@ -629,6 +629,9 @@ void imp_DINPUT8_DirectInput8Create(CPU *C);
 void imp_MSVCR71___RTDynamicCast(CPU *C);
 void imp_MSVCR71_qsort(CPU *C);
 void imp_KERNEL32_MultiByteToWideChar(CPU *C);
+void imp_KERNEL32_FindFirstFileA(CPU *C);
+void imp_KERNEL32_FindNextFileA(CPU *C);
+void imp_KERNEL32_FindClose(CPU *C);
 void imp_MSVCRT_malloc(CPU *C);
 void imp_MSVCRT_free(CPU *C);
 
@@ -1242,6 +1245,81 @@ static void case_qsort(void)
     guest_free(arr);
 }
 
+/*
+ * FindFirstFileA/FindNextFileA, against the real install.
+ *
+ * A wildcard matcher is a DISCRIMINATOR, and a discriminator has to be run
+ * against BOTH classes before it can be trusted: one that matched everything
+ * and one that matched nothing would each look fine from one direction. So
+ * this asks for a pattern that MUST hit (the game's own executable is in
+ * GAME_PC_DIR) and one that MUST NOT, and checks the count both ways.
+ *
+ * `*.*` gets its own check because that is the case Windows and fnmatch
+ * disagree about: on Windows it means every file, including names with no dot
+ * at all, and a matcher that dropped those would hand the asset scanner a
+ * silently shorter list.
+ */
+static uint32_t find_count(const char *pattern, uint32_t data)
+{
+    CPU C;
+    uint32_t h, n = 0;
+    uint32_t spec = guest_malloc(512);
+
+    snprintf((char *)(uintptr_t)spec, 512, "%s", pattern);
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x700u;
+    WR32(C.esp, 0);
+    WR32(C.esp + 4u, spec);
+    WR32(C.esp + 8u, data);
+    imp_KERNEL32_FindFirstFileA(&C);
+    h = C.eax;
+    if (h == 0xFFFFFFFFu) { guest_free(spec); return 0; }
+    do {
+        n++;
+        memset(&C, 0, sizeof C);
+        C.esp = SCRATCH + 0x700u;
+        WR32(C.esp, 0);
+        WR32(C.esp + 4u, h);
+        WR32(C.esp + 8u, data);
+        imp_KERNEL32_FindNextFileA(&C);
+    } while (C.eax);
+    memset(&C, 0, sizeof C);
+    C.esp = SCRATCH + 0x700u;
+    WR32(C.esp, 0);
+    WR32(C.esp + 4u, h);
+    imp_KERNEL32_FindClose(&C);
+    guest_free(spec);
+    return n;
+}
+
+static void case_find_file(void)
+{
+    uint32_t data = guest_malloc(320);
+    uint32_t hits_exe, hits_none, hits_all;
+    const char *name;
+
+    printf("  FindFirstFileA over the install directory\n");
+    memset((void *)(uintptr_t)data, 0xEE, 320);          /* poison first */
+
+    hits_exe  = find_count("*.exe", data);
+    name = (const char *)(uintptr_t)(data + 44u);
+    check("*.exe matched at least one file", hits_exe > 0, 1u);
+    check("  and the name is NUL-terminated ASCII",
+          (uint32_t)(name[0] > 32 && name[0] < 127 &&
+                     memchr(name, 0, 260) != NULL), 1u);
+    check("  and the size fields were filled",
+          RD32(data + 28u) != 0xEEEEEEEEu && RD32(data + 32u) != 0xEEEEEEEEu, 1u);
+    check("  and cAlternateFileName is empty, not poison",
+          RD8(data + 304u), 0u);
+
+    hits_none = find_count("*.no-such-extension", data);
+    check("a pattern that matches nothing returns nothing", hits_none, 0u);
+
+    hits_all = find_count("*.*", data);
+    check("*.* matches at least as much as *.exe", hits_all >= hits_exe, 1u);
+    guest_free(data);
+}
+
 static int run_battery(void)
 {
     printf("battery: recompiled bodies run natively, with real postconditions\n");
@@ -1293,6 +1371,7 @@ static int run_battery(void)
     case_dinput();
     case_dynamic_cast();
     case_qsort();
+    case_find_file();
     case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"

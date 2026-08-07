@@ -15,6 +15,7 @@
  * for cutting at this boundary (see d3d8_host.h).
  */
 #include "d3d8_device.h"
+#include "d3d8_stateblock.h"
 #include "d3d8_host.h"
 #include "d3d8_com.h"
 #include "d3d8_caps.h"
@@ -380,6 +381,50 @@ static void dev_Clear(D3D8Object *self, CPU *C)
 }
 
 /* ---- state ------------------------------------------------------------- */
+
+/* ---- state blocks ------------------------------------------------------
+ *
+ * The device owns the live state, so these four are the only place a block and
+ * the device meet; everything about the blocks themselves is in
+ * src/d3d8/d3d8_stateblock.c.
+ */
+static void dev_CreateStateBlock(D3D8Object *self, CPU *C)
+{
+    uint32_t type = d3d8_arg(C, 0), out = d3d8_arg(C, 1);
+    uint32_t token = 0;
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    if (!d3d8_sb_create(type, &g_dev.state, &token)) {
+        /* The out-parameter is zeroed on failure: a caller that ignores the
+           HRESULT would otherwise pass whatever was in that DWORD to Apply,
+           and 0 is guaranteed not to name a block. */
+        WR32(out, 0);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    WR32(out, token);
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_ApplyStateBlock(D3D8Object *self, CPU *C)
+{
+    (void)self;
+    d3d8_ret(C, d3d8_sb_apply(d3d8_arg(C, 0), &g_dev.state)
+                ? D3D_OK : D3DERR_INVALIDCALL);
+}
+
+static void dev_CaptureStateBlock(D3D8Object *self, CPU *C)
+{
+    (void)self;
+    d3d8_ret(C, d3d8_sb_capture(d3d8_arg(C, 0), &g_dev.state)
+                ? D3D_OK : D3DERR_INVALIDCALL);
+}
+
+static void dev_DeleteStateBlock(D3D8Object *self, CPU *C)
+{
+    (void)self;
+    d3d8_ret(C, d3d8_sb_delete(d3d8_arg(C, 0)) ? D3D_OK : D3DERR_INVALIDCALL);
+}
 
 static void dev_SetRenderState(D3D8Object *self, CPU *C)
 {
@@ -892,10 +937,10 @@ static const D3D8MethodFn g_impl[] = {
     dev_GetRenderState,                 /* 51 */
     NULL,                               /* 52 BeginStateBlock */
     NULL,                               /* 53 EndStateBlock */
-    NULL,                               /* 54 ApplyStateBlock */
-    NULL,                               /* 55 CaptureStateBlock */
-    NULL,                               /* 56 DeleteStateBlock */
-    NULL,                               /* 57 CreateStateBlock */
+    dev_ApplyStateBlock,                /* 54 */
+    dev_CaptureStateBlock,              /* 55 */
+    dev_DeleteStateBlock,               /* 56 */
+    dev_CreateStateBlock,               /* 57 */
     NULL,                               /* 58 SetClipStatus */
     NULL,                               /* 59 GetClipStatus */
     NULL,                               /* 60 GetTexture */
@@ -1042,6 +1087,7 @@ void d3d8_device_report(void)
            "present(s)\n", g_dev.scenes, g_dev.clears, g_dev.draws,
            g_dev.presents);
     d3d8_state_report(&g_dev.state);
+    d3d8_sb_report();
     d3d8_surface_report();
     d3d8_resource_report();
     d3d8_drawcall_report();
