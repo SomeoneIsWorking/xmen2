@@ -1,7 +1,7 @@
 ---
 id: 44
 title: The movie player needs GDI: CreateCompatibleDC and the bitmap blit path
-status: open
+status: resolved
 symptom: x86_missing_import: GDI32.dll!CreateCompatibleDC, reached once libCriMovie's decoding thread is running
 tags: pc,native,gdi32,movie,libCriMovie
 created: 2026-08-07
@@ -37,3 +37,12 @@ in (threads, now GDI). Implementing GDI to play a logo movie is a legitimate
 choice and so is declining the movie at the point the engine REQUESTS it -- but
 that decision should be made deliberately rather than by following the imports
 one at a time. See issue #43's option B.
+
+### Note (2026-08-07)
+RESOLVED IN PART, and the framing above was wrong.
+
+Implemented in src/native/gdi32.c: memory DCs, CreateDIBSection with GUEST-ADDRESSABLE pixels (the caller writes through the pointer it is handed, so the memory has to be somewhere the guest can name), SetBkMode/SetTextColor returning the previous value, DeleteObject/DeleteDC, and ExtTextOutA as a LOUD COUNTED IGNORE -- rasterising Windows glyphs needs a font engine this port does not have, so whatever bitmap it was drawing into stays blank, and gdi32_report says how many times that happened.
+
+What the note above got WRONG: these imports are not the movie blitting frames. The DC+DIB set is libIGGfx building a FONT TEXTURE with Windows glyph rendering, and the run walks straight past it -- the game already draws its title screen and UI with its own text. So the "worth deciding first" question (implement GDI for a logo movie, or decline the movie) never had to be answered: the imports were on the ENGINE path, not the movie path.
+
+The run now stops further on, at USER32!DrawTextA, and that is NOT this issue -- it is the Alchemy report box complaining that cg.dll would not load. See issue #45.

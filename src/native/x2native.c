@@ -1578,6 +1578,7 @@ int main(int argc, char **argv)
     shell32_install(); atexit(shell32_report);
     { extern void winmm_report(void); atexit(winmm_report); }
     atexit(guest_thread_report);
+    { extern void gdi32_report(void); atexit(gdi32_report); }
     { extern void dinput_device_report(void), crt_rtti_report(void);
       atexit(dinput_device_report); atexit(crt_rtti_report); }
     atexit(x86_native_export_report);

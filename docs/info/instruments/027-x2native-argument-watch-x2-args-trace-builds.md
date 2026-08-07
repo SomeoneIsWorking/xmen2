@@ -15,4 +15,25 @@ The native counterpart of the hosted X2_WATCH (I019), which the native build lac
 
 ## Known failure modes
 
-(none recorded yet)
+**Fixed 2026-08-07 -- it printed pointers, not the strings behind them.** Most
+arguments worth watching are `char*`, and the watch showed only the hex word, so
+"which library failed to load" was unanswerable from a run that had already
+ended. It now decodes each of ECX and the four stack words as a string when the
+bytes are printable, and validated on the cg.dll stop (C1xx / issue #45): it
+recovered both the library name (`"cg.dll"`) and the report handler's format
+string (`"Library %s could not be loaded..."`) from libIGCore.
+
+Its own first version had this instrument's characteristic failure and is worth
+recording: it bounded the read to mapped module images and live guest-heap
+blocks, which was *safe* but printed NOTHING for the one argument the run was
+about -- a string on the game's own CRT heap, which this host does not track
+block by block. A silently-narrow reader read exactly like "that word is not a
+string". It now probes readability with a `write()` to /dev/null, so the kernel
+answers EFAULT for unmapped memory instead of the process taking SIGSEGV inside
+the diagnostic, and there is no blind spot to be silent about.
+
+Remaining limit, stated: a printable run that fills the 120-byte buffer or runs
+off the end of a mapped page is printed TRUNCATED with a trailing `...`, and
+short printable byte-runs in a struct can still decode as text (e.g. a stack
+out-parameter printed as `"0W"`). Every such line carries the address it came
+from, so a spurious one is identifiable rather than merely plausible.

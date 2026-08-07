@@ -5,6 +5,7 @@
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "guest_heap.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,6 +14,7 @@
 #include <unistd.h>
 #include <sys/uio.h>
 #include <dlfcn.h>
+#include <fcntl.h>
 
 static X86Module *g_head;
 
@@ -541,6 +543,78 @@ static struct ArgsWatch {
 } g_args[ARGS_MAX];
 static int g_args_n = -1, g_args_hits, g_args_cap = 8, g_args_printed;
 
+/*
+ * Decoding a word as a STRING, and the two ways that goes wrong.
+ *
+ * Most of the arguments worth watching are char* -- a library name, a format
+ * string, a class name -- and the watch printed them as hex, so answering
+ * "which library failed to load" meant reading guest memory by hand after the
+ * process was already gone. So the watch decodes them.
+ *
+ * A wild word dereferenced would take the process down inside the diagnostic,
+ * which is the worst possible place for it, so every page is PROBED before it
+ * is read. The probe is a write() of the range to /dev/null: the kernel does
+ * the access check and answers EFAULT instead of raising SIGSEGV, so an
+ * unmapped word costs an errno rather than the run.
+ *
+ * The first version bounded the read to mapped module images and live guest
+ * heap blocks instead, and that was too narrow to answer the question it was
+ * built for: the string it needed to read (a library name held by the game's
+ * OWN CRT heap, which this host does not track block by block) fell outside
+ * both and printed nothing. The probe has no such blind spot -- it asks the
+ * kernel what is readable, which is the only authority on it.
+ *
+ * The second failure is the opposite one: printing 40 bytes of a struct as if
+ * they were text. So it demands the whole prefix be printable, and stops at
+ * the first byte that is not.
+ */
+static int args_probe_readable(uint32_t a, uint32_t n)
+{
+    static int devnull = -2;
+    if (devnull == -2) devnull = open("/dev/null", O_WRONLY);
+    if (devnull < 0) return 0;           /* cannot probe -> will not read */
+    return write(devnull, (const void *)(uintptr_t)a, (size_t)n) == (ssize_t)n;
+}
+
+static int args_string_at(uint32_t a, char *out, size_t cap)
+{
+    uint32_t i, probed = 0;
+
+    if (a < 0x1000u) return 0;
+    for (i = 0; i + 1 < cap; i++) {
+        if (a + i >= probed) {           /* one probe per page, not per byte */
+            uint32_t page = (a + i) & ~0xFFFu;
+            if (!args_probe_readable(page, 0x1000u)) break;
+            probed = page + 0x1000u;
+        }
+        unsigned char c = *(const unsigned char *)(uintptr_t)(a + i);
+        if (c == 0) { out[i] = 0; return i > 0; }
+        if (c == '\n' || c == '\t') { out[i] = ' '; continue; }
+        if (c < 0x20 || c > 0x7e) return 0;
+        out[i] = (char)c;
+    }
+    /* Ran out of buffer, or off the end of what is mapped, with everything so
+       far printable. Shown TRUNCATED rather than dropped: a long format string
+       is exactly the kind of argument this watch exists to read, and dropping
+       it printed nothing at all. The floor keeps three stray printable bytes
+       from being announced as text. */
+    if (i >= 8) { memcpy(out + i - 3, "...", 4); return 1; }
+    return 0;
+}
+
+/* One line per word that decoded, and nothing at all when none did -- so a
+   silent watch means "no argument pointed at a string I could reach", not
+   "there were no strings". */
+static void args_print_strings(const char *tag, const uint32_t *w, int n)
+{
+    char buf[120];
+    int i;
+    for (i = 0; i < n; i++)
+        if (args_string_at(w[i], buf, sizeof buf))
+            fprintf(stderr, "[ARGS]      %s[%d] 0x%08x -> \"%s\"\n",
+                    tag, i, w[i], buf);
+}
+
 static void args_init(void)
 {
     const char *e = getenv("X2_ARGS"), *c = getenv("X2_ARGS_MAX");
@@ -671,6 +745,16 @@ void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
         fprintf(stderr, "[ARGS]      caller-live  ebx %08x  ebp %08x  "
                         "esi %08x  edi %08x\n",
                 C->ebx, C->ebp, C->esi, C->edi);
+        {   /* ecx first: a __thiscall's `this` is not a string, but the four
+               stack words are as likely to be char* as anything else. */
+            uint32_t words[5];
+            words[0] = C->ecx;
+            words[1] = RD32(C->esp + 4);
+            words[2] = RD32(C->esp + 8);
+            words[3] = RD32(C->esp + 12);
+            words[4] = RD32(C->esp + 16);
+            args_print_strings("arg", words, 5);
+        }
         /* X2_PEEK at every watched call, not only at the fault. A dump taken
            once at the end shows the wreckage; what identifies WHICH call broke
            an invariant is the same addresses before and after each one. */
