@@ -1,11 +1,11 @@
 ---
 id: 45
 title: The run stops at USER32!DrawTextA -- which is the Alchemy report box saying cg.dll would not load
-status: open
+status: resolved
 symptom: x86_missing_import: USER32.dll!DrawTextA, from Gap::Core::igWin32ReportBox::doModal
 tags: pc,native,cg,shaders,libIGGfx,user32,root-cause
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-11
 ---
 
 ## What the stop actually is
@@ -79,3 +79,6 @@ DialogBoxIndirectParamA, DrawTextA, EndDialog, GetDlgItem, GetKeyState,
 GetWindowTextA, GetWindowTextLengthA, SendDlgItemMessageA, SendMessageA.
 Eight of the nine are the dialog family above. GetKeyState (libIGDisplay) is
 unrelated and is real input work.
+
+### Resolution (2026-08-11)
+The cg.dll half was fixed by recompiling cg.dll and cgD3D8.dll (commit a461912) -- both map now and take the loader's plain-library branch, since neither exports createLibraryObject. The tail that remained was the SAME report box for a different file, msdia80.dll: issue #46. A DLL that ships in the install and was never lifted must be LOADABLE rather than NULL, which is now a third module category (mapped INERT). The dialog family (DrawTextA and friends) is still unimplemented and still should be -- it was never the cause.

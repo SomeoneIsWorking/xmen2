@@ -1320,6 +1320,117 @@ void imp_KERNEL32_GetModuleHandleA(CPU *C)
     ret_std(C, b, 1);
 }
 
+/*
+ * A DLL that SHIPS IN THE INSTALL but was never recompiled.
+ *
+ * The engine's library loader sweeps the game directory and calls
+ * LoadLibraryA on every DLL it finds (igLibraryList::_instantiateFromPool ->
+ * igWin32LibraryLoader::load, libIGCore 0x10068da0). For each one it then asks
+ * for `createLibraryObject`; a DLL that does not export it is NOT an Alchemy
+ * library and gets a plain library object instead -- cg.dll and cgD3D8.dll go
+ * that way and the engine is content. The ONLY branch that warns is a NULL
+ * handle, and that warning goes to a modal report box, which is where the run
+ * stopped (issue #46, and issue #45 before it).
+ *
+ * msdia80.dll is the case that forced this: it is Microsoft's Debug Interface
+ * Access DLL, shipped beside the game, and NOTHING in the game references it
+ * -- no module in the install contains the string "msdia" at all. It is loaded
+ * because it is in the directory, and for no other reason.
+ *
+ * So the honest answer is neither of the two that were available:
+ *
+ *   - NULL says "there is no such module", which is FALSE: the file is right
+ *     there, and on Windows it loads.
+ *   - A synthetic handle would let GetProcAddress invent functions, which is
+ *     the failure this layer has refused from the start.
+ *
+ * The third answer is to map the real image. The handle is then a real base,
+ * the export table GetProcAddress reads is the real one, and a name that is
+ * not exported still gets a truthful NULL. What is missing is stated rather
+ * than hidden: no body in it was recompiled, its imports are NOT bound and its
+ * DllMain has NOT run, so nothing in it can execute -- and if the guest ever
+ * dispatches into one, x86_dispatch names the module and says exactly that
+ * instead of reporting a missing body the discovery loop would try to seed.
+ *
+ * Eligibility is deliberately narrow: the file must exist in the install
+ * directory. A system DLL this host does not provide (DSOUND.DLL,
+ * dpnhpast.dll) is not there, so it still gets NULL -- which is right, because
+ * the game HANDLES those absences and would call into a handle it was given.
+ */
+#define MAX_INERT 8
+static struct { X86Module m; uint32_t base; char name[64]; } g_inert[MAX_INERT];
+static int g_ninert;
+
+static uint32_t inert_load(const char *leaf)
+{
+    const char *dir = getenv("GAME_PC_DIR");
+    char path[1024];
+    struct stat st;
+    PeImage img;
+    X86Module *m;
+
+    if (!leaf || !*leaf || !dir || !*dir) return 0;
+    if (g_ninert == MAX_INERT) {
+        fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -- no slot left for an "
+                        "unrecompiled module (%d already mapped)\n",
+                leaf, MAX_INERT);
+        return 0;
+    }
+    snprintf(path, sizeof path, "%s/%s", dir, leaf);
+    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return 0;
+    if (pe_map(path, &img) != 0) return 0;         /* pe_map says why */
+    if (!pe_is_dll(img.base)) {
+        fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -- that file is in the "
+                        "install but is not a DLL, so it is not loadable\n",
+                leaf);
+        pe_unmap(&img);
+        return 0;
+    }
+    snprintf(g_inert[g_ninert].name, sizeof g_inert[0].name, "%s", leaf);
+    g_inert[g_ninert].base = img.base;
+    m = &g_inert[g_ninert].m;
+    m->name      = g_inert[g_ninert].name;
+    m->base      = &g_inert[g_ninert].base;
+    m->preferred = img.base;   /* nothing was linked against it, so it is its own */
+    m->size      = img.size;
+    m->inert     = 1;
+    g_ninert++;
+    x86_module_register(m);
+    fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -> 0x%08x. That module is "
+                    "MAPPED BUT NOT RECOMPILED.\n"
+                    "  Its export table is the real one, so GetProcAddress "
+                    "answers truthfully -- but no body in it was translated, "
+                    "its imports are NOT bound\n"
+                    "  and its DllMain has NOT run, so NO CODE IN IT CAN "
+                    "EXECUTE. A call into it stops by name rather than "
+                    "running something.\n"
+                    "  It is loadable because the engine's library sweep asks "
+                    "for every DLL in the install and warns modally about each "
+                    "one it cannot load.\n", leaf, img.base);
+    return img.base;
+}
+
+/* Every module mapped this way, and whether anything ever tried to run code in
+   one. A silent report would be indistinguishable from "none was loaded", so
+   it prints in both directions. */
+void kernel32_inert_report(void)
+{
+    int i;
+    if (!g_ninert) {
+        fprintf(stderr, "kernel32: no unrecompiled install DLL was mapped this "
+                        "run.\n");
+        return;
+    }
+    fprintf(stderr, "kernel32: %d install DLL(s) mapped WITHOUT being "
+                    "recompiled -- loadable, but no code in them can run:\n",
+            g_ninert);
+    for (i = 0; i < g_ninert; i++)
+        fprintf(stderr, "    %-18s at 0x%08x (%u bytes)\n",
+                g_inert[i].name, g_inert[i].base, g_inert[i].m.size);
+    fprintf(stderr, "  Nothing dispatched into one, or the run would have "
+                    "stopped there by name.\n");
+}
+
 void imp_KERNEL32_LoadLibraryA(CPU *C)
 {
     const char *nm = module_leaf(ACS(0));
@@ -1329,6 +1440,8 @@ void imp_KERNEL32_LoadLibraryA(CPU *C)
         uint32_t h = sysmod_handle(nm);
         if (h) { ret_std(C, h, 1); return; }
     }
+    b = inert_load(nm);
+    if (b) { ret_std(C, b, 1); return; }
     /*
      * NULL, not abort -- and the distinction is the whole point.
      *

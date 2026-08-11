@@ -1588,8 +1588,8 @@ int main(int argc, char **argv)
        registry. */
     shell32_install(); atexit(shell32_report);
     advapi32_install(); atexit(advapi32_report);
-    {   extern void kernel32_narrowing_report(void);
-        atexit(kernel32_narrowing_report); }
+    {   extern void kernel32_narrowing_report(void), kernel32_inert_report(void);
+        atexit(kernel32_narrowing_report); atexit(kernel32_inert_report); }
     { extern void winmm_report(void); atexit(winmm_report); }
     atexit(guest_thread_report);
     { extern void gdi32_report(void); atexit(gdi32_report); }

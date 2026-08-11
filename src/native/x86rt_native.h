@@ -44,6 +44,19 @@ typedef struct X86Module {
     const X86Import *imports;
     int             nimports;
     struct X86Module *next;
+    /*
+     * INERT: the image is mapped and its export table is real, but NOTHING in
+     * it was recompiled, its imports are not bound and its DllMain never ran.
+     *
+     * A DLL that ships in the install and is never called (msdia80.dll, issue
+     * #46) still has to be LOADABLE, because the engine's library loader
+     * sweeps the directory and warns modally about each name it cannot load.
+     * Answering NULL for such a module is truthful about the code and a lie
+     * about the file, and the two are distinguishable only if the host keeps
+     * the distinction -- which is what this flag is. A dispatch into an inert
+     * module says so by name instead of reading as a missing body.
+     */
+    int             inert;
 } X86Module;
 
 /* Called from each generated module's constructor. */
