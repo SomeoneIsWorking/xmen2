@@ -99,10 +99,27 @@ static const char *hive_name(uint32_t h)
 
 /* ---- open key handles --------------------------------------------------- */
 
-#define MAX_KEYS 32
 #define KEY_TOK  0x0E000000u
+/* Where the table starts. It GROWS; this is not a limit. */
+#define KEYS_INITIAL 32
 
-static struct { int used; char path[MAX_PATH_]; } g_key[MAX_KEYS];
+/*
+ * The open-key table grows, because Windows has no small limit and the guest
+ * leaks handles.
+ *
+ * It was a fixed 32, and the game opens more than that without closing them:
+ * once the table was full every RegOpenKeyA returned 0, the game gave up on
+ * its settings and quit before it ever reached CreateDevice -- an early exit
+ * that looked intermittent and environmental for a whole session (issue #54)
+ * because it depends on how many keys the stored registry makes it walk.
+ *
+ * The leak is REAL and still reported, once, with the count: a guest that
+ * never calls RegCloseKey is worth knowing about. It is just not this host's
+ * business to enforce a limit the platform does not have.
+ */
+typedef struct { int used; char path[MAX_PATH_]; } KeyRec;
+static KeyRec *g_key;
+static int     g_key_cap;
 
 /*
  * Resolve an HKEY to its path. A predefined hive is its own name; anything
@@ -116,24 +133,45 @@ static const char *key_path(uint32_t h)
 {
     const char *hv = hive_name(h);
     if (hv) return hv;
-    if (h >= KEY_TOK && h < KEY_TOK + MAX_KEYS && g_key[h - KEY_TOK].used)
+    if (h >= KEY_TOK && h < KEY_TOK + (uint32_t)g_key_cap &&
+        g_key[h - KEY_TOK].used)
         return g_key[h - KEY_TOK].path;
     return NULL;
 }
 
 static uint32_t key_open(const char *path)
 {
-    int i;
-    for (i = 0; i < MAX_KEYS; i++)
+    int i, cap;
+    KeyRec *grown;
+
+    for (i = 0; i < g_key_cap; i++)
         if (!g_key[i].used) {
             g_key[i].used = 1;
             snprintf(g_key[i].path, sizeof g_key[i].path, "%s", path);
             return KEY_TOK + (uint32_t)i;
         }
-    fprintf(stderr, "advapi32: all %d registry key handles are open; the guest "
-                    "is leaking them (RegCloseKey is not being called).\n",
-            MAX_KEYS);
-    return 0;
+    cap = g_key_cap ? g_key_cap * 2 : KEYS_INITIAL;
+    grown = (KeyRec *)realloc(g_key, (size_t)cap * sizeof *grown);
+    if (!grown) {
+        fprintf(stderr, "advapi32: out of memory growing the open-key table to "
+                        "%d; RegOpenKey will now FAIL and the guest will treat "
+                        "that as a missing setting.\n", cap);
+        return 0;
+    }
+    memset(grown + g_key_cap, 0,
+           (size_t)(cap - g_key_cap) * sizeof *grown);
+    g_key = grown;
+    if (g_key_cap) {
+        static int told;
+        if (!told++)
+            fprintf(stderr, "advapi32: more than %d registry keys are open at "
+                            "once -- the guest is not calling RegCloseKey. The "
+                            "table GROWS rather than failing (Windows has no "
+                            "such limit); the leak is counted at exit.\n",
+                    g_key_cap);
+    }
+    g_key_cap = cap;
+    return key_open(path);
 }
 
 /* Join a parent path and a subkey, tolerating a NULL or empty subkey (which
@@ -533,7 +571,8 @@ void imp_ADVAPI32_RegEnumValueA(CPU *C)
 void imp_ADVAPI32_RegCloseKey(CPU *C)
 {
     uint32_t h = A(0);
-    if (h >= KEY_TOK && h < KEY_TOK + MAX_KEYS) g_key[h - KEY_TOK].used = 0;
+    if (h >= KEY_TOK && h < KEY_TOK + (uint32_t)g_key_cap)
+        g_key[h - KEY_TOK].used = 0;
     ret_std(C, ERROR_SUCCESS, 1);
 }
 
@@ -556,7 +595,7 @@ void advapi32_report(void)
     int i, n = 0, leaked = 0;
     for (i = 0; i < MAX_VALUES; i++)
         if (g_val[i].used && strcmp(g_val[i].name, KEY_MARK) != 0) n++;
-    for (i = 0; i < MAX_KEYS; i++) if (g_key[i].used) leaked++;
+    for (i = 0; i < g_key_cap; i++) if (g_key[i].used) leaked++;
     store_save();
     if (!g_reads && !g_writes) {
         printf("  advapi32: the registry was never touched.\n");
