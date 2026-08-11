@@ -12,11 +12,15 @@
  * faked cheaply: report a device and the game will create it, set a data format
  * on it, acquire it and poll it every frame.
  *
- * WHAT THIS DOES NOT DO YET, said plainly because a silent zero here is
- * indistinguishable from working input: EnumDevices reports NO devices. The
- * object, its lifetime and the enumeration protocol are real; the device list
- * is empty, so the game starts with no keyboard, mouse or pad. Wiring it to
- * SDL3 is the next step, and src/display/ already has the controller backend.
+ * WHAT IT SERVES: the system keyboard and the system mouse, enumerated and
+ * created for real, sharing src/native/dinput_device.c with the DirectInput 8
+ * stack so the two cannot recognise different sets of devices.
+ *
+ * WHAT IT DOES NOT, said plainly because a silent zero here is
+ * indistinguishable from working input: JOYSTICKS. An enumeration for that
+ * class finds nothing and says so, so igWin32ControllerManager builds no
+ * controllers. src/display/ has the SDL3 controller backend this should be fed
+ * from; see issue #32.
  *
  * Every method that is reached but unimplemented aborts by NAME rather than
  * returning a plausible HRESULT, because DirectInput callers routinely ignore
@@ -25,6 +29,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "dinput_device.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,6 +49,8 @@ static void ret_com(CPU *C, uint32_t hr, int nargs)
 #define S_FALSE       0x00000001u
 #define E_NOINTERFACE 0x80004002u
 #define DIERR_INVALIDPARAM 0x80070057u
+#define DIERR_DEVICENOTREG 0x80040154u
+#define DIERR_OUTOFMEMORY  0x8007000Eu
 
 /* IDirectInput7 vtable, in order. IUnknown first, then IDirectInput, then the
    2/7 extensions -- this is the layout the shipped dinput.dll has, and the
@@ -128,40 +135,185 @@ static const char *devtype_name(uint32_t t)
  * one that enumerates at startup.
  */
 #define ENUM_SEEN 8
-static struct { uint32_t devtype, flags, cb; unsigned long n; } g_enum[ENUM_SEEN];
+static struct { uint32_t devtype, flags, cb; unsigned long n; int reported; }
+    g_enum[ENUM_SEEN];
 static int g_nenum;
 
+/* Record one EnumDevices call and, the first time each distinct one is seen,
+   say what it was ANSWERED with -- the count on its own cannot distinguish an
+   enumeration that offered two devices from one that offered none. */
+static void enum_seen(uint32_t devtype, uint32_t flags, uint32_t cb,
+                      int reported)
+{
+    int i;
+    for (i = 0; i < g_nenum; i++)
+        if (g_enum[i].devtype == devtype && g_enum[i].flags == flags
+            && g_enum[i].cb == cb) { g_enum[i].n++; return; }
+    if (g_nenum == ENUM_SEEN) return;
+    g_enum[g_nenum].devtype = devtype;
+    g_enum[g_nenum].flags = flags;
+    g_enum[g_nenum].cb = cb;
+    g_enum[g_nenum].n = 1;
+    g_enum[g_nenum].reported = reported;
+    g_nenum++;
+    {
+        const char *nm = x86_native_name_at(cb);
+        fprintf(stderr,
+                "DINPUT: EnumDevices(devType=%u %s, flags=0x%x) offered %d "
+                "device(s) to the callback at 0x%08x (%s).\n",
+                devtype, devtype_name(devtype), flags, reported, cb,
+                nm ? nm : "in no body this host can name");
+        if (!reported)
+            fprintf(stderr, "  NONE matched that device class. This host "
+                            "serves the system keyboard and mouse only, so a "
+                            "request for joysticks finds nothing -- and that "
+                            "is a missing subsystem, not an empty machine. "
+                            "See issue #32.\n");
+    }
+}
+
+/*
+ * A DIDEVICEINSTANCEA for one system device, in guest memory.
+ *
+ *   DWORD dwSize; GUID guidInstance; GUID guidProduct; DWORD dwDevType;
+ *   CHAR tszInstanceName[260]; CHAR tszProductName[260]; GUID guidFFDriver;
+ *   WORD wUsagePage; WORD wUsage;                                 -- 580 bytes
+ *
+ * dwSize is what tells DirectInput which VERSION of the structure the caller
+ * expects: 580 is the DirectX 5-and-later form and 556 is the DirectX 3 one.
+ * The game asks for interface version 0x700, so it reads the 580-byte form,
+ * and writing the smaller one would leave it reading two names and a GUID out
+ * of whatever followed the buffer.
+ *
+ * dwDevType's low byte is the type and its second byte the SUBTYPE. A subtype
+ * of zero is not "unspecified" to a caller that switches on it -- the engine's
+ * controller manager does -- so the traditional-mouse and enhanced-keyboard
+ * subtypes are named rather than left at 0.
+ */
+#define DIDEVTYPEKEYBOARD_PCENH     3
+#define DIDEVTYPEMOUSE_TRADITIONAL  1
+
+static uint32_t devinst_for(int kind)
+{
+    static uint32_t buf;
+    const unsigned char *guid = dinput_guid_of(kind);
+    const char *name = kind == DINPUT_DEV_KEYBOARD ? "Keyboard" : "Mouse";
+    uint32_t devtype = kind == DINPUT_DEV_KEYBOARD
+                           ? (uint32_t)DIDEVTYPE_KEYBOARD |
+                             ((uint32_t)DIDEVTYPEKEYBOARD_PCENH << 8)
+                           : (uint32_t)DIDEVTYPE_MOUSE |
+                             ((uint32_t)DIDEVTYPEMOUSE_TRADITIONAL << 8);
+
+    if (!buf) buf = guest_malloc(580u);
+    if (!buf || !guid) return 0;
+    memset((void *)(uintptr_t)buf, 0, 580u);
+    WR32(buf + 0u, 580u);                              /* dwSize */
+    memcpy((void *)(uintptr_t)(buf + 4u), guid, 16);   /* guidInstance */
+    memcpy((void *)(uintptr_t)(buf + 20u), guid, 16);  /* guidProduct */
+    WR32(buf + 36u, devtype);
+    snprintf((char *)(uintptr_t)(buf + 40u), 260, "%s", name);
+    snprintf((char *)(uintptr_t)(buf + 300u), 260, "%s", name);
+    return buf;
+}
+
+/*
+ * EnumDevices, for real: the system keyboard and mouse.
+ *
+ * The callback is GUEST code -- `BOOL CALLBACK(LPCDIDEVICEINSTANCEA, LPVOID)`,
+ * stdcall -- so enumerating is calling back into the game with a structure it
+ * will read, and DIENUM_STOP (0) from it must stop the enumeration. A host
+ * that ignored the return value would keep offering devices to a caller that
+ * had already taken what it wanted.
+ *
+ * Only devices this host can actually SERVE are offered. Reporting a joystick
+ * because SDL sees one would make the game create it, set a data format on it,
+ * acquire it and poll it every frame, and every one of those has to work.
+ */
 static void m_EnumDevices(CPU *C)
 {
     /* (this, dwDevType, lpCallback, pvRef, dwFlags) */
-    uint32_t devtype = A(1), cb = A(2), flags = A(4);
-    int i;
+    uint32_t devtype = A(1), cb = A(2), pvref = A(3), flags = A(4);
+    static const int KINDS[2] = { DINPUT_DEV_KEYBOARD, DINPUT_DEV_MOUSE };
+    unsigned wanted = devtype & 0xffu;
+    int reported = 0, i;
 
-    for (i = 0; i < g_nenum; i++)
-        if (g_enum[i].devtype == devtype && g_enum[i].flags == flags
-            && g_enum[i].cb == cb) { g_enum[i].n++; break; }
-    if (i == g_nenum && g_nenum < ENUM_SEEN) {
-        const char *nm = x86_native_name_at(cb);
-        g_enum[g_nenum].devtype = devtype;
-        g_enum[g_nenum].flags = flags;
-        g_enum[g_nenum].cb = cb;
-        g_enum[g_nenum].n = 1;
-        g_nenum++;
-        fprintf(stderr,
-                "DINPUT: EnumDevices(devType=%u %s, flags=0x%x) is reporting "
-                "ZERO devices.\n"
-                "  The enumeration protocol is real -- the callback at 0x%08x "
-                "(%s) would be invoked once per device --\n"
-                "  but no device list is wired up yet, so the game starts with "
-                "no keyboard, mouse or pad.\n"
-                "  This is a missing subsystem, not an empty machine. See "
-                "src/native/dinput.c and issue #32.\n",
-                devtype, devtype_name(devtype), flags, cb,
-                nm ? nm : "in no body this host can name");
+    if (!cb) { ret_com(C, DIERR_INVALIDPARAM, 4); return; }
+    for (i = 0; i < 2; i++) {
+        unsigned t = KINDS[i] == DINPUT_DEV_KEYBOARD ? DIDEVTYPE_KEYBOARD
+                                                     : DIDEVTYPE_MOUSE;
+        uint32_t inst;
+        CPU K;
+        if (wanted != 0 && wanted != t) continue;      /* 0 means ALL */
+        if (!(inst = devinst_for(KINDS[i]))) continue;
+        K = *C;
+        K.esp -= 8u;
+        WR32(K.esp + 0u, inst);
+        WR32(K.esp + 4u, pvref);
+        x86_guest_call(&K, cb);
+        reported++;
+        if (K.eax == 0u) break;                        /* DIENUM_STOP */
     }
-    /* Enumerating nothing is a successful enumeration: DirectInput returns
-       DI_OK and simply never calls the callback. */
+    enum_seen(devtype, flags, cb, reported);
     ret_com(C, S_OK, 4);
+}
+
+/*
+ * CreateDevice and CreateDeviceEx.
+ *
+ * CreateDeviceEx takes an extra riid between the GUID and the out-pointer and
+ * is otherwise the same call; DirectInput 7 titles use either. Both are served
+ * because the engine uses CreateDeviceEx and the exe uses CreateDevice, and a
+ * host that implemented one would work for one of them and report
+ * DIERR_DEVICENOTREG for the other with nothing to distinguish it from a
+ * device that genuinely is not there.
+ */
+static void create_device(CPU *C, uint32_t guid, uint32_t out, uint32_t outer,
+                          int nargs, const char *what)
+{
+    int kind;
+    uint32_t obj;
+
+    if (!out) { ret_com(C, DIERR_INVALIDPARAM, nargs); return; }
+    WR32(out, 0);
+    if (outer || !guid) { ret_com(C, DIERR_INVALIDPARAM, nargs); return; }
+    if (!(kind = dinput_guid_kind(guid))) {
+        const unsigned char *b = (const unsigned char *)(uintptr_t)guid;
+        fprintf(stderr, "DINPUT: %s for {%02X%02X%02X%02X-...} -- not the "
+                        "system keyboard or mouse, and this host enumerates "
+                        "nothing else, so there is no device to open.\n",
+                what, b[3], b[2], b[1], b[0]);
+        ret_com(C, DIERR_DEVICENOTREG, nargs);
+        return;
+    }
+    obj = dinput_device_new((DInputDeviceKind)kind);
+    if (!obj) { ret_com(C, DIERR_OUTOFMEMORY, nargs); return; }
+    {
+        /* Once per kind: the engine creates each device once and then polls
+           it, and a line per poll would bury everything else. A device that
+           was ENUMERATED and never created is a different bug from one that
+           was created and never read, so both ends are said. */
+        static int told[3];
+        if (!told[kind]++)
+            fprintf(stderr, "DINPUT: %s handed the engine the system %s at "
+                            "0x%08x -- the DirectInput 7 path now serves the "
+                            "same devices as the DirectInput 8 one.\n",
+                    what, kind == DINPUT_DEV_KEYBOARD ? "keyboard" : "mouse",
+                    obj);
+    }
+    WR32(out, obj);
+    ret_com(C, S_OK, nargs);
+}
+
+static void m_CreateDevice(CPU *C)
+{
+    /* (this, rguid, lplpDirectInputDevice, pUnkOuter) */
+    create_device(C, A(1), A(2), A(3), 3, "CreateDevice");
+}
+
+static void m_CreateDeviceEx(CPU *C)
+{
+    /* (this, rguid, riid, ppvOut, pUnkOuter) */
+    create_device(C, A(1), A(3), A(4), 4, "CreateDeviceEx");
 }
 
 void dinput_report(void)
@@ -172,13 +324,13 @@ void dinput_report(void)
                "even asked for.\n");
         return;
     }
-    printf("  dinput: %d distinct EnumDevices call(s), all answered with ZERO "
-           "devices:\n", g_nenum);
+    printf("  dinput: %d distinct EnumDevices call(s):\n", g_nenum);
     for (i = 0; i < g_nenum; i++) {
         const char *nm = x86_native_name_at(g_enum[i].cb);
-        printf("        devType %u %-9s flags 0x%-4x  x%-5lu  callback "
-               "0x%08x %s\n", g_enum[i].devtype, devtype_name(g_enum[i].devtype),
-               g_enum[i].flags, g_enum[i].n, g_enum[i].cb, nm ? nm : "");
+        printf("        devType %u %-9s flags 0x%-4x  x%-5lu  offered %d  "
+               "callback 0x%08x %s\n", g_enum[i].devtype,
+               devtype_name(g_enum[i].devtype), g_enum[i].flags, g_enum[i].n,
+               g_enum[i].reported, g_enum[i].cb, nm ? nm : "");
     }
 }
 
@@ -229,10 +381,10 @@ static void build(void)
 {
     static void (*const impl[VT_COUNT])(CPU *) = {
         m_QueryInterface, m_AddRef, m_Release,
-        NULL,                  /* CreateDevice */
+        m_CreateDevice,
         m_EnumDevices, m_GetDeviceStatus, m_RunControlPanel, m_Initialize,
         NULL,                  /* FindDevice */
-        NULL                   /* CreateDeviceEx */
+        m_CreateDeviceEx
     };
     int k;
     if (g_object) return;

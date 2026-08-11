@@ -52,3 +52,6 @@ Also unproven and cheap to rule out first: the window is HIDDEN in a headless
 run and `WM_ACTIVATE` is never posted (it is `#define`d in win32_sdl.c and
 never sent), so an input manager that gates on activation would also see
 nothing.
+
+### Note (2026-08-11)
+The DirectInput 7 side is now REAL: EnumDevices offers the system keyboard and the system mouse with a proper 580-byte DIDEVICEINSTANCEA, and the engine's own callback -- Gap::Display::igWin32Window::enumerateMouseAndKeyboard at libIGDisplay 0x10005660 -- is invoked once for each and returns. CreateDevice and CreateDeviceEx serve both GUIDs, sharing the device implementation with the DirectInput 8 stack. MEASURED after that change: the engine accepts the enumeration and does NOT then create either device (nothing reports the creation, and the report says 'dinput devices: none was ever created'), and the menu still does not respond to Return, Down or Space. So the empty DI7 list was not the whole story. The next step is to READ enumerateMouseAndKeyboard -- what it does with the instance it is handed, and what it is waiting for before it creates anything -- rather than to guess at another device property.

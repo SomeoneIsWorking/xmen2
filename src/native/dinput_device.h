@@ -21,6 +21,18 @@ typedef enum {
    whole process, because the game caches what it creates. */
 uint32_t dinput_device_new(DInputDeviceKind kind);
 
+/*
+ * The system-device GUIDs, shared by both DirectInput stacks.
+ *
+ * dinput_guid_kind returns DINPUT_DEV_* for the system keyboard or mouse and 0
+ * for anything else; dinput_guid_of hands back the sixteen bytes so an
+ * enumeration can report the same GUID a CreateDevice will accept -- a device
+ * enumerated under one GUID and creatable only under another is a device the
+ * game can see and never open.
+ */
+int dinput_guid_kind(uint32_t guid);
+const unsigned char *dinput_guid_of(int kind);
+
 void dinput_device_report(void);
 
 /*

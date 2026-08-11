@@ -213,6 +213,46 @@ static void say_blind(const char *what)
 }
 
 
+
+/*
+ * The two system-device GUIDs, and the kind they name.
+ *
+ * Both DirectInput 7 (src/native/dinput.c) and DirectInput 8
+ * (src/native/dinput8.c) resolve a GUID to a device, and this is the one place
+ * that mapping exists -- two copies is how the two stacks end up recognising
+ * different sets of devices.
+ *
+ * GUID_SysKeyboard {6F1D2B61-D5A0-11CF-BFC7-444553540000} and GUID_SysMouse
+ * {6F1D2B60-...} differ only in the first dword, which is why all sixteen
+ * bytes are compared: matching on the first four would make every DirectInput
+ * GUID in that family look like a keyboard. Verified against XMen2.exe's own
+ * data at 0x6a15e4 and 0x6a15f4.
+ */
+static const unsigned char GUID_SYS_KEYBOARD[16] = {
+    0x61,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
+    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+};
+static const unsigned char GUID_SYS_MOUSE[16] = {
+    0x60,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
+    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+};
+
+int dinput_guid_kind(uint32_t guid)
+{
+    if (!guid) return 0;
+    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_KEYBOARD, 16) == 0)
+        return DINPUT_DEV_KEYBOARD;
+    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
+        return DINPUT_DEV_MOUSE;
+    return 0;
+}
+
+const unsigned char *dinput_guid_of(int kind)
+{
+    return kind == DINPUT_DEV_KEYBOARD ? GUID_SYS_KEYBOARD
+         : kind == DINPUT_DEV_MOUSE    ? GUID_SYS_MOUSE : NULL;
+}
+
 /* ---- scripted input ----------------------------------------------------- */
 
 /*

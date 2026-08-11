@@ -45,3 +45,6 @@ anything early that reads the environment or a handle whose value differs in a
 background process group.
 
 Not blocking: the foreground run, `./run.sh`, and every screenshot path work.
+
+### Note (2026-08-11)
+CORRECTION -- the determinism claimed above is WRONG, and the correction matters more than the original note. It was drawn from 3 backgrounded runs and 3 foreground ones; a larger sample has backgrounded runs both failing (st2/st3/st4, b1-b3, di7m) and SUCCEEDING (the runs that produced every screenshot in scratch/screenshots -- menu, depth, lit, light, enter, enter2, keys, down, hist, fd). X2_SHOT is not the variable either: di7m set it and exited early anyway. What is actually established: the early exit is INTERMITTENT, it happens before GetDeviceCaps, the guest returns from main and the shutdown report prints in full, and it has not been seen in a foreground run yet -- which after this many samples is suggestive of timing rather than of a clean split. Do not start from 'backgrounding causes it'; start from the ring dump of a failing run against a passing one.
