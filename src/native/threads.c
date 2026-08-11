@@ -136,6 +136,26 @@ typedef struct {
 
 static GuestThread g_thread[MAX_THREADS];
 static unsigned long g_created, g_exited, g_suspends, g_resumes, g_reaped;
+/*
+ * Resumes and suspends that named NO live thread.
+ *
+ * The count that mattered in issue #50 was invisible: a ResumeThread whose
+ * handle matches a thread that has since been reaped simply returns -1, and a
+ * spin loop doing that eighteen million times looks exactly like a spin loop
+ * doing nothing. Counted separately from the resumes that landed, because
+ * "resumed a corpse" and "resumed a running thread" are different bugs.
+ */
+static unsigned long g_resume_unknown, g_suspend_unknown;
+/*
+ * Resumes of a thread that was NOT suspended.
+ *
+ * Win32 defines that as a no-op returning 0, so it cannot fail -- and a loop
+ * doing it is a loop waiting for something else entirely, which is what a
+ * stall looks like from in here. Reported once at a threshold, WITH the thread
+ * it names, because the per-slot counters are lost the moment a reaped slot is
+ * reused and by then the spin is invisible again.
+ */
+static unsigned long g_resume_noop;
 static uint32_t g_next_tid = 1000;
 
 /* The kernel32 handle table owns handles; this is the one hook into it. */
@@ -352,7 +372,7 @@ static void guest_suspend_point(void)
 int guest_thread_suspend(uint32_t handle)
 {
     GuestThread *t = by_handle(handle);
-    if (!t) return -1;
+    if (!t) { g_suspend_unknown++; return -1; }
     if (t->suspended) {
         fprintf(stderr, "threads: SuspendThread on a thread that is already "
                         "suspended. Win32 would COUNT that and require as many "
@@ -393,11 +413,19 @@ int guest_thread_resume(uint32_t handle)
 {
     GuestThread *t = by_handle(handle);
     int was;
-    if (!t) return -1;
+    if (!t) { g_resume_unknown++; return -1; }
     was = t->suspended;
     t->suspended = 0;
     g_resumes++;
     t->n_resume++;
+    if (!was && ++g_resume_noop == 100000ul)
+        fprintf(stderr,
+                "threads: ResumeThread has been called %lu times on tid %u "
+                "(start 0x%08x), which was NOT suspended on any of them -- so "
+                "every one was a no-op.\n"
+                "  Something is spinning on it while waiting for something "
+                "else. Reported once, at the hundred-thousandth.\n",
+                g_resume_noop, t->tid, t->start);
     if (g_resumes == 1) {
         printf("threads: the first ResumeThread -- tid %u, which %s.\n",
                t->tid, was ? "was suspended and will now continue"
@@ -439,12 +467,24 @@ void guest_thread_report(void)
     printf("  threads: %lu created, %lu exited, %lu reaped (handle closed, "
            "stack freed), %d still running; %lu suspend(s), %lu resume(s)\n",
            g_created, g_exited, g_reaped, live, g_suspends, g_resumes);
+    if (g_resume_noop)
+        printf("         %lu resume(s) were of a thread that was NOT suspended "
+               "-- Win32 no-ops those, and a loop doing them is waiting for "
+               "something else.\n", g_resume_noop);
+    if (g_resume_unknown || g_suspend_unknown)
+        printf("         %lu resume(s) and %lu suspend(s) named NO live thread "
+               "-- a handle whose thread had already been reaped. A loop doing "
+               "that is waiting for something that cannot happen.\n",
+               g_resume_unknown, g_suspend_unknown);
     for (i = 0; i < MAX_THREADS; i++) {
         GuestThread *t = &g_thread[i];
-        if (!t->used) continue;
+        /* Reaped slots are printed too, until they are reused: their counters
+           are the only record of where a spin loop's resumes went, and
+           skipping them is what made 9,000,634 of them invisible. */
+        if (!t->used && !t->tid) continue;
         printf("         tid %u  start 0x%08x  %lu suspend(s) %lu resume(s)%s%s\n",
                t->tid, t->start, t->n_suspend, t->n_resume,
-               t->finished ? "  EXITED" : "",
+               !t->used ? "  REAPED" : t->finished ? "  EXITED" : "",
                t->suspended ? "  SUSPENDED NOW -- if the run stalled, this is a "
                               "thread waiting for a ResumeThread that never came"
                             : "");
