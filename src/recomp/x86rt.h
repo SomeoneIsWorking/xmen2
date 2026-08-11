@@ -386,6 +386,90 @@ static inline uint32_t x86_eflags(const CPU *C)
     return f;
 }
 
+/* ---- rotates ----
+ *
+ * ROL/ROR/RCL/RCR. They are here rather than inline in the generated code
+ * because RCL and RCR rotate a quantity one bit WIDER than the operand -- the
+ * carry flag is part of it -- and that is not expressible as a shift pair.
+ * MSVC's 64-bit division helpers (__allrem, __aulldiv) halve a 64-bit value
+ * with `shr edx,1; rcr eax,1`, so this is on the path of any guest that
+ * divides a long long.
+ *
+ * Flags: a rotate writes ONLY CF and OF; every other flag keeps its value,
+ * which is why these take and return a whole EFLAGS word instead of feeding
+ * the lazy-flag model. A masked count of zero changes nothing AT ALL,
+ * including the flags -- that is architectural, not an optimisation.
+ *
+ * OF is architecturally UNDEFINED for a count other than 1. This host defines
+ * it by the count-1 rule in every case, which is a choice; it is stated here
+ * rather than left for a reader to discover, and no guest may rely on it
+ * because no real CPU guarantees it either.
+ */
+#define X86_ROL 0
+#define X86_ROR 1
+#define X86_RCL 2
+#define X86_RCR 3
+
+static inline uint32_t x86_rotate(uint32_t v, uint32_t cnt, int w, int kind,
+                                  uint32_t *fl)
+{
+    unsigned bits = (unsigned)w * 8u;
+    uint32_t mask = x86_mask(w);
+    uint32_t a = v & mask, r;
+    uint32_t cf = *fl & 1u, cf_in = cf, of;
+    unsigned n = cnt & 31u;              /* 386 and later mask the count */
+
+    /*
+     * A count of zero AFTER the 5-bit mask does nothing at all -- not even to
+     * the flags. A count that is a nonzero MULTIPLE of the width is a
+     * different case and the difference is measurable: `rol al, 8` leaves the
+     * value alone but still writes CF from the result, because the SDM's CF
+     * assignment sits outside the rotate loop. A model that returned early on
+     * "the value will not change" got that wrong on the host CPU.
+     *
+     * The through-carry forms rotate a quantity one bit wider, so their count
+     * is taken modulo width+1 -- and there a modded count of zero DOES leave
+     * the flags alone, because RCL/RCR assign CF inside the loop.
+     */
+    if (!n) return a;
+    if (kind == X86_RCL || kind == X86_RCR) {
+        n %= bits + 1u;
+        if (!n) return a;
+    } else {
+        n %= bits;
+    }
+
+    if (kind == X86_ROL) {
+        r = n ? (((a << n) | (a >> (bits - n))) & mask) : a;
+        cf = r & 1u;
+        of = ((r >> (bits - 1)) & 1u) ^ cf;
+    } else if (kind == X86_ROR) {
+        r = n ? (((a >> n) | (a << (bits - n))) & mask) : a;
+        cf = (r >> (bits - 1)) & 1u;
+        of = ((r >> (bits - 1)) & 1u) ^ ((r >> (bits - 2)) & 1u);
+    } else {
+        unsigned i;
+        r = a;
+        for (i = 0; i < n; i++) {
+            if (kind == X86_RCL) {
+                uint32_t top = (r >> (bits - 1)) & 1u;
+                r = ((r << 1) | cf) & mask;
+                cf = top;
+            } else {
+                uint32_t bot = r & 1u;
+                r = ((r >> 1) | (cf << (bits - 1))) & mask;
+                cf = bot;
+            }
+        }
+        of = (kind == X86_RCL)
+                 ? (((r >> (bits - 1)) & 1u) ^ cf)
+                 /* RCR's OF is taken from the operand BEFORE the rotate. */
+                 : (((a >> (bits - 1)) & 1u) ^ cf_in);
+    }
+    *fl = (*fl & ~((1u << 0) | (1u << 11))) | cf | (of << 11);
+    return r;
+}
+
 /* ---- x87 ----
  * A modelled register stack. `long double` is 80-bit on x86 with GCC, matching
  * the hardware's internal precision, so intermediate results round the same way

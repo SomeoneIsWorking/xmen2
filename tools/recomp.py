@@ -977,6 +977,18 @@ def emit_instruction(ins, ctx):
                 "  if (_c) SETFLAGS_SHIFT(C, _a, _c, _r, %d);" % w,
                 "  " + d.write("_r") + " }"]
 
+    if m in ("ROL", "ROR", "RCL", "RCR"):
+        # The count is an imm8 or CL even when the destination is 32-bit, and
+        # the D0/D1 encodings have no count operand at all -- it is 1.
+        d = O(0)
+        cnt = O(1).read() if len(ops) > 1 else "1U"
+        return [A,
+                "{ uint32_t _f = x86_eflags(C), _r;",
+                "  _r = x86_rotate(%s, %s, %d, X86_%s, &_f);"
+                % (d.read(), cnt, d.width, m),
+                "  SETFLAGS(C, FK_EXPLICIT, _f, 0U, 0U, 4);",
+                "  " + d.write("_r") + " }"]
+
     if m in ("SHLD", "SHRD"):
         d, s2 = O(0), O(1)
         cnt = O(2).read() if len(ops) > 2 else "(C->ecx & 31)"

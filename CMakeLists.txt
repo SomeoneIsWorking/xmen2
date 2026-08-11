@@ -72,6 +72,14 @@ add_executable(test_mmx tests/test_mmx.c)
 target_include_directories(test_mmx PRIVATE src/recomp)
 add_test(NAME mmx COMMAND test_mmx)
 
+# The rotate model, against the host CPU's own ROL/ROR/RCL/RCR
+# (tests/test_rotate.c). RCL and RCR rotate through the carry -- a quantity one
+# bit wider than the operand -- which is not a shift pair, and MSVC's 64-bit
+# division helpers use RCR, so any guest that divides a long long reaches it.
+add_executable(test_rotate tests/test_rotate.c)
+target_include_directories(test_rotate PRIVATE src/recomp)
+add_test(NAME rotate COMMAND test_rotate)
+
 # The translator, tested as a unit.
 #
 # tools/recomp.py had no tests, and it is the most defect-prone thing here: a

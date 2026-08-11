@@ -126,6 +126,25 @@ if [ "${SKIP_BULK:-0}" != "1" ]; then
             fi
         else
             echo "== bulk: $m -- no relocation seeding: $(tail -1 "$RL")"
+            # A /FIXED image (XMen2.exe) has no relocation table, so the
+            # complete enumeration is not available and the pointers have to be
+            # recognised BY VALUE instead -- see tools/seed_data_ptrs.py, which
+            # refuses on any image where seed_relocs.py applies. Without it the
+            # exe produced exactly one new indirect-call target per round, each
+            # costing a Ghidra re-analysis, a re-emit and a relink.
+            D=$ROOT/scratch/recomp/$m.dataptr
+            DL=$ROOT/scratch/recomp/$m.dataptr.log
+            if python3 tools/seed_data_ptrs.py "$J" -o "$D" >"$DL" 2>&1; then
+                n=$(sed -n 's/.*CANDIDATE function starts: //p' "$DL")
+                if [ "${n:-0}" -gt 0 ]; then
+                    echo "== bulk: $m has $n data-pointer candidate(s) to seed"
+                    tools/ghidra_export.sh "$m" --seed "$D" 2>&1 |
+                        grep -E '^ADD:|functions,' | tail -2
+                    changed=1
+                fi
+            else
+                echo "== bulk: $m -- no data-pointer seeding: $(tail -1 "$DL")"
+            fi
         fi
         S=$ROOT/scratch/recomp/$m.codeimm
         n=$(python3 tools/seed_code_imms.py "$J" -o "$S" \

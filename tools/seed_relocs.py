@@ -34,7 +34,9 @@ WHAT THIS CANNOT SEE, so that a clean run is not mistaken for a complete one:
 
   * a module with no relocation directory -- an EXE linked /FIXED. This
     REFUSES rather than reporting nothing found, because "searched nothing"
-    and "found nothing" must not look alike.
+    and "found nothing" must not look alike. `seed_data_ptrs.py` covers that
+    case, recognising the same pointers BY VALUE -- a heuristic where this is
+    an enumeration, which is why it refuses whenever this tool applies.
   * a target computed at run time (base + index, an RVA table, a switch's own
     jump table) -- there is no absolute address in the file to relocate, so
     the linker never recorded one.
@@ -193,8 +195,9 @@ def main(argv):
         sys.exit("seed_relocs: %s has NO relocation directory -- it is linked "
                  "/FIXED, so there is no table of absolute addresses to read "
                  "and this tool searched NOTHING. That is not the same as "
-                 "finding nothing: use seed_code_imms.py and the runtime loop "
-                 "for this module." % program)
+                 "finding nothing: use seed_data_ptrs.py (which recognises the "
+                 "same pointers by value) and seed_code_imms.py for this "
+                 "module." % program)
     if nhl == 0:
         sys.exit("seed_relocs: %s has a relocation directory with 0 HIGHLOW "
                  "entries, which cannot be right for a 32-bit image. Refusing "

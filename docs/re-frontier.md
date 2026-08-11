@@ -190,7 +190,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe-run
 - evidence: C077; issue #8; scratch/logs/xbox_run_bounds.log (0 ABI violations, 0 empty-stub calls, the NULL indirect call gone)
 - where: 
-- gap: NO LONGER the blocker, and the register file is clean: 94088 checked calls all restore ebx/esi/edi/ebp, and none of the 168 empty stubs is called (C077, issue #8). Still DEBT only in that the fallback path exists. The PC native run is past the frame limiter as of C140/issue #35 (FILD qword was translated as a 32-bit load, so the engine's 64-bit clock wrapped at 2.147 s) and now stops on a NULL dereference in XMen2.exe FUN_005beca0, inside scene traversal -- the discovery loop converged in three rounds, so that stop is a real defect and not a missing body.
+- gap: NO LONGER the blocker, and the register file is clean: 94088 checked calls all restore ebx/esi/edi/ebp, and none of the 168 empty stubs is called (C077, issue #8). Still DEBT only in that the fallback path exists. The PC native --d3d8 run is now past every translator and discovery stop: rotates (ROL/ROR/RCL/RCR) are translated and checked against the host CPU's own instructions (tests/test_rotate.c, 5377 checks -- RCR is on the path of any guest that divides a long long, via MSVC's __allrem), and XMen2.exe's indirect-call targets are bulk-seeded from data pointers (tools/seed_data_ptrs.py), so the discovery loop converges in ONE round instead of grinding out one function per round. A 240-second run presents 3769 frames and 380289 draws with no stop of any kind -- it ended on the timeout, not on a defect.
 - notes: 
 
 ### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage

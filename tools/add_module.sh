@@ -77,6 +77,22 @@ for MOD in "$@"; do
     else
         echo "   no relocation-derived seeding for $MOD:"
         sed 's/^/     /' "$ROOT/scratch/recomp/$MOD.reloc.log"
+        # /FIXED: no table, so the pointers are recognised BY VALUE instead.
+        # seed_data_ptrs.py refuses on any image seed_relocs.py can read, so
+        # the two never both run and the exact source is always preferred.
+        D=$ROOT/scratch/recomp/$MOD.dataptr
+        if python3 tools/seed_data_ptrs.py "$J" -o "$D" \
+                > "$ROOT/scratch/recomp/$MOD.dataptr.log" 2>&1; then
+            n=$(sed -n 's/.*CANDIDATE function starts: //p' \
+                "$ROOT/scratch/recomp/$MOD.dataptr.log")
+            echo "   $n data-pointer candidate(s)"
+            if [ "${n:-0}" -gt 0 ]; then
+                tools/ghidra_export.sh "$MOD" --seed "$D" 2>&1 | grep -E '^ADD:|functions,' | tail -2
+            fi
+        else
+            echo "   no data-pointer seeding for $MOD:"
+            sed 's/^/     /' "$ROOT/scratch/recomp/$MOD.dataptr.log"
+        fi
     fi
 
     S=$ROOT/scratch/recomp/$MOD.codeimm
