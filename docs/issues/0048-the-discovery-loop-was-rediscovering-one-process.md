@@ -77,3 +77,6 @@ pipe; under `set -o pipefail` the writer's SIGPIPE becomes the pipeline's
 status. The guard against a step that did nothing fired on the step that did
 the most, and nothing in the message hinted at volume. I040, fixed, with a
 20k-line case in `ghidra_export.sh --selftest` that the old code fails.
+
+### Note (2026-08-11)
+VERIFIED tree-wide: one native_discover.sh run with relocation seeding in the bulk stage seeded all 20 exported modules and round 1 then found NO missing constructor targets anywhere -- the run now stops on a missing import (KERNEL32!SuspendThread) rather than a missing body. XMen2.exe behaved as documented: no relocation directory (/FIXED), so the tool refused for it and said it had searched nothing.
