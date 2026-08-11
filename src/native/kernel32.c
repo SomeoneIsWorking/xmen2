@@ -781,13 +781,38 @@ void imp_KERNEL32_ResumeThread(CPU *C)
     ret_std(C, (uint32_t)was, 1);
 }
 
+/*
+ * SuspendThread, which libCriMovie's decoder uses on ITSELF: its loop
+ * (libCriMovie 0x10002630) sets its own priority and then suspends, waiting to
+ * be resumed when another frame is wanted. That is a park, not a kill, and it
+ * is why this can be exact rather than approximate -- see the note in
+ * src/native/threads.c.
+ *
+ * The main thread is refused BY NAME. Win32 lets a thread suspend the process's
+ * first thread and this host cannot: the main thread is the process, nothing
+ * models it as a GuestThread, and suspending it would stop the run with no
+ * report. Returning a fabricated success would be worse -- the caller would
+ * believe it had stopped something that kept running.
+ */
 void imp_KERNEL32_SuspendThread(CPU *C)
 {
-    /* Not implemented, and not stubbed to 0: suspending a thread that keeps
-       running is the kind of lie that surfaces as corruption in whatever the
-       caller was protecting. Nothing in this game has reached it. */
-    (void)C;
-    x86_missing_import("KERNEL32.dll", "SuspendThread");
+    int was;
+    if (!guest_thread_is_thread(A(0))) {
+        fprintf(stderr, "kernel32: SuspendThread(0x%x) -- that handle names no "
+                        "guest thread. If it is the MAIN thread, this host has "
+                        "no way to suspend it (it is the process) and will not "
+                        "pretend to have done so.\n", A(0));
+        g_last_error = 6u;                        /* ERROR_INVALID_HANDLE */
+        ret_std(C, 0xFFFFFFFFu, 1);
+        return;
+    }
+    was = guest_thread_suspend(A(0));
+    if (was < 0) {
+        g_last_error = 6u;
+        ret_std(C, 0xFFFFFFFFu, 1);
+        return;
+    }
+    ret_std(C, (uint32_t)was, 1);
 }
 
 /*

@@ -1094,6 +1094,13 @@ void x86_peek_report(void)
  */
 void x86_diag_dump(void)
 {
+    /*
+     * The THREAD table, on every stop path. It is registered with atexit()
+     * too, and atexit does not run on abort() -- so at exactly the stops worth
+     * reading (a stall, a missing import, a fault) the one fact that explains
+     * a stalled run, "tid N is suspended and nobody resumed it", was silent.
+     */
+    { extern void guest_thread_report(void); guest_thread_report(); }
     x86_peek_report();
 #ifdef X86_NATIVE_REACHED
     x86_reached_report();
@@ -1350,6 +1357,36 @@ void x86_missing_import(const char *mod, const char *sym)
     fprintf(stderr, "x86_missing_import: %s!%s is not implemented natively.\n"
                     "  This is the native import surface -- the work that "
                     "replaces Wine.\n", mod, sym);
+    /*
+     * WHO asked for it. The import's name says what is missing; it does not say
+     * which subsystem wanted it, and that is what decides whether the answer is
+     * an implementation or a different design. Every emitted call site pushes
+     * its return address before the stub runs, so the word at ESP names the
+     * caller -- and it is checked against the module list rather than trusted,
+     * because a wrong stack makes the return address wrong too.
+     *
+     * Reading it took a run with a trace build and a manual grep through the
+     * boundary ring, on a ring the OTHER guest threads were also writing to.
+     */
+    if (g_cpu_current) {
+        uint32_t ra = RD32(g_cpu_current->esp);
+        const char *nm = x86_native_name_at(ra);
+        X86Module *rm = x86_module_for(ra);
+        if (nm)
+            fprintf(stderr, "  asked for by 0x%08x -- %s\n", ra, nm);
+        else if (rm)
+            fprintf(stderr, "  asked for by 0x%08x, inside %s (guest 0x%08x) "
+                            "but not at a body this host can name\n",
+                    ra, rm->name, rm->preferred + (ra - *rm->base));
+        else
+            fprintf(stderr, "  the word at the guest ESP is 0x%08x, which is in "
+                            "no module -- so the caller cannot be named and the "
+                            "STACK is suspect too\n", ra);
+    } else {
+        fprintf(stderr, "  no guest CPU is current, so the caller cannot be "
+                        "named -- this was reached from host code, not from a "
+                        "recompiled body\n");
+    }
     x86_diag_dump();
     abort();
 }

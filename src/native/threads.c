@@ -68,8 +68,20 @@ void guest_lock(void)
 
 void guest_unlock(void) { pthread_mutex_unlock(&g_lock); }
 
+/* Defined with the threads below; declared here because guest_blocking_end is
+   where every blocked thread comes back through. */
+static void guest_suspend_point(void);
+
 void guest_blocking_begin(void) { guest_unlock(); }
-void guest_blocking_end(void)   { guest_lock(); }
+void guest_blocking_end(void)
+{
+    guest_lock();
+    /* A thread that was SUSPENDED while it sat in a wait must not carry on
+       executing guest code just because the wait ended. This is the one place
+       every blocked thread comes back through, which is why the check lives
+       here rather than at each caller. */
+    guest_suspend_point();
+}
 
 /* The condition variable every guest wait uses, so a signal wakes whoever is
    waiting whatever they are waiting FOR. One condvar rather than one per
@@ -117,7 +129,7 @@ typedef struct {
 } GuestThread;
 
 static GuestThread g_thread[MAX_THREADS];
-static unsigned long g_created, g_exited;
+static unsigned long g_created, g_exited, g_suspends, g_resumes;
 static uint32_t g_next_tid = 1000;
 
 /* The kernel32 handle table owns handles; this is the one hook into it. */
@@ -257,6 +269,68 @@ int guest_thread_join(uint32_t handle, uint32_t ms)
     return t->finished;
 }
 
+/*
+ * SuspendThread, and why it can be exact here rather than approximate.
+ *
+ * Win32's guarantee is that once it returns, the target is not executing guest
+ * code. Under the global lock that is already true of every thread but the one
+ * running: a suspend is therefore just a flag, provided a parked thread CHECKS
+ * it before it starts executing again -- which is what guest_suspend_point()
+ * below is, called wherever a thread re-takes the lock.
+ *
+ * The case libCriMovie actually needs is a thread suspending ITSELF. Its
+ * decoder loop (libCriMovie 0x10002630) sets its own priority and then calls
+ * SuspendThread on its own handle, waiting to be resumed by whoever wants
+ * another frame -- a park, not a kill. Self-suspend therefore has to BLOCK
+ * here, releasing the lock so that the thread which will resume it can run.
+ *
+ * Nothing nests: Win32 counts suspends, this host has 0 or 1, and a second
+ * suspend of an already-suspended thread is refused by name rather than
+ * counted wrong -- a wrong count means a ResumeThread that should have woken a
+ * thread silently does not.
+ */
+static void guest_suspend_point(void)
+{
+    GuestThread *t = g_self;
+    if (!t) return;                      /* the main thread; see below */
+    while (t->suspended) guest_cond_wait_ms(0xFFFFFFFFu);
+}
+
+int guest_thread_suspend(uint32_t handle)
+{
+    GuestThread *t = by_handle(handle);
+    if (!t) return -1;
+    if (t->suspended) {
+        fprintf(stderr, "threads: SuspendThread on a thread that is already "
+                        "suspended. Win32 would COUNT that and require as many "
+                        "resumes; this host has one flag, so it is refused "
+                        "rather than miscounted -- a resume that then failed to "
+                        "wake it would be silent.\n");
+        return -1;
+    }
+    t->suspended = 1;
+    g_suspends++;
+    /* Announced once, with WHICH thread and whether it parked itself: the
+       difference between "a thread was suspended" and "the thread suspended
+       itself and is waiting for someone to resume it" is the difference
+       between a control operation and a rendezvous, and a run that deadlocks
+       afterwards is read completely differently depending on which it was. */
+    if (g_suspends == 1)
+        printf("threads: the first SuspendThread -- tid %u %s. Under this "
+               "host's global lock a suspend is exact rather than approximate: "
+               "every thread but the running one is already parked, and a "
+               "parked thread re-checks the flag before it executes again.\n",
+               t->tid, t == g_self ? "suspended ITSELF and is now waiting to be "
+                                     "resumed" : "was suspended by another thread");
+    fflush(stdout);
+    if (t == g_self) {
+        /* Blocks, releasing the lock: nothing could resume us otherwise. */
+        guest_cond_broadcast();
+        guest_suspend_point();
+    }
+    return 0;                            /* the previous count */
+}
+
 /* ResumeThread: 1 if it was suspended and now is not, 0 if it was already
    running. Win32 returns the PREVIOUS suspend count, and this host only ever
    has 0 or 1 of them -- nothing nests suspends here, and a nested one would be
@@ -268,6 +342,13 @@ int guest_thread_resume(uint32_t handle)
     if (!t) return -1;
     was = t->suspended;
     t->suspended = 0;
+    g_resumes++;
+    if (g_resumes == 1) {
+        printf("threads: the first ResumeThread -- tid %u, which %s.\n",
+               t->tid, was ? "was suspended and will now continue"
+                           : "was NOT suspended, so this changed nothing");
+        fflush(stdout);
+    }
     guest_cond_broadcast();
     return was;
 }
@@ -300,8 +381,18 @@ void guest_thread_report(void)
                "the main thread.\n");
         return;
     }
-    printf("  threads: %lu created, %lu exited, %d still running\n",
-           g_created, g_exited, live);
+    printf("  threads: %lu created, %lu exited, %d still running; "
+           "%lu suspend(s), %lu resume(s)\n",
+           g_created, g_exited, live, g_suspends, g_resumes);
+    for (i = 0; i < MAX_THREADS; i++)
+        if (g_thread[i].used && g_thread[i].suspended)
+            printf("         tid %u is SUSPENDED and was never resumed -- if "
+                   "the run stalled, this is a thread waiting for a "
+                   "ResumeThread that never came\n", g_thread[i].tid);
+    /* Flushed, because this now runs from x86_diag_dump on the ABORT paths too
+       and an unflushed stdout buffer is discarded by abort() -- the report was
+       written, and vanished, on exactly the stall it exists to explain. */
+    fflush(stdout);
     if (!g_contended)
         printf("         the guest lock was NEVER contended -- so the threads "
                "created here have not actually overlapped, and nothing in this "
@@ -309,5 +400,6 @@ void guest_thread_report(void)
     else
         printf("         the guest lock was contended %lu time(s)\n",
                g_contended);
+    fflush(stdout);
     (void)g_held;
 }

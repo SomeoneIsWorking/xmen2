@@ -54,6 +54,16 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
 /* -1 if the handle names no guest thread, else the previous suspended flag. */
 int guest_thread_resume(uint32_t handle);
 
+/*
+ * SuspendThread. -1 if the handle names no guest thread, or if that thread is
+ * already suspended (Win32 would COUNT the second suspend; this host has one
+ * flag and refuses rather than miscounting). Otherwise the previous count, 0.
+ *
+ * Suspending the CALLING thread BLOCKS until something resumes it, which is
+ * the case the movie player needs: its decoder parks itself between frames.
+ */
+int guest_thread_suspend(uint32_t handle);
+
 /* Whether a handle names a live guest thread, and its exit code once it is
    not. Used by WaitForSingleObject (a thread handle signals when it exits) and
    by GetExitCodeThread. */
