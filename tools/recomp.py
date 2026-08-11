@@ -991,6 +991,92 @@ def emit_instruction(ins, ctx):
                 "  if (_c) SETFLAGS_SHIFT(C, _a, _c, _r, 4);",
                 "  " + d.write("_r") + " }"]
 
+    # MMX lane arithmetic. The semantics live in x86rt.h as per-lane C; this
+    # is only the operand plumbing, because that is where the differences
+    # between these instructions are NOT -- every one of them is
+    # `dst = f(dst, src)` over MM registers, with the source allowed to be a
+    # 64-bit memory operand and, for the shifts, an immediate count.
+    #
+    # A mnemonic that is NOT in this table still raises Unsupported and is
+    # reported by name, so adding half the family cannot silently leave the
+    # other half looking translated.
+    MMX_BIN = {
+        "PADDB": "mmx_paddb", "PADDW": "mmx_paddw", "PADDD": "mmx_paddd",
+        "PSUBB": "mmx_psubb", "PSUBW": "mmx_psubw", "PSUBD": "mmx_psubd",
+        "PADDUSB": "mmx_paddusb", "PADDUSW": "mmx_paddusw",
+        "PSUBUSB": "mmx_psubusb", "PSUBUSW": "mmx_psubusw",
+        "PADDSB": "mmx_paddsb", "PADDSW": "mmx_paddsw",
+        "PSUBSB": "mmx_psubsb", "PSUBSW": "mmx_psubsw",
+        "PMULLW": "mmx_pmullw", "PMULHW": "mmx_pmulhw",
+        "PMULHUW": "mmx_pmulhuw", "PMADDWD": "mmx_pmaddwd",
+        "PAVGB": "mmx_pavgb", "PAVGW": "mmx_pavgw",
+        "PCMPEQB": "mmx_pcmpeqb", "PCMPEQW": "mmx_pcmpeqw",
+        "PCMPEQD": "mmx_pcmpeqd", "PCMPGTB": "mmx_pcmpgtb",
+        "PCMPGTW": "mmx_pcmpgtw", "PCMPGTD": "mmx_pcmpgtd",
+        "PMINUB": "mmx_pminub", "PMAXUB": "mmx_pmaxub",
+        "PMINSW": "mmx_pminsw", "PMAXSW": "mmx_pmaxsw",
+        "PACKUSWB": "mmx_packuswb", "PACKSSWB": "mmx_packsswb",
+        "PACKSSDW": "mmx_packssdw",
+        "PUNPCKLBW": "mmx_punpcklbw", "PUNPCKHBW": "mmx_punpckhbw",
+        "PUNPCKLWD": "mmx_punpcklwd", "PUNPCKHWD": "mmx_punpckhwd",
+        "PUNPCKLDQ": "mmx_punpckldq", "PUNPCKHDQ": "mmx_punpckhdq",
+    }
+    MMX_LOGIC = {"PAND": "&", "POR": "|", "PXOR": "^"}
+    MMX_SHIFT = {
+        "PSLLW": "mmx_psllw", "PSLLD": "mmx_pslld", "PSLLQ": "mmx_psllq",
+        "PSRLW": "mmx_psrlw", "PSRLD": "mmx_psrld", "PSRLQ": "mmx_psrlq",
+        "PSRAW": "mmx_psraw", "PSRAD": "mmx_psrad",
+    }
+
+    def mmx_reg(tok):
+        mm = re.fullmatch(r"MM(\d)", tok.strip().upper())
+        return int(mm.group(1)) if mm else None
+
+    def mmx_src(tok):
+        """The 64-bit value of an MMX source: a register or a memory operand.
+        An XMM operand is NOT accepted -- these are the 64-bit forms, and the
+        128-bit ones would need the other register file and a second lane
+        pair."""
+        r = mmx_reg(tok)
+        if r is not None:
+            return "C->mm[%d]" % r
+        o = parse_operand(tok)
+        if o.kind == "mem":
+            return "RD64(%s)" % o.addr()
+        raise Unsupported("MMX source operand %r" % tok.strip())
+
+    if m in MMX_BIN or m in MMX_LOGIC or m in MMX_SHIFT:
+        if len(ops) != 2:
+            raise Unsupported("%s with %d operand(s)" % (m, len(ops)))
+        d = mmx_reg(ops[0])
+        if d is None:
+            raise Unsupported("%s into %r, which is not an MMX register"
+                              % (m, ops[0].strip()))
+        if m in MMX_LOGIC:
+            return [A, "C->mm[%d] %s= %s;" % (d, MMX_LOGIC[m], mmx_src(ops[1]))]
+        if m in MMX_SHIFT:
+            # The count may be an immediate; everything else is a 64-bit value.
+            o = parse_operand(ops[1])
+            cnt = ("%dULL" % o.val) if o.kind == "imm" else mmx_src(ops[1])
+            return [A, "C->mm[%d] = %s(C->mm[%d], %s);"
+                    % (d, MMX_SHIFT[m], d, cnt)]
+        return [A, "C->mm[%d] = %s(C->mm[%d], %s);"
+                % (d, MMX_BIN[m], d, mmx_src(ops[1]))]
+
+    # PEXTRW r32, MMn, imm8 -- one 16-bit lane into a general register, zero
+    # extended. It is SSE1 rather than MMX, but it operates on the MMX file.
+    if m == "PEXTRW":
+        if len(ops) != 3:
+            raise Unsupported("PEXTRW with %d operand(s)" % len(ops))
+        src = mmx_reg(ops[1])
+        sel = parse_operand(ops[2])
+        if src is None or sel.kind != "imm":
+            raise Unsupported("PEXTRW %s,%s,%s"
+                              % (ops[0].strip(), ops[1].strip(), ops[2].strip()))
+        d = parse_operand(ops[0])
+        return [A, d.write("(uint32_t)((C->mm[%d] >> %d) & 0xFFFFU)"
+                           % (src, (sel.val & 3) * 16))]
+
     # MMX: registers modelled separately from the x87 stack (see x86rt.h).
     if m in ("MOVQ", "MOVD", "EMMS", "FEMMS"):
         if m in ("EMMS", "FEMMS"):

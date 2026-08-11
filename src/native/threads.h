@@ -73,6 +73,14 @@ int  guest_thread_finished(uint32_t handle, uint32_t *exit_code);
 /* Block until that thread exits, or until `ms` elapses. 1 if it exited. */
 int  guest_thread_join(uint32_t handle, uint32_t ms);
 
+/*
+ * CloseHandle on a thread handle. kernel32 REUSES handle numbers, so a record
+ * that kept its handle for ever would be matched by a later thread's handle --
+ * see the note in threads.c, and issue #50. A finished thread's stack and TIB
+ * are returned to the guest heap here.
+ */
+void guest_thread_handle_closed(uint32_t handle);
+
 /* The current thread's exit, from _endthreadex. Does not return. */
 void guest_thread_exit(uint32_t code);
 

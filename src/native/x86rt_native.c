@@ -534,6 +534,7 @@ static void ring_note(const char *what, uint32_t addr, uint32_t base,
 #define ARGS_SITES 24
 static struct ArgsWatch {
     uint32_t      ep;
+    char          mod[24];               /* "" = any module (see args_init) */
     unsigned long calls;                 /* entries seen for this ep */
     int           nsites;
     int           lost;                  /* distinct sites past ARGS_SITES */
@@ -623,9 +624,37 @@ static void args_init(void)
     if (c && *c) g_args_cap = (int)strtol(c, NULL, 0);
     if (!e || !*e) return;
     snprintf(buf, sizeof buf, "%s", e);
+    /*
+     * "0x10068da0" or "libCriMovie:0x100026f0".
+     *
+     * The qualifier is not decoration. Every libIG*.dll and libCriMovie is
+     * LINKED for 0x10000000, so a bare guest address names a function in each
+     * of nineteen modules at once -- and the watch printed libIGSg's
+     * igMatrixObjectPool::getClassMeta for a run that was asking about
+     * libCriMovie's movie init, with nothing in the output to say so. An
+     * unqualified address still matches any module, because that is what the
+     * exe's addresses need and what every existing use expects.
+     */
     for (p = strtok_r(buf, ",", &save); p && g_args_n < ARGS_MAX;
-         p = strtok_r(NULL, ",", &save))
-        g_args[g_args_n++].ep = (uint32_t)strtoul(p, NULL, 0);
+         p = strtok_r(NULL, ",", &save)) {
+        char *colon = strchr(p, ':');
+        struct ArgsWatch *w = &g_args[g_args_n++];
+        memset(w->mod, 0, sizeof w->mod);
+        if (colon) {
+            *colon = 0;
+            snprintf(w->mod, sizeof w->mod, "%s", p);
+            p = colon + 1;
+        }
+        w->ep = (uint32_t)strtoul(p, NULL, 0);
+    }
+    {   int i;
+        for (i = 0; i < g_args_n; i++)
+            fprintf(stderr, "[ARGS]   0x%08x in %s\n", g_args[i].ep,
+                    g_args[i].mod[0] ? g_args[i].mod
+                                     : "ANY module (every libIG*.dll is linked "
+                                       "for 0x10000000, so this may match "
+                                       "several -- qualify it as mod:0xADDR)");
+    }
     fprintf(stderr, "[ARGS] watching %d entry point(s); ECX and 4 stack words "
                     "per call. The real argument count is unknown, so trailing "
                     "words may be the caller's frame rather than arguments.\n"
@@ -635,11 +664,34 @@ static void args_init(void)
             g_args_n, g_args_cap);
 }
 
-static struct ArgsWatch *args_watched(uint32_t ep)
+/* The module a MAPPED base belongs to, or NULL. */
+static const char *args_module_of(uint32_t base)
+{
+    X86Module *m;
+    for (m = x86_modules(); m; m = m->next)
+        if (*m->base == base) return m->name;
+    return NULL;
+}
+
+/* A qualifier matches the module's file name up to its extension, so
+   "libCriMovie" matches "libCriMovie.dll" and "XMen2" matches "XMen2.exe". */
+static int args_mod_matches(const char *want, const char *have)
+{
+    size_t n;
+    if (!want || !*want) return 1;
+    if (!have) return 0;
+    n = strlen(want);
+    return strncasecmp(have, want, n) == 0 && (have[n] == 0 || have[n] == '.');
+}
+
+static struct ArgsWatch *args_watched(uint32_t ep, uint32_t base)
 {
     int i;
     if (g_args_n < 0) args_init();
-    for (i = 0; i < g_args_n; i++) if (g_args[i].ep == ep) return &g_args[i];
+    for (i = 0; i < g_args_n; i++)
+        if (g_args[i].ep == ep
+            && args_mod_matches(g_args[i].mod, args_module_of(base)))
+            return &g_args[i];
     return NULL;
 }
 
@@ -717,7 +769,7 @@ void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
 {
     struct ArgsWatch *w;
     ring_note("enter", ep, base, C->esp, C->esp, RD32(C->esp));
-    if ((w = args_watched(ep)) != NULL) {
+    if ((w = args_watched(ep, base)) != NULL) {
         /* Resolve through the module that HAS this base, never by assuming a
            preferred address: the exe is linked for 0x400000, not 0x10000000,
            and hardcoding one is how a report names the wrong function. */
@@ -765,7 +817,7 @@ void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
 void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
 {
     ring_note("exit", ep, base, C->esp, C->esp, 0);
-    struct ArgsWatch *w = args_watched(ep);
+    struct ArgsWatch *w = args_watched(ep, base);
     if (w && w->shown) {
         /* edx as well as eax: a 64-bit return comes back in EDX:EAX, and a
            watch that prints only the low half reports a saturating or
@@ -1101,6 +1153,10 @@ void x86_diag_dump(void)
      * a stalled run, "tid N is suspended and nobody resumed it", was silent.
      */
     { extern void guest_thread_report(void); guest_thread_report(); }
+    /* The multimedia timers, for the same reason: a stall whose cause is "the
+       callback that would have ended this wait has never run" is invisible
+       unless the fire count is printed where the stall is. */
+    { extern void winmm_report(void); winmm_report(); }
     x86_peek_report();
 #ifdef X86_NATIVE_REACHED
     x86_reached_report();

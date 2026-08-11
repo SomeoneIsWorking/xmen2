@@ -1,7 +1,7 @@
 ---
 id: 49
 title: The movie player's threads rendezvous, and one global lock serialises the rendezvous away
-status: investigating
+status: resolved
 symptom: The run stalls after the intro movie starts: WaitForSingleObject(INFINITE) on an unnamed event waits 30 seconds and nothing signals it, while a libCriMovie thread sits in a SuspendThread it called on itself
 tags: pc,native,threads,libCriMovie,movie,architecture,synchronisation
 created: 2026-08-11
@@ -79,3 +79,6 @@ treated as diagnosed.
 3. Decline CriMovie where the movie is REQUESTED (issue #42, option 3). The
    engine has a path for a missing movie, and the port does not need FMV to
    reach gameplay.
+
+### Resolution (2026-08-11)
+NOT the threading model. The rendezvous works: the cause was a stale thread-handle association (issue #50) -- kernel32 reuses handle numbers and threads.c kept the old one, so every ResumeThread aimed at a new decoder woke the previous movie's dead thread. With that fixed, six movies play through in sequence at ~50 presents/s and the run continues into the exe's own code. Three things were built while chasing this and all three are keepers: the multimedia timers are pumped from inside a blocking WAIT (a thread blocked there reaches no other pump point, so a wait for something a timer callback produces waited forever), the wait sleeps until the next timer is DUE rather than a flat second (which alone took the movie from 1.3 to 40 fps), and PulseEvent is implemented -- exactly, including the manual-reset case as a pulse GENERATION so it releases every thread waiting at that instant and no later one.

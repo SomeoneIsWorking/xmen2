@@ -90,6 +90,19 @@ static void *heartbeat_thread(void *arg)
         cross = x86_crossings();
         have_dev = d3d8_device_counts(&scenes, &presents, &clears, &draws);
         gpu_draw_counts(&gpu_draws, &gpu_refused);
+        {   /* Multimedia timers: a stall whose cause is "the callback that
+               would have ended this wait never ran" looks exactly like any
+               other stall until these are on the line. */
+            extern void winmm_counts(unsigned long *, unsigned long *, int *);
+            static unsigned long p_fire, p_pump;
+            unsigned long fire, pump; int live;
+            winmm_counts(&fire, &pump, &live);
+            if (fire || pump || live)
+                fprintf(stderr, "[HB]           winmm %lu fire(s) (+%lu), "
+                                "%lu pump(s) (+%lu), %d timer(s) live\n",
+                        fire, fire - p_fire, pump, pump - p_pump, live);
+            p_fire = fire; p_pump = pump;
+        }
 
         if (first) {
             first = 0;

@@ -64,6 +64,14 @@ target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE)
 target_link_libraries(test_vformat PRIVATE m)
 add_test(NAME vformat COMMAND test_vformat)
 
+# The MMX lane model, against the host CPU's own SSE2 (tests/test_mmx.c).
+# libCriMovie's video decoder is 1106 MMX instructions and a wrong lane
+# produces a picture -- just not the right one -- so the oracle is silicon
+# rather than a second reading of the manual. Header-only, like test_flags.
+add_executable(test_mmx tests/test_mmx.c)
+target_include_directories(test_mmx PRIVATE src/recomp)
+add_test(NAME mmx COMMAND test_mmx)
+
 # The translator, tested as a unit.
 #
 # tools/recomp.py had no tests, and it is the most defect-prone thing here: a

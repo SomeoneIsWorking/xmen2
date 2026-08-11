@@ -80,6 +80,14 @@ typedef struct {
     char  dirpath[1024];
     void *map;
     size_t maplen;
+    /* How many guest threads are blocked on this object right now, and how
+       many times it has been PULSED. Both exist for PulseEvent, which needs
+       them exactly: a pulse with no waiter is LOST on Windows, and a pulse on
+       a manual-reset event releases every thread waiting AT THAT INSTANT and
+       no later one -- which is a generation number, not a flag. A waiter
+       records the count it entered on and is released when it changes. */
+    int   waiters;
+    unsigned long pulses;
     /* Synchronisation objects. Nothing here creates a guest thread yet, so the
        state is kept honestly and never actually blocks -- see the wait. */
     int32_t  count;      /* semaphore count, or event signalled, or mutex depth */
@@ -611,6 +619,57 @@ void imp_KERNEL32_SetEvent(CPU *C)
     ret_std(C, 1, 1);
 }
 
+/*
+ * PulseEvent -- release whoever is waiting NOW, and leave the event unset.
+ *
+ * libCriMovie's timer callback uses it to hand a frame to the main thread
+ * (issue #49). It is the one Win32 primitive whose whole meaning is "a signal
+ * with no memory": a pulse that nobody is waiting for is LOST, which is why
+ * Microsoft's own documentation calls it unreliable.
+ *
+ * An AUTO-RESET event is exact here: signal it and wake the waiters, and the
+ * one that gets there consumes it (sync_try_take clears a non-manual event),
+ * so the event ends unsignalled either way. With no waiter, doing nothing IS
+ * the behaviour -- and the two cases are distinguishable only because the wait
+ * loop counts waiters, which is why it does.
+ *
+ * A MANUAL-RESET event -- which is the kind libCriMovie uses -- means "release
+ * EVERY thread waiting at this instant, then reset". That is a GENERATION, not
+ * a flag: the pulse count is bumped and every thread already in the wait loop
+ * sees it change, while a thread that arrives afterwards snapshots the new
+ * value and is not released. The event is never left signalled, which is the
+ * whole difference between a pulse and SetEvent followed by ResetEvent.
+ *
+ * The first version REFUSED this case by name rather than approximating it,
+ * and the refusal is what identified the event as manual-reset in one run.
+ */
+void imp_KERNEL32_PulseEvent(CPU *C)
+{
+    Handle *hh = h_get(A(0), H_EVENT);
+    static unsigned long lost;
+    if (hh->waiters > 0) {
+        if (hh->manual) {
+            /* Every thread waiting at this instant, and no later one. The
+               event itself stays UNSIGNALLED, which is what distinguishes a
+               pulse from SetEvent+ResetEvent and what the next waiter must
+               see. */
+            hh->pulses++;
+        } else {
+            /* Auto-reset: exactly one waiter is released, and it consumes the
+               signal on the way out (sync_try_take clears a non-manual
+               event), so the event ends unsignalled either way. */
+            hh->count = 1;
+        }
+        guest_cond_broadcast();
+    } else if (++lost == 1) {
+        fprintf(stderr, "kernel32: PulseEvent on \"%s\" with NOBODY waiting -- "
+                        "the pulse is lost, which is what Windows does too. "
+                        "Reported once; if a handshake stalls, this is where "
+                        "the missing wakeup went.\n", hh->name);
+    }
+    ret_std(C, 1, 1);
+}
+
 void imp_KERNEL32_ResetEvent(CPU *C)
 {
     h_get(A(0), H_EVENT)->count = 0;
@@ -676,7 +735,8 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C)
 {
     Handle *hh = h_get(A(0), 0);
     uint32_t ms = A(1);
-    unsigned spins = 0;
+    unsigned long pulse0;
+    struct timespec t0;
 
     if (sync_try_take(hh)) { ret_std(C, WAIT_OBJECT_0, 2); return; }
     if (ms == 0) { ret_std(C, WAIT_TIMEOUT, 2); return; }
@@ -693,11 +753,61 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C)
      * this" is still possible -- one guest thread deadlocking against another
      * has to be reported, not hung on.
      */
+    hh->waiters++;
+    pulse0 = hh->pulses;
+    /*
+     * The deadline is measured on the CLOCK, not counted in loop turns.
+     *
+     * It used to be `if (++spins == 30)`, which was 30 seconds only while each
+     * turn slept a flat second. Once the sleep became "until the next timer is
+     * due" a turn could be under a millisecond, and the watchdog would abort a
+     * perfectly healthy wait in a few dozen of them -- a diagnostic that fires
+     * on the thing it exists to rule out.
+     */
+    clock_gettime(CLOCK_MONOTONIC, &t0);
     for (;;) {
-        guest_cond_wait_ms(ms == 0xFFFFFFFFu ? 1000u : ms);
-        if (sync_try_take(hh)) { ret_std(C, WAIT_OBJECT_0, 2); return; }
-        if (ms != 0xFFFFFFFFu) { ret_std(C, WAIT_TIMEOUT, 2); return; }
-        if (++spins == 30) {
+        /*
+         * Sleep until the next TIMER is due, not for a flat second.
+         *
+         * This thread is the one that will pump that timer (see below), so the
+         * wait's granularity IS the timer's resolution: a flat 1000 ms slice
+         * made every movie frame cost a second, and the guest sat blocked at
+         * 1.3 frames per second while looking perfectly healthy.
+         */
+        guest_cond_wait_ms(winmm_next_due_ms(ms == 0xFFFFFFFFu ? 1000u : ms));
+        /*
+         * A PUMP POINT, and the one the movie player needs (issue #49).
+         *
+         * The multimedia timers have no thread of their own, so they run when
+         * the guest next reaches a place it is not executing -- a clock read
+         * or a sleep. A thread blocked HERE reaches neither, so a wait for
+         * something a timer callback would produce waited forever: libCriMovie
+         * sets a 1 ms timer, its decoder parks itself, and the main thread
+         * waits on an event nothing can now signal. Every ingredient existed
+         * and the fire never happened.
+         *
+         * The callback runs on THIS thread, inside the wait. Windows runs it
+         * on a timer thread; that difference is the same one Sleep already
+         * carries and is stated in winmm.c, not a new one introduced here.
+         */
+        winmm_timers_pump();
+        if (sync_try_take(hh)) { hh->waiters--; ret_std(C, WAIT_OBJECT_0, 2); return; }
+        /* Released by a PULSE: the object is not signalled and must not be
+           taken -- being let go IS the whole event. Only a thread that was
+           already waiting when the pulse happened sees the change, which is
+           exactly who Win32 releases. */
+        if (hh->pulses != pulse0) {
+            hh->waiters--;
+            ret_std(C, WAIT_OBJECT_0, 2);
+            return;
+        }
+        if (ms != 0xFFFFFFFFu) { hh->waiters--; ret_std(C, WAIT_TIMEOUT, 2); return; }
+        {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if (now.tv_sec - t0.tv_sec < 30) continue;
+        }
+        {
             fprintf(stderr, "kernel32: WaitForSingleObject(INFINITE) on %s "
                             "\"%s\" has waited 30 seconds and nothing has "
                             "signalled it.\n"
@@ -1048,6 +1158,10 @@ void imp_KERNEL32_CloseHandle(CPU *C)
        unmapped here: on Windows a view outlives the mapping handle, and the
        guest unmaps it explicitly. */
     if (hh->kind == H_MAP && hh->fd >= 0) close(hh->fd);
+    /* A thread handle names a GuestThread, and this index is about to be
+       handed to something else -- so the thread must stop answering to it.
+       See guest_thread_handle_closed() for what it cost not to. */
+    if (hh->kind == H_THREAD) guest_thread_handle_closed(A(0));
     hh->kind = 0;
     ret_std(C, 1, 1);
 }

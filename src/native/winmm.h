@@ -14,6 +14,16 @@
  */
 void winmm_timers_pump(void);
 
+/*
+ * Milliseconds until the earliest timer is due, capped at `cap`; 0 if one is
+ * due now, `cap` if there are no timers. A blocking wait uses this as its
+ * timeout, because the waiting thread is the one that will fire the callback
+ * that ends the wait -- see winmm.c.
+ */
+uint32_t winmm_next_due_ms(uint32_t cap);
+
+void winmm_counts(unsigned long *fires, unsigned long *pumps, int *live);
+
 void winmm_report(void);
 
 #endif /* X2_WINMM_H */

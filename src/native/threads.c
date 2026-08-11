@@ -126,10 +126,16 @@ typedef struct {
     uint32_t  stack_base, stack_bytes;
     uint32_t  tib;
     uint32_t  exit_code;
+    /* Per-thread, because the totals were misleading in exactly the way that
+       matters: a run with 3,000,045 resumes and 43 suspends reads as a wildly
+       active suspend/resume protocol, and is in fact one thread being resumed
+       in a spin while ANOTHER sits parked and is never named. */
+    unsigned long n_suspend, n_resume;
+    int       reaped;            /* its handle was closed and its memory freed */
 } GuestThread;
 
 static GuestThread g_thread[MAX_THREADS];
-static unsigned long g_created, g_exited, g_suspends, g_resumes;
+static unsigned long g_created, g_exited, g_suspends, g_resumes, g_reaped;
 static uint32_t g_next_tid = 1000;
 
 /* The kernel32 handle table owns handles; this is the one hook into it. */
@@ -239,6 +245,43 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
     return t->handle;
 }
 
+/*
+ * A CLOSED handle stops naming this thread -- and that is a correctness rule,
+ * not bookkeeping.
+ *
+ * kernel32 hands out small table indices and CloseHandle frees the slot, so
+ * the NEXT _beginthreadex gets the same number. The GuestThread record kept
+ * its handle for ever, so by_handle() -- scanning in creation order -- matched
+ * the DEAD thread first. The intro movie ends, the game starts the next one,
+ * and every ResumeThread aimed at the new decoder woke a thread that had
+ * already exited: the new one stayed CREATE_SUSPENDED for the rest of the run
+ * while the main thread waited for a frame it could never produce. It looked
+ * exactly like a deadlock in the movie player, and 9,000,634 resumes on a dead
+ * thread was the only visible trace.
+ *
+ * The stack and TIB go back to the guest heap here too. They are 1 MB each and
+ * three threads are created per movie, so holding them until exit is a leak
+ * with a very short fuse.
+ */
+void guest_thread_handle_closed(uint32_t handle)
+{
+    int i;
+    for (i = 0; i < MAX_THREADS; i++) {
+        GuestThread *t = &g_thread[i];
+        if (!t->used || t->handle != handle) continue;
+        t->handle = 0;
+        if (t->finished) {
+            if (t->stack_base) guest_free(t->stack_base);
+            if (t->tib) guest_free(t->tib);
+            t->stack_base = t->tib = 0;
+            t->reaped = 1;
+            t->used = 0;              /* the slot is free for the next thread */
+            g_reaped++;
+        }
+        return;
+    }
+}
+
 static GuestThread *by_handle(uint32_t h)
 {
     int i;
@@ -310,6 +353,7 @@ int guest_thread_suspend(uint32_t handle)
     }
     t->suspended = 1;
     g_suspends++;
+    t->n_suspend++;
     /* Announced once, with WHICH thread and whether it parked itself: the
        difference between "a thread was suspended" and "the thread suspended
        itself and is waiting for someone to resume it" is the difference
@@ -343,6 +387,7 @@ int guest_thread_resume(uint32_t handle)
     was = t->suspended;
     t->suspended = 0;
     g_resumes++;
+    t->n_resume++;
     if (g_resumes == 1) {
         printf("threads: the first ResumeThread -- tid %u, which %s.\n",
                t->tid, was ? "was suspended and will now continue"
@@ -381,14 +426,19 @@ void guest_thread_report(void)
                "the main thread.\n");
         return;
     }
-    printf("  threads: %lu created, %lu exited, %d still running; "
-           "%lu suspend(s), %lu resume(s)\n",
-           g_created, g_exited, live, g_suspends, g_resumes);
-    for (i = 0; i < MAX_THREADS; i++)
-        if (g_thread[i].used && g_thread[i].suspended)
-            printf("         tid %u is SUSPENDED and was never resumed -- if "
-                   "the run stalled, this is a thread waiting for a "
-                   "ResumeThread that never came\n", g_thread[i].tid);
+    printf("  threads: %lu created, %lu exited, %lu reaped (handle closed, "
+           "stack freed), %d still running; %lu suspend(s), %lu resume(s)\n",
+           g_created, g_exited, g_reaped, live, g_suspends, g_resumes);
+    for (i = 0; i < MAX_THREADS; i++) {
+        GuestThread *t = &g_thread[i];
+        if (!t->used) continue;
+        printf("         tid %u  start 0x%08x  %lu suspend(s) %lu resume(s)%s%s\n",
+               t->tid, t->start, t->n_suspend, t->n_resume,
+               t->finished ? "  EXITED" : "",
+               t->suspended ? "  SUSPENDED NOW -- if the run stalled, this is a "
+                              "thread waiting for a ResumeThread that never came"
+                            : "");
+    }
     /* Flushed, because this now runs from x86_diag_dump on the ABORT paths too
        and an unflushed stdout buffer is discarded by abort() -- the report was
        written, and vanished, on exactly the stall it exists to explain. */

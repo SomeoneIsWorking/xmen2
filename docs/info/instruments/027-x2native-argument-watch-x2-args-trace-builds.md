@@ -37,3 +37,24 @@ off the end of a mapped page is printed TRUNCATED with a trailing `...`, and
 short printable byte-runs in a struct can still decode as text (e.g. a stack
 out-parameter printed as `"0W"`). Every such line carries the address it came
 from, so a spurious one is identifiable rather than merely plausible.
+
+**Two more, found 2026-08-11 chasing the movie stall (issue #50).**
+
+*An entry with no matching exit does NOT mean the body is still running.* It
+usually means the body returned through a TAIL CALL, so `X86_EXIT_FN` fired
+with the CALLEE's entry point and the watch never saw the exit. libCriMovie's
+functions do this constantly. Reading that silence as "still inside" produced
+three wrong diagnoses in a row -- `FUN_10002a70 never returns`, then
+`FUN_10002d60 never returns`, both false -- before `gdb -p` on the live process
+settled where the threads actually were. This is a NATIVE ELF: a real debugger
+works on it, and reaching for one earlier beats another round of static
+reading.
+
+*A bare address was ambiguous across modules.* Every `libIG*.dll`, `libCriMovie`
+and `libMovie` is linked for 0x10000000, so `X2_ARGS=0x100026f0` matched
+libIGSg's `igMatrixObjectPool::getClassMeta` for a run that was asking about
+libCriMovie's movie init -- and nothing in the output said which module it had
+picked. FIXED: the watch takes `module:0xADDR` (`libCriMovie:0x100026f0`), and
+prints at startup which module each watched address will match, or says
+explicitly that an unqualified one will match ANY.
+

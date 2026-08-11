@@ -546,6 +546,199 @@ static inline int32_t x87_to_int(const CPU *C, long double v)
    without an intervening EMMS is malformed; EMMS is therefore a no-op here. If
    a module is ever found interleaving them, this must become an error. */
 
+/*
+ * MMX, as lane arithmetic over a uint64_t.
+ *
+ * libCriMovie's video decoder is an ordinary MMX IDCT and motion-compensation
+ * kernel -- 1106 instructions across 13 functions, all of them lane ops on the
+ * eight 64-bit registers. Each one is written out per lane rather than reached
+ * for with a host intrinsic: the host is x86-64 and WOULD have the instruction,
+ * but the guest's semantics (which way a shift saturates, whether a pack is
+ * signed or unsigned, what a shift count above the lane width does) are the
+ * thing being reproduced, and an intrinsic that differs in one of those is a
+ * silent difference in decoded video.
+ *
+ * The counts are the guest's: a shift count is the WHOLE 64-bit source, and a
+ * count at or above the lane width produces 0 for a logical shift and a copy
+ * of the sign bit for an arithmetic one. That is not an edge case here -- MPEG
+ * IDCT code shifts by variable amounts.
+ */
+#define MMX_LANES(w) (64 / (w))
+
+static inline uint64_t mmx_lane_get(uint64_t v, int i, int w)
+{
+    return (v >> (i * w)) & (w == 64 ? ~0ULL : ((1ULL << w) - 1ULL));
+}
+static inline uint64_t mmx_lane_put(uint64_t acc, int i, int w, uint64_t v)
+{
+    uint64_t mask = (w == 64 ? ~0ULL : ((1ULL << w) - 1ULL));
+    return (acc & ~(mask << (i * w))) | ((v & mask) << (i * w));
+}
+
+/* Signed view of a lane, sign-extended to int64_t. */
+static inline int64_t mmx_lane_s(uint64_t v, int i, int w)
+{
+    uint64_t u = mmx_lane_get(v, i, w);
+    uint64_t sign = 1ULL << (w - 1);
+    return (int64_t)((u ^ sign) - sign);
+}
+
+#define MMX_BINOP(name, w, expr)                                        \
+static inline uint64_t name(uint64_t a, uint64_t b)                     \
+{                                                                       \
+    uint64_t r = 0; int i;                                              \
+    for (i = 0; i < MMX_LANES(w); i++) {                                \
+        int64_t x = mmx_lane_s(a, i, w), y = mmx_lane_s(b, i, w);       \
+        uint64_t ux = mmx_lane_get(a, i, w), uy = mmx_lane_get(b, i, w);\
+        (void)x; (void)y; (void)ux; (void)uy;                           \
+        r = mmx_lane_put(r, i, w, (uint64_t)(expr));                    \
+    }                                                                   \
+    return r;                                                           \
+}
+
+MMX_BINOP(mmx_paddb,  8,  ux + uy)
+MMX_BINOP(mmx_paddw, 16,  ux + uy)
+MMX_BINOP(mmx_paddd, 32,  ux + uy)
+MMX_BINOP(mmx_psubb,  8,  ux - uy)
+MMX_BINOP(mmx_psubw, 16,  ux - uy)
+MMX_BINOP(mmx_psubd, 32,  ux - uy)
+/* Unsigned saturating: clamp at the lane's maximum, never wrap. */
+MMX_BINOP(mmx_paddusb, 8,  (ux + uy) > 0xFFULL   ? 0xFFULL   : ux + uy)
+MMX_BINOP(mmx_paddusw, 16, (ux + uy) > 0xFFFFULL ? 0xFFFFULL : ux + uy)
+MMX_BINOP(mmx_psubusb, 8,  ux > uy ? ux - uy : 0)
+MMX_BINOP(mmx_psubusw, 16, ux > uy ? ux - uy : 0)
+/* Signed saturating. */
+MMX_BINOP(mmx_paddsb,  8,  (x + y) >  127 ?  127 : (x + y) <  -128 ?  -128 : x + y)
+MMX_BINOP(mmx_paddsw, 16,  (x + y) >  32767 ? 32767 : (x + y) < -32768 ? -32768 : x + y)
+MMX_BINOP(mmx_psubsb,  8,  (x - y) >  127 ?  127 : (x - y) <  -128 ?  -128 : x - y)
+MMX_BINOP(mmx_psubsw, 16,  (x - y) >  32767 ? 32767 : (x - y) < -32768 ? -32768 : x - y)
+/* PMULLW keeps the low half of a 16x16 product, PMULHW the high half; the
+   product is SIGNED in both (PMULHUW is the unsigned one and is separate). */
+MMX_BINOP(mmx_pmullw, 16, (uint64_t)(x * y))
+MMX_BINOP(mmx_pmulhw, 16, (uint64_t)((x * y) >> 16))
+MMX_BINOP(mmx_pmulhuw, 16, (uint64_t)((ux * uy) >> 16))
+/* Rounding average, which is why the +1 is there and not a detail. */
+MMX_BINOP(mmx_pavgb,  8,  (ux + uy + 1) >> 1)
+MMX_BINOP(mmx_pavgw, 16,  (ux + uy + 1) >> 1)
+/* Compare-equal / greater-than produce an all-ones or all-zero MASK per lane. */
+MMX_BINOP(mmx_pcmpeqb,  8,  ux == uy ? 0xFFULL : 0)
+MMX_BINOP(mmx_pcmpeqw, 16,  ux == uy ? 0xFFFFULL : 0)
+MMX_BINOP(mmx_pcmpeqd, 32,  ux == uy ? 0xFFFFFFFFULL : 0)
+MMX_BINOP(mmx_pcmpgtb,  8,  x > y ? 0xFFULL : 0)
+MMX_BINOP(mmx_pcmpgtw, 16,  x > y ? 0xFFFFULL : 0)
+MMX_BINOP(mmx_pcmpgtd, 32,  x > y ? 0xFFFFFFFFULL : 0)
+MMX_BINOP(mmx_pminub,  8,  ux < uy ? ux : uy)
+MMX_BINOP(mmx_pmaxub,  8,  ux > uy ? ux : uy)
+MMX_BINOP(mmx_pminsw, 16,  x < y ? (uint64_t)x : (uint64_t)y)
+MMX_BINOP(mmx_pmaxsw, 16,  x > y ? (uint64_t)x : (uint64_t)y)
+
+/* Shifts. The count is the WHOLE source operand, and a count at or past the
+   lane width is defined: zero for a logical shift, the sign bit replicated for
+   an arithmetic one. Getting that wrong shows up only on the rare large
+   count, which is the worst kind of difference to chase. */
+#define MMX_SHIFT(name, w, kind)                                        \
+static inline uint64_t name(uint64_t a, uint64_t cnt)                   \
+{                                                                       \
+    uint64_t r = 0; int i;                                              \
+    for (i = 0; i < MMX_LANES(w); i++) {                                \
+        uint64_t u = mmx_lane_get(a, i, w);                             \
+        int64_t  sv = mmx_lane_s(a, i, w);                              \
+        uint64_t o;                                                     \
+        if (kind == 2) o = (uint64_t)(cnt >= (uint64_t)(w) ? (sv < 0 ? -1 : 0) \
+                                                          : (sv >> cnt));     \
+        else if (kind == 1) o = cnt >= (uint64_t)(w) ? 0 : (u >> cnt);   \
+        else               o = cnt >= (uint64_t)(w) ? 0 : (u << cnt);   \
+        (void)sv;                                                       \
+        r = mmx_lane_put(r, i, w, o);                                   \
+    }                                                                   \
+    return r;                                                           \
+}
+MMX_SHIFT(mmx_psllw, 16, 0)
+MMX_SHIFT(mmx_pslld, 32, 0)
+MMX_SHIFT(mmx_psrlw, 16, 1)
+MMX_SHIFT(mmx_psrld, 32, 1)
+MMX_SHIFT(mmx_psraw, 16, 2)
+MMX_SHIFT(mmx_psrad, 32, 2)
+static inline uint64_t mmx_psllq(uint64_t a, uint64_t c)
+{ return c >= 64 ? 0 : (a << c); }
+static inline uint64_t mmx_psrlq(uint64_t a, uint64_t c)
+{ return c >= 64 ? 0 : (a >> c); }
+
+/* Packs: the DESTINATION supplies the low half of the result and the source
+   the high half, and both saturate. PACKUSWB saturates to UNSIGNED bytes even
+   though its input is signed words -- which is exactly what makes it the last
+   step of an IDCT, and exactly what an unsigned-in reading would get wrong. */
+static inline uint64_t mmx_packuswb(uint64_t d, uint64_t s)
+{
+    uint64_t r = 0; int i;
+    for (i = 0; i < 4; i++) {
+        int64_t v = mmx_lane_s(d, i, 16);
+        r = mmx_lane_put(r, i, 8, (uint64_t)(v < 0 ? 0 : v > 255 ? 255 : v));
+    }
+    for (i = 0; i < 4; i++) {
+        int64_t v = mmx_lane_s(s, i, 16);
+        r = mmx_lane_put(r, 4 + i, 8, (uint64_t)(v < 0 ? 0 : v > 255 ? 255 : v));
+    }
+    return r;
+}
+static inline uint64_t mmx_packsswb(uint64_t d, uint64_t s)
+{
+    uint64_t r = 0; int i;
+    for (i = 0; i < 4; i++) {
+        int64_t v = mmx_lane_s(d, i, 16);
+        r = mmx_lane_put(r, i, 8, (uint64_t)(v < -128 ? -128 : v > 127 ? 127 : v));
+    }
+    for (i = 0; i < 4; i++) {
+        int64_t v = mmx_lane_s(s, i, 16);
+        r = mmx_lane_put(r, 4 + i, 8, (uint64_t)(v < -128 ? -128 : v > 127 ? 127 : v));
+    }
+    return r;
+}
+static inline uint64_t mmx_packssdw(uint64_t d, uint64_t s)
+{
+    uint64_t r = 0; int i;
+    for (i = 0; i < 2; i++) {
+        int64_t v = mmx_lane_s(d, i, 32);
+        r = mmx_lane_put(r, i, 16, (uint64_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v));
+    }
+    for (i = 0; i < 2; i++) {
+        int64_t v = mmx_lane_s(s, i, 32);
+        r = mmx_lane_put(r, 2 + i, 16, (uint64_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v));
+    }
+    return r;
+}
+
+/* Interleave. LOW takes the low half of each operand, HIGH the high half, and
+   the DESTINATION's lane comes first in every pair. */
+#define MMX_UNPACK(name, w, high)                                       \
+static inline uint64_t name(uint64_t d, uint64_t s)                     \
+{                                                                       \
+    uint64_t r = 0; int i, n = MMX_LANES(w) / 2, base = (high) ? n : 0; \
+    for (i = 0; i < n; i++) {                                           \
+        r = mmx_lane_put(r, 2 * i,     w, mmx_lane_get(d, base + i, w)); \
+        r = mmx_lane_put(r, 2 * i + 1, w, mmx_lane_get(s, base + i, w)); \
+    }                                                                   \
+    return r;                                                           \
+}
+MMX_UNPACK(mmx_punpcklbw,  8, 0)
+MMX_UNPACK(mmx_punpckhbw,  8, 1)
+MMX_UNPACK(mmx_punpcklwd, 16, 0)
+MMX_UNPACK(mmx_punpckhwd, 16, 1)
+MMX_UNPACK(mmx_punpckldq, 32, 0)
+MMX_UNPACK(mmx_punpckhdq, 32, 1)
+
+/* PMADDWD: four signed 16x16 products, added in pairs into two dwords. */
+static inline uint64_t mmx_pmaddwd(uint64_t a, uint64_t b)
+{
+    uint64_t r = 0; int i;
+    for (i = 0; i < 2; i++) {
+        int64_t lo = mmx_lane_s(a, 2 * i, 16)     * mmx_lane_s(b, 2 * i, 16);
+        int64_t hi = mmx_lane_s(a, 2 * i + 1, 16) * mmx_lane_s(b, 2 * i + 1, 16);
+        r = mmx_lane_put(r, i, 32, (uint64_t)(int64_t)(int32_t)(lo + hi));
+    }
+    return r;
+}
+
 static inline void x87_push(CPU *C, long double v)
 {
     C->top = (C->top - 1) & 7;

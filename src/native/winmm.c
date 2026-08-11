@@ -157,6 +157,35 @@ void imp_WINMM_timeKillEvent(CPU *C)
 }
 
 /*
+ * How long until the earliest timer is due, capped, in milliseconds.
+ *
+ * A waiting thread has to know this because it is the thread that will PUMP
+ * the timer: the wait blocks, the timer's callback is what would end the wait,
+ * and nothing else is running to fire it. Waiting a flat second and then
+ * pumping made every movie frame cost a second -- 334 frames in 300 seconds,
+ * with the guest blocked rather than busy. Sleeping until the callback is
+ * actually due is what turns that back into real time.
+ *
+ * 0 means something is already due. With no timers at all it returns the cap,
+ * which is the "nothing to wake up for" answer and not a timer at time zero.
+ */
+uint32_t winmm_next_due_ms(uint32_t cap)
+{
+    double t = now_s(), best = -1.0;
+    int i;
+    for (i = 0; i < MAX_TIMERS; i++) {
+        if (!g_timer[i].used) continue;
+        if (best < 0.0 || g_timer[i].due < best) best = g_timer[i].due;
+    }
+    if (best < 0.0) return cap;
+    if (best <= t) return 0;
+    {
+        double ms = (best - t) * 1000.0;
+        return ms >= (double)cap ? cap : (uint32_t)ms;
+    }
+}
+
+/*
  * Run whatever is due, on the caller's thread.
  *
  * Re-entrancy is guarded rather than assumed: the callback is guest code, and
@@ -194,6 +223,18 @@ void winmm_timers_pump(void)
             g_pumping = 0;
         }
     }
+}
+
+/* Fires and pumps so far, for the heartbeat: "is the callback that would end
+   this wait running at all" is a liveness question, and answering it only at
+   exit means answering it after the run that needed it is over. */
+void winmm_counts(unsigned long *fires, unsigned long *pumps, int *live)
+{
+    int i, n = 0;
+    for (i = 0; i < MAX_TIMERS; i++) if (g_timer[i].used) n++;
+    if (fires) *fires = g_fires;
+    if (pumps) *pumps = g_pumps;
+    if (live)  *live  = n;
 }
 
 void winmm_report(void)
