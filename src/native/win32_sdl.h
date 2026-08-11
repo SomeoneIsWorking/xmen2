@@ -30,4 +30,17 @@ struct SDL_Window *win32_sdl_window(void);
  */
 void win32_sdl_hide_windows(int hide);
 
+/*
+ * A modal dialog with buttons, on SDL -- the replacement for USER32's dialog
+ * family, which this port does not implement (see the note in win32_sdl.c).
+ * `ids` are the values the guest's own dialog would have returned, and one of
+ * them comes back. `fallback` is answered, and reported as this host's choice
+ * rather than a user's, when there is no screen to show a modal on.
+ *
+ * The text is written to stderr in every case, before the box is shown.
+ */
+int win32_sdl_dialog(const char *title, const char *text,
+                     const char *const *labels, const int *ids, int n,
+                     int fallback);
+
 #endif /* WIN32_SDL_H */

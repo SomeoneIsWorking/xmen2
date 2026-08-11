@@ -46,19 +46,30 @@ run_step() {
     "$@" >>"$LOG" 2>&1 || {
         echo "ghidra_export: $_label failed, see $LOG" >&2; exit 1; }
     _added=$(tail -n +$((_before + 1)) "$LOG")
-    if printf '%s\n' "$_added" | grep -qE '^(SyntaxError|Traceback|[A-Za-z]*Error):'; then
+    # MATCH ONCE, INTO A VARIABLE -- never `... | grep -q`.
+    #
+    # `grep -q` exits at the FIRST match and closes the pipe; with `pipefail`
+    # the SIGPIPE that kills the writer (141) becomes the pipeline's status, so
+    # the guard reported "this step produced NOTHING" for a step whose output
+    # was merely LARGE. It fired for the first time on a seeding run that
+    # created 1267 functions -- the guard against a step that did nothing,
+    # misfiring precisely on the step that did the most. Nothing about the
+    # message hinted at volume, so it read as a real refusal.
+    _errs=$(printf '%s\n' "$_added" |
+            grep -E '^(SyntaxError|Traceback|[A-Za-z]*Error):' || true)
+    if [ -n "$_errs" ]; then
         echo "ghidra_export: $_label -- the Ghidra script did not RUN:" >&2
-        printf '%s\n' "$_added" |
-            grep -E '^(SyntaxError|Traceback|[A-Za-z]*Error):' | head -3 >&2
+        printf '%s\n' "$_errs" | head -3 >&2
         exit 1
     fi
-    printf '%s\n' "$_added" | grep -E "$_prefix" | tail -"$_keep"
-    printf '%s\n' "$_added" | grep -qE "$_prefix" || {
+    _hits=$(printf '%s\n' "$_added" | grep -E "$_prefix" || true)
+    if [ -z "$_hits" ]; then
         echo "ghidra_export: $_label produced NO '$_prefix' output of its own." >&2
         echo "  Whatever is in $LOG above belongs to an EARLIER run. Refusing" >&2
         echo "  rather than exporting a database this step did not change." >&2
         exit 1
-    }
+    fi
+    printf '%s\n' "$_hits" | tail -"$_keep"
 }
 
 if [ "${1:-}" = "--selftest" ]; then
@@ -88,6 +99,27 @@ if [ "${1:-}" = "--selftest" ]; then
                                                         1 "ADD: 7 created
 "                                                                            "some noise
 "
+    # The volume case, and why it is written differently from the four above.
+    #
+    # A step that emits a LOT used to be refused as a step that emitted
+    # NOTHING: `grep -q` closes the pipe at the first match and `pipefail`
+    # turns the writer's SIGPIPE into the pipeline's status. It misfired on a
+    # seeding run that created 1267 functions -- the guard against a step that
+    # did nothing, firing on the step that did the most.
+    #
+    # The output is GENERATED IN THE CHILD rather than passed as an argument,
+    # because ~700 KB in one argv element is past this shell's limit and the
+    # case would fail for a reason that has nothing to do with the guard.
+    _big_cmd="seq 1 20000 | sed 's/^/ADD: created function at 0x0000/'"
+    printf '' > "$LOG"
+    if ( run_step "volume" '^ADD:' 3 sh -c "$_big_cmd" ) >/dev/null 2>&1
+    then got=0; else got=1; fi
+    if [ "$got" != 0 ]; then
+        echo "  FAIL: a step that reports a LOT of work -- run_step exited $got, expected 0"
+        fails=$((fails+1))
+    else
+        echo "  ok: a step that reports a LOT of work (700 KB, past the pipe buffer)"
+    fi
     echo "ghidra_export --selftest: $([ $fails -eq 0 ] && echo PASSED || echo FAILED) ($fails failure(s))"
     rm -f "$LOG"
     exit $fails

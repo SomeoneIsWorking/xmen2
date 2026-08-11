@@ -75,6 +75,9 @@ static void unimplemented(const char *what)
 
 static SDL_Window *g_win;
 static int         g_win_live;
+/* --no-window. Read by the dialog path as well as by CreateWindowExA, which is
+   why it lives up here with the window itself rather than beside its setter. */
+static int         g_hide_windows;
 static int         g_cursor_shown = 1;   /* Win32 starts the count at 0 */
 static int         g_cursor_count;
 
@@ -402,14 +405,92 @@ void imp_USER32_PtInRect(CPU *C)
     ret_std(C, (x >= l && x < ri && y >= t && y < b) ? 1u : 0u, 3);
 }
 
+/* ---- modal dialogs ------------------------------------------------------
+ *
+ * The game has two of them and they are the same thing wearing different
+ * clothes: USER32's MessageBoxA, and the Alchemy report box, which builds a
+ * DLGTEMPLATE by hand and runs it through DialogBoxIndirectParamA (libIGCore
+ * `igWin32ReportBox::doModal`). Both stop a run dead -- the report box is where
+ * the engine says a library would not load, an asset is missing, or an
+ * assertion failed, and until now it was the abort at USER32!DrawTextA.
+ *
+ * Implementing the USER32 dialog family (DialogBoxIndirectParamA, DrawTextA,
+ * GetDlgItem, SendDlgItemMessageA, EndDialog) would mean writing a dialog
+ * manager and a text renderer to draw a template this port has no other use
+ * for. SDL already has a native modal with buttons, so the DIALOG is what gets
+ * replaced, not the message: same title, same buttons, same return codes, and
+ * the caller cannot tell the difference.
+ *
+ * The text ALWAYS goes to stderr as well, before the box is shown. A dialog
+ * that is dismissed leaves no trace otherwise, and the message is usually the
+ * most informative line in the whole run.
+ *
+ * HEADLESS. --no-window (and a machine with no display) cannot show a modal,
+ * and blocking forever on one nobody can click is worse than any answer. The
+ * caller names a fallback button; taking it is reported, once per dialog, with
+ * the button's own label -- so a log never reads as though someone chose.
+ */
+int win32_sdl_dialog(const char *title, const char *text,
+                     const char *const *labels, const int *ids, int n,
+                     int fallback)
+{
+    SDL_MessageBoxButtonData btn[8];
+    SDL_MessageBoxData box;
+    int i, chosen = 0;
+    const char *why = NULL;
+
+    if (n < 1 || n > (int)(sizeof btn / sizeof btn[0])) {
+        fprintf(stderr, "win32_sdl: a dialog with %d buttons is not something "
+                        "this layer can show; refusing rather than dropping "
+                        "some\n", n);
+        abort();
+    }
+    fprintf(stderr, "\n*** %s\n%s\n", title ? title : "(no title)",
+            text ? text : "(no text)");
+
+    if (g_hide_windows)
+        why = "this run is --no-window";
+    else if (!SDL_GetCurrentVideoDriver())
+        why = "SDL has no video driver, so there is no screen to show it on";
+    if (why) {
+        const char *lbl = "(unnamed)";
+        for (i = 0; i < n; i++) if (ids[i] == fallback) lbl = labels[i];
+        fprintf(stderr, "    NOT SHOWN: %s. Answering \"%s\" -- nobody chose "
+                        "that, this host did.\n", why, lbl);
+        return fallback;
+    }
+
+    memset(btn, 0, sizeof btn);
+    for (i = 0; i < n; i++) {
+        btn[i].buttonID = ids[i];
+        btn[i].text = labels[i];
+        if (ids[i] == fallback)
+            btn[i].flags = SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT
+                         | SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT;
+    }
+    memset(&box, 0, sizeof box);
+    box.flags = SDL_MESSAGEBOX_WARNING;
+    box.window = g_win_live ? g_win : NULL;
+    box.title = title;
+    box.message = text;
+    box.numbuttons = n;
+    box.buttons = btn;
+    if (!SDL_ShowMessageBox(&box, &chosen)) {
+        fprintf(stderr, "    SDL could not show it (%s). Answering the "
+                        "fallback (%d) rather than blocking.\n",
+                SDL_GetError(), fallback);
+        return fallback;
+    }
+    fprintf(stderr, "    -> answered %d\n", chosen);
+    return chosen;
+}
+
 void imp_USER32_MessageBoxA(CPU *C)
 {
     /* (hWnd, lpText, lpCaption, uType) */
     const char *text = (const char *)(uintptr_t)A(1);
     const char *cap  = (const char *)(uintptr_t)A(2);
     uint32_t type = A(3);
-    fprintf(stderr, "\n*** MessageBox [%s]\n    %s\n",
-            cap ? cap : "(no caption)", text ? text : "(no text)");
     /*
      * WHO decided this. The text says what the game concluded; without the
      * caller it does not say which check concluded it, and that is the whole
@@ -426,10 +507,39 @@ void imp_USER32_MessageBoxA(CPU *C)
                         "message.\n",
                 ra, nm ? " " : "", nm ? nm : "");
     }
-    if ((type & 0xFu) != 0u)
-        fprintf(stderr, "    (button style 0x%x -- this host answers IDOK "
-                        "without asking anyone)\n", type & 0xFu);
-    ret_std(C, 1, 4);                     /* IDOK */
+    /*
+     * The button set, from MB_* in uType's low nibble. Only the styles the
+     * game actually uses are here; a style this layer does not know is not
+     * approximated with OK, because the caller branches on WHICH button came
+     * back and an invented set silently answers a question nobody asked.
+     */
+    {
+        static const char *const ok[]      = { "OK" };
+        static const int         ok_id[]   = { 1 };                /* IDOK */
+        static const char *const okc[]     = { "OK", "Cancel" };
+        static const int         okc_id[]  = { 1, 2 };             /* IDOK/IDCANCEL */
+        static const char *const yn[]      = { "Yes", "No" };
+        static const int         yn_id[]   = { 6, 7 };             /* IDYES/IDNO */
+        static const char *const rc[]      = { "Retry", "Cancel" };
+        static const int         rc_id[]   = { 4, 2 };             /* IDRETRY/IDCANCEL */
+        const char *const *lbl = ok; const int *ids = ok_id;
+        int n = 1, fallback = 1;
+        switch (type & 0xFu) {
+        case 0: break;                                   /* MB_OK */
+        case 1: lbl = okc; ids = okc_id; n = 2; fallback = 2; break;
+        case 4: lbl = yn;  ids = yn_id;  n = 2; fallback = 7; break;
+        case 5: lbl = rc;  ids = rc_id;  n = 2; fallback = 2; break;
+        default:
+            fprintf(stderr, "win32_sdl: MessageBoxA button style 0x%x is not "
+                            "implemented -- the caller branches on which "
+                            "button, so answering one it did not offer would "
+                            "be a decision this host invented\n", type & 0xFu);
+            abort();
+        }
+        ret_std(C, (uint32_t)win32_sdl_dialog(cap ? cap : "X-Men Legends II",
+                                              text ? text : "(no text)",
+                                              lbl, ids, n, fallback), 4);
+    }
 }
 
 void imp_USER32_RegisterClassA(CPU *C)
@@ -439,9 +549,6 @@ void imp_USER32_RegisterClassA(CPU *C)
        which ignores it here. The WndProc in the struct is NOT dropped silently
        -- it is remembered, because the message path will need it. */
     extern uint32_t g_wndproc;
-
-static int g_hide_windows;
-void win32_sdl_hide_windows(int hide) { g_hide_windows = hide; }
     uint32_t wc = A(0);
     g_wndproc = RD32(wc + 4u);           /* WNDCLASSA.lpfnWndProc */
     ret_std(C, 1, 1);
@@ -449,7 +556,6 @@ void win32_sdl_hide_windows(int hide) { g_hide_windows = hide; }
 
 uint32_t g_wndproc;
 
-static int g_hide_windows;
 void win32_sdl_hide_windows(int hide) { g_hide_windows = hide; }
 
 void imp_USER32_UnregisterClassA(CPU *C) { g_wndproc = 0; ret_std(C, 1, 2); }

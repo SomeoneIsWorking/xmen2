@@ -21,6 +21,13 @@
  */
 #define X2_SAVE_DRIVE 'S'
 
+/* And the drive the game believes it is installed on -- the root of
+   $GAME_PC_DIR, as far as the guest is concerned. GetModuleFileNameA hands out
+   paths on it, and win_path() maps every drive that is not the save drive back
+   to the install, so a path the host gives the guest survives being taken
+   apart and handed back. */
+#define X2_GAME_DRIVE 'C'
+
 /* The host directory behind that drive, created on first use. Empty (never
    NULL) if it could not be created -- which is reported at the point of
    failure, not here. */

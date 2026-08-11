@@ -62,6 +62,18 @@ python3 tools/verify_export.py >/dev/null 2>&1 || {
 }
 
 # Before the per-round loop: seed every function whose address appears as a CODE
+# Bulk seeding, from two static sources, before the loop runs at all.
+#
+# RELOCATIONS are the complete one and the one that came last: every absolute
+# address baked into a relocatable image has a base relocation entry, because
+# the loader must fix it up if the image moves -- so the relocation values that
+# land in an executable section ARE every absolute code pointer in the module,
+# with no run-length threshold, no alignment assumption and no .rdata/.data
+# distinction. Measured: both targets the loop found in msdia80 one round at a
+# time were already sitting in .reloc, and one seeding pass created 1382
+# functions there -- ten-odd rounds' worth, in one step.
+#
+# The older source is a callback handed to a registrar as an instruction
 # IMMEDIATE (`push <addr>; call [registrar]`), in bulk.
 #
 # The loop below learns ONE function per round, because the runtime stops at the
@@ -97,12 +109,33 @@ if [ "${SKIP_BULK:-0}" != "1" ]; then
     for m in $BULK_MODS; do
         J=$ROOT/scratch/recomp/$m.json
         [ -f "$J" ] || continue
+        changed=0
+        # RELOCATIONS first -- the complete source, and the one that needs no
+        # heuristic (see tools/seed_relocs.py). A module with no relocation
+        # directory makes it REFUSE, which is not an error here: the loop says
+        # so and moves on to the sources that do apply.
+        R=$ROOT/scratch/recomp/$m.reloc
+        RL=$ROOT/scratch/recomp/$m.reloc.log
+        if python3 tools/seed_relocs.py "$J" -o "$R" >"$RL" 2>&1; then
+            n=$(sed -n 's/.*CANDIDATE function starts: //p' "$RL")
+            if [ "${n:-0}" -gt 0 ]; then
+                echo "== bulk: $m has $n relocation-derived candidate(s) to seed"
+                tools/ghidra_export.sh "$m" --seed "$R" 2>&1 |
+                    grep -E '^ADD:|functions,' | tail -2
+                changed=1
+            fi
+        else
+            echo "== bulk: $m -- no relocation seeding: $(tail -1 "$RL")"
+        fi
         S=$ROOT/scratch/recomp/$m.codeimm
         n=$(python3 tools/seed_code_imms.py "$J" -o "$S" \
             | sed -n 's/.*NEW function starts to seed: //p')
         if [ "${n:-0}" -gt 0 ]; then
             echo "== bulk: $m has $n code-immediate function start(s) to seed"
             tools/ghidra_export.sh "$m" --seed "$S" 2>&1 | tail -1
+            changed=1
+        fi
+        if [ "$changed" = 1 ]; then
             rm -f "$ROOT/src/recomp/${m}_"[0-9][0-9][0-9].c "$ROOT/src/recomp/$m.c"
             python3 tools/recomp.py emit "$J" "$ROOT/src/recomp/$m.c" \
                     --split "$SPLIT" | tail -1

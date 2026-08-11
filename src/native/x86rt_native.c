@@ -1240,21 +1240,6 @@ void x86_dispatch(CPU *C, uint32_t target)
        know that an indirect call target is a different kind of gap. */
     x86_diag_dump();
     m = x86_module_for(target);
-    if (m && m->inert) {
-        /* Not a gap in the database: this module was never in the build. The
-           discovery loop must NOT be handed this as a seed -- Ghidra has never
-           exported it, and it would spend a round finding that out. */
-        fprintf(stderr, "\n*** %s is MAPPED BUT NOT RECOMPILED, and the guest "
-                        "called into it at 0x%08x (offset 0x%x).\n"
-                        "    It was loaded so the engine's library sweep would "
-                        "not warn about a DLL that exists; nothing was "
-                        "supposed to CALL it.\n"
-                        "    Something does. Either that module has to go "
-                        "through the lift pipeline, or this call path has to "
-                        "be understood -- not both silently.\n",
-                m->name, target, target - *m->base);
-        abort();
-    }
     if (m) {
         fprintf(stderr, "\n*** dispatch target with no recompiled body.\n"
                         "    Reached as an indirect call, so nothing in the "

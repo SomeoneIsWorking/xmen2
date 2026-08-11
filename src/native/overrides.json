@@ -65,6 +65,39 @@
         "",
         "Without X2_UNPACED this defers to the original and changes nothing."
       ]
+    },
+    {
+      "module": "libIGCore",
+      "ep": "0x10069c70",
+      "symbol": "fn_libIGCore_10069c70",
+      "why": [
+        "Gap::Core::igWin32ReportBox::doModal -- the engine's error dialog",
+        "(issue #47).",
+        "",
+        "The original builds a DLGTEMPLATE by hand and runs it through",
+        "DialogBoxIndirectParamA, measuring its text with DrawTextA. That is",
+        "the USER32 dialog family -- DialogBoxIndirectParamA, DrawTextA,",
+        "GetDlgItem, SendDlgItemMessageA, EndDialog -- none of which this port",
+        "implements, and implementing them means writing a dialog manager and",
+        "a text renderer for a template nothing else uses.",
+        "",
+        "So the DIALOG is replaced and the MESSAGE is not. SDL shows a real",
+        "modal with the same title and the same buttons, and returns the same",
+        "codes the guest's dialog procedure returns (3 Exit, 4 Debug,",
+        "5 Ignore, 6 Ignore-always), so the caller cannot tell the difference.",
+        "The 'Do not tell me again' CHECKBOX becomes the fourth button,",
+        "because SDL's modal has no checkbox and the two outcomes are what the",
+        "checkbox actually selects between.",
+        "",
+        "It is an override rather than an implementation of the dialog family",
+        "for the same reason the DirectX check is one: the question is not",
+        "'can this host draw a Win32 dialog' but 'what did the engine want to",
+        "tell the player, and what did the player answer'.",
+        "",
+        "A run with no screen (--no-window) answers Ignore and says so, naming",
+        "the button -- it is the only answer that neither kills the process",
+        "nor invents a debugger."
+      ]
     }
   ]
 }

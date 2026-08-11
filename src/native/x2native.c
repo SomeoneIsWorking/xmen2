@@ -1442,6 +1442,7 @@ int main(int argc, char **argv)
     int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0, vk = 0;
     int vkselftest = 0, vkpermissive = 0;
     int d3d8 = 0, d3d8selftest = 0, d3d8permissive = 0;
+    int dialogselftest = 0;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
        and the recompiled set grows one module at a time (libMovie was the
@@ -1475,6 +1476,7 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--d3d8") == 0) d3d8 = 1;
         else if (strcmp(argv[i], "--d3d8-selftest") == 0) d3d8selftest = 1;
         else if (strcmp(argv[i], "--d3d8-permissive") == 0) d3d8permissive = 1;
+        else if (strcmp(argv[i], "--dialog-selftest") == 0) dialogselftest = 1;
         else if (argv[i][0] == '-') {
             /*
              * Refuse an unrecognised option rather than treat it as the
@@ -1488,7 +1490,7 @@ int main(int argc, char **argv)
                             "  Known: --no-window --run --selftest --ark-probe "
                             "--vk --vk-selftest --vk-permissive\n"
                             "         --d3d8 --d3d8-selftest "
-                            "--d3d8-permissive\n", argv[i]);
+                            "--d3d8-permissive --dialog-selftest\n", argv[i]);
             return 2;
         }
         else dir = argv[i];
@@ -1502,6 +1504,16 @@ int main(int argc, char **argv)
      * else has ever run that code. Handled before the GAME_PC_DIR check for
      * the same reason: it does not need the install.
      */
+    /*
+     * The report box, checked with no engine and no game install -- it needs
+     * neither, and without this the only thing that ever runs it is a run that
+     * has already gone wrong. See src/native/overrides.c.
+     */
+    if (dialogselftest) {
+        extern int report_box_selftest(void);
+        win32_sdl_hide_windows(1);        /* a test must not open a modal */
+        return report_box_selftest();
+    }
     if (vkselftest) {
         extern int gpu_device_selftest(void);
         extern int gpu_draw_selftest(void);
@@ -1588,8 +1600,8 @@ int main(int argc, char **argv)
        registry. */
     shell32_install(); atexit(shell32_report);
     advapi32_install(); atexit(advapi32_report);
-    {   extern void kernel32_narrowing_report(void), kernel32_inert_report(void);
-        atexit(kernel32_narrowing_report); atexit(kernel32_inert_report); }
+    {   extern void kernel32_narrowing_report(void);
+        atexit(kernel32_narrowing_report); }
     { extern void winmm_report(void); atexit(winmm_report); }
     atexit(guest_thread_report);
     { extern void gdi32_report(void); atexit(gdi32_report); }

@@ -19,7 +19,13 @@
 /* The runtime's globals, so this links without the whole recompiled world. */
 uint32_t g_imgbase = 0x10000000U;
 uint32_t g_image_lo, g_image_hi;
-uint32_t g_fsbase, g_gsbase;
+/* __thread, to match x86rt.h: the segment bases became per-thread when guest
+   threads arrived (every recompiled prologue writes FS:[0], so a shared one
+   would have two threads' SEH chains overwriting each other). A plain
+   definition here is a different symbol as far as the compiler is concerned and
+   the test stopped BUILDING -- which ctest reports as "Not Run", not as a
+   failure, so the suite went green with two tests missing. */
+__thread uint32_t g_fsbase, g_gsbase;
 int x86_allow_fallback;
 
 static int fails, checks;

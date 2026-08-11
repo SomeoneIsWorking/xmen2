@@ -13,11 +13,15 @@
 # The steps, and why each is here:
 #   1. ghidra_export.sh   PE -> functions + instructions, with vtable seeding
 #   2. pe.py iat          the import table, so import calls resolve by name
-#   3. seed_code_imms.py  callbacks passed as code immediates (nothing points
+#   3. seed_relocs.py     EVERY absolute code pointer in the image, read out of
+#                         its own relocation table -- the linker had to record
+#                         each one, so this needs no heuristic and misses no
+#                         vtable, dispatch table or lone callback field
+#   4. seed_code_imms.py  callbacks passed as code immediates (nothing points
 #                         at them, so no reference-driven pass finds them)
-#   4. re-export          only if (3) found any, to pick them up
-#   5. recomp.py emit     the bodies
-#   6. recomp.py native   the dispatch table and weak import stubs
+#   5. re-export          only if (3) or (4) found any, to pick them up
+#   6. recomp.py emit     the bodies
+#   7. recomp.py native   the dispatch table and weak import stubs
 #
 # It does NOT edit CMakeLists.txt: the module list there is a deliberate
 # statement of what the build links, and a script silently extending it is how
@@ -57,6 +61,23 @@ for MOD in "$@"; do
     python3 tools/pe.py iat "$DLL" > "$ROOT/scratch/recomp/$MOD.iat" || {
         echo "add_module: could not read $MOD's import table" >&2
         failed+=("$MOD"); continue; }
+
+    # Relocation-derived code pointers FIRST: it is the complete source, and
+    # every function it creates is one the later passes no longer have to
+    # guess at. It refuses (rather than reporting an empty result) for an
+    # image with no relocation directory, which an EXE linked /FIXED is, so a
+    # failure here is not fatal to the module -- but it is printed.
+    R=$ROOT/scratch/recomp/$MOD.reloc
+    if python3 tools/seed_relocs.py "$J" -o "$R" > "$ROOT/scratch/recomp/$MOD.reloc.log" 2>&1; then
+        n=$(sed -n 's/.*CANDIDATE function starts: //p' "$ROOT/scratch/recomp/$MOD.reloc.log")
+        echo "   $n relocation-derived candidate(s)"
+        if [ "${n:-0}" -gt 0 ]; then
+            tools/ghidra_export.sh "$MOD" --seed "$R" 2>&1 | grep -E '^ADD:|functions,' | tail -2
+        fi
+    else
+        echo "   no relocation-derived seeding for $MOD:"
+        sed 's/^/     /' "$ROOT/scratch/recomp/$MOD.reloc.log"
+    fi
 
     S=$ROOT/scratch/recomp/$MOD.codeimm
     n=$(python3 tools/seed_code_imms.py "$J" -o "$S" \

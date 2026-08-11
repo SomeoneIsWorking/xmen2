@@ -157,11 +157,23 @@ endif()
 # other guest module; what makes them different is that they link the MSVC CRT
 # STATICALLY, so their imports are the CRT's own startup surface (heap, std
 # handles, locale, code pages) rather than MSVCR71.
+#
+# msdia80 is Microsoft's Debug Interface Access DLL, shipped beside the game and
+# loaded by the engine's directory sweep. It reads PDB symbols, and the engine
+# uses it to symbolicate the stack trace it puts in an error box -- the path
+# this port keeps landing on.
+#
+# Stated as measured, because the two do not agree: NOTHING in the shipped
+# modules references it by name (no "msdia" string, no DIA CLSID, in any of the
+# 18 DLLs or the exe), so the call path is not visible statically. It is
+# recompiled rather than merely mapped so that whatever reaches it RUNS instead
+# of stopping. It lifts like any other guest module -- 4824 functions, 100% of
+# instructions, and only KERNEL32 imports, since its CRT is static.
 set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
                libIGGfx libIGUtils libIGGui libIGLua libIGOpt
                libMovie libCriMovie libIGAudio libIGCollision
                libIGInsight libIGViewer
-               cg cgD3D8 XMen2)
+               cg cgD3D8 msdia80 XMen2)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
 foreach(m ${X2_MODULES})
@@ -361,6 +373,12 @@ if(X2_MODULE_HAVE)
     add_test(NAME d3d8_host
              COMMAND x2native --d3d8-selftest)
     set_tests_properties(d3d8_host PROPERTIES SKIP_RETURN_CODE 77)
+    # The engine's error dialog, which only ever runs when something has
+    # already gone wrong -- so nothing else exercises it. Drives the override
+    # with a synthetic call frame and checks the ABI and the screenless answer.
+    add_test(NAME report_box
+             COMMAND x2native --dialog-selftest)
+    set_tests_properties(report_box PROPERTIES SKIP_RETURN_CODE 77)
 else()
     message(STATUS
         "x2native: SKIPPED -- no module has generated output. "

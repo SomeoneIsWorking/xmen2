@@ -258,6 +258,12 @@ static unsigned long g_failed_opens;
 static uint64_t g_reserved_bytes;   /* see VirtualAlloc */
 
 void imp_KERNEL32_GetLastError(CPU *C) { ret_std(C, g_last_error, 0); }
+/* The guest sets it too: a caller that clears the error, calls something, and
+   then reads it back is asking a question this host must not answer with a
+   stale value from an unrelated call. It is one process-wide word here, as it
+   was before threads existed -- Win32's is per-thread, and the day two guest
+   threads both check it that difference becomes real. */
+void imp_KERNEL32_SetLastError(CPU *C) { g_last_error = A(0); ret_std(C, 0, 1); }
 
 #define ERROR_FILE_NOT_FOUND   2u
 #define ERROR_PATH_NOT_FOUND   3u
@@ -345,6 +351,40 @@ void imp_KERNEL32_IsProcessorFeaturePresent(CPU *C)
     ret_std(C, (f <= 10u) ? 1u : 0u, 1);
 }
 
+/*
+ * GetSystemInfo -- answered from the REAL machine where there is a real
+ * answer, and from this host's own address-space layout where the question is
+ * about the process rather than the CPU.
+ *
+ * The application-address bounds are the ones THIS host actually gives the
+ * guest (the low 4 GB up to the file-view arena's end), not Windows'
+ * 0x7FFEFFFF: a caller that scans the address space with VirtualQuery must be
+ * given the range VirtualQuery answers about, or the scan stops early or runs
+ * off the end. msdia80's CRT calls this during DllMain.
+ */
+void imp_KERNEL32_GetSystemInfo(CPU *C)
+{
+    uint32_t p = A(0);
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    if (n < 1) n = 1;
+    if (n > 32) n = 32;                  /* dwActiveProcessorMask is 32 bits */
+    memset((void *)(uintptr_t)p, 0, 36);
+    WR32(p +  0u, 0);                    /* PROCESSOR_ARCHITECTURE_INTEL */
+    WR32(p +  4u, 0x1000u);              /* dwPageSize */
+    WR32(p +  8u, 0x00010000u);          /* lpMinimumApplicationAddress */
+    WR32(p + 12u, 0xEFFFFFFFu);          /* lpMaximumApplicationAddress */
+    WR32(p + 16u, (n >= 32) ? 0xFFFFFFFFu : ((1u << n) - 1u));
+    WR32(p + 20u, (uint32_t)n);          /* dwNumberOfProcessors */
+    WR32(p + 24u, 586u);                 /* dwProcessorType: PROCESSOR_INTEL_PENTIUM */
+    WR32(p + 28u, 0x10000u);             /* dwAllocationGranularity, as VirtualAlloc uses */
+    WR32(p + 32u, 6u | (0u << 16));      /* wProcessorLevel, wProcessorRevision */
+    ret_std(C, 0, 1);
+}
+
+/* There is no debugger attached to a guest that has no debugger interface, so
+   FALSE is the true answer and not a placeholder. */
+void imp_KERNEL32_IsDebuggerPresent(CPU *C) { ret_std(C, 0, 0); }
+
 void imp_KERNEL32_GetStartupInfoA(CPU *C)
 {
     uint32_t p = A(0);
@@ -363,6 +403,16 @@ void imp_KERNEL32_ExitProcess(CPU *C) { exit((int)A(0)); }
  * here instead of becoming a deadlock the day threads exist.
  */
 void imp_KERNEL32_InitializeCriticalSection(CPU *C) { WR32(A(0) + 4u, 0); ret_std(C, 0, 1); }
+/* Same section, plus a spin count -- which is a scheduling HINT even on
+   Windows (how long to spin before sleeping), and cannot mean anything here
+   where one guest thread runs at a time. It is dropped, not stored, and this
+   comment is the record of that. Returns TRUE: the section IS initialised.
+   msdia80's static MSVC8 CRT calls this during DllMain. */
+void imp_KERNEL32_InitializeCriticalSectionAndSpinCount(CPU *C)
+{
+    WR32(A(0) + 4u, 0);
+    ret_std(C, 1, 2);
+}
 void imp_KERNEL32_DeleteCriticalSection(CPU *C)
 {
     if (RD32(A(0) + 4u) != 0)
@@ -857,14 +907,34 @@ void imp_KERNEL32_TlsSetValue(CPU *C)
 
 /* ---- odds and ends, each actually implemented -------------------------- */
 
+/*
+ * The Interlocked family, on real atomics.
+ *
+ * Guest threads now exist (issue #43) and one guest thread runs at a time
+ * under the global lock, so a plain read-modify-write would in fact be atomic
+ * with respect to every other guest thread today. These use host atomics
+ * anyway: the lock is a property of the current threading model, the guarantee
+ * these functions make is not, and a caller that relies on it (COM reference
+ * counting, which is what msdia80 wants them for) must not depend on which
+ * model the host happens to have. The guest memory is host memory, so this
+ * operates on the real word.
+ */
 void imp_KERNEL32_InterlockedExchange(CPU *C)
 {
-    /* Single guest thread, so a plain swap IS atomic with respect to it. The
-       guest memory is also host memory, so this is a real exchange on the real
-       word, not a shadow copy. */
-    uint32_t p = A(0), old = RD32(p);
-    WR32(p, A(1));
-    ret_std(C, old, 2);
+    uint32_t *p = (uint32_t *)(uintptr_t)A(0);
+    ret_std(C, __atomic_exchange_n(p, A(1), __ATOMIC_SEQ_CST), 2);
+}
+
+void imp_KERNEL32_InterlockedIncrement(CPU *C)
+{
+    int32_t *p = (int32_t *)(uintptr_t)A(0);
+    ret_std(C, (uint32_t)__atomic_add_fetch(p, 1, __ATOMIC_SEQ_CST), 1);
+}
+
+void imp_KERNEL32_InterlockedDecrement(CPU *C)
+{
+    int32_t *p = (int32_t *)(uintptr_t)A(0);
+    ret_std(C, (uint32_t)__atomic_sub_fetch(p, 1, __ATOMIC_SEQ_CST), 1);
 }
 
 void imp_KERNEL32_QueryPerformanceFrequency(CPU *C)
@@ -1034,7 +1104,25 @@ void imp_KERNEL32_GetModuleFileNameA(CPU *C)
         ret_std(C, 0, 3);
         return;
     }
-    snprintf(path, sizeof path, "%s\\%s", dir ? dir : ".", name);
+    /*
+     * The path is in the GUEST's namespace, not the host's -- "C:\XMen2.exe",
+     * not the install's POSIX path with the slashes turned round.
+     *
+     * The host path was what this returned, and it does not survive the round
+     * trip: the game strips the file name off it and scans the result
+     * ("<dir>\*.*"), which arrives back at win_path() as a leading-backslash
+     * path, is resolved against $GAME_PC_DIR like every other guest path, and
+     * lands on <install>/<install>/*.* -- so the game's own directory scan
+     * found NOTHING and said nothing. win_path already maps a drive letter to
+     * the install, so naming the drive makes the round trip exact.
+     *
+     * The install directory is the root of the guest's C:. That is the same
+     * device shell32 uses for the save drive (X2_SAVE_DRIVE), and it is why
+     * these two constants sit next to each other rather than one being a
+     * literal somewhere.
+     */
+    (void)dir;
+    snprintf(path, sizeof path, "%c:\\%s", X2_GAME_DRIVE, name);
     for (i = 0; path[i]; i++) if (path[i] == '/') path[i] = '\\';
     n = (uint32_t)strlen(path);
     if (size == 0) { ret_std(C, 0, 3); return; }
@@ -1296,6 +1384,20 @@ void imp_KERNEL32_GetModuleHandleA(CPU *C)
     if (A(0) == 0) { ret_std(C, G_IMGBASE, 1); return; }
     b = module_base_by_name(nm);
     if (!b && nm) b = sysmod_lookup(nm);
+    /*
+     * A module this host IMPLEMENTS is in the address space whether or not
+     * anyone has called LoadLibraryA for it -- kernel32 always is, on Windows
+     * and here. Answering NULL for one was not caution, it was wrong, and it
+     * cost a module: msdia80's static MSVC8 CRT startup does
+     * GetModuleHandleA("KERNEL32.DLL") and gives up when that fails, so its
+     * DllMain returned FALSE and module initialisation stopped the whole run.
+     *
+     * This is still not "create a handle for anything asked about": the name
+     * has to be one is_native_sysmod() vouches for, and GetProcAddress on the
+     * handle answers from the export registry -- an entry point this host does
+     * not implement still comes back NULL.
+     */
+    if (!b && nm && is_native_sysmod(nm)) b = sysmod_handle(nm);
     if (!b) {
         /* Reported once per name: a run that answers NULL for a module the
            host was supposed to provide looks identical, from the game's side,
@@ -1320,117 +1422,6 @@ void imp_KERNEL32_GetModuleHandleA(CPU *C)
     ret_std(C, b, 1);
 }
 
-/*
- * A DLL that SHIPS IN THE INSTALL but was never recompiled.
- *
- * The engine's library loader sweeps the game directory and calls
- * LoadLibraryA on every DLL it finds (igLibraryList::_instantiateFromPool ->
- * igWin32LibraryLoader::load, libIGCore 0x10068da0). For each one it then asks
- * for `createLibraryObject`; a DLL that does not export it is NOT an Alchemy
- * library and gets a plain library object instead -- cg.dll and cgD3D8.dll go
- * that way and the engine is content. The ONLY branch that warns is a NULL
- * handle, and that warning goes to a modal report box, which is where the run
- * stopped (issue #46, and issue #45 before it).
- *
- * msdia80.dll is the case that forced this: it is Microsoft's Debug Interface
- * Access DLL, shipped beside the game, and NOTHING in the game references it
- * -- no module in the install contains the string "msdia" at all. It is loaded
- * because it is in the directory, and for no other reason.
- *
- * So the honest answer is neither of the two that were available:
- *
- *   - NULL says "there is no such module", which is FALSE: the file is right
- *     there, and on Windows it loads.
- *   - A synthetic handle would let GetProcAddress invent functions, which is
- *     the failure this layer has refused from the start.
- *
- * The third answer is to map the real image. The handle is then a real base,
- * the export table GetProcAddress reads is the real one, and a name that is
- * not exported still gets a truthful NULL. What is missing is stated rather
- * than hidden: no body in it was recompiled, its imports are NOT bound and its
- * DllMain has NOT run, so nothing in it can execute -- and if the guest ever
- * dispatches into one, x86_dispatch names the module and says exactly that
- * instead of reporting a missing body the discovery loop would try to seed.
- *
- * Eligibility is deliberately narrow: the file must exist in the install
- * directory. A system DLL this host does not provide (DSOUND.DLL,
- * dpnhpast.dll) is not there, so it still gets NULL -- which is right, because
- * the game HANDLES those absences and would call into a handle it was given.
- */
-#define MAX_INERT 8
-static struct { X86Module m; uint32_t base; char name[64]; } g_inert[MAX_INERT];
-static int g_ninert;
-
-static uint32_t inert_load(const char *leaf)
-{
-    const char *dir = getenv("GAME_PC_DIR");
-    char path[1024];
-    struct stat st;
-    PeImage img;
-    X86Module *m;
-
-    if (!leaf || !*leaf || !dir || !*dir) return 0;
-    if (g_ninert == MAX_INERT) {
-        fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -- no slot left for an "
-                        "unrecompiled module (%d already mapped)\n",
-                leaf, MAX_INERT);
-        return 0;
-    }
-    snprintf(path, sizeof path, "%s/%s", dir, leaf);
-    if (stat(path, &st) != 0 || !S_ISREG(st.st_mode)) return 0;
-    if (pe_map(path, &img) != 0) return 0;         /* pe_map says why */
-    if (!pe_is_dll(img.base)) {
-        fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -- that file is in the "
-                        "install but is not a DLL, so it is not loadable\n",
-                leaf);
-        pe_unmap(&img);
-        return 0;
-    }
-    snprintf(g_inert[g_ninert].name, sizeof g_inert[0].name, "%s", leaf);
-    g_inert[g_ninert].base = img.base;
-    m = &g_inert[g_ninert].m;
-    m->name      = g_inert[g_ninert].name;
-    m->base      = &g_inert[g_ninert].base;
-    m->preferred = img.base;   /* nothing was linked against it, so it is its own */
-    m->size      = img.size;
-    m->inert     = 1;
-    g_ninert++;
-    x86_module_register(m);
-    fprintf(stderr, "kernel32: LoadLibraryA(\"%s\") -> 0x%08x. That module is "
-                    "MAPPED BUT NOT RECOMPILED.\n"
-                    "  Its export table is the real one, so GetProcAddress "
-                    "answers truthfully -- but no body in it was translated, "
-                    "its imports are NOT bound\n"
-                    "  and its DllMain has NOT run, so NO CODE IN IT CAN "
-                    "EXECUTE. A call into it stops by name rather than "
-                    "running something.\n"
-                    "  It is loadable because the engine's library sweep asks "
-                    "for every DLL in the install and warns modally about each "
-                    "one it cannot load.\n", leaf, img.base);
-    return img.base;
-}
-
-/* Every module mapped this way, and whether anything ever tried to run code in
-   one. A silent report would be indistinguishable from "none was loaded", so
-   it prints in both directions. */
-void kernel32_inert_report(void)
-{
-    int i;
-    if (!g_ninert) {
-        fprintf(stderr, "kernel32: no unrecompiled install DLL was mapped this "
-                        "run.\n");
-        return;
-    }
-    fprintf(stderr, "kernel32: %d install DLL(s) mapped WITHOUT being "
-                    "recompiled -- loadable, but no code in them can run:\n",
-            g_ninert);
-    for (i = 0; i < g_ninert; i++)
-        fprintf(stderr, "    %-18s at 0x%08x (%u bytes)\n",
-                g_inert[i].name, g_inert[i].base, g_inert[i].m.size);
-    fprintf(stderr, "  Nothing dispatched into one, or the run would have "
-                    "stopped there by name.\n");
-}
-
 void imp_KERNEL32_LoadLibraryA(CPU *C)
 {
     const char *nm = module_leaf(ACS(0));
@@ -1440,8 +1431,6 @@ void imp_KERNEL32_LoadLibraryA(CPU *C)
         uint32_t h = sysmod_handle(nm);
         if (h) { ret_std(C, h, 1); return; }
     }
-    b = inert_load(nm);
-    if (b) { ret_std(C, b, 1); return; }
     /*
      * NULL, not abort -- and the distinction is the whole point.
      *

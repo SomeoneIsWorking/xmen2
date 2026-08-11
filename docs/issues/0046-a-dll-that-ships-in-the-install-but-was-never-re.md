@@ -88,3 +88,6 @@ frontier, and part of the guest-thread subsystem (issues #42/#43), not this one.
 
 `kernel32_inert_report` prints at exit in BOTH directions: the modules mapped
 this way, or "no unrecompiled install DLL was mapped this run".
+
+### Note (2026-08-11)
+SUPERSEDED IN PART, in the same session. The 'mapped INERT' answer was removed: msdia80.dll is now RECOMPILED and linked (X2_MODULES), so it loads from the module table like every other guest module and the inert path had no user left. A facility with no user is a liability here -- and the loud NULL is what forced the right answer in the first place, so it is back. What survives from this issue is the READING of igWin32LibraryLoader::load (only a NULL handle warns; a DLL that does not export createLibraryObject gets a plain library object, which is how cg.dll and cgD3D8.dll already pass) -- that is C148 and it still holds. What was wrong was the conclusion drawn from it: that a DLL nothing appears to reference need only be LOADABLE. Recompiling it cost one pipeline run and removes the question.

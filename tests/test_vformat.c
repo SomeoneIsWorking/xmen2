@@ -250,3 +250,13 @@ const char *x86_native_name_at(uint32_t a)
 { (void)a; fprintf(stderr, "test_vformat: x86_native_name_at reached\n"); abort(); }
 void x86_diag_dump(void)
 { fprintf(stderr, "test_vformat: x86_diag_dump reached\n"); abort(); }
+/* Guest threads arrived after this test did (issue #43), and crt.c's
+   _beginthreadex/_endthreadex now call into src/native/threads.c. Aborting
+   stubs rather than linking that file: this test is about the format walker,
+   and a thread here would mean the walker took a path it has no business on. */
+uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg, uint32_t stack,
+                                int suspended, uint32_t *tid)
+{ (void)start; (void)arg; (void)stack; (void)suspended; (void)tid;
+  fprintf(stderr, "test_vformat: guest_thread_create_ex reached\n"); abort(); }
+void guest_thread_exit(uint32_t code)
+{ (void)code; fprintf(stderr, "test_vformat: guest_thread_exit reached\n"); abort(); }
