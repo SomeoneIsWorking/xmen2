@@ -15,6 +15,10 @@ void d3d8_resource_install(void);
 
 D3D8Object *d3d8_texture_new(uint32_t w, uint32_t h, uint32_t levels,
                              uint32_t usage, uint32_t format, uint32_t pool);
+/* A cube map: six square faces of `size`, each with its own mip chain. */
+D3D8Object *d3d8_cubetexture_new(uint32_t size, uint32_t levels,
+                                 uint32_t usage, uint32_t format,
+                                 uint32_t pool);
 D3D8Object *d3d8_vertexbuffer_new(uint32_t bytes, uint32_t usage, uint32_t fvf,
                                   uint32_t pool);
 D3D8Object *d3d8_indexbuffer_new(uint32_t bytes, uint32_t usage,
@@ -33,14 +37,19 @@ uint32_t   d3d8_resource_bytes(D3D8Object *o);
 int        d3d8_resource_index_is_32bit(D3D8Object *o);
 
 /*
- * One mip level of a texture has been unlocked -- upload it.
+ * One SUB-RESOURCE of a texture has been unlocked -- upload it.
  *
- * Called both by IDirect3DTexture8::UnlockRect and by the UnlockRect of a
- * surface handed out by GetSurfaceLevel, so that the two routes into the same
- * bytes cannot drift apart. Says so and uploads nothing if the level is out of
- * range or the backend refuses the copy.
+ * The sub-resource index is `face * levels + level`; for a 2D texture, where
+ * there is one face, it is just the level. It is what a level surface carries
+ * (a surface knows only "the level it was made for"), so a cube face's surface
+ * and its texture's own UnlockRect name the same bytes the same way.
+ *
+ * Called both by UnlockRect and by the UnlockRect of a surface handed out by
+ * GetSurfaceLevel / GetCubeMapSurface, so that the routes into the same bytes
+ * cannot drift apart. Says so and uploads nothing if the index is out of range
+ * or the backend refuses the copy.
  */
-void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t level);
+void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub);
 
 /* How many level uploads this texture has actually completed, and the last
    level uploaded. The self-test uses them to tell "the unlock uploaded" from

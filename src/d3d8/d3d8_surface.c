@@ -231,19 +231,56 @@ static void surf_LockRect(D3D8Object *self, CPU *C)
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
-    if (rect) {
-        /* A sub-rectangle lock needs the offset arithmetic and the engine has
-           not asked for one; doing it silently wrong would corrupt whatever
-           it wrote. */
-        const uint32_t *r = (const uint32_t *)(uintptr_t)rect;
-        fprintf(stderr, "d3d8: LockRect asked for the sub-rectangle "
-                        "(%u,%u)-(%u,%u); this host locks whole surfaces "
-                        "only.\n", r[0], r[1], r[2], r[3]);
-        d3d8_ret(C, D3DERR_INVALIDCALL);
-        return;
-    }
     lr[0] = s->pitch;
     lr[1] = s->guest_pixels;
+    if (rect) {
+        /*
+         * A RECT is (left, top, right, bottom) and the pointer handed back is
+         * the first pixel INSIDE it; the pitch is unchanged, because the rows
+         * are still the surface's rows. D3D8 requires the caller to stay
+         * inside the rectangle, so nothing else moves.
+         *
+         * The movie player locks (0,0)-(640,480) of its 640x480 surface every
+         * frame -- a "sub-rectangle" that is the whole surface. Refusing it
+         * cost every movie frame, which is why this arithmetic is here rather
+         * than a refusal: the offset is four multiplications, and not doing it
+         * is not caution, it is a dropped frame.
+         */
+        const uint32_t *r = (const uint32_t *)(uintptr_t)rect;
+        uint32_t left = r[0], top = r[1], right = r[2], bottom = r[3];
+
+        if (right <= left || bottom <= top ||
+            right > s->width || bottom > s->height) {
+            fprintf(stderr, "d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
+                            "%ux%u surface, which is empty or outside it.\n",
+                    left, top, right, bottom, s->width, s->height);
+            d3d8_ret(C, D3DERR_INVALIDCALL);
+            return;
+        }
+        if (s->bytes_per_pixel) {
+            lr[1] += top * s->pitch + left * s->bytes_per_pixel;
+        } else {
+            /*
+             * Block-compressed: the origin must be on a 4x4 block boundary,
+             * because there is no address for a pixel inside a block. The
+             * block's size in bytes is recovered from the pitch, which the
+             * texture computed from the format -- so DXT1 (8) and DXT2-5 (16)
+             * are both right without this file knowing the format table.
+             */
+            uint32_t blocks_per_row = (s->width + 3u) / 4u;
+            uint32_t block_bytes = blocks_per_row ? s->pitch / blocks_per_row : 0;
+            if ((left & 3u) || (top & 3u) || !block_bytes) {
+                fprintf(stderr, "d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
+                                "block-compressed surface; the origin must be "
+                                "on a 4x4 block boundary and this one is not "
+                                "(block size %u bytes).\n",
+                        left, top, right, bottom, block_bytes);
+                d3d8_ret(C, D3DERR_INVALIDCALL);
+                return;
+            }
+            lr[1] += (top / 4u) * s->pitch + (left / 4u) * block_bytes;
+        }
+    }
     s->locked = 1;
     d3d8_ret(C, D3D_OK);
 }

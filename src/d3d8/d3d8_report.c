@@ -666,6 +666,199 @@ static int texture_level_selftest(void)
     return fails;
 }
 
+/*
+ * Cube maps, through the IDirect3DCubeTexture8 vtable.
+ *
+ * The way to get a cube wrong and not notice is to store ONE face: every call
+ * succeeds, every lock hands back a pointer, and the six faces quietly share
+ * one image. So the check is that two faces of the same level lock at
+ * DIFFERENT addresses, exactly one face-chain apart -- and that a face surface
+ * is a view on that face's bytes, the same property the 2D level surface has.
+ *
+ * Face 4 level 1 is used rather than face 0 level 0 because face-ignoring and
+ * level-ignoring are the two natural mistakes, and either would pass at 0,0.
+ */
+static int cube_selftest(void)
+{
+    D3D8Object *cube, *s;
+    uint32_t args[3], out, desc, lr, hr, g, p_f4l1, p_f0l1, p_surf;
+    uint32_t face_chain;
+    unsigned long uploads;
+    int fails = 0;
+
+    printf("\n=== d3d8 cube selftest: six faces, through the vtable ===\n");
+    if (!gpu_device_create()) {
+        printf("d3d8 cube selftest: FAILED -- no GPU device, so NOTHING about "
+               "cube textures was checked.\n");
+        return 1;
+    }
+    d3d8_resource_install();
+    d3d8_surface_install();
+    /* 64x64, 3 levels, BGRA8: one face's chain is 64*64*4 + 32*32*4 + 16*16*4. */
+    cube = d3d8_cubetexture_new(64, 3, 0, D3DFMT_A8R8G8B8, 0);
+    if (!cube) {
+        printf("d3d8 cube selftest: FAILED -- CreateCubeTexture made nothing.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    d3d8_resource_attach_destructor(cube);
+    face_chain = 64u * 64u * 4u + 32u * 32u * 4u + 16u * 16u * 4u;
+    out = guest_malloc(4);
+    desc = guest_malloc(32);
+    lr = guest_malloc(8);
+
+    if (d3d8_object_iface(cube) != D3D8_IF_IDirect3DCubeTexture8) {
+        printf("d3d8 cube selftest: FAILED -- what came back is a %s.\n",
+               d3d8_iface_name(d3d8_object_iface(cube)));
+        fails++;
+    }
+
+    /* GetType (slot 10) must say CUBETEXTURE (5), not TEXTURE (3): the engine
+       switches on it to decide how to bind. */
+    hr = call_method(cube, 10, NULL, 0);
+    if (hr != 5u) {
+        printf("d3d8 cube selftest: FAILED -- GetType returned %u, not 5 "
+               "(D3DRTYPE_CUBETEXTURE).\n", hr);
+        fails++;
+    }
+
+    /* GetLevelDesc (slot 14) for level 1 of a 64-cube: 32x32. */
+    memset((void *)(uintptr_t)desc, 0xA5, 32);
+    args[0] = 1; args[1] = desc;
+    call_method(cube, 14, args, 2);
+    if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 32u) {
+        printf("d3d8 cube selftest: FAILED -- level 1 of a 64-cube describes "
+               "itself as %ux%u, not 32x32.\n",
+               RD32(desc + 24u), RD32(desc + 28u));
+        fails++;
+    }
+
+    /* LockRect is slot 16: (face, level, pLockedRect, pRect, flags). */
+    args[0] = 4; args[1] = 1;
+    { uint32_t a5[5]; a5[0] = 4; a5[1] = 1; a5[2] = lr; a5[3] = 0; a5[4] = 0;
+      WR32(lr, 0); WR32(lr + 4u, 0);
+      hr = call_method(cube, 16, a5, 5);
+      p_f4l1 = RD32(lr + 4u);
+      if (hr != D3D_OK || !p_f4l1) {
+          printf("d3d8 cube selftest: FAILED -- LockRect(face 4, level 1) "
+                 "returned 0x%08x and pointer 0x%08x.\n", hr, p_f4l1);
+          fails++;
+      }
+      if (RD32(lr) != 32u * 4u) {
+          printf("d3d8 cube selftest: FAILED -- face 4 level 1 locked with a "
+                 "pitch of %u; 32 pixels of BGRA8 is %u.\n",
+                 RD32(lr), 32u * 4u);
+          fails++;
+      }
+      { uint32_t u[2]; u[0] = 4; u[1] = 1; call_method(cube, 17, u, 2); }
+
+      a5[0] = 0;
+      WR32(lr, 0); WR32(lr + 4u, 0);
+      call_method(cube, 16, a5, 5);
+      p_f0l1 = RD32(lr + 4u);
+      { uint32_t u[2]; u[0] = 0; u[1] = 1; call_method(cube, 17, u, 2); }
+    }
+    if (p_f0l1 && p_f4l1 && p_f4l1 - p_f0l1 != 4u * face_chain) {
+        printf("d3d8 cube selftest: FAILED -- face 0 level 1 is at 0x%08x and "
+               "face 4 level 1 at 0x%08x, %d bytes apart; four face chains is "
+               "%u. The faces overlap or are mis-spaced, so writing one face "
+               "corrupts another.\n",
+               p_f0l1, p_f4l1, (int)(p_f4l1 - p_f0l1), 4u * face_chain);
+        fails++;
+    }
+
+    /* A face out of range must be refused, not wrapped. */
+    { uint32_t a5[5]; a5[0] = 6; a5[1] = 0; a5[2] = lr; a5[3] = 0; a5[4] = 0;
+      hr = call_method(cube, 16, a5, 5);
+      if (hr != D3DERR_INVALIDCALL) {
+          printf("d3d8 cube selftest: FAILED -- LockRect on face 6 of a cube "
+                 "returned 0x%08x, not INVALIDCALL.\n", hr);
+          fails++;
+      }
+    }
+
+    /* GetCubeMapSurface (slot 15): (face, level, ppSurface) -- a view on that
+       face's bytes, and unlocking it uploads that face. */
+    args[0] = 4; args[1] = 1; args[2] = out;
+    WR32(out, 0);
+    hr = call_method(cube, 15, args, 3);
+    g = RD32(out);
+    if (hr != D3D_OK || !g || !d3d8_object_from_guest(g)) {
+        printf("d3d8 cube selftest: FAILED -- GetCubeMapSurface(4, 1) returned "
+               "0x%08x and wrote 0x%08x.\n", hr, g);
+        gpu_device_destroy();
+        return fails + 1;
+    }
+    s = d3d8_object_from_guest(g);
+    WR32(lr, 0); WR32(lr + 4u, 0);
+    { uint32_t a2[2]; a2[0] = lr; a2[1] = 0; call_method(s, 9, a2, 2); }
+    p_surf = RD32(lr + 4u);
+    if (p_surf != p_f4l1) {
+        printf("d3d8 cube selftest: FAILED -- the face 4 level 1 surface locks "
+               "at 0x%08x and the cube's own face 4 level 1 at 0x%08x. The "
+               "surface has storage of its own, so everything the engine "
+               "writes through it is lost.\n", p_surf, p_f4l1);
+        fails++;
+    }
+    /*
+     * A SUB-RECTANGLE lock: the movie player locks one every frame, and while
+     * this host refused them every movie frame was dropped. (8,4)-(16,12) of
+     * a 32x32 BGRA8 level must come back at base + 4*pitch + 8*4, with the
+     * pitch unchanged -- a zero offset, the old behaviour dressed up, would
+     * put the caller's pixels in the top-left corner.
+     */
+    {
+        uint32_t rc = guest_malloc(16), a2[2], want;
+        WR32(rc, 8); WR32(rc + 4u, 4); WR32(rc + 8u, 16); WR32(rc + 12u, 12);
+        WR32(lr, 0); WR32(lr + 4u, 0);
+        a2[0] = lr; a2[1] = rc;
+        hr = call_method(s, 9, a2, 2);
+        want = p_f4l1 + 4u * 32u * 4u + 8u * 4u;
+        if (hr != D3D_OK || RD32(lr + 4u) != want) {
+            printf("d3d8 cube selftest: FAILED -- locking (8,4)-(16,12) of a "
+                   "32x32 BGRA8 face returned 0x%08x at 0x%08x; the first "
+                   "pixel inside that rectangle is at 0x%08x.\n",
+                   hr, RD32(lr + 4u), want);
+            fails++;
+        }
+        if (RD32(lr) != 32u * 4u) {
+            printf("d3d8 cube selftest: FAILED -- a sub-rectangle lock changed "
+                   "the pitch to %u; the rows are still the surface's rows, so "
+                   "it is %u.\n", RD32(lr), 32u * 4u);
+            fails++;
+        }
+        /* Outside the surface must be refused, not clamped. */
+        WR32(rc, 0); WR32(rc + 4u, 0); WR32(rc + 8u, 64); WR32(rc + 12u, 8);
+        hr = call_method(s, 9, a2, 2);
+        if (hr != D3DERR_INVALIDCALL) {
+            printf("d3d8 cube selftest: FAILED -- locking (0,0)-(64,8) of a "
+                   "32x32 face returned 0x%08x, not INVALIDCALL.\n", hr);
+            fails++;
+        }
+    }
+
+    uploads = d3d8_texture_uploads(cube);
+    call_method(s, 10, NULL, 0);                     /* surface UnlockRect */
+    if (d3d8_texture_uploads(cube) != uploads + 1u) {
+        printf("d3d8 cube selftest: FAILED -- unlocking the face 4 level 1 "
+               "surface uploaded nothing (%lu uploads before and after).\n",
+               uploads);
+        fails++;
+    } else if (d3d8_texture_last_upload_level(cube) != 1u) {
+        printf("d3d8 cube selftest: FAILED -- unlocking the face 4 level 1 "
+               "surface uploaded level %u instead.\n",
+               d3d8_texture_last_upload_level(cube));
+        fails++;
+    }
+
+    gpu_device_destroy();
+    printf("d3d8 cube selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- six faces with separate storage, each addressable "
+             "through LockRect and through its own surface, each uploading to "
+             "its own layer");
+    return fails;
+}
+
 int d3d8_host_selftest(void)
 {
     int fails = 0;
@@ -675,6 +868,7 @@ int d3d8_host_selftest(void)
     fails += gamma_selftest();
     fails += getdirect3d_selftest();
     fails += texture_level_selftest();
+    fails += cube_selftest();
     fails += d3d8_draw_selftest();
     printf("d3d8: SELF-TEST %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);

@@ -131,6 +131,25 @@ int        gpu_texture_upload(GpuTexture t, uint32_t level,
                               const void *data, uint32_t bytes);
 void       gpu_texture_destroy(GpuTexture t);
 
+/*
+ * A cube texture: six square faces, in D3D8's face order (+X, -X, +Y, -Y,
+ * +Z, -Z), which is also the layer order SDL_GPU and Vulkan use, so a face
+ * index passes through untranslated.
+ *
+ * Sampling one is a SEPARATE question from storing one -- gpu_draw refuses a
+ * cube bound to its texture stage by name, because the fixed-function shader
+ * here has a 2D sampler and there is no way to sample a cube through it. See
+ * gpu_draw.c.
+ */
+GpuTexture gpu_texture_create_cube(uint32_t size, GpuFormat fmt,
+                                   uint32_t levels);
+int        gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
+                                   const void *data, uint32_t bytes);
+/* 1 if this handle is a cube texture; 0 for a 2D one OR for a handle that is
+   not a live texture at all -- callers use it to choose a message, never to
+   decide the handle is valid. */
+int        gpu_texture_is_cube(GpuTexture t);
+
 /* ---- drawing ----------------------------------------------------------- */
 
 /*

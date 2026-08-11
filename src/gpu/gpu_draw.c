@@ -28,6 +28,13 @@ GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat f, uint32_t l)
 int gpu_texture_upload(GpuTexture t, uint32_t l, const void *d, uint32_t n)
 { (void)t; (void)l; (void)d; (void)n; return no_sdl("texture upload"); }
 void gpu_texture_destroy(GpuTexture t) { (void)t; }
+GpuTexture gpu_texture_create_cube(uint32_t s, GpuFormat f, uint32_t l)
+{ (void)s; (void)f; (void)l; return (GpuTexture)no_sdl("cube texture create"); }
+int gpu_texture_upload_face(GpuTexture t, uint32_t fc, uint32_t l,
+                            const void *d, uint32_t n)
+{ (void)t; (void)fc; (void)l; (void)d; (void)n;
+  return no_sdl("cube texture upload"); }
+int gpu_texture_is_cube(GpuTexture t) { (void)t; return 0; }
 int  gpu_draw(const GpuDraw *d) { (void)d; return no_sdl("draw"); }
 void gpu_draw_report(void) { }
 void gpu_draw_counts(unsigned long *s2, unsigned long *r) { *s2 = *r = 0; }
@@ -67,6 +74,8 @@ typedef struct {
     uint32_t        w, h;
     GpuFormat       fmt;
     uint32_t        levels;
+    uint32_t        faces;         /* 1 for a 2D texture, 6 for a cube */
+    int             cube_refused;  /* this cube's draw refusal was reported */
     int             kind;          /* GpuBufferKind, or 0 for a texture */
     int             live;
 } Res;
@@ -236,8 +245,10 @@ static SDL_GPUTextureFormat sdl_format(GpuFormat f)
     return SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 
-GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
-                              uint32_t levels)
+/* The 2D and the cube path differ in exactly two fields, so they share this
+   and cannot drift apart in the rest. */
+static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
+                                 uint32_t levels, uint32_t faces)
 {
     SDL_GPUTextureCreateInfo ci;
     SDL_GPUTextureFormat sf = sdl_format(fmt);
@@ -254,33 +265,57 @@ GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
         fprintf(stderr, "gpu: a %ux%u texture was asked for.\n", w, h);
         return 0;
     }
+    if (faces == 6 && w != h) {
+        fprintf(stderr, "gpu: a %ux%u cube texture was asked for; cube faces "
+                        "are square.\n", w, h);
+        return 0;
+    }
     if (!(handle = res_alloc())) return 0;
     r = &g_res[handle - 1];
 
     memset(&ci, 0, sizeof ci);
-    ci.type = SDL_GPU_TEXTURETYPE_2D;
+    ci.type = (faces == 6) ? SDL_GPU_TEXTURETYPE_CUBE : SDL_GPU_TEXTURETYPE_2D;
     ci.format = sf;
     ci.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
     ci.width = w;
     ci.height = h;
-    ci.layer_count_or_depth = 1;
+    ci.layer_count_or_depth = faces;
     ci.num_levels = levels ? levels : 1;
     r->tex = SDL_CreateGPUTexture(g_gpu, &ci);
     if (!r->tex) {
-        fprintf(stderr, "gpu: SDL_CreateGPUTexture(%ux%u) failed: %s\n", w, h,
-                SDL_GetError());
+        fprintf(stderr, "gpu: SDL_CreateGPUTexture(%ux%u, %u face(s)) failed: "
+                        "%s\n", w, h, faces, SDL_GetError());
         return 0;
     }
     r->w = w;
     r->h = h;
     r->fmt = fmt;
     r->levels = ci.num_levels;
+    r->faces = faces;
     r->live = 1;
     return handle;
 }
 
-int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
-                       uint32_t bytes)
+GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
+                              uint32_t levels)
+{
+    return texture_create(w, h, fmt, levels, 1);
+}
+
+GpuTexture gpu_texture_create_cube(uint32_t size, GpuFormat fmt,
+                                   uint32_t levels)
+{
+    return texture_create(size, size, fmt, levels, 6);
+}
+
+int gpu_texture_is_cube(GpuTexture t)
+{
+    if (!t || t > (uint32_t)g_nres) return 0;
+    return g_res[t - 1].live && g_res[t - 1].tex && g_res[t - 1].faces == 6;
+}
+
+int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
+                            const void *data, uint32_t bytes)
 {
     SDL_GPUTransferBufferCreateInfo tci;
     SDL_GPUTransferBuffer *tb;
@@ -296,6 +331,11 @@ int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
     if (level >= r->levels) {
         fprintf(stderr, "gpu: upload to level %u of a %u-level texture.\n",
                 level, r->levels);
+        return 0;
+    }
+    if (face >= r->faces) {
+        fprintf(stderr, "gpu: upload to face %u of a texture with %u face(s).\n",
+                face, r->faces);
         return 0;
     }
     lw = r->w >> level; if (!lw) lw = 1;
@@ -325,6 +365,7 @@ int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
     src.transfer_buffer = tb;
     dr.texture = r->tex;
     dr.mip_level = level;
+    dr.layer = face;
     dr.w = lw;
     dr.h = lh;
     dr.d = 1;
@@ -333,6 +374,12 @@ int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
     SDL_SubmitGPUCommandBuffer(cmd);
     SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
     return 1;
+}
+
+int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
+                       uint32_t bytes)
+{
+    return gpu_texture_upload_face(t, 0, level, data, bytes);
 }
 
 void gpu_texture_destroy(GpuTexture t)
@@ -637,6 +684,29 @@ int gpu_draw(const GpuDraw *d)
     }
     if (d->texop != GPU_TEXOP_NONE) {
         if (!(tres = res_get(d->texture, 1, "draw"))) { g_refused++; return 0; }
+        /*
+         * A cube bound to the texture stage is refused, not sampled as its
+         * first face.
+         *
+         * The fixed-function fragment shader declares a 2D sampler; there is
+         * no combination of bindings that makes it sample a cube. Substituting
+         * face 0 would draw the geometry with a plausible-looking wrong
+         * reflection, which reads as an art bug. Once per texture, with the
+         * count in the report, so a scene full of them says so once.
+         */
+        if (tres->faces != 1) {
+            if (!tres->cube_refused) {
+                fprintf(stderr, "gpu: a CUBE texture (handle %u, %ux%u) was "
+                        "bound to the texture stage. This backend's "
+                        "fixed-function shader samples 2D only, so the draw is "
+                        "refused rather than drawn with the wrong face. Cube "
+                        "sampling is not implemented.\n",
+                        d->texture, tres->w, tres->h);
+                tres->cube_refused = 1;
+            }
+            g_refused++;
+            return 0;
+        }
     }
 
     /*

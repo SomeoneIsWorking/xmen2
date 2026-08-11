@@ -642,6 +642,22 @@ static void dev_CreateTexture(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
+static void dev_CreateCubeTexture(D3D8Object *self, CPU *C)
+{
+    uint32_t size = d3d8_arg(C, 0), levels = d3d8_arg(C, 1);
+    uint32_t usage = d3d8_arg(C, 2), fmt = d3d8_arg(C, 3), pool = d3d8_arg(C, 4);
+    uint32_t out = d3d8_arg(C, 5);
+    D3D8Object *t;
+
+    (void)self;
+    if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    t = d3d8_cubetexture_new(size, levels, usage, fmt, pool);
+    if (!t) { WR32(out, 0); d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    d3d8_resource_attach_destructor(t);
+    WR32(out, d3d8_object_guest(t));
+    d3d8_ret(C, D3D_OK);
+}
+
 static void dev_CreateVertexBuffer(D3D8Object *self, CPU *C)
 {
     uint32_t len = d3d8_arg(C, 0), usage = d3d8_arg(C, 1);
@@ -974,7 +990,7 @@ static const D3D8MethodFn g_impl[] = {
     dev_GetGammaRamp,                   /* 19 */
     dev_CreateTexture,                  /* 20 */
     NULL,                               /* 21 CreateVolumeTexture */
-    NULL,                               /* 22 CreateCubeTexture */
+    dev_CreateCubeTexture,              /* 22 */
     dev_CreateVertexBuffer,             /* 23 */
     dev_CreateIndexBuffer,              /* 24 */
     NULL,                               /* 25 CreateRenderTarget */
