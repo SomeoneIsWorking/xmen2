@@ -39,6 +39,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
@@ -211,10 +212,159 @@ static void say_blind(const char *what)
             "  Reported once; the total is in the exit report.\n", what);
 }
 
+
+/* ---- scripted input ----------------------------------------------------- */
+
+/*
+ * X2_INPUT_SCRIPT -- key presses at fixed times, for a headless run.
+ *
+ * A headless run has no window and therefore no keyboard: every read comes
+ * back "nothing pressed", so nothing past the first screen can ever be
+ * exercised without a person sitting at the machine. This drives it instead.
+ *
+ *   X2_INPUT_SCRIPT="4.0+150:Down 4.5+150:Return 6.0+150:Escape"
+ *
+ * is "<seconds from the first input read>+<hold in ms>:<SDL key name>", space
+ * or comma separated. The names are SDL's (SDL_GetScancodeFromName), so
+ * "Return", "Down", "Escape", "A" all work, and a name SDL does not know is
+ * REFUSED by name at parse time rather than silently never firing.
+ *
+ * Every press and release is REPORTED. Injected input that looked like a
+ * person typing would make a scripted run indistinguishable from a real one,
+ * and the whole value of this is being able to say which it was.
+ */
+#define SCRIPT_MAX 32
+typedef struct { double at, until; unsigned char dik; int down, said; char name[24]; } ScriptKey;
+static ScriptKey g_script[SCRIPT_MAX];
+static int g_nscript, g_script_parsed;
+static double g_script_t0;
+
+#ifdef X2_WITH_SDL
+static unsigned char dik_of_scancode(int sc)
+{
+    int i;
+    for (i = 0; i < DIK_MAP_N; i++)
+        if (DIK_MAP[i].sdl == sc) return DIK_MAP[i].dik;
+    return 0;
+}
+#endif
+
+static double script_now(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+static void script_parse(void)
+{
+    const char *e = getenv("X2_INPUT_SCRIPT");
+    const char *p;
+
+    g_script_parsed = 1;
+    if (!e || !*e) return;
+#ifndef X2_WITH_SDL
+    fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT is set but this build has no "
+                    "SDL, so no key name can be resolved and NOTHING will be "
+                    "injected.\n");
+    return;
+#else
+    for (p = e; *p; ) {
+        double at = 0.0, hold = 100.0;
+        char name[24];
+        int n = 0, sc;
+        while (*p == ' ' || *p == ',' || *p == '\t') p++;
+        if (!*p) break;
+        if (sscanf(p, "%lf+%lf:%23[^ ,\t]%n", &at, &hold, name, &n) != 3 &&
+            (n = 0, sscanf(p, "%lf:%23[^ ,\t]%n", &at, name, &n)) != 2) {
+            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT could not be read at "
+                            "\"%s\" -- the form is <seconds>[+<hold ms>]:<key "
+                            "name>. NOTHING from here on was scheduled.\n", p);
+            return;
+        }
+        p += n;
+        if (g_nscript == SCRIPT_MAX) {
+            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT holds more than %d "
+                            "events; the rest were DROPPED.\n", SCRIPT_MAX);
+            return;
+        }
+        sc = (int)SDL_GetScancodeFromName(name);
+        if (sc == SDL_SCANCODE_UNKNOWN) {
+            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT names the key \"%s\", "
+                            "which SDL does not know. Refusing rather than "
+                            "scheduling a press that never happens.\n", name);
+            return;
+        }
+        g_script[g_nscript].dik = dik_of_scancode(sc);
+        if (!g_script[g_nscript].dik) {
+            fprintf(stderr, "DINPUT8: \"%s\" is an SDL key this host has no "
+                            "DIK code for, so the game could never see it. "
+                            "Refusing.\n", name);
+            return;
+        }
+        g_script[g_nscript].at = at;
+        g_script[g_nscript].until = at + hold / 1000.0;
+        snprintf(g_script[g_nscript].name, sizeof g_script[0].name, "%s", name);
+        g_nscript++;
+    }
+    if (g_nscript)
+        fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT -- %d scripted key press(es) "
+                        "will be INJECTED; each is reported as it fires, so "
+                        "nothing here can be mistaken for a person typing.\n",
+                g_nscript);
+#endif
+}
+
+/*
+ * Start the script's clock.
+ *
+ * Called once when the guest is about to run, so the times in the script are
+ * seconds from the START OF THE RUN -- which is what someone writing "press
+ * Return at 100 seconds" means. Left to the first keyboard read it would be
+ * seconds from whenever the game first polled input, which is minutes into a
+ * run that plays six intro movies first, and a script written against the
+ * wrong anchor fires nothing and looks like input not working.
+ */
+void dinput_script_start(void)
+{
+    g_script_t0 = script_now();
+    if (!g_script_parsed) script_parse();
+    if (g_nscript)
+        fprintf(stderr, "DINPUT8: the script's clock starts NOW; its times are "
+                        "seconds from here.\n");
+}
+
+/* OR the scripted keys into a keyboard block that has already been filled from
+   the real device, so a script adds to input rather than replacing it. */
+static void script_apply(uint32_t out, uint32_t n)
+{
+    double now;
+    int i;
+
+    if (!g_script_parsed) script_parse();
+    if (!g_nscript) return;
+    now = script_now();
+    if (g_script_t0 == 0.0) g_script_t0 = now;   /* no explicit start: from here */
+    now -= g_script_t0;
+    for (i = 0; i < g_nscript; i++) {
+        ScriptKey *k = &g_script[i];
+        int down = now >= k->at && now < k->until;
+        if (down && (uint32_t)k->dik < n)
+            *((unsigned char *)(uintptr_t)out + k->dik) = 0x80;
+        if (down && !k->down)
+            fprintf(stderr, "DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
+                            "t=%.2fs\n", k->name, k->dik, now);
+        else if (!down && k->down && !k->said++)
+            fprintf(stderr, "DINPUT8: released \"%s\" at t=%.2fs\n",
+                    k->name, now);
+        k->down = down;
+    }
+}
+
 static void fill_keyboard(uint32_t out, uint32_t n)
 {
     memset((void *)(uintptr_t)out, 0, n);
-    if (!input_available()) { say_blind("keyboard"); return; }
+    if (!input_available()) { say_blind("keyboard"); script_apply(out, n); return; }
 #ifdef X2_WITH_SDL
     {
         int nkeys = 0, i;
@@ -231,6 +381,7 @@ static void fill_keyboard(uint32_t out, uint32_t n)
         }
     }
 #endif
+    script_apply(out, n);
 }
 
 static void fill_mouse(uint32_t out, uint32_t n)

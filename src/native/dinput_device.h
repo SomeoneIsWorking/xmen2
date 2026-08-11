@@ -23,4 +23,11 @@ uint32_t dinput_device_new(DInputDeviceKind kind);
 
 void dinput_device_report(void);
 
+/*
+ * Start the X2_INPUT_SCRIPT clock (see dinput_device.c). Called once when the
+ * guest is about to run, so a script's times are seconds from the start of the
+ * run rather than from whenever the game first polled the keyboard.
+ */
+void dinput_script_start(void);
+
 #endif /* DINPUT_DEVICE_H */

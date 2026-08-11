@@ -19,6 +19,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "heartbeat.h"
+#include "dinput_device.h"
 #include "win32_sdl.h"
 #include "gpu_device.h"
 #include "shell32.h"
@@ -1753,6 +1754,7 @@ int main(int argc, char **argv)
                From the entry point on, the guest owns the thread and silence
                becomes ambiguous. */
             heartbeat_start();
+            dinput_script_start();
             printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
                    nm ? nm : "(NO RECOMPILED BODY)");
             if (!nm) return 1;
