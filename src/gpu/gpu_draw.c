@@ -581,11 +581,22 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
     }
     ci.target_info.color_target_descriptions = &ct;
     ci.target_info.num_color_targets = 1;
-    /* No depth target yet: the device's automatic depth surface is not backed
-       by a GPU texture. Enabling the depth test against a target that does not
-       exist is a validation error, so the state is carried and IGNORED here --
-       and gpu_draw says so, once, rather than letting it look honoured. */
-    ci.target_info.has_depth_stencil_target = false;
+    /*
+     * The pipeline must declare exactly what the pass attaches. gpu_pass_begin
+     * attaches the depth target whenever one could be made, so the format is
+     * asked for rather than assumed -- and when there is none, the depth state
+     * is dropped rather than declared against a target that does not exist,
+     * which is a validation error and not a picture.
+     */
+    if (gpu_depth_format() != SDL_GPU_TEXTUREFORMAT_INVALID) {
+        ci.target_info.has_depth_stencil_target = true;
+        ci.target_info.depth_stencil_format = gpu_depth_format();
+        ci.depth_stencil_state.enable_depth_test = k->depth_test ? true : false;
+        ci.depth_stencil_state.enable_depth_write = k->depth_write ? true : false;
+        ci.depth_stencil_state.compare_op = sdl_compare((GpuCompare)k->depth_func);
+    } else {
+        ci.target_info.has_depth_stencil_target = false;
+    }
 
     g_pipes[g_npipes].key = *k;
     g_pipes[g_npipes].pipe = SDL_CreateGPUGraphicsPipeline(g_gpu, &ci);
@@ -624,7 +635,14 @@ typedef struct {
     float    mvp[16];
     float    viewport[4];
     uint32_t pretransformed;
-    uint32_t pad[3];
+    /* 0 when the vertex format carries NO diffuse colour. The attribute is
+       still bound (a missing binding is a validation error) but it points at
+       the position's bytes, so the shader must not read it -- reading it
+       painted every unlit surface with the float bits of its own X
+       coordinate, which is a smooth rainbow across a hillside and reads as a
+       lighting bug. */
+    uint32_t has_diffuse;
+    uint32_t pad[2];
 } VertexUniforms;
 
 typedef struct {
@@ -748,9 +766,10 @@ int gpu_draw(const GpuDraw *d)
         (sdl_blend(d->src_blend) == SDL_GPU_BLENDFACTOR_INVALID ||
          sdl_blend(d->dst_blend) == SDL_GPU_BLENDFACTOR_INVALID))
         return refuse("a blend factor this backend does not have");
-    if (d->depth_test && !g_depth_ignored++)
-        fprintf(stderr, "gpu: the depth test is requested but there is no "
-                        "depth target yet, so it is IGNORED. Everything draws "
+    if (d->depth_test && gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID &&
+        !g_depth_ignored++)
+        fprintf(stderr, "gpu: the depth test is requested and this device has "
+                        "no depth format, so it is IGNORED. Everything draws "
                         "in submission order. Reported once.\n");
 
     if (!(pipe = pipeline_for(&key))) { g_refused++; return 0; }
@@ -775,6 +794,7 @@ int gpu_draw(const GpuDraw *d)
     vu.viewport[2] = (float)g_swap_w;
     vu.viewport[3] = (float)g_swap_h;
     vu.pretransformed = d->pretransformed ? 1u : 0u;
+    vu.has_diffuse = d->color_offset >= 0 ? 1u : 0u;
     SDL_PushGPUVertexUniformData(g_cmd, 0, &vu, sizeof vu);
 
     memset(&pu, 0, sizeof pu);
@@ -999,6 +1019,15 @@ void gpu_draw_shutdown(void)
             g_res[i].live = 0;
         }
     g_nres = 0;
+    /*
+     * The placeholder texture's HANDLE is an index into the table just
+     * emptied, so keeping it across a device teardown means the next device's
+     * first untextured draw looks up a handle that no longer exists and is
+     * refused -- "draw given handle 2, which was never created". Found by the
+     * depth self-test, which is the first thing to create a second device in
+     * one process; the game does the same on any Reset.
+     */
+    g_white = 0;
 }
 
 #endif /* X2_WITH_SDL */

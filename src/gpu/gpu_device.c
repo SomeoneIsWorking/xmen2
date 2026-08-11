@@ -41,6 +41,10 @@ uint32_t              g_swap_w, g_swap_h;
    and, later, the engine's off-screen render destinations. */
 static SDL_GPUTexture *g_offscreen;
 
+static SDL_GPUTexture *g_depth_tex;
+static SDL_GPUTextureFormat g_depth_fmt;
+static uint32_t g_depth_w, g_depth_h;
+
 /* Headless: no window, and the frame renders into this instead. */
 static int             g_headless;
 static uint32_t        g_headless_w = 800, g_headless_h = 600;
@@ -103,6 +107,10 @@ void gpu_device_destroy(void)
 #endif
 #ifdef X2_WITH_SDL
     if (!g_gpu) return;
+    if (g_depth_tex) SDL_ReleaseGPUTexture(g_gpu, g_depth_tex);
+    g_depth_tex = NULL;
+    g_depth_w = g_depth_h = 0;
+    g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
     if (g_win) SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
     SDL_DestroyGPUDevice(g_gpu);
     g_gpu = NULL;
@@ -222,9 +230,97 @@ void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h)
     if (t) { g_swap = t; g_swap_w = w; g_swap_h = h; }
 }
 
+/*
+ * The depth/stencil buffer.
+ *
+ * D3D8 gives the device an automatic depth surface (the game asks for
+ * D3DFMT_D16 via depth=auto) and then depth-tests every piece of world
+ * geometry against it. Without one, 476,531 draws in a menu run asked for a
+ * depth test that could not happen and drew in submission order instead --
+ * which is not a subtle difference: it is what makes the far wall paint over
+ * the character standing in front of it.
+ *
+ * The format is CHOSEN by asking the driver, not assumed: D24_UNORM_S8_UINT is
+ * the usual one but is not universal, so the alternatives are tried in turn
+ * and the failure to find any is reported by name rather than left to show up
+ * as a pass that will not begin.
+ */
+/*
+ * The format is resolved on FIRST ASK, not on first pass.
+ *
+ * A pipeline is built before the pass it will draw into is opened, and it has
+ * to declare the same depth format the pass attaches -- so if the format were
+ * only decided when the pass opened, the first pipeline of the run would
+ * declare "no depth" and then be bound against a pass that has one. That is a
+ * validation error, and it would have been the FIRST draw of every run.
+ */
+SDL_GPUTextureFormat gpu_depth_format(void)
+{
+    static const SDL_GPUTextureFormat WANT[] = {
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
+        SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+        SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+        SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+    };
+    unsigned i;
+
+    if (g_depth_fmt != SDL_GPU_TEXTUREFORMAT_INVALID) return g_depth_fmt;
+    if (!g_gpu) return SDL_GPU_TEXTUREFORMAT_INVALID;
+    for (i = 0; i < sizeof WANT / sizeof WANT[0]; i++) {
+        if (SDL_GPUTextureSupportsFormat(g_gpu, WANT[i],
+                                         SDL_GPU_TEXTURETYPE_2D,
+                                         SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+            g_depth_fmt = WANT[i];
+            return g_depth_fmt;
+        }
+    }
+    {
+        static int told;
+        if (!told++)
+            fprintf(stderr, "gpu: this device supports NONE of the five depth "
+                            "formats asked for, so there is no depth buffer "
+                            "and everything draws in submission order.\n");
+    }
+    return SDL_GPU_TEXTUREFORMAT_INVALID;
+}
+
+SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h)
+{
+    SDL_GPUTextureCreateInfo ci;
+
+    if (!g_gpu || !w || !h) return NULL;
+    if (g_depth_tex && g_depth_w == w && g_depth_h == h) return g_depth_tex;
+    if (gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID) return NULL;
+    if (g_depth_tex) {
+        SDL_ReleaseGPUTexture(g_gpu, g_depth_tex);
+        g_depth_tex = NULL;
+    }
+    memset(&ci, 0, sizeof ci);
+    ci.type = SDL_GPU_TEXTURETYPE_2D;
+    ci.format = g_depth_fmt;
+    ci.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
+    ci.width = w;
+    ci.height = h;
+    ci.layer_count_or_depth = 1;
+    ci.num_levels = 1;
+    g_depth_tex = SDL_CreateGPUTexture(g_gpu, &ci);
+    if (!g_depth_tex) {
+        fprintf(stderr, "gpu: the %ux%u depth target could not be made: %s -- "
+                        "everything will draw in submission order.\n",
+                w, h, SDL_GetError());
+        return NULL;
+    }
+    g_depth_w = w;
+    g_depth_h = h;
+    return g_depth_tex;
+}
+
 void gpu_pass_begin(void)
 {
     SDL_GPUColorTargetInfo ct;
+    SDL_GPUDepthStencilTargetInfo dt;
+    SDL_GPUTexture *depth;
 
     if (g_pass || !g_cmd || !g_swap) return;
     memset(&ct, 0, sizeof ct);
@@ -245,7 +341,29 @@ void gpu_pass_begin(void)
                                      : SDL_GPU_LOADOP_DONT_CARE;
     ct.store_op = SDL_GPU_STOREOP_STORE;
 
-    g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, NULL);
+    depth = gpu_depth_target(g_swap_w, g_swap_h);
+    memset(&dt, 0, sizeof dt);
+    if (depth) {
+        dt.texture = depth;
+        /*
+         * CLEAR when the engine asked, and CLEAR when it did not.
+         *
+         * The contents from the previous frame are meaningless to this one and
+         * LOADing them would depth-test against the last frame's geometry.
+         * D3D8's own semantics are that a frame that draws depth-tested
+         * geometry clears Z first; a frame that forgets is drawing against
+         * garbage on real hardware too, and 1.0 is the value that lets
+         * everything through rather than a value chosen to hide the mistake.
+         */
+        dt.clear_depth = (g_clear.mask & 2u) ? g_clear.depth : 1.0f;
+        dt.clear_stencil = (Uint8)((g_clear.mask & 4u) ? g_clear.stencil : 0u);
+        dt.load_op = SDL_GPU_LOADOP_CLEAR;
+        dt.store_op = SDL_GPU_STOREOP_STORE;
+        dt.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
+        dt.stencil_store_op = SDL_GPU_STOREOP_STORE;
+    }
+
+    g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, depth ? &dt : NULL);
     if (!g_pass) {
         fprintf(stderr, "gpu: SDL_BeginGPURenderPass failed: %s\n",
                 SDL_GetError());

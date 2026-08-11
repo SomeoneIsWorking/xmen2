@@ -244,6 +244,144 @@ static int d3d8_draw_selftest(void)
 }
 
 /*
+ * The DEPTH TEST, by pixels.
+ *
+ * The order of the two draws is the whole test: a NEAR red quad first, then a
+ * FAR blue one over the same pixels. With a working depth buffer the red one
+ * survives; with none -- which is what this backend had, for 476,531 draws in
+ * a menu run -- the later draw wins and the centre comes back blue. So a
+ * regression that loses the depth attachment, or builds the pipeline without
+ * depth state, turns this from PASSED to a specific accusation rather than to
+ * a picture nobody looks at.
+ *
+ * Pretransformed vertices (XYZRHW) are used so the depth values are written
+ * directly rather than through a projection this test would also be testing.
+ */
+static int depth_selftest(void)
+{
+    struct Vtx { float x, y, z, rhw; uint32_t color; };
+    static struct Vtx quad[12];
+    static uint32_t img[TW * TH];
+    static const struct { float z; uint32_t color; } PASS[2] = {
+        { 0.25f, 0xFFFF0000u },        /* near, drawn FIRST  */
+        { 0.75f, 0xFF0000FFu },        /* far,  drawn SECOND */
+    };
+    D3D8Object *vb;
+    D3D8State st;
+    D3D8DrawRequest req;
+    GpuDraw gd;
+    uint32_t args[3], locked, centre;
+    int fails = 0, i;
+
+    printf("\n=== d3d8 depth selftest: the far draw must NOT win ===\n");
+    if (!gpu_device_create()) {
+        printf("d3d8 depth selftest: FAILED -- no GPU device, so NOTHING about "
+               "the depth test was checked.\n");
+        return 1;
+    }
+    d3d8_resource_install();
+    vb = d3d8_vertexbuffer_new(sizeof quad, 0, 0x0044u, 0);
+    if (!vb) {
+        printf("d3d8 depth selftest: FAILED -- no vertex buffer.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    d3d8_resource_attach_destructor(vb);
+
+    /* Two full-target quads, six vertices each, wound the way the engine
+       winds a front face (the same convention the draw self-test pins down). */
+    for (i = 0; i < 2; i++) {
+        static const float X[6] = { 0.0f, (float)TW, 0.0f,
+                                    0.0f, (float)TW, (float)TW };
+        static const float Y[6] = { 0.0f, 0.0f, (float)TH,
+                                    (float)TH, 0.0f, (float)TH };
+        int k;
+        for (k = 0; k < 6; k++) {
+            struct Vtx *v = &quad[i * 6 + k];
+            v->x = X[k]; v->y = Y[k];
+            v->z = PASS[i].z; v->rhw = 1.0f;
+            v->color = PASS[i].color;
+        }
+    }
+
+    args[0] = 0; args[1] = 0; args[2] = guest_malloc(4);
+    call_method(vb, 11, args, 4);
+    locked = RD32(args[2]);
+    if (!locked) {
+        printf("d3d8 depth selftest: FAILED -- Lock returned no pointer.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    memcpy((void *)(uintptr_t)locked, quad, sizeof quad);
+    call_method(vb, 12, NULL, 0);
+
+    d3d8_state_reset(&st);
+    st.vertex_shader = 0x0044u;
+    st.stream[0].guest_ptr = d3d8_object_guest(vb);
+    st.stream[0].stride = sizeof quad[0];
+    /* D3DRS_ZENABLE(7)=TRUE, D3DRS_ZWRITEENABLE(14)=TRUE,
+       D3DRS_ZFUNC(23)=D3DCMP_LESSEQUAL(4), D3DRS_CULLMODE(22)=NONE(1) --
+       exactly what a title sets before drawing world geometry. */
+    d3d8_state_set_render(&st, 7, 1);
+    d3d8_state_set_render(&st, 14, 1);
+    d3d8_state_set_render(&st, 23, 4);
+    d3d8_state_set_render(&st, 22, 1);
+
+    if (!gpu_offscreen_begin(TW, TH, 0.0f, 1.0f, 0.0f, 1.0f)) {
+        printf("d3d8 depth selftest: FAILED -- no off-screen target.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    for (i = 0; i < 2; i++) {
+        memset(&req, 0, sizeof req);
+        req.vertex_buffer = d3d8_resource_buffer(vb);
+        req.stride = sizeof quad[0];
+        req.primitive_type = 4;                  /* D3DPT_TRIANGLELIST */
+        req.primitive_count = 2;
+        req.first_vertex = (uint32_t)(i * 6);
+        if (!d3d8_build_draw(&st, &req, &gd) || !gpu_draw(&gd)) {
+            printf("d3d8 depth selftest: FAILED -- pass %d was refused, so "
+                   "the comparison never happened.\n", i);
+            gpu_offscreen_end();
+            gpu_device_destroy();
+            return fails + 1;
+        }
+        if (!gd.depth_test || !gd.depth_write) {
+            printf("d3d8 depth selftest: FAILED -- the state said ZENABLE and "
+                   "ZWRITEENABLE and the draw came out with test=%d write=%d.\n",
+                   gd.depth_test, gd.depth_write);
+            fails++;
+        }
+    }
+    if (!gpu_offscreen_read(img, sizeof img)) {
+        printf("d3d8 depth selftest: FAILED -- nothing could be read back.\n");
+        gpu_offscreen_end();
+        gpu_device_destroy();
+        return fails + 1;
+    }
+    gpu_offscreen_end();
+
+    centre = img[(TH / 2) * TW + TW / 2];
+    if (centre == 0xFF0000FFu) {
+        printf("d3d8 depth selftest: FAILED -- the centre is BLUE, so the far "
+               "quad drawn second covered the near one. There is no working "
+               "depth test, and every scene will paint back to front by "
+               "submission order.\n");
+        fails++;
+    } else if (centre != 0xFFFF0000u) {
+        printf("d3d8 depth selftest: FAILED -- the centre is 0x%08x, neither "
+               "the near red quad (0xffff0000) nor the far blue one.\n",
+               centre);
+        fails++;
+    }
+
+    gpu_device_destroy();
+    printf("d3d8 depth selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- a far quad drawn AFTER a near one does not cover it");
+    return fails;
+}
+
+/*
  * The pixel-shader handle, driven through the real device vtable.
  *
  * The engine's first call is `SetPixelShader(0)` -- MEASURED, not assumed: the
@@ -870,6 +1008,7 @@ int d3d8_host_selftest(void)
     fails += texture_level_selftest();
     fails += cube_selftest();
     fails += d3d8_draw_selftest();
+    fails += depth_selftest();
     printf("d3d8: SELF-TEST %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);
     fflush(stdout);

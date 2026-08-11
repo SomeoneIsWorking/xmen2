@@ -31,7 +31,8 @@ layout(set = 1, binding = 0) uniform VertexState {
     mat4  mvp;
     vec4  viewport;        /* x, y, width, height in pixels */
     uint  pretransformed;  /* 1 for D3DFVF_XYZRHW */
-    uint  pad0, pad1, pad2;
+    uint  has_diffuse;     /* 0 when the vertex format has no diffuse colour */
+    uint  pad0, pad1;
 } vs;
 
 void main()
@@ -55,8 +56,18 @@ void main()
     } else {
         gl_Position = vs.mvp * vec4(in_pos.xyz, 1.0);
     }
-    /* D3DCOLOR is 0xAARRGGBB, so the bytes in memory are B,G,R,A and the
-       attribute arrives in that order. */
-    v_color = in_color.zyxw;
+    /*
+     * D3DCOLOR is 0xAARRGGBB, so the bytes in memory are B,G,R,A and the
+     * attribute arrives in that order.
+     *
+     * WHITE when the vertex format has no diffuse component. That is D3D8's
+     * own answer with lighting disabled, and the attribute is aliased onto the
+     * position when there is no colour to point it at -- so reading it would
+     * multiply every texel by the float bits of the vertex's X coordinate.
+     * With lighting ENABLED the right answer is the lit material colour, which
+     * this stage does not compute; white leaves the texture as the artist
+     * authored it instead of tinting it with nonsense.
+     */
+    v_color = vs.has_diffuse != 0u ? in_color.zyxw : vec4(1.0);
     v_uv = in_uv;
 }

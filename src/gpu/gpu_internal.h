@@ -22,6 +22,19 @@ extern SDL_GPURenderPass    *g_pass;
 extern SDL_GPUTexture       *g_swap;
 extern uint32_t              g_swap_w, g_swap_h;
 
+/*
+ * The depth/stencil target the current pass renders against, and its format.
+ *
+ * The pipeline has to declare the SAME format the pass attaches, so gpu_draw.c
+ * needs to know it -- and it must ask rather than assume, because which depth
+ * format exists is a property of the driver (D24_UNORM_S8_UINT is not
+ * universal). SDL_GPU_TEXTUREFORMAT_INVALID means there is no depth target,
+ * which is the truthful answer before the device exists and the one a draw has
+ * to be told rather than guess.
+ */
+SDL_GPUTextureFormat gpu_depth_format(void);
+SDL_GPUTexture      *gpu_depth_target(uint32_t w, uint32_t h);
+
 /* Open the render pass if it is not open yet, clearing as the engine asked.
    Drawing needs the pass, and the pass has to be opened by whoever gets there
    first -- a draw or the end of the frame. */
