@@ -49,3 +49,6 @@ comment and was never true. A binding that must exist but must not be READ
 needs the shader to be told, and the comment claiming otherwise survived
 because the only thing that would have contradicted it was a picture nobody
 had looked at yet.
+
+### Note (2026-08-11)
+Second half done: fixed-function LIGHTING is implemented (per-vertex, world space, up to 8 lights, material diffuse/ambient/emissive, D3DRS_AMBIENT, directional and point lights with range and the three attenuation terms, D3DRS_COLORVERTEX). White-when-no-diffuse stays correct for the lighting-DISABLED case; the lit case is now computed rather than approximated, so the sky, the statue and the columns are shaded. Not written, and each reported where it is dropped: specular, spot cones (a spot lights as a point), the *MATERIALSOURCE selection, and a ninth light. Covered by the lighting self-test -- the same quad drawn twice with only its normal flipped, red toward the light and black away from it -- which was run against a shader with N.L forced to 1 and caught it.

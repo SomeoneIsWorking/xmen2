@@ -33,6 +33,9 @@
 #define D3DRS_ALPHAREF          24
 #define D3DRS_ALPHAFUNC         25
 #define D3DRS_ALPHABLENDENABLE  27
+#define D3DRS_LIGHTING         137
+#define D3DRS_AMBIENT          139
+#define D3DRS_COLORVERTEX      141
 
 /* D3DTSS_*, the ones this reads. */
 #define D3DTSS_COLOROP           1
@@ -102,6 +105,7 @@ int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out)
     memset(out, 0, sizeof *out);
     out->color_offset = -1;
     out->uv_offset = -1;
+    out->normal_offset = -1;
 
     if (fvf & D3DFVF_XYZRHW) {
         out->pos_offset = (int)off;
@@ -116,7 +120,7 @@ int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out)
            here rather than draw from offset zero. */
         return 0;
     }
-    if (fvf & D3DFVF_NORMAL)   off += 12;
+    if (fvf & D3DFVF_NORMAL)   { out->normal_offset = (int)off; off += 12; }
     if (fvf & D3DFVF_PSIZE)    off += 4;
     if (fvf & D3DFVF_DIFFUSE)  { out->color_offset = (int)off; off += 4; }
     if (fvf & D3DFVF_SPECULAR) off += 4;
@@ -128,12 +132,102 @@ int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out)
     return 1;
 }
 
+
 /* ---- state translation ------------------------------------------------- */
 
 static uint32_t rs(const D3D8State *s, uint32_t which, uint32_t dflt)
 {
     return s->render[which].set ? s->render[which].value : dflt;
 }
+
+/* ---- fixed-function lighting ------------------------------------------- */
+
+/*
+ * D3DRS_LIGHTING and everything it reads.
+ *
+ * D3D8 computes this per VERTEX, in world space: the engine's light positions
+ * and directions are world-space, so the shader transforms the vertex and its
+ * normal by the WORLD matrix alone and does the arithmetic there. The combined
+ * mvp cannot be taken apart again, which is why the world matrix travels
+ * separately.
+ *
+ * D3DMATERIAL8 is 17 floats -- diffuse, ambient, specular, emissive, power --
+ * and D3DLIGHT8 is 26 dwords, laid out as type, diffuse, specular, ambient,
+ * position, direction, range, falloff, attenuation 0/1/2, theta, phi. Both are
+ * copied out by OFFSET here, in one place, rather than being read at three
+ * call sites that could each get the layout wrong.
+ *
+ * NOT implemented, and each is named where it is dropped rather than left to
+ * look applied: specular (the engine sets SPECULARENABLE=0), spot cones
+ * (falloff/theta/phi -- a spot is treated as a point light and SAYS so), and
+ * D3DRS_COLORVERTEX's per-source selection (DIFFUSEMATERIALSOURCE and
+ * friends), which uses D3D's defaults.
+ */
+static void copy4(float *dst, const float *src) { memcpy(dst, src, 4 * sizeof *dst); }
+
+static void argb_to_rgba(uint32_t c, float *out)
+{
+    out[0] = (float)((c >> 16) & 0xFF) / 255.0f;
+    out[1] = (float)((c >>  8) & 0xFF) / 255.0f;
+    out[2] = (float)((c      ) & 0xFF) / 255.0f;
+    out[3] = (float)((c >> 24) & 0xFF) / 255.0f;
+}
+
+static void fill_lighting(const D3D8State *s, GpuDraw *out)
+{
+    static const float ident[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    static int told_spot, told_toomany;
+    const float *w = s->transform_set[D3DTS_WORLD]
+                         ? s->transform[D3DTS_WORLD].m : ident;
+    unsigned i;
+
+    memcpy(out->world, w, sizeof out->world);
+    out->lighting = rs(s, D3DRS_LIGHTING, 0) != 0;
+    out->color_vertex = rs(s, D3DRS_COLORVERTEX, 1) != 0;
+    argb_to_rgba(rs(s, D3DRS_AMBIENT, 0), out->global_ambient);
+    if (!out->lighting) return;
+
+    if (s->material_set) {
+        copy4(out->mat_diffuse,  &s->material[0]);
+        copy4(out->mat_ambient,  &s->material[4]);
+        copy4(out->mat_emissive, &s->material[12]);
+    } else {
+        /* D3D8's own default material is white diffuse and nothing else. */
+        out->mat_diffuse[0] = out->mat_diffuse[1] = out->mat_diffuse[2] =
+            out->mat_diffuse[3] = 1.0f;
+    }
+
+    out->nlights = 0;
+    for (i = 0; i < D3D8_MAX_LIGHTS; i++) {
+        const float *L = s->light[i];
+        GpuLight *g;
+        if (!s->light_set[i] || !s->light_on[i]) continue;
+        if (out->nlights == GPU_MAX_LIGHTS) {
+            if (!told_toomany++)
+                fprintf(stderr, "d3d8: more than %d lights are enabled at "
+                                "once; the rest are DROPPED and the scene is "
+                                "darker than the engine asked for.\n",
+                        GPU_MAX_LIGHTS);
+            break;
+        }
+        g = &out->light[out->nlights++];
+        memset(g, 0, sizeof *g);
+        g->type = (int)((const uint32_t *)L)[0];
+        copy4(g->diffuse, &L[1]);
+        copy4(g->ambient, &L[9]);
+        memcpy(g->position, &L[13], 3 * sizeof(float));
+        memcpy(g->direction, &L[16], 3 * sizeof(float));
+        g->range = L[19];
+        g->atten[0] = L[21];
+        g->atten[1] = L[22];
+        g->atten[2] = L[23];
+        if (g->type == 2 && !told_spot++)
+            fprintf(stderr, "d3d8: a SPOT light is enabled; this stage has no "
+                            "cone, so it is lit as a point light -- brighter "
+                            "outside the cone than the engine asked for.\n");
+    }
+}
+
 
 static GpuBlend blend_of(uint32_t d3d)
 {
@@ -236,6 +330,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     out->pretransformed = vl.pretransformed;
     out->color_offset = vl.color_offset;
     out->uv_offset = vl.uv_offset;
+    out->normal_offset = vl.normal_offset;
 
     /*
      * The transform.
@@ -246,6 +341,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
      * decision.
      */
     d3d8_combine_transform(s, out->mvp);
+    fill_lighting(s, out);
 
     /* Texture stage 0 only. A second stage is a combiner this shader does not
        have, and it is reported rather than dropped. */

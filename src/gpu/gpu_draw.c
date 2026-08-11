@@ -469,7 +469,7 @@ static SDL_GPUCompareOp sdl_compare(GpuCompare c)
  */
 typedef struct {
     uint32_t stride;
-    int      pos_offset, color_offset, uv_offset;
+    int      pos_offset, color_offset, uv_offset, normal_offset;
     int      pos_is_float4;
     int      prim;
     int      blend_enable, src_blend, dst_blend;
@@ -492,7 +492,7 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
     SDL_GPUGraphicsPipelineCreateInfo ci;
     SDL_GPUColorTargetDescription ct;
     SDL_GPUVertexBufferDescription vb;
-    SDL_GPUVertexAttribute at[3];
+    SDL_GPUVertexAttribute at[4];
     int nat = 0, i;
 
     for (i = 0; i < g_npipes; i++)
@@ -534,6 +534,12 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
     at[nat].buffer_slot = 0;
     at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
     at[nat].offset = (Uint32)(k->uv_offset >= 0 ? k->uv_offset : k->pos_offset);
+    nat++;
+    at[nat].location = 3;
+    at[nat].buffer_slot = 0;
+    at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+    at[nat].offset = (Uint32)(k->normal_offset >= 0 ? k->normal_offset
+                                                    : k->pos_offset);
     nat++;
 
     ci.vertex_input_state.vertex_buffer_descriptions = &vb;
@@ -631,6 +637,12 @@ static SDL_GPUSampler *sampler_for(int clamp, int point)
 
 /* ---- the draw ---------------------------------------------------------- */
 
+/*
+ * MUST match the std140 layout of the vertex shader's uniform block, field for
+ * field -- see src/gpu/shaders/d3d8_fixed.vert. std140 aligns a mat4 and a
+ * vec4 to 16 bytes, which is why the uint groups come in fours: a mismatch
+ * here does not fail to compile, it silently shifts every field after it.
+ */
 typedef struct {
     float    mvp[16];
     float    viewport[4];
@@ -642,7 +654,20 @@ typedef struct {
        coordinate, which is a smooth rainbow across a hillside and reads as a
        lighting bug. */
     uint32_t has_diffuse;
+    uint32_t lighting;
+    uint32_t nlights;
+
+    float    world[16];
+    float    global_ambient[4];
+    float    mat_diffuse[4];
+    float    mat_ambient[4];
+    float    mat_emissive[4];
+    uint32_t has_normal;
+    uint32_t color_vertex;
     uint32_t pad[2];
+    /* Five vec4s per light: diffuse, ambient, (position, range),
+       (direction, type), (attenuation, unused). */
+    float    light[GPU_MAX_LIGHTS * 5][4];
 } VertexUniforms;
 
 typedef struct {
@@ -753,6 +778,7 @@ int gpu_draw(const GpuDraw *d)
     key.pos_is_float4 = d->pretransformed ? 1 : 0;
     key.color_offset = d->color_offset;
     key.uv_offset = d->uv_offset;
+    key.normal_offset = d->normal_offset;
     key.prim = (int)d->prim;
     key.blend_enable = d->blend_enable;
     key.src_blend = (int)d->src_blend;
@@ -840,6 +866,30 @@ int gpu_draw(const GpuDraw *d)
     vu.viewport[3] = (float)g_swap_h;
     vu.pretransformed = d->pretransformed ? 1u : 0u;
     vu.has_diffuse = d->color_offset >= 0 ? 1u : 0u;
+    vu.has_normal = d->normal_offset >= 0 ? 1u : 0u;
+    vu.lighting = d->lighting ? 1u : 0u;
+    vu.color_vertex = d->color_vertex ? 1u : 0u;
+    if (d->lighting) {
+        int li;
+        memcpy(vu.world, d->world, sizeof vu.world);
+        memcpy(vu.global_ambient, d->global_ambient, sizeof vu.global_ambient);
+        memcpy(vu.mat_diffuse, d->mat_diffuse, sizeof vu.mat_diffuse);
+        memcpy(vu.mat_ambient, d->mat_ambient, sizeof vu.mat_ambient);
+        memcpy(vu.mat_emissive, d->mat_emissive, sizeof vu.mat_emissive);
+        vu.nlights = (uint32_t)(d->nlights > GPU_MAX_LIGHTS ? GPU_MAX_LIGHTS
+                                                            : d->nlights);
+        for (li = 0; li < (int)vu.nlights; li++) {
+            const GpuLight *L = &d->light[li];
+            memcpy(vu.light[li * 5 + 0], L->diffuse, sizeof L->diffuse);
+            memcpy(vu.light[li * 5 + 1], L->ambient, sizeof L->ambient);
+            memcpy(vu.light[li * 5 + 2], L->position, 3 * sizeof(float));
+            vu.light[li * 5 + 2][3] = L->range;
+            memcpy(vu.light[li * 5 + 3], L->direction, 3 * sizeof(float));
+            vu.light[li * 5 + 3][3] = (float)L->type;
+            memcpy(vu.light[li * 5 + 4], L->atten, sizeof L->atten);
+            vu.light[li * 5 + 4][3] = 0.0f;
+        }
+    }
     SDL_PushGPUVertexUniformData(g_cmd, 0, &vu, sizeof vu);
 
     memset(&pu, 0, sizeof pu);

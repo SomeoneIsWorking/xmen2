@@ -16,6 +16,7 @@ typedef struct {
     int      pretransformed;
     int      color_offset;
     int      uv_offset;
+    int      normal_offset;
     uint32_t stride;
 } D3D8VertexLayout;
 

@@ -61,6 +61,30 @@ typedef enum {
     GPU_CMP_GREATER, GPU_CMP_NOTEQUAL, GPU_CMP_GREATEREQUAL, GPU_CMP_ALWAYS
 } GpuCompare;
 
+/*
+ * One light, as D3D8 defines it and as the vertex stage needs it.
+ *
+ * Eight, because that is what D3D8's minimum guarantees and what this title
+ * sets; a ninth is REFUSED by name where the state is read rather than
+ * silently dropped, because a missing key light is a scene that is merely
+ * dark and gets blamed on the art.
+ */
+#define GPU_MAX_LIGHTS 8
+
+typedef enum {
+    GPU_LIGHT_POINT = 1, GPU_LIGHT_SPOT = 2, GPU_LIGHT_DIRECTIONAL = 3
+} GpuLightType;
+
+typedef struct {
+    int   type;                 /* GpuLightType */
+    float diffuse[4];
+    float ambient[4];
+    float position[3];
+    float direction[3];         /* points FROM the light, as D3D defines it */
+    float range;
+    float atten[3];             /* constant, linear, quadratic */
+} GpuLight;
+
 /* What the one texture stage does with the vertex colour. */
 typedef enum {
     GPU_TEXOP_NONE = 0,      /* untextured: the vertex colour is the result */
@@ -98,8 +122,29 @@ typedef struct {
     int          pretransformed;
     int          color_offset;
     int          uv_offset;
+    /* The normal, which only matters when lighting is on -- but the ATTRIBUTE
+       is pipeline state, so it is part of the layout either way. */
+    int          normal_offset;
 
     float        mvp[16];          /* row-major, as D3D hands it over */
+    /*
+     * The WORLD matrix on its own, because D3D8 computes fixed-function
+     * lighting in world space: the light positions and directions the engine
+     * sets are world-space, so the vertex and its normal have to get there
+     * too, and the combined mvp cannot be taken apart again.
+     */
+    float        world[16];
+
+    /* ---- fixed-function lighting (D3DRS_LIGHTING) ---- */
+    int          lighting;         /* 0: the vertex colour is used as-is */
+    int          color_vertex;     /* D3DRS_COLORVERTEX: the vertex diffuse
+                                      replaces the material's diffuse */
+    int          nlights;          /* how many of `light` are enabled */
+    float        global_ambient[4];
+    float        mat_diffuse[4];
+    float        mat_ambient[4];
+    float        mat_emissive[4];
+    GpuLight     light[GPU_MAX_LIGHTS];
 
     GpuTexture   texture;
     GpuTexOp     texop;

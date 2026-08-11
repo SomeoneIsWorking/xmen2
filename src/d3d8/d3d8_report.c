@@ -382,6 +382,150 @@ static int depth_selftest(void)
 }
 
 /*
+ * FIXED-FUNCTION LIGHTING, by pixels, and with its own negative.
+ *
+ * The same quad is drawn twice with only its NORMAL flipped: facing the light
+ * it must come back the material's diffuse (red), facing away it must come
+ * back the ambient (black). One case alone proves nothing -- a stage that
+ * ignored the normal entirely and always returned the material colour would
+ * pass a lit-only test, and one that always returned black would pass an
+ * unlit-only test. Both, together, are the check.
+ *
+ * FVF is XYZ|NORMAL with no diffuse: exactly the vertex the game's world
+ * geometry uses (measured -- stride 24 with no colour, in X2_FRAME_DUMP).
+ */
+static int lighting_selftest(void)
+{
+    struct Vtx { float x, y, z, nx, ny, nz; };
+    static struct Vtx quad[6];
+    static uint32_t img[TW * TH];
+    static const float NDC[6][2] = {
+        {-1,-1}, { 1,-1}, {-1, 1}, {-1, 1}, { 1,-1}, { 1, 1}
+    };
+    D3D8Object *vb;
+    D3D8State st;
+    D3D8DrawRequest req;
+    GpuDraw gd;
+    uint32_t args[3], locked, centre[2];
+    int fails = 0, pass, i;
+
+    printf("\n=== d3d8 lighting selftest: N.L, both ways ===\n");
+    if (!gpu_device_create()) {
+        printf("d3d8 lighting selftest: FAILED -- no GPU device, so NOTHING "
+               "about lighting was checked.\n");
+        return 1;
+    }
+    d3d8_resource_install();
+    vb = d3d8_vertexbuffer_new(sizeof quad, 0, 0x0012u /* XYZ|NORMAL */, 0);
+    if (!vb) {
+        printf("d3d8 lighting selftest: FAILED -- no vertex buffer.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    d3d8_resource_attach_destructor(vb);
+
+    d3d8_state_reset(&st);
+    st.vertex_shader = 0x0012u;
+    st.stream[0].guest_ptr = d3d8_object_guest(vb);
+    st.stream[0].stride = sizeof quad[0];
+    d3d8_state_set_render(&st, 22, 1);              /* CULLMODE = NONE */
+    d3d8_state_set_render(&st, 137, 1);             /* LIGHTING = TRUE */
+    d3d8_state_set_render(&st, 139, 0);             /* AMBIENT  = black */
+    /* No transform is set, so world, view and projection are identity and the
+       vertices below are already in clip space. */
+
+    /* A RED diffuse material, nothing else: so a lit pixel is unmistakably
+       the material's colour and not the light's. */
+    st.material[0] = 1.0f; st.material[1] = 0.0f; st.material[2] = 0.0f;
+    st.material[3] = 1.0f;
+    st.material_set = 1;
+
+    /* One DIRECTIONAL light (type 3) shining along +Z, white. */
+    ((uint32_t *)st.light[0])[0] = 3u;
+    st.light[0][1] = st.light[0][2] = st.light[0][3] = st.light[0][4] = 1.0f;
+    st.light[0][16] = 0.0f; st.light[0][17] = 0.0f; st.light[0][18] = 1.0f;
+    st.light[0][19] = 1000.0f;                       /* range */
+    st.light_set[0] = 1;
+    st.light_on[0] = 1;
+
+    for (pass = 0; pass < 2; pass++) {
+        float nz = pass == 0 ? -1.0f : 1.0f;         /* toward, then away */
+        for (i = 0; i < 6; i++) {
+            quad[i].x = NDC[i][0]; quad[i].y = NDC[i][1]; quad[i].z = 0.5f;
+            quad[i].nx = 0.0f; quad[i].ny = 0.0f; quad[i].nz = nz;
+        }
+        args[0] = 0; args[1] = 0; args[2] = guest_malloc(4);
+        call_method(vb, 11, args, 4);
+        locked = RD32(args[2]);
+        if (!locked) {
+            printf("d3d8 lighting selftest: FAILED -- Lock returned nothing.\n");
+            gpu_device_destroy();
+            return fails + 1;
+        }
+        memcpy((void *)(uintptr_t)locked, quad, sizeof quad);
+        call_method(vb, 12, NULL, 0);
+
+        memset(&req, 0, sizeof req);
+        req.vertex_buffer = d3d8_resource_buffer(vb);
+        req.stride = sizeof quad[0];
+        req.primitive_type = 4;
+        req.primitive_count = 2;
+        if (!d3d8_build_draw(&st, &req, &gd)) {
+            printf("d3d8 lighting selftest: FAILED -- the draw could not be "
+                   "built.\n");
+            gpu_device_destroy();
+            return fails + 1;
+        }
+        if (pass == 0) {
+            if (gd.normal_offset != 12) {
+                printf("d3d8 lighting selftest: FAILED -- XYZ|NORMAL decoded "
+                       "the normal at %d, not 12.\n", gd.normal_offset);
+                fails++;
+            }
+            if (!gd.lighting || gd.nlights != 1) {
+                printf("d3d8 lighting selftest: FAILED -- the state said "
+                       "LIGHTING with one light enabled and the draw came out "
+                       "lighting=%d nlights=%d.\n", gd.lighting, gd.nlights);
+                fails++;
+            }
+        }
+        /* Cleared to BLUE, so "nothing was drawn" cannot be mistaken for the
+           unlit black the second pass expects. */
+        if (!gpu_offscreen_begin(TW, TH, 0.0f, 0.0f, 1.0f, 1.0f) ||
+            !gpu_draw(&gd) || !gpu_offscreen_read(img, sizeof img)) {
+            printf("d3d8 lighting selftest: FAILED -- pass %d did not "
+                   "rasterise.\n", pass);
+            gpu_offscreen_end();
+            gpu_device_destroy();
+            return fails + 1;
+        }
+        gpu_offscreen_end();
+        centre[pass] = img[(TH / 2) * TW + TW / 2];
+    }
+
+    if (centre[0] != 0xFFFF0000u) {
+        printf("d3d8 lighting selftest: FAILED -- a quad facing a white "
+               "directional light with a red diffuse material came back "
+               "0x%08x, not 0xffff0000.\n", centre[0]);
+        fails++;
+    }
+    if (centre[1] != 0xFF000000u) {
+        printf("d3d8 lighting selftest: FAILED -- the SAME quad with its "
+               "normal reversed came back 0x%08x, not black. %s\n", centre[1],
+               centre[1] == 0xFF0000FFu
+                   ? "That is the clear colour: nothing was drawn at all."
+                   : "N.L is not being applied.");
+        fails++;
+    }
+
+    gpu_device_destroy();
+    printf("d3d8 lighting selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- lit toward the light, black away from it, from the "
+             "same vertices");
+    return fails;
+}
+
+/*
  * The pixel-shader handle, driven through the real device vtable.
  *
  * The engine's first call is `SetPixelShader(0)` -- MEASURED, not assumed: the
@@ -1009,6 +1153,7 @@ int d3d8_host_selftest(void)
     fails += cube_selftest();
     fails += d3d8_draw_selftest();
     fails += depth_selftest();
+    fails += lighting_selftest();
     printf("d3d8: SELF-TEST %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);
     fflush(stdout);
