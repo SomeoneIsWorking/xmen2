@@ -1,11 +1,11 @@
 ---
 id: 55
 title: The menu does not respond to the keyboard: the DirectInput 7 device list is empty
-status: open
+status: resolved
 symptom: the main menu renders and animates but no key does anything; DINPUT: EnumDevices(devType=3 KEYBOARD) is reporting ZERO devices
 tags: input,dinput,menu,pc,native
 created: 2026-08-11
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 ## What is measured, not assumed
@@ -55,3 +55,6 @@ nothing.
 
 ### Note (2026-08-11)
 The DirectInput 7 side is now REAL: EnumDevices offers the system keyboard and the system mouse with a proper 580-byte DIDEVICEINSTANCEA, and the engine's own callback -- Gap::Display::igWin32Window::enumerateMouseAndKeyboard at libIGDisplay 0x10005660 -- is invoked once for each and returns. CreateDevice and CreateDeviceEx serve both GUIDs, sharing the device implementation with the DirectInput 8 stack. MEASURED after that change: the engine accepts the enumeration and does NOT then create either device (nothing reports the creation, and the report says 'dinput devices: none was ever created'), and the menu still does not respond to Return, Down or Space. So the empty DI7 list was not the whole story. The next step is to READ enumerateMouseAndKeyboard -- what it does with the instance it is handed, and what it is waiting for before it creates anything -- rather than to guess at another device property.
+
+### Resolution (2026-08-12)
+RESOLVED, and the cause was the DirectInput 7 device list after all. The engine's callback -- Gap::Display::igWin32Window::enumerateMouseAndKeyboard, decompiled from libIGDisplay 0x10005660 -- is two lines: it sets a global flag and returns DIENUM_STOP. So the enumeration is a yes/no question, 'is there a keyboard', and while it answered no the whole keyboard path stayed off. With the enumeration reporting the system keyboard and mouse, the menu RESPONDS: Return on NEW GAME opens 'Choose a difficulty level: Easy / Normal / Hard' with '[Esc] Back  [Enter] Select' (scratch/screenshots/di7in.png), and a second Return leaves the menu for level loading. The DI8 keyboard was being polled all along, which is what the injection instrument had already proved; what was missing was the engine's belief that a keyboard existed. Selecting a difficulty then crashed at once -- that is issue #56, guest threads receiving 0xDEADBEEF as their argument, also fixed.

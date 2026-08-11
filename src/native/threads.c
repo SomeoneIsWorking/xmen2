@@ -164,11 +164,21 @@ static void *thread_main(void *p)
     *(volatile uint32_t *)(uintptr_t)t->tib = 0xFFFFFFFFu;
 
     cpu_reset(&C);
-    /* The argument, then the return address the thread routine returns to --
-       which is never executed, because the return is caught below. */
+    /*
+     * The argument sits at [ESP], and NOTHING is pushed above it.
+     *
+     * x86_guest_call pushes the return address itself -- that is the whole
+     * point of it existing (see x86rt_native.c) -- so pushing a second one
+     * here put the argument at [ESP+8] instead of [ESP+4], which is where a
+     * `DWORD WINAPI proc(void *)` reads it from as [EBP+8]. Every thread
+     * routine that used its parameter therefore got the sentinel 0xDEADBEEF
+     * and dereferenced it: the crash was "SIGSEGV at 0xdeadbeef" with EAX
+     * holding it, one instruction into a freshly started thread, and it only
+     * showed up when the game finally started a thread that USES its
+     * argument -- the ones that ignore it had been working all along.
+     */
     C.esp = t->stack_base + t->stack_bytes - 16u;
-    WR32(C.esp + 4u, t->arg);
-    WR32(C.esp, 0xDEADBEEFu);
+    WR32(C.esp, t->arg);
     x86_guest_call(&C, t->start);
     t->exit_code = C.eax;
 
