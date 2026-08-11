@@ -211,6 +211,9 @@ void x86_int3(uint32_t addr);
 /* A function body ended without a terminator and the address it falls through
    to is not a known function. */
 void x86_fallthrough(uint32_t fn_ep, uint32_t next);
+/* The body ends at a call to a function that never returns; getting past it
+   means this port's implementation of that callee came back. */
+void x86_after_noreturn(uint32_t fn_ep, const char *callee);
 void x86_fallback_report(void);
 #define G_IMGBASE (X86_IMGBASE)
 
@@ -823,6 +826,210 @@ static inline uint64_t mmx_pmaddwd(uint64_t a, uint64_t b)
     return r;
 }
 
+/*
+ * SSE single-precision, on the host's own SSE.
+ *
+ * This is the one place in this runtime where reaching for the host
+ * instruction is MORE faithful than writing the operation out, and the reason
+ * is that the host is an x86-64 and the guest instruction IS the host
+ * instruction -- same encoding family, same IEEE-754 binary32, same MXCSR
+ * defaults (round-to-nearest, no flush-to-zero), same NaN propagation. Writing
+ * `a < b ? a : b` for MINPS would be a DIFFERENT operation: hardware MINPS
+ * returns the SECOND operand when either input is a NaN and for -0.0 vs +0.0,
+ * and a matrix normalise that divides by a zero length hits both. RCPPS and
+ * RSQRTSS are worse than that -- they are approximations whose result is only
+ * specified to a relative error, so "1.0f/x" is not a more accurate version of
+ * them, it is a different function, and the game's own Newton-Raphson refine
+ * steps are written around the hardware's error.
+ *
+ * So: the lane SHUFFLING and the MOVE semantics (which halves are written,
+ * which are preserved, when the upper lanes are zeroed) are written out here
+ * explicitly, because those are the parts a wrong reading gets wrong silently.
+ * The arithmetic is the host's.
+ *
+ * The guest's 128-bit register is kept as two uint64_t so it can be memcpy'd
+ * both ways without aliasing games; every helper below converts at its edges.
+ */
+#if defined(__x86_64__) || defined(__i386__)
+#include <xmmintrin.h>
+#else
+/* Refuse, by name, rather than substituting scalar code that differs on NaNs,
+   signed zero and the reciprocal approximations. */
+#error "The SSE model needs a host with SSE (x86). On another host the \
+approximate instructions (RCPPS/RCPSS/RSQRTSS) and the NaN/signed-zero \
+behaviour of MINPS/MAXPS/CMPPS cannot be reproduced, and a scalar stand-in \
+would be silently different rather than absent."
+#endif
+
+typedef struct { uint64_t q[2]; } X86Xmm;
+
+static inline __m128 sse_ld(const uint64_t *x)
+{
+    __m128 v; memcpy(&v, x, 16); return v;
+}
+static inline void sse_st(uint64_t *x, __m128 v)
+{
+    memcpy(x, &v, 16);
+}
+
+/* One 32-bit lane, as bits. Lane 0 is the LOW dword -- the same numbering the
+   manual's [127:96][95:64][63:32][31:0] diagrams use read right to left. */
+static inline uint32_t sse_lane(const uint64_t *x, int i)
+{
+    return (uint32_t)(x[i >> 1] >> ((i & 1) * 32));
+}
+static inline void sse_lane_put(uint64_t *x, int i, uint32_t v)
+{
+    int sh = (i & 1) * 32;
+    x[i >> 1] = (x[i >> 1] & ~(0xFFFFFFFFULL << sh)) | ((uint64_t)v << sh);
+}
+
+#define SSE_BINOP(name, ins)                                            \
+static inline void name(uint64_t *d, const uint64_t *s)                 \
+{ sse_st(d, ins(sse_ld(d), sse_ld(s))); }
+SSE_BINOP(sse_addps, _mm_add_ps)
+SSE_BINOP(sse_subps, _mm_sub_ps)
+SSE_BINOP(sse_mulps, _mm_mul_ps)
+SSE_BINOP(sse_divps, _mm_div_ps)
+SSE_BINOP(sse_minps, _mm_min_ps)
+SSE_BINOP(sse_maxps, _mm_max_ps)
+SSE_BINOP(sse_andps, _mm_and_ps)
+SSE_BINOP(sse_andnps, _mm_andnot_ps)   /* ~dst & src, in THAT order */
+SSE_BINOP(sse_orps,  _mm_or_ps)
+SSE_BINOP(sse_xorps, _mm_xor_ps)
+
+/* The scalar forms touch lane 0 ONLY; lanes 1..3 of the destination are
+   preserved, which is what makes MULSS usable on a register also holding a
+   vector. _mm_*_ss has exactly that semantics. */
+#define SSE_SCALAROP(name, ins)                                         \
+static inline void name(uint64_t *d, const uint64_t *s)                 \
+{ sse_st(d, ins(sse_ld(d), sse_ld(s))); }
+SSE_SCALAROP(sse_addss, _mm_add_ss)
+SSE_SCALAROP(sse_subss, _mm_sub_ss)
+SSE_SCALAROP(sse_mulss, _mm_mul_ss)
+SSE_SCALAROP(sse_divss, _mm_div_ss)
+SSE_SCALAROP(sse_minss, _mm_min_ss)
+SSE_SCALAROP(sse_maxss, _mm_max_ss)
+
+static inline void sse_sqrtps(uint64_t *d, const uint64_t *s)
+{ sse_st(d, _mm_sqrt_ps(sse_ld(s))); }
+static inline void sse_rcpps(uint64_t *d, const uint64_t *s)
+{ sse_st(d, _mm_rcp_ps(sse_ld(s))); }
+static inline void sse_rsqrtps(uint64_t *d, const uint64_t *s)
+{ sse_st(d, _mm_rsqrt_ps(sse_ld(s))); }
+/* The scalar unary forms take lane 0 from the SOURCE and lanes 1..3 from the
+   DESTINATION -- not from the source, which is the easy misreading. */
+static inline void sse_sqrtss(uint64_t *d, const uint64_t *s)
+{ sse_st(d, _mm_sqrt_ss(_mm_move_ss(sse_ld(d), sse_ld(s)))); }
+static inline void sse_rcpss(uint64_t *d, const uint64_t *s)
+{ sse_st(d, _mm_rcp_ss(_mm_move_ss(sse_ld(d), sse_ld(s)))); }
+static inline void sse_rsqrtss(uint64_t *d, const uint64_t *s)
+{ sse_st(d, _mm_rsqrt_ss(_mm_move_ss(sse_ld(d), sse_ld(s)))); }
+
+/* CMPPS/CMPSS produce a MASK (all ones or all zeros per lane), not a boolean.
+   The predicate is the instruction's imm8; Ghidra spells the common ones as
+   separate mnemonics (CMPNEQPS), so the emitter passes the number. */
+static inline void sse_cmpps(uint64_t *d, const uint64_t *s, int pred)
+{
+    __m128 a = sse_ld(d), b = sse_ld(s), r;
+    switch (pred) {
+    case 0: r = _mm_cmpeq_ps(a, b);   break;
+    case 1: r = _mm_cmplt_ps(a, b);   break;
+    case 2: r = _mm_cmple_ps(a, b);   break;
+    case 3: r = _mm_cmpunord_ps(a, b); break;
+    case 4: r = _mm_cmpneq_ps(a, b);  break;
+    case 5: r = _mm_cmpnlt_ps(a, b);  break;
+    case 6: r = _mm_cmpnle_ps(a, b);  break;
+    default: r = _mm_cmpord_ps(a, b); break;
+    }
+    sse_st(d, r);
+}
+static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred)
+{
+    __m128 a = sse_ld(d), b = sse_ld(s), r;
+    switch (pred) {
+    case 0: r = _mm_cmpeq_ss(a, b);   break;
+    case 1: r = _mm_cmplt_ss(a, b);   break;
+    case 2: r = _mm_cmple_ss(a, b);   break;
+    case 3: r = _mm_cmpunord_ss(a, b); break;
+    case 4: r = _mm_cmpneq_ss(a, b);  break;
+    case 5: r = _mm_cmpnlt_ss(a, b);  break;
+    case 6: r = _mm_cmpnle_ss(a, b);  break;
+    default: r = _mm_cmpord_ss(a, b); break;
+    }
+    sse_st(d, r);
+}
+
+/* SHUFPS: the low two lanes of the result come from the DESTINATION and the
+   high two from the SOURCE. Two selectors index each operand's own four
+   lanes. */
+static inline void sse_shufps(uint64_t *d, const uint64_t *s, unsigned imm)
+{
+    uint32_t r[4];
+    r[0] = sse_lane(d, (int)( imm       & 3));
+    r[1] = sse_lane(d, (int)((imm >> 2) & 3));
+    r[2] = sse_lane(s, (int)((imm >> 4) & 3));
+    r[3] = sse_lane(s, (int)((imm >> 6) & 3));
+    d[0] = (uint64_t)r[0] | ((uint64_t)r[1] << 32);
+    d[1] = (uint64_t)r[2] | ((uint64_t)r[3] << 32);
+}
+
+/* UNPCKLPS interleaves the LOW two lanes of each operand, UNPCKHPS the high
+   two, destination lane first in every pair. */
+static inline void sse_unpcklps(uint64_t *d, const uint64_t *s)
+{
+    uint32_t d0 = sse_lane(d, 0), d1 = sse_lane(d, 1);
+    uint32_t s0 = sse_lane(s, 0), s1 = sse_lane(s, 1);
+    d[0] = (uint64_t)d0 | ((uint64_t)s0 << 32);
+    d[1] = (uint64_t)d1 | ((uint64_t)s1 << 32);
+}
+static inline void sse_unpckhps(uint64_t *d, const uint64_t *s)
+{
+    uint32_t d2 = sse_lane(d, 2), d3 = sse_lane(d, 3);
+    uint32_t s2 = sse_lane(s, 2), s3 = sse_lane(s, 3);
+    d[0] = (uint64_t)d2 | ((uint64_t)s2 << 32);
+    d[1] = (uint64_t)d3 | ((uint64_t)s3 << 32);
+}
+
+/* MOVSS between two REGISTERS writes lane 0 and leaves 1..3 alone; the form
+   that loads from MEMORY zeroes them. Two different instructions sharing one
+   mnemonic, and the difference is a matrix column full of stale data. */
+static inline void sse_movss_rr(uint64_t *d, const uint64_t *s)
+{ sse_lane_put(d, 0, sse_lane(s, 0)); }
+static inline void sse_movss_load(uint64_t *d, uint32_t bits)
+{ d[0] = bits; d[1] = 0; }
+
+static inline void sse_movhlps(uint64_t *d, const uint64_t *s) { d[0] = s[1]; }
+static inline void sse_movlhps(uint64_t *d, const uint64_t *s) { d[1] = s[0]; }
+
+/* MOVMSKPS: one bit per lane, taken from the SIGN bit. */
+static inline uint32_t sse_movmskps(const uint64_t *s)
+{
+    return ((sse_lane(s, 0) >> 31) & 1u) | (((sse_lane(s, 1) >> 31) & 1u) << 1)
+         | (((sse_lane(s, 2) >> 31) & 1u) << 2)
+         | (((sse_lane(s, 3) >> 31) & 1u) << 3);
+}
+
+/*
+ * COMISS / UCOMISS write the INTEGER flags, not a mask: ZF/PF/CF, with
+ * OF/AF/SF cleared. Unordered (either operand NaN) sets all three of ZF, PF
+ * and CF -- which is why the compiler tests PF first. The difference between
+ * the two instructions is only which NaNs raise an exception, and exceptions
+ * are masked here, so they compute the same flags.
+ */
+static inline void sse_comiss(CPU *C, const uint64_t *a, const uint64_t *b)
+{
+    float x, y; uint32_t xb = sse_lane(a, 0), yb = sse_lane(b, 0);
+    uint32_t fl;
+    memcpy(&x, &xb, 4); memcpy(&y, &yb, 4);
+    /* Bit positions as FK_EXPLICIT stores them: CF 0, PF 2, ZF 6. */
+    if (x != x || y != y)  fl = (1U << 6) | (1U << 2) | (1U << 0);
+    else if (x > y)        fl = 0;
+    else if (x < y)        fl = 1U << 0;
+    else                   fl = 1U << 6;
+    SETFLAGS(C, FK_EXPLICIT, fl, 0U, 0U, 4);
+}
+
 static inline void x87_push(CPU *C, long double v)
 {
     C->top = (C->top - 1) & 7;
@@ -863,6 +1070,9 @@ void x86_int3(uint32_t addr);
 /* A function body ended without a terminator and the address it falls through
    to is not a known function. */
 void x86_fallthrough(uint32_t fn_ep, uint32_t next);
+/* The body ends at a call to a function that never returns; getting past it
+   means this port's implementation of that callee came back. */
+void x86_after_noreturn(uint32_t fn_ep, const char *callee);
 
 /* real code -> recompiled body; returns EAX */
 /* Entry from host code into a recompiled body. Reached by `jmp` from a naked

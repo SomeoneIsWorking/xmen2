@@ -80,6 +80,17 @@ add_executable(test_rotate tests/test_rotate.c)
 target_include_directories(test_rotate PRIVATE src/recomp)
 add_test(NAME rotate COMMAND test_rotate)
 
+# The SSE model, against the host CPU's own SSE (tests/test_sse.c). The
+# engine's matrix and skinning maths is SSE -- libIGMath's
+# alignedMatrixMultiplySSE is on the path any animated character takes -- and
+# the parts that go wrong quietly are the lane semantics, not the arithmetic:
+# which lanes a scalar op preserves, which operand SHUFPS takes each half
+# from, and that MINPS is `dst < src ? dst : src` and not fminf().
+add_executable(test_sse tests/test_sse.c)
+target_include_directories(test_sse PRIVATE src/recomp)
+target_link_libraries(test_sse PRIVATE m)
+add_test(NAME sse COMMAND test_sse)
+
 # The translator, tested as a unit.
 #
 # tools/recomp.py had no tests, and it is the most defect-prone thing here: a

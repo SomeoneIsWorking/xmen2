@@ -1502,6 +1502,25 @@ void x86_fallthrough(uint32_t fn_ep, uint32_t next)
     abort();
 }
 
+/*
+ * The body ended at a call the ORIGINAL analyser proved never returns
+ * (longjmp, exit, terminate, _CxxThrowException). Getting here is not a
+ * boundary defect -- the boundaries are right -- it means OUR implementation
+ * of that callee came back. Naming the callee is the whole point: the two
+ * failures need completely different work, and for six of XMen2.exe's fifteen
+ * "truncated" bodies the boundary story was simply wrong.
+ */
+void x86_after_noreturn(uint32_t fn_ep, const char *callee)
+{
+    fprintf(stderr, "x86_after_noreturn: the body of 0x%08x ends at a call to "
+                    "%s, which NEVER RETURNS.\n"
+                    "  Execution came back from it, so the defect is in this "
+                    "port's %s, not in the function's boundaries.\n",
+            fn_ep, callee, callee);
+    x86_diag_dump();
+    abort();
+}
+
 void x86_int3(uint32_t addr)
 {
     fprintf(stderr, "x86_int3: execution reached the compiler's unreachable "

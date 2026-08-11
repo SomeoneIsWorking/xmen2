@@ -47,7 +47,10 @@ PTR_SIZE = {"byte": 1, "word": 2, "dword": 4, "qword": 8, "undefined": 4,
             "undefined1": 1, "undefined2": 2, "undefined4": 4, "undefined8": 8,
             # Ghidra renders x87 memory operands with the real type, not a width
             "float": 4, "float4": 4, "double": 8, "float8": 8, "tbyte": 10,
-            "longdouble": 10}
+            "longdouble": 10,
+            # 128-bit SSE operands. Ghidra spells them `xmmword ptr`, and
+            # `undefined16` where it has no type for the memory.
+            "xmmword": 16, "oword": 16, "undefined16": 16}
 
 
 def _num(tok):
@@ -143,8 +146,8 @@ def parse_operand(tok):
     if up in HIGH:
         return Operand("reg8hi", reg=up)
 
-    m = re.match(r"^(byte|word|dword|qword|float\d*|double|tbyte|longdouble"
-                 r"|undefined\d*)\s+ptr\s+(.*)$", tok, re.I)
+    m = re.match(r"^(byte|word|dword|qword|xmmword|oword|float\d*|double"
+                 r"|tbyte|longdouble|undefined\d*)\s+ptr\s+(.*)$", tok, re.I)
     if m and re.match(r"^(FS|GS):", m.group(2).strip(), re.I):
         return parse_operand(m.group(2).strip())
     if m:
@@ -292,6 +295,10 @@ FLAGKIND = {"ADD": "FK_ADD", "SUB": "FK_SUB", "AND": "FK_LOGIC",
 IAT = {}          # absolute VA of an import slot -> (module, symbol)
 IMG = [0, 0]      # [preferred base, end] of the module being recompiled
 IMG_REBASED = [0]  # immediates rewritten as image-relative; reported by emit
+# (truncated fn ep, address it falls into) for every body that ends without a
+# terminator and runs into code that is not a known function. Written out by
+# emit as <module>.trunc -- the input ghidra_export.sh --merge wants.
+FALL_DEADEND = []
 # A branch target that is INSIDE a function but is not its entry: target ->
 # owning entry point. MSVC shares one epilogue between paths, so `JMP` lands in
 # the middle of another function -- 28 targets from 38 sites in XMen2.exe, the
@@ -839,22 +846,155 @@ def emit_instruction(ins, ctx):
     # register file makes the probe a no-op BECAUSE x|x == x, which is the same
     # answer for the right reason.
     #
-    if m in ("ORPS", "ANDPS", "XORPS", "ORPD", "ANDPD", "XORPD"):
+    if m in ("ORPD", "ANDPD", "XORPD"):
+        # The double-precision forms are bit-identical to the single ones, but
+        # nothing in these modules uses them; translating them on that
+        # reasoning alone would ship untested code.
+        raise Unsupported("%s (packed-double logic; no module uses it)" % m)
+
+    #
+    # SSE single precision.
+    #
+    # `alignedMatrixMultiplySSE` in libIGMath is on the skinning path, so the
+    # first level with an animated character reaches it. The whole set below is
+    # what the shipped modules actually contain -- counted, not guessed:
+    # MOVAPS/MULPS/SHUFPS/MOVSS/ADDPS lead at over 600 uses each. Anything
+    # outside it still refuses by name.
+    #
+    SSE_BIN = {
+        "ADDPS": "sse_addps", "SUBPS": "sse_subps", "MULPS": "sse_mulps",
+        "DIVPS": "sse_divps", "MINPS": "sse_minps", "MAXPS": "sse_maxps",
+        "ANDPS": "sse_andps", "ANDNPS": "sse_andnps", "ORPS": "sse_orps",
+        "XORPS": "sse_xorps",
+        "ADDSS": "sse_addss", "SUBSS": "sse_subss", "MULSS": "sse_mulss",
+        "DIVSS": "sse_divss", "MINSS": "sse_minss", "MAXSS": "sse_maxss",
+        "UNPCKLPS": "sse_unpcklps", "UNPCKHPS": "sse_unpckhps",
+        "MOVHLPS": "sse_movhlps", "MOVLHPS": "sse_movlhps",
+        "SQRTPS": "sse_sqrtps", "RCPPS": "sse_rcpps", "RSQRTPS": "sse_rsqrtps",
+        "SQRTSS": "sse_sqrtss", "RCPSS": "sse_rcpss", "RSQRTSS": "sse_rsqrtss",
+    }
+    # Ghidra spells the compare predicate into the mnemonic; the imm8 encoding
+    # is what the model takes.
+    SSE_CMP = {"EQ": 0, "LT": 1, "LE": 2, "UNORD": 3,
+               "NEQ": 4, "NLT": 5, "NLE": 6, "ORD": 7}
+
+    def xmm_reg(o):
+        return o.idx if o.kind == "xmm" else None
+
+    def xmm_src(o, tok):
+        """A `const uint64_t *` to the source's 16 bytes.
+
+        A memory source is pointed AT rather than copied: guest memory is
+        identity-mapped, which is the same assumption RD64 makes two hundred
+        lines up. MOVAPS's 16-byte alignment requirement is not enforced --
+        hardware would fault, and this does not; the guest is compiler output
+        that satisfies it, and a check on every load would cost more than it
+        can find."""
+        if o.kind == "xmm":
+            return "C->xmm[%d]" % o.idx
+        if o.kind == "mem":
+            return "(const uint64_t *)(uintptr_t)(%s)" % o.addr()
+        raise Unsupported("%s with source operand %r" % (m, tok.strip()))
+
+    if m in SSE_BIN:
         d, s2 = O(0), O(1)
-        op = {"ORPS": "|", "ORPD": "|", "ANDPS": "&", "ANDPD": "&",
-              "XORPS": "^", "XORPD": "^"}[m]
-        if d.kind != "xmm":
+        if xmm_reg(d) is None:
             raise Unsupported("%s with a non-XMM destination" % m)
-        if s2.kind == "xmm":
-            return [A,
-                    "C->xmm[%d][0] %s= C->xmm[%d][0];" % (d.idx, op, s2.idx),
-                    "C->xmm[%d][1] %s= C->xmm[%d][1];" % (d.idx, op, s2.idx)]
-        if s2.kind == "mem":
-            return [A,
-                    "{ uint32_t _a128 = %s;" % s2.addr(),
-                    "  C->xmm[%d][0] %s= RD64(_a128);" % (d.idx, op),
-                    "  C->xmm[%d][1] %s= RD64(_a128 + 8U); }" % (d.idx, op)]
-        raise Unsupported("%s with an unsupported source operand" % m)
+        # MOVHLPS/MOVLHPS exist only in the register-to-register encoding.
+        if m in ("MOVHLPS", "MOVLHPS") and s2.kind != "xmm":
+            raise Unsupported("%s with a memory source, which has no encoding"
+                              % m)
+        return [A, "%s(C->xmm[%d], %s);"
+                % (SSE_BIN[m], d.idx, xmm_src(s2, ops[1]))]
+
+    if m.startswith("CMP") and (m.endswith("PS") or m.endswith("SS")):
+        pred = SSE_CMP.get(m[3:-2])
+        if pred is None:
+            raise Unsupported("%s (unknown SSE compare predicate %r)"
+                              % (m, m[3:-2]))
+        d, s2 = O(0), O(1)
+        if xmm_reg(d) is None:
+            raise Unsupported("%s with a non-XMM destination" % m)
+        fn = "sse_cmpps" if m.endswith("PS") else "sse_cmpss"
+        return [A, "%s(C->xmm[%d], %s, %d);"
+                % (fn, d.idx, xmm_src(s2, ops[1]), pred)]
+
+    if m == "SHUFPS":
+        if len(ops) != 3:
+            raise Unsupported("SHUFPS with %d operand(s)" % len(ops))
+        d, s2, imm = O(0), O(1), O(2)
+        if xmm_reg(d) is None or imm.kind != "imm":
+            raise Unsupported("SHUFPS %s,%s,%s"
+                              % (ops[0].strip(), ops[1].strip(),
+                                 ops[2].strip()))
+        return [A, "sse_shufps(C->xmm[%d], %s, 0x%02xU);"
+                % (d.idx, xmm_src(s2, ops[1]), imm.val & 0xFF)]
+
+    if m in ("MOVAPS", "MOVUPS", "MOVNTPS"):
+        # MOVNTPS differs only in cache behaviour, which is not observable
+        # here; MOVAPS and MOVUPS differ only in the alignment fault.
+        d, s2 = O(0), O(1)
+        if d.kind == "xmm" and s2.kind == "xmm":
+            return [A, "C->xmm[%d][0] = C->xmm[%d][0];" % (d.idx, s2.idx),
+                    "C->xmm[%d][1] = C->xmm[%d][1];" % (d.idx, s2.idx)]
+        if d.kind == "xmm" and s2.kind == "mem":
+            return [A, "{ uint32_t _a128 = %s;" % s2.addr(),
+                    "  C->xmm[%d][0] = RD64(_a128);" % d.idx,
+                    "  C->xmm[%d][1] = RD64(_a128 + 8U); }" % d.idx]
+        if d.kind == "mem" and s2.kind == "xmm":
+            return [A, "{ uint32_t _a128 = %s;" % d.addr(),
+                    "  WR64(_a128, C->xmm[%d][0]);" % s2.idx,
+                    "  WR64(_a128 + 8U, C->xmm[%d][1]); }" % s2.idx]
+        raise Unsupported("%s %s,%s" % (m, ops[0].strip(), ops[1].strip()))
+
+    if m == "MOVSS":
+        d, s2 = O(0), O(1)
+        if d.kind == "xmm" and s2.kind == "xmm":
+            return [A, "sse_movss_rr(C->xmm[%d], C->xmm[%d]);"
+                    % (d.idx, s2.idx)]
+        if d.kind == "xmm" and s2.kind == "mem":
+            # The memory form ZEROES lanes 1..3; the register form does not.
+            return [A, "sse_movss_load(C->xmm[%d], RD32(%s));"
+                    % (d.idx, s2.addr())]
+        if d.kind == "mem" and s2.kind == "xmm":
+            return [A, "WR32(%s, (uint32_t)C->xmm[%d][0]);"
+                    % (d.addr(), s2.idx)]
+        raise Unsupported("MOVSS %s,%s" % (ops[0].strip(), ops[1].strip()))
+
+    if m in ("MOVLPS", "MOVHPS"):
+        half = 0 if m == "MOVLPS" else 1
+        d, s2 = O(0), O(1)
+        if d.kind == "xmm" and s2.kind == "mem":
+            return [A, "C->xmm[%d][%d] = RD64(%s);"
+                    % (d.idx, half, s2.addr())]
+        if d.kind == "mem" and s2.kind == "xmm":
+            return [A, "WR64(%s, C->xmm[%d][%d]);"
+                    % (d.addr(), s2.idx, half)]
+        raise Unsupported("%s %s,%s -- the register-to-register form is "
+                          "MOVHLPS/MOVLHPS and is spelled that way"
+                          % (m, ops[0].strip(), ops[1].strip()))
+
+    if m == "MOVMSKPS":
+        d, s2 = O(0), O(1)
+        if s2.kind != "xmm":
+            raise Unsupported("MOVMSKPS from %r" % ops[1].strip())
+        return [A, d.write("sse_movmskps(C->xmm[%d])" % s2.idx)]
+
+    if m in ("COMISS", "UCOMISS"):
+        # Identical here: they differ only in which NaNs raise an exception,
+        # and the exceptions are masked.
+        d, s2 = O(0), O(1)
+        if d.kind != "xmm":
+            raise Unsupported("%s with a non-XMM first operand" % m)
+        return [A, "sse_comiss(C, C->xmm[%d], %s);"
+                % (d.idx, xmm_src(s2, ops[1]))]
+
+    if m in ("PREFETCHNTA", "PREFETCHT0", "PREFETCHT1", "PREFETCHT2",
+             "SFENCE", "LFENCE", "MFENCE"):
+        # Genuinely architecturally invisible: cache hints and, on a
+        # single-guest-thread-at-a-time runtime with one global lock, fences
+        # over a memory model no weaker than x86's.
+        return [A, "/* %s: a hint with no architectural effect here */" % m]
 
     if m in ("ADC", "SBB"):
         d, s2 = reconcile(O(0), O(1))
@@ -1097,6 +1237,36 @@ def emit_instruction(ins, ctx):
             mm = re.fullmatch(r"MM(\d)", tok.strip().upper())
             return mm.group(1) if mm else None
         a_, b_ = ops[0].strip(), ops[1].strip()
+        # The SSE2 spelling of the same mnemonics moves 32 or 64 bits between
+        # an XMM register and memory or a general register. Loading into XMM
+        # ZEROES the rest of the register; storing writes only the low part.
+        # Parsed only when one side really is an XMM register: an `MM0` token
+        # is not a parseable operand, so parsing both unconditionally turned
+        # every MMX MOVD/MOVQ into "symbolic operand" -- 72 of them.
+        is_xmm = re.compile(r"^XMM\d$", re.I)
+        if is_xmm.match(a_) or is_xmm.match(b_):
+            xa, xb = parse_operand(a_), parse_operand(b_)
+            lo = "C->xmm[%d][0]"
+            if xa.kind == "xmm" and xb.kind != "xmm":
+                v = ("RD64(%s)" % xb.addr()) if m == "MOVQ" and \
+                    xb.kind == "mem" else \
+                    ("(uint64_t)RD32(%s)" % xb.addr()) if xb.kind == "mem" \
+                    else "(uint64_t)(%s)" % xb.read()
+                return [A, (lo % xa.idx) + " = %s;" % v,
+                        "C->xmm[%d][1] = 0;" % xa.idx]
+            if xb.kind == "xmm" and xa.kind != "xmm":
+                if xa.kind == "mem":
+                    return [A, ("WR64(%s, C->xmm[%d][0]);"
+                                % (xa.addr(), xb.idx)) if m == "MOVQ"
+                            else ("WR32(%s, (uint32_t)C->xmm[%d][0]);"
+                                  % (xa.addr(), xb.idx))]
+                return [A, xa.write("(uint32_t)C->xmm[%d][0]" % xb.idx)]
+            # XMM to XMM: MOVQ keeps the low quadword and zeroes the high one.
+            if m == "MOVQ":
+                return [A, "C->xmm[%d][0] = C->xmm[%d][0];" % (xa.idx, xb.idx),
+                        "C->xmm[%d][1] = 0;" % xa.idx]
+            raise Unsupported("MOVD between two XMM registers, which has no "
+                              "encoding")
         ma, mb = mmx(a_), mmx(b_)
         if ma and mb:
             return [A, "C->mm[%s] = C->mm[%s];" % (ma, mb)]
@@ -1234,6 +1404,20 @@ def emit_instruction(ins, ctx):
             return [A, "%s(C); return;" % fname(ins["flow"])]
         return [A, "goto L_%08x;" % ins["flow"]]
 
+    if m in ("LOOP", "LOOPE", "LOOPZ", "LOOPNE", "LOOPNZ"):
+        # ECX is decremented BEFORE the test and the FLAGS are untouched --
+        # both differ from `DEC ECX; JNZ`, which is the shape it is easy to
+        # emit instead. LOOPE/LOOPNE additionally test ZF, and they read the
+        # flag left by an earlier instruction, not one this produces.
+        if "flow" not in ins:
+            raise Unsupported("%s with no resolved target" % m)
+        if ins["flow"] not in ctx["_addrs"]:
+            raise Unsupported("%s out of its own body (target 0x%08x)"
+                              % (m, ins["flow"]))
+        extra = {"LOOP": "", "LOOPE": " && FLAG_Z(C)", "LOOPZ": " && FLAG_Z(C)",
+                 "LOOPNE": " && !FLAG_Z(C)", "LOOPNZ": " && !FLAG_Z(C)"}[m]
+        return [A, "if (--C->ecx != 0U%s) goto L_%08x;" % (extra, ins["flow"])]
+
     if m.startswith("J") and m[1:] in CC:
         if "flow" not in ins:
             raise Unsupported("conditional jump with no resolved target")
@@ -1286,7 +1470,12 @@ def translate(fn):
     fn["_addrs"] = set(i["a"] for i in fn["ins"])
     targets = set()
     for ins in fn["ins"]:
-        if "flow" in ins and ins["m"].upper().startswith("J"):
+        # LOOP is a branch too. Collecting only `J*` left its target without a
+        # label, and the failure was a COMPILE error rather than a wrong
+        # translation -- which is the good kind, but only because C requires
+        # labels to exist.
+        if "flow" in ins and (ins["m"].upper().startswith("J")
+                              or ins["m"].upper().startswith("LOOP")):
             if ins["flow"] in fn["_addrs"]:
                 targets.add(ins["flow"])
     #
@@ -1559,6 +1748,30 @@ def cmd_report(argv):
             print("  %5d fns  %s" % (n, why))
 
 
+def write_trunc(json_path, program, emitted, skipped):
+    """Write the merge-candidate list, and say what it does NOT cover.
+
+    The negative here is the interesting one: "no truncated bodies" must be
+    distinguishable from "I only looked at the ones that translated". A
+    function the emitter refused has no instruction list to end, so it cannot
+    appear -- that blind spot is printed with the count, every time.
+    """
+    stem = program.rsplit(".", 1)[0] if "." in program else program
+    path = os.path.join(os.path.dirname(json_path) or ".", stem + ".trunc")
+    with open(path, "w") as f:
+        for ep, nxt in sorted(FALL_DEADEND):
+            f.write("0x%08x\n" % ep)
+    print("truncated bodies: %d of %d emitted function(s) end without a "
+          "terminator and fall into code that is no known function; wrote %s "
+          "(feed it to `ghidra_export.sh %s --merge`). Blind to the %d "
+          "function(s) NOT emitted -- an untranslatable body has no end to "
+          "check." % (len(FALL_DEADEND), emitted, path, stem, skipped))
+    for ep, nxt in sorted(FALL_DEADEND)[:10]:
+        print("  0x%08x runs into 0x%08x" % (ep, nxt))
+    if len(FALL_DEADEND) > 10:
+        print("  ... and %d more, all in %s" % (len(FALL_DEADEND) - 10, path))
+
+
 def cmd_emit(argv):
     """Emit the recompiled bodies.
 
@@ -1637,6 +1850,11 @@ def cmd_emit(argv):
     lines.append("")
     hdr_end = len(lines)          # everything above is shared by every chunk
     all_eps = set(f["ep"] for f in fns)
+    # Functions Ghidra knows never return. A body ending in a call to one of
+    # these is COMPLETE -- there is no fall-through to find, and the analyser
+    # stopped where it did on purpose.
+    noret_eps = dict((f["ep"], f.get("name") or "0x%08x" % f["ep"])
+                     for f in fns if f.get("noret"))
     done = skipped = 0
     bodies = []                   # one list of lines per function
     body_eps = []                 # the ep of bodies[i], for --isolate
@@ -1677,14 +1895,35 @@ def cmd_emit(argv):
             if not (lm.startswith("RET") or lm.startswith("JMP")
                     or lm in ("INT3", "UD2", "HLT")):
                 nxt = last["a"] + last.get("n", 1)
+                noret_to = (noret_eps.get(last.get("flow"))
+                            if lm == "CALL" else None)
                 b.append("  /* falls through to 0x%08x */" % nxt)
-                if nxt in all_eps:
+                if noret_to is not None:
+                    # The body ends at a call that never comes back. Reaching
+                    # the next line means OUR implementation of that callee
+                    # returned, which is the defect worth naming -- not the
+                    # boundary. Six of XMen2.exe's fifteen "truncated" bodies
+                    # were this, all ending in longjmp/exit/terminate/
+                    # _CxxThrowException, and every merge attempt on them
+                    # correctly changed nothing.
+                    b.append("  x86_after_noreturn(%s, \"%s\");"
+                             % (img_rel(fn["ep"]) or "0x%08xU" % fn["ep"],
+                                noret_to.replace('"', "'")))
+                elif nxt in all_eps:
                     b.append("  %s(C); return;" % fname(nxt))
                 else:
                     # Both MAPPED, for the same reason as x86_int3 (C101).
                     b.append("  x86_fallthrough(%s, %s);"
                              % (img_rel(fn["ep"]) or "0x%08xU" % fn["ep"],
                                 img_rel(nxt) or "0x%08xU" % nxt))
+                    # A dead-end fall-through is a BOUNDARY DEFECT, found here
+                    # and nowhere else: the emitter is the only stage that
+                    # knows both where each body ends and what is a known
+                    # entry point. It used to be found by RUNNING the game and
+                    # reading the abort, one address per crash, and the list of
+                    # merge candidates was a file somebody typed by hand -- so
+                    # it went stale the first time the module was re-exported.
+                    FALL_DEADEND.append((fn["ep"], nxt))
             b.append("}")
             b.append("")
             done += 1
@@ -1699,6 +1938,7 @@ def cmd_emit(argv):
               "being rebased -- see image_bounds()" % IMG_REBASED[0])
         print("emitted %d functions to %s; %d NOT emitted (see `report`)"
               % (done, out, skipped))
+        write_trunc(argv[0], d["program"], done, skipped)
         return
 
     # header = prologue + every forward declaration, repeated in each chunk so
@@ -1753,6 +1993,7 @@ def cmd_emit(argv):
           "being rebased -- see image_bounds()" % IMG_REBASED[0])
     print("emitted %d functions to %d chunks %s_NNN.c; %d NOT emitted "
           "(see `report`)" % (done, nchunk, stem, skipped))
+    write_trunc(argv[0], d["program"], done, skipped)
 
 
 # Every libIG*.dll is linked for 0x10000000, so entry points -- and therefore
@@ -2020,6 +2261,15 @@ void x86_fallthrough(uint32_t fn_ep, uint32_t next)
     fprintf(stderr, "x86_fallthrough: 0x%08x ended without a terminator and "
                     "falls through to 0x%08x, which is not a known function\\n",
             fn_ep, next);
+    abort();
+}
+
+void x86_after_noreturn(uint32_t fn_ep, const char *callee)
+{
+    fprintf(stderr, "x86_after_noreturn: 0x%08x ends at a call to %s, which "
+                    "never returns -- and it returned. The defect is in this "
+                    "port's %s, not in the function's boundaries.\\n",
+            fn_ep, callee, callee);
     abort();
 }
 

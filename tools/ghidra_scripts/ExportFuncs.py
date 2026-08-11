@@ -82,6 +82,13 @@ for fn in fm.getFunctions(True):
         name=fn.getName(),
         qname=qualified(fn),
         thunk=bool(fn.isThunk()),
+        # Does this function RETURN? Ghidra knows (longjmp, exit, terminate,
+        # _CxxThrowException and everything MSVC marks), and it is why the
+        # analyser stops a body at such a call rather than continuing past it.
+        # Without the flag the emitter cannot tell a body that ends at a
+        # never-returning call -- which is COMPLETE -- from one whose
+        # boundaries are wrong, and reports both as truncated.
+        noret=bool(fn.hasNoReturn()),
         size=body.getNumAddresses(),
         ins=ins_list,
     ))

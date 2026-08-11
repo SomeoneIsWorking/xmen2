@@ -85,18 +85,76 @@ for tok in targets:
         continue
     before_n = count_body(fn)
 
-    end = fn.getBody().getMaxAddress()
-    nxt = fm.getFunctionContaining(end.add(1))
-    if nxt is None:
-        # No getFunctionAfter on FunctionManagerDB; walk forward from the end.
-        it = fm.getFunctions(end.add(1), True)
-        nxt = it.next() if it.hasNext() else None
-    if nxt is None:
-        print("MERGE: %s has nothing after it; its body ends at the section "
-              "edge, which is a different problem" % tok)
+    # Ask about the address the body FALLS INTO, not about the next function.
+    #
+    # Those are not the same address, and the difference decided every case
+    # this script got wrong. 0x0042b890 ends at 0x0042bab0 and falls into
+    # 0x0042bab1, which belongs to no function at all; the next FUNCTION is
+    # 0x0042bac0, fifteen bytes further on, and it is called, so the caller
+    # check below fired and the whole thing was declared "genuinely
+    # non-contiguous" and skipped -- a verdict about a function that has
+    # nothing to do with the defect. Three others absorbed a next-function that
+    # was nowhere near the fall-through and reported "did not grow the body".
+    #
+    # The fall-through address is exactly what the emitter computes, so the two
+    # halves of this repair now name the same byte.
+    end = last.getAddress()
+    ft = last.getMaxAddress().add(1)
+    owner = fm.getFunctionContaining(ft)
+    at_ft = fm.getFunctionAt(ft)
+
+    if owner is not None and at_ft is None:
+        # It runs into the MIDDLE of another function. Absorbing that would
+        # delete a function other code enters at its own entry point.
+        print("MERGE: %s ends at %s and falls into %s, which is INSIDE %s "
+              "(entry %s), not at its start -- a shared tail, not a truncated "
+              "body. Skipped; this is what --split-at and enter-at-label are "
+              "for." % (tok, end, ft, owner.getName(), owner.getEntryPoint()))
         skipped += 1
         continue
 
+    if at_ft is None:
+        # The GAP case: the fall-through lands on bytes no function claims.
+        # There is nothing to absorb -- the repair is to let Ghidra follow the
+        # flow, which means clearing this function's own body plus the
+        # unclaimed run and disassembling again. The clear stops before the
+        # next function so nothing that belongs to somebody else is touched.
+        it = fm.getFunctions(ft, True)
+        nf = it.next() if it.hasNext() else None
+        if nf is not None:
+            limit = nf.getEntryPoint().subtract(1)
+        else:
+            blk = prog.getMemory().getBlock(ft)
+            if blk is None:
+                print("MERGE: %s falls into %s, which is not in any memory "
+                      "block -- the body ends at the section edge, a different "
+                      "problem" % (tok, ft))
+                skipped += 1
+                continue
+            limit = blk.getEnd()
+        gap = limit.subtract(ft) + 1
+        print("MERGE: %s ends at %s without a terminator and falls into %s, "
+              "which NO function claims; re-disassembling over the %d "
+              "unclaimed byte(s) up to %s" % (tok, end, ft, gap, limit))
+        fm.removeFunction(addr)
+        listing.clearCodeUnits(addr, limit, False)
+        DisassembleCommand(addr, None, True).applyTo(prog, monitor)
+        if CreateFunctionCmd(addr).applyTo(prog, monitor):
+            f2 = fm.getFunctionAt(addr)
+            ok, msg = caselabel.merge_outcome("the unclaimed run at %s" % ft,
+                                              before_n, count_body(f2))
+            print("MERGE:   %s" % msg)
+            if ok:
+                fixed += 1
+            else:
+                failed += 1
+        else:
+            print("MERGE:   FAILED to re-create a function at %s -- its body "
+                  "is now unattributed, which is worse than before" % tok)
+            failed += 1
+        continue
+
+    nxt = at_ft
     # Does anything CALL the inner function? A call means it is a real entry
     # point and this is not the repair to apply.
     callers = 0
@@ -104,7 +162,7 @@ for tok in targets:
         if r.getReferenceType().isCall():
             callers += 1
     if callers:
-        print("MERGE: %s is followed by %s, which has %d CALL reference(s) -- "
+        print("MERGE: %s falls into %s, which has %d CALL reference(s) -- "
               "a real function, so %s is genuinely non-contiguous. Skipped."
               % (tok, nxt.getName(), callers, tok))
         skipped += 1

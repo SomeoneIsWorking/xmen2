@@ -52,3 +52,6 @@ Do not "fix" this by making PulseEvent hold a wakeup for a future waiter.
 That changes documented semantics to paper over an ordering this host
 created, and it would hide the real question, which is whether the coarse
 global lock is what makes the window wide.
+
+### Note (2026-08-12)
+DEAD END, measured: making ResumeThread a HAND-OFF (broadcast, then guest_cond_wait_ms(1) so the woken thread can take the global lock and actually run) makes it WORSE, not better. With it, the story cutscene stopped presenting entirely after ~180s while boundary crossings went from ~100M per 45s to 4.3 BILLION per 45s -- a livelock: the lock is handed to a thread that also spins without blocking, and the main thread never gets it back. Reverted. What that measurement says about the design: BOTH sides of this rendezvous spin without blocking, so no amount of hand-off-at-a-syscall fixes it -- a one-guest-thread-at-a-time model cannot schedule two spinners. The candidate design is preemption by QUANTUM (release the lock every N boundary crossings) rather than at named syscalls, and that is a real change to the threading model, not a tweak. The starvation is also what makes the cutscene play at 1.7 frames a second (654 real resumes over ~380 seconds = one decoder slice per 590ms).
