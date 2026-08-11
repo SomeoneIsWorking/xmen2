@@ -254,6 +254,8 @@ void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h)
  * declare "no depth" and then be bound against a pass that has one. That is a
  * validation error, and it would have been the FIRST draw of every run.
  */
+unsigned long gpu_frames_presented(void) { return g_frames_presented; }
+
 SDL_GPUTextureFormat gpu_depth_format(void)
 {
     static const SDL_GPUTextureFormat WANT[] = {

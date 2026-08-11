@@ -72,6 +72,17 @@
 static unsigned long g_ignored[D3D8_MAX_RENDER_STATES];
 static unsigned long g_refused_prim, g_refused_fvf;
 
+/*
+ * What the texture stage actually resolved to, per draw.
+ *
+ * A picture with a white sky and a correct floor is a question this answers
+ * and guessing does not: an UNTEXTURED draw and a textured one that sampled
+ * the wrong thing look identical from the outside, and the difference is
+ * whether the engine bound a texture at all.
+ */
+static unsigned long g_texop_none_notex, g_texop_none_disabled,
+                     g_texop_select, g_texop_modulate, g_texop_other;
+
 /* ---- the vertex format ------------------------------------------------- */
 
 /*
@@ -243,11 +254,16 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                           ? s->stage[0][D3DTSS_COLOROP].value : D3DTOP_MODULATE;
         if (!req->texture || op == D3DTOP_DISABLE) {
             out->texop = GPU_TEXOP_NONE;
+            if (!req->texture) g_texop_none_notex++;
+            else g_texop_none_disabled++;
         } else if (op == D3DTOP_SELECTARG1) {
             out->texop = GPU_TEXOP_SELECT_TEXTURE;
+            g_texop_select++;
         } else if (op == D3DTOP_MODULATE) {
             out->texop = GPU_TEXOP_MODULATE;
+            g_texop_modulate++;
         } else {
+            g_texop_other++;
             static int told;
             if (!told++)
                 fprintf(stderr, "d3d8: texture stage operation %u is not one "
@@ -336,4 +352,10 @@ void d3d8_drawcall_report(void)
         printf("        %lu draw(s) refused for a vertex format this host "
                "cannot express (a real vertex shader, or no position)\n",
                g_refused_fvf);
+    printf("        texture stage: %lu modulate, %lu select-texture, %lu "
+           "other-op-as-modulate, %lu UNTEXTURED (%lu with no texture bound, "
+           "%lu with the stage disabled)\n",
+           g_texop_modulate, g_texop_select, g_texop_other,
+           g_texop_none_notex + g_texop_none_disabled,
+           g_texop_none_notex, g_texop_none_disabled);
 }

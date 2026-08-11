@@ -74,4 +74,38 @@ void d3d8_state_report(const D3D8State *s)
     if (!nrender)
         printf("        NOTHING was set. Either the engine never reached its "
                "state setup, or the setters are not wired to this mirror.\n");
+    /*
+     * The states this backend does NOT implement, with their last value.
+     *
+     * A count of 47 says the mirror is being written to; it does not say
+     * whether the engine asked for fog, or lighting, or a texture factor --
+     * each of which is a visible part of the picture this host silently does
+     * not produce. Naming them turns "the sky is white" into a list.
+     */
+    {
+        /* D3DRENDERSTATETYPE, from d3d8types.h. */
+        static const struct { int id; const char *name; } UNIMPL[] = {
+            {  28, "D3DRS_FOGENABLE"      }, {  29, "D3DRS_SPECULARENABLE" },
+            {  34, "D3DRS_FOGCOLOR"       }, {  35, "D3DRS_FOGTABLEMODE"   },
+            {  36, "D3DRS_FOGSTART"       }, {  37, "D3DRS_FOGEND"         },
+            {  38, "D3DRS_FOGDENSITY"     }, {  60, "D3DRS_TEXTUREFACTOR"  },
+            { 137, "D3DRS_LIGHTING"       }, { 139, "D3DRS_AMBIENT"        },
+            { 140, "D3DRS_FOGVERTEXMODE"  }, { 141, "D3DRS_COLORVERTEX"    },
+        };
+        int j, any = 0;
+        for (j = 0; j < (int)(sizeof UNIMPL / sizeof UNIMPL[0]); j++) {
+            if (UNIMPL[j].id >= D3D8_MAX_RENDER_STATES) continue;
+            if (!s->render[UNIMPL[j].id].set) continue;
+            if (!any++)
+                printf("        set, and NOT implemented by this backend -- "
+                       "each is missing from the picture:\n");
+            printf("          %-22s = %u (0x%08x)\n", UNIMPL[j].name,
+                   s->render[UNIMPL[j].id].value,
+                   s->render[UNIMPL[j].id].value);
+        }
+        if (!any && nrender)
+            printf("        none of fog, lighting, colour-vertex or the "
+                   "texture factor was ever set, so none of them explains a "
+                   "wrong colour.\n");
+    }
 }

@@ -33,6 +33,10 @@ extern uint32_t              g_swap_w, g_swap_h;
  * to be told rather than guess.
  */
 SDL_GPUTextureFormat gpu_depth_format(void);
+
+/* How many frames have been presented. gpu_draw.c uses it to know which frame
+   a draw belongs to, for X2_FRAME_DUMP. */
+unsigned long gpu_frames_presented(void);
 SDL_GPUTexture      *gpu_depth_target(uint32_t w, uint32_t h);
 
 /* Open the render pass if it is not open yet, clearing as the engine asked.

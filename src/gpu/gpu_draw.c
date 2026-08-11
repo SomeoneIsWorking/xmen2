@@ -772,6 +772,51 @@ int gpu_draw(const GpuDraw *d)
                         "no depth format, so it is IGNORED. Everything draws "
                         "in submission order. Reported once.\n");
 
+    /*
+     * X2_FRAME_DUMP=<n> -- every draw of frame n, one line each.
+     *
+     * "380,000 draws and the sky is white" is not a question a counter can
+     * answer: an untextured draw and a textured one that sampled the wrong
+     * thing are the same number. This prints what each draw actually IS --
+     * what it binds, what it tests, and where its first vertex lands -- so a
+     * region of the picture can be traced to the draw that made it. It is off
+     * unless asked for, and it names the frame it dumped so an empty dump
+     * cannot be mistaken for a frame with no draws.
+     */
+    {
+        static long want = -2;
+        static unsigned long dumped, dumped_frame;
+        if (want == -2) {
+            const char *e = getenv("X2_FRAME_DUMP");
+            want = (e && *e) ? atol(e) : -1;
+        }
+        if (want >= 0 && (long)gpu_frames_presented() == want) {
+            if (!dumped++)
+                fprintf(stderr, "gpu: X2_FRAME_DUMP -- every draw of frame "
+                                "%ld follows.\n", want);
+            dumped_frame = gpu_frames_presented();
+            if (dumped <= 400) {
+                fprintf(stderr, "  draw %4lu %-13s x%-5u tex %-4u %-9s "
+                        "%s%s%s stride %2u col%+3d uv%+3d",
+                        dumped,
+                        d->prim == GPU_PRIM_TRIANGLESTRIP ? "tristrip"
+                        : d->prim == GPU_PRIM_LINELIST ? "linelist" : "trilist",
+                        d->prim_count, d->texture,
+                        d->texop == GPU_TEXOP_NONE ? "UNTEXTURED"
+                        : d->texop == GPU_TEXOP_MODULATE ? "modulate"
+                                                         : "select",
+                        d->blend_enable ? "blend " : "",
+                        d->depth_test ? "ztest " : "",
+                        d->depth_write ? "zwrite" : "",
+                        d->vertex_stride, d->color_offset, d->uv_offset);
+                fprintf(stderr, "\n");
+            } else if (dumped == 401) {
+                fprintf(stderr, "  ... capped at 400 draws; frame %lu had "
+                                "more.\n", dumped_frame);
+            }
+        }
+    }
+
     if (!(pipe = pipeline_for(&key))) { g_refused++; return 0; }
     if (!(smp = sampler_for(d->texture_clamp, d->texture_point))) {
         g_refused++;
