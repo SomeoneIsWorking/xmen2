@@ -359,3 +359,46 @@ loaded (all 36 open successfully), which is not the same as being run.
 - X2_SHOT with a real window wrote nothing and said nothing, so a run launched
   without --no-window looked exactly like a scene gate that never opened. It
   now says so by name.
+
+### Note (2026-08-12)
+## The scene gate caught what was actually stopping the run: a SAVE DIALOG
+
+The first capture taken with X2_SHOT_AFTER_FILE=act0/tutorial is not a dark
+corridor. It is the tutorial level with a dialog over it:
+
+    "No X-men Legends 2 save data present on hard disk."
+    [Esc] Cancel        [Enter] Retry
+
+with Nightcrawler's portrait in the corner and the red tutorial room behind.
+The trace says why:
+
+    FindFirstFile "S:\Activision\X-Men Legends 2\Save\saveslot*.save"
+      -> "scratch/saves//Activision/X-Men Legends 2/Save"  matched NOTHING
+
+There are no save slots, so the game asks, and every scripted Return was
+pressing RETRY. The run was stuck in a modal loop, which is why a 9,000-frame
+budget never got anywhere and why the earlier screenshots were of whatever was
+behind it.
+
+That frame also settles a measurement: it is NOT near-black.
+
+    native tutorial (dialog up)   mean 29.8   frac<16 0.342   frac>128 0.035
+    stock  act1 red chamber       mean 24.6   frac<16 0.422   frac>128 0.019
+
+The port's own UI is brightly and correctly drawn here, and the room behind it
+reads as a lit red interior. The "everything is black" figure came from frames
+photographed with no gate at all.
+
+## What this does NOT yet settle
+
+The dialog covers most of the frame, so these numbers are mostly UI, not level
+geometry. The comparison still needs a frame of the level with nothing over it,
+which is what pressing Escape rather than Return should give.
+
+## Two questions this opens
+
+1. Is the dialog correct behaviour? A fresh install with no saves would show it
+   on a real machine too. If so, the port needs no fix here -- but the driving
+   script does, and so does anyone trying to play: Escape, not Enter.
+2. Is scratch/saves//Activision/... (note the doubled slash) the path the port
+   means to use? It resolves, but it is worth a look.
