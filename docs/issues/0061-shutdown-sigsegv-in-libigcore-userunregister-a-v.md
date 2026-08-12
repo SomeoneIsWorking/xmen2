@@ -80,3 +80,37 @@ now looks like whichever one registered first.
 
 The next step is to print the count and the ids at the fault, not to guess
 between them.
+
+### Note (2026-08-12)
+INSTRUMENT ADDED, and one mistake made and undone.
+
+guest_engine_thread_report() (src/native/threads.c) reads the igThreadManager
+out of guest memory and prints the array address, the count, and each thread's
+id and refcount -- at zero as well, with the addresses that produced it.
+
+It was FIRST written to match the module name 'libIGCore' and reported 'NOT
+linked into this build' on a build that links it: modules register their FILE
+name, 'libIGCore.dll'. That is an instrument that lied, and it lied in the
+direction of 'nothing to see'. It now compares case-insensitively with the
+extension, and when it finds nothing it LISTS the module names present, so the
+same failure cannot be silent twice.
+
+It was also called from the SIGSEGV handler, because that is exactly the moment
+worth measuring. That was wrong and is reverted: it uses printf, and stdio in a
+signal handler deadlocks on a lock the interrupted code may hold -- the reason
+the SIGTERM report already writes with write(2) (issue #34). The observed
+result was worse than a deadlock: the process took a SECOND SIGSEGV inside the
+handler and exited 139 with NO report at all, turning a fault that named its own
+function into a silent one. Getting this at a fault needs a write(2) formatter.
+
+MEASURED so far, on a CLEAN run (exit 0, X2_MAX_FRAMES=2800): the singleton is
+NULL at the shutdown report. That is consistent with userUnregister having run
+normally and cleared it -- it writes 0 there on its way out -- so it does not
+yet separate the two candidates. The crash is INTERMITTENT: the same gate run
+crashed once and passed once with no change in between, which is worth knowing
+before anyone reads a single clean run as a fix.
+
+SEPARATE DEFECT SEEN ON THE WAY, not yet filed: with X2_MAX_FRAMES=400 the run
+printed 'X2_MAX_FRAMES reached (4244 presented)' and kept printing it once per
+frame without stopping, until the timeout killed it. The clean stop does not
+stop at the limit it names.

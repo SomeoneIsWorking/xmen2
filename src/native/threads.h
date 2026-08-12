@@ -127,4 +127,9 @@ void guest_thread_exit(uint32_t code);
    has never been exercised. */
 void guest_thread_report(void);
 
+/* The ENGINE's own thread list, read out of guest memory -- see issue #61.
+   Says which of its two candidates the run is in, rather than leaving them
+   to be argued about. */
+void guest_engine_thread_report(void);
+
 #endif /* X2_THREADS_H */

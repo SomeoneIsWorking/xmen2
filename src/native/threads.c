@@ -870,6 +870,81 @@ void guest_thread_exit(uint32_t code)
     for (;;) sched_switch();             /* never picked again */
 }
 
+/*
+ * The ENGINE's own view of its threads, read out of guest memory.
+ *
+ * Issue #61: shutdown faults in igThreadManager::userUnregister because
+ * igPthreadThreadManager::getCallingThread returned NULL, and that function
+ * returns NULL for two different reasons -- an empty list (an ordering
+ * problem) or a list nothing matches (an identity problem, which this port's
+ * one-host-thread coroutine model makes worth asking about). Those are
+ * distinguishable by looking, and guessing between them is how issue #54 went
+ * wrong, so this looks.
+ *
+ * Layout, read out of libIGCore rather than assumed: the singleton pointer
+ * lives at 0x1015f438 in the module's LINKED image, the thread array object
+ * hangs at manager+8, its count is array+8 and its element pointers array+0x10,
+ * and each thread's stored id is thread+0x40 (getCallingThread at 0x10064700
+ * compares exactly that against pthread_self).
+ */
+#define IGCORE_THREADMGR_PTR 0x1015f438u
+
+void guest_engine_thread_report(void)
+{
+    X86Module *m;
+    uint32_t slot, mgr, arr, n, elems, i;
+
+    /* Modules register with their FILE name -- "libIGCore.dll", not
+       "libIGCore". Matching the bare stem found nothing and said so, which
+       read as "the module is not linked" on a build that links it. Compare
+       the way the loader does: case-insensitively, extension and all. */
+    for (m = x86_modules(); m; m = m->next)
+        if (m->name && !strcasecmp(m->name, "libIGCore.dll")) break;
+    if (!m || !m->base) {
+        int n = 0;
+        X86Module *k;
+        for (k = x86_modules(); k; k = k->next) n++;
+        printf("  engine threads: no module named libIGCore.dll among the %d "
+               "linked, so the engine's thread manager could not be read AT "
+               "ALL. The names present are:", n);
+        for (k = x86_modules(); k; k = k->next)
+            printf(" %s", k->name ? k->name : "(unnamed)");
+        printf("\n");
+        return;
+    }
+    slot = (uint32_t)(uintptr_t)m->base + (IGCORE_THREADMGR_PTR - m->preferred);
+    mgr = RD32(slot);
+    if (!mgr) {
+        printf("  engine threads: the igThreadManager singleton is NULL "
+               "(slot 0x%08x). Either it was never registered, or "
+               "userUnregister already cleared it -- it writes 0 there on its "
+               "way out.\n", slot);
+        return;
+    }
+    arr = RD32(mgr + 8u);
+    if (!arr) {
+        printf("  engine threads: the manager at 0x%08x holds a NULL thread "
+               "array, so getCallingThread cannot match ANYTHING.\n", mgr);
+        return;
+    }
+    n = RD32(arr + 8u);
+    elems = RD32(arr + 0x10u);
+    /* Printed at zero too, with the addresses that produced it: "the list is
+       empty" and "the list was never read" must not look the same. */
+    printf("  engine threads: igThreadManager 0x%08x, array 0x%08x, %u "
+           "thread(s) registered%s\n", mgr, arr, n,
+           n ? ":" : " -- EMPTY, which is one of issue #61's two candidates");
+    if (n > 64u) {
+        printf("          count %u is not credible; refusing to walk it.\n", n);
+        return;
+    }
+    for (i = 0; i < n && elems; i++) {
+        uint32_t t = RD32(elems + i * 4u);
+        printf("          [%u] thread 0x%08x  id 0x%08x  refcount %u\n",
+               i, t, t ? RD32(t + 0x40u) : 0u, t ? RD32(t + 4u) : 0u);
+    }
+}
+
 void guest_thread_report(void)
 {
     int i, live = 0;

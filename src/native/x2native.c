@@ -202,6 +202,22 @@ where:
 #endif
     }
     x86_regs_dump();
+    /*
+     * The engine's thread list is NOT printed here, and that is a correction
+     * rather than an omission.
+     *
+     * It was called from this handler, because issue #61's fault is exactly
+     * the case that wants it and the shutdown report below never runs on this
+     * path. But `guest_engine_thread_report` uses printf, and stdio in a
+     * signal handler deadlocks on the lock the interrupted code may hold --
+     * the same hazard that made the SIGTERM report write(2) its lines (issue
+     * #34). What actually happened was worse than a deadlock: the process died
+     * of a second SIGSEGV inside the handler and exited 139 with NO report at
+     * all, turning a fault that named its own function into a silent one.
+     *
+     * The measurement stays in the shutdown report, where stdio is safe. To
+     * get it at a fault, it needs a write(2) formatter of its own.
+     */
     x86_diag_dump();
 #ifdef X86_NATIVE_REACHED
     x86_reached_report();
@@ -321,6 +337,7 @@ void x2_interrupt_reports(int killed)
        all. A counter you only see when the run failed cannot tell you the
        change helped. */
     guest_thread_report();
+    guest_engine_thread_report();
     k32_critsec_report();
     /* The input reports too, and for the same reason: they were registered
        with atexit, and the clean frame-limit stop leaves through _exit -- so
