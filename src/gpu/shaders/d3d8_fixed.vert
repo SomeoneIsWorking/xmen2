@@ -26,6 +26,9 @@ layout(location = 3) in vec3 in_normal;
 
 layout(location = 0) out vec4 v_color;
 layout(location = 1) out vec2 v_uv;
+/* The DIRECTION a cube map is sampled with. D3D8 generates it rather than
+   reading it from the vertex -- see texgen below. */
+layout(location = 2) out vec3 v_dir;
 
 /* SDL_GPU binds vertex uniform buffers at set 1. */
 layout(set = 1, binding = 0) uniform VertexState {
@@ -43,7 +46,16 @@ layout(set = 1, binding = 0) uniform VertexState {
     vec4  mat_emissive;
     uint  has_normal;      /* 0 when the vertex format carries no normal */
     uint  color_vertex;    /* D3DRS_COLORVERTEX */
-    uint  pad0, pad1;
+    /*
+     * D3DTSS_TEXCOORDINDEX's generator bits: 0 none, 1 camera-space
+     * REFLECTION vector, 2 camera-space normal, 3 camera-space position.
+     * The engine's environment-mapped characters use 1 with an FVF of
+     * position and normal ONLY -- there are no texture coordinates in the
+     * vertex to sample a cube with, which is the whole reason this exists.
+     */
+    uint  texgen;
+    uint  pad1;
+    mat4  worldview;       /* camera space, where the generators are defined */
     /* Each light is five vec4s: diffuse, ambient, (position, range),
        (direction, type), (attenuation, unused). Packed by hand because a
        std140 array of structs would pad every member to 16 bytes anyway. */
@@ -141,4 +153,27 @@ void main()
         v_color = diffuse;
     }
     v_uv = in_uv;
+
+    /*
+     * Texture-coordinate generation, in CAMERA space.
+     *
+     * D3D8 defines the reflection vector as R = I - 2(N.I)N with I the
+     * normalised vector from the eye to the vertex -- in camera space the eye
+     * is the origin, so I is the normalised camera-space position. The normal
+     * goes through the same matrix's upper 3x3, with the same caveat about
+     * non-uniform scale as the lighting above.
+     */
+    v_dir = vec3(0.0, 0.0, 1.0);
+    if (vs.texgen != 0u) {
+        vec3 cpos = (vs.worldview * vec4(in_pos.xyz, 1.0)).xyz;
+        vec3 cnrm = normalize(mat3(vs.worldview) * in_normal);
+        if (vs.texgen == 1u) {
+            vec3 i = normalize(cpos);
+            v_dir = i - 2.0 * dot(cnrm, i) * cnrm;
+        } else if (vs.texgen == 2u) {
+            v_dir = cnrm;
+        } else {
+            v_dir = cpos;
+        }
+    }
 }

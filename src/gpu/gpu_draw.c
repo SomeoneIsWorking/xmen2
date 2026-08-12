@@ -422,7 +422,13 @@ static int shaders_ready(void)
     g_vs = load_shader(d3d8_fixed_vert_spv, sizeof d3d8_fixed_vert_spv,
                        SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
     g_fs = load_shader(d3d8_fixed_frag_spv, sizeof d3d8_fixed_frag_spv,
-                       SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+                       /* TWO samplers: the 2D stage and the cube one. The
+                          count here must match what the SPIR-V declares --
+                          the pipeline layout is built from this number, and a
+                          shader that binds more than it declared is a
+                          validation error that, without a layer loaded, is
+                          simply undefined texels. */
+                       SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
     return g_vs && g_fs;
 }
 
@@ -664,7 +670,11 @@ typedef struct {
     float    mat_emissive[4];
     uint32_t has_normal;
     uint32_t color_vertex;
-    uint32_t pad[2];
+    /* std140: these two complete a 16-byte row, so `worldview` below starts
+       aligned and the light array that follows it keeps its offset. */
+    uint32_t texgen;
+    uint32_t pad1;
+    float    worldview[16];
     /* Five vec4s per light: diffuse, ambient, (position, range),
        (direction, type), (attenuation, unused). */
     float    light[GPU_MAX_LIGHTS * 5][4];
@@ -674,7 +684,7 @@ typedef struct {
     uint32_t texture_op;
     uint32_t alpha_test;
     float    alpha_ref;
-    uint32_t pad;
+    uint32_t is_cube;
 } PixelUniforms;
 
 static unsigned long g_draws, g_refused, g_depth_ignored;
@@ -684,7 +694,7 @@ static unsigned long g_refused_index_range;
 
 /* The 1x1 white texture an untextured draw binds. Created once, never inside
    an open render pass -- see gpu_draw. */
-static GpuTexture g_white;
+static GpuTexture g_white, g_white_cube;
 
 static uint32_t index_count(GpuPrimitive p, uint32_t prims)
 {
@@ -711,7 +721,7 @@ int gpu_draw(const GpuDraw *d)
     SDL_GPUTextureSamplerBinding tsb;
     VertexUniforms vu;
     PixelUniforms pu;
-    Res *vres, *ires = NULL, *tres = NULL;
+    Res *vres, *ires = NULL, *tres = NULL, *cres = NULL;
     SDL_GPUSampler *smp;
     uint32_t n;
 
@@ -737,13 +747,23 @@ int gpu_draw(const GpuDraw *d)
          * reflection, which reads as an art bug. Once per texture, with the
          * count in the report, so a scene full of them says so once.
          */
-        if (tres->faces != 1) {
+        if (tres->faces != 1 && d->texgen == GPU_TEXGEN_NONE) {
+            /*
+             * A cube with NO generated direction is still refused.
+             *
+             * Cube sampling itself is implemented now, but a cube is addressed
+             * by a direction and this draw has none -- its texture coordinates
+             * are a 2D pair, if it has any at all. Sampling face 0, or
+             * building a direction out of the UVs, would draw a
+             * plausible-looking wrong reflection, which reads as an art bug
+             * and is exactly what this refusal exists to prevent.
+             */
             if (!tres->cube_refused) {
                 fprintf(stderr, "gpu: a CUBE texture (handle %u, %ux%u) was "
-                        "bound to the texture stage. This backend's "
-                        "fixed-function shader samples 2D only, so the draw is "
-                        "refused rather than drawn with the wrong face. Cube "
-                        "sampling is not implemented.\n",
+                        "bound with NO texture-coordinate generator, so there "
+                        "is no direction to sample it with and the draw is "
+                        "refused. (Cube sampling itself is implemented -- see "
+                        "GpuTexGen; this is a draw that did not ask for it.)\n",
                         d->texture, tres->w, tres->h);
                 tres->cube_refused = 1;
             }
@@ -771,6 +791,34 @@ int gpu_draw(const GpuDraw *d)
         if (!g_white) return refuse("no placeholder texture could be made");
         if (!(tres = res_get(g_white, 1, "draw"))) { g_refused++; return 0; }
     }
+    /*
+     * The shader declares BOTH a 2D sampler and a cube one, so both are bound
+     * on every draw whatever it uses. An unbound sampler a shader declares is
+     * a Vulkan validation error, and a build with no validation layer does not
+     * fail -- it reads undefined texels, which is the kind of wrong that only
+     * appears on somebody else's driver. Made here, before the pass opens, for
+     * the same reason g_white is: creating a texture submits a copy pass.
+     */
+    if (!g_white) {
+        /* Needed even by a textured draw now: a CUBE draw leaves the 2D slot
+           with nothing real to bind, and the shader declares it. */
+        static const uint32_t px = 0xFFFFFFFFu;
+        g_white = gpu_texture_create(1, 1, GPU_FMT_BGRA8, 1);
+        if (g_white) gpu_texture_upload(g_white, 0, &px, sizeof px);
+    }
+    if (!g_white) return refuse("no placeholder texture could be made");
+    if (!g_white_cube) {
+        static const uint32_t px = 0xFFFFFFFFu;
+        unsigned f;
+        g_white_cube = gpu_texture_create_cube(1, GPU_FMT_BGRA8, 1);
+        for (f = 0; f < 6 && g_white_cube; f++)
+            gpu_texture_upload_face(g_white_cube, f, 0, &px, sizeof px);
+    }
+    if (!g_white_cube) return refuse("no placeholder cube texture could be made");
+    if (!(cres = res_get(g_white_cube, 1, "draw"))) { g_refused++; return 0; }
+    /* The real cube, when this draw has one, replaces the placeholder -- and
+       then the 2D slot takes the placeholder instead. */
+    if (tres && tres->faces == 6) { cres = tres; tres = res_get(g_white, 1, "draw"); }
 
     memset(&key, 0, sizeof key);          /* padding too: the key is memcmp'd */
     key.stride = d->vertex_stride;
@@ -869,6 +917,8 @@ int gpu_draw(const GpuDraw *d)
     vu.has_normal = d->normal_offset >= 0 ? 1u : 0u;
     vu.lighting = d->lighting ? 1u : 0u;
     vu.color_vertex = d->color_vertex ? 1u : 0u;
+    vu.texgen = (uint32_t)d->texgen;
+    memcpy(vu.worldview, d->worldview, sizeof vu.worldview);
     if (d->lighting) {
         int li;
         memcpy(vu.world, d->world, sizeof vu.world);
@@ -896,15 +946,23 @@ int gpu_draw(const GpuDraw *d)
     pu.texture_op = (uint32_t)d->texop;
     pu.alpha_test = d->alpha_test ? 1u : 0u;
     pu.alpha_ref = d->alpha_ref;
+    pu.is_cube = (d->texgen != GPU_TEXGEN_NONE
+                  && d->texture && gpu_texture_is_cube(d->texture)) ? 1u : 0u;
     SDL_PushGPUFragmentUniformData(g_cmd, 0, &pu, sizeof pu);
 
     /* The sampler is bound even when the draw is untextured: the fragment
        shader declares one, so an unbound sampler is a validation error and,
        without a validation layer, undefined pixels. */
-    memset(&tsb, 0, sizeof tsb);
-    tsb.texture = tres->tex;
-    tsb.sampler = smp;
-    SDL_BindGPUFragmentSamplers(g_pass, 0, &tsb, 1);
+    {
+        SDL_GPUTextureSamplerBinding tsb2[2];
+        memset(tsb2, 0, sizeof tsb2);
+        tsb2[0].texture = tres->tex;
+        tsb2[0].sampler = smp;
+        tsb2[1].texture = cres->tex;
+        tsb2[1].sampler = smp;
+        SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, 2);
+    }
+    (void)tsb;
 
     if (ires) {
         /*
@@ -1123,6 +1181,7 @@ void gpu_draw_shutdown(void)
      * one process; the game does the same on any Reset.
      */
     g_white = 0;
+    g_white_cube = 0;
 }
 
 #endif /* X2_WITH_SDL */

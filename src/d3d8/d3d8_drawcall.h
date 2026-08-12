@@ -45,6 +45,9 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                     GpuDraw *out);
 
 void d3d8_combine_transform(const D3D8State *s, float out[16]);
+/* World * View alone: D3D8's texture-coordinate generators live in camera
+   space and the combined matrix cannot be taken apart again. */
+void d3d8_worldview_transform(const D3D8State *s, float out[16]);
 
 void d3d8_drawcall_note_ignored_state(uint32_t which);
 void d3d8_drawcall_report(void);

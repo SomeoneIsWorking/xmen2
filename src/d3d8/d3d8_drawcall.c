@@ -44,11 +44,14 @@
 #define D3DTSS_ADDRESSV          14
 #define D3DTSS_MAGFILTER         16
 #define D3DTSS_MINFILTER         17
+#define D3DTSS_TEXCOORDINDEX     11
+#define D3DTSS_TEXTURETRANSFORMFLAGS 24
 
 /* D3DTOP_* */
 #define D3DTOP_DISABLE           1
 #define D3DTOP_SELECTARG1        2
 #define D3DTOP_MODULATE          4
+#define D3DTOP_ADD               7
 
 /* D3DPT_* */
 #define D3DPT_POINTLIST          1
@@ -85,7 +88,8 @@ static unsigned long g_refused_prim, g_refused_fvf;
  * whether the engine bound a texture at all.
  */
 static unsigned long g_texop_none_notex, g_texop_none_disabled,
-                     g_texop_select, g_texop_modulate, g_texop_other;
+                     g_texop_select, g_texop_modulate, g_texop_add,
+                     g_texop_other;
 
 /* ---- the vertex format ------------------------------------------------- */
 
@@ -467,6 +471,12 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
         } else if (op == D3DTOP_MODULATE) {
             out->texop = GPU_TEXOP_MODULATE;
             g_texop_modulate++;
+        } else if (op == D3DTOP_ADD) {
+            /* The environment-map combine: the reflection is ADDED to the lit
+               surface. Treating it as MODULATE darkened the character instead
+               of highlighting it. */
+            out->texop = GPU_TEXOP_ADD;
+            g_texop_add++;
         } else {
             g_texop_other++;
             static int told;
@@ -477,7 +487,62 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                                 "KNOWN WRONG colour, not a refusal.\n", op);
             out->texop = GPU_TEXOP_MODULATE;
         }
+        /*
+         * D3DTSS_TEXCOORDINDEX's top 16 bits are the generator. Read here and
+         * translated, so a generator this backend does not implement is a
+         * named refusal downstream rather than a silent fall back to the
+         * vertex's own coordinates -- which for the FVF these draws use
+         * (position and normal, no UVs at all) would be reading the position's
+         * bytes as a coordinate.
+         */
+        {
+            uint32_t tci = s->stage[0][D3DTSS_TEXCOORDINDEX].set
+                ? s->stage[0][D3DTSS_TEXCOORDINDEX].value : 0;
+            switch (tci & 0xFFFF0000u) {
+            case 0x00010000u: out->texgen = GPU_TEXGEN_CAMERA_NORMAL;     break;
+            case 0x00020000u: out->texgen = GPU_TEXGEN_CAMERA_POSITION;   break;
+            case 0x00030000u: out->texgen = GPU_TEXGEN_CAMERA_REFLECTION; break;
+            default:          out->texgen = GPU_TEXGEN_NONE;              break;
+            }
+            if (out->texgen != GPU_TEXGEN_NONE)
+                d3d8_worldview_transform(s, out->worldview);
+        }
         out->texture = req->texture;
+        /*
+         * A cube bound to the stage is refused downstream, and "cube sampling
+         * is not implemented" is only half the question. A cube map is
+         * addressed by a DIRECTION, and where that direction comes from is
+         * D3DTSS_TEXCOORDINDEX's top bits -- D3DTSS_TCI_CAMERASPACENORMAL
+         * (0x10000), _CAMERASPACEPOSITION (0x20000) or
+         * _CAMERASPACEREFLECTIONVECTOR (0x30000) -- because an FVF with two
+         * texture floats cannot carry one. Implementing the sampler without
+         * the generator would draw the reflection from whatever the UVs
+         * happened to hold, which is the "plausible-looking wrong reflection"
+         * the refusal exists to avoid. So the state is READ and printed rather
+         * than assumed, once, with everything needed to decide the work.
+         */
+        if (req->texture && gpu_texture_is_cube(req->texture)) {
+            static int told;
+            if (!told++) {
+                uint32_t tci = s->stage[0][D3DTSS_TEXCOORDINDEX].set
+                    ? s->stage[0][D3DTSS_TEXCOORDINDEX].value : 0;
+                uint32_t ttf = s->stage[0][D3DTSS_TEXTURETRANSFORMFLAGS].set
+                    ? s->stage[0][D3DTSS_TEXTURETRANSFORMFLAGS].value : 0;
+                fprintf(stderr,
+                    "d3d8: the first CUBE-textured draw: FVF 0x%08x, "
+                    "COLOROP %u, TEXCOORDINDEX 0x%08x (generator %s), "
+                    "TEXTURETRANSFORMFLAGS 0x%x.\n"
+                    "  A cube is addressed by a direction; that field says "
+                    "where this one comes from. Reported once.\n",
+                    fvf, op, tci,
+                    (tci & 0xFFFF0000u) == 0x00010000u ? "camera-space NORMAL"
+                  : (tci & 0xFFFF0000u) == 0x00020000u ? "camera-space POSITION"
+                  : (tci & 0xFFFF0000u) == 0x00030000u ? "camera-space "
+                                                         "REFLECTION VECTOR"
+                  : "none -- the vertex's own texture coordinates",
+                    ttf);
+            }
+        }
         /* D3DTADDRESS_CLAMP is 3; D3DTEXF_POINT is 1. */
         out->texture_clamp = s->stage[0][D3DTSS_ADDRESSU].value == 3;
         out->texture_point = s->stage[0][D3DTSS_MAGFILTER].value == 1;
@@ -517,6 +582,25 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
  * handed over untransposed -- so no transpose happens here, and that is a
  * deliberate non-action rather than an omission.
  */
+/* World * View on its own. D3D8's texture-coordinate generators are all
+   defined in CAMERA space, so the shader needs this as well as the combined
+   matrix -- and the combined one cannot be taken apart again. */
+void d3d8_worldview_transform(const D3D8State *s, float out[16])
+{
+    static const float ident[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+    const float *w = s->transform_set[D3DTS_WORLD]
+                         ? s->transform[D3DTS_WORLD].m : ident;
+    const float *v = s->transform_set[D3DTS_VIEW]
+                         ? s->transform[D3DTS_VIEW].m : ident;
+    int i, j, k;
+    for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++) {
+            float acc = 0.0f;
+            for (k = 0; k < 4; k++) acc += w[i * 4 + k] * v[k * 4 + j];
+            out[i * 4 + j] = acc;
+        }
+}
+
 void d3d8_combine_transform(const D3D8State *s, float out[16])
 {
     static const float ident[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
@@ -561,10 +645,10 @@ void d3d8_drawcall_report(void)
         printf("        %lu draw(s) refused for a vertex format this host "
                "cannot express (a real vertex shader, or no position)\n",
                g_refused_fvf);
-    printf("        texture stage: %lu modulate, %lu select-texture, %lu "
-           "other-op-as-modulate, %lu UNTEXTURED (%lu with no texture bound, "
-           "%lu with the stage disabled)\n",
-           g_texop_modulate, g_texop_select, g_texop_other,
+    printf("        texture stage: %lu modulate, %lu select-texture, %lu add "
+           "(environment map), %lu other-op-as-modulate, %lu UNTEXTURED (%lu "
+           "with no texture bound, %lu with the stage disabled)\n",
+           g_texop_modulate, g_texop_select, g_texop_add, g_texop_other,
            g_texop_none_notex + g_texop_none_disabled,
            g_texop_none_notex, g_texop_none_disabled);
 }

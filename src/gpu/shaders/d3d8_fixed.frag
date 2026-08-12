@@ -12,27 +12,42 @@
 
 layout(location = 0) in vec4 v_color;
 layout(location = 1) in vec2 v_uv;
+layout(location = 2) in vec3 v_dir;
 
 layout(location = 0) out vec4 o_color;
 
 /* SDL_GPU binds fragment samplers at set 2 and uniform buffers at set 3. */
-layout(set = 2, binding = 0) uniform sampler2D tex0;
+layout(set = 2, binding = 0) uniform sampler2D   tex0;
+/*
+ * The cube sampler is DECLARED ALWAYS and BOUND ALWAYS, even for a draw that
+ * uses neither. Vulkan does not allow an unbound sampler a shader declares,
+ * and a build without a validation layer does not fail -- it reads undefined
+ * texels. The binding side supplies a 1x1 white cube when the draw has no
+ * real one; see gpu_draw.c.
+ */
+layout(set = 2, binding = 1) uniform samplerCube texcube;
 
 layout(set = 3, binding = 0) uniform PixelState {
-    uint  texture_op;      /* 0 none, 1 modulate, 2 select-texture */
+    uint  texture_op;      /* 0 none, 1 modulate, 2 select-texture, 3 add */
     uint  alpha_test;
     float alpha_ref;
-    uint  pad0;
+    uint  is_cube;         /* sample texcube with v_dir instead of tex0/v_uv */
 } fs;
 
 void main()
 {
     vec4 c = v_color;
+    vec4 t = fs.is_cube != 0u ? texture(texcube, v_dir) : texture(tex0, v_uv);
 
     if (fs.texture_op == 1u) {
-        c *= texture(tex0, v_uv);
+        c *= t;
     } else if (fs.texture_op == 2u) {
-        c = texture(tex0, v_uv);
+        c = t;
+    } else if (fs.texture_op == 3u) {
+        /* D3DTOP_ADD: the environment map is ADDED to the lit surface, which
+           is what makes a reflection look like a highlight rather than a
+           repaint. Alpha comes from the first argument, as D3D8 specifies. */
+        c = vec4(c.rgb + t.rgb, c.a);
     }
 
     /* D3DCMP_GREATEREQUAL is what the engine sets when it enables the alpha

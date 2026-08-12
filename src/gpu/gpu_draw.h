@@ -89,8 +89,27 @@ typedef struct {
 typedef enum {
     GPU_TEXOP_NONE = 0,      /* untextured: the vertex colour is the result */
     GPU_TEXOP_MODULATE = 1,
-    GPU_TEXOP_SELECT_TEXTURE = 2
+    GPU_TEXOP_SELECT_TEXTURE = 2,
+    /* D3DTOP_ADD. The environment map is added to the lit surface, which is
+       what makes a reflection a highlight rather than a repaint. */
+    GPU_TEXOP_ADD = 3
 } GpuTexOp;
+
+/*
+ * Where a texture coordinate comes from when the VERTEX does not carry one.
+ *
+ * A cube map is addressed by a direction, and the engine's environment-mapped
+ * characters use an FVF of position and normal only -- there is nothing in the
+ * vertex to sample a cube with. D3D8 generates it, and D3DTSS_TEXCOORDINDEX's
+ * top bits say from what. All three generators are defined in CAMERA space,
+ * which is why a draw carries the world-view matrix as well as the world one.
+ */
+typedef enum {
+    GPU_TEXGEN_NONE = 0,
+    GPU_TEXGEN_CAMERA_REFLECTION = 1,   /* D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR */
+    GPU_TEXGEN_CAMERA_NORMAL = 2,       /* D3DTSS_TCI_CAMERASPACENORMAL */
+    GPU_TEXGEN_CAMERA_POSITION = 3      /* D3DTSS_TCI_CAMERASPACEPOSITION */
+} GpuTexGen;
 
 /*
  * One draw, fully described.
@@ -148,6 +167,12 @@ typedef struct {
 
     GpuTexture   texture;
     GpuTexOp     texop;
+    /* Non-zero means the texture stage is addressed by a GENERATED direction
+       rather than by the vertex's UVs. A CUBE texture with GPU_TEXGEN_NONE is
+       still refused: there is no direction to sample it with, and face 0
+       would be a plausible-looking wrong reflection. */
+    GpuTexGen    texgen;
+    float        worldview[16];
     int          texture_clamp;    /* else wrap */
     int          texture_point;    /* else linear */
 

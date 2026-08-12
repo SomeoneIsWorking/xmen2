@@ -1523,6 +1523,11 @@ int main(int argc, char **argv)
         if (r) return r;
         r = gpu_midframe_clear_selftest();
         if (r && r != 77) return r;
+        {
+            extern int gpu_cube_texgen_selftest(void);
+            r = gpu_cube_texgen_selftest();
+            if (r && r != 77) return r;
+        }
         /* Presenting a frame and DRAWING into one are different claims. The
            first has been true here since before any geometry worked. */
         return gpu_draw_selftest();
