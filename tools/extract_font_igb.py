@@ -7,7 +7,9 @@ igb-blender, gitignored reference — NOT committed). This tool is our own code.
 Usage:
     extract_font_igb.py <file.igb> <out_dir>
 
-Writes one PNG per embedded mip level, named <stem>_<w>x<h>.png.
+Writes one PNG per embedded igImage, named <stem>_<index>_<w>x<h>.png, and
+prints how many there were. The index is in the name because a font IGB holds
+several images at the same size and a name without it loses all but one.
 """
 
 import os
@@ -47,15 +49,34 @@ def extract(igb_path):
 
     r = IGBReader(str(igb_path))
     r.read()
-    out = {}
+    # A LIST, not a dict keyed on (width, height).
+    #
+    # It was a dict, and an IGB holding several igImages of the same size had
+    # them overwrite each other -- only the last survived. Two fonts that
+    # differ in 82% of their bytes then decoded to "byte-identical" atlases and
+    # a feature was written off on the strength of it (instrument I045). Every
+    # image is emitted now, with its index, and the count is printed so that
+    # "one image" is a fact rather than an assumption.
+    out = []
+    skipped = 0
     for obj in r.objects:
         if isinstance(obj, IGBObject) and obj.is_type(b"igImage"):
             pi = extract_image(r, obj)
-            if pi and pi.width and pi.pixel_data:
-                rgba = convert_image_to_rgba(pi)
-                if rgba is not None:
-                    key = (pi.width, pi.height)
-                    out[key] = (bytes(rgba), getattr(pi, "pixel_format", None))
+            if not (pi and pi.width and pi.pixel_data):
+                skipped += 1
+                continue
+            rgba = convert_image_to_rgba(pi)
+            if rgba is None:
+                skipped += 1
+                continue
+            out.append((pi.width, pi.height, bytes(rgba),
+                        getattr(pi, "pixel_format", None)))
+    if skipped:
+        # Named rather than dropped: an image this cannot decode is a hole in
+        # any comparison made from the output.
+        print(f"WARNING: {skipped} igImage(s) could not be decoded and are NOT "
+              f"in the output; any 'these two are the same' conclusion drawn "
+              f"from it is unsound.")
     return out
 
 
@@ -93,10 +114,11 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     stem = Path(src).stem
     imgs = extract(src)
-    for (w, h), (rgba, fmt) in sorted(imgs.items(), key=lambda kv: -kv[0][0]):
-        p = os.path.join(outdir, f"{stem}_{w}x{h}.png")
+    print(f"{len(imgs)} igImage(s) decoded from {src}")
+    for i, (w, h, rgba, fmt) in enumerate(imgs):
+        p = os.path.join(outdir, f"{stem}_{i:02d}_{w}x{h}.png")
         write_png(rgba, w, h, p)
-        print(f"{w}x{h} fmt={fmt} -> {p}")
+        print(f"[{i:02d}] {w}x{h} fmt={fmt} -> {p}")
 
 
 if __name__ == "__main__":
