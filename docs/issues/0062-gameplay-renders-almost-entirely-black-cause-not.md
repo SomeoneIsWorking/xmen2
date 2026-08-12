@@ -314,3 +314,48 @@ positive, and its absence with the level loaded is the negative.
 Fix the route. The gate should be "maps/act1... was opened", which the file
 trace can now assert, rather than a frame number or a draw count -- both of
 which have already picked the wrong scene once each.
+
+### Note (2026-08-12)
+## The two builds were never in the same LEVEL, and now that is measured
+
+With the repaired file trace and the new repeat window on X2_INPUT_SCRIPT
+(f2400-6000/60+20:Return), a native run loads:
+
+    packages/generated/maps/act0/tutorial/tutorial1.pkgb
+    maps/act0/tutorial/tutorial1.igb
+    scripts/act0/tutorial/tutorial1/*.py     (36 of them, all found)
+
+That is the TUTORIAL. The stock control reaches the act1 red chamber. Every
+brightness comparison in this issue so far has been between two different
+rooms, and the "dark corridor with item pickups" in the native screenshots is
+the tutorial level, not a failed act1.
+
+## The menus do not respond to the same driving
+
+Driving the stock control the way the native run is driven -- Return every 6 s
+from 150 s to 420 s -- leaves it on the MAIN MENU for all six samples. Sparse
+presses (195-300/12 then 380-500/20) reach act1. So the same key pattern takes
+the two builds to different places, and a like-for-like frame needs the ROUTE
+matched, not just the timing.
+
+Worth noting from those samples on their own: the stock main menu is fully lit
+and detailed -- sunset sky, statues, torches, the animated backdrop.
+
+## What the tutorial's own scripts say about lighting
+
+    scripts/act0/tutorial/tutorial1/partylight_on.PY
+        setPartyLightColor(" 0.840 0.840 1.000 ", 3.000 )
+    scripts/act0/tutorial/tutorial1/partylight_red.PY
+        setPartyLightColor(" 1.000 0.000 0.000 ", 3.000 )
+
+The level's lighting is driven by script calls. The port sees five lights of
+which four are black and one is a dim teal. Whether setPartyLightColor is ever
+EXECUTED in this port is now a question a run can answer -- the scripts are
+loaded (all 36 open successfully), which is not the same as being run.
+
+## Instruments repaired this round, both of which had been reporting silence
+
+- X2_FILES traced 53 of 939 opens (I046). Rebuilt; it is what found the level.
+- X2_SHOT with a real window wrote nothing and said nothing, so a run launched
+  without --no-window looked exactly like a scene gate that never opened. It
+  now says so by name.

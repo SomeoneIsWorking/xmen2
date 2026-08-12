@@ -555,6 +555,20 @@ static void shot_maybe_write(void)
                    "file is written and this run photographed NOTHING.\n",
                    min_draws);
     }
+    /* X2_SHOT reads back the HEADLESS target; with a real window there is no
+       such target and this wrote nothing at all. It said nothing about that
+       either, so a run launched without --no-window looked exactly like a run
+       whose scene gate never opened -- which cost this session a five-minute
+       run and a wrong conclusion about the gate. Said once, by name. */
+    if (path && !g_headless) {
+        static int said;
+        if (!said++)
+            printf("gpu: X2_SHOT=%s is set but this run has a REAL WINDOW. The "
+                   "capture reads back the headless target, which does not "
+                   "exist here, so NOTHING will be written. Add --no-window.\n",
+                   path);
+        return;
+    }
     if (!path || !g_headless || (g_headless_frames % (unsigned long)every))
         return;
     /* The SCENE gate, when one was asked for: nothing is photographed until
