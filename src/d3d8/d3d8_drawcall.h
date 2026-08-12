@@ -49,6 +49,9 @@ void d3d8_combine_transform(const D3D8State *s, float out[16]);
    space and the combined matrix cannot be taken apart again. */
 void d3d8_worldview_transform(const D3D8State *s, float out[16]);
 
+/* 1 if the draw path reads this render state. The report asks, rather than
+   keeping its own list -- see d3d8_drawcall.c for the drift that caused. */
+int  d3d8_drawcall_reads_state(uint32_t which);
 void d3d8_drawcall_note_ignored_state(uint32_t which);
 void d3d8_drawcall_report(void);
 /* Draws that enabled a texture stage beyond stage 0, and the most extra

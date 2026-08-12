@@ -22,6 +22,7 @@ static double now_s(void)
     return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
+static int      g_silent;      /* X2_HEARTBEAT=0: no beat, but still the reporter */
 static double   g_period = 5.0;
 static double   g_t0;
 
@@ -86,6 +87,9 @@ static void *heartbeat_thread(void *arg)
             x2_interrupt_reports();
             _exit(4);
         }
+
+        /* Silenced: the thread exists only to carry the shutdown report. */
+        if (g_silent) continue;
 
         t = now_s() - g_t0;
         cross = x86_crossings();
@@ -256,11 +260,24 @@ void heartbeat_start(void)
     int rc;
 
     if (e && *e) g_period = strtod(e, NULL);
+    /*
+     * X2_HEARTBEAT=0 silences the beat -- it does NOT stop the thread.
+     *
+     * The end-of-run reports are handed to this thread on purpose (they are
+     * stdio, and a signal handler deadlocks against whatever the interrupted
+     * code was holding), so returning here took the shutdown report away with
+     * the liveness line. Turning down one diagnostic silently removed a
+     * different one, and the way that presented was a run that simply printed
+     * no report at all -- which reads as the run having produced nothing.
+     */
     if (g_period <= 0.0) {
-        fprintf(stderr, "[HB] disabled (X2_HEARTBEAT=%s). A run that stops "
-                        "producing output will say nothing about whether it is "
-                        "alive.\n", e ? e : "0");
-        return;
+        g_silent = 1;
+        fprintf(stderr, "[HB] the liveness line is off (X2_HEARTBEAT=%s). The "
+                        "thread still runs, because the END-OF-RUN report is "
+                        "printed from it; a run that stops producing output "
+                        "will say nothing about whether it is alive.\n",
+                e ? e : "0");
+        g_period = 5.0;         /* it still has to wake to notice a signal */
     }
     g_t0 = now_s();
     g_running = 1;

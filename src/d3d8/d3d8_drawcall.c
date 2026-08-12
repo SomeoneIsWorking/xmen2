@@ -663,6 +663,34 @@ void d3d8_drawcall_multistage(unsigned long *draws, int *most)
     *most = g_multistage_max;
 }
 
+/*
+ * The render states this file actually READS.
+ *
+ * It exists so the report cannot drift from the code. The list of
+ * "set and not implemented" used to be a second, independent table in
+ * d3d8_state.c, and it went stale exactly as one would expect: lighting was
+ * implemented and the report went on announcing D3DRS_LIGHTING, D3DRS_AMBIENT
+ * and D3DRS_COLORVERTEX as "missing from the picture" for every run after.
+ * A reader who believed it would have gone looking for lighting that was
+ * already there.
+ *
+ * Now the answer comes from the one file that does the reading, so
+ * implementing a state removes it from the report by construction.
+ */
+int d3d8_drawcall_reads_state(uint32_t which)
+{
+    static const uint32_t READ[] = {
+        D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ALPHATESTENABLE,
+        D3DRS_SRCBLEND, D3DRS_DESTBLEND, D3DRS_CULLMODE, D3DRS_ZFUNC,
+        D3DRS_ALPHAREF, D3DRS_ALPHAFUNC, D3DRS_ALPHABLENDENABLE,
+        D3DRS_LIGHTING, D3DRS_AMBIENT, D3DRS_COLORVERTEX
+    };
+    unsigned i;
+    for (i = 0; i < sizeof READ / sizeof READ[0]; i++)
+        if (READ[i] == which) return 1;
+    return 0;
+}
+
 void d3d8_drawcall_note_ignored_state(uint32_t which)
 {
     if (which < D3D8_MAX_RENDER_STATES) g_ignored[which]++;

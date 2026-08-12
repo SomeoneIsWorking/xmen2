@@ -1,5 +1,6 @@
 /* See d3d8_state.h. */
 #include "d3d8_state.h"
+#include "d3d8_drawcall.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -91,11 +92,16 @@ void d3d8_state_report(const D3D8State *s)
             {  38, "D3DRS_FOGDENSITY"     }, {  60, "D3DRS_TEXTUREFACTOR"  },
             { 137, "D3DRS_LIGHTING"       }, { 139, "D3DRS_AMBIENT"        },
             { 140, "D3DRS_FOGVERTEXMODE"  }, { 141, "D3DRS_COLORVERTEX"    },
+            {  35, "D3DRS_FOGTABLEMODE"   },
         };
         int j, any = 0;
         for (j = 0; j < (int)(sizeof UNIMPL / sizeof UNIMPL[0]); j++) {
             if (UNIMPL[j].id >= D3D8_MAX_RENDER_STATES) continue;
             if (!s->render[UNIMPL[j].id].set) continue;
+            /* ASK the draw path rather than trusting this table's name. The
+               table supplies the NAME; whether it is implemented is decided
+               by the file that would read it. */
+            if (d3d8_drawcall_reads_state((uint32_t)UNIMPL[j].id)) continue;
             if (!any++)
                 printf("        set, and NOT implemented by this backend -- "
                        "each is missing from the picture:\n");
