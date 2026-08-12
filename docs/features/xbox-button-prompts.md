@@ -1,5 +1,11 @@
 # Xbox button prompts
 
+> **THE STATED SOURCE FOR THIS FEATURE IS WRONG.** `x2f_hud_xbox.igb` does not
+> contain Xbox button glyphs. Measured, below. Nothing can be built on it until
+> the real source is found, and no amount of screen-hunting would have shown
+> that -- the substitution was a no-op by construction.
+
+
 Feature 3 of the three (`README.md`): the Xbox build's authentic button glyphs
 standing in for the PC build's `Texs/joy1..4.png`, which are just the digits
 1--4.
@@ -81,3 +87,48 @@ After that:
 3. Verify by running with `X2_ASSETS` and looking at the frame -- and by the
    redirect line, so "it looks the same" cannot be mistaken for "the
    replacement did not load".
+
+
+## MEASURED: `x2f_hud_xbox.igb` contains no button glyphs
+
+`README.md` says feature 3 is "glyphs from `x2f_hud_xbox.igb` replacing the PC
+`Texs/joy1..4.png`". The asset does not support that.
+
+* The **glyph textures are byte-identical**. Decoding both fonts to PNG at every
+  mip level and comparing: `256x256`, `128x128` and `64x64` all differ in **0
+  bytes of 262,400 / 65,664 / 16,448**. The Xbox HUD font's atlas is the PC HUD
+  font's atlas.
+* The platform variants differ only in **size of metadata**: `x2f_hud` 93,252
+  bytes, `_gc` 93,284, `_ps2` 93,288, `_xbox` 93,288 -- a few dozen bytes apart,
+  which is names and headers, not different pictures. The same pattern holds
+  across every font family in the set (`x2f_med`, `x2f_thin`, `font_xmen_digital`).
+* The Xbox `assetsfb.wad` has **2,520 entries and not one button, joy, glyph,
+  pad or prompt asset**. The only matches for those words in the whole index are
+  the HUD fonts themselves and four character models belonging to Heather and
+  James Hudson.
+
+So substituting that font can never change a button prompt, and the earlier
+substitution run -- both files replaced, 0 draws refused, Latin text unchanged
+-- was a no-op *by construction* rather than a success or a failure. That is
+also why hunting for a screen that draws a prompt would have wasted the effort:
+there was nothing different to see.
+
+## What this leaves
+
+The mechanism is done and verified independently of this (C162): `X2_ASSETS`
+replacement reaches the renderer, proven by a substituted font changing drawn
+glyphs. What is missing is the **source art**, and finding it is an RE question
+about the XBOX build, not about this host:
+
+1. Where does the Xbox build's UI get a button prompt from? `default.xbe` is
+   already lifted by this repo's own Xbox path (`xbox/`, `tools/xbox_relift.sh`),
+   so its UI code can be read the way `XMen2.exe`'s controller code was.
+2. Is a prompt a TEXTURE at all, or a character drawn from a font whose atlas
+   is shared and whose *metrics* differ? The `.xmlb` metrics files were NOT
+   compared -- only the textures were -- and that is the cheapest next check,
+   since the whole platform difference has to live in the ~36 bytes that differ
+   plus the metrics file.
+3. The ISO holds assets outside `assetsfb.wad`; only `textures/` and `ui/` were
+   ever extracted from it here.
+
+Check (2) first. It is minutes of work and it is where the evidence points.
