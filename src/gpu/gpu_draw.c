@@ -80,6 +80,10 @@ typedef struct {
     int             live;
 } Res;
 
+/* The draw's 1-based index within the frame, and how many X2_DRAW_RANGE has
+   skipped. Skipped is NOT refused -- see the range block in gpu_draw(). */
+static unsigned long g_range_index, g_range_skipped;
+
 #define MAX_RES 4096
 static Res g_res[MAX_RES];
 static int g_nres;
@@ -916,6 +920,7 @@ int gpu_draw(const GpuDraw *d)
             seen_frame = now;
         }
         this_draws++;
+        g_range_index = this_draws;   /* 1-based index within this frame */
         if (want == -3 && prev_draws >= busy_min) {
             want = (long)now;
             fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu drew %lu "
@@ -953,6 +958,42 @@ int gpu_draw(const GpuDraw *d)
                 fprintf(stderr, "  ... capped at 400 draws; frame %lu had "
                                 "more.\n", dumped_frame);
             }
+        }
+    }
+
+    /*
+     * X2_DRAW_RANGE=<first>[:<last>] -- submit only these draws of each frame.
+     *
+     * "Which draw painted this region of the picture?" has no answer in a dump:
+     * 232 lines describe what each draw IS, not where it landed. Isolating a
+     * range and photographing the result answers it directly, and a bisection
+     * over the range finds the draw that covers a region in a handful of runs.
+     *
+     * It SKIPS rather than refuses: a skipped draw must not be counted as one
+     * the backend could not do, or the refusal total -- which is a real quality
+     * measure -- would move whenever this was used. The skipped count is
+     * reported separately and the range is echoed once, so a picture taken with
+     * this set can never be mistaken for a full frame.
+     */
+    {
+        static long lo = -2, hi;
+        if (lo == -2) {
+            const char *e = getenv("X2_DRAW_RANGE");
+            lo = -1;
+            if (e && *e) {
+                const char *c = strchr(e, ':');
+                lo = atol(e);
+                hi = c ? atol(c + 1) : lo;
+                if (hi < lo) hi = lo;
+                fprintf(stderr, "gpu: X2_DRAW_RANGE -- ONLY draws %ld..%ld of "
+                        "each frame are submitted. Every other draw is SKIPPED, "
+                        "not refused. This picture is NOT a whole frame.\n",
+                        lo, hi);
+            }
+        }
+        if (lo >= 0) {
+            long idx = (long)g_range_index;
+            if (idx < lo || idx > hi) { g_range_skipped++; return 1; }
         }
     }
 
@@ -1110,6 +1151,12 @@ void gpu_draw_report(void)
     if (g_depth_ignored)
         printf("        %lu draw(s) asked for a depth test there is no target "
                "for; they drew in submission order.\n", g_depth_ignored);
+    /* Loudly, and separately from `refused`: a picture taken with a range set
+       is a slice of a frame, and nothing downstream should read it as one. */
+    if (g_range_skipped)
+        printf("        X2_DRAW_RANGE WAS SET: %lu further draw(s) were SKIPPED "
+               "(not refused). EVERY PICTURE FROM THIS RUN IS A SLICE OF A "
+               "FRAME, not the frame.\n", g_range_skipped);
 }
 
 /* ---- off-screen, for proving the path ---------------------------------- */
