@@ -219,3 +219,53 @@ The discriminator is unchanged and is a control run, not a code change: drive
 the NATIVE build to the same opening dialogue room the stock control captured
 and compare those two frames. If the native version of THAT room is lit by one
 0.196 teal directional, it is (b) and the hunt moves into the guest.
+
+### Note (2026-08-12)
+## The control is now REPEATABLE, and the like-for-like is still not achieved
+
+tools/run_shim.sh X2_KEYS gained a repeat window: "<from>-<to>/<step>:<key>"
+fires a key every <step> seconds across a range. Exact instants proved too
+brittle -- the six intro movies take a different wall-clock time every run, and
+THREE control runs were lost to it: one where the press landed before the menu
+appeared, and two where Escape opened the in-game PAUSE menu and the following
+Return selected Quit, putting the run back at the main menu. A repeat window
+blankets the uncertainty, and "195-300/12:Return,380-500/20:Return" now reaches
+the opening red chamber reliably.
+
+## What the control shows there
+
+The red chamber, Cyclops and a seated figure, dialogue box up. Dim but plainly
+lit -- walls, floor panels, both characters and their colours readable:
+
+    stock red chamber   mean luma 27.2   frac<16 0.28   frac>128 0.019
+
+## What is still NOT matched
+
+The native build does not reach that room. With the cutscene skipped it lands
+in a corridor with item pickups; WITHOUT any Escape it never leaves the
+difficulty dialog inside a 4,600-frame budget, and when it does load, the first
+gameplay frame photographed is the same corridor. Whatever the script, the
+opening conversation does not appear in a native run. That is itself a fact
+worth having and it is NOT explained: it may be that the conversation is
+triggered by something that does not run here.
+
+So the frames compared are still different places:
+
+    native corridor     mean luma  2.3   frac<16 0.97   frac>128 0.000
+    stock red chamber   mean luma 27.2   frac<16 0.28   frac>128 0.019
+
+The scene-independent part stands and is the whole of the evidence: ZERO pixels
+above luma 128 in 480,000. Every lit surface in the native frame is dark, and
+the stock frame of a room described in the same words -- dim, enclosed,
+artificially lit -- has 1.9% of its pixels bright.
+
+## The next question is now a different one
+
+Given the D3D8 layer is measured faithful (previous note), and given the native
+build never reaches the opening conversation, the two threads may be the same
+thread: something the level's script does at entry is not running. That would
+explain both the missing conversation AND lights that were set white and then
+zeroed with nothing turning them back on.
+
+That is a GUEST-side investigation and it should start from the missing
+conversation, which is a cleaner signal than a brightness number.

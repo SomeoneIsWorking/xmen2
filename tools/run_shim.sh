@@ -75,8 +75,31 @@ RUNPID=$!
 # that silently failed to drive the game looks exactly like one that did.
 if [ -n "${X2_KEYS:-}" ]; then
   ( prev=0
+    # "<t>:<key>" fires once; "<from>-<to>/<step>:<key>" fires repeatedly.
+    #
+    # Exact instants are too brittle here: the six intro movies take a
+    # different wall-clock time on each run, and two control runs were lost to
+    # a press landing before the menu appeared and after it had moved on. A
+    # repeat window blankets the uncertainty -- pressing Enter every few
+    # seconds through the menu is harmless and lands whatever the timing.
     printf '%s' "$X2_KEYS" | tr ',' '\n' | while IFS=: read -r at key; do
       [ -n "$at" ] && [ -n "$key" ] || continue
+      case "$at" in
+        *-*/*)
+          from=${at%%-*}; rest=${at#*-}; to=${rest%%/*}; step=${rest#*/}
+          t=$from
+          while [ "$t" -le "$to" ]; do
+            sleep "$(awk -v a="$t" -v p="$prev" 'BEGIN{d=a-p; print (d>0)?d:0}')"
+            prev=$t
+            w=$(DISPLAY=$DISP xdotool search --onlyvisible --name '.*' 2>/dev/null | tail -1)
+            [ -n "$w" ] && DISPLAY=$DISP xdotool windowactivate --sync "$w" 2>/dev/null
+            [ -n "$w" ] && DISPLAY=$DISP xdotool key --clearmodifiers "$key" 2>/dev/null
+            echo "run_shim: KEY $key sent at t=${t}s (repeat ${from}-${to}/${step})" >&2
+            t=$((t + step))
+          done
+          continue
+          ;;
+      esac
       sleep "$(awk -v a="$at" -v p="$prev" 'BEGIN{d=a-p; print (d>0)?d:0}')"
       prev=$at
       # The Wine virtual desktop's window is not reliably named "x2" -- looking
