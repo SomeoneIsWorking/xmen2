@@ -36,7 +36,29 @@ gameplay opens 31 names, and the HUD textures are among them by name --
 `texs\cursor0.png`, `texs\teamm.png`, `texs\power_frame.png` and the rest, read
 out of the install directly rather than out of a package.
 
+## MEASURED: substituting the font does NOT work (issue #60)
+
+The obvious route was tried and **fails**, and the failure was only visible
+because it was checked against a discriminator. Dropping the Xbox HUD font in
+over `textures/fonts/X2F_hud_PC.igb` produced a run with both files replaced,
+0 draws refused, and a correct-looking caption -- and then the SAME
+substitution with a deliberately wrong font (`font_XMEN_digital.igb`), and with
+all three fonts replaced at once, produced a **byte-identical frame**. An
+unchanged picture is what this path produces whatever is put in it.
+
+So the loose `textures/fonts/*.igb` opens are not where the drawn glyphs come
+from. Issue #60 has the candidates and names the instrument to build first: the
+`CreateFileMappingA`/`MapViewOfFile` path is a real `mmap` here and is not yet
+routed through the shared resolver, so the open list still has a hole exactly
+where a packaged font would be.
+
 ## What is NOT done, and the one thing that blocks it
+
+**Correction:** the 31-name list this paragraph was based on came from an
+instrument that watched only `CreateFileA`; routing the CRT's `fopen` through
+the same resolver took a run to 352 names. `joy1..4.png` still do not appear,
+but that is now a weaker statement than it was, and the mapping path is still
+uncovered.
 
 `joy1..4.png` **were not opened in any run so far.** They are the player-number
 icons, and nothing in the scripted route -- menu, cutscene, level, death dialog,

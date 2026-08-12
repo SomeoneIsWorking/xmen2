@@ -297,6 +297,10 @@ void imp_MSVCR71_time(CPU *C)
    translation); declared here so stdio can use both. */
 int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
 const char *win_path(const char *in);
+/* The shared open resolver; see kernel32.c. */
+const char *k32_open_path(const char *guest, int for_write);
+int         k32_open_replaced(const char *guest, int for_write);
+void        k32_open_note(const char *guest, int ok, int replaced, const char *host);
 
 #define MAX_FILES 64
 static FILE *g_files[MAX_FILES];
@@ -353,9 +357,21 @@ void imp_MSVCR71_fopen(CPU *C)
     int i;
     for (i = 0; i < MAX_FILES; i++) {
         if (g_files[i]) continue;
-        /* Through win_path, like every other open in this host: the game
-           ships Windows paths whose case does not match the extracted files. */
-        g_files[i] = fopen(win_path(ACS(0)), ACS(1));
+        /*
+         * Through the SAME resolver CreateFileA uses (kernel32.c), not just
+         * win_path: it is where case-insensitive resolution, the X2_ASSETS
+         * replacement pack and the what-did-this-run-open instrument all live.
+         * This path was outside all three, and it is the one the ENGINE loads
+         * its assets through -- so a run reported 31 files while it was
+         * reading fonts, models and packages that never appeared.
+         */
+        const char *guest = ACS(0), *mode = ACS(1);
+        int wr = mode && (strchr(mode, 'w') || strchr(mode, 'a') ||
+                          strchr(mode, '+'));
+        int repl = k32_open_replaced(guest, wr);
+        const char *host = k32_open_path(guest, wr);
+        g_files[i] = fopen(host, mode);
+        k32_open_note(guest, g_files[i] != NULL, repl, host);
         ret_c(C, g_files[i] ? (uint32_t)(i + 1) : 0u);
         return;
     }

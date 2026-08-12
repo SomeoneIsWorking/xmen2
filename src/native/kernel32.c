@@ -790,13 +790,55 @@ static const char *asset_replacement(const char *guest)
     return NULL;
 }
 
+/*
+ * THE one place that turns a guest path into a host path.
+ *
+ * Every open in this host goes through it -- CreateFileA here and the CRT's
+ * fopen in crt.c -- because the two must not disagree. They did: the
+ * instrument was on CreateFileA alone, so a run reported 31 files while the
+ * engine was loading its fonts, models and packages through the CRT and none
+ * of them appeared. A replacement pack that worked for one path and not the
+ * other would be worse still.
+ */
+const char *k32_open_path(const char *guest, int for_write)
+{
+    const char *repl = for_write ? NULL : asset_replacement(guest);
+    return repl ? repl : win_path(guest);
+}
+
+/* 1 if that guest path is being served from X2_ASSETS rather than the install.
+   Split out so the caller can report it without resolving twice. */
+int k32_open_replaced(const char *guest, int for_write)
+{
+    return !for_write && asset_replacement(guest) != NULL;
+}
+
+void k32_open_note(const char *guest, int ok, int replaced, const char *host)
+{
+    asset_note(guest, ok);
+    if (!replaced || !ok) return;
+    {
+        /* Once per replaced name. A run drawing someone else's assets must say
+           so; silence would make a modded run indistinguishable from a stock
+           one in every log it produced. */
+        static char told[64][96];
+        static int ntold;
+        int i;
+        for (i = 0; i < ntold; i++) if (strcmp(told[i], guest) == 0) return;
+        if (ntold < 64) snprintf(told[ntold++], 96, "%s", guest);
+        g_replaced++;
+        fprintf(stderr, "assets: REPLACED \"%s\" with %s (X2_ASSETS)\n",
+                guest, host);
+    }
+}
+
 void imp_KERNEL32_CreateFileA(CPU *C)
 {
     uint32_t access_ = A(1), disp = A(4), h;
     const char *guest_name = ACS(0);
-    const char *repl = (A(1) & GENERIC_WRITE) ? NULL
-                                              : asset_replacement(guest_name);
-    const char *path = repl ? repl : win_path(guest_name);
+    int wr = (A(1) & GENERIC_WRITE) != 0;
+    int repl = k32_open_replaced(guest_name, wr);
+    const char *path = k32_open_path(guest_name, wr);
     int flags = (access_ & GENERIC_WRITE) ? O_RDWR : O_RDONLY;
     int fd;
     switch (disp) {
@@ -816,23 +858,7 @@ void imp_KERNEL32_CreateFileA(CPU *C)
         return;
     }
     fd = open(path, flags, 0644);
-    asset_note(guest_name, fd >= 0);
-    if (repl && fd >= 0) {
-        /* Once per replaced name. A run drawing someone else's textures must
-           say so; silence here would make a modded run indistinguishable from
-           a stock one in every log it produced. */
-        static char told[32][96];
-        static int ntold;
-        int i, seen = 0;
-        for (i = 0; i < ntold; i++)
-            if (strcmp(told[i], guest_name) == 0) { seen = 1; break; }
-        if (!seen) {
-            if (ntold < 32) snprintf(told[ntold++], 96, "%s", guest_name);
-            g_replaced++;
-            fprintf(stderr, "assets: REPLACED \"%s\" with %s (X2_ASSETS)\n",
-                    guest_name, repl);
-        }
-    }
+    k32_open_note(guest_name, fd >= 0, repl, path);
     if (fd < 0) {
         /*
          * A failed open is REPORTED, with the path the guest asked for and the
