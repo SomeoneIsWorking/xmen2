@@ -1,8 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
   <circle cx="36" cy="36" r="30" fill="#DCDCDC" stroke="#101010" stroke-width="6"/>
   <g fill="#101010">
-    <rect x="19" y="23" width="34" height="7" rx="3"/>
-    <rect x="19" y="33" width="34" height="7" rx="3"/>
-    <rect x="19" y="43" width="34" height="7" rx="3"/>
+    <rect x="18" y="25" width="36" height="9" rx="4"/>
+    <rect x="18" y="40" width="36" height="9" rx="4"/>
   </g>
 </svg>
