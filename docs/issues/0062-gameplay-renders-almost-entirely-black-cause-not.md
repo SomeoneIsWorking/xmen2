@@ -5,7 +5,7 @@ status: open
 symptom: The first level's facility interior is close to black in the native --d3d8 build: geometry present, a lit doorway and glowing pickups visible, floors and walls unlit. Menu renders correctly.
 tags: pc,native,graphics,d3d8,lighting
 created: 2026-08-12
-updated: 2026-08-12
+updated: 2026-08-13
 ---
 
 ## What is seen
@@ -488,3 +488,55 @@ WHICH lights arrive, not about what is done with them.
 Frame .005 onward is "ALL X-MEN HAVE BEEN ELIMINATED" -- about a hundred frames
 after the level loads, with nobody driving. That is its own defect and it is
 what has been ending every run early.
+
+### Note (2026-08-13)
+## The light state IN THE RED CHAMBER, at last
+
+The light dump now shares the scene gate with the screenshot, so this is the
+lighting of the frame in the A/B above and not of the menu:
+
+    5 light(s) enabled, ambient 0.000 0.000 0.000 (D3DRS_AMBIENT raw 0)
+    colorvertex 1, has_normal 1
+    material diffuse 1,1,1  ambient 1,1,1  emissive 0,0,0
+
+    light 0 (D3D index 3) type 3 DIRECTIONAL diffuse 0.000 0.196 0.196
+            dir -0.11 -0.99 0.11
+    light 1 (D3D index 4) type 1 POINT diffuse 0.000 0.000 0.000
+            pos   -3.0   80.0 -6259.9   atten2 0.00003781
+    light 2 (D3D index 5) type 1 POINT diffuse 0.000 0.000 0.000
+            pos -264.2  -26.1  -501.0   atten2 0.00007500
+    light 3 (D3D index 6) type 1 POINT diffuse 0.000 0.000 0.000
+            pos -289.5  -19.5  -739.6   atten2 0.00007500
+    light 4 (D3D index 7) type 1 POINT diffuse 0.000 0.000 0.000
+            pos   20.5   14.6   194.2   atten2 0.00005000
+
+## What I checked before believing it, and what it ruled out
+
+The range on every light reads 1.8446743e19, which looks like a struct read at
+the wrong offset -- the obvious suspect for four black lights. It is not:
+sqrt(FLT_MAX) is 1.8446743e19 and that is D3D8's own D3DLIGHT_RANGE_MAX. The
+positions and the attenuations are also plainly sane and all different from one
+another. THE D3DLIGHT8 LAYOUT IS CORRECT and is no longer a candidate.
+
+## What is left, stated precisely
+
+Four point lights arrive with real positions, real quadratic attenuation, and a
+diffuse of exactly zero. A level author does not place four black lights. So
+the colour is being lost somewhere UPSTREAM of SetLight -- in the engine's own
+light objects, in this port -- and the port's D3D8 layer is faithfully passing
+on what it is given.
+
+That also explains the picture. With every point light black, an ambient of
+zero and a material emissive of zero, the only illumination reaching geometry
+is a dim teal directional; the red the room is drenched in must be coming from
+somewhere else -- colorvertex is 1, so baked vertex colour is the candidate --
+and characters, which have no useful vertex colour, get nothing at all and go
+BLACK. That is exactly the pair of symptoms in the A/B frame.
+
+## Next, and it is RE rather than measurement
+
+Find who calls SetLight with a black diffuse. The boundary ring already records
+the guest return address of every crossing, so grouping SetLight calls by
+caller names the engine function; from there the colour can be followed back to
+the light object it came from. The instruction not to touch the lighting maths
+still holds -- nothing downstream of SetLight is implicated by this dump.

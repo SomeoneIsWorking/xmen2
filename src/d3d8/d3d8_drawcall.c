@@ -395,6 +395,16 @@ static void light_dump(const GpuDraw *d)
     if (want <= 0 || done >= want) return;
     if (!d->lighting) return;
     /*
+     * The SCENE gate first, when one was asked for. A draw count separates a
+     * movie from "some scene" and nothing finer -- it let a menu frame be
+     * dumped and three readings had to be retracted. X2_SHOT_AFTER_FILE names
+     * the scene by the file the game opens, so the two instruments aim at the
+     * same frame and a dump can be held until the level is on screen. */
+    {
+        extern int k32_file_gate_open(void);
+        if (!k32_file_gate_open()) return;
+    }
+    /*
      * ONLY IN A FRAME THAT IS ALREADY DRAWING A LOT.
      *
      * This gated on a process-lifetime counter alone, and the MENU is lit and
