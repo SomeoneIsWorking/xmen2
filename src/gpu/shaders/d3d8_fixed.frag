@@ -28,7 +28,8 @@ layout(set = 2, binding = 0) uniform sampler2D   tex0;
 layout(set = 2, binding = 1) uniform samplerCube texcube;
 
 layout(set = 3, binding = 0) uniform PixelState {
-    uint  texture_op;      /* 0 none, 1 modulate, 2 select-arg1, 3 add */
+    uint  texture_op;      /* 0 none, 1 modulate, 2 select-arg1, 3 add,
+                              4 select-arg2 */
     uint  alpha_test;
     float alpha_ref;
     uint  is_cube;         /* sample texcube with v_dir instead of tex0/v_uv */
@@ -57,6 +58,7 @@ vec4 combine(uint op, vec4 a1, vec4 a2)
     if (op == 1u) return a1 * a2;                       /* MODULATE   */
     if (op == 2u) return a1;                            /* SELECTARG1 */
     if (op == 3u) return vec4(a1.rgb + a2.rgb, a1.a);   /* ADD        */
+    if (op == 4u) return a2;                            /* SELECTARG2 */
     return a1;
 }
 

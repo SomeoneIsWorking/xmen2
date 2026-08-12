@@ -40,6 +40,7 @@
 #define D3DRS_TEXTUREFACTOR     60
 
 /* D3DTSS_*, the ones this reads. */
+#define D3DTOP_SELECTARG2        3
 #define D3DTSS_COLOROP           1
 #define D3DTSS_ADDRESSU          13
 #define D3DTSS_ADDRESSV          14
@@ -134,8 +135,81 @@ static int g_arg_seen;
 static unsigned long g_multistage_draws;
 static int g_multistage_max;
 static unsigned long g_texop_none_notex, g_texop_none_disabled,
-                     g_texop_select, g_texop_modulate, g_texop_add,
-                     g_texop_other;
+                     g_texop_select, g_texop_select2, g_texop_modulate,
+                     g_texop_add, g_texop_other;
+
+/*
+ * What the UNTEXTURED draws actually ask their texture stage for.
+ *
+ * A stage with no texture bound is not necessarily a stage with nothing to
+ * say: D3D8 computes COLOROP over its arguments whatever is bound, and
+ * SELECTARG1 with D3DTA_TFACTOR or D3DTA_DIFFUSE produces a colour without
+ * sampling anything. This backend currently drops the whole combiner the
+ * moment no texture is present, so any such draw comes out as the vertex
+ * colour -- white, for a vertex format with no diffuse.
+ *
+ * Whether that matters is a question about THIS game, so it is measured rather
+ * than argued: the distinct (op, arg1, arg2) triples seen on an untextured
+ * draw, with counts. The table is small and full-ness is reported, because a
+ * histogram that silently stopped recording would understate the variety it
+ * exists to show.
+ */
+#define UNTEX_COMBOS 12
+static struct { uint32_t op, a1, a2; unsigned long n; } g_untex[UNTEX_COMBOS];
+static int g_untex_n;
+static unsigned long g_untex_dropped;
+
+static void untex_note(uint32_t op, uint32_t a1, uint32_t a2)
+{
+    int i;
+    for (i = 0; i < g_untex_n; i++)
+        if (g_untex[i].op == op && g_untex[i].a1 == a1 && g_untex[i].a2 == a2) {
+            g_untex[i].n++;
+            return;
+        }
+    if (g_untex_n == UNTEX_COMBOS) { g_untex_dropped++; return; }
+    g_untex[g_untex_n].op = op;
+    g_untex[g_untex_n].a1 = a1;
+    g_untex[g_untex_n].a2 = a2;
+    g_untex[g_untex_n].n = 1;
+    g_untex_n++;
+}
+
+static const char *ta_name(uint32_t a)
+{
+    switch (a & 0xFu) {
+    case 0: return "DIFFUSE";
+    case 1: return "CURRENT";
+    case 2: return "TEXTURE";
+    case 3: return "TFACTOR";
+    default: return "?";
+    }
+}
+
+static void d3d8_untextured_report(void)
+{
+    int i;
+    unsigned long tot = 0;
+    for (i = 0; i < g_untex_n; i++) tot += g_untex[i].n;
+    /* Printed even at zero, with its denominator: "no untextured draw wanted
+       anything from its stage" and "this was never measured" must differ. */
+    printf("        untextured draws, by what their texture stage ASKED for "
+           "(%lu draw(s), %d distinct combination(s)%s):\n",
+           tot, g_untex_n,
+           g_untex_dropped ? ", TABLE FULL -- more exist" : "");
+    if (!g_untex_n) {
+        printf("          none -- no draw reached this backend with no "
+               "texture bound.\n");
+        return;
+    }
+    for (i = 0; i < g_untex_n; i++)
+        printf("          COLOROP %2u  ARG1 %-7s ARG2 %-7s  x%lu%s\n",
+               g_untex[i].op, ta_name(g_untex[i].a1), ta_name(g_untex[i].a2),
+               g_untex[i].n,
+               (g_untex[i].op != 1u && (g_untex[i].a1 & 0xFu) != 0u)
+                   ? "   <- NOT the vertex colour; this backend draws it as"
+                     " one" : "");
+}
 
 /* ---- the vertex format ------------------------------------------------- */
 
@@ -531,10 +605,47 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     {
         uint32_t op = s->stage[0][D3DTSS_COLOROP].set
                           ? s->stage[0][D3DTSS_COLOROP].value : D3DTOP_MODULATE;
-        if (!req->texture || op == D3DTOP_DISABLE) {
+        /*
+         * NO TEXTURE IS NOT NO COMBINER.
+         *
+         * This used to bail to GPU_TEXOP_NONE -- "the vertex colour is the
+         * result" -- the moment nothing was bound, and that is wrong for any
+         * stage whose selected arguments do not include the texture. D3D8
+         * computes COLOROP over its arguments regardless of what is bound, so
+         * SELECTARG2 with D3DTA_TFACTOR produces the texture-factor colour and
+         * samples nothing.
+         *
+         * MEASURED on a menu run: 1,070 draws do exactly that (COLOROP 3,
+         * ARG2 TFACTOR), and every one of them came out as the vertex colour.
+         * For the sky dome -- FVF D3DFVF_XYZ, no diffuse -- the vertex colour
+         * is WHITE, which is the white sky.
+         *
+         * A stage that IS disabled, and one whose chosen argument really is
+         * the texture with nothing bound, still resolve to the vertex colour;
+         * the second is D3D8-undefined and this is the answer already
+         * documented for it.
+         */
+        {
+        uint32_t ca1 = s->stage[0][D3DTSS_COLORARG1].set
+                           ? s->stage[0][D3DTSS_COLORARG1].value : 2u;
+        uint32_t ca2 = s->stage[0][D3DTSS_COLORARG2].set
+                           ? s->stage[0][D3DTSS_COLORARG2].value : 1u;
+        /* Which argument the op actually reads decides whether a missing
+           texture matters at all. */
+        int needs_tex =
+            op == D3DTOP_SELECTARG1 ? (ca1 & 0xFu) == 2u
+          : op == D3DTOP_SELECTARG2 ? (ca2 & 0xFu) == 2u
+                                    : ((ca1 & 0xFu) == 2u || (ca2 & 0xFu) == 2u);
+        if (op == D3DTOP_DISABLE || (!req->texture && needs_tex)) {
             out->texop = GPU_TEXOP_NONE;
-            if (!req->texture) g_texop_none_notex++;
-            else g_texop_none_disabled++;
+            if (!req->texture) {
+                g_texop_none_notex++;
+                untex_note(op, ca1, ca2);
+            } else g_texop_none_disabled++;
+        } else if (op == D3DTOP_SELECTARG2) {
+            /* Reads arg2 and nothing else -- the case the bail above hid. */
+            out->texop = GPU_TEXOP_SELECT_ARG2;
+            g_texop_select2++;
         } else if (op == D3DTOP_SELECTARG1) {
             out->texop = GPU_TEXOP_SELECT_TEXTURE;
             g_texop_select++;
@@ -556,6 +667,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                                 "as MODULATE. Reported once, and it is a "
                                 "KNOWN WRONG colour, not a refusal.\n", op);
             out->texop = GPU_TEXOP_MODULATE;
+        }
         }
         /*
          * D3DTSS_TEXCOORDINDEX's top 16 bits are the generator. Read here and
@@ -804,10 +916,13 @@ void d3d8_drawcall_report(void)
            "%d extra), and this backend reads stage 0 only -- those draws are "
            "MISSING a combiner stage, not missing entirely\n",
            g_multistage_draws, g_multistage_max);
-    printf("        texture stage: %lu modulate, %lu select-texture, %lu add "
-           "(environment map), %lu other-op-as-modulate, %lu UNTEXTURED (%lu "
-           "with no texture bound, %lu with the stage disabled)\n",
-           g_texop_modulate, g_texop_select, g_texop_add, g_texop_other,
+    printf("        texture stage: %lu modulate, %lu select-texture, %lu "
+           "select-arg2, %lu add (environment map), %lu other-op-as-modulate, "
+           "%lu UNTEXTURED (%lu with no texture bound, %lu with the stage "
+           "disabled)\n",
+           g_texop_modulate, g_texop_select, g_texop_select2, g_texop_add,
+           g_texop_other,
            g_texop_none_notex + g_texop_none_disabled,
            g_texop_none_notex, g_texop_none_disabled);
+    d3d8_untextured_report();
 }

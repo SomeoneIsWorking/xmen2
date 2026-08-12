@@ -92,7 +92,11 @@ typedef enum {
     GPU_TEXOP_SELECT_TEXTURE = 2,
     /* D3DTOP_ADD. The environment map is added to the lit surface, which is
        what makes a reflection a highlight rather than a repaint. */
-    GPU_TEXOP_ADD = 3
+    GPU_TEXOP_ADD = 3,
+    /* SELECTARG2. Not a curiosity: 1,070 draws a run pick arg2, and where
+       arg2 is the texture factor the draw needs NO texture at all -- which is
+       how a sky dome of position-only vertices gets its colour. */
+    GPU_TEXOP_SELECT_ARG2 = 4
 } GpuTexOp;
 
 /*

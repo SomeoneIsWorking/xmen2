@@ -760,7 +760,17 @@ int gpu_draw(const GpuDraw *d)
         g_refused++;
         return 0;
     }
-    if (d->texop != GPU_TEXOP_NONE) {
+    /*
+     * A combiner stage does NOT imply a bound texture.
+     *
+     * SELECTARG2 over the texture factor samples nothing, so demanding a real
+     * handle here refused 1,043 draws a run the moment those stages stopped
+     * being bypassed -- the sky dome among them, which is how a fix for a
+     * white sky produced a white sky with fewer draws in it. The placeholder
+     * below covers the slot the shader declares; the combiner simply does not
+     * read it.
+     */
+    if (d->texop != GPU_TEXOP_NONE && d->texture) {
         if (!(tres = res_get(d->texture, 1, "draw"))) { g_refused++; return 0; }
         /*
          * A cube bound to the texture stage is refused, not sampled as its
@@ -807,7 +817,7 @@ int gpu_draw(const GpuDraw *d)
      * worked, because by then the texture existed. Nothing here is an
      * optimisation; it is the order the API requires.
      */
-    if (d->texop == GPU_TEXOP_NONE && !tres) {
+    if (!tres) {
         if (!g_white) {
             static const uint32_t px = 0xFFFFFFFFu;
             g_white = gpu_texture_create(1, 1, GPU_FMT_BGRA8, 1);
