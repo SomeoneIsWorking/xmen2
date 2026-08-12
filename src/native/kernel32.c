@@ -702,7 +702,7 @@ void k32_critsec_report(void)
 #define ASSET_MAX 1024
 static char  g_asset[ASSET_MAX][96];
 static int   g_nasset, g_asset_over;
-static unsigned long g_opens_total, g_opens_failed;
+static unsigned long g_opens_total, g_opens_failed, g_replaced;
 
 static void asset_note(const char *guest, int ok)
 {
@@ -728,6 +728,15 @@ void k32_asset_report(void)
            g_opens_total, g_nasset,
            g_asset_over ? " (the name table is FULL -- some are not listed)" : "",
            g_opens_failed);
+    /* Printed at zero WHEN A PACK IS SET, which is the case that matters: a
+       replacement directory with nothing in it that the game asks for looks
+       exactly like no replacement directory at all. */
+    if (getenv("X2_ASSETS"))
+        printf("         X2_ASSETS=%s -- %lu name(s) were replaced from it%s\n",
+               getenv("X2_ASSETS"), g_replaced,
+               g_replaced ? "" : ". NONE: nothing the game opened had a "
+                                 "counterpart there, so this run drew the "
+                                 "shipped assets");
     if (!getenv("X2_LOG_FILES")) {
         printf("         set X2_LOG_FILES=1 to list them as they are opened.\n");
         return;
@@ -735,11 +744,59 @@ void k32_asset_report(void)
     for (i = 0; i < g_nasset; i++) printf("         %s\n", g_asset[i]);
 }
 
+/*
+ * ASSET REPLACEMENT: X2_ASSETS=<dir>.
+ *
+ * If <dir> holds a file at the same relative path the guest asked for, that
+ * file is opened instead of the one in the install. Backslashes become
+ * slashes and the name is matched as the guest spelled it and in lower case,
+ * because the game's own spelling is inconsistent (`texs\Waypoint00.png` and
+ * `texs\pause.png` in one run).
+ *
+ * This is the mechanism the Xbox button prompts need -- feature 3 is Xbox
+ * glyphs standing in for the PC's `Texs/joy1..4.png` -- and it is deliberately
+ * general rather than a special case for those four: a replacement directory
+ * is also how a texture pack, a translation or a debugging swap would work,
+ * and a one-off would have to be replaced by this the first time anyone wanted
+ * one of those. Dusklight's port takes the same shape (docs/prior-art.md).
+ *
+ * The INSTALL IS NEVER WRITTEN and never read from for a name that is
+ * replaced: this only ever redirects an open. Every redirect is reported once,
+ * because a run whose textures came from somewhere else must not look like a
+ * run of the shipped game.
+ */
+static const char *asset_replacement(const char *guest)
+{
+    static char buf[1024];
+    const char *root = getenv("X2_ASSETS");
+    char rel[512];
+    size_t i;
+    struct stat st;
+
+    if (!root || !*root || !guest) return NULL;
+    /* Strip a drive letter: the guest says C:\texs\x.png and the pack holds
+       texs/x.png. */
+    if (guest[0] && guest[1] == ':') guest += 2;
+    while (*guest == '\\' || *guest == '/') guest++;
+    for (i = 0; guest[i] && i + 1 < sizeof rel; i++)
+        rel[i] = guest[i] == '\\' ? '/' : guest[i];
+    rel[i] = '\0';
+    snprintf(buf, sizeof buf, "%s/%s", root, rel);
+    if (stat(buf, &st) == 0 && S_ISREG(st.st_mode)) return buf;
+    for (i = 0; rel[i]; i++)
+        if (rel[i] >= 'A' && rel[i] <= 'Z') rel[i] = (char)(rel[i] + 32);
+    snprintf(buf, sizeof buf, "%s/%s", root, rel);
+    if (stat(buf, &st) == 0 && S_ISREG(st.st_mode)) return buf;
+    return NULL;
+}
+
 void imp_KERNEL32_CreateFileA(CPU *C)
 {
     uint32_t access_ = A(1), disp = A(4), h;
     const char *guest_name = ACS(0);
-    const char *path = win_path(guest_name);
+    const char *repl = (A(1) & GENERIC_WRITE) ? NULL
+                                              : asset_replacement(guest_name);
+    const char *path = repl ? repl : win_path(guest_name);
     int flags = (access_ & GENERIC_WRITE) ? O_RDWR : O_RDONLY;
     int fd;
     switch (disp) {
@@ -760,6 +817,22 @@ void imp_KERNEL32_CreateFileA(CPU *C)
     }
     fd = open(path, flags, 0644);
     asset_note(guest_name, fd >= 0);
+    if (repl && fd >= 0) {
+        /* Once per replaced name. A run drawing someone else's textures must
+           say so; silence here would make a modded run indistinguishable from
+           a stock one in every log it produced. */
+        static char told[32][96];
+        static int ntold;
+        int i, seen = 0;
+        for (i = 0; i < ntold; i++)
+            if (strcmp(told[i], guest_name) == 0) { seen = 1; break; }
+        if (!seen) {
+            if (ntold < 32) snprintf(told[ntold++], 96, "%s", guest_name);
+            g_replaced++;
+            fprintf(stderr, "assets: REPLACED \"%s\" with %s (X2_ASSETS)\n",
+                    guest_name, repl);
+        }
+    }
     if (fd < 0) {
         /*
          * A failed open is REPORTED, with the path the guest asked for and the
