@@ -370,3 +370,86 @@ is connected. What it does not yet have is the Xbox UI code that places those
 quads, and that has not been located. **That is the next RE step, and it is the
 honest status: the art is found, the label mechanism is understood, and the
 bridge between them is not.**
+
+
+## The Xbox build has no `[%s]` label mechanism at all
+
+Checked directly in `scratch/xbox_iso/default.xbe` (5,726,208 bytes, strings
+plainly visible -- `XMen` x6, `Select` x7, `%d` x474, `.igb` x11, so this is not
+a packed-strings false negative):
+
+| needle | count in default.xbe |
+| --- | --- |
+| `GamepadBtn` / `GamepadAxis` / `GamepadPoV` | 0 / 0 / 0 |
+| `[%s]` | 0 |
+| `[???]` | 0 |
+| `MouseBtn` | 0 |
+| `Controls\Player%d\%s` | 0 |
+
+So the entire "format the device object name into `[%s]`" system is **PC-only**
+-- added for the PC port, which is exactly what a port needs and a console does
+not. The Xbox never renders `[Btn 1]`, and there is no Xbox routine to port.
+The nearest thing the XBE has is a debug binding-name table (`START`, `SELECT`,
+`DPAD_LF/RT/DN/UP`, `L1/L2/R1/R2`, `SQUARE/CIRCLE/TRIANGLE`, `WHITE`, `BLACK`,
+`LEFT TRIGGER`, `LEFT STICK CLICK`, `MCHEAT`, `SCREENGRAB`), whose PS2 face
+names give away what it is.
+
+The UVs are not constants in the PC binaries either. Searching all 21 exe/dll
+files for the measured cell coordinates as float32 and float64 -- `0.785156`,
+`0.871094`, `0.945312`, `0.007812`, `0.078125`, `0.875` -- the three
+distinctive ones get **zero hits**; only the unremarkable `0.875` and
+`0.078125` appear, and those are ordinary constants. (A UV divided from pixel
+coordinates at run time would leave no constant, so this alone would not be
+proof -- it is corroboration, not the argument.)
+
+## Where the art actually is, measured to the pixel
+
+Segmenting the Xbox atlas band by alpha gives two rows of cells. Marked
+`XBOX-ONLY` where the cell differs from the PC atlas:
+
+```
+row y201-223                          row y224-242
+  x  2- 20  XBOX-ONLY                   x  2- 20  XBOX-ONLY
+  x 24- 42  XBOX-ONLY                   x 24- 42  XBOX-ONLY
+  x 45- 65  same as PC                  x 46- 64  XBOX-ONLY
+  x 73- 81  same as PC                  x 68- 86  XBOX-ONLY
+  x 91-107  same as PC                  x 90-108  XBOX-ONLY
+  x110-220  same as PC                  x112-130  XBOX-ONLY
+  x221-241  same as PC                  x132-176  XBOX-ONLY  (wide: L/R pair)
+  x243-253  same as PC                  x179-195  same as PC
+                                        x200-218  XBOX-ONLY
+                                        x222-240  XBOX-ONLY
+                                        x243-251  same as PC
+```
+
+Eleven Xbox-only cells, which is the right count for d-pad, A, B, X, Y, black,
+white, the two triggers and the two sticks. Note the band is populated in the
+PC atlas too -- so this region is shared sprite space in both builds, not an
+Xbox addition, and only the button cells differ.
+
+## The plan that actually works: put the art at unused codepoints
+
+The game's text path is the only thing that draws a `[%s]` label, so the art has
+to reach it as a glyph. It can:
+
+**90 of the 256 glyphs have an empty rect** -- codepoints the font does not use.
+`X2_ASSETS` already substitutes both halves of a font (the `.igb` atlas and the
+`.xmlb` metrics; C162 proved a substituted font reaches the renderer, by making
+`GREENLAND` render as `G`). So:
+
+1. Ship `textures/fonts/X2F_med_PC.igb` = the **Xbox** atlas (the art is already
+   in it, in the band above -- nothing has to be drawn).
+2. Ship `ui/fonts/x2f_med_pc.xmlb` = the PC metrics **plus** glyph rects for the
+   eleven button cells, written into eleven of the unused `num` slots, with the
+   UVs measured above and a `horizadvance` matching their width.
+3. Override `FUN_006281f0` for `devkind >= 3` to return the one-character string
+   for the chosen codepoint instead of `Btn %d`. Contract from the disassembly:
+   `__thiscall`, `RET 0x8`, arg0 = devkind, arg1 = code, returns `char *`.
+
+This stays entirely inside the game's own text pipeline -- no new draw path, no
+renderer work -- and the device switch is free, because slot 2 is consulted
+first (C167) so a bound pad already wins the label.
+
+The one open question is which of the eleven cells each pad code 0x15..0x31
+maps to, and that is answered by the same Xbox default mapping table feature 2
+needs. The two features share that RE step.
