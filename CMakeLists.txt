@@ -119,6 +119,17 @@ add_test(NAME caselabel
 add_test(NAME lift_step_guard
          COMMAND ${CMAKE_SOURCE_DIR}/tools/ghidra_export.sh --selftest)
 
+# The end-to-end gate's own checks (tools/smoke_loop.sh --selftest). The gate
+# itself needs the game and takes ~300s, so it is not a ctest; this runs its
+# checks against a log for each failure and requires each to be caught. It
+# needs neither the game nor a GPU. It exists because the gate PASSED a broken
+# run once -- an unanchored grep matched the shutdown report's own description
+# of x86_note_fallback -- and because the selftest's first version reported
+# every case as passing, having run the checks in a subshell that threw away
+# their result.
+add_test(NAME smoke_loop_checks
+         COMMAND ${CMAKE_SOURCE_DIR}/tools/smoke_loop.sh --selftest)
+
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
 # own call sites. Runs the checker's SELF-TEST, not the check: the check needs
 # scratch/recomp/libIGGfx.json, which is generated and gitignored, while the
