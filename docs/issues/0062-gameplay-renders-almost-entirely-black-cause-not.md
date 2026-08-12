@@ -440,3 +440,51 @@ about it survives as stated. What remains open is narrower and worth keeping:
 the five lights the engine supplies are four black and one dim teal, which has
 not been explained, and the party-light scripts that would set a bright one
 have not been shown to execute.
+
+### Note (2026-08-12)
+## THE LIKE-FOR-LIKE FRAME EXISTS. Same room, same line, same camera.
+
+X2_SHOT_KEEP kept the entry into the level instead of the exit from it, and
+frame .003 of the native filmstrip is the opening conversation:
+
+    CYCLOPS: "Nightcrawler, we've located the Professor. It's okay to teleport in."
+
+which is the exact frame the stock control photographed. The act0 tutorial's
+opening room IS the red chamber -- the two builds were in the same place all
+along and the earlier "different levels" reading, while true of the LEVEL FILES,
+does not apply to this frame. The camera, the geometry, the dialog box and the
+line of text match pixel-for-pixel in layout.
+
+## What differs, measured on the upper half of the frame (the level, not the UI)
+
+    native   mean RGB  37.4   6.7   5.9      -- a hard red cast
+    stock    mean RGB  19.7  16.2  12.7      -- near-neutral, slightly green
+
+and by eye:
+
+  - The stock room is dark teal-grey with a tan floor. Ours is uniformly red.
+  - Stock shows Professor X seated and Cyclops standing, both LIT and coloured.
+    Ours draws both as BLACK SILHOUETTES against the red room -- the geometry
+    is there, correctly placed, and receives no light.
+  - The HUD is correct in both, including the lit Cyclops portrait, so the
+    fault is in world lighting and not in the renderer generally.
+
+## What this retires and what it sharpens
+
+"Gameplay renders almost entirely black" is retired: the level draws, the
+conversation fires, the geometry and camera are right. What is wrong is
+narrower and now has a control frame to be measured against: WORLD GEOMETRY IS
+LIT THE WRONG COLOUR AND CHARACTERS RECEIVE NO LIGHT AT ALL.
+
+The red is not obviously the "dim teal directional" the light dump reported, so
+the next measurement is the light state AT THIS FRAME -- which is finally
+possible, because the scene gate can hold the dump until the room is on screen.
+The instruction not to touch the lighting maths still stands: the maths was
+measured correct, and a red cast with black characters is a question about
+WHICH lights arrive, not about what is done with them.
+
+## Separately: the party dies immediately
+
+Frame .005 onward is "ALL X-MEN HAVE BEEN ELIMINATED" -- about a hundred frames
+after the level loads, with nobody driving. That is its own defect and it is
+what has been ending every run early.
