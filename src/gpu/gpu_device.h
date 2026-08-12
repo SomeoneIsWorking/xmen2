@@ -108,6 +108,13 @@ void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
                       float depth, uint32_t stencil);
 
 /*
+ * Frames actually presented. The game's own measure of progress, which is what
+ * makes it a better schedule for a scripted run than the wall clock -- see
+ * X2_INPUT_SCRIPT's `f` form in dinput_device.c.
+ */
+unsigned long gpu_frames_presented(void);
+
+/*
  * Which render destination the engine has bound.
  *
  * This backend has exactly one: the swapchain. The engine's render

@@ -34,6 +34,7 @@
 #include "x86rt_native.h"
 #include "guest_heap.h"
 #include "dinput_device.h"
+#include "gpu_device.h"
 #include "win32_sdl.h"
 
 #include <stdio.h>
@@ -264,8 +265,21 @@ const unsigned char *dinput_guid_of(int kind)
  *
  *   X2_INPUT_SCRIPT="4.0+150:Down 4.5+150:Return 6.0+150:Escape"
  *
- * is "<seconds from the first input read>+<hold in ms>:<SDL key name>", space
- * or comma separated. The names are SDL's (SDL_GetScancodeFromName), so
+ * is "<seconds from the start of the run>+<hold in ms>:<SDL key name>", space
+ * or comma separated.
+ *
+ * An event may be scheduled by FRAMES PRESENTED instead, by prefixing the
+ * number with `f`:
+ *
+ *   X2_INPUT_SCRIPT="f1200+20:Return f1400+20:Escape"
+ *
+ * which is "<frames presented>+<hold in frames>". This exists because a script
+ * written against the wall clock is a script written against ONE machine: a
+ * slower load puts the Return into a different screen and the run diverges
+ * without anything reporting a failure. Frames presented is the game's own
+ * progress, so the same script drives the same sequence on a machine half the
+ * speed. Mixing the two forms in one script is fine -- each event is
+ * independent. The names are SDL's (SDL_GetScancodeFromName), so
  * "Return", "Down", "Escape", "A" all work, and a name SDL does not know is
  * REFUSED by name at parse time rather than silently never firing.
  *
@@ -274,7 +288,8 @@ const unsigned char *dinput_guid_of(int kind)
  * and the whole value of this is being able to say which it was.
  */
 #define SCRIPT_MAX 32
-typedef struct { double at, until; unsigned char dik; int down, said; char name[24]; } ScriptKey;
+typedef struct { double at, until; int by_frame; unsigned char dik; int down,
+                 said; char name[24]; } ScriptKey;
 static ScriptKey g_script[SCRIPT_MAX];
 static int g_nscript, g_script_parsed;
 static double g_script_t0;
@@ -312,14 +327,20 @@ static void script_parse(void)
     for (p = e; *p; ) {
         double at = 0.0, hold = 100.0;
         char name[24];
-        int n = 0, sc;
+        int n = 0, sc, by_frame = 0;
         while (*p == ' ' || *p == ',' || *p == '\t') p++;
         if (!*p) break;
+        if (*p == 'f' || *p == 'F') {
+            by_frame = 1;
+            hold = 10.0;                 /* frames, not milliseconds */
+            p++;
+        }
         if (sscanf(p, "%lf+%lf:%23[^ ,\t]%n", &at, &hold, name, &n) != 3 &&
             (n = 0, sscanf(p, "%lf:%23[^ ,\t]%n", &at, name, &n)) != 2) {
             fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT could not be read at "
                             "\"%s\" -- the form is <seconds>[+<hold ms>]:<key "
-                            "name>. NOTHING from here on was scheduled.\n", p);
+                            "name>, or f<frames>[+<hold frames>]:<key name>. "
+                            "NOTHING from here on was scheduled.\n", p);
             return;
         }
         p += n;
@@ -343,7 +364,8 @@ static void script_parse(void)
             return;
         }
         g_script[g_nscript].at = at;
-        g_script[g_nscript].until = at + hold / 1000.0;
+        g_script[g_nscript].until = at + (by_frame ? hold : hold / 1000.0);
+        g_script[g_nscript].by_frame = by_frame;
         snprintf(g_script[g_nscript].name, sizeof g_script[0].name, "%s", name);
         g_nscript++;
     }
@@ -388,15 +410,19 @@ static void script_apply(uint32_t out, uint32_t n)
     now -= g_script_t0;
     for (i = 0; i < g_nscript; i++) {
         ScriptKey *k = &g_script[i];
-        int down = now >= k->at && now < k->until;
+        /* Frame-scheduled events read the game's own progress instead of the
+           clock; see the header comment for why that is not a convenience. */
+        double when = k->by_frame ? (double)gpu_frames_presented() : now;
+        int down = when >= k->at && when < k->until;
         if (down && (uint32_t)k->dik < n)
             *((unsigned char *)(uintptr_t)out + k->dik) = 0x80;
         if (down && !k->down)
             fprintf(stderr, "DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
-                            "t=%.2fs\n", k->name, k->dik, now);
+                            "t=%.2fs, frame %lu\n", k->name, k->dik, now,
+                    gpu_frames_presented());
         else if (!down && k->down && !k->said++)
-            fprintf(stderr, "DINPUT8: released \"%s\" at t=%.2fs\n",
-                    k->name, now);
+            fprintf(stderr, "DINPUT8: released \"%s\" at t=%.2fs, frame %lu\n",
+                    k->name, now, gpu_frames_presented());
         k->down = down;
     }
 }
