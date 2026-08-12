@@ -621,7 +621,18 @@ void gpu_frame_end(void)
                                 "cleanly after that many presented frames.\n",
                         limit);
         }
-        if (limit > 0 && (long)g_frames_presented >= limit) {
+        /*
+         * Said ONCE. The limit is a level, not an edge -- every frame after it
+         * satisfies the test -- and without this guard the line repeated for as
+         * long as the guest kept presenting. One run emitted 3,847 copies of it
+         * and they were interleaved through the shutdown report, which is how a
+         * report that HUNG midway looked like a report that had finished.
+         * The frame number in the line is still the FIRST one over the limit,
+         * which is the useful one; how far the guest ran after the stop was
+         * requested is the stopping path's business to report, not this one's.
+         */
+        if (limit > 0 && (long)g_frames_presented >= limit
+            && !g_frame_limit_hit) {
             fprintf(stderr, "\ngpu: X2_MAX_FRAMES reached (%lu presented). "
                             "Stopping; the reports follow.\n",
                     g_frames_presented);

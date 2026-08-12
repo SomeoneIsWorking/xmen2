@@ -889,6 +889,35 @@ void guest_thread_exit(uint32_t code)
  */
 #define IGCORE_THREADMGR_PTR 0x1015f438u
 
+/*
+ * A guest pointer this may dereference, or 0.
+ *
+ * The first version of this report read mgr+8, then arr+0x10, then each
+ * element, trusting the layout. On a run stopped mid-movie the manager held
+ * something this walk could not follow and the report took a SIGSEGV -- inside
+ * the SHUTDOWN report, which is the one place a diagnostic must not fault,
+ * because it takes every other report down with it. A layout read out of a
+ * disassembly is a hypothesis, and a diagnostic that bets the process on one
+ * is not a diagnostic.
+ *
+ * So every read is bounds-checked first: the address must lie in the guest
+ * heap or inside a mapped module. A pointer that does not is REPORTED, not
+ * followed -- and that report is itself a finding, because it says the layout
+ * is wrong rather than pretending the list is empty.
+ */
+static int tm_readable(uint32_t a)
+{
+    uint32_t base, size;
+    X86Module *m;
+    if (a < 0x1000u) return 0;
+    if (guest_heap_contains(a, &base, &size)) return 1;
+    for (m = x86_modules(); m; m = m->next) {
+        uint32_t b = (uint32_t)(uintptr_t)m->base;
+        if (m->base && a >= b && a < b + m->size) return 1;
+    }
+    return 0;
+}
+
 void guest_engine_thread_report(void)
 {
     X86Module *m;
@@ -912,7 +941,29 @@ void guest_engine_thread_report(void)
         printf("\n");
         return;
     }
-    slot = (uint32_t)(uintptr_t)m->base + (IGCORE_THREADMGR_PTR - m->preferred);
+    /* The slot address itself must be checked BEFORE it is read. It was not,
+       and that is the whole of why this faulted twice: a module mapped above
+       4 GB truncates to nonsense in a uint32_t, and the very first read went
+       to it. Checking mgr and skipping slot checked the second pointer and
+       trusted the first. */
+    {
+        uintptr_t p = (uintptr_t)m->base
+                    + (uintptr_t)(IGCORE_THREADMGR_PTR - m->preferred);
+        if (p > 0xffffffffu) {
+            printf("  engine threads: libIGCore.dll is mapped at %p, which is "
+                   "above 4 GB, so its 32-bit guest addresses cannot be formed "
+                   "here. NOTHING was read.\n", (void *)m->base);
+            return;
+        }
+        slot = (uint32_t)p;
+    }
+    if (!tm_readable(slot)) {
+        printf("  engine threads: the singleton slot computes to 0x%08x, which "
+               "is not readable guest memory (libIGCore.dll mapped at %p, "
+               "linked for 0x%08x). NOTHING was read.\n",
+               slot, (void *)m->base, m->preferred);
+        return;
+    }
     mgr = RD32(slot);
     if (!mgr) {
         printf("  engine threads: the igThreadManager singleton is NULL "
@@ -921,10 +972,23 @@ void guest_engine_thread_report(void)
                "way out.\n", slot);
         return;
     }
+    if (!tm_readable(mgr) || !tm_readable(mgr + 8u)) {
+        printf("  engine threads: the singleton at slot 0x%08x holds 0x%08x, "
+               "which is in NEITHER the guest heap NOR any mapped module. Not "
+               "followed. Either the manager is not what this diagnostic "
+               "thinks it is, or the run caught it mid-teardown.\n", slot, mgr);
+        return;
+    }
     arr = RD32(mgr + 8u);
     if (!arr) {
         printf("  engine threads: the manager at 0x%08x holds a NULL thread "
                "array, so getCallingThread cannot match ANYTHING.\n", mgr);
+        return;
+    }
+    if (!tm_readable(arr) || !tm_readable(arr + 0x10u)) {
+        printf("  engine threads: manager 0x%08x names a thread array at "
+               "0x%08x, which is not readable guest memory. Not followed.\n",
+               mgr, arr);
         return;
     }
     n = RD32(arr + 8u);
@@ -938,10 +1002,22 @@ void guest_engine_thread_report(void)
         printf("          count %u is not credible; refusing to walk it.\n", n);
         return;
     }
+    if (n && !tm_readable(elems)) {
+        printf("          the element array at 0x%08x is not readable; the "
+               "count above stands but the entries cannot be listed.\n", elems);
+        return;
+    }
     for (i = 0; i < n && elems; i++) {
-        uint32_t t = RD32(elems + i * 4u);
+        uint32_t t;
+        if (!tm_readable(elems + i * 4u)) break;
+        t = RD32(elems + i * 4u);
+        if (!tm_readable(t) || !tm_readable(t + 0x40u)) {
+            printf("          [%u] thread 0x%08x -- not readable, not "
+                   "followed\n", i, t);
+            continue;
+        }
         printf("          [%u] thread 0x%08x  id 0x%08x  refcount %u\n",
-               i, t, t ? RD32(t + 0x40u) : 0u, t ? RD32(t + 4u) : 0u);
+               i, t, RD32(t + 0x40u), RD32(t + 4u));
     }
 }
 

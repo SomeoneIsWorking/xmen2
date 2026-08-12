@@ -114,3 +114,34 @@ SEPARATE DEFECT SEEN ON THE WAY, not yet filed: with X2_MAX_FRAMES=400 the run
 printed 'X2_MAX_FRAMES reached (4244 presented)' and kept printing it once per
 frame without stopping, until the timeout killed it. The clean stop does not
 stop at the limit it names.
+
+### Note (2026-08-12)
+The diagnostic itself CRASHED TWICE before it was safe, and that is the finding.
+
+Both faults were inside guest_engine_thread_report, in the SHUTDOWN report --
+the one place a diagnostic must not fault, because it takes every other report
+down with it. And they were hidden: X2_MAX_FRAMES printed its 'reached' line
+once per frame (3,847 copies in one run) and the fault report was buried in
+them, so a report that CRASHED looked like a report that hung, and I described
+it as a hang. The line is now said once, and with it the crash was one grep
+away.
+
+Cause: the report dereferenced guest pointers it had not checked. Bounds
+checks were then added for mgr, arr and the elements -- but NOT for the slot
+address itself, so it faulted a second time on the very first read. Checking
+the second pointer and trusting the first is not a bounds check.
+
+With the slot checked, the run exits 0 and the report says what it could not
+do:
+
+    engine threads: libIGCore.dll is mapped at 0x563f50c5b1c8, which is above
+    4 GB, so its 32-bit guest addresses cannot be formed here. NOTHING was
+    read.
+
+That is a REAL question, not just a refusal: an earlier run of the same code
+computed a plausible guest slot of 0x72080600, so X86Module::base is sometimes
+below 4 GB and sometimes not. Either base is not the guest mapped address for
+every module, or libIGCore.dll is reached some other way. Until that is
+answered the engine-side measurement for this issue cannot be taken at all --
+and the intermittency of the ORIGINAL crash may or may not be related, which
+is a question to ask, not an answer to assume.
