@@ -309,6 +309,8 @@ void x2_interrupt_reports(int killed)
     extern void x86_fallback_report(void);
     extern void guest_thread_report(void);
     extern void k32_critsec_report(void);
+    extern void dinput_device_report(void);
+    extern void dinput_pad_report(void);
     x86_fallback_report();
     d3d8_host_report();
     guest_heap_report();
@@ -320,6 +322,12 @@ void x2_interrupt_reports(int killed)
        change helped. */
     guest_thread_report();
     k32_critsec_report();
+    /* The input reports too, and for the same reason: they were registered
+       with atexit, and the clean frame-limit stop leaves through _exit -- so
+       on precisely the runs that WORK, the numbers that say whether the game
+       ever polled the pad were never printed. */
+    dinput_device_report();
+    dinput_pad_report();
     fflush(stdout);
     if (killed)
         x86_diag_dump();
@@ -1645,8 +1653,18 @@ int main(int argc, char **argv)
     { extern void winmm_report(void); atexit(winmm_report); }
     atexit(guest_thread_report);
     { extern void gdi32_report(void); atexit(gdi32_report); }
-    { extern void dinput_device_report(void), crt_rtti_report(void);
-      atexit(dinput_device_report); atexit(crt_rtti_report); }
+    /*
+     * Registered here AND called from x2_interrupt_reports, because neither
+     * path covers every ending: atexit misses the clean frame-limit stop
+     * (which leaves through _exit) and the interrupt reports miss a run that
+     * returns normally, like --selftest. Both call the same functions and each
+     * prints ONCE -- the guard is in the report itself, so no caller has to
+     * know whether another one already ran.
+     */
+    { extern void crt_rtti_report(void), dinput_device_report(void),
+                  dinput_pad_report(void);
+      atexit(dinput_device_report); atexit(dinput_pad_report);
+      atexit(crt_rtti_report); }
     atexit(x86_native_export_report);
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
     for (m = x86_modules(); m; m = m->next) {
@@ -1795,6 +1813,8 @@ int main(int argc, char **argv)
             heartbeat_start();
             guest_quantum_from_env();
             dinput_script_start();
+            { extern void dinput_pad_virtual_from_env(void);
+              dinput_pad_virtual_from_env(); }
             printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
                    nm ? nm : "(NO RECOMPILED BODY)");
             if (!nm) return 1;

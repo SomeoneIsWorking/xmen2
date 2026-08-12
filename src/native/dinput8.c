@@ -29,6 +29,7 @@
 #include "x86rt_native.h"
 #include "guest_heap.h"
 #include "dinput_device.h"
+#include "dinput_pad.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -137,38 +138,129 @@ static void m_Release(CPU *C)
  * per line below.
  */
 #define ENUM_SEEN 8
-static struct { uint32_t cls, flags, cb; unsigned long n; } g_enum[ENUM_SEEN];
+static struct { uint32_t cls, flags, cb; unsigned long n; int reported; }
+    g_enum[ENUM_SEEN];
 static int g_nenum;
 
+/*
+ * Recorded once per (class, flags, callback), WITH how many devices it was
+ * offered.
+ *
+ * The count is the whole point. "EnumDevices was called" and "EnumDevices
+ * found nothing" are different facts, and for most of this port's life the
+ * answer was zero -- printed with its reason so that it could not be mistaken
+ * for a machine with no pad plugged in.
+ */
+static void enum_seen(uint32_t cls, uint32_t flags, uint32_t cb, int reported)
+{
+    int i;
+    for (i = 0; i < g_nenum; i++)
+        if (g_enum[i].cls == cls && g_enum[i].flags == flags
+            && g_enum[i].cb == cb) { g_enum[i].n++; return; }
+    if (g_nenum == ENUM_SEEN) return;
+    g_enum[g_nenum].cls = cls;
+    g_enum[g_nenum].flags = flags;
+    g_enum[g_nenum].cb = cb;
+    g_enum[g_nenum].n = 1;
+    g_enum[g_nenum].reported = reported;
+    g_nenum++;
+    {
+        const char *nm = x86_native_name_at(cb);
+        if (reported > 0)
+            fprintf(stderr, "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
+                            "offered %d device(s) to the callback at 0x%08x "
+                            "(%s).\n", cls, devclass_name(cls), flags,
+                    reported, cb, nm ? nm : "in no body this host can name");
+        else
+            fprintf(stderr, "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
+                            "found NO device to offer.\n"
+                            "  The protocol works -- the callback at 0x%08x "
+                            "(%s) would run once per device -- so this is an "
+                            "empty device list, not a missing one. For a "
+                            "gamepad class, plug one in; see "
+                            "src/native/dinput_pad.c.\n",
+                    cls, devclass_name(cls), flags, cb,
+                    nm ? nm : "in no body this host can name");
+    }
+}
+
+/*
+ * DIDEVICEINSTANCEA for a gamepad, in the DirectInput 8 form.
+ *
+ * The size the caller sees decides which form it reads: 0x244 (580) is the
+ * DirectX 5-and-later structure with both names and the FF GUID, and the
+ * game's callback (XMen2.exe FUN_00628b40) reads the instance GUID at +4 and
+ * copies 100 bytes of the instance NAME from +0x28, so both have to be there
+ * and in those places.
+ */
+#define DIDEVINST_BYTES 580u
+
+static uint32_t padinst_for(int pad)
+{
+    static uint32_t buf;
+    unsigned char inst[16], prod[16];
+    const char *nm = dinput_pad_name(pad);
+
+    if (!dinput_pad_instance_guid(pad, inst)) return 0;
+    if (!dinput_pad_product_guid(pad, prod))  return 0;
+    if (!buf) buf = guest_malloc(DIDEVINST_BYTES);
+    if (!buf) return 0;
+    memset((void *)(uintptr_t)buf, 0, DIDEVINST_BYTES);
+    WR32(buf + 0u, DIDEVINST_BYTES);                     /* dwSize */
+    memcpy((void *)(uintptr_t)(buf + 4u),  inst, 16);    /* guidInstance */
+    memcpy((void *)(uintptr_t)(buf + 20u), prod, 16);    /* guidProduct */
+    /* DI8DEVTYPE_GAMEPAD with DI8DEVTYPEGAMEPAD_STANDARD in the second byte,
+       and DIDEVTYPE_HID (0x00010000) set: a caller that switches on the
+       subtype gets a real one rather than zero. */
+    WR32(buf + 36u, 0x00010115u);
+    snprintf((char *)(uintptr_t)(buf + 40u),  260, "%s", nm ? nm : "Gamepad");
+    snprintf((char *)(uintptr_t)(buf + 300u), 260, "%s", nm ? nm : "Gamepad");
+    return buf;
+}
+
+/*
+ * EnumDevices, for real.
+ *
+ * This answered ZERO for the whole life of the port, and that single answer is
+ * what kept every controller feature out of reach: the exe asks for
+ * DI8DEVCLASS_GAMECTRL once at startup (FUN_00628e20), and with nothing
+ * offered it builds no controllers, so nothing downstream -- hotswap, mapping,
+ * button prompts -- has anything to attach to.
+ *
+ * Only devices this host can actually SERVE are offered. That is not caution
+ * for its own sake: reporting a pad makes the game create it, set a data
+ * format, enumerate its axes, set a range on each, acquire it and read it
+ * every frame, and every one of those has to work or the game gets a device
+ * that exists and never reports a press.
+ */
 static void m_EnumDevices(CPU *C)
 {
     /* (this, dwDevType, lpCallback, pvRef, dwFlags) */
-    uint32_t cls = A(1), cb = A(2), flags = A(4);
-    int i;
+    uint32_t cls = A(1), cb = A(2), pvref = A(3), flags = A(4);
+    int reported = 0, i, npad;
 
-    for (i = 0; i < g_nenum; i++)
-        if (g_enum[i].cls == cls && g_enum[i].flags == flags
-            && g_enum[i].cb == cb) { g_enum[i].n++; break; }
-    if (i == g_nenum && g_nenum < ENUM_SEEN) {
-        const char *nm = x86_native_name_at(cb);
-        g_enum[g_nenum].cls = cls;
-        g_enum[g_nenum].flags = flags;
-        g_enum[g_nenum].cb = cb;
-        g_enum[g_nenum].n = 1;
-        g_nenum++;
-        fprintf(stderr,
-                "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) is reporting "
-                "ZERO devices.\n"
-                "  The protocol is real -- the callback at 0x%08x (%s) would "
-                "run once per device --\n"
-                "  but no device list is wired up yet. See src/native/dinput8.c "
-                "and issue #32; src/display/ has the SDL3 backend this should "
-                "be fed from.\n",
-                cls, devclass_name(cls), flags, cb,
-                nm ? nm : "in no body this host can name");
+    if (!cb) { ret_com(C, DIERR_INVALIDPARAM, 4); return; }
+    dinput_pad_refresh();
+    npad = dinput_pad_count();
+
+    /* DI8DEVCLASS_ALL is 0. GAMECTRL is the only class with anything in it
+       here; the keyboard and mouse are reached by their fixed GUIDs and this
+       game never enumerates them through DirectInput 8. */
+    if (cls == 0u || cls == DI8DEVCLASS_GAMECTRL) {
+        for (i = 0; i < DINPUT_PAD_MAX && reported < npad; i++) {
+            uint32_t inst = padinst_for(i);
+            CPU K;
+            if (!inst) continue;
+            K = *C;
+            K.esp -= 8u;
+            WR32(K.esp + 0u, inst);
+            WR32(K.esp + 4u, pvref);
+            x86_guest_call(&K, cb);
+            reported++;
+            if (K.eax == 0u) break;                 /* DIENUM_STOP */
+        }
     }
-    /* Enumerating nothing IS a successful enumeration: DirectInput returns
-       DI_OK and simply never calls the callback. */
+    enum_seen(cls, flags, cb, reported);
     ret_com(C, S_OK, 4);
 }
 
@@ -216,7 +308,13 @@ static void m_CreateDevice(CPU *C)
         obj = dinput_device_new(DINPUT_DEV_KEYBOARD);
     else if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
         obj = dinput_device_new(DINPUT_DEV_MOUSE);
-    else {
+    else if (dinput_pad_for_guid((const unsigned char *)(uintptr_t)guid) >= 0) {
+        /* A GUID the enumeration above handed out. A device enumerated under
+           one GUID and creatable only under another is a device the game can
+           see and never open, so the two go through the same inventory. */
+        obj = dinput_device_new_pad(
+                  dinput_pad_for_guid((const unsigned char *)(uintptr_t)guid));
+    } else {
         /*
          * NOT a system device, so it is one that enumeration would have had to
          * produce -- and enumeration reports none. DIERR_DEVICENOTREG is the

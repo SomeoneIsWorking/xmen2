@@ -43,6 +43,15 @@ add_executable(test_controller tests/test_controller.c)
 target_link_libraries(test_controller PRIVATE x2_display)
 add_test(NAME controller COMMAND test_controller)
 
+# The gamepad inventory, against an SDL virtual pad. dinput_pad.c depends on
+# nothing in the guest runtime -- it is SDL on one side and plain values on the
+# other -- so it links straight into a test binary.
+add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c)
+target_include_directories(test_dinput_pad PRIVATE src/native)
+target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
+target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
+add_test(NAME dinput_pad COMMAND test_dinput_pad)
+
 add_executable(test_enbaya tests/test_enbaya.c)
 target_link_libraries(test_enbaya PRIVATE x2_core)
 add_test(NAME enbaya COMMAND test_enbaya)
@@ -299,6 +308,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput.c
         src/native/dinput8.c
         src/native/dinput_device.c
+        src/native/dinput_pad.c
         src/native/advapi32.c
         src/native/shell32.c
         src/native/winmm.c

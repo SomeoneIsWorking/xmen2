@@ -14,12 +14,15 @@
 
 typedef enum {
     DINPUT_DEV_KEYBOARD = 1,
-    DINPUT_DEV_MOUSE
+    DINPUT_DEV_MOUSE,
+    DINPUT_DEV_JOYSTICK
 } DInputDeviceKind;
 
 /* The guest address of the device object, or 0. One object per kind for the
-   whole process, because the game caches what it creates. */
+   whole process, because the game caches what it creates -- except joysticks,
+   where one object per PAD is the whole point: the game holds four at once. */
 uint32_t dinput_device_new(DInputDeviceKind kind);
+uint32_t dinput_device_new_pad(int pad);
 
 /*
  * The system-device GUIDs, shared by both DirectInput stacks.

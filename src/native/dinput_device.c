@@ -34,6 +34,7 @@
 #include "x86rt_native.h"
 #include "guest_heap.h"
 #include "dinput_device.h"
+#include "dinput_pad.h"
 #include "gpu_device.h"
 #include "win32_sdl.h"
 
@@ -60,6 +61,7 @@ static void ret_com(CPU *C, uint32_t hr, int nargs)
 #define DI_NOEFFECT       0x00000001u
 #define DIERR_INVALIDPARAM 0x80070057u
 #define DIERR_NOTACQUIRED  0x8007000Cu
+#define DIERR_OUTOFMEMORY  0x8007000Eu
 
 /*
  * IDirectInputDevice8's vtable. The four the game dispatches through are
@@ -101,10 +103,26 @@ typedef struct {
     uint32_t data_size;          /* from the caller's own DIDATAFORMAT */
     uint32_t coop;
     int      acquired;
-    unsigned long polls;
+    unsigned long polls;          /* GetDeviceState calls */
+    /* Poll and Acquire counted separately, because '0 state reads' cannot say
+       WHICH step of the game's own sequence stopped. XMen2.exe's per-frame
+       update (FUN_006285c0, at 0x006287f0) calls Poll first and only Acquires
+       if Poll fails, so three zeros and three different causes look identical
+       without these. */
+    unsigned long n_poll, n_acquire, n_acquire_fail;
+    /* Joysticks only. The pad this device reads, and the axis range the GAME
+       set with DIPROP_RANGE -- XMen2.exe asks for [-1000, 1000] and a host
+       that returned DirectInput's default 0..65535 would hand it sticks
+       pinned hard over. Defaults are DirectInput's, so a caller that never
+       sets a range still gets a sane centre. */
+    int      pad;
+    int32_t  axis_lo, axis_hi;
+    int      range_set;
 } Device;
 
-#define MAX_DEVICES 4
+/* Four pads plus the keyboard and the mouse. The game supports four players
+   and creates one device each. */
+#define MAX_DEVICES 8
 static Device g_dev[MAX_DEVICES];
 static int g_ndev;
 static uint32_t g_vtable;
@@ -119,7 +137,8 @@ static Device *dev_of(uint32_t guest)
 static const char *kind_name(DInputDeviceKind k)
 {
     return k == DINPUT_DEV_KEYBOARD ? "keyboard"
-         : k == DINPUT_DEV_MOUSE    ? "mouse" : "(unknown)";
+         : k == DINPUT_DEV_MOUSE    ? "mouse"
+         : k == DINPUT_DEV_JOYSTICK ? "gamepad" : "(unknown)";
 }
 
 /* ---- the SDL side ------------------------------------------------------ */
@@ -480,6 +499,174 @@ static void fill_mouse(uint32_t out, uint32_t n)
 
 /* ---- the methods ------------------------------------------------------- */
 
+
+/* ---- the gamepad ------------------------------------------------------- */
+
+/*
+ * DIJOYSTATE2, which is what XMen2.exe's data format at 0x006a6514 declares:
+ * 272 bytes over 164 objects. The offsets are not guessed -- they are the
+ * ones the format's own object table gives, read out of the exe.
+ *
+ *   0   lX      4  lY      8  lZ     12 lRx    16 lRy    20 lRz
+ *   24  rglSlider[2]
+ *   32  rgdwPOV[4]
+ *   48  rgbButtons[128]
+ *   176 onwards: velocity, acceleration and force duplicates of all of the
+ *       above, which this host leaves at zero and says so here rather than
+ *       leaving a reader to wonder whether they were forgotten. Nothing in
+ *       this game reads them: they exist for force-feedback sticks.
+ */
+static void fill_joystick(Device *d, uint32_t out, uint32_t n)
+{
+    int32_t lo = d->axis_lo, hi = d->axis_hi;
+    int32_t mid = lo + (hi - lo) / 2;
+    int b, nb;
+    uint32_t pov;
+
+    memset((void *)(uintptr_t)out, 0, n);
+    if (n < 176u) {
+        /* Refused rather than partially filled: a short buffer here means the
+           caller's data format and ours disagree, and writing the axes into
+           what it thinks are buttons is worse than writing nothing. */
+        fprintf(stderr, "DINPUT8: a %u-byte joystick state is smaller than the "
+                        "176 bytes DIJOYSTATE2 needs for axes, POVs and "
+                        "buttons. Nothing is written.\n", n);
+        return;
+    }
+    /* Centred axes are the midpoint of the range the GAME set. */
+    WR32(out +  0u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_X,  lo, hi));
+    WR32(out +  4u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_Y,  lo, hi));
+    WR32(out +  8u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_Z,  lo, hi));
+    WR32(out + 12u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_RX, lo, hi));
+    WR32(out + 16u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_RY, lo, hi));
+    WR32(out + 20u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_RZ, lo, hi));
+    WR32(out + 24u, (uint32_t)mid);
+    WR32(out + 28u, (uint32_t)mid);
+    pov = dinput_pad_pov(d->pad);
+    /* All four POVs, and the three this pad does not have are CENTRED
+       (0xFFFFFFFF), not zero -- zero is north, and a memset would have held
+       "up" down for the whole run. */
+    WR32(out + 32u, pov);
+    WR32(out + 36u, 0xFFFFFFFFu);
+    WR32(out + 40u, 0xFFFFFFFFu);
+    WR32(out + 44u, 0xFFFFFFFFu);
+    nb = dinput_pad_button_count(d->pad);
+    for (b = 0; b < nb && 48u + (uint32_t)b < n; b++)
+        if (dinput_pad_button(d->pad, b))
+            *((unsigned char *)(uintptr_t)out + 48 + b) = 0x80;   /* high bit */
+}
+
+/*
+ * The DirectInput object GUIDs, whose only varying byte is the first.
+ * XMen2.exe's own data format names them -- GUID_XAxis is {A36D02E0-C9F3-11CF-
+ * BFC7-444553540000} and the rest differ in that low byte -- so this builds
+ * one from the byte rather than carrying nine near-identical tables.
+ */
+static void obj_guid(unsigned char g[16], unsigned char lo)
+{
+    static const unsigned char REST[15] = {
+        0x02,0x6D,0xA3, 0xF3,0xC9, 0xCF,0x11,
+        0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+    };
+    g[0] = lo;
+    memcpy(g + 1, REST, 15);
+}
+
+#define DIDFT_ABSAXIS   0x00000002u
+#define DIDFT_PSHBUTTON 0x00000004u
+#define DIDFT_POV       0x00000010u
+#define DIOBJ_BYTES     0x13Cu          /* DIDEVICEOBJECTINSTANCEA, DX8 */
+
+/*
+ * EnumObjects, which the game NEEDS rather than merely calls.
+ *
+ * XMen2.exe's FUN_00628b40 calls it with DIDFT_AXIS and its callback
+ * (FUN_00628510) immediately does SetProperty(DIPROP_RANGE, [-1000, +1000])
+ * on each axis it is offered. A host that enumerated nothing would leave the
+ * range unset, and every stick would read from the wrong scale -- so an empty
+ * enumeration here is not a missing nicety, it is a wrong stick.
+ *
+ * The same callback checks each object's dwFlags for DIDOI_FFACTUATOR and
+ * builds a force-feedback effect for the first two axes that have it. This
+ * host has no force feedback, so no object carries that flag and that path is
+ * never entered. That is a real difference from Windows and it is stated here.
+ */
+static void enum_one_object(CPU *C, uint32_t cb, uint32_t pvref, uint32_t buf,
+                            unsigned char guid_lo, uint32_t ofs, uint32_t type,
+                            const char *name, int *stop)
+{
+    CPU K;
+    unsigned char g[16];
+
+    if (*stop) return;
+    memset((void *)(uintptr_t)buf, 0, DIOBJ_BYTES);
+    WR32(buf + 0u, DIOBJ_BYTES);
+    obj_guid(g, guid_lo);
+    memcpy((void *)(uintptr_t)(buf + 4u), g, 16);
+    WR32(buf + 0x14u, ofs);
+    WR32(buf + 0x18u, type);
+    WR32(buf + 0x1cu, 0);                    /* no DIDOI_FFACTUATOR: see above */
+    snprintf((char *)(uintptr_t)(buf + 0x20u), 260, "%s", name);
+    WR32(buf + 0x124u, 0);                   /* dwFFMaxForce */
+    WR32(buf + 0x128u, 0);                   /* dwFFForceResolution */
+    K = *C;
+    K.esp -= 8u;
+    WR32(K.esp + 0u, buf);
+    WR32(K.esp + 4u, pvref);
+    x86_guest_call(&K, cb);
+    if (K.eax == 0u) *stop = 1;              /* DIENUM_STOP */
+}
+
+static void m_EnumObjects(CPU *C)
+{
+    /* (this, lpCallback, pvRef, dwFlags) */
+    Device *d = dev_of(THIS);
+    uint32_t cb = A(1), pvref = A(2), filter = A(3);
+    static uint32_t buf;
+    int stop = 0, i, nb;
+    static const struct { unsigned char lo; const char *nm; } AX[6] = {
+        { 0xE0, "X Axis" }, { 0xE1, "Y Axis" }, { 0xE2, "Z Axis" },
+        { 0xF4, "X Rotation" }, { 0xF5, "Y Rotation" }, { 0xE3, "Z Rotation" }
+    };
+
+    if (!d || !cb) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
+    if (d->kind != DINPUT_DEV_JOYSTICK) {
+        /* The keyboard and mouse are never enumerated by this game, and
+           answering "no objects" for them would be a lie that looks like a
+           device with no keys. */
+        fprintf(stderr, "DINPUT8: EnumObjects on the %s, which this host does "
+                        "not describe object by object. Nothing is offered, "
+                        "and that is reported rather than passed off as an "
+                        "empty device.\n", kind_name(d->kind));
+        ret_com(C, S_OK, 3);
+        return;
+    }
+    if (!buf && !(buf = guest_malloc(DIOBJ_BYTES))) {
+        ret_com(C, DIERR_OUTOFMEMORY, 3);
+        return;
+    }
+    /* DIDFT_ALL is 0 and means everything; otherwise the low byte is a mask of
+       the object types wanted. */
+    for (i = 0; i < 6; i++) {
+        uint32_t t = DIDFT_ABSAXIS | ((uint32_t)i << 8);
+        if (filter && !(DIDFT_ABSAXIS & filter)) break;
+        enum_one_object(C, cb, pvref, buf, AX[i].lo, (uint32_t)i * 4u, t,
+                        AX[i].nm, &stop);
+    }
+    if (!filter || (DIDFT_POV & filter))
+        enum_one_object(C, cb, pvref, buf, 0xF2, 32u, DIDFT_POV, "Hat Switch",
+                        &stop);
+    nb = dinput_pad_button_count(d->pad);
+    if (!filter || (DIDFT_PSHBUTTON & filter))
+        for (i = 0; i < nb; i++) {
+            char nm[32];
+            snprintf(nm, sizeof nm, "Button %d", i);
+            enum_one_object(C, cb, pvref, buf, 0xF0, 48u + (uint32_t)i,
+                            DIDFT_PSHBUTTON | ((uint32_t)i << 8), nm, &stop);
+        }
+    ret_com(C, S_OK, 3);
+}
+
 static void m_QueryInterface(CPU *C)
 {
     uint32_t ppv = A(2);
@@ -551,10 +738,12 @@ static void m_Acquire(CPU *C)
 {
     Device *d = dev_of(THIS);
     if (!d) { ret_com(C, DIERR_INVALIDPARAM, 0); return; }
+    d->n_acquire++;
     if (d->acquired) { ret_com(C, S_FALSE, 0); return; }  /* already acquired */
     if (!d->data_size) {
         /* Real DirectInput refuses this, and so must we: the size the state
            will be written at is not known yet. */
+        d->n_acquire_fail++;
         fprintf(stderr, "DINPUT8: Acquire on the %s before SetDataFormat.\n",
                 kind_name(d->kind));
         ret_com(C, DIERR_INVALIDPARAM, 0);
@@ -592,8 +781,9 @@ static void m_GetDeviceState(CPU *C)
         return;
     }
     d->polls++;
-    if (d->kind == DINPUT_DEV_KEYBOARD) fill_keyboard(out, cb);
-    else                                fill_mouse(out, cb);
+    if (d->kind == DINPUT_DEV_KEYBOARD)      fill_keyboard(out, cb);
+    else if (d->kind == DINPUT_DEV_JOYSTICK) fill_joystick(d, out, cb);
+    else                                     fill_mouse(out, cb);
     ret_com(C, S_OK, 2);
 }
 
@@ -628,6 +818,16 @@ static void m_GetCapabilities(CPU *C)
         WR32(caps + 8u, 0x00000103u);            /* KEYBOARD | HID-less */
         WR32(caps + 12u, 0);                     /* axes */
         WR32(caps + 16u, 256);                   /* buttons */
+    } else if (d->kind == DINPUT_DEV_JOYSTICK) {
+        /* DI8DEVTYPE_GAMEPAD (0x15) with subtype DI8DEVTYPEGAMEPAD_STANDARD
+           (1) in the second byte. A subtype of zero is not "unspecified" to a
+           caller that switches on it. */
+        WR32(caps + 8u, 0x00000115u);
+        WR32(caps + 12u, 6);                     /* axes */
+        WR32(caps + 16u, (uint32_t)dinput_pad_button_count(d->pad));
+        WR32(caps + 20u, 1);                     /* one POV: the d-pad */
+        ret_com(C, S_OK, 1);
+        return;
     } else {
         WR32(caps + 8u, 0x00000102u);            /* MOUSE */
         WR32(caps + 12u, 3);
@@ -647,8 +847,39 @@ static void m_SetProperty(CPU *C)
      * swallowed. rguidProp is a small integer cast to a pointer for the
      * predefined properties, which is what makes this readable at all.
      */
-    uint32_t prop = A(1);
+    uint32_t prop = A(1), ph = A(2);
+    Device *d = dev_of(THIS);
     static unsigned long told;
+    /*
+     * DIPROP_RANGE (#4) is HONOURED, because the game depends on it: its axis
+     * callback (XMen2.exe FUN_00628510) sets every axis to [-1000, +1000], and
+     * a host that ignored it while returning DirectInput's default 0..65535
+     * would report both sticks jammed hard over on every frame.
+     *
+     * DIPROPRANGE is a DIPROPHEADER {dwSize, dwHeaderSize, dwObj, dwHow}
+     * followed by lMin and lMax.
+     */
+    if (prop == 4u && ph && d && d->kind == DINPUT_DEV_JOYSTICK) {
+        int32_t lo = (int32_t)RD32(ph + 16u), hi = (int32_t)RD32(ph + 20u);
+        if (hi > lo) {
+            if (!d->range_set || d->axis_lo != lo || d->axis_hi != hi)
+                fprintf(stderr, "DINPUT8: gamepad %d axis range set to "
+                                "[%d, %d] by the game; every axis it reads is "
+                                "scaled into that.\n", d->pad, lo, hi);
+            d->axis_lo = lo;
+            d->axis_hi = hi;
+            d->range_set = 1;
+        } else {
+            fprintf(stderr, "DINPUT8: SetProperty(DIPROP_RANGE) with lMin %d "
+                            "not below lMax %d. Refused rather than stored: an "
+                            "inverted range makes every axis read backwards.\n",
+                    lo, hi);
+            ret_com(C, DIERR_INVALIDPARAM, 2);
+            return;
+        }
+        ret_com(C, S_OK, 2);
+        return;
+    }
     if (prop < 0x10000u && !told++)
         fprintf(stderr, "DINPUT8: SetProperty(#%u) is accepted and has NO "
                         "effect here. Buffer size (#1) and axis mode (#2) would "
@@ -659,10 +890,31 @@ static void m_SetProperty(CPU *C)
 
 static void m_Poll(CPU *C)
 {
-    /* Nothing here is polled asynchronously -- the state is read live from SDL
-       at GetDeviceState -- so there is genuinely nothing to do, which is what
-       DI_NOEFFECT says. */
-    ret_com(C, DI_NOEFFECT, 0);
+    /*
+     * FAILING HERE IS HOW THE GAME LEARNS TO ACQUIRE, so this must not be
+     * generously successful.
+     *
+     * XMen2.exe's per-frame input update (FUN_006285c0, the loop at
+     * 0x006287f0) is, for each of its ten device slots:
+     *
+     *     Poll();  if (hr < 0) { Acquire(); ... }  else GetDeviceState(0x110);
+     *
+     * -- so Acquire is reached ONLY down the failure branch. A host whose Poll
+     * always returned S_OK left the pad forever unacquired: 6,260 Polls, 0
+     * Acquires and 0 state reads in a run, with every step of the setup
+     * looking correct. Real DirectInput answers DIERR_NOTACQUIRED, and that is
+     * exactly the answer the game is written against.
+     *
+     * Once acquired there is genuinely nothing to do -- the state is read live
+     * from SDL at GetDeviceState. A pad still answers DI_OK rather than
+     * DI_NOEFFECT, because Windows does and a caller may treat DI_NOEFFECT as
+     * "this device needs no polling".
+     */
+    Device *d = dev_of(THIS);
+    if (!d) { ret_com(C, DIERR_INVALIDPARAM, 0); return; }
+    d->n_poll++;
+    if (!d->acquired) { ret_com(C, DIERR_NOTACQUIRED, 0); return; }
+    ret_com(C, d->kind == DINPUT_DEV_JOYSTICK ? S_OK : DI_NOEFFECT, 0);
 }
 
 static void m_unimplemented(CPU *C)
@@ -688,7 +940,7 @@ static void build_vtable(void)
     static void (*const impl[VT_COUNT])(CPU *) = {
         m_QueryInterface, m_AddRef, m_Release,
         m_GetCapabilities,
-        NULL,                        /* EnumObjects */
+        m_EnumObjects,
         NULL,                        /* GetProperty */
         m_SetProperty,
         m_Acquire, m_Unacquire, m_GetDeviceState, m_GetDeviceData,
@@ -717,17 +969,43 @@ static void build_vtable(void)
                                  (void *)VT_NAME[k]));
 }
 
+static uint32_t device_alloc(DInputDeviceKind kind, int pad);
+
 uint32_t dinput_device_new(DInputDeviceKind kind)
 {
-    Device *d;
-    uint32_t obj;
     int i;
 
     /* One object per kind, for the whole process: the game creates the system
        keyboard once and caches it, and handing out a second would give the two
-       holders different acquire states. */
+       holders different acquire states. Joysticks are the exception and go
+       through dinput_device_new_pad -- there the whole point is one object per
+       pad, and collapsing them would give four players one controller. */
     for (i = 0; i < g_ndev; i++)
-        if (g_dev[i].kind == kind) { g_dev[i].refs++; return g_dev[i].guest; }
+        if (g_dev[i].kind == kind && kind != DINPUT_DEV_JOYSTICK) {
+            g_dev[i].refs++;
+            return g_dev[i].guest;
+        }
+    return device_alloc(kind, -1);
+}
+
+/* One IDirectInputDevice8 per PAD. The game creates one per player and keeps
+   them in a ten-slot table keyed on the instance GUID, so two calls for the
+   same pad must hand back the same object. */
+uint32_t dinput_device_new_pad(int pad)
+{
+    int i;
+    for (i = 0; i < g_ndev; i++)
+        if (g_dev[i].kind == DINPUT_DEV_JOYSTICK && g_dev[i].pad == pad) {
+            g_dev[i].refs++;
+            return g_dev[i].guest;
+        }
+    return device_alloc(DINPUT_DEV_JOYSTICK, pad);
+}
+
+static uint32_t device_alloc(DInputDeviceKind kind, int pad)
+{
+    Device *d;
+    uint32_t obj;
     if (g_ndev == MAX_DEVICES) {
         fprintf(stderr, "DINPUT8: no room for another device\n");
         return 0;
@@ -742,6 +1020,16 @@ uint32_t dinput_device_new(DInputDeviceKind kind)
     d->kind = kind;
     d->guest = obj;
     d->refs = 1;
+    d->pad = pad;
+    /* DirectInput's own default range until the game sets its own. */
+    d->axis_lo = 0;
+    d->axis_hi = 65535;
+    if (kind == DINPUT_DEV_JOYSTICK) {
+        fprintf(stderr, "DINPUT8: a native gamepad device at 0x%08x for pad %d "
+                        "(\"%s\")\n", obj, pad,
+                dinput_pad_name(pad) ? dinput_pad_name(pad) : "?");
+        return obj;
+    }
     fprintf(stderr, "DINPUT8: a native %s device at 0x%08x%s\n",
             kind_name(kind), obj,
             input_available() ? " (SDL-backed)"
@@ -752,16 +1040,23 @@ uint32_t dinput_device_new(DInputDeviceKind kind)
 
 void dinput_device_report(void)
 {
+    static int done;                 /* see dinput_pad_report */
     int i;
+    if (done++) return;
     if (!g_ndev) {
         printf("  dinput devices: none was ever created.\n");
         return;
     }
     printf("  dinput devices:\n");
     for (i = 0; i < g_ndev; i++)
-        printf("        %-9s %u byte state, %s, %lu state read(s)\n",
+        printf("        %-9s %u byte state, %s, %lu state read(s), %lu Poll(s),"
+               " %lu Acquire(s)%s\n",
                kind_name(g_dev[i].kind), g_dev[i].data_size,
-               g_dev[i].acquired ? "acquired" : "NOT acquired", g_dev[i].polls);
+               g_dev[i].acquired ? "acquired" : "NOT acquired",
+               g_dev[i].polls, g_dev[i].n_poll, g_dev[i].n_acquire,
+               (!g_dev[i].polls && !g_dev[i].n_poll && !g_dev[i].n_acquire)
+                   ? "  -- the game never touched this device after creating it"
+                   : "");
     if (g_blind_reads)
         printf("        %lu of those read a device with no SDL video "
                "subsystem up, and reported nothing pressed.\n", g_blind_reads);

@@ -1251,8 +1251,27 @@ void imp_KERNEL32_ResumeThread(CPU *C)
 {
     int was = guest_thread_resume(A(0));
     if (was < 0) {
-        fprintf(stderr, "kernel32: ResumeThread(0x%x) -- that handle names no "
-                        "guest thread\n", A(0));
+        /*
+         * ONCE PER HANDLE, not once per call.
+         *
+         * The game spins on ResumeThread while it waits for something else, so
+         * a line per call is a line per spin: one run wrote 5,117,138 copies
+         * of this and buried everything else in the log, including the reports
+         * that would have explained it. The TOTAL is not lost -- the thread
+         * report prints "resume(s) and suspend(s) named NO live thread" with
+         * its own count -- so this only has to name the handle, once.
+         */
+        static uint32_t told[8];
+        static int ntold;
+        int i, seen = 0;
+        for (i = 0; i < ntold; i++) if (told[i] == A(0)) { seen = 1; break; }
+        if (!seen && ntold < 8) told[ntold++] = A(0);
+        if (!seen)
+            fprintf(stderr, "kernel32: ResumeThread(0x%x) -- that handle names "
+                            "no guest thread. Said once for this handle; a "
+                            "spin loop would otherwise print it millions of "
+                            "times. The total is in the thread report.\n",
+                    A(0));
         g_last_error = 6u;                        /* ERROR_INVALID_HANDLE */
         ret_std(C, 0xFFFFFFFFu, 1);
         return;
