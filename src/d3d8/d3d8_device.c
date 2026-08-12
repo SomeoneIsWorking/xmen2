@@ -884,6 +884,11 @@ static void dev_GetPixelShader(D3D8Object *self, CPU *C)
  * frame reading off the end of a buffer, and it was the game's missing
  * caption.
  */
+static unsigned long g_texture_unresolved;
+
+void d3d8_device_texture_unresolved(unsigned long *n)
+{ *n = g_texture_unresolved; }
+
 static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
                         int indexed)
 {
@@ -907,7 +912,40 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
         req->index_is_32bit = d3d8_resource_index_is_32bit(ib);
         req->index_guest_bytes = d3d8_resource_guest_bytes(ib);
     }
-    if (tx) req->texture = d3d8_resource_texture(tx);
+    /*
+     * A texture the guest BOUND but this host could not resolve is a draw that
+     * comes out untextured with nothing to say so.
+     *
+     * "74,251 draws with no texture bound" is a fine number if the engine
+     * really bound none, and a serious defect if it bound one and the lookup
+     * failed -- and the two are indistinguishable from the count alone. Three
+     * ways this can happen: the guest pointer names no object of ours, the
+     * object is not a texture, or it is a texture whose GPU resource was never
+     * created (a format that was refused). All three are counted, and the
+     * first of each is named.
+     */
+    if (tx) {
+        req->texture = d3d8_resource_texture(tx);
+        if (!req->texture) {
+            static int told;
+            g_texture_unresolved++;
+            if (!told++)
+                fprintf(stderr, "d3d8: a texture bound at stage 0 (guest "
+                                "0x%08x) has no GPU resource -- its creation "
+                                "was refused, and this draw is UNTEXTURED "
+                                "rather than refused. Reported once; the total "
+                                "is in the shutdown report.\n",
+                        g_dev.state.texture[0]);
+        }
+    } else if (g_dev.state.texture[0]) {
+        static int told;
+        g_texture_unresolved++;
+        if (!told++)
+            fprintf(stderr, "d3d8: the guest bound 0x%08x at texture stage 0 "
+                            "and this host has no object at that address, so "
+                            "the draw is UNTEXTURED. Reported once.\n",
+                    g_dev.state.texture[0]);
+    }
     req->primitive_type = prim;
     req->primitive_count = count;
     return 1;
@@ -1172,6 +1210,18 @@ void d3d8_device_report(void)
     printf("  d3d8: %lu scene(s) begun, %lu clear(s), %lu draw(s), %lu "
            "present(s)\n", g_dev.scenes, g_dev.clears, g_dev.draws,
            g_dev.presents);
+    /*
+     * Printed at ZERO too, because zero is the interesting value.
+     *
+     * The stage report counts draws with "no texture bound", and on its own
+     * that number cannot distinguish an engine that bound none from a host
+     * that failed to resolve what was bound -- the second is a silently
+     * untextured surface. This is the second half of that number, and stating
+     * it as 0 of N is what makes the first half readable.
+     */
+    printf("        %lu draw(s) had a texture BOUND that this host could not "
+           "resolve (of %lu draws) -- those are untextured with nothing to "
+           "show for it\n", g_texture_unresolved, g_dev.draws);
     d3d8_state_report(&g_dev.state);
     d3d8_sb_report();
     d3d8_surface_report();
