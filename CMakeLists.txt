@@ -159,6 +159,26 @@ add_test(NAME d3d8_abi
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/d3d8_abi_check.py --selftest)
 
+# The XMLB writer. A writer proved only by "it did not crash" is a writer that
+# will corrupt a font, so this runs a battery that must produce POSITIVES: the
+# synthetic document survives parse->serialise, attribute names are shared
+# rather than repeated, a changed glyph MOVES bytes (a writer that echoed its
+# input would pass every round-trip otherwise), and malformed input is refused.
+# The corpus is built, not copied -- the shipped .xmlb files are game assets
+# and never enter this repository. Against a real install the same command
+# round-trips all 32 shipped font tables byte-identically; run it by hand with
+# the paths to check that.
+add_test(NAME xmlb_roundtrip
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/xmlb.py --selftest)
+
+# The button-font builder's measurement, fed a case that MUST produce a
+# positive (an atlas with a cell the other lacks) and one that MUST produce a
+# negative with its denominator.
+add_test(NAME button_font
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/make_button_font.py --selftest)
+
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
 
