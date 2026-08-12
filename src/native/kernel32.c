@@ -710,12 +710,57 @@ static char  g_asset[ASSET_MAX][96];
 static int   g_nasset, g_asset_over;
 static unsigned long g_opens_total, g_opens_failed, g_replaced;
 
+/*
+ * X2_SHOT_AFTER_FILE=<substring> -- the scene gate.
+ *
+ * A screenshot has been aimed at a scene three ways here and two of them
+ * missed: a frame number names nothing (the intro movies decode at
+ * host-dependent speed, so the same number was the menu once and the Sofdec
+ * logo the next run) and a draw count only separates a movie from "some scene",
+ * which caught a 204-draw menu frame when the question was about a level.
+ *
+ * The game itself says which scene it is in, by OPENING it. Gating on
+ * "maps/act0/tutorial" is a gate on the level being loaded, and it cannot drift
+ * with host speed. It is a substring, matched case-insensitively, because the
+ * shipped tree mixes .PY and .py in the same directory.
+ */
+static int g_file_gate_hit;
+
+static int ci_contains(const char *hay, const char *needle)
+{
+    size_t n = strlen(needle), i;
+    if (!n) return 1;
+    for (i = 0; hay[i]; i++) {
+        size_t j = 0;
+        while (hay[i + j] && j < n &&
+               tolower((unsigned char)hay[i + j]) ==
+               tolower((unsigned char)needle[j])) j++;
+        if (j == n) return 1;
+    }
+    return 0;
+}
+
+int k32_file_gate_open(void)
+{
+    const char *e = getenv("X2_SHOT_AFTER_FILE");
+    if (!e || !*e) return 1;                 /* no gate asked for */
+    return g_file_gate_hit;
+}
+
 static void asset_note(const char *guest, int ok)
 {
     int i;
     g_opens_total++;
     if (!ok) g_opens_failed++;
     if (!guest) return;
+    if (!g_file_gate_hit) {
+        const char *want = getenv("X2_SHOT_AFTER_FILE");
+        if (want && *want && ci_contains(guest, want)) {
+            g_file_gate_hit = 1;
+            fprintf(stderr, "[FILE] X2_SHOT_AFTER_FILE=\"%s\" matched \"%s\" "
+                            "-- the scene gate is now OPEN.\n", want, guest);
+        }
+    }
     for (i = 0; i < g_nasset; i++)
         if (strcmp(g_asset[i], guest) == 0) return;
     if (g_nasset == ASSET_MAX) { g_asset_over++; return; }

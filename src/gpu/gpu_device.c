@@ -543,6 +543,12 @@ static void shot_maybe_write(void)
         if (path)
             printf("gpu: X2_SHOT -- the headless target is written to %s every "
                    "%d frame(s), overwriting.\n", path, every);
+        if (path && getenv("X2_SHOT_AFTER_FILE") &&
+            *getenv("X2_SHOT_AFTER_FILE"))
+            printf("gpu: X2_SHOT_AFTER_FILE=%s -- NOTHING is photographed "
+                   "until the game opens a file whose name contains that. If "
+                   "it never does, no file is written and this run "
+                   "photographed NOTHING.\n", getenv("X2_SHOT_AFTER_FILE"));
         if (path && min_draws)
             printf("gpu: X2_SHOT_MIN_DRAWS=%lu -- only frames with at least "
                    "that many draws are photographed. If none ever is, NO "
@@ -551,6 +557,16 @@ static void shot_maybe_write(void)
     }
     if (!path || !g_headless || (g_headless_frames % (unsigned long)every))
         return;
+    /* The SCENE gate, when one was asked for: nothing is photographed until
+       the game has opened a file whose name contains X2_SHOT_AFTER_FILE. A
+       frame number and a draw count have each aimed a capture at the wrong
+       scene once; the file the game opens is the game's own answer to "where
+       am I". Declared here rather than in a header because the kernel32 layer
+       has none -- crt.c reaches its file helpers the same way. */
+    {
+        extern int k32_file_gate_open(void);
+        if (!k32_file_gate_open()) return;
+    }
     if (min_draws && gpu_frame_draws_so_far() < min_draws)
         return;
     if (min_draws) busy_written++;
