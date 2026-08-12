@@ -100,9 +100,14 @@ typedef struct {
      */
     uint32_t created_by;        /* guest return address of its creator */
     unsigned long n_set, n_pulse_sent, n_pulse_lost, n_wait;
-    /* Synchronisation objects. Nothing here creates a guest thread yet, so the
-       state is kept honestly and never actually blocks -- see the wait. */
+    /* Synchronisation objects. */
     int32_t  count;      /* semaphore count, or event signalled, or mutex depth */
+    /* WHICH guest thread holds this mutex. A Win32 mutex excludes across
+       threads and is recursive only for its owner, so a depth alone cannot
+       express it: the old code took an unheld mutex unconditionally with the
+       comment "this thread is the only one", which stopped being true the day
+       the game created 23. */
+    uint32_t owner_tid;
     int32_t  maxcount;   /* semaphore ceiling */
     int      manual;     /* event: manual-reset rather than auto-reset */
     char     name[128];
@@ -517,7 +522,7 @@ void imp_KERNEL32_InitializeCriticalSection(CPU *C)
 }
 /* Same section, plus a spin count -- which is a scheduling HINT even on
    Windows (how long to spin before sleeping) and cannot mean anything here
-   where one guest thread runs at a time. It is dropped, not stored, and this
+   where guest threads take turns on one host thread. It is dropped, and this
    comment is the record of that. Returns TRUE: the section IS initialised.
    msdia80's static MSVC8 CRT calls this during DllMain. */
 void imp_KERNEL32_InitializeCriticalSectionAndSpinCount(CPU *C)
@@ -943,14 +948,16 @@ void imp_KERNEL32_ReleaseMutex(CPU *C)
        on an object that is already ready. */
     guest_cond_broadcast();
     Handle *hh = h_get(A(0), H_MUTEX);
-    if (hh->count <= 0) {
-        fprintf(stderr, "kernel32: ReleaseMutex on %s, which this thread does "
-                        "not hold\n", hh->name);
+    uint32_t me = guest_current_tid();
+    if (hh->count <= 0 || hh->owner_tid != me) {
+        fprintf(stderr, "kernel32: ReleaseMutex on \"%s\" by guest thread %u, "
+                        "which does not hold it (owner %u, depth %d)\n",
+                hh->name, me, hh->owner_tid, hh->count);
         g_last_error = 288u;                      /* ERROR_NOT_OWNER */
         ret_std(C, 0, 1);
         return;
     }
-    hh->count--;
+    if (--hh->count == 0) hh->owner_tid = 0;
     ret_std(C, 1, 1);
 }
 
@@ -965,11 +972,13 @@ static int sync_try_take(Handle *hh)
         if (hh->count) { if (!hh->manual) hh->count = 0; return 1; }
         return 0;
     case H_MUTEX:
-        /* Single-threaded: this thread is the only one, so an unheld mutex is
-           acquirable and a held one is held BY US -- Win32 mutexes are
-           recursive for the owning thread. */
-        hh->count++;
-        return 1;
+        /* Recursive for the owner, exclusive to everyone else. */
+        {
+            uint32_t me = guest_current_tid();
+            if (hh->count <= 0) { hh->owner_tid = me; hh->count = 1; return 1; }
+            if (hh->owner_tid == me) { hh->count++; return 1; }
+            return 0;
+        }
     default:
         return 0;
     }
@@ -1093,10 +1102,35 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C)
     }
 }
 
+/* Take the whole set, or none of it. Split out because the "is it ready"
+   question and the "take it" action must agree exactly -- a partial take
+   leaves the set half-consumed and nothing can put it back. */
+static int wfmo_try_all(uint32_t arr, uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        Handle *hh = h_get(RD32(arr + i * 4u), 0);
+        if (hh->kind == H_MUTEX) {
+            /* Takeable if free or already ours; sync_try_take says so without
+               consuming anything, because a mutex take is idempotent for the
+               owner and reversible by the release below. */
+            uint32_t me = guest_current_tid();
+            if (hh->count > 0 && hh->owner_tid != me) return 0;
+            continue;
+        }
+        if (hh->count <= 0) return 0;
+    }
+    for (i = 0; i < n; i++) sync_try_take(h_get(RD32(arr + i * 4u), 0));
+    return 1;
+}
+
 void imp_KERNEL32_WaitForMultipleObjects(CPU *C)
 {
     /* (nCount, lpHandles, bWaitAll, dwMilliseconds) */
     uint32_t n = A(0), arr = A(1), all = A(2), ms = A(3), i;
+    struct timespec t0;
+    int warned = 0;
+
     if (n == 0 || n > MAX_HANDLES) {
         g_last_error = 87u;
         ret_std(C, WAIT_FAILED, 4);
@@ -1107,37 +1141,76 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C)
             Handle *hh = h_get(RD32(arr + i * 4u), 0);
             if (sync_try_take(hh)) { ret_std(C, WAIT_OBJECT_0 + i, 4); return; }
         }
-    } else {
-        /* All-or-nothing: only take them if every one is ready, so a partial
-           take cannot leave the set half-consumed. */
-        int ready = 1;
-        for (i = 0; i < n; i++) {
-            Handle *hh = h_get(RD32(arr + i * 4u), 0);
-            if (hh->kind == H_MUTEX) continue;             /* always takeable */
-            if (hh->count <= 0) { ready = 0; break; }
-        }
-        if (ready) {
-            for (i = 0; i < n; i++) sync_try_take(h_get(RD32(arr + i * 4u), 0));
-            ret_std(C, WAIT_OBJECT_0, 4);
-            return;
-        }
+    } else if (wfmo_try_all(arr, n)) {
+        ret_std(C, WAIT_OBJECT_0, 4);
+        return;
     }
     if (ms == 0) { ret_std(C, WAIT_TIMEOUT, 4); return; }
-    fprintf(stderr,
-        "kernel32: WaitForMultipleObjects would BLOCK on %u object(s) "
-        "(waitAll=%u, timeout %u).\n"
-        "  No guest thread exists to signal them -- see WaitForSingleObject.\n",
-        n, all, ms);
-    abort();
+
+    /*
+     * A REAL wait, for the same reason WaitForSingleObject above got one: it
+     * used to abort here because nothing else could run, and now something
+     * can. The shape is deliberately the SAME as the single-object wait --
+     * park, pump the multimedia timers on the way round (a thread blocked here
+     * reaches no other pump point), re-test, and bound even an INFINITE wait
+     * so a deadlock is reported rather than hung on.
+     */
+    for (i = 0; i < n; i++) h_get(RD32(arr + i * 4u), 0)->waiters++;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    for (;;) {
+        guest_cond_wait_ms(winmm_next_due_ms(ms == 0xFFFFFFFFu ? 1000u : ms));
+        winmm_timers_pump();
+        if (all) {
+            if (wfmo_try_all(arr, n)) {
+                for (i = 0; i < n; i++) h_get(RD32(arr + i * 4u), 0)->waiters--;
+                ret_std(C, WAIT_OBJECT_0, 4);
+                return;
+            }
+        } else {
+            for (i = 0; i < n; i++) {
+                if (sync_try_take(h_get(RD32(arr + i * 4u), 0))) {
+                    uint32_t k;
+                    for (k = 0; k < n; k++) h_get(RD32(arr + k * 4u), 0)->waiters--;
+                    ret_std(C, WAIT_OBJECT_0 + i, 4);
+                    return;
+                }
+            }
+        }
+        if (ms != 0xFFFFFFFFu) {
+            for (i = 0; i < n; i++) h_get(RD32(arr + i * 4u), 0)->waiters--;
+            ret_std(C, WAIT_TIMEOUT, 4);
+            return;
+        }
+        {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            if (warned || now.tv_sec - t0.tv_sec < 30) continue;
+        }
+        /* Reported, ONCE, with every object in the set and its history -- and
+           then the wait continues. An INFINITE WaitForMultipleObjects that is
+           genuinely slow is not the same thing as one that will never finish,
+           and aborting cannot tell them apart. The single-object watchdog
+           aborts because issue #57 needed the ring at that instant; this one
+           names the set and lets the run go on. */
+        warned = 1;
+        fprintf(stderr, "kernel32: WaitForMultipleObjects(INFINITE, waitAll=%u) "
+                        "on %u object(s) has waited 30 seconds. Each of them:\n",
+                all, n);
+        for (i = 0; i < n; i++) {
+            Handle *hh = h_get(RD32(arr + i * 4u), 0);
+            fprintf(stderr, "  [%u] handle 0x%08x %s \"%s\" count %d, created "
+                            "by guest 0x%08x, set %lu pulsed %lu (%lu lost), "
+                            "waited on %lu\n",
+                    i, RD32(arr + i * 4u), sync_kind_name(hh->kind), hh->name,
+                    hh->count, hh->created_by, hh->n_set, hh->n_pulse_sent,
+                    hh->n_pulse_lost, hh->n_wait);
+        }
+        guest_thread_state_report();
+        fflush(stderr);
+    }
 }
 
-/* ---- thread-local storage ----------------------------------------------
- *
- * One process-wide array, because this process has one guest thread. That is
- * the whole implementation and it is exactly right until a second thread
- * exists -- at which point these become pthread_key_t and the array is the bug
- * to remove, so it says so here rather than in a commit message.
- */
+/* ---- thread-local storage ---------------------------------------------- */
 #define MAX_TLS 128
 /*
  * PER-THREAD, which is the entire meaning of the API: TlsGetValue must return
@@ -1584,7 +1657,6 @@ void imp_KERNEL32_GetModuleFileNameA(CPU *C)
  * inventing them would show up as nonsense in any profiling the game does.
  */
 static uint32_t g_priority_class = 0x00000020u;   /* NORMAL_PRIORITY_CLASS */
-static int32_t  g_thread_priority;                /* THREAD_PRIORITY_NORMAL */
 
 void imp_KERNEL32_GetPriorityClass(CPU *C)  { ret_std(C, g_priority_class, 1); }
 void imp_KERNEL32_SetPriorityClass(CPU *C)
@@ -1592,14 +1664,15 @@ void imp_KERNEL32_SetPriorityClass(CPU *C)
     g_priority_class = A(1);
     ret_std(C, 1, 2);
 }
-void imp_KERNEL32_GetThreadPriority(CPU *C) { ret_std(C, (uint32_t)g_thread_priority, 1); }
+/* Per THREAD, not one global -- see threads.c. The value is round-tripped and
+   changes no schedule: this host runs guest threads round-robin. */
+void imp_KERNEL32_GetThreadPriority(CPU *C)
+{
+    ret_std(C, (uint32_t)guest_thread_priority_get(), 1);
+}
 void imp_KERNEL32_SetThreadPriority(CPU *C)
 {
-    /* Recorded and round-tripped, and that is ALL it does: one guest thread
-       runs at a time under a global lock (threads.c), so there is no
-       scheduling here to prioritise. The value is kept because
-       GetThreadPriority must return what was set. */
-    g_thread_priority = (int32_t)A(1);
+    guest_thread_priority_set((int32_t)A(1));
     ret_std(C, 1, 2);
 }
 
@@ -1607,9 +1680,9 @@ void imp_KERNEL32_SetThreadPriorityBoost(CPU *C) { ret_std(C, 1, 2); }
 
 /*
  * SetThreadAffinityMask: accepted, and the PREVIOUS mask returned as Win32
- * does. It cannot mean anything here -- one guest thread runs at a time under
- * a global lock, so there is one CPU as far as the guest is concerned, which
- * is exactly what a mask of 1 says.
+ * does. It cannot mean anything here -- guest threads are coroutines on one
+ * host thread, so there is one CPU as far as the guest is concerned, which is
+ * exactly what a mask of 1 says.
  *
  * Returning 0 (failure) instead would be a lie in the other direction: the
  * caller asked to be pinned to processors that exist, and it has been.

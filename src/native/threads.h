@@ -36,6 +36,12 @@ unsigned long guest_quantum_count(void);
  */
 uint32_t guest_current_tid(void);
 
+/* SetThreadPriority/GetThreadPriority: recorded per thread and round-tripped.
+   The schedule is round-robin and a priority cannot change it, but Get must
+   return what THIS thread set. */
+void    guest_thread_priority_set(int32_t p);
+int32_t guest_thread_priority_get(void);
+
 /*
  * One line per live guest thread: what it is blocked on and for how long.
  * Printed from the heartbeat -- a stall has to be watched while it happens,

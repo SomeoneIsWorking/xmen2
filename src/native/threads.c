@@ -35,8 +35,10 @@
  * flag and SPINS up to 3,000,000 times calling ResumeThread until the decoder
  * clears it. BOTH sides spin and neither blocks. Two hand-off designs were
  * measured and both made it worse. What schedules two spinners is preemption
- * neither side has to cooperate with: guest_quantum(), called from the dispatch
- * boundary every N crossings.
+ * neither side has to cooperate with: guest_quantum(), fired from X86_ENTER_FN
+ * in EVERY recompiled body every N of them. Not from the dispatch boundary --
+ * that only sees dispatched calls, and this decoder spins on direct
+ * guest-to-guest calls that never reach it (measured; see x86rt.h).
  *
  * PER-THREAD STATE that is not the register file. The register file is a plain
  * struct on the C stack, so it comes free with the coroutine's own stack. The
@@ -136,6 +138,7 @@ typedef struct {
     double       wake_at;        /* 0 = no deadline (INFINITE) */
     int          depth;          /* guest_lock nesting, for guest_quantum */
     uint32_t     fsbase, gsbase; /* saved across a switch */
+    int32_t      priority;       /* SetThreadPriority, per thread */
 } GuestThread;
 
 static GuestThread  g_thread[MAX_THREADS + 1];   /* +1: the main thread */
@@ -177,6 +180,28 @@ static void state_set(int st)
 uint32_t guest_current_tid(void)
 {
     return g_self ? g_self->tid : MAIN_TID;
+}
+
+static void sched_attach_main(void);
+
+/*
+ * SetThreadPriority / GetThreadPriority, per thread.
+ *
+ * Recorded and round-tripped, and that is ALL: the schedule here is
+ * round-robin and a priority cannot change it. It is per-thread rather than
+ * one global because Get must return what THIS thread set -- libCriMovie's
+ * decoder saves its priority, raises it, and restores it, and a shared global
+ * would hand it back whatever another thread had set in between.
+ */
+void guest_thread_priority_set(int32_t p)
+{
+    if (!g_self) sched_attach_main();
+    g_self->priority = p;
+}
+
+int32_t guest_thread_priority_get(void)
+{
+    return g_self ? g_self->priority : 0;
 }
 
 /* ---- the scheduler ------------------------------------------------------ */
