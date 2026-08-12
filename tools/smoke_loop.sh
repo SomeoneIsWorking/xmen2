@@ -182,18 +182,24 @@ rm -f "$RUNSHOT"
 SCRIPT="f2639+40:Return,f2815+40:Return,f3182+40:Escape,f3204+40:Escape,f4044+40:Down,f4135+40:Return"
 
 echo "== smoke_loop: one full run, up to ${TIMEOUT}s =="
+# X2_MAX_FRAMES stops the run CLEANLY a little after the last scripted press,
+# instead of letting the timeout end it. That halves the run (3:55 against
+# 6:55), makes two runs the same length, and gives a real exit status -- the
+# timeout is now the backstop it was meant to be rather than the normal ending.
 X2_INPUT_SCRIPT="$SCRIPT" X2_SHOT="$RUNSHOT" X2_SHOT_EVERY=10 \
-X2_UNPACED=1 X2_HEARTBEAT=60 \
+X2_MAX_FRAMES=4200 X2_UNPACED=1 X2_HEARTBEAT=60 \
     timeout "$TIMEOUT" "$BIN" --no-window --d3d8 --run > "$RUNLOG" 2>&1
 RC=$?
 
 fail=0
 check_run "$RUNLOG" "$RUNSHOT" "$(printf '%s' "$SCRIPT" | tr ',' '\n' | grep -c .)"
 
-if [ "$RC" -ne 124 ] && [ "$RC" -ne 0 ]; then
-    say "note: the run exited $RC. 124 is the timeout ending a run that was"
-    say "      still going, which is the expected end -- this game does not"
-    say "      stop on its own."
+if [ "$RC" -eq 124 ]; then
+    say "FAIL: the run hit the ${TIMEOUT}s timeout instead of stopping at its"
+    say "      frame limit. It was still going, or its shutdown was."
+    fail=1
+elif [ "$RC" -ne 0 ]; then
+    say "note: the run exited $RC rather than 0."
 fi
 
 if [ "$fail" -ne 0 ]; then

@@ -34,10 +34,13 @@ void heartbeat_start(void);
 int heartbeat_running(void);
 
 /* Set by the signal handler; the thread prints the reports and exits. */
+/* 0 idle, 1 a signal asked for the reports, 2 the frame limit did. The
+   difference decides whether the boundary ring is dumped -- see
+   x2_interrupt_reports. */
 extern volatile sig_atomic_t x2_report_now;
 
 /* Everything a normal exit would print, callable from ordinary context.
    Defined in x2native.c, which is what knows the full list. */
-void x2_interrupt_reports(void);
+void x2_interrupt_reports(int killed);
 
 #endif /* X2_HEARTBEAT_H */

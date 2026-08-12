@@ -291,7 +291,18 @@ static void interrupted(int sig)
  * has nothing to do with the reports. So the reports are called directly and
  * the process leaves with _exit.
  */
-void x2_interrupt_reports(void)
+/*
+ * `killed` says WHY the run is stopping, and it decides whether the boundary
+ * ring is dumped.
+ *
+ * For a run that had to be killed the ring is the whole point -- it is the only
+ * thing that says where a spin was. For a run that stopped because it reached
+ * X2_MAX_FRAMES there is nothing to diagnose, and dumping it is not merely
+ * noise: resolving a name per entry against 16k functions took MINUTES, long
+ * enough that the timeout killed the process during its own clean shutdown and
+ * the run exited 124 after all. The first clean stop did exactly that.
+ */
+void x2_interrupt_reports(int killed)
 {
     extern void d3d8_host_report(void);
     extern void guest_heap_report(void);
@@ -300,7 +311,12 @@ void x2_interrupt_reports(void)
     d3d8_host_report();
     guest_heap_report();
     fflush(stdout);
-    x86_diag_dump();
+    if (killed)
+        x86_diag_dump();
+    else
+        printf("  (the boundary ring is not dumped: this run stopped because "
+               "it reached X2_MAX_FRAMES, so there is no spin to locate.)\n");
+    fflush(stdout);
 }
 
 static int poison_init(void)

@@ -6,6 +6,7 @@
 #include "x86rt_native.h"
 #include "d3d8_device.h"
 #include "gpu_draw.h"
+#include "gpu_device.h"
 
 #include <errno.h>
 #include <pthread.h>
@@ -81,15 +82,21 @@ static void *heartbeat_thread(void *arg)
         }
         /* A clean stop on the frame counter takes the same path a SIGTERM
            does, so nothing new has to be trusted. */
-        if (!x2_report_now && gpu_frame_limit_reached()) x2_report_now = 1;
+        /* 2 = a clean stop on the frame counter, 1 = a signal. Both take this
+           path; only the second wants the ring. */
+        if (!x2_report_now && gpu_frame_limit_reached()) x2_report_now = 2;
         if (x2_report_now) {
-            fprintf(stderr, "\n[HB] interrupted -- the shutdown reports "
-                            "follow, taken while the guest is STILL RUNNING, "
-                            "so every count is a snapshot rather than a "
-                            "final total.\n");
+            int killed = (x2_report_now == 1);
+            fprintf(stderr, killed
+                    ? "\n[HB] interrupted -- the shutdown reports follow, "
+                      "taken while the guest is STILL RUNNING, so every count "
+                      "is a snapshot rather than a final total.\n"
+                    : "\n[HB] the frame limit was reached -- the shutdown "
+                      "reports follow. The guest is still running, so every "
+                      "count is a snapshot rather than a final total.\n");
             fflush(stderr);
-            x2_interrupt_reports();
-            _exit(4);
+            x2_interrupt_reports(killed);
+            _exit(killed ? 4 : 0);
         }
 
         /* Silenced: the thread exists only to carry the shutdown report. */

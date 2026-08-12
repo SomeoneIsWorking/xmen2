@@ -163,3 +163,30 @@ runs would put a one-in-six rate below 1% of going unseen.
 
 The movie phase IS exercised by these runs -- the first scripted press is at
 frame 2639, after the intro movies have played.
+
+### 22 runs, 0 failures -- the one-in-six rate is rejected at 95%
+Sixteen more runs of `tools/smoke_loop.sh` (on top of the six above): **all 22
+closed the loop, none stalled.**
+
+The arithmetic, since "22/22" invites over-reading. If the rate really were one
+in six, the chance of seeing no failure in 22 runs is (5/6)^22 = 1.9%, so the
+data is inconsistent with p = 1/6 at the 95% level. The one-sided 95% upper
+bound from 0 failures in 22 is p < 1 - 0.05^(1/22) = 12.7%. So: the rate as
+recorded at the top of this file is rejected, and anything up to about one run
+in eight is still consistent with what has been seen. **This issue is not
+closed.**
+
+Two limitations that matter more than the arithmetic:
+
+* Every run in the sample SKIPS the story cutscene, with Escape about twenty
+  frames after it starts. The intro movies do play in full before the first
+  scripted press, so the movie path is exercised -- but the story cutscene
+  barely is, and that is where the rendezvous was first seen.
+* Nothing attributes the improvement. Between the original observation and this
+  sample the port gained quantum preemption (which fires), the mid-frame clear
+  reopen, SSE, and a repaired truncated body. Any of them, or none of them,
+  could be responsible.
+
+The experiment that would attribute it is cheap now: `X2_QUANTUM=0` is the
+control, and `X2_MAX_FRAMES` cuts a run from 6:55 to 3:40, so a 16-run control
+sample is about an hour. Run that before crediting the quantum.
