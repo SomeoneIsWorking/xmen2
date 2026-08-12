@@ -51,5 +51,8 @@ void d3d8_worldview_transform(const D3D8State *s, float out[16]);
 
 void d3d8_drawcall_note_ignored_state(uint32_t which);
 void d3d8_drawcall_report(void);
+/* Draws that enabled a texture stage beyond stage 0, and the most extra
+   stages any one of them asked for. Live, for the heartbeat. */
+void d3d8_drawcall_multistage(unsigned long *draws, int *most);
 
 #endif /* D3D8_DRAWCALL_H */

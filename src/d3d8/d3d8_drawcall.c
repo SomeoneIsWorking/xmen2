@@ -87,6 +87,8 @@ static unsigned long g_refused_prim, g_refused_fvf;
  * the wrong thing look identical from the outside, and the difference is
  * whether the engine bound a texture at all.
  */
+static unsigned long g_multistage_draws;
+static int g_multistage_max;
 static unsigned long g_texop_none_notex, g_texop_none_disabled,
                      g_texop_select, g_texop_modulate, g_texop_add,
                      g_texop_other;
@@ -456,6 +458,30 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     d3d8_combine_transform(s, out->mvp);
     fill_lighting(s, out);
 
+    /*
+     * How many stages the draw actually ASKED for.
+     *
+     * "Stage 0 only" has been this backend's limit from the start, and the
+     * report has never said what that costs: a draw with a second stage
+     * enabled is drawn with the second stage MISSING, which for a lightmap or
+     * a detail texture is a picture that is merely wrong rather than absent.
+     * Counted here so the size of the gap is a number rather than a worry --
+     * and counted per draw, with the total draws as its denominator.
+     */
+    {
+        unsigned st;
+        int extra = 0;
+        for (st = 1; st < D3D8_MAX_STAGES; st++) {
+            uint32_t o = s->stage[st][D3DTSS_COLOROP].set
+                             ? s->stage[st][D3DTSS_COLOROP].value : D3DTOP_DISABLE;
+            if (o != D3DTOP_DISABLE) extra++;
+        }
+        if (extra) {
+            g_multistage_draws++;
+            if (extra > g_multistage_max) g_multistage_max = extra;
+        }
+    }
+
     /* Texture stage 0 only. A second stage is a combiner this shader does not
        have, and it is reported rather than dropped. */
     {
@@ -627,6 +653,16 @@ void d3d8_combine_transform(const D3D8State *s, float out[16])
         }
 }
 
+/* For the heartbeat. The shutdown report cannot answer this: every run of
+   this game ends in a kill, so a number that only appears at exit is a number
+   nobody ever reads -- the same lesson the pulse and preemption counters
+   already cost. */
+void d3d8_drawcall_multistage(unsigned long *draws, int *most)
+{
+    *draws = g_multistage_draws;
+    *most = g_multistage_max;
+}
+
 void d3d8_drawcall_note_ignored_state(uint32_t which)
 {
     if (which < D3D8_MAX_RENDER_STATES) g_ignored[which]++;
@@ -645,6 +681,10 @@ void d3d8_drawcall_report(void)
         printf("        %lu draw(s) refused for a vertex format this host "
                "cannot express (a real vertex shader, or no position)\n",
                g_refused_fvf);
+    printf("        %lu draw(s) enabled a texture stage beyond stage 0 (up to "
+           "%d extra), and this backend reads stage 0 only -- those draws are "
+           "MISSING a combiner stage, not missing entirely\n",
+           g_multistage_draws, g_multistage_max);
     printf("        texture stage: %lu modulate, %lu select-texture, %lu add "
            "(environment map), %lu other-op-as-modulate, %lu UNTEXTURED (%lu "
            "with no texture bound, %lu with the stage disabled)\n",

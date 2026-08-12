@@ -382,6 +382,55 @@ static int depth_selftest(void)
 }
 
 /*
+ * The multi-stage COUNTER, proved to fire.
+ *
+ * It reports 0 of ~300,000 draws on this game, which is a finding -- the title
+ * is single-stage and the "multi-texture" gap does not exist for it. A zero
+ * from a counter nobody has seen move is not a finding, it is an untested
+ * branch, so this drives a draw with stage 1 enabled and requires the number
+ * to change.
+ */
+static int multistage_counter_selftest(void)
+{
+    D3D8State st;
+    D3D8DrawRequest req;
+    GpuDraw gd;
+    unsigned long before, after;
+    int most_before, most_after, fails = 0;
+
+    printf("\n=== d3d8 multi-stage counter selftest: it must be able to "
+           "count ===\n");
+    d3d8_state_reset(&st);
+    st.vertex_shader = 0x0044u;
+    st.stream[0].guest_ptr = 0;                 /* refused before the count? */
+    d3d8_drawcall_multistage(&before, &most_before);
+
+    /* A draw that is otherwise ordinary, with D3DTSS_COLOROP on stage 1 set to
+       MODULATE. It needs a vertex buffer handle only to get past the earlier
+       checks; the count happens before anything is rasterised. */
+    memset(&req, 0, sizeof req);
+    req.vertex_buffer = 1u;                     /* any non-zero handle */
+    req.stride = 20;
+    req.primitive_type = 4;
+    req.primitive_count = 1;
+    d3d8_state_set_stage(&st, 1, 1 /* D3DTSS_COLOROP */, 4 /* MODULATE */);
+    (void)d3d8_build_draw(&st, &req, &gd);
+    d3d8_drawcall_multistage(&after, &most_after);
+
+    if (after != before + 1 || most_after < 1) {
+        printf("d3d8 multi-stage counter selftest: FAILED -- a draw with "
+               "stage 1 enabled moved the count from %lu to %lu (max extra "
+               "%d). The zero this reports on the game would mean nothing.\n",
+               before, after, most_after);
+        fails++;
+    }
+    printf("d3d8 multi-stage counter selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- the counter moves when a draw enables stage 1, so its "
+             "zero on the game is a measurement");
+    return fails;
+}
+
+/*
  * TRIANGLEFAN, by pixels, with the negative that matters.
  *
  * A fan is expanded into a triangle list because Vulkan has no fan primitive,
@@ -1285,6 +1334,7 @@ int d3d8_host_selftest(void)
     fails += d3d8_draw_selftest();
     fails += depth_selftest();
     fails += fan_selftest();
+    fails += multistage_counter_selftest();
     fails += lighting_selftest();
     printf("d3d8: SELF-TEST %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);

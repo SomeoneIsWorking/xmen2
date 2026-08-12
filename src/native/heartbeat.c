@@ -186,6 +186,21 @@ static void *heartbeat_thread(void *arg)
                black screen with both rising is a shading problem; a black
                screen with the second flat is a backend that refused every
                draw, and only these two numbers side by side say which. */
+            {
+                extern void d3d8_drawcall_multistage(unsigned long *, int *);
+                static unsigned long p_ms;
+                unsigned long ms; int most;
+                d3d8_drawcall_multistage(&ms, &most);
+                /* Printed even at ZERO, next to the draw total. "No draw
+                   wanted a second stage" is a real finding about this game and
+                   is worth as much as a large number; a line that appears only
+                   when non-zero cannot be told from a check nobody ran. */
+                fprintf(stderr, "[HB]           %lu of %lu draw(s) (+%lu) "
+                                "wanted a texture stage beyond 0 (up to %d "
+                                "extra), which this backend does not read\n",
+                        ms, draws, ms - p_ms, most);
+                p_ms = ms;
+            }
             fprintf(stderr, "[HB]           gpu draws %lu (+%lu)  refused %lu "
                             "(+%lu)%s\n",
                     gpu_draws, gpu_draws - p_gpu, gpu_refused,
