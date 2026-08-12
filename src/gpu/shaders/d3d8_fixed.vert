@@ -74,12 +74,21 @@ layout(set = 1, binding = 0) uniform VertexState {
  * left to look applied: specular, spot cones (a spot lights as a point), and
  * D3DRS_*MATERIALSOURCE selection.
  */
-vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse)
+vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse, bool has_n)
 {
     vec4 diffuse_material = (vs.color_vertex != 0u && vs.has_diffuse != 0u)
                                 ? vertex_diffuse : vs.mat_diffuse;
     vec3 acc = vs.mat_emissive.rgb + vs.mat_ambient.rgb * vs.global_ambient.rgb;
-    vec3 n = normalize(wnormal);
+    /*
+     * NO NORMAL is a lit case, not an unlit one.
+     *
+     * D3D8 takes the vertex normal as (0,0,0) when the FVF carries none, which
+     * kills every N.L term and leaves emissive + ambient standing. A zero
+     * normal here does exactly that, because max(dot(0, L), 0) is 0 -- but it
+     * must not go through normalize(), which is undefined for a zero vector and
+     * would put a NaN into every channel.
+     */
+    vec3 n = has_n ? normalize(wnormal) : vec3(0.0);
 
     for (uint i = 0u; i < vs.nlights; i++) {
         vec4 ldiff = vs.light[i * 5u + 0u];
@@ -136,19 +145,31 @@ void main()
      * own answer with lighting disabled, and the attribute is aliased onto the
      * position when there is no colour to point it at -- so reading it would
      * multiply every texel by the float bits of the vertex's X coordinate.
-     * With lighting ENABLED the right answer is the lit material colour, which
-     * this stage does not compute; white leaves the texture as the artist
-     * authored it instead of tinting it with nonsense.
+     * With lighting ENABLED the right answer is the lit material colour, and
+     * that is what lit_colour computes -- including for a vertex with no
+     * normal, which is where this used to fall through to white.
+     *
+     * THE SKY WAS WHITE BECAUSE OF THAT FALL-THROUGH. The menu's sky dome is a
+     * 16-triangle strip of stride 12: position and nothing else -- no texture,
+     * no diffuse, no normal. Gating the whole lighting path on a normal being
+     * present sent it to `vec4(1.0)`, and an untextured white draw covering the
+     * horizon is a white sky. D3D8 lights it: with no normal every N.L term is
+     * zero and the material's emissive and ambient terms are what remain, which
+     * is exactly how an engine colours a sky dome.
      */
     vec4 diffuse = vs.has_diffuse != 0u ? in_color.zyxw : vec4(1.0);
-    if (vs.lighting != 0u && vs.has_normal != 0u && vs.pretransformed == 0u) {
+    if (vs.lighting != 0u && vs.pretransformed == 0u) {
         vec3 wpos = (vs.world * vec4(in_pos.xyz, 1.0)).xyz;
         /* The normal by the world matrix's upper 3x3. Correct for the rigid
            and uniformly-scaled transforms an engine of this age uses; a
            non-uniform scale would need the inverse transpose, and this stage
-           does not have one to give. */
-        vec3 wnrm = mat3(vs.world) * in_normal;
-        v_color = lit_colour(wpos, wnrm, diffuse);
+           does not have one to give. `in_normal` is only READ when the vertex
+           format has one -- otherwise the attribute is aliased onto other
+           bytes, and transforming those would be reading rubbish however
+           little the result contributed. */
+        bool has_n = vs.has_normal != 0u;
+        vec3 wnrm = has_n ? mat3(vs.world) * in_normal : vec3(0.0);
+        v_color = lit_colour(wpos, wnrm, diffuse, has_n);
     } else {
         v_color = diffuse;
     }

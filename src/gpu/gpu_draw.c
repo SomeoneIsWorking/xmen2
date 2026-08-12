@@ -873,21 +873,64 @@ int gpu_draw(const GpuDraw *d)
      * unless asked for, and it names the frame it dumped so an empty dump
      * cannot be mistaken for a frame with no draws.
      */
+    /*
+     * X2_FRAME_DUMP=busy[:<n>] -- the first frame that actually draws a scene.
+     *
+     * A frame NUMBER is not a stable way to name a frame in this game. The
+     * intro plays six movies whose decode speed varies with the host, so the
+     * menu arrives at a different frame every run: 2600 was the menu once and
+     * was still the Sofdec logo the next time, and a dump aimed at it caught
+     * one textured quad and looked like a renderer that draws nothing. The
+     * same run-to-run divergence already made whole-frame image comparison
+     * useless here.
+     *
+     * So name the frame by what it CONTAINS. `busy` waits for the first frame
+     * whose predecessor submitted at least <n> draws (default 100) -- a movie
+     * is one quad, a menu is hundreds -- and dumps the frame after it. It
+     * reports which frame it chose and why, because "the frame I picked" and
+     * "the frame you asked for" must not be confusable in the output.
+     */
     {
         static long want = -2;
+        static unsigned long busy_min;
         static unsigned long dumped, dumped_frame;
+        static unsigned long seen_frame, this_draws, prev_draws;
+        unsigned long now = gpu_frames_presented();
+
         if (want == -2) {
             const char *e = getenv("X2_FRAME_DUMP");
-            want = (e && *e) ? atol(e) : -1;
+            want = -1;
+            if (e && *e) {
+                if (!strncmp(e, "busy", 4)) {
+                    busy_min = (e[4] == ':') ? strtoul(e + 5, NULL, 10) : 100u;
+                    if (!busy_min) busy_min = 100u;
+                    want = -3;                  /* choose it when one turns up */
+                } else {
+                    want = atol(e);
+                }
+            }
         }
-        if (want >= 0 && (long)gpu_frames_presented() == want) {
+        if (now != seen_frame) {
+            prev_draws = this_draws;
+            this_draws = 0;
+            seen_frame = now;
+        }
+        this_draws++;
+        if (want == -3 && prev_draws >= busy_min) {
+            want = (long)now;
+            fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu drew %lu "
+                            "times (at least %lu asked for), so frame %ld is "
+                            "the one dumped.\n",
+                    now - 1u, prev_draws, busy_min, want);
+        }
+        if (want >= 0 && (long)now == want) {
             if (!dumped++)
                 fprintf(stderr, "gpu: X2_FRAME_DUMP -- every draw of frame "
                                 "%ld follows.\n", want);
-            dumped_frame = gpu_frames_presented();
+            dumped_frame = now;
             if (dumped <= 400) {
                 fprintf(stderr, "  draw %4lu %-13s x%-5u tex %-4u %-9s "
-                        "%s%s%s stride %2u col%+3d uv%+3d",
+                        "%s%s%s%s%s stride %2u col%+3d uv%+3d",
                         dumped,
                         d->prim == GPU_PRIM_TRIANGLESTRIP ? "tristrip"
                         : d->prim == GPU_PRIM_LINELIST ? "linelist" : "trilist",
@@ -897,7 +940,13 @@ int gpu_draw(const GpuDraw *d)
                                                          : "select",
                         d->blend_enable ? "blend " : "",
                         d->depth_test ? "ztest " : "",
-                        d->depth_write ? "zwrite" : "",
+                        d->depth_write ? "zwrite " : "",
+                        /* Whether a draw is LIT, and whether it brought a
+                           normal, is the difference between "the sky is white"
+                           and "the sky is the material's ambient" -- and it was
+                           not in this line while that was the open question. */
+                        d->lighting ? "lit " : "unlit ",
+                        d->normal_offset >= 0 ? "norm" : "nonorm",
                         d->vertex_stride, d->color_offset, d->uv_offset);
                 fprintf(stderr, "\n");
             } else if (dumped == 401) {
