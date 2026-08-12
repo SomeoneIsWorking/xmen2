@@ -84,6 +84,11 @@ typedef struct {
    skipped. Skipped is NOT refused -- see the range block in gpu_draw(). */
 static unsigned long g_range_index, g_range_skipped;
 
+/* How many draws this frame has RECEIVED -- counted before X2_DRAW_RANGE skips
+   any, so a range does not change which frames look busy. X2_SHOT_MIN_DRAWS
+   reads it; see gpu_frame_draws_so_far(). */
+unsigned long gpu_frame_draws_so_far(void) { return g_range_index; }
+
 #define MAX_RES 4096
 static Res g_res[MAX_RES];
 static int g_nres;

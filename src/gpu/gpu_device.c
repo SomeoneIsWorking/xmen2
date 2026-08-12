@@ -514,6 +514,8 @@ static void shot_maybe_write(void)
 #ifdef X2_WITH_SDL
     static const char *path = NULL;
     static int checked, every = 60;
+    static unsigned long min_draws;          /* X2_SHOT_MIN_DRAWS */
+    static unsigned long busy_written;
     static unsigned char *buf;
     uint32_t w, h, i, n;
     FILE *f;
@@ -525,12 +527,33 @@ static void shot_maybe_write(void)
         if (path && !*path) path = NULL;
         if ((e = getenv("X2_SHOT_EVERY")) && *e) every = atoi(e);
         if (every < 1) every = 1;
+        /*
+         * X2_SHOT_MIN_DRAWS=<n> -- only photograph frames that DREW something.
+         *
+         * Without it a capture is whatever frame the counter landed on, and
+         * frame numbers do not name scenes in this game: the intro movies
+         * decode at host-dependent speed, so the same frame number was the
+         * main menu on one run and the Sofdec logo on the next. Two probes in
+         * a row photographed a logo and were read as evidence about the menu.
+         * A movie frame is one or two draws and a scene is hundreds, so the
+         * draw count names the scene where the frame number cannot.
+         */
+        if ((e = getenv("X2_SHOT_MIN_DRAWS")) && *e)
+            min_draws = strtoul(e, NULL, 10);
         if (path)
             printf("gpu: X2_SHOT -- the headless target is written to %s every "
                    "%d frame(s), overwriting.\n", path, every);
+        if (path && min_draws)
+            printf("gpu: X2_SHOT_MIN_DRAWS=%lu -- only frames with at least "
+                   "that many draws are photographed. If none ever is, NO "
+                   "file is written and this run photographed NOTHING.\n",
+                   min_draws);
     }
     if (!path || !g_headless || (g_headless_frames % (unsigned long)every))
         return;
+    if (min_draws && gpu_frame_draws_so_far() < min_draws)
+        return;
+    if (min_draws) busy_written++;
     n = g_headless_w * g_headless_h * 4u;
     if (!buf && !(buf = (unsigned char *)malloc(n))) return;
     if (!gpu_device_headless_read(buf, n, &w, &h)) return;
@@ -539,6 +562,10 @@ static void shot_maybe_write(void)
         path = NULL;                          /* say it once, not per frame */
         return;
     }
+    if (min_draws && busy_written == 1)
+        printf("gpu: X2_SHOT_MIN_DRAWS -- first frame with at least %lu draws "
+               "photographed (frame %lu, %lu draws).\n", min_draws,
+               g_headless_frames, gpu_frame_draws_so_far());
     fprintf(f, "P6\n%u %u\n255\n", w, h);
     for (i = 0; i < w * h; i++) {             /* BGRA -> RGB */
         fputc(buf[i * 4 + 2], f);
