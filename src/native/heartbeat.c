@@ -205,6 +205,23 @@ static void *heartbeat_thread(void *arg)
                         ms, draws, ms - p_ms, most);
                 p_ms = ms;
             }
+            {
+                extern void d3d8_drawcall_combiner_args(unsigned long *,
+                                                        unsigned long *,
+                                                        uint32_t[4]);
+                unsigned long dflt, other; uint32_t f[4];
+                d3d8_drawcall_combiner_args(&dflt, &other, f);
+                /* Printed at zero as well: the shader ASSUMES the default
+                   arguments, and "no draw disagreed" is the measurement that
+                   licenses the assumption. */
+                fprintf(stderr, "[HB]           combiner args: %lu default, "
+                                "%lu other%s\n", dflt, other,
+                        other ? "" : " -- the shader's assumption holds");
+                if (other)
+                    fprintf(stderr, "[HB]             first non-default: "
+                                    "COLORARG1 %u COLORARG2 %u ALPHAARG1 %u "
+                                    "ALPHAARG2 %u\n", f[0], f[1], f[2], f[3]);
+            }
             fprintf(stderr, "[HB]           gpu draws %lu (+%lu)  refused %lu "
                             "(+%lu)%s\n",
                     gpu_draws, gpu_draws - p_gpu, gpu_refused,

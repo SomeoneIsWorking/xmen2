@@ -685,7 +685,23 @@ typedef struct {
     uint32_t alpha_test;
     float    alpha_ref;
     uint32_t is_cube;
+    uint32_t color_arg1, color_arg2;
+    uint32_t alpha_op, alpha_arg1, alpha_arg2;
+    uint32_t pad[3];               /* std140: vec4 starts on a 16-byte row */
+    float    tfactor[4];
 } PixelUniforms;
+
+/* GpuTexArg -> the shader's 0 diffuse / 1 texture / 2 factor, with
+   GPU_TA_DEFAULT taking the slot's own D3D8 default. */
+static uint32_t arg_of(int a, uint32_t dflt)
+{
+    switch (a) {
+    case GPU_TA_DIFFUSE: return 0u;
+    case GPU_TA_TEXTURE: return 1u;
+    case GPU_TA_TFACTOR: return 2u;
+    default:             return dflt;
+    }
+}
 
 static unsigned long g_draws, g_refused, g_depth_ignored;
 /* Counted separately: "the index range does not fit" is a specific
@@ -948,6 +964,15 @@ int gpu_draw(const GpuDraw *d)
     pu.alpha_ref = d->alpha_ref;
     pu.is_cube = (d->texgen != GPU_TEXGEN_NONE
                   && d->texture && gpu_texture_is_cube(d->texture)) ? 1u : 0u;
+    /* GPU_TA_DEFAULT resolves HERE, to D3D8's default for that slot, so a
+       zeroed draw keeps the meaning it had before these fields existed. The
+       shader sees only 0 diffuse / 1 texture / 2 factor. */
+    pu.color_arg1 = arg_of(d->color_arg1, 1u);
+    pu.color_arg2 = arg_of(d->color_arg2, 0u);
+    pu.alpha_op   = d->alpha_op ? (uint32_t)d->alpha_op : pu.texture_op;
+    pu.alpha_arg1 = arg_of(d->alpha_arg1, 1u);
+    pu.alpha_arg2 = arg_of(d->alpha_arg2, 0u);
+    memcpy(pu.tfactor, d->texture_factor, sizeof pu.tfactor);
     SDL_PushGPUFragmentUniformData(g_cmd, 0, &pu, sizeof pu);
 
     /* The sampler is bound even when the draw is untextured: the fragment

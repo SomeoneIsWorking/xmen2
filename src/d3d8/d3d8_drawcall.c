@@ -37,6 +37,7 @@
 #define D3DRS_LIGHTING         137
 #define D3DRS_AMBIENT          139
 #define D3DRS_COLORVERTEX      141
+#define D3DRS_TEXTUREFACTOR     60
 
 /* D3DTSS_*, the ones this reads. */
 #define D3DTSS_COLOROP           1
@@ -44,6 +45,11 @@
 #define D3DTSS_ADDRESSV          14
 #define D3DTSS_MAGFILTER         16
 #define D3DTSS_MINFILTER         17
+#define D3DTSS_COLORARG1          2
+#define D3DTSS_COLORARG2          3
+#define D3DTSS_ALPHAOP            4
+#define D3DTSS_ALPHAARG1          5
+#define D3DTSS_ALPHAARG2          6
 #define D3DTSS_TEXCOORDINDEX     11
 #define D3DTSS_TEXTURETRANSFORMFLAGS 24
 
@@ -87,6 +93,44 @@ static unsigned long g_refused_prim, g_refused_fvf;
  * the wrong thing look identical from the outside, and the difference is
  * whether the engine bound a texture at all.
  */
+/*
+ * The shader does not read the combiner ARGUMENTS -- it assumes D3D8's
+ * defaults, ARG1 = D3DTA_TEXTURE and ARG2 = D3DTA_CURRENT. That assumption has
+ * never been checked against the engine, and it is the kind that fails
+ * silently: a stage set to modulate the DIFFUSE by the TEXTURE FACTOR instead
+ * would come out as an ordinary textured surface of the wrong colour. Counted
+ * per draw so the assumption is a measurement.
+ */
+/*
+ * A D3DTA_* value as the shader's argument selector.
+ *
+ * D3DTA_DIFFUSE and D3DTA_CURRENT are the same thing on a single-stage
+ * pipeline -- CURRENT is "the result so far", and at stage 0 that IS the
+ * diffuse. Anything else (SPECULAR, TEMP, or a COMPLEMENT/ALPHAREPLICATE
+ * modifier) is named once and treated as the diffuse, which is the existing
+ * behaviour made explicit rather than a new approximation.
+ */
+static int ta_of(uint32_t v, const char *what)
+{
+    switch (v) {
+    case 0u: case 1u: return GPU_TA_DIFFUSE;   /* CURRENT is the diffuse here */
+    case 2u: return GPU_TA_TEXTURE;
+    case 3u: return GPU_TA_TFACTOR;
+    default: {
+        static int told;
+        if (!told++)
+            fprintf(stderr, "d3d8: %s = 0x%x is an argument this shader does "
+                            "not have (SPECULAR, TEMP, or a modifier); it is "
+                            "read as the diffuse colour. Reported once, and it "
+                            "is a KNOWN WRONG colour.\n", what, v);
+        return GPU_TA_DIFFUSE;
+    }
+    }
+}
+
+static unsigned long g_arg_default, g_arg_other;
+static uint32_t g_arg_first[4];
+static int g_arg_seen;
 static unsigned long g_multistage_draws;
 static int g_multistage_max;
 static unsigned long g_texop_none_notex, g_texop_none_disabled,
@@ -533,6 +577,44 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
             if (out->texgen != GPU_TEXGEN_NONE)
                 d3d8_worldview_transform(s, out->worldview);
         }
+        {
+            /* D3DTA_DIFFUSE 0, D3DTA_CURRENT 1, D3DTA_TEXTURE 2,
+               D3DTA_TFACTOR 3. The masks above 0xF are modifiers
+               (COMPLEMENT/ALPHAREPLICATE) and are still not read -- an
+               argument carrying one is counted as `other` and named. */
+            uint32_t a1 = s->stage[0][D3DTSS_COLORARG1].set
+                ? s->stage[0][D3DTSS_COLORARG1].value : 2u;
+            uint32_t a2 = s->stage[0][D3DTSS_COLORARG2].set
+                ? s->stage[0][D3DTSS_COLORARG2].value : 1u;
+            uint32_t b1 = s->stage[0][D3DTSS_ALPHAARG1].set
+                ? s->stage[0][D3DTSS_ALPHAARG1].value : 2u;
+            uint32_t b2 = s->stage[0][D3DTSS_ALPHAARG2].set
+                ? s->stage[0][D3DTSS_ALPHAARG2].value : 1u;
+            if (a1 == 2u && (a2 == 1u || a2 == 0u)
+                && b1 == 2u && (b2 == 1u || b2 == 0u)) {
+                g_arg_default++;
+            } else {
+                g_arg_other++;
+                if (!g_arg_seen++) {
+                    g_arg_first[0] = a1; g_arg_first[1] = a2;
+                    g_arg_first[2] = b1; g_arg_first[3] = b2;
+                }
+            }
+            out->color_arg1 = ta_of(a1, "COLORARG1");
+            out->color_arg2 = ta_of(a2, "COLORARG2");
+            out->alpha_arg1 = ta_of(b1, "ALPHAARG1");
+            out->alpha_arg2 = ta_of(b2, "ALPHAARG2");
+            {
+                uint32_t ao = s->stage[0][D3DTSS_ALPHAOP].set
+                    ? s->stage[0][D3DTSS_ALPHAOP].value : D3DTOP_MODULATE;
+                out->alpha_op = ao == D3DTOP_SELECTARG1 ? GPU_TEXOP_SELECT_TEXTURE
+                              : ao == D3DTOP_ADD        ? GPU_TEXOP_ADD
+                              : ao == D3DTOP_DISABLE    ? GPU_TEXOP_NONE
+                                                        : GPU_TEXOP_MODULATE;
+            }
+            argb_to_rgba(rs(s, D3DRS_TEXTUREFACTOR, 0xFFFFFFFFu),
+                         out->texture_factor);
+        }
         out->texture = req->texture;
         /*
          * A cube bound to the stage is refused downstream, and "cube sampling
@@ -663,6 +745,15 @@ void d3d8_drawcall_multistage(unsigned long *draws, int *most)
     *most = g_multistage_max;
 }
 
+void d3d8_drawcall_combiner_args(unsigned long *dflt, unsigned long *other,
+                                 uint32_t first[4])
+{
+    int i;
+    *dflt = g_arg_default;
+    *other = g_arg_other;
+    for (i = 0; i < 4; i++) first[i] = g_arg_first[i];
+}
+
 /*
  * The render states this file actually READS.
  *
@@ -683,7 +774,7 @@ int d3d8_drawcall_reads_state(uint32_t which)
         D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ALPHATESTENABLE,
         D3DRS_SRCBLEND, D3DRS_DESTBLEND, D3DRS_CULLMODE, D3DRS_ZFUNC,
         D3DRS_ALPHAREF, D3DRS_ALPHAFUNC, D3DRS_ALPHABLENDENABLE,
-        D3DRS_LIGHTING, D3DRS_AMBIENT, D3DRS_COLORVERTEX
+        D3DRS_LIGHTING, D3DRS_AMBIENT, D3DRS_COLORVERTEX, D3DRS_TEXTUREFACTOR
     };
     unsigned i;
     for (i = 0; i < sizeof READ / sizeof READ[0]; i++)

@@ -104,6 +104,15 @@ typedef enum {
  * top bits say from what. All three generators are defined in CAMERA space,
  * which is why a draw carries the world-view matrix as well as the world one.
  */
+/* A combiner argument. DEFAULT keeps a zeroed draw meaning what it always
+   meant; see the fields in GpuDraw. */
+typedef enum {
+    GPU_TA_DEFAULT = 0,
+    GPU_TA_DIFFUSE = 1,
+    GPU_TA_TEXTURE = 2,
+    GPU_TA_TFACTOR = 3
+} GpuTexArg;
+
 typedef enum {
     GPU_TEXGEN_NONE = 0,
     GPU_TEXGEN_CAMERA_REFLECTION = 1,   /* D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR */
@@ -173,6 +182,21 @@ typedef struct {
        would be a plausible-looking wrong reflection. */
     GpuTexGen    texgen;
     float        worldview[16];
+    /*
+     * The combiner arguments, per D3D8's D3DTSS_COLORARG1/2 and ALPHAARG1/2:
+     * GPU_TA_DEFAULT (0) means D3D8's own default for that slot -- TEXTURE for
+     * ARG1, DIFFUSE for ARG2 -- so a zeroed GpuDraw still describes exactly
+     * the draw it described before these fields existed. That is not a
+     * convenience: every self-test and every caller that builds a draw by
+     * memset would otherwise have quietly changed meaning.
+     *
+     * The stage used to ASSUME those defaults. 4% of this title's draws set
+     * ARG2 to the texture factor, which came out as the diffuse colour.
+     */
+    int          color_arg1, color_arg2;   /* GpuTexArg */
+    GpuTexOp     alpha_op;
+    int          alpha_arg1, alpha_arg2;
+    float        texture_factor[4];    /* D3DRS_TEXTUREFACTOR, RGBA 0..1 */
     int          texture_clamp;    /* else wrap */
     int          texture_point;    /* else linear */
 

@@ -1525,7 +1525,10 @@ int main(int argc, char **argv)
         if (r && r != 77) return r;
         {
             extern int gpu_cube_texgen_selftest(void);
+            extern int gpu_tfactor_selftest(void);
             r = gpu_cube_texgen_selftest();
+            if (r && r != 77) return r;
+            r = gpu_tfactor_selftest();
             if (r && r != 77) return r;
         }
         /* Presenting a frame and DRAWING into one are different claims. The

@@ -57,5 +57,9 @@ void d3d8_drawcall_report(void);
 /* Draws that enabled a texture stage beyond stage 0, and the most extra
    stages any one of them asked for. Live, for the heartbeat. */
 void d3d8_drawcall_multistage(unsigned long *draws, int *most);
+/* How many draws used D3D8's DEFAULT combiner arguments (which the shader
+   assumes) and how many did not, plus the first four that did not. */
+void d3d8_drawcall_combiner_args(unsigned long *dflt, unsigned long *other,
+                                 uint32_t first[4]);
 
 #endif /* D3D8_DRAWCALL_H */

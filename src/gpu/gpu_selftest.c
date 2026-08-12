@@ -433,6 +433,135 @@ int gpu_cube_texgen_selftest(void)
 #endif
 }
 
+/*
+ * D3DTA_TFACTOR as a combiner argument.
+ *
+ * 12,632 draws a run set COLORARG2 to the texture factor, and this stage used
+ * to assume D3D8's default of D3DTA_CURRENT and hand the shader the diffuse
+ * colour instead. That is not a missing feature -- it is a wrong colour with
+ * nothing to show for it, which is the hardest kind to find from a screenshot.
+ *
+ * So the test makes the two readings give DIFFERENT answers by construction:
+ * an untextured green vertex colour modulated by a HALF-RED texture factor.
+ * Reading the factor gives black (green * red = 0); the old behaviour, reading
+ * the diffuse for both arguments, gives green squared -- still green. A test
+ * whose two readings agreed would prove nothing, so the control draw with
+ * GPU_TA_DEFAULT is run too and is required to differ.
+ */
+int gpu_tfactor_selftest(void)
+{
+#ifndef X2_WITH_SDL
+    printf("gpu tfactor selftest: SKIPPED -- built without SDL. This is not a "
+           "pass.\n");
+    return 77;
+#else
+    struct Vtx { float x, y, z, rhw; uint32_t color; };
+    static struct Vtx quad[6];
+    static uint32_t img[OFF_W * OFF_H];
+    GpuBuffer vb;
+    GpuTexture white;
+    GpuDraw d;
+    uint32_t with_factor, with_default;
+    int fails = 0, k;
+
+    printf("\n=== gpu tfactor selftest: the factor must reach the "
+           "combiner ===\n");
+    if (!gpu_device_create()) {
+        printf("gpu tfactor selftest: FAILED -- no GPU device, so NOTHING "
+               "about the texture factor was checked.\n");
+        return 1;
+    }
+    {
+        static const float X[6] = { 0.0f, (float)OFF_W, 0.0f,
+                                    0.0f, (float)OFF_W, (float)OFF_W };
+        static const float Y[6] = { 0.0f, 0.0f, (float)OFF_H,
+                                    (float)OFF_H, 0.0f, (float)OFF_H };
+        for (k = 0; k < 6; k++) {
+            quad[k].x = X[k]; quad[k].y = Y[k];
+            quad[k].z = 0.5f; quad[k].rhw = 1.0f;
+            quad[k].color = 0xFF00FF00u;               /* opaque GREEN */
+        }
+    }
+    vb = gpu_buffer_create(GPU_BUF_VERTEX, sizeof quad);
+    if (!vb || !gpu_buffer_upload(vb, 0, quad, sizeof quad)) {
+        printf("gpu tfactor selftest: FAILED -- no vertex buffer.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+
+    /* A 1x1 WHITE texture, so the texture argument is the identity for a
+       modulate and the only thing that can change the pixel is the factor. */
+    {
+        static const uint32_t px = 0xFFFFFFFFu;
+        white = gpu_texture_create(1, 1, GPU_FMT_BGRA8, 1);
+        if (!white || !gpu_texture_upload(white, 0, &px, sizeof px)) {
+            printf("gpu tfactor selftest: FAILED -- no white texture.\n");
+            gpu_device_destroy();
+            return 1;
+        }
+    }
+
+    memset(&d, 0, sizeof d);
+    d.vertices = vb;
+    d.vertex_stride = sizeof quad[0];
+    d.prim = GPU_PRIM_TRIANGLELIST;
+    d.prim_count = 2;
+    d.pos_offset = 0;
+    d.pretransformed = 1;
+    d.color_offset = 16;
+    d.uv_offset = -1;
+    d.normal_offset = -1;
+    d.texture = white;
+    d.texop = GPU_TEXOP_MODULATE;
+    d.cull = GPU_CULL_NONE;
+    d.depth_func = GPU_CMP_ALWAYS;
+    d.texture_factor[0] = 1.0f;        /* RED, with no green in it */
+    d.texture_factor[1] = 0.0f;
+    d.texture_factor[2] = 0.0f;
+    d.texture_factor[3] = 1.0f;
+
+    for (k = 0; k < 2; k++) {
+        /* k=0: ARG1 diffuse, ARG2 the FACTOR. k=1: the defaults, which is
+           what this stage did before the factor was read at all. */
+        d.color_arg1 = k ? GPU_TA_DEFAULT : GPU_TA_DIFFUSE;
+        d.color_arg2 = k ? GPU_TA_DEFAULT : GPU_TA_TFACTOR;
+        if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f)
+            || !gpu_draw(&d)
+            || !gpu_offscreen_read(img, sizeof img)) {
+            printf("gpu tfactor selftest: FAILED -- draw %d did not happen.\n",
+                   k);
+            gpu_offscreen_end();
+            gpu_device_destroy();
+            return 1;
+        }
+        gpu_offscreen_end();
+        if (k) with_default = img[(OFF_H / 2) * OFF_W + OFF_W / 2];
+        else   with_factor  = img[(OFF_H / 2) * OFF_W + OFF_W / 2];
+    }
+
+    /* Green modulated by a factor with no green in it is BLACK. */
+    if (with_factor != 0xFF000000u) {
+        printf("gpu tfactor selftest: FAILED -- green modulated by a red "
+               "texture factor came back 0x%08x, not black. The factor is not "
+               "reaching the combiner.\n", with_factor);
+        fails++;
+    }
+    if (with_factor == with_default) {
+        printf("gpu tfactor selftest: FAILED -- naming the texture factor and "
+               "leaving the arguments at their defaults give the SAME pixel "
+               "(0x%08x), so this test cannot tell the two apart and the "
+               "check above proves nothing.\n", with_factor);
+        fails++;
+    }
+
+    gpu_device_destroy();
+    printf("gpu tfactor selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- the texture factor reaches the combiner, and it "
+             "differs from the default arguments");
+    return fails ? 1 : 0;
+#endif
+}
+
 int gpu_draw_selftest(void)
 {
 #ifndef X2_WITH_SDL
