@@ -326,7 +326,13 @@ void imp_d3d8_Direct3DCreate8(CPU *C)
     if (!g_enabled) {
         /* Exactly what the weak default reaches: there is no d3d8.dll to
            forward to, so the honest answer is that the import is not
-           implemented -- said by name, and loudly. */
+           implemented -- said by name, and loudly.
+           It says which FLAG arms it, because the message without that reads
+           as "this port has no renderer" and cost a session a rebuild and a
+           bisection before the answer turned out to be a missing --d3d8. */
+        fprintf(stderr, "d3d8: the host Direct3D 8 is LINKED but not ARMED. "
+                        "This run asked for --run; the renderer is armed by "
+                        "--d3d8 (see ./run.sh, which passes it).\n");
         x86_missing_import("d3d8.dll", "Direct3DCreate8");
         return;
     }

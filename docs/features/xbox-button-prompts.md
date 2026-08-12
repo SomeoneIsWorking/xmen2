@@ -41,7 +41,7 @@ and the report says `NONE` when a pack matches nothing, so a pack that is
 silently doing nothing is distinguishable from one that is working.
 
 **What the game opens**, which was unanswerable before: `CreateFileA` now keeps
-the distinct set and reports it (`X2_LOG_FILES=1` lists them live). A run to
+the distinct set and reports it (`X2_FILES=1` lists them live). A run to
 gameplay opens 31 names, and the HUD textures are among them by name --
 `texs\cursor0.png`, `texs\teamm.png`, `texs\power_frame.png` and the rest, read
 out of the install directly rather than out of a package.

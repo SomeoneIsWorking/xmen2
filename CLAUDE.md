@@ -65,7 +65,8 @@ cmake --build scratch/build-native --target x2native -j$(nproc)
 scratch/build-native/x2native --no-window --selftest   # postcondition battery; exit 77 = SKIP (no GAME_PC_DIR)
 tools/smoke_loop.sh                                    # END-TO-END: one run all the way round (~300 s)
 tools/smoke_loop.sh --selftest                         # its checks, proved able to fail; needs no game
-scratch/build-native/x2native --no-window --run        # run past module init into the exe's CRT startup
+scratch/build-native/x2native --no-window --run        # module init + the exe's CRT startup, NO renderer
+scratch/build-native/x2native --d3d8                   # the LIVE path: arms the host Direct3D 8, and implies --run
 ./run.sh                                               # the same --run, on YOUR screen, building first if needed
 ```
 

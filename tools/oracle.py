@@ -208,10 +208,15 @@ def cmd_run(argv):
         raise SystemExit("oracle: the run FAILED (exit %d) -- nothing cached, "
                          "and no measurement exists" % r.returncode)
 
+    # run_shim writes one file per sample as `<name>.png.<i>` and copies its
+    # pick to `<name>.png`. EVERY sample is kept: the pick is chosen by colour
+    # count, which selects the most colourful frame of the run and not the
+    # frame the question is about -- the first version of this glob kept only
+    # the pick, and the pick was the menu when the question was about a room
+    # four samples later.
     shots_dir = os.path.join(ROOT, "scratch", "screenshots")
     shots = sorted(os.path.join(shots_dir, f) for f in os.listdir(shots_dir)
-                   if f.startswith(name + ".") and f.endswith(".png")
-                   or f == name + ".png")
+                   if f == name + ".png" or f.startswith(name + ".png."))
     shots = [s for s in shots if os.path.getmtime(s) >= t0 - 1]
     if not shots:
         print("oracle: the run produced NO capture newer than its own start -- "
@@ -274,7 +279,8 @@ def _selftest():
     os.makedirs(shots_dir, exist_ok=True)
     runner = os.path.join(tmp, "stub.sh")
     with open(runner, "w") as f:
-        f.write("#!/bin/sh\ntouch %s/$1.png\necho stub ran >&2\n" % shots_dir)
+        f.write("#!/bin/sh\ntouch %s/$1.png %s/$1.png.1 %s/$1.png.2\n"
+                "echo stub ran >&2\n" % (shots_dir, shots_dir, shots_dir))
     os.chmod(runner, 0o755)
 
     calls = []
@@ -301,6 +307,12 @@ def _selftest():
     a = run_once()
     if "CACHE MISS" not in a:
         fails.append("the first run was not reported as a miss")
+    # EVERY sample, not just run_shim's own pick -- the pick is the most
+    # colourful frame of the run, which is rarely the frame under question.
+    if a.count("shots/") != 3:
+        fails.append("kept %d captures of the 3 the run produced -- samples "
+                     "other than run_shim's pick are being dropped"
+                     % a.count("shots/"))
     b = run_once()
     if "CACHE HIT" not in b:
         fails.append("an identical second run did not HIT the cache")
@@ -332,7 +344,7 @@ def _selftest():
     shutil.rmtree(tmp, ignore_errors=True)
     for f_ in fails:
         print("FAIL selftest: %s" % f_)
-    print("oracle selftest: %d of 6 checks passed" % (6 - len(fails)))
+    print("oracle selftest: %d of 7 checks passed" % (7 - len(fails)))
     return 1 if fails else 0
 
 

@@ -265,8 +265,14 @@ static int files_traced(void)
         const char *e = getenv("X2_FILES");
         on = (e && *e && *e != '0');
         if (on)
-            fprintf(stderr, "[FILE] tracing every file operation the guest "
-                            "asks for (X2_FILES).\n");
+            fprintf(stderr,
+                "[FILE] tracing file operations (X2_FILES). What this DOES "
+                "show: every CreateFile-family call with its answer, and the "
+                "FIRST open of each distinct name from any path including the "
+                "CRT's fopen. What it does NOT show: repeat opens of a name "
+                "already listed -- the game reopens its packages hundreds of "
+                "times and a line each was the ResumeThread mistake. The "
+                "totals over every open are in the shutdown report.\n");
     }
     return on;
 }
@@ -694,7 +700,7 @@ void k32_critsec_report(void)
  * opens it and says nothing, so "does this run load x2f_hud.igb" -- the first
  * question any asset replacement has to answer -- could not be asked without
  * adding a print and rebuilding. This keeps the distinct set and reports it,
- * with X2_LOG_FILES=1 to list it.
+ * with X2_FILES=1 to list it.
  *
  * Distinct names, not a line per open: the game reopens the same package
  * hundreds of times and a line per call is the ResumeThread mistake again.
@@ -714,8 +720,9 @@ static void asset_note(const char *guest, int ok)
         if (strcmp(g_asset[i], guest) == 0) return;
     if (g_nasset == ASSET_MAX) { g_asset_over++; return; }
     snprintf(g_asset[g_nasset++], sizeof g_asset[0], "%s", guest);
-    if (getenv("X2_LOG_FILES"))
-        fprintf(stderr, "file: %s%s\n", guest, ok ? "" : "  -- NOT FOUND");
+    if (files_traced())
+        fprintf(stderr, "[FILE] first open of \"%s\"%s\n", guest,
+                ok ? "" : "  -- NOT FOUND");
 }
 
 void k32_asset_report(void)
@@ -737,8 +744,8 @@ void k32_asset_report(void)
                g_replaced ? "" : ". NONE: nothing the game opened had a "
                                  "counterpart there, so this run drew the "
                                  "shipped assets");
-    if (!getenv("X2_LOG_FILES")) {
-        printf("         set X2_LOG_FILES=1 to list them as they are opened.\n");
+    if (!files_traced()) {
+        printf("         set X2_FILES=1 to list them as they are opened.\n");
         return;
     }
     for (i = 0; i < g_nasset; i++) printf("         %s\n", g_asset[i]);

@@ -908,12 +908,26 @@ int gpu_draw(const GpuDraw *d)
      * is one quad, a menu is hundreds -- and dumps the frame after it. It
      * reports which frame it chose and why, because "the frame I picked" and
      * "the frame you asked for" must not be confusable in the output.
+     *
+     * THE PREDECESSOR IS NOT THE FRAME. That is the whole difficulty: a frame's
+     * own draw count is not known until it has ended, so the first version
+     * dumped the frame AFTER a busy one and hoped. It caught a 52-draw frame
+     * whose predecessor had 600 -- the scene had just changed -- and the rule-
+     * outs written on top of that dump had to be retracted. So the dump is
+     * CAPTURED to memory and only released once the frame it belongs to has
+     * ended and is itself busy. A candidate that turns out light is discarded,
+     * says so with both counts, and the search re-arms for the next one. What
+     * reaches the log is a frame measured on its own contents.
      */
     {
         static long want = -2;
         static unsigned long busy_min;
-        static unsigned long dumped, dumped_frame;
+        static unsigned long dumped, dumped_frame, rejected;
         static unsigned long seen_frame, this_draws, prev_draws;
+        static FILE *cap;             /* the candidate's lines, held back */
+        static char *capbuf;
+        static size_t capsz;
+        FILE *dst;
         unsigned long now = gpu_frames_presented();
 
         if (want == -2) {
@@ -930,6 +944,33 @@ int gpu_draw(const GpuDraw *d)
             }
         }
         if (now != seen_frame) {
+            /* The candidate frame just ended: judge it on ITS OWN count. */
+            if (cap && want == (long)seen_frame) {
+                fclose(cap);
+                cap = NULL;
+                if (this_draws >= busy_min) {
+                    fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu drew "
+                            "%lu times itself (at least %lu asked for). Every "
+                            "draw of it follows.\n",
+                            seen_frame, this_draws, busy_min);
+                    fputs(capbuf ? capbuf : "", stderr);
+                    if (dumped > 400)
+                        fprintf(stderr, "  ... capped at 400 draws; frame %lu "
+                                        "had %lu.\n", seen_frame, this_draws);
+                } else {
+                    rejected++;
+                    fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu is "
+                            "DISCARDED: its predecessor drew %lu times but it "
+                            "drew only %lu, under the %lu asked for. Looking "
+                            "for another (%lu discarded so far).\n",
+                            seen_frame, prev_draws, this_draws, busy_min,
+                            rejected);
+                    want = -3;                  /* re-arm */
+                }
+                free(capbuf);
+                capbuf = NULL;
+                dumped = 0;
+            }
             prev_draws = this_draws;
             this_draws = 0;
             seen_frame = now;
@@ -938,18 +979,21 @@ int gpu_draw(const GpuDraw *d)
         g_range_index = this_draws;   /* 1-based index within this frame */
         if (want == -3 && prev_draws >= busy_min) {
             want = (long)now;
-            fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu drew %lu "
-                            "times (at least %lu asked for), so frame %ld is "
-                            "the one dumped.\n",
-                    now - 1u, prev_draws, busy_min, want);
+            cap = open_memstream(&capbuf, &capsz);
+            if (!cap)
+                fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- cannot hold frame "
+                                "%ld back (open_memstream failed); its draws go "
+                                "straight out and may belong to a light "
+                                "frame.\n", want);
         }
+        dst = cap ? cap : stderr;
         if (want >= 0 && (long)now == want) {
-            if (!dumped++)
+            if (!dumped++ && !cap)
                 fprintf(stderr, "gpu: X2_FRAME_DUMP -- every draw of frame "
                                 "%ld follows.\n", want);
             dumped_frame = now;
             if (dumped <= 400) {
-                fprintf(stderr, "  draw %4lu %-13s x%-5u tex %-4u %-9s "
+                fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s "
                         "%s%s%s%s%s stride %2u col%+3d uv%+3d",
                         dumped,
                         d->prim == GPU_PRIM_TRIANGLESTRIP ? "tristrip"
@@ -968,8 +1012,8 @@ int gpu_draw(const GpuDraw *d)
                         d->lighting ? "lit " : "unlit ",
                         d->normal_offset >= 0 ? "norm" : "nonorm",
                         d->vertex_stride, d->color_offset, d->uv_offset);
-                fprintf(stderr, "\n");
-            } else if (dumped == 401) {
+                fprintf(dst, "\n");
+            } else if (dumped == 401 && !cap) {
                 fprintf(stderr, "  ... capped at 400 draws; frame %lu had "
                                 "more.\n", dumped_frame);
             }
