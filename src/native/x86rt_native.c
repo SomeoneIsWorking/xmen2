@@ -192,6 +192,40 @@ void x86_regs_dump(void)
                     "locals is not reflected here)\n");
 }
 
+/*
+ * The entry point of the function CONTAINING an address -- the greatest entry
+ * point at or below it, within the same module.
+ *
+ * Exists so that host code can identify its own caller by ROUTINE rather than
+ * by a hardcoded address. The DirectInput layer uses it to find the game's
+ * gamepad re-enumeration routine: it is called from inside that routine, and
+ * asking "which function am I in" is self-identifying in a way that a constant
+ * in this repository would not be.
+ *
+ * It is an APPROXIMATION and says so: the table carries entry points, not
+ * sizes, so an address in a gap Ghidra never claimed will be attributed to the
+ * function before it. Callers must sanity-check what comes back -- the one
+ * here checks the name -- rather than trusting the answer blind.
+ */
+uint32_t x86_native_entry_containing(uint32_t addr, const char **name_out)
+{
+    X86Module *m = x86_module_for(addr);
+    uint32_t want, best = 0;
+    const char *bestnm = NULL;
+    int i;
+    if (name_out) *name_out = NULL;
+    if (!m) return 0;
+    want = m->preferred + (addr - *m->base);
+    for (i = 0; i < m->nfns; i++)
+        if (m->fns[i].ep <= want && m->fns[i].ep > best) {
+            best = m->fns[i].ep;
+            bestnm = m->fns[i].name;
+        }
+    if (!best) return 0;
+    if (name_out) *name_out = bestnm;
+    return *m->base + (best - m->preferred);        /* MAPPED address */
+}
+
 const char *x86_native_name_at(uint32_t addr)
 {
     X86Module *m = x86_module_for(addr);

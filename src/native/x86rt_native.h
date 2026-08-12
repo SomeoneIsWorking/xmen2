@@ -59,6 +59,11 @@ int x86_native_call_at(uint32_t addr, struct CPU *C);
 /* Name of the body at a mapped address, or NULL. */
 const char *x86_native_name_at(uint32_t addr);
 
+/* The MAPPED entry point of the function containing `addr`, and its name.
+   An approximation -- the table has entry points, not sizes -- so check the
+   name before acting on it. See the note in x86rt_native.c. */
+uint32_t x86_native_entry_containing(uint32_t addr, const char **name_out);
+
 /* A guest-callable address for a native C function, so engine code can call
    back into the host -- ARK hooks and the slots of a native class's vtable.
    `owner`/`name` appear in ring lines and fault reports; both are required. */

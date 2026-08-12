@@ -72,6 +72,10 @@ uint32_t dinput_pad_pov(int pad);
    must not be mistakable for a run with real hardware. */
 void dinput_pad_virtual_from_env(void);
 
+/* Drives X2_VIRTUAL_PAD's frame-scheduled forms (attach at frame N, unplug at
+   M). Called once a frame; an int compare until the frame arrives. */
+void dinput_pad_virtual_tick(unsigned long frame);
+
 void dinput_pad_report(void);
 
 #endif /* DINPUT_PAD_H */

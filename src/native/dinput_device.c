@@ -61,6 +61,7 @@ static void ret_com(CPU *C, uint32_t hr, int nargs)
 #define DI_NOEFFECT       0x00000001u
 #define DIERR_INVALIDPARAM 0x80070057u
 #define DIERR_NOTACQUIRED  0x8007000Cu
+#define DIERR_INPUTLOST    0x8007001Eu
 #define DIERR_OUTOFMEMORY  0x8007000Eu
 
 /*
@@ -739,6 +740,15 @@ static void m_Acquire(CPU *C)
     Device *d = dev_of(THIS);
     if (!d) { ret_com(C, DIERR_INVALIDPARAM, 0); return; }
     d->n_acquire++;
+    if (d->kind == DINPUT_DEV_JOYSTICK && dinput_pad_name(d->pad) == NULL) {
+        /* Acquiring a pad that is not plugged in must FAIL. Succeeding would
+           make the next Poll the thing that fails instead, and the game would
+           alternate between the two for the rest of the run believing it had
+           a controller. Windows answers DIERR_INPUTLOST here too. */
+        d->n_acquire_fail++;
+        ret_com(C, DIERR_INPUTLOST, 0);
+        return;
+    }
     if (d->acquired) { ret_com(C, S_FALSE, 0); return; }  /* already acquired */
     if (!d->data_size) {
         /* Real DirectInput refuses this, and so must we: the size the state
@@ -780,7 +790,35 @@ static void m_GetDeviceState(CPU *C)
         ret_com(C, DIERR_INVALIDPARAM, 2);
         return;
     }
+    if (d->kind == DINPUT_DEV_JOYSTICK && dinput_pad_name(d->pad) == NULL) {
+        /*
+         * The pad was UNPLUGGED. DIERR_INPUTLOST is the answer Windows gives
+         * and the answer this game is written against -- its per-frame update
+         * tests for exactly this value at 0x00628621 and re-acquires. Filling
+         * a state of zeros instead would leave a disconnected controller
+         * looking like a connected one nobody is touching.
+         */
+        d->acquired = 0;
+        ret_com(C, DIERR_INPUTLOST, 2);
+        return;
+    }
     d->polls++;
+    if (d->kind == DINPUT_DEV_KEYBOARD) {
+        /*
+         * ONE PUMP POINT A FRAME, and this is it: the keyboard's state is the
+         * first device call XMen2.exe's per-frame input update makes
+         * (FUN_006285c0 at 0x0062861e), so the guest is between operations
+         * rather than inside its own device loop. See dinput8_hotplug_pump.
+         */
+        extern void dinput8_hotplug_pump(CPU *);
+        static unsigned long last_frame = (unsigned long)-1;
+        unsigned long f = gpu_frames_presented();
+        if (f != last_frame) {
+            last_frame = f;
+            dinput_pad_virtual_tick(f);      /* X2_VIRTUAL_PAD's fN forms */
+            dinput8_hotplug_pump(C);
+        }
+    }
     if (d->kind == DINPUT_DEV_KEYBOARD)      fill_keyboard(out, cb);
     else if (d->kind == DINPUT_DEV_JOYSTICK) fill_joystick(d, out, cb);
     else                                     fill_mouse(out, cb);
@@ -913,6 +951,11 @@ static void m_Poll(CPU *C)
     Device *d = dev_of(THIS);
     if (!d) { ret_com(C, DIERR_INVALIDPARAM, 0); return; }
     d->n_poll++;
+    if (d->kind == DINPUT_DEV_JOYSTICK && dinput_pad_name(d->pad) == NULL) {
+        d->acquired = 0;
+        ret_com(C, DIERR_INPUTLOST, 0);      /* unplugged; see GetDeviceState */
+        return;
+    }
     if (!d->acquired) { ret_com(C, DIERR_NOTACQUIRED, 0); return; }
     ret_com(C, d->kind == DINPUT_DEV_JOYSTICK ? S_OK : DI_NOEFFECT, 0);
 }

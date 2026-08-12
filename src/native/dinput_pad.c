@@ -350,16 +350,78 @@ uint32_t dinput_pad_pov(int pad)
  * It is ANNOUNCED, loudly, for the same reason every injected key press is:
  * a run with a synthetic pad must not be mistakable for a run with a real one.
  */
+static int  g_virt_at_frame = -1;         /* fN form: attach at that frame */
+static SDL_JoystickID g_virt_id;
+static int  g_virt_detach_at = -1;
+
+static void virtual_attach(void);
+
 void dinput_pad_virtual_from_env(void)
 {
 #ifdef X2_WITH_SDL
     const char *e = getenv("X2_VIRTUAL_PAD");
+
+    if (!e || !*e || *e == '0') return;
+    /*
+     * X2_VIRTUAL_PAD=1              attach now
+     * X2_VIRTUAL_PAD=f2000          attach at frame 2000
+     * X2_VIRTUAL_PAD=f2000-3000     attach at 2000, UNPLUG at 3000
+     *
+     * The frame forms are what make HOTSWAP testable: a pad present from the
+     * start proves only that startup enumeration works, and the whole point of
+     * hotswap is the pad that arrives after the game has stopped looking.
+     * Frames rather than seconds for the reason X2_INPUT_SCRIPT uses them --
+     * a script written against the wall clock is written against one machine.
+     */
+    if (*e == 'f') {
+        char *end;
+        g_virt_at_frame = (int)strtol(e + 1, &end, 10);
+        if (*end == '-') g_virt_detach_at = (int)strtol(end + 1, NULL, 10);
+        fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD -- a SYNTHETIC gamepad will "
+                        "be attached at frame %d%s. Nothing in this run's "
+                        "controller behaviour comes from real hardware.\n",
+                g_virt_at_frame,
+                g_virt_detach_at >= 0 ? " and unplugged again later" : "");
+        return;
+    }
+    virtual_attach();
+#endif
+}
+
+/*
+ * Called once a frame, so the fN forms above can fire. Cheap: an int compare
+ * until the frame arrives.
+ */
+void dinput_pad_virtual_tick(unsigned long frame)
+{
+#ifdef X2_WITH_SDL
+    if (g_virt_at_frame >= 0 && frame >= (unsigned long)g_virt_at_frame) {
+        g_virt_at_frame = -1;
+        virtual_attach();
+    }
+    if (g_virt_detach_at >= 0 && frame >= (unsigned long)g_virt_detach_at) {
+        g_virt_detach_at = -1;
+        if (g_virt_id) {
+            fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD -- UNPLUGGING the "
+                            "synthetic pad at frame %lu.\n", frame);
+            SDL_DetachVirtualJoystick(g_virt_id);
+            g_virt_id = 0;
+            dinput_pad_refresh();
+        }
+    }
+#else
+    (void)frame;
+#endif
+}
+
+#ifdef X2_WITH_SDL
+static void virtual_attach(void)
+{
     SDL_VirtualJoystickDesc desc;
     SDL_JoystickID jid;
     SDL_GUID g;
     char gs[64], map[600];
 
-    if (!e || !*e || *e == '0') return;
     if (!SDL_WasInit(SDL_INIT_GAMEPAD) && !SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
         fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD is set but SDL's gamepad "
                         "subsystem would not start (%s). NO pad is attached.\n",
@@ -387,13 +449,14 @@ void dinput_pad_virtual_from_env(void)
              "leftx:a0,lefty:a1,rightx:a2,righty:a3,"
              "lefttrigger:a4,righttrigger:a5,", gs);
     SDL_AddGamepadMapping(map);
+    g_virt_id = jid;
     dinput_pad_refresh();
     fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD -- a SYNTHETIC gamepad is "
                     "attached. Nothing in this run's controller behaviour came "
                     "from real hardware, and this line is here so that cannot "
                     "be mistaken.\n");
-#endif
 }
+#endif
 
 void dinput_pad_report(void)
 {

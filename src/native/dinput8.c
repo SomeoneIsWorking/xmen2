@@ -233,6 +233,39 @@ static uint32_t padinst_for(int pad)
  * every frame, and every one of those has to work or the game gets a device
  * that exists and never reports a press.
  */
+/*
+ * The game's own gamepad enumeration, remembered so a pad plugged in LATER can
+ * be handed to it.
+ *
+ * XMen2.exe enumerates game controllers exactly once, at startup (there is no
+ * WM_DEVICECHANGE anywhere in it), so a pad connected after that is invisible
+ * for the rest of the run. But its enumeration callback is not a one-shot: it
+ * finds a free slot, creates the device, configures it and marks it attached,
+ * which is precisely what a new arrival needs. So hotswap here is not a new
+ * mechanism bolted on -- it is the game's own callback, called again.
+ *
+ * pvRef is the input manager itself: the shim at FUN_00628e00 reads it from
+ * [ESP+8] and passes it as `this` to FUN_00628b40.
+ */
+static uint32_t g_pad_cb, g_pad_ref, g_pad_enum;
+static unsigned char g_offered[DINPUT_PAD_MAX][16];
+static int g_noffered;
+static unsigned long g_hotplug_offers;
+
+static int already_offered(const unsigned char guid[16])
+{
+    int i;
+    for (i = 0; i < g_noffered; i++)
+        if (memcmp(g_offered[i], guid, 16) == 0) return 1;
+    return 0;
+}
+
+static void note_offered(const unsigned char guid[16])
+{
+    if (already_offered(guid) || g_noffered >= DINPUT_PAD_MAX) return;
+    memcpy(g_offered[g_noffered++], guid, 16);
+}
+
 static void m_EnumDevices(CPU *C)
 {
     /* (this, dwDevType, lpCallback, pvRef, dwFlags) */
@@ -242,6 +275,37 @@ static void m_EnumDevices(CPU *C)
     if (!cb) { ret_com(C, DIERR_INVALIDPARAM, 4); return; }
     dinput_pad_refresh();
     npad = dinput_pad_count();
+    if (cls == DI8DEVCLASS_GAMECTRL) {
+        /*
+         * Remember the game's own RE-ENUMERATION ROUTINE, found by asking which
+         * function this call came from rather than by hardcoding its address.
+         *
+         * XMen2.exe's FUN_00628e20 takes one BOOL argument, stores it at
+         * `this+2`, clears the attached flags at `this+0x4e4`, calls
+         * EnumDevices(GAMECTRL, ...) and clears the flag again on the way out.
+         * That flag is what its per-device callback checks before recording a
+         * controller's GUID in the ten-slot table at `this+0x27e8` -- and a
+         * device whose GUID is not in that table is created and then never
+         * stored, so the game never polls it. That is exactly what a hotswap
+         * that called the per-device callback directly produced: the pad was
+         * created and configured, and read zero times.
+         *
+         * So hotswap calls THIS, with the same argument startup uses. No host
+         * code writes guest state; the game admits the controller by its own
+         * rules.
+         */
+        const char *nm = NULL;
+        uint32_t here = x86_native_entry_containing(RD32(C->esp), &nm);
+        g_pad_cb = cb;
+        g_pad_ref = pvref;
+        if (here && here != g_pad_enum) {
+            g_pad_enum = here;
+            fprintf(stderr, "DINPUT8: the game's gamepad enumeration routine is "
+                            "0x%08x (%s) -- hotswap will call THAT when a pad "
+                            "arrives, so a late controller is admitted by the "
+                            "game's own rules.\n", here, nm ? nm : "unnamed");
+        }
+    }
 
     /* DI8DEVCLASS_ALL is 0. GAMECTRL is the only class with anything in it
        here; the keyboard and mouse are reached by their fixed GUIDs and this
@@ -257,11 +321,76 @@ static void m_EnumDevices(CPU *C)
             WR32(K.esp + 4u, pvref);
             x86_guest_call(&K, cb);
             reported++;
+            { unsigned char g[16];
+              if (dinput_pad_instance_guid(i, g)) note_offered(g); }
             if (K.eax == 0u) break;                 /* DIENUM_STOP */
         }
     }
     enum_seen(cls, flags, cb, reported);
     ret_com(C, S_OK, 4);
+}
+
+/*
+ * HOTSWAP: offer the game any pad that has appeared since it enumerated.
+ *
+ * Called once a frame from the first input call of the frame (the keyboard's
+ * GetDeviceState -- XMen2.exe's per-frame update FUN_006285c0 reads it at
+ * 0x0062861e before anything else), so the guest is between operations rather
+ * than in the middle of its own device loop.
+ *
+ * This RE-ENTERS the guest, which is the same thing the enumeration itself
+ * does, and is why the pump point matters: the callback creates a device,
+ * sets its data format and enumerates its axes, all of which come back through
+ * this host. Doing it from inside the joystick loop would be inserting a
+ * device into a table the game is walking.
+ *
+ * A pad is offered ONCE. The game keys its player slots on the instance GUID
+ * and would otherwise be handed the same controller every frame.
+ */
+void dinput8_hotplug_pump(CPU *C)
+{
+    int i, fresh = 0;
+    unsigned char g[16];
+
+    if (!C || !g_pad_ref) return;
+    dinput_pad_refresh();
+    for (i = 0; i < DINPUT_PAD_MAX; i++)
+        if (dinput_pad_instance_guid(i, g) && !already_offered(g)) fresh++;
+    if (!fresh) return;
+
+    if (!g_pad_enum) {
+        static int told;
+        if (!told++)
+            fprintf(stderr, "DINPUT8: a pad appeared, and this host never "
+                            "identified the game's enumeration routine, so it "
+                            "cannot be offered. The pad is CONNECTED and the "
+                            "game will not see it.\n");
+        return;
+    }
+    for (i = 0; i < DINPUT_PAD_MAX; i++)
+        if (dinput_pad_instance_guid(i, g) && !already_offered(g))
+            fprintf(stderr, "DINPUT8: HOTSWAP -- pad %d (\"%s\") appeared after "
+                            "the game had enumerated. Calling the game's own "
+                            "enumeration routine at 0x%08x, exactly as startup "
+                            "does; nothing here creates a controller behind the "
+                            "game's back.\n",
+                    i, dinput_pad_name(i) ? dinput_pad_name(i) : "?", g_pad_enum);
+    g_hotplug_offers++;
+    {
+        /* __thiscall FUN_00628e20(BOOL bRecordNew): ECX = the input manager,
+           one stack argument. TRUE is what admits a controller the game has
+           not seen before -- the same value startup passes. */
+        CPU K = *C;
+        K.ecx = g_pad_ref;
+        K.esp -= 4u;
+        WR32(K.esp, 1u);
+        x86_guest_call(&K, g_pad_enum);
+    }
+    /* Whatever it took, it has now been offered: the enumeration above ran and
+       recorded every connected pad. Marking them here rather than inside the
+       enumeration keeps this true even if the game declined one. */
+    for (i = 0; i < DINPUT_PAD_MAX; i++)
+        if (dinput_pad_instance_guid(i, g)) note_offered(g);
 }
 
 /*
