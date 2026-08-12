@@ -179,6 +179,14 @@ add_test(NAME button_font
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/make_button_font.py --selftest)
 
+# The oracle cache, proved to MISS as well as hit -- with a stub runner in
+# place of Wine, because what is under test is the keying, not the game. A
+# cache that has only ever been shown to hit is a cache that will serve a frame
+# captured from a binary that has since been rebuilt.
+add_test(NAME oracle_cache
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/oracle.py --selftest)
+
 add_executable(igb_dump tools/igb_dump.c)
 target_link_libraries(igb_dump PRIVATE x2_core)
 

@@ -96,6 +96,22 @@ names. `stock` is the control every rendering question is settled against and
 `wine` is still the only configuration that draws the game, so neither is
 going away while the renderer is unfinished.
 
+**Never run the control twice for the same question — go through the cache.**
+A driven `stock` run is five to nine minutes of Xvfb, Wine and a software
+rasteriser, and it produces the same frames every time:
+
+```sh
+X2_KEYS="195-300/12:Return,380-500/20:Return" X2_SAMPLES=6 \
+  python3 tools/oracle.py run stock 540      # runs on a miss, replays on a hit
+python3 tools/oracle.py list                 # what is already answered
+```
+
+The key covers the driving script, the duration, the sample count **and a
+fingerprint of the run directory**, so a rebuilt DLL misses. Every capture is
+kept with its brightness already measured (`mean_luma`, `frac_lt16`,
+`frac_gt128`), so re-asking about the pixels costs nothing. A hit says it is a
+hit and how old it is; a cached frame must never read as a fresh observation.
+
 `WATCH=1 tools/build_recomp.sh …` adds the entry-point watch (`X2_WATCH=0x…`,
 writes to a file — the game is a GUI-subsystem process with no stderr) and the
 in-process crash reporter. Use those instead of gdb/winedbg, both of which
