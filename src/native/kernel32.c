@@ -687,10 +687,59 @@ void k32_critsec_report(void)
 #define OPEN_ALWAYS       4u
 #define TRUNCATE_EXISTING 5u
 
+/*
+ * WHAT THE GAME ACTUALLY OPENS.
+ *
+ * There was no way to answer that: the file layer resolves a guest path,
+ * opens it and says nothing, so "does this run load x2f_hud.igb" -- the first
+ * question any asset replacement has to answer -- could not be asked without
+ * adding a print and rebuilding. This keeps the distinct set and reports it,
+ * with X2_LOG_FILES=1 to list it.
+ *
+ * Distinct names, not a line per open: the game reopens the same package
+ * hundreds of times and a line per call is the ResumeThread mistake again.
+ */
+#define ASSET_MAX 1024
+static char  g_asset[ASSET_MAX][96];
+static int   g_nasset, g_asset_over;
+static unsigned long g_opens_total, g_opens_failed;
+
+static void asset_note(const char *guest, int ok)
+{
+    int i;
+    g_opens_total++;
+    if (!ok) g_opens_failed++;
+    if (!guest) return;
+    for (i = 0; i < g_nasset; i++)
+        if (strcmp(g_asset[i], guest) == 0) return;
+    if (g_nasset == ASSET_MAX) { g_asset_over++; return; }
+    snprintf(g_asset[g_nasset++], sizeof g_asset[0], "%s", guest);
+    if (getenv("X2_LOG_FILES"))
+        fprintf(stderr, "file: %s%s\n", guest, ok ? "" : "  -- NOT FOUND");
+}
+
+void k32_asset_report(void)
+{
+    int i;
+    /* At zero as well, and with the denominator: "the game opened no files"
+       would be a startling fact, and it must not look like a check that never
+       ran. */
+    printf("  files: %lu open call(s) over %d distinct name(s)%s; %lu failed\n",
+           g_opens_total, g_nasset,
+           g_asset_over ? " (the name table is FULL -- some are not listed)" : "",
+           g_opens_failed);
+    if (!getenv("X2_LOG_FILES")) {
+        printf("         set X2_LOG_FILES=1 to list them as they are opened.\n");
+        return;
+    }
+    for (i = 0; i < g_nasset; i++) printf("         %s\n", g_asset[i]);
+}
+
 void imp_KERNEL32_CreateFileA(CPU *C)
 {
     uint32_t access_ = A(1), disp = A(4), h;
-    const char *path = win_path(ACS(0));
+    const char *guest_name = ACS(0);
+    const char *path = win_path(guest_name);
     int flags = (access_ & GENERIC_WRITE) ? O_RDWR : O_RDONLY;
     int fd;
     switch (disp) {
@@ -710,6 +759,7 @@ void imp_KERNEL32_CreateFileA(CPU *C)
         return;
     }
     fd = open(path, flags, 0644);
+    asset_note(guest_name, fd >= 0);
     if (fd < 0) {
         /*
          * A failed open is REPORTED, with the path the guest asked for and the

@@ -328,6 +328,8 @@ void x2_interrupt_reports(int killed)
        ever polled the pad were never printed. */
     dinput_device_report();
     dinput_pad_report();
+    { extern void k32_asset_report(void), ws2_report(void);
+      k32_asset_report(); ws2_report(); }
     fflush(stdout);
     if (killed)
         x86_diag_dump();

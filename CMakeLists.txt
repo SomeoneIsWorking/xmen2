@@ -309,6 +309,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput8.c
         src/native/dinput_device.c
         src/native/dinput_pad.c
+        src/native/ws2_32.c
         src/native/advapi32.c
         src/native/shell32.c
         src/native/winmm.c
