@@ -516,7 +516,9 @@ static void shot_maybe_write(void)
     static int checked, every = 60;
     static unsigned long min_draws;          /* X2_SHOT_MIN_DRAWS */
     static unsigned long busy_written;
+    static long keep = -1, kept;             /* X2_SHOT_KEEP */
     static unsigned char *buf;
+    char numbered[512];
     uint32_t w, h, i, n;
     FILE *f;
 
@@ -540,6 +542,20 @@ static void shot_maybe_write(void)
          */
         if ((e = getenv("X2_SHOT_MIN_DRAWS")) && *e)
             min_draws = strtoul(e, NULL, 10);
+        /*
+         * X2_SHOT_KEEP=<n> -- keep the first <n> qualifying frames as
+         * <path>.000, .001, ... instead of overwriting one file.
+         *
+         * Overwriting answers "what was on screen at the END", and the end of
+         * a run of this game is not the interesting moment: the first gated
+         * capture of the tutorial was a save dialog and the last was a
+         * game-over screen, with the whole of the level in between and no
+         * frame of it kept. A filmstrip keeps the entry.
+         */
+        if ((e = getenv("X2_SHOT_KEEP")) && *e) {
+            keep = atol(e);
+            if (keep < 1) keep = 1;
+        }
         if (path)
             printf("gpu: X2_SHOT -- the headless target is written to %s every "
                    "%d frame(s), overwriting.\n", path, every);
@@ -587,11 +603,31 @@ static void shot_maybe_write(void)
     n = g_headless_w * g_headless_h * 4u;
     if (!buf && !(buf = (unsigned char *)malloc(n))) return;
     if (!gpu_device_headless_read(buf, n, &w, &h)) return;
-    if (!(f = fopen(path, "wb"))) {
-        fprintf(stderr, "gpu: X2_SHOT could not open %s\n", path);
+    if (keep > 0 && kept >= keep) {
+        static int said;
+        if (!said++)
+            printf("gpu: X2_SHOT_KEEP -- %ld frame(s) kept as %s.000..%s.%03ld; "
+                   "everything after this point is NOT photographed.\n",
+                   kept, path, path, kept - 1);
+        return;
+    }
+    if (keep > 0) {
+        snprintf(numbered, sizeof numbered, "%s.%03ld", path, kept);
+        f = fopen(numbered, "wb");
+    } else {
+        f = fopen(path, "wb");
+    }
+    if (!f) {
+        fprintf(stderr, "gpu: X2_SHOT could not open %s\n",
+                keep > 0 ? numbered : path);
         path = NULL;                          /* say it once, not per frame */
         return;
     }
+    if (keep > 0 && !kept)
+        printf("gpu: X2_SHOT_KEEP=%ld -- keeping the first %ld qualifying "
+               "frame(s) as %s.000 onward rather than overwriting one file.\n",
+               keep, keep, path);
+    kept++;
     if (min_draws && busy_written == 1)
         printf("gpu: X2_SHOT_MIN_DRAWS -- first frame with at least %lu draws "
                "photographed (frame %lu, %lu draws).\n", min_draws,

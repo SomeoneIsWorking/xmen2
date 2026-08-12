@@ -402,3 +402,41 @@ which is what pressing Escape rather than Return should give.
    script does, and so does anyone trying to play: Escape, not Enter.
 2. Is scratch/saves//Activision/... (note the doubled slash) the path the port
    means to use? It resolves, but it is worth a look.
+
+### Note (2026-08-12)
+## The port PLAYS the tutorial. The party dies in it.
+
+Driving Escape instead of Return past the save dialog gives the next screen:
+
+    "ALL X-MEN HAVE BEEN ELIMINATED."
+     Load Game
+     Main Menu
+
+So the sequence was never a renderer stuck on a black frame. It was: New Game
+-> the act0 tutorial loads -> the level runs with nobody driving the character
+-> Nightcrawler is killed -> the game offers to load a save -> there is no save
+-> "No save data present on hard disk", and every scripted Return pressed
+RETRY on that.
+
+Both gated frames measure the same and neither is dark:
+
+    dialog frame     mean 29.8   frac<16 0.342   frac>128 0.035
+    game-over frame  mean 29.2   frac<16 0.348   frac>128 0.034
+    stock red room   mean 24.6   frac<16 0.422   frac>128 0.019
+
+## What is still not measured
+
+Both are UI over the level. The level itself has still never been photographed
+without something on top of it, because X2_SHOT overwrites and the END of a run
+is a game-over screen. X2_SHOT_KEEP=<n> now keeps the first n qualifying frames
+as <path>.000 onward, so the entry into the level is kept rather than the exit
+from it. That filmstrip is what settles whether level geometry is dark.
+
+## The claim to retire
+
+"Gameplay renders almost entirely black" was measured on ungated frames, in a
+level nobody had identified, in a run that was sitting in a modal loop. Nothing
+about it survives as stated. What remains open is narrower and worth keeping:
+the five lights the engine supplies are four black and one dim teal, which has
+not been explained, and the party-light scripts that would set a bright one
+have not been shown to execute.
