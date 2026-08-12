@@ -36,21 +36,21 @@ gameplay opens 31 names, and the HUD textures are among them by name --
 `texs\cursor0.png`, `texs\teamm.png`, `texs\power_frame.png` and the rest, read
 out of the install directly rather than out of a package.
 
-## MEASURED: substituting the font does NOT work (issue #60)
+## MEASURED: substitution DOES work (issue #60, after a false negative)
 
-The obvious route was tried and **fails**, and the failure was only visible
-because it was checked against a discriminator. Dropping the Xbox HUD font in
-over `textures/fonts/X2F_hud_PC.igb` produced a run with both files replaced,
-0 draws refused, and a correct-looking caption -- and then the SAME
-substitution with a deliberately wrong font (`font_XMEN_digital.igb`), and with
-all three fonts replaced at once, produced a **byte-identical frame**. An
-unchanged picture is what this path produces whatever is put in it.
+Dropping the Xbox HUD font over `textures/fonts/X2F_hud_PC.igb` gives a run
+with both files replaced, 0 draws refused, and a correct-looking caption.
 
-So the loose `textures/fonts/*.igb` opens are not where the drawn glyphs come
-from. Issue #60 has the candidates and names the instrument to build first: the
-`CreateFileMappingA`/`MapViewOfFile` path is a real `mmap` here and is not yet
-routed through the shared resolver, so the open list still has a hole exactly
-where a packaged font would be.
+That on its own proves nothing, and a first attempt to check it produced a
+FALSE NEGATIVE that is written up in issue #60: the "wrong font" chosen as the
+control was the very font the test caption was already drawn in, so nothing
+changed and the mechanism was wrongly declared broken. Repeated with
+`x2f_big.igb` over the other three fonts, the caption's second line went from
+**"GREENLAND" to "G"** -- the wrong glyphs drawn through the wrong metrics.
+
+**So `X2_ASSETS` font replacement reaches the renderer.** And Latin text looking
+unchanged under the Xbox HUD font is what a CORRECT swap should look like: the
+two fonts differ in their button glyphs, not in their letters.
 
 ## What is NOT done, and the one thing that blocks it
 

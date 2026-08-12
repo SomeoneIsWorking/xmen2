@@ -1,9 +1,9 @@
 ---
 id: 60
-title: Replacing a font IGB changes nothing on screen -- the loose textures/fonts/*.igb are not where the drawn glyphs come from
+title: A font substitution that changed nothing, twice -- and the second 'discriminator' was the bug, not the mechanism
 symptom: "assets: REPLACED textures/fonts/X2F_hud_PC.igb ... and the rendered caption is byte-identical to the control"
 tags: pc,native,assets,fonts,graphics,glyphs,dead-end
-status: open
+status: resolved
 ---
 
 ## What was being attempted
@@ -70,3 +70,42 @@ Routing the CRT's `fopen` through the same resolver took that to **352**. The
 conclusion drawn from the 31-name list -- "`joy1..4.png` are never opened, so
 the button prompts cannot be reached" -- was drawn from a blind instrument and
 must not be relied on.
+
+
+## RESOLVED, and the resolution reverses the conclusion above
+
+**Font replacement works. It reaches the pixels.** Everything above about the
+loose `.igb` files not being where the glyphs come from is WRONG, and the way
+it was wrong is worth more than the issue was.
+
+The "discriminator" was `font_XMEN_digital.igb` substituted over the other
+fonts, tested against a cutscene caption. That caption is drawn in a squarish
+green LED-like face -- **which is `font_XMEN_digital` itself**. So the test
+replaced other fonts with the one the caption already used, and then concluded
+from an unchanged caption that replacement does nothing. It was a no-op dressed
+up as a control.
+
+Re-run with `x2f_big.igb` over `x2f_hud_pc`, `x2f_med_pc` and
+`font_xmen_digital`, the caption's second line changed from **"GREENLAND" to
+"G"** -- the substituted font drawn through metrics that do not match it. The
+first line is unchanged because its font was the one used as the SOURCE.
+
+So:
+
+* `X2_ASSETS` replacement reaches the renderer, for fonts, verified.
+* The Xbox HUD font substitution earlier was therefore not proved by "0 draws
+  refused" but is not refuted either -- Latin text looking identical is what a
+  correct HUD-font swap SHOULD look like, since the two fonts differ in their
+  button glyphs, not their letters.
+* `CreateFileMappingA` being outside the shared resolver is still a real gap,
+  but it is not this one's cause.
+
+## The actual lesson, twice over
+
+`CLAUDE.md`: *a discriminator must be run against BOTH classes before you trust
+it -- not reasoned about, run.* This one was run, and it still lied, because
+the negative case was chosen without checking what the test surface was
+already made of. The check that would have caught it costs nothing: **before
+trusting a substitution test, confirm the thing on screen is drawn by the thing
+being substituted.** Both mistakes here -- the first false positive and then
+the false negative that "corrected" it -- come from skipping that.
