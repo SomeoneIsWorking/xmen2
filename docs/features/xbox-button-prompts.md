@@ -232,16 +232,90 @@ something emits those codepoints, the Xbox font draws buttons.
 
 **Nothing emits them.** With a controller connected (`X2_VIRTUAL_PAD=1`) AND
 the Xbox medium font substituted, the difficulty dialog still reads
-`[Esc] Back` and `[Enter] Select`. So the PC build does NOT switch prompt text
-by input device: those are keyboard strings from the strings table, spelled out
-in letters, and no font can turn `[Enter]` into a button.
+`[Esc] Back` and `[Enter] Select`.
 
-So the feature reduces to ONE thing: **the strings**. The Xbox build's tables
-must put a glyph codepoint where the PC's put `[Enter]`, and the port has to
-supply that string. The `X2_ASSETS` mechanism can already deliver it -- the run
-above proves a substituted asset reaches the game -- so this is a data question
-now, not a plumbing one.
 
-The design call worth making deliberately: a modern port should choose the
-prompt by CONNECTED CONTROLLER, not by build. The game does not do that, and
-now that hotswap works (C161) the host knows when a pad appears and disappears.
+## Correction: it is NOT the strings table. The label is BUILT AT RUN TIME.
+
+The paragraph this replaces said the prompts were "keyboard strings from the
+strings table" and made the feature a data question. That was wrong, and the
+measurement that shows it is blunt: **`[Enter]` does not exist anywhere in the
+install.** A scan of all 13,382 files / 2,368.5 MB of the PC install for
+`[Enter]`, its UTF-16 form, `Enter]` and `ENTER]` returns **0 hits** (blind
+spot: packed containers are not decompressed by that scan). Neither does the
+exe or any DLL contain the bare word `Enter`, `Escape` or `Backspace`.
+
+`Data/strings.engb` is also **byte-identical between the Xbox WAD and the PC
+install** (53,487 bytes, md5 `ee1a8c03a0dfebc58ee74df43e98f13a`), so the Xbox
+build does not get button prompts from there either. `strings_svs.engb` is the
+only strings file that differs at all, and its single difference is an Xbox
+Live sentence appended to a television-standard warning -- nothing to do with
+button art.
+
+### The real mechanism, read out of XMen2.exe
+
+`FUN_00619e30(action)` returns the on-screen label for a bound action:
+
+1. `FUN_00619c40(action)` maps the action to a binding index; `-1` -> `" "`.
+2. `FUN_006294b0(bindIdx, slot, &devkind, &code)` reads the binding table.
+   Each binding row is four slots of three dwords (48 bytes); `+4` is the
+   device kind and `+8` the code. **The slots are tried in the order 2, 0, 1,
+   1** and the first with a non-zero device kind wins.
+3. `FUN_006281f0(devkind, code)` turns that into a name.
+4. `sprintf(0xa68c18, "[%s]", name)` -- the literal `[%s]` at `0x6a4e64`, the
+   only such format in the exe, referenced only from here. All four slots
+   empty -> the literal `[???]` at `0x6a4e6c`.
+
+`FUN_006281f0` is the name table, and it is per device kind:
+
+| devkind | source of the name |
+| --- | --- |
+| 1 (keyboard) | `this+0x289c + code*0x100` -- 256 entries of 256 bytes |
+| 2 (mouse) | fixed strings at `this+0x1289c…0x12950` |
+| 3..0xc (pad) | code 1..0x10 axis via `this+0x1296e`, 0x11..0x14 POV via `this+0x129aa`, 0x15..0x31 button via `this+0x1298c` with `sprintf("%d", code-0x14)` |
+
+The three pad formats are loaded from the localisation table `igct.bnx` by
+`FUN_00629210` through the keys `GamepadAxis`, `GamepadPoV`, `GamepadBtn`, and
+installed by the setter `FUN_00627a00`. In English they are:
+
+```
+GamepadAxis=Axis %s
+GamepadPoV=PoV %s
+GamepadBtn=Btn %s
+```
+
+The keyboard table is filled by the same `FUN_00629210`, in a 256-iteration
+loop: `FUN_00627a50(scancode)` supplies the name (the DirectInput object name),
+and where that is empty it falls back to the character from the Win32
+key-mapping call at `[0x67f24c]` (with a `0xb4 -> 0x27` fixup), and to `"???"`
+where even that is zero. **So `Enter` and `Esc` are strings this port itself
+hands the game, through DirectInput.**
+
+### What this changes
+
+Two things, and both are better than the string-substitution plan.
+
+**The device switch is already in the game.** Slot 2 is consulted before slots
+0 and 1, so a populated pad binding wins over the keyboard binding and the
+label follows the pad automatically. Nothing has to detect "a controller is
+connected" at the label site -- hotswap (C161) populating the pad slot is the
+whole switch. That is the behaviour the user asked for ("switch prompts based
+on hotswap"), and it needs no new policy layer.
+
+**The glyph goes in the NAME, not the string table.** With the Xbox font
+substituted, an override of `FUN_006281f0` that returns the Xbox glyph
+codepoint for `devkind >= 3, code 0x15..0x31` makes the label render as a
+button. `[%s]` still wraps it, which is what the Xbox build shows too.
+
+### Left to do
+
+1. Override `FUN_006281f0` natively for the pad device kinds, returning the
+   one-character glyph string. Contract, from the disassembly: `__thiscall`,
+   `RET 0x8`, arg0 = devkind, arg1 = code, returns `char *` to a static buffer
+   (the exe uses `0xa6aec8` / `0xa6ae78` / `0xa6ae28` per kind).
+2. Map code 0x15..0x31 to the Xbox glyph codepoints in `x2f_med_xbox.igb`.
+   The metrics being identical (above) means the codepoint is all that is
+   needed.
+3. Populate the pad binding slot on hotswap -- which is feature 2, the Xbox
+   default mapping table. Until that lands the pad slot is empty on a fresh
+   profile and the keyboard label still wins, correctly.
