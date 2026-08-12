@@ -198,7 +198,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe-run
 - evidence: C032
 - where: 
-- gap: CONFIRMED by control: the ORIGINAL exe in the same dir with the same env produces 800x600 R5G6B5; only the executable differs. Two competing hypotheses (C033 field offset, C034 struct-by-value stack shift). Settle by tracing engine-call arguments for both exes and diffing -- not by more reasoning about the numbers.
+- gap: DOES NOT REPRODUCE ON THE NATIVE PATH, measured: the recompiled exe's CreateDevice now arrives at this host's D3D8 with 800x600 fmt=23 (D3DFMT_R5G6B5) backbuffers=1 -- exactly what the ORIGINAL exe produced as the control. The guest code that FILLS D3DPRESENT_PARAMETERS is the same code either way, so its fill is correct; both hypotheses (C033 field offset, C034 struct-by-value stack shift) were about the translation, and the translator has changed a great deal since (the CALL return-address rebase, the indirect-CALL push order, rotates, SSE). NOT re-checked on the WINE path, which is where the garbage was originally seen -- that needs tools/build_recomp.sh and a run, and until someone does it this is 'not reproducing natively', not 'fixed'.
 - notes: 
 
 ### rc-native — The PC recomp produces an artefact that runs WITHOUT Wine
