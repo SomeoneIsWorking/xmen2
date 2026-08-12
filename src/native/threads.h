@@ -125,6 +125,16 @@ void guest_thread_exit(uint32_t code);
 /* How many were created, how many are still running, and whether the lock was
    ever actually contended -- a threading model nothing contends is one that
    has never been exercised. */
+/*
+ * The main thread's TLS slot, shared with kernel32.c.
+ *
+ * It has to be a constant BOTH files agree on, because kernel32 must select
+ * the main thread's TLS array from the very first TlsSetValue -- before the
+ * scheduler has attached the main thread and can switch to it. See the note on
+ * g_tls in kernel32.c for what the default of slot 0 cost.
+ */
+#define GUEST_MAIN_TLS_SLOT 16
+
 void guest_thread_report(void);
 
 /* The ENGINE's own thread list, read out of guest memory -- see issue #61.

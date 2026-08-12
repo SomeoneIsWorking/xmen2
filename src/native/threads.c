@@ -74,6 +74,8 @@
 uint32_t k32_handle_for_thread(void *rec);
 void     k32_handle_thread_done(uint32_t handle);
 void     k32_tls_switch(int slot);
+uint32_t k32_tls_peek(int slot, uint32_t index);
+int      k32_tls_slot_count(void);
 
 /* ---- what each guest thread is doing ------------------------------------ */
 
@@ -87,6 +89,10 @@ static const char *const TS_NAME[] = {
 
 #define MAX_THREADS   16
 #define MAIN_SLOT     MAX_THREADS        /* the main thread's TLS slot */
+/* kernel32.c has to know it too, and before this file gets to run. */
+#if MAIN_SLOT != GUEST_MAIN_TLS_SLOT
+#error "MAIN_SLOT and GUEST_MAIN_TLS_SLOT disagree; kernel32 would give the main thread the wrong TLS"
+#endif
 #define TIB_BYTES     0x1000u
 #define STACK_DEFAULT (256u * 1024u)
 
@@ -918,6 +924,51 @@ static void tm_modules_dump(void)
     }
 }
 
+/*
+ * The pthread handle each guest coroutine holds, read out of Win32 TLS.
+ *
+ * The engine's vendored pthread_self is TlsGetValue on the key at 0x1015f4d8
+ * (FUN_10075400 -> FUN_10075ff0 -> KERNEL32!TlsGetValue, confirmed by walking
+ * libIGCore.dll's import table). So the handle getCallingThread compares
+ * against is literally one of these words, and printing them per slot says
+ * which coroutine the engine would consider the caller.
+ *
+ * The key is read from guest memory, so a build where it has not been
+ * allocated yet says so rather than printing a column of zeroes that look like
+ * an answer.
+ */
+#define IGCORE_PTHREAD_TLS_KEY 0x1015f4d8u
+
+static int tm_readable(uint32_t a);
+
+static void tm_tls_handles(X86Module *core)
+{
+    uint32_t keyslot, keyobj, key;
+    int slot, shown = 0;
+
+    keyslot = *core->base + (IGCORE_PTHREAD_TLS_KEY - core->preferred);
+    if (!tm_readable(keyslot) || !(keyobj = RD32(keyslot))
+        || !tm_readable(keyobj)) {
+        printf("          pthread TLS key: not allocated yet (slot 0x%08x), so "
+               "no coroutine has a pthread handle to compare.\n", keyslot);
+        return;
+    }
+    key = RD32(keyobj);            /* FUN_10075ff0 loads [arg] then TlsGetValue */
+    printf("          pthread handles by guest-thread slot (TLS index %u, the "
+           "value getCallingThread compares):\n", key);
+    for (slot = 0; slot < k32_tls_slot_count(); slot++) {
+        uint32_t h = k32_tls_peek(slot, key);
+        if (!h) continue;
+        printf("            slot %-2d handle 0x%08x\n", slot, h);
+        shown++;
+    }
+    if (!shown)
+        printf("            NONE of the %d slots holds a handle -- every "
+               "coroutine would allocate a fresh one on its next "
+               "pthread_self(), and none of them can match a thread registered "
+               "earlier.\n", k32_tls_slot_count());
+}
+
 static int tm_readable(uint32_t a)
 {
     uint32_t v;
@@ -1044,6 +1095,7 @@ void guest_engine_thread_report(void)
         printf("          [%u] thread 0x%08x  id 0x%08x  refcount %u\n",
                i, t, RD32(t + 0x40u), RD32(t + 4u));
     }
+    tm_tls_handles(m);
 }
 
 void guest_thread_report(void)

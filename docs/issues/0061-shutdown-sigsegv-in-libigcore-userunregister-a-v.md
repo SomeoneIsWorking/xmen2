@@ -1,7 +1,7 @@
 ---
 id: 61
 title: Shutdown SIGSEGV in libIGCore userUnregister: a virtual call returns NULL and the caller dereferences it
-status: open
+status: resolved
 symptom: The native --d3d8 run exits 3 instead of 0 after a clean X2_MAX_FRAMES stop. SIGSEGV at 0x4, addr2line names fn_libIGCore_100517b0 = Gap::Core::userUnregister. Vulkan also reports VkSurfaceKHR not destroyed at vkDestroyInstance, which is the same teardown cut short.
 tags: pc,native,recomp,shutdown,libIGCore,rc-exe
 created: 2026-08-12
@@ -218,3 +218,51 @@ slot, the pthread handle each guest coroutine holds -- alongside the one
 registered thread's id (0x7100a2a8, measured). That says directly whether the
 shutdown caller is a different coroutine or the same one with different TLS,
 and those need different fixes.
+
+### Note (2026-08-12)
+ROOT CAUSE FOUND AND FIXED. It was candidate (b), and it was ours.
+
+The measurement that settled it, printing the pthread handle each guest
+coroutine holds beside the registered thread's id:
+
+    engine threads: igThreadManager 0x00a8a098, array 0x00a8a0b0,
+                    1 thread(s) registered:
+              [0] thread 0x00a8aa60  id 0x7100a2a8  refcount 1
+              pthread handles by guest-thread slot (TLS index 2):
+                slot 0  handle 0x7100a2a8
+                slot 16 handle 0x7125cc28
+
+The registered thread's id is the handle in TLS slot 0. The MAIN thread is slot
+16 and held a DIFFERENT handle. Same guest thread, two TLS arrays.
+
+Why: kernel32.c initialised its TLS pointer to g_tls_store[0], and the main
+thread ran on that array until the scheduler attached the main thread and
+switched it to slot 16. Everything the main thread wrote to TLS before that
+point went into slot 0 and then became invisible to it. The engine's
+pthread_self is TlsGetValue, so igThreadManager::userRegister stored its handle
+in slot 0 early; at shutdown the main thread was on slot 16, found nothing,
+allocated a fresh handle, and getCallingThread matched neither -- returning
+NULL into a caller that dereferences it.
+
+Slot 0 is also guest thread 0's slot, so the old default did not merely
+misplace the main thread's TLS: it ALIASED it onto the first guest thread's.
+That is a correctness bug well beyond this crash and it is the reason the crash
+was intermittent -- whether it bit depended on what guest thread 0 had done to
+the shared array.
+
+Fix: kernel32.c starts on the main thread's own slot, via GUEST_MAIN_TLS_SLOT
+in threads.h, with a #error in threads.c if the two files ever disagree.
+
+VERIFIED. After the fix the same report reads:
+
+              pthread handles by guest-thread slot (TLS index 2):
+                slot 16 handle 0x7100a2a8
+
+-- one handle, on the main thread, equal to the registered thread's id. Three
+smoke_loop runs: 0 SIGSEGV in any (the gate now FAILS on a crash, so this is
+checked rather than tolerated), 2 PASSED, 1 hit its own 400s timeout with its
+reports fully written and no fault. That timeout is NOT explained by this fix
+and should not be filed under it.
+
+### Resolution (2026-08-12)
+The main thread ran on TLS slot 0 until the scheduler attached it to slot 16, so everything it put in TLS before that -- including the engine pthread_self handle -- became invisible to it, and getCallingThread returned NULL into a caller that dereferences it. Slot 0 is also guest thread 0's, so the old default aliased the two. kernel32.c now starts on the main thread's own slot (GUEST_MAIN_TLS_SLOT, with a #error if the two files disagree). Verified: the registered thread's id and the main thread's handle are now the same value 0x7100a2a8, and three smoke_loop runs produced no SIGSEGV.

@@ -1378,7 +1378,26 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C)
  */
 #define K32_TLS_SLOTS 32
 static uint32_t  g_tls_store[K32_TLS_SLOTS][MAX_TLS];
-static uint32_t *g_tls = g_tls_store[0];
+/*
+ * THE MAIN THREAD'S SLOT FROM THE FIRST WRITE, not slot 0.
+ *
+ * This defaulted to g_tls_store[0], and the main thread ran on it until the
+ * scheduler attached the main thread and switched to slot 16. Everything the
+ * main thread put in TLS before that point was written into slot 0 and then
+ * became invisible to it -- the same guest thread, two different TLS arrays.
+ *
+ * That is issue #61. The engine's vendored pthread_self is TlsGetValue, so its
+ * thread handle lives in one of these words: igThreadManager::userRegister ran
+ * early and stored handle 0x7100a2a8 in slot 0, and at shutdown the main
+ * thread was on slot 16, found nothing, allocated a fresh handle 0x7125cc28,
+ * and igThreadManager::getCallingThread matched neither -- returning NULL into
+ * a caller that dereferences it. Both handles were measured, side by side, in
+ * the engine-thread report.
+ *
+ * Slot 0 also belongs to guest thread 0, so the old default did not merely
+ * misplace the main thread's TLS: it ALIASED it onto the first guest thread's.
+ */
+static uint32_t *g_tls = g_tls_store[GUEST_MAIN_TLS_SLOT];
 static unsigned char g_tls_used[MAX_TLS];
 
 void k32_tls_switch(int slot)
@@ -1392,6 +1411,25 @@ void k32_tls_switch(int slot)
     }
     g_tls = g_tls_store[slot];
 }
+/*
+ * Read one TLS slot of one guest thread, for diagnostics only.
+ *
+ * Issue #61 turns on which guest thread the engine's pthreads copy thinks is
+ * calling: pthread_self resolves through TlsGetValue, so the handle it hands
+ * back IS one of these words. Reading them per slot is the difference between
+ * "a different coroutine unregistered" and "the same coroutine saw different
+ * TLS", which need different fixes. Returns 0 for an out-of-range ask rather
+ * than reading past the array.
+ */
+uint32_t k32_tls_peek(int slot, uint32_t index)
+{
+    if (slot < 0 || slot >= K32_TLS_SLOTS) return 0;
+    if (index >= MAX_TLS) return 0;
+    return g_tls_store[slot][index];
+}
+
+int k32_tls_slot_count(void) { return K32_TLS_SLOTS; }
+
 #define TLS_OUT_OF_INDEXES 0xFFFFFFFFu
 
 /* ---- thread control ---------------------------------------------------- */
