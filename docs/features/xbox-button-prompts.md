@@ -319,3 +319,54 @@ button. `[%s]` still wraps it, which is what the Xbox build shows too.
 3. Populate the pad binding slot on hotswap -- which is feature 2, the Xbox
    default mapping table. Until that lands the pad slot is empty on a fresh
    profile and the keyboard label still wins, correctly.
+
+
+## The button art is NOT a codepoint. Correcting step 2 above.
+
+Step 2 said "map code 0x15..0x31 to the Xbox glyph codepoints in
+`x2f_med_xbox.igb`". Measured, that plan is wrong: **there are no such
+codepoints.**
+
+Method, and what a negative would have looked like. Both atlases were decoded
+to PNG (`tools/extract_font_igb.py`, fixed after I045 so it emits every image
+rather than the last per mip size), the glyph table was parsed out of
+`x2f_med_pc.xmlb` (256 `<glyph>` nodes, each with `num` and the UV rect
+`s,t,s2,t2`), and every glyph's rect was compared pixel-for-pixel between the
+PC and Xbox atlas:
+
+```
+256 glyphs: 90 with an empty rect (not comparable), 166 identical, 0 DIFFER
+```
+
+Zero of the 166 comparable cells differ, so no codepoint renders differently on
+Xbox. That is not "the tool found nothing" -- the same run shows the atlases
+DO differ, in a band at x 2..240, y 202..242 (3,765 of 65,536 pixels), and that
+band visibly holds the d-pad, the coloured A/B/X/Y buttons, the L/R triggers,
+the black and white buttons and the sticks. The art is there. It is simply
+**outside every glyph rect**: the highest `t2` in the table is y=188, and no
+glyph rect intersects y 202..242. Checked across all nine metric variants in
+the WAD (`x2f_med{,_gc,_pc,_pc_hd,_pc_ws,_ps2,_xbox,_xbox_hd,_xbox_ws}.xmlb`);
+the largest `t2` any of them reaches is 199, still short of the band.
+
+So the Xbox build does not draw its button prompts as text through the font.
+The font texture doubles as a UI sprite sheet and the buttons are drawn as
+textured quads with explicit UVs by UI code that has nothing to do with
+`FUN_006281f0`. Substituting the font can therefore never produce a button
+glyph in a `[%s]` label, no matter what string is fed to it -- which also
+explains the earlier run where the Xbox font was substituted, a pad was
+connected, and the caption was unchanged.
+
+### What this leaves standing, and what it kills
+
+Still true and still the mechanism (C167): the label is built at run time from
+the DirectInput object name, and slot 2 -- the pad slot -- is consulted first,
+so hotswap already decides which device the label describes.
+
+Dead: font substitution as the delivery route for the art.
+
+The remaining route is to draw the sprite ourselves. The port has the atlas
+(the band above), it knows the UV of each button in it, and it knows when a pad
+is connected. What it does not yet have is the Xbox UI code that places those
+quads, and that has not been located. **That is the next RE step, and it is the
+honest status: the art is found, the label mechanism is understood, and the
+bridge between them is not.**
