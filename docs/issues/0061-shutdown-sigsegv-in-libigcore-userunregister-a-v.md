@@ -145,3 +145,41 @@ every module, or libIGCore.dll is reached some other way. Until that is
 answered the engine-side measurement for this issue cannot be taken at all --
 and the intermittency of the ORIGINAL crash may or may not be related, which
 is a question to ask, not an answer to assume.
+
+### Note (2026-08-12)
+MEASURED AT LAST, and candidate (a) is OUT.
+
+    engine threads: igThreadManager 0x00a8a098, array 0x00a8a0b0,
+                    1 thread(s) registered:
+              [0] thread 0x00a8aa60  id 0x7100a2a8  refcount 1
+
+The list is NOT empty, so this is not an ordering problem in which teardown
+empties the array before userUnregister looks. It is candidate (b): the list
+had an entry and getCallingThread did not match it.
+
+Three wrong turns got here, all in the diagnostic rather than in the defect,
+and each produced a confident wrong answer:
+
+1. X86Module::base is a POINTER TO the guest base. Reading (uintptr_t)m->base
+   gave the host address of the generated module's g_imgbase global, so the
+   report announced "libIGCore.dll is mapped at 0x563f50c5b1c8, above 4 GB" --
+   true about the wrong quantity. Every other user in the codebase writes
+   *m->base; the header now says so, with the cost noted.
+2. Before that, the same mistake reached RD32 and faulted TWICE inside the
+   SHUTDOWN report, taking every other report down with it.
+3. Then a RANGE check refused a perfectly good pointer. The manager is at
+   0x00a8a098, past XMen2.exe's SizeOfImage (0x006744c6, confirmed against the
+   PE header) and outside the guest heap, because the engine allocates it from
+   its OWN pool. "Not in a range I know about" was reported as "the layout must
+   be wrong". The check is now x86_peek32 over process_vm_readv, which answers
+   "is it mapped" -- the question actually being asked -- and cannot fault.
+
+NEXT, and now specific rather than a choice between guesses. Only ONE thread is
+registered while the run creates six guest threads. If pthread_self
+(FUN_10075400, the pthreads-win32 copy vendored into libIGCore) resolves
+through guest TLS, then this port's per-coroutine TLS switching would hand each
+guest coroutine a DIFFERENT handle even though they share one host thread, and
+getCallingThread would fail to match whichever thread registered. Read
+FUN_10075400's table lookup; do not assume it, because the naive expectation
+runs the other way -- one host thread should make every guest thread look
+identical, not distinct.
