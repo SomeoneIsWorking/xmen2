@@ -1518,8 +1518,11 @@ int main(int argc, char **argv)
     if (vkselftest) {
         extern int gpu_device_selftest(void);
         extern int gpu_draw_selftest(void);
+        extern int gpu_midframe_clear_selftest(void);
         int r = gpu_device_selftest();
         if (r) return r;
+        r = gpu_midframe_clear_selftest();
+        if (r && r != 77) return r;
         /* Presenting a frame and DRAWING into one are different claims. The
            first has been true here since before any geometry worked. */
         return gpu_draw_selftest();

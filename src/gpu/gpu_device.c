@@ -318,7 +318,13 @@ SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h)
     return g_depth_tex;
 }
 
-void gpu_pass_begin(void)
+/*
+ * `reopen` is a pass being started again in the MIDDLE of a frame, because a
+ * clear arrived after drawing had begun. The difference is what happens to the
+ * attachments that are NOT being cleared: at frame start nothing is worth
+ * preserving, mid-frame everything drawn so far is.
+ */
+static void pass_begin(int reopen)
 {
     SDL_GPUColorTargetInfo ct;
     SDL_GPUDepthStencilTargetInfo dt;
@@ -340,7 +346,8 @@ void gpu_pass_begin(void)
      * DONT_CARE says truthfully that nothing is being preserved.
      */
     ct.load_op = (g_clear.mask & 1u) ? SDL_GPU_LOADOP_CLEAR
-                                     : SDL_GPU_LOADOP_DONT_CARE;
+               : reopen                ? SDL_GPU_LOADOP_LOAD
+                                       : SDL_GPU_LOADOP_DONT_CARE;
     ct.store_op = SDL_GPU_STOREOP_STORE;
 
     depth = gpu_depth_target(g_swap_w, g_swap_h);
@@ -359,9 +366,14 @@ void gpu_pass_begin(void)
          */
         dt.clear_depth = (g_clear.mask & 2u) ? g_clear.depth : 1.0f;
         dt.clear_stencil = (Uint8)((g_clear.mask & 4u) ? g_clear.stencil : 0u);
-        dt.load_op = SDL_GPU_LOADOP_CLEAR;
+        /* Mid-frame, only what the engine ASKED to clear is cleared: a depth
+           clear before the HUD must not throw away the colour, and a colour
+           clear must not throw away the depth. */
+        dt.load_op = (!reopen || (g_clear.mask & 2u)) ? SDL_GPU_LOADOP_CLEAR
+                                                      : SDL_GPU_LOADOP_LOAD;
         dt.store_op = SDL_GPU_STOREOP_STORE;
-        dt.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
+        dt.stencil_load_op = (!reopen || (g_clear.mask & 4u))
+                                 ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
         dt.stencil_store_op = SDL_GPU_STOREOP_STORE;
     }
 
@@ -373,6 +385,8 @@ void gpu_pass_begin(void)
     }
     apply_viewport();
 }
+
+void gpu_pass_begin(void) { pass_begin(0); }
 #endif
 
 void gpu_device_headless(int on, uint32_t w, uint32_t h)
@@ -571,21 +585,25 @@ void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
     (void)mask; (void)r; (void)g; (void)b; (void)a; (void)depth; (void)stencil;
 #else
     if (!g_cmd) return;              /* outside a frame; nothing to clear */
-    if (g_pass) {
-        /* See the header comment: SDL_GPU cannot clear inside an open pass.
-           Reported, not dropped -- see the file comment for why. */
-        if (!g_late_clears++)
-            fprintf(stderr,
-                    "gpu: clearRenderDestination arrived AFTER the render "
-                    "pass was opened, and SDL_GPU clears only on pass entry, "
-                    "so this clear did NOT happen. Reported once; the total "
-                    "is in the shutdown report.\n");
-        return;
-    }
     g_clear.mask = mask;
     g_clear.r = r; g_clear.g = g; g_clear.b = b; g_clear.a = a;
     g_clear.depth = depth;
     g_clear.stencil = stencil;
+    if (g_pass) {
+        /*
+         * A clear arrived after drawing began. SDL_GPU clears only on pass
+         * entry, so this used to be COUNTED AND DROPPED -- 3,833 of them in
+         * one gameplay run, every one a clear the engine asked for and did not
+         * get. Ending the pass and starting another with this clear as its
+         * load op is what the API offers, and it is exactly the operation
+         * D3D8's Clear names: the attachments the engine did not ask to clear
+         * are LOADed, so nothing drawn so far is lost.
+         */
+        SDL_EndGPURenderPass(g_pass);
+        g_pass = NULL;
+        g_late_clears++;
+        pass_begin(1);
+    }
 #endif
 }
 
@@ -625,8 +643,8 @@ void gpu_device_report(void)
 #ifdef X2_WITH_SDL
     if (!g_gpu && !g_frames_no_window) return;
     printf("gpu: %lu frame(s) presented, %lu skipped for no swapchain "
-           "texture, %lu with no window, %lu clear(s) lost to a pass that was "
-           "already open\n",
+           "texture, %lu with no window, %lu clear(s) that arrived mid-frame "
+           "and reopened the pass\n",
            g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
            g_late_clears);
     fflush(stdout);

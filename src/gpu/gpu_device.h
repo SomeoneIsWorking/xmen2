@@ -97,9 +97,12 @@ int  gpu_frame_in_progress(void);
  * colour, bit 1 depth, bit 2 stencil. Colour components are 0..1.
  *
  * SDL_GPU clears as part of beginning a render pass rather than as a command,
- * so this records what the next pass must clear with. A clear requested after
- * the pass has already begun cannot be honoured that way and says so instead
- * of silently doing nothing.
+ * so this records what the next pass must clear with. A clear requested AFTER
+ * the pass has begun -- which the engine does, 3,833 times in one gameplay
+ * run -- ends that pass and starts another with this clear as its load op.
+ * The attachments not named in `mask` are LOADed, so nothing already drawn is
+ * lost; that is what makes the reopen equivalent to the clear D3D8 asked for
+ * rather than a frame restarted.
  */
 void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
                       float depth, uint32_t stencil);
