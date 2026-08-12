@@ -96,8 +96,27 @@ else
 fi
 
 if [ "$RC" -eq 124 ]; then
+    # "Still going" and "stuck" are different failures and the log can tell
+    # them apart: if the frame limit was never reached, the run was simply
+    # SLOWER than the budget -- one such run stopped 65 frames short of 4200
+    # and read as a hang. Saying which one it is decides whether to raise the
+    # timeout or go looking for a stall.
+    limit=$(grep -o 'X2_MAX_FRAMES=[0-9]*' "$LOG" 2>/dev/null | head -1 | cut -d= -f2)
+    got=$(grep -o 'presents [0-9]*' "$LOG" 2>/dev/null | tail -1 | cut -d' ' -f2)
     say "FAIL: the run hit the timeout instead of stopping at its frame limit."
-    say "      It was still going, or its shutdown was."
+    if [ -n "$limit" ] && [ -n "$got" ] && [ "$got" -lt "$limit" ]; then
+        say "      It was STILL RUNNING, not stuck: $got of $limit frames"
+        say "      presented, and the frame limit was never reached. This is a"
+        say "      run slower than the ${TIMEOUT}s budget, not a stall -- raise"
+        say "      TIMEOUT rather than hunting for a hang."
+    elif grep -q 'frame limit was reached' "$LOG" 2>/dev/null; then
+        say "      The frame limit WAS reached and the run did not exit, so it"
+        say "      is the SHUTDOWN that is stuck. The reports in the log stop"
+        say "      wherever it got to."
+    else
+        say "      Frame counts are missing from the log, so which of the two"
+        say "      this is cannot be said from here."
+    fi
     fail=1
 elif [ "$RC" -eq 3 ]; then
     # Exit 3 is x2native's own fault reporter (src/native/x2native.c). It means
@@ -189,6 +208,16 @@ EOP
     expect "a crash (exit 3) FAILS the gate"  1 "$T/crash.log" "$good_shot" 6 3
     expect "a timeout (exit 124) FAILS"       1 "$ok_log"      "$good_shot" 6 124
     expect "a clean run with exit 0 passes"   0 "$ok_log"      "$good_shot" 6 0
+    # A timeout is still a failure either way, but it must SAY which kind --
+    # "slower than the budget" and "shutdown stuck" send you to different
+    # places, and the gate has the numbers to tell them apart.
+    { cat "$ok_log"
+      echo "gpu: X2_MAX_FRAMES=4200 -- the run will stop cleanly"
+      echo "[HB] presents 4135 (+3)"; } > "$T/slow.log"
+    expect "a timeout that was merely SLOW"    1 "$T/slow.log"  "$good_shot" 6 124
+    { cat "$T/slow.log"; echo "[HB] the frame limit was reached -- reports follow"
+      echo "[HB] presents 4200 (+0)"; } > "$T/stuck.log"
+    expect "a timeout with the limit REACHED"  1 "$T/stuck.log" "$good_shot" 6 124
     rm -rf "$T"
     [ "$rc" -eq 0 ] && echo "== smoke_loop --selftest: PASSED ==" \
                     || echo "== smoke_loop --selftest: FAILED =="
