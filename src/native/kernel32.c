@@ -88,6 +88,18 @@ typedef struct {
        records the count it entered on and is released when it changes. */
     int   waiters;
     unsigned long pulses;
+    /*
+     * The history of this object, for the watchdog.
+     *
+     * Issue #57 stalls in WaitForSingleObject(INFINITE) on an unnamed event,
+     * and the report named its KIND and its (empty) name -- which is every
+     * unnamed event in the process. The issue's own next-measurement is
+     * "which event is it, who created it, has it ever been signalled". These
+     * are that, recorded as they happen because the answer is needed at a
+     * moment when nothing can be asked any more.
+     */
+    uint32_t created_by;        /* guest return address of its creator */
+    unsigned long n_set, n_pulse_sent, n_pulse_lost, n_wait;
     /* Synchronisation objects. Nothing here creates a guest thread yet, so the
        state is kept honestly and never actually blocks -- see the wait. */
     int32_t  count;      /* semaphore count, or event signalled, or mutex depth */
@@ -605,6 +617,9 @@ void imp_KERNEL32_CreateEventA(CPU *C)
     Handle *hh = &g_h[h - 1];
     hh->manual = (int)A(1);
     hh->count = A(2) ? 1 : 0;
+    /* [ESP] is the caller's return address: the one thing that distinguishes
+       one unnamed event from another. */
+    hh->created_by = RD32(C->esp);
     sync_name(hh, A(3));
     ret_std(C, h, 4);
 }
@@ -614,8 +629,12 @@ void imp_KERNEL32_SetEvent(CPU *C)
     /* Something a wait could be blocked on has been signalled: wake the
        waiters. A signal nothing is told about leaves a guest thread asleep
        on an object that is already ready. */
-    guest_cond_broadcast();
-    h_get(A(0), H_EVENT)->count = 1;
+    {
+        Handle *hh = h_get(A(0), H_EVENT);
+        hh->n_set++;
+        guest_cond_broadcast();
+        hh->count = 1;
+    }
     ret_std(C, 1, 1);
 }
 
@@ -666,6 +685,7 @@ void imp_KERNEL32_PulseEvent(CPU *C)
     Handle *hh = h_get(A(0), H_EVENT);
     static unsigned long lost;
     g_pulse_sent++;
+    hh->n_pulse_sent++;
     if (hh->waiters > 0) {
         if (hh->manual) {
             /* Every thread waiting at this instant, and no later one. The
@@ -680,7 +700,7 @@ void imp_KERNEL32_PulseEvent(CPU *C)
             hh->count = 1;
         }
         guest_cond_broadcast();
-    } else if (g_pulse_lost++, ++lost == 1) {
+    } else if (hh->n_pulse_lost++, g_pulse_lost++, ++lost == 1) {
         fprintf(stderr, "kernel32: PulseEvent on \"%s\" with NOBODY waiting -- "
                         "the pulse is lost, which is what Windows does too. "
                         "Reported once; if a handshake stalls, this is where "
@@ -773,6 +793,7 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C)
      * has to be reported, not hung on.
      */
     hh->waiters++;
+    hh->n_wait++;
     pulse0 = hh->pulses;
     /*
      * The deadline is measured on the CLOCK, not counted in loop turns.
@@ -834,6 +855,27 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C)
                             "thread that would signal it is not running, or "
                             "this host never signals that object.\n",
                     sync_kind_name(hh->kind), hh->name);
+            /*
+             * WHICH object, and its whole history. Issue #57 asks exactly
+             * this and could not answer it: "an unnamed event" describes
+             * every unnamed event in the process. The creator's return
+             * address is what tells two of them apart.
+             */
+            fprintf(stderr,
+                    "  handle 0x%08x, created by guest 0x%08x, %s-reset\n"
+                    "  signalled %lu time(s) by SetEvent; pulsed %lu time(s), "
+                    "of which %lu found NO waiter and were LOST\n"
+                    "  waited on %lu time(s); %d thread(s) waiting on it now\n",
+                    A(0), hh->created_by, hh->manual ? "manual" : "auto",
+                    hh->n_set, hh->n_pulse_sent, hh->n_pulse_lost,
+                    hh->n_wait, hh->waiters);
+            if (!hh->n_set && !hh->n_pulse_sent)
+                fprintf(stderr, "  it has NEVER been signalled or pulsed, so "
+                                "nothing was lost -- whatever should signal it "
+                                "has not run at all.\n");
+            /* And what every other guest thread is doing, which is the other
+               half of a rendezvous. */
+            guest_thread_state_report();
             x86_diag_dump();
             abort();
         }
