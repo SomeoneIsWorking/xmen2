@@ -157,3 +157,65 @@ the current scripted route, the route is what needs fixing first.
 
 Do NOT adjust the lighting maths. Everything measured says the shader is
 faithful to its inputs.
+
+### Note (2026-08-12)
+## The D3D8 layer is FAITHFUL. Chain verified end to end.
+
+Every link between the engine's call and the shader's input was measured, not
+reasoned about, and each one is correct:
+
+* D3DLIGHT8 LAYOUT is right. Dumped raw: type=1 then [1-4] diffuse 1,1,1,1,
+  [5-8] specular 0,0,0,1, [9-12] ambient 0.6,0.6,0.6,1, [13-15] position,
+  [16-18] direction 0,0,1, [19] range, [20] falloff, [21-23] atten 1,0,0,
+  [24] theta, [25] phi 3.142. Position and direction land where they must and
+  read plausibly, which is the only way to confirm a struct layout.
+* range 1.845e19 is NOT a misread. It is what the engine passes -- its
+  "infinite range" idiom -- and it was the thing that first made the layout
+  look wrong.
+* The table is big enough: D3D8_MAX_LIGHTS is 16 and 16 are set, so no
+  SetLight is refused for its index, and each slot is the full 26 floats so
+  nothing is truncated.
+* STATE BLOCKS DO NOT CLOBBER IT. 2000 consecutive Apply calls, and the light
+  table was unchanged in every one; the material was unchanged in the six
+  checked earlier. Apply restores the whole state, which is correct for
+  D3DSBT_ALL, and D3DSBT_PIXELSTATE/VERTEXSTATE are refused rather than
+  approximated. BeginStateBlock/EndStateBlock are unimplemented and the engine
+  never calls them.
+
+## What the engine actually supplies at a level draw
+
+    5 light(s) enabled, D3DRS_AMBIENT raw 0x00000000
+    material diffuse 1,1,1  ambient 1,1,1  emissive 0
+    light 0 (D3D index 3) type 3 DIRECTIONAL diffuse 0.000 0.196 0.196
+    light 1 (D3D index 4) type 1 POINT       diffuse 0.000 0.000 0.000
+    light 2 (D3D index 5) type 1 POINT       diffuse 0.000 0.000 0.000
+    light 3 (D3D index 6) type 1 POINT       diffuse 0.000 0.000 0.000
+    light 4 (D3D index 7) type 1 POINT       diffuse 0.000 0.000 0.000
+
+Index 7 is the same slot that was earlier SET to diffuse 1,1,1,1 with ambient
+0.6 -- so the engine set it white and later set it black. Nothing in this port
+overwrote it: Apply was checked and does not, and there is no other writer.
+The engine turns its dynamic lights off by ZEROING them rather than by
+LightEnable, which is ordinary, and at this point in the level four of its five
+enabled lights are off that way.
+
+So the picture is dark because the GUEST asked for a dark picture. The renderer
+is drawing what it was given.
+
+## What that leaves, and what NOT to do
+
+Do not adjust lighting maths, light unpacking, or the state mirror. All three
+are now measured correct, and changing them would be fitting the code to a
+screenshot.
+
+Two explanations remain and nothing measured separates them:
+ (a) the photographed area IS meant to be dark, and the control's red chamber
+     is simply a different place;
+ (b) the guest's own light SELECTION is wrong in this port -- it is choosing
+     the wrong set of lights, or running the code that fills them at the wrong
+     time -- which is a guest-side question, not a renderer one.
+
+The discriminator is unchanged and is a control run, not a code change: drive
+the NATIVE build to the same opening dialogue room the stock control captured
+and compare those two frames. If the native version of THAT room is lit by one
+0.196 teal directional, it is (b) and the hunt moves into the guest.

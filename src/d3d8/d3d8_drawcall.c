@@ -140,6 +140,11 @@ static void light_dump(const GpuDraw *d);
    well as what it became -- a zero after conversion and a zero in the register
    are different faults. */
 static uint32_t g_last_ambient_raw;
+/* Which D3D light INDEX each packed light came from. The dump prints "light 0"
+   meaning the first ENABLED one, which is not the index the engine set -- and
+   without the index a black light cannot be traced back to the SetLight that
+   made it. */
+static int g_light_src[8];
 
 static unsigned long g_texop_none_notex, g_texop_none_disabled,
                      g_texop_select, g_texop_select2, g_texop_modulate,
@@ -343,6 +348,7 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
                         GPU_MAX_LIGHTS);
             break;
         }
+        if (out->nlights < 8) g_light_src[out->nlights] = (int)i;
         g = &out->light[out->nlights++];
         memset(g, 0, sizeof *g);
         g->type = (int)((const uint32_t *)L)[0];
@@ -440,10 +446,12 @@ static void light_dump(const GpuDraw *d)
     for (i = 0; i < d->nlights; i++) {
         const GpuLight *L = &d->light[i];
         fprintf(stderr,
-            "    light %d type %d diffuse %.3f %.3f %.3f  amb %.3f %.3f %.3f\n"
+            "    light %d (D3D index %d) type %d diffuse %.3f %.3f %.3f  "
+            "amb %.3f %.3f %.3f\n"
             "            pos %.1f %.1f %.1f  dir %.2f %.2f %.2f  range %.1f  "
             "atten %.4f %.6f %.8f\n",
-            i, L->type, L->diffuse[0], L->diffuse[1], L->diffuse[2],
+            i, i < 8 ? g_light_src[i] : -1,
+            L->type, L->diffuse[0], L->diffuse[1], L->diffuse[2],
             L->ambient[0], L->ambient[1], L->ambient[2],
             L->position[0], L->position[1], L->position[2],
             L->direction[0], L->direction[1], L->direction[2],

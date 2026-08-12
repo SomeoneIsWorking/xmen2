@@ -620,6 +620,35 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
     const float *l = (const float *)guest_ptr(d3d8_arg(C, 1), "light");
     (void)self;
     if (!l || idx >= D3D8_MAX_LIGHTS) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    /*
+     * X2_LIGHT_RAW=<n> -- the D3DLIGHT8 as WORDS, before any interpretation.
+     *
+     * A level light came back with range 1.8446743e19 (about 2^64), which is
+     * not a range any engine sets; that is what a misread field looks like.
+     * The only way to settle a struct layout is to print the words and see
+     * where the recognisable ones fall: Position and Direction are the giveaway
+     * because they must be plausible world coordinates and a unit vector.
+     * Type is printed as an integer because it IS one -- D3DLIGHT8 begins with
+     * a DWORD, and a float view of 1 or 3 prints as 0.000 and looks like a
+     * black colour channel.
+     */
+    {
+        static long want = -2, done;
+        if (want == -2) {
+            const char *e = getenv("X2_LIGHT_RAW");
+            want = (e && *e) ? atol(e) : -1;
+        }
+        if (want > 0 && done < want) {
+            int k;
+            done++;
+            fprintf(stderr, "d3d8 SetLight[%u] raw %ld/%ld: type=%u then floats:",
+                    idx, done, want, ((const uint32_t *)l)[0]);
+            for (k = 1; k < 26; k++)
+                fprintf(stderr, "%s[%d]%.4g", (k % 8 == 1) ? "\n    " : " ",
+                        k, (double)l[k]);
+            fprintf(stderr, "\n");
+        }
+    }
     memcpy(g_dev.state.light[idx], l, sizeof g_dev.state.light[0]);
     g_dev.state.light_set[idx] = 1;
     d3d8_ret(C, D3D_OK);

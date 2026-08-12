@@ -148,6 +148,20 @@ int d3d8_sb_apply(uint32_t token, D3D8State *dst)
         }
         if (want > 0 && done < want) {
             done++;
+            if (memcmp(dst->light, b->state.light, sizeof dst->light) != 0
+                || memcmp(dst->light_on, b->state.light_on,
+                          sizeof dst->light_on) != 0)
+                fprintf(stderr, "d3d8 sb apply %ld/%ld: THE LIGHT TABLE "
+                        "CHANGES. light[7] diffuse %.3f %.3f %.3f -> %.3f "
+                        "%.3f %.3f, light_on[7] %u -> %u\n", done, want,
+                        dst->light[7][1], dst->light[7][2], dst->light[7][3],
+                        b->state.light[7][1], b->state.light[7][2],
+                        b->state.light[7][3],
+                        dst->light_on[7], b->state.light_on[7]);
+            else
+                fprintf(stderr, "d3d8 sb apply %ld/%ld: light table unchanged "
+                        "(light[7] diffuse %.3f %.3f %.3f)\n", done, want,
+                        dst->light[7][1], dst->light[7][2], dst->light[7][3]);
             if (memcmp(dst->material, b->state.material,
                        sizeof dst->material) == 0)
                 fprintf(stderr, "d3d8 sb apply %ld/%ld: material UNCHANGED "
