@@ -41,8 +41,8 @@ esac
 fail=0
 say() { echo "  $*"; }
 
-check_run() {   # $1 = log, $2 = screenshot, $3 = expected press count
-LOG=$1; SHOT=$2; want=$3
+check_run() {   # $1 = log, $2 = screenshot, $3 = expected presses, $4 = exit code
+LOG=$1; SHOT=$2; want=$3; RC=${4:-0}
 # 1 + 2. Every scripted press, in order.
 got=$(grep -c 'INJECTING' "$LOG")
 if [ "$got" -ne "$want" ]; then
@@ -95,6 +95,28 @@ else
     fi
 fi
 
+if [ "$RC" -eq 124 ]; then
+    say "FAIL: the run hit the timeout instead of stopping at its frame limit."
+    say "      It was still going, or its shutdown was."
+    fail=1
+elif [ "$RC" -eq 3 ]; then
+    # Exit 3 is x2native's own fault reporter (src/native/x2native.c). It means
+    # the process took a SIGSEGV. A gate that calls that a "note" and then
+    # prints PASSED is a gate that passes on a crash, which is what this said
+    # before -- the loop closing and the process surviving are different
+    # claims, and only the first was being checked.
+    say "FAIL: the run CRASHED. Exit 3 is x2native's fault reporter, so the"
+    say "      process took a SIGSEGV. The loop may well have closed first;"
+    say "      that does not make the run good. The report is in the log:"
+    grep -a -A3 '\*\*\* SIG' "$LOG" 2>/dev/null | head -8 | sed 's/^/      /'
+    say "      Known open: docs/issues/0061 (shutdown SIGSEGV in"
+    say "      igThreadManager::userUnregister). If that is this one, it is"
+    say "      still a failure -- it is just a failure with a name."
+    fail=1
+elif [ "$RC" -ne 0 ]; then
+    say "note: the run exited $RC rather than 0."
+fi
+
 }
 
 # --selftest: feed the checks a log for each failure and require each to be
@@ -127,14 +149,14 @@ EOP
     { for i in 1 2 3 4 5 6; do echo "DINPUT8: INJECTING \"Return\" at t=1s, frame $i"; done
       echo "gpu draws 100 refused 0"; } > "$ok_log"
 
-    expect() {  # name, expected-fail(0/1), log, shot, want
+    expect() {  # name, expected-fail(0/1), log, shot, want, [exit code]
         # NOT $( ), which runs check_run in a SUBSHELL and throws away the
         # `fail` it sets -- the first version of this selftest reported every
         # expect-a-failure case as "returned 0", which is the selftest failing
         # to test rather than the checks failing to fire. Redirection keeps it
         # in this shell.
         fail=0
-        check_run "$3" "$4" "$5" > "$T/out.txt" 2>&1
+        check_run "$3" "$4" "$5" "${6:-0}" > "$T/out.txt" 2>&1
         if [ "$fail" -ne "$2" ]; then
             echo "  SELFTEST FAIL: '$1' -- the checks returned fail=$fail, expected $2"
             sed 's/^/      /' "$T/out.txt"
@@ -160,6 +182,13 @@ EOP
     { cat "$ok_log"
       echo "  recomp: NO original machine code ran. ... aborts by name (x86_note_fallback), so ..."; } > "$T/prose.log"
     expect "the report's own prose is not a failure" 0 "$T/prose.log" "$good_shot" 6
+    # The exit code is a check like any other, and it was NOT one: a SIGSEGV
+    # was reported as "note: the run exited 3" under a PASSED banner. These two
+    # prove the gate can now tell a crash from a clean stop.
+    { cat "$ok_log"; echo "*** SIGSEGV at 0x4 (not an import slot)"; } > "$T/crash.log"
+    expect "a crash (exit 3) FAILS the gate"  1 "$T/crash.log" "$good_shot" 6 3
+    expect "a timeout (exit 124) FAILS"       1 "$ok_log"      "$good_shot" 6 124
+    expect "a clean run with exit 0 passes"   0 "$ok_log"      "$good_shot" 6 0
     rm -rf "$T"
     [ "$rc" -eq 0 ] && echo "== smoke_loop --selftest: PASSED ==" \
                     || echo "== smoke_loop --selftest: FAILED =="
@@ -192,15 +221,8 @@ X2_MAX_FRAMES=4200 X2_UNPACED=1 X2_HEARTBEAT=60 \
 RC=$?
 
 fail=0
-check_run "$RUNLOG" "$RUNSHOT" "$(printf '%s' "$SCRIPT" | tr ',' '\n' | grep -c .)"
+check_run "$RUNLOG" "$RUNSHOT" "$(printf '%s' "$SCRIPT" | tr ',' '\n' | grep -c .)" "$RC"
 
-if [ "$RC" -eq 124 ]; then
-    say "FAIL: the run hit the ${TIMEOUT}s timeout instead of stopping at its"
-    say "      frame limit. It was still going, or its shutdown was."
-    fail=1
-elif [ "$RC" -ne 0 ]; then
-    say "note: the run exited $RC rather than 0."
-fi
 
 if [ "$fail" -ne 0 ]; then
     echo "== smoke_loop: FAILED -- see $RUNLOG =="
