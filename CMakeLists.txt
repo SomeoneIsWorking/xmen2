@@ -119,6 +119,18 @@ add_test(NAME caselabel
 add_test(NAME lift_step_guard
          COMMAND ${CMAKE_SOURCE_DIR}/tools/ghidra_export.sh --selftest)
 
+# Native overrides: the generated wiring is current, AND every override
+# returns something. An override that writes no C->eax and does not defer to
+# __real_ hands its caller whatever the previous call left in EAX -- which is
+# exactly what the DirectX-check override did, and the game's `TEST AL,AL` on
+# it produced a silent exit(0) before the first frame that was blamed in turn
+# on backgrounding, on scheduling and on a lock (issue #54, C158). The check
+# cannot tell whether the value is RIGHT -- only the call site can, and Ghidra
+# typed that one `void` too -- but it catches an override that returns nothing.
+add_test(NAME overrides
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/gen_overrides.py --check)
+
 # The end-to-end gate's own checks (tools/smoke_loop.sh --selftest). The gate
 # itself needs the game and takes ~300s, so it is not a ctest; this runs its
 # checks against a log for each failure and requires each to be caught. It

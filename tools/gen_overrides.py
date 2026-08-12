@@ -78,6 +78,52 @@ def render_cmake(ovr):
     return "\n".join(lines) + "\n"
 
 
+OVERRIDES_C = os.path.join(ROOT, "src", "native", "overrides.c")
+
+
+def check_return_values(ovr):
+    """Every override must either DEFER to the original or write C->eax.
+
+    An override that does neither hands the caller whatever the previous call
+    left in EAX. That is not hypothetical: the DirectX-check override was
+    documented and written as `void`, the caller does `TEST AL,AL` on it, and
+    the game branched on leftover register contents -- a silent exit(0) before
+    the first frame, intermittent, and blamed in turn on backgrounding, on
+    scheduling and on a lock (issue #54, C158).
+
+    This cannot tell whether the value is RIGHT -- only the call site can, and
+    Ghidra typed that one `void` too. What it can do is catch an override that
+    returns nothing at all, which is the shape the defect took.
+    """
+    if not os.path.exists(OVERRIDES_C):
+        return ["%s is missing, so NO override body could be checked" % OVERRIDES_C]
+    src = open(OVERRIDES_C).read()
+    bad = []
+    for mod, ep, sym in ovr:
+        name = "__wrap_" + sym
+        i = src.find(name)
+        if i < 0:
+            bad.append("%s has no __wrap_ body in overrides.c" % sym)
+            continue
+        # the body: from the opening brace to the matching close, counted
+        j = src.find("{", i)
+        depth, k = 0, j
+        while k < len(src):
+            if src[k] == "{":
+                depth += 1
+            elif src[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            k += 1
+        body = src[j:k]
+        if "C->eax" not in body and ("__real_" + sym) not in body:
+            bad.append("%s writes no return value and does not defer to "
+                       "__real_%s -- its caller would read leftover EAX"
+                       % (sym, sym))
+    return bad
+
+
 def main(argv):
     check = "--check" in argv
     ovr = load()
@@ -111,6 +157,7 @@ def main(argv):
                 f.write(body)
 
     if check:
+        stale += check_return_values(ovr)
         if stale:
             print("gen_overrides: STALE or missing: %s" % ", ".join(stale))
             print("  Run tools/gen_overrides.py and re-emit the affected "
