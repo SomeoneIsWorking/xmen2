@@ -295,6 +295,8 @@ void x2_interrupt_reports(void)
 {
     extern void d3d8_host_report(void);
     extern void guest_heap_report(void);
+    extern void x86_fallback_report(void);
+    x86_fallback_report();
     d3d8_host_report();
     guest_heap_report();
     fflush(stdout);

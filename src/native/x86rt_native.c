@@ -1489,7 +1489,28 @@ void x86_note_fallback(uint32_t target)
     abort();
 }
 
-void x86_fallback_report(void) { }
+/*
+ * The native build has NO hybrid fallback, and says so.
+ *
+ * On the Wine path a dispatched target with no recompiled body falls back to
+ * the ORIGINAL machine code, which keeps the program alive and is honest only
+ * because it is loud -- re-frontier carries it as `rc-hybrid`, standing debt.
+ * Natively there is no such path: x86_allow_fallback is never set (only
+ * src/app/x2run.c sets it, and that is the Wine front end), and
+ * x86_note_fallback aborts by name rather than running anything.
+ *
+ * This used to be an empty function. Nothing calls it on this path, so it was
+ * not lying -- but the fact it could have stated is worth stating: every
+ * instruction a native run executes came from the translator. That is the
+ * property the whole project is for, and it was going unreported.
+ */
+void x86_fallback_report(void)
+{
+    printf("  recomp: NO original machine code ran. The native build has no "
+           "hybrid fallback -- a dispatched target with no recompiled body "
+           "aborts by name (x86_note_fallback), so reaching this line at all "
+           "means every instruction executed came from the translator.\n");
+}
 
 void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest)
 {
