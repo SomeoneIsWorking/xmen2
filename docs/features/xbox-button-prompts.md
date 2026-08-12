@@ -219,3 +219,29 @@ So the next step is the strings, not another font run:
    whether it should follow the CONNECTED CONTROLLER rather than the platform,
    which is what a modern port would do and what makes this feature worth
    having now that hotswap works.
+
+
+## Two more measurements, and what is left
+
+**The metrics are identical.** `ui/fonts/x2f_med_pc.xmlb` and
+`x2f_med_xbox.xmlb` are byte-identical (27,589 bytes, same md5, and the same as
+the PC install's own copy). So the same codepoints map to the same cells on
+both platforms -- the Xbox atlas simply has button art in cells where the PC
+atlas does not. **That means the font swap alone is sufficient art-wise**: if
+something emits those codepoints, the Xbox font draws buttons.
+
+**Nothing emits them.** With a controller connected (`X2_VIRTUAL_PAD=1`) AND
+the Xbox medium font substituted, the difficulty dialog still reads
+`[Esc] Back` and `[Enter] Select`. So the PC build does NOT switch prompt text
+by input device: those are keyboard strings from the strings table, spelled out
+in letters, and no font can turn `[Enter]` into a button.
+
+So the feature reduces to ONE thing: **the strings**. The Xbox build's tables
+must put a glyph codepoint where the PC's put `[Enter]`, and the port has to
+supply that string. The `X2_ASSETS` mechanism can already deliver it -- the run
+above proves a substituted asset reaches the game -- so this is a data question
+now, not a plumbing one.
+
+The design call worth making deliberately: a modern port should choose the
+prompt by CONNECTED CONTROLLER, not by build. The game does not do that, and
+now that hotswap works (C161) the host knows when a pad appears and disappears.
