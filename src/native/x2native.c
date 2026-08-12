@@ -1757,6 +1757,7 @@ int main(int argc, char **argv)
                From the entry point on, the guest owns the thread and silence
                becomes ambiguous. */
             heartbeat_start();
+            guest_quantum_from_env();
             dinput_script_start();
             printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
                    nm ? nm : "(NO RECOMPILED BODY)");

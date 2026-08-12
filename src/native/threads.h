@@ -16,6 +16,18 @@ void guest_lock(void);
 void guest_unlock(void);
 
 /*
+ * A preemption point: if another guest thread is waiting for the lock, drop
+ * it, let the scheduler choose, and take it back. Called from the dispatch
+ * boundary every `quantum` crossings -- see threads.c for why a model that
+ * only releases at syscalls cannot schedule two spinning threads.
+ */
+void guest_quantum(void);
+void guest_quantum_configure(unsigned long crossings);
+void guest_quantum_from_env(void);
+unsigned long guest_quantum_size(void);
+unsigned long guest_quantum_count(void);
+
+/*
  * Release the lock, do something that blocks, take it back.
  *
  * Every blocking host call the guest makes has to go through one of these or

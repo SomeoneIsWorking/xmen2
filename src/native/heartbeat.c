@@ -1,4 +1,5 @@
 /* See heartbeat.h. */
+#include "threads.h"
 #include "heartbeat.h"
 
 #include "x86rt.h"
@@ -102,6 +103,23 @@ static void *heartbeat_thread(void *arg)
                                 "%lu pump(s) (+%lu), %d timer(s) live\n",
                         fire, fire - p_fire, pump, pump - p_pump, live);
             p_fire = fire; p_pump = pump;
+        }
+        {
+            /*
+             * Preemptions, HERE and not only at shutdown.
+             *
+             * Every run of this game is killed by a timeout, and the shutdown
+             * report is written from a signal handler that may be cut short --
+             * the first measurement of the quantum was lost exactly that way.
+             * A counter that can only be read on a clean exit cannot measure a
+             * program that never has one.
+             */
+            static unsigned long p_q;
+            unsigned long q = guest_quantum_count();
+            fprintf(stderr, "[HB]           %lu preemption(s) (+%lu) at a "
+                            "quantum of %lu crossing(s)\n",
+                    q, q - p_q, guest_quantum_size());
+            p_q = q;
         }
 
         if (first) {

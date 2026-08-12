@@ -5,6 +5,7 @@
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "threads.h"
 #include "guest_heap.h"
 
 #include <stdio.h>
@@ -148,6 +149,14 @@ int x86_native_call_at(uint32_t addr, CPU *C)
     if (!f) return 0;
     {
         uint32_t in = C->esp;
+        /*
+         * The preemption point. This is the boundary every dispatched call
+         * crosses, so it is the one place a quantum can be counted without a
+         * hook in every generated body -- and a guest thread that never
+         * dispatches is not running guest code at all.
+         */
+        static unsigned long since;
+        if (++since >= guest_quantum_size()) { since = 0; guest_quantum(); }
         g_cpu_current = C;
         f->fn(C);
         ring_note("guest", addr, 0, in, C->esp, 0);

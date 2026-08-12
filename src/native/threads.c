@@ -48,9 +48,11 @@
 
 #include <pthread.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#include <sched.h>
 
 /* ---- the global guest lock --------------------------------------------- */
 
@@ -59,14 +61,96 @@ static pthread_cond_t  g_cond = PTHREAD_COND_INITIALIZER;
 static unsigned long   g_contended;      /* times a take had to wait */
 static int             g_held;
 
+/*
+ * How many threads are BLOCKED on the lock right now, and how deeply this
+ * thread holds it. Both exist for guest_quantum below: a yield with nobody
+ * waiting is pure cost, and a yield from a nested hold would release a lock
+ * this thread's caller still believes it has.
+ */
+static volatile int    g_waiters;
+static __thread int    t_depth;
+static unsigned long   g_quanta;         /* yields actually performed */
+static unsigned long   g_quantum = 20000;
+
 void guest_lock(void)
 {
-    if (pthread_mutex_trylock(&g_lock) == 0) return;
+    if (pthread_mutex_trylock(&g_lock) == 0) { t_depth++; return; }
     g_contended++;
+    g_waiters++;
     pthread_mutex_lock(&g_lock);
+    g_waiters--;
+    t_depth++;
 }
 
-void guest_unlock(void) { pthread_mutex_unlock(&g_lock); }
+void guest_unlock(void) { t_depth--; pthread_mutex_unlock(&g_lock); }
+
+/*
+ * PREEMPTION BY QUANTUM.
+ *
+ * The lock was released only at named syscalls -- a wait, a Sleep, a join --
+ * which is enough for a guest thread that BLOCKS and useless for one that
+ * SPINS. The engine's movie rendezvous has both sides spinning (issue #57):
+ * one polls a flag, the other polls the decoder, and neither ever reaches a
+ * release point, so whichever took the lock first held it forever. That
+ * deadlocked about one run in six, and starved the cutscene to 1.7 frames a
+ * second on the runs that survived -- 654 real resumes over 380 seconds.
+ *
+ * A hand-off at ResumeThread was tried first and made it WORSE (recorded as a
+ * measured dead end in issue #57): handing the lock to a thread that also
+ * spins just moves the starvation. The fix has to be preemption that does not
+ * depend on either side cooperating, which is what a real OS provides and what
+ * this is: every `quantum` boundary crossings the running thread drops the
+ * lock, lets the scheduler pick, and takes it back.
+ *
+ * One guest thread still executes at a time -- that invariant is untouched,
+ * and everything built on it (the host D3D8 layer, the heap) is as safe as it
+ * was. What changes is only WHICH one, and how often that can change.
+ */
+void guest_quantum(void)
+{
+    if (t_depth != 1 || g_waiters == 0) return;
+    g_quanta++;
+    guest_unlock();
+    sched_yield();
+    guest_lock();
+}
+
+void guest_quantum_configure(unsigned long crossings)
+{
+    g_quantum = crossings;
+}
+
+/*
+ * X2_QUANTUM: boundary crossings between preemptions. 0 disables it, which is
+ * the CONTROL -- issue #57 is intermittent, so "it stopped happening" is only
+ * evidence next to a build where it still does.
+ */
+void guest_quantum_from_env(void)
+{
+    const char *e = getenv("X2_QUANTUM");
+    char *end;
+    unsigned long v;
+    if (!e || !*e) return;
+    v = strtoul(e, &end, 0);
+    if (*end) {
+        fprintf(stderr, "threads: X2_QUANTUM=%s is not a number; the default "
+                        "of %lu crossings is unchanged.\n", e, g_quantum);
+        return;
+    }
+    if (!v) {
+        g_quantum = 0u - 1ul;      /* effectively never */
+        printf("threads: X2_QUANTUM=0 -- preemption DISABLED. Two guest "
+               "threads that both spin cannot take turns; this is the control "
+               "for issue #57, not a configuration to run in.\n");
+        return;
+    }
+    g_quantum = v;
+    printf("threads: preemption quantum set to %lu boundary crossing(s).\n",
+           g_quantum);
+}
+
+unsigned long guest_quantum_size(void)   { return g_quantum; }
+unsigned long guest_quantum_count(void)  { return g_quanta; }
 
 /* Defined with the threads below; declared here because guest_blocking_end is
    where every blocked thread comes back through. */
@@ -500,6 +584,18 @@ void guest_thread_report(void)
     else
         printf("         the guest lock was contended %lu time(s)\n",
                g_contended);
+    /*
+     * Printed even when it is ZERO, with its denominator. "0 preemptions"
+     * and "preemption is not compiled in" are different facts and a line that
+     * only appears when the number is non-zero cannot tell them apart -- and
+     * zero here is itself the answer to "why did two spinning threads not take
+     * turns".
+     */
+    printf("         %lu preemption(s) at a quantum of %lu boundary "
+           "crossing(s)%s\n", g_quanta, g_quantum,
+           g_quanta ? "" : " -- NONE happened: either no second guest thread "
+                           "ever waited for the lock, or the quantum is "
+                           "larger than this run");
     fflush(stdout);
     (void)g_held;
 }
