@@ -905,17 +905,36 @@ void guest_thread_exit(uint32_t code)
  * followed -- and that report is itself a finding, because it says the layout
  * is wrong rather than pretending the list is empty.
  */
+static void tm_modules_dump(void)
+{
+    X86Module *m;
+    printf("          the ranges checked were the guest heap and these "
+           "modules:\n");
+    for (m = x86_modules(); m; m = m->next) {
+        uint32_t b = m->base ? *m->base : 0u;
+        printf("            %-20s base 0x%08x size 0x%08x%s\n",
+               m->name ? m->name : "(unnamed)", b, m->size,
+               b ? "" : "   <- never mapped, so nothing lands in it");
+    }
+}
+
 static int tm_readable(uint32_t a)
 {
-    uint32_t base, size;
-    X86Module *m;
+    uint32_t v;
+    /*
+     * "Is it MAPPED", not "is it in a range I know about".
+     *
+     * The range version of this refused a perfectly good pointer: the engine's
+     * igThreadManager lives at 0x00a8a098, which is past XMen2.exe's
+     * SizeOfImage (0x006744c6, confirmed against the PE) and outside the guest
+     * heap, because the engine allocates it from its OWN pool. A range check
+     * called that unreadable and the report said the layout must be wrong,
+     * which was a wrong conclusion drawn from a correct measurement of the
+     * wrong thing. process_vm_readv answers the question actually being asked
+     * and still cannot fault.
+     */
     if (a < 0x1000u) return 0;
-    if (guest_heap_contains(a, &base, &size)) return 1;
-    for (m = x86_modules(); m; m = m->next) {
-        uint32_t b = (uint32_t)(uintptr_t)m->base;
-        if (m->base && a >= b && a < b + m->size) return 1;
-    }
-    return 0;
+    return x86_peek32(a, &v);
 }
 
 void guest_engine_thread_report(void)
@@ -941,27 +960,32 @@ void guest_engine_thread_report(void)
         printf("\n");
         return;
     }
-    /* The slot address itself must be checked BEFORE it is read. It was not,
-       and that is the whole of why this faulted twice: a module mapped above
-       4 GB truncates to nonsense in a uint32_t, and the very first read went
-       to it. Checking mgr and skipping slot checked the second pointer and
-       trusted the first. */
+    /*
+     * X86Module::base is a POINTER TO the guest base, not the base.
+     *
+     * Every other user in this codebase writes `*m->base`; this one wrote
+     * `(uintptr_t)m->base` and so read the ADDRESS OF the generated module's
+     * `g_imgbase_libIGCore` global. That is a host address, which is why the
+     * report announced a module "mapped at 0x563f50c5b1c8, above 4 GB" -- a
+     * true statement about the wrong quantity -- and why an earlier run
+     * produced a plausible-looking 0x72080600 that was equally meaningless.
+     * The two crashes before that came from the same mistake reaching RD32.
+     */
     {
-        uintptr_t p = (uintptr_t)m->base
-                    + (uintptr_t)(IGCORE_THREADMGR_PTR - m->preferred);
-        if (p > 0xffffffffu) {
-            printf("  engine threads: libIGCore.dll is mapped at %p, which is "
-                   "above 4 GB, so its 32-bit guest addresses cannot be formed "
-                   "here. NOTHING was read.\n", (void *)m->base);
+        uint32_t imgbase = m->base ? *m->base : 0u;
+        if (!imgbase) {
+            printf("  engine threads: libIGCore.dll is registered but has no "
+                   "image base, so the host never mapped it. NOTHING was "
+                   "read.\n");
             return;
         }
-        slot = (uint32_t)p;
+        slot = imgbase + (IGCORE_THREADMGR_PTR - m->preferred);
     }
     if (!tm_readable(slot)) {
         printf("  engine threads: the singleton slot computes to 0x%08x, which "
-               "is not readable guest memory (libIGCore.dll mapped at %p, "
-               "linked for 0x%08x). NOTHING was read.\n",
-               slot, (void *)m->base, m->preferred);
+               "is not readable guest memory (libIGCore.dll at 0x%08x, linked "
+               "for 0x%08x). NOTHING was read.\n",
+               slot, *m->base, m->preferred);
         return;
     }
     mgr = RD32(slot);
@@ -977,6 +1001,7 @@ void guest_engine_thread_report(void)
                "which is in NEITHER the guest heap NOR any mapped module. Not "
                "followed. Either the manager is not what this diagnostic "
                "thinks it is, or the run caught it mid-teardown.\n", slot, mgr);
+        tm_modules_dump();
         return;
     }
     arr = RD32(mgr + 8u);

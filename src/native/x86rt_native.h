@@ -18,6 +18,7 @@
 #define X86RT_NATIVE_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 struct CPU;
 
@@ -36,7 +37,11 @@ typedef struct X86Import {
 
 typedef struct X86Module {
     const char     *name;
-    uint32_t       *base;            /* where it actually got mapped */
+    /* POINTER TO where it actually got mapped -- the generated module owns the
+       variable and the loader fills it in, so this is `*m->base`, never
+       `m->base`. Reading the pointer as the base gives a host address that can
+       look plausible; it cost two crashes in a shutdown diagnostic. */
+    uint32_t       *base;
     uint32_t        preferred;       /* what it was linked for */
     uint32_t        size;            /* SizeOfImage */
     const X86Fn    *fns;
@@ -113,6 +118,17 @@ uint32_t x86_native_thunk(const char *mod, const char *sym);
    Safe from a signal handler: reads via process_vm_readv, so an unmapped
    address reports itself instead of faulting again. */
 void x86_peek_report(void);
+
+/*
+ * Read guest memory WITHOUT dereferencing it: process_vm_readv returns an
+ * error for an unmapped address instead of raising a signal. Any diagnostic
+ * that follows a guest pointer should use this rather than a range check --
+ * the engine allocates from pools that are in neither the guest heap nor a
+ * mapped module, so "not in a range I know" and "not readable" are different
+ * answers, and only the second is the one that matters.
+ */
+int x86_peek(uint32_t addr, void *dst, size_t n);
+int x86_peek32(uint32_t addr, uint32_t *out);
 
 /* Guest registers at a fault: the file of the last body to cross the host
    boundary, which guest-to-guest calls share. */

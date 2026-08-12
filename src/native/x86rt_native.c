@@ -1056,6 +1056,19 @@ void x86_reached_report(void)
  * back as an error value, not as a signal.
  */
 /* One safe read; 0 on failure. Never dereferences -- see x86_peek_report. */
+int x86_peek(uint32_t addr, void *dst, size_t n)
+{
+    struct iovec loc, rem;
+    loc.iov_base = dst;                        loc.iov_len = n;
+    rem.iov_base = (void *)(uintptr_t)addr;    rem.iov_len = n;
+    return process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) == (ssize_t)n;
+}
+
+int x86_peek32(uint32_t addr, uint32_t *out)
+{
+    return x86_peek(addr, out, sizeof *out);
+}
+
 static int peek_read(uint32_t addr, void *dst, size_t n)
 {
     struct iovec loc, rem;
