@@ -38,3 +38,6 @@ tutorial's turret and guard scripts are all loaded, in
 Scripts/act0/tutorial/tutorial1/.
 
 See issue #62, whose measurements were all distorted by this.
+
+### Note (2026-08-13)
+Issue #62 now depends on this one. The lighting comparison needs a frame of the red chamber from well after the level has settled, and the party dies about a hundred frames in, so no such frame exists. A SetLight histogram over a whole run shows black lights are 151 of 130,738 calls -- they cluster at level entry -- which means the only frame that CAN currently be photographed may be showing the light table mid-population rather than the room's real lighting.

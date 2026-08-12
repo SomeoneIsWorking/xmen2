@@ -35,6 +35,7 @@ void d3d8_host_report(void)
     }
     printf("\n=== host Direct3D 8 ===\n");
     d3d8_device_report();
+    d3d8_setlight_report();
     d3d8_permissive_report();
     fflush(stdout);
 }

@@ -54,6 +54,8 @@ int  d3d8_host_enabled(void);
    run that presented no frames and a run whose renderer was never reached look
    identical on a black screen; this is what tells them apart. */
 void d3d8_host_report(void);
+/* Which engine call sites set lights, and how many were black. */
+void d3d8_setlight_report(void);
 
 /* The whole layer's self-test: ABI tables, vtable dispatch, the reporter, and
    the caps block. Returns the number of failures. */

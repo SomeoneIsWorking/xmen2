@@ -28,6 +28,7 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "win32_sdl.h"
+#include "x86rt_native.h"   /* naming a guest return address */
 
 #include "x86rt.h"
 
@@ -614,6 +615,13 @@ static void dev_SetMaterial(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
+/* SetLight call sites, for "who sets a black light" -- see dev_SetLight. */
+#define SETLIGHT_SITES 16
+static struct { uint32_t ra; unsigned long calls, black; }
+             g_setlight_site[SETLIGHT_SITES];
+static int   g_nsetlight_site;
+static unsigned long g_setlight_calls, g_setlight_black, g_setlight_over;
+
 static void dev_SetLight(D3D8Object *self, CPU *C)
 {
     uint32_t idx = d3d8_arg(C, 0);
@@ -649,9 +657,70 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
             fprintf(stderr, "\n");
         }
     }
+    /*
+     * WHO SETS A BLACK LIGHT.
+     *
+     * The red chamber arrives with four point lights that have real positions,
+     * real quadratic attenuation and a diffuse of exactly zero, which is not
+     * something a level author places -- so the colour is lost UPSTREAM of
+     * here and the question is which engine function hands it over. The word
+     * at ESP is the guest return address (every emitted call site pushes one),
+     * so grouping by it names the caller.
+     *
+     * Kept as a histogram rather than a line per call: this is called several
+     * times a frame for the life of the run. Reported at exit ALWAYS, at zero
+     * and with its denominator, so "no black light was ever set" and "the
+     * counter never ran" cannot look the same.
+     */
+    {
+        uint32_t ra = RD32(C->esp);
+        int black = l[1] == 0.0f && l[2] == 0.0f && l[3] == 0.0f;
+        int i;
+        g_setlight_calls++;
+        if (black) g_setlight_black++;
+        for (i = 0; i < g_nsetlight_site; i++)
+            if (g_setlight_site[i].ra == ra) break;
+        if (i == g_nsetlight_site && i < SETLIGHT_SITES)
+            g_setlight_site[g_nsetlight_site++].ra = ra;
+        if (i < SETLIGHT_SITES) {
+            g_setlight_site[i].calls++;
+            if (black) g_setlight_site[i].black++;
+        } else {
+            g_setlight_over++;
+        }
+    }
     memcpy(g_dev.state.light[idx], l, sizeof g_dev.state.light[0]);
     g_dev.state.light_set[idx] = 1;
     d3d8_ret(C, D3D_OK);
+}
+
+void d3d8_setlight_report(void)
+{
+    int i;
+    printf("  d3d8 SetLight: %lu call(s), %lu of them with a BLACK diffuse, "
+           "from %d distinct call site(s)%s\n",
+           g_setlight_calls, g_setlight_black, g_nsetlight_site,
+           g_setlight_over ? " (the site table is FULL -- some are not listed)"
+                           : "");
+    if (!g_setlight_calls) {
+        printf("         SetLight was never called, so this run says nothing "
+               "about where light colour comes from.\n");
+        return;
+    }
+    for (i = 0; i < g_nsetlight_site; i++) {
+        uint32_t ra = g_setlight_site[i].ra;
+        const char *nm = x86_native_name_at(ra);
+        X86Module *rm = x86_module_for(ra);
+        printf("         0x%08x  %lu call(s), %lu black", ra,
+               g_setlight_site[i].calls, g_setlight_site[i].black);
+        if (nm)
+            printf("  -- %s\n", nm);
+        else if (rm)
+            printf("  -- inside %s at guest 0x%08x, not at a named body\n",
+                   rm->name, rm->preferred + (ra - *rm->base));
+        else
+            printf("  -- in NO module; the return address is not trustworthy\n");
+    }
 }
 
 static void dev_LightEnable(D3D8Object *self, CPU *C)

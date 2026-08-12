@@ -540,3 +540,47 @@ the guest return address of every crossing, so grouping SetLight calls by
 caller names the engine function; from there the colour can be followed back to
 the light object it came from. The instruction not to touch the lighting maths
 still holds -- nothing downstream of SetLight is implicated by this dump.
+
+### Note (2026-08-13)
+## Black lights are RARE, and that changes what the A/B frame means
+
+A histogram of every SetLight call, grouped by the guest return address:
+
+    d3d8 SetLight: 130738 call(s), 151 of them with a BLACK diffuse,
+                   from 6 distinct call site(s)
+      0x1003d42e  28185 calls,   5 black      (all six sites are in libIGGfx,
+      0x1003d4de  28185 calls,   4 black       within 0x1003d42e..0x1003d9a8 --
+      0x1003d58e  28185 calls,   5 black       one applier, several call sites)
+      0x1003d675  10324 calls,   4 black
+      0x1003d75e  26498 calls, 129 black
+      0x1003d9a8   9361 calls,   4 black
+
+151 of 130,738 is one call in 866. The engine sets its lights EVERY FRAME, so
+if four lights were black for the life of the level the count would be in the
+tens of thousands. It is not. The black ones are set in a handful of frames.
+
+The frame the light dump described -- and the frame in the A/B image -- is a few
+frames after the level loaded. So what that dump caught may be the light table
+DURING POPULATION rather than the lighting the room is meant to have, and the
+red-with-black-characters picture may be a transient that a later frame would
+not show.
+
+That is a real weakening of the previous note and it is stated rather than
+quietly dropped: "four black point lights" is still exactly what was measured,
+but "the level's lights are black" no longer follows from it.
+
+## Why a later frame cannot be photographed yet
+
+The party dies about a hundred frames after the level loads (issue #63), so
+there IS no later frame of the room to compare. #63 is now on the critical path
+for this issue, not a side observation.
+
+## What is still solid
+
+  - The like-for-like frame exists and the two builds draw the same geometry
+    from the same camera with the same dialog.
+  - The D3DLIGHT8 layout is correct (the 1.8446743e19 range is D3D8's own
+    D3DLIGHT_RANGE_MAX, sqrt(FLT_MAX)).
+  - Cube sampling is implemented and is not why characters are black.
+  - Whatever sets a black light does it from libIGGfx's own light applier, so
+    the port's D3D8 layer is passing on what the engine computed.
