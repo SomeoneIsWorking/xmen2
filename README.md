@@ -122,7 +122,27 @@ claim over the game.
 
 ## Current state
 
-Facts established so far (see `scratch/logs/`):
+**The game runs, natively, and plays.** One headless run goes all the way
+round: main menu → New Game → difficulty → the story cutscene → a level loaded,
+rendered and simulated → the party dies with nobody driving them → the death
+dialog → back to a fully rendered main menu. No Wine, no original D3D, and no
+original machine code — the native build has no hybrid fallback, so every
+instruction executed came from the translator. `tools/smoke_loop.sh` drives
+that run and checks it; `tools/smoke_loop.sh --selftest` proves its checks can
+fail and needs neither the game nor a GPU.
+
+What that does *not* mean. It is not playable in the sense that matters: a
+person cannot yet pick it up and play, because the frame rate is ~30 fps
+headless with the frame cap removed, the three shipped features are not built,
+and nobody has driven a character with a controller through a level. The
+renderer accepts every draw the engine issues and reads every render state the
+engine sets except fog and specular, which this title disables — but "nothing
+is refused" is a statement about coverage, not about the picture being right.
+See `docs/codemap.md` for the honest per-subsystem status and
+`docs/info/claims/` for what has been proven, each with the observation that
+would falsify it.
+
+Earlier facts established during RE (see `scratch/logs/`):
 - Input layer is DirectInput 7 only (`DINPUT.dll::DirectInputCreateEx`); joystick
   enumeration callback `createControllers @ 0x100052a0`; no hotplug support shipped.
 - `BUTTONS` enum + `ControllerType` meta-enum extracted from `libIGDisplay.dll`.
