@@ -155,8 +155,6 @@ int x86_native_call_at(uint32_t addr, CPU *C)
          * hook in every generated body -- and a guest thread that never
          * dispatches is not running guest code at all.
          */
-        static unsigned long since;
-        if (++since >= guest_quantum_size()) { since = 0; guest_quantum(); }
         g_cpu_current = C;
         f->fn(C);
         ring_note("guest", addr, 0, in, C->esp, 0);
@@ -468,6 +466,21 @@ static unsigned long g_ring_n;
  * point of a ring this size.
  */
 unsigned long x86_crossings(void) { return g_ring_n; }
+
+/*
+ * The preemption point's budget and its action -- see X86_ENTER_FN in x86rt.h
+ * for why it lives in every body rather than at the dispatch boundary.
+ *
+ * The initial value is the default quantum. X2_QUANTUM=0 makes
+ * guest_quantum_size() enormous, so the next re-arm effectively switches this
+ * off, which is exactly what the control is meant to do.
+ */
+unsigned long x86_preempt_budget = 20000;
+void x86_preempt_now(void)
+{
+    x86_preempt_budget = guest_quantum_size();
+    guest_quantum();
+}
 
 const char *x86_crossings_what(void)
 {

@@ -2494,6 +2494,15 @@ __attribute__((naked)) void x86_enter_tramp(void)
         "jmp *%edx\\n\\t");
 }
 
+/* The preemption point's budget (X86_ENTER_FN in x86rt.h fires it in every
+   recompiled body). This runtime is the Wine/DLL path, which has no guest
+   scheduler -- Windows schedules the real threads -- so the hook only re-arms.
+   It is defined rather than compiled out so that the generated bodies are
+   IDENTICAL between this path and the native one; a body that differs between
+   the two is a body whose evidence does not transfer. */
+unsigned long x86_preempt_budget = 20000;
+void x86_preempt_now(void) { x86_preempt_budget = 20000; }
+
 /* A call target inside the region Ghidra could not resolve into functions.
    Aborting names the address so it can be added to the analysis, rather than
    letting an unresolved target link to something plausible. */

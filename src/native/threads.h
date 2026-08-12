@@ -10,8 +10,10 @@
 
 #include <stdint.h>
 
-/* Take/release the global guest lock. The main thread takes it before it
-   enters the guest and never lets go except at a release point. */
+/* Bookkeeping, not a mutex: guest threads are coroutines on ONE host thread,
+   so there is nothing to lock. The depth is counted because preemption must
+   not happen from a nested hold. The call sites are unchanged and still mark
+   exactly the right places. */
 void guest_lock(void);
 void guest_unlock(void);
 
@@ -42,23 +44,27 @@ uint32_t guest_current_tid(void);
 void guest_thread_state_report(void);
 
 /*
- * Release the lock, do something that blocks, take it back.
- *
- * Every blocking host call the guest makes has to go through one of these or
- * it stops every other guest thread for the duration -- including the one that
- * would have signalled it.
+ * Mark a blocking HOST call, so the heartbeat can name what a stalled thread
+ * is in. It cannot let another guest thread run -- one host thread runs them
+ * all -- so a host call that blocks blocks everything, and that is stated here
+ * rather than implied. Guest waits go through guest_cond_wait_ms and Sleep
+ * through guest_sleep_ms; both yield properly.
  */
 void guest_blocking_begin(void);
 void guest_blocking_end(void);
 
 /*
- * Wait on the guest condition variable, holding the guest lock.
- *
- * Every guest wait goes through this: it releases the lock while it sleeps, so
- * the thread that would signal can run, and re-takes it before returning. ms
- * of 0xFFFFFFFF is INFINITE.
+ * Wait: park this guest thread and let the scheduler run another. Returns when
+ * something broadcasts or the deadline passes. ms of 0xFFFFFFFF is INFINITE.
  */
 void guest_cond_wait_ms(uint32_t ms);
+
+/*
+ * Sleep. Sleep(0) gives up the rest of this thread's turn, which is what Win32
+ * means by it; anything longer parks with a deadline so the other guest
+ * threads run for its duration instead of the whole process stopping.
+ */
+void guest_sleep_ms(uint32_t ms);
 
 /* Wake everything waiting. Called whenever a guest-visible object is
    signalled -- a thread exiting, an event set, a semaphore released. */

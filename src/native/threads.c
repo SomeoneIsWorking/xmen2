@@ -1,43 +1,55 @@
 /*
- * Guest threads, under ONE global lock.
+ * Guest threads, as COROUTINES on one host thread.
  *
  * libCriMovie asks for a decoding thread before it will play the intro movie
  * (issue #43), and every subsystem after it -- streaming sound, background
- * loading -- will ask for the same thing. So this is the general answer rather
+ * loading -- asks for the same thing. So this is the general answer rather
  * than a way around one caller.
  *
- * ONE LOCK, AND WHY. The register file is a plain struct on the C stack, so it
- * is already per-thread and costs nothing. Everything ELSE this host owns is
- * single-threaded by an assumption nobody wrote down: the kernel32 handle
- * table, the guest heap's free lists, the VirtualAlloc reservation table, the
- * D3D8 object and resource tables, the boundary ring, the CRT's own statics.
- * Auditing all of that at once is how a threading change becomes a month of
- * heisenbugs.
+ * WHY ONE HOST THREAD. Exactly one guest thread has always executed at a time
+ * here: the kernel32 handle table, the guest heap's free lists, the D3D8
+ * object tables, the boundary ring and the CRT's statics are all
+ * single-threaded by an assumption nobody wrote down, and auditing that at
+ * once is how a threading change becomes a month of heisenbugs. The old
+ * implementation got the invariant with a pthread per guest thread and a
+ * global mutex -- which meant the HOST scheduler decided which guest thread
+ * ran next, and `sched_yield` decided when. That is where the intermittency
+ * came from: the same run took a different schedule every time, and issue #57
+ * spent three sessions producing wrong attributions because of it.
  *
- * So exactly one guest thread runs at a time, and the lock is released only at
- * points where the guest is not executing:
+ * So the threads are ucontext coroutines and the schedule is OURS:
  *
- *   Sleep                      - the whole point of it is to let others run
- *   WaitForSingleObject/...    - and it must, or the signaller can never run
- *   joining a thread           - same
+ *   - one host thread runs every guest thread, in turn;
+ *   - a switch happens only at points named in this file;
+ *   - the next thread is picked round-robin, so the same run makes the same
+ *     choices on every machine.
  *
- * That is a real threading model: threads exist, they run guest code, they
- * block and are woken, and the things they synchronise on work. What it is NOT
- * is parallel -- two guest threads never execute at once, so a title that
- * expects a decoder to keep up while the main thread spins WITHOUT sleeping or
- * waiting would starve it. If that happens it shows up as a stall, and the fix
- * is to narrow the lock around a named subsystem with evidence, not to widen it
- * everywhere on a guess.
+ * Nothing about the one-at-a-time invariant changed, so everything built on it
+ * is exactly as safe as it was. What changed is that the schedule is now a
+ * property of this program rather than of the host's scheduler, and a stall is
+ * reproducible instead of being a coin toss.
  *
- * PER-THREAD STATE that is not the register file:
- *   - FS base. FS:[0] is the SEH chain head and every recompiled prologue
- *     writes it. A shared g_fsbase would have two threads' exception chains
- *     overwriting each other, so it is __thread and each guest thread gets its
- *     own TIB page.
- *   - The TLS slots. TlsGetValue/TlsSetValue are per-thread BY DEFINITION;
- *     sharing them is not an approximation, it is the opposite of what they
- *     mean.
- *   - The guest stack. Each thread gets its own out of the guest arena.
+ * PREEMPTION IS STILL REQUIRED, and this is why. libCriMovie's rendezvous, read
+ * out of the guest (issue #57 has the addresses): the decoder loop works until
+ * it runs dry and only then parks itself with SuspendThread; its partner sets a
+ * flag and SPINS up to 3,000,000 times calling ResumeThread until the decoder
+ * clears it. BOTH sides spin and neither blocks. Two hand-off designs were
+ * measured and both made it worse. What schedules two spinners is preemption
+ * neither side has to cooperate with: guest_quantum(), called from the dispatch
+ * boundary every N crossings.
+ *
+ * PER-THREAD STATE that is not the register file. The register file is a plain
+ * struct on the C stack, so it comes free with the coroutine's own stack. The
+ * rest has to be SWITCHED explicitly, because a coroutine cannot use __thread
+ * for it -- every guest thread is the same host thread now, so a __thread
+ * variable would be one variable shared by all of them:
+ *   - FS/GS base. FS:[0] is the SEH chain head and every recompiled prologue
+ *     writes it; sharing it would have two threads' exception chains
+ *     overwriting each other. Each thread gets its own TIB page.
+ *   - The TLS slots. TlsGetValue/TlsSetValue are per-thread BY DEFINITION.
+ *     kernel32 keeps one array per slot and this file selects it.
+ *   - The guest stack, out of the guest arena, and the HOST stack the
+ *     recompiled C runs on.
  */
 #include "threads.h"
 
@@ -45,87 +57,326 @@
 #include "x86rt_native.h"
 #include "guest_heap.h"
 #include "pe_map.h"
+#include "winmm.h"
 
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <time.h>
-#include <sched.h>
+#include <ucontext.h>
+#include <unistd.h>
+#include <sys/mman.h>
+
+/* kernel32 owns the handle table and the TLS arrays; these are the hooks. */
+uint32_t k32_handle_for_thread(void *rec);
+void     k32_handle_thread_done(uint32_t handle);
+void     k32_tls_switch(int slot);
 
 /* ---- what each guest thread is doing ------------------------------------ */
 
 enum { TS_NEW = 0, TS_RUNNING, TS_LOCK, TS_COND, TS_BLOCKING, TS_SUSPENDED,
        TS_DONE };
 static const char *const TS_NAME[] = {
-    "new", "running guest code", "waiting for the guest lock",
+    "new", "running guest code", "runnable, waiting its turn",
     "in a WAIT (condition variable)", "in a blocking host call",
     "SUSPENDED", "finished"
 };
-static void state_set(int st);
 
-/* ---- the global guest lock --------------------------------------------- */
-
-static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t  g_cond = PTHREAD_COND_INITIALIZER;
-static unsigned long   g_contended;      /* times a take had to wait */
-static int             g_held;
+#define MAX_THREADS   16
+#define MAIN_SLOT     MAX_THREADS        /* the main thread's TLS slot */
+#define TIB_BYTES     0x1000u
+#define STACK_DEFAULT (256u * 1024u)
 
 /*
- * How many threads are BLOCKED on the lock right now, and how deeply this
- * thread holds it. Both exist for guest_quantum below: a yield with nobody
- * waiting is pure cost, and a yield from a nested hold would release a lock
- * this thread's caller still believes it has.
+ * The HOST stack a guest thread's recompiled C runs on.
+ *
+ * Nothing to do with the guest's own stack: this is the C stack for the
+ * translated bodies, which nest as deeply as the guest's call graph does. 8 MB
+ * is what the host gives its main thread, and it is reserved rather than
+ * committed (MAP_NORESERVE), so sixteen of them cost address space and not
+ * memory. A PROT_NONE page at the low end turns an overflow into a fault at
+ * the point of overflow instead of into corruption of whatever is below.
  */
-static volatile int    g_waiters;
-static __thread int    t_depth;
-static unsigned long   g_quanta;         /* yields actually performed */
-static unsigned long   g_quantum = 20000;
+#define HSTACK_BYTES  (8u * 1024u * 1024u)
+#define HSTACK_GUARD  0x1000u
 
+typedef struct {
+    int       used, finished, suspended;
+    int       slot;              /* index in g_thread; also the TLS slot */
+    int       is_main;
+    uint32_t  handle;            /* the kernel32 handle the guest holds */
+    uint32_t  tid;
+    uint32_t  start, arg;
+    uint32_t  stack_base, stack_bytes;
+    uint32_t  tib;
+    uint32_t  exit_code;
+    /* Per-thread, because the totals were misleading in exactly the way that
+       matters: a run with 3,000,045 resumes and 43 suspends reads as a wildly
+       active suspend/resume protocol, and is in fact one thread being resumed
+       in a spin while ANOTHER sits parked and is never named. */
+    unsigned long n_suspend, n_resume, n_ran;
+    int       reaped;            /* its handle was closed and its memory freed */
+    /*
+     * WHAT THIS THREAD IS DOING RIGHT NOW, and since when.
+     *
+     * Three mechanisms were proposed for issue #57's intermittent stall and
+     * all three were guesses -- a hand-off, a quantum, a lost pulse -- because
+     * nothing here could answer "what is the other thread blocked ON?". The
+     * totals could not: a thread parked in a condition wait and a thread
+     * spinning in guest code both show up as "1 still running".
+     */
+    int          state;
+    double       state_since;
+
+    /* ---- the coroutine ---- */
+    ucontext_t   ctx;
+    void        *hstack;
+    int          waiting;        /* in guest_cond_wait_ms */
+    double       wake_at;        /* 0 = no deadline (INFINITE) */
+    int          depth;          /* guest_lock nesting, for guest_quantum */
+    uint32_t     fsbase, gsbase; /* saved across a switch */
+} GuestThread;
+
+static GuestThread  g_thread[MAX_THREADS + 1];   /* +1: the main thread */
+static GuestThread *g_self;                      /* the one running NOW */
+static ucontext_t   g_sched_ctx;
+static char         g_sched_stack[64 * 1024];
+static int          g_sched_ready;
+static int          g_rr;                        /* round-robin cursor */
+
+/* Declared in x86rt.h and __thread there: they are switched by hand below,
+   because on one host thread __thread does not separate guest threads. */
+extern __thread uint32_t g_fsbase, g_gsbase;
+
+static double now_s(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+static void state_set(int st)
+{
+    if (!g_self) return;
+    if (g_self->state == st) return;
+    g_self->state = st;
+    g_self->state_since = now_s();
+}
+
+/*
+ * WHICH guest thread is running, in the guest's own numbering.
+ *
+ * GetCurrentThreadId used to return the HOST thread id, which was harmless
+ * only for as long as nothing compared two of them. Critical sections do
+ * exactly that -- an owner field is a thread id -- and now that every guest
+ * thread IS the same host thread, gettid() would give them all the same
+ * answer. This is the number that separates them.
+ */
+#define MAIN_TID 999u
+uint32_t guest_current_tid(void)
+{
+    return g_self ? g_self->tid : MAIN_TID;
+}
+
+/* ---- the scheduler ------------------------------------------------------ */
+
+static unsigned long g_switches;         /* coroutine switches performed */
+static unsigned long g_quanta;           /* preemptions actually taken */
+static unsigned long g_idle_spins;       /* scheduler passes with nobody to run */
+static unsigned long g_quantum = 20000;
+static unsigned long g_created, g_exited, g_suspends, g_resumes, g_reaped;
+static unsigned long g_resume_unknown, g_suspend_unknown, g_resume_noop;
+static uint32_t g_next_tid = 1000;
+
+static int runnable(const GuestThread *t)
+{
+    return t->used && !t->finished && !t->suspended && !t->waiting;
+}
+
+/* How many OTHER threads could run right now. guest_quantum uses it: a
+   preemption with nobody to preempt to is pure cost. */
+static int others_runnable(void)
+{
+    int i, n = 0;
+    for (i = 0; i <= MAX_THREADS; i++)
+        if (&g_thread[i] != g_self && runnable(&g_thread[i])) n++;
+    return n;
+}
+
+/* A timed wait whose deadline has passed becomes runnable again. Returns the
+   earliest deadline still outstanding, or 0 if none is. */
+static double expire_waits(double now)
+{
+    int i;
+    double next = 0.0;
+    for (i = 0; i <= MAX_THREADS; i++) {
+        GuestThread *t = &g_thread[i];
+        if (!t->used || t->finished || !t->waiting || t->wake_at == 0.0) continue;
+        if (now >= t->wake_at) { t->waiting = 0; t->wake_at = 0.0; continue; }
+        if (next == 0.0 || t->wake_at < next) next = t->wake_at;
+    }
+    return next;
+}
+
+static void sched_loop(void);
+
+/* Give up the host thread. Returns when the scheduler picks this thread
+   again. */
+static void sched_switch(void)
+{
+    GuestThread *me = g_self;
+    me->fsbase = g_fsbase;
+    me->gsbase = g_gsbase;
+    g_switches++;
+    swapcontext(&me->ctx, &g_sched_ctx);
+}
+
+/* Make `t` the running thread. Called only from the scheduler context. */
+static void sched_run(GuestThread *t)
+{
+    g_self   = t;
+    g_fsbase = t->fsbase;
+    g_gsbase = t->gsbase;
+    k32_tls_switch(t->slot);
+    t->n_ran++;
+    if (t->state == TS_LOCK) state_set(TS_RUNNING);
+    swapcontext(&g_sched_ctx, &t->ctx);
+}
+
+/*
+ * The scheduler.
+ *
+ * Round-robin from wherever it last stopped, so a thread that yields cannot
+ * immediately be picked again while another is ready -- the schedule is a
+ * rotation, not a preference. Deterministic on purpose: given the same
+ * sequence of yields it makes the same sequence of choices, on every machine
+ * and every run, which is what makes a stall reproducible.
+ *
+ * When NOTHING is runnable it does not spin the CPU: it pumps the multimedia
+ * timers (whose callbacks are what a sleeping guest is usually waiting for)
+ * and sleeps to the earliest deadline. With no deadline at all every guest
+ * thread is in an INFINITE wait or suspended, which is a real deadlock -- and
+ * it is REPORTED, repeatedly and with every thread's state, rather than
+ * becoming a silent hang that a harness timeout eventually ends.
+ */
+static void sched_loop(void)
+{
+    double stuck_since = 0.0, last_report = 0.0;
+    for (;;) {
+        double now = now_s(), next;
+        int i, picked = 0;
+
+        next = expire_waits(now);
+        for (i = 1; i <= MAX_THREADS + 1; i++) {
+            GuestThread *t = &g_thread[(g_rr + i) % (MAX_THREADS + 1)];
+            if (!runnable(t)) continue;
+            g_rr = t->slot;
+            picked = 1;
+            stuck_since = 0.0;
+            sched_run(t);
+            break;
+        }
+        if (picked) continue;
+
+        /* Nobody to run. */
+        g_idle_spins++;
+        winmm_timers_pump();
+        if (next != 0.0) {
+            double dt = next - now_s();
+            if (dt > 0.0) usleep((useconds_t)((dt > 0.002 ? 0.002 : dt) * 1e6));
+            continue;
+        }
+        if (stuck_since == 0.0) { stuck_since = now; last_report = 0.0; }
+        if (now - stuck_since > 5.0 && now - last_report > 15.0) {
+            last_report = now;
+            fprintf(stderr,
+                "threads: DEADLOCK -- for %.0fs not one guest thread has been "
+                "runnable. Every one is suspended or in a wait with no "
+                "deadline, so nothing can wake anything. What each is doing:\n",
+                now - stuck_since);
+            guest_thread_state_report();
+            fflush(stderr);
+        }
+        usleep(1000);
+    }
+}
+
+/*
+ * The main thread joins the schedule.
+ *
+ * It is a guest thread like the others -- it runs guest code, it waits, it can
+ * be preempted -- so it gets a slot rather than being a special case that
+ * every check has to remember. It has no coroutine stack of its own because it
+ * is already running on the host's.
+ */
+static void sched_attach_main(void)
+{
+    GuestThread *t = &g_thread[MAIN_SLOT];
+    if (t->used) return;
+    memset(t, 0, sizeof *t);
+    t->used = 1;
+    t->is_main = 1;
+    t->slot = MAIN_SLOT;
+    t->tid = MAIN_TID;
+    t->state = TS_RUNNING;
+    t->state_since = now_s();
+    g_self = t;
+    g_rr = MAIN_SLOT;
+    if (!g_sched_ready) {
+        getcontext(&g_sched_ctx);
+        g_sched_ctx.uc_stack.ss_sp   = g_sched_stack;
+        g_sched_ctx.uc_stack.ss_size = sizeof g_sched_stack;
+        g_sched_ctx.uc_link          = NULL;
+        makecontext(&g_sched_ctx, sched_loop, 0);
+        g_sched_ready = 1;
+    }
+}
+
+/*
+ * guest_lock / guest_unlock: BOOKKEEPING, not a mutex.
+ *
+ * There is nothing to lock any more -- one host thread runs every guest thread
+ * and a switch happens only where this file says. The depth is still counted
+ * because guest_quantum needs it: preempting from a nested hold would return
+ * to a caller that believed it was still the running thread.
+ *
+ * The names are kept because they mark exactly the right places, and every
+ * call site's reasoning ("do not let another guest thread in here") is still
+ * the reasoning that applies.
+ */
 void guest_lock(void)
 {
-    if (pthread_mutex_trylock(&g_lock) == 0) { t_depth++; state_set(TS_RUNNING); return; }
-    g_contended++;
-    g_waiters++;
-    state_set(TS_LOCK);
-    pthread_mutex_lock(&g_lock);
-    g_waiters--;
-    t_depth++;
+    if (!g_self) sched_attach_main();
+    g_self->depth++;
     state_set(TS_RUNNING);
 }
 
-void guest_unlock(void) { t_depth--; pthread_mutex_unlock(&g_lock); }
+void guest_unlock(void)
+{
+    if (g_self && g_self->depth > 0) g_self->depth--;
+}
 
 /*
  * PREEMPTION BY QUANTUM.
  *
- * The lock was released only at named syscalls -- a wait, a Sleep, a join --
- * which is enough for a guest thread that BLOCKS and useless for one that
- * SPINS. The engine's movie rendezvous has both sides spinning (issue #57):
- * one polls a flag, the other polls the decoder, and neither ever reaches a
- * release point, so whichever took the lock first held it forever. That
- * deadlocked about one run in six, and starved the cutscene to 1.7 frames a
- * second on the runs that survived -- 654 real resumes over 380 seconds.
+ * A model that switches only at named syscalls is enough for a guest thread
+ * that BLOCKS and useless for one that SPINS -- and libCriMovie's movie
+ * rendezvous has BOTH sides spinning (issue #57 has the guest addresses and
+ * the two failed hand-off designs). So the running thread gives up its turn
+ * every `quantum` boundary crossings whether it cooperates or not.
  *
- * A hand-off at ResumeThread was tried first and made it WORSE (recorded as a
- * measured dead end in issue #57): handing the lock to a thread that also
- * spins just moves the starvation. The fix has to be preemption that does not
- * depend on either side cooperating, which is what a real OS provides and what
- * this is: every `quantum` boundary crossings the running thread drops the
- * lock, lets the scheduler pick, and takes it back.
- *
- * One guest thread still executes at a time -- that invariant is untouched,
- * and everything built on it (the host D3D8 layer, the heap) is as safe as it
- * was. What changes is only WHICH one, and how often that can change.
+ * Not from a nested hold, and not when nobody else could run: the first would
+ * surprise a caller, the second is pure cost.
  */
 void guest_quantum(void)
 {
-    if (t_depth != 1 || g_waiters == 0) return;
+    if (!g_self || g_self->depth != 1) return;
+    if (!others_runnable()) return;
     g_quanta++;
-    guest_unlock();
-    sched_yield();
-    guest_lock();
+    state_set(TS_LOCK);                  /* runnable, waiting its turn */
+    sched_switch();
+    state_set(TS_RUNNING);
 }
 
 void guest_quantum_configure(unsigned long crossings)
@@ -135,8 +386,8 @@ void guest_quantum_configure(unsigned long crossings)
 
 /*
  * X2_QUANTUM: boundary crossings between preemptions. 0 disables it, which is
- * the CONTROL -- issue #57 is intermittent, so "it stopped happening" is only
- * evidence next to a build where it still does.
+ * the CONTROL -- a scheduling change has to be measured against a build where
+ * the mechanism is off, or "it stopped happening" is not evidence.
  */
 void guest_quantum_from_env(void)
 {
@@ -165,15 +416,22 @@ void guest_quantum_from_env(void)
 unsigned long guest_quantum_size(void)   { return g_quantum; }
 unsigned long guest_quantum_count(void)  { return g_quanta; }
 
-
-/* Defined with the threads below; declared here because guest_blocking_end is
-   where every blocked thread comes back through. */
 static void guest_suspend_point(void);
 
-void guest_blocking_begin(void) { state_set(TS_BLOCKING); guest_unlock(); }
+/*
+ * A blocking HOST call -- one this host makes on the guest's behalf that is
+ * not a guest wait.
+ *
+ * Under the coroutine model this can no longer let another guest thread run,
+ * and saying so is the point of the comment: a host call that blocks blocks
+ * EVERYTHING. The state is still marked, so the heartbeat can name it, and
+ * Sleep -- the only caller there was -- now goes through guest_sleep_ms, which
+ * yields properly instead of stopping the world for its duration.
+ */
+void guest_blocking_begin(void) { state_set(TS_BLOCKING); }
 void guest_blocking_end(void)
 {
-    guest_lock();
+    state_set(TS_RUNNING);
     /* A thread that was SUSPENDED while it sat in a wait must not carry on
        executing guest code just because the wait ended. This is the one place
        every blocked thread comes back through, which is why the check lives
@@ -181,107 +439,61 @@ void guest_blocking_end(void)
     guest_suspend_point();
 }
 
-/* The condition variable every guest wait uses, so a signal wakes whoever is
-   waiting whatever they are waiting FOR. One condvar rather than one per
-   object: waits here are rare and a spurious wake costs a re-check, while a
-   condvar per handle would have to be created and destroyed with the handle. */
+/*
+ * The wait every guest wait goes through: park this thread, let the scheduler
+ * pick another, come back when something broadcasts or the deadline passes.
+ *
+ * One wait queue rather than one per object: waits here are rare and a
+ * spurious wake costs a re-check, while a queue per handle would have to be
+ * created and destroyed with the handle.
+ */
 void guest_cond_wait_ms(uint32_t ms)
 {
+    GuestThread *t = g_self;
+    if (!t) { sched_attach_main(); t = g_self; }
+    t->waiting = 1;
+    t->wake_at = (ms == 0xFFFFFFFFu) ? 0.0 : now_s() + (double)ms / 1000.0;
     state_set(TS_COND);
-    if (ms == 0xFFFFFFFFu) {
-        pthread_cond_wait(&g_cond, &g_lock);
-        state_set(TS_RUNNING);
-        return;
-    }
-    {
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec  += (time_t)(ms / 1000u);
-        ts.tv_nsec += (long)(ms % 1000u) * 1000000L;
-        if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
-        pthread_cond_timedwait(&g_cond, &g_lock, &ts);
-    }
+    sched_switch();
+    t->waiting = 0;
+    t->wake_at = 0.0;
     state_set(TS_RUNNING);
 }
 
-void guest_cond_broadcast(void) { pthread_cond_broadcast(&g_cond); }
-
-/* ---- per-thread state --------------------------------------------------- */
-
-/* Declared in x86rt.h and __thread there too: every recompiled body's SEH
-   prologue writes FS:[0], so this cannot be shared. */
-extern __thread uint32_t g_fsbase;
-
-/* ---- the threads -------------------------------------------------------- */
-
-#define MAX_THREADS   16
-#define TIB_BYTES     0x1000u
-#define STACK_DEFAULT (256u * 1024u)
-
-typedef struct {
-    int       used, finished, suspended;
-    pthread_t th;
-    uint32_t  handle;            /* the kernel32 handle the guest holds */
-    uint32_t  tid;
-    uint32_t  start, arg;
-    uint32_t  stack_base, stack_bytes;
-    uint32_t  tib;
-    uint32_t  exit_code;
-    /* Per-thread, because the totals were misleading in exactly the way that
-       matters: a run with 3,000,045 resumes and 43 suspends reads as a wildly
-       active suspend/resume protocol, and is in fact one thread being resumed
-       in a spin while ANOTHER sits parked and is never named. */
-    unsigned long n_suspend, n_resume;
-    int       reaped;            /* its handle was closed and its memory freed */
-    /*
-     * WHAT THIS THREAD IS DOING RIGHT NOW, and since when.
-     *
-     * Three mechanisms were proposed for issue #57's intermittent stall and
-     * all three were guesses -- a hand-off, a quantum, a lost pulse -- because
-     * nothing here could answer "what is the other thread blocked ON?". The
-     * totals could not: a thread parked in a condition wait and a thread
-     * spinning in guest code both show up as "1 still running".
-     */
-    int          state;
-    double       state_since;
-} GuestThread;
-
-
-static GuestThread g_thread[MAX_THREADS];
-/* The slot of the thread running on THIS host thread; NULL on the main one,
-   which has no slot. Declared here rather than beside thread_main because the
-   state helpers below need it. */
-static __thread GuestThread *g_self;
-
-static double now_s(void)
+/* Wake everything waiting. Called whenever a guest-visible object is
+   signalled -- a thread exiting, an event set, a critical section left. Does
+   NOT switch: the caller is in the middle of guest code and Win32's SetEvent
+   does not yield either. */
+void guest_cond_broadcast(void)
 {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+    int i;
+    for (i = 0; i <= MAX_THREADS; i++)
+        if (g_thread[i].used && g_thread[i].waiting) {
+            g_thread[i].waiting = 0;
+            g_thread[i].wake_at = 0.0;
+        }
 }
 
 /*
- * WHICH guest thread is running, in the guest's own numbering.
+ * Sleep.
  *
- * GetCurrentThreadId used to return the HOST thread id, which was harmless
- * only for as long as nothing compared two of them. Critical sections do
- * exactly that -- an owner field is a thread id -- so the guest number is the
- * one that has to come out here. The main thread has no slot in the table and
- * gets the id below g_next_tid's base, so every thread including it has one
- * and no two share.
+ * Sleep(0) is Win32's "give up the rest of my turn" and becomes exactly that.
+ * Anything longer parks with a deadline, so the other guest threads run for
+ * its duration instead of the whole process stopping -- which is what a
+ * usleep() here used to do.
  */
-#define MAIN_TID 999u
-uint32_t guest_current_tid(void)
+void guest_sleep_ms(uint32_t ms)
 {
-    return g_self ? g_self->tid : MAIN_TID;
-}
-
-static void state_set(int st)
-{
-    if (!g_self) return;
-    if (g_self->state == st) return;
-    g_self->state = st;
-    g_self->state_since = now_s();
+    if (!g_self) sched_attach_main();
+    if (ms == 0) {
+        if (!others_runnable()) return;
+        state_set(TS_LOCK);
+        sched_switch();
+        state_set(TS_RUNNING);
+        return;
+    }
+    guest_cond_wait_ms(ms);
+    guest_suspend_point();
 }
 
 /*
@@ -299,60 +511,29 @@ void guest_thread_state_report(void)
        between a poll loop and a park and is the thing worth seeing. */
     double t = now_s();
     int i, live = 0;
-    for (i = 0; i < MAX_THREADS; i++) {
+    for (i = 0; i <= MAX_THREADS; i++) {
         GuestThread *g = &g_thread[i];
         if (!g->used || g->finished) continue;
         live++;
-        fprintf(stderr, "[HB]           tid %u start 0x%08x: %s for %.1fs\n",
-                g->tid, g->start,
+        fprintf(stderr, "[HB]           %s%u start 0x%08x: %s for %.1fs%s\n",
+                g->is_main ? "MAIN tid " : "tid ", g->tid, g->start,
                 TS_NAME[g->state < 0 || g->state > TS_DONE ? 0 : g->state],
-                t - g->state_since);
+                t - g->state_since,
+                g == g_self ? "  <- running" : "");
     }
     if (!live)
-        fprintf(stderr, "[HB]           no live guest thread other than the "
-                        "main one, which is not in this table\n");
+        fprintf(stderr, "[HB]           no live guest thread at all, not even "
+                        "the main one -- which cannot happen while this line "
+                        "is being printed, so the table is wrong\n");
 }
-static unsigned long g_created, g_exited, g_suspends, g_resumes, g_reaped;
-/*
- * Resumes and suspends that named NO live thread.
- *
- * The count that mattered in issue #50 was invisible: a ResumeThread whose
- * handle matches a thread that has since been reaped simply returns -1, and a
- * spin loop doing that eighteen million times looks exactly like a spin loop
- * doing nothing. Counted separately from the resumes that landed, because
- * "resumed a corpse" and "resumed a running thread" are different bugs.
- */
-static unsigned long g_resume_unknown, g_suspend_unknown;
-/*
- * Resumes of a thread that was NOT suspended.
- *
- * Win32 defines that as a no-op returning 0, so it cannot fail -- and a loop
- * doing it is a loop waiting for something else entirely, which is what a
- * stall looks like from in here. Reported once at a threshold, WITH the thread
- * it names, because the per-slot counters are lost the moment a reaped slot is
- * reused and by then the spin is invisible again.
- */
-static unsigned long g_resume_noop;
-static uint32_t g_next_tid = 1000;
 
-/* The kernel32 handle table owns handles; this is the one hook into it. */
-uint32_t k32_handle_for_thread(void *rec);
-void     k32_handle_thread_done(uint32_t handle);
+/* ---- creating and ending threads ---------------------------------------- */
 
-static void *thread_main(void *p)
+static void thread_trampoline(void)
 {
-    GuestThread *t = (GuestThread *)p;
+    GuestThread *t = g_self;
     CPU C;
 
-    guest_lock();
-    g_self = t;
-    /* CREATE_SUSPENDED: the thread exists and is not running guest code. It
-       waits here rather than at the pthread level, because "suspended" has to
-       mean "has not started the guest routine" -- a thread that had already
-       run one instruction would not be resumable in the sense the caller
-       means. */
-    while (t->suspended) { state_set(TS_SUSPENDED);
-                           pthread_cond_wait(&g_cond, &g_lock); }
     state_set(TS_RUNNING);
     /* Its own TIB, so this thread's SEH chain is its own. The sentinel is
        Win32's end-of-chain marker; a zero would look like a record at 0 to
@@ -376,15 +557,19 @@ static void *thread_main(void *p)
      */
     C.esp = t->stack_base + t->stack_bytes - 16u;
     WR32(C.esp, t->arg);
+    t->depth = 1;                        /* it is running guest code */
     x86_guest_call(&C, t->start);
     t->exit_code = C.eax;
 
     t->finished = 1;
+    t->state = TS_DONE;
+    t->state_since = now_s();
     g_exited++;
     k32_handle_thread_done(t->handle);
     guest_cond_broadcast();
-    guest_unlock();
-    return NULL;
+    /* Never returns: a finished coroutine has nowhere to return TO. The
+       scheduler will not pick it again because `finished` is set. */
+    for (;;) sched_switch();
 }
 
 uint32_t guest_thread_create(uint32_t start, uint32_t arg, uint32_t stack_bytes,
@@ -398,8 +583,10 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
                                 uint32_t *tid_out)
 {
     GuestThread *t = NULL;
-    int i, rc;
+    int i;
+    char *hs;
 
+    if (!g_self) sched_attach_main();
     for (i = 0; i < MAX_THREADS; i++) if (!g_thread[i].used) { t = &g_thread[i]; break; }
     if (!t) {
         fprintf(stderr, "threads: all %d guest thread slots are live. This is "
@@ -408,6 +595,7 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
         return 0;
     }
     memset(t, 0, sizeof *t);
+    t->slot = i;
     t->stack_bytes = stack_bytes ? ((stack_bytes + 0xFFFu) & ~0xFFFu)
                                  : STACK_DEFAULT;
     t->stack_base = guest_malloc(t->stack_bytes);
@@ -420,6 +608,18 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
         if (t->tib) guest_free(t->tib);
         return 0;
     }
+    hs = mmap(NULL, HSTACK_BYTES, PROT_READ | PROT_WRITE,
+              MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (hs == MAP_FAILED) {
+        fprintf(stderr, "threads: no host stack for the new guest thread (%s); "
+                        "it is NOT created rather than started on a stack that "
+                        "would overflow into something else.\n",
+                strerror(errno));
+        guest_free(t->stack_base); guest_free(t->tib);
+        return 0;
+    }
+    mprotect(hs, HSTACK_GUARD, PROT_NONE);      /* fault, do not corrupt */
+    t->hstack = hs;
     t->used = 1;
     /* Stamped at creation, not at the first state change: a thread that has
        not run yet reported its age as the process uptime -- 8,989 seconds on
@@ -432,29 +632,30 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
     t->arg = arg;
     t->tid = g_next_tid++;
     t->handle = k32_handle_for_thread(t);
-    if (!t->handle) { t->used = 0; return 0; }
+    if (!t->handle) { munmap(hs, HSTACK_BYTES); t->used = 0; return 0; }
+
+    getcontext(&t->ctx);
+    t->ctx.uc_stack.ss_sp   = hs + HSTACK_GUARD;
+    t->ctx.uc_stack.ss_size = HSTACK_BYTES - HSTACK_GUARD;
+    t->ctx.uc_link          = NULL;
+    makecontext(&t->ctx, thread_trampoline, 0);
+    t->fsbase = t->tib;
 
     /*
-     * Created while HOLDING the guest lock, and the new thread's first act is
-     * to take it -- so it cannot start running guest code until the creator
-     * next releases it. Without that, a thread could be running before the
-     * caller has even stored the handle it is about to be asked about.
+     * It does not run yet -- not because it is held off, but because the
+     * creator is the running thread and a switch happens only where this file
+     * says. CREATE_SUSPENDED needs no separate mechanism either: the scheduler
+     * simply never picks a suspended thread, so "suspended" means "has not
+     * entered the guest routine", which is what the caller means by it.
      */
-    rc = pthread_create(&t->th, NULL, thread_main, t);
-    if (rc != 0) {
-        fprintf(stderr, "threads: pthread_create failed (%s); the guest is "
-                        "told the thread could not be created.\n", strerror(rc));
-        t->used = 0;
-        return 0;
-    }
-    pthread_detach(t->th);
     g_created++;
     if (tid_out) *tid_out = t->tid;
     if (g_created == 1)
-        printf("threads: the first GUEST THREAD is running (start 0x%08x, "
-               "%u-byte stack). One guest thread executes at a time, under a "
-               "global lock released at Sleep and at every wait -- see "
-               "src/native/threads.c.\n", start, t->stack_bytes);
+        printf("threads: the first GUEST THREAD exists (start 0x%08x, "
+               "%u-byte guest stack, 8 MB host stack). Guest threads are "
+               "COROUTINES on this one host thread and the schedule is this "
+               "program's, not the OS's -- see src/native/threads.c.\n",
+               start, t->stack_bytes);
     return t->handle;
 }
 
@@ -472,9 +673,9 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
  * exactly like a deadlock in the movie player, and 9,000,634 resumes on a dead
  * thread was the only visible trace.
  *
- * The stack and TIB go back to the guest heap here too. They are 1 MB each and
- * three threads are created per movie, so holding them until exit is a leak
- * with a very short fuse.
+ * The stacks go back here too -- 256 KB of guest arena, a TIB, and 8 MB of
+ * host address space -- and three threads are created per movie, so holding
+ * them until exit is a leak with a very short fuse.
  */
 void guest_thread_handle_closed(uint32_t handle)
 {
@@ -486,7 +687,9 @@ void guest_thread_handle_closed(uint32_t handle)
         if (t->finished) {
             if (t->stack_base) guest_free(t->stack_base);
             if (t->tib) guest_free(t->tib);
+            if (t->hstack) munmap(t->hstack, HSTACK_BYTES);
             t->stack_base = t->tib = 0;
+            t->hstack = NULL;
             t->reaped = 1;
             t->used = 0;              /* the slot is free for the next thread */
             g_reaped++;
@@ -526,19 +729,15 @@ int guest_thread_join(uint32_t handle, uint32_t ms)
 }
 
 /*
- * SuspendThread, and why it can be exact here rather than approximate.
+ * SuspendThread, and why it is exact here rather than approximate.
  *
  * Win32's guarantee is that once it returns, the target is not executing guest
- * code. Under the global lock that is already true of every thread but the one
- * running: a suspend is therefore just a flag, provided a parked thread CHECKS
- * it before it starts executing again -- which is what guest_suspend_point()
- * below is, called wherever a thread re-takes the lock.
- *
- * The case libCriMovie actually needs is a thread suspending ITSELF. Its
- * decoder loop (libCriMovie 0x10002630) sets its own priority and then calls
- * SuspendThread on its own handle, waiting to be resumed by whoever wants
- * another frame -- a park, not a kill. Self-suspend therefore has to BLOCK
- * here, releasing the lock so that the thread which will resume it can run.
+ * code. That is already true of every thread but the running one, so a suspend
+ * of another thread is just a flag the scheduler honours. The case libCriMovie
+ * actually needs is a thread suspending ITSELF: its decoder loop (libCriMovie
+ * 0x10002630) restores its priority and calls SuspendThread on its own handle
+ * once it has run out of work, waiting to be resumed by whoever wants another
+ * frame -- a park, not a kill. Self-suspend therefore yields here.
  *
  * Nothing nests: Win32 counts suspends, this host has 0 or 1, and a second
  * suspend of an already-suspended thread is refused by name rather than
@@ -548,15 +747,9 @@ int guest_thread_join(uint32_t handle, uint32_t ms)
 static void guest_suspend_point(void)
 {
     GuestThread *t = g_self;
-    if (!t) return;                      /* the main thread; see below */
-    if (!t->suspended) return;
-    /* Set AFTER the wait begins would be a lie for the first interval, and
-       guest_cond_wait_ms sets TS_COND -- so the suspended state is stamped
-       here and re-stamped on the way out. */
+    if (!t || !t->suspended) return;
     state_set(TS_SUSPENDED);
-    while (t->suspended) {
-        pthread_cond_wait(&g_cond, &g_lock);
-    }
+    while (t->suspended) sched_switch();
     state_set(TS_RUNNING);
 }
 
@@ -578,21 +771,14 @@ int guest_thread_suspend(uint32_t handle)
     /* Announced once, with WHICH thread and whether it parked itself: the
        difference between "a thread was suspended" and "the thread suspended
        itself and is waiting for someone to resume it" is the difference
-       between a control operation and a rendezvous, and a run that deadlocks
+       between a control operation and a rendezvous, and a run that stalls
        afterwards is read completely differently depending on which it was. */
     if (g_suspends == 1)
-        printf("threads: the first SuspendThread -- tid %u %s. Under this "
-               "host's global lock a suspend is exact rather than approximate: "
-               "every thread but the running one is already parked, and a "
-               "parked thread re-checks the flag before it executes again.\n",
+        printf("threads: the first SuspendThread -- tid %u %s.\n",
                t->tid, t == g_self ? "suspended ITSELF and is now waiting to be "
                                      "resumed" : "was suspended by another thread");
     fflush(stdout);
-    if (t == g_self) {
-        /* Blocks, releasing the lock: nothing could resume us otherwise. */
-        guest_cond_broadcast();
-        guest_suspend_point();
-    }
+    if (t == g_self) guest_suspend_point();
     return 0;                            /* the previous count */
 }
 
@@ -623,32 +809,20 @@ int guest_thread_resume(uint32_t handle)
                            : "was NOT suspended, so this changed nothing");
         fflush(stdout);
     }
-    guest_cond_broadcast();
     /*
      * AND NOTHING ELSE -- deliberately. Win32's ResumeThread makes the target
-     * runnable and returns; it does not wait, and neither does this.
+     * runnable and returns; it does not wait, and neither does this. The
+     * resumed thread runs when the scheduler next reaches it, which the
+     * quantum guarantees happens.
      *
-     * Two hand-off designs have now been MEASURED here and both failed, which
-     * is worth more than either would have been if it worked. Read out of the
-     * guest, libCriMovie's rendezvous is:
-     *
-     *   decoder  (0x10002630)  do a slice of work; park with SuspendThread on
-     *                          SELF *only when it has run out of work*; loop.
-     *   partner  (0x10002520)  set a flag, then SPIN up to 3,000,000 times
-     *                          calling SetThreadPriority + ResumeThread until
-     *                          the decoder clears it.
-     *
-     * The first attempt handed the lock over on every resume and slept a
-     * millisecond; that livelocked. The second (this one, reverted) waited for
-     * the resumed thread to PARK before returning -- and froze the run at
-     * frame 2639 with 3.17 BILLION boundary crossings in sixty seconds,
-     * because the decoder does not park while it still has work: it stays in
-     * its own loop, and the thread waiting for it to park waits for ever.
-     *
-     * So BOTH sides spin without ever blocking, and no hand-off at a syscall
-     * can schedule two spinners -- that is a scheduling problem, not a
-     * synchronisation one. What makes this rendezvous complete is preemption
-     * that neither side has to cooperate with: guest_quantum() above.
+     * Two hand-off designs have been MEASURED here and both failed, which is
+     * worth more than either would have been if it worked. libCriMovie's
+     * decoder does not park between slices -- it parks only when it runs out
+     * of work -- and its partner spins on a flag rather than blocking. The
+     * first hand-off yielded on every resume and livelocked; the second waited
+     * for the resumed thread to park and froze the run at frame 2639 with 3.17
+     * billion boundary crossings a minute. Both sides spin, so this is a
+     * scheduling problem, and preemption is what solves it. Issue #57.
      */
     return was;
 }
@@ -656,7 +830,7 @@ int guest_thread_resume(uint32_t handle)
 void guest_thread_exit(uint32_t code)
 {
     GuestThread *t = g_self;
-    if (!t) {
+    if (!t || t->is_main) {
         fprintf(stderr, "threads: _endthreadex on the MAIN thread, which Win32 "
                         "does not allow and this host cannot honour -- the main "
                         "thread is the process.\n");
@@ -664,11 +838,11 @@ void guest_thread_exit(uint32_t code)
     }
     t->exit_code = code;
     t->finished = 1;
+    t->state = TS_DONE;
     g_exited++;
     k32_handle_thread_done(t->handle);
     guest_cond_broadcast();
-    guest_unlock();
-    pthread_exit(NULL);
+    for (;;) sched_switch();             /* never picked again */
 }
 
 void guest_thread_report(void)
@@ -679,57 +853,56 @@ void guest_thread_report(void)
     if (!g_created) {
         printf("  threads: no guest thread was ever created; everything ran on "
                "the main thread.\n");
-        return;
+    } else {
+        printf("  threads: %lu created, %lu exited, %lu reaped (handle closed, "
+               "stacks freed), %d still running; %lu suspend(s), %lu resume(s)\n",
+               g_created, g_exited, g_reaped, live, g_suspends, g_resumes);
+        if (g_resume_noop)
+            printf("         %lu resume(s) were of a thread that was NOT "
+                   "suspended -- Win32 no-ops those, and a loop doing them is "
+                   "waiting for something else.\n", g_resume_noop);
+        if (g_resume_unknown || g_suspend_unknown)
+            printf("         %lu resume(s) and %lu suspend(s) named NO live "
+                   "thread -- a handle whose thread had already been reaped. A "
+                   "loop doing that is waiting for something that cannot "
+                   "happen.\n", g_resume_unknown, g_suspend_unknown);
+        for (i = 0; i < MAX_THREADS; i++) {
+            GuestThread *t = &g_thread[i];
+            /* Reaped slots are printed too, until they are reused: their
+               counters are the only record of where a spin loop's resumes
+               went, and skipping them is what made 9,000,634 of them
+               invisible. */
+            if (!t->used && !t->tid) continue;
+            printf("         tid %u  start 0x%08x  %lu suspend(s) %lu "
+                   "resume(s) %lu turn(s)%s%s\n",
+                   t->tid, t->start, t->n_suspend, t->n_resume, t->n_ran,
+                   !t->used ? "  REAPED" : t->finished ? "  EXITED" : "",
+                   t->suspended ? "  SUSPENDED NOW -- if the run stalled, this "
+                                  "is a thread waiting for a ResumeThread that "
+                                  "never came" : "");
+        }
     }
-    printf("  threads: %lu created, %lu exited, %lu reaped (handle closed, "
-           "stack freed), %d still running; %lu suspend(s), %lu resume(s)\n",
-           g_created, g_exited, g_reaped, live, g_suspends, g_resumes);
-    if (g_resume_noop)
-        printf("         %lu resume(s) were of a thread that was NOT suspended "
-               "-- Win32 no-ops those, and a loop doing them is waiting for "
-               "something else.\n", g_resume_noop);
-    if (g_resume_unknown || g_suspend_unknown)
-        printf("         %lu resume(s) and %lu suspend(s) named NO live thread "
-               "-- a handle whose thread had already been reaped. A loop doing "
-               "that is waiting for something that cannot happen.\n",
-               g_resume_unknown, g_suspend_unknown);
-    for (i = 0; i < MAX_THREADS; i++) {
-        GuestThread *t = &g_thread[i];
-        /* Reaped slots are printed too, until they are reused: their counters
-           are the only record of where a spin loop's resumes went, and
-           skipping them is what made 9,000,634 of them invisible. */
-        if (!t->used && !t->tid) continue;
-        printf("         tid %u  start 0x%08x  %lu suspend(s) %lu resume(s)%s%s\n",
-               t->tid, t->start, t->n_suspend, t->n_resume,
-               !t->used ? "  REAPED" : t->finished ? "  EXITED" : "",
-               t->suspended ? "  SUSPENDED NOW -- if the run stalled, this is a "
-                              "thread waiting for a ResumeThread that never came"
-                            : "");
-    }
-    /* Flushed, because this now runs from x86_diag_dump on the ABORT paths too
-       and an unflushed stdout buffer is discarded by abort() -- the report was
-       written, and vanished, on exactly the stall it exists to explain. */
+    /* Flushed, because this now runs from the abort paths too and an unflushed
+       stdout buffer is discarded by abort() -- the report was written, and
+       vanished, on exactly the stall it exists to explain. */
     fflush(stdout);
-    if (!g_contended)
-        printf("         the guest lock was NEVER contended -- so the threads "
-               "created here have not actually overlapped, and nothing in this "
-               "run exercised the locking.\n");
-    else
-        printf("         the guest lock was contended %lu time(s)\n",
-               g_contended);
     /*
-     * Printed even when it is ZERO, with its denominator. "0 preemptions"
-     * and "preemption is not compiled in" are different facts and a line that
-     * only appears when the number is non-zero cannot tell them apart -- and
-     * zero here is itself the answer to "why did two spinning threads not take
-     * turns".
+     * Printed even when they are ZERO, with their denominators. "0
+     * preemptions" and "preemption is not compiled in" are different facts and
+     * a line that only appears when the number is non-zero cannot tell them
+     * apart -- and zero here is itself the answer to "why did two spinning
+     * threads not take turns".
      */
-    printf("         %lu preemption(s) at a quantum of %lu boundary "
-           "crossing(s)%s\n", g_quanta, g_quantum,
-           g_quanta ? "" : " -- NONE happened: either no second guest thread "
-                           "ever waited for the lock, or the quantum is "
-                           "larger than this run");
-
+    printf("         %lu coroutine switch(es), %lu of them preemptions at a "
+           "quantum of %lu boundary crossing(s)%s\n",
+           g_switches, g_quanta, g_quantum,
+           g_quanta ? "" : " -- NO preemption happened: either no second guest "
+                           "thread was ever runnable, or the quantum is larger "
+                           "than this run");
+    printf("         the scheduler found nobody to run %lu time(s)%s\n",
+           g_idle_spins,
+           g_idle_spins ? " (it pumps the multimedia timers and sleeps to the "
+                          "earliest deadline on those passes)"
+                        : " -- so a guest thread was always ready");
     fflush(stdout);
-    (void)g_held;
 }

@@ -521,7 +521,7 @@ void x87_fault(const char *what);
 extern uint32_t x86_hist[X86_HIST];
 extern unsigned x86_hist_n;
 extern volatile unsigned long x86_fn_calls;
-# define X86_ENTER_FN(a) (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a), \
+# define X86_ENTER_FN_DIAG(a) (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a), \
                           x86_fn_calls++)
 void x86_dump_history(void);
 #elif defined(X86_WATCH)
@@ -545,7 +545,7 @@ void x86_watch_note(int kind, uint32_t a, uint32_t b);
    pointer it was entered with -- the fact that decides whether a guest PUSH
    overwrites live C state. */
 void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned long cpu_size);
-# define X86_ENTER_FN(a) x86_watch_enter((a), C)
+# define X86_ENTER_FN_DIAG(a) x86_watch_enter((a), C)
 # define X86_EXIT_FN(a)  x86_watch_exit((a), C)
 # define x86_dump_history() ((void)0)
 #elif defined(X86_NATIVE_TRACE)
@@ -563,7 +563,7 @@ void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned 
  * which module that ep belongs to -- see the ring in x86rt_native.c. */
 void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C);
 void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C);
-# define X86_ENTER_FN(a) x86_trace_enter((a), X86_IMGBASE, C)
+# define X86_ENTER_FN_DIAG(a) x86_trace_enter((a), X86_IMGBASE, C)
 # define X86_EXIT_FN(a)  x86_trace_exit((a), X86_IMGBASE, C)
 # define x86_dump_history() ((void)0)
 #elif defined(X86_NATIVE_REACHED)
@@ -587,15 +587,42 @@ void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C);
  * already defined in every generated translation unit, so the pair is free. */
 void x86_reached_enter(uint32_t ep, uint32_t base);
 void x86_reached_report(void);
-# define X86_ENTER_FN(a) x86_reached_enter((a), X86_IMGBASE)
+# define X86_ENTER_FN_DIAG(a) x86_reached_enter((a), X86_IMGBASE)
 # define x86_dump_history() ((void)0)
 #else
-# define X86_ENTER_FN(a) ((void)0)
+# define X86_ENTER_FN_DIAG(a) ((void)0)
 # define x86_dump_history() ((void)0)
 #endif
 #ifndef X86_EXIT_FN
 # define X86_EXIT_FN(a) ((void)0)
 #endif
+
+/*
+ * THE PREEMPTION POINT, in every recompiled body, in every build.
+ *
+ * It has to be here and not at the dispatch boundary, and that was measured
+ * rather than reasoned: the boundary only sees DISPATCHED calls, and a
+ * guest-to-guest call inside a module is emitted as a direct C call that never
+ * reaches it. libCriMovie's decoder spins on exactly such calls -- FUN_10002e80
+ * and FUN_100085e0, round and round -- so a quantum counted at the boundary
+ * never fired for it. With guest threads as coroutines (src/native/threads.c)
+ * nothing else can take the CPU away from a thread that does that, and the run
+ * stalled with the main thread reading "runnable, waiting its turn for 132.1s"
+ * while the decoder ran without interruption.
+ *
+ * The cost is one decrement and a not-taken branch per call. The budget is a
+ * plain global rather than per-thread on purpose: it measures WORK DONE, and
+ * re-arming it at each preemption is what makes the quantum mean "this many
+ * bodies between switches" no matter which thread ran them.
+ *
+ * In a build with no scheduler (the Wine/DLL path) x86_preempt_now just
+ * re-arms, so the hook costs the same and does nothing.
+ */
+extern unsigned long x86_preempt_budget;
+void x86_preempt_now(void);
+#define X86_ENTER_FN(a) \
+    do { if (--x86_preempt_budget == 0) x86_preempt_now(); \
+         X86_ENTER_FN_DIAG(a); } while (0)
 /* call/jump into the region with no identified function; aborts by address */
 void x86_call_unknown(CPU *C, uint32_t target);
 /* RET popped an address other than the one the function was entered with */

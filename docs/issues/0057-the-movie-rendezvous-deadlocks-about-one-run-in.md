@@ -262,3 +262,62 @@ own `RTL_CRITICAL_SECTION` layout (owner = the **guest** thread id, recursion
 count, waiters), waiting by condition wait rather than by spinning, and
 `GetCurrentThreadId` now returns the guest id so the two agree. Leaving a
 section owned by another thread aborts by name instead of corrupting it.
+
+### The threading model is now COROUTINES, and the preemption point moved
+The one-guest-thread-at-a-time invariant was implemented with a pthread per
+guest thread and a global mutex. That gave the right invariant for the wrong
+reason: the **host** scheduler decided which guest thread ran next and when, so
+the same run took a different schedule every time. An intermittent stall under
+that model cannot be reproduced, which is exactly why this issue produced three
+sessions of guesses.
+
+`src/native/threads.c` now runs every guest thread as a `ucontext` coroutine on
+one host thread, round-robin, switching only at points the file names. The
+invariant is unchanged and everything built on it is as safe as it was; what
+changed is that the schedule is a property of this program.
+
+**That immediately falsified an assumption nobody had stated.** The first
+coroutine run stalled at frame 2021, and the per-thread heartbeat said why in
+one line:
+
+    [HB]  tid 1001  start 0x25002600: running guest code for 132.1s  <- running
+    [HB]  MAIN tid 999: runnable, waiting its turn for 132.1s
+
+`guest_quantum()` was counted at the **dispatch boundary**, which only sees
+DISPATCHED calls -- a guest-to-guest call inside a module is emitted as a direct
+C call and never reaches it. The decoder's spin is exactly that (FUN_10002e80
+and FUN_100085e0, round and round out of FUN_10002590), so the quantum never
+fired for it. Under pthreads the OS preempted anyway, so nothing had ever
+depended on the quantum being reachable, and the counter that said "1,963
+preemptions" was measuring a mechanism that could not have been load-bearing.
+
+The preemption point is now `X86_ENTER_FN` in `src/recomp/x86rt.h`, which every
+recompiled body already carries in every build -- one decrement and a
+not-taken branch per call. The Wine/DLL runtime defines the same symbols as a
+no-op re-arm, so the GENERATED BODIES ARE IDENTICAL between the two paths; a
+body that differed between them is a body whose evidence does not transfer.
+
+With that, `smoke_loop` closes the loop again: 705,045 coroutine switches,
+27,830 of them preemptions, and 6,519 scheduler passes with nobody runnable.
+
+### A real guest race the new check found, and why it is reported rather than fatal
+The first coroutine build aborted one run in three on
+
+    kernel32: LeaveCriticalSection at 0x2514a200, which is not owned by anyone
+
+That section is libCriMovie's own. Read out of the guest: `FUN_100026f0`
+(movie start) calls `InitializeCriticalSection(0x1014a200)`, `FUN_100028a0`
+(movie shutdown) calls `DeleteCriticalSection` on the same one, and
+`FUN_100024c0` / `FUN_100024e0` are the lock/unlock pair around a counter at
+`0x100572ac`. So a teardown can Delete -- or a restart re-Initialize -- the
+section while a straggler is still between Enter and Leave, and that straggler's
+Leave then finds no owner. Windows leaves the outcome undefined and does not
+fault, which is why the game ships with it.
+
+A host that aborts there turns something the game survives on Windows into a
+dead run, so it is now counted and named ONCE per section, with the three
+counts printed at every ending (at zero as well -- "no orphaned Leave happened"
+and "nothing checks" are different facts). `DeleteCriticalSection` also clears
+the owner, so the section's next life does not inherit the old one. A foreign
+Leave leaves the owner in place: releasing it would put two threads inside at
+once, which is the one outcome worse than the guest's own race.

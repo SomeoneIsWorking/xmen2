@@ -341,12 +341,10 @@ void imp_KERNEL32_Sleep(CPU *C)
     /* The other pump point, and the one that matters most: a guest that sleeps
        waiting for a timer callback would otherwise sleep forever. Pumped
        AFTER the sleep, so a callback due during it fires as soon as it can. */
-    /* The lock is RELEASED across the sleep. Holding it would stop every
-       other guest thread for the duration -- including whichever one this
-       sleep is waiting for. */
-    guest_blocking_begin();
-    usleep(A(0) * 1000u);
-    guest_blocking_end();
+    /* Through the scheduler, not usleep: a usleep here stopped every guest
+       thread for the duration -- including whichever one this sleep is
+       waiting for. */
+    guest_sleep_ms(A(0));
     winmm_timers_pump();
     ret_std(C, 0, 1);
 }
@@ -491,6 +489,24 @@ static double k32_now_s(void)
 
 static unsigned long g_cs_contended;      /* enters that had to wait */
 static unsigned long g_cs_enters;
+static unsigned long g_cs_orphan_leave;   /* Leave on a section nobody owns */
+static unsigned long g_cs_foreign_leave;  /* Leave on another thread's */
+static unsigned long g_cs_delete_held;    /* Delete while still owned */
+
+/* Report each offending section once. libCriMovie's movie teardown does this
+   thousands of times in a row if it does it at all, and a per-call line buries
+   the run that produced it. */
+#define CS_NAMED 16
+static uint32_t g_cs_named[CS_NAMED];
+static int cs_name_once(uint32_t p)
+{
+    int i;
+    for (i = 0; i < CS_NAMED; i++) {
+        if (g_cs_named[i] == p) return 0;
+        if (!g_cs_named[i]) { g_cs_named[i] = p; return 1; }
+    }
+    return 0;
+}
 
 void imp_KERNEL32_InitializeCriticalSection(CPU *C)
 {
@@ -513,10 +529,21 @@ void imp_KERNEL32_InitializeCriticalSectionAndSpinCount(CPU *C)
 }
 void imp_KERNEL32_DeleteCriticalSection(CPU *C)
 {
-    if (RD32(A(0) + CS_OWNER) != 0)
-        fprintf(stderr, "kernel32: DeleteCriticalSection on one still owned by "
-                        "guest thread %u, entered %u time(s)\n",
-                RD32(A(0) + CS_OWNER), RD32(A(0) + CS_RECURSION));
+    if (RD32(A(0) + CS_OWNER) != 0) {
+        g_cs_delete_held++;
+        if (cs_name_once(A(0)))
+            fprintf(stderr, "kernel32: DeleteCriticalSection at 0x%08x while "
+                            "guest thread %u still owns it (%u deep). Windows "
+                            "does not stop this either -- and it is what makes "
+                            "that owner's next Leave find no owner.\n",
+                    A(0), RD32(A(0) + CS_OWNER), RD32(A(0) + CS_RECURSION));
+    }
+    /* Deleted means unowned: whatever the guest does next, this must not carry
+       the old owner into the section's next life. libCriMovie initialises this
+       same section again for the next movie. */
+    WR32(A(0) + CS_OWNER, 0);
+    WR32(A(0) + CS_RECURSION, 0);
+    WR32(A(0) + CS_LOCKCOUNT, 0xFFFFFFFFu);
     ret_std(C, 0, 1);
 }
 
@@ -578,19 +605,41 @@ void imp_KERNEL32_LeaveCriticalSection(CPU *C)
 {
     uint32_t p = A(0), tid = guest_current_tid();
     uint32_t owner = RD32(p + CS_OWNER), rec = RD32(p + CS_RECURSION);
+    /*
+     * An unowned or foreign Leave is REPORTED, not fatal -- and that is a
+     * deliberate correction of the first version, which aborted.
+     *
+     * libCriMovie's movie teardown (FUN_100028a0) calls
+     * DeleteCriticalSection(0x1014a200) and its startup (FUN_100026f0)
+     * Initializes the same one for the next movie, while the lock/unlock pair
+     * around it (FUN_100024c0 / FUN_100024e0) may still have a thread between
+     * them. Windows leaves the outcome undefined and does not fault; a host
+     * that aborts turns something the game survives on Windows into a dead
+     * run. It is counted and named once per section instead, so it stays
+     * visible without deciding the run.
+     */
     if (owner == 0) {
-        fprintf(stderr, "kernel32: LeaveCriticalSection at 0x%08x, which is "
-                        "not owned by anyone\n", p);
-        abort();
+        g_cs_orphan_leave++;
+        if (cs_name_once(p))
+            fprintf(stderr, "kernel32: LeaveCriticalSection at 0x%08x, which "
+                            "nobody owns -- guest thread %u is leaving a "
+                            "section that was Deleted or re-Initialized under "
+                            "it. Counted, not fatal; Windows does not fault "
+                            "here either. Reported once per section.\n",
+                    p, tid);
+        ret_std(C, 0, 1);
+        return;
     }
     if (owner != tid) {
-        /* Win32 leaves this undefined and corrupts the section. Here it is
-           named: releasing another thread's section is how a data race turns
-           into a mystery two subsystems away. */
-        fprintf(stderr, "kernel32: guest thread %u left the critical section "
-                        "at 0x%08x, which guest thread %u owns\n",
-                tid, p, owner);
-        abort();
+        g_cs_foreign_leave++;
+        if (cs_name_once(p))
+            fprintf(stderr, "kernel32: guest thread %u left the critical "
+                            "section at 0x%08x, which guest thread %u owns. "
+                            "The owner keeps it -- releasing it here would let "
+                            "two threads inside at once. Reported once per "
+                            "section.\n", tid, p, owner);
+        ret_std(C, 0, 1);
+        return;
     }
     if (rec > 1) { WR32(p + CS_RECURSION, rec - 1u); ret_std(C, 0, 1); return; }
     WR32(p + CS_RECURSION, 0);
@@ -610,6 +659,13 @@ void k32_critsec_report(void)
            "another guest thread%s\n", g_cs_enters, g_cs_contended,
            g_cs_contended ? "" : " -- none did, so nothing in this run "
                                  "actually overlapped inside one");
+    /* At zero as well: "no orphaned Leave happened" and "nothing checks" are
+       different facts, and only one of them is evidence. */
+    printf("         %lu Leave(s) found no owner, %lu named another thread's "
+           "section, %lu Delete(s) hit one still held%s\n",
+           g_cs_orphan_leave, g_cs_foreign_leave, g_cs_delete_held,
+           (g_cs_orphan_leave || g_cs_foreign_leave || g_cs_delete_held)
+               ? " -- see the named sections above" : " -- every pair balanced");
 }
 
 /* ---- files ------------------------------------------------------------- */
@@ -1088,8 +1144,32 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C)
  * what THIS thread last set. The index allocation is process-wide and stays
  * shared -- TlsAlloc reserves a slot for everyone.
  */
-static __thread uint32_t g_tls[MAX_TLS];
+/*
+ * ONE ARRAY PER GUEST THREAD, selected by the scheduler -- not __thread.
+ *
+ * Every guest thread runs on the SAME host thread now (see threads.c: they are
+ * coroutines, so the schedule is ours and deterministic). A __thread array
+ * would therefore be one array shared by every guest thread, which is the
+ * exact opposite of what TlsGetValue means. threads.c calls k32_tls_switch()
+ * with the slot of the thread it is about to run, and that is the only place
+ * this pointer moves.
+ */
+#define K32_TLS_SLOTS 32
+static uint32_t  g_tls_store[K32_TLS_SLOTS][MAX_TLS];
+static uint32_t *g_tls = g_tls_store[0];
 static unsigned char g_tls_used[MAX_TLS];
+
+void k32_tls_switch(int slot)
+{
+    if (slot < 0 || slot >= K32_TLS_SLOTS) {
+        fprintf(stderr, "kernel32: k32_tls_switch(%d) is outside the %d TLS "
+                        "slot(s) this host has. The thread would share another "
+                        "thread's TLS, so it is refused rather than aliased.\n",
+                slot, K32_TLS_SLOTS);
+        abort();
+    }
+    g_tls = g_tls_store[slot];
+}
 #define TLS_OUT_OF_INDEXES 0xFFFFFFFFu
 
 /* ---- thread control ---------------------------------------------------- */
@@ -1205,8 +1285,12 @@ void imp_KERNEL32_TlsAlloc(CPU *C)
     unsigned i;
     for (i = 0; i < MAX_TLS; i++)
         if (!g_tls_used[i]) {
+            unsigned k;
             g_tls_used[i] = 1;
-            g_tls[i] = 0;                     /* Win32 guarantees zero */
+            /* Win32 guarantees the new index reads zero IN EVERY THREAD, not
+               just the one that allocated it -- so every slot is cleared, not
+               only the caller's. */
+            for (k = 0; k < K32_TLS_SLOTS; k++) g_tls_store[k][i] = 0;
             ret_std(C, i, 0);
             return;
         }
