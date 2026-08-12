@@ -307,7 +307,7 @@ const unsigned char *dinput_guid_of(int kind)
  * person typing would make a scripted run indistinguishable from a real one,
  * and the whole value of this is being able to say which it was.
  */
-#define SCRIPT_MAX 32
+#define SCRIPT_MAX 128    /* repeat windows expand into one event each */
 typedef struct { double at, until; int by_frame; unsigned char dik; int down,
                  said; char name[24]; } ScriptKey;
 static ScriptKey g_script[SCRIPT_MAX];
@@ -345,9 +345,9 @@ static void script_parse(void)
     return;
 #else
     for (p = e; *p; ) {
-        double at = 0.0, hold = 100.0;
+        double at = 0.0, hold = 100.0, to = 0.0, step = 0.0;
         char name[24];
-        int n = 0, sc, by_frame = 0;
+        int n = 0, sc, by_frame = 0, reps = 1, r;
         while (*p == ' ' || *p == ',' || *p == '\t') p++;
         if (!*p) break;
         if (*p == 'f' || *p == 'F') {
@@ -355,18 +355,50 @@ static void script_parse(void)
             hold = 10.0;                 /* frames, not milliseconds */
             p++;
         }
-        if (sscanf(p, "%lf+%lf:%23[^ ,\t]%n", &at, &hold, name, &n) != 3 &&
-            (n = 0, sscanf(p, "%lf:%23[^ ,\t]%n", &at, name, &n)) != 2) {
+        /*
+         * A REPEAT WINDOW: <from>-<to>/<step>:<key>, tried before the single
+         * forms because "1200-" would otherwise parse as an instant.
+         *
+         * An instant is a bet on where the game will be at that exact moment,
+         * and it is a bet this game loses: the six intro movies decode at a
+         * different rate every run, so a Return aimed at the main menu lands on
+         * the Sofdec logo one run and inside the difficulty dialog the next.
+         * The Wine control had three runs destroyed by exactly that before the
+         * same syntax was added to run_shim's X2_KEYS, after which it reached
+         * the opening chamber every time. A window blankets the uncertainty
+         * instead of guessing at it.
+         */
+        if (sscanf(p, "%lf-%lf/%lf+%lf:%23[^ ,\t]%n",
+                   &at, &to, &step, &hold, name, &n) == 5 ||
+            (n = 0, sscanf(p, "%lf-%lf/%lf:%23[^ ,\t]%n",
+                           &at, &to, &step, name, &n)) == 4) {
+            if (step <= 0.0 || to < at) {
+                fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT has the repeat "
+                                "\"%s\", whose window is empty (from %g to %g "
+                                "every %g). Refusing rather than scheduling a "
+                                "press that never happens.\n", p, at, to, step);
+                return;
+            }
+            reps = (int)((to - at) / step) + 1;
+        } else if (sscanf(p, "%lf+%lf:%23[^ ,\t]%n", &at, &hold, name, &n) != 3 &&
+                   (n = 0, sscanf(p, "%lf:%23[^ ,\t]%n", &at, name, &n)) != 2) {
             fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT could not be read at "
                             "\"%s\" -- the form is <seconds>[+<hold ms>]:<key "
-                            "name>, or f<frames>[+<hold frames>]:<key name>. "
-                            "NOTHING from here on was scheduled.\n", p);
+                            "name>, f<frames>[+<hold frames>]:<key name>, or a "
+                            "repeat window <from>-<to>/<step>[+<hold>]:<key "
+                            "name>. NOTHING from here on was scheduled.\n", p);
             return;
         }
         p += n;
-        if (g_nscript == SCRIPT_MAX) {
-            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT holds more than %d "
-                            "events; the rest were DROPPED.\n", SCRIPT_MAX);
+        if (g_nscript + reps > SCRIPT_MAX) {
+            /* REFUSE rather than schedule the part that fits: a repeat window
+               whose tail was silently dropped is a run that stops being driven
+               partway through and reports nothing about why. */
+            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT needs %d more event(s) "
+                            "for \"%s\" and only %d of %d slot(s) are left. "
+                            "Refusing -- a repeat window with its tail cut off "
+                            "would drive the run partway and say nothing.\n",
+                    reps, name, SCRIPT_MAX - g_nscript, SCRIPT_MAX);
             return;
         }
         sc = (int)SDL_GetScancodeFromName(name);
@@ -376,18 +408,31 @@ static void script_parse(void)
                             "scheduling a press that never happens.\n", name);
             return;
         }
-        g_script[g_nscript].dik = dik_of_scancode(sc);
-        if (!g_script[g_nscript].dik) {
-            fprintf(stderr, "DINPUT8: \"%s\" is an SDL key this host has no "
-                            "DIK code for, so the game could never see it. "
-                            "Refusing.\n", name);
-            return;
+        {
+            unsigned char dik = dik_of_scancode(sc);
+            if (!dik) {
+                fprintf(stderr, "DINPUT8: \"%s\" is an SDL key this host has no "
+                                "DIK code for, so the game could never see it. "
+                                "Refusing.\n", name);
+                return;
+            }
+            for (r = 0; r < reps; r++) {
+                double t = at + (double)r * step;   /* step is 0 when reps == 1 */
+                g_script[g_nscript].dik = dik;
+                g_script[g_nscript].at = t;
+                g_script[g_nscript].until =
+                    t + (by_frame ? hold : hold / 1000.0);
+                g_script[g_nscript].by_frame = by_frame;
+                snprintf(g_script[g_nscript].name, sizeof g_script[0].name,
+                         "%s", name);
+                g_nscript++;
+            }
+            if (reps > 1)
+                fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT -- \"%s\" repeats %d "
+                        "time(s), every %g %s from %g to %g.\n",
+                        name, reps, step, by_frame ? "frame(s)" : "second(s)",
+                        at, at + (double)(reps - 1) * step);
         }
-        g_script[g_nscript].at = at;
-        g_script[g_nscript].until = at + (by_frame ? hold : hold / 1000.0);
-        g_script[g_nscript].by_frame = by_frame;
-        snprintf(g_script[g_nscript].name, sizeof g_script[0].name, "%s", name);
-        g_nscript++;
     }
     if (g_nscript)
         fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT -- %d scripted key press(es) "
