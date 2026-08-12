@@ -139,3 +139,27 @@ quantum acts on.
 The instrument had a defect of its own on its first run and it is fixed: a
 thread that had never changed state reported its age as the process uptime,
 8,989s on a 130s run. Stamped at creation now.
+
+### A run sample, at last -- 6 of 6, which is NOT evidence the deadlock is gone
+This issue has never had a sample, because a run could not be repeated: the
+scripted input fired at fixed TIMES and the same script on the same machine
+reached the same frame anywhere between 106s and 140s. With `X2_INPUT_SCRIPT`
+scheduling on frames PRESENTED, a run is repeatable, and six identical runs
+were made (`scratch/logs/sample1..6.log`, driven by the script now in
+`tools/smoke_loop.sh`).
+
+**All six closed the loop**: every one of the six scripted key presses fired,
+including the last, which is only reachable through the intro movies, a level
+load, gameplay and the death dialog. No run reported a stall (the heartbeat's
+"EXECUTING but has presented nothing" fired zero times in all six). Completion
+spread 261s to 310s.
+
+**What that is worth, stated honestly: very little on its own.** If the rate
+really is one run in six, the chance of seeing no failure in six runs is
+(5/6)^6 = 34%. This sample cannot distinguish "fixed" from "unchanged" and must
+not be recorded as either. It is a BASELINE: the first repeatable measurement
+this issue has, and the method by which a real one can now be taken. Roughly 25
+runs would put a one-in-six rate below 1% of going unseen.
+
+The movie phase IS exercised by these runs -- the first scripted press is at
+frame 2639, after the intro movies have played.
