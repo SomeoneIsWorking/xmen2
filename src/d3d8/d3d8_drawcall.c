@@ -19,6 +19,7 @@
 
 #include "gpu_draw.h"
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -264,6 +265,107 @@ static GpuPrimitive prim_of(uint32_t d3d, uint32_t count, uint32_t *out_count)
 }
 
 /*
+ * TRIANGLEFAN, expanded into a triangle list.
+ *
+ * Vulkan -- and so SDL_GPU -- has no fan primitive, and 10,688 draws in one
+ * gameplay run were being refused for it: the UI panels, and whatever else the
+ * engine fans. The expansion is exact rather than approximate. A fan of n+2
+ * vertices is n triangles (v0, vi, vi+1), which is a fact about the primitive,
+ * not a reinterpretation of it.
+ *
+ * The indices generated are ABSOLUTE vertex numbers -- first_vertex and
+ * base_vertex are folded in here and zeroed in the draw -- because carrying
+ * two different bases through an expansion is how an off-by-one becomes a
+ * mesh that is subtly wrong instead of absent.
+ *
+ * An INDEXED fan is expanded too: a D3D8 buffer's contents live in guest
+ * memory and are uploaded from there on Unlock, so the index data is readable
+ * on the CPU at draw time. Nothing here reads back from the GPU.
+ */
+static GpuBuffer g_fan_ib;
+static uint32_t  g_fan_ib_bytes;
+static unsigned long g_fans_expanded, g_fan_tris;
+
+static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out)
+{
+    uint32_t tris = req->primitive_count, need, i;
+    uint32_t *idx;
+    int ok;
+
+    if (!tris) {
+        fprintf(stderr, "d3d8: a TRIANGLEFAN with 0 primitives.\n");
+        return 0;
+    }
+    if (req->index_buffer && !req->index_guest_bytes) {
+        fprintf(stderr, "d3d8: an indexed TRIANGLEFAN whose index buffer has "
+                        "no guest storage; the fan cannot be expanded and the "
+                        "draw is refused.\n");
+        return 0;
+    }
+    need = (tris * 3u) * (uint32_t)sizeof(uint32_t);
+    if (need > g_fan_ib_bytes) {
+        /* Grown, never shrunk: one allocation settles after the largest fan
+           the run contains. */
+        if (g_fan_ib) gpu_buffer_destroy(g_fan_ib);
+        g_fan_ib_bytes = need < 4096u ? 4096u : need;
+        g_fan_ib = gpu_buffer_create(GPU_BUF_INDEX, g_fan_ib_bytes);
+        if (!g_fan_ib) {
+            g_fan_ib_bytes = 0;
+            fprintf(stderr, "d3d8: no index buffer for a %u triangle fan.\n",
+                    tris);
+            return 0;
+        }
+    }
+    idx = (uint32_t *)malloc(need);
+    if (!idx) {
+        fprintf(stderr, "d3d8: out of memory expanding a %u triangle fan.\n",
+                tris);
+        return 0;
+    }
+    if (req->index_buffer) {
+        uint32_t base = req->base_vertex;
+        if (req->index_is_32bit) {
+            const uint32_t *src = (const uint32_t *)(uintptr_t)
+                                  req->index_guest_bytes + req->first_index;
+            for (i = 0; i < tris; i++) {
+                idx[i * 3 + 0] = base + src[0];
+                idx[i * 3 + 1] = base + src[i + 1];
+                idx[i * 3 + 2] = base + src[i + 2];
+            }
+        } else {
+            const uint16_t *src = (const uint16_t *)(uintptr_t)
+                                  req->index_guest_bytes + req->first_index;
+            for (i = 0; i < tris; i++) {
+                idx[i * 3 + 0] = base + src[0];
+                idx[i * 3 + 1] = base + src[i + 1];
+                idx[i * 3 + 2] = base + src[i + 2];
+            }
+        }
+    } else {
+        uint32_t v0 = req->first_vertex;
+        for (i = 0; i < tris; i++) {
+            idx[i * 3 + 0] = v0;
+            idx[i * 3 + 1] = v0 + i + 1;
+            idx[i * 3 + 2] = v0 + i + 2;
+        }
+    }
+    ok = gpu_buffer_upload(g_fan_ib, 0, idx, need);
+    free(idx);
+    if (!ok) return 0;
+
+    out->prim = GPU_PRIM_TRIANGLELIST;
+    out->prim_count = tris;
+    out->indices = g_fan_ib;
+    out->index_is_32bit = 1;
+    out->first_index = 0;
+    out->base_vertex = 0;
+    out->first_vertex = 0;
+    g_fans_expanded++;
+    g_fan_tris += tris;
+    return 1;
+}
+
+/*
  * Build the draw.
  *
  * Returns 0 and says why if the state cannot be expressed. Nothing here
@@ -308,10 +410,12 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     }
     out->prim = prim_of(req->primitive_type, req->primitive_count,
                         &out->prim_count);
-    if (!out->prim) {
+    /* A fan is expanded below, once the buffers and offsets it needs are in
+       place -- doing it here would be overwritten by them. */
+    if (!out->prim && req->primitive_type != D3DPT_TRIANGLEFAN) {
         static int told;
         if (!told++)
-            fprintf(stderr, "d3d8: primitive type %u (fan, strip-of-lines or "
+            fprintf(stderr, "d3d8: primitive type %u (a strip of lines, or "
                             "points) is not implemented; the draw is refused. "
                             "Reported once.\n", req->primitive_type);
         g_refused_prim++;
@@ -325,6 +429,11 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     out->index_is_32bit = req->index_is_32bit;
     out->first_index = req->first_index;
     out->base_vertex = req->base_vertex;
+
+    if (req->primitive_type == D3DPT_TRIANGLEFAN && !fan_expand(req, out)) {
+        g_refused_prim++;
+        return 0;
+    }
 
     out->pos_offset = vl.pos_offset;
     out->pretransformed = vl.pretransformed;
@@ -444,6 +553,10 @@ void d3d8_drawcall_report(void)
     if (g_refused_prim)
         printf("        %lu draw(s) refused for an unimplemented primitive "
                "type\n", g_refused_prim);
+    if (g_fans_expanded)
+        printf("        %lu TRIANGLEFAN(s) expanded into %lu triangle(s) -- "
+               "Vulkan has no fan primitive, so each becomes an index list\n",
+               g_fans_expanded, g_fan_tris);
     if (g_refused_fvf)
         printf("        %lu draw(s) refused for a vertex format this host "
                "cannot express (a real vertex shader, or no position)\n",

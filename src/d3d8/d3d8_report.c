@@ -382,6 +382,137 @@ static int depth_selftest(void)
 }
 
 /*
+ * TRIANGLEFAN, by pixels, with the negative that matters.
+ *
+ * A fan is expanded into a triangle list because Vulkan has no fan primitive,
+ * and the failure mode of a wrong expansion is not an empty screen -- it is a
+ * SUBSET of the fan drawn, which reads as a modelling bug. So the shape here
+ * is a four-triangle fan covering the whole target, and all four corners are
+ * checked: an expansion that emitted (v0, v1, v2) and stopped, or that walked
+ * the vertices as a strip, covers some corners and not others.
+ *
+ * The negative is the same fan drawn as a two-triangle list over the same six
+ * vertices, which must NOT cover the target -- proof that the corners being
+ * red is the expansion's doing rather than a background that was red anyway.
+ */
+static int fan_selftest(void)
+{
+    struct Vtx { float x, y, z, rhw; uint32_t color; };
+    /* v0 centre, then the four corners clockwise and back to the first, which
+       is a fan of four triangles covering the target. */
+    static struct Vtx fan[6];
+    static uint32_t img[TW * TH];
+    static const float FX[6] = { TW / 2.0f, 0.0f, (float)TW, (float)TW,
+                                 0.0f, 0.0f };
+    static const float FY[6] = { TH / 2.0f, 0.0f, 0.0f, (float)TH,
+                                 (float)TH, 0.0f };
+    D3D8Object *vb;
+    D3D8State st;
+    D3D8DrawRequest req;
+    GpuDraw gd;
+    uint32_t args[3], locked;
+    int fails = 0, i;
+    static const int PX[4] = { 4, TW - 5, 4, TW - 5 };
+    static const int PY[4] = { 4, 4, TH - 5, TH - 5 };
+
+    printf("\n=== d3d8 TRIANGLEFAN selftest: all four corners, not just one "
+           "triangle's worth ===\n");
+    if (!gpu_device_create()) {
+        printf("d3d8 fan selftest: FAILED -- no GPU device, so NOTHING about "
+               "the fan expansion was checked.\n");
+        return 1;
+    }
+    d3d8_resource_install();
+    vb = d3d8_vertexbuffer_new(sizeof fan, 0, 0x0044u, 0);
+    if (!vb) {
+        printf("d3d8 fan selftest: FAILED -- no vertex buffer.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    d3d8_resource_attach_destructor(vb);
+    for (i = 0; i < 6; i++) {
+        fan[i].x = FX[i]; fan[i].y = FY[i];
+        fan[i].z = 0.5f;  fan[i].rhw = 1.0f;
+        fan[i].color = 0xFFFF0000u;                 /* red */
+    }
+    args[0] = 0; args[1] = 0; args[2] = guest_malloc(4);
+    call_method(vb, 11, args, 4);
+    locked = RD32(args[2]);
+    if (!locked) {
+        printf("d3d8 fan selftest: FAILED -- Lock returned no pointer.\n");
+        gpu_device_destroy();
+        return 1;
+    }
+    memcpy((void *)(uintptr_t)locked, fan, sizeof fan);
+    call_method(vb, 12, NULL, 0);
+
+    d3d8_state_reset(&st);
+    st.vertex_shader = 0x0044u;
+    st.stream[0].guest_ptr = d3d8_object_guest(vb);
+    st.stream[0].stride = sizeof fan[0];
+    d3d8_state_set_render(&st, 22, 1);              /* CULLMODE = NONE */
+
+    for (i = 0; i < 2; i++) {                       /* 0: fan, 1: the control */
+        int k, covered = 0;
+        if (!gpu_offscreen_begin(TW, TH, 0.0f, 0.0f, 1.0f, 1.0f)) {
+            printf("d3d8 fan selftest: FAILED -- no off-screen target.\n");
+            gpu_device_destroy();
+            return fails + 1;
+        }
+        memset(&req, 0, sizeof req);
+        req.vertex_buffer = d3d8_resource_buffer(vb);
+        req.stride = sizeof fan[0];
+        req.primitive_type = i ? 4u : 6u;   /* TRIANGLELIST : TRIANGLEFAN */
+        req.primitive_count = i ? 2u : 4u;
+        if (!d3d8_build_draw(&st, &req, &gd) || !gpu_draw(&gd)) {
+            printf("d3d8 fan selftest: FAILED -- the %s draw was refused, so "
+                   "nothing was compared.\n", i ? "control" : "fan");
+            gpu_offscreen_end();
+            gpu_device_destroy();
+            return fails + 1;
+        }
+        if (!i && gd.prim != GPU_PRIM_TRIANGLELIST) {
+            printf("d3d8 fan selftest: FAILED -- the fan did not come out as "
+                   "a triangle list (prim %d).\n", (int)gd.prim);
+            fails++;
+        }
+        if (!gpu_offscreen_read(img, sizeof img)) {
+            printf("d3d8 fan selftest: FAILED -- nothing could be read "
+                   "back.\n");
+            gpu_offscreen_end();
+            gpu_device_destroy();
+            return fails + 1;
+        }
+        gpu_offscreen_end();
+        for (k = 0; k < 4; k++)
+            if (img[PY[k] * TW + PX[k]] == 0xFFFF0000u) covered++;
+        if (!i && covered != 4) {
+            printf("d3d8 fan selftest: FAILED -- %d of 4 corners are red. A "
+                   "fan of four triangles covers the whole target; a partial "
+                   "expansion covers a wedge of it, which reads as a "
+                   "modelling bug rather than a missing primitive.\n", covered);
+            for (k = 0; k < 4; k++)
+                printf("    corner (%d,%d) = 0x%08x\n", PX[k], PY[k],
+                       img[PY[k] * TW + PX[k]]);
+            fails++;
+        }
+        if (i && covered == 4) {
+            printf("d3d8 fan selftest: FAILED -- the CONTROL (the same six "
+                   "vertices as a triangle list) also covers all four "
+                   "corners, so covering them proves nothing about the fan "
+                   "expansion.\n");
+            fails++;
+        }
+    }
+
+    gpu_device_destroy();
+    printf("d3d8 fan selftest: %s\n", fails ? "FAILED"
+           : "PASSED -- a four-triangle fan covers all four corners and the "
+             "same vertices as a list do not");
+    return fails;
+}
+
+/*
  * FIXED-FUNCTION LIGHTING, by pixels, and with its own negative.
  *
  * The same quad is drawn twice with only its NORMAL flipped: facing the light
@@ -1153,6 +1284,7 @@ int d3d8_host_selftest(void)
     fails += cube_selftest();
     fails += d3d8_draw_selftest();
     fails += depth_selftest();
+    fails += fan_selftest();
     fails += lighting_selftest();
     printf("d3d8: SELF-TEST %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);

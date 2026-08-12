@@ -27,6 +27,9 @@ typedef struct {
     uint32_t   first_vertex;
     GpuBuffer  index_buffer;        /* 0 for non-indexed */
     int        index_is_32bit;
+    /* Guest address of the index data, so a TRIANGLEFAN can be expanded on
+       the CPU. 0 when there is no index buffer. */
+    uint32_t   index_guest_bytes;
     uint32_t   first_index;
     uint32_t   base_vertex;
     GpuTexture texture;             /* 0 for untextured */

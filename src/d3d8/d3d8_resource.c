@@ -315,6 +315,12 @@ GpuBuffer  d3d8_resource_buffer(D3D8Object *o)  { return res_of(o)->gbuf; }
 GpuTexture d3d8_resource_texture(D3D8Object *o) { return res_of(o)->gtex; }
 uint32_t   d3d8_resource_fvf(D3D8Object *o)     { return res_of(o)->fvf; }
 uint32_t   d3d8_resource_bytes(D3D8Object *o)   { return res_of(o)->bytes; }
+/* The guest address of the buffer's own bytes. A D3D8 buffer's contents live
+   in guest memory and are uploaded from there on Unlock, so index data is
+   always readable on the CPU -- which is what lets an indexed TRIANGLEFAN be
+   expanded rather than refused. */
+uint32_t   d3d8_resource_guest_bytes(D3D8Object *o)
+{ return res_of(o)->guest_bytes; }
 int d3d8_resource_index_is_32bit(D3D8Object *o)
 {
     /* D3DFMT_INDEX32 is 102; D3DFMT_INDEX16 is 101. */
