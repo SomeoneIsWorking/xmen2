@@ -49,3 +49,52 @@ Do not start changing light or material maths on the strength of a screenshot
 that looks gloomy. Get the control first: the same scripted route under
 ./run.sh wine or tools/run_shim.sh, photographed at the same point, and compare.
 If the control is equally dark there is nothing here.
+
+### Note (2026-08-12)
+## The stock control now exists, and the tooling to get it
+
+tools/run_shim.sh gained X2_KEYS="<seconds>:<key>,..." -- scripted input for the
+WINE path, in wall-clock seconds, delivered with xdotool. Until now the stock
+control could only photograph whatever the intro reached on its own, which made
+it useless for anything past the menu, and "settle it against stock" is this
+project's rule for every rendering question. Every press is reported, and so is
+pressing NOTHING, because a control run that silently failed to drive the game
+looks exactly like one that did -- which is how the first attempt was caught:
+it searched for a window named "x2", found none, and sent no keys at all.
+
+Timing matters and cost a run: Escapes at 245-272s backed OUT of the difficulty
+dialog and returned to the menu. Moving them to 320s+ let the game load.
+
+## What the control shows
+
+Stock, driven to the opening in-game scene (the red-lit chamber, Cyclops and a
+seated figure with a dialogue box): the room is DIM but plainly lit -- walls,
+floor panels, both characters and their colours all readable.
+
+Luma, whole frame:
+
+    native gameplay   mean  2.3   frac<16 0.97   frac<32 1.00   frac>128 0.000
+    stock  in-game    mean 28.8   frac<16 0.24   frac<32 0.78   frac>128 0.019
+
+## What this does and does NOT establish
+
+It does NOT establish a like-for-like difference: the two frames are DIFFERENT
+MOMENTS in the level. The native shot is a facility corridor with pickups; the
+control is the opening dialogue room. Do not quote "12x darker" as if it were a
+measurement of the same scene.
+
+What it does establish is scene-independent: the native gameplay frame has
+ZERO pixels above luma 128 anywhere in 480,000, and 97% below 16. A dim room
+still has highlights -- the control has 1.9% above 128. A frame with no bright
+pixel at all is geometry receiving essentially no light, not a dark room.
+
+So issue #62 is now a real defect rather than a suspicion, but the exact
+comparison is still owed: drive the NATIVE build to the same opening dialogue
+room (it is reachable -- the scripted route already passes through it) and
+compare the two frames directly.
+
+## Also confirmed in passing
+
+The stock menu at this point in its cycle is a STARFIELD NIGHT sky, and earlier
+samples showed the sunset. The menu cycles time of day, so the native build's
+blue-sky and sunset captures are both correct rather than two different bugs.

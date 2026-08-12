@@ -60,6 +60,53 @@ export X2_TRACE=${X2_TRACE:-}
       >"$LOG" 2>&1 ) &
 RUNPID=$!
 
+# X2_KEYS="<seconds>:<key>,..." -- drive the game, in wall-clock seconds.
+#
+# The native build has X2_INPUT_SCRIPT and can be steered to any scene; this
+# path had nothing, so the stock control could only ever photograph whatever
+# the intro happened to be showing. That made it useless as a control for
+# anything past the menu -- and "settle it against stock" is this project's
+# rule for every rendering question.
+#
+# Seconds, not frames: nothing here can see the game's frame counter. Keys are
+# xdotool keysyms (Return, Escape, Down, space).
+#
+# Every press is REPORTED, and so is pressing nothing, because a control run
+# that silently failed to drive the game looks exactly like one that did.
+if [ -n "${X2_KEYS:-}" ]; then
+  ( prev=0
+    printf '%s' "$X2_KEYS" | tr ',' '\n' | while IFS=: read -r at key; do
+      [ -n "$at" ] && [ -n "$key" ] || continue
+      sleep "$(awk -v a="$at" -v p="$prev" 'BEGIN{d=a-p; print (d>0)?d:0}')"
+      prev=$at
+      # The Wine virtual desktop's window is not reliably named "x2" -- looking
+      # for that name found nothing and the whole driven run sent no keys at
+      # all. Take any visible window on this private display instead; there is
+      # only the game on it. The window list is printed the first time so a
+      # future mismatch is diagnosable from the log rather than by guessing.
+      win=$(DISPLAY=$DISP xdotool search --onlyvisible --name '.*' 2>/dev/null | tail -1)
+      if [ -z "$win" ]; then
+        win=$(DISPLAY=$DISP xdotool getactivewindow 2>/dev/null)
+      fi
+      if [ -n "$win" ]; then
+        DISPLAY=$DISP xdotool windowactivate --sync "$win" 2>/dev/null
+        DISPLAY=$DISP xdotool key --clearmodifiers --window "$win" "$key" 2>/dev/null
+        DISPLAY=$DISP xdotool key --clearmodifiers "$key" 2>/dev/null
+        echo "run_shim: KEY $key sent at t=${at}s (window $win \"$(DISPLAY=$DISP xdotool getwindowname "$win" 2>/dev/null)\")" >&2
+      else
+        echo "run_shim: KEY $key at t=${at}s NOT SENT -- NO visible window on $DISP." >&2
+        DISPLAY=$DISP xdotool search --name '.*' 2>/dev/null \
+          | while read -r w; do
+              echo "run_shim:   window $w \"$(DISPLAY=$DISP xdotool getwindowname "$w" 2>/dev/null)\"" >&2
+            done
+      fi
+    done ) &
+  echo "run_shim: X2_KEYS is set -- this run is DRIVEN: $X2_KEYS"
+else
+  echo "run_shim: X2_KEYS is unset -- NOTHING drives this run; it photographs"
+  echo "          whatever the game reaches on its own."
+fi
+
 # Sample several frames, not one. A single capture at a fixed instant lands on
 # a fade or a movie boundary often enough to read as "black screen = broken":
 # that happened, and nearly cost a bisection of a regression that did not exist.
