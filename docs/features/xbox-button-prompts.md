@@ -1,5 +1,9 @@
 # Xbox button prompts
 
+> **SOURCE FOUND AND SEEN.** The Xbox button art is in `x2f_med_xbox.igb`:
+> a d-pad cross, shoulder/trigger shapes, gold face buttons and coloured
+> button squares, in atlas cells the PC medium font does not have.
+>
 > **THE STATED SOURCE IS WRONG, AND THE REAL ONE IS FOUND.**
 > `x2f_hud_xbox.igb` is not it -- the Xbox build does not even load that file.
 > The fonts that actually differ between the platforms are **`X2F_med_XBOX`**
@@ -183,3 +187,35 @@ Replace `X2F_med_PC` (and `X2F_thin_PC`) with the Xbox files through
 on screen constantly and needs no special screen to verify. The mechanism is
 already proven (C162), the target is now known, and the check is the one this
 document has been missing: put the Xbox art in and see the glyphs change.
+
+
+## The glyphs, seen
+
+Decoding both medium fonts to PNG and looking at them (the check that should
+have come first, before any substitution run):
+
+* `x2f_med_xbox.igb` -- same Latin letters as the PC font, plus a block of
+  button art below them: a **d-pad cross**, dark **shoulder/trigger** shapes, a
+  row of **gold face buttons**, and a row of **coloured button squares**.
+* `x2f_med_pc.igb` -- the same letters, and those rows are absent.
+
+That is the discriminator run in both directions, and it is what the whole
+feature was looking for. C166.
+
+## The remaining question, which is about STRINGS not art
+
+The PC build's prompt reads **`[ENTER] CONTINUE`** -- seen on the Danger Room
+dialog. That is literal letters from the strings table, not a glyph cell. So
+swapping the font alone will not turn it into a button: the Xbox build must
+emit a different CHARACTER there, and the character-to-cell mapping lives in
+the font's `.xmlb` metrics plus whatever the Xbox strings table contains.
+
+So the next step is the strings, not another font run:
+
+1. Find the codepoints the Xbox metrics map to those new cells
+   (`ui/fonts/x2f_med_xbox.xmlb` against `x2f_med_pc.xmlb`).
+2. Find what the Xbox strings table puts where the PC one puts `[ENTER]`.
+3. Decide whether the port substitutes the string, the font, or both -- and
+   whether it should follow the CONNECTED CONTROLLER rather than the platform,
+   which is what a modern port would do and what makes this feature worth
+   having now that hotswap works.
