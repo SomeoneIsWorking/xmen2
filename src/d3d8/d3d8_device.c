@@ -581,6 +581,34 @@ static void dev_SetMaterial(D3D8Object *self, CPU *C)
     const float *m = (const float *)guest_ptr(d3d8_arg(C, 0), "material");
     (void)self;
     if (!m) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    /*
+     * X2_MATERIAL_DUMP=<n> -- what the ENGINE actually sets.
+     *
+     * The level renders black because every lit draw arrives with a material
+     * whose diffuse is 0,0,0 and a vertex format with no colour to stand in
+     * for it. That is either what the engine asked for, or a mirror of ours
+     * that has drifted -- and those need opposite fixes, so the value is
+     * printed AT THE CALL rather than inferred from the draw.
+     *
+     * A run where the count reaches n and every diffuse is zero is a real
+     * answer; so is one where it never fires, which says SetMaterial is not
+     * the path this engine uses.
+     */
+    {
+        static long want = -2, done;
+        if (want == -2) {
+            const char *e = getenv("X2_MATERIAL_DUMP");
+            want = (e && *e) ? atol(e) : -1;
+        }
+        if (want > 0 && done < want) {
+            done++;
+            fprintf(stderr, "d3d8 SetMaterial %ld/%ld: diffuse %.3f %.3f %.3f "
+                    "%.3f  ambient %.3f %.3f %.3f  emissive %.3f %.3f %.3f  "
+                    "power %.2f\n", done, want,
+                    m[0], m[1], m[2], m[3], m[4], m[5], m[6],
+                    m[12], m[13], m[14], m[16]);
+        }
+    }
     memcpy(g_dev.state.material, m, sizeof g_dev.state.material);
     g_dev.state.material_set = 1;
     d3d8_ret(C, D3D_OK);

@@ -98,3 +98,62 @@ compare the two frames directly.
 The stock menu at this point in its cycle is a STARFIELD NIGHT sky, and earlier
 samples showed the sunset. The menu cycles time of day, so the native build's
 blue-sky and sunset captures are both correct rather than two different bugs.
+
+### Note (2026-08-12)
+## The instrument was reporting on the MENU, and that invalidated three readings
+
+A multi-agent review of the renderer found no defect in it and instead caught
+this: light_dump gated on a single process-lifetime counter, and the MENU is
+lit and submits thousands of lit draws before a level loads. So every dump
+described the scene that is KNOWN CORRECT. The project's own "cap the boring
+case, not the interesting one" rule, broken in its own code.
+
+Three readings taken before the fix are RETRACTED:
+* "the material is black at every lit draw"  -- those were menu draws, and the
+  53 black ones were outliers among 4000.
+* "3905 of 4000 lit draws have a white material" -- also menu draws.
+* the world-matrix sample -- menu draws.
+
+X2_LIGHT_DUMP now requires the CURRENT frame to have already submitted
+X2_LIGHT_DUMP_MIN draws (default 300; a menu frame here submits ~230, a level
+frame ~600) and prints the threshold with the first line, so a dump of the
+wrong scene is visible as one.
+
+## What the LEVEL draws actually carry
+
+    5 light(s) enabled, ambient 0.000 0.000 0.000 (D3DRS_AMBIENT raw 0x00000000)
+    colorvertex 1, has_normal 1
+    material diffuse 1.000 1.000 1.000  ambient 1.000 1.000 1.000  emissive 0
+    light 0 type 3 (DIRECTIONAL) diffuse 0.000 0.196 0.196  amb 0 0 0
+    light 1 type 1 (POINT)       diffuse 0.000 0.000 0.000
+    light 2 type 1 (POINT)       diffuse 0.000 0.000 0.000
+    light 3 type 1 (POINT)       diffuse 0.000 0.000 0.000
+    light 4 type 1 (POINT)       diffuse 0.000 0.000 0.000
+
+So the ENGINE supplies almost no light here: global ambient is genuinely zero
+in the register, four of the five enabled lights have a black diffuse, and the
+fifth is a dim teal directional at 0.196. A white material multiplied by that
+is a near-black surface -- which is exactly the picture. The shader is
+computing what it was given.
+
+D3DLIGHT8 unpacking was re-checked field by field against the real struct
+(Type 0, Diffuse 1-4, Specular 5-8, Ambient 9-12, Position 13-15, Direction
+16-18, Range 19, Falloff 20, Atten 21-23) and matches, so the black diffuses
+are not a misread.
+
+## Where that leaves the cause
+
+The defect is now UPSTREAM of the renderer: either the guest's own light setup
+is not running as it should in this port, or these frames are legitimately lit
+that way and the photographed area is simply meant to be dark. Nothing measured
+so far separates those.
+
+The control run is still the thing that decides it, and the missing half is
+unchanged: drive the NATIVE build to the same opening dialogue room the stock
+control captured (docs: the red chamber with Cyclops), and compare THAT frame.
+If the native version of that specific room is also lit by one 0.196 teal
+light, the light setup is wrong; if the native build never reaches that room on
+the current scripted route, the route is what needs fixing first.
+
+Do NOT adjust the lighting maths. Everything measured says the shader is
+faithful to its inputs.

@@ -13,6 +13,7 @@
  * anything drawn is read next to what was missing from it.
  */
 #include "d3d8_drawcall.h"
+unsigned long gpu_frame_draws_so_far(void);
 #include "d3d8_resource.h"
 #include "d3d8_state.h"
 #include "d3d8_types.h"
@@ -134,6 +135,12 @@ static uint32_t g_arg_first[4];
 static int g_arg_seen;
 static unsigned long g_multistage_draws;
 static int g_multistage_max;
+static void light_dump(const GpuDraw *d);
+/* The raw D3DCOLOR the engine set, kept so the dump can show what was READ as
+   well as what it became -- a zero after conversion and a zero in the register
+   are different faults. */
+static uint32_t g_last_ambient_raw;
+
 static unsigned long g_texop_none_notex, g_texop_none_disabled,
                      g_texop_select, g_texop_select2, g_texop_modulate,
                      g_texop_add, g_texop_other;
@@ -309,7 +316,8 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
     memcpy(out->world, w, sizeof out->world);
     out->lighting = rs(s, D3DRS_LIGHTING, 0) != 0;
     out->color_vertex = rs(s, D3DRS_COLORVERTEX, 1) != 0;
-    argb_to_rgba(rs(s, D3DRS_AMBIENT, 0), out->global_ambient);
+    g_last_ambient_raw = rs(s, D3DRS_AMBIENT, 0);
+    argb_to_rgba(g_last_ambient_raw, out->global_ambient);
     if (!out->lighting) return;
 
     if (s->material_set) {
@@ -351,8 +359,97 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
                             "cone, so it is lit as a point light -- brighter "
                             "outside the cone than the engine asked for.\n");
     }
+    light_dump(out);
 }
 
+
+/*
+ * X2_LIGHT_DUMP=<n> -- the lighting INPUTS of the first n lit draws.
+ *
+ * "The level is black and the menu is not" is a statement about numbers this
+ * layer computes and never shows. A draw dump says a draw is LIT; it does not
+ * say lit BY WHAT. This prints the material, the global ambient and every
+ * enabled light, once per draw for the first n, so an all-black scene can be
+ * traced to zero lights, a black material, or lights that are real and simply
+ * do not reach.
+ *
+ * It prints the case with NO lights too, loudly, because "lit with zero lights"
+ * is the answer that looks most like no output at all.
+ */
+static void light_dump(const GpuDraw *d)
+{
+    static long want = -2;
+    static long done;
+    int i;
+
+    if (want == -2) {
+        const char *e = getenv("X2_LIGHT_DUMP");
+        want = (e && *e) ? atol(e) : -1;
+    }
+    if (want <= 0 || done >= want) return;
+    if (!d->lighting) return;
+    /*
+     * ONLY IN A FRAME THAT IS ALREADY DRAWING A LOT.
+     *
+     * This gated on a process-lifetime counter alone, and the MENU is lit and
+     * submits thousands of lit draws before a level ever loads -- so every
+     * dump described the scene that is KNOWN CORRECT, and the conclusions
+     * drawn from it ("the material is white", "the world matrix is sane") were
+     * about the menu. That is the project's own "cap the boring case, not the
+     * interesting one" trap, in its own code.
+     *
+     * X2_LIGHT_DUMP_MIN=<m> (default 300) requires the CURRENT frame to have
+     * already submitted m draws. A menu frame here submits ~230 and a level
+     * frame ~600, so the default separates them; the threshold is printed with
+     * the first line so a dump of the wrong scene is visible as one.
+     */
+    {
+        static long minimum = -1;
+        if (minimum < 0) {
+            const char *e = getenv("X2_LIGHT_DUMP_MIN");
+            minimum = (e && *e) ? atol(e) : 300;
+        }
+        if ((long)gpu_frame_draws_so_far() < minimum) return;
+        if (!done)
+            fprintf(stderr, "d3d8: X2_LIGHT_DUMP -- only frames that have "
+                    "already submitted %ld draw(s) are dumped (set "
+                    "X2_LIGHT_DUMP_MIN to change). A menu frame submits far "
+                    "fewer, so this is NOT the menu.\n", minimum);
+    }
+    done++;
+    fprintf(stderr,
+        "d3d8 light dump %ld/%ld: %d light(s) enabled, ambient %.3f %.3f %.3f "
+        "(D3DRS_AMBIENT raw 0x%08x), colorvertex %d, has_normal %d\n"
+        "    material diffuse %.3f %.3f %.3f  ambient %.3f %.3f %.3f  "
+        "emissive %.3f %.3f %.3f\n",
+        done, want, d->nlights,
+        d->global_ambient[0], d->global_ambient[1], d->global_ambient[2],
+        g_last_ambient_raw,
+        d->color_vertex, d->normal_offset >= 0,
+        d->mat_diffuse[0], d->mat_diffuse[1], d->mat_diffuse[2],
+        d->mat_ambient[0], d->mat_ambient[1], d->mat_ambient[2],
+        d->mat_emissive[0], d->mat_emissive[1], d->mat_emissive[2]);
+    fprintf(stderr,
+        "    world row0 %.3f %.3f %.3f %.3f   row3(translation) %.1f %.1f %.1f\n",
+        d->world[0], d->world[1], d->world[2], d->world[3],
+        d->world[12], d->world[13], d->world[14]);
+    if (!d->nlights)
+        fprintf(stderr,
+            "    NO LIGHT IS ENABLED. With a zero emissive and a zero ambient "
+            "this draw can only come out BLACK, whatever its texture.\n");
+    for (i = 0; i < d->nlights; i++) {
+        const GpuLight *L = &d->light[i];
+        fprintf(stderr,
+            "    light %d type %d diffuse %.3f %.3f %.3f  amb %.3f %.3f %.3f\n"
+            "            pos %.1f %.1f %.1f  dir %.2f %.2f %.2f  range %.1f  "
+            "atten %.4f %.6f %.8f\n",
+            i, L->type, L->diffuse[0], L->diffuse[1], L->diffuse[2],
+            L->ambient[0], L->ambient[1], L->ambient[2],
+            L->position[0], L->position[1], L->position[2],
+            L->direction[0], L->direction[1], L->direction[2],
+            L->range, L->atten[0], L->atten[1], L->atten[2]);
+    }
+}
 
 static GpuBlend blend_of(uint32_t d3d)
 {

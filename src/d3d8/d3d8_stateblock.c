@@ -3,6 +3,7 @@
 #include "d3d8_com.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /*
@@ -129,6 +130,38 @@ int d3d8_sb_apply(uint32_t token, D3D8State *dst)
 {
     Block *b = sb_of(token, "ApplyStateBlock");
     if (!b) return 0;
+    /*
+     * X2_SB_DUMP=<n> -- what Apply CHANGES, for the first n applies.
+     *
+     * The level renders black with a material of 0,0,0 at every lit draw,
+     * while SetMaterial is measured receiving 1,1,1,1. Something between the
+     * two overwrites the mirror, and this is the only thing that overwrites
+     * ALL of it at once. Printing the before and after says whether it is --
+     * and prints "unchanged" too, because Apply being innocent is just as
+     * useful an answer and would otherwise look like no output.
+     */
+    {
+        static long want = -2, done;
+        if (want == -2) {
+            const char *e = getenv("X2_SB_DUMP");
+            want = (e && *e) ? atol(e) : -1;
+        }
+        if (want > 0 && done < want) {
+            done++;
+            if (memcmp(dst->material, b->state.material,
+                       sizeof dst->material) == 0)
+                fprintf(stderr, "d3d8 sb apply %ld/%ld: material UNCHANGED "
+                        "(%.3f %.3f %.3f)\n", done, want,
+                        dst->material[0], dst->material[1], dst->material[2]);
+            else
+                fprintf(stderr, "d3d8 sb apply %ld/%ld: material %.3f %.3f "
+                        "%.3f  ->  %.3f %.3f %.3f   (block captured when "
+                        "material_set=%d)\n", done, want,
+                        dst->material[0], dst->material[1], dst->material[2],
+                        b->state.material[0], b->state.material[1],
+                        b->state.material[2], b->state.material_set);
+        }
+    }
     *dst = b->state;
     b->applies++;
     g_applied++;
