@@ -125,6 +125,9 @@ static void *heartbeat_thread(void *arg)
             p_ps = ps; p_pl = pl;
         }
         {
+            guest_thread_state_report();
+        }
+        {
             static unsigned long p_q;
             unsigned long q = guest_quantum_count();
             fprintf(stderr, "[HB]           %lu preemption(s) (+%lu) at a "

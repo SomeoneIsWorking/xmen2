@@ -28,6 +28,13 @@ unsigned long guest_quantum_size(void);
 unsigned long guest_quantum_count(void);
 
 /*
+ * One line per live guest thread: what it is blocked on and for how long.
+ * Printed from the heartbeat -- a stall has to be watched while it happens,
+ * and a shutdown report arrives after the kill that ended the argument.
+ */
+void guest_thread_state_report(void);
+
+/*
  * Release the lock, do something that blocks, take it back.
  *
  * Every blocking host call the guest makes has to go through one of these or

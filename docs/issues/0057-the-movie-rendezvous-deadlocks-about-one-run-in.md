@@ -116,3 +116,26 @@ nothing observable), lost pulses (0.5%). What has NOT been looked at is what the
 decoder thread is actually blocked ON at the moment of a stall -- there is no
 per-thread state report, and every attempt so far has guessed at the mechanism
 instead of reading it. That instrument is the next thing to build.
+
+### The instrument now exists: what each thread is blocked ON, live
+`guest_thread_state_report()` prints one line per live guest thread from the
+HEARTBEAT -- state (running / waiting for the guest lock / in a condition wait /
+in a blocking host call / SUSPENDED / new) and how long it has been in it.
+A stall has to be watched while it happens; a shutdown report arrives after the
+SIGKILL that ended the argument, which is how the first quantum measurement was
+lost.
+
+First reading, during the intro movies: each movie runs THREE guest threads --
+`0x25002590`, `0x25002600` and `0x25002630`. Two sit in a condition wait and one
+runs guest code, and on the next movie the third is SUSPENDED. The durations
+read ~0.0s every interval, which is the useful part: those two are not parked,
+they keep WAKING. This is a poll loop between three threads, not a two-way
+rendezvous, which is what every attempt on this issue so far has assumed.
+
+A separate thread, start `0x2f075da0`, was caught "waiting for the guest lock
+for 0.4s" -- so a thread genuinely does block on the lock, which is what the
+quantum acts on.
+
+The instrument had a defect of its own on its first run and it is fixed: a
+thread that had never changed state reported its age as the process uptime,
+8,989s on a 130s run. Stamped at creation now.

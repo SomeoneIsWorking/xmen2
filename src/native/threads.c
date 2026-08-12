@@ -54,6 +54,17 @@
 #include <time.h>
 #include <sched.h>
 
+/* ---- what each guest thread is doing ------------------------------------ */
+
+enum { TS_NEW = 0, TS_RUNNING, TS_LOCK, TS_COND, TS_BLOCKING, TS_SUSPENDED,
+       TS_DONE };
+static const char *const TS_NAME[] = {
+    "new", "running guest code", "waiting for the guest lock",
+    "in a WAIT (condition variable)", "in a blocking host call",
+    "SUSPENDED", "finished"
+};
+static void state_set(int st);
+
 /* ---- the global guest lock --------------------------------------------- */
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -74,12 +85,14 @@ static unsigned long   g_quantum = 20000;
 
 void guest_lock(void)
 {
-    if (pthread_mutex_trylock(&g_lock) == 0) { t_depth++; return; }
+    if (pthread_mutex_trylock(&g_lock) == 0) { t_depth++; state_set(TS_RUNNING); return; }
     g_contended++;
     g_waiters++;
+    state_set(TS_LOCK);
     pthread_mutex_lock(&g_lock);
     g_waiters--;
     t_depth++;
+    state_set(TS_RUNNING);
 }
 
 void guest_unlock(void) { t_depth--; pthread_mutex_unlock(&g_lock); }
@@ -156,7 +169,7 @@ unsigned long guest_quantum_count(void)  { return g_quanta; }
    where every blocked thread comes back through. */
 static void guest_suspend_point(void);
 
-void guest_blocking_begin(void) { guest_unlock(); }
+void guest_blocking_begin(void) { state_set(TS_BLOCKING); guest_unlock(); }
 void guest_blocking_end(void)
 {
     guest_lock();
@@ -173,8 +186,10 @@ void guest_blocking_end(void)
    condvar per handle would have to be created and destroyed with the handle. */
 void guest_cond_wait_ms(uint32_t ms)
 {
+    state_set(TS_COND);
     if (ms == 0xFFFFFFFFu) {
         pthread_cond_wait(&g_cond, &g_lock);
+        state_set(TS_RUNNING);
         return;
     }
     {
@@ -185,6 +200,7 @@ void guest_cond_wait_ms(uint32_t ms)
         if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
         pthread_cond_timedwait(&g_cond, &g_lock, &ts);
     }
+    state_set(TS_RUNNING);
 }
 
 void guest_cond_broadcast(void) { pthread_cond_broadcast(&g_cond); }
@@ -216,9 +232,69 @@ typedef struct {
        in a spin while ANOTHER sits parked and is never named. */
     unsigned long n_suspend, n_resume;
     int       reaped;            /* its handle was closed and its memory freed */
+    /*
+     * WHAT THIS THREAD IS DOING RIGHT NOW, and since when.
+     *
+     * Three mechanisms were proposed for issue #57's intermittent stall and
+     * all three were guesses -- a hand-off, a quantum, a lost pulse -- because
+     * nothing here could answer "what is the other thread blocked ON?". The
+     * totals could not: a thread parked in a condition wait and a thread
+     * spinning in guest code both show up as "1 still running".
+     */
+    int          state;
+    double       state_since;
 } GuestThread;
 
+
 static GuestThread g_thread[MAX_THREADS];
+/* The slot of the thread running on THIS host thread; NULL on the main one,
+   which has no slot. Declared here rather than beside thread_main because the
+   state helpers below need it. */
+static __thread GuestThread *g_self;
+
+static double now_s(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+static void state_set(int st)
+{
+    if (!g_self) return;
+    if (g_self->state == st) return;
+    g_self->state = st;
+    g_self->state_since = now_s();
+}
+
+/*
+ * One line per live guest thread: what it is doing and for how long.
+ *
+ * Printed from the heartbeat, because a stall is a thing you watch happen --
+ * a report at shutdown arrives after a SIGKILL has already ended the argument.
+ * The denominator is printed too: a run whose threads are all "running guest
+ * code" is a different claim from a run that has no threads to report.
+ */
+void guest_thread_state_report(void)
+{
+    /* A duration that keeps reading ~0.0s is not a thread that just changed
+       state -- it is a thread that keeps WAKING, which is the difference
+       between a poll loop and a park and is the thing worth seeing. */
+    double t = now_s();
+    int i, live = 0;
+    for (i = 0; i < MAX_THREADS; i++) {
+        GuestThread *g = &g_thread[i];
+        if (!g->used || g->finished) continue;
+        live++;
+        fprintf(stderr, "[HB]           tid %u start 0x%08x: %s for %.1fs\n",
+                g->tid, g->start,
+                TS_NAME[g->state < 0 || g->state > TS_DONE ? 0 : g->state],
+                t - g->state_since);
+    }
+    if (!live)
+        fprintf(stderr, "[HB]           no live guest thread other than the "
+                        "main one, which is not in this table\n");
+}
 static unsigned long g_created, g_exited, g_suspends, g_resumes, g_reaped;
 /*
  * Resumes and suspends that named NO live thread.
@@ -246,8 +322,6 @@ static uint32_t g_next_tid = 1000;
 uint32_t k32_handle_for_thread(void *rec);
 void     k32_handle_thread_done(uint32_t handle);
 
-static __thread GuestThread *g_self;
-
 static void *thread_main(void *p)
 {
     GuestThread *t = (GuestThread *)p;
@@ -260,7 +334,9 @@ static void *thread_main(void *p)
        mean "has not started the guest routine" -- a thread that had already
        run one instruction would not be resumable in the sense the caller
        means. */
-    while (t->suspended) guest_cond_wait_ms(1000u);
+    while (t->suspended) { state_set(TS_SUSPENDED);
+                           pthread_cond_wait(&g_cond, &g_lock); }
+    state_set(TS_RUNNING);
     /* Its own TIB, so this thread's SEH chain is its own. The sentinel is
        Win32's end-of-chain marker; a zero would look like a record at 0 to
        anything that walked it. */
@@ -328,6 +404,12 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
         return 0;
     }
     t->used = 1;
+    /* Stamped at creation, not at the first state change: a thread that has
+       not run yet reported its age as the process uptime -- 8,989 seconds on
+       a 130-second run, which is the instrument lying rather than the thread
+       being stuck. */
+    t->state = TS_NEW;
+    t->state_since = now_s();
     t->suspended = suspended;
     t->start = start;
     t->arg = arg;
@@ -450,7 +532,15 @@ static void guest_suspend_point(void)
 {
     GuestThread *t = g_self;
     if (!t) return;                      /* the main thread; see below */
-    while (t->suspended) guest_cond_wait_ms(0xFFFFFFFFu);
+    if (!t->suspended) return;
+    /* Set AFTER the wait begins would be a lie for the first interval, and
+       guest_cond_wait_ms sets TS_COND -- so the suspended state is stamped
+       here and re-stamped on the way out. */
+    state_set(TS_SUSPENDED);
+    while (t->suspended) {
+        pthread_cond_wait(&g_cond, &g_lock);
+    }
+    state_set(TS_RUNNING);
 }
 
 int guest_thread_suspend(uint32_t handle)
