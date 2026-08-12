@@ -114,6 +114,17 @@ static void *heartbeat_thread(void *arg)
              * A counter that can only be read on a clean exit cannot measure a
              * program that never has one.
              */
+            static unsigned long p_ps, p_pl;
+            unsigned long ps, pl;
+            extern void kernel32_pulse_counts(unsigned long *, unsigned long *);
+            kernel32_pulse_counts(&ps, &pl);
+            if (ps)
+                fprintf(stderr, "[HB]           PulseEvent %lu sent (+%lu), "
+                                "%lu LOST with no waiter (+%lu)\n",
+                        ps, ps - p_ps, pl, pl - p_pl);
+            p_ps = ps; p_pl = pl;
+        }
+        {
             static unsigned long p_q;
             unsigned long q = guest_quantum_count();
             fprintf(stderr, "[HB]           %lu preemption(s) (+%lu) at a "

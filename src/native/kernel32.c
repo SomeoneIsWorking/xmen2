@@ -643,10 +643,29 @@ void imp_KERNEL32_SetEvent(CPU *C)
  * The first version REFUSED this case by name rather than approximating it,
  * and the refusal is what identified the event as manual-reset in one run.
  */
+/*
+ * Delivered and LOST pulses, as running totals.
+ *
+ * The one-shot message below says a pulse was lost; it cannot say whether that
+ * happened once at startup or is happening thousands of times while a
+ * handshake starves. Issue #57 is a rendezvous that stalls intermittently, and
+ * "how many wakeups went nowhere, and when" is the measurement that separates
+ * a scheduling problem from a lost-signal one. Both counts are reported
+ * together so neither can be read without its denominator.
+ */
+static unsigned long g_pulse_sent, g_pulse_lost;
+
+void kernel32_pulse_counts(unsigned long *sent, unsigned long *lost)
+{
+    *sent = g_pulse_sent;
+    *lost = g_pulse_lost;
+}
+
 void imp_KERNEL32_PulseEvent(CPU *C)
 {
     Handle *hh = h_get(A(0), H_EVENT);
     static unsigned long lost;
+    g_pulse_sent++;
     if (hh->waiters > 0) {
         if (hh->manual) {
             /* Every thread waiting at this instant, and no later one. The
@@ -661,7 +680,7 @@ void imp_KERNEL32_PulseEvent(CPU *C)
             hh->count = 1;
         }
         guest_cond_broadcast();
-    } else if (++lost == 1) {
+    } else if (g_pulse_lost++, ++lost == 1) {
         fprintf(stderr, "kernel32: PulseEvent on \"%s\" with NOBODY waiting -- "
                         "the pulse is lost, which is what Windows does too. "
                         "Reported once; if a handshake stalls, this is where "

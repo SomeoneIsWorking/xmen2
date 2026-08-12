@@ -91,3 +91,28 @@ that, finding out what the OTHER thread is actually waiting for, because
 `guest_cond_wait` is where the evidence points and a lost `PulseEvent` (already
 reported by this run, "with NOBODY waiting") is a better suspect than the
 scheduler.
+
+### The lost PulseEvent is NOT the mechanism either -- measured
+The note above named a lost `PulseEvent` as the better suspect. It is now
+counted rather than suspected: `kernel32_pulse_counts()` totals pulses sent and
+pulses lost, and the heartbeat prints both every interval, so the rate is
+visible over time instead of as a single "reported once" line.
+
+Over a 130 s run through the intro movies: **3,489 pulses sent, 19 lost with no
+waiter -- 0.5%.** Losses appear in the movie phase and stop with it (the count
+is flat after 90 s, when the movies end). Half a percent cannot starve a
+handshake that is being pulsed roughly 47 times a second, so this suspect is
+ruled out as the systemic cause the same way the quantum was.
+
+What the same run shows that is worth the next session's attention: the movie
+phase presents ~21 frames a second with one draw in each, not the 1.7 frames a
+second recorded higher up this file. Either the starvation is intermittent in
+the same way the deadlock is, or something committed since that measurement
+changed it. Re-measure before treating either number as this issue's baseline.
+
+Ruled out so far, each with evidence rather than reasoning: a hand-off at
+ResumeThread (made it worse -- livelock), preemption by quantum (fires, changes
+nothing observable), lost pulses (0.5%). What has NOT been looked at is what the
+decoder thread is actually blocked ON at the moment of a stall -- there is no
+per-thread state report, and every attempt so far has guessed at the mechanism
+instead of reading it. That instrument is the next thing to build.
