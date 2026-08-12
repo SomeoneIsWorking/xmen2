@@ -209,3 +209,56 @@ So this issue's sample is unchanged in what it says: 22 runs, no failures, the
 one-in-six rate rejected at 95%, cause unattributed, still open. The lesson is
 the method -- the empirical path here produced two wrong attributions in a row,
 and reading the guest's own code produced the answer in twenty minutes.
+
+### The rendezvous, read out of the guest (RE, not sampling)
+`libCriMovie`'s IAT resolves at `0x1004204c` WaitForSingleObject, `0x10042050`
+PulseEvent, `0x10042054` CreateEventA, `0x10042058` SuspendThread, `0x1004206c`
+ResumeThread, `0x10042070` SetThreadPriority, `0x100420d0` timeSetEvent. Two
+functions are the whole protocol:
+
+* **`FUN_10002630` -- the decoder thread** (the logs' `start 0x25002630`). Loop:
+  ask `FUN_10008600` whether there is work; if there is *and* the flag at
+  `[0x100572b0]` is not 1, jump straight back to the top and keep working. Only
+  when it is out of work does it fall through, clear `[0x100572b0]`, restore its
+  priority and call `SuspendThread` **on its own handle** (`[0x1014a1fc]`) at
+  `0x100026b0`. It parks itself; it does not park between slices.
+* **`FUN_10002520` -- its partner.** Sets `[0x100572b0] = 1`, then SPINS up to
+  `0x2dc6c0` (3,000,000) iterations calling `SetThreadPriority` +
+  `ResumeThread` on `[0x1014a1fc]` until the decoder clears the flag, and calls
+  an error routine if it runs out.
+
+`FUN_10002bb0` is the stop side: set the stop flag `[0x100572d4]`, raise the
+decoder's priority, `ResumeThread`, then `WaitForSingleObject(handle, 1000)` in
+a retry loop on `WAIT_TIMEOUT`.
+
+**Both sides spin without ever blocking.** That is the fact that decides the
+design, and it is why every hand-off attempt has failed.
+
+### DEAD END, measured (second attempt): a hand-off that WAITS for the resumed thread to park
+Since the first hand-off failed by yielding blindly, the obvious repair was to
+make it deterministic: on a `ResumeThread` that actually released a suspended
+thread -- 3,571 of them in a run, not the 63,000,000 no-ops -- run that thread
+**to its next park** before returning, i.e. resume it the way a coroutine is
+resumed. Bounded at 2 s, counted, reported with its denominator.
+
+It froze the run harder than the first attempt did: presents stopped dead at
+frame 2639 and boundary crossings went to **3.17 billion in sixty seconds**
+(against ~124 million in the first minute of a healthy run). The reason is in
+the RE above -- the decoder does **not** park while it has work, so "wait for it
+to park" waits for something that only happens when the decoder runs dry, and
+the thread that would give it work is the one waiting. Reverted.
+
+What the two measurements together establish: **no hand-off at a syscall can fix
+this, because neither side ever blocks.** It is a scheduling problem, and the
+only mechanism that schedules two spinners is preemption neither side has to
+cooperate with -- `guest_quantum()`.
+
+### A real defect that preemption itself introduced: critical sections
+`EnterCriticalSection` was a depth counter, documented as safe because "nothing
+here creates a guest thread". By the time the quantum landed, the game was
+creating nine, and a thread could be preempted *inside* a section with another
+walking straight in. Fixed in `src/native/kernel32.c`: real ownership on Win32's
+own `RTL_CRITICAL_SECTION` layout (owner = the **guest** thread id, recursion
+count, waiters), waiting by condition wait rather than by spinning, and
+`GetCurrentThreadId` now returns the guest id so the two agree. Leaving a
+section owned by another thread aborts by name instead of corrupting it.

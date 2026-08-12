@@ -1161,7 +1161,10 @@ void x86_diag_dump(void)
      * reading (a stall, a missing import, a fault) the one fact that explains
      * a stalled run, "tid N is suspended and nobody resumed it", was silent.
      */
-    { extern void guest_thread_report(void); guest_thread_report(); }
+    /* The thread and critical-section reports are NOT printed here: they moved
+       to x2_interrupt_reports, which runs on every ending rather than only on
+       the ones that dump the ring. Printing them in both places would double
+       every number on a killed run. */
     /* The multimedia timers, for the same reason: a stall whose cause is "the
        callback that would have ended this wait has never run" is invisible
        unless the fire count is printed where the stall is. */

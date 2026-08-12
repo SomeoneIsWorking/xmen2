@@ -165,6 +165,7 @@ void guest_quantum_from_env(void)
 unsigned long guest_quantum_size(void)   { return g_quantum; }
 unsigned long guest_quantum_count(void)  { return g_quanta; }
 
+
 /* Defined with the threads below; declared here because guest_blocking_end is
    where every blocked thread comes back through. */
 static void guest_suspend_point(void);
@@ -257,6 +258,22 @@ static double now_s(void)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+/*
+ * WHICH guest thread is running, in the guest's own numbering.
+ *
+ * GetCurrentThreadId used to return the HOST thread id, which was harmless
+ * only for as long as nothing compared two of them. Critical sections do
+ * exactly that -- an owner field is a thread id -- so the guest number is the
+ * one that has to come out here. The main thread has no slot in the table and
+ * gets the id below g_next_tid's base, so every thread including it has one
+ * and no two share.
+ */
+#define MAIN_TID 999u
+uint32_t guest_current_tid(void)
+{
+    return g_self ? g_self->tid : MAIN_TID;
 }
 
 static void state_set(int st)
@@ -607,6 +624,32 @@ int guest_thread_resume(uint32_t handle)
         fflush(stdout);
     }
     guest_cond_broadcast();
+    /*
+     * AND NOTHING ELSE -- deliberately. Win32's ResumeThread makes the target
+     * runnable and returns; it does not wait, and neither does this.
+     *
+     * Two hand-off designs have now been MEASURED here and both failed, which
+     * is worth more than either would have been if it worked. Read out of the
+     * guest, libCriMovie's rendezvous is:
+     *
+     *   decoder  (0x10002630)  do a slice of work; park with SuspendThread on
+     *                          SELF *only when it has run out of work*; loop.
+     *   partner  (0x10002520)  set a flag, then SPIN up to 3,000,000 times
+     *                          calling SetThreadPriority + ResumeThread until
+     *                          the decoder clears it.
+     *
+     * The first attempt handed the lock over on every resume and slept a
+     * millisecond; that livelocked. The second (this one, reverted) waited for
+     * the resumed thread to PARK before returning -- and froze the run at
+     * frame 2639 with 3.17 BILLION boundary crossings in sixty seconds,
+     * because the decoder does not park while it still has work: it stays in
+     * its own loop, and the thread waiting for it to park waits for ever.
+     *
+     * So BOTH sides spin without ever blocking, and no hand-off at a syscall
+     * can schedule two spinners -- that is a scheduling problem, not a
+     * synchronisation one. What makes this rendezvous complete is preemption
+     * that neither side has to cooperate with: guest_quantum() above.
+     */
     return was;
 }
 
@@ -686,6 +729,7 @@ void guest_thread_report(void)
            g_quanta ? "" : " -- NONE happened: either no second guest thread "
                            "ever waited for the lock, or the quantum is "
                            "larger than this run");
+
     fflush(stdout);
     (void)g_held;
 }

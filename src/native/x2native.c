@@ -307,9 +307,19 @@ void x2_interrupt_reports(int killed)
     extern void d3d8_host_report(void);
     extern void guest_heap_report(void);
     extern void x86_fallback_report(void);
+    extern void guest_thread_report(void);
+    extern void k32_critsec_report(void);
     x86_fallback_report();
     d3d8_host_report();
     guest_heap_report();
+    /* The threads and their critical sections are reported on EVERY ending,
+       not only on a kill. They lived in x86_diag_dump, which the clean
+       X2_MAX_FRAMES stop deliberately skips -- so the runs that WORK, the ones
+       a scheduling change has to be judged on, produced no thread numbers at
+       all. A counter you only see when the run failed cannot tell you the
+       change helped. */
+    guest_thread_report();
+    k32_critsec_report();
     fflush(stdout);
     if (killed)
         x86_diag_dump();

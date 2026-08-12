@@ -28,6 +28,13 @@ unsigned long guest_quantum_size(void);
 unsigned long guest_quantum_count(void);
 
 /*
+ * The running guest thread's id, in the GUEST's numbering -- not the host's.
+ * GetCurrentThreadId returns this, and a critical section's owner field holds
+ * it, so the two agree by construction. The main thread has one too.
+ */
+uint32_t guest_current_tid(void);
+
+/*
  * One line per live guest thread: what it is blocked on and for how long.
  * Printed from the heartbeat -- a stall has to be watched while it happens,
  * and a shutdown report arrives after the kill that ended the argument.

@@ -331,7 +331,11 @@ void imp_KERNEL32_QueryPerformanceCounter(CPU *C)
 }
 
 void imp_KERNEL32_GetCurrentProcessId(CPU *C) { ret_std(C, (uint32_t)getpid(), 0); }
-void imp_KERNEL32_GetCurrentThreadId(CPU *C)  { ret_std(C, (uint32_t)gettid(), 0); }
+/* The GUEST's thread numbering, not the host's. A critical section's owner
+   field holds one of these, so the two have to come from the same source --
+   and gettid() would give every guest coroutine on one host thread the same
+   answer, which is the failure mode this exists to prevent. */
+void imp_KERNEL32_GetCurrentThreadId(CPU *C)  { ret_std(C, guest_current_tid(), 0); }
 void imp_KERNEL32_Sleep(CPU *C)
 {
     /* The other pump point, and the one that matters most: a guest that sleeps
@@ -451,44 +455,161 @@ void imp_KERNEL32_ExitProcess(CPU *C)
 
 /* ---- critical sections -------------------------------------------------
  *
- * Single-threaded for now: nothing here creates a guest thread, so a critical
- * section has nothing to serialise. They are still tracked rather than ignored
- * -- Enter/Leave keep a depth per section, so an unbalanced pair is caught
- * here instead of becoming a deadlock the day threads exist.
+ * REAL ONES, because they now have something to serialise.
+ *
+ * These were a depth counter and a comment saying "nothing here creates a
+ * guest thread, so a critical section has nothing to serialise". Both halves
+ * of that stopped being true: the game creates nine guest threads in a run,
+ * and guest_quantum() preempts a running thread every N boundary crossings --
+ * so a thread could be preempted INSIDE a section and another thread walk
+ * straight into it. A counter that only notices unbalanced pairs would not
+ * even have seen that happen.
+ *
+ * The layout is Win32's own RTL_CRITICAL_SECTION, not a private one:
+ *
+ *   +0  DebugInfo       (unused here)
+ *   +4  LockCount       -1 when free; 0 or more = that many threads waiting
+ *   +8  RecursionCount  how many times the owner has entered
+ *   +12 OwningThread    the GUEST thread id, 0 when free
+ *   +16 LockSemaphore   (unused here)
+ *   +20 SpinCount       (a hint even on Windows; dropped)
+ *
+ * Using the real offsets matters because the MSVC CRT reads these fields
+ * directly rather than always going through the API.
+ *
+ * Waiting is a condition wait, never a spin: a spin would hold the guest lock
+ * against the very thread that is going to leave the section.
  */
-void imp_KERNEL32_InitializeCriticalSection(CPU *C) { WR32(A(0) + 4u, 0); ret_std(C, 0, 1); }
+enum { CS_LOCKCOUNT = 4, CS_RECURSION = 8, CS_OWNER = 12 };
+
+static double k32_now_s(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
+static unsigned long g_cs_contended;      /* enters that had to wait */
+static unsigned long g_cs_enters;
+
+void imp_KERNEL32_InitializeCriticalSection(CPU *C)
+{
+    WR32(A(0) + CS_LOCKCOUNT, 0xFFFFFFFFu);    /* -1: free */
+    WR32(A(0) + CS_RECURSION, 0);
+    WR32(A(0) + CS_OWNER, 0);
+    ret_std(C, 0, 1);
+}
 /* Same section, plus a spin count -- which is a scheduling HINT even on
-   Windows (how long to spin before sleeping), and cannot mean anything here
+   Windows (how long to spin before sleeping) and cannot mean anything here
    where one guest thread runs at a time. It is dropped, not stored, and this
    comment is the record of that. Returns TRUE: the section IS initialised.
    msdia80's static MSVC8 CRT calls this during DllMain. */
 void imp_KERNEL32_InitializeCriticalSectionAndSpinCount(CPU *C)
 {
-    WR32(A(0) + 4u, 0);
+    WR32(A(0) + CS_LOCKCOUNT, 0xFFFFFFFFu);
+    WR32(A(0) + CS_RECURSION, 0);
+    WR32(A(0) + CS_OWNER, 0);
     ret_std(C, 1, 2);
 }
 void imp_KERNEL32_DeleteCriticalSection(CPU *C)
 {
-    if (RD32(A(0) + 4u) != 0)
-        fprintf(stderr, "kernel32: DeleteCriticalSection on one still entered "
-                        "%u time(s)\n", RD32(A(0) + 4u));
+    if (RD32(A(0) + CS_OWNER) != 0)
+        fprintf(stderr, "kernel32: DeleteCriticalSection on one still owned by "
+                        "guest thread %u, entered %u time(s)\n",
+                RD32(A(0) + CS_OWNER), RD32(A(0) + CS_RECURSION));
     ret_std(C, 0, 1);
 }
+
+/* 1 if this thread now owns it, 0 if another thread does. Shared by Enter and
+   TryEnter so the two cannot disagree about what ownership means. */
+static int cs_try_take(uint32_t p, uint32_t tid)
+{
+    uint32_t owner = RD32(p + CS_OWNER);
+    if (owner == 0) {
+        WR32(p + CS_OWNER, tid);
+        WR32(p + CS_RECURSION, 1);
+        WR32(p + CS_LOCKCOUNT, 0);
+        return 1;
+    }
+    if (owner == tid) {                        /* recursive: Win32 allows it */
+        WR32(p + CS_RECURSION, RD32(p + CS_RECURSION) + 1u);
+        return 1;
+    }
+    return 0;
+}
+
 void imp_KERNEL32_EnterCriticalSection(CPU *C)
 {
-    WR32(A(0) + 4u, RD32(A(0) + 4u) + 1u);
+    uint32_t p = A(0), tid = guest_current_tid();
+    g_cs_enters++;
+    if (!cs_try_take(p, tid)) {
+        double t0 = k32_now_s();
+        int warned = 0;
+        g_cs_contended++;
+        WR32(p + CS_LOCKCOUNT, RD32(p + CS_LOCKCOUNT) + 1u);
+        while (!cs_try_take(p, tid)) {
+            /* A timed wait, not INFINITE. The wake comes from Leave's
+               broadcast; the timeout exists so that a section whose owner will
+               never leave reports itself instead of hanging silently. */
+            guest_cond_wait_ms(1000);
+            if (!warned && k32_now_s() - t0 > 30.0) {
+                warned = 1;
+                fprintf(stderr,
+                        "kernel32: guest thread %u has waited 30s to enter the "
+                        "critical section at 0x%08x, owned by guest thread %u "
+                        "with a recursion count of %u. That owner is not "
+                        "running, or is blocked on something this thread "
+                        "holds.\n", tid, p, RD32(p + CS_OWNER),
+                        RD32(p + CS_RECURSION));
+            }
+        }
+        WR32(p + CS_LOCKCOUNT, RD32(p + CS_LOCKCOUNT) - 1u);
+    }
     ret_std(C, 0, 1);
 }
+
+/* TryEnterCriticalSection: takes it or returns FALSE, never waits. */
+void imp_KERNEL32_TryEnterCriticalSection(CPU *C)
+{
+    ret_std(C, (uint32_t)cs_try_take(A(0), guest_current_tid()), 1);
+}
+
 void imp_KERNEL32_LeaveCriticalSection(CPU *C)
 {
-    uint32_t d = RD32(A(0) + 4u);
-    if (d == 0) {
-        fprintf(stderr, "kernel32: LeaveCriticalSection on one that was never "
-                        "entered\n");
+    uint32_t p = A(0), tid = guest_current_tid();
+    uint32_t owner = RD32(p + CS_OWNER), rec = RD32(p + CS_RECURSION);
+    if (owner == 0) {
+        fprintf(stderr, "kernel32: LeaveCriticalSection at 0x%08x, which is "
+                        "not owned by anyone\n", p);
         abort();
     }
-    WR32(A(0) + 4u, d - 1u);
+    if (owner != tid) {
+        /* Win32 leaves this undefined and corrupts the section. Here it is
+           named: releasing another thread's section is how a data race turns
+           into a mystery two subsystems away. */
+        fprintf(stderr, "kernel32: guest thread %u left the critical section "
+                        "at 0x%08x, which guest thread %u owns\n",
+                tid, p, owner);
+        abort();
+    }
+    if (rec > 1) { WR32(p + CS_RECURSION, rec - 1u); ret_std(C, 0, 1); return; }
+    WR32(p + CS_RECURSION, 0);
+    WR32(p + CS_OWNER, 0);
+    WR32(p + CS_LOCKCOUNT, 0xFFFFFFFFu);
+    /* Whoever is waiting for it is in a condition wait, not a spin. */
+    guest_cond_broadcast();
     ret_std(C, 0, 1);
+}
+
+/* Printed with the rest of the kernel32 report, at zero as well: "0 contended"
+   and "critical sections are not implemented" were the same line for the whole
+   life of the counter version, and they are not the same fact. */
+void k32_critsec_report(void)
+{
+    printf("  critical sections: %lu enter(s), %lu of which had to WAIT for "
+           "another guest thread%s\n", g_cs_enters, g_cs_contended,
+           g_cs_contended ? "" : " -- none did, so nothing in this run "
+                                 "actually overlapped inside one");
 }
 
 /* ---- files ------------------------------------------------------------- */
