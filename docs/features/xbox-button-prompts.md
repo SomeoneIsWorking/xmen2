@@ -1,9 +1,9 @@
 # Xbox button prompts
 
-> **THE STATED SOURCE FOR THIS FEATURE IS WRONG.** `x2f_hud_xbox.igb` does not
-> contain Xbox button glyphs. Measured, below. Nothing can be built on it until
-> the real source is found, and no amount of screen-hunting would have shown
-> that -- the substitution was a no-op by construction.
+> **THE STATED SOURCE IS WRONG, AND THE REAL ONE IS FOUND.**
+> `x2f_hud_xbox.igb` is not it -- the Xbox build does not even load that file.
+> The fonts that actually differ between the platforms are **`X2F_med_XBOX`**
+> and **`X2F_thin_XBOX`**, and their art differs from the PC's by 66.5%.
 
 
 Feature 3 of the three (`README.md`): the Xbox build's authentic button glyphs
@@ -149,3 +149,37 @@ already lifts `default.xbe` (`xbox/`, `tools/xbox_relift.sh`) -- or to accept
 that the prompts are drawn from art that is not in `assetsfb.wad` and extract
 the rest of the ISO. Either way it starts from the Xbox build, not from this
 host, and not from a font that turned out to be a copy of the PC one.
+
+
+## FOUND: the real source is X2F_med_XBOX / X2F_thin_XBOX
+
+The font SET files settle it. `ui/fonts/fonts_pc.xmlb` and
+`ui/fonts/fonts_xbox.xmlb` are 392 and 396 bytes, and their string tables
+differ in exactly two entries:
+
+    pc  : ... X2F_med_PC   ... X2F_thin_PC   ... X2F_big ... X2F_hud_PS2 ... font_XMEN_digital_XBOX
+    xbox: ... X2F_med_XBOX ... X2F_thin_XBOX ... X2F_big ... X2F_hud_PS2 ... font_XMEN_digital_XBOX
+
+Two things fall out of that:
+
+1. **Both platforms use `X2F_hud_PS2` for the `hud` slot.** So the Xbox build
+   never loads `x2f_hud_xbox.igb` at all, and neither does the PC one -- which
+   is why the PC install's `x2f_hud_pc.igb` has the same md5 as the ISO's
+   `x2f_hud_ps2.igb`. Every substitution aimed at the HUD font was aimed at a
+   file nothing reads.
+2. **The platform difference lives in `medium` and `thin`.** Comparing the art
+   with the fixed extractor: the PC's `x2f_med_pc.igb` and the Xbox's
+   `x2f_med_xbox.igb` differ in **174,548 of 262,400 bytes (66.5%)** at
+   256x256. That is different pictures, not different encoding.
+
+Note also that `x2f_med_pc.igb` decodes to **1** igImage and `x2f_med_xbox.igb`
+to **9** -- a difference the old extractor could not have shown, since it
+emitted one PNG per mip size and kept only the last.
+
+### The next step, now concrete
+
+Replace `X2F_med_PC` (and `X2F_thin_PC`) with the Xbox files through
+`X2_ASSETS`, and look at menu text -- `X2F_med` is the medium UI font, so it is
+on screen constantly and needs no special screen to verify. The mechanism is
+already proven (C162), the target is now known, and the check is the one this
+document has been missing: put the Xbox art in and see the glyphs change.
