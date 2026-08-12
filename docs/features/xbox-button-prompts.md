@@ -131,4 +131,21 @@ about the XBOX build, not about this host:
 3. The ISO holds assets outside `assetsfb.wad`; only `textures/` and `ui/` were
    ever extracted from it here.
 
-Check (2) first. It is minutes of work and it is where the evidence points.
+### Check (2) is done, and it closes the question
+
+The metrics were compared. `ui/fonts/x2f_hud.xmlb`, `x2f_hud_gc.xmlb` and
+`x2f_hud_xbox.xmlb` are **byte-identical -- the same md5, 27,082 bytes each**.
+Only the PS2 variant differs (26,942 bytes).
+
+So `x2f_hud_xbox` is the same font as `x2f_hud` in **both** the texture and the
+metrics. The "Xbox HUD font" is not an Xbox-specific font at all; the platform
+suffix names which build ships it, not different art. There is nothing in it to
+take.
+
+**Feature 3 as written in `README.md` cannot be built, and this is a disproof
+rather than a difficulty.** The next work is to find how the Xbox build draws a
+button prompt at all -- most cheaply by reading its UI code, since this repo
+already lifts `default.xbe` (`xbox/`, `tools/xbox_relift.sh`) -- or to accept
+that the prompts are drawn from art that is not in `assetsfb.wad` and extract
+the rest of the ISO. Either way it starts from the Xbox build, not from this
+host, and not from a font that turned out to be a copy of the PC one.
