@@ -1078,6 +1078,34 @@ def emit_instruction(ins, ctx):
                 "{ unsigned long long _t = __rdtsc();",
                 "  C->eax = (uint32_t)_t; C->edx = (uint32_t)(_t >> 32); }"]
 
+    if m in ("PUSHAD", "PUSHA"):
+        # The ESP that is pushed is the value BEFORE any of the pushes, which
+        # is the whole reason a temporary is needed: writing C->esp into the
+        # fifth slot after four decrements stores a value 16 bytes low, and
+        # POPAD discards that slot so nothing would ever complain.
+        return [A,
+                "{ uint32_t _sp = C->esp;",
+                "  C->esp -= 4; WR32(C->esp, C->eax);",
+                "  C->esp -= 4; WR32(C->esp, C->ecx);",
+                "  C->esp -= 4; WR32(C->esp, C->edx);",
+                "  C->esp -= 4; WR32(C->esp, C->ebx);",
+                "  C->esp -= 4; WR32(C->esp, _sp);",
+                "  C->esp -= 4; WR32(C->esp, C->ebp);",
+                "  C->esp -= 4; WR32(C->esp, C->esi);",
+                "  C->esp -= 4; WR32(C->esp, C->edi); }"]
+    if m in ("POPAD", "POPA"):
+        # ESP is SKIPPED, not restored -- the processor discards that slot, and
+        # restoring it would undo the pops that follow it.
+        return [A,
+                "C->edi = RD32(C->esp); C->esp += 4;",
+                "C->esi = RD32(C->esp); C->esp += 4;",
+                "C->ebp = RD32(C->esp); C->esp += 4;",
+                "C->esp += 4;                       /* the saved ESP */",
+                "C->ebx = RD32(C->esp); C->esp += 4;",
+                "C->edx = RD32(C->esp); C->esp += 4;",
+                "C->ecx = RD32(C->esp); C->esp += 4;",
+                "C->eax = RD32(C->esp); C->esp += 4;"]
+
     if m in ("PUSHFD", "PUSHF"):
         return [A, "C->esp -= 4; WR32(C->esp, x86_eflags(C));"]
     if m in ("POPFD", "POPF"):

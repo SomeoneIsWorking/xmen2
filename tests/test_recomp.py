@@ -655,6 +655,34 @@ class WaitingX87Forms(unittest.TestCase):
         self.assertIn("WR16(", c)
         self.assertNotIn("C->eax =", c)
 
+    def test_pushad_pushes_the_esp_from_before_the_pushes(self):
+        """The fifth slot holds ESP as it was on entry, not as it is four
+        pushes later. Nothing would ever complain if it were wrong -- POPAD
+        DISCARDS that slot -- so the only place this can be caught is here."""
+        c = translate([
+            ins(0x00401000, "PUSHAD", "PUSHAD", n=1),
+            ins(0x00401001, "RET", "RET", n=1),
+        ])
+        self.assertIn("uint32_t _sp = C->esp;", c)
+        self.assertIn("WR32(C->esp, _sp);", c)
+        # ...and the saved ESP must not be C->esp read at the point of the push
+        self.assertNotIn("WR32(C->esp, C->esp);", c)
+
+    def test_popad_skips_the_saved_esp_rather_than_restoring_it(self):
+        """The processor discards that slot. Restoring it would undo the four
+        pops that follow, leaving EBX/EDX/ECX/EAX read from the wrong words --
+        a register file that is wrong in four places at once and looks like
+        memory corruption."""
+        c = translate([
+            ins(0x00401000, "POPAD", "POPAD", n=1),
+            ins(0x00401001, "RET", "RET", n=1),
+        ])
+        self.assertIn("C->esp += 4;                       /* the saved ESP */",
+                      c)
+        self.assertNotIn("C->esp = RD32(C->esp)", c)
+        # and the order is the reverse of PUSHAD's
+        self.assertLess(c.index("C->edi = RD32"), c.index("C->eax = RD32"))
+
     def test_wait_is_a_no_op_not_a_refusal(self):
         c = translate([
             ins(0x00401000, "WAIT", "WAIT", n=1),
