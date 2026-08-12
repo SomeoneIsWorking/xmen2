@@ -183,3 +183,38 @@ getCallingThread would fail to match whichever thread registered. Read
 FUN_10075400's table lookup; do not assume it, because the naive expectation
 runs the other way -- one host thread should make every guest thread look
 identical, not distinct.
+
+### Note (2026-08-12)
+PREMISE CONFIRMED BY READING THE IMAGE: pthread_self resolves through Win32 TLS.
+
+    FUN_10075400 (pthread_self)
+      -> loads the key at 0x1015f4d8
+      -> FUN_10075ff0
+      -> CALL [0x10077048]
+
+and walking libIGCore.dll's import table, IAT rva 0x77048 is
+KERNEL32.dll!TlsGetValue. If the lookup returns NULL, pthread_self ALLOCATES a
+fresh 0x38-byte handle for the caller.
+
+So the vendored pthreads-win32 identifies a thread by Win32 TLS, and this port
+switches Win32 TLS per guest coroutine (k32_tls_switch in kernel32.c). Each
+guest coroutine therefore gets its own pthread handle -- which is the CORRECT
+emulation, because a coroutine here stands for a Windows thread, and on Windows
+each thread genuinely has its own TLS.
+
+That matters for how this is fixed. Because the emulation is right, the port
+should behave as Windows does, and on Windows igThreadManager::userRegister and
+::userUnregister both run on the main thread, so getCallingThread matches.
+Something in THIS port makes the unregistering coroutine differ from the
+registering one, or makes the main coroutine's TLS differ between init and
+shutdown -- for example if a slot is reused after a guest thread exits.
+
+DO NOT "fix" this by making pthread_self return a process-wide constant. That
+would paper over the mismatch and would break any engine code that legitimately
+distinguishes threads, which is most of what a thread manager is for.
+
+NEXT MEASUREMENT, now cheap: read the TLS key at 0x1015f4d8 and print, per TLS
+slot, the pthread handle each guest coroutine holds -- alongside the one
+registered thread's id (0x7100a2a8, measured). That says directly whether the
+shutdown caller is a different coroutine or the same one with different TLS,
+and those need different fixes.
