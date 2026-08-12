@@ -431,8 +431,35 @@ void imp_MSVCR71__controlfp(CPU *C)
 void imp_MSVCR71___set_app_type(CPU *C) { ret_c(C, 0); }        /* console/GUI hint */
 void imp_MSVCR71___setusermatherr(CPU *C) { ret_c(C, 0); }      /* no matherr hook */
 
-void imp_MSVCR71__exit(CPU *C)  { exit((int)A(0)); }
-void imp_MSVCR71_exit(CPU *C)   { exit((int)A(0)); }
+/*
+ * The CRT's exit, and WHERE it was called from.
+ *
+ * Same reason as kernel32's ExitProcess: a run that ends here is
+ * indistinguishable from one that finished, because the reports are atexit
+ * handlers and the log just stops. Issue #54 -- a backgrounded run that leaves
+ * before CreateDevice -- reproduces on demand now, and neither ExitProcess nor
+ * a return from the entry point accounts for it, so this is the remaining
+ * door. [ESP] names the caller.
+ */
+void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
+void x86_diag_dump(void);
+
+static void crt_exit_from(CPU *C, uint32_t code, const char *what)
+{
+    uint32_t from = RD32(C->esp);
+    const char *mod = NULL; uint32_t guest = from;
+    x86_guest_addr_of(from, &mod, &guest);
+    fprintf(stderr, "\nmsvcr71: the guest called %s(%u) from 0x%08x (%s "
+                    "0x%08x). It is QUITTING on purpose -- this is not a "
+                    "crash.\n", what, code, from, mod ? mod : "unmapped",
+            guest);
+    if (getenv("X2_EXIT_RING")) x86_diag_dump();
+    else fprintf(stderr, "  Set X2_EXIT_RING=1 to dump the boundary ring here "
+                         "and see what led to it.\n");
+    exit((int)code);
+}
+void imp_MSVCR71__exit(CPU *C)  { crt_exit_from(C, A(0), "_exit"); }
+void imp_MSVCR71_exit(CPU *C)   { crt_exit_from(C, A(0), "exit"); }
 void imp_MSVCR71__c_exit(CPU *C){ ret_c(C, 0); }
 void imp_MSVCR71__cexit(CPU *C) { ret_c(C, 0); }
 

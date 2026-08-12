@@ -148,6 +148,12 @@ logged defect.
 - **A negative result must carry its denominator and its blind spots.** "Found
   nothing" and "never looked" must be distinguishable — see the shape of the
   reports in `native_discover.sh`.
+- **An override must reproduce the original's RETURN VALUE, not just its stack
+  effect.** Check the CALL SITE, not the decompiler's signature: Ghidra typed
+  the DirectX check `void`, the caller does `TEST AL,AL` on it, and an override
+  that left EAX alone made the game branch on leftover register contents --
+  a silent `exit(0)` before the first frame, intermittent, and sensitive to
+  anything that changed what ran before it (issue #54, C158).
 - **A counter that only prints at shutdown cannot measure this program.**
   Nothing here stops on its own: every run ends in a timeout, and the shutdown
   report is written from a signal handler that can be cut short. Three counters

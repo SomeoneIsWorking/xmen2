@@ -413,7 +413,41 @@ void imp_KERNEL32_GetStartupInfoA(CPU *C)
     ret_std(C, 0, 1);
 }
 
-void imp_KERNEL32_ExitProcess(CPU *C) { exit((int)A(0)); }
+/*
+ * The guest asking to quit, and WHERE it asked from.
+ *
+ * This was `exit(A(0))` and said nothing, so a run that ended here was
+ * indistinguishable from one that finished: the reports printed (they are
+ * atexit handlers) and the log simply stopped. Issue #54 -- a backgrounded run
+ * that leaves before CreateDevice -- looked exactly like a completed run for
+ * that reason, and the first question about it, "did the game decide to quit
+ * or did something kill it", had no answer.
+ *
+ * [ESP] is the caller's return address, so it names the guest code that
+ * decided. The boundary ring goes with it: the exit is a decision made after
+ * something else failed, and the ring is what shows the something else.
+ */
+void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
+
+void imp_KERNEL32_ExitProcess(CPU *C)
+{
+    uint32_t code = A(0), from = RD32(C->esp);
+    const char *mod = NULL; uint32_t guest = from;
+    x86_guest_addr_of(from, &mod, &guest);
+    fprintf(stderr, "\nkernel32: the guest called ExitProcess(%u) from "
+                    "0x%08x (%s 0x%08x). It is QUITTING on purpose -- this is "
+                    "not a crash.\n", code, from, mod ? mod : "unmapped",
+            guest);
+    if (getenv("X2_EXIT_RING")) {
+        fprintf(stderr, "  X2_EXIT_RING is set: the boundary ring follows, so "
+                        "what led to the decision can be read.\n");
+        x86_diag_dump();
+    } else {
+        fprintf(stderr, "  Set X2_EXIT_RING=1 to dump the boundary ring here "
+                        "and see what led to it.\n");
+    }
+    exit((int)code);
+}
 
 /* ---- critical sections -------------------------------------------------
  *

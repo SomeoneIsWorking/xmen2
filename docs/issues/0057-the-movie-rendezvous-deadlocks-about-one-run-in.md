@@ -190,3 +190,22 @@ Two limitations that matter more than the arithmetic:
 The experiment that would attribute it is cheap now: `X2_QUANTUM=0` is the
 control, and `X2_MAX_FRAMES` cuts a run from 6:55 to 3:40, so a 16-run control
 sample is about an hour. Run that before crediting the quantum.
+
+
+### CORRECTION: the control runs were issue #54, not this one
+The `X2_QUANTUM=0` control above came back 0 of 16 and was written up as
+attributing something to preemption. It attributed nothing to this issue. Those
+runs were failing with "no device was ever created" -- issue #54 -- and #54's
+cause has since been found by reading the exe: the DirectX-check override
+returned no value and the game does `TEST AL,AL` on it, so it branched on
+leftover EAX. Preemption changed what ran before the call, which is why turning
+it off changed the outcome; it was never scheduling.
+
+With that fixed, `X2_QUANTUM=0` passes 4 of 4 given a timeout that fits (a run
+without preemption is about twice as slow, which is a real effect and the only
+one attributable to the quantum so far).
+
+So this issue's sample is unchanged in what it says: 22 runs, no failures, the
+one-in-six rate rejected at 95%, cause unattributed, still open. The lesson is
+the method -- the empirical path here produced two wrong attributions in a row,
+and reading the guest's own code produced the answer in twenty minutes.

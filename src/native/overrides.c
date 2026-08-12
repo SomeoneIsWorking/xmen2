@@ -39,9 +39,28 @@
  * exist. The check is asking whether Microsoft's D3D is installed, and this
  * port's answer is that it does not use it -- so the question is retired.
  *
- * void __cdecl FUN_00617480(void): the caller pops nothing and the original
- * ends in a plain RET, so this leaves ESP exactly as it found it and pops only
- * the return address, exactly as the recompiled body's RET would have.
+ * IT RETURNS A BOOL IN AL. This override used to say "void __cdecl
+ * FUN_00617480(void)" and leave EAX alone, and that was wrong in the way that
+ * is hardest to see: the original ends
+ *
+ *     006175d0  XOR AL,AL          ; false
+ *     006175d2  JMP 006175d6
+ *     006175d4  MOV AL,0x1         ; true
+ *
+ * and WinMain does `CALL 0x00617480; TEST AL,AL; JNZ ...`. Leaving EAX
+ * untouched handed the game whatever the previous call had left there. When
+ * its low byte happened to be zero the game took the failure path, which sets
+ * BOTH 0x006f3c2c and 0x006f3a2d; the display initialiser at 0x005fb270 then
+ * sees 0x006f3a2d and sets the quit flag at 0x00a09f94; WinMain skips its
+ * entire main loop and returns 0 -- and skips the DISPLAY_FAILED message box
+ * too, because 0x006f3c2c says the DirectX check was the reason. The result
+ * is a silent exit(0) before CreateDevice with no thread ever started, which
+ * is issue #54 exactly, including why it was intermittent (leftover EAX) and
+ * why perturbing timing appeared to fix it.
+ *
+ * So the answer is written explicitly. The question is retired, and a retired
+ * question's answer is "proceed" -- AL = 1, exactly as the original's true
+ * path writes it, low byte only.
  */
 void __real_fn_XMen2_00617480(CPU *C);
 
@@ -57,8 +76,11 @@ void __wrap_fn_XMen2_00617480(CPU *C)
                "See src/native/overrides.json.\n");
         fflush(stdout);
     }
-    /* The original returns void; the caller only continues past it. Pop the
-       return address the call site pushed, as the body's RET would. */
+    /* TRUE, in AL only -- the original's true path is `MOV AL,0x1`, which
+       leaves the rest of EAX alone, and a caller that reads EAX rather than AL
+       must see what the original would have left. */
+    C->eax = (C->eax & ~0xFFu) | 1u;
+    /* Pop the return address the call site pushed, as the body's RET would. */
     C->esp += 4u;
 }
 
