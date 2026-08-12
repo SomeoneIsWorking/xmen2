@@ -72,12 +72,16 @@ static void *heartbeat_thread(void *arg)
         /* Slept in slices, not in one go: an interrupt has to be noticed in
            a quarter of a second, not at the end of a five-second period. */
         double slept = 0.0;
-        while (slept < g_period && !x2_report_now) {
+        while (slept < g_period && !x2_report_now
+               && !gpu_frame_limit_reached()) {
             req.tv_sec = 0;
             req.tv_nsec = 250000000L;
             while (nanosleep(&req, &req) != 0 && errno == EINTR) ;
             slept += 0.25;
         }
+        /* A clean stop on the frame counter takes the same path a SIGTERM
+           does, so nothing new has to be trusted. */
+        if (!x2_report_now && gpu_frame_limit_reached()) x2_report_now = 1;
         if (x2_report_now) {
             fprintf(stderr, "\n[HB] interrupted -- the shutdown reports "
                             "follow, taken while the guest is STILL RUNNING, "

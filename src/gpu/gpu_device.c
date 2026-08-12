@@ -62,6 +62,10 @@ static struct {
 static struct { int x, y, w, h; float minz, maxz; int set; } g_viewport;
 
 /* Counters. A black screen is ambiguous; these disambiguate it. */
+/* Set when X2_MAX_FRAMES is reached. READ by the host's heartbeat thread,
+   which is where the reports live -- this file does not know that thread
+   exists, and keeping it that way is the point of the file comment above. */
+static int g_frame_limit_hit;
 static unsigned long g_frames_presented, g_frames_no_swapchain,
                      g_frames_no_window, g_late_clears;
 #endif
@@ -255,6 +259,7 @@ void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h)
  * validation error, and it would have been the FIRST draw of every run.
  */
 unsigned long gpu_frames_presented(void) { return g_frames_presented; }
+int gpu_frame_limit_reached(void) { return g_frame_limit_hit; }
 
 SDL_GPUTextureFormat gpu_depth_format(void)
 {
@@ -566,6 +571,36 @@ void gpu_frame_end(void)
     if (!g_offscreen) g_swap = NULL;
     g_frames_presented++;
     shot_maybe_write();
+    /*
+     * X2_MAX_FRAMES: stop cleanly after this many frames.
+     *
+     * This game never stops on its own, so every measured run has been ended
+     * by a timeout -- which means every run costs its whole timeout even when
+     * the thing being measured finished a minute earlier, and the reports come
+     * out of a signal handler. Ending on the game's OWN frame counter makes a
+     * run take as long as it needs and no longer, and makes two runs of the
+     * same script the same length.
+     *
+     * It goes through the same path a SIGTERM does (the heartbeat thread does
+     * the reports, because they are stdio), so nothing new has to be trusted.
+     */
+    {
+        static long limit = -2;
+        if (limit == -2) {
+            const char *e = getenv("X2_MAX_FRAMES");
+            limit = (e && *e) ? strtol(e, NULL, 0) : -1;
+            if (limit > 0)
+                fprintf(stderr, "gpu: X2_MAX_FRAMES=%ld -- the run will stop "
+                                "cleanly after that many presented frames.\n",
+                        limit);
+        }
+        if (limit > 0 && (long)g_frames_presented >= limit) {
+            fprintf(stderr, "\ngpu: X2_MAX_FRAMES reached (%lu presented). "
+                            "Stopping; the reports follow.\n",
+                    g_frames_presented);
+            g_frame_limit_hit = 1;
+        }
+    }
 #endif
 }
 

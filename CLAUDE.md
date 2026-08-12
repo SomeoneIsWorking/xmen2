@@ -148,6 +148,13 @@ logged defect.
 - **A negative result must carry its denominator and its blind spots.** "Found
   nothing" and "never looked" must be distinguishable — see the shape of the
   reports in `native_discover.sh`.
+- **A counter that only prints at shutdown cannot measure this program.**
+  Nothing here stops on its own: every run ends in a timeout, and the shutdown
+  report is written from a signal handler that can be cut short. Three counters
+  in one session were unreadable for exactly that reason. Put a live number in
+  the HEARTBEAT, and print it AT ZERO with its denominator -- "0 of 352,340" is
+  a measurement, a line that appears only when something is wrong is
+  indistinguishable from a check that never ran.
 - **Diagnostics prove they fire.** `--selftest` / `*_SELFTEST=1` paths exist for
   the watch, the crash reporter, the indirect-call checks; they are wired into
   the test suite. An instrument caught lying is recorded in `docs/info/instruments/`

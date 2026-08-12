@@ -115,6 +115,18 @@ void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
 unsigned long gpu_frames_presented(void);
 
 /*
+ * 1 once X2_MAX_FRAMES frames have been presented.
+ *
+ * This game never stops on its own, so every measured run has been ended by a
+ * timeout: each costs its whole timeout even when the thing being measured
+ * finished a minute earlier, and the reports come out of a signal handler.
+ * This is a clean stop on the game's OWN counter. It is a FLAG rather than an
+ * exit because stopping is not this file's business -- whoever runs the
+ * reports polls it.
+ */
+int gpu_frame_limit_reached(void);
+
+/*
  * Which render destination the engine has bound.
  *
  * This backend has exactly one: the swapchain. The engine's render
