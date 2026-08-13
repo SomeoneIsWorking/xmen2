@@ -347,6 +347,7 @@ void x2_interrupt_reports(int killed)
     dinput_pad_report();
     { extern void k32_asset_report(void), ws2_report(void);
       k32_asset_report(); ws2_report(); }
+    x86_epcount_report();
     fflush(stdout);
     if (killed)
         x86_diag_dump();

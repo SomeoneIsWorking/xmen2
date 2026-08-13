@@ -159,4 +159,7 @@ X86Module *x86_modules(void);
 /* Say at STARTUP whether X2_ARGS can be honoured by this build. */
 void x86_args_build_check(void);
 
+/* X2_EPCOUNT: how often a dispatched body is entered. Reports at zero. */
+void x86_epcount_report(void);
+
 #endif /* X86RT_NATIVE_H */

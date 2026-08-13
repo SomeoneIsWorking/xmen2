@@ -524,3 +524,31 @@ The parse and use sites for these attributes are in XMen2.exe around
 and "conversationEnd" at 0x00685efc, at 0x0045892c/0x00458fdc/0x00459709 and
 0x004589ec/0x004591e1/0x0045973f). The pair at 0x00459709/0x0045973f is the
 most likely response handler and is where to read next.
+
+### Note (2026-08-13)
+## The script system RUNS -- 208 launches in a run
+
+X2_ARGS could not answer this (it is trace-build only, I047), so the dispatcher
+got a counter of its own: X2_EPCOUNT=<addrs> counts entries to a body at the
+one place a body with no direct call site can be reached. Both script-launch
+functions in XMen2.exe -- the two that build "scripts/%s.py" -- have exactly
+zero direct call sites in the recompiled output, so every entry they get is
+counted.
+
+    [EPC] 73049477 dispatched call(s) in this run:
+    [EPC]   0x004a11c0  173
+    [EPC]   0x004a1320   35
+
+So scripts launch, 208 times, in a run that ends with the party eliminated.
+"The script engine does not work" is dead as an explanation.
+
+What is still unanswered is WHICH scripts those 208 are, and in particular
+whether nightcrawler_spawn is among them. The counter does not say. The file
+trace can settle it a different way: if a script's .py is opened when it is
+LAUNCHED rather than when the package is loaded, then the open of
+nightcrawler_spawn.py that every run shows is itself proof the script ran --
+and the cameraFade experiment would then mean the script ran and its statements
+did not take, which is a different defect entirely. If instead every script in
+the level is opened in one burst at load, the open proves nothing. The ordering
+of the opens distinguishes the two and a run with both instruments on is
+measuring it now.

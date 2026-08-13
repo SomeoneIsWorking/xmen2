@@ -120,6 +120,54 @@ int x86_triggers_report(void)
     return unfired;
 }
 
+/*
+ * X2_EPCOUNT=0x004a11c0,0x004a1320 -- how often a body is ENTERED, in an
+ * ordinary build.
+ *
+ * X2_ARGS answers this too but only in a trace build (I047), and a trace build
+ * is slow enough that the run never reaches the scene the question is about.
+ * This costs one comparison per DISPATCHED call, which is the only way a body
+ * with no direct call site can be reached at all -- and the two script-launch
+ * functions in XMen2.exe have exactly zero direct call sites, so every entry
+ * they get comes through here.
+ *
+ * It prints its counts AT ZERO and with the run's dispatch total, because
+ * "this function was never entered" and "the counter never ran" are the two
+ * answers that must not look alike -- which is the whole reason the previous
+ * attempt at this question was worthless.
+ */
+#define EPCOUNT_MAX 8
+static struct { uint32_t ep; unsigned long n; } g_epc[EPCOUNT_MAX];
+static int g_epc_n = -1;
+static unsigned long g_epc_dispatches;
+
+static void epcount_init(void)
+{
+    const char *e = getenv("X2_EPCOUNT");
+    char buf[256], *p, *save;
+    g_epc_n = 0;
+    if (!e || !*e) return;
+    snprintf(buf, sizeof buf, "%s", e);
+    for (p = strtok_r(buf, ",", &save); p && g_epc_n < EPCOUNT_MAX;
+         p = strtok_r(NULL, ",", &save))
+        g_epc[g_epc_n++].ep = (uint32_t)strtoul(p, NULL, 0);
+    fprintf(stderr, "[EPC] counting entries to %d entry point(s) at the "
+                    "dispatcher. A body with a DIRECT caller is a plain C call "
+                    "and is invisible here; these are counted only when "
+                    "dispatched.\n", g_epc_n);
+}
+
+void x86_epcount_report(void)
+{
+    int i;
+    if (g_epc_n < 0) epcount_init();
+    if (!g_epc_n) return;
+    fprintf(stderr, "[EPC] %lu dispatched call(s) in this run:\n",
+            g_epc_dispatches);
+    for (i = 0; i < g_epc_n; i++)
+        fprintf(stderr, "[EPC]   0x%08x  %lu\n", g_epc[i].ep, g_epc[i].n);
+}
+
 int x86_native_call_at(uint32_t addr, CPU *C)
 {
     X86Module *m;
@@ -156,6 +204,13 @@ int x86_native_call_at(uint32_t addr, CPU *C)
          * dispatches is not running guest code at all.
          */
         g_cpu_current = C;
+        if (g_epc_n < 0) epcount_init();
+        g_epc_dispatches++;
+        if (g_epc_n) {
+            int i;
+            for (i = 0; i < g_epc_n; i++)
+                if (g_epc[i].ep == addr) { g_epc[i].n++; break; }
+        }
         f->fn(C);
         ring_note("guest", addr, 0, in, C->esp, 0);
     }
