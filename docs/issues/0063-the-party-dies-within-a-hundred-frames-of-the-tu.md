@@ -1,8 +1,8 @@
 ---
 id: 63
-title: The port raises EMSG_NO_DATA_DEVNUM after the tutorial conversation, and the modal blocks the level state machine
+title: The party dies within a hundred frames of the tutorial loading
 status: open
-symptom: a save-device modal goes up 200 ms after the tutorial's opening conversation ends and never closes, freezing the level state machine behind CPopupDialog's gate; the visible consequences were read as the party dying (original title: 'The party dies within a hundred frames of the tutorial loading')
+symptom: ALL X-MEN HAVE BEEN ELIMINATED appears about a hundred frames after the act0 tutorial loads, with nobody driving the character; a modal stack goes up 200 ms after the opening conversation ends and never closes, freezing the level state machine behind CPopupDialog's gate
 tags: pc,native,gameplay,tutorial,saves,dialog
 created: 2026-08-13
 updated: 2026-08-13
@@ -1115,3 +1115,68 @@ Find why the save-device path answers "no data" here and not under Wine: what
 check goes through, and where the port looks for the save folder. `id 47`,
 which takes the default path rather than the token table, is worth resolving at
 the same time.
+
+### Note (2026-08-13)
+## CORRECTION: the re-title was premature. EMSG_NO_DATA_DEVNUM is DOWNSTREAM.
+
+The previous note re-titled this issue as a save-device defect. That was wrong
+and the title is reverted. What the note got right stands -- a modal stack goes
+up 200 ms after the conversation ends and never closes, and everything visible
+follows from it -- but the identification of WHICH modal was too quick.
+
+Reading the raiser settles it. `FUN_004b0800` is the save/load screen's update,
+and the id-7 branch is guarded:
+
+    0x004b0853  EBX = [ESI + 0xcc]      ; how many save slots were found
+    0x004b0859  TEST EBX,EBX
+    0x004b085f  SETG BL                 ; BL = (count > 0)
+    0x004b0876  ECX = [ESI + 0xd4]      ; the screen's MODE
+    0x004b087c  CMP ECX,0x3
+    0x004b087f  JNZ ...                 ; only mode 3 continues
+    0x004b0881  TEST BL,BL
+    0x004b0883  JNZ ...                 ; a slot exists -> no dialog
+    0x004b0898  PUSH 0x7                ; EMSG_NO_DATA_DEVNUM
+
+So id 7 is raised only when the LOAD GAME screen (mode 3) is already open and
+finds no slots. Something navigated there first -- which is exactly what
+answering an "All X-Men have been eliminated / Load Game / Main Menu" prompt
+with Return would do. The 66 raises are the Retry loop after that.
+
+Two further facts against the save reading. Both save directories are IDENTICAL
+-- `settings.dat` and no `saveslot*.save` -- in the port's `scratch/saves` and
+in the Wine prefix the control uses, so the data is not the difference. And the
+port's own save path is correct and working: `S:\Activision\X-Men Legends 2\
+Save\` resolves, `settings.dat` opens for reading, and the shell32 report
+confirms it.
+
+## What is actually established
+
+  * the blocking modal chain begins 200 ms after the conversation ends
+  * TWO dialogs go up: `dlg0_active 6 -> 5` at 89.488s, `dlg1_active 6 -> 3` at
+    89.889s, and neither comes down
+  * three message ids are raised in the whole run:
+        id 47  x9   -> string resource 0xd01, from FUN_005f1d80
+        id  7  x66  -> EMSG_NO_DATA_DEVNUM, from FUN_004b0800 (mode 3, 0 slots)
+        id 10  x1   -> EMSG_LOADING_DEVNUM, from FUN_004b09e0
+  * the control raises NO dialog at the equivalent point and goes on to start
+    the second conversation
+
+The first dialog -- the one at 89.488s, before any Load Game screen could
+exist -- is still unidentified. `id 47` is the candidate: it is raised nine
+times by `FUN_005f1d80`, which is a popup-driving loop, and it resolves to
+string resource 0xd01 rather than an EMSG_ token, so naming it needs the
+localisation table (`igct.bnx`).
+
+## Also fixed here
+
+`shell32_report` was registered with `atexit`, and the clean X2_MAX_FRAMES stop
+leaves through `_exit` -- so on precisely the runs that reach gameplay it had
+never printed once. That is the same defect the input reports had, and it now
+runs from `x2_interrupt_reports` like the rest.
+
+## Next
+
+Identify the FIRST dialog. Either resolve string resource 0xd01 out of
+`igct.bnx`, or record `FUN_005f1d80` and read what it is reacting to -- and in
+either case establish whether the party was already dead when it went up, which
+is the question this issue was opened on and is still open.

@@ -349,6 +349,11 @@ void x2_interrupt_reports(int killed)
       k32_asset_report(); ws2_report(); }
     { extern void conversation_report(void); conversation_report(); }
     { extern void x86_record_report(void); x86_record_report(); }
+    /* shell32's save-path report was registered with atexit, and the clean
+       X2_MAX_FRAMES stop leaves through _exit -- so on precisely the runs
+       that reach gameplay it had never printed once. Same defect the input
+       reports had; same fix. */
+    { extern void shell32_report(void); shell32_report(); }
     x86_epcount_report();
     fflush(stdout);
     if (killed)
@@ -1668,7 +1673,8 @@ int main(int argc, char **argv)
        modules, because LoadLibraryA may only hand back a handle for a module
        this host actually implements, and that answer comes from the export
        registry. */
-    shell32_install(); atexit(shell32_report);
+    /* NOT atexit: see x2_interrupt_reports, which calls it on every ending. */
+    shell32_install();
     advapi32_install(); atexit(advapi32_report);
     {   extern void kernel32_narrowing_report(void);
         atexit(kernel32_narrowing_report); }
