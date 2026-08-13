@@ -605,3 +605,6 @@ Also from those late samples: Cyclops is lit and coloured in the stock frame
 400 s in, exactly as he is at the start. Ours is a black silhouette. And issue
 #63 is now confirmed a PORT DEFECT -- the stock party does not die -- so the
 later frames this issue needs are reachable once #63 is fixed.
+
+### Note (2026-08-13)
+CORRECTION to the note above: issue #63 is NOT confirmed a port defect. The control samples that note relied on all show the same dialogue line with '[Enter] continue...' under it -- the control was parked on a conversation box, not idling in gameplay -- so the shipped game was never observed in the state the native run dies in. The dependency stands (this issue still needs a settled frame of the room from well after entry), but the reason for it is open rather than established. The tutorial's own scripts make an innocent explanation plausible: conv_0030a_end.PY spawns mercenaries, sets waypoints for two guards, and calls enemiesNoTarget(FALSE) and heroNoTarget(FALSE) -- so an unattended hero after that conversation is standing in a fight in the shipped game too.
