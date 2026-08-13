@@ -1,7 +1,7 @@
 ---
 id: 63
 title: The party dies within a hundred frames of the tutorial loading
-status: open
+status: resolved
 symptom: ALL X-MEN HAVE BEEN ELIMINATED appears about a hundred frames after the act0 tutorial loads, with nobody driving the character; a modal stack goes up 200 ms after the opening conversation ends and never closes, freezing the level state machine behind CPopupDialog's gate
 tags: pc,native,gameplay,tutorial,saves,dialog
 created: 2026-08-13
@@ -1535,3 +1535,35 @@ max health at actor `+0x284`. Next, capture the actor `+0x27c` / `+0x284`
 initialization transition, determine whether negative values are supplied or
 max health is already corrupt, and compare both fields with stock. Do not force
 activation or clamp health at the selector.
+
+### Note (2026-08-13)
+## RESOLVED: two-register FSUBR was translated in the wrong direction
+
+The actor setter was innocent. `FUN_00422b40` computes maximum health with
+`FUN_004b8850`, stores it at actor `+0x284`, then initializes current health
+to that maximum minus an integer stat delta returned through an out-parameter.
+The four first calls to `FUN_0041c4e0` arrived from `0x00422bc3` with supplied
+values `-78`, `-78`, `-90`, and `-66`; a separate capture showed their maximum
+health values were the positive `78`, `78`, `90`, and `66`.
+
+The delta is produced at `FUN_004b7780:0x004b786f` by the original instruction:
+
+    FSUBR ST0,ST1
+
+For an explicit two-register reverse operation, x86 computes source minus
+destination and stores that in the destination: `ST0 = ST1 - ST0`. The
+recompiler emitted `ST0 = ST0 - ST1`. Its general reverse flag was applied to
+memory and implicit-pop forms but ignored in the explicit two-register branch.
+That sign reversal made the delta positive and twice the hero's health, so
+`max - delta` created every hero dead. The party selector then correctly
+rejected them and the wipe query correctly saw no eligible actor.
+
+`tools/recomp.py` now reverses explicit-register `FSUBR` and `FDIVR` operands.
+The regression tests exercise both reverse operations and the ordinary `FSUB`
+negative case; all 54 translator tests pass. A fully regenerated native build
+ran to the former death point and beyond. The legacy smoke script fired its
+Escape at frame 3182 without encountering the death-dialog route; its later
+Down/Return consequently selected LAN multiplayer instead and reached the
+port's explicit no-network path. That divergence is evidence that this issue's
+old loop is gone, but also means `tools/smoke_loop.sh` no longer verifies what
+its comments claim and needs a new success route before it is trusted again.

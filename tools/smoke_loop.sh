@@ -133,7 +133,9 @@ elif [ "$RC" -eq 3 ]; then
     say "      still a failure -- it is just a failure with a name."
     fail=1
 elif [ "$RC" -ne 0 ]; then
-    say "note: the run exited $RC rather than 0."
+    say "FAIL: the run exited $RC rather than 0. A gate cannot pass an abort"
+    say "      merely because its scripted inputs and screenshot checks ran first."
+    fail=1
 fi
 
 }
@@ -206,6 +208,7 @@ EOP
     # prove the gate can now tell a crash from a clean stop.
     { cat "$ok_log"; echo "*** SIGSEGV at 0x4 (not an import slot)"; } > "$T/crash.log"
     expect "a crash (exit 3) FAILS the gate"  1 "$T/crash.log" "$good_shot" 6 3
+    expect "an abort (exit 134) FAILS the gate" 1 "$ok_log"     "$good_shot" 6 134
     expect "a timeout (exit 124) FAILS"       1 "$ok_log"      "$good_shot" 6 124
     expect "a clean run with exit 0 passes"   0 "$ok_log"      "$good_shot" 6 0
     # A timeout is still a failure either way, but it must SAY which kind --

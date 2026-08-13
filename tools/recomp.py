@@ -790,6 +790,8 @@ def emit_instruction(ins, ctx):
             if not st2:
                 raise Unsupported("%s %s,%s" % (m, ops[0], ops[1]))
             a_, b_ = "X87_ST(C, %s)" % st.group(1), "X87_ST(C, %s)" % st2.group(1)
+            if rev:
+                return [A, "%s = %s %s %s;" % (a_, b_, opc, a_)]
             return [A, "%s = %s %s %s;" % (a_, a_, opc, b_)]
         src = "X87_ST(C, %s)" % st.group(1) if st else fsrc(O(0), m[:2] == "FI")
         if rev:

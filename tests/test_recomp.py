@@ -433,6 +433,40 @@ class X87Transcendentals(unittest.TestCase):
         self.assertNotIn("x87_push(C, 1.0L)", c)
 
 
+class X87TwoRegisterReverseArithmetic(unittest.TestCase):
+    """FSUBR/FDIVR reverse the two explicit register operands.
+
+    The ordinary forms compute ``destination op source``.  The reverse forms
+    compute ``source op destination`` while still storing in the destination.
+    Treating both alike made X-Men 2's character-stat delta change sign: actor
+    initialization then subtracted a positive 156 from a maximum health of 78
+    and created every tutorial hero dead (issue #63).
+    """
+
+    def test_fsubr_st0_st1_computes_st1_minus_st0(self):
+        c = translate([
+            ins(0x00401000, "FSUBR", "FSUBR ST0,ST1", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("X87_ST(C, 0) = X87_ST(C, 1) - X87_ST(C, 0);", c)
+        self.assertNotIn("X87_ST(C, 0) = X87_ST(C, 0) - X87_ST(C, 1);", c)
+
+    def test_fdivr_st2_st3_computes_st3_divided_by_st2(self):
+        c = translate([
+            ins(0x00401000, "FDIVR", "FDIVR ST2,ST3", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("X87_ST(C, 2) = X87_ST(C, 3) / X87_ST(C, 2);", c)
+        self.assertNotIn("X87_ST(C, 2) = X87_ST(C, 2) / X87_ST(C, 3);", c)
+
+    def test_nonreverse_fsub_keeps_destination_minus_source(self):
+        c = translate([
+            ins(0x00401000, "FSUB", "FSUB ST0,ST1", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("X87_ST(C, 0) = X87_ST(C, 0) - X87_ST(C, 1);", c)
+
+
 class IntegerX87Widths(unittest.TestCase):
     """FILD and FISTP take m16, m32 or m64, and the width is the operand's.
 
