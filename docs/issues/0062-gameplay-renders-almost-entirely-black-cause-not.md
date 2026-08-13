@@ -584,3 +584,24 @@ for this issue, not a side observation.
   - Cube sampling is implemented and is not why characters are black.
   - Whatever sets a black light does it from libIGGfx's own light applier, so
     the port's D3D8 layer is passing on what the engine computed.
+
+### Note (2026-08-13)
+## The colour cast holds against BOTH stock moments
+
+The room's lighting changes as the scene plays -- the stock frame captured
+early is grey-green and the one 400 s later is redder -- so a colour comparison
+against one of them alone would have been a comparison of two different
+moments. Against both, measured on the upper half of the frame (level, not UI):
+
+    native  .003      mean RGB  37.4   6.7   5.9      G,B are 18%, 16% of R
+    stock   early     mean RGB  19.7  16.2  12.7      G,B are 82%, 64% of R
+    stock   late      mean RGB  30.2  17.3  14.2      G,B are 57%, 47% of R
+
+The port's green and blue are a sixth of its red; the shipped game's are half
+to four fifths of it. The cast is real and is not an artefact of which moment
+was photographed.
+
+Also from those late samples: Cyclops is lit and coloured in the stock frame
+400 s in, exactly as he is at the start. Ours is a black silhouette. And issue
+#63 is now confirmed a PORT DEFECT -- the stock party does not die -- so the
+later frames this issue needs are reachable once #63 is fixed.

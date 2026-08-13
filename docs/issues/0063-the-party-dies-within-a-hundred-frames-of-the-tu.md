@@ -41,3 +41,25 @@ See issue #62, whose measurements were all distorted by this.
 
 ### Note (2026-08-13)
 Issue #62 now depends on this one. The lighting comparison needs a frame of the red chamber from well after the level has settled, and the party dies about a hundred frames in, so no such frame exists. A SetLight histogram over a whole run shows black lights are 151 of 130,738 calls -- they cluster at level entry -- which means the only frame that CAN currently be photographed may be showing the light table mid-population rather than the room's real lighting.
+
+### Note (2026-08-13)
+## CONFIRMED a port defect: the stock game does NOT die in that room
+
+The control was driven into the tutorial and then left alone for 900 seconds,
+sampled eight times. Samples 3 through 8 -- roughly 400 seconds of run, with no
+input at all after the entry Returns -- are all the SAME room, on a later
+conversation line:
+
+    CYCLOPS: "Get him to the X-Jet, Nightcrawler. We'll meet you there."
+
+with Cyclops standing lit and coloured, no game-over, no save dialog. Mean luma
+drifts 26.0 -> 27.6 across those samples, which is the scene animating, not a
+screen change.
+
+So an idle party does NOT die here in the shipped game. The native build's
+"ALL X-MEN HAVE BEEN ELIMINATED" about a hundred frames in is this port's
+defect, and the earlier "not established whether the tutorial legitimately
+kills an idle party" is now settled against that.
+
+Both runs entered the same way and were then left alone, so the comparison is
+like-for-like on the one axis that matters.
