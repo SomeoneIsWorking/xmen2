@@ -139,6 +139,7 @@ Vendored toolkit changes live as patches in `patches/xboxrecomp/` because
 | Enbaya animation decode | `src/core/igb_anim.c` | **partial** — full VLC stream decoder, `tests/test_enbaya.c` |
 | XMLB/engb read | `tools/raven-formats/` (vendored, MIT) | **verified** on real assets |
 | Xbox WAD extraction | `tools/extract_wad.py` | **partial** |
+| Conversation system (RE write-up) | `docs/RE/conversations.md` | **verified** — the XMLB schema and its attributes, the parsed record layout (every string is a pointer/length PAIR whose pointer is the FIRST dword, and the parser is handed `record + 4`), the manager singleton's field map and full vtable at 0x00685e04, the update/choose/apply/nextLine state machine, the script-launch path (`FUN_004a1320` has ZERO direct call sites — every caller goes through script-manager vtable +0x3c), the `$MENU_ACCEPT` prompt block decoded by runtime capture including `__ftol` taking its argument on the x87 stack, the game-over reason table, and a worked example of the tutorial's opening showing that the playable hero does not exist until the first conversation is advanced twice. Written as a standalone reference: it is as useful for modding and translation as for this port |
 | ARK meta-object system | `docs/RE/ark.md` | **verified** — registration, construction, `+0x3c` impl redirect (C008, C009) |
 | Alchemy 5.0 headers | `scratch/ref/alchemy5/` (gitignored) | reference |
 

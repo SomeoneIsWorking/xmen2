@@ -27,7 +27,9 @@ python3 ~/.claude/skills/issue-catalog/catalog.py search <symptom>   # docs/issu
 - `docs/info/claims/` — each claim carries the observation that would falsify it.
   `info.py claim check` detects rot mechanically (has the cited code changed?).
 - `docs/info/instruments/` — a tool that lied is recorded here. Several have.
-- `docs/RE/` — reverse-engineering write-ups (`ark.md`, `enbaya_decode.md`).
+- `docs/RE/` — reverse-engineering write-ups (`ark.md`, `enbaya_decode.md`,
+  `conversations.md`). These are written to stand ALONE, for anyone reading the
+  game rather than this port — keep them that way when a port detail changes.
 - `docs/prior-art.md` — **Dusklight**, a shipping TP port of the same shape and
   CC0. Read it BEFORE designing any subsystem a mature port has already solved
   (interpolation, UI, config, mods, input binding, saves). Cite what you take,
