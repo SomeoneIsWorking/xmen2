@@ -640,3 +640,30 @@ The settled-gameplay control frame now exists and is cached: oracle key 9b555db0
 
 ### Note (2026-08-13)
 CAUTION on the settled-gameplay control frame recorded above (oracle key 9b555db04417d402): it shows THREE party members and a helmeted portrait, and the act0 tutorial gives you Nightcrawler alone -- so that run had probably gone past the tutorial into a later level by then. It is a good frame of the shipped game in gameplay, but it is NOT yet proved to be the same room as the native capture, and the rule this issue just adopted (no comparison unless the frames are matched) applies to it too.
+
+### Note (2026-08-14)
+## The black silhouettes coincide with an untextured programmable prepass, not persistently black lights
+
+The post-conversation route now survives to frame 3350 after the x87 reverse-op
+fix. Its SetLight histogram weakens the light hypothesis further: 609 black
+calls out of 45,734, while the silhouettes remain present throughout the
+contact sheet (`scratch/screenshots/vs-3350-contact.png`). A persistently black
+level light would account for thousands more calls.
+
+The one created VS 1.1 program was captured from the shipping create path in
+`scratch/logs/vs-bytecode.log`: its declaration contains only position, four
+blend weights, and packed bone indices; its 104-dword program performs four-way
+matrix skinning and writes only `oPos`. It never writes diffuse or texture
+coordinates. This is not a character material shader.
+
+A second shipping-path discriminator captured all 27 programmable draws in
+`scratch/logs/vs-state.log`. Every draw was the same untextured 164-primitive
+triangle strip with ordinary depth test/write, blending off, stencil off, and
+all four colour channels enabled. Thus these are position-only depth/occlusion
+prepass draws whose black pixels are becoming visible in this backend. The
+earlier tentative shadow-volume explanation is falsified by stencil being off.
+
+The next root-cause question is why the shipped D3D8 path suppresses colour for
+this prepass while the port's mirrored state has `COLORWRITEENABLE=0xf`. Do not
+special-case this shader or skip its draws: trace the engine's prepass state or
+capability selection and implement the missing D3D8 mechanism.
