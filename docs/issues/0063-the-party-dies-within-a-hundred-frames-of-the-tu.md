@@ -353,3 +353,42 @@ the spawn trigger never firing is the defect, and the hunt moves to what fires
 it. The anims still do not load: the spawner itself does not work here, which
 is a different and more local defect. The anims load and the party still dies:
 the hero is not what the party check is counting.
+
+### Note (2026-08-13)
+## Forcing the spawner changes NOTHING
+
+tutorial1.py substituted with a copy that calls
+
+    act ( "spwnr_nightcrawler", "spwnr_nightcrawler" )
+
+directly, early, before the conversation starts. The replacement was reported
+by name. Result: actors/06_nightcrawler.igb is STILL opened zero times, the
+filmstrip is the same shape as before, and the party is still eliminated at the
+conversation's end.
+
+The inserted statement did execute. That is inferred rather than seen, but the
+inference is sound: the script runs top to bottom, and the conversation it
+starts at the BOTTOM appeared on screen, so execution passed the inserted line.
+(The emptied-script run is the other half of that: with the script gone the
+conversation never appears, so substitution really does control execution.)
+
+## What that leaves, and a correction to how the anomaly should be read
+
+The other heroes' animation sets -- Cyclops, Wolverine, Storm, Magneto -- load
+without any of them being spawned in this level. They are the default party, so
+animation sets load at PARTY-BUILD time, not at spawn time.
+
+Which means the missing 06_nightcrawler.igb is not evidence that a spawn
+failed. It is evidence that NIGHTCRAWLER WAS NEVER ADDED TO THE PARTY for this
+level. The tutorial's party should be him alone; what the run built instead is
+the default four, whose anims all loaded.
+
+That reframes the whole issue. The party is not empty in the sense of having no
+members -- four heroes' worth of data is loaded -- but the party the level's
+check counts is evidently not that one. The next step is the party
+construction path: what the exe does between reading herostat and deciding who
+is in the level, and where a level's forced character is applied.
+
+Static work so far: the herostat load is at 0x0044babd in XMen2.exe, pushing
+"data/herostat.xmlb" (0x00685578) into a virtual call, inside the function
+reached from 0x0044b8f0. That is the thread to pull.
