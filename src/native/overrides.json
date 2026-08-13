@@ -15,7 +15,13 @@
     "__real_<name>, so an override can defer to the original and the two stay",
     "diffable.",
     "",
-    "Each entry: module, ep (hex string), symbol (the emitted C name), why."
+    "Each entry: module, ep (hex string), symbol (the emitted C name), why",
+    "and optionally returns: \"void\" -- which switches off the",
+    "return-value gate for that one override and therefore has to be",
+    "justified in `why` by naming the CALL SITES that were checked to",
+    "overwrite EAX before reading it. The gate exists because the DirectX",
+    "override was written void, was not, and made the game branch on",
+    "leftover register contents (issue #54)."
   ],
   "overrides": [
     {
@@ -64,6 +70,108 @@
         "frame than the limiter, so the value is overwritten before it is read.",
         "",
         "Without X2_UNPACED this defers to the original and changes nothing."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x00455600",
+      "symbol": "fn_XMen2_00455600",
+      "why": [
+        "igConversationManager::launchScript -- ported, not replaced.",
+        "",
+        "Issue #63: the tutorial's opening conversation ends without ever",
+        "running the script its last response names, so the level's opening",
+        "act never happens and the party is eliminated unopposed. The",
+        "conversation state machine is small and its record layout is fully",
+        "named by the XMLB it is parsed from, so these functions are WRITTEN",
+        "in C (src/native/conversation.c) rather than probed as translated",
+        "bodies -- a breakpoint on a recompiled body answers what the",
+        "translation did, which is a different question from what the game",
+        "does.",
+        "",
+        "This one binds the conversation's two actors into the script manager,",
+        "calls its by-name launch (vtable +0x3c = FUN_004a1320) and clears the",
+        "actors again. It returns the launch's bool in AL."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x0045a100",
+      "symbol": "fn_XMen2_0045a100",
+      "returns": "void",
+      "why": [
+        "record::runScripts -- scriptCommand then scriptFile, each launched",
+        "only when its first byte is not NUL, which is exactly what the",
+        "original's one-byte REPE CMPSB against \"\" asks. Part of the",
+        "conversation port; see 0x00455600.",
+        "Declared void: the original sets no return value, and all three call sites (0x0045b1ad, 0x0045b796, 0x0045bcac) overwrite EAX before reading it -- checked, not assumed."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x004559e0",
+      "symbol": "fn_XMen2_004559e0",
+      "returns": "void",
+      "why": [
+        "bitmap::resetEligible -- *p = ~*p, then clear bits 6..31. Its callers",
+        "zero the word first, so the result is 0x3F; it is ported literally",
+        "rather than as that constant, because the constant is a property of",
+        "the caller and would stop being true without saying so. Part of the",
+        "conversation port; see 0x00455600.",
+        "Declared void: the original sets no return value, and its one call site (0x0045b71b, inside FUN_0045b6d0) overwrites EAX before reading it."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x0045b6d0",
+      "symbol": "fn_XMen2_0045b6d0",
+      "why": [
+        "record::nextLine -- runs the record's conditionScript, then returns",
+        "the first ELIGIBLE child's id, or 0.",
+        "",
+        "Returning 0 is what ends a conversation, so the two ways of doing it",
+        "-- the record has no children at all, and none of its children is",
+        "eligible -- are counted apart in the report. Part of the conversation",
+        "port; see 0x00455600."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x0045d5d0",
+      "symbol": "fn_XMen2_0045d5d0",
+      "returns": "void",
+      "why": [
+        "igConversationManager::chooseResponse -- the player picked the Nth",
+        "OFFERED response, where the offered array has holes (0xFFFFFFFF) that",
+        "N does not count, which is why the loop keeps two indices.",
+        "",
+        "FUN_00458700 is the engine's 'begin this response' and a TRUE return",
+        "means it DECLINED; the original then skips applying the response",
+        "entirely. Both early exits fall through to FUN_00458410 rather than",
+        "returning -- the first draft of this port returned instead, which",
+        "would have left the UI a frame stale on every out-of-range choice.",
+        "Part of the conversation port; see 0x00455600.",
+        "Declared void: the original sets no return value, and its one call site -- the vtable +0x18 call at 0x0045d3bc -- is followed by PUSH EBP, so nothing reads EAX."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x00458010",
+      "symbol": "fn_XMen2_00458010",
+      "why": [
+        "igConversationManager::isVisible -- (flags >> 1) & 1, in AL only.",
+        "This is the predicate the per-frame update tests before doing",
+        "anything, so it decides whether the conversation is live at all.",
+        "Part of the conversation port; see 0x00455600."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x00458020",
+      "symbol": "fn_XMen2_00458020",
+      "why": [
+        "igConversationManager::isSpeaking -- (flags >> 2) & 1, in AL only.",
+        "Part of the conversation port; see 0x00455600."
       ]
     },
     {

@@ -647,3 +647,86 @@ somewhere else and is simply never reached -- which is what everything else in
 this issue already says. Following it further means reading FUN_00467380 and
 its neighbours, or finding what reads [response + 0x1c], rather than another
 run.
+
+### Note (2026-08-13)
+## The conversation state machine is PORTED, and it says the update is ABANDONED
+
+Reading the translated bodies under a debugger was answering "what did the
+recompiler produce", which is a different question from "what does the game
+do". So the conversation state machine is now hand-written C --
+`src/native/conversation.c`, seven functions, declared in
+`src/native/overrides.json` and wired by `gen_overrides.py`, with the
+recompiled originals still linked as `__real_` beside them:
+
+    0x00455600  igConversationManager::launchScript(name, flag)
+    0x0045a100  record::runScripts        -- scriptCommand, then scriptFile
+    0x004559e0  bitmap::resetEligible
+    0x0045b6d0  record::nextLine          -- conditionScript, then first eligible child
+    0x0045d5d0  igConversationManager::chooseResponse(n)
+    0x00458010  isVisible                 -- (flags >> 1) & 1
+    0x00458020  isSpeaking                -- (flags >> 2) & 1
+
+THE RECORD LAYOUT, from the parser (FUN_00458820), which is where the previous
+reading went wrong. Every string attribute is a PAIR and the POINTER is the
+FIRST dword; the parser is handed `record + 4`, so its +0x18 is the record's
++0x1c:
+
+    +0x14 scriptFile   +0x1c chosenScriptFile   +0x24 scriptCommand
+    +0x2c conditionScript   +0x7c flags (0x2 = conversationEnd)
+    +0x8c[] child ids   +0xac child count
+
+Reading +0x1c as "the second half of the pair" made a real path look like a
+length and cost a session.
+
+WHAT THE PORT REPORTS, from a run that reaches the tutorial (scratch/logs/
+nat_conv2.log, nat_conv4.log):
+
+    script launches: 0 asked, 0 had an empty name, 0 reached the script manager
+    nextLine: 1 call(s) -- 1 found a line, 0 childless, 0 with no eligible child
+    chooseResponse: 1 call(s) -- 1 applied, 0 refused, 0 out of range
+    flags: 68361 poll(s), 5 change(s); last value 0x13
+
+So exactly ONE response is ever chosen, it is applied, a next line IS found --
+and no script is ever launched, because the response that carries
+chosenScriptFile is the THIRD one and the conversation never gets there.
+
+## What actually stops: the UPDATE, not the conversation
+
+The flag byte reaches 0x13 -- visible, speaking, not ending, enabled -- and
+NEVER CHANGES AGAIN for the remaining ~62,000 polls of the run. Nothing sets
+the ending flag; nothing hides it. That reads as a live conversation and is
+not one.
+
+isVisible() records the guest return address of every caller (a passive read of
+the word at ESP, the same read X2_EPCOUNT makes). Of eight call sites, FIVE
+stop within about a hundred polls of each other and three run to the end:
+
+    0x0061c461     28 polls, last at 6440 of 68436   STOPPED
+    0x005f65f3   2758 polls, last at 6545            STOPPED
+    0x00401f27    108 polls, last at 6546            STOPPED
+    0x0048d51b    161 polls, last at 6551            STOPPED
+    0x0045d1f7    234 polls, last at 6552            STOPPED   <- the conversation update
+    0x004024ed   2400 polls, last at 68436           still running
+    0x004779a1   2525 polls, last at 68435           still running
+    0x0059a08c  59981 polls, last at 68434           still running
+
+0x0045d1f7 is the `TEST AL,AL` after `CALL [EAX+0x20]` inside FUN_0045d1a0, the
+per-frame conversation update. It is not returning early -- it is NOT BEING
+CALLED. And it does not stop alone: an entire update chain stops in the same
+handful of frames while the rest of the process carries on for another 62,000
+polls.
+
+So the causation in this issue's title is backwards. The script does not fail
+to launch and then the party dies; something tears down the in-level update
+chain, and the conversation -- still flagged visible and speaking -- is
+abandoned partway through, three responses short of the one that would have
+launched `conv_0020b_end`.
+
+## Next
+
+Name the other four stopped call sites (0x0061c461, 0x005f65f3, 0x00401f27,
+0x0048d51b) and find the state change that stops them all at once. Porting
+FUN_0045d1a0 itself is worth doing but is NOT the next step and was
+deliberately not attempted here: its subtitle-draw block (0x0045d4c2-0x0045d55b)
+passes x87 values through helpers whose signatures are not readable off the
+disassembly, and a guessed port there would break rendering that works.

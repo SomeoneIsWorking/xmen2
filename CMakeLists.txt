@@ -345,6 +345,7 @@ if(X2_MODULE_HAVE)
         src/native/threads.c
         src/native/x86rt_native.c
         src/native/overrides.c
+        src/native/conversation.c
         src/native/heartbeat.c
         src/d3d8/d3d8_com.c
         src/d3d8/d3d8_caps.c

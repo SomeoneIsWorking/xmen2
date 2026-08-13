@@ -53,7 +53,13 @@ def load():
         except ValueError:
             sys.exit("gen_overrides: overrides[%d] ep %r is not hex"
                      % (i, o["ep"]))
-        out.append((o["module"], ep, o["symbol"]))
+        rv = o.get("returns", "value")
+        if rv not in ("value", "void"):
+            sys.exit("gen_overrides: overrides[%d] returns %r; it is \"value\" "
+                     "(the default) or \"void\", and \"void\" has to be "
+                     "justified in `why` by the CALL SITES that were checked"
+                     % (i, rv))
+        out.append((o["module"], ep, o["symbol"], rv))
     return out
 
 
@@ -72,13 +78,27 @@ def render_cmake(ovr):
         ]
     else:
         lines.append("set(RECOMP_OVERRIDE_WRAPS")
-        for mod, ep, sym in ovr:
+        for mod, ep, sym, rv in ovr:
             lines.append("    -Wl,--wrap=%s        # %s 0x%08x" % (sym, mod, ep))
         lines += [")", ""]
     return "\n".join(lines) + "\n"
 
 
-OVERRIDES_C = os.path.join(ROOT, "src", "native", "overrides.c")
+# Every file that may hold a __wrap_ body. It is a DIRECTORY scan, not a
+# filename: the check exists to catch an override declared with no
+# implementation, and a hard-coded "overrides.c" reports exactly that failure
+# for an override that is correctly implemented somewhere else -- which is what
+# it did the moment the conversation port landed in its own file. A stale
+# checker that cries wolf gets switched off, and then the real case goes by.
+OVERRIDE_DIR = os.path.join(ROOT, "src", "native")
+
+
+def override_sources():
+    out = []
+    for name in sorted(os.listdir(OVERRIDE_DIR)):
+        if name.endswith(".c"):
+            out.append(os.path.join(OVERRIDE_DIR, name))
+    return out
 
 
 def check_return_values(ovr):
@@ -95,15 +115,18 @@ def check_return_values(ovr):
     Ghidra typed that one `void` too. What it can do is catch an override that
     returns nothing at all, which is the shape the defect took.
     """
-    if not os.path.exists(OVERRIDES_C):
-        return ["%s is missing, so NO override body could be checked" % OVERRIDES_C]
-    src = open(OVERRIDES_C).read()
+    files = override_sources()
+    if not files:
+        return ["%s holds no .c files, so NO override body could be checked"
+                % OVERRIDE_DIR]
+    src = "\n".join(open(f).read() for f in files)
     bad = []
-    for mod, ep, sym in ovr:
+    for mod, ep, sym, rv in ovr:
         name = "__wrap_" + sym
         i = src.find(name)
         if i < 0:
-            bad.append("%s has no __wrap_ body in overrides.c" % sym)
+            bad.append("%s has no __wrap_ body in any of the %d file(s) under "
+                       "%s" % (sym, len(files), OVERRIDE_DIR))
             continue
         # the body: from the opening brace to the matching close, counted
         j = src.find("{", i)
@@ -117,6 +140,12 @@ def check_return_values(ovr):
                     break
             k += 1
         body = src[j:k]
+        if rv == "void":
+            # Declared void: every call site was checked to overwrite EAX
+            # before reading it, and the justification is in `why`. The check
+            # is not switched off -- an override that forgets to declare this
+            # still fails, which is the case the gate exists for.
+            continue
         if "C->eax" not in body and ("__real_" + sym) not in body:
             bad.append("%s writes no return value and does not defer to "
                        "__real_%s -- its caller would read leftover EAX"
@@ -129,7 +158,7 @@ def main(argv):
     ovr = load()
 
     by_mod = {}
-    for mod, ep, sym in ovr:
+    for mod, ep, sym, rv in ovr:
         by_mod.setdefault(mod, []).append(ep)
 
     cmake = render_cmake(ovr)
@@ -174,7 +203,7 @@ def main(argv):
         return 0
 
     print("gen_overrides: %d override(s)" % len(ovr))
-    for mod, ep, sym in ovr:
+    for mod, ep, sym, rv in ovr:
         print("    %-10s 0x%08x  %s" % (mod, ep, sym))
     print("  wrote %s" % os.path.relpath(CMAKE_OUT, ROOT))
     for mod in sorted(by_mod):
