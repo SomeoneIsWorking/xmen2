@@ -179,6 +179,14 @@ add_test(NAME button_font
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/make_button_font.py --selftest)
 
+# The port's own button glyphs: the coordinate round trip (and that it is NOT
+# the top-down identity, which is the bug C171 found in the Xbox-art tool), the
+# band finder on an image whose longest blank run is not its first, and a blit
+# that must touch exactly its own cell.
+add_test(NAME pad_font
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/make_pad_font.py --selftest)
+
 # The oracle cache, proved to MISS as well as hit -- with a stub runner in
 # place of Wine, because what is under test is the keying, not the game. A
 # cache that has only ever been shown to hit is a cache that will serve a frame
