@@ -1276,3 +1276,68 @@ attempts have now missed. The cheapest instrument that would name it: record
 the CPopupDialog raise path (the singleton is 0x008b13ec and the "up" bit is
 +0x155d bit 0 of the current slot), and read the return address of whatever
 sets it -- the same passive trick that found the conversation update's caller.
+
+### Note (2026-08-13)
+## The whole chain from the prompt back to its trigger, and where it diverges
+
+Measured, not read -- the previous three reading attempts all missed. The
+dialog's "up" bit is set by `OR byte ptr [EDI + 0x155d],0x1` in `FUN_005ea1b0`,
+which is `CPopupDialog` vtable **+0x68**, so it is dispatched and `X2_EPCOUNT`
+names its callers with no rebuild. Two raises in the run, from two sites:
+
+    CPopupDialog::raise            FUN_005ea1b0  (vtable +0x68)
+      <- 0x005f2201  FUN_005f2090   string id 0x869
+      <- 0x0046a66b  FUN_0046a450   THE GAME-OVER SCREEN
+
+`FUN_0046a450(reason)` maps its reason index through a word table at
+0x00686dd4, which lines up exactly with the `GAMEOVER_*` names:
+
+    reason 0 -> string 2010   GAMEOVER_DEFAULT   ("All X-Men have been eliminated")
+    reason 1 -> string 2014   GAMEOVER_BYSTANDER_DIED
+    reason 2 -> string 2015   GAMEOVER_GENERATOR
+    reason 3 -> string 2016   GAMEOVER_PERIMETER
+    reason 4 -> string 2017   GAMEOVER_CHARLIE
+    reason 5 -> string 2019   GAMEOVER_ABYSS
+
+It is reached from `FUN_0041c9b0`, the trigger:
+
+    if ([0x0070b70d]) return;              /* once only */
+    [0x0070b70d] = 1;
+    if (FUN_004c87a0()) return;            /* == ([0x00782728] != 0xFF) */
+    if (!CPopupDialog::isUp())
+        FUN_0046dce0()->vt[0xd4](reason);  /* open the game-over screen */
+
+and that in turn from `FUN_0041e380`, which fires it on an exact float match:
+
+    if (this->[0xc] == *p) { this->[0xc] = 0; FUN_0041c9b0(0, p[1]); }
+
+(`FUCOMPP` + `TEST AH,0x44` + `JP` proceeds ONLY on equal -- less, greater and
+unordered all jump to the return.)
+
+## Both guards are identical in the two runs; the trigger is not
+
+Both globals are now probed. Our port, 1,694 samples, 0 failed reads:
+
+    go_guard  255 for the whole run          (so the guard never blocks)
+    flags     16 -> 19 at 85.083s            conversation becomes visible
+    dlg0_active 6 -> 5 at 86.989s            the prompt
+    go_fired    0 -> 1 at 86.989s            the trigger, same instant
+
+The control, 5,377 samples over 540 s, 0 of 129,049 reads failed:
+
+    go_guard    255 for the whole run        IDENTICAL to ours
+    go_fired    0 for the whole run          THE TRIGGER NEVER FIRES
+    dlg0_active 6 for the whole run          no prompt, ever
+
+So the guard byte is not the difference and neither is the once-flag. The
+divergence is upstream of both, in `FUN_0041e380`'s comparison: something
+whose float value reaches the trigger's threshold here and never does there.
+
+## Next
+
+Identify `FUN_0041e380`'s object and the float at `+0xc`. The shape --
+"observer fires when a tracked float equals a threshold, then zeroes itself" --
+reads like a live-party count reaching zero, which would fit everything
+observed, but that is a HYPOTHESIS and the field has not been read yet. Find
+its callers, probe `[this+0xc]` in both runs, and the compare that has settled
+every previous step should settle this one too.

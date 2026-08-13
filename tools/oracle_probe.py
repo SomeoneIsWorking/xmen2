@@ -73,11 +73,20 @@ FIELDS = [
     ("dlg_index",   "u32", [0x008B13EC, 0x0403C]),
     ("dlg0_active", "u8",  [0x008B13EC, 0x18 + 0x155D]),
     ("dlg1_active", "u8",  [0x008B13EC, 0x18 + 0x1560 + 0x155D]),
+    # The game-over trigger, FUN_0041c9b0. It is guarded by two things and both
+    # are plain globals, so both can simply be watched:
+    #   0x0070b70d  set to 1 the first time it fires; a second call returns
+    #   0x00782728  FUN_004c87a0 returns (byte != 0xFF), and a TRUE return
+    #               SKIPS the game over -- so the prompt can only appear while
+    #               this byte is 0xFF
+    ("go_fired",    "u8",  [0x0070B70D]),
+    ("go_guard",    "u8",  [0x00782728]),
 ]
 
 # Fields whose every CHANGE is worth a line of its own, not just a CSV row.
 EVENT_FIELDS = ("flags", "cur_line", "chosen", "resp_count",
-                "dlg_index", "dlg0_active", "dlg1_active")
+                "dlg_index", "dlg0_active", "dlg1_active",
+                "go_fired", "go_guard")
 
 
 class Reader(object):
