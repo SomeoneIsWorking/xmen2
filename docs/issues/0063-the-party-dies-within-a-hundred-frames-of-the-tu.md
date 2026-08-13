@@ -1461,3 +1461,34 @@ then copies that count to the caller's output `+0x14`. In the capture that
 copy is zero. The collection/filters in `FUN_0046d460` are now the upstream
 boundary to compare against stock; the clearing helper is expected setup, not
 the defect.
+
+### Note (2026-08-13)
+## Captured shape: the producer can have an empty active-entry set
+
+The next guarded native run recorded the actual producer, not just its caller.
+It reached `FUN_0046d460` twice and each pass made the same decisive branch:
+
+    0046d528  CALL FUN_004ab770
+    0046d52d  EAX = 007570c0          temporary iterator
+    0046d53f  CALL [iterator]->count
+    0046d541  EAX = 00000000
+    0046d543  JLE 0046d5b3            TAKEN
+
+`FUN_004ab770` initializes that iterator through `FUN_004a9ac0`. Its source
+is the object at `0x00756b10`; `FUN_004a9ac0` scans the 256-bit active-entry
+set at source `+0x8`, resolves every set index through the global action-entry
+registry, and appends every resolved index before `FUN_0046d460` gets a chance
+to apply its party eligibility filters. A zero iterator count therefore means
+the source set had **no active indices**. This rules out every later filter and
+the global registry lookup as the immediate cause.
+
+This run does **not** yet prove that either recorded pass is the party-wipe
+query: the recorder's two-pass cap filled first, and their return addresses
+are `0x0059c649` and `0x00402110`, not `FUN_00429de0`. It validates the exact
+producer shape and the meaning of its zero count, but it must not be used to
+attribute the wipe to the source set without a caller-correlated capture.
+
+Next capture `FUN_004a9ac0` together with the wipe caller, with a pass budget
+that reaches the post-conversation call. Then trace the matching source-set
+writers and compare that transition with stock. Do not compensate at the wipe
+test or by fabricating an actor.
