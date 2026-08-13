@@ -923,3 +923,63 @@ the sparse menu window must survive, so the dense window has to be added
 around the conversation rather than replacing it, and a third window is needed
 for `0020b`'s three responses. Then a screenshot of settled gameplay, which is
 also what issue #62 has been blocked on.
+
+### Note (2026-08-13)
+## ORACLE DATA COMPARE: the second conversation never starts
+
+Reading the control's PIXELS could not answer this; reading its STATE can.
+`tools/oracle_probe.py` samples a live run's guest memory from outside via
+`process_vm_readv` (XMen2.exe maps at 0x00400000 under Wine exactly as it does
+natively, and this host allows same-user reads), at the conversation manager's
+own fields -- the same fields `src/native/conversation.c` reports about the
+port, so the comparison is a diff of two number streams rather than a judgement
+about two screenshots.
+
+It was validated against a KNOWN answer first: probing our own run reproduced
+conversation.c's counters exactly (conversation live 70.5s-72.2s, one
+`cur_line` advance, ends at flags 0x18). An instrument that has only been shown
+succeeding is not trusted here; its `--selftest` also proves it returns None
+for an unmapped address and counts that as a failed read, and it REFUSES a
+process with no 'MZ' at the base or a SizeOfImage that disagrees with the
+installed exe.
+
+    control (stock, Wine)                    this port
+    ------------------------------------     ------------------------------
+    211.0s  flags 16 -> 19, cur_line 0->64    70.5s  flags 16 -> 19, 0->64
+            resp_count 0 -> 1                        resp_count 0 -> 1
+    232.9s  cur_line 64 -> 65                 71.7s  cur_line 64 -> 65
+    245.0s  flags 19 -> 24, resp_count -> 0   72.2s  flags 19 -> 24, -> 0
+    248.6s  flags 24 -> 19                    ---    NEVER HAPPENS
+            cur_line 65 -> 64, resp_count 1
+    346.0s  cur_line 64 -> 65
+    366.0s  cur_line 65 -> 66
+    386.1s  flags 19 -> 24, resp_count -> 0
+
+0 of 83,716 reads failed on the control, so the blanks are absence, not blind
+spots.
+
+The two runs agree EXACTLY on the first conversation -- same flag transitions,
+same line ids, same response count, in the same order. They diverge at one
+point: the control's `flags 24 -> 19` at 248.6s, where the manager leaves the
+ending state and starts `1_introlevel_0020b`. In this port that transition
+never occurs; the flag byte stays at 0x18 (ending | enabled) for the rest of
+the run.
+
+## Which makes the mechanism concrete
+
+The port's own report says `update: 272 call(s) ... 0 ended it`. The ending
+branch of `FUN_0045d1a0` -- `flags & 0x8 -> FUN_004585f0`, the call that
+retires a finished conversation and returns the manager to a startable state --
+is NEVER TAKEN, because the update stops being called in the same handful of
+frames that the ending flag is set. So the manager is left holding a finished
+conversation forever, `0020b` cannot start, `conv_0020b_end` never runs, and
+controls stay locked with the AI off exactly as `tutorial1.py` left them.
+
+That is a much better-posed question than "why does the party die": the update
+must survive long enough to process ONE more frame after a conversation ends.
+
+## Next
+
+Find what stops the update in that window. The five call sites that stop
+together (previous notes) are the trail, and the same probe can now watch the
+guest state that gates them rather than inferring it from screenshots.

@@ -99,6 +99,13 @@ names. `stock` is the control every rendering question is settled against and
 `wine` is still the only configuration that draws the game, so neither is
 going away while the renderer is unfinished.
 
+**Ask the control for DATA, not only pixels.** `tools/oracle_probe.py --pid <pid>`
+samples a live run's guest state from outside (`process_vm_readv`, no debugger,
+no perturbation) at the same fields the port reports about itself, so a
+port-vs-control comparison is a diff of two number streams instead of two
+screenshots. It refuses to guess which process to read and verifies the image
+before sampling. Bisecting frames by eye is the thing it replaces.
+
 **Never run the control twice for the same question — go through the cache.**
 A driven `stock` run is five to nine minutes of Xvfb, Wine and a software
 rasteriser, and it produces the same frames every time:
