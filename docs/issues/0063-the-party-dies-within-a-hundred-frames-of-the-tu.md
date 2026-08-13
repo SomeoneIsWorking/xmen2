@@ -1341,3 +1341,88 @@ reads like a live-party count reaching zero, which would fit everything
 observed, but that is a HYPOTHESIS and the field has not been read yet. Find
 its callers, probe `[this+0xc]` in both runs, and the compare that has settled
 every previous step should settle this one too.
+
+### Note (2026-08-13)
+## The whole chain, from the party-wipe test to the prompt
+
+The hypothesis in the previous note was WRONG, and the capture says so. The
+float at `[this+0xc]` is not a live-party count: it is 0, `*p` is 0, and the
+match is trivially true. Recording `0x0041e380` (14 entries, one pass):
+
+    ecx=006d560c   the COnlyOneEventArgs object is a STATIC in .data
+    edx=0075d67c   the payload is a STATIC too: { float 0.0; int reason }
+    FLD [edx]      pushes 0        the delivered value
+    FLD [ecx+0xc]  pushes 0        the threshold
+    MOV EAX,[edx+4]  -> 0          reason 0 = GAMEOVER_DEFAULT, which is the
+                                   photographed "ALL X-MEN HAVE BEEN ELIMINATED"
+    MOV ECX,[esp+4] -> 082e7010    the CActor the event is about
+
+So `FUN_0041e380` is not a decision -- it is event delivery, and the decision
+happened earlier. Walking the stack out of the capture gives the rest.
+
+## It is a TIMER queue, and the event was scheduled three seconds ahead
+
+`[esp]` at the handler's entry is `0x00419a08`, inside `FUN_004199f0`, which is
+a dispatch and not a raise:
+
+    FUN_004199f0(ECX = slot):
+        actor = Registry::lookup(slot->handle);   /* FUN_004654b0 */
+        if (!actor) return;                       /* a dead handle drops it */
+        slot->handler->vt[0](actor, &slot->payload);
+
+and one frame further out, `FUN_004b2d70(float now)` -- a heap-ordered timer
+queue whose head fires when `head.time < now`:
+
+    EDI          = 0x0075d344   the scheduler, a static
+    EDI+0x7c40   heap of { float time; int slot }
+    EDI+0x9f6c   heap count
+    EDI + n*24   slot n:  { handle, handler, float value, int reason, ... }
+
+Our event was slot **34** at `0x0075d674`, so `[this+0xc]` above is
+`0x006d5618`. Recording the enqueue (`0x004b2b40`, 627 calls in one run) puts
+every one of them through `FUN_0041a730`, a *delayed* post: it rejects a delay
+below 0.0 or above 1800, adds the current time, and pushes the slot. Recording
+its entry as well and grouping the two ranges by call identifies the one that
+allocated slot 34:
+
+    ret=0041de83  FUN_0041de40   ecx=082e7010   arg=006d560c   delay=3.0f
+
+`FUN_0041de40` is `CActor::scheduleGameOver(handler, delay)`. Its own caller is
+`0x0042a137`, inside **`FUN_00429de0`**, and that is where the decision is:
+
+    0042a064  enumerate the roster into a local array
+    0042a08d  TEST EAX,EAX / JLE 0042a0e7      count <= 0 -> straight on
+    0042a09c  FUN_004654b0(handle) -> actor
+    0042a0a5  TEST EDI,EDI / JZ  (next)        an unresolvable handle is SKIPPED
+    0042a0c5  a class-bit test on the actor's type table
+    0042a0cb  FLD [actor+0x27c] / FCOMP [0x00680030=0.0f]
+              TEST AH,0x41 / JZ 0042a155       health > 0 -> NOT a wipe, bail
+    0042a0e7  ... sound and UI ...
+    0042a12a  PUSH 3.0f; PUSH 0; CALL [ESI]->vt[0x200]   = FUN_0041de40
+
+`[actor+0x27c]` is health and the threshold at `0x00680030` is **0.0** (read
+out of .rdata, not guessed).
+
+## The part that matters
+
+**An EMPTY roster reaches the game-over path by exactly the same route as a
+dead one.** `JLE 0042a0e7` on a count of zero, and `JZ` past every handle that
+fails to resolve, both fall through to the schedule with nothing having died.
+The port's symptom -- an elimination prompt 1.9 s after the tutorial
+conversation becomes visible, with reason 0, on a party nobody has attacked --
+fits "the roster the check enumerates is empty or unresolvable" at least as
+well as it fits "everyone is at zero health", and the two are indistinguishable
+from outside.
+
+That is now a two-value measurement rather than an argument: the roster count
+at `0x0042a089` and, per entry, whether `FUN_004654b0` returned an actor and
+what its `+0x27c` was. `--record 0x0042a064-0x0042a0e7` captures all three in
+one run. Not yet run.
+
+## Next
+
+Run that capture. Then the same question against the control -- `0x0075d344`
+and `0x0075d674` are STATIC guest addresses, so `tools/oracle_probe.py` can
+sample the scheduler's heap count and slot 34 in the stock game with no
+rebuild, and answer whether the shipped game ever schedules an `EGameOver` at
+all in this level.
