@@ -169,3 +169,35 @@ It is the room in settled gameplay with nothing over it -- lit blue-grey, three
 characters lit and coloured, health bars readable. It is the target the native
 build has to be able to reach before #62's comparison can be finished, and it
 is cached (oracle key 9b555db04417d402, sample .4 onward).
+
+### Note (2026-08-13)
+## Nothing in conv_0020b_end causes it either
+
+The whole script replaced by two comment lines, the replacement reported by
+name, and the party still dies. The substitution plainly took effect on other
+things -- the HUD portrait changes from Nightcrawler to Cyclops and the
+"Will do." line never appears -- so this is a real negative and not a
+replacement that failed to fire.
+
+So the cause is not in the conversation-end script at all.
+
+## The next candidate, and why it fits the timing
+
+tutorial1.py, the level's own entry script, opens with:
+
+    remove ( "oz_explosion", "oz_explosion" )
+    setRecallActive("FALSE" )
+    ...
+    lockControls(-1.000 )
+    setallaiactive("FALSE" )
+    cameraFocusToEntity("cam_prof", ...)
+    startConversation("act0/tutorial/tutorial1/1_introlevel_0020" )
+
+If `remove` resolves to the wrong entity HERE, the hero is gone from the moment
+the level loads -- and the party check would not be expected to fire during a
+cutscene with controls locked, which is exactly why the game-over appears the
+instant the conversation ends rather than at load. The earlier refutation was
+of the OTHER remove call, in the conversation script; it does not cover this
+one.
+
+Running now with that line commented out.
