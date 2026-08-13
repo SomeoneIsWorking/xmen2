@@ -201,3 +201,36 @@ of the OTHER remove call, in the conversation script; it does not cover this
 one.
 
 Running now with that line commented out.
+
+### Note (2026-08-13)
+## The level script's remove() is refuted too
+
+tutorial1.py replaced with a copy whose remove("oz_explosion") line is
+commented out, replacement reported by name, and the party still dies. The
+conversation ran longer this time -- more frames of "Will do." before the end
+-- but the game-over follows the conversation's end exactly as before.
+
+So both `remove` calls in this level are cleared, and so is the whole
+conversation-end script. What survives every substitution so far is the
+TIMING: whatever happens, the elimination lands as soon as the opening
+conversation finishes.
+
+## The bisection that separates scripts from the engine
+
+Running now with tutorial1.py emptied completely. That script is what starts
+the conversation, locks controls and disables AI, so with it gone the level
+should simply sit there with the player free.
+
+Either outcome is worth having:
+
+  - Still eliminated -> no script in this level causes it, and the party is
+    empty or dead independently of anything the level asks for. The next place
+    to look is the party's own construction, before the level.
+  - Not eliminated -> something in tutorial1.py is involved after all, and the
+    remaining statements (setRecallActive, getOpened/actSilent on two doors,
+    lockControls, setallaiactive, cameraFocusToEntity, startConversation) can
+    be bisected one at a time.
+
+Note what an immediate elimination would mean here: with no lockControls and
+no cutscene, a party check has nothing to suppress it, so an empty party would
+show up at once rather than at the end of a conversation that no longer exists.
