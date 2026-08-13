@@ -6,12 +6,12 @@ disc.
 ## Why this exists and why it does not use the Xbox art
 
 The engine draws button prompts as ordinary text: one byte per glyph, through
-the font it is already using. The Xbox build's atlas carries console button art
-in a band its metrics never address, and `tools/make_button_font.py` measures
-that band and points spare codepoints at it -- which requires the person
-playing to own the Xbox build as well as the PC one. That is not a thing to ask
-of anyone, so the port draws its own: `assets/buttons/*.svg`, rasterised here
-and blitted into the PC atlas's own empty space.
+the font it is already using. The obvious source for the art is the Xbox
+build's atlas, which carries console button art in a band its metrics never
+address -- but using it requires the person playing to own the Xbox build as
+well as the PC one, which is not a thing to ask of anyone. So the port draws
+its own: `assets/buttons/*.svg`, rasterised here and blitted into the PC
+atlas's own empty space.
 
 ## Where the glyphs go, and the coordinate that took measuring
 
@@ -20,9 +20,9 @@ it at all -- room for eleven 18x18 icons several times over.
 
 **`t` is measured from the BOTTOM of the image** (C171): reading the 166 glyph
 rects of that atlas with `t` as-is finds 8,315 inked pixels inside them, and
-reading it flipped finds 17,944 -- which is every inked pixel the atlas has.
-`make_button_font.py` writes `t = y0/height` from a top-down measurement, so its
-glyphs point at the mirror of the cell they came from. This tool converts
+reading it flipped finds 17,944 -- which is every inked pixel the atlas has. A
+top-down `t = y0/height` therefore points every glyph at the mirror of the cell
+it came from, which is what the earlier Xbox-art tool did. This one converts
 explicitly, in one place, and its selftest checks the round trip.
 
 ## What it refuses to do

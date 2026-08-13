@@ -136,8 +136,21 @@ int x86_triggers_report(void)
  * answers that must not look alike -- which is the whole reason the previous
  * attempt at this question was worthless.
  */
+static int args_string_at(uint32_t a, char *out, size_t cap);
+
 #define EPCOUNT_MAX 8
-static struct { uint32_t ep; unsigned long n; } g_epc[EPCOUNT_MAX];
+#define EPCOUNT_WORDS 64
+static struct {
+    uint32_t ep;
+    unsigned long n;
+    /* The RAW argument words, distinct, first-seen order -- and nothing is
+     * dereferenced here. The first attempt at this decoded them as strings ON
+     * THE DISPATCH PATH and the run died at 12 s with the guest executing a
+     * string (I048); reading the words is passive, and turning them into names
+     * can wait until the report, when nothing is mid-call. */
+    int nwords, lost;
+    uint32_t word[EPCOUNT_WORDS];
+} g_epc[EPCOUNT_MAX];
 static int g_epc_n = -1;
 static unsigned long g_epc_dispatches;
 
@@ -164,8 +177,24 @@ void x86_epcount_report(void)
     if (!g_epc_n) return;
     fprintf(stderr, "[EPC] %lu dispatched call(s) in this run:\n",
             g_epc_dispatches);
-    for (i = 0; i < g_epc_n; i++)
-        fprintf(stderr, "[EPC]   0x%08x  %lu\n", g_epc[i].ep, g_epc[i].n);
+    for (i = 0; i < g_epc_n; i++) {
+        int k, shown = 0;
+        fprintf(stderr, "[EPC]   0x%08x  %lu entr%s\n", g_epc[i].ep,
+                g_epc[i].n, g_epc[i].n == 1 ? "y" : "ies");
+        if (!g_epc[i].n) continue;
+        /* Decoded HERE, with the guest stopped, not on the dispatch path. */
+        for (k = 0; k < g_epc[i].nwords; k++) {
+            char buf[64];
+            if (!args_string_at(g_epc[i].word[k], buf, sizeof buf)) continue;
+            fprintf(stderr, "[EPC]       0x%08x -> \"%s\"\n",
+                    g_epc[i].word[k], buf);
+            shown++;
+        }
+        fprintf(stderr, "[EPC]       %d of %d distinct argument word(s) "
+                        "decoded as text%s\n", shown, g_epc[i].nwords,
+                g_epc[i].lost ? " (and some were dropped: the table is full)"
+                              : "");
+    }
 }
 
 int x86_native_call_at(uint32_t addr, CPU *C)
@@ -209,7 +238,25 @@ int x86_native_call_at(uint32_t addr, CPU *C)
         if (g_epc_n) {
             int i;
             for (i = 0; i < g_epc_n; i++)
-                if (g_epc[i].ep == addr) { g_epc[i].n++; break; }
+                if (g_epc[i].ep == addr) {
+                    int k, w;
+                    g_epc[i].n++;
+                    /* ECX (a __thiscall `this`) and the first three stack words
+                       above the return address. Values only. */
+                    for (w = 0; w < 4; w++) {
+                        uint32_t v = w == 0
+                            ? C->ecx
+                            : RD32(C->esp + 4u + (uint32_t)(w - 1) * 4u);
+                        for (k = 0; k < g_epc[i].nwords; k++)
+                            if (g_epc[i].word[k] == v) break;
+                        if (k < g_epc[i].nwords) continue;
+                        if (g_epc[i].nwords < EPCOUNT_WORDS)
+                            g_epc[i].word[g_epc[i].nwords++] = v;
+                        else
+                            g_epc[i].lost++;
+                    }
+                    break;
+                }
         }
         f->fn(C);
         ring_note("guest", addr, 0, in, C->esp, 0);
@@ -629,6 +676,69 @@ static void ring_note(const char *what, uint32_t addr, uint32_t base,
     g_ring[i].repeat = 0;
 }
 
+/* These two live OUTSIDE the trace guard: the trace watch is not their
+   only user any more -- X2_EPCOUNT decodes script names with them in an
+   ordinary build, at report time -- and a second copy would be a second
+   thing to get wrong. */
+/*
+ * Decoding a word as a STRING, and the two ways that goes wrong.
+ *
+ * Most of the arguments worth watching are char* -- a library name, a format
+ * string, a class name -- and the watch printed them as hex, so answering
+ * "which library failed to load" meant reading guest memory by hand after the
+ * process was already gone. So the watch decodes them.
+ *
+ * A wild word dereferenced would take the process down inside the diagnostic,
+ * which is the worst possible place for it, so every page is PROBED before it
+ * is read. The probe is a write() of the range to /dev/null: the kernel does
+ * the access check and answers EFAULT instead of raising SIGSEGV, so an
+ * unmapped word costs an errno rather than the run.
+ *
+ * The first version bounded the read to mapped module images and live guest
+ * heap blocks instead, and that was too narrow to answer the question it was
+ * built for: the string it needed to read (a library name held by the game's
+ * OWN CRT heap, which this host does not track block by block) fell outside
+ * both and printed nothing. The probe has no such blind spot -- it asks the
+ * kernel what is readable, which is the only authority on it.
+ *
+ * The second failure is the opposite one: printing 40 bytes of a struct as if
+ * they were text. So it demands the whole prefix be printable, and stops at
+ * the first byte that is not.
+ */
+/*
+ * THE OLD PROBE VALIDATED NOTHING. It wrote the range to /dev/null and took a
+ * full-length return as proof the memory was readable -- but Linux's null
+ * device never copies from the buffer, so write() succeeds for a wild pointer
+ * and the probe answered "readable" for every address. The decoder then
+ * dereferenced it, and the report died inside the diagnostic with the faulting
+ * address in hand (I048).
+ *
+ * process_vm_readv is what the rest of this file already uses to read guest
+ * memory without risking a fault -- see x86_peek. It COPIES, so an unmapped
+ * page comes back as an error instead of a signal.
+ */
+static int args_string_at(uint32_t a, char *out, size_t cap)
+{
+    uint32_t i;
+
+    if (a < 0x1000u) return 0;
+    for (i = 0; i + 1 < cap; i++) {
+        unsigned char c;
+        if (!x86_peek(a + i, &c, 1)) break;       /* unmapped: stop, no fault */
+        if (c == 0) { out[i] = 0; return i > 0; }
+        if (c == '\n' || c == '\t') { out[i] = ' '; continue; }
+        if (c < 0x20 || c > 0x7e) return 0;
+        out[i] = (char)c;
+    }
+    /* Ran out of buffer, or off the end of what is mapped, with everything so
+       far printable. Shown TRUNCATED rather than dropped: a long format string
+       is exactly the kind of argument this watch exists to read, and dropping
+       it printed nothing at all. The floor keeps three stray printable bytes
+       from being announced as text. */
+    if (i >= 8) { memcpy(out + i - 3, "...", 4); return 1; }
+    return 0;
+}
+
 #ifdef X86_NATIVE_TRACE
 /*
  * Entry and exit of every recompiled body.
@@ -679,65 +789,6 @@ static struct ArgsWatch {
     int           shown;                 /* the last entry printed (see below) */
 } g_args[ARGS_MAX];
 static int g_args_n = -1, g_args_hits, g_args_cap = 8, g_args_printed;
-
-/*
- * Decoding a word as a STRING, and the two ways that goes wrong.
- *
- * Most of the arguments worth watching are char* -- a library name, a format
- * string, a class name -- and the watch printed them as hex, so answering
- * "which library failed to load" meant reading guest memory by hand after the
- * process was already gone. So the watch decodes them.
- *
- * A wild word dereferenced would take the process down inside the diagnostic,
- * which is the worst possible place for it, so every page is PROBED before it
- * is read. The probe is a write() of the range to /dev/null: the kernel does
- * the access check and answers EFAULT instead of raising SIGSEGV, so an
- * unmapped word costs an errno rather than the run.
- *
- * The first version bounded the read to mapped module images and live guest
- * heap blocks instead, and that was too narrow to answer the question it was
- * built for: the string it needed to read (a library name held by the game's
- * OWN CRT heap, which this host does not track block by block) fell outside
- * both and printed nothing. The probe has no such blind spot -- it asks the
- * kernel what is readable, which is the only authority on it.
- *
- * The second failure is the opposite one: printing 40 bytes of a struct as if
- * they were text. So it demands the whole prefix be printable, and stops at
- * the first byte that is not.
- */
-static int args_probe_readable(uint32_t a, uint32_t n)
-{
-    static int devnull = -2;
-    if (devnull == -2) devnull = open("/dev/null", O_WRONLY);
-    if (devnull < 0) return 0;           /* cannot probe -> will not read */
-    return write(devnull, (const void *)(uintptr_t)a, (size_t)n) == (ssize_t)n;
-}
-
-static int args_string_at(uint32_t a, char *out, size_t cap)
-{
-    uint32_t i, probed = 0;
-
-    if (a < 0x1000u) return 0;
-    for (i = 0; i + 1 < cap; i++) {
-        if (a + i >= probed) {           /* one probe per page, not per byte */
-            uint32_t page = (a + i) & ~0xFFFu;
-            if (!args_probe_readable(page, 0x1000u)) break;
-            probed = page + 0x1000u;
-        }
-        unsigned char c = *(const unsigned char *)(uintptr_t)(a + i);
-        if (c == 0) { out[i] = 0; return i > 0; }
-        if (c == '\n' || c == '\t') { out[i] = ' '; continue; }
-        if (c < 0x20 || c > 0x7e) return 0;
-        out[i] = (char)c;
-    }
-    /* Ran out of buffer, or off the end of what is mapped, with everything so
-       far printable. Shown TRUNCATED rather than dropped: a long format string
-       is exactly the kind of argument this watch exists to read, and dropping
-       it printed nothing at all. The floor keeps three stray printable bytes
-       from being announced as text. */
-    if (i >= 8) { memcpy(out + i - 3, "...", 4); return 1; }
-    return 0;
-}
 
 /* One line per word that decoded, and nothing at all when none did -- so a
    silent watch means "no argument pointed at a string I could reach", not

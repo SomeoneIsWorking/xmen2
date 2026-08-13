@@ -172,13 +172,6 @@ add_test(NAME xmlb_roundtrip
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/xmlb.py --selftest)
 
-# The button-font builder's measurement, fed a case that MUST produce a
-# positive (an atlas with a cell the other lacks) and one that MUST produce a
-# negative with its denominator.
-add_test(NAME button_font
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tools/make_button_font.py --selftest)
-
 # The port's own button glyphs: the coordinate round trip (and that it is NOT
 # the top-down identity, which is the bug C171 found in the Xbox-art tool), the
 # band finder on an image whose longest blank run is not its first, and a blit
