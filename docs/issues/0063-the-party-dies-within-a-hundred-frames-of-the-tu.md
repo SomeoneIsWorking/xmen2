@@ -480,3 +480,47 @@ RE the conversation code: what a response's chosenscriptfile is supposed to do
 at conversationend, and why this port does not do it. The conversation system's
 RTTI names are in the exe (CConversationSystem, CConversation, CConversationFile
 around 0x2d7xxxx), and the script-call path is the one to follow.
+
+### Note (2026-08-13)
+## The conversation's full structure, and a correction to an earlier inference
+
+1_introlevel_0020.XMLB is only this deep:
+
+    startCondition runonce="true" noreturntogamecamatend="true"
+      participant "default"
+        line  CYCLOPS_NIGHTCRAWLER
+          response %BLANK%
+            line  NIGHTCRAWLER_WILL_DO
+              response %BLANK% conversationend="true"
+                       chosenscriptfile=".../nightcrawler_spawn"
+
+Two lines, and the ONLY script hook in the whole conversation is the one that
+does not fire. The game-over lands immediately after "Will do." -- so this port
+reaches the end of the conversation and does not run the script attached to
+reaching it.
+
+CORRECTION. An earlier note said the conv_0020b_end substitution "plainly took
+effect -- the HUD portrait changes from Nightcrawler to Cyclops and the
+'Will do.' line never appears". That inference is withdrawn. The portrait
+beside a dialogue box is the SPEAKER's, so a Cyclops portrait means the frame
+was sampled during Cyclops's line, not that the script changed anything; and
+the two runs' filmstrips were sampled at different points. On top of that,
+conv_0020b_end is referenced by NO conversation file in the install, so there
+is no evidence it ever runs at all.
+
+What does still stand as proof that substitution controls execution is the
+tutorial1.py case: emptied, the conversation never appears and the screen stays
+black. That one is unambiguous.
+
+## Where this leaves the search
+
+The conversation code is present and running -- the run's own report says NO
+original machine code ran and no dispatched target lacked a body, so every
+instruction came from the translator. So this is not a missing function; it is
+a path not taken.
+
+The parse and use sites for these attributes are in XMen2.exe around
+0x00458900-0x00459800 (three PUSHes each of "chosenScriptFile" at 0x00685f38
+and "conversationEnd" at 0x00685efc, at 0x0045892c/0x00458fdc/0x00459709 and
+0x004589ec/0x004591e1/0x0045973f). The pair at 0x00459709/0x0045973f is the
+most likely response handler and is where to read next.
