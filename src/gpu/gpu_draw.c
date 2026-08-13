@@ -926,6 +926,7 @@ int gpu_draw(const GpuDraw *d)
         static unsigned long busy_min;
         static unsigned long dumped, dumped_frame, rejected;
         static unsigned long seen_frame, this_draws, prev_draws;
+        static int seek_vs, this_has_vs;
         static FILE *cap;             /* the candidate's lines, held back */
         static char *capbuf;
         static size_t capsz;
@@ -940,6 +941,9 @@ int gpu_draw(const GpuDraw *d)
                     busy_min = (e[4] == ':') ? strtoul(e + 5, NULL, 10) : 100u;
                     if (!busy_min) busy_min = 100u;
                     want = -3;                  /* choose it when one turns up */
+                } else if (!strcmp(e, "vs")) {
+                    seek_vs = 1;
+                    want = -4;  /* buffer frames until one contains a VS draw */
                 } else {
                     want = atol(e);
                 }
@@ -950,7 +954,17 @@ int gpu_draw(const GpuDraw *d)
             if (cap && want == (long)seen_frame) {
                 fclose(cap);
                 cap = NULL;
-                if (this_draws >= busy_min) {
+                if (seek_vs && this_has_vs) {
+                    fprintf(stderr, "gpu: X2_FRAME_DUMP=vs -- frame %lu "
+                            "contained a programmable draw and drew %lu "
+                            "times total. Every draw of it follows.\n",
+                            seen_frame, this_draws);
+                    fputs(capbuf ? capbuf : "", stderr);
+                    seek_vs = 0;
+                    want = -1;
+                } else if (seek_vs) {
+                    want = -4;
+                } else if (!seek_vs && this_draws >= busy_min) {
                     fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu drew "
                             "%lu times itself (at least %lu asked for). Every "
                             "draw of it follows.\n",
@@ -959,7 +973,7 @@ int gpu_draw(const GpuDraw *d)
                     if (dumped > 400)
                         fprintf(stderr, "  ... capped at 400 draws; frame %lu "
                                         "had %lu.\n", seen_frame, this_draws);
-                } else {
+                } else if (!seek_vs) {
                     rejected++;
                     fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu is "
                             "DISCARDED: its predecessor drew %lu times but it "
@@ -975,9 +989,11 @@ int gpu_draw(const GpuDraw *d)
             }
             prev_draws = this_draws;
             this_draws = 0;
+            this_has_vs = 0;
             seen_frame = now;
         }
         this_draws++;
+        if (d->programmable) this_has_vs = 1;
         g_range_index = this_draws;   /* 1-based index within this frame */
         if (want == -3 && prev_draws >= busy_min) {
             want = (long)now;
@@ -987,6 +1003,9 @@ int gpu_draw(const GpuDraw *d)
                                 "%ld back (open_memstream failed); its draws go "
                                 "straight out and may belong to a light "
                                 "frame.\n", want);
+        } else if (want == -4) {
+            want = (long)now;
+            cap = open_memstream(&capbuf, &capsz);
         }
         dst = cap ? cap : stderr;
         if (want >= 0 && (long)now == want) {
@@ -995,7 +1014,7 @@ int gpu_draw(const GpuDraw *d)
                                 "%ld follows.\n", want);
             dumped_frame = now;
             if (dumped <= 400) {
-                fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s "
+                fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s %s"
                         "%s%s%s%s%s stride %2u col%+3d uv%+3d",
                         dumped,
                         d->prim == GPU_PRIM_TRIANGLESTRIP ? "tristrip"
@@ -1004,6 +1023,7 @@ int gpu_draw(const GpuDraw *d)
                         d->texop == GPU_TEXOP_NONE ? "UNTEXTURED"
                         : d->texop == GPU_TEXOP_MODULATE ? "modulate"
                                                          : "select",
+                        d->programmable ? "VS " : "FVF ",
                         d->blend_enable ? "blend " : "",
                         d->depth_test ? "ztest " : "",
                         d->depth_write ? "zwrite " : "",

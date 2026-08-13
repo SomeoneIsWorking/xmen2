@@ -667,3 +667,35 @@ The next root-cause question is why the shipped D3D8 path suppresses colour for
 this prepass while the port's mirrored state has `COLORWRITEENABLE=0xf`. Do not
 special-case this shader or skip its draws: trace the engine's prepass state or
 capability selection and implement the missing D3D8 mechanism.
+
+### Note (2026-08-14)
+## CORRECTION: the programmable draw does not paint the black silhouette
+
+`X2_FRAME_DUMP=vs` now selects the first frame whose OWN draw list contains a
+programmable draw, instead of relying on an unstable frame number. The first
+one was frame 2831: 74 draws total, with the position-only skinning shader at
+draw 35. A second run submitted only draws 1..34 and photographed that slice
+(`scratch/screenshots/pre-vs.png`). The black character is already present.
+Therefore the prepass interpretation above is false: draw 35 cannot have
+painted pixels that exist before it ran.
+
+The immediately preceding draw 34 is a 174-primitive fixed-function, lit,
+normal-bearing, untextured strip. The black pixels must now be attributed to
+that earlier fixed-function draw (or one before it) by range bisection, not to
+the VS draw by visual resemblance.
+
+## The black SetLight calls have a real attribute owner, but not the presumed four point lights
+
+Static RE fixes the complete colour path: `igLightAttr::apply` at
+libIGAttrs 0x100183c0 passes `this+0x30` directly to
+`igDxVisualContext::setLightDiffuse` at libIGGfx 0x1003d3d0, which copies it
+unchanged into the internal light record and submits that record to D3D8.
+
+A shipping-boundary probe safely inspected seven registers plus 64 stack words
+on every SetLight call, required an object vtable owned by libIGAttrs, and
+matched the object's `+0x30` vector to the submitted diffuse. It scanned 17,958
+calls and found 16,864 owner matches, 617 on black calls. The first 64 verified
+black matches all named ONE object: directional light attribute `0x053e6268`,
+handle 8, diffuse `(0,0,0,1)`. This disproves the earlier inference that the
+four point-light attributes themselves were observed black. The exploratory
+probe was removed after recording the result.
