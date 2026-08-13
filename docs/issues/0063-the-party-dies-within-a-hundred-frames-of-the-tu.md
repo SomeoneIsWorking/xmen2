@@ -1492,3 +1492,24 @@ Next capture `FUN_004a9ac0` together with the wipe caller, with a pass budget
 that reaches the post-conversation call. Then trace the matching source-set
 writers and compare that transition with stock. Do not compensate at the wipe
 test or by fabricating an actor.
+
+### Note (2026-08-13)
+## Correlated wipe capture corrects the previous active-set conclusion
+
+`X2_RECORD_ARM=0x0042a064`, with ranges `0x0042a064-0x0042a0e7` and
+`0x004a9ac0-0x004a9bde`, captured the exact `FUN_00429de0` query. Its source
+is `0x00756cf4`, not the `0x00756b10` source seen in unrelated callers. The
+bitmap at source `+0x8` begins `0x0000001e`, and `FUN_004a9ac0` resolves four
+actor pointers (including `0x082e7010`, `0x082e80a0`, and `0x082e88e8`). The
+source set is therefore **not empty**.
+
+A second armed capture of `FUN_0046d460` shows all four candidates rejected by
+the first eligibility test. Each actor's flags dword at `actor+4` is
+`0x20c07da0` or `0x20c0fda0`; after `SHR 0x14`, `TEST AL,1` is zero, so
+`JZ 0x0046d5a8` skips every candidate. The later vtable `+0xc0`, actor
+`+0x3d4`, and handle-copy filters never execute.
+
+The immediate cause of the empty wipe roster is that no active actor has flag
+`0x00100000`. Next, identify the semantic name and writer of actor `+4` bit 20,
+then compare that initialization transition with stock. Do not patch
+`FUN_0046d460` or fabricate a roster member.
