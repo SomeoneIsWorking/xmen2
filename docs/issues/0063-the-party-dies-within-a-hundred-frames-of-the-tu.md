@@ -92,3 +92,29 @@ The real test is running now: the control driven with Returns continuing to
 960 s, so it leaves the conversation and reaches the same gameplay state the
 native run reached. If it dies too, this is not a port defect and issue #62's
 dependency on it disappears.
+
+### Note (2026-08-13)
+## WHEN it dies: at the end of the first conversation, within ten frames
+
+A filmstrip at five-frame spacing (X2_SHOT_KEEP=40, X2_SHOT_EVERY=5) across the
+whole event:
+
+    .000-.003   loading, nearly black
+    .004-.011   CYCLOPS "Nightcrawler, we've located the Professor..."
+    .012-.013   NIGHTCRAWLER "Will do."          <- the last line
+    .014-.039   "ALL X-MEN HAVE BEEN ELIMINATED", identical thereafter
+
+Ten frames -- about a third of a second at the rate this run manages -- between
+the closing line of the opening conversation and the game-over. No gameplay
+frame exists between them: no enemy is on screen, no camera move, no fight.
+
+That rules out the innocent explanation offered earlier. conv_0030a_end.PY does
+spawn mercenaries and clear heroNoTarget, but that is the end of a LATER
+conversation, and in any case a hero cannot be beaten to death in a third of a
+second by enemies that have not appeared. Whatever ends the party here does it
+at conversation end, not in combat.
+
+Two shapes fit: the hero entity is not there (an empty party is eliminated by
+definition the moment the check runs) or it is there with no health. The HUD
+portrait through these frames is Nightcrawler's, so SOMETHING is in the party
+slot.

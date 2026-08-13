@@ -608,3 +608,29 @@ later frames this issue needs are reachable once #63 is fixed.
 
 ### Note (2026-08-13)
 CORRECTION to the note above: issue #63 is NOT confirmed a port defect. The control samples that note relied on all show the same dialogue line with '[Enter] continue...' under it -- the control was parked on a conversation box, not idling in gameplay -- so the shipped game was never observed in the state the native run dies in. The dependency stands (this issue still needs a settled frame of the room from well after entry), but the reason for it is open rather than established. The tutorial's own scripts make an innocent explanation plausible: conv_0030a_end.PY spawns mercenaries, sets waypoints for two guards, and calls enemiesNoTarget(FALSE) and heroNoTarget(FALSE) -- so an unattended hero after that conversation is standing in a fight in the shipped game too.
+
+### Note (2026-08-13)
+## Frames must be matched by their DIALOGUE LINE, and within one run the balance swings hugely
+
+Measured across the native run's own moments, upper half of the frame:
+
+    native  .006  R 37.0  G  6.3 (17% of R)  B  5.5 (15%)   "...teleport in."
+    native  .012  R  2.2  G  7.4 (332%)      B  6.4 (291%)  "Will do."
+    native  .013  R  9.0  G  7.3 (82%)       B  6.4 (72%)   "Will do."
+    stock   early R 19.7  G 16.2 (83%)       B 12.7 (65%)   "...teleport in."
+    stock   late  R 30.2  G 17.3 (57%)       B 14.2 (47%)   (a later line)
+
+So the colour balance in our own run swings from red-dominant to blue-dominant
+within eight frames, as the camera moves. A comparison against whichever stock
+sample happened to be kept is therefore worth nothing on its own.
+
+The comparison that IS valid is the one matched on the line of dialogue, which
+is legible in both frames: native .006 against stock early, both on
+"Nightcrawler, we've located the Professor. It's okay to teleport in.". There
+the difference stands and is large -- 17%/15% against 83%/65% -- so the red cast
+at that moment is real. The earlier statement of it was right for the wrong
+reason: it happened to compare matched frames, but nothing in the method
+guaranteed that.
+
+Rule for this issue from here: no frame comparison without the dialogue line
+matching. It is the only clock both builds display.
