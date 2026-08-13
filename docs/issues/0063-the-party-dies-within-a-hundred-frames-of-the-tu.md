@@ -730,3 +730,45 @@ FUN_0045d1a0 itself is worth doing but is NOT the next step and was
 deliberately not attempted here: its subtitle-draw block (0x0045d4c2-0x0045d55b)
 passes x87 values through helpers whose signatures are not readable off the
 disassembly, and a guessed port there would break rendering that works.
+
+### Note (2026-08-13), correcting the note above
+## "An entire update chain stops" was too strong -- one FUNCTION spans both sides
+
+Resolving the eight call sites to their functions:
+
+    0x0061c461   FUN_0061c3b0    STOPPED at poll 6440
+    0x005f65f3   FUN_005f65c0    STOPPED at 6545
+    0x00401f27   FUN_00401d70    STOPPED at 6546
+    0x0048d51b   FUN_0048d390    STOPPED at 6551
+    0x0045d1f7   FUN_0045d1a0    STOPPED at 6552   (the conversation update)
+    0x004024ed   FUN_00401d70    ran to the end
+    0x004779a1   FUN_00477990    ran to the end
+    0x0059a08c   FUN_0059a050    ran to the end
+
+FUN_00401d70 is on BOTH lists. It has two `CALL [EDX+0x20]` sites and only one
+of them stops, so that function keeps being called throughout -- what stops is
+a path THROUGH it, not the function. "The update chain is torn down" is
+therefore not what was measured; what was measured is that five call sites on
+the in-level path stop within about a hundred polls while three others carry
+on.
+
+That is still the same conclusion for this issue, and it points where the
+issue's title always did: at poll ~6550 the game leaves the in-level state, and
+the conversation -- flagged visible and speaking, three responses short of its
+script -- is abandoned because the level ended, not because the conversation
+did.
+
+Which makes the causation circular and worth stating plainly, because it
+changes what to measure next: `nightcrawler_spawn` puts the playable hero in
+the level, the conversation's last response is what launches it, and "all
+X-Men have been eliminated" is what ends the level. If the party is empty from
+the first frame, the level ends before the conversation can reach the response
+that would have filled it, and every downstream symptom follows from that one
+fact.
+
+## Next
+
+Measure the party's size from the FIRST frame of the level, not from the
+conversation. If it is zero before the conversation starts, this issue is
+about who was supposed to spawn the hero BEFORE the conversation, and the
+conversation is a bystander.
