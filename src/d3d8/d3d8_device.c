@@ -23,6 +23,7 @@
 #include "d3d8_surface.h"
 #include "d3d8_resource.h"
 #include "d3d8_drawcall.h"
+#include "d3d8_vertex_shader.h"
 #include "d3d8_types.h"
 
 #include "gpu_device.h"
@@ -53,6 +54,7 @@ typedef struct {
 
 static Device g_dev;
 static D3D8Object *g_dev_obj;
+static void up_vertices_destroy(void);
 
 static void *guest_ptr(uint32_t a, const char *what)
 {
@@ -110,6 +112,8 @@ static void device_destroyed(D3D8Object *o)
     (void)o;
     printf("d3d8: the engine released the device; tearing down the GPU device "
            "with it.\n");
+    up_vertices_destroy();
+    d3d8_vs_reset();
     gpu_device_destroy();
 }
 
@@ -865,10 +869,13 @@ static void dev_SetIndices(D3D8Object *self, CPU *C)
 
 static void dev_SetVertexShader(D3D8Object *self, CPU *C)
 {
-    /* Below 0x10000 this is an FVF code, not a handle -- see d3d8_build_draw,
-       which is where the distinction is acted on. */
+    uint32_t shader = d3d8_arg(C, 0);
     (void)self;
-    g_dev.state.vertex_shader = d3d8_arg(C, 0);
+    if (shader > 0xf0000000u && !d3d8_vs_get(shader, "SetVertexShader")) {
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    g_dev.state.vertex_shader = shader;
     d3d8_ret(C, D3D_OK);
 }
 
@@ -880,6 +887,78 @@ static void dev_GetVertexShader(D3D8Object *self, CPU *C)
     *out = g_dev.state.vertex_shader;
     d3d8_ret(C, D3D_OK);
 }
+
+static void dev_CreateVertexShader(D3D8Object *self, CPU *C)
+{
+    const uint32_t *decl = (const uint32_t *)guest_ptr(d3d8_arg(C, 0),
+                                                       "vertex declaration");
+    const uint32_t *code = (const uint32_t *)guest_ptr(d3d8_arg(C, 1),
+                                                       "vertex shader bytecode");
+    uint32_t *out = (uint32_t *)guest_ptr(d3d8_arg(C, 2), "shader handle");
+    uint32_t handle;
+    (void)self;
+    if (!decl || !out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    handle = d3d8_vs_create(decl, code, d3d8_arg(C, 3));
+    *out = handle;
+    d3d8_ret(C, handle ? D3D_OK : D3DERR_INVALIDCALL);
+}
+
+static void dev_DeleteVertexShader(D3D8Object *self, CPU *C)
+{
+    uint32_t h = d3d8_arg(C, 0);
+    (void)self;
+    if (g_dev.state.vertex_shader == h) g_dev.state.vertex_shader = 0;
+    d3d8_ret(C, d3d8_vs_delete(h) ? D3D_OK : D3DERR_INVALIDCALL);
+}
+
+static void dev_SetVertexShaderConstant(D3D8Object *self, CPU *C)
+{
+    uint32_t first = d3d8_arg(C, 0), count = d3d8_arg(C, 2);
+    const float *data = (const float *)guest_ptr(d3d8_arg(C, 1), "constants");
+    (void)self;
+    if (!data || first >= D3D8_MAX_VS_CONSTANTS
+            || count > D3D8_MAX_VS_CONSTANTS - first) {
+        d3d8_ret(C, D3DERR_INVALIDCALL); return;
+    }
+    memcpy(g_dev.state.vertex_shader_constant[first], data,
+           count * 4u * sizeof(float));
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_GetVertexShaderConstant(D3D8Object *self, CPU *C)
+{
+    uint32_t first = d3d8_arg(C, 0), count = d3d8_arg(C, 2);
+    float *data = (float *)guest_ptr(d3d8_arg(C, 1), "constants");
+    (void)self;
+    if (!data || first >= D3D8_MAX_VS_CONSTANTS
+            || count > D3D8_MAX_VS_CONSTANTS - first) {
+        d3d8_ret(C, D3DERR_INVALIDCALL); return;
+    }
+    memcpy(data, g_dev.state.vertex_shader_constant[first],
+           count * 4u * sizeof(float));
+    d3d8_ret(C, D3D_OK);
+}
+
+static void vertex_shader_bytes(CPU *C, int function)
+{
+    D3D8VertexShader *s = d3d8_vs_get(d3d8_arg(C, 0),
+            function ? "GetVertexShaderFunction" : "GetVertexShaderDeclaration");
+    uint8_t *data = (uint8_t *)(uintptr_t)d3d8_arg(C, 1);
+    uint32_t *size = (uint32_t *)guest_ptr(d3d8_arg(C, 2), "byte count");
+    const uint32_t *src;
+    size_t need;
+    if (!s || !size) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    src = function ? d3d8_vs_function(s, &need) : d3d8_vs_declaration(s, &need);
+    if (!data) { *size = (uint32_t)need; d3d8_ret(C, D3D_OK); return; }
+    if (*size < need) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    if (need) memcpy(data, src, need);
+    d3d8_ret(C, D3D_OK);
+}
+
+static void dev_GetVertexShaderDeclaration(D3D8Object *self, CPU *C)
+{ (void)self; vertex_shader_bytes(C, 0); }
+static void dev_GetVertexShaderFunction(D3D8Object *self, CPU *C)
+{ (void)self; vertex_shader_bytes(C, 1); }
 
 /*
  * The pixel-shader handle. Unlike SetVertexShader there is no overloading
@@ -1016,7 +1095,7 @@ void d3d8_device_texture_unresolved(unsigned long *n)
 { *n = g_texture_unresolved; }
 
 static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
-                        int indexed)
+                        int indexed, int require_vb)
 {
     D3D8Object *vb = g_dev.state.stream[0].guest_ptr
                          ? d3d8_object_from_guest(g_dev.state.stream[0].guest_ptr)
@@ -1027,12 +1106,16 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
                          ? d3d8_object_from_guest(g_dev.state.texture[0]) : NULL;
 
     memset(req, 0, sizeof *req);
-    if (!vb) {
+    if (!vb && require_vb) {
         fprintf(stderr, "d3d8: a draw with no vertex buffer on stream 0.\n");
         return 0;
     }
-    req->vertex_buffer = d3d8_resource_buffer(vb);
-    req->stride = g_dev.state.stream[0].stride;
+    if (vb) {
+        req->vertex_buffer = d3d8_resource_buffer(vb);
+        req->vertex_guest_bytes = d3d8_resource_guest_bytes(vb);
+        req->vertex_bytes = d3d8_resource_bytes(vb);
+        req->stride = g_dev.state.stream[0].stride;
+    }
     if (indexed && ib) {
         req->index_buffer = d3d8_resource_buffer(ib);
         req->index_is_32bit = d3d8_resource_index_is_32bit(ib);
@@ -1083,7 +1166,7 @@ static void dev_DrawPrimitive(D3D8Object *self, CPU *C)
     GpuDraw gd;
 
     (void)self;
-    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 2), 0)) {
+    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 2), 0, 1)) {
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
@@ -1093,6 +1176,7 @@ static void dev_DrawPrimitive(D3D8Object *self, CPU *C)
         return;
     }
     g_dev.draws += gpu_draw(&gd) ? 1u : 0u;
+    d3d8_release_draw(&gd);
     d3d8_ret(C, D3D_OK);
 }
 
@@ -1103,7 +1187,7 @@ static void dev_DrawIndexedPrimitive(D3D8Object *self, CPU *C)
 
     (void)self;
     /* (PrimitiveType, MinIndex, NumVertices, StartIndex, PrimitiveCount) */
-    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 4), 1)) {
+    if (!fill_request(&req, d3d8_arg(C, 0), d3d8_arg(C, 4), 1, 1)) {
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
@@ -1120,6 +1204,81 @@ static void dev_DrawIndexedPrimitive(D3D8Object *self, CPU *C)
         return;
     }
     g_dev.draws += gpu_draw(&gd) ? 1u : 0u;
+    d3d8_release_draw(&gd);
+    d3d8_ret(C, D3D_OK);
+}
+
+/*
+ * DrawPrimitiveUP is not a second rendering path. D3D8 copies the caller's
+ * transient vertex bytes before returning, then executes the same current
+ * device state as DrawPrimitive. Keep one upload buffer and feed that exact
+ * state through d3d8_build_draw, so shader/FVF handling cannot diverge.
+ */
+static GpuBuffer g_up_vertices;
+static uint32_t g_up_capacity;
+
+static void up_vertices_destroy(void)
+{
+    if (g_up_vertices) gpu_buffer_destroy(g_up_vertices);
+    g_up_vertices = 0;
+    g_up_capacity = 0;
+}
+
+static int primitive_vertices(uint32_t prim, uint32_t count, uint32_t *out)
+{
+    uint64_t n;
+    switch (prim) {
+    case D3DPT_POINTLIST:     n = count; break;
+    case D3DPT_LINELIST:      n = (uint64_t)count * 2u; break;
+    case D3DPT_LINESTRIP:     n = (uint64_t)count + 1u; break;
+    case D3DPT_TRIANGLELIST:  n = (uint64_t)count * 3u; break;
+    case D3DPT_TRIANGLESTRIP:
+    case D3DPT_TRIANGLEFAN:   n = (uint64_t)count + 2u; break;
+    default:
+        fprintf(stderr, "d3d8: DrawPrimitiveUP primitive type %u is outside "
+                        "D3D8's 1..6 range.\n", prim);
+        return 0;
+    }
+    if (n > UINT32_MAX) {
+        fprintf(stderr, "d3d8: DrawPrimitiveUP vertex count overflow for %u "
+                        "primitive(s) of type %u.\n", count, prim);
+        return 0;
+    }
+    *out = (uint32_t)n;
+    return 1;
+}
+
+static void dev_DrawPrimitiveUP(D3D8Object *self, CPU *C)
+{
+    uint32_t prim = d3d8_arg(C, 0), count = d3d8_arg(C, 1);
+    const void *data = guest_ptr(d3d8_arg(C, 2), "inline vertex data");
+    uint32_t stride = d3d8_arg(C, 3), vertices, bytes;
+    D3D8DrawRequest req;
+    GpuDraw gd;
+    (void)self;
+    if (!data || !stride || !primitive_vertices(prim, count, &vertices)
+            || vertices > UINT32_MAX / stride) {
+        d3d8_ret(C, D3DERR_INVALIDCALL); return;
+    }
+    bytes = vertices * stride;
+    if (bytes > g_up_capacity) {
+        if (g_up_vertices) gpu_buffer_destroy(g_up_vertices);
+        g_up_vertices = gpu_buffer_create(GPU_BUF_VERTEX, bytes);
+        g_up_capacity = g_up_vertices ? bytes : 0;
+    }
+    if (!g_up_vertices || !gpu_buffer_upload(g_up_vertices, 0, data, bytes)
+            || !fill_request(&req, prim, count, 0, 0)) {
+        d3d8_ret(C, D3DERR_INVALIDCALL); return;
+    }
+    req.vertex_buffer = g_up_vertices;
+    req.vertex_guest_bytes = (uint32_t)(uintptr_t)data;
+    req.vertex_bytes = bytes;
+    req.stride = stride;
+    if (!d3d8_build_draw(&g_dev.state, &req, &gd)) {
+        d3d8_ret(C, D3DERR_INVALIDCALL); return;
+    }
+    g_dev.draws += gpu_draw(&gd) ? 1u : 0u;
+    d3d8_release_draw(&gd);
     d3d8_ret(C, D3D_OK);
 }
 
@@ -1205,17 +1364,17 @@ static const D3D8MethodFn g_impl[] = {
     NULL,                               /* 69 GetCurrentTexturePalette */
     dev_DrawPrimitive,                  /* 70 */
     dev_DrawIndexedPrimitive,           /* 71 */
-    NULL,                               /* 72 DrawPrimitiveUP */
+    dev_DrawPrimitiveUP,                /* 72 */
     NULL,                               /* 73 DrawIndexedPrimitiveUP */
     NULL,                               /* 74 ProcessVertices */
-    NULL,                               /* 75 CreateVertexShader */
+    dev_CreateVertexShader,             /* 75 */
     dev_SetVertexShader,                /* 76 */
     dev_GetVertexShader,                /* 77 */
-    NULL,                               /* 78 DeleteVertexShader */
-    NULL,                               /* 79 SetVertexShaderConstant */
-    NULL,                               /* 80 GetVertexShaderConstant */
-    NULL,                               /* 81 GetVertexShaderDeclaration */
-    NULL,                               /* 82 GetVertexShaderFunction */
+    dev_DeleteVertexShader,              /* 78 */
+    dev_SetVertexShaderConstant,         /* 79 */
+    dev_GetVertexShaderConstant,         /* 80 */
+    dev_GetVertexShaderDeclaration,      /* 81 */
+    dev_GetVertexShaderFunction,         /* 82 */
     dev_SetStreamSource,                /* 83 */
     NULL,                               /* 84 GetStreamSource */
     dev_SetIndices,                     /* 85 */
@@ -1350,6 +1509,7 @@ void d3d8_device_report(void)
            "show for it\n", g_texture_unresolved, g_dev.draws);
     d3d8_state_report(&g_dev.state);
     d3d8_sb_report();
+    d3d8_vs_report();
     d3d8_surface_report();
     d3d8_resource_report();
     d3d8_drawcall_report();

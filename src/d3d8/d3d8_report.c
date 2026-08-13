@@ -17,6 +17,7 @@
 #include "d3d8_surface.h"
 #include "d3d8_drawcall.h"
 #include "d3d8_state.h"
+#include "d3d8_vertex_shader.h"
 
 #include "gpu_device.h"
 #include "gpu_draw.h"
@@ -1328,6 +1329,7 @@ int d3d8_host_selftest(void)
     fails += d3d8_com_selftest();
     fails += caps_selftest();
     fails += pixel_shader_selftest();
+    fails += d3d8_vs_selftest();
     fails += gamma_selftest();
     fails += getdirect3d_selftest();
     fails += texture_level_selftest();

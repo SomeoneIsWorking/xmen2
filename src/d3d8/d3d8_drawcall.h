@@ -10,6 +10,11 @@
 #include "d3d8_state.h"
 #include "gpu_draw.h"
 
+enum {
+    D3DPT_POINTLIST = 1, D3DPT_LINELIST, D3DPT_LINESTRIP,
+    D3DPT_TRIANGLELIST, D3DPT_TRIANGLESTRIP, D3DPT_TRIANGLEFAN
+};
+
 /* Byte offsets within a vertex, decoded from an FVF. -1 means absent. */
 typedef struct {
     int      pos_offset;
@@ -23,6 +28,8 @@ typedef struct {
 /* What the draw call itself supplies, as opposed to the sticky state. */
 typedef struct {
     GpuBuffer  vertex_buffer;
+    uint32_t   vertex_guest_bytes;  /* host-visible source bytes for VS 1.1 */
+    uint32_t   vertex_bytes;
     uint32_t   stride;              /* 0 to use the FVF's own */
     uint32_t   first_vertex;
     GpuBuffer  index_buffer;        /* 0 for non-indexed */
@@ -43,6 +50,8 @@ int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out);
 /* 0 and a reason if the state cannot be expressed. */
 int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                     GpuDraw *out);
+/* Releases transient resources owned by a built draw (programmable outputs). */
+void d3d8_release_draw(GpuDraw *draw);
 
 void d3d8_combine_transform(const D3D8State *s, float out[16]);
 /* World * View alone: D3D8's texture-coordinate generators live in camera

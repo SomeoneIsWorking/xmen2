@@ -322,3 +322,13 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: The import stub form remains for a call that reaches _setjmp3 indirectly rather than through generated code. It records the buffer as UNRESUMABLE and longjmp refuses by name if one ever arrives there, so the case cannot pass silently -- but it is not implemented. Also unhandled: host-side state owned by frames the longjmp destroys (the ark scratch-stack pointer, for one) is not unwound.
 - notes: 
 
+
+## renderer
+
+### pc-vs11 — D3D8 VS 1.1 lifecycle and execution
+- status: re-verified
+- deps:
+- evidence: libIGGfx 0x10048500 calls the real D3D8 CreateVertexShader; scratch/logs/create-vs-dump.log captures the five-token declaration and 104-DWORD VS 1.1 program. scratch/logs/vs-execute-3350.log records 50 programmable draws / 3250 vertex invocations through frame 3350 with zero GPU refusals; d3d8_vs_selftest proves relative DP4 execution and unsupported-opcode refusal.
+- where: src/d3d8/d3d8_vertex_shader.c; src/d3d8/d3d8_device.c; src/d3d8/d3d8_drawcall.c
+- gap: Observed program is implemented and verified; any unobserved declaration form, modifier, or VS 1.1 opcode still refuses by token until reached and implemented.
+- notes: The interpreter preserves the engine program and constants. It does not map programmable shaders back to fixed-function FVF.

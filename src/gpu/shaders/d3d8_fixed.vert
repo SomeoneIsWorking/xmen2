@@ -54,7 +54,7 @@ layout(set = 1, binding = 0) uniform VertexState {
      * vertex to sample a cube with, which is the whole reason this exists.
      */
     uint  texgen;
-    uint  pad1;
+    uint  programmable;
     mat4  worldview;       /* camera space, where the generators are defined */
     /* Each light is five vec4s: diffuse, ambient, (position, range),
        (direction, type), (attenuation, unused). Packed by hand because a
@@ -118,7 +118,9 @@ vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse, bool has_n)
 
 void main()
 {
-    if (vs.pretransformed != 0u) {
+    if (vs.programmable != 0u) {
+        gl_Position = in_pos;
+    } else if (vs.pretransformed != 0u) {
         /*
          * Pixel coordinates to clip space. D3D's origin is the top-left of the
          * viewport and Y grows downward; Vulkan's clip space has Y growing
@@ -157,7 +159,8 @@ void main()
      * zero and the material's emissive and ambient terms are what remain, which
      * is exactly how an engine colours a sky dome.
      */
-    vec4 diffuse = vs.has_diffuse != 0u ? in_color.zyxw : vec4(1.0);
+    vec4 diffuse = vs.has_diffuse != 0u
+        ? (vs.programmable != 0u ? in_color : in_color.zyxw) : vec4(1.0);
     if (vs.lighting != 0u && vs.pretransformed == 0u) {
         vec3 wpos = (vs.world * vec4(in_pos.xyz, 1.0)).xyz;
         /* The normal by the world matrix's upper 3x3. Correct for the rigid

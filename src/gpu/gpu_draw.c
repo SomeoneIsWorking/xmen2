@@ -485,7 +485,7 @@ static SDL_GPUCompareOp sdl_compare(GpuCompare c)
 typedef struct {
     uint32_t stride;
     int      pos_offset, color_offset, uv_offset, normal_offset;
-    int      pos_is_float4;
+    int      pos_is_float4, color_is_float4;
     int      prim;
     int      blend_enable, src_blend, dst_blend;
     int      depth_test, depth_write, depth_func;
@@ -541,7 +541,8 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
     nat++;
     at[nat].location = 1;
     at[nat].buffer_slot = 0;
-    at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+    at[nat].format = k->color_is_float4 ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
+                                        : SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
     at[nat].offset = (Uint32)(k->color_offset >= 0 ? k->color_offset
                                                    : k->pos_offset);
     nat++;
@@ -682,7 +683,7 @@ typedef struct {
     /* std140: these two complete a 16-byte row, so `worldview` below starts
        aligned and the light array that follows it keeps its offset. */
     uint32_t texgen;
-    uint32_t pad1;
+    uint32_t programmable;
     float    worldview[16];
     /* Five vec4s per light: diffuse, ambient, (position, range),
        (direction, type), (attenuation, unused). */
@@ -858,7 +859,8 @@ int gpu_draw(const GpuDraw *d)
     memset(&key, 0, sizeof key);          /* padding too: the key is memcmp'd */
     key.stride = d->vertex_stride;
     key.pos_offset = d->pos_offset;
-    key.pos_is_float4 = d->pretransformed ? 1 : 0;
+    key.pos_is_float4 = (d->pretransformed || d->programmable) ? 1 : 0;
+    key.color_is_float4 = d->programmable ? 1 : 0;
     key.color_offset = d->color_offset;
     key.uv_offset = d->uv_offset;
     key.normal_offset = d->normal_offset;
@@ -1078,6 +1080,7 @@ int gpu_draw(const GpuDraw *d)
     vu.viewport[2] = (float)g_swap_w;
     vu.viewport[3] = (float)g_swap_h;
     vu.pretransformed = d->pretransformed ? 1u : 0u;
+    vu.programmable = d->programmable ? 1u : 0u;
     vu.has_diffuse = d->color_offset >= 0 ? 1u : 0u;
     vu.has_normal = d->normal_offset >= 0 ? 1u : 0u;
     vu.lighting = d->lighting ? 1u : 0u;

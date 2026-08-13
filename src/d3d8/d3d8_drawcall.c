@@ -15,6 +15,7 @@
 #include "d3d8_drawcall.h"
 unsigned long gpu_frame_draws_so_far(void);
 #include "d3d8_resource.h"
+#include "d3d8_vertex_shader.h"
 #include "d3d8_state.h"
 #include "d3d8_types.h"
 
@@ -60,14 +61,6 @@ unsigned long gpu_frame_draws_so_far(void);
 #define D3DTOP_SELECTARG1        2
 #define D3DTOP_MODULATE          4
 #define D3DTOP_ADD               7
-
-/* D3DPT_* */
-#define D3DPT_POINTLIST          1
-#define D3DPT_LINELIST           2
-#define D3DPT_LINESTRIP          3
-#define D3DPT_TRIANGLELIST       4
-#define D3DPT_TRIANGLESTRIP      5
-#define D3DPT_TRIANGLEFAN        6
 
 /* D3DFVF_* */
 #define D3DFVF_XYZ            0x0002
@@ -618,6 +611,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     D3D8VertexLayout vl;
     uint32_t fvf = s->vertex_shader;
     uint32_t cull, srcb, dstb;
+    int programmable = fvf > 0xf0000000u;
 
     memset(out, 0, sizeof *out);
 
@@ -631,18 +625,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
      * shader handle cannot be honoured here and must not be silently drawn as
      * if it were fixed-function.
      */
-    if (fvf & 0xFFFF0000u) {
-        static int told;
-        if (!told++)
-            fprintf(stderr, "d3d8: the engine bound a real VERTEX SHADER "
-                            "(handle 0x%08x). This host implements the "
-                            "fixed-function pipeline only, so the draw is "
-                            "refused rather than drawn with the wrong "
-                            "transform. Reported once.\n", fvf);
-        g_refused_fvf++;
-        return 0;
-    }
-    if (!d3d8_fvf_layout(fvf, &vl)) {
+    if (!programmable && !d3d8_fvf_layout(fvf, &vl)) {
         fprintf(stderr, "d3d8: FVF 0x%08x has no position.\n", fvf);
         g_refused_fvf++;
         return 0;
@@ -674,11 +657,53 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
         return 0;
     }
 
-    out->pos_offset = vl.pos_offset;
-    out->pretransformed = vl.pretransformed;
-    out->color_offset = vl.color_offset;
-    out->uv_offset = vl.uv_offset;
-    out->normal_offset = vl.normal_offset;
+    if (programmable) {
+        D3D8VSOutput *vertices;
+        uint32_t count, bytes;
+        if (!req->vertex_guest_bytes || !req->vertex_bytes || !req->stride) {
+            fprintf(stderr, "d3d8: programmable draw has no host-visible "
+                            "stream-0 bytes (guest=0x%08x bytes=%u stride=%u).\n",
+                    req->vertex_guest_bytes, req->vertex_bytes, req->stride);
+            g_refused_fvf++; return 0;
+        }
+        count = req->vertex_bytes / req->stride;
+        if (!count || count > UINT32_MAX / sizeof *vertices) {
+            fprintf(stderr, "d3d8: programmable draw derives %u vertices "
+                            "from %u bytes at stride %u.\n",
+                    count, req->vertex_bytes, req->stride);
+            g_refused_fvf++; return 0;
+        }
+        bytes = count * (uint32_t)sizeof *vertices;
+        vertices = malloc(bytes);
+        if (!vertices) { g_refused_fvf++; return 0; }
+        if (!d3d8_vs_execute(fvf, s->vertex_shader_constant,
+                (const void *)(uintptr_t)req->vertex_guest_bytes,
+                req->vertex_bytes, req->stride, 0, count, vertices)) {
+            free(vertices); g_refused_fvf++; return 0;
+        }
+        out->vertices = gpu_buffer_create(GPU_BUF_VERTEX, bytes);
+        if (!out->vertices
+                || !gpu_buffer_upload(out->vertices, 0, vertices, bytes)) {
+            if (out->vertices) gpu_buffer_destroy(out->vertices);
+            out->vertices = 0;
+            free(vertices); g_refused_fvf++; return 0;
+        }
+        free(vertices);
+        out->owns_vertices = 1;
+        out->vertex_stride = sizeof(D3D8VSOutput);
+        out->pos_offset = offsetof(D3D8VSOutput, position);
+        out->pretransformed = 0;
+        out->programmable = 1;
+        out->color_offset = offsetof(D3D8VSOutput, diffuse);
+        out->uv_offset = offsetof(D3D8VSOutput, texcoord);
+        out->normal_offset = -1;
+    } else {
+        out->pos_offset = vl.pos_offset;
+        out->pretransformed = vl.pretransformed;
+        out->color_offset = vl.color_offset;
+        out->uv_offset = vl.uv_offset;
+        out->normal_offset = vl.normal_offset;
+    }
 
     /*
      * The transform.
@@ -689,7 +714,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
      * decision.
      */
     d3d8_combine_transform(s, out->mvp);
-    fill_lighting(s, out);
+    if (!programmable) fill_lighting(s, out);
 
     /*
      * How many stages the draw actually ASKED for.
@@ -907,6 +932,14 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     out->alpha_test = rs(s, D3DRS_ALPHATESTENABLE, 0) != 0;
     out->alpha_ref = (float)(rs(s, D3DRS_ALPHAREF, 0) & 0xFFu) / 255.0f;
     return 1;
+}
+
+void d3d8_release_draw(GpuDraw *draw)
+{
+    if (draw->owns_vertices && draw->vertices)
+        gpu_buffer_destroy(draw->vertices);
+    draw->vertices = 0;
+    draw->owns_vertices = 0;
 }
 
 /*

@@ -386,6 +386,7 @@ if(X2_MODULE_HAVE)
         src/vulkan/igvk_slots_lifecycle.c
         src/vulkan/igvk_slots_frame.c
         
+        src/d3d8/d3d8_vertex_shader.c
         ${X2_MODULE_SRCS}
     )
     add_dependencies(x2native x2_shaders)

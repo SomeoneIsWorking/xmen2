@@ -92,6 +92,8 @@ file) but it is not the shortest road to a playable port. Status words mean:
 | Prior art consulted, and what was taken | `docs/prior-art.md` | **verified** — Dusklight (CC0 TP port, same architecture, further along). Its one-concern-per-file layout is what `src/vulkan/`'s split follows, cited in `igvk_context.h`. Records what has NOT been taken and why — their record-and-replace frame interpolation is the next thing worth copying, once there is a frame |
 | What a split is about to destroy | `tools/whose_function.py` | **verified** — I037. Names the function containing an address and flags an MSVC SEH prologue at its entry, where a split would destroy a real function rather than repair one. Validated on both classes (flags an interior address of an SEH function, exit 1; clears an entry address and an address in no function, exit 0). Wired into `native_discover.sh` ahead of every split escalation — issue #21 is what that escalation did with no output at all |
 
+
+| D3D8 programmable vertex shaders | `src/d3d8/d3d8_vertex_shader.c` | **partial, real path** — issue #64. Generation-checked handles retain the original declaration/function streams; 96 constant registers and the observed VS 1.1 skinning instruction set execute over host-visible vertex bytes. `DrawPrimitiveUP` copies its transient input and shares the same builder. Real route: 50 shader draws / 3,250 vertices through frame 3350, zero GPU refusals. Unsupported declarations, modifiers and opcodes refuse by token; unobserved VS 1.1 instructions remain the honest gap. |
 ## Recompiled output (`src/recomp/`, gitignored — regenerate, never edit)
 
 | module | status |

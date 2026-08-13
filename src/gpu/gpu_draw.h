@@ -133,6 +133,7 @@ typedef enum {
  */
 typedef struct {
     GpuBuffer    vertices;
+    int          owns_vertices;      /* boundary-created transient buffer */
     uint32_t     vertex_stride;
     uint32_t     first_vertex;
     GpuBuffer    indices;          /* 0 for non-indexed */
@@ -152,6 +153,7 @@ typedef struct {
      * where the vertex has three reads the next field as W.
      */
     int          pretransformed;
+    int          programmable;     /* position/color are VS 1.1 outputs */
     int          color_offset;
     int          uv_offset;
     /* The normal, which only matters when lighting is on -- but the ATTRIBUTE

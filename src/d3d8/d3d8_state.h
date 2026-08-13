@@ -26,6 +26,7 @@
 #define D3D8_MAX_TRANSFORMS     260      /* world matrices run to 255 + 4 */
 #define D3D8_MAX_LIGHTS         16
 #define D3D8_MAX_STREAMS        16
+#define D3D8_MAX_VS_CONSTANTS   96
 
 typedef struct { float m[16]; } D3D8Matrix;
 
@@ -60,6 +61,7 @@ typedef struct {
     uint32_t   base_vertex_index;
 
     uint32_t   vertex_shader;             /* an FVF code or a shader handle */
+    float      vertex_shader_constant[D3D8_MAX_VS_CONSTANTS][4];
     uint32_t   pixel_shader;
 
     int32_t    viewport_x, viewport_y;

@@ -1,9 +1,10 @@
 ---
 id: C156
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-12
 tags: native
+falsified_on: 2026-08-13
 ---
 
 ## Claim
@@ -35,3 +36,9 @@ of the loop run is:
 which reaches the main menu on a run that took 189s where the time-based one
 took 252s. Every injection line now reports both the time and the frame, so a
 divergence can be attributed to one or the other.
+
+## FALSIFIED 2026-08-13
+
+After commit 5151a92 corrected explicit two-register FSUBR/FDIVR, the previously verified dense gameplay route no longer reaches the elimination/death dialog. It completes the opening Cyclops conversation and reaches IDirect3DDevice8::CreateVertexShader instead, proving the old route result depended on the reversed x87 arithmetic defect.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.
