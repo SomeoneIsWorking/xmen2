@@ -433,3 +433,50 @@ If the elimination survives that, the wait is not the mechanism and the
 question becomes whether act() on the spawner does anything at all AT THIS
 POINT, which is now testable the same way with an observable side effect in the
 same script.
+
+### Note (2026-08-13)
+## THE CONVERSATION-END SCRIPT NEVER RUNS. That is the defect.
+
+Before believing any more negatives from substituting nightcrawler_spawn.py, it
+was replaced with a version whose FIRST statement is observable:
+
+    cameraFade(1.000, 0.500 )      <- fade to black, visible as luma ~0
+    waittimed ( 2.000 )
+    act ( "spwnr_nightcrawler", "spwnr_nightcrawler" )
+    waittimed ( 1.000 )
+    cameraFade(0.000, 1.000 )
+
+The run replaced the file (reported by name) and the filmstrip shows NO black
+frame anywhere: the level fades in (2, 4, 6, 8, 11, 12), the conversation plays
+(25 down to 19 as the camera moves), and then it jumps straight to the
+game-over at 32. A two-second fade to black cannot hide between five-frame
+samples.
+
+cameraFade itself works -- tutorial1.py's cameraFade(0.000, 1.000) at level
+start is the fade-in those first six frames show, and that script is one we
+know executes. So the fade is not the thing that is broken; the script
+containing it never ran.
+
+## What this retires
+
+Every negative taken from substituting nightcrawler_spawn.py is worthless, and
+they are withdrawn: the "one-second wait is not the mechanism" result was a
+test of a script that never executed. This is exactly what the control was for.
+
+## What it establishes
+
+The hero is spawned by the conversation's final response, through
+chosenscriptfile="act0/tutorial/tutorial1/nightcrawler_spawn" with
+conversationend="true". That script does not run in this port. So the hero
+never appears, and the party check at the end of the cutscene finds nobody --
+which is the elimination, exactly on time.
+
+The file IS opened (the X2_ASSETS report names it), but that happens at level
+load when the package pulls in every script. Opened is not executed.
+
+## Next
+
+RE the conversation code: what a response's chosenscriptfile is supposed to do
+at conversationend, and why this port does not do it. The conversation system's
+RTTI names are in the exe (CConversationSystem, CConversation, CConversationFile
+around 0x2d7xxxx), and the script-call path is the one to follow.
