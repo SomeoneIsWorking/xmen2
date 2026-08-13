@@ -588,3 +588,39 @@ Whatever the mechanism is, it is worth knowing: reading a script launch's
 arguments at the dispatcher should not be able to derail the guest, and that it
 apparently can says something about this host that is not yet understood. Do
 not re-land the argument decode in the dispatch path without finding out.
+
+### Note (2026-08-13)
+## CONFIRMED from the engine side: conversation-triggered scripts do not launch
+
+With the argument decoder repaired (it was dereferencing wild pointers behind a
+probe that validated nothing -- I049), X2_EPCOUNT names what the two script
+launchers are handed. 0x004a1320 is the launch-BY-NAME one, and in a whole run
+it is entered 35 times for exactly FOUR distinct scripts:
+
+    p/common/scr_blinkportal                    (truncated in the decode)
+    act0/tutorial/tutorial1/tutorial1
+    act0/tutorial/tutorial1/profx_1stspscr
+    act0/tutorial/tutorial1/spscr_follow_hero
+
+nightcrawler_spawn is NOT among them. That is the same conclusion the
+cameraFade substitution reached, arrived at from the other side and without
+touching the level's data.
+
+And the four split cleanly by HOW they are triggered:
+
+    profx_1stspscr      referenced by Maps/Act0/tutorial/tutorial1.engb
+    spscr_follow_hero   referenced by Maps/Act0/tutorial/tutorial1.engb
+    tutorial1           the level's own entry script
+    nightcrawler_spawn  referenced ONLY by the conversation
+                        (Conversations/act0/tutorial/tutorial1/1_introlevel_0020)
+
+Scripts attached to MAP ENTITIES launch. The level entry script launches. The
+one attached to a conversation response's chosenscriptfile does not. So the
+defect is in the conversation system's chosenscriptfile path and nowhere
+broader -- the script engine, the launcher and the loader are all fine.
+
+## Next
+
+The parser stores the response's chosenScriptFile at [response + 0x1c] and its
+conversationEnd flag beside it (XMen2.exe 0x00459709 / 0x0045973f). What reads
+[+0x1c] when a response is chosen is the code to follow.
