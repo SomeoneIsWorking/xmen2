@@ -552,3 +552,39 @@ did not take, which is a different defect entirely. If instead every script in
 the level is opened in one burst at load, the open proves nothing. The ordering
 of the opens distinguishes the two and a run with both instruments on is
 measuring it now.
+
+### Note (2026-08-13)
+## The script opens are a PRELOAD, so they say nothing about execution
+
+With the file trace and the entry counter on together, every script in the
+level is opened in one burst immediately after the level package:
+
+    line 914  packages/generated/maps/act0/tutorial/tutorial1.pkgb
+    line 916  scripts/act0/tutorial/tutorial1/tutorial1.py
+    line 917  scripts/act0/tutorial/tutorial1/nightcrawler_spawn.py
+    line 919  .../conv_0020b_end.py
+    ...
+    line 1102 .../tripmine2_safe.py
+
+So the open of nightcrawler_spawn.py that every run shows is a preload, not a
+launch, and it is no evidence that the script ran. The cameraFade result --
+substitute the script, watch for a black frame, see none -- remains the only
+evidence about execution, and it says the script did not run.
+
+## Trying to name the 208 launches PERTURBED the run, and the attempt is withdrawn
+
+X2_EPCOUNT was extended to decode each launch's arguments as strings, to
+answer WHICH scripts those 208 are. With it on, the run died at 12 s with
+SIGSEGV at 0x6f6c6e75 -- which is the ASCII "unlo", so the guest was executing
+a string -- and EDX pointing into .rdata beside the script-path constants. The
+same build with the counter switched off ran to completion with no fault.
+
+One run each way is thin, but the diagnostic is the only variable and a
+diagnostic that changes what it measures is worse than none. The extension is
+REVERTED; what remains committed is the plain counter, which is passive and
+has been run repeatedly without incident.
+
+Whatever the mechanism is, it is worth knowing: reading a script launch's
+arguments at the dispatcher should not be able to derail the guest, and that it
+apparently can says something about this host that is not yet understood. Do
+not re-land the argument decode in the dispatch path without finding out.
