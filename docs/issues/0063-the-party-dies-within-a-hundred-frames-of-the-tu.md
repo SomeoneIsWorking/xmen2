@@ -1426,3 +1426,38 @@ and `0x0075d674` are STATIC guest addresses, so `tools/oracle_probe.py` can
 sample the scheduler's heap count and slot 34 in the stock game with no
 rebuild, and answer whether the shipped game ever schedules an `EGameOver` at
 all in this level.
+
+### Note (2026-08-13)
+## Captured: the party-wipe test is seeing an EMPTY roster
+
+The named range was run in the native tutorial path with the conversation
+advanced through `nightcrawler_spawn`. Its recorder captured 15 instructions,
+one complete pass, in `scratch/logs/wipe.trace`; this is not an inferred count:
+
+    0042a085  MOV EAX,[ESP+0x28]       EAX becomes 00000000
+    0042a089  XOR EBX,EBX
+    0042a08b  TEST EAX,EAX             EAX = 00000000
+    0042a08d  JLE 0042a0e7             TAKEN
+
+The helper at `FUN_004218f0` was given the local output array at
+`0x700f0504` and returned zero. No handle was therefore passed to
+`FUN_004654b0`, and no actor health was read: this is the **empty-roster**
+case, not the "every resolved actor has zero health" case. The game-over
+schedule follows immediately at `0x0042a0e7`.
+
+The same run's conversation report establishes that the script really did
+launch (`nightcrawler_spawn`, two applied responses), so the next question is
+not whether the dialogue ended: it is why the roster producer
+`FUN_004218f0` returns no entries after that spawn script runs. Trace that
+helper's source list and its writers; do not add a synthetic party member to
+hide the missing producer.
+
+Static follow-up narrows that producer one level further. `FUN_004218f0` only
+clears the caller's six-dword output buffer. The actual enumeration is vtable
+slot `0x00686e1c + 0x120`, `FUN_0046d460`: it iterates the collection returned
+by `FUN_004ab770`, filters each candidate, writes selected actor handles into
+the `0x007298e0` result bank, increments the matching count at `0x007298f4`,
+then copies that count to the caller's output `+0x14`. In the capture that
+copy is zero. The collection/filters in `FUN_0046d460` are now the upstream
+boundary to compare against stock; the clearing helper is expected setup, not
+the defect.
