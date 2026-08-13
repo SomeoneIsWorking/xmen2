@@ -35,6 +35,8 @@ unsigned long guest_quantum_count(void);
  * it, so the two agree by construction. The main thread has one too.
  */
 uint32_t guest_current_tid(void);
+/* Opaque identity used by kernel32's duplicated thread-handle aliases. */
+void *guest_thread_current_record(void);
 
 /* SetThreadPriority/GetThreadPriority: recorded per thread and round-tripped.
    The schedule is round-robin and a priority cannot change it, but Get must

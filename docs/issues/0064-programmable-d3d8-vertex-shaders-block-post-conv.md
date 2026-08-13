@@ -56,3 +56,6 @@ Evidence: `scratch/logs/vs-execute-3350.log` and
 
 ### Resolution (2026-08-14)
 The host now implements generation-checked shader lifecycle, the observed VS 1.1 skinning interpreter, constant registers, and DrawPrimitiveUP. The frame-3350 route executes 50 shader draws / 3250 vertices with zero GPU refusals; unsupported tokens remain loud.
+
+### Note (2026-08-14)
+Post-cull-fix concern about detached black geometry at the upper-left was tested over 12 consecutive X2_SHOT_VS frames. It is Nightcrawler's teleport animation: the same skinned mesh moves continuously from the ceiling into a crouch, with 40 programmable draws / 2600 vertices and zero refusals. It is not detached geometry and not evidence of a VS transform fault. Evidence: scratch/screenshots/vs-sequence-contact.png and scratch/logs/vs-sequence.log.

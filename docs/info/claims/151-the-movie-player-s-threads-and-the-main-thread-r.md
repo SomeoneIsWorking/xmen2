@@ -1,9 +1,10 @@
 ---
 id: C151
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-11
 tags: threads,movie
+falsified_on: 2026-08-14
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ The movie player's threads and the main thread rendezvous correctly under one gl
 ## What would falsify it
 
 a movie that stalls again, or any run where a guest thread is resumed by a handle that names a different thread than the guest meant. The per-thread suspend/resume counts in the exit report are the check: a live thread with zero resumes next to a dead one with millions is the signature.
+
+## FALSIFIED 2026-08-14
+
+A later smoke_loop stalled in the intro with libCriMovie's decoder suspended while ResumeThread(0x24) reported that the handle named no guest thread. This is exactly C151's stated falsifier. Static RE then found libIGCore FUN_10075400 calling GetCurrentThread and DuplicateHandle at 0x10075478; the host duplicate had no shared GuestThread identity.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

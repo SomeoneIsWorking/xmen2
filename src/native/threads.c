@@ -72,7 +72,9 @@
 
 /* kernel32 owns the handle table and the TLS arrays; these are the hooks. */
 uint32_t k32_handle_for_thread(void *rec);
-void     k32_handle_thread_done(uint32_t handle);
+void    *k32_thread_record(uint32_t handle);
+unsigned k32_thread_handle_count(void *rec);
+void     k32_handle_thread_done(void *rec);
 void     k32_tls_switch(int slot);
 uint32_t k32_tls_peek(int slot, uint32_t index);
 int      k32_tls_slot_count(void);
@@ -183,12 +185,18 @@ static void state_set(int st)
  * answer. This is the number that separates them.
  */
 #define MAIN_TID 999u
+static void sched_attach_main(void);
+
 uint32_t guest_current_tid(void)
 {
     return g_self ? g_self->tid : MAIN_TID;
 }
 
-static void sched_attach_main(void);
+void *guest_thread_current_record(void)
+{
+    if (!g_self) sched_attach_main();
+    return g_self;
+}
 
 /*
  * SetThreadPriority / GetThreadPriority, per thread.
@@ -596,7 +604,7 @@ static void thread_trampoline(void)
     t->state = TS_DONE;
     t->state_since = now_s();
     g_exited++;
-    k32_handle_thread_done(t->handle);
+    k32_handle_thread_done(t);
     guest_cond_broadcast();
     /* Never returns: a finished coroutine has nowhere to return TO. The
        scheduler will not pick it again because `finished` is set. */
@@ -710,31 +718,30 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
  */
 void guest_thread_handle_closed(uint32_t handle)
 {
-    int i;
-    for (i = 0; i < MAX_THREADS; i++) {
-        GuestThread *t = &g_thread[i];
-        if (!t->used || t->handle != handle) continue;
-        t->handle = 0;
+    GuestThread *t = (GuestThread *)k32_thread_record(handle);
+    if (t && t->used) {
+        if (t->handle == handle) t->handle = 0;
         if (t->finished) {
-            if (t->stack_base) guest_free(t->stack_base);
-            if (t->tib) guest_free(t->tib);
-            if (t->hstack) munmap(t->hstack, HSTACK_BYTES);
-            t->stack_base = t->tib = 0;
-            t->hstack = NULL;
-            t->reaped = 1;
-            t->used = 0;              /* the slot is free for the next thread */
-            g_reaped++;
+            /* This call happens before kernel32 clears the closing alias, so
+               one means it is the LAST open handle to this thread object. */
+            if (k32_thread_handle_count(t) == 1) {
+                if (t->stack_base) guest_free(t->stack_base);
+                if (t->tib) guest_free(t->tib);
+                if (t->hstack) munmap(t->hstack, HSTACK_BYTES);
+                t->stack_base = t->tib = 0;
+                t->hstack = NULL;
+                t->reaped = 1;
+                t->used = 0;          /* slot is free for the next thread */
+                g_reaped++;
+            }
         }
-        return;
     }
 }
 
 static GuestThread *by_handle(uint32_t h)
 {
-    int i;
-    for (i = 0; i < MAX_THREADS; i++)
-        if (g_thread[i].used && g_thread[i].handle == h) return &g_thread[i];
-    return NULL;
+    GuestThread *t = (GuestThread *)k32_thread_record(h);
+    return t && t->used ? t : NULL;
 }
 
 int guest_thread_is_thread(uint32_t handle) { return by_handle(handle) != NULL; }
@@ -871,7 +878,7 @@ void guest_thread_exit(uint32_t code)
     t->finished = 1;
     t->state = TS_DONE;
     g_exited++;
-    k32_handle_thread_done(t->handle);
+    k32_handle_thread_done(t);
     guest_cond_broadcast();
     for (;;) sched_switch();             /* never picked again */
 }

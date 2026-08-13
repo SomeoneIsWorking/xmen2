@@ -1,11 +1,11 @@
 ---
 id: 57
 title: The movie rendezvous deadlocks about one run in six: the decoder is suspended and the only thread that resumes it is waiting
-status: open
+status: resolved
 symptom: kernel32: WaitForSingleObject(INFINITE) on event (unnamed) has waited 30 seconds; the guest executed NOTHING in the last 5.0s; one libCriMovie thread SUSPENDED NOW
 tags: threads,movie,deadlock,intermittent,pc,native
 created: 2026-08-12
-updated: 2026-08-12
+updated: 2026-08-14
 ---
 
 ## Symptom
@@ -321,3 +321,6 @@ and "nothing checks" are different facts). `DeleteCriticalSection` also clears
 the owner, so the section's next life does not inherit the old one. A foreign
 Leave leaves the owner in place: releasing it would put two threads inside at
 once, which is the one outcome worse than the guest's own race.
+
+### Resolution (2026-08-14)
+Root cause: H_THREAD table entries carried no GuestThread object identity. libIGCore FUN_10075400 gets the current pseudo-handle and duplicates it at 0x10075478, then libCriMovie suspends/resumes that real alias; DuplicateHandle copied only handle metadata while threads.c recognized only one canonical numeric handle. ResumeThread(alias) therefore named no guest thread and a self-suspended decoder could never wake. Every thread handle now retains the shared GuestThread record; all aliases control and become signalled with the same object, and closing one alias preserves the others. The shipping-table selftest passes and fails under a deliberate lost-identity mutation. A full smoke_loop then fired all 6 scheduled inputs through movies/gameplay to frame 4200 with 0 refused draws and no invalid-thread-handle report.
