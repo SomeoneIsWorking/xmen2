@@ -983,3 +983,76 @@ must survive long enough to process ONE more frame after a conversation ends.
 Find what stops the update in that window. The five call sites that stop
 together (previous notes) are the trail, and the same probe can now watch the
 guest state that gates them rather than inferring it from screenshots.
+
+### Note (2026-08-13)
+## What stops the update: a POPUP DIALOG, 200 ms after the conversation ends
+
+The five call sites stop together because they are all behind one gate. In
+`FUN_00401d70`, the level state machine's per-frame body, the sequence before
+the conversation update is:
+
+    0x00401ef8  CALL 0x005eb300          ; the CPopupDialog singleton
+    0x00401f01  CALL [EDX + 0x78]        ; "is a dialog up?"
+    0x00401f06  JNZ 0x00401f6d           ;   -> skip EVERYTHING behind it
+    0x00401f11  CALL [EDX + 0x204]       ; an input-mode predicate
+    0x00401f19  JNZ 0x00401f6d
+    0x00401f24  CALL [EDX + 0x20]        ; conversation isVisible
+
+Recording that range for the whole run (`recomp.py emit --record
+0x00401ef8-0x00401f29`, 48,270 entries over 5,149 passes) resolves it exactly.
+Per pass, the value of the first predicate:
+
+    passes    0-2511   0     (no dialog)
+    passes 2512-2570   1     (the difficulty dialog, correctly dismissed)
+    passes 2571-2850   0
+    passes 2851-5149   1     <- and never 0 again
+
+`isVisible` is reached only during passes 2752-2850. So the conversation update
+does not stop for any reason of its own: a **popup dialog goes up at pass 2851
+and stays up for the remaining 2,299 passes**, and the first gate in the frame
+skips everything behind it.
+
+The class is `CPopupDialog` (RTTI at the vtable 0x006a332c; singleton
+0x008b13ec). It holds up to three dialogs of stride 0x1560 at +0x18, with the
+current index at +0x403c and each one's "up" bit at +0x155d bit 0.
+
+## Which the state probe then times to the millisecond
+
+With those fields added to `tools/oracle_probe.py`, sampling our own run at
+10 Hz:
+
+    87.581s  flags 16 -> 19, cur_line 0 -> 64, resp_count 0 -> 1   conversation starts
+    88.685s  cur_line 64 -> 65                                     advance
+    89.287s  flags 19 -> 24, resp_count -> 0                       conversation ENDS
+    89.488s  dlg_index 2 -> 0, dlg0_active 6 -> 5                  a dialog goes UP
+    89.889s  dlg_index 0 -> 1, dlg1_active 6 -> 3                  a second goes up
+     ...     dlg_index stays 1, dlg1_active stays 3 for 80 more seconds
+
+Two hundred milliseconds after the conversation ends, a dialog stack opens and
+never closes. (The `active` byte is a bitfield; bit 0 is the one the predicate
+reads -- 6 is down, 7/5/3 are up. The earlier 61.6-64.9s pair is the menu's
+difficulty dialog, correctly raised and dismissed.)
+
+## So this issue is not about the party, and probably not about conversations
+
+The dialog family is the SAVE-DEVICE one: `FUN_0055e9b0` maps a message id to
+a token through a jump table, and the tokens are `EMSG_NO_DATA_DEVNUM`,
+`EMSG_SAVE_FAILED_DEVNUM`, `EMSG_LOADING_DEVNUM`, `EMSG_CHECKING_DEVNUM` and
+friends (0x0069ab74-0x0069adf0). The dialog photographed in every recent run
+reads "No X-Men Legends 2 save data present on hard disk. [Esc] Cancel [Enter]
+Retry", which is consistent with `EMSG_NO_DATA_DEVNUM` -- though that mapping
+is NOT yet proven, only consistent, and the id is what would prove it.
+
+The shape is: the game reaches a checkpoint as the intro conversation ends,
+goes to the save device, does not get what it wants, and puts up a modal that
+blocks the entire level state machine. The scripted Return then answers
+"Retry", which puts it up again. Everything downstream -- the conversation
+never being retired, `0020b` never starting, `conv_0020b_end` never running,
+controls staying locked with the AI off -- follows from that one modal.
+
+## Next
+
+Two things, in order. Probe the CONTROL with the same dialog fields: if stock
+raises no dialog there, this is a save-path defect in the port and the issue
+should be re-titled. And read the message ID the dialog is constructed with,
+rather than inferring it from the rendered text.

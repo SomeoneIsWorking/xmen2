@@ -64,10 +64,20 @@ FIELDS = [
     ("tag_index",   "i16", [0x00717AAC, 0x21B26]),
     ("tag_count",   "i16", [0x00717AAC, 0x21B28]),
     ("voice",       "u32", [0x00717AAC, 0x21B80]),
+    # CPopupDialog (0x008b13ec). Its slot +0x78 predicate -- "is a dialog up" --
+    # is the FIRST gate in the level state machine's frame, so a dialog that
+    # stays up stops the conversation update, the party update and everything
+    # else behind it. Up to three dialogs of stride 0x1560 live at +0x18, with
+    # the current index at +0x403c and each one's active bit at +0x155d.
+    ("dlg",         "u32", [0x008B13EC]),
+    ("dlg_index",   "u32", [0x008B13EC, 0x0403C]),
+    ("dlg0_active", "u8",  [0x008B13EC, 0x18 + 0x155D]),
+    ("dlg1_active", "u8",  [0x008B13EC, 0x18 + 0x1560 + 0x155D]),
 ]
 
 # Fields whose every CHANGE is worth a line of its own, not just a CSV row.
-EVENT_FIELDS = ("flags", "cur_line", "chosen", "resp_count")
+EVENT_FIELDS = ("flags", "cur_line", "chosen", "resp_count",
+                "dlg_index", "dlg0_active", "dlg1_active")
 
 
 class Reader(object):
