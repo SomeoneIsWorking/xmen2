@@ -63,3 +63,32 @@ kills an idle party" is now settled against that.
 
 Both runs entered the same way and were then left alone, so the comparison is
 like-for-like on the one axis that matters.
+
+### Note (2026-08-13)
+## CORRECTION: the control was parked in DIALOGUE, not idling in gameplay
+
+The previous note said "an idle party does NOT die here in the shipped game"
+and called this a confirmed port defect. That claim is stronger than the
+evidence. Look again at what those six samples actually show: all of them carry
+the SAME line of dialogue --
+
+    CYCLOPS: "Get him to the X-Jet, Nightcrawler. We'll meet you there."
+    [Enter] continue...
+
+-- so the control was sitting on a conversation box waiting for a keypress, for
+the whole 400 seconds. Its Return window had ended at 500 s. It never entered
+gameplay at all, and a party that is not in gameplay is not an idle party; it
+is a party in a modal.
+
+The native run, by contrast, was still being driven when it died: its Returns
+ran to frame 4200, it advanced THROUGH the conversation, and the game-over came
+within about a hundred frames of the last dialogue frame.
+
+So the two runs were not compared on the axis I claimed. What is actually
+established is only that the shipped game does not die while a conversation box
+is up -- which nobody doubted.
+
+The real test is running now: the control driven with Returns continuing to
+960 s, so it leaves the conversation and reaches the same gameplay state the
+native run reached. If it dies too, this is not a port defect and issue #62's
+dependency on it disappears.
