@@ -1180,3 +1180,52 @@ Identify the FIRST dialog. Either resolve string resource 0xd01 out of
 `igct.bnx`, or record `FUN_005f1d80` and read what it is reacting to -- and in
 either case establish whether the party was already dead when it went up, which
 is the question this issue was opened on and is still open.
+
+### Note (2026-08-13)
+## The first dialog IS the elimination prompt, and it fires with ZERO advances
+
+Photographed rather than inferred. Driving the run so that the presses stop
+before the conversation is live (`f2400-2860/60:Return,f2820-2860/20:Return`)
+leaves the first dialog undismissed, and it is:
+
+    ALL X-MEN HAVE BEEN ELIMINATED.
+       Load Game
+       Main Menu
+    [ENTER] SELECT
+
+drawn OVER the conversation box, with Cyclops's portrait still visible behind
+it. So `id 47` / string resource 0xd01 is the elimination prompt.
+
+The port's own counters for that run: `accept gate: 89 evaluation(s), 0 with
+the button down, 0 advanced the conversation`, and the conversation flags end
+at 0x13 -- still visible, never advanced, never ended.
+
+**So the party dies with the conversation untouched.** The conversation is a
+bystander: it is not the cause of the elimination, it is merely the thing that
+was on screen when it happened. Everything in the earlier notes that made the
+conversation the subject -- the script that never launched, the second
+conversation that never started, the manager stuck at 0x18 -- is a CONSEQUENCE
+of the level ending, not a cause of it. The issue's original title was right.
+
+## The asymmetry that matters
+
+The control tolerates an empty party for a very long time. Its first
+conversation is live from 226.7s to 471.9s -- **245 seconds** -- and the hero
+is not spawned until it ends, yet no elimination prompt is ever raised
+(`dlg0_active` is 6, down, for all 620 s of the probe). This port raises it
+within roughly sixty to ninety frames of the level appearing.
+
+That is now the whole question, and it is a good one: what does the elimination
+check count, and why does it reach zero here and not under Wine? The tutorial's
+entry script disables the AI and locks controls (`setallaiactive("FALSE")`,
+`lockControls(-1.000)`) for exactly this window, so either that suppression is
+not reaching the check in this port, or the party roster is genuinely empty
+here and populated there.
+
+## Next
+
+Find the elimination check and the count it reads, then probe that count in
+BOTH runs with `tools/oracle_probe.py` -- the same compare that settled the
+conversation question. If the control's count is non-zero from level load and
+ours is zero, this is a party/roster loading defect and has nothing to do with
+conversations, dialogs or saves.
