@@ -392,3 +392,44 @@ is in the level, and where a level's forced character is applied.
 Static work so far: the herostat load is at 0x0044babd in XMen2.exe, pushing
 "data/herostat.xmlb" (0x00685578) into a virtual call, inside the function
 reached from 0x0044b8f0. That is the thread to pull.
+
+### Note (2026-08-13)
+## THE HERO IS SPAWNED BY THE CONVERSATION ENDING
+
+The conversation data says so outright. Conversations/act0/tutorial/tutorial1/
+1_introlevel_0020.XMLB reads:
+
+    <line text="@MAP_ACT0_TUTORIAL1@CYCLOPS_NIGHTCRAWLER">
+      <response text="%BLANK%">
+        <line text="@MAP_ACT0_TUTORIAL1@NIGHTCRAWLER_WILL_DO">
+          <response chosenscriptfile="act0/tutorial/tutorial1/nightcrawler_spawn"
+                    conversationend="true" text="%BLANK%">
+
+So nightcrawler_spawn is what runs WHEN THE CONVERSATION ENDS, and that script
+is `waittimed(1.000)` then `act("spwnr_nightcrawler")`. The hero is not in the
+level during the cutscene by design -- he teleports in afterwards, which is
+what the dialogue is about.
+
+That explains two things at once:
+
+  - Why the elimination lands exactly at conversation end. That is the moment
+    the game stops being in a cutscene and starts caring who is alive, and it
+    is also the moment the hero is supposed to appear.
+  - Why forcing act("spwnr_nightcrawler") from the level's entry script did
+    nothing: it fired at level load, before the conversation, which is not
+    when the level expects the spawner to be acted on. That experiment was
+    mis-timed rather than informative, and its negative should not be read as
+    "the spawner does not work".
+
+## The test now running
+
+nightcrawler_spawn.py substituted with the act() call and NO waittimed. If the
+party check runs during that one second -- a race the shipped game does not
+lose but this port might, since its frame pacing and script timing are not the
+original's -- then removing the wait should let the hero exist before the check
+looks.
+
+If the elimination survives that, the wait is not the mechanism and the
+question becomes whether act() on the spawner does anything at all AT THIS
+POINT, which is now testable the same way with an observable side effect in the
+same script.
