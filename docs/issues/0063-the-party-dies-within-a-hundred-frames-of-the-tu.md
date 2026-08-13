@@ -277,3 +277,44 @@ alone -- so the control had probably run on past the tutorial by then. That
 does not weaken "the shipped game does not eliminate an idle party", but it
 does mean the control frame is not yet proved to be the tutorial, and issue
 #62 should not treat it as a matched frame until it is.
+
+### Note (2026-08-13)
+## CORRECTION, and the anomaly is sharper than the one I recorded
+
+The previous note said "the hero's model is never loaded". That reading was
+wrong. herostat.engb parses with tools/xmlb.py, and Nightcrawler's entry is:
+
+    skin="0603"   characteranims="06_nightcrawler"   playable="true"
+
+so actors/0603.igb is the BODY -- and the run opens it twice. What
+06_nightcrawler.igb is, is the ANIMATION SET. The body loads fine.
+
+The anomaly that survives the correction is narrower and better. Listing every
+actor the run opens, each hero loads BOTH its skin and its animation set:
+
+    Cyclops       0103.igb  +  01_cyclops.igb
+    Wolverine     0303.igb  +  03_wolverine.igb
+    Storm         0403.igb  +  04_storm.igb
+    Magneto       2501/2504 +  25_magneto.igb
+    Nightcrawler  0603.igb, 0610.igb, 06_nightcrawler_tail.igb -- and NOT
+                  06_nightcrawler.igb
+
+Every other hero's animation set is opened. The tutorial's player character is
+the one whose is not, and it is not a failed open: a failure prints NOT FOUND
+and none appears for anything nightcrawler-shaped. The file exists in the
+install.
+
+Four heroes loading also means a party WAS built -- Cyclops, Wolverine, Storm
+and Magneto are the default team -- which makes "the party was never
+constructed" the wrong shape. What fits is: the level's own player character
+fails to come up, and the party the CHECK looks at is the level's, not the
+menu's.
+
+## The caveat this must carry
+
+The file trace still does not cover CreateFileMappingA/MapViewOfFile, which is
+a real mmap in this host and was named as a hole in issue #60 and never closed.
+So "never opened" means "never opened through CreateFile or the CRT". If the
+animation set is loaded through a mapping, it would be invisible here and the
+whole anomaly evaporates. CLOSING THAT HOLE IS THE NEXT STEP, before any more
+weight is put on this.
