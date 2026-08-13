@@ -156,6 +156,36 @@
     },
     {
       "module": "XMen2",
+      "ep": "0x0045d1a0",
+      "symbol": "fn_XMen2_0045d1a0",
+      "returns": "void",
+      "why": [
+        "igConversationManager::update -- the per-frame conversation update,",
+        "the function that decides everything: whether a chosen response is",
+        "applied, whether the conversation ends, whether the accept button",
+        "advances it, and how the highlight moves.",
+        "",
+        "It was left un-ported once because its subtitle-draw block could not",
+        "be read off the disassembly. That was the wrong answer -- it leaves",
+        "the translated original in place forever -- so the capability to",
+        "capture it was built instead (recomp.py emit --record, I050). The",
+        "capture showed what the listing hid: 0x0067217c is __ftol and takes",
+        "its argument on the X87 STACK, consuming nothing from the integer",
+        "stack, so the five PUSHes around it belong to the NEXT call and one",
+        "ADD ESP,0x24 cleans all nine at the end. The block draws a 32x32",
+        "\"$MENU_ACCEPT\" prompt -- the conversation's own button prompt.",
+        "",
+        "Declared void: the original sets no return value, and it is reached",
+        "only through the conversation vtable slot +0x0c, whose call sites",
+        "discard EAX.",
+        "",
+        "The capture is also the acceptance test: over 221 passes, 156 take",
+        "the early-out at 26 instructions, 64 the full path at 321, and",
+        "exactly one -- the pass that chose a response -- 342."
+      ]
+    },
+    {
+      "module": "XMen2",
       "ep": "0x00458010",
       "symbol": "fn_XMen2_00458010",
       "why": [

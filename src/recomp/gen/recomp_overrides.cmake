@@ -10,6 +10,7 @@ set(RECOMP_OVERRIDE_WRAPS
     -Wl,--wrap=fn_XMen2_004559e0        # XMen2 0x004559e0
     -Wl,--wrap=fn_XMen2_0045b6d0        # XMen2 0x0045b6d0
     -Wl,--wrap=fn_XMen2_0045d5d0        # XMen2 0x0045d5d0
+    -Wl,--wrap=fn_XMen2_0045d1a0        # XMen2 0x0045d1a0
     -Wl,--wrap=fn_XMen2_00458010        # XMen2 0x00458010
     -Wl,--wrap=fn_XMen2_00458020        # XMen2 0x00458020
     -Wl,--wrap=fn_libIGCore_10069c70        # libIGCore 0x10069c70

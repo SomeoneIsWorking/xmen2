@@ -824,3 +824,47 @@ replace exactly this icon per connected controller.
 
 FUN_0045d1a0 is now portable, and the reason given for not porting it no
 longer holds.
+
+### Note (2026-08-13)
+## FUN_0045d1a0 is ported, and the capture was its acceptance test
+
+With the block decoded (previous note), the per-frame conversation update is
+now hand-written C in `src/native/conversation.c` -- eleven overrides in total.
+The subtitle-draw block ports exactly as the capture showed it, including
+`__ftol` taking its argument on the x87 stack.
+
+THE PORT'S FIRST VERSION FAULTED, LOUDLY, AND THAT IS THE POINT. `call_ftol`
+hand-rolled the x87 push -- `top = (top - 1) & 7; st[top] = v` -- instead of
+calling `x87_push`, which also maintains `depth`. __ftol's pop then drove depth
+negative and the runtime aborted with "x87 stack underflow ... this is the
+MODELLED x87 stack, so it is a translation defect" on the first frame the
+conversation became visible. A model that tracked only `top` would have wrapped
+silently and corrupted a float somewhere downstream.
+
+MEASURED AGAINST THE CAPTURE. The recording of the original over 221 passes:
+156 early-outs, 64 full paths, 1 pass that chose a response. The ported build
+over two runs: 225 calls / 157 not visible / 68 full, and 229 / 160 / 69, with
+the accept gate evaluated 68-69 times, the button down exactly ONCE, none of
+those inside the debounce, and exactly ONE advance. The small differences are
+run-to-run timing (the conversation is live a few frames longer); the
+proportions and every one-shot event match. No x87 fault, no SIGSEGV, the run
+reaches its 5200-frame limit, and 21/21 ctest pass.
+
+WHAT THE PORT NOW SAYS, in its own words rather than a debugger's:
+
+    update: 229 call(s) -- 0 disabled, 160 not visible, 0 applied a response,
+            0 ended it, 0 found no current line
+    accept gate: 69 evaluation(s), 1 with the button down, 0 inside the
+            debounce, 1 advanced the conversation
+
+So the conversation is advanced once, by one button press, and then the update
+stops being called -- from ported code, with no debugger anywhere. The
+`0xdeadbeef` caller in the isVisible record is this port's own vtable call
+through `x86_guest_call`, and is labelled as such so it is not chased as a wild
+pointer.
+
+## Next
+
+Unchanged: measure the party's size at the level's FIRST frame. The
+conversation subsystem is now ours end to end and says nothing is wrong with
+it; what stops calling it is outside it.
