@@ -1513,3 +1513,25 @@ The immediate cause of the empty wipe roster is that no active actor has flag
 `0x00100000`. Next, identify the semantic name and writer of actor `+4` bit 20,
 then compare that initialization transition with stock. Do not patch
 `FUN_0046d460` or fabricate a roster member.
+
+### Note (2026-08-13)
+## The selector rejects four heroes with negative health
+
+Actor `+4` bit 20 is the active/enabled bit. Actor vtable slot `+0xe4` is
+`FUN_00474d40`, which sets `0x00100000`; slot `+0xe8` is `FUN_004734d0`,
+which clears it. The exact four tutorial actors are constructed active and
+then intentionally deactivated by `FUN_0046a6c0` after creation.
+
+`FUN_0046a880` is the selector that should reactivate matching party members.
+It sees all four actors but rejects each at its first health test: actor
+`+0x27c` is `-78`, `-78`, `-90`, and `-66`. `FCOMP` against `0.0` correctly
+takes `JNZ 0x0046aa72`, so `FUN_00499c00` and vtable slot `+0xe4` never
+execute. This rules out the active flag, collection, match function, and x87
+comparison as the defect. The empty wipe roster is downstream of all four
+newly loaded heroes having negative health.
+
+Direct health writers include `FUN_0041c4e0`, which clamps a supplied value to
+max health at actor `+0x284`. Next, capture the actor `+0x27c` / `+0x284`
+initialization transition, determine whether negative values are supplied or
+max health is already corrupt, and compare both fields with stock. Do not force
+activation or clamp health at the selector.
