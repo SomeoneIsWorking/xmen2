@@ -118,3 +118,27 @@ Two shapes fit: the hero entity is not there (an empty party is eliminated by
 definition the moment the check runs) or it is there with no health. The HUD
 portrait through these frames is Nightcrawler's, so SOMETHING is in the party
 slot.
+
+### Note (2026-08-13)
+## remove("simplecyclops") is REFUTED as the cause
+
+The hypothesis was that the port's entity lookup resolves the conversation-end
+script's `remove` to the wrong entity and takes the hero out of the party --
+which would empty the party exactly when the death is observed. It is wrong.
+
+Tested by substitution rather than by reading: X2_ASSETS was pointed at a copy
+of Scripts/act0/tutorial/tutorial1/conv_0020b_end.py with its one `remove` line
+commented out. The run reported the replacement by name --
+
+    assets: REPLACED "scripts/act0/tutorial/tutorial1/conv_0020b_end.py"
+            with scratch/noremove/.../conv_0020b_end.py (X2_ASSETS)
+
+-- so the substitution definitely took, and the party still died: the filmstrip
+goes "Will do." and then, by the frame after next, the save dialog that follows
+a game-over.
+
+This is worth keeping as a technique note as much as a result. X2_ASSETS makes
+the level's SCRIPTS editable, so a hypothesis about what a script does to the
+game can be tested by deleting the statement and running, without touching the
+port or the RE. The next bisection is already running: the whole script emptied.
+If the party still dies, nothing in conv_0020b_end causes it.
