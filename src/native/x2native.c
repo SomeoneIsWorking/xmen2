@@ -348,6 +348,7 @@ void x2_interrupt_reports(int killed)
     { extern void k32_asset_report(void), ws2_report(void);
       k32_asset_report(); ws2_report(); }
     { extern void conversation_report(void); conversation_report(); }
+    { extern void x86_record_report(void); x86_record_report(); }
     x86_epcount_report();
     fflush(stdout);
     if (killed)

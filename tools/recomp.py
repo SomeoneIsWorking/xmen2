@@ -449,6 +449,16 @@ def find_setjmp_thunks(functions):
     return SETJMP_THUNKS
 
 
+RECORD_RANGES = []          # [(lo, hi)] -- see x86_record in x86rt.h
+
+
+def in_record_range(a):
+    for lo, hi in RECORD_RANGES:
+        if lo <= a <= hi:
+            return True
+    return False
+
+
 def emit_instruction(ins, ctx):
     """Return a list of C lines, or raise Unsupported."""
     m = ins["m"].upper()
@@ -1611,6 +1621,11 @@ def translate(fn):
     for ins in fn["ins"]:
         if ins["a"] in targets:
             body.append("L_%08x:;" % ins["a"])
+        if RECORD_RANGES and in_record_range(ins["a"]):
+            # BEFORE the instruction, so the line shows the state it ran on.
+            body.append("  X86_RECORD(0x%08xU, C, \"%s\");"
+                        % (ins["a"], ins["t"].replace("\\", "\\\\")
+                                              .replace('"', "'")))
         try:
             body.extend("  " + l for l in emit_instruction(ins, fn))
         except Unsupported as e:
@@ -1853,6 +1868,42 @@ def cmd_emit(argv):
                 "fires if its function is in its own translation unit, so an "
                 "empty list would silently link a binary with every override "
                 "absent -- refusing rather than emitting one." % ipath)
+    # --record LO-HI, repeatable: instrument exactly these guest addresses.
+    #
+    # It REFUSES a range that matches no instruction rather than emitting a
+    # build that records nothing and looks the same as one that does. A range
+    # is not a guess -- it is copied from a disassembly listing -- so a range
+    # that hits nothing means the address is wrong, and finding that out at
+    # emit time costs seconds instead of a build and a run.
+    RECORD_RANGES[:] = []
+    for i, a in enumerate(argv):
+        if a != "--record":
+            continue
+        spec = argv[i + 1]
+        if "-" not in spec:
+            raise Unsupported("--record wants LO-HI, got %r" % spec)
+        lo, hi = spec.split("-", 1)
+        RECORD_RANGES.append((int(lo, 16), int(hi, 16)))
+    if RECORD_RANGES:
+        hit = [0] * len(RECORD_RANGES)
+        for fn in d["functions"]:
+            for ins in fn["ins"]:
+                for k, (lo, hi) in enumerate(RECORD_RANGES):
+                    if lo <= ins["a"] <= hi:
+                        hit[k] += 1
+        for k, (lo, hi) in enumerate(RECORD_RANGES):
+            if not hit[k]:
+                raise Unsupported(
+                    "--record 0x%08x-0x%08x matches NO instruction in %s. A "
+                    "range that records nothing produces a build "
+                    "indistinguishable from one with no recording at all, so "
+                    "this refuses rather than emitting it."
+                    % (lo, hi, d["program"]))
+        print("emit: RECORDING %d instruction(s) across %d range(s): %s"
+              % (sum(hit), len(RECORD_RANGES),
+                 ", ".join("0x%08x-0x%08x (%d)" % (lo, hi, hit[k])
+                           for k, (lo, hi) in enumerate(RECORD_RANGES))))
+
     split = 0
     if "--split" in argv:
         split = int(argv[argv.index("--split") + 1])
@@ -1876,6 +1927,18 @@ def cmd_emit(argv):
             seen.add(ident)
             lines.append("void %s(CPU *C);   /* %s!%s */" % (ident, mod, sym))
     lines.append("")
+    if RECORD_RANGES:
+        # The recorded ranges REGISTER THEMSELVES at load. Without this the
+        # runtime cannot tell "no region was instrumented" from "the region
+        # never ran", which are the two answers a reader most needs apart --
+        # and the emitter is the only thing that knows which ranges went in.
+        lines.append("void x86_record_range(uint32_t lo, uint32_t hi);")
+        lines.append("__attribute__((constructor)) static void "
+                     "x86_record_ranges_%s(void) {" % mod_ident)
+        for lo, hi in RECORD_RANGES:
+            lines.append("  x86_record_range(0x%08xU, 0x%08xU);" % (lo, hi))
+        lines.append("}")
+        lines.append("")
     hdr_end = len(lines)          # everything above is shared by every chunk
     all_eps = set(f["ep"] for f in fns)
     # Functions Ghidra knows never return. A body ending in a call to one of

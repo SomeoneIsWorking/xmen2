@@ -691,5 +691,62 @@ class WaitingX87Forms(unittest.TestCase):
         self.assertIn("RET", c)
 
 
+class RegionRecording(unittest.TestCase):
+    """`--record LO-HI` instruments exactly the named addresses and no others.
+
+    The failure this guards against is the quiet one: a range that is off by a
+    byte, or that lands in a function the emitter skipped, produces a build
+    that records nothing and is indistinguishable from a build with no
+    recording at all. So the emitter refuses an empty range (tested in
+    tools/recomp.py's own path) and the instrumentation is asserted to be
+    PRESENT for the addresses asked for and ABSENT for the ones next to them.
+    """
+
+    def tearDown(self):
+        recomp.RECORD_RANGES[:] = []
+
+    def test_only_the_named_range_is_instrumented(self):
+        recomp.RECORD_RANGES[:] = [(0x00401002, 0x00401003)]
+        c = translate([
+            ins(0x00401000, "NOP", "NOP", n=1),
+            ins(0x00401001, "NOP", "NOP", n=1),
+            ins(0x00401002, "NOP", "NOP", n=1),
+            ins(0x00401003, "NOP", "NOP", n=1),
+            ins(0x00401004, "RET", "RET", n=1),
+        ])
+        self.assertIn("X86_RECORD(0x00401002U", c)
+        self.assertIn("X86_RECORD(0x00401003U", c)
+        self.assertNotIn("X86_RECORD(0x00401000U", c)
+        self.assertNotIn("X86_RECORD(0x00401001U", c)
+        self.assertNotIn("X86_RECORD(0x00401004U", c)
+
+    def test_no_ranges_means_no_instrumentation_at_all(self):
+        recomp.RECORD_RANGES[:] = []
+        c = translate([
+            ins(0x00401000, "NOP", "NOP", n=1),
+            ins(0x00401001, "RET", "RET", n=1),
+        ])
+        self.assertNotIn("X86_RECORD", c)
+
+    def test_the_recorded_line_carries_the_instruction_text(self):
+        recomp.RECORD_RANGES[:] = [(0x00401000, 0x00401000)]
+        c = translate([
+            ins(0x00401000, "FLD", "FLD dword ptr [EDI]", n=3),
+            ins(0x00401003, "RET", "RET", n=1),
+        ])
+        # The text is what makes the trace readable as a listing rather than a
+        # column of addresses.
+        self.assertIn('"FLD dword ptr [EDI]"', c)
+
+    def test_a_quote_in_the_text_cannot_break_the_string(self):
+        recomp.RECORD_RANGES[:] = [(0x00401000, 0x00401000)]
+        c = translate([
+            ins(0x00401000, "NOP", 'NOP "x"', n=1),
+            ins(0x00401001, "RET", "RET", n=1),
+        ])
+        line = [l for l in c.splitlines() if "X86_RECORD" in l][0]
+        self.assertEqual(line.count('"'), 2, line)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

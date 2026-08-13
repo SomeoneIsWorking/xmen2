@@ -206,6 +206,28 @@ void x86_untranslated(uint32_t ep, const char *name, const char *reason);
    whole body. */
 void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
                           const char *reason);
+/*
+ * REGION RECORDING -- capture what a stretch of guest code actually does.
+ *
+ * Some blocks cannot be ported from the disassembly alone: MSVC leaves floats
+ * on the x87 stack across intervening pushes, and which helper consumes which
+ * is not visible in the listing. Declining to port such a block leaves the
+ * translated original in place forever; guessing at it ships a defect. So the
+ * third option is built here -- RUN it and write down exactly what happened,
+ * one line per instruction, with the registers, the x87 stack and the top of
+ * the guest stack.
+ *
+ * `recomp.py emit --record LO-HI` (repeatable) inserts the call before each
+ * instruction in the range and NOWHERE else, so a build with no ranges pays
+ * nothing. The runtime announces the compiled-in ranges at startup and reports
+ * at zero, because "the block never executed" and "recording was not compiled
+ * in" are the two answers that must not look alike.
+ */
+void x86_record(uint32_t addr, const struct CPU *C, const char *text);
+extern int x86_record_on;
+#define X86_RECORD(a, C, t) \
+    do { if (x86_record_on) x86_record((a), (C), (t)); } while (0)
+
 /* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
 void x86_int3(uint32_t addr);
 /* A function body ended without a terminator and the address it falls through

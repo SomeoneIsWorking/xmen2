@@ -344,6 +344,7 @@ if(X2_MODULE_HAVE)
         src/native/winmm.c
         src/native/threads.c
         src/native/x86rt_native.c
+        src/native/x86_record.c
         src/native/overrides.c
         src/native/conversation.c
         src/native/heartbeat.c

@@ -772,3 +772,55 @@ Measure the party's size from the FIRST frame of the level, not from the
 conversation. If it is zero before the conversation starts, this issue is
 about who was supposed to spawn the hero BEFORE the conversation, and the
 conversation is a bystander.
+
+### Note (2026-08-13)
+## The block that "could not be ported from the disassembly" is now CAPTURED
+
+Declining to port FUN_0045d1a0 because its subtitle-draw block was unreadable
+was the wrong answer: it leaves the translated original in place forever. The
+tooling should be able to capture what a listing cannot show, so it now can --
+`recomp.py emit --record LO-HI` (repeatable) puts an `X86_RECORD` call before
+each instruction in the range and nowhere else, and `src/native/x86_record.c`
+writes one line per instruction with the registers, the x87 stack and the eight
+dwords at ESP. Instrument I050.
+
+    python3 tools/recomp.py emit scratch/recomp/XMen2.json src/recomp/XMen2.c \
+        --split 1500 --record 0x0045d4c2-0x0045d55b
+    X2_RECORD=scratch/logs/subtitle_block.trace X2_RECORD_PASSES=3 \
+        scratch/build-native/x2native --no-window --d3d8
+
+123 entries over three passes, all three taking an identical path. What the
+listing would not show, and the capture does:
+
+  * **0x0067217c is `__ftol`.** It takes its argument on the X87 STACK and
+    consumes nothing from the integer stack. That is what made the block
+    unreadable: the five PUSHes around it are not its arguments, they are
+    arguments being staged for the call after it, and `ADD ESP,0x24` at the end
+    cleans all nine dwords at once. Measured: ST0 = 107.600006 going in,
+    EAX = 0x6b (107) and the x87 top restored coming out; again with 21.
+  * **0x0040be00 packs a float RGBA into ARGB** -- handed the four 1.0f at
+    [ESP+0x28], it returns 0xFFFFFFFF.
+  * **[0x0067f9c4] indexes a layout array**, returning a float*: element 0
+    holds 57.0, element 2 holds 91.6.
+  * **The constants**: [0x006819fc] = 16.0, [0x00684b9c] = 36.0, and
+    0x0068603c is the string **"$MENU_ACCEPT"**.
+
+So the block reconstructs exactly:
+
+    conv   = FUN_004583f0();
+    target = conv->[0x21b38];
+    py     = (float *)[0x0067f9c4](conv + 0x239b0, 2);     /* 91.6 */
+    px     = (float *)[0x0067f9c4](conv + 0x239b0, 0);     /* 57.0 */
+    rgba   = [0x0067f9ac](&tmp, 1.0f, 1.0f, 1.0f, 1.0f, "$MENU_ACCEPT");
+    colour = FUN_0040be00(rgba);                           /* 0xFFFFFFFF */
+    FUN_005ef270(target + 0x43c,
+                 __ftol(*px - 36.0f),                      /* 21  */
+                 __ftol(*py + 16.0f),                      /* 107 */
+                 0x20, 0x20, 1.0f, 10, colour, "$MENU_ACCEPT");
+
+It draws a 32x32 accept-button prompt. That is not incidental to this port: it
+is the conversation's own button prompt, and the button-prompts feature has to
+replace exactly this icon per connected controller.
+
+FUN_0045d1a0 is now portable, and the reason given for not porting it no
+longer holds.
