@@ -142,3 +142,30 @@ the level's SCRIPTS editable, so a hypothesis about what a script does to the
 game can be tested by deleting the statement and running, without touching the
 port or the RE. The next bisection is already running: the whole script emptied.
 If the party still dies, nothing in conv_0020b_end causes it.
+
+### Note (2026-08-13)
+## ESTABLISHED, properly this time: the shipped game does NOT die, and it is IN GAMEPLAY
+
+The earlier attempt at this comparison failed because the control was parked on
+a conversation box. Driving it with the entry pattern that works plus a sparse
+window to advance the dialogue --
+
+    X2_KEYS="195-300/12:Return,380-500/20:Return,540-960/30:Return"
+
+-- puts it in actual gameplay: an isometric view of the same room, three party
+members standing with their selection rings, the full HUD with health bars and
+a character portrait. Samples 4 through 8, about 350 seconds with no input
+after 960 s, are all that state. Nobody dies, no game-over, no save dialog.
+
+    stock, idle in gameplay   mean 33.4   frac<16 0.372   frac>128 0.032
+
+So an unattended party does NOT die in the shipped game, in the state the
+native run dies in. This IS a port defect, and this time the two runs are
+compared on the axis that matters: both left alone, both past the conversation.
+
+## That frame is also what issue #62 has been waiting for
+
+It is the room in settled gameplay with nothing over it -- lit blue-grey, three
+characters lit and coloured, health bars readable. It is the target the native
+build has to be able to reach before #62's comparison can be finished, and it
+is cached (oracle key 9b555db04417d402, sample .4 onward).

@@ -634,3 +634,6 @@ guaranteed that.
 
 Rule for this issue from here: no frame comparison without the dialogue line
 matching. It is the only clock both builds display.
+
+### Note (2026-08-13)
+The settled-gameplay control frame now exists and is cached: oracle key 9b555db04417d402, samples .4 through .8 -- the same room in isometric gameplay, three party members lit and coloured, HUD readable, mean luma 33.4 with 3.2% of pixels above 128. That is the frame this issue needs the native build to reach. It cannot yet, because of issue #63.
