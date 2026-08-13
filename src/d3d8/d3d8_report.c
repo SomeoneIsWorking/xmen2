@@ -143,8 +143,13 @@ static int d3d8_draw_selftest(void)
         { TW - 2.0f, TH - 2.0f,  0.0f, 1.0f, 0xFFFF0000u },
         { 2.0f,      TH - 2.0f,  0.0f, 1.0f, 0xFFFF0000u }
     };
+    struct { float x, y, z; uint32_t color; } model_tri[3] = {
+        {  0.0f,  0.8f, 0.0f, 0xFFFF0000u },
+        { -0.8f, -0.8f, 0.0f, 0xFFFF0000u },
+        {  0.8f, -0.8f, 0.0f, 0xFFFF0000u }
+    };
     static uint32_t img[TW * TH];
-    D3D8Object *vb;
+    D3D8Object *vb, *model_vb;
     D3D8State st;
     D3D8DrawRequest req;
     GpuDraw gd;
@@ -237,6 +242,48 @@ static int d3d8_draw_selftest(void)
                "green clear (0xff00ff00); something filled the whole "
                "target\n", corner);
         fails++;
+    }
+
+    /* Model-space positions take a different Y/winding route from XYZRHW.
+       This is the D3DCULL_CW half the screen-space test above cannot see. */
+    model_vb = d3d8_vertexbuffer_new(sizeof model_tri, 0,
+                                     0x0042u /* XYZ|DIFFUSE */, 0);
+    locked = 0;
+    if (model_vb) {
+        args[0] = 0; args[1] = 0; args[2] = guest_malloc(4);
+        call_method(model_vb, 11, args, 4);
+        locked = RD32(args[2]);
+    }
+    if (!locked) {
+        printf("d3d8 draw selftest: FAILED -- model-space cull control could "
+               "not be populated.\n");
+        fails++;
+    } else {
+        memcpy((void *)(uintptr_t)locked, model_tri, sizeof model_tri);
+        call_method(model_vb, 12, NULL, 0);
+        d3d8_state_reset(&st);
+        st.vertex_shader = 0x0042u;
+        st.stream[0].guest_ptr = d3d8_object_guest(model_vb);
+        st.stream[0].stride = sizeof model_tri[0];
+        d3d8_state_set_render(&st, 22, 2); /* D3DCULL_CW */
+        memset(&req, 0, sizeof req);
+        req.vertex_buffer = d3d8_resource_buffer(model_vb);
+        req.stride = sizeof model_tri[0];
+        req.primitive_type = 4;
+        req.primitive_count = 1;
+        if (!gpu_offscreen_begin(TW, TH, 0.0f, 1.0f, 0.0f, 1.0f)
+                || !d3d8_build_draw(&st, &req, &gd) || !gpu_draw(&gd)
+                || !gpu_offscreen_read(img, sizeof img)) {
+            printf("d3d8 draw selftest: FAILED -- model-space D3DCULL_CW "
+                   "control did not execute.\n");
+            fails++;
+        } else if (img[(TH / 2) * TW + TW / 2] != 0xFFFF0000u) {
+            printf("d3d8 draw selftest: FAILED -- model-space D3DCULL_CW "
+                   "removed the front face (centre 0x%08x).\n",
+                   img[(TH / 2) * TW + TW / 2]);
+            fails++;
+        }
+        gpu_offscreen_end();
     }
     gpu_device_destroy();
     printf("d3d8 draw selftest: %s\n", fails ? "FAILED"

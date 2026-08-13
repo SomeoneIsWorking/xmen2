@@ -516,6 +516,7 @@ static void shot_maybe_write(void)
     static int checked, every = 60;
     static unsigned long min_draws;          /* X2_SHOT_MIN_DRAWS */
     static unsigned long busy_written;
+    static int require_vs;
     static long keep = -1, kept;             /* X2_SHOT_KEEP */
     static unsigned char *buf;
     char numbered[512];
@@ -542,6 +543,7 @@ static void shot_maybe_write(void)
          */
         if ((e = getenv("X2_SHOT_MIN_DRAWS")) && *e)
             min_draws = strtoul(e, NULL, 10);
+        if ((e = getenv("X2_SHOT_VS")) && *e && *e != '0') require_vs = 1;
         /*
          * X2_SHOT_KEEP=<n> -- keep the first <n> qualifying frames as
          * <path>.000, .001, ... instead of overwriting one file.
@@ -570,6 +572,10 @@ static void shot_maybe_write(void)
                    "that many draws are photographed. If none ever is, NO "
                    "file is written and this run photographed NOTHING.\n",
                    min_draws);
+        if (path && require_vs)
+            printf("gpu: X2_SHOT_VS=1 -- only frames that received a "
+                   "programmable draw are photographed. If none ever is, "
+                   "NO file is written.\n");
     }
     /* X2_SHOT reads back the HEADLESS target; with a real window there is no
        such target and this wrote nothing at all. It said nothing about that
@@ -599,6 +605,7 @@ static void shot_maybe_write(void)
     }
     if (min_draws && gpu_frame_draws_so_far() < min_draws)
         return;
+    if (require_vs && !gpu_frame_had_programmable()) return;
     if (min_draws) busy_written++;
     n = g_headless_w * g_headless_h * 4u;
     if (!buf && !(buf = (unsigned char *)malloc(n))) return;

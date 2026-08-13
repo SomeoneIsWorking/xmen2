@@ -211,6 +211,13 @@ typedef struct {
     int          depth_test;
     int          depth_write;
     GpuCompare   depth_func;
+    uint32_t     depth_bias;       /* Raw D3D8 D3DRS_ZBIAS value. */
+    /* Raw D3D8 stencil/color-write state, retained even before the GPU path
+       consumes it so diagnostics cannot call an ignored pass ordinary. */
+    int          stencil_enable;
+    uint32_t     stencil_fail, stencil_zfail, stencil_pass, stencil_func;
+    uint32_t     stencil_ref, stencil_mask, stencil_write_mask;
+    uint32_t     color_write_mask;
     GpuCull      cull;
     int          alpha_test;
     float        alpha_ref;

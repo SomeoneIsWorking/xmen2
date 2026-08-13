@@ -94,6 +94,8 @@ file) but it is not the shortest road to a playable port. Status words mean:
 
 
 | D3D8 programmable vertex shaders | `src/d3d8/d3d8_vertex_shader.c` | **partial, real path** — issue #64. Generation-checked handles retain the original declaration/function streams; 96 constant registers and the observed VS 1.1 skinning instruction set execute over host-visible vertex bytes. `DrawPrimitiveUP` copies its transient input and shares the same builder. Real route: 50 shader draws / 3,250 vertices through frame 3350, zero GPU refusals. Unsupported declarations, modifiers and opcodes refuse by token; unobserved VS 1.1 instructions remain the honest gap. |
+| D3D8 cull translation | `src/gpu/gpu_draw.c`, `src/d3d8/d3d8_report.c` | **verified** — issue #62. Screen-space XYZRHW and model-space XYZ vertices traverse different Y/winding conversions, so their D3D8 cull modes cannot share one SDL mapping. The old screen-space-only proof preserved the near faces of model-space outline hulls and painted characters solid black. Both conventions now have pixel tests; restoring the old model-space mapping makes the new `D3DCULL_CW` test fail. Whole gameplay frame: characters textured/lit with thin contours, 110,188 draws and zero refused. |
+
 ## Recompiled output (`src/recomp/`, gitignored — regenerate, never edit)
 
 | module | status |

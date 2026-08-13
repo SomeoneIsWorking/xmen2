@@ -113,6 +113,9 @@ void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
  * X2_INPUT_SCRIPT's `f` form in dinput_device.c.
  */
 unsigned long gpu_frames_presented(void);
+/* True when the frame currently ending received at least one programmable
+   draw, even if X2_DRAW_RANGE skipped it. Used by content-selected captures. */
+int gpu_frame_had_programmable(void);
 
 /*
  * 1 once X2_MAX_FRAMES frames have been presented.

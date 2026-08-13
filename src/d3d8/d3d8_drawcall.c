@@ -33,6 +33,7 @@ unsigned long gpu_frame_draws_so_far(void);
 #define D3DRS_DESTBLEND         20
 #define D3DRS_CULLMODE          22
 #define D3DRS_ZFUNC             23
+#define D3DRS_ZBIAS             47
 #define D3DRS_ALPHAREF          24
 #define D3DRS_ALPHAFUNC         25
 #define D3DRS_ALPHABLENDENABLE  27
@@ -923,6 +924,16 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     out->depth_write = rs(s, D3DRS_ZWRITEENABLE, 1) != 0;
     out->depth_func = cmp_of(rs(s, D3DRS_ZFUNC, 4));   /* LESSEQUAL */
     if (!out->depth_func) out->depth_func = GPU_CMP_LESSEQUAL;
+    out->depth_bias = rs(s, D3DRS_ZBIAS, 0);
+    out->stencil_enable = rs(s, 52, 0) != 0;
+    out->stencil_fail = rs(s, 53, 1);
+    out->stencil_zfail = rs(s, 54, 1);
+    out->stencil_pass = rs(s, 55, 1);
+    out->stencil_func = rs(s, 56, 8);
+    out->stencil_ref = rs(s, 57, 0);
+    out->stencil_mask = rs(s, 58, 0xffffffffu);
+    out->stencil_write_mask = rs(s, 59, 0xffffffffu);
+    out->color_write_mask = rs(s, 168, 0x0fu);
 
     cull = rs(s, D3DRS_CULLMODE, 3);          /* D3DCULL_CCW */
     out->cull = cull == 1 ? GPU_CULL_NONE

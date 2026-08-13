@@ -1,11 +1,11 @@
 ---
 id: 62
 title: Gameplay renders almost entirely black -- cause not established, and a control is needed before touching lighting
-status: open
+status: resolved
 symptom: The first level's facility interior is close to black in the native --d3d8 build: geometry present, a lit doorway and glowing pickups visible, floors and walls unlit. Menu renders correctly.
 tags: pc,native,graphics,d3d8,lighting
 created: 2026-08-12
-updated: 2026-08-13
+updated: 2026-08-14
 ---
 
 ## What is seen
@@ -699,3 +699,34 @@ black matches all named ONE object: directional light attribute `0x053e6268`,
 handle 8, diffuse `(0,0,0,1)`. This disproves the earlier inference that the
 four point-light attributes themselves were observed black. The exploratory
 probe was removed after recording the result.
+
+### Note (2026-08-14)
+## Root cause fixed: model-space and screen-space draws need opposite cull translations
+
+Draw-range bisection located the silhouette precisely. Draws 28/30/32 render
+the three characters textured and lit; draws 29/31/33 then cover them in black.
+Each second draw is the matching untextured, position-only, oppositely-culled
+outline hull with the identical MVP. Stencil is disabled, colour writes are
+RGBA, and both passes use `LESSEQUAL`, depth writes, and `ZBIAS=0`, ruling out
+the prepass, stencil, depth-function, and depth-bias hypotheses.
+
+The actual defect was one global D3D8-to-SDL cull mapping. `D3DFVF_XYZRHW`
+vertices already arrive in D3D's Y-down screen space; model-space `D3DFVF_XYZ`
+vertices instead pass through Vulkan clip space and SDL's viewport conversion,
+which reverses their winding classification. The old mapping was proved only
+with an XYZRHW triangle. It was correct for UI but wrong for model-space
+`D3DCULL_CW`, preserving the outline hull's near faces and painting a solid
+silhouette.
+
+The pipeline key now distinguishes the position convention and reverses the
+cull translation only for model-space draws. `--d3d8-selftest` exercises both
+the original XYZRHW/default-cull case and a model-space `D3DCULL_CW` case; a
+deliberate restoration of the old mapping fails the new case. A whole-frame
+gameplay capture (`scratch/screenshots/cull-fixed-full.png`) shows textured,
+lit characters with thin black contours, and the run submitted 110,188 draws
+with zero refused. Issue #62's original black-character symptom is resolved;
+remaining lighting/colour differences should be filed and compared separately
+against a genuinely matched stock frame.
+
+### Resolution (2026-08-14)
+One global D3D8-to-SDL cull translation was used for both XYZRHW screen-space and XYZ model-space vertices, despite their different Y/winding conversion paths. Model-space D3DCULL_CW therefore preserved the near faces of the game's black outline hulls, covering lit character passes. The pipeline now keys on position convention and reverses the cull mapping for model-space draws; both conventions have pixel tests, and a whole gameplay frame renders textured characters with thin outlines across 110,188 draws and zero refusals.

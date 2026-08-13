@@ -83,11 +83,17 @@ typedef struct {
 /* The draw's 1-based index within the frame, and how many X2_DRAW_RANGE has
    skipped. Skipped is NOT refused -- see the range block in gpu_draw(). */
 static unsigned long g_range_index, g_range_skipped;
+static unsigned long g_vs_frame = (unsigned long)-1;
 
 /* How many draws this frame has RECEIVED -- counted before X2_DRAW_RANGE skips
    any, so a range does not change which frames look busy. X2_SHOT_MIN_DRAWS
    reads it; see gpu_frame_draws_so_far(). */
 unsigned long gpu_frame_draws_so_far(void) { return g_range_index; }
+int gpu_frame_had_programmable(void)
+{
+    /* gpu_frame_end increments the presented count before the capture hook. */
+    return g_vs_frame + 1u == gpu_frames_presented();
+}
 
 #define MAX_RES 4096
 static Res g_res[MAX_RES];
@@ -490,6 +496,7 @@ typedef struct {
     int      blend_enable, src_blend, dst_blend;
     int      depth_test, depth_write, depth_func;
     int      cull;
+    int      pretransformed;
     int      has_depth_target;
 } PipeKey;
 
@@ -573,21 +580,24 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
 
     ci.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
     ci.rasterizer_state.cull_mode = k->cull == GPU_CULL_CW
-                                        ? SDL_GPU_CULLMODE_FRONT
+                                        ? (k->pretransformed
+                                               ? SDL_GPU_CULLMODE_FRONT
+                                               : SDL_GPU_CULLMODE_BACK)
                                     : k->cull == GPU_CULL_CCW
-                                        ? SDL_GPU_CULLMODE_BACK
+                                        ? (k->pretransformed
+                                               ? SDL_GPU_CULLMODE_BACK
+                                               : SDL_GPU_CULLMODE_FRONT)
                                         : SDL_GPU_CULLMODE_NONE;
     /*
      * COUNTER_CLOCKWISE, and it is not a guess.
      *
-     * D3D evaluates winding in screen space with Y downward, and its default
-     * D3DCULL_CCW culls the counter-clockwise ones. Vulkan classifies the SAME
-     * triangle the other way round here, because the clip-space Y flip that
-     * maps D3D's screen coordinates onto Vulkan's inverts the signed area. Set
-     * to CLOCKWISE, a screen-clockwise triangle -- a FRONT face by D3D's
-     * rule -- was culled by the default state, so the very first draw through
-     * the D3D8 layer disappeared while the same geometry drew fine with
-     * culling off. Measured, in the d3d8 draw self-test.
+     * D3D evaluates winding after projection in its Y-down screen space.
+     * XYZRHW vertices already arrive in that space, while XYZ vertices pass
+     * through Vulkan clip space and SDL's viewport conversion, which reverses
+     * the classification. The cull mapping therefore differs between the two
+     * position conventions. Both directions are measured by the D3D8 pixel
+     * self-tests; treating them alike turned the game's back-face outline hulls
+     * into solid black character silhouettes.
      */
     ci.rasterizer_state.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
 
@@ -856,6 +866,7 @@ int gpu_draw(const GpuDraw *d)
        then the 2D slot takes the placeholder instead. */
     if (tres && tres->faces == 6) { cres = tres; tres = res_get(g_white, 1, "draw"); }
 
+    if (d->programmable) g_vs_frame = gpu_frames_presented();
     memset(&key, 0, sizeof key);          /* padding too: the key is memcmp'd */
     key.stride = d->vertex_stride;
     key.pos_offset = d->pos_offset;
@@ -872,6 +883,7 @@ int gpu_draw(const GpuDraw *d)
     key.depth_write = d->depth_write;
     key.depth_func = (int)d->depth_func;
     key.cull = (int)d->cull;
+    key.pretransformed = d->pretransformed;
 
     if (d->blend_enable &&
         (sdl_blend(d->src_blend) == SDL_GPU_BLENDFACTOR_INVALID ||
@@ -1015,7 +1027,8 @@ int gpu_draw(const GpuDraw *d)
             dumped_frame = now;
             if (dumped <= 400) {
                 fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s %s"
-                        "%s%s%s%s%s stride %2u col%+3d uv%+3d",
+                        "%s%s%s%s%s stride %2u col%+3d uv%+3d "
+                        "cull%d zfunc%d zbias%u stencil%d/%u,%u,%u,%u ref%u mask%x write%x rgba%x",
                         dumped,
                         d->prim == GPU_PRIM_TRIANGLESTRIP ? "tristrip"
                         : d->prim == GPU_PRIM_LINELIST ? "linelist" : "trilist",
@@ -1033,8 +1046,22 @@ int gpu_draw(const GpuDraw *d)
                            not in this line while that was the open question. */
                         d->lighting ? "lit " : "unlit ",
                         d->normal_offset >= 0 ? "norm" : "nonorm",
-                        d->vertex_stride, d->color_offset, d->uv_offset);
+                        d->vertex_stride, d->color_offset, d->uv_offset,
+                        d->cull, d->depth_func, d->depth_bias,
+                        d->stencil_enable,
+                        d->stencil_fail, d->stencil_zfail,
+                        d->stencil_pass, d->stencil_func, d->stencil_ref,
+                        d->stencil_mask, d->stencil_write_mask,
+                        d->color_write_mask);
                 fprintf(dst, "\n");
+                fprintf(dst, "           mvp [% .6g % .6g % .6g % .6g]"
+                             " [% .6g % .6g % .6g % .6g]"
+                             " [% .6g % .6g % .6g % .6g]"
+                             " [% .6g % .6g % .6g % .6g]\n",
+                        d->mvp[0], d->mvp[1], d->mvp[2], d->mvp[3],
+                        d->mvp[4], d->mvp[5], d->mvp[6], d->mvp[7],
+                        d->mvp[8], d->mvp[9], d->mvp[10], d->mvp[11],
+                        d->mvp[12], d->mvp[13], d->mvp[14], d->mvp[15]);
             } else if (dumped == 401 && !cap) {
                 fprintf(stderr, "  ... capped at 400 draws; frame %lu had "
                                 "more.\n", dumped_frame);
