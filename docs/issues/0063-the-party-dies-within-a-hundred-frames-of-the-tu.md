@@ -318,3 +318,38 @@ So "never opened" means "never opened through CreateFile or the CRT". If the
 animation set is loaded through a mapping, it would be invisible here and the
 whole anomaly evaporates. CLOSING THAT HOLE IS THE NEXT STEP, before any more
 weight is put on this.
+
+### Note (2026-08-13)
+## The mmap caveat is RETIRED: "never opened" can be trusted
+
+Issue #60 named CreateFileMappingA/MapViewOfFile as a hole in the file
+instrument and it was never closed, so the previous note carried it as a reason
+to doubt the anomaly. Reading the code settles it the other way:
+
+  - CreateFileMappingA takes an already-open FILE HANDLE (its first argument),
+    not a path. Anything mapped was opened by name first, and that open goes
+    through CreateFileA, which is traced.
+  - CreateFileW is not implemented at all and refuses by name.
+  - The CRT has exactly one open by name, fopen, and it goes through the same
+    resolver.
+  - No run has hit an unimplemented import with a file-ish name; the report
+    would print one.
+
+So the only two ways this game can open a file by name are both traced, and
+"actors/06_nightcrawler.igb is never opened" stands.
+
+## The positive control now running
+
+If the hero is never spawned, forcing the spawner should load his animation set
+and stop the elimination. tutorial1.py is substituted with a copy that calls
+
+    act ( "spwnr_nightcrawler", "spwnr_nightcrawler" )
+
+directly -- which is what nightcrawler_spawn.PY does when its trigger fires --
+and the run watches for actors/06_nightcrawler.igb appearing in the trace.
+
+Designed so both outcomes say something. The anims load and the party survives:
+the spawn trigger never firing is the defect, and the hunt moves to what fires
+it. The anims still do not load: the spawner itself does not work here, which
+is a different and more local defect. The anims load and the party still dies:
+the hero is not what the party check is counting.
