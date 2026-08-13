@@ -100,6 +100,25 @@ target_include_directories(test_sse PRIVATE src/recomp)
 target_link_libraries(test_sse PRIVATE m)
 add_test(NAME sse COMMAND test_sse)
 
+# Region recording's arm is a diagnostic discriminator: an address outside the
+# emitted ranges, one that was compiled but never reached, and one that fired
+# must produce three different answers.  Exercise those answers without a game
+# install or GPU so the diagnostic cannot silently regress between captures.
+add_executable(test_x86_record tests/test_x86_record.c src/native/x86_record.c)
+target_include_directories(test_x86_record PRIVATE src/recomp src/native)
+add_test(NAME x86_record_arm_invalid COMMAND test_x86_record invalid)
+set_tests_properties(x86_record_arm_invalid PROPERTIES
+    PASS_REGULAR_EXPRESSION "X2_RECORD_ARM was INVALID")
+add_test(NAME x86_record_arm_missing COMMAND test_x86_record missing)
+set_tests_properties(x86_record_arm_missing PROPERTIES
+    PASS_REGULAR_EXPRESSION "arm 0x00002000 was NOT COMPILED IN")
+add_test(NAME x86_record_arm_never_reached COMMAND test_x86_record never)
+set_tests_properties(x86_record_arm_never_reached PROPERTIES
+    PASS_REGULAR_EXPRESSION "arm 0x00001004 NEVER EXECUTED")
+add_test(NAME x86_record_arm_capture COMMAND test_x86_record capture)
+set_tests_properties(x86_record_arm_capture PROPERTIES
+    PASS_REGULAR_EXPRESSION "2 entries captured over 1 pass")
+
 # The translator, tested as a unit.
 #
 # tools/recomp.py had no tests, and it is the most defect-prone thing here: a

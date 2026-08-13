@@ -221,7 +221,10 @@ void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
  * instruction in the range and NOWHERE else, so a build with no ranges pays
  * nothing. The runtime announces the compiled-in ranges at startup and reports
  * at zero, because "the block never executed" and "recording was not compiled
- * in" are the two answers that must not look alike.
+ * in" are the two answers that must not look alike. `X2_RECORD_ARM=<guest
+ * address>` ignores those calls until the named recorded instruction runs, so
+ * a shared helper can be correlated to its caller rather than filling the ring
+ * earlier in the run.
  */
 void x86_record(uint32_t addr, const struct CPU *C, const char *text);
 extern int x86_record_on;

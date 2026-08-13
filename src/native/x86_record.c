@@ -27,6 +27,10 @@
  *                      (default 2). A per-frame block would otherwise fill the
  *                      ring with the same thing; two passes is enough to see
  *                      what varies and what does not.
+ *   X2_RECORD_ARM=<addr>  ignore recorded ranges until this guest instruction
+ *                      runs, then retain the arm instruction and downstream
+ *                      recorded ranges. This correlates a shared helper with
+ *                      the decision that called it.
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -53,6 +57,10 @@ static unsigned long g_n, g_dropped, g_passes;
 static unsigned long g_max = 20000;
 static unsigned long g_max_passes = 2;
 static uint32_t      g_first_addr;      /* the region's entry, for pass counting */
+static uint32_t      g_arm_addr;
+static int           g_armed;
+static int           g_arm_missing;
+static int           g_arm_invalid;
 static int           g_inited;
 
 /* The ranges the emitter compiled in. Registered by the generated module's
@@ -92,6 +100,34 @@ static void record_init(void)
     if ((e = getenv("X2_RECORD_MAX")) && *e) g_max = strtoul(e, NULL, 0);
     if ((e = getenv("X2_RECORD_PASSES")) && *e)
         g_max_passes = strtoul(e, NULL, 0);
+    if ((e = getenv("X2_RECORD_ARM")) && *e) {
+        char *end;
+        unsigned long arm;
+        errno = 0;
+        arm = strtoul(e, &end, 0);
+        if (errno || end == e || *end || arm > UINT32_MAX || !arm) {
+            fprintf(stderr, "x86_record: invalid X2_RECORD_ARM value '%s'; "
+                    "expected a nonzero 32-bit guest address. Recording is "
+                    "OFF.\n", e);
+            g_arm_invalid = 1;
+            x86_record_on = 0;
+            return;
+        }
+        g_arm_addr = (uint32_t)arm;
+    }
+    if (g_arm_addr) {
+        int found = 0, i;
+        for (i = 0; i < g_nranges; i++)
+            if (g_range[i].lo <= g_arm_addr && g_arm_addr <= g_range[i].hi)
+                found = 1;
+        if (!found) {
+            fprintf(stderr, "x86_record: arm 0x%08x is outside every emitted "
+                    "range; refusing a run that could never arm.\n", g_arm_addr);
+            g_arm_missing = 1;
+            x86_record_on = 0;
+            return;
+        }
+    }
     if (!g_max) g_max = 1;
     g_ring = (Entry *)calloc(g_max, sizeof *g_ring);
     if (!g_ring) {
@@ -102,8 +138,9 @@ static void record_init(void)
         return;
     }
     fprintf(stderr, "[REC] region recording is COMPILED IN: up to %lu entries, "
-                    "%lu pass(es) through the region. Nothing outside the "
-                    "emitted ranges is touched.\n", g_max, g_max_passes);
+                    "%lu pass(es) through the region", g_max, g_max_passes);
+    if (g_arm_addr) fprintf(stderr, ", armed at 0x%08x", g_arm_addr);
+    fprintf(stderr, ". Nothing outside the emitted ranges is touched.\n");
 }
 
 void x86_record(uint32_t addr, const CPU *C, const char *text)
@@ -113,6 +150,11 @@ void x86_record(uint32_t addr, const CPU *C, const char *text)
 
     if (!g_inited) record_init();
     if (!x86_record_on) return;
+
+    if (g_arm_addr && !g_armed) {
+        if (addr != g_arm_addr) return;
+        g_armed = 1;
+    }
 
     /* Pass counting. The FIRST address ever recorded is the region's entry as
        far as this can know; seeing it again is a new pass. */
@@ -157,6 +199,10 @@ void x86_record_report(void)
                "instrumented and nothing could have been captured.\n");
         return;
     }
+    /* Constructors registered at least one emitted range, but none ran. Parse
+       the configuration anyway: otherwise an arm outside those ranges looks
+       exactly like a range that never executed, which is a false negative. */
+    if (!g_inited) record_init();
     if (path && *path) {
         FILE *o = fopen(path, "w");
         if (!o) {
@@ -181,6 +227,15 @@ void x86_record_report(void)
            g_dropped ? " (the ring filled; the rest were counted, not lost)"
                      : "",
            g_n ? "" : " -- the instrumented region NEVER EXECUTED in this run");
+    if (g_arm_invalid)
+        printf("  region recording: X2_RECORD_ARM was INVALID; no "
+               "instrumented range was recorded.\n");
+    else if (g_arm_missing)
+        printf("  region recording: arm 0x%08x was NOT COMPILED IN; no "
+               "instrumented range was recorded.\n", g_arm_addr);
+    else if (g_arm_addr && !g_armed)
+        printf("  region recording: arm 0x%08x NEVER EXECUTED, so every "
+               "instrumented range was deliberately ignored.\n", g_arm_addr);
     if (!g_n) {
         if (f != stderr) fclose(f);
         return;
