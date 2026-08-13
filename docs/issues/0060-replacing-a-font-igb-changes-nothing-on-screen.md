@@ -1,9 +1,10 @@
 ---
 id: 60
 title: A font substitution that changed nothing, twice -- and the second 'discriminator' was the bug, not the mechanism
+status: resolved
 symptom: "assets: REPLACED textures/fonts/X2F_hud_PC.igb ... and the rendered caption is byte-identical to the control"
 tags: pc,native,assets,fonts,graphics,glyphs,dead-end
-status: resolved
+updated: 2026-08-13
 ---
 
 ## What was being attempted
@@ -109,3 +110,6 @@ already made of. The check that would have caught it costs nothing: **before
 trusting a substitution test, confirm the thing on screen is drawn by the thing
 being substituted.** Both mistakes here -- the first false positive and then
 the false negative that "corrected" it -- come from skipping that.
+
+### Note (2026-08-13)
+The metrics this feature publishes would have been placed MIRRORED. C171: a font atlas's t is measured from the BOTTOM of the image (decoded row = height - t*height), settled by counting inked pixels inside the 166 glyph rects of x2f_med_pc -- the flipped reading accounts for all 17,944 inked pixels in the atlas, the as-is reading for 8,315 of them. tools/make_button_font.py measures cells top-down and writes t = y0/atlas_height, so every glyph it publishes points at the mirror image of the cell it measured. That is very likely why replacing a font .igb changed nothing visible: the art was there and the rect pointed at empty space above it.
