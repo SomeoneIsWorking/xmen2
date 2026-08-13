@@ -1229,3 +1229,50 @@ BOTH runs with `tools/oracle_probe.py` -- the same compare that settled the
 conversation question. If the control's count is non-zero from level load and
 ours is zero, this is a party/roster loading defect and has nothing to do with
 conversations, dialogs or saves.
+
+### Note (2026-08-13)
+## Negative results on locating the elimination check, and a sharper timing
+
+Three things are now ruled out, and one number is sharper. Recording the dead
+ends because they are the expensive part to repeat.
+
+**`id 47` is NOT the elimination prompt.** The previous note offered it as the
+candidate. Its raiser `FUN_005f1d80` turns out to be the **`openmenu`** handler
+-- one of a block of registrations at 0x005f4a30 alongside `closemenu`,
+`closeallmenus` and `setblackbirdparms` -- so id 47 is a message raised while
+opening some menu, not the prompt itself. The identification of the DIALOG
+stands, because it was photographed; the id attributed to it does not, and was
+an inference by elimination from three ids. Do not rebuild on it.
+
+**`X2_EPCOUNT` on the `openmenu` handler does not name the menu.** Nine
+entries, and the decoded argument words are fragments of the level script's
+text buffer ("or_trap", "oor_security", "LSE" from FALSE) rather than a menu
+name, so the argument is not a name string in the words the counter samples.
+Inconclusive, not negative -- but not worth another run in this form.
+
+**The elimination is NOT a script command.** `gameover` IS one -- it sits in
+the command-name block at 0x0068bf80 with `lockControls`, `lockCombat`,
+`loadZone`, `loadMap*`, `setPartyLightColor` -- and `FUN_004a7220` is its
+handler, mapping its argument through the `GAMEOVER_*` table at 0x006d9278.
+But no tutorial script calls it. So the automatic "all X-Men eliminated" is
+engine logic, and the script-command path is a different, deliberate one.
+
+**The timing is not "on level load".** From the port's own probe
+(`scratch/logs/port_dlg.csv`):
+
+    73.5s  flags 0 -> 16     the level's conversation subsystem comes up
+    87.6s  flags 16 -> 19    the conversation becomes visible
+    89.5s  dlg0_active 6 -> 5   the elimination prompt
+
+So it fires **1.9 s after the conversation starts**, not on level load, and it
+fires whether or not the conversation is ever advanced. The control's
+equivalent conversation is visible from 226.7s to 471.9s -- 245 s -- with no
+prompt at any point.
+
+## Next
+
+Find the check by measurement rather than by reading, since three reading
+attempts have now missed. The cheapest instrument that would name it: record
+the CPopupDialog raise path (the singleton is 0x008b13ec and the "up" bit is
++0x155d bit 0 of the current slot), and read the return address of whatever
+sets it -- the same passive trick that found the conversation update's caller.
