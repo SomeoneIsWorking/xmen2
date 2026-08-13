@@ -637,3 +637,6 @@ matching. It is the only clock both builds display.
 
 ### Note (2026-08-13)
 The settled-gameplay control frame now exists and is cached: oracle key 9b555db04417d402, samples .4 through .8 -- the same room in isometric gameplay, three party members lit and coloured, HUD readable, mean luma 33.4 with 3.2% of pixels above 128. That is the frame this issue needs the native build to reach. It cannot yet, because of issue #63.
+
+### Note (2026-08-13)
+CAUTION on the settled-gameplay control frame recorded above (oracle key 9b555db04417d402): it shows THREE party members and a helmeted portrait, and the act0 tutorial gives you Nightcrawler alone -- so that run had probably gone past the tutorial into a later level by then. It is a good frame of the shipped game in gameplay, but it is NOT yet proved to be the same room as the native capture, and the rule this issue just adopted (no comparison unless the frames are matched) applies to it too.

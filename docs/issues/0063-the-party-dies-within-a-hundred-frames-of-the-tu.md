@@ -234,3 +234,46 @@ Either outcome is worth having:
 Note what an immediate elimination would mean here: with no lockControls and
 no cutscene, a party check has nothing to suppress it, so an empty party would
 show up at once rather than at the end of a conversation that no longer exists.
+
+### Note (2026-08-13)
+## NO SCRIPT IN THE LEVEL CAUSES IT
+
+tutorial1.py emptied to three comment lines, the replacement named in the
+report. With it gone nothing starts the conversation, locks controls, sets a
+camera or disables AI -- and the screen is BLACK for twenty-nine kept frames
+(no camera was ever aimed) and then shows "ALL X-MEN HAVE BEEN ELIMINATED" on
+that black.
+
+So the elimination happens with no level script running at all. It is not
+caused by anything the level asks for, and the three substitution experiments
+are done: the conversation-end script's remove, the level script's remove, and
+finally every statement of both.
+
+## The anomaly that fits: THE HERO'S MODEL IS NEVER LOADED
+
+Counting main-model opens in a full run's file trace:
+
+    actors/11_professorx.igb        opened 2x
+    actors/28_mystique.igb          opened 2x
+    actors/77_mercenary.igb         opened 2x
+    actors/128_civilian_male.igb    opened 2x
+    actors/06_nightcrawler.igb      opened 0x     <-- the player character
+
+Every other character in the level loads its main model. Nightcrawler's does
+not -- and it is not a failed open either, since a failure would appear in the
+trace as NOT FOUND. The game never ASKS for it. What it does load for him is
+actors/06_nightcrawler_tail.igb and two animation sets (0603, 0610), so the
+character is known and partly loaded; the body is what is missing.
+
+An empty party is eliminated by definition the moment the check runs, and a
+hero whose model was never requested is a good candidate for a hero that was
+never constructed.
+
+## What is NOT established, and must not be assumed next time
+
+Whether the control's gameplay frame is even the same level. It shows THREE
+party members and a helmeted portrait, and the tutorial gives you Nightcrawler
+alone -- so the control had probably run on past the tutorial by then. That
+does not weaken "the shipped game does not eliminate an idle party", but it
+does mean the control frame is not yet proved to be the tutorial, and issue
+#62 should not treat it as a matched frame until it is.
