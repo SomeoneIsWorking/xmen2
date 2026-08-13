@@ -868,3 +868,58 @@ pointer.
 Unchanged: measure the party's size at the level's FIRST frame. The
 conversation subsystem is now ours end to end and says nothing is wrong with
 it; what stops calling it is outside it.
+
+### Note (2026-08-13)
+## THE SCRIPT LAUNCHES. The conversation needed two presses and got one.
+
+The ported subsystem made the cause legible. `1_introlevel_0020` -- the
+conversation `tutorial1.py` actually starts, NOT `0020b` -- is two lines deep,
+and its final response carries
+`chosenscriptfile="act0/tutorial/tutorial1/nightcrawler_spawn"` with
+`conversationend="true"`. That script triggers the spawner that puts the
+PLAYABLE HERO in the level. So the conversation needs TWO accept presses, and
+the scripted run was delivering one before the level ended.
+
+With a denser press window over the conversation
+(`X2_INPUT_SCRIPT="f2400-4200/60:Return,f2820-4200/20:Return"`), from the
+port's own report:
+
+    script launches: 1 asked, 0 had an empty name, 1 reached the script manager;
+                     last was act0/tutorial/tutorial1/nightcrawler_spawn
+    nextLine: 2 call(s) -- 1 found a line, 1 found the record childless
+    chooseResponse: 2 call(s) -- 2 applied
+    accept gate: 62 evaluation(s), 4 with the button down, 2 inside the
+                 debounce, 2 advanced the conversation
+    flags: last value 0x18
+
+This is the FIRST conversation-launched script in this port. The conversation
+also now ENDS properly -- the flag byte finishes at 0x18 (ending set, not
+visible) instead of hanging at 0x13 (visible+speaking forever). Draws over the
+run climb from 31k at 80s to 222k at 180s, against a flat ~50k before, which is
+what a level with a character in it looks like.
+
+So "the conversation-triggered script never launches" is RESOLVED, and it was
+never a defect in the conversation code: it was the driving script pressing
+accept once per 60 frames into a window that closed after ~65.
+
+## What is NOT yet resolved
+
+The party still dies. In the dense run the death dialog still appears, and the
+run's own extra Returns then select Load Game, which is why the screenshot
+shows "No X-Men Legends 2 save data present on hard disk" over the level
+geometry rather than gameplay.
+
+An attempt to isolate that by stopping all presses at frame 3000 is INVALID and
+is recorded as such: the screenshot shows the intro cutscene with "Cannot Skip",
+so the run never left the cutscene -- the sparse window through 4200 is what
+does the menu navigation, and cutting it at 2800 cut that too. That run also
+hung (main thread in a condition-variable wait for 77s, nothing presented for
+60s), which is issue #57's shape and not evidence about the party.
+
+## Next
+
+A driving script that completes BOTH conversations and then stops pressing --
+the sparse menu window must survive, so the dense window has to be added
+around the conversation rather than replacing it, and a third window is needed
+for `0020b`'s three responses. Then a screenshot of settled gameplay, which is
+also what issue #62 has been blocked on.
