@@ -458,6 +458,31 @@ static int thunk_call(uint32_t addr, CPU *C)
 /* Large, because with X86_NATIVE_TRACE every body entry and exit lands here
    and 96 entries covers a few microseconds of startup. It is a static array in
    a diagnostic build; the memory is not worth economising. */
+/*
+ * X2_ARGS is a TRACE-BUILD instrument. In an ordinary build it printed nothing
+ * at all -- no banner, no report, no refusal -- so a run asking "is this
+ * function ever entered" came back silent, and silence reads as "never
+ * entered" when it actually means "never watched". This says which it is, at
+ * STARTUP rather than at exit, because the answer changes whether the run is
+ * worth waiting for.
+ */
+void x86_args_build_check(void)
+{
+    const char *e = getenv("X2_ARGS");
+    if (!e || !*e) return;
+#ifndef X86_NATIVE_TRACE
+    fprintf(stderr,
+        "[ARGS] X2_ARGS=%s is set and THIS BUILD CANNOT HONOUR IT. The watch "
+        "sits on the body-entry hook, which only exists with\n"
+        "       cmake -S . -B scratch/build-native -DX2_NATIVE_TRACE=ON\n"
+        "       NOTHING will be watched in this run, and its silence about "
+        "those entry points means nothing.\n", e);
+#else
+    fprintf(stderr, "[ARGS] X2_ARGS=%s -- this is a trace build, so the watch "
+                    "is live.\n", e);
+#endif
+}
+
 #ifdef X86_NATIVE_TRACE
 #define RING 8192
 #else

@@ -1830,6 +1830,7 @@ int main(int argc, char **argv)
                From the entry point on, the guest owns the thread and silence
                becomes ambiguous. */
             heartbeat_start();
+            x86_args_build_check();
             guest_quantum_from_env();
             dinput_script_start();
             { extern void dinput_pad_virtual_from_env(void);

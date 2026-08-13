@@ -156,4 +156,7 @@ const char   *x86_crossings_what(void);
 /* Every registered module, for reporting. */
 X86Module *x86_modules(void);
 
+/* Say at STARTUP whether X2_ARGS can be honoured by this build. */
+void x86_args_build_check(void);
+
 #endif /* X86RT_NATIVE_H */
