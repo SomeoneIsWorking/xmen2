@@ -304,6 +304,47 @@ def selftest():
     return 0 if ok else 1
 
 
+def dump(pid, spec, nbytes):
+    """One-shot hex/pointer view of a guest object, for finding a field.
+
+    A field map has to come from somewhere, and guessing offsets out of a
+    disassembly is slower than looking. Every dword that lands inside the exe's
+    .rdata is annotated with the NUL-terminated string it points at, which is
+    how a dialog's message token is found without knowing which slot holds it.
+    """
+    rd = Reader(pid)
+    why = verify(rd)
+    if why:
+        sys.exit("oracle_probe: REFUSING to dump -- %s" % why)
+    chain = [int(x, 0) for x in spec.split(",")]
+    addr = chain[0]
+    for off in chain[1:]:
+        v = rd.u32(addr)
+        if not v:
+            sys.exit("oracle_probe: the chain went NULL at 0x%08x; there is "
+                     "nothing to dump." % addr)
+        addr = v + off
+    print("oracle_probe: %d byte(s) at 0x%08x in pid %d" % (nbytes, addr, pid))
+    shown = 0
+    for i in range(0, nbytes, 4):
+        v = rd.u32(addr + i)
+        if v is None:
+            print("  +0x%04x  <unreadable>" % i)
+            continue
+        note = ""
+        if 0x00400000 <= v < 0x00A80000:
+            b = rd.read(v, 48)
+            if b:
+                t = b.split(b"\0")[0]
+                if len(t) >= 3 and all(0x20 <= c < 0x7f for c in t):
+                    note = "  -> %r" % t
+        if v or note:
+            print("  +0x%04x  0x%08x%s" % (i, v, note))
+            shown += 1
+    print("  %d non-zero dword(s) of %d; the zeros are omitted."
+          % (shown, nbytes // 4))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     ap.add_argument("--pid", type=int)
@@ -312,6 +353,11 @@ def main():
     ap.add_argument("--hz", type=float, default=10.0)
     ap.add_argument("--out", default="scratch/logs/oracle_probe.csv")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--dump", metavar="ADDR[,OFF...]",
+                    help="one-shot dump of a guest object; the chain is an "
+                         "absolute address followed by offsets applied after "
+                         "each dword dereference")
+    ap.add_argument("--dump-bytes", type=lambda x: int(x, 0), default=0x200)
     a = ap.parse_args()
 
     if a.selftest:
@@ -329,6 +375,10 @@ def main():
             return 2
         pid = hits[0][0]
         print("oracle_probe: the only matching process is pid %d" % pid)
+
+    if a.dump:
+        dump(pid, a.dump, a.dump_bytes)
+        return 0
 
     os.makedirs(os.path.dirname(a.out) or ".", exist_ok=True)
     sample(pid, a.seconds, a.hz, a.out)

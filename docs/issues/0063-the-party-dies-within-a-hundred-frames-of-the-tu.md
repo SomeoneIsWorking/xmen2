@@ -1,9 +1,9 @@
 ---
 id: 63
-title: The party dies within a hundred frames of the tutorial loading
+title: The port raises EMSG_NO_DATA_DEVNUM after the tutorial conversation, and the modal blocks the level state machine
 status: open
-symptom: ALL X-MEN HAVE BEEN ELIMINATED appears about a hundred frames after the act0 tutorial loads, with nobody driving the character
-tags: pc,native,gameplay,tutorial
+symptom: a save-device modal goes up 200 ms after the tutorial's opening conversation ends and never closes, freezing the level state machine behind CPopupDialog's gate; the visible consequences were read as the party dying (original title: 'The party dies within a hundred frames of the tutorial loading')
+tags: pc,native,gameplay,tutorial,saves,dialog
 created: 2026-08-13
 updated: 2026-08-13
 ---
@@ -1056,3 +1056,62 @@ Two things, in order. Probe the CONTROL with the same dialog fields: if stock
 raises no dialog there, this is a save-path defect in the port and the issue
 should be re-titled. And read the message ID the dialog is constructed with,
 rather than inferring it from the rendered text.
+
+### Note (2026-08-13)
+## CAUSE FOUND, and it is a save-device dialog. The issue is re-titled.
+
+Two measurements close this.
+
+**The message id, read rather than inferred.** `FUN_0055e9b0(id)` maps a
+message id to its token through a byte table at 0x0055eb04 and a jump table at
+0x0055eaa8. Recording its entry (`recomp.py emit --record
+0x0055e9b0-0x0055e9c0`) captured every id the run asks for:
+
+    id  7  x66   -> table idx 6 -> 0x0055ea04  MOV EAX,0x69acf0  EMSG_NO_DATA_DEVNUM
+    id 10  x1    -> table idx 8 -> 0x0055ea12  MOV EAX,0x69acc4  EMSG_LOADING_DEVNUM
+    id 47  x9    -> above 0x23, so it takes the default path (FUN_0055eb30)
+
+So the modal is `EMSG_NO_DATA_DEVNUM` -- "No X-Men Legends 2 save data present
+on hard disk" -- raised SIXTY-SIX times, which is the Retry loop the scripted
+Return keeps feeding. The previous note recorded this as consistent-but-unproven
+from the rendered text; it is now proven from the id.
+
+**The control does not do it.** Probing the stock Wine run with the same
+CPopupDialog fields, over 620 s:
+
+    control (stock)                          this port
+    -------------------------------------    ------------------------------
+    176.2s dlg1_active 6 -> 7 (difficulty)    61.6s  dlg1_active 6 -> 7
+    212.3s dlg1_active 7 -> 6 (dismissed)     64.9s  dlg1_active 7 -> 6
+    226.7s flags 16 -> 19  conversation       87.6s  flags 16 -> 19
+    431.8s cur_line 64 -> 65                  88.7s  cur_line 64 -> 65
+    471.9s flags 19 -> 24  ends               89.3s  flags 19 -> 24  ends
+    475.7s flags 24 -> 19  SECOND CONVERSATION
+           cur_line 65 -> 64
+                                              89.5s  dlg0_active 6 -> 5  UP
+                                              89.9s  dlg1_active 6 -> 3  UP
+    ...    dlg0_active 6 for the WHOLE run    ...    both stay up to the end
+
+The control raises exactly one dialog in the entire run -- the menu's difficulty
+prompt -- and puts it down again. `dlg0_active` is 6 (down) for all 620 s. This
+port raises a dialog stack 200 ms after the conversation ends and never closes
+it.
+
+So: the party was never the problem, the conversation system was never the
+problem, and the renderer was never the problem. The port's save-device path
+answers "no data" where the control does not, the resulting modal sits in front
+of `CPopupDialog`'s gate at the top of the level frame, and every downstream
+symptom -- the conversation never retired, `0020b` never started,
+`conv_0020b_end` never run, controls locked with the AI off, and finally the
+elimination screen -- follows from it.
+
+The title and symptom are updated to say that. The original title is kept in
+the symptom line so the old reading is still findable.
+
+## Next
+
+Find why the save-device path answers "no data" here and not under Wine: what
+`id 10` (`EMSG_LOADING_DEVNUM`) is doing one call before, which host call the
+check goes through, and where the port looks for the save folder. `id 47`,
+which takes the default path rather than the token table, is worth resolving at
+the same time.
