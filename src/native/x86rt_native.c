@@ -150,6 +150,12 @@ static struct {
      * can wait until the report, when nothing is mid-call. */
     int nwords, lost;
     uint32_t word[EPCOUNT_WORDS];
+    /* Distinct RETURN ADDRESSES: which code calls this. The word at ESP on
+     * entry is the return address every emitted call site pushes, so reading
+     * it is as passive as reading an argument -- and it is what turns "35
+     * launches" into "launched from here". */
+    int nrets, retlost;
+    uint32_t ret[EPCOUNT_WORDS];
 } g_epc[EPCOUNT_MAX];
 static int g_epc_n = -1;
 static unsigned long g_epc_dispatches;
@@ -194,6 +200,18 @@ void x86_epcount_report(void)
                         "decoded as text%s\n", shown, g_epc[i].nwords,
                 g_epc[i].lost ? " (and some were dropped: the table is full)"
                               : "");
+        for (k = 0; k < g_epc[i].nrets; k++) {
+            const char *nm = x86_native_name_at(g_epc[i].ret[k]);
+            X86Module *rm = x86_module_for(g_epc[i].ret[k]);
+            fprintf(stderr, "[EPC]       called from 0x%08x%s%s%s\n",
+                    g_epc[i].ret[k],
+                    nm ? " -- " : (rm ? " -- in " : ""),
+                    nm ? nm : (rm ? rm->name : ""),
+                    (!nm && rm) ? ", not at a named body" : "");
+        }
+        if (g_epc[i].retlost)
+            fprintf(stderr, "[EPC]       ... and %d more distinct call site(s) "
+                            "past the table.\n", g_epc[i].retlost);
     }
 }
 
@@ -240,7 +258,16 @@ int x86_native_call_at(uint32_t addr, CPU *C)
             for (i = 0; i < g_epc_n; i++)
                 if (g_epc[i].ep == addr) {
                     int k, w;
+                    uint32_t ra = RD32(C->esp);
                     g_epc[i].n++;
+                    for (k = 0; k < g_epc[i].nrets; k++)
+                        if (g_epc[i].ret[k] == ra) break;
+                    if (k == g_epc[i].nrets) {
+                        if (g_epc[i].nrets < EPCOUNT_WORDS)
+                            g_epc[i].ret[g_epc[i].nrets++] = ra;
+                        else
+                            g_epc[i].retlost++;
+                    }
                     /* ECX (a __thiscall `this`) and the first three stack words
                        above the return address. Values only. */
                     for (w = 0; w < 4; w++) {

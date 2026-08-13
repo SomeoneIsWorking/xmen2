@@ -624,3 +624,26 @@ broader -- the script engine, the launcher and the loader are all fine.
 The parser stores the response's chosenScriptFile at [response + 0x1c] and its
 conversationEnd flag beside it (XMen2.exe 0x00459709 / 0x0045973f). What reads
 [+0x1c] when a response is chosen is the code to follow.
+
+### Note (2026-08-13)
+## The four call sites that DO launch scripts
+
+X2_EPCOUNT now records the return address of each dispatched entry, so the 35
+launches resolve to four distinct call sites, all in XMen2.exe:
+
+    0x004673cc   inside FUN_00467380
+    0x0048a779   inside FUN_0048a5a0
+    0x0049fea6   inside FUN_0049fe70
+    0x005f23b4   inside FUN_005f2350
+
+Four call sites and four distinct script names, so most likely one path each:
+the level entry script, the two hung off map entities, and scr_blinkportal.
+None of the four carries a string constant, so they are generic wrappers rather
+than anything self-identifying, and none sits in the conversation parser's
+range (0x00458900-0x00459800).
+
+That is the shape to expect if the conversation's own launch path exists
+somewhere else and is simply never reached -- which is what everything else in
+this issue already says. Following it further means reading FUN_00467380 and
+its neighbours, or finding what reads [response + 0x1c], rather than another
+run.
