@@ -15,4 +15,16 @@ X2_WATCH_SELFTEST=1 checks BOTH directions inside the shipping DLL before any ga
 
 ## Known failure modes
 
-(none recorded yet)
+The watch is trusted for its narrow question -- whether a recompiled boundary
+was entered and returned -- but **not as a progression, liveness, or timing
+oracle**. A `WATCH=1` x2run build stranded CriMovie after its first rearmed
+one-shot multimedia timer callback while the normal build at the same DLL
+layout progressed through the movies. Relocating CriMovie also changed the
+outcome, but a preferred-base normal build progressed too, proving layout was
+only a timing perturbation. Reproduce any behavioral failure without the watch
+before attributing it to the game (issue #69).
+
+`X2_WATCH=all` has a separate volume failure: its 32-bit global crossing count
+can wrap during a long busy run and re-enable supposedly capped output. It
+produced a 593 MB log. Use a specific address and a bounded run; never use
+`all` for progression.
