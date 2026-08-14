@@ -376,17 +376,18 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
  * It prints the case with NO lights too, loudly, because "lit with zero lights"
  * is the answer that looks most like no output at all.
  */
+static long g_ld_want = -2, g_ld_done, g_ld_skip = -1, g_ld_skipped,
+            g_ld_qualified;
+
 static void light_dump(const GpuDraw *d)
 {
-    static long want = -2;
-    static long done;
     int i;
 
-    if (want == -2) {
+    if (g_ld_want == -2) {
         const char *e = getenv("X2_LIGHT_DUMP");
-        want = (e && *e) ? atol(e) : -1;
+        g_ld_want = (e && *e) ? atol(e) : -1;
     }
-    if (want <= 0 || done >= want) return;
+    if (g_ld_want <= 0 || g_ld_done >= g_ld_want) return;
     if (!d->lighting) return;
     /*
      * The SCENE gate first, when one was asked for. A draw count separates a
@@ -408,19 +409,27 @@ static void light_dump(const GpuDraw *d)
      * about the menu. That is the project's own "cap the boring case, not the
      * interesting one" trap, in its own code.
      *
-     * X2_LIGHT_DUMP_MIN=<m> (default 300) requires the CURRENT frame to have
-     * already submitted m draws. A menu frame here submits ~230 and a level
-     * frame ~600, so the default separates them; the threshold is printed with
-     * the first line so a dump of the wrong scene is visible as one.
+     * X2_LIGHT_DUMP_MIN=<m> (default 100) requires the CURRENT frame to have
+     * already submitted m draws.
+     *
+     * The default was 300 on the reading that "a menu frame submits ~230 and a
+     * level frame ~600". The second half is FALSE for the frames that matter:
+     * the tutorial's gameplay frames -- the ones photographed with black
+     * characters -- submit 138 to 153 draws (measured, and each kept screenshot
+     * now prints its own frame number and draw count next to it). At 300 the
+     * only level frames that ever qualified were the busy LOADING ones, which
+     * is how a dump of the level still loading came to be written up as a
+     * reading about gameplay. The threshold is printed with the first line so a
+     * dump of the wrong scene stays visible as one.
      */
     {
         static long minimum = -1;
         if (minimum < 0) {
             const char *e = getenv("X2_LIGHT_DUMP_MIN");
-            minimum = (e && *e) ? atol(e) : 300;
+            minimum = (e && *e) ? atol(e) : 100;
         }
         if ((long)gpu_frame_draws_so_far() < minimum) return;
-        if (!done)
+        if (!g_ld_done)
             fprintf(stderr, "d3d8: X2_LIGHT_DUMP -- only frames that have "
                     "already submitted %ld draw(s) are dumped (set "
                     "X2_LIGHT_DUMP_MIN to change). A menu frame submits far "
@@ -437,28 +446,28 @@ static void light_dump(const GpuDraw *d)
      * finding, one layer along. The number skipped is printed with the first
      * dump so a reading can say which part of the level it describes.
      */
+    g_ld_qualified++;
     {
-        static long skip = -1, skipped;
-        if (skip < 0) {
+        if (g_ld_skip < 0) {
             const char *e = getenv("X2_LIGHT_DUMP_SKIP");
-            skip = (e && *e) ? atol(e) : 0;
+            g_ld_skip = (e && *e) ? atol(e) : 0;
         }
-        if (skipped < skip) {
-            if (++skipped == skip)
+        if (g_ld_skipped < g_ld_skip) {
+            if (++g_ld_skipped == g_ld_skip)
                 fprintf(stderr, "d3d8: X2_LIGHT_DUMP_SKIP -- %ld qualifying "
                         "draw(s) were skipped; what follows is LATER in the "
-                        "level, not its first lit frames.\n", skip);
+                        "level, not its first lit frames.\n", g_ld_skip);
             return;
         }
     }
-    done++;
+    g_ld_done++;
     fprintf(stderr,
         "d3d8 light dump %ld/%ld at presented frame %lu: %d light(s) enabled, "
         "ambient %.3f %.3f %.3f "
         "(D3DRS_AMBIENT raw 0x%08x), colorvertex %d, has_normal %d\n"
         "    material diffuse %.3f %.3f %.3f  ambient %.3f %.3f %.3f  "
         "emissive %.3f %.3f %.3f\n",
-        done, want, gpu_frames_presented(), d->nlights,
+        g_ld_done, g_ld_want, gpu_frames_presented(), d->nlights,
         d->global_ambient[0], d->global_ambient[1], d->global_ambient[2],
         g_last_ambient_raw,
         d->color_vertex, d->normal_offset >= 0,
@@ -1081,6 +1090,23 @@ int d3d8_drawcall_reads_state(uint32_t which)
 
 void d3d8_drawcall_report(void)
 {
+    /*
+     * The light dump ALWAYS reports, including when it printed nothing.
+     *
+     * A dump that never fires -- because the skip was larger than the number
+     * of qualifying draws, or because no frame ever passed the draw threshold
+     * -- is indistinguishable from a dump that found nothing worth printing.
+     * One of those is a measurement and the other is an instrument that never
+     * ran, and this line is what tells them apart.
+     */
+    if (g_ld_want > 0)
+        printf("        X2_LIGHT_DUMP: %ld draw(s) qualified (lit, past the "
+               "scene gate, in a busy frame); %ld skipped by "
+               "X2_LIGHT_DUMP_SKIP; %ld of the %ld asked for were printed%s\n",
+               g_ld_qualified, g_ld_skipped, g_ld_done, g_ld_want,
+               g_ld_done ? "." :
+               " -- so this run's dump says NOTHING about the lighting.");
+
     if (g_refused_prim)
         printf("        %lu draw(s) refused for an unimplemented primitive "
                "type\n", g_refused_prim);
