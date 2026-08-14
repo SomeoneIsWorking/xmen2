@@ -94,3 +94,39 @@ What the CHARACTER draws are drawn with in a frame that is photographed black.
 The light dump can now aim there: X2_LIGHT_DUMP_SKIP=<n> skips the first n
 qualifying draws and every dump prints its presented frame number, and each
 kept screenshot prints its own frame number, so the two can be lined up.
+
+### Note (2026-08-14)
+## The black-light theory is DEAD, and the next suspect is spatial
+
+With the dump finally aimed at a real gameplay frame (X2_LIGHT_DUMP_MIN=100,
+X2_LIGHT_DUMP_SKIP=2400; the report line confirms 2408 qualified, 2400 skipped,
+8 of 8 printed), presented frame 5740:
+
+    material diffuse 1,1,1  ambient 1,1,1  emissive 0,0,0   colorvertex 1  has_normal 1
+    light 0 (index 3) DIRECTIONAL diffuse 0.000 0.196 0.196
+    light 1 (index 4) POINT       diffuse 0.840 0.840 1.000
+    light 2 (index 5) POINT       diffuse 0.784 0.980 0.996
+    light 3 (index 6) POINT       diffuse 0.784 0.980 0.996
+    light 4 (index 7) POINT       diffuse 0.300 0.000 0.000
+
+Those are the level data's own colours. Nothing about the lighting INPUTS is
+black.
+
+What is wrong in the same dump is SPACE, not colour:
+
+    light positions  (0, 63.6, -300.5)  (44.7, -325.5, -10.9)  (-19.3, -489.0, 152.7)
+    world matrix row3 (translation)  (-2314.8, -4088.1, 3666.9)
+
+The point lights carry no constant or linear attenuation and a quadratic term
+of 3.78e-5. At the ~5000-unit separation those two numbers imply, attenuation
+is about 1/750 -- black. Either the lights and the geometry are in different
+spaces (the shader lights in WORLD space, using D3DTS_WORLD), or the world
+matrix this draw is lit with is not the one its geometry is drawn with.
+
+## What must be established before acting on that
+
+Which draws these are. Only about 2 draws per level frame are lit at all
+(2,408 across the level portion of a 6,000-frame run, in frames of ~140 draws),
+so the lit set is small and may not be the characters. X2_FRAME_DUMP=<frame>
+prints every draw of one frame with its lit/unlit flag, stride and texture; run
+it on a frame whose screenshot is black and identify the character draws first.

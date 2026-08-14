@@ -424,12 +424,16 @@ static void light_dump(const GpuDraw *d)
      */
     {
         static long minimum = -1;
+        static int told;
         if (minimum < 0) {
             const char *e = getenv("X2_LIGHT_DUMP_MIN");
             minimum = (e && *e) ? atol(e) : 100;
         }
         if ((long)gpu_frame_draws_so_far() < minimum) return;
-        if (!g_ld_done)
+        /* ONCE. This was gated on "nothing dumped yet", which is true for
+           every skipped draw as well, so with X2_LIGHT_DUMP_SKIP it printed
+           the same line thousands of times. */
+        if (!told++)
             fprintf(stderr, "d3d8: X2_LIGHT_DUMP -- only frames that have "
                     "already submitted %ld draw(s) are dumped (set "
                     "X2_LIGHT_DUMP_MIN to change). A menu frame submits far "
