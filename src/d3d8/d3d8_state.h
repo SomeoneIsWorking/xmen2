@@ -90,5 +90,7 @@ int  d3d8_state_get_stage(const D3D8State *s, uint32_t stage, uint32_t which,
    consumes three states out of ninety is a draw path that is ignoring most of
    what the engine asked for, and this is what makes that visible. */
 void d3d8_state_report(const D3D8State *s);
+/* D3DRENDERSTATETYPE by number; an unnamed one prints as "D3DRS #<n>". */
+const char *d3d8_render_state_name(int id);
 
 #endif /* D3D8_STATE_H */

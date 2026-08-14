@@ -78,7 +78,6 @@ unsigned long gpu_frame_draws_so_far(void);
 #define D3DTS_PROJECTION  3
 #define D3DTS_WORLD     256
 
-static unsigned long g_ignored[D3D8_MAX_RENDER_STATES];
 static unsigned long g_refused_prim, g_refused_fvf;
 
 /*
@@ -1051,11 +1050,6 @@ int d3d8_drawcall_reads_state(uint32_t which)
     for (i = 0; i < sizeof READ / sizeof READ[0]; i++)
         if (READ[i] == which) return 1;
     return 0;
-}
-
-void d3d8_drawcall_note_ignored_state(uint32_t which)
-{
-    if (which < D3D8_MAX_RENDER_STATES) g_ignored[which]++;
 }
 
 void d3d8_drawcall_report(void)
