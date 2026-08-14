@@ -26,6 +26,25 @@
   "overrides": [
     {
       "module": "XMen2",
+      "ep": "0x0061b030",
+      "symbol": "fn_XMen2_0061b030",
+      "why": [
+        "The PC settings/default-binding loader, retained and post-hooked.",
+        "",
+        "The real body loads all keyboard/user bindings first. The native",
+        "post-hook then installs the bindable Xbox-release preset into the",
+        "game's pad-priority slot through retained FUN_006297a0, but only if",
+        "the profile has no pad mapping at all. Existing mappings are user",
+        "state and are never overwritten. The hotswap pump calls the same",
+        "sync path and removes only unchanged port-owned rows on disconnect.",
+        "",
+        "tests/test_xbox_defaults.c calls this shipping wrapper and proves",
+        "the retained body runs, 17 exact rows land, repeat sync is idempotent,",
+        "disconnect removes them, and one custom row blocks the whole preset."
+      ]
+    },
+    {
+      "module": "XMen2",
       "ep": "0x00617480",
       "symbol": "fn_XMen2_00617480",
       "why": [

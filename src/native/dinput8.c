@@ -30,6 +30,7 @@
 #include "guest_heap.h"
 #include "dinput_device.h"
 #include "dinput_pad.h"
+#include "xbox_defaults.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -354,6 +355,9 @@ void dinput8_hotplug_pump(CPU *C)
 
     if (!C || !g_pad_ref) return;
     dinput_pad_refresh();
+    /* This also removes only the port-installed preset when the last pad is
+       gone, so slot 2 stops masking keyboard prompts on disconnect. */
+    xbox_defaults_sync(C);
     for (i = 0; i < DINPUT_PAD_MAX; i++)
         if (dinput_pad_instance_guid(i, g) && !already_offered(g)) fresh++;
     if (!fresh) return;

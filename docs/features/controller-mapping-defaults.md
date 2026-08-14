@@ -36,17 +36,64 @@ competing with a shipped answer.
 - No Xbox asset or table is committed. It is read from `$XBOX_ISO` at build or
   run time like every other piece of game content here.
 
-## Status
+## Recovered PC binding engine
 
-IN RE. The prerequisite is complete: the DirectInput path enumerates, opens,
-configures and reads an SDL3 pad, including late attach/detach. A fresh registry
-run with `X2_VIRTUAL_PAD=1` measured the next boundary: the game persists the
-pad GUID slots but leaves every action's pad-binding slot empty, so it does not
-auto-populate defaults merely because a controller exists.
+The PC side is no longer inferred. `FUN_0061b030` names all 42 rows and loads
+their two persistent keyboard/mouse slots. `FUN_006294b0` reads a row; slot 2
+is tried first by the prompt path. `FUN_006297a0(row, slot, kind, code)` is the
+exact setter. Axis names in `FUN_006281f0` establish the signed codes:
 
-The Xbox controller-options FB is now parsed by `tools/extract_fb.py` (C184):
-eight members, including the controller diagram and the localized menu data.
-That gives the authored controller screen but is not yet the action table. The
-next RE step is to trace the Xbox code that supplies those assignments and
-relate its action identifiers to the PC action records; the diagram alone is
-not sufficient evidence for a hand-typed mapping.
+```
+LX+ 1  LX- 2  LY+ 3  LY- 4
+Rx+ 7  Rx- 8  Ry+ 9  Ry- 10
+POV X+/X-/Y+/Y-  0x11..0x14
+A/B/X/Y           0x15..0x18
+Back/Start/LS/RS  0x1b..0x1e
+LT/RT on combined Z+/-  5/6
+```
+
+`FUN_00619c40` is the other half: its action switch maps the common console
+action identifiers to PC rows. The alignments are distinctive, not positional
+guessing: POWER 7 -> row 8 `Power`, GUARD 8 -> row 7 `Guard`, ALLY 9 -> row 9,
+NEXT/PREV 11/12 -> `NextHero`/`PreviousHero`, MAP_TOGGLE 15 -> row 16, and
+INC/DEC_AGGR 16/17 -> the correspondingly named PC rows.
+
+## Implemented verified subset
+
+`src/native/xbox_defaults.c` joins that executable evidence to the authored
+Xbox controller screen. C187 records the result and its falsifier. It installs
+17 assignments:
+
+- left stick movement and right stick camera;
+- A Punch, B Slam, X Use/Pickup/Boost, Y Jump/Xtreme;
+- LT Call Allies and RT Mutant Powers;
+- Back Team Information, Start Pause, and right-stick click Map Toggle.
+
+The hook is deliberately after the real `FUN_0061b030`, so ordinary settings
+load first. It writes through retained `FUN_006297a0`, not direct table stores.
+If any pad binding already exists, the entire automatic preset defers rather
+than partially merging around user state. Repeated hotswap pumps are
+idempotent. When the last pad disappears it clears only tuples that still
+match what the port installed; a user-modified tuple is not agent-owned cleanup.
+
+`tests/test_xbox_defaults.c` calls the shipping wrapper and checks the retained
+body, all 17 exact tuples, the repeat gate, disconnect removal, and custom-map
+refusal. The combined native suite passes 45/45. A real 1,800-frame run with
+the virtual Xbox pad reports one preset install through the retained setter.
+
+## Remaining evidence boundary
+
+The preset is not yet the complete Xbox release mapping:
+
+- The Xbox screen says only **Change Hero** for the d-pad. The XBE contains
+  `NEXT`, `PREV`, `INC_AGGR`, and `DEC_AGGR`, but that does not prove which
+  physical direction drives which action—or that all four are the d-pad.
+- Black/White are authored as **Use Health Pack** / **Use Energy Pack**, while
+  the PC's 42 named rows expose neither action. Aliasing them to a `QuickPower`
+  row would be a guess.
+- The mapping menu still needs two explicit commands: Keyboard Defaults and
+  Xbox Defaults. The engine-side preset is now reusable by the latter, but the
+  UI command path has not been ported.
+
+Those omissions are visible in the runtime install message. They are not
+silently replaced with plausible controls.
