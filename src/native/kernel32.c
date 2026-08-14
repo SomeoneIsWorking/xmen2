@@ -3717,7 +3717,7 @@ void imp_KERNEL32_EnumSystemLocalesA(CPU *C)
                "(00000409, en-US) -- this host is single-locale by "
                "construction, and the callback at 0x%08x is real guest code.\n",
                proc);
-    if (proc && s) { uint32_t a = s; ark_call_cdecl(proc, &a, 1); }
+    if (proc && s) { uint32_t a = s; ark_call_stdcall(proc, &a, 1); }
     ret_std(C, 1, 2);
 }
 

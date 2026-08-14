@@ -1869,41 +1869,44 @@ void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
  *
  * So the convention lives here once instead of at each call site.
  */
-void x86_guest_call(CPU *C, uint32_t target)
+void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes)
 {
     uint32_t before = C->esp;
+    uint32_t expected = before + callee_pop_bytes;
     C->esp -= 4;
     *(volatile uint32_t *)(uintptr_t)C->esp = 0xDEADBEEFu;   /* popped by RET */
     x86_dispatch(C, target);
     /*
      * The balance check. This is the ONE place host code calls guest code, so
      * it is the one place the guest stack can be checked against a value the
-     * host knows independently: a called function must leave ESP exactly where
-     * it was, having popped only the return address pushed above.
-     *
-     * A `ret N` leaves it HIGHER, which is legitimate for a stdcall body whose
-     * arguments the host did not push -- so that is reported once and allowed.
-     * LOWER is never legitimate: the body consumed stack that was not its own,
-     * and the caller's frame is now wrong. Left unchecked it drifts, and the
-     * failure lands many calls later at a RET that pops a frame pointer.
+     * host knows independently: after popping the return address, a called
+     * function must leave ESP at the entry value plus exactly the declared
+     * callee-cleaned argument bytes. Any other result is an ABI mismatch; there
+     * is no safe value to repair it to because either the declaration or the
+     * callee is wrong.
      */
-    if (C->esp != before) {
-        static int said;
-        if ((int32_t)(C->esp - before) < 0) {
-            fprintf(stderr, "x86_guest_call: 0x%08x left ESP %d bytes LOWER "
-                            "than it started (%08x -> %08x). It consumed stack "
-                            "that was not its own.\n",
-                    target, (int)(before - C->esp), before, C->esp);
-            x86_diag_dump();
-            abort();
-        }
-        if (!said++) {
-            const char *nm = x86_native_name_at(target);
-            fprintf(stderr, "x86_guest_call: 0x%08x (%s) returned with ESP %d "
-                            "bytes higher -- a `ret N` whose N arguments the "
-                            "host never pushed. Reported once.\n",
-                    target, nm ? nm : "?", (int)(C->esp - before));
-        }
-        C->esp = before;
+    if (C->esp != expected) {
+        const char *nm = x86_native_name_at(target);
+        unsigned long ra = (unsigned long)__builtin_return_address(0);
+        Dl_info di;
+        fprintf(stderr, "x86_guest_call: 0x%08x (%s) violated its stack "
+                        "contract: ESP %08x -> %08x, expected %08x after "
+                        "popping %u argument byte(s).\n",
+                target, nm ? nm : "?", before, C->esp, expected,
+                callee_pop_bytes);
+        if (dladdr((void *)ra, &di) && di.dli_fbase)
+            fprintf(stderr, "  host caller: addr2line -fCe <this binary> "
+                            "0x%lx\n",
+                    ra - (unsigned long)di.dli_fbase);
+        else
+            fprintf(stderr, "  host caller could not be resolved (return "
+                            "address 0x%lx).\n", ra);
+        x86_diag_dump();
+        abort();
     }
+}
+
+void x86_guest_call(CPU *C, uint32_t target)
+{
+    x86_guest_call_args(C, target, 0u);
 }

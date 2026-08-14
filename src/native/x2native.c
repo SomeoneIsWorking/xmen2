@@ -1031,9 +1031,16 @@ static void case_setjmp_table(void)
  * implement must still come back NULL, or "the module loaded" would mean
  * "every function in it exists".
  */
+static void guest_stdcall2_probe(CPU *C)
+{
+    uint32_t a = RD32(C->esp + 4u), b = RD32(C->esp + 8u);
+    C->eax = a ^ b;
+    C->esp += 12u;                 /* return address + two stdcall arguments */
+}
+
 static void case_runtime_module(void)
 {
-    uint32_t path = guest_malloc(64), sym = guest_malloc(64), h, p;
+    uint32_t path = guest_malloc(64), sym = guest_malloc(64), h, p, cb, top;
     CPU C;
 
     printf("  run-time module lookup\n");
@@ -1067,6 +1074,23 @@ static void case_runtime_module(void)
     WR32(C.esp + 8u, sym);
     imp_KERNEL32_GetProcAddress(&C);
     check("a symbol this host lacks is still NULL", C.eax, 0u);
+
+    /* Host->guest callbacks need the callee-cleaned byte count in their ABI
+       contract. Without it, a correct RET 8 was reported as an imbalance and
+       the copied CPU was repaired to the wrong post-call ESP. Drive the real
+       dispatcher with both arguments present and check both the values and
+       exact stack result. */
+    cb = x86_native_callback(guest_stdcall2_probe, "battery",
+                             "guest_stdcall2_probe", NULL);
+    cpu_reset(&C);
+    top = SCRATCH + 0x300u;
+    C.esp = top - 8u;
+    WR32(C.esp + 0u, 0x13579bdfu);
+    WR32(C.esp + 4u, 0x2468ace0u);
+    x86_guest_call_args(&C, cb, 8u);
+    check("a RET 8 callback receives both arguments", C.eax,
+          0x13579bdfu ^ 0x2468ace0u);
+    check("and lands at the caller's exact ESP", C.esp, top);
 
     guest_free(path);
     guest_free(sym);

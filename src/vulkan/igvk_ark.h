@@ -47,6 +47,7 @@ uint32_t ark_export_req(const char *module, const char *mangled);
 /* Call a guest __cdecl function with `n` stack arguments; returns EAX. The
    caller's arguments are popped here, as cdecl requires. */
 uint32_t ark_call_cdecl(uint32_t target, const uint32_t *args, int n);
+uint32_t ark_call_stdcall(uint32_t target, const uint32_t *args, int n);
 
 /* Call a guest __thiscall member: ECX = this, `n` stack arguments. */
 uint32_t ark_call_this(uint32_t target, uint32_t self,

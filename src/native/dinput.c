@@ -249,7 +249,7 @@ static void m_EnumDevices(CPU *C)
         K.esp -= 8u;
         WR32(K.esp + 0u, inst);
         WR32(K.esp + 4u, pvref);
-        x86_guest_call(&K, cb);
+        x86_guest_call_args(&K, cb, 8u);
         reported++;
         if (K.eax == 0u) break;                        /* DIENUM_STOP */
     }

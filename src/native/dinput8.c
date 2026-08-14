@@ -319,7 +319,7 @@ static void m_EnumDevices(CPU *C)
             K.esp -= 8u;
             WR32(K.esp + 0u, inst);
             WR32(K.esp + 4u, pvref);
-            x86_guest_call(&K, cb);
+            x86_guest_call_args(&K, cb, 8u);
             reported++;
             { unsigned char g[16];
               if (dinput_pad_instance_guid(i, g)) note_offered(g); }
@@ -384,7 +384,7 @@ void dinput8_hotplug_pump(CPU *C)
         K.ecx = g_pad_ref;
         K.esp -= 4u;
         WR32(K.esp, 1u);
-        x86_guest_call(&K, g_pad_enum);
+        x86_guest_call_args(&K, g_pad_enum, 4u);
     }
     /* Whatever it took, it has now been offered: the enumeration above ran and
        recorded every connected pad. Marking them here rather than inside the

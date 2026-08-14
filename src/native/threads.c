@@ -597,7 +597,7 @@ static void thread_trampoline(void)
     C.esp = t->stack_base + t->stack_bytes - 16u;
     WR32(C.esp, t->arg);
     t->depth = 1;                        /* it is running guest code */
-    x86_guest_call(&C, t->start);
+    x86_guest_call_args(&C, t->start, 4u);
     t->exit_code = C.eax;
 
     t->finished = 1;

@@ -277,11 +277,9 @@ void conversation_report(void)
 
 /* ---- guest calling ------------------------------------------------------
  *
- * These callees are __thiscall with callee cleanup, so they leave ESP HIGHER
- * than x86_guest_call pushed -- which that helper reports once, by design, as
- * "a `ret N` whose N arguments the host never pushed". Here the host DID push
- * them; the note is expected and the reset it does is correct either way,
- * because the CPU handed down is a copy and the caller's ESP never moves.
+ * These callees are __thiscall with callee cleanup. The explicit byte count is
+ * part of the bridge contract: a RET that pops anything else is corruption,
+ * not a warning to repair on the copied CPU.
  */
 static uint32_t thiscall(CPU *C, uint32_t fn, uint32_t ecx,
                          int argc, const uint32_t *argv)
@@ -291,7 +289,7 @@ static uint32_t thiscall(CPU *C, uint32_t fn, uint32_t ecx,
     K.esp -= (uint32_t)argc * 4u;
     for (i = 0; i < argc; i++) WR32(K.esp + (uint32_t)i * 4u, argv[i]);
     K.ecx = ecx;
-    x86_guest_call(&K, fn);
+    x86_guest_call_args(&K, fn, (uint32_t)argc * 4u);
     return K.eax;
 }
 
@@ -724,7 +722,7 @@ static long double call_float(CPU *C, uint32_t fn, uint32_t ecx,
     K.esp -= (uint32_t)argc * 4u;
     for (i = 0; i < argc; i++) WR32(K.esp + (uint32_t)i * 4u, argv[i]);
     K.ecx = ecx;
-    x86_guest_call(&K, fn);
+    x86_guest_call_args(&K, fn, (uint32_t)argc * 4u);
     return K.st[K.top];
 }
 
@@ -932,11 +930,10 @@ void __wrap_fn_XMen2_0045d1a0(CPU *C)
         sing = call0(C, FN_CONV_SINGLETON, 0);
         px = thiscall(C, RD32(G_LAYOUT_INDEX), sing + CV_LAYOUT, 1, &zero);
 
-        {   uint32_t q[5];
+        {   uint32_t q[4];
             q[0] = 0x3f800000u; q[1] = 0x3f800000u;
             q[2] = 0x3f800000u; q[3] = 0x3f800000u;
-            q[4] = G_MENU_ACCEPT;
-            quad = thiscall(C, RD32(G_MAKE_RGBA), scratch + 0x10u, 5, q); }
+            quad = thiscall(C, RD32(G_MAKE_RGBA), scratch + 0x10u, 4, q); }
         colour = cdecl_call(C, FN_PACK_ARGB, 1, &quad);
 
         args[0] = target + 0x43cu;

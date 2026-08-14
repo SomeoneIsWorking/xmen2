@@ -219,7 +219,7 @@ void winmm_timers_pump(void)
             g_timer[i].fired++;
             g_fires++;
             g_pumping = 1;
-            ark_call_cdecl(g_timer[i].proc, args, 5);
+            ark_call_stdcall(g_timer[i].proc, args, 5);
             g_pumping = 0;
         }
     }

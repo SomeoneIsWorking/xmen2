@@ -128,6 +128,19 @@ uint32_t ark_call_cdecl(uint32_t target, const uint32_t *args, int n)
     return C.eax;
 }
 
+uint32_t ark_call_stdcall(uint32_t target, const uint32_t *args, int n)
+{
+    CPU C;
+    uint32_t saved;
+    int i;
+    cpu_reset(&C);
+    C.esp = ark_enter(&saved, n);
+    for (i = 0; i < n; i++) WR32(C.esp + (uint32_t)i * 4u, args[i]);
+    x86_guest_call_args(&C, target, (uint32_t)n * 4u);
+    g_call_sp = saved;
+    return C.eax;
+}
+
 uint32_t ark_call_this(uint32_t target, uint32_t self,
                        const uint32_t *args, int n)
 {
@@ -138,7 +151,7 @@ uint32_t ark_call_this(uint32_t target, uint32_t self,
     C.ecx = self;
     C.esp = ark_enter(&saved, n);
     for (i = 0; i < n; i++) WR32(C.esp + (uint32_t)i * 4u, args[i]);
-    x86_guest_call(&C, target);
+    x86_guest_call_args(&C, target, (uint32_t)n * 4u);
     g_call_sp = saved;
     return C.eax;
 }

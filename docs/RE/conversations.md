@@ -316,7 +316,7 @@ conv   = FUN_004583f0();
 target = conv->[0x21b38];
 py     = (float *)(*(fn *)0x0067f9c4)(conv + 0x239b0, 2);   /* 91.6f */
 px     = (float *)(*(fn *)0x0067f9c4)(conv + 0x239b0, 0);   /* 57.0f */
-quad   = (*(fn *)0x0067f9ac)(&tmp, 1.0f, 1.0f, 1.0f, 1.0f, "$MENU_ACCEPT");
+quad   = (*(fn *)0x0067f9ac)(&tmp, 1.0f, 1.0f, 1.0f, 1.0f);
 colour = FUN_0040be00(quad);                    /* packs float RGBA -> 0xFFFFFFFF */
 FUN_005ef270(target + 0x43c,
              __ftol(*px - 36.0f),               /* 21  */
@@ -331,7 +331,12 @@ Three things the listing hides:
   consumes nothing from the integer stack. That is why the five `PUSH`es
   surrounding it are not its arguments — they belong to the `FUN_005ef270` call
   after it, and one `ADD ESP,0x24` cleans all nine dwords at the end.
-* `0x0040be00` packs a float RGBA quad into ARGB.
+* `[0x0067f9ac]` is `Gap::Math::igQuaternionf::igQuaternionf`. It consumes four
+  float arguments with `RET 0x10`; `$MENU_ACCEPT` was pushed before those four,
+  remains below them through the constructor and the caller-cleaned pack call,
+  and becomes the final argument of `FUN_005ef270`. It is not a fifth
+  constructor argument.
+* `0x0040be00` packs a float RGBA quaternion into ARGB.
 * `[0x0067f9c4]` indexes a layout array and returns a `float *`.
 
 The constants are `[0x006819fc] = 16.0f` and `[0x00684b9c] = 36.0f`.

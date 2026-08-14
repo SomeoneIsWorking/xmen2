@@ -79,6 +79,11 @@ uint32_t x86_native_callback(void (*fn)(struct CPU *), const char *owner,
    serve many objects, told apart by which synthetic address the guest called. */
 void *x86_callback_ctx(void);
 
+/* Host->guest call with an explicit stdcall/thiscall cleanup contract. The
+   zero-argument/cdecl wrapper remains declared by x86rt.h. */
+void x86_guest_call_args(struct CPU *C, uint32_t target,
+                         uint32_t callee_pop_bytes);
+
 /*
  * Publish an entry point of a module this host implements but nothing
  * statically imports, so a run-time LoadLibraryA + GetProcAddress can find it.

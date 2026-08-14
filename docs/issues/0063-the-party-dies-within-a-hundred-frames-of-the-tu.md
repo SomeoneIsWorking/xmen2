@@ -811,12 +811,18 @@ So the block reconstructs exactly:
     target = conv->[0x21b38];
     py     = (float *)[0x0067f9c4](conv + 0x239b0, 2);     /* 91.6 */
     px     = (float *)[0x0067f9c4](conv + 0x239b0, 0);     /* 57.0 */
-    rgba   = [0x0067f9ac](&tmp, 1.0f, 1.0f, 1.0f, 1.0f, "$MENU_ACCEPT");
+    rgba   = [0x0067f9ac](&tmp, 1.0f, 1.0f, 1.0f, 1.0f);
     colour = FUN_0040be00(rgba);                           /* 0xFFFFFFFF */
     FUN_005ef270(target + 0x43c,
                  __ftol(*px - 36.0f),                      /* 21  */
                  __ftol(*py + 16.0f),                      /* 107 */
                  0x20, 0x20, 1.0f, 10, colour, "$MENU_ACCEPT");
+
+`[0x0067f9ac]` is `Gap::Math::igQuaternionf::igQuaternionf`; its `RET 0x10`
+consumes exactly the four floats. The earlier capture's instruction order had
+made `$MENU_ACCEPT` look like a fifth constructor argument. It actually remains
+below those floats and the packer's pointer argument until it becomes the final
+argument of `FUN_005ef270`.
 
 It draws a 32x32 accept-button prompt. That is not incidental to this port: it
 is the conversation's own button prompt, and the button-prompts feature has to
