@@ -149,6 +149,17 @@ add_test(NAME x86_record_arm_capture COMMAND test_x86_record capture)
 set_tests_properties(x86_record_arm_capture PROPERTIES
     PASS_REGULAR_EXPRESSION "2 entries captured over 1 pass")
 
+# The native executable, not only run.sh, loads the project .env. These tests
+# link the exact shipping parser and prove both precedence directions plus its
+# refusal of malformed input and executable-project precedence.
+add_executable(test_env_file tests/test_env_file.c src/native/env_file.c)
+target_include_directories(test_env_file PRIVATE src/native)
+add_test(NAME env_file_load COMMAND test_env_file load)
+add_test(NAME env_file_preserve COMMAND test_env_file preserve)
+add_test(NAME env_file_malformed COMMAND test_env_file malformed)
+add_test(NAME env_file_executable_precedence
+    COMMAND test_env_file executable-precedence)
+
 add_executable(test_x2native_options
     tests/test_x2native_options.c src/native/x2native_options.c)
 target_include_directories(test_x2native_options PRIVATE src/native)
@@ -411,6 +422,7 @@ if(X2_MODULE_HAVE)
         src/native/threads.c
         src/native/x86rt_native.c
         src/native/x86_record.c
+        src/native/env_file.c
         src/native/overrides.c
         src/native/conversation.c
         src/native/heartbeat.c
@@ -423,6 +435,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_surface.c
         src/d3d8/d3d8_resource.c
         src/d3d8/d3d8_drawcall.c
+        src/d3d8/d3d8_vertex_shader.c
         src/d3d8/d3d8_report.c
         src/vulkan/igvk_ark.c
         src/vulkan/igvk_probe.c
@@ -433,7 +446,6 @@ if(X2_MODULE_HAVE)
         src/vulkan/igvk_slots_lifecycle.c
         src/vulkan/igvk_slots_frame.c
         
-        src/d3d8/d3d8_vertex_shader.c
         ${X2_MODULE_SRCS}
     )
     add_dependencies(x2native x2_shaders)

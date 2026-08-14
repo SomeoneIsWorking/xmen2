@@ -10,8 +10,8 @@
 #
 # The default is the native build because that is the live front. The Wine
 # paths are kept, not deprecated: `stock` is the control every rendering
-# question is settled against, and `wine` is still the only configuration that
-# actually draws the game. Losing either would cost more than the convenience
+# question is settled against, while `wine` keeps the hosted-recompiler path
+# independently testable. Losing either would cost more than the convenience
 # of a shorter command.
 #
 # This is the counterpart to tools/run_shim.sh, which is the HEADLESS harness:
@@ -104,11 +104,10 @@ EOM
 
 run: NATIVE build -- no Wine, no original binaries in the loop.
 
-     WHAT YOU WILL SEE: the engine starts, the renderer comes up on
-     SDL3 + Vulkan, and the game draws its own UI in a 800x600 window
-     at 60fps (C142). Text glyphs are still wrong -- issue #38. The run
-     does not end on its own any more; Ctrl-C it, and it prints its
-     reports on the way out.
+     WHAT YOU WILL SEE: the current project target -- the recompiled game,
+     native SDL3 GPU/Vulkan renderer, input and sound -- in its own 800x600
+     window. It runs until you close it, then prints its reports on the way
+     out.
 
      It is not silent about what it is doing: [HB] lines every few
      seconds carry the frame, draw and present counts.

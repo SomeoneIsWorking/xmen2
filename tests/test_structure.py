@@ -19,6 +19,7 @@ LIMITS = {
     "src/native/dinput_system.c": 220,
     "src/native/dinput_script.c": 200,
     "src/native/dinput_joystick.c": 150,
+    "src/native/env_file.c": 180,
     "src/native/x2native_options.c": 80,
     "tools/recomp_hosted.py": 100,
     "tools/recomp_host_call.py": 80,

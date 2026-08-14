@@ -10,11 +10,10 @@
  *   ./x2native                         run the current SDL3 GPU game target
  *   ./x2native --no-window             the same target, off-screen
  *
- * What it does NOT do, and must not be read as doing: run the game. 107
- * imports are stubbed to abort by name (61 of them into libIGCore, which is
- * another module to recompile; the rest are the Win32 surface SDL replaces).
- * Any function that reaches one stops with that name printed. That is the
- * remaining work, stated as a list rather than as a guess.
+ * It is a hybrid port: mechanically translated game/engine bodies stay live
+ * while focused native modules replace platform and engine boundaries. Any
+ * still-unimplemented host import aborts by name, so incomplete coverage is a
+ * concrete stop rather than a silently skipped operation.
  */
 #include "pe_map.h"
 #include "x86rt.h"
@@ -29,6 +28,7 @@
 #include "guest_heap.h"
 #include "d3d8_host.h"
 #include "d3d8_com.h"
+#include "env_file.h"
 #include "x2native_options.h"
 
 #include <dlfcn.h>
@@ -1532,7 +1532,7 @@ int main(int argc, char **argv)
     const char *dir;
     int window, i, rc, mapped = 0, run, arkprobe, vk;
     int vkselftest, vkpermissive, d3d8, d3d8selftest, d3d8permissive;
-    int dialogselftest = 0;
+    int dialogselftest;
     X2NativeOptions options;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
@@ -1542,6 +1542,11 @@ int main(int argc, char **argv)
     static PeImage imgs[24];
 
     g_argv0 = argv[0];
+    /* Direct invocation is a supported launch path throughout the docs.  The
+       binary therefore loads the project's gitignored .env itself; requiring
+       every diagnostic command to remember shell export semantics caused a
+       valid install to be reported as absent. Explicit launcher variables win. */
+    if (x2_load_project_env(argv[0]) < 0) return 2;
 #ifdef X86_NATIVE_REACHED
     /* Also on the ordinary exit path: a run that ends without faulting must
        still say what it reached, or the instrument only ever speaks when
