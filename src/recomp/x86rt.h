@@ -953,7 +953,6 @@ static inline void name(uint64_t *d, const uint64_t *s)                 \
 { sse_st(d, ins(sse_ld(d), sse_ld(s))); }
 SSE_BINOP(sse_addps, _mm_add_ps)
 SSE_BINOP(sse_subps, _mm_sub_ps)
-SSE_BINOP(sse_mulps, _mm_mul_ps)
 SSE_BINOP(sse_divps, _mm_div_ps)
 SSE_BINOP(sse_minps, _mm_min_ps)
 SSE_BINOP(sse_maxps, _mm_max_ps)
@@ -961,6 +960,18 @@ SSE_BINOP(sse_andps, _mm_and_ps)
 SSE_BINOP(sse_andnps, _mm_andnot_ps)   /* ~dst & src, in THAT order */
 SSE_BINOP(sse_orps,  _mm_or_ps)
 SSE_BINOP(sse_xorps, _mm_xor_ps)
+
+/* MULPS is mathematically commutative but bit-exact x86 is not when both
+   operands are NaNs: the selected payload depends on which one is the encoded
+   destination. GCC may swap the operands of _mm_mul_ps and did so here,
+   disagreeing with silicon in six differential cases. Pin the architectural
+   destination with a read/write constraint. */
+static inline void sse_mulps(uint64_t *d, const uint64_t *s)
+{
+    __m128 dst = sse_ld(d), src = sse_ld(s);
+    __asm__ volatile("mulps %1, %0" : "+x"(dst) : "x"(src));
+    sse_st(d, dst);
+}
 
 /* The scalar forms touch lane 0 ONLY; lanes 1..3 of the destination are
    preserved, which is what makes MULSS usable on a register also holding a

@@ -149,6 +149,11 @@ add_test(NAME x86_record_arm_capture COMMAND test_x86_record capture)
 set_tests_properties(x86_record_arm_capture PROPERTIES
     PASS_REGULAR_EXPRESSION "2 entries captured over 1 pass")
 
+add_executable(test_x2native_options
+    tests/test_x2native_options.c src/native/x2native_options.c)
+target_include_directories(test_x2native_options PRIVATE src/native)
+add_test(NAME x2native_options COMMAND test_x2native_options)
+
 # The translator, tested as a unit.
 #
 # tools/recomp.py had no tests, and it is the most defect-prone thing here: a
@@ -381,6 +386,7 @@ if(X2_MODULE_HAVE)
     message(STATUS "x2native: linking recompiled modules: ${X2_MODULE_HAVE}")
     add_executable(x2native
         src/native/x2native.c
+        src/native/x2native_options.c
         src/native/pe_map.c
         src/native/win32_sdl.c
         src/native/guest_heap.c
@@ -393,6 +399,9 @@ if(X2_MODULE_HAVE)
         src/native/dinput.c
         src/native/dinput8.c
         src/native/dinput_device.c
+        src/native/dinput_system.c
+        src/native/dinput_script.c
+        src/native/dinput_joystick.c
         src/native/dinput_pad.c
         src/native/dsound.c
         src/native/ws2_32.c

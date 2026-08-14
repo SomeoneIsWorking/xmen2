@@ -34,18 +34,15 @@
 #include "x86rt_native.h"
 #include "guest_heap.h"
 #include "dinput_device.h"
+#include "dinput_joystick.h"
 #include "dinput_pad.h"
+#include "dinput_script.h"
+#include "dinput_system.h"
 #include "gpu_device.h"
-#include "win32_sdl.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
-
-#ifdef X2_WITH_SDL
-#include <SDL3/SDL.h>
-#endif
 
 #define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
@@ -62,7 +59,6 @@ static void ret_com(CPU *C, uint32_t hr, int nargs)
 #define DIERR_INVALIDPARAM 0x80070057u
 #define DIERR_NOTACQUIRED  0x8007000Cu
 #define DIERR_INPUTLOST    0x8007001Eu
-#define DIERR_OUTOFMEMORY  0x8007000Eu
 
 /*
  * IDirectInputDevice8's vtable. The four the game dispatches through are
@@ -142,544 +138,15 @@ static const char *kind_name(DInputDeviceKind k)
          : k == DINPUT_DEV_JOYSTICK ? "gamepad" : "(unknown)";
 }
 
-/* ---- the SDL side ------------------------------------------------------ */
-
-/*
- * SDL scancode -> DIK_*, which is the PS/2 set-1 scancode DirectInput indexes
- * its 256-byte keyboard block by. The two numberings are unrelated (SDL's is
- * USB HID usage), so this table is the whole mapping and a key missing from it
- * is a key the game can never see.
- *
- * Written out rather than computed: there is no formula, and a partial mapping
- * that looks like a formula is how half a keyboard goes missing quietly.
- */
-#ifdef X2_WITH_SDL
-static const struct { int sdl; unsigned char dik; } DIK_MAP[] = {
-    { SDL_SCANCODE_ESCAPE, 0x01 },
-    { SDL_SCANCODE_1, 0x02 }, { SDL_SCANCODE_2, 0x03 }, { SDL_SCANCODE_3, 0x04 },
-    { SDL_SCANCODE_4, 0x05 }, { SDL_SCANCODE_5, 0x06 }, { SDL_SCANCODE_6, 0x07 },
-    { SDL_SCANCODE_7, 0x08 }, { SDL_SCANCODE_8, 0x09 }, { SDL_SCANCODE_9, 0x0A },
-    { SDL_SCANCODE_0, 0x0B },
-    { SDL_SCANCODE_MINUS, 0x0C }, { SDL_SCANCODE_EQUALS, 0x0D },
-    { SDL_SCANCODE_BACKSPACE, 0x0E }, { SDL_SCANCODE_TAB, 0x0F },
-    { SDL_SCANCODE_Q, 0x10 }, { SDL_SCANCODE_W, 0x11 }, { SDL_SCANCODE_E, 0x12 },
-    { SDL_SCANCODE_R, 0x13 }, { SDL_SCANCODE_T, 0x14 }, { SDL_SCANCODE_Y, 0x15 },
-    { SDL_SCANCODE_U, 0x16 }, { SDL_SCANCODE_I, 0x17 }, { SDL_SCANCODE_O, 0x18 },
-    { SDL_SCANCODE_P, 0x19 },
-    { SDL_SCANCODE_LEFTBRACKET, 0x1A }, { SDL_SCANCODE_RIGHTBRACKET, 0x1B },
-    { SDL_SCANCODE_RETURN, 0x1C }, { SDL_SCANCODE_LCTRL, 0x1D },
-    { SDL_SCANCODE_A, 0x1E }, { SDL_SCANCODE_S, 0x1F }, { SDL_SCANCODE_D, 0x20 },
-    { SDL_SCANCODE_F, 0x21 }, { SDL_SCANCODE_G, 0x22 }, { SDL_SCANCODE_H, 0x23 },
-    { SDL_SCANCODE_J, 0x24 }, { SDL_SCANCODE_K, 0x25 }, { SDL_SCANCODE_L, 0x26 },
-    { SDL_SCANCODE_SEMICOLON, 0x27 }, { SDL_SCANCODE_APOSTROPHE, 0x28 },
-    { SDL_SCANCODE_GRAVE, 0x29 }, { SDL_SCANCODE_LSHIFT, 0x2A },
-    { SDL_SCANCODE_BACKSLASH, 0x2B },
-    { SDL_SCANCODE_Z, 0x2C }, { SDL_SCANCODE_X, 0x2D }, { SDL_SCANCODE_C, 0x2E },
-    { SDL_SCANCODE_V, 0x2F }, { SDL_SCANCODE_B, 0x30 }, { SDL_SCANCODE_N, 0x31 },
-    { SDL_SCANCODE_M, 0x32 },
-    { SDL_SCANCODE_COMMA, 0x33 }, { SDL_SCANCODE_PERIOD, 0x34 },
-    { SDL_SCANCODE_SLASH, 0x35 }, { SDL_SCANCODE_RSHIFT, 0x36 },
-    { SDL_SCANCODE_KP_MULTIPLY, 0x37 }, { SDL_SCANCODE_LALT, 0x38 },
-    { SDL_SCANCODE_SPACE, 0x39 }, { SDL_SCANCODE_CAPSLOCK, 0x3A },
-    { SDL_SCANCODE_F1, 0x3B }, { SDL_SCANCODE_F2, 0x3C }, { SDL_SCANCODE_F3, 0x3D },
-    { SDL_SCANCODE_F4, 0x3E }, { SDL_SCANCODE_F5, 0x3F }, { SDL_SCANCODE_F6, 0x40 },
-    { SDL_SCANCODE_F7, 0x41 }, { SDL_SCANCODE_F8, 0x42 }, { SDL_SCANCODE_F9, 0x43 },
-    { SDL_SCANCODE_F10, 0x44 },
-    { SDL_SCANCODE_NUMLOCKCLEAR, 0x45 }, { SDL_SCANCODE_SCROLLLOCK, 0x46 },
-    { SDL_SCANCODE_KP_7, 0x47 }, { SDL_SCANCODE_KP_8, 0x48 },
-    { SDL_SCANCODE_KP_9, 0x49 }, { SDL_SCANCODE_KP_MINUS, 0x4A },
-    { SDL_SCANCODE_KP_4, 0x4B }, { SDL_SCANCODE_KP_5, 0x4C },
-    { SDL_SCANCODE_KP_6, 0x4D }, { SDL_SCANCODE_KP_PLUS, 0x4E },
-    { SDL_SCANCODE_KP_1, 0x4F }, { SDL_SCANCODE_KP_2, 0x50 },
-    { SDL_SCANCODE_KP_3, 0x51 }, { SDL_SCANCODE_KP_0, 0x52 },
-    { SDL_SCANCODE_KP_PERIOD, 0x53 },
-    { SDL_SCANCODE_F11, 0x57 }, { SDL_SCANCODE_F12, 0x58 },
-    { SDL_SCANCODE_KP_ENTER, 0x9C }, { SDL_SCANCODE_RCTRL, 0x9D },
-    { SDL_SCANCODE_KP_DIVIDE, 0xB5 }, { SDL_SCANCODE_RALT, 0xB8 },
-    { SDL_SCANCODE_HOME, 0xC7 }, { SDL_SCANCODE_UP, 0xC8 },
-    { SDL_SCANCODE_PAGEUP, 0xC9 }, { SDL_SCANCODE_LEFT, 0xCB },
-    { SDL_SCANCODE_RIGHT, 0xCD }, { SDL_SCANCODE_END, 0xCF },
-    { SDL_SCANCODE_DOWN, 0xD0 }, { SDL_SCANCODE_PAGEDOWN, 0xD1 },
-    { SDL_SCANCODE_INSERT, 0xD2 }, { SDL_SCANCODE_DELETE, 0xD3 },
-    { SDL_SCANCODE_LGUI, 0xDB }, { SDL_SCANCODE_RGUI, 0xDC },
-    { SDL_SCANCODE_APPLICATION, 0xDD }
-};
-#define DIK_MAP_N ((int)(sizeof DIK_MAP / sizeof DIK_MAP[0]))
-#endif
-
-/* Said once: a keyboard nobody can read and a keyboard with nothing pressed
-   produce the same 256 zero bytes, and only one of them is a missing
-   subsystem. */
-static unsigned long g_blind_reads;
-
-static int input_available(void)
-{
-#ifdef X2_WITH_SDL
-    return SDL_WasInit(SDL_INIT_VIDEO) != 0;
-#else
-    return 0;
-#endif
-}
-
-static void say_blind(const char *what)
-{
-    if (g_blind_reads++) return;
-    fprintf(stderr,
-            "DINPUT8: the %s state was read with no SDL video subsystem up, so "
-            "it reads as NOTHING PRESSED.\n"
-            "  That is indistinguishable from a working device nobody is "
-            "touching, which is why it is said here rather than left as a "
-            "block of zeros.\n"
-            "  Reported once; the total is in the exit report.\n", what);
-}
-
-
-
-/*
- * The two system-device GUIDs, and the kind they name.
- *
- * Both DirectInput 7 (src/native/dinput.c) and DirectInput 8
- * (src/native/dinput8.c) resolve a GUID to a device, and this is the one place
- * that mapping exists -- two copies is how the two stacks end up recognising
- * different sets of devices.
- *
- * GUID_SysKeyboard {6F1D2B61-D5A0-11CF-BFC7-444553540000} and GUID_SysMouse
- * {6F1D2B60-...} differ only in the first dword, which is why all sixteen
- * bytes are compared: matching on the first four would make every DirectInput
- * GUID in that family look like a keyboard. Verified against XMen2.exe's own
- * data at 0x6a15e4 and 0x6a15f4.
- */
-static const unsigned char GUID_SYS_KEYBOARD[16] = {
-    0x61,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
-    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
-};
-static const unsigned char GUID_SYS_MOUSE[16] = {
-    0x60,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
-    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
-};
-
-int dinput_guid_kind(uint32_t guid)
-{
-    if (!guid) return 0;
-    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_KEYBOARD, 16) == 0)
-        return DINPUT_DEV_KEYBOARD;
-    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
-        return DINPUT_DEV_MOUSE;
-    return 0;
-}
-
-const unsigned char *dinput_guid_of(int kind)
-{
-    return kind == DINPUT_DEV_KEYBOARD ? GUID_SYS_KEYBOARD
-         : kind == DINPUT_DEV_MOUSE    ? GUID_SYS_MOUSE : NULL;
-}
-
-/* ---- scripted input ----------------------------------------------------- */
-
-/*
- * X2_INPUT_SCRIPT -- key presses at fixed times, for a headless run.
- *
- * A headless run has no window and therefore no keyboard: every read comes
- * back "nothing pressed", so nothing past the first screen can ever be
- * exercised without a person sitting at the machine. This drives it instead.
- *
- *   X2_INPUT_SCRIPT="4.0+150:Down 4.5+150:Return 6.0+150:Escape"
- *
- * is "<seconds from the start of the run>+<hold in ms>:<SDL key name>", space
- * or comma separated.
- *
- * An event may be scheduled by FRAMES PRESENTED instead, by prefixing the
- * number with `f`:
- *
- *   X2_INPUT_SCRIPT="f1200+20:Return f1400+20:Escape"
- *
- * which is "<frames presented>+<hold in frames>". This exists because a script
- * written against the wall clock is a script written against ONE machine: a
- * slower load puts the Return into a different screen and the run diverges
- * without anything reporting a failure. Frames presented is the game's own
- * progress, so the same script drives the same sequence on a machine half the
- * speed. Mixing the two forms in one script is fine -- each event is
- * independent. The names are SDL's (SDL_GetScancodeFromName), so
- * "Return", "Down", "Escape", "A" all work, and a name SDL does not know is
- * REFUSED by name at parse time rather than silently never firing.
- *
- * Every press and release is REPORTED. Injected input that looked like a
- * person typing would make a scripted run indistinguishable from a real one,
- * and the whole value of this is being able to say which it was.
- */
-#define SCRIPT_MAX 128    /* repeat windows expand into one event each */
-typedef struct { double at, until; int by_frame; unsigned char dik; int down,
-                 said; char name[24]; } ScriptKey;
-static ScriptKey g_script[SCRIPT_MAX];
-static int g_nscript, g_script_parsed;
-static double g_script_t0;
-
-#ifdef X2_WITH_SDL
-static unsigned char dik_of_scancode(int sc)
-{
-    int i;
-    for (i = 0; i < DIK_MAP_N; i++)
-        if (DIK_MAP[i].sdl == sc) return DIK_MAP[i].dik;
-    return 0;
-}
-#endif
-
-static double script_now(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-}
-
-static void script_parse(void)
-{
-    const char *e = getenv("X2_INPUT_SCRIPT");
-    const char *p;
-
-    g_script_parsed = 1;
-    if (!e || !*e) return;
-#ifndef X2_WITH_SDL
-    fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT is set but this build has no "
-                    "SDL, so no key name can be resolved and NOTHING will be "
-                    "injected.\n");
-    return;
-#else
-    for (p = e; *p; ) {
-        double at = 0.0, hold = 100.0, to = 0.0, step = 0.0;
-        char name[24];
-        int n = 0, sc, by_frame = 0, reps = 1, r;
-        while (*p == ' ' || *p == ',' || *p == '\t') p++;
-        if (!*p) break;
-        if (*p == 'f' || *p == 'F') {
-            by_frame = 1;
-            hold = 10.0;                 /* frames, not milliseconds */
-            p++;
-        }
-        /*
-         * A REPEAT WINDOW: <from>-<to>/<step>:<key>, tried before the single
-         * forms because "1200-" would otherwise parse as an instant.
-         *
-         * An instant is a bet on where the game will be at that exact moment,
-         * and it is a bet this game loses: the six intro movies decode at a
-         * different rate every run, so a Return aimed at the main menu lands on
-         * the Sofdec logo one run and inside the difficulty dialog the next.
-         * The Wine control had three runs destroyed by exactly that before the
-         * same syntax was added to run_shim's X2_KEYS, after which it reached
-         * the opening chamber every time. A window blankets the uncertainty
-         * instead of guessing at it.
-         */
-        if (sscanf(p, "%lf-%lf/%lf+%lf:%23[^ ,\t]%n",
-                   &at, &to, &step, &hold, name, &n) == 5 ||
-            (n = 0, sscanf(p, "%lf-%lf/%lf:%23[^ ,\t]%n",
-                           &at, &to, &step, name, &n)) == 4) {
-            if (step <= 0.0 || to < at) {
-                fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT has the repeat "
-                                "\"%s\", whose window is empty (from %g to %g "
-                                "every %g). Refusing rather than scheduling a "
-                                "press that never happens.\n", p, at, to, step);
-                return;
-            }
-            reps = (int)((to - at) / step) + 1;
-        } else if (sscanf(p, "%lf+%lf:%23[^ ,\t]%n", &at, &hold, name, &n) != 3 &&
-                   (n = 0, sscanf(p, "%lf:%23[^ ,\t]%n", &at, name, &n)) != 2) {
-            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT could not be read at "
-                            "\"%s\" -- the form is <seconds>[+<hold ms>]:<key "
-                            "name>, f<frames>[+<hold frames>]:<key name>, or a "
-                            "repeat window <from>-<to>/<step>[+<hold>]:<key "
-                            "name>. NOTHING from here on was scheduled.\n", p);
-            return;
-        }
-        p += n;
-        if (g_nscript + reps > SCRIPT_MAX) {
-            /* REFUSE rather than schedule the part that fits: a repeat window
-               whose tail was silently dropped is a run that stops being driven
-               partway through and reports nothing about why. */
-            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT needs %d more event(s) "
-                            "for \"%s\" and only %d of %d slot(s) are left. "
-                            "Refusing -- a repeat window with its tail cut off "
-                            "would drive the run partway and say nothing.\n",
-                    reps, name, SCRIPT_MAX - g_nscript, SCRIPT_MAX);
-            return;
-        }
-        sc = (int)SDL_GetScancodeFromName(name);
-        if (sc == SDL_SCANCODE_UNKNOWN) {
-            fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT names the key \"%s\", "
-                            "which SDL does not know. Refusing rather than "
-                            "scheduling a press that never happens.\n", name);
-            return;
-        }
-        {
-            unsigned char dik = dik_of_scancode(sc);
-            if (!dik) {
-                fprintf(stderr, "DINPUT8: \"%s\" is an SDL key this host has no "
-                                "DIK code for, so the game could never see it. "
-                                "Refusing.\n", name);
-                return;
-            }
-            for (r = 0; r < reps; r++) {
-                double t = at + (double)r * step;   /* step is 0 when reps == 1 */
-                g_script[g_nscript].dik = dik;
-                g_script[g_nscript].at = t;
-                g_script[g_nscript].until =
-                    t + (by_frame ? hold : hold / 1000.0);
-                g_script[g_nscript].by_frame = by_frame;
-                snprintf(g_script[g_nscript].name, sizeof g_script[0].name,
-                         "%s", name);
-                g_nscript++;
-            }
-            if (reps > 1)
-                fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT -- \"%s\" repeats %d "
-                        "time(s), every %g %s from %g to %g.\n",
-                        name, reps, step, by_frame ? "frame(s)" : "second(s)",
-                        at, at + (double)(reps - 1) * step);
-        }
-    }
-    if (g_nscript)
-        fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT -- %d scripted key press(es) "
-                        "will be INJECTED; each is reported as it fires, so "
-                        "nothing here can be mistaken for a person typing.\n",
-                g_nscript);
-#endif
-}
-
-/*
- * Start the script's clock.
- *
- * Called once when the guest is about to run, so the times in the script are
- * seconds from the START OF THE RUN -- which is what someone writing "press
- * Return at 100 seconds" means. Left to the first keyboard read it would be
- * seconds from whenever the game first polled input, which is minutes into a
- * run that plays six intro movies first, and a script written against the
- * wrong anchor fires nothing and looks like input not working.
- */
-void dinput_script_start(void)
-{
-    g_script_t0 = script_now();
-    if (!g_script_parsed) script_parse();
-    if (g_nscript)
-        fprintf(stderr, "DINPUT8: the script's clock starts NOW; its times are "
-                        "seconds from here.\n");
-}
-
-/* OR the scripted keys into a keyboard block that has already been filled from
-   the real device, so a script adds to input rather than replacing it. */
-static void script_apply(uint32_t out, uint32_t n)
-{
-    double now;
-    int i;
-
-    if (!g_script_parsed) script_parse();
-    if (!g_nscript) return;
-    now = script_now();
-    if (g_script_t0 == 0.0) g_script_t0 = now;   /* no explicit start: from here */
-    now -= g_script_t0;
-    for (i = 0; i < g_nscript; i++) {
-        ScriptKey *k = &g_script[i];
-        /* Frame-scheduled events read the game's own progress instead of the
-           clock; see the header comment for why that is not a convenience. */
-        double when = k->by_frame ? (double)gpu_frames_presented() : now;
-        int down = when >= k->at && when < k->until;
-        if (down && (uint32_t)k->dik < n)
-            *((unsigned char *)(uintptr_t)out + k->dik) = 0x80;
-        if (down && !k->down)
-            fprintf(stderr, "DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
-                            "t=%.2fs, frame %lu\n", k->name, k->dik, now,
-                    gpu_frames_presented());
-        else if (!down && k->down && !k->said++)
-            fprintf(stderr, "DINPUT8: released \"%s\" at t=%.2fs, frame %lu\n",
-                    k->name, now, gpu_frames_presented());
-        k->down = down;
-    }
-}
-
-static void fill_keyboard(uint32_t out, uint32_t n)
-{
-    memset((void *)(uintptr_t)out, 0, n);
-    if (!input_available()) { say_blind("keyboard"); script_apply(out, n); return; }
-#ifdef X2_WITH_SDL
-    {
-        int nkeys = 0, i;
-        const bool *keys;
-        SDL_PumpEvents();
-        keys = SDL_GetKeyboardState(&nkeys);
-        if (!keys) { say_blind("keyboard"); return; }
-        for (i = 0; i < DIK_MAP_N; i++) {
-            if (DIK_MAP[i].sdl >= nkeys) continue;
-            if (!keys[DIK_MAP[i].sdl]) continue;
-            if ((uint32_t)DIK_MAP[i].dik >= n) continue;
-            /* DirectInput marks a key down with the HIGH bit, not with 1. */
-            *((unsigned char *)(uintptr_t)out + DIK_MAP[i].dik) = 0x80;
-        }
-    }
-#endif
-    script_apply(out, n);
-}
-
-static void fill_mouse(uint32_t out, uint32_t n)
-{
-    /* DIMOUSESTATE(2): LONG lX, lY, lZ then one byte per button. The axes are
-       RELATIVE -- deltas since the last read -- which is why SDL's relative
-       state is the right source and the absolute position is not. */
-    memset((void *)(uintptr_t)out, 0, n);
-    if (!input_available()) { say_blind("mouse"); return; }
-#ifdef X2_WITH_SDL
-    {
-        float dx = 0.0f, dy = 0.0f;
-        SDL_MouseButtonFlags b;
-        uint32_t nbuttons = n > 12u ? n - 12u : 0u;
-        SDL_PumpEvents();
-        b = SDL_GetRelativeMouseState(&dx, &dy);
-        if (n >= 4u)  WR32(out + 0u, (uint32_t)(int32_t)dx);
-        if (n >= 8u)  WR32(out + 4u, (uint32_t)(int32_t)dy);
-        /* lZ is the wheel, which SDL reports as an event rather than a state;
-           it stays 0 until the event pump keeps a running total. */
-        if (nbuttons > 0u && (b & SDL_BUTTON_LMASK))
-            *((unsigned char *)(uintptr_t)out + 12) = 0x80;
-        if (nbuttons > 1u && (b & SDL_BUTTON_RMASK))
-            *((unsigned char *)(uintptr_t)out + 13) = 0x80;
-        if (nbuttons > 2u && (b & SDL_BUTTON_MMASK))
-            *((unsigned char *)(uintptr_t)out + 14) = 0x80;
-    }
-#endif
-}
-
-/* ---- the methods ------------------------------------------------------- */
-
-
-/* ---- the gamepad ------------------------------------------------------- */
-
-/*
- * DIJOYSTATE2, which is what XMen2.exe's data format at 0x006a6514 declares:
- * 272 bytes over 164 objects. The offsets are not guessed -- they are the
- * ones the format's own object table gives, read out of the exe.
- *
- *   0   lX      4  lY      8  lZ     12 lRx    16 lRy    20 lRz
- *   24  rglSlider[2]
- *   32  rgdwPOV[4]
- *   48  rgbButtons[128]
- *   176 onwards: velocity, acceleration and force duplicates of all of the
- *       above, which this host leaves at zero and says so here rather than
- *       leaving a reader to wonder whether they were forgotten. Nothing in
- *       this game reads them: they exist for force-feedback sticks.
- */
-static void fill_joystick(Device *d, uint32_t out, uint32_t n)
-{
-    int32_t lo = d->axis_lo, hi = d->axis_hi;
-    int32_t mid = lo + (hi - lo) / 2;
-    int b, nb;
-    uint32_t pov;
-
-    memset((void *)(uintptr_t)out, 0, n);
-    if (n < 176u) {
-        /* Refused rather than partially filled: a short buffer here means the
-           caller's data format and ours disagree, and writing the axes into
-           what it thinks are buttons is worse than writing nothing. */
-        fprintf(stderr, "DINPUT8: a %u-byte joystick state is smaller than the "
-                        "176 bytes DIJOYSTATE2 needs for axes, POVs and "
-                        "buttons. Nothing is written.\n", n);
-        return;
-    }
-    /* Centred axes are the midpoint of the range the GAME set. */
-    WR32(out +  0u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_X,  lo, hi));
-    WR32(out +  4u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_Y,  lo, hi));
-    WR32(out +  8u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_Z,  lo, hi));
-    WR32(out + 12u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_RX, lo, hi));
-    WR32(out + 16u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_RY, lo, hi));
-    WR32(out + 20u, (uint32_t)dinput_pad_axis(d->pad, DINPUT_PAD_AXIS_RZ, lo, hi));
-    WR32(out + 24u, (uint32_t)mid);
-    WR32(out + 28u, (uint32_t)mid);
-    pov = dinput_pad_pov(d->pad);
-    /* All four POVs, and the three this pad does not have are CENTRED
-       (0xFFFFFFFF), not zero -- zero is north, and a memset would have held
-       "up" down for the whole run. */
-    WR32(out + 32u, pov);
-    WR32(out + 36u, 0xFFFFFFFFu);
-    WR32(out + 40u, 0xFFFFFFFFu);
-    WR32(out + 44u, 0xFFFFFFFFu);
-    nb = dinput_pad_button_count(d->pad);
-    for (b = 0; b < nb && 48u + (uint32_t)b < n; b++)
-        if (dinput_pad_button(d->pad, b))
-            *((unsigned char *)(uintptr_t)out + 48 + b) = 0x80;   /* high bit */
-}
-
-/*
- * The DirectInput object GUIDs, whose only varying byte is the first.
- * XMen2.exe's own data format names them -- GUID_XAxis is {A36D02E0-C9F3-11CF-
- * BFC7-444553540000} and the rest differ in that low byte -- so this builds
- * one from the byte rather than carrying nine near-identical tables.
- */
-static void obj_guid(unsigned char g[16], unsigned char lo)
-{
-    static const unsigned char REST[15] = {
-        0x02,0x6D,0xA3, 0xF3,0xC9, 0xCF,0x11,
-        0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
-    };
-    g[0] = lo;
-    memcpy(g + 1, REST, 15);
-}
-
-#define DIDFT_ABSAXIS   0x00000002u
-#define DIDFT_PSHBUTTON 0x00000004u
-#define DIDFT_POV       0x00000010u
-#define DIOBJ_BYTES     0x13Cu          /* DIDEVICEOBJECTINSTANCEA, DX8 */
-
-/*
- * EnumObjects, which the game NEEDS rather than merely calls.
- *
- * XMen2.exe's FUN_00628b40 calls it with DIDFT_AXIS and its callback
- * (FUN_00628510) immediately does SetProperty(DIPROP_RANGE, [-1000, +1000])
- * on each axis it is offered. A host that enumerated nothing would leave the
- * range unset, and every stick would read from the wrong scale -- so an empty
- * enumeration here is not a missing nicety, it is a wrong stick.
- *
- * The same callback checks each object's dwFlags for DIDOI_FFACTUATOR and
- * builds a force-feedback effect for the first two axes that have it. This
- * host has no force feedback, so no object carries that flag and that path is
- * never entered. That is a real difference from Windows and it is stated here.
- */
-static void enum_one_object(CPU *C, uint32_t cb, uint32_t pvref, uint32_t buf,
-                            unsigned char guid_lo, uint32_t ofs, uint32_t type,
-                            const char *name, int *stop)
-{
-    CPU K;
-    unsigned char g[16];
-
-    if (*stop) return;
-    memset((void *)(uintptr_t)buf, 0, DIOBJ_BYTES);
-    WR32(buf + 0u, DIOBJ_BYTES);
-    obj_guid(g, guid_lo);
-    memcpy((void *)(uintptr_t)(buf + 4u), g, 16);
-    WR32(buf + 0x14u, ofs);
-    WR32(buf + 0x18u, type);
-    WR32(buf + 0x1cu, 0);                    /* no DIDOI_FFACTUATOR: see above */
-    snprintf((char *)(uintptr_t)(buf + 0x20u), 260, "%s", name);
-    WR32(buf + 0x124u, 0);                   /* dwFFMaxForce */
-    WR32(buf + 0x128u, 0);                   /* dwFFForceResolution */
-    K = *C;
-    K.esp -= 8u;
-    WR32(K.esp + 0u, buf);
-    WR32(K.esp + 4u, pvref);
-    x86_guest_call_args(&K, cb, 8u);
-    if (K.eax == 0u) *stop = 1;              /* DIENUM_STOP */
-}
+/* State translation and joystick metadata have focused module owners. */
 
 static void m_EnumObjects(CPU *C)
 {
-    /* (this, lpCallback, pvRef, dwFlags) */
     Device *d = dev_of(THIS);
-    uint32_t cb = A(1), pvref = A(2), filter = A(3);
-    static uint32_t buf;
-    int stop = 0, i, nb;
-    static const struct { unsigned char lo; const char *nm; } AX[6] = {
-        { 0xE0, "X Axis" }, { 0xE1, "Y Axis" }, { 0xE2, "Z Axis" },
-        { 0xF4, "X Rotation" }, { 0xF5, "Y Rotation" }, { 0xE3, "Z Rotation" }
-    };
+    uint32_t callback = A(1), context = A(2), filter = A(3);
 
-    if (!d || !cb) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
+    if (!d || !callback) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
     if (d->kind != DINPUT_DEV_JOYSTICK) {
-        /* The keyboard and mouse are never enumerated by this game, and
-           answering "no objects" for them would be a lie that looks like a
-           device with no keys. */
         fprintf(stderr, "DINPUT8: EnumObjects on the %s, which this host does "
                         "not describe object by object. Nothing is offered, "
                         "and that is reported rather than passed off as an "
@@ -687,30 +154,8 @@ static void m_EnumObjects(CPU *C)
         ret_com(C, S_OK, 3);
         return;
     }
-    if (!buf && !(buf = guest_malloc(DIOBJ_BYTES))) {
-        ret_com(C, DIERR_OUTOFMEMORY, 3);
-        return;
-    }
-    /* DIDFT_ALL is 0 and means everything; otherwise the low byte is a mask of
-       the object types wanted. */
-    for (i = 0; i < 6; i++) {
-        uint32_t t = DIDFT_ABSAXIS | ((uint32_t)i << 8);
-        if (filter && !(DIDFT_ABSAXIS & filter)) break;
-        enum_one_object(C, cb, pvref, buf, AX[i].lo, (uint32_t)i * 4u, t,
-                        AX[i].nm, &stop);
-    }
-    if (!filter || (DIDFT_POV & filter))
-        enum_one_object(C, cb, pvref, buf, 0xF2, 32u, DIDFT_POV, "Hat Switch",
-                        &stop);
-    nb = dinput_pad_button_count(d->pad);
-    if (!filter || (DIDFT_PSHBUTTON & filter))
-        for (i = 0; i < nb; i++) {
-            char nm[32];
-            snprintf(nm, sizeof nm, "Button %d", i);
-            enum_one_object(C, cb, pvref, buf, 0xF0, 48u + (uint32_t)i,
-                            DIDFT_PSHBUTTON | ((uint32_t)i << 8), nm, &stop);
-        }
-    ret_com(C, S_OK, 3);
+    ret_com(C, dinput_joystick_enum_objects(C, d->pad, callback, context,
+                                            filter), 3);
 }
 
 static void m_QueryInterface(CPU *C)
@@ -864,9 +309,14 @@ static void m_GetDeviceState(CPU *C)
             dinput8_hotplug_pump(C);
         }
     }
-    if (d->kind == DINPUT_DEV_KEYBOARD)      fill_keyboard(out, cb);
-    else if (d->kind == DINPUT_DEV_JOYSTICK) fill_joystick(d, out, cb);
-    else                                     fill_mouse(out, cb);
+    if (d->kind == DINPUT_DEV_KEYBOARD) {
+        dinput_system_keyboard_state(out, cb);
+        dinput_script_apply(out, cb);
+    } else if (d->kind == DINPUT_DEV_JOYSTICK) {
+        dinput_joystick_state(d->pad, d->axis_lo, d->axis_hi, out, cb);
+    } else {
+        dinput_system_mouse_state(out, cb);
+    }
     ret_com(C, S_OK, 2);
 }
 
@@ -1120,7 +570,7 @@ static uint32_t device_alloc(DInputDeviceKind kind, int pad)
     }
     fprintf(stderr, "DINPUT8: a native %s device at 0x%08x%s\n",
             kind_name(kind), obj,
-            input_available() ? " (SDL-backed)"
+            dinput_system_available() ? " (SDL-backed)"
                               : " -- with no SDL video subsystem up, so it will "
                                 "report nothing pressed");
     return obj;
@@ -1145,7 +595,8 @@ void dinput_device_report(void)
                (!g_dev[i].polls && !g_dev[i].n_poll && !g_dev[i].n_acquire)
                    ? "  -- the game never touched this device after creating it"
                    : "");
-    if (g_blind_reads)
+    if (dinput_system_blind_reads())
         printf("        %lu of those read a device with no SDL video "
-               "subsystem up, and reported nothing pressed.\n", g_blind_reads);
+               "subsystem up, and reported nothing pressed.\n",
+               dinput_system_blind_reads());
 }

@@ -7,7 +7,8 @@
  * base, runs recompiled function bodies against it, and opens an SDL window so
  * the platform layer that replaces USER32/DINPUT/D3D8 has somewhere to live.
  *
- *   ./x2native <libIGDisplay.dll> [--no-window]
+ *   ./x2native                         run the current SDL3 GPU game target
+ *   ./x2native --no-window             the same target, off-screen
  *
  * What it does NOT do, and must not be read as doing: run the game. 107
  * imports are stubbed to abort by name (61 of them into libIGCore, which is
@@ -28,6 +29,7 @@
 #include "guest_heap.h"
 #include "d3d8_host.h"
 #include "d3d8_com.h"
+#include "x2native_options.h"
 
 #include <dlfcn.h>
 #include <signal.h>
@@ -1527,11 +1529,11 @@ static int run_battery(void)
 
 int main(int argc, char **argv)
 {
-    const char *dir = NULL;
-    int window = 1, i, rc, mapped = 0, run = 0, arkprobe = 0, vk = 0;
-    int vkselftest = 0, vkpermissive = 0;
-    int d3d8 = 0, d3d8selftest = 0, d3d8permissive = 0;
+    const char *dir;
+    int window, i, rc, mapped = 0, run, arkprobe, vk;
+    int vkselftest, vkpermissive, d3d8, d3d8selftest, d3d8permissive;
     int dialogselftest = 0;
+    X2NativeOptions options;
     X86Module *m;
     /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
        and the recompiled set grows one module at a time (libMovie was the
@@ -1554,36 +1556,19 @@ int main(int argc, char **argv)
         extern void x86_setjmp_report(void);
         atexit(x86_setjmp_report);
     }
-    for (i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--no-window") == 0) window = 0;
-        else if (strcmp(argv[i], "--selftest") == 0) selftest = 1;
-        else if (strcmp(argv[i], "--run") == 0) run = 1;
-        else if (strcmp(argv[i], "--ark-probe") == 0) arkprobe = 1;
-        else if (strcmp(argv[i], "--vk") == 0) vk = 1;
-        else if (strcmp(argv[i], "--vk-selftest") == 0) vkselftest = 1;
-        else if (strcmp(argv[i], "--vk-permissive") == 0) vkpermissive = 1;
-        else if (strcmp(argv[i], "--d3d8") == 0) d3d8 = 1;
-        else if (strcmp(argv[i], "--d3d8-selftest") == 0) d3d8selftest = 1;
-        else if (strcmp(argv[i], "--d3d8-permissive") == 0) d3d8permissive = 1;
-        else if (strcmp(argv[i], "--dialog-selftest") == 0) dialogselftest = 1;
-        else if (argv[i][0] == '-') {
-            /*
-             * Refuse an unrecognised option rather than treat it as the
-             * install directory. It used to fall through to `dir`, and a
-             * stale binary given a flag it did not know reported
-             * "cannot open --vk-selftest/XMen2.exe" -- which reads as a
-             * missing game rather than as a binary that predates the flag.
-             */
-            fprintf(stderr, "x2native: unknown option '%s'. Refusing rather "
-                            "than treating it as the install directory.\n"
-                            "  Known: --no-window --run --selftest --ark-probe "
-                            "--vk --vk-selftest --vk-permissive\n"
-                            "         --d3d8 --d3d8-selftest "
-                            "--d3d8-permissive --dialog-selftest\n", argv[i]);
-            return 2;
-        }
-        else dir = argv[i];
-    }
+    if ((rc = x2native_options_parse(argc, argv, &options)) != 0) return rc;
+    dir = options.install_dir;
+    window = options.window;
+    selftest = options.selftest;
+    run = options.run;
+    arkprobe = options.ark_probe;
+    vk = options.vk;
+    vkselftest = options.vk_selftest;
+    vkpermissive = options.vk_permissive;
+    d3d8 = options.d3d8;
+    d3d8selftest = options.d3d8_selftest;
+    d3d8permissive = options.d3d8_permissive;
+    dialogselftest = options.dialog_selftest;
     /*
      * The renderer's host half stands alone, so it is checked alone.
      *

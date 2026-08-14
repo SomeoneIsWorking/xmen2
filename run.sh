@@ -21,7 +21,8 @@
 #
 # Environment (all optional):
 #   REBUILD=1       rebuild before running
-#   RUN_ARGS=...    extra arguments passed through to the game / to x2native
+#   RUN_ARGS=...    extra arguments passed through to the game / to x2native;
+#                   these never replace the native target's launch mode
 #                   (NOT X2_ARGS -- that name belongs to the runtime's argument
 #                   watch, an entry-point list, and passing it as a command
 #                   line makes x2native refuse it as an unknown option)
@@ -122,14 +123,12 @@ EOM
     # relative to CWD. Launching from inside the game directory would write that
     # into the install, which this project treats as strictly read-only.
     cd "$ROOT" || exit 2
-    # --d3d8 by DEFAULT, because it is the live path: it answers
-    # Direct3DCreate8 with the host IDirect3D8, and everything that draws hangs
-    # off that. Without it the run takes the pre-renderer path, reaches the
-    # game's own DirectX check and exits 0 having drawn nothing -- which is
-    # indistinguishable, from the outside, from a build that is broken. It was
-    # the default here long after the renderer started working, and "./run.sh
-    # shows nothing" was the result.
-    exec "$BUILD/x2native" --run ${RUN_ARGS:---d3d8}
+    # x2native's own zero-argument route is the live SDL3 GPU + D3D8 game.
+    # RUN_ARGS only extends that route; it cannot replace a required renderer
+    # by being non-empty (the old ${RUN_ARGS:---d3d8} expression did exactly
+    # that). Keeping run.sh and the binary on one default prevents drift.
+    # shellcheck disable=SC2086 -- RUN_ARGS is intentionally an argv fragment.
+    exec "$BUILD/x2native" ${RUN_ARGS:-}
 fi
 
 # ======================================================================

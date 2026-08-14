@@ -39,7 +39,7 @@ const unsigned char *dinput_guid_of(int kind);
 void dinput_device_report(void);
 
 /*
- * Start the X2_INPUT_SCRIPT clock (see dinput_device.c). Called once when the
+ * Start the X2_INPUT_SCRIPT clock (see dinput_script.c). Called once when the
  * guest is about to run, so a script's times are seconds from the start of the
  * run rather than from whenever the game first polled the keyboard.
  */

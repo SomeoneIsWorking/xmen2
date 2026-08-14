@@ -131,10 +131,17 @@ instruction executed came from the translator. `tools/smoke_loop.sh` drives
 that run and checks it; `tools/smoke_loop.sh --selftest` proves its checks can
 fail and needs neither the game nor a GPU.
 
+`./run.sh` is the supported default launcher: with no arguments it builds when
+needed and runs the current native SDL3 GPU game target. `./run.sh wine` and
+`./run.sh stock` are explicitly named oracle/control paths; neither can become
+the accidental default.
+
 What that does *not* mean. It is not playable in the sense that matters: a
 person cannot yet pick it up and play, because the frame rate is ~30 fps
-headless with the frame cap removed, the three shipped features are not built,
-and nobody has driven a character with a controller through a level. The
+headless with the frame cap removed and nobody has driven a character with a
+controller through a level. Controller enumeration, polling and hotswap run
+end-to-end under a synthetic pad; the remaining controller work is the default
+binding/prompt experience. The
 renderer accepts every draw the engine issues and reads every render state the
 engine sets except fog and specular, which this title disables — but "nothing
 is refused" is a statement about coverage, not about the picture being right.
@@ -142,11 +149,13 @@ See `docs/codemap.md` for the honest per-subsystem status and
 `docs/info/claims/` for what has been proven, each with the observation that
 would falsify it.
 
-Earlier facts established during RE (see `scratch/logs/`):
-- Input layer is DirectInput 7 only (`DINPUT.dll::DirectInputCreateEx`); joystick
-  enumeration callback `createControllers @ 0x100052a0`; no hotplug support shipped.
+Earlier facts established during RE (see the durable claims under `docs/info/`):
+- The game uses DirectInput 7 and 8. The native host serves both through one
+  device implementation; joystick hotswap re-enters the game's own enumeration
+  routine rather than writing its controller table from the host (C160/C161).
 - `BUTTONS` enum + `ControllerType` meta-enum extracted from `libIGDisplay.dll`.
 - Xbox `assetsfb.wad` is ZIP-like with a trailing block; entries are raw deflate;
   extractor in `tools/extract_wad.py`.
-- `x2f_hud_xbox.igb` (93,288 B) differs from PC `x2f_hud.IGB` (93,252 B) — Xbox glyph
-  texture. Font XMLB is byte-identical across builds (glyphs live only in the IGB).
+- The Xbox button art is not in the HUD font and is not addressable by existing
+  medium-font codepoints. This port owns SVG equivalents under `assets/buttons/`
+  and publishes them into verified-unused font cells with `make_pad_font.py`.

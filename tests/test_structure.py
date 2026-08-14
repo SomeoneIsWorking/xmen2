@@ -15,6 +15,11 @@ LIMITS = {
     "src/x86watch_memory.c": 80,
     "src/x86watch_stack.c": 80,
     "src/x86watch_trace.c": 80,
+    "src/native/dinput_device.c": 620,
+    "src/native/dinput_system.c": 220,
+    "src/native/dinput_script.c": 200,
+    "src/native/dinput_joystick.c": 150,
+    "src/native/x2native_options.c": 80,
     "tools/recomp_hosted.py": 100,
     "tools/recomp_host_call.py": 80,
 }
