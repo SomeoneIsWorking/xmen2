@@ -17,9 +17,19 @@
 # WHAT THIS CHECKS
 #   1. every scripted key press fired -- a run that deadlocks stops presenting,
 #      so the frame-scheduled events after the stall never happen;
-#   2. the run reached the last one, which is only reachable through a level;
+#   2. THE LEVEL ACTUALLY LOADED, said by the game itself;
 #   3. no draw was refused, no instruction was unsupported, nothing aborted;
 #   4. the final frame is not blank.
+#
+# Check 2 used to be inferred from check 1 -- "the run reached the last press,
+# which is only reachable through a level" -- and that inference is FALSE. The
+# presses are scheduled by frame number and fire whether or not the game is in
+# a level: a run that answered the difficulty dialog a few frames late backed
+# out to the main menu, sat in the menus for the rest of the run, fired all six
+# presses, drew a fine-looking menu and PASSED. Two such runs were read as
+# gameplay evidence before the file gate caught it. The gate is the game's own
+# answer to "where am I": X2_SHOT_AFTER_FILE names the level package, and the
+# line it prints when the game opens it is what check 2 now reads.
 #
 # WHAT THIS DOES NOT CHECK, and must not be read as checking: that the picture
 # is CORRECT. It cannot tell the main menu from any other lit scene. A wrong
@@ -43,7 +53,7 @@ say() { echo "  $*"; }
 
 check_run() {   # $1 = log, $2 = screenshot, $3 = expected presses, $4 = exit code
 LOG=$1; SHOT=$2; want=$3; RC=${4:-0}
-# 1 + 2. Every scripted press, in order.
+# 1. Every scripted press, in order.
 got=$(grep -c 'INJECTING' "$LOG")
 if [ "$got" -ne "$want" ]; then
     say "FAIL: $got of $want scripted key press(es) fired. A run that stalls"
@@ -53,6 +63,17 @@ if [ "$got" -ne "$want" ]; then
     fail=1
 else
     say "ok: all $want scripted key press(es) fired, the last at $(grep 'INJECTING' "$LOG" | tail -1 | sed 's/.*frame /frame /')"
+fi
+
+# 2. The level loaded. The game says so by OPENING it; see the header.
+if grep -q 'scene gate is now OPEN' "$LOG"; then
+    say "ok: the level loaded ($(grep -m1 -o 'matched "[^"]*"' "$LOG"))"
+else
+    say "FAIL: the level never loaded. The game opened no file matching the"
+    say "      scene gate, so whatever the presses above did, they did it in"
+    say "      the menus -- and every later check is about a menu."
+    say "      Last scripted press: $(grep 'INJECTING' "$LOG" | tail -1 | sed 's/.*frame /frame /')"
+    fail=1
 fi
 
 # 3. Nothing refused, nothing untranslated, nothing aborted.
@@ -125,7 +146,9 @@ elif [ "$RC" -eq 3 ]; then
     # before -- the loop closing and the process surviving are different
     # claims, and only the first was being checked.
     say "FAIL: the run CRASHED. Exit 3 is x2native's fault reporter, so the"
-    say "      process took a SIGSEGV. The loop may well have closed first;"
+    say "      process took a fatal signal -- SIGSEGV, SIGILL, SIGFPE, SIGBUS"
+    say "      or SIGTRAP; the report names which. The loop may well have"
+    say "      closed first;"
     say "      that does not make the run good. The report is in the log:"
     grep -a -A3 '\*\*\* SIG' "$LOG" 2>/dev/null | head -8 | sed 's/^/      /'
     say "      Known open: docs/issues/0061 (shutdown SIGSEGV in"
@@ -171,6 +194,7 @@ with open(sys.argv[1], 'wb') as f:
 EOP
     ok_log=$T/ok.log
     { for i in 1 2 3 4 5 6; do echo "DINPUT8: INJECTING \"Return\" at t=1s, frame $i"; done
+      echo '[FILE] X2_SHOT_AFTER_FILE="act0/tutorial" matched "maps/act0/tutorial/tutorial1.pkgb" -- the scene gate is now OPEN.'
       echo "gpu draws 100 refused 0"; } > "$ok_log"
 
     expect() {  # name, expected-fail(0/1), log, shot, want, [exit code]
@@ -196,9 +220,14 @@ EOP
     expect "a stalled run (3 of 6 presses)" 1 "$T/short.log" "$good_shot" 6
     { cat "$ok_log"; echo "x86_unsupported_insn: reached guest 0x1"; } > "$T/insn.log"
     expect "an unsupported instruction"     1 "$T/insn.log"  "$good_shot" 6
+    # The one this gate USED to pass: every press fires, the picture is fine,
+    # and the game never left the menus. Nothing but the file gate can tell.
+    grep -v 'scene gate is now OPEN' "$ok_log" > "$T/menus.log"
+    expect "a run that never loaded a level" 1 "$T/menus.log" "$good_shot" 6
     { cat "$ok_log"; echo "x86_note_fallback: 0x1"; } > "$T/fb.log"
     expect "a hybrid fallback"              1 "$T/fb.log"    "$good_shot" 6
     { for i in 1 2 3 4 5 6; do echo "DINPUT8: INJECTING \"Return\" at t=1s, frame $i"; done
+      echo '[FILE] X2_SHOT_AFTER_FILE="act0/tutorial" matched "maps/act0/tutorial/tutorial1.pkgb" -- the scene gate is now OPEN.'
       echo "gpu draws 100 refused 7"; } > "$T/ref.log"
     expect "refused draws"                  1 "$T/ref.log"   "$good_shot" 6
     expect "a blank final frame"            1 "$ok_log"      "$blank_shot" 6
@@ -243,14 +272,25 @@ tools/cleanup_smoke.sh screenshot
 
 # Frame numbers measured on a run that closes the loop. They are a property of
 # the GAME (how many frames its menus and its load take), not of this machine.
-SCRIPT="f2639+40:Return,f2815+40:Return,f3182+40:Escape,f3204+40:Escape,f4044+40:Down,f4135+40:Return"
+#
+# The two menu answers REPEAT rather than being single presses at one frame.
+# A single Return at a fixed frame is a coin toss: the difficulty dialog opens a
+# few frames earlier or later from run to run, and a press that lands before it
+# is open leaves the run in the menus for good -- which is exactly the failure
+# check 2 now catches. Repeating is harmless once past: the level ignores the
+# extra Returns.
+SCRIPT="f2600-2900/50:Return,f3150-3260/40:Escape,f4044+40:Down,f4135+40:Return"
 
 echo "== smoke_loop: one full run, up to ${TIMEOUT}s =="
 # X2_MAX_FRAMES stops the run CLEANLY a little after the last scripted press,
 # instead of letting the timeout end it. That halves the run (3:55 against
 # 6:55), makes two runs the same length, and gives a real exit status -- the
 # timeout is now the backstop it was meant to be rather than the normal ending.
+# X2_SHOT_AFTER_FILE is what makes check 2 possible AND aims the screenshot:
+# with it, the frame this gate photographs is a LEVEL frame or there is no file
+# at all -- the "no screenshot" branch below then says so.
 X2_INPUT_SCRIPT="$SCRIPT" X2_SHOT="$RUNSHOT" X2_SHOT_EVERY=10 \
+X2_SHOT_AFTER_FILE=${X2_SHOT_AFTER_FILE:-act0/tutorial} \
 X2_MAX_FRAMES=4200 X2_UNPACED=1 X2_HEARTBEAT=60 \
     timeout "$TIMEOUT" "$BIN" --no-window --d3d8 --run > "$RUNLOG" 2>&1
 RC=$?

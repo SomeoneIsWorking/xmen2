@@ -625,6 +625,9 @@ static struct { uint32_t ra; unsigned long calls, black; }
              g_setlight_site[SETLIGHT_SITES];
 static int   g_nsetlight_site;
 static unsigned long g_setlight_calls, g_setlight_black, g_setlight_over;
+/* What the LAST SetLight left in each slot -- see dev_SetLight. */
+static struct { unsigned long calls, black; float last[3]; uint32_t last_type; }
+             g_light_slot[D3D8_MAX_LIGHTS];
 
 static void dev_SetLight(D3D8Object *self, CPU *C)
 {
@@ -693,6 +696,24 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
             g_setlight_over++;
         }
     }
+    /*
+     * PER INDEX, because the draw reads one index at a time.
+     *
+     * The run-wide total says 159 of 153,907 SetLights were black, and a draw
+     * that finds four black point lights is not explained by that: what
+     * matters is what the LAST call to each index left behind. Counting per
+     * index turns "black lights come from somewhere" into "index 5 was set
+     * 2,000 times and the last one was black".
+     */
+    if (idx < D3D8_MAX_LIGHTS) {
+        g_light_slot[idx].calls++;
+        if (l[1] == 0.0f && l[2] == 0.0f && l[3] == 0.0f)
+            g_light_slot[idx].black++;
+        g_light_slot[idx].last[0] = l[1];
+        g_light_slot[idx].last[1] = l[2];
+        g_light_slot[idx].last[2] = l[3];
+        g_light_slot[idx].last_type = ((const uint32_t *)l)[0];
+    }
     memcpy(g_dev.state.light[idx], l, sizeof g_dev.state.light[0]);
     g_dev.state.light_set[idx] = 1;
     d3d8_ret(C, D3D_OK);
@@ -710,6 +731,17 @@ void d3d8_setlight_report(void)
         printf("         SetLight was never called, so this run says nothing "
                "about where light colour comes from.\n");
         return;
+    }
+    for (i = 0; i < (int)D3D8_MAX_LIGHTS; i++) {
+        if (!g_light_slot[i].calls) continue;
+        printf("         light[%d] %lu call(s), %lu black; LAST was type %u "
+               "diffuse %.3f %.3f %.3f%s\n",
+               i, g_light_slot[i].calls, g_light_slot[i].black,
+               g_light_slot[i].last_type,
+               g_light_slot[i].last[0], g_light_slot[i].last[1],
+               g_light_slot[i].last[2],
+               (g_light_slot[i].last[0] == 0.0f && g_light_slot[i].last[1] == 0.0f
+                && g_light_slot[i].last[2] == 0.0f) ? "   <- BLACK" : "");
     }
     for (i = 0; i < g_nsetlight_site; i++) {
         uint32_t ra = g_setlight_site[i].ra;

@@ -59,3 +59,38 @@ it holds; the question is who filled it.
 The state-block path was suspected and is not obviously at fault: only
 D3DSBT_ALL is accepted (PIXELSTATE/VERTEXSTATE are refused by name), and
 capture/apply of the whole state is what D3DSBT_ALL means.
+
+### Note (2026-08-14)
+## Correction: that light dump described the LOADING frames, not the black gameplay frame
+
+The reading above -- four point lights black at every lit draw -- came from the
+first ten qualifying draws after the scene gate opened, and the scene gate opens
+when the game OPENS the level package, not when the level is up. All ten were in
+the level's first lit frames, still loading. C193 is falsified; C195 replaces it.
+
+Three measurements added since, each printed with its denominator:
+
+1. Per-index SetLight summary. Every light slot ends the run NON-black, with
+   exactly the colours the level data holds:
+       light[4] 14131 calls, 5 black; LAST type 1 diffuse 0.840 0.840 1.000
+       light[5] 14131 calls, 5 black; LAST type 1 diffuse 0.784 0.980 0.996
+       light[6] 14131 calls, 5 black; LAST type 1 diffuse 0.784 0.980 0.996
+       light[7] 14131 calls, 5 black; LAST type 1 diffuse 0.615 0.000 0.000
+   0.784/0.980/0.996 is igLightAttr slot 8 read straight out of
+   Maps/Act0/tutorial/tutorial1.IGB with build/igb_dump -obj. The colours
+   survive the whole path from the asset to D3D8.
+
+2. ApplyStateBlock is INNOCENT: 0 of 8,686 applies changed the light table or
+   the material. The suspicion recorded above is dead.
+
+3. The 20 igLightAttr objects in the tutorial carry real colours -- (0.784,
+   0.980, 0.996), (0, 0.51, 0), (1, 0, 0) -- and the one directional (type
+   enum 0) carries (0, 0.196, 0.196), which is exactly what the port
+   delivered. So the field reader is right for both types.
+
+## What is actually unmeasured
+
+What the CHARACTER draws are drawn with in a frame that is photographed black.
+The light dump can now aim there: X2_LIGHT_DUMP_SKIP=<n> skips the first n
+qualifying draws and every dump prints its presented frame number, and each
+kept screenshot prints its own frame number, so the two can be lined up.

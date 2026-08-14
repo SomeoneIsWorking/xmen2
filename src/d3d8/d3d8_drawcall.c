@@ -20,6 +20,7 @@ unsigned long gpu_frame_draws_so_far(void);
 #include "d3d8_types.h"
 
 #include "gpu_draw.h"
+#include "gpu_device.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -425,13 +426,39 @@ static void light_dump(const GpuDraw *d)
                     "X2_LIGHT_DUMP_MIN to change). A menu frame submits far "
                     "fewer, so this is NOT the menu.\n", minimum);
     }
+    /*
+     * X2_LIGHT_DUMP_SKIP=<n> -- ignore the first n qualifying draws.
+     *
+     * Without it a dump describes the FIRST lit level frames, which are the
+     * ones still loading: the scene gate opens when the game OPENS the level
+     * package, not when it finishes building the scene. A reading taken there
+     * was written up as "the lights are black in gameplay" and had to be
+     * corrected -- the same cap-the-boring-case trap this project keeps
+     * finding, one layer along. The number skipped is printed with the first
+     * dump so a reading can say which part of the level it describes.
+     */
+    {
+        static long skip = -1, skipped;
+        if (skip < 0) {
+            const char *e = getenv("X2_LIGHT_DUMP_SKIP");
+            skip = (e && *e) ? atol(e) : 0;
+        }
+        if (skipped < skip) {
+            if (++skipped == skip)
+                fprintf(stderr, "d3d8: X2_LIGHT_DUMP_SKIP -- %ld qualifying "
+                        "draw(s) were skipped; what follows is LATER in the "
+                        "level, not its first lit frames.\n", skip);
+            return;
+        }
+    }
     done++;
     fprintf(stderr,
-        "d3d8 light dump %ld/%ld: %d light(s) enabled, ambient %.3f %.3f %.3f "
+        "d3d8 light dump %ld/%ld at presented frame %lu: %d light(s) enabled, "
+        "ambient %.3f %.3f %.3f "
         "(D3DRS_AMBIENT raw 0x%08x), colorvertex %d, has_normal %d\n"
         "    material diffuse %.3f %.3f %.3f  ambient %.3f %.3f %.3f  "
         "emissive %.3f %.3f %.3f\n",
-        done, want, d->nlights,
+        done, want, gpu_frames_presented(), d->nlights,
         d->global_ambient[0], d->global_ambient[1], d->global_ambient[2],
         g_last_ambient_raw,
         d->color_vertex, d->normal_offset >= 0,

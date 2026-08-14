@@ -32,6 +32,9 @@ typedef struct {
 static Block g_sb[SB_MAX];
 static uint32_t g_gen = 1;
 static unsigned long g_created, g_applied, g_captured, g_deleted, g_refused;
+/* What Apply actually DOES to the lighting inputs, over the whole run. */
+static unsigned long g_apply_light_changed, g_apply_light_darkened,
+                     g_apply_material_changed;
 
 /* token = (generation << 8) | (index + 1). Index 0 is never a token, so 0 --
    the value an uninitialised guest DWORD holds -- is always invalid. */
@@ -176,6 +179,42 @@ int d3d8_sb_apply(uint32_t token, D3D8State *dst)
                         b->state.material[2], b->state.material_set);
         }
     }
+    /*
+     * OVER THE WHOLE RUN, not the first n.
+     *
+     * The dump above answers "what did apply number three do", and the first
+     * applies of a run are the MENU -- the scene that is known correct. The
+     * question is whether Apply is what blacks out a LEVEL's lights, and that
+     * needs every apply counted, with the denominator, so a zero is a
+     * measurement rather than a line nobody printed.
+     *
+     * "Darkens" is the discriminating case: an apply that replaces a lit light
+     * table with a black one is the shape of the defect; one that does the
+     * reverse, or leaves it alone, is not.
+     */
+    {
+        int changed = memcmp(dst->light, b->state.light, sizeof dst->light) != 0
+                   || memcmp(dst->light_on, b->state.light_on,
+                             sizeof dst->light_on) != 0;
+        if (changed) {
+            unsigned i;
+            int lit_before = 0, lit_after = 0;
+            for (i = 0; i < D3D8_MAX_LIGHTS; i++) {
+                int on_b = dst->light_on[i], on_a = b->state.light_on[i];
+                int nz_b = dst->light[i][1] != 0.0f || dst->light[i][2] != 0.0f
+                                                    || dst->light[i][3] != 0.0f;
+                int nz_a = b->state.light[i][1] != 0.0f
+                        || b->state.light[i][2] != 0.0f
+                        || b->state.light[i][3] != 0.0f;
+                lit_before += on_b && nz_b;
+                lit_after  += on_a && nz_a;
+            }
+            g_apply_light_changed++;
+            if (lit_after < lit_before) g_apply_light_darkened++;
+        }
+        if (memcmp(dst->material, b->state.material, sizeof dst->material) != 0)
+            g_apply_material_changed++;
+    }
     *dst = b->state;
     b->applies++;
     g_applied++;
@@ -212,4 +251,15 @@ void d3d8_sb_report(void)
         printf("        %lu call(s) were REFUSED (unsupported type, exhausted "
                "table, or a token naming no live block); each said which.\n",
                g_refused);
+    /*
+     * Printed at ZERO as well, with the denominator. Apply restoring the whole
+     * state is what D3DSBT_ALL MEANS, so this is not a defect report -- it is
+     * the number that says whether Apply is what leaves a level's lights black
+     * by the time a draw reads them, or whether it never touches them at all.
+     */
+    printf("        of those %lu applies, %lu changed the light table (%lu of "
+           "them left FEWER lights both enabled and non-black than were there "
+           "before) and %lu changed the material.\n",
+           g_applied, g_apply_light_changed, g_apply_light_darkened,
+           g_apply_material_changed);
 }

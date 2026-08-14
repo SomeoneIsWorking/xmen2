@@ -634,6 +634,13 @@ static void shot_maybe_write(void)
         printf("gpu: X2_SHOT_KEEP=%ld -- keeping the first %ld qualifying "
                "frame(s) as %s.000 onward rather than overwriting one file.\n",
                keep, keep, path);
+    /* WHICH FRAME each kept file is. Without it a capture cannot be lined up
+       with any other instrument -- a light dump and a screenshot were compared
+       across a whole level load once, and the reading had to be withdrawn. */
+    if (keep > 0)
+        printf("gpu: X2_SHOT_KEEP -- %s.%03ld is presented frame %lu "
+               "(%lu draws).\n", path, kept, g_headless_frames,
+               gpu_frame_draws_so_far());
     kept++;
     if (min_draws && busy_written == 1)
         printf("gpu: X2_SHOT_MIN_DRAWS -- first frame with at least %lu draws "
