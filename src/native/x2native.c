@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <ucontext.h>
 #include <unistd.h>
 
@@ -134,12 +135,89 @@ static uint32_t resolve_import(const char *mod, const char *sym,
     return poison_for(mod, sym, ordinal);
 }
 
-/* A fault in the poison region is an unbound import being used. Say which. */
-static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
+/*
+ * What a fatal signal MEANS, in the words its si_code carries.
+ *
+ * Reported because "the process died" was, for every signal except SIGSEGV,
+ * the entire report: only SIGSEGV was handled, so an illegal instruction, a
+ * misaligned access or a divide by zero killed the run with NOTHING printed --
+ * indistinguishable, from outside, from the window simply closing. That is the
+ * shape of the crash this reporter was extended to name.
+ */
+static const char *fault_meaning(int sig, int code)
+{
+    switch (sig) {
+    case SIGSEGV:
+        return code == SEGV_MAPERR ? "address not mapped"
+             : code == SEGV_ACCERR ? "no permission for that access"
+             : "a memory access fault";
+    case SIGILL:
+        return code == ILL_ILLOPC ? "illegal OPCODE -- the instruction at this "
+                                    "address is not an instruction"
+             : code == ILL_ILLOPN ? "illegal operand"
+             : code == ILL_ILLADR ? "illegal addressing mode"
+             : code == ILL_PRVOPC ? "privileged opcode"
+             : code == ILL_ILLTRP ? "illegal trap"
+             : "an illegal instruction";
+    case SIGFPE:
+        return code == FPE_INTDIV ? "integer divide by zero"
+             : code == FPE_INTOVF ? "integer overflow"
+             : code == FPE_FLTDIV ? "floating-point divide by zero"
+             : code == FPE_FLTINV ? "invalid floating-point operation"
+             : "an arithmetic fault";
+    case SIGBUS:
+        return code == BUS_ADRALN ? "misaligned address"
+             : code == BUS_ADRERR ? "no such physical address"
+             : code == BUS_OBJERR ? "object-specific hardware error"
+             : "a bus error";
+    case SIGTRAP:
+        return "a trap instruction (INT3/INT1) executed with no debugger to "
+               "take it";
+    default:
+        return "a fatal signal";
+    }
+}
+
+static const char *fault_name(int sig)
+{
+    switch (sig) {
+    case SIGSEGV: return "SIGSEGV";
+    case SIGILL:  return "SIGILL";
+    case SIGFPE:  return "SIGFPE";
+    case SIGBUS:  return "SIGBUS";
+    case SIGTRAP: return "SIGTRAP";
+    default:      return "signal";
+    }
+}
+
+/*
+ * A fault in the poison region is an unbound import being used. Say which.
+ *
+ * Every other fatal signal lands here too, and the import analysis below is
+ * SIGSEGV's alone: for SIGILL/SIGTRAP `si_addr` is the instruction, for SIGFPE
+ * the faulting operation, and reading any of them as an import slot would
+ * invent an explanation. What they share is the context under `where:` -- the
+ * host rip, the guest registers and the boundary ring -- which is the part
+ * that names where the guest was.
+ */
+static void fault_report(int sig, siginfo_t *si, void *uc)
 {
     uint32_t a = (uint32_t)(uintptr_t)si->si_addr;
     const char *mod = NULL, *sym;
-    (void)sig; (void)uc;
+    (void)uc;
+    if (sig != SIGSEGV) {
+        fprintf(stderr, "\n*** %s at %p -- %s\n",
+                fault_name(sig), si->si_addr, fault_meaning(sig, si->si_code));
+        if (sig == SIGILL || sig == SIGTRAP)
+            fprintf(stderr,
+                "    For a recompiled body this usually means control reached "
+                "something that is not code:\n"
+                "    a jump through a stale or wrong function pointer, or a "
+                "guest RET onto a corrupted stack.\n"
+                "    The guest registers and the ring below say where the run "
+                "was; si_addr is the host address it tried to execute.\n");
+        goto where;
+    }
     sym = x86_thunk_name(a, &mod);
     if (sym) {
         /*
@@ -176,7 +254,8 @@ static void poison_sigsegv(int sig, siginfo_t *si, void *uc)
      * with no context at all. Everything the process still knows goes out
      * here, and what it CANNOT know is stated rather than left as silence.
      */
-    fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot)\n", si->si_addr);
+    fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot) -- %s\n",
+            si->si_addr, fault_meaning(sig, si->si_code));
 where:
     {
 #if defined(__x86_64__) && defined(REG_RIP)
@@ -396,9 +475,31 @@ static int poison_init(void)
                             "overflow will die silently\n");
     }
     memset(&sa, 0, sizeof sa);
-    sa.sa_sigaction = poison_sigsegv;
+    sa.sa_sigaction = fault_report;
     sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
     if (sigaction(SIGSEGV, &sa, NULL) != 0) return -1;
+    /*
+     * The OTHER fatal signals, which used to kill the run in silence.
+     *
+     * SIGSEGV was handled because unbound imports fault there, and that made
+     * every other fault invisible: an illegal instruction (a jump through a
+     * wrong function pointer, a RET onto a corrupted stack) produced no line
+     * at all, so a crash and a closed window read the same from a log. Each of
+     * these prints the same context a SIGSEGV does. `--fault-selftest` proves
+     * every one of them fires.
+     *
+     * SIGABRT is deliberately NOT taken: this port's own aborts already name
+     * themselves on the way out, and exit 134 is what the gates read.
+     */
+    {
+        static const int fatal[] = { SIGILL, SIGFPE, SIGBUS, SIGTRAP };
+        size_t i;
+        for (i = 0; i < sizeof fatal / sizeof fatal[0]; i++)
+            if (sigaction(fatal[i], &sa, NULL) != 0)
+                fprintf(stderr, "x2native: could not install the fault "
+                                "reporter for %s; a fault of that kind will "
+                                "die silently\n", fault_name(fatal[i]));
+    }
     /*
      * A HANG had no report at all, and that is the one failure mode with
      * nothing to read afterwards: a crash names a body, an abort names a
@@ -417,6 +518,124 @@ static int poison_init(void)
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
     return 0;
+}
+
+/*
+ * PROOF THAT THE FAULT REPORTER FIRES -- x2native --fault-selftest.
+ *
+ * A crash reporter that never runs is worse than none: it makes silence read
+ * as "no crash". Each signal is raised in a CHILD with stderr on a pipe, and
+ * the parent requires the report to name that signal; a control child that
+ * installs the same handlers and does NOT fault must produce nothing, so a
+ * check that would pass on any output fails here.
+ *
+ * SIGILL is raised with a real illegal instruction (__builtin_trap emits UD2),
+ * which is the exact shape of the crash this was written for. The other three
+ * use raise(), which proves the handler and its message but carries si_code
+ * SI_USER rather than a hardware code -- said here rather than implied.
+ */
+static int fault_child(int sig, int genuine, int control)
+{
+    struct sigaction sa;
+    static const int fatal[] = { SIGSEGV, SIGILL, SIGFPE, SIGBUS, SIGTRAP };
+    size_t i;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = fault_report;
+    sa.sa_flags = SA_SIGINFO;
+    for (i = 0; i < sizeof fatal / sizeof fatal[0]; i++)
+        sigaction(fatal[i], &sa, NULL);
+    if (control) { fflush(NULL); _exit(0); }
+    if (genuine) __builtin_trap();
+    raise(sig);
+    fflush(NULL);
+    _exit(0);                    /* the handler _exit(3)s; reaching here fails */
+}
+
+static int fault_selftest(void)
+{
+    static const struct { int sig; int genuine; const char *what; } cases[] = {
+        { SIGILL,  1, "a real UD2 illegal instruction" },
+        { SIGFPE,  0, "raise(SIGFPE)" },
+        { SIGBUS,  0, "raise(SIGBUS)" },
+        { SIGTRAP, 0, "raise(SIGTRAP)" },
+        { SIGSEGV, 0, "raise(SIGSEGV)" },
+    };
+    size_t i;
+    int fails = 0;
+
+    for (i = 0; i <= sizeof cases / sizeof cases[0]; i++) {
+        int control = (i == sizeof cases / sizeof cases[0]);
+        int sig = control ? 0 : cases[i].sig;
+        const char *want = control ? NULL : fault_name(sig);
+        char buf[8192];
+        int fd[2], status = 0;
+        pid_t pid;
+        size_t got = 0;
+        ssize_t n;
+
+        if (pipe(fd) != 0) {
+            printf("x2native --fault-selftest: pipe() failed; NOTHING was "
+                   "checked.\n");
+            return 1;
+        }
+        fflush(NULL);
+        pid = fork();
+        if (pid < 0) {
+            printf("x2native --fault-selftest: fork() failed; NOTHING was "
+                   "checked.\n");
+            return 1;
+        }
+        if (pid == 0) {
+            close(fd[0]);
+            dup2(fd[1], 2);
+            close(fd[1]);
+            return fault_child(sig, control ? 0 : cases[i].genuine, control);
+        }
+        close(fd[1]);
+        /* Drain to EOF even once the buffer is full: a child blocked writing
+           into a pipe nobody is reading would make waitpid() below hang, and a
+           selftest that hangs is worse than one that fails. */
+        for (;;) {
+            char sink[4096];
+            if (got < sizeof buf - 1)
+                n = read(fd[0], buf + got, sizeof buf - 1 - got);
+            else
+                n = read(fd[0], sink, sizeof sink);
+            if (n <= 0) break;
+            if (got < sizeof buf - 1) got += (size_t)n;
+        }
+        buf[got] = 0;
+        close(fd[0]);
+        waitpid(pid, &status, 0);
+
+        if (control) {
+            int quiet = (strstr(buf, "***") == NULL);
+            int clean = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+            printf("  control: handlers installed, no fault  -- %s "
+                   "(%zu byte(s) on stderr, exit %d)\n",
+                   quiet && clean ? "silent, as it must be"
+                                  : "FAILED: it reported a fault that did not "
+                                    "happen",
+                   got, WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+            if (!quiet || !clean) fails++;
+            continue;
+        }
+        {
+            int named = strstr(buf, want) != NULL;
+            int reported = WIFEXITED(status) && WEXITSTATUS(status) == 3;
+            printf("  %-8s via %-32s -- %s (exit %d, %zu byte(s) reported)\n",
+                   want, cases[i].what,
+                   named && reported ? "reported by name"
+                                     : "FAILED: no report reached stderr",
+                   WIFEXITED(status) ? WEXITSTATUS(status)
+                                     : -WTERMSIG(status), got);
+            if (!named || !reported) fails++;
+        }
+    }
+    printf("x2native --fault-selftest: %s -- %d failure(s). Before this, only "
+           "SIGSEGV was handled and every other fatal signal killed the run "
+           "with nothing printed.\n", fails ? "FAILED" : "PASSED", fails);
+    return fails ? 1 : 0;
 }
 
 /* Each module's base, defined by its generated native file. The host maps the
@@ -1596,6 +1815,8 @@ int main(int argc, char **argv)
         win32_sdl_hide_windows(1);        /* a test must not open a modal */
         return report_box_selftest();
     }
+    /* The fault reporter, proved by faulting -- no install, no engine. */
+    if (options.fault_selftest) return fault_selftest();
     if (vkselftest) {
         extern int gpu_device_selftest(void);
         extern int gpu_draw_selftest(void);

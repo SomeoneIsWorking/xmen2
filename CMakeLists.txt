@@ -596,6 +596,14 @@ if(X2_MODULE_HAVE)
     add_test(NAME report_box
              COMMAND x2native --dialog-selftest)
     set_tests_properties(report_box PROPERTIES SKIP_RETURN_CODE 77)
+    # The crash reporter, proved by crashing. Only SIGSEGV used to be handled,
+    # so an illegal instruction or an arithmetic fault killed a run with
+    # nothing printed at all -- a crash that read, from a log, exactly like the
+    # window being closed. Each signal is raised in a child and the report must
+    # name it; a control child that does not fault must stay silent.
+    add_test(NAME fault_reporter
+             COMMAND x2native --fault-selftest)
+    set_tests_properties(fault_reporter PROPERTIES SKIP_RETURN_CODE 77)
 else()
     message(STATUS
         "x2native: SKIPPED -- no module has generated output. "

@@ -24,13 +24,16 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
             o->d3d8_permissive = 1;
         else if (strcmp(argv[i], "--dialog-selftest") == 0)
             o->dialog_selftest = 1;
+        else if (strcmp(argv[i], "--fault-selftest") == 0)
+            o->fault_selftest = 1;
         else if (argv[i][0] == '-') {
             fprintf(stderr, "x2native: unknown option '%s'. Refusing rather "
                             "than treating it as the install directory.\n"
                             "  Known: --no-window --run --selftest --ark-probe "
                             "--vk --vk-selftest --vk-permissive\n"
                             "         --d3d8 --d3d8-selftest "
-                            "--d3d8-permissive --dialog-selftest\n", argv[i]);
+                            "--d3d8-permissive --dialog-selftest\n"
+                            "         --fault-selftest\n", argv[i]);
             return 2;
         } else {
             o->install_dir = argv[i];
@@ -43,7 +46,7 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
        renderer; diagnostics and alternate renderers stay explicit. */
     if (!o->run && !o->selftest && !o->ark_probe && !o->vk &&
         !o->vk_selftest && !o->d3d8 && !o->d3d8_selftest &&
-        !o->dialog_selftest) {
+        !o->dialog_selftest && !o->fault_selftest) {
         o->d3d8 = 1;
         o->run = 1;
     }
