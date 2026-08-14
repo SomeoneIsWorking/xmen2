@@ -114,14 +114,20 @@ The preset is not yet the complete Xbox release behavior:
   the PC's 42 named rows expose neither action. Aliasing them to a `QuickPower`
   row would be a guess. The Xbox common-action constructor does not register
   Black or White either, proving pack use is a separate direct gameplay path.
-  The next layer is only partly recovered: Xbox `sub_00163240` gives BLACK and
-  WHITE distinct Alchemy-button records, but the meanings of those records'
-  numeric fields are not yet proved. The earlier `0xA` input query is party
-  switching, not a physical WHITE enum. Xbox `sub_00088680` is the counterpart
-  of PC `FUN_0047a140`; both retain separate `HEALTH_ITEM` and `ENERGY_ITEM`
-  consumption branches. The PC therefore already owns the consumption logic.
-  What remains is the Xbox-only mapping and trigger into that retained event
-  path, not a native reimplementation of inventory or healing.
+  The next layer is partly recovered. Xbox `sub_00163240` registers BLACK with
+  physical-value source index 8 and WHITE with source index 9 (their separate
+  platform codes are 9 and 8). `sub_00163E40` expands the Xbox analog-button
+  bytes into a 30-float array, and `sub_0015FD90` copies that array into each
+  per-player controller separately from the digital-button mask. Per-player
+  vtable slot `+0x10` reads one of those physical floats by index. Black/White
+  therefore do **not** need to become action-mask bits; the remaining trigger
+  must read physical indices 8/9 directly or through a wrapper. The earlier
+  `0xA` logical-action query is party switching, and the action-8 query in
+  `sub_001DCA40` is menu navigation, not pack use. Xbox `sub_00088680` is the
+  counterpart of PC `FUN_0047a140`; both retain separate `HEALTH_ITEM` and
+  `ENERGY_ITEM` consumption branches. The PC therefore already owns the
+  consumption logic. What remains is the Xbox-only physical trigger into that
+  retained event path, not a native reimplementation of inventory or healing.
 - The two relabelled buttons and their real click path still need an on-screen
   capture; the shipping-wrapper test proves the exact ABI and state changes,
   not that the current scripted navigation reaches this dialog.
