@@ -37,6 +37,7 @@
 #include <SDL3/SDL.h>
 
 #include "guest_heap.h"
+#include "../gpu/gpu_device.h"
 
 /* ---- guest ABI helpers ------------------------------------------------- */
 
@@ -602,6 +603,13 @@ void imp_USER32_CreateWindowExA(CPU *C)
 void imp_USER32_DestroyWindow(CPU *C)
 {
     if (!hwnd_is_main(A(0))) { ret_std(C, 0, 1); return; }
+    /* SDL_GPU owns a swapchain surface and its synchronisation objects for a
+       claimed window. Destroying the SDL_Window first leaves those children
+       attached to an object that no longer exists; the later GPU teardown
+       then destroys its Vulkan device with live semaphores and its instance
+       with a live VkSurfaceKHR. Release the claim while both owners are still
+       valid. This is also the order gpu_selftest uses. */
+    gpu_device_attach_window(NULL);
     SDL_DestroyWindow(g_win);
     g_win = NULL;
     g_win_live = 0;
