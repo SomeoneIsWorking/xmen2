@@ -15,7 +15,8 @@
  * ones with a call count of zero, in those words.
  *
  *   X2_WATCH=0x10002c00,0x10002c70   entry points to report
- *   X2_WATCH_MEM=0x10021b80          also dump this guest address each time
+ *   X2_WATCH_MEM=0x10021b80          dump this guest address each time
+ *   X2_WATCH_MEM=0x007ac24c,0,0x60   or follow object -> vtable -> slot
  *   X2_WATCH_MAX=8                   per-entry-point print cap (default 8)
  *   X2_WATCH_SELFTEST=1              prove both directions before the game runs
  *
@@ -26,6 +27,9 @@
  * failure img_rel() exists to prevent.
  */
 #include "x86rt.h"
+#include "x86watch_memory.h"
+#include "x86watch_stack.h"
+#include "x86watch_trace.h"
 
 #include <windows.h>
 
@@ -33,7 +37,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define WATCH_MAX_EPS 32
+/* XMen2's largest measured discriminator set is the 547 direct callers of one
+   lazy engine singleton. Keep the explicit list large enough to test the whole
+   class in one run instead of drawing conclusions from a hand-picked batch. */
+#define WATCH_MAX_EPS 1024
 
 /*
  * The sink is a FILE, not stderr.
@@ -69,7 +76,12 @@ FILE *x86_watch_log(void) { return watch_out(); }
 static uint32_t      w_ep[WATCH_MAX_EPS];
 static unsigned long w_hits[WATCH_MAX_EPS];
 static int           w_n = -1;          /* -1 = not yet parsed */
-static uint32_t      w_mem;             /* guest address, 0 = none */
+static X86MemWatch   w_mem;
+static int           w_mem_enabled;
+static uint32_t      w_mem_last;
+static uint32_t      w_mem_address_last;
+static int           w_mem_resolved_last;
+static int           w_mem_seen;
 static int           w_cap = 8;
 /*
  * X2_WATCH=all: report EVERY recompiled entry point, capped globally.
@@ -93,7 +105,13 @@ static void watch_parse(void)
     const char *c = getenv("X2_WATCH_MAX");
     w_n = 0;
     if (c && *c) w_cap = atoi(c);
-    if (m && *m) w_mem = (uint32_t)strtoul(m, NULL, 0);
+    if (m && *m) {
+        char error[128];
+        w_mem_enabled = x86_memwatch_parse(&w_mem, m, error, sizeof error);
+        if (!w_mem_enabled)
+            fprintf(watch_out(), "[MEM] REFUSING X2_WATCH_MEM=\"%s\": %s\n",
+                    m, error);
+    }
     if (!s || !*s) return;
     if (s[0] == 'a' && s[1] == 'l' && s[2] == 'l' && s[3] == '\0') {
         w_all = 1;
@@ -115,7 +133,7 @@ static void watch_parse(void)
         fprintf(watch_out(), "[WATCH] X2_WATCH has trailing junk that parsed to no "
                         "address: \"%s\" -- those entry points are NOT watched\n", s);
     fprintf(watch_out(), "[WATCH] watching %d entry point(s), cap %d per point%s\n",
-            w_n, w_cap, w_mem ? ", with a memory watch" : "");
+            w_n, w_cap, w_mem_enabled ? ", with a memory watch" : "");
     atexit(x86_watch_report);
 }
 
@@ -126,6 +144,39 @@ static int watch_slot(uint32_t ep)
     for (i = 0; i < w_n; i++)
         if (w_ep[i] == ep) return i;
     return -1;
+}
+
+static uint32_t watch_read32(void *context, uint32_t address)
+{
+    (void)context;
+    return RD32(address);
+}
+
+static int watch_mem_change(uint32_t ep, uint32_t *address,
+                            uint32_t *value, int *resolved)
+{
+    uint32_t host;
+    if (!w_mem_enabled)
+        return 0;
+    host = G_IMGBASE + (w_mem.root - g_guest_preferred_base);
+    *resolved = x86_memwatch_read(&w_mem, host, watch_read32, NULL,
+                                  address, value);
+    if (w_mem_seen && *resolved == w_mem_resolved_last &&
+        *address == w_mem_address_last && *value == w_mem_last)
+        return 0;
+    w_mem_seen = 1;
+    w_mem_resolved_last = *resolved;
+    w_mem_address_last = *address;
+    w_mem_last = *value;
+    if (*resolved)
+        fprintf(watch_out(), "[MEM] before 0x%08x: chain 0x%08x resolved "
+                "[0x%08x]=0x%08x CHANGED\n",
+                ep, w_mem.root, *address, *value);
+    else
+        fprintf(watch_out(), "[MEM] before 0x%08x: chain 0x%08x UNRESOLVED "
+                "(a required pointer is NULL) CHANGED\n", ep, w_mem.root);
+    fflush(watch_out());
+    return 1;
 }
 
 /*
@@ -157,8 +208,13 @@ void x86_watch_exit(uint32_t ep, const CPU *C)
 void x86_watch_enter(uint32_t ep, const CPU *C)
 {
     int i;
+    uint32_t mem_address = 0;
+    uint32_t mem_value = 0;
+    int mem_changed = 0;
+    int mem_resolved = 0;
     if (w_n < 0) watch_parse();
     x86_watch_note(0, ep, C->esp);
+    mem_changed = watch_mem_change(ep, &mem_address, &mem_value, &mem_resolved);
     if (w_all) {
         if (++w_all_seen > (unsigned long)w_cap) return;
         fprintf(watch_out(), "[WATCH] 0x%08x ENTER  esp=0x%08x ecx=0x%08x "
@@ -171,62 +227,36 @@ void x86_watch_enter(uint32_t ep, const CPU *C)
     i = watch_slot(ep);
     if (i < 0) return;
     w_hits[i]++;
-    if ((int)w_hits[i] > w_cap) return;
+    /* Cap identical repeats, never state changes. Otherwise the diagnostic
+       stops looking before the event it was created to find. */
+    if ((int)w_hits[i] > w_cap && !mem_changed) return;
     fprintf(watch_out(), "[WATCH] 0x%08x #%lu  esp=0x%08x ecx=0x%08x "
                     "ret=0x%08x arg0=0x%08x",
             ep, w_hits[i], C->esp, C->ecx,
             C->esp ? RD32(C->esp) : 0u,
             C->esp ? RD32(C->esp + 4) : 0u);
-    if (w_mem) {
-        uint32_t host = G_IMGBASE + (w_mem - 0x10000000u);
-        fprintf(watch_out(), "  [0x%08x]=0x%08x", w_mem, RD32(host));
+    if (w_mem_enabled) {
+        if (mem_resolved)
+            fprintf(watch_out(), "  chain[0x%08x -> 0x%08x]=0x%08x%s",
+                    w_mem.root, mem_address, mem_value,
+                    mem_changed ? " CHANGED" : "");
+        else
+            fprintf(watch_out(), "  chain[0x%08x]=UNRESOLVED%s", w_mem.root,
+                    mem_changed ? " CHANGED" : "");
     }
     fprintf(watch_out(), "\n");
     fflush(watch_out());
 }
 
-/*
- * Where does the runtime's own C frame sit relative to the guest stack?
- *
- * The recompiled bodies keep the guest stack pointer in C->esp and push to it
- * with WR32(C->esp -= 4, …). If the C frame holding the CPU struct lies just
- * BELOW the guest stack pointer, then the first guest push writes into it, and
- * every host call made through x86_call_host runs its whole frame over the top
- * of it. That is a property of the two addresses, so it is worth measuring
- * once rather than deducing: this prints the gap, and prints it whichever way
- * it comes out -- a large positive gap would mean the runtime has a stack of
- * its own and there is no collision to chase.
- *
- * Reported once per process. The gap is a property of the entry mechanism, not
- * of the entry point, so the second report would say the same thing.
- */
 void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu,
                      unsigned long cpu_size)
 {
     static int done;
-    uint32_t c_lo = (uint32_t)(uintptr_t)cpu;
-    uint32_t c_hi = c_lo + (uint32_t)cpu_size;
     if (done) return;
     done = 1;
     if (w_n < 0) watch_parse();
-    fprintf(watch_out(),
-            "[STACK] entry 0x%08x: guest_esp=0x%08x, this frame's CPU struct is "
-            "0x%08x..0x%08x (%lu bytes)\n", ep, guest_esp, c_lo, c_hi, cpu_size);
-    if (c_hi <= guest_esp && guest_esp - c_hi < 0x10000u)
-        fprintf(watch_out(),
-                "[STACK] SHARED STACK: the CPU struct ends %u bytes BELOW "
-                "guest_esp, so guest pushes descend straight into this frame "
-                "and any host call made from recompiled code runs its own "
-                "frame over it.\n", (unsigned)(guest_esp - c_hi));
-    else if (c_lo > guest_esp)
-        fprintf(watch_out(),
-                "[STACK] the CPU struct is ABOVE guest_esp by %u bytes -- guest "
-                "pushes move away from it.\n", (unsigned)(c_lo - guest_esp));
-    else
-        fprintf(watch_out(),
-                "[STACK] SEPARATE STACKS: the CPU struct is %u bytes from "
-                "guest_esp, far enough that they are different regions.\n",
-                (unsigned)(guest_esp - c_hi));
+    x86_watch_stack_report(watch_out(), ep, guest_esp,
+                           (uint32_t)(uintptr_t)cpu, cpu_size);
     fflush(watch_out());
 }
 
@@ -242,39 +272,14 @@ void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu,
  * Kinds: 0 = entered a recompiled body, 3 = it returned, 1 = called a host
  * function, 2 = that host function returned.
  */
-#define NOTE_RING 64
-static struct { int kind; uint32_t a, b; unsigned long tid; } w_note[NOTE_RING];
-static unsigned w_note_n;
-
 void x86_watch_note(int kind, uint32_t a, uint32_t b)
 {
-    unsigned i = w_note_n++ % NOTE_RING;
-    w_note[i].kind = kind;
-    w_note[i].a = a;
-    w_note[i].b = b;
-    w_note[i].tid = (unsigned long)GetCurrentThreadId();
+    x86_watch_trace_note(kind, a, b, (unsigned long)GetCurrentThreadId());
 }
 
 void x86_watch_note_dump(FILE *o)
 {
-    static const char *k[] = { "ENTER guest", "CALL host  ", "host RET   ",
-                               "guest RET  " };
-    unsigned n = w_note_n < NOTE_RING ? w_note_n : NOTE_RING;
-    unsigned i;
-    if (!w_note_n) {
-        fprintf(o, "[TRACE] the boundary ring is EMPTY: no recompiled body was "
-                   "entered and no host call was made before this point, so "
-                   "this fault is not downstream of one.\n");
-        return;
-    }
-    fprintf(o, "[TRACE] last %u of %u boundary crossings, oldest first:\n",
-            n, w_note_n);
-    for (i = w_note_n - n; i < w_note_n; i++) {
-        const char *lbl = k[w_note[i % NOTE_RING].kind & 3];
-        fprintf(o, "[TRACE]   tid %-5lu %s  addr=0x%08x esp=0x%08x\n",
-                w_note[i % NOTE_RING].tid, lbl,
-                w_note[i % NOTE_RING].a, w_note[i % NOTE_RING].b);
-    }
+    x86_watch_trace_dump(o);
 }
 
 static void x86_watch_report(void)

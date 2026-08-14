@@ -150,8 +150,23 @@ class OrdinaryJumps(unittest.TestCase):
             ins(0x00401002, "RET", "RET", n=1),
         ])
         self.assertIn("goto L_injmp;", c)
-        self.assertIn("DISPATCH(C, _injmp)", c,
+        self.assertIn("TAIL_DISPATCH(C, _injmp)", c,
                       "an out-of-function target must still dispatch")
+        self.assertIn("X86_TAIL_FN(_x86_fn_ep)", c,
+                      "the source body must retire before its tail target")
+        self.assertLess(c.index("TAIL_DISPATCH(C, _injmp)"),
+                        c.index("X86_TAIL_FN(_x86_fn_ep)"),
+                        "dispatch must inspect the source depth before that "
+                        "source retires")
+
+    def test_indirect_call_keeps_a_nested_dispatch_scope(self):
+        c = translate([
+            ins(0x00401000, "CALL", "CALL EAX", n=2),
+            ins(0x00401002, "RET", "RET", n=1),
+        ])
+        self.assertIn("DISPATCH(C, _icall)", c)
+        self.assertNotIn("TAIL_DISPATCH(C, _icall)", c,
+                         "a CALL must finish its callee before the caller resumes")
 
 
 class SetjmpIsEmittedInline(unittest.TestCase):
@@ -337,6 +352,7 @@ class InteriorEntries(unittest.TestCase):
             ins(0x00402000, "JMP", "JMP 0x00401000", n=5, flow=0x00401000),
         ], ep=0x00402000, extra_eps=[0x00401000])
         self.assertIn("fn_00401000(C)", c)
+        self.assertIn("X86_TAIL_FN(_x86_fn_ep)", c)
         self.assertNotIn("enter_at", c)
 
     def test_a_jump_into_no_function_at_all_still_reports_by_name(self):

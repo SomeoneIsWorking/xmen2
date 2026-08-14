@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "x86rt.h"
+#include "x2run_diag.h"
 
 int  x86_resolve_imports(void);
 void fn_XMen2_006725f4(CPU *C);    /* XMen2.exe entry point */
@@ -202,6 +203,8 @@ int main(int argc, char **argv)
     const char *img = getenv("X2_IMAGE");
     if (!img) img = (argc > 1) ? argv[1] : "XMen2_orig.exe";
 
+    x2run_diag_start();
+
     map_image(img);
 
     if (x86_resolve_imports() != 0) {
@@ -233,7 +236,9 @@ int main(int argc, char **argv)
 #endif
     printf("x2run: entering recompiled XMen2.exe at 0x006725f4\n");
     fflush(stdout);
+    x2run_diag_note("enter guest entry", C.eax);
     fn_XMen2_006725f4(&C);
+    x2run_diag_note("guest entry returned", C.eax);
     printf("x2run: returned from the entry point, eax=0x%08x\n", C.eax);
     return 0;
 }

@@ -25,6 +25,8 @@ import os
 import re
 import sys
 from collections import Counter
+from recomp_hosted import DISPATCH_BODY, import_adapter as hosted_import_adapter
+from recomp_host_call import host_call_bridge
 
 
 class Unsupported(Exception):
@@ -1408,21 +1410,24 @@ def emit_instruction(ins, ctx):
                     # them to the inline form in their own body.
                 if m == "CALL":
                     return [A, ret_push(ret), call]
-                return [A, call, "return;"]     # tail-jump thunk
+                return [A, "X86_TAIL_FN(_x86_fn_ep);", call,
+                        "return;"]     # tail-jump thunk
             # otherwise it is real indirect dispatch (vtable etc.)
             ret = ins["a"] + ins["n"]
             if m == "CALL":
                 return [A] + icall(t, ret)
             return [A, "{ _injmp = %s; goto L_injmp; }" % t.read()] \
                    if ctx.get("_has_injmp") else \
-                   [A, "DISPATCH(C, %s); return;" % t.read()]
+                   [A, "TAIL_DISPATCH(C, %s);" % t.read(),
+                    "X86_TAIL_FN(_x86_fn_ep); return;"]
         if t is not None and t.kind in ("reg32",):
             ret = ins["a"] + ins["n"]
             if m == "CALL":
                 return [A] + icall(t, ret)
             return [A, "{ _injmp = %s; goto L_injmp; }" % t.read()] \
                    if ctx.get("_has_injmp") else \
-                   [A, "DISPATCH(C, %s); return;" % t.read()]
+                   [A, "TAIL_DISPATCH(C, %s);" % t.read(),
+                    "X86_TAIL_FN(_x86_fn_ep); return;"]
 
     # A JMP whose target lies outside this function is a TAIL CALL, not a
     # branch -- MSVC emits these for one-line wrappers. Treating it as a goto
@@ -1437,7 +1442,8 @@ def emit_instruction(ins, ctx):
                 # the same offset switch its computed jumps already use. The
                 # address is MAPPED (img_rel), because that switch subtracts
                 # G_IMGBASE and a linked address would match no case.
-                return [A, "{ C->enter_at = %s; %s(C); return; }"
+                return [A, "{ C->enter_at = %s; X86_TAIL_FN(_x86_fn_ep); "
+                        "%s(C); return; }"
                         % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"],
                            fname(INTERIOR[ins["flow"]]))]
             if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
@@ -1447,9 +1453,11 @@ def emit_instruction(ins, ctx):
                 # missing function in libCriMovie that was really libIGGui's,
                 # and the discovery loop then seeded and split the wrong module
                 # -- successfully, and to no effect. Same class as C093.
-                return [A, "x86_call_unknown(C, %s); return;"
+                return [A, "X86_TAIL_FN(_x86_fn_ep);",
+                        "x86_call_unknown(C, %s); return;"
                         % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
-            return [A, "%s(C); return;" % fname(ins["flow"])]
+            return [A, "X86_TAIL_FN(_x86_fn_ep);",
+                    "%s(C); return;" % fname(ins["flow"])]
         return [A, "goto L_%08x;" % ins["flow"]]
 
     if m in ("LOOP", "LOOPE", "LOOPZ", "LOOPNE", "LOOPNZ"):
@@ -1473,15 +1481,18 @@ def emit_instruction(ins, ctx):
             if ins["flow"] in INTERIOR:
                 # Into another body at a label -- see the JMP case above. A Jcc
                 # is a predicated jump, so nothing else about it differs.
-                return [A, "if (%s) { C->enter_at = %s; %s(C); return; }"
+                return [A, "if (%s) { C->enter_at = %s; "
+                        "X86_TAIL_FN(_x86_fn_ep); %s(C); return; }"
                         % (CC[m[1:]],
                            img_rel(ins["flow"]) or "0x%08xU" % ins["flow"],
                            fname(INTERIOR[ins["flow"]]))]
             if KNOWN_EPS and ins["flow"] not in KNOWN_EPS:
-                return [A, "if (%s) { x86_call_unknown(C, %s); return; }"
+                return [A, "if (%s) { X86_TAIL_FN(_x86_fn_ep); "
+                        "x86_call_unknown(C, %s); return; }"
                         % (CC[m[1:]],
                            img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
-            return [A, "if (%s) { %s(C); return; }" % (CC[m[1:]], fname(ins["flow"]))]
+            return [A, "if (%s) { X86_TAIL_FN(_x86_fn_ep); %s(C); return; }"
+                    % (CC[m[1:]], fname(ins["flow"]))]
         return [A, "if (%s) goto L_%08x;" % (CC[m[1:]], ins["flow"])]
 
     if m == "CALL":
@@ -1663,7 +1674,8 @@ def translate(fn):
         for a in sorted(fn["_addrs"]):
             body.append("    case 0x%xU: goto L_%08x;" % (a - IMG[0], a))
         body.append("    default: break; }")
-        body.append("    DISPATCH(C, _injmp); return; }")
+        body.append("    TAIL_DISPATCH(C, _injmp);")
+        body.append("    X86_TAIL_FN(_x86_fn_ep); return; }")
     fn["_unsupported"] = unsupported
     return body, None
 
@@ -2011,6 +2023,7 @@ def cmd_emit(argv):
                              % (img_rel(fn["ep"]) or "0x%08xU" % fn["ep"],
                                 noret_to.replace('"', "'")))
                 elif nxt in all_eps:
+                    b.append("  X86_TAIL_FN(_x86_fn_ep);")
                     b.append("  %s(C); return;" % fname(nxt))
                 else:
                     # Both MAPPED, for the same reason as x86_int3 (C101).
@@ -2155,7 +2168,9 @@ def cmd_runtime(argv):
     nostubs = mode in ("nostubs", "hostimports")
     L = ['/* generated by tools/recomp.py runtime -- do not edit */',
          '#include <windows.h>',
-         '#include "x86rt.h"', '#include <stdio.h>', '#include <stdlib.h>',
+         '#include "x86rt.h"', '#include "x86callbacks.h"',
+         '#include "x87crt.h"', '#include "x87host.h"',
+         '#include <stdio.h>', '#include <stdlib.h>',
          '#include <string.h>', '']
     for fn in fns:
         L.append("void %s(CPU *C);" % fname(fn["ep"]))
@@ -2169,6 +2184,8 @@ def cmd_runtime(argv):
     L.append("const int g_fn_count = %d;" % len(fns))
     L.append("")
     L.append(RUNTIME_BODY)
+    L.append(host_call_bridge(True))
+    L.append("uint32_t g_guest_preferred_base = 0x%08xU;" % IMG[0])
     # The hosted build has exactly one module in the process, so its per-module
     # base and the plain global are the same storage under two names. An alias
     # rather than a second variable: two variables can drift, and the failure
@@ -2224,6 +2241,10 @@ def cmd_runtime(argv):
             if ident in ("imp_MSVCR71_setjmp3", "imp_MSVCR71__setjmp3",
                          "imp_MSVCR71_longjmp"):
                 continue
+            adapter = hosted_import_adapter(ident, mod, sym, byid[ident])
+            if adapter:
+                L.append(adapter)
+                continue
             L.append('void %s(CPU *C) { x86_call_host(C, g_imp[%d], "%s!%s"); }'
                      % (ident, byid[ident], mod, sym.replace('"', "'")))
         seen = set(byid)
@@ -2242,6 +2263,13 @@ uint32_t g_imgbase = 0x10000000U;
    behaviour), so a loader that forgets to set it fails loudly rather than
    silently calling into arbitrary addresses. */
 uint32_t g_image_lo, g_image_hi;
+
+void __attribute__((weak)) x86_runtime_fault_note(const char *kind,
+                                                   uint32_t a, uint32_t b,
+                                                   uint32_t c)
+{
+    (void)kind; (void)a; (void)b; (void)c;
+}
 
 /* Hybrid execution: run original machine code for targets with no recompiled
    body. Off by default so nothing falls back unnoticed; the runner opts in. */
@@ -2278,10 +2306,9 @@ void __attribute__((weak)) x86_dispatch_miss(uint32_t target)
     fprintf(stderr, "x86_dispatch: no recompiled function at 0x%08x "
                     "(indirect call target outside the translated set)\\n", target);
     x86_dump_history();
+    x86_runtime_fault_note("dispatch_miss", target, 0, 0);
     abort();
 }
-
-int __attribute__((weak)) g_dispatch_depth;
 
 #ifdef X86_TRACE_CALLS
 uint32_t x86_hist[X86_HIST];
@@ -2307,51 +2334,38 @@ void x86_dump_history(void)
    Resolve it as a call target and continue there. */
 void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
 {
+    MEMORY_BASIC_INFORMATION mbi;
     int i;
-    (void)fn_ep; (void)expected;
     for (i = 0; i < g_fn_count; i++)
         if (g_fns[i].ep == target) { g_fns[i].fn(C); return; }
-    /* Not a function entry: it is a resume point INSIDE a function, which this
-       translation unit cannot jump into. Report it rather than continue. */
+    /* A tail-called body inherits its caller's return address. That address is
+       normally in the MIDDLE of a function, so it cannot be dispatched as an
+       entry point and must simply return through the matching host call chain.
+       The native runtime has always made this distinction with its module map;
+       the hosted runtime used to abort here and reintroduced issue #27. */
+    if (VirtualQuery((const void *)(uintptr_t)target, &mbi, sizeof mbi)
+        && mbi.State == MEM_COMMIT && mbi.Type == MEM_IMAGE
+        && (mbi.Protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ
+                           | PAGE_EXECUTE_READWRITE
+                           | PAGE_EXECUTE_WRITECOPY))) {
+        static int said;
+        if (!said++)
+            fprintf(stderr, "x86_return_to: 0x%08x is executable image code; "
+                            "body 0x%08x was tail-called, so returning is "
+                            "correct (reported once)\\n", target, fn_ep);
+        return;
+    }
+    /* A value outside executable image code cannot be a return address. */
     fprintf(stderr, "x86_return_to: 0x%08x is not a function entry -- a RET "
-                    "redirected into the middle of a function, which the "
-                    "current translation cannot express\\n", target);
+                    "popped something outside executable image code (body "
+                    "0x%08x, entered with return 0x%08x)\\n",
+                    target, fn_ep, expected);
+    x86_runtime_fault_note("return_to", target, fn_ep, expected);
     x86_dump_history();
     abort();
 }
 
-void x86_dispatch(CPU *C, uint32_t target)
-{
-    int i;
-    if (++g_dispatch_depth > 64) { g_dispatch_depth = 0;
-                                   x86_dispatch_miss(target); }
-    for (i = 0; i < g_fn_count; i++)
-        if (g_fns[i].ep == target) {
-            g_fns[i].fn(C); g_dispatch_depth--; return;
-        }
-    g_dispatch_depth--;
-    /* An indirect call through the IAT lands on HOST code -- the CRT does this
-       in the first few instructions. Anything outside the guest image is a real
-       Windows function and must be called on the guest stack. */
-    if (g_image_lo && (target < g_image_lo || target >= g_image_hi)) {
-        x86_call_host(C, (void *)(uintptr_t)target, "indirect host call");
-        return;
-    }
-    /* HYBRID EXECUTION. The target is inside the image but has no recompiled
-       body -- one of the addresses static analysis never resolved into a
-       function. The original image is mapped executable at its correct base, so
-       the ORIGINAL machine code can simply be run for it. That keeps the
-       program alive instead of aborting, and it is honest only because it is
-       LOUD: every distinct fallback address is reported once, and the count is
-       the remaining work. Silently falling back would let a binary that is
-       mostly original code masquerade as a recompilation. */
-    if (g_image_lo && x86_allow_fallback) {
-        x86_note_fallback(target);
-        x86_call_host(C, (void *)(uintptr_t)target, "original code (not recompiled)");
-        return;
-    }
-    x86_dispatch_miss(target);
-}
+''' + DISPATCH_BODY + r'''
 
 void x86_untranslated(uint32_t ep, const char *name, const char *reason)
 {
@@ -2553,38 +2567,38 @@ uint32_t x86_enter_body(uint32_t ep, uint32_t guest_esp, uint32_t ecx)
 __attribute__((naked)) void x86_enter_tramp(void)
 {
     __asm__ __volatile__(
-        "pushl %eax\\n\\t"                /* [E-4]  entry point   } consumed */
-        "pushl %ecx\\n\\t"                /* [E-8]  guest ecx     } before   */
-        "pushl %edx\\n\\t"                /* [E-12] pop count     } the body */
-        "call _x86_rt_stack_take\\n\\t"   /* eax = private stack esp */
-        "movl %esp, %edx\\n\\t"           /* edx = E-12, the scratch block */
-        "movl %eax, %esp\\n\\t"           /* everything below is private */
-        "pushl %ebp\\n\\t"
-        "pushl %ebx\\n\\t"
-        "pushl %esi\\n\\t"
-        "pushl %edi\\n\\t"
-        "movl (%edx), %eax\\n\\t"
-        "pushl %eax\\n\\t"                /* pop count, kept for the return */
-        "leal 12(%edx), %eax\\n\\t"       /* eax = E, the guest esp */
-        "pushl %eax\\n\\t"
-        "pushl 4(%edx)\\n\\t"             /* arg3: guest ecx */
-        "pushl %eax\\n\\t"                /* arg2: guest esp */
-        "pushl 8(%edx)\\n\\t"             /* arg1: entry point */
-        "call _x86_enter_body\\n\\t"
-        "addl $12, %esp\\n\\t"
-        "pushl %eax\\n\\t"                /* the guest's return value */
-        "call _x86_rt_stack_give\\n\\t"
-        "popl %eax\\n\\t"
-        "popl %edx\\n\\t"                 /* E */
-        "popl %ecx\\n\\t"                 /* pop count */
-        "popl %edi\\n\\t"
-        "popl %esi\\n\\t"
-        "popl %ebx\\n\\t"
-        "popl %ebp\\n\\t"
-        "movl %edx, %esp\\n\\t"           /* back on the guest stack at E */
-        "popl %edx\\n\\t"                 /* the guest caller's return address */
-        "addl %ecx, %esp\\n\\t"           /* stdcall argument cleanup */
-        "jmp *%edx\\n\\t");
+        "pushl %eax\n\t"                /* [E-4]  entry point   } consumed */
+        "pushl %ecx\n\t"                /* [E-8]  guest ecx     } before   */
+        "pushl %edx\n\t"                /* [E-12] pop count     } the body */
+        "call _x86_rt_stack_take\n\t"   /* eax = private stack esp */
+        "movl %esp, %edx\n\t"           /* edx = E-12, the scratch block */
+        "movl %eax, %esp\n\t"           /* everything below is private */
+        "pushl %ebp\n\t"
+        "pushl %ebx\n\t"
+        "pushl %esi\n\t"
+        "pushl %edi\n\t"
+        "movl (%edx), %eax\n\t"
+        "pushl %eax\n\t"                /* pop count, kept for the return */
+        "leal 12(%edx), %eax\n\t"       /* eax = E, the guest esp */
+        "pushl %eax\n\t"
+        "pushl 4(%edx)\n\t"             /* arg3: guest ecx */
+        "pushl %eax\n\t"                /* arg2: guest esp */
+        "pushl 8(%edx)\n\t"             /* arg1: entry point */
+        "call _x86_enter_body\n\t"
+        "addl $12, %esp\n\t"
+        "pushl %eax\n\t"                /* the guest's return value */
+        "call _x86_rt_stack_give\n\t"
+        "popl %eax\n\t"
+        "popl %edx\n\t"                 /* E */
+        "popl %ecx\n\t"                 /* pop count */
+        "popl %edi\n\t"
+        "popl %esi\n\t"
+        "popl %ebx\n\t"
+        "popl %ebp\n\t"
+        "movl %edx, %esp\n\t"           /* back on the guest stack at E */
+        "popl %edx\n\t"                 /* the guest caller's return address */
+        "addl %ecx, %esp\n\t"           /* stdcall argument cleanup */
+        "jmp *%edx\n\t");
 }
 
 /* The preemption point's budget (X86_ENTER_FN in x86rt.h fires it in every
@@ -2609,7 +2623,9 @@ void x86_call_unknown(CPU *C, uint32_t target)
 
 void x87_fault(const char *what)
 {
+    void *caller = __builtin_return_address(0);
     fprintf(stderr, "%s\\n", what);
+    x86_runtime_fault_note(what, (uint32_t)(uintptr_t)caller, 0, 0);
     abort();
 }
 
@@ -2706,6 +2722,7 @@ def cmd_dll(argv):
     L.append("};")
     L.append("#define N_IMP %d" % len(names))
     L.append(DLL_BODY)
+    L.append(host_call_bridge(False))
     for mod, sym, ident in names:
         L.append("void %s(CPU *C) { x86_call_host(C, g_imp[%d], \"%s!%s\"); }"
                  % (ident, seen[ident], mod, sym.replace('"', "'")))
@@ -2765,35 +2782,6 @@ def cmd_dll(argv):
 
 
 DLL_BODY = '''
-/* Run a real (host) function using the GUEST stack, then read ESP back so the
-   callee's own cleanup determines the new guest ESP. No signature needed. */
-void x86_call_host(CPU *C, void *fn, const char *what)
-{
-    uint32_t eax, after, gsp = C->esp + 4;   /* +4: drop our fake return addr */
-    if (!fn) {
-        fprintf(stderr, "x86_call_host: %s unresolved\\n", what);
-        abort();
-    }
-#ifdef X86_WATCH
-    x86_watch_note(1, (uint32_t)(uintptr_t)fn, C->esp);
-#endif
-    __asm__ __volatile__(
-        "movl %%esp, %%edi\\n\\t"
-        "movl %[g], %%esp\\n\\t"
-        "movl %[c], %%ecx\\n\\t"
-        "call *%[f]\\n\\t"
-        "movl %%esp, %[aft]\\n\\t"
-        "movl %%edi, %%esp\\n\\t"
-        : "=a"(eax), [aft] "=r"(after)
-        : [f] "r"(fn), [g] "r"(gsp), [c] "r"(C->ecx)
-        : "ecx", "edx", "edi", "memory");
-    C->eax = eax;
-    C->esp = after;
-#ifdef X86_WATCH
-    x86_watch_note(2, (uint32_t)(uintptr_t)fn, after);
-#endif
-}
-
 BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID r)
 {
     int i;
@@ -2857,6 +2845,26 @@ typedef struct {
 static HostJmp *g_host_jmp;
 static int g_host_jmp_cap;
 static int g_host_jmp_active = -1;
+
+void x86_termination_note(CPU *C, const char *what, int has_code)
+{
+#ifdef X86_WATCH
+    FILE *x86_watch_log(void);
+    void x86_watch_note_dump(FILE *o);
+    FILE *o = x86_watch_log();
+    fprintf(o, "[TERMINATE] %s%s called by guest return address 0x%08x, "
+            "esp=0x%08x\\n", what,
+            has_code ? "(code is the next stack dword)" : "()",
+            RD32(C->esp), C->esp);
+    if (has_code)
+        fprintf(o, "[TERMINATE]   code=%u (0x%08x)\\n",
+                RD32(C->esp + 4u), RD32(C->esp + 4u));
+    x86_watch_note_dump(o);
+    fflush(o);
+#else
+    (void)C; (void)what; (void)has_code;
+#endif
+}
 
 static int host_jmp_slot(uint32_t env)
 {
@@ -2926,30 +2934,6 @@ void imp_MSVCR71_setjmp3(CPU *C)
     abort();
 }
 void imp_MSVCR71__setjmp3(CPU *C) { imp_MSVCR71_setjmp3(C); }
-
-void x86_call_host(CPU *C, void *fn, const char *what)
-{
-    uint32_t eax, after, gsp = C->esp + 4;   /* +4: drop our fake return addr */
-    if (!fn) { fprintf(stderr, "x86_call_host: %s unresolved\\n", what); abort(); }
-#ifdef X86_WATCH
-    x86_watch_note(1, (uint32_t)(uintptr_t)fn, C->esp);
-#endif
-    __asm__ __volatile__(
-        "movl %%esp, %%edi\\n\\t"
-        "movl %[g], %%esp\\n\\t"
-        "movl %[c], %%ecx\\n\\t"
-        "call *%[f]\\n\\t"
-        "movl %%esp, %[aft]\\n\\t"
-        "movl %%edi, %%esp\\n\\t"
-        : "=a"(eax), [aft] "=r"(after)
-        : [f] "r"(fn), [g] "r"(gsp), [c] "r"(C->ecx)
-        : "ecx", "edx", "edi", "memory");
-    C->eax = eax;
-    C->esp = after;
-#ifdef X86_WATCH
-    x86_watch_note(2, (uint32_t)(uintptr_t)fn, after);
-#endif
-}
 
 /* Resolve every import; returns 0 on success, else the count unresolved.
    Refuses to leave a NULL entry that would abort later at an unrelated point. */

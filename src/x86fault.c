@@ -40,6 +40,8 @@ void x86_watch_note_dump(FILE *o);
 static PVOID         f_veh;
 static volatile LONG f_seen;         /* fatal exceptions reported */
 static volatile LONG f_other;        /* non-fatal first-chance exceptions */
+static DWORD         f_other_codes[16];
+static volatile LONG f_other_code_n;
 static volatile LONG f_selftest_hit;
 static int           f_stack_slots = 64;
 
@@ -101,8 +103,9 @@ static void describe(uint32_t addr, char *buf, size_t n)
 static void guest_note(uint32_t addr, char *buf, size_t n)
 {
     uint32_t base = G_IMGBASE;
-    if (base && addr >= base && addr - base < 0x400000u)
-        snprintf(buf, n, "  [guest 0x%08x]", 0x10000000u + (addr - base));
+    if (base && addr >= g_image_lo && addr < g_image_hi)
+        snprintf(buf, n, "  [guest 0x%08x]",
+                 g_guest_preferred_base + (addr - base));
     else
         buf[0] = '\0';
 }
@@ -219,6 +222,13 @@ static int fatal_code(DWORD c)
         || c == EXCEPTION_STACK_OVERFLOW
         || c == EXCEPTION_ARRAY_BOUNDS_EXCEEDED
         || c == EXCEPTION_INT_DIVIDE_BY_ZERO
+        || c == EXCEPTION_FLT_DENORMAL_OPERAND
+        || c == EXCEPTION_FLT_DIVIDE_BY_ZERO
+        || c == EXCEPTION_FLT_INEXACT_RESULT
+        || c == EXCEPTION_FLT_INVALID_OPERATION
+        || c == EXCEPTION_FLT_OVERFLOW
+        || c == EXCEPTION_FLT_STACK_CHECK
+        || c == EXCEPTION_FLT_UNDERFLOW
         /* An INT3 with no debugger attached is a crash here, not a stop: it
            means control reached a 0xCC byte, which is what padding and freed
            stack look like. Leaving it out of this list once cost a run whose
@@ -242,9 +252,29 @@ static LONG CALLBACK fault_veh(EXCEPTION_POINTERS *ep)
     }
     if (!fatal_code(er->ExceptionCode)) {
         /* C++ throws and debugger notifications are normal here; counting them
-           rather than printing keeps the log readable but still says the
-           handler was live. */
+           rather than printing every occurrence keeps the log readable. Print
+           the first occurrence of each code, though: the previous allowlist
+           made a process-ending code outside fatal_code() indistinguishable
+           from no exception at all. */
+        LONG i, n;
         f_other++;
+        n = f_other_code_n;
+        for (i = 0; i < n && i < 16; i++)
+            if (f_other_codes[i] == er->ExceptionCode)
+                return EXCEPTION_CONTINUE_SEARCH;
+        i = InterlockedIncrement(&f_other_code_n) - 1;
+        if (i < 16) {
+            f_other_codes[i] = er->ExceptionCode;
+            fprintf(o, "[FAULT] first non-fatal exception code=0x%08lx at %p "
+                       "(thread %lu); later occurrences of this code suppressed\n",
+                    (unsigned long)er->ExceptionCode, er->ExceptionAddress,
+                    (unsigned long)GetCurrentThreadId());
+            fflush(o);
+        } else if (i == 16) {
+            fprintf(o, "[FAULT] 16 distinct non-fatal exception codes seen; "
+                       "further new codes cannot be distinguished\n");
+            fflush(o);
+        }
         return EXCEPTION_CONTINUE_SEARCH;
     }
     /* Only the first: after the first fault the process state is not worth
@@ -267,8 +297,8 @@ static LONG CALLBACK fault_veh(EXCEPTION_POINTERS *ep)
                     : er->ExceptionInformation[0] == 8 ? "execute" : "read",
                 tgt, what);
     }
-    fprintf(o, "[FAULT]   g_imgbase=%08x (original image; guest 0x10000000)\n",
-            G_IMGBASE);
+    fprintf(o, "[FAULT]   g_imgbase=%08x (mapped image; preferred 0x%08x)\n",
+            G_IMGBASE, g_guest_preferred_base);
     x86_watch_note_dump(o);
     dump_regs(o, ep->ContextRecord);
     dump_code(o, (uint32_t)ep->ContextRecord->Eip);

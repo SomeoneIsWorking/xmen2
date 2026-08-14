@@ -66,12 +66,42 @@ add_test(NAME flags COMMAND test_flags)
 
 # The guest printf format walker. It builds crt.c against a stub runtime, so it
 # needs no recompiled output and runs in the ordinary suite.
-add_executable(test_vformat tests/test_vformat.c src/native/crt.c
+add_executable(test_vformat tests/test_vformat.c src/native/crt.c src/recomp/x87crt.c
                src/native/guest_heap.c)
 target_include_directories(test_vformat PRIVATE src/recomp src/native)
 target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE)
 target_link_libraries(test_vformat PRIVATE m)
 add_test(NAME vformat COMMAND test_vformat)
+
+add_executable(test_x87crt tests/test_x87crt.c src/recomp/x87crt.c)
+target_include_directories(test_x87crt PRIVATE src/recomp)
+target_link_libraries(test_x87crt PRIVATE m)
+add_test(NAME x87crt COMMAND test_x87crt)
+
+add_executable(test_x87host tests/test_x87host.c src/recomp/x87host.c)
+target_include_directories(test_x87host PRIVATE src/recomp)
+target_link_libraries(test_x87host PRIVATE m)
+add_test(NAME x87host COMMAND test_x87host)
+
+add_executable(test_x86callbacks
+    tests/test_x86callbacks.c src/recomp/x86callbacks.c)
+target_include_directories(test_x86callbacks PRIVATE src/recomp)
+add_test(NAME x86callbacks COMMAND test_x86callbacks)
+
+add_executable(test_x86watch_memory
+    tests/test_x86watch_memory.c src/x86watch_memory.c)
+target_include_directories(test_x86watch_memory PRIVATE src)
+add_test(NAME x86watch_memory COMMAND test_x86watch_memory)
+
+add_executable(test_x86watch_trace
+    tests/test_x86watch_trace.c src/x86watch_trace.c)
+target_include_directories(test_x86watch_trace PRIVATE src)
+add_test(NAME x86watch_trace COMMAND test_x86watch_trace)
+
+add_executable(test_x86watch_stack
+    tests/test_x86watch_stack.c src/x86watch_stack.c)
+target_include_directories(test_x86watch_stack PRIVATE src)
+add_test(NAME x86watch_stack COMMAND test_x86watch_stack)
 
 # The MMX lane model, against the host CPU's own SSE2 (tests/test_mmx.c).
 # libCriMovie's video decoder is 1106 MMX instructions and a wrong lane
@@ -129,6 +159,12 @@ set_tests_properties(x86_record_arm_capture PROPERTIES
 add_test(NAME recomp
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tests/test_recomp.py)
+add_test(NAME recomp_hosted
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tests/test_recomp_hosted.py)
+add_test(NAME structure
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tests/test_structure.py)
 
 # The rule that decides when a Ghidra function object may be DELETED, because
 # the address is really a switch case label. It runs inside Ghidra as Jython,
@@ -349,6 +385,7 @@ if(X2_MODULE_HAVE)
         src/native/win32_sdl.c
         src/native/guest_heap.c
         src/native/crt.c
+        src/recomp/x87crt.c
         src/native/kernel32.c
         src/native/advapi32.c
         src/native/ole32.c

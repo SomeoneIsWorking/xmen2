@@ -30,6 +30,7 @@
  *     has to come from the guest heap (C083).
  */
 #include "x86rt.h"
+#include "x87crt.h"
 #include "threads.h"
 #include "guest_heap.h"
 
@@ -65,25 +66,7 @@ static double argd(CPU *C, int i)
 /* Push a result onto the modelled x87 stack, where MSVC expects a double
    return value to be. Overflowing it is a translation bug, not a runtime
    condition, so it stops. */
-static void crt_x87_push(CPU *C, long double v)
-{
-    if (C->depth >= 8) x87_fault("x87 stack overflow returning from the CRT");
-    C->top = (C->top - 1) & 7;
-    C->st[C->top] = v;
-    C->depth++;
-}
-
-static long double crt_x87_pop(CPU *C)
-{
-    long double v;
-    if (C->depth < 1) x87_fault("x87 stack underflow entering a _CI* routine");
-    v = C->st[C->top];
-    C->top = (C->top + 1) & 7;
-    C->depth--;
-    return v;
-}
-
-static void ret_d(CPU *C, double v) { crt_x87_push(C, (long double)v); C->esp += 4u; }
+static void ret_d(CPU *C, double v) { x87_crt_push(C, (long double)v); C->esp += 4u; }
 
 static void crt_unimpl(const char *sym, const char *why)
 {
@@ -248,33 +231,27 @@ void imp_MSVCR71__itoa(CPU *C)
 /* ---- numbers ----------------------------------------------------------- */
 
 void imp_MSVCR71_atoi(CPU *C) { ret_c(C, (uint32_t)atoi(ACS(0))); }
-void imp_MSVCR71_atof(CPU *C) { ret_d(C, atof(ACS(0))); }
-void imp_MSVCR71_ceil(CPU *C) { ret_d(C, ceil(argd(C, 0))); }
-void imp_MSVCR71_floor(CPU *C) { ret_d(C, floor(argd(C, 0))); }
+void imp_MSVCR71_atof(CPU *C) { x87_crt_atof(C); }
+void imp_MSVCR71_ceil(CPU *C) { x87_crt_ceil(C); }
+void imp_MSVCR71_floor(CPU *C) { x87_crt_floor(C); }
 
-void imp_MSVCR71__finite(CPU *C) { ret_c(C, (uint32_t)(isfinite(argd(C, 0)) ? 1 : 0)); }
+void imp_MSVCR71__finite(CPU *C) { x87_crt_finite(C); }
 
 /* The _CI* forms take their arguments on the x87 stack and leave the result
    there. Order matters: the SECOND operand is on top. */
 void imp_MSVCR71__CIpow(CPU *C)
 {
-    long double y = crt_x87_pop(C), x = crt_x87_pop(C);
-    crt_x87_push(C, powl(x, y));
-    C->esp += 4u;
+    x87_crt_cipow(C);
 }
 
 void imp_MSVCR71__CIfmod(CPU *C)
 {
-    long double y = crt_x87_pop(C), x = crt_x87_pop(C);
-    crt_x87_push(C, fmodl(x, y));
-    C->esp += 4u;
+    x87_crt_cifmod(C);
 }
 
 void imp_MSVCR71__CIacos(CPU *C)
 {
-    long double x = crt_x87_pop(C);
-    crt_x87_push(C, acosl(x));
-    C->esp += 4u;
+    x87_crt_ciacos(C);
 }
 
 void imp_MSVCR71_rand(CPU *C) { ret_c(C, (uint32_t)(rand() & 0x7FFF)); }
@@ -1290,9 +1267,7 @@ void imp_MSVCR71_strtod(CPU *C)
 
 void imp_MSVCR71__CIasin(CPU *C)
 {
-    long double x = crt_x87_pop(C);
-    crt_x87_push(C, asinl(x));
-    C->esp += 4u;
+    x87_crt_ciasin(C);
 }
 
 /* ---- misc -------------------------------------------------------------- */
@@ -1385,11 +1360,7 @@ void imp_MSVCR71__endthreadex(CPU *C)
    tracks in `depth`. */
 void imp_MSVCR71__ftol(CPU *C)
 {
-    long double v = crt_x87_pop(C);
-    int64_t r = (int64_t)v;
-    C->eax = (uint32_t)(uint64_t)r;
-    C->edx = (uint32_t)((uint64_t)r >> 32);
-    C->esp += 4u;                        /* __cdecl, no stack arguments */
+    x87_crt_ftol(C);
 }
 
 /*

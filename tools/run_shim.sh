@@ -50,10 +50,11 @@ sleep 2
 # user's prefix registry is never modified. X2_MUTE= (empty) re-enables sound.
 : "${X2_MUTE=winepulse.drv,winealsa.drv,wineoss.drv,winecoreaudio.drv=d}"
 : "${X2_D3D:=n}"
+: "${X2_WINEDEBUG:=+loaddll}"
 : "${X2_VK_ICD:=/usr/share/vulkan/icd.d/lvp_icd.i686.json:/usr/share/vulkan/icd.d/lvp_icd.x86_64.json}"
 # X2_TRACE, if set, is the shim's trace-log path (relative to the run dir).
 export X2_TRACE=${X2_TRACE:-}
-( cd "$RUNDIR" && DISPLAY=$DISP WINEDEBUG=+loaddll \
+( cd "$RUNDIR" && DISPLAY=$DISP WINEDEBUG="$X2_WINEDEBUG" \
     WINEDLLOVERRIDES="d3d8,d3d9=$X2_D3D;$X2_MUTE" \
     VK_DRIVER_FILES="$X2_VK_ICD" VK_ICD_FILENAMES="$X2_VK_ICD" \
     wine explorer /desktop=x2,"$X2_RES" "$(cd "$RUNDIR" && winepath -w ./$X2_EXE)" $RUN_ARGS \
@@ -147,10 +148,18 @@ done
 # XMen2.exe never loaded, so asking it is worthless. Ask the log whether the
 # game image was actually mapped.
 if grep -q "$X2_EXE\" at" "$LOG"; then GAME_LOADED=yes; else GAME_LOADED=no; fi
-if kill -0 $RUNPID 2>/dev/null; then ALIVE=yes; else ALIVE=no; fi
-kill -TERM $RUNPID 2>/dev/null
-sleep 1
-kill -9 $RUNPID 2>/dev/null
+if kill -0 $RUNPID 2>/dev/null; then
+  ALIVE=yes
+  WRAPPER_EXIT=running
+  kill -TERM $RUNPID 2>/dev/null
+  sleep 1
+  kill -9 $RUNPID 2>/dev/null
+  wait $RUNPID 2>/dev/null
+else
+  ALIVE=no
+  wait $RUNPID
+  WRAPPER_EXIT=$?
+fi
 DISPLAY=$DISP wineserver -k 2>/dev/null
 
 # Report the negative loudly: a black frame means the capture proved nothing.
@@ -185,4 +194,4 @@ print("SHOT: kept sample with %d colours as %s%s"
       % (best[0], p,
          "  <-- ALL SAMPLES UNIFORM: nothing rendered" if best[1] > 0.995 else ""))
 PY
-echo "RUN: $NAME game_image_loaded=$GAME_LOADED wrapper_alive=$ALIVE log=$LOG"
+echo "RUN: $NAME game_image_loaded=$GAME_LOADED wrapper_alive=$ALIVE wrapper_exit=$WRAPPER_EXIT log=$LOG"

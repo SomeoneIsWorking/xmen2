@@ -15,10 +15,10 @@ JSON=$ROOT/scratch/recomp/XMen2.json
 GEN=$ROOT/scratch/recomp/x2run
 RUN=$ROOT/scratch/run/x2run
 OUT=$GEN/x2run.exe
-OBJ=$GEN/obj
 OPT=${OPT:--O1}
 SPLIT=${SPLIT:-750}
 JOBS=${JOBS:-4}
+WATCH=${WATCH:-0}
 
 [ -f "$JSON" ] || {
     echo "build_x2run: no $JSON -- run tools/ghidra_export.sh XMen2 first" >&2
@@ -34,6 +34,14 @@ command -v i686-w64-mingw32-gcc >/dev/null || {
 }
 case "$SPLIT" in
     ''|*[!0-9]*|0) echo "build_x2run: SPLIT must be a positive integer" >&2; exit 2 ;;
+esac
+case "$WATCH" in
+    0) OBJ=$GEN/obj; watch_defs=(); watch_sources=() ;;
+    1) OBJ=$GEN/obj-watch; watch_defs=(-DX86_WATCH); watch_sources=(
+        src/x86watch.c src/x86watch_memory.c src/x86watch_stack.c
+        src/x86watch_trace.c
+        src/x86fault.c) ;;
+    *) echo "build_x2run: WATCH must be 0 or 1" >&2; exit 2 ;;
 esac
 
 mkdir -p "$GEN" "$RUN" "$OBJ"
@@ -56,7 +64,9 @@ echo "== 3/4 compile ${#chunks[@]} translated chunks =="
 # XMen2.exe has no relocations and its data must occupy 0x00400000.  Linking
 # the runner at that image base, with its own .text above the guest's 0x674000
 # image, makes Wine reserve the low range as MEM_IMAGE so x2run can fill it.
-sources=(src/app/x2run.c "$GEN/XMen2_runtime.c" "${chunks[@]}")
+sources=(src/app/x2run.c src/app/x2run_diag.c src/recomp/x87crt.c \
+    src/recomp/x87host.c src/recomp/x86callbacks.c \
+    "$GEN/XMen2_runtime.c" "${watch_sources[@]}" "${chunks[@]}")
 objects=()
 running=0
 for src in "${sources[@]}"; do
@@ -65,7 +75,8 @@ for src in "${sources[@]}"; do
     if [ "$obj" -nt "$src" ] && [ "$obj" -nt src/recomp/x86rt.h ]; then
         continue
     fi
-    i686-w64-mingw32-gcc "$OPT" -msse2 -I src/recomp -c "$src" -o "$obj" &
+    i686-w64-mingw32-gcc "$OPT" -msse2 "${watch_defs[@]}" \
+        -I src/recomp -I src/app -c "$src" -o "$obj" &
     running=$((running + 1))
     if [ "$running" -ge "$JOBS" ]; then
         wait -n

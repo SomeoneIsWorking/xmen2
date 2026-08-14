@@ -180,9 +180,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-exe-run — Recompiled XMen2.exe executes; stops at first untranslated indirect target
 - status: re-partial
 - deps: rc-exe
-- evidence: C027; C180
+- evidence: C027; C180; C181; issue #68
 - where: 
-- gap: The presentation-parameter blocker is closed by C180. Current x2run reaches ResetSwapChain, display-mode setup, Cg DLL loading and renderer state setup with the exact stock parameters, but all 3 sampled frames were uniform and the process ended before 30 s; that downstream Wine-hybrid failure is the next live gap.
+- gap: The presentation-parameter blocker is closed by C180, and the downstream Wine-hybrid termination is closed by C181/issue #68. Current x2run reaches ResetSwapChain, display-mode setup, Cg DLL loading and renderer state setup with the exact stock parameters, survives the former security-cookie stop, and renders the Activision intro. It is not yet verified through the whole game loop; the next x2run work is a driven end-to-end discriminator rather than another startup crash.
 - notes: 
 
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code

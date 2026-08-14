@@ -124,6 +124,10 @@ typedef struct CPU {
        ORPS XMM0,XMM0, and a no-op would be right for that one operand pair and
        wrong for any other. */
     uint64_t xmm[8][2];
+    /* Logical generated-call nesting and the hosted tail-dispatch frame. */
+    uint32_t call_depth;
+    uint32_t dispatch_depth;
+    uint32_t tail_target;
     /* Enter the next body at a LABEL rather than at its entry point.
      *
      * MSVC shares one epilogue between paths, so a JMP lands in the middle of
@@ -153,6 +157,9 @@ extern uint32_t g_imgbase;
 #define X86_IMGBASE g_imgbase
 #endif
 extern uint32_t g_image_lo, g_image_hi;   /* guest image bounds; outside = host */
+/* Preferred base recorded by the hosted runtime generator. Diagnostics use
+   this to translate mapped addresses back to disassembly addresses. */
+extern uint32_t g_guest_preferred_base;
 /* Hybrid execution: run ORIGINAL machine code where no recompiled body exists.
    Opt-in, and every distinct fallback address is reported -- a recompilation
    that quietly runs the original is not a recompilation. */
@@ -571,7 +578,7 @@ void x86_watch_note(int kind, uint32_t a, uint32_t b);
    overwrites live C state. */
 void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned long cpu_size);
 # define X86_ENTER_FN_DIAG(a) x86_watch_enter((a), C)
-# define X86_EXIT_FN(a)  x86_watch_exit((a), C)
+# define X86_EXIT_FN_DIAG(a)  x86_watch_exit((a), C)
 # define x86_dump_history() ((void)0)
 #elif defined(X86_NATIVE_TRACE)
 /* Native build, tracing every recompiled body.
@@ -589,7 +596,7 @@ void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned 
 void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C);
 void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C);
 # define X86_ENTER_FN_DIAG(a) x86_trace_enter((a), X86_IMGBASE, C)
-# define X86_EXIT_FN(a)  x86_trace_exit((a), X86_IMGBASE, C)
+# define X86_EXIT_FN_DIAG(a)  x86_trace_exit((a), X86_IMGBASE, C)
 # define x86_dump_history() ((void)0)
 #elif defined(X86_NATIVE_REACHED)
 /* Native build, recording WHICH bodies were ever entered.
@@ -618,8 +625,8 @@ void x86_reached_report(void);
 # define X86_ENTER_FN_DIAG(a) ((void)0)
 # define x86_dump_history() ((void)0)
 #endif
-#ifndef X86_EXIT_FN
-# define X86_EXIT_FN(a) ((void)0)
+#ifndef X86_EXIT_FN_DIAG
+# define X86_EXIT_FN_DIAG(a) ((void)0)
 #endif
 
 /*
@@ -647,7 +654,12 @@ extern unsigned long x86_preempt_budget;
 void x86_preempt_now(void);
 #define X86_ENTER_FN(a) \
     do { if (--x86_preempt_budget == 0) x86_preempt_now(); \
+         C->call_depth++; \
          X86_ENTER_FN_DIAG(a); } while (0)
+#define X86_EXIT_FN(a) \
+    do { X86_EXIT_FN_DIAG(a); C->call_depth--; } while (0)
+#define X86_TAIL_FN(a) \
+    do { (void)(a); C->call_depth--; } while (0)
 /* call/jump into the region with no identified function; aborts by address */
 void x86_call_unknown(CPU *C, uint32_t target);
 /* RET popped an address other than the one the function was entered with */
@@ -1110,6 +1122,7 @@ static inline void x87_cmp(CPU *C, long double a, long double b)
  * unresolved call produces a plausible-looking run that is wrong.
  */
 void x86_dispatch(CPU *C, uint32_t target);
+void x86_tail_dispatch(CPU *C, uint32_t target);
 /* called when an indirect target has no recompiled body; aborts by default */
 void x86_dispatch_miss(uint32_t target);
 
@@ -1143,5 +1156,6 @@ void x86_rt_stack_give(void);
 /* recompiled body -> real code, running on the guest stack */
 void x86_call_host(CPU *C, void *fn, const char *what);
 #define DISPATCH(C, t) x86_dispatch((C), (uint32_t)(t))
+#define TAIL_DISPATCH(C, t) x86_tail_dispatch((C), (uint32_t)(t))
 
 #endif /* X86RT_H */

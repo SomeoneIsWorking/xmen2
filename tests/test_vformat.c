@@ -13,6 +13,7 @@
  */
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
@@ -23,6 +24,30 @@ uint32_t g_imgbase = 0x10000000U;
 uint32_t g_image_lo, g_image_hi;
 uint32_t g_fsbase, g_gsbase;
 int x86_allow_fallback;
+
+/* crt.c also owns the guest stdio table. These parser tests never open a
+   file, so a reached file hook is a test-scope violation and must fail rather
+   than quietly selecting a host path. */
+const char *k32_open_path(const char *guest, int for_write)
+{
+    (void)guest; (void)for_write;
+    fprintf(stderr, "test_vformat: unexpected file-open path lookup\n");
+    abort();
+}
+
+int k32_open_replaced(const char *guest, int for_write)
+{
+    (void)guest; (void)for_write;
+    fprintf(stderr, "test_vformat: unexpected replacement lookup\n");
+    abort();
+}
+
+void k32_open_note(const char *guest, int ok, int replaced, const char *host)
+{
+    (void)guest; (void)ok; (void)replaced; (void)host;
+    fprintf(stderr, "test_vformat: unexpected file-open note\n");
+    abort();
+}
 
 static int fails, checks;
 
