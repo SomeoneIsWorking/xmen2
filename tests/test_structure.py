@@ -21,6 +21,7 @@ LIMITS = {
     "src/native/dinput_joystick.c": 150,
     "src/native/env_file.c": 180,
     "src/native/x2native_options.c": 80,
+    "tools/extract_fb.py": 180,
     "tools/recomp_hosted.py": 100,
     "tools/recomp_host_call.py": 80,
 }

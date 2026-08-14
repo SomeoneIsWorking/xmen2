@@ -251,6 +251,10 @@ add_test(NAME pad_font
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/make_pad_font.py --selftest)
 
+add_test(NAME extract_fb
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/extract_fb.py --selftest)
+
 # The oracle cache, proved to MISS as well as hit -- with a stub runner in
 # place of Wine, because what is under test is the keying, not the game. A
 # cache that has only ever been shown to hit is a cache that will serve a frame
