@@ -1374,8 +1374,10 @@ int d3d8_host_selftest(void)
 {
     int fails = 0;
     extern int kernel32_thread_alias_selftest(void);
+    extern int dsound_selftest(void);
 
     fails += kernel32_thread_alias_selftest();
+    fails += dsound_selftest();
     fails += d3d8_com_selftest();
     fails += caps_selftest();
     fails += pixel_shader_selftest();

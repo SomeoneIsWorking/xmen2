@@ -132,9 +132,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-imports — Host implementations of the imported Win32/D3D8/DInput/CRT surface
 - status: re-verified
 - deps: rc-lift
-- evidence: C014; 163 import stubs + 82 export shims, ESP-switch calling with callee-driven cleanup; game runs
+- evidence: C014/C176; the native run binds imports across every recompiled module, resolves run-time-loaded DInput8 and DirectSound exports by name, and reaches gameplay with 0 unresolved-call stops. DirectSound evidence: XMen2.exe FUN_00594290/FUN_00594590/FUN_00594e50/FUN_00596050 plus a frame-2900 run with 270 secondary buffers, 18 duplicates and 1,249,706 nonzero mixed samples.
 - where: 
-- gap: Stubs resolve by name at load and abort if unresolved; no host reimplementation of any Win32/D3D8 API yet -- they still call the real ones.
+- gap: The reached Win32/D3D8/DInput/DirectSound/CRT surface is native and fail-loud. Unreached imports remain poison thunks by design until a real route demands them; SEH delivery, LAN sockets, and several optional COM/system facilities are still absent and named in the codemap.
 - notes: 
 
 ### rc-first-dll — Recompiled libIGDisplay.dll runs in the real game

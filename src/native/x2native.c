@@ -345,6 +345,7 @@ void x2_interrupt_reports(int killed)
        ever polled the pad were never printed. */
     dinput_device_report();
     dinput_pad_report();
+    { extern void dsound_report(void); dsound_report(); }
     { extern void k32_asset_report(void), ws2_report(void);
       k32_asset_report(); ws2_report(); }
     { extern void conversation_report(void); conversation_report(); }
@@ -1669,6 +1670,8 @@ int main(int argc, char **argv)
     { extern void dinput_report(void); atexit(dinput_report); }
     { extern void dinput8_install(void), dinput8_report(void);
       dinput8_install(); atexit(dinput8_report); }
+    { extern void dsound_install(void), dsound_report(void);
+      dsound_install(); atexit(dsound_report); }
     /* SHELL32: the save directory. Installed with the other native system
        modules, because LoadLibraryA may only hand back a handle for a module
        this host actually implements, and that answer comes from the export
