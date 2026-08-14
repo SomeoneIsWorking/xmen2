@@ -180,9 +180,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-exe-run — Recompiled XMen2.exe executes; stops at first untranslated indirect target
 - status: re-partial
 - deps: rc-exe
-- evidence: C030; recompiled game reaches display init and draws its own modal dialog; 1 fallback remaining
+- evidence: C027; C180
 - where: 
-- gap: Display init fails because recompiled code passes garbage D3DPRESENT_PARAMETERS (C032), NOT for environmental reasons as previously concluded.
+- gap: The presentation-parameter blocker is closed by C180. Current x2run reaches ResetSwapChain, display-mode setup, Cg DLL loading and renderer state setup with the exact stock parameters, but all 3 sampled frames were uniform and the process ended before 30 s; that downstream Wine-hybrid failure is the next live gap.
 - notes: 
 
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
@@ -193,13 +193,13 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: NO LONGER the blocker, and the register file is clean: 94088 checked calls all restore ebx/esi/edi/ebp, and none of the 168 empty stubs is called (C077, issue #8). Still DEBT only in that the fallback path exists. The PC native --d3d8 run is now past every translator and discovery stop: rotates (ROL/ROR/RCL/RCR) are translated and checked against the host CPU's own instructions (tests/test_rotate.c, 5377 checks -- RCR is on the path of any guest that divides a long long, via MSVC's __allrem), and XMen2.exe's indirect-call targets are bulk-seeded from data pointers (tools/seed_data_ptrs.py), so the discovery loop converges in ONE round instead of grinding out one function per round. A 240-second run presents 3769 frames and 380289 draws with no stop of any kind -- it ended on the timeout, not on a defect.
 - notes: 
 
-### rc-defect-present — OPEN: recompiled code fills D3DPRESENT_PARAMETERS with garbage
-- status: hack
+### rc-defect-present — CLOSED: current recompiled code fills D3DPRESENT_PARAMETERS identically to stock
+- status: re-verified
 - deps: rc-exe-run
-- evidence: C032
+- evidence: C180
 - where: 
-- gap: DOES NOT REPRODUCE ON THE NATIVE PATH, measured: the recompiled exe's CreateDevice now arrives at this host's D3D8 with 800x600 fmt=23 (D3DFMT_R5G6B5) backbuffers=1 -- exactly what the ORIGINAL exe produced as the control. The guest code that FILLS D3DPRESENT_PARAMETERS is the same code either way, so its fill is correct; both hypotheses (C033 field offset, C034 struct-by-value stack shift) were about the translation, and the translator has changed a great deal since (the CALL return-address rebase, the indirect-CALL push order, rotates, SSE). NOT re-checked on the WINE path, which is where the garbage was originally seen -- that needs tools/build_recomp.sh and a run, and until someone does it this is 'not reproducing natively', not 'fixed'.
-- notes: 
+- gap:
+- notes: CLOSED 2026-08-14. Fresh current x2run and stock Wine runs each emitted exactly one ResetSwapChain block; all fields matched: 800x600, R5G6B5, D16, fullscreen, swap effect 1. C032 was real historical evidence but is falsified for the current translator; C033/C034 were unproven hypotheses. tools/build_x2run.sh now makes the discriminator reproducible.
 
 ### rc-native — The PC recomp produces an artefact that runs WITHOUT Wine
 - status: re-partial

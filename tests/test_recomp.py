@@ -112,6 +112,19 @@ class SwitchDispatch(unittest.TestCase):
             self.assertIn("L_%08x:" % a, c, "0x%08x has no label" % a)
 
 
+class SegmentOverrides(unittest.TestCase):
+    def test_gs_is_refused_as_known_embedded_data(self):
+        fn = {"ep": 0x00642794, "qname": "embedded_data", "name": "fn",
+              "thunk": False, "size": 3,
+              "ins": [ins(0x00642794, "ADD", "ADD byte ptr GS:[EAX],AL",
+                          n=3)]}
+        body, reason = recomp.translate(fn)
+        self.assertIsNone(reason)
+        emitted = "\n".join(body)
+        self.assertIn("x86_unsupported_insn", emitted)
+        self.assertIn("GS segment override", emitted)
+
+
 class OrdinaryJumps(unittest.TestCase):
     """The fix widened which JMPs count as indirect. These pin down that it
     did not change anything else."""

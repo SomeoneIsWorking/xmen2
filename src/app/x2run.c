@@ -22,7 +22,7 @@
 #include "x86rt.h"
 
 int  x86_resolve_imports(void);
-void fn_006725f4(CPU *C);          /* XMen2.exe entry point */
+void fn_XMen2_006725f4(CPU *C);    /* XMen2.exe entry point */
 
 #define GUEST_STACK 0x100000
 
@@ -233,7 +233,7 @@ int main(int argc, char **argv)
 #endif
     printf("x2run: entering recompiled XMen2.exe at 0x006725f4\n");
     fflush(stdout);
-    fn_006725f4(&C);
+    fn_XMen2_006725f4(&C);
     printf("x2run: returned from the entry point, eax=0x%08x\n", C.eax);
     return 0;
 }

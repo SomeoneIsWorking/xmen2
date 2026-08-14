@@ -172,10 +172,18 @@ def parse_operand(tok):
     #
     # NEITHER provides exception DELIVERY. The chain is well-formed enough to
     # be pushed and popped; nothing walks it if the guest actually throws.
-    # x2native.c states the same gap at the other end.
+    # x2native.c states the same gap at the other end.  GS is deliberately
+    # refused: the shipped corpus has exactly two GS instructions, both the
+    # byte sequence 65 00 00 inside functions already known to run through
+    # embedded data.  Treating those bytes as executable ADDs made the hosted
+    # MinGW build demand GS intrinsics that do not exist, hiding the boundary
+    # defect behind a compiler error.
     m2 = re.match(r"^(FS|GS):(.*)$", tok, re.I)
     if m2:
         seg = m2.group(1).upper()
+        if seg == "GS":
+            raise Unsupported("GS segment override (the shipped occurrences "
+                              "are embedded data decoded as code)")
         inner = m2.group(2).strip()
         mm = re.match(r"^\[(.*)\]$", inner)
         off = mm.group(1) if mm else inner
@@ -2213,6 +2221,9 @@ def cmd_runtime(argv):
         L.append("#define N_IAT %d" % n_iat)
         L.append(HOSTIMP_BODY)
         for mod, sym, ident in names:
+            if ident in ("imp_MSVCR71_setjmp3", "imp_MSVCR71__setjmp3",
+                         "imp_MSVCR71_longjmp"):
+                continue
             L.append('void %s(CPU *C) { x86_call_host(C, g_imp[%d], "%s!%s"); }'
                      % (ident, byid[ident], mod, sym.replace('"', "'")))
         seen = set(byid)
@@ -2346,6 +2357,23 @@ void x86_untranslated(uint32_t ep, const char *name, const char *reason)
 {
     fprintf(stderr, "x86_untranslated: reached 0x%08x %s -- blocked by: %s\\n",
             ep, name, reason);
+    abort();
+}
+
+void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
+                          const char *reason)
+{
+    fprintf(stderr, "x86_unsupported_insn: reached 0x%08x inside 0x%08x %s; "
+            "translator refusal: %s\\n", addr, ep, name, reason);
+    x86_dump_history();
+    abort();
+}
+
+void x86_int3(uint32_t addr)
+{
+    fprintf(stderr, "x86_int3: reached compiler trap at 0x%08x; a function "
+            "classified noreturn returned\\n", addr);
+    x86_dump_history();
     abort();
 }
 
@@ -2816,6 +2844,89 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID r)
 
 HOSTIMP_BODY = '''
 #include <stdlib.h>
+
+/* setjmp cannot be delegated to MSVCR71: the host frame it must resume is the
+   generated CALL SITE, not an import wrapper that has already returned. */
+#define HOST_JMP_MAX 4096
+typedef struct {
+    uint32_t env;
+    CPU regs;
+    jmp_buf buf;
+    int used;
+} HostJmp;
+static HostJmp *g_host_jmp;
+static int g_host_jmp_cap;
+static int g_host_jmp_active = -1;
+
+static int host_jmp_slot(uint32_t env)
+{
+    int i, old;
+    for (i = 0; i < g_host_jmp_cap; i++)
+        if (g_host_jmp[i].used && g_host_jmp[i].env == env) return i;
+    for (i = 0; i < g_host_jmp_cap; i++)
+        if (!g_host_jmp[i].used) return i;
+    old = g_host_jmp_cap;
+    if (old >= HOST_JMP_MAX) {
+        fprintf(stderr, "x2run: all %d conservative setjmp slots are live; "
+                "refusing to overwrite one\\n", old);
+        abort();
+    }
+    g_host_jmp_cap = old ? old * 2 : 16;
+    g_host_jmp = (HostJmp *)realloc(g_host_jmp,
+                                    (size_t)g_host_jmp_cap * sizeof *g_host_jmp);
+    if (!g_host_jmp) { fprintf(stderr, "x2run: no memory for setjmp table\\n"); abort(); }
+    memset(g_host_jmp + old, 0,
+           (size_t)(g_host_jmp_cap - old) * sizeof *g_host_jmp);
+    return old;
+}
+
+jmp_buf *x86_setjmp_buf(CPU *C)
+{
+    uint32_t env = RD32(C->esp + 4u);
+    int i = host_jmp_slot(env);
+    g_host_jmp[i].env = env;
+    g_host_jmp[i].regs = *C;
+    g_host_jmp[i].used = 1;
+    if (env) WR32(env, 0x53544f50u);
+    return &g_host_jmp[i].buf;
+}
+
+void x86_setjmp_done(CPU *C, int rc)
+{
+    if (rc) {
+        if (g_host_jmp_active < 0) {
+            fprintf(stderr, "x2run: setjmp resumed without a recorded slot\\n");
+            abort();
+        }
+        *C = g_host_jmp[g_host_jmp_active].regs;
+        g_host_jmp_active = -1;
+    }
+    C->eax = (uint32_t)rc;
+    C->esp += 4u;
+}
+
+void imp_MSVCR71_longjmp(CPU *C)
+{
+    uint32_t env = RD32(C->esp + 4u), value = RD32(C->esp + 8u);
+    int i;
+    for (i = 0; i < g_host_jmp_cap; i++)
+        if (g_host_jmp[i].used && g_host_jmp[i].env == env) {
+            g_host_jmp_active = i;
+            longjmp(g_host_jmp[i].buf, value ? (int)value : 1);
+        }
+    fprintf(stderr, "x2run: longjmp buffer 0x%08x was never recorded\\n", env);
+    abort();
+}
+
+void imp_MSVCR71_setjmp3(CPU *C)
+{
+    fprintf(stderr, "x2run: _setjmp3 reached through an import wrapper; no "
+            "live generated frame can be captured\\n");
+    (void)C;
+    abort();
+}
+void imp_MSVCR71__setjmp3(CPU *C) { imp_MSVCR71_setjmp3(C); }
+
 void x86_call_host(CPU *C, void *fn, const char *what)
 {
     uint32_t eax, after, gsp = C->esp + 4;   /* +4: drop our fake return addr */

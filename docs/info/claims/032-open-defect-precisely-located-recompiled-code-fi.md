@@ -1,10 +1,11 @@
 ---
 id: C032
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-05
 tags: 
 reconfirmed: 2026-08-05
+falsified_on: 2026-08-14
 ---
 
 ## Claim
@@ -22,3 +23,9 @@ Not yet traced to an instruction. Width=1 and a nonsense Height suggest a struct
 ## Re-confirmed 2026-08-05
 
 CONTROLLED comparison, not just two logs: the ORIGINAL XMen2.exe run from the SAME directory with the SAME environment, virtual desktop and alchemy.ini produces Width=800 Height=600 R5G6B5/D16, while the recompiled exe produces Width=1 Height=43253760 A8R8G8B8/D24S8 and fails to create backbuffers. Only the executable differs. This is a translation defect with certainty now.
+
+## FALSIFIED 2026-08-14
+
+C180 reran the original Wine-path discriminator from a fresh current build: x2run and stock each produced exactly one ResetSwapChain record and all requested fields matched (800x600, R5G6B5, D16, fullscreen, swap effect 1). The 2026-08-05 malformed structure was real historical evidence, but it is not a defect in the current translator.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

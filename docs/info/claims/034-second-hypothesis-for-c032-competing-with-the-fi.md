@@ -1,9 +1,10 @@
 ---
 id: C034
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-05
 tags: 
+falsified_on: 2026-08-14
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ Width=1 and Height=43253760 are not merely wrong, they are inconsistent with eac
 ## What would falsify it
 
 Both hypotheses are still speculation about a value pattern. Settle it by tracing what the exe actually passes -- gen_trace.py already builds boundary tracers, so trace the engine calls of the ORIGINAL exe and of the recompiled exe and diff the argument sequences. That is the same compare-do-not-guess move that found the defect in the first place.
+
+## FALSIFIED 2026-08-14
+
+The shifted-by-value-structure hypothesis depended on C032 being a current defect. C180 shows the current Wine path passes the exact stock structure, so this hypothesis predicts a mismatch that is absent; it never established the historical cause.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

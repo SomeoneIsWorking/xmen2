@@ -1,9 +1,10 @@
 ---
 id: C033
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-05
 tags: 
+falsified_on: 2026-08-14
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ scratch/run/stock and scratch/run/x2name both contain only alchemy.ini as a real
 ## What would falsify it
 
 This is pattern-matching on a single number and could easily be coincidence -- Height=43253760 (0x02942A00) is not obviously any adjacent field, which argues against a simple off-by-one. Confirm or kill it by finding the function that reads the [Viewer] block and difftesting it against the original, rather than by reasoning about the values.
+
+## FALSIFIED 2026-08-14
+
+The field-offset lead depended on C032 being a current defect. C180 shows the current Wine path passes the exact stock structure, so there is no current shifted field to explain; the old value pattern does not establish the historical cause.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.
