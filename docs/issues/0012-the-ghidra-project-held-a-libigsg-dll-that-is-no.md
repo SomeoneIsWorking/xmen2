@@ -1,11 +1,11 @@
 ---
 id: 12
 title: The Ghidra project held a libIGSg.dll that is not the shipped one, and the exporter reused it silently
-status: investigating
+status: resolved
 symptom: Recompiled code disassembles differently from the file being mapped at runtime: Ghidra reports 09 10 (OR [EAX],EDX) at the entry point where the shipped DLL has 55 8b ec 53 (a DllMain prologue). Section sizes disagree too -- Ghidra .text vsize 0x8ee00 vs the file's 0x6e240
 tags: pc,recomp,ghidra,provenance,tooling
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-14
 ---
 
 ## How it surfaced
@@ -38,14 +38,14 @@ Everything recompiled from that JSON describes a binary we are not running.
 libIGSg is 6118 functions, so this is not a corner case -- and NOTHING about it
 was visible until an entry point happened to land in the disagreeing region.
 
-## Fix in progress
+## Resolution
 
-Re-import with `tools/ghidra_export.sh libIGSg --reanalyze`.
+The exporter records each imported PE's SHA-256 and forces re-import when an
+existing program's recorded hash differs from `GAME_PC_DIR`, or when an
+existing program has no provenance stamp at all. “Already imported” is no
+longer treated as “imported from this file.” The shipping predicate's selftest
+drives the matching, mismatched, unknown-existing, and genuinely-new classes.
 
-## What this says about the tooling
-
-The exporter must not trust a program that is already in the project. It should
-record the file's hash at import and refuse to export when the hash of
-GAME_PC_DIR's copy differs -- "already imported" is not the same as "imported
-from this file". Until that exists, treat any module already present in a
-project as unverified provenance.
+The current libIGSg stamp exactly matches the installed DLL. The independent
+export verifier reports five agreeing sections, 4,714 functions, and zero
+truncated bodies.

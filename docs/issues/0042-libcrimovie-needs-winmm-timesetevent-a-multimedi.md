@@ -1,11 +1,11 @@
 ---
 id: 42
 title: libCriMovie needs WINMM timeSetEvent -- a multimedia timer that calls back into guest code
-status: investigating
+status: resolved
 symptom: x86_missing_import: WINMM.dll!timeSetEvent is not implemented natively -- reached when the game starts its intro movie
 tags: pc,native,winmm,threads,libCriMovie,movie
 created: 2026-08-07
-updated: 2026-08-07
+updated: 2026-08-14
 ---
 
 ## What is being asked for
@@ -49,24 +49,19 @@ Option 1 first, because it is the only one that is both cheap and answerable
 by experiment.
 
 
-## Done: option 1, and it is UNVERIFIED
+## Resolution
 
 `timeSetEvent`/`timeKillEvent` are implemented as DEFERRED callbacks that run
 on the guest's own thread, pumped from `QueryPerformanceCounter` and `Sleep` --
 the two places a loop waiting for a timer reaches constantly. No thread, no
 race on the register file.
 
-The cost is stated in the code and in the exit report rather than left to be
+The cost is stated in the code and in the live report rather than left to be
 found: **the resolution is the poll interval, not the millisecond that was
-asked for**, and a callback the guest never reaches a pump point for never
-fires. `winmm_report` prints the average lateness and names any timer that has
-never fired at all.
+asked for**, and a callback the guest never reaches a pump point never fires.
 
-**It has never run.** libCriMovie asks for a THREAD before it ever sets a
-timer, so the run stops earlier now and the report says exactly that:
-
-    winmm: no multimedia timer was ever set.
-
-That is the honest status: the code exists, its negative reports itself, and
-nothing has exercised it. It is not evidence that deferred timers work for
-libCriMovie -- issue #43 has to be answered before that can be tested at all.
+This is verified on the shipping path. The 4,200-frame loop set libCriMovie's
+1 ms timer, fired 5,104 guest callbacks from 966,449 pump points, killed it
+(zero live), completed every intro movie, entered gameplay, and returned to the
+menu. The callback's explicit five-argument stdcall contract also completed
+with zero stack violations.

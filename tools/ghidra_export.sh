@@ -72,12 +72,22 @@ run_step() {
     printf '%s\n' "$_hits" | tail -"$_keep"
 }
 
+# True means an existing Ghidra program cannot safely be reused. Keep this
+# predicate shared with --selftest: provenance failures happen before export,
+# so a test of a lookalike helper would not prove the shipping refusal fires.
+provenance_needs_reimport() { # <wanted hash> <recorded hash or empty> <in project: 0|1>
+    [ -n "$2" ] && [ "$2" != "$1" ] && return 0
+    [ -z "$2" ] && [ "$3" = 1 ] && return 0
+    return 1
+}
+
 if [ "${1:-}" = "--selftest" ]; then
     # Proof that the step guard FIRES. It exists because the failure it catches
     # is invisible by construction: a step that dies still prints an earlier
     # run's lines, so "it looked fine" is exactly what a broken run looks like.
     # Needs no Ghidra and no game install, so it is wired in as a ctest.
-    LOG=$(mktemp); fails=0
+    mkdir -p "$ROOT/scratch/logs"
+    LOG=$(mktemp "$ROOT/scratch/logs/ghidra-export-selftest.XXXXXX"); fails=0
     run_step_selftest() {                 # <name> <expect-exit> <prefill> <emit>
         printf '%s' "$3" > "$LOG"
         if ( run_step "$1" '^ADD:' 3 sh -c "printf '%s' \"\$0\"" "$4" ) \
@@ -120,6 +130,19 @@ if [ "${1:-}" = "--selftest" ]; then
     else
         echo "  ok: a step that reports a LOT of work (700 KB, past the pipe buffer)"
     fi
+    provenance_case() { # <name> <expect reimport 0|1> <want> <have> <in project>
+        if provenance_needs_reimport "$3" "$4" "$5"; then got=1; else got=0; fi
+        if [ "$got" != "$2" ]; then
+            echo "  FAIL: $1 -- reimport=$got, expected $2"
+            fails=$((fails+1))
+        else
+            echo "  ok: $1"
+        fi
+    }
+    provenance_case "a matching recorded hash is reusable"       0 aaa aaa 1
+    provenance_case "a different recorded hash forces re-import" 1 aaa bbb 1
+    provenance_case "an unrecorded existing program forces re-import" 1 aaa "" 1
+    provenance_case "a new unrecorded program is handled by normal import" 0 aaa "" 0
     echo "ghidra_export --selftest: $([ $fails -eq 0 ] && echo PASSED || echo FAILED) ($fails failure(s))"
     rm -f "$LOG"
     exit $fails
@@ -172,14 +195,16 @@ mkdir -p "$PROJ"
 touch "$STAMP"
 WANT=$(sha256sum "$BIN" | cut -d' ' -f1)
 HAVE=$(awk -v m="$(basename "$BIN")" '$2==m {print $1}' "$STAMP" | tail -1)
-if [ -n "$HAVE" ] && [ "$HAVE" != "$WANT" ]; then
-    echo "ghidra_export: the project's $(basename "$BIN") came from a DIFFERENT file"
-    echo "  (recorded $HAVE, want $WANT) -- re-importing rather than reusing it." >&2
-    REANALYZE=1
-fi
-if [ -z "$HAVE" ] && grep -q ":$(basename "$BIN"):" "$PROJ/xmen2.rep/idata/~index.dat" 2>/dev/null; then
-    echo "ghidra_export: the project already has $(basename "$BIN") but nothing"
-    echo "  records which file it came from -- re-importing to be sure." >&2
+IN_PROJECT=0
+grep -q ":$(basename "$BIN"):" "$PROJ/xmen2.rep/idata/~index.dat" 2>/dev/null && IN_PROJECT=1
+if provenance_needs_reimport "$WANT" "$HAVE" "$IN_PROJECT"; then
+    if [ -n "$HAVE" ]; then
+        echo "ghidra_export: the project's $(basename "$BIN") came from a DIFFERENT file"
+        echo "  (recorded $HAVE, want $WANT) -- re-importing rather than reusing it." >&2
+    else
+        echo "ghidra_export: the project already has $(basename "$BIN") but nothing"
+        echo "  records which file it came from -- re-importing to be sure." >&2
+    fi
     REANALYZE=1
 fi
 

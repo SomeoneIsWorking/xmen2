@@ -124,9 +124,9 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-lift — Emit C per function from Ghidra-identified boundaries
 - status: re-partial
 - deps: rc-decode
-- evidence: src/recomp/libIGDisplay.c, 20349 lines, compiles clean with -Wall
-- where: 
-- gap: Emits per-function C over a CPU struct with lazy flags and a dispatch hook, but the interop layer does not exist: 163 import stubs are declared and unimplemented, and no entry shim marshals a real call into a recompiled body.
+- evidence: C179; tools/ghidra_export.sh lift_step_guard selftest covers silent/Jython-failed/large-output steps plus matching, mismatched and unknown source provenance; current libIGSg stamp matches the installed PE and verify_export reports 5 agreeing sections, 4714 functions, 0 truncated
+- where: tools/ghidra_export.sh, tools/verify_export.py, tools/recomp.py emit, src/recomp/
+- gap: Real per-function lift is live across the exe and all game modules. Remaining decoder gap is the untaken 3DNow path plus AAA/DAA/BOUND/XLAT/ENTER inside two regions Ghidra decoded from embedded data; those stay fail-loud rather than translating noise. The standing rc-hybrid fallback path remains separate debt.
 - notes: 
 
 ### rc-imports — Host implementations of the imported Win32/D3D8/DInput/CRT surface
