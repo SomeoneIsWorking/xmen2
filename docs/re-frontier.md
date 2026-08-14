@@ -84,10 +84,10 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### xbox-defaults — Recover and port the Xbox build's controller defaults into the PC mapping UI
 - status: re-partial
 - deps:
-- evidence: C160 proves the PC game opens/reads a pad; C184 parses the Xbox options package; C187 records the 17 verified assignments and their falsifier. `FUN_00619c40`, `FUN_0061b030`, and `FUN_006297a0` recover the PC action-to-row switch, 42 named rows, and exact slot setter. `test_xbox_defaults` calls the shipping post-hook and proves every tuple, idempotence, custom-map preservation, and owned-row disconnect removal; a real 1,800-frame virtual-pad run reports one 17-row install through the retained setter and 45/45 CTests pass.
-- where: docs/features/controller-mapping-defaults.md; src/native/xbox_defaults.c; tests/test_xbox_defaults.c; tools/extract_fb.py; Xbox default.xbe and controller-options FB
-- gap: Recover the Xbox d-pad direction-to-action assignments and the PC action boundary for Black/White Health/Energy; add explicit Keyboard Defaults and Xbox Defaults menu commands; verify both presets from that UI on real data.
-- notes: The current subset deliberately omits unproven rows. `NEXT/PREV/INC_AGGR/DEC_AGGR` existing in the XBE is not evidence that the four d-pad directions map to them, and `QuickPower` is not evidence for Health/Energy.
+- evidence: C160 proves the PC game opens/reads a pad; C184 parses the Xbox options package; C187 records the 21 verified bindable assignments and their falsifier. Xbox `sub_00162240` directly associates each d-pad name with NEXT/PREV/INC_AGGR/DEC_AGGR; PC `FUN_00619c40`, `FUN_0061b030`, `FUN_006281f0`, and `FUN_006297a0` recover the action rows, physical codes, 42-row object, and exact setter. `FUN_0061dc10`/`FUN_006188c0` prove the retained three-button editor boundary. `test_xbox_defaults` calls the shipping wrappers and proves every tuple, both labels, callback ABI, automatic custom-map preservation, explicit replacement/persistence, idempotence, and owned-row disconnect removal.
+- where: docs/features/controller-mapping-defaults.md; src/native/xbox_defaults.c; src/native/controller_defaults_ui.c; tests/test_xbox_defaults.c; tools/extract_fb.py; Xbox default.xbe and controller-options FB
+- gap: Recover and port the Xbox direct gameplay path for Black/White Health/Energy; capture the real controller editor showing both labels and prove both clicks on-screen.
+- notes: Black/White are deliberately omitted: neither the Xbox common-action constructor nor the PC 42-row binding object exposes Health/Energy. `QuickPower` is not evidence for either pack action.
 
 ## harness
 

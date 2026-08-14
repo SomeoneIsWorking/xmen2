@@ -3,6 +3,8 @@
 # --isolate list drift apart and overrides silently stop firing.
 
 set(RECOMP_OVERRIDE_WRAPS
+    -Wl,--wrap=fn_XMen2_006188c0        # XMen2 0x006188c0
+    -Wl,--wrap=fn_XMen2_00629ba0        # XMen2 0x00629ba0
     -Wl,--wrap=fn_XMen2_0061b030        # XMen2 0x0061b030
     -Wl,--wrap=fn_XMen2_00617480        # XMen2 0x00617480
     -Wl,--wrap=fn_XMen2_0055b610        # XMen2 0x0055b610

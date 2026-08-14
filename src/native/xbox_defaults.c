@@ -9,11 +9,12 @@
  * signed-axis/POV/button codes; FUN_006297a0 is the exact four-argument slot
  * setter. This file joins those facts. It does not invent a second input map.
  *
- * Health/energy and the d-pad are deliberately absent here. The Xbox screen
- * puts packs on Black/White, but the PC table has no named pack row; it labels
- * the d-pad only "Change Hero", without exposing which PC action row each
- * direction drives. Guessing either would make the preset look complete while
- * changing gameplay. They remain the next RE boundary.
+ * The Xbox action constructor at 0x00162240 binds d-pad Up/Down/Right/Left to
+ * NEXT/PREV/INC_AGGR/DEC_AGGR. FUN_00619c40 maps those four action IDs to the
+ * correspondingly named PC rows. Black/White remain outside this table: the
+ * Xbox action constructor does not register either against a common action,
+ * and the PC binding object has no Health/Energy row. Their direct gameplay
+ * path is a separate engine boundary, not a reason to invent aliases here.
  */
 #include "xbox_defaults.h"
 
@@ -44,6 +45,10 @@ static const XboxDefaultBinding DEFAULTS[] = {
     {  7, 0x17 }, /* Guard         X / Use + Pickup + Boost */
     {  8, 0x06 }, /* Power         RT (combined DirectInput Z-) */
     {  9, 0x05 }, /* Ally          LT (combined DirectInput Z+) */
+    { 12, 0x14 }, /* NextHero      d-pad up */
+    { 13, 0x13 }, /* PreviousHero  d-pad down */
+    { 14, 0x12 }, /* DecreaseAggr  d-pad left */
+    { 15, 0x11 }, /* IncreaseAggr  d-pad right */
     { 16, 0x1e }, /* MapToggle     right-stick click / button 10 */
     { 17, 0x1c }, /* Pause         Start / button 8 */
     { 18, 0x1b }, /* Stats         Back / Team Information */
@@ -55,7 +60,7 @@ static const XboxDefaultBinding DEFAULTS[] = {
 
 static int g_installed;
 static uint32_t g_kind;
-static unsigned long g_applies, g_clears, g_custom, g_not_ready;
+static unsigned long g_applies, g_explicit, g_clears, g_custom, g_not_ready;
 
 const XboxDefaultBinding *xbox_default_bindings(size_t *count)
 {
@@ -119,6 +124,22 @@ static int any_pad_binding(uint32_t object)
     return 0;
 }
 
+static void clear_pad_slot(CPU *cpu, X86Module *m, uint32_t object)
+{
+    uint32_t row, kind, code;
+    for (row = 0; row < BINDING_ROWS; row++)
+        if (read_slot(object, row, &kind, &code) && (kind || code))
+            set_slot(cpu, m, object, row, 0u, 0u);
+}
+
+static void install_defaults(CPU *cpu, X86Module *m, uint32_t object,
+                             uint32_t kind)
+{
+    size_t i;
+    for (i = 0; i < sizeof DEFAULTS / sizeof DEFAULTS[0]; i++)
+        set_slot(cpu, m, object, DEFAULTS[i].binding, kind, DEFAULTS[i].code);
+}
+
 static void remove_installed(CPU *cpu, X86Module *m, uint32_t object)
 {
     size_t i;
@@ -137,7 +158,6 @@ void xbox_defaults_sync(CPU *cpu)
     X86Module *m;
     uint32_t object, kind;
     int pad, occupied;
-    size_t i;
 
     if (!cpu || !(m = exe_module()) || !binding_object(m, &object)) {
         g_not_ready++;
@@ -156,18 +176,41 @@ void xbox_defaults_sync(CPU *cpu)
         else g_not_ready++;
         return;
     }
-    for (i = 0; i < sizeof DEFAULTS / sizeof DEFAULTS[0]; i++)
-        set_slot(cpu, m, object, DEFAULTS[i].binding, kind, DEFAULTS[i].code);
+    install_defaults(cpu, m, object, kind);
     g_installed = 1;
     g_kind = kind;
     g_applies++;
     fprintf(stderr, "XBOX-DEFAULTS: installed %zu verified Xbox-release "
                     "bindings for "
                     "gamepad kind %u through FUN_006297a0; existing pad "
-                    "bindings would have been preserved. D-pad and Health/"
-                    "Energy remain unmapped pending their separate PC action "
-                    "boundaries.\n",
+                    "bindings would have been preserved. Black/White Health/"
+                    "Energy remain a separate direct-action boundary.\n",
             sizeof DEFAULTS / sizeof DEFAULTS[0], kind);
+}
+
+int xbox_defaults_apply(CPU *cpu)
+{
+    X86Module *m;
+    uint32_t object, kind;
+    int pad;
+
+    if (!cpu || !(m = exe_module()) || !binding_object(m, &object)) {
+        g_not_ready++;
+        return 0;
+    }
+    pad = first_pad();
+    if (pad < 0) return 0;
+    kind = 3u + (uint32_t)pad;
+
+    clear_pad_slot(cpu, m, object);
+    install_defaults(cpu, m, object, kind);
+
+    /* The explicit command converts an automatic installation into persisted
+       user-selected state. Disconnect cleanup must not erase that choice. */
+    g_installed = 0;
+    g_kind = 0;
+    g_explicit++;
+    return 1;
 }
 
 void __real_fn_XMen2_0061b030(CPU *cpu);
@@ -180,8 +223,9 @@ void __wrap_fn_XMen2_0061b030(CPU *cpu)
 
 void xbox_defaults_report(void)
 {
-    printf("  Xbox defaults: %lu install(s), %lu removal(s), %lu custom-map "
+    printf("  Xbox defaults: %lu automatic, %lu explicit, %lu removal(s), "
+           "%lu custom-map "
            "deferral(s), %lu not-ready probe(s); %s\n",
-           g_applies, g_clears, g_custom, g_not_ready,
+           g_applies, g_explicit, g_clears, g_custom, g_not_ready,
            g_installed ? "port preset active" : "port preset inactive");
 }

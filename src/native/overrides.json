@@ -26,6 +26,27 @@
   "overrides": [
     {
       "module": "XMen2",
+      "ep": "0x006188c0",
+      "symbol": "fn_XMen2_006188c0",
+      "returns": "void",
+      "why": [
+        "Controller-default button callback retained for every event and preset except activating context 1.",
+        "",
+        "FUN_0061dc10 creates Defaults 1/2/3 and supplies contexts 0/1/2. Context 0 remains the shipped keyboard table; context 1 is routed to the verified Xbox binding owner. The callback return is ignored by all three FUN_0061dc10 registrations: it is invoked through the menu callback ABI for side effects, and the caller does not read EAX."
+      ]
+    },
+    {
+      "module": "XMen2",
+      "ep": "0x00629ba0",
+      "symbol": "fn_XMen2_00629ba0",
+      "why": [
+        "Narrow label adapter for the controller editor's literal Defaults 1 and Defaults 2 fallbacks.",
+        "",
+        "All other localization keys and fallbacks defer to the retained body. Matching the exact fallback strings confines the change to the two buttons built by FUN_0061dc10 while preserving the game's language lookup behavior elsewhere."
+      ]
+    },
+    {
+      "module": "XMen2",
       "ep": "0x0061b030",
       "symbol": "fn_XMen2_0061b030",
       "why": [

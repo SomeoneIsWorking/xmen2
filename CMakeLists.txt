@@ -73,7 +73,8 @@ add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
 add_executable(test_xbox_defaults tests/test_xbox_defaults.c
-               src/native/xbox_defaults.c)
+               src/native/xbox_defaults.c
+               src/native/controller_defaults_ui.c)
 target_include_directories(test_xbox_defaults PRIVATE src/recomp src/native)
 target_compile_definitions(test_xbox_defaults PRIVATE _GNU_SOURCE)
 add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
@@ -458,6 +459,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_pad.c
         src/native/pad_glyphs.c
         src/native/xbox_defaults.c
+        src/native/controller_defaults_ui.c
         src/native/dsound.c
         src/native/ws2_32.c
         src/native/advapi32.c

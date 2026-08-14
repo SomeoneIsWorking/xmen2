@@ -58,16 +58,24 @@ guessing: POWER 7 -> row 8 `Power`, GUARD 8 -> row 7 `Guard`, ALLY 9 -> row 9,
 NEXT/PREV 11/12 -> `NextHero`/`PreviousHero`, MAP_TOGGLE 15 -> row 16, and
 INC/DEC_AGGR 16/17 -> the correspondingly named PC rows.
 
-## Implemented verified subset
+## Implemented bindable layout
 
 `src/native/xbox_defaults.c` joins that executable evidence to the authored
 Xbox controller screen. C187 records the result and its falsifier. It installs
-17 assignments:
+21 assignments:
 
 - left stick movement and right stick camera;
 - A Punch, B Slam, X Use/Pickup/Boost, Y Jump/Xtreme;
 - LT Call Allies and RT Mutant Powers;
+- d-pad Up/Down/Right/Left as Next/Previous/Increase/Decrease hero;
 - Back Team Information, Start Pause, and right-stick click Map Toggle.
+
+The d-pad order is executable evidence, not a reading of the diagram:
+`default.xbe` `sub_00162240` registers `DPAD_UP` with action 11 `NEXT`,
+`DPAD_DN` with 12 `PREV`, `DPAD_RT` with 16 `INC_AGGR`, and `DPAD_LF` with 17
+`DEC_AGGR`. The PC action switch maps those IDs to rows 12, 13, 15, and 14;
+the PC physical-name function maps POV Up/Down/Right/Left to codes
+`0x14/0x13/0x11/0x12`.
 
 The hook is deliberately after the real `FUN_0061b030`, so ordinary settings
 load first. It writes through retained `FUN_006297a0`, not direct table stores.
@@ -76,24 +84,39 @@ than partially merging around user state. Repeated hotswap pumps are
 idempotent. When the last pad disappears it clears only tuples that still
 match what the port installed; a user-modified tuple is not agent-owned cleanup.
 
-`tests/test_xbox_defaults.c` calls the shipping wrapper and checks the retained
-body, all 17 exact tuples, the repeat gate, disconnect removal, and custom-map
-refusal. The combined native suite passes 45/45. A real 1,800-frame run with
-the virtual Xbox pad reports one preset install through the retained setter.
+`tests/test_xbox_defaults.c` calls the shipping wrappers and checks the retained
+loader body, all 21 exact tuples, the repeat gate, disconnect removal, and
+custom-map refusal. A real 1,800-frame no-argument-launcher run with the virtual
+Xbox pad installed all 21 through the retained setter, presented 1,802 frames
+with 1,918 draws and zero refused, reached the frame cap, and exited 0.
+
+## Retained mapping UI
+
+The PC executable already owns the editor and three preset buttons.
+`FUN_0061dc10` creates `Defaults 1/2/3` and registers `FUN_006188c0` with
+contexts 0/1/2. The callback's 42-row copy edits slots 0 and 1 and deliberately
+skips pad slot 2, proving these are keyboard/mouse layouts. The port keeps
+context 0's body as **Keyboard Defaults**, routes only context 1 activation to
+`xbox_defaults_apply`, and leaves every other event/context retained.
+
+`src/native/controller_defaults_ui.c` owns that narrow adapter. Its
+localization wrapper changes only literal fallbacks `Defaults 1` and
+`Defaults 2`; every other lookup super-calls. Explicit Xbox selection clears
+and replaces pad slot 2 because the user requested that preset, then marks the
+result persisted user state so disconnect cleanup cannot erase it. Automatic
+startup still defers to any existing pad mapping.
 
 ## Remaining evidence boundary
 
-The preset is not yet the complete Xbox release mapping:
+The preset is not yet the complete Xbox release behavior:
 
-- The Xbox screen says only **Change Hero** for the d-pad. The XBE contains
-  `NEXT`, `PREV`, `INC_AGGR`, and `DEC_AGGR`, but that does not prove which
-  physical direction drives which action—or that all four are the d-pad.
 - Black/White are authored as **Use Health Pack** / **Use Energy Pack**, while
   the PC's 42 named rows expose neither action. Aliasing them to a `QuickPower`
-  row would be a guess.
-- The mapping menu still needs two explicit commands: Keyboard Defaults and
-  Xbox Defaults. The engine-side preset is now reusable by the latter, but the
-  UI command path has not been ported.
+  row would be a guess. The Xbox common-action constructor does not register
+  Black or White either, proving pack use is a separate direct gameplay path.
+- The two relabelled buttons and their real click path still need an on-screen
+  capture; the shipping-wrapper test proves the exact ABI and state changes,
+  not that the current scripted navigation reaches this dialog.
 
 Those omissions are visible in the runtime install message. They are not
 silently replaced with plausible controls.

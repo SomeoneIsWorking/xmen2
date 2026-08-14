@@ -56,13 +56,16 @@ claim over the game.
 1. **Controller hotswap** — implemented through SDL3 and the game's own
    DirectInput enumeration/connection callbacks; late attach and detach are
    exercised by a frame-scheduled virtual pad.
-2. **Controller defaults UI** — in RE. It will expose Keyboard Defaults and
-   Xbox Defaults, where Xbox means the assignments recovered from the shipped
-   Xbox executable—not a modern mapping invented by the port.
+2. **Controller defaults UI** — implemented at the retained PC controller
+   editor: Keyboard Defaults keeps the shipped keyboard table and Xbox Defaults
+   applies the assignments recovered from the Xbox executable—not a modern
+   mapping invented by the port. Black/White pack use remains a direct-action
+   RE boundary because the PC binding table has no Health/Energy rows.
 3. **Xbox button prompts** — this port's SVGs are published into unused bytes
    of the PC font and returned at the game's RE'd physical-input naming
-   boundary only for SDL-classified Xbox controllers. Delivery is implemented;
-   the Xbox-default action assignments are the remaining visible-use gate.
+   boundary only for SDL-classified Xbox controllers. Delivery and the 21-row
+   bindable Xbox preset are implemented; an in-game prompt capture remains the
+   visible-use gate.
 
 ## Verification
 

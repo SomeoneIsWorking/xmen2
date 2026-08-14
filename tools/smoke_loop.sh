@@ -147,7 +147,10 @@ fi
 if [ "$SELFTEST" -eq 1 ]; then
     # scratch/, never /tmp: /tmp here is a RAM-backed tmpfs with a per-user
     # quota that logs and dumps fill in a run or two.
-    T=scratch/smoke-selftest; rm -rf "$T"; mkdir -p "$T"; rc=0
+    T=scratch/smoke-selftest
+    tools/cleanup_smoke.sh selftest
+    mkdir -p "$T"
+    rc=0
     good_shot=$T/good.ppm
     printf 'P6\n2 1\n255\n' > "$good_shot"
     python3 - "$good_shot" <<'EOP'
@@ -221,7 +224,7 @@ EOP
     { cat "$T/slow.log"; echo "[HB] the frame limit was reached -- reports follow"
       echo "[HB] presents 4200 (+0)"; } > "$T/stuck.log"
     expect "a timeout with the limit REACHED"  1 "$T/stuck.log" "$good_shot" 6 124
-    rm -rf "$T"
+    tools/cleanup_smoke.sh selftest
     [ "$rc" -eq 0 ] && echo "== smoke_loop --selftest: PASSED ==" \
                     || echo "== smoke_loop --selftest: FAILED =="
     exit "$rc"
@@ -236,7 +239,7 @@ BIN=scratch/build-native/x2native
 mkdir -p scratch/logs scratch/screenshots
 RUNLOG=scratch/logs/smoke_loop.log
 RUNSHOT=scratch/screenshots/smoke_loop.ppm
-rm -f "$RUNSHOT"
+tools/cleanup_smoke.sh screenshot
 
 # Frame numbers measured on a run that closes the loop. They are a property of
 # the GAME (how many frames its menus and its load take), not of this machine.

@@ -18,6 +18,11 @@ const XboxDefaultBinding *xbox_default_bindings(size_t *count);
 /* Keep the port-owned preset in slot 2 while a pad is present. Existing pad
    bindings are user state and are never overwritten. */
 void xbox_defaults_sync(struct CPU *cpu);
+
+/* Explicit menu action: replace pad slot 2 with the verified Xbox layout.
+   Unlike automatic sync, this is user-selected state and remains installed
+   when the controller disconnects. Returns nonzero when it was applied. */
+int xbox_defaults_apply(struct CPU *cpu);
 void xbox_defaults_report(void);
 
 #endif
