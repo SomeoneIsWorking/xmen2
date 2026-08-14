@@ -205,6 +205,34 @@
       ]
     },
     {
+      "module": "XMen2",
+      "ep": "0x006281f0",
+      "symbol": "fn_XMen2_006281f0",
+      "why": [
+        "The physical-input name boundary used by action prompts.",
+        "",
+        "FUN_00619e30 resolves an action to a binding, passes its device kind",
+        "and code to this function, and formats the returned name as [%s].",
+        "The original maps gamepad kinds 3..0xc and button codes 0x15..0x31",
+        "to textual Btn N names; its signed-axis table identifies code 5 as",
+        "Z+ and 6 as Z-, which are left/right trigger in the DirectInput",
+        "layout measured and implemented by dinput_pad.c. Codes 0x11..0x14",
+        "are the four POV directions.",
+        "",
+        "The override returns the port font's corresponding one-byte glyph",
+        "only when that gamepad slot is SDL-classified Xbox 360/One and the",
+        "generated font pack is active. It defers to the retained original",
+        "body for keyboards, non-Xbox pads, unknown codes, and LS/RS (which",
+        "have no authored SVG), so it cannot turn a missing icon into a blank",
+        "prompt. It reuses the original function's guest static name buffer",
+        "rather than truncating a 64-bit host string pointer.",
+        "",
+        "tests/test_pad_glyphs.c calls this exact shipping wrapper and checks",
+        "its RET 8 stack contract, return pointer and bytes, both controller",
+        "families, an unsupported code, and the font-pack-disabled gate."
+      ]
+    },
+    {
       "module": "libIGCore",
       "ep": "0x10069c70",
       "symbol": "fn_libIGCore_10069c70",

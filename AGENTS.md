@@ -25,7 +25,7 @@ python3 tools/re_frontier.py next       # the next RE-ready step;  `hacks` = the
 
 - `docs/codemap.md` — what exists, where, and its honest status per subsystem.
 - `docs/info/claims/` — each claim carries the observation that would falsify it.
-  `info.py claim check` detects rot mechanically (has the cited code changed?).
+  `info.py check` detects rot mechanically (has the cited code changed?).
 - `docs/info/instruments/` — a tool that lied is recorded here. Several have.
 - `docs/RE/` — reverse-engineering write-ups (`ark.md`, `enbaya_decode.md`,
   `conversations.md`). These are written to stand ALONE, for anyone reading the

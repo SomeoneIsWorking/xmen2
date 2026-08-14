@@ -61,6 +61,17 @@ if [ "$NAME" = "native" ]; then
 
     BUILD=${BUILD:-$ROOT/scratch/build-native}
 
+    # The live target includes Xbox prompts. Build the derived pack from the
+    # player's PC font plus this port's SVGs, with a content-addressed cache,
+    # unless the caller explicitly supplied a different asset pack. The hook
+    # is enabled only with the matching pack, so a custom/missing pack cannot
+    # turn a prompt into an invisible byte.
+    if [ -z "${X2_ASSETS:-}" ]; then
+        X2_ASSETS=$ROOT/scratch/generated-assets/pad-font
+        python3 tools/prepare_native_assets.py "$GAME_PC_DIR" "$X2_ASSETS" || exit $?
+        export X2_ASSETS X2_PAD_GLYPHS=1
+    fi
+
     # The recompiler output is GENERATED and gitignored. Without it CMake still
     # configures and links an x2native with no guest code in it at all -- a
     # binary that starts, finds nothing to run, and looks like a broken port

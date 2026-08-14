@@ -63,8 +63,19 @@ int main(void)
 
     test_no_pad();
 
+    /* Prompt selection follows SDL's physical-family classification, not the
+       Xbox-shaped DirectInput layout we intentionally present for every pad. */
+    CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_XBOX360) == 1);
+    CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_XBOXONE) == 1);
+    CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_PS5) == 0);
+    CHECK(dinput_pad_type_uses_xbox_glyphs(SDL_GAMEPAD_TYPE_STANDARD) == 0);
+    printf("prompt family: Xbox 360/One positive, PS5/standard negative: ok\n");
+
     SDL_INIT_INTERFACE(&desc);
     desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.vendor_id = 0x045e;
+    desc.product_id = 0x028e;
+    desc.name = "Virtual Xbox 360 Pad";
     desc.naxes = 6;
     desc.nbuttons = 11;
     desc.nhats = 1;
@@ -86,6 +97,7 @@ int main(void)
     dinput_pad_refresh();
     CHECK(dinput_pad_count() == 1);
     CHECK(dinput_pad_name(0) != NULL);
+    CHECK(dinput_pad_uses_xbox_glyphs(0) == 1);
     /* The identity the game keys its player slots on has to exist and the two
        GUIDs must differ -- an instance GUID equal to the product GUID would
        make two identical pads the same device. */

@@ -1497,7 +1497,7 @@ static void where(uint32_t addr)
                         "host memory or a module was never linked in\n");
 }
 
-void x86_dispatch(CPU *C, uint32_t target)
+static void x86_dispatch_one(CPU *C, uint32_t target)
 {
     X86Module *m;
     if (x86_native_call_at(target, C)) return;
@@ -1542,6 +1542,32 @@ void x86_dispatch(CPU *C, uint32_t target)
         fprintf(stderr, "*** 1 of 1 dispatch target is missing a body\n");
     }
     abort();
+}
+
+void x86_dispatch(CPU *C, uint32_t target)
+{
+    uint32_t outer_depth = C->dispatch_depth;
+    uint32_t outer_target = C->tail_target;
+    C->dispatch_depth = C->call_depth + 1u;
+    do {
+        C->tail_target = 0;
+        x86_dispatch_one(C, target);
+        target = C->tail_target;
+    } while (target);
+    C->dispatch_depth = outer_depth;
+    C->tail_target = outer_target;
+}
+
+void x86_tail_dispatch(CPU *C, uint32_t target)
+{
+    /* Same generated-body contract as the hosted runtime (C181). A tail jump
+       reached through a direct C call must finish before that direct caller
+       resumes; only a tail at this dispatch frame may be queued for the loop. */
+    if (C->dispatch_depth && C->call_depth == C->dispatch_depth) {
+        C->tail_target = target;
+        return;
+    }
+    x86_dispatch(C, target);
 }
 
 /*

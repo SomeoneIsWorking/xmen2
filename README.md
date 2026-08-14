@@ -3,16 +3,16 @@
 Turn X-Men Legends II: Rise of Apocalypse (2005, Activision / Raven / Vicarious
 Visions) into a **native, buildable codebase** by statically recompiling the PC
 build's x86 machine code to C and then replacing subsystems with hand-written
-native code. The end state runs without Wine and without the original binaries;
-the Xbox build supplies authentic assets (button glyphs).
+native code. The current product runs without Wine: locally generated C executes
+the code while the host maps the user's PC PE images for their data, relocation
+layout and other non-code content.
 
 **Direction: static recompilation of the PC build to native C, then native
 overrides — see [`docs/strategy.md`](docs/strategy.md).** The whole binary is
 translated mechanically so the game runs early, then subsystems are replaced
-with hand-written C while the rest keeps working. Measured feasible: Ghidra
-identifies function bodies covering 77.5% of `XMen2.exe` (11,106 functions,
-643,647 instructions) despite the exe exporting no symbols at all, and a decoder
-covering ~80 x86 mnemonics reaches 99.7% of them.
+with hand-written C while the rest keeps working. The live native build links
+the exe and every shipped engine module; unsupported instructions and missing
+indirect targets refuse by name instead of silently falling back.
 
 ## What is in this repository — and what is not
 
@@ -43,9 +43,9 @@ claim over the game.
   `cg.dll` / `libMovie.dll` — **6.47 MB of x86 machine code total**. The gameplay is NOT in
   the binaries: it is data-driven (`Data/*.XMLB` = compressed XML, `Data/*.engb` = Enbaya,
   `Scripts/` Lua, `Conversations/`, `missions/`, `entities/`, `Maps/`).
-- **Xbox ISO** (`$XBOX_ISO`): `default.xbe` (5.7 MB), `z/assetsfb.wad` (690 MB asset
-  package), `fonts_XBOX` set incl. `x2f_hud_xbox.igb` — contains the **authentic Xbox
-  button glyphs** the remaster needs for prompts.
+- **Xbox ISO** (`$XBOX_ISO`): `default.xbe` (5.7 MB) plus its packages — the
+  ground truth for the Xbox release's controller defaults and controller UI.
+  No Xbox asset is shipped by this repository; prompt art is this port's SVG.
 - **Alchemy 5.0 Kit** (archive.org `alchemy-kit_202309`, 152 MB): engine source + docs.
   The architectural Rosetta stone. XML2 ships Alchemy 3.2; 5.0 assets are version-
   incompatible but the engine architecture (igCore/igDisplay class model, IGB format,
@@ -53,13 +53,16 @@ claim over the game.
 
 ## The three features (all land in the input layer)
 
-1. **Controller hotswap** — SDL_GameController device add/remove events. The engine
-   already has the hooks: `libIGDisplay` exposes `_controllerConnectionFunction` /
-   `_controllerDisconnectionFunction` on `igControllerManager`; the shipped code just
-   never wires them (no `WM_DEVICECHANGE` anywhere — controllers are enumerated once).
-2. **Auto controller mapping** — SDL gamecontrollerdb + `SDL_GAMECONTROLLERCONFIG`.
-3. **Xbox button prompts** — glyphs from `x2f_hud_xbox.igb` replacing the PC
-   `Texs/joy1..4.png` (which are just digits 1–4).
+1. **Controller hotswap** — implemented through SDL3 and the game's own
+   DirectInput enumeration/connection callbacks; late attach and detach are
+   exercised by a frame-scheduled virtual pad.
+2. **Controller defaults UI** — in RE. It will expose Keyboard Defaults and
+   Xbox Defaults, where Xbox means the assignments recovered from the shipped
+   Xbox executable—not a modern mapping invented by the port.
+3. **Xbox button prompts** — this port's SVGs are published into unused bytes
+   of the PC font and returned at the game's RE'd physical-input naming
+   boundary only for SDL-classified Xbox controllers. Delivery is implemented;
+   the Xbox-default action assignments are the remaining visible-use gate.
 
 ## Verification
 
@@ -71,23 +74,12 @@ claim over the game.
   observation that would falsify it) and which tools can be *trusted* (instruments).
   Query with `info.py brief <words>` before re-deriving anything.
 
-## Roadmap
+## Progress tracking
 
-- [x] **M0** Repo + plan (this file)
-- [x] **M1** Acquire Alchemy 5.0 Kit reference
-- [x] **M3a** Data layer READ: XMLB/engb decompile via raven-formats (MIT); fb/zsnd also covered
-- [ ] **M3b** Data layer WRITE: compile path verified (need round-trip test on a real asset)
-- [x] **M2** Oracle baseline — PC build runs headless under Wine (DXVK + lavapipe
-      + virtual desktop), frames captured. `tools/run_shim.sh`. NOT yet
-      deterministic: boot-movie timing varies between runs.
-- [x] **M2b** DLL-swap mechanism — pass-through proxy `libIGDisplay.dll` (898
-      forwarded exports) verified transparent in the real game
-- [x] **M3c** ARK meta-object system reverse-engineered (`docs/RE/ark.md`)
-- [ ] **M4** Recompiler: x86-32 decoder + C emitter (`tools/re_frontier.py next`)
-- [ ] **M5** Host layer for the 989 imported Win32/D3D8/DInput/CRT symbols
-- [ ] **M6** Recompiled `libIGDisplay.dll` runs in the real game (proving ground)
-- [ ] **M7** Recompiled `XMen2.exe`
-- [ ] **M8** Native overrides — the 3 controller features land here
+Current status has two maintained owners: [`docs/codemap.md`](docs/codemap.md)
+says what exists and its honest coverage;
+[`docs/re-frontier.md`](docs/re-frontier.md) orders the remaining RE work and
+names shortcut debt. `python3 tools/re_frontier.py next` is the executable view.
 
 ## Reference materials (M1)
 

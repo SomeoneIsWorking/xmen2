@@ -39,6 +39,17 @@ target_include_directories(x2_display PUBLIC src/display)
 target_link_libraries(x2_display PUBLIC ${X2_SDL})
 
 enable_testing()
+
+set(X2_PAD_GLYPH_HEADER "${CMAKE_BINARY_DIR}/pad_glyph_codes.h")
+add_custom_command(
+    OUTPUT "${X2_PAD_GLYPH_HEADER}"
+    COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+            --emit-header "${X2_PAD_GLYPH_HEADER}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+            "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
+    COMMENT "x2native: generating button-glyph codepoints")
+add_custom_target(x2_pad_glyph_header DEPENDS "${X2_PAD_GLYPH_HEADER}")
+
 add_executable(test_controller tests/test_controller.c)
 target_link_libraries(test_controller PRIVATE x2_display)
 add_test(NAME controller COMMAND test_controller)
@@ -51,6 +62,15 @@ target_include_directories(test_dinput_pad PRIVATE src/native)
 target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
 target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
 add_test(NAME dinput_pad COMMAND test_dinput_pad)
+
+add_executable(test_pad_glyphs tests/test_pad_glyphs.c
+               src/native/pad_glyphs.c)
+add_dependencies(test_pad_glyphs x2_pad_glyph_header)
+target_include_directories(test_pad_glyphs PRIVATE src/recomp src/native
+                                                  ${CMAKE_BINARY_DIR})
+target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE)
+add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
+add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
 add_executable(test_enbaya tests/test_enbaya.c)
 target_link_libraries(test_enbaya PRIVATE x2_core)
@@ -251,6 +271,18 @@ add_test(NAME pad_font
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/make_pad_font.py --selftest)
 
+add_test(NAME pad_glyph_manifest
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py --selftest)
+
+add_test(NAME prepare_native_assets
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
+
+add_test(NAME re_frontier_format
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tests/test_re_frontier.py)
+
 add_test(NAME extract_fb
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/extract_fb.py --selftest)
@@ -418,6 +450,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_script.c
         src/native/dinput_joystick.c
         src/native/dinput_pad.c
+        src/native/pad_glyphs.c
         src/native/dsound.c
         src/native/ws2_32.c
         src/native/advapi32.c
@@ -452,7 +485,7 @@ if(X2_MODULE_HAVE)
         
         ${X2_MODULE_SRCS}
     )
-    add_dependencies(x2native x2_shaders)
+    add_dependencies(x2native x2_shaders x2_pad_glyph_header)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
                                               src/gpu src/d3d8
                                               ${CMAKE_BINARY_DIR})

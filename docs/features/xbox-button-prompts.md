@@ -427,29 +427,44 @@ white, the two triggers and the two sticks. Note the band is populated in the
 PC atlas too -- so this region is shared sprite space in both builds, not an
 Xbox addition, and only the button cells differ.
 
-## The plan that actually works: put the art at unused codepoints
+## Implemented delivery: unused codepoints through the original text path
 
-The game's text path is the only thing that draws a `[%s]` label, so the art has
-to reach it as a glyph. It can:
+The game's text path is the only thing that draws a `[%s]` label, so the art
+reaches it as a glyph. The implementation is now:
 
 **90 of the 256 glyphs have an empty rect** -- codepoints the font does not use.
 `X2_ASSETS` already substitutes both halves of a font (the `.igb` atlas and the
 `.xmlb` metrics; C162 proved a substituted font reaches the renderer, by making
 `GREENLAND` render as `G`). So:
 
-1. Ship `textures/fonts/X2F_med_PC.igb` = the **Xbox** atlas (the art is already
-   in it, in the band above -- nothing has to be drawn).
-2. Ship `ui/fonts/x2f_med_pc.xmlb` = the PC metrics **plus** glyph rects for the
-   eleven button cells, written into eleven of the unused `num` slots, with the
-   UVs measured above and a `horizadvance` matching their width.
-3. Override `FUN_006281f0` for `devkind >= 3` to return the one-character string
-   for the chosen codepoint instead of `Btn %d`. Contract from the disassembly:
-   `__thiscall`, `RET 0x8`, arg0 = devkind, arg1 = code, returns `char *`.
+1. `assets/buttons/glyphs.json` is the one ordered codepoint authority;
+   `tools/pad_glyph_manifest.py` validates its eleven SVGs and generates
+   `pad_glyph_codes.h` for C. `tools/make_pad_font.py` consumes the same
+   manifest to rasterise those SVGs into the PC atlas's measured empty band at
+   bytes `0x80..0x8a`, so Python and the runtime cannot drift.
+2. `tools/prepare_native_assets.py` fingerprints both shipped PC font files,
+   the SVGs and the builder. The zero-argument `./run.sh` builds the verified
+   derived pack on a miss and reuses it on a hit, then enables the hook only
+   with that pack. No Xbox-owned art is copied or committed.
+3. `src/native/pad_glyphs.c` overrides `FUN_006281f0` at its measured
+   `__thiscall`, `RET 0x8` contract. It maps the physical DirectInput codes
+   already established by `dinput_pad.c`: buttons `0x15..0x1c`, Z+/Z- (`5/6`)
+   to LT/RT, and POV `0x11..0x14` to d-pad. Back/Start follow the game's button
+   order, not the font's order.
+4. The hook fires only for the gamepad slot named by `devkind 3..0xc` when SDL
+   classifies its connected device as Xbox 360/One. Keyboard, PlayStation,
+   generic controllers, unknown codes and LS/RS super-call the retained
+   recompiled body. LS/RS have no authored SVG, so retaining `Btn 9/10` is an
+   explicit fallback rather than a blank glyph.
 
-This stays entirely inside the game's own text pipeline -- no new draw path, no
-renderer work -- and the device switch is free, because slot 2 is consulted
-first (C167) so a bound pad already wins the label.
+This stays entirely inside the game's own text pipeline -- no new draw path and
+no renderer special case. `tests/test_pad_glyphs.c` calls the exact shipping
+wrapper and checks its stack pop, returned guest pointer, bytes, Xbox/non-Xbox
+split, unsupported-code deferral and pack-disabled gate. A real default launch
+independently proves both derived font files are opened through `X2_ASSETS`.
 
-The one open question is which of the eleven cells each pad code 0x15..0x31
-maps to, and that is answered by the same Xbox default mapping table feature 2
-needs. The two features share that RE step.
+The remaining user-visible prerequisite is action assignment. A fresh-profile
+virtual-pad run opens and reads the pad but creates no pad action bindings, so
+`FUN_00619e30` never asks the name function for a pad label. The delivery path
+is implemented and verified; the prompt appears only after the Xbox-default
+mapping is recovered and installed through the mapping UI feature below.

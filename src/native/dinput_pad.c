@@ -53,11 +53,23 @@ typedef struct {
     unsigned char prod[16];       /* product GUID -- the PIDVID form */
     char          name[128];
     int           buttons;
+    int           xbox_glyphs;
 } Pad;
 
 static Pad g_pad[DINPUT_PAD_MAX];
 static int g_scanned;
 static unsigned long g_opens, g_closes;
+
+int dinput_pad_type_uses_xbox_glyphs(int type)
+{
+#ifdef X2_WITH_SDL
+    return type == SDL_GAMEPAD_TYPE_XBOX360 ||
+           type == SDL_GAMEPAD_TYPE_XBOXONE;
+#else
+    (void)type;
+    return 0;
+#endif
+}
 
 /*
  * The DirectInput product GUID for a USB device: {PIDVID-0000-0000-0000-
@@ -130,6 +142,8 @@ static void pad_open(SDL_JoystickID id)
        SDL's button count: the DirectInput button ORDER is what matters and it
        is fixed by the mapping below, not by how many buttons SDL found. */
     p->buttons = 10;
+    p->xbox_glyphs = dinput_pad_type_uses_xbox_glyphs(
+        (int)SDL_GetGamepadType(gp));
     g_opens++;
     fprintf(stderr, "DINPUT-PAD: pad %d connected -- \"%s\" (vendor 0x%04x "
                     "product 0x%04x). Presented to the game as an Xbox 360 "
@@ -233,6 +247,12 @@ int dinput_pad_button_count(int pad)
 {
     Pad *p = pad_at(pad);
     return p ? p->buttons : 0;
+}
+
+int dinput_pad_uses_xbox_glyphs(int pad)
+{
+    Pad *p = pad_at(pad);
+    return p ? p->xbox_glyphs : 0;
 }
 
 #ifdef X2_WITH_SDL
@@ -430,6 +450,11 @@ static void virtual_attach(void)
     }
     SDL_INIT_INTERFACE(&desc);
     desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    /* A deterministic Xbox 360 identity makes the synthetic device exercise
+       the same prompt-family path as the hardware it models. */
+    desc.vendor_id = 0x045e;
+    desc.product_id = 0x028e;
+    desc.name = "X2 Virtual Xbox 360 Pad";
     desc.naxes = 6;
     desc.nbuttons = 11;
     desc.nhats = 1;
@@ -482,6 +507,7 @@ void dinput_pad_report(void)
     for (i = 0; i < DINPUT_PAD_MAX; i++)
         if (g_pad[i].used)
             printf("         pad %d  \"%s\"  %d button(s), presented as an "
-                   "Xbox 360 DirectInput pad\n", i, g_pad[i].name,
-                   g_pad[i].buttons);
+                   "Xbox 360 DirectInput pad; prompts: %s\n", i,
+                   g_pad[i].name, g_pad[i].buttons,
+                   g_pad[i].xbox_glyphs ? "Xbox glyphs" : "game text");
 }

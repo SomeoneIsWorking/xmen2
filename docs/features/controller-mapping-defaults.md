@@ -38,7 +38,15 @@ competing with a shipped answer.
 
 ## Status
 
-NOT STARTED. Recorded now so the requirement survives the session it was asked
-in. The prerequisite is that the game can see a gamepad at all, which is the
-DirectInput joystick path (`src/native/dinput.c`, `dinput_device.c`) --
-until then there is nothing to map.
+IN RE. The prerequisite is complete: the DirectInput path enumerates, opens,
+configures and reads an SDL3 pad, including late attach/detach. A fresh registry
+run with `X2_VIRTUAL_PAD=1` measured the next boundary: the game persists the
+pad GUID slots but leaves every action's pad-binding slot empty, so it does not
+auto-populate defaults merely because a controller exists.
+
+The Xbox controller-options FB is now parsed by `tools/extract_fb.py` (C184):
+eight members, including the controller diagram and the localized menu data.
+That gives the authored controller screen but is not yet the action table. The
+next RE step is to trace the Xbox code that supplies those assignments and
+relate its action identifiers to the PC action records; the diagram alone is
+not sufficient evidence for a hand-typed mapping.

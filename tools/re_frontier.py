@@ -107,9 +107,11 @@ class Entry:
     def serialize(self):
         out = [f"### {self.id} — {self.title}"]
         out.append(f"- status: {self.status}")
-        out.append(f"- deps: {', '.join(self.deps)}")
+        deps = ", ".join(self.deps)
+        out.append(f"- deps:{' ' + deps if deps else ''}")
         for f in ("evidence", "where", "gap", "notes"):
-            out.append(f"- {f}: {getattr(self, f)}")
+            value = getattr(self, f)
+            out.append(f"- {f}:{' ' + value if value else ''}")
         return "\n".join(out)
 
 
@@ -162,13 +164,13 @@ def save(entries, order):
         a = entries[eid].area
         if a not in areas:
             areas.append(a)
+    chunks = [HEADER.rstrip("\n")]
+    for area in areas:
+        body = "\n\n".join(entries[eid].serialize() for eid in order
+                             if entries[eid].area == area)
+        chunks.append(f"## {area}\n\n{body}")
     with open(ROADMAP, "w", encoding="utf-8") as fh:
-        fh.write(HEADER)
-        for a in areas:
-            fh.write(f"\n## {a}\n\n")
-            for eid in order:
-                if entries[eid].area == a:
-                    fh.write(entries[eid].serialize() + "\n\n")
+        fh.write("\n\n".join(chunks) + "\n")
 
 
 def effective_status(e, entries):

@@ -63,6 +63,13 @@ int  dinput_pad_for_guid(const unsigned char guid[16]);
 int32_t dinput_pad_axis(int pad, int axis, int32_t lo, int32_t hi);
 int     dinput_pad_button(int pad, int button);   /* 0 or 1 */
 int     dinput_pad_button_count(int pad);
+
+/* Prompt-family selection follows the connected device, not the DirectInput
+   layout we present to the 2005 game. SDL classifies Xbox 360/One mappings;
+   every other family keeps the game's text names. The type predicate is
+   exposed so the negative class is testable without owning two controllers. */
+int dinput_pad_type_uses_xbox_glyphs(int sdl_gamepad_type);
+int dinput_pad_uses_xbox_glyphs(int pad);
 /* The d-pad as a DirectInput POV: hundredths of a degree clockwise from north,
    or 0xFFFFFFFF for centred, which is what DIJOYSTATE2's rgdwPOV holds. */
 uint32_t dinput_pad_pov(int pad);

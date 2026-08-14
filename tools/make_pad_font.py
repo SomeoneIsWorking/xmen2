@@ -51,18 +51,11 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "scratch", "ref"))
 
 import xmlb                                                     # noqa: E402
+from pad_glyph_manifest import FIRST_CODEPOINT, ICONS            # noqa: E402
 
 PFMT_RGBA_8888_32 = 7
 CELL = 18                    # pixels; the shipped glyphs are 16-20 tall
 GAP = 2
-FIRST_CODEPOINT = 0x80
-
-# Order fixes which codepoint each icon gets, so the runtime can index rather
-# than look up by name. It is written here and nowhere else.
-ICONS = ["btn_a", "btn_b", "btn_x", "btn_y", "btn_lb", "btn_rb",
-         "btn_lt", "btn_rt", "btn_start", "btn_back", "btn_dpad"]
-
-
 # ---- the coordinate conversion, in ONE place (C171) -----------------------
 
 def row_to_t(row, height):
@@ -246,11 +239,13 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
                          "so there is nothing to point at the art."
                          % (pc_xmlb, missing))
 
-    tmp = tempfile.mkdtemp(prefix="padfont-")
-    try:
+    scratch_raw = os.path.join(ROOT, "scratch", "raw")
+    os.makedirs(scratch_raw, exist_ok=True)
+    # The raster files are build intermediates, not durable diagnostics. Keep
+    # them in the project's gitignored scratch tree (never /tmp), and have the
+    # context manager remove the exact directory it created on every exit.
+    with tempfile.TemporaryDirectory(prefix="padfont-", dir=scratch_raw) as tmp:
         art = rasterise(icons_dir, ICONS, CELL, tmp)
-    finally:
-        pass
     height = float(root.get("height", "20"))
     placed = []
     for i, (code, px) in enumerate(zip(codes, art)):
@@ -324,7 +319,7 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
         print("    0x%02x  %-10s cell (%d,%d)  t %.4f..%.4f"
               % (code, name, cx, cy,
                  row_to_t(cy + CELL, h), row_to_t(cy, h)))
-    print("run the game with X2_ASSETS=%s" % outdir)
+    print("asset pack written to %s" % outdir)
     return 0
 
 
