@@ -1,5 +1,5 @@
 #@runtime Jython
-"""Find a string and walk its incoming data/code reference chain."""
+"""Find a string or address and walk its incoming data/code reference chain."""
 import os
 import jarray
 
@@ -7,8 +7,9 @@ from ghidra.app.decompiler import DecompInterface, DecompileOptions
 from ghidra.util.task import ConsoleTaskMonitor
 
 query = os.environ.get("FIND_STRING_REFS", "")
-if not query:
-    raise RuntimeError("FIND_STRING_REFS is required")
+address_query = os.environ.get("FIND_ADDRESS_REFS", "")
+if bool(query) == bool(address_query):
+    raise RuntimeError("set exactly one of FIND_STRING_REFS or FIND_ADDRESS_REFS")
 
 max_depth = int(os.environ.get("FIND_STRING_DEPTH", "4"))
 backtrack = int(os.environ.get("FIND_STRING_BACKTRACK", "0"))
@@ -21,13 +22,18 @@ references = currentProgram.getReferenceManager()
 memory = currentProgram.getMemory()
 
 matches = []
-for data in listing.getDefinedData(True):
-    value = data.getValue()
-    if value is not None and query.lower() in str(value).lower():
-        matches.append(data.getAddress())
-
-if not matches:
-    raise RuntimeError("no defined string contains %r" % query)
+if query:
+    for data in listing.getDefinedData(True):
+        value = data.getValue()
+        if value is not None and query.lower() in str(value).lower():
+            matches.append(data.getAddress())
+    if not matches:
+        raise RuntimeError("no defined string contains %r" % query)
+else:
+    address = currentProgram.getAddressFactory().getAddress(address_query)
+    if address is None or not memory.contains(address):
+        raise RuntimeError("address is outside program memory: %r" % address_query)
+    matches.append(address)
 
 decompiler = None
 if decompile_code:
@@ -45,9 +51,11 @@ for address in matches:
     # both forms so RTTI users are visible even when Ghidra references the
     # descriptor rather than its embedded name.
     frontier.append((address, 0))
-    frontier.append((address.subtract(8), 0))
+    if query and memory.contains(address.subtract(8)):
+        frontier.append((address.subtract(8), 0))
 
-print("STRING %r: %s" % (query, ", ".join(str(a) for a in matches)))
+kind = "STRING %r" % query if query else "ADDRESS %s" % address_query
+print("%s: %s" % (kind, ", ".join(str(a) for a in matches)))
 while frontier:
     address, depth = frontier.pop(0)
     key = address.getOffset()

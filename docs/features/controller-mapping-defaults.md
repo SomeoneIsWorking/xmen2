@@ -114,13 +114,14 @@ The preset is not yet the complete Xbox release behavior:
   the PC's 42 named rows expose neither action. Aliasing them to a `QuickPower`
   row would be a guess. The Xbox common-action constructor does not register
   Black or White either, proving pack use is a separate direct gameplay path.
-  The next layer is now recovered: Xbox physical-name construction assigns
-  BLACK enum 7 and WHITE enum 10, and the Xbox platform adapter gives them
-  distinct Alchemy-button records. Xbox `sub_00088680` is the counterpart of
-  PC `FUN_0047a140`; both retain separate `HEALTH_ITEM` and `ENERGY_ITEM`
-  consumption branches. The PC therefore already owns pack use. What remains
-  is the Xbox-only physical-button trigger into that retained event path, not
-  a native reimplementation of inventory or healing.
+  The next layer is only partly recovered: Xbox `sub_00163240` gives BLACK and
+  WHITE distinct Alchemy-button records, but the meanings of those records'
+  numeric fields are not yet proved. The earlier `0xA` input query is party
+  switching, not a physical WHITE enum. Xbox `sub_00088680` is the counterpart
+  of PC `FUN_0047a140`; both retain separate `HEALTH_ITEM` and `ENERGY_ITEM`
+  consumption branches. The PC therefore already owns the consumption logic.
+  What remains is the Xbox-only mapping and trigger into that retained event
+  path, not a native reimplementation of inventory or healing.
 - The two relabelled buttons and their real click path still need an on-screen
   capture; the shipping-wrapper test proves the exact ABI and state changes,
   not that the current scripted navigation reaches this dialog.

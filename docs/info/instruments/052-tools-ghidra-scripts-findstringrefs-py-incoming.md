@@ -7,11 +7,19 @@ created: 2026-08-14
 
 ## Instrument
 
-tools/ghidra_scripts/FindStringRefs.py incoming reference and raw RTTI pointer walker
+tools/ghidra_scripts/FindStringRefs.py incoming reference and raw RTTI pointer walker.
+`FIND_STRING_REFS` seeds a defined string plus its possible MSVC TypeDescriptor;
+`FIND_ADDRESS_REFS` seeds one explicit in-image address.
 
 ## Validated by
 
-Positive control restoreHealth at 0x0068cd38 produced a DATA reference to 0x0068aa6c; ECheckHealthEnergy at 0x006d58ac produced zero ReferenceManager edges but two independently scanned aligned pointers at 0x006aab64 and 0x006aaba4. The two answer classes prove the walker reports both present database references and absent ones while its raw-pointer path recovers MSVC RTTI edges.
+On 2026-08-14, `restoreHealth` at 0x0068cd38 produced a DATA reference to
+0x0068aa6c; `ECheckHealthEnergy` at 0x006d58ac produced zero ReferenceManager
+edges while its TypeDescriptor start at 0x006d58a4 produced two independently
+scanned aligned pointers at 0x006aab64 and 0x006aaba4. Seeding that same
+0x006d58a4 through `FIND_ADDRESS_REFS` reproduced exactly those two pointers.
+The cases prove the walker reports present database references, distinguishes
+their absence, and recovers raw MSVC RTTI edges from both seed modes.
 
 ## Known failure modes
 
