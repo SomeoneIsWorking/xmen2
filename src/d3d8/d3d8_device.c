@@ -744,6 +744,30 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
         g_light_slot[idx].last[2] = l[3];
         g_light_slot[idx].last_type = ((const uint32_t *)l)[0];
     }
+    /*
+     * X2_LIGHT_ADDR=1 -- the GUEST ADDRESS the engine handed this light at.
+     *
+     * Ground truth for tools/light_probe.py. A matcher that finds D3DLIGHT8
+     * records by shape has to be checked against a case it MUST find, in real
+     * program memory rather than in random bytes: validated against random
+     * bytes alone it had zero false positives and then matched six million
+     * times in a live process, because real memory is full of 0.0 and 1.0
+     * floats. These addresses are the positive control.
+     */
+    {
+        static int addr_on = -1, told;
+        if (addr_on < 0) {
+            const char *e = getenv("X2_LIGHT_ADDR");
+            addr_on = (e && *e) ? atoi(e) : 0;
+        }
+        if (addr_on && told < 24) {
+            told++;
+            fprintf(stderr, "[LIGHT ADDR] index %u at guest 0x%08x, type %u, "
+                    "diffuse %.4f %.4f %.4f\n",
+                    idx, d3d8_arg(C, 1), ((const uint32_t *)l)[0],
+                    l[1], l[2], l[3]);
+        }
+    }
     memcpy(g_dev.state.light[idx], l, sizeof g_dev.state.light[0]);
     g_dev.state.light_set[idx] = 1;
     d3d8_ret(C, D3D_OK);
