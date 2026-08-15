@@ -90,4 +90,7 @@ void d3d8_frame_table_arm(void);
    manager and no focus, which is where it had to be proved. */
 void d3d8_frame_table_install_signal(void);
 
+/* Feeds a rigid palette and a corrupt one through the shipping probe. */
+int d3d8_constants_probe_selftest(void);
+
 #endif /* D3D8_DRAWCALL_H */

@@ -1391,6 +1391,7 @@ int d3d8_host_selftest(void)
     fails += caps_selftest();
     fails += pixel_shader_selftest();
     fails += d3d8_vs_selftest();
+    fails += d3d8_constants_probe_selftest();
     fails += gamma_selftest();
     fails += getdirect3d_selftest();
     fails += texture_level_selftest();

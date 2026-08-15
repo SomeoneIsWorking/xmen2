@@ -1176,6 +1176,8 @@ static int g_ft_on = -1, g_ft_done;
 static unsigned long g_ft_frame, g_ft_draw;
 static unsigned long g_ft_arms;
 static int g_ft_manual;      /* armed by F9: the person watching is the gate */
+static int g_ft_probed;      /* the constant-file probe fires once per arm */
+static int g_probe_rigid;    /* best rigid-bone count across the layouts */
 
 /*
  * Arm the table for the NEXT gameplay frame, from a live run.
@@ -1226,6 +1228,7 @@ void d3d8_frame_table_arm(void)
     g_ft_frame = 0;
     g_ft_draw = 0;
     g_ft_manual = 1;
+    g_ft_probed = 0;
     g_ft_arms++;
     obj_open_if_wanted();
     fprintf(stderr, "[FRAME TABLE] armed (%lu) -- the NEXT frame that draws "
@@ -1300,6 +1303,152 @@ static void obj_finish(void)
     fclose(g_obj);
     g_obj = NULL;
     g_obj_verts = 0;
+}
+
+
+/*
+ * ARE THE BONE MATRICES SANE?
+ *
+ * The characters render the same wrong shape whether they go through the
+ * fixed-function path or the vertex shader, and the two share almost nothing
+ * in this backend. What they DO share is the data the engine computed for
+ * them in recompiled x86: the matrix palette. A recompiler defect in the
+ * animation maths would look exactly like this, and would be invisible to
+ * every comparison run so far -- objcmp reads the vertex buffer, which holds
+ * the UNSKINNED bind-pose mesh in the shader path, and it matched.
+ *
+ * A bone matrix is a rigid transform, so it has properties that hold for
+ * every correct one and fail for a corrupt one, WITHOUT needing the control:
+ *
+ *   - no NaN and no infinity anywhere;
+ *   - the 3x3 part has determinant near +1 (a rotation, possibly with uniform
+ *     scale -- so |det| is reported, not asserted);
+ *   - its rows have length near 1 for the same reason;
+ *   - a palette of identity matrices means the skinning never ran.
+ *
+ * D3D8 shader constants carry matrix ROWS, and the shader's dp4 against
+ * c[a0.x + k] says these are consecutive registers. The layout is not known
+ * a priori, so BOTH readings are measured -- 3 registers per bone and 4 per
+ * bone -- and whichever produces rigid transforms is the one the engine used.
+ * Reporting both is the point: a reading that fits nothing is itself the
+ * finding, and picking one and reporting only its failure would hide that.
+ */
+static int constants_probe(const float c[][4], int first, int used)
+{
+    int layout;
+    unsigned long nan = 0, inf = 0;
+    g_probe_rigid = 0;
+    int i, j, nonzero = 0;
+
+    for (i = 0; i < used; i++)
+        for (j = 0; j < 4; j++) {
+            float f = c[i][j];
+            if (f != f) nan++;
+            else if (f > 3.0e38f || f < -3.0e38f) inf++;
+            if (f != 0.0f) nonzero = 1;
+        }
+
+    fprintf(stderr, "[VS CONSTANTS] c[%d..%d]: %lu NaN, %lu infinite, %s\n",
+            first, used - 1, nan, inf,
+            nonzero ? "not all zero" : "ENTIRELY ZERO -- nothing was uploaded");
+
+    for (layout = 3; layout <= 4; layout++) {
+        int bones = (used - first) / layout, rigid = 0, ident = 0, b;
+        double worst_det = 0.0, worst_row = 0.0;
+        if (bones <= 0) continue;
+        for (b = 0; b < bones; b++) {
+            const float *m0 = c[first + b * layout + 0];
+            const float *m1 = c[first + b * layout + 1];
+            const float *m2 = c[first + b * layout + 2];
+            double det, rl[3], d0, d1;
+            int k;
+            /* The 3x3 part, as rows of a row-vector transform. */
+            det = (double)m0[0] * (m1[1] * (double)m2[2] - m1[2] * (double)m2[1])
+                - (double)m0[1] * (m1[0] * (double)m2[2] - m1[2] * (double)m2[0])
+                + (double)m0[2] * (m1[0] * (double)m2[1] - m1[1] * (double)m2[0]);
+            for (k = 0; k < 3; k++) {
+                const float *r = k == 0 ? m0 : k == 1 ? m1 : m2;
+                rl[k] = sqrt((double)r[0]*r[0] + (double)r[1]*r[1]
+                             + (double)r[2]*r[2]);
+            }
+            d0 = fabs(fabs(det) - 1.0);
+            d1 = 0.0;
+            for (k = 0; k < 3; k++)
+                if (fabs(rl[k] - 1.0) > d1) d1 = fabs(rl[k] - 1.0);
+            if (d0 < 0.05 && d1 < 0.05) rigid++;
+            if (fabs(m0[0] - 1.0) < 1e-6 && fabs(m1[1] - 1.0) < 1e-6
+                    && fabs(m2[2] - 1.0) < 1e-6 && fabs(m0[1]) < 1e-6
+                    && fabs(m0[2]) < 1e-6 && fabs(m1[0]) < 1e-6)
+                ident++;
+            if (b == 0) { worst_det = det; worst_row = rl[0]; }
+        }
+        if (rigid > g_probe_rigid) g_probe_rigid = rigid;
+        fprintf(stderr, "[VS CONSTANTS]   read as %d register(s) per bone: "
+                "%d of %d are rigid transforms, %d are the IDENTITY; "
+                "bone 0 det %.4f row0 |%.4f|\n",
+                layout, rigid, bones, ident, worst_det, worst_row);
+    }
+    /* The first two, in full, so a wrong LAYOUT is visible as numbers rather
+       than inferred from a score. */
+    fprintf(stderr, "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n"
+                    "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n"
+                    "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n"
+                    "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n",
+            first,   c[first][0],   c[first][1],   c[first][2],   c[first][3],
+            first+1, c[first+1][0], c[first+1][1], c[first+1][2], c[first+1][3],
+            first+2, c[first+2][0], c[first+2][1], c[first+2][2], c[first+2][3],
+            first+3, c[first+3][0], c[first+3][1], c[first+3][2], c[first+3][3]);
+    return g_probe_rigid;
+}
+
+/*
+ * The probe against BOTH classes, run rather than reasoned about.
+ *
+ * A checker that scores a corrupt palette as corrupt proves nothing on its
+ * own -- it has to score a CORRECT one as correct, or it is a test that always
+ * says yes. This project has had a discriminator that was wrong in both
+ * directions, so both cases are fed through the shipping function.
+ */
+int d3d8_constants_probe_selftest(void)
+{
+    static float c[D3D8_MAX_VS_CONSTANTS][4];
+    int i, good, bad, fails = 0;
+    const double ang = 0.7;
+
+    printf("\n=== d3d8 bone-matrix probe: a rigid palette and a corrupt one ===\n");
+
+    /* Rotations about Z with a translation -- rigid, det +1, unit rows. */
+    memset(c, 0, sizeof c);
+    for (i = 0; i + 3 <= D3D8_MAX_VS_CONSTANTS; i += 3) {
+        double t = ang * (i / 3 + 1);
+        c[i+0][0] = (float)cos(t);  c[i+0][1] = (float)-sin(t); c[i+0][3] = 5.0f;
+        c[i+1][0] = (float)sin(t);  c[i+1][1] = (float)cos(t);
+        c[i+2][2] = 1.0f;
+    }
+    good = constants_probe(c, 0, D3D8_MAX_VS_CONSTANTS);
+
+    /* The same palette scaled to nonsense -- what a wrong maths path gives. */
+    for (i = 0; i < D3D8_MAX_VS_CONSTANTS; i++) {
+        c[i][0] *= 17.0f; c[i][1] *= 0.013f; c[i][2] *= -4.5f;
+    }
+    bad = constants_probe(c, 0, D3D8_MAX_VS_CONSTANTS);
+
+    if (good <= 0) {
+        printf("d3d8 bone-matrix probe: FAILED -- a RIGID palette scored %d "
+               "rigid bones. The probe cannot recognise a correct matrix, so "
+               "any negative it reports means nothing.\n", good);
+        fails++;
+    }
+    if (bad >= good) {
+        printf("d3d8 bone-matrix probe: FAILED -- a corrupt palette scored %d "
+               "against the rigid palette's %d. The probe does not "
+               "discriminate.\n", bad, good);
+        fails++;
+    }
+    if (!fails)
+        printf("d3d8 bone-matrix probe: PASSED -- rigid palette %d rigid "
+               "bone(s), corrupt palette %d.\n", good, bad);
+    return fails;
 }
 
 static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
@@ -1732,6 +1881,13 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
 
     if (programmable) {
         D3D8VSOutput *vertices;
+        /* Once per armed frame, on the first shader draw -- the palette is
+           uploaded per draw and this is the one the table is describing. */
+        if (g_ft_on > 0 && !g_ft_done && g_ft_frame && !g_ft_probed) {
+            g_ft_probed = 1;
+            constants_probe(s->vertex_shader_constant, 0,
+                            D3D8_MAX_VS_CONSTANTS);
+        }
         uint32_t count, bytes;
         if (!req->vertex_guest_bytes || !req->vertex_bytes || !req->stride) {
             fprintf(stderr, "d3d8: programmable draw has no host-visible "
