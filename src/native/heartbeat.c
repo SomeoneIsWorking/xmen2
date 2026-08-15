@@ -5,6 +5,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "d3d8_resource.h"
+#include "d3d8_vertex_shader.h"
 #include "d3d8_device.h"
 #include "gpu_draw.h"
 #include "gpu_device.h"
@@ -258,6 +259,11 @@ static void *heartbeat_thread(void *arg)
              * submission order cannot be what warps the geometry, and that is
              * a result rather than a missing line.
              */
+            {
+                char vsl[256];
+                d3d8_vertex_shader_binding_line(vsl, sizeof vsl);
+                fprintf(stderr, "[HB]           %s\n", vsl);
+            }
             {
                 static unsigned long p_unl, p_byt, p_rel, p_haz;
                 unsigned long lk, dis, noov, unl, byt, rel, haz;

@@ -40,4 +40,7 @@ int d3d8_vs_selftest(void);
    code OR a shader handle, told apart by bit 0 (D3DFVF_RESERVED0). */
 void d3d8_vertex_shader_binding_report(void);
 
+/* The same census as one heartbeat line; a '*' marks a shader handle. */
+void d3d8_vertex_shader_binding_line(char *buf, size_t n);
+
 #endif

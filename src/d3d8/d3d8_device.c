@@ -1160,6 +1160,27 @@ static void vs_seen_note(uint32_t handle)
     g_vs_nseen++;
 }
 
+/* The same thing in one line, for the heartbeat -- nothing here stops on its
+   own, so a census that only prints at shutdown is one a killed run loses.
+   That has already cost one hand-driven run's answer. */
+void d3d8_vertex_shader_binding_line(char *buf, size_t n)
+{
+    int i;
+    size_t at = 0;
+    unsigned shaders = 0;
+    for (i = 0; i < g_vs_nseen; i++)
+        if (g_vs_seen[i].handle & 1u) shaders++;
+    at += (size_t)snprintf(buf + at, n - at,
+                           "%d distinct SetVertexShader value(s), %u of them "
+                           "SHADER handles:", g_vs_nseen, shaders);
+    if (!g_vs_nseen)
+        snprintf(buf + at, n - at, " the engine bound NONE");
+    for (i = 0; i < g_vs_nseen && at + 20 < n; i++)
+        at += (size_t)snprintf(buf + at, n - at, " 0x%x%s",
+                               g_vs_seen[i].handle,
+                               (g_vs_seen[i].handle & 1u) ? "*" : "");
+}
+
 void d3d8_vertex_shader_binding_report(void)
 {
     int i;

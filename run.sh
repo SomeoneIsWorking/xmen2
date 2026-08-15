@@ -19,6 +19,12 @@
 # one is for looking, so it uses the real display, leaves the audio drivers
 # alone, and runs until you close it.
 #
+#
+# The output of every run is TEE'd to scratch/logs/<mode>.log, always. This is
+# not a convenience: a hand-driven run is expensive -- someone has to play the
+# game to the scene in question -- and its shutdown report is where several
+# censuses print. One such run's answer was lost to a terminal scrollback
+# already, and re-driving to the same dialog costs minutes of a person's time.
 # Environment (all optional):
 #   REBUILD=1       rebuild before running
 #   RUN_ARGS=...    extra arguments passed through to the game / to x2native;
@@ -137,8 +143,13 @@ EOM
     # RUN_ARGS only extends that route; it cannot replace a required renderer
     # by being non-empty (the old ${RUN_ARGS:---d3d8} expression did exactly
     # that). Keeping run.sh and the binary on one default prevents drift.
+    mkdir -p "$ROOT/scratch/logs"
+    echo "run: logging this run to scratch/logs/native.log" >&2
+    # PIPESTATUS, not the pipeline's status, which would be tee's.
     # shellcheck disable=SC2086 -- RUN_ARGS is intentionally an argv fragment.
-    exec "$BUILD/x2native" ${RUN_ARGS:-}
+    set -o pipefail
+    "$BUILD/x2native" ${RUN_ARGS:-} 2>&1 | tee "$ROOT/scratch/logs/native.log"
+    exit "${PIPESTATUS[0]}"
 fi
 
 # ======================================================================
@@ -185,5 +196,10 @@ else
 fi
 
 cd "$RUNDIR" || exit 2
-exec env WINEDLLOVERRIDES="d3d8,d3d9=$X2_D3D" \
-     wine "${LAUNCH[@]}" "$(winepath -w ./XMen2.exe)" ${RUN_ARGS:-}
+mkdir -p "$ROOT/scratch/logs"
+echo "run: logging this run to scratch/logs/$NAME.log" >&2
+set -o pipefail
+env WINEDLLOVERRIDES="d3d8,d3d9=$X2_D3D" \
+    wine "${LAUNCH[@]}" "$(winepath -w ./XMen2.exe)" ${RUN_ARGS:-} 2>&1 \
+    | tee "$ROOT/scratch/logs/$NAME.log"
+exit "${PIPESTATUS[0]}"
