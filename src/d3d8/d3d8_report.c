@@ -196,6 +196,10 @@ static int d3d8_draw_selftest(void)
     memset(&req, 0, sizeof req);
     req.vertex_buffer = d3d8_resource_buffer(vb);
     req.stride = sizeof tri[0];
+    /* The range check reads this: a request that leaves it 0 is saying
+       the stream holds no vertices, and is refused -- correctly. The
+       real path always sets it from the resource. */
+    req.vertex_bytes = sizeof tri;
     req.primitive_type = 4;                          /* D3DPT_TRIANGLELIST */
     req.primitive_count = 1;
     if (!d3d8_build_draw(&st, &req, &gd)) {
@@ -269,6 +273,7 @@ static int d3d8_draw_selftest(void)
         memset(&req, 0, sizeof req);
         req.vertex_buffer = d3d8_resource_buffer(model_vb);
         req.stride = sizeof model_tri[0];
+        req.vertex_bytes = sizeof model_tri;
         req.primitive_type = 4;
         req.primitive_count = 1;
         if (!gpu_offscreen_begin(TW, TH, 0.0f, 1.0f, 0.0f, 1.0f)
@@ -385,6 +390,7 @@ static int depth_selftest(void)
         memset(&req, 0, sizeof req);
         req.vertex_buffer = d3d8_resource_buffer(vb);
         req.stride = sizeof quad[0];
+        req.vertex_bytes = sizeof quad;
         req.primitive_type = 4;                  /* D3DPT_TRIANGLELIST */
         req.primitive_count = 2;
         req.first_vertex = (uint32_t)(i * 6);
@@ -460,6 +466,7 @@ static int multistage_counter_selftest(void)
     memset(&req, 0, sizeof req);
     req.vertex_buffer = 1u;                     /* any non-zero handle */
     req.stride = 20;
+    req.vertex_bytes = 20u * 64u;
     req.primitive_type = 4;
     req.primitive_count = 1;
     d3d8_state_set_stage(&st, 1, 1 /* D3DTSS_COLOROP */, 4 /* MODULATE */);
@@ -560,6 +567,7 @@ static int fan_selftest(void)
         memset(&req, 0, sizeof req);
         req.vertex_buffer = d3d8_resource_buffer(vb);
         req.stride = sizeof fan[0];
+        req.vertex_bytes = sizeof fan;
         req.primitive_type = i ? 4u : 6u;   /* TRIANGLELIST : TRIANGLEFAN */
         req.primitive_count = i ? 2u : 4u;
         if (!d3d8_build_draw(&st, &req, &gd) || !gpu_draw(&gd)) {
@@ -697,6 +705,7 @@ static int lighting_selftest(void)
         memset(&req, 0, sizeof req);
         req.vertex_buffer = d3d8_resource_buffer(vb);
         req.stride = sizeof quad[0];
+        req.vertex_bytes = sizeof quad;
         req.primitive_type = 4;
         req.primitive_count = 2;
         if (!d3d8_build_draw(&st, &req, &gd)) {

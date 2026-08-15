@@ -151,3 +151,13 @@ for addr in targets:
 print("REPAIR: %d repaired, %d already fine, %d removed as not-code, %d "
       "FAILED, of %d considered"
       % (done, skipped, failed, removed, len(targets)))
+
+# FAIL FAST. A failure here means a function the game CALLS still has no body,
+# and carrying on exports a build that traps the moment it reaches that call --
+# minutes into gameplay, as an unexplained crash. The export gate refuses such
+# a JSON too, but this says WHICH repair failed and why, at the point it
+# happened, instead of leaving the gate to report a number.
+if failed:
+    print("REPAIR: %d function(s) could not be repaired. Refusing: exporting "
+          "now would ship a body that traps when the game calls it." % failed)
+    raise SystemExit(1)

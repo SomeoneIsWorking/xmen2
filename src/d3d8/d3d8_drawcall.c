@@ -1094,11 +1094,27 @@ static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride)
         uint32_t esz = req->index_is_32bit ? 4u : 2u;
         uint64_t last = (uint64_t)(req->first_index + n) * esz;
         if (!req->index_guest_bytes || last > req->index_bytes) {
-            /* Either there are no host-readable indices, or the draw reads
-               past the end of the INDEX buffer -- which is its own fault and
-               is reported as unverifiable rather than silently passed. */
+            /*
+             * FAIL FAST: a draw whose index range cannot be checked is
+             * REFUSED, not waved through.
+             *
+             * This used to return 1 -- "unverifiable, carry on" -- which is
+             * how an unverified draw reaches the GPU and, if its indices do
+             * run past the stream, page-faults the device and resets the card
+             * for every process on it. Measured over a full gameplay run:
+             * 0 of 273,289 draws land here, so refusing costs nothing today
+             * and turns a future silent risk into a visible hole with a line
+             * of log next to it.
+             */
             g_rng_unverifiable++;
-            return 1;
+            if (g_rng_unverifiable <= 3)
+                fprintf(stderr, "d3d8: an indexed draw's range cannot be "
+                        "checked (index guest 0x%08x, %u byte(s), first index "
+                        "%u, %u indices needed) -- REFUSED rather than "
+                        "submitted unverified.\n",
+                        req->index_guest_bytes, req->index_bytes,
+                        req->first_index, n);
+            return 0;
         }
         if (req->index_is_32bit) {
             const uint32_t *p = (const uint32_t *)(uintptr_t)

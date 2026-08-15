@@ -535,7 +535,7 @@ static void tex_GetSurfaceLevel(D3D8Object *self, CPU *C)
 static struct { uint32_t handle, format, w, h; double luma; }
     g_texlum[512];
 static int g_texlum_n;
-static unsigned long g_texlum_dropped;
+static unsigned long g_texlum_dropped, g_texlum_unreadable;
 
 static double luma_565(uint16_t c)
 {
@@ -578,7 +578,11 @@ static void texlum_note(Resource *r, const uint8_t *px, uint32_t w, uint32_t h,
         }
         break;
     default:
-        return;                       /* a format this cannot read: say nothing */
+        /* COUNTED, not silent. "139 textures measured" means nothing without
+           knowing how many were uploaded and skipped -- a census whose
+           denominator is invisible can hide the whole answer in the gap. */
+        g_texlum_unreadable++;
+        return;
     }
     if (!n) return;
     for (k = 0; k < g_texlum_n; k++)
@@ -606,10 +610,12 @@ void d3d8_texture_luma_report(void)
         total += g_texlum[i].luma;
         if (g_texlum[i].luma < 8.0) dark++;
     }
-    printf("        texture brightness: %d texture(s) measured%s, mean luma "
-           "%.1f; %d of them are effectively BLACK (mean luma < 8 of 255)\n",
+    printf("        texture brightness: %d texture(s) measured%s, %lu upload(s) "
+           "in a format this cannot read, mean luma %.1f; %d of them are "
+           "effectively BLACK (mean luma < 8 of 255)\n",
            g_texlum_n,
            g_texlum_dropped ? " (TABLE FULL -- more exist)" : "",
+           g_texlum_unreadable,
            g_texlum_n ? total / g_texlum_n : 0.0, dark);
     if (!g_texlum_n) {
         printf("          none measured -- either no texture was uploaded, or "

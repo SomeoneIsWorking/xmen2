@@ -79,8 +79,11 @@ def load(pattern, label):
             im.load()
             out.append((p, im.convert("RGB")))
         except Exception as e:                      # noqa: BLE001
-            print("shot_compare: %s could not be read (%s) -- SKIPPED"
-                  % (p, e), file=sys.stderr)
+            # FAIL FAST. This used to warn and carry on, which produces a
+            # sheet with a frame silently missing from one side -- the exact
+            # shape of comparison this tool exists to prevent.
+            refuse("%s could not be read (%s). A comparison missing a frame is "
+                   "not a comparison." % (p, e))
     if not out:
         refuse("every file matching --%s failed to open. Nothing was "
                "compared." % label)

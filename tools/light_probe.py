@@ -125,7 +125,10 @@ def match_light(b, off):
     pos, direction = f[12:15], f[15:18]
     rng, falloff = f[18], f[19]
     atten = f[20:23]
-    if rng <= 0.0 or rng > 1e12:
+    # A denormal is not a range. `rng > 0.0` let 1e-40 through, which is what
+    # zero-filled memory holds, and the report printed it as "range 0.0" --
+    # 22,791 runs of cleared memory presented as light arrays.
+    if rng < 1e-3 or rng > 1e12:
         return "range"
     if falloff < 0.0 or falloff > 1e6:
         return "falloff"
@@ -139,10 +142,13 @@ def match_light(b, off):
         dl = sum(d * d for d in direction) ** 0.5
         if dl < 1e-6 or dl > 1e3:
             return "direction"
-    # An all-zero record satisfies everything above except range; keep the
-    # guard anyway, because a cleared record is not a light the engine set.
+    # A record with no colour at all is cleared memory, whatever its type. The
+    # `w != 1` exemption here existed to keep genuine BLACK point lights -- the
+    # phenomenon under study -- and it let every zero-filled page match instead.
+    # A real black light still carries a range and an attenuation; a cleared
+    # one carries nothing, and the range check above is what separates them.
     if max(diffuse[:3]) == 0.0 and max(ambient[:3]) == 0.0 \
-            and max(specular[:3]) == 0.0 and w != 1:
+            and max(specular[:3]) == 0.0 and max(atten) == 0.0:
         return "all channels zero"
     return {
         "type": w, "diffuse": diffuse[:3], "ambient": ambient[:3],
@@ -330,7 +336,36 @@ def find_arrays(pid, want_all=False, min_run=4, chunk=(1 << 20)):
             "total": total, "read_fails": rd.fails}
 
 
+MAX_PLAUSIBLE_RUNS = 64
+
+
 def report_arrays(res, label, expect=None):
+    """Print the runs -- or REFUSE, loudly, the moment the scan is not credible.
+
+    Fail fast, and here that is not a style preference: the first version of
+    this printed 22,791 runs of zero-filled memory as light arrays, and the
+    positive control it was given did not appear anywhere in the output. A tool
+    that reports a result it cannot stand behind wastes exactly the time it was
+    built to save.
+    """
+    runs = res["runs"]
+    if expect is not None:
+        hit = any(r["addr"] + i * RECORD_STRIDE == expect
+                  for r in runs for i in range(r["n"]))
+        if not hit:
+            print("light_probe: the address the port reported (0x%x) is NOT in "
+                  "any run this scan found (%d run(s) over %.1f MiB). The "
+                  "signature does not find the record it is KNOWN to have to "
+                  "find, so nothing else it says is evidence. REFUSING."
+                  % (expect, len(runs), res["scanned"] / 1048576.0),
+                  file=sys.stderr)
+            raise SystemExit(3)
+    if len(runs) > MAX_PLAUSIBLE_RUNS:
+        print("light_probe: %d runs of light records is not a plausible count "
+              "for one process -- the pattern is matching something other than "
+              "lights (cleared memory, most likely). REFUSING rather than "
+              "printing a wall of it." % len(runs), file=sys.stderr)
+        raise SystemExit(3)
     print("== %s ==" % label)
     cov = (100.0 * res["scanned"] / res["total"]) if res["total"] else 0.0
     print("   scanned %.1f MiB of %.1f MiB (%.1f%% coverage), %d read failure(s)"
@@ -403,6 +438,37 @@ def selftest():
         ok = False
     else:
         print("SELFTEST ok: a diffuse outside 0..1 is rejected")
+
+    # 3b. A BLACK point light with a real range and attenuation MUST still
+    #     match: that is the phenomenon under study, and a filter that removes
+    #     it would answer "no black lights here" by construction.
+    black = struct.pack("<I", 1) + struct.pack(
+        "<25f",
+        0.0, 0.0, 0.0, 1.0,              # diffuse: black, on purpose
+        0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 1.0,
+        10.0, 20.0, 30.0,
+        0.0, 0.0, 0.0,
+        5000.0,
+        0.0,
+        0.0, 0.0, 0.0000378,             # a real attenuation
+        0.0, 0.0)
+    if isinstance(match_light(black, 0), str):
+        print("SELFTEST FAIL: a BLACK point light with a real range and "
+              "attenuation was rejected (%s) -- the filter removes the very "
+              "thing being measured" % match_light(black, 0))
+        ok = False
+    else:
+        print("SELFTEST ok: a black light with a real range still matches")
+
+    # 3c. Cleared memory shaped like a light -- type 1 and nothing else -- must
+    #     NOT match. This is what produced 22,791 phantom runs.
+    cleared = struct.pack("<I", 1) + struct.pack("<25f", *([0.0] * 25))
+    if not isinstance(match_light(cleared, 0), str):
+        print("SELFTEST FAIL: a zeroed type-1 record was accepted as a light")
+        ok = False
+    else:
+        print("SELFTEST ok: a zeroed type-1 record is rejected")
 
     # 4. THE FALSE-POSITIVE RATE, measured rather than asserted: how often does
     #    random memory satisfy the pattern? This is the number that decides
