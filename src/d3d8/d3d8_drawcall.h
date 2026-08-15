@@ -37,6 +37,9 @@ typedef struct {
     /* Guest address of the index data, so a TRIANGLEFAN can be expanded on
        the CPU. 0 when there is no index buffer. */
     uint32_t   index_guest_bytes;
+    /* Size of the index buffer, so the range check below can read the indices
+       WITHOUT running off the end of the buffer it is checking. */
+    uint32_t   index_bytes;
     uint32_t   first_index;
     uint32_t   base_vertex;
     GpuTexture texture;             /* 0 for untextured */

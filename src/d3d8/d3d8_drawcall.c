@@ -66,8 +66,22 @@ unsigned long gpu_frame_draws_so_far(void);
 #define D3DTOP_ADD               7
 
 /* D3DFVF_* */
+/*
+ * The position is a 3-BIT FIELD, not a set of flags, and reading it as flags
+ * is a defect this file shipped: `fvf & D3DFVF_XYZRHW` is TRUE for XYZB1
+ * (0x006) and XYZB5 (0x00e), so a vertex carrying blend weights was decoded as
+ * a PRE-TRANSFORMED one -- drawn in screen space, with no lighting and no
+ * projection, which flattens a mesh into a plane. XYZB2/B3/B4 fell through to
+ * XYZ instead, leaving every attribute after the position short by the weights.
+ */
+#define D3DFVF_POSITION_MASK  0x000e
 #define D3DFVF_XYZ            0x0002
 #define D3DFVF_XYZRHW         0x0004
+#define D3DFVF_XYZB1          0x0006
+#define D3DFVF_XYZB2          0x0008
+#define D3DFVF_XYZB3          0x000a
+#define D3DFVF_XYZB4          0x000c
+#define D3DFVF_XYZB5          0x000e
 #define D3DFVF_NORMAL         0x0010
 #define D3DFVF_PSIZE          0x0020
 #define D3DFVF_DIFFUSE        0x0040
@@ -246,14 +260,28 @@ int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out)
     out->uv_offset = -1;
     out->normal_offset = -1;
 
-    if (fvf & D3DFVF_XYZRHW) {
-        out->pos_offset = (int)off;
-        out->pretransformed = 1;
-        off += 16;
-    } else if (fvf & D3DFVF_XYZ) {
-        out->pos_offset = (int)off;
-        off += 12;
-    } else {
+    out->pos_offset = (int)off;
+    switch (fvf & D3DFVF_POSITION_MASK) {
+    case D3DFVF_XYZ:    off += 12; break;
+    case D3DFVF_XYZRHW: out->pretransformed = 1; off += 16; break;
+    /*
+     * Position plus n blend WEIGHTS. The weights sit between the position and
+     * the normal, so they must be stepped over even though nothing here reads
+     * them: D3DRS_VERTEXBLEND is never enabled by this title, and with
+     * blending disabled D3D8 transforms by world matrix 0 alone -- which is
+     * what this backend already does. Skipping them is therefore faithful,
+     * while MIS-SIZING them moved the normal and the texture coordinates.
+     *
+     * The last weight is a packed matrix index rather than a float when
+     * D3DFVF_LASTBETA_UBYTE4 is set; it is four bytes either way, so the
+     * stride is the same and only the meaning differs.
+     */
+    case D3DFVF_XYZB1:  off += 12 + 4;  break;
+    case D3DFVF_XYZB2:  off += 12 + 8;  break;
+    case D3DFVF_XYZB3:  off += 12 + 12; break;
+    case D3DFVF_XYZB4:  off += 12 + 16; break;
+    case D3DFVF_XYZB5:  off += 12 + 20; break;
+    default:
         /* No position at all: either a vertex shader declaration this host
            does not read, or an FVF the engine built wrongly. Both must stop
            here rather than draw from offset zero. */
@@ -271,6 +299,68 @@ int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out)
     return 1;
 }
 
+
+/*
+ * Which vertex FORMATS this title actually draws with.
+ *
+ * There was no such census, so "the position field was read as flags" was a
+ * defect nobody could size: the fix matters enormously if the engine draws
+ * skinned meshes with blend weights and not at all if it never does, and the
+ * code could not tell those apart. Every distinct FVF is counted with the
+ * position type it decodes to, so the answer is a table rather than an
+ * argument.
+ */
+#define FVF_SEEN_MAX 16
+static struct { uint32_t fvf; unsigned long n; } g_fvf_seen[FVF_SEEN_MAX];
+static int g_fvf_n;
+static unsigned long g_fvf_dropped;
+
+static void fvf_note(uint32_t fvf)
+{
+    int i;
+    for (i = 0; i < g_fvf_n; i++)
+        if (g_fvf_seen[i].fvf == fvf) { g_fvf_seen[i].n++; return; }
+    if (g_fvf_n == FVF_SEEN_MAX) { g_fvf_dropped++; return; }
+    g_fvf_seen[g_fvf_n].fvf = fvf;
+    g_fvf_seen[g_fvf_n].n = 1;
+    g_fvf_n++;
+}
+
+static const char *fvf_position_name(uint32_t fvf)
+{
+    switch (fvf & D3DFVF_POSITION_MASK) {
+    case D3DFVF_XYZ:    return "XYZ";
+    case D3DFVF_XYZRHW: return "XYZRHW (pre-transformed)";
+    case D3DFVF_XYZB1:  return "XYZB1 (1 blend weight)";
+    case D3DFVF_XYZB2:  return "XYZB2 (2 blend weights)";
+    case D3DFVF_XYZB3:  return "XYZB3 (3 blend weights)";
+    case D3DFVF_XYZB4:  return "XYZB4 (4 blend weights)";
+    case D3DFVF_XYZB5:  return "XYZB5 (5 blend weights)";
+    default:            return "NO POSITION";
+    }
+}
+
+static void fvf_report(void)
+{
+    int i;
+    unsigned long tot = 0, blended = 0;
+    for (i = 0; i < g_fvf_n; i++) {
+        tot += g_fvf_seen[i].n;
+        if ((g_fvf_seen[i].fvf & D3DFVF_POSITION_MASK) > D3DFVF_XYZRHW)
+            blended += g_fvf_seen[i].n;
+    }
+    printf("        vertex formats: %lu fixed-function draw(s), %d distinct "
+           "FVF(s)%s; %lu of them carry BLEND WEIGHTS\n",
+           tot, g_fvf_n, g_fvf_dropped ? " (TABLE FULL -- more exist)" : "",
+           blended);
+    for (i = 0; i < g_fvf_n; i++)
+        printf("          0x%08x  %-26s x%lu\n",
+               g_fvf_seen[i].fvf, fvf_position_name(g_fvf_seen[i].fvf),
+               g_fvf_seen[i].n);
+    if (!g_fvf_n)
+        printf("          none -- no fixed-function draw reached this "
+               "backend, so this says NOTHING about the vertex formats.\n");
+}
 
 /* ---- state translation ------------------------------------------------- */
 
@@ -918,6 +1008,240 @@ static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out)
 }
 
 /*
+ * Does this draw read OUTSIDE the vertex buffer it is bound to?
+ *
+ * Nothing asked this question before, and a GPU page fault is what asking it
+ * costs to miss: amdgpu killed a run with
+ *
+ *   [gfxhub] page fault ... Process x2native ... client 0x1b (UTCL2)
+ *   ring gfx_0.0.0 timeout ... Ring gfx_0.0.0 reset succeeded
+ *
+ * A vertex fetch past the end of a buffer is the ordinary way to produce that,
+ * and an index buffer whose contents outrun the stream bound beside it is the
+ * ordinary way to produce THAT. D3D8 lets the guest set the two independently,
+ * so the pairing is only wrong at the draw -- which is here.
+ *
+ * The check is exact, not a heuristic: the indices live in guest memory (they
+ * are uploaded from there on Unlock), so the largest one this draw will
+ * actually read is a fact available on the CPU. Reading them is O(indices) per
+ * indexed draw, which is worth it against resetting the GPU.
+ *
+ * Every outcome is counted, INCLUDING the one where the check could not run --
+ * an indexed draw whose index buffer has no guest storage cannot be verified,
+ * and "not verified" must never be filed under "fine".
+ */
+static unsigned long g_rng_checked, g_rng_unverifiable, g_rng_bad;
+static uint32_t g_rng_worst_need, g_rng_worst_have;
+
+static uint32_t index_count_of(uint32_t prim_type, uint32_t prim_count)
+{
+    switch (prim_type) {
+    case D3DPT_POINTLIST:     return prim_count;
+    case D3DPT_LINELIST:      return prim_count * 2u;
+    case D3DPT_LINESTRIP:     return prim_count + 1u;
+    case D3DPT_TRIANGLELIST:  return prim_count * 3u;
+    case D3DPT_TRIANGLESTRIP:
+    case D3DPT_TRIANGLEFAN:   return prim_count + 2u;
+    default:                  return 0;
+    }
+}
+
+static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride)
+{
+    uint32_t n = index_count_of(req->primitive_type, req->primitive_count);
+    uint32_t have, need = 0, i, maxi = 0;
+
+    if (!stride || !n) return 1;              /* nothing this can decide */
+    have = req->vertex_bytes / stride;
+
+    if (req->index_buffer) {
+        uint32_t esz = req->index_is_32bit ? 4u : 2u;
+        uint64_t last = (uint64_t)(req->first_index + n) * esz;
+        if (!req->index_guest_bytes || last > req->index_bytes) {
+            /* Either there are no host-readable indices, or the draw reads
+               past the end of the INDEX buffer -- which is its own fault and
+               is reported as unverifiable rather than silently passed. */
+            g_rng_unverifiable++;
+            return 1;
+        }
+        if (req->index_is_32bit) {
+            const uint32_t *p = (const uint32_t *)(uintptr_t)
+                                req->index_guest_bytes + req->first_index;
+            for (i = 0; i < n; i++) if (p[i] > maxi) maxi = p[i];
+        } else {
+            const uint16_t *p = (const uint16_t *)(uintptr_t)
+                                req->index_guest_bytes + req->first_index;
+            for (i = 0; i < n; i++) if (p[i] > maxi) maxi = p[i];
+        }
+        need = req->base_vertex + maxi + 1u;
+    } else {
+        need = req->first_vertex + n;
+    }
+    g_rng_checked++;
+    if (need <= have) return 1;
+
+    g_rng_bad++;
+    if (need - have > g_rng_worst_need - g_rng_worst_have ||
+        !g_rng_worst_need) {
+        g_rng_worst_need = need;
+        g_rng_worst_have = have;
+    }
+    if (g_rng_bad <= 4)
+        fprintf(stderr,
+            "d3d8: a draw would fetch vertex %u from a stream holding %u "
+            "(%u bytes at stride %u) -- REFUSED. primitive type %u, %u "
+            "primitive(s), base vertex %u, first index %u. Submitting it "
+            "reads outside the buffer, which is how the GPU is made to page "
+            "fault.\n",
+            need - 1u, have, req->vertex_bytes, stride,
+            req->primitive_type, req->primitive_count,
+            req->base_vertex, req->first_index);
+    return 0;
+}
+
+/*
+ * X2_FRAME_TABLE=1 -- every draw of one gameplay frame, and WHERE ON SCREEN it
+ * lands.
+ *
+ * "Cyclops's head is collapsed and black" is a statement about pixels, and
+ * every instrument in this file describes DRAWS. Bridging the two by bisecting
+ * with X2_DRAW_RANGE costs one nine-minute run per bisection step, and guessing
+ * which draw is a character from its stride has already produced one retracted
+ * reading (C193).
+ *
+ * So: project this draw's vertices through its own mvp, on the CPU, exactly as
+ * the vertex stage will, and print the screen rectangle they cover. A pixel on
+ * the screenshot then names the draws that could have painted it, and their
+ * format, texture and lighting come with it. Only the vertices this draw
+ * actually INDEXES are projected, because a shared buffer's other vertices are
+ * somewhere else entirely.
+ *
+ * One frame, once: the table is the whole point, and a table repeated 3,000
+ * times is a log nobody reads.
+ */
+static int g_ft_on = -1, g_ft_done;
+static unsigned long g_ft_frame, g_ft_draw;
+
+static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
+                             uint32_t stride, int pos_offset, uint32_t fvf)
+{
+    float minx = 1e30f, miny = 1e30f, maxx = -1e30f, maxy = -1e30f;
+    float minz = 1e30f, maxz = -1e30f;
+    /* OBJECT space too. The screen rectangle needs a divide by w and goes to
+       infinity as w approaches zero, so it cannot answer "is this mesh flat".
+       The object-space extents can: a head collapsed to a plane has one extent
+       at or near zero, and that is a property of the vertex DATA rather than
+       of any matrix. */
+    float omin[3] = { 1e30f, 1e30f, 1e30f }, omax[3] = { -1e30f, -1e30f, -1e30f };
+    uint32_t n, i, capacity, behind = 0, used = 0, nearw = 0;
+    const uint8_t *vb;
+
+    if (g_ft_on < 0) {
+        const char *e = getenv("X2_FRAME_TABLE");
+        g_ft_on = (e && *e) ? atoi(e) : 0;
+    }
+    if (!g_ft_on || g_ft_done) return;
+    {   /* The same gameplay gate the survey uses, so the table describes a
+           frame with the level on screen rather than a menu. */
+        extern int k32_file_gate_open(void);
+        static long minimum = -1;
+        if (!k32_file_gate_open()) return;
+        if (minimum < 0) {
+            const char *e = getenv("X2_LIGHT_DUMP_MIN");
+            minimum = (e && *e) ? atol(e) : 100;
+        }
+        if (!g_ft_frame) {
+            if ((long)gpu_frame_draws_so_far() < minimum) return;
+            g_ft_frame = gpu_frames_presented();
+            fprintf(stderr, "[FRAME TABLE] presented frame %lu -- every draw "
+                    "of THIS frame, with the screen rectangle its vertices "
+                    "cover, in pixels of an 800x600 target.\n", g_ft_frame);
+        } else if (gpu_frames_presented() != g_ft_frame) {
+            g_ft_done = 1;
+            fprintf(stderr, "[FRAME TABLE] end of frame %lu -- %lu draw(s) "
+                    "listed.\n", g_ft_frame, g_ft_draw);
+            return;
+        }
+    }
+    g_ft_draw++;
+
+    if (!stride || pos_offset < 0 || !req->vertex_guest_bytes) {
+        fprintf(stderr, "  draw %-4lu NO host-readable vertices (guest 0x%08x "
+                "stride %u) -- position unknown\n",
+                g_ft_draw, req->vertex_guest_bytes, stride);
+        return;
+    }
+    vb = (const uint8_t *)(uintptr_t)req->vertex_guest_bytes;
+    capacity = req->vertex_bytes / stride;
+    n = index_count_of(req->primitive_type, req->primitive_count);
+
+    for (i = 0; i < n; i++) {
+        uint32_t v;
+        const float *p;
+        float x, y, z, w;
+        if (req->index_buffer && req->index_guest_bytes) {
+            if (req->index_is_32bit)
+                v = ((const uint32_t *)(uintptr_t)req->index_guest_bytes)
+                        [req->first_index + i] + req->base_vertex;
+            else
+                v = ((const uint16_t *)(uintptr_t)req->index_guest_bytes)
+                        [req->first_index + i] + req->base_vertex;
+        } else {
+            v = req->first_vertex + i;
+        }
+        if (v >= capacity) continue;
+        p = (const float *)(vb + (size_t)v * stride + pos_offset);
+        /* Row-vector convention, matching the shader's `mvp * vec4(pos,1)`
+           with the matrix handed over as D3D lays it out. */
+        x = p[0]*out->mvp[0] + p[1]*out->mvp[4] + p[2]*out->mvp[8]  + out->mvp[12];
+        y = p[0]*out->mvp[1] + p[1]*out->mvp[5] + p[2]*out->mvp[9]  + out->mvp[13];
+        z = p[0]*out->mvp[2] + p[1]*out->mvp[6] + p[2]*out->mvp[10] + out->mvp[14];
+        w = p[0]*out->mvp[3] + p[1]*out->mvp[7] + p[2]*out->mvp[11] + out->mvp[15];
+        if (p[0] < omin[0]) omin[0] = p[0];
+        if (p[0] > omax[0]) omax[0] = p[0];
+        if (p[1] < omin[1]) omin[1] = p[1];
+        if (p[1] > omax[1]) omax[1] = p[1];
+        if (p[2] < omin[2]) omin[2] = p[2];
+        if (p[2] > omax[2]) omax[2] = p[2];
+        if (w <= 0.0f) { behind++; continue; }
+        /* A vertex almost ON the near plane projects to a coordinate in the
+           hundreds of thousands, which would make the rectangle meaningless
+           rather than merely large. Counted and excluded, never silently
+           folded in. */
+        if (w < 1e-3f) { nearw++; continue; }
+        x /= w; y /= w; z /= w;
+        used++;
+        if (x < minx) minx = x;
+        if (x > maxx) maxx = x;
+        if (y < miny) miny = y;
+        if (y > maxy) maxy = y;
+        if (z < minz) minz = z;
+        if (z > maxz) maxz = z;
+    }
+    if (!used) {
+        fprintf(stderr, "  draw %-4lu %5u prim  stride %-3u tex %-3u  "
+                "ALL %u vertices behind the camera or out of range\n",
+                g_ft_draw, out->prim_count, stride, out->texture, n);
+        return;
+    }
+    /* NDC (-1..1, y down in this pipeline) to pixels. */
+    fprintf(stderr,
+        "  draw %-4lu %5u prim  stride %-3u tex %-3u  fvf 0x%05x  lit %d "
+        "texgen %d  screen x %5.0f..%-5.0f y %5.0f..%-5.0f  z %.3f..%.3f  "
+        "object extent %.1f x %.1f x %.1f%s%s%s\n",
+        g_ft_draw, out->prim_count, stride, out->texture,
+        fvf, out->lighting, (int)out->texgen,
+        (minx*0.5f+0.5f)*800.0f, (maxx*0.5f+0.5f)*800.0f,
+        (miny*0.5f+0.5f)*600.0f, (maxy*0.5f+0.5f)*600.0f,
+        minz, maxz,
+        omax[0]-omin[0], omax[1]-omin[1], omax[2]-omin[2],
+        (omax[0]-omin[0] < 0.01f || omax[1]-omin[1] < 0.01f ||
+         omax[2]-omin[2] < 0.01f) ? "  <- FLAT in one axis" : "",
+        behind ? "  (some behind the camera)" : "",
+        nearw ? "  (some on the near plane)" : "");
+}
+
+/*
  * Build the draw.
  *
  * Returns 0 and says why if the state cannot be expressed. Nothing here
@@ -945,6 +1269,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
      * shader handle cannot be honoured here and must not be silently drawn as
      * if it were fixed-function.
      */
+    if (!programmable) fvf_note(fvf);
     if (!programmable && !d3d8_fvf_layout(fvf, &vl)) {
         fprintf(stderr, "d3d8: FVF 0x%08x has no position.\n", fvf);
         g_refused_fvf++;
@@ -971,6 +1296,10 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     out->index_is_32bit = req->index_is_32bit;
     out->first_index = req->first_index;
     out->base_vertex = req->base_vertex;
+
+    /* BEFORE the fan expansion, which rewrites the indices into a buffer of
+       its own: what has to be checked is what the guest asked for. */
+    if (!draw_range_ok(req, out->vertex_stride)) return 0;
 
     if (req->primitive_type == D3DPT_TRIANGLEFAN && !fan_expand(req, out)) {
         g_refused_prim++;
@@ -1261,6 +1590,13 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
 
     out->alpha_test = rs(s, D3DRS_ALPHATESTENABLE, 0) != 0;
     out->alpha_ref = (float)(rs(s, D3DRS_ALPHAREF, 0) & 0xFFu) / 255.0f;
+
+    /* LAST, so the table reports the texture this draw ended up with. Called
+       earlier it printed `tex 0` for all 434 draws of a frame whose walls are
+       plainly textured -- a column that said "untextured" about everything
+       because it ran before the texture was resolved. */
+    frame_table_note(req, out, out->vertex_stride,
+                     programmable ? -1 : vl.pos_offset, fvf);
     return 1;
 }
 
@@ -1391,6 +1727,17 @@ void d3d8_drawcall_report(void)
                g_ld_done ? "." :
                " -- so this run's dump says NOTHING about the lighting.");
     light_survey_report();
+    fvf_report();
+    /* ALWAYS, including the all-clear: "0 of 290002 draws read outside their
+       stream" is a measurement, and a line that only appears when something is
+       wrong cannot be told apart from a check that never ran. */
+    printf("        vertex range: %lu draw(s) checked, %lu read OUTSIDE their "
+           "stream and were refused, %lu could not be checked (no host-"
+           "readable indices, or indices past the end of their own buffer)\n",
+           g_rng_checked, g_rng_bad, g_rng_unverifiable);
+    if (g_rng_bad)
+        printf("          worst: needed vertex %u from a stream of %u\n",
+               g_rng_worst_need - 1u, g_rng_worst_have);
 
     if (g_refused_prim)
         printf("        %lu draw(s) refused for an unimplemented primitive "

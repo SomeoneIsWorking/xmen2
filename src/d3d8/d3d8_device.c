@@ -1189,6 +1189,7 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
         req->index_buffer = d3d8_resource_buffer(ib);
         req->index_is_32bit = d3d8_resource_index_is_32bit(ib);
         req->index_guest_bytes = d3d8_resource_guest_bytes(ib);
+        req->index_bytes = d3d8_resource_bytes(ib);
     }
     /*
      * A texture the guest BOUND but this host could not resolve is a draw that
