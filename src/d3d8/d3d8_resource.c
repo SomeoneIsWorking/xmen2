@@ -515,6 +515,125 @@ static void tex_GetSurfaceLevel(D3D8Object *self, CPU *C)
     get_surface_sub(self, C, 0, d3d8_arg(C, 0), d3d8_arg(C, 1));
 }
 
+/*
+ * How BRIGHT is the texture we just uploaded?
+ *
+ * A model whose geometry, normals and lights all measure correct and which
+ * still renders black has one input left, and nothing here has ever looked at
+ * it. A skin texture that decodes to black -- a compressed format read with
+ * the wrong block layout, a level uploaded from the wrong offset -- produces
+ * exactly the reported symptom: one character black, the room around it right.
+ *
+ * The mean is taken from the bytes AS UPLOADED, so it measures what this
+ * backend actually gave the GPU rather than what the file contains. For the
+ * block-compressed formats it averages each block's two endpoint colours,
+ * which is a fair proxy for the block and needs no decoder.
+ *
+ * Level 0 only: a mip chain's lower levels are the same image and would just
+ * average the number twice.
+ */
+static struct { uint32_t handle, format, w, h; double luma; }
+    g_texlum[512];
+static int g_texlum_n;
+static unsigned long g_texlum_dropped;
+
+static double luma_565(uint16_t c)
+{
+    double r = ((c >> 11) & 0x1f) / 31.0;
+    double g = ((c >> 5) & 0x3f) / 63.0;
+    double b = (c & 0x1f) / 31.0;
+    return (0.299 * r + 0.587 * g + 0.114 * b) * 255.0;
+}
+
+static void texlum_note(Resource *r, const uint8_t *px, uint32_t w, uint32_t h,
+                        uint32_t bytes)
+{
+    double sum = 0.0;
+    uint32_t n = 0, i;
+    int k;
+
+    if (!w || !h || !px || !bytes) return;
+    switch (r->format) {
+    case D3DFMT_A8R8G8B8:
+    case D3DFMT_X8R8G8B8:
+        for (i = 0; i + 4 <= bytes; i += 4) {
+            sum += 0.299 * px[i + 2] + 0.587 * px[i + 1] + 0.114 * px[i];
+            n++;
+        }
+        break;
+    case D3DFMT_DXT1:
+        for (i = 0; i + 8 <= bytes; i += 8) {
+            sum += (luma_565((uint16_t)(px[i] | (px[i+1] << 8))) +
+                    luma_565((uint16_t)(px[i+2] | (px[i+3] << 8)))) * 0.5;
+            n++;
+        }
+        break;
+    case D3DFMT_DXT2: case D3DFMT_DXT3:
+    case D3DFMT_DXT4: case D3DFMT_DXT5:
+        /* 16 bytes per block; the colour endpoints are at +8. */
+        for (i = 0; i + 16 <= bytes; i += 16) {
+            sum += (luma_565((uint16_t)(px[i+8] | (px[i+9] << 8))) +
+                    luma_565((uint16_t)(px[i+10] | (px[i+11] << 8)))) * 0.5;
+            n++;
+        }
+        break;
+    default:
+        return;                       /* a format this cannot read: say nothing */
+    }
+    if (!n) return;
+    for (k = 0; k < g_texlum_n; k++)
+        if (g_texlum[k].handle == (uint32_t)r->gtex) {
+            g_texlum[k].luma = sum / n;      /* the latest upload wins */
+            return;
+        }
+    if (g_texlum_n == (int)(sizeof g_texlum / sizeof g_texlum[0])) {
+        g_texlum_dropped++;
+        return;
+    }
+    g_texlum[g_texlum_n].handle = (uint32_t)r->gtex;
+    g_texlum[g_texlum_n].format = r->format;
+    g_texlum[g_texlum_n].w = w;
+    g_texlum[g_texlum_n].h = h;
+    g_texlum[g_texlum_n].luma = sum / n;
+    g_texlum_n++;
+}
+
+void d3d8_texture_luma_report(void)
+{
+    int i, j, dark = 0;
+    double total = 0.0;
+    for (i = 0; i < g_texlum_n; i++) {
+        total += g_texlum[i].luma;
+        if (g_texlum[i].luma < 8.0) dark++;
+    }
+    printf("        texture brightness: %d texture(s) measured%s, mean luma "
+           "%.1f; %d of them are effectively BLACK (mean luma < 8 of 255)\n",
+           g_texlum_n,
+           g_texlum_dropped ? " (TABLE FULL -- more exist)" : "",
+           g_texlum_n ? total / g_texlum_n : 0.0, dark);
+    if (!g_texlum_n) {
+        printf("          none measured -- either no texture was uploaded, or "
+               "every one used a format this check cannot read. It says "
+               "NOTHING about the textures.\n");
+        return;
+    }
+    /* The darkest ten, by selection rather than a sort, so the table stays in
+       upload order for everything else. */
+    for (j = 0; j < 10 && j < g_texlum_n; j++) {
+        int best = -1;
+        for (i = 0; i < g_texlum_n; i++) {
+            if (g_texlum[i].w == 0) continue;          /* already printed */
+            if (best < 0 || g_texlum[i].luma < g_texlum[best].luma) best = i;
+        }
+        if (best < 0) break;
+        printf("          handle %-4u %4ux%-4u fmt %-3u  mean luma %6.2f%s\n",
+               g_texlum[best].handle, g_texlum[best].w, g_texlum[best].h,
+               g_texlum[best].format, g_texlum[best].luma,
+               g_texlum[best].luma < 8.0 ? "   <- BLACK" : "");
+        g_texlum[best].w = 0;
+    }
+}
+
 void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
 {
     Resource *r = res_of(tex);
@@ -540,6 +659,10 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
                 sub / r->levels, sub % r->levels, lw, lh);
         return;
     }
+    if ((sub % r->levels) == 0)
+        texlum_note(r, (const uint8_t *)(uintptr_t)(r->guest_bytes +
+                                                    sub_offset(r, sub)),
+                    lw, lh, level_bytes(r->format, lw, lh));
     r->uploads++;
     r->last_upload_level = sub % r->levels;
 }
@@ -757,4 +880,5 @@ void d3d8_resource_report(void)
     printf("  d3d8 resources: %lu texture(s), %lu cube texture(s), %lu vertex "
            "buffer(s), %lu index buffer(s)\n",
            g_textures, g_cubetextures, g_vbuffers, g_ibuffers);
+    d3d8_texture_luma_report();
 }

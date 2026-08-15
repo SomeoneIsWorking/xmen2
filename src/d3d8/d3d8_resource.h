@@ -56,6 +56,8 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub);
    level uploaded. The self-test uses them to tell "the unlock uploaded" from
    "the unlock returned OK and did nothing", which look identical otherwise. */
 unsigned long d3d8_texture_uploads(D3D8Object *o);
+/* Mean brightness of every texture as UPLOADED, and the darkest ten. */
+void d3d8_texture_luma_report(void);
 uint32_t      d3d8_texture_last_upload_level(D3D8Object *o);
 
 void d3d8_resource_report(void);

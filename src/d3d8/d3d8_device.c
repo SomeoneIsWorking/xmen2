@@ -749,6 +749,26 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
+/*
+ * What the most recent SetLight left in this slot.
+ *
+ * The draw path reads the light table that SetLight writes, so the two cannot
+ * disagree -- unless something between them changes it. A gameplay frame shows
+ * four enabled point lights with a diffuse of 0.00 while the engine's own
+ * calls for those indices carry real colours, and only a comparison AT DRAW
+ * TIME can tell "the engine blacked them just now" from "we lost the colour".
+ * Returns 0 when the slot has never been set, which is a third answer and not
+ * the same as either.
+ */
+int d3d8_last_setlight_diffuse(unsigned idx, float out[3])
+{
+    if (idx >= D3D8_MAX_LIGHTS || !g_light_slot[idx].calls) return 0;
+    out[0] = g_light_slot[idx].last[0];
+    out[1] = g_light_slot[idx].last[1];
+    out[2] = g_light_slot[idx].last[2];
+    return 1;
+}
+
 void d3d8_setlight_report(void)
 {
     int i;

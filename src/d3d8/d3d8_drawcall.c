@@ -392,6 +392,9 @@ static uint32_t rs(const D3D8State *s, uint32_t which, uint32_t dflt)
  * D3DRS_COLORVERTEX's per-source selection (DIFFUSEMATERIALSOURCE and
  * friends), which uses D3D's defaults.
  */
+/* Draw-time light table vs what SetLight last wrote -- see fill_lighting. */
+static unsigned long g_lc_checked, g_lc_differ, g_lc_lost, g_lc_neverset;
+
 static void copy4(float *dst, const float *src) { memcpy(dst, src, 4 * sizeof *dst); }
 
 static void argb_to_rgba(uint32_t c, float *out)
@@ -455,6 +458,39 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
         g->atten[0] = L[21];
         g->atten[1] = L[22];
         g->atten[2] = L[23];
+        /*
+         * Does this draw see what SetLight last wrote for this index?
+         *
+         * Counted for every enabled light of every draw, and reported with its
+         * denominator, because "the engine set it black" and "we lost the
+         * colour between SetLight and the draw" look identical in the picture
+         * and are completely different defects.
+         */
+        {
+            extern int d3d8_last_setlight_diffuse(unsigned idx, float out[3]);
+            float wrote[3];
+            if (d3d8_last_setlight_diffuse(i, wrote)) {
+                int same = fabsf(wrote[0] - g->diffuse[0]) < 1e-6f
+                        && fabsf(wrote[1] - g->diffuse[1]) < 1e-6f
+                        && fabsf(wrote[2] - g->diffuse[2]) < 1e-6f;
+                int drawblack = g->diffuse[0] == 0.0f && g->diffuse[1] == 0.0f
+                             && g->diffuse[2] == 0.0f;
+                int wroteblack = wrote[0] == 0.0f && wrote[1] == 0.0f
+                              && wrote[2] == 0.0f;
+                g_lc_checked++;
+                if (!same) g_lc_differ++;
+                if (drawblack && !wroteblack) {
+                    g_lc_lost++;
+                    if (g_lc_lost <= 3)
+                        fprintf(stderr, "d3d8: light %u reaches a draw BLACK, "
+                                "but the last SetLight for that index wrote "
+                                "%.3f %.3f %.3f. The colour is lost between "
+                                "the two.\n", i, wrote[0], wrote[1], wrote[2]);
+                }
+            } else {
+                g_lc_neverset++;
+            }
+        }
         if (g->type == 2 && !told_spot++)
             fprintf(stderr, "d3d8: a SPOT light is enabled; this stage has no "
                             "cone, so it is lit as a point light -- brighter "
@@ -1123,7 +1159,8 @@ static int g_ft_on = -1, g_ft_done;
 static unsigned long g_ft_frame, g_ft_draw;
 
 static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
-                             uint32_t stride, int pos_offset, uint32_t fvf)
+                             uint32_t stride, int pos_offset, int normal_offset,
+                             uint32_t fvf)
 {
     float minx = 1e30f, miny = 1e30f, maxx = -1e30f, maxy = -1e30f;
     float minz = 1e30f, maxz = -1e30f;
@@ -1134,6 +1171,60 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
        of any matrix. */
     float omin[3] = { 1e30f, 1e30f, 1e30f }, omax[3] = { -1e30f, -1e30f, -1e30f };
     uint32_t n, i, capacity, behind = 0, used = 0, nearw = 0;
+    /*
+     * THE NORMALS, because the light survey cannot see them.
+     *
+     * That survey bounds a draw's colour with N.L forced to 1 -- its largest
+     * possible value -- which is exactly what makes it blind to a mesh that is
+     * black because its normals are wrong. A zero-length normal gives N.L = 0
+     * for every light and renders the surface at ambient alone, which is black
+     * in this game's interiors; so does a normal that points away from every
+     * light. One model can be ruined this way while the room around it, whose
+     * normals are fine, renders correctly -- which is the reported symptom.
+     */
+    double nsum = 0.0;
+    uint32_t nzero = 0, ncount = 0;
+    /* 240, not 80: at 80 this line truncated mid-word ("best light: t") and
+       the three numbers the measurement existed to show were silently cut
+       off. snprintf does not complain, so the buffer has to be right. */
+    char nphrase[400];
+    /* WHICH D3D light indices this draw has, and how bright each is. The
+       engine sets a white directional light at index 0; if that light is not
+       in this draw's enabled set, the model is dark for a reason that has
+       nothing to do with the lighting arithmetic. */
+    char lphrase[200];
+    /*
+     * WHAT THE SHADER WILL ACTUALLY OUTPUT for this draw.
+     *
+     * Every input has now been measured correct for a model that still renders
+     * black -- unit normals, a textured stage, lights whose colours and
+     * attenuation cannot produce black, a world matrix that puts the mesh in
+     * the right place. So stop testing inputs and compute the OUTPUT: the same
+     * arithmetic src/gpu/shaders/d3d8_fixed.vert runs, on this draw's real
+     * normals, real lights and real world matrix.
+     *
+     * This is the number the light survey deliberately would not compute: the
+     * survey forces N.L to 1 so its verdict is an upper BOUND that no geometry
+     * can escape, which is what makes it blind to a mesh whose normals point
+     * away from every light. Here N.L is the real one.
+     */
+    double litsum = 0.0, litraw = 0.0, bestnl = -2.0;
+    uint32_t litn = 0;
+    /*
+     * The world matrix's SCALE, and the same lighting computed WITHOUT
+     * normalising the transformed normal.
+     *
+     * D3D8 normalises the world-space normal only when D3DRS_NORMALIZENORMALS
+     * is TRUE. This title sets it FALSE (it is in the set-but-unread list), so
+     * a mesh whose world matrix carries a scale is lit by a normal of that
+     * length -- brighter for a scale above 1 -- while this backend's shader
+     * normalises unconditionally and lights it dimmer. If the dark models are
+     * the SCALED ones, that difference is the bug; if their scale is 1, this
+     * measurement kills the theory instead.
+     */
+    double wscale;
+    double bestcontrib = 0.0, bestatten = 0.0, bestldiff = 0.0;
+    int bestlt = -1;
     const uint8_t *vb;
 
     if (g_ft_on < 0) {
@@ -1164,6 +1255,9 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
         }
     }
     g_ft_draw++;
+    wscale = sqrt((double)out->world[0]*out->world[0] +
+                  (double)out->world[1]*out->world[1] +
+                  (double)out->world[2]*out->world[2]);
 
     if (!stride || pos_offset < 0 || !req->vertex_guest_bytes) {
         fprintf(stderr, "  draw %-4lu NO host-readable vertices (guest 0x%08x "
@@ -1197,6 +1291,122 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
         y = p[0]*out->mvp[1] + p[1]*out->mvp[5] + p[2]*out->mvp[9]  + out->mvp[13];
         z = p[0]*out->mvp[2] + p[1]*out->mvp[6] + p[2]*out->mvp[10] + out->mvp[14];
         w = p[0]*out->mvp[3] + p[1]*out->mvp[7] + p[2]*out->mvp[11] + out->mvp[15];
+        if (normal_offset >= 0) {
+            const float *q = (const float *)(vb + (size_t)v * stride
+                                             + normal_offset);
+            double len = sqrt((double)q[0]*q[0] + (double)q[1]*q[1]
+                              + (double)q[2]*q[2]);
+            nsum += len;
+            ncount++;
+            if (len < 1e-4) nzero++;
+            /* Sampled, not every vertex: 16 spread across the draw is enough
+               to tell a lit surface from a black one, and this runs on the
+               CPU for every vertex of every draw of the frame otherwise. */
+            if (out->lighting && len > 1e-4 && litn < 16u &&
+                (n < 16u || (i % (n / 16u)) == 0u)) {
+                double wn[3], acc[3], sc;
+                int c, li;
+                /* The normal by the world matrix's upper 3x3, as the shader
+                   does it, then normalised. */
+                wn[0] = q[0]*out->world[0] + q[1]*out->world[4] + q[2]*out->world[8];
+                wn[1] = q[0]*out->world[1] + q[1]*out->world[5] + q[2]*out->world[9];
+                wn[2] = q[0]*out->world[2] + q[1]*out->world[6] + q[2]*out->world[10];
+                sc = sqrt(wn[0]*wn[0] + wn[1]*wn[1] + wn[2]*wn[2]);
+                if (sc > 1e-6) { wn[0] /= sc; wn[1] /= sc; wn[2] /= sc; }
+                for (c = 0; c < 3; c++)
+                    acc[c] = out->mat_emissive[c]
+                           + out->mat_ambient[c] * out->global_ambient[c];
+                for (li = 0; li < out->nlights; li++) {
+                    const GpuLight *L = &out->light[li];
+                    double tl[3], nl, atten = 1.0, d2;
+                    if (L->type == 3) {          /* DIRECTIONAL */
+                        d2 = sqrt((double)L->direction[0]*L->direction[0] +
+                                  (double)L->direction[1]*L->direction[1] +
+                                  (double)L->direction[2]*L->direction[2]);
+                        if (d2 < 1e-6) continue;
+                        tl[0] = -L->direction[0]/d2;
+                        tl[1] = -L->direction[1]/d2;
+                        tl[2] = -L->direction[2]/d2;
+                    } else {
+                        double wp[3], dd[3], dist, den;
+                        wp[0] = p[0]*out->world[0] + p[1]*out->world[4]
+                              + p[2]*out->world[8]  + out->world[12];
+                        wp[1] = p[0]*out->world[1] + p[1]*out->world[5]
+                              + p[2]*out->world[9]  + out->world[13];
+                        wp[2] = p[0]*out->world[2] + p[1]*out->world[6]
+                              + p[2]*out->world[10] + out->world[14];
+                        dd[0] = L->position[0]-wp[0];
+                        dd[1] = L->position[1]-wp[1];
+                        dd[2] = L->position[2]-wp[2];
+                        dist = sqrt(dd[0]*dd[0]+dd[1]*dd[1]+dd[2]*dd[2]);
+                        if (dist > L->range || dist <= 0.0) continue;
+                        tl[0]=dd[0]/dist; tl[1]=dd[1]/dist; tl[2]=dd[2]/dist;
+                        den = L->atten[0] + L->atten[1]*dist
+                            + L->atten[2]*dist*dist;
+                        atten = den > 0.0 ? 1.0/den : 1.0;
+                    }
+                    nl = wn[0]*tl[0] + wn[1]*tl[1] + wn[2]*tl[2];
+                    if (nl > bestnl) bestnl = nl;
+                    if (nl < 0.0) nl = 0.0;
+                    for (c = 0; c < 3; c++)
+                        acc[c] += (out->mat_ambient[c]*L->ambient[c]
+                                   + out->mat_diffuse[c]*L->diffuse[c]*nl)
+                                  * atten;
+                    /* WHICH light contributes most, and what each factor of
+                       its contribution is. With N.L at 1.0 and the result
+                       still at 0.08, the answer is in one of these three
+                       numbers and nothing else. */
+                    {
+                        double contrib = (0.299*out->mat_diffuse[0]*L->diffuse[0]
+                                        + 0.587*out->mat_diffuse[1]*L->diffuse[1]
+                                        + 0.114*out->mat_diffuse[2]*L->diffuse[2])
+                                        * nl * atten;
+                        if (contrib > bestcontrib) {
+                            bestcontrib = contrib;
+                            bestlt = L->type;
+                            bestatten = atten;
+                            bestldiff = 0.299*L->diffuse[0] + 0.587*L->diffuse[1]
+                                      + 0.114*L->diffuse[2];
+                        }
+                    }
+                }
+                for (c = 0; c < 3; c++) if (acc[c] > 1.0) acc[c] = 1.0;
+                litsum += 0.299*acc[0] + 0.587*acc[1] + 0.114*acc[2];
+                /* Again, with the UNNORMALISED world normal -- what D3D8 uses
+                   when NORMALIZENORMALS is false. Only the N.L term changes. */
+                {
+                    double rn[3], racc[3];
+                    int c2, li2;
+                    rn[0] = q[0]*out->world[0] + q[1]*out->world[4] + q[2]*out->world[8];
+                    rn[1] = q[0]*out->world[1] + q[1]*out->world[5] + q[2]*out->world[9];
+                    rn[2] = q[0]*out->world[2] + q[1]*out->world[6] + q[2]*out->world[10];
+                    for (c2 = 0; c2 < 3; c2++)
+                        racc[c2] = out->mat_emissive[c2]
+                                 + out->mat_ambient[c2]*out->global_ambient[c2];
+                    for (li2 = 0; li2 < out->nlights; li2++) {
+                        const GpuLight *L = &out->light[li2];
+                        double tl[3], nl, d2;
+                        if (L->type != 3) continue;      /* directional only */
+                        d2 = sqrt((double)L->direction[0]*L->direction[0] +
+                                  (double)L->direction[1]*L->direction[1] +
+                                  (double)L->direction[2]*L->direction[2]);
+                        if (d2 < 1e-6) continue;
+                        tl[0] = -L->direction[0]/d2;
+                        tl[1] = -L->direction[1]/d2;
+                        tl[2] = -L->direction[2]/d2;
+                        nl = rn[0]*tl[0] + rn[1]*tl[1] + rn[2]*tl[2];
+                        if (nl < 0.0) nl = 0.0;
+                        for (c2 = 0; c2 < 3; c2++)
+                            racc[c2] += out->mat_ambient[c2]*L->ambient[c2]
+                                      + out->mat_diffuse[c2]*L->diffuse[c2]*nl;
+                    }
+                    for (c2 = 0; c2 < 3; c2++)
+                        if (racc[c2] > 1.0) racc[c2] = 1.0;
+                    litraw += 0.299*racc[0] + 0.587*racc[1] + 0.114*racc[2];
+                }
+                litn++;
+            }
+        }
         if (p[0] < omin[0]) omin[0] = p[0];
         if (p[0] > omax[0]) omax[0] = p[0];
         if (p[1] < omin[1]) omin[1] = p[1];
@@ -1224,17 +1434,62 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                 g_ft_draw, out->prim_count, stride, out->texture, n);
         return;
     }
+    {
+        int li3;
+        size_t at = 0;
+        lphrase[0] = 0;
+        for (li3 = 0; li3 < out->nlights && at + 24 < sizeof lphrase; li3++) {
+            const GpuLight *L = &out->light[li3];
+            at += (size_t)snprintf(lphrase + at, sizeof lphrase - at,
+                       "%s#%d t%d %.2f", li3 ? ", " : "",
+                       li3 < 8 ? g_light_src[li3] : -1, L->type,
+                       0.299*L->diffuse[0] + 0.587*L->diffuse[1]
+                       + 0.114*L->diffuse[2]);
+        }
+        if (!out->nlights) snprintf(lphrase, sizeof lphrase, "NONE");
+    }
+    /*
+     * "This format HAS no normal" and "its normals measure zero" must not
+     * print the same. They did -- every FVF without a normal bit reported
+     * `|N| 0.000`, which read as 31 draws with dead normals and was nothing of
+     * the kind. The phrase says which case it is.
+     */
+    {
+        if (normal_offset < 0)
+            snprintf(nphrase, sizeof nphrase, "no normal in this FVF");
+        else if (!ncount)
+            snprintf(nphrase, sizeof nphrase, "normal at +%d, NO vertex read",
+                     normal_offset);
+        else if (litn)
+            snprintf(nphrase, sizeof nphrase,
+                     "|N| %.2f scale %.2f LIT %.3f (N.L %.2f) nlights %d "
+                     "matdiff %.2f amb %.2f emis %.2f | best light: type %d "
+                     "diffuse %.2f atten %.4f -> %.3f | enabled: %s",
+                     nsum / ncount, wscale, litsum / litn, bestnl,
+                     out->nlights,
+                     0.299*out->mat_diffuse[0] + 0.587*out->mat_diffuse[1]
+                     + 0.114*out->mat_diffuse[2],
+                     0.299*out->mat_ambient[0] + 0.587*out->mat_ambient[1]
+                     + 0.114*out->mat_ambient[2],
+                     0.299*out->mat_emissive[0] + 0.587*out->mat_emissive[1]
+                     + 0.114*out->mat_emissive[2],
+                     bestlt, bestldiff, bestatten, bestcontrib, lphrase);
+        else
+            snprintf(nphrase, sizeof nphrase, "|N| %.3f over %u vertex(es), "
+                     "%.0f%% zero-length", nsum / ncount, ncount,
+                     100.0 * nzero / ncount);
+    }
     /* NDC (-1..1, y down in this pipeline) to pixels. */
     fprintf(stderr,
         "  draw %-4lu %5u prim  stride %-3u tex %-3u  fvf 0x%05x  lit %d "
         "texgen %d  screen x %5.0f..%-5.0f y %5.0f..%-5.0f  z %.3f..%.3f  "
-        "object extent %.1f x %.1f x %.1f%s%s%s\n",
+        "object extent %.1f x %.1f x %.1f  %s%s%s%s\n",
         g_ft_draw, out->prim_count, stride, out->texture,
         fvf, out->lighting, (int)out->texgen,
         (minx*0.5f+0.5f)*800.0f, (maxx*0.5f+0.5f)*800.0f,
         (miny*0.5f+0.5f)*600.0f, (maxy*0.5f+0.5f)*600.0f,
         minz, maxz,
-        omax[0]-omin[0], omax[1]-omin[1], omax[2]-omin[2],
+        omax[0]-omin[0], omax[1]-omin[1], omax[2]-omin[2], nphrase,
         (omax[0]-omin[0] < 0.01f || omax[1]-omin[1] < 0.01f ||
          omax[2]-omin[2] < 0.01f) ? "  <- FLAT in one axis" : "",
         behind ? "  (some behind the camera)" : "",
@@ -1596,7 +1851,8 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
        plainly textured -- a column that said "untextured" about everything
        because it ran before the texture was resolved. */
     frame_table_note(req, out, out->vertex_stride,
-                     programmable ? -1 : vl.pos_offset, fvf);
+                     programmable ? -1 : vl.pos_offset,
+                     programmable ? -1 : vl.normal_offset, fvf);
     return 1;
 }
 
@@ -1728,6 +1984,11 @@ void d3d8_drawcall_report(void)
                " -- so this run's dump says NOTHING about the lighting.");
     light_survey_report();
     fvf_report();
+    printf("        light table vs SetLight: %lu enabled-light read(s) "
+           "compared, %lu differ from what SetLight last wrote, %lu arrive "
+           "BLACK at a draw although SetLight wrote a colour, %lu were never "
+           "set at all\n",
+           g_lc_checked, g_lc_differ, g_lc_lost, g_lc_neverset);
     /* ALWAYS, including the all-clear: "0 of 290002 draws read outside their
        stream" is a measurement, and a line that only appears when something is
        wrong cannot be told apart from a check that never ran. */
