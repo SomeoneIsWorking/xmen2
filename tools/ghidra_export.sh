@@ -158,6 +158,7 @@ case ${2:-} in
     --seed)      SEEDFILE=${3:?--seed needs a file of hex addresses} ;;
     --split-at)  SPLITFILE=${3:?--split-at needs a file of hex addresses} ;;
     --merge)     MERGEFILE=${3:?--merge needs a file of hex addresses} ;;
+    --repair-stubs) REPAIR=${3:-ALL} ;;
     --recreate)  RECREATE=${3:?--recreate needs a comma-separated hex address list} ;;
     "")          ;;
     *)           echo "ghidra_export: unknown option $2" >&2; exit 2 ;;
@@ -253,6 +254,31 @@ if [ -n "$SPLITFILE" ]; then
         -postScript SplitFunction.py
 fi
 
+# Repairing a STUB: a function whose entry has no instruction at all, standing
+# in front of a misaligned decode that starts a byte or two later. Neither
+# --split-at nor --merge reaches it -- the stub IS a function start, so
+# SplitFunction.py says so and stops -- and the recompiler turns it into a trap
+# that fires whenever the game makes that call. See RepairStubs.py, issue #76.
+if [ -n "${REPAIR:-}" ]; then
+    # Exported rather than prefixed: run_step is a shell function, so `env
+    # VAR=1 run_step ...` would look for a program called run_step.
+    if [ "$REPAIR" = ALL ]; then
+        echo "== repair every function whose entry has no instruction =="
+        export REPAIR_ALL=1
+        unset REPAIR_FUNCS || true
+    else
+        echo "== repair $(echo "$REPAIR" | tr ',' '\n' | grep -c .) stub function(s) =="
+        export REPAIR_FUNCS="$REPAIR"
+        unset REPAIR_ALL || true
+    fi
+    export REPAIR_SPAN="${REPAIR_SPAN:-16}"
+    run_step repairing '^REPAIR: [0-9]+ repaired' 8 \
+        "$HEADLESS" "$PROJ" xmen2 \
+        -process "$(basename "$BIN")" -noanalysis \
+        -scriptPath "$ROOT/tools/ghidra_scripts" \
+        -postScript RepairStubs.py
+fi
+
 # Bulk seeding from vtables and dispatch tables. The runtime finds indirect
 # call targets one at a time, which for virtual calls means one function per
 # rebuild; the tables holding them can be enumerated statically instead.
@@ -319,4 +345,40 @@ if n == 0:
 ins = sum(len(f.get("ins", [])) for f in d["functions"])
 print("ghidra_export: %s -- %d functions, %d instructions, image_base 0x%x"
       % (sys.argv[1], n, ins, d.get("image_base", 0)))
+
+# A function with NO instructions is a failed decode, and it must be refused
+# HERE.
+#
+# It used to pass: the recompiler emitted a body that traps by name, the build
+# succeeded, and the trap fired the first time the game made that call --
+# minutes into gameplay, as an "illegal instruction" with nothing tying it back
+# to a disassembly that had gone wrong hours earlier. One such stub
+# (0x00424240, a vtable entry two bytes in front of a misaligned decode) was
+# the whole of issue #76.
+#
+# The count is printed even when it is zero, because "0 of 16453" is a
+# measurement and a line that appears only on failure is indistinguishable from
+# a check nobody ran.
+#
+# The test is "is there an instruction AT the entry", not "does the body have
+# any instructions". A repair can leave a function holding code that starts
+# PAST its own entry -- 0x0065006c came back with two instructions beginning 17
+# bytes in -- and an emptiness test waves that through while the entry still
+# decodes to nothing. It is not "first instruction in the list", either: seven
+# functions in this module have non-contiguous bodies whose lowest-addressed
+# chunk precedes the entry, and those are fine.
+stubs = [f for f in d["functions"]
+         if not any(i["a"] == f["ep"] for i in f.get("ins", []))]
+print("ghidra_export: %d of %d function(s) have NO instruction at their entry"
+      % (len(stubs), n))
+if stubs:
+    for f in stubs[:10]:
+        print("    0x%08x %s (size %s)"
+              % (f["ep"], f.get("qname"), f.get("size")))
+    sys.exit("ghidra_export: %s carries %d function(s) with no instruction at "
+             "their entry. "
+             "Each becomes a trap that fires when the game calls it, so this "
+             "export is refused rather than shipped. Repair them with:\n"
+             "    tools/ghidra_export.sh <module> --repair-stubs"
+             % (sys.argv[1], len(stubs)))
 PY

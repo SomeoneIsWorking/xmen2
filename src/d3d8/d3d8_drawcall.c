@@ -24,6 +24,7 @@ unsigned long gpu_frame_draws_so_far(void);
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 #include <string.h>
 
 /* D3DRS_*, the ones this reads. */
@@ -130,6 +131,7 @@ static int g_arg_seen;
 static unsigned long g_multistage_draws;
 static int g_multistage_max;
 static void light_dump(const GpuDraw *d);
+static void light_survey(const GpuDraw *d);
 /* The raw D3DCOLOR the engine set, kept so the dump can show what was READ as
    well as what it became -- a zero after conversion and a zero in the register
    are different faults. */
@@ -139,6 +141,12 @@ static uint32_t g_last_ambient_raw;
    without the index a black light cannot be traced back to the SetLight that
    made it. */
 static int g_light_src[8];
+/* Where the draw sits in CAMERA space, for the dump. D3D8 defines light
+   positions in WORLD space and this stage lights there, so a draw whose world
+   position is thousands of units from every light while its camera position is
+   a few hundred says the two are not in the same space -- which no colour in
+   the dump could ever say. */
+static float g_ld_viewpos[3];
 
 static unsigned long g_texop_none_notex, g_texop_none_disabled,
                      g_texop_select, g_texop_select2, g_texop_modulate,
@@ -317,7 +325,10 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
     out->color_vertex = rs(s, D3DRS_COLORVERTEX, 1) != 0;
     g_last_ambient_raw = rs(s, D3DRS_AMBIENT, 0);
     argb_to_rgba(g_last_ambient_raw, out->global_ambient);
-    if (!out->lighting) return;
+    /* The survey has to see the UNLIT draws too, and this early return is why
+       it could not: its "0 unlit" was true by construction, not measured -- a
+       counter that can only ever print zero. */
+    if (!out->lighting) { light_survey(out); return; }
 
     if (s->material_set) {
         copy4(out->mat_diffuse,  &s->material[0]);
@@ -359,7 +370,15 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
                             "cone, so it is lit as a point light -- brighter "
                             "outside the cone than the engine asked for.\n");
     }
+    {
+        float wv[16];
+        d3d8_worldview_transform(s, wv);
+        g_ld_viewpos[0] = wv[12];
+        g_ld_viewpos[1] = wv[13];
+        g_ld_viewpos[2] = wv[14];
+    }
     light_dump(out);
+    light_survey(out);
 }
 
 
@@ -387,7 +406,7 @@ static void light_dump(const GpuDraw *d)
         const char *e = getenv("X2_LIGHT_DUMP");
         g_ld_want = (e && *e) ? atol(e) : -1;
     }
-    if (g_ld_want <= 0 || g_ld_done >= g_ld_want) return;
+    if (g_ld_want <= 0) return;
     if (!d->lighting) return;
     /*
      * The SCENE gate first, when one was asked for. A draw count separates a
@@ -451,6 +470,9 @@ static void light_dump(const GpuDraw *d)
      * dump so a reading can say which part of the level it describes.
      */
     g_ld_qualified++;
+    /* The quota stops the PRINTING, not the counting: a denominator that stops
+       growing once the dump is full is not a denominator. */
+    if (g_ld_done >= g_ld_want) return;
     {
         if (g_ld_skip < 0) {
             const char *e = getenv("X2_LIGHT_DUMP_SKIP");
@@ -479,15 +501,21 @@ static void light_dump(const GpuDraw *d)
         d->mat_ambient[0], d->mat_ambient[1], d->mat_ambient[2],
         d->mat_emissive[0], d->mat_emissive[1], d->mat_emissive[2]);
     fprintf(stderr,
-        "    world row0 %.3f %.3f %.3f %.3f   row3(translation) %.1f %.1f %.1f\n",
+        "    world row0 %.3f %.3f %.3f %.3f   row3(translation) %.1f %.1f %.1f\n"
+        "    the same origin in CAMERA space (world*view): %.1f %.1f %.1f\n"
+        "    draw: %u primitive(s), stride %u, texture %u, %s\n",
         d->world[0], d->world[1], d->world[2], d->world[3],
-        d->world[12], d->world[13], d->world[14]);
+        d->world[12], d->world[13], d->world[14],
+        g_ld_viewpos[0], g_ld_viewpos[1], g_ld_viewpos[2],
+        d->prim_count, d->vertex_stride, d->texture,
+        d->programmable ? "VS" : "FVF");
     if (!d->nlights)
         fprintf(stderr,
             "    NO LIGHT IS ENABLED. With a zero emissive and a zero ambient "
             "this draw can only come out BLACK, whatever its texture.\n");
     for (i = 0; i < d->nlights; i++) {
         const GpuLight *L = &d->light[i];
+        float dw[3], dv[3], distw, distv, attw, attv, den;
         fprintf(stderr,
             "    light %d (D3D index %d) type %d diffuse %.3f %.3f %.3f  "
             "amb %.3f %.3f %.3f\n"
@@ -499,7 +527,259 @@ static void light_dump(const GpuDraw *d)
             L->position[0], L->position[1], L->position[2],
             L->direction[0], L->direction[1], L->direction[2],
             L->range, L->atten[0], L->atten[1], L->atten[2]);
+        /*
+         * THE ARITHMETIC, both ways, because the numbers above cannot be read
+         * by eye. A point light with no constant or linear term is entirely
+         * decided by distance: at 5,000 units a quadratic term of 3.78e-5
+         * attenuates to about 1/750, which is black, and at 300 units it is
+         * about 3.4, which is full brightness clamped. Printing the distance
+         * and the attenuation from the draw's WORLD origin and from its CAMERA
+         * origin says which space the engine's light positions are in -- and
+         * that is a question no colour in this dump can answer.
+         */
+        if (L->type == 1) {                     /* D3DLIGHT_POINT */
+            dw[0] = L->position[0] - d->world[12];
+            dw[1] = L->position[1] - d->world[13];
+            dw[2] = L->position[2] - d->world[14];
+            dv[0] = L->position[0] - g_ld_viewpos[0];
+            dv[1] = L->position[1] - g_ld_viewpos[1];
+            dv[2] = L->position[2] - g_ld_viewpos[2];
+            distw = sqrtf(dw[0]*dw[0] + dw[1]*dw[1] + dw[2]*dw[2]);
+            distv = sqrtf(dv[0]*dv[0] + dv[1]*dv[1] + dv[2]*dv[2]);
+            den = L->atten[0] + L->atten[1]*distw + L->atten[2]*distw*distw;
+            attw = den > 0.0f ? 1.0f / den : 1.0f;
+            den = L->atten[0] + L->atten[1]*distv + L->atten[2]*distv*distv;
+            attv = den > 0.0f ? 1.0f / den : 1.0f;
+            fprintf(stderr,
+                "            from this draw's WORLD origin: %.0f units, "
+                "attenuation %.4f%s\n"
+                "            from its CAMERA origin:        %.0f units, "
+                "attenuation %.4f%s\n",
+                distw, attw, attw < 0.05f ? "   <- effectively BLACK" : "",
+                distv, attv, attv < 0.05f ? "   <- effectively BLACK" : "");
+        }
     }
+}
+
+/*
+ * X2_LIGHT_SURVEY=1 -- WHICH draws of a gameplay frame cannot come out lit,
+ * and what those draws have in common.
+ *
+ * The dump above prints six draws in full and leaves "and the other hundred
+ * and forty?" unanswered, which is how a reading taken from one background
+ * object came to be written up as a statement about the characters. This
+ * classifies EVERY draw of a qualifying frame instead, by an upper bound on
+ * what the vertex shader can produce for it:
+ *
+ *   bound = emissive + mat_ambient*global_ambient
+ *         + sum over lights of (mat_ambient*light_ambient
+ *                               + diffuse_material*light_diffuse) * atten
+ *
+ * with N.L taken as 1 -- its largest possible value -- and a vertex-coloured
+ * material taken as white. So the bound is generous in every term: a draw
+ * whose bound is black is black on this stage NO MATTER where its vertices or
+ * normals point, and that is a fact about the draw rather than a sample.
+ *
+ * The interesting half of the answer is the SPLIT. If every lit draw is black
+ * the fault is global (a dead material, a dead light set); if a minority is,
+ * those draws are a thing on the screen -- and their common stride, texgen and
+ * light set says which thing. The same bound is computed a second time with
+ * attenuation forced to 1, which separates "the light colours are zero" from
+ * "the lights are too far away", the two candidate causes that the colours
+ * alone cannot tell apart.
+ */
+#define SURVEY_SIGS 8
+static int  g_sv_on = -1;
+static unsigned long g_sv_frames, g_sv_seen, g_sv_unlit, g_sv_lit, g_sv_black,
+                     g_sv_nolights, g_sv_black_noatten, g_sv_vertexcol;
+static struct { unsigned stride, texgen, textured, nlights, black_only_atten;
+                unsigned long count; } g_sv_sig[SURVEY_SIGS];
+static int g_sv_nsig;
+static unsigned long g_sv_sig_lost;
+static unsigned long g_sv_last_frame = ~0UL;
+static int g_sv_started;
+static unsigned long g_sv_start_frame, g_sv_ungated;
+
+static float survey_bound(const GpuDraw *d, int ignore_atten)
+{
+    float acc[3], dm[3];
+    int c, i;
+    int vertex_material = d->color_vertex && d->color_offset >= 0;
+
+    for (c = 0; c < 3; c++) {
+        acc[c] = d->mat_emissive[c] + d->mat_ambient[c] * d->global_ambient[c];
+        dm[c] = vertex_material ? 1.0f : d->mat_diffuse[c];
+    }
+    for (i = 0; i < d->nlights; i++) {
+        const GpuLight *L = &d->light[i];
+        float atten = 1.0f;
+        if (L->type != 3 && !ignore_atten) {    /* not DIRECTIONAL */
+            float dx = L->position[0] - d->world[12];
+            float dy = L->position[1] - d->world[13];
+            float dz = L->position[2] - d->world[14];
+            float dist = sqrtf(dx*dx + dy*dy + dz*dz), den;
+            if (dist > L->range) continue;      /* the shader drops it too */
+            den = L->atten[0] + L->atten[1]*dist + L->atten[2]*dist*dist;
+            atten = den > 0.0f ? 1.0f / den : 1.0f;
+        }
+        for (c = 0; c < 3; c++)
+            acc[c] += (d->mat_ambient[c] * L->ambient[c]
+                       + dm[c] * L->diffuse[c]) * atten;
+    }
+    for (c = 0; c < 3; c++) if (acc[c] > 1.0f) acc[c] = 1.0f;
+    return 0.299f*acc[0] + 0.587f*acc[1] + 0.114f*acc[2];
+}
+
+static void light_survey(const GpuDraw *d)
+{
+    float bound, bound_noatten;
+    int black, only_atten, i;
+
+    if (g_sv_on < 0) {
+        const char *e = getenv("X2_LIGHT_SURVEY");
+        g_sv_on = (e && *e) ? atoi(e) : 0;
+    }
+    if (!g_sv_on) return;
+    {
+        /*
+         * The level is open, and gameplay has STARTED -- which is not the same
+         * gate the dump uses, and the difference invalidated this survey's
+         * first reading.
+         *
+         * The dump's threshold is a property of the DRAW ("this frame has
+         * already submitted 100"), which is right for picking a specimen and
+         * wrong for a census: it silently drops the first 100 draws of every
+         * frame, so a survey gated that way described the last 20 draws of a
+         * 140-draw frame and printed 421 as though it were the denominator.
+         * The characters are drawn somewhere in a frame, and "somewhere" is
+         * exactly what a survey may not assume.
+         *
+         * So the threshold opens the gate ONCE, for good: the first frame to
+         * reach it says gameplay is running, and every draw of every frame
+         * from then on is counted. What is missed is then bounded and known --
+         * the frames before that point -- rather than an unstated slice of
+         * every frame.
+         */
+        extern int k32_file_gate_open(void);
+        static long minimum = -1;
+        if (!k32_file_gate_open()) { g_sv_ungated++; return; }
+        if (minimum < 0) {
+            const char *e = getenv("X2_LIGHT_DUMP_MIN");
+            minimum = (e && *e) ? atol(e) : 100;
+        }
+        if (!g_sv_started) {
+            if ((long)gpu_frame_draws_so_far() < minimum) {
+                g_sv_ungated++;
+                return;
+            }
+            g_sv_started = 1;
+            g_sv_start_frame = gpu_frames_presented();
+            fprintf(stderr, "[SURVEY] gameplay reached at presented frame "
+                    "%lu (a frame submitted %ld draws); EVERY draw from here "
+                    "on is classified. %lu draw(s) before this point were "
+                    "not.\n",
+                    g_sv_start_frame, minimum, g_sv_ungated);
+        }
+    }
+    if (g_sv_last_frame != gpu_frames_presented()) {
+        g_sv_last_frame = gpu_frames_presented();
+        g_sv_frames++;
+        /*
+         * LIVE, not only at shutdown.
+         *
+         * Nothing here stops on its own and an interactive run ends when the
+         * window is closed, so a classification that exists only in the
+         * shutdown report is a classification nobody reads. The first gated
+         * frame prints, then every X2_LIGHT_SURVEY_EVERY (default 120) --
+         * which is also what makes the number WATCHABLE: if the count of
+         * bounded-black draws moves when the player moves or switches
+         * character, that is the symptom, live, tied to what is on screen.
+         */
+        {
+            static long every = -1;
+            if (every < 0) {
+                const char *e = getenv("X2_LIGHT_SURVEY_EVERY");
+                every = (e && *e) ? atol(e) : 120;
+                if (every < 1) every = 1;
+            }
+            if (g_sv_frames == 1 || g_sv_frames % (unsigned long)every == 0)
+                fprintf(stderr,
+                    "[SURVEY] frame %lu: of %lu lit draw(s) so far, %lu are "
+                    "bounded BLACK (%lu of those by distance alone); %lu "
+                    "unlit; %lu with no light enabled\n",
+                    gpu_frames_presented(), g_sv_lit, g_sv_black,
+                    g_sv_black_noatten, g_sv_unlit, g_sv_nolights);
+        }
+    }
+    g_sv_seen++;
+    if (!d->lighting) { g_sv_unlit++; return; }
+    g_sv_lit++;
+    if (d->color_vertex && d->color_offset >= 0) g_sv_vertexcol++;
+    if (!d->nlights) g_sv_nolights++;
+
+    bound = survey_bound(d, 0);
+    bound_noatten = survey_bound(d, 1);
+    black = bound < 0.02f;
+    only_atten = black && bound_noatten >= 0.02f;
+    if (!black) return;
+    g_sv_black++;
+    if (only_atten) g_sv_black_noatten++;
+
+    for (i = 0; i < g_sv_nsig; i++)
+        if (g_sv_sig[i].stride == d->vertex_stride
+            && g_sv_sig[i].texgen == (unsigned)d->texgen
+            && g_sv_sig[i].textured == (d->texture != 0)
+            && g_sv_sig[i].nlights == (unsigned)d->nlights
+            && g_sv_sig[i].black_only_atten == (unsigned)only_atten) {
+            g_sv_sig[i].count++;
+            return;
+        }
+    if (g_sv_nsig == SURVEY_SIGS) { g_sv_sig_lost++; return; }
+    g_sv_sig[g_sv_nsig].stride = d->vertex_stride;
+    g_sv_sig[g_sv_nsig].texgen = (unsigned)d->texgen;
+    g_sv_sig[g_sv_nsig].textured = (d->texture != 0);
+    g_sv_sig[g_sv_nsig].nlights = (unsigned)d->nlights;
+    g_sv_sig[g_sv_nsig].black_only_atten = (unsigned)only_atten;
+    g_sv_sig[g_sv_nsig].count = 1;
+    g_sv_nsig++;
+}
+
+static void light_survey_report(void)
+{
+    int i;
+    if (g_sv_on <= 0) return;
+    printf("        X2_LIGHT_SURVEY: %lu draw(s) over %lu gameplay frame(s) "
+           "-- EVERY draw submitted from presented frame %lu on; %lu unlit, "
+           "%lu lit\n",
+           g_sv_seen, g_sv_frames, g_sv_start_frame, g_sv_unlit, g_sv_lit);
+    if (!g_sv_seen) {
+        printf("          NO DRAW WAS EVER SURVEYED -- gameplay was never "
+               "reached (%lu draw(s) went by before the level-open gate or "
+               "before any frame submitted enough draws). This says NOTHING "
+               "about the lighting.\n", g_sv_ungated);
+        return;
+    }
+    printf("          %lu draw(s) before gameplay started are not in this "
+           "count\n", g_sv_ungated);
+    printf("          of the %lu lit: %lu cannot come out brighter than black "
+           "even with N.L=1, %lu of those ONLY because of distance "
+           "attenuation (they would light at atten=1), %lu have no light "
+           "enabled at all, %lu take their diffuse from the vertex\n",
+           g_sv_lit, g_sv_black, g_sv_black_noatten, g_sv_nolights,
+           g_sv_vertexcol);
+    if (!g_sv_black)
+        printf("          NOT ONE lit draw is bounded black: whatever is dark "
+               "on screen is not this stage's lighting arithmetic.\n");
+    for (i = 0; i < g_sv_nsig; i++)
+        printf("          black x%lu: stride %u, texgen %u, %s, %u light(s)%s\n",
+               g_sv_sig[i].count, g_sv_sig[i].stride, g_sv_sig[i].texgen,
+               g_sv_sig[i].textured ? "textured" : "NO texture",
+               g_sv_sig[i].nlights,
+               g_sv_sig[i].black_only_atten ? " -- distance alone" : "");
+    if (g_sv_sig_lost)
+        printf("          %lu black draw(s) had a %dth distinct signature and "
+               "are counted above but not described.\n",
+               g_sv_sig_lost, SURVEY_SIGS + 1);
 }
 
 static GpuBlend blend_of(uint32_t d3d)
@@ -1110,6 +1390,7 @@ void d3d8_drawcall_report(void)
                g_ld_qualified, g_ld_skipped, g_ld_done, g_ld_want,
                g_ld_done ? "." :
                " -- so this run's dump says NOTHING about the lighting.");
+    light_survey_report();
 
     if (g_refused_prim)
         printf("        %lu draw(s) refused for an unimplemented primitive "

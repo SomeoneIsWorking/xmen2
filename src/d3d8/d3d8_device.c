@@ -628,6 +628,10 @@ static unsigned long g_setlight_calls, g_setlight_black, g_setlight_over;
 /* What the LAST SetLight left in each slot -- see dev_SetLight. */
 static struct { unsigned long calls, black; float last[3]; uint32_t last_type; }
              g_light_slot[D3D8_MAX_LIGHTS];
+/* Whether the engine's own light-position transform did anything -- see
+   dev_SetLight. */
+static unsigned long g_light_transformed, g_light_untransformed,
+                     g_light_tail_unreadable;
 
 static void dev_SetLight(D3D8Object *self, CPU *C)
 {
@@ -705,6 +709,32 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
      * index turns "black lights come from somewhere" into "index 5 was set
      * 2,000 times and the last one was black".
      */
+    /*
+     * DID THE ENGINE'S OWN TRANSFORM RUN?
+     *
+     * libIGGfx setLightPosition (0x1003d5e0) does not store the position it is
+     * given. It multiplies it by the top of a matrix stack and stores the
+     * RESULT at D3DLIGHT8+0x34, keeping the untransformed vector 0x34 bytes
+     * further on in the same record. Those two being EQUAL means the transform
+     * was a no-op -- an identity or empty stack -- which would leave every
+     * light in the wrong space while the geometry's world matrix is in
+     * another, and that is exactly the shape of "everything lit is black".
+     *
+     * The record is the engine's, not ours, so the tail is validated as guest
+     * memory in its own right before it is read; a light whose tail is not
+     * addressable is counted rather than assumed either way.
+     */
+    if (idx < D3D8_MAX_LIGHTS) {
+        const float *tail =
+            (const float *)guest_ptr(d3d8_arg(C, 1) + 0x68u, NULL);
+        if (!tail) {
+            g_light_tail_unreadable++;
+        } else if (l[13] == tail[0] && l[14] == tail[1] && l[15] == tail[2]) {
+            g_light_untransformed++;
+        } else {
+            g_light_transformed++;
+        }
+    }
     if (idx < D3D8_MAX_LIGHTS) {
         g_light_slot[idx].calls++;
         if (l[1] == 0.0f && l[2] == 0.0f && l[3] == 0.0f)
@@ -732,6 +762,13 @@ void d3d8_setlight_report(void)
                "about where light colour comes from.\n");
         return;
     }
+    printf("         the engine transforms a light POSITION by the top of its "
+           "own matrix stack before handing it over (libIGGfx 0x1003d5e0) and "
+           "keeps the untransformed vector beside it:\n"
+           "         %lu call(s) arrived TRANSFORMED, %lu arrived with the two "
+           "equal (the transform was a no-op), %lu had no readable record "
+           "tail.\n",
+           g_light_transformed, g_light_untransformed, g_light_tail_unreadable);
     for (i = 0; i < (int)D3D8_MAX_LIGHTS; i++) {
         if (!g_light_slot[i].calls) continue;
         printf("         light[%d] %lu call(s), %lu black; LAST was type %u "
