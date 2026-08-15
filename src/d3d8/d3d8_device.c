@@ -1129,10 +1129,65 @@ static void dev_SetIndices(D3D8Object *self, CPU *C)
     d3d8_ret(C, D3D_OK);
 }
 
+/*
+ * Every DISTINCT value SetVertexShader is handed, with its count.
+ *
+ * D3D8 overloads this call: the argument is an FVF code OR a vertex shader
+ * handle, and the two are told apart by bit 0 (D3DFVF_RESERVED0), which an
+ * FVF may never set. Measured against the stock engine through
+ * tools/proxy_d3d8, the control binds handle 0x003 for two draws of every
+ * gameplay frame -- the character hulls -- while this port bound 0x002 for
+ * the same two draws and created no shader at all in the whole run.
+ *
+ * That divergence was invisible because nothing recorded what this call
+ * RECEIVED: "0 vertex shaders created" is equally consistent with an engine
+ * that wanted none and an engine that asked and was turned away somewhere
+ * upstream. The census makes the two distinguishable, and prints AT ZERO.
+ */
+#define VS_SEEN_MAX 16
+static struct { uint32_t handle; unsigned long n; } g_vs_seen[VS_SEEN_MAX];
+static int g_vs_nseen;
+static unsigned long g_vs_seen_dropped;
+
+static void vs_seen_note(uint32_t handle)
+{
+    int i;
+    for (i = 0; i < g_vs_nseen; i++)
+        if (g_vs_seen[i].handle == handle) { g_vs_seen[i].n++; return; }
+    if (g_vs_nseen == VS_SEEN_MAX) { g_vs_seen_dropped++; return; }
+    g_vs_seen[g_vs_nseen].handle = handle;
+    g_vs_seen[g_vs_nseen].n = 1;
+    g_vs_nseen++;
+}
+
+void d3d8_vertex_shader_binding_report(void)
+{
+    int i;
+    printf("  d3d8 SetVertexShader: %d distinct value(s)", g_vs_nseen);
+    if (g_vs_seen_dropped)
+        printf(", and %lu call(s) with further values this table could not "
+               "hold", g_vs_seen_dropped);
+    printf("\n");
+    if (!g_vs_nseen) {
+        printf("        the engine NEVER bound a vertex format or a shader. "
+               "Every draw used whatever was current at device creation.\n");
+        return;
+    }
+    for (i = 0; i < g_vs_nseen; i++) {
+        uint32_t h = g_vs_seen[i].handle;
+        /* D3D8's own rule, not a threshold: bit 0 is D3DFVF_RESERVED0 and an
+           FVF may never set it, so a handle with it set is a SHADER. */
+        printf("        0x%08x  x%-8lu  %s\n", h, g_vs_seen[i].n,
+               (h & 1u) ? "a SHADER HANDLE (D3DFVF_RESERVED0 set)"
+                        : "an FVF code");
+    }
+}
+
 static void dev_SetVertexShader(D3D8Object *self, CPU *C)
 {
     uint32_t shader = d3d8_arg(C, 0);
     (void)self;
+    vs_seen_note(shader);
     if (shader > 0xf0000000u && !d3d8_vs_get(shader, "SetVertexShader")) {
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
@@ -1464,6 +1519,8 @@ static void dev_DrawIndexedPrimitive(D3D8Object *self, CPU *C)
     }
     req.first_index = d3d8_arg(C, 3);
     req.base_vertex = g_dev.state.base_vertex_index;
+    req.min_index = d3d8_arg(C, 1);
+    req.num_vertices = d3d8_arg(C, 2);
     if (!d3d8_build_draw(&g_dev.state, &req, &gd)) {
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;

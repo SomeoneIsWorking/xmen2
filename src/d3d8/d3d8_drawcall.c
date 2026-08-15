@@ -1202,6 +1202,9 @@ static int g_ft_manual;      /* armed by F9: the person watching is the gate */
  */
 static volatile sig_atomic_t g_ft_signal;
 
+/* Defined with the rest of the OBJ writer, below the frame table it serves. */
+static void obj_open_if_wanted(void);
+
 static void ft_sigusr1(int sig) { (void)sig; g_ft_signal = 1; }
 
 void d3d8_frame_table_install_signal(void)
@@ -1224,11 +1227,79 @@ void d3d8_frame_table_arm(void)
     g_ft_draw = 0;
     g_ft_manual = 1;
     g_ft_arms++;
+    obj_open_if_wanted();
     fprintf(stderr, "[FRAME TABLE] armed (%lu) -- the NEXT frame that draws "
             "anything is listed in full, gate and draw-count minimum "
             "BYPASSED. Whoever pressed the key is looking at the frame they "
             "mean, and a diagnostic that second-guesses them prints nothing "
             "and says nothing about why.\n", g_ft_arms);
+}
+
+/*
+ * The frame's GEOMETRY, not just its bounding boxes.
+ *
+ * A per-draw extent cannot see inside a draw, and the reported defect is
+ * inside one: "his head is collapsed to a plane" lives in a single 1582
+ * primitive draw whose overall box is a perfectly healthy 37 x 38 x 51. The
+ * only way to answer that is to look at the vertices.
+ *
+ * OBJECT space, exactly as the vertices arrive from the engine's own skinning
+ * -- before any matrix of ours touches them. That is what separates the two
+ * causes: a head that is already flat here was flattened by the engine (or by
+ * how we upload what it wrote), and a head that is round here but flat on
+ * screen was flattened by a transform.
+ *
+ * Points, not faces. A point cloud shows a collapsed mesh as plainly as a
+ * surface does, and reconstructing faces means getting strip winding and fan
+ * expansion right for a diagnostic -- work that can be wrong in ways that
+ * LOOK like the defect being hunted.
+ *
+ * One `o draw<n>` group per draw, so the table above and this file name the
+ * same things. Written only while the table is armed.
+ */
+static FILE *g_obj;
+static unsigned long g_obj_verts;
+
+static void obj_open_if_wanted(void)
+{
+    const char *path = getenv("X2_DRAW_OBJ");
+    if (g_obj || !path || !*path) return;
+    g_obj = fopen(path, "w");
+    if (!g_obj) {
+        fprintf(stderr, "d3d8: X2_DRAW_OBJ=%s could not be opened; the frame's "
+                        "geometry is NOT being written.\n", path);
+        return;
+    }
+    fprintf(stderr, "[FRAME TABLE] writing this frame's object-space vertices "
+                    "to %s\n", path);
+}
+
+static void obj_begin_draw(unsigned long n, uint32_t fvf, uint32_t stride,
+                           uint32_t prims)
+{
+    if (!g_obj) return;
+    /* Named exactly as the proxy names its groups, so the two files can be
+       matched draw for draw by signature rather than by position. */
+    fprintf(g_obj, "o draw%lu_fvf%05x_stride%u_prims%u\n", n, fvf, stride,
+            prims);
+}
+
+static void obj_vertex(const float *p)
+{
+    if (!g_obj) return;
+    fprintf(g_obj, "v %.4f %.4f %.4f\n", p[0], p[1], p[2]);
+    g_obj_verts++;
+}
+
+static void obj_finish(void)
+{
+    if (!g_obj) return;
+    fprintf(stderr, "[FRAME TABLE] %lu vertex(es) written. A file with 0 in it "
+                    "means no draw of this frame had host-readable vertices, "
+                    "not that the meshes were empty.\n", g_obj_verts);
+    fclose(g_obj);
+    g_obj = NULL;
+    g_obj_verts = 0;
 }
 
 static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
@@ -1327,6 +1398,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
             g_ft_done = 1;
             fprintf(stderr, "[FRAME TABLE] end of frame %lu -- %lu draw(s) "
                     "listed.\n", g_ft_frame, g_ft_draw);
+            obj_finish();
             return;
         }
     }
@@ -1344,6 +1416,27 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
     vb = (const uint8_t *)(uintptr_t)req->vertex_guest_bytes;
     capacity = req->vertex_bytes / stride;
     n = index_count_of(req->primitive_type, req->primitive_count);
+    /*
+     * The geometry dump walks the draw's declared vertex RANGE, not its index
+     * list, because that is what tools/proxy_d3d8 can see on the control side
+     * without reading an index buffer -- D3D8 hands DrawIndexedPrimitive
+     * BaseVertexIndex + MinIndex and NumVertices, which IS the range. Two
+     * dumps of different subsets of the same buffer would differ for a reason
+     * that has nothing to do with the defect.
+     */
+    obj_begin_draw(g_ft_draw, fvf, stride, out->prim_count);
+    {
+        uint32_t first = req->num_vertices
+                             ? req->base_vertex + req->min_index
+                             : req->first_vertex;
+        uint32_t count = req->num_vertices ? req->num_vertices : n;
+        uint32_t k;
+        for (k = 0; k < count; k++) {
+            uint32_t v = first + k;
+            if (v >= capacity) break;
+            obj_vertex((const float *)(vb + (size_t)v * stride + pos_offset));
+        }
+    }
 
     for (i = 0; i < n; i++) {
         uint32_t v;

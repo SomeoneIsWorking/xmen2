@@ -389,6 +389,9 @@ void d3d8_vs_report(void)
     if (g_created && !g_executions)
         printf("        NO created shader was executed -- this run proves the "
                "lifecycle only, not programmable drawing.\n");
+    /* What the engine actually BOUND. "0 created" alone cannot tell an engine
+       that wanted no shader from one that asked and was turned away. */
+    d3d8_vertex_shader_binding_report();
 }
 
 int d3d8_vs_selftest(void)

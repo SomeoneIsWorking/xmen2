@@ -42,6 +42,13 @@ typedef struct {
     uint32_t   index_bytes;
     uint32_t   first_index;
     uint32_t   base_vertex;
+    /* D3D8 hands DrawIndexedPrimitive the exact vertex RANGE the draw
+       reads: BaseVertexIndex + MinIndex, for NumVertices. The geometry
+       dump uses it so the port and tools/proxy_d3d8 write the same
+       vertices -- comparing different subsets of a shared buffer would
+       look exactly like a mesh that differs. */
+    uint32_t   min_index;
+    uint32_t   num_vertices;
     GpuTexture texture;             /* 0 for untextured */
     uint32_t   primitive_type;      /* D3DPRIMITIVETYPE */
     uint32_t   primitive_count;

@@ -40,6 +40,7 @@
 
 #define D3D8_SLOTS      16      /* IDirect3D8:       slots 0..15  */
 #define D3DDEV_SLOTS    97      /* IDirect3DDevice8: slots 0..96  */
+#define D3DVB_SLOTS     14      /* IDirect3DVertexBuffer8: 0..13  */
 #define STRIDE          32
 
     .text
@@ -70,6 +71,19 @@ fwddev_base:
     .set n, n + 1
     .endr
 
+    .balign STRIDE
+fwdvb_base:
+    .set n, 0
+    .rept D3DVB_SLOTS
+    mov     eax, [esp+4]
+    mov     edx, [eax+4]
+    mov     ecx, [eax+8]
+    mov     [esp+4], edx
+    jmp     dword ptr [ecx + n*4]
+    .org    fwdvb_base + (n + 1) * STRIDE
+    .set n, n + 1
+    .endr
+
     .section .rdata,"dr"
     .globl _fwd8_table
 _fwd8_table:
@@ -84,5 +98,13 @@ _fwddev_table:
     .set n, 0
     .rept D3DDEV_SLOTS
     .long fwddev_base + n * STRIDE
+    .set n, n + 1
+    .endr
+
+    .globl _fwdvb_table
+_fwdvb_table:
+    .set n, 0
+    .rept D3DVB_SLOTS
+    .long fwdvb_base + n * STRIDE
     .set n, n + 1
     .endr
