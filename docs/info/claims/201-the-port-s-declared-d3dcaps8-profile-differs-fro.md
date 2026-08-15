@@ -1,9 +1,10 @@
 ---
 id: C201
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-15
 tags: d3d8,caps,graphics
+falsified_on: 2026-08-15
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ tools/proxy_d3d8 now wraps IDirect3D8::GetDeviceCaps (slot 13) and IDirect3DDevi
 ## What would falsify it
 
 an engine path that reads one of the 15 differing fields and changes what geometry it submits -- or a run in which aligning any of them changes the rendered shape
+
+## FALSIFIED 2026-08-15
+
+The measurements stand; the CONCLUSION does not. 'None of the differing fields selects a geometry path' was reasoned about the vertex-blend fields only (MaxVertexBlendMatrices, VertexProcessingCaps, FVFCaps, VertexShaderVersion), which are identical. It did not consider the SHADER fields, and three of those differ: MaxVertexShaderConst 96 vs 256, PixelShaderVersion 1.1 vs 1.4, MaxPixelShaderValue 1.0 vs FLT_MAX. C204 measures that this port's engine never asks D3D8 for a vertex shader while the control binds one for two draws a frame, so those three are the leading suspects rather than ruled out.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

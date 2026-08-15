@@ -28,6 +28,7 @@
  */
 #include "d3d8_caps.h"
 #include "d3d8_caps_fields.h"
+#include "d3d8_state.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -277,7 +278,7 @@ void d3d8_caps_fill(D3DCAPS8 *c, uint32_t adapter, uint32_t devtype,
     c->MaxStreamStride   = 256;
 
     c->VertexShaderVersion = D3DVS_VERSION_1_1;
-    c->MaxVertexShaderConst = 96;
+    c->MaxVertexShaderConst = D3D8_MAX_VS_CONSTANTS;   /* one number, not two */
     c->PixelShaderVersion = D3DPS_VERSION_1_1;
     c->MaxPixelShaderValue = f(1.0f);
 }

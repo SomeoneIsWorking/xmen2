@@ -45,7 +45,23 @@
  */
 #define D3D8_MAX_LIGHTS         256
 #define D3D8_MAX_STREAMS        16
-#define D3D8_MAX_VS_CONSTANTS   96
+/*
+ * 256, not 96.
+ *
+ * 96 is the bare MINIMUM vs_1_1 requires, and it was what this host declared
+ * in D3DCAPS8::MaxVertexShaderConst. The real driver the stock game runs on
+ * reports 256 (measured, C201), and so did the 2005 hardware this profile
+ * claims to model. It matters because bone matrices for a skinning shader
+ * live in these registers: 96 constants is roughly twenty bones, and an
+ * engine that needs more has to give up on the shader path entirely -- which
+ * is what this port's engine does (C204: it never asks D3D8 for a vertex
+ * shader, while the control binds one for two draws of every frame).
+ *
+ * The array and the declared cap are raised together on purpose. Declaring
+ * 256 while storing 96 would refuse the engine's writes by index -- loudly,
+ * but after it had already chosen the path on the promise.
+ */
+#define D3D8_MAX_VS_CONSTANTS   256
 
 typedef struct { float m[16]; } D3D8Matrix;
 
