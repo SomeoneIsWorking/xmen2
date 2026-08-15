@@ -3,6 +3,8 @@
 #define D3D8_VERTEX_SHADER_H
 
 #include <stddef.h>
+
+#include "d3d8_state.h"
 #include <stdint.h>
 
 #define D3D8_VS_CONSTANTS 96
@@ -27,7 +29,8 @@ typedef struct {
 } D3D8VSOutput;
 
 /* Execute the original VS 1.1 program over host-visible vertex bytes. */
-int d3d8_vs_execute(uint32_t handle, const float constants[96][4],
+int d3d8_vs_execute(uint32_t handle,
+                    const float constants[D3D8_MAX_VS_CONSTANTS][4],
                     const void *vertices, uint32_t vertex_bytes,
                     uint32_t stride, uint32_t first, uint32_t count,
                     D3D8VSOutput *output);

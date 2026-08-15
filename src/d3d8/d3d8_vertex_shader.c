@@ -8,6 +8,8 @@
  */
 #include "d3d8_vertex_shader.h"
 
+#include "d3d8_state.h"
+
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
@@ -16,6 +18,18 @@
 #define VS_HANDLE_BASE 0xf0000001u
 #define VS_DECL_MAX_DWORDS 256
 #define VS_CODE_MAX_DWORDS 4096
+/*
+ * The constant register file is D3D8_MAX_VS_CONSTANTS, not a 96 written here.
+ *
+ * 96 was hardcoded in five places in this file while D3DCAPS8 declared its own
+ * number elsewhere, and the two were only ever equal by coincidence. When
+ * MaxVertexShaderConst was raised to 256 to match the real driver, the engine
+ * took the promise and indexed c[96] -- and this executor refused every one of
+ * 1832 skinned draws a run, which is exactly the geometry the change was
+ * meant to restore. A declared capability and the code that honours it must
+ * be the same symbol.
+ */
+#define VS_CONSTANTS D3D8_MAX_VS_CONSTANTS
 
 struct D3D8VertexShader {
     int used;
@@ -236,7 +250,7 @@ static Vec load_input(const uint8_t *p, unsigned type)
     return v;
 }
 
-static Vec source(uint32_t t, Vec temp[12], Vec in[17], Vec c[96],
+static Vec source(uint32_t t, Vec temp[12], Vec in[17], Vec c[VS_CONSTANTS],
                   Vec *addr, Vec out[12], int *ok)
 {
     unsigned type = reg_type(t), n = t & 0x7ffu, i;
@@ -246,9 +260,14 @@ static Vec source(uint32_t t, Vec temp[12], Vec in[17], Vec c[96],
     else if (type == 2) {
         int idx = (int)n;
         if (t & 0x00002000u) idx += (int)floorf(addr->x[0] + 0.5f);
-        if (idx < 0 || idx >= 96) {
-            fprintf(stderr, "d3d8: VS 1.1 indexed constant c[%d] is outside "
-                            "the 96-register file.\n", idx);
+        if (idx < 0 || idx >= VS_CONSTANTS) {
+            static unsigned long refused;
+            if (!refused++)
+                fprintf(stderr, "d3d8: VS 1.1 indexed constant c[%d] is "
+                        "outside the %d-register file, which is what "
+                        "D3DCAPS8::MaxVertexShaderConst promised the engine. "
+                        "The draw is REFUSED. Reported once.\n",
+                        idx, VS_CONSTANTS);
             *ok = 0; return raw;
         }
         raw = c[idx];
@@ -292,7 +311,7 @@ static void write_result(uint32_t token, Vec *dst, Vec value)
     for (i = 0; i < 4; ++i) if (mask & (1u << i)) dst->x[i] = value.x[i];
 }
 
-static int execute_one(const D3D8VertexShader *s, Vec input[17], Vec constants[96],
+static int execute_one(const D3D8VertexShader *s, Vec input[17], Vec constants[VS_CONSTANTS],
                        D3D8VSOutput *result)
 {
     Vec r[12] = {{{0}}}, o[13] = {{{0}}}, a = {{0,0,0,0}};
@@ -343,13 +362,13 @@ static int execute_one(const D3D8VertexShader *s, Vec input[17], Vec constants[9
     return 1;
 }
 
-int d3d8_vs_execute(uint32_t handle, const float constants[96][4],
+int d3d8_vs_execute(uint32_t handle, const float constants[VS_CONSTANTS][4],
                     const void *vertices, uint32_t vertex_bytes,
                     uint32_t stride, uint32_t first, uint32_t count,
                     D3D8VSOutput *output)
 {
     D3D8VertexShader *s = d3d8_vs_get(handle, "draw");
-    Input decl[17]; Vec c[96]; unsigned v, i;
+    Input decl[17]; Vec c[VS_CONSTANTS]; unsigned v, i;
     const uint8_t *base = vertices;
     if (!s || !vertices || !stride || !output || !decode_inputs(s, decl)) return 0;
     if (first > UINT32_MAX - count || (uint64_t)(first + count) * stride > vertex_bytes) {
@@ -416,7 +435,7 @@ int d3d8_vs_selftest(void)
     struct { float p[4], selector, colour[4]; } vertex = {
         {1, 2, 3, 1}, 1, {0.25f, 0.5f, 0.75f, 1.0f}
     };
-    float c[96][4] = {{0}};
+    float c[VS_CONSTANTS][4] = {{0}};
     D3D8VSOutput out;
     uint32_t h, bad;
     int fails = 0;
