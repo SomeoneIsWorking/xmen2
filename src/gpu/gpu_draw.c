@@ -508,6 +508,16 @@ typedef struct {
 #define MAX_PIPES 128
 static PipeEntry g_pipes[MAX_PIPES];
 static int g_npipes;
+/*
+ * How many were EVER built, which is not g_npipes.
+ *
+ * g_npipes is the live size of the cache and the teardown at the bottom of
+ * this file zeroes it -- and the engine releases the device before the
+ * shutdown report runs, so the report said "0 pipeline(s) built" beside half
+ * a million draws. That is not a small number, it is the wrong question asked
+ * after the answer was destroyed. This one only ever goes up.
+ */
+static unsigned long g_pipes_built;
 
 static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
 {
@@ -637,6 +647,7 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
                 SDL_GetError());
         return NULL;
     }
+    g_pipes_built++;
     return g_pipes[g_npipes++].pipe;
 }
 
@@ -1248,8 +1259,10 @@ void gpu_draw_counts(unsigned long *submitted, unsigned long *refused)
 
 void gpu_draw_report(void)
 {
-    printf("  gpu: %lu draw(s) submitted, %lu refused, %d pipeline(s) built\n",
-           g_draws, g_refused, g_npipes);
+    printf("  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
+           "(%d still cached; the device teardown empties the cache, so these "
+           "differ whenever the engine released the device first)\n",
+           g_draws, g_refused, g_pipes_built, g_npipes);
     if (!g_draws)
         printf("        NOTHING was drawn. Either no draw call reached this "
                "backend, or every one was refused above.\n");

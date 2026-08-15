@@ -454,6 +454,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput8.c
         src/native/dinput_device.c
         src/native/dinput_system.c
+        src/native/dinput_fifo.c
         src/native/dinput_script.c
         src/native/dinput_joystick.c
         src/native/dinput_pad.c

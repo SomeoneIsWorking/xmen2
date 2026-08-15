@@ -38,6 +38,7 @@
 
 #include "guest_heap.h"
 #include "../gpu/gpu_device.h"
+#include "../d3d8/d3d8_drawcall.h"
 
 /* ---- guest ABI helpers ------------------------------------------------- */
 
@@ -196,6 +197,34 @@ static int pump_sdl(void)
         if (e.type == SDL_EVENT_QUIT ||
             e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
             g_quit_posted = 1;
+        /*
+         * F9 -- dump every draw of the next frame.
+         *
+         * Read here and NOT forwarded to the guest: F9 is not one of the
+         * game's bindings, and the diagnostic must not become an input the
+         * game acts on. This is the only way a person watching a live run can
+         * say "this frame, the one that looks wrong" -- every other selector
+         * is fixed before the run starts.
+         */
+        else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+            /*
+             * The first key EVER seen, named, once.
+             *
+             * If F9 does not arm the table, two things are indistinguishable
+             * without this line: the key never reached the process (no window
+             * manager, no focus, a compositor eating it) and the handler ran
+             * and did nothing. One says fix the rig, the other says fix the
+             * code, and a silent event loop says neither.
+             */
+            static int told;
+            if (!told++)
+                fprintf(stderr, "win32_sdl: the event loop is receiving keys "
+                        "(first was key 0x%08x). F9 arms the frame table; "
+                        "SIGUSR1 does the same without needing focus.\n",
+                        (unsigned)e.key.key);
+            if (e.key.key == SDLK_F9)
+                d3d8_frame_table_arm();
+        }
     }
     return g_quit_posted;
 }

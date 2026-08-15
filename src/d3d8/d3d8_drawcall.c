@@ -22,6 +22,7 @@ unsigned long gpu_frame_draws_so_far(void);
 #include "gpu_draw.h"
 #include "gpu_device.h"
 
+#include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
@@ -1173,6 +1174,62 @@ static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride)
  */
 static int g_ft_on = -1, g_ft_done;
 static unsigned long g_ft_frame, g_ft_draw;
+static unsigned long g_ft_arms;
+static int g_ft_manual;      /* armed by F9: the person watching is the gate */
+
+/*
+ * Arm the table for the NEXT gameplay frame, from a live run.
+ *
+ * X2_FRAME_TABLE picks its frame by a rule fixed at launch -- the first frame
+ * past the gameplay gate with enough draws in it. That is right for a headless
+ * measurement and useless for "the frame where his head looks wrong", which
+ * only a person watching can identify. F9 is that person saying WHEN.
+ *
+ * Re-armable: each press lists another frame, so a defect that comes and goes
+ * can be caught twice and compared, and the arm is ANNOUNCED so a press that
+ * produced no table (the gameplay gate is shut, the run is in a menu) is
+ * distinguishable from a press that never registered.
+ */
+/*
+ * SIGUSR1 arms it too.
+ *
+ * F9 needs the window to have focus, which needs a window manager and a user
+ * at the machine; a headless run has neither, and that is exactly where this
+ * had to be provable. The handler only sets a flag -- fprintf from a signal
+ * handler is not async-signal-safe, and this project has already been bitten
+ * by a shutdown report written from one being cut short. The draw path picks
+ * the flag up and does the talking.
+ */
+static volatile sig_atomic_t g_ft_signal;
+
+static void ft_sigusr1(int sig) { (void)sig; g_ft_signal = 1; }
+
+void d3d8_frame_table_install_signal(void)
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = ft_sigusr1;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGUSR1, &sa, NULL) != 0)
+        fprintf(stderr, "d3d8: SIGUSR1 could not be installed; the frame "
+                        "table can only be armed with F9.\n");
+}
+
+void d3d8_frame_table_arm(void)
+{
+    g_ft_on = 1;
+    g_ft_done = 0;
+    g_ft_frame = 0;
+    g_ft_draw = 0;
+    g_ft_manual = 1;
+    g_ft_arms++;
+    fprintf(stderr, "[FRAME TABLE] armed (%lu) -- the NEXT frame that draws "
+            "anything is listed in full, gate and draw-count minimum "
+            "BYPASSED. Whoever pressed the key is looking at the frame they "
+            "mean, and a diagnostic that second-guesses them prints nothing "
+            "and says nothing about why.\n", g_ft_arms);
+}
 
 static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                              uint32_t stride, int pos_offset, int normal_offset,
@@ -1247,18 +1304,21 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
         const char *e = getenv("X2_FRAME_TABLE");
         g_ft_on = (e && *e) ? atoi(e) : 0;
     }
+    if (g_ft_signal) { g_ft_signal = 0; d3d8_frame_table_arm(); }
     if (!g_ft_on || g_ft_done) return;
-    {   /* The same gameplay gate the survey uses, so the table describes a
-           frame with the level on screen rather than a menu. */
+    {   /* The same gameplay gate the survey uses, so an AUTOMATIC table
+           describes a frame with the level on screen rather than a menu.
+           F9 skips both tests -- see d3d8_frame_table_arm. */
         extern int k32_file_gate_open(void);
         static long minimum = -1;
-        if (!k32_file_gate_open()) return;
+        if (!g_ft_manual && !k32_file_gate_open()) return;
         if (minimum < 0) {
             const char *e = getenv("X2_LIGHT_DUMP_MIN");
             minimum = (e && *e) ? atol(e) : 100;
         }
         if (!g_ft_frame) {
-            if ((long)gpu_frame_draws_so_far() < minimum) return;
+            if (!g_ft_manual && (long)gpu_frame_draws_so_far() < minimum)
+                return;
             g_ft_frame = gpu_frames_presented();
             fprintf(stderr, "[FRAME TABLE] presented frame %lu -- every draw "
                     "of THIS frame, with the screen rectangle its vertices "

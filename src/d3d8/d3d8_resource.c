@@ -19,6 +19,7 @@
 #include "d3d8_types.h"
 
 #include "gpu_draw.h"
+#include "gpu_device.h"   /* gpu_frames_presented, for the relock census */
 #include "x86rt.h"
 #include "guest_heap.h"
 
@@ -58,6 +59,12 @@ typedef struct {
     uint32_t   guest_size;
     uint32_t   locked_sub;
     int        locked;
+    uint32_t   lock_flags;          /* the flags of the CURRENT lock */
+    unsigned long unlocked_in_frame;/* which presented frame, for the
+                                       relock census above */
+    unsigned long drawn_in_frame;   /* the last frame a draw READ this buffer */
+    int        ever_unlocked;
+    int        ever_drawn;
     /* textures: the surface handed out for each level, made on first ask and
        then kept, because D3D8's level surfaces are persistent children -- a
        fresh object per call would let the engine compare two pointers to the
@@ -68,6 +75,46 @@ typedef struct {
 } Resource;
 
 static unsigned long g_textures, g_cubetextures, g_vbuffers, g_ibuffers;
+
+/*
+ * THE DYNAMIC-BUFFER CENSUS.
+ *
+ * Two symptoms arrived together once the lights were fixed: warped geometry
+ * and a frame rate far below the control's. Both have the same candidate
+ * cause, which is why they are counted together here.
+ *
+ * D3D8's Lock takes FLAGS this device did not read at all:
+ *
+ *   D3DLOCK_DISCARD (0x2000)      "the old contents are dead -- RENAME the
+ *                                 buffer". The driver hands back fresh
+ *                                 storage so draws already submitted, which
+ *                                 still reference the old storage, keep the
+ *                                 vertices they were drawn with.
+ *   D3DLOCK_NOOVERWRITE (0x1000)  "I will only write bytes no submitted draw
+ *                                 reads" -- so no rename is needed.
+ *
+ * Unlock uploads into the SAME backing buffer every time. Under NOOVERWRITE
+ * that is merely wasteful; under DISCARD it overwrites storage that earlier
+ * draws in this frame are still going to read, and those draws then render
+ * with whatever mesh was written last. That is the shape of warped geometry.
+ *
+ * So: count the locks by flag, count what Unlock actually moves, and count
+ * the case that discriminates -- a buffer unlocked MORE THAN ONCE between one
+ * Present and the next, which is the only situation in which a rename can
+ * matter. All three go in the heartbeat with their denominators, because a
+ * counter that only prints at shutdown cannot measure a program that never
+ * stops on its own.
+ */
+#define D3DLOCK_READONLY     0x00000010u
+#define D3DLOCK_NOOVERWRITE  0x00001000u
+#define D3DLOCK_DISCARD      0x00002000u
+
+static unsigned long g_lock_calls, g_lock_discard, g_lock_nooverwrite,
+                     g_lock_readonly, g_lock_plain, g_lock_other_flags;
+static unsigned long g_unlocks, g_unlock_bytes;
+static unsigned long g_relocked_in_frame;
+static unsigned long g_rewritten_after_draw;   /* the discriminating case */
+static uint32_t      g_lock_other_bits;
 
 static void *guest_ptr(uint32_t a, const char *what)
 {
@@ -791,9 +838,59 @@ static void buf_Lock(D3D8Object *self, CPU *C)
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
     }
+    {
+        uint32_t flags = d3d8_arg(C, 3);
+        uint32_t known = D3DLOCK_READONLY | D3DLOCK_NOOVERWRITE
+                       | D3DLOCK_DISCARD;
+        g_lock_calls++;
+        if (flags & D3DLOCK_DISCARD)          g_lock_discard++;
+        if (flags & D3DLOCK_NOOVERWRITE)      g_lock_nooverwrite++;
+        if (flags & D3DLOCK_READONLY)         g_lock_readonly++;
+        if (!flags)                           g_lock_plain++;
+        if (flags & ~known) {
+            g_lock_other_flags++;
+            g_lock_other_bits |= flags & ~known;
+        }
+        r->lock_flags = flags;
+    }
     r->locked = 1;
     WR32(out, r->guest_bytes + offset);
     d3d8_ret(C, D3D_OK);
+}
+
+/*
+ * How many buffers have been unlocked more than once since the last Present,
+ * and the totals behind the heartbeat line. Reported AT ZERO: "no buffer is
+ * ever rewritten mid-frame" would mean renaming cannot matter and the warping
+ * is something else entirely, and that is a result, not a missing line.
+ */
+void d3d8_buffer_lock_counts(unsigned long *locks, unsigned long *discard,
+                             unsigned long *nooverwrite, unsigned long *unlocks,
+                             unsigned long *bytes, unsigned long *relocked,
+                             unsigned long *hazard)
+{
+    *locks = g_lock_calls;  *discard = g_lock_discard;
+    *nooverwrite = g_lock_nooverwrite;
+    *unlocks = g_unlocks;   *bytes = g_unlock_bytes;
+    *relocked = g_relocked_in_frame;
+    *hazard = g_rewritten_after_draw;
+}
+
+/*
+ * A draw is about to READ this buffer. Remember the frame, so a later Unlock
+ * in the same frame can be recognised as the hazard it is.
+ *
+ * Called for the vertex and index buffers of every draw, whatever the draw
+ * then does with them -- a draw that is later refused still recorded nothing,
+ * and the count would only be too HIGH, never too low, which is the safe
+ * direction for a hazard counter.
+ */
+void d3d8_resource_note_drawn(D3D8Object *o)
+{
+    Resource *r = res_of(o);
+    if (!r || r->is_texture) return;
+    r->drawn_in_frame = gpu_frames_presented();
+    r->ever_drawn = 1;
 }
 
 static void buf_Unlock(D3D8Object *self, CPU *C)
@@ -812,6 +909,23 @@ static void buf_Unlock(D3D8Object *self, CPU *C)
      * subrange it did not write is harmless while missing one it did write is
      * geometry that silently does not move.
      */
+    if (r->unlocked_in_frame == gpu_frames_presented() && r->ever_unlocked)
+        g_relocked_in_frame++;
+    if (r->ever_drawn && r->drawn_in_frame == gpu_frames_presented()) {
+        static int told;
+        g_rewritten_after_draw++;
+        if (!told++)
+            fprintf(stderr, "d3d8: a buffer this frame's draws ALREADY READ is "
+                    "being rewritten (%u bytes) before the frame is submitted. "
+                    "gpu_buffer_upload submits its own command buffer at once, "
+                    "so this copy reaches the GPU BEFORE every draw of the "
+                    "frame -- the earlier draws will render with THIS data. "
+                    "Reported once; the total is in the heartbeat.\n", r->bytes);
+    }
+    r->unlocked_in_frame = gpu_frames_presented();
+    r->ever_unlocked = 1;
+    g_unlocks++;
+    g_unlock_bytes += r->bytes;
     gpu_buffer_upload(r->gbuf, 0, (const void *)(uintptr_t)r->guest_bytes,
                       r->bytes);
     r->locked = 0;

@@ -247,6 +247,10 @@ static void d3d8_GetDeviceCaps(D3D8Object *self, CPU *C)
         return;
     }
     d3d8_caps_fill(caps, adapter, devtype, &g_d3d8.limits);
+    {   /* Once. The engine asks repeatedly and the block never changes. */
+        static int told;
+        if (!told++) d3d8_caps_dump(caps, "IDirect3D8::GetDeviceCaps");
+    }
     d3d8_ret(C, D3D_OK);
 }
 

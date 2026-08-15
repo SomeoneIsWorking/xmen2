@@ -73,4 +73,14 @@ void d3d8_drawcall_multistage(unsigned long *draws, int *most);
 void d3d8_drawcall_combiner_args(unsigned long *dflt, unsigned long *other,
                                  uint32_t first[4]);
 
+/*
+ * Arm the per-draw frame table for the next gameplay frame (F9 in a live run).
+ * See d3d8_drawcall.c -- only a person watching can say which frame is wrong.
+ */
+void d3d8_frame_table_arm(void);
+
+/* Arm it with SIGUSR1 as well -- the only route that works with no window
+   manager and no focus, which is where it had to be proved. */
+void d3d8_frame_table_install_signal(void);
+
 #endif /* D3D8_DRAWCALL_H */

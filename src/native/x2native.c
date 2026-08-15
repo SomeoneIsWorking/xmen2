@@ -27,6 +27,7 @@
 #include "threads.h"
 #include "guest_heap.h"
 #include "d3d8_host.h"
+#include "../d3d8/d3d8_drawcall.h"
 #include "d3d8_com.h"
 #include "env_file.h"
 #include "x2native_options.h"
@@ -2016,6 +2017,11 @@ int main(int argc, char **argv)
         d3d8_host_enable();
         atexit(d3d8_host_report);
         printf("d3d8: host Direct3D 8 armed on d3d8.dll!Direct3DCreate8\n");
+        d3d8_frame_table_install_signal();
+        printf("d3d8: press F9 (or send SIGUSR1) to dump every draw of the "
+               "next frame -- its screen rectangle, format, lighting and "
+               "OBJECT-SPACE EXTENTS, which is what tells a flat mesh from a "
+               "flat transform.\n");
         run = 1;
     }
 

@@ -24,7 +24,26 @@
 #define D3D8_MAX_STAGES         8
 #define D3D8_MAX_STAGE_STATES   32
 #define D3D8_MAX_TRANSFORMS     260      /* world matrices run to 255 + 4 */
-#define D3D8_MAX_LIGHTS         16
+/*
+ * D3D8 puts NO limit on a light's index. SetLight's first argument is a DWORD
+ * naming a slot in a list the runtime grows on demand; what is capped is how
+ * many may be ENABLED at once (D3DCAPS8::MaxActiveLights), and that is a
+ * separate limit enforced at the draw.
+ *
+ * This was 16, and the engine uses up to 51: measured at the D3D8 boundary of
+ * the STOCK game under Wine with tools/proxy_d3d8, over a run driven into
+ * gameplay -- 259,960 of 411,873 SetLight calls (63.1%) and 129,980 of 225,800
+ * LightEnable calls (57.6%) name an index of 16 or more. Every one of them was
+ * refused with D3DERR_INVALIDCALL, so the lights they carried never reached a
+ * draw and the engine, which does not check the HRESULT, had no way to know.
+ *
+ * 256 follows D3D8_MAX_RENDER_STATES above and for the same reason: a fixed
+ * table generous enough for what the API is used with, and an index past it
+ * REFUSED BY NAME rather than dropped. The refusal is counted and reported
+ * with its denominator (d3d8_light_report) -- a light silently discarded is
+ * what made this cost a whole investigation.
+ */
+#define D3D8_MAX_LIGHTS         256
 #define D3D8_MAX_STREAMS        16
 #define D3D8_MAX_VS_CONSTANTS   96
 

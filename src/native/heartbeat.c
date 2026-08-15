@@ -4,6 +4,7 @@
 
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "d3d8_resource.h"
 #include "d3d8_device.h"
 #include "gpu_draw.h"
 #include "gpu_device.h"
@@ -239,6 +240,41 @@ static void *heartbeat_thread(void *arg)
                     gpu_refused - p_ref,
                     gpu_draws == p_gpu && draws != p_draws
                     ? "  -- the engine asked and the BACKEND drew none" : "");
+            /*
+             * Dynamic buffers, live, and the write-after-read hazard under
+             * them.
+             *
+             * gpu_buffer_upload acquires its OWN command buffer and submits
+             * it at once, while the frame's command buffer stays open until
+             * Present -- so every mid-frame upload reaches the GPU BEFORE
+             * every draw of that frame. That only corrupts a picture if some
+             * draw read the buffer earlier in the same frame, which is what
+             * the second line counts. The first counter here (relocked in one
+             * frame) does NOT answer this: it asks whether a buffer was
+             * unlocked twice, and a buffer drawn once and rewritten once is
+             * the hazard while never being unlocked twice.
+             *
+             * Printed AT ZERO with its denominator: zero here means the
+             * submission order cannot be what warps the geometry, and that is
+             * a result rather than a missing line.
+             */
+            {
+                static unsigned long p_unl, p_byt, p_rel, p_haz;
+                unsigned long lk, dis, noov, unl, byt, rel, haz;
+                d3d8_buffer_lock_counts(&lk, &dis, &noov, &unl, &byt, &rel,
+                                        &haz);
+                fprintf(stderr, "[HB]           buffer locks %lu (%lu DISCARD, "
+                                "%lu NOOVERWRITE); %lu unlock(s) (+%lu) moved "
+                                "%lu MB (+%lu MB); %lu (+%lu) relocked in one "
+                                "frame\n",
+                        lk, dis, noov, unl, unl - p_unl,
+                        byt >> 20, (byt - p_byt) >> 20, rel, rel - p_rel);
+                fprintf(stderr, "[HB]           of those unlocks, %lu (+%lu) "
+                                "REWROTE A BUFFER THIS FRAME'S DRAWS HAD "
+                                "ALREADY READ -- and the copy is submitted "
+                                "ahead of them\n", haz, haz - p_haz);
+                p_unl = unl; p_byt = byt; p_rel = rel; p_haz = haz;
+            }
         }
         /*
          * A stall -- executing, not presenting -- dumps the ring, ONCE.

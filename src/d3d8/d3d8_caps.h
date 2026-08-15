@@ -28,4 +28,9 @@ void d3d8_caps_limits_default(D3D8CapsLimits *hw);
 void d3d8_caps_fill(D3DCAPS8 *c, uint32_t adapter, uint32_t devtype,
                     const D3D8CapsLimits *hw);
 
+/* The block, field by field, in the same words tools/proxy_d3d8 prints the
+   REAL driver's -- so the declared profile can be diffed against the machine
+   the engine was written for instead of argued about. */
+void d3d8_caps_dump(const D3DCAPS8 *c, const char *who);
+
 #endif /* D3D8_CAPS_H */

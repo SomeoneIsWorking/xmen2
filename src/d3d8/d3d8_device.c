@@ -33,8 +33,79 @@
 
 #include "x86rt.h"
 
+#include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
+
+/*
+ * X2_LIGHTLOG=<path> -- the light path in the SAME FORMAT the stock control
+ * writes, so the port and the original engine can be diffed line for line.
+ *
+ * tools/proxy_d3d8 is a logging d3d8.dll that the real game loads under Wine;
+ * it records SetLight / LightEnable / SetMaterial and the two lighting render
+ * states as it forwards them. This writes the identical lines from our side.
+ * The pair is what tools/lightlog_diff.py compares.
+ *
+ * Why a second logger rather than reusing the existing counters: those answer
+ * "what did the engine do", one question at a time, in our own wording. The
+ * question left open by C199 is "does the ORIGINAL engine do the same", and
+ * only a byte-comparable format makes that a diff instead of an argument.
+ *
+ * `t` is milliseconds since the first line, matching the control's tick
+ * counter in UNITS but not in origin -- the two runs start at different
+ * moments, so lightlog_diff.py never compares it and says so.
+ */
+/* The two states of the light path, by the numbers d3d8_state.c's own render
+   state table gives them (and tools/proxy_d3d8/proxy.c repeats). */
+#define D3D8_RS_LIGHTING 137
+#define D3D8_RS_AMBIENT  139
+
+static FILE *g_lightlog;
+static int   g_lightlog_tried;
+static long  g_lightlog_t0;
+
+static long lightlog_ms(void)
+{
+    struct timespec ts;
+    long ms;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    ms = (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    if (!g_lightlog_t0) g_lightlog_t0 = ms;
+    return ms - g_lightlog_t0;
+}
+
+static int lightlog_on(void)
+{
+    const char *path;
+    if (g_lightlog_tried) return g_lightlog != NULL;
+    g_lightlog_tried = 1;
+    path = getenv("X2_LIGHTLOG");
+    if (!path || !*path) return 0;
+    g_lightlog = fopen(path, "w");
+    if (!g_lightlog) {
+        /* A log that silently did not open reads as "the engine set no
+           lights", which is the very answer this is here to establish. */
+        fprintf(stderr, "d3d8: X2_LIGHTLOG=%s could NOT be opened -- no light "
+                        "log will be written by this run.\n", path);
+        return 0;
+    }
+    setvbuf(g_lightlog, NULL, _IOLBF, 8192);   /* a kill keeps the tail */
+    fprintf(stderr, "d3d8: X2_LIGHTLOG is writing %s\n", path);
+    return 1;
+}
+
+static void lightlog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void lightlog(const char *fmt, ...)
+{
+    va_list ap;
+    if (!lightlog_on()) return;
+    va_start(ap, fmt);
+    vfprintf(g_lightlog, fmt, ap);
+    va_end(ap);
+    fputc('\n', g_lightlog);
+}
 
 typedef struct {
     uint32_t              adapter, devtype, focus_window, behaviour;
@@ -156,6 +227,10 @@ static void dev_GetDeviceCaps(D3D8Object *self, CPU *C)
     (void)self;
     if (!caps) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
     d3d8_caps_fill(caps, g_dev.adapter, g_dev.devtype, &g_dev.limits);
+    {
+        static int told;
+        if (!told++) d3d8_caps_dump(caps, "IDirect3DDevice8::GetDeviceCaps");
+    }
     d3d8_ret(C, D3D_OK);
 }
 
@@ -491,6 +566,14 @@ static void dev_SetRenderState(D3D8Object *self, CPU *C)
 {
     uint32_t which = d3d8_arg(C, 0), value = d3d8_arg(C, 1);
     (void)self;
+    /* Only the two lighting states, as the control's proxy logs: the rest
+       arrive at Present rate and would bury the light path. */
+    if (which == D3D8_RS_LIGHTING)
+        lightlog("SETRENDERSTATE t=%lu LIGHTING=%lu",
+                 lightlog_ms(), (unsigned long)value);
+    else if (which == D3D8_RS_AMBIENT)
+        lightlog("SETRENDERSTATE t=%lu AMBIENT=%08lx",
+                 lightlog_ms(), (unsigned long)value);
     d3d8_ret(C, d3d8_state_set_render(&g_dev.state, which, value)
                 ? D3D_OK : D3DERR_INVALIDCALL);
 }
@@ -614,9 +697,42 @@ static void dev_SetMaterial(D3D8Object *self, CPU *C)
                     m[12], m[13], m[14], m[16]);
         }
     }
+    lightlog("SETMATERIAL t=%lu diffuse=%.4f,%.4f,%.4f,%.4f "
+             "ambient=%.4f,%.4f,%.4f,%.4f emissive=%.4f,%.4f,%.4f,%.4f "
+             "specular=%.4f,%.4f,%.4f,%.4f power=%.2f", lightlog_ms(),
+             m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7],
+             m[12], m[13], m[14], m[15], m[8], m[9], m[10], m[11], m[16]);
     memcpy(g_dev.state.material, m, sizeof g_dev.state.material);
     g_dev.state.material_set = 1;
     d3d8_ret(C, D3D_OK);
+}
+
+/*
+ * A light index this table cannot hold.
+ *
+ * The engine does not check SetLight's HRESULT -- nothing in D3D8 obliges it
+ * to -- so a refusal here is INVISIBLE unless it is said. It was silent, and
+ * with the table at 16 slots that silence swallowed 63% of the original
+ * engine's SetLight calls (it uses indices up to 51, measured against the
+ * stock game through tools/proxy_d3d8). Said by name the first few times, and
+ * counted with its denominator in the report, so a light this device dropped
+ * can never again look like a light the engine never set.
+ */
+static unsigned long g_light_idx_refused, g_light_idx_max_seen;
+static unsigned long g_lightenable_calls;
+
+static void light_index_refused(const char *what, uint32_t idx)
+{
+    static int told;
+    g_light_idx_refused++;
+    if (idx > g_light_idx_max_seen) g_light_idx_max_seen = idx;
+    if (told < 8) {
+        told++;
+        fprintf(stderr, "d3d8: %s(%u) -- this device holds %d light(s) and the "
+                        "engine asked for index %u. REFUSED; that light will "
+                        "not reach any draw.\n",
+                what, idx, D3D8_MAX_LIGHTS, idx);
+    }
 }
 
 /* SetLight call sites, for "who sets a black light" -- see dev_SetLight. */
@@ -638,6 +754,22 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
     uint32_t idx = d3d8_arg(C, 0);
     const float *l = (const float *)guest_ptr(d3d8_arg(C, 1), "light");
     (void)self;
+    /* Before the refusal, for the reason given at dev_LightEnable. */
+    if (!l)
+        lightlog("SETLIGHT t=%lu idx=%lu NULL-POINTER", lightlog_ms(),
+                 (unsigned long)idx);
+    else
+        lightlog("SETLIGHT t=%lu idx=%lu type=%u "
+                 "diffuse=%.4f,%.4f,%.4f,%.4f specular=%.4f,%.4f,%.4f,%.4f "
+                 "ambient=%.4f,%.4f,%.4f,%.4f pos=%.2f,%.2f,%.2f "
+                 "dir=%.3f,%.3f,%.3f range=%.2f falloff=%.2f "
+                 "atten=%.6f,%.6f,%.8f theta=%.3f phi=%.3f",
+                 lightlog_ms(), (unsigned long)idx, ((const uint32_t *)l)[0],
+                 l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8],
+                 l[9], l[10], l[11], l[12], l[13], l[14], l[15],
+                 l[16], l[17], l[18], l[19], l[20], l[21], l[22], l[23],
+                 l[24], l[25]);
+    if (idx >= D3D8_MAX_LIGHTS) light_index_refused("SetLight", idx);
     if (!l || idx >= D3D8_MAX_LIGHTS) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
     /*
      * X2_LIGHT_RAW=<n> -- the D3DLIGHT8 as WORDS, before any interpretation.
@@ -801,6 +933,13 @@ void d3d8_setlight_report(void)
            g_setlight_calls, g_setlight_black, g_nsetlight_site,
            g_setlight_over ? " (the site table is FULL -- some are not listed)"
                            : "");
+    /* AT ZERO and with its denominator: a line that appears only when
+       something is wrong cannot be told from a check that never ran. */
+    printf("         %lu of %lu SetLight/LightEnable call(s) named an index "
+           "this device cannot hold (capacity %d, highest asked for %lu)\n",
+           g_light_idx_refused, g_setlight_calls + g_lightenable_calls,
+           D3D8_MAX_LIGHTS,
+           g_light_idx_refused ? g_light_idx_max_seen : 0UL);
     if (!g_setlight_calls) {
         printf("         SetLight was never called, so this run says nothing "
                "about where light colour comes from.\n");
@@ -844,7 +983,17 @@ static void dev_LightEnable(D3D8Object *self, CPU *C)
 {
     uint32_t idx = d3d8_arg(C, 0), on = d3d8_arg(C, 1);
     (void)self;
-    if (idx >= D3D8_MAX_LIGHTS) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
+    /* Logged BEFORE the range refusal: an index we refuse and the control
+       accepts is exactly the kind of difference this log exists to show, and
+       it cannot show it from behind the refusal. */
+    lightlog("LIGHTENABLE t=%lu idx=%lu on=%d", lightlog_ms(),
+             (unsigned long)idx, on != 0);
+    g_lightenable_calls++;
+    if (idx >= D3D8_MAX_LIGHTS) {
+        light_index_refused("LightEnable", idx);
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
     g_dev.state.light_on[idx] = on != 0;
     d3d8_ret(C, D3D_OK);
 }
@@ -1224,12 +1373,14 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
         return 0;
     }
     if (vb) {
+        d3d8_resource_note_drawn(vb);
         req->vertex_buffer = d3d8_resource_buffer(vb);
         req->vertex_guest_bytes = d3d8_resource_guest_bytes(vb);
         req->vertex_bytes = d3d8_resource_bytes(vb);
         req->stride = g_dev.state.stream[0].stride;
     }
     if (indexed && ib) {
+        d3d8_resource_note_drawn(ib);
         req->index_buffer = d3d8_resource_buffer(ib);
         req->index_is_32bit = d3d8_resource_index_is_32bit(ib);
         req->index_guest_bytes = d3d8_resource_guest_bytes(ib);

@@ -140,7 +140,10 @@ NSAMP=${X2_SAMPLES:-3}
 i=1
 while [ "$i" -le "$NSAMP" ]; do
   sleep "$(( SECS / NSAMP ))"
-  DISPLAY=$DISP import -window root "$SHOT.$i" 2>/dev/null
+  # "png:" is required: "$SHOT.$i" ends in a digit, and an extension ImageMagick
+  # does not recognise makes it write POSTSCRIPT into a .png-named file -- the
+  # samples then fail to load in the report below and in shot_compare.py.
+  DISPLAY=$DISP import -window root "png:$SHOT.$i" 2>/dev/null
   i=$((i + 1))
 done
 

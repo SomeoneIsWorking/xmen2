@@ -80,7 +80,31 @@ int gpu_device_create(void)
     if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_Init(SDL_INIT_VIDEO))
         fprintf(stderr, "gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
 
-    g_gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, true, NULL);
+    /*
+     * The Vulkan VALIDATION LAYER, and whether it is loaded, said out loud.
+     *
+     * This was hardcoded true. SDL's debug_mode loads
+     * libVkLayer_khronos_validation.so, which inspects every draw, every bind
+     * and every upload -- and this backend submits half a million draws in a
+     * driven run. A backtrace of a live run showed the layer's own queue
+     * thread in the process, so the tax was being paid and nothing said so:
+     * "the native version is laggy" was measured against a build with a
+     * per-draw validator in it.
+     *
+     * Off by default, on with X2_GPU_DEBUG=1, and ANNOUNCED either way --
+     * because the thing that made this expensive to find was not that it was
+     * on, it was that no line of output distinguished the two builds.
+     */
+    {
+        const char *e = getenv("X2_GPU_DEBUG");
+        int debug = e && *e && *e != '0';
+        printf("gpu: Vulkan validation is %s (X2_GPU_DEBUG=%s). It inspects "
+               "EVERY draw; a timing measured with it on is not a timing of "
+               "this renderer.\n",
+               debug ? "ON" : "off", e && *e ? e : "unset");
+        fflush(stdout);
+        g_gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, debug, NULL);
+    }
     if (!g_gpu) {
         fprintf(stderr,
                 "gpu: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"

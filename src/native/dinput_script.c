@@ -2,6 +2,7 @@
 #include "dinput_device.h"
 #include "dinput_script.h"
 
+#include "dinput_fifo.h"
 #include "dinput_system.h"
 #include "gpu_device.h"
 
@@ -147,10 +148,11 @@ void dinput_script_apply(uint32_t out, uint32_t size)
     int i;
 
     if (!g_script_parsed) script_parse();
-    if (!g_nscript) return;
     now = script_now();
     if (g_script_t0 == 0.0) g_script_t0 = now;
     now -= g_script_t0;
+    dinput_fifo_apply(out, size, now);
+    if (!g_nscript) return;
     for (i = 0; i < g_nscript; i++) {
         ScriptKey *key = &g_script[i];
         double when = key->by_frame ? (double)gpu_frames_presented() : now;
