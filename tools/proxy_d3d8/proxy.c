@@ -49,6 +49,7 @@
 #define SLOT_DRAW_PRIMITIVE 70
 #define SLOT_DRAW_INDEXED_PRIMITIVE 71
 #define SLOT_SET_VERTEX_SHADER 76
+#define SLOT_SET_VERTEX_SHADER_CONSTANT 79
 #define SLOT_SET_STREAM_SOURCE 83
 #define SLOT_SET_INDICES 85
 #define SLOT_CREATE_VERTEX_SHADER 75
@@ -499,6 +500,54 @@ static HRESULT WINAPI dev_CreateVertexShader(struct wrap *w, const DWORD *decl,
     return hr;
 }
 
+/*
+ * IDirect3DDevice8::SetVertexShaderConstant (slot 79):
+ * (this, Register, pConstantData, ConstantCount)
+ *
+ * THE MATRIX PALETTE, crossing the boundary on the control side.
+ *
+ * The captured shader reads `dp4 r3.x, v0, c[a0.x + 6]` with a0.x built from
+ * a D3DCOLOR byte times c[0].w -- so these registers ARE the bone matrices
+ * the engine's animation code computed. On this side that code ran as x86 on
+ * a real CPU; in the port it ran as recompiled C. Comparing the two answers
+ * that question directly, which is the only thing that can: the port's vertex
+ * buffers hold the UNSKINNED bind pose and match the control already.
+ *
+ * Shadowed rather than logged per call -- the engine sets these for every one
+ * of ~1800 skinned draws a frame, and a log of that is unreadable. The
+ * snapshot is written on the F9 frame, beside the geometry.
+ */
+#define VSCONST_MAX 256
+static float g_vsconst[VSCONST_MAX][4];
+
+static HRESULT WINAPI dev_SetVertexShaderConstant(struct wrap *w, DWORD reg,
+                                                  const void *data, DWORD count)
+{
+    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, const void *, DWORD);
+    if (data && reg < VSCONST_MAX) {
+        DWORD n = count;
+        if (reg + n > VSCONST_MAX) n = VSCONST_MAX - reg;
+        memcpy(g_vsconst[reg], data, n * 4 * sizeof(float));
+    }
+    return ((fn_t)w->real_vtbl[SLOT_SET_VERTEX_SHADER_CONSTANT])
+        (w->real, reg, data, count);
+}
+
+static void vsconst_write(void) {
+    FILE *f = fopen("d3d8_vsconst.txt", "w");
+    int i;
+    if (!f) {
+        plog("VSCONST ERROR could not open d3d8_vsconst.txt -- NOTHING was "
+             "written, which is not the same as an empty constant file");
+        return;
+    }
+    for (i = 0; i < VSCONST_MAX; i++)
+        fprintf(f, "c[%d] %.6f %.6f %.6f %.6f\n", i, g_vsconst[i][0],
+                g_vsconst[i][1], g_vsconst[i][2], g_vsconst[i][3]);
+    fclose(f);
+    plog("VSCONST %d register(s) written to d3d8_vsconst.txt", VSCONST_MAX);
+}
+
 /* IDirect3DDevice8::SetIndices (slot 85): (this, pIndexData, BaseVertexIndex).
    The base SHIFTS the vertex range a draw reads, so a dump that ignores it
    reads the wrong mesh out of a shared buffer -- silently, and plausibly. */
@@ -550,7 +599,7 @@ static HRESULT WINAPI dev_Present(struct wrap *w, const void *a, const void *b,
 {
     typedef HRESULT (WINAPI *fn_t)(void *, const void *, const void *, HWND,
                                    const void *);
-    if (g_obj_frame_open) obj_close();
+    if (g_obj_frame_open) { obj_close(); vsconst_write(); }
     else if (g_obj_armed) { g_obj_armed = 0; obj_open(); }
     if (GetAsyncKeyState(VK_F9_KEY) & 0x8000) g_obj_armed = 1;
     return ((fn_t)w->real_vtbl[SLOT_PRESENT])(w->real, a, b, c, d);
@@ -632,6 +681,8 @@ static void *wrap_device(void *real) {
     w->vtbl[SLOT_SET_STREAM_SOURCE] = (const void *)dev_SetStreamSource;
     w->vtbl[SLOT_SET_INDICES] = (const void *)dev_SetIndices;
     w->vtbl[SLOT_SET_VERTEX_SHADER] = (const void *)dev_SetVertexShader;
+    w->vtbl[SLOT_SET_VERTEX_SHADER_CONSTANT] =
+        (const void *)dev_SetVertexShaderConstant;
     w->vtbl[SLOT_CREATE_VERTEX_SHADER] = (const void *)dev_CreateVertexShader;
     w->vtbl[SLOT_DRAW_PRIMITIVE] = (const void *)dev_DrawPrimitive;
     w->vtbl[SLOT_DRAW_INDEXED_PRIMITIVE] = (const void *)dev_DrawIndexedPrimitive;

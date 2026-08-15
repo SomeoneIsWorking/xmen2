@@ -1333,6 +1333,35 @@ static void obj_finish(void)
  * Reporting both is the point: a reading that fits nothing is itself the
  * finding, and picking one and reporting only its failure would hide that.
  */
+/*
+ * The constant file, as text, in the format tools/proxy_d3d8 writes it.
+ *
+ * The probe below judges the palette on its own; this is for judging it
+ * against the CONTROL, which is the only thing that can settle whether the
+ * engine's recompiled animation maths computes the same matrices as the same
+ * engine on a real CPU. Same registers, same order, same %.6f on both sides,
+ * so the comparison is arithmetic and not transcription.
+ */
+static void constants_dump(const float c[][4], int used)
+{
+    const char *path = getenv("X2_VSCONST");
+    FILE *f;
+    int i;
+    if (!path || !*path) return;
+    f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "d3d8: X2_VSCONST=%s could not be opened; the constant "
+                        "file was NOT written.\n", path);
+        return;
+    }
+    for (i = 0; i < used; i++)
+        fprintf(f, "c[%d] %.6f %.6f %.6f %.6f\n", i,
+                c[i][0], c[i][1], c[i][2], c[i][3]);
+    fclose(f);
+    fprintf(stderr, "[VS CONSTANTS] %d register(s) written to %s\n", used,
+            path);
+}
+
 static int constants_probe(const float c[][4], int first, int used)
 {
     int layout;
@@ -1388,16 +1417,18 @@ static int constants_probe(const float c[][4], int first, int used)
                 "bone 0 det %.4f row0 |%.4f|\n",
                 layout, rigid, bones, ident, worst_det, worst_row);
     }
-    /* The first two, in full, so a wrong LAYOUT is visible as numbers rather
-       than inferred from a score. */
-    fprintf(stderr, "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n"
-                    "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n"
-                    "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n"
-                    "[VS CONSTANTS]   c[%d] %9.4f %9.4f %9.4f %9.4f\n",
-            first,   c[first][0],   c[first][1],   c[first][2],   c[first][3],
-            first+1, c[first+1][0], c[first+1][1], c[first+1][2], c[first+1][3],
-            first+2, c[first+2][0], c[first+2][1], c[first+2][2], c[first+2][3],
-            first+3, c[first+3][0], c[first+3][1], c[first+3][2], c[first+3][3]);
+    /* The first three bones in full, so a wrong LAYOUT or a wrong BASE is
+       visible as numbers rather than inferred from a score -- the previous
+       version of this probe scored projection data as bone 0 and reported a
+       corrupt palette because of where it started, not what it found. */
+    {
+        int k;
+        for (k = 0; k < 9 && first + k < used; k++)
+            fprintf(stderr, "[VS CONSTANTS]   c[%3d] %10.4f %10.4f %10.4f "
+                    "%10.4f%s\n", first + k,
+                    c[first+k][0], c[first+k][1], c[first+k][2], c[first+k][3],
+                    (k % 3 == 0) ? "   <- bone row 0" : "");
+    }
     return g_probe_rigid;
 }
 
@@ -1885,8 +1916,19 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
            uploaded per draw and this is the one the table is describing. */
         if (g_ft_on > 0 && !g_ft_done && g_ft_frame && !g_ft_probed) {
             g_ft_probed = 1;
-            constants_probe(s->vertex_shader_constant, 0,
+            /*
+             * From c[6], three registers per bone.
+             *
+             * Not a guess: the shader captured at CreateVertexShader reads
+             * `dp4 r3.x, v0, c[a0.x + 6]` / +7 / +8, and builds a0.x as the
+             * vertex's D3DCOLOR byte times c[0].w = 765.01 = 3 x 255. So the
+             * palette starts at 6 and strides 3, and c[0..5] is projection
+             * data -- scoring it as bones, which an earlier version of this
+             * did, reports a corrupt palette for a perfectly good one.
+             */
+            constants_probe(s->vertex_shader_constant, 6,
                             D3D8_MAX_VS_CONSTANTS);
+            constants_dump(s->vertex_shader_constant, D3D8_MAX_VS_CONSTANTS);
         }
         uint32_t count, bytes;
         if (!req->vertex_guest_bytes || !req->vertex_bytes || !req->stride) {
