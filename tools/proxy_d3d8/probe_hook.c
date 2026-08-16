@@ -70,43 +70,32 @@ static void plog(const char *fmt, ...)
  * PROBE_UNREADABLE and counted -- never as zeros, which would make two sides
  * that both failed to read look like two sides that agreed.
  */
-#define PAGE_SZ 4096u
-#define CACHE_N 2048u
-static struct { pr_u32 page; signed char ok; } g_pages[CACHE_N];
 
-static int page_readable(pr_u32 page)
+/*
+ * NOT CACHED, deliberately.
+ *
+ * The first version remembered which pages were readable, because these
+ * functions are called tens of thousands of times a frame and this is a
+ * syscall. That is unsound: the game frees memory, so a page cached as
+ * readable can be unmapped by the time it is next read, and the recorder --
+ * whose entire job is to observe without disturbing -- then faults inside the
+ * run it is measuring. The selftest below crashed on exactly that, which is
+ * the only reason it is not still in here.
+ *
+ * The cost was measured rather than assumed: a driven capture makes about
+ * 400,000 of these calls over two minutes, which is a fraction of a second.
+ */
+int probe_page_readable(pr_u32 page)
 {
-    unsigned idx = (page / PAGE_SZ) & (CACHE_N - 1u);
     MEMORY_BASIC_INFORMATION mbi;
     DWORD prot;
-    if (g_pages[idx].ok && g_pages[idx].page == page)
-        return g_pages[idx].ok > 0;
-    g_pages[idx].page = page;
-    g_pages[idx].ok = -1;
-    if (VirtualQuery((LPCVOID)(UINT_PTR)page, &mbi, sizeof mbi) == sizeof mbi
-            && mbi.State == MEM_COMMIT) {
-        prot = mbi.Protect & 0xffu;
-        if (prot == PAGE_READONLY || prot == PAGE_READWRITE
-                || prot == PAGE_WRITECOPY || prot == PAGE_EXECUTE_READ
-                || prot == PAGE_EXECUTE_READWRITE
-                || prot == PAGE_EXECUTE_WRITECOPY)
-            g_pages[idx].ok = 1;
-    }
-    return g_pages[idx].ok > 0;
-}
-
-int probe_read(pr_u32 addr, void *dst, unsigned len)
-{
-    pr_u32 p, end;
-    if (addr == 0 || len == 0) return 0;
-    end = (addr + len - 1u) & ~(PAGE_SZ - 1u);
-    if (end < addr) return 0;                      /* wrapped */
-    for (p = addr & ~(PAGE_SZ - 1u); ; p += PAGE_SZ) {
-        if (!page_readable(p)) return 0;
-        if (p == end) break;
-    }
-    memcpy(dst, (const void *)(UINT_PTR)addr, len);
-    return 1;
+    if (VirtualQuery((LPCVOID)(UINT_PTR)page, &mbi, sizeof mbi) != sizeof mbi
+            || mbi.State != MEM_COMMIT)
+        return 0;
+    prot = mbi.Protect & 0xffu;
+    return prot == PAGE_READONLY || prot == PAGE_READWRITE
+        || prot == PAGE_WRITECOPY || prot == PAGE_EXECUTE_READ
+        || prot == PAGE_EXECUTE_READWRITE || prot == PAGE_EXECUTE_WRITECOPY;
 }
 
 /* ---- the recorder ---------------------------------------------------------

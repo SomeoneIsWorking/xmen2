@@ -441,6 +441,15 @@ void x2_interrupt_reports(int killed)
        that reach gameplay it had never printed once. Same defect the input
        reports had; same fix. */
     { extern void shell32_report(void); shell32_report(); }
+    /* And the oracle probe stream, for the third time the same reason: it was
+       registered with atexit, and the clean X2_MAX_FRAMES stop leaves through
+       _exit -- so on precisely the runs that reach gameplay, the ones a
+       capture is taken from, the per-probe counts never printed. The stream
+       itself survives either way (it is flushed as it is written), but
+       "slerp 75260, normalize 0" is the part that says WHICH probes the run
+       actually exercised, and a capture whose probes all read zero must be
+       visible here rather than discovered at the comparison. */
+    { extern void oracle_probe_report(void); oracle_probe_report(); }
     x86_epcount_report();
     fflush(stdout);
     if (killed)

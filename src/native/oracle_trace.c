@@ -55,37 +55,26 @@ static unsigned long long g_max = 400000;
  */
 #define PAGE_BITS 12
 #define PAGE_SZ   (1u << PAGE_BITS)
-#define CACHE_N   4096                    /* direct-mapped, power of two */
-
-static struct { pr_u32 page; signed char ok; } g_pages[CACHE_N];
-
-static int page_readable(pr_u32 page)
+/*
+ * NOT CACHED, deliberately.
+ *
+ * The first version remembered which pages were readable, because these
+ * functions are called tens of thousands of times a frame and this is a
+ * syscall. That is unsound: the game frees memory, so a page cached as
+ * readable can be unmapped by the time it is next read, and the recorder --
+ * whose entire job is to observe without disturbing -- then faults inside the
+ * run it is measuring. The selftest below crashed on exactly that, which is
+ * the only reason it is not still in here.
+ *
+ * The cost was measured rather than assumed: a driven capture makes about
+ * 400,000 of these calls over two minutes, which is a fraction of a second.
+ */
+int probe_page_readable(pr_u32 page)
 {
-    unsigned idx = (unsigned)((page >> PAGE_BITS) & (CACHE_N - 1u));
-    unsigned char vec;
-    if (g_pages[idx].ok && g_pages[idx].page == page)
-        return g_pages[idx].ok > 0;
+    unsigned char vec = 0;
     /* mincore() reports ENOMEM for an address with no mapping, which is the
        question being asked; the residency answer itself is not used. */
-    vec = 0;
-    g_pages[idx].page = page;
-    g_pages[idx].ok = (mincore((void *)(uintptr_t)page, PAGE_SZ, &vec) == 0)
-                      ? (signed char)1 : (signed char)-1;
-    return g_pages[idx].ok > 0;
-}
-
-int probe_read(pr_u32 addr, void *dst, unsigned len)
-{
-    pr_u32 p, end;
-    if (addr == 0 || len == 0) return 0;
-    if ((pr_u64)addr + len > 0xffffffffull) return 0;
-    end = (addr + len - 1u) & ~(PAGE_SZ - 1u);
-    for (p = addr & ~(PAGE_SZ - 1u); ; p += PAGE_SZ) {
-        if (!page_readable(p)) return 0;
-        if (p == end) break;
-    }
-    memcpy(dst, (const void *)(uintptr_t)addr, len);
-    return 1;
+    return mincore((void *)(uintptr_t)page, PAGE_SZ, &vec) == 0;
 }
 
 /* ---- arming --------------------------------------------------------------- */
@@ -343,11 +332,52 @@ int oracle_probe_selftest(void)
     for (i = 0; i < 16; i++) want[i] = (unsigned char)(0xA0 + i);
     memcpy(buf, want, 16);
 
+    /* The page walk itself, before anything that depends on it. The stock
+       side's copy of this arithmetic compared a page-aligned end against an
+       unaligned start, so EVERY read failed and a whole capture came back as
+       24 unreadable fields out of 24. There is one copy now; this is what
+       proves it walks pages rather than only ever reading within one. */
+    {
+        unsigned char probe_buf[32];
+        pr_u32 cross = obj + PAGE_SZ - 8u;      /* 8 bytes either side */
+        unsigned char *big = mmap(NULL, PAGE_SZ * 2u, PROT_READ | PROT_WRITE,
+                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT,
+                                  -1, 0);
+        if (big == MAP_FAILED) {
+            printf("  FAIL  could not map two pages; the walk is UNTESTED\n");
+            fails++;
+        } else {
+            int k;
+            for (k = 0; k < 32; k++) big[PAGE_SZ - 8 + k] = (unsigned char)k;
+            cross = (pr_u32)(uintptr_t)big + PAGE_SZ - 8u;
+            if (!probe_read(cross, probe_buf, 32)) {
+                printf("  FAIL  a 32-byte read spanning a page boundary was "
+                       "refused; every field larger than the tail of a page "
+                       "would record as UNREADABLE\n");
+                fails++;
+            } else if (memcmp(probe_buf, big + PAGE_SZ - 8, 32) != 0) {
+                printf("  FAIL  the cross-page read returned the wrong bytes\n");
+                fails++;
+            } else {
+                printf("  ok    a read spanning two pages returns both\n");
+            }
+            munmap(big, PAGE_SZ * 2u);
+            /* And now that it is unmapped, the SAME read must be refused --
+               a checker that says yes to everything is not a checker. */
+            if (probe_read(cross, probe_buf, 32)) {
+                printf("  FAIL  a read of UNMAPPED memory was allowed; the "
+                       "page check answers yes to everything\n");
+                fails++;
+            } else {
+                printf("  ok    the same read is refused once unmapped\n");
+            }
+        }
+    }
+
     setenv("X2_PROBE", path, 1);
     g_armed = g_off = 0;
     memset(g_seq, 0, sizeof g_seq);
     memset(&g_sink, 0, sizeof g_sink);
-    memset(g_pages, 0, sizeof g_pages);
 
     /* A frame whose this-pointer and first argument both point at the page. */
     cpu_reset(&C);

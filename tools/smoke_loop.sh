@@ -279,7 +279,7 @@ tools/cleanup_smoke.sh screenshot
 # is open leaves the run in the menus for good -- which is exactly the failure
 # check 2 now catches. Repeating is harmless once past: the level ignores the
 # extra Returns.
-SCRIPT="f2600-2900/50:Return,f3150-3260/40:Escape,f4044+40:Down,f4135+40:Return"
+SCRIPT=$(tools/drive.sh port)
 
 echo "== smoke_loop: one full run, up to ${TIMEOUT}s =="
 # X2_MAX_FRAMES stops the run CLEANLY a little after the last scripted press,

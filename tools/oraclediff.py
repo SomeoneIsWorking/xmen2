@@ -114,6 +114,37 @@ def fmt_field(f, b):
     return "%-10s %s" % (f["name"], ("\n%22s" % "").join(rows))
 
 
+def unreadable(b):
+    """A field the recorder could not read is written as PROBE_UNREADABLE
+    across every byte, never as zeros -- so "could not read" and "read zeros"
+    stay different in the stream. Such a field carries no information about
+    either side and must not be counted as a difference: comparing an
+    unreadable field against a real one would manufacture a divergence out of
+    a recorder problem. It is counted and reported separately instead, loudly,
+    because a capture that is mostly unreadable is worthless and must not read
+    as agreement -- one whole control capture was exactly that."""
+    return len(b) > 0 and all(x == UNREADABLE for x in b)
+
+
+def compare_fields(flds, a, b, tol):
+    """-> (n_compared, n_differ, n_unreadable). Field by field, so an
+    unreadable one is excluded rather than poisoning the whole record."""
+    av, _ = split(a, flds)
+    bv, _ = split(b, flds)
+    comp = diff = unread = 0
+    for f, x, y in zip(flds, av, bv):
+        if len(x) != f["len"] or len(y) != f["len"]:
+            diff += 1                      # a short record IS a difference
+            continue
+        if unreadable(x) or unreadable(y):
+            unread += 1
+            continue
+        comp += 1
+        if differs(x, y, tol)[1]:
+            diff += 1
+    return comp, diff, unread
+
+
 def differs(a, b, tol):
     """-> (any_bits_differ, beyond_tolerance)"""
     if a == b:
@@ -174,7 +205,7 @@ def report(port_path, stock_path, tol, show):
               "        are compared as raw bytes and not named.\n" % why)
 
     ids = sorted(set(k[0] for k in precs) | set(k[0] for k in srecs))
-    total_diff = 0
+    total_diff = total_blind = 0
     first_bad = None
     for pid in ids:
         p = probes[pid] if probes and pid < len(probes) else None
@@ -184,18 +215,23 @@ def report(port_path, stock_path, tol, show):
         common = sorted(pk & sk)
         nin = nout = 0
         same_in_diff_out = []
-        diff_in = 0
+        diff_in = n_unread = n_blind = 0
         for seq in common:
             a, b = precs[(pid, seq)], srecs[(pid, seq)]
             if p:
                 fin, fout = fields_of(p)
                 nbin = sum(f["len"] for f in fin)
-                ain, aout = a[:nbin], a[nbin:]
-                bin_, bout = b[:nbin], b[nbin:]
+                _, in_bad, in_un = compare_fields(fin, a[:nbin], b[:nbin], tol)
+                nc, out_bad, out_un = compare_fields(fout, a[nbin:], b[nbin:],
+                                                     tol)
+                n_unread += in_un + out_un
+                if nc == 0 and out_un:
+                    # Nothing about this call could be compared at all.
+                    n_blind += 1
+                    continue
             else:
-                ain, aout, bin_, bout = a, b"", b, b""
-            _, in_bad = differs(ain, bin_, tol)
-            _, out_bad = differs(aout, bout, tol)
+                in_bad = differs(a, b, tol)[1]
+                out_bad = 0
             if in_bad:
                 diff_in += 1
                 continue
@@ -210,6 +246,13 @@ def report(port_path, stock_path, tol, show):
               "produced different outputs%s"
               % (nin, nout, "" if not diff_in else
                  "   (%d more had different inputs already)" % diff_in))
+        if n_unread or n_blind:
+            print("     %6d field(s) could not be READ by one side or the "
+                  "other, and %d call(s) had\n            no comparable output "
+                  "at all. Those are recorder failures, not\n            "
+                  "disagreements, and are excluded from the counts above."
+                  % (n_unread, n_blind))
+        total_blind += n_blind
         if nout and first_bad is None:
             first_bad = (pid, same_in_diff_out[0])
         for seq in same_in_diff_out[:show]:
@@ -230,6 +273,12 @@ def report(port_path, stock_path, tol, show):
                           if len(fmt_field(f, y).split(None, 1)) > 1 else "")
         print()
 
+    if total_blind:
+        print("WARNING: %d call(s) had no comparable output at all -- one side "
+              "could not read\nthe memory it was asked to record. A verdict "
+              "below rests on the calls that DID\ncompare; if that number is "
+              "small, this capture is not evidence of anything.\n"
+              % total_blind)
     if not total_diff:
         print("NO DIFFERENCES. Every call that received the same inputs "
               "produced the same outputs,\nto %g relative. The probed "
@@ -327,6 +376,17 @@ def selftest():
     e = w("e.bin", _stream(1, 0xABCD, drift))
     print("  -- differing INPUTS at call 7 (a drifted run, not a defect):")
     check("differing inputs are NOT a divergence", report(a, e, 1e-4, 1) == 0)
+
+    # An UNREADABLE field must not manufacture a divergence. This is the case
+    # that made a whole 9-minute control capture worthless: the stock recorder
+    # failed every read, and without this the diff would have called each of
+    # those fields a difference and pointed at a defect that was not there.
+    un = list(good)
+    n_out_bytes = n_out * 4
+    un[7] = ((0, 7), rec(7)[:-n_out_bytes] + bytes([UNREADABLE]) * n_out_bytes)
+    u = w("u.bin", _stream(1, 0xABCD, un))
+    print("  -- one UNREADABLE output field at call 7:")
+    check("an unreadable field is not a divergence", report(a, u, 1e-4, 1) == 0)
 
     refuses("a mismatched manifest hash", a, w("h.bin", _stream(1, 0x1234, good)))
     refuses("two streams from the same side", a, w("s.bin", _stream(0, 0xABCD, good)))

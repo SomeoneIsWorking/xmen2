@@ -119,9 +119,21 @@ port)
     regen
     mkdir -p "$ROOT/scratch/logs"
     rm -f "$PORT_BIN"
-    echo "oracle_compare: recording the port to $PORT_BIN"
-    X2_PROBE=$PORT_BIN "$NATIVE" "$@"
-    echo "oracle_compare: $(stat -c%s "$PORT_BIN" 2>/dev/null || echo 0) byte(s) recorded"
+    LOG=$ROOT/scratch/logs/oracle_port.log
+    # DRIVEN and headless -- nobody has to sit at it. The same profile
+    # smoke_loop.sh uses to close the loop, so this run reaches gameplay rather
+    # than photographing the intro. X2_MAX_FRAMES ends it cleanly a little past
+    # the last press, which gives a real exit status instead of a timeout.
+    echo "oracle_compare: recording the port to $PORT_BIN, DRIVEN by"
+    echo "  $(tools/drive.sh port)"
+    X2_PROBE=$PORT_BIN \
+    X2_INPUT_SCRIPT="$(tools/drive.sh port)" \
+    X2_MAX_FRAMES=${X2_MAX_FRAMES:-4200} X2_UNPACED=1 X2_HEARTBEAT=60 \
+        timeout "${X2_TIMEOUT:-420}" "$NATIVE" --no-window --d3d8 --run \
+        > "$LOG" 2>&1
+    echo "oracle_compare: exit $?, $(stat -c%s "$PORT_BIN" 2>/dev/null || echo 0) byte(s) recorded"
+    grep -E "oracle_trace|INJECTING" "$LOG" | head -20
+    grep -E "probe .* fired" "$LOG" | tail -1
     ;;
 
 stock)
@@ -129,7 +141,10 @@ stock)
     [ -f "$ROOT/scratch/run/$STOCK_RUN/d3d8.dll" ] \
         || fail "scratch/run/$STOCK_RUN is not staged; run '$0 build'"
     rm -f "$STOCK_BIN"
-    "$ROOT/tools/run_shim.sh" "$STOCK_RUN" "$SECS"
+    # Driven too, by the same profile in seconds. An undriven control run only
+    # ever sees the intro, which is no control for anything past the menu.
+    echo "oracle_compare: the control is DRIVEN by $(tools/drive.sh stock)"
+    X2_KEYS="$(tools/drive.sh stock)" "$ROOT/tools/run_shim.sh" "$STOCK_RUN" "$SECS"
     echo "oracle_compare: $(stat -c%s "$STOCK_BIN" 2>/dev/null || echo 0) byte(s) recorded"
     sed -n '1,40p' "$ROOT/scratch/run/$STOCK_RUN/probe_stock.log" 2>/dev/null
     ;;

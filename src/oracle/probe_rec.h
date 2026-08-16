@@ -40,8 +40,11 @@ typedef unsigned char      pr_u8;
 typedef unsigned short     pr_u16;
 typedef unsigned int       pr_u32;
 typedef unsigned long long pr_u64;
+typedef unsigned int       pr_uptr;    /* 32-bit in the game's own process */
 #else
 #include <stdint.h>
+#include <stdbool.h>
+typedef uintptr_t pr_uptr;
 typedef uint8_t  pr_u8;
 typedef uint16_t pr_u16;
 typedef uint32_t pr_u32;
@@ -134,11 +137,37 @@ typedef struct {
 /*
  * Read `len` bytes of GUEST memory at `addr`, or return 0 without faulting.
  *
- * Each side implements this over what it can check: the port knows its own
- * mappings, and the stock side is inside the game's address space with only
- * Win32 to ask. Declared here so the capture code below is shared.
+ * Each side answers only the per-PAGE question, over what it can check: the
+ * port knows its own mappings (mincore), the stock side is inside the game's
+ * address space with only Win32 to ask (VirtualQuery). The walk across pages
+ * is HERE, once.
+ *
+ * It was written twice to begin with, and the second copy compared a
+ * page-aligned end address against an unaligned start -- true for every
+ * address not exactly on a page boundary, so every read on the stock side
+ * failed and the capture was 24 unreadable fields out of 24. It was caught
+ * only because an unreadable field is recorded and counted as such instead of
+ * being written as zeros. One copy now, because the bug was in the duplication
+ * rather than in either version of the arithmetic.
  */
-int probe_read(pr_u32 addr, void *dst, unsigned len);
+int probe_page_readable(pr_u32 page);
+
+#define PROBE_PAGE 4096u
+
+static int probe_read(pr_u32 addr, void *dst, unsigned len)
+{
+    pr_u32 p, first, last;
+    if (addr == 0 || len == 0) return 0;
+    if (addr + len < addr) return 0;              /* wrapped the address space */
+    first = addr & ~(PROBE_PAGE - 1u);
+    last  = (addr + len - 1u) & ~(PROBE_PAGE - 1u);
+    for (p = first; ; p += PROBE_PAGE) {
+        if (!probe_page_readable(p)) return 0;
+        if (p == last) break;
+    }
+    memcpy(dst, (const void *)(pr_uptr)addr, len);
+    return 1;
+}
 
 static void pr_put32(unsigned char *p, pr_u32 v)
 {
