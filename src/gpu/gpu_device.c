@@ -68,6 +68,47 @@ static struct { int x, y, w, h; float minz, maxz; int set; } g_viewport;
 static int g_frame_limit_hit;
 static unsigned long g_frames_presented, g_frames_no_swapchain,
                      g_frames_no_window, g_late_clears;
+
+/*
+ * The frame-phase profiler's device side.
+ *
+ * Frame WALL time measured present-to-present at gpu_frame_end. The guest is
+ * recompiled C on the same thread, so one interval to the next is the whole
+ * cost of a frame -- guest crossings plus the draw/upload paths timed in
+ * gpu_draw.c plus this submit -- and subtracting the two known parts from the
+ * interval is what the guest share is left over as. The histogram is the
+ * shape, not just the mean: a constant 15 fps and a 60 fps that dips for one
+ * frame out of twenty have the same average, and one of those is ""free"" in
+ * a way the heartbeat's deltas gloss over.
+ *
+ * Reads are the heartbeat's usual torn-read trade, stated once in heartbeat.c.
+ */
+static unsigned long long g_frame_ns, g_frame_ns_min, g_frame_ns_max;
+static unsigned long long g_last_frame_end_ns, g_frame_end_submits;
+static unsigned long g_frame_intervals;  /* intervals folded into g_frame_ns */
+#define GPU_FRAME_HISTOGRAM 13
+static unsigned long g_frame_hist[GPU_FRAME_HISTOGRAM]; /* ms buckets */
+
+/*
+ * Which histogram bucket a frame interval falls into.
+ *
+ * Boundaries are denser under 100 ms because that is where the interesting
+ * difference between a paced and a crowded frame lives; the last bucket is
+ * open-ended. Bucket 0 also catches a zero-interval reading, which the
+ * histogram must place somewhere rather than drop -- counting it as "a frame
+ * faster than anyone could measure" preserves the total.
+ */
+static int frame_time_bucket(unsigned long long ns)
+{
+    static const unsigned long long EDGE_MS[] = {
+        1, 2, 4, 6, 10, 16, 25, 40, 60, 80, 120, 200,
+    };
+    unsigned long long ms = ns / 1000000ull;
+    unsigned i;
+    for (i = 0; i < GPU_FRAME_HISTOGRAM - 1; i++)
+        if (ms < EDGE_MS[i]) return (int)i;
+    return GPU_FRAME_HISTOGRAM - 1;
+}
 #endif
 
 int gpu_device_create(void)
@@ -285,6 +326,28 @@ void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h)
 unsigned long gpu_frames_presented(void) { return g_frames_presented; }
 int gpu_frame_limit_reached(void) { return g_frame_limit_hit; }
 
+/*
+ * The frame-phase profiler's device side, for the heartbeat.
+ *
+ * The draw side comes from gpu_draw_perf(); the two are read together by the
+ * heartbeat, which is where subtraction of the known host paths from the
+ * frame interval leaves the guest's share.
+ */
+void gpu_device_perf(unsigned long long *frame_ns,
+                     unsigned long long *frame_ns_min,
+                     unsigned long long *frame_ns_max,
+                     unsigned long long *end_submits,
+                     unsigned long *intervals,
+                     const unsigned long **hist)
+{
+    *frame_ns = g_frame_ns;
+    *frame_ns_min = g_frame_ns_min;
+    *frame_ns_max = g_frame_ns_max;
+    *end_submits = g_frame_end_submits;
+    *intervals = g_frame_intervals;
+    *hist = g_frame_hist;
+}
+
 SDL_GPUTextureFormat gpu_depth_format(void)
 {
     static const SDL_GPUTextureFormat WANT[] = {
@@ -473,6 +536,7 @@ int gpu_frame_begin(void)
         }
         gpu_set_offscreen_target(t, g_headless_w, g_headless_h);
         g_clear.mask = 0;
+        gpu_frame_host_reset();
         g_headless_frames++;
         return 1;
     }
@@ -518,6 +582,7 @@ int gpu_frame_begin(void)
         return 0;
     }
     g_clear.mask = 0;
+    gpu_frame_host_reset();
     return 1;
 #endif
 }
@@ -684,6 +749,44 @@ void gpu_frame_end(void)
 {
 #ifdef X2_WITH_SDL
     if (!g_cmd) return;
+    {
+        /* Present-to-present frame time, before this submit but after the
+           previous one. The FIRST frame has no predecessor; it seeds the
+           baseline rather than measuring a intervals-prior frame. */
+        unsigned long long now = gpu_perf_now_ns();
+        unsigned long long dt;
+        if (g_last_frame_end_ns) {
+            dt = now - g_last_frame_end_ns;
+            g_frame_ns += dt;
+            g_frame_intervals++;
+            if (!g_frame_ns_min || dt < g_frame_ns_min) g_frame_ns_min = dt;
+            if (dt > g_frame_ns_max) g_frame_ns_max = dt;
+            g_frame_hist[frame_time_bucket(dt)]++;
+            /*
+             * A frame slow enough to matter gets its cost attributed AT THE
+             * MOMENT it ends, not in a shutdown report: the frame limiter
+             * makes "slow" a wall-clock number and this is the only place the
+             * wall clock and the host share of the same frame meet.
+             *
+             * The threshold is an ORDER OF MAGNITUDE above the paced frame
+             * budget (60fps = 16.7ms), so a normal gameplay frame never
+             * prints and a load stall does -- exactly the frames that want
+             * asking "who was slow?". Said once per frame, since a load can
+             * stall for several.
+             */
+            if (dt > 160000000ull) {
+                unsigned long long dns, uns;
+                gpu_frame_host_share(&dns, &uns);
+                fprintf(stderr,
+                        "gpu: frame %lu took %.0f ms; host draw %.1f ms + "
+                        "upload %.1f ms, the rest is guest logic and the "
+                        "submit\n",
+                        g_frames_presented, (double)dt * 1e-6,
+                        (double)dns * 1e-6, (double)uns * 1e-6);
+            }
+        }
+        g_last_frame_end_ns = now;
+    }
     /*
      * Open the pass even if nothing drew.
      *
@@ -699,6 +802,7 @@ void gpu_frame_end(void)
     }
     SDL_SubmitGPUCommandBuffer(g_cmd);
     g_cmd = NULL;
+    g_frame_end_submits++;
     if (!g_offscreen) g_swap = NULL;
     g_frames_presented++;
     shot_maybe_write();
@@ -825,6 +929,27 @@ void gpu_device_report(void)
            g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
            g_late_clears);
     fflush(stdout);
+    if (g_frame_ns && g_frame_intervals) {
+        double avg_ms = (double)g_frame_ns * 1e-6
+                        / (double)g_frame_intervals;
+        unsigned i;
+        printf("  perf: frame wall avg %.2f ms, min %.2f ms, max %.2f ms, "
+               "%llu submit(s) at frame end; ms histogram:\n",
+               avg_ms, (double)g_frame_ns_min * 1e-6,
+               (double)g_frame_ns_max * 1e-6,
+               (unsigned long long)g_frame_end_submits);
+        printf("        ");
+        for (i = 0; i < GPU_FRAME_HISTOGRAM; i++) {
+            static const char *LBL[] = {
+                "<1", "1-2", "2-4", "4-6", "6-10", "10-16", "16-25",
+                "25-40", "40-60", "60-80", "80-120", "120-200", ">=200",
+            };
+            if (i) printf(" ");
+            printf("%s=%lu", LBL[i], g_frame_hist[i]);
+        }
+        printf("\n");
+        fflush(stdout);
+    }
 #endif
 }
 

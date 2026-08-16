@@ -89,6 +89,30 @@ static unsigned long g_vs_frame = (unsigned long)-1;
    any, so a range does not change which frames look busy. X2_SHOT_MIN_DRAWS
    reads it; see gpu_frame_draws_so_far(). */
 unsigned long gpu_frame_draws_so_far(void) { return g_range_index; }
+
+/*
+ * Per-frame host share, for attributing a SLOW frame at the moment it ends.
+ *
+ * gpu_frame_end knows the frame's wall time; these know this frame's host
+ * draw/upload time so far. The two, printed together on a frame that took long
+ * enough to matter, say whether the stall was guest logic (the frame crossed
+ * a lot of guest code while the host share was small) or this renderer.
+ * Reset once per frame by gpu_frame_begin, read by gpu_frame_end.
+ */
+static unsigned long long g_frame_draw_ns, g_frame_upload_ns;
+
+/* The slow-frame attribution hooks, called by the frame owner. */
+void gpu_frame_host_reset(void)
+{
+    g_frame_draw_ns = g_frame_upload_ns = 0;
+}
+
+void gpu_frame_host_share(unsigned long long *draw_ns,
+                          unsigned long long *upload_ns)
+{
+    *draw_ns = g_frame_draw_ns;
+    *upload_ns = g_frame_upload_ns;
+}
 int gpu_frame_had_programmable(void)
 {
     /* gpu_frame_end increments the presented count before the capture hook. */
@@ -167,6 +191,24 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes)
 }
 
 /*
+ * Frame-phase profiler: accumulated wall time inside the two host hot paths
+ * (draw submission, transfer-buffer upload), and how many uploads ran.
+ *
+ * Deliberately wall time of the HOST's share of the frame only. The guest is
+ * recompiled C running on the same thread, so a frame's wall time is guest
+ * crossings plus these paths plus the submit at gpu_frame_end, and the guest
+ * share is what is LEFT over -- which is how these three numbers can say where
+ * a slow frame actually went instead of asserting it. The reader (heartbeat)
+ * takes the same torn-read trade every other counter here does.
+ */
+static unsigned long long g_draw_ns, g_upload_ns;
+static unsigned long long g_upload_alloc_ns;   /* Create+Map+memcpy+Unmap */
+static unsigned long long g_upload_submit_ns;  /* Acquire+CopyPass+Submit+Release */
+static unsigned long      g_uploads;
+static unsigned long long g_transfer_creates;   /* how often the upload path allocated */
+static unsigned long      g_submits;            /* SDL_SubmitGPUCommandBuffer calls */
+
+/*
  * Upload through a transfer buffer.
  *
  * SDL_GPU has no "write straight into a GPU buffer": the data goes into a
@@ -183,6 +225,7 @@ static int upload_bytes(SDL_GPUBuffer *dst, uint32_t offset, const void *data,
     SDL_GPUCopyPass *cp;
     SDL_GPUTransferBufferLocation src;
     SDL_GPUBufferRegion dr;
+    unsigned long long t0 = gpu_perf_now_ns(), t1;
     void *p;
 
     memset(&tci, 0, sizeof tci);
@@ -194,6 +237,7 @@ static int upload_bytes(SDL_GPUBuffer *dst, uint32_t offset, const void *data,
                 SDL_GetError());
         return 0;
     }
+    g_transfer_creates++;
     p = SDL_MapGPUTransferBuffer(g_gpu, tb, false);
     if (!p) {
         fprintf(stderr, "gpu: mapping the transfer buffer failed: %s\n",
@@ -203,6 +247,8 @@ static int upload_bytes(SDL_GPUBuffer *dst, uint32_t offset, const void *data,
     }
     memcpy(p, data, bytes);
     SDL_UnmapGPUTransferBuffer(g_gpu, tb);
+    t1 = gpu_perf_now_ns();
+    g_upload_alloc_ns += t1 - t0;
 
     cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
     cp = SDL_BeginGPUCopyPass(cmd);
@@ -221,6 +267,14 @@ static int upload_bytes(SDL_GPUBuffer *dst, uint32_t offset, const void *data,
        precaution nobody can justify. */
     SDL_SubmitGPUCommandBuffer(cmd);
     SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
+    g_submits++;
+    {
+        unsigned long long now = gpu_perf_now_ns();
+        g_upload_submit_ns += now - t1;
+        g_frame_upload_ns += now - t0;
+        g_upload_ns += now - t0;
+    }
+    g_uploads++;
     return 1;
 }
 
@@ -340,6 +394,7 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     SDL_GPUTextureRegion dr;
     Res *r = res_get(t, 1, "texture upload");
     uint32_t lw, lh;
+    unsigned long long t0, t1;
     void *p;
 
     if (!r) return 0;
@@ -355,6 +410,7 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     }
     lw = r->w >> level; if (!lw) lw = 1;
     lh = r->h >> level; if (!lh) lh = 1;
+    t0 = gpu_perf_now_ns();
 
     memset(&tci, 0, sizeof tci);
     tci.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
@@ -365,6 +421,7 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
                 SDL_GetError());
         return 0;
     }
+    g_transfer_creates++;
     p = SDL_MapGPUTransferBuffer(g_gpu, tb, false);
     if (!p) {
         SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
@@ -372,6 +429,8 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     }
     memcpy(p, data, bytes);
     SDL_UnmapGPUTransferBuffer(g_gpu, tb);
+    t1 = gpu_perf_now_ns();
+    g_upload_alloc_ns += t1 - t0;
 
     cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
     cp = SDL_BeginGPUCopyPass(cmd);
@@ -388,6 +447,14 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     SDL_EndGPUCopyPass(cp);
     SDL_SubmitGPUCommandBuffer(cmd);
     SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
+    g_submits++;
+    {
+        unsigned long long now = gpu_perf_now_ns();
+        g_upload_submit_ns += now - t1;
+        g_frame_upload_ns += now - t0;
+        g_upload_ns += now - t0;
+    }
+    g_uploads++;
     return 1;
 }
 
@@ -735,8 +802,6 @@ static uint32_t arg_of(int a, uint32_t dflt)
 }
 
 static unsigned long g_draws, g_refused, g_depth_ignored;
-/* Counted separately: "the index range does not fit" is a specific
-   accusation and must not be lost in the general refusal count. */
 static unsigned long g_refused_index_range;
 
 /* The 1x1 white texture an untextured draw binds. Created once, never inside
@@ -770,6 +835,7 @@ int gpu_draw(const GpuDraw *d)
     PixelUniforms pu;
     Res *vres, *ires = NULL, *tres = NULL, *cres = NULL;
     SDL_GPUSampler *smp;
+    unsigned long long t0 = gpu_perf_now_ns();
     uint32_t n;
 
     if (!g_cmd) return refuse("no frame is open");
@@ -1248,6 +1314,16 @@ int gpu_draw(const GpuDraw *d)
         SDL_DrawGPUPrimitives(g_pass, n, 1, d->first_vertex, 0);
     }
     g_draws++;
+    /* Accepted draws only. A refused draw escapes the timer: it reports
+       itself loudly and consumes a negligible share, so chasing timing
+       through every early-return refusal would add an instrument to the very
+       paths the run tells us never fire. State scores the accepted cost of a
+       frame, which is the number a hotspot story has to rest on. */
+    {
+        unsigned long long dt = gpu_perf_now_ns() - t0;
+        g_frame_draw_ns += dt;
+        g_draw_ns += dt;
+    }
     return 1;
 }
 
@@ -1257,12 +1333,44 @@ void gpu_draw_counts(unsigned long *submitted, unsigned long *refused)
     *refused = g_refused;
 }
 
+/*
+ * The frame-phase profiler's draw side, for the heartbeat.
+ *
+ * The counterpart (frame wall time, submit count) lives in gpu_device.c; the
+ * two together are what attribute a frame's host cost. Deltas of these across
+ * a heartbeat period are easier to trust than the run's totals, which is how
+ * the heartbeat reads every counter.
+ */
+void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
+                   unsigned long long *upload_alloc_ns,
+                   unsigned long long *upload_submit_ns,
+                   unsigned long long *transfer_creates, unsigned long *uploads,
+                   unsigned long *submits)
+{
+    *draw_ns = g_draw_ns;
+    *upload_ns = g_upload_ns;
+    *upload_alloc_ns = g_upload_alloc_ns;
+    *upload_submit_ns = g_upload_submit_ns;
+    *transfer_creates = g_transfer_creates;
+    *uploads = g_uploads;
+    *submits = g_submits;
+}
+
 void gpu_draw_report(void)
 {
     printf("  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
            "(%d still cached; the device teardown empties the cache, so these "
            "differ whenever the engine released the device first)\n",
            g_draws, g_refused, g_pipes_built, g_npipes);
+    if (g_draws)
+        printf("        draw submission took %.3f s; uploads took %.3f s "
+               "total (%.3f alloc+copy, %.3f acquire+submit) across %lu "
+               "uploads using %lu transfer-buffer alloc(s), %lu command "
+               "buffers submitted\n",
+               (double)g_draw_ns * 1e-9, (double)g_upload_ns * 1e-9,
+               (double)g_upload_alloc_ns * 1e-9,
+               (double)g_upload_submit_ns * 1e-9,
+               g_uploads, (unsigned long)g_transfer_creates, g_submits);
     if (!g_draws)
         printf("        NOTHING was drawn. Either no draw call reached this "
                "backend, or every one was refused above.\n");

@@ -13,6 +13,28 @@
 #ifndef GPU_INTERNAL_H
 #define GPU_INTERNAL_H
 
+#include <stdint.h>
+#include <time.h>
+
+/*
+ * Wall clock, nanoseconds, monotonic.
+ *
+ * The only profiler primitive this subsystem needs. clock_gettime through the
+ * vDSO is ~20-30 ns, which is why it can be called twice per draw and twice
+ * per upload without perturbing the thing being measured to the point of
+ * lying -- the repo's own reproof of the Vulkan validation layer is the other
+ * side of the same trade: THAT instrument inspects every draw and changed the
+ * timing, so it had to be off by default, and the ~40 ns of this one does not.
+ * Said here so a slow frame is not chased through an instrument that caused
+ * the slowness.
+ */
+static inline unsigned long long gpu_perf_now_ns(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned long long)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+}
+
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
@@ -53,6 +75,15 @@ void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h);
 void gpu_draw_shutdown(void);
 /* Draws this frame has received so far (before any X2_DRAW_RANGE skip). */
 unsigned long gpu_frame_draws_so_far(void);
+
+/*
+ * The frame's HOST share so far (draw submission + uploads), for attributing a
+ * slow frame at the moment it ends. gpu_frame_begin resets, gpu_frame_end
+ * reads. Not in the public header on purpose: only the frame owner needs it.
+ */
+void gpu_frame_host_reset(void);
+void gpu_frame_host_share(unsigned long long *draw_ns,
+                          unsigned long long *upload_ns);
 
 #endif
 

@@ -285,6 +285,18 @@ void gpu_draw_report(void);
 void gpu_draw_counts(unsigned long *submitted, unsigned long *refused);
 
 /*
+ * The frame-phase profiler's draw side: accumulated wall time inside this
+ * module's two host hot paths (draw submission, transfer-buffer upload), how
+ * many transfer buffers were allocated, and how many command buffers were
+ * submitted from here. Live, for the heartbeat; totaled, for shutdown.
+ */
+void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
+                   unsigned long long *upload_alloc_ns,
+                   unsigned long long *upload_submit_ns,
+                   unsigned long long *transfer_creates, unsigned long *uploads,
+                   unsigned long *submits);
+
+/*
  * Render into an off-screen target instead of the swapchain, and read it back.
  *
  * This exists so the draw path can be PROVED rather than asserted: the

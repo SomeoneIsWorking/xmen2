@@ -113,6 +113,22 @@ void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
  * X2_INPUT_SCRIPT's `f` form in dinput_device.c.
  */
 unsigned long gpu_frames_presented(void);
+
+/*
+ * The frame-phase profiler's device side, for the heartbeat.
+ *
+ * Frame WALL time is present-to-present and so includes the guest's share;
+ * the counterpart read gpu_draw_perf() supplies the host's draw/upload share.
+ * The histogram buckets are milliseconds; `hist` must be valid across the
+ * read and the bucket layout is fixed by gpu_frame_end's table, not by this
+ * caller's count.
+ */
+void gpu_device_perf(unsigned long long *frame_ns,
+                     unsigned long long *frame_ns_min,
+                     unsigned long long *frame_ns_max,
+                     unsigned long long *end_submits,
+                     unsigned long *intervals,
+                     const unsigned long **hist);
 /* True when the frame currently ending received at least one programmable
    draw, even if X2_DRAW_RANGE skipped it. Used by content-selected captures. */
 int gpu_frame_had_programmable(void);
