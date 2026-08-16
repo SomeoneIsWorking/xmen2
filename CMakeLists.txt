@@ -255,6 +255,13 @@ add_test(NAME probes_current COMMAND python3
 add_test(NAME oraclediff COMMAND python3
          ${CMAKE_SOURCE_DIR}/tools/oraclediff.py --selftest)
 
+# The staleness gate's own discriminator: it must read a current stamp as
+# current, a wrong one as stale, an ABSENT one as stale, and the fingerprint
+# must move when the translator is edited. A checker only ever run against the
+# good case is not a checker.
+add_test(NAME emitted_stamp COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/check_emitted.py --selftest)
+
 # The end-to-end gate's own checks (tools/smoke_loop.sh --selftest). The gate
 # itself needs the game and takes ~300s, so it is not a ctest; this runs its
 # checks against a log for each failure and requires each to be caught. It
@@ -562,6 +569,25 @@ if(X2_MODULE_HAVE)
     endif()
     include("${RECOMP_PROBES_CMAKE}")
     target_link_options(x2native PRIVATE ${RECOMP_PROBE_WRAPS})
+
+    # The recompiled C must have been emitted by the translator in THIS tree.
+    #
+    # src/recomp/*.c is generated and gitignored, so nothing tracked ever shows
+    # that a module has fallen behind tools/recomp.py -- and a stale module
+    # compiles, links, runs and is wrong in whatever way the fix it missed was
+    # about to correct. libIGSg sat two translator fixes behind for days and
+    # the port drew warped characters the whole time (issue #80); it came right
+    # only when the module was re-emitted for an unrelated reason.
+    execute_process(
+        COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/check_emitted.py"
+        RESULT_VARIABLE X2_EMIT_STALE
+        OUTPUT_VARIABLE X2_EMIT_OUT
+        ERROR_VARIABLE  X2_EMIT_ERR)
+    if(NOT X2_EMIT_STALE EQUAL 0)
+        message(FATAL_ERROR
+            "Recompiled C is stale.\n${X2_EMIT_ERR}${X2_EMIT_OUT}")
+    endif()
+    message(STATUS "x2native: ${X2_EMIT_OUT}")
     target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
     # -DX2_NATIVE_TRACE=ON traces every recompiled body into the boundary ring.
     # Off by default: it costs a ring write per call, and the generated bodies

@@ -1,12 +1,47 @@
 ---
 id: 80
 title: Character geometry warps because the recompiled animation maths produces non-rigid bone matrices
-status: open
+status: resolved
 symptom: Characters are misshapen in gameplay and dialogs -- Cyclops's head reads as collapsed to a plane. Level geometry, UI and lighting are correct. Unchanged by every renderer-side fix, and identical through the fixed-function path and the vertex-shader path.
 tags: recomp,animation,skinning,geometry,libigmath,d3d8
 created: 2026-08-15
 updated: 2026-08-15
 ---
+
+## Resolution: the recompiled C was STALE
+
+Not a defect in any source file. `src/recomp/*.c` is generated and gitignored,
+so nothing tracked ever showed that a module had fallen behind the translator
+that produces it. `libIGSg` was last emitted before two `recomp.py` fixes
+landed, and the port ran that stale build for days:
+
+    5151a92  2026-08-13  Fix reversed x87 register arithmetic
+    a7f7a44  2026-08-14  Make the hosted recomp runtime ABI-faithful
+
+Re-emitting libIGSg with the current translator changes 1238 lines: 1232 of
+them the tail-call ABI (209 sites in that module alone) and 6 the reversed
+FSUBR/FDIVR at three sites. WHICH of the two fixed the geometry is NOT
+isolated -- the three x87 sites are in a shadow shader, a time switch and one
+unnamed function, none of them animation code, so the tail-call change is the
+likelier of the two. Naming one would need a translator bisect and has not been
+done.
+
+Measured, same instrument and same measure as the original finding:
+
+    before   port  6 of 32 written bone(s) rigid;  stock 32 of 32
+    after    port 32 of 32 written bone(s) rigid;  stock 32 of 32
+
+It came right when the module was re-emitted for an UNRELATED reason -- the
+oracle probes needed it isolated into its own translation unit. That is the
+worst possible way to find this, and every instrument built to chase it was
+aimed at source that was already correct.
+
+All 20 modules have been re-emitted. `tools/recomp.py` now stamps a content
+hash of itself into everything it generates, `tools/check_emitted.py` refuses a
+tree whose emitted C does not carry the current stamp, and CMake fails the
+configure rather than building one. Its selftest is a discriminator: a current
+stamp, a wrong stamp, an ABSENT stamp, and an edited translator must produce
+four different answers.
 
 ## Symptom
 
