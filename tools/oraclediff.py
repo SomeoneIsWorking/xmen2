@@ -207,70 +207,100 @@ def report(port_path, stock_path, tol, show):
     ids = sorted(set(k[0] for k in precs) | set(k[0] for k in srecs))
     total_diff = total_blind = 0
     first_bad = None
+
+    #
+    # Matched by INPUT CONTENT, not by call index.
+    #
+    # Lining the two streams up by "the Nth call to this function" was the
+    # first design and it is nearly useless here: the port reaches gameplay in
+    # 110 seconds and the control takes 540, so the two runs make wildly
+    # different numbers of calls and drift apart within the first frames. It
+    # reported 2,838 calls with matching inputs out of 85,440 -- and of those,
+    # TWO distinct input values, 104 of them the identity quaternion. A
+    # comparison that only ever sees q=(0,0,0,1) is not evidence that anything
+    # works, and it printed "NO DIFFERENCES" all the same.
+    #
+    # These are pure functions of their arguments. So the call order does not
+    # matter at all: any call anywhere in either run with the same inputs must
+    # produce the same output. Keying on the input blob uses every call both
+    # runs happened to make instead of only the ones that lined up, and the
+    # runs no longer have to be driven identically.
+    #
+    # DISTINCT inputs are what get counted and reported, not calls -- ten
+    # thousand calls with one input value is one test, and reporting it as ten
+    # thousand is how the index version read as thorough while testing nothing.
+    #
+    def trivial(blob):
+        """Every component 0 or +-1: an identity quaternion, a zero, a t of 0
+        or 1. True for these and the function is barely exercised."""
+        v = as_floats(blob)
+        return bool(v) and all(abs(x) < 1e-6 or abs(abs(x) - 1.0) < 1e-6
+                               for x in v)
+
+    def by_input(recs, pid, nbin):
+        m = {}
+        for (i, seq), data in recs.items():
+            if i != pid:
+                continue
+            m.setdefault(data[:nbin], {}).setdefault(data[nbin:], []).append(seq)
+        return m
+
     for pid in ids:
         p = probes[pid] if probes and pid < len(probes) else None
         name = p["name"] if p else "probe %d" % pid
-        pk = set(s for (i, s) in precs if i == pid)
-        sk = set(s for (i, s) in srecs if i == pid)
-        common = sorted(pk & sk)
-        nin = nout = 0
-        same_in_diff_out = []
-        diff_in = n_unread = n_blind = 0
-        for seq in common:
-            a, b = precs[(pid, seq)], srecs[(pid, seq)]
-            if p:
-                fin, fout = fields_of(p)
-                nbin = sum(f["len"] for f in fin)
-                _, in_bad, in_un = compare_fields(fin, a[:nbin], b[:nbin], tol)
-                nc, out_bad, out_un = compare_fields(fout, a[nbin:], b[nbin:],
-                                                     tol)
-                n_unread += in_un + out_un
-                if nc == 0 and out_un:
-                    # Nothing about this call could be compared at all.
-                    n_blind += 1
-                    continue
-            else:
-                in_bad = differs(a, b, tol)[1]
-                out_bad = 0
-            if in_bad:
-                diff_in += 1
-                continue
-            nin += 1
-            if out_bad:
-                same_in_diff_out.append(seq)
-        nout = len(same_in_diff_out)
-        total_diff += nout
-        print("%-52s port %6d  stock %6d  common %6d"
-              % (name.split("::", 1)[-1], len(pk), len(sk), len(common)))
-        print("     %6d call(s) received the SAME inputs; of those %d "
-              "produced different outputs%s"
-              % (nin, nout, "" if not diff_in else
-                 "   (%d more had different inputs already)" % diff_in))
-        if n_unread or n_blind:
-            print("     %6d field(s) could not be READ by one side or the "
-                  "other, and %d call(s) had\n            no comparable output "
-                  "at all. Those are recorder failures, not\n            "
-                  "disagreements, and are excluded from the counts above."
-                  % (n_unread, n_blind))
-        total_blind += n_blind
-        if nout and first_bad is None:
-            first_bad = (pid, same_in_diff_out[0])
-        for seq in same_in_diff_out[:show]:
-            a, b = precs[(pid, seq)], srecs[(pid, seq)]
-            print("\n     --- call %d ---" % seq)
-            if not p:
-                print("       port  %s\n       stock %s" % (a.hex(), b.hex()))
-                continue
-            fin, fout = fields_of(p)
-            av, rest = split(a, fin + fout)
-            bv, _ = split(b, fin + fout)
-            for f, x, y in zip(fin + fout, av, bv):
+        npc = sum(1 for (i, _) in precs if i == pid)
+        nsc = sum(1 for (i, _) in srecs if i == pid)
+        if not p:
+            print("%-52s port %7d  stock %7d  -- no manifest, skipped"
+                  % (name, npc, nsc))
+            continue
+        fin, fout = fields_of(p)
+        nbin = sum(f["len"] for f in fin)
+        pm, sm = by_input(precs, pid, nbin), by_input(srecs, pid, nbin)
+        common = set(pm) & set(sm)
+        nontrivial = [k for k in common if not trivial(k)]
+        bad, unread, nondet = [], 0, 0
+        for k in sorted(common):
+            pouts, souts = list(pm[k]), list(sm[k])
+            if len(pouts) > 1 or len(souts) > 1:
+                nondet += 1              # same input, more than one output
+            _, d, u = compare_fields(fout, pouts[0], souts[0], tol)
+            unread += u
+            if d:
+                bad.append((k, pouts[0], souts[0], pm[k][pouts[0]][0]))
+        total_diff += len(bad)
+        total_blind += unread
+
+        print("%-52s port %7d call(s) / %6d distinct input(s)"
+              % (name.split("::", 1)[-1], npc, len(pm)))
+        print("%-52s stock%7d call(s) / %6d distinct input(s)"
+              % ("", nsc, len(sm)))
+        print("     %6d input value(s) occur in BOTH runs, %d of them "
+              "non-trivial;" % (len(common), len(nontrivial)))
+        print("     %6d of those produced DIFFERENT outputs." % len(bad))
+        if unread:
+            print("     %6d output field(s) one side could not read; excluded."
+                  % unread)
+        if nondet:
+            print("     %6d input(s) gave more than one output WITHIN a single "
+                  "run -- these\n            functions are then not pure of "
+                  "their arguments, and this whole\n            method rests "
+                  "on their being so. Treat the verdict as suspect." % nondet)
+        if len(nontrivial) == 0:
+            print("     NOTHING NON-TRIVIAL WAS COMPARED. Every input the two "
+                  "runs share is\n     all zeros and ones, so this probe is "
+                  "untested whatever the count above\n     says. Drive the two "
+                  "runs to the same scene, or probe a hotter function.")
+        for k, po, so, seq in bad[:show]:
+            print("\n     --- input first seen at port call %d ---" % seq)
+            for f, x in zip(fin, split(k, fin)[0]):
+                print("       in ", fmt_field(f, x))
+            for f, x, y in zip(fout, split(po, fout)[0], split(so, fout)[0]):
                 tag = "  " if x == y else ">>"
-                print("     %s in " % tag if f["when"] == "in" else
-                      "     %s out" % tag, fmt_field(f, x))
-                if x != y:
-                    print("     %s    " % "  ", fmt_field(f, y).split(None, 1)[1]
-                          if len(fmt_field(f, y).split(None, 1)) > 1 else "")
+                print("     %s port " % tag, fmt_field(f, x))
+                print("     %s stock" % tag, fmt_field(f, y))
+            if first_bad is None:
+                first_bad = (pid, seq)
         print()
 
     if total_blind:

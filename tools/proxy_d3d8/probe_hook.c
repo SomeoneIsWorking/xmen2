@@ -289,6 +289,23 @@ void probe_hook_report_counts(void)
     if (g_sink.records == 0)
         plog("probe: ZERO records. No probed function was ever called, which "
              "means the hooks did not take -- not that the two sides agree.\n");
+    /* This function PRINTS. It does not close.
+     *
+     * It used to do both, and it is called from Present every 600 frames so
+     * that a killed run still has its counts -- so the stream was closed a few
+     * seconds into every capture. The control then reported 141,652 slerp
+     * calls and 4 records, and the 4 were simply the ones that happened before
+     * the first report. The counts are what made it visible: recording every
+     * call and recording four of them produce the same shaped file, and only
+     * the "N call(s), M recorded" pair tells them apart. */
+}
+
+/* The end of the capture. Only at DLL_PROCESS_DETACH, and only once. */
+void probe_hook_close(void)
+{
+    if (!g_ready && !g_sink.f) return;
+    probe_hook_report_counts();
     if (g_sink.f) { fclose(g_sink.f); g_sink.f = NULL; }
     g_ready = 0;
+    plog("probe: stream closed.\n");
 }

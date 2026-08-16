@@ -596,6 +596,7 @@ static HRESULT WINAPI dev_DrawPrimitive(struct wrap *w, DWORD type,
 void probe_hook_install(const char *logdir);
 void probe_hook_tick(void);
 void probe_hook_report_counts(void);
+void probe_hook_close(void);
 static unsigned g_probe_frames;
 
 /* IDirect3DDevice8::Present (slot 15) -- the frame boundary, and where F9 is
@@ -760,7 +761,7 @@ void *WINAPI Direct3DCreate8(UINT sdkver) {
 
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, void *reserved) {
     (void)reserved;
-    if (reason == DLL_PROCESS_DETACH) probe_hook_report_counts();
+    if (reason == DLL_PROCESS_DETACH) probe_hook_close();
     if (reason == DLL_PROCESS_ATTACH) {
         g_self = hinst;
         log_open();

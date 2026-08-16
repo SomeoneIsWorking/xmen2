@@ -43,6 +43,46 @@ the port and native x86 in the control.
 - The vertex-shader interpreter, at least as the primary cause: it is fed
   corrupt matrices before it does anything.
 
+## Ruled out, measured against the real engine
+
+The oracle probe harness (`tools/probes.json`, `tools/oracle_compare.sh`)
+records a named guest function on both sides and diffs the two streams. Both
+captures are DRIVEN and unattended -- neither needs anybody at the keyboard.
+
+Matched by INPUT CONTENT rather than by call index, because these are pure
+functions of their arguments and the two runs drift badly (the port reaches
+gameplay in 110 s, the control takes 540). Index alignment found 2 distinct
+shared inputs and called it "no differences"; content matching found 6,066
+non-trivial ones.
+
+    igQuaternionf::slerp      2129 shared input value(s), 2127 non-trivial, 0 differ
+    igQuaternionf::getMatrix  3940 shared input value(s), 3939 non-trivial, 0 differ
+
+So the quaternion interpolation and the quaternion-to-matrix conversion are
+translated correctly. Not "reached and did not crash" -- the same numbers in,
+the same numbers out as the real engine, on six thousand distinct inputs.
+
+Also measured, and a result in itself: these five probes fired ZERO times on
+BOTH sides across a full driven run --
+
+    igQuaternionf::lerp, igQuaternionf::normalize, igQuaternionf::multiply,
+    igMatrix44f::multiplyAligned, igMatrix44f::setQuaternion
+
+The bone palette is therefore NOT built by concatenating through
+`multiplyAligned`, which was the leading hypothesis and is now dead. Nor is any
+quaternion normalised anywhere on this path.
+
+And separately, needing no oracle at all (the x2native battery): the recompiled
+`alignedMatrixMultiplySSE` is exact and the x87 `matrixMultiply` is within
+4.8e-7 of the reference on two rigid inputs, whose product must be rigid.
+
+## Where it must be, then
+
+Between `getMatrix` producing a correct bone matrix and
+`SetVertexShaderConstant` receiving a non-rigid one. That is the code that
+assembles the palette -- in libIGSg or libIGGfx, not libIGMath. Probe the
+writers of the constant block next; the harness takes a function name.
+
 ## Leads, none confirmed
 
 -  has 95 3DNow! instructions (PFMUL, PFADD) across 4
