@@ -45,9 +45,11 @@ _probe_stub_0:
     pushal
     sub $108, %esp
     fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
     push $0
     call _probe_leave
-    add $4, %esp
+    add $8, %esp
     frstor (%esp)
     add $108, %esp
     popal
@@ -79,9 +81,11 @@ _probe_stub_1:
     pushal
     sub $108, %esp
     fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
     push $1
     call _probe_leave
-    add $4, %esp
+    add $8, %esp
     frstor (%esp)
     add $108, %esp
     popal
@@ -110,9 +114,11 @@ _probe_stub_2:
     pushal
     sub $108, %esp
     fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
     push $2
     call _probe_leave
-    add $4, %esp
+    add $8, %esp
     frstor (%esp)
     add $108, %esp
     popal
@@ -142,9 +148,11 @@ _probe_stub_3:
     pushal
     sub $108, %esp
     fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
     push $3
     call _probe_leave
-    add $4, %esp
+    add $8, %esp
     frstor (%esp)
     add $108, %esp
     popal
@@ -175,9 +183,11 @@ _probe_stub_4:
     pushal
     sub $108, %esp
     fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
     push $4
     call _probe_leave
-    add $4, %esp
+    add $8, %esp
     frstor (%esp)
     add $108, %esp
     popal
@@ -208,9 +218,11 @@ _probe_stub_5:
     pushal
     sub $108, %esp
     fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
     push $5
     call _probe_leave
-    add $4, %esp
+    add $8, %esp
     frstor (%esp)
     add $108, %esp
     popal
@@ -240,9 +252,113 @@ _probe_stub_6:
     pushal
     sub $108, %esp
     fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
     push $6
     call _probe_leave
-    add $4, %esp
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret $4
+
+/* Gap::Sg::igActor::getBlendMatrix -- 4 argument byte(s), callee-cleaned */
+    .globl _probe_stub_7
+_probe_stub_7:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $7
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 8(%ebp)
+    call *(_probe_tramp + 28)
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $7
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret $4
+
+/* Gap::Sg::igActor::getBoneMatrix -- 4 argument byte(s), callee-cleaned */
+    .globl _probe_stub_8
+_probe_stub_8:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $8
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 8(%ebp)
+    call *(_probe_tramp + 32)
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $8
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret $4
+
+/* Gap::Sg::igAnimationCombiner::getBlendMatrix -- 4 argument byte(s), callee-cleaned */
+    .globl _probe_stub_9
+_probe_stub_9:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $9
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 8(%ebp)
+    call *(_probe_tramp + 36)
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $9
+    call _probe_leave
+    add $8, %esp
     frstor (%esp)
     add $108, %esp
     popal
@@ -261,8 +377,11 @@ _probe_stub_table:
     .long _probe_stub_4
     .long _probe_stub_5
     .long _probe_stub_6
+    .long _probe_stub_7
+    .long _probe_stub_8
+    .long _probe_stub_9
 
 /* Filled in by probe_hook.c when each trampoline is built. */
     .globl _probe_tramp
 _probe_tramp:
-    .space 28
+    .space 40

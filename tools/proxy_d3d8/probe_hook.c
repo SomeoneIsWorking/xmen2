@@ -39,7 +39,7 @@ extern void    *probe_stub_table[];
 extern void    *probe_tramp[];
 
 void probe_enter(int idx, pr_u32 ecx, pr_u32 args);
-void probe_leave(int idx);
+void probe_leave(int idx, pr_u32 eax);
 
 static ProbeSink g_sink;
 static int       g_ready;
@@ -133,7 +133,7 @@ void probe_enter(int idx, pr_u32 ecx, pr_u32 args)
     g_depth++;
 }
 
-void probe_leave(int idx)
+void probe_leave(int idx, pr_u32 eax)
 {
     unsigned char out[PROBE_MAX_RECORD];
     int nout;
@@ -142,9 +142,9 @@ void probe_leave(int idx)
     if (g_depth >= PENDING_N) return;             /* its enter was dropped */
     if (g_pending[g_depth].idx != idx) return;    /* mismatched; drop it */
     if (g_pending[g_depth].nin < 0) return;
-    nout = probe_capture(&g_probes[idx], PROBE_WHEN_OUT,
-                         g_pending[g_depth].ecx, g_pending[g_depth].args,
-                         out, sizeof out, &g_sink.unreadable);
+    nout = probe_capture2(&g_probes[idx], PROBE_WHEN_OUT,
+                          g_pending[g_depth].ecx, g_pending[g_depth].args,
+                          eax, out, sizeof out, &g_sink.unreadable);
     if (nout < 0) { g_sink.dropped++; return; }
     probe_emit(&g_sink, &g_probes[idx], g_seq[idx]++,
                g_pending[g_depth].in, g_pending[g_depth].nin, out, nout);

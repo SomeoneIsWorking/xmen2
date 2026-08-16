@@ -88,6 +88,17 @@ def load_manifest(path=SRC):
                              "not %r" % (p["name"], j, when))
             if at == "ecx":
                 src, off = "ECX", 0
+            elif at == "eax":
+                # The return value. Meaningless before the call, so an `in`
+                # field naming it would silently record whatever EAX happened
+                # to hold at entry.
+                if when != "out":
+                    raise Refuse(
+                        "gen_probes: %s field %d reads 'eax' with when=%r. EAX "
+                        "is the RETURN VALUE; before the call it holds "
+                        "whatever the caller left there, which is not an "
+                        "argument to anything." % (p["name"], j, when))
+                src, off = "EAX", 0
             elif isinstance(at, str) and at.startswith("arg") and at[3:].isdigit():
                 src, off = "STACK", int(at[3:]) * 4
             else:
@@ -357,9 +368,15 @@ def emit_stubs(probes):
         a("    pushal\n")
         a("    sub $108, %esp\n")
         a("    fnsave (%esp)\n")
+        # The return value, out of the frame pushal just saved: pushal writes
+        # EAX first, so it sits 28 bytes above the post-pushal esp, and the
+        # fnsave area adds another 108. Constants the assembler checks, which
+        # is the whole reason these stubs are generated per probe.
+        a("    mov 136(%esp), %eax\n")
+        a("    push %eax\n")
         a("    push $" + str(i) + "\n")
         a("    call _probe_leave\n")
-        a("    add $4, %esp\n")
+        a("    add $8, %esp\n")
         a("    frstor (%esp)\n")
         a("    add $108, %esp\n")
         a("    popal\n")

@@ -232,8 +232,8 @@ void oracle_probe_call(const Probe *p, void (*real)(CPU *), CPU *C)
     nin = probe_capture(p, PROBE_WHEN_IN, ecx, args, in, sizeof in,
                         &g_sink.unreadable);
     real(C);
-    nout = probe_capture(p, PROBE_WHEN_OUT, ecx, args, out, sizeof out,
-                         &g_sink.unreadable);
+    nout = probe_capture2(p, PROBE_WHEN_OUT, ecx, args, C->eax, out,
+                          sizeof out, &g_sink.unreadable);
     if (nin < 0 || nout < 0) {
         /* The manifest declares more bytes than a record can hold. Silence
            here would look like a function that was never called. */

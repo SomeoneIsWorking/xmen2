@@ -273,6 +273,8 @@ static void *heartbeat_thread(void *arg)
                 char pl[192];
                 oracle_probe_line(pl, sizeof pl);
                 fprintf(stderr, "[HB]           %s\n", pl);
+                d3d8_vsconst_caller_line(pl, sizeof pl);
+                fprintf(stderr, "[HB]           %s\n", pl);
             }
             {
                 static unsigned long p_unl, p_byt, p_rel, p_haz;

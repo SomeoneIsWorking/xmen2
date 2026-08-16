@@ -76,6 +76,28 @@ And separately, needing no oracle at all (the x2native battery): the recompiled
 `alignedMatrixMultiplySSE` is exact and the x87 `matrixMultiply` is within
 4.8e-7 of the reference on two rigid inputs, whose product must be rigid.
 
+## The call site that fills the block, named
+
+A census of the guest return address at `SetVertexShaderConstant` (it is on the
+stack the method is called with) plus a scan of the frames above it:
+
+    6093 call(s), ONE distinct call site, writing c[0..102]
+      libIGGfx  igDxVisualContext::setVertexShaderConstant_Dx
+      above     igDxVisualContext::updateVertexShaderConstants
+      above     igDxVisualContext::updateContextState
+      above     igDxVisualContext::drawIndexed
+      above     libIGAttrs igGeometryAttr1_5::apply
+      above     libIGAttrs igGeometrySetAttr::apply
+      above     libIGAttrs igDisplayListAttr::apply
+
+The frames above the first are a STACK SCAN, not an unwind -- a stale return
+address in a dead frame reads the same as a live one -- so they are leads.
+
+Probed and NEVER CALLED, across a full driven run: `igActor::getBlendMatrix`,
+`igActor::getBoneMatrix`, `igAnimationCombiner::getBlendMatrix`. The palette is
+not read through the accessors; the code that assembles it reaches the matrix
+arrays directly, or those accessors are inlined into it.
+
 ## Where it must be, then
 
 Between `getMatrix` producing a correct bone matrix and

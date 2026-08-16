@@ -68,6 +68,7 @@ typedef uint64_t pr_u64;
 
 #define PROBE_SRC_ECX   0     /* the this-pointer of a __thiscall */
 #define PROBE_SRC_STACK 1     /* a dword at <first argument> + off */
+#define PROBE_SRC_EAX   2     /* the RETURN VALUE; `out` fields only */
 
 #define PROBE_KIND_DWORD 0    /* record the dword itself */
 #define PROBE_KIND_DEREF 1    /* record `len` bytes AT the dword */
@@ -185,8 +186,9 @@ static void pr_put32(unsigned char *p, pr_u32 v)
  * truncate, because a short record and a differing record are indistinguishable
  * once they are in the file.
  */
-static int probe_capture(const Probe *p, int when, pr_u32 ecx, pr_u32 args,
-                         unsigned char *buf, unsigned cap, pr_u64 *unreadable)
+static int probe_capture2(const Probe *p, int when, pr_u32 ecx, pr_u32 args,
+                          pr_u32 eax, unsigned char *buf, unsigned cap,
+                          pr_u64 *unreadable)
 {
     unsigned n = 0;
     pr_u16 i;
@@ -195,7 +197,8 @@ static int probe_capture(const Probe *p, int when, pr_u32 ecx, pr_u32 args,
         pr_u32 dword;
         if (f->when != when) continue;
         if (n + f->len > cap) return -1;
-        dword = (f->src == PROBE_SRC_ECX) ? ecx : 0;
+        dword = (f->src == PROBE_SRC_ECX) ? ecx
+              : (f->src == PROBE_SRC_EAX) ? eax : 0;
         if (f->src == PROBE_SRC_STACK && !probe_read(args + f->off, &dword, 4)) {
             memset(buf + n, PROBE_UNREADABLE, f->len);
             if (unreadable) (*unreadable)++;
@@ -211,6 +214,13 @@ static int probe_capture(const Probe *p, int when, pr_u32 ecx, pr_u32 args,
         n += f->len;
     }
     return (int)n;
+}
+
+/* The common case: no return value involved. */
+static int probe_capture(const Probe *p, int when, pr_u32 ecx, pr_u32 args,
+                         unsigned char *buf, unsigned cap, pr_u64 *unreadable)
+{
+    return probe_capture2(p, when, ecx, args, 0, buf, cap, unreadable);
 }
 
 static int probe_sink_open(ProbeSink *s, const char *path, pr_u32 hash,

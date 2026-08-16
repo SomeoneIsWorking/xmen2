@@ -32,10 +32,30 @@
       "name": "Gap::Math::igQuaternionf::slerp",
       "why": "Spherical interpolation between animation keyframes. A slerp that loses normalisation is the shortest path from correct keyframes to a non-rigid bone matrix (issue #80).",
       "fields": [
-        { "at": "arg0", "read": "dword", "when": "in", "as": "t" },
-        { "at": "arg1", "read": 16, "when": "in", "as": "q1" },
-        { "at": "arg2", "read": 16, "when": "in", "as": "q2" },
-        { "at": "ecx",  "read": 16, "when": "out", "as": "result" }
+        {
+          "at": "arg0",
+          "read": "dword",
+          "when": "in",
+          "as": "t"
+        },
+        {
+          "at": "arg1",
+          "read": 16,
+          "when": "in",
+          "as": "q1"
+        },
+        {
+          "at": "arg2",
+          "read": 16,
+          "when": "in",
+          "as": "q2"
+        },
+        {
+          "at": "ecx",
+          "read": 16,
+          "when": "out",
+          "as": "result"
+        }
       ]
     },
     {
@@ -43,10 +63,30 @@
       "name": "Gap::Math::igQuaternionf::lerp",
       "why": "The cheap interpolation beside slerp; the engine picks between them, so both are on the animation path.",
       "fields": [
-        { "at": "arg0", "read": "dword", "when": "in", "as": "t" },
-        { "at": "arg1", "read": 16, "when": "in", "as": "q1" },
-        { "at": "arg2", "read": 16, "when": "in", "as": "q2" },
-        { "at": "ecx",  "read": 16, "when": "out", "as": "result" }
+        {
+          "at": "arg0",
+          "read": "dword",
+          "when": "in",
+          "as": "t"
+        },
+        {
+          "at": "arg1",
+          "read": 16,
+          "when": "in",
+          "as": "q1"
+        },
+        {
+          "at": "arg2",
+          "read": 16,
+          "when": "in",
+          "as": "q2"
+        },
+        {
+          "at": "ecx",
+          "read": 16,
+          "when": "out",
+          "as": "result"
+        }
       ]
     },
     {
@@ -54,8 +94,18 @@
       "name": "Gap::Math::igQuaternionf::normalize",
       "why": "In-place, and the one function whose whole job is the unit length the measured palette had lost. FDIVR against a memory operand: if the reversed divide were translated the wrong way round the quaternion would be scaled by its length instead of divided by it.",
       "fields": [
-        { "at": "ecx", "read": 16, "when": "in", "as": "before" },
-        { "at": "ecx", "read": 16, "when": "out", "as": "after" }
+        {
+          "at": "ecx",
+          "read": 16,
+          "when": "in",
+          "as": "before"
+        },
+        {
+          "at": "ecx",
+          "read": 16,
+          "when": "out",
+          "as": "after"
+        }
       ]
     },
     {
@@ -63,8 +113,18 @@
       "name": "Gap::Math::igQuaternionf::getMatrix",
       "why": "Quaternion to 4x4. Where a non-unit quaternion becomes the non-rigid matrix that constcmp.py measured, and also where a mistranslated FSUBR would put the diagonal 2(y^2+z^2)-1 instead of 1-2(y^2+z^2).",
       "fields": [
-        { "at": "ecx",  "read": 16, "when": "in", "as": "q" },
-        { "at": "arg0", "read": 64, "when": "out", "as": "matrix" }
+        {
+          "at": "ecx",
+          "read": 16,
+          "when": "in",
+          "as": "q"
+        },
+        {
+          "at": "arg0",
+          "read": 64,
+          "when": "out",
+          "as": "matrix"
+        }
       ]
     },
     {
@@ -72,9 +132,24 @@
       "name": "Gap::Math::igQuaternionf::multiply",
       "why": "Quaternion composition, used to concatenate joint rotations. Dense x87 with FSUBP and FADD ST0,ST1 over a deep stack.",
       "fields": [
-        { "at": "arg0", "read": 16, "when": "in", "as": "a" },
-        { "at": "arg1", "read": 16, "when": "in", "as": "b" },
-        { "at": "ecx",  "read": 16, "when": "out", "as": "result" }
+        {
+          "at": "arg0",
+          "read": 16,
+          "when": "in",
+          "as": "a"
+        },
+        {
+          "at": "arg1",
+          "read": 16,
+          "when": "in",
+          "as": "b"
+        },
+        {
+          "at": "ecx",
+          "read": 16,
+          "when": "out",
+          "as": "result"
+        }
       ]
     },
     {
@@ -82,9 +157,24 @@
       "name": "Gap::Math::igMatrix44f::multiplyAligned",
       "why": "The bone concatenation itself. Dispatches through the CPUID-selected pointer at 0x1008a3c8, so this also shows WHICH backend each side chose: two sides that disagree here disagree about that.",
       "fields": [
-        { "at": "arg0", "read": 64, "when": "in", "as": "a" },
-        { "at": "arg1", "read": 64, "when": "in", "as": "b" },
-        { "at": "ecx",  "read": 64, "when": "out", "as": "product" }
+        {
+          "at": "arg0",
+          "read": 64,
+          "when": "in",
+          "as": "a"
+        },
+        {
+          "at": "arg1",
+          "read": 64,
+          "when": "in",
+          "as": "b"
+        },
+        {
+          "at": "ecx",
+          "read": 64,
+          "when": "out",
+          "as": "product"
+        }
       ]
     },
     {
@@ -92,8 +182,75 @@
       "name": "Gap::Math::igMatrix44f::setQuaternion",
       "why": "The other quaternion-to-matrix entry point; the palette builder may use either.",
       "fields": [
-        { "at": "arg0", "read": 16, "when": "in", "as": "q" },
-        { "at": "ecx",  "read": 64, "when": "out", "as": "matrix" }
+        {
+          "at": "arg0",
+          "read": 16,
+          "when": "in",
+          "as": "q"
+        },
+        {
+          "at": "ecx",
+          "read": 64,
+          "when": "out",
+          "as": "matrix"
+        }
+      ]
+    },
+    {
+      "module": "libIGSg",
+      "name": "Gap::Sg::igActor::getBlendMatrix",
+      "why": "Returns a POINTER to one bone's blend matrix -- the palette's source. A bone matrix must be a rigid transform by mathematics, so this needs no oracle to judge: if what comes out here is already non-rigid, the defect is upstream of the palette assembly; if it is rigid, the assembly is what breaks it (issue #80).",
+      "fields": [
+        {
+          "at": "arg0",
+          "read": "dword",
+          "when": "in",
+          "as": "index"
+        },
+        {
+          "at": "eax",
+          "read": 64,
+          "when": "out",
+          "as": "matrix"
+        }
+      ]
+    },
+    {
+      "module": "libIGSg",
+      "name": "Gap::Sg::igActor::getBoneMatrix",
+      "why": "The other half of the pair -- the bone's own matrix rather than the blend matrix. Same rigidity argument.",
+      "fields": [
+        {
+          "at": "arg0",
+          "read": "dword",
+          "when": "in",
+          "as": "index"
+        },
+        {
+          "at": "eax",
+          "read": 64,
+          "when": "out",
+          "as": "matrix"
+        }
+      ]
+    },
+    {
+      "module": "libIGSg",
+      "name": "Gap::Sg::igAnimationCombiner::getBlendMatrix",
+      "why": "Where the animation combiner hands out a blended bone matrix, one level above the actor.",
+      "fields": [
+        {
+          "at": "arg0",
+          "read": "dword",
+          "when": "in",
+          "as": "index"
+        },
+        {
+          "at": "eax",
+          "read": 64,
+          "when": "out",
+          "as": "matrix"
+        }
       ]
     }
   ]

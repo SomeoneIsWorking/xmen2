@@ -30,6 +30,7 @@
 #include "gpu_draw.h"
 #include "win32_sdl.h"
 #include "x86rt_native.h"   /* naming a guest return address */
+#include "probe_rec.h"      /* probe_page_readable */
 
 #include "x86rt.h"
 
@@ -1249,6 +1250,132 @@ static void dev_DeleteVertexShader(D3D8Object *self, CPU *C)
     d3d8_ret(C, d3d8_vs_delete(h) ? D3D_OK : D3DERR_INVALIDCALL);
 }
 
+/*
+ * WHO fills the bone palette.
+ *
+ * The palette arrives here already non-rigid (issue #80), and the oracle
+ * probes have now cleared everything in libIGMath that could have produced it
+ * -- slerp and getMatrix agree with the real engine on six thousand distinct
+ * inputs, and the five concatenation entry points are never called at all. So
+ * the corruption happens in whatever assembles this block, and the fastest way
+ * to name that function is to ask the guest: its return address is sitting on
+ * the stack this method was called with.
+ *
+ * A census, not a log line per call -- there are tens of thousands of these
+ * per run. Distinct call sites only, with a count each, resolved to the
+ * function containing them. Printed AT ZERO with its denominator, because "no
+ * call site was identified" and "this never ran" must not look the same.
+ */
+#define VSC_SITES 16
+#define VSC_DEPTH 6
+static struct { uint32_t ret; unsigned long n; uint32_t lo, hi;
+                uint32_t up[VSC_DEPTH]; int nup; } g_vsc[VSC_SITES];
+static int g_nvsc;
+static unsigned long g_vsc_calls, g_vsc_overflow;
+
+/*
+ * Walk the guest stack for the callers above this one.
+ *
+ * setVertexShaderConstant_Dx turns out to be reached through a function
+ * pointer -- nothing in libIGGfx CALLs it directly and it is in no vtable this
+ * export knows about -- so the one return address on the stack names a thin
+ * wrapper and not the code that assembled the palette.
+ *
+ * This is a SCAN, not an unwind: the guest has no frame pointer to trust, so
+ * it reads words off the stack and keeps the ones that land inside a known
+ * function in a mapped module. That admits false positives -- a stale return
+ * address left in a dead frame looks exactly like a live one -- so the result
+ * is a lead to confirm, and the report says so rather than presenting it as a
+ * call chain. It is still the difference between a name and nothing.
+ */
+static void vsc_walk(CPU *C, uint32_t *out, int *nout)
+{
+    uint32_t sp;
+    int n = 0;
+    for (sp = C->esp + 4u; sp < C->esp + 4u + 512u && n < VSC_DEPTH; sp += 4u) {
+        const char *nm = NULL;
+        uint32_t w, ep;
+        /* Reuse the oracle recorder's page check rather than a second
+           copy of it -- the last duplicate of this logic silently made
+           every read fail (issue #80's capture). */
+        if (!probe_page_readable(sp & ~4095u)) break;
+        w = RD32(sp);
+        if (!x86_module_for(w)) continue;
+        ep = x86_native_entry_containing(w, &nm);
+        if (!ep || !nm) continue;
+        if (n && out[n - 1] == ep) continue;         /* same frame twice */
+        out[n++] = ep;
+    }
+    *nout = n;
+}
+
+static void vsc_note(uint32_t ret, uint32_t first, uint32_t count)
+{
+    int i;
+    g_vsc_calls++;
+    for (i = 0; i < g_nvsc; i++)
+        if (g_vsc[i].ret == ret) {
+            g_vsc[i].n++;
+            if (first < g_vsc[i].lo) g_vsc[i].lo = first;
+            if (first + count > g_vsc[i].hi) g_vsc[i].hi = first + count;
+            return;
+        }
+    if (g_nvsc == VSC_SITES) { g_vsc_overflow++; return; }
+    g_vsc[g_nvsc].ret = ret;
+    g_vsc[g_nvsc].n = 1;
+    g_vsc[g_nvsc].lo = first;
+    g_vsc[g_nvsc].hi = first + count;
+    g_nvsc++;
+}
+
+int d3d8_vsconst_caller_line(char *buf, int n)
+{
+    return snprintf(buf, (size_t)n,
+                    "SetVertexShaderConstant: %lu call(s) from %d distinct "
+                    "site(s)%s", g_vsc_calls, g_nvsc,
+                    g_vsc_overflow ? " (MORE than the census holds)" : "");
+}
+
+void d3d8_vsconst_caller_report(void)
+{
+    int i;
+    fprintf(stderr, "SetVertexShaderConstant: %lu call(s) from %d distinct "
+                    "call site(s) (census holds %d):\n",
+            g_vsc_calls, g_nvsc, VSC_SITES);
+    if (!g_nvsc)
+        fprintf(stderr, "  NONE. Either no shader constant was ever set, or "
+                        "the census never ran -- not that the callers are "
+                        "unknown.\n");
+    for (i = 0; i < g_nvsc; i++) {
+        const char *nm = NULL;
+        uint32_t ep = x86_native_entry_containing(g_vsc[i].ret, &nm);
+        X86Module *m = x86_module_for(g_vsc[i].ret);
+        int k;
+        fprintf(stderr, "  ret 0x%08x  %10lu call(s)  c[%u..%u]  %s%s+0x%x  %s\n",
+                g_vsc[i].ret, g_vsc[i].n, g_vsc[i].lo, g_vsc[i].hi,
+                m ? m->name : "?", m ? "!" : "",
+                m ? (unsigned)(ep - *m->base) : 0u, nm ? nm : "(unnamed)");
+        if (!g_vsc[i].nup)
+            fprintf(stderr, "      (no caller above it was identified on the "
+                            "stack -- not that there is none)\n");
+        for (k = 0; k < g_vsc[i].nup; k++) {
+            const char *un = NULL;
+            X86Module *um = x86_module_for(g_vsc[i].up[k]);
+            x86_native_entry_containing(g_vsc[i].up[k], &un);
+            fprintf(stderr, "      above [%d] %s+0x%x  %s\n", k,
+                    um ? um->name : "?",
+                    um ? (unsigned)(g_vsc[i].up[k] - *um->base) : 0u,
+                    un ? un : "(unnamed)");
+        }
+        fprintf(stderr, "      ^ a STACK SCAN, not an unwind: a stale return "
+                        "address in a dead frame reads the same as a live "
+                        "one. Leads to confirm, not a call chain.\n");
+    }
+    if (g_vsc_overflow)
+        fprintf(stderr, "  and %lu call(s) from sites past the census.\n",
+                g_vsc_overflow);
+}
+
 static void dev_SetVertexShaderConstant(D3D8Object *self, CPU *C)
 {
     uint32_t first = d3d8_arg(C, 0), count = d3d8_arg(C, 2);
@@ -1258,6 +1385,11 @@ static void dev_SetVertexShaderConstant(D3D8Object *self, CPU *C)
             || count > D3D8_MAX_VS_CONSTANTS - first) {
         d3d8_ret(C, D3DERR_INVALIDCALL); return;
     }
+    /* RD32(C->esp) is the guest return address: this method has not popped
+       anything yet, so it is the word the CALL pushed. */
+    vsc_note(RD32(C->esp), first, count);
+    if (g_nvsc && !g_vsc[g_nvsc - 1].nup)
+        vsc_walk(C, g_vsc[g_nvsc - 1].up, &g_vsc[g_nvsc - 1].nup);
     memcpy(g_dev.state.vertex_shader_constant[first], data,
            count * 4u * sizeof(float));
     d3d8_ret(C, D3D_OK);

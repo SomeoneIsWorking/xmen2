@@ -7,4 +7,7 @@ set(RECOMP_PROBE_WRAPS
     -Wl,--wrap=fn_libIGMath_1001db20
     -Wl,--wrap=fn_libIGMath_10008a60
     -Wl,--wrap=fn_libIGMath_1001a7f0
+    -Wl,--wrap=fn_libIGSg_100184b0
+    -Wl,--wrap=fn_libIGSg_10018470
+    -Wl,--wrap=fn_libIGSg_10016370
 )

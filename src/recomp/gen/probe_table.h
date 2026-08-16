@@ -8,8 +8,8 @@
 
 #include "probe_rec.h"
 
-#define PROBE_MANIFEST_HASH 0x6643a0bbu
-#define PROBE_COUNT 7
+#define PROBE_MANIFEST_HASH 0xa1f89473u
+#define PROBE_COUNT 10
 
 /* Gap::Math::igQuaternionf::slerp
    Spherical interpolation between animation keyframes. A slerp that loses normalisation is the shortest path from correct keyframes to a non-rigid bone matrix (issue #80). */
@@ -73,6 +73,30 @@ static const ProbeField pf_1001a7f0[] = {
 };
 static const pr_u8 pe_1001a7f0[] = { 0x83, 0xec, 0x1c, 0x8b, 0x44, 0x24, 0x20 };
 
+/* Gap::Sg::igActor::getBlendMatrix
+   Returns a POINTER to one bone's blend matrix -- the palette's source. A bone matrix must be a rigid transform by mathematics, so this needs no oracle to judge: if what comes out here is already non-rigid, the defect is upstream of the palette assembly; if it is rigid, the assembly is what breaks it (issue #80). */
+static const ProbeField pf_100184b0[] = {
+    { PROBE_WHEN_IN, PROBE_SRC_STACK, PROBE_KIND_DWORD, 0, 0, 4, "index" },
+    { PROBE_WHEN_OUT, PROBE_SRC_EAX, PROBE_KIND_DEREF, 0, 0, 64, "matrix" },
+};
+static const pr_u8 pe_100184b0[] = { 0x8a, 0x41, 0x79, 0x84, 0xc0 };
+
+/* Gap::Sg::igActor::getBoneMatrix
+   The other half of the pair -- the bone's own matrix rather than the blend matrix. Same rigidity argument. */
+static const ProbeField pf_10018470[] = {
+    { PROBE_WHEN_IN, PROBE_SRC_STACK, PROBE_KIND_DWORD, 0, 0, 4, "index" },
+    { PROBE_WHEN_OUT, PROBE_SRC_EAX, PROBE_KIND_DEREF, 0, 0, 64, "matrix" },
+};
+static const pr_u8 pe_10018470[] = { 0x8a, 0x41, 0x79, 0x84, 0xc0 };
+
+/* Gap::Sg::igAnimationCombiner::getBlendMatrix
+   Where the animation combiner hands out a blended bone matrix, one level above the actor. */
+static const ProbeField pf_10016370[] = {
+    { PROBE_WHEN_IN, PROBE_SRC_STACK, PROBE_KIND_DWORD, 0, 0, 4, "index" },
+    { PROBE_WHEN_OUT, PROBE_SRC_EAX, PROBE_KIND_DEREF, 0, 0, 64, "matrix" },
+};
+static const pr_u8 pe_10016370[] = { 0x8b, 0x44, 0x24, 0x04, 0x8b, 0x51, 0x58 };
+
 static const Probe g_probes[PROBE_COUNT] = {
     { 0, "Gap::Math::igQuaternionf::slerp", "libIGMath", 0x1001d730u, 7, 4, pf_1001d730, pe_1001d730 },
     { 1, "Gap::Math::igQuaternionf::lerp", "libIGMath", 0x1001da00u, 7, 4, pf_1001da00, pe_1001da00 },
@@ -81,11 +105,14 @@ static const Probe g_probes[PROBE_COUNT] = {
     { 4, "Gap::Math::igQuaternionf::multiply", "libIGMath", 0x1001db20u, 7, 3, pf_1001db20, pe_1001db20 },
     { 5, "Gap::Math::igMatrix44f::multiplyAligned", "libIGMath", 0x10008a60u, 8, 3, pf_10008a60, pe_10008a60 },
     { 6, "Gap::Math::igMatrix44f::setQuaternion", "libIGMath", 0x1001a7f0u, 7, 2, pf_1001a7f0, pe_1001a7f0 },
+    { 7, "Gap::Sg::igActor::getBlendMatrix", "libIGSg", 0x100184b0u, 5, 2, pf_100184b0, pe_100184b0 },
+    { 8, "Gap::Sg::igActor::getBoneMatrix", "libIGSg", 0x10018470u, 5, 2, pf_10018470, pe_10018470 },
+    { 9, "Gap::Sg::igAnimationCombiner::getBlendMatrix", "libIGSg", 0x10016370u, 7, 2, pf_10016370, pe_10016370 },
 };
 
 /* Frame shape, for the stock-side stub only: how many bytes of
    arguments to re-push, and who cleans them. */
-static const pr_u16 g_probe_argbytes[PROBE_COUNT] = { 12, 12, 0, 4, 8, 8, 4 };
-static const pr_u8 g_probe_callee_cleans[PROBE_COUNT] = { 1, 1, 0, 1, 1, 1, 1 };
+static const pr_u16 g_probe_argbytes[PROBE_COUNT] = { 12, 12, 0, 4, 8, 8, 4, 4, 4, 4 };
+static const pr_u8 g_probe_callee_cleans[PROBE_COUNT] = { 1, 1, 0, 1, 1, 1, 1, 1, 1, 1 };
 
 #endif /* PROBE_TABLE_H */

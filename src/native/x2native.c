@@ -450,6 +450,8 @@ void x2_interrupt_reports(int killed)
        actually exercised, and a capture whose probes all read zero must be
        visible here rather than discovered at the comparison. */
     { extern void oracle_probe_report(void); oracle_probe_report(); }
+    { extern void d3d8_vsconst_caller_report(void);
+      d3d8_vsconst_caller_report(); }
     x86_epcount_report();
     fflush(stdout);
     if (killed)

@@ -43,4 +43,10 @@ void d3d8_device_report(void);
 int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
                        unsigned long *clears, unsigned long *draws);
 
+/* Which guest function(s) fill the vertex-shader constants -- the bone palette
+   (issue #80). A census of distinct call sites, printed with its denominator:
+   "no call site identified" and "this never ran" are different findings. */
+int  d3d8_vsconst_caller_line(char *buf, int n);
+void d3d8_vsconst_caller_report(void);
+
 #endif /* D3D8_DEVICE_H */
