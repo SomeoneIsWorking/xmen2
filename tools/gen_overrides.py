@@ -161,6 +161,25 @@ def main(argv):
     for mod, ep, sym, rv in ovr:
         by_mod.setdefault(mod, []).append(ep)
 
+    # Oracle probes need the SAME isolation, for the same reason: their hooks
+    # are also ld --wrap, and a probed function sharing a chunk with its caller
+    # is bound at compile time and never records. Read from tools/probes.json
+    # here rather than written by gen_probes.py, so exactly ONE program writes
+    # the isolate files and the two sets cannot overwrite each other.
+    n_probe = 0
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import gen_probes
+        for mod, ep in gen_probes.isolate_eps():
+            if ep not in by_mod.setdefault(mod, []):
+                by_mod[mod].append(ep)
+                n_probe += 1
+    except ImportError:
+        print("gen_overrides: tools/gen_probes.py is missing, so NO probe was "
+              "isolated. Any declared probe will link and never fire.",
+              file=sys.stderr)
+        return 2
+
     cmake = render_cmake(ovr)
     stale = []
 
@@ -195,6 +214,10 @@ def main(argv):
         print("gen_overrides: generated wiring is up to date (%d override(s))"
               % len(ovr))
         return 0
+
+    if n_probe:
+        print("gen_overrides: %d oracle probe(s) from tools/probes.json were "
+              "isolated alongside the override(s)." % n_probe)
 
     if not ovr:
         print("gen_overrides: NO overrides are declared. Wrote an empty "

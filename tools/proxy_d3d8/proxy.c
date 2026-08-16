@@ -592,6 +592,12 @@ static HRESULT WINAPI dev_DrawPrimitive(struct wrap *w, DWORD type,
                                                      prims);
 }
 
+/* The oracle probes (probe_hook.c): guest functions recorded on both sides. */
+void probe_hook_install(const char *logdir);
+void probe_hook_tick(void);
+void probe_hook_report_counts(void);
+static unsigned g_probe_frames;
+
 /* IDirect3DDevice8::Present (slot 15) -- the frame boundary, and where F9 is
    polled. One press dumps exactly one frame. */
 static HRESULT WINAPI dev_Present(struct wrap *w, const void *a, const void *b,
@@ -602,6 +608,12 @@ static HRESULT WINAPI dev_Present(struct wrap *w, const void *a, const void *b,
     if (g_obj_frame_open) { obj_close(); vsconst_write(); }
     else if (g_obj_armed) { g_obj_armed = 0; obj_open(); }
     if (GetAsyncKeyState(VK_F9_KEY) & 0x8000) g_obj_armed = 1;
+    /* The probe stream is flushed here, and its per-probe counts reprinted
+       every so often, because this process is always ended by a kill: a
+       report written only at DLL_PROCESS_DETACH would be missing exactly when
+       the capture matters. */
+    probe_hook_tick();
+    if ((++g_probe_frames % 600u) == 0u) probe_hook_report_counts();
     return ((fn_t)w->real_vtbl[SLOT_PRESENT])(w->real, a, b, c, d);
 }
 
@@ -727,6 +739,11 @@ static void *wrap_d3d8(void *real) {
    to d3d8_real). */
 void *WINAPI Direct3DCreate8(UINT sdkver) {
     log_open();
+    /* By now the engine has loaded libIGMath, so the oracle probes can be
+       placed. Doing it at DLL_PROCESS_ATTACH would be too early: this DLL is
+       loaded as d3d8 before the engine's own modules, and every probe would
+       be skipped for "module not loaded". */
+    probe_hook_install(".");
     Direct3DCreate8_t real = get_real_create8();
     if (!real) {
         plog("DIRECT3DCREATE8 t=%lu sdk=%u ok=%p REAL-DLL-UNAVAILABLE",
@@ -743,6 +760,7 @@ void *WINAPI Direct3DCreate8(UINT sdkver) {
 
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, void *reserved) {
     (void)reserved;
+    if (reason == DLL_PROCESS_DETACH) probe_hook_report_counts();
     if (reason == DLL_PROCESS_ATTACH) {
         g_self = hinst;
         log_open();

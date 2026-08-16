@@ -36,6 +36,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/wait.h>
@@ -1101,6 +1102,185 @@ static void case_import_abi(void)
  */
 extern uint32_t g_imgbase_libIGCore;
 
+/* ---- the engine's 4x4 matrix multiply ----------------------------------
+ *
+ * Every animated character's bone palette is built by concatenating parent
+ * transforms through igMatrix44f::multiplyAligned, and issue #80 measured the
+ * palette arriving at the renderer NON-RIGID: 6 of 32 bones were rotations in
+ * the port where 32 of 32 were in the stock game. A matrix whose rows are not
+ * unit length is not a rotation, so that is a defect and not two runs sitting
+ * on different animation frames.
+ *
+ * multiplyAligned does not call a multiply directly. It calls through a
+ * function pointer at 0x1008a3c8 that FUN_10018e30 fills in from
+ * igGetCPUCaps -- 3DNow!, SSE, or the x87 fallback -- so which code actually
+ * runs is a run-time fact, and this case prints it BY NAME rather than
+ * assuming. The 3DNow! body is deliberately never called: its PFMUL/PFADD are
+ * untranslatable and abort by name, which is the correct behaviour and not
+ * something to trip here.
+ *
+ * tests/test_sse.c already checks the SSE MODEL against the host's own SSE.
+ * That is a different question from this one. This calls the EMITTED
+ * TRANSLATION of the real function, so it also covers what recomp.py made of
+ * these specific encodings -- SHUFPS with an immediate, MULPS against a memory
+ * operand, MOVAPS to and from guest memory.
+ *
+ * The inputs are two rigid transforms, so the answer is known independently of
+ * any backend: the product must be rigid too. That is the property that failed
+ * in the game, checked here where it needs no game, no Wine and no oracle.
+ */
+extern uint32_t g_imgbase_libIGMath;
+
+#define IGM_SSE      0x100192a0u        /* alignedMatrixMultiplySSE */
+#define IGM_X87      0x100193a0u        /* matrixMultiply, the fallback */
+#define IGM_3DNOW    0x100190d0u        /* alignedMatrixMultiply3dNow */
+#define IGM_BACKEND  0x1008a3c8u        /* the pointer FUN_10018e30 fills in */
+#define IGM(a)       (g_imgbase_libIGMath + ((a) - 0x10000000u))
+
+/* Row-vector convention, as the SSE body's own shape shows: it broadcasts
+   A[i][k] and scales B's row k, so dst[i][j] = sum_k A[i][k] * B[k][j]. */
+static void mat_ref(float d[16], const float a[16], const float b[16])
+{
+    int i, j, k;
+    for (i = 0; i < 4; i++)
+        for (j = 0; j < 4; j++) {
+            float s = 0.0f;
+            for (k = 0; k < 4; k++) s += a[i * 4 + k] * b[k * 4 + j];
+            d[i * 4 + j] = s;
+        }
+}
+
+/* A rotation about `axis` by `ang`, with a translation in row 3. */
+static void mat_rigid(float m[16], int axis, float ang, float tx, float ty, float tz)
+{
+    float c = cosf(ang), s = sinf(ang);
+    int i;
+    for (i = 0; i < 16; i++) m[i] = (i % 5) == 0 ? 1.0f : 0.0f;
+    if (axis == 0) { m[5] = c; m[6] = s; m[9] = -s; m[10] = c; }
+    if (axis == 1) { m[0] = c; m[2] = -s; m[8] = s;  m[10] = c; }
+    if (axis == 2) { m[0] = c; m[1] = s; m[4] = -s; m[5] = c; }
+    m[12] = tx; m[13] = ty; m[14] = tz;
+}
+
+/* The worst row-length error over the three basis rows. Zero for a rotation. */
+static float mat_row_error(const float m[16])
+{
+    float worst = 0.0f;
+    int i;
+    for (i = 0; i < 3; i++) {
+        float l = sqrtf(m[i * 4] * m[i * 4] + m[i * 4 + 1] * m[i * 4 + 1] +
+                        m[i * 4 + 2] * m[i * 4 + 2]);
+        float e = fabsf(l - 1.0f);
+        if (e > worst) worst = e;
+    }
+    return worst;
+}
+
+static void case_matrix_multiply(void)
+{
+    /* Three 16-byte-aligned matrices; SCRATCH is page-aligned, so these are
+       too, which MOVAPS requires on real silicon. */
+    const uint32_t gA = SCRATCH + 0x300u, gB = SCRATCH + 0x340u,
+                   gD = SCRATCH + 0x380u;
+    float A[16], B[16], want[16];
+    uint32_t args[3], backend;
+    const char *nm;
+    int pass;
+
+    printf("  libIGMath igMatrix44f 4x4 multiply (issue #80: the bone palette)\n");
+
+    if (g_imgbase_libIGMath == 0) {
+        printf("    REFUSED  libIGMath is not mapped, so NOTHING below ran.\n"
+               "             This case tests nothing without it; that is a\n"
+               "             build that omitted the module, not a pass.\n");
+        fails++; checks++;
+        return;
+    }
+
+    /* Which body the engine actually installed. Printed unconditionally: an
+       unexpected backend is the single most useful thing this case can say. */
+    backend = gr32(IGM(IGM_BACKEND));
+    nm = backend ? x86_native_name_at(backend) : NULL;
+    printf("    backend pointer [0x1008a3c8] = 0x%08x  %s\n",
+           backend, nm ? nm : "(no body at that address)");
+    if (backend == IGM(IGM_3DNOW))
+        printf("      ^ the 3DNow! body. Its PFMUL/PFADD are untranslatable,\n"
+               "        so reaching it aborts by name -- see issue #80.\n");
+
+    mat_rigid(A, 0, 0.7f,  1.0f,  2.0f,  3.0f);
+    mat_rigid(B, 1, 1.3f, -4.0f,  5.0f, -6.0f);
+    mat_ref(want, A, B);
+
+    memcpy((void *)(uintptr_t)gA, A, sizeof A);
+    memcpy((void *)(uintptr_t)gB, B, sizeof B);
+
+    /* Both inputs are rigid, so the reference product is too. Check that here:
+       if this ever fails the reference is wrong and every verdict below is
+       meaningless, which must not be reported as a backend defect.
+       Kept out of the skipped-body control on purpose: it does not depend on
+       any body running, so skipping bodies could not falsify it. */
+    if (!skip_body)
+        check("reference product of two rigid inputs is rigid",
+              mat_row_error(want) < 1e-5f, 1u);
+
+    /* Each backend that has a body, called through the real dispatcher.
+       cdecl: void f(Matrix *dst, const Matrix *a, const Matrix *b). */
+    {
+        static const struct { uint32_t ep; const char *name; } BODY[] = {
+            { IGM_SSE, "alignedMatrixMultiplySSE" },
+            { IGM_X87, "matrixMultiply (x87 fallback)" },
+        };
+        size_t i;
+        for (i = 0; i < sizeof BODY / sizeof BODY[0]; i++) {
+            CPU C;
+            float got[16];
+            float worst = 0.0f;
+            char lbl[96];
+            int j;
+
+            /* Poison the destination, so "the body never ran" cannot read as
+               agreement with the reference. */
+            memset((void *)(uintptr_t)gD, 0x5A, 64);
+
+            args[0] = gD; args[1] = gA; args[2] = gB;
+            frame(&C, args, 3);
+            if (skip_body) {
+                /* the negative control: leave the poison in place */
+            } else if (!x86_native_call_at(IGM(BODY[i].ep), &C)) {
+                snprintf(lbl, sizeof lbl, "%s is in the table", BODY[i].name);
+                check(lbl, 0u, 1u);
+                continue;
+            }
+            memcpy(got, (const void *)(uintptr_t)gD, sizeof got);
+
+            for (j = 0; j < 16; j++) {
+                float e = fabsf(got[j] - want[j]);
+                if (e > worst) worst = e;
+            }
+            pass = worst < 1e-4f;
+            snprintf(lbl, sizeof lbl, "%s == reference", BODY[i].name);
+            check(lbl, (uint32_t)pass, 1u);
+            printf("      worst |got-want| over 16 element(s): %g\n",
+                   (double)worst);
+            snprintf(lbl, sizeof lbl, "%s product is rigid", BODY[i].name);
+            check(lbl, mat_row_error(got) < 1e-4f, 1u);
+            printf("      row lengths %.6f %.6f %.6f  (all 1.0 for a rotation)\n",
+                   (double)sqrtf(got[0]*got[0] + got[1]*got[1] + got[2]*got[2]),
+                   (double)sqrtf(got[4]*got[4] + got[5]*got[5] + got[6]*got[6]),
+                   (double)sqrtf(got[8]*got[8] + got[9]*got[9] + got[10]*got[10]));
+            if (!pass) {
+                printf("      got  ");
+                for (j = 0; j < 16; j++) printf("%9.5f%s", (double)got[j],
+                                                (j % 4) == 3 ? "\n           " : " ");
+                printf("\n      want ");
+                for (j = 0; j < 16; j++) printf("%9.5f%s", (double)want[j],
+                                                (j % 4) == 3 ? "\n           " : " ");
+                printf("\n");
+            }
+        }
+    }
+}
+
 static void case_cross_module(void)
 {
     CPU C;
@@ -1704,6 +1884,7 @@ static int run_battery(void)
         case_findmouse();
         case_arkinit();
         case_import_abi();
+        case_matrix_multiply();
         skip_body = 0;
         if (fails - before == checks) {
             printf("\n  SELFTEST passed: all %d checks failed with the bodies\n"
@@ -1736,6 +1917,7 @@ static int run_battery(void)
     case_dynamic_cast();
     case_qsort();
     case_find_file();
+    case_matrix_multiply();
     case_cross_module();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"
@@ -1817,6 +1999,10 @@ int main(int argc, char **argv)
         return report_box_selftest();
     }
     /* The fault reporter, proved by faulting -- no install, no engine. */
+    if (options.probe_selftest) {
+        extern int oracle_probe_selftest(void);
+        return oracle_probe_selftest();
+    }
     if (options.fault_selftest) return fault_selftest();
     if (vkselftest) {
         extern int gpu_device_selftest(void);
@@ -1906,6 +2092,13 @@ int main(int argc, char **argv)
     if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x20000000u) != 0)
         return 1;
     atexit(guest_heap_report);
+    /* The oracle probe stream. An atexit like every other report here -- and
+       like them it may be cut short by the kill that ends every run, which is
+       why the stream is flushed as it is written and the live count is in the
+       heartbeat. */
+    { extern void oracle_probe_arm(void);
+      extern void oracle_probe_report(void);
+      oracle_probe_arm(); atexit(oracle_probe_report); }
     { extern void dinput_report(void); atexit(dinput_report); }
     { extern void dinput8_install(void), dinput8_report(void);
       dinput8_install(); atexit(dinput8_report); }

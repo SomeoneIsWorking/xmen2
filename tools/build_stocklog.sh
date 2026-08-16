@@ -84,9 +84,26 @@ OWN=$(grep -c '^  Direct3DCreate8 = Direct3DCreate8@4$' "$DEF")
   exit 2; }
 echo "build_stocklog: $FWD export(s) forwarded to d3d8_real, Direct3DCreate8 implemented"
 
+# ---- the oracle probes -----------------------------------------------------
+#
+# Generated from tools/probes.json. Regenerated here rather than assumed
+# current: a proxy built against a stale table would record fields at the wrong
+# offsets and the stream would carry a manifest hash that oraclediff.py then
+# refuses -- correct, but a slow way to find out.
+python3 "$ROOT/tools/gen_probes.py" >/dev/null || {
+  echo "build_stocklog: tools/gen_probes.py FAILED; built NOTHING" >&2; exit 1; }
+GENDIR=$ROOT/src/recomp/gen
+for f in probe_table.h probe_stubs.S; do
+  [ -f "$GENDIR/$f" ] || {
+    echo "build_stocklog: $GENDIR/$f was not generated; built NOTHING" >&2
+    exit 1; }
+done
+
 # ---- compile ---------------------------------------------------------------
 "$CC" -shared -O2 -Wall -Wextra -o "$OUT" \
-    "$SRC/proxy.c" "$SRC/fwd.S" "$DEF" \
+    -I"$ROOT/src/oracle" -I"$GENDIR" \
+    "$SRC/proxy.c" "$SRC/fwd.S" "$SRC/probe_hook.c" "$GENDIR/probe_stubs.S" \
+    "$DEF" \
     -static-libgcc || { echo "build_stocklog: compile FAILED" >&2; exit 1; }
 
 # The proxy is worthless if it does not export what the game imports; and a

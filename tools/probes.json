@@ -1,0 +1,100 @@
+{
+  "_comment": [
+    "Oracle probes: guest functions recorded on BOTH sides and diffed.",
+    "",
+    "This is the ONE place a probe is declared. tools/gen_probes.py turns it",
+    "into every consumer -- the shared C table, the port's __wrap_ hooks, the",
+    "link flags that make those hooks fire, and the --isolate entries without",
+    "which ld --wrap binds at compile time and silently never fires (the same",
+    "trap src/native/overrides.json documents).",
+    "",
+    "A probe names a function by its QUALIFIED name, not an address. The",
+    "generator resolves it against scratch/recomp/<module>.json and refuses if",
+    "the name is absent or ambiguous, so a probe cannot quietly point at the",
+    "wrong code after a re-export.",
+    "",
+    "Fields:",
+    "  at    'ecx'        the __thiscall this-pointer",
+    "        'arg<N>'     the Nth stack argument at entry, counting from 0",
+    "  read  'dword'      record the value itself",
+    "        <n>          record n bytes AT that address",
+    "  when  'in'         captured before the call (arguments)",
+    "        'out'        captured after it (what the function wrote), using",
+    "                     the ENTRY value of ecx/esp, so a clobbered register",
+    "                     does not move the field",
+    "",
+    "Sizes are the guest's: igQuaternionf is 16 bytes (x,y,z,w) and",
+    "igMatrix44f is 64 (four rows of four floats)."
+  ],
+  "probes": [
+    {
+      "module": "libIGMath",
+      "name": "Gap::Math::igQuaternionf::slerp",
+      "why": "Spherical interpolation between animation keyframes. A slerp that loses normalisation is the shortest path from correct keyframes to a non-rigid bone matrix (issue #80).",
+      "fields": [
+        { "at": "arg0", "read": "dword", "when": "in", "as": "t" },
+        { "at": "arg1", "read": 16, "when": "in", "as": "q1" },
+        { "at": "arg2", "read": 16, "when": "in", "as": "q2" },
+        { "at": "ecx",  "read": 16, "when": "out", "as": "result" }
+      ]
+    },
+    {
+      "module": "libIGMath",
+      "name": "Gap::Math::igQuaternionf::lerp",
+      "why": "The cheap interpolation beside slerp; the engine picks between them, so both are on the animation path.",
+      "fields": [
+        { "at": "arg0", "read": "dword", "when": "in", "as": "t" },
+        { "at": "arg1", "read": 16, "when": "in", "as": "q1" },
+        { "at": "arg2", "read": 16, "when": "in", "as": "q2" },
+        { "at": "ecx",  "read": 16, "when": "out", "as": "result" }
+      ]
+    },
+    {
+      "module": "libIGMath",
+      "name": "Gap::Math::igQuaternionf::normalize",
+      "why": "In-place, and the one function whose whole job is the unit length the measured palette had lost. FDIVR against a memory operand: if the reversed divide were translated the wrong way round the quaternion would be scaled by its length instead of divided by it.",
+      "fields": [
+        { "at": "ecx", "read": 16, "when": "in", "as": "before" },
+        { "at": "ecx", "read": 16, "when": "out", "as": "after" }
+      ]
+    },
+    {
+      "module": "libIGMath",
+      "name": "Gap::Math::igQuaternionf::getMatrix",
+      "why": "Quaternion to 4x4. Where a non-unit quaternion becomes the non-rigid matrix that constcmp.py measured, and also where a mistranslated FSUBR would put the diagonal 2(y^2+z^2)-1 instead of 1-2(y^2+z^2).",
+      "fields": [
+        { "at": "ecx",  "read": 16, "when": "in", "as": "q" },
+        { "at": "arg0", "read": 64, "when": "out", "as": "matrix" }
+      ]
+    },
+    {
+      "module": "libIGMath",
+      "name": "Gap::Math::igQuaternionf::multiply",
+      "why": "Quaternion composition, used to concatenate joint rotations. Dense x87 with FSUBP and FADD ST0,ST1 over a deep stack.",
+      "fields": [
+        { "at": "arg0", "read": 16, "when": "in", "as": "a" },
+        { "at": "arg1", "read": 16, "when": "in", "as": "b" },
+        { "at": "ecx",  "read": 16, "when": "out", "as": "result" }
+      ]
+    },
+    {
+      "module": "libIGMath",
+      "name": "Gap::Math::igMatrix44f::multiplyAligned",
+      "why": "The bone concatenation itself. Dispatches through the CPUID-selected pointer at 0x1008a3c8, so this also shows WHICH backend each side chose: two sides that disagree here disagree about that.",
+      "fields": [
+        { "at": "arg0", "read": 64, "when": "in", "as": "a" },
+        { "at": "arg1", "read": 64, "when": "in", "as": "b" },
+        { "at": "ecx",  "read": 64, "when": "out", "as": "product" }
+      ]
+    },
+    {
+      "module": "libIGMath",
+      "name": "Gap::Math::igMatrix44f::setQuaternion",
+      "why": "The other quaternion-to-matrix entry point; the palette builder may use either.",
+      "fields": [
+        { "at": "arg0", "read": 16, "when": "in", "as": "q" },
+        { "at": "ecx",  "read": 64, "when": "out", "as": "matrix" }
+      ]
+    }
+  ]
+}

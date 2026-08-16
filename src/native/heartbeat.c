@@ -1,6 +1,7 @@
 /* See heartbeat.h. */
 #include "threads.h"
 #include "heartbeat.h"
+#include "oracle_trace.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -263,6 +264,15 @@ static void *heartbeat_thread(void *arg)
                 char vsl[256];
                 d3d8_vertex_shader_binding_line(vsl, sizeof vsl);
                 fprintf(stderr, "[HB]           %s\n", vsl);
+            }
+            /* The oracle probes. Live, and printed whether armed or not: a
+               capture that recorded nothing must be visible DURING the run,
+               not discovered afterwards when the stream is compared and its
+               emptiness reads as agreement. */
+            {
+                char pl[192];
+                oracle_probe_line(pl, sizeof pl);
+                fprintf(stderr, "[HB]           %s\n", pl);
             }
             {
                 static unsigned long p_unl, p_byt, p_rel, p_haz;
