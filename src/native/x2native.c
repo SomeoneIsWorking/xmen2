@@ -2292,6 +2292,8 @@ int main(int argc, char **argv)
             heartbeat_start();
             x86_args_build_check();
             guest_quantum_from_env();
+            { extern void x86_hotep_arm(const char *);
+              x86_hotep_arm(getenv("X2_HOTEP")); }
             dinput_script_start();
             { extern void dinput_pad_virtual_from_env(void);
               dinput_pad_virtual_from_env(); }

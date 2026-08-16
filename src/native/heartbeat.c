@@ -154,6 +154,89 @@ static void *heartbeat_thread(void *arg)
             p_q = q;
         }
 
+        {
+            /* The raw per-import probe, read over the same interval as the
+               crossings delta: WHICH host imports did that interval hammer.
+               The ring collapses tight loops, so it could not say; these
+               counters count every call and name the import. Fresh snapshot
+               once, then per-interval deltas. */
+            static unsigned long *snap;
+            static const char *mods[5], *syms[5];
+            static unsigned long hits[5];
+            unsigned int i, n;
+            extern unsigned int x86_thunk_count(void);
+            extern unsigned int x86_thunk_crossings_sorted(
+                unsigned long *, const char **, const char **,
+                unsigned long *, unsigned int);
+            if (!snap) {
+                snap = calloc(x86_thunk_count(), sizeof *snap);
+                if (!snap) {
+                    fprintf(stderr, "[HB] thunk probe: calloc failed, "
+                                    "disabling the import probe\n");
+                    goto thunk_probe_disabled;
+                }
+            }
+            n = x86_thunk_crossings_sorted(snap, mods, syms, hits, 5);
+            for (i = 0; i < n; i++)
+                fprintf(stderr, "[HB]           import %s!%s: %lu call(s)\n",
+                        mods[i] ? mods[i] : "?", syms[i] ? syms[i] : "?",
+                        hits[i]);
+        thunk_probe_disabled:
+            ;
+        }
+        {
+            /* The hot guest bodies, decoded from raw dispatch counts. Armed by
+               X2_HOTEP=<n>; unarmed, this prints nothing -- a deliberate
+               silence, not a missing line, because the probe has zero meaning
+               if it never counted. */
+            extern unsigned int x86_hotep_sorted(uint32_t *, unsigned long long *,
+                                             unsigned long *, unsigned int);
+            extern unsigned int x86_hotep_collisions(void);
+            uint32_t eps[5];
+            unsigned long long nss[5];
+            unsigned long hns[5];
+            unsigned int i, n = x86_hotep_sorted(eps, nss, hns, 5);
+            for (i = 0; i < n; i++) {
+                uint32_t ep = eps[i];
+                const char *nm = x86_native_name_at(ep);
+                X86Module *m = x86_module_for(ep);
+                fprintf(stderr, "[HB]           HOT body %s0x%08x (%s%s): "
+                                "%.1f ms in %lu dispatch(es)\n",
+                        nm ? "" : "unresolved ", ep,
+                        nm ? nm : (m ? m->name : "???"),
+                        nm || !m ? "" : " +offset",
+                        (double)nss[i] * 1e-6, hns[i]);
+            }
+            if (n && x86_hotep_collisions())
+                fprintf(stderr, "[HB]           HOTEP: %u hash collision(s) -- "
+                                "new keys refused, probe may miss the top\n",
+                        x86_hotep_collisions());
+            {
+                /* WHERE the interval's wall time went: host import stubs vs
+                   guest bodies. This is the number the crossing count cannot
+                   give -- a frame with 500k crossings could be slow either
+                   way, and only the split says which. Printed at zeroes too:
+                   "the probe was unarmed" must not read as "the guest cost
+                   nothing". */
+                extern void x86_probe_time_delta(unsigned long long *,
+                                                 unsigned long long *);
+                unsigned long long hn, gn;
+                unsigned long long total;
+                x86_probe_time_delta(&hn, &gn);
+                total = hn + gn;
+                if (!total)
+                    fprintf(stderr, "[HB]           wall-time split: probe "
+                                    "unarmed (X2_HOTEP) -- set it to attribute "
+                                    "where frame time goes\n");
+                else
+                    fprintf(stderr,
+                            "[HB]           wall-time split this interval: "
+                            "host imports %.1f ms (%.0f%%), guest bodies "
+                            "%.1f ms (%.0f%%)\n",
+                            (double)hn * 1e-6, 100.0 * (double)hn / total,
+                            (double)gn * 1e-6, 100.0 * (double)gn / total);
+            }
+        }
         if (first) {
             first = 0;
             p_cross = cross; p_scenes = scenes; p_presents = presents;

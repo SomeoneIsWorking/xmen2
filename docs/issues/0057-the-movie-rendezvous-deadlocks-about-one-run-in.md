@@ -5,7 +5,7 @@ status: resolved
 symptom: kernel32: WaitForSingleObject(INFINITE) on event (unnamed) has waited 30 seconds; the guest executed NOTHING in the last 5.0s; one libCriMovie thread SUSPENDED NOW
 tags: threads,movie,deadlock,intermittent,pc,native
 created: 2026-08-12
-updated: 2026-08-14
+updated: 2026-08-16
 ---
 
 ## Symptom
@@ -324,3 +324,44 @@ once, which is the one outcome worse than the guest's own race.
 
 ### Resolution (2026-08-14)
 Root cause: H_THREAD table entries carried no GuestThread object identity. libIGCore FUN_10075400 gets the current pseudo-handle and duplicates it at 0x10075478, then libCriMovie suspends/resumes that real alias; DuplicateHandle copied only handle metadata while threads.c recognized only one canonical numeric handle. ResumeThread(alias) therefore named no guest thread and a self-suspended decoder could never wake. Every thread handle now retains the shared GuestThread record; all aliases control and become signalled with the same object, and closing one alias preserves the others. The shipping-table selftest passes and fails under a deliberate lost-identity mutation. A full smoke_loop then fired all 6 scheduled inputs through movies/gameplay to frame 4200 with 0 refused draws and no invalid-thread-handle report.
+
+### The remaining 3M-cycle spin, collapsed into a wait (2026-08-16)
+The deadlock is resolved above, but the rendezvous was still measured, in the
+load window, spinning to its cap every time: `perf_bodyms2.log` (85 s window)
+reported 6,000,699 ResumeThread + 6,000,093 SetThreadPriority import calls
+per 5 s that the run spends loading, with the load frames 3152-3198 taking
+200-4120 ms. That is `FUN_10002520`'s `0x2dc6c0`-iteration loop, executed by
+MAIN, while the other movie threads starve.
+
+One RE fact from the emitted decoder (`FUN_10002630`) decides the fix. The
+decoder clears the flag at `[0x100572b0]` to 0 and parks -- `SuspendThread` on
+its own handle -- at its very next loop top **whenever the flag is 1, whether
+or not it has work** (0x10002665 compares the flag to EDI=1 and falls into the
+park block; the only path that skips the park is "has work AND flag != 1").
+So `FUN_10002520` setting the flag to 1 before spinning is not a poll for "the
+decoder went dry" -- it is an ARMED "park now", and the spin is a poll for the
+park. That is the distinction all earlier attempts missed: the failed hand-off
+designs either yielded on every resume (livelock, 4.3B/45 s) or waited for a
+park on every real resume (froze at 2639, 3.17B/min), because neither was
+scoped to the flag-armed case where a park is guaranteed.
+
+The fix (`src/native/overrides.c`, `__wrap_fn_libCriMovie_10002520`): arm the
+flag, resume the decoder ONCE the way a single spin iteration would, then
+`guest_cond_wait_ms(1)` in a loop (bounded, 1000 waits) until the decoder
+clears the flag. On the bound it DEFERS to the retained body, which spins
+exactly as before and is logged, never silent. `X2_SPIN` toggles the A/B from
+one binary: unset/1 = wait (the fix), `spin` = the original body (the control).
+
+Measured, same binary, same drive script, `X2_MAX_FRAMES=3400` both sides:
+
+    control (X2_SPIN=spin)            fix (wait)
+    total crossings       170,937,598        47,035,669   (3.6x fewer)
+    decoder tid 1021      240 suspend(s),    236 suspend(s),
+                          9,000,454 resume(s)  448 resume(s)
+    load-window imports   ResumeThread 6,000,196;   ResumeThread 928,572 cum.,
+                          SetThreadPriority 6,000,093  SetThreadPriority gone from top list
+
+The decoder's resumes went from ~37,500 per park to ~1.9 per park. Both sides
+reached frame 3400 and closed the loop; the load window's wall cost dropped
+with the crossings. No fallback fired (0 "DEFERRING") and the override
+announced itself once.

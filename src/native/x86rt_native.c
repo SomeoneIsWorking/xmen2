@@ -7,7 +7,7 @@
 #include "x86rt_native.h"
 #include "threads.h"
 #include "guest_heap.h"
-
+#include <time.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -22,8 +22,63 @@ static X86Module *g_head;
 static int thunk_call(uint32_t addr, CPU *C);
 static void ring_note(const char *what, uint32_t addr, uint32_t base,
                       uint32_t in, uint32_t out, uint32_t ret);
+static void hotep_count(uint32_t ep, unsigned long long ns);
 static unsigned long g_return_to_calls;
 extern const CPU *g_cpu_current;
+
+/* Guard for the wall-time attribution probe (see below). Zero in the default
+   build, which is one predictable branch per dispatch; set by X2_HOTEP. */
+static int g_probe_time;
+
+/* Cumulative EXCLUSIVE ns inside host import stubs and inside guest bodies
+   since arming, for x86_probe_time_delta. Read with the same torn-read trade
+   as the crossing counter.
+ *
+   "Exclusive" matters: a dispatched body runs nested dispatches and imports
+   inside its own span, so an inclusive span counter would charge the same
+   wall time at every nesting level (a 5s interval once measured 167s of
+   "guest" time on a single-threaded scheduler -- impossible). The span stack
+   below charges each level only its own compute: a level's span minus the
+   spans of every child level pushed on top of it. Direct guest-to-guest
+   calls never dispatch, so they remain inside the enclosing body's exclusive
+   span, which is exactly the attribution wanted for naming a hot body. */
+static unsigned long long g_host_import_ns, g_guest_body_ns;
+
+static inline unsigned long long probe_ns_now(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned long long)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+}
+
+#define SPAN_STACK_MAX 64
+static unsigned long long g_span_start[SPAN_STACK_MAX];
+static unsigned long long g_span_child[SPAN_STACK_MAX];
+static int g_span_depth;
+
+static inline void span_push(void)
+{
+    if (g_span_depth < SPAN_STACK_MAX) {
+        g_span_start[g_span_depth] = probe_ns_now();
+        g_span_child[g_span_depth] = 0;
+    }
+    g_span_depth++;
+}
+
+/* Returns this level's exclusive ns and charges its full span to the parent
+   level so the parent's own exclusive time excludes it. */
+static inline unsigned long long span_pop(void)
+{
+    unsigned long long full, excl;
+    if (g_span_depth <= 0) return 0;
+    g_span_depth--;
+    if (g_span_depth >= SPAN_STACK_MAX) return 0; /* slot overflowed, lost */
+    full = probe_ns_now() - g_span_start[g_span_depth];
+    excl = full - g_span_child[g_span_depth];
+    if (g_span_depth > 0 && g_span_depth - 1 < SPAN_STACK_MAX)
+        g_span_child[g_span_depth - 1] += full;
+    return excl;
+}
 
 /* Not used by the shared runtime itself, but the emitted bodies of a
    single-module build still reference the plain symbol. */
@@ -253,6 +308,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
         g_cpu_current = C;
         if (g_epc_n < 0) epcount_init();
         g_epc_dispatches++;
+        if (g_probe_time) span_push();
         if (g_epc_n) {
             int i;
             for (i = 0; i < g_epc_n; i++)
@@ -286,6 +342,11 @@ int x86_native_call_at(uint32_t addr, CPU *C)
                 }
         }
         f->fn(C);
+        if (g_probe_time) {
+            unsigned long long excl = span_pop();
+            g_guest_body_ns += excl;
+            hotep_count(addr, excl);
+        }
         ring_note("guest", addr, 0, in, C->esp, 0);
     }
     return 1;
@@ -386,6 +447,66 @@ const char *x86_native_name_at(uint32_t addr)
 static struct { void (*stub)(CPU *); const char *mod, *sym; void *ctx; }
     g_thunk[THUNK_MAX];
 static int g_nthunk;
+
+/*
+ * RAW per-thunk call counts, immune to the boundary ring's repeat-collapse.
+ *
+ * The ring collapses consecutive identical crossings into one entry (with a
+ * count), which is right for showing history and WRONG for measuring: a hot
+ * import called in a loop reads as a handful of ring entries, so "how many
+ * host calls does a build frame make and to which import" needs a counter
+ * that increments on EVERY call. g_ring_n under-counts exactly the tight
+ * loops a load hotspot is. This grows one 8-byte word per thunk, no smoothing;
+ * the read side is the per-interval probe in x86_thunk_crossings_sorted.
+ */
+static unsigned long g_thunk_hits[THUNK_MAX];
+
+/*
+ * Per-guest-entry-point call counts, for naming the HOT GUEST BODY behind a
+ * slow window -- the level-build frames dispatch ~460k guest-to-guest calls
+ * each (4x a normal frame's 110k), and the imports are not it, so the cost is
+ * inside a recompiled body the ring cannot see.
+ *
+ * Armed by X2_HOTEP=<n> where n is the number of entry points to track: a
+ * direct-mapped hash on the ENTRY POINT (key 0 = empty), so the dispatch path
+ * pays one compare-and-increment against a table that never rehashes. The
+ * collision check keeps each bucket honest: if a distinct EP hashes to an
+ * occupied slot we record the collision once and stop counting NEW keys --
+ * the table answers "which body is hot" correctly while it stays sparse,
+ * which is exactly the load window. A full/overwritten table would read as
+ * noise, so it refuses instead of guessing.
+ *
+ * The read side (x86_hotep_sorted) mirrors the thunk probe: per-interval
+ * deltas, decoded to module+name by the heartbeat.
+ */
+#define HOTEP_MAX 4096
+static uint32_t      g_hotep_key[HOTEP_MAX];
+static unsigned long g_hotep_n[HOTEP_MAX];
+static unsigned long long g_hotep_ns[HOTEP_MAX];
+static unsigned      g_hotep_cap;       /* tracked EPs; 0 = probe unarmed */
+static unsigned      g_hotep_collisions;
+
+void x86_hotep_arm(const char *arg)
+{
+    unsigned long want = arg ? strtoul(arg, NULL, 10) : 0;
+    g_hotep_cap = want > HOTEP_MAX ? HOTEP_MAX : (unsigned)want;
+    g_hotep_collisions = 0;
+    g_probe_time = want != 0;
+    if (g_hotep_cap)
+        fprintf(stderr, "[HOTEP] armed for the top %u guest entry points.\n",
+                g_hotep_cap);
+}
+
+static inline void hotep_count(uint32_t ep, unsigned long long ns)
+{
+    unsigned long h;
+    if (!g_hotep_cap) return;
+    h = ((ep * 2654435761u) >> 8) % g_hotep_cap;
+    if (!g_hotep_key[h]) { g_hotep_key[h] = ep; g_hotep_n[h] = 1;
+                           g_hotep_ns[h] = ns; return; }
+    if (g_hotep_key[h] == ep) { g_hotep_n[h]++; g_hotep_ns[h] += ns; return; }
+    if (g_hotep_collisions < 16) g_hotep_collisions++;
+}
 
 /* The context of the callback currently executing, for x86_callback_ctx. A
    native class's hooks are shared C functions -- what distinguishes one
@@ -562,10 +683,13 @@ static int thunk_call(uint32_t addr, CPU *C)
     i = (addr - THUNK_BASE) / 16u;
     if ((int)i >= g_nthunk || !g_thunk[i].stub) return 0;
     in = C->esp;
+    g_thunk_hits[i]++;
     {
         void *save = g_cb_ctx;
         g_cb_ctx = g_thunk[i].ctx;
+        if (g_probe_time) span_push();
         g_thunk[i].stub(C);
+        if (g_probe_time) g_host_import_ns += span_pop();
         g_cb_ctx = save;
     }
     ring_note(g_thunk[i].sym, addr, 0, in, C->esp, 0);
@@ -654,6 +778,99 @@ static unsigned long g_ring_n;
  * point of a ring this size.
  */
 unsigned long x86_crossings(void) { return g_ring_n; }
+unsigned int x86_thunk_count(void) { return (unsigned int)g_nthunk; }
+
+/*
+ * Per-interval import probe: the N most-called host imports between two reads.
+ *
+ * The heartbeat asks for this every period. The caller keeps a snapshot of the
+ * cumulative counts and subtracts -- same torn-read trade as every counter the
+ * heartbeat reads -- and gets back, for the interval, which imports the guest
+ * called the most and how often. THAT is the load-window question: the ring
+ * said the build frames cross the boundary 400k+ times/frame and nothing else,
+ * and this is the probe that names the import behind it instead of guessing.
+ *
+ * Returns the number of imports written. Sorted by delta, descending, no
+ * smoothing and no minimum -- the caller decides what to print.
+ */
+unsigned int x86_thunk_crossings_sorted(unsigned long *snapshot,
+                                        const char **mod, const char **sym,
+                                        unsigned long *hits, unsigned int cap)
+{
+    unsigned int n = 0;
+    int i;
+    for (i = 0; i < g_nthunk; i++) {
+        unsigned long d = g_thunk_hits[i] - snapshot[i];
+        int j;
+        if (!d) continue;
+        if (n == cap && d <= hits[cap - 1]) continue;  /* no room this round */
+        if (n == cap)
+            n--;                                        /* drop the tail */
+        for (j = (int)n - 1; j >= 0 && d > hits[j]; j--) {
+            mod[j + 1] = mod[j]; sym[j + 1] = sym[j]; hits[j + 1] = hits[j];
+        }
+        mod[j + 1] = g_thunk[i].mod; sym[j + 1] = g_thunk[i].sym;
+        hits[j + 1] = d;
+        n++;
+    }
+    for (i = 0; i < g_nthunk; i++) snapshot[i] = g_thunk_hits[i];
+    return n;
+}
+
+/*
+ * The hot guest bodies, by ENTRY-POINT deltas since the last read.
+ *
+ * The heartbeat decodes each returned EP back to module+name via
+ * x86_module_for / x86_native_name_at. Sorted by WALL TIME (ns), with the
+ * call count alongside: the load window's ~460k dispatches/frame is the cost
+ * only if the time inside them is; a cheap hot leaf tops a count sort and
+ * buries the body that actually owns the 250ms. Returns 0 when unarmed.
+ */
+unsigned int x86_hotep_sorted(uint32_t *ep, unsigned long long *ns,
+                              unsigned long *hits, unsigned int cap)
+{
+    unsigned int n = 0;
+    unsigned i;
+    for (i = 0; i < g_hotep_cap && n < cap; i++) {
+        unsigned long long d;
+        int j;
+        if (!g_hotep_key[i]) continue;
+        d = g_hotep_ns[i];
+        for (j = (int)n - 1; j >= 0 && d > ns[j]; j--) {
+            ep[j + 1] = ep[j]; ns[j + 1] = ns[j]; hits[j + 1] = hits[j];
+        }
+        ep[j + 1] = g_hotep_key[i]; ns[j + 1] = d; hits[j + 1] = g_hotep_n[i];
+        n++;
+    }
+    return n;
+}
+
+unsigned int x86_hotep_collisions(void) { return g_hotep_collisions; }
+
+/*
+ * Wall-time split between host import stubs and guest bodies since the last
+ * read -- the number the crossing COUNTS cannot give. Armed with X2_HOTEP;
+ * unarmed, zeroes are returned and the heartbeat prints nothing.
+ *
+ * The split answers the load-window question in one line: "500k crossings per
+ * frame" says the boundary is busy but not who paid for the 250ms. If the
+ * host-import share is small, the cost is inside the recompiled guest bodies
+ * (a translation/algorithm issue); if it is large, the cost is in the stubs
+ * this host wrote (ReadFile, the heap, threads) and is ours to fix directly.
+ */
+void x86_probe_time_delta(unsigned long long *host_import_ns,
+                          unsigned long long *guest_body_ns)
+{
+    static unsigned long long phost, pguest;
+    if (!g_probe_time) {
+        *host_import_ns = *guest_body_ns = 0;
+        return;
+    }
+    *host_import_ns = g_host_import_ns - phost;
+    *guest_body_ns = g_guest_body_ns - pguest;
+    phost = g_host_import_ns;
+    pguest = g_guest_body_ns;
+}
 
 /*
  * The preemption point's budget and its action -- see X86_ENTER_FN in x86rt.h

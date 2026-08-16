@@ -158,6 +158,36 @@ void x86_args_report(void);
 unsigned long x86_crossings(void);
 const char   *x86_crossings_what(void);
 
+/*
+ * The raw per-import call probe: the most-called host imports in an interval,
+ * descending. The caller allocates `snapshot` with x86_thunk_count() entries,
+ * zero-filled once, and keeps it across calls: each call fills `mod/sym/hits`
+ * with the top `cap` imports by DELTA since the previous call and updates
+ * `snapshot`, so the heartbeat can name the imports behind a slow window.
+ */
+unsigned int x86_thunk_count(void);
+unsigned int x86_thunk_crossings_sorted(unsigned long *snapshot,
+                                        const char **mod, const char **sym,
+                                        unsigned long *hits, unsigned int cap);
+
+/*
+ * The hot-guest-body probe: raw per-entry-point dispatch counts since armed,
+ * for naming the guest body a slow window spends its crossings in. X2_HOTEP
+ * arms it (see x86_hotep_arm). x86_hotep_sorted returns the top `cap` EPs by
+ * count, decoded to module+name by the caller. x86_hotep_collisions counts
+ * hash collisions -- non-zero means the table had to refuse new keys and the
+ * probe may be missing the true top.
+ */
+void         x86_hotep_arm(const char *arg);
+unsigned int x86_hotep_sorted(uint32_t *ep, unsigned long long *ns,
+                              unsigned long *hits, unsigned int cap);
+unsigned int x86_hotep_collisions(void);
+
+/* Wall-time split between host import stubs and guest bodies per interval
+   (see x86_probe_time_delta). Armed with X2_HOTEP; otherwise zeroes. */
+void x86_probe_time_delta(unsigned long long *host_import_ns,
+                          unsigned long long *guest_body_ns);
+
 /* Every registered module, for reporting. */
 X86Module *x86_modules(void);
 
