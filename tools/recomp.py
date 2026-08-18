@@ -28,6 +28,7 @@ from collections import Counter
 from recomp_hosted import DISPATCH_BODY, import_adapter as hosted_import_adapter
 from recomp_host_call import host_call_bridge
 from recomp_overrides import overrides_for_module, remove_orphan_chunks
+from stackcheck import stack_effect_of
 
 
 class Unsupported(Exception):
@@ -320,6 +321,11 @@ INTERIOR = {}
 KNOWN_EPS = set()  # entry points Ghidra identified; a call to anything else is
                    # a target inside the region it could not resolve into
                    # functions, and must not be emitted as a direct C call
+STACK_EFFECT = {}  # ep -> bytes the callee pops beyond the return address,
+                   # or absent when the body ends in a tail call or its RETs
+                   # disagree. Stamped into each emitted direct call so a
+                   # -DX2_DCHECK build can check the guest's stack discipline
+                   # at the one boundary the dispatcher cannot see.
 OVERRIDES = set()  # entry points with a NATIVE override (x86_register_override
                    # in src/native/*.c); calls to them go through the
                    # dispatcher's override slot, never a plain C call
@@ -1536,9 +1542,18 @@ def emit_instruction(ins, ctx):
                     ret_push(ret),
                     "DISPATCH(C, %s);"
                     % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
+        # The direct call, bracketed by the guest's own stack expectation.
+        # X86_DCALL_CHECK is nothing at all unless the build defines X2_DCHECK,
+        # so the shipping code is byte-for-byte the plain call it always was.
+        # It exists because a dispatch-boundary check cannot see a direct call,
+        # and that is exactly where issue #81's 4-byte drift hides.
         return [A,
+                "{ uint32_t _e0 = C->esp; (void)_e0;",
                 ret_push(ret),
-                "%s(C);" % fname(ins["flow"])]
+                "%s(C);" % fname(ins["flow"]),
+                "X86_DCALL_CHECK(C, _e0, %s, %d); }"
+                % (img_rel(ins["a"]) or "0x%08xU" % ins["a"],
+                   STACK_EFFECT.get(ins["flow"], -1))]
 
     raise Unsupported("mnemonic %s" % m)
 
@@ -1749,6 +1764,11 @@ def load(path):
     iat_path = re.sub(r"\.json$", ".iat", path)
     KNOWN_EPS.clear()
     KNOWN_EPS.update(fn["ep"] for fn in d["functions"])
+    STACK_EFFECT.clear()
+    for _fn in d["functions"]:
+        _imm = stack_effect_of(_fn)
+        if _imm is not None:
+            STACK_EFFECT[_fn["ep"]] = _imm
     OVERRIDES.clear()
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # Matched on (module, ep). Matching on the address alone made every module

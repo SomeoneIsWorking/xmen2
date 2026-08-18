@@ -22,21 +22,15 @@ if(NOT SDL2_FOUND)
     pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
 endif()
 
-add_library(x2_core
-    src/core/igb.c
-    src/core/igb_mesh.c
-    src/core/igb_raster.c
-    src/core/igb_anim.c
-)
-target_include_directories(x2_core PUBLIC src/core)
-target_link_libraries(x2_core PUBLIC m)
-
-add_library(x2_display
-    src/display/ig_controller.c
-    src/display/ig_sdl_controller.c
-)
-target_include_directories(x2_display PUBLIC src/display)
-target_link_libraries(x2_display PUBLIC ${X2_SDL})
+# The Alchemy engine layer -- the IGB readers, the XMLB container, the ARK
+# tooling and the `ig` controller abstraction -- is NOT part of this port. It
+# belongs to the engine X-Men Legends II shares with Marvel Ultimate Alliance,
+# and lives in the `alchemy` repo (see tools/alchemy_path.py, and the repo
+# layout README). Its viewers, dump tools and tests build from there.
+#
+# x2native itself links none of it, which is why this port needs no CMake
+# dependency on it at all -- only tools/make_pad_font.py reaches for its xmlb
+# module, through the one resolver in tools/alchemy_path.py.
 
 enable_testing()
 
@@ -50,9 +44,6 @@ add_custom_command(
     COMMENT "x2native: generating button-glyph codepoints")
 add_custom_target(x2_pad_glyph_header DEPENDS "${X2_PAD_GLYPH_HEADER}")
 
-add_executable(test_controller tests/test_controller.c)
-target_link_libraries(test_controller PRIVATE x2_display)
-add_test(NAME controller COMMAND test_controller)
 
 # The gamepad inventory, against an SDL virtual pad. dinput_pad.c depends on
 # nothing in the guest runtime -- it is SDL on one side and plain values on the
@@ -80,9 +71,6 @@ target_include_directories(test_xbox_defaults PRIVATE src/recomp src/native)
 target_compile_definitions(test_xbox_defaults PRIVATE _GNU_SOURCE)
 add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
 
-add_executable(test_enbaya tests/test_enbaya.c)
-target_link_libraries(test_enbaya PRIVATE x2_core)
-add_test(NAME enbaya COMMAND test_enbaya)
 
 # Known-answer tests for the ADC/SBB flag model (tests/test_flags.c). Header-
 # only, so it needs no recompiled output and runs in the ordinary test suite --
@@ -294,18 +282,6 @@ add_test(NAME d3d8_abi
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/d3d8_abi_check.py --selftest)
 
-# The XMLB writer. A writer proved only by "it did not crash" is a writer that
-# will corrupt a font, so this runs a battery that must produce POSITIVES: the
-# synthetic document survives parse->serialise, attribute names are shared
-# rather than repeated, a changed glyph MOVES bytes (a writer that echoed its
-# input would pass every round-trip otherwise), and malformed input is refused.
-# The corpus is built, not copied -- the shipped .xmlb files are game assets
-# and never enter this repository. Against a real install the same command
-# round-trips all 32 shipped font tables byte-identically; run it by hand with
-# the paths to check that.
-add_test(NAME xmlb_roundtrip
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tools/xmlb.py --selftest)
 
 # The port's own button glyphs: the coordinate round trip (and that it is NOT
 # the top-down identity, which is the bug C171 found in the Xbox-art tool), the
@@ -339,36 +315,6 @@ add_test(NAME oracle_cache
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/oracle.py --selftest)
 
-add_executable(igb_dump tools/igb_dump.c)
-target_link_libraries(igb_dump PRIVATE x2_core)
-
-# The asset viewers stay on SDL2 deliberately. They are separate binaries that
-# do not link x2_display, so there is no two-SDLs-in-one-process hazard, and
-# converting ~90 call sites of SDL_Renderer code buys the port nothing. The
-# PORT path -- x2_display and x2native -- is SDL3.
-add_executable(x2view src/app/x2view.c)
-target_link_libraries(x2view PRIVATE x2_core)
-if(TARGET SDL2::SDL2)
-    target_link_libraries(x2view PRIVATE SDL2::SDL2)
-else()
-    target_link_libraries(x2view PRIVATE PkgConfig::SDL2)
-endif()
-
-add_executable(meshview src/app/meshview.c)
-target_link_libraries(meshview PRIVATE x2_core m)
-if(TARGET SDL2::SDL2)
-    target_link_libraries(meshview PRIVATE SDL2::SDL2)
-else()
-    target_link_libraries(meshview PRIVATE PkgConfig::SDL2)
-endif()
-
-add_executable(flyview src/app/flyview.c)
-target_link_libraries(flyview PRIVATE x2_core m)
-if(TARGET SDL2::SDL2)
-    target_link_libraries(flyview PRIVATE SDL2::SDL2)
-else()
-    target_link_libraries(flyview PRIVATE PkgConfig::SDL2)
-endif()
 
 # ---------------------------------------------------------------------------
 # x2native -- recompiled game code as a NATIVE binary (rc-native)
@@ -592,6 +538,15 @@ if(X2_MODULE_HAVE)
     # applies to an untraced one.
     if(X2_NATIVE_TRACE)
         target_compile_definitions(x2native PRIVATE X86_NATIVE_TRACE)
+    endif()
+    # -DX2_DCHECK=ON checks that every guest-to-guest DIRECT call returns the
+    # esp its callee's own RET promises. Off by default and free when off: the
+    # emitted call is the same plain call either way (X86_DCALL_CHECK expands
+    # to nothing), so this is a rebuild, not a re-emit. It is the one boundary
+    # tools/stackcheck.py cannot reach -- that checks calls going THROUGH the
+    # dispatcher, and a direct call by definition does not.
+    if(X2_DCHECK)
+        target_compile_definitions(x2native PRIVATE X2_DCHECK)
     endif()
     # -DX2_NATIVE_REACHED=ON records WHICH bodies were ever entered -- a set,
     # not a history, so it answers "was this function ever reached?" which the

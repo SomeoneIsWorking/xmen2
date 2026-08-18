@@ -161,6 +161,9 @@ void x86_overrides_resolve(void)
 }
 
 static int thunk_call(uint32_t addr, CPU *C);
+static FILE *g_sc_out;
+static int   g_sc_armed;
+static unsigned long g_sc_records;
 extern volatile sig_atomic_t x2_report_now;   /* heartbeat: set when the run stops */
 
 /* The current guest body, written on every dispatch (guest body or import
@@ -538,10 +541,6 @@ void x86_epcount_report(void)
  * /GS check reported a buffer overrun that had not happened. One dword of
  * drift inside the call tree presents as memory corruption somewhere else.
  */
-static FILE *g_sc_out;
-static int   g_sc_armed;
-static unsigned long g_sc_records;
-
 void x86_stackcheck_arm(int on)
 {
     if (on && !g_sc_out) {
@@ -578,6 +577,104 @@ static void stackcheck_note(X86Module *m, uint32_t ep, uint32_t in,
     fprintf(g_sc_out, "%s %08x %08x %08x\n", m->name,
             m->preferred + (ep - *m->base), in, out);
 }
+
+#ifdef X2_DCHECK
+/*
+ * The direct-call stack check's report. Built only when X2_DCHECK is defined.
+ *
+ * It names the CALL SITE, not the callee, because the site is what a
+ * disassembly listing can be opened at -- and the first site to report is the
+ * one to read. Reports every violation up to a cap and then says how many more
+ * it saw, so a flood is visibly a flood rather than a truncated list that
+ * looks like the whole answer.
+ */
+static unsigned long g_dchk_calls, g_dchk_bad, g_dchk_unchecked;
+
+/*
+ * The cap is PER CALL SITE, not per run. One site inside msdia80's unwinder
+ * repeated its violation thousands of times and ate a global cap of 20 before
+ * any other module could report once -- the report then read as "only msdia80
+ * is out of balance", which was the cap talking, not the game. Capping the
+ * boring case means capping each site, so a site not seen before is always
+ * heard.
+ */
+#define DCHK_SITES      512
+#define DCHK_PER_SITE   3
+static struct { uint32_t site; unsigned long n; } g_dchk_site[DCHK_SITES];
+static int g_dchk_nsites, g_dchk_sites_lost;
+
+static int dchk_should_report(uint32_t site)
+{
+    int i;
+    for (i = 0; i < g_dchk_nsites; i++)
+        if (g_dchk_site[i].site == site)
+            return ++g_dchk_site[i].n <= DCHK_PER_SITE;
+    if (g_dchk_nsites == DCHK_SITES) { g_dchk_sites_lost++; return 0; }
+    g_dchk_site[g_dchk_nsites].site = site;
+    g_dchk_site[g_dchk_nsites].n = 1;
+    g_dchk_nsites++;
+    return 1;
+}
+
+/* X2_DCHECK_RANGE=<lo>-<hi>: log EVERY direct call whose site is in that
+   guest range, balanced or not, with the esp on both sides. Finding a drift
+   that no single call causes means watching esp walk through one function and
+   seeing which step it is wrong at -- a list of violations cannot show that,
+   because there is no violation to list. */
+static uint32_t g_dchk_lo, g_dchk_hi;
+static int g_dchk_range_read;
+
+void x86_dcall_check(uint32_t site, uint32_t esp_before, uint32_t esp_after,
+                     int imm)
+{
+    uint32_t want;
+    g_dchk_calls++;
+    if (!g_dchk_range_read) {
+        const char *e = getenv("X2_DCHECK_RANGE");
+        g_dchk_range_read = 1;
+        if (e && *e) {
+            char *dash = NULL;
+            g_dchk_lo = (uint32_t)strtoul(e, &dash, 0);
+            if (dash && *dash == '-') g_dchk_hi = (uint32_t)strtoul(dash + 1,
+                                                                   NULL, 0);
+            fprintf(stderr, "[DCHK] logging every direct call in "
+                            "0x%08x-0x%08x, balanced or not.\n",
+                    g_dchk_lo, g_dchk_hi);
+        }
+    }
+    if (g_dchk_hi && site >= g_dchk_lo && site < g_dchk_hi)
+        fprintf(stderr, "[DSITE] 0x%08x esp %08x -> %08x (%+d, callee pops "
+                        "%d)\n", site, esp_before, esp_after,
+                (int)(esp_after - esp_before), imm);
+    if (imm < 0) { g_dchk_unchecked++; return; }
+    want = esp_before + (uint32_t)imm;
+    if (esp_after == want) return;
+    g_dchk_bad++;
+    if (dchk_should_report(site)) {
+        const char *nm = x86_native_name_at(site);
+        X86Module *m = x86_module_for(site);
+        fprintf(stderr, "[DCHK] call site 0x%08x%s%s returned esp 0x%08x, "
+                        "expected 0x%08x (%+d) -- the callee's RET pops %d\n",
+                site, nm ? " in " : (m ? " in " : " "),
+                nm ? nm : (m ? m->name : "???"),
+                esp_after, want, (int)(esp_after - want), imm);
+    }
+}
+
+void x86_dcall_report(void)
+{
+    fprintf(stderr, "[DCHK] %lu direct call(s) checked, %lu out of balance, "
+                    "%lu not checkable (callee ends in a tail call or its RETs "
+                    "disagree). A zero here is a measurement only because the "
+                    "denominator is beside it.\n",
+            g_dchk_calls - g_dchk_unchecked, g_dchk_bad, g_dchk_unchecked);
+    fprintf(stderr, "[DCHK] %d distinct offending call site(s)%s; each was "
+                    "reported at most %d time(s).\n", g_dchk_nsites,
+            g_dchk_sites_lost ? " (and the site table filled -- some are "
+                                "counted but unnamed)" : "",
+            DCHK_PER_SITE);
+}
+#endif
 
 int x86_native_call_at(uint32_t addr, CPU *C)
 {
@@ -1049,6 +1146,16 @@ static int thunk_call(uint32_t addr, CPU *C)
         g_cb_ctx = save;
     }
     ring_note(g_thunk[i].sym, addr, 0, in, C->esp, 0);
+    /* Imports are recorded TOO. A hand-written stub has to pop its own
+       arguments the way the __stdcall function it replaces does, and getting
+       that wrong shifts the guest stack by a word -- the exact failure the
+       ring above was built to make visible, and the one path the stack check
+       could not see, because this returns before the dispatch recorder. */
+    if (g_sc_armed && g_sc_out) {
+        g_sc_records++;
+        fprintf(g_sc_out, "IMPORT:%s %08x %08x %08x\n",
+                g_thunk[i].sym ? g_thunk[i].sym : "?", addr, in, C->esp);
+    }
     return 1;
 }
 
@@ -2252,10 +2359,26 @@ void x86_dispatch(CPU *C, uint32_t target)
 
 void x86_tail_dispatch(CPU *C, uint32_t target)
 {
-    /* Same generated-body contract as the hosted runtime (C181). A tail jump
-       reached through a direct C call must finish before that direct caller
-       resumes; only a tail at this dispatch frame may be queued for the loop. */
-    if (C->dispatch_depth && C->call_depth == C->dispatch_depth) {
+    /*
+     * Same generated-body contract as the hosted runtime (C181). A tail jump
+     * reached through a direct C call must finish before that direct caller
+     * resumes; only a tail at THIS dispatch frame may be queued for the loop.
+     *
+     * The +1 is the whole test. X86_TAIL_FN has already decremented call_depth
+     * by the time this runs -- the body is leaving -- so the body that IS the
+     * dispatch frame arrives here at dispatch_depth - 1, and a body one direct
+     * call deeper arrives at exactly dispatch_depth. Comparing them for
+     * equality therefore queued precisely the case that must run inline, and
+     * ran inline the case that could safely be queued: exactly backwards.
+     *
+     * What that cost: FUN_0046b750 -> FUN_00427c30 -> FUN_00426330, then a
+     * tail jump to __security_check_cookie. The cookie check was queued rather
+     * than run, so the return address it should have popped stayed on the
+     * stack, FUN_0046b750 resumed four bytes low, and its own /GS epilogue
+     * read the word below its cookie and reported a stack buffer overrun that
+     * had never happened (issue #81, C213).
+     */
+    if (C->dispatch_depth && C->call_depth + 1u == C->dispatch_depth) {
         C->tail_target = target;
         return;
     }

@@ -151,10 +151,14 @@ Guest x86 → C, run inside a 64-bit ELF host:
   `0x10000000`, so linked addresses collide); `guest_heap.c` serves the guest a
   32-bit-addressable arena; `kernel32.c` / `crt.c` / `win32_sdl.c` implement the
   imports on POSIX/SDL3.
-- **`src/display/`, `src/core/`, `src/app/`** — hand-written native code: the
-  SDL3 controller backend (where the three features will land) and the IGB asset
-  readers with their viewers. Port path is SDL3; the asset viewers stay SDL2
-  deliberately (separate binaries, no two-SDLs hazard).
+- **The Alchemy engine layer is NOT in this repo.** The IGB asset readers, the
+  XMLB container, the ARK tooling and the `ig` controller abstraction belong to
+  the engine this game shares with Marvel Ultimate Alliance -- which is a 360,
+  big-endian title -- so they live in the `alchemy` repo, consumed rather than
+  vendored. Its viewers (`x2view`, `meshview`, `flyview`), `igb_dump` and its
+  three tests build from there. `tools/alchemy_path.py` is the ONE place this
+  port resolves that checkout, and it refuses rather than guessing when it is
+  missing. `src/app/` keeps only `x2run.c`, which is this port's own runner.
 
 ## Rules this codebase enforces on itself
 

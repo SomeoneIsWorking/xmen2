@@ -1183,6 +1183,30 @@ uint32_t x86_rt_stack_take(void);
 void x86_rt_stack_give(void);
 /* recompiled body -> real code, running on the guest stack */
 void x86_call_host(CPU *C, void *fn, const char *what);
+/*
+ * The DIRECT-call stack check (-DX2_DCHECK).
+ *
+ * A guest call must come back with esp raised by whatever the callee's own
+ * RET pops -- the emitter stamps that number in from the guest binary, so the
+ * expectation is the game's, not this runtime's. `imm` is -1 when the callee
+ * ends in a tail call or its RETs disagree, and those are left unchecked
+ * rather than guessed.
+ *
+ * Off by default and literally nothing when off: the shipping build emits the
+ * same plain call it always did. It exists because the dispatcher can only
+ * check calls that go THROUGH it, and a guest-to-guest direct call does not --
+ * which is where issue #81's four-byte drift survived a check of 1.3 million
+ * dispatched calls.
+ */
+#ifdef X2_DCHECK
+void x86_dcall_check(uint32_t site, uint32_t esp_before, uint32_t esp_after,
+                     int imm);
+#define X86_DCALL_CHECK(C, e0, site, imm) \
+    x86_dcall_check((site), (e0), (C)->esp, (imm))
+#else
+#define X86_DCALL_CHECK(C, e0, site, imm) ((void)0)
+#endif
+
 #define DISPATCH(C, t) x86_dispatch((C), (uint32_t)(t))
 #define TAIL_DISPATCH(C, t) x86_tail_dispatch((C), (uint32_t)(t))
 

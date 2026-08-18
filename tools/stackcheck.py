@@ -21,6 +21,33 @@ import json
 import sys
 
 
+def stack_effect_of(fn):
+    """What this body pops beyond the return address, or None if unknowable.
+
+    None means one of two things, and both must stay uncheckable rather than
+    guessed: the body ends in a TAIL CALL, so the pop belongs to the tail
+    callee and this body's own RET does not describe it; or its RETs disagree
+    with each other, so there is no single answer. Guessing from the first RET
+    is what reported 112 correct calls as offenders.
+
+    Shared with tools/recomp.py, which stamps the same number into the emitted
+    direct-call checks -- one rule, so the compile-time expectation and the
+    run-time one cannot drift apart.
+    """
+    lo = fn["ep"]
+    hi = lo + fn.get("size", 0)
+    imms = set()
+    for ins in fn["ins"]:
+        if ins["m"] == "RET":
+            text = ins["t"].split()
+            imms.add(int(text[1], 0) if len(text) > 1 else 0)
+        elif ins["m"] == "JMP":
+            flow = ins.get("flow")
+            if ins.get("ind") or flow is None or not lo <= flow < hi:
+                return None
+    return imms.pop() if len(imms) == 1 else None
+
+
 def ret_immediates(paths, skipped):
     """(module, ep) -> bytes the callee pops beyond the return address.
 
@@ -43,30 +70,11 @@ def ret_immediates(paths, skipped):
                 "then looks clean." % path)
         program = data["program"]
         for fn in functions:
-            lo = fn["ep"]
-            hi = lo + fn.get("size", 0)
-            # EVERY ret in the body, not the first one: a body whose rets
-            # disagree cannot be given one expectation, and guessing from the
-            # first is how a correct callee gets reported as an offender.
-            imms = set()
-            tail = False
-            for ins in fn["ins"]:
-                if ins["m"] == "RET":
-                    text = ins["t"].split()
-                    imms.add(int(text[1], 0) if len(text) > 1 else 0)
-                elif ins["m"] == "JMP":
-                    # A TAIL CALL leaves through someone else's RET, so this
-                    # body's own RET does not describe its stack effect. Real
-                    # case: FUN_0053f850 ends in `RET 0x4` on one path and
-                    # `JMP dword ptr [EDX+0x30]` on the other, and scoring it
-                    # by the RET reported 83 correct calls as -8 offenders.
-                    flow = ins.get("flow")
-                    if ins.get("ind") or flow is None or not lo <= flow < hi:
-                        tail = True
-            if tail:
+            imm = stack_effect_of(fn)
+            if imm is None:
                 skipped.append((program, fn["ep"]))
-            elif len(imms) == 1:
-                out[(program, fn["ep"])] = imms.pop()
+            else:
+                out[(program, fn["ep"])] = imm
     return out
 
 

@@ -50,6 +50,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.join(ROOT, "scratch", "ref"))
 
+# xmlb belongs to the Alchemy engine, not to this port -- see tools/alchemy_path.
+from alchemy_path import add_alchemy_tools_to_path             # noqa: E402
+add_alchemy_tools_to_path()
+
 import xmlb                                                     # noqa: E402
 from pad_glyph_manifest import FIRST_CODEPOINT, ICONS            # noqa: E402
 

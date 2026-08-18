@@ -2380,6 +2380,9 @@ int main(int argc, char **argv)
             if (arkprobe) {
                 extern int igvk_ark_probe_result(void);
                 int prc = igvk_ark_probe_result();
+#ifdef X2_DCHECK
+                { extern void x86_dcall_report(void); x86_dcall_report(); }
+#endif
                 if (x86_triggers_report() || prc != 0) {
                     printf("ark-probe: FAILED (rc=%d)\n", prc);
                     for (i = 0; i < mapped; i++) pe_unmap(&imgs[i]);
