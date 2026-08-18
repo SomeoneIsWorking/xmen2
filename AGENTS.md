@@ -33,6 +33,7 @@ versions); the DATA they read stays here. `tools/shared_dir.py` is the one place
 a shared repo is located, and it refuses naming every path it tried rather than
 falling back to a vendored copy.
 
+- `docs/roadmap.md` — where the port is GOING, and how far each goal got.
 - `docs/codemap.md` — what exists, where, and its honest status per subsystem.
 - `docs/info/claims/` — each claim carries the observation that would falsify it.
   `info.py claim check` detects rot mechanically (has the cited code changed?).

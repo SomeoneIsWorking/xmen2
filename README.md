@@ -51,6 +51,10 @@ claim over the game.
   incompatible but the engine architecture (igCore/igDisplay class model, IGB format,
   file-package system, DLL boundary) is directly analogous.
 
+Where this is going next -- performance, load time, a real input-binding UI,
+launching straight into a game -- is [`docs/roadmap.md`](docs/roadmap.md), with
+honest status against each.
+
 ## The three features (all land in the input layer)
 
 1. **Controller hotswap** — implemented through SDL3 and the game's own
