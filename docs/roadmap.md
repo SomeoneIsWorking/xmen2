@@ -66,12 +66,32 @@ isolation), so what remains is how the running game holds the device.
 
 ## 5. RmlUi for player mapping and input bindings
 
-**Not started.** The retained PC controller editor is the game's own UI and is
-where feature 2 (controller defaults) lands today. The intent is a real,
-modern binding UI on top: per-player device assignment and rebindable actions,
-built with RmlUi rather than by extending the 2005 editor.
+**Not started; nothing vendored yet.** The retained PC controller editor is the
+game's own UI and is where feature 2 (controller defaults) lands today. The
+intent is a real, modern UI on top: per-player device assignment, rebindable
+actions, and the graphics options too.
 
-Read [`docs/prior-art.md`](prior-art.md) **first** — Dusklight is a shipping
+**Decided 2026-08-18: the port keeps the PC base, and RmlUi takes over the
+options system rather than sitting beside it.** Basing the port on the Xbox
+release was considered and rejected for this purpose. The reason given was that
+the PC option system does not fit the intended UI -- but the Xbox release is
+fixed-output console hardware with essentially no resolution system to expose,
+so it serves that goal less well, not better. And an options UI is exactly what
+this architecture makes replaceable: the same category of work as the
+controller defaults UI, and independent of which binary is underneath.
+
+Switching base would also strand the part that is finished. The x86-32
+translator, the Alchemy engine layer and the RE harness are already shared
+repos and would carry over unchanged; what would NOT carry over is the ~26,000
+lines of PC host layer -- the SDL3 GPU renderer and D3D8 host, the Win32-on-SDL3
+layer, the PE loader, DirectSound and DirectInput -- because the Xbox release
+needs an XBE loader, NV2A, and Xbox kernel APIs instead. The Wine oracle, which
+every rendering question is currently settled against, would go too.
+
+That is a decision about THIS port's UI, not a claim that an Xbox port is not
+worth doing. It shares the lifter, so it stays cheap to start later.
+
+Read [`docs/prior-art.md`](prior-art.md) **first** -- Dusklight is a shipping
 CC0 port of the same shape that has already solved input binding and UI, and
 whatever is taken from it gets cited in the file that takes it.
 
