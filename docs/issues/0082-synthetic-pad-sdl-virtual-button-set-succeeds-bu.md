@@ -84,3 +84,28 @@ SDL discards joystick BUTTON state when no window holds keyboard focus, while wr
 tests/test_virtual_pad.c was a false negative: it passed throughout because it created no window, and a process with no windows is not subject to the focus policy. It now creates a hidden window -- the game's condition -- and is verified to fail without the policy (all ten buttons) and pass with it.
 
 NOT fixed and deliberately out of scope here: the press reaches the game and the conversation still does not advance on pad A where Return does. That is the action binding, game-level, and it is what the input RE is for.
+
+### Note (2026-08-18)
+SECOND HALF FIXED, and it was not in the host layer at all.
+
+ad78ca9 made the host deliver the button; the game still did nothing on pad A.
+Measured with the new /input probe, both classes at one instant: Return held
+gave player 0 physical[4]=1.000, pad A held gave 30 of 30 floats at zero WITH
+the game's own DIJOYSTATE2 block showing button 0 down and FUN_00627650(pad 0,
+code 0x15) returning 1.0.
+
+Cause: the Xbox preset was installed into the master binding set (controller 0)
+in slot 2. The game evaluates only the WORKING copies 4..7, which FUN_0061b030
+fills by copying the master BEFORE this preset runs -- and it then overwrites
+slots 2 and 3 of those copies with its own menu keys (row 4 slot 2 is Return,
+the [ENTER] on the dialog prompt). Slot 1 is the free alternate. Recorded as
+C215.
+
+A third defect fell out: the slot ADDRESS carried an extra +4 in the shipped
+code and in tests/test_xbox_defaults.c alike, so reads returned the code as the
+kind. The test agreed with the wrong layout and could not have caught it.
+
+Fixed in fcedf76: slot 1, published to sets 0/4/12 through
+input_bindings_write_player. Pad A now advances the tutorial conversation and
+leftx=-1 moves the character. 45/45 ctests, and the test fails on each of the
+three defects individually (exit 1, 2 and 5).

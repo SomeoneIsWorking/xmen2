@@ -48,21 +48,38 @@ channel (`tools/x2ctl.py shot`) is how to take it.
 
 ## 4. Input hotswap
 
-**Partial, and it was wrongly recorded as shipped until 2026-08-18.**
-Enumeration is real: SDL3 plus the game's own DirectInput enumeration and
-connection callbacks, with late attach and detach exercised by a synthetic pad.
+**Shipped for the synthetic pad; unverified on real hardware.** Enumeration was
+always real -- SDL3 plus the game's own DirectInput enumeration and connection
+callbacks, with late attach and detach. What was missing was a press, and it
+was missing at two independent layers, both now fixed and both re-checkable
+live with `tools/x2ctl.py input`.
 
-What was NOT tested is a press. SDL's virtual joystick reads zero on every
-button until something sets one, and nothing set one — so the synthetic pad
-proved the game FINDS a controller and proved nothing about input reaching it.
-Reported as "the Xbox controller does nothing", and reproducible with no
-hardware: `x2ctl.py pad a` leaves a conversation where it is while `key Return`
-advances it.
+**The host half (ad78ca9).** SDL discards joystick BUTTON state when no window
+holds keyboard focus while writing AXIS state through regardless, so the pad
+enumerated, its sticks moved, and every button read released forever.
+`SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS` before the gamepad subsystem
+starts. The window belongs to the guest -- a 2005 game creating it through a
+Win32 layer SDL only backs -- so SDL's notion of focus is not something this
+port can gate input on.
 
-One cause is fixed — the gamepad path never refreshed SDL's latched state,
-where the keyboard and mouse paths always had. Buttons still do not arrive, and
-`tests/test_virtual_pad.c` rules out SDL and the mapping (all ten round-trip in
-isolation), so what remains is how the running game holds the device.
+**The game half (fcedf76).** With the button arriving, pad A still did nothing.
+XMen2.exe keeps sixteen binding sets in four banks; the game evaluates only the
+working copies 4..7, which `FUN_0061b030` fills from the masters 0..3 *before*
+the port's preset runs, and it then overwrites slots 2 and 3 of those copies
+with its own menu keys -- row 4 slot 2 is Return, the `[ENTER]` on a dialog
+prompt. The preset was going into the master's slot 2: present, correct, and
+never read. It now goes into slot 1 -- the alternate the game itself leaves
+free, persisted as `Controls\Player%d\<row>2` -- and is published to sets 0,
+4 and 12 the way the game publishes it (C215).
+
+Measured after: pad A sets player 0's `physical[4]` to 1.000 exactly as Return
+does, three presses carry the tutorial conversation to its end, and
+`leftx=-1` sets `physical[0]` to -1.000.
+
+Open: **no real controller has been attached to this machine**, so every
+reading above comes from the synthetic pad. That is a real gap and it is why
+this is not called verified. The `x2ctl.py input` probe is what a hardware run
+should be checked with.
 
 ## 5. RmlUi for player mapping and input bindings
 
