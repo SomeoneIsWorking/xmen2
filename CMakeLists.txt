@@ -48,7 +48,8 @@ add_custom_target(x2_pad_glyph_header DEPENDS "${X2_PAD_GLYPH_HEADER}")
 # The gamepad inventory, against an SDL virtual pad. dinput_pad.c depends on
 # nothing in the guest runtime -- it is SDL on one side and plain values on the
 # other -- so it links straight into a test binary.
-add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c)
+add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c
+               src/native/guest_clock.c)
 target_include_directories(test_dinput_pad PRIVATE src/native)
 target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
 target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
@@ -256,6 +257,16 @@ add_test(NAME d3d8_abi
 # the top-down identity, which is the bug C171 found in the Xbox-art tool), the
 # band finder on an image whose longest blank run is not its first, and a blit
 # that must touch exactly its own cell.
+if(SDL3_FOUND OR TARGET SDL3::SDL3)
+    add_executable(test_virtual_pad tests/test_virtual_pad.c)
+    target_link_libraries(test_virtual_pad PRIVATE SDL3::SDL3)
+    add_test(NAME virtual_pad COMMAND test_virtual_pad)
+    # A machine with no gamepad subsystem SKIPs (77) rather than failing, and
+    # rather than passing having checked nothing.
+    set_tests_properties(virtual_pad PROPERTIES SKIP_RETURN_CODE 77
+        ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
+endif()
+
 add_executable(test_control_png tests/test_control_png.c src/native/control_png.c)
 target_include_directories(test_control_png PRIVATE src/native)
 target_compile_definitions(test_control_png PRIVATE

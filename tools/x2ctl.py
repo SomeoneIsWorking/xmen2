@@ -10,6 +10,8 @@ then talk to it while it runs:
     tools/x2ctl.py status                 # frames, guest time, frame timing
     tools/x2ctl.py key Return             # press a key (--hold SECONDS)
     tools/x2ctl.py key Escape Escape Up   # several, in order
+    tools/x2ctl.py pad a start             # synthetic pad buttons
+    tools/x2ctl.py pad leftx=-1            # ... and axes
     tools/x2ctl.py shot out.png           # capture the current frame
     tools/x2ctl.py watch --for 30         # print /status once a second
 
@@ -94,6 +96,33 @@ def cmd_key(args):
     return 1 if bad else 0
 
 
+def cmd_pad(args):
+    """Press buttons / move axes on the SYNTHETIC pad (X2_VIRTUAL_PAD).
+
+    A real controller is driven by the hardware and never from here; this
+    exists because SDL's virtual joystick reads zero on every button until
+    something sets one, so a headless run could enumerate a pad and prove
+    nothing about a press reaching the game.
+    """
+    bad = 0
+    for name in args.names:
+        if "=" in name:                       # axis form: leftx=-1
+            what, _, val = name.partition("=")
+            path = "/pad?axis=%s&value=%s" % (what, val)
+        else:
+            path = "/pad?button=%s" % name
+        if args.hold:
+            path += "&hold=%g" % args.hold
+        code, _, body = call(args.port, path)
+        text = body.decode(errors="replace").strip()
+        print(("  " if code == 200 else "  REFUSED(%d) " % code) + text)
+        if code != 200:
+            bad += 1
+        elif args.gap:
+            time.sleep(args.gap)
+    return 1 if bad else 0
+
+
 def cmd_shot(args):
     code, ctype, body = call(args.port, "/screenshot", timeout=30.0)
     if code != 200 or "png" not in ctype:
@@ -139,6 +168,13 @@ def main():
     k.add_argument("--gap", type=float, default=0.4,
                    help="seconds between presses")
     k.set_defaults(fn=cmd_key)
+
+    d = sub.add_parser("pad", help="press a synthetic pad button, or move an "
+                                   "axis with NAME=VALUE (leftx=-1)")
+    d.add_argument("names", nargs="+")
+    d.add_argument("--hold", type=float, default=0.0)
+    d.add_argument("--gap", type=float, default=0.4)
+    d.set_defaults(fn=cmd_pad)
 
     s = sub.add_parser("shot")
     s.add_argument("out", nargs="?", default="scratch/screenshots/x2ctl.png")

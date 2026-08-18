@@ -85,4 +85,32 @@ void dinput_pad_virtual_tick(unsigned long frame);
 
 void dinput_pad_report(void);
 
+
+/*
+ * Press a button ("a", "start", ...) or set an axis ("leftx", -1.0..1.0) on
+ * the SYNTHETIC pad, held for `hold` seconds (0 = a default press; for an axis
+ * 0 means hold it until changed). Returns 0 with a reason in `why`.
+ *
+ * SDL's virtual joystick reads zero everywhere until something sets it, so
+ * without this a run with X2_VIRTUAL_PAD proved the game FINDS a pad and never
+ * that a press reaches it. Names come from the same table the SDL mapping is
+ * generated from.
+ */
+int dinput_pad_virtual_set(const char *what, double value, double hold,
+                           char *why, int whyn);
+
+
+/* Did the game ASK for pad state, and did any answer come back pressed?
+   Reported with its denominator: "0 of 0" and "0 of 480000" are different
+   findings and silence cannot distinguish them. */
+void dinput_pad_poll_report(void);
+
+
+/* Refresh SDL's latched pad state. Call ONCE per device poll, before
+   reading axes and buttons -- they report what SDL last latched, and only
+   this refreshes it. The keyboard and mouse paths have always done the
+   equivalent; the pad path did not, so every button read came back
+   released. */
+void dinput_pad_refresh_state(void);
+
 #endif /* DINPUT_PAD_H */

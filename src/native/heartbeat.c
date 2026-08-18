@@ -1,6 +1,7 @@
 /* See heartbeat.h. */
 #include "threads.h"
 #include "control.h"
+#include "dinput_pad.h"
 #include "guest_clock.h"
 #include "heartbeat.h"
 #include "oracle_trace.h"
@@ -457,6 +458,7 @@ static void *heartbeat_thread(void *arg)
            "nobody wired the clock up" cannot look alike. */
         guest_clock_report();
         control_report();
+        dinput_pad_poll_report();
 
         p_cross = cross; p_scenes = scenes; p_presents = presents;
         p_clears = clears; p_draws = draws;

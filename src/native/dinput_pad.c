@@ -34,6 +34,7 @@
  * d-pad on POV 0, and ten buttons in the 360's order.
  */
 #include "dinput_pad.h"
+#include "guest_clock.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -275,12 +276,52 @@ static const SDL_GamepadButton BTN[10] = {
 };
 #endif
 
+/*
+ * Does the game ever ASK, and does the answer ever come back pressed?
+ *
+ * "The controller does nothing" has three causes that look identical from
+ * outside: the game never polls the pad, it polls and SDL reports nothing, or
+ * it sees the button and the screen in front of you ignores it. Without a
+ * denominator all three read as silence, so these count every read and every
+ * read that came back DOWN, and the pair is reported whether or not either is
+ * zero -- "0 of 0" and "0 of 480,000" are completely different findings.
+ */
+static unsigned long g_btn_reads, g_btn_down, g_axis_reads, g_axis_offcentre;
+static unsigned long g_pad_pumps;
+
+/*
+ * Refresh SDL's view of the pads, ONCE per device poll.
+ *
+ * SDL_GetGamepadButton and SDL_GetGamepadAxis report the state SDL last
+ * latched; nothing refreshes it but SDL_UpdateGamepads (which SDL_PumpEvents
+ * calls in turn). The keyboard and mouse paths in dinput_system.c have always
+ * pumped before reading -- the pad path never did, so every button read came
+ * back released no matter what the hardware was doing. Measured: 67,420 button
+ * reads in one run, 0 of them down, with a press held across thousands of
+ * them.
+ *
+ * Called from dinput_joystick_state, not from the per-button read: the game
+ * asks for ten buttons and six axes per poll, and pumping sixteen times a
+ * frame would be doing the same work sixteen times over.
+ */
+void dinput_pad_refresh_state(void)
+{
+#ifdef X2_WITH_SDL
+    g_pad_pumps++;
+    SDL_UpdateGamepads();
+#endif
+}
+
 int dinput_pad_button(int pad, int button)
 {
 #ifdef X2_WITH_SDL
     Pad *p = pad_at(pad);
+    int down;
+    g_btn_reads++;
     if (!p || button < 0 || button >= 10) return 0;
-    return SDL_GetGamepadButton(p->gp, BTN[button]) ? 1 : 0;
+    down = SDL_GetGamepadButton(p->gp, BTN[button]) ? 1 : 0;
+    if (down) g_btn_down++;
+    return down;
 #else
     (void)pad; (void)button;
     return 0;
@@ -289,6 +330,7 @@ int dinput_pad_button(int pad, int button)
 
 int32_t dinput_pad_axis(int pad, int axis, int32_t lo, int32_t hi)
 {
+    g_axis_reads++;
     /* Centred is the MIDPOINT of the range the game set, not zero: the game
        asked for [-1000, 1000] and would read a hard-left stick if a host that
        had been given [0, 65535] returned 0. */
@@ -323,6 +365,7 @@ int32_t dinput_pad_axis(int pad, int axis, int32_t lo, int32_t hi)
     }
     /* SDL's -32768..32767 into the caller's range, with the midpoint exact. */
     if (raw < -32767) raw = -32767;
+    if (raw) g_axis_offcentre++;
     return mid + (int32_t)((int64_t)raw * (hi - lo) / 2 / 32767);
 #else
     (void)pad; (void)axis;
@@ -370,11 +413,31 @@ uint32_t dinput_pad_pov(int pad)
  * It is ANNOUNCED, loudly, for the same reason every injected key press is:
  * a run with a synthetic pad must not be mistakable for a run with a real one.
  */
+/*
+ * The synthetic pad's buttons, in JOYSTICK index order. This is the single
+ * definition: the SDL mapping string is generated from it, and a name asked
+ * for over the control channel is looked up in it. See virtual_attach.
+ */
+#define VBTN_N 10
+static const char *const g_vbtn_name[VBTN_N] = {
+    "a", "b", "x", "y", "back", "start",
+    "leftstick", "rightstick", "leftshoulder", "rightshoulder"
+};
+
+/* A press held until `until` (guest seconds), so a press survives the game's
+   per-frame poll the way a real thumb does. 0 = not held. */
+static double g_vbtn_until[VBTN_N];
+static double g_vaxis_until[6];
+static short  g_vaxis_value[6];
+static unsigned long g_vpad_presses, g_vpad_axis_sets;
+
 static int  g_virt_at_frame = -1;         /* fN form: attach at that frame */
 static SDL_JoystickID g_virt_id;
+static SDL_Joystick  *g_virt_js;   /* opened so its axes/buttons can be set */
 static int  g_virt_detach_at = -1;
 
 static void virtual_attach(void);
+static void virtual_expire(void);
 
 void dinput_pad_virtual_from_env(void)
 {
@@ -415,6 +478,7 @@ void dinput_pad_virtual_from_env(void)
 void dinput_pad_virtual_tick(unsigned long frame)
 {
 #ifdef X2_WITH_SDL
+    virtual_expire();
     if (g_virt_at_frame >= 0 && frame >= (unsigned long)g_virt_at_frame) {
         g_virt_at_frame = -1;
         virtual_attach();
@@ -424,6 +488,7 @@ void dinput_pad_virtual_tick(unsigned long frame)
         if (g_virt_id) {
             fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD -- UNPLUGGING the "
                             "synthetic pad at frame %lu.\n", frame);
+            if (g_virt_js) { SDL_CloseJoystick(g_virt_js); g_virt_js = NULL; }
             SDL_DetachVirtualJoystick(g_virt_id);
             g_virt_id = 0;
             dinput_pad_refresh();
@@ -467,21 +532,219 @@ static void virtual_attach(void)
     }
     g = SDL_GetJoystickGUIDForID(jid);
     SDL_GUIDToString(g, gs, sizeof gs);
-    snprintf(map, sizeof map,
-             "%s,X2 Virtual Pad,a:b0,b:b1,x:b2,y:b3,back:b4,start:b5,"
-             "leftstick:b6,rightstick:b7,leftshoulder:b8,rightshoulder:b9,"
-             "dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
-             "leftx:a0,lefty:a1,rightx:a2,righty:a3,"
-             "lefttrigger:a4,righttrigger:a5,", gs);
-    SDL_AddGamepadMapping(map);
+    {
+        /*
+         * The mapping string is BUILT FROM g_vbtn_name, not written beside it.
+         *
+         * A virtual joystick is driven by JOYSTICK button index, while the
+         * game-facing names are GAMEPAD buttons, and the two orders differ:
+         * this mapping puts start at b5, where SDL's own enum has GUIDE at 5
+         * and START at 6. Written out twice, the pair drifts and every press
+         * lands one button off -- which looks exactly like "the controller
+         * does nothing in this menu". One table, two readers.
+         */
+        size_t n = 0;
+        int i;
+        n += (size_t)snprintf(map + n, sizeof map - n, "%s,X2 Virtual Pad,", gs);
+        for (i = 0; i < VBTN_N; i++)
+            n += (size_t)snprintf(map + n, sizeof map - n, "%s:b%d,",
+                                  g_vbtn_name[i], i);
+        snprintf(map + n, sizeof map - n,
+                 "dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,"
+                 "leftx:a0,lefty:a1,rightx:a2,righty:a3,"
+                 "lefttrigger:a4,righttrigger:a5,");
+    }
+    {
+        /*
+         * What SDL actually did with it. A mapping that is silently rejected
+         * leaves the pad enumerating perfectly and reading UP forever, which
+         * is indistinguishable from a game that ignores the pad -- so the
+         * return code and the mapping SDL ENDS UP USING are both reported,
+         * not just the fact that a mapping was offered.
+         */
+        int rc = SDL_AddGamepadMapping(map);
+        fprintf(stderr, "DINPUT-PAD: mapping offered (%zu bytes) -> %s\n",
+                strlen(map),
+                rc < 0 ? SDL_GetError() : (rc ? "added" : "updated existing"));
+    }
     g_virt_id = jid;
+    g_virt_js = SDL_OpenJoystick(jid);
+    if (!g_virt_js)
+        fprintf(stderr, "DINPUT-PAD: the synthetic pad attached but could NOT be "
+                        "opened (%s), so nothing can press its buttons. It will "
+                        "enumerate and read as all-zero forever.\n", SDL_GetError());
     dinput_pad_refresh();
+    {
+        char *m = SDL_GetGamepadMappingForID(jid);
+        fprintf(stderr, "DINPUT-PAD: SDL_IsGamepad=%d; the mapping IN FORCE is: "
+                        "%s\n", (int)SDL_IsGamepad(jid), m ? m : "(none)");
+        if (m) SDL_free(m);
+    }
     fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD -- a SYNTHETIC gamepad is "
                     "attached. Nothing in this run's controller behaviour came "
                     "from real hardware, and this line is here so that cannot "
                     "be mistaken.\n");
 }
 #endif
+
+/*
+ * Press a button or move an axis on the SYNTHETIC pad.
+ *
+ * Why this has to exist: SDL's virtual joystick reports zero for every axis
+ * and button until something sets one. So a run with X2_VIRTUAL_PAD exercised
+ * enumeration, CreateDevice, the data format and the axis ranges the game
+ * asks for -- and never once exercised an actual INPUT. "Hotswap works" and
+ * "the controller does nothing" were both true at the same time, and nothing
+ * in the build could tell them apart.
+ *
+ * Names come from g_vbtn_name, the same table the SDL mapping is generated
+ * from, so a name here and a button there cannot drift apart.
+ *
+ * Returns 0 with a reason rather than doing nothing quietly: "there is no
+ * synthetic pad in this run" and "that button does not exist" are different
+ * answers and the caller acts differently on each.
+ */
+int dinput_pad_virtual_set(const char *what, double value, double hold,
+                           char *why, int whyn)
+{
+#ifdef X2_WITH_SDL
+    static const char *const AXIS[6] = {
+        "leftx", "lefty", "rightx", "righty", "lefttrigger", "righttrigger"
+    };
+    double now = guest_clock_now_s();
+    int i;
+
+    if (!g_virt_js) {
+        snprintf(why, (size_t)whyn,
+                 "this run has no synthetic pad to press (X2_VIRTUAL_PAD is "
+                 "unset, or the pad attached but could not be opened). A REAL "
+                 "controller is driven by the hardware, not from here.");
+        return 0;
+    }
+    for (i = 0; i < VBTN_N; i++)
+        if (!strcmp(what, g_vbtn_name[i])) {
+            if (!SDL_SetJoystickVirtualButton(g_virt_js, i, true)) {
+                snprintf(why, (size_t)whyn, "SDL refused button %d (%s): %s",
+                         i, what, SDL_GetError());
+                return 0;
+            }
+            g_vbtn_until[i] = now + (hold > 0.0 ? hold : 0.30);
+            g_vpad_presses++;
+            /*
+             * READ IT BACK, through the same call the game uses.
+             *
+             * Setting a virtual JOYSTICK button and reading a GAMEPAD button
+             * are two different layers with a mapping in between, and if that
+             * mapping is not what this code thinks it is, the press is
+             * accepted here and invisible there -- which is indistinguishable
+             * from the game ignoring it. Reporting the read-back turns "the
+             * pad does nothing" into one of two specific answers.
+             */
+            SDL_UpdateJoysticks();
+            SDL_UpdateGamepads();
+            {
+                SDL_GamepadButton gb = SDL_GetGamepadButtonFromString(what);
+                /* The JOYSTICK's own view, one layer below the gamepad. If
+                   this is down and the gamepad is up, the mapping is the
+                   problem; if this is up too, the virtual set never landed. */
+                int jraw = SDL_GetJoystickButton(g_virt_js, i) ? 1 : 0;
+                Pad *pp = pad_at(0);
+                int back = (pp && pp->gp && gb != SDL_GAMEPAD_BUTTON_INVALID)
+                           ? (SDL_GetGamepadButton(pp->gp, gb) ? 1 : 0) : -1;
+                snprintf(why, (size_t)whyn,
+                         "joystick button %d set (joystick itself reads %s); "
+                         "gamepad \"%s\" (enum %d) now reads %s",
+                         i, jraw ? "DOWN" : "UP", what, (int)gb,
+                         back < 0 ? "UNREADABLE -- no open gamepad for pad 0"
+                                  : (back ? "DOWN" : "UP -- SDL did NOT take "
+                                            "it through the mapping"));
+            }
+            return 1;
+        }
+    for (i = 0; i < 6; i++)
+        if (!strcmp(what, AXIS[i])) {
+            /* -1..1 from the caller, SDL's signed 16-bit range on the wire. */
+            double v = value < -1.0 ? -1.0 : (value > 1.0 ? 1.0 : value);
+            short raw = (short)(v * 32767.0);
+            if (!SDL_SetJoystickVirtualAxis(g_virt_js, i, raw)) {
+                snprintf(why, (size_t)whyn, "SDL refused axis %d (%s): %s",
+                         i, what, SDL_GetError());
+                return 0;
+            }
+            g_vaxis_value[i] = raw;
+            g_vaxis_until[i] = hold > 0.0 ? now + hold : 0.0;
+            g_vpad_axis_sets++;
+            return 1;
+        }
+    {
+        size_t n = (size_t)snprintf(why, (size_t)whyn,
+                                    "\"%s\" is not a button or axis on this "
+                                    "pad. Buttons: ", what);
+        for (i = 0; i < VBTN_N && n < (size_t)whyn; i++)
+            n += (size_t)snprintf(why + n, (size_t)whyn - n, "%s ",
+                                  g_vbtn_name[i]);
+        if (n < (size_t)whyn)
+            snprintf(why + n, (size_t)whyn - n,
+                     "| axes: leftx lefty rightx righty lefttrigger "
+                     "righttrigger");
+    }
+    return 0;
+#else
+    (void)what; (void)value; (void)hold;
+    snprintf(why, (size_t)whyn, "built without SDL: there is no pad at all.");
+    return 0;
+#endif
+}
+
+/* Release whatever has been held long enough. Called once a frame beside the
+   attach/detach schedule, so a press lasts real frames rather than one poll. */
+static void virtual_expire(void)
+{
+#ifdef X2_WITH_SDL
+    double now = guest_clock_now_s();
+    int i;
+    if (!g_virt_js) return;
+    for (i = 0; i < VBTN_N; i++)
+        if (g_vbtn_until[i] != 0.0 && now >= g_vbtn_until[i]) {
+            g_vbtn_until[i] = 0.0;
+            SDL_SetJoystickVirtualButton(g_virt_js, i, false);
+        }
+    for (i = 0; i < 6; i++)
+        if (g_vaxis_until[i] != 0.0 && now >= g_vaxis_until[i]) {
+            g_vaxis_until[i] = 0.0;
+            g_vaxis_value[i] = 0;
+            SDL_SetJoystickVirtualAxis(g_virt_js, i, 0);
+        }
+#endif
+}
+
+void dinput_pad_poll_report(void)
+{
+    fprintf(stderr,
+        "  pad: the game read a button %lu time(s); %lu of those came back "
+        "DOWN. Axes read %lu time(s), %lu off centre. SDL state refreshed "
+        "%lu time(s).\n",
+        g_btn_reads, g_btn_down, g_axis_reads, g_axis_offcentre, g_pad_pumps);
+    if (g_btn_reads && !g_pad_pumps)
+        fprintf(stderr,
+            "       The game polled but SDL's pad state was NEVER refreshed, "
+            "so every read returned whatever SDL last latched -- which is "
+            "nothing. This is the defect dinput_pad_refresh_state exists to "
+            "fix; it is not being called.\n");
+    if (!g_btn_reads)
+        fprintf(stderr,
+            "       ZERO reads: the game is not polling the pad at all, so no "
+            "press could reach it whatever the hardware does.\n");
+    else if (!g_btn_down)
+        fprintf(stderr,
+            "       Reads happen but NONE was ever down: either nothing "
+            "pressed anything, or the press is not reaching SDL's gamepad "
+            "state (a virtual pad needs SDL_SetJoystickVirtual*; a real one "
+            "needs its events pumped).\n");
+    fprintf(stderr,
+        "       %lu synthetic press(es) and %lu axis set(s) were requested "
+        "over the control channel.\n", g_vpad_presses, g_vpad_axis_sets);
+}
 
 void dinput_pad_report(void)
 {

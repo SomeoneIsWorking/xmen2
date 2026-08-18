@@ -2,6 +2,7 @@
 
 #include "control_png.h"
 #include "dinput_fifo.h"
+#include "dinput_pad.h"
 #include "guest_clock.h"
 #include "gpu_device.h"
 
@@ -27,7 +28,7 @@
  * and waits; control_pump, running on the thread that owns guest input,
  * performs it and wakes the server with the answer.
  */
-enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT };
+enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD };
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  g_ready = PTHREAD_COND_INITIALIZER;
@@ -35,7 +36,7 @@ static pthread_cond_t  g_done = PTHREAD_COND_INITIALIZER;
 
 static int    g_cmd;
 static char   g_cmd_key[32];
-static double g_cmd_hold;
+static double g_cmd_hold, g_cmd_value;
 static int    g_cmd_ok;
 static char   g_cmd_why[192];
 static unsigned char *g_shot;          /* PNG, owned by the server thread */
@@ -44,6 +45,7 @@ static unsigned g_shot_w, g_shot_h;
 
 static int g_port;
 static unsigned long g_requests, g_keys_pressed, g_keys_refused, g_shots;
+static unsigned long g_pad_ok, g_pad_refused;
 
 /* ---------------------------------------------------------------- pump --- */
 
@@ -61,6 +63,11 @@ void control_pump(double now)
                                        g_cmd_why, (int)sizeof g_cmd_why);
         if (g_cmd_ok) { g_keys_pressed++; g_cmd_why[0] = '\0'; }
         else g_keys_refused++;
+    } else if (cmd == CMD_PAD) {
+        g_cmd_ok = dinput_pad_virtual_set(g_cmd_key, g_cmd_value, g_cmd_hold,
+                                          g_cmd_why, (int)sizeof g_cmd_why);
+        if (g_cmd_ok) g_pad_ok++;      /* g_cmd_why carries the read-back */
+        else g_pad_refused++;
     } else if (cmd == CMD_SHOT) {
         uint32_t w = 0, h = 0;
         unsigned char *bgra;
@@ -232,6 +239,38 @@ static void route_key(int fd, const char *query)
                gpu_frames_presented());
 }
 
+static void route_pad(int fd, const char *query)
+{
+    char what[32] = "", hold[16] = "", value[16] = "";
+
+    if (!query_arg(query, "button", what, sizeof what) &&
+        !query_arg(query, "axis", what, sizeof what)) {
+        reply_text(fd, 400, "Bad Request",
+                   "no button or axis named.\n"
+                   "  /pad?button=a[&hold=0.3]\n"
+                   "  /pad?axis=leftx&value=-1[&hold=0.5]\n"
+                   "Buttons: a b x y back start leftstick rightstick "
+                   "leftshoulder rightshoulder\n"
+                   "Axes: leftx lefty rightx righty lefttrigger righttrigger, "
+                   "value -1..1\n");
+        return;
+    }
+    g_cmd_hold  = query_arg(query, "hold", hold, sizeof hold) ? atof(hold) : 0.0;
+    g_cmd_value = query_arg(query, "value", value, sizeof value)
+                  ? atof(value) : 1.0;
+    snprintf(g_cmd_key, sizeof g_cmd_key, "%s", what);
+
+    if (!submit(CMD_PAD, 5.0)) {
+        reply_text(fd, 504, "Gateway Timeout",
+                   "the guest did not poll within 5s, so \"%s\" was NOT set.\n",
+                   what);
+        return;
+    }
+    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    reply_text(fd, 200, "OK", "pad \"%s\" set at frame %lu -- %s\n",
+               what, gpu_frames_presented(), g_cmd_why);
+}
+
 static void route_shot(int fd)
 {
     if (!submit(CMD_SHOT, 10.0)) {
@@ -264,12 +303,15 @@ static void serve(int fd)
 
     if (!strcmp(path, "/status"))          route_status(fd);
     else if (!strcmp(path, "/key"))        route_key(fd, query ? query : "");
+    else if (!strcmp(path, "/pad"))        route_pad(fd, query ? query : "");
     else if (!strcmp(path, "/screenshot")) route_shot(fd);
     else
         reply_text(fd, 404, "Not Found",
                    "no such endpoint: %s\n"
                    "  GET /status       frames, guest time, frame timing\n"
                    "  GET /key?name=X   press a key (&hold=<seconds>)\n"
+                   "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"
+                   "  GET /pad?axis=leftx&value=-1   move an axis\n"
                    "  GET /screenshot   the current frame, as a PNG\n",
                    path);
 }
@@ -338,6 +380,8 @@ void control_report(void)
     }
     fprintf(stderr,
         "  control: port %d served %lu request(s) -- %lu key(s) pressed, %lu "
-        "refused by name or slot, %lu screenshot(s).\n",
-        g_port, g_requests, g_keys_pressed, g_keys_refused, g_shots);
+        "refused by name or slot, %lu screenshot(s),\n"
+        "           %lu synthetic pad input(s) set and %lu refused.\n",
+        g_port, g_requests, g_keys_pressed, g_keys_refused, g_shots,
+        g_pad_ok, g_pad_refused);
 }

@@ -14,6 +14,11 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi,
     int32_t mid = lo + (hi - lo) / 2;
     int button, count;
 
+    /* Latch SDL's current view ONCE, before reading the sixteen values below
+       out of it. Without this every one of them reports what SDL happened to
+       hold at startup, which is "nothing pressed" forever. */
+    dinput_pad_refresh_state();
+
     memset((void *)(uintptr_t)out, 0, size);
     if (size < 176u) {
         fprintf(stderr, "DINPUT8: a %u-byte joystick state is smaller than the "
