@@ -48,9 +48,21 @@ channel (`tools/x2ctl.py shot`) is how to take it.
 
 ## 4. Input hotswap
 
-**Shipped** — feature 1 in the README. Implemented through SDL3 and the game's
-own DirectInput enumeration and connection callbacks; late attach and detach
-are exercised by a frame-scheduled virtual pad.
+**Partial, and it was wrongly recorded as shipped until 2026-08-18.**
+Enumeration is real: SDL3 plus the game's own DirectInput enumeration and
+connection callbacks, with late attach and detach exercised by a synthetic pad.
+
+What was NOT tested is a press. SDL's virtual joystick reads zero on every
+button until something sets one, and nothing set one — so the synthetic pad
+proved the game FINDS a controller and proved nothing about input reaching it.
+Reported as "the Xbox controller does nothing", and reproducible with no
+hardware: `x2ctl.py pad a` leaves a conversation where it is while `key Return`
+advances it.
+
+One cause is fixed — the gamepad path never refreshed SDL's latched state,
+where the keyboard and mouse paths always had. Buttons still do not arrive, and
+`tests/test_virtual_pad.c` rules out SDL and the mapping (all ten round-trip in
+isolation), so what remains is how the running game holds the device.
 
 ## 5. RmlUi for player mapping and input bindings
 
