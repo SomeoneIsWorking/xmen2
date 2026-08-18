@@ -30,7 +30,7 @@ int main(void)
     size_t n = 0;
     int i, fails = 0;
 
-    if (!SDL_Init(SDL_INIT_GAMEPAD)) {
+    if (!SDL_Init(SDL_INIT_GAMEPAD | SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         fprintf(stderr, "SKIP: no SDL gamepad subsystem here (%s)\n",
                 SDL_GetError());
         return 77;                        /* ctest SKIP, not a false pass */

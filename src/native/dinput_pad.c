@@ -580,6 +580,8 @@ static void virtual_attach(void)
                         "%s\n", (int)SDL_IsGamepad(jid), m ? m : "(none)");
         if (m) SDL_free(m);
     }
+    fprintf(stderr, "DINPUT-PAD: attached on thread %llu\n",
+            (unsigned long long)SDL_GetCurrentThreadID());
     fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD -- a SYNTHETIC gamepad is "
                     "attached. Nothing in this run's controller behaviour came "
                     "from real hardware, and this line is here so that cannot "
@@ -620,6 +622,24 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                  "unset, or the pad attached but could not be opened). A REAL "
                  "controller is driven by the hardware, not from here.");
         return 0;
+    }
+    /* State of the handle we are about to press, printed once. The set
+       succeeds and the read comes back up, so the question is whether this is
+       still the live virtual device at all. */
+    {
+        static int said;
+        if (!said++)
+            fprintf(stderr,
+                "DINPUT-PAD: press handle %p on thread %llu -- id %u "
+                "(attached as %u), connected=%d, virtual=%d, %d button(s), "
+                "%d axis(es)\n",
+                (void *)g_virt_js,
+                (unsigned long long)SDL_GetCurrentThreadID(),
+                (unsigned)SDL_GetJoystickID(g_virt_js),
+                (unsigned)g_virt_id, (int)SDL_JoystickConnected(g_virt_js),
+                (int)SDL_IsJoystickVirtual(g_virt_id),
+                SDL_GetNumJoystickButtons(g_virt_js),
+                SDL_GetNumJoystickAxes(g_virt_js));
     }
     for (i = 0; i < VBTN_N; i++)
         if (!strcmp(what, g_vbtn_name[i])) {
