@@ -9,6 +9,15 @@
  *
  * It also requires the button to come back UP after release, so a test cannot
  * pass on a stuck-down device that never changes.
+ *
+ * IT CREATES A HIDDEN WINDOW FIRST, and that is the whole point of the test
+ * rather than a detail. The first version of this file passed while the game
+ * failed, and it passed because it had NO window: SDL drops joystick button
+ * state when no window holds keyboard focus, but a process with no windows at
+ * all is not subject to that. The game has a hidden window, which can never
+ * take focus, so it lost every button while its axes kept working. A test that
+ * cannot reproduce the defect it is meant to guard is worse than no test -- it
+ * says the code is fine.
  */
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -26,15 +35,27 @@ int main(void)
     SDL_Joystick *js;
     SDL_Gamepad *gp;
     SDL_GUID g;
+    SDL_Window *win;
     char gs[64], map[600];
     size_t n = 0;
     int i, fails = 0;
 
+    /* The port sets this because SDL's focus policy silently eats buttons;
+       the test must run under the SAME policy or it tests a different
+       program. Removing this line must make this test FAIL. */
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!SDL_Init(SDL_INIT_GAMEPAD | SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         fprintf(stderr, "SKIP: no SDL gamepad subsystem here (%s)\n",
                 SDL_GetError());
         return 77;                        /* ctest SKIP, not a false pass */
     }
+    /* The condition the game runs under: a window exists and never has focus. */
+    win = SDL_CreateWindow("x2 virtual pad test", 64, 64, SDL_WINDOW_HIDDEN);
+    if (!win)
+        fprintf(stderr, "note: no window (%s); this test is WEAKER without one "
+                        "-- the defect it guards only appears when a window "
+                        "exists and lacks focus.\n", SDL_GetError());
+
     SDL_INIT_INTERFACE(&desc);
     desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
     desc.vendor_id = 0x045e;
@@ -105,6 +126,7 @@ int main(void)
     SDL_CloseGamepad(gp);
     SDL_CloseJoystick(js);
     SDL_DetachVirtualJoystick(jid);
+    if (win) SDL_DestroyWindow(win);
     SDL_Quit();
     printf("virtual pad round-trip: %s (%d failure(s))\n",
            fails ? "FAILED" : "PASSED", fails);

@@ -172,6 +172,23 @@ void dinput_pad_refresh(void)
     SDL_JoystickID *ids;
 
     if (!SDL_WasInit(SDL_INIT_GAMEPAD)) {
+        /*
+         * SDL DROPS JOYSTICK BUTTONS WHEN NOTHING HAS KEYBOARD FOCUS, and it
+         * drops them in a way that is almost impossible to see: axis state is
+         * still written through, so the pad enumerates, its axes move, and
+         * every button reads released forever. Measured here as 71,700 button
+         * polls with 0 down while a press was held across thousands of them.
+         *
+         * That is the wrong policy for THIS program whatever the run looks
+         * like. The window belongs to the guest -- a 2005 game creating it
+         * through a Win32 layer that SDL only backs -- so SDL's notion of
+         * which window holds focus is not something the port controls, and a
+         * headless run has a hidden window that can never take focus at all.
+         * Gating input on it means input silently disappearing.
+         *
+         * Set BEFORE the subsystem starts: the hint is read at init.
+         */
+        SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
         if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
             /* Said ONCE, and it matters: with no gamepad subsystem every
                enumeration below reports zero pads, which is indistinguishable
@@ -507,6 +524,7 @@ static void virtual_attach(void)
     SDL_GUID g;
     char gs[64], map[600];
 
+    SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");   /* see above */
     if (!SDL_WasInit(SDL_INIT_GAMEPAD) && !SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
         fprintf(stderr, "DINPUT-PAD: X2_VIRTUAL_PAD is set but SDL's gamepad "
                         "subsystem would not start (%s). NO pad is attached.\n",
