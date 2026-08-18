@@ -1,4 +1,30 @@
-# title: Intermittent /GS stack-cookie crash in the menu-driven level load, exposed by the 9x faster load
+---
+id: 81
+title: Intermittent /GS stack-cookie crash in the menu-driven level load, exposed by the 9x faster load
+status: root-caused
+symptom: the menu-driven smoke run (New Game -> difficulty -> level load) intermittently aborts with "crt: the guest's stack-check handler fired -- a buffer overrun was detected inside recompiled code", right after the difficulty confirm (frame ~4135) and after the WSAStartup no-network check, about 1 in 2-3 smoke_loop runs. The boot-direct path (X2_BOOT_MAP) never crashes.
+tags: native,crash,load,party,memory,intermittent,timing,tail-call,abi
+created: 2026-08-17
+updated: 2026-08-18
+related: 68
+---
+
+## The same defect as issue #68, in the NATIVE runtime
+
+#68 is this bug on the HOSTED (Wine/DLL) path, root-caused and fixed on
+2026-08-14: "the hosted dispatcher kept one global pending-tail pointer active
+for the entire outer dispatch ... x86_tail_dispatch only queued that target and
+returned immediately. Its direct caller continued before the virtual target
+ran ... this left ESP four bytes low, so the security-cookie load read the
+adjacent object pointer."
+
+Every detail matches what was measured here: ESP four bytes low, the cookie
+load reading a word that was never the cookie, __security_check_cookie
+correctly reporting a mismatch. The hosted runtime was fixed; the NATIVE
+runtime (src/native/x86rt_native.c) was not, and its depth test is off by one
+in the opposite direction -- see the 2026-08-18 update below.
+
+## Original report
 
 **symptom**: the menu-driven smoke run (New Game -> difficulty -> level load) intermittently aborts with "crt: the guest's stack-check handler fired -- a buffer overrun was detected inside recompiled code", right after the difficulty confirm (frame ~4135) and after the WSAStartup no-network check, about 1 in 2-3 smoke_loop runs. The boot-direct path (X2_BOOT_MAP) never crashes.
 

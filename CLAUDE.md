@@ -20,8 +20,14 @@ task; update them in the SAME commit that changes a subsystem.
 ```sh
 python3 tools/info.py brief <words>     # claims (what's proven + its falsifier) + instruments (which tools can be trusted)
 python3 tools/re_frontier.py next       # the next RE-ready step;  `hacks` = the debt list
-python3 ~/.claude/skills/issue-catalog/catalog.py search <symptom>   # docs/issues/ — bugs and dead ends already hit
+python3 tools/catalog.py search <symptom>   # docs/issues/ — bugs and dead ends already hit
 ```
+
+Those three are SHIMS. The tools live in the `re-harness` repo, shared with
+every port in the tree (nine forked copies of `info.py` had drifted into seven
+versions); the DATA they read stays here. `tools/shared_dir.py` is the one place
+a shared repo is located, and it refuses naming every path it tried rather than
+falling back to a vendored copy.
 
 - `docs/codemap.md` — what exists, where, and its honest status per subsystem.
 - `docs/info/claims/` — each claim carries the observation that would falsify it.

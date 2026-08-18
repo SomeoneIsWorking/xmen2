@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""info — shared RE harness, run from this port.
+"""catalog — shared RE harness, run from this port.
 
 The tool itself lives in the `re-harness` repo, because every port in the
 tree needs it and nine forked copies is how it drifted into nine different
@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared_dir import shared_dir                            # noqa: E402
 
-_tool = os.path.join(shared_dir("re-harness", "info.py"), "info.py")
+_tool = os.path.join(shared_dir("re-harness", "catalog.py"), "catalog.py")
 
 if __name__ == "__main__":
     sys.argv[0] = _tool

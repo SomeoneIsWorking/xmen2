@@ -299,9 +299,6 @@ add_test(NAME prepare_native_assets
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
 
-add_test(NAME re_frontier_format
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tests/test_re_frontier.py)
 
 add_test(NAME extract_fb
          COMMAND ${CMAKE_COMMAND} -E env python3
