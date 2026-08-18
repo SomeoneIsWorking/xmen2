@@ -242,16 +242,6 @@ add_test(NAME oraclediff COMMAND python3
 add_test(NAME emitted_stamp COMMAND python3
          ${CMAKE_SOURCE_DIR}/tools/check_emitted.py --selftest)
 
-# The end-to-end gate's own checks (tools/smoke_loop.sh --selftest). The gate
-# itself needs the game and takes ~300s, so it is not a ctest; this runs its
-# checks against a log for each failure and requires each to be caught. It
-# needs neither the game nor a GPU. It exists because the gate PASSED a broken
-# run once -- an unanchored grep matched the shutdown report's own description
-# of x86_note_fallback -- and because the selftest's first version reported
-# every case as passing, having run the checks in a subshell that threw away
-# their result.
-add_test(NAME smoke_loop_checks
-         COMMAND ${CMAKE_SOURCE_DIR}/tools/smoke_loop.sh --selftest)
 
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
 # own call sites. Runs the checker's SELF-TEST, not the check: the check needs
@@ -266,6 +256,12 @@ add_test(NAME d3d8_abi
 # the top-down identity, which is the bug C171 found in the Xbox-art tool), the
 # band finder on an image whose longest blank run is not its first, and a blit
 # that must touch exactly its own cell.
+add_executable(test_control_png tests/test_control_png.c src/native/control_png.c)
+target_include_directories(test_control_png PRIVATE src/native)
+target_compile_definitions(test_control_png PRIVATE
+    CHECK_PNG="${CMAKE_CURRENT_SOURCE_DIR}/tools/check_png.py")
+add_test(NAME control_png COMMAND test_control_png)
+
 add_test(NAME pad_font
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/make_pad_font.py --selftest)
@@ -421,6 +417,9 @@ if(X2_MODULE_HAVE)
         src/native/xbox_defaults.c
         src/native/controller_defaults_ui.c
         src/native/dsound.c
+        src/native/guest_clock.c
+        src/native/control.c
+        src/native/control_png.c
         src/native/ws2_32.c
         src/native/advapi32.c
         src/native/shell32.c
@@ -498,7 +497,11 @@ if(X2_MODULE_HAVE)
     # the port drew warped characters the whole time (issue #80); it came right
     # only when the module was re-emitted for an unrelated reason.
     execute_process(
+        # --root explicitly: the translator is a SHARED repo now, so the tool
+        # can neither assume its own location is the port nor assume the
+        # working directory is (CMake runs it from the build tree).
         COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/check_emitted.py"
+                --root "${CMAKE_SOURCE_DIR}"
         RESULT_VARIABLE X2_EMIT_STALE
         OUTPUT_VARIABLE X2_EMIT_OUT
         ERROR_VARIABLE  X2_EMIT_ERR)

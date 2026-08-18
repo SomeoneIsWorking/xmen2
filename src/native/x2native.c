@@ -16,6 +16,8 @@
  * concrete stop rather than a silently skipped operation.
  */
 #include "pe_map.h"
+#include "control.h"
+#include "guest_clock.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "heartbeat.h"
@@ -2031,6 +2033,8 @@ int main(int argc, char **argv)
     if ((rc = x2native_options_parse(argc, argv, &options)) != 0) return rc;
     dir = options.install_dir;
     window = options.window;
+    if (options.unbounded) guest_clock_set_unbounded(1);
+    control_start(options.control);
     selftest = options.selftest;
     run = options.run;
     arkprobe = options.ark_probe;

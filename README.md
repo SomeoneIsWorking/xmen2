@@ -122,9 +122,9 @@ round: main menu → New Game → difficulty → the story cutscene → a level 
 rendered and simulated → the party dies with nobody driving them → the death
 dialog → back to a fully rendered main menu. No Wine, no original D3D, and no
 original machine code — the native build has no hybrid fallback, so every
-instruction executed came from the translator. `tools/smoke_loop.sh` drives
-that run and checks it; `tools/smoke_loop.sh --selftest` proves its checks can
-fail and needs neither the game nor a GPU.
+instruction executed came from the translator. Drive a run and look at it
+with the control channel (`--control`, `tools/x2ctl.py`) -- a play-through
+is an observation, never a gate.
 
 `./run.sh` is the supported default launcher: with no arguments it builds when
 needed and runs the current native SDL3 GPU game target. `./run.sh wine` and

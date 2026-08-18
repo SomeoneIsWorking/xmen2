@@ -4,6 +4,12 @@
 typedef struct {
     const char *install_dir;
     int window;
+    /* --unbounded: skip the scheduler's idle waits instead of sleeping
+       through them. Removes real seconds, never guest work -- see
+       guest_clock.h. */
+    int unbounded;
+    /* --control[=port]: the live control channel, 0 = off. See control.h. */
+    int control;
     int selftest;
     int run;
     int ark_probe;

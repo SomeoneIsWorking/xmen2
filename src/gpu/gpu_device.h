@@ -62,6 +62,12 @@ void gpu_device_headless(int on, uint32_t w, uint32_t h);
 int  gpu_device_headless_read(void *bgra_out, uint32_t bytes,
                               uint32_t *w_out, uint32_t *h_out);
 
+/* The size a readback would need, or 0 with the reason in `why` -- not
+   headless, or no frame rendered yet. Those are different answers and a caller
+   deciding what to report has to be able to tell them apart. */
+int  gpu_device_headless_size(uint32_t *w_out, uint32_t *h_out, char *why,
+                              int whyn);
+
 /*
  * Where to find a window if none is attached yet.
  *

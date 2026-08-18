@@ -19,6 +19,7 @@
  * resolution is a correctness requirement and not a convenience.
  */
 #include "x86rt.h"
+#include "guest_clock.h"
 #include "guest_heap.h"
 #include "x86rt_native.h"
 #include "pe_map.h"
@@ -543,12 +544,11 @@ void imp_KERNEL32_ExitProcess(CPU *C)
  */
 enum { CS_LOCKCOUNT = 4, CS_RECURSION = 8, CS_OWNER = 12 };
 
-static double k32_now_s(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-}
+/* The guest's clock, not a private one: see guest_clock.h. Five copies of
+   this read CLOCK_MONOTONIC directly, and the guest gates real logic on
+   elapsed time, so any two of them disagreeing is a timing bug wearing a
+   gameplay bug's clothes. */
+static double k32_now_s(void) { return guest_clock_now_s(); }
 
 static unsigned long g_cs_contended;      /* enters that had to wait */
 static unsigned long g_cs_enters;

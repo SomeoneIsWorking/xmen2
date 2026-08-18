@@ -587,6 +587,10 @@ void imp_USER32_RegisterClassA(CPU *C)
 uint32_t g_wndproc;
 
 void win32_sdl_hide_windows(int hide) { g_hide_windows = hide; }
+/* Asked by anything that must behave headlessly without owning the flag --
+   the audio device is the first, since a run with no window is a run nobody
+   is listening to. */
+int  win32_sdl_windows_hidden(void) { return g_hide_windows; }
 
 void imp_USER32_UnregisterClassA(CPU *C) { g_wndproc = 0; ret_std(C, 1, 2); }
 

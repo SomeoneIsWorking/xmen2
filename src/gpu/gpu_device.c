@@ -962,6 +962,45 @@ void gpu_device_report(void)
  * frame. This reads the target the game has been rendering into, after
  * whatever frame last finished.
  */
+/*
+ * How big a readback would be, and whether one is possible at all.
+ *
+ * Separate from the read because the caller has to allocate before it can ask,
+ * and folding the query into the read as "pass a null buffer" collides with
+ * the buffer-size check -- the caller then cannot tell "too small" from "not
+ * headless" from "no frame yet", which are three different answers.
+ */
+int gpu_device_headless_size(uint32_t *w_out, uint32_t *h_out, char *why,
+                             int whyn)
+{
+    if (w_out) *w_out = 0;
+    if (h_out) *h_out = 0;
+#ifndef X2_WITH_SDL
+    snprintf(why, (size_t)whyn, "this build has no SDL, so there is no "
+                                "renderer to read a frame from.");
+    return 0;
+#else
+    if (!g_headless || !g_headless_tex) {
+        snprintf(why, (size_t)whyn,
+                 "this run is not headless, so the frame goes to the screen "
+                 "and there is no off-screen target to read. Launch with "
+                 "--no-window.");
+        return 0;
+    }
+    if (!g_headless_frames) {
+        snprintf(why, (size_t)whyn,
+                 "the %ux%u headless target exists but NO frame has been "
+                 "rendered into it yet -- reading it would photograph an "
+                 "uninitialised texture. The run is still starting up.",
+                 g_headless_w, g_headless_h);
+        return 0;
+    }
+    if (w_out) *w_out = g_headless_w;
+    if (h_out) *h_out = g_headless_h;
+    return 1;
+#endif
+}
+
 int gpu_device_headless_read(void *bgra_out, uint32_t bytes,
                              uint32_t *w_out, uint32_t *h_out)
 {

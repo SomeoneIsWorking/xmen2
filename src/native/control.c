@@ -1,0 +1,343 @@
+#include "control.h"
+
+#include "control_png.h"
+#include "dinput_fifo.h"
+#include "guest_clock.h"
+#include "gpu_device.h"
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <time.h>
+#include <unistd.h>
+
+/*
+ * ONE command in flight at a time, handed across a mutex.
+ *
+ * The server thread must never touch guest state: the guest is single-threaded
+ * under a cooperative scheduler, and reading its input table or the renderer's
+ * target from outside that schedule is exactly the kind of race that produces
+ * an intermittent bug nobody can reproduce. So the server parks a request here
+ * and waits; control_pump, running on the thread that owns guest input,
+ * performs it and wakes the server with the answer.
+ */
+enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT };
+
+static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  g_ready = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t  g_done = PTHREAD_COND_INITIALIZER;
+
+static int    g_cmd;
+static char   g_cmd_key[32];
+static double g_cmd_hold;
+static int    g_cmd_ok;
+static char   g_cmd_why[192];
+static unsigned char *g_shot;          /* PNG, owned by the server thread */
+static size_t g_shot_len;
+static unsigned g_shot_w, g_shot_h;
+
+static int g_port;
+static unsigned long g_requests, g_keys_pressed, g_keys_refused, g_shots;
+
+/* ---------------------------------------------------------------- pump --- */
+
+void control_pump(double now)
+{
+    int cmd;
+
+    if (!g_port) return;
+    pthread_mutex_lock(&g_lock);
+    cmd = g_cmd;
+    if (cmd == CMD_NONE) { pthread_mutex_unlock(&g_lock); return; }
+
+    if (cmd == CMD_KEY) {
+        g_cmd_ok = dinput_inject_press(g_cmd_key, now, g_cmd_hold, "control",
+                                       g_cmd_why, (int)sizeof g_cmd_why);
+        if (g_cmd_ok) { g_keys_pressed++; g_cmd_why[0] = '\0'; }
+        else g_keys_refused++;
+    } else if (cmd == CMD_SHOT) {
+        uint32_t w = 0, h = 0;
+        unsigned char *bgra;
+        /* Ask the size first, and pass the renderer's own reason straight
+           through: "not headless" and "no frame yet" are different answers and
+           the caller acts differently on each. */
+        if (!gpu_device_headless_size(&w, &h, g_cmd_why, (int)sizeof g_cmd_why)) {
+            g_cmd_ok = 0;
+        } else if ((bgra = (unsigned char *)malloc((size_t)w * h * 4)) == NULL) {
+            g_cmd_ok = 0;
+            snprintf(g_cmd_why, sizeof g_cmd_why,
+                     "could not allocate %ux%u BGRA readback", w, h);
+        } else {
+            if (!gpu_device_headless_read(bgra, (uint32_t)((size_t)w * h * 4),
+                                          &w, &h)) {
+                g_cmd_ok = 0;
+                snprintf(g_cmd_why, sizeof g_cmd_why,
+                         "the renderer refused the %ux%u readback", w, h);
+            } else {
+                free(g_shot);
+                g_shot = control_png_from_bgra(bgra, w, h, &g_shot_len);
+                g_shot_w = w; g_shot_h = h;
+                g_cmd_ok = g_shot != NULL;
+                if (!g_cmd_ok)
+                    snprintf(g_cmd_why, sizeof g_cmd_why,
+                             "PNG encode of %ux%u failed", w, h);
+                else g_shots++;
+            }
+            free(bgra);
+        }
+    }
+
+    g_cmd = CMD_NONE;
+    pthread_cond_signal(&g_done);
+    pthread_mutex_unlock(&g_lock);
+}
+
+/* Ask the guest thread to do something, and wait for it. Returns 0 on timeout,
+   which is itself an answer: the guest is not pumping input, i.e. it is stuck
+   or has not reached its input loop yet. */
+static int submit(int cmd, double timeout_s)
+{
+    struct timespec ts;
+    int rc = 0;
+
+    pthread_mutex_lock(&g_lock);
+    g_cmd = cmd;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += (time_t)timeout_s;
+    while (g_cmd != CMD_NONE)
+        if (pthread_cond_timedwait(&g_done, &g_lock, &ts) != 0) break;
+    rc = (g_cmd == CMD_NONE);
+    g_cmd = CMD_NONE;
+    pthread_mutex_unlock(&g_lock);
+    return rc;
+}
+
+/* -------------------------------------------------------------- serving --- */
+
+static void send_all(int fd, const void *p, size_t n)
+{
+    const char *b = (const char *)p;
+    while (n) {
+        ssize_t k = write(fd, b, n);
+        if (k <= 0) return;
+        b += k; n -= (size_t)k;
+    }
+}
+
+static void reply(int fd, int code, const char *status, const char *ctype,
+                  const void *body, size_t n)
+{
+    char head[256];
+    int hn = snprintf(head, sizeof head,
+                      "HTTP/1.1 %d %s\r\nContent-Type: %s\r\n"
+                      "Content-Length: %zu\r\nConnection: close\r\n\r\n",
+                      code, status, ctype, n);
+    send_all(fd, head, (size_t)hn);
+    if (n) send_all(fd, body, n);
+}
+
+static void reply_text(int fd, int code, const char *status, const char *fmt, ...)
+{
+    char body[1024];
+    int n;
+    va_list ap;
+    va_start(ap, fmt);
+    n = vsnprintf(body, sizeof body, fmt, ap);
+    va_end(ap);
+    reply(fd, code, status, "text/plain; charset=utf-8", body, (size_t)n);
+}
+
+/* Value of `name` in a query string, into `out`. 0 if absent. */
+static int query_arg(const char *q, const char *name, char *out, size_t outn)
+{
+    size_t nl = strlen(name);
+    const char *p = q;
+    while (p && *p) {
+        if (!strncmp(p, name, nl) && p[nl] == '=') {
+            const char *v = p + nl + 1, *e = strchr(v, '&');
+            size_t n = e ? (size_t)(e - v) : strlen(v);
+            if (n >= outn) n = outn - 1;
+            memcpy(out, v, n);
+            out[n] = '\0';
+            return 1;
+        }
+        p = strchr(p, '&');
+        if (p) p++;
+    }
+    return 0;
+}
+
+static void route_status(int fd)
+{
+    unsigned long long frame_ns = 0, mn = 0, mx = 0, subs = 0;
+    unsigned long intervals = 0;
+    const unsigned long *hist = NULL;
+    char body[1024];
+    int n;
+
+    gpu_device_perf(&frame_ns, &mn, &mx, &subs, &intervals, &hist);
+    n = snprintf(body, sizeof body,
+        "{\n"
+        "  \"frames_presented\": %lu,\n"
+        "  \"guest_time_s\": %.3f,\n"
+        "  \"unbounded\": %s,\n"
+        "  \"renderer_ready\": %s,\n"
+        "  \"frame_ms_avg\": %.3f,\n"
+        "  \"frame_ms_min\": %.3f,\n"
+        "  \"frame_ms_max\": %.3f,\n"
+        "  \"frame_intervals\": %lu,\n"
+        "  \"control\": { \"requests\": %lu, \"keys_pressed\": %lu,"
+        " \"keys_refused\": %lu, \"screenshots\": %lu }\n"
+        "}\n",
+        gpu_frames_presented(), guest_clock_elapsed_s(),
+        guest_clock_unbounded() ? "true" : "false",
+        gpu_device_ready() ? "true" : "false",
+        intervals ? (double)frame_ns / intervals / 1e6 : 0.0,
+        mn / 1e6, mx / 1e6, intervals,
+        g_requests, g_keys_pressed, g_keys_refused, g_shots);
+    reply(fd, 200, "OK", "application/json", body, (size_t)n);
+}
+
+static void route_key(int fd, const char *query)
+{
+    char name[32] = "", hold[16] = "";
+
+    if (!query_arg(query, "name", name, sizeof name) || !name[0]) {
+        reply_text(fd, 400, "Bad Request",
+                   "no key named. Use /key?name=Return[&hold=0.3].\n"
+                   "Names are SDL scancode names: Return, Escape, Up, Down,\n"
+                   "Left, Right, Space, A, 1, F1 ...\n");
+        return;
+    }
+    g_cmd_hold = query_arg(query, "hold", hold, sizeof hold) ? atof(hold) : 0.0;
+    snprintf(g_cmd_key, sizeof g_cmd_key, "%s", name);
+
+    if (!submit(CMD_KEY, 5.0)) {
+        reply_text(fd, 504, "Gateway Timeout",
+                   "the guest did not poll its keyboard within 5s, so \"%s\" "
+                   "was NOT pressed.\nThat is a statement about the RUN, not "
+                   "about this channel: the game is stuck, still loading, or "
+                   "has not reached its input loop.\n", name);
+        return;
+    }
+    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    reply_text(fd, 200, "OK", "pressed \"%s\" for %.2fs at frame %lu\n",
+               name, g_cmd_hold > 0.0 ? g_cmd_hold : 0.30,
+               gpu_frames_presented());
+}
+
+static void route_shot(int fd)
+{
+    if (!submit(CMD_SHOT, 10.0)) {
+        reply_text(fd, 504, "Gateway Timeout",
+                   "the guest did not reach an input poll within 10s, so no "
+                   "frame could be captured.\nThe run is stuck or still "
+                   "loading -- ask /status for its frame count.\n");
+        return;
+    }
+    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    reply(fd, 200, "OK", "image/png", g_shot, g_shot_len);
+}
+
+static void serve(int fd)
+{
+    char req[1024], *path, *query, *sp;
+    ssize_t n = read(fd, req, sizeof req - 1);
+
+    if (n <= 0) return;
+    req[n] = '\0';
+    g_requests++;
+
+    path = strchr(req, ' ');
+    if (!path) { reply_text(fd, 400, "Bad Request", "unparseable request\n"); return; }
+    path++;
+    sp = strchr(path, ' ');
+    if (sp) *sp = '\0';
+    query = strchr(path, '?');
+    if (query) *query++ = '\0';
+
+    if (!strcmp(path, "/status"))          route_status(fd);
+    else if (!strcmp(path, "/key"))        route_key(fd, query ? query : "");
+    else if (!strcmp(path, "/screenshot")) route_shot(fd);
+    else
+        reply_text(fd, 404, "Not Found",
+                   "no such endpoint: %s\n"
+                   "  GET /status       frames, guest time, frame timing\n"
+                   "  GET /key?name=X   press a key (&hold=<seconds>)\n"
+                   "  GET /screenshot   the current frame, as a PNG\n",
+                   path);
+}
+
+static void *server_thread(void *arg)
+{
+    int lfd = (int)(intptr_t)arg;
+    for (;;) {
+        int fd = accept(lfd, NULL, NULL);
+        if (fd < 0) { if (errno == EINTR) continue; break; }
+        serve(fd);
+        close(fd);
+    }
+    return NULL;
+}
+
+/* ---------------------------------------------------------------- start --- */
+
+int control_start(int port)
+{
+    struct sockaddr_in a;
+    pthread_t th;
+    int lfd, on = 1;
+
+    if (!port) {
+        const char *e = getenv("X2_CONTROL");
+        port = (e && *e) ? atoi(e) : 0;
+    }
+    if (!port) return 0;
+
+    lfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (lfd < 0) {
+        fprintf(stderr, "control: socket() failed: %s. REFUSING to run without "
+                        "the control channel that was asked for.\n",
+                strerror(errno));
+        exit(2);
+    }
+    setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on);
+    memset(&a, 0, sizeof a);
+    a.sin_family = AF_INET;
+    a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);     /* loopback ONLY */
+    a.sin_port = htons((unsigned short)port);
+    if (bind(lfd, (struct sockaddr *)&a, sizeof a) < 0 || listen(lfd, 8) < 0) {
+        fprintf(stderr, "control: cannot listen on 127.0.0.1:%d: %s.\n"
+                        "REFUSING rather than running deaf -- a run that "
+                        "silently failed to bind ignores every command while "
+                        "looking healthy.\n", port, strerror(errno));
+        exit(2);
+    }
+    g_port = port;
+    printf("control: http://127.0.0.1:%d  -- /status /key?name=X /screenshot\n"
+           "control: loopback only; commands are applied on the guest's own "
+           "input poll, never from the server thread.\n", port);
+    fflush(stdout);
+    pthread_create(&th, NULL, server_thread, (void *)(intptr_t)lfd);
+    pthread_detach(th);
+    return port;
+}
+
+void control_report(void)
+{
+    if (!g_port) {
+        fprintf(stderr, "  control: not started (no --control / X2_CONTROL), "
+                        "so this run took no live commands.\n");
+        return;
+    }
+    fprintf(stderr,
+        "  control: port %d served %lu request(s) -- %lu key(s) pressed, %lu "
+        "refused by name or slot, %lu screenshot(s).\n",
+        g_port, g_requests, g_keys_pressed, g_keys_refused, g_shots);
+}

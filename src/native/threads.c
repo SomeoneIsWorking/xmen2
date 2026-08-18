@@ -54,6 +54,7 @@
  *     recompiled C runs on.
  */
 #include "threads.h"
+#include "guest_clock.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -160,12 +161,11 @@ static int          g_rr;                        /* round-robin cursor */
    because on one host thread __thread does not separate guest threads. */
 extern __thread uint32_t g_fsbase, g_gsbase;
 
-static double now_s(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-}
+/* The guest's clock, not a private one: see guest_clock.h. Five copies of
+   this read CLOCK_MONOTONIC directly, and the guest gates real logic on
+   elapsed time, so any two of them disagreeing is a timing bug wearing a
+   gameplay bug's clothes. */
+static double now_s(void) { return guest_clock_now_s(); }
 
 static void state_set(int st)
 {
@@ -322,7 +322,14 @@ static void sched_loop(void)
         g_idle_spins++;
         winmm_timers_pump();
         if (next != 0.0) {
-            double dt = next - now_s();
+            double dt;
+            /* Nothing is runnable and the earliest thing anyone waits for is
+               at `next`, so this interval is defined to contain no guest work.
+               Unbounded mode jumps the clock over it instead of sleeping
+               through it -- the same code then runs in the same order seeing
+               the same timestamps, minus the real seconds nobody used. */
+            if (guest_clock_skip_idle_to(next)) continue;
+            dt = next - now_s();
             if (dt > 0.0) usleep((useconds_t)((dt > 0.002 ? 0.002 : dt) * 1e6));
             continue;
         }

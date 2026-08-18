@@ -15,9 +15,11 @@
  * Every interface method not implemented aborts by its published name.
  */
 #include "dsound.h"
+#include "guest_clock.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "win32_sdl.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -116,12 +118,11 @@ static const char *const BVT_NAME[BVT_COUNT] = {
     "SetFrequency", "Stop", "Unlock", "Restore"
 };
 
-static double now_s(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
-}
+/* The guest's clock, not a private one: see guest_clock.h. Five copies of
+   this read CLOCK_MONOTONIC directly, and the guest gates real logic on
+   elapsed time, so any two of them disagreeing is a timing bug wearing a
+   gameplay bug's clothes. */
+static double now_s(void) { return guest_clock_now_s(); }
 
 static void ret_std(CPU *C, uint32_t value, int nargs)
 {
@@ -268,6 +269,30 @@ static void open_audio(void)
 {
     if (g_audio_attempted) return;
     g_audio_attempted = 1;
+
+    /*
+     * A run with no window is a run nobody is listening to: an automated or
+     * observational run should not seize the machine's speakers and talk over
+     * whatever the user is actually doing.
+     *
+     * This takes the SILENT-BUT-TIMED device rather than skipping audio, and
+     * the difference matters. The game drives real logic off buffer play
+     * cursors -- a cutscene advances when its stream reports itself finished --
+     * so a device whose cursors never move does not make the run quiet, it
+     * makes the run hang. The silent device below advances every cursor on the
+     * wall clock at the buffer's own rate, so the guest sees audio complete on
+     * schedule and hears nothing.
+     */
+    if (win32_sdl_windows_hidden()) {
+        fprintf(stderr, "DSOUND: --no-window, so no host playback device is "
+                        "opened -- using the timed SILENT device. Play cursors "
+                        "still advance at %d Hz, so audio-gated logic (cutscene "
+                        "advance, stream-complete waits) runs exactly as it "
+                        "does with sound.\n", g_primary_rate);
+        g_audio_silent = 1;
+        g_silent_time = now_s();
+        return;
+    }
 #ifdef X2_WITH_SDL
     {
         SDL_AudioSpec spec;

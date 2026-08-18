@@ -1,5 +1,6 @@
 /* Scripted keyboard input for deterministic, headless game runs. */
 #include "dinput_device.h"
+#include "guest_clock.h"
 #include "dinput_script.h"
 
 #include "dinput_fifo.h"
@@ -35,12 +36,11 @@ static ScriptKey g_script[SCRIPT_MAX];
 static int g_nscript, g_script_parsed;
 static double g_script_t0;
 
-static double script_now(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-}
+/* The guest's clock, not a private one: see guest_clock.h. Five copies of
+   this read CLOCK_MONOTONIC directly, and the guest gates real logic on
+   elapsed time, so any two of them disagreeing is a timing bug wearing a
+   gameplay bug's clothes. */
+static double script_now(void) { return guest_clock_now_s(); }
 
 static void script_parse(void)
 {

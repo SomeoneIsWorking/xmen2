@@ -10,6 +10,7 @@
 
 #include "dinput_system.h"
 #include "gpu_device.h"
+#include "control.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -48,6 +49,7 @@ static struct {
     double until;
     int down;
     char name[24];
+    const char *via;            /* which channel pressed it, for the log */
 } g_fifo[FIFO_MAX_KEYS];
 static char g_fifo_partial[64];
 static int g_fifo_partial_len;
@@ -70,7 +72,19 @@ static void fifo_open_if_due(double now)
                     "per line to press it.\n", path);
 }
 
-static void fifo_press(const char *name, double now)
+/*
+ * Press a key by name, from whichever channel asked -- the FIFO or the control
+ * socket. One table, because the game has one keyboard: two channels with two
+ * tables would each overwrite the other's byte in the same DirectInput buffer
+ * and neither would be able to say so.
+ *
+ * Returns 0 and says why on a name with no DirectInput mapping, or when every
+ * slot is currently held. Never silently does nothing: a caller that pressed a
+ * key and saw no effect must be able to tell "the game ignored it" from "it was
+ * never pressed", and that distinction is the whole value of a live channel.
+ */
+int dinput_inject_press(const char *name, double now, double hold,
+                        const char *via, char *why, int whyn)
 {
 #ifdef X2_WITH_SDL
     int scancode, i, slot = -1;
@@ -79,20 +93,39 @@ static void fifo_press(const char *name, double now)
     dik = scancode == SDL_SCANCODE_UNKNOWN
           ? 0 : dinput_system_dik(scancode);
     if (!dik) {
-        fprintf(stderr, "DINPUT8: X2_INPUT_FIFO asked for \"%s\", which has "
-                        "no DirectInput mapping. NOT pressed.\n", name);
-        return;
+        snprintf(why, (size_t)whyn,
+                 "\"%s\" has no DirectInput mapping (SDL knows no such key "
+                 "name, or it has no DIK code). NOT pressed.", name);
+        fprintf(stderr, "DINPUT8: %s [%s]\n", why, via);
+        return 0;
     }
     for (i = 0; i < FIFO_MAX_KEYS; i++)
         if (!g_fifo[i].down && (slot < 0 || g_fifo[i].until < g_fifo[slot].until))
             slot = i;
-    if (slot < 0) return;           /* all held; the next line still works */
+    if (slot < 0) {
+        snprintf(why, (size_t)whyn,
+                 "all %d injection slots are currently held down; \"%s\" was "
+                 "NOT pressed. Wait for a hold to expire.", FIFO_MAX_KEYS, name);
+        return 0;
+    }
     g_fifo[slot].dik = dik;
-    g_fifo[slot].until = now + FIFO_HOLD_S;
+    g_fifo[slot].until = now + (hold > 0.0 ? hold : FIFO_HOLD_S);
+    g_fifo[slot].via = via;
     snprintf(g_fifo[slot].name, sizeof g_fifo[slot].name, "%s", name);
+    return 1;
 #else
-    (void)name; (void)now;
+    (void)name; (void)now; (void)hold; (void)via;
+    snprintf(why, (size_t)whyn, "built without SDL, so there is no key name "
+                                "table and nothing can be pressed.");
+    return 0;
 #endif
+}
+
+static void fifo_press(const char *name, double now)
+{
+    char why[160];
+    if (!dinput_inject_press(name, now, 0.0, "fifo", why, (int)sizeof why))
+        fprintf(stderr, "DINPUT8: X2_INPUT_FIFO: %s\n", why);
 }
 
 static void fifo_drain(double now)
@@ -123,16 +156,21 @@ void dinput_fifo_apply(uint32_t out, uint32_t size, double now)
     int i;
     if (g_fifo_fd == -2) fifo_open_if_due(now);
     fifo_drain(now);
+    /* Same poll, same table: the control socket's queued commands are applied
+       here, on the thread that owns guest input, never on the server's. */
+    control_pump(now);
     for (i = 0; i < FIFO_MAX_KEYS; i++) {
         int down = now < g_fifo[i].until;
         if (down && !g_fifo[i].down)
             fprintf(stderr, "DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
-                            "t=%.2fs, frame %lu  [fifo]\n", g_fifo[i].name,
-                            g_fifo[i].dik, now, gpu_frames_presented());
+                            "t=%.2fs, frame %lu  [%s]\n", g_fifo[i].name,
+                            g_fifo[i].dik, now, gpu_frames_presented(),
+                            g_fifo[i].via ? g_fifo[i].via : "fifo");
         else if (!down && g_fifo[i].down)
             fprintf(stderr, "DINPUT8: released \"%s\" at t=%.2fs, frame %lu  "
-                            "[fifo]\n", g_fifo[i].name, now,
-                            gpu_frames_presented());
+                            "[%s]\n", g_fifo[i].name, now,
+                            gpu_frames_presented(),
+                            g_fifo[i].via ? g_fifo[i].via : "fifo");
         if (down && (uint32_t)g_fifo[i].dik < size)
             *((unsigned char *)(uintptr_t)out + g_fifo[i].dik) = 0x80;
         g_fifo[i].down = down;

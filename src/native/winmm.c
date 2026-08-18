@@ -9,6 +9,7 @@
  * no way to fake a callback that never fires.
  */
 #include "x86rt.h"
+#include "guest_clock.h"
 #include "x86rt_native.h"
 #include "winmm.h"
 #include "igvk_ark.h"
@@ -93,12 +94,11 @@ static struct {
 static unsigned long g_pumps, g_fires, g_late_ms_total;
 static int g_pumping;
 
-static double now_s(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
-}
+/* The guest's clock, not a private one: see guest_clock.h. Five copies of
+   this read CLOCK_MONOTONIC directly, and the guest gates real logic on
+   elapsed time, so any two of them disagreeing is a timing bug wearing a
+   gameplay bug's clothes. */
+static double now_s(void) { return guest_clock_now_s(); }
 
 void imp_WINMM_timeSetEvent(CPU *C)
 {

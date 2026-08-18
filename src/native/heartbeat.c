@@ -1,5 +1,7 @@
 /* See heartbeat.h. */
 #include "threads.h"
+#include "control.h"
+#include "guest_clock.h"
 #include "heartbeat.h"
 #include "oracle_trace.h"
 
@@ -449,6 +451,12 @@ static void *heartbeat_thread(void *arg)
            value that is stuck without showing what it was doing before. It
            prints nothing when X2_PEEK is unset. */
         x86_peek_report();
+
+        /* How much of this run was the scheduler asleep? Printed every beat,
+           including when unbounded mode is off, so "the clock is paced" and
+           "nobody wired the clock up" cannot look alike. */
+        guest_clock_report();
+        control_report();
 
         p_cross = cross; p_scenes = scenes; p_presents = presents;
         p_clears = clears; p_draws = draws;

@@ -2,6 +2,7 @@
 #include "x2native_options.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
@@ -12,6 +13,9 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
     o->window = 1;
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-window") == 0) o->window = 0;
+        else if (strcmp(argv[i], "--unbounded") == 0) o->unbounded = 1;
+        else if (strncmp(argv[i], "--control", 9) == 0)
+            o->control = argv[i][9] == '=' ? atoi(argv[i] + 10) : 8420;
         else if (strcmp(argv[i], "--selftest") == 0) o->selftest = 1;
         else if (strcmp(argv[i], "--run") == 0) o->run = 1;
         else if (strcmp(argv[i], "--ark-probe") == 0) o->ark_probe = 1;
@@ -33,7 +37,9 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
         else if (argv[i][0] == '-') {
             fprintf(stderr, "x2native: unknown option '%s'. Refusing rather "
                             "than treating it as the install directory.\n"
-                            "  Known: --no-window --run --selftest --ark-probe "
+                            "  Known: --no-window --unbounded --control[=port] --run "
+                            "--selftest "
+                            "--ark-probe "
                             "--vk --vk-selftest --vk-permissive\n"
                             "         --d3d8 --d3d8-selftest "
                             "--d3d8-permissive --dialog-selftest\n"
