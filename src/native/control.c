@@ -5,6 +5,8 @@
 #include "dinput_pad.h"
 #include "guest_clock.h"
 #include "gpu_device.h"
+#include "input_probe.h"
+#include "x86rt.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -28,7 +30,7 @@
  * and waits; control_pump, running on the thread that owns guest input,
  * performs it and wakes the server with the answer.
  */
-enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD };
+enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD, CMD_INPUT };
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  g_ready = PTHREAD_COND_INITIALIZER;
@@ -36,20 +38,25 @@ static pthread_cond_t  g_done = PTHREAD_COND_INITIALIZER;
 
 static int    g_cmd;
 static char   g_cmd_key[32];
+static unsigned g_cmd_controller;
 static double g_cmd_hold, g_cmd_value;
 static int    g_cmd_ok;
 static char   g_cmd_why[192];
+static char  *g_probe;                 /* input snapshot, server-thread owned */
+static size_t g_probe_len;
 static unsigned char *g_shot;          /* PNG, owned by the server thread */
 static size_t g_shot_len;
 static unsigned g_shot_w, g_shot_h;
 
 static int g_port;
 static unsigned long g_requests, g_keys_pressed, g_keys_refused, g_shots;
-static unsigned long g_pad_ok, g_pad_refused;
+static unsigned long g_pad_ok, g_pad_refused, g_probes;
 
 /* ---------------------------------------------------------------- pump --- */
 
-void control_pump(double now)
+#define PROBE_BYTES 16384u
+
+void control_pump(CPU *cpu, double now)
 {
     int cmd;
 
@@ -68,6 +75,22 @@ void control_pump(double now)
                                           g_cmd_why, (int)sizeof g_cmd_why);
         if (g_cmd_ok) g_pad_ok++;      /* g_cmd_why carries the read-back */
         else g_pad_refused++;
+    } else if (cmd == CMD_INPUT) {
+        if (!g_probe) g_probe = (char *)malloc(PROBE_BYTES);
+        if (!g_probe) {
+            g_cmd_ok = 0;
+            snprintf(g_cmd_why, sizeof g_cmd_why,
+                     "could not allocate the %u-byte report buffer",
+                     PROBE_BYTES);
+        } else {
+            g_probe_len = input_probe_report(cpu, g_cmd_controller,
+                                             g_probe, PROBE_BYTES);
+            g_cmd_ok = g_probe_len != 0;
+            if (g_cmd_ok) g_probes++;
+            else snprintf(g_cmd_why, sizeof g_cmd_why,
+                          "the input probe wrote nothing, which it is written "
+                          "not to do -- treat this as a bug in the probe");
+        }
     } else if (cmd == CMD_SHOT) {
         uint32_t w = 0, h = 0;
         unsigned char *bgra;
@@ -284,6 +307,23 @@ static void route_shot(int fd)
     reply(fd, 200, "OK", "image/png", g_shot, g_shot_len);
 }
 
+static void route_input(int fd, const char *query)
+{
+    char which[16] = "";
+    g_cmd_controller = query_arg(query, "controller", which, sizeof which)
+                       ? (unsigned)atoi(which) : 0u;
+    if (!submit(CMD_INPUT, 10.0)) {
+        reply_text(fd, 504, "Gateway Timeout",
+                   "the guest did not reach an input poll within 10s, so its "
+                   "binding table was not read.\nThat is a statement about the "
+                   "RUN: it is stuck, still loading, or has not reached its "
+                   "input loop.\n");
+        return;
+    }
+    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    reply(fd, 200, "OK", "text/plain; charset=utf-8", g_probe, g_probe_len);
+}
+
 static void serve(int fd)
 {
     char req[1024], *path, *query, *sp;
@@ -305,6 +345,7 @@ static void serve(int fd)
     else if (!strcmp(path, "/key"))        route_key(fd, query ? query : "");
     else if (!strcmp(path, "/pad"))        route_pad(fd, query ? query : "");
     else if (!strcmp(path, "/screenshot")) route_shot(fd);
+    else if (!strcmp(path, "/input"))      route_input(fd, query ? query : "");
     else
         reply_text(fd, 404, "Not Found",
                    "no such endpoint: %s\n"
@@ -312,7 +353,9 @@ static void serve(int fd)
                    "  GET /key?name=X   press a key (&hold=<seconds>)\n"
                    "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"
                    "  GET /pad?axis=leftx&value=-1   move an axis\n"
-                   "  GET /screenshot   the current frame, as a PNG\n",
+                   "  GET /screenshot   the current frame, as a PNG\n"
+                   "  GET /input[?controller=N]  the GAME's binding table "
+                   "and which actions read down\n",
                    path);
 }
 
@@ -362,7 +405,8 @@ int control_start(int port)
         exit(2);
     }
     g_port = port;
-    printf("control: http://127.0.0.1:%d  -- /status /key?name=X /screenshot\n"
+    printf("control: http://127.0.0.1:%d  -- /status /key?name=X /pad "
+           "/screenshot /input\n"
            "control: loopback only; commands are applied on the guest's own "
            "input poll, never from the server thread.\n", port);
     fflush(stdout);
@@ -381,7 +425,8 @@ void control_report(void)
     fprintf(stderr,
         "  control: port %d served %lu request(s) -- %lu key(s) pressed, %lu "
         "refused by name or slot, %lu screenshot(s),\n"
-        "           %lu synthetic pad input(s) set and %lu refused.\n",
+        "           %lu synthetic pad input(s) set and %lu refused, %lu "
+        "input probe(s).\n",
         g_port, g_requests, g_keys_pressed, g_keys_refused, g_shots,
-        g_pad_ok, g_pad_refused);
+        g_pad_ok, g_pad_refused, g_probes);
 }

@@ -6,6 +6,7 @@
 #include "dinput_fifo.h"
 #include "dinput_system.h"
 #include "gpu_device.h"
+#include "x86rt.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -142,7 +143,7 @@ void dinput_script_start(void)
                         "seconds from here.\n");
 }
 
-void dinput_script_apply(uint32_t out, uint32_t size)
+void dinput_script_apply(CPU *cpu, uint32_t out, uint32_t size)
 {
     double now;
     int i;
@@ -151,7 +152,7 @@ void dinput_script_apply(uint32_t out, uint32_t size)
     now = script_now();
     if (g_script_t0 == 0.0) g_script_t0 = now;
     now -= g_script_t0;
-    dinput_fifo_apply(out, size, now);
+    dinput_fifo_apply(cpu, out, size, now);
     if (!g_nscript) return;
     for (i = 0; i < g_nscript; i++) {
         ScriptKey *key = &g_script[i];

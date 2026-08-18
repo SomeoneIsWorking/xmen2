@@ -10,7 +10,10 @@
  * every keyboard poll, whether or not the FIFO is configured -- with it unset
  * this is one getenv and a return.
  */
-void dinput_fifo_apply(uint32_t out, uint32_t size, double now);
+struct CPU;
+
+void dinput_fifo_apply(struct CPU *cpu, uint32_t out, uint32_t size,
+                       double now);
 
 /*
  * Press `name` for `hold` seconds (0 = the default hold), from the channel

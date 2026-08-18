@@ -66,6 +66,7 @@ add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
 add_executable(test_xbox_defaults tests/test_xbox_defaults.c
                src/native/xbox_defaults.c
+               src/native/input_bindings.c
                src/native/controller_defaults_ui.c
                tests/native_stubs.c)
 target_include_directories(test_xbox_defaults PRIVATE src/recomp src/native)
@@ -286,6 +287,16 @@ add_test(NAME prepare_native_assets
                  ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
 
 
+# The 42 binding-row names src/native/input_bindings.c ships are read out of
+# XMen2.exe; this diffs the shipped table against the exe rather than trusting
+# that they still agree. SKIPs loudly (77) without an install, because a check
+# that had nothing to read must not look like a check that passed.
+add_test(NAME binding_rows
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/binding_rows.py --selftest)
+set_tests_properties(binding_rows PROPERTIES SKIP_RETURN_CODE 77
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME extract_fb
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/extract_fb.py --selftest)
@@ -425,6 +436,8 @@ if(X2_MODULE_HAVE)
         src/native/dinput_joystick.c
         src/native/dinput_pad.c
         src/native/pad_glyphs.c
+        src/native/input_bindings.c
+        src/native/input_probe.c
         src/native/xbox_defaults.c
         src/native/controller_defaults_ui.c
         src/native/dsound.c

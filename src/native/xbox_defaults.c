@@ -15,21 +15,34 @@
  * Xbox action constructor does not register either against a common action,
  * and the PC binding object has no Health/Energy row. Their direct gameplay
  * path is a separate engine boundary, not a reason to invent aliases here.
+ *
+ * WHERE the preset is written is as load-bearing as what it contains, and
+ * getting it wrong is silent -- the bindings sit in the table, the options UI
+ * shows them, and the running game never reads one. Two facts settle it, both
+ * out of FUN_0061b030 and both re-checkable live with `x2ctl.py input`:
+ *
+ *   * SLOT 1, not slot 2. The game rewrites slots 2 and 3 of the working and
+ *     menu sets with its own hardcoded keys AFTER copying the master (row 4
+ *     slot 2 is Return -- the [ENTER] a dialog prompt shows). Slot 1's default
+ *     is 0 on every row, and it is the second binding the registry persists,
+ *     so it is the alternate the game itself leaves for a second device.
+ *
+ *   * ALL THREE SETS, not the master alone. The master is copied into the
+ *     working and menu sets once, inside FUN_0061b030. This runs after that,
+ *     so it publishes the write itself -- see input_bindings_write_player.
  */
 #include "xbox_defaults.h"
 
 #include "dinput_pad.h"
+#include "input_bindings.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
 #include <stdio.h>
 
-#define EXE_PREFERRED       0x00400000u
-#define CONTROLLER0_RVA     0x00668f40u
-#define SET_BINDING_RVA     0x002297a0u
-#define BINDINGS_OFFSET     0x18u
-#define BINDING_ROWS        42u
-#define PAD_SLOT            2u
+#define BINDING_ROWS        INPUT_BINDING_ROWS
+#define PAD_SLOT            INPUT_BINDING_ALT_SLOT
+#define PAD_PLAYER          0u      /* the pad drives player 1 */
 
 /* DirectInput's Xbox-360 layout as exposed by dinput_pad.c. Axis pairs are
    positive then negative: LX 1/2, LY 3/4, Rx 7/8, Ry 9/10. POV is X+/X-/Y+/Y-
@@ -68,15 +81,6 @@ const XboxDefaultBinding *xbox_default_bindings(size_t *count)
     return DEFAULTS;
 }
 
-static X86Module *exe_module(void)
-{
-    X86Module *m;
-    for (m = x86_modules(); m; m = m->next)
-        if (m->preferred == EXE_PREFERRED && m->base && *m->base)
-            return m;
-    return NULL;
-}
-
 static int first_pad(void)
 {
     int i;
@@ -85,33 +89,16 @@ static int first_pad(void)
     return -1;
 }
 
-static int binding_object(X86Module *m, uint32_t *out)
-{
-    uint32_t controller;
-    if (!x86_peek32(*m->base + CONTROLLER0_RVA, &controller) || !controller)
-        return 0;
-    *out = controller + BINDINGS_OFFSET;
-    return x86_peek32(*out, &controller); /* constructor's row-count field */
-}
-
 static int read_slot(uint32_t object, uint32_t row, uint32_t *kind,
                      uint32_t *code)
 {
-    uint32_t slot = object + 4u + (row * 4u + PAD_SLOT) * 12u;
-    return x86_peek32(slot + 4u, kind) && x86_peek32(slot + 8u, code);
+    return input_bindings_read(object, row, PAD_SLOT, kind, code);
 }
 
-static void set_slot(CPU *cpu, X86Module *m, uint32_t object, uint32_t row,
-                     uint32_t kind, uint32_t code)
+/* Every write goes to the master AND to the copies the game evaluates. */
+static void set_slot(CPU *cpu, uint32_t row, uint32_t kind, uint32_t code)
 {
-    CPU call = *cpu;
-    call.ecx = object;
-    call.esp -= 16u;
-    WR32(call.esp + 0u, row);
-    WR32(call.esp + 4u, PAD_SLOT);
-    WR32(call.esp + 8u, kind);
-    WR32(call.esp + 12u, code);
-    x86_guest_call_args(&call, *m->base + SET_BINDING_RVA, 16u);
+    input_bindings_write_player(cpu, PAD_PLAYER, row, PAD_SLOT, kind, code);
 }
 
 static int any_pad_binding(uint32_t object)
@@ -124,30 +111,29 @@ static int any_pad_binding(uint32_t object)
     return 0;
 }
 
-static void clear_pad_slot(CPU *cpu, X86Module *m, uint32_t object)
+static void clear_pad_slot(CPU *cpu, uint32_t object)
 {
     uint32_t row, kind, code;
     for (row = 0; row < BINDING_ROWS; row++)
         if (read_slot(object, row, &kind, &code) && (kind || code))
-            set_slot(cpu, m, object, row, 0u, 0u);
+            set_slot(cpu, row, 0u, 0u);
 }
 
-static void install_defaults(CPU *cpu, X86Module *m, uint32_t object,
-                             uint32_t kind)
+static void install_defaults(CPU *cpu, uint32_t kind)
 {
     size_t i;
     for (i = 0; i < sizeof DEFAULTS / sizeof DEFAULTS[0]; i++)
-        set_slot(cpu, m, object, DEFAULTS[i].binding, kind, DEFAULTS[i].code);
+        set_slot(cpu, DEFAULTS[i].binding, kind, DEFAULTS[i].code);
 }
 
-static void remove_installed(CPU *cpu, X86Module *m, uint32_t object)
+static void remove_installed(CPU *cpu, uint32_t object)
 {
     size_t i;
     uint32_t kind, code;
     for (i = 0; i < sizeof DEFAULTS / sizeof DEFAULTS[0]; i++)
         if (read_slot(object, DEFAULTS[i].binding, &kind, &code) &&
             kind == g_kind && code == DEFAULTS[i].code)
-            set_slot(cpu, m, object, DEFAULTS[i].binding, 0u, 0u);
+            set_slot(cpu, DEFAULTS[i].binding, 0u, 0u);
     g_installed = 0;
     g_kind = 0;
     g_clears++;
@@ -155,11 +141,11 @@ static void remove_installed(CPU *cpu, X86Module *m, uint32_t object)
 
 void xbox_defaults_sync(CPU *cpu)
 {
-    X86Module *m;
     uint32_t object, kind;
     int pad, occupied;
+    char why[192];
 
-    if (!cpu || !(m = exe_module()) || !binding_object(m, &object)) {
+    if (!cpu || !(object = input_bindings_object(why, (int)sizeof why))) {
         g_not_ready++;
         return;
     }
@@ -167,7 +153,7 @@ void xbox_defaults_sync(CPU *cpu)
     kind = pad < 0 ? 0u : 3u + (uint32_t)pad;
 
     if (g_installed && kind != g_kind)
-        remove_installed(cpu, m, object);
+        remove_installed(cpu, object);
     if (!kind || g_installed) return;
 
     occupied = any_pad_binding(object);
@@ -176,7 +162,7 @@ void xbox_defaults_sync(CPU *cpu)
         else g_not_ready++;
         return;
     }
-    install_defaults(cpu, m, object, kind);
+    install_defaults(cpu, kind);
     g_installed = 1;
     g_kind = kind;
     g_applies++;
@@ -190,11 +176,11 @@ void xbox_defaults_sync(CPU *cpu)
 
 int xbox_defaults_apply(CPU *cpu)
 {
-    X86Module *m;
     uint32_t object, kind;
     int pad;
+    char why[192];
 
-    if (!cpu || !(m = exe_module()) || !binding_object(m, &object)) {
+    if (!cpu || !(object = input_bindings_object(why, (int)sizeof why))) {
         g_not_ready++;
         return 0;
     }
@@ -202,8 +188,8 @@ int xbox_defaults_apply(CPU *cpu)
     if (pad < 0) return 0;
     kind = 3u + (uint32_t)pad;
 
-    clear_pad_slot(cpu, m, object);
-    install_defaults(cpu, m, object, kind);
+    clear_pad_slot(cpu, object);
+    install_defaults(cpu, kind);
 
     /* The explicit command converts an automatic installation into persisted
        user-selected state. Disconnect cleanup must not erase that choice. */

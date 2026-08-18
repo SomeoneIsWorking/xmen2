@@ -1,0 +1,464 @@
+/*
+ * "Did the game see it?" -- the live view of XMen2.exe's own input state.
+ *
+ * This exists because a whole class of input defect is invisible from either
+ * end alone. The host layer can prove SDL delivered a button and that
+ * DirectInput handed it to the guest; the screen can show that nothing
+ * happened. Neither says whether the game's binding table resolved the press
+ * into an action, and that is the layer where a working device still does
+ * nothing.
+ *
+ * Everything here is READ-ONLY and is taken on the guest's own thread, at the
+ * one pump point per frame where the guest is between operations (see
+ * dinput_device.c's keyboard branch). Nothing here decides anything: it is an
+ * instrument, and it is wired to the control channel so a run can be asked
+ * where it is instead of being guessed at from a log afterwards.
+ */
+#include "input_probe.h"
+
+#include "input_bindings.h"
+#include "dinput_pad.h"
+#include "gpu_device.h"
+#include "guest_clock.h"
+#include "x86rt.h"
+#include "x86rt_native.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+#define EXE_PREFERRED   0x00400000u
+#define INPUT_MGR_RVA   0x001d8920u  /* FUN_005d8920, the input singleton    */
+#define VT_ACTION_DOWN  0x138u       /* vtable slot the conversation gates on */
+
+/*
+ * The other half of the chain, and the one that actually holds live state.
+ *
+ * FUN_005d4970 -- what vtable +0x138 forwards to -- does not read the binding
+ * table at all. It asks the PAD manager (FUN_00551ed0, the singleton at
+ * 0x0079ebc0) for each player object and tests `1 << action` against a 32-bit
+ * LOGICAL mask that object returns from its own vtable +0x18. So the accept
+ * the conversation gates on is action BIT 4, not binding row 4 by coincidence
+ * of numbering, and the binding table is what fills that mask rather than what
+ * is read at the gate.
+ *
+ * Player objects are inline in the manager: `manager + 0x3c + player * 0x390`
+ * (FUN_005510d0). The Xbox build's equivalent keeps 30 physical floats at
+ * +0x2fc of the same structure (claim C192); 0x2fc + 30*4 lands inside 0x390,
+ * so the same array is expected here and this dumps it rather than assuming.
+ */
+#define PAD_MGR_RVA     0x00151ed0u  /* FUN_00551ed0, the pad manager        */
+#define PADVT_PLAYER    0x4cu        /* ->player(i), RET 4                   */
+#define PADVT_COUNT     0x70u        /* ->playerCount(), RET 0               */
+#define PLAYERVT_MASK   0x18u        /* ->logicalMask(), RET 0               */
+#define PLAYER_PHYSICAL 0x2fcu       /* first of the physical floats         */
+#define PLAYER_PHYS_N   30u
+
+/*
+ * And the link before that: the game's OWN copy of the device state.
+ *
+ * FUN_006285c0 polls up to ten joystick devices (pointers at wrapper+0x0c)
+ * into DIJOYSTATE2 blocks at wrapper+0x4f0 + pad*0x110, and records which of
+ * them answered in the bitmask at wrapper+0x129cc. FUN_00627650 then reads a
+ * button as `[wrapper + pad*0x110 + code + 0x50b]`, i.e. rgbButtons[code-0x15]
+ * of that block. So this is the exact byte a pad binding resolves against, and
+ * reading it here separates "DirectInput never delivered it" from "it was
+ * delivered and the binding did not use it".
+ */
+#define DI_WRAPPER_RVA  0x0066abfcu  /* [0x00a6abfc], the DirectInput wrapper */
+#define DI_JOY_BLOCK    0x4f0u
+#define DI_JOY_STRIDE   0x110u
+#define DI_JOY_BUTTONS  0x30u        /* DIJOYSTATE2 rgbButtons                */
+#define DI_JOY_NBUTTON  32u
+#define DI_JOY_MAX      10u
+#define DI_JOY_LIVE     0x129ccu     /* bit per device that answered          */
+#define DI_KEYBOARD     0x25e4u      /* the 256-byte DIK state FUN_006276d0 reads */
+#define DI_BOUND_COUNT  0x129c8u     /* controllers registered for evaluation */
+#define DI_BOUND_LIST   0x129d0u
+#define DI_PAD_VALUE_RVA 0x00227650u /* FUN_00627650(pad, code) -> float      */
+
+static uint32_t exe_base(void)
+{
+    X86Module *m;
+    for (m = x86_modules(); m; m = m->next)
+        if (m->preferred == EXE_PREFERRED && m->base && *m->base)
+            return *m->base;
+    return 0;
+}
+
+static uint32_t thiscall(CPU *cpu, uint32_t fn, uint32_t ecx,
+                         int argc, const uint32_t *argv)
+{
+    CPU call = *cpu;
+    int i;
+    call.esp -= (uint32_t)argc * 4u;
+    for (i = 0; i < argc; i++) WR32(call.esp + (uint32_t)i * 4u, argv[i]);
+    call.ecx = ecx;
+    x86_guest_call_args(&call, fn, (uint32_t)argc * 4u);
+    return call.eax;
+}
+
+/* The device kind a slot's value names, in the game's own numbering. */
+static const char *kind_name(uint32_t kind)
+{
+    if (kind == 0u) return "--";
+    if (kind == 1u) return "kb";
+    if (kind == 2u) return "mouse";
+    if (kind >= 3u && kind <= 0xcu) return "pad";
+    return "?";
+}
+
+/* Append to a bounded buffer, tracking the write position. */
+static void put(char *out, size_t n, size_t *at, const char *fmt, ...)
+    __attribute__((format(printf, 4, 5)));
+
+static void put(char *out, size_t n, size_t *at, const char *fmt, ...)
+{
+    va_list ap;
+    int k;
+    if (*at >= n) return;
+    va_start(ap, fmt);
+    k = vsnprintf(out + *at, n - *at, fmt, ap);
+    va_end(ap);
+    if (k > 0) *at += (size_t)k > n - *at ? n - *at : (size_t)k;
+}
+
+size_t input_probe_report(CPU *cpu, unsigned controller,
+                          char *out, size_t n)
+{
+    char why[192];
+    size_t at = 0;
+    uint32_t object, manager = 0, base = exe_base();
+    uint32_t row, slot, action;
+    unsigned populated = 0, pad_rows = 0, kb_rows = 0;
+    unsigned resolved = 0, unmapped = 0, down = 0;
+    int rows_down[INPUT_BINDING_ROWS];
+
+    if (!out || n < 64u) return 0;
+    memset(rows_down, 0, sizeof rows_down);
+
+    put(out, n, &at, "input probe -- frame %lu, guest %.2fs\n",
+        gpu_frames_presented(), guest_clock_elapsed_s());
+
+    object = input_bindings_object_at(controller, why, (int)sizeof why);
+    if (!object) {
+        put(out, n, &at,
+            "REFUSED: %s.\n"
+            "0 of %u binding rows and 0 of %u actions could be read for "
+            "controller %u. This is the probe saying it cannot see, not the "
+            "game saying nothing is bound.\n",
+            why, INPUT_BINDING_ROWS, INPUT_ACTION_MAX, controller);
+        return at;
+    }
+    if (!cpu) {
+        put(out, n, &at,
+            "REFUSED: no guest CPU at this call site, so neither the action "
+            "map (FUN_00619c40) nor the action state (input vtable +0x%x) can "
+            "be asked. The binding table alone is at 0x%08x.\n",
+            VT_ACTION_DOWN, object);
+        return at;
+    }
+
+    manager = base ? thiscall(cpu, base + INPUT_MGR_RVA, 0u, 0, NULL) : 0u;
+
+    put(out, n, &at, "controller %u binding table 0x%08x -- %u rows x %u "
+                     "slots%s\n\n",
+        controller, object, INPUT_BINDING_ROWS, INPUT_BINDING_SLOTS,
+        controller < 4u ? "  (a MASTER set: edited and persisted, copied into "
+                          "4..7 and 12..15)" : "");
+    put(out, n, &at,
+        "action  row  name              slot0     slot1     slot2/pad  "
+        "slot3     state\n");
+
+    for (row = 0; row < INPUT_BINDING_ROWS; row++) {
+        uint32_t kind, code;
+        int has_pad = 0, has_kb = 0;
+        for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
+            if (!input_bindings_read(object, row, slot, &kind, &code)) continue;
+            if (kind || code) populated++;
+            if (kind >= 3u && kind <= 0xcu) has_pad = 1;
+            if (kind == 1u) has_kb = 1;
+        }
+        pad_rows += (unsigned)has_pad;
+        kb_rows += (unsigned)has_kb;
+    }
+
+    for (action = 0; action < INPUT_ACTION_MAX; action++) {
+        int r = input_binding_row_of_action(cpu, action);
+        char cells[4][20];
+        const char *name;
+        uint32_t state = 0;
+
+        if (r < 0 || (uint32_t)r >= INPUT_BINDING_ROWS) {
+            unmapped++;
+            continue;
+        }
+        resolved++;
+        row = (uint32_t)r;
+        name = input_binding_row_name(row);
+        for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
+            uint32_t kind = 0, code = 0;
+            if (!input_bindings_read(object, row, slot, &kind, &code))
+                snprintf(cells[slot], sizeof cells[slot], "unread");
+            else if (!kind && !code)
+                snprintf(cells[slot], sizeof cells[slot], "--");
+            else
+                snprintf(cells[slot], sizeof cells[slot], "%s%u:0x%02x",
+                         kind_name(kind), kind, code);
+        }
+        if (manager) {
+            uint32_t vt = 0, fn = 0;
+            if (x86_peek32(manager, &vt) && x86_peek32(vt + VT_ACTION_DOWN, &fn)
+                && fn)
+                state = (uint8_t)thiscall(cpu, fn, manager, 1, &action);
+        }
+        if (state) { down++; rows_down[row] = 1; }
+        put(out, n, &at, " 0x%02x   %2u  %-16s  %-9s %-9s %-10s %-9s %s\n",
+            action, row, name ? name : "(unnamed)",
+            cells[0], cells[1], cells[2], cells[3], state ? "DOWN" : ".");
+    }
+
+    put(out, n, &at,
+        "\n%u of %u slots populated: %u row(s) carry a pad binding, %u carry a "
+        "keyboard one.\n",
+        populated, INPUT_BINDING_ROWS * INPUT_BINDING_SLOTS, pad_rows, kb_rows);
+    put(out, n, &at,
+        "%u of %u actions resolve to a row; %u resolve to none.\n",
+        resolved, INPUT_ACTION_MAX, unmapped);
+    if (!manager)
+        put(out, n, &at,
+            "the input singleton (FUN_005d8920) returned 0, so NO action was "
+            "asked for its state -- the \"state\" column above is not a "
+            "reading, it is an absence.\n");
+    else
+        put(out, n, &at,
+            "%u of %u resolved actions read DOWN through input vtable +0x%x "
+            "at this instant.\n", down, resolved, VT_ACTION_DOWN);
+
+    /*
+     * The game's own device state, one link before the binding table reads it.
+     */
+    {
+        uint32_t wrapper = 0, live = 0, p;
+
+        put(out, n, &at, "\n");
+        if (!base || !x86_peek32(base + DI_WRAPPER_RVA, &wrapper) || !wrapper) {
+            put(out, n, &at, "the game's DirectInput wrapper ([0x%08x]) is not "
+                             "constructed, so NO device state was read.\n",
+                base + DI_WRAPPER_RVA);
+        } else {
+            unsigned keys = 0, k;
+            x86_peek32(wrapper + DI_JOY_LIVE, &live);
+            put(out, n, &at, "game DirectInput wrapper 0x%08x: joystick "
+                             "answer mask 0x%08x\n", wrapper, live);
+            for (p = 0; p < DI_JOY_MAX; p++) {
+                uint32_t blk = wrapper + DI_JOY_BLOCK + p * DI_JOY_STRIDE;
+                unsigned b, held = 0;
+                if (!(live & (1u << p))) continue;
+                put(out, n, &at, "  device %u block 0x%08x buttons down:", p,
+                    blk);
+                for (b = 0; b < DI_JOY_NBUTTON; b++) {
+                    unsigned char v = 0;
+                    if (!x86_peek(blk + DI_JOY_BUTTONS + b, &v, 1)) continue;
+                    if (v & 0x80u) {
+                        put(out, n, &at, " %u(code 0x%02x)", b, b + 0x15u);
+                        held++;
+                    }
+                }
+                put(out, n, &at, "%s\n", held ? "" : " none of 32");
+            }
+            if (!live)
+                put(out, n, &at, "  NO joystick device answered this frame, so "
+                                 "every pad binding reads 0 by construction.\n");
+            for (k = 0; k < 256u; k++) {
+                unsigned char v = 0;
+                if (!x86_peek(wrapper + DI_KEYBOARD + k, &v, 1)) continue;
+                if (v & 0x80u) {
+                    if (!keys++) put(out, n, &at, "  keyboard DIK down:");
+                    put(out, n, &at, " 0x%02x", k);
+                }
+            }
+            put(out, n, &at, "%s\n", keys ? "" :
+                "  keyboard: none of 256 DIK bytes down");
+
+            /*
+             * Which controllers the wrapper will EVALUATE. FUN_006285c0's tail
+             * walks exactly this list and calls FUN_006276d0 on each one's
+             * binding object; a controller that is not in it is never asked
+             * what its bindings resolve to, however well-populated they are.
+             */
+            {
+                uint32_t cnt = 0, e;
+                x86_peek32(wrapper + DI_BOUND_COUNT, &cnt);
+                put(out, n, &at, "  registered for binding evaluation: %u\n",
+                    cnt);
+                for (e = 0; e < cnt && e < 16u; e++) {
+                    uint32_t ctl = 0;
+                    if (!x86_peek32(wrapper + DI_BOUND_LIST + e * 4u, &ctl))
+                        continue;
+                    put(out, n, &at, "    [%u] controller 0x%08x -> binding "
+                                     "object 0x%08x\n", e, ctl,
+                        ctl ? ctl + 0x18u : 0u);
+                }
+                if (!cnt)
+                    put(out, n, &at, "    NONE -- no binding object is "
+                                     "evaluated at all this frame.\n");
+            }
+
+            /*
+             * And the accessor itself, asked directly. If this reads 1.0 for a
+             * button the block above shows down, then everything up to and
+             * including the physical read works and the fault is that nothing
+             * ASKED -- which is a different repair from a broken read.
+             */
+            {
+                static const uint32_t CODES[] = { 0x15u, 0x16u, 0x17u, 0x18u };
+                unsigned c, hot = 0;
+                put(out, n, &at, "  FUN_00627650(pad 0, code):");
+                for (c = 0; c < sizeof CODES / sizeof CODES[0]; c++) {
+                    uint32_t args[2];
+                    long double v;
+                    CPU call = *cpu;
+                    args[0] = 0u; args[1] = CODES[c];
+                    call.esp -= 8u;
+                    WR32(call.esp + 0u, args[0]);
+                    WR32(call.esp + 4u, args[1]);
+                    call.ecx = wrapper;
+                    x86_guest_call_args(&call, base + DI_PAD_VALUE_RVA, 8u);
+                    v = call.st[call.top];
+                    put(out, n, &at, " 0x%02x=%.1f", CODES[c], (double)v);
+                    if (v != 0.0L) hot++;
+                }
+                put(out, n, &at, "%s\n", hot ? "" : "   (all zero)");
+            }
+        }
+    }
+
+    /*
+     * The live half: the pad manager's per-player logical mask and physical
+     * floats. This is what a press has to reach; the binding table above is
+     * only what decides WHICH bit it reaches.
+     */
+    {
+        uint32_t mgr = base ? thiscall(cpu, base + PAD_MGR_RVA, 0u, 0, NULL) : 0u;
+        uint32_t vt = 0, fn = 0, players = 0, i;
+
+        put(out, n, &at, "\n");
+        if (!mgr) {
+            put(out, n, &at, "the pad manager (FUN_00551ed0) returned 0, so no "
+                             "player state was read at all.\n");
+        } else if (!x86_peek32(mgr, &vt) ||
+                   !x86_peek32(vt + PADVT_COUNT, &fn) || !fn) {
+            put(out, n, &at, "the pad manager at 0x%08x has no readable vtable "
+                             "slot +0x%x, so its player count is unknown.\n",
+                mgr, PADVT_COUNT);
+        } else {
+            players = thiscall(cpu, fn, mgr, 0, NULL);
+            put(out, n, &at, "pad manager 0x%08x: %u player(s)\n", mgr, players);
+            if (players > 4u) players = 4u;
+            for (i = 0; i < players; i++) {
+                uint32_t sub = 0, svt = 0, mask = 0, k, nonzero = 0;
+                uint32_t arg = i;
+                if (!x86_peek32(vt + PADVT_PLAYER, &fn) || !fn) continue;
+                sub = thiscall(cpu, fn, mgr, 1, &arg);
+                if (!sub) {
+                    put(out, n, &at, "  player %u: no object\n", i);
+                    continue;
+                }
+                if (x86_peek32(sub, &svt) &&
+                    x86_peek32(svt + PLAYERVT_MASK, &fn) && fn)
+                    mask = thiscall(cpu, fn, sub, 0, NULL);
+                put(out, n, &at, "  player %u object 0x%08x  logical mask "
+                                 "0x%08x  physical:", i, sub, mask);
+                for (k = 0; k < PLAYER_PHYS_N; k++) {
+                    uint32_t bits = 0;
+                    float v;
+                    if (!x86_peek32(sub + PLAYER_PHYSICAL + k * 4u, &bits))
+                        continue;
+                    memcpy(&v, &bits, sizeof v);
+                    if (v != 0.0f) {
+                        put(out, n, &at, " [%u]=%.3f", k, (double)v);
+                        nonzero++;
+                    }
+                }
+                put(out, n, &at, "%s\n", nonzero ? "" :
+                    " 0 of 30 floats non-zero");
+            }
+            if (!players)
+                put(out, n, &at, "  the manager reports NO players, so no "
+                                 "logical mask exists to carry a press.\n");
+        }
+    }
+
+    /*
+     * Every controller, not just player 0's. The dialog prompt that reads
+     * [ENTER] is bound on one of the menu controllers, so a report that showed
+     * only player 0 would say "Return is bound nowhere" about a game that is
+     * plainly responding to Return.
+     */
+    {
+        uint32_t idx, live = 0;
+        put(out, n, &at, "\ncontroller  object      slots  pad rows  "
+                         "keyboard rows\n");
+        for (idx = 0; idx < INPUT_CONTROLLERS; idx++) {
+            uint32_t obj = input_bindings_object_at(idx, why, (int)sizeof why);
+            unsigned pop = 0, pads = 0, kbs = 0;
+            if (!obj) continue;
+            live++;
+            for (row = 0; row < INPUT_BINDING_ROWS; row++) {
+                int has_pad = 0, has_kb = 0;
+                for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
+                    uint32_t kind = 0, code = 0;
+                    if (!input_bindings_read(obj, row, slot, &kind, &code))
+                        continue;
+                    if (kind || code) pop++;
+                    if (kind >= 3u && kind <= 0xcu) has_pad = 1;
+                    if (kind == 1u) has_kb = 1;
+                }
+                pads += (unsigned)has_pad;
+                kbs += (unsigned)has_kb;
+            }
+            put(out, n, &at, "   %2u       0x%08x  %3u    %3u       %3u%s\n",
+                idx, obj, pop, pads, kbs,
+                idx == controller ? "   <- the table above" : "");
+        }
+        put(out, n, &at, "%u of %u controller objects are constructed.\n",
+            live, INPUT_CONTROLLERS);
+    }
+
+    /* The HOST half, printed beside the game half on purpose. "DirectInput
+       reports button 0 down" and "no action reads DOWN" is the one pair of
+       readings that names the binding layer as the fault, and it is unreadable
+       if the two come from different reports minutes apart. */
+    {
+        int pad, pads = 0;
+        for (pad = 0; pad < DINPUT_PAD_MAX; pad++) {
+            const char *nm = dinput_pad_name(pad);
+            int b, nb, held = 0;
+            if (!nm) continue;
+            pads++;
+            nb = dinput_pad_button_count(pad);
+            put(out, n, &at, "host pad %d \"%s\": %d button(s), POV 0x%08x, "
+                             "down:", pad, nm, nb, dinput_pad_pov(pad));
+            for (b = 0; b < nb; b++)
+                if (dinput_pad_button(pad, b)) {
+                    put(out, n, &at, " %d", b);
+                    held++;
+                }
+            put(out, n, &at, "%s\n", held ? "" : " none");
+            put(out, n, &at,
+                "host pad %d axes (game range -1000..1000): X %d Y %d Z %d "
+                "RX %d RY %d RZ %d\n", pad,
+                dinput_pad_axis(pad, DINPUT_PAD_AXIS_X, -1000, 1000),
+                dinput_pad_axis(pad, DINPUT_PAD_AXIS_Y, -1000, 1000),
+                dinput_pad_axis(pad, DINPUT_PAD_AXIS_Z, -1000, 1000),
+                dinput_pad_axis(pad, DINPUT_PAD_AXIS_RX, -1000, 1000),
+                dinput_pad_axis(pad, DINPUT_PAD_AXIS_RY, -1000, 1000),
+                dinput_pad_axis(pad, DINPUT_PAD_AXIS_RZ, -1000, 1000));
+        }
+        if (!pads)
+            put(out, n, &at, "host: no pad is connected, so every pad binding "
+                             "above is unreachable by construction.\n");
+    }
+    return at;
+}

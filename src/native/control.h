@@ -28,8 +28,12 @@
 int  control_start(int port);
 
 /* Drained on each keyboard poll, from the thread that owns guest input.
-   `now` is the guest clock. */
-void control_pump(double now);
+   `now` is the guest clock, and `cpu` is the guest state at that poll -- the
+   one moment per frame when the guest is between operations, so a command that
+   has to ASK the game something (rather than only set a host-side flag) can
+   call into it safely. */
+struct CPU;
+void control_pump(struct CPU *cpu, double now);
 
 /* Into the shutdown report, at zero and with its denominator. */
 void control_report(void);

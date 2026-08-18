@@ -11,6 +11,7 @@
 #include "dinput_system.h"
 #include "gpu_device.h"
 #include "control.h"
+#include "x86rt.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -151,14 +152,14 @@ static void fifo_drain(double now)
     }
 }
 
-void dinput_fifo_apply(uint32_t out, uint32_t size, double now)
+void dinput_fifo_apply(CPU *cpu, uint32_t out, uint32_t size, double now)
 {
     int i;
     if (g_fifo_fd == -2) fifo_open_if_due(now);
     fifo_drain(now);
     /* Same poll, same table: the control socket's queued commands are applied
        here, on the thread that owns guest input, never on the server's. */
-    control_pump(now);
+    control_pump(cpu, now);
     for (i = 0; i < FIFO_MAX_KEYS; i++) {
         int down = now < g_fifo[i].until;
         if (down && !g_fifo[i].down)

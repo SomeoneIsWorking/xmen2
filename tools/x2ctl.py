@@ -13,6 +13,7 @@ then talk to it while it runs:
     tools/x2ctl.py pad a start             # synthetic pad buttons
     tools/x2ctl.py pad leftx=-1            # ... and axes
     tools/x2ctl.py shot out.png           # capture the current frame
+    tools/x2ctl.py input                  # the GAME's bindings + live actions
     tools/x2ctl.py watch --for 30         # print /status once a second
 
 This exists because the alternative is deciding every input before launch and
@@ -134,6 +135,24 @@ def cmd_shot(args):
     return 0
 
 
+def cmd_input(args):
+    """The GAME's own input state -- its binding table and which actions read
+    down right now.
+
+    This is the other half of `pad`: `pad` proves the host set a button, this
+    proves (or disproves) that the game turned it into an action. Hold the
+    button while asking, or the press will have expired by the time the report
+    is taken: `x2ctl.py pad a --hold 3 & sleep 1; x2ctl.py input`.
+    """
+    code, _, body = call(args.port, "/input?controller=%d" % args.controller,
+                         timeout=30.0)
+    text = body.decode(errors="replace")
+    if code != 200:
+        raise SystemExit("x2ctl: /input returned %d:\n%s" % (code, text))
+    sys.stdout.write(text if text.endswith("\n") else text + "\n")
+    return 0
+
+
 def cmd_watch(args):
     end = time.time() + args.duration
     last = None
@@ -179,6 +198,14 @@ def main():
     s = sub.add_parser("shot")
     s.add_argument("out", nargs="?", default="scratch/screenshots/x2ctl.png")
     s.set_defaults(fn=cmd_shot)
+
+    ip = sub.add_parser("input", help="the game's binding table and live "
+                                      "action state")
+    ip.add_argument("--controller", type=int, default=0,
+                    help="which binding set to print (0..3 are the masters "
+                         "the options UI edits; 4..7 are the working sets the "
+                         "game evaluates; 12..15 are the menu sets)")
+    ip.set_defaults(fn=cmd_input)
 
     w = sub.add_parser("watch")
     w.add_argument("--for", dest="duration", type=float, default=30.0)

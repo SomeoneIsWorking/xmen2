@@ -311,7 +311,7 @@ static void m_GetDeviceState(CPU *C)
     }
     if (d->kind == DINPUT_DEV_KEYBOARD) {
         dinput_system_keyboard_state(out, cb);
-        dinput_script_apply(out, cb);
+        dinput_script_apply(C, out, cb);
     } else if (d->kind == DINPUT_DEV_JOYSTICK) {
         dinput_joystick_state(d->pad, d->axis_lo, d->axis_hi, out, cb);
     } else {

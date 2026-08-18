@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
-void dinput_script_apply(uint32_t out, uint32_t size);
+struct CPU;
+void dinput_script_apply(struct CPU *cpu, uint32_t out, uint32_t size);
 
 #endif /* DINPUT_SCRIPT_H */
