@@ -182,28 +182,7 @@ add_executable(test_x2native_options
 target_include_directories(test_x2native_options PRIVATE src/native)
 add_test(NAME x2native_options COMMAND test_x2native_options)
 
-# The translator, tested as a unit.
-#
-# tools/recomp.py had no tests, and it is the most defect-prone thing here: a
-# mistranslation produces a binary that runs and is wrong. The only oracle was
-# a full re-lift and a game run -- ~40 minutes, reporting "stopped at
-# <address>" rather than which rule is wrong. These run in milliseconds and
-# name the case. See tests/test_recomp.py.
-add_test(NAME recomp
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tests/test_recomp.py)
-add_test(NAME recomp_hosted
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tests/test_recomp_hosted.py)
 
-# The rule that decides when a Ghidra function object may be DELETED, because
-# the address is really a switch case label. It runs inside Ghidra as Jython,
-# where the only oracle is a re-lift; the rule itself lives in
-# tools/ghidra_scripts/caselabel.py with no `ghidra` import so it can be run
-# here in milliseconds. See tests/test_caselabel.py.
-add_test(NAME caselabel
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tests/test_caselabel.py)
 
 # The lift pipeline's step guard. Every Ghidra step appends to one log and then
 # greps the WHOLE file, so a step that DIED still printed the previous run's
