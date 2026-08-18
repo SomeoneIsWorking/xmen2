@@ -28,7 +28,17 @@
 #include <string.h>
 
 #define EXE_PREFERRED   0x00400000u
-#define INPUT_MGR_RVA   0x001d8920u  /* FUN_005d8920, the input singleton    */
+
+/*
+ * Guest addresses are written here EXACTLY as the disassembly writes them --
+ * absolute, at the module's preferred base -- and the offset from the mapped
+ * base is computed. Hand-subtracting 0x00400000 at each constant is an error
+ * that produces a plausible pointer into unrelated data and a report full of
+ * confident nonsense; it happened three times while this file was being
+ * written, so the subtraction is done in one place instead.
+ */
+#define RVA(va)         ((uint32_t)(va) - EXE_PREFERRED)
+#define INPUT_MGR_RVA   RVA(0x005d8920u)  /* FUN_005d8920, the input singleton    */
 #define VT_ACTION_DOWN  0x138u       /* vtable slot the conversation gates on */
 
 /*
@@ -47,7 +57,7 @@
  * +0x2fc of the same structure (claim C192); 0x2fc + 30*4 lands inside 0x390,
  * so the same array is expected here and this dumps it rather than assuming.
  */
-#define PAD_MGR_RVA     0x00151ed0u  /* FUN_00551ed0, the pad manager        */
+#define PAD_MGR_RVA     RVA(0x00551ed0u)  /* FUN_00551ed0, the pad manager        */
 #define PADVT_PLAYER    0x4cu        /* ->player(i), RET 4                   */
 #define PADVT_COUNT     0x70u        /* ->playerCount(), RET 0               */
 #define PLAYERVT_MASK   0x18u        /* ->logicalMask(), RET 0               */
@@ -70,9 +80,16 @@
  * indexes the seen-line bitmap from 0 -- which is what makes the tutorial's
  * second conversation collide with its first (issue #83).
  */
-#define HERO_HANDLES_RVA 0x0030b814u /* 0x0070b814, four handles             */
-#define HERO_FALLBACK_RVA 0x0032988cu /* 0x0072988c, used when the index is -1 */
-#define RESOLVE_HANDLE_RVA 0x000654b0u /* FUN_004654b0(this=&handle) -> actor */
+#define HERO_HANDLES_RVA RVA(0x0070b814u)  /* four handles             */
+#define HERO_FALLBACK_RVA RVA(0x0072988cu)  /* used when the index is -1 */
+#define RESOLVE_HANDLE_RVA RVA(0x004654b0u) /* FUN_004654b0(this=&handle) -> actor */
+
+/* Where FUN_00619e30 sprintf()s "[%s]" -- the on-screen prompt label, after
+   FUN_006281f0 has named the binding. Printed with its bytes, because the
+   whole question for the Xbox prompts is whether a byte the port put there
+   survives to the draw, and a glyph that renders as nothing looks exactly like
+   a byte that was never written. */
+#define LABEL_BUFFER_RVA RVA(0x00a68c18u)
 
 /*
  * And the link before that: the game's OWN copy of the device state.
@@ -85,7 +102,7 @@
  * reading it here separates "DirectInput never delivered it" from "it was
  * delivered and the binding did not use it".
  */
-#define DI_WRAPPER_RVA  0x0066abfcu  /* [0x00a6abfc], the DirectInput wrapper */
+#define DI_WRAPPER_RVA  RVA(0x00a6abfcu)  /* [0x00a6abfc], the DirectInput wrapper */
 #define DI_JOY_BLOCK    0x4f0u
 #define DI_JOY_STRIDE   0x110u
 #define DI_JOY_BUTTONS  0x30u        /* DIJOYSTATE2 rgbButtons                */
@@ -95,7 +112,7 @@
 #define DI_KEYBOARD     0x25e4u      /* 256-byte DIK state, read by 006276d0  */
 #define DI_BOUND_COUNT  0x129c8u     /* controllers registered for evaluation */
 #define DI_BOUND_LIST   0x129d0u
-#define DI_PAD_VALUE_RVA 0x00227650u /* FUN_00627650(pad, code) -> float      */
+#define DI_PAD_VALUE_RVA RVA(0x00627650u) /* FUN_00627650(pad, code) -> float      */
 
 static uint32_t exe_base(void)
 {
@@ -411,6 +428,27 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
                 put(out, n, &at, "  the manager reports NO players, so no "
                                  "logical mask exists to carry a press.\n");
         }
+    }
+
+    /*
+     * The prompt label the game last composed, byte by byte.
+     */
+    if (base) {
+        unsigned char buf[32];
+        unsigned i, len = 0;
+        put(out, n, &at, "\nprompt label at 0x%08x: \"",
+            base + LABEL_BUFFER_RVA);
+        for (i = 0; i < sizeof buf; i++) {
+            if (!x86_peek(base + LABEL_BUFFER_RVA + i, &buf[i], 1)) break;
+            if (!buf[i]) break;
+            len++;
+            put(out, n, &at, "%c", buf[i] >= 0x20 && buf[i] < 0x7f
+                                   ? (char)buf[i] : '.');
+        }
+        put(out, n, &at, "\"  bytes:");
+        for (i = 0; i < len; i++) put(out, n, &at, " %02x", buf[i]);
+        if (!len) put(out, n, &at, " (empty -- nothing has composed a label)");
+        put(out, n, &at, "\n");
     }
 
     /*

@@ -50,6 +50,32 @@ static unsigned long g_mapped, g_deferred;
 static unsigned long g_rows_asked, g_rows_padded, g_rows_no_pad;
 static int g_enabled = -1;
 
+/*
+ * X2_PAD_GLYPH_PROBE=<char> -- draw this ASCII character instead of the glyph
+ * byte, everywhere the glyph would have gone.
+ *
+ * The delivery path and the RENDERING of the byte it delivers are two
+ * different questions, and the on-screen symptom of a failure is the same for
+ * both: "[]", an empty pair of brackets. With this set to a character the
+ * stock font certainly has, a prompt that reads "[#] Back" proves the label is
+ * built, routed and drawn, and narrows the fault to the codepoint; a prompt
+ * that still reads "[]" proves it never gets that far. Off unless asked for.
+ */
+static int probe_char(void)
+{
+    static int c = -1;
+    if (c < 0) {
+        const char *e = getenv("X2_PAD_GLYPH_PROBE");
+        c = (e && *e) ? (unsigned char)*e : 0;
+        if (c)
+            fprintf(stderr, "PAD-GLYPHS: X2_PAD_GLYPH_PROBE -- every pad "
+                            "prompt will draw '%c' (0x%02x) instead of its "
+                            "glyph. This is a diagnostic; unset it to see the "
+                            "real art.\n", c, c);
+    }
+    return c;
+}
+
 static int enabled(void)
 {
     if (g_enabled < 0) {
@@ -103,6 +129,7 @@ void x2_override_006281f0(CPU *C)
     /* The original returns one of its own static buffers. Reusing that guest
        buffer preserves the pointer lifetime and keeps the pointer 32-bit; a
        host string literal would truncate on this 64-bit process. */
+    if (probe_char()) glyph = (uint8_t)probe_char();
     WR8(out, glyph);
     WR8(out + 1u, 0);
     C->eax = out;

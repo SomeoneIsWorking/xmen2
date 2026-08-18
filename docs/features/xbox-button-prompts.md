@@ -499,3 +499,52 @@ path it covers (a row with a pad binding names it, whatever slot it sits in,
 while an Xbox pad is connected) and costs nothing where it does not fire. It is
 kept because it is the right behaviour and because its zero count is the
 measurement above.
+
+
+## SHIPPED: the glyphs render in game, and the blocker was ours
+
+The prompt bar of the main menu, with a pad connected and the derived pack
+active, now draws
+
+    [B] BACK        [A] SELECT
+
+with the real Xbox button art -- `scratch/shots/ship.png`, zoomed in
+`scratch/shots/glyph_zoom.png`. That is the in-game capture this document has
+been waiting for, and the tutorial dialog shows the same thing in place of
+`[ENTER] CONTINUE...`.
+
+**The cause of the years-long "the game will not draw our codepoint" was a unit
+error in this port's own font builder.** XMen2.exe's glyph metrics are PIXELS:
+`A` is `width="14" height="13"` and its UV rect is exactly 14x13 of the 256x256
+atlas. `tools/make_pad_font.py` divided the 18px cell by the font's line height
+and published `height="0.9"`, `horizadvance="0.95"`. The game drew those glyphs
+faithfully, at nine tenths of a pixel.
+
+That is why every earlier theory fit the evidence and none of them was right.
+An invisible glyph looks identical to a glyph the renderer skipped, so the
+investigation went through the codepoint (0x80 -> 0x01 -> 0x7b, all blank), the
+font choice (only `x2f_med_pc` is RGBA8888; the other three the game loads are
+pixel format 15 and the builder refuses to re-encode them), and the printable
+range -- while a stock glyph, `Q`, drew perfectly through the same path the
+whole time. The discriminator that finally separated them was reading the
+published metrics beside the font's own, not another run.
+
+`make_pad_font.py` now refuses to publish a glyph whose height falls outside the
+range the font's own glyphs use, and says so:
+
+    metrics units ok: new glyphs are 18 tall, the font's own run 3..22
+
+### What is measured, and what is not
+
+* Measured: the menu prompt bar and the conversation prompt, both drawing the
+  correct button for the bound action (`Back` shows B, `Select` shows A),
+  through the retained `FUN_006281f0` boundary, on the SHIPPING codepoints
+  0x80.. -- no printable-range restriction exists.
+* Measured: with a pad connected the prompt follows the pad rather than the
+  keyboard, because the label-selection override answers with the row's pad
+  binding (7,873 of 7,873 label reads in one run).
+* NOT measured: any prompt on a screen whose text uses `X2F_big`,
+  `X2F_hud_PC` or `font_XMEN_digital`. Those three are pixel format 15 and the
+  builder refuses them, so a prompt drawn in one of them would still be blank.
+  Whether any prompt uses them is unknown.
+* NOT measured: real hardware. Everything here is the synthetic pad.

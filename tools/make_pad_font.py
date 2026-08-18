@@ -41,6 +41,7 @@ are each REFUSED by name. Nothing is written on any of them.
 The output is an `X2_ASSETS` pack; run the game with `X2_ASSETS=<outdir>`.
 """
 
+import argparse
 import os
 import subprocess
 import sys
@@ -200,7 +201,17 @@ def patch_igb(igb_path, out_path, old_raw, new_raw):
     return first
 
 
-def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
+def build(pc_igb, pc_xmlb, outdir, icons_dir=None, first=None, icons=None):
+    """Publish the button art into a copy of the font.
+
+    `first` and `icons` override assets/buttons/glyphs.json. They exist so an
+    EXPERIMENT -- "does the game draw a glyph we injected at codepoint X?" --
+    can be run into a scratch pack without editing shipped data. The shipping
+    path (tools/prepare_native_assets.py) passes neither and so always uses the
+    manifest, which keeps its 11-icon invariant.
+    """
+    first = FIRST_CODEPOINT if first is None else first
+    icons = ICONS if icons is None else icons
     icons_dir = icons_dir or os.path.join(ROOT, "assets", "buttons")
     w, h, rgba, raw = decode_atlas(pc_igb)
     before = bytes(rgba)   # kept so the verify can say what actually CHANGED
@@ -209,12 +220,12 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
           "%d..%d (%d rows)" % (w, h, y0, y0 + rows - 1, rows))
     need = CELL + GAP
     per_row = (w - GAP) // need
-    rows_needed = (len(ICONS) + per_row - 1) // per_row * need + GAP
+    rows_needed = (len(icons) + per_row - 1) // per_row * need + GAP
     if rows < rows_needed:
         raise SystemExit(
             "REFUSING: %d icon(s) of %dx%d need %d row(s) at %d per row and "
             "the atlas's empty band is %d. Publishing would overwrite art the "
-            "font draws." % (len(ICONS), CELL, CELL, rows_needed, per_row, rows))
+            "font draws." % (len(icons), CELL, CELL, rows_needed, per_row, rows))
 
     root = xmlb.parse(open(pc_xmlb, "rb").read())
     by_num, used, template = {}, set(), None
@@ -231,7 +242,7 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
     if template is None:
         raise SystemExit("REFUSING: %s has no glyph with a rect, so there is "
                          "nothing to model the new ones on." % pc_xmlb)
-    codes = list(range(FIRST_CODEPOINT, FIRST_CODEPOINT + len(ICONS)))
+    codes = list(range(first, first + len(icons)))
     clash = [c for c in codes if c in used]
     if clash:
         raise SystemExit("REFUSING: codepoint(s) %s already draw in %s; "
@@ -249,8 +260,7 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
     # them in the project's gitignored scratch tree (never /tmp), and have the
     # context manager remove the exact directory it created on every exit.
     with tempfile.TemporaryDirectory(prefix="padfont-", dir=scratch_raw) as tmp:
-        art = rasterise(icons_dir, ICONS, CELL, tmp)
-    height = float(root.get("height", "20"))
+        art = rasterise(icons_dir, icons, CELL, tmp)
     placed = []
     for i, (code, px) in enumerate(zip(codes, art, strict=True)):
         cx = GAP + (i % per_row) * need
@@ -263,11 +273,20 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
         g.set("s2", repr((cx + CELL) / float(w)))
         g.set("t", repr(row_to_t(cy + CELL, h)))
         g.set("t2", repr(row_to_t(cy, h)))
-        g.set("width", repr(CELL / height))
-        g.set("height", repr(CELL / height))
-        g.set("horizadvance", repr((CELL + 1) / height))
+        # PIXELS, not a fraction of the line height. Read off the shipped
+        # glyphs: 'A' is width="14" height="13" with a UV rect exactly 14x13
+        # pixels of the 256x256 atlas, and horizadvance/baseline are pixels
+        # too. An earlier version divided by the font height, which produced
+        # height="0.9" -- a glyph the game drew faithfully at nine-tenths of a
+        # pixel, i.e. invisibly, at every codepoint and in every font. That
+        # looked exactly like "the game refuses to draw our codepoint" and cost
+        # a day of chasing the wrong layer.
+        g.set("width", str(CELL))
+        g.set("height", str(CELL))
+        g.set("horizadvance", str(CELL + 1))
         g.set("horizoffset", "0")
-        g.set("baseline", template.get("baseline", "0"))
+        # Letters sit ~2px above the box bottom ('A' 13 tall, baseline 11).
+        g.set("baseline", str(CELL - 2))
         placed.append((ICONS[i], code, cx, cy))
 
     new_raw = bytes(rgba) if len(rgba) == len(raw) else None
@@ -276,6 +295,25 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
             "REFUSING: the decoded atlas is %d bytes and the raw block is %d, "
             "so the decode is not a straight copy and writing it back would "
             "corrupt the image." % (len(rgba), len(raw)))
+
+    # The units check, because getting it wrong is invisible on screen: a
+    # glyph with a fractional height still draws, just too small to see. Every
+    # new glyph must have a height inside the range the font's own glyphs use.
+    real_h = sorted(float(by_num[c].get("height")) for c in used
+                    if by_num[c].get("height"))
+    if real_h:
+        lo, hi = real_h[0], real_h[-1]
+        for c in codes:
+            got = float(by_num[c].get("height"))
+            if not (lo <= got <= hi):
+                raise SystemExit(
+                    "REFUSING: codepoint 0x%02x is being published with "
+                    "height=%s, and this font's own glyphs run %g..%g. That is "
+                    "a UNIT mismatch -- the game would draw it faithfully at "
+                    "the wrong size and it would look like a glyph that never "
+                    "renders." % (c, got, lo, hi))
+        print("metrics units ok: new glyphs are %g tall, the font's own run "
+              "%g..%g" % (float(by_num[codes[0]].get("height")), lo, hi))
 
     igb_out = os.path.join(outdir, "textures", "fonts",
                            os.path.basename(pc_igb).lower())
@@ -385,12 +423,25 @@ def _selftest():
 def main(argv):
     if len(argv) > 1 and argv[1] == "--selftest":
         return _selftest()
-    if len(argv) < 4:
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument("igb")
+    ap.add_argument("xmlb")
+    ap.add_argument("outdir")
+    ap.add_argument("--first-codepoint", type=lambda v: int(v, 0), default=None,
+                    help="override glyphs.json's first_codepoint; for building "
+                         "an experimental pack into scratch")
+    ap.add_argument("--icons", default=None,
+                    help="comma-separated subset of the icon names, in order")
+    ap.add_argument("-h", "--help", action="store_true")
+    if len(argv) < 4 or "-h" in argv or "--help" in argv:
         print(__doc__)
         print("usage: make_pad_font.py <pc_atlas.igb> <pc_metrics.xmlb> "
-              "<outdir>\n       make_pad_font.py --selftest", file=sys.stderr)
+              "<outdir> [--first-codepoint N] [--icons a,b,c]\n"
+              "       make_pad_font.py --selftest", file=sys.stderr)
         return 2
-    return build(argv[1], argv[2], argv[3])
+    a = ap.parse_args(argv[1:])
+    return build(a.igb, a.xmlb, a.outdir, first=a.first_codepoint,
+                 icons=a.icons.split(",") if a.icons else None)
 
 
 if __name__ == "__main__":

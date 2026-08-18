@@ -41,10 +41,22 @@ published into unused bytes of the PC font and returned at the game's RE'd
 physical-input naming boundary, for SDL-classified Xbox controllers only. No
 Xbox asset is shipped; the art is this port's.
 
-Open: delivery and the 21-row bindable Xbox preset are implemented, but the
-gate is an **in-game prompt capture** — a screenshot showing a prompt actually
-drawn in the game, not a trace saying the boundary was reached. The control
-channel (`tools/x2ctl.py shot`) is how to take it.
+**The gate is met.** The main menu prompt bar draws `[B] BACK` / `[A] SELECT`
+with the real button art, and the tutorial dialog draws the button in place of
+`[ENTER] CONTINUE...` — captured in game, on the shipping codepoints
+(`scratch/shots/ship.png`, C219). With a pad connected the prompt follows the
+pad, because the label override answers with the row's pad binding.
+
+What blocked it for so long was this port's own bug, not the game: the font
+builder published glyph metrics in normalised units where XMen2.exe wants
+pixels, so every glyph drew at nine tenths of a pixel — invisible, and
+indistinguishable from a renderer refusing the codepoint (C220). The builder now
+refuses metrics whose units do not match the font's own.
+
+Open: three of the four fonts the game loads (`X2F_big`, `X2F_hud_PC`,
+`font_XMEN_digital`) are pixel format 15, and the builder refuses to re-encode
+them, so a prompt drawn in one of those would still be blank. Whether any is.
+And no real controller has been tested.
 
 ## 4. Input hotswap
 
