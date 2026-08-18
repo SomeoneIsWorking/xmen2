@@ -73,13 +73,35 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: Superseded: under recomp+overrides the controller manager is replaced as an override on recompiled functions, not as a hand-built class registered with libIGCore.
 - notes:
 
-### sdl-input — SDL_GameController backend + the three shipped features
+### sdl-input — The game's input system, on SDL3
 - status: re-partial
 - deps: rc-overrides
-- evidence: src/display/ig_sdl_controller.c on the SDL3 gamepad API; tests/test_controller.c drives a real SDL3 virtual joystick and passes
-- where:
-- gap: Backend converted to SDL3 (chosen over SDL2+Vulkan because SDL3 GPU maps onto Metal on macOS). Still a standalone backend: it is not yet wired as a native override over the recompiled input functions, and the DINPUT import is still one of the 107 stubs that abort by name.
-- notes:
+- evidence: DirectInput 8 is implemented natively over SDL3 and the game drives
+  it end to end -- `dinput8.c` (factory), `dinput.c`/`dinput_device.c` (device
+  objects, data formats, cooperative level, acquire/poll), `dinput_system.c`
+  (keyboard and mouse state), `dinput_joystick.c` (DIJOYSTATE2 layout),
+  `dinput_pad.c` (SDL3 gamepad -> DirectInput pad, including the 360 driver's
+  single-Z-axis trigger convention). C137/C138 fix how the exe reaches
+  DirectInput and by which GUIDs; issues #32, #55 and #59 are resolved.
+  Keyboard input demonstrably reaches GAMEPLAY, not just the device layer: over
+  the control channel, `x2ctl.py key Return` advances a conversation from
+  Cyclops's line to Nightcrawler's, captured both sides.
+- where: `src/native/dinput*.c`, `tools/x2ctl.py`
+- gap: THE PAD DOES NOT DELIVER BUTTONS. Enumeration is real -- the game's own
+  routine `FUN_00628e20` runs, a device is created, the 272-byte data format is
+  negotiated and the axis range set -- and axes are proved to arrive (a
+  synthetic pad's leftx reads back -32767 at both the joystick and the gamepad
+  layer inside the running game). Buttons never arrive: 71,700 polls, 0 down.
+  That is issue #82, and it is host-side. Beneath it sits the real port work:
+  the SDL backend is still consumed THROUGH the recompiled DirectInput call
+  path rather than as a native override of the game's own input functions, so
+  the port does not yet own the mapping from a physical input to a game action
+  -- which is what a rebindable UI has to drive. No real controller has been
+  tested at all; this machine has none attached.
+- notes: The `ig` controller abstraction is NOT in this repo any more -- it
+  belongs to the Alchemy engine layer (`shared/alchemy`), consumed rather than
+  vendored. The former `src/display/ig_sdl_controller.c` and
+  `tests/test_controller.c` moved with it.
 
 ### xbox-defaults — Recover and port the Xbox build's controller defaults into the PC mapping UI
 - status: re-partial
