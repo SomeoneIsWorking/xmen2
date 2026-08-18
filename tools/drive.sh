@@ -4,6 +4,7 @@
 #
 #   tools/drive.sh port    -> an X2_INPUT_SCRIPT string (the native build)
 #   tools/drive.sh stock   -> an X2_KEYS string (the Wine control)
+#   tools/drive.sh count   -> how many press EVENTS each profile schedules
 #   tools/drive.sh --check -> prove both are non-empty and well formed
 #
 # ONE definition, two syntaxes. The port injects into the DirectInput buffer
@@ -36,6 +37,39 @@ STOCK_KEYS="195-300/12:Return,380-500/20:Return"
 case "${1:-}" in
 port)  printf '%s' "$PORT_SCRIPT" ;;
 stock) printf '%s' "$STOCK_KEYS" ;;
+count)
+    # How many press EVENTS a profile schedules -- NOT how many windows it has.
+    # A repeat window (f2600-2900/50:Return) fires 7 presses, and the gate
+    # counts INJECTING lines in the log, which are per event. The same parser
+    # shape as dinput_script.c, so the count the gate expects cannot disagree
+    # with the count the game schedules.
+    python3 - "$("$0" "${2:-port}")" <<'PY'
+import sys
+s = sys.argv[1]
+n = 0
+for entry in s.replace(",", " ").split():
+    parts = entry.split(":")
+    if len(parts) != 2:
+        continue
+    spec = parts[0]
+    if spec.startswith("f"):
+        spec = spec[1:]
+        m = spec.split("-")
+        if len(m) == 2 and "/" in m[1]:
+            to_step = m[1].split("/")
+            try:
+                a, b, step = float(m[0]), float(to_step[0]), float(to_step[1])
+                if step > 0 and b >= a:
+                    n += int((b - a) / step) + 1
+                    continue
+            except ValueError:
+                pass
+        n += 1
+    else:
+        n += 1
+print(n)
+PY
+    ;;
 --check)
     rc=0
     for side in port stock; do

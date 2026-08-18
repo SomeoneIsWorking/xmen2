@@ -368,9 +368,9 @@ static void note_name(char *dst, size_t cap, uint32_t s)
  * the launch's own bool in AL; the original keeps it in BL across the two
  * clearing calls, so those cannot be allowed to overwrite it.
  */
-void __real_fn_XMen2_00455600(CPU *C);
+void fn_XMen2_00455600(CPU *C);
 
-void __wrap_fn_XMen2_00455600(CPU *C)
+void x2_override_00455600(CPU *C)
 {
     uint32_t self = C->ecx;
     uint32_t name = RD32(C->esp + 4u);
@@ -421,9 +421,9 @@ void __wrap_fn_XMen2_00455600(CPU *C)
  *
  *     void record::runScripts()      // scriptCommand, then scriptFile
  */
-void __real_fn_XMen2_0045a100(CPU *C);
+void fn_XMen2_0045a100(CPU *C);
 
-void __wrap_fn_XMen2_0045a100(CPU *C)
+void x2_override_0045a100(CPU *C)
 {
     uint32_t rec = C->ecx;
     uint32_t s;
@@ -456,9 +456,9 @@ void __wrap_fn_XMen2_0045a100(CPU *C)
  * children. It is ported literally rather than as the constant, because the
  * constant is a consequence of the caller and would stop being true silently.
  */
-void __real_fn_XMen2_004559e0(CPU *C);
+void fn_XMen2_004559e0(CPU *C);
 
-void __wrap_fn_XMen2_004559e0(CPU *C)
+void x2_override_004559e0(CPU *C)
 {
     uint32_t p = C->ecx;
     int i;
@@ -481,9 +481,9 @@ void __wrap_fn_XMen2_004559e0(CPU *C)
  * -- FUN_0045cde0 sets the ending flag on it -- so the two ways of returning 0
  * are counted apart.
  */
-void __real_fn_XMen2_0045b6d0(CPU *C);
+void fn_XMen2_0045b6d0(CPU *C);
 
-void __wrap_fn_XMen2_0045b6d0(CPU *C)
+void x2_override_0045b6d0(CPU *C)
 {
     uint32_t rec = C->ecx;
     uint32_t self, cond, kids, count;
@@ -540,9 +540,9 @@ void __wrap_fn_XMen2_0045b6d0(CPU *C)
  * declined -- the original skips applying the response in that case, so a
  * refusal is recorded here by name rather than looking like a missing call.
  */
-void __real_fn_XMen2_0045d5d0(CPU *C);
+void fn_XMen2_0045d5d0(CPU *C);
 
-void __wrap_fn_XMen2_0045d5d0(CPU *C)
+void x2_override_0045d5d0(CPU *C)
 {
     uint32_t self = C->ecx;
     int sel = (int)RD32(C->esp + 4u);
@@ -600,9 +600,9 @@ void __wrap_fn_XMen2_0045d5d0(CPU *C)
  * Both return in AL only, leaving the rest of EAX as the original's `SHR AL`
  * does.
  */
-void __real_fn_XMen2_00458010(CPU *C);
+void fn_XMen2_00458010(CPU *C);
 
-void __wrap_fn_XMen2_00458010(CPU *C)
+void x2_override_00458010(CPU *C)
 {
     uint8_t f = RD8(C->ecx + CV_FLAGS);
     note_flags(f);
@@ -611,9 +611,9 @@ void __wrap_fn_XMen2_00458010(CPU *C)
     C->esp += 4u;
 }
 
-void __real_fn_XMen2_00458020(CPU *C);
+void fn_XMen2_00458020(CPU *C);
 
-void __wrap_fn_XMen2_00458020(CPU *C)
+void x2_override_00458020(CPU *C)
 {
     uint8_t f = RD8(C->ecx + CV_FLAGS);
     C->eax = (C->eax & ~0xFFu) | (uint32_t)((f >> 2) & 1u);
@@ -726,9 +726,9 @@ static long double call_float(CPU *C, uint32_t fn, uint32_t ecx,
     return K.st[K.top];
 }
 
-void __real_fn_XMen2_0045d1a0(CPU *C);
+void fn_XMen2_0045d1a0(CPU *C);
 
-void __wrap_fn_XMen2_0045d1a0(CPU *C)
+void x2_override_0045d1a0(CPU *C)
 {
     uint32_t self = C->ecx;
     uint32_t entry_esp = C->esp;
@@ -962,4 +962,18 @@ void __wrap_fn_XMen2_0045d1a0(CPU *C)
     }
 
     C->esp = entry_esp + 4u + 4u;             /* RET 0x4 */
+}
+
+/* Register the ported conversation manager in place of the translated bodies. */
+__attribute__((constructor))
+static void x2_conversation_register_overrides(void)
+{
+    x86_register_override("XMen2.exe", 0x00455600, x2_override_00455600);
+    x86_register_override("XMen2.exe", 0x0045a100, x2_override_0045a100);
+    x86_register_override("XMen2.exe", 0x004559e0, x2_override_004559e0);
+    x86_register_override("XMen2.exe", 0x0045b6d0, x2_override_0045b6d0);
+    x86_register_override("XMen2.exe", 0x0045d5d0, x2_override_0045d5d0);
+    x86_register_override("XMen2.exe", 0x00458010, x2_override_00458010);
+    x86_register_override("XMen2.exe", 0x00458020, x2_override_00458020);
+    x86_register_override("XMen2.exe", 0x0045d1a0, x2_override_0045d1a0);
 }

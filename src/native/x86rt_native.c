@@ -8,6 +8,9 @@
 #include "threads.h"
 #include "guest_heap.h"
 #include <time.h>
+#include <errno.h>
+#include <signal.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -18,8 +21,244 @@
 #include <fcntl.h>
 
 static X86Module *g_head;
+static const X86Fn *find(X86Module *m, uint32_t addr);
+
+/* Native overrides: (module, linked entry point) -> C implementation.
+   Registered from the subsystem files by x86_register_override; the dispatcher
+   checks this table BEFORE the recompiled body (x86_native_call_at). Declared
+   in the .c where the override belongs, never generated.
+
+   The key is a module NAME plus the entry point at that module's PREFERRED
+   base, never a bare address. Every libIG*.dll is linked for 0x10000000, so a
+   bare entry point names up to eight different functions -- 0x10002520 is a
+   real function in eight of this game's modules -- while dispatch works in
+   MAPPED addresses, which are unique. A table keyed on the linked address
+   therefore both misses its intended target (the module was relocated) and
+   answers for whichever unrelated module happened to keep the preferred base.
+   That is the same collision this file's header describes for the function
+   tables, and it is why registration is resolved against a named module. */
+#define X2_MAX_OVERRIDES 128
+static struct {
+    const char     *module;      /* module name as pe_map/x86_module_register knows it */
+    uint32_t        linked_ep;   /* entry point at that module's PREFERRED base */
+    uint32_t        mapped_ep;   /* where it actually landed; valid once resolved */
+    x86_override_fn fn;
+} g_override[X2_MAX_OVERRIDES];
+static int g_noverride;
+static int g_overrides_resolved;
+
+void x86_register_override(const char *module, uint32_t linked_ep,
+                           x86_override_fn fn)
+{
+    int i;
+    if (!module || !*module) {
+        fprintf(stderr, "x86_register_override: 0x%08x registered with no "
+                        "module name. An override is only meaningful against "
+                        "the module that owns the entry point.\n", linked_ep);
+        abort();
+    }
+    for (i = 0; i < g_noverride; i++) {
+        if (g_override[i].linked_ep == linked_ep
+                && !strcmp(g_override[i].module, module)) {
+            fprintf(stderr, "x86_register_override: %s 0x%08x registered "
+                            "TWICE; the new function replaces the old. An "
+                            "override declared in two files is a defect -- "
+                            "naming it here.\n", module, linked_ep);
+            g_override[i].fn = fn;
+            return;
+        }
+    }
+    if (g_noverride >= X2_MAX_OVERRIDES) {
+        fprintf(stderr, "x86_register_override: the table holds %d and is "
+                        "full; %s 0x%08x is NOT registered. Raise "
+                        "X2_MAX_OVERRIDES rather than letting an override "
+                        "silently not fire.\n",
+                X2_MAX_OVERRIDES, module, linked_ep);
+        abort();
+    }
+    g_override[g_noverride].module    = module;
+    g_override[g_noverride].linked_ep = linked_ep;
+    g_override[g_noverride].mapped_ep = 0;
+    g_override[g_noverride].fn        = fn;
+    g_noverride++;
+}
+
+int x86_override_count(void) { return g_noverride; }
+
+/* Resolve ONE (module, linked ep) to the mapped address dispatch will compare.
+   Returns 0 and fills *mapped_out on success; non-zero with a reason in `why`
+   when the pair could not be resolved. Split out from the loop below so the
+   rejection paths can be exercised by --override-selftest: a resolver that
+   aborts on every failure cannot be shown to accept the right things and
+   reject the wrong ones without a way to ask it. */
+int x86_override_resolve_check(const char *module, uint32_t linked_ep,
+                               uint32_t *mapped_out, char *why, size_t whyn)
+{
+    X86Module *m;
+    uint32_t mapped;
+    for (m = g_head; m; m = m->next)
+        if (!strcmp(m->name, module)) break;
+    if (!m) {
+        snprintf(why, whyn, "module %s is NOT mapped -- either the name is "
+                            "wrong or it was not linked into this build",
+                 module);
+        return 1;
+    }
+    if (linked_ep < m->preferred || linked_ep >= m->preferred + m->size) {
+        snprintf(why, whyn, "0x%08x is outside %s's image (0x%08x + 0x%x)",
+                 linked_ep, module, m->preferred, m->size);
+        return 1;
+    }
+    mapped = *m->base + (linked_ep - m->preferred);
+    if (!find(m, mapped)) {
+        snprintf(why, whyn, "0x%08x is not the entry point of any recompiled "
+                            "body in %s -- an override on a mid-function "
+                            "address is never dispatched to",
+                 linked_ep, module);
+        return 1;
+    }
+    *mapped_out = mapped;
+    return 0;
+}
+
+/* Turn every (module, linked ep) into the mapped address dispatch will see.
+   Called once, after every module has registered and been mapped: the
+   registrations run from constructors, which is before pe_map has placed
+   anything, so the mapped address cannot be known at registration time.
+
+   Every failure here is fatal by design. An override that does not resolve is
+   invisible at runtime -- the game runs, the native code simply never executes
+   and the recompiled body answers instead -- which is indistinguishable from a
+   working build until something downstream is wrong for reasons that look
+   unrelated. */
+void x86_overrides_resolve(void)
+{
+    int i, bad = 0;
+    for (i = 0; i < g_noverride; i++) {
+        char why[256];
+        uint32_t mapped = 0;
+        if (x86_override_resolve_check(g_override[i].module,
+                                       g_override[i].linked_ep,
+                                       &mapped, why, sizeof why) != 0) {
+            fprintf(stderr, "x86_overrides_resolve: override for %s 0x%08x "
+                            "could not be resolved: %s\n",
+                    g_override[i].module, g_override[i].linked_ep, why);
+            bad++;
+            continue;
+        }
+        g_override[i].mapped_ep = mapped;
+    }
+    if (bad) {
+        fprintf(stderr, "x86_overrides_resolve: %d of %d override(s) could not "
+                        "be resolved. Refusing to run: a silently absent "
+                        "override looks exactly like a working build.\n",
+                bad, g_noverride);
+        abort();
+    }
+    g_overrides_resolved = 1;
+    printf("overrides: %d native override(s) resolved to mapped addresses\n",
+           g_noverride);
+}
 
 static int thunk_call(uint32_t addr, CPU *C);
+extern volatile sig_atomic_t x2_report_now;   /* heartbeat: set when the run stops */
+
+/* The current guest body, written on every dispatch (guest body or import
+   stub), read by the X2_PROFILE sampler thread. Declared here, at the top,
+   because the two dispatch paths that write it precede the profiler block. */
+volatile uint32_t g_sample_ep;
+
+/* X2_GUEST_WATCH diagnostic: which body ran right after a guest address went
+   to zero. Set once from the environment; see the dispatch path. */
+uint32_t g_guest_watch_addr;
+static uint32_t g_last_dispatch_ep;
+
+/* X2_WRITE_WATCH=<guest-addr>[:<value>]: armed by x86_write_watch_arm;
+   WR8/16/32 call x2_write_watch_fire the moment the watched guest address is
+   written.
+
+   It does NOT stop at the first hit. A stack address is reused by every frame
+   that passes through it, so on a guest stack the first write is almost never
+   the interesting one: watching a /GS cookie slot, the single shot was spent
+   on an unrelated frame's write hundreds of frames before the overrun, and the
+   watch then sat disarmed through the corruption it was armed for and reported
+   nothing. A one-shot watch on a hot address reports the wrong writer and
+   looks like an answer.
+
+   So every write is reported, and the optional :<value> filter is what narrows
+   a hot slot to the interesting case ("who writes ZERO here") instead of
+   narrowing it to "whoever got here first". */
+volatile uint32_t x2_write_watch_addr;
+static int           g_ww_filter;        /* a :<value> filter was given */
+static uint32_t      g_ww_value;         /* ... and the value it selects */
+static unsigned long g_ww_hits;          /* writes seen, filter included */
+static unsigned long g_ww_reported;
+
+/* Cap the BORING case only: the first few writes, plus EVERY write of the
+   filtered value. A cap that hides the interesting write is how a watch
+   reports nothing and reads as "nothing happened". */
+#define WW_REPORT_FIRST 8
+
+void x2_write_watch_fire(uint32_t a, uint32_t v)
+{
+    extern const char *x86_native_name_at(uint32_t);
+    const char *nm;
+    X86Module *m;
+
+    g_ww_hits++;
+    if (g_ww_filter && v != g_ww_value) return;
+    /* Unfiltered: the first few, plus the two writes that MATTER on a /GS
+       cookie slot -- the store of the process cookie (the frame arming its
+       tripwire) and any store of zero (the tripwire being wiped). Reporting
+       only zeros shows the wipes but not which frame's cookie was wiped, so
+       the pair is what makes the sequence readable. */
+    if (!g_ww_filter && g_ww_reported >= WW_REPORT_FIRST
+            && v != 0 && v != RD32(0x006f38f8)) return;
+
+    nm = x86_native_name_at(g_sample_ep);
+    m  = x86_module_for(g_sample_ep);
+    g_ww_reported++;
+    /* g_sample_ep is the last DISPATCHED body, which is the writer only when
+       the writer was reached through the dispatcher. Reached by a direct C
+       call it names an ANCESTOR -- narrowing, not naming, and it says so. */
+    fprintf(stderr, "[WWATCH] write #%lu to 0x%08x = 0x%08x (process cookie "
+                    "0x%08x); last dispatched body 0x%08x %s%s%s%s\n",
+            g_ww_hits, a, v, RD32(0x006f38f8), g_sample_ep,
+            nm ? "" : "in ", nm ? nm : (m ? m->name : "???"),
+            (nm || !m) ? "" : " +offset",
+            v == 0 ? "   <-- ZERO"
+                   : (v == RD32(0x006f38f8) ? "   <-- /GS cookie stored" : ""));
+}
+
+/* How many writes the watch saw, so a run can report a real denominator --
+   "0 of 0" and "0 of 12,043" are different answers. */
+unsigned long x86_write_watch_hits(void) { return g_ww_hits; }
+
+void x86_write_watch_arm(const char *arg)
+{
+    const char *colon;
+    if (!arg || !*arg) return;
+    x2_write_watch_addr = (uint32_t)strtoul(arg, NULL, 0);
+    colon = strchr(arg, ':');
+    if (colon) {
+        g_ww_filter = 1;
+        g_ww_value = (uint32_t)strtoul(colon + 1, NULL, 0);
+    }
+    if (!x2_write_watch_addr) {
+        fprintf(stderr, "X2_WRITE_WATCH=%s parsed to address 0; the watch is "
+                        "NOT armed and nothing will be reported.\n", arg);
+        return;
+    }
+    if (g_ww_filter)
+        fprintf(stderr, "X2_WRITE_WATCH=0x%08x:0x%08x: every guest write of "
+                        "that value to that address is reported, all of them.\n",
+                x2_write_watch_addr, g_ww_value);
+    else
+        fprintf(stderr, "X2_WRITE_WATCH=0x%08x: the first %d guest write(s) to "
+                        "this address are reported, plus every /GS cookie store "
+                        "and every write of ZERO.\n",
+                x2_write_watch_addr, WW_REPORT_FIRST);
+}
 static void ring_note(const char *what, uint32_t addr, uint32_t base,
                       uint32_t in, uint32_t out, uint32_t ret);
 static void hotep_count(uint32_t ep, unsigned long long ns);
@@ -112,15 +351,26 @@ X86Module *x86_module_for(uint32_t addr)
     return NULL;
 }
 
-/* Linear search per module. 5769 + 521 entries is small enough that this has
-   never shown up in a profile, and a sorted table would have to be built at
-   registration -- worth doing when it measurably matters, not before. */
+/* Binary search over the module's function table, which recomp.py native
+   emits SORTED by entry point. It used to be linear ("5769 entries is small
+   enough"), and that was true until the load window was measured: the arena
+   pool's 2-instruction isActive is reached only by DISPATCH, the load calls
+   it hundreds of thousands of times per frame, and a linear scan of a
+   ~6000-entry table on every dispatch made it the single most-sampled body
+   in the load (15.6%) with the check itself doing no work. log2(6000) is 13
+   compares. A duplicate EP cannot occur: interior entries are addresses
+   inside another body, never a function start. */
 static const X86Fn *find(X86Module *m, uint32_t addr)
 {
     uint32_t ep = m->preferred + (addr - *m->base);
-    int i;
-    for (i = 0; i < m->nfns; i++)
-        if (m->fns[i].ep == ep) return &m->fns[i];
+    int lo = 0, hi = m->nfns - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        uint32_t mep = m->fns[mid].ep;
+        if (mep == ep) return &m->fns[mid];
+        if (mep < ep) lo = mid + 1;
+        else hi = mid - 1;
+    }
     return NULL;
 }
 
@@ -270,6 +520,65 @@ void x86_epcount_report(void)
     }
 }
 
+/*
+ * X2_STACKCHECK=<file>: record the ESP DELTA of every dispatched call while
+ * armed, for tools/stackcheck.py to check against what each guest function's
+ * own RET says it pops.
+ *
+ * A guest call must return with esp raised by 4 (the return address) plus the
+ * callee's RET immediate. Nothing in this runtime has ever checked that: the
+ * ring records esp_in and esp_out and prints the delta, but a delta is only
+ * wrong relative to an expectation, and the expectation lives in the guest
+ * binary, not here. So the runtime records and the checker -- which can read
+ * the module JSON -- decides.
+ *
+ * The failure this exists for: FUN_0046b750 stores its /GS cookie at
+ * entry_esp-4 and its epilogue reads [ESP+0x20], and those were FOUR BYTES
+ * APART, so the epilogue compared a slot that was never the cookie and the
+ * /GS check reported a buffer overrun that had not happened. One dword of
+ * drift inside the call tree presents as memory corruption somewhere else.
+ */
+static FILE *g_sc_out;
+static int   g_sc_armed;
+static unsigned long g_sc_records;
+
+void x86_stackcheck_arm(int on)
+{
+    if (on && !g_sc_out) {
+        const char *path = getenv("X2_STACKCHECK");
+        if (!path || !*path) return;      /* not asked for */
+        g_sc_out = fopen(path, "w");
+        if (!g_sc_out) {
+            fprintf(stderr, "X2_STACKCHECK=%s could not be opened for "
+                            "writing; NOTHING will be recorded.\n", path);
+            return;
+        }
+        fprintf(stderr, "X2_STACKCHECK=%s: recording the esp delta of every "
+                        "dispatched call while armed.\n", path);
+    }
+    g_sc_armed = on;
+    if (!on && g_sc_out) {
+        fflush(g_sc_out);
+        fprintf(stderr, "X2_STACKCHECK: %lu dispatched call(s) recorded. A "
+                        "count of 0 means the armed window contained no "
+                        "dispatched call, NOT that every delta was right.\n",
+                g_sc_records);
+    }
+}
+
+/* Records the LINKED ep and the module name, not the mapped address. Keyed on
+   the mapped address, every relocated DLL missed the checker's expectation
+   table and 86%% of a run came back "no known RET" -- unchecked calls counted
+   as clean. The module knows where it was placed, so it converts here. */
+static void stackcheck_note(X86Module *m, uint32_t ep, uint32_t in,
+                            uint32_t out)
+{
+    if (!g_sc_armed || !g_sc_out) return;
+    g_sc_records++;
+    fprintf(g_sc_out, "%s %08x %08x %08x\n", m->name,
+            m->preferred + (ep - *m->base), in, out);
+}
+
 int x86_native_call_at(uint32_t addr, CPU *C)
 {
     X86Module *m;
@@ -294,11 +603,55 @@ int x86_native_call_at(uint32_t addr, CPU *C)
             }
     }
     if (thunk_call(addr, C)) return 1;
+    /* A native override shadows the recompiled body. Checked BEFORE the module
+       lookup so the override path skips the find() scan and the epcount/ring
+       machinery -- the frame-cap override runs every frame, and routing it
+       through the full dispatch bookkeeping would be the cost of a diagnostic
+       on a hot path. */
+    {
+        int i;
+        if (g_noverride && !g_overrides_resolved) {
+            fprintf(stderr, "x86_native_call_at: guest code is running before "
+                            "x86_overrides_resolve(); %d override(s) would be "
+                            "silently skipped.\n", g_noverride);
+            abort();
+        }
+        for (i = 0; i < g_noverride; i++)
+            if (g_override[i].mapped_ep == addr) {
+                uint32_t in = C->esp;
+                g_override[i].fn(C);
+                /* Overrides are checked TOO. A hand-written override has to
+                   emulate the guest RET itself -- pop the return address and
+                   whatever the callee pops -- and getting that wrong shifts
+                   the guest stack by a word, which surfaces later as memory
+                   corruption somewhere unrelated. Returning before this point
+                   made the 19 overrides the one thing the stack check could
+                   not see, which is the wrong place to have a blind spot. */
+                {
+                    X86Module *om = x86_module_for(addr);
+                    if (om) stackcheck_note(om, addr, in, C->esp);
+                }
+                return 1;
+            }
+    }
     m = x86_module_for(addr);
     const X86Fn *f = m ? find(m, addr) : NULL;
     if (!f) return 0;
     {
         uint32_t in = C->esp;
+        /* X2_GUEST_WATCH=<addr>: catch WHO zeroed a guest address. Every
+           dispatch, if the watched dword has become 0, the PREVIOUS body was
+           the writer (a cookie slot going to 0 is the signature of a strncpy
+           zero-pad overrun). One shot. */
+        if (g_guest_watch_addr && RD32(g_guest_watch_addr) == 0) {
+            const char *wn = x86_native_name_at(g_last_dispatch_ep);
+            fprintf(stderr, "[GWATCH] guest 0x%08x went ZERO; last body was "
+                            "0x%08x %s\n",
+                    g_guest_watch_addr, g_last_dispatch_ep,
+                    wn ? wn : "(?)");
+            g_guest_watch_addr = 0;
+        }
+        g_last_dispatch_ep = addr;
         /*
          * The preemption point. This is the boundary every dispatched call
          * crosses, so it is the one place a quantum can be counted without a
@@ -308,6 +661,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
         g_cpu_current = C;
         if (g_epc_n < 0) epcount_init();
         g_epc_dispatches++;
+        g_sample_ep = addr;
         if (g_probe_time) span_push();
         if (g_epc_n) {
             int i;
@@ -347,6 +701,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
             g_guest_body_ns += excl;
             hotep_count(addr, excl);
         }
+        stackcheck_note(m, addr, in, C->esp);
         ring_note("guest", addr, 0, in, C->esp, 0);
     }
     return 1;
@@ -684,6 +1039,7 @@ static int thunk_call(uint32_t addr, CPU *C)
     if ((int)i >= g_nthunk || !g_thunk[i].stub) return 0;
     in = C->esp;
     g_thunk_hits[i]++;
+    g_sample_ep = addr;
     {
         void *save = g_cb_ctx;
         g_cb_ctx = g_thunk[i].ctx;
@@ -846,6 +1202,125 @@ unsigned int x86_hotep_sorted(uint32_t *ep, unsigned long long *ns,
 }
 
 unsigned int x86_hotep_collisions(void) { return g_hotep_collisions; }
+
+/* ---- the sampling profiler ----------------------------------------------
+ *
+ * WHY IT EXISTS. The hotep probe cannot name a load-window hotspot: the level
+ * build dispatches ~460k DISTINCT entry points, a fixed hash table refuses
+ * everything that collides, and the refused ones include the hot ones -- the
+ * top-5 came back as 0.0ms in 1-2 dispatches while the interval's guest total
+ * was 1400ms. A sampler does not need to see every EP: it reads the CURRENT
+ * guest body every few ms and histograms the SAMPLES, so a body that runs a
+ * lot is sampled a lot, whatever else ever ran.
+ *
+ * "Current guest body" is g_sample_ep, one store on every dispatch (both
+ * guest bodies and import stubs), written by the thread running guest code
+ * and read by the sampler thread. A 32-bit aligned store/load on x86 is
+ * atomic, so a sample is never torn; it can only be stale by one dispatch,
+ * which is exactly what a sample is supposed to be.
+ *
+ * Armed by X2_PROFILE=<period-ms>; reports at the end of the run through
+ * x2_interrupt_reports (never only at a crash). The histogram prints its
+ * sample total as the denominator, so "0 samples" is distinguishable from
+ * "the probe never ran".
+ */
+#define PROFILE_MAX 1024
+#define PROFILE_TOP 14
+static struct {
+    uint32_t ep;
+    unsigned long n;
+} g_profile[PROFILE_MAX];
+static int g_profile_n;
+static unsigned long g_profile_dropped, g_profile_total;
+
+static void *profiler_thread(void *arg)
+{
+    long period_ns = (long)(intptr_t)arg * 1000000L;
+    struct timespec req = { 0, (long)period_ns % 1000000000L };
+    req.tv_sec = period_ns / 1000000000L;
+    for (;;) {
+        while (nanosleep(&req, &req) != 0 && errno == EINTR) ;
+        if (x2_report_now) return NULL;   /* let the heartbeat print the report */
+        {
+            uint32_t ep = g_sample_ep;
+            int i;
+            if (!ep) continue;
+            g_profile_total++;
+            for (i = 0; i < g_profile_n; i++)
+                if (g_profile[i].ep == ep) { g_profile[i].n++; break; }
+            if (i == g_profile_n) {
+                if (g_profile_n < PROFILE_MAX) {
+                    g_profile[g_profile_n].ep = ep;
+                    g_profile[g_profile_n].n = 1;
+                    g_profile_n++;
+                } else {
+                    g_profile_dropped++;
+                }
+            }
+        }
+    }
+}
+
+void x86_profiler_report(void)
+{
+    int i, j;
+    unsigned long shown = 0;
+    printf("\n[PROF] %lu sample(s) of the running guest body", g_profile_total);
+    if (g_profile_dropped)
+        printf(" (%lu dropped past the %d-entry histogram)",
+               g_profile_dropped, PROFILE_MAX);
+    printf(", by entry point:\n");
+    /* Top PROFILE_TOP by count, insertion-sorted like the hotep reader. */
+    {
+        uint32_t e[PROFILE_TOP]; unsigned long c[PROFILE_TOP];
+        int n = 0;
+        for (i = 0; i < g_profile_n && n < PROFILE_TOP; i++) {
+            for (j = n - 1; j >= 0 && g_profile[i].n > c[j]; j--) {
+                e[j + 1] = e[j]; c[j + 1] = c[j];
+            }
+            e[j + 1] = g_profile[i].ep; c[j + 1] = g_profile[i].n;
+            if (n < PROFILE_TOP) n++;
+        }
+        for (i = 0; i < n; i++) {
+            const char *nm = x86_native_name_at(e[i]);
+            X86Module *m = x86_module_for(e[i]);
+            shown += c[i];
+            printf("  %5.1f%% %lu  %s0x%08x (%s%s)\n",
+                   100.0 * (double)c[i] / (g_profile_total ? g_profile_total : 1),
+                   c[i], nm ? "" : "unresolved ", e[i],
+                   nm ? nm : (m ? m->name : "???"),
+                   (nm || !m) ? "" : " +offset");
+        }
+    }
+    if (shown < g_profile_total)
+        printf("  ... the other %lu sample(s) spread over %d more entry "
+               "point(s)\n", g_profile_total - shown,
+               g_profile_n > PROFILE_TOP ? g_profile_n - PROFILE_TOP : 0);
+}
+
+void x86_profiler_start(const char *arg)
+{
+    long period_ms;
+    pthread_t th;
+    char *end = NULL;
+    if (!arg || !*arg) return;
+    period_ms = strtol(arg, &end, 10);
+    if (period_ms <= 0 || (end && *end)) {
+        fprintf(stderr, "X2_PROFILE=%s is not a positive period in ms; the "
+                        "sampler did not start.\n", arg ? arg : "");
+        return;
+    }
+    if (pthread_create(&th, NULL, profiler_thread,
+                       (void *)(intptr_t)period_ms) != 0) {
+        fprintf(stderr, "X2_PROFILE: could not start the sampler thread; "
+                        "nothing will be sampled.\n");
+        return;
+    }
+    pthread_detach(th);
+    fprintf(stderr, "X2_PROFILE=%ldms: sampling the running guest body every "
+                    "%ld ms; the histogram prints at the end of the run.\n",
+            period_ms, period_ms);
+}
 
 /*
  * Wall-time split between host import stubs and guest bodies since the last

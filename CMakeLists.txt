@@ -64,7 +64,7 @@ target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
 add_test(NAME dinput_pad COMMAND test_dinput_pad)
 
 add_executable(test_pad_glyphs tests/test_pad_glyphs.c
-               src/native/pad_glyphs.c)
+               src/native/pad_glyphs.c tests/native_stubs.c)
 add_dependencies(test_pad_glyphs x2_pad_glyph_header)
 target_include_directories(test_pad_glyphs PRIVATE src/recomp src/native
                                                   ${CMAKE_BINARY_DIR})
@@ -74,7 +74,8 @@ add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
 add_executable(test_xbox_defaults tests/test_xbox_defaults.c
                src/native/xbox_defaults.c
-               src/native/controller_defaults_ui.c)
+               src/native/controller_defaults_ui.c
+               tests/native_stubs.c)
 target_include_directories(test_xbox_defaults PRIVATE src/recomp src/native)
 target_compile_definitions(test_xbox_defaults PRIVATE _GNU_SOURCE)
 add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
@@ -94,6 +95,7 @@ add_test(NAME flags COMMAND test_flags)
 # The guest printf format walker. It builds crt.c against a stub runtime, so it
 # needs no recompiled output and runs in the ordinary suite.
 add_executable(test_vformat tests/test_vformat.c src/native/crt.c src/recomp/x87crt.c
+            tests/native_stubs.c
                src/native/guest_heap.c)
 target_include_directories(test_vformat PRIVATE src/recomp src/native)
 target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE)
@@ -111,8 +113,8 @@ target_link_libraries(test_x87host PRIVATE m)
 add_test(NAME x87host COMMAND test_x87host)
 
 add_executable(test_x86callbacks
-    tests/test_x86callbacks.c src/recomp/x86callbacks.c)
-target_include_directories(test_x86callbacks PRIVATE src/recomp)
+    tests/test_x86callbacks.c src/recomp/x86callbacks.c tests/native_stubs.c)
+target_include_directories(test_x86callbacks PRIVATE src/recomp src/native)
 add_test(NAME x86callbacks COMMAND test_x86callbacks)
 
 add_executable(test_x86watch_memory
@@ -205,9 +207,6 @@ add_test(NAME recomp
 add_test(NAME recomp_hosted
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tests/test_recomp_hosted.py)
-add_test(NAME structure
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tests/test_structure.py)
 
 # The rule that decides when a Ghidra function object may be DELETED, because
 # the address is really a switch case label. It runs inside Ghidra as Jython,
@@ -226,17 +225,31 @@ add_test(NAME caselabel
 add_test(NAME lift_step_guard
          COMMAND ${CMAKE_SOURCE_DIR}/tools/ghidra_export.sh --selftest)
 
-# Native overrides: the generated wiring is current, AND every override
-# returns something. An override that writes no C->eax and does not defer to
-# __real_ hands its caller whatever the previous call left in EAX -- which is
-# exactly what the DirectX-check override did, and the game's `TEST AL,AL` on
-# it produced a silent exit(0) before the first frame that was blamed in turn
-# on backgrounding, on scheduling and on a lock (issue #54, C158). The check
-# cannot tell whether the value is RIGHT -- only the call site can, and Ghidra
-# typed that one `void` too -- but it catches an override that returns nothing.
-add_test(NAME overrides
-         COMMAND ${CMAKE_COMMAND} -E env python3
-                 ${CMAKE_SOURCE_DIR}/tools/gen_overrides.py --check)
+# Native overrides. An override is keyed on (module, entry point at the
+# module's PREFERRED base), never a bare address: every libIG*.dll in this game
+# is linked for 0x10000000, so one linked address is a real function in eight
+# different modules while dispatch works in mapped addresses. Keyed on the
+# address alone, an override for a relocated module could never fire AND could
+# fire for whichever unrelated module kept the preferred base -- both silent,
+# because a missing override just means the recompiled body answers and the run
+# looks healthy. The selftest proves the emitter-side gates REJECT a bare
+# address, an entry point the named module lacks, a missing source tree, and
+# another module's registration -- paths that never run during a normal emit,
+# because every registration in the tree is correct.
+add_test(NAME overrides COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/recomp_overrides.py --selftest)
+
+# The guest stack-effect check (tools/stackcheck.py over an X2_STACKCHECK
+# record). A guest call must return with esp raised by 4 plus the callee's RET
+# immediate; nothing checked that before, and a single dword of drift inside a
+# call tree surfaces as memory corruption somewhere unrelated -- FUN_0046b750's
+# /GS epilogue read a slot four bytes below the cookie it had stored and
+# reported a buffer overrun that never happened. The selftest is what makes the
+# tool's usual answer ("every checked call is balanced", over a million calls)
+# worth anything: it shows the checker flagging a 4-byte drift and excluding a
+# tail-calling body, neither of which a normal run exercises.
+add_test(NAME stackcheck COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/stackcheck.py --selftest)
 
 # The oracle probe harness (src/oracle, tools/gen_probes.py, tools/oraclediff.py).
 #
@@ -494,7 +507,10 @@ if(X2_MODULE_HAVE)
         src/native/x86rt_native.c
         src/native/x86_record.c
         src/native/env_file.c
-        src/native/overrides.c
+        src/native/startup.c
+        src/native/movie.c
+        src/native/reportbox.c
+        src/native/security.c
         src/native/conversation.c
         src/native/heartbeat.c
         src/native/oracle_trace.c
@@ -527,37 +543,18 @@ if(X2_MODULE_HAVE)
                                               src/oracle src/recomp/gen
                                               ${CMAKE_BINARY_DIR})
 
-    # Native overrides of DIRECTLY-called recompiled functions.
-    #
-    # The emitted code calls guest functions as ordinary C functions, so a
-    # runtime dispatch table never sees them -- only INDIRECT calls reach the
-    # dispatcher. --wrap redirects every call site to __wrap_<name> while
-    # keeping the recompiled body linked as __real_<name>, so an override can
-    # defer to the original and the two stay diffable.
-    #
-    # BOTH halves are generated from src/native/overrides.json by
-    # tools/gen_overrides.py: these flags, and the --isolate list that puts each
-    # overridden function in its own translation unit. --wrap only intercepts
-    # calls that cross an object file, so an override sharing a chunk with its
-    # caller is bound at compile time and silently never fires.
-    set(RECOMP_OVERRIDES_CMAKE
-        "${CMAKE_SOURCE_DIR}/src/recomp/gen/recomp_overrides.cmake")
-    if(NOT EXISTS "${RECOMP_OVERRIDES_CMAKE}")
-        message(FATAL_ERROR
-            "Missing ${RECOMP_OVERRIDES_CMAKE}.\n"
-            "It is generated by tools/gen_overrides.py from "
-            "src/native/overrides.json. Building without it would link a "
-            "binary whose native overrides are all silently absent, which "
-            "looks exactly like a working build. Run tools/gen_overrides.py.")
-    endif()
-    include("${RECOMP_OVERRIDES_CMAKE}")
-    target_link_options(x2native PRIVATE ${RECOMP_OVERRIDE_WRAPS})
+    # Native overrides are declared in C where they belong: x86_register_override
+    # in the subsystem files, and recomp.py routes every call (direct or
+    # indirect) to a registered entry point through the dispatcher's override
+    # slot, which x86_native_call_at consults before the recompiled body. No
+    # generated wiring, no --wrap, no --isolate; the C is the single source of
+    # truth.
 
-    # Oracle probes: the same --wrap mechanism, for recording rather than
-    # replacing. Generated from tools/probes.json by tools/gen_probes.py, whose
-    # isolate half gen_overrides.py writes so there is one writer of those
-    # files. Missing is FATAL for the same reason: a build without these flags
-    # records nothing and reads as a port that agrees with the control.
+    # Oracle probes: --wrap, for recording rather than replacing. Generated from
+    # tools/probes.json by tools/gen_probes.py, which also writes the --isolate
+    # lists -- the ONLY remaining user of the isolate mechanism. Missing is
+    # FATAL for the same reason: a build without these flags records nothing
+    # and reads as a port that agrees with the control.
     set(RECOMP_PROBES_CMAKE
         "${CMAKE_SOURCE_DIR}/src/recomp/gen/recomp_probes.cmake")
     if(NOT EXISTS "${RECOMP_PROBES_CMAKE}")

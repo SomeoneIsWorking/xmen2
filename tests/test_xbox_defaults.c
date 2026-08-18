@@ -47,7 +47,7 @@ void x86_guest_call_args(CPU *c, uint32_t target, uint32_t pop)
     WR32(at + 4u, kind); WR32(at + 8u, code); WR32(at + 0u, 0u);
     setter_calls++;
 }
-void __real_fn_XMen2_0061b030(CPU *c)
+void fn_XMen2_0061b030(CPU *c)
 {
     real_calls++;
     c->esp += 4u;
@@ -64,17 +64,17 @@ uint32_t guest_malloc(uint32_t bytes)
 }
 void guest_free(uint32_t address) { (void)address; }
 
-void __wrap_fn_XMen2_0061b030(CPU *cpu);
-void __wrap_fn_XMen2_006188c0(CPU *cpu);
-void __wrap_fn_XMen2_00629ba0(CPU *cpu);
+void x2_override_0061b030(CPU *cpu);
+void x2_override_006188c0(CPU *cpu);
+void x2_override_00629ba0(CPU *cpu);
 
-void __real_fn_XMen2_006188c0(CPU *cpu)
+void fn_XMen2_006188c0(CPU *cpu)
 {
     callback_real_calls++;
     cpu->esp += 4u;
 }
 
-void __real_fn_XMen2_00629ba0(CPU *cpu)
+void fn_XMen2_00629ba0(CPU *cpu)
 {
     localization_real_calls++;
     cpu->eax = RD32(cpu->esp + 8u);
@@ -99,7 +99,7 @@ static uint32_t call_localize(CPU *cpu, uint32_t fallback)
     WR32(top, 0xfeed0101u);
     WR32(top + 4u, 0u);
     WR32(top + 8u, fallback);
-    __wrap_fn_XMen2_00629ba0(cpu);
+    x2_override_00629ba0(cpu);
     if (cpu->esp != top + 4u) abort();
     cpu->esp = top;
     return cpu->eax;
@@ -112,7 +112,7 @@ static void call_default(CPU *cpu, uint32_t event, uint32_t preset)
     WR32(top + 4u, 0u);
     WR32(top + 8u, event);
     WR32(top + 12u, preset);
-    __wrap_fn_XMen2_006188c0(cpu);
+    x2_override_006188c0(cpu);
     if (cpu->esp != top + 4u) abort();
     cpu->esp = top;
 }
@@ -137,7 +137,7 @@ int main(void)
     cpu.esp = stack;
     connected = 0;
 
-    __wrap_fn_XMen2_0061b030(&cpu);
+    x2_override_0061b030(&cpu);
     defaults = xbox_default_bindings(&n);
     if (real_calls != 1 || cpu.esp != stack + 4u || n != 21u ||
         setter_calls != (int)n) return 1;

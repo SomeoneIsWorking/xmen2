@@ -436,6 +436,7 @@ void x2_interrupt_reports(int killed)
       k32_asset_report(); ws2_report(); }
     { extern void conversation_report(void); conversation_report(); }
     { extern void x86_record_report(void); x86_record_report(); }
+    { extern void x86_profiler_report(void); x86_profiler_report(); }
     /* shell32's save-path report was registered with atexit, and the clean
        X2_MAX_FRAMES stop leaves through _exit -- so on precisely the runs
        that reach gameplay it had never printed once. Same defect the input
@@ -861,6 +862,56 @@ static int fails;
  * poisoned values must then be reported as failures, and if they are not, every
  * other line of output this run is worthless and it says so.
  */
+
+/*
+ * PROOF THAT THE OVERRIDE RESOLVER FIRES -- x2native --override-selftest.
+ *
+ * The resolver is what stands between a registered override and one that never
+ * runs. Every override in the tree resolves, so the accepting path is
+ * exercised constantly and the REJECTING paths never are -- which is exactly
+ * the shape of a check nobody has seen work. This feeds it one case that must
+ * be accepted and three that must be rejected, and reports the count either
+ * way. It runs after the modules are mapped, because the resolver's whole job
+ * is to consult them.
+ */
+static int override_selftest(void)
+{
+    struct { const char *module; uint32_t ep; int want_ok; const char *what; }
+    cases[] = {
+        { "XMen2.exe",       0x00617480u, 1, "a real override entry point" },
+        { "NoSuchModule.dll",0x00401000u, 0, "a module that is not mapped" },
+        { "XMen2.exe",       0xf0000000u, 0, "an address outside the image" },
+        { "XMen2.exe",       0x00617481u, 0, "a mid-function address" },
+    };
+    int i, fails = 0;
+    int n = (int)(sizeof cases / sizeof cases[0]);
+
+    for (i = 0; i < n; i++) {
+        char why[256] = "";
+        uint32_t mapped = 0;
+        int rc = x86_override_resolve_check(cases[i].module, cases[i].ep,
+                                            &mapped, why, sizeof why);
+        int ok = (rc == 0);
+        if (ok != cases[i].want_ok) {
+            printf("  FAIL  %-28s %s 0x%08x: expected %s, got %s%s%s\n",
+                   cases[i].what, cases[i].module, cases[i].ep,
+                   cases[i].want_ok ? "ACCEPT" : "REJECT",
+                   ok ? "ACCEPT" : "REJECT",
+                   ok ? "" : " -- ", ok ? "" : why);
+            fails++;
+        } else if (ok) {
+            printf("  ok    %-28s %s 0x%08x -> mapped 0x%08x\n",
+                   cases[i].what, cases[i].module, cases[i].ep, mapped);
+        } else {
+            printf("  ok    %-28s rejected: %s\n", cases[i].what, why);
+        }
+    }
+    printf("x2native --override-selftest: %s (%d of %d case(s) failed). "
+           "%d registered override(s) are live in this build.\n",
+           fails ? "FAILED" : "PASSED", fails, n, x86_override_count());
+    return fails;
+}
+
 static int selftest, skip_body;
 
 static int call_body(uint32_t ep, CPU *C)
@@ -2002,7 +2053,7 @@ int main(int argc, char **argv)
     /*
      * The report box, checked with no engine and no game install -- it needs
      * neither, and without this the only thing that ever runs it is a run that
-     * has already gone wrong. See src/native/overrides.c.
+     * has already gone wrong. See src/native/reportbox.c.
      */
     if (dialogselftest) {
         extern int report_box_selftest(void);
@@ -2083,6 +2134,13 @@ int main(int argc, char **argv)
         return 1;
     }
     g_imgbase = g_imgbase_libIGDisplay;      /* the battery's frame of reference */
+
+    /* Every module is placed, so each override's (module, linked ep) can now
+       become the mapped address the dispatcher compares. This must happen
+       before any guest code runs: an unresolved table is skipped silently and
+       the recompiled bodies answer instead. */
+    x86_overrides_resolve();
+    if (options.override_selftest) return override_selftest();
 
     /* Bind imports only once every module is mapped: a slot pointing into a
        module that has not been placed yet would be bound to a stale base. */
@@ -2294,6 +2352,14 @@ int main(int argc, char **argv)
             guest_quantum_from_env();
             { extern void x86_hotep_arm(const char *);
               x86_hotep_arm(getenv("X2_HOTEP")); }
+            { extern void x86_profiler_start(const char *);
+              x86_profiler_start(getenv("X2_PROFILE")); }
+            { extern uint32_t g_guest_watch_addr;
+              const char *gw = getenv("X2_GUEST_WATCH");
+              if (gw && *gw)
+                  g_guest_watch_addr = (uint32_t)strtoul(gw, NULL, 0); }
+            { extern void x86_write_watch_arm(const char *);
+              x86_write_watch_arm(getenv("X2_WRITE_WATCH")); }
             dinput_script_start();
             { extern void dinput_pad_virtual_from_env(void);
               dinput_pad_virtual_from_env(); }

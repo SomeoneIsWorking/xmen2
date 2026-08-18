@@ -18,7 +18,7 @@ static int real_calls;
 
 X86Module *x86_modules(void) { return &module; }
 int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 0; }
-void __real_fn_XMen2_006281f0(CPU *c)
+void fn_XMen2_006281f0(CPU *c)
 {
     real_calls++;
     c->eax = 0x12345678u;
@@ -27,7 +27,7 @@ void __real_fn_XMen2_006281f0(CPU *c)
 void x86_seg_unset(const char *seg) { (void)seg; abort(); }
 __thread uint32_t g_fsbase, g_gsbase;
 
-void __wrap_fn_XMen2_006281f0(CPU *c);
+void x2_override_006281f0(CPU *c);
 
 static int check_call(uint32_t kind, uint32_t code, uint32_t want,
                       int want_real)
@@ -39,7 +39,7 @@ static int check_call(uint32_t kind, uint32_t code, uint32_t want,
     stack[1] = kind;
     stack[2] = code;
     c.esp = mapped_base + 0x1000u;
-    __wrap_fn_XMen2_006281f0(&c);
+    x2_override_006281f0(&c);
     if (c.esp != mapped_base + 0x100cu || real_calls - before != want_real)
         return 0;
     if (want_real) return c.eax == 0x12345678u;

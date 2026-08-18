@@ -13,7 +13,7 @@
  * This is the general form. A probe names a guest FUNCTION; both sides record
  * its arguments and its results at every call; the two streams are diffed and
  * the FIRST call whose output differs is the defect, located. The port is
- * hooked with ld --wrap (the mechanism src/native/overrides.json already uses,
+ * hooked with ld --wrap (the mechanism the xbox override path still uses,
  * with the same isolate requirement) and the stock game is hooked in-process
  * by tools/proxy_d3d8, which the engine already loads as its d3d8.
  *

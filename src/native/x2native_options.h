@@ -14,6 +14,7 @@ typedef struct {
     int d3d8_selftest;
     int d3d8_permissive;
     int dialog_selftest;
+    int override_selftest;
     int probe_selftest;
     int fault_selftest;
 } X2NativeOptions;

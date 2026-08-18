@@ -27,6 +27,7 @@ import sys
 from collections import Counter
 from recomp_hosted import DISPATCH_BODY, import_adapter as hosted_import_adapter
 from recomp_host_call import host_call_bridge
+from recomp_overrides import overrides_for_module, remove_orphan_chunks
 
 
 class Unsupported(Exception):
@@ -319,6 +320,9 @@ INTERIOR = {}
 KNOWN_EPS = set()  # entry points Ghidra identified; a call to anything else is
                    # a target inside the region it could not resolve into
                    # functions, and must not be emitted as a direct C call
+OVERRIDES = set()  # entry points with a NATIVE override (x86_register_override
+                   # in src/native/*.c); calls to them go through the
+                   # dispatcher's override slot, never a plain C call
 
 
 def interior_entries(functions):
@@ -1456,6 +1460,11 @@ def emit_instruction(ins, ctx):
                 return [A, "X86_TAIL_FN(_x86_fn_ep);",
                         "x86_call_unknown(C, %s); return;"
                         % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
+            if ins["flow"] in OVERRIDES:
+                # A tail jump to an overridden entry point dispatches too.
+                return [A, "X86_TAIL_FN(_x86_fn_ep);",
+                        "TAIL_DISPATCH(C, %s); return;"
+                        % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
             return [A, "X86_TAIL_FN(_x86_fn_ep);",
                     "%s(C); return;" % fname(ins["flow"])]
         return [A, "goto L_%08x;" % ins["flow"]]
@@ -1491,6 +1500,11 @@ def emit_instruction(ins, ctx):
                         "x86_call_unknown(C, %s); return; }"
                         % (CC[m[1:]],
                            img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
+            if ins["flow"] in OVERRIDES:
+                return [A, "if (%s) { X86_TAIL_FN(_x86_fn_ep); "
+                        "TAIL_DISPATCH(C, %s); return; }"
+                        % (CC[m[1:]],
+                           img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
             return [A, "if (%s) { X86_TAIL_FN(_x86_fn_ep); %s(C); return; }"
                     % (CC[m[1:]], fname(ins["flow"]))]
         return [A, "if (%s) goto L_%08x;" % (CC[m[1:]], ins["flow"])]
@@ -1515,6 +1529,12 @@ def emit_instruction(ins, ctx):
             return [A,
                     ret_push(ret),
                     "x86_call_unknown(C, %s);"
+                    % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
+        if ins["flow"] in OVERRIDES:
+            # Overridden: dispatch so the override slot sees it, not a C call.
+            return [A,
+                    ret_push(ret),
+                    "DISPATCH(C, %s);"
                     % (img_rel(ins["flow"]) or "0x%08xU" % ins["flow"])]
         return [A,
                 ret_push(ret),
@@ -1729,6 +1749,15 @@ def load(path):
     iat_path = re.sub(r"\.json$", ".iat", path)
     KNOWN_EPS.clear()
     KNOWN_EPS.update(fn["ep"] for fn in d["functions"])
+    OVERRIDES.clear()
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # Matched on (module, ep). Matching on the address alone made every module
+    # linked for 0x10000000 claim the same override, so an override for a
+    # relocated module never fired and could fire for an unrelated one.
+    OVERRIDES.update(overrides_for_module(root, d["program"], KNOWN_EPS))
+    sys.stderr.write("%d native override EP(s) in this module; calls to them "
+                     "are dispatched through the override slot\n"
+                     % len(OVERRIDES))
     IMG[0], IMG[1] = image_bounds(d)
     sys.stderr.write("image 0x%08x-0x%08x (%.2f MB)\n"
                      % (IMG[0], IMG[1], (IMG[1] - IMG[0]) / 1048576.0))
@@ -1873,8 +1902,8 @@ def cmd_emit(argv):
         auto = os.path.join(os.path.dirname(argv[0]), stem + ".isolate")
         if os.path.exists(auto):
             ipath = auto
-            print("emit: using %s automatically (native overrides declared in "
-                  "src/native/overrides.json)" % auto)
+            print("emit: using %s automatically (oracle probe wraps declared "
+                  "in tools/probes.json)" % auto)
     if ipath:
         try:
             with open(ipath) as f:
@@ -2065,11 +2094,13 @@ def cmd_emit(argv):
     # --isolate: each named function goes in a file of its OWN.
     #
     # ld's --wrap only redirects calls that CROSS an object file. A function
-    # sharing a chunk with its caller is bound at compile time, so the override
+    # sharing a chunk with its caller is bound at compile time, so the probe
     # links fine, reports nothing, and never fires -- the Xbox side lost two
-    # call sites and a whole observer to exactly this (xbox issue #4). Both
-    # halves of an override therefore come from one file (src/native/overrides.json)
-    # via tools/gen_overrides.py, so they cannot drift apart by hand.
+    # call sites and a whole observer to exactly this (xbox issue #4). The
+    # isolate list is written by tools/gen_probes.py for the ORACLE PROBES,
+    # which still use --wrap; native overrides no longer isolate, because the
+    # emitter routes every call to an overridden entry point through the
+    # dispatcher instead (see OVERRIDES / scan_override_eps).
     iso_done = set()
     rest = []
     for b, ep in zip(bodies, body_eps):
@@ -2103,6 +2134,10 @@ def cmd_emit(argv):
     # build globs, and it would compile both and collide on every symbol.
     if os.path.exists(out):
         os.remove(out)
+    # An orphaned chunk from an EARLIER emit would compile stale and misroute.
+    _orphans = remove_orphan_chunks(stem, nchunk)
+    if _orphans:
+        print("removed %d orphaned chunk(s) this emit did not produce" % _orphans)
     print("%d immediate(s) rewritten as image-relative (G_IMGBASE + off); "
           "a spike here means the image bounds are wrong and BIT MASKS are "
           "being rebased -- see image_bounds()" % IMG_REBASED[0])
@@ -3083,14 +3118,21 @@ def cmd_native(argv):
     if INTERIOR:
         L.append("")
     L.append("static const X86Fn g_fns[] = {")
+    # Sorted by EP: the runtime's find() BINARY-SEARCHES this table (the old
+    # JSON order made a linear scan the load's top cost).
+    entries = []
     for fn in fns:
-        L.append('  { 0x%08xU, %s, "%s" },'
-                 % (fn["ep"], fname(fn["ep"]), fn["qname"].replace('"', "'")))
+        entries.append([fn["ep"], fname(fn["ep"]),
+                        fn["qname"].replace('"', "'")])
     for tgt in sorted(INTERIOR):
-        L.append('  { 0x%08xU, %s_at_%08x, "%s (entered at 0x%08x)" },'
-                 % (tgt, fname(INTERIOR[tgt]), tgt,
-                    next(f["qname"] for f in fns
-                         if f["ep"] == INTERIOR[tgt]).replace('"', "'"), tgt))
+        entries.append([tgt, "%s_at_%08x" % (fname(INTERIOR[tgt]), tgt),
+                        '%s (entered at 0x%08x)' % (
+                            next(f["qname"] for f in fns
+                                 if f["ep"] == INTERIOR[tgt])
+                            .replace('"', "'"), tgt)])
+    entries.sort(key=lambda e: e[0])
+    for ep, body, name in entries:
+        L.append('  { 0x%08xU, %s, "%s" },' % (ep, body, name))
     L.append("};")
     L.append("")
     seen_decl = set()
@@ -3117,7 +3159,7 @@ def cmd_native(argv):
     L.append("")
     L.append(NATIVE_BODY_TAIL % dict(program=d["program"],
                                      preferred=d["image_base"],
-                                     nfns=len(fns)))
+                                     nfns=len(fns) + len(INTERIOR)))
     seen = set()
     for va in sorted(IAT):
         mod, sym = IAT[va]

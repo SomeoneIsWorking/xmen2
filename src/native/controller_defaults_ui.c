@@ -44,9 +44,9 @@ static uint32_t guest_label(uint32_t *storage, const char *text)
     return *storage;
 }
 
-void __real_fn_XMen2_00629ba0(CPU *cpu);
+void fn_XMen2_00629ba0(CPU *cpu);
 
-void __wrap_fn_XMen2_00629ba0(CPU *cpu)
+void x2_override_00629ba0(CPU *cpu)
 {
     uint32_t fallback = RD32(cpu->esp + 8u);
     if (guest_equals(fallback, "Defaults 1")) {
@@ -61,12 +61,12 @@ void __wrap_fn_XMen2_00629ba0(CPU *cpu)
         cpu->esp += 4u;
         return;
     }
-    __real_fn_XMen2_00629ba0(cpu);
+    fn_XMen2_00629ba0(cpu);
 }
 
-void __real_fn_XMen2_006188c0(CPU *cpu);
+void fn_XMen2_006188c0(CPU *cpu);
 
-void __wrap_fn_XMen2_006188c0(CPU *cpu)
+void x2_override_006188c0(CPU *cpu)
 {
     uint32_t event = RD32(cpu->esp + 8u);
     uint32_t preset = RD32(cpu->esp + 12u);
@@ -76,7 +76,15 @@ void __wrap_fn_XMen2_006188c0(CPU *cpu)
         cpu->esp += 4u;
         return;
     }
-    __real_fn_XMen2_006188c0(cpu);
+    fn_XMen2_006188c0(cpu);
+}
+
+/* Register the controller-defaults UI overrides. */
+__attribute__((constructor))
+static void x2_controller_defaults_ui_register_overrides(void)
+{
+    x86_register_override("XMen2.exe", 0x006188c0, x2_override_006188c0);
+    x86_register_override("XMen2.exe", 0x00629ba0, x2_override_00629ba0);
 }
 
 void controller_defaults_ui_report(void)

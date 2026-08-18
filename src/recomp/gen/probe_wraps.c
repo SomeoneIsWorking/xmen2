@@ -5,7 +5,7 @@
  * that does the work. The hook records around it and changes nothing.
  *
  * This only fires if the probed function was ALSO emitted into its own
- * translation unit -- see the isolate half in gen_overrides.py. A wrap without
+ * translation unit -- gen_probes.py writes that isolate list. A wrap without
  * an isolate links and never runs.
  */
 #include "x86rt.h"

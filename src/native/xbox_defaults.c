@@ -213,12 +213,19 @@ int xbox_defaults_apply(CPU *cpu)
     return 1;
 }
 
-void __real_fn_XMen2_0061b030(CPU *cpu);
+void fn_XMen2_0061b030(CPU *cpu);
 
-void __wrap_fn_XMen2_0061b030(CPU *cpu)
+void x2_override_0061b030(CPU *cpu)
 {
-    __real_fn_XMen2_0061b030(cpu);
+    fn_XMen2_0061b030(cpu);
     xbox_defaults_sync(cpu);
+}
+
+/* Register the Xbox-defaults binding override. */
+__attribute__((constructor))
+static void x2_xbox_defaults_register_overrides(void)
+{
+    x86_register_override("XMen2.exe", 0x0061b030, x2_override_0061b030);
 }
 
 void xbox_defaults_report(void)

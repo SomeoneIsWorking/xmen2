@@ -171,7 +171,7 @@ int oracle_probe_binding_check(void)
                     "wrapper is %p.\n"
                     "        --wrap bound at compile time, which means this "
                     "function was not isolated into its own translation unit. "
-                    "Re-run tools/gen_overrides.py and re-emit %s.\n",
+                    "Re-run tools/gen_probes.py and re-emit %s.\n",
                     p->name, (void *)found->fn, (void *)g_probe_wrapfn[i],
                     p->module);
             bad++;

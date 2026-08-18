@@ -282,11 +282,28 @@ void x86_fallback_report(void);
 #define RD8(a)      (*(volatile uint8_t  *)(uintptr_t)(a))
 #define RD16(a)     (*(volatile uint16_t *)(uintptr_t)(a))
 #define RD32(a)     (*(volatile uint32_t *)(uintptr_t)(a))
-#define WR8(a, v)   (*(volatile uint8_t  *)(uintptr_t)(a) = (uint8_t)(v))
-#define WR16(a, v)  (*(volatile uint16_t *)(uintptr_t)(a) = (uint16_t)(v))
+/* The guest write-watch. When x2_write_watch_addr is armed, WR8/16/32 report
+   ANY write to it with a body backtrace -- the definitive catch for a stack
+   overrun whose writer is a DIRECT call (invisible to the dispatch ring).
+   Unarmed (default) it is one predictable compare. Declared before the WR
+   macros because every generated body uses them. */
+extern volatile uint32_t x2_write_watch_addr;
+extern void x2_write_watch_fire(uint32_t a, uint32_t v);
+#define WR8(a, v)   (x2_write_watch_addr && (uint32_t)(a) == x2_write_watch_addr \
+                         ? x2_write_watch_fire((uint32_t)(a), (uint32_t)(uint8_t)(v)) \
+                         : (void)0, \
+                     *(volatile uint8_t  *)(uintptr_t)(a) = (uint8_t)(v))
+#define WR16(a, v)  (x2_write_watch_addr && (uint32_t)(a) == x2_write_watch_addr \
+                         ? x2_write_watch_fire((uint32_t)(a), (uint32_t)(uint16_t)(v)) \
+                         : (void)0, \
+                     *(volatile uint16_t *)(uintptr_t)(a) = (uint16_t)(v))
 #define RD64(a)     (*(volatile uint64_t *)(uintptr_t)(a))
 #define WR64(a, v)  (*(volatile uint64_t *)(uintptr_t)(a) = (uint64_t)(v))
-#define WR32(a, v)  (*(volatile uint32_t *)(uintptr_t)(a) = (uint32_t)(v))
+/* WR32 is the hottest store in the guest; the watch is above, shared. */
+#define WR32(a, v)  (x2_write_watch_addr && (uint32_t)(a) == x2_write_watch_addr \
+                         ? x2_write_watch_fire((uint32_t)(a), (uint32_t)(v)) \
+                         : (void)0, \
+                     *(volatile uint32_t *)(uintptr_t)(a) = (uint32_t)(v))
 
 /* ---- lazy flags ---- */
 #define SETFLAGS(C, kind, a, b, r, w) \

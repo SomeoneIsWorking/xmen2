@@ -51,6 +51,25 @@
 
 const char *x86_native_name_at(uint32_t addr);
 
+/* X2_GUEST_WATCH diagnostic: a guest memory-copy stub whose destination range
+   covers the watched address is a stack overrun candidate. Reported once, by
+   the IAT symbol that did the write. */
+extern uint32_t g_guest_watch_addr;
+
+static void crt_watch_dst(uint32_t dst, uint32_t n, const char *sym)
+{
+    uint32_t w = g_guest_watch_addr;
+    if (!w) return;
+    if (dst <= w && w < dst + n) {
+        extern volatile uint32_t g_sample_ep;
+        const char *nm = x86_native_name_at(g_sample_ep);
+        fprintf(stderr, "[GWATCH] %s writes [0x%08x,0x%08x) covering watched "
+                        "0x%08x; running body was 0x%08x %s\n",
+                sym, dst, dst + n, w, g_sample_ep, nm ? nm : "(?)");
+        g_guest_watch_addr = 0;
+    }
+}
+
 static void ret_c(CPU *C, uint32_t eax) { C->eax = eax; C->esp += 4u; }
 
 /* A double argument occupies two dwords, little-endian. */
@@ -161,6 +180,7 @@ void imp_MSVCR71__callnewh(CPU *C)
 
 void imp_MSVCR71_memmove(CPU *C)
 {
+    crt_watch_dst(A(0), A(2), "memmove");
     memmove(AP(0), AP(1), A(2));
     ret_c(C, A(0));
 }
@@ -172,8 +192,8 @@ void imp_MSVCR71_strrchr(CPU *C)  { ret_c(C, (uint32_t)(uintptr_t)strrchr(ACS(0)
 void imp_MSVCR71_strstr(CPU *C)   { ret_c(C, (uint32_t)(uintptr_t)strstr(ACS(0), ACS(1))); }
 void imp_MSVCR71_strtok(CPU *C)   { ret_c(C, (uint32_t)(uintptr_t)strtok(A(0) ? AS(0) : NULL, ACS(1))); }
 void imp_MSVCR71_strcspn(CPU *C)  { ret_c(C, (uint32_t)strcspn(ACS(0), ACS(1))); }
-void imp_MSVCR71_strncat(CPU *C)  { strncat(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
-void imp_MSVCR71_strncpy(CPU *C)  { strncpy(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_strncat(CPU *C)  { crt_watch_dst(A(0), strlen(ACS(1)) + 1, "strncat"); strncat(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_strncpy(CPU *C)  { crt_watch_dst(A(0), A(2), "strncpy"); strncpy(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
 void imp_MSVCR71_strncmp(CPU *C)  { ret_c(C, (uint32_t)strncmp(ACS(0), ACS(1), A(2))); }
 void imp_MSVCR71__strcmpi(CPU *C) { ret_c(C, (uint32_t)strcasecmp(ACS(0), ACS(1))); }
 void imp_MSVCR71__stricmp(CPU *C) { ret_c(C, (uint32_t)strcasecmp(ACS(0), ACS(1))); }
@@ -1225,15 +1245,23 @@ void imp_MSVCR71___p__fmode(CPU *C)
 
 void imp_MSVCR71___security_error_handler(CPU *C)
 {
+    extern volatile uint32_t g_sample_ep;
+    extern const char *x86_native_name_at(uint32_t);
+    extern void x86_diag_dump(void);
+    const char *nm = x86_native_name_at(g_sample_ep);
     fprintf(stderr, "crt: the guest's stack-check handler fired -- a buffer "
-                    "overrun was detected inside recompiled code\n");
+                    "overrun was detected inside recompiled code\n"
+                    "  last dispatched body: 0x%08x %s%s\n",
+            g_sample_ep, nm ? "" : "(unresolved)",
+            nm ? nm : "");
+    x86_diag_dump();
     abort();
 }
 
 /* ---- memory and string primitives -------------------------------------- */
 
-void imp_MSVCR71_memcpy(CPU *C)  { memcpy(AP(0), AP(1), A(2)); ret_c(C, A(0)); }
-void imp_MSVCR71_memset(CPU *C)  { memset(AP(0), (int)A(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_memcpy(CPU *C)  { crt_watch_dst(A(0), A(2), "memcpy"); memcpy(AP(0), AP(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_memset(CPU *C)  { crt_watch_dst(A(0), A(2), "memset"); memset(AP(0), (int)A(1), A(2)); ret_c(C, A(0)); }
 void imp_MSVCR71_strlen(CPU *C)  { ret_c(C, (uint32_t)strlen(ACS(0))); }
 void imp_MSVCR71_strcpy(CPU *C)  { strcpy(AS(0), ACS(1)); ret_c(C, A(0)); }
 void imp_MSVCR71_strcat(CPU *C)  { strcat(AS(0), ACS(1)); ret_c(C, A(0)); }

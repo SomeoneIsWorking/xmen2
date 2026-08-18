@@ -33,10 +33,11 @@ NATIVE=$ROOT/scratch/build-native/x2native
 fail() { echo "oracle_compare: $*" >&2; exit 1; }
 
 regen() {
+    # gen_probes.py writes the probe wraps AND the --isolate lists (the only
+    # remaining user of the isolate mechanism -- native overrides route through
+    # the dispatcher's override slot now).
     python3 "$ROOT/tools/gen_probes.py" >/dev/null \
         || fail "tools/gen_probes.py refused; NOTHING was regenerated"
-    python3 "$ROOT/tools/gen_overrides.py" >/dev/null \
-        || fail "tools/gen_overrides.py refused; the isolate lists may be stale"
 }
 
 case "$CMD" in
@@ -83,7 +84,7 @@ check)
 build)
     regen
     echo "== re-emitting the probed modules so --wrap can bind =="
-    # A probed function must be in its own translation unit. gen_overrides.py
+    # A probed function must be in its own translation unit. gen_probes.py
     # has just written the isolate lists; the emit has to be redone or the
     # wrap silently binds at compile time.
     for m in $(python3 - <<'EOF'

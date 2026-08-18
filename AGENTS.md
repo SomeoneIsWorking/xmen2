@@ -197,3 +197,17 @@ logged defect.
   trace ("the call site was reached") is a mechanism check, not faithfulness.
 - **Never `pkill -f` a shared binary name** — several agents and the user run the
   same binaries. Kill by PID through the `safe-kill` skill.
+- **Code lives where it belongs in a game, not in a bucket.** The hand-written
+  host code is organized by subsystem ownership, mirroring where the code would
+  live in a native game: a native override's implementation goes in the file
+  named for its game-code subsystem (`startup.c` for boot/run-control,
+  `movie.c` for the media decoder, `reportbox.c` for the error dialog,
+  `conversation.c` for the conversation manager, the `dinput_*`/`pad_glyphs.c`/
+  `xbox_defaults.c`/`controller_defaults_ui.c` files for input), NOT in a
+  central `overrides.c` (abolished 2026-08-16). An override's existence and ABI
+  are declared where it lives, by the `x86_register_override(0x…, fn)` call
+  beside its implementation (the emitter scans `src/native/*.c` for those calls
+  and routes every call to a registered entry point through the dispatcher's
+  override slot). Same rule for everything else: a new subsystem gets its own
+  file, and adding to an existing one means finding the file that owns it
+  first.

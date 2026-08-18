@@ -64,9 +64,9 @@ static uint32_t name_buffer(void)
     return 0;
 }
 
-void __real_fn_XMen2_006281f0(CPU *C);
+void fn_XMen2_006281f0(CPU *C);
 
-void __wrap_fn_XMen2_006281f0(CPU *C)
+void x2_override_006281f0(CPU *C)
 {
     uint32_t kind = RD32(C->esp + 4u);
     uint32_t code = RD32(C->esp + 8u);
@@ -77,7 +77,7 @@ void __wrap_fn_XMen2_006281f0(CPU *C)
     if (!enabled() || kind < 3u || kind > 0xcu || !glyph ||
         !dinput_pad_uses_xbox_glyphs((int)kind - 3) || !(out = name_buffer())) {
         g_deferred++;
-        __real_fn_XMen2_006281f0(C);
+        fn_XMen2_006281f0(C);
         return;
     }
 
@@ -89,6 +89,13 @@ void __wrap_fn_XMen2_006281f0(CPU *C)
     C->eax = out;
     C->esp += 12u; /* RET 8: return address + the two stack arguments */
     g_mapped++;
+}
+
+/* Register the Xbox-prompt name boundary override. */
+__attribute__((constructor))
+static void x2_pad_glyphs_register_overrides(void)
+{
+    x86_register_override("XMen2.exe", 0x006281f0, x2_override_006281f0);
 }
 
 void pad_glyphs_report(void)

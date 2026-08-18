@@ -113,6 +113,81 @@ void x86_at_first_call(uint32_t addr, int (*fn)(void), const char *why);
 /* Complain about every armed trigger that never fired; returns how many. */
 int x86_triggers_report(void);
 
+/*
+ * Register a NATIVE implementation of a guest entry point, declared in C where
+ * the override belongs (src/native/startup.c, movie.c, reportbox.c, ...) --
+ * no JSON, no generator. The dispatcher consults this table BEFORE the
+ * recompiled body, so both direct calls (which recomp.py routes through the
+ * dispatcher when the target is registered here) and vtable/callback dispatch
+ * reach the native function. The recompiled body stays emitted and linked, so
+ * an override that defers to the original just calls its fn_<module>_<ep>
+ * symbol directly.
+ *
+ * `module` is the module that owns the entry point and `linked_ep` is the
+ * address at that module's PREFERRED base -- the address the disassembly
+ * shows. A bare entry point is NOT a key: every libIG*.dll is linked for
+ * 0x10000000, so one linked address names a different function in each of
+ * them, while the dispatcher works in mapped addresses. x86_overrides_resolve
+ * turns each pair into the mapped address once the modules are in place.
+ */
+typedef void (*x86_override_fn)(struct CPU *C);
+void x86_register_override(const char *module, uint32_t linked_ep,
+                           x86_override_fn fn);
+
+/*
+ * Resolve every registration to a mapped address. Call once, after all modules
+ * are mapped and before any guest code runs -- registration happens in
+ * constructors, long before pe_map has placed anything. Aborts if a module is
+ * missing or an entry point names no recompiled body, because an override that
+ * does not resolve never fires and the run still looks healthy.
+ */
+void x86_overrides_resolve(void);
+
+/*
+ * Resolve one (module, linked_ep) the way x86_overrides_resolve does, but
+ * report instead of aborting: 0 and *mapped_out on success, non-zero with the
+ * reason in `why`. Exists so --override-selftest can show the resolver
+ * ACCEPTING a real override and REJECTING an unmapped module, an address
+ * outside the image and a mid-function address -- a resolver only ever seen
+ * accepting is not known to reject anything.
+ */
+int x86_override_resolve_check(const char *module, uint32_t linked_ep,
+                               uint32_t *mapped_out, char *why, size_t whyn);
+
+/* Count of registered native overrides (0 is a measurement, not silence). */
+int x86_override_count(void);
+
+/*
+ * Sampling profiler (X2_PROFILE=<period-ms>): a thread samples the running
+ * guest body every period and histograms the samples, so a body that runs a
+ * lot is sampled a lot. This is the instrument that CAN name a load-window
+ * hotspot -- the hotep hash cannot, because the level build dispatches ~460k
+ * distinct entry points and a fixed hash refuses most of them. The report
+ * prints at the end of the run through x2_interrupt_reports.
+ */
+void x86_profiler_start(const char *arg);
+void x86_profiler_report(void);
+
+/*
+ * X2_WRITE_WATCH=<guest-addr>: report the running body the instant any guest
+ * WR32 touches the address (the definitive catch for a stack overrun whose
+ * writer is a DIRECT call, invisible to the dispatch-boundary ring). WR32
+ * checks x2_write_watch_addr; unarmed it is one predictable compare.
+ */
+void x86_write_watch_arm(const char *arg);
+/* Writes the watch saw, so a report can carry its denominator. */
+unsigned long x86_write_watch_hits(void);
+
+/*
+ * X2_STACKCHECK=<file>: while armed, record every dispatched call's esp delta
+ * so tools/stackcheck.py can check it against the callee's own RET immediate.
+ * A delta is only wrong relative to an expectation, and that expectation is in
+ * the guest binary, not in this runtime.
+ */
+void x86_stackcheck_arm(int on);
+extern volatile uint32_t x2_write_watch_addr;
+extern void x2_write_watch_fire(uint32_t a, uint32_t v);
+
 /* Bind an IAT slot to a callable address when the import is implemented
    natively but is not another recompiled module: the guest sometimes takes an
    import's address and calls through it, bypassing the named stub. Returns 0

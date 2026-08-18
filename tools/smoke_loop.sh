@@ -296,7 +296,7 @@ X2_MAX_FRAMES=4200 X2_UNPACED=1 X2_HEARTBEAT=60 \
 RC=$?
 
 fail=0
-check_run "$RUNLOG" "$RUNSHOT" "$(printf '%s' "$SCRIPT" | tr ',' '\n' | grep -c .)" "$RC"
+check_run "$RUNLOG" "$RUNSHOT" "$(tools/drive.sh count port)" "$RC"
 
 
 if [ "$fail" -ne 0 ]; then
