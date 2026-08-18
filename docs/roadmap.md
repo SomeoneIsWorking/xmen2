@@ -124,6 +124,14 @@ unconditionally. Turning it into a player-facing feature means deciding what a
 launched game should skip and what it must still do (save selection, difficulty,
 party) rather than bypassing all of it.
 
+**And "party" is not hypothetical.** Measured 2026-08-19 (C218, issue #83): a
+boot-map run has NO player character -- all five hero handles read 0, where a
+normally-booted run resolves player 0's -- and that alone suppresses the
+tutorial's second conversation, so the script that unlocks the controls never
+runs and the level looks soft-locked. A boot-map run is a fast way to reach a
+map, not a run that behaves like a played game, and `tools/x2ctl.py input`
+reports the hero handles so the difference is one line to check.
+
 ## How this work is done
 
 These are the project's own rules, and each exists because its absence produced

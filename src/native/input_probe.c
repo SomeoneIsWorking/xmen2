@@ -53,6 +53,26 @@
 #define PLAYERVT_MASK   0x18u        /* ->logicalMask(), RET 0               */
 #define PLAYER_PHYSICAL 0x2fcu       /* first of the physical floats         */
 #define PLAYER_PHYS_N   30u
+#define PADMGR_CURPLAYER 0x34u       /* vt+0x60 is just `return [this+0x34]`  */
+
+/*
+ * Who the game thinks the player's character IS.
+ *
+ * FUN_00422210 asks the pad manager for the current player index, indexes the
+ * handle table at 0x0070b814 with it (or falls back to 0x0072988c when the
+ * index is out of 0..3 -- the manager constructs it as -1), and resolves that
+ * handle through FUN_004654b0. Whatever comes back is the actor the rest of
+ * the game treats as "the player".
+ *
+ * It is reported here because a null answer is load-bearing far away from
+ * input: igConversationManager::start uses it to pick which of two code paths
+ * names a conversation's speaker, and with no speaker it takes a fallback that
+ * indexes the seen-line bitmap from 0 -- which is what makes the tutorial's
+ * second conversation collide with its first (issue #83).
+ */
+#define HERO_HANDLES_RVA 0x0030b814u /* 0x0070b814, four handles             */
+#define HERO_FALLBACK_RVA 0x0032988cu /* 0x0072988c, used when the index is -1 */
+#define RESOLVE_HANDLE_RVA 0x000654b0u /* FUN_004654b0(this=&handle) -> actor */
 
 /*
  * And the link before that: the game's OWN copy of the device state.
@@ -390,6 +410,49 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
             if (!players)
                 put(out, n, &at, "  the manager reports NO players, so no "
                                  "logical mask exists to carry a press.\n");
+        }
+    }
+
+    /*
+     * The player's own character, and whether the game can resolve it.
+     */
+    {
+        uint32_t mgr = base ? thiscall(cpu, base + PAD_MGR_RVA, 0u, 0, NULL)
+                            : 0u;
+        int32_t idx = -1;
+        uint32_t i, resolved = 0, live = 0;
+
+        put(out, n, &at, "\n");
+        if (!mgr) {
+            put(out, n, &at, "current player: the pad manager is not "
+                             "constructed, so there is no index to read.\n");
+        } else {
+            uint32_t v = 0;
+            x86_peek32(mgr + PADMGR_CURPLAYER, &v);
+            idx = (int32_t)v;
+            put(out, n, &at, "current player index %d%s\n", idx,
+                (idx < 0 || idx >= 4)
+                    ? "  (out of 0..3, so the fallback handle is used)" : "");
+            for (i = 0; i < 5u; i++) {
+                uint32_t slot = i < 4u
+                    ? base + HERO_HANDLES_RVA + i * 4u
+                    : base + HERO_FALLBACK_RVA;
+                uint32_t handle = 0, actor;
+                CPU call = *cpu;
+                if (!x86_peek32(slot, &handle)) continue;
+                live++;
+                call.esp -= 4u;
+                WR32(call.esp, handle);
+                call.ecx = call.esp;
+                x86_guest_call_args(&call, base + RESOLVE_HANDLE_RVA, 0u);
+                actor = call.eax;
+                if (actor) resolved++;
+                put(out, n, &at, "  %-8s handle 0x%08x -> actor 0x%08x%s\n",
+                    i < 4u ? "player" : "fallback", handle, actor,
+                    actor ? "" : "   UNRESOLVED");
+            }
+            put(out, n, &at, "%u of %u hero handle(s) resolve to an actor.\n",
+                resolved, live);
         }
     }
 

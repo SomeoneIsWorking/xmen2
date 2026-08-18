@@ -175,6 +175,22 @@ void x2_override_0055b610(CPU *C)
  *
  * It is deliberately NOT the default: unset (or "0") makes this a pure
  * pass-through and the boot is untouched.
+ *
+ * WHAT IT COSTS, measured (C218, issue #83). The preamble it skips is where the
+ * PARTY is built, so a boot-map run has no player character at all: all five
+ * hero handles -- 0x0070b814[0..3] and the 0x0072988c fallback -- stay 0, where
+ * a normally-booted run resolves player 0's. `tools/x2ctl.py input` reports
+ * them, and that one line is the cheap check for whether a run is comparable to
+ * a played game.
+ *
+ * That is not cosmetic. Anything downstream of the player actor behaves
+ * differently: the tutorial's second conversation is SUPPRESSED in a boot-map
+ * run, because igConversationManager::start cannot resolve a speaker, falls
+ * back to a call site that bases the seen-line bitmap at 0, and collides with
+ * the first conversation -- so the script that undoes `lockControls(-1)` never
+ * runs and the level looks soft-locked. Three sessions read that as a port
+ * defect before the two boot paths were compared. It is this shortcut's own
+ * limitation.
  */
 #define BOOT_SCRIPT_PFX   "runscript menus/intro_normal"
 #define BOOT_PAGE         0x00110000u

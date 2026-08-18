@@ -1,7 +1,7 @@
 ---
 id: 83
 title: The tutorial soft-locks after the cutscene: the second conversation's first line is suppressed by an already-set seen bit
-status: investigating
+status: resolved
 symptom: After the opening conversation the tutorial never hands control back: no HUD, the camera stays on cam_prof, and the character does not move although input reaches player 0 (physical[0] = -1.000 with the stick held). The game keeps rendering at ~68 fps, so it is not a hang.
 tags: pc,native,gameplay,tutorial,conversation,scripts,softlock
 created: 2026-08-19
@@ -121,3 +121,49 @@ conversation -- that would be a bandaid over an unidentified cause.
 * `src/native/script_trace.c` -- every script launch by name, plus
   startConversation/lockControls/conversation-start/reset with their results.
 * `tools/script_commands.py` -- the 289-entry BehavEd command table.
+
+### Note (2026-08-19)
+RESOLVED, and it is NOT a port defect: X2_BOOT_MAP causes it.
+
+The shortcut skips the boot preamble that builds the party, so the game has no
+player character. Measured with the same probe on both boot paths, same build:
+
+    X2_BOOT_MAP=act0/tutorial/tutorial1
+      current player index 0
+      5 of 5 hero handles 0x00000000 -> UNRESOLVED
+
+    normal boot, driven through the menus
+      current player index 0
+      player handle 0x00000a01 -> actor 0x082e7010     (1 of 5 resolve)
+
+That is the input to the branch at 0x0045cade: with no hero actor the dynamic
+cast returns 0, igConversationManager::start takes the fallback call site that
+passes the seen-line bitmap base as a literal PUSH 0, and the second
+conversation's first entry lands on bit 0 -- already set by the first
+conversation. Hence no line, hence conv_0020b_end never runs, hence
+lockControls(-1) is never undone.
+
+The end-to-end comparison, same instrument:
+
+    boot-map   0020b -> STARTED  flags 0x18 -> 0x10, line 0x41 -> 0x00000000
+    normal     0020b -> STARTED  flags 0x18 -> 0x13, line 0x41 -> 0x00000040
+
+On the normal path the tutorial completes: conv_0020b_end launches at frame
+12197, lockControls is called a second time at 12224 (the 0.100 unlock), and
+the run reaches free-roaming gameplay -- full HUD, four hero portraits,
+health/energy bars, party in the prison level. Screenshot scratch/shots/n10_move.png.
+
+The whole run was driven with the PAD through tools/x2ctl.py -- main menu,
+difficulty dialog, both tutorial conversations -- which is independent
+confirmation of #82's fix on paths it had never been tested on.
+
+So nothing in the conversation code needs changing. What this leaves is a
+documentation and tooling gap, not a bug: X2_BOOT_MAP is already labelled
+'for testing only', and it now has a NAMED limitation -- it produces a run with
+no party, and anything downstream of the player actor behaves differently.
+Recorded at the override in src/native/startup.c and in roadmap item 6.
+
+The dead end worth keeping: three sessions of this investigation treated the
+boot-map run as equivalent to a real one. It is not, and the cheap check is one
+line of the input probe -- if the hero handles are null, the run is not
+comparable to a played game.
