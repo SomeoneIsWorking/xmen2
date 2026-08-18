@@ -468,3 +468,34 @@ virtual-pad run opens and reads the pad but creates no pad action bindings, so
 `FUN_00619e30` never asks the name function for a pad label. The delivery path
 is implemented and verified; the prompt appears only after the Xbox-default
 mapping is recovered and installed through the mapping UI feature below.
+
+
+## MEASURED 2026-08-18: the dialog prompt does NOT come through FUN_00619e30
+
+With the pad working end to end (#82 fully fixed) and the derived font pack
+active, the tutorial dialog still reads `[ENTER] CONTINUE...`. The counters say
+why, and they say it only because they carry denominators:
+
+    Xbox prompt names: 0 glyph(s), 6491 original name(s); font pack enabled
+    Xbox prompt rows:  0 label read(s) -- 0 answered with the row's pad
+                       binding, 0 had none
+
+* `FUN_006281f0`, the naming boundary, ran **6,491 times** -- so labels ARE
+  being built constantly -- and not one call had a gamepad device kind.
+* `FUN_006294b0`, the binding reader `FUN_00619e30` uses to choose which slot a
+  label describes, ran **0 times**.
+
+So `FUN_00619e30` is not what produces this prompt, and the plan recorded above
+-- "slot 2 is consulted first, so a populated pad binding wins and the label
+follows the pad automatically" -- is wrong for the path that actually draws it.
+
+The next step is therefore to find the OTHER caller: what calls `FUN_006281f0`
+6,491 times in a run that shows one dialog, and with which device kind. That is
+a caller census on the real run, not more reading -- `src/native/pad_glyphs.c`
+already counts every call and can record its callers.
+
+The `FUN_006294b0` override added alongside this note is still correct for the
+path it covers (a row with a pad binding names it, whatever slot it sits in,
+while an Xbox pad is connected) and costs nothing where it does not fire. It is
+kept because it is the right behaviour and because its zero count is the
+measurement above.

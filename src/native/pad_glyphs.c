@@ -14,6 +14,22 @@
  * only when the generated font pack is active. Every other case super-calls
  * the original recompiled body, keeping keyboard, PlayStation, generic-pad,
  * stick-click and unknown-code names faithful.
+ *
+ * WHICH BINDING THE LABEL DESCRIBES is the other half, and without it the
+ * naming override above can be perfectly correct and never fire on screen.
+ * FUN_00619e30 asks FUN_006294b0 for slots 2, 0, 1, 1 in that order and takes
+ * the first with a non-zero device kind. Slot 2 of the set it reads is where
+ * FUN_0061b030 puts its own hardcoded menu keys -- row 4 slot 2 is DIK Return
+ * -- so the keyboard always wins and a dialog reads "[ENTER]" with a pad in
+ * hand. So a second override sits on FUN_006294b0: while an Xbox-family pad is
+ * connected, a row that HAS a pad binding is named by it whatever slot it sits
+ * in, and everything else super-calls.
+ *
+ * That is a deliberate change of behaviour rather than a faithful one, and it
+ * is the behaviour the feature is for: a prompt should name the device you are
+ * holding. It is confined to the label -- FUN_006294b0 has four call sites and
+ * all four are inside FUN_00619e30 -- so no input path is affected, and with
+ * no pad connected the original order is untouched.
  */
 #include "pad_glyphs.h"
 
@@ -28,7 +44,10 @@
 #define EXE_PREFERRED       0x00400000u
 #define NAME_BUFFER_RVA     0x0066aec8u /* original static at 0x00a6aec8 */
 
+#include "input_bindings.h"
+
 static unsigned long g_mapped, g_deferred;
+static unsigned long g_rows_asked, g_rows_padded, g_rows_no_pad;
 static int g_enabled = -1;
 
 static int enabled(void)
@@ -91,11 +110,57 @@ void x2_override_006281f0(CPU *C)
     g_mapped++;
 }
 
-/* Register the Xbox-prompt name boundary override. */
+/*
+ * FUN_006294b0(row, slot, *kind, *code) -- the label's binding reader.
+ *
+ * __thiscall, RET 0x10, and it writes nothing when the caller passes a null
+ * out-pointer, which the original checks for and so does this.
+ */
+void fn_XMen2_006294b0(CPU *C);
+
+/* The row's pad binding, in whichever slot holds it. 0 if it has none. */
+static int row_pad_binding(uint32_t object, uint32_t row, uint32_t *kind,
+                           uint32_t *code)
+{
+    uint32_t slot, k, c;
+    for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
+        if (!input_bindings_read(object, row, slot, &k, &c)) continue;
+        if (k < 3u || k > 0xcu) continue;
+        if (!dinput_pad_uses_xbox_glyphs((int)k - 3)) continue;
+        *kind = k;
+        *code = c;
+        return 1;
+    }
+    return 0;
+}
+
+void x2_override_006294b0(CPU *C)
+{
+    uint32_t object = C->ecx;
+    uint32_t row = RD32(C->esp + 4u);
+    uint32_t out_kind = RD32(C->esp + 0xcu);
+    uint32_t out_code = RD32(C->esp + 0x10u);
+    uint32_t kind, code;
+
+    g_rows_asked++;
+    if (!enabled() || row >= INPUT_BINDING_ROWS ||
+        !row_pad_binding(object, row, &kind, &code)) {
+        g_rows_no_pad++;
+        fn_XMen2_006294b0(C);
+        return;
+    }
+    if (out_kind) WR32(out_kind, kind);
+    if (out_code) WR32(out_code, code);
+    C->esp += 4u + 0x10u;          /* RET 0x10 */
+    g_rows_padded++;
+}
+
+/* Register the Xbox-prompt name and label-selection boundaries. */
 __attribute__((constructor))
 static void x2_pad_glyphs_register_overrides(void)
 {
     x86_register_override("XMen2.exe", 0x006281f0, x2_override_006281f0);
+    x86_register_override("XMen2.exe", 0x006294b0, x2_override_006294b0);
 }
 
 void pad_glyphs_report(void)
@@ -105,4 +170,10 @@ void pad_glyphs_report(void)
     printf("  Xbox prompt names: %lu glyph(s), %lu original name(s); font "
            "pack %s\n", g_mapped, g_deferred,
            enabled() ? "enabled" : "disabled");
+    /* With the denominator, because "0 glyphs" means one thing when the label
+       was never built at all and another when it was built 900 times and every
+       row named the keyboard. */
+    printf("  Xbox prompt rows: %lu label read(s) -- %lu answered with the "
+           "row's pad binding, %lu had none and used the game's own slot "
+           "order\n", g_rows_asked, g_rows_padded, g_rows_no_pad);
 }
