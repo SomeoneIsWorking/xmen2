@@ -117,7 +117,7 @@ print("%f %f %f %d" % (sum(px)/n,
         mean, lo, hi, n = out.stdout.split()
         return {"mean_luma": float(mean), "frac_lt16": float(lo),
                 "frac_gt128": float(hi), "pixels": int(n)}
-    except Exception:                               # noqa: BLE001 -- reported
+    except Exception:
         return None
 
 

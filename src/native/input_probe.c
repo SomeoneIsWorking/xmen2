@@ -72,7 +72,7 @@
 #define DI_JOY_NBUTTON  32u
 #define DI_JOY_MAX      10u
 #define DI_JOY_LIVE     0x129ccu     /* bit per device that answered          */
-#define DI_KEYBOARD     0x25e4u      /* the 256-byte DIK state FUN_006276d0 reads */
+#define DI_KEYBOARD     0x25e4u      /* 256-byte DIK state, read by 006276d0  */
 #define DI_BOUND_COUNT  0x129c8u     /* controllers registered for evaluation */
 #define DI_BOUND_LIST   0x129d0u
 #define DI_PAD_VALUE_RVA 0x00227650u /* FUN_00627650(pad, code) -> float      */
@@ -268,8 +268,9 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
                 put(out, n, &at, "%s\n", held ? "" : " none of 32");
             }
             if (!live)
-                put(out, n, &at, "  NO joystick device answered this frame, so "
-                                 "every pad binding reads 0 by construction.\n");
+                put(out, n, &at, "  NO joystick device answered this "
+                                 "frame, so every pad binding reads 0 by "
+                                 "construction.\n");
             for (k = 0; k < 256u; k++) {
                 unsigned char v = 0;
                 if (!x86_peek(wrapper + DI_KEYBOARD + k, &v, 1)) continue;
@@ -340,7 +341,8 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
      * only what decides WHICH bit it reaches.
      */
     {
-        uint32_t mgr = base ? thiscall(cpu, base + PAD_MGR_RVA, 0u, 0, NULL) : 0u;
+        uint32_t mgr = base
+            ? thiscall(cpu, base + PAD_MGR_RVA, 0u, 0, NULL) : 0u;
         uint32_t vt = 0, fn = 0, players = 0, i;
 
         put(out, n, &at, "\n");
@@ -354,7 +356,8 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
                 mgr, PADVT_COUNT);
         } else {
             players = thiscall(cpu, fn, mgr, 0, NULL);
-            put(out, n, &at, "pad manager 0x%08x: %u player(s)\n", mgr, players);
+            put(out, n, &at, "pad manager 0x%08x: %u player(s)\n", mgr,
+                players);
             if (players > 4u) players = 4u;
             for (i = 0; i < players; i++) {
                 uint32_t sub = 0, svt = 0, mask = 0, k, nonzero = 0;

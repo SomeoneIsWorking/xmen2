@@ -36,7 +36,7 @@ import sys
 try:
     from PIL import Image, ImageDraw
 except ImportError:
-    sys.exit("shot_compare: needs Pillow (python3 -m pip install --user Pillow)")  # noqa: E501
+    sys.exit("shot_compare: needs Pillow (python3 -m pip install --user Pillow)")
 
 
 def refuse(msg):
@@ -78,7 +78,7 @@ def load(pattern, label):
             im = Image.open(p)
             im.load()
             out.append((p, im.convert("RGB")))
-        except Exception as e:                      # noqa: BLE001
+        except Exception as e:
             # FAIL FAST. This used to warn and carry on, which produces a
             # sheet with a frame silently missing from one side -- the exact
             # shape of comparison this tool exists to prevent.
@@ -120,7 +120,7 @@ def sheet(ours, control, out, cols, thumb_w):
     canvas = Image.new("RGB", (width, sum(band_h) + pad), (24, 24, 28))
     d = ImageDraw.Draw(canvas)
     y = pad
-    for (title, rs), bh in zip(thumbs, band_h):
+    for (title, rs), bh in zip(thumbs, band_h, strict=True):
         d.text((pad, y), "%s -- %d frame(s)" % (title, len(rs)),
                fill=(255, 235, 120))
         yy = y + head

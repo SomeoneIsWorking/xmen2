@@ -148,7 +148,9 @@ def report(image_path, c_path):
         print("binding_rows: %s ships %d names, not %d."
               % (c_path, len(shipped), ROWS), file=sys.stderr)
         return 1
-    bad = [(i, a, b) for i, (a, b) in enumerate(zip(names, shipped)) if a != b]
+    bad = [(i, a, b)
+           for i, (a, b) in enumerate(zip(names, shipped, strict=True))
+           if a != b]
     for i, a, b in bad:
         print("  row %2d: exe says %r, the port ships %r" % (i, a, b),
               file=sys.stderr)

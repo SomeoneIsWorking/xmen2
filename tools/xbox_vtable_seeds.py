@@ -126,10 +126,10 @@ def main():
 
     data_secs = [x for x in secs
                  if x[4] > 0 and not has_functions(x[1], x[2])]
-    print(f"xbox_vtable_seeds: data sections (no detected function inside): "
+    print("xbox_vtable_seeds: data sections (no detected function inside): "
           + ", ".join(n for n, *_ in data_secs))
 
-    for name, vaddr, vsize, raw, rsize, executable in data_secs:
+    for name, _vaddr, _vsize, raw, rsize, _executable in data_secs:
         run = []
         for off in range(0, rsize - 4, 4):
             scanned += 1

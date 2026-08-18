@@ -161,8 +161,8 @@ void x2_override_004a5660(CPU *C)
     g_startconv++;
     if (after != before) g_startconv_took++;
     if (live())
-        fprintf(stderr, "SCRIPT: startConversation at frame %lu -- conversation "
-                        "flags 0x%02x -> 0x%02x%s\n",
+        fprintf(stderr, "SCRIPT: startConversation at frame %lu -- "
+                        "conversation flags 0x%02x -> 0x%02x%s\n",
                 gpu_frames_presented(), before, after,
                 after == before ? "  (NO CHANGE: the command ran and the "
                                   "conversation did not start)" : "");
@@ -239,7 +239,8 @@ void x2_override_00455af0(CPU *C)
 {
     g_reset++;
     if (live())
-        fprintf(stderr, "SCRIPT: conversation reset (vt+0x04) #%lu at frame %lu\n",
+        fprintf(stderr, "SCRIPT: conversation reset (vt+0x04) #%lu at "
+                        "frame %lu\n",
                 g_reset, gpu_frames_presented());
     fn_XMen2_00455af0(C);
 }

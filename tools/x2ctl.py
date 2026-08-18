@@ -52,7 +52,7 @@ def call(port, path, timeout=15.0):
     except urllib.error.HTTPError as e:
         return e.code, e.headers.get("Content-Type", ""), e.read()
     except urllib.error.URLError as e:
-        raise SystemExit(
+        raise SystemExit(  # noqa: B904 -- the reason IS the message below
             "x2ctl: nothing is listening on 127.0.0.1:%d (%s).\n"
             "  The run needs --control (or X2_CONTROL=%d); without it the game "
             "takes no live commands.\n"

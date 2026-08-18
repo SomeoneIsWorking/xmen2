@@ -11,7 +11,7 @@ import runpy
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shared_dir import shared_dir                            # noqa: E402
+from shared_dir import shared_dir
 
 _tool = os.path.join(shared_dir("recomp-x86", "tools/check_emitted.py"), "tools", "check_emitted.py")
 

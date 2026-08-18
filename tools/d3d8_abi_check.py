@@ -157,7 +157,7 @@ def check_header(abi, perturb=None):
                   % (iface, len(entries), len(theirs)))
             disagreed += 1
             continue
-        for (s, n, a), (hs, hn, ha) in zip(entries, theirs):
+        for (s, n, a), (_hs, hn, ha) in zip(entries, theirs, strict=True):
             checked += 1
             mine = (n, a)
             if perturb and perturb[0] == iface and perturb[1] == s:

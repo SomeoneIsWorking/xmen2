@@ -112,7 +112,7 @@ def rms_after_centring(a, b):
         return None
     ca, cb = centroid(a), centroid(b)
     acc = 0.0
-    for p, q in zip(a, b):
+    for p, q in zip(a, b, strict=True):
         for i in range(3):
             d = (p[i] - ca[i]) - (q[i] - cb[i])
             acc += d * d
@@ -215,7 +215,7 @@ def render(path, pairs, cell=260):
     for i in range(0, len(buf), 3):
         buf[i:i + 3] = b"\x12\x12\x16"
 
-    for r, (label, verts, colour) in enumerate(pairs):
+    for r, (_label, verts, colour) in enumerate(pairs):
         if not verts:
             continue
         c = centroid(verts)
@@ -231,7 +231,7 @@ def render(path, pairs, cell=260):
                     buf[o:o + 3] = colour
     png(path, w, h, buf)
     print(f"objcmp: wrote {path} -- rows are "
-          + ", ".join(l for l, _, _ in pairs)
+          + ", ".join(name for name, _, _ in pairs)
           + "; columns are the XY, XZ and ZY views.")
 
 
@@ -333,8 +333,10 @@ def main():
 
     if a.render:
         port, stock = load(a.port), load(a.stock)
-        pick = lambda gs: [(n, v) for n, _, v in gs
-                           if not a.group or a.group in n]
+        def pick(gs):
+            return [(n, v) for n, _, v in gs
+                    if not a.group or a.group in n]
+
         pp, ss = pick(port), pick(stock)
         if not pp and not ss:
             sys.exit(f"objcmp: no group matches {a.group!r} in either file.")

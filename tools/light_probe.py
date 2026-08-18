@@ -100,7 +100,8 @@ class Reader(object):
 
 
 def finite(x):
-    return x == x and abs(x) != float("inf")
+    # `x == x` is false only for NaN, which is the whole test.
+    return x == x and abs(x) != float("inf")  # noqa: PLR0124
 
 
 def match_light(b, off):
@@ -296,7 +297,7 @@ def find_arrays(pid, want_all=False, min_run=4, chunk=(1 << 20)):
     scanned = skipped = 0
     regs = regions(pid, want_all)
     total = sum(hi - lo for lo, hi, _ in regs)
-    for lo, hi, path in regs:
+    for lo, hi, _path in regs:
         if hi - lo > (3 << 30):
             skipped += hi - lo
             continue
@@ -382,7 +383,7 @@ def report_arrays(res, label, expect=None):
     for r in sorted(runs, key=lambda r: -r["n"])[:6]:
         hit = ""
         if expect is not None:
-            for i, l in enumerate(r["lights"]):
+            for i, _light in enumerate(r["lights"]):
                 if r["addr"] + i * RECORD_STRIDE == expect:
                     hit = "   <- CONTAINS the address the port reported"
         print("     %d record(s) at 0x%x%s" % (r["n"], r["addr"], hit))

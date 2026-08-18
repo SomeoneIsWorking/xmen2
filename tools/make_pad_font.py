@@ -68,7 +68,7 @@ def row_to_t(row, height):
 
 
 def t_to_row(t, height):
-    return int(round(height - t * height))
+    return round(height - t * height)
 
 
 # ---- atlas ---------------------------------------------------------------
@@ -149,8 +149,8 @@ def rasterise(icons_dir, names, size, tmp):
         try:
             r = subprocess.run(cmd, capture_output=True)
         except FileNotFoundError:
-            raise SystemExit("REFUSING: ImageMagick's `magick` is not on PATH, "
-                             "so no icon can be rasterised.")
+            raise SystemExit("REFUSING: ImageMagick's `magick` is not on "
+                             "PATH, so no icon can be rasterised.") from None
         if r.returncode != 0 or not os.path.exists(dst):
             raise SystemExit("REFUSING: rasterising %s failed: %s"
                              % (src, r.stderr.decode()[:200]))
@@ -252,7 +252,7 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None):
         art = rasterise(icons_dir, ICONS, CELL, tmp)
     height = float(root.get("height", "20"))
     placed = []
-    for i, (code, px) in enumerate(zip(codes, art)):
+    for i, (code, px) in enumerate(zip(codes, art, strict=True)):
         cx = GAP + (i % per_row) * need
         cy = y0 + GAP + (i // per_row) * need
         blit(rgba, w, px, CELL, cx, cy)

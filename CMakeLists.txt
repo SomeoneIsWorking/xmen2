@@ -304,6 +304,16 @@ set_tests_properties(binding_rows PROPERTIES SKIP_RETURN_CODE 77
 # dead. The selftest pins two handlers verified at RUNTIME and eight argument
 # specs taken from the shipped scripts, so neither check is the tool marking
 # its own work. SKIPs loudly (77) without an install.
+# Python lint. Everything but run.sh is Python, and the selection in
+# ruff.toml is defects rather than preferences -- see the reasoning there for
+# what is deliberately NOT enabled. SKIPs (77) when ruff is not installed,
+# because a linter that silently did not run must not read as a clean tree.
+add_test(NAME python_lint
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/lint.py)
+set_tests_properties(python_lint PROPERTIES SKIP_RETURN_CODE 77
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME script_commands
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/script_commands.py --selftest)

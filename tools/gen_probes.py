@@ -505,7 +505,8 @@ def main(argv):
     outs = [(HDR_OUT, emit_header(probes, h)),
             (WRAP_OUT, emit_wraps(probes)),
             (STUB_OUT, emit_stubs(probes)),
-            (CMAKE_OUT, emit_cmake(probes))] + emit_isolates(probes)
+            (CMAKE_OUT, emit_cmake(probes)),
+            *emit_isolates(probes)]
     changed = []
     for path, text in outs:
         write_if_changed(path, text, changed) if not check else None

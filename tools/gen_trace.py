@@ -22,7 +22,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from pe import PE  # noqa: E402
+from pe import PE
 
 
 def main(argv):
@@ -39,8 +39,8 @@ def main(argv):
 
     if not os.path.isfile(symfile):
         sys.exit("gen_trace: symbol file %s missing -- traced NOTHING" % symfile)
-    wanted = [l.strip() for l in open(symfile) if l.strip()
-              and not l.startswith("#")]
+    wanted = [line.strip() for line in open(symfile) if line.strip()
+              and not line.startswith("#")]
     if not wanted:
         sys.exit("gen_trace: %s is empty -- traced NOTHING" % symfile)
 
@@ -73,7 +73,7 @@ def main(argv):
     # ---- .S: one naked thunk per traced symbol.
     with open(os.path.join(outdir, "thunks.S"), "w") as f:
         f.write("\t.text\n")
-        for i, name in enumerate(traced):
+        for i, _name in enumerate(traced):
             f.write(
                 "\t.globl _x2_thunk_%d\n"
                 "_x2_thunk_%d:\n"

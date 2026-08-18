@@ -52,7 +52,7 @@ def read_stream(path):
         with open(path, "rb") as f:
             blob = f.read()
     except OSError as e:
-        raise Refuse("oraclediff: cannot read %s: %s" % (path, e))
+        raise Refuse("oraclediff: cannot read %s: %s" % (path, e)) from e
     if len(blob) < HDR or blob[:len(MAGIC)] != MAGIC:
         raise Refuse(
             "oraclediff: %s does not start with %r, so it is not a probe\n"
@@ -132,7 +132,7 @@ def compare_fields(flds, a, b, tol):
     av, _ = split(a, flds)
     bv, _ = split(b, flds)
     comp = diff = unread = 0
-    for f, x, y in zip(flds, av, bv):
+    for f, x, y in zip(flds, av, bv, strict=True):
         if len(x) != f["len"] or len(y) != f["len"]:
             diff += 1                      # a short record IS a difference
             continue
@@ -155,9 +155,11 @@ def differs(a, b, tol):
     if len(fa) * 4 != len(a):
         return True, True
     worst = 0.0
-    for x, y in zip(fa, fb):
-        if x != x or y != y:                       # a NaN on either side
-            if (x != x) != (y != y):
+    for x, y in zip(fa, fb, strict=True):
+        # `v != v` is the NaN test and is deliberate: a NaN on ONE side is a
+        # difference, a NaN on both is not.
+        if x != x or y != y:  # noqa: PLR0124
+            if (x != x) != (y != y):  # noqa: PLR0124
                 return True, True
             continue
         d = abs(x - y)
@@ -168,7 +170,7 @@ def differs(a, b, tol):
 
 def report(port_path, stock_path, tol, show):
     ph, pside, precs, pshort, pn = read_stream(port_path)
-    sh, sside, srecs, sshort, sn = read_stream(stock_path)
+    sh, sside, srecs, sshort, _sn = read_stream(stock_path)
 
     if ph != sh:
         raise Refuse(
@@ -293,9 +295,10 @@ def report(port_path, stock_path, tol, show):
                   "runs to the same scene, or probe a hotter function.")
         for k, po, so, seq in bad[:show]:
             print("\n     --- input first seen at port call %d ---" % seq)
-            for f, x in zip(fin, split(k, fin)[0]):
+            for f, x in zip(fin, split(k, fin)[0], strict=True):
                 print("       in ", fmt_field(f, x))
-            for f, x, y in zip(fout, split(po, fout)[0], split(so, fout)[0]):
+            for f, x, y in zip(fout, split(po, fout)[0],
+                               split(so, fout)[0], strict=True):
                 tag = "  " if x == y else ">>"
                 print("     %s port " % tag, fmt_field(f, x))
                 print("     %s stock" % tag, fmt_field(f, y))

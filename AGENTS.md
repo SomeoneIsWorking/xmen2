@@ -192,6 +192,17 @@ Guest x86 → C, run inside a 64-bit ELF host:
 These are not style preferences — each one exists because its absence produced a
 logged defect.
 
+- **Lint the Python, do not reformat the C.** `ctest python_lint` runs ruff over
+  `tools/` and `tests/`; the rule selection in `ruff.toml` is defects, not
+  preferences, and says what is deliberately left out and why. Ruff is not a
+  build dependency, so `tools/lint.py` exits 77 (ctest SKIP) and names what did
+  not happen rather than passing quietly when it is absent. There is no
+  `.clang-format` on purpose: measured against the tree, the closest preset
+  rewrites 56% of the lines it touches, and what it changes is damage — it
+  flattens hand-laid-out tables like `DIK_MAP`, collapses aligned declarations
+  and re-breaks the wrapped diagnostic strings. A formatter that cannot express
+  the house style is not a tidying tool.
+
 - **A translator that does not understand an instruction must fail loudly by
   name.** Never a comment, a no-op, or best-effort code. Unhandled cases raise
   `Unsupported`, the function is recorded untranslatable with the reason, and

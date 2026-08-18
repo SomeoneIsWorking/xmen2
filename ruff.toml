@@ -1,0 +1,35 @@
+# Python lint policy for this repo's tooling.
+#
+# Every script here except run.sh is Python, so a linter is worth having -- but
+# only if what it says is worth reading. Ruff's default selection reports 513
+# findings on this tree, 386 of them "use an f-string instead of %", which is a
+# style this project does not use. A linter nobody can read the output of is a
+# linter nobody runs, so the selection below is DEFECTS, not preferences:
+# undefined names, unused bindings, mutable defaults, comparison mistakes.
+#
+# The rules deliberately NOT enabled, and why, so this is a decision rather
+# than an omission:
+#
+#   UP031  printf-style % formatting. The whole tree uses it, consistently.
+#   I001   import ordering. Cosmetic, and it churns the shared-tool shims.
+#   SIM115 open() without a context manager. These are short-lived scripts
+#          whose process exit closes the file; the finding is real but the fix
+#          is noise at this scale.
+#   PLW1510 subprocess.run without check=. Every site here tests returncode
+#          itself and refuses BY NAME, which gives a better message than
+#          check=True's CalledProcessError. Audited, 2026-08-19.
+#
+# Two idioms that ARE flagged and are correct here keep a targeted `noqa` with
+# a reason at the site rather than being switched off globally: `x != x` as the
+# NaN test (PLR0124), and catching Exception where the handler REPORTS the
+# error rather than swallowing it (BLE001).
+
+line-length = 100
+
+[lint]
+select = ["F", "E4", "E7", "E9", "B", "PLE", "PLR0124", "RUF"]
+
+[lint.per-file-ignores]
+# The shared-tool shims insert sys.path before importing, which is the point.
+"tools/alchemy_path.py" = ["E402"]
+"tools/shared_dir.py" = ["E402"]
