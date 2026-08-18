@@ -1,7 +1,7 @@
 ---
 id: 82
 title: Synthetic pad: SDL virtual button set succeeds but the joystick reads UP inside the game
-status: investigating
+status: resolved
 symptom: tools/x2ctl.py pad a reports 'joystick button 0 set (joystick itself reads UP)'. The game polls hard -- 71,700 button reads and 43,020 axis reads in one run -- and every read comes back released, so a gamepad press never reaches gameplay, while key Return advances the same conversation in the same run.
 tags: input,pad,sdl,dinput,native
 created: 2026-08-18
@@ -77,3 +77,10 @@ Further ruled out since: a flooded SDL event queue (65,533 queued events, both a
 Expiry is NOT the cause: the release tick fires 0.001s past its 0.3s deadline, i.e. correct behaviour, long after the read-back already reported UP. The button is never down at any point -- 71,700 polls saw 0 down.
 
 ALSO FIXED here: this hunt was slowed by the reason buffer being reused, so an axis request answered with the previous BUTTON call's text ("joystick button 0 set ... gamepad a") and I read it as an axis result. Every exit now stamps the buffer up front. That is the second time an instrument in this area invented an observation it never made; the first was an axis counter declared and never incremented.
+
+### Resolution (2026-08-18)
+SDL discards joystick BUTTON state when no window holds keyboard focus, while writing axis state through regardless -- which is why the pad enumerated, its axes moved, and every button read released forever. The port now sets SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS before the gamepad subsystem starts (src/native/dinput_pad.c). Before: 71,700 button polls, 0 down. After: 91,900 polls, 57 down from three presses.
+
+tests/test_virtual_pad.c was a false negative: it passed throughout because it created no window, and a process with no windows is not subject to the focus policy. It now creates a hidden window -- the game's condition -- and is verified to fail without the policy (all ten buttons) and pass with it.
+
+NOT fixed and deliberately out of scope here: the press reaches the game and the conversation still does not advance on pad A where Return does. That is the action binding, game-level, and it is what the input RE is for.
