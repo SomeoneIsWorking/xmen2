@@ -287,7 +287,7 @@ static const SDL_GamepadButton BTN[10] = {
  * zero -- "0 of 0" and "0 of 480,000" are completely different findings.
  */
 static unsigned long g_btn_reads, g_btn_down, g_axis_reads, g_axis_offcentre;
-static unsigned long g_pad_pumps;
+static unsigned long g_pad_pumps, g_vbtn_clears;
 
 /*
  * Refresh SDL's view of the pads, ONCE per device poll.
@@ -616,6 +616,14 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
     double now = guest_clock_now_s();
     int i;
 
+    /* Every exit from here MUST say something. This buffer is reused across
+       calls, and an exit that leaves it alone reports the PREVIOUS call's
+       text: asking for axis "leftx" answered "joystick button 0 set ...
+       gamepad a", which is a diagnostic inventing an observation it never
+       made. Stamped up front so that is impossible rather than remembered. */
+    snprintf(why, (size_t)whyn, "(no reason recorded for \"%s\" -- a code "
+                                "path returned without saying anything)", what);
+
     if (!g_virt_js) {
         snprintf(why, (size_t)whyn,
                  "this run has no synthetic pad to press (X2_VIRTUAL_PAD is "
@@ -668,6 +676,26 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                    this is down and the gamepad is up, the mapping is the
                    problem; if this is up too, the virtual set never landed. */
                 int jraw = SDL_GetJoystickButton(g_virt_js, i) ? 1 : 0;
+                /* Is the handle we hold the one SDL is updating? Re-open the
+                   same id and ask again; and count what is attached, in case
+                   there is more than one virtual pad and the game reads the
+                   other. */
+                {
+                    int njs = 0, fresh = -1;
+                    SDL_JoystickID *ids = SDL_GetJoysticks(&njs);
+                    SDL_Joystick *j2 = SDL_OpenJoystick(g_virt_id);
+                    if (j2) {
+                        fresh = SDL_GetJoystickButton(j2, i) ? 1 : 0;
+                        SDL_CloseJoystick(j2);
+                    }
+                    fprintf(stderr,
+                        "DINPUT-PAD: probe -- %d joystick(s) attached; stored "
+                        "handle %p reads %s, a FRESH open of id %u reads %s\n",
+                        njs, (void *)g_virt_js, jraw ? "DOWN" : "UP",
+                        (unsigned)g_virt_id,
+                        fresh < 0 ? "UNOPENABLE" : (fresh ? "DOWN" : "UP"));
+                    if (ids) SDL_free(ids);
+                }
                 Pad *pp = pad_at(0);
                 int back = (pp && pp->gp && gb != SDL_GAMEPAD_BUTTON_INVALID)
                            ? (SDL_GetGamepadButton(pp->gp, gb) ? 1 : 0) : -1;
@@ -694,6 +722,21 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
             g_vaxis_value[i] = raw;
             g_vaxis_until[i] = hold > 0.0 ? now + hold : 0.0;
             g_vpad_axis_sets++;
+            SDL_UpdateJoysticks();
+            SDL_UpdateGamepads();
+            {
+                SDL_GamepadAxis ga = SDL_GetGamepadAxisFromString(what);
+                Pad *pp = pad_at(0);
+                int jraw = SDL_GetJoystickAxis(g_virt_js, i);
+                int graw = (pp && pp->gp && ga != SDL_GAMEPAD_AXIS_INVALID)
+                           ? SDL_GetGamepadAxis(pp->gp, ga) : 0;
+                snprintf(why, (size_t)whyn,
+                         "axis %d set to %d; joystick reads %d, gamepad "
+                         "\"%s\" reads %d%s",
+                         i, (int)raw, jraw, what, graw,
+                         jraw == 0 && raw != 0
+                             ? "  <-- the set did NOT land" : "");
+            }
             return 1;
         }
     {
@@ -726,7 +769,16 @@ static void virtual_expire(void)
     if (!g_virt_js) return;
     for (i = 0; i < VBTN_N; i++)
         if (g_vbtn_until[i] != 0.0 && now >= g_vbtn_until[i]) {
+            double held = now - g_vbtn_until[i];
             g_vbtn_until[i] = 0.0;
+            g_vbtn_clears++;
+            /* How LONG after the deadline, because a clear that happens the
+               instant the press is made means the deadline was already in the
+               past -- a clock disagreement, not an expiry. */
+            if (g_vbtn_clears <= 4)
+                fprintf(stderr, "DINPUT-PAD: releasing button %d, %.3fs past "
+                                "its deadline (clear #%lu)\n",
+                        i, held, g_vbtn_clears);
             SDL_SetJoystickVirtualButton(g_virt_js, i, false);
         }
     for (i = 0; i < 6; i++)
@@ -763,7 +815,8 @@ void dinput_pad_poll_report(void)
             "needs its events pumped).\n");
     fprintf(stderr,
         "       %lu synthetic press(es) and %lu axis set(s) were requested "
-        "over the control channel.\n", g_vpad_presses, g_vpad_axis_sets);
+        "over the control channel; %lu press(es) were released by the expiry "
+        "tick.\n", g_vpad_presses, g_vpad_axis_sets, g_vbtn_clears);
 }
 
 void dinput_pad_report(void)

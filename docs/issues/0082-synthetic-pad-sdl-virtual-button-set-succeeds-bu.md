@@ -66,3 +66,14 @@ A REAL controller was never tested against the pump fix: this machine has no
 gamepad attached (`/sys/class/input/*/name` lists none). The pump fix is
 correct on its own terms -- the keyboard and mouse paths have always pumped --
 but its effect on real hardware is unverified.
+
+### Note (2026-08-18)
+2026-08-18: AXES WORK, BUTTONS DO NOT -- the clearest split yet.
+
+In-game, `tools/x2ctl.py pad leftx=-1` reports: axis 0 set to -32767, joystick reads -32767, gamepad "leftx" reads -32767. The identical sequence for a button reports the joystick still UP. Same handle, same thread, same update calls, one attached device. So the virtual device IS live and being updated in the running game; the failure is specific to SDL's virtual BUTTON path there.
+
+Further ruled out since: a flooded SDL event queue (65,533 queued events, both axis and button still work standalone), 0/1/1000 pumps with and without draining events, and a conflicting `true`/`bool` macro (none in the tree; dinput_pad.c includes only dinput_pad.h, guest_clock.h, stdio/stdlib/string and SDL.h).
+
+Expiry is NOT the cause: the release tick fires 0.001s past its 0.3s deadline, i.e. correct behaviour, long after the read-back already reported UP. The button is never down at any point -- 71,700 polls saw 0 down.
+
+ALSO FIXED here: this hunt was slowed by the reason buffer being reused, so an axis request answered with the previous BUTTON call's text ("joystick button 0 set ... gamepad a") and I read it as an axis result. Every exit now stamps the buffer up front. That is the second time an instrument in this area invented an observation it never made; the first was an axis counter declared and never incremented.
