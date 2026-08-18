@@ -10,11 +10,14 @@
 
 #define SIZE 0x00700000u
 #define BUFFER_RVA 0x0066aec8u
+#define CONTROLLER0_RVA 0x00668f40u
+#define ALT_SLOT 1u
 
 static uint32_t mapped_base;
 static X86Module module = { .name = "XMen2", .base = &mapped_base,
                             .preferred = 0x00400000u, .size = SIZE };
-static int real_calls;
+static int real_calls, reader_calls;
+static uint32_t g_object;
 
 X86Module *x86_modules(void) { return &module; }
 int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 0; }
@@ -24,10 +27,70 @@ void fn_XMen2_006281f0(CPU *c)
     c->eax = 0x12345678u;
     c->esp += 12u;
 }
+/* FUN_006294b0(row, slot, *kind, *code) -- the label's binding reader. The
+   stub answers with a keyboard binding, so a super-call is visible as "the
+   keyboard won" and the override's answer is visible as the pad. */
+void fn_XMen2_006294b0(CPU *c)
+{
+    uint32_t out_kind = RD32(c->esp + 0xcu), out_code = RD32(c->esp + 0x10u);
+    reader_calls++;
+    if (out_kind) WR32(out_kind, 1u);        /* keyboard */
+    if (out_code) WR32(out_code, 0x1cu);     /* DIK Return */
+    c->esp += 4u + 0x10u;
+}
+int x86_peek(uint32_t addr, void *out, size_t n)
+{
+    if (addr < mapped_base || (uint64_t)addr + n > (uint64_t)mapped_base + SIZE)
+        return 0;
+    memcpy(out, (void *)(uintptr_t)addr, n);
+    return 1;
+}
+int x86_peek32(uint32_t addr, uint32_t *out)
+{
+    return x86_peek(addr, out, sizeof *out);
+}
+void x86_guest_call_args(CPU *c, uint32_t target, uint32_t pop)
+{
+    (void)c; (void)target; (void)pop; abort();   /* the label path writes none */
+}
 void x86_seg_unset(const char *seg) { (void)seg; abort(); }
 __thread uint32_t g_fsbase, g_gsbase;
 
 void x2_override_006281f0(CPU *c);
+void x2_override_006294b0(CPU *c);
+
+/* Write a binding straight into the guest table, using the ABI
+   input_bindings.c states: element = object + (row*4 + slot)*12, kind at +4,
+   code at +8. */
+static void put_binding(uint32_t row, uint32_t slot, uint32_t kind,
+                        uint32_t code)
+{
+    uint32_t at = g_object + (row * 4u + slot) * 12u;
+    WR32(at + 4u, kind);
+    WR32(at + 8u, code);
+}
+
+/* Ask the label reader for a row and report what it answered. */
+static int reader_says(uint32_t row, uint32_t *kind, uint32_t *code,
+                       int want_super)
+{
+    CPU c = {0};
+    uint32_t stack = mapped_base + 0x2000u;
+    int before = reader_calls;
+    WR32(stack, 0xfeedfaceu);
+    WR32(stack + 4u, row);
+    WR32(stack + 8u, 2u);                 /* slot 2, the label's first choice */
+    WR32(stack + 0xcu, mapped_base + 0x3000u);
+    WR32(stack + 0x10u, mapped_base + 0x3004u);
+    c.esp = stack;
+    c.ecx = g_object;          /* __thiscall: the binding object */
+    x2_override_006294b0(&c);
+    if (c.esp != stack + 0x14u) return 0;
+    if ((reader_calls - before != 0) != (want_super != 0)) return 0;
+    *kind = RD32(mapped_base + 0x3000u);
+    *code = RD32(mapped_base + 0x3004u);
+    return 1;
+}
 
 static int check_call(uint32_t kind, uint32_t code, uint32_t want,
                       int want_real)
@@ -76,6 +139,37 @@ int main(int argc, char **argv)
         fprintf(stderr, "pad glyph shipping-wrapper checks FAILED\n");
         return 1;
     }
-    printf("pad glyph wrapper: 6 enabled cases passed\n");
+    /*
+     * The label-selection half. Without it the naming override above can be
+     * perfectly correct and never appear: FUN_00619e30 asks for slot 2 first,
+     * and slot 2 of the set it reads is where the game puts its own menu keys
+     * (row 4 slot 2 is Return), so the keyboard always wins with a pad in
+     * hand. Both directions are checked -- a row WITH a pad binding must be
+     * named by it whatever slot it sits in, and a row without one must
+     * super-call and keep the game's own answer.
+     */
+    {
+        uint32_t controller = mapped_base + 0x10000u;
+        uint32_t kind = 0, code = 0;
+        g_object = controller + 0x18u;
+        WR32(mapped_base + CONTROLLER0_RVA, controller);
+        memset((void *)(uintptr_t)g_object, 0, 42u * 4u * 12u);
+
+        put_binding(4u, ALT_SLOT, 3u, 0x15u);   /* pad 0, button A */
+        put_binding(4u, 2u, 1u, 0x1cu);         /* and the menu key beside it */
+        if (!reader_says(4u, &kind, &code, 0) || kind != 3u || code != 0x15u) {
+            fprintf(stderr, "pad glyph label: a row with a pad binding was not "
+                            "named by it (kind %u code 0x%02x)\n", kind, code);
+            return 1;
+        }
+        put_binding(7u, 2u, 1u, 0x1cu);         /* keyboard only */
+        if (!reader_says(7u, &kind, &code, 1) || kind != 1u || code != 0x1cu) {
+            fprintf(stderr, "pad glyph label: a row with no pad binding did not "
+                            "super-call (kind %u code 0x%02x)\n", kind, code);
+            return 1;
+        }
+    }
+    printf("pad glyph wrapper: 6 enabled cases + both label-selection "
+           "directions passed\n");
     return 0;
 }

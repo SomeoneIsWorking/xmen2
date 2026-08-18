@@ -437,6 +437,7 @@ void x2_interrupt_reports(int killed)
     { extern void k32_asset_report(void), ws2_report(void);
       k32_asset_report(); ws2_report(); }
     { extern void conversation_report(void); conversation_report(); }
+    { extern void script_trace_report(void); script_trace_report(); }
     { extern void x86_record_report(void); x86_record_report(); }
     { extern void x86_profiler_report(void); x86_profiler_report(); }
     /* shell32's save-path report was registered with atexit, and the clean

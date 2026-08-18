@@ -56,7 +56,8 @@ target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
 add_test(NAME dinput_pad COMMAND test_dinput_pad)
 
 add_executable(test_pad_glyphs tests/test_pad_glyphs.c
-               src/native/pad_glyphs.c tests/native_stubs.c)
+               src/native/pad_glyphs.c src/native/input_bindings.c
+               tests/native_stubs.c)
 add_dependencies(test_pad_glyphs x2_pad_glyph_header)
 target_include_directories(test_pad_glyphs PRIVATE src/recomp src/native
                                                   ${CMAKE_BINARY_DIR})
@@ -297,6 +298,18 @@ add_test(NAME binding_rows
 set_tests_properties(binding_rows PROPERTIES SKIP_RETURN_CODE 77
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# XMen2.exe's 289-entry BehavEd script-command table. Reading its four fields
+# one dword out pairs every name with the previous command's handler -- the
+# names still look right and every override registered from them is silently
+# dead. The selftest pins two handlers verified at RUNTIME and eight argument
+# specs taken from the shipped scripts, so neither check is the tool marking
+# its own work. SKIPs loudly (77) without an install.
+add_test(NAME script_commands
+         COMMAND ${CMAKE_COMMAND} -E env python3
+                 ${CMAKE_SOURCE_DIR}/tools/script_commands.py --selftest)
+set_tests_properties(script_commands PROPERTIES SKIP_RETURN_CODE 77
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME extract_fb
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/extract_fb.py --selftest)
@@ -457,6 +470,7 @@ if(X2_MODULE_HAVE)
         src/native/reportbox.c
         src/native/security.c
         src/native/conversation.c
+        src/native/script_trace.c
         src/native/heartbeat.c
         src/native/oracle_trace.c
         src/recomp/gen/probe_wraps.c
