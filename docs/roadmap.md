@@ -58,7 +58,13 @@ refuses metrics whose units do not match the font's own.
 Open: three of the four fonts the game loads (`X2F_big`, `X2F_hud_PC`,
 `font_XMEN_digital`) are pixel format 15, and the builder refuses to re-encode
 them, so a prompt drawn in one of those would still be blank. Whether any is.
-And no real controller has been tested.
+
+**And the gate covers the MENU, not gameplay.** Reported from a real play
+session 2026-08-19 (issue #87): in gameplay the prompts still name keyboard
+keys with a pad connected. The captures above stand -- they were the main menu
+bar and the conversation dialog -- but a gameplay HUD prompt goes through
+neither, and the caller census the feature doc asks for was never finished. So
+this feature is met on two screens and unmeasured everywhere else.
 
 ## 4. Input hotswap
 
@@ -94,6 +100,14 @@ Open: **no real controller has been attached to this machine**, so every
 reading above comes from the synthetic pad. That is a real gap and it is why
 this is not called verified. The `x2ctl.py input` probe is what a hardware run
 should be checked with.
+
+**And a real play session found the bindings incomplete** (2026-08-19, issues
+#85 and #86): `R` + a face button fires no power, so abilities are unusable
+with the pad, and healing has no binding at all. Every reading recorded above
+is a MENU, DIALOG or MOVEMENT action -- no power row and no item row was ever
+checked -- so "the pad delivers buttons" was proved on the subset that happened
+to be tested. What is bound, by action name and with a count, is the first
+thing to establish.
 
 ## 5. RmlUi for player mapping and input bindings
 
