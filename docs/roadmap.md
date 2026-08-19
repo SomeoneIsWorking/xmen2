@@ -59,6 +59,14 @@ Open: three of the four fonts the game loads (`X2F_big`, `X2F_hud_PC`,
 `font_XMEN_digital`) are pixel format 15, and the builder refuses to re-encode
 them, so a prompt drawn in one of those would still be blank. Whether any is.
 
+**The d-pad and the shoulder buttons were unreadable** (#88, #89): all four
+d-pad directions drew one icon, and RB and RT were the same letter on two
+rectangles that differed only in fill. Both fixed, and the art now lives in
+`shared/port-assets` -- consumed, not vendored, because the next port was about
+to redraw the same controller. The bar for accepting a glyph is a rasterised
+sheet at the shipping cell size over light, dark and mid-tone backgrounds;
+four earlier attempts died there.
+
 **And the gate covers the MENU, not gameplay.** Reported from a real play
 session 2026-08-19 (issue #87): in gameplay the prompts still name keyboard
 keys with a pad connected. The captures above stand -- they were the main menu
@@ -100,6 +108,15 @@ Open: **no real controller has been attached to this machine**, so every
 reading above comes from the synthetic pad. That is a real gap and it is why
 this is not called verified. The `x2ctl.py input` probe is what a hardware run
 should be checked with.
+
+**The pad's TRIGGERS were delivering nothing at all** (C222, #85): both 360
+triggers share one DirectInput axis and the port halved it, so a fully squeezed
+trigger reached half the range the game asked for -- and on the synthetic pad a
+fresh axis presented BOTH triggers half held, cancelling to centre. `Power` is
+bound to the right trigger, so the modifier every power needs never engaged.
+Fixed and measured: code 0x06 resolves to 1.000 and reaches the game's own
+player input array. Neither the unit test nor the probe could have caught it --
+one checked the sign, the other printed a down/up bit.
 
 **And a real play session found the bindings incomplete** (2026-08-19, issues
 #85 and #86): `R` + a face button fires no power, so abilities are unusable
