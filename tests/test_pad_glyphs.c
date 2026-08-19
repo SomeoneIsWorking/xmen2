@@ -165,12 +165,39 @@ int main(int argc, char **argv)
     ok = check_call(3, 0x15, 0x80, 0) && /* A */
          check_call(3, 5,    0x86, 0) && /* Z+ = LT */
          check_call(3, 6,    0x87, 0) && /* Z- = RT */
-         check_call(3, 0x11, 0x8a, 0) && /* POV */
+         /* One glyph PER d-pad direction. Checking that each POV code
+            returns SOME glyph is what the old single-icon mapping already
+            did; what separates the two is that the four must DIFFER (#88). */
+         check_call(3, 0x11, X2_PAD_GLYPH_DPAD_RIGHT, 0) &&
+         check_call(3, 0x12, X2_PAD_GLYPH_DPAD_LEFT,  0) &&
+         check_call(3, 0x13, X2_PAD_GLYPH_DPAD_DOWN,  0) &&
+         check_call(3, 0x14, X2_PAD_GLYPH_DPAD_UP,    0) &&
          check_call(4, 0x15, 0, 1) &&    /* non-Xbox slot */
          check_call(3, 0x1d, 0, 1);      /* LS has no authored glyph */
     if (!ok) {
         fprintf(stderr, "pad glyph shipping-wrapper checks FAILED\n");
         return 1;
+    }
+    /* And no two codes in the whole vocabulary share a glyph: a prompt that
+       draws the same picture for two different bindings is the defect, and
+       one pair of it is as wrong as four. */
+    {
+        uint8_t seen[256];
+        unsigned code, distinct = 0, collisions = 0;
+        memset(seen, 0, sizeof seen);
+        for (code = 1u; code <= 0x1eu; code++) {
+            uint8_t g = pad_glyph_code(code);
+            if (!g) continue;
+            if (seen[g]++) {
+                fprintf(stderr, "pad glyph: code 0x%02x reuses glyph 0x%02x\n",
+                        code, g);
+                collisions++;
+            }
+            distinct++;
+        }
+        printf("pad glyph vocabulary: %u code(s) map to a glyph, %u "
+               "collision(s)\n", distinct, collisions);
+        if (collisions) return 1;
     }
     /*
      * The label-selection half. Without it the naming override above can be
@@ -210,7 +237,7 @@ int main(int argc, char **argv)
      */
     {
         char glyph[2];
-        glyph[0] = (char)X2_PAD_GLYPH_A;
+        glyph[0] = (char)X2_PAD_GLYPH_FACE_A;
         glyph[1] = '\0';
         if (strcmp(label_after(glyph), glyph) != 0) {
             fprintf(stderr, "pad glyph brackets: a glyph label kept its "

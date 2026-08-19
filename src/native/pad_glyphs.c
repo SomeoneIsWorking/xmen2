@@ -8,7 +8,8 @@
  *   codes 0x15..0x31  "Btn N" (the active DirectInput order is in
  *                       dinput_pad.c)
  *   codes 1..0x10     signed axes; Z+ (5) / Z- (6) are LT / RT
- *   codes 0x11..0x14  POV directions
+ *   codes 0x11..0x14  POV directions -- X+ X- Y+ Y-, i.e. right, left,
+ *                       down, up, and each gets its OWN glyph
  *
  * This port replaces only those names for a live Xbox-family SDL device and
  * only when the generated font pack is active. Every other case super-calls
@@ -96,22 +97,35 @@ static int enabled(void)
 uint8_t pad_glyph_code(uint32_t code)
 {
     static const uint8_t buttons[] = {
-        X2_PAD_GLYPH_A, X2_PAD_GLYPH_B, X2_PAD_GLYPH_X, X2_PAD_GLYPH_Y,
+        X2_PAD_GLYPH_FACE_A, X2_PAD_GLYPH_FACE_B, X2_PAD_GLYPH_FACE_X, X2_PAD_GLYPH_FACE_Y,
         X2_PAD_GLYPH_LB, X2_PAD_GLYPH_RB,
         X2_PAD_GLYPH_BACK, X2_PAD_GLYPH_START
+    };
+    /* The POV hat, ONE GLYPH PER DIRECTION. A single d-pad picture for all
+       four is what the game asks about four different bindings, and a prompt
+       offering four d-pad choices then draws the same icon four times -- less
+       than the keyboard text it replaced, which at least said UP or LEFT
+       (#88). The code order is DirectInput's POV pairs: X+ X- Y+ Y-, and Y+
+       is DOWN here exactly as it is on the sticks. */
+    static const uint8_t pov[] = {
+        X2_PAD_GLYPH_DPAD_RIGHT, X2_PAD_GLYPH_DPAD_LEFT,
+        X2_PAD_GLYPH_DPAD_DOWN,  X2_PAD_GLYPH_DPAD_UP
     };
     if (code >= 0x15u && code < 0x15u + sizeof buttons)
         return buttons[code - 0x15u];
     if (code == 5u) return X2_PAD_GLYPH_LT;
     if (code == 6u) return X2_PAD_GLYPH_RT;
-    if (code >= 0x11u && code <= 0x14u) return X2_PAD_GLYPH_DPAD;
+    if (code >= 0x11u && code < 0x11u + sizeof pov)
+        return pov[code - 0x11u];
     return 0;
 }
 
-/* Is this byte one of the eleven codepoints this port publishes? */
+/* Is this byte one of the codepoints this port publishes? The bounds are
+   generated with the glyphs, because a hand-written range ending at whichever
+   glyph is currently last stops covering the set the moment one is added. */
 static int glyph_byte(uint8_t b)
 {
-    return b >= X2_PAD_GLYPH_A && b <= X2_PAD_GLYPH_DPAD;
+    return b >= X2_PAD_GLYPH_FIRST && b <= X2_PAD_GLYPH_LAST;
 }
 
 static uint32_t name_buffer(void)

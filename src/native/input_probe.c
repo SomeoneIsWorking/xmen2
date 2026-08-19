@@ -135,6 +135,43 @@ static uint32_t thiscall(CPU *cpu, uint32_t fn, uint32_t ecx,
     return call.eax;
 }
 
+/*
+ * The physical-code vocabulary FUN_00627650 answers for, named.
+ *
+ * Codes 1..0x10 are SIGNED AXIS HALVES -- the positive half then the negative
+ * half of each DirectInput axis, so one stick costs four codes -- 0x11..0x14
+ * are the POV hat's four directions, and 0x15 upward are the 32 buttons of the
+ * DIJOYSTATE block in the order DirectInput enumerates them. The Xbox meaning
+ * beside each one is this pad's layout (dinput_pad.c), not DirectInput's, and
+ * the two triggers SHARE the Z axis: left drives it positive, right negative,
+ * which is what a 2005 game written against a 360 pad reads.
+ */
+#define PAD_CODE_MAX 0x34u           /* 0x15 + 32 buttons - 1 */
+
+static const char *pad_code_name(uint32_t code)
+{
+    static const char *const AXES[] = {
+        "X+",   "X- ",                       /* 0x01 0x02  left stick right/left */
+        "Y+",   "Y- ",                       /* 0x03 0x04  left stick down/up    */
+        "Z+ LT", "Z- RT",                    /* 0x05 0x06  the shared trigger axis */
+        "Rx+",  "Rx-",                       /* 0x07 0x08  right stick right/left */
+        "Ry+",  "Ry-",                       /* 0x09 0x0a  right stick down/up   */
+        "Rz+",  "Rz-", "S0+", "S0-", "S1+", "S1-",
+    };
+    static const char *const POV[] = { "POV X+", "POV X-", "POV Y+", "POV Y-" };
+    static const char *const BUTTONS[] = {
+        "A", "B", "X", "Y", "LB", "RB", "Back", "Start", "LS click", "RS click"
+    };
+    static char other[16];
+
+    if (code >= 1u && code <= 0x10u) return AXES[code - 1u];
+    if (code >= 0x11u && code <= 0x14u) return POV[code - 0x11u];
+    if (code >= 0x15u && code < 0x15u + sizeof BUTTONS / sizeof BUTTONS[0])
+        return BUTTONS[code - 0x15u];
+    snprintf(other, sizeof other, "button %u", code - 0x15u);
+    return other;
+}
+
 /* The device kind a slot's value names, in the game's own numbering. */
 static const char *kind_name(uint32_t kind)
 {
@@ -344,30 +381,44 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
             }
 
             /*
-             * And the accessor itself, asked directly. If this reads 1.0 for a
-             * button the block above shows down, then everything up to and
-             * including the physical read works and the fault is that nothing
-             * ASKED -- which is a different repair from a broken read.
+             * And the accessor itself, asked directly, over its WHOLE
+             * vocabulary. If this reads 1.0 for a button the block above shows
+             * down, then everything up to and including the physical read
+             * works and the fault is that nothing ASKED -- which is a
+             * different repair from a broken read.
+             *
+             * Every code is printed with its MAGNITUDE, not a down/up bit, and
+             * that is the point of sampling the axes here rather than the four
+             * face buttons this used to cover. An analog code that arrives at
+             * HALF scale is indistinguishable from one that arrives correctly
+             * if all you print is "pressed", and the triggers are the codes a
+             * pad binding is most likely to be wrong about: DirectInput puts
+             * both of them on ONE axis, so their scale is this port's
+             * arithmetic rather than SDL's number.
              */
             {
-                static const uint32_t CODES[] = { 0x15u, 0x16u, 0x17u, 0x18u };
                 unsigned c, hot = 0;
-                put(out, n, &at, "  FUN_00627650(pad 0, code):");
-                for (c = 0; c < sizeof CODES / sizeof CODES[0]; c++) {
-                    uint32_t args[2];
+                put(out, n, &at,
+                    "  FUN_00627650(pad 0, code) over all %u codes -- the "
+                    "value a binding on that code resolves to:\n",
+                    PAD_CODE_MAX);
+                for (c = 1u; c <= PAD_CODE_MAX; c++) {
                     long double v;
                     CPU call = *cpu;
-                    args[0] = 0u; args[1] = CODES[c];
                     call.esp -= 8u;
-                    WR32(call.esp + 0u, args[0]);
-                    WR32(call.esp + 4u, args[1]);
+                    WR32(call.esp + 0u, 0u);
+                    WR32(call.esp + 4u, c);
                     call.ecx = wrapper;
                     x86_guest_call_args(&call, base + DI_PAD_VALUE_RVA, 8u);
                     v = call.st[call.top];
-                    put(out, n, &at, " 0x%02x=%.1f", CODES[c], (double)v);
-                    if (v != 0.0L) hot++;
+                    if (v == 0.0L) continue;
+                    put(out, n, &at, "    0x%02x %-14s %+.3f\n",
+                        c, pad_code_name(c), (double)v);
+                    hot++;
                 }
-                put(out, n, &at, "%s\n", hot ? "" : "   (all zero)");
+                put(out, n, &at, "    %u of %u codes are non-zero%s\n",
+                    hot, PAD_CODE_MAX,
+                    hot ? "" : " -- nothing on this pad is deflected or held");
             }
         }
     }

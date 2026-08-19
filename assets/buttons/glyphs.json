@@ -1,7 +1,10 @@
 {
+  "set": "gamepad-xbox360",
   "first_codepoint": 128,
   "icons": [
-    "btn_a", "btn_b", "btn_x", "btn_y", "btn_lb", "btn_rb",
-    "btn_lt", "btn_rt", "btn_start", "btn_back", "btn_dpad"
+    "face_a", "face_b", "face_x", "face_y",
+    "lb", "rb", "lt", "rt",
+    "start", "back",
+    "dpad_up", "dpad_down", "dpad_left", "dpad_right"
   ]
 }

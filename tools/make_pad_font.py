@@ -56,7 +56,15 @@ from alchemy_path import add_alchemy_tools_to_path             # noqa: E402
 add_alchemy_tools_to_path()
 
 import xmlb                                                     # noqa: E402
-from pad_glyph_manifest import FIRST_CODEPOINT, ICONS            # noqa: E402
+from pad_glyph_manifest import (FIRST_CODEPOINT, ICONS,          # noqa: E402
+                                SET_NAME, svg_paths)
+import port_assets                                              # noqa: E402
+
+
+def port_assets_path(name):
+    """One icon of the shared set, by name -- for the --icons experiment path."""
+    return str(port_assets.path(SET_NAME, name, start=__import__(
+        "pathlib").Path(ROOT)))
 
 PFMT_RGBA_8888_32 = 7
 CELL = 18                    # pixels; the shipped glyphs are 16-20 tall
@@ -133,13 +141,17 @@ def empty_band(rgba, w, h):
 
 # ---- icons ---------------------------------------------------------------
 
-def rasterise(icons_dir, names, size, tmp):
+def rasterise(sources, size, tmp):
     """SVG -> size x size RGBA, via ImageMagick. A missing icon or a missing
-    rasteriser is refused; a pack built from ten of eleven icons would draw a
-    blank for one prompt and look like a game bug."""
+    rasteriser is refused; a pack built from ten of fourteen icons would draw a
+    blank for one prompt and look like a game bug.
+
+    `sources` are full paths, because the art is NOT in this repo -- it comes
+    from the shared `port-assets` set that every port in the tree draws its
+    controller from."""
     out = []
-    for n in names:
-        src = os.path.join(icons_dir, n + ".svg")
+    for src in sources:
+        n = os.path.splitext(os.path.basename(src))[0]
         if not os.path.exists(src):
             raise SystemExit("REFUSING: %s does not exist, so the pack would "
                              "be missing the %s prompt." % (src, n))
@@ -211,18 +223,22 @@ def patch_igb(igb_path, out_path, old_raw, new_raw):
     return first
 
 
-def build(pc_igb, pc_xmlb, outdir, icons_dir=None, first=None, icons=None):
+def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
     """Publish the button art into a copy of the font.
 
     `first` and `icons` override assets/buttons/glyphs.json. They exist so an
     EXPERIMENT -- "does the game draw a glyph we injected at codepoint X?" --
     can be run into a scratch pack without editing shipped data. The shipping
     path (tools/prepare_native_assets.py) passes neither and so always uses the
-    manifest, which keeps its 11-icon invariant.
+    manifest, which keeps its 14-icon invariant.
+
+    The ART comes from the shared `port-assets` set the manifest names, not
+    from this repo; `svg_paths()` is the one place that resolves it.
     """
     first = FIRST_CODEPOINT if first is None else first
+    sources = (svg_paths() if icons is None
+               else [port_assets_path(n) for n in icons])
     icons = ICONS if icons is None else icons
-    icons_dir = icons_dir or os.path.join(ROOT, "assets", "buttons")
     w, h, rgba, raw = decode_atlas(pc_igb)
     before = bytes(rgba)   # kept so the verify can say what actually CHANGED
     y0, rows = empty_band(rgba, w, h)
@@ -285,7 +301,7 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None, first=None, icons=None):
     # them in the project's gitignored scratch tree (never /tmp), and have the
     # context manager remove the exact directory it created on every exit.
     with tempfile.TemporaryDirectory(prefix="padfont-", dir=scratch_raw) as tmp:
-        art = rasterise(icons_dir, icons, CELL, tmp)
+        art = rasterise(sources, CELL, tmp)
     placed = []
     for i, (code, px) in enumerate(zip(codes, art, strict=True)):
         cx = GAP + (i % per_row) * need

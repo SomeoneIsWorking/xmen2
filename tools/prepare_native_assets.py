@@ -8,10 +8,17 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+
+# The manifest is the ONE authority on how many glyphs there are; a second
+# number written down here drifts from it the first time the set changes.
+from pad_glyph_manifest import ICONS, svg_paths                   # noqa: E402
+
 SCRATCH = ROOT / "scratch"
 FONT_IGB = ("Textures", "fonts", "x2f_med_pc.igb")
 FONT_XMLB = ("UI", "fonts", "x2f_med_pc.xmlb")
@@ -57,9 +64,13 @@ def cleanup_tree(path: Path) -> None:
 def prepare(game: Path, out: Path) -> None:
     igb = case_path(game, FONT_IGB)
     xmlb = case_path(game, FONT_XMLB)
-    icons = sorted((ROOT / "assets" / "buttons").glob("*.svg"))
-    if len(icons) != 11:
-        raise SystemExit(f"REFUSING: scanned assets/buttons and found {len(icons)} SVGs, needs 11")
+    # The art lives in the SHARED port-assets set, so the fingerprint has to
+    # follow it there: a pack cached against the old drawing of a glyph is
+    # exactly the stale-vendored-copy failure the shared repo exists to end.
+    icons = svg_paths()
+    if len(icons) != len(ICONS):
+        raise SystemExit(f"REFUSING: the manifest names {len(ICONS)} glyph(s) "
+                         f"but resolved {len(icons)} SVG path(s)")
     sources = [igb, xmlb, ROOT / "tools" / "make_pad_font.py",
                ROOT / "tools" / "pad_glyph_manifest.py",
                ROOT / "assets" / "buttons" / "glyphs.json", *icons]
