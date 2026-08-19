@@ -1,4 +1,5 @@
 #include "pad_glyphs.h"
+#include "pad_glyph_codes.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -53,11 +54,43 @@ void x86_guest_call_args(CPU *c, uint32_t target, uint32_t pop)
 {
     (void)c; (void)target; (void)pop; abort();   /* the label path writes none */
 }
+/* FUN_00619e30 -- the label builder. The stub composes "[%s]" into the guest
+   buffer exactly as the original's sprintf does, from a name the test picks. */
+static uint32_t g_label_name;
+void fn_XMen2_00619e30(CPU *c)
+{
+    uint32_t out = mapped_base + BUFFER_RVA;
+    uint32_t i = 0, ch;
+    WR8(out, (uint8_t)'[');
+    for (i = 0; (ch = RD8(g_label_name + i)) != 0; i++)
+        WR8(out + 1u + i, (uint8_t)ch);
+    WR8(out + 1u + i, (uint8_t)']');
+    WR8(out + 2u + i, 0);
+    c->eax = out;
+    c->esp += 4u;                      /* cdecl: the caller cleans its arg */
+}
 void x86_seg_unset(const char *seg) { (void)seg; abort(); }
 __thread uint32_t g_fsbase, g_gsbase;
 
 void x2_override_006281f0(CPU *c);
 void x2_override_006294b0(CPU *c);
+void x2_override_00619e30(CPU *c);
+
+/* Build a label from `name` and return what the override left in the buffer. */
+static const char *label_after(const char *name)
+{
+    CPU c = {0};
+    uint32_t stack = mapped_base + 0x4000u, p = mapped_base + 0x4100u;
+    uint32_t i;
+    for (i = 0; name[i]; i++) WR8(p + i, (uint8_t)name[i]);
+    WR8(p + i, 0);
+    g_label_name = p;
+    WR32(stack, 0xfeedfaceu);
+    WR32(stack + 4u, 7u);              /* the action id; the stub ignores it */
+    c.esp = stack;
+    x2_override_00619e30(&c);
+    return (const char *)(uintptr_t)c.eax;
+}
 
 /* Write a binding straight into the guest table, using the ABI
    input_bindings.c states: element = object + (row*4 + slot)*12, kind at +4,
@@ -169,7 +202,42 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    printf("pad glyph wrapper: 6 enabled cases + both label-selection "
-           "directions passed\n");
+    /*
+     * The brackets. "[ENTER]" reads as a key and must survive; "[<glyph>]"
+     * is a picture of a button in square brackets, which no console prompt
+     * draws, and must lose them. Both directions, because an override that
+     * stripped everything would pass a one-sided test.
+     */
+    {
+        char glyph[2];
+        glyph[0] = (char)X2_PAD_GLYPH_A;
+        glyph[1] = '\0';
+        if (strcmp(label_after(glyph), glyph) != 0) {
+            fprintf(stderr, "pad glyph brackets: a glyph label kept its "
+                            "brackets (%s)\n", label_after(glyph));
+            return 1;
+        }
+        if (strcmp(label_after("ENTER"), "[ENTER]") != 0) {
+            fprintf(stderr, "pad glyph brackets: a keyboard label LOST its "
+                            "brackets (%s)\n", label_after("ENTER"));
+            return 1;
+        }
+        /* A ONE-CHARACTER keyboard name -- DirectInput names the letter keys
+           "A", "B" and so on -- is the case that separates "strip a glyph" from
+           "strip anything short". Without it the length test alone passes an
+           override that strips every single-character name. */
+        if (strcmp(label_after("A"), "[A]") != 0) {
+            fprintf(stderr, "pad glyph brackets: the one-character KEYBOARD "
+                            "name lost its brackets (%s)\n", label_after("A"));
+            return 1;
+        }
+        if (strcmp(label_after("???"), "[???]") != 0) {
+            fprintf(stderr, "pad glyph brackets: the unmapped label changed "
+                            "(%s)\n", label_after("???"));
+            return 1;
+        }
+    }
+    printf("pad glyph wrapper: 6 enabled cases, both label-selection "
+           "directions and all four bracket cases passed\n");
     return 0;
 }

@@ -548,3 +548,40 @@ range the font's own glyphs use, and says so:
   builder refuses them, so a prompt drawn in one of them would still be blank.
   Whether any prompt uses them is unknown.
 * NOT measured: real hardware. Everything here is the synthetic pad.
+
+
+## Three corrections after the first capture
+
+The first in-game capture was `[B] BACK`, and all three of these were wrong in
+it. None was visible from that screenshot, which is the point.
+
+**1. The glyphs were upside down.** A `B` mirrored still reads as a `B`, and so
+do `A`, `X` and `Y` -- every glyph the menu happens to show is near-symmetric,
+so the capture looked correct. The discriminator has to be an ASYMMETRIC glyph:
+`X2_PAD_GLYPH_PROBE=0x84` forces LB, which carries an `L`, onto every prompt,
+and it drew as `Γ`. Cause: `decode_atlas` returns a BOTTOM-UP buffer while the
+glyph UVs are top-down into the real texture -- confirmed by reading a stock
+`A` out of the decoded atlas both ways, which gives an upside-down A one way
+and an unrelated stroke the other. `row_to_t` already accounted for the row
+order, so the cell selection was right and only the art within it was mirrored.
+`blit` now writes the source rows reversed, and the selftest uses a cell whose
+rows DIFFER so it can see the flip -- the old one used a uniform cell and could
+not have.
+
+**2. The glyph sat five pixels above the line.** `baseline` is not per-glyph
+geometry: every drawing glyph in this font uses the same value (11 of 166
+sampled, 83 agreeing), so it is the ascent -- the distance from the glyph box
+top down to the text baseline. Deriving `CELL - 2` from the letters'
+height/baseline relationship lifted ours. The builder now takes the font's own
+value, by majority of the glyphs that draw.
+
+**3. The square brackets are wrong around a picture of a button.** `[ENTER]`
+reads as a key; `[A]` does not -- no console prompt draws brackets round its
+button art. A third override on `FUN_00619e30` removes them, and ONLY when the
+composed label is exactly one of this port's glyphs in brackets: a keyboard
+name, a one-character keyboard name like the `A` key, and the unmapped `[???]`
+all keep theirs. The test covers all four and was checked against two
+mutations -- never stripping, and stripping anything short.
+
+The result is `B BACK` / `A SELECT` with the buttons upright, on the baseline
+and unbracketed: `scratch/shots/final_prompt.png`.

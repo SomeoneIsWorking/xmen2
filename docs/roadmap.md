@@ -41,8 +41,10 @@ published into unused bytes of the PC font and returned at the game's RE'd
 physical-input naming boundary, for SDL-classified Xbox controllers only. No
 Xbox asset is shipped; the art is this port's.
 
-**The gate is met.** The main menu prompt bar draws `[B] BACK` / `[A] SELECT`
-with the real button art, and the tutorial dialog draws the button in place of
+**The gate is met.** The main menu prompt bar draws `B BACK` / `A SELECT`
+with the real button art — upright, on the text baseline and without the
+game's square brackets, all three of which were wrong in the first capture and
+none of which that capture could show, and the tutorial dialog draws the button in place of
 `[ENTER] CONTINUE...` — captured in game, on the shipping codepoints
 (`scratch/shots/ship.png`, C219). With a pad connected the prompt follows the
 pad, because the label override answers with the row's pad binding.

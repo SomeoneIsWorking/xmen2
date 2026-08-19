@@ -169,9 +169,19 @@ def rasterise(icons_dir, names, size, tmp):
 
 
 def blit(rgba, w, px, size, x0, y0):
+    """Copy one CELL-square RGBA cell in, MIRRORED VERTICALLY.
+
+    decode_atlas hands back a BOTTOM-UP buffer while the font's glyph UVs are
+    top-down into the real texture. Measured on a stock glyph: reading 'A'
+    bottom-up out of the decoded image gives an upside-down A, so the decoded
+    rows run the other way from the way the game samples them. Our UVs already
+    account for that (row_to_t) and land on the right cell -- but art written
+    straight in lands mirrored, which draws an upside-down L on the LB button
+    and is invisible on the symmetric ones. So the source rows go in reversed.
+    """
     for y in range(size):
         for x in range(size):
-            s = (y * size + x) * 4
+            s = ((size - 1 - y) * size + x) * 4
             d = ((y0 + y) * w + x0 + x) * 4
             rgba[d:d + 4] = px[s:s + 4]
 
@@ -242,6 +252,21 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None, first=None, icons=None):
     if template is None:
         raise SystemExit("REFUSING: %s has no glyph with a rect, so there is "
                          "nothing to model the new ones on." % pc_xmlb)
+    # The font's own baseline, by majority of the glyphs that draw. A single
+    # template glyph is not enough: the first one with a rect turned out to
+    # have baseline="1".
+    tally = {}
+    for c in used:
+        b = by_num[c].get("baseline")
+        if b is not None:
+            tally[b] = tally.get(b, 0) + 1
+    if not tally:
+        raise SystemExit("REFUSING: no glyph in %s carries a baseline, so the "
+                         "new ones have nothing to line up with." % pc_xmlb)
+    font_baseline = max(tally, key=lambda k: tally[k])
+    print("font baseline %s (%d of %d drawing glyphs agree)"
+          % (font_baseline, tally[font_baseline], len(used)))
+
     codes = list(range(first, first + len(icons)))
     clash = [c for c in codes if c in used]
     if clash:
@@ -285,8 +310,12 @@ def build(pc_igb, pc_xmlb, outdir, icons_dir=None, first=None, icons=None):
         g.set("height", str(CELL))
         g.set("horizadvance", str(CELL + 1))
         g.set("horizoffset", "0")
-        # Letters sit ~2px above the box bottom ('A' 13 tall, baseline 11).
-        g.set("baseline", str(CELL - 2))
+        # `baseline` is NOT per-glyph geometry: every glyph in this font uses
+        # the same value (11 here) whatever its height, so it is the ascent --
+        # the distance from the glyph box TOP down to the text baseline. Deriving
+        # CELL-2 from the letters' height/baseline relationship put our glyph
+        # five pixels above the line. Take the font's own value instead.
+        g.set("baseline", str(font_baseline))
         placed.append((ICONS[i], code, cx, cy))
 
     new_raw = bytes(rgba) if len(rgba) == len(raw) else None
@@ -404,10 +433,22 @@ def _selftest():
 
     # The blit must land where it is told, and nowhere else.
     dst = bytearray(w * hh * 4)
-    art = bytes([9, 8, 7, 255]) * (4 * 4)
+    # Rows that DIFFER, so the vertical mirror is visible to this test. The
+    # previous version used a uniform cell and could not have told an upright
+    # blit from a flipped one -- which is exactly the defect that shipped.
+    art = bytearray()
+    for row in range(4):
+        art += bytes([row, 8, 7, 255]) * 4
+    art = bytes(art)
     blit(dst, w, art, 4, 10, 20)
-    if bytes(dst[(20 * w + 10) * 4:(20 * w + 10) * 4 + 4]) != b"\x09\x08\x07\xff":
-        fails.append("blit did not write its top-left pixel")
+    top = bytes(dst[(20 * w + 10) * 4:(20 * w + 10) * 4 + 4])
+    bot = bytes(dst[(23 * w + 10) * 4:(23 * w + 10) * 4 + 4])
+    if top != b"\x03\x08\x07\xff":
+        fails.append("blit did not MIRROR: its top destination row is %r, "
+                     "expected the source's LAST row" % (top,))
+    if bot != b"\x00\x08\x07\xff":
+        fails.append("blit did not MIRROR: its bottom destination row is %r, "
+                     "expected the source's FIRST row" % (bot,))
     if any(dst[(20 * w + 9) * 4 + k] for k in range(4)):
         fails.append("blit wrote one pixel to the LEFT of its cell")
     if sum(1 for i in range(w * hh) if dst[i * 4 + 3]) != 16:
@@ -416,7 +457,7 @@ def _selftest():
 
     for f in fails:
         print("FAIL selftest: %s" % f)
-    print("make_pad_font selftest: %d of 11 checks passed" % (11 - len(fails)))
+    print("make_pad_font selftest: %d of 12 checks passed" % (12 - len(fails)))
     return 1 if fails else 0
 
 

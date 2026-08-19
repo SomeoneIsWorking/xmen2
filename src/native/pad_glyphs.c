@@ -66,12 +66,20 @@ static int probe_char(void)
     static int c = -1;
     if (c < 0) {
         const char *e = getenv("X2_PAD_GLYPH_PROBE");
-        c = (e && *e) ? (unsigned char)*e : 0;
+        /* "0xNN" forces a raw byte -- use it to put an ASYMMETRIC glyph on
+           every prompt (LB and RB carry an L and an R), which is the only way
+           to tell a mirrored atlas cell from an upright one. A bare character
+           forces that character. */
+        if (e && e[0] == '0' && (e[1] == 'x' || e[1] == 'X'))
+            c = (int)strtol(e + 2, NULL, 16) & 0xff;
+        else
+            c = (e && *e) ? (unsigned char)*e : 0;
         if (c)
             fprintf(stderr, "PAD-GLYPHS: X2_PAD_GLYPH_PROBE -- every pad "
-                            "prompt will draw '%c' (0x%02x) instead of its "
-                            "glyph. This is a diagnostic; unset it to see the "
-                            "real art.\n", c, c);
+                            "prompt will draw byte 0x%02x ('%c') instead of "
+                            "its glyph. This is a diagnostic; unset it to see "
+                            "the real art.\n",
+                    c, c >= 0x20 && c < 0x7f ? c : '.');
     }
     return c;
 }
@@ -98,6 +106,12 @@ uint8_t pad_glyph_code(uint32_t code)
     if (code == 6u) return X2_PAD_GLYPH_RT;
     if (code >= 0x11u && code <= 0x14u) return X2_PAD_GLYPH_DPAD;
     return 0;
+}
+
+/* Is this byte one of the eleven codepoints this port publishes? */
+static int glyph_byte(uint8_t b)
+{
+    return b >= X2_PAD_GLYPH_A && b <= X2_PAD_GLYPH_DPAD;
 }
 
 static uint32_t name_buffer(void)
@@ -182,12 +196,43 @@ void x2_override_006294b0(CPU *C)
     g_rows_padded++;
 }
 
+/*
+ * FUN_00619e30 -- the label builder. cdecl(action), returns a pointer to the
+ * static it composed with `sprintf(0xa68c18, "[%s]", name)`.
+ *
+ * Those square brackets are right for a keyboard name: "[ENTER]" reads as a
+ * key. They are wrong around a button glyph, which is already a picture of the
+ * button -- no console prompt draws "[A] Select". So when the composed label
+ * is exactly one of this port's glyphs in brackets, the brackets come off.
+ * Every other label -- keyboard, mouse, an unmapped "[???]" -- is left exactly
+ * as the game built it.
+ */
+void fn_XMen2_00619e30(CPU *C);
+
+static unsigned long g_unbracketed;
+
+void x2_override_00619e30(CPU *C)
+{
+    uint32_t out;
+
+    fn_XMen2_00619e30(C);
+    out = C->eax;
+    if (!out) return;
+    if (RD8(out) == (uint8_t)'[' && glyph_byte(RD8(out + 1u)) &&
+        RD8(out + 2u) == (uint8_t)']' && RD8(out + 3u) == 0) {
+        WR8(out, RD8(out + 1u));
+        WR8(out + 1u, 0);
+        g_unbracketed++;
+    }
+}
+
 /* Register the Xbox-prompt name and label-selection boundaries. */
 __attribute__((constructor))
 static void x2_pad_glyphs_register_overrides(void)
 {
     x86_register_override("XMen2.exe", 0x006281f0, x2_override_006281f0);
     x86_register_override("XMen2.exe", 0x006294b0, x2_override_006294b0);
+    x86_register_override("XMen2.exe", 0x00619e30, x2_override_00619e30);
 }
 
 void pad_glyphs_report(void)
@@ -200,6 +245,8 @@ void pad_glyphs_report(void)
     /* With the denominator, because "0 glyphs" means one thing when the label
        was never built at all and another when it was built 900 times and every
        row named the keyboard. */
+    printf("  Xbox prompt labels: %lu had the game's square brackets removed "
+           "because the name was a glyph\n", g_unbracketed);
     printf("  Xbox prompt rows: %lu label read(s) -- %lu answered with the "
            "row's pad binding, %lu had none and used the game's own slot "
            "order\n", g_rows_asked, g_rows_padded, g_rows_no_pad);
