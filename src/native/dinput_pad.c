@@ -374,7 +374,14 @@ int32_t dinput_pad_axis(int pad, int axis, int32_t lo, int32_t hi)
          */
         int l = SDL_GetGamepadAxis(p->gp, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
         int r = SDL_GetGamepadAxis(p->gp, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
-        raw = (l - r) / 2;                    /* 0..32767 each -> -16383..16383 */
+        /* ONE trigger held alone reaches the axis EXTREME, exactly as a fully
+           deflected stick does -- the two triggers divide the axis between
+           them by opposing each other, not by each owning half of it. This
+           read `(l - r) / 2`, which put a fully squeezed trigger at half
+           scale; the game applies one DIPROP_RANGE to every axis, so a
+           binding on Z- then resolved to 0.5 where a stick binding resolved to
+           1.0. The old test could not see it: it checked the SIGN. */
+        raw = l - r;                          /* 0..32767 each -> -32767..32767 */
         break;
     }
     case DINPUT_PAD_AXIS_RZ: raw = 0; break;
@@ -416,6 +423,19 @@ uint32_t dinput_pad_pov(int pad)
     (void)pad;
     return 0xFFFFFFFFu;
 #endif
+}
+
+/* The two axes SDL treats as TRIGGERS: it maps their whole signed joystick
+   travel onto 0..32767, so their rest position is the axis minimum and not
+   zero. Everything that writes a virtual axis has to know which it is holding.
+   Index order is AXIS[] in dinput_pad_set_axis: leftx lefty rightx righty
+   lefttrigger righttrigger. */
+static int axis_is_trigger(int i) { return i == 4 || i == 5; }
+
+/* 0.0 (released) .. 1.0 (fully squeezed) as SDL's virtual-joystick value. */
+static short trigger_raw(double v)
+{
+    return (short)(-32768.0 + v * 65535.0);
 }
 
 /*
@@ -591,6 +611,25 @@ static void virtual_attach(void)
         fprintf(stderr, "DINPUT-PAD: the synthetic pad attached but could NOT be "
                         "opened (%s), so nothing can press its buttons. It will "
                         "enumerate and read as all-zero forever.\n", SDL_GetError());
+    if (g_virt_js) {
+        /* PUT THE TRIGGERS AT REST. A fresh virtual axis is 0, and SDL maps a
+           trigger's whole signed travel onto 0..32767 -- so a pad that has
+           never been touched presents BOTH triggers half squeezed. On the
+           shared Z axis they then cancel, which is why it looked fine: the
+           axis read centred while every individual trigger binding, including
+           the one this port's preset puts `Power` on, resolved to nothing. */
+        int i;
+        for (i = 0; i < 6; i++)
+            if (axis_is_trigger(i)) {
+                g_vaxis_value[i] = trigger_raw(0.0);
+                SDL_SetJoystickVirtualAxis(g_virt_js, i, trigger_raw(0.0));
+            }
+        SDL_UpdateJoysticks();
+        fprintf(stderr, "DINPUT-PAD: synthetic triggers set to their REST "
+                        "value %d (a fresh virtual axis reads 0, which SDL "
+                        "reports as a trigger held half down)\n",
+                (int)trigger_raw(0.0));
+    }
     dinput_pad_refresh();
     {
         char *m = SDL_GetGamepadMappingForID(jid);
@@ -729,9 +768,21 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
         }
     for (i = 0; i < 6; i++)
         if (!strcmp(what, AXIS[i])) {
-            /* -1..1 from the caller, SDL's signed 16-bit range on the wire. */
+            /* -1..1 from the caller, SDL's signed 16-bit range on the wire --
+               EXCEPT for the triggers, which have no negative half. SDL maps a
+               virtual joystick axis's whole -32768..32767 travel onto a
+               trigger's 0..32767, so a trigger axis left at 0 reads as HALF
+               HELD, and there is no way to say "released" on the caller's
+               -1..1 scale unless one is defined. A trigger therefore takes
+               0..1, and its rest position is the axis MINIMUM. */
             double v = value < -1.0 ? -1.0 : (value > 1.0 ? 1.0 : value);
-            short raw = (short)(v * 32767.0);
+            short raw;
+            if (axis_is_trigger(i)) {
+                if (v < 0.0) v = 0.0;
+                raw = trigger_raw(v);
+            } else {
+                raw = (short)(v * 32767.0);
+            }
             if (!SDL_SetJoystickVirtualAxis(g_virt_js, i, raw)) {
                 snprintf(why, (size_t)whyn, "SDL refused axis %d (%s): %s",
                          i, what, SDL_GetError());
@@ -801,9 +852,14 @@ static void virtual_expire(void)
         }
     for (i = 0; i < 6; i++)
         if (g_vaxis_until[i] != 0.0 && now >= g_vaxis_until[i]) {
+            /* A trigger's rest is the axis MINIMUM, not zero. Releasing it to
+               zero left it reading half held for the remainder of the run --
+               silently, because nothing prints an axis that is merely
+               half-way. */
+            short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
             g_vaxis_until[i] = 0.0;
-            g_vaxis_value[i] = 0;
-            SDL_SetJoystickVirtualAxis(g_virt_js, i, 0);
+            g_vaxis_value[i] = rest;
+            SDL_SetJoystickVirtualAxis(g_virt_js, i, rest);
         }
 #endif
 }

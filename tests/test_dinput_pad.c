@@ -135,22 +135,42 @@ int main(void)
     SDL_UpdateJoysticks();
     printf("axes: scaled into the range the caller asks for, both ways: ok\n");
 
-    /* ---- the triggers share Z, as they do on a real 360 pad ---- */
-    SDL_SetJoystickVirtualAxis(joy, 4, 32767);   /* left trigger down */
+    /* ---- the triggers share Z, as they do on a real 360 pad ----
+       The SCALE is checked, not just the sign. A trigger held alone has to
+       reach the same extreme a fully deflected stick reaches, because the game
+       puts one range on every axis and a binding either resolves to 1.0 or it
+       does not. Checking `v > 100` passed a version that delivered HALF, and
+       it also hid the fact that this test was never RELEASING the triggers:
+       SDL maps a virtual joystick axis's WHOLE -32768..32767 travel onto the
+       trigger's 0..32767, so a virtual axis left at 0 reads as a trigger held
+       half down. `TRIG_UP` is what released means here. */
+#define TRIG_UP   (-32768)
+#define TRIG_DOWN ( 32767)
+    SDL_SetJoystickVirtualAxis(joy, 5, TRIG_UP);
+    SDL_SetJoystickVirtualAxis(joy, 4, TRIG_DOWN);   /* left alone */
     SDL_UpdateJoysticks();
     v = dinput_pad_axis(0, DINPUT_PAD_AXIS_Z, LO, HI);
-    CHECK(v > 100);
-    SDL_SetJoystickVirtualAxis(joy, 5, 32767);   /* and right: they cancel */
+    CHECK(v >= HI - 2);
+    SDL_SetJoystickVirtualAxis(joy, 5, TRIG_DOWN);   /* and right: they cancel */
     SDL_UpdateJoysticks();
     v = dinput_pad_axis(0, DINPUT_PAD_AXIS_Z, LO, HI);
     CHECK(v > -100 && v < 100);
-    SDL_SetJoystickVirtualAxis(joy, 4, 0);
+    SDL_SetJoystickVirtualAxis(joy, 4, TRIG_UP);     /* right alone */
     SDL_UpdateJoysticks();
     v = dinput_pad_axis(0, DINPUT_PAD_AXIS_Z, LO, HI);
-    CHECK(v < -100);                             /* right alone: negative */
+    CHECK(v <= LO + 2);
+    /* Half-pressed is half, so the scale above is a SCALE and not a clamp that
+       reports the extreme for anything non-zero. */
     SDL_SetJoystickVirtualAxis(joy, 5, 0);
     SDL_UpdateJoysticks();
-    printf("triggers: one shared Z axis, left positive and right negative: ok\n");
+    v = dinput_pad_axis(0, DINPUT_PAD_AXIS_Z, LO, HI);
+    CHECK(v < -400 && v > -600);
+    SDL_SetJoystickVirtualAxis(joy, 5, TRIG_UP);
+    SDL_UpdateJoysticks();
+    v = dinput_pad_axis(0, DINPUT_PAD_AXIS_Z, LO, HI);
+    CHECK(v == 0);                                   /* both released: centred */
+    printf("triggers: one shared Z axis, left positive and right negative, "
+           "each reaching full scale alone: ok\n");
 
     /* ---- buttons, in DirectInput's order for a 360 pad ---- */
     {

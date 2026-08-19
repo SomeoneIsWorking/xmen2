@@ -1,7 +1,7 @@
 ---
 id: 85
 title: Pad: R + face button does nothing, so no power can be used in gameplay
-status: open
+status: investigating
 symptom: holding R and pressing X/A/Y/B in gameplay triggers no power -- the character does nothing, while the same buttons work in menus
 tags: pc,native,input,pad,bindings,gameplay,user-report
 created: 2026-08-19
@@ -64,3 +64,59 @@ where the row table is written down. Ask, in this order:
 Related: #86 (healing unbound) and #87 (prompts still name keyboard keys) are
 probably the same missing-rows cause seen from three sides. If one investigation
 resolves all three, resolve all three.
+
+### Note (2026-08-19)
+MEASURED 2026-08-19, and half the cause is found and FIXED (C222).
+
+## The trigger delivered nothing, so the Power modifier never engaged
+
+`Power` is binding row 8, and the port's preset binds it to physical code 0x06
+-- Z-, the right trigger. Two defects in `src/native/dinput_pad.c` meant that
+code could never resolve to anything:
+
+* **Scale.** The shared Z axis was `(l - r) / 2`. One trigger squeezed alone
+  reached HALF the range the game sets with DIPROP_RANGE, where a fully
+  deflected stick reaches all of it. Real hardware included.
+* **Rest, synthetic pad only.** SDL maps a virtual joystick axis's whole
+  -32768..32767 travel onto a trigger's 0..32767, so a fresh virtual axis (0)
+  presents the trigger HALF HELD. Both at once, cancelling to centre on the
+  shared axis -- which is why nothing looked wrong -- and the timed release put
+  them back to 0 rather than to the minimum, so any run that ever pressed a
+  trigger left it stuck half down.
+
+Measured through the game's own accessor after the fix: idle reads 0 of 52
+physical codes non-zero, and with the right trigger held, code 0x06 resolves to
+**+1.000** and player 0's physical array shows `[7]=1.000 [22]=1.000` -- the two
+action slots that map to row 8. Before, the same probe read zero in both states.
+
+The probe that shows this is new and is why it was findable: `x2ctl.py input`
+now samples **every** physical code with its MAGNITUDE, not four face buttons
+with a down/up bit. An analog code arriving at half scale is invisible to a
+boolean.
+
+## What is still open here, and it is a separate thing
+
+The binding table dump says the quick-power system is **entirely unbound on the
+pad**. Of the 42 rows, the preset covers 21; the ones it does not include
+
+    29 BindPower   30 UseQuickPower   31..41 QuickPower01..11
+
+plus TargetLock, Solo, Talk, Walk, SwtHero, AttackObject, RotateCamera. Each of
+those has a keyboard default in slot 0 and nothing in the pad slot -- e.g.
+`UseQuickPower` is DIK 0x29 (grave) and `QuickPower01..04` are the `1`..`4`
+keys.
+
+So there are two candidate mechanisms for "R + face uses a power" and they need
+different work:
+
+1. `Power` (row 8, now delivering) is the modifier and gameplay code reads it
+   together with the four attack rows. If so this may already work now, and the
+   next step is to CHECK it on a run that has a player character -- a boot-map
+   run has none (C218/#83), so its physical array is the only thing that can be
+   read, not the gameplay consequence.
+2. The quick-power rows are the mechanism, in which case the preset has to bind
+   them and a pad has fewer buttons than the eleven QuickPower rows want. The
+   Xbox build's own answer to that is the thing to recover -- `tools/xbe_query.py`
+   already has the binding table (C187/C188).
+
+Do 1 first: it is a run, not an RE session, and it is cheap.
