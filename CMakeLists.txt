@@ -85,6 +85,12 @@ target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE)
 add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
+add_executable(test_dialog_prompts tests/test_dialog_prompts.c
+               src/native/dialog_prompts.c tests/native_stubs.c)
+target_include_directories(test_dialog_prompts PRIVATE src/recomp src/native)
+target_compile_definitions(test_dialog_prompts PRIVATE _GNU_SOURCE)
+add_test(NAME dialog_prompts COMMAND test_dialog_prompts)
+
 add_executable(test_xbox_defaults tests/test_xbox_defaults.c
                src/native/xbox_defaults.c)
 target_include_directories(test_xbox_defaults PRIVATE src/native)
@@ -527,6 +533,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_script.c
         src/native/dinput_joystick.c
         src/native/dinput_pad.c
+        src/native/dialog_prompts.c
         src/native/pad_glyphs.c
         src/native/prompt_glyph_pack.c
         src/native/prompt_labels.c

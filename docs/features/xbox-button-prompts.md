@@ -453,9 +453,9 @@ reaches it as a glyph. The implementation is now:
    order, not the font's order.
 4. The hook fires only for the gamepad slot named by `devkind 3..0xc` when SDL
    classifies its connected device as Xbox 360/One. Keyboard, PlayStation,
-   generic controllers, unknown codes and LS/RS super-call the retained
-   recompiled body. LS/RS have no authored SVG, so retaining `Btn 9/10` is an
-   explicit fallback rather than a blank glyph.
+   generic controllers and unknown codes super-call the retained recompiled
+   body. LS/RS use the authored shared `port-assets` glyphs and the same
+   manifest/runtime mapping as every other supported physical code.
 
 This stays entirely inside the game's own text pipeline -- no new draw path and
 no renderer special case. `tests/test_pad_glyphs.c` calls the exact shipping
@@ -463,11 +463,10 @@ wrapper and checks its stack pop, returned guest pointer, bytes, Xbox/non-Xbox
 split, unsupported-code deferral and pack-disabled gate. A real default launch
 independently proves both derived font files are opened through `X2_ASSETS`.
 
-The remaining user-visible prerequisite is action assignment. A fresh-profile
-virtual-pad run opens and reads the pad but creates no pad action bindings, so
-`FUN_00619e30` never asks the name function for a pad label. The delivery path
-is implemented and verified; the prompt appears only after the Xbox-default
-mapping is recovered and installed through the mapping UI feature below.
+The action-assignment prerequisite is also closed. A fresh profile installs the
+canonical 22-row controller preset, including Power and TargetLock/Use Health
+Pack, so `FUN_00619e30` can select the pad binding without requiring a visit to
+the mapping UI.
 
 
 ## MEASURED 2026-08-18: the dialog prompt did not exercise FUN_00619e30
@@ -496,10 +495,22 @@ the low action byte, and asks `FUN_00619e30` for the binding label. Therefore
 the shipped tutorial tokens `$POWER`, `$GUARD`, `$MOVE`, `$ATTACK`, `$SMASH`,
 `$ALLY`, and `$TARGET_LOCK` all reach the existing pad-selection/glyph path.
 
-This corrects the old conclusion that another label caller was missing. It
-does not close issue #87: a naturally triggered gameplay prompt still needs a
-windowless capture, because the failed scratch injection never created the
-popup widget and absence from that run is not evidence about its text.
+This corrects the old conclusion that another label caller was missing. The
+natural gameplay follow-up on 2026-08-21 closed #87 and #90: the remaining
+keyboard wording came from `CPopupDialog::create` replacing eight localized
+dialog assets with PC-only `igct.bnx` strings. `dialog_prompts.c` scopes the
+shared localization lookup to that exact call and, for a connected controller,
+asks the already-loaded dialog parser for its own controller-authored `text`.
+Keyboard keeps the PC override and unrelated localization calls retain the
+recompiled body.
+
+A windowless run advanced the retail conversations, walked to the switching
+terminal and naturally triggered `switching_hint`. The popup contained d-pad
+and A glyphs with no `[LEFT CLICK]` or `[???]`; shutdown measured 7,259/7,259
+pad labels, zero original names, one controller asset, zero PC overrides and
+eight unrelated localization calls. The scoped wrapper's mapped addresses,
+parser ABI, return value, stack effect and live controller/no-controller choice
+are independently covered by `tests/test_dialog_prompts.c`.
 
 The `FUN_006294b0` override added alongside this note is correct for the
 path it covers (a row with a pad binding names it, whatever slot it sits in,
@@ -550,6 +561,10 @@ range the font's own glyphs use, and says so:
 * Measured: with a pad connected the prompt follows the pad rather than the
   keyboard, because the label-selection override answers with the row's pad
   binding (7,873 of 7,873 label reads in one run).
+* Measured: a naturally triggered gameplay `switching_hint` selects pad labels
+  7,259 of 7,259 times and uses its localized controller-authored popup text
+  once, with zero original key names, zero PC popup overrides and no mouse or
+  unknown-key prose (C231).
 * NOT measured: any prompt on a screen whose text uses `X2F_big`,
   `X2F_hud_PC` or `font_XMEN_digital`. Those three are pixel format 15 and the
   builder refuses them, so a prompt drawn in one of them would still be blank.

@@ -411,7 +411,8 @@ void x2_interrupt_reports(int killed)
     extern void guest_thread_report(void);
     extern void k32_critsec_report(void);
     extern void dinput_device_report(void);
-    extern void dinput_pad_report(void);
+    extern void dinput_pad_report(void), pad_glyphs_report(void);
+    extern void dialog_prompts_report(void);
     x86_fallback_report();
     d3d8_host_report();
     guest_heap_report();
@@ -424,13 +425,12 @@ void x2_interrupt_reports(int killed)
     guest_thread_report();
     guest_engine_thread_report();
     k32_critsec_report();
-    /* The input reports too, and for the same reason: they were registered
-       with atexit, and the clean frame-limit stop leaves through _exit -- so
-       on precisely the runs that WORK, the numbers that say whether the game
-       ever polled the pad were never printed. */
+    /* Input reports were registered with atexit, but clean frame-limit stops
+       use _exit. Print them here so successful runs retain their denominators. */
     dinput_device_report();
     dinput_pad_report();
-    { extern void pad_glyphs_report(void); pad_glyphs_report(); }
+    pad_glyphs_report();
+    dialog_prompts_report();
     { extern void dsound_report(void); dsound_report(); }
     { extern void k32_asset_report(void), ws2_report(void);
       k32_asset_report(); ws2_report(); }

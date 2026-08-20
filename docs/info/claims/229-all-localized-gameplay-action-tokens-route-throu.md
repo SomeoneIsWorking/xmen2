@@ -5,6 +5,8 @@ status: holds
 created: 2026-08-21
 tags: input,pad,glyphs,prompts,re
 depends: src/native/pad_glyphs.c#x2_override_00619e30, src/native/pad_glyphs.c#x2_override_006281f0
+reconfirmed: 2026-08-21
+verified_at: 2026-08-21 01:35:10
 ---
 
 ## Claim
@@ -18,3 +20,7 @@ Ghidra direct-call references in XMen2.exe give exactly two callers of FUN_00628
 ## What would falsify it
 
 an indirect or direct gameplay prompt path is observed to name a bound action without passing FUN_004bd720/FUN_00619e30, or a localized gameplay action token bypasses the current label override
+
+## Re-confirmed 2026-08-21
+
+Reconfirmed after prompt_labels changes: a natural windowless switching_hint run measured 7,259 of 7,259 label reads selecting the pad binding and 7,259 glyph names with zero original names; the direct Ghidra caller census remains FUN_004bd720 -> FUN_00619e30 -> FUN_006281f0

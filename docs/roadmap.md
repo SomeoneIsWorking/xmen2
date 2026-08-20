@@ -65,7 +65,8 @@ C230).
 
 Open: three of the four fonts the game loads (`X2F_big`, `X2F_hud_PC`,
 `font_XMEN_digital`) are pixel format 15, and the builder refuses to re-encode
-them, so a prompt drawn in one of those would still be blank. Whether any is.
+them, so a prompt drawn in one of those would still be blank. No measured
+prompt currently uses them.
 
 **The d-pad and the shoulder buttons were unreadable** (#88, #89): all four
 d-pad directions drew one icon, and RB and RT were the same letter on two
@@ -75,14 +76,15 @@ to redraw the same controller. The bar for accepting a glyph is a rasterised
 sheet at the shipping cell size over light, dark and mid-tone backgrounds;
 four earlier attempts died there.
 
-**And the visual gate still covers the menu/conversation, not a gameplay
-hint.** Reported from a real play session 2026-08-19 (issue #87): gameplay
-prompts named keyboard keys with a pad connected. The caller census is now
-complete and corrects the suspected cause: there is no third HUD naming path;
-localized `$ACTION` tokens route through `FUN_004bd720 -> FUN_00619e30` and the
-existing pad-selection/glyph overrides. A naturally triggered gameplay hint
-still needs a windowless capture. The attempted direct popup injection never
-created a widget and is not counted as a negative result.
+**The natural gameplay gate is now met** (#87/#90, C231). The missing path was
+not another action-label caller: `CPopupDialog::create` replaced eight already
+loaded localized tutorial assets with PC-only `igct.bnx` strings containing
+mouse and shortcut-key prose. A scoped override now retains the asset's own
+controller-authored text when a controller is connected and retains the PC text
+for keyboard. A windowless run naturally triggered `switching_hint` and
+measured 7,259/7,259 pad labels, zero original names, one controller asset and
+zero PC overrides. The popup contained d-pad/A glyphs and no `[LEFT CLICK]` or
+`[???]`.
 
 ## 4. Input hotswap
 

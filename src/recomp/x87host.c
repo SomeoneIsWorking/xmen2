@@ -23,8 +23,11 @@ void x87_host_end(CPU *C)
     __asm__ __volatile__("fxsave %0" : "=m"(state) :: "memory");
     tags = state.bytes[4];
     while (tags) {
-        values[count++] = 0.0L;
-        __asm__ __volatile__("fstpt %0" : "=m"(values[count - 1]) :: "memory");
+        /* Do not initialize this long double in C before FSTP. Clang keeps
+           the x87 zero used for that store live across the inline assembly,
+           which puts it above the guest return and makes us capture zero. */
+        __asm__ __volatile__("fstpt %0" : "=m"(values[count]) :: "memory");
+        count++;
         tags &= (uint8_t)(tags - 1u);
     }
     __asm__ __volatile__("fninit" ::: "memory");
