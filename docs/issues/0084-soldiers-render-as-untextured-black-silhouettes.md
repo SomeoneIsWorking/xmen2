@@ -5,7 +5,7 @@ status: open
 symptom: an enemy soldier draws as a solid black silhouette with its weapon fully textured, and another soldier lies flat on the floor in a dead-looking pose during a live fight
 tags: pc,native,graphics,d3d8,textures,animation,characters,user-report
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-21
 ---
 
 REPORTED BY THE USER, 2026-08-19, from a real play session. Not yet reproduced
@@ -66,3 +66,6 @@ is a HYPOTHESIS with no evidence behind it yet -- do not treat it as the cause.
 Related: issue #62 (gameplay renders almost entirely black) is a DIFFERENT
 symptom -- whole-scene, and resolved -- but its instruments (the light dump,
 `tools/lightlog_diff.py`) are the ones to reach for here.
+
+### Note (2026-08-21)
+2026-08-21 reproduction attempt: a windowless, silent X2_BOOT_MAP=act0/tutorial/tutorial1 run advanced through the retail opening conversation into controllable gameplay, with current player handle 0x00000201 resolving to actor 0x08326010. Captures through the opening room showed all visible heroes and guards textured and posed normally. Headless movement did not reliably reach the later soldier ambush, so the intermittent user report was neither reproduced nor falsified. No scheduled-input absence is being read as a pass; issue remains open pending a gated capture of the actual combat frame.

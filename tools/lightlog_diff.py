@@ -41,6 +41,8 @@ import sys
 from collections import OrderedDict
 
 KINDS = ("SETLIGHT", "LIGHTENABLE", "SETMATERIAL", "SETRENDERSTATE")
+IGNORED_KINDS = ("PROXY", "DIRECT3DCREATE8", "CREATEDEVICE", "CAPS",
+                 "CREATEVERTEXSHADER", "SETVERTEXSHADER")
 
 
 def parse(path):
@@ -62,7 +64,10 @@ def parse(path):
                 continue
             total += 1
             kind = line.split(" ", 1)[0]
-            if kind in ("PROXY", "DIRECT3DCREATE8", "CREATEDEVICE"):
+            # The proxy writes these diagnostics into the same file. They are
+            # not light-path records, but they are a closed, named vocabulary;
+            # arbitrary unknown lines still refuse below.
+            if kind in IGNORED_KINDS:
                 continue
             fields = {}
             for tok in line.split()[1:]:
@@ -235,6 +240,9 @@ def report(control, port):
 # identical -- both through the same code path the real comparison uses.
 
 SELF_A = """PROXY LOADED t=1 real_d3d8=x
+CAPS BLOCK from IDirect3D8::GetDeviceCaps -- 53 field(s)
+CAPS MaxActiveLights = 0x00000008
+SETVERTEXSHADER t=1 handle=0x00000142 an FVF code
 SETRENDERSTATE t=2 LIGHTING=1
 SETLIGHT t=3 idx=4 type=1 diffuse=1.0000,1.0000,1.0000,1.0000 \
 specular=0,0,0,0 ambient=0,0,0,0 pos=1,2,3 dir=0,0,1 range=500.00 \
@@ -268,6 +276,12 @@ def selftest():
                       % (side, len(d["unparsed"]), d["unparsed"][0]))
                 ok = False
 
+        if da["total"] != 8:
+            print("SELFTEST FAIL: known non-light proxy records were not read "
+                  "from the same stream (got %d total line(s), want 8)"
+                  % da["total"])
+            ok = False
+
         # MUST differ: black diffuse and never-enabled.
         diffs = report(da, db)
         want = 2
@@ -292,13 +306,34 @@ def selftest():
             devnull = os.open(os.devnull, os.O_WRONLY)
             os.dup2(devnull, 1)
             os.dup2(devnull, 2)
-            refuse_unless_usable("test", parse(c))
+            try:
+                refuse_unless_usable("test", parse(c))
+            except SystemExit:
+                os._exit(1)
             os._exit(0)
         _, status = os.waitpid(pid, 0)
         if os.WEXITSTATUS(status) == 0:
             print("SELFTEST FAIL: a log with no SETLIGHT was ACCEPTED; it must "
                   "be refused, because 'no difference' from it is a negative "
                   "the method could not have contradicted")
+            ok = False
+
+        # MUST still refuse an unknown record. Recognising the proxy's closed
+        # diagnostics vocabulary must not turn this into a skip-anything parser.
+        open(c, "w").write(SELF_A + "MYSTERY t=9 value=1\n")
+        pid = os.fork()
+        if pid == 0:
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, 1)
+            os.dup2(devnull, 2)
+            try:
+                refuse_unless_usable("test", parse(c))
+            except SystemExit:
+                os._exit(1)
+            os._exit(0)
+        _, status = os.waitpid(pid, 0)
+        if os.WEXITSTATUS(status) == 0:
+            print("SELFTEST FAIL: an unknown proxy record was silently skipped")
             ok = False
 
     print("SELFTEST: %s" % ("PASS -- the comparison shows both answers and "

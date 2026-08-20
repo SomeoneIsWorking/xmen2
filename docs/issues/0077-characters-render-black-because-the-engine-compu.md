@@ -1,11 +1,11 @@
 ---
 id: 77
 title: Characters render black because the ENGINE computes near-black lights, not because of the D3D8 layer
-status: open
+status: investigating
 symptom: characters render black or very dark in gameplay while the environment looks correct; Cyclops dark with head reading as collapsed
 tags: rendering,lighting,d3d8,engine,recomp
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 ---
 
 ## What the picture shows
@@ -63,3 +63,6 @@ the same scene. If it does not, the divergence is upstream in the recompiled
 engine and this becomes an RE question rather than a rendering one.
 
 See C199, I055, I056.
+
+### Note (2026-08-21)
+2026-08-21 current-build check: a windowless X2_BOOT_MAP=act0/tutorial/tutorial1 run reached the same opening red-room conversation and captured scratch/screenshots/light-current-red-room2.png. Cyclops is textured, coloured and visibly lit, so the old opening-room symptom does not reproduce in the current tree. The 4,311,945-line stock light log and 252,920-line current port log parsed after issue #94's tool fix, but their nine reported differences are not actionable because the retained stock route is longer and reached light indices/scenes absent from the shorter port route. Keep this issue open until its historical root fix is identified or a scene-bounded comparison establishes it; do not conflate it with intermittent soldiers in #84.
