@@ -123,9 +123,11 @@ void main()
     } else if (vs.pretransformed != 0u) {
         /*
          * Pixel coordinates to clip space. D3D's origin is the top-left of the
-         * viewport and Y grows downward; Vulkan's clip space has Y growing
-         * downward too once the viewport is set up the way SDL_GPU sets it, so
-         * only the range changes.
+         * viewport and Y grows downward. SDL_GPU's shader clip convention maps
+         * positive Y toward the top of the render target, so Y must reverse as
+         * it moves from pixels into clip space. Mapping it like X mirrors every
+         * XYZRHW primitive vertically; the game's asymmetric sword cursor makes
+         * both the mirrored image and its reflected screen position visible.
          *
          * RHW is deliberately NOT divided through. It carries 1/w for
          * perspective-correct interpolation of a vertex the game already
@@ -134,7 +136,7 @@ void main()
          */
         vec2 ndc = vec2(
             (in_pos.x - vs.viewport.x) / vs.viewport.z * 2.0 - 1.0,
-            (in_pos.y - vs.viewport.y) / vs.viewport.w * 2.0 - 1.0);
+            1.0 - (in_pos.y - vs.viewport.y) / vs.viewport.w * 2.0);
         gl_Position = vec4(ndc, in_pos.z, 1.0);
     } else {
         gl_Position = vs.mvp * vec4(in_pos.xyz, 1.0);

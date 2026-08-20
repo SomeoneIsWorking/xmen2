@@ -22,16 +22,19 @@ Three things all have to hold, and today none of them is established
 everywhere:
 
 1. **The row has to HAVE a pad binding.** A row bound only to a key cannot be
-   named with a button, whatever the label code does. 21 of the game's 42 rows
-   carry a pad binding today (measured, `x2ctl.py input`); the other 21 include
-   the whole quick-power system. So "all prompts controller" is bounded below
-   by #85/#86.
+   named with a button, whatever the label code does. 22 of the game's 42 rows
+   now carry the canonical pad binding (measured, `x2ctl.py input`), including
+   Power and TargetLock/Use Health Pack. The remaining quick-power rows are PC
+   keyboard conveniences rather than console prompt actions.
 2. **The label has to be SELECTED from the pad binding.** `FUN_006294b0` is
    overridden to do that, and it is measured working (C215, 7,873 of 7,873
    reads in one run) -- but only for labels that come through `FUN_00619e30`.
-   The 2026-08-18 census found the tutorial dialog does NOT: `FUN_006281f0` ran
-   6,491 times with no gamepad device kind and `FUN_006294b0` ran ZERO times.
-   That census was never finished, and finishing it is the main task here.
+   The completed direct-caller census found no missing gameplay label path:
+   `FUN_006281f0` has only `FUN_00619e30` (action labels) and `FUN_00625840`
+   (controller-list rendering) as callers. `FUN_00619e30` is called only by
+   `FUN_004bd720`, the generic localized `$ACTION` token expander. The earlier
+   6,491/zero run observed the conversation-specific `$MENU_ACCEPT` path and
+   did not disprove action-token coverage.
 3. **The glyph has to exist for the code.** `pad_glyph_code` now answers for
    the face buttons, LB/RB, Back/Start, both triggers, all four d-pad
    directions, and both stick clicks (0x1d/0x1e). The LS/RS gap is fixed by

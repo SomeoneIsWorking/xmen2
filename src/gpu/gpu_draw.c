@@ -657,24 +657,19 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
 
     ci.rasterizer_state.fill_mode = SDL_GPU_FILLMODE_FILL;
     ci.rasterizer_state.cull_mode = k->cull == GPU_CULL_CW
-                                        ? (k->pretransformed
-                                               ? SDL_GPU_CULLMODE_FRONT
-                                               : SDL_GPU_CULLMODE_BACK)
+                                        ? SDL_GPU_CULLMODE_BACK
                                     : k->cull == GPU_CULL_CCW
-                                        ? (k->pretransformed
-                                               ? SDL_GPU_CULLMODE_BACK
-                                               : SDL_GPU_CULLMODE_FRONT)
+                                        ? SDL_GPU_CULLMODE_FRONT
                                         : SDL_GPU_CULLMODE_NONE;
     /*
      * COUNTER_CLOCKWISE, and it is not a guess.
      *
-     * D3D evaluates winding after projection in its Y-down screen space.
-     * XYZRHW vertices already arrive in that space, while XYZ vertices pass
-     * through Vulkan clip space and SDL's viewport conversion, which reverses
-     * the classification. The cull mapping therefore differs between the two
-     * position conventions. Both directions are measured by the D3D8 pixel
-     * self-tests; treating them alike turned the game's back-face outline hulls
-     * into solid black character silhouettes.
+     * D3D evaluates winding after projection in its Y-down screen space. Both
+     * the fixed-function XYZ transform and the explicit XYZRHW pixel-to-clip
+     * conversion now preserve that screen-space classification, so they share
+     * the same cull mapping. The two paths are independently measured by the
+     * D3D8 pixel self-tests; the XYZRHW test is asymmetric so a vertical mirror
+     * cannot preserve its answer merely by still covering the centre pixel.
      */
     ci.rasterizer_state.front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE;
 

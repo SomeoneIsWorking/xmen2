@@ -67,12 +67,14 @@ to redraw the same controller. The bar for accepting a glyph is a rasterised
 sheet at the shipping cell size over light, dark and mid-tone backgrounds;
 four earlier attempts died there.
 
-**And the gate covers the MENU, not gameplay.** Reported from a real play
-session 2026-08-19 (issue #87): in gameplay the prompts still name keyboard
-keys with a pad connected. The captures above stand -- they were the main menu
-bar and the conversation dialog -- but a gameplay HUD prompt goes through
-neither, and the caller census the feature doc asks for was never finished. So
-this feature is met on two screens and unmeasured everywhere else.
+**And the visual gate still covers the menu/conversation, not a gameplay
+hint.** Reported from a real play session 2026-08-19 (issue #87): gameplay
+prompts named keyboard keys with a pad connected. The caller census is now
+complete and corrects the suspected cause: there is no third HUD naming path;
+localized `$ACTION` tokens route through `FUN_004bd720 -> FUN_00619e30` and the
+existing pad-selection/glyph overrides. A naturally triggered gameplay hint
+still needs a windowless capture. The attempted direct popup injection never
+created a widget and is not counted as a negative result.
 
 ## 4. Input hotswap
 

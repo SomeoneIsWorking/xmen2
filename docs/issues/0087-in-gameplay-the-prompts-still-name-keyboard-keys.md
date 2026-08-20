@@ -5,7 +5,7 @@ status: open
 symptom: with a pad connected and the derived font pack active, in-game prompts still show keyboard key names instead of the Xbox button glyphs
 tags: pc,native,input,pad,glyphs,prompts,hud,fonts,user-report
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 REPORTED BY THE USER, 2026-08-19, from a real play session with a pad: "it only
@@ -34,26 +34,32 @@ gaps, neither yet tested:
    keyboard, and the font is not the cause. Establish which of the two is on
    screen before choosing a direction; that single observation splits the
    investigation.
-2. **The label path.** The 2026-08-18 measurement in the feature doc found that
-   the dialog prompt does not come through `FUN_00619e30` at all: `FUN_006281f0`
-   ran 6,491 times with no gamepad device kind, and `FUN_006294b0` ran ZERO
-   times. That caller census was never finished. A gameplay HUD prompt is very
-   likely another caller that the two label overrides do not cover.
+2. **The label path.** The earlier conclusion that gameplay likely used an
+   uncovered caller was wrong. The completed direct-caller census found exactly
+   two callers of `FUN_006281f0`: the action-label builder `FUN_00619e30` and
+   the retained controller-list renderer `FUN_00625840`. The action builder has
+   one caller, `FUN_004bd720`, the generic localized-token expander. It maps the
+   `0xf000 | action` token class to `FUN_00619e30`; the tutorial's `$POWER`,
+   `$GUARD`, `$MOVE`, `$ATTACK`, `$SMASH`, `$ALLY`, and `$TARGET_LOCK` tokens
+   therefore all reach the current pad-selection and glyph overrides. The 6,491
+   calls measured on the conversation screen came from unrelated label-table
+   construction, while `$MENU_ACCEPT` has its own conversation renderer.
 
 ## What the next session should do first
 
-1. Get the screen: a boot-map run to a level with `X2_SHOT_AFTER_FILE` gating
-   the capture, then LOOK at whether the prompt is blank or spells a key name.
-2. If it spells a key name: finish the caller census the feature doc asks for.
-   `src/native/pad_glyphs.c` already counts every call to the naming boundary
-   and can record its callers -- that is the tool, and it exists.
-3. If it is blank: the format-15 font gap is real and in the way. Establish
+1. Trigger one of the shipped gameplay hint scripts naturally and capture it
+   in a windowless run with the derived pack active. A scratch script that
+   called `createPopupDialogXml` directly never created the widget, so that
+   failed injection is not a negative prompt result.
+2. If it spells a key name, record the token/action and the label counters at
+   that frame; the direct-call inventory is complete, so the next distinction
+   is wrong row selection versus a non-action literal string.
+3. If it is blank, the format-15 font gap is real and in the way. Establish
    what pixel format 15 actually is before concluding it cannot be encoded --
    "the builder refuses it" is a rule this port wrote, not a property of the
    format, and the refusal was written to prevent a wrong re-encode, not
    because one is impossible.
 
-Related: #85 and #86 are the input side of the same play session. If the pad
-has no row for an action, its prompt has nothing to name either, so check
-whether the prompts that read as keyboard are for actions the preset never
-bound -- that would make all three one cause.
+Related: #85 and #86 are resolved. The canonical preset now has 22 pad-bound
+rows, including Power and TargetLock/Use Health Pack. QuickPower rows remain
+keyboard-only PC conveniences and are not console tutorial actions.

@@ -14,6 +14,7 @@
 #include "d3d8_caps.h"
 #include "d3d8_types.h"
 #include "d3d8_resource.h"
+#include "d3d8_screen_space_test.h"
 #include "d3d8_surface.h"
 #include "d3d8_drawcall.h"
 #include "d3d8_state.h"
@@ -153,7 +154,7 @@ static int d3d8_draw_selftest(void)
     D3D8State st;
     D3D8DrawRequest req;
     GpuDraw gd;
-    uint32_t args[3], locked = 0, centre, corner;
+    uint32_t args[3], locked = 0;
     int fails = 0;
 
     printf("\n=== d3d8 draw selftest: through the COM vtables ===\n");
@@ -234,19 +235,7 @@ static int d3d8_draw_selftest(void)
     }
     gpu_offscreen_end();
 
-    centre = img[(TH / 2) * TW + TW / 2];
-    corner = img[1 * TW + 1];
-    if (centre != 0xFFFF0000u) {
-        printf("d3d8 draw selftest: FAILED -- the centre is 0x%08x, not the "
-               "red triangle (0xffff0000)\n", centre);
-        fails++;
-    }
-    if (corner != 0xFF00FF00u) {
-        printf("d3d8 draw selftest: FAILED -- the corner is 0x%08x, not the "
-               "green clear (0xff00ff00); something filled the whole "
-               "target\n", corner);
-        fails++;
-    }
+    fails += d3d8_screen_space_pixels_check(img, TW, TH);
 
     /* Model-space positions take a different Y/winding route from XYZRHW.
        This is the D3DCULL_CW half the screen-space test above cannot see. */

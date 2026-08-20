@@ -561,6 +561,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_resource.c
         src/d3d8/d3d8_drawcall.c
         src/d3d8/d3d8_vertex_shader.c
+        src/d3d8/d3d8_screen_space_test.c
         src/d3d8/d3d8_report.c
         src/vulkan/igvk_ark.c
         src/vulkan/igvk_probe.c
@@ -695,19 +696,19 @@ if(X2_MODULE_HAVE)
     # It needs neither, which is the point: the game has never reached a
     # frame, so without this nothing would ever have run that code.
     add_test(NAME vk_frame_path
-             COMMAND x2native --vk-selftest)
+             COMMAND x2native --no-window --vk-selftest)
     set_tests_properties(vk_frame_path PROPERTIES SKIP_RETURN_CODE 77)
     # The host D3D8's ABI tables, vtable dispatch and caps block. Also needs
     # no game: what it checks is that slot N reaches method N and that an
     # unimplemented method REPORTS, which are host-side facts.
     add_test(NAME d3d8_host
-             COMMAND x2native --d3d8-selftest)
+             COMMAND x2native --no-window --d3d8-selftest)
     set_tests_properties(d3d8_host PROPERTIES SKIP_RETURN_CODE 77)
     # The engine's error dialog, which only ever runs when something has
     # already gone wrong -- so nothing else exercises it. Drives the override
     # with a synthetic call frame and checks the ABI and the screenless answer.
     add_test(NAME report_box
-             COMMAND x2native --dialog-selftest)
+             COMMAND x2native --no-window --dialog-selftest)
     set_tests_properties(report_box PROPERTIES SKIP_RETURN_CODE 77)
     # The crash reporter, proved by crashing. Only SIGSEGV used to be handled,
     # so an illegal instruction or an arithmetic fault killed a run with
@@ -715,7 +716,7 @@ if(X2_MODULE_HAVE)
     # window being closed. Each signal is raised in a child and the report must
     # name it; a control child that does not fault must stay silent.
     add_test(NAME fault_reporter
-             COMMAND x2native --fault-selftest)
+             COMMAND x2native --no-window --fault-selftest)
     set_tests_properties(fault_reporter PROPERTIES SKIP_RETURN_CODE 77)
 else()
     message(STATUS

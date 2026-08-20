@@ -470,7 +470,7 @@ is implemented and verified; the prompt appears only after the Xbox-default
 mapping is recovered and installed through the mapping UI feature below.
 
 
-## MEASURED 2026-08-18: the dialog prompt does NOT come through FUN_00619e30
+## MEASURED 2026-08-18: the dialog prompt did not exercise FUN_00619e30
 
 With the pad working end to end (#82 fully fixed) and the derived font pack
 active, the tutorial dialog still reads `[ENTER] CONTINUE...`. The counters say
@@ -485,16 +485,23 @@ why, and they say it only because they carry denominators:
 * `FUN_006294b0`, the binding reader `FUN_00619e30` uses to choose which slot a
   label describes, ran **0 times**.
 
-So `FUN_00619e30` is not what produces this prompt, and the plan recorded above
--- "slot 2 is consulted first, so a populated pad binding wins and the label
-follows the pad automatically" -- is wrong for the path that actually draws it.
+That run proved only that the conversation's `$MENU_ACCEPT` control was drawn
+by its dedicated conversation path, not that action labels bypass the builder.
+The completed direct-caller census (2026-08-20) found exactly two callers of
+`FUN_006281f0`: `FUN_00619e30`, the action-label builder, and `FUN_00625840`,
+the retained controller-list renderer. There is no third gameplay-HUD caller.
+`FUN_00619e30` itself has exactly one direct caller: `FUN_004bd720`, the generic
+localized-token expander. It recognises the `0xf000` action-token class, masks
+the low action byte, and asks `FUN_00619e30` for the binding label. Therefore
+the shipped tutorial tokens `$POWER`, `$GUARD`, `$MOVE`, `$ATTACK`, `$SMASH`,
+`$ALLY`, and `$TARGET_LOCK` all reach the existing pad-selection/glyph path.
 
-The next step is therefore to find the OTHER caller: what calls `FUN_006281f0`
-6,491 times in a run that shows one dialog, and with which device kind. That is
-a caller census on the real run, not more reading -- `src/native/pad_glyphs.c`
-already counts every call and can record its callers.
+This corrects the old conclusion that another label caller was missing. It
+does not close issue #87: a naturally triggered gameplay prompt still needs a
+windowless capture, because the failed scratch injection never created the
+popup widget and absence from that run is not evidence about its text.
 
-The `FUN_006294b0` override added alongside this note is still correct for the
+The `FUN_006294b0` override added alongside this note is correct for the
 path it covers (a row with a pad binding names it, whatever slot it sits in,
 while an Xbox pad is connected) and costs nothing where it does not fire. It is
 kept because it is the right behaviour and because its zero count is the
