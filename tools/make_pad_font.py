@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Publish THIS PORT'S OWN button glyphs into the PC font, so prompts need no Xbox
-disc.
+Publish controller and keyboard prompt glyphs into the PC font, with no Xbox
+disc or baked key labels.
 
 ## Why this exists and why it does not use the Xbox art
 
-The engine draws button prompts as ordinary text: one byte per glyph, through
-the font it is already using. The obvious source for the art is the Xbox
+The engine draws prompts as ordinary text: one byte per glyph, through the font
+it is already using. The obvious source for controller art is the Xbox
 build's atlas, which carries console button art in a band its metrics never
 address -- but using it requires the person playing to own the Xbox build as
 well as the PC one, which is not a thing to ask of anyone. So the port draws
-its own: `assets/buttons/*.svg`, rasterised here and blitted into the PC
-atlas's own empty space.
+its own through the shared `port-assets` controller set. Keyboard labels reuse
+that repo's blank keycap geometry and keep the game's live binding text.
 
 ## Where the glyphs go, and the coordinate that took measuring
 
 x2f_med_pc's atlas is 256x256 RGBA8888 with a 68-row band that has no alpha in
-it at all -- room for eleven 18x18 icons several times over.
+it at all -- room for sixteen 18x18 pad icons and four keycap layout glyphs.
 
 **`t` is measured from the BOTTOM of the image** (C171): reading the 166 glyph
 rects of that atlas with `t` as-is finds 8,315 inked pixels inside them, and
@@ -57,7 +57,9 @@ add_alchemy_tools_to_path()
 
 import xmlb                                                     # noqa: E402
 from pad_glyph_manifest import (FIRST_CODEPOINT, ICONS,          # noqa: E402
-                                SET_NAME, svg_paths)
+                                KEYCAP_FIRST_CODEPOINT,
+                                KEYCAP_PARTS, SET_NAME,
+                                keycap_svg_path, svg_paths)
 import port_assets                                              # noqa: E402
 
 
@@ -180,8 +182,8 @@ def rasterise(sources, size, tmp):
     return out
 
 
-def blit(rgba, w, px, size, x0, y0):
-    """Copy one CELL-square RGBA cell in, MIRRORED VERTICALLY.
+def blit(rgba, w, px, pw, ph, x0, y0):
+    """Copy one RGBA rectangle in, MIRRORED VERTICALLY.
 
     decode_atlas hands back a BOTTOM-UP buffer while the font's glyph UVs are
     top-down into the real texture. Measured on a stock glyph: reading 'A'
@@ -191,11 +193,63 @@ def blit(rgba, w, px, size, x0, y0):
     straight in lands mirrored, which draws an upside-down L on the LB button
     and is invisible on the symmetric ones. So the source rows go in reversed.
     """
-    for y in range(size):
-        for x in range(size):
-            s = ((size - 1 - y) * size + x) * 4
+    for y in range(ph):
+        for x in range(pw):
+            s = ((ph - 1 - y) * pw + x) * 4
             d = ((y0 + y) * w + x0 + x) * 4
             rgba[d:d + 4] = px[s:s + 4]
+
+
+def rasterise_keycap(src, tmp):
+    """Shared blank cap -> the three pieces the one-byte font can compose.
+
+    The game's stock letters are bright, whereas the shared SVG's labelled
+    example uses dark ink on a light face. This consumer reverses only the
+    luminance of the blank geometry so the unchanged stock letters remain
+    readable; the shape, bevel, outline and scalable composition still come
+    from the shared asset.
+    """
+    width, height = 45, CELL  # cap_extra_wide is 180:72
+    dst = os.path.join(tmp, "keycap.rgba")
+    cmd = ["magick", "-background", "none", str(src),
+           "-resize", "%dx%d!" % (width, height),
+           "-depth", "8", "RGBA:" + dst]
+    try:
+        result = subprocess.run(cmd, capture_output=True)
+    except FileNotFoundError:
+        raise SystemExit("REFUSING: ImageMagick's `magick` is not on PATH, "
+                         "so the keycap cannot be rasterised.") from None
+    if result.returncode != 0 or not os.path.exists(dst):
+        raise SystemExit("REFUSING: rasterising keycap %s failed: %s"
+                         % (src, result.stderr.decode()[:200]))
+    pixels = bytearray(open(dst, "rb").read())
+    if len(pixels) != width * height * 4:
+        raise SystemExit("REFUSING: keycap raster has %d bytes, expected %d."
+                         % (len(pixels), width * height * 4))
+    for i in range(width * height):
+        at = i * 4
+        if pixels[at + 3] == 0:
+            continue
+        luminance = (pixels[at] * 54 + pixels[at + 1] * 183
+                     + pixels[at + 2] * 19) // 256
+        value = max(28, min(225, 238 - luminance))
+        pixels[at:at + 3] = bytes((value, value, value))
+
+    def column_slice(x0, piece_width):
+        out = bytearray()
+        for y in range(height):
+            start = (y * width + x0) * 4
+            out.extend(pixels[start:start + piece_width * 4])
+        return bytes(out)
+
+    # The middle is sampled from the unrounded centre and overlaps at an
+    # eight-pixel advance. Repetition therefore stretches without seams and
+    # still covers variable-width stock letters.
+    return {
+        "left": (5, column_slice(0, 5)),
+        "middle": (12, column_slice(17, 12)),
+        "right": (5, column_slice(width - 5, 5)),
+    }
 
 
 # ---- publishing ----------------------------------------------------------
@@ -235,6 +289,7 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
     The ART comes from the shared `port-assets` set the manifest names, not
     from this repo; `svg_paths()` is the one place that resolves it.
     """
+    shipping = icons is None and first is None
     first = FIRST_CODEPOINT if first is None else first
     sources = (svg_paths() if icons is None
                else [port_assets_path(n) for n in icons])
@@ -246,7 +301,8 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
           "%d..%d (%d rows)" % (w, h, y0, y0 + rows - 1, rows))
     need = CELL + GAP
     per_row = (w - GAP) // need
-    rows_needed = (len(icons) + per_row - 1) // per_row * need + GAP
+    icon_rows = (len(icons) + per_row - 1) // per_row
+    rows_needed = icon_rows * need + GAP + (need if shipping else 0)
     if rows < rows_needed:
         raise SystemExit(
             "REFUSING: %d icon(s) of %dx%d need %d row(s) at %d per row and "
@@ -284,12 +340,16 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
           % (font_baseline, tally[font_baseline], len(used)))
 
     codes = list(range(first, first + len(icons)))
-    clash = [c for c in codes if c in used]
+    keycap_codes = (list(range(KEYCAP_FIRST_CODEPOINT,
+                               KEYCAP_FIRST_CODEPOINT + len(KEYCAP_PARTS)))
+                    if shipping else [])
+    all_codes = codes + keycap_codes
+    clash = [c for c in all_codes if c in used]
     if clash:
         raise SystemExit("REFUSING: codepoint(s) %s already draw in %s; "
                          "publishing buttons there would overwrite real text."
                          % (clash, pc_xmlb))
-    missing = [c for c in codes if c not in by_num]
+    missing = [c for c in all_codes if c not in by_num]
     if missing:
         raise SystemExit("REFUSING: %s has no glyph entry for codepoint(s) %s, "
                          "so there is nothing to point at the art."
@@ -302,11 +362,12 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
     # context manager remove the exact directory it created on every exit.
     with tempfile.TemporaryDirectory(prefix="padfont-", dir=scratch_raw) as tmp:
         art = rasterise(sources, CELL, tmp)
+        keycap_art = rasterise_keycap(keycap_svg_path(), tmp) if shipping else {}
     placed = []
     for i, (code, px) in enumerate(zip(codes, art, strict=True)):
         cx = GAP + (i % per_row) * need
         cy = y0 + GAP + (i // per_row) * need
-        blit(rgba, w, px, CELL, cx, cy)
+        blit(rgba, w, px, CELL, CELL, cx, cy)
         g = by_num[code]
         # t from the BOTTOM (C171). t is the SMALLER of the two, so the lower
         # image row -- larger y -- gives it.
@@ -332,7 +393,52 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
         # CELL-2 from the letters' height/baseline relationship put our glyph
         # five pixels above the line. Take the font's own value instead.
         g.set("baseline", str(font_baseline))
-        placed.append((ICONS[i], code, cx, cy))
+        placed.append((ICONS[i], code, cx, cy, CELL, CELL))
+
+    if shipping:
+        key_y = y0 + GAP + icon_rows * need
+        key_x = GAP
+        metrics = {
+            "left": (5, 4),
+            "middle": (12, 8),
+            "rewind": (0, -8),
+            "right": (5, 4),
+        }
+        for index, name in enumerate(KEYCAP_PARTS):
+            code = KEYCAP_FIRST_CODEPOINT + index
+            width, advance = metrics[name]
+            g = by_num[code]
+            if width:
+                px_width, px = keycap_art[name]
+                if px_width != width:
+                    raise SystemExit("REFUSING: keycap %s raster width %d does "
+                                     "not match its metric width %d."
+                                     % (name, px_width, width))
+                blit(rgba, w, px, width, CELL, key_x, key_y)
+                g.set("s", repr(key_x / float(w)))
+                g.set("s2", repr((key_x + width) / float(w)))
+                g.set("t", repr(row_to_t(key_y + CELL, h)))
+                g.set("t2", repr(row_to_t(key_y, h)))
+                g.set("width", str(width))
+                g.set("height", str(CELL))
+                g.set("horizoffset", "0")
+                g.set("baseline", str(font_baseline))
+                placed.append(("keycap_" + name, code, key_x, key_y,
+                               width, CELL))
+                key_x += width + GAP
+            else:
+                # Rewind is intentionally invisible. Its negative advance
+                # returns the pen over the middle strips so the stock letters
+                # draw on top of the background already emitted.
+                g.set("s", "0")
+                g.set("s2", "0")
+                g.set("t", "0")
+                g.set("t2", "0")
+                g.set("width", "0")
+                g.set("height", "0")
+                g.set("horizoffset", "0")
+                g.set("baseline", str(font_baseline))
+            g.set("horizadvance", str(advance))
 
     new_raw = bytes(rgba) if len(rgba) == len(raw) else None
     if new_raw is None:
@@ -348,7 +454,8 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
                     if by_num[c].get("height"))
     if real_h:
         lo, hi = real_h[0], real_h[-1]
-        for c in codes:
+        drawing_codes = [code for _, code, _, _, _, _ in placed]
+        for c in drawing_codes:
             got = float(by_num[c].get("height"))
             if not (lo <= got <= hi):
                 raise SystemExit(
@@ -375,7 +482,7 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
     if (w2, h2) != (w, h):
         raise SystemExit("REFUSING: the patched atlas decodes %dx%d, not %dx%d."
                          % (w2, h2, w, h))
-    cells = [(cx, cy) for _, _, cx, cy in placed]
+    cells = [(cx, cy, pw, ph) for _, _, cx, cy, pw, ph in placed]
     lost = changed = outside = 0
     for y in range(h):
         for x in range(w):
@@ -386,8 +493,8 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
             if got == bytes(before[i:i + 4]):
                 continue
             changed += 1
-            if not any(cx <= x < cx + CELL and cy <= y < cy + CELL
-                       for cx, cy in cells):
+            if not any(cx <= x < cx + pw and cy <= y < cy + ph
+                       for cx, cy, pw, ph in cells):
                 outside += 1
     if lost:
         raise SystemExit("REFUSING: %d pixel(s) read back differently from "
@@ -400,12 +507,12 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
         raise SystemExit("REFUSING: NOTHING changed in the atlas. The pack "
                          "would look built and draw the original font.")
     print("patched %s at offset 0x%x; %d icon(s) published, %d pixel(s) differ "
-          "from the shipped atlas (of %d in the cells) and every one is inside "
-          "a cell" % (igb_out, at, len(placed), changed, len(placed) * CELL * CELL))
-    for name, code, cx, cy in placed:
+          "from the shipped atlas and every one is inside a published cell"
+          % (igb_out, at, len(placed), changed))
+    for name, code, cx, cy, _pw, ph in placed:
         print("    0x%02x  %-10s cell (%d,%d)  t %.4f..%.4f"
               % (code, name, cx, cy,
-                 row_to_t(cy + CELL, h), row_to_t(cy, h)))
+                 row_to_t(cy + ph, h), row_to_t(cy, h)))
     print("asset pack written to %s" % outdir)
     return 0
 
@@ -456,7 +563,7 @@ def _selftest():
     for row in range(4):
         art += bytes([row, 8, 7, 255]) * 4
     art = bytes(art)
-    blit(dst, w, art, 4, 10, 20)
+    blit(dst, w, art, 4, 4, 10, 20)
     top = bytes(dst[(20 * w + 10) * 4:(20 * w + 10) * 4 + 4])
     bot = bytes(dst[(23 * w + 10) * 4:(23 * w + 10) * 4 + 4])
     if top != b"\x03\x08\x07\xff":

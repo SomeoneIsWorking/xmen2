@@ -36,6 +36,8 @@
 
 #include "dinput_pad.h"
 #include "pad_glyph_codes.h"
+#include "prompt_glyph_pack.h"
+#include "prompt_labels.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -49,7 +51,6 @@
 
 static unsigned long g_mapped, g_deferred;
 static unsigned long g_rows_asked, g_rows_padded, g_rows_no_pad;
-static int g_enabled = -1;
 
 /*
  * X2_PAD_GLYPH_PROBE=<char> -- draw this ASCII character instead of the glyph
@@ -85,15 +86,6 @@ static int probe_char(void)
     return c;
 }
 
-static int enabled(void)
-{
-    if (g_enabled < 0) {
-        const char *e = getenv("X2_PAD_GLYPHS");
-        g_enabled = e && *e && *e != '0';
-    }
-    return g_enabled;
-}
-
 uint8_t pad_glyph_code(uint32_t code)
 {
     static const uint8_t buttons[] = {
@@ -125,11 +117,6 @@ uint8_t pad_glyph_code(uint32_t code)
 /* Is this byte one of the codepoints this port publishes? The bounds are
    generated with the glyphs, because a hand-written range ending at whichever
    glyph is currently last stops covering the set the moment one is added. */
-static int glyph_byte(uint8_t b)
-{
-    return b >= X2_PAD_GLYPH_FIRST && b <= X2_PAD_GLYPH_LAST;
-}
-
 static uint32_t name_buffer(void)
 {
     X86Module *m;
@@ -149,7 +136,7 @@ void x2_override_006281f0(CPU *C)
     uint32_t out;
 
     glyph = pad_glyph_code(code);
-    if (!enabled() || kind < 3u || kind > 0xcu || !glyph ||
+    if (!prompt_glyph_pack_enabled() || kind < 3u || kind > 0xcu || !glyph ||
         !dinput_pad_uses_xbox_glyphs((int)kind - 3) || !(out = name_buffer())) {
         g_deferred++;
         fn_XMen2_006281f0(C);
@@ -200,7 +187,7 @@ void x2_override_006294b0(CPU *C)
     uint32_t kind, code;
 
     g_rows_asked++;
-    if (!enabled() || row >= INPUT_BINDING_ROWS ||
+    if (!prompt_glyph_pack_enabled() || row >= INPUT_BINDING_ROWS ||
         !row_pad_binding(object, row, &kind, &code)) {
         g_rows_no_pad++;
         fn_XMen2_006294b0(C);
@@ -212,43 +199,12 @@ void x2_override_006294b0(CPU *C)
     g_rows_padded++;
 }
 
-/*
- * FUN_00619e30 -- the label builder. cdecl(action), returns a pointer to the
- * static it composed with `sprintf(0xa68c18, "[%s]", name)`.
- *
- * Those square brackets are right for a keyboard name: "[ENTER]" reads as a
- * key. They are wrong around a button glyph, which is already a picture of the
- * button -- no console prompt draws "[A] Select". So when the composed label
- * is exactly one of this port's glyphs in brackets, the brackets come off.
- * Every other label -- keyboard, mouse, an unmapped "[???]" -- is left exactly
- * as the game built it.
- */
-void fn_XMen2_00619e30(CPU *C);
-
-static unsigned long g_unbracketed;
-
-void x2_override_00619e30(CPU *C)
-{
-    uint32_t out;
-
-    fn_XMen2_00619e30(C);
-    out = C->eax;
-    if (!out) return;
-    if (RD8(out) == (uint8_t)'[' && glyph_byte(RD8(out + 1u)) &&
-        RD8(out + 2u) == (uint8_t)']' && RD8(out + 3u) == 0) {
-        WR8(out, RD8(out + 1u));
-        WR8(out + 1u, 0);
-        g_unbracketed++;
-    }
-}
-
 /* Register the Xbox-prompt name and label-selection boundaries. */
 __attribute__((constructor))
 static void x2_pad_glyphs_register_overrides(void)
 {
     x86_register_override("XMen2.exe", 0x006281f0, x2_override_006281f0);
     x86_register_override("XMen2.exe", 0x006294b0, x2_override_006294b0);
-    x86_register_override("XMen2.exe", 0x00619e30, x2_override_00619e30);
 }
 
 void pad_glyphs_report(void)
@@ -257,13 +213,12 @@ void pad_glyphs_report(void)
     if (done++) return;
     printf("  Xbox prompt names: %lu glyph(s), %lu original name(s); font "
            "pack %s\n", g_mapped, g_deferred,
-           enabled() ? "enabled" : "disabled");
+           prompt_glyph_pack_enabled() ? "enabled" : "disabled");
     /* With the denominator, because "0 glyphs" means one thing when the label
        was never built at all and another when it was built 900 times and every
        row named the keyboard. */
-    printf("  Xbox prompt labels: %lu had the game's square brackets removed "
-           "because the name was a glyph\n", g_unbracketed);
     printf("  Xbox prompt rows: %lu label read(s) -- %lu answered with the "
            "row's pad binding, %lu had none and used the game's own slot "
            "order\n", g_rows_asked, g_rows_padded, g_rows_no_pad);
+    prompt_labels_report();
 }

@@ -19,6 +19,16 @@ static X86Module module = { .name = "XMen2", .base = &mapped_base,
                             .preferred = 0x00400000u, .size = SIZE };
 static int real_calls, reader_calls;
 static uint32_t g_object;
+static uint32_t g_heap_next;
+
+uint32_t guest_malloc(uint32_t bytes)
+{
+    uint32_t result;
+    if (!g_heap_next) g_heap_next = mapped_base + 0x500000u;
+    result = g_heap_next;
+    g_heap_next += (bytes + 15u) & ~15u;
+    return result;
+}
 
 X86Module *x86_modules(void) { return &module; }
 int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 0; }
@@ -155,13 +165,14 @@ int main(int argc, char **argv)
     }
     mapped_base = (uint32_t)(uintptr_t)region;
     if (argc == 2 && strcmp(argv[1], "--disabled") == 0) {
+        unsetenv("X2_PROMPT_GLYPHS");
         unsetenv("X2_PAD_GLYPHS");
         ok = check_call(3, 0x15, 0, 1);
         printf("pad glyph disabled gate: %s\n", ok ? "ok" : "FAIL");
         return ok ? 0 : 1;
     }
 
-    setenv("X2_PAD_GLYPHS", "1", 1);
+    setenv("X2_PROMPT_GLYPHS", "1", 1);
     ok = check_call(3, 0x15, 0x80, 0) && /* A */
          check_call(3, 5,    0x86, 0) && /* Z+ = LT */
          check_call(3, 6,    0x87, 0) && /* Z- = RT */
@@ -230,13 +241,11 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    /*
-     * The brackets. "[ENTER]" reads as a key and must survive; "[<glyph>]"
-     * is a picture of a button in square brackets, which no console prompt
-     * draws, and must lose them. Both directions, because an override that
-     * stripped everything would pass a one-sided test.
-     */
+    /* The label presentation. Pad pictures lose brackets. Keyboard bindings
+       keep their live text but receive composable keycap pieces around it. */
     {
+        char want[64];
+        size_t at = 0, i;
         char glyph[2];
         glyph[0] = (char)X2_PAD_GLYPH_FACE_A;
         glyph[1] = '\0';
@@ -245,18 +254,26 @@ int main(int argc, char **argv)
                             "brackets (%s)\n", label_after(glyph));
             return 1;
         }
-        if (strcmp(label_after("ENTER"), "[ENTER]") != 0) {
-            fprintf(stderr, "pad glyph brackets: a keyboard label LOST its "
-                            "brackets (%s)\n", label_after("ENTER"));
+        want[at++] = (char)X2_KEYCAP_GLYPH_LEFT;
+        for (i = 0; i < 5; i++) want[at++] = (char)X2_KEYCAP_GLYPH_MIDDLE;
+        for (i = 0; i < 5; i++) want[at++] = (char)X2_KEYCAP_GLYPH_REWIND;
+        memcpy(want + at, "ENTER", 5); at += 5;
+        want[at++] = (char)X2_KEYCAP_GLYPH_RIGHT;
+        want[at] = '\0';
+        if (strcmp(label_after("ENTER"), want) != 0) {
+            fprintf(stderr, "prompt keycap: ENTER was not composed from the "
+                            "four scalable pieces\n");
             return 1;
         }
-        /* A ONE-CHARACTER keyboard name -- DirectInput names the letter keys
-           "A", "B" and so on -- is the case that separates "strip a glyph" from
-           "strip anything short". Without it the length test alone passes an
-           override that strips every single-character name. */
-        if (strcmp(label_after("A"), "[A]") != 0) {
-            fprintf(stderr, "pad glyph brackets: the one-character KEYBOARD "
-                            "name lost its brackets (%s)\n", label_after("A"));
+        at = 0;
+        want[at++] = (char)X2_KEYCAP_GLYPH_LEFT;
+        want[at++] = (char)X2_KEYCAP_GLYPH_MIDDLE;
+        want[at++] = (char)X2_KEYCAP_GLYPH_REWIND;
+        want[at++] = 'A';
+        want[at++] = (char)X2_KEYCAP_GLYPH_RIGHT;
+        want[at] = '\0';
+        if (strcmp(label_after("A"), want) != 0) {
+            fprintf(stderr, "prompt keycap: one-character A was not composed\n");
             return 1;
         }
         if (strcmp(label_after("???"), "[???]") != 0) {
@@ -266,6 +283,6 @@ int main(int argc, char **argv)
         }
     }
     printf("pad glyph wrapper: 6 enabled cases, both label-selection "
-           "directions and all four bracket cases passed\n");
+           "directions and pad/keycap/unmapped label cases passed\n");
     return 0;
 }

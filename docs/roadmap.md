@@ -55,6 +55,14 @@ pixels, so every glyph drew at nine tenths of a pixel — invisible, and
 indistinguishable from a renderer refusing the codepoint (C220). The builder now
 refuses metrics whose units do not match the font's own.
 
+**Keyboard prompts now use the shared keycap art too** (#91). The label is not
+baked into the cap: `prompt_labels.c` emits left/middle/rewind pieces, then the
+retail binding name and right edge. This preserves arbitrary rebinding with
+four codepoints instead of allocating a glyph per key. A windowless tutorial
+capture with no pad connected shows `ENTER` centered on the composed cap and
+correct spacing before `CONTINUE...` (`scratch/screenshots/keycap-windowless.png`,
+C230).
+
 Open: three of the four fonts the game loads (`X2F_big`, `X2F_hud_PC`,
 `font_XMEN_digital`) are pixel format 15, and the builder refuses to re-encode
 them, so a prompt drawn in one of those would still be blank. Whether any is.
@@ -154,8 +162,7 @@ guest DirectInput state while open.
 Open: real-pad hotplug/identity and fullscreen transitions need hardware/user
 validation; controller navigation currently uses focus traversal rather than
 Dusklight-style spatial navigation; the overlay is opened with F1 rather than
-being wired into the original Options menu; keyboard prompt keycaps remain
-issue #91.
+being wired into the original Options menu.
 
 **Decided 2026-08-18: the port keeps the PC base, and RmlUi takes over the
 options system rather than sitting beside it.** Basing the port on the Xbox

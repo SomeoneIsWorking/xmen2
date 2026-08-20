@@ -1,10 +1,13 @@
 {
   "set": "gamepad-xbox360",
+  "keyboard_set": "keyboard",
+  "keyboard_source": "cap_extra_wide",
   "first_codepoint": 128,
   "icons": [
     "face_a", "face_b", "face_x", "face_y",
     "lb", "rb", "lt", "rt",
     "start", "back", "ls", "rs",
     "dpad_up", "dpad_down", "dpad_left", "dpad_right"
-  ]
+  ],
+  "keycap_parts": ["left", "middle", "rewind", "right"]
 }

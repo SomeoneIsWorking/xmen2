@@ -17,7 +17,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 # The manifest is the ONE authority on how many glyphs there are; a second
 # number written down here drifts from it the first time the set changes.
-from pad_glyph_manifest import ICONS, svg_paths                   # noqa: E402
+from pad_glyph_manifest import (ICONS, keycap_svg_path,           # noqa: E402
+                                svg_paths)
 
 SCRATCH = ROOT / "scratch"
 FONT_IGB = ("Textures", "fonts", "x2f_med_pc.igb")
@@ -73,9 +74,10 @@ def prepare(game: Path, out: Path) -> None:
                          f"but resolved {len(icons)} SVG path(s)")
     sources = [igb, xmlb, ROOT / "tools" / "make_pad_font.py",
                ROOT / "tools" / "pad_glyph_manifest.py",
-               ROOT / "assets" / "buttons" / "glyphs.json", *icons]
+               ROOT / "assets" / "buttons" / "glyphs.json",
+               keycap_svg_path(), *icons]
     key = fingerprint(sources)
-    manifest = out / ".x2-pad-font.json"
+    manifest = out / ".x2-prompt-font.json"
     if manifest.is_file():
         try:
             old = json.loads(manifest.read_text())
@@ -99,7 +101,7 @@ def prepare(game: Path, out: Path) -> None:
         print(result.stdout, end="")
         if result.returncode:
             raise SystemExit(f"native assets: font builder failed with exit {result.returncode}")
-        (stage / ".x2-pad-font.json").write_text(
+        (stage / ".x2-prompt-font.json").write_text(
             json.dumps({"sha256": key, "inputs": len(sources)}, indent=2) + "\n"
         )
         cleanup_tree(out)

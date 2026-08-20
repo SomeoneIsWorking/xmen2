@@ -73,9 +73,9 @@ if [ "$NAME" = "native" ]; then
     # is enabled only with the matching pack, so a custom/missing pack cannot
     # turn a prompt into an invisible byte.
     if [ -z "${X2_ASSETS:-}" ]; then
-        X2_ASSETS=$ROOT/scratch/generated-assets/pad-font
+        X2_ASSETS=$ROOT/scratch/generated-assets/prompt-font
         python3 tools/prepare_native_assets.py "$GAME_PC_DIR" "$X2_ASSETS" || exit $?
-        export X2_ASSETS X2_PAD_GLYPHS=1
+        export X2_ASSETS X2_PROMPT_GLYPHS=1
     fi
 
     # The recompiler output is GENERATED and gitignored. Without it CMake still

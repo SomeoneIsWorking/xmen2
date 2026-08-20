@@ -267,7 +267,8 @@ logged defect.
   named for its game-code subsystem (`startup.c` for boot/run-control,
   `movie.c` for the media decoder, `reportbox.c` for the error dialog,
   `conversation.c` for the conversation manager, the `dinput_*`/`pad_glyphs.c`/
-  `xbox_defaults.c` files for input), NOT in a
+  `xbox_defaults.c` files for input, and `prompt_labels.c` plus
+  `prompt_glyph_pack.c` for prompt presentation), NOT in a
   central `overrides.c` (abolished 2026-08-16). An override declares itself
   where it lives, with `x86_register_override("<module>.dll", 0x…, fn)` beside
   its implementation; the emitter scans `src/native/*.c` for those calls and

@@ -75,7 +75,8 @@ target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
 add_test(NAME dinput_pad COMMAND test_dinput_pad)
 
 add_executable(test_pad_glyphs tests/test_pad_glyphs.c
-               src/native/pad_glyphs.c src/native/input_bindings.c
+               src/native/pad_glyphs.c src/native/prompt_glyph_pack.c
+               src/native/prompt_labels.c src/native/input_bindings.c
                tests/native_stubs.c)
 add_dependencies(test_pad_glyphs x2_pad_glyph_header)
 target_include_directories(test_pad_glyphs PRIVATE src/recomp src/native
@@ -527,6 +528,8 @@ if(X2_MODULE_HAVE)
         src/native/dinput_joystick.c
         src/native/dinput_pad.c
         src/native/pad_glyphs.c
+        src/native/prompt_glyph_pack.c
+        src/native/prompt_labels.c
         src/native/input_bindings.c
         src/native/input_probe.c
         src/native/xbox_defaults.c

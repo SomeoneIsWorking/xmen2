@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the button-glyph manifest and generate its C codepoint header.
+"""Validate the prompt-glyph manifest and generate its C codepoint header.
 
 `assets/buttons/glyphs.json` is this PORT's decision: which glyphs it publishes
 into the game's font and at which codepoints. **The art itself is not this
@@ -31,15 +31,21 @@ sys.path.insert(0, shared_dir("port-assets", marker="sets"))
 import port_assets                                             # noqa: E402
 
 
-def load() -> tuple[int, str, list[str]]:
+def load() -> tuple[int, str, list[str], str, str, list[str]]:
     data = json.loads(MANIFEST.read_text())
     first = data.get("first_codepoint")
     icons = data.get("icons")
     set_name = data.get("set")
+    keyboard_set = data.get("keyboard_set")
+    keyboard_source = data.get("keyboard_source")
+    keycap_parts = data.get("keycap_parts")
     if not isinstance(first, int) or not isinstance(icons, list) \
-            or not isinstance(set_name, str):
+            or not isinstance(set_name, str) \
+            or not isinstance(keyboard_set, str) \
+            or not isinstance(keyboard_source, str) \
+            or not isinstance(keycap_parts, list):
         raise ValueError("glyphs.json needs an integer first_codepoint, a "
-                         "string set and a list of icons")
+                         "string set, a list of icons, and keyboard set/source/parts")
     # A fixed count, not a minimum: a manifest that lost an entry must be
     # refused, and the number is meant to be changed deliberately when the set
     # this port publishes grows. It grew from 14 to 16 when the authored
@@ -54,17 +60,34 @@ def load() -> tuple[int, str, list[str]]:
     if missing:
         raise ValueError(f"the shared set {set_name!r} has no glyph(s) "
                          f"{missing!r}. It has: {', '.join(sorted(available))}")
-    if first < 0 or first + len(icons) > 256:
+    keyboard_available = set(port_assets.names(keyboard_set, start=ROOT))
+    if keyboard_source not in keyboard_available:
+        raise ValueError(f"the shared set {keyboard_set!r} has no glyph "
+                         f"{keyboard_source!r}. It has: "
+                         f"{', '.join(sorted(keyboard_available))}")
+    expected_parts = ["left", "middle", "rewind", "right"]
+    if keycap_parts != expected_parts:
+        raise ValueError(f"keycap_parts must be {expected_parts!r}, found "
+                         f"{keycap_parts!r}; their metrics are semantic")
+    if first < 0 or first + len(icons) + len(keycap_parts) > 256:
         raise ValueError("glyph codepoints do not fit in the game's one-byte font")
-    return first, set_name, icons
+    return (first, set_name, icons, keyboard_set, keyboard_source,
+            keycap_parts)
 
 
-FIRST_CODEPOINT, SET_NAME, ICONS = load()
+(FIRST_CODEPOINT, SET_NAME, ICONS, KEYBOARD_SET, KEYBOARD_SOURCE,
+ KEYCAP_PARTS) = load()
+KEYCAP_FIRST_CODEPOINT = FIRST_CODEPOINT + len(ICONS)
 
 
 def svg_paths() -> list[Path]:
     """Where the art actually is, in codepoint order."""
     return [port_assets.path(SET_NAME, name, start=ROOT) for name in ICONS]
+
+
+def keycap_svg_path() -> Path:
+    """Blank shared keycap geometry; this port slices it into font pieces."""
+    return port_assets.path(KEYBOARD_SET, KEYBOARD_SOURCE, start=ROOT)
 
 
 def emit_header(path: Path) -> None:
@@ -73,6 +96,10 @@ def emit_header(path: Path) -> None:
     for index, name in enumerate(ICONS):
         macro = "X2_PAD_GLYPH_" + name.upper()
         lines.append(f"#define {macro:<27} 0x{FIRST_CODEPOINT + index:02X}u")
+    lines.append("")
+    for index, name in enumerate(KEYCAP_PARTS):
+        macro = "X2_KEYCAP_GLYPH_" + name.upper()
+        lines.append(f"#define {macro:<27} 0x{KEYCAP_FIRST_CODEPOINT + index:02X}u")
     # The bounds of the published run, so a "is this byte one of ours" test
     # names the run rather than naming whichever glyph happens to sit at its
     # end -- that test read `<= X2_PAD_GLYPH_DPAD` and would have silently
@@ -84,8 +111,8 @@ def emit_header(path: Path) -> None:
     lines.extend(["", "#endif /* X2_PAD_GLYPH_CODES_H */", ""])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="ascii")
-    print(f"generated {path} with {len(ICONS)} glyph codepoint(s) "
-          f"from the shared set {SET_NAME!r}")
+    print(f"generated {path} with {len(ICONS)} pad and {len(KEYCAP_PARTS)} "
+          f"keycap glyph codepoint(s) from shared assets")
 
 
 def main() -> int:
@@ -102,7 +129,12 @@ def main() -> int:
             if not path.is_file():
                 raise SystemExit(f"pad glyph manifest: {path} vanished between "
                                  f"resolution and use")
-        print(f"pad glyph manifest: all {len(ICONS)} SVG(s) readable")
+        cap = keycap_svg_path()
+        if not cap.is_file():
+            raise SystemExit(f"pad glyph manifest: {cap} vanished between "
+                             "resolution and use")
+        print(f"pad glyph manifest: all {len(ICONS)} pad SVG(s) and shared "
+              f"keycap {cap.name} readable")
         return 0
     if not args.emit_header:
         parser.error("choose --selftest or --emit-header; generated NOTHING")
