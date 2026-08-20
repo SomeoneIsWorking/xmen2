@@ -32,8 +32,26 @@ device (which knows nothing about the guest), the ARK class, and one file per
 group of engine slots. It replaced a single `igvk_visualcontext.c` that was
 about to grow 98 slot implementations.
 
-Two stacks for UI, on purpose: RmlUi for shipped UI, ImGui for developer
-overlays. Not needed yet here, but the decision is theirs and pre-made.
+**The shipped UI stack and ownership split.** RmlUi is now the player-facing
+settings layer; developer diagnostics remain separate. The dependency is pinned
+to `f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc` with an archive hash, and uses
+RmlUi's maintained SDL3 platform and SDL_GPU renderer backends. As in
+Dusklight, runtime lifetime and individual document behavior are separate
+modules, and the SDL/window entry points only compose them.
+
+**The settings-window vocabulary and RCSS.** `assets/ui/settings.rcss` adapts
+Dusklight's CC0 `res/rml/window.rcss` at commit
+`0fc05028ccfe809c569b1b84c0bb87f382b0bf34`: `window`, `tab-bar`, `tab`,
+`content`, two scrollable `pane`s, `select-button`, `key`, `value`, and the
+dark/gold focus treatment. Its compositor blur and shadow effects are not
+portable to RmlUi's SDL_GPU backend; leaving them in produced misplaced
+surfaces, so this port uses an opaque window and dimmed backdrop instead.
+
+**Input ownership, with different policy.** Dusklight's separation between
+action bindings and device selection is retained. Here keyboard actions belong
+to four reusable profiles so two players can share one keyboard with distinct
+layouts. Controller actions are intentionally not profiles: a physical pad is
+assigned to one player and uses the measured canonical Xbox/PS2 defaults.
 
 ### What has NOT been taken, and why
 
@@ -50,8 +68,10 @@ rendered one. Doing it now would be a design with nothing to test it against.
 ### The caveat that matters
 
 Their code is written against the TP decomp's types and a different graphics
-stack. Take the DESIGN DECISION and the failure mode it avoids; porting the
-code itself is usually not the win.
+stack. Take the design decision and the failure mode it avoids. The RCSS was
+copied because it is portable CC0 presentation; the C++ runtime was adapted
+around this port's existing SDL_GPU device and C guest boundary rather than
+copied mechanically.
 
 ## D3D8 implementations — DXVK/d8vk and WineD3D
 

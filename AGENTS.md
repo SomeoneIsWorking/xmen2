@@ -97,7 +97,8 @@ Every refusal is an answer: 409 says the key has no DirectInput mapping or the
 run has no frame to capture, 504 says the guest never polled -- which is a fact
 about the run, not a transport failure. `--unbounded` skips the scheduler's
 idle waits; `X2_UNPACED=1` removes the game's own frame cap; `X2_BOOT_MAP=<map>`
-starts in a level instead of through the menus.
+starts in a level instead of through the menus while still running the retail
+`startFirstMission` party initializer.
 
 Configure `-DX2_NATIVE_TRACE=ON` to trace every recompiled body into the
 boundary ring. CMake *says* which modules it linked and which it skipped — a
@@ -187,6 +188,28 @@ Guest x86 → C, run inside a 64-bit ELF host:
   port resolves that checkout, and it refuses rather than guessing when it is
   missing. `src/app/` keeps only `x2run.c`, which is this port's own runner.
 
+### Dusklight host ownership applied here
+
+The host follows Dusklight's composition pattern, adapted to this port's C ABI
+and SDL_GPU renderer. `src/config/` owns persistent data and storage location;
+`src/presentation/` owns window-mode transitions; `src/input/` resolves player
+assignments and publishes them into guest binding sets; `src/ui/` owns only the
+RmlUi lifetime and documents. `win32_sdl.c` and `gpu_device.c` compose those
+owners at the SDL event and render boundaries; they do not absorb their policy.
+
+The shipped settings UI uses the exact pinned RmlUi revision and maintained
+SDL3/SDL_GPU backends named in `CMakeLists.txt`. Its document vocabulary and
+RCSS are adapted from Dusklight's CC0 `res/rml/window.rcss` at commit
+`0fc05028ccfe809c569b1b84c0bb87f382b0bf34`. Dusklight's compositor-only blur
+and shadows are replaced by an opaque/dimmed fallback because the SDL_GPU
+backend renders those effects incorrectly. Keyboard mappings belong to four
+reusable profiles; players reference profiles, while controllers are assigned
+by persistent identity and always use the canonical Xbox/PS2 layout.
+
+`tools/check_structure.py` is the normal mechanical boundary: new host source
+files are capped at 500 lines and existing larger files are frozen. Extract a
+cohesive owner and lower a legacy limit; never raise one to land a feature.
+
 ## Rules this codebase enforces on itself
 
 These are not style preferences — each one exists because its absence produced a
@@ -244,7 +267,7 @@ logged defect.
   named for its game-code subsystem (`startup.c` for boot/run-control,
   `movie.c` for the media decoder, `reportbox.c` for the error dialog,
   `conversation.c` for the conversation manager, the `dinput_*`/`pad_glyphs.c`/
-  `xbox_defaults.c`/`controller_defaults_ui.c` files for input), NOT in a
+  `xbox_defaults.c` files for input), NOT in a
   central `overrides.c` (abolished 2026-08-16). An override declares itself
   where it lives, with `x86_register_override("<module>.dll", 0x…, fn)` beside
   its implementation; the emitter scans `src/native/*.c` for those calls and

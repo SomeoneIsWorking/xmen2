@@ -38,6 +38,7 @@
 #include "dinput_pad.h"
 #include "dinput_script.h"
 #include "dinput_system.h"
+#include "rmlui_ui.h"
 #include "gpu_device.h"
 
 #include <stdio.h>
@@ -308,6 +309,14 @@ static void m_GetDeviceState(CPU *C)
             dinput_pad_virtual_tick(f);      /* X2_VIRTUAL_PAD's fN forms */
             dinput8_hotplug_pump(C);
         }
+    }
+    /* The RmlUi settings overlay is a modal input owner. SDL event handling
+       alone cannot suppress DirectInput state polling, so zero the shipping
+       device state at this shared boundary while the overlay is open. */
+    if (x2_ui_captures_input()) {
+        memset((void *)(uintptr_t)out, 0, cb);
+        ret_com(C, S_OK, 2);
+        return;
     }
     if (d->kind == DINPUT_DEV_KEYBOARD) {
         dinput_system_keyboard_state(out, cb);

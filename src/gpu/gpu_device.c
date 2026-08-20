@@ -22,6 +22,7 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_internal.h"
+#include "rmlui_ui.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -169,6 +170,9 @@ int gpu_device_create(void)
 void gpu_device_destroy(void)
 {
 #ifdef X2_WITH_SDL
+    /* RmlUi owns pipelines, buffers and textures on this device. Its backend
+       must release them before the device and before the claimed window. */
+    x2_ui_gpu_shutdown();
     /* Buffers, textures and pipelines belong to the device, so they go before
        it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
        that only shows up under a validation layer. */
@@ -800,6 +804,8 @@ void gpu_frame_end(void)
         SDL_EndGPURenderPass(g_pass);
         g_pass = NULL;
     }
+    if (!g_offscreen)
+        x2_ui_render(g_gpu, g_cmd, g_swap, g_swap_w, g_swap_h, g_win);
     SDL_SubmitGPUCommandBuffer(g_cmd);
     g_cmd = NULL;
     g_frame_end_submits++;

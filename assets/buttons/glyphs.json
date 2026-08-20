@@ -4,7 +4,7 @@
   "icons": [
     "face_a", "face_b", "face_x", "face_y",
     "lb", "rb", "lt", "rt",
-    "start", "back",
+    "start", "back", "ls", "rs",
     "dpad_up", "dpad_down", "dpad_left", "dpad_right"
   ]
 }

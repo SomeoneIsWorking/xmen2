@@ -5,7 +5,7 @@ status: resolved
 symptom: After the opening conversation the tutorial never hands control back: no HUD, the camera stays on cam_prof, and the character does not move although input reaches player 0 (physical[0] = -1.000 with the stick held). The game keeps rendering at ~68 fps, so it is not a hang.
 tags: pc,native,gameplay,tutorial,conversation,scripts,softlock
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 ## What the soft lock IS
@@ -122,11 +122,11 @@ conversation -- that would be a bandaid over an unidentified cause.
   startConversation/lockControls/conversation-start/reset with their results.
 * `tools/script_commands.py` -- the 289-entry BehavEd command table.
 
-### Note (2026-08-19)
-RESOLVED, and it is NOT a port defect: X2_BOOT_MAP causes it.
+### Resolution (updated 2026-08-20)
 
-The shortcut skips the boot preamble that builds the party, so the game has no
-player character. Measured with the same probe on both boot paths, same build:
+The conversation code is faithful. The defect was `X2_BOOT_MAP`: it issued
+`loadmap <map> 0 0` immediately after `resetgame`, meaning “keep” a team that
+did not exist. Measured with the same probe on both old boot paths, same build:
 
     X2_BOOT_MAP=act0/tutorial/tutorial1
       current player index 0
@@ -157,13 +157,18 @@ The whole run was driven with the PAD through tools/x2ctl.py -- main menu,
 difficulty dialog, both tutorial conversations -- which is independent
 confirmation of #82's fix on paths it had never been tested on.
 
-So nothing in the conversation code needs changing. What this leaves is a
-documentation and tooling gap, not a bug: X2_BOOT_MAP is already labelled
-'for testing only', and it now has a NAMED limitation -- it produces a run with
-no party, and anything downstream of the player actor behaves differently.
-Recorded at the override in src/native/startup.c and in roadmap item 6.
+The fix is at the missing initialization boundary, not in conversation code.
+The retail BehavEd command `startFirstMission` (FUN_004a7b10) resets the
+relevant managers and assigns Magneto, Cyclops, Wolverine and Storm before it
+launches `menus/new_game`. `src/native/startup.c` now calls that exact function
+and replaces only its later movie/hardcoded-map script.
 
-The dead end worth keeping: three sessions of this investigation treated the
-boot-map run as equivalent to a real one. It is not, and the cheap check is one
-line of the input probe -- if the hero handles are null, the run is not
-comparable to a played game.
+Live regression after the fix:
+
+    boot-map current player 0
+    player handle 0x00000201 -> actor 0x08326010     (1 of 5 resolve)
+    0020b -> STARTED  flags 0x18 -> 0x13             (speaking + visible)
+
+The old `0x18 -> 0x10` no-line branch is gone because the speaker actor now
+exists. The useful diagnostic remains: a direct-level run is not comparable to
+a played game unless at least one hero handle resolves.

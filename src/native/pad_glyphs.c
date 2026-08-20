@@ -117,6 +117,8 @@ uint8_t pad_glyph_code(uint32_t code)
     if (code == 6u) return X2_PAD_GLYPH_RT;
     if (code >= 0x11u && code < 0x11u + sizeof pov)
         return pov[code - 0x11u];
+    if (code == 0x1du) return X2_PAD_GLYPH_LS;
+    if (code == 0x1eu) return X2_PAD_GLYPH_RS;
     return 0;
 }
 

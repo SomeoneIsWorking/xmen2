@@ -1,0 +1,233 @@
+/*
+ * Adapted from Dusklight's CC0 res/rml/window.rcss at commit 0fc05028.
+ * The custom-element vocabulary, two-pane layout, palette, focus treatment,
+ * and sizing are retained. LatoLatin substitutes for its FiraSans assets.
+ */
+*, *:before, *:after { box-sizing: border-box; }
+
+body {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 64dp;
+    font-family: "LatoLatin";
+    font-weight: normal;
+    font-style: normal;
+    font-size: 15dp;
+    color: #E0DBC8;
+    background-color: rgba(0, 0, 0, 72%);
+}
+
+window {
+    display: flex;
+    flex-flow: column;
+    position: relative;
+    height: 100%;
+    width: 100%;
+    max-width: 1088dp;
+    max-height: 768dp;
+    margin: auto;
+    border-radius: 14dp;
+    overflow: hidden;
+    border: 2dp #92875B;
+    background-color: #151610;
+}
+
+@media (max-height: 640dp) {
+    body { padding: 16dp; }
+}
+
+window tab-bar {
+    flex: 0 0 64dp;
+    height: 64dp;
+    background-color: rgba(217, 217, 217, 10%);
+    font-weight: bold;
+    font-size: 18dp;
+    border-bottom: 2dp #92875B;
+}
+
+window content {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+window content pane {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    padding: 24dp;
+    padding-bottom: 0dp;
+    gap: 8dp;
+    overflow: hidden auto;
+    font-size: 20dp;
+}
+
+window content pane:not(:last-of-type) { border-right: 1dp #92875B; }
+window content pane > * { flex: 0 0 auto; }
+window content pane:last-of-type > div { line-height: 1.625; }
+
+window content pane > spacer {
+    display: block;
+    flex: 0 0 16dp;
+    height: 16dp;
+    pointer-events: none;
+}
+
+scrollbarvertical { width: 8dp; margin: 4dp 4dp 4dp 0; }
+scrollbarvertical sliderarrowdec,
+scrollbarvertical sliderarrowinc { width: 0; height: 0; }
+scrollbarvertical slidertrack { width: 8dp; }
+scrollbarvertical sliderbar {
+    width: 8dp;
+    min-height: 24dp;
+    background-color: rgba(224, 219, 200, 45%);
+    border-radius: 2dp;
+}
+scrollbarvertical sliderbar:hover,
+scrollbarvertical sliderbar:active { background-color: rgba(194, 164, 45, 80%); }
+scrollbarhorizontal,
+scrollbarhorizontal sliderarrowdec,
+scrollbarhorizontal sliderarrowinc,
+scrollbarhorizontal slidertrack,
+scrollbarhorizontal sliderbar { width: 0; height: 0; }
+
+.section-heading {
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 22dp;
+    opacity: 0.25;
+}
+.section-heading:not(:first-of-type) { padding-top: 12dp; }
+
+tab-bar {
+    display: flex;
+    position: relative;
+    min-width: 0;
+    overflow: auto hidden;
+    clip: always;
+    text-transform: uppercase;
+}
+tab-bar tab {
+    flex: 0 0 auto;
+    padding: 0 24dp;
+    line-height: 64dp;
+    white-space: nowrap;
+    opacity: 0.25;
+    cursor: pointer;
+    focus: auto;
+}
+tab-bar tab:selected {
+    opacity: 1;
+    border-bottom: 4dp #C2A42D;
+    font-effect: glow(0dp 4dp 0dp 4dp black);
+}
+tab-bar tab:focus-visible,
+tab-bar tab:hover {
+    opacity: 1;
+    font-effect: glow(0dp 4dp 0dp 4dp black);
+    background-color: rgba(194, 164, 45, 15%);
+}
+tab-bar[closable] tab-end-spacer {
+    display: block;
+    flex: 0 0 64dp;
+    width: 64dp;
+    pointer-events: none;
+}
+tab-bar[closable] close {
+    display: block;
+    position: fixed;
+    top: 8dp;
+    right: 8dp;
+    z-index: 1;
+    width: 48dp;
+    height: 48dp;
+    font-weight: bold;
+    font-size: 28dp;
+    color: rgba(224, 219, 200, 70%);
+    border-radius: 6dp;
+    decorator: text("×" center center);
+    cursor: pointer;
+    focus: auto;
+}
+tab-bar[closable] close:hover,
+tab-bar[closable] close:focus-visible {
+    color: #fff;
+    background-color: rgba(194, 164, 45, 24%);
+}
+
+button {
+    width: 100%;
+    min-height: 44dp;
+    margin-top: 6dp;
+    padding: 8dp 16dp;
+    color: #E0DBC8;
+    background-color: rgba(17, 16, 10, 55%);
+    border: 1dp rgba(146, 135, 91, 55%);
+    border-radius: 14dp;
+    font-family: "LatoLatin";
+    font-size: 18dp;
+    cursor: pointer;
+}
+button:not(:disabled):hover,
+button:not(:disabled):focus-visible {
+    background-color: rgba(204, 184, 119, 20%);
+    border: 2dp #C2A42D;
+}
+.status { min-height: 24dp; color: #C2A42D; }
+.hint, .help { font-size: 16dp; color: rgba(224, 219, 200, 65%); }
+
+select-button {
+    display: flex;
+    align-items: center;
+    gap: 8dp;
+    background-color: rgba(17, 16, 10, 20%);
+    opacity: 0.9;
+    padding: 8dp 16dp;
+    border: 1dp rgba(146, 135, 91, 55%);
+    border-radius: 14dp;
+    cursor: pointer;
+    focus: auto;
+}
+select-button:hover,
+select-button:focus-visible {
+    background-color: rgba(204, 184, 119, 20%);
+    border: 2dp #C2A42D;
+}
+select-button key {
+    font-weight: bold;
+    font-size: 18dp;
+    text-transform: uppercase;
+    flex: 0 1 auto;
+}
+select-button value {
+    flex: 1 1 auto;
+    text-align: right;
+    font-size: 20dp;
+}
+
+.binding {
+    display: flex;
+    align-items: center;
+    gap: 8dp;
+    min-height: 48dp;
+}
+.binding key {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 16dp;
+    font-weight: bold;
+}
+.binding button {
+    flex: 0 0 45%;
+    width: 45%;
+    margin: 0;
+    padding: 6dp 8dp;
+    font-size: 14dp;
+    color: #E0DBC8;
+    background-color: rgba(17, 16, 10, 65%);
+}

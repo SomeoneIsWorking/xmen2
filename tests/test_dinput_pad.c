@@ -49,11 +49,12 @@ static void test_no_pad(void)
 int main(void)
 {
     SDL_VirtualJoystickDesc desc;
-    SDL_JoystickID jid;
+    SDL_JoystickID jid, jid2;
     SDL_Joystick *joy;
     SDL_GUID g;
     char gs[64], map[512];
-    unsigned char inst[16], prod[16];
+    unsigned char inst[16], inst2[16], prod[16];
+    char persistent[64];
     int32_t v;
 
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
@@ -107,9 +108,31 @@ int main(void)
     /* And a CreateDevice for the GUID an enumeration handed out has to find
        its way back to this pad, or the game can see it and never open it. */
     CHECK(dinput_pad_for_guid(inst) == 0);
+    CHECK(dinput_pad_persistent_id(0) != NULL);
+    snprintf(persistent, sizeof persistent, "%s",
+             dinput_pad_persistent_id(0));
+    CHECK(dinput_pad_for_persistent_id(persistent) == 0);
     { unsigned char other[16]; memset(other, 0xAB, 16);
       CHECK(dinput_pad_for_guid(other) == -1); }
     printf("virtual pad: enumerated, identified, findable by GUID: ok\n");
+
+    /* SDL gives identical models the same joystick GUID. That is a product
+       identifier, not a DirectInput instance identifier: both units must
+       enumerate and remain independently openable and assignable. */
+    jid2 = SDL_AttachVirtualJoystick(&desc);
+    CHECK(jid2 != 0);
+    dinput_pad_refresh();
+    CHECK(dinput_pad_count() == 2);
+    CHECK(dinput_pad_instance_guid(1, inst2) == 1);
+    CHECK(memcmp(inst, inst2, sizeof inst) != 0);
+    CHECK(dinput_pad_for_guid(inst) == 0);
+    CHECK(dinput_pad_for_guid(inst2) == 1);
+    CHECK(strcmp(dinput_pad_persistent_id(0),
+                 dinput_pad_persistent_id(1)) != 0);
+    printf("identical pads: distinct live GUIDs and assignment identities: ok\n");
+    SDL_DetachVirtualJoystick(jid2);
+    dinput_pad_refresh();
+    CHECK(dinput_pad_count() == 1);
 
     joy = SDL_OpenJoystick(jid);
     assert(joy);
@@ -224,6 +247,7 @@ int main(void)
     dinput_pad_refresh();
     CHECK(dinput_pad_count() == 0);
     CHECK(dinput_pad_for_guid(inst) == -1);
+    CHECK(dinput_pad_for_persistent_id(persistent) == -1);
     printf("unplug: the pad is gone and its GUID names nothing: ok\n");
 
     dinput_pad_report();

@@ -172,8 +172,9 @@ int main(int argc, char **argv)
          check_call(3, 0x12, X2_PAD_GLYPH_DPAD_LEFT,  0) &&
          check_call(3, 0x13, X2_PAD_GLYPH_DPAD_DOWN,  0) &&
          check_call(3, 0x14, X2_PAD_GLYPH_DPAD_UP,    0) &&
-         check_call(4, 0x15, 0, 1) &&    /* non-Xbox slot */
-         check_call(3, 0x1d, 0, 1);      /* LS has no authored glyph */
+         check_call(3, 0x1d, X2_PAD_GLYPH_LS, 0) &&
+         check_call(3, 0x1e, X2_PAD_GLYPH_RS, 0) &&
+         check_call(4, 0x15, 0, 1);      /* non-Xbox slot */
     if (!ok) {
         fprintf(stderr, "pad glyph shipping-wrapper checks FAILED\n");
         return 1;

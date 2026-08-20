@@ -154,7 +154,7 @@ void x2_override_0055b610(CPU *C)
 
 
 /* ---------------------------------------------------------------------
- * X2_BOOT_MAP -- boot straight into a level, for testing only.
+ * X2_BOOT_MAP -- boot straight into a level with a real new-game party.
  *
  * The exe's boot sequence (FUN_00402ba0, the "launchMap" handler the engine
  * fires on the INIT event) hardcodes the boot map name to "main" and -- since
@@ -164,38 +164,52 @@ void x2_override_0055b610(CPU *C)
  * preamble is the cost: ~2600 frames of movies before the menu, and the
  * movies take a wall-clock time that varies run to run.
  *
- * X2_BOOT_MAP=<map> skips the whole preamble. When the console executor is
- * asked to run that one boot script, the override feeds the game's OWN
- * map-loading command -- `loadmap <map> 0 0` -- through the same console
- * command-line path the script command loadMapKeepTeam uses (FUN_004a0cc0
- * builds exactly that string and runs it through console +0x1c, FUN_0055c410).
- * The "0 0" is loadmap's keep-team mode, which is where the tutorial's
- * new_game.py ends. The engine is already past resetgame by the time this
- * runs, because the boot calls resetgame BEFORE the intro script.
+ * X2_BOOT_MAP=<map> skips the movies and menus, but it MUST NOT skip new-game
+ * initialization. The old implementation did exactly that: it replaced the
+ * intro script with `loadmap <map> 0 0`, which asks the loader to KEEP a team
+ * immediately after resetgame, when no team exists.
+ *
+ * The retail owner of new-game initialization is the registered BehavEd
+ * command `startFirstMission` (FUN_004a7b10). It resets the gameplay managers,
+ * installs the default Magneto/Cyclops/Wolverine/Storm party through the party
+ * manager's own +0xf0 method, and only then runs menus/new_game (or the hard
+ * variant). `startFirstMission` is a registered BehavEd command, not a console
+ * command, so the host calls that exact retail function directly.
+ * When it synchronously asks to run the new-game script, this override replaces
+ * THAT script with `loadmap <requested map> 0 0`. Thus the only omitted work is
+ * presentation: intro movies, main menu, difficulty dialog and cine01. The
+ * gameplay state is initialized by the same function a normal New Game uses.
  *
  * It is deliberately NOT the default: unset (or "0") makes this a pure
  * pass-through and the boot is untouched.
  *
- * WHAT IT COSTS, measured (C218, issue #83). The preamble it skips is where the
- * PARTY is built, so a boot-map run has no player character at all: all five
- * hero handles -- 0x0070b814[0..3] and the 0x0072988c fallback -- stay 0, where
- * a normally-booted run resolves player 0's. `tools/x2ctl.py input` reports
- * them, and that one line is the cheap check for whether a run is comparable to
- * a played game.
- *
- * That is not cosmetic. Anything downstream of the player actor behaves
- * differently: the tutorial's second conversation is SUPPRESSED in a boot-map
- * run, because igConversationManager::start cannot resolve a speaker, falls
- * back to a call site that bases the seen-line bitmap at 0, and collides with
- * the first conversation -- so the script that undoes `lockControls(-1)` never
- * runs and the level looks soft-locked. Three sessions read that as a port
- * defect before the two boot paths were compared. It is this shortcut's own
- * limitation.
+ * Issue #83 and C218 measured the consequence of the old ordering: five zero
+ * hero handles and a suppressed tutorial conversation. That observation is the
+ * regression test for this path, not an accepted limitation.
  */
 #define BOOT_SCRIPT_PFX   "runscript menus/intro_normal"
+#define NEW_GAME_PFX      "runscript menus/new_game"
 #define BOOT_PAGE         0x00110000u
 #define BOOT_CONSOLE_RVA  0x0015c410u   /* console vtable +0x1c, 0x0055c410 */
+#define START_MISSION_RVA 0x000a7b10u   /* BehavEd startFirstMission, 0x004a7b10 */
 #define BOOT_MGR_VA       0x007ac290u   /* &DAT_007ac290, the console singleton */
+
+enum BootMapPhase {
+    BOOT_MAP_WAITING_FOR_INTRO,
+    BOOT_MAP_INITIALIZING_PARTY,
+    BOOT_MAP_LOADING,
+    BOOT_MAP_LOADED
+};
+
+static void boot_console_line(const CPU *source, uint32_t exe_base,
+                              uint32_t command)
+{
+    CPU K = *source;
+    K.esp -= 4u;
+    WR32(K.esp, command);
+    K.ecx = BOOT_MGR_VA;
+    x86_guest_call_args(&K, exe_base + BOOT_CONSOLE_RVA, 4u);
+}
 
 void fn_XMen2_0055beb0(CPU *C);
 
@@ -204,6 +218,7 @@ void x2_override_0055beb0(CPU *C)
     static int mode = -1;               /* -1 unknown, 0 off, 1 on */
     static uint32_t cmd;                /* guest pointer to "loadmap <map> 0 0" */
     static uint32_t exe_base;
+    static enum BootMapPhase phase = BOOT_MAP_WAITING_FOR_INTRO;
     uint32_t s = RD32(C->esp + 4u);     /* param_2: the command string */
 
     if (mode < 0) {
@@ -212,6 +227,7 @@ void x2_override_0055beb0(CPU *C)
         if (mode) {
             const X86Module *m;
             char buf[128];
+            int len;
             exe_base = 0;
             for (m = x86_modules(); m; m = m->next)
                 if (m->preferred == 0x00400000u && *m->base) {
@@ -228,29 +244,63 @@ void x2_override_0055beb0(CPU *C)
                                 "the loadmap command. Booting normally.\n");
                 mode = 0;
             } else {
-                snprintf(buf, sizeof buf, "loadmap %s 0 0", e);
-                memcpy((void *)(uintptr_t)BOOT_PAGE, buf, strlen(buf) + 1u);
-                cmd = BOOT_PAGE;
-                fprintf(stderr, "X2_BOOT_MAP: the boot's intro script is "
-                                "replaced by a direct map load of \"%s\" "
-                                "(console: loadmap %s 0 0). Unset or 0 to boot "
-                                "normally.\n", e, e);
-                fflush(stderr);
+                len = snprintf(buf, sizeof buf, "loadmap %s 0 0", e);
+                if (len < 0 || (size_t)len >= sizeof buf) {
+                    fprintf(stderr, "X2_BOOT_MAP: the requested map name is "
+                                    "too long for the game's 128-byte command "
+                                    "buffer. Booting normally.\n");
+                    mode = 0;
+                } else {
+                    memcpy((void *)(uintptr_t)BOOT_PAGE, buf,
+                           (size_t)len + 1u);
+                    cmd = BOOT_PAGE;
+                    fprintf(stderr, "X2_BOOT_MAP: the boot's intro script is "
+                                    "replaced by the retail startFirstMission "
+                                    "initializer, then a direct load of \"%s\". "
+                                    "Unset or 0 to boot normally.\n", e);
+                    fflush(stderr);
+                }
             }
         }
     }
-    if (mode && cmd && exe_base && s &&
+    if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
         strncmp((const char *)(uintptr_t)s, BOOT_SCRIPT_PFX,
                 sizeof BOOT_SCRIPT_PFX - 1u) == 0) {
-        /* The boot asked to run the intro. Load the map instead, through the
-           console's own command-line path, exactly as loadMapKeepTeam does. */
+        /* The boot has already reset the game. Run the retail New Game owner;
+           its nested menus/new_game command is intercepted below only after
+           it has installed the default party. */
         CPU K = *C;
-        K.esp -= 4u;
-        WR32(K.esp, cmd);
-        K.ecx = BOOT_MGR_VA;
-        x86_guest_call_args(&K, exe_base + BOOT_CONSOLE_RVA, 4u);
+        phase = BOOT_MAP_INITIALIZING_PARTY;
+        x86_guest_call_args(&K, exe_base + START_MISSION_RVA, 0u);
+        if (phase != BOOT_MAP_LOADED) {
+            fprintf(stderr, "X2_BOOT_MAP: the retail startFirstMission "
+                            "function returned without requesting its "
+                            "new-game script. Refusing a bare map load because "
+                            "it would create a level with no party; continuing "
+                            "through the normal intro.\n");
+            fflush(stderr);
+            mode = 0;
+            fn_XMen2_0055beb0(C);
+            return;
+        }
         C->eax = 1u;      /* "a command ran"; the boot does not read EAX here */
         C->esp += 8u;     /* RET 0x4: the return address and the one arg */
+        return;
+    }
+    if (mode && phase == BOOT_MAP_INITIALIZING_PARTY && cmd && exe_base && s &&
+        strncmp((const char *)(uintptr_t)s, NEW_GAME_PFX,
+                sizeof NEW_GAME_PFX - 1u) == 0) {
+        /* startFirstMission has completed the real party setup and is about to
+           run the presentation-only new_game script. Replace that script's
+           movie and hardcoded tutorial map with the requested map. */
+        phase = BOOT_MAP_LOADING;
+        boot_console_line(C, exe_base, cmd);
+        phase = BOOT_MAP_LOADED;
+        fprintf(stderr, "X2_BOOT_MAP: startFirstMission installed the retail "
+                        "default party; loading the requested map now.\n");
+        fflush(stderr);
+        C->eax = 1u;
+        C->esp += 8u;
         return;
     }
     fn_XMen2_0055beb0(C);

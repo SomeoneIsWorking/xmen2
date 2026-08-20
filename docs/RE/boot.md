@@ -1,8 +1,8 @@
 # Boot sequence and the direct level-load path
 
-How XMen2.exe gets from process start to the first script, and the path the
-`loadmap` console command uses to load a level -- the mechanism behind the
-`X2_BOOT_MAP` testing shortcut (`src/native/startup.c`).
+How XMen2.exe gets from process start to the first script, how New Game builds
+its party, and the path the `loadmap` console command uses to load a level --
+the mechanism behind `X2_BOOT_MAP` (`src/native/startup.c`).
 
 ## The boot sequence: FUN_00402ba0
 
@@ -80,18 +80,44 @@ third field is loadmap's team mode: `0` keep team, `1` choose team.
 `FUN_0055c410` (console +0x1c) copies the string and feeds it to the command
 line processor FUN_0055c100, which is where `loadmap` is a real command.
 
-## X2_BOOT_MAP -- the testing shortcut
+## The New Game owner: `startFirstMission`
+
+The difficulty dialog ultimately invokes the registered BehavEd command
+`startFirstMission`, FUN_004a7b10. Its command-table entry is at `0x0068b7e0`
+and names the function at `0x0068be9c`. This is the required initialization
+boundary; `new_game.py` is only what it launches after the state exists.
+
+In order, FUN_004a7b10:
+
+1. resets the game/menu manager through `FUN_004b2880()->[+0x44]()`;
+2. enables New Game state through the party manager
+   (`FUN_0046dce0()->[+0x280](1)`);
+3. closes the difficulty dialog through `FUN_0044b8f0()->[+0xc0](1)`;
+4. assigns the retail default team through party-manager slot `+0xf0`:
+   Magneto, Cyclops, Wolverine and Storm in positions 0..3;
+5. runs `menus/new_game`, or `menus/new_game_hard` when the selected difficulty
+   is hard.
+
+Calling `loadmap ... 0 0` before this function means “keep” a team that does
+not exist. That was the root cause of the old boot-map path's zero hero handles.
+
+## X2_BOOT_MAP -- skip presentation, preserve initialization
 
 `src/native/startup.c` overrides `FUN_0055beb0` (console +0x18, the command
 executor). With `X2_BOOT_MAP=<map>` set, the one string
-`runscript menus/intro_normal` is intercepted and `loadmap <map> 0 0` is run
-through the SAME console +0x1c path `loadMapKeepTeam` uses -- the engine has
-already run `resetgame` by then, because the boot does that before the script.
-Unset or 0: pass-through, the boot is untouched.
+`runscript menus/intro_normal` is intercepted and the retail
+`startFirstMission` function is called. That function synchronously installs
+the real default party and asks the console to run `menus/new_game`; only that
+nested script command is replaced with `loadmap <requested map> 0 0` through
+the same console +0x1c path `loadMapKeepTeam` uses. The skipped work is the six
+intro movies, main menu, difficulty dialog and cine01 -- not game-state setup.
+Unset or 0 remains a pure pass-through.
 
-Measured (C208): the tutorial opens at frame 33, 0 draws refused, clean exit;
-the normal smoke path needs ~4200 frames and a six-press input script.
-
-Note the one wrinkle the static chain cannot answer: `loadmap ... 0 0`
-(keep-team) with no party built. Empirically the tutorial loads anyway, but a
-fresh level that requires a chosen team may need `0 1` or a party built first.
+The old implementation replaced the intro with the bare load. C218 measured
+the resulting defect: 0 of 5 hero handles resolved, and the tutorial's second
+conversation was suppressed because no speaker actor existed. After the
+ordering fix (C223), a live `tools/x2ctl.py input` probe measured current player 0,
+handle `0x00000201 -> actor 0x08326010` (1 of 5 resolves). The same driven run
+then reached the previously suppressed second conversation with flags
+`0x18 -> 0x13` (speaking and visible), rather than the old `0x18 -> 0x10` with
+no selected line.

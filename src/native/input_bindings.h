@@ -13,7 +13,8 @@ struct CPU;
  * persists under `Controls\Player%d\<name>1` -- and every row has four slots of
  * three dwords each: +4 is the device kind, +8 the code. FUN_006294b0 reads a
  * row back in the order 2, 0, 1, 1 and takes the first slot with a non-zero
- * device kind, which is why slot 2 is the pad slot and beats the keyboard.
+ * device kind. Slot 2 belongs to the game's hardcoded menu/working bindings;
+ * slot 1 is its persisted alternate and is the port-owned gamepad slot.
  *
  * Device kinds: 1 keyboard, 2 mouse, 3..0xc gamepad 0..9 (FUN_006281f0).
  */

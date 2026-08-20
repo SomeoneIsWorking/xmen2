@@ -1,11 +1,11 @@
 ---
 id: 89
 title: RB and RT draw the same letter R, so a prompt does not say which to press
-status: open
+status: resolved
 symptom: a prompt shows a shoulder button reading R and there is no way to tell whether it means the bumper or the trigger
 tags: pc,native,input,pad,glyphs,prompts,user-report
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 REPORTED BY THE USER, 2026-08-19, playing with a pad: "the button says R but is
@@ -38,3 +38,6 @@ looking at the SVG -- a design that separates at 72x72 and collapses at 18x18
 is exactly what is already wrong here. The builder already rasterises through
 ImageMagick, so the check is a zoomed PNG of the four glyphs side by side
 before anything is published.
+
+### Resolution (2026-08-20)
+Resolved: the shared gamepad-xbox360 set now uses separate silhouettes and explicit LB/RB/LT/RT labels. An 18x18 raster audit at scratch/screenshots/glyph-audit/sheet-rgb.png shows the bumper pills and trigger paddles remain distinct at the exact font-cell size.

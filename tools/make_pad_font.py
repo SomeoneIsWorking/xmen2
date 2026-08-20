@@ -143,7 +143,7 @@ def empty_band(rgba, w, h):
 
 def rasterise(sources, size, tmp):
     """SVG -> size x size RGBA, via ImageMagick. A missing icon or a missing
-    rasteriser is refused; a pack built from ten of fourteen icons would draw a
+    rasteriser is refused; a pack built from fifteen of sixteen icons would draw a
     blank for one prompt and look like a game bug.
 
     `sources` are full paths, because the art is NOT in this repo -- it comes
@@ -230,7 +230,7 @@ def build(pc_igb, pc_xmlb, outdir, first=None, icons=None):
     EXPERIMENT -- "does the game draw a glyph we injected at codepoint X?" --
     can be run into a scratch pack without editing shipped data. The shipping
     path (tools/prepare_native_assets.py) passes neither and so always uses the
-    manifest, which keeps its 14-icon invariant.
+    manifest, which keeps its 16-icon invariant.
 
     The ART comes from the shared `port-assets` set the manifest names, not
     from this repo; `svg_paths()` is the one place that resolves it.

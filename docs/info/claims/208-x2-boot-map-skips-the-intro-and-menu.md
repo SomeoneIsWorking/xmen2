@@ -1,9 +1,10 @@
 ---
 id: C208
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-16
 tags: boot,startup,override,map-load,console
+falsified_on: 2026-08-20
 ---
 
 ## Claim
@@ -21,3 +22,9 @@ The override __wrap_fn_XMen2_0055beb0 (console vtable +0x18 = FUN_0055beb0, the 
 ## What would falsify it
 
 a run with X2_BOOT_MAP set that either never prints the override announcement (wrap not firing: dispatch-table reference not redirected), or prints it but never opens a matched level package (loadmap requiring team/difficulty state the boot never sets up); or a run without X2_BOOT_MAP whose boot differs from stock
+
+## FALSIFIED 2026-08-20
+
+The bare intro-to-loadmap override did open the level, but it skipped the retail startFirstMission party initializer. Issue 83/C218 proved the resulting level had 0 of 5 hero handles and different gameplay. The override now preserves initialization; C223 supersedes the old claim.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

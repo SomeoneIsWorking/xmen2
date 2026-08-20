@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
-project(xmen2_sdl LANGUAGES C)
+project(xmen2_sdl LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # SDL3, for its GPU abstraction: it is the layer that will stand in for D3D8,
 # and it maps onto Metal on macOS rather than needing MoltenVK underneath.
@@ -33,6 +35,23 @@ endif()
 # module, through the one resolver in tools/alchemy_path.py.
 
 enable_testing()
+
+add_test(NAME structure
+         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_structure.py)
+add_test(NAME structure_selftest
+         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_structure.py --selftest)
+
+add_executable(test_settings tests/test_settings.c src/config/settings.c)
+target_include_directories(test_settings PRIVATE src/config)
+target_compile_definitions(test_settings PRIVATE
+    X2_TEST_SETTINGS_PATH="${CMAKE_BINARY_DIR}/test-x2native.conf")
+add_test(NAME settings COMMAND test_settings)
+
+add_executable(test_player_input tests/test_player_input.c
+               src/input/player_input.c src/config/settings.c)
+target_include_directories(test_player_input PRIVATE src/recomp src/native
+                                                   src/config src/input)
+add_test(NAME player_input COMMAND test_player_input)
 
 set(X2_PAD_GLYPH_HEADER "${CMAKE_BINARY_DIR}/pad_glyph_codes.h")
 add_custom_command(
@@ -66,12 +85,8 @@ add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
 add_executable(test_xbox_defaults tests/test_xbox_defaults.c
-               src/native/xbox_defaults.c
-               src/native/input_bindings.c
-               src/native/controller_defaults_ui.c
-               tests/native_stubs.c)
-target_include_directories(test_xbox_defaults PRIVATE src/recomp src/native)
-target_compile_definitions(test_xbox_defaults PRIVATE _GNU_SOURCE)
+               src/native/xbox_defaults.c)
+target_include_directories(test_xbox_defaults PRIVATE src/native)
 add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
 
 
@@ -405,6 +420,55 @@ foreach(m ${X2_MODULES})
     endif()
 endforeach()
 if(X2_MODULE_HAVE)
+    # Dusklight's exact RmlUi revision, including its maintained SDL3/SDL_GPU
+    # backend. Pin both the commit and archive digest: a UI dependency update
+    # is a reviewed source change, never whatever GitHub serves that day.
+    include(FetchContent)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(RMLUI_TESTS OFF CACHE BOOL "" FORCE)
+    set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
+    set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
+    FetchContent_Declare(rmlui
+        URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
+        URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(rmlui)
+    find_package(SDL3_image REQUIRED)
+    set_target_properties(rmlui_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    add_library(x2_rmlui_backend STATIC
+        ${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp
+        ${rmlui_SOURCE_DIR}/Backends/RmlUi_Renderer_SDL_GPU.cpp)
+    target_include_directories(x2_rmlui_backend PUBLIC
+        ${rmlui_SOURCE_DIR}/Backends)
+    target_compile_definitions(x2_rmlui_backend PUBLIC
+        RMLUI_SDL_VERSION_MAJOR=3)
+    set_target_properties(x2_rmlui_backend PROPERTIES
+        POSITION_INDEPENDENT_CODE ON)
+    target_link_libraries(x2_rmlui_backend PUBLIC RmlUi::Core ${X2_SDL}
+                                                SDL3_image::SDL3_image)
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ui")
+    configure_file(
+        "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Regular.ttf"
+        "${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf" COPYONLY)
+    configure_file(
+        "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Bold.ttf"
+        "${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf" COPYONLY)
+    configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
+                   "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
+    add_library(x2_rmlui_ui STATIC
+        src/ui/rmlui_ui.cpp
+        src/ui/settings_document.cpp)
+    target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
+                                                   src/presentation)
+    target_compile_definitions(x2_rmlui_ui PRIVATE
+        X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
+        X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
+        X2_UI_DOCUMENT_URL="${CMAKE_BINARY_DIR}/ui/settings.rml")
+    set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend)
+
     # ---- shaders -------------------------------------------------------
     #
     # SDL_GPU takes SPIR-V, so the fixed-function shaders are compiled at build
@@ -441,6 +505,10 @@ if(X2_MODULE_HAVE)
     add_executable(x2native
         src/native/x2native.c
         src/native/x2native_options.c
+        src/config/settings.c
+        src/config/settings_store.c
+        src/presentation/window_settings.c
+        src/input/player_input.c
         src/native/pe_map.c
         src/native/win32_sdl.c
         src/native/guest_heap.c
@@ -462,7 +530,6 @@ if(X2_MODULE_HAVE)
         src/native/input_bindings.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
-        src/native/controller_defaults_ui.c
         src/native/dsound.c
         src/native/guest_clock.c
         src/native/control.c
@@ -508,9 +575,12 @@ if(X2_MODULE_HAVE)
     )
     add_dependencies(x2native x2_shaders x2_pad_glyph_header)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
+                                                src/config src/presentation src/ui
+                                                src/input
                                               src/gpu src/d3d8
                                               src/oracle src/recomp/gen
                                               ${CMAKE_BINARY_DIR})
+    target_link_libraries(x2native PRIVATE x2_rmlui_ui)
 
     # Native overrides are declared in C where they belong: x86_register_override
     # in the subsystem files, and recomp.py routes every call (direct or

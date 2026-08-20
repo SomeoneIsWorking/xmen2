@@ -77,34 +77,22 @@ The d-pad order is executable evidence, not a reading of the diagram:
 the PC physical-name function maps POV Up/Down/Right/Left to codes
 `0x14/0x13/0x11/0x12`.
 
-The hook is deliberately after the real `FUN_0061b030`, so ordinary settings
-load first. It writes through retained `FUN_006297a0`, not direct table stores.
-If any pad binding already exists, the entire automatic preset defers rather
-than partially merging around user state. Repeated hotswap pumps are
-idempotent. When the last pad disappears it clears only tuples that still
-match what the port installed; a user-modified tuple is not agent-owned cleanup.
+`src/native/xbox_defaults.c` owns only the 21 evidence-derived tuples.
+`src/input/player_input.c` is the single publisher: it resolves each player's
+persistent device assignment and writes the fixed table to slot 1 of the
+master, working, and menu sets through `input_bindings_write_player`. The pure
+test assigns pads to different players and proves the running sets receive the
+same canonical codes. `tests/test_xbox_defaults.c` separately pins every tuple
+and rejects duplicate action rows.
 
-`tests/test_xbox_defaults.c` calls the shipping wrappers and checks the retained
-loader body, all 21 exact tuples, the repeat gate, disconnect removal, and
-custom-map refusal. A real 1,800-frame no-argument-launcher run with the virtual
-Xbox pad installed all 21 through the retained setter, presented 1,802 frames
-with 1,918 draws and zero refused, reached the frame cap, and exited 0.
+## RmlUi player assignment
 
-## Retained mapping UI
-
-The PC executable already owns the editor and three preset buttons.
-`FUN_0061dc10` creates `Defaults 1/2/3` and registers `FUN_006188c0` with
-contexts 0/1/2. The callback's 42-row copy edits slots 0 and 1 and deliberately
-skips pad slot 2, proving these are keyboard/mouse layouts. The port keeps
-context 0's body as **Keyboard Defaults**, routes only context 1 activation to
-`xbox_defaults_apply`, and leaves every other event/context retained.
-
-`src/native/controller_defaults_ui.c` owns that narrow adapter. Its
-localization wrapper changes only literal fallbacks `Defaults 1` and
-`Defaults 2`; every other lookup super-calls. Explicit Xbox selection clears
-and replaces pad slot 2 because the user requested that preset, then marks the
-result persisted user state so disconnect cleanup cannot erase it. Automatic
-startup still defers to any existing pad mapping.
+The shipped RmlUi overlay now owns settings. Each player selects None, Auto,
+Keyboard, or one persistent connected pad. A controller page is intentionally
+read-only about actions: it states that the canonical Xbox/PS2 layout is used.
+Keyboard mappings live in four reusable profiles instead. This retires the
+old adapter around the PC executable's `Defaults 1/2/3` buttons; keeping it
+would give the guest editor and RmlUi two competing writers for the same slots.
 
 ## Remaining evidence boundary
 
@@ -176,9 +164,9 @@ The preset is not yet the complete Xbox release behavior:
 
   `tools/xbe_query.py` is the tooling all of this was measured with; it
   replaces the ad-hoc scratch scripts each of these questions used to need.
-- The two relabelled buttons and their real click path still need an on-screen
-  capture; the shipping-wrapper test proves the exact ABI and state changes,
-  not that the current scripted navigation reaches this dialog.
+- Real controller identity and assignment still need a hardware capture. The
+  virtual-pad and pure tests prove the model and publication path, but this
+  machine has no physical controller attached.
 
 Those omissions are visible in the runtime install message. They are not
 silently replaced with plausible controls.

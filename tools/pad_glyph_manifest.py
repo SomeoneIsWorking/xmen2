@@ -42,10 +42,10 @@ def load() -> tuple[int, str, list[str]]:
                          "string set and a list of icons")
     # A fixed count, not a minimum: a manifest that lost an entry must be
     # refused, and the number is meant to be changed deliberately when the set
-    # this port publishes grows. It last grew from 11 to 14 when the single
-    # d-pad glyph became one per direction (#88).
-    if len(icons) != 14 or len(set(icons)) != len(icons):
-        raise ValueError(f"needs 14 unique icon names, found {len(icons)} / "
+    # this port publishes grows. It grew from 14 to 16 when the authored
+    # stick-click glyphs were wired into the physical-code path (#90).
+    if len(icons) != 16 or len(set(icons)) != len(icons):
+        raise ValueError(f"needs 16 unique icon names, found {len(icons)} / "
                          f"{len(set(icons))}")
     # Every name must exist in the SHARED set. This is the check that catches a
     # rename over there before it publishes a blank prompt here.

@@ -50,9 +50,10 @@ typedef struct {
     SDL_Gamepad  *gp;
     SDL_JoystickID id;
 #endif
-    unsigned char inst[16];       /* instance GUID -- SDL's, which is stable */
+    unsigned char inst[16];       /* unique live-run DirectInput identity */
     unsigned char prod[16];       /* product GUID -- the PIDVID form */
     char          name[128];
+    char          persistent_id[64];
     int           buttons;
     int           xbox_glyphs;
 } Pad;
@@ -102,6 +103,74 @@ static int slot_of_id(SDL_JoystickID id)
     return -1;
 }
 
+static uint64_t identity_hash(const char *tag, const char *value,
+                              const SDL_GUID *guid, unsigned ordinal)
+{
+    const unsigned char *s;
+    uint64_t h = UINT64_C(1469598103934665603);
+    size_t i;
+
+#define HASH_BYTES(ptr, count) do {                                          \
+        const unsigned char *hb_ = (const unsigned char *)(ptr);             \
+        size_t hn_;                                                           \
+        for (hn_ = 0; hn_ < (count); hn_++) {                                \
+            h ^= hb_[hn_];                                                    \
+            h *= UINT64_C(1099511628211);                                     \
+        }                                                                     \
+    } while (0)
+    for (s = (const unsigned char *)tag; *s; s++) HASH_BYTES(s, 1);
+    if (value)
+        for (s = (const unsigned char *)value; *s; s++) HASH_BYTES(s, 1);
+    HASH_BYTES(guid->data, sizeof guid->data);
+    for (i = 0; i < sizeof ordinal; i++) HASH_BYTES((unsigned char *)&ordinal + i, 1);
+#undef HASH_BYTES
+    return h;
+}
+
+static void make_identities(Pad *p, SDL_Gamepad *gp, SDL_JoystickID id,
+                            const SDL_GUID *guid, unsigned ordinal)
+{
+    const char *serial = SDL_GetGamepadSerial(gp);
+    const char *path = SDL_GetGamepadPath(gp);
+    const char *tag;
+    const char *value;
+    uint64_t stable;
+    uint32_t live = (uint32_t)id;
+    int i;
+
+    /* SDL's GUID is a PRODUCT identity, despite its name. Preserve its device
+       description but mix in SDL's unique live instance id. For equal GUIDs,
+       different joystick ids now produce different DirectInput instances. */
+    memcpy(p->inst, guid->data, sizeof p->inst);
+    for (i = 0; i < 4; i++) {
+        uint32_t word;
+        memcpy(&word, p->inst + i * 4, sizeof word);
+        word ^= live * (UINT32_C(0x9e3779b9) + (uint32_t)i * UINT32_C(0x85ebca6b));
+        memcpy(p->inst + i * 4, &word, sizeof word);
+    }
+
+    if (serial && serial[0]) {
+        tag = "serial";
+        value = serial;
+        ordinal = 0;
+    } else if (path && path[0]) {
+        tag = "path";
+        value = path;
+        ordinal = 0;
+    } else {
+        /* Some virtual and Bluetooth backends expose neither. The ordinal is
+           explicit in the hash: this fallback distinguishes identical pads,
+           but cannot promise the same assignment after a reordered reconnect. */
+        tag = "fallback";
+        value = p->name;
+    }
+    stable = identity_hash(tag, value, guid, ordinal);
+    snprintf(p->persistent_id, sizeof p->persistent_id,
+             "sdl-%04x-%04x-%016llx",
+             SDL_GetGamepadVendorForID(id), SDL_GetGamepadProductForID(id),
+             (unsigned long long)stable);
+}
+
 static void pad_open(SDL_JoystickID id)
 {
     int i;
@@ -129,16 +198,12 @@ static void pad_open(SDL_JoystickID id)
     p->used = 1;
     p->gp = gp;
     p->id = id;
-    /* SDL's joystick GUID identifies the DEVICE and survives a reconnect, so
-       it is the right thing to hand out as the DirectInput instance GUID: the
-       game keys its player slots on it (XMen2.exe keeps ten of them at
-       this+0x27e8 and matches new arrivals against that table). */
     gu = SDL_GetJoystickGUIDForID(id);
-    memcpy(p->inst, gu.data, 16);
     product_guid(p->prod, SDL_GetGamepadVendorForID(id),
                  SDL_GetGamepadProductForID(id));
     nm = SDL_GetGamepadNameForID(id);
     snprintf(p->name, sizeof p->name, "%s", nm ? nm : "Gamepad");
+    make_identities(p, gp, id, &gu, (unsigned)i);
     /* Ten, the 360 layout the game knows. Reported rather than derived from
        SDL's button count: the DirectInput button ORDER is what matters and it
        is fixed by the mapping below, not by how many buttons SDL found. */
@@ -251,6 +316,21 @@ const char *dinput_pad_name(int pad)
 {
     Pad *p = pad_at(pad);
     return p ? p->name : NULL;
+}
+
+const char *dinput_pad_persistent_id(int pad)
+{
+    Pad *p = pad_at(pad);
+    return p ? p->persistent_id : NULL;
+}
+
+int dinput_pad_for_persistent_id(const char *id)
+{
+    int i;
+    if (!id || !id[0]) return -1;
+    for (i = 0; i < DINPUT_PAD_MAX; i++)
+        if (g_pad[i].used && strcmp(g_pad[i].persistent_id, id) == 0) return i;
+    return -1;
 }
 
 int dinput_pad_for_guid(const unsigned char guid[16])

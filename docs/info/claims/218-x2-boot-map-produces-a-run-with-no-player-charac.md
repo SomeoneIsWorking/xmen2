@@ -1,10 +1,11 @@
 ---
 id: C218
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-19
 tags: boot,testing,gameplay
 depends: src/native/startup.c, src/native/input_probe.c
+falsified_on: 2026-08-20
 ---
 
 ## Claim
@@ -18,3 +19,9 @@ Same build, same probe (tools/x2ctl.py input), two boot paths: X2_BOOT_MAP gives
 ## What would falsify it
 
 if a boot-map run is ever observed with a non-zero hero handle -- which would mean the preamble it skips is no longer where the party is built
+
+## FALSIFIED 2026-08-20
+
+The observation was true of the old bare-load implementation, but src/native/startup.c now calls retail startFirstMission before loading. A live repaired run measured player 0 handle 0x00000201 resolving to actor 0x08326010 and tutorial conversation 0020b entering speaking/visible state (flags 0x18 -> 0x13).
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

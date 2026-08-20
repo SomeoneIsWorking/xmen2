@@ -1,11 +1,11 @@
 ---
 id: 88
 title: The four d-pad directions all draw the same glyph, so a four-way prompt is unreadable
-status: open
+status: resolved
 symptom: a prompt offering four d-pad choices (e.g. select another character) draws the SAME d-pad icon four times -- nothing says which direction each choice needs
 tags: pc,native,input,pad,glyphs,prompts,user-report
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 REPORTED BY THE USER, 2026-08-19, playing with a pad. **The cause is confirmed
@@ -41,3 +41,6 @@ space is there.
 generated `pad_glyph_codes.h` follows it, so the change is: new SVGs, extend
 that list, map each code. The builder's own verification (every published pixel
 read back, every changed pixel inside a cell) covers the new ones for free.
+
+### Resolution (2026-08-20)
+Resolved: the shared gamepad-xbox360 set supplies four direction-highlighted SVGs; the manifest publishes all four, pad_glyph_code maps 0x11..0x14 independently, the shipping-wrapper test rejects glyph collisions, and an 18x18 raster audit at scratch/screenshots/glyph-audit/sheet-rgb.png keeps every highlighted direction legible.

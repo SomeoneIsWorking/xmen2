@@ -37,6 +37,9 @@
 #include <SDL3/SDL.h>
 
 #include "guest_heap.h"
+#include "settings_store.h"
+#include "window_settings.h"
+#include "rmlui_ui.h"
 #include "../gpu/gpu_device.h"
 #include "../d3d8/d3d8_drawcall.h"
 
@@ -197,6 +200,8 @@ static int pump_sdl(void)
         if (e.type == SDL_EVENT_QUIT ||
             e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
             g_quit_posted = 1;
+        else if (x2_ui_handle_event(&e))
+            continue;
         /*
          * F9 -- dump every draw of the next frame.
          *
@@ -315,7 +320,7 @@ void imp_USER32_SetWindowPos(CPU *C)
     /* (hWnd, hWndInsertAfter, X, Y, cx, cy, uFlags) */
     const uint32_t SWP_NOMOVE = 0x0002u, SWP_NOSIZE = 0x0001u;
     uint32_t flags = A(6);
-    if (g_win && hwnd_is_main(A(0))) {
+    if (g_win && hwnd_is_main(A(0)) && !x2_window_settings_owns_geometry()) {
         if (!(flags & SWP_NOMOVE)) SDL_SetWindowPosition(g_win, (int)A(2), (int)A(3));
         if (!(flags & SWP_NOSIZE)) SDL_SetWindowSize(g_win, (int)A(4), (int)A(5));
     }
@@ -598,16 +603,19 @@ void imp_USER32_CreateWindowExA(CPU *C)
 {
     uint32_t name = A(2);
     int32_t w = (int32_t)A(6), h = (int32_t)A(7);
+    X2Settings *settings = x2_settings_store();
+    SDL_WindowFlags window_flags;
+    char why[256];
     if (g_win_live) {
         fprintf(stderr, "win32_sdl: a second window was requested; this layer "
                         "backs the guest's HWNDs with exactly one\n");
         abort();
     }
-    if (w <= 0) w = 800;
-    if (h <= 0) h = 600;
+    w = (int32_t)settings->width;
+    h = (int32_t)settings->height;
+    window_flags = g_hide_windows ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
     g_win = SDL_CreateWindow(name ? (const char *)(uintptr_t)name : "x2native",
-                             w, h,
-                             g_hide_windows ? SDL_WINDOW_HIDDEN : 0);
+                             w, h, window_flags);
     if (!g_win) {
         fprintf(stderr, "win32_sdl: SDL_CreateWindow failed: %s\n",
                 SDL_GetError());
@@ -615,6 +623,10 @@ void imp_USER32_CreateWindowExA(CPU *C)
         return;
     }
     g_win_live = 1;
+    if (!g_hide_windows &&
+        !x2_window_settings_apply(g_win, settings, why, (int)sizeof why))
+        fprintf(stderr, "SETTINGS: could not apply requested presentation "
+                        "mode (%s). The existing window remains active.\n", why);
     /*
      * WHICH display the window went to, said out loud.
      *
@@ -624,8 +636,9 @@ void imp_USER32_CreateWindowExA(CPU *C)
      * back black. That black image reads as "the renderer draws nothing". One
      * line here is the difference between that and the truth.
      */
-    printf("win32_sdl: %swindow %dx%d on SDL video driver \"%s\"%s%s\n",
+    printf("win32_sdl: %swindow %dx%d (%s) on SDL video driver \"%s\"%s%s\n",
            g_hide_windows ? "HIDDEN " : "", w, h,
+           x2_window_mode_name(settings->window_mode),
            SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)",
            getenv("DISPLAY") ? "  DISPLAY=" : "",
            getenv("DISPLAY") ? getenv("DISPLAY") : "");
@@ -642,6 +655,7 @@ void imp_USER32_DestroyWindow(CPU *C)
        then destroys its Vulkan device with live semaphores and its instance
        with a live VkSurfaceKHR. Release the claim while both owners are still
        valid. This is also the order gpu_selftest uses. */
+    x2_ui_gpu_shutdown();
     gpu_device_attach_window(NULL);
     SDL_DestroyWindow(g_win);
     g_win = NULL;
@@ -696,8 +710,10 @@ void imp_USER32_GetWindowRect(CPU *C)
 void imp_USER32_MoveWindow(CPU *C)
 {
     if (!hwnd_is_main(A(0))) { ret_std(C, 0, 6); return; }
-    SDL_SetWindowPosition(g_win, (int)(int32_t)A(1), (int)(int32_t)A(2));
-    SDL_SetWindowSize(g_win, (int)(int32_t)A(3), (int)(int32_t)A(4));
+    if (!x2_window_settings_owns_geometry()) {
+        SDL_SetWindowPosition(g_win, (int)(int32_t)A(1), (int)(int32_t)A(2));
+        SDL_SetWindowSize(g_win, (int)(int32_t)A(3), (int)(int32_t)A(4));
+    }
     ret_std(C, 1, 6);
 }
 

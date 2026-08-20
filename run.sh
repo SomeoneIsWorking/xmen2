@@ -122,9 +122,10 @@ EOM
 run: NATIVE build -- no Wine, no original binaries in the loop.
 
      WHAT YOU WILL SEE: the current project target -- the recompiled game,
-     native SDL3 GPU/Vulkan renderer, input and sound -- in its own 800x600
-     window. It runs until you close it, then prints its reports on the way
-     out.
+     native SDL3 GPU/Vulkan renderer, input and sound -- in its configured
+     window mode (1280x720 windowed on first run). Press F1 for video, player
+     assignment and keyboard-profile settings. It runs until you close it,
+     then prints its reports on the way out.
 
      It is not silent about what it is doing: [HB] lines every few
      seconds carry the frame, draw and present counts.

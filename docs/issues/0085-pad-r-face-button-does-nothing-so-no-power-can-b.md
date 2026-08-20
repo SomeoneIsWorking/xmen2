@@ -110,13 +110,17 @@ So there are two candidate mechanisms for "R + face uses a power" and they need
 different work:
 
 1. `Power` (row 8, now delivering) is the modifier and gameplay code reads it
-   together with the four attack rows. If so this may already work now, and the
-   next step is to CHECK it on a run that has a player character -- a boot-map
-   run has none (C218/#83), so its physical array is the only thing that can be
-   read, not the gameplay consequence.
+   together with the four attack rows. A normal-story run with a resolved hero
+   has now checked the delivery half: held RT+A produced code 0x06 = +1.000 and
+   code 0x15 = +1.000, and player 0's physical array had both values. The
+   gameplay consequence/power animation is still unverified. C218's old reason
+   for excluding boot-map runs is falsified: boot-map now runs the retail party
+   initializer and resolves a hero too.
 2. The quick-power rows are the mechanism, in which case the preset has to bind
    them and a pad has fewer buttons than the eleven QuickPower rows want. The
    Xbox build's own answer to that is the thing to recover -- `tools/xbe_query.py`
    already has the binding table (C187/C188).
 
-Do 1 first: it is a run, not an RE session, and it is cheap.
+Next observe the gameplay consequence of that verified pair, then recover the
+Xbox quick-power layout only if the modifier path still does not activate a
+power.

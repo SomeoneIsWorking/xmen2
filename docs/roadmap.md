@@ -128,10 +128,31 @@ thing to establish.
 
 ## 5. RmlUi for player mapping and input bindings
 
-**Not started; nothing vendored yet.** The retained PC controller editor is the
-game's own UI and is where feature 2 (controller defaults) lands today. The
-intent is a real, modern UI on top: per-player device assignment, rebindable
-actions, and the graphics options too.
+**Partial; the working UI and runtime path are in.** F1 opens a shipped RmlUi
+overlay rendered through the same SDL_GPU command buffer as the game. Its
+Dusklight-style tabs expose resolution plus windowed, borderless and exclusive
+fullscreen presentation, and one page per player. The dependency is pinned by
+commit and archive hash rather than following an unbounded branch.
+
+Input policy is explicit. Four reusable keyboard profiles each own all 42 game
+actions; a player assigned to Keyboard references one profile, so two players
+can share the physical keyboard with different layouts. A controller is
+assigned by persistent physical identity and uses the canonical Xbox/PS2
+defaults — controller remapping is deliberately not a second settings system.
+Explicit pad ownership is resolved before Auto selection, and one pad can feed
+at most one player.
+
+The live end-to-end check configured Player 2 as Keyboard 2, rebound Forward to
+`I`, and persisted `input.profile1.row0=23`. Pure tests cover transactional
+config round-trip and profile reuse across player numbers; a virtual-pad test
+covers identical-controller live identities. The modal overlay suppresses
+guest DirectInput state while open.
+
+Open: real-pad hotplug/identity and fullscreen transitions need hardware/user
+validation; controller navigation currently uses focus traversal rather than
+Dusklight-style spatial navigation; the overlay is opened with F1 rather than
+being wired into the original Options menu; keyboard prompt keycaps remain
+issue #91.
 
 **Decided 2026-08-18: the port keeps the PC base, and RmlUi takes over the
 options system rather than sitting beside it.** Basing the port on the Xbox
@@ -159,23 +180,21 @@ whatever is taken from it gets cited in the file that takes it.
 
 ## 6. Start in the game, skipping the menus
 
-**Partial, and currently a testing shortcut rather than a feature.**
-`X2_BOOT_MAP=<map>` boots straight into a level by replacing the boot's intro
-script; the mechanism is written up in [`docs/RE/boot.md`](RE/boot.md), which
-documents the real `launchMap` INIT handler behind it.
+**Verified as a development start path; player-facing policy is still open.**
+`X2_BOOT_MAP=<map>` skips the intro movies, menus, difficulty dialog and story
+movie, but now preserves the retail New Game initializer. It calls BehavEd's
+`startFirstMission` (FUN_004a7b10), which installs the real default party, and
+replaces only its subsequent `menus/new_game` script with the requested map.
+The mechanism and RE evidence are in [`docs/RE/boot.md`](RE/boot.md).
 
-Open: it is documented "for testing only" and skips the whole preamble
-unconditionally. Turning it into a player-facing feature means deciding what a
-launched game should skip and what it must still do (save selection, difficulty,
-party) rather than bypassing all of it.
+Issue #83 was the regression that forced the boundary: the old bare
+`loadmap ... 0 0` kept a nonexistent team, producing 0 of 5 resolved hero
+handles and suppressing the tutorial's second conversation. The fixed path
+measured 1 of 5 handles resolving and the second conversation entering
+speaking/visible state (`0x18 -> 0x13`; C223).
 
-**And "party" is not hypothetical.** Measured 2026-08-19 (C218, issue #83): a
-boot-map run has NO player character -- all five hero handles read 0, where a
-normally-booted run resolves player 0's -- and that alone suppresses the
-tutorial's second conversation, so the script that unlocks the controls never
-runs and the level looks soft-locked. A boot-map run is a fast way to reach a
-map, not a run that behaves like a played game, and `tools/x2ctl.py input`
-reports the hero handles so the difference is one line to check.
+Open for a player-facing “Start Game” option: save-slot selection and an
+explicit difficulty policy. Party initialization is no longer skipped.
 
 ## How this work is done
 

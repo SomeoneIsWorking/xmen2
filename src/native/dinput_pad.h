@@ -49,6 +49,14 @@ int  dinput_pad_instance_guid(int pad, unsigned char guid[16]);
 int  dinput_pad_product_guid(int pad, unsigned char guid[16]);
 const char *dinput_pad_name(int pad);
 
+/* Stable host identity for player assignment. DirectInput's instance GUID is
+   deliberately only a live-run handle: two identical controllers have the
+   same SDL device GUID, so that GUID cannot identify either physical unit.
+   This id prefers the controller serial, then its OS path, and finally a
+   clearly best-effort device signature. */
+const char *dinput_pad_persistent_id(int pad);
+int dinput_pad_for_persistent_id(const char *id);
+
 /* Which slot that instance GUID names, or -1. This is how a CreateDevice for
    a GUID an enumeration handed out finds its way back to a pad. */
 int  dinput_pad_for_guid(const unsigned char guid[16]);
