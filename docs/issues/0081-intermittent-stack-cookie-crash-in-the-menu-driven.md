@@ -1,11 +1,11 @@
 ---
 id: 81
 title: Intermittent /GS stack-cookie crash in the menu-driven level load, exposed by the 9x faster load
-status: root-caused
+status: resolved
 symptom: the menu-driven smoke run (New Game -> difficulty -> level load) intermittently aborts with "crt: the guest's stack-check handler fired -- a buffer overrun was detected inside recompiled code", right after the difficulty confirm (frame ~4135) and after the WSAStartup no-network check, about 1 in 2-3 smoke_loop runs. The boot-direct path (X2_BOOT_MAP) never crashes.
 tags: native,crash,load,party,memory,intermittent,timing,tail-call,abi
 created: 2026-08-17
-updated: 2026-08-18
+updated: 2026-08-21
 related: 68
 ---
 
@@ -101,3 +101,6 @@ frame's write hundreds of frames before the event, and the watch then sat
 disarmed through the window it was armed for and reported nothing. It now
 reports every write, takes an optional `:<value>` filter, and always reports
 `/GS` cookie stores and stores of zero. See `docs/info/instruments/`.
+
+### Resolution (2026-08-21)
+Root cause and fix are now mechanically closed. The native dispatcher had the depth comparison backwards: a tail reached through a deeper direct generated call was queued, so its caller resumed with the tail target's guest return address still on ESP; FUN_0046b750 then read its /GS cookie one dword low. x86_tail_route is the single production owner and routes only the current dispatch frame back to the loop; deeper direct-call tails execute inline. ctest x86_tail_policy drives the two cases that the old equality swapped, plus nested and outside-dispatch controls, and x2native links that same implementation. A 2026-08-21 live menu recheck reached New Game and confirmed difficulty, then hit the independent known libCriMovie hang (#79) before the level; that blocked an end-to-end replay but is not being counted as evidence for or against this resolved stack contract. C186 reconfirmed.

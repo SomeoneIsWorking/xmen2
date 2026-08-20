@@ -2364,12 +2364,12 @@ void x86_tail_dispatch(CPU *C, uint32_t target)
      * reached through a direct C call must finish before that direct caller
      * resumes; only a tail at THIS dispatch frame may be queued for the loop.
      *
-     * The +1 is the whole test. X86_TAIL_FN has already decremented call_depth
-     * by the time this runs -- the body is leaving -- so the body that IS the
-     * dispatch frame arrives here at dispatch_depth - 1, and a body one direct
-     * call deeper arrives at exactly dispatch_depth. Comparing them for
-     * equality therefore queued precisely the case that must run inline, and
-     * ran inline the case that could safely be queued: exactly backwards.
+     * The one-level depth relation is the whole test. X86_TAIL_FN has already
+     * decremented call_depth by the time this runs -- the body is leaving --
+     * so the body that IS the dispatch frame arrives at dispatch_depth - 1,
+     * and a body one direct call deeper arrives at exactly dispatch_depth.
+     * Comparing the depths for equality therefore queued precisely the case
+     * that must run inline: exactly backwards.
      *
      * What that cost: FUN_0046b750 -> FUN_00427c30 -> FUN_00426330, then a
      * tail jump to __security_check_cookie. The cookie check was queued rather
@@ -2378,7 +2378,7 @@ void x86_tail_dispatch(CPU *C, uint32_t target)
      * read the word below its cookie and reported a stack buffer overrun that
      * had never happened (issue #81, C213).
      */
-    if (C->dispatch_depth && C->call_depth + 1u == C->dispatch_depth) {
+    if (x86_tail_route(C->dispatch_depth, C->call_depth) == X86_TAIL_QUEUE) {
         C->tail_target = target;
         return;
     }

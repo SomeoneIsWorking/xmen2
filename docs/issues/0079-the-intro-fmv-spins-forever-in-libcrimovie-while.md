@@ -5,7 +5,7 @@ status: open
 symptom: The window stops repainting and the desktop marks it (Not Responding). The process burns ~98% of a core, the heartbeat says 'the guest executed NOTHING in the last 5.0s (crossings unchanged)', MAIN is in a condition-variable wait and one worker thread is running guest code that never returns.
 tags: pc,native,fmv,crimovie,hang
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-21
 ---
 
 ## Symptom
@@ -50,3 +50,6 @@ Which loop inside 0x10040000, and what condition it is waiting on -- a file
 read that never completes, a ring buffer that never drains, or a timing source
 that never advances. The Wine control plays the FMVs, so it is a port defect
 and the control can answer what the loop expects to see.
+
+### Note (2026-08-21)
+2026-08-21 current-build reproduction, windowless: live control selected New Game and confirmed Normal difficulty from screenshot-verified menus. The story FMV rendered, then frame count stopped at 18,622 for 20 consecutive one-second status samples while guest time and the loopback control server continued advancing/responding. Ten Escape requests raised the request count but the accepted-key count stayed at 8, proving the movie path was not polling DirectInput; no scheduled-input miss is involved. The run was stopped by its exact session. This independent hang prevents a full menu-route replay of resolved issue #81, but does not overlap its deterministic tail-depth contract.

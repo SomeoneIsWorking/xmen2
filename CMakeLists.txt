@@ -130,6 +130,15 @@ add_executable(test_x86callbacks
 target_include_directories(test_x86callbacks PRIVATE src/recomp src/native)
 add_test(NAME x86callbacks COMMAND test_x86callbacks)
 
+# A tail at the current dispatch frame may iterate through the dispatch loop;
+# one reached through a direct generated call must finish inline before that
+# caller resumes. Reversing those two cases left a guest return address on ESP
+# and surfaced later as issue #81's false /GS buffer-overrun report.
+add_executable(test_x86_tail_policy
+    tests/test_x86_tail_policy.c src/native/x86_tail_policy.c)
+target_include_directories(test_x86_tail_policy PRIVATE src/native)
+add_test(NAME x86_tail_policy COMMAND test_x86_tail_policy)
+
 add_executable(test_x86watch_memory
     tests/test_x86watch_memory.c src/x86watch_memory.c)
 target_include_directories(test_x86watch_memory PRIVATE src)
@@ -549,6 +558,7 @@ if(X2_MODULE_HAVE)
         src/native/shell32.c
         src/native/winmm.c
         src/native/threads.c
+        src/native/x86_tail_policy.c
         src/native/x86rt_native.c
         src/native/x86_record.c
         src/native/env_file.c

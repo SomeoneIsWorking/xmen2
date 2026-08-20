@@ -17,6 +17,8 @@
 #ifndef X86RT_NATIVE_H
 #define X86RT_NATIVE_H
 
+#include "x86_tail_policy.h"
+
 #include <stdint.h>
 #include <stddef.h>
 
