@@ -7,9 +7,10 @@
  * owns only that evidence-derived table. Device ownership, slot selection and
  * publication into master/working/menu sets belong to src/input/player_input.c.
  *
- * Black/White remain outside the table: the Xbox constructor registers neither
- * as a common action and the PC binding object has no Health/Energy row. Their
- * direct gameplay path is a separate RE boundary, not an alias invented here.
+ * The Xbox Black button's health-pack behavior maps through the retained PC
+ * TargetLock action: the PS2 tutorial names that action for health use, and all
+ * three PC defaults bind its row.  Modern RB occupies Black's position. White/
+ * energy remains outside the table until its distinct PC action is resolved.
  */
 #include "xbox_defaults.h"
 
@@ -26,6 +27,7 @@ static const XboxDefaultBinding DEFAULTS[] = {
     {  7, 0x17 }, /* Guard         X / Use + Pickup + Boost */
     {  8, 0x06 }, /* Power         RT */
     {  9, 0x05 }, /* Ally          LT */
+    { 10, 0x1a }, /* TargetLock    RB / Xbox Black / Health Pack */
     { 12, 0x14 }, /* NextHero      d-pad up */
     { 13, 0x13 }, /* PreviousHero  d-pad down */
     { 14, 0x12 }, /* DecreaseAggr  d-pad left */

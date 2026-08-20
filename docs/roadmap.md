@@ -118,13 +118,14 @@ Fixed and measured: code 0x06 resolves to 1.000 and reaches the game's own
 player input array. Neither the unit test nor the probe could have caught it --
 one checked the sign, the other printed a down/up bit.
 
-**And a real play session found the bindings incomplete** (2026-08-19, issues
-#85 and #86): `R` + a face button fires no power, so abilities are unusable
-with the pad, and healing has no binding at all. Every reading recorded above
-is a MENU, DIALOG or MOVEMENT action -- no power row and no item row was ever
-checked -- so "the pad delivers buttons" was proved on the subset that happened
-to be tested. What is bound, by action name and with a count, is the first
-thing to establish.
+**The two gameplay reports now have live evidence** (#85, #86). RT+A drives
+both physical inputs at full scale and casts the selected hero power in an
+initialized boot-map run (C224). Healing was a preset omission: the retained
+PC `TargetLock` row is the control named by the shipped PS2 potion tutorial,
+and Xbox Black is labelled **Use Health Pack**. The fixed preset maps that row
+to modern RB; the live probe reports 22 pad rows and RB drives the assigned
+player's action slot to `+1.000` (C227). A physical-controller capture remains
+open because this machine only has the synthetic pad.
 
 ## 5. RmlUi for player mapping and input bindings
 

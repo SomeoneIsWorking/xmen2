@@ -1,15 +1,15 @@
 ---
 id: 85
 title: Pad: R + face button does nothing, so no power can be used in gameplay
-status: investigating
+status: resolved
 symptom: holding R and pressing X/A/Y/B in gameplay triggers no power -- the character does nothing, while the same buttons work in menus
 tags: pc,native,input,pad,bindings,gameplay,user-report
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
-REPORTED BY THE USER, 2026-08-19, from a real play session with a pad. Not yet
-reproduced by an agent.
+REPORTED BY THE USER, 2026-08-19, from a real play session with a pad.
+Reproduced and resolved below on 2026-08-20.
 
 ## The symptom
 
@@ -23,7 +23,7 @@ face buttons work in the menus (that is what commit c956129/12cc30d captured).
 So this is NOT the host half (`SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS`,
 issue #82) and not the pad reaching DirectInput at all.
 
-## Why this is very likely the preset, not the pad
+## Why the earlier input checks did not cover this
 
 The port's Xbox default mapping (`src/native/xbox_defaults.c`, feature 2)
 installs a set of rows into the game's binding banks. C215 established how the
@@ -35,38 +35,10 @@ presses carry the tutorial conversation, and `leftx=-1` sets `physical[0]`.
 **Every one of those is a menu/dialog or a movement action.** No POWER row was
 ever checked.
 
-So the first question is not "why does R+X fail" but "is there a row for it at
-all". Two shapes the defect could have, and they need different fixes:
-
-1. The port's preset has no rows for the four power actions (and see #86 --
-   healing has no binding either, which points the same way). Then nothing is
-   bound and the game is behaving correctly.
-2. The rows exist but a MODIFIER-plus-button binding is not a single physical
-   code, so a preset that only ever writes one code per row cannot express it.
-   The game's own PC editor binds one key per action, so how XMen2.exe encodes
-   a two-input power select is an RE question that has not been asked here.
-
-## What the next session should do first
-
-Do NOT drive the game to find out. `tools/x2ctl.py input` reports the binding
-rows and the per-player physical array live, and `tools/binding_rows.py` is
-where the row table is written down. Ask, in this order:
-
-1. Enumerate the installed rows and name which game ACTIONS they cover. The
-   answer "the power rows are absent" ends the investigation at step 1.
-2. If they are present: press R+X on the live run through `x2ctl.py` and read
-   whether either physical code arrives at all, and whether the game's own
-   power-select code is reached. A count with a denominator, not a screenshot.
-3. Read the Xbox build's own defaults for these four actions -- `tools/xbe_query.py`
-   already recovered the Xbox binding table (C187/C188), and it is the authority
-   on what R+face is supposed to map to.
-
-Related: #86 (healing unbound) and #87 (prompts still name keyboard keys) are
-probably the same missing-rows cause seen from three sides. If one investigation
-resolves all three, resolve all three.
-
-### Note (2026-08-19)
-MEASURED 2026-08-19, and half the cause is found and FIXED (C222).
+That left two separate questions: whether the `Power` row delivered RT at full
+scale, and whether the game combines that modifier with the four face-button
+attack rows. `tools/x2ctl.py input` measured the first without guessing from a
+screenshot; the initialized boot-map gameplay capture settled the second.
 
 ## The trigger delivered nothing, so the Power modifier never engaged
 
@@ -94,33 +66,30 @@ now samples **every** physical code with its MAGNITUDE, not four face buttons
 with a down/up bit. An analog code arriving at half scale is invisible to a
 boolean.
 
-## What is still open here, and it is a separate thing
+## Quick-power rows are a separate keyboard feature
 
-The binding table dump says the quick-power system is **entirely unbound on the
-pad**. Of the 42 rows, the preset covers 21; the ones it does not include
+The binding table dump says the quick-power rows are **entirely unbound on the
+pad**. Of the 42 rows, the preset now covers 22; the ones it does not include
 
     29 BindPower   30 UseQuickPower   31..41 QuickPower01..11
 
-plus TargetLock, Solo, Talk, Walk, SwtHero, AttackObject, RotateCamera. Each of
-those has a keyboard default in slot 0 and nothing in the pad slot -- e.g.
+plus Solo, Talk, Walk, SwtHero, AttackObject, RotateCamera. Each of those has a
+keyboard default in slot 0 and nothing in the pad slot -- e.g.
 `UseQuickPower` is DIK 0x29 (grave) and `QuickPower01..04` are the `1`..`4`
 keys.
 
-So there are two candidate mechanisms for "R + face uses a power" and they need
-different work:
+They are not the console mechanism. `Power` row 8 is the modifier and gameplay
+combines it with the face-button attack rows. Held RT+A produced codes `0x06`
+and `0x15` at `+1.000`, then the selected hero entered and completed the cast
+animation. C218's old reason for excluding boot-map runs is falsified: boot-map
+now runs the retail party initializer and resolves a hero. The unbound
+quick-power rows therefore do not block the Xbox-style gesture and are not a
+reason to invent eleven pad assignments.
 
-1. `Power` (row 8, now delivering) is the modifier and gameplay code reads it
-   together with the four attack rows. A normal-story run with a resolved hero
-   has now checked the delivery half: held RT+A produced code 0x06 = +1.000 and
-   code 0x15 = +1.000, and player 0's physical array had both values. The
-   gameplay consequence/power animation is still unverified. C218's old reason
-   for excluding boot-map runs is falsified: boot-map now runs the retail party
-   initializer and resolves a hero too.
-2. The quick-power rows are the mechanism, in which case the preset has to bind
-   them and a pad has fewer buttons than the eleven QuickPower rows want. The
-   Xbox build's own answer to that is the thing to recover -- `tools/xbe_query.py`
-   already has the binding table (C187/C188).
-
-Next observe the gameplay consequence of that verified pair, then recover the
-Xbox quick-power layout only if the modifier path still does not activate a
-power.
+### Resolution (2026-08-20)
+Verified in a normal boot-map gameplay run with the retail party initializer:
+held RT+A delivered physical codes `0x06` and `0x15` at `+1.000`, and
+synchronized frames captured the selected hero entering and completing the
+power-cast animation. The trigger delivery fix in C222 plus the Xbox default
+Power/LowAttack rows is the complete path; quick-power rows are not required
+for the console modifier gesture.

@@ -1,9 +1,10 @@
 ---
 id: C189
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-14
 tags: input,xbox
+falsified_on: 2026-08-20
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ tools/xbe_query.py read 0x004A9D7C (slot dword = 0x0015F5B0), vtable 0x004A9D6C 
 ## What would falsify it
 
 a second vtable containing sub_0015F5B0, or a controller instance whose float array is written past +0x373
+
+## FALSIFIED 2026-08-20
+
+The +0x10 physical-float getter and 30-float extent hold, but +0x38 is a byte getter at +0x2d8, not the float setter; +0x2c is the setter.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

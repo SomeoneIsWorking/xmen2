@@ -1,9 +1,10 @@
 ---
 id: C188
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-14
 tags: controller,xbox,re
+falsified_on: 2026-08-20
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ Xbox default.xbe: sub_00163240 registers BLACK/WHITE source bytes 8/9; sub_00160
 ## What would falsify it
 
 A reference trace showing BLACK or WHITE changing the per-player logical mask without changing physical slots 8/9, or a corrected disassembly proving the record byte is not the analog-source index, falsifies this boundary.
+
+## FALSIFIED 2026-08-20
+
+Xbox sub_00163E40 zeros 30 floats and writes only four axes; Black/White arrive in the separate digital mask, so record bytes 8/9 are not physical-float source indices.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

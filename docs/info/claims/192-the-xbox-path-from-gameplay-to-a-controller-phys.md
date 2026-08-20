@@ -1,9 +1,10 @@
 ---
 id: C192
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-14
 tags: input,xbox
+falsified_on: 2026-08-20
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ tools/xbe_query.py chain 0x4c --slot 0x10 (356 accessor sites, 246 attributed ca
 ## What would falsify it
 
 a re-disassembly in which the register chain reaches a literal 8 or 9 at controller slot +0x10, or a caller of sub_001E4210 passing 8 or 9
+
+## FALSIFIED 2026-08-20
+
+Its manager/controller chain is useful, but it misclassified sub_001E4210 and its vtable: the main-game vtable starts at 0x004B2504 and that function is slot +0x128, not slot +0x2c of a separate class. More importantly, Black/White are digital-mask inputs, so the physical-index search cannot locate their trigger.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

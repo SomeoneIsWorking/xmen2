@@ -9,7 +9,7 @@ depends: src/native/input_probe.c
 
 ## Claim
 
-The player input object holds 30 physical floats at +0x2fc, the same layout the Xbox build uses (C192), reachable on PC as manager 0x0079ebc0 + 0x3c + player*0x390. Physical source 4 is the accept/LowAttack input and source 0 the movement axis. The logical action mask that FUN_005d4970 tests with '1 << action' is a separate 32-bit value from the same object's vtable +0x18, and it is cleared before the next frame's input poll, so it reads 0 at the DirectInput pump point even while an input is held.
+The PC player input object holds 30 physical floats at +0x2fc, reachable as manager 0x0079ebc0 + 0x3c + player*0x390. Physical source 4 is the accept/LowAttack input and source 0 the movement axis. The logical action mask that FUN_005d4970 tests with '1 << action' is a separate 32-bit value from the same object's vtable +0x18, and it is cleared before the next frame's input poll, so it reads 0 at the DirectInput pump point even while an input is held.
 
 ## Evidence
 

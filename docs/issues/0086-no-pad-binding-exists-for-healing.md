@@ -1,11 +1,11 @@
 ---
 id: 86
 title: No pad binding exists for healing
-status: open
+status: resolved
 symptom: the healing action has no binding at all with a pad connected -- there is no button that uses a health item
 tags: pc,native,input,pad,bindings,gameplay,user-report
 created: 2026-08-19
-updated: 2026-08-19
+updated: 2026-08-20
 ---
 
 REPORTED BY THE USER, 2026-08-19, from a real play session with a pad.
@@ -13,33 +13,25 @@ REPORTED BY THE USER, 2026-08-19, from a real play session with a pad.
 Healing (using a health item) has **no pad binding at all**. Not a wrong
 button -- nothing is assigned, so the action is unreachable with a pad in hand.
 
-## Why this is worth its own entry
+## Root cause
 
-It is almost certainly the same missing-rows cause as #85 (R + face button
-does nothing), and if one change fixes both they resolve together. It is
-logged separately because it is a sharper test case: healing is a SINGLE
-action on a SINGLE physical input on the Xbox build, with no modifier
-involved, so it isolates "the preset has no row for this action" from "the
-preset cannot express a modifier combination". Whichever of those two is true
-for #85, this entry answers half of it on its own.
+The fixed controller preset omitted PC binding row 10, `TargetLock`. The name
+is misleading in isolation: all three retained PC Defaults tables bind that
+row, and the shipped PS2 potion tutorial explicitly uses `$TARGET_LOCK` as the
+control that replenishes health. The Xbox controller-options package labels
+Black as **Use Health Pack**; modern RB occupies Black's physical position.
 
-There is also a concrete prior finding to start from rather than re-deriving:
-the Xbox binding recovery (C188, `tools/xbe_query.py`) already established
-that Xbox `sub_00088680` and PC `FUN_0047a140` keep equivalent separate
-`HEALTH_ITEM` / `ENERGY_ITEM` consumption branches, and C191 found that those
-two names are item-TYPE strings in the table at `0x0053FEBC` that **no
-instruction references**. That was recorded as an aside during the defaults
-work; it is now the direct question. The consumption branch exists in the PC
-build, so what is missing is the binding row that reaches it, not the feature.
+An earlier investigation incorrectly treated Xbox Black and White as float
+indices 8 and 9. That was not merely incomplete: `sub_00163E40` clears the
+30-float array and writes only the four stick axes, while passing the digital
+mask separately. C188, C189, and C192 were falsified and replaced by C225/C226.
 
-## What the next session should do first
+## Resolution
 
-1. `python3 tools/info.py brief health item binding` and read C188/C191 before
-   touching anything -- the Xbox side of this is already recovered.
-2. Enumerate the port's installed rows (`tools/x2ctl.py input`,
-   `tools/binding_rows.py`) and confirm by NAME that no row targets the health
-   action. A row list with its count is the evidence; "I did not see one" is not.
-3. Find what the PC build's own editor calls this action, and whether the PC
-   default keyboard map binds it -- if the keyboard has it and the pad does
-   not, the row exists in the game and only the port's preset omits it, which
-   is a small fix in `src/native/xbox_defaults.c`.
+`src/native/xbox_defaults.c` now maps `TargetLock` row 10 to RB DirectInput
+code `0x1a`, making the preset 22 assignments. In a live initialized boot-map
+run, `tools/x2ctl.py input` reported row 10 as `pad3:0x1a`; holding RB delivered
+raw code `0x1a` at `+1.000` and drove player 0's corresponding physical action
+slot 13 to `+1.000`. `test_xbox_defaults`, `test_player_input`, and
+`test_binding_rows` pin the table and its publication path. C227 records the
+evidence and the gameplay falsifier.

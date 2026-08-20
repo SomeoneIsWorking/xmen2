@@ -53,9 +53,8 @@
  * is read at the gate.
  *
  * Player objects are inline in the manager: `manager + 0x3c + player * 0x390`
- * (FUN_005510d0). The Xbox build's equivalent keeps 30 physical floats at
- * +0x2fc of the same structure (claim C192); 0x2fc + 30*4 lands inside 0x390,
- * so the same array is expected here and this dumps it rather than assuming.
+ * (FUN_005510d0). Live PC measurements (C216) establish 30 physical floats at
+ * +0x2fc; 0x2fc + 30*4 lands inside 0x390. This dumps the measured structure.
  */
 #define PAD_MGR_RVA     RVA(0x00551ed0u)  /* FUN_00551ed0, the pad manager        */
 #define PADVT_PLAYER    0x4cu        /* ->player(i), RET 4                   */

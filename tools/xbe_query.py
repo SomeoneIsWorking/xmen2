@@ -10,8 +10,9 @@ hand. This is that tooling, in one place:
     vtable   a vtable's slots, with the function name each slot points at
     strtab   a table of pointers-to-strings (enum name tables)
     func     one function's disassembly, or its callers
-    vslot    every `call dword ptr [reg + slot]` site, classified by argument
+    vslot    every register-based `call [reg + slot]` candidate, by argument
     chain    calls made ON the object a virtual accessor returned
+    aftercall calls made ON the object a direct function call returned
     selftest prove each of the above can produce BOTH answers
 
 Every subcommand states its denominator: how much was searched, not only what
@@ -278,13 +279,22 @@ def cmd_func(args) -> int:
     return 0
 
 
-def cmd_vslot(args) -> int:
-    slot = args.slot
-    call_pat = re.compile(r"^call\s+dword ptr \[\w+ \+ 0x%x\]$" % slot)
-    kinds: Counter[str] = Counter()
-    imms: Counter[int] = Counter()
-    hits = []
+@dataclass(frozen=True)
+class VslotSite:
+    function: str
+    address: int
+    pushed: tuple[str, ...]
+    window: tuple[tuple[int, str], ...]
+
+
+def vslot_sites(slot: int, lookback: int) -> tuple[list[VslotSite], int]:
+    # ESP-relative indirect calls address stack-held function pointers, not a
+    # vtable.  The remaining sites are still class-agnostic candidates: the
+    # same numeric slot can belong to unrelated classes.
+    call_pat = re.compile(
+        r"^call\s+dword ptr \[(?:eax|ebx|ecx|edx|esi|edi|ebp) \+ 0x%x\]$" % slot)
     window: list[tuple[int, str]] = []
+    sites = []
     funcs = set()
     for fn, addr, text in iter_insns():
         if window and window[-1][0] > addr:
@@ -296,27 +306,44 @@ def cmd_vslot(args) -> int:
                 p = PUSH.match(t)
                 if p:
                     pushed.append(p.group(1).strip())
-            last = pushed[-1] if pushed else None
-            if last is None:
-                kinds["no push within %d instructions" % args.window] += 1
-            elif IMM.match(last):
-                kinds["immediate"] += 1
-                imms[int(last, 0)] += 1
-            elif REG.match(last):
-                kinds["register (opaque to a literal scan)"] += 1
-            else:
-                kinds["memory/other (opaque to a literal scan)"] += 1
-            if args.imm:
-                literal = [int(p, 0) for p in pushed if IMM.match(p)]
-                if any(v in args.imm for v in literal):
-                    hits.append((fn, addr, pushed, list(window)))
+            sites.append(VslotSite(fn, addr, tuple(pushed), tuple(window)))
         window.append((addr, text))
-        if len(window) > args.window:
+        if len(window) > lookback:
             window.pop(0)
+    return sites, len(funcs)
+
+
+def select_vslot_sites(sites: list[VslotSite], wanted: list[int]) -> list[VslotSite]:
+    if not wanted:
+        return sites
+    return [site for site in sites
+            if any(int(value, 0) in wanted
+                   for value in site.pushed if IMM.match(value))]
+
+
+def cmd_vslot(args) -> int:
+    sites, nfuncs = vslot_sites(args.slot, args.window)
+    kinds: Counter[str] = Counter()
+    imms: Counter[int] = Counter()
+    for site in sites:
+        last = site.pushed[-1] if site.pushed else None
+        if last is None:
+            kinds["no push within %d instructions" % args.window] += 1
+        elif IMM.match(last):
+            kinds["immediate"] += 1
+            imms[int(last, 0)] += 1
+        elif REG.match(last):
+            kinds["register (opaque to a literal scan)"] += 1
+        else:
+            kinds["memory/other (opaque to a literal scan)"] += 1
+    # --show-sites controls detail, not selection.  When --imm is present it
+    # remains the filter even if the matching sites are expanded.
+    hits = select_vslot_sites(sites, args.imm) if (args.imm or args.show_sites) else []
 
     total = sum(kinds.values())
-    print("scanned %d functions in %s" % (len(funcs), asm_path()))
-    print("call dword ptr [reg + 0x%x] sites: %d" % (slot, total))
+    print("scanned %d functions in %s" % (nfuncs, asm_path()))
+    print("register-based [reg + 0x%x] candidates: %d" % (args.slot, total))
+    print("  class identity is not inferred; unrelated vtables can share this slot")
     for k, n in kinds.most_common():
         print("  %-46s %4d  (%.1f%%)" % (k, n, 100.0 * n / total if total else 0.0))
     opaque = total - kinds["immediate"]
@@ -329,10 +356,13 @@ def cmd_vslot(args) -> int:
     if args.imm:
         print("\nsites pushing a literal in %s: %d"
               % ([hex(v) for v in args.imm], len(hits)))
-        for fn, addr, pushed, win in hits:
-            print("\n%s  0x%08X   pushes=%s" % (fn, addr, pushed))
-            for a, t in win:
-                print("    0x%08X  %s" % (a, t))
+    elif args.show_sites:
+        print("\nall call sites: %d" % len(hits))
+    for site in hits:
+        print("\n%s  0x%08X   pushes=%s"
+              % (site.function, site.address, list(site.pushed)))
+        for address, text in site.window:
+            print("    0x%08X  %s" % (address, text))
     return 0
 
 
@@ -351,7 +381,8 @@ def chain_sites(via: int, window: int = 25):
     that chain ends the attribution, so a call on an unrelated object is not
     credited to the accessor -- the mistake this exists to avoid.
     """
-    getter = re.compile(r"^call\s+dword ptr \[\w+ \+ 0x%x\]$" % via)
+    getter = re.compile(
+        r"^call\s+dword ptr \[(?:eax|ebx|ecx|edx|esi|edi|ebp) \+ 0x%x\]$" % via)
     buf = list(iter_insns())
     ngetter = 0
     for i, (fn, _a, text) in enumerate(buf):
@@ -388,17 +419,24 @@ def chain_sites(via: int, window: int = 25):
 
 def cmd_chain(args) -> int:
     combos: Counter = Counter()
-    example = {}
+    examples = {}
+    sites = []
     ngetter = 0
+    seen_sites = set()
     for slot, a, fn, addr in chain_sites(args.via, args.window):
         if slot is None:
             ngetter = a
             continue
+        site = (slot, a, fn, addr)
+        if site in seen_sites:
+            continue
+        seen_sites.add(site)
         combos[(slot, a)] += 1
-        example.setdefault((slot, a), (fn, addr))
+        examples.setdefault((slot, a), (fn, addr))
+        sites.append(site)
     attributed = sum(combos.values())
-    print("accessor slot +0x%02x: %d call site(s); %d virtual call(s) on the "
-          "returned object attributed within %d instructions"
+    print("accessor slot +0x%02x: %d raw candidate(s); %d unique virtual "
+          "call(s) on the returned object attributed within %d instructions"
           % (args.via, ngetter, attributed, args.window))
     if not attributed:
         print("  none -- either nothing is called on the result, or the "
@@ -406,9 +444,90 @@ def cmd_chain(args) -> int:
     for (slot, a), n in sorted(combos.items()):
         if args.slot is not None and slot != args.slot:
             continue
-        fn, addr = example[(slot, a)]
+        fn, addr = examples[(slot, a)]
         print("  slot +0x%02x  args=%-24s %3d  e.g. %s 0x%08X"
               % (slot, str(list(a)), n, fn, addr))
+    if args.show_sites:
+        selected = [site for site in sites
+                    if args.slot is None or site[0] == args.slot]
+        print("matching attributed call sites: %d" % len(selected))
+        for slot, a, fn, addr in selected:
+            print("  %s 0x%08X  slot +0x%02x  args=%s"
+                  % (fn, addr, slot, list(a)))
+    return 0
+
+
+def returned_sites(callee: int, window: int = 25):
+    """Yield virtual calls on the object returned by a direct call to `callee`.
+
+    This is the class-preserving counterpart to `vslot`: it begins at a known
+    singleton/accessor function and follows only that returned object, so an
+    unrelated class with the same numeric vtable slot cannot become evidence.
+    """
+    # The disassembler prints instruction operands at a fixed eight hex
+    # digits, while callers naturally spell query addresses with or without
+    # their leading zeroes.  Compare the parsed address, not its rendering.
+    direct = re.compile(r"^call\s+0x([0-9a-f]+)(?:\s+;.*)?$")
+    buf = list(iter_insns())
+    ncall = 0
+    for i, (fn, _address, text) in enumerate(buf):
+        match = direct.match(text)
+        if not match or int(match.group(1), 16) != callee:
+            continue
+        ncall += 1
+        holder, vreg, args = "eax", None, []
+        for fn2, address2, text2 in buf[i + 1:i + 1 + window]:
+            if fn2 != fn:
+                break
+            moved = MOV_FROM_EAX.match(text2)
+            if moved:
+                holder = moved.group(1)
+                continue
+            loaded = LOAD_VTABLE.match(text2)
+            if loaded and loaded.group(2) == holder:
+                vreg = loaded.group(1)
+                continue
+            pushed = PUSH.match(text2)
+            if pushed:
+                args.append(pushed.group(1).strip())
+                continue
+            set_this = SET_THIS.match(text2)
+            if set_this and set_this.group(1) == holder:
+                continue
+            virtual = VCALL_REG.match(text2)
+            if virtual:
+                if vreg and virtual.group(1) == vreg:
+                    yield int(virtual.group(2), 16), tuple(args), fn, address2
+                break
+    yield None, ncall, None, None
+
+
+def cmd_aftercall(args) -> int:
+    seen = set()
+    sites = []
+    direct_calls = 0
+    for slot, pushed, fn, address in returned_sites(args.callee, args.window):
+        if slot is None:
+            direct_calls = pushed
+            continue
+        site = (slot, pushed, fn, address)
+        if site not in seen:
+            seen.add(site)
+            sites.append(site)
+    selected = [site for site in sites
+                if args.slot is None or site[0] == args.slot]
+    print("direct call 0x%08x: %d site(s); %d unique virtual call(s) "
+          "attributed within %d instructions"
+          % (args.callee, direct_calls, len(sites), args.window))
+    print("matching attributed call sites: %d" % len(selected))
+    counts = Counter((slot, pushed) for slot, pushed, _fn, _address in selected)
+    for (slot, pushed), count in sorted(counts.items()):
+        print("  slot +0x%03x args=%-28s %3d"
+              % (slot, str(list(pushed)), count))
+    if args.show_sites:
+        for slot, pushed, fn, address in selected:
+            print("  %s 0x%08X  slot +0x%03x  args=%s"
+                  % (fn, address, slot, list(pushed)))
     return 0
 
 
@@ -483,6 +602,21 @@ def selftest() -> int:
     check("func: an address inside it is not a function start",
           (PHYS_GETTER + 4) in starts, False)
 
+    # vslot: a known physical-getter call and a slot absent from every vtable.
+    phys_sites, _nfuncs = vslot_sites(PHYS_SLOT, 8)
+    check("vslot: physical getter slot has call sites",
+          bool(phys_sites), True)
+    absent_sites, _nfuncs = vslot_sites(0x7FC, 8)
+    check("vslot: an absent slot has no call sites",
+          bool(absent_sites), False)
+    present_literal = next(
+        int(value, 0) for site in phys_sites for value in site.pushed
+        if IMM.match(value))
+    check("vslot: literal selection includes a present value",
+          bool(select_vslot_sites(phys_sites, [present_literal])), True)
+    check("vslot: literal selection excludes an absent value",
+          bool(select_vslot_sites(phys_sites, [0x00F00D00])), False)
+
     # chain: a slot known to be queried on the controller, and one that is not.
     # The negative matters more than the positive here: attribution that credits
     # calls on an unrelated object would make every "found nothing" worthless.
@@ -499,6 +633,15 @@ def selftest() -> int:
           (0x10, ("0xb",)) in found, True)
     check("chain: a slot no vtable has is credited with nothing",
           any(slot == 0x7FC for slot, _a in found), False)
+
+    # aftercall: the main game singleton has known virtual consumers; a fake
+    # direct callee must attribute nothing.
+    main_sites = list(returned_sites(0x001E8790))
+    check("aftercall: game singleton has attributed virtual calls",
+          any(slot is not None for slot, _a, _fn, _addr in main_sites), True)
+    absent_returned = list(returned_sites(0x00F00D00))
+    check("aftercall: absent direct callee attributes no virtual calls",
+          any(slot is not None for slot, _a, _fn, _addr in absent_returned), False)
 
     print("selftest: %d check(s) failed" % len(failures))
     return 1 if failures else 0
@@ -552,13 +695,26 @@ def main(argv=None) -> int:
                    help="instructions of look-back for pushes (default 8)")
     p.add_argument("--histogram", action="store_true",
                    help="print every literal seen at this slot")
+    p.add_argument("--show-sites", action="store_true",
+                   help="print every matching call and its look-back window")
     p.set_defaults(fn=cmd_vslot)
 
     p = sub.add_parser("chain", help="calls made on the object a slot returned")
     p.add_argument("via", type=hexint, help="accessor slot, e.g. 0x4c")
     p.add_argument("--slot", type=hexint, help="show only this slot on the result")
     p.add_argument("--window", type=int, default=25)
+    p.add_argument("--show-sites", action="store_true",
+                   help="list each attributed call instead of examples only")
     p.set_defaults(fn=cmd_chain)
+
+    p = sub.add_parser(
+        "aftercall", help="virtual calls on an object a direct call returned")
+    p.add_argument("callee", type=hexint,
+                   help="direct accessor function, e.g. 0x1e8790")
+    p.add_argument("--slot", type=hexint, help="show only this result slot")
+    p.add_argument("--window", type=int, default=25)
+    p.add_argument("--show-sites", action="store_true")
+    p.set_defaults(fn=cmd_aftercall)
 
     p = sub.add_parser("selftest", help="prove the queries can answer both ways")
     p.set_defaults(fn=cmd_selftest)
