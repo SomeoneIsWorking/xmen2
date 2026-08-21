@@ -588,6 +588,10 @@ if(X2_MODULE_HAVE)
         src/vulkan/igvk_context.c
         src/gpu/gpu_device.c
         src/gpu/gpu_draw.c
+        src/gpu/gpu_frame_submit.c
+        src/gpu/gpu_host_selftest.c
+        src/gpu/gpu_upload.c
+        src/gpu/gpu_upload_selftest.c
         src/gpu/gpu_selftest.c
         src/vulkan/igvk_slots_lifecycle.c
         src/vulkan/igvk_slots_frame.c

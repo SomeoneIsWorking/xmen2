@@ -21,9 +21,9 @@
  */
 #include "gpu_device.h"
 #include "gpu_draw.h"
+#include "gpu_frame_submit.h"
 #include "gpu_internal.h"
 #include "rmlui_ui.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -806,7 +806,7 @@ void gpu_frame_end(void)
     }
     if (!g_offscreen)
         x2_ui_render(g_gpu, g_cmd, g_swap, g_swap_w, g_swap_h, g_win);
-    SDL_SubmitGPUCommandBuffer(g_cmd);
+    gpu_frame_submit(g_gpu, g_cmd, g_headless);
     g_cmd = NULL;
     g_frame_end_submits++;
     if (!g_offscreen) g_swap = NULL;

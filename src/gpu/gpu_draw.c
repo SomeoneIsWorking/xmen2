@@ -2,6 +2,7 @@
 #include "gpu_draw.h"
 #include "gpu_device.h"
 #include "gpu_internal.h"
+#include "gpu_upload.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,6 +71,7 @@ static const unsigned int d3d8_fixed_frag_spv[] =
 typedef struct {
     SDL_GPUBuffer  *buf;
     SDL_GPUTexture *tex;
+    GpuUploadStaging upload;
     uint32_t        bytes;
     uint32_t        w, h;
     GpuFormat       fmt;
@@ -202,51 +204,33 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes)
  * takes the same torn-read trade every other counter here does.
  */
 static unsigned long long g_draw_ns, g_upload_ns;
-static unsigned long long g_upload_alloc_ns;   /* Create+Map+memcpy+Unmap */
+static unsigned long long g_upload_alloc_ns;   /* reserve+Map+memcpy+Unmap */
 static unsigned long long g_upload_submit_ns;  /* Acquire+CopyPass+Submit+Release */
 static unsigned long      g_uploads;
 static unsigned long long g_transfer_creates;   /* how often the upload path allocated */
 static unsigned long      g_submits;            /* SDL_SubmitGPUCommandBuffer calls */
 
 /*
- * Upload through a transfer buffer.
+ * Upload through the destination resource's retained transfer buffer.
  *
  * SDL_GPU has no "write straight into a GPU buffer": the data goes into a
- * mapped transfer buffer and a copy pass moves it. The transfer buffer is
- * created per upload rather than pooled -- correctness first; if this shows up
- * in a profile it is a cache, not a redesign.
+ * mapped transfer buffer and a copy pass moves it. gpu_upload_stage owns the
+ * reuse/cycling rule; this owner records the copy command and its timing.
  */
-static int upload_bytes(SDL_GPUBuffer *dst, uint32_t offset, const void *data,
+static int upload_bytes(Res *r, uint32_t offset, const void *data,
                         uint32_t bytes)
 {
-    SDL_GPUTransferBufferCreateInfo tci;
     SDL_GPUTransferBuffer *tb;
     SDL_GPUCommandBuffer *cmd;
     SDL_GPUCopyPass *cp;
     SDL_GPUTransferBufferLocation src;
     SDL_GPUBufferRegion dr;
     unsigned long long t0 = gpu_perf_now_ns(), t1;
-    void *p;
+    int created;
 
-    memset(&tci, 0, sizeof tci);
-    tci.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    tci.size = bytes;
-    tb = SDL_CreateGPUTransferBuffer(g_gpu, &tci);
-    if (!tb) {
-        fprintf(stderr, "gpu: transfer buffer (%u bytes) failed: %s\n", bytes,
-                SDL_GetError());
-        return 0;
-    }
-    g_transfer_creates++;
-    p = SDL_MapGPUTransferBuffer(g_gpu, tb, false);
-    if (!p) {
-        fprintf(stderr, "gpu: mapping the transfer buffer failed: %s\n",
-                SDL_GetError());
-        SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
-        return 0;
-    }
-    memcpy(p, data, bytes);
-    SDL_UnmapGPUTransferBuffer(g_gpu, tb);
+    tb = gpu_upload_stage(g_gpu, &r->upload, r->bytes, data, bytes, &created);
+    if (!tb) return 0;
+    g_transfer_creates += (unsigned long long)created;
     t1 = gpu_perf_now_ns();
     g_upload_alloc_ns += t1 - t0;
 
@@ -255,7 +239,7 @@ static int upload_bytes(SDL_GPUBuffer *dst, uint32_t offset, const void *data,
     memset(&src, 0, sizeof src);
     memset(&dr, 0, sizeof dr);
     src.transfer_buffer = tb;
-    dr.buffer = dst;
+    dr.buffer = r->buf;
     dr.offset = offset;
     dr.size = bytes;
     SDL_UploadToGPUBuffer(cp, &src, &dr, false);
@@ -266,7 +250,6 @@ static int upload_bytes(SDL_GPUBuffer *dst, uint32_t offset, const void *data,
        be blue-on-blue, and it changed nothing -- so it is not carried as a
        precaution nobody can justify. */
     SDL_SubmitGPUCommandBuffer(cmd);
-    SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
     g_submits++;
     {
         unsigned long long now = gpu_perf_now_ns();
@@ -292,13 +275,14 @@ int gpu_buffer_upload(GpuBuffer b, uint32_t offset, const void *data,
                         "buffer. Refusing.\n", bytes, offset, r->bytes);
         return 0;
     }
-    return upload_bytes(r->buf, offset, data, bytes);
+    return upload_bytes(r, offset, data, bytes);
 }
 
 void gpu_buffer_destroy(GpuBuffer b)
 {
     Res *r = res_get(b, 0, "buffer destroy");
     if (!r) return;
+    gpu_upload_staging_destroy(g_gpu, &r->upload);
     SDL_ReleaseGPUBuffer(g_gpu, r->buf);
     r->live = 0;
 }
@@ -312,6 +296,18 @@ static SDL_GPUTextureFormat sdl_format(GpuFormat f)
     case GPU_FMT_BC3:   return SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM;
     }
     return SDL_GPU_TEXTUREFORMAT_INVALID;
+}
+
+static uint32_t texture_level_bytes(GpuFormat fmt, uint32_t w, uint32_t h)
+{
+    uint32_t blocks = ((w + 3u) / 4u) * ((h + 3u) / 4u);
+    switch (fmt) {
+    case GPU_FMT_BGRA8: return w * h * 4u;
+    case GPU_FMT_BC1:   return blocks * 8u;
+    case GPU_FMT_BC2:
+    case GPU_FMT_BC3:   return blocks * 16u;
+    }
+    return 0;
 }
 
 /* The 2D and the cube path differ in exactly two fields, so they share this
@@ -358,6 +354,7 @@ static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
     }
     r->w = w;
     r->h = h;
+    r->bytes = texture_level_bytes(fmt, w, h);
     r->fmt = fmt;
     r->levels = ci.num_levels;
     r->faces = faces;
@@ -386,7 +383,6 @@ int gpu_texture_is_cube(GpuTexture t)
 int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
                             const void *data, uint32_t bytes)
 {
-    SDL_GPUTransferBufferCreateInfo tci;
     SDL_GPUTransferBuffer *tb;
     SDL_GPUCommandBuffer *cmd;
     SDL_GPUCopyPass *cp;
@@ -395,7 +391,7 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     Res *r = res_get(t, 1, "texture upload");
     uint32_t lw, lh;
     unsigned long long t0, t1;
-    void *p;
+    int created;
 
     if (!r) return 0;
     if (level >= r->levels) {
@@ -412,23 +408,9 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     lh = r->h >> level; if (!lh) lh = 1;
     t0 = gpu_perf_now_ns();
 
-    memset(&tci, 0, sizeof tci);
-    tci.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-    tci.size = bytes;
-    tb = SDL_CreateGPUTransferBuffer(g_gpu, &tci);
-    if (!tb) {
-        fprintf(stderr, "gpu: texture transfer buffer failed: %s\n",
-                SDL_GetError());
-        return 0;
-    }
-    g_transfer_creates++;
-    p = SDL_MapGPUTransferBuffer(g_gpu, tb, false);
-    if (!p) {
-        SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
-        return 0;
-    }
-    memcpy(p, data, bytes);
-    SDL_UnmapGPUTransferBuffer(g_gpu, tb);
+    tb = gpu_upload_stage(g_gpu, &r->upload, r->bytes, data, bytes, &created);
+    if (!tb) return 0;
+    g_transfer_creates += (unsigned long long)created;
     t1 = gpu_perf_now_ns();
     g_upload_alloc_ns += t1 - t0;
 
@@ -446,7 +428,6 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     SDL_UploadToGPUTexture(cp, &src, &dr, false);
     SDL_EndGPUCopyPass(cp);
     SDL_SubmitGPUCommandBuffer(cmd);
-    SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
     g_submits++;
     {
         unsigned long long now = gpu_perf_now_ns();
@@ -468,6 +449,7 @@ void gpu_texture_destroy(GpuTexture t)
 {
     Res *r = res_get(t, 1, "texture destroy");
     if (!r) return;
+    gpu_upload_staging_destroy(g_gpu, &r->upload);
     SDL_ReleaseGPUTexture(g_gpu, r->tex);
     r->live = 0;
 }
@@ -1513,6 +1495,7 @@ void gpu_draw_shutdown(void)
     if (g_fs) { SDL_ReleaseGPUShader(g_gpu, g_fs); g_fs = NULL; }
     for (i = 0; i < g_nres; i++)
         if (g_res[i].live) {
+            gpu_upload_staging_destroy(g_gpu, &g_res[i].upload);
             if (g_res[i].buf) SDL_ReleaseGPUBuffer(g_gpu, g_res[i].buf);
             if (g_res[i].tex) SDL_ReleaseGPUTexture(g_gpu, g_res[i].tex);
             g_res[i].live = 0;

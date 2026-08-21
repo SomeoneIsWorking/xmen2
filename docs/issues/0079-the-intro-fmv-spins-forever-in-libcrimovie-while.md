@@ -1,55 +1,42 @@
 ---
 id: 79
-title: The intro FMV spins forever in libCriMovie while the main thread waits on it
-status: open
-symptom: The window stops repainting and the desktop marks it (Not Responding). The process burns ~98% of a core, the heartbeat says 'the guest executed NOTHING in the last 5.0s (crossings unchanged)', MAIN is in a condition-variable wait and one worker thread is running guest code that never returns.
-tags: pc,native,fmv,crimovie,hang
+title: Windowless FMV playback exhausts GPU upload allocations and stalls
+status: resolved
+symptom: A windowless unbounded story movie slows from hundreds of frames per second to multi-second frames and appears frozen while the control server and guest time continue advancing.
+tags: pc,native,fmv,crimovie,hang,gpu,headless
 created: 2026-08-15
 updated: 2026-08-21
 ---
 
-## Symptom
+## Decoder ruled out
 
-A live driven run stopped repainting; the compositor marked the window Not
-Responding. Heartbeat at the time:
+The original reading blamed `libCriMovie`'s 591-instruction decoder at
+`0x10040000`. Scoped recording of seven loop checkpoints captured 200,000
+entries over 79 calls; checkpoint `0x100400dd` had 52,397 distinct
+register/input-pointer states. The decoder was consuming input rather than
+spinning on an unchanged condition.
 
-    [HB]  55.0s  the guest executed NOTHING in the last 5.0s
-                 (crossings unchanged at 101009286) -- it is blocked inside
-                 host code or stopped, not looping.
-    [HB]  MAIN tid 999: in a WAIT (condition variable) for 38.7s
-    [HB]  tid 1014: running guest code for 38.7s  <- running
+During a reproduced multi-second frame stall, gdb instead caught the only busy
+host thread inside Vulkan/AMDGPU allocation, reached from the SDL GPU upload
+path. The heartbeat supplied the denominator: 23,634 uploads had created
+exactly 23,634 transfer-buffer objects, and the longest frame took 42.3 seconds.
 
-`ps` showed 98.2% CPU, so it is a spin, not a deadlock.
+## Root cause
 
-## Where
+Two resource-lifetime errors combined:
 
-gdb on the live process (this is a native ELF binary -- gdb works here, unlike
-the Wine path of issue #1). The running thread:
+- every upload created and immediately retired an SDL GPU transfer buffer;
+- the headless target had no swapchain acquisition, so nothing bounded how
+  many frames an unbounded run could enqueue ahead of the GPU.
 
-    fn_libCriMovie_10040000        libCriMovie_001.c:153227/153234
-      <- x86_native_call_at / x86_dispatch
-    fn_libCriMovie_1002a640        libCriMovie_001.c:50248
-    fn_libCriMovie_1002a4c0        libCriMovie_001.c:48896
+The queue accumulated pending backing allocations until buffer creation and
+mapping stalled for seconds. It looked like a movie-decoder hang because the
+movie is the first sustained stream of per-frame texture uploads.
 
-Successive samples showed different line numbers inside 0x10040000, so it is
-looping inside that function rather than stuck on one instruction.
+### Resolution (2026-08-21)
+Root cause: the windowless renderer created and retired one SDL_GPU transfer buffer per upload, then submitted headless frames without the swapchain backpressure that bounds visible frames. Unbounded movie playback accumulated pending Vulkan allocations until transfer mapping/allocation stalled for seconds and looked like a CriMovie spin. GPU resources now retain and cycle one staging transfer buffer, and headless frame submission waits on its completion fence. The screenshot-confirmed story-FMV stress replay passed frame 20,210 with uploads remaining bounded and no stall.
 
-All three are REAL bodies in the export, not stubs -- 0x10040000 is 591
-instructions / 1677 bytes, 0x1002a640 is 256 instructions, 0x1002a4c0 is 60.
-So this is not the truncated-function class of issue #76 / commit 360fa6a.
-
-## Reading
-
-The FMV decoder thread never finishes its work and the main thread waits on it
-for ever. This is very likely the same defect behind the long-standing 'FMVs
-glitchy' report, seen at its extreme.
-
-## Not yet done
-
-Which loop inside 0x10040000, and what condition it is waiting on -- a file
-read that never completes, a ring buffer that never drains, or a timing source
-that never advances. The Wine control plays the FMVs, so it is a port defect
-and the control can answer what the loop expects to see.
-
-### Note (2026-08-21)
-2026-08-21 current-build reproduction, windowless: live control selected New Game and confirmed Normal difficulty from screenshot-verified menus. The story FMV rendered, then frame count stopped at 18,622 for 20 consecutive one-second status samples while guest time and the loopback control server continued advancing/responding. Ten Escape requests raised the request count but the accepted-key count stayed at 8, proving the movie path was not polling DirectInput; no scheduled-input miss is involved. The run was stopped by its exact session. This independent hang prevents a full menu-route replay of resolved issue #81, but does not overlap its deterministic tail-depth contract.
+The fixed replay remained at roughly 80–110 frames/s through the old failure
+point: 49,868 uploads used 525 retained transfer allocations at about 0.08 ms
+of upload time per frame. The movie's block-corrupted pixels are independent
+issue #95.

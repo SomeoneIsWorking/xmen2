@@ -2070,24 +2070,8 @@ int main(int argc, char **argv)
     }
     if (options.fault_selftest) return fault_selftest();
     if (vkselftest) {
-        extern int gpu_device_selftest(void);
-        extern int gpu_draw_selftest(void);
-        extern int gpu_midframe_clear_selftest(void);
-        int r = gpu_device_selftest();
-        if (r) return r;
-        r = gpu_midframe_clear_selftest();
-        if (r && r != 77) return r;
-        {
-            extern int gpu_cube_texgen_selftest(void);
-            extern int gpu_tfactor_selftest(void);
-            r = gpu_cube_texgen_selftest();
-            if (r && r != 77) return r;
-            r = gpu_tfactor_selftest();
-            if (r && r != 77) return r;
-        }
-        /* Presenting a frame and DRAWING into one are different claims. The
-           first has been true here since before any geometry worked. */
-        return gpu_draw_selftest();
+        extern int gpu_host_selftest(void);
+        return gpu_host_selftest();
     }
     /*
      * Same reasoning for the host D3D8: its ABI tables, its vtable dispatch
