@@ -20,11 +20,13 @@ int main(void)
 
     fails += check(x2native_options_parse(1, plain, &o) == 0,
                    "zero-argument parse failed");
-    fails += check(o.run && o.d3d8 && o.window,
-                   "zero arguments did not select the visible SDL3 GPU game");
+    fails += check(o.run && o.d3d8 && o.window && o.product &&
+                   o.input_record && !o.input_record[0],
+                   "zero arguments did not select the inspectable, recorded "
+                   "SDL3 GPU game");
     fails += check(x2native_options_parse(2, headless, &o) == 0,
                    "headless parse failed");
-    fails += check(o.run && o.d3d8 && !o.window,
+    fails += check(o.run && o.d3d8 && !o.window && o.product,
                    "--no-window replaced the product mode instead of extending it");
     fails += check(x2native_options_parse(2, bringup, &o) == 0,
                    "bring-up parse failed");

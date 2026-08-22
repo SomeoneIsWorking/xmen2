@@ -16,6 +16,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
         else if (strcmp(argv[i], "--unbounded") == 0) o->unbounded = 1;
         else if (strncmp(argv[i], "--control", 9) == 0)
             o->control = argv[i][9] == '=' ? atoi(argv[i] + 10) : 8420;
+        else if (strncmp(argv[i], "--record-input", 14) == 0)
+            o->input_record = argv[i][14] == '=' ? argv[i] + 15 : "";
         else if (strcmp(argv[i], "--selftest") == 0) o->selftest = 1;
         else if (strcmp(argv[i], "--run") == 0) o->run = 1;
         else if (strcmp(argv[i], "--ark-probe") == 0) o->ark_probe = 1;
@@ -37,7 +39,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
         else if (argv[i][0] == '-') {
             fprintf(stderr, "x2native: unknown option '%s'. Refusing rather "
                             "than treating it as the install directory.\n"
-                            "  Known: --no-window --unbounded --control[=port] --run "
+                            "  Known: --no-window --unbounded --control[=port] "
+                            "--record-input[=path] --run "
                             "--selftest "
                             "--ark-probe "
                             "--vk --vk-selftest --vk-permissive\n"
@@ -62,6 +65,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
         !o->override_selftest) {
         o->d3d8 = 1;
         o->run = 1;
+        o->product = 1;
+        if (!o->input_record) o->input_record = "";
     }
     return 0;
 }

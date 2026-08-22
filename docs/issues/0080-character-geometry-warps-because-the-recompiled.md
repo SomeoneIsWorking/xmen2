@@ -72,9 +72,11 @@ the port and native x86 in the control.
 
 ## What this rules out
 
-- The renderer. C202 (buffer upload ordering), C203/C206 (the vertex buffers
-  themselves match the control on 73 of 75 meshes), and the whole D3D8 light
-  path are all clean.
+- The renderer for this specific finding: the non-rigid matrices were already
+  present in the constant palette before the renderer consumed them. C202's
+  later zero-hazard conclusion was falsified by a different scene and no
+  longer supports this issue; C203/C206 still show 73 of 75 mesh buffers match
+  the control, and the D3D8 light path remains clean.
 - The vertex-shader interpreter, at least as the primary cause: it is fed
   corrupt matrices before it does anything.
 

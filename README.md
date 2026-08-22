@@ -127,11 +127,14 @@ rendered and simulated → the party dies with nobody driving them → the death
 dialog → back to a fully rendered main menu. No Wine, no original D3D, and no
 original machine code — the native build has no hybrid fallback, so every
 instruction executed came from the translator. Drive a run and look at it
-with the control channel (`--control`, `tools/x2ctl.py`) -- a play-through
+with the automatically published control channel (`tools/x2ctl.py probe`) -- a play-through
 is an observation, never a gate.
 
 `./run.sh` is the supported default launcher: with no arguments it builds when
-needed and runs the current native SDL3 GPU game target. `./run.sh wine` and
+needed and runs the current native SDL3 GPU game target. It records the exact
+DirectInput states returned to the game under `scratch/recordings/`, and
+`tools/x2ctl.py` discovers the live PID, port, and recording without manual
+flags. `./run.sh wine` and
 `./run.sh stock` are explicitly named oracle/control paths; neither can become
 the accidental default.
 

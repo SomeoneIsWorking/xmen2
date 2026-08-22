@@ -33,6 +33,8 @@
 #include "d3d8_com.h"
 #include "env_file.h"
 #include "x2native_options.h"
+#include "live_session.h"
+#include "input_record.h"
 
 #include <dlfcn.h>
 #include <signal.h>
@@ -429,6 +431,8 @@ void x2_interrupt_reports(int killed)
        use _exit. Print them here so successful runs retain their denominators. */
     dinput_device_report();
     dinput_pad_report();
+    input_record_report();
+    live_session_stop();
     pad_glyphs_report();
     dialog_prompts_report();
     { extern void dsound_report(void); dsound_report(); }
@@ -2033,7 +2037,19 @@ int main(int argc, char **argv)
     dir = options.install_dir;
     window = options.window;
     if (options.unbounded) guest_clock_set_unbounded(1);
-    control_start(options.control);
+    {
+        int control_port = control_start(options.control);
+        if (options.product && !control_port)
+            control_port = control_start(8420);
+        if (options.input_record && !input_record_start(options.input_record)) {
+            fprintf(stderr, "x2native: input recording was requested but "
+                            "could not start. REFUSING an unrecorded run.\n");
+            return 2;
+        }
+        if (options.product &&
+            !live_session_start(control_port, input_record_path()))
+            return 2;
+    }
     selftest = options.selftest;
     run = options.run;
     arkprobe = options.ark_probe;

@@ -53,6 +53,12 @@ target_include_directories(test_player_input PRIVATE src/recomp src/native
                                                    src/config src/input)
 add_test(NAME player_input COMMAND test_player_input)
 
+add_executable(test_input_record tests/test_input_record.c
+               src/input/input_record.c src/native/json_string.c)
+target_include_directories(test_input_record PRIVATE src/input src/native)
+add_test(NAME input_record COMMAND test_input_record)
+set_tests_properties(input_record PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 set(X2_PAD_GLYPH_HEADER "${CMAKE_BINARY_DIR}/pad_glyph_codes.h")
 add_custom_command(
     OUTPUT "${X2_PAD_GLYPH_HEADER}"
@@ -345,6 +351,9 @@ add_test(NAME python_lint
 set_tests_properties(python_lint PROPERTIES SKIP_RETURN_CODE 77
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME x2ctl COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_x2ctl.py)
+set_tests_properties(x2ctl PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME script_commands
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/script_commands.py --selftest)
@@ -525,6 +534,7 @@ if(X2_MODULE_HAVE)
         src/config/settings_store.c
         src/presentation/window_settings.c
         src/input/player_input.c
+        src/input/input_record.c
         src/native/pe_map.c
         src/native/win32_sdl.c
         src/native/guest_heap.c
@@ -537,6 +547,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput.c
         src/native/dinput8.c
         src/native/dinput_device.c
+        src/native/dinput_device_state.c
         src/native/dinput_system.c
         src/native/dinput_fifo.c
         src/native/dinput_script.c
@@ -553,6 +564,8 @@ if(X2_MODULE_HAVE)
         src/native/guest_clock.c
         src/native/control.c
         src/native/control_png.c
+        src/native/json_string.c
+        src/native/live_session.c
         src/native/ws2_32.c
         src/native/advapi32.c
         src/native/shell32.c

@@ -368,22 +368,11 @@ static void *heartbeat_thread(void *arg)
                 (void)esub; (void)sb; (void)hist;
             }
             /*
-             * Dynamic buffers, live, and the write-after-read hazard under
-             * them.
-             *
-             * gpu_buffer_upload acquires its OWN command buffer and submits
-             * it at once, while the frame's command buffer stays open until
-             * Present -- so every mid-frame upload reaches the GPU BEFORE
-             * every draw of that frame. That only corrupts a picture if some
-             * draw read the buffer earlier in the same frame, which is what
-             * the second line counts. The first counter here (relocked in one
-             * frame) does NOT answer this: it asks whether a buffer was
-             * unlocked twice, and a buffer drawn once and rewritten once is
-             * the hazard while never being unlocked twice.
-             *
-             * Printed AT ZERO with its denominator: zero here means the
-             * submission order cannot be what warps the geometry, and that is
-             * a result rather than a missing line.
+             * Dynamic buffers, live, including the write-after-draw case that
+             * requires SDL_GPU to cycle to a new backing generation. The
+             * first counter (relocked in one frame) does NOT answer this: a
+             * buffer may be drawn once and rewritten once without two
+             * unlocks. Printed at zero so the path's denominator is visible.
              */
             {
                 char vsl[256];
@@ -402,10 +391,10 @@ static void *heartbeat_thread(void *arg)
                 fprintf(stderr, "[HB]           %s\n", pl);
             }
             {
-                static unsigned long p_unl, p_byt, p_rel, p_haz;
-                unsigned long lk, dis, noov, unl, byt, rel, haz;
+                static unsigned long p_unl, p_byt, p_rel, p_gen;
+                unsigned long lk, dis, noov, unl, byt, rel, gen;
                 d3d8_buffer_lock_counts(&lk, &dis, &noov, &unl, &byt, &rel,
-                                        &haz);
+                                        &gen);
                 fprintf(stderr, "[HB]           buffer locks %lu (%lu DISCARD, "
                                 "%lu NOOVERWRITE); %lu unlock(s) (+%lu) moved "
                                 "%lu MB (+%lu MB); %lu (+%lu) relocked in one "
@@ -413,10 +402,10 @@ static void *heartbeat_thread(void *arg)
                         lk, dis, noov, unl, unl - p_unl,
                         byt >> 20, (byt - p_byt) >> 20, rel, rel - p_rel);
                 fprintf(stderr, "[HB]           of those unlocks, %lu (+%lu) "
-                                "REWROTE A BUFFER THIS FRAME'S DRAWS HAD "
-                                "ALREADY READ -- and the copy is submitted "
-                                "ahead of them\n", haz, haz - p_haz);
-                p_unl = unl; p_byt = byt; p_rel = rel; p_haz = haz;
+                                "needed a NEW BUFFER GENERATION after an "
+                                "earlier draw -- SDL_GPU cycling preserves "
+                                "both\n", gen, gen - p_gen);
+                p_unl = unl; p_byt = byt; p_rel = rel; p_gen = gen;
             }
         }
         /*

@@ -93,12 +93,12 @@ static unsigned long g_textures, g_cubetextures, g_vbuffers, g_ibuffers;
  *   D3DLOCK_NOOVERWRITE (0x1000)  "I will only write bytes no submitted draw
  *                                 reads" -- so no rename is needed.
  *
- * Unlock uploads into the SAME backing buffer every time. Under NOOVERWRITE
- * that is merely wasteful; under DISCARD it overwrites storage that earlier
- * draws in this frame are still going to read, and those draws then render
- * with whatever mesh was written last. That is the shape of warped geometry.
- *
- * So: count the locks by flag, count what Unlock actually moves, and count
+ * Unlock used to upload into the SAME backing buffer every time. Under
+ * NOOVERWRITE that was merely wasteful; under DISCARD it overwrote storage
+ * that earlier draws in this frame were still going to read, and those draws
+ * then rendered with whatever mesh was written last. gpu_buffer_upload now
+ * cycles an already-bound buffer, which implements the rename D3D8 requires.
+ * Count the locks by flag, count what Unlock actually moves, and count
  * the case that discriminates -- a buffer unlocked MORE THAN ONCE between one
  * Present and the next, which is the only situation in which a rename can
  * matter. All three go in the heartbeat with their denominators, because a
@@ -113,7 +113,7 @@ static unsigned long g_lock_calls, g_lock_discard, g_lock_nooverwrite,
                      g_lock_readonly, g_lock_plain, g_lock_other_flags;
 static unsigned long g_unlocks, g_unlock_bytes;
 static unsigned long g_relocked_in_frame;
-static unsigned long g_rewritten_after_draw;   /* the discriminating case */
+static unsigned long g_generations_after_draw; /* renames the path exercised */
 static uint32_t      g_lock_other_bits;
 
 static void *guest_ptr(uint32_t a, const char *what)
@@ -867,23 +867,23 @@ static void buf_Lock(D3D8Object *self, CPU *C)
 void d3d8_buffer_lock_counts(unsigned long *locks, unsigned long *discard,
                              unsigned long *nooverwrite, unsigned long *unlocks,
                              unsigned long *bytes, unsigned long *relocked,
-                             unsigned long *hazard)
+                             unsigned long *generations)
 {
     *locks = g_lock_calls;  *discard = g_lock_discard;
     *nooverwrite = g_lock_nooverwrite;
     *unlocks = g_unlocks;   *bytes = g_unlock_bytes;
     *relocked = g_relocked_in_frame;
-    *hazard = g_rewritten_after_draw;
+    *generations = g_generations_after_draw;
 }
 
 /*
  * A draw is about to READ this buffer. Remember the frame, so a later Unlock
- * in the same frame can be recognised as the hazard it is.
+ * in the same frame can be recognised as requiring a new backing generation.
  *
  * Called for the vertex and index buffers of every draw, whatever the draw
  * then does with them -- a draw that is later refused still recorded nothing,
  * and the count would only be too HIGH, never too low, which is the safe
- * direction for a hazard counter.
+ * direction for proving the rename path is exercised.
  */
 void d3d8_resource_note_drawn(D3D8Object *o)
 {
@@ -913,14 +913,14 @@ static void buf_Unlock(D3D8Object *self, CPU *C)
         g_relocked_in_frame++;
     if (r->ever_drawn && r->drawn_in_frame == gpu_frames_presented()) {
         static int told;
-        g_rewritten_after_draw++;
+        g_generations_after_draw++;
         if (!told++)
             fprintf(stderr, "d3d8: a buffer this frame's draws ALREADY READ is "
                     "being rewritten (%u bytes) before the frame is submitted. "
-                    "gpu_buffer_upload submits its own command buffer at once, "
-                    "so this copy reaches the GPU BEFORE every draw of the "
-                    "frame -- the earlier draws will render with THIS data. "
-                    "Reported once; the total is in the heartbeat.\n", r->bytes);
+                    "gpu_buffer_upload is cycling its SDL_GPU backing storage, "
+                    "so earlier draws retain their bytes and later draws use "
+                    "this generation. Reported once; the total is in the "
+                    "heartbeat.\n", r->bytes);
     }
     r->unlocked_in_frame = gpu_frames_presented();
     r->ever_unlocked = 1;

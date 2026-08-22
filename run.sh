@@ -130,6 +130,10 @@ run: NATIVE build -- no Wine, no original binaries in the loop.
      It is not silent about what it is doing: [HB] lines every few
      seconds carry the frame, draw and present counts.
 
+     Inputs are recorded automatically. While this run is open,
+     tools/x2ctl.py probe finds it through scratch/run/live.json and reports
+     the live frame, guest input state, and recent recorded input changes.
+
      ./run.sh wine is still the reference for "what it should look
      like", and ./run.sh stock is the untouched install as the control.
 

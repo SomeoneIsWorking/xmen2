@@ -82,16 +82,20 @@ scratch/build-native/x2native --d3d8                   # the LIVE path: arms the
 ./run.sh                                               # the same --run, on YOUR screen, building first if needed
 ```
 
-**Drive a run instead of scripting it.** `--control[=port]` opens an HTTP
-channel on loopback; commands are applied on the guest's own input poll, never
-from the server thread:
+**Drive a run instead of scripting it.** The default product opens an HTTP
+channel on loopback, records the exact post-merge DirectInput states returned to
+the game, and publishes its PID, port and recording in `scratch/run/live.json`.
+Commands are applied on the guest's own input poll, never from the server
+thread:
 
 ```sh
-scratch/build-native/x2native --no-window --unbounded --control &
+./run.sh
+tools/x2ctl.py probe                  # status + input + frame when capturable
 tools/x2ctl.py status                 # frames, guest time, frame timing
 tools/x2ctl.py key Return --hold 0.4  # press keys, in order
 tools/x2ctl.py shot scratch/screenshots/now.png
 tools/x2ctl.py watch --for 30         # /status once a second
+tools/x2ctl.py recording --events 20  # tail the automatic JSONL trace
 ```
 
 Every refusal is an answer: 409 says the key has no DirectInput mapping or the
@@ -197,6 +201,11 @@ and SDL_GPU renderer. `src/config/` owns persistent data and storage location;
 assignments and publishes them into guest binding sets; `src/ui/` owns only the
 RmlUi lifetime and documents. `win32_sdl.c` and `gpu_device.c` compose those
 owners at the SDL event and render boundaries; they do not absorb their policy.
+
+Exact input capture belongs to `src/input/input_record.{c,h}` and runs only
+after physical, scripted, control-channel and modal-UI policy produce the state
+the guest will receive. `src/native/live_session.{c,h}` owns live-run discovery;
+`x2native.c` only composes those owners.
 
 The shipped settings UI uses the exact pinned RmlUi revision and maintained
 SDL3/SDL_GPU backends named in `CMakeLists.txt`. Its document vocabulary and

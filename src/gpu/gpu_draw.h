@@ -227,7 +227,9 @@ typedef struct {
 
 GpuBuffer  gpu_buffer_create(GpuBufferKind kind, uint32_t bytes);
 /* Returns 0 and reports if the range is outside the buffer -- an out-of-range
-   upload is the guest telling us the size is wrong, not something to clamp. */
+   upload is the guest telling us the size is wrong, not something to clamp.
+   Uploading after a draw cycles the buffer's backing storage; only the
+   uploaded range is defined in that new generation. */
 int        gpu_buffer_upload(GpuBuffer b, uint32_t offset,
                              const void *data, uint32_t bytes);
 void       gpu_buffer_destroy(GpuBuffer b);

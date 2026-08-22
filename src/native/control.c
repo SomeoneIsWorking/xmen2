@@ -6,6 +6,8 @@
 #include "guest_clock.h"
 #include "gpu_device.h"
 #include "input_probe.h"
+#include "input_record.h"
+#include "json_string.h"
 #include "x86rt.h"
 
 #include <arpa/inet.h>
@@ -208,10 +210,17 @@ static void route_status(int fd)
     unsigned long long frame_ns = 0, mn = 0, mx = 0, subs = 0;
     unsigned long intervals = 0;
     const unsigned long *hist = NULL;
-    char body[1024];
+    char body[4096];
+    char recording_json[4096];
     int n;
 
     gpu_device_perf(&frame_ns, &mn, &mx, &subs, &intervals, &hist);
+    if (!json_string_format(recording_json, sizeof recording_json,
+                            input_record_path())) {
+        reply_text(fd, 500, "Internal Server Error",
+                   "input recording path is too long for status\n");
+        return;
+    }
     n = snprintf(body, sizeof body,
         "{\n"
         "  \"frames_presented\": %lu,\n"
@@ -222,6 +231,8 @@ static void route_status(int fd)
         "  \"frame_ms_min\": %.3f,\n"
         "  \"frame_ms_max\": %.3f,\n"
         "  \"frame_intervals\": %lu,\n"
+        "  \"pid\": %ld,\n"
+        "  \"input_recording\": { \"path\": %s, \"events\": %lu },\n"
         "  \"control\": { \"requests\": %lu, \"keys_pressed\": %lu,"
         " \"keys_refused\": %lu, \"screenshots\": %lu }\n"
         "}\n",
@@ -229,7 +240,9 @@ static void route_status(int fd)
         guest_clock_unbounded() ? "true" : "false",
         gpu_device_ready() ? "true" : "false",
         intervals ? (double)frame_ns / intervals / 1e6 : 0.0,
-        mn / 1e6, mx / 1e6, intervals,
+        mn / 1e6, mx / 1e6, intervals, (long)getpid(),
+        recording_json,
+        input_record_event_count(),
         g_requests, g_keys_pressed, g_keys_refused, g_shots);
     reply(fd, 200, "OK", "application/json", body, (size_t)n);
 }

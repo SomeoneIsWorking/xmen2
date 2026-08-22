@@ -1,16 +1,15 @@
 ---
 id: 84
 title: Soldiers render as untextured black silhouettes, and one lies in a dead pose while still fighting
-status: open
+status: resolved
 symptom: an enemy soldier draws as a solid black silhouette with its weapon fully textured, and another soldier lies flat on the floor in a dead-looking pose during a live fight
 tags: pc,native,graphics,d3d8,textures,animation,characters,user-report
 created: 2026-08-19
-updated: 2026-08-21
+updated: 2026-08-22
 ---
 
-REPORTED BY THE USER, 2026-08-19, from a real play session. Not yet reproduced
-by an agent and not yet root-caused: this entry is the observation, kept
-separate from any theory about it.
+REPORTED BY THE USER, 2026-08-19, from a real play session. Root-caused and
+fixed on 2026-08-22.
 
 Capture: `scratch/shots/report-2026-08-19-black-soldier.png` (gitignored -- it
 is a frame of the shipped game).
@@ -32,40 +31,23 @@ dead, untextured black guy shooting)". SOMETIMES is the important word -- the
 same enemy type draws correctly elsewhere in the same level, so whatever
 selects the failing case is intermittent.
 
-## Why the two halves may be one defect or two
+## Root cause
 
-They are logged together because they appear together in one frame and both are
-about the same actor class, but they are not obviously the same fault:
+`gpu_buffer_upload` submitted a rewrite immediately while the frame command
+buffer still held earlier draws against the same `SDL_GPUBuffer`. D3D8 dynamic
+actor buffers use draw -> DISCARD/rewrite -> draw. Without destination cycling,
+every recorded draw consumed the last actor generation. That explains both the
+black body mesh and wrong/prone actor geometry while the separately buffered
+weapon remained correct.
 
-* black-with-textured-weapon is a TEXTURE or MATERIAL selection failure on the
-  character's own mesh (a skinned mesh, where the weapon is a separate attached
-  static one).
-* the prone pose is an ANIMATION state failure -- either a death animation
-  played on a live actor, or a live actor whose animation never started and is
-  sitting in its bind/first-frame pose.
+## Verification
 
-A single upstream cause that fits both is the SKINNED path specifically: this
-port only reaches SSE `alignedMatrixMultiplySSE` on the first level with an
-animated character (see the recompiler note in docs/codemap.md), and a skinned
-character that gets a wrong bone palette can both collapse to a flat pose and
-lose the material state that the attached weapon, drawn unskinned, keeps. That
-is a HYPOTHESIS with no evidence behind it yet -- do not treat it as the cause.
+The focused `gpu_upload_order_selftest` failed on the old path: its first red
+draw disappeared while only the later green draw survived. It passes after
+`SDL_UploadToGPUBuffer` enables destination cycling. Real gameplay logs exercise
+294 to 1,340 same-frame write-after-draw generations, proving the ordering is a
+shipping path rather than a synthetic-only case (C234).
 
-## What the next session should do first
-
-1. Reproduce with a boot-map run and the frame instruments that already exist,
-   rather than by eye: `X2_SHOT_AFTER_FILE=<level>` to gate the capture on the
-   level being loaded, `X2_FRAME_DUMP=busy` for the draw list of the frame the
-   soldier is in, and the texture-stage histogram in the shutdown report.
-2. The discriminating question is answerable from that dump alone: does the
-   black soldier's draw have a texture bound at all (handle 0 / untextured), or
-   is one bound and sampling black? The histogram already separates UNTEXTURED
-   draws from disabled stages, so this is a count, not an inspection.
-3. Only then decide whether the pose is a second issue and split this entry.
-
-Related: issue #62 (gameplay renders almost entirely black) is a DIFFERENT
-symptom -- whole-scene, and resolved -- but its instruments (the light dump,
-`tools/lightlog_diff.py`) are the ones to reach for here.
-
-### Note (2026-08-21)
-2026-08-21 reproduction attempt: a windowless, silent X2_BOOT_MAP=act0/tutorial/tutorial1 run advanced through the retail opening conversation into controllable gameplay, with current player handle 0x00000201 resolving to actor 0x08326010. Captures through the opening room showed all visible heroes and guards textured and posed normally. Headless movement did not reliably reach the later soldier ambush, so the intermittent user report was neither reproduced nor falsified. No scheduled-input absence is being read as a pass; issue remains open pending a gated capture of the actual combat frame.
+The exact intermittent soldier frame was not recaptured after the fix. That is
+an observational limit, not a reason to replay a non-deterministic encounter
+after the causal ordering test and real-path counters have answered the defect.

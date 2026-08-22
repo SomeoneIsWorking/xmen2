@@ -34,12 +34,10 @@
 #include "x86rt_native.h"
 #include "guest_heap.h"
 #include "dinput_device.h"
+#include "dinput_device_internal.h"
 #include "dinput_joystick.h"
 #include "dinput_pad.h"
-#include "dinput_script.h"
 #include "dinput_system.h"
-#include "rmlui_ui.h"
-#include "gpu_device.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,8 +48,7 @@
 
 static void ret_com(CPU *C, uint32_t hr, int nargs)
 {
-    C->eax = hr;
-    C->esp += 4u + (uint32_t)(nargs + 1) * 4u;
+    dinput_device_return(C, hr, nargs);
 }
 
 #define S_OK              0x00000000u
@@ -94,29 +91,7 @@ static const char *const VT_NAME[VT_COUNT] = {
     "SetActionMap", "GetImageInfo"
 };
 
-typedef struct {
-    DInputDeviceKind kind;
-    uint32_t guest;              /* the object the game holds */
-    uint32_t refs;
-    uint32_t data_size;          /* from the caller's own DIDATAFORMAT */
-    uint32_t coop;
-    int      acquired;
-    unsigned long polls;          /* GetDeviceState calls */
-    /* Poll and Acquire counted separately, because '0 state reads' cannot say
-       WHICH step of the game's own sequence stopped. XMen2.exe's per-frame
-       update (FUN_006285c0, at 0x006287f0) calls Poll first and only Acquires
-       if Poll fails, so three zeros and three different causes look identical
-       without these. */
-    unsigned long n_poll, n_acquire, n_acquire_fail;
-    /* Joysticks only. The pad this device reads, and the axis range the GAME
-       set with DIPROP_RANGE -- XMen2.exe asks for [-1000, 1000] and a host
-       that returned DirectInput's default 0..65535 would hand it sticks
-       pinned hard over. Defaults are DirectInput's, so a caller that never
-       sets a range still gets a sane centre. */
-    int      pad;
-    int32_t  axis_lo, axis_hi;
-    int      range_set;
-} Device;
+typedef DInputDevice Device;
 
 /* Four pads plus the keyboard and the mouse. The game supports four players
    and creates one device each. */
@@ -263,70 +238,7 @@ static void m_Unacquire(CPU *C)
 
 static void m_GetDeviceState(CPU *C)
 {
-    /* (this, cbData, lpvData) */
-    Device *d = dev_of(THIS);
-    uint32_t cb = A(1), out = A(2);
-
-    if (!d || !out) { ret_com(C, DIERR_INVALIDPARAM, 2); return; }
-    if (!d->acquired) { ret_com(C, DIERR_NOTACQUIRED, 2); return; }
-    if (cb != d->data_size) {
-        /* Not clamped. A caller asking for a size its own data format did not
-           declare is a disagreement about the layout, and filling the smaller
-           of the two would hand back a state whose fields are in the wrong
-           places. */
-        fprintf(stderr, "DINPUT8: GetDeviceState on the %s asked for %u bytes "
-                        "but its data format declared %u. Refusing rather than "
-                        "writing a state whose fields land somewhere else.\n",
-                kind_name(d->kind), cb, d->data_size);
-        ret_com(C, DIERR_INVALIDPARAM, 2);
-        return;
-    }
-    if (d->kind == DINPUT_DEV_JOYSTICK && dinput_pad_name(d->pad) == NULL) {
-        /*
-         * The pad was UNPLUGGED. DIERR_INPUTLOST is the answer Windows gives
-         * and the answer this game is written against -- its per-frame update
-         * tests for exactly this value at 0x00628621 and re-acquires. Filling
-         * a state of zeros instead would leave a disconnected controller
-         * looking like a connected one nobody is touching.
-         */
-        d->acquired = 0;
-        ret_com(C, DIERR_INPUTLOST, 2);
-        return;
-    }
-    d->polls++;
-    if (d->kind == DINPUT_DEV_KEYBOARD) {
-        /*
-         * ONE PUMP POINT A FRAME, and this is it: the keyboard's state is the
-         * first device call XMen2.exe's per-frame input update makes
-         * (FUN_006285c0 at 0x0062861e), so the guest is between operations
-         * rather than inside its own device loop. See dinput8_hotplug_pump.
-         */
-        extern void dinput8_hotplug_pump(CPU *);
-        static unsigned long last_frame = (unsigned long)-1;
-        unsigned long f = gpu_frames_presented();
-        if (f != last_frame) {
-            last_frame = f;
-            dinput_pad_virtual_tick(f);      /* X2_VIRTUAL_PAD's fN forms */
-            dinput8_hotplug_pump(C);
-        }
-    }
-    /* The RmlUi settings overlay is a modal input owner. SDL event handling
-       alone cannot suppress DirectInput state polling, so zero the shipping
-       device state at this shared boundary while the overlay is open. */
-    if (x2_ui_captures_input()) {
-        memset((void *)(uintptr_t)out, 0, cb);
-        ret_com(C, S_OK, 2);
-        return;
-    }
-    if (d->kind == DINPUT_DEV_KEYBOARD) {
-        dinput_system_keyboard_state(out, cb);
-        dinput_script_apply(C, out, cb);
-    } else if (d->kind == DINPUT_DEV_JOYSTICK) {
-        dinput_joystick_state(d->pad, d->axis_lo, d->axis_hi, out, cb);
-    } else {
-        dinput_system_mouse_state(out, cb);
-    }
-    ret_com(C, S_OK, 2);
+    dinput_device_get_state(C, dev_of(THIS));
 }
 
 static void m_GetDeviceData(CPU *C)

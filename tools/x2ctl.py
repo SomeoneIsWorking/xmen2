@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Drive a running x2native from outside it.
 
-Start the game with the control channel open:
+The default launcher opens the control channel, records the exact input states
+returned to the game, and publishes how to find the run:
 
-    scratch/build-native/x2native --no-window --unbounded --control &
+    ./run.sh
 
 then talk to it while it runs:
 
+    tools/x2ctl.py probe                  # one live diagnostic bundle
     tools/x2ctl.py status                 # frames, guest time, frame timing
     tools/x2ctl.py key Return             # press a key (--hold SECONDS)
     tools/x2ctl.py key Escape Escape Up   # several, in order
@@ -14,6 +16,7 @@ then talk to it while it runs:
     tools/x2ctl.py pad leftx=-1            # ... and axes
     tools/x2ctl.py shot out.png           # capture the current frame
     tools/x2ctl.py input                  # the GAME's bindings + live actions
+    tools/x2ctl.py recording --events 20  # tail the automatic JSONL trace
     tools/x2ctl.py watch --for 30         # print /status once a second
 
 This exists because the alternative is deciding every input before launch and
@@ -28,13 +31,54 @@ decided by tests that do not need the game to be playing.
 """
 
 import argparse
+from collections import deque
 import json
+import os
+from pathlib import Path
 import sys
 import time
 import urllib.error
 import urllib.request
 
 DEFAULT_PORT = 8420
+ROOT = Path(__file__).resolve().parents[1]
+LIVE_SESSION_PATH = ROOT / "scratch" / "run" / "live.json"
+
+
+def read_live_session(path=LIVE_SESSION_PATH):
+    """Read the launcher-published run identity, or return None if absent.
+
+    A stale record is retained because it still names the last input recording;
+    callers that require a live process separately check `running` and the PID.
+    """
+    try:
+        with open(path, encoding="utf-8") as file:
+            session = json.load(file)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(session, dict) or session.get("version") != 1:
+        return None
+    return session
+
+
+def pid_is_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def resolve_port(explicit, session=None):
+    if explicit is not None:
+        return explicit
+    if session is None:
+        session = read_live_session()
+    if session and session.get("running") and pid_is_alive(session.get("pid")):
+        port = session.get("control_port")
+        if isinstance(port, int) and 0 < port < 65536:
+            return port
+    return DEFAULT_PORT
 
 
 def call(port, path, timeout=15.0):
@@ -76,6 +120,13 @@ def cmd_status(args):
     print("  control     %d request(s), %d key(s) pressed, %d refused, %d shot(s)"
           % (c["requests"], c["keys_pressed"], c["keys_refused"],
              c["screenshots"]))
+    recording = s.get("input_recording", {})
+    print("  process     pid %s" % s.get("pid", "unknown"))
+    if recording.get("path"):
+        print("  recording   %d changed state(s) in %s"
+              % (recording.get("events", 0), recording["path"]))
+    else:
+        print("  recording   DISABLED for this run")
     return 0
 
 
@@ -172,10 +223,87 @@ def cmd_watch(args):
     return 0
 
 
+def recording_path(session):
+    if not session or not session.get("input_recording"):
+        raise SystemExit("x2ctl: the live-session record names no input recording")
+    path = Path(session["input_recording"])
+    if not path.is_absolute():
+        path = ROOT / path
+    path = path.resolve()
+    try:
+        path.relative_to(ROOT)
+    except ValueError:
+        raise SystemExit("x2ctl: refusing an input recording outside the repo: %s"
+                         % path) from None
+    return path
+
+
+def print_recording_tail(session, count):
+    path = recording_path(session)
+    try:
+        with open(path, encoding="utf-8") as file:
+            lines = deque(file, maxlen=count)
+    except OSError as error:
+        raise SystemExit("x2ctl: cannot read %s: %s" % (path, error)) from None
+    print("recent input (%s):" % path.relative_to(ROOT))
+    for line in lines:
+        print("  " + line.rstrip())
+    return path
+
+
+def cmd_recording(args):
+    print_recording_tail(args.live_session, args.events)
+    return 0
+
+
+def cmd_probe(args):
+    """Capture one inspectable bundle from the currently published run."""
+    session = args.live_session
+    if not session or not session.get("running") or not pid_is_alive(session.get("pid")):
+        raise SystemExit(
+            "x2ctl: scratch/run/live.json does not name a running product.\n"
+            "  Start ./run.sh; it now publishes the run automatically.")
+
+    print("live probe -- published pid %d, port %d"
+          % (session["pid"], args.port))
+    cmd_status(args)
+
+    code, _, body = call(args.port,
+                         "/input?controller=%d" % args.controller,
+                         timeout=30.0)
+    if code != 200:
+        raise SystemExit("x2ctl: /input returned %d:\n%s"
+                         % (code, body.decode(errors="replace")))
+    input_path = ROOT / "scratch" / "logs" / "live-probe-input.txt"
+    input_path.parent.mkdir(parents=True, exist_ok=True)
+    input_path.write_bytes(body)
+    text = body.decode(errors="replace")
+    down = [line.strip() for line in text.splitlines()
+            if line.rstrip().endswith("DOWN")]
+    print("  guest input full report: %s" % input_path.relative_to(ROOT))
+    print("  actions down: %s" % (", ".join(down) if down else "none"))
+
+    code, ctype, shot = call(args.port, "/screenshot", timeout=30.0)
+    if code == 200 and "png" in ctype:
+        shot_path = ROOT / args.shot
+        shot_path.parent.mkdir(parents=True, exist_ok=True)
+        shot_path.write_bytes(shot)
+        print("  frame capture: %s (%d bytes)"
+              % (shot_path.relative_to(ROOT), len(shot)))
+    else:
+        print("  frame capture unavailable: %s"
+              % shot.decode(errors="replace").strip())
+
+    print_recording_tail(session, args.events)
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--port", type=int, default=DEFAULT_PORT)
+    p.add_argument("--port", type=int, default=None,
+                   help="control port; defaults to the run published in "
+                        "scratch/run/live.json, then 8420")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status").set_defaults(fn=cmd_status)
@@ -212,7 +340,22 @@ def main():
     w.add_argument("--every", type=float, default=1.0)
     w.set_defaults(fn=cmd_watch)
 
+    rec = sub.add_parser("recording", help="show the latest exact input-state "
+                                            "changes from the published run")
+    rec.add_argument("--events", type=int, default=20)
+    rec.set_defaults(fn=cmd_recording)
+
+    probe = sub.add_parser("probe", help="inspect the published live game: "
+                                           "status, guest input, frame, and "
+                                           "recent recorded inputs")
+    probe.add_argument("--controller", type=int, default=0)
+    probe.add_argument("--events", type=int, default=20)
+    probe.add_argument("--shot", default="scratch/screenshots/live-probe.png")
+    probe.set_defaults(fn=cmd_probe)
+
     args = p.parse_args()
+    args.live_session = read_live_session()
+    args.port = resolve_port(args.port, args.live_session)
     return args.fn(args)
 
 

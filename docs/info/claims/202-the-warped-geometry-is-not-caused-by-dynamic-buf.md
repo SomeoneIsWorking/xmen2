@@ -1,9 +1,10 @@
 ---
 id: C202
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-15
 tags: d3d8,gpu,geometry
+falsified_on: 2026-08-22
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ src/d3d8/d3d8_resource.c marks every vertex and index buffer at draw time (d3d8_
 ## What would falsify it
 
 a run in which the hazard counter in the heartbeat is non-zero, or a scene whose warping changes when uploads are made to ride the frame's own command buffer
+
+## FALSIFIED 2026-08-22
+
+The old counter reached 294 write-after-draw unlocks in scratch/logs/soldier_test3.log and 324 in soldier_test5.log. The original zero-result run never exercised the dynamic actor-buffer reuse seen in the reported scene.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

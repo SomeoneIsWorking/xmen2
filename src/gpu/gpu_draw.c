@@ -49,7 +49,7 @@ void gpu_offscreen_end(void) { }
 
 #else /* X2_WITH_SDL */
 
-/* Compiled from src/gpu/shaders/*.{vert,frag} at build time; see CMakeLists.
+/* Compiled from the vertex and fragment files in src/gpu/shaders at build time.
    The declaration lives here so the generated file is nothing but SPIR-V. */
 static const unsigned int d3d8_fixed_vert_spv[] =
 #include "shaders/d3d8_fixed_vert.inc"
@@ -242,7 +242,19 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
     dr.buffer = r->buf;
     dr.offset = offset;
     dr.size = bytes;
-    SDL_UploadToGPUBuffer(cp, &src, &dr, false);
+    /*
+     * Preserve the bytes captured by draws already recorded against this
+     * buffer. D3D8 dynamic buffers are commonly drawn, discarded and filled
+     * again before Present; the frame command buffer is still open while this
+     * copy command buffer is submitted. Without cycling, the copy overwrites
+     * the backing storage both the earlier and later draws reference, so both
+     * render the last actor's vertices. SDL_GPU cycling gives subsequent
+     * commands a new backing allocation when the buffer is already bound.
+     *
+     * Bytes outside dr are undefined after a cycle. Every caller either
+     * uploads the full resource or draws only the uploaded prefix.
+     */
+    SDL_UploadToGPUBuffer(cp, &src, &dr, true);
     SDL_EndGPUCopyPass(cp);
     /* Not fenced. SDL_GPU executes submitted command buffers in order and
        tracks the resources they touch, so a draw submitted after this copy

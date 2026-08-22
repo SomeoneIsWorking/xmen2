@@ -3,6 +3,8 @@
 
 typedef struct {
     const char *install_dir;
+    /* Non-NULL records the exact DirectInput snapshots. Empty = unique path. */
+    const char *input_record;
     int window;
     /* --unbounded: skip the scheduler's idle waits instead of sleeping
        through them. Removes real seconds, never guest work -- see
@@ -10,6 +12,8 @@ typedef struct {
     int unbounded;
     /* --control[=port]: the live control channel, 0 = off. See control.h. */
     int control;
+    /* The implicit D3D8+run route, whose supporting live tools are defaults. */
+    int product;
     int selftest;
     int run;
     int ark_probe;

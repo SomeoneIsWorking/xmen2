@@ -6,6 +6,7 @@ int gpu_midframe_clear_selftest(void);
 int gpu_cube_texgen_selftest(void);
 int gpu_tfactor_selftest(void);
 int gpu_upload_reuse_selftest(void);
+int gpu_upload_order_selftest(void);
 
 int gpu_host_selftest(void)
 {
@@ -13,6 +14,9 @@ int gpu_host_selftest(void)
     if (result) return result;
 
     result = gpu_upload_reuse_selftest();
+    if (result) return result;
+
+    result = gpu_upload_order_selftest();
     if (result) return result;
 
     result = gpu_midframe_clear_selftest();

@@ -61,15 +61,14 @@ void d3d8_texture_luma_report(void);
 uint32_t      d3d8_texture_last_upload_level(D3D8Object *o);
 
 /*
- * The dynamic-buffer census: Lock flags, what Unlock moves, and the case that
- * discriminates -- a buffer unlocked more than once between two Presents,
- * which is the only situation in which D3DLOCK_DISCARD's rename can matter.
- * See the long comment at the counters in d3d8_resource.c.
+ * The dynamic-buffer census: Lock flags, what Unlock moves, and how often a
+ * write after a draw requires a new backing generation before Present. See
+ * the long comment at the counters in d3d8_resource.c.
  */
 void d3d8_buffer_lock_counts(unsigned long *locks, unsigned long *discard,
                              unsigned long *nooverwrite, unsigned long *unlocks,
                              unsigned long *bytes, unsigned long *relocked,
-                             unsigned long *hazard);
+                             unsigned long *generations);
 
 /* A draw is about to read this buffer -- see d3d8_resource.c. */
 void d3d8_resource_note_drawn(D3D8Object *o);

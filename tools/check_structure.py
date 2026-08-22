@@ -29,7 +29,7 @@ LEGACY_LIMITS = {
     "src/native/dsound.c": 766,
     "src/gpu/gpu_selftest.c": 646,
     "src/native/input_probe.c": 619,
-    "src/native/dinput_device.c": 611,
+    "src/native/dinput_device.c": 524,
     "src/native/advapi32.c": 610,
     "src/d3d8/d3d8_com.c": 609,
     "src/native/dinput8.c": 594,
