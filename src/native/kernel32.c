@@ -23,11 +23,11 @@
 #include "guest_heap.h"
 #include "x86rt_native.h"
 #include "pe_map.h"
-#include "save_trace_runtime.h"
 #include "shell32.h"
 #include "winmm.h"
 #include "threads.h"
 #include "igvk_ark.h"
+#include "win_path.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -220,123 +220,11 @@ int kernel32_thread_alias_selftest(void)
     return fails;
 }
 
-/* ---- paths -------------------------------------------------------------
- *
- * Backslashes become slashes, and the result is resolved case-insensitively
- * one component at a time.
- *
- * The case folding is not a nicety. The game asks for paths whose case does
- * not match what is on disk (Windows never cared), and a failed open here does
- * not surface as "file not found" -- it surfaces as a missing texture or an
- * empty archive much later, with nothing pointing back at the path. Resolving
- * it once, here, is far cheaper than diagnosing that.
- */
-static int resolve_ci(char *path)
-{
-    char *p, *comp, saved;
-    DIR *d;
-    struct dirent *e;
-    if (access(path, F_OK) == 0) return 1;
-    p = path;
-    if (*p == '/') p++;
-    while (p && *p) {
-        comp = strchr(p, '/');
-        if (comp) { saved = *comp; *comp = '\0'; }
-        if (access(path, F_OK) != 0) {
-            char *slash = strrchr(path, '/');
-            const char *dirp = ".";
-            if (slash) { *slash = '\0'; dirp = path[0] ? path : "/"; }
-            d = opendir(dirp);
-            if (slash) *slash = '/';
-            if (!d) { if (comp) *comp = saved; return 0; }
-            for (e = readdir(d); e; e = readdir(d))
-                if (strcasecmp(e->d_name, p) == 0) {
-                    memcpy(p, e->d_name, strlen(p));
-                    break;
-                }
-            closedir(d);
-            if (!e) { if (comp) *comp = saved; return 0; }
-        }
-        if (comp) { *comp = saved; p = comp + 1; } else break;
-    }
-    return access(path, F_OK) == 0;
-}
-
-/* Shared with the CRT: crt.c's fopen was passing the guest's path straight to
-   the host, so a "Data\\foo.XMLB" never opened and surfaced as a missing asset
-   rather than as a failed open. One translation, one place. */
-const char *win_path(const char *in)
-{
-    static char buf[1024];
-    const char *game = getenv("GAME_PC_DIR");
-    size_t i;
-    if (!in) return NULL;
-    /* A drive letter or a leading slash means an absolute Windows path; the
-       game uses relative ones for its own data, resolved against the install. */
-    /*
-     * The save drive is not the install.
-     *
-     * SHGetFolderPathA hands the guest "S:\\" (see shell32.c), and everything
-     * the game then builds under it -- "S:\\Activision\\X-Men Legends 2\\..." --
-     * arrives here. Mapping it against $GAME_PC_DIR like every other guest
-     * path would write saves into the install, which this project treats as
-     * strictly read-only.
-     */
-    if ((in[0] == X2_SAVE_DRIVE || in[0] == X2_SAVE_DRIVE + 32) && in[1] == ':')
-        snprintf(buf, sizeof buf, "%s/%s", x2_save_dir(), in + 2);
-    else if (in[0] && in[1] == ':')
-        snprintf(buf, sizeof buf, "%s/%s", game ? game : ".", in + 2);
-    else if (in[0] == '\\' || in[0] == '/')
-        snprintf(buf, sizeof buf, "%s/%s", game ? game : ".", in + 1);
-    else
-        snprintf(buf, sizeof buf, "%s/%s", game ? game : ".", in);
-    for (i = 0; buf[i]; i++) if (buf[i] == '\\') buf[i] = '/';
-    resolve_ci(buf);
-    return buf;
-}
 
 /* ---- error reporting --------------------------------------------------- */
 
 static uint32_t g_last_error;
 
-/*
- * X2_FILES=1 -- every file operation the guest asks for, with its answer.
- *
- * A failed open reports itself (see CreateFileA), and that is not enough when
- * the question is "what did the game TRY": the game's own dialog said it could
- * not save while every open in the run SUCCEEDED (issue #39), which only a
- * trace of the successful ones can explain. There is no strace on this machine
- * and a game is not a program you can bisect by hand, so the trace lives here.
- *
- * Off by default -- it is one line per operation and the asset loader opens
- * thousands.
- */
-static int files_traced(void)
-{
-    static int on = -1;
-    if (on < 0) {
-        const char *e = getenv("X2_FILES");
-        on = (e && *e && *e != '0');
-        if (on)
-            fprintf(stderr,
-                "[FILE] tracing file operations (X2_FILES). What this DOES "
-                "show: every CreateFile-family call with its answer, and the "
-                "FIRST open of each distinct name from any path including the "
-                "CRT's fopen. What it does NOT show: repeat opens of a name "
-                "already listed -- the game reopens its packages hundreds of "
-                "times and a line each was the ResumeThread mistake. The "
-                "totals over every open are in the shutdown report.\n");
-    }
-    return on;
-}
-
-static void file_trace(const char *what, const char *guest, const char *host,
-                       const char *outcome)
-{
-    if (!files_traced()) return;
-    fprintf(stderr, "[FILE] %-18s \"%s\"\n         -> \"%s\"  %s\n",
-            what, guest ? guest : "(null)", host ? host : "(null)", outcome);
-}
 /* Counted so the report can say how many were never shown. */
 static unsigned long g_failed_opens;
 static uint64_t g_reserved_bytes;   /* see VirtualAlloc */
@@ -745,196 +633,6 @@ void k32_critsec_report(void)
 #define OPEN_ALWAYS       4u
 #define TRUNCATE_EXISTING 5u
 
-/*
- * WHAT THE GAME ACTUALLY OPENS.
- *
- * There was no way to answer that: the file layer resolves a guest path,
- * opens it and says nothing, so "does this run load x2f_hud.igb" -- the first
- * question any asset replacement has to answer -- could not be asked without
- * adding a print and rebuilding. This keeps the distinct set and reports it,
- * with X2_FILES=1 to list it.
- *
- * Distinct names, not a line per open: the game reopens the same package
- * hundreds of times and a line per call is the ResumeThread mistake again.
- */
-#define ASSET_MAX 1024
-static char  g_asset[ASSET_MAX][96];
-static int   g_nasset, g_asset_over;
-static unsigned long g_opens_total, g_opens_failed, g_replaced;
-
-/*
- * X2_SHOT_AFTER_FILE=<substring> -- the scene gate.
- *
- * A screenshot has been aimed at a scene three ways here and two of them
- * missed: a frame number names nothing (the intro movies decode at
- * host-dependent speed, so the same number was the menu once and the Sofdec
- * logo the next run) and a draw count only separates a movie from "some scene",
- * which caught a 204-draw menu frame when the question was about a level.
- *
- * The game itself says which scene it is in, by OPENING it. Gating on
- * "maps/act0/tutorial" is a gate on the level being loaded, and it cannot drift
- * with host speed. It is a substring, matched case-insensitively, because the
- * shipped tree mixes .PY and .py in the same directory.
- */
-static int g_file_gate_hit;
-
-static int ci_contains(const char *hay, const char *needle)
-{
-    size_t n = strlen(needle), i;
-    if (!n) return 1;
-    for (i = 0; hay[i]; i++) {
-        size_t j = 0;
-        while (hay[i + j] && j < n &&
-               tolower((unsigned char)hay[i + j]) ==
-               tolower((unsigned char)needle[j])) j++;
-        if (j == n) return 1;
-    }
-    return 0;
-}
-
-int k32_file_gate_open(void)
-{
-    const char *e = getenv("X2_SHOT_AFTER_FILE");
-    if (!e || !*e) return 1;                 /* no gate asked for */
-    return g_file_gate_hit;
-}
-
-static void asset_note(const char *guest, int ok)
-{
-    int i;
-    g_opens_total++;
-    if (!ok) g_opens_failed++;
-    if (!guest) return;
-    if (!g_file_gate_hit) {
-        const char *want = getenv("X2_SHOT_AFTER_FILE");
-        if (want && *want && ci_contains(guest, want)) {
-            g_file_gate_hit = 1;
-            fprintf(stderr, "[FILE] X2_SHOT_AFTER_FILE=\"%s\" matched \"%s\" "
-                            "-- the scene gate is now OPEN.\n", want, guest);
-        }
-    }
-    for (i = 0; i < g_nasset; i++)
-        if (strcmp(g_asset[i], guest) == 0) return;
-    if (g_nasset == ASSET_MAX) { g_asset_over++; return; }
-    snprintf(g_asset[g_nasset++], sizeof g_asset[0], "%s", guest);
-    if (files_traced())
-        fprintf(stderr, "[FILE] first open of \"%s\"%s\n", guest,
-                ok ? "" : "  -- NOT FOUND");
-}
-
-void k32_asset_report(void)
-{
-    int i;
-    /* At zero as well, and with the denominator: "the game opened no files"
-       would be a startling fact, and it must not look like a check that never
-       ran. */
-    printf("  files: %lu open call(s) over %d distinct name(s)%s; %lu failed\n",
-           g_opens_total, g_nasset,
-           g_asset_over ? " (the name table is FULL -- some are not listed)" : "",
-           g_opens_failed);
-    /* Printed at zero WHEN A PACK IS SET, which is the case that matters: a
-       replacement directory with nothing in it that the game asks for looks
-       exactly like no replacement directory at all. */
-    if (getenv("X2_ASSETS"))
-        printf("         X2_ASSETS=%s -- %lu name(s) were replaced from it%s\n",
-               getenv("X2_ASSETS"), g_replaced,
-               g_replaced ? "" : ". NONE: nothing the game opened had a "
-                                 "counterpart there, so this run drew the "
-                                 "shipped assets");
-    if (!files_traced()) {
-        printf("         set X2_FILES=1 to list them as they are opened.\n");
-        return;
-    }
-    for (i = 0; i < g_nasset; i++) printf("         %s\n", g_asset[i]);
-}
-
-/*
- * ASSET REPLACEMENT: X2_ASSETS=<dir>.
- *
- * If <dir> holds a file at the same relative path the guest asked for, that
- * file is opened instead of the one in the install. Backslashes become
- * slashes and the name is matched as the guest spelled it and in lower case,
- * because the game's own spelling is inconsistent (`texs\Waypoint00.png` and
- * `texs\pause.png` in one run).
- *
- * This is the mechanism the Xbox button prompts need -- feature 3 is Xbox
- * glyphs standing in for the PC's `Texs/joy1..4.png` -- and it is deliberately
- * general rather than a special case for those four: a replacement directory
- * is also how a texture pack, a translation or a debugging swap would work,
- * and a one-off would have to be replaced by this the first time anyone wanted
- * one of those. Dusklight's port takes the same shape (docs/prior-art.md).
- *
- * The INSTALL IS NEVER WRITTEN and never read from for a name that is
- * replaced: this only ever redirects an open. Every redirect is reported once,
- * because a run whose textures came from somewhere else must not look like a
- * run of the shipped game.
- */
-static const char *asset_replacement(const char *guest)
-{
-    static char buf[1024];
-    const char *root = getenv("X2_ASSETS");
-    char rel[512];
-    size_t i;
-    struct stat st;
-
-    if (!root || !*root || !guest) return NULL;
-    /* Strip a drive letter: the guest says C:\texs\x.png and the pack holds
-       texs/x.png. */
-    if (guest[0] && guest[1] == ':') guest += 2;
-    while (*guest == '\\' || *guest == '/') guest++;
-    for (i = 0; guest[i] && i + 1 < sizeof rel; i++)
-        rel[i] = guest[i] == '\\' ? '/' : guest[i];
-    rel[i] = '\0';
-    snprintf(buf, sizeof buf, "%s/%s", root, rel);
-    if (stat(buf, &st) == 0 && S_ISREG(st.st_mode)) return buf;
-    for (i = 0; rel[i]; i++)
-        if (rel[i] >= 'A' && rel[i] <= 'Z') rel[i] = (char)(rel[i] + 32);
-    snprintf(buf, sizeof buf, "%s/%s", root, rel);
-    if (stat(buf, &st) == 0 && S_ISREG(st.st_mode)) return buf;
-    return NULL;
-}
-
-/*
- * THE one place that turns a guest path into a host path.
- *
- * Every open in this host goes through it -- CreateFileA here and the CRT's
- * fopen in crt.c -- because the two must not disagree. They did: the
- * instrument was on CreateFileA alone, so a run reported 31 files while the
- * engine was loading its fonts, models and packages through the CRT and none
- * of them appeared. A replacement pack that worked for one path and not the
- * other would be worse still.
- */
-const char *k32_open_path(const char *guest, int for_write)
-{
-    const char *repl = for_write ? NULL : asset_replacement(guest);
-    return repl ? repl : win_path(guest);
-}
-
-/* 1 if that guest path is being served from X2_ASSETS rather than the install.
-   Split out so the caller can report it without resolving twice. */
-int k32_open_replaced(const char *guest, int for_write)
-{
-    return !for_write && asset_replacement(guest) != NULL;
-}
-
-void k32_open_note(const char *guest, int ok, int replaced, const char *host)
-{
-    asset_note(guest, ok);
-    x2_save_trace_asset_open(guest, ok);
-    if (!replaced || !ok) return;
-    {   /* Once per replaced name. A run drawing someone else's assets must say
-           so; silence would make a modded run indistinguishable from a stock
-           one in every log it produced. */
-        static char told[64][96];
-        static int ntold;
-        int i;
-        for (i = 0; i < ntold; i++) if (strcmp(told[i], guest) == 0) return;
-        if (ntold < 64) snprintf(told[ntold++], 96, "%s", guest);
-        g_replaced++;
-        fprintf(stderr, "assets: REPLACED \"%s\" with %s (X2_ASSETS)\n",
-                guest, host);
-    }
-}
 
 void imp_KERNEL32_CreateFileA(CPU *C)
 {
@@ -987,9 +685,9 @@ void imp_KERNEL32_CreateFileA(CPU *C)
     }
     h = h_alloc(H_FILE);
     g_h[h - 1].fd = fd;
-    file_trace("CreateFile", ACS(0), path,
-               (access_ & GENERIC_WRITE) ? "opened for WRITING"
-                                         : "opened for reading");
+    k32_file_trace("CreateFile", ACS(0), path,
+                   (access_ & GENERIC_WRITE) ? "opened for WRITING"
+                                             : "opened for reading");
     ret_std(C, h, 7);
 }
 
@@ -1858,13 +1556,13 @@ void imp_KERNEL32_GetFileAttributesA(CPU *C)
     const char *g = ACS(0);
     const char *p = win_path(g);
     if (stat(p, &st) != 0) {
-        file_trace("GetFileAttributes", g, p, "does not exist");
+        k32_file_trace("GetFileAttributes", g, p, "does not exist");
         g_last_error = ERROR_FILE_NOT_FOUND;
         ret_std(C, 0xFFFFFFFFu, 1);      /* INVALID_FILE_ATTRIBUTES */
         return;
     }
-    file_trace("GetFileAttributes", g, p,
-               S_ISDIR(st.st_mode) ? "a directory" : "a file");
+    k32_file_trace("GetFileAttributes", g, p,
+                   S_ISDIR(st.st_mode) ? "a directory" : "a file");
     ret_std(C, S_ISDIR(st.st_mode) ? 0x10u : 0x80u, 1);   /* DIRECTORY : NORMAL */
 }
 
@@ -1875,7 +1573,7 @@ void imp_KERNEL32_DeleteFileA(CPU *C)
     if (!ok)
         g_last_error = errno == ENOENT ? ERROR_FILE_NOT_FOUND
                                        : ERROR_ACCESS_DENIED;
-    file_trace("DeleteFile", g, p, ok ? "deleted" : strerror(errno));
+    k32_file_trace("DeleteFile", g, p, ok ? "deleted" : strerror(errno));
     ret_std(C, (uint32_t)ok, 1);
 }
 
@@ -1899,7 +1597,8 @@ void imp_KERNEL32_CreateDirectoryA(CPU *C)
                      : errno == ENOENT ? ERROR_PATH_NOT_FOUND
                                        : ERROR_ACCESS_DENIED;
     }
-    file_trace("CreateDirectory", g, p, ok ? "created" : strerror(errno));
+    k32_file_trace("CreateDirectory", g, p,
+                   ok ? "created" : strerror(errno));
     ret_std(C, (uint32_t)ok, 2);
 }
 void imp_KERNEL32_RemoveDirectoryA(CPU *C) { ret_std(C, rmdir(win_path(ACS(0))) == 0, 1); }
@@ -2640,7 +2339,8 @@ void imp_KERNEL32_FindFirstFileA(CPU *C)
         return;
     }
     if (!find_next(hh, data)) {
-        file_trace("FindFirstFile", spec, hh->dirpath, "matched NOTHING");
+        k32_file_trace("FindFirstFile", spec, hh->dirpath,
+                       "matched NOTHING");
         closedir(hh->dir);
         hh->dir = NULL;
         hh->kind = 0;
@@ -2648,7 +2348,8 @@ void imp_KERNEL32_FindFirstFileA(CPU *C)
         ret_std(C, INVALID_HANDLE, 2);
         return;
     }
-    file_trace("FindFirstFile", spec, hh->dirpath, "matched at least one");
+    k32_file_trace("FindFirstFile", spec, hh->dirpath,
+                   "matched at least one");
     ret_std(C, h, 2);
 }
 

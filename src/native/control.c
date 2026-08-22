@@ -1,6 +1,7 @@
 #include "control.h"
 
 #include "control_png.h"
+#include "autosave_runtime.h"
 #include "dinput_fifo.h"
 #include "dinput_pad.h"
 #include "guest_clock.h"
@@ -63,6 +64,7 @@ void control_pump(CPU *cpu, double now)
 {
     int cmd;
 
+    x2_autosave_runtime_poll(cpu);
     if (!g_port) return;
     pthread_mutex_lock(&g_lock);
     cmd = g_cmd;

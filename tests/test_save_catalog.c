@@ -155,6 +155,7 @@ static void test_newest_corrupt_file_is_opaque(void)
 int main(void)
 {
     X2SaveCandidate candidate;
+    char missing[256];
 
     if (mkdir("scratch", 0700) != 0 && errno != EEXIST) return 2;
     if (!mkdtemp(test_dir)) return 2;
@@ -162,6 +163,12 @@ int main(void)
 
     CHECK(x2_save_catalog_latest(NULL, &candidate) == -1);
     CHECK(x2_save_catalog_latest(test_dir, NULL) == -1);
+    snprintf(missing, sizeof missing, "%s/first-run", test_dir);
+    CHECK(x2_save_catalog_latest(missing, &candidate) == 0);
+    write_file("not-a-directory", "opaque");
+    path_for(missing, sizeof missing, "not-a-directory");
+    CHECK(x2_save_catalog_latest(missing, &candidate) == -1);
+    clear_test_dir();
     test_exact_regular_leaves();
     test_sparse_slots_and_nanoseconds();
     test_equal_time_tie_is_by_leaf();

@@ -1,5 +1,6 @@
 #include "save_trace_runtime.h"
 
+#include "autosave_runtime.h"
 #include "save_trace.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -15,25 +16,22 @@ enum {
     X2_MANAGER_STATE = 0xd8u,
     X2_MANAGER_DEVICE = 0xdcu,
     X2_MANAGER_SELECTION = 0xddu,
-    X2_MANAGER_BUFFER = 0xe0u,
-    X2_MAP_FLAGS = 0x221u
+    X2_MANAGER_BUFFER = 0xe0u
 };
 
 static SaveTrace g_trace;
 static int g_trace_enabled;
 
 void fn_XMen2_005c9970(CPU *C);
-void fn_XMen2_005c9260(CPU *C);
 void fn_XMen2_0055fcd0(CPU *C);
 void fn_XMen2_004aed10(CPU *C);
 void fn_XMen2_0046e2b0(CPU *C);
-void fn_XMen2_0049f150(CPU *C);
+void fn_XMen2_0049f140(CPU *C);
 void fn_XMen2_004aeb80(CPU *C);
 void fn_XMen2_004ae990(CPU *C);
 void fn_XMen2_004b15b0(CPU *C);
 void fn_XMen2_0046baf0(CPU *C);
 void fn_XMen2_0055fe70(CPU *C);
-void fn_XMen2_00484ce0(CPU *C);
 void fn_XMen2_0049f860(CPU *C);
 void fn_XMen2_004a6b50(CPU *C);
 void fn_XMen2_005604f0(CPU *C);
@@ -80,11 +78,10 @@ static void x2_trace_005c9970(CPU *C)
     fn_XMen2_005c9970(C);
 }
 
-static void x2_trace_005c9260(CPU *C)
+void x2_save_trace_menu_open(void)
 {
     save_trace_mark(&g_trace, SAVE_TRACE_MENU_OPEN,
                     SAVE_TRACE_ANSWER_UNKNOWN, "CMenuMain::Show");
-    fn_XMen2_005c9260(C);
 }
 
 static void x2_trace_0055fcd0(CPU *C)
@@ -122,11 +119,11 @@ static void x2_trace_0046e2b0(CPU *C)
     fn_XMen2_0046e2b0(C);
 }
 
-static void x2_trace_0049f150(CPU *C)
+static void x2_trace_0049f140(CPU *C)
 {
-    mark_with_u32(SAVE_TRACE_LOAD_0049F150, SAVE_TRACE_ANSWER_UNKNOWN,
+    mark_with_u32(SAVE_TRACE_LOAD_0049F140, SAVE_TRACE_ANSWER_UNKNOWN,
                   "state", RD32(X2_SAVE_MANAGER + X2_MANAGER_STATE));
-    fn_XMen2_0049f150(C);
+    fn_XMen2_0049f140(C);
 }
 
 static void x2_trace_004aeb80(CPU *C)
@@ -181,39 +178,37 @@ static void x2_trace_0055fe70(CPU *C)
     fn_XMen2_0055fe70(C);
 }
 
-static void x2_trace_00484ce0(CPU *C)
+void x2_save_trace_map_return(uint32_t map, int succeeded)
 {
-    uint32_t map = C->ecx;
     char label[SAVE_TRACE_LABEL_CAPACITY];
 
-    fn_XMen2_00484ce0(C);
-    snprintf(label, sizeof label, "map=0x%08x nosave=%u", map,
-             (unsigned)((RD8(map + X2_MAP_FLAGS) & 8u) != 0u));
+    snprintf(label, sizeof label, "map=0x%08x", map);
     save_trace_mark(&g_trace, SAVE_TRACE_MAP_00484CE0,
-                    (C->eax & 0xffu) ? SAVE_TRACE_ANSWER_YES
-                                     : SAVE_TRACE_ANSWER_NO,
+                    succeeded ? SAVE_TRACE_ANSWER_YES
+                              : SAVE_TRACE_ANSWER_NO,
                     label);
 }
 
 static void x2_trace_0049f860(CPU *C)
 {
-    save_trace_mark(&g_trace, SAVE_TRACE_ZONE_REQUEST,
-                    SAVE_TRACE_ANSWER_UNKNOWN, "zone request");
+    save_trace_mark(&g_trace, SAVE_TRACE_LOCK_COMBAT,
+                    SAVE_TRACE_ANSWER_UNKNOWN, "lockCombat");
     fn_XMen2_0049f860(C);
 }
 
 static void x2_trace_004a6b50(CPU *C)
 {
-    save_trace_mark(&g_trace, SAVE_TRACE_EXTRACTION_SUCCESS_BRANCH,
-                    SAVE_TRACE_ANSWER_UNKNOWN, "extraction attempt");
+    save_trace_mark(&g_trace, SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
+                    SAVE_TRACE_ANSWER_UNKNOWN, "extractionPoint entry");
     fn_XMen2_004a6b50(C);
 }
 
 static void x2_trace_005604f0(CPU *C)
 {
     if (RD32(C->esp) == 0x004a6d01u)
-        save_trace_mark(&g_trace, SAVE_TRACE_EXTRACTION_SUCCESS_BRANCH,
-                        SAVE_TRACE_ANSWER_YES, "saveloadProcess(4)");
+        save_trace_mark(&g_trace, SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
+                        SAVE_TRACE_ANSWER_YES,
+                        "queued saveloadProcess(4)");
     fn_XMen2_005604f0(C);
 }
 
@@ -245,11 +240,21 @@ void x2_save_trace_asset_open(const char *guest_path, int succeeded)
 size_t x2_save_trace_runtime_report(char *out, size_t capacity)
 {
     size_t required = 0;
+    size_t trace_size;
+    size_t autosave_size;
 
-    if (save_trace_report(&g_trace, out, capacity, &required)
+    if (save_trace_report(&g_trace, NULL, 0, &required)
+            != SAVE_TRACE_REFUSED_CAPACITY || !required
+        || !out || capacity < required)
+        return 0;
+    if (save_trace_report(&g_trace, out, capacity, NULL)
             != SAVE_TRACE_RECORDED)
         return 0;
-    return required - 1u;
+    trace_size = required - 1u;
+    autosave_size = x2_autosave_runtime_report(
+        out + trace_size, capacity - trace_size);
+    if (!autosave_size) return 0;
+    return trace_size + autosave_size;
 }
 
 void x2_save_trace_runtime_print(void)
@@ -281,17 +286,15 @@ static void x2_save_trace_register(void)
     save_trace_init(&g_trace, g_trace_enabled);
     if (!g_trace_enabled) return;
     x86_register_override("XMen2.exe", 0x005c9970u, x2_trace_005c9970);
-    x86_register_override("XMen2.exe", 0x005c9260u, x2_trace_005c9260);
     x86_register_override("XMen2.exe", 0x0055fcd0u, x2_trace_0055fcd0);
     x86_register_override("XMen2.exe", 0x004aed10u, x2_trace_004aed10);
     x86_register_override("XMen2.exe", 0x0046e2b0u, x2_trace_0046e2b0);
-    x86_register_override("XMen2.exe", 0x0049f150u, x2_trace_0049f150);
+    x86_register_override("XMen2.exe", 0x0049f140u, x2_trace_0049f140);
     x86_register_override("XMen2.exe", 0x004aeb80u, x2_trace_004aeb80);
     x86_register_override("XMen2.exe", 0x004ae990u, x2_trace_004ae990);
     x86_register_override("XMen2.exe", 0x004b15b0u, x2_trace_004b15b0);
     x86_register_override("XMen2.exe", 0x0046baf0u, x2_trace_0046baf0);
     x86_register_override("XMen2.exe", 0x0055fe70u, x2_trace_0055fe70);
-    x86_register_override("XMen2.exe", 0x00484ce0u, x2_trace_00484ce0);
     x86_register_override("XMen2.exe", 0x0049f860u, x2_trace_0049f860);
     x86_register_override("XMen2.exe", 0x004a6b50u, x2_trace_004a6b50);
     x86_register_override("XMen2.exe", 0x005604f0u, x2_trace_005604f0);

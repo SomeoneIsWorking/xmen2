@@ -95,6 +95,17 @@ void rebuild()
     dinput_pad_refresh();
     observed_pad_generation = dinput_pad_generation();
     if (active_tab == 0) {
+        rml << "<pane><div class='section-heading'>Startup</div>"
+               "<select-button id='boot-mode'><key>Boot</key><value>"
+            << escape_rml(x2_boot_mode_label(settings->boot_mode))
+            << "</value></select-button>"
+               "<p id='status' class='status'></p><spacer></spacer></pane>"
+               "<pane><div class='section-heading'>Boot behavior</div>"
+               "<div class='help'>Normal plays the retail introduction. Menu "
+               "skips the introduction and opens the retail main menu. "
+               "Continue loads the newest save; if none exists it opens the "
+               "main menu instead.</div><spacer></spacer></pane>";
+    } else if (active_tab == 1) {
         rml << "<pane><div class='section-heading'>Display</div>";
         rml << "<select-button id='resolution'><key>Resolution</key><value>"
             << settings->width << "x" << settings->height
@@ -186,6 +197,9 @@ void rebuild()
     }
     content->SetInnerRML(rml.str());
     if (active_tab == 0) {
+        wire("boot-mode", "click");
+        wire("boot-mode", "keydown");
+    } else if (active_tab == 1) {
         wire("resolution", "click");
         wire("resolution", "keydown");
         wire("window-mode", "click");
@@ -235,7 +249,18 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
         event.GetParameter<int>("key_identifier", Rml::Input::KI_UNKNOWN) !=
             Rml::Input::KI_RETURN)
         return;
-    if (id == "resolution" || id == "window-mode") {
+    if (id == "boot-mode") {
+        X2Settings* settings = x2_settings_store();
+        X2BootMode before = settings->boot_mode;
+        char why[256];
+        bool saved;
+        settings->boot_mode = (X2BootMode)(
+            ((unsigned)settings->boot_mode + 1u) % 3u);
+        saved = x2_settings_store_save(why, sizeof why);
+        if (!saved) settings->boot_mode = before;
+        rebuild();
+        set_status(saved ? "Saved" : why);
+    } else if (id == "resolution" || id == "window-mode") {
         X2Settings* settings = x2_settings_store();
         X2Settings before = *settings;
         char why[256];
@@ -271,11 +296,13 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
     } else if (id == "close") {
         close_requested = true;
     } else if (id.rfind("tab-", 0) == 0) {
-        active_tab = id == "tab-video" ? 0 : 1;
-        if (Rml::Element* tab = document->GetElementById("tab-video"))
+        active_tab = id == "tab-general" ? 0 : id == "tab-video" ? 1 : 2;
+        if (Rml::Element* tab = document->GetElementById("tab-general"))
             tab->SetPseudoClass("selected", active_tab == 0);
-        if (Rml::Element* tab = document->GetElementById("tab-input"))
+        if (Rml::Element* tab = document->GetElementById("tab-video"))
             tab->SetPseudoClass("selected", active_tab == 1);
+        if (Rml::Element* tab = document->GetElementById("tab-input"))
+            tab->SetPseudoClass("selected", active_tab == 2);
         rebuild();
     } else if (id.rfind("assign-kb-", 0) == 0) {
         unsigned profile_index, owner_index;
@@ -353,6 +380,7 @@ bool settings_document_load(Rml::Context* context, SDL_Window* window)
 <link type="text/rcss" href="settings.rcss" /></head>
 <body><window id="window" open>
 <tab-bar closable>
+<tab id="tab-general">General</tab>
 <tab id="tab-video">Video</tab>
 <tab id="tab-input">Input</tab>
 <tab-end-spacer></tab-end-spacer><close id="close"></close>
@@ -364,11 +392,13 @@ bool settings_document_load(Rml::Context* context, SDL_Window* window)
     document->Show();
     wire("close", "click");
     wire("close", "keydown");
+    wire("tab-general", "click");
+    wire("tab-general", "keydown");
     wire("tab-video", "click");
     wire("tab-video", "keydown");
     wire("tab-input", "click");
     wire("tab-input", "keydown");
-    if (Rml::Element* tab = document->GetElementById("tab-video"))
+    if (Rml::Element* tab = document->GetElementById("tab-general"))
         tab->SetPseudoClass("selected", true);
     rebuild();
     return true;
@@ -400,7 +430,7 @@ void settings_document_update()
     generation = dinput_pad_generation();
     if (generation == observed_pad_generation) return;
     observed_pad_generation = generation;
-    if (document && active_tab != 0 && capture_row < 0) rebuild();
+    if (document && active_tab == 2 && capture_row < 0) rebuild();
 }
 
 bool settings_document_capturing()

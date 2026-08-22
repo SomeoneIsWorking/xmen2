@@ -470,6 +470,114 @@ _probe_stub_12:
     pop %ebp
     ret
 
+/* FUN_004b64e0 -- 12 argument byte(s), callee-cleaned */
+    .globl _probe_stub_13
+_probe_stub_13:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $13
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 16(%ebp)
+    push 12(%ebp)
+    push 8(%ebp)
+    call *(_probe_tramp + 52)
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $13
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret $12
+
+/* FUN_004b5700 -- 12 argument byte(s), callee-cleaned */
+    .globl _probe_stub_14
+_probe_stub_14:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $14
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 16(%ebp)
+    push 12(%ebp)
+    push 8(%ebp)
+    call *(_probe_tramp + 56)
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $14
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret $12
+
+/* FUN_006024f0 -- 8 argument byte(s), caller-cleaned */
+    .globl _probe_stub_15
+_probe_stub_15:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $15
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 12(%ebp)
+    push 8(%ebp)
+    call *(_probe_tramp + 60)
+    add $8, %esp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $15
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret
+
     .data
     .align 4
     .globl _probe_stub_table
@@ -487,8 +595,11 @@ _probe_stub_table:
     .long _probe_stub_10
     .long _probe_stub_11
     .long _probe_stub_12
+    .long _probe_stub_13
+    .long _probe_stub_14
+    .long _probe_stub_15
 
 /* Filled in by probe_hook.c when each trampoline is built. */
     .globl _probe_tramp
 _probe_tramp:
-    .space 52
+    .space 64

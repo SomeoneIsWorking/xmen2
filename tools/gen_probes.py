@@ -262,7 +262,25 @@ def build(probes):
     for p in probes:
         if p["module"] not in docs:
             docs[p["module"]] = load_module(p["module"])
-        ep, ins = resolve(p["module"], p["name"], docs[p["module"]])
+        doc = docs[p["module"]]
+        program = doc.get("program")
+        image_base = doc.get("image_base")
+        if not isinstance(program, str) or not program:
+            raise Refuse(
+                "gen_probes: %s.json has no non-empty program name; the "
+                "stock hook cannot identify which loaded PE owns 0x%08x"
+                % (p["module"], 0))
+        if (not isinstance(image_base, int) or isinstance(image_base, bool)
+                or image_base < 0 or image_base > 0xffffffff):
+            raise Refuse(
+                "gen_probes: %s.json has invalid image_base %r; the stock "
+                "hook cannot relocate a preferred address without it"
+                % (p["module"], image_base))
+        ep, ins = resolve(p["module"], p["name"], doc)
+        if ep < image_base:
+            raise Refuse(
+                "gen_probes: %s entry 0x%08x precedes image_base 0x%08x"
+                % (p["name"], ep, image_base))
         nargs = declared_args(ins)
         if nargs is not None:
             for f in p["fields"]:
@@ -280,7 +298,8 @@ def build(probes):
         # frame shape would poison port-vs-stock comparisons.
         argbytes, cleanup = frame_shape(p, nargs)
         q = dict(p)
-        q.update(ep=ep, prologue=n, expect=blob, nargs=nargs,
+        q.update(ep=ep, program=program, image_base=image_base,
+                 prologue=n, expect=blob, nargs=nargs,
                  argbytes=argbytes, cleanup=cleanup)
         out.append(q)
     return out
@@ -322,8 +341,10 @@ def emit_header(probes, h):
                  % (p["ep"], ", ".join("0x%02x" % b for b in p["expect"])))
     L.append("\nstatic const Probe g_probes[PROBE_COUNT] = {\n")
     for i, p in enumerate(probes):
-        L.append("    { %d, \"%s\", \"%s\", 0x%08xu, %d, %d, pf_%08x, pe_%08x },\n"
-                 % (i, p["name"], p["module"], p["ep"], p["prologue"],
+        L.append("    { %d, \"%s\", \"%s\", \"%s\", 0x%08xu, 0x%08xu, "
+                 "%d, %d, pf_%08x, pe_%08x },\n"
+                 % (i, p["name"], p["module"], p["program"],
+                    p["image_base"], p["ep"], p["prologue"],
                     len(p["fields"]), p["ep"], p["ep"]))
     L.append("};\n")
     L.append("\n/* Frame shape, for the stock-side stub only: how many bytes of\n"

@@ -10,14 +10,16 @@ from recomp_overrides import scan_overrides
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME = ROOT / "src" / "native" / "save_trace_runtime.c"
+TRACE_RUNTIME = ROOT / "src" / "native" / "save_trace_runtime.c"
+CONTINUE_RUNTIME = ROOT / "src" / "native" / "continue_runtime.c"
+AUTOSAVE_RUNTIME = ROOT / "src" / "native" / "autosave_runtime.c"
 EXPECTED = {
     0x005C9970,
     0x005C9260,
     0x0055FCD0,
     0x004AED10,
     0x0046E2B0,
-    0x0049F150,
+    0x0049F140,
     0x004AEB80,
     0x004AE990,
     0x004B15B0,
@@ -27,6 +29,11 @@ EXPECTED = {
     0x0049F860,
     0x004A6B50,
     0x005604F0,
+}
+EXPECTED_OWNER = {
+    ep: (CONTINUE_RUNTIME if ep == 0x005C9260 else
+         AUTOSAVE_RUNTIME if ep == 0x00484CE0 else TRACE_RUNTIME)
+    for ep in EXPECTED
 }
 CALL = re.compile(r"/\* [0-9a-f]{8} (?:CALL|JMP) 0x([0-9a-f]{8}) \*/")
 BODY = re.compile(r"/\* FUN_([0-9a-f]{8})  @ 0x[0-9a-f]{8}")
@@ -42,38 +49,52 @@ def refuse(message):
 
 
 def scanned_save_trace_entries():
-    found = {
-        ep
-        for module, ep, path, _ in scan_overrides(ROOT)
-        if module == "XMen2.exe" and Path(path).resolve() == RUNTIME
-    }
-    if found != EXPECTED:
-        missing = ", ".join(f"0x{ep:08x}" for ep in sorted(EXPECTED - found))
-        extra = ", ".join(f"0x{ep:08x}" for ep in sorted(found - EXPECTED))
+    found = {}
+    for module, ep, path, _ in scan_overrides(ROOT):
+        resolved = Path(path).resolve()
+        if module == "XMen2.exe" and resolved in {
+                TRACE_RUNTIME, CONTINUE_RUNTIME,
+                AUTOSAVE_RUNTIME} and ep in EXPECTED:
+            if ep in found:
+                refuse(f"duplicate registration for 0x{ep:08x}")
+            found[ep] = resolved
+    if set(found) != EXPECTED:
+        found_entries = set(found)
+        missing = ", ".join(
+            f"0x{ep:08x}" for ep in sorted(EXPECTED - found_entries))
+        extra = ", ".join(
+            f"0x{ep:08x}" for ep in sorted(found_entries - EXPECTED))
         refuse(f"authoritative src/native scan mismatch; missing [{missing}], "
                f"extra [{extra}]")
-    return found
+    wrong = [ep for ep, path in found.items() if path != EXPECTED_OWNER[ep]]
+    if wrong:
+        details = ", ".join(
+            f"0x{ep:08x} in {found[ep].name}, expected "
+            f"{EXPECTED_OWNER[ep].name}" for ep in sorted(wrong))
+        refuse(f"registration owner mismatch: {details}")
+    return set(found)
 
 
-def audit_emitted_routes(chunks):
-    calls = {ep: 0 for ep in EXPECTED}
+def audit_emitted_routes(chunks, expected=EXPECTED, feature="traced",
+                         require_direct=True):
+    calls = {ep: 0 for ep in expected}
     retained = set()
 
     for label, lines in chunks:
         for index, line in enumerate(lines):
             body = BODY.search(line)
-            if body and int(body.group(1), 16) in EXPECTED:
+            if body and int(body.group(1), 16) in expected:
                 retained.add(int(body.group(1), 16))
             direct = DIRECT.search(line)
-            if direct and int(direct.group(1), 16) in EXPECTED:
-                refuse(f"{label}:{index + 1} directly calls traced EP "
+            if direct and int(direct.group(1), 16) in expected:
+                refuse(f"{label}:{index + 1} directly calls {feature} EP "
                        f"0x{int(direct.group(1), 16):08x}, bypassing the "
                        "override slot")
             match = CALL.search(line)
             if not match:
                 continue
             ep = int(match.group(1), 16)
-            if ep not in EXPECTED:
+            if ep not in expected:
                 continue
             calls[ep] += 1
             window = "\n".join(lines[index + 1:index + 5])
@@ -83,11 +104,12 @@ def audit_emitted_routes(chunks):
                 refuse(f"{label}:{index + 1} does not dispatch direct edge to "
                        f"0x{ep:08x} through the override slot")
 
-    if retained != EXPECTED:
-        missing = ", ".join(f"0x{ep:08x}" for ep in sorted(EXPECTED - retained))
+    if retained != expected:
+        missing = ", ".join(
+            f"0x{ep:08x}" for ep in sorted(expected - retained))
         refuse(f"generated XMen2 output dropped retained body/bodies [{missing}]")
     routed = sum(calls.values())
-    if not routed:
+    if require_direct and not routed:
         refuse("generated output contains none of the traced direct call edges")
     return calls
 

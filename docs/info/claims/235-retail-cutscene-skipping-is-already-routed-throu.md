@@ -1,10 +1,11 @@
 ---
 id: C235
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-22
 tags: input,cutscene,movie
 depends: tools/binding_rows.py#action_rows_from_exe, src/input/player_input.c#publish_player, src/native/input_binding_sets.c#input_binding_sets_for_player, src/native/cutscene_skip_publication.c#cutscene_skip_publication_classify, src/native/cutscene_skip_probe.c#cutscene_skip_probe_report
+falsified_on: 2026-08-22
 ---
 
 ## Claim
@@ -18,3 +19,9 @@ tools/binding_rows.py decoded the shipped XMen2.exe keyboard-default constructor
 ## What would falsify it
 
 If the shipped executable no longer maps actions 19 and 20 to row 17 or defaults row 17 to DIK_ESCAPE, or a focused publication test/live probe shows the applicable Escape or Start binding missing from a master, working, or menu bank.
+
+## FALSIFIED 2026-08-22
+
+User clarified the requested target is gameplay-authored in-engine camera/conversation cutscenes. C235 proves only host publication and retail action-row mapping; it does not prove those authored scenes consume action 20 or execute their cleanup/advance path.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

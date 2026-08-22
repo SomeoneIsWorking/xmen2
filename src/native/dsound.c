@@ -16,6 +16,7 @@
  */
 #include "dsound.h"
 #include "guest_clock.h"
+#include "movie_audio.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
@@ -232,6 +233,7 @@ static void mix_frames(float *mix, int frames, int rate)
     if (mix) memset(mix, 0, (size_t)frames * 2u * sizeof(float));
     for (i = 0; i < g_nbuf; ++i)
         if (g_buf[i].used) advance_buffer(&g_buf[i], frames, rate, mix);
+    movie_audio_mix(mix, frames, rate);
     if (mix) {
         for (i = 0; i < frames * 2; ++i) {
             if (mix[i] > 1.0f) mix[i] = 1.0f;
@@ -241,7 +243,6 @@ static void mix_frames(float *mix, int frames, int rate)
         }
     }
 }
-
 #ifdef X2_WITH_SDL
 static void SDLCALL audio_more(void *userdata, SDL_AudioStream *stream,
                                int additional_amount, int total_amount)
@@ -264,12 +265,10 @@ static void SDLCALL audio_more(void *userdata, SDL_AudioStream *stream,
     g_mix_frames += (unsigned long)frames;
 }
 #endif
-
 static void open_audio(void)
 {
     if (g_audio_attempted) return;
     g_audio_attempted = 1;
-
     /*
      * A run with no window is a run nobody is listening to: an automated or
      * observational run should not seize the machine's speakers and talk over
@@ -331,7 +330,7 @@ static void open_audio(void)
     g_silent_time = now_s();
 #endif
 }
-
+void dsound_movie_audio_begin(void) { open_audio(); }
 static void silent_advance(void)
 {
     double t, elapsed;
@@ -343,7 +342,7 @@ static void silent_advance(void)
     mix_frames(NULL, (int)(elapsed * g_primary_rate), g_primary_rate);
     g_silent_advances++;
 }
-
+void dsound_movie_audio_tick(void) { silent_advance(); }
 static int read_waveformat(uint32_t p, DSBuffer *b)
 {
     if (!p) return 0;
@@ -733,6 +732,7 @@ void dsound_report(void)
     for(i=0;i<g_nbuf;i++)if(g_buf[i].used){live++;if(g_buf[i].playing)playing++;}
     printf("  dsound: %lu DirectSoundCreate, %lu secondary buffer(s), %lu duplicate(s); %d live / %d playing, %lu Play, %lu Lock\n",g_creates,g_secondary_created,g_duplicates,live,playing,g_buffer_plays,g_buffer_locks);
     printf("          mixer: %lu callback(s), %lu frame(s), %lu nonzero sample(s), peak %.4f, %lu silent-clock advance(s)%s\n",g_mix_callbacks,g_mix_frames,g_mix_nonzero,g_mix_peak,g_silent_advances,g_audio_silent?" -- NO HOST AUDIO DEVICE":"");
+    movie_audio_report();
 }
 
 int dsound_selftest(void)

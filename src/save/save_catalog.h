@@ -14,8 +14,9 @@ typedef struct {
    autosave.save are candidates. Equal timestamps choose the lexicographically
    greater leaf so directory enumeration order cannot affect the result.
 
-   Returns 1 when a candidate was found, 0 when there are no candidates, and
-   -1 for an invalid argument or filesystem error. Save contents are opaque. */
+   Returns 1 when a candidate was found, 0 when there are no candidates or the
+   directory does not exist yet, and -1 for an invalid argument or any other
+   filesystem error. Save contents are opaque. */
 int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out);
 
 #endif /* X2_SAVE_CATALOG_H */

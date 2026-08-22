@@ -25,6 +25,10 @@
 #include "win32_sdl.h"
 #include "pe_map.h"
 #include "threads.h"
+#include "boot_mode_runtime.h"
+#include "boot_menu_transition.h"
+#include "save_directory.h"
+#include "settings_store.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -187,7 +191,6 @@ void x2_override_0055b610(CPU *C)
  * hero handles and a suppressed tutorial conversation. That observation is the
  * regression test for this path, not an accepted limitation.
  */
-#define BOOT_SCRIPT_PFX   "runscript menus/intro_normal"
 #define NEW_GAME_PFX      "runscript menus/new_game"
 #define BOOT_PAGE         0x00110000u
 #define BOOT_CONSOLE_RVA  0x0015c410u   /* console vtable +0x1c, 0x0055c410 */
@@ -211,11 +214,62 @@ static void boot_console_line(const CPU *source, uint32_t exe_base,
     x86_guest_call_args(&K, exe_base + BOOT_CONSOLE_RVA, 4u);
 }
 
+static uint32_t mapped_exe_base(void)
+{
+    const X86Module *module;
+    for (module = x86_modules(); module; module = module->next)
+        if (module->preferred == 0x00400000u && *module->base)
+            return *module->base;
+    return 0;
+}
+
+static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base)
+{
+    const X2BootModeDecision *decision;
+    X2BootMode requested;
+    if (!command || !x2_boot_mode_is_intro_command(
+                        (const char *)(uintptr_t)command))
+        return 0;
+    requested = x2_settings_store()->boot_mode;
+    decision = x2_boot_mode_runtime_prepare(
+        requested, x2_retail_save_directory());
+    if (decision->effective == X2_BOOT_NORMAL) return 0;
+    if (!exe_base) {
+        fprintf(stderr, "BOOT MODE: the executable is not mapped; preserving "
+                        "the normal retail boot.\n");
+        return 0;
+    }
+    if (decision->fell_back_to_menu) {
+        if (x2_boot_mode_runtime_catalog_failed())
+            fprintf(stderr, "BOOT MODE: Continue was requested but the save "
+                            "directory could not be read; opening the retail "
+                            "main menu.\n");
+        else
+            fprintf(stderr, "BOOT MODE: Continue was requested but no valid "
+                            "save exists; opening the retail main menu.\n");
+    } else if (decision->effective == X2_BOOT_CONTINUE)
+        fprintf(stderr, "BOOT MODE: skipping the introduction; the retail "
+                        "main menu will dispatch Continue from %s.\n",
+                x2_boot_mode_runtime_continue_leaf());
+    else
+        fprintf(stderr, "BOOT MODE: skipping the introduction and opening "
+                        "the retail main menu.\n");
+    fflush(stderr);
+    /* This calls the retail forced main-menu handler. It executes
+       `mainmenuexit 1`, whose command owner resets and loads menu/main_back
+       directly instead of displaying the in-game exit confirmation. */
+    if (!x2_boot_menu_open(C, exe_base)) return 0;
+    C->eax = 1u;
+    C->esp += 8u;
+    return 1;
+}
+
 void fn_XMen2_0055beb0(CPU *C);
 
 void x2_override_0055beb0(CPU *C)
 {
     static int mode = -1;               /* -1 unknown, 0 off, 1 on */
+    static int map_requested;            /* failure preserves retail normal boot */
     static uint32_t cmd;                /* guest pointer to "loadmap <map> 0 0" */
     static uint32_t exe_base;
     static enum BootMapPhase phase = BOOT_MAP_WAITING_FOR_INTRO;
@@ -224,16 +278,11 @@ void x2_override_0055beb0(CPU *C)
     if (mode < 0) {
         const char *e = getenv("X2_BOOT_MAP");
         mode = (e && *e && *e != '0') ? 1 : 0;
+        map_requested = mode;
         if (mode) {
-            const X86Module *m;
             char buf[128];
             int len;
-            exe_base = 0;
-            for (m = x86_modules(); m; m = m->next)
-                if (m->preferred == 0x00400000u && *m->base) {
-                    exe_base = *m->base;
-                    break;
-                }
+            exe_base = mapped_exe_base();
             if (!exe_base) {
                 fprintf(stderr, "X2_BOOT_MAP: the exe is not mapped, so the "
                                 "loadmap command could not be built. Booting "
@@ -263,9 +312,12 @@ void x2_override_0055beb0(CPU *C)
             }
         }
     }
+    if (!map_requested && phase == BOOT_MAP_WAITING_FOR_INTRO) {
+        if (!exe_base) exe_base = mapped_exe_base();
+        if (boot_to_host_mode(C, s, exe_base)) return;
+    }
     if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
-        strncmp((const char *)(uintptr_t)s, BOOT_SCRIPT_PFX,
-                sizeof BOOT_SCRIPT_PFX - 1u) == 0) {
+        x2_boot_mode_is_intro_command((const char *)(uintptr_t)s)) {
         /* The boot has already reset the game. Run the retail New Game owner;
            its nested menus/new_game command is intercepted below only after
            it has installed the default party. */

@@ -145,6 +145,8 @@ static FILE *g_log;
 static FILE *g_shadow_log;
 static ShadowTrace g_shadow;
 static int g_shadow_initialized;
+static int g_shadow_forced = -1;
+static int g_shadow_control_recorded;
 static HINSTANCE g_self;
 static HMODULE g_realdll;
 static char g_realpath[MAX_PATH] = "";
@@ -174,6 +176,12 @@ static void plog(const char *fmt, ...) {
    reads their cumulative values at frame boundaries, so it cannot perturb the
    hooks or create a second authority for what counts as a call. */
 unsigned probe_hook_call_count(const char *name);
+int probe_hook_call_active(const char *name);
+
+static int custom_geometry_call_active(void)
+{
+    return probe_hook_call_active("FUN_006024f0");
+}
 
 static ShadowProbeCounts shadow_probe_counts(void)
 {
@@ -184,6 +192,8 @@ static ShadowProbeCounts shadow_probe_counts(void)
         "Gap::Sg::igProjectiveShadowShader::shade");
     counts.self_shadow = probe_hook_call_count(
         "Gap::Sg::igCommonTraverseSelfShadowShader");
+    counts.title_manager = probe_hook_call_count("FUN_004b64e0");
+    counts.title_floor_decal = probe_hook_call_count("FUN_004b5700");
     return counts;
 }
 
@@ -220,9 +230,8 @@ static void shadow_proxy_init(void)
     char expect_text[32], force_text[32], cap[32];
     DWORD expect_size, force_size, expect_error, force_error, n;
     char *end;
-    unsigned char *setting;
     unsigned long max_events = 4096;
-    int expected, forced, original, observed;
+    int expected, forced;
 
     if (g_shadow_initialized) return;
     g_shadow_initialized = 1;
@@ -254,11 +263,16 @@ static void shadow_proxy_init(void)
             return;
         }
     }
-    setting = shadow_setting_address();
-    if (!setting) {
+    if (!shadow_setting_address()) {
         plog("SHADOW TRACE REFUSED: XMen2.exe+0x2198c3 does not contain "
              "the DetailedShadow store anchor in this executable image; "
              "setting value is UNKNOWN");
+        return;
+    }
+    if (!shadow_setting_install_query_override(forced)) {
+        plog("SHADOW TRACE REFUSED: the XMen2.exe RegQueryValueExA import "
+             "could not be validated and redirected; DetailedShadow was "
+             "not forced");
         return;
     }
     g_shadow_log = fopen("d3d8_shadow_trace.jsonl", "w");
@@ -268,23 +282,12 @@ static void shadow_proxy_init(void)
         return;
     }
     setvbuf(g_shadow_log, NULL, _IOLBF, 4096);
-    original = (int)*setting;
-    *setting = (unsigned char)forced;
-    observed = (int)*setting;
-    if (observed != forced) {
-        plog("SHADOW TRACE REFUSED: the validated DetailedShadow byte did "
-             "not retain the forced value %d (observed %d)", forced,
-             observed);
-        fclose(g_shadow_log);
-        g_shadow_log = NULL;
-        return;
-    }
+    g_shadow_forced = forced;
     shadow_trace_init(&g_shadow, g_shadow_log, expected, (unsigned)max_events);
-    shadow_trace_control(&g_shadow, original, forced, observed);
-    plog("SHADOW TRACE ready: forced DetailedShadow=%d, observed=%d, "
-         "expected=%d at the validated live setting byte (original=%d), max "
-         "%lu event(s); F9 captures exactly the next frame", forced,
-         observed, expected, original, max_events);
+    plog("SHADOW TRACE ready: the validated RegQueryValueExA import will "
+         "substitute DetailedShadow=%d (independent expected=%d), max %lu "
+         "event(s); F9 captures exactly the next frame", forced, expected,
+         max_events);
 }
 
 /* -------------------------------------------------- real d3d8 resolution */
@@ -867,7 +870,8 @@ static HRESULT WINAPI dev_DrawIndexedPrimitive(struct wrap *w, DWORD type,
                                                DWORD start, DWORD prims)
 {
     typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD, DWORD);
-    shadow_trace_draw(&g_shadow, 1, type, prims);
+    shadow_trace_draw(&g_shadow, 1, type, prims,
+                      custom_geometry_call_active());
     if (g_obj_frame_open) obj_draw(prims, g_base_vertex + minidx, nverts);
     return ((fn_t)w->real_vtbl[SLOT_DRAW_INDEXED_PRIMITIVE])
         (w->real, type, minidx, nverts, start, prims);
@@ -879,7 +883,8 @@ static HRESULT WINAPI dev_DrawPrimitive(struct wrap *w, DWORD type,
                                         DWORD start, DWORD prims)
 {
     typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD);
-    shadow_trace_draw(&g_shadow, 0, type, prims);
+    shadow_trace_draw(&g_shadow, 0, type, prims,
+                      custom_geometry_call_active());
     if (g_obj_frame_open) {
         DWORD n = 0;
         switch (type) {
@@ -901,7 +906,8 @@ static HRESULT WINAPI dev_DrawPrimitiveUP(struct wrap *w, DWORD type,
                                           DWORD stride)
 {
     typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, const void *, DWORD);
-    shadow_trace_draw(&g_shadow, 0, type, prims);
+    shadow_trace_draw(&g_shadow, 0, type, prims,
+                      custom_geometry_call_active());
     return ((fn_t)w->real_vtbl[SLOT_DRAW_PRIMITIVE_UP])
         (w->real, type, prims, vertices, stride);
 }
@@ -913,7 +919,8 @@ static HRESULT WINAPI dev_DrawIndexedPrimitiveUP(
 {
     typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD,
                                    const void *, DWORD, const void *, DWORD);
-    shadow_trace_draw(&g_shadow, 1, type, prims);
+    shadow_trace_draw(&g_shadow, 1, type, prims,
+                      custom_geometry_call_active());
     return ((fn_t)w->real_vtbl[SLOT_DRAW_INDEXED_PRIMITIVE_UP])
         (w->real, type, min_index, vertex_count, prims, indices, index_format,
          vertices, stride);
@@ -934,6 +941,12 @@ static HRESULT WINAPI dev_Present(struct wrap *w, const void *a, const void *b,
     typedef HRESULT (WINAPI *fn_t)(void *, const void *, const void *, HWND,
                                    const void *);
     int f9 = (GetAsyncKeyState(VK_F9_KEY) & 0x8000) != 0;
+    int detailed = -1;
+    unsigned forced_reads = 0;
+    if (g_shadow.enabled) {
+        detailed = detailed_shadow_value();
+        forced_reads = shadow_setting_forced_reads();
+    }
     if (g_obj_frame_open) { obj_close(); vsconst_write(); }
     else if (g_obj_armed) { g_obj_armed = 0; obj_open(); }
     if (f9) g_obj_armed = 1;
@@ -943,9 +956,17 @@ static HRESULT WINAPI dev_Present(struct wrap *w, const void *a, const void *b,
        the capture matters. */
     probe_hook_tick();
     if ((++g_probe_frames % 600u) == 0u) probe_hook_report_counts();
+    if (g_shadow.enabled && !g_shadow_control_recorded && forced_reads) {
+        shadow_trace_control(&g_shadow, shadow_setting_original_value(),
+                             g_shadow_forced, detailed, forced_reads);
+        g_shadow_control_recorded = 1;
+        plog("SHADOW TRACE control: intercepted %u successful "
+             "DetailedShadow DWORD query(s), registry value=%d, "
+             "substituted=%d, live backing byte=%d", forced_reads,
+             shadow_setting_original_value(), g_shadow_forced, detailed);
+    }
     if (g_shadow.enabled)
-        shadow_trace_present(&g_shadow, detailed_shadow_value(),
-                             shadow_probe_counts(), f9);
+        shadow_trace_present(&g_shadow, detailed, shadow_probe_counts(), f9);
     return ((fn_t)w->real_vtbl[SLOT_PRESENT])(w->real, a, b, c, d);
 }
 

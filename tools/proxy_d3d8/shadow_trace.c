@@ -164,6 +164,7 @@ static void begin_capture(ShadowTrace *trace, int detailed,
     trace->dropped_events = 0;
     trace->draws = 0;
     trace->indexed_draws = 0;
+    trace->custom_geometry_draws = 0;
     trace->probe_begin = probes;
     fprintf(trace->out,
             "{\"event\":\"begin\",\"frame\":%u,"
@@ -181,19 +182,28 @@ static void end_capture(ShadowTrace *trace, ShadowProbeCounts probes)
                                       trace->probe_begin.projective);
     unsigned self_shadow = probe_delta(probes.self_shadow,
                                        trace->probe_begin.self_shadow);
-    char path[48];
+    unsigned title_manager = probe_delta(probes.title_manager,
+                                         trace->probe_begin.title_manager);
+    unsigned title_floor_decal = probe_delta(
+        probes.title_floor_decal, trace->probe_begin.title_floor_decal);
+    char path[80];
 
     path[0] = 0;
     if (planar) strcat(path, "planar");
     if (projective) strcat(path, path[0] ? "+projective" : "projective");
     if (self_shadow) strcat(path, path[0] ? "+self" : "self");
+    if (title_floor_decal)
+        strcat(path, path[0] ? "+title-floor-decal" : "title-floor-decal");
     if (!path[0]) strcpy(path, "none");
 
     fprintf(trace->out,
             "{\"event\":\"summary\",\"frame\":%u,"
             "\"detailed_shadow\":%d,\"path\":\"%s\","
             "\"shade_calls\":{\"planar\":%u,\"projective\":%u,"
-            "\"self\":%u},\"draws\":%u,\"indexed_draws\":%u,"
+            "\"self\":%u},\"title_shadow_calls\":{"
+            "\"manager\":%u,\"floor_decal\":%u},"
+            "\"draws\":%u,\"indexed_draws\":%u,"
+            "\"custom_geometry_draws\":%u,"
             "\"events\":%u,\"dropped_events\":%u,"
             "\"resource_events\":%u,\"dropped_resource_events\":%u,"
             "\"texture_hook_failures\":%u,"
@@ -208,8 +218,9 @@ static void end_capture(ShadowTrace *trace, ShadowProbeCounts probes)
             "\"update_texture\":%u,\"default_render_target\":%u,"
             "\"default_depth_stencil\":%u}}\n",
             trace->frame, trace->capture_detailed, path,
-            planar, projective, self_shadow,
-            trace->draws, trace->indexed_draws, trace->events,
+            planar, projective, self_shadow, title_manager, title_floor_decal,
+            trace->draws, trace->indexed_draws, trace->custom_geometry_draws,
+            trace->events,
             trace->dropped_events, trace->resource_events,
             trace->dropped_resource_events, trace->texture_hook_failures,
             trace->frame_resources[SHADOW_RESOURCE_CREATE_TEXTURE],
@@ -307,16 +318,17 @@ int shadow_trace_setting_anchor_matches(const unsigned char *instruction,
 }
 
 void shadow_trace_control(ShadowTrace *trace, int original_detailed,
-                          int forced_detailed, int observed_detailed)
+                          int forced_detailed, int observed_detailed,
+                          unsigned forced_reads)
 {
     if (!trace->enabled) return;
     fprintf(trace->out,
             "{\"event\":\"control\","
-            "\"seam\":\"XMen2.exe+0x668d40\","
+            "\"seam\":\"RegQueryValueExA:DetailedShadow\","
             "\"original\":%d,\"forced\":%d,\"observed\":%d,"
-            "\"expected\":%d}\n",
+            "\"expected\":%d,\"forced_reads\":%u}\n",
             original_detailed, forced_detailed, observed_detailed,
-            trace->expected_detailed);
+            trace->expected_detailed, forced_reads);
     fflush(trace->out);
 }
 
@@ -498,15 +510,17 @@ void shadow_trace_set_pixel_shader(ShadowTrace *trace, uint32_t handle)
 }
 
 void shadow_trace_draw(ShadowTrace *trace, int indexed, uint32_t primitive,
-                       uint32_t primitive_count)
+                       uint32_t primitive_count, int custom_geometry_active)
 {
     if (!trace->capturing) return;
     trace->draws++;
     if (indexed) trace->indexed_draws++;
+    if (custom_geometry_active) trace->custom_geometry_draws++;
     if (!event_slot(trace)) return;
     fprintf(trace->out,
             "{\"event\":\"draw\",\"frame\":%u,\"ordinal\":%u,"
             "\"indexed\":%d,\"primitive\":%lu,\"primitive_count\":%lu,"
+            "\"custom_geometry_active\":%d,"
             "\"render_target\":\"0x%llx\",\"depth_stencil\":\"0x%llx\","
             "\"pixel_shader\":%lu,\"texture0\":\"0x%llx\","
             "\"zbias\":%lu,\"stencil_enable\":%lu,"
@@ -521,6 +535,7 @@ void shadow_trace_draw(ShadowTrace *trace, int indexed, uint32_t primitive,
             "\"depth_stencil_source\":\"%s\"}",
             trace->frame, trace->draws, indexed ? 1 : 0,
             (unsigned long)primitive, (unsigned long)primitive_count,
+            custom_geometry_active ? 1 : 0,
             (unsigned long long)trace->render_target,
             (unsigned long long)trace->depth_stencil,
             (unsigned long)trace->pixel_shader,

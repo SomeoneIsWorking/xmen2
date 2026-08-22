@@ -2,12 +2,13 @@
 """Compare one bounded stock DetailedShadow-off capture with one on capture.
 
 Each run uses independent X2_SHADOW_FORCE and X2_SHADOW_EXPECT inputs. The
-proxy validates and writes the live setting byte before creating D3D8, then
-records the original, forced, observed and expected values. F9 arms exactly the
-next D3D8 frame. This tool refuses
+proxy validates the executable's RegQueryValueExA import and substitutes only
+the successful DetailedShadow DWORD query, then records the original, forced,
+observed and expected values. F9 arms exactly the next D3D8 frame. This tool refuses
 swapped settings, incomplete captures, event overflow, and an enabled capture
-that reached none of the three engine shadow paths. DetailedShadow may select a
-quality tier, so its off answer may legitimately be planar rather than none.
+that reached no known shadow-emission entry point. DetailedShadow may select a
+quality tier, so its off answer may legitimately reach the title floor-decal
+emitter too; the matched call counts make that answer explicit.
 """
 
 import argparse
@@ -52,6 +53,16 @@ def validate_summary(summary: dict, source: object) -> dict:
 
 
 def validate_control(control: dict, summary: dict, source: object) -> None:
+    if control.get("seam") != "RegQueryValueExA:DetailedShadow":
+        raise Refuse(
+            f"{source} used unrecognized control seam "
+            f"{control.get('seam')!r}"
+        )
+    if not isinstance(control.get("forced_reads"), int) or control["forced_reads"] < 1:
+        raise Refuse(
+            f"{source} did not intercept a successful DetailedShadow DWORD "
+            "query"
+        )
     if control.get("forced") != control.get("observed"):
         raise Refuse(
             f"{source} forced {control.get('forced')!r}, but read back "
@@ -92,7 +103,7 @@ def read_summary(path: pathlib.Path) -> dict:
     if len(controls) != 1:
         raise Refuse(
             f"{path} contains {len(controls)} control record(s), expected "
-            "exactly one validated live-byte intervention"
+            "exactly one validated registry-query intervention"
         )
     summary = summaries[0]
     validate_control(controls[0], summary, path)
@@ -110,7 +121,7 @@ def compare(off: dict, on: dict) -> str:
         )
     if on.get("path") in (None, "none"):
         raise Refuse(
-            "the on capture reached no planar/projective/self entry point; "
+            "the on capture reached no engine or title shadow-emission entry point; "
             "this frame cannot identify the retail shadow path"
         )
 
@@ -130,9 +141,16 @@ def compare(off: dict, on: dict) -> str:
             + (", ".join(changes) if changes else "no count change")
         )
     routes = "; ".join(route_parts)
+    off_title = off.get("title_shadow_calls", {})
+    on_title = on.get("title_shadow_calls", {})
     return (
         f"DetailedShadow control: off path={off.get('path')}; "
         f"on path={on['path']}; "
+        "title calls: "
+        f"manager {int(off_title.get('manager', 0))}->"
+        f"{int(on_title.get('manager', 0))}, "
+        f"floor_decal {int(off_title.get('floor_decal', 0))}->"
+        f"{int(on_title.get('floor_decal', 0))}; "
         f"resource route: {routes}"
     )
 
@@ -142,6 +160,7 @@ def selftest() -> None:
         "detailed_shadow": 0,
         "path": "planar",
         "dropped_events": 0,
+        "title_shadow_calls": {"manager": 1, "floor_decal": 0},
         "frame_resources": {key: 0 for key in RESOURCE_KEYS},
         "total_resources": {key: 0 for key in RESOURCE_KEYS},
     }
@@ -149,6 +168,7 @@ def selftest() -> None:
         "detailed_shadow": 1,
         "path": "projective+self",
         "dropped_events": 0,
+        "title_shadow_calls": {"manager": 1, "floor_decal": 2},
         "frame_resources": {
             **{key: 0 for key in RESOURCE_KEYS},
             "create_texture": 1,
@@ -163,11 +183,12 @@ def selftest() -> None:
     assert "off path=planar" in result
     assert "on path=projective+self" in result
     assert "create_texture 0->1" in result
+    assert "floor_decal 0->2" in result
 
     for broken, needle in (
         (({**off, "detailed_shadow": 1}, on), "off capture"),
         ((off, {**on, "detailed_shadow": 0}), "on capture"),
-        ((off, {**on, "path": "none"}), "no planar/projective/self"),
+        ((off, {**on, "path": "none"}), "no engine or title"),
     ):
         try:
             compare(*broken)
@@ -182,8 +203,14 @@ def selftest() -> None:
     else:
         raise AssertionError("expected texture-hook coverage refusal")
     for control, needle in (
-        ({"forced": 0, "observed": 1, "expected": 1}, "read back"),
-        ({"forced": 1, "observed": 1, "expected": 0}, "independently expected"),
+        ({"seam": "RegQueryValueExA:DetailedShadow", "forced_reads": 1,
+          "forced": 0, "observed": 1, "expected": 1}, "read back"),
+        ({"seam": "RegQueryValueExA:DetailedShadow", "forced_reads": 1,
+          "forced": 1, "observed": 1, "expected": 0}, "independently expected"),
+        ({"seam": "RegQueryValueExA:DetailedShadow", "forced_reads": 0,
+          "forced": 1, "observed": 1, "expected": 1}, "did not intercept"),
+        ({"seam": "XMen2.exe+0x668d40", "forced_reads": 1,
+          "forced": 1, "observed": 1, "expected": 1}, "unrecognized"),
     ):
         try:
             validate_control(control, on, "fixture")
@@ -191,7 +218,7 @@ def selftest() -> None:
             assert needle in str(exc)
         else:
             raise AssertionError(f"expected control refusal containing {needle!r}")
-    print("shadow_trace_compare: planar-off/detailed-on answers and six "
+    print("shadow_trace_compare: engine/title shadow answers and eight "
           "refusals proved")
 
 

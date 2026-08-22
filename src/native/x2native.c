@@ -436,7 +436,7 @@ void x2_interrupt_reports(int killed)
     live_session_stop();
     pad_glyphs_report();
     dialog_prompts_report();
-    { extern void dsound_report(void); dsound_report(); }
+    { extern void dsound_report(void), x2_movie_report(void); dsound_report(); x2_movie_report(); }
     { extern void k32_asset_report(void), ws2_report(void);
       k32_asset_report(); ws2_report(); }
     { extern void conversation_report(void); conversation_report(); }

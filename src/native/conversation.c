@@ -46,11 +46,11 @@
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "conversation_cutscene_skip.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 /* ---- where the exe actually landed ------------------------------------- */
 
 #define EXE_PREFERRED   0x00400000u
@@ -292,7 +292,6 @@ static uint32_t thiscall(CPU *C, uint32_t fn, uint32_t ecx,
     x86_guest_call_args(&K, fn, (uint32_t)argc * 4u);
     return K.eax;
 }
-
 static uint32_t call0(CPU *C, uint32_t fn, uint32_t ecx)
 {
     return thiscall(C, fn, ecx, 0, NULL);
@@ -685,7 +684,6 @@ void x2_override_00458020(CPU *C)
 #define CV_UNK_239BC    0x239bcu
 
 
-/* A cdecl call: the CALLER cleans, so nothing here has to model a RET N. */
 static uint32_t cdecl_call(CPU *C, uint32_t fn, int argc, const uint32_t *argv)
 {
     CPU K = *C;
@@ -696,8 +694,7 @@ static uint32_t cdecl_call(CPU *C, uint32_t fn, int argc, const uint32_t *argv)
     return K.eax;
 }
 
-/* __ftol: the argument goes on the X87 stack, not the integer stack. Measured,
-   not assumed -- see the capture note above. */
+/* __ftol takes its measured argument on the x87 stack. */
 static uint32_t call_ftol(CPU *C, long double v)
 {
     CPU K = *C;
@@ -760,9 +757,7 @@ void x2_override_0045d1a0(CPU *C)
         return;
     }
 
-    /* The guest-stack locals this frame needs. The original carves them out of
-       its own SUB ESP,0x14; a port that used host memory would hand a guest
-       callee a pointer it cannot write through. */
+    /* Guest callees need guest-stack locals, never host pointers. */
     C->esp -= 0x20u;
     scratch = C->esp;
 
@@ -837,33 +832,41 @@ void x2_override_0045d1a0(CPU *C)
         }
     }
 
-    /* 0x0045d33e: the accept button, and the debounce that follows it. */
+    /* Accept advances once; authored-cutscene skip latches across the same
+       deterministic response path until cleanup ends the conversation. */
     input = call0(C, FN_INPUT, 0);
     c_upd_gate_seen++;
-    {   uint32_t four = 4u;
-        if ((uint8_t)thiscall(C, vslot(input, 0x138u), input, 1, &four)) {
+    {   uint32_t action = 4u;
+        int accept_down = (uint8_t)thiscall(
+            C, vslot(input, 0x138u), input, 1, &action);
+        int advance;
+        action = 20u;
+        advance = conversation_cutscene_skip_should_advance(
+            C, self, slot, (uint8_t)thiscall(
+                C, vslot(input, 0x138u), input, 1, &action));
+        if (accept_down) {
             uint32_t clock = call0(C, FN_CLOCK, 0);
             long double now = call_float(C, vslot(clock, 0x160u), clock, 0, NULL);
             c_upd_gate_pressed++;
-            /* FCOMP/FNSTSW/TEST AH,0x41 skips on "less than OR equal", so the
-               advance needs STRICTLY greater. */
             if (now > (long double)RDF32(self + CV_APPLY_TIMER)) {
-                uint32_t in2 = call0(C, FN_INPUT, 0);
-                uint32_t six = 6u;
-                thiscall(C, vslot(in2, 0xe8u), in2, 1, &six);
-                if (RD32(self + CV_SOUND_HANDLE) != RD32(G_NULL_HANDLE)) {
-                    uint32_t au = call0(C, FN_AUDIO, 0);
-                    call1(C, vslot(au, 0x74u), au, RD32(self + CV_SOUND_HANDLE));
-                    WR8(self + CV_ACCEPT_STATE,
-                        RD8(self + CV_ACCEPT_STATE) & 0xfeu);
-                    WR32(self + CV_SOUND_HANDLE, RD32(G_NULL_HANDLE));
-                }
+                advance = 1;
                 c_upd_advanced++;
-                call1(C, vslot(self, 0x18u), self,
-                      (uint32_t)(int32_t)(int16_t)RD16(self + CV_TAG_INDEX));
             } else {
                 c_upd_gate_debounced++;
             }
+        }
+        if (advance) {
+            uint32_t in2 = call0(C, FN_INPUT, 0), six = 6u;
+            thiscall(C, vslot(in2, 0xe8u), in2, 1, &six);
+            if (RD32(self + CV_SOUND_HANDLE) != RD32(G_NULL_HANDLE)) {
+                uint32_t au = call0(C, FN_AUDIO, 0);
+                call1(C, vslot(au, 0x74u), au, RD32(self + CV_SOUND_HANDLE));
+                WR8(self + CV_ACCEPT_STATE,
+                    RD8(self + CV_ACCEPT_STATE) & 0xfeu);
+                WR32(self + CV_SOUND_HANDLE, RD32(G_NULL_HANDLE));
+            }
+            call1(C, vslot(self, 0x18u), self,
+                  (uint32_t)(int32_t)(int16_t)RD16(self + CV_TAG_INDEX));
         }
     }
 
@@ -878,8 +881,7 @@ void x2_override_0045d1a0(CPU *C)
         pads = call0(C, FN_PADS, 0);
         call1(C, vslot(pads, 0x68u), pads, m1);
 
-        /* bytes 0 and 1 cleared, byte 2 masked -- the original reads byte 2
-           BEFORE clearing the others, so the read comes first here too. */
+        /* The original reads byte 2 before clearing bytes 0 and 1. */
         WR8(scratch + 0x12u, RD8(scratch + 0x12u) & 0xfcu);
         WR8(scratch + 0x10u, 0);
         WR8(scratch + 0x11u, 0);
@@ -948,7 +950,6 @@ void x2_override_0045d1a0(CPU *C)
         cdecl_call(C, FN_DRAW_ICON, 9, args);
     }
 
-    /* 0x0045d561: four pad slots, each cleared for the next frame. */
     {
         int i;
         for (i = 0; i < 4; i++) {
@@ -964,7 +965,6 @@ void x2_override_0045d1a0(CPU *C)
     C->esp = entry_esp + 4u + 4u;             /* RET 0x4 */
 }
 
-/* Register the ported conversation manager in place of the translated bodies. */
 __attribute__((constructor))
 static void x2_conversation_register_overrides(void)
 {

@@ -87,6 +87,8 @@ typedef struct {
     pr_u32            id;
     const char       *name;    /* the qualified guest name, for reports */
     const char       *module;  /* "libIGMath" -- no extension */
+    const char       *image;   /* PE image name from the export JSON */
+    pr_u32            image_base; /* that image's preferred load base */
     pr_u32            linked;  /* address at the module's PREFERRED base */
     pr_u16            prologue;/* bytes the stock-side hook relocates */
     pr_u16            nfields;

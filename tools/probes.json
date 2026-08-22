@@ -271,6 +271,32 @@
       "why": "The top-level self-shadow traversal callback. Counting the traversal rather than only dispatchCasters avoids a false negative when a frame reuses an existing depth map without resubmitting casters.",
       "argbytes": 8,
       "fields": []
+    },
+    {
+      "module": "XMen2",
+      "name": "FUN_004b64e0",
+      "why": "CShadowMgr's title-specific render loop. It walks at most 32 active entries and selects the procedural floor shadow or selection/status-ring helpers from each entry's flags.",
+      "fields": []
+    },
+    {
+      "module": "XMen2",
+      "name": "FUN_004b5700",
+      "why": "CShadowMgr's flag-bit-0 floor-shadow emitter. The only direct call is from FUN_004b64e0; it emits six oriented black-alpha floor-decal vertices for one manager entry.",
+      "fields": [
+        {
+          "at": "arg1",
+          "read": "dword",
+          "when": "in",
+          "as": "entry_index"
+        }
+      ]
+    },
+    {
+      "module": "XMen2",
+      "name": "FUN_006024f0",
+      "why": "The synchronous title geometry traversal enclosing CShadowMgr's callback and the following igCommonTraverseGeometry submission. D3D draws while this call is active belong to the combined custom-geometry batch; nested FUN_004b5700 counts identify whether that batch included floor shadows.",
+      "argbytes": 8,
+      "fields": []
     }
   ]
 }

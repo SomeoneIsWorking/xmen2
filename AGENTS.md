@@ -202,10 +202,36 @@ assignments and publishes them into guest binding sets; `src/ui/` owns only the
 RmlUi lifetime and documents. `win32_sdl.c` and `gpu_device.c` compose those
 owners at the SDL event and render boundaries; they do not absorb their policy.
 
+Save paths keep the same split: `shell32.c` owns the writable profile root used
+by config and registry storage, while `src/save/save_directory.{c,h}` owns the
+one title-specific retail leaf directory below it. Catalog, Continue, boot and
+autosave consume that authority; none rebuilds `Activision/X-Men Legends 2/Save`.
+
+Boot selection follows the same boundary: `src/config/boot_mode.{c,h}` owns the
+persistent vocabulary, `src/native/boot_mode_policy.{c,h}` owns the pure
+Normal/Menu/Continue decision, `boot_mode_runtime.{c,h}` owns the one boot
+request and latest-save leaf, `boot_menu_transition.{c,h}` owns the exact
+retail main-menu call, and `startup.c` only composes those owners.
+
 Exact input capture belongs to `src/input/input_record.{c,h}` and runs only
 after physical, scripted, control-channel and modal-UI policy produce the state
 the guest will receive. `src/native/live_session.{c,h}` owns live-run discovery;
 `x2native.c` only composes those owners.
+
+Native SFD playback follows the same boundary. `src/media/fmv_player.{c,h}`
+owns FFmpeg demux/decode and timestamp policy; `src/audio/movie_audio.{c,h}`
+owns the single streaming voice mixed by DirectSound. `src/native/movie.c`
+only bridges the evidenced `igCriMovieCodec` methods and writes the guest
+runtime `igImage`, leaving libMovie's scene, texture upload, lifetime, and
+callback behavior intact. See `docs/RE/fmv.md`; no media asset belongs in git.
+
+Shadow ownership follows the title evidence in `docs/RE/shadows.md`.
+`CShadowMgr` owns per-entity procedural floor-decal selection and the GPU renders
+the resulting ordinary scene packets. `DetailedShadow` is dead persisted
+configuration, not a renderer switch or an exposed retail control. Any new
+light-cast shadow-map enhancement needs an explicit scene-side
+caster/receiver/light policy bridge; the GPU owns its sampleable targets and
+pass inside the logical scene, before aspect-fit composition and RmlUi.
 
 The shipped settings UI uses the exact pinned RmlUi revision and maintained
 SDL3/SDL_GPU backends named in `CMakeLists.txt`. Its document vocabulary and

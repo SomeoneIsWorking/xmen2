@@ -121,3 +121,64 @@ handle `0x00000201 -> actor 0x08326010` (1 of 5 resolves). The same driven run
 then reached the previously suppressed second conversation with flags
 `0x18 -> 0x13` (speaking and visible), rather than the old `0x18 -> 0x10` with
 no selected line.
+
+## Persistent RmlUi boot mode
+
+`src/config/boot_mode.{c,h}` owns the persisted three-value setting: normal,
+menu, or continue. RmlUi edits that setting on its General tab. The boot path
+consumes it only at the exact `runscript menus/intro_normal` command; a command
+with that text merely as a prefix is not a boot event.
+
+Normal passes the command through untouched. Menu and Continue both replace
+only the presentation script with the retail forced main-menu callback
+`FUN_0049fb00`. That callback calls the console singleton's `+0x18` executor
+with `"mainmenuexit 1"` and returns with a plain `RET`. The registered console
+handler `FUN_005f27a0` proves the argument is semantic: a non-empty argument
+runs the retail reset sequence and submits `"loadmap menu/main_back"` through
+the console singleton's `+0x1c` path, while an empty argument constructs and
+shows `mainMenuExit()`. The former preserves the retail main-menu map and its
+initialization without reconstructing menu state in the host.
+
+The adjacent callback `FUN_0049fb20` is deliberately not used. It issues the
+argument-less command and was falsified live: frame 669 displayed the retail
+"current game will end" confirmation and the main-menu Build/Show trace stayed
+at zero. Ghidra decompilation of `FUN_0049fb00`, `FUN_0049fb20`, and the shared
+handler `FUN_005f27a0` is the static cause proof;
+`src/native/boot_menu_transition.{c,h}` is the narrow tested guest-call bridge.
+
+`src/native/boot_mode_runtime.{c,h}` resolves Continue through the authoritative
+`save_catalog`: `src/save/save_directory.{c,h}` first resolves the exact retail
+leaf directory `<profile>/Activision/X-Men Legends 2/Save`, rather than the
+profile root also used by host config and registry state. A directory that does
+not exist yet is an ordinary first-run no-save result. The catalog captures the
+newest admitted leaf once for this boot request
+and publishes it to `src/native/continue_runtime.c`. On the retained
+`CMenuMain::Show` boundary, that owner dispatches retail save/load mode 3,
+header/device/file selection and accepts only manager mode 3/state 0x1c before
+arming the one-shot exact-leaf redirect at numeric loader 0x0055ff00. Only then
+does boot mode mark the cached request consumed. When the catalog has no
+candidate (or cannot be read), the effective mode is Menu and the run reports
+that fallback before opening the retail menu. It never enters New Game and
+never guesses a numbered slot. Normal menu presentation still rescans the save
+directory separately so Continue visibility can reflect saves created or
+deleted after boot; that is live menu state rather than the cached boot request.
+
+The retail load does not deserialize immediately after the payload read.
+Manager owner 0x004b1280 builds LOAD SUCCESSFUL and sets state 1; the dialog's
+Enter callback 0x0049f140 invokes manager vslot `+0x58`. Native Continue retains
+the dialog owner and then consumes a transaction-local one-shot only at mode
+3/state 1 to call that exact retail callback. Manual Load never arms the
+one-shot, so its confirmation behavior is unchanged. Failed reads, unexpected
+states and a return to the main menu clear the pending acknowledgement.
+
+The same successful retained map-return boundary schedules the host autosave.
+The retained main-menu Show cancels its pending request, so booting Menu cannot
+save the menu map. A gameplay load reaches the retail serializer only after 64
+consecutive guest input polls with save-manager mode zero; the publisher derives
+the retail 128-byte description header from the serializer's own
+`[SAVEGAMEBEGIN: ...]` tag and atomically replaces `autosave.save` in the same
+authoritative save directory. Optional save tracing does not own or gate these
+production hooks.
+
+`X2_BOOT_MAP` remains the explicit developer route and takes precedence over
+the persistent setting.

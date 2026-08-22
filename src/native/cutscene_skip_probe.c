@@ -1,15 +1,17 @@
-/* The live input boundary for the two retail cutscene-skip paths.
+/* The live input boundary for movies, retail cinematicStart, and gameplay-
+ * authored conversation cutscenes.
  *
  * XMen2.exe owns the behavior: movie-menu update 0x005ca110 consumes action
  * bit 19, while scripted-cinematic update 0x0059f1a0 consumes action bit 20.
  * FUN_00619c40 maps both to row 17 (Pause). This probe does not decide to
- * skip; it shows whether Escape/Start were published and whether the exact
- * bits the retail code reads are down. A failure downstream of a down bit is
- * therefore movie/cinematic state policy, not host input publication.
+ * skip. Authored conversations use the production classifier reported below:
+ * a deterministic authored response chain, plus camera/control state used to
+ * carry one request across adjacent records without bypassing cleanup.
  */
 #include "cutscene_skip_probe.h"
 
 #include "cutscene_skip_publication.h"
+#include "conversation_cutscene_skip.h"
 #include "input_bindings.h"
 #include "rmlui_ui.h"
 #include "x86rt.h"
@@ -160,9 +162,10 @@ size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
     else
         append(out, size, &at,
                "  cinematic mask: UNREADABLE at input vtable +0x140\n");
+    at += conversation_cutscene_skip_probe(cpu, out + at, size - at);
     append(out, size, &at,
-           "  boundary rule: DOWN here proves host input and retail action "
-           "publication; any refusal after it belongs to the active retail "
-           "movie/cinematic state and its authored cleanup policy.\n\n");
+           "  boundary rule: action 20 DOWN plus authored conversation yes "
+           "arms the response-chain skip. A branch blocks it; advances still "
+           "run retail response/chosen scripts and their cleanup.\n\n");
     return at;
 }

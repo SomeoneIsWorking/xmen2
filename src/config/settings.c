@@ -40,6 +40,7 @@ void x2_settings_defaults(X2Settings *settings)
     settings->width = 1280;
     settings->height = 720;
     settings->window_mode = X2_WINDOW_WINDOWED;
+    settings->boot_mode = X2_BOOT_NORMAL;
     for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
         settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
     for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
@@ -232,6 +233,8 @@ static int parse_line(ParseState *state, char *line)
         return number(value, X2_MIN_HEIGHT, X2_MAX_HEIGHT, &settings->height);
     if (strcmp(key, "video.mode") == 0)
         return x2_window_mode_parse(value, &settings->window_mode);
+    if (strcmp(key, "boot.mode") == 0)
+        return x2_boot_mode_parse(value, &settings->boot_mode);
     if (strcmp(key, "input.assignment_version") == 0) {
         state->saw_grid = 1;
         return strcmp(value, "2") == 0;
@@ -284,6 +287,7 @@ static int parse_line(ParseState *state, char *line)
 static int settings_valid(const X2Settings *settings)
 {
     unsigned i, j;
+    if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE) return 0;
     for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++) {
         int owner = settings->keyboard_player[i];
         if (!valid_player(owner)) return 0;
@@ -432,6 +436,7 @@ int x2_settings_save(const X2Settings *settings, const char *path,
     fprintf(file, "video.width=%u\nvideo.height=%u\nvideo.mode=%s\n",
             settings->width, settings->height,
             x2_window_mode_name(settings->window_mode));
+    fprintf(file, "boot.mode=%s\n", x2_boot_mode_name(settings->boot_mode));
     fprintf(file, "input.assignment_version=2\n");
     for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {
         int owner = settings->keyboard_player[profile];

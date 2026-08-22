@@ -33,6 +33,7 @@
 #include "x87crt.h"
 #include "threads.h"
 #include "guest_heap.h"
+#include "win_path.h"
 
 #include <ctype.h>
 #include <math.h>
@@ -290,14 +291,9 @@ void imp_MSVCR71_time(CPU *C)
  * small handle and this side keeps the table. Handles start at 1 so that 0
  * stays "failed", which is what the caller tests.
  */
-/* Defined further down (the format walker) and in kernel32.c (path
+/* Defined further down (the format walker) and in win_path.c (path
    translation); declared here so stdio can use both. */
 int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va);
-const char *win_path(const char *in);
-/* The shared open resolver; see kernel32.c. */
-const char *k32_open_path(const char *guest, int for_write);
-int         k32_open_replaced(const char *guest, int for_write);
-void        k32_open_note(const char *guest, int ok, int replaced, const char *host);
 
 #define MAX_FILES 64
 static FILE *g_files[MAX_FILES];

@@ -13,6 +13,8 @@ typedef struct {
     unsigned planar;
     unsigned projective;
     unsigned self_shadow;
+    unsigned title_manager;
+    unsigned title_floor_decal;
 } ShadowProbeCounts;
 
 typedef enum {
@@ -48,6 +50,7 @@ typedef struct {
     unsigned texture_hook_failures;
     unsigned draws;
     unsigned indexed_draws;
+    unsigned custom_geometry_draws;
     unsigned frame_resources[SHADOW_RESOURCE_COUNT];
     unsigned total_resources[SHADOW_RESOURCE_COUNT];
     ShadowProbeCounts probe_begin;
@@ -73,7 +76,8 @@ int shadow_trace_parse_binary_control(const char *value, int *parsed);
 int shadow_trace_setting_anchor_matches(const unsigned char *instruction,
                                         size_t instruction_size);
 void shadow_trace_control(ShadowTrace *trace, int original_detailed,
-                          int forced_detailed, int observed_detailed);
+                          int forced_detailed, int observed_detailed,
+                          unsigned forced_reads);
 void shadow_trace_present(ShadowTrace *trace, int detailed_shadow,
                           ShadowProbeCounts probes, int arm_key_down);
 void shadow_trace_close(ShadowTrace *trace, ShadowProbeCounts probes);
@@ -99,7 +103,7 @@ void shadow_trace_set_stage_state(ShadowTrace *trace, uint32_t stage,
                                   uint32_t which, uint32_t value);
 void shadow_trace_set_pixel_shader(ShadowTrace *trace, uint32_t handle);
 void shadow_trace_draw(ShadowTrace *trace, int indexed, uint32_t primitive,
-                       uint32_t primitive_count);
+                       uint32_t primitive_count, int custom_geometry_active);
 void shadow_trace_clear(ShadowTrace *trace, uint32_t rect_count,
                         const int32_t *rects, uint32_t flags, uint32_t color,
                         float depth, uint32_t stencil, long result);

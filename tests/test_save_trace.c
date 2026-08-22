@@ -83,7 +83,7 @@ static void ring_is_bounded_and_chronological(void)
 
     save_trace_init(&trace, 1);
     for (i = 0; i < SAVE_TRACE_EVENT_CAPACITY + 3u; i++) {
-        CHECK(save_trace_mark(&trace, SAVE_TRACE_ZONE_REQUEST,
+        CHECK(save_trace_mark(&trace, SAVE_TRACE_LOCK_COMBAT,
                               SAVE_TRACE_ANSWER_UNKNOWN, "zone")
               == SAVE_TRACE_RECORDED);
     }
@@ -112,7 +112,7 @@ static void invalid_and_capacity_refusals_are_visible(void)
                           SAVE_TRACE_ANSWER_UNKNOWN, NULL)
           == SAVE_TRACE_REFUSED_INVALID);
     CHECK(trace.attempts == 1 && trace.refused_invalid == 1);
-    CHECK(save_trace_mark(&trace, SAVE_TRACE_EXTRACTION_SUCCESS_BRANCH,
+    CHECK(save_trace_mark(&trace, SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
                           SAVE_TRACE_ANSWER_NO, long_label)
           == SAVE_TRACE_RECORDED);
     CHECK(save_trace_event_at(&trace, 0, &event));

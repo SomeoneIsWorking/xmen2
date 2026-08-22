@@ -61,6 +61,13 @@ retail save-manager idle state, map `nosave` bit and stable-transition decision
 explicitly, and no guest save dispatch is allowed until the live trace proves
 those boundaries.
 
+**Shadow-pass ownership, not shadow policy.** Dusklight's scene scheduler and
+draw-list code keep caster/receiver selection and light matrices on the game
+side, while the renderer owns the shadow target and restores render state
+before later groups. `docs/RE/shadows.md` adopts that boundary for any future
+native enhancement. Its Twilight Princess caster rules, light choice, matrix
+constants, and texture format are not X-Men evidence and are not copied.
+
 ### What has NOT been taken, and why
 
 **Frame interpolation.** Their model is worth copying exactly when the time

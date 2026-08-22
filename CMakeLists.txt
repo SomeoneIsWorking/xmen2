@@ -8,9 +8,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # SDL3, for its GPU abstraction: it is the layer that will stand in for D3D8,
 # and it maps onto Metal on macOS rather than needing MoltenVK underneath.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
+                  libavformat libavcodec libavutil libswscale libswresample)
 find_package(SDL3 QUIET)
 if(NOT SDL3_FOUND)
-    find_package(PkgConfig REQUIRED)
     pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
 endif()
 if(TARGET SDL3::SDL3)
@@ -36,16 +38,72 @@ endif()
 
 enable_testing()
 
+add_executable(test_fmv_policy tests/test_fmv_policy.c
+               src/media/fmv_policy.c)
+target_include_directories(test_fmv_policy PRIVATE src/media)
+add_test(NAME fmv_policy COMMAND test_fmv_policy)
+
+add_executable(test_fmv_timing tests/test_fmv_timing.c
+               src/media/fmv_timing.c)
+target_include_directories(test_fmv_timing PRIVATE src/media)
+target_link_libraries(test_fmv_timing PRIVATE m)
+add_test(NAME fmv_timing COMMAND test_fmv_timing)
+
+add_executable(test_movie_audio tests/test_movie_audio.c
+               src/audio/movie_audio.c)
+target_include_directories(test_movie_audio PRIVATE src/audio)
+target_link_libraries(test_movie_audio PRIVATE m pthread)
+add_test(NAME movie_audio COMMAND test_movie_audio)
+
+add_executable(test_movie_image_layout tests/test_movie_image_layout.c
+               src/native/movie_image_layout.c)
+target_include_directories(test_movie_image_layout PRIVATE src/native)
+add_test(NAME movie_image_layout COMMAND test_movie_image_layout)
+
+add_executable(test_win_path tests/test_win_path.c src/native/win_path.c)
+target_include_directories(test_win_path PRIVATE src/native src/save)
+target_compile_definitions(test_win_path PRIVATE
+    X2_TEST_WIN_PATH_ROOT="${CMAKE_BINARY_DIR}/test-win-path")
+add_test(NAME win_path COMMAND test_win_path)
+
+add_executable(test_fmv_decode tests/test_fmv_decode.c
+               src/media/fmv_player.c src/media/fmv_policy.c
+               src/media/fmv_timing.c)
+target_include_directories(test_fmv_decode PRIVATE src/media)
+target_link_libraries(test_fmv_decode PRIVATE PkgConfig::X2_FFMPEG m)
+add_test(NAME fmv_decode COMMAND test_fmv_decode)
+set_tests_properties(fmv_decode PROPERTIES SKIP_RETURN_CODE 77)
+
 add_test(NAME structure
          COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_structure.py)
 add_test(NAME structure_selftest
          COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_structure.py --selftest)
 
-add_executable(test_settings tests/test_settings.c src/config/settings.c)
+add_executable(test_settings tests/test_settings.c src/config/settings.c
+               src/config/boot_mode.c)
 target_include_directories(test_settings PRIVATE src/config)
 target_compile_definitions(test_settings PRIVATE
     X2_TEST_SETTINGS_PATH="${CMAKE_BINARY_DIR}/test-x2native.conf")
 add_test(NAME settings COMMAND test_settings)
+
+add_executable(test_boot_mode_policy tests/test_boot_mode_policy.c
+               src/native/boot_mode_policy.c)
+target_include_directories(test_boot_mode_policy PRIVATE src/config src/native)
+add_test(NAME boot_mode_policy COMMAND test_boot_mode_policy)
+
+add_executable(test_boot_mode_runtime tests/test_boot_mode_runtime.c
+               src/native/boot_mode_runtime.c src/native/boot_mode_policy.c
+               src/save/save_catalog.c src/save/save_directory.c)
+target_include_directories(test_boot_mode_runtime PRIVATE src/config src/native
+                                                        src/save)
+target_compile_definitions(test_boot_mode_runtime PRIVATE
+    X2_TEST_BOOT_STORAGE_ROOT="${CMAKE_BINARY_DIR}/test-boot-storage")
+add_test(NAME boot_mode_runtime COMMAND test_boot_mode_runtime)
+
+add_executable(test_boot_menu_transition tests/test_boot_menu_transition.c
+               src/native/boot_menu_transition.c)
+target_include_directories(test_boot_menu_transition PRIVATE src/native src/recomp)
+add_test(NAME boot_menu_transition COMMAND test_boot_menu_transition)
 
 add_executable(test_joystick_neutral tests/test_joystick_neutral.c
                src/input/joystick_neutral.c)
@@ -59,6 +117,7 @@ add_test(NAME aspect_fit COMMAND test_aspect_fit)
 
 add_executable(test_player_input tests/test_player_input.c
                src/input/player_input.c src/config/settings.c
+               src/config/boot_mode.c
                src/native/input_binding_sets.c
                src/native/xbox_defaults.c)
 target_include_directories(test_player_input PRIVATE src/recomp src/native
@@ -93,6 +152,17 @@ add_executable(test_cutscene_skip_publication
                src/native/cutscene_skip_publication.c)
 target_include_directories(test_cutscene_skip_publication PRIVATE src/native)
 add_test(NAME cutscene_skip_publication COMMAND test_cutscene_skip_publication)
+
+add_executable(test_conversation_skip_policy
+               tests/test_conversation_skip_policy.c
+               src/native/conversation_skip_policy.c)
+target_include_directories(test_conversation_skip_policy PRIVATE src/native)
+add_test(NAME conversation_skip_policy COMMAND test_conversation_skip_policy)
+add_test(NAME conversation_skip_wiring
+         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py)
+add_test(NAME conversation_skip_wiring_selftest
+         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py
+                         --selftest)
 
 add_executable(test_binding_rows tests/test_binding_rows.c
                src/input/binding_rows.c)
@@ -275,10 +345,33 @@ add_executable(test_save_catalog
 target_include_directories(test_save_catalog PRIVATE src/save)
 add_test(NAME save_catalog COMMAND test_save_catalog)
 
+add_executable(test_save_directory
+    tests/test_save_directory.c src/save/save_directory.c)
+target_include_directories(test_save_directory PRIVATE src/save src/native)
+add_test(NAME save_directory COMMAND test_save_directory)
+
 add_executable(test_autosave_policy
     tests/test_autosave_policy.c src/save/autosave_policy.c)
 target_include_directories(test_autosave_policy PRIVATE src/save)
 add_test(NAME autosave_policy COMMAND test_autosave_policy)
+
+add_executable(test_continue_policy
+    tests/test_continue_policy.c src/save/continue_policy.c)
+target_include_directories(test_continue_policy PRIVATE src/save)
+add_test(NAME continue_policy COMMAND test_continue_policy)
+
+add_executable(test_autosave_storage
+    tests/test_autosave_storage.c src/save/autosave_storage.c
+    src/save/save_directory.c)
+target_include_directories(test_autosave_storage PRIVATE src/save src/native)
+add_test(NAME autosave_storage COMMAND test_autosave_storage)
+set_tests_properties(autosave_storage PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(test_autosave_format
+    tests/test_autosave_format.c src/save/autosave_format.c)
+target_include_directories(test_autosave_format PRIVATE src/save)
+add_test(NAME autosave_format COMMAND test_autosave_format)
 
 add_executable(test_save_trace
     tests/test_save_trace.c src/save/save_trace.c)
@@ -331,6 +424,15 @@ add_test(NAME save_trace_wiring COMMAND python3
 set_tests_properties(save_trace_wiring PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME save_trace_wiring_selftest COMMAND python3
          ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py --selftest)
+add_test(NAME continue_wiring COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/check_continue_wiring.py)
+set_tests_properties(continue_wiring PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME continue_wiring_selftest COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/check_continue_wiring.py --selftest)
+add_test(NAME autosave_wiring COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/check_autosave_wiring.py)
+add_test(NAME autosave_wiring_selftest COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/check_autosave_wiring.py --selftest)
 
 # The guest stack-effect check (tools/stackcheck.py over an X2_STACKCHECK
 # record). A guest call must return with esp raised by 4 plus the callee's RET
@@ -620,6 +722,10 @@ if(X2_MODULE_HAVE)
         src/native/x2native_options.c
         src/config/settings.c
         src/config/settings_store.c
+        src/config/boot_mode.c
+        src/native/boot_mode_policy.c
+        src/native/boot_mode_runtime.c
+        src/native/boot_menu_transition.c
         src/presentation/aspect_fit.c
         src/presentation/window_settings.c
         src/input/binding_rows.c
@@ -630,8 +736,14 @@ if(X2_MODULE_HAVE)
         src/input/player_input.c
         src/input/input_record.c
         src/save/save_catalog.c
+        src/save/save_directory.c
         src/save/autosave_policy.c
+        src/save/autosave_storage.c
+        src/save/autosave_format.c
+        src/save/continue_policy.c
         src/save/save_trace.c
+        src/native/autosave_runtime.c
+        src/native/continue_runtime.c
         src/native/save_trace_runtime.c
         src/native/pe_map.c
         src/native/win32_sdl.c
@@ -640,6 +752,7 @@ if(X2_MODULE_HAVE)
         src/native/crt_selftest.c
         src/recomp/x87crt.c
         src/native/kernel32.c
+        src/native/win_path.c
         src/native/advapi32.c
         src/native/ole32.c
         src/native/gdi32.c
@@ -661,9 +774,15 @@ if(X2_MODULE_HAVE)
         src/native/input_bindings.c
         src/native/cutscene_skip_publication.c
         src/native/cutscene_skip_probe.c
+        src/native/conversation_skip_policy.c
+        src/native/conversation_cutscene_skip.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
         src/native/dsound.c
+        src/audio/movie_audio.c
+        src/media/fmv_player.c
+        src/media/fmv_policy.c
+        src/media/fmv_timing.c
         src/native/guest_clock.c
         src/native/control.c
         src/native/control_png.c
@@ -680,6 +799,7 @@ if(X2_MODULE_HAVE)
         src/native/env_file.c
         src/native/startup.c
         src/native/movie.c
+        src/native/movie_image_layout.c
         src/native/options_menu.c
         src/native/reportbox.c
         src/native/security.c
@@ -721,7 +841,8 @@ if(X2_MODULE_HAVE)
     add_dependencies(x2native x2_shaders x2_pad_glyph_header)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
                                                 src/config src/presentation src/ui
-                                                src/input src/save
+                                                src/input src/save src/audio
+                                                src/media
                                               src/gpu src/d3d8
                                               src/oracle src/recomp/gen
                                               ${CMAKE_BINARY_DIR})
@@ -812,7 +933,8 @@ if(X2_MODULE_HAVE)
     # libm: the exe's x87 translations use atan2l/fmodl and friends.
     # -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
     # so that a guest stuck anywhere still gets a liveness line.
-    target_link_libraries(x2native PRIVATE ${X2_SDL} m pthread)
+    target_link_libraries(x2native PRIVATE ${X2_SDL} PkgConfig::X2_FFMPEG
+                                           m pthread)
     # No $ENV{} here: CMake would bake in whatever GAME_PC_DIR was at CONFIGURE
     # time, which is how this test first "failed" against an empty path. x2native
     # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,

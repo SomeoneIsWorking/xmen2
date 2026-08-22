@@ -64,7 +64,7 @@ int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out)
         return -1;
     }
     dir = opendir(directory);
-    if (!dir) return -1;
+    if (!dir) return errno == ENOENT ? 0 : -1;
     directory_fd = dirfd(dir);
     if (directory_fd < 0) {
         closedir(dir);

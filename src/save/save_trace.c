@@ -12,15 +12,15 @@ static const char *const POINT_NAME[SAVE_TRACE_POINT_COUNT] = {
     "load_0055fcd0",
     "load_004aed10",
     "load_0046e2b0",
-    "load_0049f150",
+    "load_0049f140",
     "save_004aeb80",
     "save_004b15b0",
     "save_004b1746",
     "save_004b177a",
     "save_mode_cycle",
     "map_00484ce0",
-    "zone_request",
-    "extraction_success_branch"
+    "lock_combat",
+    "extraction_save_command"
 };
 
 typedef struct {

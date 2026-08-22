@@ -155,7 +155,7 @@ void probe_leave(int idx, pr_u32 eax)
 
 static int patch_one(int i, const Probe *p, HMODULE mod)
 {
-    unsigned char *at = (unsigned char *)mod + (p->linked - 0x10000000u);
+    unsigned char *at = (unsigned char *)mod + (p->linked - p->image_base);
     unsigned char *tramp;
     DWORD old;
 
@@ -228,16 +228,18 @@ void probe_hook_install(const char *logdir)
         sprintf(env, "%s\\probe_stock.bin", logdir);
 
     for (i = 0; i < PROBE_COUNT; i++) {
-        char dll[64];
-        sprintf(dll, "%s.dll", g_probes[i].module);
-        mod = GetModuleHandleA(dll);
+        const Probe *probe = &g_probes[i];
+        size_t image_len = strlen(probe->image);
+        int is_executable = image_len >= 4
+            && _stricmp(probe->image + image_len - 4, ".exe") == 0;
+        mod = GetModuleHandleA(is_executable ? NULL : probe->image);
         if (!mod) {
             plog("probe: SKIP %s -- %s is not loaded in this process, so its "
-                 "address cannot be computed.\n", g_probes[i].name, dll);
+                 "address cannot be computed.\n", probe->name, probe->image);
             g_skipped++;
             continue;
         }
-        if (patch_one(i, &g_probes[i], mod)) g_installed++;
+        if (patch_one(i, probe, mod)) g_installed++;
         else g_skipped++;
     }
 
@@ -271,6 +273,20 @@ unsigned probe_hook_call_count(const char *name)
     if (!name) return 0;
     for (i = 0; i < PROBE_COUNT; i++)
         if (strcmp(g_probes[i].name, name) == 0) return g_calls[i];
+    return 0;
+}
+
+int probe_hook_call_active(const char *name)
+{
+    int i, pending;
+    if (!name) return 0;
+    for (i = 0; i < PROBE_COUNT; i++) {
+        if (strcmp(g_probes[i].name, name) != 0) continue;
+        pending = g_depth < PENDING_N ? g_depth : PENDING_N;
+        while (pending-- > 0)
+            if (g_pending[pending].idx == i) return 1;
+        return 0;
+    }
     return 0;
 }
 

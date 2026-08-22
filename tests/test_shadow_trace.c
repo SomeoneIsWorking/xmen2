@@ -21,15 +21,15 @@ static int file_contains(const char *path, const char *needle)
 static int ordinary_answer(void)
 {
     const char *path = "scratch/test-shadow-trace-off.jsonl";
-    ShadowProbeCounts zero = {0, 0, 0};
+    ShadowProbeCounts zero = {0};
     ShadowTrace trace;
     FILE *file = fopen(path, "w");
     if (!file) return 0;
     shadow_trace_init(&trace, file, 0, 64);
-    shadow_trace_control(&trace, 1, 0, 0);
+    shadow_trace_control(&trace, 1, 0, 0, 1);
     shadow_trace_default_targets(&trace, 0x1111, 0, 0x2222, 0);
     shadow_trace_present(&trace, 0, zero, 1);
-    shadow_trace_draw(&trace, 0, 4, 2);
+    shadow_trace_draw(&trace, 0, 4, 2, 0);
     shadow_trace_present(&trace, 0, zero, 0);
     shadow_trace_close(&trace, zero);
     fclose(file);
@@ -42,13 +42,14 @@ static int ordinary_answer(void)
         && file_contains(path, "\"kind\":\"default_render_target\"")
         && file_contains(path,
                          "\"original\":1,\"forced\":0,"
-                         "\"observed\":0,\"expected\":0");
+                         "\"observed\":0,\"expected\":0,"
+                         "\"forced_reads\":1");
 }
 
 static int single_shadow_answer(const char *path, ShadowProbeCounts calls,
                                 const char *answer)
 {
-    ShadowProbeCounts zero = {0, 0, 0};
+    ShadowProbeCounts zero = {0};
     ShadowTrace trace;
     FILE *file = fopen(path, "w");
     if (!file) return 0;
@@ -70,14 +71,17 @@ static int individual_shadow_answers(void)
                                 "\"path\":\"projective\"")
         && single_shadow_answer("scratch/test-shadow-trace-self.jsonl",
                                 (ShadowProbeCounts){0, 0, 1},
-                                "\"path\":\"self\"");
+                                "\"path\":\"self\"")
+        && single_shadow_answer("scratch/test-shadow-trace-title.jsonl",
+                                (ShadowProbeCounts){0, 0, 0, 1, 2},
+                                "\"path\":\"title-floor-decal\"");
 }
 
 static int shadow_answers_and_routes(void)
 {
     const char *path = "scratch/test-shadow-trace-on.jsonl";
-    ShadowProbeCounts begin = {5, 7, 11};
-    ShadowProbeCounts end = {6, 9, 14};
+    ShadowProbeCounts begin = {5, 7, 11, 13, 17};
+    ShadowProbeCounts end = {6, 9, 14, 14, 19};
     ShadowTrace trace;
     float matrix[16] = {
         1, 0, 0, 0, 0, 1, 0, 0,
@@ -101,12 +105,17 @@ static int shadow_answers_and_routes(void)
     shadow_trace_set_pixel_shader(&trace, 3);
     shadow_trace_clear(&trace, 1, clear_rect, 7, 0x80402010u,
                        0.75f, 9, 0);
-    shadow_trace_draw(&trace, 1, 4, 12);
+    shadow_trace_draw(&trace, 1, 4, 12, 1);
     shadow_trace_present(&trace, 1, end, 0);
     shadow_trace_close(&trace, end);
     fclose(file);
     return file_contains(path,
-                         "\"path\":\"planar+projective+self\"")
+                         "\"path\":\"planar+projective+self+title-floor-decal\"")
+        && file_contains(path,
+                         "\"title_shadow_calls\":{\"manager\":1,"
+                         "\"floor_decal\":2}")
+        && file_contains(path, "\"custom_geometry_draws\":1")
+        && file_contains(path, "\"custom_geometry_active\":1")
         && file_contains(path, "\"create_texture\":1")
         && file_contains(path, "\"get_surface_level\":1")
         && file_contains(path, "\"event\":\"set_transform\"")
@@ -120,7 +129,7 @@ static int shadow_answers_and_routes(void)
 static int refusals_and_bound(void)
 {
     const char *path = "scratch/test-shadow-trace-refusal.jsonl";
-    ShadowProbeCounts zero = {0, 0, 0};
+    ShadowProbeCounts zero = {0};
     ShadowTrace trace;
     FILE *file = fopen(path, "w");
     if (!file) return 0;
@@ -131,7 +140,7 @@ static int refusals_and_bound(void)
     shadow_trace_set_render_state(&trace, 47, 1);
     shadow_trace_set_render_state(&trace, 52, 1);
     shadow_trace_texture_hook_failure(&trace);
-    shadow_trace_draw(&trace, 0, 4, 1);
+    shadow_trace_draw(&trace, 0, 4, 1, 0);
     shadow_trace_present(&trace, 1, zero, 0);
     shadow_trace_close(&trace, zero);
     fclose(file);
@@ -194,7 +203,7 @@ int main(void)
         fprintf(stderr, "shadow trace: wrong executable anchor was accepted\n");
         return 1;
     }
-    puts("shadow trace: none/planar/projective/self paths, resource route, "
+    puts("shadow trace: engine/title floor-shadow paths, resource route, "
          "control/build refusals and event bound proved");
     return 0;
 }

@@ -8,8 +8,8 @@
 
 #include "probe_rec.h"
 
-#define PROBE_MANIFEST_HASH 0x4ea6aa8au
-#define PROBE_COUNT 13
+#define PROBE_MANIFEST_HASH 0x9b19bcd5u
+#define PROBE_COUNT 16
 
 /* Gap::Math::igQuaternionf::slerp
    Spherical interpolation between animation keyframes. A slerp that loses normalisation is the shortest path from correct keyframes to a non-rigid bone matrix (issue #80). */
@@ -115,25 +115,47 @@ static const ProbeField pf_1003eaf0[] = {
 };
 static const pr_u8 pe_1003eaf0[] = { 0x8b, 0x44, 0x24, 0x04, 0x8b, 0x4c, 0x24, 0x08 };
 
+/* FUN_004b64e0
+   CShadowMgr's title-specific render loop. It walks at most 32 active entries and selects the procedural floor shadow or selection/status-ring helpers from each entry's flags. */
+static const ProbeField pf_004b64e0[] = {
+};
+static const pr_u8 pe_004b64e0[] = { 0x83, 0xec, 0x78, 0x53, 0x55 };
+
+/* FUN_004b5700
+   CShadowMgr's flag-bit-0 floor-shadow emitter. The only direct call is from FUN_004b64e0; it emits six oriented black-alpha floor-decal vertices for one manager entry. */
+static const ProbeField pf_004b5700[] = {
+    { PROBE_WHEN_IN, PROBE_SRC_STACK, PROBE_KIND_DWORD, 0, 4, 4, "entry_index" },
+};
+static const pr_u8 pe_004b5700[] = { 0x8b, 0x44, 0x24, 0x08, 0x81, 0xec, 0x20, 0x01, 0x00, 0x00 };
+
+/* FUN_006024f0
+   The synchronous title geometry traversal enclosing CShadowMgr's callback and the following igCommonTraverseGeometry submission. D3D draws while this call is active belong to the combined custom-geometry batch; nested FUN_004b5700 counts identify whether that batch included floor shadows. */
+static const ProbeField pf_006024f0[] = {
+};
+static const pr_u8 pe_006024f0[] = { 0xa1, 0x4c, 0x7c, 0xa3, 0x00 };
+
 static const Probe g_probes[PROBE_COUNT] = {
-    { 0, "Gap::Math::igQuaternionf::slerp", "libIGMath", 0x1001d730u, 7, 4, pf_1001d730, pe_1001d730 },
-    { 1, "Gap::Math::igQuaternionf::lerp", "libIGMath", 0x1001da00u, 7, 4, pf_1001da00, pe_1001da00 },
-    { 2, "Gap::Math::igQuaternionf::normalize", "libIGMath", 0x10007600u, 6, 2, pf_10007600, pe_10007600 },
-    { 3, "Gap::Math::igQuaternionf::getMatrix", "libIGMath", 0x1001d470u, 5, 2, pf_1001d470, pe_1001d470 },
-    { 4, "Gap::Math::igQuaternionf::multiply", "libIGMath", 0x1001db20u, 7, 3, pf_1001db20, pe_1001db20 },
-    { 5, "Gap::Math::igMatrix44f::multiplyAligned", "libIGMath", 0x10008a60u, 8, 3, pf_10008a60, pe_10008a60 },
-    { 6, "Gap::Math::igMatrix44f::setQuaternion", "libIGMath", 0x1001a7f0u, 7, 2, pf_1001a7f0, pe_1001a7f0 },
-    { 7, "Gap::Sg::igActor::getBlendMatrix", "libIGSg", 0x100184b0u, 5, 2, pf_100184b0, pe_100184b0 },
-    { 8, "Gap::Sg::igActor::getBoneMatrix", "libIGSg", 0x10018470u, 5, 2, pf_10018470, pe_10018470 },
-    { 9, "Gap::Sg::igAnimationCombiner::getBlendMatrix", "libIGSg", 0x10016370u, 7, 2, pf_10016370, pe_10016370 },
-    { 10, "Gap::Sg::igPlanarShadowShader::shade", "libIGSg", 0x10057960u, 8, 0, pf_10057960, pe_10057960 },
-    { 11, "Gap::Sg::igProjectiveShadowShader::shade", "libIGSg", 0x10059b70u, 7, 0, pf_10059b70, pe_10059b70 },
-    { 12, "Gap::Sg::igCommonTraverseSelfShadowShader", "libIGSg", 0x1003eaf0u, 8, 0, pf_1003eaf0, pe_1003eaf0 },
+    { 0, "Gap::Math::igQuaternionf::slerp", "libIGMath", "libIGMath.dll", 0x10000000u, 0x1001d730u, 7, 4, pf_1001d730, pe_1001d730 },
+    { 1, "Gap::Math::igQuaternionf::lerp", "libIGMath", "libIGMath.dll", 0x10000000u, 0x1001da00u, 7, 4, pf_1001da00, pe_1001da00 },
+    { 2, "Gap::Math::igQuaternionf::normalize", "libIGMath", "libIGMath.dll", 0x10000000u, 0x10007600u, 6, 2, pf_10007600, pe_10007600 },
+    { 3, "Gap::Math::igQuaternionf::getMatrix", "libIGMath", "libIGMath.dll", 0x10000000u, 0x1001d470u, 5, 2, pf_1001d470, pe_1001d470 },
+    { 4, "Gap::Math::igQuaternionf::multiply", "libIGMath", "libIGMath.dll", 0x10000000u, 0x1001db20u, 7, 3, pf_1001db20, pe_1001db20 },
+    { 5, "Gap::Math::igMatrix44f::multiplyAligned", "libIGMath", "libIGMath.dll", 0x10000000u, 0x10008a60u, 8, 3, pf_10008a60, pe_10008a60 },
+    { 6, "Gap::Math::igMatrix44f::setQuaternion", "libIGMath", "libIGMath.dll", 0x10000000u, 0x1001a7f0u, 7, 2, pf_1001a7f0, pe_1001a7f0 },
+    { 7, "Gap::Sg::igActor::getBlendMatrix", "libIGSg", "libIGSg.dll", 0x10000000u, 0x100184b0u, 5, 2, pf_100184b0, pe_100184b0 },
+    { 8, "Gap::Sg::igActor::getBoneMatrix", "libIGSg", "libIGSg.dll", 0x10000000u, 0x10018470u, 5, 2, pf_10018470, pe_10018470 },
+    { 9, "Gap::Sg::igAnimationCombiner::getBlendMatrix", "libIGSg", "libIGSg.dll", 0x10000000u, 0x10016370u, 7, 2, pf_10016370, pe_10016370 },
+    { 10, "Gap::Sg::igPlanarShadowShader::shade", "libIGSg", "libIGSg.dll", 0x10000000u, 0x10057960u, 8, 0, pf_10057960, pe_10057960 },
+    { 11, "Gap::Sg::igProjectiveShadowShader::shade", "libIGSg", "libIGSg.dll", 0x10000000u, 0x10059b70u, 7, 0, pf_10059b70, pe_10059b70 },
+    { 12, "Gap::Sg::igCommonTraverseSelfShadowShader", "libIGSg", "libIGSg.dll", 0x10000000u, 0x1003eaf0u, 8, 0, pf_1003eaf0, pe_1003eaf0 },
+    { 13, "FUN_004b64e0", "XMen2", "XMen2.exe", 0x00400000u, 0x004b64e0u, 5, 0, pf_004b64e0, pe_004b64e0 },
+    { 14, "FUN_004b5700", "XMen2", "XMen2.exe", 0x00400000u, 0x004b5700u, 10, 1, pf_004b5700, pe_004b5700 },
+    { 15, "FUN_006024f0", "XMen2", "XMen2.exe", 0x00400000u, 0x006024f0u, 5, 0, pf_006024f0, pe_006024f0 },
 };
 
 /* Frame shape, for the stock-side stub only: how many bytes of
    arguments to re-push, and who cleans them. */
-static const pr_u16 g_probe_argbytes[PROBE_COUNT] = { 12, 12, 0, 4, 8, 8, 4, 4, 4, 4, 4, 4, 8 };
-static const pr_u8 g_probe_callee_cleans[PROBE_COUNT] = { 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 };
+static const pr_u16 g_probe_argbytes[PROBE_COUNT] = { 12, 12, 0, 4, 8, 8, 4, 4, 4, 4, 4, 4, 8, 12, 12, 8 };
+static const pr_u8 g_probe_callee_cleans[PROBE_COUNT] = { 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0 };
 
 #endif /* PROBE_TABLE_H */

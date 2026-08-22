@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "boot_mode.h"
+
 #define X2_SETTINGS_PLAYERS 4u
 #define X2_SETTINGS_KEYBOARD_PROFILES 4u
 #define X2_SETTINGS_ROWS 42u
@@ -30,6 +32,7 @@ typedef struct {
     unsigned width;
     unsigned height;
     X2WindowMode window_mode;
+    X2BootMode boot_mode;
     /* Device-assignment grid: each row has one owner or is unassigned. The
        helpers enforce at most one keyboard profile and controller per player. */
     int8_t keyboard_player[X2_SETTINGS_KEYBOARD_PROFILES];

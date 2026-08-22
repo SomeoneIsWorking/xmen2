@@ -18,12 +18,18 @@ int main(void)
     x2_settings_defaults(&saved);
     CHECK(saved.width == 1280 && saved.height == 720);
     CHECK(saved.window_mode == X2_WINDOW_WINDOWED);
+    CHECK(saved.boot_mode == X2_BOOT_NORMAL);
+    CHECK(strcmp(x2_boot_mode_label(saved.boot_mode), "Boot normally") == 0);
+    CHECK(x2_boot_mode_parse("menu", &saved.boot_mode));
+    CHECK(saved.boot_mode == X2_BOOT_MENU);
+    CHECK(!x2_boot_mode_parse("new-game", &saved.boot_mode));
     CHECK(x2_settings_player_keyboard(&saved, 0) == 0);
     CHECK(x2_settings_player_keyboard(&saved, 1) == -1);
 
     saved.width = 1920;
     saved.height = 1080;
     saved.window_mode = X2_WINDOW_BORDERLESS;
+    saved.boot_mode = X2_BOOT_CONTINUE;
     CHECK(x2_settings_assign_keyboard(&saved, 2, 0));
     CHECK(x2_settings_player_keyboard(&saved, 0) == 2);
     CHECK(saved.keyboard_player[0] == X2_SETTINGS_UNASSIGNED);
