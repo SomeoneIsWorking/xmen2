@@ -13,8 +13,9 @@ struct SDL_Window;
 extern "C" {
 #endif
 
-/* F1 toggles the settings document. Returns non-zero when the UI consumed an
-   event and the guest input layer must not act on it. */
+/* The retail Options commands show the settings document; F1 remains a direct
+   toggle. Returns non-zero when the UI consumed an event and the guest input
+   layer must not act on it. */
 int x2_ui_handle_event(union SDL_Event *event);
 int x2_ui_captures_input(void);
 

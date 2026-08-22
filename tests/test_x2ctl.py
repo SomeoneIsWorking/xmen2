@@ -76,6 +76,13 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(b"bindings table")
+        elif url.path == "/save":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(
+                b"save-trace enabled=1 attempts=2 recorded=2 retained=2/64\n"
+            )
         else:
             self.send_response(404)
             self.end_headers()
@@ -129,6 +136,10 @@ class TestX2ctl(unittest.TestCase):
 
     def test_cmd_input(self):
         rc = x2ctl.cmd_input(argparse.Namespace(port=self.port, controller=0))
+        self.assertEqual(rc, 0)
+
+    def test_cmd_save(self):
+        rc = x2ctl.cmd_save(argparse.Namespace(port=self.port))
         self.assertEqual(rc, 0)
 
     def test_cmd_probe_collects_bundle(self):

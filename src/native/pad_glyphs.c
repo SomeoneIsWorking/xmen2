@@ -23,14 +23,14 @@
  * FUN_0061b030 puts its own hardcoded menu keys -- row 4 slot 2 is DIK Return
  * -- so the keyboard always wins and a dialog reads "[ENTER]" with a pad in
  * hand. So a second override sits on FUN_006294b0: while an Xbox-family pad is
- * connected, a row that HAS a pad binding is named by it whatever slot it sits
- * in, and everything else super-calls.
+ * the assigned pad is the player's active source, a row that HAS its binding
+ * is named by it whatever slot it sits in; keyboard-active hotswap super-calls.
  *
  * That is a deliberate change of behaviour rather than a faithful one, and it
- * is the behaviour the feature is for: a prompt should name the device you are
- * holding. It is confined to the label -- FUN_006294b0 has four call sites and
+ * is the behaviour the feature is for: a prompt names the last device used by
+ * that player. It is confined to the label -- FUN_006294b0 has four call sites and
  * all four are inside FUN_00619e30 -- so no input path is affected, and with
- * no pad connected the original order is untouched.
+ * no active assigned pad the original order is untouched.
  */
 #include "pad_glyphs.h"
 
@@ -38,6 +38,7 @@
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_pack.h"
 #include "prompt_labels.h"
+#include "player_input.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -170,7 +171,7 @@ static int row_pad_binding(uint32_t object, uint32_t row, uint32_t *kind,
     for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
         if (!input_bindings_read(object, row, slot, &k, &c)) continue;
         if (k < 3u || k > 0xcu) continue;
-        if (!dinput_pad_uses_xbox_glyphs((int)k - 3)) continue;
+        if (!x2_player_input_pad_is_active_source((int)k - 3)) continue;
         *kind = k;
         *code = c;
         return 1;

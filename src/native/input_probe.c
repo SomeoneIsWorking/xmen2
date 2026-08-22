@@ -15,11 +15,13 @@
  * where it is instead of being guessed at from a log afterwards.
  */
 #include "input_probe.h"
-
+#include "binding_rows.h"
+#include "cutscene_skip_probe.h"
 #include "input_bindings.h"
 #include "dinput_pad.h"
 #include "gpu_device.h"
 #include "guest_clock.h"
+#include "input_probe_lifecycle.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -212,6 +214,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
 
     put(out, n, &at, "input probe -- frame %lu, guest %.2fs\n",
         gpu_frames_presented(), guest_clock_elapsed_s());
+    at += x2_input_probe_lifecycle_report(out + at, n - at);
 
     object = input_bindings_object_at(controller, why, (int)sizeof why);
     if (!object) {
@@ -233,6 +236,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
     }
 
     manager = base ? thiscall(cpu, base + INPUT_MGR_RVA, 0u, 0, NULL) : 0u;
+    at += cutscene_skip_probe_report(cpu, controller, manager, out + at, n - at);
 
     put(out, n, &at, "controller %u binding table 0x%08x -- %u rows x %u "
                      "slots%s\n\n",
@@ -268,7 +272,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
         }
         resolved++;
         row = (uint32_t)r;
-        name = input_binding_row_name(row);
+        name = input_binding_row_storage_key(row);
         for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
             uint32_t kind = 0, code = 0;
             if (!input_bindings_read(object, row, slot, &kind, &code))
@@ -580,10 +584,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
             live, INPUT_CONTROLLERS);
     }
 
-    /* The HOST half, printed beside the game half on purpose. "DirectInput
-       reports button 0 down" and "no action reads DOWN" is the one pair of
-       readings that names the binding layer as the fault, and it is unreadable
-       if the two come from different reports minutes apart. */
+    /* Print host beside guest so the binding boundary is attributable. */
     {
         int pad, pads = 0;
         for (pad = 0; pad < DINPUT_PAD_MAX; pad++) {

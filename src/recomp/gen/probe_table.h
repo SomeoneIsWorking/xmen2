@@ -8,8 +8,8 @@
 
 #include "probe_rec.h"
 
-#define PROBE_MANIFEST_HASH 0xa1f89473u
-#define PROBE_COUNT 10
+#define PROBE_MANIFEST_HASH 0x4ea6aa8au
+#define PROBE_COUNT 13
 
 /* Gap::Math::igQuaternionf::slerp
    Spherical interpolation between animation keyframes. A slerp that loses normalisation is the shortest path from correct keyframes to a non-rigid bone matrix (issue #80). */
@@ -97,6 +97,24 @@ static const ProbeField pf_10016370[] = {
 };
 static const pr_u8 pe_10016370[] = { 0x8b, 0x44, 0x24, 0x04, 0x8b, 0x51, 0x58 };
 
+/* Gap::Sg::igPlanarShadowShader::shade
+   The top-level planar-shadow pass. Its call count distinguishes the engine's real projected-geometry path from projective texture and self-shadow paths without inferring from pixels. */
+static const ProbeField pf_10057960[] = {
+};
+static const pr_u8 pe_10057960[] = { 0x83, 0xec, 0x44, 0x55, 0x8b, 0x6c, 0x24, 0x4c };
+
+/* Gap::Sg::igProjectiveShadowShader::shade
+   The top-level projective-shadow pass. Resource and D3D8 state tracing around this count reveals whether the engine chose render-destination, copy-back, or alpha-blend machinery. */
+static const ProbeField pf_10059b70[] = {
+};
+static const pr_u8 pe_10059b70[] = { 0x56, 0x8b, 0xf1, 0x57, 0x8b, 0x46, 0x68 };
+
+/* Gap::Sg::igCommonTraverseSelfShadowShader
+   The top-level self-shadow traversal callback. Counting the traversal rather than only dispatchCasters avoids a false negative when a frame reuses an existing depth map without resubmitting casters. */
+static const ProbeField pf_1003eaf0[] = {
+};
+static const pr_u8 pe_1003eaf0[] = { 0x8b, 0x44, 0x24, 0x04, 0x8b, 0x4c, 0x24, 0x08 };
+
 static const Probe g_probes[PROBE_COUNT] = {
     { 0, "Gap::Math::igQuaternionf::slerp", "libIGMath", 0x1001d730u, 7, 4, pf_1001d730, pe_1001d730 },
     { 1, "Gap::Math::igQuaternionf::lerp", "libIGMath", 0x1001da00u, 7, 4, pf_1001da00, pe_1001da00 },
@@ -108,11 +126,14 @@ static const Probe g_probes[PROBE_COUNT] = {
     { 7, "Gap::Sg::igActor::getBlendMatrix", "libIGSg", 0x100184b0u, 5, 2, pf_100184b0, pe_100184b0 },
     { 8, "Gap::Sg::igActor::getBoneMatrix", "libIGSg", 0x10018470u, 5, 2, pf_10018470, pe_10018470 },
     { 9, "Gap::Sg::igAnimationCombiner::getBlendMatrix", "libIGSg", 0x10016370u, 7, 2, pf_10016370, pe_10016370 },
+    { 10, "Gap::Sg::igPlanarShadowShader::shade", "libIGSg", 0x10057960u, 8, 0, pf_10057960, pe_10057960 },
+    { 11, "Gap::Sg::igProjectiveShadowShader::shade", "libIGSg", 0x10059b70u, 7, 0, pf_10059b70, pe_10059b70 },
+    { 12, "Gap::Sg::igCommonTraverseSelfShadowShader", "libIGSg", 0x1003eaf0u, 8, 0, pf_1003eaf0, pe_1003eaf0 },
 };
 
 /* Frame shape, for the stock-side stub only: how many bytes of
    arguments to re-push, and who cleans them. */
-static const pr_u16 g_probe_argbytes[PROBE_COUNT] = { 12, 12, 0, 4, 8, 8, 4, 4, 4, 4 };
-static const pr_u8 g_probe_callee_cleans[PROBE_COUNT] = { 1, 1, 0, 1, 1, 1, 1, 1, 1, 1 };
+static const pr_u16 g_probe_argbytes[PROBE_COUNT] = { 12, 12, 0, 4, 8, 8, 4, 4, 4, 4, 4, 4, 8 };
+static const pr_u8 g_probe_callee_cleans[PROBE_COUNT] = { 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 };
 
 #endif /* PROBE_TABLE_H */

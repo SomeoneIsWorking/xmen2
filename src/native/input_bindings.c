@@ -3,13 +3,14 @@
  * set sits on.
  *
  * This file owns the ABI and nothing else: where the table is, how a row and
- * slot are addressed, what each row is called, and which row an action id
- * resolves to. The Xbox default layout, the on-screen prompts and the live
- * probe all read it from here rather than each carrying its own copy of the
- * arithmetic.
+ * slot are addressed, and which row an action id resolves to. Row identity
+ * and presentation metadata live in src/input/binding_rows.c; the Xbox default
+ * layout, on-screen prompts and live probe read this ABI rather than carrying
+ * copies of its arithmetic.
  */
 #include "input_bindings.h"
 
+#include "input_binding_sets.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -20,35 +21,6 @@
 #define BINDINGS_OFFSET  0x18u        /* the binding object inside it        */
 #define SET_BINDING_RVA  0x002297a0u  /* FUN_006297a0(row, slot, kind, code) */
 #define ROW_OF_ACTION_RVA 0x00219c40u /* FUN_00619c40(action) -> row         */
-
-/*
- * The 42 row names, read out of FUN_0061b030's own name array (the strings it
- * formats into `Controls\Player%d\%s1`). They are the game's spelling, typo
- * included -- "SreenGrab" is what the binary says, and correcting it here
- * would silently stop matching the registry key the game writes.
- *
- * tools/binding_rows.py re-extracts this list from the shipped exe and
- * tests/test_input_bindings.c diffs the two, so this table cannot drift away
- * from the measurement it came from without a test failing.
- */
-static const char *const ROW_NAMES[INPUT_BINDING_ROWS] = {
-    "Forward", "Backward", "MoveLeft", "MoveRight",
-    "LowAttack", "HighAttack", "Jump", "Guard",
-    "Power", "Ally", "TargetLock", "Solo",
-    "NextHero", "PreviousHero", "DecreaseHeroAggr", "IncreaseHeroAggr",
-    "MapToggle", "Pause", "Stats",
-    "CameraUp", "CameraDown", "CameraLeft", "CameraRight",
-    "SreenGrab", "Talk", "Walk", "SwtHero", "AttackObject", "RotateCamera",
-    "BindPower", "UseQuickPower",
-    "QuickPower01", "QuickPower02", "QuickPower03", "QuickPower04",
-    "QuickPower05", "QuickPower06", "QuickPower07", "QuickPower08",
-    "QuickPower09", "QuickPower10", "QuickPower11"
-};
-
-const char *input_binding_row_name(uint32_t row)
-{
-    return row < INPUT_BINDING_ROWS ? ROW_NAMES[row] : NULL;
-}
 
 static uint32_t exe_base(void)
 {
@@ -142,25 +114,33 @@ void input_bindings_write(CPU *cpu, uint32_t object, uint32_t row,
     x86_guest_call_args(&call, base + SET_BINDING_RVA, 16u);
 }
 
+typedef struct {
+    CPU *cpu;
+    uint32_t row, slot, kind, code;
+    unsigned done;
+} PlayerBindingWrite;
+
+static void write_player_set(uint32_t controller, void *context)
+{
+    PlayerBindingWrite *write = context;
+    char why[192];
+    uint32_t object = input_bindings_object_at(controller, why,
+                                               (int)sizeof why);
+    if (!object) return;
+    input_bindings_write(write->cpu, object, write->row, write->slot,
+                         write->kind, write->code);
+    write->done++;
+}
+
 unsigned input_bindings_write_player(CPU *cpu, uint32_t player, uint32_t row,
                                      uint32_t slot, uint32_t kind,
                                      uint32_t code)
 {
-    static const uint32_t BANK[INPUT_BINDING_SETS] = {
-        INPUT_SET_MASTER, INPUT_SET_WORKING, INPUT_SET_MENU
-    };
-    unsigned i, done = 0;
-    char why[192];
+    PlayerBindingWrite write = {cpu, row, slot, kind, code, 0};
 
     if (player >= INPUT_PLAYERS) return 0;
-    for (i = 0; i < INPUT_BINDING_SETS; i++) {
-        uint32_t object = input_bindings_object_at(BANK[i] + player, why,
-                                                   (int)sizeof why);
-        if (!object) continue;
-        input_bindings_write(cpu, object, row, slot, kind, code);
-        done++;
-    }
-    return done;
+    input_binding_sets_for_player(player, write_player_set, &write);
+    return write.done;
 }
 
 int input_binding_row_of_action(CPU *cpu, uint32_t action)

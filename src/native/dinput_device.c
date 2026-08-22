@@ -35,6 +35,7 @@
 #include "guest_heap.h"
 #include "dinput_device.h"
 #include "dinput_device_internal.h"
+#include "dinput_device_registry.h"
 #include "dinput_joystick.h"
 #include "dinput_pad.h"
 #include "dinput_system.h"
@@ -93,18 +94,11 @@ static const char *const VT_NAME[VT_COUNT] = {
 
 typedef DInputDevice Device;
 
-/* Four pads plus the keyboard and the mouse. The game supports four players
-   and creates one device each. */
-#define MAX_DEVICES 8
-static Device g_dev[MAX_DEVICES];
-static int g_ndev;
 static uint32_t g_vtable;
 
 static Device *dev_of(uint32_t guest)
 {
-    int i;
-    for (i = 0; i < g_ndev; i++) if (g_dev[i].guest == guest) return &g_dev[i];
-    return NULL;
+    return dinput_device_registry_find(guest);
 }
 
 static const char *kind_name(DInputDeviceKind k)
@@ -112,6 +106,11 @@ static const char *kind_name(DInputDeviceKind k)
     return k == DINPUT_DEV_KEYBOARD ? "keyboard"
          : k == DINPUT_DEV_MOUSE    ? "mouse"
          : k == DINPUT_DEV_JOYSTICK ? "gamepad" : "(unknown)";
+}
+
+static int pad_of(Device *device)
+{
+    return dinput_device_pad(device);
 }
 
 /* State translation and joystick metadata have focused module owners. */
@@ -130,7 +129,7 @@ static void m_EnumObjects(CPU *C)
         ret_com(C, S_OK, 3);
         return;
     }
-    ret_com(C, dinput_joystick_enum_objects(C, d->pad, callback, context,
+    ret_com(C, dinput_joystick_enum_objects(C, pad_of(d), callback, context,
                                             filter), 3);
 }
 
@@ -206,7 +205,7 @@ static void m_Acquire(CPU *C)
     Device *d = dev_of(THIS);
     if (!d) { ret_com(C, DIERR_INVALIDPARAM, 0); return; }
     d->n_acquire++;
-    if (d->kind == DINPUT_DEV_JOYSTICK && dinput_pad_name(d->pad) == NULL) {
+    if (d->kind == DINPUT_DEV_JOYSTICK && pad_of(d) < 0) {
         /* Acquiring a pad that is not plugged in must FAIL. Succeeding would
            make the next Poll the thing that fails instead, and the game would
            alternate between the two for the rest of the run believing it had
@@ -278,7 +277,7 @@ static void m_GetCapabilities(CPU *C)
            caller that switches on it. */
         WR32(caps + 8u, 0x00000115u);
         WR32(caps + 12u, 6);                     /* axes */
-        WR32(caps + 16u, (uint32_t)dinput_pad_button_count(d->pad));
+        WR32(caps + 16u, (uint32_t)dinput_pad_button_count(pad_of(d)));
         WR32(caps + 20u, 1);                     /* one POV: the d-pad */
         ret_com(C, S_OK, 1);
         return;
@@ -319,7 +318,7 @@ static void m_SetProperty(CPU *C)
             if (!d->range_set || d->axis_lo != lo || d->axis_hi != hi)
                 fprintf(stderr, "DINPUT8: gamepad %d axis range set to "
                                 "[%d, %d] by the game; every axis it reads is "
-                                "scaled into that.\n", d->pad, lo, hi);
+                                "scaled into that.\n", pad_of(d), lo, hi);
             d->axis_lo = lo;
             d->axis_hi = hi;
             d->range_set = 1;
@@ -367,7 +366,7 @@ static void m_Poll(CPU *C)
     Device *d = dev_of(THIS);
     if (!d) { ret_com(C, DIERR_INVALIDPARAM, 0); return; }
     d->n_poll++;
-    if (d->kind == DINPUT_DEV_JOYSTICK && dinput_pad_name(d->pad) == NULL) {
+    if (d->kind == DINPUT_DEV_JOYSTICK && pad_of(d) < 0) {
         d->acquired = 0;
         ret_com(C, DIERR_INPUTLOST, 0);      /* unplugged; see GetDeviceState */
         return;
@@ -428,62 +427,62 @@ static void build_vtable(void)
                                  (void *)VT_NAME[k]));
 }
 
-static uint32_t device_alloc(DInputDeviceKind kind, int pad);
+static uint32_t device_alloc(DInputDeviceKind kind,
+                             const unsigned char pad_guid[16]);
 
 uint32_t dinput_device_new(DInputDeviceKind kind)
 {
-    int i;
+    Device *device;
 
     /* One object per kind, for the whole process: the game creates the system
        keyboard once and caches it, and handing out a second would give the two
        holders different acquire states. Joysticks are the exception and go
        through dinput_device_new_pad -- there the whole point is one object per
        pad, and collapsing them would give four players one controller. */
-    for (i = 0; i < g_ndev; i++)
-        if (g_dev[i].kind == kind && kind != DINPUT_DEV_JOYSTICK) {
-            g_dev[i].refs++;
-            return g_dev[i].guest;
-        }
-    return device_alloc(kind, -1);
+    device = dinput_device_registry_find_system(kind);
+    if (device) { device->refs++; return device->guest; }
+    return device_alloc(kind, NULL);
 }
 
-/* One IDirectInputDevice8 per PAD. The game creates one per player and keeps
-   them in a ten-slot table keyed on the instance GUID, so two calls for the
-   same pad must hand back the same object. */
-uint32_t dinput_device_new_pad(int pad)
+/* One IDirectInputDevice8 per live instance GUID. The game creates one per
+   player and keeps them in a ten-slot table keyed on that GUID, so two calls
+   for the same instance share acquire state. A later device in the same host
+   inventory slot gets a new object and cannot revive the disconnected one. */
+uint32_t dinput_device_new_pad(const unsigned char guid[16])
 {
-    int i;
-    for (i = 0; i < g_ndev; i++)
-        if (g_dev[i].kind == DINPUT_DEV_JOYSTICK && g_dev[i].pad == pad) {
-            g_dev[i].refs++;
-            return g_dev[i].guest;
-        }
-    return device_alloc(DINPUT_DEV_JOYSTICK, pad);
+    Device *device;
+    if (!guid || dinput_pad_for_guid(guid) < 0) return 0;
+    device = dinput_device_registry_find_controller(guid);
+    if (device) { device->refs++; return device->guest; }
+    return device_alloc(DINPUT_DEV_JOYSTICK, guid);
 }
 
-static uint32_t device_alloc(DInputDeviceKind kind, int pad)
+static uint32_t device_alloc(DInputDeviceKind kind,
+                             const unsigned char pad_guid[16])
 {
     Device *d;
     uint32_t obj;
-    if (g_ndev == MAX_DEVICES) {
-        fprintf(stderr, "DINPUT8: no room for another device\n");
-        return 0;
-    }
     build_vtable();
     obj = guest_malloc(8u);
     if (!obj) { fprintf(stderr, "DINPUT8: no guest memory for a device\n"); return 0; }
     WR32(obj + 0u, g_vtable);
     WR32(obj + 4u, 0);
-    d = &g_dev[g_ndev++];
+    d = dinput_device_registry_append();
+    if (!d) {
+        fprintf(stderr, "DINPUT8: no host memory for another device\n");
+        return 0;
+    }
     memset(d, 0, sizeof *d);
     d->kind = kind;
     d->guest = obj;
     d->refs = 1;
-    d->pad = pad;
     /* DirectInput's own default range until the game sets its own. */
     d->axis_lo = 0;
     d->axis_hi = 65535;
     if (kind == DINPUT_DEV_JOYSTICK) {
+        int pad;
+        x2_controller_instance_bind(&d->controller, pad_guid);
+        pad = pad_of(d);
         fprintf(stderr, "DINPUT8: a native gamepad device at 0x%08x for pad %d "
                         "(\"%s\")\n", obj, pad,
                 dinput_pad_name(pad) ? dinput_pad_name(pad) : "?");
@@ -502,20 +501,22 @@ void dinput_device_report(void)
     static int done;                 /* see dinput_pad_report */
     int i;
     if (done++) return;
-    if (!g_ndev) {
+    if (!dinput_device_registry_count()) {
         printf("  dinput devices: none was ever created.\n");
         return;
     }
     printf("  dinput devices:\n");
-    for (i = 0; i < g_ndev; i++)
+    for (i = 0; i < (int)dinput_device_registry_count(); i++) {
+        Device *device = dinput_device_registry_at((size_t)i);
         printf("        %-9s %u byte state, %s, %lu state read(s), %lu Poll(s),"
                " %lu Acquire(s)%s\n",
-               kind_name(g_dev[i].kind), g_dev[i].data_size,
-               g_dev[i].acquired ? "acquired" : "NOT acquired",
-               g_dev[i].polls, g_dev[i].n_poll, g_dev[i].n_acquire,
-               (!g_dev[i].polls && !g_dev[i].n_poll && !g_dev[i].n_acquire)
+               kind_name(device->kind), device->data_size,
+               device->acquired ? "acquired" : "NOT acquired",
+               device->polls, device->n_poll, device->n_acquire,
+               (!device->polls && !device->n_poll && !device->n_acquire)
                    ? "  -- the game never touched this device after creating it"
                    : "");
+    }
     if (dinput_system_blind_reads())
         printf("        %lu of those read a device with no SDL video "
                "subsystem up, and reported nothing pressed.\n",

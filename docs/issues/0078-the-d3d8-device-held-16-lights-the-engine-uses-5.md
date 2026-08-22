@@ -10,7 +10,7 @@ updated: 2026-08-15
 
 ## What was measured
 
-A logging `d3d8.dll` (`tools/proxy_d3d8`, staged by `tools/build_stocklog.sh`) was put in front of the STOCK game under Wine and the game was driven into gameplay by hand. 924,858 calls logged.
+A logging `d3d8.dll` (`tools/proxy_d3d8`, staged by `tools/build_stocklog.py`) was put in front of the STOCK game under Wine and the game was driven into gameplay by hand. 924,858 calls logged.
 
 | | control (original engine) | port |
 |---|---|---|

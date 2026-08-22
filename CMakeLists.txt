@@ -47,17 +47,57 @@ target_compile_definitions(test_settings PRIVATE
     X2_TEST_SETTINGS_PATH="${CMAKE_BINARY_DIR}/test-x2native.conf")
 add_test(NAME settings COMMAND test_settings)
 
+add_executable(test_joystick_neutral tests/test_joystick_neutral.c
+               src/input/joystick_neutral.c)
+target_include_directories(test_joystick_neutral PRIVATE src/input)
+add_test(NAME joystick_neutral COMMAND test_joystick_neutral)
+
+add_executable(test_aspect_fit tests/test_aspect_fit.c
+               src/presentation/aspect_fit.c)
+target_include_directories(test_aspect_fit PRIVATE src/presentation)
+add_test(NAME aspect_fit COMMAND test_aspect_fit)
+
 add_executable(test_player_input tests/test_player_input.c
-               src/input/player_input.c src/config/settings.c)
+               src/input/player_input.c src/config/settings.c
+               src/native/input_binding_sets.c
+               src/native/xbox_defaults.c)
 target_include_directories(test_player_input PRIVATE src/recomp src/native
                                                    src/config src/input)
 add_test(NAME player_input COMMAND test_player_input)
+
+add_executable(test_controller_hotplug tests/test_controller_hotplug.c
+               src/input/controller_hotplug.c)
+target_include_directories(test_controller_hotplug PRIVATE src/input)
+add_test(NAME controller_hotplug COMMAND test_controller_hotplug)
+
+add_executable(test_controller_instance tests/test_controller_instance.c
+               src/input/controller_instance.c)
+target_include_directories(test_controller_instance PRIVATE src/input src/native)
+add_test(NAME controller_instance COMMAND test_controller_instance)
 
 add_executable(test_input_record tests/test_input_record.c
                src/input/input_record.c src/native/json_string.c)
 target_include_directories(test_input_record PRIVATE src/input src/native)
 add_test(NAME input_record COMMAND test_input_record)
 set_tests_properties(input_record PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(test_dinput_system tests/test_dinput_system.c
+               src/native/dinput_system.c tests/native_stubs.c)
+target_include_directories(test_dinput_system PRIVATE src/recomp src/native)
+target_compile_definitions(test_dinput_system PRIVATE X2_WITH_SDL)
+target_link_libraries(test_dinput_system PRIVATE ${X2_SDL})
+add_test(NAME dinput_system COMMAND test_dinput_system)
+
+add_executable(test_cutscene_skip_publication
+               tests/test_cutscene_skip_publication.c
+               src/native/cutscene_skip_publication.c)
+target_include_directories(test_cutscene_skip_publication PRIVATE src/native)
+add_test(NAME cutscene_skip_publication COMMAND test_cutscene_skip_publication)
+
+add_executable(test_binding_rows tests/test_binding_rows.c
+               src/input/binding_rows.c)
+target_include_directories(test_binding_rows PRIVATE src/input)
+add_test(NAME binding_row_labels COMMAND test_binding_rows)
 
 set(X2_PAD_GLYPH_HEADER "${CMAKE_BINARY_DIR}/pad_glyph_codes.h")
 add_custom_command(
@@ -82,18 +122,20 @@ add_test(NAME dinput_pad COMMAND test_dinput_pad)
 
 add_executable(test_pad_glyphs tests/test_pad_glyphs.c
                src/native/pad_glyphs.c src/native/prompt_glyph_pack.c
-               src/native/prompt_labels.c src/native/input_bindings.c
+               src/native/prompt_labels.c src/native/input_binding_sets.c
+               src/native/input_bindings.c
                tests/native_stubs.c)
 add_dependencies(test_pad_glyphs x2_pad_glyph_header)
 target_include_directories(test_pad_glyphs PRIVATE src/recomp src/native
-                                                  ${CMAKE_BINARY_DIR})
+                                                  src/input ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE)
 add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
 add_executable(test_dialog_prompts tests/test_dialog_prompts.c
                src/native/dialog_prompts.c tests/native_stubs.c)
-target_include_directories(test_dialog_prompts PRIVATE src/recomp src/native)
+target_include_directories(test_dialog_prompts PRIVATE src/recomp src/native
+                                                       src/input)
 target_compile_definitions(test_dialog_prompts PRIVATE _GNU_SOURCE)
 add_test(NAME dialog_prompts COMMAND test_dialog_prompts)
 
@@ -222,6 +264,45 @@ add_executable(test_x2native_options
 target_include_directories(test_x2native_options PRIVATE src/native)
 add_test(NAME x2native_options COMMAND test_x2native_options)
 
+add_executable(test_options_menu
+    tests/test_options_menu.c src/native/options_menu.c
+    src/ui/settings_overlay_state.c tests/native_stubs.c)
+target_include_directories(test_options_menu PRIVATE src/recomp src/native src/ui)
+add_test(NAME options_menu COMMAND test_options_menu)
+
+add_executable(test_save_catalog
+    tests/test_save_catalog.c src/save/save_catalog.c)
+target_include_directories(test_save_catalog PRIVATE src/save)
+add_test(NAME save_catalog COMMAND test_save_catalog)
+
+add_executable(test_autosave_policy
+    tests/test_autosave_policy.c src/save/autosave_policy.c)
+target_include_directories(test_autosave_policy PRIVATE src/save)
+add_test(NAME autosave_policy COMMAND test_autosave_policy)
+
+add_executable(test_save_trace
+    tests/test_save_trace.c src/save/save_trace.c)
+target_include_directories(test_save_trace PRIVATE src/save)
+add_test(NAME save_trace COMMAND test_save_trace)
+
+add_executable(test_shadow_trace
+    tests/test_shadow_trace.c tools/proxy_d3d8/shadow_trace.c)
+target_include_directories(test_shadow_trace PRIVATE tools/proxy_d3d8)
+add_test(NAME shadow_trace COMMAND test_shadow_trace)
+set_tests_properties(shadow_trace PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME shadow_trace_compare COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/shadow_trace_compare.py --selftest)
+add_test(NAME build_stocklog COMMAND python3 -m unittest
+         tests.test_build_stocklog)
+set_tests_properties(build_stocklog PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME oracle_compare_tool COMMAND python3 -m unittest
+         tests.test_oracle_compare)
+set_tests_properties(oracle_compare_tool PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 
 
 # The lift pipeline's step guard. Every Ghidra step appends to one log and then
@@ -245,6 +326,11 @@ add_test(NAME lift_step_guard
 # because every registration in the tree is correct.
 add_test(NAME overrides COMMAND python3
          ${CMAKE_SOURCE_DIR}/tools/recomp_overrides.py --selftest)
+add_test(NAME save_trace_wiring COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py)
+set_tests_properties(save_trace_wiring PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME save_trace_wiring_selftest COMMAND python3
+         ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py --selftest)
 
 # The guest stack-effect check (tools/stackcheck.py over an X2_STACKCHECK
 # record). A guest call must return with esp raised by 4 plus the callee's RET
@@ -325,10 +411,11 @@ add_test(NAME prepare_native_assets
                  ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
 
 
-# The 42 binding-row names src/native/input_bindings.c ships are read out of
-# XMen2.exe; this diffs the shipped table against the exe rather than trusting
-# that they still agree. SKIPs loudly (77) without an install, because a check
-# that had nothing to read must not look like a check that passed.
+# The 42 binding-row storage keys and display labels in
+# src/input/binding_rows.c are read out of XMen2.exe and igct.bnx; this diffs
+# the shipped table against both sources rather than trusting that they still
+# agree. SKIPs loudly (77) without an install, because a check that had nothing
+# to read must not look like a check that passed.
 add_test(NAME binding_rows
          COMMAND ${CMAKE_COMMAND} -E env python3
                  ${CMAKE_SOURCE_DIR}/tools/binding_rows.py --selftest)
@@ -484,9 +571,10 @@ if(X2_MODULE_HAVE)
                    "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
     add_library(x2_rmlui_ui STATIC
         src/ui/rmlui_ui.cpp
-        src/ui/settings_document.cpp)
+        src/ui/settings_document.cpp
+        src/ui/settings_overlay_state.c)
     target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
-                                                   src/presentation)
+                                                   src/presentation src/input)
     target_compile_definitions(x2_rmlui_ui PRIVATE
         X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
         X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
@@ -532,13 +620,24 @@ if(X2_MODULE_HAVE)
         src/native/x2native_options.c
         src/config/settings.c
         src/config/settings_store.c
+        src/presentation/aspect_fit.c
         src/presentation/window_settings.c
+        src/input/binding_rows.c
+        src/input/controller_hotplug.c
+        src/input/controller_instance.c
+        src/input/input_probe_lifecycle.c
+        src/input/joystick_neutral.c
         src/input/player_input.c
         src/input/input_record.c
+        src/save/save_catalog.c
+        src/save/autosave_policy.c
+        src/save/save_trace.c
+        src/native/save_trace_runtime.c
         src/native/pe_map.c
         src/native/win32_sdl.c
         src/native/guest_heap.c
         src/native/crt.c
+        src/native/crt_selftest.c
         src/recomp/x87crt.c
         src/native/kernel32.c
         src/native/advapi32.c
@@ -547,6 +646,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput.c
         src/native/dinput8.c
         src/native/dinput_device.c
+        src/native/dinput_device_registry.c
         src/native/dinput_device_state.c
         src/native/dinput_system.c
         src/native/dinput_fifo.c
@@ -557,7 +657,10 @@ if(X2_MODULE_HAVE)
         src/native/pad_glyphs.c
         src/native/prompt_glyph_pack.c
         src/native/prompt_labels.c
+        src/native/input_binding_sets.c
         src/native/input_bindings.c
+        src/native/cutscene_skip_publication.c
+        src/native/cutscene_skip_probe.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
         src/native/dsound.c
@@ -577,6 +680,7 @@ if(X2_MODULE_HAVE)
         src/native/env_file.c
         src/native/startup.c
         src/native/movie.c
+        src/native/options_menu.c
         src/native/reportbox.c
         src/native/security.c
         src/native/conversation.c
@@ -600,8 +704,11 @@ if(X2_MODULE_HAVE)
         src/vulkan/igvk_probe.c
         src/vulkan/igvk_context.c
         src/gpu/gpu_device.c
+        src/gpu/gpu_capture.c
         src/gpu/gpu_draw.c
         src/gpu/gpu_frame_submit.c
+        src/gpu/gpu_present.c
+        src/gpu/gpu_present_selftest.c
         src/gpu/gpu_host_selftest.c
         src/gpu/gpu_upload.c
         src/gpu/gpu_upload_selftest.c
@@ -614,7 +721,7 @@ if(X2_MODULE_HAVE)
     add_dependencies(x2native x2_shaders x2_pad_glyph_header)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
                                                 src/config src/presentation src/ui
-                                                src/input
+                                                src/input src/save
                                               src/gpu src/d3d8
                                               src/oracle src/recomp/gen
                                               ${CMAKE_BINARY_DIR})

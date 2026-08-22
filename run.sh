@@ -36,6 +36,8 @@
 #   native only:
 #     BUILD=<dir>   build directory (default scratch/build-native)
 #     TRACE=1       configure with -DX2_NATIVE_TRACE=ON (every body into the ring)
+#     X2_SAVE_TRACE=0  disable the bounded retail save/load transition trace;
+#                      ordinary runs expose it with tools/x2ctl.py save/probe
 #
 #   wine/stock/<name> only:
 #     EPS=<file|ALL>  entry points to recompile (default ALL). Ignored when the
@@ -132,7 +134,7 @@ run: NATIVE build -- no Wine, no original binaries in the loop.
 
      Inputs are recorded automatically. While this run is open,
      tools/x2ctl.py probe finds it through scratch/run/live.json and reports
-     the live frame, guest input state, and recent recorded input changes.
+     the live frame, guest input and save state, and recorded input changes.
 
      ./run.sh wine is still the reference for "what it should look
      like", and ./run.sh stock is the untouched install as the control.

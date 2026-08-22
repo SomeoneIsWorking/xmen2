@@ -1,9 +1,10 @@
 ---
 id: C111
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-06
 tags: pc,recomp,native,milestone,rc-exe
+falsified_on: 2026-08-22
 ---
 
 ## Claim
@@ -17,3 +18,9 @@ x2native --run now returns exit code 0. The recompiled XMen2.exe plus twelve rec
 ## What would falsify it
 
 Running to completion is not the same as running the GAME. It exits at the DirectX check, so nothing downstream of graphics has executed: no renderer, no asset loading beyond startup, no gameplay, no audio, no input. The 5103 entry points are the startup and shutdown paths only, and a clean exit here says the host surface is complete enough for those, not that anything else works.
+
+## FALSIFIED 2026-08-22
+
+A retained 2026-08-22 Advanced Options run (PID 2867467) aborted in MSVCR71.dll!??_V@YAXPAX@Z. The generated import expects imp_MSVCR71____V_YAXPAX_Z, but crt.c defined imp_MSVCR71___V_YAXPAX_Z, so the strong implementation never replaced the weak aborting stub. C111 only exercised the earlier startup/shutdown path and its statement that delete[] was implemented was false.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

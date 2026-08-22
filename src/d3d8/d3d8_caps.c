@@ -302,7 +302,7 @@ void d3d8_caps_dump(const D3DCAPS8 *c, const char *who)
 #define F(name) printf("CAPS %-28s = 0x%08x\n", #name, (unsigned)c->name);
 #define G(name) printf("CAPS %-28s = %.6f\n",   #name, (double)c->name);
     printf("CAPS BLOCK from %s -- %d field(s); compare with the stock game's "
-           "(tools/build_stocklog.sh)\n", who, D3D8_CAPS_FIELD_COUNT);
+           "(tools/build_stocklog.py)\n", who, D3D8_CAPS_FIELD_COUNT);
     D3D8_CAPS_FIELDS
 #undef F
 #undef G

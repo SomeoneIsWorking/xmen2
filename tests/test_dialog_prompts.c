@@ -20,13 +20,17 @@ static int checks;
 static uint32_t mapped_base;
 static X86Module module = { .name = "XMen2.exe", .base = &mapped_base,
                             .preferred = EXE_BASE, .size = IMAGE_SIZE };
-static int connected_pads;
+static int player_uses_gamepad;
 static int super_calls;
 static int asset_calls;
 static uint32_t expected_outer_esp;
 
 X86Module *x86_modules(void) { return &module; }
-int dinput_pad_count(void) { return connected_pads; }
+int x2_player_input_uses_gamepad(unsigned player)
+{
+    CHECK(player == 0);
+    return player_uses_gamepad;
+}
 
 void fn_XMen2_00629bf0(CPU *C)
 {
@@ -61,7 +65,7 @@ static void run_lookup(int pads, uint32_t linked_return, uint32_t want_eax,
     int before_super = super_calls;
     int before_asset = asset_calls;
 
-    connected_pads = pads;
+    player_uses_gamepad = pads;
     expected_outer_esp = stack;
     WR32(stack, mapped(linked_return));
     WR32(stack + 4u, mapped_base + 0x3000u);

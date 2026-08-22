@@ -53,6 +53,14 @@ to four reusable profiles so two players can share one keyboard with distinct
 layouts. Controller actions are intentionally not profiles: a physical pad is
 assigned to one player and uses the measured canonical Xbox/PS2 defaults.
 
+**Autosave ownership, with title-specific gates.** Dusklight's small dedicated
+autosave owner and asynchronous request -> write -> completion state machine
+are retained in `src/save/autosave_policy.{c,h}`. Its Twilight Princess player,
+stage and memory-card exclusions are not copied. X-Men's policy exposes the
+retail save-manager idle state, map `nosave` bit and stable-transition decision
+explicitly, and no guest save dispatch is allowed until the live trace proves
+those boundaries.
+
 ### What has NOT been taken, and why
 
 **Frame interpolation.** Their model is worth copying exactly when the time

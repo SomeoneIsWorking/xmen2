@@ -82,7 +82,7 @@ the port and native x86 in the control.
 
 ## Ruled out, measured against the real engine
 
-The oracle probe harness (`tools/probes.json`, `tools/oracle_compare.sh`)
+The oracle probe harness (`tools/probes.json`, `tools/oracle_compare.py`)
 records a named guest function on both sides and diffs the two streams. Both
 captures are DRIVEN and unattended -- neither needs anybody at the keyboard.
 

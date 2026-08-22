@@ -366,6 +366,110 @@ _probe_stub_9:
     pop %ebp
     ret $4
 
+/* Gap::Sg::igPlanarShadowShader::shade -- 4 argument byte(s), callee-cleaned */
+    .globl _probe_stub_10
+_probe_stub_10:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $10
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 8(%ebp)
+    call *(_probe_tramp + 40)
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $10
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret $4
+
+/* Gap::Sg::igProjectiveShadowShader::shade -- 4 argument byte(s), callee-cleaned */
+    .globl _probe_stub_11
+_probe_stub_11:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $11
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 8(%ebp)
+    call *(_probe_tramp + 44)
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $11
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret $4
+
+/* Gap::Sg::igCommonTraverseSelfShadowShader -- 8 argument byte(s), caller-cleaned */
+    .globl _probe_stub_12
+_probe_stub_12:
+    push %ebp
+    mov %esp, %ebp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    lea 8(%ebp), %eax
+    push %eax
+    push %ecx
+    push $12
+    call _probe_enter
+    add $12, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    push 12(%ebp)
+    push 8(%ebp)
+    call *(_probe_tramp + 48)
+    add $8, %esp
+    pushal
+    sub $108, %esp
+    fnsave (%esp)
+    mov 136(%esp), %eax
+    push %eax
+    push $12
+    call _probe_leave
+    add $8, %esp
+    frstor (%esp)
+    add $108, %esp
+    popal
+    mov %ebp, %esp
+    pop %ebp
+    ret
+
     .data
     .align 4
     .globl _probe_stub_table
@@ -380,8 +484,11 @@ _probe_stub_table:
     .long _probe_stub_7
     .long _probe_stub_8
     .long _probe_stub_9
+    .long _probe_stub_10
+    .long _probe_stub_11
+    .long _probe_stub_12
 
 /* Filled in by probe_hook.c when each trampoline is built. */
     .globl _probe_tramp
 _probe_tramp:
-    .space 40
+    .space 52

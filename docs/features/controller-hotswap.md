@@ -31,9 +31,10 @@ data format and its axis range, and read **zero** times.
 
 ## What this host does
 
-On a pad appearing, `dinput8_hotplug_pump` calls **`FUN_00628e20(TRUE)`** -- the
-game's own routine, with the same argument startup passes. No host code writes
-guest state; the controller is admitted by the game's own rules.
+When the controller inventory changes, `dinput8_hotplug_pump` calls
+**`FUN_00628e20(TRUE)`** -- the game's own routine, with the same argument
+startup passes. No host code writes guest state; arrivals and removals are
+applied by the game's own rules.
 
 The routine's address is not hardcoded. `x86_native_entry_containing` answers
 "which function is my caller in", asked at the moment the game calls
@@ -41,10 +42,25 @@ The routine's address is not hardcoded. `x86_native_entry_containing` answers
 It reports what it found (`0x00628e20 (FUN_00628e20)`) so a wrong answer is
 visible rather than silent.
 
-The pump runs once a frame from the first input call of the frame -- the
-keyboard's `GetDeviceState`, which `FUN_006285c0` makes at `0x0062861e` before
-anything else. That matters: re-enumerating from inside the game's own joystick
-loop would be inserting a device into a table it is walking.
+The pump runs from keyboard `GetDeviceState`, which `FUN_006285c0` makes at
+`0x0062861e` before the joystick loop. It is not gated by `Present`, so it sees
+changes while rendering is paused. A monotonic inventory generation makes
+unchanged polls no-ops and admits each changed generation once. Re-enumerating
+inside the joystick loop would insert into a table the game is walking.
+
+Two lifetimes that reuse an inventory slot are not the same controller. Each
+guest `IDirectInputDevice8` stores the live instance GUID it was created for
+and resolves that GUID on every operation. After disconnect, the old object
+continues returning `DIERR_INPUTLOST`; a new controller in the same host slot
+gets a distinct object. The device registry grows by connection lifetime, not
+by the eight-pad simultaneous limit, because the guest may retain old objects.
+
+The earlier implementation retained eight "already offered" GUIDs for the
+whole process. Once full, every later poll treated the current GUID as new and
+re-enumerated. Generations replace that category error: the simultaneous-device
+limit is never used as a lifetime limit. `test_controller_hotplug`,
+`test_controller_instance`, and the virtual pad's twelve-cycle slot-reuse test
+exercise these production seams.
 
 **Unplug** is the other half. `Poll`, `GetDeviceState` and `Acquire` all answer
 `DIERR_INPUTLOST` once the pad is gone, which is what Windows answers and what
@@ -66,6 +82,30 @@ enumeration. The run reports:
 and with `X2_VIRTUAL_PAD=f1200-2200` (attach, then unplug) the state reads stop
 at the unplug while the polls continue -- a disconnected controller reporting
 as disconnected rather than as a connected one nobody is touching.
+
+## Assignment and prompts
+
+Settings use one device-assignment grid: keyboard profiles and persistent
+controllers are rows; Unassigned and Players 1–4 are columns. A row has one
+owner, and a player may own at most one keyboard and one controller. Owning
+both is hotswap: both binding sources remain published, and controller-specific
+tutorial prose follows the last active assigned source. A disconnected assigned
+controller stays reserved by persistent identity and only that identity returns.
+
+Persistence requires an identity SDL can tie to the physical device: a serial
+number first, otherwise a stable OS path. A backend exposing neither receives a
+distinct live-session identity so identical connected units still work, but the
+grid labels it session-only and refuses to reserve it. It can never adopt a
+saved assignment merely because it reused an inventory slot. The probe reports
+the identity quality beside every controller.
+
+Modal RmlUi input capture writes a real neutral DIJOYSTATE2: all axes at the
+configured midpoint, all buttons clear and every POV at `0xffffffff`. Zeroing
+the structure would hold POV 0 north while the settings overlay was open.
+
+The live input probe reports inventory generation, live GUIDs, identity quality
+and resolved player ownership. The visible RmlUi grid rebuilds when
+the inventory generation changes.
 
 ## Not done
 

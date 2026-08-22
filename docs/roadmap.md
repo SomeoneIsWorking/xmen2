@@ -76,12 +76,14 @@ to redraw the same controller. The bar for accepting a glyph is a rasterised
 sheet at the shipping cell size over light, dark and mid-tone backgrounds;
 four earlier attempts died there.
 
-**The natural gameplay gate is now met** (#87/#90, C231). The missing path was
+**The natural gameplay gate is now met** (#87/#90; historical run C231, current
+source policy C237). The missing path was
 not another action-label caller: `CPopupDialog::create` replaced eight already
 loaded localized tutorial assets with PC-only `igct.bnx` strings containing
 mouse and shortcut-key prose. A scoped override now retains the asset's own
-controller-authored text when a controller is connected and retains the PC text
-for keyboard. A windowless run naturally triggered `switching_hint` and
+controller-authored text when the assigned controller is the player's active
+source and retains PC text for keyboard. A windowless controller-only run
+naturally triggered `switching_hint` and
 measured 7,259/7,259 pad labels, zero original names, one controller asset and
 zero PC overrides. The popup contained d-pad/A glyphs and no `[LEFT CLICK]` or
 `[???]`.
@@ -144,27 +146,39 @@ open because this machine only has the synthetic pad.
 **Partial; the working UI and runtime path are in.** F1 opens a shipped RmlUi
 overlay rendered through the same SDL_GPU command buffer as the game. Its
 Dusklight-style tabs expose resolution plus windowed, borderless and exclusive
-fullscreen presentation, and one page per player. The dependency is pinned by
-commit and archive hash rather than following an unbounded branch.
+fullscreen presentation, and an input assignment grid. The dependency is
+pinned by commit and archive hash rather than following an unbounded branch.
 
-Input policy is explicit. Four reusable keyboard profiles each own all 42 game
-actions; a player assigned to Keyboard references one profile, so two players
-can share the physical keyboard with different layouts. A controller is
-assigned by persistent physical identity and uses the canonical Xbox/PS2
-defaults — controller remapping is deliberately not a second settings system.
-Explicit pad ownership is resolved before Auto selection, and one pad can feed
-at most one player.
+Four keyboard profiles and persistent controllers are grid rows; Unassigned
+and Players 1–4 are columns. Each device has at most one owner, and each player
+may own at most one keyboard and one controller. Owning both is implicit
+hotswap: both sources stay published and prompts follow the last active assigned
+source. Controllers use canonical Xbox/PS2 defaults. An assigned disconnected
+controller stays reserved by identity; the old roaming `Auto` policy migrates
+to its keyboard profile and is retired. Serial/path identities can be reserved;
+devices exposing neither are labelled session-only and cannot take a persistent
+assignment. If several legacy players shared one keyboard profile, migration
+clones its bindings into deterministic free rows instead of evicting an owner.
 
 The live end-to-end check configured Player 2 as Keyboard 2, rebound Forward to
-`I`, and persisted `input.profile1.row0=23`. Pure tests cover transactional
-config round-trip and profile reuse across player numbers; a virtual-pad test
-covers identical-controller live identities. The modal overlay suppresses
-guest DirectInput state while open.
+`I`, and persisted `input.profile1.row0=23`. Pure tests now cover transactional
+round-trip, old-settings migration, assignment exclusivity, simultaneous
+publication and prompt-source switching. Virtual-pad coverage includes
+identical controllers which cannot impersonate persistent devices and twelve
+reconnect/slot-reuse cycles. The modal overlay publishes neutral joystick axes,
+buttons and POVs while open.
+
+The authored menu path is now wired too. Shipped `main.engb` executes
+`options_main`, and XMen2.exe's command registry binds that exact name to
+0x005f1fa0; pause/generic entries use `options` at 0x005f1c50. Both callbacks
+now show the same modal RmlUi visibility owner that F1 toggles, rather than
+pushing the retail options page. Closing the overlay therefore uncovers the
+menu that opened it. The production-seam test pins both registrations, their
+plain-`RET` guest ABI and the shared capture state.
 
 Open: real-pad hotplug/identity and fullscreen transitions need hardware/user
 validation; controller navigation currently uses focus traversal rather than
-Dusklight-style spatial navigation; the overlay is opened with F1 rather than
-being wired into the original Options menu.
+Dusklight-style spatial navigation.
 
 **Decided 2026-08-18: the port keeps the PC base, and RmlUi takes over the
 options system rather than sitting beside it.** Basing the port on the Xbox

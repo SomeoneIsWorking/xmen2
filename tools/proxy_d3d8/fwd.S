@@ -1,11 +1,12 @@
 /*
  * fwd.S -- the generic pass-through slots of the logging d3d8 proxy.
  *
- * proxy.c wraps two COM objects (IDirect3D8, IDirect3DDevice8) so that five
- * methods can be logged. The other 108 slots must still work, and writing 108
- * C forwarders would mean knowing every signature -- 108 chances to get an
- * argument count wrong, in a diagnostic whose whole point is not to disturb
- * the run it measures.
+ * proxy.c wraps IDirect3D8 and IDirect3DDevice8, plus vertex buffers for the
+ * geometry probe. The unintercepted slots must still work, and writing a C
+ * forwarder for each
+ * would mean knowing every signature -- many chances to get an argument count
+ * wrong in a diagnostic whose whole point is not to disturb the run it
+ * measures.
  *
  * stdcall is CALLEE-cleanup, so a forwarder that JMPs (rather than calls and
  * returns) never has to know how many arguments there are: the real method
@@ -32,7 +33,7 @@
  * next trampoline out and leave every later table entry pointing into the
  * middle of an instruction -- a proxy that crashes the game in a way that
  * looks like the game. The tables are what proxy.c copies into each wrapper's
- * vtable before overwriting the handful of logged slots.
+ * vtable before overwriting the observed slots.
  *
  * mingw32 prefixes C symbols with an underscore, hence _fwd8_table.
  */

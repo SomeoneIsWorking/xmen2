@@ -499,7 +499,8 @@ This corrects the old conclusion that another label caller was missing. The
 natural gameplay follow-up on 2026-08-21 closed #87 and #90: the remaining
 keyboard wording came from `CPopupDialog::create` replacing eight localized
 dialog assets with PC-only `igct.bnx` strings. `dialog_prompts.c` scopes the
-shared localization lookup to that exact call and, for a connected controller,
+shared localization lookup to that exact call and, for the player's active
+assigned controller source,
 asks the already-loaded dialog parser for its own controller-authored `text`.
 Keyboard keeps the PC override and unrelated localization calls retain the
 recompiled body.
@@ -514,7 +515,8 @@ are independently covered by `tests/test_dialog_prompts.c`.
 
 The `FUN_006294b0` override added alongside this note is correct for the
 path it covers (a row with a pad binding names it, whatever slot it sits in,
-while an Xbox pad is connected) and costs nothing where it does not fire. It is
+while that assigned Xbox pad is the active source) and costs nothing where it
+does not fire. It is
 kept because it is the right behaviour and because its zero count is the
 measurement above.
 
@@ -564,7 +566,7 @@ range the font's own glyphs use, and says so:
 * Measured: a naturally triggered gameplay `switching_hint` selects pad labels
   7,259 of 7,259 times and uses its localized controller-authored popup text
   once, with zero original key names, zero PC popup overrides and no mouse or
-  unknown-key prose (C231).
+  unknown-key prose (historical controller-only run C231; current policy C237).
 * NOT measured: any prompt on a screen whose text uses `X2F_big`,
   `X2F_hud_PC` or `font_XMEN_digital`. Those three are pixel format 15 and the
   builder refuses them, so a prompt drawn in one of them would still be blank.

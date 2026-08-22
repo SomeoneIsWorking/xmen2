@@ -7,6 +7,8 @@
 #define X2_SETTINGS_KEYBOARD_PROFILES 4u
 #define X2_SETTINGS_ROWS 42u
 #define X2_SETTINGS_DEVICE_ID 64u
+#define X2_SETTINGS_CONTROLLER_ASSIGNMENTS X2_SETTINGS_PLAYERS
+#define X2_SETTINGS_UNASSIGNED (-1)
 
 typedef enum {
     X2_WINDOW_WINDOWED = 0,
@@ -14,18 +16,10 @@ typedef enum {
     X2_WINDOW_FULLSCREEN
 } X2WindowMode;
 
-typedef enum {
-    X2_PLAYER_NONE = 0,
-    X2_PLAYER_AUTO,
-    X2_PLAYER_KEYBOARD,
-    X2_PLAYER_GAMEPAD
-} X2PlayerDevice;
-
 typedef struct {
-    X2PlayerDevice type;
     char id[X2_SETTINGS_DEVICE_ID];
-    uint8_t keyboard_profile;
-} X2PlayerSettings;
+    int8_t player;
+} X2ControllerAssignment;
 
 typedef struct {
     uint16_t keyboard[X2_SETTINGS_ROWS];
@@ -36,7 +30,10 @@ typedef struct {
     unsigned width;
     unsigned height;
     X2WindowMode window_mode;
-    X2PlayerSettings player[X2_SETTINGS_PLAYERS];
+    /* Device-assignment grid: each row has one owner or is unassigned. The
+       helpers enforce at most one keyboard profile and controller per player. */
+    int8_t keyboard_player[X2_SETTINGS_KEYBOARD_PROFILES];
+    X2ControllerAssignment controller[X2_SETTINGS_CONTROLLER_ASSIGNMENTS];
     X2KeyboardProfile keyboard_profile[X2_SETTINGS_KEYBOARD_PROFILES];
 } X2Settings;
 
@@ -47,6 +44,13 @@ int x2_settings_save(const X2Settings *settings, const char *path,
                      char *why, int whyn);
 const char *x2_window_mode_name(X2WindowMode mode);
 int x2_window_mode_parse(const char *text, X2WindowMode *mode);
-const char *x2_player_device_name(X2PlayerDevice device);
+int x2_settings_assign_keyboard(X2Settings *settings, unsigned profile,
+                                int player);
+int x2_settings_assign_controller(X2Settings *settings, const char *id,
+                                  int player);
+int x2_settings_controller_player(const X2Settings *settings, const char *id);
+const char *x2_settings_player_controller(const X2Settings *settings,
+                                          unsigned player);
+int x2_settings_player_keyboard(const X2Settings *settings, unsigned player);
 
 #endif

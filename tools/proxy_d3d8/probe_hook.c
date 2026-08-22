@@ -265,6 +265,15 @@ void probe_hook_tick(void)
     if (g_sink.f) fflush(g_sink.f);
 }
 
+unsigned probe_hook_call_count(const char *name)
+{
+    int i;
+    if (!name) return 0;
+    for (i = 0; i < PROBE_COUNT; i++)
+        if (strcmp(g_probes[i].name, name) == 0) return g_calls[i];
+    return 0;
+}
+
 /* Reprinted periodically from Present, and once at detach: this process is
    always ended by a kill, so a count that only exists at exit does not
    exist. Idempotent -- it closes the stream only when it is still open. */
@@ -305,7 +314,7 @@ void probe_hook_close(void)
 {
     if (!g_ready && !g_sink.f) return;
     probe_hook_report_counts();
-    if (g_sink.f) { fclose(g_sink.f); g_sink.f = NULL; }
+    probe_sink_close(&g_sink, "stock");
     g_ready = 0;
     plog("probe: stream closed.\n");
 }

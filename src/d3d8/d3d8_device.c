@@ -1898,10 +1898,10 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
            pp->EnableAutoDepthStencil ? "auto" : "none",
            pp->AutoDepthStencilFormat, pp->hDeviceWindow);
 
-    if (!gpu_device_create()) {
-        fprintf(stderr, "d3d8: the host GPU device could not be created, so "
-                        "CreateDevice fails -- which is what the engine's own "
-                        "error path is written for.\n");
+    if (!gpu_device_create()
+        || !gpu_device_set_backbuffer_size(pp->BackBufferWidth,
+                                           pp->BackBufferHeight)) {
+        fprintf(stderr, "d3d8: host GPU device/backbuffer creation failed.\n");
         return NULL;
     }
     /* The engine's HWND is meaningless here; the host owns one SDL window and

@@ -32,6 +32,10 @@ void gpu_device_destroy(void);
    `this+0x144 == 0 -> error` test becomes for this backend. */
 int gpu_device_ready(void);
 
+/* The D3D device's logical backbuffer size. The window/swapchain is an
+   independent presentation target and may have any dimensions. */
+int gpu_device_set_backbuffer_size(uint32_t width, uint32_t height);
+
 /*
  * The window the swapchain presents to.
  *

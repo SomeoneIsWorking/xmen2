@@ -73,6 +73,24 @@ void __wrap_fn_libIGSg_10016370(CPU *C)
     oracle_probe_call(&g_probes[9], __real_fn_libIGSg_10016370, C);
 }
 
+void __real_fn_libIGSg_10057960(CPU *C);
+void __wrap_fn_libIGSg_10057960(CPU *C)
+{
+    oracle_probe_call(&g_probes[10], __real_fn_libIGSg_10057960, C);
+}
+
+void __real_fn_libIGSg_10059b70(CPU *C);
+void __wrap_fn_libIGSg_10059b70(CPU *C)
+{
+    oracle_probe_call(&g_probes[11], __real_fn_libIGSg_10059b70, C);
+}
+
+void __real_fn_libIGSg_1003eaf0(CPU *C);
+void __wrap_fn_libIGSg_1003eaf0(CPU *C)
+{
+    oracle_probe_call(&g_probes[12], __real_fn_libIGSg_1003eaf0, C);
+}
+
 void (*const g_probe_wrapfn[PROBE_COUNT])(CPU *) = {
     __wrap_fn_libIGMath_1001d730,
     __wrap_fn_libIGMath_1001da00,
@@ -84,4 +102,7 @@ void (*const g_probe_wrapfn[PROBE_COUNT])(CPU *) = {
     __wrap_fn_libIGSg_100184b0,
     __wrap_fn_libIGSg_10018470,
     __wrap_fn_libIGSg_10016370,
+    __wrap_fn_libIGSg_10057960,
+    __wrap_fn_libIGSg_10059b70,
+    __wrap_fn_libIGSg_1003eaf0,
 };

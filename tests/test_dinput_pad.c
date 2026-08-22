@@ -54,7 +54,9 @@ int main(void)
     SDL_GUID g;
     char gs[64], map[512];
     unsigned char inst[16], inst2[16], prod[16];
+    unsigned char previous[16];
     char persistent[64];
+    uint64_t generation;
     int32_t v;
 
     if (!SDL_Init(SDL_INIT_GAMEPAD)) {
@@ -63,6 +65,7 @@ int main(void)
     }
 
     test_no_pad();
+    generation = dinput_pad_generation();
 
     /* Prompt selection follows SDL's physical-family classification, not the
        Xbox-shaped DirectInput layout we intentionally present for every pad. */
@@ -96,6 +99,8 @@ int main(void)
     SDL_AddGamepadMapping(map);
 
     dinput_pad_refresh();
+    CHECK(dinput_pad_generation() == generation + 1);
+    generation = dinput_pad_generation();
     CHECK(dinput_pad_count() == 1);
     CHECK(dinput_pad_name(0) != NULL);
     CHECK(dinput_pad_uses_xbox_glyphs(0) == 1);
@@ -111,17 +116,20 @@ int main(void)
     CHECK(dinput_pad_persistent_id(0) != NULL);
     snprintf(persistent, sizeof persistent, "%s",
              dinput_pad_persistent_id(0));
-    CHECK(dinput_pad_for_persistent_id(persistent) == 0);
+    CHECK(dinput_pad_persistent_id_is_stable(0) == 0);
+    CHECK(dinput_pad_for_persistent_id(persistent) == -1);
     { unsigned char other[16]; memset(other, 0xAB, 16);
       CHECK(dinput_pad_for_guid(other) == -1); }
     printf("virtual pad: enumerated, identified, findable by GUID: ok\n");
 
-    /* SDL gives identical models the same joystick GUID. That is a product
-       identifier, not a DirectInput instance identifier: both units must
-       enumerate and remain independently openable and assignable. */
+    /* SDL gives identical models the same joystick GUID and virtual units no
+       stable serial/path. They need distinct live identities, but neither
+       session fallback may satisfy a persistent reservation. */
     jid2 = SDL_AttachVirtualJoystick(&desc);
     CHECK(jid2 != 0);
     dinput_pad_refresh();
+    CHECK(dinput_pad_generation() == generation + 1);
+    generation = dinput_pad_generation();
     CHECK(dinput_pad_count() == 2);
     CHECK(dinput_pad_instance_guid(1, inst2) == 1);
     CHECK(memcmp(inst, inst2, sizeof inst) != 0);
@@ -129,9 +137,13 @@ int main(void)
     CHECK(dinput_pad_for_guid(inst2) == 1);
     CHECK(strcmp(dinput_pad_persistent_id(0),
                  dinput_pad_persistent_id(1)) != 0);
-    printf("identical pads: distinct live GUIDs and assignment identities: ok\n");
+    CHECK(dinput_pad_persistent_id_is_stable(1) == 0);
+    CHECK(dinput_pad_for_persistent_id(dinput_pad_persistent_id(1)) == -1);
+    printf("identical pads: distinct live identities, neither reservable: ok\n");
     SDL_DetachVirtualJoystick(jid2);
     dinput_pad_refresh();
+    CHECK(dinput_pad_generation() == generation + 1);
+    generation = dinput_pad_generation();
     CHECK(dinput_pad_count() == 1);
 
     joy = SDL_OpenJoystick(jid);
@@ -245,10 +257,39 @@ int main(void)
     SDL_DetachVirtualJoystick(jid);
     SDL_UpdateJoysticks();
     dinput_pad_refresh();
+    CHECK(dinput_pad_generation() == generation + 1);
+    generation = dinput_pad_generation();
     CHECK(dinput_pad_count() == 0);
     CHECK(dinput_pad_for_guid(inst) == -1);
     CHECK(dinput_pad_for_persistent_id(persistent) == -1);
     printf("unplug: the pad is gone and its GUID names nothing: ok\n");
+
+    /* Slot zero is reused for more lifetimes than the simultaneous inventory
+       limit. Every connection gets a fresh live GUID and session identity;
+       neither the prior GUID nor fallback reservation can adopt it. */
+    memcpy(previous, inst, sizeof previous);
+    for (int cycle = 0; cycle < 12; cycle++) {
+        jid = SDL_AttachVirtualJoystick(&desc);
+        CHECK(jid != 0);
+        dinput_pad_refresh();
+        CHECK(dinput_pad_generation() == generation + 1);
+        generation = dinput_pad_generation();
+        CHECK(dinput_pad_instance_guid(0, inst2));
+        CHECK(memcmp(previous, inst2, sizeof previous) != 0);
+        CHECK(dinput_pad_for_guid(previous) == -1);
+        CHECK(strcmp(dinput_pad_persistent_id(0), persistent) != 0);
+        CHECK(!dinput_pad_persistent_id_is_stable(0));
+        CHECK(dinput_pad_for_persistent_id(persistent) == -1);
+        memcpy(previous, inst2, sizeof previous);
+        SDL_DetachVirtualJoystick(jid);
+        dinput_pad_refresh();
+        CHECK(dinput_pad_generation() == generation + 1);
+        generation = dinput_pad_generation();
+        CHECK(dinput_pad_count() == 0);
+        CHECK(dinput_pad_for_guid(previous) == -1);
+    }
+    printf("reconnect: 12 slot-reuse cycles kept instance lifetimes distinct: "
+           "ok\n");
 
     dinput_pad_report();
     printf("test_dinput_pad: %d checks passed\n", checks);

@@ -10,4 +10,7 @@ set(RECOMP_PROBE_WRAPS
     -Wl,--wrap=fn_libIGSg_100184b0
     -Wl,--wrap=fn_libIGSg_10018470
     -Wl,--wrap=fn_libIGSg_10016370
+    -Wl,--wrap=fn_libIGSg_10057960
+    -Wl,--wrap=fn_libIGSg_10059b70
+    -Wl,--wrap=fn_libIGSg_1003eaf0
 )

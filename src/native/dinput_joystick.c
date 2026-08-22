@@ -3,6 +3,7 @@
 
 #include "dinput_pad.h"
 #include "guest_heap.h"
+#include "joystick_neutral.h"
 #include "x86rt_native.h"
 
 #include <stdio.h>
@@ -11,7 +12,6 @@
 void dinput_joystick_state(int pad, int32_t lo, int32_t hi,
                            uint32_t out, uint32_t size)
 {
-    int32_t mid = lo + (hi - lo) / 2;
     int button, count;
 
     /* Latch SDL's current view ONCE, before reading the sixteen values below
@@ -19,8 +19,7 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi,
        hold at startup, which is "nothing pressed" forever. */
     dinput_pad_refresh_state();
 
-    memset((void *)(uintptr_t)out, 0, size);
-    if (size < 176u) {
+    if (!x2_joystick_write_neutral((void *)(uintptr_t)out, size, lo, hi)) {
         fprintf(stderr, "DINPUT8: a %u-byte joystick state is smaller than the "
                         "176 bytes DIJOYSTATE2 needs for axes, POVs and "
                         "buttons. Nothing is written.\n", size);
@@ -32,12 +31,7 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi,
     WR32(out + 12u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_RX, lo, hi));
     WR32(out + 16u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_RY, lo, hi));
     WR32(out + 20u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_RZ, lo, hi));
-    WR32(out + 24u, (uint32_t)mid);
-    WR32(out + 28u, (uint32_t)mid);
     WR32(out + 32u, dinput_pad_pov(pad));
-    WR32(out + 36u, 0xFFFFFFFFu);
-    WR32(out + 40u, 0xFFFFFFFFu);
-    WR32(out + 44u, 0xFFFFFFFFu);
     count = dinput_pad_button_count(pad);
     for (button = 0; button < count && 48u + (uint32_t)button < size; button++)
         if (dinput_pad_button(pad, button))

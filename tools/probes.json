@@ -252,6 +252,25 @@
           "as": "matrix"
         }
       ]
+    },
+    {
+      "module": "libIGSg",
+      "name": "Gap::Sg::igPlanarShadowShader::shade",
+      "why": "The top-level planar-shadow pass. Its call count distinguishes the engine's real projected-geometry path from projective texture and self-shadow paths without inferring from pixels.",
+      "fields": []
+    },
+    {
+      "module": "libIGSg",
+      "name": "Gap::Sg::igProjectiveShadowShader::shade",
+      "why": "The top-level projective-shadow pass. Resource and D3D8 state tracing around this count reveals whether the engine chose render-destination, copy-back, or alpha-blend machinery.",
+      "fields": []
+    },
+    {
+      "module": "libIGSg",
+      "name": "Gap::Sg::igCommonTraverseSelfShadowShader",
+      "why": "The top-level self-shadow traversal callback. Counting the traversal rather than only dispatchCasters avoids a false negative when a frame reuses an existing depth map without resubmitting casters.",
+      "argbytes": 8,
+      "fields": []
     }
   ]
 }

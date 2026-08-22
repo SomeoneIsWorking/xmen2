@@ -1,6 +1,8 @@
 #ifndef X2_INPUT_BINDINGS_H
 #define X2_INPUT_BINDINGS_H
 
+#include "binding_rows.h"
+
 #include <stdint.h>
 
 struct CPU;
@@ -18,7 +20,6 @@ struct CPU;
  *
  * Device kinds: 1 keyboard, 2 mouse, 3..0xc gamepad 0..9 (FUN_006281f0).
  */
-#define INPUT_BINDING_ROWS      42u
 #define INPUT_BINDING_SLOTS      4u
 
 /*
@@ -75,10 +76,6 @@ unsigned input_bindings_write_player(struct CPU *cpu, uint32_t player,
                                      uint32_t kind, uint32_t code);
 void input_bindings_write(struct CPU *cpu, uint32_t object, uint32_t row,
                           uint32_t slot, uint32_t kind, uint32_t code);
-
-/* The exe's own name for a binding row, read out of FUN_0061b030's 42-entry
-   name array. NULL for a row index outside the table. */
-const char *input_binding_row_name(uint32_t row);
 
 /* The action-id -> binding-row map, FUN_00619c40's jump table. -1 for an
    action the game binds to no row. Actions run 0..INPUT_ACTION_MAX-1. */

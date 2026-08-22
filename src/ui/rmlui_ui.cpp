@@ -15,6 +15,7 @@
 #include <memory>
 
 #include "settings_document.hpp"
+#include "settings_overlay_state.h"
 
 namespace {
 
@@ -23,7 +24,14 @@ std::unique_ptr<RenderInterface_SDL_GPU> render_interface;
 Rml::Context* context;
 SDL_Window* host_window;
 bool initialized;
-bool visible;
+
+void sync_surface_metrics(SDL_Window* window, unsigned width, unsigned height)
+{
+    float display_scale = SDL_GetWindowDisplayScale(window);
+    if (!(display_scale > 0.0f)) display_scale = 1.0f;
+    context->SetDimensions(Rml::Vector2i((int)width, (int)height));
+    context->SetDensityIndependentPixelRatio(display_scale);
+}
 
 bool gamepad_navigation(const SDL_Event& event)
 {
@@ -49,7 +57,7 @@ bool gamepad_navigation(const SDL_Event& event)
     case SDL_GAMEPAD_BUTTON_SOUTH: key = Rml::Input::KI_RETURN; break;
     case SDL_GAMEPAD_BUTTON_EAST:
         if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) {
-            visible = false;
+            x2_settings_overlay_hide();
             x2::ui::settings_document_cancel_capture();
         }
         return true;
@@ -94,7 +102,12 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
                      X2_UI_FONT_BOLD_PATH);
     context = Rml::CreateContext("x2-settings",
                                  Rml::Vector2i((int)width, (int)height));
-    if (!context || !x2::ui::settings_document_load(context, window)) {
+    if (!context) {
+        discard_partial_initialization();
+        return false;
+    }
+    sync_surface_metrics(window, width, height);
+    if (!x2::ui::settings_document_load(context, window)) {
         discard_partial_initialization();
         return false;
     }
@@ -110,31 +123,32 @@ extern "C" int x2_ui_handle_event(SDL_Event* event)
     if (!event) return 0;
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
         event->key.key == SDLK_F1) {
-        visible = !visible;
+        x2_settings_overlay_toggle();
         if (initialized) x2::ui::settings_document_cancel_capture();
         return 1;
     }
-    if (!visible) return 0;
+    if (!x2_settings_overlay_visible()) return 0;
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
         event->key.key == SDLK_ESCAPE) {
         if (x2::ui::settings_document_capturing())
             x2::ui::settings_document_cancel_capture();
         else
-            visible = false;
+            x2_settings_overlay_hide();
         return 1;
     }
     if (x2::ui::settings_document_handle_event(*event)) return 1;
     if (gamepad_navigation(*event)) return 1;
     if (initialized) {
         RmlSDL::InputEventHandler(context, host_window, *event);
-        if (x2::ui::settings_document_take_close_request()) visible = false;
+        if (x2::ui::settings_document_take_close_request())
+            x2_settings_overlay_hide();
     }
     return 1;
 }
 
 extern "C" int x2_ui_captures_input(void)
 {
-    return visible ? 1 : 0;
+    return x2_settings_overlay_visible();
 }
 
 extern "C" void x2_ui_render(SDL_GPUDevice* device,
@@ -145,20 +159,27 @@ extern "C" void x2_ui_render(SDL_GPUDevice* device,
     static bool environment_checked;
     if (!environment_checked) {
         const char* open = std::getenv("X2_SETTINGS_OPEN");
-        visible = open && open[0] && open[0] != '0';
         environment_checked = true;
-        if (visible)
+        if (open && open[0] && open[0] != '0') {
+            x2_settings_overlay_show();
             std::fprintf(stderr, "RMLUI: X2_SETTINGS_OPEN requested the "
                                  "settings overlay at startup.\n");
+        }
     }
-    if (!visible || !device || !command_buffer || !swapchain || !window) return;
+    if (!x2_settings_overlay_visible() || !device || !command_buffer ||
+        !swapchain || !window)
+        return;
     if (!initialize(device, window, width, height)) return;
-    context->SetDimensions(Rml::Vector2i((int)width, (int)height));
+    /* The overlay may have been hidden while the window moved to a display
+       with another DPI. Hidden events deliberately bypass RmlUi, so reconcile
+       both pixel dimensions and dp scale from current output state here. */
+    sync_surface_metrics(window, width, height);
     /* Update can compile geometry and upload font textures. The SDL_GPU
        backend must already own this frame's command buffer before that work;
        doing BeginFrame after Update records uploads against stale state and
        corrupts both UI vertices and the frame under the overlay. */
     render_interface->BeginFrame(command_buffer, swapchain, width, height);
+    x2::ui::settings_document_update();
     context->Update();
     context->Render();
     render_interface->EndFrame();

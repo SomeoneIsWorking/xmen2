@@ -16,7 +16,7 @@ The 2026-08-16 refactor removed `overrides.json`, `tools/gen_overrides.py`, the 
 
 Verified end-to-end on the final build: `X2_BOOT_MAP=act0/tutorial/tutorial1` run opens the tutorial level (scene gate at the tutorial1.pkgb open), the DirectX check and X2_UNPACED frame-cap overrides both announce, 0 draws refused, clean exit; `tools/smoke_loop.sh` passes all four checks on the normal menu-driven boot path (12/12 presses, level loaded, no refusal, 3000+ colours); 49/49 ctests pass; `--probe-selftest` binds 10/10 probe wrappers.
 
-Also fixed while landing it: `recomp.py emit` now removes ORPHANED chunk files an earlier emit left past its count (a shrinking isolate list left stale-stamped chunks that the build globbed), and `tools/smoke_loop.sh` counted press WINDOWS (4) where the game schedules press EVENTS (12), so the "every press fired" check failed on every run since the repeat windows were introduced (commit 086588f); `tools/drive.sh count` now reports the event count.
+Also fixed while landing it: `recomp.py emit` now removes ORPHANED chunk files an earlier emit left past its count (a shrinking isolate list left stale-stamped chunks that the build globbed), and `tools/smoke_loop.sh` counted press WINDOWS (4) where the game schedules press EVENTS (12), so the "every press fired" check failed on every run since the repeat windows were introduced (commit 086588f); `tools/drive.py count` now reports the event count.
 
 ## What would falsify it
 

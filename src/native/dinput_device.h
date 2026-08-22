@@ -20,9 +20,10 @@ typedef enum {
 
 /* The guest address of the device object, or 0. One object per kind for the
    whole process, because the game caches what it creates -- except joysticks,
-   where one object per PAD is the whole point: the game holds four at once. */
+   where one object per live instance GUID is the whole point: inventory slots
+   are reusable after disconnect and must not retarget an old COM object. */
 uint32_t dinput_device_new(DInputDeviceKind kind);
-uint32_t dinput_device_new_pad(int pad);
+uint32_t dinput_device_new_pad(const unsigned char guid[16]);
 
 /*
  * The system-device GUIDs, shared by both DirectInput stacks.

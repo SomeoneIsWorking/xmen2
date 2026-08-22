@@ -145,11 +145,11 @@ void imp_MSVCR71_realloc(CPU *C) { ret_c(C, guest_realloc(A(0), A(1))); }
 /*
  * C++ operator new / delete / delete[].
  *
- * The mangled names become C identifiers by replacing every non-word character
- * with '_', which is why these read as they do:
- *     ??2@YAPAXI@Z   operator new(unsigned int)     -> __2_YAPAXI_Z
- * (delete and delete[] were already here; only new was missing.)
- *
+ * c_ident replaces every non-word character in the decorated symbol with '_'
+ * and joins that suffix to the import-module prefix with one more underscore:
+ *     ??2@YAPAXI@Z   operator new(unsigned int) -> imp_MSVCR71___2_YAPAXI_Z
+ *     ??3@YAXPAX@Z   operator delete(void *)    -> imp_MSVCR71___3_YAXPAX_Z
+ *     ??_V@YAXPAX@Z operator delete[](void *)   -> imp_MSVCR71____V_YAXPAX_Z
  * They are malloc and free on the guest heap, which is the whole of it: the
  * engine overrides operator new for its own pools where it wants to (igMemory
  * has its own), and the global one is the plain allocator underneath. A NULL
@@ -169,7 +169,7 @@ void imp_MSVCR71_calloc(CPU *C)
 /* operator new / operator delete / vector delete. new must return zero on
    failure rather than throwing: the throwing form goes through _callnewh. */
 void imp_MSVCR71___3_YAXPAX_Z(CPU *C)  { guest_free(A(0)); ret_c(C, 0); }
-void imp_MSVCR71___V_YAXPAX_Z(CPU *C)  { guest_free(A(0)); ret_c(C, 0); }
+void imp_MSVCR71____V_YAXPAX_Z(CPU *C) { guest_free(A(0)); ret_c(C, 0); }
 
 void imp_MSVCR71__callnewh(CPU *C)
 {
@@ -1682,7 +1682,7 @@ CRT_ALIAS(fflush)   CRT_ALIAS(fputc)    CRT_ALIAS(fputs)
 CRT_ALIAS(fgetc)    CRT_ALIAS(fgets)    CRT_ALIAS(ungetc)
 CRT_ALIAS(fwrite)   CRT_ALIAS(fprintf)  CRT_ALIAS(vfprintf)
 /* C++ operator new / delete / delete[] */
-CRT_ALIAS(__2_YAPAXI_Z) CRT_ALIAS(__3_YAXPAX_Z) CRT_ALIAS(__V_YAXPAX_Z)
+CRT_ALIAS(__2_YAPAXI_Z) CRT_ALIAS(__3_YAXPAX_Z) CRT_ALIAS(___V_YAXPAX_Z)
 CRT_ALIAS(sscanf)   CRT_ALIAS(fscanf)
 CRT_ALIAS(setlocale) CRT_ALIAS(_onexit)
 CRT_ALIAS(free)     CRT_ALIAS(_ftol)    CRT_ALIAS(_initterm)

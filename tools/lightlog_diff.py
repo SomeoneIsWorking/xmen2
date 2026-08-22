@@ -4,7 +4,7 @@
 Both sides write the SAME format:
 
   the control  tools/proxy_d3d8   a logging d3d8.dll the real game loads under
-                                  Wine; build_stocklog.sh stages it, run_shim.sh
+                                  Wine; build_stocklog.py stages it, run_shim.sh
                                   runs it, and it writes d3d8_lightlog.txt
   the port     X2_LIGHTLOG=<path> (src/d3d8/d3d8_device.c)
 

@@ -8,6 +8,7 @@
 #include "input_probe.h"
 #include "input_record.h"
 #include "json_string.h"
+#include "save_trace_runtime.h"
 #include "x86rt.h"
 
 #include <arpa/inet.h>
@@ -32,7 +33,7 @@
  * and waits; control_pump, running on the thread that owns guest input,
  * performs it and wakes the server with the answer.
  */
-enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD, CMD_INPUT };
+enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD, CMD_INPUT, CMD_SAVE };
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  g_ready = PTHREAD_COND_INITIALIZER;
@@ -52,7 +53,7 @@ static unsigned g_shot_w, g_shot_h;
 
 static int g_port;
 static unsigned long g_requests, g_keys_pressed, g_keys_refused, g_shots;
-static unsigned long g_pad_ok, g_pad_refused, g_probes;
+static unsigned long g_pad_ok, g_pad_refused, g_probes, g_save_probes;
 
 /* ---------------------------------------------------------------- pump --- */
 
@@ -92,6 +93,22 @@ void control_pump(CPU *cpu, double now)
             else snprintf(g_cmd_why, sizeof g_cmd_why,
                           "the input probe wrote nothing, which it is written "
                           "not to do -- treat this as a bug in the probe");
+        }
+    } else if (cmd == CMD_SAVE) {
+        if (!g_probe) g_probe = (char *)malloc(PROBE_BYTES);
+        if (!g_probe) {
+            g_cmd_ok = 0;
+            snprintf(g_cmd_why, sizeof g_cmd_why,
+                     "could not allocate the %u-byte save report buffer",
+                     PROBE_BYTES);
+        } else {
+            g_probe_len = x2_save_trace_runtime_report(g_probe, PROBE_BYTES);
+            g_cmd_ok = g_probe_len != 0;
+            if (g_cmd_ok) g_save_probes++;
+            else snprintf(g_cmd_why, sizeof g_cmd_why,
+                          "the save report exceeded its %u-byte bound; collect "
+                          "fewer events or increase the production bound",
+                          PROBE_BYTES);
         }
     } else if (cmd == CMD_SHOT) {
         uint32_t w = 0, h = 0;
@@ -337,6 +354,19 @@ static void route_input(int fd, const char *query)
     reply(fd, 200, "OK", "text/plain; charset=utf-8", g_probe, g_probe_len);
 }
 
+static void route_save(int fd)
+{
+    if (!submit(CMD_SAVE, 10.0)) {
+        reply_text(fd, 504, "Gateway Timeout",
+                   "the guest did not reach an input poll within 10s, so the "
+                   "save trace was not read. The run is stuck, still loading, "
+                   "or has not reached its input loop.\n");
+        return;
+    }
+    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    reply(fd, 200, "OK", "text/plain; charset=utf-8", g_probe, g_probe_len);
+}
+
 static void serve(int fd)
 {
     char req[1024], *path, *query, *sp;
@@ -359,6 +389,7 @@ static void serve(int fd)
     else if (!strcmp(path, "/pad"))        route_pad(fd, query ? query : "");
     else if (!strcmp(path, "/screenshot")) route_shot(fd);
     else if (!strcmp(path, "/input"))      route_input(fd, query ? query : "");
+    else if (!strcmp(path, "/save"))       route_save(fd);
     else
         reply_text(fd, 404, "Not Found",
                    "no such endpoint: %s\n"
@@ -368,7 +399,8 @@ static void serve(int fd)
                    "  GET /pad?axis=leftx&value=-1   move an axis\n"
                    "  GET /screenshot   the current frame, as a PNG\n"
                    "  GET /input[?controller=N]  the GAME's binding table "
-                   "and which actions read down\n",
+                   "and which actions read down\n"
+                   "  GET /save         bounded retail save/load trace\n",
                    path);
 }
 
@@ -419,7 +451,7 @@ int control_start(int port)
     }
     g_port = port;
     printf("control: http://127.0.0.1:%d  -- /status /key?name=X /pad "
-           "/screenshot /input\n"
+           "/screenshot /input /save\n"
            "control: loopback only; commands are applied on the guest's own "
            "input poll, never from the server thread.\n", port);
     fflush(stdout);
@@ -439,7 +471,7 @@ void control_report(void)
         "  control: port %d served %lu request(s) -- %lu key(s) pressed, %lu "
         "refused by name or slot, %lu screenshot(s),\n"
         "           %lu synthetic pad input(s) set and %lu refused, %lu "
-        "input probe(s).\n",
+        "input probe(s), %lu save probe(s).\n",
         g_port, g_requests, g_keys_pressed, g_keys_refused, g_shots,
-        g_pad_ok, g_pad_refused, g_probes);
+        g_pad_ok, g_pad_refused, g_probes, g_save_probes);
 }

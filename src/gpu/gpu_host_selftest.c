@@ -1,6 +1,7 @@
 /* The complete host-renderer battery, kept out of the process entry point. */
 
 int gpu_device_selftest(void);
+int gpu_present_selftest(void);
 int gpu_draw_selftest(void);
 int gpu_midframe_clear_selftest(void);
 int gpu_cube_texgen_selftest(void);
@@ -10,7 +11,10 @@ int gpu_upload_order_selftest(void);
 
 int gpu_host_selftest(void)
 {
-    int result = gpu_device_selftest();
+    int result = gpu_present_selftest();
+    if (result) return result;
+
+    result = gpu_device_selftest();
     if (result) return result;
 
     result = gpu_upload_reuse_selftest();

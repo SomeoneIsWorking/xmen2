@@ -19,16 +19,11 @@
  * returned 0..65535 would hand it sticks pinned hard right. That is why
  * dinput_pad_axis takes the range it must produce.
  *
- * The same callback then checks the object's dwFlags for DIDOI_FFACTUATOR and,
- * for the first two axes that have it, remembers them and later builds a
- * DIEFFECT and calls CreateEffect. This host has no force feedback, so it
- * reports no actuator flag and that path is never entered -- which is a real
- * behaviour difference and is stated here rather than left to be discovered.
+ * The host reports no DIDOI_FFACTUATOR flag because it has no force feedback.
  *
  * WHAT A PAD LOOKS LIKE. It is presented as the DirectInput layout of an Xbox
- * 360 pad, because that is a layout the game already knows: the engine's own
- * controller-type enumeration has XBOX360_MICROSOFT_10BUTTONSPOV in it
- * (src/display/ig_controller.h, RE'd from libIGDisplay). Left stick on X/Y,
+ * 360 pad, a layout the game's controller-type enumeration already names.
+ * Left stick is X/Y,
  * right stick on Rx/Ry, both triggers COMBINED on Z (left positive, right
  * negative -- the 360's actual DirectInput behaviour, not a simplification),
  * d-pad on POV 0, and ten buttons in the 360's order.
@@ -61,6 +56,7 @@ typedef struct {
 static Pad g_pad[DINPUT_PAD_MAX];
 static int g_scanned;
 static unsigned long g_opens, g_closes;
+static uint64_t g_generation;
 
 int dinput_pad_type_uses_xbox_glyphs(int type)
 {
@@ -158,15 +154,15 @@ static void make_identities(Pad *p, SDL_Gamepad *gp, SDL_JoystickID id,
         value = path;
         ordinal = 0;
     } else {
-        /* Some virtual and Bluetooth backends expose neither. The ordinal is
-           explicit in the hash: this fallback distinguishes identical pads,
-           but cannot promise the same assignment after a reordered reconnect. */
-        tag = "fallback";
+        /* A session id distinguishes units but is not a physical identity. */
+        tag = "session";
         value = p->name;
+        ordinal = (unsigned)id;
     }
     stable = identity_hash(tag, value, guid, ordinal);
     snprintf(p->persistent_id, sizeof p->persistent_id,
-             "sdl-%04x-%04x-%016llx",
+             strcmp(tag, "session") ? "sdl-%04x-%04x-%016llx" :
+                                      "sdl-session-%04x-%04x-%016llx",
              SDL_GetGamepadVendorForID(id), SDL_GetGamepadProductForID(id),
              (unsigned long long)stable);
 }
@@ -204,13 +200,12 @@ static void pad_open(SDL_JoystickID id)
     nm = SDL_GetGamepadNameForID(id);
     snprintf(p->name, sizeof p->name, "%s", nm ? nm : "Gamepad");
     make_identities(p, gp, id, &gu, (unsigned)i);
-    /* Ten, the 360 layout the game knows. Reported rather than derived from
-       SDL's button count: the DirectInput button ORDER is what matters and it
-       is fixed by the mapping below, not by how many buttons SDL found. */
+    /* The DirectInput button order is the fixed 360 mapping below. */
     p->buttons = 10;
     p->xbox_glyphs = dinput_pad_type_uses_xbox_glyphs(
         (int)SDL_GetGamepadType(gp));
     g_opens++;
+    g_generation++;
     fprintf(stderr, "DINPUT-PAD: pad %d connected -- \"%s\" (vendor 0x%04x "
                     "product 0x%04x). Presented to the game as an Xbox 360 "
                     "DirectInput pad: 6 axes, 10 buttons, 1 POV.\n",
@@ -227,8 +222,11 @@ static void pad_close(SDL_JoystickID id)
             i, g_pad[i].name);
     memset(&g_pad[i], 0, sizeof g_pad[i]);
     g_closes++;
+    g_generation++;
 }
 #endif /* X2_WITH_SDL */
+
+uint64_t dinput_pad_generation(void) { return g_generation; }
 
 void dinput_pad_refresh(void)
 {
@@ -323,16 +321,18 @@ const char *dinput_pad_persistent_id(int pad)
     Pad *p = pad_at(pad);
     return p ? p->persistent_id : NULL;
 }
-
+int dinput_pad_persistent_id_is_stable(int pad) {
+    Pad *p = pad_at(pad); return p && strncmp(p->persistent_id, "sdl-session-", 12) != 0;
+}
 int dinput_pad_for_persistent_id(const char *id)
 {
     int i;
     if (!id || !id[0]) return -1;
     for (i = 0; i < DINPUT_PAD_MAX; i++)
-        if (g_pad[i].used && strcmp(g_pad[i].persistent_id, id) == 0) return i;
+        if (g_pad[i].used && dinput_pad_persistent_id_is_stable(i) &&
+            strcmp(g_pad[i].persistent_id, id) == 0) return i;
     return -1;
 }
-
 int dinput_pad_for_guid(const unsigned char guid[16])
 {
     int i;

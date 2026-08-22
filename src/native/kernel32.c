@@ -23,6 +23,7 @@
 #include "guest_heap.h"
 #include "x86rt_native.h"
 #include "pe_map.h"
+#include "save_trace_runtime.h"
 #include "shell32.h"
 #include "winmm.h"
 #include "threads.h"
@@ -41,7 +42,6 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-
 #define A(i)  RD32(C->esp + 4u + (uint32_t)(i) * 4u)
 #define ACS(i) ((const char *)(uintptr_t)A(i))
 
@@ -920,9 +920,9 @@ int k32_open_replaced(const char *guest, int for_write)
 void k32_open_note(const char *guest, int ok, int replaced, const char *host)
 {
     asset_note(guest, ok);
+    x2_save_trace_asset_open(guest, ok);
     if (!replaced || !ok) return;
-    {
-        /* Once per replaced name. A run drawing someone else's assets must say
+    {   /* Once per replaced name. A run drawing someone else's assets must say
            so; silence would make a modded run indistinguishable from a stock
            one in every log it produced. */
         static char told[64][96];

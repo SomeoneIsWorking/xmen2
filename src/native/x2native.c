@@ -35,6 +35,7 @@
 #include "x2native_options.h"
 #include "live_session.h"
 #include "input_record.h"
+#include "crt_selftest.h"
 
 #include <dlfcn.h>
 #include <signal.h>
@@ -1040,8 +1041,6 @@ void imp_KERNEL32_MultiByteToWideChar(CPU *C);
 void imp_KERNEL32_FindFirstFileA(CPU *C);
 void imp_KERNEL32_FindNextFileA(CPU *C);
 void imp_KERNEL32_FindClose(CPU *C);
-void imp_MSVCRT_malloc(CPU *C);
-void imp_MSVCRT_free(CPU *C);
 
 /* Call an import the way a recompiled body does. Returns the ESP delta. */
 static uint32_t call_import(void (*fn)(CPU *), CPU *C, const uint32_t *args,
@@ -1138,23 +1137,6 @@ static void case_import_abi(void)
         check("  wide 'S'", *(volatile uint16_t *)(uintptr_t)dst, (uint16_t)'S');
         check("  wide 'D'", *(volatile uint16_t *)(uintptr_t)(dst + 2u), (uint16_t)'D');
         check("  wide NUL terminator", *(volatile uint16_t *)(uintptr_t)(dst + 8u), 0u);
-    }
-    {   /* MSVCRT!malloc/free -- __cdecl, so the CALLER cleans up and esp moves
-           by the return address only. This is the case that would silently
-           differ from the Win32 ones. */
-        uint32_t args[1] = { 64 }, p;
-        cpu_reset(&C);
-        C.eax = 0xBADF00Du;
-        d = call_import(imp_MSVCRT_malloc, &C, args, 1);
-        p = C.eax;
-        check("malloc(64) != 0", p != 0u && p != 0xBADF00Du, 1u);
-        check("  cdecl esp delta (4 only)", d, 4u);
-        if (p && p != 0xBADF00Du) {
-            args[0] = p;
-            cpu_reset(&C);
-            d = call_import(imp_MSVCRT_free, &C, args, 1);
-            check("  free cdecl esp delta (4)", d, 4u);
-        }
     }
 }
 
@@ -1951,6 +1933,7 @@ static int run_battery(void)
         case_findmouse();
         case_arkinit();
         case_import_abi();
+        crt_selftest_run(guest_stack_top, skip_body, check);
         case_matrix_multiply();
         skip_body = 0;
         if (fails - before == checks) {
@@ -1977,6 +1960,7 @@ static int run_battery(void)
     case_findmouse();
     case_arkinit();
     case_import_abi();
+    crt_selftest_run(guest_stack_top, skip_body, check);
     case_guest_heap();
     case_setjmp_table();
     case_runtime_module();

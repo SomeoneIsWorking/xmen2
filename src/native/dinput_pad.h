@@ -41,6 +41,10 @@ enum {
    call every frame; it only does work when SDL reports a change. */
 void dinput_pad_refresh(void);
 
+/* Monotonic inventory generation. It advances exactly when a pad is opened or
+   closed, including when a new device reuses a vacated inventory slot. */
+uint64_t dinput_pad_generation(void);
+
 /* How many pads are connected. 0 is a real answer, not an error. */
 int  dinput_pad_count(void);
 
@@ -49,12 +53,13 @@ int  dinput_pad_instance_guid(int pad, unsigned char guid[16]);
 int  dinput_pad_product_guid(int pad, unsigned char guid[16]);
 const char *dinput_pad_name(int pad);
 
-/* Stable host identity for player assignment. DirectInput's instance GUID is
+/* Host identity candidate for player assignment. DirectInput's instance GUID is
    deliberately only a live-run handle: two identical controllers have the
    same SDL device GUID, so that GUID cannot identify either physical unit.
-   This id prefers the controller serial, then its OS path, and finally a
-   clearly best-effort device signature. */
+   This id prefers the controller serial, then its OS path. Devices exposing
+   neither receive a live-session id which must not be saved as a reservation. */
 const char *dinput_pad_persistent_id(int pad);
+int dinput_pad_persistent_id_is_stable(int pad);
 int dinput_pad_for_persistent_id(const char *id);
 
 /* Which slot that instance GUID names, or -1. This is how a CreateDevice for

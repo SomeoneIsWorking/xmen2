@@ -15,12 +15,7 @@
  * -- faults at 0x18. That was issue #32, and it read as a renderer-adjacent
  * crash for as long as nobody followed the branch.
  *
- * This file is the IDirectInput8 half only: the object, its lifetime, and the
- * enumeration protocol. It reports NO devices, exactly as src/native/dinput.c
- * does for DirectInput 7, and says so per device class rather than once --
- * because the engine enumerates mice, keyboards and joysticks separately and a
- * single "reported zero devices" line hides two thirds of what is missing.
- *
+ * This file owns the IDirectInput8 object, lifetime and enumeration protocol.
  * Every method that is reached and not written aborts by NAME. DirectInput
  * callers routinely ignore HRESULTs and read the out-parameter instead, so a
  * plausible failure code would be indistinguishable from working.
@@ -30,6 +25,7 @@
 #include "guest_heap.h"
 #include "dinput_device.h"
 #include "dinput_pad.h"
+#include "controller_hotplug.h"
 #include "player_input.h"
 
 #include <stdio.h>
@@ -39,7 +35,6 @@
 #define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
 
-/* COM is __stdcall: the callee pops `this` plus nargs arguments. */
 static void ret_com(CPU *C, uint32_t hr, int nargs)
 {
     C->eax = hr;
@@ -139,7 +134,11 @@ static void m_Release(CPU *C)
  * per line below.
  */
 #define ENUM_SEEN 8
-static struct { uint32_t cls, flags, cb; unsigned long n; int reported; }
+static struct {
+    uint32_t cls, flags, cb;
+    unsigned long n, total_reported;
+    int first_reported, last_reported;
+}
     g_enum[ENUM_SEEN];
 static int g_nenum;
 
@@ -157,13 +156,20 @@ static void enum_seen(uint32_t cls, uint32_t flags, uint32_t cb, int reported)
     int i;
     for (i = 0; i < g_nenum; i++)
         if (g_enum[i].cls == cls && g_enum[i].flags == flags
-            && g_enum[i].cb == cb) { g_enum[i].n++; return; }
+            && g_enum[i].cb == cb) {
+            g_enum[i].n++;
+            g_enum[i].last_reported = reported;
+            g_enum[i].total_reported += (unsigned long)reported;
+            return;
+        }
     if (g_nenum == ENUM_SEEN) return;
     g_enum[g_nenum].cls = cls;
     g_enum[g_nenum].flags = flags;
     g_enum[g_nenum].cb = cb;
     g_enum[g_nenum].n = 1;
-    g_enum[g_nenum].reported = reported;
+    g_enum[g_nenum].first_reported = reported;
+    g_enum[g_nenum].last_reported = reported;
+    g_enum[g_nenum].total_reported = (unsigned long)reported;
     g_nenum++;
     {
         const char *nm = x86_native_name_at(cb);
@@ -249,23 +255,7 @@ static uint32_t padinst_for(int pad)
  * [ESP+8] and passes it as `this` to FUN_00628b40.
  */
 static uint32_t g_pad_cb, g_pad_ref, g_pad_enum;
-static unsigned char g_offered[DINPUT_PAD_MAX][16];
-static int g_noffered;
-static unsigned long g_hotplug_offers;
-
-static int already_offered(const unsigned char guid[16])
-{
-    int i;
-    for (i = 0; i < g_noffered; i++)
-        if (memcmp(g_offered[i], guid, 16) == 0) return 1;
-    return 0;
-}
-
-static void note_offered(const unsigned char guid[16])
-{
-    if (already_offered(guid) || g_noffered >= DINPUT_PAD_MAX) return;
-    memcpy(g_offered[g_noffered++], guid, 16);
-}
+static X2ControllerHotplug g_hotplug;
 
 static void m_EnumDevices(CPU *C)
 {
@@ -322,17 +312,19 @@ static void m_EnumDevices(CPU *C)
             WR32(K.esp + 4u, pvref);
             x86_guest_call_args(&K, cb, 8u);
             reported++;
-            { unsigned char g[16];
-              if (dinput_pad_instance_guid(i, g)) note_offered(g); }
             if (K.eax == 0u) break;                 /* DIENUM_STOP */
         }
     }
+    if (cls == DI8DEVCLASS_GAMECTRL)
+        x2_controller_hotplug_enumerated(&g_hotplug,
+                                         dinput_pad_generation(), npad,
+                                         reported);
     enum_seen(cls, flags, cb, reported);
     ret_com(C, S_OK, 4);
 }
 
 /*
- * HOTSWAP: offer the game any pad that has appeared since it enumerated.
+ * HOTSWAP: synchronize the game when the controller inventory changes.
  *
  * Called once a frame from the first input call of the frame (the keyboard's
  * GetDeviceState -- XMen2.exe's per-frame update FUN_006285c0 reads it at
@@ -345,39 +337,36 @@ static void m_EnumDevices(CPU *C)
  * this host. Doing it from inside the joystick loop would be inserting a
  * device into a table the game is walking.
  *
- * A pad is offered ONCE. The game keys its player slots on the instance GUID
- * and would otherwise be handed the same controller every frame.
+ * Each inventory generation is admitted once. A GUID cache cannot express
+ * disconnect (which also has to clear the guest's attached flags), and a
+ * process-lifetime cache bounded by the simultaneous eight-pad limit starts
+ * re-enumerating every frame after eight reconnects.
  */
 void dinput8_hotplug_pump(CPU *C)
 {
-    int i, fresh = 0;
-    unsigned char g[16];
+    uint64_t generation;
     if (!C) return;
     dinput_pad_refresh();
     x2_player_input_sync(C);
+    generation = dinput_pad_generation();
+    if (!x2_controller_hotplug_needs_admission(&g_hotplug, generation)) return;
     if (!g_pad_ref) return;
-    for (i = 0; i < DINPUT_PAD_MAX; i++)
-        if (dinput_pad_instance_guid(i, g) && !already_offered(g)) fresh++;
-    if (!fresh) return;
 
     if (!g_pad_enum) {
         static int told;
         if (!told++)
             fprintf(stderr, "DINPUT8: a pad appeared, and this host never "
-                            "identified the game's enumeration routine, so it "
-                            "cannot be offered. The pad is CONNECTED and the "
-                            "game will not see it.\n");
+                            "identified the game's enumeration routine, so "
+                            "generation %llu cannot be synchronized.\n",
+                    (unsigned long long)generation);
         return;
     }
-    for (i = 0; i < DINPUT_PAD_MAX; i++)
-        if (dinput_pad_instance_guid(i, g) && !already_offered(g))
-            fprintf(stderr, "DINPUT8: HOTSWAP -- pad %d (\"%s\") appeared after "
-                            "the game had enumerated. Calling the game's own "
-                            "enumeration routine at 0x%08x, exactly as startup "
-                            "does; nothing here creates a controller behind the "
-                            "game's back.\n",
-                    i, dinput_pad_name(i) ? dinput_pad_name(i) : "?", g_pad_enum);
-    g_hotplug_offers++;
+    fprintf(stderr, "DINPUT8: HOTSWAP -- controller inventory generation %llu "
+                    "now has %d connected pad(s). Calling the game's own "
+                    "enumeration routine at 0x%08x so disconnects and arrivals "
+                    "are applied by the game's rules.\n",
+            (unsigned long long)generation, dinput_pad_count(), g_pad_enum);
+    x2_controller_hotplug_admitted(&g_hotplug);
     {
         /* __thiscall FUN_00628e20(BOOL bRecordNew): ECX = the input manager,
            one stack argument. TRUE is what admits a controller the game has
@@ -388,11 +377,6 @@ void dinput8_hotplug_pump(CPU *C)
         WR32(K.esp, 1u);
         x86_guest_call_args(&K, g_pad_enum, 4u);
     }
-    /* Whatever it took, it has now been offered: the enumeration above ran and
-       recorded every connected pad. Marking them here rather than inside the
-       enumeration keeps this true even if the game declined one. */
-    for (i = 0; i < DINPUT_PAD_MAX; i++)
-        if (dinput_pad_instance_guid(i, g)) note_offered(g);
 }
 
 /*
@@ -444,7 +428,7 @@ static void m_CreateDevice(CPU *C)
            one GUID and creatable only under another is a device the game can
            see and never open, so the two go through the same inventory. */
         obj = dinput_device_new_pad(
-                  dinput_pad_for_guid((const unsigned char *)(uintptr_t)guid));
+                  (const unsigned char *)(uintptr_t)guid);
     } else {
         /*
          * NOT a system device, so it is one that enumeration would have had to
@@ -472,7 +456,18 @@ static void m_CreateDevice(CPU *C)
 static void m_GetDeviceStatus(CPU *C)
 {
     /* (this, rguidInstance) -- S_FALSE is DirectInput's "not attached". */
-    ret_com(C, S_FALSE, 1);
+    uint32_t guid = A(1);
+    int attached = 0;
+    if (!guid) { ret_com(C, DIERR_INVALIDPARAM, 1); return; }
+    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_KEYBOARD, 16) == 0 ||
+        memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
+        attached = 1;
+    else {
+        dinput_pad_refresh();
+        attached = dinput_pad_for_guid(
+                       (const unsigned char *)(uintptr_t)guid) >= 0;
+    }
+    ret_com(C, attached ? S_OK : S_FALSE, 1);
 }
 
 static void m_RunControlPanel(CPU *C)
@@ -557,7 +552,7 @@ void imp_DINPUT8_DirectInput8Create(CPU *C)
     if (!g_creates++)
         fprintf(stderr, "DINPUT8: DirectInput8Create(version=0x%x) -> a native "
                         "IDirectInput8 at 0x%08x. Input is no longer disabled "
-                        "wholesale; the device list is still empty.\n",
+                        "wholesale; connected gamepads are enumerated.\n",
                 version, g_object);
     if (ppv) WR32(ppv, g_object);
     WR32(g_object + 4u, RD32(g_object + 4u) + 1u);
@@ -583,12 +578,15 @@ void dinput8_report(void)
         printf(", and EnumDevices was never reached.\n");
         return;
     }
-    printf("; %d distinct EnumDevices call(s), all answered with ZERO "
-           "devices:\n", g_nenum);
+    printf("; %d distinct EnumDevices signature(s); %lu controller inventory "
+           "generation admission(s):\n", g_nenum, g_hotplug.admissions);
     for (i = 0; i < g_nenum; i++) {
         const char *nm = x86_native_name_at(g_enum[i].cb);
-        printf("        class %u %-9s flags 0x%-4x  x%-5lu  callback "
-               "0x%08x %s\n", g_enum[i].cls, devclass_name(g_enum[i].cls),
-               g_enum[i].flags, g_enum[i].n, g_enum[i].cb, nm ? nm : "");
+        printf("        class %u %-9s flags 0x%-4x  x%-5lu  offered "
+               "%lu total (first %d, last %d)  callback 0x%08x %s\n",
+               g_enum[i].cls, devclass_name(g_enum[i].cls), g_enum[i].flags,
+               g_enum[i].n, g_enum[i].total_reported,
+               g_enum[i].first_reported, g_enum[i].last_reported,
+               g_enum[i].cb, nm ? nm : "");
     }
 }

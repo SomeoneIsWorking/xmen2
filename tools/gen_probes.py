@@ -74,6 +74,11 @@ def load_manifest(path=SRC):
                      "from nothing." % path)
     with open(path) as f:
         d = json.load(f)
+    return parse_manifest(d)
+
+
+def parse_manifest(d):
+    """Validate and normalize JSON while preserving non-comparable frame shape."""
     out = []
     for i, p in enumerate(d.get("probes", [])):
         for k in ("module", "name", "fields", "why"):
@@ -113,8 +118,11 @@ def load_manifest(path=SRC):
                              % (p["name"], j, read))
             fields.append(dict(name=fl.get("as", "%s_%d" % (when, j)),
                                when=when, src=src, off=off, kind=kind, len=ln))
-        out.append(dict(module=p["module"], name=p["name"], why=p["why"],
-                        fields=fields))
+        normalized = dict(module=p["module"], name=p["name"], why=p["why"],
+                          fields=fields)
+        if "argbytes" in p:
+            normalized["argbytes"] = p["argbytes"]
+        out.append(normalized)
     return out
 
 
@@ -212,11 +220,39 @@ def manifest_hash(probes):
     does not invalidate a capture."""
     h = hashlib.sha256()
     for p in probes:
-        h.update(("%s|%s|" % (p["module"], p["name"])).encode())
+        h.update(("%s|%s|argbytes=%s|"
+                  % (p["module"], p["name"], p.get("argbytes", "auto"))).encode())
         for f in p["fields"]:
             h.update(("%s,%s,%s,%d,%d;" % (f["name"], f["when"], f["src"],
                                            f["off"], f["len"])).encode())
     return int.from_bytes(h.digest()[:4], "little")
+
+
+def frame_shape(probe, nargs):
+    """Return (argument bytes, cleanup owner) without inventing cdecl shape."""
+    explicit = probe.get("argbytes")
+    if explicit is not None:
+        if (not isinstance(explicit, int) or isinstance(explicit, bool)
+                or explicit < 0 or explicit > 0xffff or explicit % 4):
+            raise Refuse(
+                "gen_probes: %s argbytes must be a multiple of four in "
+                "0..65535" % probe["name"])
+    used = [f["off"] + 4 for f in probe["fields"] if f["src"] == "STACK"]
+    inferred = max(used) if used else 0
+    if nargs is not None:
+        actual = nargs * 4
+        if explicit is not None and explicit != actual:
+            raise Refuse(
+                "gen_probes: %s declares argbytes=%d, but RET says %d"
+                % (probe["name"], explicit, actual))
+        return actual, "callee"
+    if explicit is not None:
+        if inferred > explicit:
+            raise Refuse(
+                "gen_probes: %s records %d argument bytes beyond its "
+                "declared argbytes=%d" % (probe["name"], inferred, explicit))
+        return explicit, "caller"
+    return inferred, "caller"
 
 
 def build(probes):
@@ -238,16 +274,11 @@ def build(probes):
                         "  of the frame is somebody else's stack."
                         % (p["name"], f["off"] // 4, nargs * 4, nargs))
         n, blob = prologue(ep, ins)
-        # How the frame is cleaned, and how many bytes of arguments the stock-
-        # side stub must re-push when it calls the original. A callee-cleaned
-        # function says so itself in RET <n>; a cdecl one cannot, so the count
-        # is taken from the highest argument the manifest actually reads and
-        # the stub leaves the cleanup to the caller.
-        if nargs is not None:
-            argbytes, cleanup = nargs * 4, "callee"
-        else:
-            used = [f["off"] // 4 for f in p["fields"] if f["src"] == "STACK"]
-            argbytes, cleanup = (max(used) + 1) * 4 if used else 0, "caller"
+        # A callee-cleaned function says its frame size in RET <n>. Cdecl does
+        # not, so a frame larger than the comparable fields must be explicit
+        # in the manifest; recording process-specific pointers only to infer
+        # frame shape would poison port-vs-stock comparisons.
+        argbytes, cleanup = frame_shape(p, nargs)
         q = dict(p)
         q.update(ep=ep, prologue=n, expect=blob, nargs=nargs,
                  argbytes=argbytes, cleanup=cleanup)
@@ -617,6 +648,26 @@ def selftest():
     else:
         print("  pass  %-34s plain RET -> unknown" % "cdecl is not guessed")
 
+    cdecl = dict(name="cdecl_two_args", argbytes=8, fields=[])
+    if frame_shape(cdecl, None) != (8, "caller"):
+        ok[0] = False
+        print("  FAIL  explicit cdecl frame shape was not preserved")
+    else:
+        print("  pass  %-34s 8 bytes, caller-cleaned"
+              % "explicit cdecl frame shape")
+    normalized = parse_manifest({"probes": [{
+        "module": "m", "name": "cdecl_two_args", "why": "fixture",
+        "argbytes": 8, "fields": []
+    }]})
+    if normalized[0].get("argbytes") != 8:
+        ok[0] = False
+        print("  FAIL  manifest parser dropped explicit cdecl frame shape")
+    else:
+        print("  pass  %-34s argbytes=8 preserved"
+              % "manifest keeps frame shape")
+    must_refuse("misaligned cdecl frame shape",
+                lambda: frame_shape({**cdecl, "argbytes": 6}, None))
+
     # The hash must move when a field moves, or a stale capture would compare
     # against a manifest it was not recorded under.
     a = [dict(module="m", name="f",
@@ -630,6 +681,15 @@ def selftest():
         print("  pass  %-34s 0x%08x != 0x%08x"
               % ("hash moves when a field does", manifest_hash(a),
                  manifest_hash(b)))
+    c = [dict(module="m", name="f", argbytes=4, fields=[])]
+    d = [dict(module="m", name="f", argbytes=8, fields=[])]
+    if manifest_hash(c) == manifest_hash(d):
+        ok[0] = False
+        print("  FAIL  the manifest hash ignores explicit argbytes")
+    else:
+        print("  pass  %-34s 0x%08x != 0x%08x"
+              % ("hash moves when frame shape does", manifest_hash(c),
+                 manifest_hash(d)))
 
     # And an empty manifest must still produce all the artifacts.
     for name, fn in (("header", emit_header), ("wraps", lambda p: emit_wraps(p)),

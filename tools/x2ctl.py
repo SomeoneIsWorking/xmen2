@@ -16,6 +16,7 @@ then talk to it while it runs:
     tools/x2ctl.py pad leftx=-1            # ... and axes
     tools/x2ctl.py shot out.png           # capture the current frame
     tools/x2ctl.py input                  # the GAME's bindings + live actions
+    tools/x2ctl.py save                   # bounded retail save/load evidence
     tools/x2ctl.py recording --events 20  # tail the automatic JSONL trace
     tools/x2ctl.py watch --for 30         # print /status once a second
 
@@ -204,6 +205,20 @@ def cmd_input(args):
     return 0
 
 
+def fetch_save_report(port):
+    code, _, body = call(port, "/save", timeout=30.0)
+    text = body.decode(errors="replace")
+    if code != 200:
+        raise SystemExit("x2ctl: /save returned %d:\n%s" % (code, text))
+    return body, text
+
+
+def cmd_save(args):
+    _, text = fetch_save_report(args.port)
+    sys.stdout.write(text if text.endswith("\n") else text + "\n")
+    return 0
+
+
 def cmd_watch(args):
     end = time.time() + args.duration
     last = None
@@ -283,6 +298,13 @@ def cmd_probe(args):
     print("  guest input full report: %s" % input_path.relative_to(ROOT))
     print("  actions down: %s" % (", ".join(down) if down else "none"))
 
+    save_body, save_text = fetch_save_report(args.port)
+    save_path = ROOT / "scratch" / "logs" / "live-probe-save.txt"
+    save_path.write_bytes(save_body)
+    save_header = save_text.splitlines()[0] if save_text else "empty report"
+    print("  save trace: %s (%s)"
+          % (save_path.relative_to(ROOT), save_header))
+
     code, ctype, shot = call(args.port, "/screenshot", timeout=30.0)
     if code == 200 and "png" in ctype:
         shot_path = ROOT / args.shot
@@ -335,6 +357,10 @@ def main():
                          "game evaluates; 12..15 are the menu sets)")
     ip.set_defaults(fn=cmd_input)
 
+    sub.add_parser("save", help="bounded retail save/load transition trace "
+                                  "(X2_SAVE_TRACE=0 disables it)").set_defaults(
+                                      fn=cmd_save)
+
     w = sub.add_parser("watch")
     w.add_argument("--for", dest="duration", type=float, default=30.0)
     w.add_argument("--every", type=float, default=1.0)
@@ -346,8 +372,8 @@ def main():
     rec.set_defaults(fn=cmd_recording)
 
     probe = sub.add_parser("probe", help="inspect the published live game: "
-                                           "status, guest input, frame, and "
-                                           "recent recorded inputs")
+                                           "status, guest input, save trace, "
+                                           "frame, and recorded inputs")
     probe.add_argument("--controller", type=int, default=0)
     probe.add_argument("--events", type=int, default=20)
     probe.add_argument("--shot", default="scratch/screenshots/live-probe.png")

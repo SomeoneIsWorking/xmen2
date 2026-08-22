@@ -231,3 +231,31 @@ select-button value {
     color: #E0DBC8;
     background-color: rgba(17, 16, 10, 65%);
 }
+
+.assignment-row {
+    display: flex;
+    align-items: center;
+    gap: 6dp;
+    min-height: 42dp;
+}
+.assignment-row key {
+    flex: 1 1 auto;
+    min-width: 180dp;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.assignment-row button,
+.assignment-row value {
+    flex: 0 0 48dp;
+    width: 48dp;
+    min-height: 36dp;
+    margin: 0;
+    padding: 4dp;
+    text-align: center;
+}
+.assignment-head {
+    opacity: 0.65;
+    font-size: 14dp;
+    text-transform: uppercase;
+}

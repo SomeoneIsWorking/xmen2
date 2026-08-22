@@ -20,14 +20,15 @@
  * smearing between frames and be attributed to anything but this.
  */
 #include "gpu_device.h"
+#include "gpu_capture.h"
 #include "gpu_draw.h"
 #include "gpu_frame_submit.h"
 #include "gpu_internal.h"
+#include "gpu_present.h"
 #include "rmlui_ui.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
@@ -37,7 +38,8 @@ SDL_GPUCommandBuffer *g_cmd;
 SDL_GPUTexture       *g_swap;
 SDL_GPURenderPass    *g_pass;
 uint32_t              g_swap_w, g_swap_h;
-
+static SDL_GPUTexture *g_output;
+static uint32_t        g_output_w, g_output_h;
 /* Where the frame goes when it is not going to the swapchain: the self-test
    and, later, the engine's off-screen render destinations. */
 static SDL_GPUTexture *g_offscreen;
@@ -49,6 +51,7 @@ static uint32_t g_depth_w, g_depth_h;
 /* Headless: no window, and the frame renders into this instead. */
 static int             g_headless;
 static uint32_t        g_headless_w = 800, g_headless_h = 600;
+static int             g_headless_size_explicit;
 static SDL_GPUTexture *g_headless_tex;
 static unsigned long   g_headless_frames;
 static SDL_Window *(*g_window_provider)(void);
@@ -177,6 +180,7 @@ void gpu_device_destroy(void)
        it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
        that only shows up under a validation layer. */
     gpu_draw_shutdown();
+    gpu_present_shutdown(g_gpu);
 #endif
 #ifdef X2_WITH_SDL
     if (!g_gpu) return;
@@ -196,6 +200,26 @@ int gpu_device_ready(void)
 #ifdef X2_WITH_SDL
     return g_gpu != NULL;
 #else
+    return 0;
+#endif
+}
+
+int gpu_device_set_backbuffer_size(uint32_t width, uint32_t height)
+{
+#ifdef X2_WITH_SDL
+    if (!gpu_present_set_scene_size(width, height)) return 0;
+    if (g_headless && !g_headless_size_explicit) {
+        if (g_headless_tex) {
+            SDL_ReleaseGPUTexture(g_gpu, g_headless_tex);
+            g_headless_tex = NULL;
+        }
+        g_headless_w = width;
+        g_headless_h = height;
+    }
+    return 1;
+#else
+    (void)width;
+    (void)height;
     return 0;
 #endif
 }
@@ -488,8 +512,11 @@ void gpu_pass_begin(void) { pass_begin(0); }
 void gpu_device_headless(int on, uint32_t w, uint32_t h)
 {
     g_headless = on;
-    if (w) g_headless_w = w;
-    if (h) g_headless_h = h;
+    if (w && h) {
+        g_headless_w = w;
+        g_headless_h = h;
+        g_headless_size_explicit = 1;
+    }
     if (on)
         printf("gpu: HEADLESS -- frames render into an off-screen %ux%u target; "
                "there is no window and nothing is presented to a screen.\n",
@@ -568,15 +595,15 @@ int gpu_frame_begin(void)
                 SDL_GetError());
         return 0;
     }
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_swap,
-                                               &g_swap_w, &g_swap_h)) {
+    if (!SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_output,
+                                               &g_output_w, &g_output_h)) {
         fprintf(stderr, "gpu: acquiring the swapchain texture failed: %s\n",
                 SDL_GetError());
         SDL_CancelGPUCommandBuffer(g_cmd);
         g_cmd = NULL;
         return 0;
     }
-    if (!g_swap) {
+    if (!g_output) {
         /* Legitimate and transient -- the window is minimised, or every image
            is still in flight. Counted so a run that NEVER gets one is
            distinguishable from one that occasionally misses. */
@@ -585,167 +612,21 @@ int gpu_frame_begin(void)
         g_frames_no_swapchain++;
         return 0;
     }
+    g_swap = g_output;
+    g_swap_w = g_output_w;
+    g_swap_h = g_output_h;
+    if (gpu_present_is_configured()) {
+        g_swap = gpu_present_scene(g_gpu, &g_swap_w, &g_swap_h);
+        if (!g_swap) {
+            SDL_CancelGPUCommandBuffer(g_cmd);
+            g_cmd = NULL;
+            g_output = NULL;
+            return 0;
+        }
+    }
     g_clear.mask = 0;
     gpu_frame_host_reset();
     return 1;
-#endif
-}
-
-/*
- * X2_SHOT=<path> -- write the headless target to a PPM, periodically.
- *
- * Here rather than in a thread because SDL_GPU command buffers belong to the
- * thread that made them: a readback from the heartbeat would be a data race on
- * the renderer, which is a hard thing to debug and an easy thing to avoid.
- *
- * The file is REWRITTEN each time, so it always holds a recent frame and a
- * reader never has to guess which one. P6 rather than PNG because it needs no
- * library, and the one caller that wants a PNG has ImageMagick anyway.
- */
-static void shot_maybe_write(void)
-{
-#ifdef X2_WITH_SDL
-    static const char *path = NULL;
-    static int checked, every = 60;
-    static unsigned long min_draws;          /* X2_SHOT_MIN_DRAWS */
-    static unsigned long busy_written;
-    static int require_vs;
-    static long keep = -1, kept;             /* X2_SHOT_KEEP */
-    static unsigned char *buf;
-    char numbered[512];
-    uint32_t w, h, i, n;
-    FILE *f;
-
-    if (!checked) {
-        const char *e;
-        checked = 1;
-        path = getenv("X2_SHOT");
-        if (path && !*path) path = NULL;
-        if ((e = getenv("X2_SHOT_EVERY")) && *e) every = atoi(e);
-        if (every < 1) every = 1;
-        /*
-         * X2_SHOT_MIN_DRAWS=<n> -- only photograph frames that DREW something.
-         *
-         * Without it a capture is whatever frame the counter landed on, and
-         * frame numbers do not name scenes in this game: the intro movies
-         * decode at host-dependent speed, so the same frame number was the
-         * main menu on one run and the Sofdec logo on the next. Two probes in
-         * a row photographed a logo and were read as evidence about the menu.
-         * A movie frame is one or two draws and a scene is hundreds, so the
-         * draw count names the scene where the frame number cannot.
-         */
-        if ((e = getenv("X2_SHOT_MIN_DRAWS")) && *e)
-            min_draws = strtoul(e, NULL, 10);
-        if ((e = getenv("X2_SHOT_VS")) && *e && *e != '0') require_vs = 1;
-        /*
-         * X2_SHOT_KEEP=<n> -- keep the first <n> qualifying frames as
-         * <path>.000, .001, ... instead of overwriting one file.
-         *
-         * Overwriting answers "what was on screen at the END", and the end of
-         * a run of this game is not the interesting moment: the first gated
-         * capture of the tutorial was a save dialog and the last was a
-         * game-over screen, with the whole of the level in between and no
-         * frame of it kept. A filmstrip keeps the entry.
-         */
-        if ((e = getenv("X2_SHOT_KEEP")) && *e) {
-            keep = atol(e);
-            if (keep < 1) keep = 1;
-        }
-        if (path)
-            printf("gpu: X2_SHOT -- the headless target is written to %s every "
-                   "%d frame(s), overwriting.\n", path, every);
-        if (path && getenv("X2_SHOT_AFTER_FILE") &&
-            *getenv("X2_SHOT_AFTER_FILE"))
-            printf("gpu: X2_SHOT_AFTER_FILE=%s -- NOTHING is photographed "
-                   "until the game opens a file whose name contains that. If "
-                   "it never does, no file is written and this run "
-                   "photographed NOTHING.\n", getenv("X2_SHOT_AFTER_FILE"));
-        if (path && min_draws)
-            printf("gpu: X2_SHOT_MIN_DRAWS=%lu -- only frames with at least "
-                   "that many draws are photographed. If none ever is, NO "
-                   "file is written and this run photographed NOTHING.\n",
-                   min_draws);
-        if (path && require_vs)
-            printf("gpu: X2_SHOT_VS=1 -- only frames that received a "
-                   "programmable draw are photographed. If none ever is, "
-                   "NO file is written.\n");
-    }
-    /* X2_SHOT reads back the HEADLESS target; with a real window there is no
-       such target and this wrote nothing at all. It said nothing about that
-       either, so a run launched without --no-window looked exactly like a run
-       whose scene gate never opened -- which cost this session a five-minute
-       run and a wrong conclusion about the gate. Said once, by name. */
-    if (path && !g_headless) {
-        static int said;
-        if (!said++)
-            printf("gpu: X2_SHOT=%s is set but this run has a REAL WINDOW. The "
-                   "capture reads back the headless target, which does not "
-                   "exist here, so NOTHING will be written. Add --no-window.\n",
-                   path);
-        return;
-    }
-    if (!path || !g_headless || (g_headless_frames % (unsigned long)every))
-        return;
-    /* The SCENE gate, when one was asked for: nothing is photographed until
-       the game has opened a file whose name contains X2_SHOT_AFTER_FILE. A
-       frame number and a draw count have each aimed a capture at the wrong
-       scene once; the file the game opens is the game's own answer to "where
-       am I". Declared here rather than in a header because the kernel32 layer
-       has none -- crt.c reaches its file helpers the same way. */
-    {
-        extern int k32_file_gate_open(void);
-        if (!k32_file_gate_open()) return;
-    }
-    if (min_draws && gpu_frame_draws_so_far() < min_draws)
-        return;
-    if (require_vs && !gpu_frame_had_programmable()) return;
-    if (min_draws) busy_written++;
-    n = g_headless_w * g_headless_h * 4u;
-    if (!buf && !(buf = (unsigned char *)malloc(n))) return;
-    if (!gpu_device_headless_read(buf, n, &w, &h)) return;
-    if (keep > 0 && kept >= keep) {
-        static int said;
-        if (!said++)
-            printf("gpu: X2_SHOT_KEEP -- %ld frame(s) kept as %s.000..%s.%03ld; "
-                   "everything after this point is NOT photographed.\n",
-                   kept, path, path, kept - 1);
-        return;
-    }
-    if (keep > 0) {
-        snprintf(numbered, sizeof numbered, "%s.%03ld", path, kept);
-        f = fopen(numbered, "wb");
-    } else {
-        f = fopen(path, "wb");
-    }
-    if (!f) {
-        fprintf(stderr, "gpu: X2_SHOT could not open %s\n",
-                keep > 0 ? numbered : path);
-        path = NULL;                          /* say it once, not per frame */
-        return;
-    }
-    if (keep > 0 && !kept)
-        printf("gpu: X2_SHOT_KEEP=%ld -- keeping the first %ld qualifying "
-               "frame(s) as %s.000 onward rather than overwriting one file.\n",
-               keep, keep, path);
-    /* WHICH FRAME each kept file is. Without it a capture cannot be lined up
-       with any other instrument -- a light dump and a screenshot were compared
-       across a whole level load once, and the reading had to be withdrawn. */
-    if (keep > 0)
-        printf("gpu: X2_SHOT_KEEP -- %s.%03ld is presented frame %lu "
-               "(%lu draws).\n", path, kept, g_headless_frames,
-               gpu_frame_draws_so_far());
-    kept++;
-    if (min_draws && busy_written == 1)
-        printf("gpu: X2_SHOT_MIN_DRAWS -- first frame with at least %lu draws "
-               "photographed (frame %lu, %lu draws).\n", min_draws,
-               g_headless_frames, gpu_frame_draws_so_far());
-    fprintf(f, "P6\n%u %u\n255\n", w, h);
-    for (i = 0; i < w * h; i++) {             /* BGRA -> RGB */
-        fputc(buf[i * 4 + 2], f);
-        fputc(buf[i * 4 + 1], f);
-        fputc(buf[i * 4 + 0], f);
-    }
-    fclose(f);
 #endif
 }
 
@@ -804,14 +685,26 @@ void gpu_frame_end(void)
         SDL_EndGPURenderPass(g_pass);
         g_pass = NULL;
     }
+    if (!g_offscreen && g_output && g_swap != g_output
+        && !gpu_present_composite(g_cmd, g_output, g_output_w, g_output_h)) {
+        SDL_CancelGPUCommandBuffer(g_cmd);
+        g_cmd = NULL;
+        g_swap = NULL;
+        g_output = NULL;
+        return;
+    }
     if (!g_offscreen)
-        x2_ui_render(g_gpu, g_cmd, g_swap, g_swap_w, g_swap_h, g_win);
+        x2_ui_render(g_gpu, g_cmd, g_output, g_output_w, g_output_h, g_win);
     gpu_frame_submit(g_gpu, g_cmd, g_headless);
     g_cmd = NULL;
     g_frame_end_submits++;
-    if (!g_offscreen) g_swap = NULL;
+    if (!g_offscreen) {
+        g_swap = NULL;
+        g_output = NULL;
+    }
     g_frames_presented++;
-    shot_maybe_write();
+    gpu_capture_frame(g_headless, g_headless_frames,
+                      g_headless_w, g_headless_h);
     /*
      * X2_MAX_FRAMES: stop cleanly after this many frames.
      *

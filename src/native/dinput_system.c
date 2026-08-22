@@ -18,7 +18,7 @@
 
 /* SDL scancodes are USB HID usages; DIK values are PS/2 set-1 scancodes.
    There is no arithmetic conversion, so this explicit table is authoritative. */
-static const struct { int sdl; unsigned char dik; } DIK_MAP[] = {
+static const struct { SDL_Scancode sdl; unsigned char dik; } DIK_MAP[] = {
     { SDL_SCANCODE_ESCAPE, 0x01 },
     { SDL_SCANCODE_1, 0x02 }, { SDL_SCANCODE_2, 0x03 }, { SDL_SCANCODE_3, 0x04 },
     { SDL_SCANCODE_4, 0x05 }, { SDL_SCANCODE_5, 0x06 }, { SDL_SCANCODE_6, 0x07 },
@@ -109,6 +109,18 @@ unsigned char dinput_system_dik(int scancode)
     (void)scancode;
 #endif
     return 0;
+}
+
+const char *dinput_system_dik_name(unsigned char dik)
+{
+#ifdef X2_WITH_SDL
+    int i;
+    for (i = 0; i < DIK_MAP_N; i++)
+        if (DIK_MAP[i].dik == dik) return SDL_GetScancodeName(DIK_MAP[i].sdl);
+#else
+    (void)dik;
+#endif
+    return NULL;
 }
 
 void dinput_system_keyboard_state(uint32_t out, uint32_t size)

@@ -95,6 +95,17 @@ Keyboard mappings live in four reusable profiles instead. This retires the
 old adapter around the PC executable's `Defaults 1/2/3` buttons; keeping it
 would give the guest editor and RmlUi two competing writers for the same slots.
 
+The binding row has two names with different contracts. Its `storage_key` is
+the exact identifier read from `FUN_0061b030` and must preserve executable ABI
+spellings such as `SreenGrab`; its `display_label` is the shipped English PC
+text from `igct.bnx`. `src/input/binding_rows.c` owns both in one descriptor
+table. RmlUi presents the latter (`Ally` becomes `Energy Pack`, `TargetLock`
+becomes `Health Pack`, and `SreenGrab` becomes `Screenshot`), while the live
+probe reports the former so diagnostics continue to match registry data.
+`tools/binding_rows.py` diffs all 42 keys and labels against those two shipped
+sources, and the production-API unit test pins the semantic discriminators and
+out-of-range behavior.
+
 ## Remaining evidence boundary
 
 The fixed preset now preserves the console health control without inventing a

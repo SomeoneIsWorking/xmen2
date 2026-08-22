@@ -20,6 +20,7 @@ static X86Module module = { .name = "XMen2", .base = &mapped_base,
 static int real_calls, reader_calls;
 static uint32_t g_object;
 static uint32_t g_heap_next;
+static int active_pad = 0;
 
 uint32_t guest_malloc(uint32_t bytes)
 {
@@ -32,6 +33,10 @@ uint32_t guest_malloc(uint32_t bytes)
 
 X86Module *x86_modules(void) { return &module; }
 int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 0; }
+int x2_player_input_pad_is_active_source(int pad)
+{
+    return pad == active_pad;
+}
 void fn_XMen2_006281f0(CPU *c)
 {
     real_calls++;
@@ -234,6 +239,21 @@ int main(int argc, char **argv)
                             "named by it (kind %u code 0x%02x)\n", kind, code);
             return 1;
         }
+        active_pad = -1;
+        if (!reader_says(4u, &kind, &code, 1) || kind != 1u || code != 0x1cu) {
+            fprintf(stderr, "pad glyph label: keyboard-active hotswap did not "
+                            "retain the keyboard prompt\n");
+            return 1;
+        }
+        active_pad = 0;
+        put_binding(6u, ALT_SLOT, 4u, 0x16u);   /* generic/PS pad 1 */
+        active_pad = 1;
+        if (!reader_says(6u, &kind, &code, 0) || kind != 4u || code != 0x16u) {
+            fprintf(stderr, "pad glyph label: a non-Xbox active pad was not "
+                            "selected for the retail naming path\n");
+            return 1;
+        }
+        active_pad = 0;
         put_binding(7u, 2u, 1u, 0x1cu);         /* keyboard only */
         if (!reader_says(7u, &kind, &code, 1) || kind != 1u || code != 0x1cu) {
             fprintf(stderr, "pad glyph label: a row with no pad binding did not "

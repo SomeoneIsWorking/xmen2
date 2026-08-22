@@ -13,7 +13,7 @@
  */
 #include "dialog_prompts.h"
 
-#include "dinput_pad.h"
+#include "player_input.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -28,10 +28,10 @@
 
 static unsigned long g_asset_text, g_pc_text, g_other_lookups;
 
-int dialog_prompts_use_asset_text(int connected_pads,
+int dialog_prompts_use_asset_text(int player_uses_gamepad,
                                   uint32_t localization_return)
 {
-    return connected_pads > 0 &&
+    return player_uses_gamepad &&
            localization_return == PC_HINT_LOCALIZATION_RETURN;
 }
 
@@ -95,7 +95,8 @@ void x2_override_00629bf0(CPU *C)
         linked_return = 0;
     else
         linked_return = module->preferred + (return_address - *module->base);
-    if (!dialog_prompts_use_asset_text(dinput_pad_count(), linked_return)) {
+    if (!dialog_prompts_use_asset_text(x2_player_input_uses_gamepad(0),
+                                       linked_return)) {
         if (linked_return == PC_HINT_LOCALIZATION_RETURN) g_pc_text++;
         else g_other_lookups++;
         fn_XMen2_00629bf0(C);

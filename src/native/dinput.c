@@ -336,9 +336,11 @@ void dinput_report(void)
 
 static void m_GetDeviceStatus(CPU *C)
 {
-    /* (this, rguidInstance) -- no device is present, and S_FALSE is what
-       DirectInput returns for "not attached". */
-    ret_com(C, S_FALSE, 1);
+    /* DirectInput 7 serves its system keyboard and mouse only. Gamepads remain
+       on the DirectInput 8 production path until engine callbacks are proven. */
+    uint32_t guid = A(1);
+    if (!guid) { ret_com(C, DIERR_INVALIDPARAM, 1); return; }
+    ret_com(C, dinput_guid_kind(guid) ? S_OK : S_FALSE, 1);
 }
 
 static void m_Initialize(CPU *C)
