@@ -22,10 +22,13 @@
 #include "gpu_device.h"
 #include "gpu_capture.h"
 #include "gpu_draw.h"
+#include "gpu_frame_timing.h"
 #include "gpu_frame_submit.h"
 #include "gpu_internal.h"
 #include "gpu_present.h"
+#include "gpu_shadow.h"
 #include "rmlui_ui.h"
+#include "settings_store.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,29 +93,7 @@ static unsigned long g_frames_presented, g_frames_no_swapchain,
 static unsigned long long g_frame_ns, g_frame_ns_min, g_frame_ns_max;
 static unsigned long long g_last_frame_end_ns, g_frame_end_submits;
 static unsigned long g_frame_intervals;  /* intervals folded into g_frame_ns */
-#define GPU_FRAME_HISTOGRAM 13
-static unsigned long g_frame_hist[GPU_FRAME_HISTOGRAM]; /* ms buckets */
-
-/*
- * Which histogram bucket a frame interval falls into.
- *
- * Boundaries are denser under 100 ms because that is where the interesting
- * difference between a paced and a crowded frame lives; the last bucket is
- * open-ended. Bucket 0 also catches a zero-interval reading, which the
- * histogram must place somewhere rather than drop -- counting it as "a frame
- * faster than anyone could measure" preserves the total.
- */
-static int frame_time_bucket(unsigned long long ns)
-{
-    static const unsigned long long EDGE_MS[] = {
-        1, 2, 4, 6, 10, 16, 25, 40, 60, 80, 120, 200,
-    };
-    unsigned long long ms = ns / 1000000ull;
-    unsigned i;
-    for (i = 0; i < GPU_FRAME_HISTOGRAM - 1; i++)
-        if (ms < EDGE_MS[i]) return (int)i;
-    return GPU_FRAME_HISTOGRAM - 1;
-}
+static unsigned long g_frame_hist[GPU_FRAME_HISTOGRAM_BUCKETS];
 #endif
 
 int gpu_device_create(void)
@@ -121,6 +102,9 @@ int gpu_device_create(void)
     fprintf(stderr, "gpu: built without SDL; no GPU device can be made.\n");
     return 0;
 #else
+    X2Settings *settings = x2_settings_store();
+    gpu_shadow_configure(settings->dynamic_shadows,
+                         settings->shadow_resolution);
     if (g_gpu) return 1;
     if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_Init(SDL_INIT_VIDEO))
         fprintf(stderr, "gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
@@ -566,6 +550,7 @@ int gpu_frame_begin(void)
             return 0;
         }
         gpu_set_offscreen_target(t, g_headless_w, g_headless_h);
+        gpu_shadow_frame_begin();
         g_clear.mask = 0;
         gpu_frame_host_reset();
         g_headless_frames++;
@@ -624,6 +609,7 @@ int gpu_frame_begin(void)
             return 0;
         }
     }
+    gpu_shadow_frame_begin();
     g_clear.mask = 0;
     gpu_frame_host_reset();
     return 1;
@@ -634,6 +620,7 @@ void gpu_frame_end(void)
 {
 #ifdef X2_WITH_SDL
     if (!g_cmd) return;
+    gpu_shadow_frame_submit();
     {
         /* Present-to-present frame time, before this submit but after the
            previous one. The FIRST frame has no predecessor; it seeds the
@@ -646,7 +633,7 @@ void gpu_frame_end(void)
             g_frame_intervals++;
             if (!g_frame_ns_min || dt < g_frame_ns_min) g_frame_ns_min = dt;
             if (dt > g_frame_ns_max) g_frame_ns_max = dt;
-            g_frame_hist[frame_time_bucket(dt)]++;
+            g_frame_hist[gpu_frame_timing_bucket(dt)]++;
             /*
              * A frame slow enough to matter gets its cost attributed AT THE
              * MOMENT it ends, not in a shutdown report: the frame limiter
@@ -838,7 +825,7 @@ void gpu_device_report(void)
                (double)g_frame_ns_max * 1e-6,
                (unsigned long long)g_frame_end_submits);
         printf("        ");
-        for (i = 0; i < GPU_FRAME_HISTOGRAM; i++) {
+        for (i = 0; i < GPU_FRAME_HISTOGRAM_BUCKETS; i++) {
             static const char *LBL[] = {
                 "<1", "1-2", "2-4", "4-6", "6-10", "10-16", "16-25",
                 "25-40", "40-60", "60-80", "80-120", "120-200", ">=200",

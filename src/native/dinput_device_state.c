@@ -115,6 +115,8 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device)
                               out, bytes);
         if (joystick_active(out, bytes, device->axis_lo, device->axis_hi))
             x2_player_input_note_gamepad_activity(pad);
+        x2_player_input_note_gamepad_state(
+            pad, (const unsigned char *)(uintptr_t)out, bytes);
     } else {
         dinput_system_mouse_state(out, bytes);
     }

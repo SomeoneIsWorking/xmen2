@@ -22,6 +22,7 @@
 #include "gpu_device.h"
 #include "guest_clock.h"
 #include "input_probe_lifecycle.h"
+#include "player_participation_probe.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -59,11 +60,6 @@
  * +0x2fc; 0x2fc + 30*4 lands inside 0x390. This dumps the measured structure.
  */
 #define PAD_MGR_RVA     RVA(0x00551ed0u)  /* FUN_00551ed0, the pad manager        */
-#define PADVT_PLAYER    0x4cu        /* ->player(i), RET 4                   */
-#define PADVT_COUNT     0x70u        /* ->playerCount(), RET 0               */
-#define PLAYERVT_MASK   0x18u        /* ->logicalMask(), RET 0               */
-#define PLAYER_PHYSICAL 0x2fcu       /* first of the physical floats         */
-#define PLAYER_PHYS_N   30u
 #define PADMGR_CURPLAYER 0x34u       /* vt+0x60 is just `return [this+0x34]`  */
 
 /*
@@ -426,63 +422,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
         }
     }
 
-    /*
-     * The live half: the pad manager's per-player logical mask and physical
-     * floats. This is what a press has to reach; the binding table above is
-     * only what decides WHICH bit it reaches.
-     */
-    {
-        uint32_t mgr = base
-            ? thiscall(cpu, base + PAD_MGR_RVA, 0u, 0, NULL) : 0u;
-        uint32_t vt = 0, fn = 0, players = 0, i;
-
-        put(out, n, &at, "\n");
-        if (!mgr) {
-            put(out, n, &at, "the pad manager (FUN_00551ed0) returned 0, so no "
-                             "player state was read at all.\n");
-        } else if (!x86_peek32(mgr, &vt) ||
-                   !x86_peek32(vt + PADVT_COUNT, &fn) || !fn) {
-            put(out, n, &at, "the pad manager at 0x%08x has no readable vtable "
-                             "slot +0x%x, so its player count is unknown.\n",
-                mgr, PADVT_COUNT);
-        } else {
-            players = thiscall(cpu, fn, mgr, 0, NULL);
-            put(out, n, &at, "pad manager 0x%08x: %u player(s)\n", mgr,
-                players);
-            if (players > 4u) players = 4u;
-            for (i = 0; i < players; i++) {
-                uint32_t sub = 0, svt = 0, mask = 0, k, nonzero = 0;
-                uint32_t arg = i;
-                if (!x86_peek32(vt + PADVT_PLAYER, &fn) || !fn) continue;
-                sub = thiscall(cpu, fn, mgr, 1, &arg);
-                if (!sub) {
-                    put(out, n, &at, "  player %u: no object\n", i);
-                    continue;
-                }
-                if (x86_peek32(sub, &svt) &&
-                    x86_peek32(svt + PLAYERVT_MASK, &fn) && fn)
-                    mask = thiscall(cpu, fn, sub, 0, NULL);
-                put(out, n, &at, "  player %u object 0x%08x  logical mask "
-                                 "0x%08x  physical:", i, sub, mask);
-                for (k = 0; k < PLAYER_PHYS_N; k++) {
-                    uint32_t bits = 0;
-                    float v;
-                    if (!x86_peek32(sub + PLAYER_PHYSICAL + k * 4u, &bits))
-                        continue;
-                    memcpy(&v, &bits, sizeof v);
-                    if (v != 0.0f) {
-                        put(out, n, &at, " [%u]=%.3f", k, (double)v);
-                        nonzero++;
-                    }
-                }
-                put(out, n, &at, "%s\n", nonzero ? "" :
-                    " 0 of 30 floats non-zero");
-            }
-            if (!players)
-                put(out, n, &at, "  the manager reports NO players, so no "
-                                 "logical mask exists to carry a press.\n");
-        }
-    }
+    at += x2_player_participation_probe_report(cpu, out + at, n - at);
 
     /*
      * The prompt label the game last composed, byte by byte.

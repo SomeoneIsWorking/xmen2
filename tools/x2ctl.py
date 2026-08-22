@@ -14,6 +14,8 @@ then talk to it while it runs:
     tools/x2ctl.py key Escape Escape Up   # several, in order
     tools/x2ctl.py pad a start             # synthetic pad buttons
     tools/x2ctl.py pad leftx=-1            # ... and axes
+    tools/x2ctl.py assignment 2 --pad 0    # session-only pad -> Player 2
+    tools/x2ctl.py assignment 2 --clear    # remove that eligibility
     tools/x2ctl.py shot out.png           # capture the current frame
     tools/x2ctl.py input                  # the GAME's bindings + live actions
     tools/x2ctl.py save                   # bounded retail save/load evidence
@@ -174,6 +176,16 @@ def cmd_pad(args):
         elif args.gap:
             time.sleep(args.gap)
     return 1 if bad else 0
+
+
+def cmd_assignment(args):
+    """Assign one exact live pad for this process, without persisting it."""
+    path = "/assignment?player=%d&" % args.player
+    path += "clear=1" if args.clear else "pad=%d" % args.pad
+    code, _, body = call(args.port, path)
+    text = body.decode(errors="replace").strip()
+    print(("  " if code == 200 else "  REFUSED(%d) " % code) + text)
+    return 0 if code == 200 else 1
 
 
 def cmd_shot(args):
@@ -344,6 +356,15 @@ def main():
     d.add_argument("--hold", type=float, default=0.0)
     d.add_argument("--gap", type=float, default=0.4)
     d.set_defaults(fn=cmd_pad)
+
+    assignment = sub.add_parser(
+        "assignment", help="assign a session-only live pad to a player")
+    assignment.add_argument("player", type=int, choices=range(1, 5))
+    assignment_mode = assignment.add_mutually_exclusive_group(required=True)
+    assignment_mode.add_argument("--pad", type=int,
+                                 help="current live pad index")
+    assignment_mode.add_argument("--clear", action="store_true")
+    assignment.set_defaults(fn=cmd_assignment)
 
     s = sub.add_parser("shot")
     s.add_argument("out", nargs="?", default="scratch/screenshots/x2ctl.png")

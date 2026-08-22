@@ -22,6 +22,11 @@ typedef struct ConversationSkipPolicy {
     unsigned ignored;
 } ConversationSkipPolicy;
 
+/* Visibility is presentation state, not evidence that a conversation owns a
+ * cutscene.  Authored camera ownership or a retail control lock is required. */
+int conversation_skip_policy_is_authored(int camera_owned,
+                                         int controls_locked);
+
 ConversationSkipDecision conversation_skip_policy_update(
     ConversationSkipPolicy *policy, int visible, int authored,
     int continuation_locked, int skip_pressed,

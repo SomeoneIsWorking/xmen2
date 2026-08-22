@@ -1,7 +1,7 @@
 ---
 id: 106
 title: Retail shadows are procedural decals; light-cast dynamic shadows need explicit enhancement policy
-status: investigating
+status: resolved
 symptom: The native renderer has no light-cast shadow-map pass, but adding one cannot be justified as restoration of the retail DetailedShadow option
 tags: pc,native,graphics,shadows,d3d8,architecture
 created: 2026-08-22
@@ -40,12 +40,11 @@ stencil, and colour-write vocabulary. The producer is therefore present and
 submitted by native; no renderer divergence has been observed at this boundary.
 
 `GpuDraw` has resolved geometry, transforms, lights, and fixed-function state,
-but no stable scene identity, caster/receiver classification, bounds, or chosen
-shadow light. The current offscreen helper is a global readback-oriented test
-target, not a first-class sampleable render resource. The D3D8 facade also has
-no `CreateRenderTarget`, `CreateDepthStencilSurface`, `CopyRects`, or
-`UpdateTexture` implementation. None of those omissions breaks the evidenced
-retail decal producer, which submits ordinary geometry.
+but no stable scene identity. The enhancement therefore states a generic
+packet policy rather than pretending to recover authored caster/receiver tags.
+`gpu_shadow` owns a first-class sampleable depth target and separate same-frame
+command buffer; it does not masquerade as the still-unimplemented guest D3D8
+render-target/copy methods, which are absent from the observed retail route.
 
 ## Correct next steps
 
@@ -54,12 +53,14 @@ identity and matching vertex bytes in one same-scene stock/native capture. Fix
 the first divergent boundary only if one is observed; the current evidence does
 not justify a renderer change.
 
-For the requested light-cast dynamic-shadow enhancement, first choose and
-document caster, receiver, light-selection, projection/frustum, resolution,
-update, bias, and filtering policy. Then add a narrow scene-to-renderer frame
-input and first-class sampleable depth resources. The pass belongs inside the
-logical D3D scene before `gpu_present_composite`; aspect fitting and RmlUi stay
-downstream. See `docs/RE/shadows.md`.
+The requested light-cast enhancement now has explicit caster, receiver, ordered
+directional-light, camera-frustum fit, resolution, update, bias and 3x3 PCF
+policy. Alpha-tested skinned packets use their real UV/texture cutoff; blended
+packets remain excluded. The production three-answer test proves sampled
+occlusion disappears both when disabled and when its caster is removed. A
+bounded live scene submitted all 11,836 VS 1.1 draws as both casters and
+receivers with zero shadow failures. See `docs/RE/shadows.md` for exact policy
+and the authored-tag limitation.
 
 ## Falsifier
 

@@ -1,5 +1,6 @@
 #include "fmv_player.h"
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,9 +73,26 @@ static const char *base_name(const char *path)
     return slash ? slash + 1 : path;
 }
 
+static int parse_expected_frames(const char *text, unsigned long *frames)
+{
+    char *end;
+    unsigned long parsed;
+    if (!text) {
+        *frames = 0;
+        return 1;
+    }
+    errno = 0;
+    parsed = strtoul(text, &end, 10);
+    if (errno || end == text || *end || !parsed) return 0;
+    *frames = parsed;
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     const char *path = argc > 1 ? argv[1] : getenv("X2_TEST_SFD");
+    const char *video_frames_text = getenv("X2_TEST_SFD_VIDEO_FRAMES");
+    const char *audio_frames_text = getenv("X2_TEST_SFD_AUDIO_FRAMES");
     X2FmvAudioSink sink;
     AudioCounter audio = { 0 };
     X2FmvPlayer *player;
@@ -83,12 +101,20 @@ int main(int argc, char **argv)
     size_t tight_size, pitch, pitched_size;
     uint64_t prior_hash = 0;
     int changed_frames = 0, distinct_frames = 0, picture_frames = 0;
+    unsigned long expected_video;
+    unsigned long expected_audio;
     int width, height, step, y, failures = 0;
     char error[256] = { 0 };
     if (!path || !*path) {
         printf("FMV decode: SKIPPED -- set X2_TEST_SFD to a user-provided "
                "shipped .sfd outside git\n");
         return 77;
+    }
+    if (!parse_expected_frames(video_frames_text, &expected_video)
+            || !parse_expected_frames(audio_frames_text, &expected_audio)) {
+        fprintf(stderr, "FMV decode: FAILED -- expected frame counts must be "
+                "positive decimal integers\n");
+        return 1;
     }
     sink.userdata = &audio;
     sink.queue_stereo_f32 = count_audio;
@@ -128,15 +154,28 @@ int main(int argc, char **argv)
         picture_frames += lower_half_has_picture(tight, width, height);
         changed_frames++;
     }
+    for (step = 0; !failures && x2_fmv_state(player) != X2_FMV_FINISHED
+            && step < 1000; ++step) {
+        if (x2_fmv_update(player, 1000000.0 + step) < 0) failures++;
+    }
     failures += width != 640 || height != 480;
     failures += x2_fmv_sample_rate(player) != 44100;
     failures += changed_frames < 90 || distinct_frames < 30;
     failures += picture_frames == 0;
     failures += audio.frames < 44100 || audio.sample_rate != 44100;
+    failures += x2_fmv_state(player) != X2_FMV_FINISHED;
+    failures += expected_video
+        && x2_fmv_decoded_frames(player) != expected_video;
+    failures += expected_audio
+        && x2_fmv_decoded_audio_frames(player) != expected_audio;
+    failures += audio.frames != x2_fmv_decoded_audio_frames(player);
     printf("FMV decode: %s -- %s, %dx%d, %d changed / %d distinct frames; "
-           "all %d rows match tight and padded copies; %llu audio frames\n",
+           "all %d rows match tight and padded copies; drained %lu video / "
+           "%llu audio frames%s\n",
            failures ? "FAILED" : "PASSED", base_name(path), width, height,
-           changed_frames, distinct_frames, height, audio.frames);
+           changed_frames, distinct_frames, height,
+           x2_fmv_decoded_frames(player), audio.frames,
+           expected_video && expected_audio ? " at source parity" : "");
     free(pitched);
     free(tight);
     x2_fmv_close(player);

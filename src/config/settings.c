@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "input_assignments.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -40,103 +41,14 @@ void x2_settings_defaults(X2Settings *settings)
     settings->width = 1280;
     settings->height = 720;
     settings->window_mode = X2_WINDOW_WINDOWED;
+    settings->dynamic_shadows = 1;
+    settings->shadow_resolution = 1024;
     settings->boot_mode = X2_BOOT_NORMAL;
     for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
         settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
     for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
         settings->controller[i].player = X2_SETTINGS_UNASSIGNED;
     settings->keyboard_player[0] = 0;
-}
-
-static int valid_player(int player)
-{
-    return player == X2_SETTINGS_UNASSIGNED ||
-           (player >= 0 && player < (int)X2_SETTINGS_PLAYERS);
-}
-
-int x2_settings_assign_keyboard(X2Settings *settings, unsigned profile,
-                                int player)
-{
-    unsigned i;
-    if (!settings || profile >= X2_SETTINGS_KEYBOARD_PROFILES ||
-        !valid_player(player)) return 0;
-    if (player >= 0)
-        for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
-            if (settings->keyboard_player[i] == player)
-                settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
-    settings->keyboard_player[profile] = (int8_t)player;
-    return 1;
-}
-
-static int controller_slot(const X2Settings *settings, const char *id)
-{
-    unsigned i;
-    if (!id || !id[0]) return -1;
-    for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
-        if (strcmp(settings->controller[i].id, id) == 0) return (int)i;
-    return -1;
-}
-
-int x2_settings_assign_controller(X2Settings *settings, const char *id,
-                                  int player)
-{
-    int slot;
-    unsigned i;
-    if (!settings || !id || !id[0] || strlen(id) >= X2_SETTINGS_DEVICE_ID ||
-        !valid_player(player)) return 0;
-    slot = controller_slot(settings, id);
-    if (player == X2_SETTINGS_UNASSIGNED) {
-        if (slot >= 0) {
-            memset(&settings->controller[slot], 0,
-                   sizeof settings->controller[slot]);
-            settings->controller[slot].player = X2_SETTINGS_UNASSIGNED;
-        }
-        return 1;
-    }
-    for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
-        if ((int)i != slot && settings->controller[i].player == player) {
-            memset(&settings->controller[i], 0, sizeof settings->controller[i]);
-            settings->controller[i].player = X2_SETTINGS_UNASSIGNED;
-        }
-    if (slot < 0)
-        for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
-            if (!settings->controller[i].id[0] ||
-                settings->controller[i].player == X2_SETTINGS_UNASSIGNED) {
-                slot = (int)i;
-                break;
-            }
-    if (slot < 0) return 0;
-    snprintf(settings->controller[slot].id,
-             sizeof settings->controller[slot].id, "%s", id);
-    settings->controller[slot].player = (int8_t)player;
-    return 1;
-}
-
-int x2_settings_controller_player(const X2Settings *settings, const char *id)
-{
-    int slot = settings ? controller_slot(settings, id) : -1;
-    return slot >= 0 ? settings->controller[slot].player
-                     : X2_SETTINGS_UNASSIGNED;
-}
-
-const char *x2_settings_player_controller(const X2Settings *settings,
-                                          unsigned player)
-{
-    unsigned i;
-    if (!settings || player >= X2_SETTINGS_PLAYERS) return NULL;
-    for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
-        if (settings->controller[i].player == (int)player)
-            return settings->controller[i].id;
-    return NULL;
-}
-
-int x2_settings_player_keyboard(const X2Settings *settings, unsigned player)
-{
-    unsigned i;
-    if (!settings || player >= X2_SETTINGS_PLAYERS) return -1;
-    for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
-        if (settings->keyboard_player[i] == (int)player) return (int)i;
-    return -1;
 }
 
 static char *trim(char *s)
@@ -233,6 +145,20 @@ static int parse_line(ParseState *state, char *line)
         return number(value, X2_MIN_HEIGHT, X2_MAX_HEIGHT, &settings->height);
     if (strcmp(key, "video.mode") == 0)
         return x2_window_mode_parse(value, &settings->window_mode);
+    if (strcmp(key, "video.dynamic_shadows") == 0) {
+        unsigned enabled;
+        if (!number(value, 0, 1, &enabled)) return 0;
+        settings->dynamic_shadows = (uint8_t)enabled;
+        return 1;
+    }
+    if (strcmp(key, "video.shadow_resolution") == 0) {
+        unsigned resolution;
+        if (!number(value, 512, 4096, &resolution) ||
+            (resolution != 512 && resolution != 1024 &&
+             resolution != 2048 && resolution != 4096)) return 0;
+        settings->shadow_resolution = (uint16_t)resolution;
+        return 1;
+    }
     if (strcmp(key, "boot.mode") == 0)
         return x2_boot_mode_parse(value, &settings->boot_mode);
     if (strcmp(key, "input.assignment_version") == 0) {
@@ -288,22 +214,28 @@ static int settings_valid(const X2Settings *settings)
 {
     unsigned i, j;
     if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE) return 0;
+    if (settings->dynamic_shadows > 1 ||
+        (settings->shadow_resolution != 512 &&
+         settings->shadow_resolution != 1024 &&
+         settings->shadow_resolution != 2048 &&
+         settings->shadow_resolution != 4096)) return 0;
     for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++) {
         int owner = settings->keyboard_player[i];
-        if (!valid_player(owner)) return 0;
+        if (!x2_settings_input_owner_valid(owner)) return 0;
         for (j = i + 1; owner >= 0 && j < X2_SETTINGS_KEYBOARD_PROFILES; j++)
             if (settings->keyboard_player[j] == owner) return 0;
     }
     for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++) {
         const X2ControllerAssignment *a = &settings->controller[i];
-        if (!valid_player(a->player) || (a->player >= 0 && !a->id[0])) return 0;
+        if (!x2_settings_input_owner_valid(a->player) ||
+            (a->player >= 0 && !a->id[0])) return 0;
         if (!a->id[0]) continue;
         for (j = i + 1; j < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; j++)
             if (strcmp(a->id, settings->controller[j].id) == 0 ||
                 (a->player >= 0 && a->player == settings->controller[j].player))
                 return 0;
     }
-    return 1;
+    return x2_settings_input_assignments_valid(settings);
 }
 
 static int migrate_legacy(ParseState *state)
@@ -436,6 +368,8 @@ int x2_settings_save(const X2Settings *settings, const char *path,
     fprintf(file, "video.width=%u\nvideo.height=%u\nvideo.mode=%s\n",
             settings->width, settings->height,
             x2_window_mode_name(settings->window_mode));
+    fprintf(file, "video.dynamic_shadows=%u\nvideo.shadow_resolution=%u\n",
+            settings->dynamic_shadows, settings->shadow_resolution);
     fprintf(file, "boot.mode=%s\n", x2_boot_mode_name(settings->boot_mode));
     fprintf(file, "input.assignment_version=2\n");
     for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {

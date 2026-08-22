@@ -33,6 +33,8 @@
 #define ASSET_NO_RETURN_CAM 0x00118u
 #define CLOCK_NOW           0x003e8u
 #define CLOCK_CONTROL_LIMIT 0x003f4u
+#define INPUT_ACTION_MASK    0x00138u
+#define CUTSCENE_SKIP_ACTION 20u
 #define SLOT_NONE           0x3fffffffu
 #define RESPONSE_NONE       0xffffffffu
 #define RESPONSE_SLOTS      8u
@@ -114,7 +116,8 @@ static ConversationCutsceneSnapshot snapshot(uint32_t base, uint32_t self,
         x86_peek32(self + CV_ASSET_TABLE + slot * 4u, &asset) && asset &&
         peek8(asset + ASSET_NO_RETURN_CAM, &no_return))
         out.no_return_camera = !!no_return;
-    out.authored = out.visible || out.no_return_camera || out.controls_locked;
+    out.authored = conversation_skip_policy_is_authored(
+        out.no_return_camera, out.controls_locked);
     out.response = CONVERSATION_SKIP_RESPONSE_WAITING;
     if (!out.visible) return out;
     if (slot == SLOT_NONE || !asset ||
@@ -143,16 +146,38 @@ static ConversationCutsceneSnapshot snapshot(uint32_t base, uint32_t self,
     return out;
 }
 
+static int action20_down(CPU *cpu, uint32_t input)
+{
+    CPU call = *cpu;
+    uint32_t vtable = RD32(input), action = CUTSCENE_SKIP_ACTION;
+
+    call.esp -= 4u;
+    WR32(call.esp, action);
+    call.ecx = input;
+    x86_guest_call_args(&call, RD32(vtable + INPUT_ACTION_MASK), 4u);
+    return (uint8_t)call.eax;
+}
+
 int conversation_cutscene_skip_should_advance(CPU *cpu, uint32_t self,
-                                               uint32_t slot,
-                                               int action20_down)
+                                               uint32_t slot, uint32_t input)
 {
     ConversationCutsceneSnapshot state = snapshot(exe_base(), self, slot);
     ConversationSkipDecision decision = conversation_skip_policy_update(
         &g_policy, state.visible, state.readable && state.authored,
-        state.controls_locked, action20_down, state.response);
-    (void)cpu;
+        state.controls_locked, action20_down(cpu, input), state.response);
     return decision == CONVERSATION_SKIP_ADVANCE;
+}
+
+void conversation_cutscene_skip_observe_inactive(uint32_t self)
+{
+    ConversationCutsceneSnapshot state = snapshot(exe_base(), self, SLOT_NONE);
+
+    /* An unreadable clock cannot prove cleanup restored control, so retain the
+       latch until production state becomes readable again. */
+    if (!state.readable) return;
+    (void)conversation_skip_policy_update(
+        &g_policy, 0, 0, state.controls_locked, 0,
+        CONVERSATION_SKIP_RESPONSE_WAITING);
 }
 
 static void append(char *out, size_t size, size_t *at, const char *fmt, ...)

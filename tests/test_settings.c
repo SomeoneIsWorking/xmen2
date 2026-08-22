@@ -18,6 +18,7 @@ int main(void)
     x2_settings_defaults(&saved);
     CHECK(saved.width == 1280 && saved.height == 720);
     CHECK(saved.window_mode == X2_WINDOW_WINDOWED);
+    CHECK(saved.dynamic_shadows == 1 && saved.shadow_resolution == 1024);
     CHECK(saved.boot_mode == X2_BOOT_NORMAL);
     CHECK(strcmp(x2_boot_mode_label(saved.boot_mode), "Boot normally") == 0);
     CHECK(x2_boot_mode_parse("menu", &saved.boot_mode));
@@ -29,6 +30,8 @@ int main(void)
     saved.width = 1920;
     saved.height = 1080;
     saved.window_mode = X2_WINDOW_BORDERLESS;
+    saved.dynamic_shadows = 0;
+    saved.shadow_resolution = 2048;
     saved.boot_mode = X2_BOOT_CONTINUE;
     CHECK(x2_settings_assign_keyboard(&saved, 2, 0));
     CHECK(x2_settings_player_keyboard(&saved, 0) == 2);
@@ -42,25 +45,35 @@ int main(void)
     CHECK(x2_settings_load(&loaded, path, why, sizeof why));
     CHECK(memcmp(&saved, &loaded, sizeof saved) == 0);
 
-    /* A device has one owner and a player has at most one row of each kind. */
+    /* A device has one owner. P2-P4 have exactly one device kind when
+       assigned, so changing kind evicts the other kind. */
     CHECK(x2_settings_assign_keyboard(&loaded, 1, 2));
     CHECK(x2_settings_assign_keyboard(&loaded, 3, 2));
     CHECK(loaded.keyboard_player[1] == X2_SETTINGS_UNASSIGNED);
     CHECK(x2_settings_assign_controller(&loaded, "pad-b", 2));
     CHECK(x2_settings_assign_controller(&loaded, "pad-c", 2));
+    CHECK(x2_settings_player_keyboard(&loaded, 2) == -1);
     CHECK(x2_settings_controller_player(&loaded, "pad-b") ==
           X2_SETTINGS_UNASSIGNED);
     CHECK(x2_settings_controller_player(&loaded, "pad-c") == 2);
 
-    /* Two hotswap players require and retain two distinct rows of each kind. */
+    /* Only P1 can hotswap. A controller assignment replaces P2's keyboard,
+       while P1 retains its keyboard and controller together. */
     x2_settings_defaults(&loaded);
     CHECK(x2_settings_assign_keyboard(&loaded, 1, 1));
     CHECK(x2_settings_assign_controller(&loaded, "hot-pad-a", 0));
     CHECK(x2_settings_assign_controller(&loaded, "hot-pad-b", 1));
     CHECK(x2_settings_player_keyboard(&loaded, 0) == 0);
-    CHECK(x2_settings_player_keyboard(&loaded, 1) == 1);
+    CHECK(x2_settings_player_keyboard(&loaded, 1) == -1);
     CHECK(strcmp(x2_settings_player_controller(&loaded, 0), "hot-pad-a") == 0);
     CHECK(strcmp(x2_settings_player_controller(&loaded, 1), "hot-pad-b") == 0);
+
+    /* P1 is the retail primary player and may not be left with no device. */
+    CHECK(x2_settings_assign_controller(&loaded, "hot-pad-a",
+                                        X2_SETTINGS_UNASSIGNED));
+    CHECK(!x2_settings_assign_keyboard(&loaded, 0,
+                                       X2_SETTINGS_UNASSIGNED));
+    CHECK(x2_settings_player_keyboard(&loaded, 0) == 0);
 
     /* Old Auto migrates to its keyboard profile only; an old explicit pad is
        reserved by identity and never becomes roaming controller policy. */

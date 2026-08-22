@@ -1,5 +1,7 @@
 /* See gpu_draw.h. */
 #include "gpu_draw.h"
+#include "gpu_draw_trace.h"
+#include "gpu_shadow.h"
 #include "gpu_device.h"
 #include "gpu_internal.h"
 #include "gpu_upload.h"
@@ -82,15 +84,15 @@ typedef struct {
     int             live;
 } Res;
 
-/* The draw's 1-based index within the frame, and how many X2_DRAW_RANGE has
-   skipped. Skipped is NOT refused -- see the range block in gpu_draw(). */
-static unsigned long g_range_index, g_range_skipped;
 static unsigned long g_vs_frame = (unsigned long)-1;
 
 /* How many draws this frame has RECEIVED -- counted before X2_DRAW_RANGE skips
    any, so a range does not change which frames look busy. X2_SHOT_MIN_DRAWS
    reads it; see gpu_frame_draws_so_far(). */
-unsigned long gpu_frame_draws_so_far(void) { return g_range_index; }
+unsigned long gpu_frame_draws_so_far(void)
+{
+    return gpu_draw_trace_draws_so_far();
+}
 
 /*
  * Per-frame host share, for attributing a SLOW frame at the moment it ends.
@@ -504,7 +506,7 @@ static int shaders_ready(void)
                           shader that binds more than it declared is a
                           validation error that, without a layer loaded, is
                           simply undefined texels. */
-                       SDL_GPU_SHADERSTAGE_FRAGMENT, 2, 1);
+                       SDL_GPU_SHADERSTAGE_FRAGMENT, 3, 1);
     return g_vs && g_fs;
 }
 
@@ -765,6 +767,9 @@ typedef struct {
     /* Five vec4s per light: diffuse, ambient, (position, range),
        (direction, type), (attenuation, unused). */
     float    light[GPU_MAX_LIGHTS * 5][4];
+    float    shadow_mvp[16];
+    uint32_t shadow_enabled;
+    uint32_t shadow_pad[3];
 } VertexUniforms;
 
 typedef struct {
@@ -776,6 +781,12 @@ typedef struct {
     uint32_t alpha_op, alpha_arg1, alpha_arg2;
     uint32_t pad[3];               /* std140: vec4 starts on a 16-byte row */
     float    tfactor[4];
+    uint32_t shadow_enabled;
+    float    shadow_bias;
+    float    shadow_darkness;
+    float    shadow_texel_x;
+    float    shadow_texel_y;
+    float    shadow_pad[3];
 } PixelUniforms;
 
 /* GpuTexArg -> the shader's 0 diffuse / 1 texture / 2 factor, with
@@ -822,6 +833,7 @@ int gpu_draw(const GpuDraw *d)
     SDL_GPUTextureSamplerBinding tsb;
     VertexUniforms vu;
     PixelUniforms pu;
+    GpuShadowSample shadow;
     Res *vres, *ires = NULL, *tres = NULL, *cres = NULL;
     SDL_GPUSampler *smp;
     unsigned long long t0 = gpu_perf_now_ns();
@@ -961,221 +973,19 @@ int gpu_draw(const GpuDraw *d)
                         "no depth format, so it is IGNORED. Everything draws "
                         "in submission order. Reported once.\n");
 
-    /*
-     * X2_FRAME_DUMP=<n> -- every draw of frame n, one line each.
-     *
-     * "380,000 draws and the sky is white" is not a question a counter can
-     * answer: an untextured draw and a textured one that sampled the wrong
-     * thing are the same number. This prints what each draw actually IS --
-     * what it binds, what it tests, and where its first vertex lands -- so a
-     * region of the picture can be traced to the draw that made it. It is off
-     * unless asked for, and it names the frame it dumped so an empty dump
-     * cannot be mistaken for a frame with no draws.
-     */
-    /*
-     * X2_FRAME_DUMP=busy[:<n>] -- the first frame that actually draws a scene.
-     *
-     * A frame NUMBER is not a stable way to name a frame in this game. The
-     * intro plays six movies whose decode speed varies with the host, so the
-     * menu arrives at a different frame every run: 2600 was the menu once and
-     * was still the Sofdec logo the next time, and a dump aimed at it caught
-     * one textured quad and looked like a renderer that draws nothing. The
-     * same run-to-run divergence already made whole-frame image comparison
-     * useless here.
-     *
-     * So name the frame by what it CONTAINS. `busy` waits for the first frame
-     * whose predecessor submitted at least <n> draws (default 100) -- a movie
-     * is one quad, a menu is hundreds -- and dumps the frame after it. It
-     * reports which frame it chose and why, because "the frame I picked" and
-     * "the frame you asked for" must not be confusable in the output.
-     *
-     * THE PREDECESSOR IS NOT THE FRAME. That is the whole difficulty: a frame's
-     * own draw count is not known until it has ended, so the first version
-     * dumped the frame AFTER a busy one and hoped. It caught a 52-draw frame
-     * whose predecessor had 600 -- the scene had just changed -- and the rule-
-     * outs written on top of that dump had to be retracted. So the dump is
-     * CAPTURED to memory and only released once the frame it belongs to has
-     * ended and is itself busy. A candidate that turns out light is discarded,
-     * says so with both counts, and the search re-arms for the next one. What
-     * reaches the log is a frame measured on its own contents.
-     */
-    {
-        static long want = -2;
-        static unsigned long busy_min;
-        static unsigned long dumped, dumped_frame, rejected;
-        static unsigned long seen_frame, this_draws, prev_draws;
-        static int seek_vs, this_has_vs;
-        static FILE *cap;             /* the candidate's lines, held back */
-        static char *capbuf;
-        static size_t capsz;
-        FILE *dst;
-        unsigned long now = gpu_frames_presented();
-
-        if (want == -2) {
-            const char *e = getenv("X2_FRAME_DUMP");
-            want = -1;
-            if (e && *e) {
-                if (!strncmp(e, "busy", 4)) {
-                    busy_min = (e[4] == ':') ? strtoul(e + 5, NULL, 10) : 100u;
-                    if (!busy_min) busy_min = 100u;
-                    want = -3;                  /* choose it when one turns up */
-                } else if (!strcmp(e, "vs")) {
-                    seek_vs = 1;
-                    want = -4;  /* buffer frames until one contains a VS draw */
-                } else {
-                    want = atol(e);
-                }
-            }
-        }
-        if (now != seen_frame) {
-            /* The candidate frame just ended: judge it on ITS OWN count. */
-            if (cap && want == (long)seen_frame) {
-                fclose(cap);
-                cap = NULL;
-                if (seek_vs && this_has_vs) {
-                    fprintf(stderr, "gpu: X2_FRAME_DUMP=vs -- frame %lu "
-                            "contained a programmable draw and drew %lu "
-                            "times total. Every draw of it follows.\n",
-                            seen_frame, this_draws);
-                    fputs(capbuf ? capbuf : "", stderr);
-                    seek_vs = 0;
-                    want = -1;
-                } else if (seek_vs) {
-                    want = -4;
-                } else if (!seek_vs && this_draws >= busy_min) {
-                    fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu drew "
-                            "%lu times itself (at least %lu asked for). Every "
-                            "draw of it follows.\n",
-                            seen_frame, this_draws, busy_min);
-                    fputs(capbuf ? capbuf : "", stderr);
-                    if (dumped > 400)
-                        fprintf(stderr, "  ... capped at 400 draws; frame %lu "
-                                        "had %lu.\n", seen_frame, this_draws);
-                } else if (!seek_vs) {
-                    rejected++;
-                    fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu is "
-                            "DISCARDED: its predecessor drew %lu times but it "
-                            "drew only %lu, under the %lu asked for. Looking "
-                            "for another (%lu discarded so far).\n",
-                            seen_frame, prev_draws, this_draws, busy_min,
-                            rejected);
-                    want = -3;                  /* re-arm */
-                }
-                free(capbuf);
-                capbuf = NULL;
-                dumped = 0;
-            }
-            prev_draws = this_draws;
-            this_draws = 0;
-            this_has_vs = 0;
-            seen_frame = now;
-        }
-        this_draws++;
-        if (d->programmable) this_has_vs = 1;
-        g_range_index = this_draws;   /* 1-based index within this frame */
-        if (want == -3 && prev_draws >= busy_min) {
-            want = (long)now;
-            cap = open_memstream(&capbuf, &capsz);
-            if (!cap)
-                fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- cannot hold frame "
-                                "%ld back (open_memstream failed); its draws go "
-                                "straight out and may belong to a light "
-                                "frame.\n", want);
-        } else if (want == -4) {
-            want = (long)now;
-            cap = open_memstream(&capbuf, &capsz);
-        }
-        dst = cap ? cap : stderr;
-        if (want >= 0 && (long)now == want) {
-            if (!dumped++ && !cap)
-                fprintf(stderr, "gpu: X2_FRAME_DUMP -- every draw of frame "
-                                "%ld follows.\n", want);
-            dumped_frame = now;
-            if (dumped <= 400) {
-                fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s %s"
-                        "%s%s%s%s%s stride %2u col%+3d uv%+3d "
-                        "cull%d zfunc%d zbias%u stencil%d/%u,%u,%u,%u ref%u mask%x write%x rgba%x",
-                        dumped,
-                        d->prim == GPU_PRIM_TRIANGLESTRIP ? "tristrip"
-                        : d->prim == GPU_PRIM_LINELIST ? "linelist" : "trilist",
-                        d->prim_count, d->texture,
-                        d->texop == GPU_TEXOP_NONE ? "UNTEXTURED"
-                        : d->texop == GPU_TEXOP_MODULATE ? "modulate"
-                                                         : "select",
-                        d->programmable ? "VS " : "FVF ",
-                        d->blend_enable ? "blend " : "",
-                        d->depth_test ? "ztest " : "",
-                        d->depth_write ? "zwrite " : "",
-                        /* Whether a draw is LIT, and whether it brought a
-                           normal, is the difference between "the sky is white"
-                           and "the sky is the material's ambient" -- and it was
-                           not in this line while that was the open question. */
-                        d->lighting ? "lit " : "unlit ",
-                        d->normal_offset >= 0 ? "norm" : "nonorm",
-                        d->vertex_stride, d->color_offset, d->uv_offset,
-                        d->cull, d->depth_func, d->depth_bias,
-                        d->stencil_enable,
-                        d->stencil_fail, d->stencil_zfail,
-                        d->stencil_pass, d->stencil_func, d->stencil_ref,
-                        d->stencil_mask, d->stencil_write_mask,
-                        d->color_write_mask);
-                fprintf(dst, "\n");
-                fprintf(dst, "           mvp [% .6g % .6g % .6g % .6g]"
-                             " [% .6g % .6g % .6g % .6g]"
-                             " [% .6g % .6g % .6g % .6g]"
-                             " [% .6g % .6g % .6g % .6g]\n",
-                        d->mvp[0], d->mvp[1], d->mvp[2], d->mvp[3],
-                        d->mvp[4], d->mvp[5], d->mvp[6], d->mvp[7],
-                        d->mvp[8], d->mvp[9], d->mvp[10], d->mvp[11],
-                        d->mvp[12], d->mvp[13], d->mvp[14], d->mvp[15]);
-            } else if (dumped == 401 && !cap) {
-                fprintf(stderr, "  ... capped at 400 draws; frame %lu had "
-                                "more.\n", dumped_frame);
-            }
-        }
-    }
-
-    /*
-     * X2_DRAW_RANGE=<first>[:<last>] -- submit only these draws of each frame.
-     *
-     * "Which draw painted this region of the picture?" has no answer in a dump:
-     * 232 lines describe what each draw IS, not where it landed. Isolating a
-     * range and photographing the result answers it directly, and a bisection
-     * over the range finds the draw that covers a region in a handful of runs.
-     *
-     * It SKIPS rather than refuses: a skipped draw must not be counted as one
-     * the backend could not do, or the refusal total -- which is a real quality
-     * measure -- would move whenever this was used. The skipped count is
-     * reported separately and the range is echoed once, so a picture taken with
-     * this set can never be mistaken for a full frame.
-     */
-    {
-        static long lo = -2, hi;
-        if (lo == -2) {
-            const char *e = getenv("X2_DRAW_RANGE");
-            lo = -1;
-            if (e && *e) {
-                const char *c = strchr(e, ':');
-                lo = atol(e);
-                hi = c ? atol(c + 1) : lo;
-                if (hi < lo) hi = lo;
-                fprintf(stderr, "gpu: X2_DRAW_RANGE -- ONLY draws %ld..%ld of "
-                        "each frame are submitted. Every other draw is SKIPPED, "
-                        "not refused. This picture is NOT a whole frame.\n",
-                        lo, hi);
-            }
-        }
-        if (lo >= 0) {
-            long idx = (long)g_range_index;
-            if (idx < lo || idx > hi) { g_range_skipped++; return 1; }
-        }
-    }
+    if (!gpu_draw_trace_consider(d, gpu_frames_presented())) return 1;
 
     if (!(pipe = pipeline_for(&key))) { g_refused++; return 0; }
     if (!(smp = sampler_for(d->texture_clamp, d->texture_point))) {
         g_refused++;
         return 0;
     }
+
+    if (!ires || (uint64_t)(d->first_index + n)
+                     * (d->index_is_32bit ? 4u : 2u) <= ires->bytes)
+        gpu_shadow_record(d, vres->buf, ires ? ires->buf : NULL,
+                          tres->tex, smp, n);
+    gpu_shadow_sample(d, &shadow);
 
     gpu_pass_begin();
     if (!g_pass) return refuse("the render pass could not be opened");
@@ -1221,6 +1031,10 @@ int gpu_draw(const GpuDraw *d)
             vu.light[li * 5 + 4][3] = 0.0f;
         }
     }
+    if (shadow.enabled) {
+        memcpy(vu.shadow_mvp, shadow.matrix, sizeof vu.shadow_mvp);
+        vu.shadow_enabled = 1;
+    }
     SDL_PushGPUVertexUniformData(g_cmd, 0, &vu, sizeof vu);
 
     memset(&pu, 0, sizeof pu);
@@ -1238,19 +1052,26 @@ int gpu_draw(const GpuDraw *d)
     pu.alpha_arg1 = arg_of(d->alpha_arg1, 1u);
     pu.alpha_arg2 = arg_of(d->alpha_arg2, 0u);
     memcpy(pu.tfactor, d->texture_factor, sizeof pu.tfactor);
+    pu.shadow_enabled = shadow.enabled ? 1u : 0u;
+    pu.shadow_bias = shadow.depth_bias;
+    pu.shadow_darkness = shadow.darkness;
+    pu.shadow_texel_x = shadow.texel_size[0];
+    pu.shadow_texel_y = shadow.texel_size[1];
     SDL_PushGPUFragmentUniformData(g_cmd, 0, &pu, sizeof pu);
 
     /* The sampler is bound even when the draw is untextured: the fragment
        shader declares one, so an unbound sampler is a validation error and,
        without a validation layer, undefined pixels. */
     {
-        SDL_GPUTextureSamplerBinding tsb2[2];
+        SDL_GPUTextureSamplerBinding tsb2[3];
         memset(tsb2, 0, sizeof tsb2);
         tsb2[0].texture = tres->tex;
         tsb2[0].sampler = smp;
         tsb2[1].texture = cres->tex;
         tsb2[1].sampler = smp;
-        SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, 2);
+        tsb2[2].texture = shadow.enabled ? gpu_shadow_texture() : tres->tex;
+        tsb2[2].sampler = shadow.enabled ? gpu_shadow_sampler() : smp;
+        SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, 3);
     }
     (void)tsb;
 
@@ -1370,12 +1191,8 @@ void gpu_draw_report(void)
     if (g_depth_ignored)
         printf("        %lu draw(s) asked for a depth test there is no target "
                "for; they drew in submission order.\n", g_depth_ignored);
-    /* Loudly, and separately from `refused`: a picture taken with a range set
-       is a slice of a frame, and nothing downstream should read it as one. */
-    if (g_range_skipped)
-        printf("        X2_DRAW_RANGE WAS SET: %lu further draw(s) were SKIPPED "
-               "(not refused). EVERY PICTURE FROM THIS RUN IS A SLICE OF A "
-               "FRAME, not the frame.\n", g_range_skipped);
+    gpu_draw_trace_report();
+    gpu_shadow_report();
 }
 
 /* ---- off-screen, for proving the path ---------------------------------- */
@@ -1413,6 +1230,7 @@ int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
         return 0;
     }
     gpu_set_offscreen_target(g_off_tex, w, h);
+    gpu_shadow_frame_begin();
     gpu_frame_clear(1u, r, g, b, a, 1.0f, 0);
     return 1;
 }
@@ -1436,6 +1254,7 @@ int gpu_offscreen_read(void *out, uint32_t bytes)
         return 0;
     }
     /* The draws have to have executed before they can be read back. */
+    gpu_shadow_frame_submit();
     if (g_pass) { SDL_EndGPURenderPass(g_pass); g_pass = NULL; }
     if (g_cmd) {
         fence = SDL_SubmitGPUCommandBufferAndAcquireFence(g_cmd);
@@ -1482,6 +1301,7 @@ int gpu_offscreen_read(void *out, uint32_t bytes)
 
 void gpu_offscreen_end(void)
 {
+    gpu_shadow_frame_submit();
     if (g_pass) { SDL_EndGPURenderPass(g_pass); g_pass = NULL; }
     if (g_cmd) { SDL_SubmitGPUCommandBuffer(g_cmd); g_cmd = NULL; }
     if (g_off_tex) {
@@ -1496,6 +1316,7 @@ void gpu_draw_shutdown(void)
 {
     int i;
     if (!g_gpu) return;
+    gpu_shadow_shutdown();
     gpu_offscreen_end();
     for (i = 0; i < g_npipes; i++)
         if (g_pipes[i].pipe) SDL_ReleaseGPUGraphicsPipeline(g_gpu, g_pipes[i].pipe);

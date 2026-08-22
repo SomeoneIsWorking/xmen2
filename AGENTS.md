@@ -219,19 +219,28 @@ the guest will receive. `src/native/live_session.{c,h}` owns live-run discovery;
 `x2native.c` only composes those owners.
 
 Native SFD playback follows the same boundary. `src/media/fmv_player.{c,h}`
-owns FFmpeg demux/decode and timestamp policy; `src/audio/movie_audio.{c,h}`
-owns the single streaming voice mixed by DirectSound. `src/native/movie.c`
+owns FFmpeg demux, MPEG-1 video decode and timestamp policy;
+`fmv_audio_decode.{c,h}` owns ADX receive/resampling, while
+`fmv_decoder_drain.{c,h}` owns the shared flush/backpressure/EOF contract.
+`src/audio/movie_audio.{c,h}` owns the single streaming voice mixed by
+DirectSound. `src/native/movie.c`
 only bridges the evidenced `igCriMovieCodec` methods and writes the guest
 runtime `igImage`, leaving libMovie's scene, texture upload, lifetime, and
 callback behavior intact. See `docs/RE/fmv.md`; no media asset belongs in git.
+`src/media/fmv_probe.{c,h}` owns opt-in decoded-to-padded-to-upload row
+verification; `src/d3d8/d3d8_texture_luma.{c,h}` owns the independent texture
+luma diagnostic rather than growing the D3D8 resource implementation.
 
 Shadow ownership follows the title evidence in `docs/RE/shadows.md`.
 `CShadowMgr` owns per-entity procedural floor-decal selection and the GPU renders
 the resulting ordinary scene packets. `DetailedShadow` is dead persisted
-configuration, not a renderer switch or an exposed retail control. Any new
-light-cast shadow-map enhancement needs an explicit scene-side
-caster/receiver/light policy bridge; the GPU owns its sampleable targets and
-pass inside the logical scene, before aspect-fit composition and RmlUi.
+configuration, not a renderer switch or an exposed retail control. The separate
+native enhancement keeps generic packet classification/matrices in
+`src/gpu/shadow_policy`, sampleable resources/pass lifetime in `gpu_shadow`, and
+its Video toggle in settings/RmlUi. It reconstructs skinned world positions from
+the exact VS output and runs before aspect-fit composition and RmlUi. It does not
+claim the title's monster-spawner `shadow` or power-effect `no_shadow` metadata
+is authored caster policy; that future seam belongs at Alchemy scene traversal.
 
 The shipped settings UI uses the exact pinned RmlUi revision and maintained
 SDL3/SDL_GPU backends named in `CMakeLists.txt`. Its document vocabulary and

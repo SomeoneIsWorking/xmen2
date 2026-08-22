@@ -32,9 +32,11 @@ typedef struct {
     unsigned width;
     unsigned height;
     X2WindowMode window_mode;
+    uint8_t dynamic_shadows;
+    uint16_t shadow_resolution;
     X2BootMode boot_mode;
-    /* Device-assignment grid: each row has one owner or is unassigned. The
-       helpers enforce at most one keyboard profile and controller per player. */
+    /* Device-assignment grid: each row has one owner or is unassigned. P1 may
+       own one row of each kind for hotswap. P2-P4 own one device total. */
     int8_t keyboard_player[X2_SETTINGS_KEYBOARD_PROFILES];
     X2ControllerAssignment controller[X2_SETTINGS_CONTROLLER_ASSIGNMENTS];
     X2KeyboardProfile keyboard_profile[X2_SETTINGS_KEYBOARD_PROFILES];

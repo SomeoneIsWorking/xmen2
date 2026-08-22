@@ -149,21 +149,29 @@ Dusklight-style tabs expose resolution plus windowed, borderless and exclusive
 fullscreen presentation, and an input assignment grid. The dependency is
 pinned by commit and archive hash rather than following an unbounded branch.
 
-Four keyboard profiles and persistent controllers are grid rows; Unassigned
-and Players 1–4 are columns. Each device has at most one owner, and each player
-may own at most one keyboard and one controller. Owning both is implicit
-hotswap: both sources stay published and prompts follow the last active assigned
-source. Controllers use canonical Xbox/PS2 defaults. An assigned disconnected
-controller stays reserved by identity; the old roaming `Auto` policy migrates
-to its keyboard profile and is retired. Serial/path identities can be reserved;
-devices exposing neither are labelled session-only and cannot take a persistent
-assignment. If several legacy players shared one keyboard profile, migration
-clones its bindings into deterministic free rows instead of evicting an owner.
+Four keyboard profiles and controllers are grid rows; Unassigned and Players
+1–4 are columns. Each device has at most one owner. Player 1 may own one
+keyboard and one controller for hotswap. Players 2–4 own one device total,
+keyboard or controller, and assigning a different kind replaces the old kind.
+Assignment establishes input eligibility only: Player 1 is active by default,
+while Players 2–4 join through a rising Start/Pause action from their own
+assigned source. Removing their assignment requests leave through the retail
+participation manager, so the pause menu's Players page reads the same state.
+
+Controllers use canonical Xbox/PS2 defaults. An assigned disconnected stable
+controller stays reserved by serial/path identity; the old roaming `Auto`
+policy migrates to its keyboard profile and is retired. A device exposing
+neither stable identity is assignable for the current process only. Its exact
+live instance GUID remains reserved-but-unresolved after disconnect and never
+falls back to a persisted controller or a reused inventory slot. If several
+legacy players shared one keyboard profile, migration clones its bindings into
+deterministic free rows instead of evicting an owner.
 
 The live end-to-end check configured Player 2 as Keyboard 2, rebound Forward to
 `I`, and persisted `input.profile1.row0=23`. Pure tests now cover transactional
-round-trip, old-settings migration, assignment exclusivity, simultaneous
-publication and prompt-source switching. Virtual-pad coverage includes
+round-trip, old-settings migration, P1-only dual-device ownership, P2–P4
+single-device ownership, assignment versus join state, per-source Start edges,
+simultaneous publication and prompt-source switching. Virtual-pad coverage includes
 identical controllers which cannot impersonate persistent devices and twelve
 reconnect/slot-reuse cycles. The modal overlay publishes neutral joystick axes,
 buttons and POVs while open.

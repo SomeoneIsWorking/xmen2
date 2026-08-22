@@ -14,6 +14,8 @@ int x2_player_input_resolved_pad(unsigned player);
 void x2_player_input_note_keyboard_state(const unsigned char *state,
                                          unsigned bytes);
 void x2_player_input_note_gamepad_activity(int pad);
+void x2_player_input_note_gamepad_state(int pad, const unsigned char *state,
+                                        unsigned bytes);
 int x2_player_input_pad_is_active_source(int pad);
 
 #endif

@@ -1,10 +1,11 @@
 ---
 id: C241
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-22
 tags: input,cutscene,conversation
 depends: src/native/conversation.c#x2_override_0045d1a0, src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_should_advance, src/native/conversation_skip_policy.c#conversation_skip_policy_update, tools/check_conversation_skip_wiring.py#audit
+falsified_on: 2026-08-22
 ---
 
 ## Claim
@@ -18,3 +19,9 @@ Static XMen2.exe decompilation: FUN_0045d1a0 consumes Accept through vtable +0x1
 ## What would falsify it
 
 A bounded authored scene shows Escape/Start clearing or bypassing a response/chosen cleanup script, choosing across a multi-response branch, failing to advance action 20, or continuing to skip after lockControls returns control.
+
+## FALSIFIED 2026-08-22
+
+Bounded tutorial scene on the committed implementation showed the response/cleanup path succeeded and controls returned, but the live probe still reported authored skip ACTIVE. The retail conversation update exits on hidden/disabled state before calling the policy, so the latch lifecycle portion of C241 was false even though its cleanup-path portion held.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

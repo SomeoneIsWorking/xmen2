@@ -1,17 +1,12 @@
 #ifndef X2_FMV_PLAYER_H
 #define X2_FMV_PLAYER_H
 
+#include "fmv_audio_sink.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
 typedef struct X2FmvPlayer X2FmvPlayer;
-
-typedef struct {
-    void *userdata;
-    int (*queue_stereo_f32)(void *userdata, const float *samples,
-                            size_t frames, int sample_rate);
-    double (*queued_seconds)(void *userdata);
-} X2FmvAudioSink;
 
 typedef enum {
     X2_FMV_READY,
@@ -34,6 +29,7 @@ int x2_fmv_height(const X2FmvPlayer *player);
 int x2_fmv_sample_rate(const X2FmvPlayer *player);
 X2FmvState x2_fmv_state(const X2FmvPlayer *player);
 unsigned long x2_fmv_decoded_frames(const X2FmvPlayer *player);
+unsigned long x2_fmv_decoded_audio_frames(const X2FmvPlayer *player);
 void x2_fmv_report(const X2FmvPlayer *player);
 
 #endif

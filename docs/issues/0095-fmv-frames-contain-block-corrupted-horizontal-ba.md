@@ -1,7 +1,7 @@
 ---
 id: 95
 title: FMV frames contain block-corrupted horizontal bands
-status: open
+status: resolved
 symptom: CriMovie playback advances without hanging, but decoded story-movie frames contain blocky horizontal corruption across the lower half of the image
 tags: pc,native,fmv,crimovie,graphics,corruption
 created: 2026-08-21
@@ -10,9 +10,21 @@ updated: 2026-08-22
 
 ## Root cause
 
+The corruption was introduced inside the retired guest CriMovie decode/output
+coordination, before libMovie's shared guest-image-to-D3D8 upload path. The
+native replacement changes only the evidenced `igCriMovieCodec` methods; the
+same libMovie scene, padded `igImage`, and D3D8 texture upload present the exact
+authored close-up without corruption. The legacy decoder's deeper internal
+fault was not isolated, and this replacement evidence must not be read as a
+more specific attribution.
 
 ## What was tried / dead ends
 
+Issue #79's upload-lifetime repair removed the stall but did not remove or
+localize the pixel corruption. The first native integration capture used the
+`i102.sfd` intro logo; it proved the replacement could cross the shared upload
+path, but it could not settle this issue because it was not the authored story
+scene where the damage had been observed.
 
 ## Resolution
 
@@ -30,9 +42,28 @@ sentinel; lower-half picture range was non-uniform. This proves the native
 decode/copy boundary does not reproduce the old lower-half damage.
 
 Do not call the old decoder's precise corruption mechanism solved: it was not
-isolated. A bounded engine run now proves the native rows survive the guest
+isolated. A bounded engine run first proved the native rows survive the guest
 image-to-texture upload for `i102.sfd`: frames 300–420 show the Activision logo
 cleanly, and the report records 236 decoded / 229 displayed frames, 347,392
-audio frames, and zero failures. Keep this issue open until the later story FMV
-where it was originally observed is captured through the native path; an intro
-logo is complete integration evidence, but it is not that authored scene.
+audio frames, and zero failures.
+
+### Exact story-scene resolution (2026-08-22)
+
+A deterministic bounded replay entered New Game / Normal with four scripted
+inputs and gated observation on the open of `movies/ntsc/eng/c/i/cine01.sfd`.
+The retained capture at presented frame 115,000 is the same close-up as
+`scratch/screenshots/issue79-bounded-past.png`; its complete lower half is clean.
+No scratch path or game asset is tracked.
+
+`X2_FMV_PROBE=cine01.sfd` exercised the production chain rather than a parallel
+test implementation. For the complete movie it observed 4,478 decoded frames,
+4,357 padded-image checks with zero mismatched rows, 4,357 level-0 upload
+candidates, all 4,357 byte-exact with zero mismatched rows, and 4,357 complete
+decoded-to-padded-to-upload chains. Playback reported 4,478 displayed frames,
+120 dropped frames, 6,602,752 audio samples, and zero failures. The exact
+authored scene and every surrounding uploaded frame therefore falsify a native
+row-pitch, padding, or upload corruption mechanism and resolve the production
+symptom through the native replacement.
+
+### Resolution (2026-08-22)
+Native igCriMovieCodec replacement reached the exact cine01 close-up cleanly. Production X2_FMV_PROBE observed 4,357 complete decoded-to-padded-to-D3D8-upload chains, all uploads byte-exact with zero mismatched rows; the shared libMovie upload is ruled out and the retired corruption is confined to guest CriMovie decode/output coordination. The deeper legacy decoder fault was not isolated.

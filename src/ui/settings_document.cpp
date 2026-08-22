@@ -5,6 +5,7 @@
  * presentation/, and publication into the guest is in input/.
  */
 #include "settings_document.hpp"
+#include "controller_assignment_rows.hpp"
 
 #include <RmlUi/Core.h>
 #include <SDL3/SDL.h>
@@ -12,7 +13,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <algorithm>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -20,8 +20,10 @@
 extern "C" {
 #include "dinput_pad.h"
 #include "dinput_system.h"
+#include "gpu_shadow.h"
 #include "binding_rows.h"
 #include "settings_store.h"
+#include "transient_controller_assignment.h"
 #include "window_settings.h"
 }
 
@@ -35,9 +37,7 @@ unsigned active_tab;
 int capture_row = -1;
 bool close_requested;
 uint64_t observed_pad_generation;
-std::vector<std::string> visible_controller_ids;
-std::vector<std::string> visible_controller_names;
-std::vector<bool> visible_controller_stable;
+std::vector<ControllerAssignmentRow> visible_controllers;
 
 class SettingsListener final : public Rml::EventListener {
 public:
@@ -113,6 +113,11 @@ void rebuild()
             << "<select-button id='window-mode'><key>Window mode</key><value>"
             << escape_rml(x2_window_mode_name(settings->window_mode))
             << "</value></select-button>"
+            << "<select-button id='dynamic-shadows'><key>Dynamic shadows</key><value>"
+            << (settings->dynamic_shadows ? "On" : "Off")
+            << "</value></select-button>"
+            << "<select-button id='shadow-resolution'><key>Shadow quality</key><value>"
+            << settings->shadow_resolution << "</value></select-button>"
             << "<p id='status' class='status'></p><spacer></spacer></pane>"
             << "<pane><div class='section-heading'>Presentation</div>"
                "<div class='help'>Windowed uses the selected client size. "
@@ -120,43 +125,12 @@ void rebuild()
                "switches the display to the selected resolution.</div>"
                "<spacer></spacer></pane>";
     } else {
-        visible_controller_ids.clear();
-        visible_controller_names.clear();
-        visible_controller_stable.clear();
-        for (unsigned i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++) {
-            const char* id = settings->controller[i].id;
-            if (!id[0]) continue;
-            visible_controller_ids.emplace_back(id);
-            visible_controller_names.emplace_back(
-                "Disconnected: " + std::string(id));
-            visible_controller_stable.push_back(true);
-        }
-        for (int pad = 0; pad < DINPUT_PAD_MAX; pad++) {
-            const char* id = dinput_pad_persistent_id(pad);
-            const char* name = dinput_pad_name(pad);
-            if (!id || !name) continue;
-            auto found = std::find(visible_controller_ids.begin(),
-                                   visible_controller_ids.end(), id);
-            if (found == visible_controller_ids.end()) {
-                visible_controller_ids.emplace_back(id);
-                visible_controller_names.emplace_back(
-                    dinput_pad_persistent_id_is_stable(pad) ? name :
-                    std::string(name) + " (session only; cannot reserve)");
-                visible_controller_stable.push_back(
-                    dinput_pad_persistent_id_is_stable(pad));
-            } else {
-                visible_controller_names[(size_t)(found -
-                    visible_controller_ids.begin())] = name;
-                visible_controller_stable[(size_t)(found -
-                    visible_controller_ids.begin())] =
-                    dinput_pad_persistent_id_is_stable(pad);
-            }
-        }
+        visible_controllers = controller_assignment_rows(*settings);
         rml << "<pane><div class='section-heading'>Device assignments</div>"
-               "<div class='help'>Each row belongs to at most one player. A "
-               "player may have one keyboard and one controller; assigning "
-               "both enables hotswap. Disconnected assigned controllers stay "
-               "reserved for the same device.</div>"
+               "<div class='help'>Player 1 may use keyboard and controller "
+               "together. Players 2–4 use one device each and press Start to "
+               "join. Session-only rows are not saved and temporarily "
+               "override the saved device until cleared.</div>"
                "<div class='assignment-row assignment-head'><key>Device</key>"
                "<value>Off</value><value>P1</value><value>P2</value>"
                "<value>P3</value><value>P4</value></div>";
@@ -165,15 +139,16 @@ void rebuild()
                 << "</key>";
             for (int owner = -1; owner < (int)X2_SETTINGS_PLAYERS; owner++)
                 rml << "<button id='assign-kb-" << p << "-" << owner + 1
-                    << "'>" << (settings->keyboard_player[p] == owner ? "●" : "·")
+                    << "'>" << (settings->keyboard_player[p] == owner &&
+                        !(owner > 0 && x2_transient_controller_has_assignment(owner))
+                        ? "●" : "·")
                     << "</button>";
             rml << "</div>";
         }
-        for (size_t i = 0; i < visible_controller_ids.size(); i++) {
-            int assigned = x2_settings_controller_player(
-                settings, visible_controller_ids[i].c_str());
+        for (size_t i = 0; i < visible_controllers.size(); i++) {
+            int assigned = visible_controllers[i].owner;
             rml << "<div class='assignment-row'><key>"
-                << escape_rml(visible_controller_names[i]) << "</key>";
+                << escape_rml(visible_controllers[i].name) << "</key>";
             for (int owner = -1; owner < (int)X2_SETTINGS_PLAYERS; owner++)
                 rml << "<button id='assign-pad-" << i << "-" << owner + 1
                     << "'>" << (assigned == owner ? "●" : "·") << "</button>";
@@ -204,6 +179,10 @@ void rebuild()
         wire("resolution", "keydown");
         wire("window-mode", "click");
         wire("window-mode", "keydown");
+        wire("dynamic-shadows", "click");
+        wire("dynamic-shadows", "keydown");
+        wire("shadow-resolution", "click");
+        wire("shadow-resolution", "keydown");
     } else {
         wire("profile", "click");
         wire("profile", "keydown");
@@ -213,7 +192,7 @@ void rebuild()
                                  std::to_string(owner);
                 wire(id.c_str(), "click");
             }
-        for (size_t i = 0; i < visible_controller_ids.size(); i++)
+        for (size_t i = 0; i < visible_controllers.size(); i++)
             for (int owner = 0; owner <= (int)X2_SETTINGS_PLAYERS; owner++) {
                 std::string id = "assign-pad-" + std::to_string(i) + "-" +
                                  std::to_string(owner);
@@ -258,6 +237,18 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
             ((unsigned)settings->boot_mode + 1u) % 3u);
         saved = x2_settings_store_save(why, sizeof why);
         if (!saved) settings->boot_mode = before;
+        rebuild();
+        set_status(saved ? "Saved" : why);
+    } else if (id == "dynamic-shadows" || id == "shadow-resolution") {
+        X2Settings* settings = x2_settings_store();
+        X2Settings before = *settings;
+        char why[256];
+        if (id == "dynamic-shadows") settings->dynamic_shadows ^= 1u;
+        else settings->shadow_resolution = settings->shadow_resolution == 4096
+            ? 512 : (uint16_t)(settings->shadow_resolution * 2u);
+        bool saved = x2_settings_store_save(why, sizeof why);
+        if (!saved) *settings = before;
+        gpu_shadow_configure(settings->dynamic_shadows, settings->shadow_resolution);
         rebuild();
         set_status(saved ? "Saved" : why);
     } else if (id == "resolution" || id == "window-mode") {
@@ -311,6 +302,8 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
             !x2_settings_assign_keyboard(x2_settings_store(), profile_index,
                                          (int)owner_index - 1))
             return;
+        if (owner_index > 1)
+            x2_transient_controller_clear_player(owner_index - 1);
         std::string status = save_settings();
         rebuild();
         set_status(status);
@@ -318,17 +311,29 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
         unsigned controller_index, owner_index;
         if (std::sscanf(id.c_str(), "assign-pad-%u-%u", &controller_index,
                         &owner_index) != 2 ||
-            controller_index >= visible_controller_ids.size())
+            controller_index >= visible_controllers.size())
             return;
-        if (owner_index > 0 && !visible_controller_stable[controller_index]) {
-            set_status("This controller exposes no stable serial or path and "
-                       "cannot be reserved after disconnect.");
+        ControllerAssignmentRow& controller = visible_controllers[controller_index];
+        if (controller.transient_assignment || !controller.stable_identity) {
+            int owner = (int)owner_index - 1;
+            if (owner < 0 && controller.owner >= 0)
+                x2_transient_controller_clear_player(
+                    (unsigned)controller.owner);
+            else if (owner < 0 || controller.pad < 0 ||
+                     !x2_transient_controller_assign(controller.pad,
+                                                     (unsigned)owner))
+                return;
+            rebuild();
+            set_status(owner < 0 ? "Cleared session assignment" :
+                       "Assigned for this session only; not saved");
             return;
         }
         if (!x2_settings_assign_controller(
-                x2_settings_store(), visible_controller_ids[controller_index].c_str(),
+                x2_settings_store(), controller.id.c_str(),
                 (int)owner_index - 1))
             return;
+        if (owner_index > 0)
+            x2_transient_controller_clear_player(owner_index - 1);
         std::string status = save_settings();
         rebuild();
         set_status(status);
@@ -413,9 +418,7 @@ void settings_document_shutdown()
     capture_row = -1;
     close_requested = false;
     observed_pad_generation = 0;
-    visible_controller_ids.clear();
-    visible_controller_names.clear();
-    visible_controller_stable.clear();
+    visible_controllers.clear();
 }
 
 bool settings_document_handle_event(const SDL_Event& event)

@@ -1,5 +1,11 @@
 #include "conversation_skip_policy.h"
 
+int conversation_skip_policy_is_authored(int camera_owned,
+                                         int controls_locked)
+{
+    return camera_owned || controls_locked;
+}
+
 ConversationSkipDecision conversation_skip_policy_update(
     ConversationSkipPolicy *policy, int visible, int authored,
     int continuation_locked, int skip_pressed,

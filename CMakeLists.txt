@@ -49,6 +49,20 @@ target_include_directories(test_fmv_timing PRIVATE src/media)
 target_link_libraries(test_fmv_timing PRIVATE m)
 add_test(NAME fmv_timing COMMAND test_fmv_timing)
 
+add_executable(test_fmv_probe tests/test_fmv_probe.c src/media/fmv_probe.c)
+target_include_directories(test_fmv_probe PRIVATE src/media)
+add_test(NAME fmv_probe COMMAND test_fmv_probe)
+
+add_executable(test_fmv_decoder_drain tests/test_fmv_decoder_drain.c
+               src/media/fmv_decoder_drain.c)
+target_include_directories(test_fmv_decoder_drain PRIVATE src/media)
+add_test(NAME fmv_decoder_drain COMMAND test_fmv_decoder_drain)
+
+add_executable(test_d3d8_texture_luma tests/test_d3d8_texture_luma.c
+               src/d3d8/d3d8_texture_luma.c)
+target_include_directories(test_d3d8_texture_luma PRIVATE src/d3d8)
+add_test(NAME d3d8_texture_luma COMMAND test_d3d8_texture_luma)
+
 add_executable(test_movie_audio tests/test_movie_audio.c
                src/audio/movie_audio.c)
 target_include_directories(test_movie_audio PRIVATE src/audio)
@@ -67,8 +81,9 @@ target_compile_definitions(test_win_path PRIVATE
 add_test(NAME win_path COMMAND test_win_path)
 
 add_executable(test_fmv_decode tests/test_fmv_decode.c
-               src/media/fmv_player.c src/media/fmv_policy.c
-               src/media/fmv_timing.c)
+               src/media/fmv_player.c src/media/fmv_audio_decode.c
+               src/media/fmv_decoder_drain.c src/media/fmv_policy.c
+               src/media/fmv_probe.c src/media/fmv_timing.c)
 target_include_directories(test_fmv_decode PRIVATE src/media)
 target_link_libraries(test_fmv_decode PRIVATE PkgConfig::X2_FFMPEG m)
 add_test(NAME fmv_decode COMMAND test_fmv_decode)
@@ -80,6 +95,7 @@ add_test(NAME structure_selftest
          COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_structure.py --selftest)
 
 add_executable(test_settings tests/test_settings.c src/config/settings.c
+               src/config/input_assignments.c
                src/config/boot_mode.c)
 target_include_directories(test_settings PRIVATE src/config)
 target_compile_definitions(test_settings PRIVATE
@@ -115,14 +131,28 @@ add_executable(test_aspect_fit tests/test_aspect_fit.c
 target_include_directories(test_aspect_fit PRIVATE src/presentation)
 add_test(NAME aspect_fit COMMAND test_aspect_fit)
 
+add_executable(test_shadow_policy tests/test_shadow_policy.c
+               src/gpu/shadow_policy.c)
+target_include_directories(test_shadow_policy PRIVATE src/gpu)
+target_link_libraries(test_shadow_policy PRIVATE m)
+add_test(NAME shadow_policy COMMAND test_shadow_policy)
+
 add_executable(test_player_input tests/test_player_input.c
-               src/input/player_input.c src/config/settings.c
+               src/input/player_input.c src/input/player_participation_policy.c
+               src/config/settings.c src/config/input_assignments.c
                src/config/boot_mode.c
                src/native/input_binding_sets.c
                src/native/xbox_defaults.c)
 target_include_directories(test_player_input PRIVATE src/recomp src/native
                                                    src/config src/input)
 add_test(NAME player_input COMMAND test_player_input)
+
+add_executable(test_player_participation_policy
+               tests/test_player_participation_policy.c
+               src/input/player_participation_policy.c)
+target_include_directories(test_player_participation_policy PRIVATE src/input)
+add_test(NAME player_participation_policy
+         COMMAND test_player_participation_policy)
 
 add_executable(test_controller_hotplug tests/test_controller_hotplug.c
                src/input/controller_hotplug.c)
@@ -133,6 +163,26 @@ add_executable(test_controller_instance tests/test_controller_instance.c
                src/input/controller_instance.c)
 target_include_directories(test_controller_instance PRIVATE src/input src/native)
 add_test(NAME controller_instance COMMAND test_controller_instance)
+
+add_executable(test_transient_controller_assignment
+               tests/test_transient_controller_assignment.c
+               src/input/transient_controller_assignment.c
+               src/input/controller_instance.c
+               src/config/settings.c src/config/input_assignments.c
+               src/config/boot_mode.c)
+target_include_directories(test_transient_controller_assignment PRIVATE
+                           src/input src/native src/config)
+target_compile_definitions(test_transient_controller_assignment PRIVATE
+    X2_TEST_TRANSIENT_SETTINGS_PATH="${CMAKE_BINARY_DIR}/test-transient-settings.conf")
+add_test(NAME transient_controller_assignment
+         COMMAND test_transient_controller_assignment)
+
+add_executable(test_controller_assignment_rows
+               tests/test_controller_assignment_rows.cpp
+               src/ui/controller_assignment_rows.cpp)
+target_include_directories(test_controller_assignment_rows PRIVATE
+                           src/ui src/input src/native src/config)
+add_test(NAME controller_assignment_rows COMMAND test_controller_assignment_rows)
 
 add_executable(test_input_record tests/test_input_record.c
                src/input/input_record.c src/native/json_string.c)
@@ -672,11 +722,13 @@ if(X2_MODULE_HAVE)
     configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                    "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
     add_library(x2_rmlui_ui STATIC
+        src/ui/controller_assignment_rows.cpp
         src/ui/rmlui_ui.cpp
         src/ui/settings_document.cpp
         src/ui/settings_overlay_state.c)
     target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
-                                                   src/presentation src/input)
+                                                   src/presentation src/input
+                                                   src/gpu)
     target_compile_definitions(x2_rmlui_ui PRIVATE
         X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
         X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
@@ -700,9 +752,10 @@ if(X2_MODULE_HAVE)
     set(X2_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
     file(MAKE_DIRECTORY ${X2_SHADER_DIR})
     set(X2_SHADER_HEADERS "")
-    foreach(st vert frag)
-        set(_src ${CMAKE_SOURCE_DIR}/src/gpu/shaders/d3d8_fixed.${st})
-        set(_out ${X2_SHADER_DIR}/d3d8_fixed_${st}.inc)
+    foreach(shader d3d8_fixed shadow_depth)
+      foreach(st vert frag)
+        set(_src ${CMAKE_SOURCE_DIR}/src/gpu/shaders/${shader}.${st})
+        set(_out ${X2_SHADER_DIR}/${shader}_${st}.inc)
         # glslc -mfmt=c emits exactly a braced initialiser, so the .inc is
         # #included as one rather than assembled by echo and cat -- which is
         # shell redirection inside a custom command, and it silently produced a
@@ -711,8 +764,9 @@ if(X2_MODULE_HAVE)
             OUTPUT ${_out}
             COMMAND ${X2_GLSLC} -fshader-stage=${st} ${_src} -mfmt=c -o ${_out}
             DEPENDS ${_src}
-            COMMENT "x2native: compiling d3d8_fixed.${st} to SPIR-V")
+            COMMENT "x2native: compiling ${shader}.${st} to SPIR-V")
         list(APPEND X2_SHADER_HEADERS ${_out})
+      endforeach()
     endforeach()
     add_custom_target(x2_shaders DEPENDS ${X2_SHADER_HEADERS})
 
@@ -721,6 +775,7 @@ if(X2_MODULE_HAVE)
         src/native/x2native.c
         src/native/x2native_options.c
         src/config/settings.c
+        src/config/input_assignments.c
         src/config/settings_store.c
         src/config/boot_mode.c
         src/native/boot_mode_policy.c
@@ -734,6 +789,8 @@ if(X2_MODULE_HAVE)
         src/input/input_probe_lifecycle.c
         src/input/joystick_neutral.c
         src/input/player_input.c
+        src/input/player_participation_policy.c
+        src/input/transient_controller_assignment.c
         src/input/input_record.c
         src/save/save_catalog.c
         src/save/save_directory.c
@@ -772,6 +829,8 @@ if(X2_MODULE_HAVE)
         src/native/prompt_labels.c
         src/native/input_binding_sets.c
         src/native/input_bindings.c
+        src/native/player_participation.c
+        src/native/player_participation_probe.c
         src/native/cutscene_skip_publication.c
         src/native/cutscene_skip_probe.c
         src/native/conversation_skip_policy.c
@@ -780,12 +839,17 @@ if(X2_MODULE_HAVE)
         src/native/xbox_defaults.c
         src/native/dsound.c
         src/audio/movie_audio.c
+        src/media/fmv_audio_decode.c
+        src/media/fmv_decoder_drain.c
         src/media/fmv_player.c
         src/media/fmv_policy.c
+        src/media/fmv_probe.c
         src/media/fmv_timing.c
         src/native/guest_clock.c
         src/native/control.c
         src/native/control_png.c
+        src/native/control_query.c
+        src/native/control_status.c
         src/native/json_string.c
         src/native/live_session.c
         src/native/ws2_32.c
@@ -816,6 +880,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_device.c
         src/d3d8/d3d8_surface.c
         src/d3d8/d3d8_resource.c
+        src/d3d8/d3d8_texture_luma.c
         src/d3d8/d3d8_drawcall.c
         src/d3d8/d3d8_vertex_shader.c
         src/d3d8/d3d8_screen_space_test.c
@@ -826,6 +891,11 @@ if(X2_MODULE_HAVE)
         src/gpu/gpu_device.c
         src/gpu/gpu_capture.c
         src/gpu/gpu_draw.c
+        src/gpu/gpu_draw_trace.c
+        src/gpu/gpu_frame_timing.c
+        src/gpu/gpu_shadow.c
+        src/gpu/gpu_shadow_selftest.c
+        src/gpu/shadow_policy.c
         src/gpu/gpu_frame_submit.c
         src/gpu/gpu_present.c
         src/gpu/gpu_present_selftest.c

@@ -87,17 +87,19 @@ as disconnected rather than as a connected one nobody is touching.
 
 Settings use one device-assignment grid: keyboard profiles and persistent
 controllers are rows; Unassigned and Players 1–4 are columns. A row has one
-owner, and a player may own at most one keyboard and one controller. Owning
-both is hotswap: both binding sources remain published, and controller-specific
-tutorial prose follows the last active assigned source. A disconnected assigned
-controller stays reserved by persistent identity and only that identity returns.
+owner. Player 1 may own one keyboard and one controller simultaneously; that is
+hotswap, so both binding sources remain published and controller-specific
+tutorial prose follows the last active source. Players 2–4 own one device kind
+each and join through an edge of that assigned device's Start action.
 
 Persistence requires an identity SDL can tie to the physical device: a serial
 number first, otherwise a stable OS path. A backend exposing neither receives a
-distinct live-session identity so identical connected units still work, but the
-grid labels it session-only and refuses to reserve it. It can never adopt a
-saved assignment merely because it reused an inventory slot. The probe reports
-the identity quality beside every controller.
+distinct live-session identity so identical connected units still work. The
+grid labels it session-only and permits a process-lifetime assignment without
+saving it. That assignment binds the immutable live GUID: after disconnect it
+stays assigned-but-unresolved until explicitly cleared, never falling back to a
+persisted controller or a different device that reused the slot. The probe
+reports the identity quality beside every controller.
 
 Modal RmlUi input capture writes a real neutral DIJOYSTATE2: all axes at the
 configured midpoint, all buttons clear and every POV at `0xffffffff`. Zeroing

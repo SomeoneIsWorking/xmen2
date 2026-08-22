@@ -9,11 +9,16 @@ static int checks;
 int main(void)
 {
     ConversationSkipPolicy policy = {0};
+    int ordinary = conversation_skip_policy_is_authored(0, 0);
 
+    CHECK(!ordinary);
     CHECK(conversation_skip_policy_update(
-              &policy, 1, 0, 0, 1, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC) ==
+              &policy, 1, ordinary, 0, 1,
+              CONVERSATION_SKIP_RESPONSE_DETERMINISTIC) ==
           CONVERSATION_SKIP_NONE);
     CHECK(policy.ignored == 1u && !policy.active);
+    CHECK(conversation_skip_policy_is_authored(1, 0));
+    CHECK(conversation_skip_policy_is_authored(0, 1));
 
     CHECK(conversation_skip_policy_update(
               &policy, 1, 1, 1, 1, CONVERSATION_SKIP_RESPONSE_WAITING) ==

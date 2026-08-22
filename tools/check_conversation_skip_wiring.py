@@ -18,18 +18,26 @@ def require(source, needle, where):
 
 
 def audit(conversation, runtime, probe, cmake):
+    update_begin = conversation.find("void x2_override_0045d1a0")
     begin = conversation.find("Accept advances once")
     end = conversation.find("0x0045d3bf", begin)
-    if begin < 0 or end < 0:
+    if update_begin < 0 or begin < 0 or end < 0:
         raise WiringError("conversation advance block could not be bounded")
+    early = conversation[update_begin:begin]
     block = conversation[begin:end]
-    require(block, "action = 20u;", "conversation action gate")
+    if early.count("conversation_cutscene_skip_observe_inactive(self);") != 2:
+        raise WiringError("disabled and invisible update exits must both "
+                          "observe inactive skip state")
     require(block, "conversation_cutscene_skip_should_advance(",
             "conversation action gate")
     require(block, "if (advance)", "conversation action gate")
     require(block, "call1(C, vslot(self, 0x18u), self,",
             "retail chooseResponse dispatch")
     require(runtime, "conversation_skip_policy_update(", "runtime policy")
+    require(runtime, "conversation_skip_policy_is_authored(",
+            "runtime authored classifier")
+    require(runtime, "CUTSCENE_SKIP_ACTION 20u", "runtime action gate")
+    require(runtime, "INPUT_ACTION_MASK", "runtime action gate")
     require(runtime, "CONVERSATION_SKIP_RESPONSE_DETERMINISTIC",
             "runtime response classifier")
     require(probe, "conversation_cutscene_skip_probe(", "live probe")
@@ -50,7 +58,9 @@ def selftest():
     current = production_sources()
     audit(*current)
     for index, needle in (
-        (0, "action = 20u;"),
+        (0, "conversation_cutscene_skip_observe_inactive(self);"),
+        (1, "conversation_skip_policy_is_authored("),
+        (1, "CUTSCENE_SKIP_ACTION 20u"),
         (0, "call1(C, vslot(self, 0x18u), self,"),
         (2, "conversation_cutscene_skip_probe("),
         (3, "src/native/conversation_cutscene_skip.c"),
@@ -62,7 +72,7 @@ def selftest():
         except WiringError:
             continue
         raise WiringError(f"negative discriminator passed after removing {needle!r}")
-    print("conversation_skip_wiring --selftest: 4/4 broken chains rejected")
+    print("conversation_skip_wiring --selftest: 6/6 broken chains rejected")
 
 
 def main():

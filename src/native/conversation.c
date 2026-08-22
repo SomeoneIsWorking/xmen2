@@ -736,6 +736,7 @@ void x2_override_0045d1a0(CPU *C)
 
     /* 0x0045d1a6: the whole subsystem's enable bit. */
     if (!(RD8(self + CV_UI_ENABLED) & 0x10u)) {
+        conversation_cutscene_skip_observe_inactive(self);
         c_upd_disabled++;
         C->esp += 4u + 4u;
         return;
@@ -752,6 +753,7 @@ void x2_override_0045d1a0(CPU *C)
     /* 0x0045d1f4: isVisible, through the vtable as the original calls it, so
        the ported predicate's caller record still sees this call site. */
     if (!(uint8_t)call0(C, vslot(self, 0x20u), self)) {
+        conversation_cutscene_skip_observe_inactive(self);
         c_upd_invisible++;
         C->esp += 4u + 4u;
         return;
@@ -840,10 +842,8 @@ void x2_override_0045d1a0(CPU *C)
         int accept_down = (uint8_t)thiscall(
             C, vslot(input, 0x138u), input, 1, &action);
         int advance;
-        action = 20u;
         advance = conversation_cutscene_skip_should_advance(
-            C, self, slot, (uint8_t)thiscall(
-                C, vslot(input, 0x138u), input, 1, &action));
+            C, self, slot, input);
         if (accept_down) {
             uint32_t clock = call0(C, FN_CLOCK, 0);
             long double now = call_float(C, vslot(clock, 0x160u), clock, 0, NULL);

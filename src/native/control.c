@@ -1,15 +1,15 @@
 #include "control.h"
 
 #include "control_png.h"
+#include "control_query.h"
+#include "control_status.h"
 #include "autosave_runtime.h"
 #include "dinput_fifo.h"
 #include "dinput_pad.h"
-#include "guest_clock.h"
 #include "gpu_device.h"
 #include "input_probe.h"
-#include "input_record.h"
-#include "json_string.h"
 #include "save_trace_runtime.h"
+#include "transient_controller_assignment.h"
 #include "x86rt.h"
 
 #include <arpa/inet.h>
@@ -34,7 +34,10 @@
  * and waits; control_pump, running on the thread that owns guest input,
  * performs it and wakes the server with the answer.
  */
-enum { CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD, CMD_INPUT, CMD_SAVE };
+enum {
+    CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD, CMD_INPUT, CMD_SAVE,
+    CMD_ASSIGNMENT
+};
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t  g_ready = PTHREAD_COND_INITIALIZER;
@@ -80,6 +83,18 @@ void control_pump(CPU *cpu, double now)
                                           g_cmd_why, (int)sizeof g_cmd_why);
         if (g_cmd_ok) g_pad_ok++;      /* g_cmd_why carries the read-back */
         else g_pad_refused++;
+    } else if (cmd == CMD_ASSIGNMENT) {
+        if (g_cmd_value < 0.0) {
+            x2_transient_controller_clear_player(g_cmd_controller);
+            g_cmd_ok = 1;
+            snprintf(g_cmd_why, sizeof g_cmd_why, "session assignment cleared");
+        } else {
+            g_cmd_ok = x2_transient_controller_assign((int)g_cmd_value,
+                                                       g_cmd_controller);
+            snprintf(g_cmd_why, sizeof g_cmd_why, "%s",
+                     g_cmd_ok ? "session assignment applied" :
+                     "that live pad cannot be assigned to that player");
+        }
     } else if (cmd == CMD_INPUT) {
         if (!g_probe) g_probe = (char *)malloc(PROBE_BYTES);
         if (!g_probe) {
@@ -204,80 +219,43 @@ static void reply_text(int fd, int code, const char *status, const char *fmt, ..
     reply(fd, code, status, "text/plain; charset=utf-8", body, (size_t)n);
 }
 
-/* Value of `name` in a query string, into `out`. 0 if absent. */
-static int query_arg(const char *q, const char *name, char *out, size_t outn)
+static int bounded_number(const char *text, int minimum, int maximum, int *out)
 {
-    size_t nl = strlen(name);
-    const char *p = q;
-    while (p && *p) {
-        if (!strncmp(p, name, nl) && p[nl] == '=') {
-            const char *v = p + nl + 1, *e = strchr(v, '&');
-            size_t n = e ? (size_t)(e - v) : strlen(v);
-            if (n >= outn) n = outn - 1;
-            memcpy(out, v, n);
-            out[n] = '\0';
-            return 1;
-        }
-        p = strchr(p, '&');
-        if (p) p++;
-    }
-    return 0;
+    char *end;
+    long value;
+    if (!text || !*text) return 0;
+    value = strtol(text, &end, 10);
+    if (*end || value < minimum || value > maximum) return 0;
+    *out = (int)value;
+    return 1;
 }
 
 static void route_status(int fd)
 {
-    unsigned long long frame_ns = 0, mn = 0, mx = 0, subs = 0;
-    unsigned long intervals = 0;
-    const unsigned long *hist = NULL;
     char body[4096];
-    char recording_json[4096];
-    int n;
-
-    gpu_device_perf(&frame_ns, &mn, &mx, &subs, &intervals, &hist);
-    if (!json_string_format(recording_json, sizeof recording_json,
-                            input_record_path())) {
+    size_t size = control_status_format(body, sizeof body, g_requests,
+                                        g_keys_pressed, g_keys_refused, g_shots);
+    if (!size) {
         reply_text(fd, 500, "Internal Server Error",
-                   "input recording path is too long for status\n");
+                   "live status exceeded its bounded response buffer\n");
         return;
     }
-    n = snprintf(body, sizeof body,
-        "{\n"
-        "  \"frames_presented\": %lu,\n"
-        "  \"guest_time_s\": %.3f,\n"
-        "  \"unbounded\": %s,\n"
-        "  \"renderer_ready\": %s,\n"
-        "  \"frame_ms_avg\": %.3f,\n"
-        "  \"frame_ms_min\": %.3f,\n"
-        "  \"frame_ms_max\": %.3f,\n"
-        "  \"frame_intervals\": %lu,\n"
-        "  \"pid\": %ld,\n"
-        "  \"input_recording\": { \"path\": %s, \"events\": %lu },\n"
-        "  \"control\": { \"requests\": %lu, \"keys_pressed\": %lu,"
-        " \"keys_refused\": %lu, \"screenshots\": %lu }\n"
-        "}\n",
-        gpu_frames_presented(), guest_clock_elapsed_s(),
-        guest_clock_unbounded() ? "true" : "false",
-        gpu_device_ready() ? "true" : "false",
-        intervals ? (double)frame_ns / intervals / 1e6 : 0.0,
-        mn / 1e6, mx / 1e6, intervals, (long)getpid(),
-        recording_json,
-        input_record_event_count(),
-        g_requests, g_keys_pressed, g_keys_refused, g_shots);
-    reply(fd, 200, "OK", "application/json", body, (size_t)n);
+    reply(fd, 200, "OK", "application/json", body, size);
 }
 
 static void route_key(int fd, const char *query)
 {
     char name[32] = "", hold[16] = "";
 
-    if (!query_arg(query, "name", name, sizeof name) || !name[0]) {
+    if (!control_query_arg(query, "name", name, sizeof name) || !name[0]) {
         reply_text(fd, 400, "Bad Request",
                    "no key named. Use /key?name=Return[&hold=0.3].\n"
                    "Names are SDL scancode names: Return, Escape, Up, Down,\n"
                    "Left, Right, Space, A, 1, F1 ...\n");
         return;
     }
-    g_cmd_hold = query_arg(query, "hold", hold, sizeof hold) ? atof(hold) : 0.0;
+    g_cmd_hold = control_query_arg(query, "hold", hold, sizeof hold)
+                 ? atof(hold) : 0.0;
     snprintf(g_cmd_key, sizeof g_cmd_key, "%s", name);
 
     if (!submit(CMD_KEY, 5.0)) {
@@ -298,8 +276,8 @@ static void route_pad(int fd, const char *query)
 {
     char what[32] = "", hold[16] = "", value[16] = "";
 
-    if (!query_arg(query, "button", what, sizeof what) &&
-        !query_arg(query, "axis", what, sizeof what)) {
+    if (!control_query_arg(query, "button", what, sizeof what) &&
+        !control_query_arg(query, "axis", what, sizeof what)) {
         reply_text(fd, 400, "Bad Request",
                    "no button or axis named.\n"
                    "  /pad?button=a[&hold=0.3]\n"
@@ -310,8 +288,9 @@ static void route_pad(int fd, const char *query)
                    "value -1..1\n");
         return;
     }
-    g_cmd_hold  = query_arg(query, "hold", hold, sizeof hold) ? atof(hold) : 0.0;
-    g_cmd_value = query_arg(query, "value", value, sizeof value)
+    g_cmd_hold  = control_query_arg(query, "hold", hold, sizeof hold)
+                  ? atof(hold) : 0.0;
+    g_cmd_value = control_query_arg(query, "value", value, sizeof value)
                   ? atof(value) : 1.0;
     snprintf(g_cmd_key, sizeof g_cmd_key, "%s", what);
 
@@ -324,6 +303,35 @@ static void route_pad(int fd, const char *query)
     if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
     reply_text(fd, 200, "OK", "pad \"%s\" set at frame %lu -- %s\n",
                what, gpu_frames_presented(), g_cmd_why);
+}
+
+static void route_assignment(int fd, const char *query)
+{
+    char player[8] = "", pad[8] = "", clear[8] = "";
+    int player_number, pad_number;
+    if (!control_query_arg(query, "player", player, sizeof player) ||
+        !bounded_number(player, 1, 4, &player_number)) {
+        reply_text(fd, 400, "Bad Request",
+                   "use /assignment?player=1..4&pad=N or &clear=1\n");
+        return;
+    }
+    g_cmd_controller = (unsigned)(player_number - 1);
+    if (control_query_arg(query, "clear", clear, sizeof clear) && atoi(clear))
+        g_cmd_value = -1.0;
+    else if (control_query_arg(query, "pad", pad, sizeof pad) &&
+             bounded_number(pad, 0, DINPUT_PAD_MAX - 1, &pad_number))
+        g_cmd_value = (double)pad_number;
+    else {
+        reply_text(fd, 400, "Bad Request", "no live pad or clear requested\n");
+        return;
+    }
+    if (!submit(CMD_ASSIGNMENT, 5.0)) {
+        reply_text(fd, 504, "Gateway Timeout",
+                   "the guest did not poll within 5s; assignment unchanged\n");
+        return;
+    }
+    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    reply_text(fd, 200, "OK", "player %d: %s\n", player_number, g_cmd_why);
 }
 
 static void route_shot(int fd)
@@ -342,7 +350,8 @@ static void route_shot(int fd)
 static void route_input(int fd, const char *query)
 {
     char which[16] = "";
-    g_cmd_controller = query_arg(query, "controller", which, sizeof which)
+    g_cmd_controller = control_query_arg(query, "controller", which,
+                                         sizeof which)
                        ? (unsigned)atoi(which) : 0u;
     if (!submit(CMD_INPUT, 10.0)) {
         reply_text(fd, 504, "Gateway Timeout",
@@ -389,6 +398,7 @@ static void serve(int fd)
     if (!strcmp(path, "/status"))          route_status(fd);
     else if (!strcmp(path, "/key"))        route_key(fd, query ? query : "");
     else if (!strcmp(path, "/pad"))        route_pad(fd, query ? query : "");
+    else if (!strcmp(path, "/assignment")) route_assignment(fd, query ? query : "");
     else if (!strcmp(path, "/screenshot")) route_shot(fd);
     else if (!strcmp(path, "/input"))      route_input(fd, query ? query : "");
     else if (!strcmp(path, "/save"))       route_save(fd);
@@ -399,6 +409,7 @@ static void serve(int fd)
                    "  GET /key?name=X   press a key (&hold=<seconds>)\n"
                    "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"
                    "  GET /pad?axis=leftx&value=-1   move an axis\n"
+                   "  GET /assignment?player=P&pad=N session-only ownership\n"
                    "  GET /screenshot   the current frame, as a PNG\n"
                    "  GET /input[?controller=N]  the GAME's binding table "
                    "and which actions read down\n"

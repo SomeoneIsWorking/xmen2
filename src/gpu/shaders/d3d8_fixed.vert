@@ -29,6 +29,7 @@ layout(location = 1) out vec2 v_uv;
 /* The DIRECTION a cube map is sampled with. D3D8 generates it rather than
    reading it from the vertex -- see texgen below. */
 layout(location = 2) out vec3 v_dir;
+layout(location = 3) out vec4 v_shadow;
 
 /* SDL_GPU binds vertex uniform buffers at set 1. */
 layout(set = 1, binding = 0) uniform VertexState {
@@ -60,6 +61,8 @@ layout(set = 1, binding = 0) uniform VertexState {
        (direction, type), (attenuation, unused). Packed by hand because a
        std140 array of structs would pad every member to 16 bytes anyway. */
     vec4  light[8 * 5];
+    mat4  shadow_mvp;
+    uint  shadow_enabled;
 } vs;
 
 /*
@@ -179,6 +182,10 @@ void main()
         v_color = diffuse;
     }
     v_uv = in_uv;
+    v_shadow = vs.shadow_enabled != 0u
+        ? vs.shadow_mvp * (vs.programmable != 0u ? in_pos
+                                                : vec4(in_pos.xyz, 1.0))
+        : vec4(0.0);
 
     /*
      * Texture-coordinate generation, in CAMERA space.
