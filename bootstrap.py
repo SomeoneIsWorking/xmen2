@@ -35,11 +35,11 @@ class SharedRepo:
 
 SHARED_REPOS = (
     SharedRepo("alchemy", "https://github.com/SomeoneIsWorking/alchemy.git",
-               "1a171443512085fa7401371839a92c406ed42f07", "src/igb.h"),
+               "196bc4d968678b4a8a2b5020cb0cd58874596e0d", "src/igb.h"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
                "8282d4c7d19ef3a625866524092c1d45ec080110", "sets"),
     SharedRepo("recomp-x86", "https://github.com/SomeoneIsWorking/recomp-x86.git",
-               "1efa0e60a084af0b2b57a274070bdc67179a0ef1", "tools/recomp.py"),
+               "b42b611f1fcf78d35e94d378d4c844649836c6b1", "tools/recomp.py"),
 )
 
 GAME_MODULE_SHA256 = {
