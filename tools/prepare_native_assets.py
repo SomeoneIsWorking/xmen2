@@ -19,10 +19,26 @@ sys.path.insert(0, str(ROOT / "tools"))
 # number written down here drifts from it the first time the set changes.
 from pad_glyph_manifest import (ICONS, keycap_svg_path,           # noqa: E402
                                 svg_paths)
+from make_port_pause_menu import write_derived_pause_menu        # noqa: E402
 
 SCRATCH = ROOT / "scratch"
 FONT_IGB = ("Textures", "fonts", "x2f_med_pc.igb")
 FONT_XMLB = ("UI", "fonts", "x2f_med_pc.xmlb")
+PAUSE_IGB = ("UI", "menus", "pause.IGB")
+PAUSE_MENUS = (
+    ("UI", "menus", "pause.XMLB"),
+    ("UI", "menus", "pause.engb"),
+    ("UI", "menus", "pause_dr.XMLB"),
+    ("UI", "menus", "pause_dr_training.XMLB"),
+)
+PAUSE_OUTPUTS = tuple(
+    Path("ui") / "menus" / parts[-1].lower() for parts in PAUSE_MENUS
+)
+NATIVE_OUTPUTS = (
+    Path("textures/fonts/x2f_med_pc.igb"),
+    Path("ui/fonts/x2f_med_pc.xmlb"),
+    *PAUSE_OUTPUTS,
+)
 
 
 def case_path(root: Path, parts: tuple[str, ...]) -> Path:
@@ -49,6 +65,25 @@ def fingerprint(paths: list[Path]) -> str:
     return digest.hexdigest()
 
 
+def output_digests(root: Path) -> dict[str, str]:
+    return {
+        output.as_posix(): hashlib.sha256((root / output).read_bytes()).hexdigest()
+        for output in NATIVE_OUTPUTS
+    }
+
+
+def cached_outputs_match(root: Path, expected: object) -> bool:
+    if not isinstance(expected, dict):
+        return False
+    for output in NATIVE_OUTPUTS:
+        path = root / output
+        if not path.is_file():
+            return False
+        if expected.get(output.as_posix()) != hashlib.sha256(path.read_bytes()).hexdigest():
+            return False
+    return True
+
+
 def cleanup_tree(path: Path) -> None:
     """Remove exactly one generated tree, refusing anything outside scratch."""
     scratch = SCRATCH.resolve()
@@ -65,6 +100,8 @@ def cleanup_tree(path: Path) -> None:
 def prepare(game: Path, out: Path) -> None:
     igb = case_path(game, FONT_IGB)
     xmlb = case_path(game, FONT_XMLB)
+    pause_igb = case_path(game, PAUSE_IGB)
+    pause_menus = [case_path(game, parts) for parts in PAUSE_MENUS]
     # The art lives in the SHARED port-assets set, so the fingerprint has to
     # follow it there: a pack cached against the old drawing of a glyph is
     # exactly the stale-vendored-copy failure the shared repo exists to end.
@@ -72,7 +109,9 @@ def prepare(game: Path, out: Path) -> None:
     if len(icons) != len(ICONS):
         raise SystemExit(f"REFUSING: the manifest names {len(ICONS)} glyph(s) "
                          f"but resolved {len(icons)} SVG path(s)")
-    sources = [igb, xmlb, ROOT / "tools" / "make_pad_font.py",
+    sources = [igb, xmlb, pause_igb, *pause_menus,
+               ROOT / "tools" / "make_pad_font.py",
+               ROOT / "tools" / "make_port_pause_menu.py",
                ROOT / "tools" / "pad_glyph_manifest.py",
                ROOT / "pyproject.toml", ROOT / "uv.lock",
                ROOT / "assets" / "buttons" / "glyphs.json",
@@ -84,9 +123,8 @@ def prepare(game: Path, out: Path) -> None:
             old = json.loads(manifest.read_text())
         except (OSError, json.JSONDecodeError):
             old = {}
-        atlas = out / "textures" / "fonts" / "x2f_med_pc.igb"
-        metrics = out / "ui" / "fonts" / "x2f_med_pc.xmlb"
-        if old.get("sha256") == key and atlas.is_file() and metrics.is_file():
+        if old.get("sha256") == key and cached_outputs_match(
+                out, old.get("outputs")):
             print(f"native assets: cache HIT {out} ({key[:12]})")
             return
 
@@ -102,8 +140,13 @@ def prepare(game: Path, out: Path) -> None:
         print(result.stdout, end="")
         if result.returncode:
             raise SystemExit(f"native assets: font builder failed with exit {result.returncode}")
+        for source, output in zip(pause_menus, PAUSE_OUTPUTS, strict=True):
+            write_derived_pause_menu(
+                source, pause_igb, stage / output,
+            )
         (stage / ".x2-prompt-font.json").write_text(
-            json.dumps({"sha256": key, "inputs": len(sources)}, indent=2) + "\n"
+            json.dumps({"sha256": key, "inputs": len(sources),
+                        "outputs": output_digests(stage)}, indent=2) + "\n"
         )
         cleanup_tree(out)
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -119,13 +162,31 @@ def selftest() -> int:
     (base / "a" / "b").mkdir(parents=True)
     (base / "a" / "b" / "member").write_text("x")
     cleanup_tree(base)
-    negative = False
+    outside_refused = False
     try:
         cleanup_tree(ROOT)
     except RuntimeError:
-        negative = True
-    print(f"prepare_native_assets selftest: cleanup positive={not base.exists()} outside-refusal={negative}")
-    return 0 if not base.exists() and negative else 1
+        outside_refused = True
+
+    for index, output in enumerate(NATIVE_OUTPUTS):
+        path = base / output
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(f"output-{index}".encode())
+    digests = output_digests(base)
+    complete = cached_outputs_match(base, digests)
+    missing = base / PAUSE_OUTPUTS[0]
+    missing.unlink()
+    missing_refused = not cached_outputs_match(base, digests)
+    missing.write_bytes(b"corrupt")
+    corrupt_refused = not cached_outputs_match(base, digests)
+    cleanup_tree(base)
+    passed = (not base.exists() and outside_refused and complete and
+              missing_refused and corrupt_refused)
+    print("prepare_native_assets selftest: "
+          f"cleanup={not base.exists()} outside-refusal={outside_refused} "
+          f"complete-cache={complete} missing-refusal={missing_refused} "
+          f"corrupt-refusal={corrupt_refused}")
+    return 0 if passed else 1
 
 
 def main() -> int:

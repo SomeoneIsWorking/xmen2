@@ -7,7 +7,6 @@
 #include "x86rt.h"
 #include "xbox_defaults.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -15,13 +14,21 @@ typedef struct { uint32_t kind, code; } Slot;
 static Slot slots[INPUT_CONTROLLERS][INPUT_BINDING_ROWS][INPUT_BINDING_SLOTS];
 static X2Settings settings;
 static const char *pads[DINPUT_PAD_MAX];
+static int controller_slots[DINPUT_PAD_MAX] = {-1, -1, -1, -1,
+                                               -1, -1, -1, -1};
 static unsigned participation_join;
 static unsigned participation_leave;
 static unsigned participation_active;
 static unsigned participation_eligible;
 static int transient_pad[INPUT_PLAYERS] = {-2, -2, -2, -2};
 static int checks;
-#define CHECK(c) do { assert(c); checks++; } while (0)
+#define CHECK(c) do { \
+    if (!(c)) { \
+        fprintf(stderr, "test_player_input:%d: %s failed\n", __LINE__, #c); \
+        return 1; \
+    } \
+    checks++; \
+} while (0)
 
 X2Settings *x2_settings_store(void) { return &settings; }
 void dinput_pad_refresh(void) {}
@@ -32,6 +39,10 @@ int dinput_pad_for_persistent_id(const char *id)
     for (i = 0; i < DINPUT_PAD_MAX; i++)
         if (pads[i] && strcmp(pads[i], id) == 0) return i;
     return -1;
+}
+int dinput8_controller_slot_for_host_pad(int pad)
+{
+    return pad >= 0 && pad < DINPUT_PAD_MAX ? controller_slots[pad] : -1;
 }
 int x2_transient_controller_has_assignment(unsigned player)
 {
@@ -101,6 +112,8 @@ int main(void)
     x2_settings_defaults(&settings);
     pads[0] = "pad-a";
     pads[1] = "pad-b";
+    controller_slots[0] = 0;
+    controller_slots[1] = 1;
     CHECK(x2_settings_assign_controller(&settings, "pad-b", 1));
     CHECK(x2_settings_assign_controller(&settings, "pad-a", 2));
     CHECK(x2_settings_assign_keyboard(&settings, 2, 3));
@@ -127,6 +140,26 @@ int main(void)
     CHECK(!x2_player_input_uses_gamepad(0));
     CHECK(x2_player_input_resolved_pad(1) == 1);
     CHECK(x2_player_input_resolved_pad(2) == 0);
+
+    /* Host inventory positions and retail controller-table slots are
+       independent. An unresolved guest slot removes the binding; admission
+       and later reordering must republish unchanged assignments. */
+    controller_slots[1] = -1;
+    x2_player_input_sync(&cpu);
+    CHECK(x2_player_input_resolved_pad(1) == 1);
+    CHECK(slots[1][4][INPUT_BINDING_ALT_SLOT].kind == 0);
+    CHECK(!x2_player_input_uses_gamepad(1));
+    CHECK(!x2_player_input_pad_is_active_source(1));
+    controller_slots[1] = 0;
+    controller_slots[0] = 1;
+    x2_player_input_sync(&cpu);
+    CHECK(slots[1][4][INPUT_BINDING_ALT_SLOT].kind == 3);
+    CHECK(slots[2][4][INPUT_BINDING_ALT_SLOT].kind == 4);
+    CHECK(x2_player_input_pad_is_active_source(1));
+    CHECK(x2_player_input_pad_is_active_source(0));
+    controller_slots[0] = 0;
+    controller_slots[1] = 1;
+    x2_player_input_sync(&cpu);
 
     gamepad_state[48 + 7] = 0x80;
     x2_player_input_note_gamepad_state(1, gamepad_state,

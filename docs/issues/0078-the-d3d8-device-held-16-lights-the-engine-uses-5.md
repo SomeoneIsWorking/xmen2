@@ -1,11 +1,11 @@
 ---
 id: 78
 title: The D3D8 device held 16 lights; the engine uses 51, so 63% of every SetLight was refused in silence
-status: investigating
+status: resolved
 symptom: characters render black in gameplay while the level, HUD and menus are correct
 tags: rendering,lighting,d3d8,engine,recomp
 created: 2026-08-15
-updated: 2026-08-15
+updated: 2026-08-24
 ---
 
 ## What was measured
@@ -31,8 +31,15 @@ The model was also simply wrong: in D3D8 the index names a slot in a list the ru
 - `D3D8_MAX_LIGHTS` 16 -> 256, following `D3D8_MAX_RENDER_STATES` and for the same stated reason: a table generous enough for what the API is used with, and an index past it refused BY NAME.
 - `light_index_refused()` names the first eight refusals and counts all of them; `d3d8_setlight_report` prints the count AT ZERO with its denominator and the highest index asked for.
 
-## What is NOT yet established
+## Resolution
 
-That this is the whole cause of the black characters. The port could not be compared in gameplay in the same session: it refused at `x86_call_unknown 0x00672274`, a missing recompiled body (same class as issue #76 -- an address inside a gap Ghidra left between two EH funclets). That is being repaired by seeding the address and re-exporting. Until a driven port run's own `X2_LIGHTLOG` is diffed against the control's, the index cap is a proven defect of unproven sufficiency.
+The capacity defect is fixed independently of whether it explained every
+historical black-character frame. `D3D8_MAX_LIGHTS` is 256; `SetLight` and
+`LightEnable` accept stock-observed slot 51; state blocks and draw translation
+preserve the slot; and `d3d8_host` drives slot 51 through both production vtable
+setters and the fixed-function lighting pixel path. `MaxActiveLights` remains a
+separate limit of eight. The focused `d3d8_host` test passed on 2026-08-24.
 
-At the MENU, before the fix, the two light streams were already IDENTICAL -- 13 indices, same types, same diffuse/ambient/range/attenuation, same enable pattern. That is what makes the gameplay difference attributable to the scene rather than to the recompilation in general.
+This resolves the API-capacity defect, not the old screenshot's complete causal
+chain. The historical Cyclops dialogue divergence is tracked in issue #77 and
+remains open pending a current capture with the same ordered draw signature.

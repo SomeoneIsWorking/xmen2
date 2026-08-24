@@ -1,68 +1,59 @@
 ---
 id: 77
-title: Characters render black because the ENGINE computes near-black lights, not because of the D3D8 layer
+title: Historical black characters in the Cyclops dialogue diverged at skinning shader selection
 status: investigating
 symptom: characters render black or very dark in gameplay while the environment looks correct; Cyclops dark with head reading as collapsed
 tags: rendering,lighting,d3d8,engine,recomp
 created: 2026-08-15
-updated: 2026-08-21
+updated: 2026-08-24
 ---
 
-## What the picture shows
+## Observation
 
-Oracle compare (tools/shot_compare.py, scratch/screenshots/oracle_compare.png)
-found a like-for-like scene -- the Cyclops dialogue. In the control the
-standing character is fully coloured; in ours he is a dark silhouette with the
-correct outline. The seated character renders correctly in BOTH.
+The retained oracle comparison shows the standing character as a dark
+silhouette in the port and fully coloured in the stock game during the Cyclops
+dialogue. Earlier run-wide and first-qualifying-draw lighting samples were not
+bounded to that photographed frame. They found real black-light states, but
+they did not establish that those states shaded the character in the picture.
 
-## Where it is NOT
+## Scene-bounded correction
 
-Every one of these was measured with its denominator, and each is dead:
+`scratch/logs/drive.log` frames 555 and 730 are the exact dialogue frame: 77
+draws in the same order and with the same primitive counts as the retained
+stock F9 capture in C203. At that boundary:
 
-- lighting bound: 1 of 107,800 lit draws is bounded black (X2_LIGHT_SURVEY)
-- state blocks: 0 of 8,686 applies changed the light table or the material
-- vertex blending: D3DRS_VERTEXBLEND is NEVER set, so real D3D8 ignores
-  D3DTS_WORLDMATRIX(1..3) exactly as this backend does (C194 is a dead end for
-  this symptom)
-- FVF blend weights: 0 of 271,635 draws carry them (the position-as-flags decode
-  bug was real, and latent)
-- index range: 0 of 273,289 draws read outside their vertex buffer
-- normals: all 380 lit draws of a gameplay frame carry unit-length normals
-- textures: 139 measured, mean luma 81/255; the 6 black ones are not bound in
-  the frame
-- D3DRS_NORMALIZENORMALS: the dark models have world scale 1.00, and the
-  lighting computes identically with and without normalising
+- Port character draws 28 and 30 are lit by non-black slots 8--11 and 12--19.
+- The only divergent hulls are draws 29 and 31. In the port they are unlit,
+  untextured FVF `0x002` draws at stride 12.
+- The control renders those same two draw signatures with vertex-shader handle
+  `0x003` at stride 32.
 
-## Where it IS
+Near-black engine lights therefore do not explain this scene. The first exact
+divergence is shader-path selection, upstream of the D3D8 draw implementation.
+The broader eliminations still stand: state blocks changed no light/material
+state in 0 of 8,686 applies; 0 of 273,289 draws read outside their vertex
+stream; and all 380 sampled lit draws carried unit normals.
 
-At draw time, 85,156 enabled-light reads were compared against what SetLight
-last wrote for that index: 0 differ, 0 arrive black although a colour was
-written, 0 were never set. The D3D8 light table is FAITHFUL.
+## Current state and closure discriminator
 
-Every draw of the frame has the same five lights enabled:
+C205 established the likely correction mechanically: changing
+`MaxVertexShaderConst` from the port's 96 to the control's 256 made the engine
+create and bind its skinning shader 1,832 times instead of never. A 2026-08-21
+capture of the current build (`scratch/screenshots/light-current-red-room2.png`)
+shows both characters coloured and visibly lit, so the symptom no longer
+reproduces.
 
-    #3 directional, diffuse luma 0.14
-    #4 #5 #6 #7 point, diffuse exactly 0.00
+The issue remains investigating because those two facts have not yet been tied
+together in one scene-bounded current capture. Closure requires a current F9
+frame table and screenshot of the same ordered 77-draw signature. Draws 29 and
+31 must be stride-32 shader-handle draws, the shader-refusal count must be zero,
+and the actor pixels must be coloured. A capture with any different ordered
+primitive signature is a different scene and must be refused.
 
-So four of the five lights are black and the fifth is dim -- and that is what
-the ENGINE handed over. The renderer is faithfully drawing a scene whose lights
-the recompiled engine computed wrong. The draws that look correct are bright
-because their material emissive is 1.00; anything that depends on actual
-lighting is dark.
-
-Note the end-of-run SetLight summary shows those same indices ending on real
-colours (light[4] 0.840 0.840 1.000, light[5]/[6] 0.784 0.980 0.996), so the
-values move over time -- the engine blacks them and re-sets them.
-
-## Next
-
-tools/oracle_probe.py exists for exactly this: sample the CONTROL's guest state
-from outside (process_vm_readv) at the same fields, and diff the two number
-streams. That says whether the control's engine computes the same lights for
-the same scene. If it does not, the divergence is upstream in the recompiled
-engine and this becomes an RE question rather than a rendering one.
-
-See C199, I055, I056.
-
-### Note (2026-08-21)
-2026-08-21 current-build check: a windowless X2_BOOT_MAP=act0/tutorial/tutorial1 run reached the same opening red-room conversation and captured scratch/screenshots/light-current-red-room2.png. Cyclops is textured, coloured and visibly lit, so the old opening-room symptom does not reproduce in the current tree. The 4,311,945-line stock light log and 252,920-line current port log parsed after issue #94's tool fix, but their nine reported differences are not actionable because the retained stock route is longer and reached light indices/scenes absent from the shorter port route. Keep this issue open until its historical root fix is identified or a scene-bounded comparison establishes it; do not conflate it with intermittent soldiers in #84.
+If a literal per-draw light comparison is still wanted, the missing side is the
+stock proxy: the port frame table already records active light indices and
+luma per selected-frame draw, while the proxy does not snapshot active light
+state at each draw. Whole-run `X2_LIGHTLOG` has no scene/frame boundary, so its
+nine route-dependent differences cannot answer this issue. See C203--C205,
+I055 and I059. Do not conflate this historical dialogue defect with the
+intermittent soldier-buffer defect resolved in issue #84.

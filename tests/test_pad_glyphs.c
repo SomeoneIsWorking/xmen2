@@ -21,6 +21,7 @@ static int real_calls, reader_calls;
 static uint32_t g_object;
 static uint32_t g_heap_next;
 static int active_pad = 0;
+static int host_pad_for_slot[10];
 
 uint32_t guest_malloc(uint32_t bytes)
 {
@@ -32,7 +33,12 @@ uint32_t guest_malloc(uint32_t bytes)
 }
 
 X86Module *x86_modules(void) { return &module; }
-int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 0; }
+int dinput8_controller_host_pad_for_slot(int controller_slot)
+{
+    return controller_slot >= 0 && controller_slot < 10
+        ? host_pad_for_slot[controller_slot] : -1;
+}
+int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 1; }
 int x2_player_input_pad_is_active_source(int pad)
 {
     return pad == active_pad;
@@ -169,6 +175,9 @@ int main(int argc, char **argv)
         return 77;
     }
     mapped_base = (uint32_t)(uintptr_t)region;
+    memset(host_pad_for_slot, 0xff, sizeof host_pad_for_slot);
+    host_pad_for_slot[0] = 1; /* guest slot 0 is Xbox-family host pad 1 */
+    host_pad_for_slot[1] = 0; /* guest slot 1 is generic host pad 0 */
     if (argc == 2 && strcmp(argv[1], "--disabled") == 0) {
         unsetenv("X2_PROMPT_GLYPHS");
         unsetenv("X2_PAD_GLYPHS");
@@ -190,7 +199,8 @@ int main(int argc, char **argv)
          check_call(3, 0x14, X2_PAD_GLYPH_DPAD_UP,    0) &&
          check_call(3, 0x1d, X2_PAD_GLYPH_LS, 0) &&
          check_call(3, 0x1e, X2_PAD_GLYPH_RS, 0) &&
-         check_call(4, 0x15, 0, 1);      /* non-Xbox slot */
+         check_call(4, 0x15, 0, 1) &&    /* generic host pad */
+         check_call(5, 0x15, 0, 1);      /* unresolved guest slot */
     if (!ok) {
         fprintf(stderr, "pad glyph shipping-wrapper checks FAILED\n");
         return 1;
@@ -232,8 +242,9 @@ int main(int argc, char **argv)
         WR32(mapped_base + CONTROLLER0_RVA, controller);
         memset((void *)(uintptr_t)g_object, 0, 42u * 4u * 12u);
 
-        put_binding(4u, ALT_SLOT, 3u, 0x15u);   /* pad 0, button A */
+        put_binding(4u, ALT_SLOT, 3u, 0x15u);   /* guest 0 -> host 1 */
         put_binding(4u, 2u, 1u, 0x1cu);         /* and the menu key beside it */
+        active_pad = 1;
         if (!reader_says(4u, &kind, &code, 0) || kind != 3u || code != 0x15u) {
             fprintf(stderr, "pad glyph label: a row with a pad binding was not "
                             "named by it (kind %u code 0x%02x)\n", kind, code);
@@ -245,19 +256,34 @@ int main(int argc, char **argv)
                             "retain the keyboard prompt\n");
             return 1;
         }
+        put_binding(6u, ALT_SLOT, 4u, 0x16u);   /* guest 1 -> generic host 0 */
         active_pad = 0;
-        put_binding(6u, ALT_SLOT, 4u, 0x16u);   /* generic/PS pad 1 */
-        active_pad = 1;
         if (!reader_says(6u, &kind, &code, 0) || kind != 4u || code != 0x16u) {
             fprintf(stderr, "pad glyph label: a non-Xbox active pad was not "
                             "selected for the retail naming path\n");
             return 1;
         }
-        active_pad = 0;
+        active_pad = 1;
+        if (!reader_says(6u, &kind, &code, 1) || kind != 1u || code != 0x1cu) {
+            fprintf(stderr, "pad glyph label: activity from a different host "
+                            "pad selected the reordered guest slot\n");
+            return 1;
+        }
         put_binding(7u, 2u, 1u, 0x1cu);         /* keyboard only */
         if (!reader_says(7u, &kind, &code, 1) || kind != 1u || code != 0x1cu) {
             fprintf(stderr, "pad glyph label: a row with no pad binding did not "
                             "super-call (kind %u code 0x%02x)\n", kind, code);
+            return 1;
+        }
+
+        /* Reordering is live: swapping the authoritative mapping changes
+           which physical family and active source each guest kind names. */
+        host_pad_for_slot[0] = 0;
+        host_pad_for_slot[1] = 1;
+        if (!check_call(3, 0x15, 0, 1) ||
+            !check_call(4, 0x15, X2_PAD_GLYPH_FACE_A, 0)) {
+            fprintf(stderr, "pad glyph label: live slot reorder did not "
+                            "retarget glyph family\n");
             return 1;
         }
     }
@@ -302,7 +328,7 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    printf("pad glyph wrapper: 6 enabled cases, both label-selection "
-           "directions and pad/keycap/unmapped label cases passed\n");
+    printf("pad glyph wrapper: enabled, reordered, unresolved and disabled "
+           "mappings plus pad/keycap/unmapped label cases passed\n");
     return 0;
 }

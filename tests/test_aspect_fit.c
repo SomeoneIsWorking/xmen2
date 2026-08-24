@@ -31,6 +31,13 @@ int main(void)
     CHECK(rect.x == 0 && rect.y == 0);
     CHECK(rect.width == 1920 && rect.height == 1080);
 
+    /* RmlUi consumes this same fit as its 1280x720 design-space dp ratio:
+       1080/720 = 1.5 and 2160/720 = 3. Resolution changes must not make text
+       smaller relative to the output. */
+    rect = fit(3840, 2160, 1280, 720);
+    CHECK(rect.x == 0 && rect.y == 0);
+    CHECK(rect.width == 3840 && rect.height == 2160);
+
     rect = fit(1001, 701, 4, 3);
     CHECK(rect.x == 33 && rect.y == 0);
     CHECK(rect.width == 934 && rect.height == 701);

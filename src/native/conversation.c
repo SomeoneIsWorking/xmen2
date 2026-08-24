@@ -47,6 +47,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "conversation_cutscene_skip.h"
+#include "conversation_resume.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -273,6 +274,7 @@ void conversation_report(void)
             printf("        ... and %d poll(s) from call sites past the "
                    "table.\n", g_askers_lost);
     }
+    x2_conversation_resume_report();
 }
 
 /* ---- guest calling ------------------------------------------------------
@@ -590,15 +592,8 @@ void x2_override_0045d5d0(CPU *C)
     C->esp += 4u + 4u;                            /* RET 0x4 */
 }
 
-/* ---------------------------------------------------------------------
- * XMen2.exe 0x00458010 / 0x00458020 -- the two flag predicates.
- *
- *     bool isVisible()   { return (flags >> 1) & 1; }   // drives the update
- *     bool isSpeaking()  { return (flags >> 2) & 1; }
- *
- * Both return in AL only, leaving the rest of EAX as the original's `SHR AL`
- * does.
- */
+/* XMen2.exe 0x00458010 / 0x00458020: visible/speaking predicates.
+ * Both return in AL only, leaving the rest of EAX as the original's SHR AL. */
 void fn_XMen2_00458010(CPU *C);
 
 void x2_override_00458010(CPU *C)
@@ -606,6 +601,7 @@ void x2_override_00458010(CPU *C)
     uint8_t f = RD8(C->ecx + CV_FLAGS);
     note_flags(f);
     note_asker(RD32(C->esp));
+    x2_conversation_resume_observe(C, C->ecx, f);
     C->eax = (C->eax & ~0xFFu) | (uint32_t)((f >> 1) & 1u);
     C->esp += 4u;
 }
@@ -844,6 +840,8 @@ void x2_override_0045d1a0(CPU *C)
         int advance;
         advance = conversation_cutscene_skip_should_advance(
             C, self, slot, input);
+        if (!advance)
+            advance = x2_conversation_resume_should_advance(C, self);
         if (accept_down) {
             uint32_t clock = call0(C, FN_CLOCK, 0);
             long double now = call_float(C, vslot(clock, 0x160u), clock, 0, NULL);

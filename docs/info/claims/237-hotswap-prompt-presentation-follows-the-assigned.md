@@ -4,9 +4,9 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: input,prompts,hotswap,tests
-depends: src/input/player_input.c#x2_player_input_pad_is_active_source, src/native/pad_glyphs.c#row_pad_binding, tests/test_pad_glyphs.c#main, tests/test_dialog_prompts.c#main
-reconfirmed: 2026-08-22
-verified_at: 2026-08-22 13:39:08
+depends: src/native/dinput8_controller_slots.c#dinput8_controller_host_pad_for_slot, src/input/player_input.c#x2_player_input_pad_is_active_source, src/native/pad_glyphs.c#row_pad_binding, tests/test_pad_glyphs.c#main
+reconfirmed: 2026-08-24
+verified_at: 2026-08-24 22:41:39
 ---
 
 ## Claim
@@ -24,3 +24,7 @@ A player with both sources displays a controller glyph or controller tutorial pr
 ## Re-confirmed 2026-08-22
 
 test_player_input drives last-active source transitions and exact stable-identity reassociation. test_pad_glyphs proves Xbox and generic/PlayStation active assigned pads both win source selection, with native glyphs only for Xbox and the retail physical-name super-call otherwise. test_dialog_prompts proves scoped controller/keyboard prose selection.
+
+## Re-confirmed 2026-08-24
+
+The 2026-08-24 slot-identity fix preserves the last-active-source policy while removing the host-index assumption: test_dinput8_controller_slots resolves reordered attached GUIDs, test_player_input suppresses unresolved guest slots and republishes reorder, and test_pad_glyphs selects Xbox/generic presentation only after guest-slot-to-host translation.

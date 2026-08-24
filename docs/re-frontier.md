@@ -76,32 +76,10 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### sdl-input — The game's input system, on SDL3
 - status: re-partial
 - deps: rc-overrides
-- evidence: DirectInput 8 is implemented natively over SDL3 and the game drives
-  it end to end -- `dinput8.c` (factory), `dinput.c`/`dinput_device.c` (device
-  objects, data formats, cooperative level, acquire/poll), `dinput_system.c`
-  (keyboard and mouse state), `dinput_joystick.c` (DIJOYSTATE2 layout),
-  `dinput_pad.c` (SDL3 gamepad -> DirectInput pad, including the 360 driver's
-  single-Z-axis trigger convention). C137/C138 fix how the exe reaches
-  DirectInput and by which GUIDs; issues #32, #55 and #59 are resolved.
-  Keyboard input demonstrably reaches GAMEPLAY, not just the device layer: over
-  the control channel, `x2ctl.py key Return` advances a conversation from
-  Cyclops's line to Nightcrawler's, captured both sides.
-- where: `src/native/dinput*.c`, `tools/x2ctl.py`
-- gap: THE PAD DOES NOT DELIVER BUTTONS. Enumeration is real -- the game's own
-  routine `FUN_00628e20` runs, a device is created, the 272-byte data format is
-  negotiated and the axis range set -- and axes are proved to arrive (a
-  synthetic pad's leftx reads back -32767 at both the joystick and the gamepad
-  layer inside the running game). Buttons never arrive: 71,700 polls, 0 down.
-  That is issue #82, and it is host-side. Beneath it sits the real port work:
-  the SDL backend is still consumed THROUGH the recompiled DirectInput call
-  path rather than as a native override of the game's own input functions, so
-  the port does not yet own the mapping from a physical input to a game action
-  -- which is what a rebindable UI has to drive. No real controller has been
-  tested at all; this machine has none attached.
-- notes: The `ig` controller abstraction is NOT in this repo any more -- it
-  belongs to the Alchemy engine layer (`shared/alchemy`), consumed rather than
-  vendored. The former `src/display/ig_sdl_controller.c` and
-  `tests/test_controller.c` moved with it.
+- evidence: DirectInput 7/8 are implemented over SDL3 and driven end to end. Issue #82 fixed background button delivery; C215 publishes bindings into the master, working and menu banks the game actually evaluates; C222/C224 prove full-scale triggers and RT+A power casting; C227 proves the RB health-item row. Keyboard and synthetic-pad input reach gameplay through the shipping x2ctl.py probe.
+- where: `src/native/dinput*.c`, `src/input/player_input.c`, `tools/x2ctl.py`
+- gap: The synthetic pad verifies enumeration, axes, buttons, triggers, action publication, hotswap source switching and gameplay input. No physical controller has been attached on this machine, so real-device hotplug, stable identity and reconnect behavior still require hardware validation; do not promote this step to re-verified from synthetic evidence alone.
+- notes: The host owns SDL/DirectInput transport in `src/native/dinput*.c`; player assignment and binding publication live in `src/input/player_input.c`. The shared Alchemy controller abstraction remains in the alchemy repository.
 
 ### xbox-defaults — Recover and port the Xbox build's controller defaults into the PC mapping UI
 - status: re-partial
@@ -203,13 +181,13 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: Translation only. 12 of 16 DLLs not yet imported; nothing outside libIGDisplay is differentially verified or executed.
 - notes:
 
-### rc-exe-run — Recompiled XMen2.exe executes; stops at first untranslated indirect target
+### rc-exe-run — Recompiled XMen2.exe runs through renderer startup and the Activision intro
 - status: re-partial
 - deps: rc-exe
 - evidence: C027; C180; C181; issue #68
 - where:
-- gap: The presentation-parameter blocker is closed by C180, and the downstream Wine-hybrid termination is closed by C181/issue #68. Current x2run reaches ResetSwapChain, display-mode setup, Cg DLL loading and renderer state setup with the exact stock parameters, survives the former security-cookie stop, and renders the Activision intro. It is not yet verified through the whole game loop; the next x2run work is a driven end-to-end discriminator rather than another startup crash.
-- notes:
+- gap: The Wine-hosted x2run reaches ResetSwapChain, display-mode setup, Cg loading, renderer state setup and the Activision intro with stock-matching presentation parameters. It is not verified through the whole game loop; the next work on this track is the existing driven end-to-end discriminator. Native gameplay-loop evidence belongs to rc-native and d3d8-host, not to this Wine-hybrid step.
+- notes: The former title saying this step stopped at the first untranslated indirect target was stale; that discovery frontier has moved past startup.
 
 ### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
 - status: hack
@@ -230,10 +208,10 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### rc-native — The PC recomp produces an artefact that runs WITHOUT Wine
 - status: re-partial
 - deps: rc-exe-run
-- evidence: C081/C178; src/native/x2native.c battery includes a real two-argument `RET 8` callback and exact post-call ESP check; a deliberate zero-cleanup mutation aborts; the 4,200-frame smoke loop has zero callback-contract violations; scratch/build-native/x2native is an 'ELF 64-bit LSB executable, x86-64'
+- evidence: C081/C156/C178/C209; x2native's battery checks stdcall/cdecl callback cleanup, a deliberate zero-cleanup mutation aborts, and the native D3D8 route has completed menu, movies, level load, gameplay, death dialog and return to menu with zero refused draws.
 - where: src/native/, tools/recomp.py native, CMakeLists.txt target x2native
-- gap: IN PROGRESS. Done: the original PE maps at its own base in a 64-bit process and the emitted C runs there; 25 of the 43 non-game imports are implemented on SDL3/libc; the native import ABI is checked against known answers for both stdcall and cdecl. Remaining, measured rather than guessed: 18 Win32 calls still abort by name (GetDC, the GetMessageA/DefWindowProcA message path, the dialog calls, GetKeyState, LoadIconA/LoadCursorA, GetWindowLongA/SetWindowLongA, SetWindowPos, EnableWindow, GetMenu, GetDlgItem, EndDialog, GetWindowTextA and friends, DirectInputCreateEx), and 64 imports are other game modules -- libIGCore is now exported (5818 functions) and is the next one to recompile. FS is modelled but unset; libIGDisplay never reads it, XMen2.exe does 2743 times, so it becomes real work at rc-exe.
-- notes: The native CMake build (src/core, src/display, src/app) is unrelated to the recomp -- asset tooling and an SDL controller backend. Nothing links the two today.
+- gap: The native x86-64 ELF now maps and initialises the recompiled exe and game modules, supplies the reached Win32, DirectInput, DirectSound and D3D8 host surfaces, and runs the game loop. Remaining work is coverage and faithfulness: unreached imports remain fail-loud poison thunks; guest exception delivery, LAN sockets and optional COM/system facilities are still absent; fixed low-address mapping leaves macOS unverified under issue #10.
+- notes: x2native composes the generated recompiled bodies with src/native, src/d3d8 and src/gpu. The former note claiming the native CMake build was unrelated to the recomp was retired as stale.
 
 ### rc-modinit — Native module initialisation: nothing runs DllMain or the CRT per module
 - status: re-verified
@@ -330,10 +308,10 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### d3d8-host — Host Direct3D 8: the engine's own DirectX code runs, answered at the Direct3DCreate8 import
 - status: re-partial
 - deps: rc-native
-- evidence: C129, I039. The cut is the IMPORT, not the ARK class: d3d8.dll!Direct3DCreate8 is one of the two DirectX imports in the whole game (C108), so answering it puts a host IDirect3D8 in front of the engine's UNMODIFIED igDx8 code. On the first run against the real install, that code drove Direct3DCreate8 -> GetAdapterIdentifier -> GetDeviceCaps -> CreateDevice with parameters the game itself computed (800x600 D3DFMT_R5G6B5, auto depth D3DFMT_D16, its own HWND), and a real SDL_GPU/Vulkan device was created and the swapchain claimed. The interface tables are verified two ways by tools/d3d8_abi_check.py (I039): 239 methods agree with a real d3d8.h, and 24 methods are confirmed exactly by libIGGfx's own provably-on-the-device call sites, with 0 under-counts. Both checks are proven able to FAIL, by --selftest, wired into ctest.
+- evidence: C129/I039 establish the import/ABI cut; C156 closes the menu-to-gameplay-to-menu loop with zero refused draws; C170 verifies the title's required fixed-function combiner behavior; C173 verifies the observed VS 1.1 skinning path; issue #62 verifies model-space and XYZRHW culling by pixels.
 - where: src/d3d8/, tools/d3d8_abi_check.py
-- gap: The game RENDERS ITS OWN MAIN MENU (screenshots in scratch/screenshots): statue, columns, pyramids, braziers, UI, shaded by a real fixed-function lighting stage and ordered by a real depth buffer. What EXISTS and is proved by PIXELS, not call counts: the draw path end to end, the depth test (a far quad drawn after a near one must not cover it), fixed-function lighting (the same quad lit and unlit from one flipped normal), a texture level surface as a view on the texture's own bytes, and cube textures with six separately addressable faces. 53 of 97 device methods, textures, cube textures, vertex/index buffers with real Lock/Unlock including sub-rectangles. NOT written, each reported by name where it is dropped: SAMPLING a cube (the fixed-function shader has a 2D sampler, so a cube bound to the stage refuses the draw); multi-texture stages (stage 0 only); D3DTOP beyond MODULATE/SELECTARG1; specular; spot cones; FOG (the engine sets FOGENABLE/FOGCOLOR/FOGSTART/FOGEND/FOGVERTEXMODE); real vertex/pixel shaders; and off-screen render targets for the engine's own use. Diagnostics: X2_FRAME_DUMP=<n> prints every draw of one frame, and the shutdown report gives a texture-stage histogram and NAMES every render state the engine set that this backend does not implement.
-- notes: This supersedes the plan in C128 rather than following it: the device does not need installing at this+0x144, because the engine installs it there itself once Direct3DCreate8 answers. See vk-substitute for the path this replaces. C177 closes the live swapchain's teardown lifetime: `USER32!DestroyWindow` must release SDL_GPU's window claim before destroying the SDL window. The old reverse order left at least ten Vulkan semaphores and the surface alive; the full 4,135-frame route now exits with zero validation errors or attached Wayland proxies (issue #66).
+- gap: The live D3D8 route renders the game loop with zero refused draws on the measured path. Cube sampling and title-used texture-coordinate generation are implemented; 0 of 298037 measured draws used a stage beyond stage 0, so multitexture is not a current title gap; the observed SELECTARG1, SELECTARG2, MODULATE and ADD combiners and VS 1.1 skinning run. Honest remaining gaps stay fail-loud: nonzero pixel shaders, unobserved combiner or VS-token forms, engine off-screen render targets, and incomplete fixed-function specular, spot-cone and MATERIALSOURCE semantics. Fog was disabled in the measured black-gameplay route, not proved generally irrelevant.
+- notes: This is the live renderer path and supersedes vk-frame's ARK substitution. The engine installs the host device itself after Direct3DCreate8; src/gpu is the shared backend. C177 verifies swapchain teardown ordering.
 
 ## rc-native
 

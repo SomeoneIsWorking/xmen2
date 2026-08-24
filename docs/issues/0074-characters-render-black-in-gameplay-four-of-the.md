@@ -1,11 +1,11 @@
 ---
 id: 74
 title: Characters render black in gameplay: four of the five lights reach D3D8 with diffuse (0,0,0)
-status: open
+status: resolved
 symptom: In gameplay every 3D character is a black silhouette while the level geometry, the HUD portraits, the selection rings and the menus are correct. Faint teal streaks are visible on the black figures. Reported by the user as 'black models'.
 tags: pc,native,graphics,lighting,d3d8
 created: 2026-08-14
-updated: 2026-08-14
+updated: 2026-08-24
 ---
 
 ## Measured, like-for-like
@@ -130,3 +130,6 @@ Which draws these are. Only about 2 draws per level frame are lit at all
 so the lit set is small and may not be the characters. X2_FRAME_DUMP=<frame>
 prints every draw of one frame with its lit/unlit flag, stride and texture; run
 it on a frame whose screenshot is black and identify the character draws first.
+
+### Resolution (2026-08-24)
+The title diagnosis was refuted by the issue's own frame-aligned measurement: at the photographed gameplay frame, all four point lights carried the level asset's real non-black colours. The earlier zero-light dump sampled loading frames, not the black-character frame. Issue #62 later located the solid silhouettes at oppositely culled outline-hull draws and fixed the model-space versus XYZRHW cull translation. This closes #74's black-light claim only; successor lighting investigations #77 and #78 remain open pending their own scene-bounded evidence.

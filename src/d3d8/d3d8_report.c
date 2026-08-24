@@ -17,6 +17,7 @@
 #include "d3d8_screen_space_test.h"
 #include "d3d8_surface.h"
 #include "d3d8_drawcall.h"
+#include "d3d8_light_selftest.h"
 #include "d3d8_state.h"
 #include "d3d8_vertex_shader.h"
 
@@ -667,12 +668,7 @@ static int lighting_selftest(void)
     st.material_set = 1;
 
     /* One DIRECTIONAL light (type 3) shining along +Z, white. */
-    ((uint32_t *)st.light[0])[0] = 3u;
-    st.light[0][1] = st.light[0][2] = st.light[0][3] = st.light[0][4] = 1.0f;
-    st.light[0][16] = 0.0f; st.light[0][17] = 0.0f; st.light[0][18] = 1.0f;
-    st.light[0][19] = 1000.0f;                       /* range */
-    st.light_set[0] = 1;
-    st.light_on[0] = 1;
+    d3d8_light_selftest_configure(&st);
 
     for (pass = 0; pass < 2; pass++) {
         float nz = pass == 0 ? -1.0f : 1.0f;         /* toward, then away */
@@ -1381,6 +1377,7 @@ int d3d8_host_selftest(void)
     fails += pixel_shader_selftest();
     fails += d3d8_vs_selftest();
     fails += d3d8_constants_probe_selftest();
+    fails += d3d8_light_selftest(call_method);
     fails += gamma_selftest();
     fails += getdirect3d_selftest();
     fails += texture_level_selftest();

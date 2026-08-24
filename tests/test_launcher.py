@@ -8,11 +8,19 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
+SCRATCH = ROOT / "scratch/tests"
+
+
+def scratch_directory():
+    SCRATCH.mkdir(parents=True, exist_ok=True)
+    return tempfile.TemporaryDirectory(dir=SCRATCH)
 
 
 def load_module(name: str, path: Path):
@@ -104,6 +112,110 @@ class LauncherContract(unittest.TestCase):
         lock = (ROOT / "uv.lock").read_text()
         self.assertIn('"resvg-py==', project)
         self.assertIn('name = "resvg-py"', lock)
+
+    def test_existing_checkout_must_already_be_at_the_pin(self):
+        repo = bootstrap.SharedRepo("fixture", "https://github.com/example/fixture.git",
+                                    "a" * 40, "marker")
+        with scratch_directory() as raw:
+            target = Path(raw) / "fixture"
+            (target / ".git").mkdir(parents=True)
+            (target / "marker").write_text("marker")
+            local_ref = target / ".git/valuable-local-ref"
+            local_ref.write_text("must survive")
+
+            pinned = [repo.url, "", repo.revision]
+            with mock.patch.object(bootstrap, "run_git", side_effect=pinned):
+                bootstrap.validate_checkout(repo, target)
+
+            outdated = [repo.url, "", "b" * 40]
+            with mock.patch.object(bootstrap, "run_git", side_effect=outdated):
+                with self.assertRaisesRegex(SystemExit, "move it aside"):
+                    bootstrap.validate_checkout(repo, target)
+            self.assertEqual(local_ref.read_text(), "must survive")
+
+    def test_atomic_text_publication_preserves_old_value_on_failure(self):
+        with scratch_directory() as raw:
+            target = Path(raw) / "cache.txt"
+            target.write_text("old\n")
+            with mock.patch.object(Path, "replace", autospec=True,
+                                   side_effect=OSError("fixture failure")):
+                with self.assertRaisesRegex(OSError, "fixture failure"):
+                    bootstrap.publish_text(target, "new\n")
+            self.assertEqual(target.read_text(), "old\n")
+            self.assertEqual(list(target.parent.glob(".cache.txt-*")), [])
+
+    def test_iat_cache_requires_exact_output_and_tool_provenance(self):
+        with scratch_directory() as raw:
+            root = Path(raw)
+            (root / "tools").mkdir()
+            local_tool = root / "tools/pe.py"
+            shared_tool = root / "shared/pe.py"
+            shared_tool.parent.mkdir()
+            local_tool.write_text("local entry point\n")
+            shared_tool.write_text("shared implementation\n")
+            image = root / "game.dll"
+            image.write_bytes(b"pe image")
+            generated = "00100000 KERNEL32.dll!ExitProcess\n"
+
+            with mock.patch.object(bootstrap, "ROOT", root), \
+                 mock.patch.object(bootstrap, "run_tool", return_value=generated) as run:
+                first = bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
+                second = bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
+            self.assertEqual(first, second)
+            self.assertEqual(run.call_count, 1)
+
+            iat = root / "scratch/recomp/fixture.iat"
+            iat.write_bytes(b"\xfftruncated")
+            with mock.patch.object(bootstrap, "ROOT", root), \
+                 mock.patch.object(bootstrap, "run_tool", return_value=generated) as run:
+                repaired = bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(iat.read_text(), generated)
+            self.assertEqual(repaired, bootstrap.hash_file(iat))
+
+            shared_tool.write_text("changed implementation\n")
+            with mock.patch.object(bootstrap, "ROOT", root), \
+                 mock.patch.object(bootstrap, "run_tool", return_value=generated) as run:
+                bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
+            self.assertEqual(run.call_count, 1)
+
+    def test_probe_artifacts_are_exact_atomic_outputs_and_retire_old_isolates(self):
+        with scratch_directory() as raw:
+            root = Path(raw)
+            generated = root / "src/recomp/gen"
+            recomp = root / "scratch/recomp"
+            generated.mkdir(parents=True)
+            recomp.mkdir(parents=True)
+            (generated / "probe_table.h").write_text("stale\n")
+            retired = recomp / "retired.isolate"
+            retired.write_text("0x00000001\n")
+
+            generator = SimpleNamespace(
+                HDR_OUT=str(generated / "probe_table.h"),
+                WRAP_OUT=str(generated / "probe_wraps.c"),
+                STUB_OUT=str(generated / "probe_stubs.S"),
+                CMAKE_OUT=str(generated / "recomp_probes.cmake"),
+                RECOMP=str(recomp),
+                Refuse=RuntimeError,
+                load_manifest=lambda: ["manifest"],
+                build=lambda manifest: ["probe"],
+                manifest_hash=lambda manifest: 0x12345678,
+                emit_header=lambda probes, digest: "header 12345678\n",
+                emit_wraps=lambda probes: "wraps\n",
+                emit_stubs=lambda probes: "stubs\n",
+                emit_cmake=lambda probes: "cmake\n",
+                emit_isolates=lambda probes: [(str(recomp / "live.isolate"),
+                                               "0x00401000\n")],
+            )
+            self.assertEqual(bootstrap.publish_probe_artifacts(generator), 6)
+            self.assertEqual((generated / "probe_table.h").read_text(),
+                             "header 12345678\n")
+            self.assertFalse(retired.exists())
+            self.assertEqual(bootstrap.publish_probe_artifacts(generator), 0)
+
+            (generated / "probe_wraps.c").write_bytes(b"\xffdamaged")
+            self.assertEqual(bootstrap.publish_probe_artifacts(generator), 1)
+            self.assertEqual((generated / "probe_wraps.c").read_text(), "wraps\n")
 
 
 if __name__ == "__main__":

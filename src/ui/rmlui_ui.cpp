@@ -12,8 +12,10 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <algorithm>
 #include <memory>
 
+#include "aspect_fit.h"
 #include "settings_document.hpp"
 #include "settings_overlay_state.h"
 
@@ -27,10 +29,26 @@ bool initialized;
 
 void sync_surface_metrics(SDL_Window* window, unsigned width, unsigned height)
 {
+    /* The RCSS is authored in the launcher's 1280x720 default design space.
+       RmlUi's dp units need the same aspect-fit scale as the retail frame or
+       a resolution increase makes every label smaller relative to the screen.
+
+       The swapchain dimensions are physical pixels when SDL exposes a
+       high-density surface, so that ratio already contains the display scale.
+       max() also covers backends that report logical swapchain dimensions and
+       expose the density only through SDL_GetWindowDisplayScale(). */
+    constexpr unsigned design_width = 1280;
+    constexpr unsigned design_height = 720;
+    X2AspectRect fitted{};
     float display_scale = SDL_GetWindowDisplayScale(window);
     if (!(display_scale > 0.0f)) display_scale = 1.0f;
+    float resolution_scale = 1.0f;
+    if (x2_aspect_fit(width, height, design_width, design_height, &fitted))
+        resolution_scale = static_cast<float>(fitted.height) /
+                           static_cast<float>(design_height);
     context->SetDimensions(Rml::Vector2i((int)width, (int)height));
-    context->SetDensityIndependentPixelRatio(display_scale);
+    context->SetDensityIndependentPixelRatio(
+        std::max(display_scale, resolution_scale));
 }
 
 bool gamepad_navigation(const SDL_Event& event)
@@ -112,7 +130,7 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
         return false;
     }
     initialized = true;
-    std::fprintf(stderr, "RMLUI: settings overlay initialized; F1 toggles it.\n");
+    std::fprintf(stderr, "RMLUI: Port Settings overlay initialized.\n");
     return true;
 }
 
@@ -121,12 +139,6 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
 extern "C" int x2_ui_handle_event(SDL_Event* event)
 {
     if (!event) return 0;
-    if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
-        event->key.key == SDLK_F1) {
-        x2_settings_overlay_toggle();
-        if (initialized) x2::ui::settings_document_cancel_capture();
-        return 1;
-    }
     if (!x2_settings_overlay_visible()) return 0;
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
         event->key.key == SDLK_ESCAPE) {

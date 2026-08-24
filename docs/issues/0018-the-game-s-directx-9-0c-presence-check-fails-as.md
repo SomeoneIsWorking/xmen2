@@ -1,11 +1,11 @@
 ---
 id: 18
 title: The game's DirectX 9.0c presence check fails, as it truthfully should
-status: open
+status: resolved
 symptom: MessageBox 'DirectX not found -- DirectX 9.0c or higher is not installed on this computer' from XMen2.exe FUN_00617480, after the native run clears the CRT, registry and COM surfaces
 tags: pc,recomp,native,graphics,rc-exe
 created: 2026-08-06
-updated: 2026-08-06
+updated: 2026-08-24
 ---
 
 ## What this is
@@ -123,3 +123,6 @@ total method surface, not 73 device methods.
 That is a bounded piece of work of roughly the scale of a small dxvk-d3d8, with
 the vendored state translation, combiners, shaders and GL backend reusable
 underneath a new PC-shaped interface layer.
+
+### Resolution (2026-08-24)
+The original DirectX 9.0c COM-version probe was a Windows installation precondition, not a capability test for this port. The native path now supplies a real host D3D8 device at Direct3DCreate8, so startup retires FUN_00617480 instead of writing DXChecked or fabricating a COM object; the override returns AL=1 exactly as the original success path requires. Issue #54 and C158/C209 record the return-value fix and end-to-end route.

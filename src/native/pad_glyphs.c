@@ -35,6 +35,7 @@
 #include "pad_glyphs.h"
 
 #include "dinput_pad.h"
+#include "dinput8_controller_slots.h"
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_pack.h"
 #include "prompt_labels.h"
@@ -129,16 +130,24 @@ static uint32_t name_buffer(void)
 
 void fn_XMen2_006281f0(CPU *C);
 
+static int host_pad_for_kind(uint32_t kind)
+{
+    if (kind < 3u || kind > 0xcu) return -1;
+    return dinput8_controller_host_pad_for_slot((int)kind - 3);
+}
+
 void x2_override_006281f0(CPU *C)
 {
     uint32_t kind = RD32(C->esp + 4u);
     uint32_t code = RD32(C->esp + 8u);
     uint8_t glyph;
     uint32_t out;
+    int host_pad;
 
     glyph = pad_glyph_code(code);
-    if (!prompt_glyph_pack_enabled() || kind < 3u || kind > 0xcu || !glyph ||
-        !dinput_pad_uses_xbox_glyphs((int)kind - 3) || !(out = name_buffer())) {
+    host_pad = host_pad_for_kind(kind);
+    if (!prompt_glyph_pack_enabled() || host_pad < 0 || !glyph ||
+        !dinput_pad_uses_xbox_glyphs(host_pad) || !(out = name_buffer())) {
         g_deferred++;
         fn_XMen2_006281f0(C);
         return;
@@ -168,10 +177,12 @@ static int row_pad_binding(uint32_t object, uint32_t row, uint32_t *kind,
                            uint32_t *code)
 {
     uint32_t slot, k, c;
+    int host_pad;
     for (slot = 0; slot < INPUT_BINDING_SLOTS; slot++) {
         if (!input_bindings_read(object, row, slot, &k, &c)) continue;
-        if (k < 3u || k > 0xcu) continue;
-        if (!x2_player_input_pad_is_active_source((int)k - 3)) continue;
+        host_pad = host_pad_for_kind(k);
+        if (host_pad < 0) continue;
+        if (!x2_player_input_pad_is_active_source(host_pad)) continue;
         *kind = k;
         *code = c;
         return 1;

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -262,16 +263,27 @@ def run_tool(arguments: list[str], purpose: str, capture: bool = False) -> str:
 
 
 def publish_text(path: Path, content: str) -> bool:
-    if path.is_file() and path.read_text() == content:
-        return False
+    if path.is_file():
+        try:
+            if path.read_text() == content:
+                return False
+        except (OSError, UnicodeError):
+            # A damaged text cache is a miss. Replacing it is the recovery path.
+            pass
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent,
-                                     prefix=f".{path.name}-", delete=False) as temporary:
-        temporary_path = Path(temporary.name)
-        temporary.write(content)
-        temporary.flush()
-        os.fsync(temporary.fileno())
-    temporary_path.replace(path)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=path.parent,
+                prefix=f".{path.name}-", delete=False) as temporary:
+            temporary_path = Path(temporary.name)
+            temporary.write(content)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        temporary_path.replace(path)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink()
     return True
 
 
@@ -285,6 +297,36 @@ def read_stamp(path: Path) -> dict[str, object] | None:
 
 def write_stamp(path: Path, value: dict[str, object]) -> None:
     publish_text(path, json.dumps(value, sort_keys=True) + "\n")
+
+
+def ensure_iat(module: str, image: Path, image_hash: str, pe_tool: Path) -> str:
+    """Return a verified import-table hash, regenerating any inexact cache.
+
+    The output, exact PE image, local entry point and shared implementation are
+    one provenance unit. A valid-looking timestamp cannot bless a truncated or
+    hand-edited table, and every publication goes through ``publish_text``.
+    """
+    scratch = ROOT / "scratch/recomp"
+    iat = scratch / f"{module}.iat"
+    stamp = scratch / f".{module}.iat.json"
+    expected = {
+        "schema": 1,
+        "image": image_hash,
+        "tool": hash_files((ROOT / "tools/pe.py", pe_tool)),
+    }
+    prior = read_stamp(stamp)
+    output_hash = hash_file(iat) if iat.is_file() else None
+    if output_hash and prior == {**expected, "output": output_hash}:
+        return output_hash
+
+    text = run_tool([str(ROOT / "tools/pe.py"), "iat", str(image)],
+                    f"deriving {module} import table", capture=True)
+    if not text.strip():
+        refuse(f"PE parser produced an empty import table for {module}")
+    publish_text(iat, text)
+    output_hash = hash_file(iat)
+    write_stamp(stamp, {**expected, "output": output_hash})
+    return output_hash
 
 
 def restore_exports(images: dict[str, Path]) -> dict[str, dict[str, object]]:
@@ -317,22 +359,56 @@ def restore_exports(images: dict[str, Path]) -> dict[str, dict[str, object]]:
             live_hash = hash_file(live)
             write_stamp(stamp_path, {**expected, "output": live_hash})
 
-        iat = scratch / f"{module}.iat"
-        iat_stamp = scratch / f".{module}.iat.json"
-        iat_expected = {"schema": 1, "image": image_hash,
-                        "tool": hash_file(pe_tool)}
-        iat_prior = read_stamp(iat_stamp)
-        iat_hash = hash_file(iat) if iat.is_file() else None
-        if not (iat_hash and iat_prior == {**iat_expected, "output": iat_hash}):
-            iat_text = run_tool([str(ROOT / "tools/pe.py"), "iat", str(images[module])],
-                                f"deriving {module} import table", capture=True)
-            if not iat_text.strip():
-                refuse(f"PE parser produced an empty import table for {module}")
-            publish_text(iat, iat_text)
-            iat_hash = hash_file(iat)
-            write_stamp(iat_stamp, {**iat_expected, "output": iat_hash})
+        iat_hash = ensure_iat(module, images[module], image_hash, pe_tool)
         states[module] = {"json": live_hash, "iat": iat_hash}
     return states
+
+
+def load_probe_generator():
+    """Load the authoritative renderer without invoking its in-place writer."""
+    path = ROOT / "tools/gen_probes.py"
+    spec = importlib.util.spec_from_file_location("x2_bootstrap_gen_probes", path)
+    if spec is None or spec.loader is None:
+        refuse(f"cannot load probe generator {path}")
+    generator = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(generator)
+    return generator
+
+
+def publish_probe_artifacts(generator=None) -> int:
+    """Render, content-check and atomically publish every probe artifact.
+
+    ``gen_probes.py`` remains the one authority for validation and rendering.
+    Bootstrap calls those pure seams and owns publication so an interrupted
+    write cannot turn a stale cache into apparently current build input.
+    """
+    generator = generator or load_probe_generator()
+    try:
+        manifest = generator.load_manifest()
+        probes = generator.build(manifest)
+    except generator.Refuse as error:
+        refuse(str(error))
+    manifest_hash = generator.manifest_hash(manifest)
+    outputs = [
+        (Path(generator.HDR_OUT), generator.emit_header(probes, manifest_hash)),
+        (Path(generator.WRAP_OUT), generator.emit_wraps(probes)),
+        (Path(generator.STUB_OUT), generator.emit_stubs(probes)),
+        (Path(generator.CMAKE_OUT), generator.emit_cmake(probes)),
+        *((Path(path), text) for path, text in generator.emit_isolates(probes)),
+    ]
+    changed = sum(publish_text(path, text) for path, text in outputs)
+
+    # Probe isolation has one writer. Remove a retired module's generated list
+    # only after every replacement artifact has been published successfully.
+    expected_isolates = {path.resolve() for path, _ in outputs
+                         if path.suffix == ".isolate"}
+    for path in Path(generator.RECOMP).glob("*.isolate"):
+        if path.resolve() not in expected_isolates:
+            path.unlink()
+            changed += 1
+    print(f"bootstrap: probe wiring OK ({len(probes)} probe(s), "
+          f"{len(outputs)} artifact(s), {changed} changed)")
+    return changed
 
 
 def generated_bodies(module: str) -> list[Path]:
@@ -370,7 +446,7 @@ def emit_modules(states: dict[str, dict[str, object]]) -> None:
 
 def provision(images: dict[str, Path]) -> None:
     states = restore_exports(images)
-    run_tool([str(ROOT / "tools/gen_probes.py")], "generating oracle probe wiring")
+    publish_probe_artifacts()
     emit_modules(states)
     run_tool([str(ROOT / "tools/check_emitted.py"), "--root", str(ROOT)],
              "verifying emitted code provenance")

@@ -143,11 +143,12 @@ open because this machine only has the synthetic pad.
 
 ## 5. RmlUi for player mapping and input bindings
 
-**Partial; the working UI and runtime path are in.** F1 opens a shipped RmlUi
-overlay rendered through the same SDL_GPU command buffer as the game. Its
-Dusklight-style tabs expose resolution plus windowed, borderless and exclusive
-fullscreen presentation, and an input assignment grid. The dependency is
-pinned by commit and archive hash rather than following an unbounded branch.
+**Partial; the working UI and runtime path are in.** The pause menu exposes a
+distinct **Port Settings** row which opens a shipped RmlUi overlay rendered
+through the same SDL_GPU command buffer as the game. Its Dusklight-style tabs
+expose resolution plus windowed, borderless and exclusive fullscreen
+presentation, and an input assignment grid. The dependency is pinned by commit
+and archive hash rather than following an unbounded branch.
 
 Four keyboard profiles and controllers are grid rows; Unassigned and Players
 1–4 are columns. Each device has at most one owner. Player 1 may own one
@@ -176,26 +177,29 @@ identical controllers which cannot impersonate persistent devices and twelve
 reconnect/slot-reuse cycles. The modal overlay publishes neutral joystick axes,
 buttons and POVs while open.
 
-The authored menu path is now wired too. Shipped `main.engb` executes
-`options_main`, and XMen2.exe's command registry binds that exact name to
-0x005f1fa0; pause/generic entries use `options` at 0x005f1c50. Both callbacks
-now show the same modal RmlUi visibility owner that F1 toggles, rather than
-pushing the retail options page. Closing the overlay therefore uncovers the
-menu that opened it. The production-seam test pins both registrations, their
-plain-`RET` guest ABI and the shared capture state.
+The two authored retail Options paths remain intact. Shipped `main.engb`
+executes `options_main`, bound to 0x005f1fa0, while pause/generic entries use
+`options` at 0x005f1c50; neither callback is overridden. The native asset pack
+derives the pause variants from the user's XMLBs, adds the presentation IGB's
+reserved button10 row without replacing an existing slot, and emits the new
+`port_settings` command. The host super-calls the retail command-table
+registrar before adding only that command through the table's own method. The
+F1-only path is gone; closing the modal overlay returns to the pause menu that
+owns its row.
 
 Open: real-pad hotplug/identity and fullscreen transitions need hardware/user
 validation; controller navigation currently uses focus traversal rather than
 Dusklight-style spatial navigation.
 
-**Decided 2026-08-18: the port keeps the PC base, and RmlUi takes over the
-options system rather than sitting beside it.** Basing the port on the Xbox
-release was considered and rejected for this purpose. The reason given was that
-the PC option system does not fit the intended UI -- but the Xbox release is
-fixed-output console hardware with essentially no resolution system to expose,
-so it serves that goal less well, not better. And an options UI is exactly what
-this architecture makes replaceable: the same category of work as the
-controller defaults UI, and independent of which binary is underneath.
+**Decided 2026-08-24: the port keeps the PC base, and RmlUi owns only coherent
+port settings beside the authored retail Options pages.** Basing the port on
+the Xbox release was considered and rejected for this purpose. The reason given
+was that the PC option system does not fit the intended UI -- but the Xbox
+release is fixed-output console hardware with essentially no resolution system
+to expose, so it serves that goal less well, not better. A separate host
+settings UI is the same category of work as the controller defaults UI and is
+independent of which binary is underneath; replacing the retail UI is not
+required to own that host policy coherently.
 
 Switching base would also strand the part that is finished. The x86-32
 translator, the Alchemy engine layer and the RE harness are already shared
