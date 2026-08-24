@@ -46,6 +46,7 @@ import ctypes.util
 import os
 import sys
 import time
+from typing import ClassVar
 
 BASE = 0x00400000
 
@@ -99,7 +100,9 @@ class Reader(object):
         self._readv.restype = ctypes.c_ssize_t
 
         class IOVec(ctypes.Structure):
-            _fields_ = [("base", ctypes.c_void_p), ("len", ctypes.c_size_t)]
+            _fields_: ClassVar[list[tuple[str, object]]] = [
+                ("base", ctypes.c_void_p), ("len", ctypes.c_size_t)
+            ]
 
         self.IOVec = IOVec
         self.fails = 0

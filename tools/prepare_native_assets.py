@@ -74,6 +74,7 @@ def prepare(game: Path, out: Path) -> None:
                          f"but resolved {len(icons)} SVG path(s)")
     sources = [igb, xmlb, ROOT / "tools" / "make_pad_font.py",
                ROOT / "tools" / "pad_glyph_manifest.py",
+               ROOT / "pyproject.toml", ROOT / "uv.lock",
                ROOT / "assets" / "buttons" / "glyphs.json",
                keycap_svg_path(), *icons]
     key = fingerprint(sources)
@@ -94,7 +95,7 @@ def prepare(game: Path, out: Path) -> None:
     stage = Path(tempfile.mkdtemp(prefix="native-assets-", dir=raw))
     try:
         result = subprocess.run(
-            ["python3", str(ROOT / "tools" / "make_pad_font.py"),
+            [sys.executable, str(ROOT / "tools" / "make_pad_font.py"),
              str(igb), str(xmlb), str(stage)], text=True,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         )

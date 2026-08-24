@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(xmen2_sdl LANGUAGES C CXX)
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -90,9 +92,9 @@ add_test(NAME fmv_decode COMMAND test_fmv_decode)
 set_tests_properties(fmv_decode PROPERTIES SKIP_RETURN_CODE 77)
 
 add_test(NAME structure
-         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_structure.py)
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_structure.py)
 add_test(NAME structure_selftest
-         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_structure.py --selftest)
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_structure.py --selftest)
 
 add_executable(test_settings tests/test_settings.c src/config/settings.c
                src/config/input_assignments.c
@@ -209,9 +211,9 @@ add_executable(test_conversation_skip_policy
 target_include_directories(test_conversation_skip_policy PRIVATE src/native)
 add_test(NAME conversation_skip_policy COMMAND test_conversation_skip_policy)
 add_test(NAME conversation_skip_wiring
-         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py)
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py)
 add_test(NAME conversation_skip_wiring_selftest
-         COMMAND python3 ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py
                          --selftest)
 
 add_executable(test_binding_rows tests/test_binding_rows.c
@@ -222,7 +224,7 @@ add_test(NAME binding_row_labels COMMAND test_binding_rows)
 set(X2_PAD_GLYPH_HEADER "${CMAKE_BINARY_DIR}/pad_glyph_codes.h")
 add_custom_command(
     OUTPUT "${X2_PAD_GLYPH_HEADER}"
-    COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
             --emit-header "${X2_PAD_GLYPH_HEADER}"
     DEPENDS "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
             "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
@@ -435,13 +437,13 @@ add_test(NAME shadow_trace COMMAND test_shadow_trace)
 set_tests_properties(shadow_trace PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-add_test(NAME shadow_trace_compare COMMAND python3
+add_test(NAME shadow_trace_compare COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/shadow_trace_compare.py --selftest)
-add_test(NAME build_stocklog COMMAND python3 -m unittest
+add_test(NAME build_stocklog COMMAND ${Python3_EXECUTABLE} -m unittest
          tests.test_build_stocklog)
 set_tests_properties(build_stocklog PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-add_test(NAME oracle_compare_tool COMMAND python3 -m unittest
+add_test(NAME oracle_compare_tool COMMAND ${Python3_EXECUTABLE} -m unittest
          tests.test_oracle_compare)
 set_tests_properties(oracle_compare_tool PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -467,21 +469,21 @@ add_test(NAME lift_step_guard
 # address, an entry point the named module lacks, a missing source tree, and
 # another module's registration -- paths that never run during a normal emit,
 # because every registration in the tree is correct.
-add_test(NAME overrides COMMAND python3
+add_test(NAME overrides COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/recomp_overrides.py --selftest)
-add_test(NAME save_trace_wiring COMMAND python3
+add_test(NAME save_trace_wiring COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py)
 set_tests_properties(save_trace_wiring PROPERTIES SKIP_RETURN_CODE 77)
-add_test(NAME save_trace_wiring_selftest COMMAND python3
+add_test(NAME save_trace_wiring_selftest COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py --selftest)
-add_test(NAME continue_wiring COMMAND python3
+add_test(NAME continue_wiring COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_continue_wiring.py)
 set_tests_properties(continue_wiring PROPERTIES SKIP_RETURN_CODE 77)
-add_test(NAME continue_wiring_selftest COMMAND python3
+add_test(NAME continue_wiring_selftest COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_continue_wiring.py --selftest)
-add_test(NAME autosave_wiring COMMAND python3
+add_test(NAME autosave_wiring COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_autosave_wiring.py)
-add_test(NAME autosave_wiring_selftest COMMAND python3
+add_test(NAME autosave_wiring_selftest COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_autosave_wiring.py --selftest)
 
 # The guest stack-effect check (tools/stackcheck.py over an X2_STACKCHECK
@@ -493,7 +495,7 @@ add_test(NAME autosave_wiring_selftest COMMAND python3
 # tool's usual answer ("every checked call is balanced", over a million calls)
 # worth anything: it shows the checker flagging a 4-byte drift and excluding a
 # tail-calling body, neither of which a normal run exercises.
-add_test(NAME stackcheck COMMAND python3
+add_test(NAME stackcheck COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/stackcheck.py --selftest)
 
 # The oracle probe harness (src/oracle, tools/gen_probes.py, tools/oraclediff.py).
@@ -506,18 +508,18 @@ add_test(NAME stackcheck COMMAND python3
 # reject a mismatched manifest, a same-side pair and an empty capture, and must
 # distinguish a differing OUTPUT (a defect) from a differing INPUT (two runs
 # that simply drifted apart).
-add_test(NAME probes_generator COMMAND python3
+add_test(NAME probes_generator COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/gen_probes.py --selftest)
-add_test(NAME probes_current COMMAND python3
+add_test(NAME probes_current COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/gen_probes.py --check)
-add_test(NAME oraclediff COMMAND python3
+add_test(NAME oraclediff COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/oraclediff.py --selftest)
 
 # The staleness gate's own discriminator: it must read a current stamp as
 # current, a wrong one as stale, an ABSENT one as stale, and the fingerprint
 # must move when the translator is edited. A checker only ever run against the
 # good case is not a checker.
-add_test(NAME emitted_stamp COMMAND python3
+add_test(NAME emitted_stamp COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_emitted.py --selftest)
 
 
@@ -526,7 +528,7 @@ add_test(NAME emitted_stamp COMMAND python3
 # scratch/recomp/libIGGfx.json, which is generated and gitignored, while the
 # self-test proves the checks can fail and is meaningful with or without it.
 add_test(NAME d3d8_abi
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/d3d8_abi_check.py --selftest)
 
 
@@ -551,16 +553,26 @@ target_compile_definitions(test_control_png PRIVATE
 add_test(NAME control_png COMMAND test_control_png)
 
 add_test(NAME pad_font
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/make_pad_font.py --selftest)
 
 add_test(NAME pad_glyph_manifest
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py --selftest)
 
 add_test(NAME prepare_native_assets
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
+
+add_test(NAME launcher
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_launcher.py)
+set_tests_properties(launcher PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME capture_recomp_metadata
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/capture_recomp_metadata.py --selftest)
+set_tests_properties(capture_recomp_metadata PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 
 # The 42 binding-row storage keys and display labels in
@@ -569,7 +581,7 @@ add_test(NAME prepare_native_assets
 # agree. SKIPs loudly (77) without an install, because a check that had nothing
 # to read must not look like a check that passed.
 add_test(NAME binding_rows
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/binding_rows.py --selftest)
 set_tests_properties(binding_rows PROPERTIES SKIP_RETURN_CODE 77
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -585,22 +597,22 @@ set_tests_properties(binding_rows PROPERTIES SKIP_RETURN_CODE 77
 # what is deliberately NOT enabled. SKIPs (77) when ruff is not installed,
 # because a linter that silently did not run must not read as a clean tree.
 add_test(NAME python_lint
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/lint.py)
 set_tests_properties(python_lint PROPERTIES SKIP_RETURN_CODE 77
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-add_test(NAME x2ctl COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/test_x2ctl.py)
+add_test(NAME x2ctl COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_x2ctl.py)
 set_tests_properties(x2ctl PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_test(NAME script_commands
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/script_commands.py --selftest)
 set_tests_properties(script_commands PROPERTIES SKIP_RETURN_CODE 77
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_test(NAME extract_fb
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/extract_fb.py --selftest)
 
 # The oracle cache, proved to MISS as well as hit -- with a stub runner in
@@ -608,7 +620,7 @@ add_test(NAME extract_fb
 # cache that has only ever been shown to hit is a cache that will serve a frame
 # captured from a binary that has since been rebuilt.
 add_test(NAME oracle_cache
-         COMMAND ${CMAKE_COMMAND} -E env python3
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/oracle.py --selftest)
 
 
@@ -619,9 +631,9 @@ add_test(NAME oracle_cache
 # recompiler output, which is gitignored, so the target only exists once
 # `tools/recomp.py emit` and `tools/recomp.py native` have been run:
 #
-#   python3 tools/recomp.py emit   scratch/recomp/libIGDisplay.json \
+#   ${Python3_EXECUTABLE} tools/recomp.py emit   scratch/recomp/libIGDisplay.json \
 #                                  src/recomp/libIGDisplay.c
-#   python3 tools/recomp.py native scratch/recomp/libIGDisplay.json \
+#   ${Python3_EXECUTABLE} tools/recomp.py native scratch/recomp/libIGDisplay.json \
 #                                  src/recomp/libIGDisplay_native.c
 #
 # Configured without them, CMake SAYS so rather than quietly omitting the
@@ -742,10 +754,10 @@ if(X2_MODULE_HAVE)
     # time and embedded as C arrays. glslc is REQUIRED rather than optional: a
     # build that silently had no shaders would link, run, and draw nothing --
     # which is the single hardest rendering failure to attribute.
-    find_program(X2_GLSLC NAMES glslc glslangValidator)
+    find_program(X2_GLSLC NAMES glslc)
     if(NOT X2_GLSLC)
         message(FATAL_ERROR
-            "x2native: no glslc (or glslangValidator) found, so the renderer's "
+            "x2native: no glslc found, so the renderer's "
             "shaders cannot be built. Install shaderc/glslang. Refusing rather "
             "than building a binary that would run and draw nothing.")
     endif()
@@ -954,7 +966,7 @@ if(X2_MODULE_HAVE)
         # --root explicitly: the translator is a SHARED repo now, so the tool
         # can neither assume its own location is the port nor assume the
         # working directory is (CMake runs it from the build tree).
-        COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/check_emitted.py"
+        COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/check_emitted.py"
                 --root "${CMAKE_SOURCE_DIR}"
         RESULT_VARIABLE X2_EMIT_STALE
         OUTPUT_VARIABLE X2_EMIT_OUT

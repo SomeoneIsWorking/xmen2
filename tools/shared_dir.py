@@ -7,7 +7,7 @@ live in their own repos under `shared/`, and are consumed rather than vendored
 -- see the repo layout README.
 
 Resolution order for `shared/<name>`: `$<NAME>_DIR`, then `$SHARED_DIR/<name>`,
-then the sibling checkout the standard layout implies. If none exists this
+then the project-local provisioned checkout, then the sibling checkout the standard layout implies. If none exists this
 REFUSES and names every path it tried. It does not fall back to an in-tree
 copy, because a stale vendored copy that silently wins is the exact failure
 this split exists to end.
@@ -34,6 +34,7 @@ def shared_dir(name, marker=None):
         tried.append(env)
     if os.environ.get("SHARED_DIR"):
         tried.append(os.path.join(os.environ["SHARED_DIR"], name))
+    tried.append(os.path.join(_PORT_ROOT, "vendor", "shared", name))
     tried.append(os.path.join(_LAYOUT_SHARED, name))
 
     for path in tried:
