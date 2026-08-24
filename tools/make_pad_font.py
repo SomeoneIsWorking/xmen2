@@ -42,10 +42,13 @@ The output is an `X2_ASSETS` pack; run the game with `X2_ASSETS=<outdir>`.
 """
 
 import argparse
+from io import BytesIO
 import os
-import subprocess
 import sys
 import tempfile
+
+from PIL import Image
+from resvg_py import svg_to_bytes
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -144,9 +147,10 @@ def empty_band(rgba, w, h):
 # ---- icons ---------------------------------------------------------------
 
 def rasterise(sources, size, tmp):
-    """SVG -> size x size RGBA, via ImageMagick. A missing icon or a missing
-    rasteriser is refused; a pack built from fifteen of sixteen icons would draw a
-    blank for one prompt and look like a game bug.
+    """SVG -> size x size RGBA, via the locked resvg Python package.
+
+    A missing icon or failed raster is refused; a pack built from fifteen of
+    sixteen icons would draw a blank for one prompt and look like a game bug.
 
     `sources` are full paths, because the art is NOT in this repo -- it comes
     from the shared `port-assets` set that every port in the tree draws its
@@ -157,19 +161,16 @@ def rasterise(sources, size, tmp):
         if not os.path.exists(src):
             raise SystemExit("REFUSING: %s does not exist, so the pack would "
                              "be missing the %s prompt." % (src, n))
-        dst = os.path.join(tmp, n + ".rgba")
-        cmd = ["magick", "-background", "none", src,
-               "-resize", "%dx%d" % (size, size),
-               "-depth", "8", "RGBA:" + dst]
         try:
-            r = subprocess.run(cmd, capture_output=True)
-        except FileNotFoundError:
-            raise SystemExit("REFUSING: ImageMagick's `magick` is not on "
-                             "PATH, so no icon can be rasterised.") from None
-        if r.returncode != 0 or not os.path.exists(dst):
-            raise SystemExit("REFUSING: rasterising %s failed: %s"
-                             % (src, r.stderr.decode()[:200]))
-        px = open(dst, "rb").read()
+            png = svg_to_bytes(svg_path=str(src), width=size, height=size)
+            with Image.open(BytesIO(png)) as image:
+                image.load()
+                if image.size != (size, size):
+                    raise ValueError("renderer returned %dx%d" % image.size)
+                px = image.convert("RGBA").tobytes()
+        except Exception as error:
+            raise SystemExit("REFUSING: rasterising %s with resvg failed: %s"
+                             % (src, error)) from error
         if len(px) != size * size * 4:
             raise SystemExit("REFUSING: %s rasterised to %d bytes, not the "
                              "%d a %dx%d RGBA image is."
@@ -210,19 +211,16 @@ def rasterise_keycap(src, tmp):
     from the shared asset.
     """
     width, height = 45, CELL  # cap_extra_wide is 180:72
-    dst = os.path.join(tmp, "keycap.rgba")
-    cmd = ["magick", "-background", "none", str(src),
-           "-resize", "%dx%d!" % (width, height),
-           "-depth", "8", "RGBA:" + dst]
     try:
-        result = subprocess.run(cmd, capture_output=True)
-    except FileNotFoundError:
-        raise SystemExit("REFUSING: ImageMagick's `magick` is not on PATH, "
-                         "so the keycap cannot be rasterised.") from None
-    if result.returncode != 0 or not os.path.exists(dst):
-        raise SystemExit("REFUSING: rasterising keycap %s failed: %s"
-                         % (src, result.stderr.decode()[:200]))
-    pixels = bytearray(open(dst, "rb").read())
+        png = svg_to_bytes(svg_path=str(src), width=width, height=height)
+        with Image.open(BytesIO(png)) as image:
+            image.load()
+            if image.size != (width, height):
+                raise ValueError("renderer returned %dx%d" % image.size)
+            pixels = bytearray(image.convert("RGBA").tobytes())
+    except Exception as error:
+        raise SystemExit("REFUSING: rasterising keycap %s with resvg failed: %s"
+                         % (src, error)) from error
     if len(pixels) != width * height * 4:
         raise SystemExit("REFUSING: keycap raster has %d bytes, expected %d."
                          % (len(pixels), width * height * 4))
@@ -578,9 +576,38 @@ def _selftest():
         fails.append("blit touched %d pixel(s), not the 16 of a 4x4 cell"
                      % sum(1 for i in range(w * hh) if dst[i * 4 + 3]))
 
+    # Exercise the shipping resvg path in both directions. Importing the
+    # package proves only that the old ModuleNotFoundError is gone; rendering
+    # one opaque SVG and refusing both blank and invalid inputs proves the
+    # locked dependency is usable and its output gate actually fires.
+    scratch = os.path.join(ROOT, "scratch", "raw")
+    os.makedirs(scratch, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="pad-font-resvg-", dir=scratch) as tmp:
+        opaque = os.path.join(tmp, "opaque.svg")
+        transparent = os.path.join(tmp, "transparent.svg")
+        invalid = os.path.join(tmp, "invalid.svg")
+        open(opaque, "w").write(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8">'
+            '<rect width="8" height="8" fill="#ff0000"/></svg>')
+        open(transparent, "w").write(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/>')
+        open(invalid, "w").write("not an svg")
+        try:
+            rendered = rasterise([opaque], 8, tmp)
+            if len(rendered) != 1 or len(rendered[0]) != 8 * 8 * 4:
+                fails.append("resvg positive control did not produce one 8x8 RGBA image")
+        except SystemExit as error:
+            fails.append("resvg positive control refused: %s" % error)
+        for path, label in ((transparent, "transparent"), (invalid, "invalid")):
+            try:
+                rasterise([path], 8, tmp)
+            except SystemExit:
+                continue
+            fails.append("resvg %s negative control was accepted" % label)
+
     for f in fails:
         print("FAIL selftest: %s" % f)
-    print("make_pad_font selftest: %d of 12 checks passed" % (12 - len(fails)))
+    print("make_pad_font selftest: %d failure(s)" % len(fails))
     return 1 if fails else 0
 
 

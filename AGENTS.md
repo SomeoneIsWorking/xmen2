@@ -49,10 +49,11 @@ falling back to a vendored copy.
 
 ## Setup
 
-Copy `.env.example` → `.env` (gitignored) and fill in `GAME_PC_DIR`, `XBOX_ISO`,
-`WINE_PREFIX`. Every script sources `.env`; **no machine-specific path may ever
-appear in a tracked file**. Game assets are never committed and never modified —
-run directories are symlink farms over the install.
+For the default product, put the matching PC install at `./game/` or set
+`GAME_PC_DIR` in `.env` (gitignored), then use `./run.sh`. `XBOX_ISO` and
+`WINE_PREFIX` are needed only by their purpose-specific RE/oracle tools. No
+machine-specific path may ever appear in a tracked file. Game assets are never
+committed or modified.
 
 All run artifacts go to the gitignored `scratch/`, structured by type
 (`scratch/logs/`, `screenshots/`, `recomp/`, `run/`, `build-*/`). Never `/tmp`.
@@ -67,20 +68,21 @@ ctest --test-dir build --output-on-failure
 ctest --test-dir build -R controller          # one test
 ```
 
-**Native (Wine-free) build — `x2native`**, the live front. Needs the generated
-recompiler output to exist first (it is gitignored):
+**Native (Wine-free) build — `x2native`**, the live front:
 
 ```sh
-tools/ghidra_export.sh <module>                              # PE -> scratch/recomp/<module>.json
-python3 tools/recomp.py emit   scratch/recomp/<m>.json src/recomp/<m>.c --split 1500
-python3 tools/recomp.py native scratch/recomp/<m>.json src/recomp/<m>_native.c
-cmake -S . -B scratch/build-native -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build scratch/build-native --target x2native -j$(nproc)
+./run.sh                         # provision, build and launch the one default product
+uv run --frozen python tools/provision.py  # provision-only maintainer/cold-path check
 scratch/build-native/x2native --no-window --selftest   # postcondition battery; exit 77 = SKIP (no GAME_PC_DIR)
 scratch/build-native/x2native --no-window --run        # module init + the exe's CRT startup, NO renderer
 scratch/build-native/x2native --d3d8                   # the LIVE path: arms the host Direct3D 8, and implies --run
-./run.sh                                               # the same --run, on YOUR screen, building first if needed
 ```
+
+`run.sh` takes no arguments and delegates directly to the locked Python
+initializer. It reconstructs all twenty gitignored recompiler outputs from the
+committed encoding-free exports plus the user's exact PE images; Ghidra is a
+maintainer-only discovery tool. Diagnostics, provisioning-only checks and Wine
+controls remain separate tools rather than launcher commands.
 
 **Drive a run instead of scripting it.** The default product opens an HTTP
 channel on loopback, records the exact post-merge DirectInput states returned to
@@ -123,14 +125,10 @@ swapped in; still the reference for "does it render"):
 ```sh
 tools/build_recomp.sh ALL libIGDisplay     # emit+runtime+dll+compile+stage
 tools/run_shim.sh recomp 30                # HEADLESS, Xvfb, screenshot — for measuring
-./run.sh wine                              # on YOUR screen with sound — for looking
-./run.sh stock                             # the untouched install, as the control
 ```
 
-`./run.sh` defaults to the **native** build; the Wine paths keep their own
-names. `stock` is the control every rendering question is settled against and
-`wine` is still the only configuration that draws the game, so neither is
-going away while the renderer is unfinished.
+The Wine paths are measurement tools, not alternate modes of `run.sh`. `stock`
+remains the control every rendering question is settled against.
 
 **Ask the control for DATA, not only pixels.** `tools/oracle_probe.py --pid <pid>`
 samples a live run's guest state from outside (`process_vm_readv`, no debugger,

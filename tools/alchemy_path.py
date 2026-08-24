@@ -24,8 +24,11 @@ def alchemy_dir():
 
 
 def add_alchemy_tools_to_path():
-    """Put Alchemy's tools on sys.path so `import xmlb` resolves."""
-    tools = os.path.join(alchemy_dir(), "tools")
-    if tools not in sys.path:
-        sys.path.insert(0, tools)
+    """Put Alchemy's tools and tracked IGB reader on the import path."""
+    root = alchemy_dir()
+    tools = os.path.join(root, "tools")
+    vendor = os.path.join(root, "vendor")
+    for path in (tools, vendor):
+        if path not in sys.path:
+            sys.path.insert(0, path)
     return tools

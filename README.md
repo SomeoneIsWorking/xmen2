@@ -16,13 +16,12 @@ indirect targets refuse by name instead of silently falling back.
 
 ## What is in this repository — and what is not
 
-**No game content is distributed here.** This repository contains only original
-code: the recompiler, the native host, the asset readers and the RE notes. It
-ships no executables, no libraries, no textures, no audio and no data files from
-the game, and none has ever been committed — every build reads them from a copy
-you already own, located through a gitignored `.env` (see `.env.example`). The
-install directory is treated as strictly read-only; run directories are symlink
-farms over it and nothing is ever written back.
+**No game content is distributed here.** This repository contains the port's
+source, its RE notes, and encoding-free analysis metadata needed to recreate the
+native build. It ships no game executables, libraries, instruction bytes,
+textures, audio, or data files. Every build restores restricted bytes from a
+copy you already own, located through a gitignored `.env` (see `.env.example`).
+The install directory is treated as strictly read-only; nothing is written back.
 
 **You need your own legally obtained copy** of the 2005 PC release to build or
 run anything. Without it the tools refuse rather than degrade: `--selftest`
@@ -36,6 +35,44 @@ shipped machine code — it is derived from the original binaries, is gitignored
 and is produced on your machine from your copy. The MIT licence in
 [`LICENSE`](LICENSE) covers **this repository's own code only** and makes no
 claim over the game.
+
+## Run from a fresh clone
+
+The current native host supports Linux x86-64. macOS is blocked by its low
+address-space reservation and Linux-specific host APIs; native Windows is not
+implemented. The launcher refuses those platforms rather than implying that a
+package install will fix the port.
+
+Install `uv`, a C/C++ compiler (GCC or Clang), and the native development
+packages. On Fedora/RHEL-family systems:
+
+```sh
+sudo dnf install SDL3-devel SDL3_image-devel ffmpeg-free-devel freetype-devel \
+  glslc pkgconf-pkg-config vulkan-loader mesa-vulkan-drivers
+```
+
+On Debian 13 or Ubuntu 26.04 and newer:
+
+```sh
+sudo apt install libsdl3-dev libsdl3-image-dev libavformat-dev libavcodec-dev \
+  libavutil-dev libswscale-dev libswresample-dev libfreetype-dev glslc \
+  pkg-config libvulkan1 mesa-vulkan-drivers
+```
+
+Then place the matching PC release at `./game/`, or set `GAME_PC_DIR` in a
+gitignored `.env`, and run:
+
+```sh
+./run.sh
+```
+
+That command has no modes or arguments. It enters the locked `uv` environment,
+validates the game revision, fetches three pinned source dependencies into the
+gitignored `vendor/shared/`, reconstructs generated C from committed metadata
+and the user's PE files, builds, and launches the native game. Ghidra,
+ImageMagick, a system Python environment, Wine, and sibling repository checkouts
+are not player prerequisites. Maintainer and diagnostic entry points live under
+`tools/`; they are deliberately not commands of `run.sh`.
 
 ## Sources
 
@@ -134,9 +171,8 @@ is an observation, never a gate.
 needed and runs the current native SDL3 GPU game target. It records the exact
 DirectInput states returned to the game under `scratch/recordings/`, and
 `tools/x2ctl.py` discovers the live PID, port, and recording without manual
-flags. `./run.sh wine` and
-`./run.sh stock` are explicitly named oracle/control paths; neither can become
-the accidental default.
+flags. Wine oracle/control workflows remain separate tools and cannot become an
+accidental launcher mode.
 
 What that does *not* mean. It is not playable in the sense that matters: a
 person cannot yet pick it up and play, because the frame rate is ~30 fps
