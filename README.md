@@ -72,7 +72,8 @@ gitignored `vendor/shared/`, reconstructs generated C from committed metadata
 and the user's PE files, builds, and launches the native game. Ghidra,
 ImageMagick, a system Python environment, Wine, and sibling repository checkouts
 are not player prerequisites. Maintainer and diagnostic entry points live under
-`tools/`; they are deliberately not commands of `run.sh`.
+`tools/`; they are deliberately not commands of `run.sh`. The `re-harness`
+checkout is maintainer-only and is not fetched by the player bootstrap.
 
 ## Sources
 

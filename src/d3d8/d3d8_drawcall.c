@@ -14,6 +14,7 @@
  */
 #include "d3d8_drawcall.h"
 unsigned long gpu_frame_draws_so_far(void);
+#include "d3d8_device.h"
 #include "d3d8_resource.h"
 #include "d3d8_vertex_shader.h"
 #include "d3d8_state.h"
@@ -468,7 +469,6 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
          * and are completely different defects.
          */
         {
-            extern int d3d8_last_setlight_diffuse(unsigned idx, float out[3]);
             float wrote[3];
             if (d3d8_last_setlight_diffuse(i, wrote)) {
                 int same = fabsf(wrote[0] - g->diffuse[0]) < 1e-6f

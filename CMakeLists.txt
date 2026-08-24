@@ -166,6 +166,13 @@ add_executable(test_controller_instance tests/test_controller_instance.c
 target_include_directories(test_controller_instance PRIVATE src/input src/native)
 add_test(NAME controller_instance COMMAND test_controller_instance)
 
+add_executable(test_dinput8_controller_slots
+               tests/test_dinput8_controller_slots.c
+               src/native/dinput8_controller_slots.c)
+target_include_directories(test_dinput8_controller_slots PRIVATE src/native)
+add_test(NAME dinput8_controller_slots COMMAND test_dinput8_controller_slots)
+set_tests_properties(dinput8_controller_slots PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(test_transient_controller_assignment
                tests/test_transient_controller_assignment.c
                src/input/transient_controller_assignment.c
@@ -210,6 +217,39 @@ add_executable(test_conversation_skip_policy
                src/native/conversation_skip_policy.c)
 target_include_directories(test_conversation_skip_policy PRIVATE src/native)
 add_test(NAME conversation_skip_policy COMMAND test_conversation_skip_policy)
+
+foreach(suffix IN ITEMS "" "_ndebug")
+    add_executable(test_conversation_resume_policy${suffix}
+                   tests/test_conversation_resume_policy.c
+                   src/native/conversation_resume_policy.c)
+    target_include_directories(test_conversation_resume_policy${suffix}
+                               PRIVATE src/native)
+    target_compile_options(test_conversation_resume_policy${suffix}
+                           PRIVATE -Wall -Wextra -Werror)
+    if(suffix STREQUAL "_ndebug")
+        target_compile_definitions(test_conversation_resume_policy${suffix}
+                                   PRIVATE NDEBUG)
+    endif()
+    add_test(NAME conversation_resume_policy${suffix}
+             COMMAND test_conversation_resume_policy${suffix})
+
+    add_executable(test_conversation_timed_wait${suffix}
+                   tests/test_conversation_timed_wait.c
+                   tests/native_stubs.c
+                   src/native/conversation_skip_policy.c
+                   src/native/conversation_cutscene_skip.c)
+    target_include_directories(test_conversation_timed_wait${suffix}
+                               PRIVATE src/recomp src/native)
+    target_compile_options(test_conversation_timed_wait${suffix}
+                           PRIVATE -Wall -Wextra -Werror)
+    if(suffix STREQUAL "_ndebug")
+        target_compile_definitions(test_conversation_timed_wait${suffix}
+                                   PRIVATE NDEBUG)
+    endif()
+    add_test(NAME conversation_timed_wait${suffix}
+             COMMAND test_conversation_timed_wait${suffix})
+endforeach()
+
 add_test(NAME conversation_skip_wiring
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py)
 add_test(NAME conversation_skip_wiring_selftest
@@ -388,7 +428,8 @@ add_test(NAME x2native_options COMMAND test_x2native_options)
 
 add_executable(test_options_menu
     tests/test_options_menu.c src/native/options_menu.c
-    src/ui/settings_overlay_state.c tests/native_stubs.c)
+    src/native/guest_heap.c src/ui/settings_overlay_state.c
+    tests/options_menu_stubs.c)
 target_include_directories(test_options_menu PRIVATE src/recomp src/native src/ui)
 add_test(NAME options_menu COMMAND test_options_menu)
 
@@ -552,6 +593,16 @@ target_compile_definitions(test_control_png PRIVATE
     CHECK_PNG="${CMAKE_CURRENT_SOURCE_DIR}/tools/check_png.py")
 add_test(NAME control_png COMMAND test_control_png)
 
+add_executable(test_control_screenshot
+    tests/test_control_screenshot.c
+    src/native/control_screenshot.c
+    src/native/control_png.c)
+target_include_directories(test_control_screenshot PRIVATE src/native src/gpu)
+add_test(NAME control_screenshot COMMAND test_control_screenshot)
+add_test(NAME window_capture_wiring
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tests/test_window_capture_wiring.py)
+
 add_test(NAME pad_font
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/make_pad_font.py --selftest)
@@ -563,6 +614,10 @@ add_test(NAME pad_glyph_manifest
 add_test(NAME prepare_native_assets
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
+
+add_test(NAME port_pause_menu
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/make_port_pause_menu.py --selftest)
 
 add_test(NAME launcher
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_launcher.py)
@@ -827,6 +882,7 @@ if(X2_MODULE_HAVE)
         src/native/gdi32.c
         src/native/dinput.c
         src/native/dinput8.c
+        src/native/dinput8_controller_slots.c
         src/native/dinput_device.c
         src/native/dinput_device_registry.c
         src/native/dinput_device_state.c
@@ -846,6 +902,8 @@ if(X2_MODULE_HAVE)
         src/native/cutscene_skip_publication.c
         src/native/cutscene_skip_probe.c
         src/native/conversation_skip_policy.c
+        src/native/conversation_resume_policy.c
+        src/native/conversation_resume.c
         src/native/conversation_cutscene_skip.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
@@ -861,6 +919,7 @@ if(X2_MODULE_HAVE)
         src/native/control.c
         src/native/control_png.c
         src/native/control_query.c
+        src/native/control_screenshot.c
         src/native/control_status.c
         src/native/json_string.c
         src/native/live_session.c
@@ -896,6 +955,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_drawcall.c
         src/d3d8/d3d8_vertex_shader.c
         src/d3d8/d3d8_screen_space_test.c
+        src/d3d8/d3d8_light_selftest.c
         src/d3d8/d3d8_report.c
         src/vulkan/igvk_ark.c
         src/vulkan/igvk_probe.c

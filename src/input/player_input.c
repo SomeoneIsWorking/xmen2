@@ -1,6 +1,7 @@
 #include "player_input.h"
 
 #include "dinput_pad.h"
+#include "dinput8_controller_slots.h"
 #include "input_bindings.h"
 #include "player_participation.h"
 #include "player_participation_policy.h"
@@ -25,6 +26,7 @@ static X2Settings g_last;
 static int g_have_base;
 static int g_have_last;
 static int g_last_pad[INPUT_PLAYERS] = { -2, -2, -2, -2 };
+static int g_last_controller_slot[INPUT_PLAYERS] = { -2, -2, -2, -2 };
 static int g_last_keyboard[INPUT_PLAYERS] = { -2, -2, -2, -2 };
 static int g_last_source_gamepad[INPUT_PLAYERS];
 static unsigned char g_last_keyboard_state[256];
@@ -138,12 +140,14 @@ static void sync_participation(CPU *cpu, const X2Settings *settings,
 }
 
 static void publish_player(CPU *cpu, const X2Settings *settings,
-                           unsigned player, int keyboard_profile, int pad)
+                           unsigned player, int keyboard_profile,
+                           int controller_slot)
 {
     const X2KeyboardProfile *profile = keyboard_profile >= 0
         ? &settings->keyboard_profile[keyboard_profile] : NULL;
     unsigned row;
-    uint32_t pad_kind = pad < 0 ? 0u : 3u + (uint32_t)pad;
+    uint32_t pad_kind = controller_slot < 0
+        ? 0u : 3u + (uint32_t)controller_slot;
 
     for (row = 0; row < INPUT_BINDING_ROWS; row++) {
         uint32_t keyboard_kind = 0, keyboard_code = 0, pad_code = 0;
@@ -170,6 +174,7 @@ void x2_player_input_sync(CPU *cpu)
 {
     X2Settings *settings;
     int pad[INPUT_PLAYERS];
+    int controller_slot[INPUT_PLAYERS];
     int keyboard[INPUT_PLAYERS];
     unsigned player;
     int changed;
@@ -180,6 +185,8 @@ void x2_player_input_sync(CPU *cpu)
     settings = x2_settings_store();
     resolve_pads(settings, pad);
     for (player = 0; player < INPUT_PLAYERS; player++) {
+        controller_slot[player] = pad[player] < 0 ? -1
+            : dinput8_controller_slot_for_host_pad(pad[player]);
         keyboard[player] = x2_settings_player_keyboard(settings, player);
         if (player > 0u &&
             x2_transient_controller_has_assignment(player))
@@ -187,6 +194,8 @@ void x2_player_input_sync(CPU *cpu)
     }
     changed = !g_have_last || memcmp(&g_last, settings, sizeof g_last) != 0 ||
               memcmp(g_last_pad, pad, sizeof pad) != 0 ||
+              memcmp(g_last_controller_slot, controller_slot,
+                     sizeof controller_slot) != 0 ||
               memcmp(g_last_keyboard, keyboard, sizeof keyboard) != 0;
     if (!changed) {
         sync_participation(cpu, settings, keyboard);
@@ -198,7 +207,8 @@ void x2_player_input_sync(CPU *cpu)
              g_last_keyboard[player] != keyboard[player]))
             x2_player_participation_policy_note_start(
                 &g_participation, player, 0);
-        publish_player(cpu, settings, player, keyboard[player], pad[player]);
+        publish_player(cpu, settings, player, keyboard[player],
+                       controller_slot[player]);
         if (pad[player] >= 0 && keyboard[player] < 0)
             g_last_source_gamepad[player] = 1;
         else if (keyboard[player] >= 0 && pad[player] < 0)
@@ -206,17 +216,22 @@ void x2_player_input_sync(CPU *cpu)
     }
     g_last = *settings;
     memcpy(g_last_pad, pad, sizeof pad);
+    memcpy(g_last_controller_slot, controller_slot, sizeof controller_slot);
     memcpy(g_last_keyboard, keyboard, sizeof keyboard);
     g_have_last = 1;
     sync_participation(cpu, settings, keyboard);
     fprintf(stderr, "PLAYER-INPUT: published resolved ownership for four "
-                    "players (pads %d,%d,%d,%d); each physical pad is claimed "
-                    "by at most one player.\n", pad[0], pad[1], pad[2], pad[3]);
+                    "players (host pads %d,%d,%d,%d; guest slots "
+                    "%d,%d,%d,%d); each physical pad is claimed by at most "
+                    "one player.\n",
+            pad[0], pad[1], pad[2], pad[3], controller_slot[0],
+            controller_slot[1], controller_slot[2], controller_slot[3]);
 }
 
 int x2_player_input_uses_gamepad(unsigned player)
 {
-    return g_have_last && player < INPUT_PLAYERS && g_last_pad[player] >= 0 &&
+    return g_have_last && player < INPUT_PLAYERS &&
+           g_last_controller_slot[player] >= 0 &&
            (g_last_keyboard[player] < 0 || g_last_source_gamepad[player]);
 }
 
@@ -284,7 +299,8 @@ void x2_player_input_note_gamepad_activity(int pad)
 {
     unsigned player;
     for (player = 0; player < INPUT_PLAYERS; player++)
-        if (g_have_last && g_last_pad[player] == pad)
+        if (g_have_last && g_last_pad[player] == pad &&
+            g_last_controller_slot[player] >= 0)
             g_last_source_gamepad[player] = 1;
 }
 
@@ -310,7 +326,8 @@ int x2_player_input_pad_is_active_source(int pad)
 {
     unsigned player;
     for (player = 0; player < INPUT_PLAYERS; player++)
-        if (g_have_last && g_last_pad[player] == pad)
+        if (g_have_last && g_last_pad[player] == pad &&
+            g_last_controller_slot[player] >= 0)
             return g_last_keyboard[player] < 0 ||
                    g_last_source_gamepad[player];
     return 0;

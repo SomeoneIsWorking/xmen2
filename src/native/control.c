@@ -1,11 +1,12 @@
 #include "control.h"
 
-#include "control_png.h"
 #include "control_query.h"
+#include "control_screenshot.h"
 #include "control_status.h"
 #include "autosave_runtime.h"
 #include "dinput_fifo.h"
 #include "dinput_pad.h"
+#include "gpu_capture.h"
 #include "gpu_device.h"
 #include "input_probe.h"
 #include "save_trace_runtime.h"
@@ -28,11 +29,13 @@
  * ONE command in flight at a time, handed across a mutex.
  *
  * The server thread must never touch guest state: the guest is single-threaded
- * under a cooperative scheduler, and reading its input table or the renderer's
- * target from outside that schedule is exactly the kind of race that produces
+ * under a cooperative scheduler, and reading its input table from outside
+ * that schedule is exactly the kind of race that produces
  * an intermittent bug nobody can reproduce. So the server parks a request here
  * and waits; control_pump, running on the thread that owns guest input,
- * performs it and wakes the server with the answer.
+ * performs guest-state work and wakes the server with the answer. Screenshots
+ * are presentation work and are instead drained by control_frame_pump on the
+ * render thread after the final composed frame has completed its readback.
  */
 enum {
     CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD, CMD_INPUT, CMD_SAVE,
@@ -51,9 +54,8 @@ static int    g_cmd_ok;
 static char   g_cmd_why[192];
 static char  *g_probe;                 /* input snapshot, server-thread owned */
 static size_t g_probe_len;
-static unsigned char *g_shot;          /* PNG, owned by the server thread */
-static size_t g_shot_len;
-static unsigned g_shot_w, g_shot_h;
+static X2ControlScreenshot g_screenshot;
+static int g_shot_abandoned;
 
 static int g_port;
 static unsigned long g_requests, g_keys_pressed, g_keys_refused, g_shots;
@@ -72,6 +74,9 @@ void control_pump(CPU *cpu, double now)
     pthread_mutex_lock(&g_lock);
     cmd = g_cmd;
     if (cmd == CMD_NONE) { pthread_mutex_unlock(&g_lock); return; }
+
+    /* Presentation-owned requests are serviced at the render boundary. */
+    if (cmd == CMD_SHOT) { pthread_mutex_unlock(&g_lock); return; }
 
     if (cmd == CMD_KEY) {
         g_cmd_ok = dinput_inject_press(g_cmd_key, now, g_cmd_hold, "control",
@@ -127,36 +132,6 @@ void control_pump(CPU *cpu, double now)
                           "fewer events or increase the production bound",
                           PROBE_BYTES);
         }
-    } else if (cmd == CMD_SHOT) {
-        uint32_t w = 0, h = 0;
-        unsigned char *bgra;
-        /* Ask the size first, and pass the renderer's own reason straight
-           through: "not headless" and "no frame yet" are different answers and
-           the caller acts differently on each. */
-        if (!gpu_device_headless_size(&w, &h, g_cmd_why, (int)sizeof g_cmd_why)) {
-            g_cmd_ok = 0;
-        } else if ((bgra = (unsigned char *)malloc((size_t)w * h * 4)) == NULL) {
-            g_cmd_ok = 0;
-            snprintf(g_cmd_why, sizeof g_cmd_why,
-                     "could not allocate %ux%u BGRA readback", w, h);
-        } else {
-            if (!gpu_device_headless_read(bgra, (uint32_t)((size_t)w * h * 4),
-                                          &w, &h)) {
-                g_cmd_ok = 0;
-                snprintf(g_cmd_why, sizeof g_cmd_why,
-                         "the renderer refused the %ux%u readback", w, h);
-            } else {
-                free(g_shot);
-                g_shot = control_png_from_bgra(bgra, w, h, &g_shot_len);
-                g_shot_w = w; g_shot_h = h;
-                g_cmd_ok = g_shot != NULL;
-                if (!g_cmd_ok)
-                    snprintf(g_cmd_why, sizeof g_cmd_why,
-                             "PNG encode of %ux%u failed", w, h);
-                else g_shots++;
-            }
-            free(bgra);
-        }
     }
 
     g_cmd = CMD_NONE;
@@ -164,9 +139,35 @@ void control_pump(CPU *cpu, double now)
     pthread_mutex_unlock(&g_lock);
 }
 
-/* Ask the guest thread to do something, and wait for it. Returns 0 on timeout,
-   which is itself an answer: the guest is not pumping input, i.e. it is stuck
-   or has not reached its input loop yet. */
+static void control_frame_pump(void)
+{
+    int result;
+
+    pthread_mutex_lock(&g_lock);
+    if (g_shot_abandoned) {
+        x2_control_screenshot_abandon(&g_screenshot);
+        g_shot_abandoned = 0;
+    }
+    if (g_cmd != CMD_SHOT) {
+        pthread_mutex_unlock(&g_lock);
+        return;
+    }
+
+    result = x2_control_screenshot_poll(
+        &g_screenshot, g_cmd_why, (int)sizeof g_cmd_why);
+    if (result == X2_CONTROL_SCREENSHOT_PENDING) {
+        pthread_mutex_unlock(&g_lock);
+        return;
+    }
+    g_cmd_ok = result == X2_CONTROL_SCREENSHOT_READY;
+    if (g_cmd_ok) g_shots++;
+    g_cmd = CMD_NONE;
+    pthread_cond_signal(&g_done);
+    pthread_mutex_unlock(&g_lock);
+}
+
+/* Hand work to its owning runtime thread and wait for it. A timeout is itself
+   an answer: the relevant guest-input or presentation boundary did not run. */
 static int submit(int cmd, double timeout_s)
 {
     struct timespec ts;
@@ -179,6 +180,7 @@ static int submit(int cmd, double timeout_s)
     while (g_cmd != CMD_NONE)
         if (pthread_cond_timedwait(&g_done, &g_lock, &ts) != 0) break;
     rc = (g_cmd == CMD_NONE);
+    if (!rc && cmd == CMD_SHOT) g_shot_abandoned = 1;
     g_cmd = CMD_NONE;
     pthread_mutex_unlock(&g_lock);
     return rc;
@@ -336,15 +338,19 @@ static void route_assignment(int fd, const char *query)
 
 static void route_shot(int fd)
 {
+    const unsigned char *png;
+    size_t png_bytes;
+
     if (!submit(CMD_SHOT, 10.0)) {
         reply_text(fd, 504, "Gateway Timeout",
-                   "the guest did not reach an input poll within 10s, so no "
-                   "frame could be captured.\nThe run is stuck or still "
-                   "loading -- ask /status for its frame count.\n");
+                   "the renderer did not complete a capturable frame within "
+                   "10s.\nThe run is stuck, still loading, or not presenting "
+                   "-- ask /status for its frame count.\n");
         return;
     }
     if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
-    reply(fd, 200, "OK", "image/png", g_shot, g_shot_len);
+    png = x2_control_screenshot_png(&g_screenshot, &png_bytes);
+    reply(fd, 200, "OK", "image/png", png, png_bytes);
 }
 
 static void route_input(int fd, const char *query)
@@ -463,10 +469,12 @@ int control_start(int port)
         exit(2);
     }
     g_port = port;
+    gpu_capture_set_frame_observer(control_frame_pump);
     printf("control: http://127.0.0.1:%d  -- /status /key?name=X /pad "
            "/screenshot /input /save\n"
-           "control: loopback only; commands are applied on the guest's own "
-           "input poll, never from the server thread.\n", port);
+           "control: loopback only; guest commands use its input poll and "
+           "screenshots use the render boundary, never the server thread.\n",
+           port);
     fflush(stdout);
     pthread_create(&th, NULL, server_thread, (void *)(intptr_t)lfd);
     pthread_detach(th);

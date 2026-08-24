@@ -16,7 +16,9 @@
  * and drained at the same poll points the input FIFO already uses.
  *
  * It is not a test harness and it is not a gate. It is a keyboard and a window
- * for a process that has neither.
+ * for a process that has neither. Guest-state commands are drained at input
+ * polls; screenshots are drained at the presentation boundary because a frame
+ * can keep rendering while the guest performs no input poll.
  */
 #ifndef X2_CONTROL_H
 #define X2_CONTROL_H
@@ -27,7 +29,8 @@
    command while looking healthy. */
 int  control_start(int port);
 
-/* Drained on each keyboard poll, from the thread that owns guest input.
+/* Guest-state commands are drained on each keyboard poll, from the thread that
+   owns guest input.
    `now` is the guest clock, and `cpu` is the guest state at that poll -- the
    one moment per frame when the guest is between operations, so a command that
    has to ASK the game something (rather than only set a host-side flag) can

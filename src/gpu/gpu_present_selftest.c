@@ -1,5 +1,7 @@
 /* Pixel-level proof of the logical-backbuffer presentation contract. */
 #include "gpu_device.h"
+#include "gpu_capture.h"
+#include "gpu_capture_internal.h"
 #include "gpu_internal.h"
 #include "gpu_present.h"
 
@@ -131,11 +133,16 @@ static int read_output(SDL_GPUTexture *output, uint32_t *pixels)
 }
 
 static int composite_case(uint32_t scene_width, uint32_t scene_height,
-                          const uint32_t *scene_pixels, uint32_t *output_pixels)
+                          const uint32_t *scene_pixels, uint32_t *output_pixels,
+                          uint32_t *capture_pixels)
 {
     SDL_GPUTexture *scene;
     SDL_GPUTexture *output;
+    SDL_GPUTexture *target;
     SDL_GPUCommandBuffer *command_buffer;
+    const unsigned char *captured;
+    uint32_t captured_width, captured_height;
+    char why[192];
     int ok = 0;
 
     if (!gpu_present_set_scene_size(scene_width, scene_height)) return 0;
@@ -144,18 +151,38 @@ static int composite_case(uint32_t scene_width, uint32_t scene_height,
     if (!scene || !output
         || !upload_scene(scene, scene_width, scene_height, scene_pixels))
         goto done;
+    if (!gpu_capture_request(why, sizeof why)) goto done;
+    target = gpu_capture_frame_target(g_gpu, output,
+                                      OUTPUT_SIZE, OUTPUT_SIZE);
+    if (target == output) goto done;
     command_buffer = SDL_AcquireGPUCommandBuffer(g_gpu);
     if (!command_buffer) goto done;
-    if (!gpu_present_composite(command_buffer, output,
+    if (!gpu_present_composite(command_buffer, target,
                                OUTPUT_SIZE, OUTPUT_SIZE)) {
         SDL_CancelGPUCommandBuffer(command_buffer);
         goto done;
     }
-    if (!submit_and_wait(command_buffer) || !read_output(output, output_pixels))
+    if (!gpu_capture_frame_record(g_gpu, command_buffer, target, output,
+                                  OUTPUT_SIZE, OUTPUT_SIZE)) {
+        SDL_CancelGPUCommandBuffer(command_buffer);
         goto done;
+    }
+    if (!submit_and_wait(command_buffer)) {
+        gpu_capture_frame_complete(g_gpu, 0);
+        goto done;
+    }
+    gpu_capture_frame_complete(g_gpu, 1);
+    if (gpu_capture_result(&captured, &captured_width, &captured_height,
+                           why, sizeof why) != 1
+        || captured_width != OUTPUT_SIZE || captured_height != OUTPUT_SIZE
+        || !read_output(output, output_pixels))
+        goto done;
+    memcpy(capture_pixels, captured,
+           OUTPUT_SIZE * OUTPUT_SIZE * sizeof *capture_pixels);
     ok = 1;
 
 done:
+    gpu_capture_discard();
     if (output) SDL_ReleaseGPUTexture(g_gpu, output);
     return ok;
 }
@@ -178,36 +205,49 @@ int gpu_present_selftest(void)
         0xff0000ffu, 0xffffffffu,
     };
     uint32_t output[OUTPUT_SIZE * OUTPUT_SIZE];
-    int wide_ok, tall_ok;
+    uint32_t capture[OUTPUT_SIZE * OUTPUT_SIZE];
+    const unsigned char *unused;
+    uint32_t unused_width, unused_height;
+    char why[192];
+    int wide_ok, tall_ok, bound_ok;
 
     printf("\n=== gpu present selftest: logical scene aspect-fit pixels ===\n");
     if (!gpu_device_create()) {
         printf("gpu present selftest: FAILED -- no GPU device.\n");
         return 1;
     }
-    wide_ok = composite_case(4, 2, wide, output)
+    wide_ok = composite_case(4, 2, wide, output, capture)
+        && !memcmp(output, capture, sizeof output)
         && pixel(output, 6, 1) == 0xff000000u
         && pixel(output, 6, 10) == 0xff000000u
         && pixel(output, 1, 4) == 0xffff0000u
         && pixel(output, 10, 4) == 0xff00ff00u
         && pixel(output, 1, 7) == 0xff0000ffu
         && pixel(output, 10, 7) == 0xffffffffu;
-    tall_ok = composite_case(2, 4, tall, output)
+    tall_ok = composite_case(2, 4, tall, output, capture)
+        && !memcmp(output, capture, sizeof output)
         && pixel(output, 1, 6) == 0xff000000u
         && pixel(output, 10, 6) == 0xff000000u
         && pixel(output, 4, 1) == 0xffff0000u
         && pixel(output, 7, 1) == 0xff00ff00u
         && pixel(output, 4, 10) == 0xff0000ffu
         && pixel(output, 7, 10) == 0xffffffffu;
-    if (!wide_ok || !tall_ok) {
-        printf("gpu present selftest: FAILED -- wide=%d tall=%d; expected "
-               "black bars and four preserved corner colours.\n",
-               wide_ok, tall_ok);
+    bound_ok = gpu_capture_request(why, sizeof why)
+        && gpu_capture_frame_target(g_gpu, NULL, 8192u, 8192u) == NULL
+        && gpu_capture_result(&unused, &unused_width, &unused_height,
+                              why, sizeof why) < 0
+        && strstr(why, "bound") != NULL;
+    gpu_capture_discard();
+    if (!wide_ok || !tall_ok || !bound_ok) {
+        printf("gpu present selftest: FAILED -- wide=%d tall=%d bound=%d; "
+               "expected identical retained/output pixels, black bars, four "
+               "corner colours and an explicit oversized refusal.\n",
+               wide_ok, tall_ok, bound_ok);
     } else {
         printf("gpu present selftest: PASSED -- wide and tall scenes used "
-               "the production compositor, with black bars and preserved "
-               "corner colours.\n");
+               "the production compositor and retained capture, with black "
+               "bars, preserved corner colours and a bounded allocation.\n");
     }
     gpu_device_destroy();
-    return wide_ok && tall_ok ? 0 : 1;
+    return wide_ok && tall_ok && bound_ok ? 0 : 1;
 }

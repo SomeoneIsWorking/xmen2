@@ -1,10 +1,11 @@
 ---
 id: C238
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-22
 tags: ui,menu,rmlui
 depends: src/native/options_menu.c#open_settings
+falsified_on: 2026-08-24
 ---
 
 ## Claim
@@ -18,3 +19,9 @@ Parsed shipped UI/menus/main.engb: the Options item executes options_main. XMen2
 ## What would falsify it
 
 A shipped menu stops using options_main/options, the executable command registry maps either name elsewhere, or ctest options_menu fails.
+
+## FALSIFIED 2026-08-24
+
+The product policy changed on 2026-08-24: retail options/options_main remain retail-owned. Port Settings is a distinct derived pause row and additive port_settings command; the F1 path and both retail callback overrides were removed.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.

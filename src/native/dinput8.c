@@ -25,6 +25,7 @@
 #include "guest_heap.h"
 #include "dinput_device.h"
 #include "dinput_pad.h"
+#include "dinput8_controller_slots.h"
 #include "controller_hotplug.h"
 #include "player_input.h"
 
@@ -289,6 +290,7 @@ static void m_EnumDevices(CPU *C)
         uint32_t here = x86_native_entry_containing(RD32(C->esp), &nm);
         g_pad_cb = cb;
         g_pad_ref = pvref;
+        dinput8_controller_slots_set_manager(pvref);
         if (here && here != g_pad_enum) {
             g_pad_enum = here;
             fprintf(stderr, "DINPUT8: the game's gamepad enumeration routine is "

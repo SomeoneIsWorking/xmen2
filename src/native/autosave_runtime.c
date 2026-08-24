@@ -3,6 +3,7 @@
 #include "autosave_format.h"
 #include "autosave_policy.h"
 #include "autosave_storage.h"
+#include "conversation_resume.h"
 #include "guest_heap.h"
 #include "save_directory.h"
 #include "save_trace_runtime.h"
@@ -191,6 +192,7 @@ static void x2_autosave_override_00484ce0(CPU *C)
     succeeded = (C->eax & 0xffu) != 0u;
     x2_save_trace_map_return(map, succeeded);
     x2_autosave_runtime_map_return(succeeded);
+    x2_conversation_resume_map_return(succeeded);
 }
 
 __attribute__((constructor))

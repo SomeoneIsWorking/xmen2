@@ -1,11 +1,11 @@
 ---
 id: 23
 title: Native --vk: stack imbalance in libIGGfx 0x1002ead0, reached from open()'s second helper
-status: open
+status: resolved
 symptom: x86_return_to: 0x000001c0 is not a function entry. The RET is in 0x1002ead0, entered with 0x2502ca42 on the stack and left with 0x000001c0 there. Reached during igVkVisualContext::open, after the render destination slots were implemented.
 tags: pc,recomp,native,graphics,vulkan,rc-lift,rc-exe
 created: 2026-08-06
-updated: 2026-08-06
+updated: 2026-08-24
 ---
 
 ## Where it sits
@@ -77,3 +77,6 @@ Reading (2) in the note above is therefore also wrong as stated -- it is not DX_
 3. **The most suspicious thing, and it is new in the same commit**: `vk_set_render_destination` re-enters the object's OWN vtable, `ark_call_this(RD32(vt + 186*4), self, vp, 6)`, to make the trailing setViewport. That dispatches a SYNTHETIC stub address through x86_guest_call on the scratch stack. If that path does not restore the scratch stack pointer the way a real body would, or if the synthetic address does not route to the native stub, the corruption starts there. Test it by having slot 47 call igvk_frame_viewport directly instead of re-entering the vtable, and see whether the imbalance moves.
 
 That third one is a design choice I made deliberately (so an override of slot 186 would be honoured) and it is the first thing to suspect precisely because it is the unusual part.
+
+### Resolution (2026-08-24)
+The stack imbalance was not a bad Ghidra boundary or setupDrawing translation. Nested host-to-guest calls all reused one g_call_sp frame, so slot 47's nested call overwrote the outer vk_open helper frame. Commit 69634b7 reserves and restores an 8 KiB window per nested call; a real --vk run then passed 0x1002ead0 and demanded slot 147. The direct engine-body call retained in slot 47 is simpler but was not the root cause (C126 and the commit's controlled negative).

@@ -33,6 +33,12 @@ int d3d8_device_gamma_curved(void);
 /* Frames presented, and what the engine asked for that was not there. */
 void d3d8_device_report(void);
 
+/* The most recent diffuse colour accepted by SetLight for this index.
+   Returns 0 when that slot has never been set. Draw-time diagnostics use the
+   same witness to distinguish an engine-provided black light from a colour
+   lost inside the host. */
+int d3d8_last_setlight_diffuse(unsigned idx, float out[3]);
+
 /*
  * The same counters, live, for the heartbeat (src/native/heartbeat.c).
  *

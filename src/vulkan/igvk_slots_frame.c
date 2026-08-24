@@ -269,17 +269,18 @@ static void vk_set_render_destination(CPU *C)
      *
      * This used to re-enter the object's OWN vtable -- ark_call_this on
      * RD32(vt + 186*4) -- so that an override of slot 186 would be honoured.
-     * That was the wrong call, and it is what shifted the guest stack: slot
-     * 186's entry is this backend's SYNTHETIC stub address, and dispatching
-     * one of those through the guest-call path re-enters a native stub which
-     * then pops its own arguments a second time. igDxVisualContext::setupDrawing
-     * (0x1002ead0), whose whole body is a call to slot 47 followed by a call to
-     * slot 186, then RETed on a stack four words out (issue #23).
+     * That unusual path was the first suspect when
+     * igDxVisualContext::setupDrawing (0x1002ead0) RETed four words out, but
+     * replacing it with the direct engine-body call changed nothing. The
+     * controlled negative exposed the real cause: every nested host-to-guest
+     * call reused the same scratch frame. igvk_ark.c now reserves and restores
+     * a separate window per call (issue #23, C126).
      *
-     * So it calls the ENGINE's body directly and applies the viewport itself --
-     * which is exactly what slot 186 does, minus the round trip. The cost is
-     * that a future override of slot 186 is bypassed from here; that is a real
-     * limitation and it is written down rather than left to be discovered.
+     * The direct engine-body call was retained because it is the simpler of
+     * two equivalent paths, and applies the viewport here exactly as slot 186
+     * does. The cost is that a future override of slot 186 is bypassed from
+     * here; that is a real limitation and it is written down rather than left
+     * to be discovered.
      */
     {
         uint32_t vp[6], fn = ark_lifted(IGVK_GFX, DX_SET_VIEWPORT);

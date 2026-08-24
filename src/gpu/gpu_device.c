@@ -21,9 +21,9 @@
  */
 #include "gpu_device.h"
 #include "gpu_capture.h"
+#include "gpu_capture_internal.h"
 #include "gpu_draw.h"
 #include "gpu_frame_timing.h"
-#include "gpu_frame_submit.h"
 #include "gpu_internal.h"
 #include "gpu_present.h"
 #include "gpu_shadow.h"
@@ -164,6 +164,7 @@ void gpu_device_destroy(void)
        it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
        that only shows up under a validation layer. */
     gpu_draw_shutdown();
+    gpu_capture_shutdown();
     gpu_present_shutdown(g_gpu);
 #endif
 #ifdef X2_WITH_SDL
@@ -608,7 +609,8 @@ int gpu_frame_begin(void)
             g_output = NULL;
             return 0;
         }
-    }
+    } else
+        g_swap = gpu_capture_frame_target(g_gpu, g_output, g_output_w, g_output_h);
     gpu_shadow_frame_begin();
     g_clear.mask = 0;
     gpu_frame_host_reset();
@@ -619,6 +621,7 @@ int gpu_frame_begin(void)
 void gpu_frame_end(void)
 {
 #ifdef X2_WITH_SDL
+    SDL_GPUTexture *final_output;
     if (!g_cmd) return;
     gpu_shadow_frame_submit();
     {
@@ -672,17 +675,27 @@ void gpu_frame_end(void)
         SDL_EndGPURenderPass(g_pass);
         g_pass = NULL;
     }
-    if (!g_offscreen && g_output && g_swap != g_output
-        && !gpu_present_composite(g_cmd, g_output, g_output_w, g_output_h)) {
+    final_output = g_output;
+    if (!g_offscreen && g_output && gpu_present_is_configured())
+        final_output = gpu_capture_frame_target(
+            g_gpu, g_output, g_output_w, g_output_h);
+    else if (!g_offscreen && g_output && g_swap != g_output)
+        final_output = g_swap;
+    if (!g_offscreen && g_output && gpu_present_is_configured() &&
+        !gpu_present_composite(g_cmd, final_output, g_output_w, g_output_h)) {
         SDL_CancelGPUCommandBuffer(g_cmd);
         g_cmd = NULL;
         g_swap = NULL;
         g_output = NULL;
         return;
     }
-    if (!g_offscreen)
-        x2_ui_render(g_gpu, g_cmd, g_output, g_output_w, g_output_h, g_win);
-    gpu_frame_submit(g_gpu, g_cmd, g_headless);
+    if (!g_offscreen) x2_ui_render(g_gpu, g_cmd, final_output,
+                                   g_output_w, g_output_h, g_win);
+    gpu_capture_submit_frame(
+        g_gpu, g_cmd, g_headless, g_headless ? g_swap : final_output,
+        g_headless ? NULL : g_output,
+        g_headless ? g_swap_w : g_output_w,
+        g_headless ? g_swap_h : g_output_h);
     g_cmd = NULL;
     g_frame_end_submits++;
     if (!g_offscreen) {

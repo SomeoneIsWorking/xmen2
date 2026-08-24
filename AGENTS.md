@@ -332,10 +332,14 @@ logged defect.
   counters with denominators. Before reading the ABSENCE of a symptom as a fix,
   prove the run reached the code at all -- and prefer `X2_BOOT_MAP` over
   driving the menus.
-- **A windowless run must not seize the machine.** No audio out of a run nobody
-  is listening to. Where silence would change behaviour -- the game advances
-  cutscenes off DirectSound play cursors -- use the silent device whose cursors
-  still advance, not no device at all (`dsound.c`).
+- **Automated and agent-driven runs are silent and fast by default.** Use the
+  timed silent device for `--no-window`, or SDL's dummy audio backend when a
+  real window is required for presentation/capture verification. Pass
+  `--unbounded` and `X2_UNPACED=1` unless real-time pacing is the subject of the
+  test. Never open the host playback device or run paced just because a test
+  needs a window. Where silence would change behaviour -- the game advances
+  cutscenes off DirectSound play cursors -- preserve advancing play cursors;
+  do not merely disable audio (`dsound.c`).
 - **One clock the guest can see** (`guest_clock.c`). Five files had private
   `now_s()` copies reading CLOCK_MONOTONIC; the guest gates real logic on
   elapsed time, so two of them disagreeing is a timing bug wearing a gameplay

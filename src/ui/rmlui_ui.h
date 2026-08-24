@@ -13,9 +13,9 @@ struct SDL_Window;
 extern "C" {
 #endif
 
-/* The retail Options commands show the settings document; F1 remains a direct
-   toggle. Returns non-zero when the UI consumed an event and the guest input
-   layer must not act on it. */
+/* The pause menu's distinct Port Settings command shows this document.
+   Returns non-zero when the UI consumed an event and the guest input layer
+   must not act on it. */
 int x2_ui_handle_event(union SDL_Event *event);
 int x2_ui_captures_input(void);
 
