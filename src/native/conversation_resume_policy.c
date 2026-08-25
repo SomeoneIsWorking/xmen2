@@ -17,7 +17,7 @@ void x2_conversation_resume_policy_arm(X2ConversationResumePolicy *policy,
 
 void x2_conversation_resume_policy_observe(
     X2ConversationResumePolicy *policy, int visible, int ending,
-    int owned_gap, ConversationSkipResponse response, double now_s)
+    ConversationSkipResponse response, double now_s)
 {
     if (policy->state == X2_CONVERSATION_RESUME_IDLE) return;
     policy->observations++;
@@ -34,8 +34,6 @@ void x2_conversation_resume_policy_observe(
 
     if (!visible || ending) {
         policy->last_deterministic = 0;
-        if (policy->state == X2_CONVERSATION_RESUME_SKIPPING && owned_gap)
-            return;
         policy->retired++;
         if (policy->state == X2_CONVERSATION_RESUME_SKIPPING)
             policy->skipped++;

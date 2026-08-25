@@ -1,8 +1,10 @@
 /* Polling policy for the DirectInput device snapshots returned to the game. */
 #include "dinput_device_internal.h"
 
+#include "dinput8_hotplug.h"
 #include "dinput_joystick.h"
 #include "dinput_pad.h"
+#include "dinput_pad_virtual.h"
 #include "dinput_script.h"
 #include "dinput_system.h"
 #include "gpu_device.h"
@@ -90,7 +92,6 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device)
     }
     device->polls++;
     if (device->kind == DINPUT_DEV_KEYBOARD) {
-        extern void dinput8_hotplug_pump(CPU *);
         unsigned long frame = gpu_frames_presented();
         dinput_pad_virtual_tick(frame);
         dinput8_hotplug_pump(cpu);

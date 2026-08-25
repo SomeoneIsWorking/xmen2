@@ -14,28 +14,25 @@ static void check(int passed, const char *expression, int line)
     failures++;
 }
 
-static void deterministic_resume_and_owned_gap(void)
+static void deterministic_resume_retires_at_retail_gap(void)
 {
     X2ConversationResumePolicy policy;
     memset(&policy, 0, sizeof policy);
 
     x2_conversation_resume_policy_arm(&policy, 20.0);
     x2_conversation_resume_policy_observe(
-        &policy, 0, 0, 0, CONVERSATION_SKIP_RESPONSE_WAITING, 21.0);
+        &policy, 0, 0, CONVERSATION_SKIP_RESPONSE_WAITING, 21.0);
     CHECK(policy.state == X2_CONVERSATION_RESUME_WAITING);
     x2_conversation_resume_policy_observe(
-        &policy, 1, 0, 0, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC, 22.0);
+        &policy, 1, 0, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC, 22.0);
     CHECK(x2_conversation_resume_policy_should_advance(&policy));
     x2_conversation_resume_policy_note_advance(&policy);
     CHECK(policy.advances == 1u);
 
     x2_conversation_resume_policy_observe(
-        &policy, 0, 0, 1, CONVERSATION_SKIP_RESPONSE_WAITING, 23.0);
-    CHECK(policy.state == X2_CONVERSATION_RESUME_SKIPPING);
+        &policy, 0, 0, CONVERSATION_SKIP_RESPONSE_WAITING, 23.0);
+    CHECK(policy.state == X2_CONVERSATION_RESUME_IDLE);
     CHECK(!x2_conversation_resume_policy_should_advance(&policy));
-    x2_conversation_resume_policy_observe(
-        &policy, 1, 0, 1, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC, 24.0);
-    CHECK(x2_conversation_resume_policy_should_advance(&policy));
 }
 
 static void unowned_gap_and_choice_hand_back(void)
@@ -45,15 +42,15 @@ static void unowned_gap_and_choice_hand_back(void)
 
     x2_conversation_resume_policy_arm(&policy, 0.0);
     x2_conversation_resume_policy_observe(
-        &policy, 1, 0, 0, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC, 1.0);
+        &policy, 1, 0, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC, 1.0);
     x2_conversation_resume_policy_observe(
-        &policy, 0, 0, 0, CONVERSATION_SKIP_RESPONSE_WAITING, 2.0);
+        &policy, 0, 0, CONVERSATION_SKIP_RESPONSE_WAITING, 2.0);
     CHECK(policy.state == X2_CONVERSATION_RESUME_IDLE);
     CHECK(policy.retired == 1u);
 
     x2_conversation_resume_policy_arm(&policy, 3.0);
     x2_conversation_resume_policy_observe(
-        &policy, 1, 0, 0, CONVERSATION_SKIP_RESPONSE_CHOICE, 4.0);
+        &policy, 1, 0, CONVERSATION_SKIP_RESPONSE_CHOICE, 4.0);
     CHECK(policy.state == X2_CONVERSATION_RESUME_IDLE);
     CHECK(policy.handed_back == 1u);
 }
@@ -65,13 +62,13 @@ static void timeout_precedes_later_conversation(void)
 
     x2_conversation_resume_policy_arm(&policy, 5.0);
     x2_conversation_resume_policy_observe(
-        &policy, 0, 0, 1, CONVERSATION_SKIP_RESPONSE_UNREADABLE, 15.0);
+        &policy, 0, 0, CONVERSATION_SKIP_RESPONSE_UNREADABLE, 15.0);
     CHECK(policy.state == X2_CONVERSATION_RESUME_IDLE);
     CHECK(policy.expired == 1u);
 
     x2_conversation_resume_policy_arm(&policy, 20.0);
     x2_conversation_resume_policy_observe(
-        &policy, 1, 0, 1, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC,
+        &policy, 1, 0, CONVERSATION_SKIP_RESPONSE_DETERMINISTIC,
         20.0 + CONVERSATION_RESUME_WAIT_SECONDS + 0.001);
     CHECK(policy.state == X2_CONVERSATION_RESUME_IDLE);
     CHECK(!x2_conversation_resume_policy_should_advance(&policy));
@@ -85,7 +82,7 @@ static void ending_and_manual_override_retire(void)
 
     x2_conversation_resume_policy_arm(&policy, 0.0);
     x2_conversation_resume_policy_observe(
-        &policy, 0, 1, 0, CONVERSATION_SKIP_RESPONSE_WAITING, 1.0);
+        &policy, 0, 1, CONVERSATION_SKIP_RESPONSE_WAITING, 1.0);
     CHECK(policy.state == X2_CONVERSATION_RESUME_IDLE);
     CHECK(policy.retired == 1u);
 
@@ -97,7 +94,7 @@ static void ending_and_manual_override_retire(void)
 
 int main(void)
 {
-    deterministic_resume_and_owned_gap();
+    deterministic_resume_retires_at_retail_gap();
     unowned_gap_and_choice_hand_back();
     timeout_precedes_later_conversation();
     ending_and_manual_override_retire();

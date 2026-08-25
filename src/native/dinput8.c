@@ -26,7 +26,7 @@
 #include "dinput_device.h"
 #include "dinput_pad.h"
 #include "dinput8_controller_slots.h"
-#include "controller_hotplug.h"
+#include "dinput8_hotplug.h"
 #include "player_input.h"
 
 #include <stdio.h>
@@ -242,21 +242,34 @@ static uint32_t padinst_for(int pad)
  * that exists and never reports a press.
  */
 /*
- * The game's own gamepad enumeration, remembered so a pad plugged in LATER can
- * be handed to it.
+ * The two system devices, recognised by GUID.
  *
- * XMen2.exe enumerates game controllers exactly once, at startup (there is no
- * WM_DEVICECHANGE anywhere in it), so a pad connected after that is invisible
- * for the rest of the run. But its enumeration callback is not a one-shot: it
- * finds a free slot, creates the device, configures it and marks it attached,
- * which is precisely what a new arrival needs. So hotswap here is not a new
- * mechanism bolted on -- it is the game's own callback, called again.
+ * GUID_SysKeyboard {6F1D2B61-D5A0-11CF-BFC7-444553540000} and GUID_SysMouse
+ * {...2B60...} differ only in the first dword, which is why all sixteen bytes
+ * are compared: matching on the first four would make every DirectInput GUID
+ * in that family look like a keyboard.
  *
- * pvRef is the input manager itself: the shim at FUN_00628e00 reads it from
- * [ESP+8] and passes it as `this` to FUN_00628b40.
+ * Verified against XMen2.exe's own data at 0x6a15e4 and 0x6a15f4 -- the exact
+ * pointers FUN_00628e20 passes to CreateDevice -- rather than taken on trust
+ * from a header.
  */
-static uint32_t g_pad_cb, g_pad_ref, g_pad_enum;
-static X2ControllerHotplug g_hotplug;
+static const unsigned char GUID_SYS_KEYBOARD[16] = {
+    0x61,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
+    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+};
+static const unsigned char GUID_SYS_MOUSE[16] = {
+    0x60,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
+    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
+};
+
+static void guid_text(uint32_t g, char *out, size_t n)
+{
+    const unsigned char *b = (const unsigned char *)(uintptr_t)g;
+    snprintf(out, n, "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
+                     "%02X%02X%02X%02X%02X%02X}",
+             b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9],
+             b[10], b[11], b[12], b[13], b[14], b[15]);
+}
 
 static void m_EnumDevices(CPU *C)
 {
@@ -288,16 +301,8 @@ static void m_EnumDevices(CPU *C)
          */
         const char *nm = NULL;
         uint32_t here = x86_native_entry_containing(RD32(C->esp), &nm);
-        g_pad_cb = cb;
-        g_pad_ref = pvref;
         dinput8_controller_slots_set_manager(pvref);
-        if (here && here != g_pad_enum) {
-            g_pad_enum = here;
-            fprintf(stderr, "DINPUT8: the game's gamepad enumeration routine is "
-                            "0x%08x (%s) -- hotswap will call THAT when a pad "
-                            "arrives, so a late controller is admitted by the "
-                            "game's own rules.\n", here, nm ? nm : "unnamed");
-        }
+        dinput8_hotplug_note_game_enumeration(cb, pvref, here, nm);
     }
 
     /* DI8DEVCLASS_ALL is 0. GAMECTRL is the only class with anything in it
@@ -318,98 +323,13 @@ static void m_EnumDevices(CPU *C)
         }
     }
     if (cls == DI8DEVCLASS_GAMECTRL)
-        x2_controller_hotplug_enumerated(&g_hotplug,
+        dinput8_hotplug_enumerated(
                                          dinput_pad_generation(), npad,
                                          reported);
     enum_seen(cls, flags, cb, reported);
     ret_com(C, S_OK, 4);
 }
 
-/*
- * HOTSWAP: synchronize the game when the controller inventory changes.
- *
- * Called once a frame from the first input call of the frame (the keyboard's
- * GetDeviceState -- XMen2.exe's per-frame update FUN_006285c0 reads it at
- * 0x0062861e before anything else), so the guest is between operations rather
- * than in the middle of its own device loop.
- *
- * This RE-ENTERS the guest, which is the same thing the enumeration itself
- * does, and is why the pump point matters: the callback creates a device,
- * sets its data format and enumerates its axes, all of which come back through
- * this host. Doing it from inside the joystick loop would be inserting a
- * device into a table the game is walking.
- *
- * Each inventory generation is admitted once. A GUID cache cannot express
- * disconnect (which also has to clear the guest's attached flags), and a
- * process-lifetime cache bounded by the simultaneous eight-pad limit starts
- * re-enumerating every frame after eight reconnects.
- */
-void dinput8_hotplug_pump(CPU *C)
-{
-    uint64_t generation;
-    if (!C) return;
-    dinput_pad_refresh();
-    x2_player_input_sync(C);
-    generation = dinput_pad_generation();
-    if (!x2_controller_hotplug_needs_admission(&g_hotplug, generation)) return;
-    if (!g_pad_ref) return;
-
-    if (!g_pad_enum) {
-        static int told;
-        if (!told++)
-            fprintf(stderr, "DINPUT8: a pad appeared, and this host never "
-                            "identified the game's enumeration routine, so "
-                            "generation %llu cannot be synchronized.\n",
-                    (unsigned long long)generation);
-        return;
-    }
-    fprintf(stderr, "DINPUT8: HOTSWAP -- controller inventory generation %llu "
-                    "now has %d connected pad(s). Calling the game's own "
-                    "enumeration routine at 0x%08x so disconnects and arrivals "
-                    "are applied by the game's rules.\n",
-            (unsigned long long)generation, dinput_pad_count(), g_pad_enum);
-    x2_controller_hotplug_admitted(&g_hotplug);
-    {
-        /* __thiscall FUN_00628e20(BOOL bRecordNew): ECX = the input manager,
-           one stack argument. TRUE is what admits a controller the game has
-           not seen before -- the same value startup passes. */
-        CPU K = *C;
-        K.ecx = g_pad_ref;
-        K.esp -= 4u;
-        WR32(K.esp, 1u);
-        x86_guest_call_args(&K, g_pad_enum, 4u);
-    }
-}
-
-/*
- * The two system devices, recognised by GUID.
- *
- * GUID_SysKeyboard {6F1D2B61-D5A0-11CF-BFC7-444553540000} and GUID_SysMouse
- * {...2B60...} differ only in the first dword, which is why all sixteen bytes
- * are compared: matching on the first four would make every DirectInput GUID
- * in that family look like a keyboard.
- *
- * Verified against XMen2.exe's own data at 0x6a15e4 and 0x6a15f4 -- the exact
- * pointers FUN_00628e20 passes to CreateDevice -- rather than taken on trust
- * from a header.
- */
-static const unsigned char GUID_SYS_KEYBOARD[16] = {
-    0x61,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
-    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
-};
-static const unsigned char GUID_SYS_MOUSE[16] = {
-    0x60,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
-    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
-};
-
-static void guid_text(uint32_t g, char *out, size_t n)
-{
-    const unsigned char *b = (const unsigned char *)(uintptr_t)g;
-    snprintf(out, n, "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
-                     "%02X%02X%02X%02X%02X%02X}",
-             b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9],
-             b[10], b[11], b[12], b[13], b[14], b[15]);
-}
 
 static void m_CreateDevice(CPU *C)
 {
@@ -581,7 +501,8 @@ void dinput8_report(void)
         return;
     }
     printf("; %d distinct EnumDevices signature(s); %lu controller inventory "
-           "generation admission(s):\n", g_nenum, g_hotplug.admissions);
+           "generation admission(s):\n", g_nenum,
+           dinput8_hotplug_admissions());
     for (i = 0; i < g_nenum; i++) {
         const char *nm = x86_native_name_at(g_enum[i].cb);
         printf("        class %u %-9s flags 0x%-4x  x%-5lu  offered "

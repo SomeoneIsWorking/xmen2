@@ -5,7 +5,7 @@ status: resolved
 symptom: Gameplay-authored in-engine cutscenes cannot be skipped with keyboard Escape or controller Start
 tags: input,cutscene,conversation,scripts
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-25
 ---
 
 ## Root cause
@@ -71,3 +71,18 @@ independent controller proof.
 
 ### Resolution (2026-08-22)
 Resolved at the production conversation boundary: action 20 latches on a visible authored conversation (with camera/control state covering preparation and locked gaps), advances only deterministic records through retail chooseResponse/applyResponse, and blocks at choices so cleanup scripts remain authoritative. Escape and assigned-controller Start are independently bounded-live verified end to end, including cleanup and latch retirement (C247, C251).
+
+### Reopened (2026-08-25)
+Regressed in 82bdf13: the new conversation waittimed override accelerated retail actor/movement waits after Escape. The user run recorded physical DIK Escape and first-conversation 0x13->0x18, then adjacent 0x18->0x10/no line (issue #83 signature). Remove the override and re-run the live Escape proof before resolving.
+
+### Resolved (2026-08-25)
+
+The 82bdf13 waittimed override is removed (its acceleration let the adjacent
+conversation run before its actor/movement prerequisites and reproduced issue
+#83's no-line signature). Live re-verification on the rebuilt tree,
+tools/live_case.py cutscene-skip, 7/7: one Escape produced one request and
+five retail response advances, nightcrawler_spawn and conv_0020b_end launched,
+the adjacent conversation started VISIBLE with a selected line (0x18 -> 0x13,
+line 0x41 -> 0x40 -- the issue #83 signature absent), controls unlocked, and
+the latch retired with 'completed after control unlock 1'. The wiring audit
+rejects any reintroduced 0x004d9130 override.

@@ -129,15 +129,31 @@ menu, or continue. RmlUi edits that setting on its General tab. The boot path
 consumes it only at the exact `runscript menus/intro_normal` command; a command
 with that text merely as a prefix is not a boot event.
 
-Normal passes the command through untouched. Menu and Continue both replace
-only the presentation script with the retail forced main-menu callback
-`FUN_0049fb00`. That callback calls the console singleton's `+0x18` executor
+Normal passes the command through untouched. Continue runs the retail forced
+main-menu callback `FUN_0049fb00` so the menu-map lifecycle completes, and
+intercepts the retained `CMenuMain::Show` that lifecycle ends in
+(`src/native/continue_runtime.c`): the intercept selects the primary player
+through CPadManager's own setter -- a presentation-bypassing boot has no title
+input -- calls retail Show, applies the menu plan, runs `CMenuMain::Hide`, and
+dispatches the same authoritative retail mode-3 chain the main-menu Continue
+row runs (catalog leaf pickup, save-manager mode 3, header/device/file
+selection, manager state 0x1c and the one-shot exact-leaf redirect at numeric
+loader 0x0055ff00), synchronously, before any menu interaction. The LOAD
+SUCCESSFUL ack re-selects the primary player: the intervening menu lifecycle
+clears CPadManager and the save payload keys its party writes off that player
+(issues #113/#83). A direct dispatch that skipped the menu lifecycle was tried
+and live-falsified: it reached the destination map with `current player -1`
+and every hero handle unresolved.
+
+Menu mode, a Continue request with no valid save, and a Continue whose retail
+manager cannot arm use the same retail forced main-menu callback `FUN_0049fb00` That callback calls the console singleton's `+0x18` executor
 with `"mainmenuexit 1"` and returns with a plain `RET`. The registered console
 handler `FUN_005f27a0` proves the argument is semantic: a non-empty argument
 runs the retail reset sequence and submits `"loadmap menu/main_back"` through
 the console singleton's `+0x1c` path, while an empty argument constructs and
 shows `mainMenuExit()`. The former preserves the retail main-menu map and its
-initialization without reconstructing menu state in the host.
+initialization without reconstructing menu state in the host. The retained
+`CMenuMain::Show` path then dispatches the still-pending Continue request.
 
 The adjacent callback `FUN_0049fb20` is deliberately not used. It issues the
 argument-less command and was falsified live: frame 669 displayed the retail
@@ -152,16 +168,15 @@ leaf directory `<profile>/Activision/X-Men Legends 2/Save`, rather than the
 profile root also used by host config and registry state. A directory that does
 not exist yet is an ordinary first-run no-save result. The catalog captures the
 newest admitted leaf once for this boot request
-and publishes it to `src/native/continue_runtime.c`. On the retained
-`CMenuMain::Show` boundary, that owner dispatches retail save/load mode 3,
-header/device/file selection and accepts only manager mode 3/state 0x1c before
-arming the one-shot exact-leaf redirect at numeric loader 0x0055ff00. Only then
-does boot mode mark the cached request consumed. When the catalog has no
-candidate (or cannot be read), the effective mode is Menu and the run reports
-that fallback before opening the retail menu. It never enters New Game and
-never guesses a numbered slot. Normal menu presentation still rescans the save
-directory separately so Continue visibility can reflect saves created or
-deleted after boot; that is live menu state rather than the cached boot request.
+and publishes it to `src/native/continue_runtime.c`. At boot, that owner
+dispatches retail save/load mode 3 directly as described above. On the retained
+`CMenuMain::Show` boundary it drives the same owner for an ordinary menu click
+or a boot fallback. When the catalog has no candidate (or cannot be read), the
+effective mode is Menu and the run reports that fallback before opening the
+retail menu. It never enters New Game and never guesses a numbered slot.
+Normal menu presentation still rescans the save directory separately so
+Continue visibility can reflect saves created or deleted after boot; that is
+live menu state rather than the cached boot request.
 
 The retail load does not deserialize immediately after the payload read.
 Manager owner 0x004b1280 builds LOAD SUCCESSFUL and sets state 1; the dialog's

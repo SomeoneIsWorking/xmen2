@@ -53,7 +53,6 @@ void x2_conversation_resume_map_return(int succeeded)
         g_map_failures++;
         return;
     }
-    conversation_cutscene_skip_begin_sequence();
     x2_conversation_resume_policy_arm(&g_policy, guest_clock_elapsed_s());
 }
 
@@ -64,8 +63,7 @@ void x2_conversation_resume_observe(struct CPU *cpu, uint32_t self,
         conversation_cutscene_skip_response(cpu, self);
     x2_conversation_resume_policy_observe(
         &g_policy, !!(flags & CVF_VISIBLE), !!(flags & CVF_ENDING),
-        conversation_cutscene_skip_owned_sequence_active(), response,
-        guest_clock_elapsed_s());
+        response, guest_clock_elapsed_s());
 }
 
 int x2_conversation_resume_gate_open(void)

@@ -49,7 +49,7 @@ int main(void)
     CHECK(conversation_skip_policy_update(
               &policy, 0, 0, 0, 0, CONVERSATION_SKIP_RESPONSE_WAITING) ==
           CONVERSATION_SKIP_NONE);
-    CHECK(!policy.active);
+    CHECK(!policy.active && policy.completed == 1u);
 
     CHECK(conversation_skip_policy_update(
               &policy, 1, 1, 1, 1, CONVERSATION_SKIP_RESPONSE_UNREADABLE) ==

@@ -29,7 +29,7 @@ void x2_conversation_resume_policy_arm(X2ConversationResumePolicy *policy,
                                        double now_s);
 void x2_conversation_resume_policy_observe(
     X2ConversationResumePolicy *policy, int visible, int ending,
-    int owned_gap, ConversationSkipResponse response, double now_s);
+    ConversationSkipResponse response, double now_s);
 int x2_conversation_resume_policy_expire(X2ConversationResumePolicy *policy,
                                          double now_s);
 int x2_conversation_resume_policy_should_advance(

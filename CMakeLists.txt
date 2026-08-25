@@ -233,21 +233,6 @@ foreach(suffix IN ITEMS "" "_ndebug")
     add_test(NAME conversation_resume_policy${suffix}
              COMMAND test_conversation_resume_policy${suffix})
 
-    add_executable(test_conversation_timed_wait${suffix}
-                   tests/test_conversation_timed_wait.c
-                   tests/native_stubs.c
-                   src/native/conversation_skip_policy.c
-                   src/native/conversation_cutscene_skip.c)
-    target_include_directories(test_conversation_timed_wait${suffix}
-                               PRIVATE src/recomp src/native)
-    target_compile_options(test_conversation_timed_wait${suffix}
-                           PRIVATE -Wall -Wextra -Werror)
-    if(suffix STREQUAL "_ndebug")
-        target_compile_definitions(test_conversation_timed_wait${suffix}
-                                   PRIVATE NDEBUG)
-    endif()
-    add_test(NAME conversation_timed_wait${suffix}
-             COMMAND test_conversation_timed_wait${suffix})
 endforeach()
 
 add_test(NAME conversation_skip_wiring
@@ -276,6 +261,7 @@ add_custom_target(x2_pad_glyph_header DEPENDS "${X2_PAD_GLYPH_HEADER}")
 # nothing in the guest runtime -- it is SDL on one side and plain values on the
 # other -- so it links straight into a test binary.
 add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c
+        src/native/dinput_pad_virtual.c
                src/native/guest_clock.c)
 target_include_directories(test_dinput_pad PRIVATE src/native)
 target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
@@ -867,6 +853,7 @@ if(X2_MODULE_HAVE)
         src/save/continue_policy.c
         src/save/save_trace.c
         src/native/autosave_runtime.c
+        src/native/boot_player_selection.c
         src/native/continue_runtime.c
         src/native/save_trace_runtime.c
         src/native/pe_map.c
@@ -883,6 +870,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput.c
         src/native/dinput8.c
         src/native/dinput8_controller_slots.c
+        src/native/dinput8_hotplug.c
         src/native/dinput_device.c
         src/native/dinput_device_registry.c
         src/native/dinput_device_state.c
@@ -891,6 +879,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_script.c
         src/native/dinput_joystick.c
         src/native/dinput_pad.c
+        src/native/dinput_pad_virtual.c
         src/native/dialog_prompts.c
         src/native/pad_glyphs.c
         src/native/prompt_glyph_pack.c

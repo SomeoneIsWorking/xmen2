@@ -5,7 +5,7 @@ status: resolved
 symptom: Retail had no Continue row or host-owned autosave checkpoint, and the first Continue integration scanned the wrong save directory and stopped at LOAD SUCCESSFUL.
 tags: save,continue,autosave,menu,re,instrumentation
 created: 2026-08-22
-updated: 2026-08-22
+updated: 2026-08-25
 ---
 
 ## Root causes and implemented Continue path
@@ -107,3 +107,25 @@ window, the report claims success without a complete atomic file, the prior
 file is lost under an injected pre-publish failure, or retail cannot load the
 published `autosave.save`. No alternate leaf or corrupt-newest fallback is
 allowed if a future validation fails.
+
+### Reopened (2026-08-25)
+Regression reported 2026-08-25: Boot=Continue traversed the menus again. Root cause is repository history, not save selection: commit 78e22e1 had already live-proven direct x2_continue_boot_dispatch -> start_latest_load with zero menu/main_back opens, but the later unsafe-history rewrite reset past that commit and its selective clean replay omitted this seam while retaining the older menu-mediated startup.c. Recovered only the direct boot seam into continue_runtime.{c,h} and startup.c, preserving start_latest_load as the single mode-3 owner; the wiring selftest now rejects the menu-only composition. Awaiting a fresh default-path live observation before resolving again.
+
+### Resolved (2026-08-25, second reopening)
+
+The recovered composition routes the boot through the retail menu-map
+lifecycle and dispatches Continue synchronously from the intercepted
+CMenuMain::Show (player selection supplied programmatically, CMenuMain::Hide,
+then the registered Continue callback). Live-verified end to end by
+tools/live_case.py boot-continue, 12/12: BOOT MODE + BOOT PLAYER lines, the
+menu-map lifecycle by design, the saved map's own pkgb opening, the party
+spawning, the replayed intro conversations healthy, and controls unlocking
+after the player advances them. The manual menu-Continue control run resolves
+the same state (current player index 0, hero handle resolved).
+
+The load left `current player index -1` and every hero handle unresolved
+until the LOAD SUCCESSFUL ack re-selects the primary player: the menu
+lifecycle between the Show intercept and the ack clears CPadManager
+(write-watch: select 0, Show clears, Hide restores, later menu Shows clear and
+never restore), and the save payload keys its party writes off that player.
+tools/check_continue_wiring.py now refuses an ack without the re-selection.

@@ -113,6 +113,13 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                            char *why, int whyn);
 
 
+/* Read-back through the OPEN gamepad of `pad`, for the synthetic pad's
+   "did the set actually land" verification: 1 down/nonzero, 0 released,
+   -1 no open gamepad. The enum is SDL's SDL_GAMEPAD_BUTTON or SDL_GAMEPAD_AXIS
+   value as an int. */
+int dinput_pad_open_gamepad_button(int pad, int gamepad_button);
+int dinput_pad_open_gamepad_axis(int pad, int gamepad_axis);
+
 /* Did the game ASK for pad state, and did any answer come back pressed?
    Reported with its denominator: "0 of 0" and "0 of 480000" are different
    findings and silence cannot distinguish them. */

@@ -1,5 +1,14 @@
 #include "controller_hotplug.h"
 
+void x2_controller_hotplug_invalidate(X2ControllerHotplug *state)
+{
+    /* The next pump must admit the live inventory again even though no SDL
+       generation changed: a save payload deserializes the input manager's
+       own controller table over the live one, so the table can name devices
+       that no longer exist while the connected pad sits unadmitted. */
+    if (state) state->initialized = 0;
+}
+
 int x2_controller_hotplug_needs_admission(X2ControllerHotplug *state,
                                           uint64_t generation)
 {
