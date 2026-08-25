@@ -732,7 +732,8 @@ void x2_override_0045d1a0(CPU *C)
 
     /* 0x0045d1a6: the whole subsystem's enable bit. */
     if (!(RD8(self + CV_UI_ENABLED) & 0x10u)) {
-        conversation_cutscene_skip_observe_inactive(self);
+        conversation_cutscene_skip_observe_inactive(
+            C, self, call0(C, FN_INPUT, 0));
         c_upd_disabled++;
         C->esp += 4u + 4u;
         return;
@@ -749,7 +750,8 @@ void x2_override_0045d1a0(CPU *C)
     /* 0x0045d1f4: isVisible, through the vtable as the original calls it, so
        the ported predicate's caller record still sees this call site. */
     if (!(uint8_t)call0(C, vslot(self, 0x20u), self)) {
-        conversation_cutscene_skip_observe_inactive(self);
+        conversation_cutscene_skip_observe_inactive(
+            C, self, call0(C, FN_INPUT, 0));
         c_upd_invisible++;
         C->esp += 4u + 4u;
         return;

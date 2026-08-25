@@ -84,11 +84,23 @@ def audit_boot_dispatch(runtime_source, startup_source, player_source):
                "retail current-player setter")
 
     composition = startup_source.find("static int boot_to_host_mode(")
+    direct = startup_source.find("x2_continue_boot_dispatch(C)", composition)
     menu = startup_source.find("x2_boot_menu_open(C, exe_base)", composition)
-    if min(composition, menu) < 0 or not composition < menu:
-        refuse("startup does not preserve the retail menu-map lifecycle")
-    if "x2_continue_boot_dispatch" in startup_source:
-        refuse("startup still contains the incomplete direct save dispatch")
+    if min(composition, direct, menu) < 0 or not composition < direct < menu:
+        refuse("startup must dispatch the retail save chain directly at the "
+               "intercepted intro command and keep x2_boot_menu_open as the "
+               "refusal fallback")
+    runtime_def = runtime_source.find("int x2_continue_boot_dispatch(")
+    chain = runtime_source.find("catalog_for_show()", runtime_def)
+    load = runtime_source.find("start_latest_load(C)", chain)
+    pending = runtime_source.find("g_boot_load_pending = 1;", load)
+    started = runtime_source.find(
+        "x2_boot_mode_runtime_continue_started();", pending)
+    if min(runtime_def, chain, load, pending, started) < 0 \
+            or not runtime_def < chain < load < pending < started:
+        refuse("the direct boot dispatch must catalog the cached leaf, arm "
+               "start_latest_load, set the ack re-selection flag and only "
+               "then consume the boot request")
 
 
 def audit_plain_ret_abis(chunks):
@@ -155,8 +167,14 @@ def selftest():
                "x2_boot_mode_runtime_continue_started();\n}\n"
                "void x2_override_004b1280(struct CPU *C) {\n"
                "fn_XMen2_004b1280(C);\n"
-               "x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);\n}")
+               "x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);\n}\n"
+               "int x2_continue_boot_dispatch(struct CPU *C) {\n"
+               "catalog_for_show();\n"
+               "start_latest_load(C);\n"
+               "g_boot_load_pending = 1;\n"
+               "x2_boot_mode_runtime_continue_started();\n}")
     startup = ("static int boot_to_host_mode(struct CPU *C) {\n"
+               "x2_continue_boot_dispatch(C);\n"
                "x2_boot_menu_open(C, exe_base);\n}")
     player = ("base + PAD_MANAGER_RVA;\n"
               "PAD_SET_CURRENT_PLAYER;\n"
@@ -177,10 +195,35 @@ def selftest():
         pass
     else:
         refuse("an ack without the player re-selection passed the audit")
+    # The direct dispatch is what makes a Continue boot skip the splash,
+    # the menu map and the menu.  Prove BOTH of its failure shapes are
+    # caught: a startup that fell back to opening the menu unconditionally,
+    # and a dispatch that consumed the boot request before the retail chain
+    # accepted it (which loses the request when the manager refuses).
+    try:
+        audit_boot_dispatch(
+            runtime, startup.replace("x2_continue_boot_dispatch(C);\n", ""),
+            player)
+    except WiringError:
+        pass
+    else:
+        refuse("a startup that only opens the retail menu passed the audit")
+    premature = runtime.replace(
+        "catalog_for_show();\nstart_latest_load(C);\n"
+        "g_boot_load_pending = 1;\n",
+        "g_boot_load_pending = 1;\ncatalog_for_show();\n"
+        "start_latest_load(C);\n")
+    try:
+        audit_boot_dispatch(premature, startup, player)
+    except WiringError:
+        pass
+    else:
+        refuse("an out-of-order direct dispatch passed the audit")
     print("continue_wiring --selftest: current DISPATCH, retained-first "
           "success acknowledgement and lifecycle-gated Continue accepted; "
-          "stale direct call, out-of-order acknowledgement and missing player "
-          "selection rejected")
+          "stale direct call, out-of-order acknowledgement, missing player "
+          "selection, a menu-only startup and an out-of-order direct "
+          "dispatch rejected")
     return 0
 
 

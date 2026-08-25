@@ -63,13 +63,15 @@ void x2_conversation_resume_observe(struct CPU *cpu, uint32_t self,
         conversation_cutscene_skip_response(cpu, self);
     x2_conversation_resume_policy_observe(
         &g_policy, !!(flags & CVF_VISIBLE), !!(flags & CVF_ENDING),
+        conversation_cutscene_skip_controls_locked(),
         response, guest_clock_elapsed_s());
 }
 
 int x2_conversation_resume_gate_open(void)
 {
     (void)x2_conversation_resume_policy_expire(
-        &g_policy, guest_clock_elapsed_s());
+        &g_policy, guest_clock_elapsed_s(),
+        conversation_cutscene_skip_controls_locked());
     return x2_conversation_resume_policy_should_advance(&g_policy);
 }
 
@@ -100,7 +102,8 @@ int x2_conversation_resume_should_advance(CPU *cpu, uint32_t self)
 int x2_conversation_resume_sequence_active(void)
 {
     (void)x2_conversation_resume_policy_expire(
-        &g_policy, guest_clock_elapsed_s());
+        &g_policy, guest_clock_elapsed_s(),
+        conversation_cutscene_skip_controls_locked());
     return x2_conversation_resume_policy_active(&g_policy);
 }
 

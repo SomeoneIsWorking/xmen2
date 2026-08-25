@@ -25,9 +25,12 @@ def audit(conversation, runtime, probe, cmake):
         raise WiringError("conversation advance block could not be bounded")
     early = conversation[update_begin:begin]
     block = conversation[begin:end]
-    if early.count("conversation_cutscene_skip_observe_inactive(self);") != 2:
+    if early.count("conversation_cutscene_skip_observe_inactive(") != 2 \
+            or early.count("call0(C, FN_INPUT, 0));") != 2:
         raise WiringError("disabled and invisible update exits must both "
-                          "observe inactive skip state")
+                          "observe inactive skip state with the live input "
+                          "manager, so an Escape during a camera-only "
+                          "stretch arms the latch")
     require(block, "conversation_cutscene_skip_should_advance(",
             "conversation action gate")
     require(block, "if (advance)", "conversation action gate")
@@ -62,7 +65,7 @@ def selftest():
     current = production_sources()
     audit(*current)
     for index, needle in (
-        (0, "conversation_cutscene_skip_observe_inactive(self);"),
+        (0, "conversation_cutscene_skip_observe_inactive("),
         (1, "conversation_skip_policy_is_authored("),
         (1, "CUTSCENE_SKIP_ACTION 20u"),
         (1, "retail waittimed untouched (no "),

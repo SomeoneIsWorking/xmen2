@@ -7,6 +7,7 @@ dedicated control port, and talks to that port itself rather than through
 scratch/run/live.json.
 
     tools/live_case.py cutscene-skip          # Escape skips the tutorial scene
+    tools/live_case.py cutscene-skip-early    # ... pressed in the camera-only pan
     tools/live_case.py boot-continue          # Boot=Continue reaches the saved map
     tools/live_case.py pad-late               # pad attached after start works
     tools/live_case.py pad-persisted          # stored controller0 id adopted
@@ -227,6 +228,23 @@ class Case:
 
 # -- cases --------------------------------------------------------------------
 
+def reach_camera_only_lock(case: Case, timeout: float) -> str:
+    """Wait for the authored sequence's CAMERA-ONLY stretch: the control lock
+    holds and no conversation record is visible. That is the opening pan the
+    tutorial plays for seconds before its first line exists -- the stretch a
+    player is most likely to press Escape in, and the one the visible-line
+    path never covers. Returns the report that proved it, or ""."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not case.alive():
+            return ""
+        report = case.get_text("/input?controller=0")
+        if "controls-locked yes" in report and "visible no" in report:
+            return report
+        time.sleep(0.5)
+    return ""
+
+
 def reach_authored_conversation(case: Case, timeout: float) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -326,6 +344,75 @@ def case_cutscene_skip(case: Case) -> None:
     case.shot("after-skip")
 
 
+def case_cutscene_skip_early(case: Case) -> None:
+    """Escape during the CAMERA-ONLY opening stretch skips the whole authored
+    sequence, not just whichever record happens to be on screen. The press
+    lands while the control lock holds and nothing is visible, so it goes
+    through the disabled/invisible update exits rather than the action gate --
+    a different code path from case_cutscene_skip's press on a visible line,
+    and the one a player actually hits first."""
+    case.prepare_profile(["boot.mode=normal"])
+    case.launch({
+        "X2_BOOT_MAP": TUTORIAL_MAP,
+        "X2_SCRIPTS": "1",
+    })
+    case.wait_control(60)
+
+    report = reach_camera_only_lock(case, 240)
+    case.check("a camera-only locked stretch was reached (no record visible)",
+               bool(report),
+               next((line.strip() for line in report.splitlines()
+                     if "authored conversation:" in line),
+                    "controls never locked with nothing visible"))
+    if not report:
+        return
+    visible_before = sum('conversation start "' in line
+                         for line in case.log_text().splitlines())
+    case.shot("before-escape")
+
+    code, body = case.http("/key?name=Escape&hold=0.4")
+    case.check("Escape accepted by the guest poll", code == 200,
+               body.decode(errors="replace").strip())
+
+    # The latch must ARM here. Without the camera-only arming path the press
+    # is simply dropped, the sequence plays out in full, and every check
+    # below still eventually passes on the authored timeline -- so the
+    # request counter, not the outcome, is what discriminates.
+    armed, status = False, ""
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and not armed:
+        if not case.alive():
+            break
+        for line in case.get_text("/input?controller=0").splitlines():
+            if "authored skip" in line:
+                status = line.strip()
+                armed = " 0 request(s)" not in status
+        if not armed:
+            time.sleep(1.0)
+    case.check("the camera-only Escape armed the authored-skip latch",
+               armed, status)
+
+    case.check("conversation-end script conv_0020b_end launched",
+               case.wait_log("conv_0020b_end", 240))
+    unlocked = wait_controls_unlocked(case, 180)
+    case.check("controls unlocked after the skip", unlocked)
+
+    report = case.get_text("/input?controller=0")
+    (case.dir / "final-input-report.txt").write_text(report)
+    status = next((line.strip() for line in report.splitlines()
+                   if "authored skip" in line), "")
+    case.check("the latch retired after advancing the sequence's records",
+               "idle" in status and " 0 retail response advance(s)"
+               not in status, status)
+    started = sum('conversation start "' in line
+                  for line in case.log_text().splitlines())
+    case.check("the sequence's remaining records were consumed, not left "
+               "for the player", started > visible_before,
+               "%d conversation start(s) before the press, %d after"
+               % (visible_before, started))
+    case.shot("after-skip")
+
+
 def case_boot_continue(case: Case) -> None:
     """Boot=Continue reaches the saved map with no menu interaction: the
     title-screen player selection is supplied programmatically and retail
@@ -360,8 +447,24 @@ def case_boot_continue(case: Case) -> None:
                     and "/menus/" not in line:
                 dest_map = line.strip()
         time.sleep(1.0)
-    case.check("the retail menu-map lifecycle completed (by design)",
-               main_back_opened)
+    # The direct dispatch is the whole point of the feature: the save chain
+    # runs at the intercepted intro command, so the splash wait, the menu map
+    # and the menu never happen. Two independent shapes of the fallback are
+    # caught here -- the announcement (the runtime says which path it took)
+    # and the menu map's own FILE open (the fallback cannot reach the save
+    # without loading menu/main_back). A build that fell back fails both.
+    log = case.log_text()
+    case.check("the splash wait was skipped at the intro phase itself",
+               "BOOT SPLASH: intro phase start stamp" in log,
+               next((line.strip() for line in log.splitlines()
+                     if "BOOT SPLASH:" in line), "no BOOT SPLASH line"))
+    case.check("the save chain was dispatched directly at the intro command",
+               "dispatching the retail save chain" in log
+               and "refused the direct dispatch" not in log)
+    case.check("the menu map was never loaded", not main_back_opened,
+               "menu/main_back opened" if main_back_opened else
+               "no menu/main_back open in %d [FILE] line(s)"
+               % sum("[FILE]" in line for line in log.splitlines()))
     case.check("a non-menu destination map opened after the dispatch",
                bool(dest_map), dest_map[:160])
     roster = ("Wolverine", "Cyclops", "Storm", "Magneto", "Nightcrawler",
@@ -602,6 +705,7 @@ def png_mean_diff(a: Path, b: Path) -> float:
 
 CASES = {
     "cutscene-skip": case_cutscene_skip,
+    "cutscene-skip-early": case_cutscene_skip_early,
     "boot-continue": case_boot_continue,
     "pad-late": case_pad_late,
     "pad-persisted": case_pad_persisted,

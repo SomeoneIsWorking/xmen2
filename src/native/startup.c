@@ -27,6 +27,7 @@
 #include "threads.h"
 #include "boot_mode_runtime.h"
 #include "boot_menu_transition.h"
+#include "continue_runtime.h"
 #include "save_directory.h"
 #include "settings_store.h"
 
@@ -247,22 +248,37 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base)
         else
             fprintf(stderr, "BOOT MODE: Continue was requested but no valid "
                             "save exists; opening the retail main menu.\n");
-    } else if (decision->effective == X2_BOOT_CONTINUE)
-        fprintf(stderr, "BOOT MODE: skipping the introduction and menu "
-                        "interaction; preparing %s through the retail "
-                        "menu-map lifecycle and save chain.\n",
+    } else if (decision->effective == X2_BOOT_CONTINUE) {
+        /* Direct dispatch. The boot's intro phase has already executed its
+           subsystem init and `resetgame` by the time the intro command
+           fires, so the retail save chain runs from the pristine state
+           without the menu map, the menu, or any interaction. The ack
+           re-selection supplies what the first falsified attempt lacked
+           (the payload's party writes key off CPadManager's current
+           player). Anything refuses: fall back to the retail menu path
+           below rather than guessing. */
+        fprintf(stderr, "BOOT MODE: skipping the introduction, splash wait "
+                        "and menu; dispatching the retail save chain for "
+                        "%s directly.\n",
                 x2_boot_mode_runtime_continue_leaf());
-    else
+        fflush(stderr);
+        if (x2_continue_boot_dispatch(C)) {
+            C->eax = 1u;
+            C->esp += 8u;
+            return 1;
+        }
+        fprintf(stderr, "BOOT MODE: the retail manager refused the direct "
+                        "dispatch; opening the retail main menu instead.\n");
+        fflush(stderr);
+    } else
         fprintf(stderr, "BOOT MODE: skipping the introduction and opening "
                         "the retail main menu.\n");
     fflush(stderr);
-    /* This calls the retail forced main-menu handler. It executes
-       `mainmenuexit 1`, whose command owner resets and loads menu/main_back.
-       That completed map lifecycle is part of Continue initialization: a
-       direct save dispatch reached the destination map but left every hero
-       handle and the current player unset. CMenuMain::Show intercepts the
-       completed lifecycle, supplies the title-screen player selection, and
-       dispatches Continue synchronously, before any menu interaction. */
+    /* Menu mode and the Continue fallback call the retail forced main-menu
+       handler. It executes `mainmenuexit 1`, whose command owner resets and
+       loads menu/main_back; the retained CMenuMain::Show intercept then
+       supplies the title-screen player selection and dispatches the pending
+       Continue synchronously, before any menu interaction. */
     if (!x2_boot_menu_open(C, exe_base)) return 0;
     C->eax = 1u;
     C->esp += 8u;
@@ -363,6 +379,55 @@ void x2_override_0055beb0(CPU *C)
     fn_XMen2_0055beb0(C);
 }
 
+/* FUN_00402ba0 -- the boot frontend's intro phase. Retail holds the legal
+ * splash on screen by comparing the guest clock against the phase's own
+ * start timestamp ([this+0x24]) and a 5-second duration constant in .rdata;
+ * only then does the tick run its subsystem init, `resetgame` and the intro
+ * command. A Continue boot wants none of that wait: while the persisted boot
+ * mode asks for Continue, the phase's start timestamp is marked long past
+ * BEFORE the original body runs, so the phase's own logic -- unchanged, its
+ * duration constant unread -- passes the wait on the first tick and the
+ * intercepted intro command dispatches the save directly. Every effect of
+ * the phase except the delay is the retail effect. */
+void fn_XMen2_00402ba0(CPU *C);
+
+void x2_override_00402ba0(CPU *C)
+{
+    static const float long_past = -1.0e9f;
+    static int reported;
+    uint32_t phase = C->ecx;
+    X2BootMode mode = x2_settings_store()->boot_mode;
+    uint32_t bits;
+    float was;
+
+    /* Report on the first tick whichever way it goes. An override that only
+       spoke when it acted would be indistinguishable, in a log, from one that
+       was never reached -- and "the splash was skipped" is exactly the claim
+       a silent negative would let through. */
+    if (phase && mode == X2_BOOT_CONTINUE) {
+        bits = RD32(phase + 0x24u);
+        memcpy(&was, &bits, sizeof was);
+        memcpy(&bits, &long_past, sizeof bits);
+        WR32(phase + 0x24u, bits);
+        if (!reported) {
+            reported = 1;
+            fprintf(stderr, "BOOT SPLASH: intro phase start stamp %.3f -> "
+                            "%.1f, so the phase's own wait is already past on "
+                            "its first tick and the intro command dispatches "
+                            "Continue immediately.\n",
+                    (double)was, (double)long_past);
+            fflush(stderr);
+        }
+    } else if (!reported) {
+        reported = 1;
+        fprintf(stderr, "BOOT SPLASH: retail splash wait left intact (boot "
+                        "mode %s, phase %s).\n",
+                x2_boot_mode_name(mode), phase ? "present" : "NULL");
+        fflush(stderr);
+    }
+    fn_XMen2_00402ba0(C);
+}
+
 /* Register this file's overrides. Runs before main; the dispatcher consults
    the table only when the guest actually calls one of these entry points. */
 __attribute__((constructor))
@@ -371,4 +436,5 @@ static void x2_startup_register_overrides(void)
     x86_register_override("XMen2.exe", 0x00617480, x2_override_00617480);
     x86_register_override("XMen2.exe", 0x0055b610, x2_override_0055b610);
     x86_register_override("XMen2.exe", 0x0055beb0, x2_override_0055beb0);
+    x86_register_override("XMen2.exe", 0x00402ba0, x2_override_00402ba0);
 }
