@@ -60,18 +60,23 @@ All run artifacts go to the gitignored `scratch/`, structured by type
 
 ## Build and run
 
-**Asset viewers + unit tests** (`build/`, root `CMakeLists.txt`):
+**There is ONE build directory: `scratch/build-native/`.** `./run.sh` creates
+and maintains it, and it is the tree every live harness runs
+(`tools/live_case.py`, `tools/native_discover.sh`, `tools/x2ctl.py`'s target).
+It holds the asset viewers, every unit test and `x2native` itself.
 
-```sh
-cmake -S . -B build && cmake --build build -j$(nproc)
-ctest --test-dir build --output-on-failure
-ctest --test-dir build -R controller          # one test
-```
-
-**Native (Wine-free) build — `x2native`**, the live front:
+A second tree configured by hand (`cmake -S . -B build`) used to exist and is
+DELETED. It emitted a target of the same name that no harness ever ran, so
+building it produced a binary that looked current and was not — a full live
+PASS report once described an hour-old binary (issue #118) — and its bare
+configure picked up the system interpreter instead of the locked `.venv`, so
+`pad_font` failed on a missing Pillow. Do not recreate it.
 
 ```sh
 ./run.sh                         # provision, build and launch the one default product
+cmake --build scratch/build-native -j$(nproc)          # build without launching
+ctest --test-dir scratch/build-native --output-on-failure
+ctest --test-dir scratch/build-native -R controller    # one test
 uv run --frozen python tools/provision.py  # provision-only maintainer/cold-path check
 scratch/build-native/x2native --no-window --selftest   # postcondition battery; exit 77 = SKIP (no GAME_PC_DIR)
 scratch/build-native/x2native --no-window --run        # module init + the exe's CRT startup, NO renderer
