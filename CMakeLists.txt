@@ -130,6 +130,18 @@ target_compile_definitions(test_settings PRIVATE
     X2_TEST_SETTINGS_PATH="${CMAKE_BINARY_DIR}/test-x2native.conf")
 add_test(NAME settings COMMAND test_settings)
 
+add_executable(test_settings_overlay tests/test_settings_overlay.c
+                src/ui/settings_overlay_state.c)
+target_include_directories(test_settings_overlay PRIVATE src/ui)
+target_link_libraries(test_settings_overlay PRIVATE ${X2_SDL})
+add_test(NAME settings_overlay COMMAND test_settings_overlay)
+
+add_executable(test_display_mode_seed tests/test_display_mode_seed.c
+                src/presentation/display_mode_seed.c)
+target_include_directories(test_display_mode_seed PRIVATE src/presentation
+                          src/native src/config)
+add_test(NAME display_mode_seed COMMAND test_display_mode_seed)
+
 add_executable(test_boot_mode_policy tests/test_boot_mode_policy.c
                src/native/boot_mode_policy.c)
 target_include_directories(test_boot_mode_policy PRIVATE src/config src/native)
@@ -862,6 +874,7 @@ if(X2_MODULE_HAVE)
         src/native/boot_menu_transition.c
         src/presentation/aspect_fit.c
         src/presentation/window_settings.c
+        src/presentation/display_mode_seed.c
         src/input/binding_rows.c
         src/input/controller_hotplug.c
         src/input/controller_instance.c
@@ -891,6 +904,8 @@ if(X2_MODULE_HAVE)
         src/native/kernel32.c
         src/native/win_path.c
         src/native/advapi32.c
+        src/native/advapi32_host_store.c
+        src/native/fault_selftest.c
         src/native/ole32.c
         src/native/gdi32.c
         src/native/dinput.c

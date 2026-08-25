@@ -139,6 +139,25 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
 extern "C" int x2_ui_handle_event(SDL_Event* event)
 {
     if (!event) return 0;
+    /* F2 toggles this overlay from any state, so it sits ahead of both the
+       visibility gate and binding capture: a rebinding session must not be
+       able to swallow the host's own key. The guest never acts on F2 anyway
+       -- none of the 42 retail keyboard defaults read DIK 0x3c -- but the
+       consumed event also never reaches the guest's window. */
+    if ((event->type == SDL_EVENT_KEY_DOWN ||
+         event->type == SDL_EVENT_KEY_UP) &&
+        x2_settings_overlay_toggle_key(event->key.key,
+                                       event->type == SDL_EVENT_KEY_DOWN,
+                                       event->key.repeat != 0)) {
+        if (event->type == SDL_EVENT_KEY_DOWN) {
+            std::fprintf(stderr, "RMLUI: F2 %s the Port Settings overlay.\n",
+                         x2_settings_overlay_visible() ? "showed" : "hid");
+            if (!x2_settings_overlay_visible() &&
+                x2::ui::settings_document_capturing())
+                x2::ui::settings_document_cancel_capture();
+        }
+        return 1;
+    }
     if (!x2_settings_overlay_visible()) return 0;
     if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat &&
         event->key.key == SDLK_ESCAPE) {

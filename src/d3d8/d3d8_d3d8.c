@@ -20,37 +20,98 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef X2_WITH_SDL
+#include <SDL3/SDL.h>
+#endif
+
 /* ---- the adapter ------------------------------------------------------- */
 
 /*
  * The display modes this adapter reports.
  *
- * A fixed list, and honestly so: this backend presents into a window the host
- * owns and never changes the desktop mode, so every entry here is a size the
- * window can take rather than a mode the monitor will be switched to. The list
- * is the set the game's own options screen offers, at both of the formats a
- * D3D8 title of this era uses.
+ * The base list is the set the game's own options screen offers, at both of
+ * the formats a D3D8 title of this era uses. To it adapter_enumeration adds
+ * the ONE size this launch published into the game's Display\Resolution
+ * value (display_mode_seed), because the engine validates a chosen mode
+ * against what the adapter enumerates and the port must not offer an output
+ * size its own boundary refuses to name.
  *
  * If the engine is ever seen picking a mode that is not in this list, that is
  * this list being too short -- not the engine being wrong.
  */
-static const struct { uint32_t w, h; } g_modes[] = {
+static const struct { uint32_t w, h; } g_base_modes[] = {
     {  640,  480 }, {  800,  600 }, { 1024,  768 }, { 1152,  864 },
     { 1280,  720 }, { 1280,  960 }, { 1280, 1024 }, { 1600, 1200 },
     { 1920, 1080 }
 };
 static const uint32_t g_mode_formats[] = { D3DFMT_X8R8G8B8, D3DFMT_R5G6B5 };
 
-#define NMODES ((int)(sizeof g_modes / sizeof g_modes[0]))
 #define NFORMATS ((int)(sizeof g_mode_formats / sizeof g_mode_formats[0]))
-#define MODE_COUNT (NMODES * NFORMATS)
+#define NBASE_MODES ((int)(sizeof g_base_modes / sizeof g_base_modes[0]))
 
-/* The mode the "desktop" is in, which is what the engine compares against when
-   deciding whether a windowed mode is legal. */
-#define DESKTOP_W       1280u
-#define DESKTOP_H       1024u
+/*
+ * The extra mode slot: the size this launch published into the game's
+ * Display\Resolution value, when it is not already in the base list. Resolved
+ * once -- the engine enumerates repeatedly and the answer cannot change
+ * mid-run.
+ */
+static struct { int resolved, present; uint32_t w, h; } g_published_mode;
+
+static void resolve_published_mode(void)
+{
+    if (g_published_mode.resolved) return;
+    g_published_mode.resolved = 1;
+    {
+        extern uint32_t x2_display_mode_seed_width(void);
+        extern uint32_t x2_display_mode_seed_height(void);
+        uint32_t w = x2_display_mode_seed_width();
+        uint32_t h = x2_display_mode_seed_height();
+        int j;
+        if (w && h)
+            for (j = 0; j < NBASE_MODES; j++)
+                if (g_base_modes[j].w == w && g_base_modes[j].h == h) return;
+        if (w && h) {
+            g_published_mode.present = 1;
+            g_published_mode.w = w;
+            g_published_mode.h = h;
+            printf("d3d8: adapter enumerates the published %ux%u as mode "
+                   "%d\n", w, h, NBASE_MODES);
+        }
+    }
+}
+
+static int nmodes(void)
+{
+    resolve_published_mode();
+    return NBASE_MODES + (g_published_mode.present ? 1 : 0);
+}
+
 #define DESKTOP_FORMAT  D3DFMT_X8R8G8B8
 #define DESKTOP_HZ      60u
+
+/*
+ * The mode the "desktop" is in, which is what the engine compares against
+ * when deciding whether a windowed mode is legal. The old constant pair
+ * (1280x1024) made every larger windowed mode ILLEGAL here: the engine built
+ * the device, failed its own legality pass against this value, and reverted
+ * the stored resolution to default ("Display failed!", the #22 path). What
+ * the value means is the real desktop, so ask SDL for it; without SDL video
+ * there is nothing the engine could compare against anyway and the constant
+ * stands.
+ */
+static void current_desktop(uint32_t *w, uint32_t *h)
+{
+#ifdef X2_WITH_SDL
+    if (SDL_WasInit(SDL_INIT_VIDEO)) {
+        const SDL_DisplayMode *m =
+            SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+        if (m && m->w > 0 && m->h > 0) { *w = (uint32_t)m->w;
+                                         *h = (uint32_t)m->h; return; }
+    }
+#endif
+    *w = 1280u;
+    *h = 1024u;
+}
 
 static void *guest_ptr(uint32_t a, const char *what)
 {
@@ -139,18 +200,28 @@ static void d3d8_GetAdapterIdentifier(D3D8Object *self, CPU *C)
 static void d3d8_GetAdapterModeCount(D3D8Object *self, CPU *C)
 {
     (void)self;
-    d3d8_ret(C, (uint32_t)MODE_COUNT);
+    d3d8_ret(C, (uint32_t)(nmodes() * NFORMATS));
 }
 
 static void d3d8_EnumAdapterModes(D3D8Object *self, CPU *C)
 {
     uint32_t mode = d3d8_arg(C, 1);
     D3DDISPLAYMODE *out = (D3DDISPLAYMODE *)guest_ptr(d3d8_arg(C, 2), "mode");
+    int imode;
     (void)self;
     if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
-    if (mode >= (uint32_t)MODE_COUNT) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
-    out->Width  = g_modes[mode / NFORMATS].w;
-    out->Height = g_modes[mode / NFORMATS].h;
+    if (mode >= (uint32_t)(nmodes() * NFORMATS)) {
+        d3d8_ret(C, D3DERR_INVALIDCALL);
+        return;
+    }
+    imode = (int)(mode / NFORMATS);
+    if (imode < NBASE_MODES) {
+        out->Width  = g_base_modes[imode].w;
+        out->Height = g_base_modes[imode].h;
+    } else {
+        out->Width  = g_published_mode.w;
+        out->Height = g_published_mode.h;
+    }
     out->RefreshRate = DESKTOP_HZ;
     out->Format = g_mode_formats[mode % NFORMATS];
     d3d8_ret(C, D3D_OK);
@@ -159,10 +230,12 @@ static void d3d8_EnumAdapterModes(D3D8Object *self, CPU *C)
 static void d3d8_GetAdapterDisplayMode(D3D8Object *self, CPU *C)
 {
     D3DDISPLAYMODE *out = (D3DDISPLAYMODE *)guest_ptr(d3d8_arg(C, 1), "mode");
+    uint32_t w, h;
     (void)self;
     if (!out) { d3d8_ret(C, D3DERR_INVALIDCALL); return; }
-    out->Width = DESKTOP_W;
-    out->Height = DESKTOP_H;
+    current_desktop(&w, &h);
+    out->Width = w;
+    out->Height = h;
     out->RefreshRate = DESKTOP_HZ;
     out->Format = DESKTOP_FORMAT;
     d3d8_ret(C, D3D_OK);
