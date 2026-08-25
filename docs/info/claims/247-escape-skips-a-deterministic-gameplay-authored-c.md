@@ -4,9 +4,9 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: cutscene,conversation,input
-depends: src/native/conversation.c#x2_override_0045d1a0, src/native/conversation_cutscene_skip.c#snapshot, src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_should_advance, src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_observe_inactive, src/native/conversation_skip_policy.c#conversation_skip_policy_is_authored, src/native/conversation_skip_policy.c#conversation_skip_policy_update, src/native/cutscene_skip_probe.c#cutscene_skip_probe_report, tools/check_conversation_skip_wiring.py#audit
-reconfirmed: 2026-08-22
-verified_at: 2026-08-22 17:13:43
+depends: src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_observe_inactive
+reconfirmed: 2026-08-25
+verified_at: 2026-08-25 14:19:20
 ---
 
 ## Claim
@@ -28,3 +28,7 @@ Reconfirmed against the final inactive-exit implementation and bounded tutorial 
 ## Re-confirmed 2026-08-22
 
 The tightened final classifier still admits the verified tutorial because its pre-input probe reported both camera ownership and controls lock; the Escape run's five retail advances, cleanup scripts, restored controls, and idle latch remain valid.
+
+## Re-confirmed 2026-08-25
+
+Re-verified 2026-08-25 after the observe_inactive signature gained the live input manager and the resume policy gained the control-lock hold: tools/live_case.py cutscene-skip 7/7 on the rebuilt scratch/build-native tree. Escape at frame 1265 on a visible line produced 1 request and 5 retail response advances, launched nightcrawler_spawn and conv_0020b_end, 0020b started 0x18->0x13 with line 0x41->0x40, controls unlocked, latch idle. The whole-sequence behaviour this now composes with is C263.

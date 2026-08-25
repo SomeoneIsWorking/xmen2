@@ -338,6 +338,25 @@ static int start_latest_load(const CPU *source)
     return 1;
 }
 
+/* Direct boot dispatch: run the one authoritative retail mode-3 chain right
+   at the intercepted intro command instead of routing through the menu-map
+   lifecycle. The boot's own intro phase has already executed `resetgame` and
+   initialized the save manager by the time the command fires, so the state
+   is the pristine one the chain expects; the LOAD SUCCESSFUL ack re-selects
+   the primary player (the payload keys its party writes off CPadManager's
+   current player), which is the piece the first direct attempt lacked.
+   Returns 0 unchanged when anything refuses -- the caller falls back to the
+   retail menu path. */
+int x2_continue_boot_dispatch(struct CPU *C)
+{
+    if (!exe_base()) return 0;
+    if (!catalog_for_show()) return 0;
+    if (!start_latest_load(C)) return 0;
+    g_boot_load_pending = 1;
+    x2_boot_mode_runtime_continue_started();
+    return 1;
+}
+
 void x2_override_005f2b70(CPU *C)
 {
     if (!g_continue_command_armed) {

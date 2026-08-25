@@ -14,8 +14,15 @@ int conversation_cutscene_skip_should_advance(struct CPU *cpu, uint32_t self,
 
 /* The retail update returns before the action gate while the conversation is
  * hidden/disabled.  Observe that path so an armed sequence is retired as soon
- * as authored cleanup restores controls. */
-void conversation_cutscene_skip_observe_inactive(uint32_t self);
+ * as authored cleanup restores controls -- and so an action-20 press during a
+ * camera-only stretch (locked, no record visible) arms the same latch a press
+ * on a visible line arms. */
+void conversation_cutscene_skip_observe_inactive(struct CPU *cpu,
+                                                 uint32_t self,
+                                                 uint32_t input);
+
+/* The retail control-lock clock, as the authored classifier reads it. */
+int conversation_cutscene_skip_controls_locked(void);
 
 /* Classify the current response through the same guest layout used by manual
  * skip and automatic Continue resume. */

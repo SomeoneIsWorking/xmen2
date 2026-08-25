@@ -17,14 +17,17 @@ void x2_conversation_resume_policy_arm(X2ConversationResumePolicy *policy,
 
 void x2_conversation_resume_policy_observe(
     X2ConversationResumePolicy *policy, int visible, int ending,
-    ConversationSkipResponse response, double now_s)
+    int controls_locked, ConversationSkipResponse response, double now_s)
 {
     if (policy->state == X2_CONVERSATION_RESUME_IDLE) return;
     policy->observations++;
 
-    /* Expiry precedes classification.  A conversation first observed at or
-       after the bound is not necessarily the one restored by Continue. */
-    if (x2_conversation_resume_policy_expire(policy, now_s)) return;
+    /* Expiry precedes classification, but a continuous control lock means
+       the restored authored sequence still owns input: its records arrive
+       through hidden gaps (the walk between two conversations outlasts any
+       fixed bound), so only an unlocked observation can age out. */
+    if (x2_conversation_resume_policy_expire(policy, now_s, controls_locked))
+        return;
 
     if (policy->state == X2_CONVERSATION_RESUME_WAITING && !visible &&
         !ending) {
@@ -34,6 +37,7 @@ void x2_conversation_resume_policy_observe(
 
     if (!visible || ending) {
         policy->last_deterministic = 0;
+        if (controls_locked) return;
         policy->retired++;
         if (policy->state == X2_CONVERSATION_RESUME_SKIPPING)
             policy->skipped++;
@@ -56,10 +60,11 @@ void x2_conversation_resume_policy_observe(
 }
 
 int x2_conversation_resume_policy_expire(X2ConversationResumePolicy *policy,
-                                         double now_s)
+                                         double now_s, int controls_locked)
 {
-    if (policy->state == X2_CONVERSATION_RESUME_IDLE ||
-        now_s - policy->armed_at_s < CONVERSATION_RESUME_WAIT_SECONDS)
+    if (policy->state == X2_CONVERSATION_RESUME_IDLE) return 0;
+    if (controls_locked) return 0;
+    if (now_s - policy->armed_at_s < CONVERSATION_RESUME_WAIT_SECONDS)
         return 0;
     policy->expired++;
     retire(policy);

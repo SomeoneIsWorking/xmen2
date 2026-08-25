@@ -27,11 +27,15 @@ typedef struct X2ConversationResumePolicy {
 
 void x2_conversation_resume_policy_arm(X2ConversationResumePolicy *policy,
                                        double now_s);
+/* controls_locked: the retail control-lock clock. While it holds, hidden
+   gaps between records belong to the same authored sequence and the policy
+   holds; the first unlocked observation (or the age bound unlocked) retires
+   it, so later unrelated dialogue is never touched. */
 void x2_conversation_resume_policy_observe(
     X2ConversationResumePolicy *policy, int visible, int ending,
-    ConversationSkipResponse response, double now_s);
+    int controls_locked, ConversationSkipResponse response, double now_s);
 int x2_conversation_resume_policy_expire(X2ConversationResumePolicy *policy,
-                                         double now_s);
+                                         double now_s, int controls_locked);
 int x2_conversation_resume_policy_should_advance(
     const X2ConversationResumePolicy *policy);
 int x2_conversation_resume_policy_active(

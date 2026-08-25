@@ -180,6 +180,18 @@ static int action20_down(CPU *cpu, uint32_t input)
     return down;
 }
 
+int conversation_cutscene_skip_controls_locked(void)
+{
+    uint32_t base = exe_base();
+    float now = 0.0f, limit = 0.0f;
+
+    if (!base ||
+        !peek_float(base + CLOCK_OBJECT_RVA + CLOCK_NOW, &now) ||
+        !peek_float(base + CLOCK_OBJECT_RVA + CLOCK_CONTROL_LIMIT, &limit))
+        return 0;
+    return limit < 0.0f || limit > now;
+}
+
 int conversation_cutscene_skip_should_advance(CPU *cpu, uint32_t self,
                                                uint32_t slot, uint32_t input)
 {
@@ -194,13 +206,27 @@ int conversation_cutscene_skip_should_advance(CPU *cpu, uint32_t self,
     return decision == CONVERSATION_SKIP_ADVANCE;
 }
 
-void conversation_cutscene_skip_observe_inactive(uint32_t self)
+void conversation_cutscene_skip_observe_inactive(struct CPU *cpu,
+                                                 uint32_t self,
+                                                 uint32_t input)
 {
     ConversationCutsceneSnapshot state = snapshot(exe_base(), self, SLOT_NONE);
 
     /* An unreadable clock cannot prove cleanup restored control, so retain the
        latch until production state becomes readable again. */
     if (!state.readable) return;
+    /* The authored sequence owns input whenever the control lock holds, and
+       that includes the camera-only stretches before, between and after
+       conversation records -- the opening pan of the tutorial's intro plays
+       for seconds before its first line exists. An Escape pressed there must
+       arm the same latch a press on a visible line arms, or the user skips
+       one record and watches the rest of the sequence they asked to skip. */
+    if (cpu && input && !g_policy.active && state.controls_locked &&
+        action20_down(cpu, input)) {
+        g_policy.requests++;
+        g_policy.active = 1;
+        x2_conversation_resume_manual_override();
+    }
     (void)conversation_skip_policy_update(
         &g_policy, 0, 0, state.controls_locked, 0,
         CONVERSATION_SKIP_RESPONSE_WAITING);
