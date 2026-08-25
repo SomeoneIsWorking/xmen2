@@ -1,6 +1,32 @@
 cmake_minimum_required(VERSION 3.16)
 project(xmen2_sdl LANGUAGES C CXX)
 
+# ONE build tree. `./run.sh` maintains scratch/build-native, and that is the
+# tree tools/live_case.py, tools/native_discover.sh and tools/run.py all
+# execute. A second in-source tree (the hand-configured `build/`) emitted a
+# target of the same name that no harness ever ran: building it produced a
+# binary that looked current and was not, and a full live PASS report once
+# described an hour-old binary (issue #118). Its bare configure also picked up
+# the system interpreter rather than the locked .venv, so tests needing Pillow
+# failed for a reason that had nothing to do with the code.
+#
+# An in-source directory under scratch/ is fine (scratch/ is gitignored and is
+# where every run artifact belongs) and so is any tree outside the source root,
+# which is what BUILD=<path> in tools/run.py configures. Anything else is the
+# mistake above, and it is refused rather than silently allowed.
+file(RELATIVE_PATH _x2_build_rel "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}")
+if(NOT _x2_build_rel MATCHES "^\\.\\./" AND NOT _x2_build_rel MATCHES "^scratch/")
+    message(FATAL_ERROR
+        "Refusing to configure into '${_x2_build_rel}'.\n"
+        "This project has ONE build tree: scratch/build-native, maintained by "
+        "./run.sh and executed by every live harness. A second in-source tree "
+        "builds a same-named x2native that nothing runs (issue #118).\n"
+        "  ./run.sh                                    provision, build, launch\n"
+        "  cmake --build scratch/build-native -j$(nproc)\n"
+        "  ctest --test-dir scratch/build-native --output-on-failure\n"
+        "Use a path under scratch/, or one outside the source root (BUILD=...).")
+endif()
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(CMAKE_C_STANDARD 11)

@@ -20,7 +20,7 @@ binary from an hour earlier, and a freshly added override at
 
 Two build trees emit a target named `x2native`:
 
-- `build/x2native` (root `cmake -S . -B build`), 85 MB, used by `ctest`
+- `build/x2native` (root `cmake -S . -B build`), 85 MB, used by `ctest` -- now deleted and refused
 - `scratch/build-native/x2native` (the locked initializer, RelWithDebInfo,
   `.venv` python), 273 MB, the one `run.sh`, `tools/live_case.py` and
   `tools/native_discover.sh` all run
@@ -37,12 +37,23 @@ An override that only spoke when it acted would have been indistinguishable
 from one that was never compiled in, and the run would have been read as a
 pass. This is the diagnostic-negative rule paying for itself.
 
-## Fix / how to avoid
+## Fix
 
-Build `scratch/build-native` before any `tools/live_case.py` run:
+The duplicate is GONE rather than documented around. `build/` is deleted, and
+the root `CMakeLists.txt` now refuses to configure into any in-source directory
+that is not under `scratch/`, naming this issue and the commands that work. A
+path outside the source root still configures, because that is what
+`BUILD=<path>` in `tools/run.py` sets.
 
-    cmake --build scratch/build-native --target x2native -j$(nproc)
+    ./run.sh                                       provision, build, launch
+    cmake --build scratch/build-native -j$(nproc)  build without launching
+    ctest --test-dir scratch/build-native --output-on-failure
 
-`ctest --test-dir scratch/build-native` also runs the full 107-test suite with
-the locked python, which `build/` does not (its `pad_font` test fails on a
-missing Pillow because the bare configure picks up the system interpreter).
+The refusal was run against both classes before being trusted: `cmake -S . -B
+build` fails with the message, while `scratch/build-native` and an out-of-tree
+path both configure clean.
+
+`scratch/build-native` was always the better tree anyway -- it runs the same
+107 tests with the locked `.venv` python, which `build/` did not (its
+`pad_font` failed on a missing Pillow because the bare configure picked up the
+system interpreter, a failure with nothing to do with the code).
