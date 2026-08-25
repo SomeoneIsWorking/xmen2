@@ -34,6 +34,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "advapi32.h"
+#include "advapi32_internal.h"
 #include "shell32.h"
 
 #include <ctype.h>
@@ -62,28 +63,9 @@ static void ret_std(CPU *C, uint32_t eax, int nargs)
 
 /* ---- the store ---------------------------------------------------------- */
 
-#define MAX_VALUES 256
-#define MAX_PATH_  256
-#define MAX_NAME_   96
-#define MAX_DATA_  512
-
-typedef struct {
-    int      used;
-    char     path[MAX_PATH_];            /* HIVE\key\subkey, no trailing sep */
-    char     name[MAX_NAME_];            /* "" is the key's default value */
-    uint32_t type;
-    uint32_t len;
-    unsigned char data[MAX_DATA_];
-} RegValue;
-
 static RegValue g_val[MAX_VALUES];
 static int      g_dirty;
 static unsigned long g_reads, g_misses, g_writes;
-
-/* Keys that exist but hold no value still have to be findable, or a
-   RegCreateKey followed by RegOpenKey reports the key missing. They are
-   recorded as a value row with a name of "\x01" that nothing enumerates. */
-#define KEY_MARK "\001"
 
 static const char *hive_name(uint32_t h)
 {
@@ -195,7 +177,13 @@ static const char *store_path(void)
     return p;
 }
 
-static void store_save(void)
+void advapi32_store_note_write(void)
+{
+    g_writes++;
+    g_dirty = 1;
+}
+
+void advapi32_store_save(void)
 {
     FILE *f;
     int i;
@@ -221,7 +209,7 @@ static void store_save(void)
     g_dirty = 0;
 }
 
-static void store_load(void)
+void advapi32_store_load(void)
 {
     static int done;
     FILE *f;
@@ -266,7 +254,7 @@ static void store_load(void)
 
 /* ---- lookup ------------------------------------------------------------- */
 
-static RegValue *find(const char *path, const char *name)
+RegValue *advapi32_store_find(const char *path, const char *name)
 {
     int i;
     for (i = 0; i < MAX_VALUES; i++)
@@ -276,9 +264,9 @@ static RegValue *find(const char *path, const char *name)
     return NULL;
 }
 
-static RegValue *put(const char *path, const char *name)
+RegValue *advapi32_store_put(const char *path, const char *name)
 {
-    RegValue *v = find(path, name);
+    RegValue *v = advapi32_store_find(path, name);
     int i;
     if (v) return v;
     for (i = 0; i < MAX_VALUES; i++) if (!g_val[i].used) break;
@@ -321,7 +309,7 @@ static void reg_open(CPU *C, int ex)
     char full[MAX_PATH_];
     int nargs = ex ? 5 : 3;
 
-    store_load();
+    advapi32_store_load();
     if (!parent) { ret_std(C, ERROR_ACCESS_DENIED, nargs); return; }
     path_join(full, sizeof full, parent, sub);
     if (!key_exists(full)) {
@@ -355,17 +343,17 @@ static void reg_create(CPU *C, int ex)
     char full[MAX_PATH_];
     int nargs = ex ? 9 : 3, existed;
 
-    store_load();
+    advapi32_store_load();
     if (!parent) { ret_std(C, ERROR_ACCESS_DENIED, nargs); return; }
     path_join(full, sizeof full, parent, sub);
     existed = key_exists(full);
     if (!existed) {
-        RegValue *v = put(full, KEY_MARK);
+        RegValue *v = advapi32_store_put(full, KEY_MARK);
         if (!v) { ret_std(C, ERROR_ACCESS_DENIED, nargs); return; }
         v->type = REG_BINARY;
         v->len = 0;
         g_dirty = 1;
-        store_save();
+        advapi32_store_save();
     }
     {   uint32_t h = key_open(full);
         if (!h) { ret_std(C, ERROR_ACCESS_DENIED, nargs); return; }
@@ -386,10 +374,10 @@ void imp_ADVAPI32_RegQueryValueExA(CPU *C)
     uint32_t ptype = A(3), data = A(4), pcb = A(5);
     RegValue *v;
 
-    store_load();
+    advapi32_store_load();
     g_reads++;
     if (!path) { ret_std(C, ERROR_ACCESS_DENIED, 6); return; }
-    v = find(path, name);
+    v = advapi32_store_find(path, name);
     if (!v) {
         g_misses++;
         ret_std(C, ERROR_FILE_NOT_FOUND, 6);
@@ -425,11 +413,11 @@ void imp_ADVAPI32_RegQueryValueA(CPU *C)
     char full[MAX_PATH_];
     RegValue *v;
 
-    store_load();
+    advapi32_store_load();
     g_reads++;
     if (!parent) { ret_std(C, ERROR_ACCESS_DENIED, 4); return; }
     path_join(full, sizeof full, parent, sub);
-    v = find(full, "");
+    v = advapi32_store_find(full, "");
     if (!v) {
         g_misses++;
         if (pcb) WR32(pcb, 0);
@@ -455,7 +443,7 @@ void imp_ADVAPI32_RegSetValueExA(CPU *C)
     uint32_t type = A(3), data = A(4), cb = A(5);
     RegValue *v;
 
-    store_load();
+    advapi32_store_load();
     if (!path) { ret_std(C, ERROR_ACCESS_DENIED, 6); return; }
     if (cb > MAX_DATA_) {
         /* Refused, not truncated: a truncated REG_BINARY blob reads back as a
@@ -467,14 +455,14 @@ void imp_ADVAPI32_RegSetValueExA(CPU *C)
         ret_std(C, ERROR_ACCESS_DENIED, 6);
         return;
     }
-    v = put(path, name);
+    v = advapi32_store_put(path, name);
     if (!v) { ret_std(C, ERROR_ACCESS_DENIED, 6); return; }
     v->type = type;
     v->len = cb;
     if (cb && data) memcpy(v->data, (const void *)(uintptr_t)data, cb);
     g_writes++;
     g_dirty = 1;
-    store_save();                        /* durable now, not at exit: a crash
+    advapi32_store_save();                        /* durable now, not at exit: a crash
                                             must not lose a setting the game
                                             has already told the player it saved */
     ret_std(C, ERROR_SUCCESS, 6);
@@ -494,7 +482,7 @@ void imp_ADVAPI32_RegEnumKeyExA(CPU *C)
     size_t n;
     int i, seen = 0;
 
-    store_load();
+    advapi32_store_load();
     if (!path) { ret_std(C, ERROR_ACCESS_DENIED, 8); return; }
     n = strlen(path);
     for (i = 0; i < MAX_VALUES; i++) {
@@ -544,7 +532,7 @@ void imp_ADVAPI32_RegEnumValueA(CPU *C)
     uint32_t ptype = A(5), data = A(6), pcb = A(7);
     int i, seen = 0;
 
-    store_load();
+    advapi32_store_load();
     if (!path) { ret_std(C, ERROR_ACCESS_DENIED, 8); return; }
     for (i = 0; i < MAX_VALUES; i++) {
         RegValue *v = &g_val[i];
@@ -596,7 +584,7 @@ void advapi32_report(void)
     for (i = 0; i < MAX_VALUES; i++)
         if (g_val[i].used && strcmp(g_val[i].name, KEY_MARK) != 0) n++;
     for (i = 0; i < g_key_cap; i++) if (g_key[i].used) leaked++;
-    store_save();
+    advapi32_store_save();
     if (!g_reads && !g_writes) {
         printf("  advapi32: the registry was never touched.\n");
         return;

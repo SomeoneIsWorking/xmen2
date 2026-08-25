@@ -282,6 +282,11 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
         } else {
             std::string status = save_settings();
             rebuild();
+            /* The window follows immediately, but the engine parses
+               Display\Resolution once per launch to size its device, so the
+               GAME re-renders at the new size on the next launch. */
+            if (id == "resolution") status += " (game renders this on next "
+                                             "launch)";
             set_status(status);
         }
     } else if (id == "close") {

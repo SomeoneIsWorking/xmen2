@@ -36,6 +36,7 @@
 #include "live_session.h"
 #include "input_record.h"
 #include "crt_selftest.h"
+#include "fault_report.h"
 
 #include <dlfcn.h>
 #include <signal.h>
@@ -185,7 +186,7 @@ static const char *fault_meaning(int sig, int code)
     }
 }
 
-static const char *fault_name(int sig)
+const char *fault_name(int sig)
 {
     switch (sig) {
     case SIGSEGV: return "SIGSEGV";
@@ -207,7 +208,7 @@ static const char *fault_name(int sig)
  * host rip, the guest registers and the boundary ring -- which is the part
  * that names where the guest was.
  */
-static void fault_report(int sig, siginfo_t *si, void *uc)
+void fault_report(int sig, siginfo_t *si, void *uc)
 {
     uint32_t a = (uint32_t)(uintptr_t)si->si_addr;
     const char *mod = NULL, *sym;
@@ -538,124 +539,6 @@ static int poison_init(void)
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT, &sa, NULL);
     return 0;
-}
-
-/*
- * PROOF THAT THE FAULT REPORTER FIRES -- x2native --fault-selftest.
- *
- * A crash reporter that never runs is worse than none: it makes silence read
- * as "no crash". Each signal is raised in a CHILD with stderr on a pipe, and
- * the parent requires the report to name that signal; a control child that
- * installs the same handlers and does NOT fault must produce nothing, so a
- * check that would pass on any output fails here.
- *
- * SIGILL is raised with a real illegal instruction (__builtin_trap emits UD2),
- * which is the exact shape of the crash this was written for. The other three
- * use raise(), which proves the handler and its message but carries si_code
- * SI_USER rather than a hardware code -- said here rather than implied.
- */
-static int fault_child(int sig, int genuine, int control)
-{
-    struct sigaction sa;
-    static const int fatal[] = { SIGSEGV, SIGILL, SIGFPE, SIGBUS, SIGTRAP };
-    size_t i;
-    memset(&sa, 0, sizeof sa);
-    sa.sa_sigaction = fault_report;
-    sa.sa_flags = SA_SIGINFO;
-    for (i = 0; i < sizeof fatal / sizeof fatal[0]; i++)
-        sigaction(fatal[i], &sa, NULL);
-    if (control) { fflush(NULL); _exit(0); }
-    if (genuine) __builtin_trap();
-    raise(sig);
-    fflush(NULL);
-    _exit(0);                    /* the handler _exit(3)s; reaching here fails */
-}
-
-static int fault_selftest(void)
-{
-    static const struct { int sig; int genuine; const char *what; } cases[] = {
-        { SIGILL,  1, "a real UD2 illegal instruction" },
-        { SIGFPE,  0, "raise(SIGFPE)" },
-        { SIGBUS,  0, "raise(SIGBUS)" },
-        { SIGTRAP, 0, "raise(SIGTRAP)" },
-        { SIGSEGV, 0, "raise(SIGSEGV)" },
-    };
-    size_t i;
-    int fails = 0;
-
-    for (i = 0; i <= sizeof cases / sizeof cases[0]; i++) {
-        int control = (i == sizeof cases / sizeof cases[0]);
-        int sig = control ? 0 : cases[i].sig;
-        const char *want = control ? NULL : fault_name(sig);
-        char buf[8192];
-        int fd[2], status = 0;
-        pid_t pid;
-        size_t got = 0;
-        ssize_t n;
-
-        if (pipe(fd) != 0) {
-            printf("x2native --fault-selftest: pipe() failed; NOTHING was "
-                   "checked.\n");
-            return 1;
-        }
-        fflush(NULL);
-        pid = fork();
-        if (pid < 0) {
-            printf("x2native --fault-selftest: fork() failed; NOTHING was "
-                   "checked.\n");
-            return 1;
-        }
-        if (pid == 0) {
-            close(fd[0]);
-            dup2(fd[1], 2);
-            close(fd[1]);
-            return fault_child(sig, control ? 0 : cases[i].genuine, control);
-        }
-        close(fd[1]);
-        /* Drain to EOF even once the buffer is full: a child blocked writing
-           into a pipe nobody is reading would make waitpid() below hang, and a
-           selftest that hangs is worse than one that fails. */
-        for (;;) {
-            char sink[4096];
-            if (got < sizeof buf - 1)
-                n = read(fd[0], buf + got, sizeof buf - 1 - got);
-            else
-                n = read(fd[0], sink, sizeof sink);
-            if (n <= 0) break;
-            if (got < sizeof buf - 1) got += (size_t)n;
-        }
-        buf[got] = 0;
-        close(fd[0]);
-        waitpid(pid, &status, 0);
-
-        if (control) {
-            int quiet = (strstr(buf, "***") == NULL);
-            int clean = WIFEXITED(status) && WEXITSTATUS(status) == 0;
-            printf("  control: handlers installed, no fault  -- %s "
-                   "(%zu byte(s) on stderr, exit %d)\n",
-                   quiet && clean ? "silent, as it must be"
-                                  : "FAILED: it reported a fault that did not "
-                                    "happen",
-                   got, WIFEXITED(status) ? WEXITSTATUS(status) : -1);
-            if (!quiet || !clean) fails++;
-            continue;
-        }
-        {
-            int named = strstr(buf, want) != NULL;
-            int reported = WIFEXITED(status) && WEXITSTATUS(status) == 3;
-            printf("  %-8s via %-32s -- %s (exit %d, %zu byte(s) reported)\n",
-                   want, cases[i].what,
-                   named && reported ? "reported by name"
-                                     : "FAILED: no report reached stderr",
-                   WIFEXITED(status) ? WEXITSTATUS(status)
-                                     : -WTERMSIG(status), got);
-            if (!named || !reported) fails++;
-        }
-    }
-    printf("x2native --fault-selftest: %s -- %d failure(s). Before this, only "
-           "SIGSEGV was handled and every other fatal signal killed the run "
-           "with nothing printed.\n", fails ? "FAILED" : "PASSED", fails);
-    return fails ? 1 : 0;
 }
 
 /* Each module's base, defined by its generated native file. The host maps the
@@ -2068,7 +1951,7 @@ int main(int argc, char **argv)
         extern int oracle_probe_selftest(void);
         return oracle_probe_selftest();
     }
-    if (options.fault_selftest) return fault_selftest();
+    if (options.fault_selftest) return x2_fault_selftest();
     if (vkselftest) {
         extern int gpu_host_selftest(void);
         return gpu_host_selftest();
@@ -2167,6 +2050,13 @@ int main(int argc, char **argv)
     /* NOT atexit: see x2_interrupt_reports, which calls it on every ending. */
     shell32_install();
     advapi32_install(); atexit(advapi32_report);
+    /* Publish video.width x video.height into the game's own Display\
+       Resolution BEFORE any guest code runs: the engine parses that value
+       while its modules initialise and sizes its D3D device from it. See
+       display_mode_seed.h; not the synthetic view rejected as C255. */
+    {   extern void x2_display_mode_seed_boot(void);
+        x2_display_mode_seed_boot();
+    }
     {   extern void kernel32_narrowing_report(void);
         atexit(kernel32_narrowing_report); }
     { extern void winmm_report(void); atexit(winmm_report); }

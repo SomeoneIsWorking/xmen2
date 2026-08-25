@@ -14,7 +14,7 @@ DEFAULT_LIMIT = 500
 LEGACY_LIMITS = {
     "src/native/kernel32.c": 4010,
     "src/native/x86rt_native.c": 2753,
-    "src/native/x2native.c": 2388,
+    "src/native/x2native.c": 2278,
     "src/d3d8/d3d8_drawcall.c": 2394,
     "src/d3d8/d3d8_device.c": 1994,
     "src/native/crt.c": 1690,
