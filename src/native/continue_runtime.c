@@ -1,4 +1,5 @@
 #include "boot_mode_runtime.h"
+#include "boot_player_selection.h"
 #include "autosave_runtime.h"
 #include "continue_policy.h"
 #include "conversation_resume.h"
@@ -21,6 +22,7 @@ enum {
     FN_SET_DEVICE = 0x000aece0u,
     FN_CHOOSE_FILE = 0x000ae850u,
     FN_SUCCESS_CALLBACK = 0x0009f140u,
+    FN_MAIN_MENU_HIDE = 0x001bb920u,
     FN_READ_HEADER = 0x0015f580u,
     FN_READ_LEAF = 0x0015fcd0u,
     FN_CONTINUE_CALLBACK = 0x001f2b70u,
@@ -48,6 +50,8 @@ enum {
     CONTINUE_COMMAND_SOURCE = X2_MAIN_MENU_ROWS
 };
 
+#define PRIMARY_LOCAL_PLAYER 0u
+
 static const uint32_t LABEL_RVA[X2_MAIN_MENU_ROWS] = {
     0x002a135cu, 0x002a134cu, 0x002a1290u,
     0x002a12d8u, 0x002a133cu, 0x002a1280u
@@ -68,6 +72,7 @@ static int g_strings_ready;
 static int g_latest_ready;
 static int g_leaf_redirect_pending;
 static int g_continue_command_armed;
+static int g_boot_load_pending;
 static X2ContinueTransaction g_transaction;
 
 void fn_XMen2_005c9260(CPU *C);
@@ -249,18 +254,33 @@ void x2_override_005c9260(CPU *C)
 {
     uint32_t menu = C->ecx;
     int has_save;
+    int boot_continue = x2_boot_mode_runtime_continue_leaf() != NULL;
 
     x2_continue_transaction_reader_result(&g_transaction, 0);
     x2_conversation_resume_cancel_pending();
     x2_autosave_runtime_menu_show();
     x2_save_trace_menu_open();
+    /* Retail reaches CMenuMain::Show with the player who dismissed the title
+       screen selected. CMenu::Show copies that selection into CMenuMgr and
+       clears CPadManager while the menu is active; CMenu::Hide restores it
+       before the load transition. A presentation-bypassing boot has no title
+       input, so supply the primary player at this exact ownership boundary. */
+    if (boot_continue &&
+        !x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER))
+        boot_continue = 0;
     fn_XMen2_005c9260(C);
     if (!exe_base()) return;
     has_save = catalog_for_show();
     apply_menu_plan(C, menu, has_save);
-    if (has_save && g_continue_command
-        && x2_boot_mode_runtime_continue_leaf()) {
+    if (has_save && g_continue_command && boot_continue) {
         CPU call = *C;
+        /* A real menu selection leaves through CMenuMain::Hide before its
+           command runs. That derived owner calls CMenu::Hide, which restores
+           the player saved by Show, then performs the main-menu cleanup. */
+        call.ecx = menu;
+        x86_guest_call_args(&call, g_exe + FN_MAIN_MENU_HIDE, 0u);
+        g_boot_load_pending = 1;
+        call = *C;
         call.esp -= 4u; WR32(call.esp, 0u);
         x86_guest_call_args(&call, g_exe + FN_CONTINUE_CALLBACK, 0u);
         call.esp += 4u;
@@ -356,6 +376,19 @@ void x2_override_004b1280(CPU *C)
             &g_transaction, RD32(manager + MANAGER_MODE),
             RD32(manager + MANAGER_STATE)))
         return;
+    if (g_boot_load_pending) {
+        /* The menu lifecycle between our Show intercept and this ack clears
+           CPadManager's current player (write-watch: select 0, Show clears,
+           Hide restores, two later menu Shows clear and never restore), and
+           the save payload's party writes key off that player -- boot ended
+           with index -1 and every hero handle unresolved, which is exactly
+           issue #83's speaker-collision precondition. Manual Continue ends
+           at player 0 because the input-driven menu re-selects; a bypassing
+           boot re-selects here, after the last menu Show and before the
+           payload deserializes. */
+        g_boot_load_pending = 0;
+        x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);
+    }
     call = *C;
     x86_guest_call_args(&call, g_exe + FN_SUCCESS_CALLBACK, 0u);
 }

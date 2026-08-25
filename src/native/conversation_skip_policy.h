@@ -20,6 +20,7 @@ typedef struct ConversationSkipPolicy {
     unsigned advances;
     unsigned blocked;
     unsigned ignored;
+    unsigned completed;
 } ConversationSkipPolicy;
 
 /* Visibility is presentation state, not evidence that a conversation owns a

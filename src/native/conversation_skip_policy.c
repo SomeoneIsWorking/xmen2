@@ -12,7 +12,10 @@ ConversationSkipDecision conversation_skip_policy_update(
     ConversationSkipResponse response)
 {
     if (!visible) {
-        if (!continuation_locked) policy->active = 0;
+        if (!continuation_locked && policy->active) {
+            policy->active = 0;
+            policy->completed++;
+        }
         return CONVERSATION_SKIP_NONE;
     }
     if (skip_pressed) {

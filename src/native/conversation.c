@@ -48,7 +48,6 @@
 #include "x86rt_native.h"
 #include "conversation_cutscene_skip.h"
 #include "conversation_resume.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -275,6 +274,7 @@ void conversation_report(void)
                    "table.\n", g_askers_lost);
     }
     x2_conversation_resume_report();
+    conversation_cutscene_skip_report();
 }
 
 /* ---- guest calling ------------------------------------------------------

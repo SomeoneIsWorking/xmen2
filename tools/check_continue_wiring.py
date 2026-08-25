@@ -10,6 +10,8 @@ from recomp_overrides import scan_overrides
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = (ROOT / "src" / "native" / "continue_runtime.c").resolve()
+STARTUP = (ROOT / "src" / "native" / "startup.c").resolve()
+PLAYER = (ROOT / "src" / "native" / "boot_player_selection.c").resolve()
 EXPECTED = {0x005C9260, 0x005F2B70, 0x0055FF00, 0x004B1280}
 PLAIN_RET = {0x004B1280, 0x0049F140}
 
@@ -42,6 +44,51 @@ def audit_success_ack_order(source):
     if not retained < decision < callback:
         refuse("native Continue success acknowledgement does not retain the "
                "dialog body before taking the one-shot and invoking retail")
+
+
+def audit_boot_dispatch(runtime_source, startup_source, player_source):
+    dispatch = runtime_source.find("void x2_override_005c9260(")
+    select = runtime_source.find(
+        "x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER)", dispatch)
+    show = runtime_source.find("fn_XMen2_005c9260(C);", dispatch)
+    hide = runtime_source.find("g_exe + FN_MAIN_MENU_HIDE", show)
+    shared_chain = runtime_source.find(
+        "g_exe + FN_CONTINUE_CALLBACK", hide)
+    consume = runtime_source.find(
+        "x2_boot_mode_runtime_continue_started();", shared_chain)
+    if min(dispatch, select, show, hide, shared_chain, consume) < 0 \
+            or not dispatch < select < show < hide < shared_chain < consume:
+        refuse("boot Continue does not select the primary player before the "
+               "retail CMenuMain Show/Hide lifecycle dispatches the "
+               "authoritative mode-3 chain")
+
+    # The menu lifecycle between the Show intercept and the LOAD SUCCESSFUL
+    # ack clears CPadManager's current player, and the save payload's party
+    # writes key off that player: without the ack-time re-selection the boot
+    # ends with index -1 and every hero handle unresolved -- issue #83's
+    # conversation-collision precondition, live-measured 2026-08-25.
+    ack = runtime_source.find("void x2_override_004b1280(")
+    reselect = runtime_source.find("x2_boot_player_select_primary(C,", ack)
+    ack_call = runtime_source.find("fn_XMen2_004b1280(C);", ack)
+    if min(ack, reselect, ack_call) < 0 or not ack < ack_call < reselect:
+        refuse("the LOAD SUCCESSFUL ack does not re-select the primary "
+               "player after the retail dialog body (the menu lifecycle "
+               "clears CPadManager and the payload keys party writes off "
+               "that player)")
+
+    getter = player_source.find("base + PAD_MANAGER_RVA")
+    setter = player_source.find("PAD_SET_CURRENT_PLAYER", getter)
+    verify = player_source.find("PAD_CURRENT_PLAYER", setter)
+    if min(getter, setter, verify) < 0 or not getter < setter < verify:
+        refuse("boot player selection does not use and verify CPadManager's "
+               "retail current-player setter")
+
+    composition = startup_source.find("static int boot_to_host_mode(")
+    menu = startup_source.find("x2_boot_menu_open(C, exe_base)", composition)
+    if min(composition, menu) < 0 or not composition < menu:
+        refuse("startup does not preserve the retail menu-map lifecycle")
+    if "x2_continue_boot_dispatch" in startup_source:
+        refuse("startup still contains the incomplete direct save dispatch")
 
 
 def audit_plain_ret_abis(chunks):
@@ -100,9 +147,40 @@ def selftest():
         pass
     else:
         refuse("out-of-order success acknowledgement passed the audit")
-    print("continue_wiring --selftest: current DISPATCH and retained-first "
-          "success acknowledgement accepted; stale direct call and "
-          "out-of-order acknowledgement rejected")
+    runtime = ("void x2_override_005c9260(struct CPU *C) {\n"
+               "x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);\n"
+               "fn_XMen2_005c9260(C);\n"
+               "g_exe + FN_MAIN_MENU_HIDE;\n"
+               "g_exe + FN_CONTINUE_CALLBACK;\n"
+               "x2_boot_mode_runtime_continue_started();\n}\n"
+               "void x2_override_004b1280(struct CPU *C) {\n"
+               "fn_XMen2_004b1280(C);\n"
+               "x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);\n}")
+    startup = ("static int boot_to_host_mode(struct CPU *C) {\n"
+               "x2_boot_menu_open(C, exe_base);\n}")
+    player = ("base + PAD_MANAGER_RVA;\n"
+              "PAD_SET_CURRENT_PLAYER;\n"
+              "PAD_CURRENT_PLAYER;\n")
+    audit_boot_dispatch(runtime, startup, player)
+    try:
+        audit_boot_dispatch(runtime.replace(
+            "x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER);\n", ""),
+            startup, player)
+    except WiringError:
+        pass
+    else:
+        refuse("player-selection regression passed the Continue wiring audit")
+    head, _, _ = runtime.partition("void x2_override_004b1280(")
+    try:
+        audit_boot_dispatch(head, startup, player)
+    except WiringError:
+        pass
+    else:
+        refuse("an ack without the player re-selection passed the audit")
+    print("continue_wiring --selftest: current DISPATCH, retained-first "
+          "success acknowledgement and lifecycle-gated Continue accepted; "
+          "stale direct call, out-of-order acknowledgement and missing player "
+          "selection rejected")
     return 0
 
 
@@ -112,6 +190,9 @@ def main():
     if sys.argv[1:]:
         raise SystemExit("usage: check_continue_wiring.py [--selftest]")
     scanned_continue_entries()
+    runtime_source = RUNTIME.read_text(encoding="utf-8")
+    audit_boot_dispatch(runtime_source, STARTUP.read_text(encoding="utf-8"),
+                        PLAYER.read_text(encoding="utf-8"))
     chunks = sorted((ROOT / "src" / "recomp").glob(
         "XMen2_[0-9][0-9][0-9].c"))
     if not chunks:
@@ -126,14 +207,15 @@ def main():
     calls = audit_emitted_routes(sources, EXPECTED, "Continue",
                                  require_direct=False)
     audit_plain_ret_abis(sources)
-    audit_success_ack_order(RUNTIME.read_text(encoding="utf-8"))
+    audit_success_ack_order(runtime_source)
     print("continue_wiring: 4/4 exact EPs found; "
           f"{sum(calls.values())} direct edge(s) across "
           f"{sum(count > 0 for count in calls.values())}/4 EP(s) have direct "
           "edges (all route through DISPATCH); indirect entries use the "
           "authoritative runtime override table; 4/4 original bodies retained; "
           "dialog owner and retail success callback are plain RET and the "
-          "acknowledgement is retained-body first")
+          "acknowledgement is retained-body first; boot Continue attempts "
+          "the shared mode-3 chain before the retail menu fallback")
     return 0
 
 

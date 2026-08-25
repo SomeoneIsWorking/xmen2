@@ -17,7 +17,7 @@ def require(source, needle, where):
         raise WiringError(f"{where} is missing {needle!r}")
 
 
-def audit(conversation, runtime, resume, probe, cmake):
+def audit(conversation, runtime, probe, cmake):
     update_begin = conversation.find("void x2_override_0045d1a0")
     begin = conversation.find("Accept advances once")
     end = conversation.find("0x0045d3bf", begin)
@@ -40,10 +40,10 @@ def audit(conversation, runtime, resume, probe, cmake):
     require(runtime, "INPUT_ACTION_MASK", "runtime action gate")
     require(runtime, "CONVERSATION_SKIP_RESPONSE_DETERMINISTIC",
             "runtime response classifier")
-    require(runtime, "conversation_cutscene_skip_begin_sequence();",
-            "manual sequence ownership")
-    require(resume, "conversation_cutscene_skip_begin_sequence();",
-            "Continue sequence ownership")
+    require(runtime, "retail waittimed untouched (no ",
+            "retail wait ownership diagnostic")
+    if "004d9130" in runtime:
+        raise WiringError("conversation skip must not override retail waittimed")
     require(probe, "conversation_cutscene_skip_probe(", "live probe")
     require(cmake, "src/native/conversation_skip_policy.c", "x2native sources")
     require(cmake, "src/native/conversation_cutscene_skip.c", "x2native sources")
@@ -53,7 +53,6 @@ def production_sources():
     return (
         (ROOT / "src/native/conversation.c").read_text(),
         (ROOT / "src/native/conversation_cutscene_skip.c").read_text(),
-        (ROOT / "src/native/conversation_resume.c").read_text(),
         (ROOT / "src/native/cutscene_skip_probe.c").read_text(),
         (ROOT / "CMakeLists.txt").read_text(),
     )
@@ -66,11 +65,10 @@ def selftest():
         (0, "conversation_cutscene_skip_observe_inactive(self);"),
         (1, "conversation_skip_policy_is_authored("),
         (1, "CUTSCENE_SKIP_ACTION 20u"),
-        (1, "conversation_cutscene_skip_begin_sequence();"),
-        (2, "conversation_cutscene_skip_begin_sequence();"),
+        (1, "retail waittimed untouched (no "),
         (0, "call1(C, vslot(self, 0x18u), self,"),
-        (3, "conversation_cutscene_skip_probe("),
-        (4, "src/native/conversation_cutscene_skip.c"),
+        (2, "conversation_cutscene_skip_probe("),
+        (3, "src/native/conversation_cutscene_skip.c"),
     ):
         broken = list(current)
         # A source can appear in both its focused test and x2native. Remove
@@ -82,6 +80,14 @@ def selftest():
         except WiringError:
             continue
         raise WiringError(f"negative discriminator passed after removing {needle!r}")
+    broken = list(current)
+    broken[1] += '\nx86_register_override("XMen2.exe", 0x004d9130u, fn);\n'
+    try:
+        audit(*broken)
+    except WiringError:
+        pass
+    else:
+        raise WiringError("negative discriminator admitted a waittimed override")
     print("conversation_skip_wiring --selftest: 8/8 broken chains rejected")
 
 
@@ -93,7 +99,7 @@ def main():
     else:
         audit(*production_sources())
         print("conversation_skip_wiring: action20 -> authored policy -> retail "
-              "chooseResponse, production probe and x2native sources verified")
+              "chooseResponse; retail waittimed remains unmodified")
 
 
 if __name__ == "__main__":

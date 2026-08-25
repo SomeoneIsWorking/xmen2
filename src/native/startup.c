@@ -248,16 +248,21 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base)
             fprintf(stderr, "BOOT MODE: Continue was requested but no valid "
                             "save exists; opening the retail main menu.\n");
     } else if (decision->effective == X2_BOOT_CONTINUE)
-        fprintf(stderr, "BOOT MODE: skipping the introduction; the retail "
-                        "main menu will dispatch Continue from %s.\n",
+        fprintf(stderr, "BOOT MODE: skipping the introduction and menu "
+                        "interaction; preparing %s through the retail "
+                        "menu-map lifecycle and save chain.\n",
                 x2_boot_mode_runtime_continue_leaf());
     else
         fprintf(stderr, "BOOT MODE: skipping the introduction and opening "
                         "the retail main menu.\n");
     fflush(stderr);
     /* This calls the retail forced main-menu handler. It executes
-       `mainmenuexit 1`, whose command owner resets and loads menu/main_back
-       directly instead of displaying the in-game exit confirmation. */
+       `mainmenuexit 1`, whose command owner resets and loads menu/main_back.
+       That completed map lifecycle is part of Continue initialization: a
+       direct save dispatch reached the destination map but left every hero
+       handle and the current player unset. CMenuMain::Show intercepts the
+       completed lifecycle, supplies the title-screen player selection, and
+       dispatches Continue synchronously, before any menu interaction. */
     if (!x2_boot_menu_open(C, exe_base)) return 0;
     C->eax = 1u;
     C->esp += 8u;

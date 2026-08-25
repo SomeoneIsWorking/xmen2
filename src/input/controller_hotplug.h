@@ -23,4 +23,8 @@ void x2_controller_hotplug_enumerated(X2ControllerHotplug *state,
                                       int reported);
 void x2_controller_hotplug_admitted(X2ControllerHotplug *state);
 
+/* Force the next pump to re-admit the live inventory through the game's own
+   enumeration, even though no SDL generation changed. */
+void x2_controller_hotplug_invalidate(X2ControllerHotplug *state);
+
 #endif /* X2_CONTROLLER_HOTPLUG_H */

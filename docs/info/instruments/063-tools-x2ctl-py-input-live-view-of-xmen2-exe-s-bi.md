@@ -15,4 +15,10 @@ Run against both classes in the same session: idle showed 0 of 30 physical float
 
 ## Known failure modes
 
-(none recorded yet)
+- 2026-08-25, FIXED (issue #116): the probe EXECUTES guest code, so it was
+  never purely passive -- its authored-conversation slot lookup ran the
+  retail table walk at arbitrary moments, and a poll during map construction
+  stricmp'd NULL names and crashed the whole run. The lookup is now gated on
+  a visible conversation (the same production ordering). Any future probe
+  addition that guest-calls retail must gate on the same state the retail
+  caller does.
