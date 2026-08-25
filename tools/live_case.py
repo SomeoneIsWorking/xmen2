@@ -562,6 +562,91 @@ def case_pad_late(case: Case) -> None:
                "(mean |delta| %.1f > 8)" % worst, responded)
 
 
+def case_pad_after_load(case: Case) -> None:
+    """Issue #117: a controller attached AFTER a save load. pad-late proves
+    the same pad works when the run never loaded a payload, so this case
+    isolates the load itself. It ends on the POLL side -- FUN_006285c0's own
+    ten device-interface pointers and its per-frame polled mask -- because
+    "the game reads nothing" has several causes and only that array
+    distinguishes them."""
+    case.prepare_profile(["boot.mode=continue"])
+    case.seed_save("autosave.save")
+    case.launch({
+        "X2_FILES": "1",
+        "X2_SCRIPTS": "1",
+        "X2_VIRTUAL_PAD": "f2000",
+    })
+    case.wait_control(60)
+
+    case.check("the save was loaded through boot Continue",
+               case.wait_log("BOOT MODE:", 180))
+    case.check("the destination map opened", case.wait_log(".pkgb", 300))
+    case.check("controls unlocked after the replayed conversations",
+               wait_controls_unlocked(case, 300))
+
+    case.check("the synthetic pad attached after the load",
+               case.wait_log("DINPUT-PAD: pad 0 connected", 180))
+    case.check("hotswap re-entered the game's enumeration",
+               case.wait_log("DINPUT8: HOTSWAP", 120))
+    code, body = case.http("/assignment?player=1&pad=0")
+    case.check("pad assigned to player 1 over the control channel",
+               code == 200, body.decode(errors="replace").strip())
+    time.sleep(2.0)
+
+    # The poll side, printed in full whatever it says. A slot the game never
+    # reads is a slot whose interface pointer is NULL (or whose GetDeviceState
+    # fails) -- nothing else in FUN_006285c0 can gate it -- so this report
+    # either names the gate or rules that shape out.
+    report = case.get_text("/input?controller=0")
+    (case.dir / "poll-side.txt").write_text(report)
+    # Only the poll-side block: the report has other "slot N ..." lines (the
+    # live-GUID table), and counting those would make ten slots read as more.
+    poll, inside = [], False
+    for line in report.splitlines():
+        if "dinput8 poll side" in line:
+            inside = True
+        if inside:
+            poll.append(line.rstrip())
+        if "slot(s) hold a device interface" in line:
+            inside = False
+    print("\n".join(poll) if poll else
+          "  (the poll-side probe printed NOTHING -- that is a probe defect)")
+    case.check("the poll-side probe reported all ten slots",
+               sum(1 for line in poll if line.strip().startswith("slot ")) == 10)
+    holds = any("0 of 10 slot(s) hold a device interface" not in line
+                and "slot(s) hold a device interface" in line
+                for line in poll)
+    case.check("the manager holds at least one device interface after the "
+               "post-load admission", holds,
+               next((line.strip() for line in poll
+                     if "hold a device interface" in line), "no summary line"))
+
+    # Issue #117's own falsifier is a heartbeat that GROWS by thousands, not
+    # a single polled frame: a probe-driven read would satisfy the mask check
+    # while the game's own loop stayed dead.
+    baseline = pad_poll_rate(case)
+    polled = wait_pad_polled(case, 60)
+    case.check("the game's own loop keeps reading the pad (heartbeat grew "
+               "past the probe baseline)", polled,
+               "%d -> %d button read(s)" % (baseline, pad_poll_rate(case)))
+
+    before = case.shot("before-start")
+    code, body = case.http("/pad?button=start&hold=2.0")
+    case.check("Start press delivered to the synthetic pad", code == 200,
+               body.decode(errors="replace").strip())
+    responded, worst = False, 0.0
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not responded:
+        current = case.shot("after-start")
+        worst = png_mean_diff(before, current)
+        responded = worst > 8.0
+        time.sleep(1.0)
+    case.check("the presented frame changed after Start "
+               "(mean |delta| %.1f > 8)" % worst, responded)
+    (case.dir / "final-input-report.txt").write_text(
+        case.get_text("/input?controller=0"))
+
+
 def case_pad_persisted(case: Case) -> None:
     """A controller matching the STORED controller0 id is adopted for
     Player 1 with no session assignment at all -- the path a real pad takes
@@ -708,6 +793,7 @@ CASES = {
     "cutscene-skip-early": case_cutscene_skip_early,
     "boot-continue": case_boot_continue,
     "pad-late": case_pad_late,
+    "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,
 }
