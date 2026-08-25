@@ -2,6 +2,7 @@
 #define X2_DINPUT8_CONTROLLER_SLOTS_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 /* The IDirectInput8 owner publishes the retail input-manager instance when
    the game's controller enumeration reaches it. */
@@ -15,5 +16,12 @@ void dinput8_controller_slots_set_manager(uint32_t manager);
    Both directions return -1 while the device is not attached. */
 int dinput8_controller_slot_for_host_pad(int host_pad);
 int dinput8_controller_host_pad_for_slot(int controller_slot);
+
+/* The POLL side of the manager, as FUN_006285c0 itself sees it: every one of
+ * the ten device-interface pointers it walks, which of them the attached
+ * table names, and which it actually read last frame. Every slot prints,
+ * including the empty ones -- issue #117 is exactly the case where the
+ * interesting fact is an absence. */
+size_t dinput8_controller_slots_probe(char *out, size_t size);
 
 #endif /* X2_DINPUT8_CONTROLLER_SLOTS_H */

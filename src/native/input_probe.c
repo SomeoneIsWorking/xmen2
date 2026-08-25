@@ -15,6 +15,8 @@
  * where it is instead of being guessed at from a log afterwards.
  */
 #include "input_probe.h"
+
+#include "dinput8_controller_slots.h"
 #include "binding_rows.h"
 #include "cutscene_skip_probe.h"
 #include "input_bindings.h"
@@ -555,5 +557,12 @@ size_t input_probe_report(CPU *cpu, unsigned controller,
             put(out, n, &at, "host: no pad is connected, so every pad binding "
                              "above is unreachable by construction.\n");
     }
+
+    /* The poll side last, because it is the one that answers "the pad is
+       there and the game still reads nothing" (issue #117): everything above
+       describes what the host and the binding tables believe, and this
+       describes what FUN_006285c0 actually walks. */
+    if (at < n)
+        at += dinput8_controller_slots_probe(out + at, n - at);
     return at;
 }
