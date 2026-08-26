@@ -41,9 +41,15 @@ from PIL import Image                                            # noqa: E402
 from resvg_py import svg_to_bytes                                # noqa: E402
 
 # Design units are FONT PIXELS: the shipped pack's cell and advances, which
-# prompt_labels.c's composition was verified against (#91).
-CELL = 18
-PAD_ADVANCE = CELL + 1
+# prompt_labels.c's composition was verified against (#91).  The shared SVG
+# raster remains an 18px source cell, but controller art uses the whole 19px
+# footprint already reserved by its advance.  Keeping those two concepts in
+# one CELL constant made the native quad unnecessarily smaller without buying
+# any layout spacing: the pen already moves by PAD_ADVANCE.  Keycaps retain
+# their recovered 18px height and independent piece widths below.
+SOURCE_CELL = 18
+PAD_ADVANCE = SOURCE_CELL + 1
+PAD_DRAW_SIZE = PAD_ADVANCE
 KEYCAP_METRICS = {"left": (5, 4), "middle": (12, 8),
                   "rewind": (0, -8), "right": (5, 4)}
 SS = 4                       # raster supersample per design pixel
@@ -52,8 +58,8 @@ ATLAS_W = 512
 
 
 def rasterise_icon(src: Path) -> tuple[bytes, int, int]:
-    """One icon -> RGBA bytes at CELL*SS square, plus its design box."""
-    size = CELL * SS
+    """One icon -> RGBA bytes at SOURCE_CELL*SS, plus its draw box."""
+    size = SOURCE_CELL * SS
     try:
         png = svg_to_bytes(svg_path=str(src), width=size, height=size)
         with Image.open(BytesIO(png)) as image:
@@ -69,7 +75,7 @@ def rasterise_icon(src: Path) -> tuple[bytes, int, int]:
     if not any(px[i * 4 + 3] > 8 for i in range(size * size)):
         raise SystemExit(f"REFUSING: {src} rasterised fully transparent -- it "
                          "would publish as a blank prompt.")
-    return px, CELL, CELL
+    return px, PAD_DRAW_SIZE, PAD_DRAW_SIZE
 
 
 def rasterise_keycap_pieces(src: Path) -> dict[str, tuple[bytes, int]]:
@@ -79,7 +85,7 @@ def rasterise_keycap_pieces(src: Path) -> dict[str, tuple[bytes, int]]:
     eight-design-pixel advance. Luminance is inverted because the stock
     letters drawn over the cap are bright while the shared SVG's face is
     light."""
-    width, height = 45 * SS, CELL * SS
+    width, height = 45 * SS, SOURCE_CELL * SS
     try:
         png = svg_to_bytes(svg_path=str(src), width=width, height=height)
         with Image.open(BytesIO(png)) as image:
@@ -130,7 +136,7 @@ def build() -> tuple[int, int, bytes, list[dict]]:
     icons = [rasterise_icon(p) for p in svg_paths()]
     caps = rasterise_keycap_pieces(keycap_svg_path())
 
-    cell = CELL * SS
+    cell = SOURCE_CELL * SS
     gap = SS                                   # one design pixel between cells
     cells: list[tuple[dict, bytes, int, int]] = []   # entry, pixels, w_ss, h_ss
     entries: list[dict] = []
@@ -145,11 +151,11 @@ def build() -> tuple[int, int, bytes, list[dict]]:
         row_h = max(row_h, h_ss)
         return px, py
 
-    for i, (px, _, _) in enumerate(icons):
+    for i, (px, design_w, design_h) in enumerate(icons):
         ax, ay = place(cell, cell)
         entry = {"name": ICONS[i], "code": FIRST_CODEPOINT + i,
                  "x": ax, "y": ay, "w": cell, "h": cell,
-                 "design_w": CELL, "design_h": CELL,
+                 "design_w": design_w, "design_h": design_h,
                  "advance": PAD_ADVANCE}
         entries.append(entry)
         cells.append((entry, px, cell, cell))
@@ -166,7 +172,7 @@ def build() -> tuple[int, int, bytes, list[dict]]:
         ax, ay = place(pw * SS, cell)
         entry = {"name": "keycap_" + name, "code": code,
                  "x": ax, "y": ay, "w": pw * SS, "h": cell,
-                 "design_w": design_w, "design_h": CELL,
+                 "design_w": design_w, "design_h": SOURCE_CELL,
                  "advance": advance}
         entries.append(entry)
         cells.append((entry, px, pw * SS, cell))
@@ -189,7 +195,8 @@ def emit_header(out: Path) -> tuple[int, int, int]:
         " *",
         " * The port's OWN prompt-glyph atlas: shared port-assets SVGs",
         " * rasterised at build time. No game font contributed a pixel to this",
-        " * file. Design units are font pixels (18px cell); the runtime scales",
+        " * file. Design units are font pixels (18px source cell, 19px pad",
+        " * draw box); the runtime scales",
         " * them by the text scale the drawer itself uses. */",
         "#ifndef X2_PROMPT_GLYPH_ATLAS_H",
         "#define X2_PROMPT_GLYPH_ATLAS_H",
@@ -198,7 +205,8 @@ def emit_header(out: Path) -> tuple[int, int, int]:
         "",
         f"#define X2_PROMPT_ATLAS_W {w}u",
         f"#define X2_PROMPT_ATLAS_H {h}u",
-        "#define X2_PROMPT_CELL_DESIGN 18 /* font pixels */",
+        "#define X2_PROMPT_SOURCE_CELL_DESIGN 18 /* font pixels */",
+        "#define X2_PROMPT_PAD_DRAW_DESIGN 19 /* font pixels */",
         "",
         "struct x2_prompt_cell {",
         "    float u0, v0, u1, v1;   /* bottom-origin V, like the game's */",
@@ -261,8 +269,15 @@ def selftest(compiler: str | None) -> int:
     if by_name["keycap_rewind"]["advance"] != -8:
         raise SystemExit("pad glyph atlas selftest: rewind lost its "
                          "negative advance")
-    if by_name["face_a"]["advance"] != PAD_ADVANCE:
+    face_a = by_name["face_a"]
+    if face_a["advance"] != PAD_ADVANCE:
         raise SystemExit("pad glyph atlas selftest: pad advance changed")
+    if (face_a["design_w"], face_a["design_h"]) != \
+            (PAD_DRAW_SIZE, PAD_DRAW_SIZE):
+        raise SystemExit("pad glyph atlas selftest: pad art no longer fills "
+                         "its reserved advance footprint")
+    if by_name["keycap_left"]["design_h"] != SOURCE_CELL:
+        raise SystemExit("pad glyph atlas selftest: keycap height changed")
 
     raw = ROOT / "scratch" / "raw"
     raw.mkdir(parents=True, exist_ok=True)
@@ -299,7 +314,7 @@ def selftest(compiler: str | None) -> int:
             "    volatile uint8_t atlas_byte = x2_prompt_atlas[0];\n"
             "    (void)atlas_byte;\n"
             "    return x2_prompt_cells[0].design_w == "
-            "X2_PROMPT_CELL_DESIGN ? 0 : 1;\n"
+            "X2_PROMPT_PAD_DRAW_DESIGN ? 0 : 1;\n"
             "}\n",
             encoding="ascii",
         )
