@@ -257,6 +257,42 @@ begins. Segmenting the string means re-invoking with a correct `arg3` per
 segment, so this has to be settled before stage two can split anything. It
 is the next thing to establish, and it is NOT yet known.
 
+### Stage two: metrics and harvest work; the port cannot draw them itself
+
+Two of the three pieces are in.
+
+**Metrics.** `prompt_glyph_metrics.c` publishes the port's own metrics for
+the port's own codepoints into the records the shipped fonts leave empty, in
+memory, at the same moment and scale as `ui_text_scale.c`'s pass. Metrics
+only -- no UVs. The label then composes exactly as designed: left cap at
+14.933, five middles advancing to 31.822, five rewinds stepping back to
+20.622, `"Enter"` over the top from 16.356 to 43.556, right cap at 51.200.
+
+This is written rather than the port laying the run out itself because the
+run is RIGHT-ANCHORED: truncating the label from 17 to 13 to 12 wchars moved
+its first quad from 19.022 to 39.289 to 46.756. `arg3` was confirmed as the
+pen control by perturbation (+100 shifted every quad by exactly
+`100 * 0.177778`), not by arithmetic on a frame.
+
+**Harvest.** `prompt_glyph_draw.c` intercepts `FUN_005ee400`, matches each
+quad to its wchar, and records the ones belonging to a port codepoint with
+the port atlas's UVs instead of emitting them. The wchar cursor replicates
+the drawer's own skips and the run CHECKS the model rather than trusting it:
+5,661 quads predicted, 5,661 produced, 0 desync. Two bugs the running found:
+suppressing the body without honouring `RET 0x20` left 32 bytes of arguments
+on the guest stack and crashed the run, and the harvest is a FRAME's worth,
+so `gpu_frame_begin` resets it.
+
+**The port cannot draw the result itself.** The harvested coordinates are in
+the engine's text space, and that space never reaches D3D8: over a full run,
+10,815 draws issued while a prompt was harvested, 366,392 vertices compared,
+ZERO unreadable, and no vertex within 57 units of a known text corner. The
+vertex sink `FUN_005840a0` transforms them first. So the remaining route is
+to emit our quads through the engine's own emitter with a sentinel UV and
+split the draw in the port's D3D8 layer, binding the port's atlas for our
+vertex runs -- the port builds every `GpuDraw` itself, so that is its code to
+change.
+
 ### What is still open
 
 The measurer, `FUN_00597c90`, still answers with the untouched font record's

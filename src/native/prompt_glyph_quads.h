@@ -19,11 +19,5 @@ void x2_prompt_quads_reset(void);
 void x2_prompt_quads_add(const struct X2PromptQuad *quad);
 void x2_prompt_quads_report(void);
 
-/* The STOCK quads of the same strings -- the ones the engine does emit.
-   They are the calibration handle: their coordinates are known here AND
-   present in the vertex stream, so matching them recovers whatever the
-   engine's vertex sink does to text coordinates on the way to D3D8. */
-void x2_prompt_stock_add(float x0, float y0, float x1, float y1);
-const struct X2PromptQuad *x2_prompt_stock(unsigned *count);
 
 #endif
