@@ -5,6 +5,8 @@ status: holds
 created: 2026-08-21
 tags: input,prompts,keyboard
 depends: src/native/prompt_labels.c#prompt_label_rewrite, src/native/prompt_glyph_metrics.c#x2_prompt_glyph_publish_metrics, src/gpu/gpu_prompt_glyphs.c#gpu_prompt_glyphs_render
+reconfirmed: 2026-08-26
+verified_at: 2026-08-26 23:22:14
 ---
 
 ## Claim
@@ -18,3 +20,7 @@ The original font-builder route established the left/middle/right keycap and inv
 ## What would falsify it
 
 A printable rebound keyboard name returns square brackets, baked key-specific art, missing/overlapping cap geometry, or changes the advance of following prompt text in a real run
+
+## Re-confirmed 2026-08-26
+
+Clang build plus all 114 CTests passed; scratch/logs/svg-final-unbounded.log records 1,188 clean keycap submissions and scratch/screenshots/svg-final-unbounded.png shows ENTER aligned inside the SVG keycap.

@@ -5,6 +5,8 @@ status: holds
 created: 2026-08-26
 tags: text,glyphs,prompts,renderer,overrides
 depends: src/native/prompt_glyph_draw.c#glyph_loop_string, src/native/prompt_labels.c#x2_probe_004bd720
+reconfirmed: 2026-08-26
+verified_at: 2026-08-26 23:22:15
 ---
 
 ## Claim
@@ -18,3 +20,7 @@ Boot-direct tutorial run, X2_PROMPT_GLYPHS=1 X2_BOOT_MAP=act0/tutorial/tutorial1
 ## What would falsify it
 
 a run with X2_PROMPT_GLYPHS=1 through a scenario that composes keycap or pad labels whose PROMPT DRAW line reports 0 prompt codepoints while the prompt-label report shows a non-zero composed count; or a retail-body reading showing FUN_005ee780 takes its wide string somewhere other than entry_esp+4 (which would make the detector read the wrong memory again, as it did under C267)
+
+## Re-confirmed 2026-08-26
+
+The corrected windowless/silent/unbounded controller run records 1,073 private one-codepoint strings reaching FUN_005ee780 and 1,073 matching emitter interceptions in scratch/logs/svg-pad-final-unbounded.log.
