@@ -108,11 +108,13 @@ class Case:
 
         env = dict(os.environ)
         env["X2_SAVE_DIR"] = str(self.profile)
+        env["SDL_AUDIODRIVER"] = "dummy"
         cmd = [str(binary), "--no-window", "--d3d8",
                "--control=%d" % self.port]
         if PACING in ("uncapped", "fast"):
             env["X2_UNPACED"] = "1"
         if PACING == "fast":
+            env["X2_UNBOUNDED"] = "1"
             cmd.append("--unbounded")
         env.update(env_extra)
         self.log_file = self.log_path.open("wb")
@@ -239,7 +241,9 @@ def reach_camera_only_lock(case: Case, timeout: float) -> str:
         if not case.alive():
             return ""
         report = case.get_text("/input?controller=0")
-        if "controls-locked yes" in report and "visible no" in report:
+        if "Cutscene player: active 1" in report \
+                and "boundary: controls locked; conversation payload inactive" \
+                in report:
             return report
         time.sleep(0.5)
     return ""
@@ -250,8 +254,9 @@ def reach_authored_conversation(case: Case, timeout: float) -> bool:
     while time.monotonic() < deadline:
         if not case.alive():
             return False
-        if "authored conversation: yes; visible yes" \
-                in case.get_text("/input?controller=0"):
+        report = case.get_text("/input?controller=0")
+        if "Cutscene player: active 1" in report \
+                and "conversation payload deterministic" in report:
             return True
         time.sleep(1.0)
     return False
@@ -289,16 +294,16 @@ def wait_controls_unlocked(case: Case, timeout: float) -> bool:
         if not case.alive():
             return False
         report = case.get_text("/input?controller=0")
-        if "controls-locked no" in report and "visible no" in report:
+        if "boundary: controls released; conversation payload inactive" \
+                in report:
             return True
         time.sleep(1.0)
     return False
 
 
 def case_cutscene_skip(case: Case) -> None:
-    """Escape skips the tutorial scene WITHOUT the issue #83 softlock: the
-    adjacent second conversation starts WITH a line, cleanup scripts launch,
-    controls unlock."""
+    """Escape completes the tutorial's BehavEd control-lock epoch in one
+    player invocation without advancing the guest frame or clock."""
     case.prepare_profile(["boot.mode=normal"])
     case.launch({
         "X2_BOOT_MAP": TUTORIAL_MAP,
@@ -335,22 +340,25 @@ def case_cutscene_skip(case: Case) -> None:
     case.check("controls unlocked after the skip", unlocked)
     report = case.get_text("/input?controller=0")
     (case.dir / "final-input-report.txt").write_text(report)
-    idle_line = [line.strip() for line in report.splitlines()
-                 if "authored skip" in line]
-    case.check("authored skip latch retired and reported advances",
-               any("idle" in line for line in idle_line)
-               and any("advance(s)" in line for line in idle_line),
-               "; ".join(idle_line))
+    player_lines = [line.strip() for line in report.splitlines()
+                    if "policy:" in line or "one-step invariant:" in line
+                    or "Cutscene player:" in line]
+    evidence = "; ".join(player_lines)
+    case.check("one request completed in one cutscene-player invocation",
+               "1 request(s), 1 invocation(s), 1 completion(s)" in report,
+               evidence)
+    case.check("the invocation preserved the guest frame and clock",
+               "1 same-frame, 1 same-guest-time" in report, evidence)
+    case.check("the cutscene-player epoch retired",
+               "Cutscene player: active 0" in report, evidence)
     case.shot("after-skip")
 
 
 def case_cutscene_skip_early(case: Case) -> None:
     """Escape during the CAMERA-ONLY opening stretch skips the whole authored
     sequence, not just whichever record happens to be on screen. The press
-    lands while the control lock holds and nothing is visible, so it goes
-    through the disabled/invisible update exits rather than the action gate --
-    a different code path from case_cutscene_skip's press on a visible line,
-    and the one a player actually hits first."""
+    lands while the BehavEd control-lock epoch has no conversation payload,
+    which proves the player rather than the conversation owns the operation."""
     case.prepare_profile(["boot.mode=normal"])
     case.launch({
         "X2_BOOT_MAP": TUTORIAL_MAP,
@@ -362,7 +370,7 @@ def case_cutscene_skip_early(case: Case) -> None:
     case.check("a camera-only locked stretch was reached (no record visible)",
                bool(report),
                next((line.strip() for line in report.splitlines()
-                     if "authored conversation:" in line),
+                     if "boundary:" in line),
                     "controls never locked with nothing visible"))
     if not report:
         return
@@ -374,23 +382,21 @@ def case_cutscene_skip_early(case: Case) -> None:
     case.check("Escape accepted by the guest poll", code == 200,
                body.decode(errors="replace").strip())
 
-    # The latch must ARM here. Without the camera-only arming path the press
-    # is simply dropped, the sequence plays out in full, and every check
-    # below still eventually passes on the authored timeline -- so the
-    # request counter, not the outcome, is what discriminates.
-    armed, status = False, ""
+    # The player request must happen here. Outcome alone is not a falsifier:
+    # an ignored press would still let retail eventually finish the scene.
+    invoked, status = False, ""
     deadline = time.monotonic() + 60
-    while time.monotonic() < deadline and not armed:
+    while time.monotonic() < deadline and not invoked:
         if not case.alive():
             break
         for line in case.get_text("/input?controller=0").splitlines():
-            if "authored skip" in line:
+            if "policy:" in line:
                 status = line.strip()
-                armed = " 0 request(s)" not in status
-        if not armed:
+                invoked = "1 request(s), 1 invocation(s)" in status
+        if not invoked:
             time.sleep(1.0)
-    case.check("the camera-only Escape armed the authored-skip latch",
-               armed, status)
+    case.check("the camera-only Escape invoked the cutscene player",
+               invoked, status)
 
     case.check("conversation-end script conv_0020b_end launched",
                case.wait_log("conv_0020b_end", 240))
@@ -399,11 +405,15 @@ def case_cutscene_skip_early(case: Case) -> None:
 
     report = case.get_text("/input?controller=0")
     (case.dir / "final-input-report.txt").write_text(report)
-    status = next((line.strip() for line in report.splitlines()
-                   if "authored skip" in line), "")
-    case.check("the latch retired after advancing the sequence's records",
-               "idle" in status and " 0 retail response advance(s)"
-               not in status, status)
+    player_lines = [line.strip() for line in report.splitlines()
+                    if "policy:" in line or "one-step invariant:" in line
+                    or "Cutscene player:" in line]
+    status = "; ".join(player_lines)
+    case.check("the player completed once and retired its epoch",
+               "1 request(s), 1 invocation(s), 1 completion(s)" in report
+               and "Cutscene player: active 0" in report, status)
+    case.check("camera-only completion preserved the guest frame and clock",
+               "1 same-frame, 1 same-guest-time" in report, status)
     started = sum('conversation start "' in line
                   for line in case.log_text().splitlines())
     case.check("the sequence's remaining records were consumed, not left "

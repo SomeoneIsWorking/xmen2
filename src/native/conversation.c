@@ -46,7 +46,6 @@
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
-#include "conversation_cutscene_skip.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -272,7 +271,6 @@ void conversation_report(void)
             printf("        ... and %d poll(s) from call sites past the "
                    "table.\n", g_askers_lost);
     }
-    conversation_cutscene_skip_report();
 }
 
 /* ---- guest calling ------------------------------------------------------
@@ -729,8 +727,6 @@ void x2_override_0045d1a0(CPU *C)
 
     /* 0x0045d1a6: the whole subsystem's enable bit. */
     if (!(RD8(self + CV_UI_ENABLED) & 0x10u)) {
-        conversation_cutscene_skip_observe_inactive(
-            C, self, call0(C, FN_INPUT, 0));
         c_upd_disabled++;
         C->esp += 4u + 4u;
         return;
@@ -747,8 +743,6 @@ void x2_override_0045d1a0(CPU *C)
     /* 0x0045d1f4: isVisible, through the vtable as the original calls it, so
        the ported predicate's caller record still sees this call site. */
     if (!(uint8_t)call0(C, vslot(self, 0x20u), self)) {
-        conversation_cutscene_skip_observe_inactive(
-            C, self, call0(C, FN_INPUT, 0));
         c_upd_invisible++;
         C->esp += 4u + 4u;
         return;
@@ -829,16 +823,14 @@ void x2_override_0045d1a0(CPU *C)
         }
     }
 
-    /* Accept advances once; authored-cutscene skip latches across the same
-       deterministic response path until cleanup ends the conversation. */
+    /* Accept advances once through the retail response path.  Authored-scene
+       completion belongs to the BehavEd player above this payload. */
     input = call0(C, FN_INPUT, 0);
     c_upd_gate_seen++;
     {   uint32_t action = 4u;
         int accept_down = (uint8_t)thiscall(
             C, vslot(input, 0x138u), input, 1, &action);
-        int advance;
-        advance = conversation_cutscene_skip_should_advance(
-            C, self, slot, input);
+        int advance = 0;
         if (accept_down) {
             uint32_t clock = call0(C, FN_CLOCK, 0);
             long double now = call_float(C, vslot(clock, 0x160u), clock, 0, NULL);

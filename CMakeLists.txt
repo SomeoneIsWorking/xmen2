@@ -260,16 +260,30 @@ add_executable(test_cutscene_skip_publication
 target_include_directories(test_cutscene_skip_publication PRIVATE src/native)
 add_test(NAME cutscene_skip_publication COMMAND test_cutscene_skip_publication)
 
-add_executable(test_conversation_skip_policy
-               tests/test_conversation_skip_policy.c
-               src/native/conversation_skip_policy.c)
-target_include_directories(test_conversation_skip_policy PRIVATE src/native)
-add_test(NAME conversation_skip_policy COMMAND test_conversation_skip_policy)
+add_executable(test_cutscene_player_policy
+               tests/test_cutscene_player_policy.c
+               src/native/cutscene_player_policy.c)
+target_include_directories(test_cutscene_player_policy PRIVATE src/native)
+add_test(NAME cutscene_player_policy COMMAND test_cutscene_player_policy)
 
-add_test(NAME conversation_skip_wiring
-         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py)
-add_test(NAME conversation_skip_wiring_selftest
-         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py
+add_executable(test_behaved_player_heap
+               tests/test_behaved_player_heap.c
+               src/native/behaved_player.c)
+target_include_directories(test_behaved_player_heap PRIVATE
+                           src/native src/recomp)
+add_test(NAME behaved_player_heap COMMAND test_behaved_player_heap)
+
+add_executable(test_cutscene_event_player
+               tests/test_cutscene_event_player.c
+               src/native/cutscene_event_player.c)
+target_include_directories(test_cutscene_event_player PRIVATE
+                           src/native src/recomp)
+add_test(NAME cutscene_event_player COMMAND test_cutscene_event_player)
+
+add_test(NAME cutscene_player_wiring
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_cutscene_player_wiring.py)
+add_test(NAME cutscene_player_wiring_selftest
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_cutscene_player_wiring.py
                          --selftest)
 
 add_executable(test_binding_rows tests/test_binding_rows.c
@@ -1040,8 +1054,11 @@ if(X2_MODULE_HAVE)
         src/native/player_participation_probe.c
         src/native/cutscene_skip_publication.c
         src/native/cutscene_skip_probe.c
-        src/native/conversation_skip_policy.c
-        src/native/conversation_cutscene_skip.c
+        src/native/behaved_player.c
+        src/native/cutscene_event_player.c
+        src/native/conversation_player.c
+        src/native/cutscene_player_policy.c
+        src/native/cutscene_player.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
         src/native/dsound.c

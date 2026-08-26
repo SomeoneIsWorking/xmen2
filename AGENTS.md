@@ -226,6 +226,14 @@ after physical, scripted, control-channel and modal-UI policy produce the state
 the guest will receive. `src/native/live_session.{c,h}` owns live-run discovery;
 `x2native.c` only composes those owners.
 
+In-game cutscene skipping belongs to `src/native/cutscene_player.{c,h}`. It
+owns the control-lock epoch, composes exact steps from the ported BehavEd
+player (`behaved_player`) and title timed-event player
+(`cutscene_event_player`), and treats `conversation_player` as a deterministic
+payload adapter only. Ordinary event/fiber pumps retain retail deadline rules;
+the synchronous skip never runs a world update or changes the guest clock.
+See `docs/RE/cutscene_player.md`.
+
 Native SFD playback follows the same boundary. `src/media/fmv_player.{c,h}`
 owns FFmpeg demux, MPEG-1 video decode and timestamp policy;
 `fmv_audio_decode.{c,h}` owns ADX receive/resampling, while

@@ -63,6 +63,14 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - gap: Superseded by recomp; only needed if an override constructs objects itself.
 - notes:
 
+### cutscene-player — Port the in-game cutscene player above conversations
+- status: re-partial
+- deps: rc-overrides
+- evidence: XMen2.exe 004d9640/004d8b30 BehavEd player; 004b2b40 insertion and 004b2d70 timed-event player; C247/C263; test_behaved_player_heap; test_cutscene_event_player; visible 9/9 and camera-only 8/8 live gates
+- where: src/native/cutscene_player.c; src/native/behaved_player.c; src/native/cutscene_event_player.c; docs/RE/cutscene_player.md
+- gap: The tutorial control-lock epoch is verified end to end. Other maps may compose additional local players or branching payloads and must refuse until their binary ownership is recovered; no global world update or clock advance is an allowed fallback.
+- notes: Ordinary pumps retain strict deadline<now. Exact skip steps only insertion-tagged script events and BehavEd contexts inherited from owned script, event-callback, or deterministic-payload scopes; the epoch alone does not adopt work. Conversation is a deterministic payload.
+
 ## input
 
 ### ctrlmgr — Native igControllerManager / igWin32ControllerManager
