@@ -48,6 +48,7 @@ void x2_interrupt_reports(int killed)
     x2_prompt_draw_report();
     x2_prompt_glyph_metrics_report();
     x2_prompt_quads_report();
+    { extern void d3d8_text_space_report(void); d3d8_text_space_report(); }
     {
         char blackout[256];
         x2_boot_blackout_report(blackout, sizeof blackout);
