@@ -236,10 +236,26 @@ has to choose:
    engine's batching is touched, and the port owns the pixels end to end --
    which is the direction this repo already takes elsewhere.
 
-Option 2 needs one more fact before it can be committed to: the space those
-coordinates live in (they are ~19..117 on a 3840x2160 output, so the vertex
-sink projects them), and where the port's renderer can apply the same
-projection.
+The vertex sink is **`FUN_005840a0`**, reached through the batch's
+`[ECX] -> vtable 0x0069c904 +0xc`. It is an accumulating vertex-buffer
+appender -- count at `[obj+0x20]`, capacity at `[obj+0x0c]`, write pointer at
+`[obj+0x2c]`, with an overflow/flush path -- and `[batch+8]` is the vertex
+colour (`0xffffffff` for this text). So the geometry is entirely the
+engine's: a quad emitted through `FUN_005ee400` needs no projection work
+from the port.
+
+`arg7`'s fields carry the whole quad formula: `[1]/[2]` atlas 512x256,
+`[3]/[4]` the UV scales `1/512` and `1/256`, **`[7]/[8]` the position scale
+(0.177778 on both axes)** and `[9]/[10]` the offsets. The observed y checks
+out against it (`658 * 0.177778 = 116.98` against an emitted `116.893`).
+
+**The unresolved piece is the pen origin.** Working back from the emitted
+quads at scale 0.177778, the pen runs 107 -> 300 across the string, while
+`arg3` is 298 -- so `arg3` is not simply the starting pen, and something
+(most likely the caller centring the measured string) sets where the run
+begins. Segmenting the string means re-invoking with a correct `arg3` per
+segment, so this has to be settled before stage two can split anything. It
+is the next thing to establish, and it is NOT yet known.
 
 ### What is still open
 
