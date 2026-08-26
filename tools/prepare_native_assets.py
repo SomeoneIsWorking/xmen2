@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build/reuse the derived native asset pack required by the live target."""
+"""Build/reuse the derived pause-menu asset pack required by the live target."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 
@@ -15,15 +14,11 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 
-# The manifest is the ONE authority on how many glyphs there are; a second
-# number written down here drifts from it the first time the set changes.
-from pad_glyph_manifest import (ICONS, keycap_svg_path,           # noqa: E402
-                                svg_paths)
-from make_port_pause_menu import write_derived_pause_menu        # noqa: E402
+from make_port_pause_menu import (RESERVED_NODE_COPIES,           # noqa: E402
+                                  _synthetic_menu,
+                                  write_derived_pause_menu)
 
 SCRATCH = ROOT / "scratch"
-FONT_IGB = ("Textures", "fonts", "x2f_med_pc.igb")
-FONT_XMLB = ("UI", "fonts", "x2f_med_pc.xmlb")
 PAUSE_IGB = ("UI", "menus", "pause.IGB")
 PAUSE_MENUS = (
     ("UI", "menus", "pause.XMLB"),
@@ -34,11 +29,7 @@ PAUSE_MENUS = (
 PAUSE_OUTPUTS = tuple(
     Path("ui") / "menus" / parts[-1].lower() for parts in PAUSE_MENUS
 )
-NATIVE_OUTPUTS = (
-    Path("textures/fonts/x2f_med_pc.igb"),
-    Path("ui/fonts/x2f_med_pc.xmlb"),
-    *PAUSE_OUTPUTS,
-)
+NATIVE_OUTPUTS = PAUSE_OUTPUTS
 
 
 def case_path(root: Path, parts: tuple[str, ...]) -> Path:
@@ -98,26 +89,13 @@ def cleanup_tree(path: Path) -> None:
 
 
 def prepare(game: Path, out: Path) -> None:
-    igb = case_path(game, FONT_IGB)
-    xmlb = case_path(game, FONT_XMLB)
     pause_igb = case_path(game, PAUSE_IGB)
     pause_menus = [case_path(game, parts) for parts in PAUSE_MENUS]
-    # The art lives in the SHARED port-assets set, so the fingerprint has to
-    # follow it there: a pack cached against the old drawing of a glyph is
-    # exactly the stale-vendored-copy failure the shared repo exists to end.
-    icons = svg_paths()
-    if len(icons) != len(ICONS):
-        raise SystemExit(f"REFUSING: the manifest names {len(ICONS)} glyph(s) "
-                         f"but resolved {len(icons)} SVG path(s)")
-    sources = [igb, xmlb, pause_igb, *pause_menus,
-               ROOT / "tools" / "make_pad_font.py",
+    sources = [pause_igb, *pause_menus,
                ROOT / "tools" / "make_port_pause_menu.py",
-               ROOT / "tools" / "pad_glyph_manifest.py",
-               ROOT / "pyproject.toml", ROOT / "uv.lock",
-               ROOT / "assets" / "buttons" / "glyphs.json",
-               keycap_svg_path(), *icons]
+               ROOT / "pyproject.toml", ROOT / "uv.lock"]
     key = fingerprint(sources)
-    manifest = out / ".x2-prompt-font.json"
+    manifest = out / ".x2-native-assets.json"
     if manifest.is_file():
         try:
             old = json.loads(manifest.read_text())
@@ -132,19 +110,11 @@ def prepare(game: Path, out: Path) -> None:
     raw.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix="native-assets-", dir=raw))
     try:
-        result = subprocess.run(
-            [sys.executable, str(ROOT / "tools" / "make_pad_font.py"),
-             str(igb), str(xmlb), str(stage)], text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-        )
-        print(result.stdout, end="")
-        if result.returncode:
-            raise SystemExit(f"native assets: font builder failed with exit {result.returncode}")
         for source, output in zip(pause_menus, PAUSE_OUTPUTS, strict=True):
             write_derived_pause_menu(
                 source, pause_igb, stage / output,
             )
-        (stage / ".x2-prompt-font.json").write_text(
+        (stage / ".x2-native-assets.json").write_text(
             json.dumps({"sha256": key, "inputs": len(sources),
                         "outputs": output_digests(stage)}, indent=2) + "\n"
         )
@@ -159,33 +129,74 @@ def prepare(game: Path, out: Path) -> None:
 def selftest() -> int:
     base = SCRATCH / "raw" / "prepare-native-assets-selftest"
     cleanup_tree(base)
-    (base / "a" / "b").mkdir(parents=True)
-    (base / "a" / "b" / "member").write_text("x")
-    cleanup_tree(base)
+    game = base / "game"
+    out = base / "out"
+    (game / "UI" / "menus").mkdir(parents=True)
+    (game / "UI" / "menus" / "pause.IGB").write_bytes(
+        b"\x00button10\x00" * RESERVED_NODE_COPIES
+    )
+    for parts in PAUSE_MENUS:
+        path = game.joinpath(*parts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(_synthetic_menu())
+
     outside_refused = False
     try:
         cleanup_tree(ROOT)
     except RuntimeError:
         outside_refused = True
 
-    for index, output in enumerate(NATIVE_OUTPUTS):
-        path = base / output
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(f"output-{index}".encode())
-    digests = output_digests(base)
-    complete = cached_outputs_match(base, digests)
-    missing = base / PAUSE_OUTPUTS[0]
+    captured_inputs: list[Path] = []
+    real_fingerprint = fingerprint
+
+    def recording_fingerprint(paths: list[Path]) -> str:
+        captured_inputs.extend(paths)
+        return real_fingerprint(paths)
+
+    globals()["fingerprint"] = recording_fingerprint
+    try:
+        prepare(game, out)
+    finally:
+        globals()["fingerprint"] = real_fingerprint
+
+    expected_outputs = {path.as_posix() for path in NATIVE_OUTPUTS}
+    actual_outputs = {
+        path.relative_to(out).as_posix()
+        for path in out.rglob("*")
+        if path.is_file() and path.name != ".x2-native-assets.json"
+    }
+    complete = expected_outputs == actual_outputs
+    forbidden_inputs = [
+        path for path in captured_inputs
+        if "font" in path.as_posix().lower()
+        or "glyph" in path.as_posix().lower()
+        or path.suffix.lower() == ".svg"
+    ]
+    forbidden_outputs = [
+        path for path in out.rglob("*")
+        if "font" in path.as_posix().lower()
+        or "glyph" in path.as_posix().lower()
+        or path.suffix.lower() == ".svg"
+    ]
+    manifest = json.loads((out / ".x2-native-assets.json").read_text())
+    inputs_exact = manifest.get("inputs") == len(captured_inputs)
+    missing = out / PAUSE_OUTPUTS[0]
     missing.unlink()
-    missing_refused = not cached_outputs_match(base, digests)
-    missing.write_bytes(b"corrupt")
-    corrupt_refused = not cached_outputs_match(base, digests)
+    missing_refused = not cached_outputs_match(out, manifest.get("outputs"))
+    prepare(game, out)
+    restored = cached_outputs_match(
+        out, json.loads((out / ".x2-native-assets.json").read_text()).get("outputs")
+    )
     cleanup_tree(base)
     passed = (not base.exists() and outside_refused and complete and
-              missing_refused and corrupt_refused)
+              inputs_exact and not forbidden_inputs and not forbidden_outputs and
+              missing_refused and restored)
     print("prepare_native_assets selftest: "
           f"cleanup={not base.exists()} outside-refusal={outside_refused} "
-          f"complete-cache={complete} missing-refusal={missing_refused} "
-          f"corrupt-refusal={corrupt_refused}")
+          f"real-prepare={complete} pause-inputs-only={not forbidden_inputs} "
+          f"pause-outputs-only={not forbidden_outputs} "
+          f"input-accounting={inputs_exact} missing-refusal={missing_refused} "
+          f"rebuilt={restored}")
     return 0 if passed else 1
 
 

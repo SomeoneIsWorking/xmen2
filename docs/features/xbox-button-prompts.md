@@ -10,11 +10,58 @@
 > and **`X2F_thin_XBOX`**, and their art differs from the PC's by 66.5%.
 
 
-Feature 3 of the three (`README.md`): the Xbox build's authentic button glyphs
-standing in for the PC build's `Texs/joy1..4.png`, which are just the digits
-1--4.
+Feature 3 of the three (`README.md`): port-authored SVG equivalents of the Xbox
+controls standing in for the PC build's text labels and `Texs/joy1..4.png`
+player-number images.
 
-## What exists now
+## What ships now
+
+Prompt delivery no longer edits or derives a game font.
+`tools/render_prompt_glyphs.py` rasterises the shared `port-assets` SVGs at
+build time into a generated, port-owned GPU atlas. The input-name and prompt
+label overrides publish private byte codepoints `0x80..0x93` according to the
+active assigned input source. After the retail loader has populated a font
+record, the port publishes only width, height, advance and baseline metrics for
+unused private cells in memory. It writes no prompt pixels or UVs into a font
+record or an on-disk font asset.
+
+The retail text measurer and layout code position those cells. At the RE'd
+Alchemy non-indexed text-batch boundary the port harvests their quads with the
+exact UI transform and batch colour, queues the native art, and calls the
+retail glyph emitter with a zero-area rectangle. The collapsed call preserves
+the engine's vertex/batch/finalizer behavior without sampling a stock-font
+pixel. Ordinary text and the stock batch/state-finalizer paths continue
+through their supercalls. Whole strings fall back before interception if any
+codepoint, colour read, or queue reservation is unavailable.
+
+The old `tools/make_pad_font.py` builder and derived prompt-font pack have been
+removed. The default launcher neither builds nor opens a prompt font.
+`X2_ASSETS` remains the general replacement route used for the derived pause
+menu row and for user mods; it no longer delivers or patches prompt glyphs.
+
+The 3840x2160 keyboard capture
+`scratch/screenshots/svg-final-unbounded.png` visibly shows the native SVG
+`ENTER` keycap around retail letters; its log records 1,188 quads in 99
+semantic batches with zero refusals or desyncs.
+
+The separate pure-controller run closes the shape that keyboard evidence
+could not cover. `scratch/logs/svg-pad-final-unbounded.log` records 76 metric
+cells published across four font records (two occupied cells left alone),
+1,073 one-codepoint controller strings, 1,073 harvested/submitted quads, and
+1,073 matching nested Alchemy finalizers. Across 14,197 non-indexed draws and
+99,936 total state-finalizer calls it reports zero desync, unavailable-byte,
+colour, capacity, transform, cross-context, GPU, and unfinalized-boundary
+refusals. `scratch/screenshots/svg-pad-unbounded.png` visibly shows the native
+green A icon beside `CONTINUE...`. Both runs were headless, silent, and used
+the unbounded scheduler. Issue #121 preserves why retaining a collapsed retail
+emitter call is required for this one-glyph case.
+
+## Historical investigation: asset substitution
+
+The sections below preserve the evidence that established the label-selection,
+font and art contracts. Derived-font generation and `X2_ASSETS` prompt
+instructions in this chronology describe the retired delivery route, not the
+current launcher.
 
 **The assets.** `$XBOX_ISO` is extracted to `scratch/xbox_iso/` and the Xbox HUD
 font is decoded: `scratch/prompts/xbox/x2f_hud_xbox_<size>.png` for every mip
@@ -23,12 +70,12 @@ level, alongside the PC `x2f_hud` for comparison, and the four PC
 (`assets/ui/fonts/x2f_hud_xbox.xmlb`), which is what says where each glyph sits
 in the atlas.
 
-**The mechanism.** `X2_ASSETS=<dir>` redirects any file open whose relative
-path exists under `<dir>` (`src/native/kernel32.c`). It is general on purpose
--- a texture pack, a translation or a debugging swap all want the same thing,
-and a special case for four files would have to be replaced by this the first
-time anyone wanted one of those. The install is never written and never read
-for a replaced name.
+**The historical mechanism.** `X2_ASSETS=<dir>` redirects any file open whose
+relative path exists under `<dir>` (`src/native/kernel32.c`). It is general on
+purpose -- a texture pack, a translation or a debugging swap all want the same
+thing, and a special case for four files would have to be replaced by this the
+first time anyone wanted one of those. The install is never written and never
+read for a replaced name.
 
 Measured on a real run: a magenta stand-in dropped at
 `scratch/assetpack/texs/pause.png` produced
@@ -58,11 +105,11 @@ changed and the mechanism was wrongly declared broken. Repeated with
 `x2f_big.igb` over the other three fonts, the caption's second line went from
 **"GREENLAND" to "G"** -- the wrong glyphs drawn through the wrong metrics.
 
-**So `X2_ASSETS` font replacement reaches the renderer.** And Latin text looking
-unchanged under the Xbox HUD font is what a CORRECT swap should look like: the
-two fonts differ in their button glyphs, not in their letters.
+**So the historical `X2_ASSETS` font replacement reached the renderer.** Latin
+text looking unchanged under the Xbox HUD font was what a correct swap should
+look like: the two fonts differed in their button glyphs, not their letters.
 
-## What is NOT done, and the one thing that blocks it
+## Historical blocker at that point
 
 **Correction:** the 31-name list this paragraph was based on came from an
 instrument that watched only `CreateFileA`; routing the CRT's `fopen` through
@@ -76,7 +123,7 @@ menu -- reaches the screen that uses them. Until a run opens them, replacing
 them cannot be verified, and a replacement nobody has seen the game load is
 exactly the "faked step" the RE frontier exists to prevent.
 
-So the next work item is not image editing. It is: **get a run to a screen that
+The next work item at that point was not image editing. It was: **get a run to a screen that
 draws button prompts**, most likely the player-join or controller screen, which
 is also the first place a second controller matters. That now has a chance of
 working, because the game can finally see a gamepad (C160) and one can be
@@ -88,8 +135,8 @@ After that:
    atlas.
 2. Cut the four glyphs the prompts need and write them at the sizes the PC
    files use.
-3. Verify by running with `X2_ASSETS` and looking at the frame -- and by the
-   redirect line, so "it looks the same" cannot be mistaken for "the
+3. The planned verification was a run with `X2_ASSETS`, checking both the frame
+   and redirect line so "it looks the same" could not be mistaken for "the
    replacement did not load".
 
 
@@ -427,25 +474,27 @@ white, the two triggers and the two sticks. Note the band is populated in the
 PC atlas too -- so this region is shared sprite space in both builds, not an
 Xbox addition, and only the button cells differ.
 
-## Implemented delivery: unused codepoints through the original text path
+## Historical delivery: derived font pack (removed)
 
-The game's text path is the only thing that draws a `[%s]` label, so the art
-reaches it as a glyph. The implementation is now:
+The first working delivery used empty private codepoints in a derived copy of
+the PC medium font. It proved the label-selection, codepoint, art and metrics
+contracts, but it was removed because a game font should not own the port's
+prompt renderer. The font-pack details below are historical evidence, not
+current build or launch instructions.
 
-**90 of the 256 glyphs have an empty rect** -- codepoints the font does not use.
-`X2_ASSETS` already substitutes both halves of a font (the `.igb` atlas and the
-`.xmlb` metrics; C162 proved a substituted font reaches the renderer, by making
-`GREENLAND` render as `G`). So:
+**90 of the 256 glyphs had an empty rect** -- codepoints the font did not use.
+At that stage `X2_ASSETS` substituted both halves of the derived font (the
+`.igb` atlas and `.xmlb` metrics; C162 had proved a substituted font reached the
+renderer by making `GREENLAND` render as `G`). The delivery was:
 
-1. `assets/buttons/glyphs.json` is the one ordered codepoint authority;
-   `tools/pad_glyph_manifest.py` validates its eleven SVGs and generates
-   `pad_glyph_codes.h` for C. `tools/make_pad_font.py` consumes the same
-   manifest to rasterise those SVGs into the PC atlas's measured empty band at
-   bytes `0x80..0x8a`, so Python and the runtime cannot drift.
-2. `tools/prepare_native_assets.py` fingerprints both shipped PC font files,
-   the SVGs and the builder. The zero-argument `./run.sh` builds the verified
-   derived pack on a miss and reuses it on a hit, then enables the hook only
-   with that pack. No Xbox-owned art is copied or committed.
+1. `assets/buttons/glyphs.json` was the ordered codepoint authority;
+   `tools/pad_glyph_manifest.py` validated its SVGs and generated
+   `pad_glyph_codes.h`. The now-removed `tools/make_pad_font.py` consumed that
+   manifest to rasterise them into the PC atlas's empty band.
+2. `tools/prepare_native_assets.py` formerly fingerprinted the shipped font,
+   SVGs and builder, and the launcher formerly cached the derived pack. It now
+   prepares only the pause-menu asset pack; prompt generation belongs to
+   `tools/render_prompt_glyphs.py` and the native atlas.
 3. `src/native/pad_glyphs.c` overrides `FUN_006281f0` at its measured
    `__thiscall`, `RET 0x8` contract. It maps the physical DirectInput codes
    already established by `dinput_pad.c`: buttons `0x15..0x1c`, Z+/Z- (`5/6`)
@@ -457,11 +506,10 @@ reaches it as a glyph. The implementation is now:
    body. LS/RS use the authored shared `port-assets` glyphs and the same
    manifest/runtime mapping as every other supported physical code.
 
-This stays entirely inside the game's own text pipeline -- no new draw path and
-no renderer special case. `tests/test_pad_glyphs.c` calls the exact shipping
-wrapper and checks its stack pop, returned guest pointer, bytes, Xbox/non-Xbox
-split, unsupported-code deferral and pack-disabled gate. A real default launch
-independently proves both derived font files are opened through `X2_ASSETS`.
+The selection hook remains current. Pixel delivery does not: prompt quads now
+leave the game's text pipeline at its evidenced batch boundary and are drawn by
+the native GPU atlas. `tests/test_pad_glyphs.c` still exercises the shipping
+selection wrapper; font-pack loading is no longer part of the contract.
 
 The action-assignment prerequisite is also closed. A fresh profile installs the
 canonical 22-row controller preset, including Power and TargetLock/Use Health
@@ -521,20 +569,19 @@ kept because it is the right behaviour and because its zero count is the
 measurement above.
 
 
-## SHIPPED: the glyphs render in game, and the blocker was ours
+## Historical derived-font capture: the glyphs rendered in game
 
-The prompt bar of the main menu, with a pad connected and the derived pack
-active, now draws
+The prompt bar of the main menu, with a pad connected and the retired derived
+pack active, drew
 
     [B] BACK        [A] SELECT
 
-with the real Xbox button art -- `scratch/shots/ship.png`, zoomed in
-`scratch/shots/glyph_zoom.png`. That is the in-game capture this document has
-been waiting for, and the tutorial dialog shows the same thing in place of
-`[ENTER] CONTINUE...`.
+with the port's SVG Xbox button art -- `scratch/shots/ship.png`, zoomed in
+`scratch/shots/glyph_zoom.png`. This remains evidence for label selection,
+codepoints and art, but it is not a capture of the current native atlas path.
 
 **The cause of the years-long "the game will not draw our codepoint" was a unit
-error in this port's own font builder.** XMen2.exe's glyph metrics are PIXELS:
+error in the retired font builder.** XMen2.exe's glyph metrics are PIXELS:
 `A` is `width="14" height="13"` and its UV rect is exactly 14x13 of the 256x256
 atlas. `tools/make_pad_font.py` divided the 18px cell by the font's line height
 and published `height="0.9"`, `horizadvance="0.95"`. The game drew those glyphs
@@ -549,12 +596,12 @@ range -- while a stock glyph, `Q`, drew perfectly through the same path the
 whole time. The discriminator that finally separated them was reading the
 published metrics beside the font's own, not another run.
 
-`make_pad_font.py` now refuses to publish a glyph whose height falls outside the
-range the font's own glyphs use, and says so:
+The removed `make_pad_font.py` was then made to refuse a glyph whose height fell
+outside the range the font's own glyphs used, and reported:
 
     metrics units ok: new glyphs are 18 tall, the font's own run 3..22
 
-### What is measured, and what is not
+### What that historical route measured
 
 * Measured: the menu prompt bar and the conversation prompt, both drawing the
   correct button for the bound action (`Back` shows B, `Select` shows A),
@@ -567,14 +614,13 @@ range the font's own glyphs use, and says so:
   7,259 of 7,259 times and uses its localized controller-authored popup text
   once, with zero original key names, zero PC popup overrides and no mouse or
   unknown-key prose (historical controller-only run C231; current policy C237).
-* NOT measured: any prompt on a screen whose text uses `X2F_big`,
-  `X2F_hud_PC` or `font_XMEN_digital`. Those three are pixel format 15 and the
-  builder refuses them, so a prompt drawn in one of them would still be blank.
-  Whether any prompt uses them is unknown.
+* Historical limitation, removed by the native atlas: a prompt on a screen
+  whose text used `X2F_big`, `X2F_hud_PC` or `font_XMEN_digital` would have
+  remained blank because the old builder refused their pixel format.
 * NOT measured: real hardware. Everything here is the synthetic pad.
 
 
-## Three corrections after the first capture
+## Historical corrections after the first derived-font capture
 
 The first in-game capture was `[B] BACK`, and all three of these were wrong in
 it. None was visible from that screenshot, which is the point.
@@ -588,7 +634,8 @@ glyph UVs are top-down into the real texture -- confirmed by reading a stock
 `A` out of the decoded atlas both ways, which gives an upside-down A one way
 and an unrelated stroke the other. `row_to_t` already accounted for the row
 order, so the cell selection was right and only the art within it was mirrored.
-`blit` now writes the source rows reversed, and the selftest uses a cell whose
+The retired builder's `blit` then wrote the source rows reversed, and its
+selftest used a cell whose
 rows DIFFER so it can see the flip -- the old one used a uniform cell and could
 not have.
 
@@ -596,8 +643,8 @@ not have.
 geometry: every drawing glyph in this font uses the same value (11 of 166
 sampled, 83 agreeing), so it is the ascent -- the distance from the glyph box
 top down to the text baseline. Deriving `CELL - 2` from the letters'
-height/baseline relationship lifted ours. The builder now takes the font's own
-value, by majority of the glyphs that draw.
+height/baseline relationship lifted ours. The retired builder then took the
+font's own value, by majority of the glyphs that draw.
 
 **3. The square brackets are wrong around a picture of a button.** `[ENTER]`
 reads as a key; `[A]` does not -- no console prompt draws brackets round its
@@ -607,5 +654,7 @@ name, a one-character keyboard name like the `A` key, and the unmapped `[???]`
 all keep theirs. The test covers all four and was checked against two
 mutations -- never stripping, and stripping anything short.
 
-The result is `B BACK` / `A SELECT` with the buttons upright, on the baseline
-and unbracketed: `scratch/shots/final_prompt.png`.
+The retired delivery's final result was `B BACK` / `A SELECT` with the buttons
+upright, on the baseline and unbracketed:
+`scratch/shots/final_prompt.png`. The selection, bracket-removal and measured
+pixel-unit/baseline findings survive in the current native implementation.

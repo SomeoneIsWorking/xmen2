@@ -1,21 +1,8 @@
 #include "shadow_policy.h"
+#include "gpu_matrix.h"
 
 #include <math.h>
 #include <string.h>
-
-static void matrix_multiply(const float a[16], const float b[16], float out[16])
-{
-    float result[16];
-    int row, column, k;
-    for (row = 0; row < 4; row++)
-        for (column = 0; column < 4; column++) {
-            float value = 0.0f;
-            for (k = 0; k < 4; k++)
-                value += a[row * 4 + k] * b[k * 4 + column];
-            result[row * 4 + column] = value;
-        }
-    memcpy(out, result, sizeof result);
-}
 
 static int matrix_inverse(const float in[16], float out[16])
 {
@@ -127,7 +114,7 @@ int gpu_shadow_frame_policy(const GpuDraw *draw, GpuShadowFramePolicy *out)
         }
     }
     if (!light || !matrix_inverse(draw->world, inverse_world)) return 0;
-    matrix_multiply(inverse_world, draw->mvp, view_projection);
+    gpu_matrix_multiply(inverse_world, draw->mvp, view_projection);
     if (!matrix_inverse(view_projection, inverse_view_projection)) return 0;
 
     i = 0;
@@ -196,7 +183,7 @@ int gpu_shadow_frame_policy(const GpuDraw *draw, GpuShadowFramePolicy *out)
 void gpu_shadow_draw_matrix(const GpuShadowFramePolicy *frame,
                             const GpuDraw *draw, float out[16])
 {
-    matrix_multiply(draw->programmable ? frame->inverse_view_projection
-                                       : draw->world,
-                    frame->light_view_projection, out);
+    gpu_matrix_multiply(draw->programmable ? frame->inverse_view_projection
+                                           : draw->world,
+                        frame->light_view_projection, out);
 }

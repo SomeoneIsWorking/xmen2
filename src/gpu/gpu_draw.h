@@ -35,6 +35,7 @@ typedef enum {
  */
 typedef enum {
     GPU_FMT_BGRA8 = 1,     /* D3DFMT_A8R8G8B8 / X8R8G8B8 */
+    GPU_FMT_RGBA8,         /* native assets stored as R, G, B, A bytes */
     GPU_FMT_BC1,           /* DXT1 */
     GPU_FMT_BC2,           /* DXT3 */
     GPU_FMT_BC3            /* DXT5 */

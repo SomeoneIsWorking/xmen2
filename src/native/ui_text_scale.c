@@ -55,7 +55,7 @@
 
 #include "font_tier_ratio.h"   /* GENERATED, see tools/font_tier_ratio.py */
 #include "prompt_glyph_metrics.h"
-#include "prompt_glyph_pack.h"
+#include "prompt_glyphs.h"
 #include "settings_store.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -190,7 +190,7 @@ static void x2_override_font_loader(CPU *C)
        scale and the same moment -- AFTER the scaler, so they are published
        already-scaled rather than scaled twice. Unconditional on k, since the
        port's glyphs need metrics even when the text scale is 1.0. */
-    if (prompt_glyph_pack_enabled())
+    if (x2_prompt_glyphs_enabled())
         x2_prompt_glyph_publish_metrics(table + index * FONT_STRIDE,
                                         k != 1.0f ? k : 1.0f);
 }

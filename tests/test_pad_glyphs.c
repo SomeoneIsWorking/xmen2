@@ -1,5 +1,6 @@
 #include "pad_glyphs.h"
 #include "pad_glyph_codes.h"
+#include "prompt_glyphs.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -339,7 +340,34 @@ int main(int argc, char **argv)
             return 1;
         }
     }
+
+    {
+        /* Font occupancy is process-global truth. A byte owned by any retail
+           font must leave both production paths: pad naming super-calls the
+           retail name, and label presentation keeps a foreign glyph bracketed
+           instead of pairing its metrics with native art. */
+        char foreign[2] = { (char)X2_PAD_GLYPH_FACE_A, 0 };
+        char bracketed[4] = { '[', (char)X2_PAD_GLYPH_FACE_A, ']', 0 };
+        x2_prompt_glyph_mark_unavailable(X2_PAD_GLYPH_FACE_A);
+        if (!check_call(4, 0x15, 0, 1)) {
+            fprintf(stderr, "pad glyph availability: an occupied codepoint "
+                            "did not use the retail naming body\n");
+            return 1;
+        }
+        if (strcmp(label_after(foreign), bracketed) != 0) {
+            fprintf(stderr, "pad glyph availability: a foreign codepoint "
+                            "was still presented as native art\n");
+            return 1;
+        }
+
+        x2_prompt_glyph_mark_unavailable(X2_KEYCAP_GLYPH_MIDDLE);
+        if (strcmp(label_after("ENTER"), "[ENTER]") != 0) {
+            fprintf(stderr, "keycap availability: a keycap with an occupied "
+                            "piece did not retain the retail label\n");
+            return 1;
+        }
+    }
     printf("pad glyph wrapper: enabled, reordered, unresolved and disabled "
-           "mappings plus pad/keycap/unmapped label cases passed\n");
+           "mappings plus pad/keycap/unmapped/occupied label cases passed\n");
     return 0;
 }

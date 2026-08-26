@@ -26,9 +26,9 @@
 #include "gpu_frame_timing.h"
 #include "gpu_internal.h"
 #include "gpu_present.h"
+#include "gpu_prompt_glyphs.h"
 #include "gpu_shadow.h"
 #include "boot_blackout.h"
-#include "prompt_glyph_quads.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include <stdio.h>
@@ -172,6 +172,7 @@ void gpu_device_destroy(void)
     /* RmlUi owns pipelines, buffers and textures on this device. Its backend
        must release them before the device and before the claimed window. */
     x2_ui_gpu_shutdown();
+    gpu_prompt_glyphs_shutdown();
     /* Buffers, textures and pipelines belong to the device, so they go before
        it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
        that only shows up under a validation layer. */
@@ -543,11 +544,10 @@ static SDL_GPUTexture *headless_target(void)
 
 int gpu_frame_begin(void)
 {
-    /* The prompt-glyph harvest is a FRAME's worth of rectangles: the guest
-       fills it as it draws text, and gpu_frame_end consumes it. Without this
-       it accumulates for the whole run and overruns its cap after a few
-       hundred frames (measured: 3,472 of 3,984 dropped). */
-    x2_prompt_quads_reset();
+    /* Reset the frame-owned prompt harvest and create its retained resources
+       before a render pass can open. Uploading them from the UI hook would
+       submit a copy command after engine drawing had already begun. */
+    gpu_prompt_glyphs_frame_begin();
 #ifndef X2_WITH_SDL
     return 0;
 #else

@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Validate the prompt-glyph manifest and generate its C codepoint header.
 
-`assets/buttons/glyphs.json` is this PORT's decision: which glyphs it publishes
-into the game's font and at which codepoints. **The art itself is not this
+`assets/buttons/glyphs.json` is this PORT's decision: which prompt glyphs it
+publishes and at which private text codepoints. **The art itself is not this
 port's** -- it lives in `shared/port-assets`, consumed rather than vendored,
 because every port in the tree was redrawing the same controller. The manifest
 names a set and the glyphs it wants out of it; `port_assets` resolves the
 checkout and refuses by naming every path it tried.
 
 The ORDER of `icons` is the codepoint order and is load-bearing: the generated
-`X2_PAD_GLYPH_*` macros come from it, and so does the atlas layout the font
-builder publishes.
+`X2_PAD_GLYPH_*` macros and the native RGBA atlas layout both come from it.
 """
 
 from __future__ import annotations
@@ -70,7 +69,7 @@ def load() -> tuple[int, str, list[str], str, str, list[str]]:
         raise ValueError(f"keycap_parts must be {expected_parts!r}, found "
                          f"{keycap_parts!r}; their metrics are semantic")
     if first < 0 or first + len(icons) + len(keycap_parts) > 256:
-        raise ValueError("glyph codepoints do not fit in the game's one-byte font")
+        raise ValueError("glyph codepoints do not fit in the game's one-byte text path")
     return (first, set_name, icons, keyboard_set, keyboard_source,
             keycap_parts)
 
@@ -86,8 +85,28 @@ def svg_paths() -> list[Path]:
 
 
 def keycap_svg_path() -> Path:
-    """Blank shared keycap geometry; this port slices it into font pieces."""
+    """Blank shared keycap geometry; this port slices it into atlas pieces."""
     return port_assets.path(KEYBOARD_SET, KEYBOARD_SOURCE, start=ROOT)
+
+
+def shared_source_paths() -> list[Path]:
+    """Every shared file whose content or declaration controls this atlas."""
+    paths = [
+        Path(port_assets.__file__).resolve(),
+        port_assets.set_dir(SET_NAME, start=ROOT) / "set.json",
+        port_assets.set_dir(KEYBOARD_SET, start=ROOT) / "set.json",
+        *svg_paths(),
+        keycap_svg_path(),
+    ]
+    missing = [path for path in paths if not path.is_file()]
+    if missing:
+        raise SystemExit(
+            "prompt atlas shared dependencies vanished: "
+            + ", ".join(str(path) for path in missing)
+        )
+    if len(paths) != len(set(paths)):
+        raise SystemExit("prompt atlas shared dependencies contain duplicate paths")
+    return paths
 
 
 def emit_header(path: Path) -> None:

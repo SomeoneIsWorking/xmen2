@@ -332,3 +332,19 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - where: src/d3d8/d3d8_vertex_shader.c; src/d3d8/d3d8_device.c; src/d3d8/d3d8_drawcall.c
 - gap: Observed program is implemented and verified; any unobserved declaration form, modifier, or VS 1.1 opcode still refuses by token until reached and implemented.
 - notes: The interpreter preserves the engine program and constants. It does not map programmable shaders back to fixed-function FVF.
+
+### native-ui-prompts — Native Alchemy text slice renders port-owned SVG prompts
+- status: re-verified
+- deps: d3d8-host
+- evidence: C271; XMen2 FUN_005ee780 preflights each string and FUN_005ee400 retains the retail emitter/finalizer event with collapsed geometry; libIGGfx igDxVisualContext::drawNonIndexed 0x100352d0 brackets the batch and nested updateContextState 0x10034e60 finalizes it before DrawPrimitive; computeMatrix_Dx 0x1003ec10 publishes context-keyed engine W/V/P. scratch/logs/svg-final-unbounded.log plus scratch/screenshots/svg-final-unbounded.png verify the ENTER keycap. scratch/logs/svg-pad-final-unbounded.log records 1,073 pure one-codepoint controller strings through 1,073 matching nested finalizers/submissions with zero atomicity, transform, GPU or orphan refusals; scratch/screenshots/svg-pad-unbounded.png shows the aligned A icon.
+- where: src/native/prompt_glyph_draw.c; src/native/prompt_glyph_batch.c; src/native/ui_transform.c; src/gpu/gpu_prompt_glyphs.c; docs/RE/text.md
+- gap:
+- notes: This is the first native 2D/UI draw slice. It bypasses D3D8 for port-owned prompt art but retains the stock ASCII batch; it does not claim the rest of Alchemy 2D is ported.
+
+### native-ui-rest — Port remaining Alchemy 2D/UI draw types and retire their D3D8 calls
+- status: todo
+- deps: native-ui-prompts
+- evidence:
+- where: src/native/; src/gpu/; src/d3d8/; docs/strategy.md
+- gap: Only prompt SVG quads are native. Stock text, panels, sprites, and other display-list geometry still submit through the D3D8 seam; each semantic path must be REd and verified before its D3D calls can be removed.
+- notes: Proceed top-down from display-list/geometry attributes; do not grow a D3D draw classifier.

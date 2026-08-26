@@ -17,6 +17,7 @@
 #include "d3d8_device.h"
 #include "d3d8_stateblock.h"
 #include "d3d8_host.h"
+#include "d3d8_lightlog.h"
 #include "d3d8_com.h"
 #include "d3d8_caps.h"
 #include "d3d8_state.h"
@@ -29,16 +30,14 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "win32_sdl.h"
-#include "x86rt_native.h"   /* naming a guest return address */
+#include "x86rt_native.h"
 #include "probe_rec.h"      /* probe_page_readable */
 
 #include "x86rt.h"
 
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 /*
  * X2_LIGHTLOG=<path> -- the light path in the SAME FORMAT the stock control
@@ -63,50 +62,6 @@
 #define D3D8_RS_LIGHTING 137
 #define D3D8_RS_AMBIENT  139
 
-static FILE *g_lightlog;
-static int   g_lightlog_tried;
-static long  g_lightlog_t0;
-
-static long lightlog_ms(void)
-{
-    struct timespec ts;
-    long ms;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    ms = (long)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-    if (!g_lightlog_t0) g_lightlog_t0 = ms;
-    return ms - g_lightlog_t0;
-}
-
-static int lightlog_on(void)
-{
-    const char *path;
-    if (g_lightlog_tried) return g_lightlog != NULL;
-    g_lightlog_tried = 1;
-    path = getenv("X2_LIGHTLOG");
-    if (!path || !*path) return 0;
-    g_lightlog = fopen(path, "w");
-    if (!g_lightlog) {
-        /* A log that silently did not open reads as "the engine set no
-           lights", which is the very answer this is here to establish. */
-        fprintf(stderr, "d3d8: X2_LIGHTLOG=%s could NOT be opened -- no light "
-                        "log will be written by this run.\n", path);
-        return 0;
-    }
-    setvbuf(g_lightlog, NULL, _IOLBF, 8192);   /* a kill keeps the tail */
-    fprintf(stderr, "d3d8: X2_LIGHTLOG is writing %s\n", path);
-    return 1;
-}
-
-static void lightlog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
-static void lightlog(const char *fmt, ...)
-{
-    va_list ap;
-    if (!lightlog_on()) return;
-    va_start(ap, fmt);
-    vfprintf(g_lightlog, fmt, ap);
-    va_end(ap);
-    fputc('\n', g_lightlog);
-}
 
 typedef struct {
     uint32_t              adapter, devtype, focus_window, behaviour;
@@ -570,11 +525,11 @@ static void dev_SetRenderState(D3D8Object *self, CPU *C)
     /* Only the two lighting states, as the control's proxy logs: the rest
        arrive at Present rate and would bury the light path. */
     if (which == D3D8_RS_LIGHTING)
-        lightlog("SETRENDERSTATE t=%lu LIGHTING=%lu",
-                 lightlog_ms(), (unsigned long)value);
+        d3d8_lightlog("SETRENDERSTATE t=%lu LIGHTING=%lu",
+                      d3d8_lightlog_ms(), (unsigned long)value);
     else if (which == D3D8_RS_AMBIENT)
-        lightlog("SETRENDERSTATE t=%lu AMBIENT=%08lx",
-                 lightlog_ms(), (unsigned long)value);
+        d3d8_lightlog("SETRENDERSTATE t=%lu AMBIENT=%08lx",
+                      d3d8_lightlog_ms(), (unsigned long)value);
     d3d8_ret(C, d3d8_state_set_render(&g_dev.state, which, value)
                 ? D3D_OK : D3DERR_INVALIDCALL);
 }
@@ -698,9 +653,9 @@ static void dev_SetMaterial(D3D8Object *self, CPU *C)
                     m[12], m[13], m[14], m[16]);
         }
     }
-    lightlog("SETMATERIAL t=%lu diffuse=%.4f,%.4f,%.4f,%.4f "
+    d3d8_lightlog("SETMATERIAL t=%lu diffuse=%.4f,%.4f,%.4f,%.4f "
              "ambient=%.4f,%.4f,%.4f,%.4f emissive=%.4f,%.4f,%.4f,%.4f "
-             "specular=%.4f,%.4f,%.4f,%.4f power=%.2f", lightlog_ms(),
+             "specular=%.4f,%.4f,%.4f,%.4f power=%.2f", d3d8_lightlog_ms(),
              m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7],
              m[12], m[13], m[14], m[15], m[8], m[9], m[10], m[11], m[16]);
     memcpy(g_dev.state.material, m, sizeof g_dev.state.material);
@@ -757,15 +712,16 @@ static void dev_SetLight(D3D8Object *self, CPU *C)
     (void)self;
     /* Before the refusal, for the reason given at dev_LightEnable. */
     if (!l)
-        lightlog("SETLIGHT t=%lu idx=%lu NULL-POINTER", lightlog_ms(),
-                 (unsigned long)idx);
+        d3d8_lightlog("SETLIGHT t=%lu idx=%lu NULL-POINTER",
+                      d3d8_lightlog_ms(), (unsigned long)idx);
     else
-        lightlog("SETLIGHT t=%lu idx=%lu type=%u "
+        d3d8_lightlog("SETLIGHT t=%lu idx=%lu type=%u "
                  "diffuse=%.4f,%.4f,%.4f,%.4f specular=%.4f,%.4f,%.4f,%.4f "
                  "ambient=%.4f,%.4f,%.4f,%.4f pos=%.2f,%.2f,%.2f "
                  "dir=%.3f,%.3f,%.3f range=%.2f falloff=%.2f "
                  "atten=%.6f,%.6f,%.8f theta=%.3f phi=%.3f",
-                 lightlog_ms(), (unsigned long)idx, ((const uint32_t *)l)[0],
+                 d3d8_lightlog_ms(), (unsigned long)idx,
+                 ((const uint32_t *)l)[0],
                  l[1], l[2], l[3], l[4], l[5], l[6], l[7], l[8],
                  l[9], l[10], l[11], l[12], l[13], l[14], l[15],
                  l[16], l[17], l[18], l[19], l[20], l[21], l[22], l[23],
@@ -987,8 +943,8 @@ static void dev_LightEnable(D3D8Object *self, CPU *C)
     /* Logged BEFORE the range refusal: an index we refuse and the control
        accepts is exactly the kind of difference this log exists to show, and
        it cannot show it from behind the refusal. */
-    lightlog("LIGHTENABLE t=%lu idx=%lu on=%d", lightlog_ms(),
-             (unsigned long)idx, on != 0);
+    d3d8_lightlog("LIGHTENABLE t=%lu idx=%lu on=%d", d3d8_lightlog_ms(),
+                  (unsigned long)idx, on != 0);
     g_lightenable_calls++;
     if (idx >= D3D8_MAX_LIGHTS) {
         light_index_refused("LightEnable", idx);

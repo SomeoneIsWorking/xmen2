@@ -305,6 +305,7 @@ static SDL_GPUTextureFormat sdl_format(GpuFormat f)
 {
     switch (f) {
     case GPU_FMT_BGRA8: return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
+    case GPU_FMT_RGBA8: return SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
     case GPU_FMT_BC1:   return SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM;
     case GPU_FMT_BC2:   return SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM;
     case GPU_FMT_BC3:   return SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM;
@@ -316,7 +317,8 @@ static uint32_t texture_level_bytes(GpuFormat fmt, uint32_t w, uint32_t h)
 {
     uint32_t blocks = ((w + 3u) / 4u) * ((h + 3u) / 4u);
     switch (fmt) {
-    case GPU_FMT_BGRA8: return w * h * 4u;
+    case GPU_FMT_BGRA8:
+    case GPU_FMT_RGBA8: return w * h * 4u;
     case GPU_FMT_BC1:   return blocks * 8u;
     case GPU_FMT_BC2:
     case GPU_FMT_BC3:   return blocks * 16u;
