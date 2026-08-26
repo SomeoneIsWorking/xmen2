@@ -22,21 +22,19 @@
  * counted before any pixel is drawn. A super-call happens on EVERY string;
  * without the feature gate nothing else about a string is touched.
  *
- * STAGE ONE RAN, AND THE ANSWER WAS NO -- claim C267, docs/RE/text.md. On a
- * boot-direct tutorial run the label override composed 2,264 keycap labels
- * and ZERO prompt codepoints reached this loop; the same run with the pack
- * off draws the same string population, so enabling the pack changes nothing
- * that arrives here. prompt_labels.c writes its label as a NARROW byte
- * string and this loop walks a WIDE one, so something between them widens.
- * What the run does NOT establish is whether those labels were ever meant to
- * be on screen in that scenario -- 2,272 label READS happen either way, and a
- * read is not a draw. Do not build stage two on the arrival until a scenario
- * whose labels are demonstrably visible (the Controls binding menu) has been
- * measured.
+ * STAGE ONE RAN AND THE LABELS DO ARRIVE -- claim C268, docs/RE/text.md.
+ * On a boot-direct tutorial run, 1,142 of 4,581 strings at this loop carried
+ * 13,704 prompt codepoints, in exactly the composed shape
+ * (0090 0091x5 0092x5 "Enter" 0093). So the cheap test below is sound and
+ * stage two -- segmentation, the port atlas, custom quads through
+ * FUN_005ee400, and the matching FUN_00597c90 measurer override -- is
+ * unblocked.
  *
- * The zero is a measurement and not silence: tests/test_prompt_glyph_draw.c
- * drives x2_override_005ee780 over guest memory with a composed keycap label
- * and watches it counted, so the detector has produced the other answer.
+ * It first reported the opposite, and that was this file's fault: it read
+ * the wide string from C->edx, which FUN_005ee780 overwrites from [EDI+0x8]
+ * at 0x005ee797 before ever reading. See glyph_loop_string() below and
+ * instrument I069 for how a wrong pointer still decoded as real text and
+ * read like a working detector for a whole investigation.
  */
 #include "prompt_glyph_draw.h"
 
@@ -68,7 +66,40 @@ static unsigned g_examples;
    remapped, narrowed or shifted on the way here reads exactly like a label
    that was never drawn. */
 static unsigned long g_with_non_ascii;
-static unsigned g_non_ascii_examples;
+
+/* Sample by DISTINCT CONTENT, not by arrival order. A flat "first N" cap
+   spends its whole budget on the legal screen and the engine's repeated
+   control words -- the run that mattered dumped `9d28 01f2` eight times and
+   never showed the one string shape worth seeing. Keyed on a hash of the
+   wchars, so a string repeated 2,000 times costs one slot. */
+#define DISTINCT_SLOTS 96u
+static uint32_t g_seen_hash[DISTINCT_SLOTS];
+static unsigned g_distinct;
+static unsigned long g_distinct_dropped;
+
+static uint32_t wide_hash(uint32_t s_guest, unsigned *length_out)
+{
+    uint32_t h = 2166136261u;
+    unsigned i;
+    for (i = 0; i < MAX_WALK; i++) {
+        uint16_t c = RD16(s_guest + (uint32_t)i * 2u);
+        if (!c) break;
+        h = (h ^ c) * 16777619u;
+    }
+    if (length_out) *length_out = i;
+    return h ? h : 1u;
+}
+
+/* First sighting of this exact content? Records it if there is room. */
+static int first_sighting(uint32_t hash)
+{
+    unsigned i;
+    for (i = 0; i < g_distinct; i++)
+        if (g_seen_hash[i] == hash) return 0;
+    if (g_distinct == DISTINCT_SLOTS) { g_distinct_dropped++; return 0; }
+    g_seen_hash[g_distinct++] = hash;
+    return 1;
+}
 
 int x2_string_has_prompt_glyph(uint32_t s_guest, unsigned max)
 {
@@ -98,9 +129,31 @@ static void log_example(uint32_t where)
     fprintf(stderr, "  = \"%s\"\n", buf);
 }
 
+/* The wide string is FUN_005ee780's FIRST STACK ARGUMENT, not EDX.
+ *
+ * Read out of the retail body: the prologue is `SUB ESP,0x2c` then four
+ * pushes (EBX, EBP, ESI, EDI), putting ESP 0x3c below entry; the character
+ * walk at 0x005ee7dc then does `MOV EAX,[ESP+0x40]` / `MOVZX EAX,word [EAX]`,
+ * and 0x3c - 0x40 lands exactly on entry_esp+4. The entry prologue reads the
+ * same slot as `[ESP+0x30]` before the pushes, which agrees.
+ *
+ * This detector previously read C->edx, on the strength of a "__fastcall
+ * (ECX=owner, EDX=&wide buf)" note. EDX is not an input at all: 0x005ee797
+ * overwrites it from `[EDI+0x8]` before it is ever read. Whatever the caller
+ * happened to leave in EDX often pointed at real wide text -- which is why
+ * the wrong pointer still decoded as "Cyclops" and the legal screen and read
+ * like a working instrument -- but it was never the string being drawn. Every
+ * zero this file reported before that fix was measured against the wrong
+ * memory (C267 is retracted on those grounds).
+ */
+static uint32_t glyph_loop_string(const CPU *C)
+{
+    return RD32(C->esp + 4u);
+}
+
 void x2_override_005ee780(CPU *C)
 {
-    uint32_t s = C->edx;
+    uint32_t s = glyph_loop_string(C);
     unsigned i;
 
     g_strings++;
@@ -118,30 +171,20 @@ void x2_override_005ee780(CPU *C)
         }
     } else if (s) {
         /* Diagnostic denominator: WHAT is being drawn, if not prompts?
-           The first 40 strings are sampled to show text arrives at all; the
-           BORING case is capped, never the interesting one -- every string
-           carrying a non-ASCII wchar is counted for the whole run, and the
-           first few are dumped as raw codepoints. Rendering those as '?'
-           was hiding the only evidence that distinguishes a near miss. */
-        char buf[MAX_WALK + 1];
+           Every string carrying a non-ASCII wchar is COUNTED for the whole
+           run, and every DISTINCT string -- ASCII or not -- is dumped once
+           as raw codepoints. The boring case is what gets capped: a control
+           word repeated two thousand times costs one slot, so the budget
+           survives long enough to reach whatever draws late. */
         unsigned k;
         int non_ascii = 0;
         for (k = 0; k < MAX_WALK; k++) {
             uint16_t ch = RD16(s + (uint32_t)k * 2u);
             if (!ch) break;
-            if (ch >= 0x80) non_ascii = 1;
-            buf[k] = (ch >= 0x20 && ch < 0x7f) ? (char)ch : '?';
+            if (ch >= 0x80) { non_ascii = 1; break; }
         }
-        buf[k] = 0;
-        if (non_ascii) {
-            g_with_non_ascii++;
-            if (g_non_ascii_examples < 8) {
-                g_non_ascii_examples++;
-                log_example(s);
-            }
-        } else if (g_strings <= 40) {
-            fprintf(stderr, "PROMPT DRAW: sample string: \"%s\"\n", buf);
-        }
+        if (non_ascii) g_with_non_ascii++;
+        if (first_sighting(wide_hash(s, NULL))) log_example(s);
     }
     /* Stage one changes no pixels: the stock body runs on every string. */
     g_super_called++;
@@ -163,6 +206,11 @@ void x2_prompt_draw_report(void)
             g_strings, g_with_prompts, X2_PROMPT_GLYPH_FIRST,
             X2_PROMPT_GLYPH_LAST, g_prompt_codepoints, g_with_non_ascii,
             g_super_called);
+    fprintf(stderr, "PROMPT DRAW: %u distinct string(s) dumped%s\n",
+            g_distinct,
+            g_distinct_dropped ? " (SLOTS FULL -- later distinct strings "
+                                 "went undumped, so this list is not the "
+                                 "whole set)" : "");
     if (!g_strings)
         fprintf(stderr, "PROMPT DRAW: ZERO strings seen -- either nothing "
                         "drew text in this run or the override never armed.\n");
