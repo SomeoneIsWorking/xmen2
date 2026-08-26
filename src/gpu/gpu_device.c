@@ -28,6 +28,7 @@
 #include "gpu_present.h"
 #include "gpu_shadow.h"
 #include "boot_blackout.h"
+#include "prompt_glyph_quads.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include <stdio.h>
@@ -542,6 +543,11 @@ static SDL_GPUTexture *headless_target(void)
 
 int gpu_frame_begin(void)
 {
+    /* The prompt-glyph harvest is a FRAME's worth of rectangles: the guest
+       fills it as it draws text, and gpu_frame_end consumes it. Without this
+       it accumulates for the whole run and overruns its cap after a few
+       hundred frames (measured: 3,472 of 3,984 dropped). */
+    x2_prompt_quads_reset();
 #ifndef X2_WITH_SDL
     return 0;
 #else

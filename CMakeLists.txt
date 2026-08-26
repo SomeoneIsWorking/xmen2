@@ -305,11 +305,15 @@ add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 # ever answered zero; this is where it is made to answer one.
 add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
                src/native/prompt_glyph_draw.c src/native/prompt_glyph_pack.c
+               src/native/prompt_glyph_metrics.c
+               src/native/prompt_glyph_quads.c
                tests/native_stubs.c)
 add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header)
 target_include_directories(test_prompt_glyph_draw
-                           PRIVATE src/recomp src/native ${CMAKE_BINARY_DIR})
+                           PRIVATE src/recomp src/native src/recomp/gen
+                                   ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE)
+target_link_libraries(test_prompt_glyph_draw PRIVATE m)
 add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
 
 add_executable(test_dialog_prompts tests/test_dialog_prompts.c
@@ -891,6 +895,8 @@ if(X2_MODULE_HAVE)
         src/native/ui_text_scale.c
         src/native/text_caller_probe.c
         src/native/prompt_glyph_draw.c
+        src/native/prompt_glyph_metrics.c
+        src/native/prompt_glyph_quads.c
         src/input/binding_rows.c
         src/input/controller_hotplug.c
         src/input/controller_instance.c
