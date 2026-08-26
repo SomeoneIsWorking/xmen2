@@ -79,8 +79,14 @@ static int desktop(int *w, int *h, int *bpp, int *hz)
         if (m) {
             const SDL_PixelFormatDetails *pf =
                 SDL_GetPixelFormatDetails(m->format);
-            *w = m->w;
-            *h = m->h;
+            /* PIXELS: SDL reports a HiDPI desktop in scaled points (this 4K
+               screen says 1536x864 at pixel_density 2.5), and a 2005 title
+               asking GetDeviceCaps for HORZRES means pixels. See the same
+               conversion, and what a logical answer cost, in
+               src/d3d8/d3d8_d3d8.c current_desktop(). */
+            float density = m->pixel_density > 0.0f ? m->pixel_density : 1.0f;
+            *w = (int)((float)m->w * density + 0.5f);
+            *h = (int)((float)m->h * density + 0.5f);
             if (pf && pf->bits_per_pixel) *bpp = pf->bits_per_pixel;
             if (m->refresh_rate > 0.0f) *hz = (int)(m->refresh_rate + 0.5f);
             return 1;

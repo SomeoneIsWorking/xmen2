@@ -2,6 +2,7 @@
 #include "gpu_present.h"
 
 #include "aspect_fit.h"
+#include "boot_blackout.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -111,4 +112,23 @@ void gpu_present_shutdown(SDL_GPUDevice *device)
     g_scene_height = 0;
     g_texture_width = 0;
     g_texture_height = 0;
+}
+
+void gpu_present_boot_blackout(SDL_GPUCommandBuffer *command_buffer,
+                               struct SDL_GPUTexture *target)
+{
+    SDL_GPUColorTargetInfo ct;
+
+    if (!command_buffer || !target) return;
+    SDL_zero(ct);
+    ct.texture = target;
+    ct.clear_color = (SDL_FColor){0.0f, 0.0f, 0.0f, 1.0f};
+    ct.load_op = SDL_GPU_LOADOP_CLEAR;
+    ct.store_op = SDL_GPU_STOREOP_STORE;
+    {
+        SDL_GPURenderPass *pass = SDL_BeginGPURenderPass(command_buffer,
+                                                         &ct, 1, NULL);
+        if (pass) SDL_EndGPURenderPass(pass);
+    }
+    x2_boot_blackout_frame_presented();
 }

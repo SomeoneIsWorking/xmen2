@@ -3,6 +3,7 @@
 #include "autosave_format.h"
 #include "autosave_policy.h"
 #include "autosave_storage.h"
+#include "boot_blackout.h"
 #include "conversation_resume.h"
 #include "guest_heap.h"
 #include "save_directory.h"
@@ -193,6 +194,10 @@ static void x2_autosave_override_00484ce0(CPU *C)
     x2_save_trace_map_return(map, succeeded);
     x2_autosave_runtime_map_return(succeeded);
     x2_conversation_resume_map_return(succeeded);
+    /* The boot's own destination load completes here: this is the signal the
+       boot blackout waits for. Later zone loads arrive while the blackout is
+       already closed and are no-ops to it. */
+    if (succeeded) x2_boot_blackout_disarm("the boot's map load returned");
 }
 
 __attribute__((constructor))

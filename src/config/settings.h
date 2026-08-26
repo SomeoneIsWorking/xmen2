@@ -34,6 +34,9 @@ typedef struct {
     X2WindowMode window_mode;
     uint8_t dynamic_shadows;
     uint16_t shadow_resolution;
+    /* Multiplier on every glyph the engine loads. 0 means AUTO: hold the
+       share of the screen the text has at 800x600. See ui_text_scale.c. */
+    float text_scale;
     X2BootMode boot_mode;
     /* Device-assignment grid: each row has one owner or is unassigned. P1 may
        own one row of each kind for hotswap. P2-P4 own one device total. */

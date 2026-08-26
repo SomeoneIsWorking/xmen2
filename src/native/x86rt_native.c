@@ -4,6 +4,7 @@
  * the guest entry point.
  */
 #include "x86rt.h"
+#include "x86_reached.h"
 #include "x86rt_native.h"
 #include "threads.h"
 #include "guest_heap.h"
@@ -46,6 +47,73 @@ static struct {
 } g_override[X2_MAX_OVERRIDES];
 static int g_noverride;
 static int g_overrides_resolved;
+
+/* ---- per-function override slots ----------------------------------------
+ *
+ * The generated code carries one slot per function and a checked entry that
+ * reads it; each chunk registers its own (linked ep -> slot address) table
+ * from a constructor. Binding an override is therefore a POINTER WRITE at
+ * resolve time, and the emitted C is identical whether or not anything is
+ * overridden.
+ *
+ * That is the whole point. The emitter used to regex-scan src/native for
+ * x86_register_override calls and route only the addresses it recognised, so
+ * (a) every override change re-emitted the module and (b) a registration the
+ * regex could not read -- a named constant instead of a hex literal -- was
+ * silently not routed, leaving an override that registers, resolves, and
+ * never fires.
+ */
+typedef struct ChunkSlots {
+    const char             *module;
+    const uint32_t         *base;      /* the chunk's module base variable */
+    const X86OverrideSlot  *slots;
+    int                     n;
+    struct ChunkSlots      *next;
+} ChunkSlots;
+
+static ChunkSlots *g_chunks;
+static int g_chunk_count;
+static long g_slot_count;
+
+void x86_override_slots_register(const char *module, const uint32_t *base,
+                                 const X86OverrideSlot *slots, int n)
+{
+    ChunkSlots *c = (ChunkSlots *)calloc(1, sizeof *c);
+    if (!c) {
+        fprintf(stderr, "x86_override_slots_register: out of memory "
+                        "registering %d slot(s) for %s\n", n, module);
+        abort();
+    }
+    c->module = module;
+    c->base = base;
+    c->slots = slots;
+    c->n = n;
+    c->next = g_chunks;
+    g_chunks = c;
+    g_chunk_count++;
+    g_slot_count += n;
+}
+
+/* The slot for one (module, linked ep), or NULL. Linear over chunks and
+   binary-searchable within one would be faster, but this runs once per
+   override at startup -- tens of lookups, not millions. */
+static x86_override_fn *override_slot_for(const char *module, uint32_t ep)
+{
+    ChunkSlots *c;
+    for (c = g_chunks; c; c = c->next) {
+        int i;
+        if (!c->module || strcmp(c->module, module)) continue;
+        for (i = 0; i < c->n; i++)
+            if (c->slots[i].linked_ep == ep) return c->slots[i].slot;
+    }
+    return NULL;
+}
+
+/* Denominators, so "the override did not fire" can be told from "no generated
+   code registered any slots at all" -- which is what a build that linked the
+   runtime without the generated chunks looks like. */
+long x86_override_slot_count(void) { return g_slot_count; }
+int  x86_override_chunk_count(void) { return g_chunk_count; }
 
 void x86_register_override(const char *module, uint32_t linked_ep,
                            x86_override_fn fn)
@@ -137,6 +205,7 @@ void x86_overrides_resolve(void)
     for (i = 0; i < g_noverride; i++) {
         char why[256];
         uint32_t mapped = 0;
+        x86_override_fn *slot;
         if (x86_override_resolve_check(g_override[i].module,
                                        g_override[i].linked_ep,
                                        &mapped, why, sizeof why) != 0) {
@@ -147,6 +216,20 @@ void x86_overrides_resolve(void)
             continue;
         }
         g_override[i].mapped_ep = mapped;
+        slot = override_slot_for(g_override[i].module,
+                                 g_override[i].linked_ep);
+        if (!slot) {
+            fprintf(stderr, "x86_overrides_resolve: %s 0x%08x resolved to a "
+                            "mapped body but the generated code registered no "
+                            "override slot for it. %d chunk(s) and %ld slot(s) "
+                            "are registered -- if that is 0, no generated "
+                            "chunk ran its constructor.\n",
+                    g_override[i].module, g_override[i].linked_ep,
+                    g_chunk_count, g_slot_count);
+            bad++;
+            continue;
+        }
+        *slot = g_override[i].fn;
     }
     if (bad) {
         fprintf(stderr, "x86_overrides_resolve: %d of %d override(s) could not "
@@ -156,8 +239,9 @@ void x86_overrides_resolve(void)
         abort();
     }
     g_overrides_resolved = 1;
-    printf("overrides: %d native override(s) resolved to mapped addresses\n",
-           g_noverride);
+    printf("overrides: %d native override(s) bound into their function's own "
+           "slot, out of %ld slot(s) in %d generated chunk(s)\n",
+           g_noverride, g_slot_count, g_chunk_count);
 }
 
 static int thunk_call(uint32_t addr, CPU *C);
@@ -1848,153 +1932,6 @@ void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
 }
 #endif
 
-#ifdef X86_NATIVE_REACHED
-/* ---- the reached set --------------------------------------------------
- *
- * Open-addressed, power-of-two, never resized: 36,340 functions across the
- * eight modules, so 131,072 slots keeps the load factor under 0.28 and the
- * probe count near one. Never resized means never allocating from a hook that
- * runs inside guest execution.
- *
- * The key is the entry point as LINKED, which is what the generated bodies
- * carry. Every libIG*.dll is linked for 0x10000000, so two modules CAN have a
- * function at the same linked address -- the report says so rather than
- * quietly reporting a hit in one module as a hit in another.
- */
-#define REACHED_SLOTS (1u << 17)
-/* seq is the ORDER of first entry, 1-based. Reached-or-not alone cannot answer
-   "did the exe set the flag before the engine read it?", which is the question
-   an ordering bug always reduces to, and a ring cannot answer it either
-   because it evicts. One counter turns the set into a first-touch ordering at
-   no extra cost. */
-/* n is the CALL COUNT, not just presence. "Reached" and "reached 31 times" are
-   different findings: a loop that fails to advance re-runs the same body, and
-   presence alone reports that as indistinguishable from running it once.
-   The key is (ep, base) -- see x86rt.h for why the ep alone is not unique. */
-static struct { uint32_t ep, base, seq, n; } g_reached[REACHED_SLOTS];
-static unsigned g_reached_n;
-
-static unsigned reached_slot(uint32_t ep, uint32_t base)
-{
-    uint32_t h = (ep * 2654435761u + base * 40503u) >> 11;
-    for (;;) {
-        unsigned i = h & (REACHED_SLOTS - 1);
-        if (g_reached[i].ep == 0) return i;
-        if (g_reached[i].ep == ep && g_reached[i].base == base) return i;
-        h++;
-    }
-}
-
-void x86_reached_enter(uint32_t ep, uint32_t base)
-{
-    unsigned i = reached_slot(ep, base);
-    if (g_reached[i].ep) { g_reached[i].n++; return; }
-    g_reached[i].ep = ep;
-    g_reached[i].base = base;
-    g_reached[i].seq = ++g_reached_n;
-    g_reached[i].n = 1;
-}
-
-/* 1-based order of first entry, or 0 for never entered. */
-static uint32_t reached_seq(uint32_t ep, uint32_t base)
-{
-    unsigned i = reached_slot(ep, base);
-    return g_reached[i].ep ? g_reached[i].seq : 0;
-}
-
-static uint32_t reached_count(uint32_t ep, uint32_t base)
-{
-    unsigned i = reached_slot(ep, base);
-    return g_reached[i].ep ? g_reached[i].n : 0;
-}
-
-/*
- * Both classes, every run. A discriminator that has only been seen to say
- * "reached" has not been shown to be capable of saying "never", and this one
- * exists precisely to be believed when it says NEVER.
- */
-static void reached_selftest(void)
-{
-    const uint32_t a = 0xDEAD0001u, b = 0xDEAD0002u, miss = 0xDEAD0003u;
-    const uint32_t B1 = 0x10000000u, B2 = 0x20000000u;
-    int ok_pos, ok_neg, ok_ord, ok_cnt, ok_mod;
-    x86_reached_enter(a, B1);
-    x86_reached_enter(b, B1);
-    ok_pos = reached_seq(a, B1) != 0;
-    ok_neg = reached_seq(miss, B1) == 0;
-    /* Ordering is a claim this instrument makes, so it is tested too: a seq
-       that is merely non-zero would pass the checks above while ordering
-       everything wrongly. */
-    ok_ord = reached_seq(a, B1) < reached_seq(b, B1);
-    x86_reached_enter(a, B1);                  /* a second time: count must move */
-    ok_cnt = reached_count(a, B1) == 2 && reached_count(b, B1) == 1;
-    /* And the whole point of the (ep, base) key: the SAME ep in a different
-       module must be a different entry, not the same counter. */
-    x86_reached_enter(a, B2);
-    ok_mod = reached_count(a, B1) == 2 && reached_count(a, B2) == 1;
-    fprintf(stderr, "[REACHED] selftest: inserted -> %s; never-inserted -> %s; "
-                    "order %u<%u -> %s; counts 2/1 -> %s; same ep in two "
-                    "modules kept apart -> %s\n",
-            ok_pos ? "REACHED (correct)" : "NEVER (WRONG)",
-            ok_neg ? "NEVER (correct)" : "REACHED (WRONG)",
-            reached_seq(a, B1), reached_seq(b, B1), ok_ord ? "correct" : "WRONG",
-            ok_cnt ? "correct" : "WRONG", ok_mod ? "correct" : "WRONG");
-    if (!ok_pos || !ok_neg || !ok_ord || !ok_cnt || !ok_mod) {
-        fprintf(stderr, "[REACHED] the reached set is BROKEN in at least one "
-                        "direction -- every answer below is worthless.\n");
-        _exit(4);
-    }
-}
-
-void x86_reached_report(void)
-{
-    const char *want = getenv("X2_REACHED");
-    char buf[1024], *p, *save;
-    if (getenv("X2_REACHED_SELFTEST")) reached_selftest();
-    fprintf(stderr, "[REACHED] %u distinct (entry point, module) pairs were "
-                    "entered.\n", g_reached_n);
-    if (!g_reached_n)
-        fprintf(stderr, "[REACHED] That is ZERO, so no body ran at all and a "
-                        "NEVER below says nothing about the guest.\n");
-    if (!want || !*want) {
-        fprintf(stderr, "[REACHED] X2_REACHED is unset, so no specific address "
-                        "was asked about. Set it to a comma-separated list of "
-                        "0x... to get a verdict per address.\n");
-        return;
-    }
-    fprintf(stderr, "[REACHED] '#n' is the ORDER of first entry (smaller ran "
-                    "first); 'xN' is how many times it was entered. One line "
-                    "per module defining that address.\n");
-    snprintf(buf, sizeof buf, "%s", want);
-    for (p = strtok_r(buf, ",", &save); p; p = strtok_r(NULL, ",", &save)) {
-        uint32_t ep = (uint32_t)strtoul(p, NULL, 0);
-        X86Module *m;
-        int nmod = 0;
-        for (m = x86_modules(); m; m = m->next) {
-            uint32_t seq;
-            /* Only modules whose LINKED range contains this address. Without
-               the range test the subtraction wraps and probes a random mapped
-               address in every other module. */
-            if (ep < m->preferred || ep - m->preferred >= m->size) continue;
-            if (!x86_native_name_at(*m->base + (ep - m->preferred))) continue;
-            nmod++;
-            seq = reached_seq(ep, *m->base);
-            if (seq)
-                fprintf(stderr, "[REACHED]   0x%08x  REACHED  #%-6u x%-6u %s\n",
-                        ep, seq, reached_count(ep, *m->base), m->name);
-            else
-                fprintf(stderr, "[REACHED]   0x%08x  NEVER            %-7s %s\n",
-                        ep, "", m->name);
-        }
-        if (!nmod)
-            fprintf(stderr, "[REACHED]   0x%08x  -- NO registered module "
-                            "defines a function at that address, so there is "
-                            "nothing this could have counted\n", ep);
-    }
-}
-
-#endif /* X86_NATIVE_REACHED */
-
 /* ---- guest-memory peek ------------------------------------------------
  *
  * "What was actually in that slot when it died?" -- the question every
@@ -2187,9 +2124,7 @@ void x86_diag_dump(void)
        unless the fire count is printed where the stall is. */
     { extern void winmm_report(void); winmm_report(); }
     x86_peek_report();
-#ifdef X86_NATIVE_REACHED
     x86_reached_report();
-#endif
 #ifdef X86_NATIVE_TRACE
     x86_args_report();
 #endif

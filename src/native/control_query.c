@@ -1,6 +1,7 @@
 #include "control_query.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 int control_query_arg(const char *query, const char *name,
                       char *out, size_t out_size)
@@ -26,4 +27,15 @@ int control_query_arg(const char *query, const char *name,
         part++;
     }
     return 0;
+}
+
+int bounded_number(const char *text, int minimum, int maximum, int *out)
+{
+    char *end;
+    long value;
+    if (!text || !*text) return 0;
+    value = strtol(text, &end, 10);
+    if (*end || value < minimum || value > maximum) return 0;
+    *out = (int)value;
+    return 1;
 }

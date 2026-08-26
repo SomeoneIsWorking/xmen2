@@ -561,6 +561,24 @@ static inline void cpu_reset(struct CPU *C)
 
 void x87_fault(const char *what);
 
+/* ---- native override slots ----------------------------------------------
+ *
+ * Every generated function carries a slot and a checked entry that reads it;
+ * each generated chunk registers its own table from a constructor. Binding an
+ * override is a pointer write at startup, so the emitted C says nothing about
+ * which functions a port overrides -- adding one is a C change and a relink,
+ * never a re-emit of two million lines. The hosted (Wine) runtime provides
+ * the same two symbols and simply keeps no overrides.
+ */
+struct CPU;
+typedef void (*x86_override_fn)(struct CPU *C);
+typedef struct {
+    uint32_t          linked_ep;
+    x86_override_fn  *slot;
+} X86OverrideSlot;
+void x86_override_slots_register(const char *module, const uint32_t *base,
+                                 const X86OverrideSlot *slots, int n);
+
 /* Call history. Without it, "x86_dispatch: no function at 0xX" says nothing
    about how execution got there, and 11,061 functions is far too many to
    bisect by hand. Compiled out entirely unless X86_TRACE_CALLS is defined, so
@@ -615,8 +633,17 @@ void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C);
 # define X86_ENTER_FN_DIAG(a) x86_trace_enter((a), X86_IMGBASE, C)
 # define X86_EXIT_FN_DIAG(a)  x86_trace_exit((a), X86_IMGBASE, C)
 # define x86_dump_history() ((void)0)
-#elif defined(X86_NATIVE_REACHED)
+#elif defined(X86_NATIVE_REACHED) || defined(X86_NATIVE)
 /* Native build, recording WHICH bodies were ever entered.
+ *
+ * ARMED AT RUNTIME, in the SHIPPING build. It used to need its own
+ * -DX2_NATIVE_REACHED build tree, which meant that "does the engine ever call
+ * this?" -- the first question of nearly every investigation -- cost a second
+ * 272MB binary before it could even be asked. The hook is now compiled into
+ * the ordinary build behind one load of a global and a not-taken branch, and
+ * X2_REACHED (or the live control channel) arms it. X86_NATIVE_REACHED still
+ * exists and now means ARMED FROM THE FIRST INSTRUCTION, for the case where
+ * what has to be caught happens before anything can arm it.
  *
  * A different question from the trace ring, and the ring cannot answer it: the
  * ring holds the last N crossings, so a function called once during startup is
@@ -636,7 +663,12 @@ void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C);
  * already defined in every generated translation unit, so the pair is free. */
 void x86_reached_enter(uint32_t ep, uint32_t base);
 void x86_reached_report(void);
-# define X86_ENTER_FN_DIAG(a) x86_reached_enter((a), X86_IMGBASE)
+/* Non-zero once armed. `volatile` because the control channel arms it from
+   another thread while guest bodies are running. */
+extern volatile int x86_reached_armed;
+# define X86_ENTER_FN_DIAG(a) \
+    do { if (__builtin_expect(x86_reached_armed != 0, 0)) \
+             x86_reached_enter((a), X86_IMGBASE); } while (0)
 # define x86_dump_history() ((void)0)
 #else
 # define X86_ENTER_FN_DIAG(a) ((void)0)

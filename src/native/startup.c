@@ -27,6 +27,8 @@
 #include "threads.h"
 #include "boot_mode_runtime.h"
 #include "boot_menu_transition.h"
+#include "boot_splash_policy.h"
+#include "boot_blackout.h"
 #include "continue_runtime.h"
 #include "save_directory.h"
 #include "settings_store.h"
@@ -296,9 +298,14 @@ void x2_override_0055beb0(CPU *C)
     static enum BootMapPhase phase = BOOT_MAP_WAITING_FOR_INTRO;
     uint32_t s = RD32(C->esp + 4u);     /* param_2: the command string */
 
+    x2_boot_splash_trace(s);
+
     if (mode < 0) {
         const char *e = getenv("X2_BOOT_MAP");
-        mode = (e && *e && *e != '0') ? 1 : 0;
+        /* Only the exact string "0" disables: real map names start with
+           digits ("0020b"), so a first-character test would silently refuse
+           them and boot retail instead. */
+        mode = (e && *e && strcmp(e, "0") != 0) ? 1 : 0;
         map_requested = mode;
         if (mode) {
             char buf[128];
@@ -335,7 +342,17 @@ void x2_override_0055beb0(CPU *C)
     }
     if (!map_requested && phase == BOOT_MAP_WAITING_FOR_INTRO) {
         if (!exe_base) exe_base = mapped_exe_base();
-        if (boot_to_host_mode(C, s, exe_base)) return;
+        if (boot_to_host_mode(C, s, exe_base)) {
+            x2_boot_splash_arm();
+            x2_boot_blackout_arm(x2_boot_mode_name(
+                x2_settings_store()->boot_mode));
+            return;
+        }
+    }
+    if (x2_boot_splash_refuse(s)) {
+        C->eax = 1u;        /* "a command ran" */
+        C->esp += 8u;       /* RET 0x4: return address and one argument */
+        return;
     }
     if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
         x2_boot_mode_is_intro_command((const char *)(uintptr_t)s)) {
@@ -383,12 +400,15 @@ void x2_override_0055beb0(CPU *C)
  * splash on screen by comparing the guest clock against the phase's own
  * start timestamp ([this+0x24]) and a 5-second duration constant in .rdata;
  * only then does the tick run its subsystem init, `resetgame` and the intro
- * command. A Continue boot wants none of that wait: while the persisted boot
- * mode asks for Continue, the phase's start timestamp is marked long past
- * BEFORE the original body runs, so the phase's own logic -- unchanged, its
- * duration constant unread -- passes the wait on the first tick and the
- * intercepted intro command dispatches the save directly. Every effect of
- * the phase except the delay is the retail effect. */
+ * command. A Continue boot wants none of that wait, and neither does a Menu
+ * boot -- the splash is a timed screen, not a keypress-gated one, so waiting
+ * it out is dead time in every automated or impatient launch. While the
+ * persisted boot mode asks for Continue OR Menu, the phase's start timestamp
+ * is marked long past BEFORE the original body runs, so the phase's own
+ * logic -- unchanged, its duration constant unread -- passes the wait on the
+ * first tick and the intercepted intro command dispatches the mode's path.
+ * Every effect of the phase except the delay is the retail effect. Normal
+ * boot keeps the retail wait. */
 void fn_XMen2_00402ba0(CPU *C);
 
 void x2_override_00402ba0(CPU *C)
@@ -404,7 +424,7 @@ void x2_override_00402ba0(CPU *C)
        spoke when it acted would be indistinguishable, in a log, from one that
        was never reached -- and "the splash was skipped" is exactly the claim
        a silent negative would let through. */
-    if (phase && mode == X2_BOOT_CONTINUE) {
+    if (phase && (mode == X2_BOOT_CONTINUE || mode == X2_BOOT_MENU)) {
         bits = RD32(phase + 0x24u);
         memcpy(&was, &bits, sizeof was);
         memcpy(&bits, &long_past, sizeof bits);
@@ -414,8 +434,8 @@ void x2_override_00402ba0(CPU *C)
             fprintf(stderr, "BOOT SPLASH: intro phase start stamp %.3f -> "
                             "%.1f, so the phase's own wait is already past on "
                             "its first tick and the intro command dispatches "
-                            "Continue immediately.\n",
-                    (double)was, (double)long_past);
+                            "the %s boot path immediately.\n",
+                    (double)was, (double)long_past, x2_boot_mode_name(mode));
             fflush(stderr);
         }
     } else if (!reported) {
