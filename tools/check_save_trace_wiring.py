@@ -75,18 +75,31 @@ def scanned_save_trace_entries():
     return set(found)
 
 
+def wrapper_body_lines(lines):
+    """Line indexes inside fn_XMen2_<ep>_e definitions. The wrapper's own
+    fallback tail calls the raw body -- that is the routing boundary itself,
+    not a bypass of it."""
+    inside = set()
+    for index, line in enumerate(lines):
+        if re.match(r"void fn_XMen2_[0-9a-f]{8}_e\(CPU \*C\) \{", line):
+            inside.update(range(index, index + 5))
+    return inside
+
+
 def audit_emitted_routes(chunks, expected=EXPECTED, feature="traced",
                          require_direct=True):
     calls = {ep: 0 for ep in expected}
     retained = set()
 
     for label, lines in chunks:
+        wrappers = wrapper_body_lines(lines)
         for index, line in enumerate(lines):
             body = BODY.search(line)
             if body and int(body.group(1), 16) in expected:
                 retained.add(int(body.group(1), 16))
             direct = DIRECT.search(line)
-            if direct and int(direct.group(1), 16) in expected:
+            if direct and index not in wrappers \
+                    and int(direct.group(1), 16) in expected:
                 refuse(f"{label}:{index + 1} directly calls {feature} EP "
                        f"0x{int(direct.group(1), 16):08x}, bypassing the "
                        "override slot")
@@ -98,16 +111,25 @@ def audit_emitted_routes(chunks, expected=EXPECTED, feature="traced",
                 continue
             calls[ep] += 1
             window = "\n".join(lines[index + 1:index + 5])
-            offset = ep - 0x00400000
-            expected_dispatch = f"DISPATCH(C, (G_IMGBASE + 0x{offset:x}U));"
-            if expected_dispatch not in window:
-                refuse(f"{label}:{index + 1} does not dispatch direct edge to "
-                       f"0x{ep:08x} through the override slot")
+            expected_call = f"fn_XMen2_{ep:08x}_e(C);"
+            if expected_call not in window:
+                refuse(f"{label}:{index + 1} does not route its call to "
+                       f"0x{ep:08x} through the runtime override wrapper")
 
     if retained != expected:
         missing = ", ".join(
             f"0x{ep:08x}" for ep in sorted(expected - retained))
         refuse(f"generated XMen2 output dropped retained body/bodies [{missing}]")
+    # The wrapper is only half of the routing boundary; the other half is the
+    # runtime slot it consults. recomp-x86 5a241a6 took overrides out of the
+    # emitter: the emitted CALL goes through fn_XMen2_<ep>_e, which reads
+    # _ov_<ep> at run time -- so the slot must exist for every audited EP.
+    text = "\n".join("\n".join(lines) for _, lines in chunks)
+    missing_slots = [ep for ep in sorted(expected)
+                     if f"static x86_override_fn _ov_{ep:08x};" not in text]
+    if missing_slots:
+        refuse("generated output lacks runtime override slot(s) "
+               + ", ".join(f"0x{ep:08x}" for ep in missing_slots))
     routed = sum(calls.values())
     if require_direct and not routed:
         refuse("generated output contains none of the traced direct call edges")
@@ -124,13 +146,19 @@ def verify_emitted_routes(paths):
     print("save_trace_wiring: 15/15 exact EPs found by the authoritative "
           f"src/native scan; {routed} direct edge(s) across "
           f"{sum(count > 0 for count in calls.values())}/15 EP(s) all route "
-          "through DISPATCH; 15/15 original bodies retained")
+          "through the runtime override wrapper; 15/15 original bodies "
+          "retained")
 
 
 def synthetic_lines(call):
     bodies = [f"/* FUN_{ep:08x}  @ 0x{ep:08x}  (1 instrs) */"
               for ep in sorted(EXPECTED)]
-    return [*bodies, "/* 00401000 CALL 0x005604f0 */", call]
+    wrappers = [f"void fn_XMen2_{ep:08x}_e(CPU *C) {{ /* stub */ }}"
+                for ep in sorted(EXPECTED)]
+    slots = [f"static x86_override_fn _ov_{ep:08x};"
+             for ep in sorted(EXPECTED)]
+    return [*bodies, *wrappers, *slots,
+            "/* 00401000 CALL 0x005604f0 */", call]
 
 
 def selftest():
@@ -150,20 +178,20 @@ def selftest():
         if len(scan_overrides(tree)) != 1:
             refuse("scanner did not claim the same registration in src/native")
 
-    current = synthetic_lines("DISPATCH(C, (G_IMGBASE + 0x1604f0U));")
+    current = synthetic_lines("fn_XMen2_005604f0_e(C);")
     audit_emitted_routes([("synthetic-current.c", current)])
     stale = synthetic_lines("fn_XMen2_005604f0(C);")
     try:
         audit_emitted_routes([("synthetic-stale.c", stale)])
     except WiringError as error:
         if ("bypassing the override slot" not in str(error)
-                and "does not dispatch direct edge" not in str(error)):
+                and "does not route its call to" not in str(error)):
             refuse(f"stale discriminator refused for the wrong reason: {error}")
     else:
         refuse("stale direct call passed the routing audit")
     print("save_trace_wiring --selftest: outside-scan registration ignored, "
-          "inside-scan registration accepted, current DISPATCH accepted, "
-          "stale direct call rejected")
+          "inside-scan registration accepted, current override-wrapper call "
+          "accepted, stale direct call rejected")
     return 0
 
 

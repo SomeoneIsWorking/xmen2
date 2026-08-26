@@ -86,3 +86,35 @@ the adjacent conversation started VISIBLE with a selected line (0x18 -> 0x13,
 line 0x41 -> 0x40 -- the issue #83 signature absent), controls unlocked, and
 the latch retired with 'completed after control unlock 1'. The wiring audit
 rejects any reintroduced 0x004d9130 override.
+
+### Extended (2026-08-26): the scripted waits between records now skip too
+
+USER, 2026-08-26: the previous resolution "just made it skip conversations in
+the cutscenes" -- correct: the latch fast-forwarded dialogue records, but the
+cutscene's scripted time (the tutorial teleport cutaway is playanim +
+waittimed(2.0) + fx + waittimed(0.5); the cleanup script holds another 2.5s of
+waits before it unlocks controls) still played out, and the removed 82bdf13
+attempt had made acceleration independent of Escape. The user also ruled: the
+game's own scripts are never modified; the cutscene PLAYER is what the port
+drives.
+
+Resolution: the script scheduler's insert (FUN_004d6a00 -- the choke point
+both waittimed and the script VM reach, never anything else) clamps wait
+deadlines to a 0.10s floor while the skip latch holds. The floor is the
+difference from 82bdf13: a zero floor let the next startConversation race the
+conversation manager's ending unwind and reproduced the issue #83 no-line
+signature. The scope is the latch itself (armed at the authored boundary by
+Escape/Start or by the boot-Continue resume; retired at control unlock) plus
+a 30s runaway timeout -- a cutscene is a CHAIN of script contexts
+(tutorial1 -> nightcrawler_spawn -> nightcrawler_walk -> cleanup), so the
+first attempt's single owner-context claim refused the chain's own waits as
+foreign (1 of 10 shortened); the live run under the latch-only scope
+shortened 6 of 10 and cut the spawn-to-adjacent-conversation gap from 428
+frames to 53. waittimed itself (0x004d9130) remains unmodified and the wiring
+audit still rejects any override of it; the audit now requires the floor, the
+clamp and the scope instead of the old "untouched" string.
+
+Verification: tools/live_case.py cutscene-skip 7/7, cutscene-skip-early 7/7
+(press during the camera-only pan), boot-continue 13/13 (resume sequence and
+clamp together, no seen-bit collision); check_conversation_skip_wiring
+--selftest 12 broken chains rejected.

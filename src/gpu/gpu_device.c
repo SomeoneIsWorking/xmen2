@@ -27,6 +27,7 @@
 #include "gpu_internal.h"
 #include "gpu_present.h"
 #include "gpu_shadow.h"
+#include "boot_blackout.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include <stdio.h>
@@ -90,11 +91,20 @@ static unsigned long g_frames_presented, g_frames_no_swapchain,
  *
  * Reads are the heartbeat's usual torn-read trade, stated once in heartbeat.c.
  */
-static unsigned long long g_frame_ns, g_frame_ns_min, g_frame_ns_max;
-static unsigned long long g_last_frame_end_ns, g_frame_end_submits;
-static unsigned long g_frame_intervals;  /* intervals folded into g_frame_ns */
-static unsigned long g_frame_hist[GPU_FRAME_HISTOGRAM_BUCKETS];
+static unsigned long long g_frame_end_submits;
 #endif
+
+static void slow_frame_report(unsigned long frame, unsigned long long dt_ns)
+{
+    unsigned long long dns, uns;
+    gpu_frame_host_share(&dns, &uns);
+    fprintf(stderr,
+            "gpu: frame %lu took %.0f ms; host draw %.1f ms + "
+            "upload %.1f ms, the rest is guest logic and the "
+            "submit\n",
+            frame, (double)dt_ns * 1e-6, (double)dns * 1e-6,
+            (double)uns * 1e-6);
+}
 
 int gpu_device_create(void)
 {
@@ -103,6 +113,7 @@ int gpu_device_create(void)
     return 0;
 #else
     X2Settings *settings = x2_settings_store();
+    gpu_frame_timing_slow_hook = slow_frame_report;
     gpu_shadow_configure(settings->dynamic_shadows,
                          settings->shadow_resolution);
     if (g_gpu) return 1;
@@ -353,12 +364,9 @@ void gpu_device_perf(unsigned long long *frame_ns,
                      unsigned long *intervals,
                      const unsigned long **hist)
 {
-    *frame_ns = g_frame_ns;
-    *frame_ns_min = g_frame_ns_min;
-    *frame_ns_max = g_frame_ns_max;
+    gpu_frame_timing_perf(frame_ns, frame_ns_min, frame_ns_max,
+                          intervals, hist);
     *end_submits = g_frame_end_submits;
-    *intervals = g_frame_intervals;
-    *hist = g_frame_hist;
 }
 
 SDL_GPUTextureFormat gpu_depth_format(void)
@@ -624,44 +632,7 @@ void gpu_frame_end(void)
     SDL_GPUTexture *final_output;
     if (!g_cmd) return;
     gpu_shadow_frame_submit();
-    {
-        /* Present-to-present frame time, before this submit but after the
-           previous one. The FIRST frame has no predecessor; it seeds the
-           baseline rather than measuring a intervals-prior frame. */
-        unsigned long long now = gpu_perf_now_ns();
-        unsigned long long dt;
-        if (g_last_frame_end_ns) {
-            dt = now - g_last_frame_end_ns;
-            g_frame_ns += dt;
-            g_frame_intervals++;
-            if (!g_frame_ns_min || dt < g_frame_ns_min) g_frame_ns_min = dt;
-            if (dt > g_frame_ns_max) g_frame_ns_max = dt;
-            g_frame_hist[gpu_frame_timing_bucket(dt)]++;
-            /*
-             * A frame slow enough to matter gets its cost attributed AT THE
-             * MOMENT it ends, not in a shutdown report: the frame limiter
-             * makes "slow" a wall-clock number and this is the only place the
-             * wall clock and the host share of the same frame meet.
-             *
-             * The threshold is an ORDER OF MAGNITUDE above the paced frame
-             * budget (60fps = 16.7ms), so a normal gameplay frame never
-             * prints and a load stall does -- exactly the frames that want
-             * asking "who was slow?". Said once per frame, since a load can
-             * stall for several.
-             */
-            if (dt > 160000000ull) {
-                unsigned long long dns, uns;
-                gpu_frame_host_share(&dns, &uns);
-                fprintf(stderr,
-                        "gpu: frame %lu took %.0f ms; host draw %.1f ms + "
-                        "upload %.1f ms, the rest is guest logic and the "
-                        "submit\n",
-                        g_frames_presented, (double)dt * 1e-6,
-                        (double)dns * 1e-6, (double)uns * 1e-6);
-            }
-        }
-        g_last_frame_end_ns = now;
-    }
+    gpu_frame_timing_note(gpu_perf_now_ns(), g_frames_presented);
     /*
      * Open the pass even if nothing drew.
      *
@@ -691,6 +662,11 @@ void gpu_frame_end(void)
     }
     if (!g_offscreen) x2_ui_render(g_gpu, g_cmd, final_output,
                                    g_output_w, g_output_h, g_win);
+    /* Boot presentation policy: withhold the retail boot's branding (legal
+       loading backdrop, splash art) by presenting black until the
+       destination map is up; see src/presentation/boot_blackout.c. */
+    if (x2_boot_blackout_active())
+        gpu_present_boot_blackout(g_cmd, g_headless ? g_swap : final_output);
     gpu_capture_submit_frame(
         g_gpu, g_cmd, g_headless, g_headless ? g_swap : final_output,
         g_headless ? NULL : g_output,
@@ -821,6 +797,9 @@ void gpu_frame_viewport(int x, int y, int w, int h, float minz, float maxz)
 void gpu_device_report(void)
 {
 #ifdef X2_WITH_SDL
+    unsigned long long frame_ns, frame_ns_min, frame_ns_max;
+    unsigned long intervals;
+    const unsigned long *hist;
     if (!g_gpu && !g_frames_no_window) return;
     printf("gpu: %lu frame(s) presented, %lu skipped for no swapchain "
            "texture, %lu with no window, %lu clear(s) that arrived mid-frame "
@@ -828,14 +807,15 @@ void gpu_device_report(void)
            g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
            g_late_clears);
     fflush(stdout);
-    if (g_frame_ns && g_frame_intervals) {
-        double avg_ms = (double)g_frame_ns * 1e-6
-                        / (double)g_frame_intervals;
+    gpu_frame_timing_perf(&frame_ns, &frame_ns_min, &frame_ns_max,
+                          &intervals, &hist);
+    if (frame_ns && intervals) {
+        double avg_ms = (double)frame_ns * 1e-6 / (double)intervals;
         unsigned i;
         printf("  perf: frame wall avg %.2f ms, min %.2f ms, max %.2f ms, "
                "%llu submit(s) at frame end; ms histogram:\n",
-               avg_ms, (double)g_frame_ns_min * 1e-6,
-               (double)g_frame_ns_max * 1e-6,
+               avg_ms, (double)frame_ns_min * 1e-6,
+               (double)frame_ns_max * 1e-6,
                (unsigned long long)g_frame_end_submits);
         printf("        ");
         for (i = 0; i < GPU_FRAME_HISTOGRAM_BUCKETS; i++) {
@@ -844,7 +824,7 @@ void gpu_device_report(void)
                 "25-40", "40-60", "60-80", "80-120", "120-200", ">=200",
             };
             if (i) printf(" ");
-            printf("%s=%lu", LBL[i], g_frame_hist[i]);
+            printf("%s=%lu", LBL[i], hist[i]);
         }
         printf("\n");
         fflush(stdout);

@@ -4,13 +4,31 @@
  * them as a deterministic conversation chain, often with locked controls or
  * `noReturnToGameCamAtEnd`, then let response and chosen scripts perform every
  * camera reset, control unlock, spawn, quest update, and zone transition.
- * Skipping therefore advances only through the retail chooseResponse path.
- * It never clears presentation flags and it stops at a real branch.
+ * Skipping therefore has two halves:
+ *
+ *   1. Dialogue records advance per frame through the retail chooseResponse
+ *      path (the conversation update override). It never clears presentation
+ *      flags and it stops at a real branch.
+ *   2. The scripted time BETWEEN records -- the tutorial's teleport cutaway is
+ *      playanim + waittimed(2.0) + fx + waittimed(0.5), and the cleanup script
+ *      holds another 2.5s of waits before it unlocks controls -- is shortened
+ *      by clamping the script scheduler's wait deadlines to a small floor
+ *      while the skip latch is armed. The floor is load-bearing: with a zero
+ *      floor (82bdf13) the next startConversation fired inside the ending
+ *      conversation's unwind and reproduced the issue #83 no-line signature.
+ *      Retail's own waits are what pace the manager between records, so the
+ *      floor keeps the manager's cadence while removing the stall.
+ *
+ * Both halves are scoped to the armed sequence: the wait clamp claims the one
+ * script scheduler context that waits while the latch holds, refuses foreign
+ * contexts outright, and times itself out rather than ever shortening a wait
+ * outside an authored skip.
  */
 #include "conversation_cutscene_skip.h"
 
 #include "conversation_resume.h"
 #include "conversation_skip_policy.h"
+#include "guest_clock.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -23,6 +41,8 @@
 #define CONV_SINGLETON_RVA  EXE_RVA(0x00717aacu)
 #define CLOCK_OBJECT_RVA    EXE_RVA(0x00729960u)
 #define FN_SLOT_OF_RVA      EXE_RVA(0x00456440u)
+#define SCRIPT_CONTEXT_RVA  EXE_RVA(0x00787730u)
+#define FN_SCHEDULE_WAIT    0x004d6a00u  /* scheduler insert: (deadline, ctx) */
 
 #define CV_KEY_A            0x004b0u
 #define CV_KEY_B            0x00008u
@@ -52,6 +72,27 @@ typedef struct ConversationCutsceneSnapshot {
 
 static ConversationSkipPolicy g_policy;
 static unsigned long g_action_checks, g_action_down;
+
+/* The wait-floor scope. While a skip sequence is armed -- by an Escape at the
+ * authored boundary or by the boot-Continue resume -- the player has asked
+ * for this scene to fast-forward, so EVERY script-scheduler wait clamps to
+ * the floor. A cutscene is a CHAIN of script contexts (tutorial1 spawns
+ * nightcrawler_spawn spawns nightcrawler_walk spawns the cleanup), so a
+ * single owner-context claim cannot cover it: the first live run shortened
+ * 1 wait of 10 and refused the chain's own scripts as foreign. The latch's
+ * arm/retire boundaries and the runaway timeout are the scope instead; the
+ * floor keeps the conversation manager's between-records cadence, which is
+ * what the zero-floor 82bdf13 attempt broke (issue #83 signature). */
+#define WAIT_FLOOR_S        0.10f
+#define WAIT_SCOPE_TIMEOUT_S 30.0
+
+static struct {
+    double armed_at_s;
+    int exhausted;
+} g_wait_scope;
+static unsigned long g_waits_seen, g_waits_shortened, g_waits_unowned;
+
+void fn_XMen2_004d6a00(CPU *C);
 
 static uint32_t exe_base(void)
 {
@@ -232,6 +273,65 @@ void conversation_cutscene_skip_observe_inactive(struct CPU *cpu,
         CONVERSATION_SKIP_RESPONSE_WAITING);
 }
 
+static void wait_scope_reset(void)
+{
+    g_wait_scope.armed_at_s = 0.0;
+    g_wait_scope.exhausted = 0;
+}
+
+static int wait_scope_timed_out(double now_s)
+{
+    if (!g_wait_scope.armed_at_s) return 0;
+    if (now_s - g_wait_scope.armed_at_s < WAIT_SCOPE_TIMEOUT_S) return 0;
+    g_wait_scope.exhausted = 1;
+    return 1;
+}
+
+/* May this wait be shortened? Only while a skip sequence is armed, and only
+ * until the runaway timeout -- the floor is not a permanent change to the
+ * script engine's pacing. */
+static int wait_scope_allows(uint32_t context)
+{
+    int sequence_active = g_policy.active ||
+                          x2_conversation_resume_sequence_active();
+    double wall_now = guest_clock_elapsed_s();
+
+    (void)context;
+    if (!sequence_active) {
+        if (g_wait_scope.armed_at_s) wait_scope_reset();
+        return 0;
+    }
+    if (g_wait_scope.exhausted || wait_scope_timed_out(wall_now)) return 0;
+    if (!g_wait_scope.armed_at_s) g_wait_scope.armed_at_s = wall_now;
+    return 1;
+}
+
+/* The clamp itself, pure: never extend, never go below the floor. */
+static float wait_deadline_clamped(float now, float authored_deadline)
+{
+    float floor_deadline = now + WAIT_FLOOR_S;
+    return authored_deadline < floor_deadline ? authored_deadline
+                                              : floor_deadline;
+}
+
+void x2_override_004d6a00(CPU *C)
+{
+    uint32_t base = exe_base();
+    float now = 0.0f, deadline;
+
+    g_waits_seen++;
+    if (!base || !peek_float(base + CLOCK_OBJECT_RVA + CLOCK_NOW, &now) ||
+        !wait_scope_allows(0)) {
+        g_waits_unowned++;
+        fn_XMen2_004d6a00(C);
+        return;
+    }
+    deadline = wait_deadline_clamped(now, *(float *)(uintptr_t)(C->esp + 4u));
+    WR32(C->esp + 4u, *(uint32_t *)&deadline);
+    g_waits_shortened++;
+    fn_XMen2_004d6a00(C);
+}
+
 size_t conversation_cutscene_skip_status(char *out, size_t size)
 {
     int wrote;
@@ -240,11 +340,15 @@ size_t conversation_cutscene_skip_status(char *out, size_t size)
         out, size,
         "authored skip %s: %lu action check(s), %lu DOWN; %u request(s), "
         "%u retail response advance(s), %u blocked, %u ignored, %u "
-        "completed after control unlock; retail waittimed untouched (no "
-        "native override)",
+        "completed after control unlock; script waits %lu/%lu floor-limited "
+        "(%.2fs), %lu unowned, scope %s",
         g_policy.active ? "ACTIVE" : "idle", g_action_checks,
         g_action_down, g_policy.requests, g_policy.advances,
-        g_policy.blocked, g_policy.ignored, g_policy.completed);
+        g_policy.blocked, g_policy.ignored, g_policy.completed,
+        g_waits_shortened, g_waits_seen, (double)WAIT_FLOOR_S,
+        g_waits_unowned,
+        g_wait_scope.exhausted ? "EXPIRED"
+            : g_wait_scope.armed_at_s ? "armed" : "idle");
     if (wrote < 0) return 0;
     if ((size_t)wrote >= size) return size - 1u;
     return (size_t)wrote;
@@ -273,8 +377,7 @@ static void append(char *out, size_t size, size_t *at, const char *fmt, ...)
 }
 
 size_t conversation_cutscene_skip_probe(CPU *cpu, char *out, size_t size)
-{
-    static const char *const response_name[] = {
+{    static const char *const response_name[] = {
         "waiting", "deterministic", "choice", "UNREADABLE"
     };
     ConversationCutsceneSnapshot state = {0};
@@ -298,4 +401,11 @@ size_t conversation_cutscene_skip_probe(CPU *cpu, char *out, size_t size)
     at += conversation_cutscene_skip_status(out + at, size - at);
     append(out, size, &at, "\n");
     return at;
+}
+
+__attribute__((constructor))
+static void x2_conversation_cutscene_skip_register_overrides(void)
+{
+    x86_register_override("XMen2.exe", FN_SCHEDULE_WAIT,
+                          x2_override_004d6a00);
 }

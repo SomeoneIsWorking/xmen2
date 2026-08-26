@@ -129,11 +129,16 @@ def audit_plain_ret_abis(chunks):
 def synthetic_lines(call):
     bodies = [f"/* FUN_{ep:08x}  @ 0x{ep:08x}  (1 instrs) */"
               for ep in sorted(EXPECTED | PLAIN_RET)]
-    return [*bodies, "/* 00401000 CALL 0x0055ff00 */", call]
+    slots = [f"static x86_override_fn _ov_{ep:08x};"
+             for ep in sorted(EXPECTED)]
+    wrappers = [f"void fn_XMen2_{ep:08x}_e(CPU *C) {{ /* stub */ }}"
+                for ep in sorted(EXPECTED)]
+    return [*bodies, *wrappers, *slots,
+            "/* 00401000 CALL 0x0055ff00 */", call]
 
 
 def selftest():
-    current = synthetic_lines("DISPATCH(C, (G_IMGBASE + 0x15ff00U));")
+    current = synthetic_lines("fn_XMen2_0055ff00_e(C);")
     audit_emitted_routes([("synthetic-current.c", current)], EXPECTED,
                          "Continue")
     stale = synthetic_lines("fn_XMen2_0055ff00(C);")
@@ -142,7 +147,7 @@ def selftest():
                              "Continue")
     except WiringError as error:
         if ("bypassing the override slot" not in str(error)
-                and "does not dispatch direct edge" not in str(error)):
+                and "does not route its call to" not in str(error)):
             refuse(f"stale discriminator refused for the wrong reason: {error}")
     else:
         refuse("stale direct call passed the Continue routing audit")

@@ -43,8 +43,18 @@ def audit(conversation, runtime, probe, cmake):
     require(runtime, "INPUT_ACTION_MASK", "runtime action gate")
     require(runtime, "CONVERSATION_SKIP_RESPONSE_DETERMINISTIC",
             "runtime response classifier")
-    require(runtime, "retail waittimed untouched (no ",
-            "retail wait ownership diagnostic")
+    # The wait floor: the scheduler-insert override shortens scripted waits
+    # ONLY while the latch holds and never below the floor. The floor is the
+    # fix for the 82bdf13 regression: a zero floor let the next
+    # startConversation race the conversation manager's ending unwind and
+    # reproduced the issue #83 no-line signature.
+    require(runtime, "x2_override_004d6a00", "scheduler wait clamp")
+    require(runtime, "FN_SCHEDULE_WAIT    0x004d6a00u", "scheduler wait clamp")
+    require(runtime, "WAIT_FLOOR_S", "wait floor constant")
+    require(runtime, "wait_scope_allows(", "wait owner scoping")
+    require(runtime, "wait_deadline_clamped(", "wait floor clamp")
+    require(runtime, "script waits %lu/%lu floor-limited ",
+            "wait clamp diagnostic")
     if "004d9130" in runtime:
         raise WiringError("conversation skip must not override retail waittimed")
     require(probe, "conversation_cutscene_skip_probe(", "live probe")
@@ -64,15 +74,20 @@ def production_sources():
 def selftest():
     current = production_sources()
     audit(*current)
-    for index, needle in (
+    discriminators = (
         (0, "conversation_cutscene_skip_observe_inactive("),
         (1, "conversation_skip_policy_is_authored("),
         (1, "CUTSCENE_SKIP_ACTION 20u"),
-        (1, "retail waittimed untouched (no "),
+        (1, "x2_override_004d6a00"),
+        (1, "WAIT_FLOOR_S"),
+        (1, "wait_scope_allows("),
+        (1, "wait_deadline_clamped("),
+        (1, "script waits %lu/%lu floor-limited "),
         (0, "call1(C, vslot(self, 0x18u), self,"),
         (2, "conversation_cutscene_skip_probe("),
         (3, "src/native/conversation_cutscene_skip.c"),
-    ):
+    )
+    for index, needle in discriminators:
         broken = list(current)
         # A source can appear in both its focused test and x2native. Remove
         # every occurrence so this falsifier still proves the shipping source
@@ -91,7 +106,7 @@ def selftest():
         pass
     else:
         raise WiringError("negative discriminator admitted a waittimed override")
-    print("conversation_skip_wiring --selftest: 8/8 broken chains rejected")
+    print(f"conversation_skip_wiring --selftest: {1 + len(discriminators)} broken chains rejected")
 
 
 def main():
@@ -102,7 +117,8 @@ def main():
     else:
         audit(*production_sources())
         print("conversation_skip_wiring: action20 -> authored policy -> retail "
-              "chooseResponse; retail waittimed remains unmodified")
+              "chooseResponse; script waits floor-limited only while the "
+              "latch holds, waittimed itself unmodified")
 
 
 if __name__ == "__main__":

@@ -132,7 +132,13 @@ int x86_triggers_report(void);
  * them, while the dispatcher works in mapped addresses. x86_overrides_resolve
  * turns each pair into the mapped address once the modules are in place.
  */
-typedef void (*x86_override_fn)(struct CPU *C);
+/* x86_override_fn, X86OverrideSlot and x86_override_slots_register live in
+   x86rt.h -- the GENERATED code needs them and a generated chunk includes
+   only that header -- so this one includes it rather than redeclaring them
+   and letting the two drift. */
+#include "x86rt.h"
+long x86_override_slot_count(void);
+int  x86_override_chunk_count(void);
 void x86_register_override(const char *module, uint32_t linked_ep,
                            x86_override_fn fn);
 
@@ -155,6 +161,20 @@ void x86_overrides_resolve(void);
  */
 int x86_override_resolve_check(const char *module, uint32_t linked_ep,
                                uint32_t *mapped_out, char *why, size_t whyn);
+
+/*
+ * The reached set -- "was this body ever entered, how often, and in what
+ * order" -- compiled into every native build and ARMED at runtime. Arming
+ * late is honest but lossy, and the report says so; -DX2_NATIVE_REACHED=ON
+ * arms before the first guest instruction for the cases that need it.
+ */
+void x86_reached_arm(const char *why);
+int  x86_reached_is_armed(void);
+/* Ask about one linked entry point: 1 if it was entered, with *count and *seq
+   filled in (seq is the 1-based order of first entry). 0 for never entered --
+   which is only meaningful when the set is armed, so callers must check. */
+int  x86_reached_query(uint32_t linked_ep, const char *module,
+                       unsigned long *count, unsigned long *seq);
 
 /* Count of registered native overrides (0 is a measurement, not silence). */
 int x86_override_count(void);

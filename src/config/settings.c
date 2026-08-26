@@ -43,6 +43,7 @@ void x2_settings_defaults(X2Settings *settings)
     settings->window_mode = X2_WINDOW_WINDOWED;
     settings->dynamic_shadows = 1;
     settings->shadow_resolution = 1024;
+    settings->text_scale = 0.0f;             /* auto */
     settings->boot_mode = X2_BOOT_NORMAL;
     for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
         settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
@@ -157,6 +158,17 @@ static int parse_line(ParseState *state, char *line)
             (resolution != 512 && resolution != 1024 &&
              resolution != 2048 && resolution != 4096)) return 0;
         settings->shadow_resolution = (uint16_t)resolution;
+        return 1;
+    }
+    if (strcmp(key, "ui.text_scale") == 0) {
+        /* 0 is AUTO and the only value below 0.5; above 4 the text stops
+           fitting any panel the game has. Both ends REFUSE rather than
+           clamping, so a typo is reported instead of silently applied. */
+        char *end;
+        double parsed = strtod(value, &end);
+        if (end == value || *end) return 0;
+        if (parsed != 0.0 && (parsed < 0.5 || parsed > 4.0)) return 0;
+        settings->text_scale = (float)parsed;
         return 1;
     }
     if (strcmp(key, "boot.mode") == 0)
@@ -370,6 +382,7 @@ int x2_settings_save(const X2Settings *settings, const char *path,
             x2_window_mode_name(settings->window_mode));
     fprintf(file, "video.dynamic_shadows=%u\nvideo.shadow_resolution=%u\n",
             settings->dynamic_shadows, settings->shadow_resolution);
+    fprintf(file, "ui.text_scale=%g\n", (double)settings->text_scale);
     fprintf(file, "boot.mode=%s\n", x2_boot_mode_name(settings->boot_mode));
     fprintf(file, "input.assignment_version=2\n");
     for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {

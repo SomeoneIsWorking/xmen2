@@ -40,7 +40,9 @@ SHARED_REPOS = (
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
                "8282d4c7d19ef3a625866524092c1d45ec080110", "sets"),
     SharedRepo("recomp-x86", "https://github.com/SomeoneIsWorking/recomp-x86.git",
-               "b42b611f1fcf78d35e94d378d4c844649836c6b1", "tools/recomp.py"),
+               "5a241a6a763b53496d27d369192eb20bae6ed660", "tools/recomp.py"),
+    SharedRepo("re-harness", "https://github.com/SomeoneIsWorking/re-harness.git",
+               "f9612d0b42ed4e6c90caf335ec9cb2fd3b6e4402", "info.py"),
 )
 
 GAME_MODULE_SHA256 = {
@@ -444,8 +446,35 @@ def emit_modules(states: dict[str, dict[str, object]]) -> None:
         write_stamp(stamp, provenance)
 
 
-def provision(images: dict[str, Path]) -> None:
+def publish_font_tier_ratio(game: Path) -> None:
+    """Measure this install's own PC->HD font step into a generated header.
+
+    The port's AUTO text scale divides that step back out, so the number has
+    to come from the fonts the player has rather than from a constant typed
+    into the C -- each localisation ships its own.
+    """
+    run_tool([str(ROOT / "tools/font_tier_ratio.py"), str(game),
+              str(ROOT / "src/recomp/gen/font_tier_ratio.h")],
+             "measuring the font tier step")
+
+
+def publish_prompt_glyph_atlas() -> None:
+    """Rasterise the shared prompt SVGs into the port's own atlas header.
+
+    The renderer-side prompt feature draws its glyphs from pixels this port
+    generates at build time -- never from a patched game font. Regenerated
+    every provision so a shared-set update cannot leave a stale atlas
+    committed in the tree looking current.
+    """
+    run_tool([str(ROOT / "tools/render_prompt_glyphs.py"),
+              str(ROOT / "src/recomp/gen/prompt_glyph_atlas.h")],
+             "rasterising the prompt glyph atlas")
+
+
+def provision(images: dict[str, Path], game: Path) -> None:
     states = restore_exports(images)
+    publish_font_tier_ratio(game)
+    publish_prompt_glyph_atlas()
     publish_probe_artifacts()
     emit_modules(states)
     run_tool([str(ROOT / "tools/check_emitted.py"), "--root", str(ROOT)],
@@ -458,7 +487,7 @@ def initialize() -> None:
     game = find_game()
     images = validate_game(game)
     ensure_shared()
-    provision(images)
+    provision(images, game)
 
 
 def main() -> int:

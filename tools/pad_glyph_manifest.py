@@ -108,6 +108,14 @@ def emit_header(path: Path) -> None:
     last = FIRST_CODEPOINT + len(ICONS) - 1
     lines.append(f"#define {'X2_PAD_GLYPH_FIRST':<27} 0x{FIRST_CODEPOINT:02X}u")
     lines.append(f"#define {'X2_PAD_GLYPH_LAST':<27} 0x{last:02X}u")
+    # The WHOLE published run, keycap parts included: the renderer override
+    # classifies strings against every codepoint this port publishes, and a
+    # pad-only bound there would miss the caps silently.
+    published_last = FIRST_CODEPOINT + len(ICONS) + len(KEYCAP_PARTS) - 1
+    lines.append(f"#define {'X2_PROMPT_GLYPH_FIRST':<27} "
+                 f"0x{FIRST_CODEPOINT:02X}u")
+    lines.append(f"#define {'X2_PROMPT_GLYPH_LAST':<27} "
+                 f"0x{published_last:02X}u")
     lines.extend(["", "#endif /* X2_PAD_GLYPH_CODES_H */", ""])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines), encoding="ascii")

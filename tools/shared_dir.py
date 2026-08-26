@@ -7,19 +7,20 @@ live in their own repos under `shared/`, and are consumed rather than vendored
 -- see the repo layout README.
 
 Resolution order for `shared/<name>`: `$<NAME>_DIR`, then `$SHARED_DIR/<name>`,
-then the project-local provisioned checkout, then the sibling checkout the standard layout implies. If none exists this
-REFUSES and names every path it tried. It does not fall back to an in-tree
-copy, because a stale vendored copy that silently wins is the exact failure
-this split exists to end.
+then the project-local provisioned checkout under `vendor/shared/`. If none
+exists this REFUSES and names every path it tried.
+
+There is deliberately NO fallback to a sibling clone outside the port. There
+was one, and it scattered the workspace: bootstrap provisions and pins
+`vendor/shared/recomp-x86`, while `tools/ghidra_scripts` symlinked into a
+sibling clone of the same repo at a different revision. Two checkouts, one
+pinned and one not, both live.
 """
 
 import os
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _PORT_ROOT = os.path.dirname(_HERE)                       # e.g. pc/xmen2
-_LAYOUT_SHARED = os.path.normpath(
-    os.path.join(_PORT_ROOT, "..", "..", "shared"))
-
 
 def shared_dir(name, marker=None):
     """The checkout of `shared/<name>`.
@@ -35,7 +36,6 @@ def shared_dir(name, marker=None):
     if os.environ.get("SHARED_DIR"):
         tried.append(os.path.join(os.environ["SHARED_DIR"], name))
     tried.append(os.path.join(_PORT_ROOT, "vendor", "shared", name))
-    tried.append(os.path.join(_LAYOUT_SHARED, name))
 
     for path in tried:
         probe = os.path.join(path, marker) if marker else path
@@ -45,6 +45,7 @@ def shared_dir(name, marker=None):
         "shared_dir: no checkout of `shared/%s` found. Looked in:\n" % name
         + "".join("    %s\n" % p for p in tried)
         + ("(each had to contain %r)\n" % marker if marker else "")
-        + "It is a separate repo that this port consumes rather than vendors.\n"
-          "Clone it into `shared/` beside this port, or set %s_DIR."
+        + "It is a separate repo, provisioned into vendor/shared by "
+          "./run.sh.\n"
+          "Run ./run.sh, or set %s_DIR to a checkout."
           % name.replace("-", "_").upper())

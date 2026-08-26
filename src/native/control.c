@@ -1,4 +1,5 @@
 #include "control.h"
+#include "x86_reached.h"
 
 #include "control_query.h"
 #include "control_screenshot.h"
@@ -12,6 +13,7 @@
 #include "save_trace_runtime.h"
 #include "transient_controller_assignment.h"
 #include "x86rt.h"
+#include "x86rt_native.h"
 
 #include <arpa/inet.h>
 #include <errno.h>
@@ -210,7 +212,7 @@ static void reply(int fd, int code, const char *status, const char *ctype,
     if (n) send_all(fd, body, n);
 }
 
-static void reply_text(int fd, int code, const char *status, const char *fmt, ...)
+void control_reply_text(int fd, int code, const char *status, const char *fmt, ...)
 {
     char body[1024];
     int n;
@@ -221,24 +223,13 @@ static void reply_text(int fd, int code, const char *status, const char *fmt, ..
     reply(fd, code, status, "text/plain; charset=utf-8", body, (size_t)n);
 }
 
-static int bounded_number(const char *text, int minimum, int maximum, int *out)
-{
-    char *end;
-    long value;
-    if (!text || !*text) return 0;
-    value = strtol(text, &end, 10);
-    if (*end || value < minimum || value > maximum) return 0;
-    *out = (int)value;
-    return 1;
-}
-
 static void route_status(int fd)
 {
     char body[4096];
     size_t size = control_status_format(body, sizeof body, g_requests,
                                         g_keys_pressed, g_keys_refused, g_shots);
     if (!size) {
-        reply_text(fd, 500, "Internal Server Error",
+        control_reply_text(fd, 500, "Internal Server Error",
                    "live status exceeded its bounded response buffer\n");
         return;
     }
@@ -250,7 +241,7 @@ static void route_key(int fd, const char *query)
     char name[32] = "", hold[16] = "";
 
     if (!control_query_arg(query, "name", name, sizeof name) || !name[0]) {
-        reply_text(fd, 400, "Bad Request",
+        control_reply_text(fd, 400, "Bad Request",
                    "no key named. Use /key?name=Return[&hold=0.3].\n"
                    "Names are SDL scancode names: Return, Escape, Up, Down,\n"
                    "Left, Right, Space, A, 1, F1 ...\n");
@@ -261,15 +252,15 @@ static void route_key(int fd, const char *query)
     snprintf(g_cmd_key, sizeof g_cmd_key, "%s", name);
 
     if (!submit(CMD_KEY, 5.0)) {
-        reply_text(fd, 504, "Gateway Timeout",
+        control_reply_text(fd, 504, "Gateway Timeout",
                    "the guest did not poll its keyboard within 5s, so \"%s\" "
                    "was NOT pressed.\nThat is a statement about the RUN, not "
                    "about this channel: the game is stuck, still loading, or "
                    "has not reached its input loop.\n", name);
         return;
     }
-    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
-    reply_text(fd, 200, "OK", "pressed \"%s\" for %.2fs at frame %lu\n",
+    if (!g_cmd_ok) { control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    control_reply_text(fd, 200, "OK", "pressed \"%s\" for %.2fs at frame %lu\n",
                name, g_cmd_hold > 0.0 ? g_cmd_hold : 0.30,
                gpu_frames_presented());
 }
@@ -280,7 +271,7 @@ static void route_pad(int fd, const char *query)
 
     if (!control_query_arg(query, "button", what, sizeof what) &&
         !control_query_arg(query, "axis", what, sizeof what)) {
-        reply_text(fd, 400, "Bad Request",
+        control_reply_text(fd, 400, "Bad Request",
                    "no button or axis named.\n"
                    "  /pad?button=a[&hold=0.3]\n"
                    "  /pad?axis=leftx&value=-1[&hold=0.5]\n"
@@ -297,13 +288,13 @@ static void route_pad(int fd, const char *query)
     snprintf(g_cmd_key, sizeof g_cmd_key, "%s", what);
 
     if (!submit(CMD_PAD, 5.0)) {
-        reply_text(fd, 504, "Gateway Timeout",
+        control_reply_text(fd, 504, "Gateway Timeout",
                    "the guest did not poll within 5s, so \"%s\" was NOT set.\n",
                    what);
         return;
     }
-    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
-    reply_text(fd, 200, "OK", "pad \"%s\" set at frame %lu -- %s\n",
+    if (!g_cmd_ok) { control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    control_reply_text(fd, 200, "OK", "pad \"%s\" set at frame %lu -- %s\n",
                what, gpu_frames_presented(), g_cmd_why);
 }
 
@@ -313,7 +304,7 @@ static void route_assignment(int fd, const char *query)
     int player_number, pad_number;
     if (!control_query_arg(query, "player", player, sizeof player) ||
         !bounded_number(player, 1, 4, &player_number)) {
-        reply_text(fd, 400, "Bad Request",
+        control_reply_text(fd, 400, "Bad Request",
                    "use /assignment?player=1..4&pad=N or &clear=1\n");
         return;
     }
@@ -324,16 +315,16 @@ static void route_assignment(int fd, const char *query)
              bounded_number(pad, 0, DINPUT_PAD_MAX - 1, &pad_number))
         g_cmd_value = (double)pad_number;
     else {
-        reply_text(fd, 400, "Bad Request", "no live pad or clear requested\n");
+        control_reply_text(fd, 400, "Bad Request", "no live pad or clear requested\n");
         return;
     }
     if (!submit(CMD_ASSIGNMENT, 5.0)) {
-        reply_text(fd, 504, "Gateway Timeout",
+        control_reply_text(fd, 504, "Gateway Timeout",
                    "the guest did not poll within 5s; assignment unchanged\n");
         return;
     }
-    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
-    reply_text(fd, 200, "OK", "player %d: %s\n", player_number, g_cmd_why);
+    if (!g_cmd_ok) { control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    control_reply_text(fd, 200, "OK", "player %d: %s\n", player_number, g_cmd_why);
 }
 
 static void route_shot(int fd)
@@ -342,13 +333,13 @@ static void route_shot(int fd)
     size_t png_bytes;
 
     if (!submit(CMD_SHOT, 10.0)) {
-        reply_text(fd, 504, "Gateway Timeout",
+        control_reply_text(fd, 504, "Gateway Timeout",
                    "the renderer did not complete a capturable frame within "
                    "10s.\nThe run is stuck, still loading, or not presenting "
                    "-- ask /status for its frame count.\n");
         return;
     }
-    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    if (!g_cmd_ok) { control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
     png = x2_control_screenshot_png(&g_screenshot, &png_bytes);
     reply(fd, 200, "OK", "image/png", png, png_bytes);
 }
@@ -360,27 +351,27 @@ static void route_input(int fd, const char *query)
                                          sizeof which)
                        ? (unsigned)atoi(which) : 0u;
     if (!submit(CMD_INPUT, 10.0)) {
-        reply_text(fd, 504, "Gateway Timeout",
+        control_reply_text(fd, 504, "Gateway Timeout",
                    "the guest did not reach an input poll within 10s, so its "
                    "binding table was not read.\nThat is a statement about the "
                    "RUN: it is stuck, still loading, or has not reached its "
                    "input loop.\n");
         return;
     }
-    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    if (!g_cmd_ok) { control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
     reply(fd, 200, "OK", "text/plain; charset=utf-8", g_probe, g_probe_len);
 }
 
 static void route_save(int fd)
 {
     if (!submit(CMD_SAVE, 10.0)) {
-        reply_text(fd, 504, "Gateway Timeout",
+        control_reply_text(fd, 504, "Gateway Timeout",
                    "the guest did not reach an input poll within 10s, so the "
                    "save trace was not read. The run is stuck, still loading, "
                    "or has not reached its input loop.\n");
         return;
     }
-    if (!g_cmd_ok) { reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
+    if (!g_cmd_ok) { control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
     reply(fd, 200, "OK", "text/plain; charset=utf-8", g_probe, g_probe_len);
 }
 
@@ -394,7 +385,7 @@ static void serve(int fd)
     g_requests++;
 
     path = strchr(req, ' ');
-    if (!path) { reply_text(fd, 400, "Bad Request", "unparseable request\n"); return; }
+    if (!path) { control_reply_text(fd, 400, "Bad Request", "unparseable request\n"); return; }
     path++;
     sp = strchr(path, ' ');
     if (sp) *sp = '\0';
@@ -408,8 +399,9 @@ static void serve(int fd)
     else if (!strcmp(path, "/screenshot")) route_shot(fd);
     else if (!strcmp(path, "/input"))      route_input(fd, query ? query : "");
     else if (!strcmp(path, "/save"))       route_save(fd);
+    else if (!strcmp(path, "/reached"))    x86_reached_route(fd, query ? query : "");
     else
-        reply_text(fd, 404, "Not Found",
+        control_reply_text(fd, 404, "Not Found",
                    "no such endpoint: %s\n"
                    "  GET /status       frames, guest time, frame timing\n"
                    "  GET /key?name=X   press a key (&hold=<seconds>)\n"
@@ -419,7 +411,9 @@ static void serve(int fd)
                    "  GET /screenshot   the current frame, as a PNG\n"
                    "  GET /input[?controller=N]  the GAME's binding table "
                    "and which actions read down\n"
-                   "  GET /save         bounded retail save/load trace\n",
+                   "  GET /save         bounded retail save/load trace\n"
+                   "  GET /reached      has the game ever entered that "
+                   "function? (self-documents)\n",
                    path);
 }
 

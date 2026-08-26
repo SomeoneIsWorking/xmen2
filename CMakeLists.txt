@@ -318,6 +318,17 @@ target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE)
 add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
+# The glyph-loop detector, against both classes. On the real run it has only
+# ever answered zero; this is where it is made to answer one.
+add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
+               src/native/prompt_glyph_draw.c src/native/prompt_glyph_pack.c
+               tests/native_stubs.c)
+add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header)
+target_include_directories(test_prompt_glyph_draw
+                           PRIVATE src/recomp src/native ${CMAKE_BINARY_DIR})
+target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE)
+add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
+
 add_executable(test_dialog_prompts tests/test_dialog_prompts.c
                src/native/dialog_prompts.c tests/native_stubs.c)
 target_include_directories(test_dialog_prompts PRIVATE src/recomp src/native
@@ -635,6 +646,23 @@ add_test(NAME pad_glyph_manifest
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py --selftest)
 
+# The two headers bootstrap.py publishes at every provision. Both carry a
+# selftest and neither was gated: the ratio one covers the refusals that keep a
+# missing font from silently becoming 1.0, and the atlas one proves every
+# published codepoint is actually inked -- an all-blank atlas is exactly the
+# uniform output an unvalidated rasteriser produces.
+add_test(NAME font_tier_ratio
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/font_tier_ratio.py --selftest)
+set_tests_properties(font_tier_ratio PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_test(NAME prompt_glyph_atlas
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py --selftest)
+set_tests_properties(prompt_glyph_atlas PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME prepare_native_assets
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
@@ -872,9 +900,14 @@ if(X2_MODULE_HAVE)
         src/native/boot_mode_policy.c
         src/native/boot_mode_runtime.c
         src/native/boot_menu_transition.c
+        src/native/boot_splash_policy.c
         src/presentation/aspect_fit.c
+        src/presentation/boot_blackout.c
         src/presentation/window_settings.c
         src/presentation/display_mode_seed.c
+        src/native/ui_text_scale.c
+        src/native/text_caller_probe.c
+        src/native/prompt_glyph_draw.c
         src/input/binding_rows.c
         src/input/controller_hotplug.c
         src/input/controller_instance.c
@@ -959,6 +992,8 @@ if(X2_MODULE_HAVE)
         src/native/winmm.c
         src/native/threads.c
         src/native/x86_tail_policy.c
+        src/native/x86_reached.c
+        src/native/run_reports.c
         src/native/x86rt_native.c
         src/native/x86_record.c
         src/native/env_file.c
@@ -1089,6 +1124,11 @@ if(X2_MODULE_HAVE)
     # anything fails. Mutually exclusive with the trace: both claim
     # X86_ENTER_FN, and a build that silently honoured only one would report a
     # ring while the caller believed they had a reached set.
+    # The reached set is compiled into EVERY native build (X86_NATIVE) behind
+    # a runtime-armed flag, so "does the engine ever call this?" is a question
+    # this binary can answer -- it used to need a second 272MB build tree, and
+    # a diagnostic that costs a rebuild is a diagnostic nobody runs.
+    target_compile_definitions(x2native PRIVATE X86_NATIVE)
     if(X2_NATIVE_REACHED)
         if(X2_NATIVE_TRACE)
             message(FATAL_ERROR

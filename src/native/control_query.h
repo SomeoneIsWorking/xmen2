@@ -9,4 +9,7 @@
 int control_query_arg(const char *query, const char *name,
                       char *out, size_t out_size);
 
+/* Parses one bounded decimal integer; 0 and *out untouched on any refusal. */
+int bounded_number(const char *text, int minimum, int maximum, int *out);
+
 #endif /* X2_CONTROL_QUERY_H */

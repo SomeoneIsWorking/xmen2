@@ -22,6 +22,12 @@ int gpu_present_composite(struct SDL_GPUCommandBuffer *command_buffer,
                           struct SDL_GPUTexture *output,
                           uint32_t output_width, uint32_t output_height);
 
+/* Present the target as pure black for one frame -- the boot presentation
+   policy's withholding of the retail boot's branding. Counts the frame in
+   the boot blackout's report. */
+void gpu_present_boot_blackout(struct SDL_GPUCommandBuffer *command_buffer,
+                               struct SDL_GPUTexture *target);
+
 void gpu_present_shutdown(struct SDL_GPUDevice *device);
 
 #endif

@@ -33,3 +33,6 @@ select = ["F", "E4", "E7", "E9", "B", "PLE", "PLR0124", "RUF"]
 # The shared-tool shims insert sys.path before importing, which is the point.
 "tools/alchemy_path.py" = ["E402"]
 "tools/shared_dir.py" = ["E402"]
+# Ghidra hosts these as Jython: `currentProgram`, `long` and friends are
+# interpreter globals, not omissions, and Ghidra imports resolve at run time.
+"tools/ghidra_scripts_local/*" = ["F821", "F401"]

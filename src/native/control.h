@@ -41,4 +41,9 @@ void control_pump(struct CPU *cpu, double now);
 /* Into the shutdown report, at zero and with its denominator. */
 void control_report(void);
 
+/* The HTTP wire helpers, shared with the endpoints that live beside their
+ * instruments (the reached endpoint is x86_reached.c's, not this file's). */
+void control_reply_text(int fd, int code, const char *status,
+                        const char *fmt, ...);
+
 #endif
