@@ -2,7 +2,6 @@
 #include "boot_player_selection.h"
 #include "autosave_runtime.h"
 #include "continue_policy.h"
-#include "conversation_resume.h"
 #include "guest_heap.h"
 #include "save_catalog.h"
 #include "save_directory.h"
@@ -257,7 +256,6 @@ void x2_override_005c9260(CPU *C)
     int boot_continue = x2_boot_mode_runtime_continue_leaf() != NULL;
 
     x2_continue_transaction_reader_result(&g_transaction, 0);
-    x2_conversation_resume_cancel_pending();
     x2_autosave_runtime_menu_show();
     x2_save_trace_menu_open();
     /* Retail reaches CMenuMain::Show with the player who dismissed the title
@@ -334,7 +332,6 @@ static int start_latest_load(const CPU *source)
     }
     x2_continue_transaction_begin(&g_transaction);
     g_leaf_redirect_pending = 1;
-    x2_conversation_resume_continue_started();
     return 1;
 }
 
@@ -382,7 +379,6 @@ void x2_override_0055ff00(CPU *C)
     succeeded = (C->eax & 0xffu) != 0u;
     x2_continue_transaction_reader_result(
         &g_transaction, succeeded);
-    if (!succeeded) x2_conversation_resume_cancel_pending();
 }
 
 void x2_override_004b1280(CPU *C)

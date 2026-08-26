@@ -256,23 +256,6 @@ add_executable(test_conversation_skip_policy
 target_include_directories(test_conversation_skip_policy PRIVATE src/native)
 add_test(NAME conversation_skip_policy COMMAND test_conversation_skip_policy)
 
-foreach(suffix IN ITEMS "" "_ndebug")
-    add_executable(test_conversation_resume_policy${suffix}
-                   tests/test_conversation_resume_policy.c
-                   src/native/conversation_resume_policy.c)
-    target_include_directories(test_conversation_resume_policy${suffix}
-                               PRIVATE src/native)
-    target_compile_options(test_conversation_resume_policy${suffix}
-                           PRIVATE -Wall -Wextra -Werror)
-    if(suffix STREQUAL "_ndebug")
-        target_compile_definitions(test_conversation_resume_policy${suffix}
-                                   PRIVATE NDEBUG)
-    endif()
-    add_test(NAME conversation_resume_policy${suffix}
-             COMMAND test_conversation_resume_policy${suffix})
-
-endforeach()
-
 add_test(NAME conversation_skip_wiring
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_conversation_skip_wiring.py)
 add_test(NAME conversation_skip_wiring_selftest
@@ -965,8 +948,6 @@ if(X2_MODULE_HAVE)
         src/native/cutscene_skip_publication.c
         src/native/cutscene_skip_probe.c
         src/native/conversation_skip_policy.c
-        src/native/conversation_resume_policy.c
-        src/native/conversation_resume.c
         src/native/conversation_cutscene_skip.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
