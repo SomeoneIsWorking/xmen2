@@ -286,20 +286,6 @@ static void x2_override_005ee400(CPU *C)
             C->esp += 4u + 0x20u;
             return;
         }
-        /* Not ours: the engine will draw it, so its corners go in the
-           calibration list. These coordinates exist on BOTH sides -- here,
-           and in the vertex stream the port sees -- which is what makes the
-           sink's transform recoverable. */
-        {
-            uint32_t a[4];
-            float x0, y0, x1, y1;
-            unsigned i;
-            for (i = 0; i < 4u; i++)
-                a[i] = RD32(C->esp + (uint32_t)(i + 1u) * 4u);
-            memcpy(&x0, &a[0], 4); memcpy(&y0, &a[1], 4);
-            memcpy(&x1, &a[2], 4); memcpy(&y1, &a[3], 4);
-            x2_prompt_stock_add(x0, y0, x1, y1);
-        }
     }
     x2_probe_005ee400_dump(C);
     fn_XMen2_005ee400(C);

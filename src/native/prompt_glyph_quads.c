@@ -26,30 +26,10 @@ static struct X2PromptQuad g_quads[MAX_QUADS];
 static unsigned g_count;
 static unsigned long g_total, g_overflow, g_frames;
 
-static struct X2PromptQuad g_stock[MAX_QUADS];
-static unsigned g_stock_count;
-
 void x2_prompt_quads_reset(void)
 {
     if (g_count) g_frames++;
     g_count = 0;
-    g_stock_count = 0;
-}
-
-void x2_prompt_stock_add(float x0, float y0, float x1, float y1)
-{
-    struct X2PromptQuad *q;
-    if (g_stock_count == MAX_QUADS) return;
-    q = &g_stock[g_stock_count++];
-    q->x0 = x0; q->y0 = y0; q->x1 = x1; q->y1 = y1;
-    q->u0 = q->v0 = q->u1 = q->v1 = 0.0f;
-    q->codepoint = 0;
-}
-
-const struct X2PromptQuad *x2_prompt_stock(unsigned *count)
-{
-    if (count) *count = g_stock_count;
-    return g_stock;
 }
 
 void x2_prompt_quads_add(const struct X2PromptQuad *quad)

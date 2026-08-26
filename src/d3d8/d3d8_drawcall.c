@@ -13,8 +13,6 @@
  * anything drawn is read next to what was missing from it.
  */
 #include "d3d8_drawcall.h"
-#include "prompt_glyph_quads.h"
-#include <math.h>
 unsigned long gpu_frame_draws_so_far(void);
 #include "d3d8_device.h"
 #include "d3d8_resource.h"
@@ -1855,107 +1853,6 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
  * picture that leads straight to this function, and an approximated one is a
  * subtly wrong picture that leads nowhere.
  */
-/* WHERE DOES THE ENGINE'S TEXT SPACE LAND ON SCREEN?
- *
- * The port harvests prompt-glyph rectangles in the coordinates FUN_005ee400
- * receives (~15..54 in x, ~117..124 in y on a 3840x2160 output), and it must
- * draw them itself because its art is not in the game's font atlas. That
- * needs the mapping, and the mapping is not something to guess at.
- *
- * "The draw right after a harvest" was tried and is too loose a correlation:
- * once any prompt quad is recorded the flag stays set for the rest of the
- * frame, and the first draw it caught was fvf=0x42 3D geometry. So this
- * SEARCHES instead -- every draw of the first harvesting frame is scanned for
- * a vertex near a harvested corner, and the result is reported either way:
- * the match with its transform, or the closest miss over the whole frame,
- * which is what says "these coordinates are not in the vertex stream at all".
- * Gated by X2_TEXT_SPACE.
- */
-static int g_ts_finished;
-static unsigned long g_ts_scanned, g_ts_vertices, g_ts_unreadable;
-static float g_ts_best = 1e30f, g_ts_best_x, g_ts_best_y;
-
-static void text_space_probe(const D3D8State *s, const D3D8DrawRequest *req,
-                             uint32_t fvf)
-{
-    static int armed = -1;
-    const struct X2PromptQuad *quads;
-    unsigned harvested, i, q, n;
-    const unsigned char *v;
-
-    if (armed < 0) armed = getenv("X2_TEXT_SPACE") ? 1 : 0;
-    if (!armed || g_ts_finished) return;
-    quads = x2_prompt_stock(&harvested);   /* calibrate on the STOCK quads */
-    if (!harvested) return;
-
-    g_ts_scanned++;
-    /* A draw whose vertices this side cannot read is NOT evidence of
-       absence, and must not be quietly folded into the "no match" count --
-       vertex_guest_bytes is only populated for some paths. Counted
-       separately so the negative can say how much of the frame it was
-       actually able to look at. */
-    if (!req->vertex_guest_bytes || req->stride < 12u) { g_ts_unreadable++; return; }
-    v = (const unsigned char *)(uintptr_t)req->vertex_guest_bytes;
-    n = req->num_vertices > 256u ? 256u : req->num_vertices;
-    for (i = 0; i < n; i++) {
-        float p[3];
-        memcpy(p, v + (size_t)i * req->stride, sizeof p);
-        g_ts_vertices++;
-        for (q = 0; q < harvested; q++) {
-            float dx = p[0] - quads[q].x0, dy = p[1] - quads[q].y0;
-            float d = dx * dx + dy * dy;
-            if (d < g_ts_best) {
-                g_ts_best = d; g_ts_best_x = p[0]; g_ts_best_y = p[1];
-            }
-            if (d < 0.01f) {
-                float m[16];
-                unsigned k;
-                g_ts_finished = 1;
-                d3d8_combine_transform(s, m);
-                fprintf(stderr, "TEXT SPACE: MATCH -- vertex %u of a draw "
-                                "(fvf=0x%08x stride=%u verts=%u tex=%u) is "
-                                "(%.4f, %.4f), the harvested corner of "
-                                "codepoint 0x%02x. The engine's text space IS "
-                                "the vertex stream; the transform below maps "
-                                "it.\n",
-                        i, fvf, req->stride, req->num_vertices,
-                        (unsigned)req->texture, (double)p[0], (double)p[1],
-                        quads[q].codepoint);
-                for (k = 0; k < 4u; k++)
-                    fprintf(stderr, "TEXT SPACE:   m[%u..] %10.5f %10.5f "
-                                    "%10.5f %10.5f\n", k * 4u,
-                            (double)m[k * 4u], (double)m[k * 4u + 1u],
-                            (double)m[k * 4u + 2u], (double)m[k * 4u + 3u]);
-                return;
-            }
-        }
-    }
-}
-
-/* The negative, printed at the END OF THE RUN rather than at some arbitrary
-   draw count. An earlier version only spoke when it had seen exactly 20000
-   qualifying draws and therefore said nothing at all -- the same
-   can-print-nothing failure this probe exists to avoid. */
-void d3d8_text_space_report(void)
-{
-    if (!getenv("X2_TEXT_SPACE")) return;
-    if (g_ts_finished) return;                 /* it already printed a match */
-    fprintf(stderr, "TEXT SPACE: NO MATCH. %lu draw(s) seen while a prompt "
-                    "was harvested, %lu of them with NO host-visible "
-                    "vertices (skipped, not searched); %lu vertex(es) "
-                    "compared. Closest was (%.4f, %.4f), %.4f away.\n",
-            g_ts_scanned, g_ts_unreadable, g_ts_vertices,
-            (double)g_ts_best_x, (double)g_ts_best_y,
-            (double)(g_ts_best < 1e29f ? sqrtf(g_ts_best) : -1.0f));
-    if (!g_ts_scanned)
-        fprintf(stderr, "TEXT SPACE: ZERO draws were examined -- no frame "
-                        "both harvested a prompt and issued a draw, so this "
-                        "run says nothing about the space.\n");
-    else if (g_ts_unreadable)
-        fprintf(stderr, "TEXT SPACE: %lu unreadable draw(s), so this is NOT "
-                        "proof the coordinates are absent.\n", g_ts_unreadable);
-}
-
 int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                     GpuDraw *out)
 {
@@ -1965,7 +1862,6 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
     int programmable = fvf > 0xf0000000u;
 
     memset(out, 0, sizeof *out);
-    text_space_probe(s, req, fvf);
 
     if (!req->vertex_buffer) {
         fprintf(stderr, "d3d8: a draw with no stream source bound.\n");
