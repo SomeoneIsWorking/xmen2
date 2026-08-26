@@ -176,13 +176,17 @@ static void dump_args(const CPU *C)
         fprintf(stderr, "GLYPH ARGS:   arg%u [esp+0x%02x] = 0x%08x  (%.4f)",
                 a, a * 4u, v, (double)f);
         if (v && x86_peek32(v, &probe)) {
+            /* args 5 and 7 are the objects carrying the position scales and
+               offsets the stock quad is built from, so they get a deeper
+               read than the rest. */
+            unsigned depth = (a == 5u || a == 7u) ? 16u : 6u;
             fprintf(stderr, "  ->");
-            for (k = 0; k < 6u; k++) {
+            for (k = 0; k < depth; k++) {
                 uint32_t w;
                 float wf;
                 if (!x86_peek32(v + k * 4u, &w)) break;
                 memcpy(&wf, &w, sizeof wf);
-                fprintf(stderr, " [%u]=0x%08x/%.3f", k, w, (double)wf);
+                fprintf(stderr, " [%u]=0x%08x/%.4f", k, w, (double)wf);
             }
         }
         fprintf(stderr, "\n");
@@ -221,6 +225,25 @@ static void x2_probe_005ee400(CPU *C)
             fprintf(stderr, "  a%u=%.3f/0x%08x", a, (double)f, v);
         }
         fprintf(stderr, "\n");
+        if (g_quads_dumped == 1u) {
+            /* The vertex sink, once: FUN_005ee400 pushes each corner through
+               [ECX] -> vtable +0xc. Naming that target is the last hop
+               between these coordinates and the screen, which is what the
+               port needs if it is to draw the prompt art itself. */
+            uint32_t sink, vtable, target, state;
+            if (x86_peek32(C->ecx, &sink) && x86_peek32(sink, &vtable) &&
+                x86_peek32(vtable + 0xcu, &target)) {
+                fprintf(stderr, "QUAD SINK: batch=0x%08x sink=0x%08x "
+                                "vtable=0x%08x  vtable+0xc -> 0x%08x\n",
+                        C->ecx, sink, vtable, target);
+                if (x86_peek32(C->ecx + 8u, &state))
+                    fprintf(stderr, "QUAD SINK: [batch+8] = 0x%08x\n", state);
+            } else {
+                fprintf(stderr, "QUAD SINK: could not read the sink behind "
+                                "batch 0x%08x -- no vtable, so the emitter's "
+                                "target is unknown for this call.\n", C->ecx);
+            }
+        }
     }
     fn_XMen2_005ee400(C);
 }
