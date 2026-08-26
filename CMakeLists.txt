@@ -216,8 +216,10 @@ add_test(NAME controller_instance COMMAND test_controller_instance)
 
 add_executable(test_dinput8_controller_slots
                tests/test_dinput8_controller_slots.c
-               src/native/dinput8_controller_slots.c)
+               src/native/dinput8_controller_slots.c
+               src/native/guest_memory.c)
 target_include_directories(test_dinput8_controller_slots PRIVATE src/native)
+target_link_libraries(test_dinput8_controller_slots PRIVATE pthread)
 add_test(NAME dinput8_controller_slots COMMAND test_dinput8_controller_slots)
 set_tests_properties(dinput8_controller_slots PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -268,16 +270,20 @@ add_test(NAME cutscene_player_policy COMMAND test_cutscene_player_policy)
 
 add_executable(test_behaved_player_heap
                tests/test_behaved_player_heap.c
-               src/native/behaved_player.c)
+               src/native/behaved_player.c src/native/guest_memory.c)
 target_include_directories(test_behaved_player_heap PRIVATE
                            src/native src/recomp)
+target_compile_definitions(test_behaved_player_heap PRIVATE X86_NATIVE)
+target_link_libraries(test_behaved_player_heap PRIVATE pthread)
 add_test(NAME behaved_player_heap COMMAND test_behaved_player_heap)
 
 add_executable(test_cutscene_event_player
                tests/test_cutscene_event_player.c
-               src/native/cutscene_event_player.c)
+               src/native/cutscene_event_player.c src/native/guest_memory.c)
 target_include_directories(test_cutscene_event_player PRIVATE
                            src/native src/recomp)
+target_compile_definitions(test_cutscene_event_player PRIVATE X86_NATIVE)
+target_link_libraries(test_cutscene_event_player PRIVATE pthread)
 add_test(NAME cutscene_event_player COMMAND test_cutscene_event_player)
 
 add_test(NAME cutscene_player_wiring
@@ -366,11 +372,13 @@ add_executable(test_pad_glyphs tests/test_pad_glyphs.c
                src/native/pad_glyphs.c src/native/prompt_glyphs.c
                src/native/prompt_labels.c src/native/input_binding_sets.c
                src/native/input_bindings.c
+               src/native/guest_memory.c
                tests/native_stubs.c)
 add_dependencies(test_pad_glyphs x2_pad_glyph_header)
 target_include_directories(test_pad_glyphs PRIVATE src/recomp src/native
                                                   src/input ${CMAKE_BINARY_DIR})
-target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE)
+target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE X86_NATIVE)
+target_link_libraries(test_pad_glyphs PRIVATE pthread)
 add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
@@ -381,27 +389,30 @@ add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
                src/native/prompt_glyph_atlas.c
                src/native/prompt_glyph_metrics.c
                src/native/prompt_glyph_quads.c
+               src/native/guest_memory.c
                tests/native_stubs.c)
 add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_glyph_draw
                            PRIVATE src/recomp src/native src/recomp/gen
                                    ${CMAKE_BINARY_DIR})
-target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE)
-target_link_libraries(test_prompt_glyph_draw PRIVATE m)
+target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE X86_NATIVE)
+target_link_libraries(test_prompt_glyph_draw PRIVATE m pthread)
 add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
 
 add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
                src/native/prompt_glyph_metrics.c
                src/native/prompt_glyphs.c
-               src/native/prompt_glyph_atlas.c tests/native_stubs.c)
+               src/native/prompt_glyph_atlas.c src/native/guest_memory.c
+               tests/native_stubs.c)
 add_dependencies(test_prompt_glyph_metrics x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_glyph_metrics
                            PRIVATE src/recomp src/native src/recomp/gen
                                    ${CMAKE_BINARY_DIR})
-target_compile_definitions(test_prompt_glyph_metrics PRIVATE _GNU_SOURCE)
-target_link_libraries(test_prompt_glyph_metrics PRIVATE m)
+target_compile_definitions(test_prompt_glyph_metrics PRIVATE _GNU_SOURCE
+                                                           X86_NATIVE)
+target_link_libraries(test_prompt_glyph_metrics PRIVATE m pthread)
 add_test(NAME prompt_glyph_metrics COMMAND test_prompt_glyph_metrics)
 
 add_executable(test_prompt_glyph_batch tests/test_prompt_glyph_batch.c
@@ -412,16 +423,20 @@ add_test(NAME prompt_glyph_batch COMMAND test_prompt_glyph_batch)
 
 add_executable(test_ui_transform tests/test_ui_transform.c
                src/native/ui_transform.c src/gpu/gpu_matrix.c
-               tests/native_stubs.c)
+               src/native/guest_memory.c tests/native_stubs.c)
 target_include_directories(test_ui_transform
                            PRIVATE src/recomp src/native src/gpu)
+target_compile_definitions(test_ui_transform PRIVATE X86_NATIVE)
+target_link_libraries(test_ui_transform PRIVATE pthread)
 add_test(NAME ui_transform COMMAND test_ui_transform)
 
 add_executable(test_dialog_prompts tests/test_dialog_prompts.c
-               src/native/dialog_prompts.c tests/native_stubs.c)
+               src/native/dialog_prompts.c src/native/guest_memory.c
+               tests/native_stubs.c)
 target_include_directories(test_dialog_prompts PRIVATE src/recomp src/native
                                                        src/input)
-target_compile_definitions(test_dialog_prompts PRIVATE _GNU_SOURCE)
+target_compile_definitions(test_dialog_prompts PRIVATE _GNU_SOURCE X86_NATIVE)
+target_link_libraries(test_dialog_prompts PRIVATE pthread)
 add_test(NAME dialog_prompts COMMAND test_dialog_prompts)
 
 add_executable(test_xbox_defaults tests/test_xbox_defaults.c
@@ -442,10 +457,10 @@ add_test(NAME flags COMMAND test_flags)
 # needs no recompiled output and runs in the ordinary suite.
 add_executable(test_vformat tests/test_vformat.c src/native/crt.c src/recomp/x87crt.c
             tests/native_stubs.c
-               src/native/guest_heap.c)
+               src/native/guest_heap.c src/native/guest_memory.c)
 target_include_directories(test_vformat PRIVATE src/recomp src/native)
-target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE)
-target_link_libraries(test_vformat PRIVATE m)
+target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE X86_NATIVE)
+target_link_libraries(test_vformat PRIVATE m pthread)
 add_test(NAME vformat COMMAND test_vformat)
 
 add_executable(test_x87crt tests/test_x87crt.c src/recomp/x87crt.c)
@@ -453,14 +468,23 @@ target_include_directories(test_x87crt PRIVATE src/recomp)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
 
-add_executable(test_x87host tests/test_x87host.c src/recomp/x87host.c)
-target_include_directories(test_x87host PRIVATE src/recomp)
-target_link_libraries(test_x87host PRIVATE m)
-add_test(NAME x87host COMMAND test_x87host)
+# This is deliberately a hardware-x87 oracle: its inline assembly proves the
+# ordinary-host-call bridge drains the physical x87 stack. AArch64 has no such
+# stack; its translated calls use the model in x86rt.h and are covered by the
+# architecture-independent x87 tests above.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|i.86)$")
+    add_executable(test_x87host tests/test_x87host.c src/recomp/x87host.c)
+    target_include_directories(test_x87host PRIVATE src/recomp)
+    target_link_libraries(test_x87host PRIVATE m)
+    add_test(NAME x87host COMMAND test_x87host)
+endif()
 
 add_executable(test_x86callbacks
-    tests/test_x86callbacks.c src/recomp/x86callbacks.c tests/native_stubs.c)
+    tests/test_x86callbacks.c src/recomp/x86callbacks.c
+    src/native/guest_memory.c tests/native_stubs.c)
 target_include_directories(test_x86callbacks PRIVATE src/recomp src/native)
+target_compile_definitions(test_x86callbacks PRIVATE X86_NATIVE)
+target_link_libraries(test_x86callbacks PRIVATE pthread)
 add_test(NAME x86callbacks COMMAND test_x86callbacks)
 
 # A tail at the current dispatch frame may iterate through the dispatch loop;
@@ -487,6 +511,10 @@ add_executable(test_x86watch_stack
 target_include_directories(test_x86watch_stack PRIVATE src)
 add_test(NAME x86watch_stack COMMAND test_x86watch_stack)
 
+# These three tests are x86 hardware oracles: each compares the model against
+# instructions executed by the host CPU. They remain valuable on Intel, but
+# cannot be compiled on AArch64 (whose translated models use portable C/NEON).
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|i.86)$")
 # The MMX lane model, against the host CPU's own SSE2 (tests/test_mmx.c).
 # libCriMovie's video decoder is 1106 MMX instructions and a wrong lane
 # produces a picture -- just not the right one -- so the oracle is silicon
@@ -513,6 +541,7 @@ add_executable(test_sse tests/test_sse.c)
 target_include_directories(test_sse PRIVATE src/recomp)
 target_link_libraries(test_sse PRIVATE m)
 add_test(NAME sse COMMAND test_sse)
+endif()
 
 # Region recording's arm is a diagnostic discriminator: an address outside the
 # emitted ranges, one that was compiled but never reached, and one that fired
@@ -551,9 +580,12 @@ add_test(NAME x2native_options COMMAND test_x2native_options)
 
 add_executable(test_options_menu
     tests/test_options_menu.c src/native/options_menu.c
-    src/native/guest_heap.c src/ui/settings_overlay_state.c
+    src/native/guest_heap.c src/native/guest_memory.c
+    src/ui/settings_overlay_state.c
     tests/options_menu_stubs.c)
 target_include_directories(test_options_menu PRIVATE src/recomp src/native src/ui)
+target_compile_definitions(test_options_menu PRIVATE X86_NATIVE)
+target_link_libraries(test_options_menu PRIVATE pthread)
 add_test(NAME options_menu COMMAND test_options_menu)
 
 add_executable(test_save_catalog
@@ -977,6 +1009,7 @@ if(X2_MODULE_HAVE)
     message(STATUS "x2native: linking recompiled modules: ${X2_MODULE_HAVE}")
     add_executable(x2native
         src/native/x2native.c
+        src/native/guest_memory.c
         src/native/x2native_options.c
         src/config/settings.c
         src/config/input_assignments.c
@@ -1131,6 +1164,7 @@ if(X2_MODULE_HAVE)
         src/gpu/gpu_prompt_glyphs.c
         src/gpu/gpu_host_selftest.c
         src/gpu/gpu_matrix.c
+        src/gpu/gpu_frame_init_selftest.c
         src/gpu/gpu_upload.c
         src/gpu/gpu_upload_selftest.c
         src/gpu/gpu_selftest.c
@@ -1172,7 +1206,9 @@ if(X2_MODULE_HAVE)
             "probe is silently absent. Run tools/gen_probes.py.")
     endif()
     include("${RECOMP_PROBES_CMAKE}")
-    target_link_options(x2native PRIVATE ${RECOMP_PROBE_WRAPS})
+    if(NOT APPLE)
+        target_link_options(x2native PRIVATE ${RECOMP_PROBE_WRAPS})
+    endif()
 
     # The recompiled C must have been emitted by the translator in THIS tree.
     #
@@ -1236,7 +1272,9 @@ if(X2_MODULE_HAVE)
     # XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
     # and forces it to relocate for no reason.
     set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    target_link_options(x2native PRIVATE -pie)
+    if(NOT APPLE)
+        target_link_options(x2native PRIVATE -pie)
+    endif()
     # libm: the exe's x87 translations use atan2l/fmodl and friends.
     # -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
     # so that a guest stuck anywhere still gets a liveness line.

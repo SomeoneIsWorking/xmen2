@@ -13,6 +13,7 @@
 #include "igvk_context.h"
 #include "gpu_device.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "win32_sdl.h"
 
 #include <stdio.h>
@@ -142,7 +143,7 @@ static void vk_user_instantiate(CPU *C)
                     ark_ret(C, r, 1);
                     return;
                 }
-                memset((void *)(uintptr_t)m, 0, blk[b].size);
+                memset(guest_memory_pointer(m), 0, blk[b].size);
                 WR32(self + blk[b].off, m);
             }
         }

@@ -16,6 +16,7 @@
 
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -137,7 +138,7 @@ static void *guest_ptr(uint32_t a, const char *what)
                 d3d8_current_method(), what);
         return NULL;
     }
-    return (void *)(uintptr_t)a;
+    return guest_memory_pointer(a);
 }
 
 /* ---- IUnknown ---------------------------------------------------------- */

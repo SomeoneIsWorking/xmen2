@@ -12,6 +12,7 @@
  * untested.
  */
 #include "prompt_glyph_draw.h"
+#include "guest_memory.h"
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_quads.h"
 #include "x86rt.h"
@@ -28,9 +29,9 @@ int native_stubs_registered(const char *module, uint32_t linked_ep);
 void x2_override_005ee780(CPU *C);
 void x2_override_005ee400(CPU *C);
 
-/* The guest's own address space is the low 4 GB, and RD16 is a raw deref of a
-   32-bit address -- so the strings have to LIVE there. A page mapped at a
-   fixed low address is the whole fake; nothing about the walk is simulated. */
+/* The strings live at real guest addresses. On hosts with an identity-mapped
+   guest they are low host addresses too; Apple Silicon translates them into
+   the reserved 4 GB guest arena. Nothing about the walk is simulated. */
 #define GUEST_PAGE 0x70000000u
 
 /* Guest-memory peek used by the shipping interception. The test maps a real
@@ -40,7 +41,7 @@ void x2_override_005ee400(CPU *C);
 int x86_peek32(uint32_t addr, uint32_t *out)
 {
     if (addr < GUEST_PAGE || addr + 4u > GUEST_PAGE + 0x1000u) return 0;
-    *out = *(const uint32_t *)(uintptr_t)addr;
+    *out = *(const uint32_t *)guest_memory_const_pointer(addr);
     return 1;
 }
 
@@ -61,8 +62,8 @@ static uint32_t guest_wide(const uint16_t *codes, unsigned n)
     uint32_t at = g_next;
     unsigned i;
     for (i = 0; i < n; i++)
-        *(uint16_t *)(uintptr_t)(at + i * 2u) = codes[i];
-    *(uint16_t *)(uintptr_t)(at + n * 2u) = 0;
+        *(uint16_t *)guest_memory_pointer(at + i * 2u) = codes[i];
+    *(uint16_t *)guest_memory_pointer(at + n * 2u) = 0;
     g_next += (n + 1) * 2u;
     return at;
 }
@@ -154,10 +155,10 @@ static void call_glyph_loop(CPU *cpu, uint32_t wide_string)
 {
     memset(cpu, 0, sizeof *cpu);
     g_stack -= 32u;
-    memset((void *)(uintptr_t)g_stack, 0, 32u);
-    *(uint32_t *)(uintptr_t)(g_stack) = 0xdeadbeefu;   /* return address */
-    *(uint32_t *)(uintptr_t)(g_stack + 4u) = wide_string;
-    *(uint32_t *)(uintptr_t)(g_stack + 8u) = g_batch;
+    memset(guest_memory_pointer(g_stack), 0, 32u);
+    WR32(g_stack, 0xdeadbeefu);                 /* return address */
+    WR32(g_stack + 4u, wide_string);
+    WR32(g_stack + 8u, g_batch);
     cpu->esp = g_stack;
     x2_override_005ee780(cpu);
 }
@@ -190,20 +191,16 @@ static void expect(const uint16_t *codes, unsigned n, int want,
 
 int main(void)
 {
-    void *page;
-
     /* The feature gate caches on first read, so it is set before anything calls
        into the subsystem. Without it the override is inert by design and the
        whole test would pass while measuring nothing. */
     setenv("X2_PROMPT_GLYPHS", "1", 1);
 
-    page = mmap((void *)(uintptr_t)GUEST_PAGE, 0x1000,
-                PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-    if (page != (void *)(uintptr_t)GUEST_PAGE) {
-        fprintf(stderr, "test_prompt_glyph_draw: could not map the guest page "
-                        "at 0x%08x; RD16 dereferences that address directly, "
-                        "so there is no test without it.\n", GUEST_PAGE);
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(GUEST_PAGE, 0x1000,
+                               PROT_READ | PROT_WRITE) != 0) {
+        fprintf(stderr, "test_prompt_glyph_draw: could not map guest page "
+                        "0x%08x in the guest address space.\n", GUEST_PAGE);
         return 1;
     }
     g_next = GUEST_PAGE;
@@ -258,10 +255,10 @@ int main(void)
         /* A NUL inside the buffer ends the string: bytes past it belong to
            whatever the engine put there and must not be classified. */
         uint32_t at = g_next;
-        *(uint16_t *)(uintptr_t)(at + 0) = 'A';
-        *(uint16_t *)(uintptr_t)(at + 2) = 0;
-        *(uint16_t *)(uintptr_t)(at + 4) = X2_PAD_GLYPH_FACE_A;
-        *(uint16_t *)(uintptr_t)(at + 6) = 0;
+        *(uint16_t *)guest_memory_pointer(at + 0) = 'A';
+        *(uint16_t *)guest_memory_pointer(at + 2) = 0;
+        *(uint16_t *)guest_memory_pointer(at + 4) = X2_PAD_GLYPH_FACE_A;
+        *(uint16_t *)guest_memory_pointer(at + 6) = 0;
         g_next += 8;
         if (x2_string_has_prompt_glyph(at, 512u))
             fail("the walk read past the string's own NUL");

@@ -23,6 +23,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "dinput_device.h"
 #include "dinput_pad.h"
 #include "dinput8_controller_slots.h"
@@ -213,16 +214,16 @@ static uint32_t padinst_for(int pad)
     if (!dinput_pad_product_guid(pad, prod))  return 0;
     if (!buf) buf = guest_malloc(DIDEVINST_BYTES);
     if (!buf) return 0;
-    memset((void *)(uintptr_t)buf, 0, DIDEVINST_BYTES);
+    memset(guest_memory_pointer(buf), 0, DIDEVINST_BYTES);
     WR32(buf + 0u, DIDEVINST_BYTES);                     /* dwSize */
-    memcpy((void *)(uintptr_t)(buf + 4u),  inst, 16);    /* guidInstance */
-    memcpy((void *)(uintptr_t)(buf + 20u), prod, 16);    /* guidProduct */
+    memcpy(guest_memory_pointer(buf + 4u),  inst, 16);    /* guidInstance */
+    memcpy(guest_memory_pointer(buf + 20u), prod, 16);    /* guidProduct */
     /* DI8DEVTYPE_GAMEPAD with DI8DEVTYPEGAMEPAD_STANDARD in the second byte,
        and DIDEVTYPE_HID (0x00010000) set: a caller that switches on the
        subtype gets a real one rather than zero. */
     WR32(buf + 36u, 0x00010115u);
-    snprintf((char *)(uintptr_t)(buf + 40u),  260, "%s", nm ? nm : "Gamepad");
-    snprintf((char *)(uintptr_t)(buf + 300u), 260, "%s", nm ? nm : "Gamepad");
+    snprintf(guest_memory_pointer(buf + 40u),  260, "%s", nm ? nm : "Gamepad");
+    snprintf(guest_memory_pointer(buf + 300u), 260, "%s", nm ? nm : "Gamepad");
     return buf;
 }
 
@@ -264,7 +265,7 @@ static const unsigned char GUID_SYS_MOUSE[16] = {
 
 static void guid_text(uint32_t g, char *out, size_t n)
 {
-    const unsigned char *b = (const unsigned char *)(uintptr_t)g;
+    const unsigned char *b = guest_memory_const_pointer(g);
     snprintf(out, n, "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
                      "%02X%02X%02X%02X%02X%02X}",
              b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9],
@@ -341,16 +342,16 @@ static void m_CreateDevice(CPU *C)
     WR32(out, 0);
     if (outer || !guid) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
 
-    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_KEYBOARD, 16) == 0)
+    if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0)
         obj = dinput_device_new(DINPUT_DEV_KEYBOARD);
-    else if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
+    else if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
         obj = dinput_device_new(DINPUT_DEV_MOUSE);
-    else if (dinput_pad_for_guid((const unsigned char *)(uintptr_t)guid) >= 0) {
+    else if (dinput_pad_for_guid(guest_memory_const_pointer(guid)) >= 0) {
         /* A GUID the enumeration above handed out. A device enumerated under
            one GUID and creatable only under another is a device the game can
            see and never open, so the two go through the same inventory. */
         obj = dinput_device_new_pad(
-                  (const unsigned char *)(uintptr_t)guid);
+                  guest_memory_const_pointer(guid));
     } else {
         /*
          * NOT a system device, so it is one that enumeration would have had to
@@ -381,13 +382,13 @@ static void m_GetDeviceStatus(CPU *C)
     uint32_t guid = A(1);
     int attached = 0;
     if (!guid) { ret_com(C, DIERR_INVALIDPARAM, 1); return; }
-    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_KEYBOARD, 16) == 0 ||
-        memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
+    if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0 ||
+        memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
         attached = 1;
     else {
         dinput_pad_refresh();
         attached = dinput_pad_for_guid(
-                       (const unsigned char *)(uintptr_t)guid) >= 0;
+                       guest_memory_const_pointer(guid)) >= 0;
     }
     ret_com(C, attached ? S_OK : S_FALSE, 1);
 }

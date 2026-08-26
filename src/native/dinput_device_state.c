@@ -1,5 +1,6 @@
 /* Polling policy for the DirectInput device snapshots returned to the game. */
 #include "dinput_device_internal.h"
+#include "guest_memory.h"
 
 #include "dinput8_hotplug.h"
 #include "dinput_joystick.h"
@@ -49,13 +50,13 @@ static int joystick_active(uint32_t out, uint32_t bytes,
     }
     if (RD32(out + 32u) != 0xFFFFFFFFu) return 1;
     for (i = 48u; i < bytes && i < 80u; i++)
-        if (*((unsigned char *)(uintptr_t)(out + i)) & 0x80u) return 1;
+        if (*((unsigned char *)guest_memory_pointer(out + i)) & 0x80u) return 1;
     return 0;
 }
 
 static void record_state(const DInputDevice *device, uint32_t out, uint32_t bytes)
 {
-    const void *state = (const void *)(uintptr_t)out;
+    const void *state = guest_memory_const_pointer(out);
     unsigned long frame = gpu_frames_presented();
     double now = guest_clock_elapsed_s();
     int pad = dinput_device_pad(device);
@@ -98,10 +99,10 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device)
     }
     if (x2_ui_captures_input()) {
         if (device->kind == DINPUT_DEV_JOYSTICK)
-            x2_joystick_write_neutral((void *)(uintptr_t)out, bytes,
+            x2_joystick_write_neutral(guest_memory_pointer(out), bytes,
                                       device->axis_lo, device->axis_hi);
         else
-            memset((void *)(uintptr_t)out, 0, bytes);
+            memset(guest_memory_pointer(out), 0, bytes);
         record_state(device, out, bytes);
         ret_get_state(cpu, S_OK);
         return;
@@ -110,14 +111,14 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device)
         dinput_system_keyboard_state(out, bytes);
         dinput_script_apply(cpu, out, bytes);
         x2_player_input_note_keyboard_state(
-            (const unsigned char *)(uintptr_t)out, bytes);
+            guest_memory_const_pointer(out), bytes);
     } else if (device->kind == DINPUT_DEV_JOYSTICK) {
         dinput_joystick_state(pad, device->axis_lo, device->axis_hi,
                               out, bytes);
         if (joystick_active(out, bytes, device->axis_lo, device->axis_hi))
             x2_player_input_note_gamepad_activity(pad);
         x2_player_input_note_gamepad_state(
-            pad, (const unsigned char *)(uintptr_t)out, bytes);
+            pad, guest_memory_const_pointer(out), bytes);
     } else {
         dinput_system_mouse_state(out, bytes);
     }

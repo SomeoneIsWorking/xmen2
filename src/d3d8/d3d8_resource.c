@@ -24,6 +24,7 @@
 #include "fmv_probe.h"
 #include "x86rt.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -125,7 +126,7 @@ static void *guest_ptr(uint32_t a, const char *what)
                 d3d8_current_method(), what);
         return NULL;
     }
-    return (void *)(uintptr_t)a;
+    return guest_memory_pointer(a);
 }
 
 static Resource *res_of(D3D8Object *o) { return (Resource *)d3d8_object_ctx(o); }
@@ -294,7 +295,7 @@ static D3D8Object *texture_new(uint32_t w, uint32_t h, uint32_t levels,
         free(r);
         return NULL;
     }
-    memset((void *)(uintptr_t)r->guest_bytes, 0, total);
+    memset(guest_memory_pointer(r->guest_bytes), 0, total);
     if (faces == 6) g_cubetextures++; else g_textures++;
     return d3d8_object_new(faces == 6 ? D3D8_IF_IDirect3DCubeTexture8
                                       : D3D8_IF_IDirect3DTexture8, r);
@@ -341,7 +342,7 @@ static D3D8Object *buffer_new(D3D8IfaceId iface, uint32_t bytes, uint32_t fvf,
         free(r);
         return NULL;
     }
-    memset((void *)(uintptr_t)r->guest_bytes, 0, bytes);
+    memset(guest_memory_pointer(r->guest_bytes), 0, bytes);
     if (kind == GPU_BUF_INDEX) g_ibuffers++; else g_vbuffers++;
     return d3d8_object_new(iface, r);
 }
@@ -475,7 +476,7 @@ static void lock_sub(D3D8Object *self, CPU *C, uint32_t face, uint32_t level,
            it and the pitch is unchanged -- the same arithmetic as
            d3d8_surface.c's LockRect, and see the comment there for why it is
            arithmetic rather than a refusal. */
-        const uint32_t *q = (const uint32_t *)(uintptr_t)rect;
+        const uint32_t *q = guest_memory_const_pointer(rect);
         uint32_t left = q[0], top = q[1], right = q[2], bottom = q[3];
         uint32_t bpp = d3d8_format_bpp(r->format);
 
@@ -580,8 +581,8 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
     /* The unlock is the only moment the guest's writes are known to be
        finished, so it is where the upload happens. */
     if (!gpu_texture_upload_face(r->gtex, sub / r->levels, sub % r->levels,
-                                 (const void *)(uintptr_t)(r->guest_bytes +
-                                                           sub_offset(r, sub)),
+                                 guest_memory_const_pointer(r->guest_bytes +
+                                                            sub_offset(r, sub)),
                                  level_bytes(r->format, lw, lh))) {
         fprintf(stderr, "d3d8: the backend REFUSED the upload of texture face "
                         "%u level %u (%ux%u). That level will sample as "
@@ -591,12 +592,12 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
     }
     if ((sub % r->levels) == 0)
         d3d8_texture_luma_note((uint32_t)r->gtex, r->format, lw, lh,
-            (const uint8_t *)(uintptr_t)(r->guest_bytes + sub_offset(r, sub)),
+            guest_memory_const_pointer(r->guest_bytes + sub_offset(r, sub)),
             level_bytes(r->format, lw, lh));
     if ((sub % r->levels) == 0 && (r->format == D3DFMT_A8R8G8B8
                                   || r->format == D3DFMT_X8R8G8B8))
         x2_fmv_probe_upload(
-            (const uint8_t *)(uintptr_t)(r->guest_bytes + sub_offset(r, sub)),
+            guest_memory_const_pointer(r->guest_bytes + sub_offset(r, sub)),
             level_bytes(r->format, lw, lh), (int)lw, (int)lh,
             row_pitch(r->format, lw));
     r->uploads++;
@@ -809,7 +810,7 @@ static void buf_Unlock(D3D8Object *self, CPU *C)
     r->ever_unlocked = 1;
     g_unlocks++;
     g_unlock_bytes += r->bytes;
-    gpu_buffer_upload(r->gbuf, 0, (const void *)(uintptr_t)r->guest_bytes,
+    gpu_buffer_upload(r->gbuf, 0, guest_memory_const_pointer(r->guest_bytes),
                       r->bytes);
     r->locked = 0;
     d3d8_ret(C, D3D_OK);

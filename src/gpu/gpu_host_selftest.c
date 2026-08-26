@@ -3,6 +3,7 @@
 int gpu_device_selftest(void);
 int gpu_present_selftest(void);
 int gpu_draw_selftest(void);
+int gpu_frame_init_selftest(void);
 int gpu_midframe_clear_selftest(void);
 int gpu_cube_texgen_selftest(void);
 int gpu_tfactor_selftest(void);
@@ -24,6 +25,9 @@ int gpu_host_selftest(void)
 
     result = gpu_upload_order_selftest();
     if (result) return result;
+
+    result = gpu_frame_init_selftest();
+    if (result && result != 77) return result;
 
     result = gpu_midframe_clear_selftest();
     if (result && result != 77) return result;

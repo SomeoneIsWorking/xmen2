@@ -25,6 +25,7 @@
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 
@@ -62,7 +63,7 @@ void imp_ole32_CoCreateInstance(CPU *C)
     if (!g_told) {
         g_told = 1;
         if (rclsid) {
-            const unsigned char *g = (const unsigned char *)(uintptr_t)rclsid;
+            const unsigned char *g = guest_memory_const_pointer(rclsid);
             fprintf(stderr,
                 "ole32: CoCreateInstance for CLSID "
                 "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%02X%02X}\n"

@@ -26,13 +26,12 @@
 #include "d3d8_drawcall.h"
 #include "d3d8_vertex_shader.h"
 #include "d3d8_types.h"
-
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "win32_sdl.h"
 #include "x86rt_native.h"
 #include "probe_rec.h"      /* probe_page_readable */
-
+#include "guest_memory.h"
 #include "x86rt.h"
 
 #include <stdio.h>
@@ -90,7 +89,7 @@ static void *guest_ptr(uint32_t a, const char *what)
                 d3d8_current_method(), what);
         return NULL;
     }
-    return (void *)(uintptr_t)a;
+    return guest_memory_pointer(a);
 }
 
 /*
@@ -1369,7 +1368,7 @@ static void vertex_shader_bytes(CPU *C, int function)
 {
     D3D8VertexShader *s = d3d8_vs_get(d3d8_arg(C, 0),
             function ? "GetVertexShaderFunction" : "GetVertexShaderDeclaration");
-    uint8_t *data = (uint8_t *)(uintptr_t)d3d8_arg(C, 1);
+    uint8_t *data = guest_memory_pointer(d3d8_arg(C, 1));
     uint32_t *size = (uint32_t *)guest_ptr(d3d8_arg(C, 2), "byte count");
     const uint32_t *src;
     size_t need;
@@ -1682,7 +1681,8 @@ static int primitive_vertices(uint32_t prim, uint32_t count, uint32_t *out)
 static void dev_DrawPrimitiveUP(D3D8Object *self, CPU *C)
 {
     uint32_t prim = d3d8_arg(C, 0), count = d3d8_arg(C, 1);
-    const void *data = guest_ptr(d3d8_arg(C, 2), "inline vertex data");
+    uint32_t data_guest = d3d8_arg(C, 2);
+    const void *data = guest_ptr(data_guest, "inline vertex data");
     uint32_t stride = d3d8_arg(C, 3), vertices, bytes;
     D3D8DrawRequest req;
     GpuDraw gd;
@@ -1702,7 +1702,7 @@ static void dev_DrawPrimitiveUP(D3D8Object *self, CPU *C)
         d3d8_ret(C, D3DERR_INVALIDCALL); return;
     }
     req.vertex_buffer = g_up_vertices;
-    req.vertex_guest_bytes = (uint32_t)(uintptr_t)data;
+    req.vertex_guest_bytes = data_guest;
     req.vertex_bytes = bytes;
     req.stride = stride;
     if (!d3d8_build_draw(&g_dev.state, &req, &gd)) {

@@ -19,6 +19,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Standalone tests that never touch guest memory still link subsystem files
+   containing translated memory boundaries. Identity is the harmless default;
+   tests that exercise memory link guest_memory.c, whose strong definition
+   replaces this one. */
+__attribute__((weak)) uintptr_t g_guest_memory_base;
+
 /* Sampling profiler / guest-watch state the subsystems reference. Never armed
    by a unit test. */
 volatile uint32_t g_sample_ep;

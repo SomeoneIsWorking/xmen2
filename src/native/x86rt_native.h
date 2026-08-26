@@ -141,6 +141,8 @@ long x86_override_slot_count(void);
 int  x86_override_chunk_count(void);
 void x86_register_override(const char *module, uint32_t linked_ep,
                            x86_override_fn fn);
+int x86_override_is_bound(const char *module, uint32_t linked_ep,
+                          x86_override_fn fn);
 
 /*
  * Resolve every registration to a mapped address. Call once, after all modules

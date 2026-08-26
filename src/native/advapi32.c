@@ -36,6 +36,7 @@
 #include "advapi32.h"
 #include "advapi32_internal.h"
 #include "shell32.h"
+#include "guest_memory.h"
 
 #include <ctype.h>
 #include <stdio.h>
@@ -304,7 +305,7 @@ static int key_exists(const char *path)
 static void reg_open(CPU *C, int ex)
 {
     const char *parent = key_path(A(0));
-    const char *sub = A(1) ? (const char *)(uintptr_t)A(1) : NULL;
+    const char *sub = A(1) ? guest_memory_const_pointer(A(1)) : NULL;
     uint32_t out = ex ? A(4) : A(2);
     char full[MAX_PATH_];
     int nargs = ex ? 5 : 3;
@@ -338,7 +339,7 @@ void imp_ADVAPI32_RegOpenKeyExA(CPU *C) { reg_open(C, 1); }
 static void reg_create(CPU *C, int ex)
 {
     const char *parent = key_path(A(0));
-    const char *sub = A(1) ? (const char *)(uintptr_t)A(1) : NULL;
+    const char *sub = A(1) ? guest_memory_const_pointer(A(1)) : NULL;
     uint32_t out = ex ? A(7) : A(2), disp = ex ? A(8) : 0;
     char full[MAX_PATH_];
     int nargs = ex ? 9 : 3, existed;
@@ -370,7 +371,7 @@ void imp_ADVAPI32_RegCreateKeyExA(CPU *C) { reg_create(C, 1); }
 void imp_ADVAPI32_RegQueryValueExA(CPU *C)
 {
     const char *path = key_path(A(0));
-    const char *name = A(1) ? (const char *)(uintptr_t)A(1) : "";
+    const char *name = A(1) ? guest_memory_const_pointer(A(1)) : "";
     uint32_t ptype = A(3), data = A(4), pcb = A(5);
     RegValue *v;
 
@@ -394,7 +395,7 @@ void imp_ADVAPI32_RegQueryValueExA(CPU *C)
         ret_std(C, ERROR_MORE_DATA, 6);
         return;
     }
-    memcpy((void *)(uintptr_t)data, v->data, v->len);
+    memcpy(guest_memory_pointer(data), v->data, v->len);
     if (pcb) WR32(pcb, v->len);
     ret_std(C, ERROR_SUCCESS, 6);
 }
@@ -408,7 +409,7 @@ void imp_ADVAPI32_RegQueryValueExA(CPU *C)
 void imp_ADVAPI32_RegQueryValueA(CPU *C)
 {
     const char *parent = key_path(A(0));
-    const char *sub = A(1) ? (const char *)(uintptr_t)A(1) : NULL;
+    const char *sub = A(1) ? guest_memory_const_pointer(A(1)) : NULL;
     uint32_t data = A(2), pcb = A(3);
     char full[MAX_PATH_];
     RegValue *v;
@@ -430,7 +431,7 @@ void imp_ADVAPI32_RegQueryValueA(CPU *C)
         ret_std(C, ERROR_MORE_DATA, 4);
         return;
     }
-    memcpy((void *)(uintptr_t)data, v->data, v->len);
+    memcpy(guest_memory_pointer(data), v->data, v->len);
     if (pcb) WR32(pcb, v->len);
     ret_std(C, ERROR_SUCCESS, 4);
 }
@@ -439,7 +440,7 @@ void imp_ADVAPI32_RegQueryValueA(CPU *C)
 void imp_ADVAPI32_RegSetValueExA(CPU *C)
 {
     const char *path = key_path(A(0));
-    const char *name = A(1) ? (const char *)(uintptr_t)A(1) : "";
+    const char *name = A(1) ? guest_memory_const_pointer(A(1)) : "";
     uint32_t type = A(3), data = A(4), cb = A(5);
     RegValue *v;
 
@@ -459,7 +460,7 @@ void imp_ADVAPI32_RegSetValueExA(CPU *C)
     if (!v) { ret_std(C, ERROR_ACCESS_DENIED, 6); return; }
     v->type = type;
     v->len = cb;
-    if (cb && data) memcpy(v->data, (const void *)(uintptr_t)data, cb);
+    if (cb && data) memcpy(v->data, guest_memory_const_pointer(data), cb);
     g_writes++;
     g_dirty = 1;
     advapi32_store_save();                        /* durable now, not at exit: a crash
@@ -515,7 +516,7 @@ void imp_ADVAPI32_RegEnumKeyExA(CPU *C)
         if ((uint32_t)seen++ != idx) continue;
         {   uint32_t len = (uint32_t)strlen(child) + 1u;
             if (pcname && RD32(pcname) < len) { ret_std(C, ERROR_MORE_DATA, 8); return; }
-            if (out) memcpy((void *)(uintptr_t)out, child, len);
+            if (out) memcpy(guest_memory_pointer(out), child, len);
             if (pcname) WR32(pcname, len - 1u);
         }
         ret_std(C, ERROR_SUCCESS, 8);
@@ -541,13 +542,13 @@ void imp_ADVAPI32_RegEnumValueA(CPU *C)
         if ((uint32_t)seen++ != idx) continue;
         {   uint32_t len = (uint32_t)strlen(v->name) + 1u;
             if (pcname && RD32(pcname) < len) { ret_std(C, ERROR_MORE_DATA, 8); return; }
-            if (out) memcpy((void *)(uintptr_t)out, v->name, len);
+            if (out) memcpy(guest_memory_pointer(out), v->name, len);
             if (pcname) WR32(pcname, len - 1u);
         }
         if (ptype) WR32(ptype, v->type);
         if (data) {
             if (pcb && RD32(pcb) < v->len) { ret_std(C, ERROR_MORE_DATA, 8); return; }
-            memcpy((void *)(uintptr_t)data, v->data, v->len);
+            memcpy(guest_memory_pointer(data), v->data, v->len);
         }
         if (pcb) WR32(pcb, v->len);
         ret_std(C, ERROR_SUCCESS, 8);

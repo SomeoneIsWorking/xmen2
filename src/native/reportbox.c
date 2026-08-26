@@ -14,6 +14,7 @@
 #include "win32_sdl.h"
 #include "pe_map.h"
 #include "threads.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,7 +56,7 @@ void x2_override_10069c70(CPU *C)
         "Exit", "Debug", "Ignore", "Ignore, don't tell me again"
     };
     static const int ids[] = { 3, 4, 5, 6 };
-    const char *text = (const char *)(uintptr_t)RD32(C->esp + 4u);
+    const char *text = guest_memory_const_pointer(RD32(C->esp + 4u));
     static int said;
     int answer;
 
@@ -103,7 +104,7 @@ int report_box_selftest(void)
                "the guest frame -- NOTHING was checked.\n", SELFTEST_PAGE);
         return 1;
     }
-    memcpy((void *)(uintptr_t)textp, text, sizeof text);
+    memcpy(guest_memory_pointer(textp), text, sizeof text);
     memset(&C, 0, sizeof C);
     WR32(esp, 0xDEADBEEFu);                      /* the return address */
     WR32(esp + 4u, textp);                       /* the one argument */

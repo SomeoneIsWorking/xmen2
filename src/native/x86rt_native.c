@@ -6,6 +6,7 @@
 #include "x86rt.h"
 #include "x86_reached.h"
 #include "x86rt_native.h"
+#include "guest_memory.h"
 #include "threads.h"
 #include "guest_heap.h"
 #include <time.h>
@@ -20,6 +21,10 @@
 #include <sys/uio.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#endif
 
 static X86Module *g_head;
 static const X86Fn *find(X86Module *m, uint32_t addr);
@@ -152,6 +157,18 @@ void x86_register_override(const char *module, uint32_t linked_ep,
 }
 
 int x86_override_count(void) { return g_noverride; }
+
+int x86_override_is_bound(const char *module, uint32_t linked_ep,
+                          x86_override_fn fn)
+{
+    int i;
+    if (!g_overrides_resolved) return 0;
+    for (i = 0; i < g_noverride; i++)
+        if (g_override[i].mapped_ep && g_override[i].linked_ep == linked_ep &&
+            g_override[i].fn == fn && !strcmp(g_override[i].module, module))
+            return 1;
+    return 0;
+}
 
 /* Resolve ONE (module, linked ep) to the mapped address dispatch will compare.
    Returns 0 and fills *mapped_out on success; non-zero with a reason in `why`
@@ -903,6 +920,8 @@ const CPU *g_cpu_current;
 void x86_regs_dump(void)
 {
     const CPU *C = g_cpu_current;
+    X86Module *m;
+    const char *name;
     if (!C) {
         fprintf(stderr, "[REGS] no CPU has crossed the host boundary yet, so "
                         "there is no register file to show.\n");
@@ -912,6 +931,12 @@ void x86_regs_dump(void)
             "[REGS] eax %08x  ecx %08x  edx %08x  ebx %08x\n"
             "[REGS] esp %08x  ebp %08x  esi %08x  edi %08x\n",
             C->eax, C->ecx, C->edx, C->ebx, C->esp, C->ebp, C->esi, C->edi);
+    m = x86_module_for(g_sample_ep);
+    name = x86_native_name_at(g_sample_ep);
+    fprintf(stderr, "[REGS] current dispatched body 0x%08x%s%s%s%s\n",
+            g_sample_ep, m && m->name ? " in " : "",
+            m && m->name ? m->name : "", name ? ": " : "",
+            name ? name : "");
     fprintf(stderr, "[REGS] (the register file of the last body to cross the "
                     "boundary; guest-to-guest calls share it, so these are "
                     "live -- but a body that saved a register to its own C "
@@ -1944,18 +1969,34 @@ void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
  * that module's LINKED base, resolved through wherever it actually got mapped,
  * which is the form a Ghidra address can be pasted into.
  *
- * The read goes through process_vm_readv rather than a dereference: this runs
+ * The read goes through the host's checked process-memory API rather than a
+ * dereference: this runs
  * from a SIGSEGV handler, where a second fault would be a silent recursive
  * crash and the report would be lost -- so an unreadable address has to come
  * back as an error value, not as a signal.
  */
 /* One safe read; 0 on failure. Never dereferences -- see x86_peek_report. */
-int x86_peek(uint32_t addr, void *dst, size_t n)
+static int process_read(uint32_t addr, void *dst, size_t n)
 {
+    const void *source = guest_memory_const_pointer(addr);
+#if defined(__APPLE__)
+    mach_vm_size_t copied = 0;
+    kern_return_t result = mach_vm_read_overwrite(
+        mach_task_self(), (mach_vm_address_t)(uintptr_t)source,
+        (mach_vm_size_t)n,
+        (mach_vm_address_t)(uintptr_t)dst, &copied);
+    return result == KERN_SUCCESS && copied == (mach_vm_size_t)n;
+#else
     struct iovec loc, rem;
     loc.iov_base = dst;                        loc.iov_len = n;
-    rem.iov_base = (void *)(uintptr_t)addr;    rem.iov_len = n;
+    rem.iov_base = (void *)source;             rem.iov_len = n;
     return process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) == (ssize_t)n;
+#endif
+}
+
+int x86_peek(uint32_t addr, void *dst, size_t n)
+{
+    return process_read(addr, dst, n);
 }
 
 int x86_peek32(uint32_t addr, uint32_t *out)
@@ -1965,10 +2006,7 @@ int x86_peek32(uint32_t addr, uint32_t *out)
 
 static int peek_read(uint32_t addr, void *dst, size_t n)
 {
-    struct iovec loc, rem;
-    loc.iov_base = dst;                        loc.iov_len = n;
-    rem.iov_base = (void *)(uintptr_t)addr;    rem.iov_len = n;
-    return process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) == (ssize_t)n;
+    return process_read(addr, dst, n);
 }
 
 /* Print up to `max` bytes at addr as a C string. Says why it printed nothing
@@ -2616,7 +2654,7 @@ int x86_is_thunk(uint32_t addr)
 
 void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym)
 {
-    uint32_t target = *(volatile uint32_t *)(uintptr_t)slot_va;
+    uint32_t target = *(volatile uint32_t *)x86_guest_pointer(slot_va);
     uint32_t esp_in = C->esp;
     /* The cycle break. Reaching here means the generated stub is running,
        which only happens when nothing implements this import natively -- so a
@@ -2650,7 +2688,7 @@ void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes)
     uint32_t before = C->esp;
     uint32_t expected = before + callee_pop_bytes;
     C->esp -= 4;
-    *(volatile uint32_t *)(uintptr_t)C->esp = 0xDEADBEEFu;   /* popped by RET */
+    *(volatile uint32_t *)x86_guest_pointer(C->esp) = 0xDEADBEEFu; /* popped by RET */
     x86_dispatch(C, target);
     /*
      * The balance check. This is the ONE place host code calls guest code, so

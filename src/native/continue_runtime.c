@@ -3,6 +3,7 @@
 #include "autosave_runtime.h"
 #include "continue_policy.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "save_catalog.h"
 #include "save_directory.h"
 #include "save_trace_runtime.h"
@@ -97,7 +98,7 @@ static uint32_t copy_guest_string(const char *text)
     size_t size = strlen(text) + 1u;
 
     address = guest_malloc((uint32_t)size);
-    if (address) memcpy((void *)(uintptr_t)address, text, size);
+    if (address) memcpy(guest_memory_pointer(address), text, size);
     return address;
 }
 
@@ -298,7 +299,7 @@ static int start_latest_load(const CPU *source)
     manager = guest_call0(source, g_exe + FN_SAVE_MANAGER);
     storage = guest_call0(source, g_exe + FN_STORAGE);
     if (!manager || !storage || RD32(manager + MANAGER_MODE) != 0u) return 0;
-    memcpy((void *)(uintptr_t)g_latest_leaf_guest, g_latest_leaf,
+    memcpy(guest_memory_pointer(g_latest_leaf_guest), g_latest_leaf,
            strlen(g_latest_leaf) + 1u);
 
     call = *source;
@@ -307,7 +308,7 @@ static int start_latest_load(const CPU *source)
     x86_guest_call_args(&call, g_exe + FN_SET_MODE, 4u);
 
     entry = manager + MANAGER_METADATA + slot * METADATA_STRIDE;
-    memset((void *)(uintptr_t)entry, 0, METADATA_STRIDE);
+    memset(guest_memory_pointer(entry), 0, METADATA_STRIDE);
     call = *source;
     call.esp -= 4u; WR32(call.esp, entry);
     call.esp -= 4u; WR32(call.esp, g_latest_leaf_guest);

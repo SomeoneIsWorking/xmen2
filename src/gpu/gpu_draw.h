@@ -311,6 +311,10 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
  */
 int  gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
                          float a);
+/* Finish the current off-screen frame and begin another on the same target,
+   with no game colour clear. The frame-initialisation self-test uses this to
+   distinguish black initialization from accidentally preserved contents. */
+int  gpu_offscreen_next_no_clear(void);
 int  gpu_offscreen_read(void *bgra_out, uint32_t bytes);
 void gpu_offscreen_end(void);
 

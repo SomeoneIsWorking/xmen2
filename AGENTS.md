@@ -174,7 +174,7 @@ changes live as patches in `patches/`): `tools/xbox_relift.sh`,
 
 ## Architecture
 
-Guest x86 → C, run inside a 64-bit ELF host:
+Guest x86 → C, run inside a 64-bit ELF or Mach-O host:
 
 - **`tools/ghidra_scripts/ExportFuncs.py`** (+ `SeedPointerTables.py`,
   `MergeTruncated.py`, `SplitFunction.py`) — Ghidra does the genuinely hard part:

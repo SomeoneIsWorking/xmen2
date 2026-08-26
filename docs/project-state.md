@@ -21,7 +21,7 @@ draw paths above D3D8.
 | ID | Capability or outcome | State | Factual dependency | Goals |
 |---|---|---|---|---|
 | S001 | Fresh-clone provisioning and the default native launcher | verified | — | G001, G005 |
-| S002 | Wine-free Linux execution of the recompiled PC game | partial | S001 | G001, G002 |
+| S002 | Wine-free native execution of the recompiled PC game | partial | S001 | G001, G002 |
 | S003 | Faithful rendering of the reached game path | partial | S002 | G002 |
 | S004 | Native Alchemy 2D/UI rendering above the D3D8 seam | partial | S003, S012 | G002, G004, G006 |
 | S005 | Native audio mixing and SFD movie playback | verified | S002 | G002 |
@@ -33,7 +33,7 @@ draw paths above D3D8.
 | S011 | Wine oracle and evidence-backed differential RE workflow | partial | — | G002, G006 |
 | S012 | A/B-toggleable native overrides and incremental engine replacement | partial | S002, S011 | G001, G006 |
 | S013 | Secondary native recompilation of the Xbox build | partial | S011 | G006 |
-| S014 | Native host support beyond Linux x86-64 | missing | S001 | G005 |
+| S014 | Apple Silicon macOS native host support | partial | S001 | G005 |
 | S015 | Transactional autosave and direct retail Continue restore | verified | S002 | G002 |
 | S016 | Live control, capture, input, and runtime diagnostic channel | verified | S002, S003 | G002, G006 |
 
@@ -41,10 +41,12 @@ draw paths above D3D8.
 
 ### S001 — fresh-clone provisioning and launcher: verified
 
-Observed capability: on Linux x86-64, zero-argument `./run.sh` enters the locked
-`uv` environment, validates user-supplied game files, restores redistributable
-dependencies and generated recompilation inputs without Ghidra, builds all
-twenty modules, and launches the current native D3D8-backed product.
+Observed capability: on Linux x86-64 and Apple Silicon macOS, zero-argument
+`./run.sh` enters the locked `uv` environment, validates user-supplied game
+files, restores redistributable dependencies and generated recompilation inputs
+without Ghidra, builds all twenty modules, and launches the current native
+D3D8-backed product. The launcher recognizes a matching game directory placed
+at the repository root and resolves Homebrew packages through their keg paths.
 
 Evidence: C182 records a cold-path run after the virtual environment, generated
 sources, native assets, shared dependencies, and build tree were moved aside;
@@ -54,7 +56,7 @@ controls. Issue #110 records the dependency defect that the cold path exposed.
 ### S002 — Wine-free native execution: partial
 
 Observed subset: `x2native` maps and initializes the original PE images, runs
-their locally generated C bodies in a 64-bit ELF host, supplies the reached
+their locally generated C bodies in a 64-bit native host, supplies the reached
 Win32/CRT/DirectInput/DirectSound/D3D8 boundaries, and has traversed menus,
 movies, level load, gameplay, death, and return-to-menu paths without a hybrid
 machine-code fallback. Callback cleanup and module-aware override routing are
@@ -73,7 +75,9 @@ backend and renders menus, FMVs, levels, skinned characters, UI, and the
 measured full game loop. C142 proves non-flat native frames; C170 verifies the
 observed fixed-function combiner behavior; C173 verifies the reached VS 1.1
 skinning program; and the renderer frontier records zero refused draws on the
-measured menu-to-gameplay-to-menu route.
+measured menu-to-gameplay-to-menu route. C273 proves that a frame without a game
+colour clear initializes every untouched logical-backbuffer pixel to opaque
+black instead of exposing recycled Metal/Vulkan attachment tiles.
 
 Gap: zero refusals proves reached API coverage, not pixel faithfulness.
 Non-zero pixel shaders, unobserved combiner and vertex-shader forms, engine
@@ -227,13 +231,19 @@ explicit hack debt, kernel bodies remain unaudited, 239 deleted jumps in two
 functions remain diagnosed-but-unfixed, and nothing renders. This is a
 secondary evidence path, not the live PC product.
 
-### S014 — non-Linux host support: missing
+### S014 — Apple Silicon macOS native host: partial
 
-Missing capability: the native host supports Linux x86-64 only. macOS cannot
-currently satisfy the guest's fixed low-address identity mapping (issue #10),
-and a native Windows host is not implemented. Verification requires a supported
-non-Linux host to provision, build, launch, render, accept input, play audio,
-save, and shut down through the normal product path.
+Observed subset: the default arm64 Mach-O keeps macOS's normal 4 GB
+`__PAGEZERO` and translates logical 32-bit guest addresses through a separate
+4 GB arena. C272 and issues #10/#123 prove exact Win32 4 KiB mapping state over
+Apple Silicon's 16 KiB host protection granule. The normal launcher discovers
+Homebrew dependencies and a repository-local game directory; a driven run
+cleared all six intro movies, entered playable gameplay, accepted keyboard
+input, rendered through SDL_GPU/MoltenVK, and sustained world and shadow draws.
+
+Gap: native Windows remains absent, Intel macOS is not a supported target, and
+physical-controller/hotplug plus clean-machine provisioning still retain the
+hardware-validation gaps described by S006 and G005.
 
 ### S015 — transactional autosave and Continue: verified
 

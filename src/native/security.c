@@ -26,6 +26,7 @@
 #include "x86rt_native.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 void fn_XMen2_00672130(CPU *C);   /* __report_gsfailure: raises the CRT abort */
 

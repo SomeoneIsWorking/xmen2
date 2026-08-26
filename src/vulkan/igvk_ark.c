@@ -5,6 +5,7 @@
 #include "x86rt_native.h"
 #include "pe_map.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,7 +164,7 @@ uint32_t ark_guest_str(const char *s)
         fprintf(stderr, "ark: no guest memory for the string \"%s\"\n", s);
         abort();
     }
-    memcpy((void *)(uintptr_t)p, s, n);
+    memcpy(guest_memory_pointer(p), s, n);
     return p;
 }
 
@@ -244,7 +245,7 @@ uint32_t igvk_vtable_new(const char *owner, int nslots)
                 nslots, owner);
         abort();
     }
-    memset((void *)(uintptr_t)va, 0, (size_t)nslots * 4u);
+    memset(guest_memory_pointer(va), 0, (size_t)nslots * 4u);
     g_vt[g_nvt].va = va;
     g_vt[g_nvt].owner = owner;
     g_vt[g_nvt].nslots = nslots;

@@ -3,17 +3,18 @@ id: C159
 kind: claim
 status: holds
 created: 2026-08-12
-tags: threads,scheduling
+tags: threads,scheduling,macos,arm64
+depends: src/native/threads.c#guest_quantum, src/native/threads.c#guest_cond_wait_ms
 ---
 
 ## Claim
 
-Guest threads are ucontext coroutines on ONE host thread, and the preemption point is in every recompiled body (X86_ENTER_FN) rather than at the dispatch boundary
+Guest threads are pthreads serialized by one mutex and parked with condition variables; the preemption point remains in every recompiled body (`X86_ENTER_FN`) rather than only at the dispatch boundary
 
 ## Evidence
 
-smoke_loop closes the loop on 5 of 6 coroutine runs (the sixth aborted on a check that has since been corrected to report instead). 470k-737k coroutine switches and 12k-44k preemptions per run. Critical sections went from 0 contended enters under pthreads to 555-706 of ~660k, so guest threads now genuinely overlap inside them. The first coroutine build stalled at frame 2021 with '[HB] MAIN tid 999: runnable, waiting its turn for 132.1s' while one decoder ran uninterrupted -- the quantum was counted at the dispatch boundary, which a direct guest-to-guest spin (libCriMovie FUN_10002e80/FUN_100085e0) never reaches.
+Measured on native arm64 macOS with `X2_MAX_FRAMES=500`: the game reached the requested 500-frame stop and exited zero, created all three libCriMovie workers, made 820 condition/mutex hand-offs, including 339 preemptions at the 20,000-boundary quantum, and contended the guest mutex 87 times. Nested `SuspendThread`/`ResumeThread` counts are exact and a self-suspend parks on the condition variable. The complete 106-test suite passes (one asset-dependent media test skips).
 
 ## What would falsify it
 
-A run whose per-thread heartbeat shows one thread 'running guest code' for seconds while another reads 'runnable, waiting its turn' -- that would mean X86_ENTER_FN's budget is not reaching guest_quantum. Or a movie stall whose thread states differ between two runs of the same frame-scheduled script, which would mean the schedule is not in fact ours.
+A run whose per-thread heartbeat shows one thread holding the guest turn for seconds while another remains runnable, a lost wakeup after `ResumeThread`, two pthreads executing translated guest code simultaneously, or a movie stall at the same bounded frame run.

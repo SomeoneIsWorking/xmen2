@@ -1,4 +1,5 @@
 /* Runtime prompt metrics use the shipping font's baseline authority. */
+#include "guest_memory.h"
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyphs.h"
@@ -51,15 +52,15 @@ int main(void)
     uint32_t empty_font = GUEST_BASE + 0x2000u;
     uint32_t later_font = GUEST_BASE + 0x4000u;
     uint32_t face_b, rewind, occupied, empty_cell;
-    void *page = mmap((void *)(uintptr_t)GUEST_BASE, MAP_BYTES,
-                      PROT_READ | PROT_WRITE,
-                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
-                      -1, 0);
-    if (page != (void *)(uintptr_t)GUEST_BASE) {
+    void *page;
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(GUEST_BASE, MAP_BYTES,
+                               PROT_READ | PROT_WRITE) != 0) {
         fprintf(stderr, "test_prompt_glyph_metrics: could not map guest "
                         "memory at 0x%08x\n", GUEST_BASE);
         return 1;
     }
+    page = guest_memory_pointer(GUEST_BASE);
     memset(page, 0, MAP_BYTES);
 
     /* Two retail glyphs establish 29 as the mode; one outlier proves this is

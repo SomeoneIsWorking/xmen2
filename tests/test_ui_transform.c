@@ -1,5 +1,6 @@
 /* The shipping computeMatrix_Dx override, driven at its CPU/guest-memory ABI. */
 #define _GNU_SOURCE
+#include "guest_memory.h"
 #include "gpu_matrix.h"
 #include "ui_transform.h"
 #include "x86rt.h"
@@ -40,7 +41,7 @@ int x86_peek32(uint32_t addr, uint32_t *out)
     if (!matrix_readable && addr >= OUTPUT_MATRIX &&
         addr < OUTPUT_MATRIX + 16u * sizeof(float))
         return 0;
-    *out = *(const uint32_t *)(uintptr_t)addr;
+    *out = *(const uint32_t *)guest_memory_const_pointer(addr);
     return 1;
 }
 
@@ -55,7 +56,7 @@ void fn_libIGGfx_1003ec10(CPU *C)
 
     WR32(OUTPUT_REF, OUTPUT_MATRIX);
     for (i = 0; i < 16; i++)
-        *(float *)(uintptr_t)(OUTPUT_MATRIX + i * sizeof(float)) =
+        *(float *)guest_memory_pointer(OUTPUT_MATRIX + i * sizeof(float)) =
             i % 5u == 0 ? super_diagonal : 0.0f;
     if (mutate_super_context) C->ecx = 0xeeeeeeeeu;
 }
@@ -90,12 +91,9 @@ int main(void)
     static const uint32_t context_b = 0x22222222u;
     CPU cpu;
     float mvp[16];
-    void *page;
-
-    page = mmap((void *)(uintptr_t)GUEST_PAGE, 0x1000u,
-                PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-    if (page != (void *)(uintptr_t)GUEST_PAGE) {
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(GUEST_PAGE, 0x1000u,
+                               PROT_READ | PROT_WRITE) != 0) {
         fprintf(stderr, "test_ui_transform: could not map the guest page at "
                         "0x%08x\n", GUEST_PAGE);
         return 1;

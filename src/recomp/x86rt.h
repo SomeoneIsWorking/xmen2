@@ -1,10 +1,10 @@
 /* Runtime for statically recompiled x86-32 code.
  *
- * The recompiled DLL is built as a 32-bit PE and loaded into the same address
- * space as the original modules, so guest addresses ARE host addresses and
- * memory access is a direct dereference. That keeps interop with the untouched
- * libIG*.dll trivially correct; it is the reason the PC build was chosen as the
- * recomp target rather than a foreign-ISA console image.
+ * A hosted recompiled DLL shares the original process's addresses. The native
+ * host translates the guest's 32-bit addresses through its guest arena. In
+ * both cases x86 memory operands are explicitly unaligned: an x86 instruction
+ * may load a qword at address+4, and expressing that as a C uint64_t pointer
+ * is undefined and faults with SIGBUS on Apple Silicon.
  *
  * Flags are lazy: instructions record their operands, result and operation
  * kind, and condition codes are computed only when a Jcc/SETcc asks. Computing
@@ -16,6 +16,72 @@
 #include <setjmp.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
+
+#ifdef X86_NATIVE
+extern uintptr_t g_guest_memory_base;
+static inline void *x86_guest_pointer(uint32_t address)
+{
+    return (void *)(g_guest_memory_base + (uintptr_t)address);
+}
+#else
+static inline void *x86_guest_pointer(uint32_t address)
+{
+    return (void *)(uintptr_t)address;
+}
+#endif
+
+/* x86 permits unaligned integer and floating-point memory operands. memcpy is
+   the C spelling that preserves that contract without promising alignment to
+   an AArch64 compiler. These inline to ordinary unaligned loads/stores. */
+static inline uint8_t x86_load8(uint32_t address)
+{
+    uint8_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+}
+static inline uint16_t x86_load16(uint32_t address)
+{
+    uint16_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+}
+static inline uint32_t x86_load32(uint32_t address)
+{
+    uint32_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+}
+static inline uint64_t x86_load64(uint32_t address)
+{
+    uint64_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+}
+static inline float x86_loadf32(uint32_t address)
+{
+    float value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+}
+static inline double x86_loadf64(uint32_t address)
+{
+    double value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+}
+static inline void x86_store8_raw(uint32_t address, uint8_t value)
+{
+    memcpy(x86_guest_pointer(address), &value, sizeof value);
+}
+static inline void x86_store16_raw(uint32_t address, uint16_t value)
+{
+    memcpy(x86_guest_pointer(address), &value, sizeof value);
+}
+static inline void x86_store32_raw(uint32_t address, uint32_t value)
+{
+    memcpy(x86_guest_pointer(address), &value, sizeof value);
+}
+static inline void x86_store64_raw(uint32_t address, uint64_t value)
+{
+    memcpy(x86_guest_pointer(address), &value, sizeof value);
+}
+static inline void x86_storef32(uint32_t address, float value)
+{
+    memcpy(x86_guest_pointer(address), &value, sizeof value);
+}
+static inline void x86_storef64(uint32_t address, double value)
+{
+    memcpy(x86_guest_pointer(address), &value, sizeof value);
+}
 #ifdef _WIN32
 #include <intrin.h>
 #else
@@ -39,32 +105,31 @@ void x86_seg_unset(const char *seg);
 static inline uint32_t __readfsdword(unsigned long o)
 {
     if (!g_fsbase) x86_seg_unset("FS");
-    return *(volatile uint32_t *)(uintptr_t)(g_fsbase + (uint32_t)o);
+    return x86_load32(g_fsbase + (uint32_t)o);
 }
 static inline void __writefsdword(unsigned long o, uint32_t v)
 {
     if (!g_fsbase) x86_seg_unset("FS");
-    *(volatile uint32_t *)(uintptr_t)(g_fsbase + (uint32_t)o) = v;
+    x86_store32_raw(g_fsbase + (uint32_t)o, v);
 }
 static inline uint32_t __readgsdword(unsigned long o)
 {
     if (!g_gsbase) x86_seg_unset("GS");
-    return *(volatile uint32_t *)(uintptr_t)(g_gsbase + (uint32_t)o);
+    return x86_load32(g_gsbase + (uint32_t)o);
 }
 static inline void __writegsdword(unsigned long o, uint32_t v)
 {
     if (!g_gsbase) x86_seg_unset("GS");
-    *(volatile uint32_t *)(uintptr_t)(g_gsbase + (uint32_t)o) = v;
+    x86_store32_raw(g_gsbase + (uint32_t)o, v);
 }
 
 /*
  * CPUID and RDTSC, which the MSVC CRT uses for feature detection and timing.
  *
- * On an x86-64 host the honest answer is the host's own: the recompiled code
- * IS running on this CPU, so reporting its features is not a fake. On a
- * non-x86 host there is no answer to give, and inventing a feature word would
- * make the CRT take a code path the machine cannot execute -- so it stops
- * instead, which is the failure this project would rather have.
+ * On an x86-64 host the answer is the host's own. On AArch64 the answer
+ * describes the x86 instruction surface implemented by this runtime, not the
+ * physical CPU: the guest uses these bits to select translated x87/MMX/SSE
+ * paths, and those paths execute through the models below.
  */
 #if defined(__i386__) || defined(__x86_64__)
 /* Written out rather than taken from <cpuid.h>: glibc defines __cpuid there as
@@ -83,17 +148,43 @@ static inline uint64_t __rdtsc(void)
     __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
     return ((uint64_t)hi << 32) | lo;
 }
-#else
-void x86_no_host_cpuid(const char *what);
+#elif defined(__aarch64__)
 static inline void __cpuid(int regs[4], int leaf)
 {
-    (void)regs; (void)leaf; x86_no_host_cpuid("CPUID");
+    static const char brand[48] = "X2 recomp AArch64 runtime";
+    memset(regs, 0, 4 * sizeof *regs);
+    switch ((uint32_t)leaf) {
+    case 0:
+        regs[0] = 1;
+        regs[1] = 0x756e6547; /* GenuineIntel: EBX, EDX, ECX */
+        regs[3] = 0x49656e69;
+        regs[2] = 0x6c65746e;
+        break;
+    case 1:
+        regs[0] = 0x000006a0;
+        regs[3] = (1u << 0)  | (1u << 4)  | (1u << 8) | (1u << 15)
+                | (1u << 23) | (1u << 24) | (1u << 25) | (1u << 26);
+        break;
+    case 0x80000000u:
+        regs[0] = (int)0x80000004u;
+        break;
+    case 0x80000002u:
+    case 0x80000003u:
+    case 0x80000004u:
+        memcpy(regs, brand + ((uint32_t)leaf - 0x80000002u) * 16u, 16);
+        break;
+    default:
+        break;
+    }
 }
 static inline uint64_t __rdtsc(void)
 {
-    x86_no_host_cpuid("RDTSC");
-    return 0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
+#else
+#error "CPUID/RDTSC need an x86 or AArch64 host implementation"
 #endif
 #endif
 
@@ -249,7 +340,7 @@ void x86_after_noreturn(uint32_t fn_ep, const char *callee);
 void x86_fallback_report(void);
 #define G_IMGBASE (X86_IMGBASE)
 
-/* ---- memory: guest address == host address (see header comment) ---- */
+/* ---- guest memory ---------------------------------------------------- */
 /* FS/GS-relative access. Not modelled: this code runs as a genuine 32-bit PE,
    so FS still addresses the TIB and FS:[0] is the real SEH chain. MSVC emits
    these in the prologue of every function with a try/catch or a destructor --
@@ -261,10 +352,10 @@ void x86_fallback_report(void);
 #define __readGSdword(o)     __readgsdword(o)
 #define __writeGSdword(o, v) __writegsdword((o), (v))
 
-#define RDF32(a)    ((long double)(*(volatile float  *)(uintptr_t)(a)))
-#define RDF64(a)    ((long double)(*(volatile double *)(uintptr_t)(a)))
-#define WRF32(a, v) (*(volatile float  *)(uintptr_t)(a) = (float)(v))
-#define WRF64(a, v) (*(volatile double *)(uintptr_t)(a) = (double)(v))
+#define RDF32(a)    ((long double)x86_loadf32((uint32_t)(a)))
+#define RDF64(a)    ((long double)x86_loadf64((uint32_t)(a)))
+#define WRF32(a, v) x86_storef32((uint32_t)(a), (float)(v))
+#define WRF64(a, v) x86_storef64((uint32_t)(a), (double)(v))
 /*
  * The integer x87 loads, ONE PER WIDTH.
  *
@@ -279,9 +370,9 @@ void x86_fallback_report(void);
 #define RDI32(a)    ((long double)(int32_t)RD32(a))
 #define RDI64(a)    ((long double)(int64_t)RD64(a))
 
-#define RD8(a)      (*(volatile uint8_t  *)(uintptr_t)(a))
-#define RD16(a)     (*(volatile uint16_t *)(uintptr_t)(a))
-#define RD32(a)     (*(volatile uint32_t *)(uintptr_t)(a))
+#define RD8(a)      x86_load8((uint32_t)(a))
+#define RD16(a)     x86_load16((uint32_t)(a))
+#define RD32(a)     x86_load32((uint32_t)(a))
 /* The guest write-watch. When x2_write_watch_addr is armed, WR8/16/32 report
    ANY write to it with a body backtrace -- the definitive catch for a stack
    overrun whose writer is a DIRECT call (invisible to the dispatch ring).
@@ -289,21 +380,30 @@ void x86_fallback_report(void);
    macros because every generated body uses them. */
 extern volatile uint32_t x2_write_watch_addr;
 extern void x2_write_watch_fire(uint32_t a, uint32_t v);
-#define WR8(a, v)   (x2_write_watch_addr && (uint32_t)(a) == x2_write_watch_addr \
-                         ? x2_write_watch_fire((uint32_t)(a), (uint32_t)(uint8_t)(v)) \
-                         : (void)0, \
-                     *(volatile uint8_t  *)(uintptr_t)(a) = (uint8_t)(v))
-#define WR16(a, v)  (x2_write_watch_addr && (uint32_t)(a) == x2_write_watch_addr \
-                         ? x2_write_watch_fire((uint32_t)(a), (uint32_t)(uint16_t)(v)) \
-                         : (void)0, \
-                     *(volatile uint16_t *)(uintptr_t)(a) = (uint16_t)(v))
-#define RD64(a)     (*(volatile uint64_t *)(uintptr_t)(a))
-#define WR64(a, v)  (*(volatile uint64_t *)(uintptr_t)(a) = (uint64_t)(v))
+static inline void x86_store8(uint32_t address, uint8_t value)
+{
+    if (x2_write_watch_addr && address == x2_write_watch_addr)
+        x2_write_watch_fire(address, value);
+    x86_store8_raw(address, value);
+}
+static inline void x86_store16(uint32_t address, uint16_t value)
+{
+    if (x2_write_watch_addr && address == x2_write_watch_addr)
+        x2_write_watch_fire(address, value);
+    x86_store16_raw(address, value);
+}
+static inline void x86_store32(uint32_t address, uint32_t value)
+{
+    if (x2_write_watch_addr && address == x2_write_watch_addr)
+        x2_write_watch_fire(address, value);
+    x86_store32_raw(address, value);
+}
+#define WR8(a, v)   x86_store8((uint32_t)(a), (uint8_t)(v))
+#define WR16(a, v)  x86_store16((uint32_t)(a), (uint16_t)(v))
+#define RD64(a)     x86_load64((uint32_t)(a))
+#define WR64(a, v)  x86_store64_raw((uint32_t)(a), (uint64_t)(v))
 /* WR32 is the hottest store in the guest; the watch is above, shared. */
-#define WR32(a, v)  (x2_write_watch_addr && (uint32_t)(a) == x2_write_watch_addr \
-                         ? x2_write_watch_fire((uint32_t)(a), (uint32_t)(v)) \
-                         : (void)0, \
-                     *(volatile uint32_t *)(uintptr_t)(a) = (uint32_t)(v))
+#define WR32(a, v)  x86_store32((uint32_t)(a), (uint32_t)(v))
 
 /* ---- lazy flags ---- */
 #define SETFLAGS(C, kind, a, b, r, w) \
@@ -940,13 +1040,12 @@ static inline uint64_t mmx_pmaddwd(uint64_t a, uint64_t b)
 }
 
 /*
- * SSE single-precision, on the host's own SSE.
+ * SSE single-precision, on the host's vector unit.
  *
  * This is the one place in this runtime where reaching for the host
- * instruction is MORE faithful than writing the operation out, and the reason
- * is that the host is an x86-64 and the guest instruction IS the host
- * instruction -- same encoding family, same IEEE-754 binary32, same MXCSR
- * defaults (round-to-nearest, no flush-to-zero), same NaN propagation. Writing
+ * instruction is MORE faithful than writing the operation out on x86, where
+ * the guest instruction IS the host instruction -- same encoding family, same
+ * IEEE-754 binary32 and same NaN propagation. Writing
  * `a < b ? a : b` for MINPS would be a DIFFERENT operation: hardware MINPS
  * returns the SECOND operand when either input is a NaN and for -0.0 vs +0.0,
  * and a matrix normalise that divides by a zero length hits both. RCPPS and
@@ -958,43 +1057,59 @@ static inline uint64_t mmx_pmaddwd(uint64_t a, uint64_t b)
  * So: the lane SHUFFLING and the MOVE semantics (which halves are written,
  * which are preserved, when the upper lanes are zeroed) are written out here
  * explicitly, because those are the parts a wrong reading gets wrong silently.
- * The arithmetic is the host's.
+ * The arithmetic is the host's. AArch64 uses NEON operations. MIN/MAX and the
+ * comparisons are expressed explicitly there because ARM's native min/max NaN
+ * selection is not the x86 operation; reciprocal and reciprocal-square-root
+ * use NEON's estimate instructions, preserving the guest's approximate
+ * operation instead of silently replacing it with exact division.
  *
  * The guest's 128-bit register is kept as two uint64_t so it can be memcpy'd
  * both ways without aliasing games; every helper below converts at its edges.
  */
 #if defined(__x86_64__) || defined(__i386__)
 #include <xmmintrin.h>
+#elif defined(__aarch64__)
+#include <arm_neon.h>
 #else
-/* Refuse, by name, rather than substituting scalar code that differs on NaNs,
-   signed zero and the reciprocal approximations. */
-#error "The SSE model needs a host with SSE (x86). On another host the \
-approximate instructions (RCPPS/RCPSS/RSQRTSS) and the NaN/signed-zero \
-behaviour of MINPS/MAXPS/CMPPS cannot be reproduced, and a scalar stand-in \
-would be silently different rather than absent."
+#error "The SSE model needs an x86 SSE or AArch64 NEON host"
 #endif
 
 typedef struct { uint64_t q[2]; } X86Xmm;
 
-static inline __m128 sse_ld(const uint64_t *x)
+/* The emitter represents an SSE memory operand with a pointer-shaped cast,
+   while register operands are real host pointers into CPU.xmm.  Translate the
+   former when a non-identity guest arena is active, leaving register operands
+   untouched. */
+static inline const uint64_t *sse_source(const uint64_t *pointer)
 {
-    __m128 v; memcpy(&v, x, 16); return v;
-}
-static inline void sse_st(uint64_t *x, __m128 v)
-{
-    memcpy(x, &v, 16);
+    uintptr_t value = (uintptr_t)pointer;
+    return value <= UINT32_MAX
+        ? (const uint64_t *)x86_guest_pointer((uint32_t)value) : pointer;
 }
 
 /* One 32-bit lane, as bits. Lane 0 is the LOW dword -- the same numbering the
    manual's [127:96][95:64][63:32][31:0] diagrams use read right to left. */
 static inline uint32_t sse_lane(const uint64_t *x, int i)
 {
+    x = sse_source(x);
     return (uint32_t)(x[i >> 1] >> ((i & 1) * 32));
 }
 static inline void sse_lane_put(uint64_t *x, int i, uint32_t v)
 {
     int sh = (i & 1) * 32;
     x[i >> 1] = (x[i >> 1] & ~(0xFFFFFFFFULL << sh)) | ((uint64_t)v << sh);
+}
+
+#if defined(__x86_64__) || defined(__i386__)
+
+static inline __m128 sse_ld(const uint64_t *x)
+{
+    x = sse_source(x);
+    __m128 v; memcpy(&v, x, 16); return v;
+}
+static inline void sse_st(uint64_t *x, __m128 v)
+{
+    memcpy(x, &v, 16);
 }
 
 #define SSE_BINOP(name, ins)                                            \
@@ -1084,6 +1199,127 @@ static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred)
     sse_st(d, r);
 }
 
+#elif defined(__aarch64__)
+
+static inline float32x4_t sse_ld(const uint64_t *x)
+{
+    x = sse_source(x);
+    float32x4_t v; memcpy(&v, x, 16); return v;
+}
+static inline void sse_st(uint64_t *x, float32x4_t v)
+{
+    memcpy(x, &v, 16);
+}
+static inline uint32x4_t sse_bits(const uint64_t *x)
+{
+    x = sse_source(x);
+    uint32x4_t v; memcpy(&v, x, 16); return v;
+}
+static inline void sse_bits_st(uint64_t *x, uint32x4_t v)
+{
+    memcpy(x, &v, 16);
+}
+
+#define SSE_NEON_BINOP(name, ins)                                      \
+static inline void name(uint64_t *d, const uint64_t *s)                \
+{ sse_st(d, ins(sse_ld(d), sse_ld(s))); }
+SSE_NEON_BINOP(sse_addps, vaddq_f32)
+SSE_NEON_BINOP(sse_subps, vsubq_f32)
+SSE_NEON_BINOP(sse_mulps, vmulq_f32)
+SSE_NEON_BINOP(sse_divps, vdivq_f32)
+
+static inline void sse_minps(uint64_t *d, const uint64_t *s)
+{
+    float32x4_t a = sse_ld(d), b = sse_ld(s);
+    sse_st(d, vbslq_f32(vcltq_f32(a, b), a, b));
+}
+static inline void sse_maxps(uint64_t *d, const uint64_t *s)
+{
+    float32x4_t a = sse_ld(d), b = sse_ld(s);
+    sse_st(d, vbslq_f32(vcgtq_f32(a, b), a, b));
+}
+static inline void sse_andps(uint64_t *d, const uint64_t *s)
+{ sse_bits_st(d, vandq_u32(sse_bits(d), sse_bits(s))); }
+static inline void sse_andnps(uint64_t *d, const uint64_t *s)
+{ sse_bits_st(d, vbicq_u32(sse_bits(s), sse_bits(d))); }
+static inline void sse_orps(uint64_t *d, const uint64_t *s)
+{ sse_bits_st(d, vorrq_u32(sse_bits(d), sse_bits(s))); }
+static inline void sse_xorps(uint64_t *d, const uint64_t *s)
+{ sse_bits_st(d, veorq_u32(sse_bits(d), sse_bits(s))); }
+
+#define SSE_NEON_SCALAROP(name, ins)                                   \
+static inline void name(uint64_t *d, const uint64_t *s)                \
+{                                                                       \
+    float32x4_t a = sse_ld(d), b = sse_ld(s);                           \
+    a = vsetq_lane_f32(vgetq_lane_f32(ins(a, b), 0), a, 0);             \
+    sse_st(d, a);                                                       \
+}
+SSE_NEON_SCALAROP(sse_addss, vaddq_f32)
+SSE_NEON_SCALAROP(sse_subss, vsubq_f32)
+SSE_NEON_SCALAROP(sse_mulss, vmulq_f32)
+SSE_NEON_SCALAROP(sse_divss, vdivq_f32)
+
+static inline void sse_minss(uint64_t *d, const uint64_t *s)
+{
+    float a, b, r; uint32_t bits;
+    bits = sse_lane(d, 0); memcpy(&a, &bits, 4);
+    bits = sse_lane(s, 0); memcpy(&b, &bits, 4);
+    r = a < b ? a : b; memcpy(&bits, &r, 4); sse_lane_put(d, 0, bits);
+}
+static inline void sse_maxss(uint64_t *d, const uint64_t *s)
+{
+    float a, b, r; uint32_t bits;
+    bits = sse_lane(d, 0); memcpy(&a, &bits, 4);
+    bits = sse_lane(s, 0); memcpy(&b, &bits, 4);
+    r = a > b ? a : b; memcpy(&bits, &r, 4); sse_lane_put(d, 0, bits);
+}
+
+static inline void sse_sqrtps(uint64_t *d, const uint64_t *s)
+{ sse_st(d, vsqrtq_f32(sse_ld(s))); }
+static inline void sse_rcpps(uint64_t *d, const uint64_t *s)
+{ sse_st(d, vrecpeq_f32(sse_ld(s))); }
+static inline void sse_rsqrtps(uint64_t *d, const uint64_t *s)
+{ sse_st(d, vrsqrteq_f32(sse_ld(s))); }
+static inline void sse_sqrtss(uint64_t *d, const uint64_t *s)
+{
+    float32x4_t out = sse_ld(d), v = vsqrtq_f32(sse_ld(s));
+    sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
+}
+static inline void sse_rcpss(uint64_t *d, const uint64_t *s)
+{
+    float32x4_t out = sse_ld(d), v = vrecpeq_f32(sse_ld(s));
+    sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
+}
+static inline void sse_rsqrtss(uint64_t *d, const uint64_t *s)
+{
+    float32x4_t out = sse_ld(d), v = vrsqrteq_f32(sse_ld(s));
+    sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
+}
+
+static inline uint32x4_t sse_cmp_mask(float32x4_t a, float32x4_t b, int pred)
+{
+    uint32x4_t unordered = vmvnq_u32(vandq_u32(vceqq_f32(a, a), vceqq_f32(b, b)));
+    switch (pred & 7) {
+    case 0: return vceqq_f32(a, b);
+    case 1: return vcltq_f32(a, b);
+    case 2: return vcleq_f32(a, b);
+    case 3: return unordered;
+    case 4: return vmvnq_u32(vceqq_f32(a, b));
+    case 5: return vmvnq_u32(vcltq_f32(a, b));
+    case 6: return vmvnq_u32(vcleq_f32(a, b));
+    default: return vmvnq_u32(unordered);
+    }
+}
+static inline void sse_cmpps(uint64_t *d, const uint64_t *s, int pred)
+{ sse_bits_st(d, sse_cmp_mask(sse_ld(d), sse_ld(s), pred)); }
+static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred)
+{
+    uint32x4_t r = sse_cmp_mask(sse_ld(d), sse_ld(s), pred);
+    sse_lane_put(d, 0, vgetq_lane_u32(r, 0));
+}
+
+#endif
+
 /* SHUFPS: the low two lanes of the result come from the DESTINATION and the
    high two from the SOURCE. Two selectors index each operand's own four
    lanes. */
@@ -1123,8 +1359,8 @@ static inline void sse_movss_rr(uint64_t *d, const uint64_t *s)
 static inline void sse_movss_load(uint64_t *d, uint32_t bits)
 { d[0] = bits; d[1] = 0; }
 
-static inline void sse_movhlps(uint64_t *d, const uint64_t *s) { d[0] = s[1]; }
-static inline void sse_movlhps(uint64_t *d, const uint64_t *s) { d[1] = s[0]; }
+static inline void sse_movhlps(uint64_t *d, const uint64_t *s) { s = sse_source(s); d[0] = s[1]; }
+static inline void sse_movlhps(uint64_t *d, const uint64_t *s) { s = sse_source(s); d[1] = s[0]; }
 
 /* MOVMSKPS: one bit per lane, taken from the SIGN bit. */
 static inline uint32_t sse_movmskps(const uint64_t *s)

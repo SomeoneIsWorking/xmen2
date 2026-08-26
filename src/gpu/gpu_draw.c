@@ -45,6 +45,8 @@ int  gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
                          float a)
 { (void)w; (void)h; (void)r; (void)g; (void)b; (void)a;
   return no_sdl("offscreen begin"); }
+int  gpu_offscreen_next_no_clear(void)
+{ return no_sdl("offscreen next frame"); }
 int  gpu_offscreen_read(void *o, uint32_t n) { (void)o; (void)n;
   return no_sdl("offscreen read"); }
 void gpu_offscreen_end(void) { }
@@ -1234,6 +1236,34 @@ int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
     gpu_set_offscreen_target(g_off_tex, w, h);
     gpu_shadow_frame_begin();
     gpu_frame_clear(1u, r, g, b, a, 1.0f, 0);
+    return 1;
+}
+
+int gpu_offscreen_next_no_clear(void)
+{
+    if (!g_gpu || !g_off_tex) {
+        fprintf(stderr, "gpu: no off-screen target to continue.\n");
+        return 0;
+    }
+    /* Execute even a clear-only first frame before replacing its command
+       buffer. Queue submission order then makes it the known previous image
+       for the frame that follows. */
+    gpu_pass_begin();
+    gpu_shadow_frame_submit();
+    if (g_pass) { SDL_EndGPURenderPass(g_pass); g_pass = NULL; }
+    if (g_cmd) { SDL_SubmitGPUCommandBuffer(g_cmd); g_cmd = NULL; }
+
+    g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
+    if (!g_cmd) {
+        fprintf(stderr, "gpu: no command buffer for the next off-screen "
+                        "frame: %s\n", SDL_GetError());
+        return 0;
+    }
+    gpu_set_offscreen_target(g_off_tex, g_off_w, g_off_h);
+    gpu_shadow_frame_begin();
+    /* gpu_frame_begin resets this mask on the real path. This helper owns an
+       already-created target, so reproduce that boundary explicitly. */
+    gpu_frame_clear(0u, 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0u);
     return 1;
 }
 

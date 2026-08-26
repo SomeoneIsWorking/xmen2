@@ -10,10 +10,8 @@
 
 #include <stdint.h>
 
-/* Bookkeeping, not a mutex: guest threads are coroutines on ONE host thread,
-   so there is nothing to lock. The depth is counted because preemption must
-   not happen from a nested hold. The call sites are unchanged and still mark
-   exactly the right places. */
+/* One process-wide mutex serializes guest execution. The depth is counted
+   because preemption must not happen from a nested hold. */
 void guest_lock(void);
 void guest_unlock(void);
 
@@ -52,11 +50,7 @@ int32_t guest_thread_priority_get(void);
 void guest_thread_state_report(void);
 
 /*
- * Mark a blocking HOST call, so the heartbeat can name what a stalled thread
- * is in. It cannot let another guest thread run -- one host thread runs them
- * all -- so a host call that blocks blocks everything, and that is stated here
- * rather than implied. Guest waits go through guest_cond_wait_ms and Sleep
- * through guest_sleep_ms; both yield properly.
+ * Mark a blocking HOST call and release guest ownership while it runs.
  */
 void guest_blocking_begin(void);
 void guest_blocking_end(void);

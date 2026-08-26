@@ -21,6 +21,7 @@
 #include <string.h>
 #include <signal.h>
 #include <time.h>
+#include <unistd.h>
 
 static double now_s(void)
 {

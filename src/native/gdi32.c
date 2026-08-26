@@ -25,6 +25,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -276,7 +277,7 @@ void imp_GDI32_CreateDIBSection(CPU *C)
         ret_std(C, 0, 6);
         return;
     }
-    memset((void *)(uintptr_t)g_bmp[i].bits, 0, bytes);
+    memset(guest_memory_pointer(g_bmp[i].bits), 0, bytes);
     g_bmp[i].used = 1;
     g_bmp[i].bytes = bytes;
     g_bmp[i].w = (uint32_t)w;

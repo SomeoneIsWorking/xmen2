@@ -1,4 +1,5 @@
 #include "behaved_player.h"
+#include "guest_memory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -83,7 +84,7 @@ int x86_peek(uint32_t address, void *out, size_t size)
     uint64_t end = (uint64_t)address + size;
     if (address < ARENA_BASE || end > (uint64_t)ARENA_BASE + ARENA_SIZE)
         return 0;
-    memcpy(out, (const void *)(uintptr_t)address, size);
+    memcpy(out, guest_memory_const_pointer(address), size);
     return 1;
 }
 
@@ -219,12 +220,12 @@ static void test_read_only_selection(void)
     CPU cpu = fresh_cpu();
 
     set_heap(deadlines, slots, 5u);
-    memcpy(before, (const void *)(uintptr_t)scheduler(), sizeof before);
+    memcpy(before, guest_memory_const_pointer(scheduler()), sizeof before);
     CHECK(behaved_player_next_owned(&cpu, owns_mask, &mask, &selected) == 1,
           "read-only selection refused a valid heap");
     CHECK(selected == context(1u),
           "read-only selection did not choose the earliest owned context");
-    CHECK(!memcmp(before, (const void *)(uintptr_t)scheduler(), sizeof before),
+    CHECK(!memcmp(before, guest_memory_const_pointer(scheduler()), sizeof before),
           "read-only selection changed scheduler bytes");
 }
 
@@ -333,10 +334,10 @@ static void test_corruption_refuses_without_mutation(void)
 
     set_heap(deadlines, slots, 1u);
     WR32(scheduler() + HEAP_COUNT, 31u);
-    memcpy(before, (const void *)(uintptr_t)scheduler(), sizeof before);
+    memcpy(before, guest_memory_const_pointer(scheduler()), sizeof before);
     CHECK(behaved_player_next_owned(&cpu, owns_mask, &mask, &selected) == -1,
           "oversized heap count was not refused");
-    CHECK(!memcmp(before, (const void *)(uintptr_t)scheduler(), sizeof before),
+    CHECK(!memcmp(before, guest_memory_const_pointer(scheduler()), sizeof before),
           "count refusal changed scheduler bytes");
 
     set_heap(deadlines, slots, 1u);
@@ -352,11 +353,9 @@ static void test_corruption_refuses_without_mutation(void)
 
 int main(void)
 {
-    void *arena = mmap((void *)(uintptr_t)ARENA_BASE, ARENA_SIZE,
-                       PROT_READ | PROT_WRITE,
-                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
-                       -1, 0);
-    if (arena == MAP_FAILED) {
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(ARENA_BASE, ARENA_SIZE,
+                               PROT_READ | PROT_WRITE) != 0) {
         fprintf(stderr, "FAIL: could not map isolated guest arena\n");
         return 1;
     }

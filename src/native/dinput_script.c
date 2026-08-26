@@ -1,5 +1,6 @@
 /* Scripted keyboard input for deterministic, headless game runs. */
 #include "dinput_device.h"
+#include "guest_memory.h"
 #include "guest_clock.h"
 #include "dinput_script.h"
 
@@ -159,7 +160,7 @@ void dinput_script_apply(CPU *cpu, uint32_t out, uint32_t size)
         double when = key->by_frame ? (double)gpu_frames_presented() : now;
         int down = when >= key->at && when < key->until;
         if (down && (uint32_t)key->dik < size)
-            *((unsigned char *)(uintptr_t)out + key->dik) = 0x80;
+            *((unsigned char *)guest_memory_pointer(out) + key->dik) = 0x80;
         if (down && !key->down)
             fprintf(stderr, "DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
                             "t=%.2fs, frame %lu\n", key->name, key->dik, now,

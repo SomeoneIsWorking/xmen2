@@ -12,6 +12,7 @@
 #include "options_menu.h"
 
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "settings_overlay_state.h"
 #include "x86rt_native.h"
 
@@ -72,7 +73,7 @@ static void register_port_settings(const CPU *source)
     name = guest_malloc(sizeof command);
     if (!name)
         refuse_registration("guest heap could not hold the command name");
-    memcpy((void *)(uintptr_t)name, command, sizeof command);
+    memcpy(guest_memory_pointer(name), command, sizeof command);
 
     x86_guest_call_args(&call, base + COMMAND_REGISTRY_RVA, 0u);
     manager = call.eax;

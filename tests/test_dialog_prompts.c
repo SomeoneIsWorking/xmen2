@@ -1,4 +1,5 @@
 #include "dialog_prompts.h"
+#include "guest_memory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -79,10 +80,12 @@ static void run_lookup(int pads, uint32_t linked_return, uint32_t want_eax,
 
 int main(void)
 {
-    void *memory = mmap(NULL, IMAGE_SIZE, PROT_READ | PROT_WRITE,
-                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
-    assert(memory != MAP_FAILED);
-    mapped_base = (uint32_t)(uintptr_t)memory;
+    int result;
+    mapped_base = 0x10000000u;
+    result = guest_memory_init(); CHECK(result == 0);
+    result = guest_memory_map_fixed(mapped_base, IMAGE_SIZE,
+                                    PROT_READ | PROT_WRITE);
+    CHECK(result == 0);
 
     CHECK(native_stubs_registered("XMen2.exe", 0x00629bf0u));
     CHECK(!dialog_prompts_use_asset_text(0, LOCALIZE_RETURN));
@@ -95,7 +98,8 @@ int main(void)
     /* The choice is live per popup, not cached when a controller existed. */
     run_lookup(0, LOCALIZE_RETURN, 0x11112222u, 1, 0);
 
-    CHECK(munmap(memory, IMAGE_SIZE) == 0);
+    result = guest_memory_release(mapped_base, IMAGE_SIZE);
+    CHECK(result == 0);
     printf("dialog_prompts: %d checks passed\n", checks);
     return 0;
 }

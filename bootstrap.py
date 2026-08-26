@@ -141,16 +141,44 @@ def module_image(game: Path, module: str) -> Path | None:
     return find_child(game, f"{module}.dll") or find_child(game, f"{module}.exe")
 
 
+def find_repo_game() -> Path | None:
+    """Find one install placed directly inside the repository.
+
+    ``./game`` remains the conventional name.  For a copied retail install,
+    also accept XMen2.exe at the repository root or in one immediate child
+    directory; going deeper would make build and scratch trees accidental
+    search inputs.  Multiple unnamed installs are ambiguous and must be named
+    explicitly with GAME_PC_DIR.
+    """
+    conventional = ROOT / "game"
+    if conventional.is_dir() and find_child(conventional, "XMen2.exe"):
+        return conventional.resolve()
+
+    candidates: list[Path] = []
+    if find_child(ROOT, "XMen2.exe"):
+        candidates.append(ROOT)
+    for child in sorted(ROOT.iterdir(), key=lambda path: path.name.casefold()):
+        if child == conventional or not child.is_dir():
+            continue
+        if find_child(child, "XMen2.exe"):
+            candidates.append(child)
+    if len(candidates) > 1:
+        refuse("multiple repository-local PC installs contain XMen2.exe: "
+               + ", ".join(str(path) for path in candidates)
+               + "; set GAME_PC_DIR to select one")
+    return candidates[0].resolve() if candidates else None
+
+
 def find_game() -> Path:
     dot_env = ROOT / ".env"
     if not dot_env.exists() and (ROOT / ".env.example").is_file():
         shutil.copyfile(ROOT / ".env.example", dot_env)
         print("bootstrap: created .env from .env.example")
-    beside = ROOT / "game"
     value = (os.environ.get("GAME_PC_DIR") or dotenv_value(dot_env, "GAME_PC_DIR")
-             or (str(beside.resolve()) if beside.is_dir() else None))
+             or find_repo_game())
     if not value:
-        refuse("no PC install found. Drop it at ./game/ or set GAME_PC_DIR in .env")
+        refuse("no PC install found. Put XMen2.exe in the repository root or "
+               "one directory below it, or set GAME_PC_DIR in .env")
     game = Path(value).expanduser().resolve()
     if not game.is_dir() or find_child(game, "XMen2.exe") is None:
         refuse(f"GAME_PC_DIR={game} is not an X-Men Legends II PC install")

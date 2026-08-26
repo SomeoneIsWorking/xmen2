@@ -1,4 +1,8 @@
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE
+#else
 #define _POSIX_C_SOURCE 200809L
+#endif
 
 #include "save_catalog.h"
 
@@ -22,8 +26,13 @@ static int is_save_leaf(const char *leaf)
 
 static int mtime_ns(const struct stat *st, int64_t *out)
 {
+#if defined(__APPLE__)
+    int64_t seconds = (int64_t)st->st_mtimespec.tv_sec;
+    int64_t nanoseconds = (int64_t)st->st_mtimespec.tv_nsec;
+#else
     int64_t seconds = (int64_t)st->st_mtim.tv_sec;
     int64_t nanoseconds = (int64_t)st->st_mtim.tv_nsec;
+#endif
     int64_t base;
 
     if (seconds > INT64_MAX / NS_PER_SECOND
