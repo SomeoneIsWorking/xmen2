@@ -5,6 +5,8 @@ status: holds
 created: 2026-08-26
 tags: text,glyphs,prompts,renderer
 depends: src/native/prompt_glyph_draw.c#x2_override_005ee400, src/native/prompt_glyph_metrics.c#x2_prompt_glyph_publish_metrics
+reconfirmed: 2026-08-26
+verified_at: 2026-08-26 23:22:15
 ---
 
 ## Claim
@@ -18,3 +20,7 @@ scratch/logs/quad-err.log and scratch/logs/glyphargs-err.log, from the retired s
 ## What would falsify it
 
 a live X2_GLYPH_ARGS dump in which arg1 is not the wide string being walked, the pen start is not *(arg6)+arg3, or FUN_005ee400's eight floats are not the quad corners followed by the UVs; or a prompt codepoint that emits a non-degenerate quad with the font untouched
+
+## Re-confirmed 2026-08-26
+
+Production-boundary test_prompt_glyph_draw verifies arg1/arg2 stack reads, eight FUN_005ee400 float arguments, retained retail RET 0x20, and collapsed x1=x0/y1=y0; all 114 CTests pass.

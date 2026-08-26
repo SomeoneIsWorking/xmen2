@@ -5,6 +5,8 @@ status: holds
 created: 2026-08-26
 tags: graphics,svg,prompts,libIGGfx
 depends: src/native/prompt_glyph_draw.c#x2_override_005ee780, src/native/prompt_glyph_draw.c#x2_override_005ee400, src/native/prompt_glyph_batch.c#x2_prompt_glyph_batch_draw_nonindexed, src/native/prompt_glyph_batch.c#x2_prompt_glyph_batch_update_context_state, src/native/ui_transform.c#x2_ui_transform_compute_matrix, src/native/prompt_glyph_metrics.c#x2_prompt_glyph_publish_metrics, src/gpu/gpu_prompt_glyphs.c#gpu_prompt_glyphs_render, tools/render_prompt_glyphs.py#emit_header, tools/prepare_native_assets.py#prepare
+reconfirmed: 2026-08-26
+verified_at: 2026-08-26 23:22:15
 ---
 
 ## Claim
@@ -18,3 +20,7 @@ Ghidra: libIGGfx igDxVisualContext::drawNonIndexed 0x100352d0 calls updateContex
 ## What would falsify it
 
 Any prompt SVG is absent/misaligned on a real run; a prompt string partially mixes native and stock fallback; a batch reports desync, colour/capacity, transform, cross-context, GPU, or unfinalized/orphan refusal; an occupied retail codepoint is still used natively; a direct build consumes a missing/stale atlas; the default asset preparation writes a font file; or later RE contradicts the drawNonIndexed/updateContextState call order.
+
+## Re-confirmed 2026-08-26
+
+scratch/logs/svg-pad-final-unbounded.log records 1,073 pure glyph strings, nested Alchemy finalizers and GPU submissions with every atomicity/transform/orphan refusal at zero; the headless capture shows the A SVG beside CONTINUE, and all 114 CTests pass.
