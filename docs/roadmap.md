@@ -88,6 +88,23 @@ measured 7,259/7,259 pad labels, zero original names, one controller asset and
 zero PC overrides. The popup contained d-pad/A glyphs and no `[LEFT CLICK]` or
 `[???]`.
 
+**The renderer-seam replacement — still no pixels, and one conclusion
+withdrawn.** The shipped route above edits a copy of the game's font, which is
+an asset edit standing in for a port feature. Replacing it means the port
+drawing its own art: two of the three pieces work — the engine now lays the
+port's glyphs out from metrics the port publishes, and the port harvests every
+glyph rectangle and suppresses the engine's wrong quad (5,814 predicted, 5,814
+produced, 0 desync). The DRAW does not exist.
+
+The previous entry here said the port could not draw them because the engine's
+text space never reaches D3D8. **That is withdrawn.** The probe behind it capped
+every draw at 256 vertices and applied no transform, so it could not have
+produced a positive — it was never run against a case that must come out
+positive at all (I070, distrusted; `RE/text.md`). The mapping question is open,
+not answered. The sentinel-UV workaround planned on top of that negative is
+dropped on its own merits too: it lives inside the D3D8 layer this port is now
+committed to removing (`strategy.md`).
+
 ## 4. Input hotswap
 
 **Shipped for the synthetic pad; unverified on real hardware.** Enumeration was

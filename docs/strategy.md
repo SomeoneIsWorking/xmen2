@@ -113,3 +113,65 @@ Nothing built so far is wasted:
   this Wine build ships no builtin d3d8.
 - `tools/gen_trace.py`'s "never called" summary never runs, because the harness
   SIGKILLs the game.
+
+## Removing the D3D8 seam
+
+**Decision, 2026-08-26 (the user's): the D3D8 layer is a way station, not a
+destination. The port owns the engine's renderer instead, and `src/d3d8/` is
+deleted from the top down as that happens.**
+
+The reason is the same one that chose recomp over Wine: *ownership*. A D3D8
+emulator is the one part of this tree that is not ownership — it is a
+compatibility shim reconstructing intent that the engine had a moment earlier
+and threw away. That cost is not theoretical. Stage two of the prompt-glyph
+work is stuck precisely there: by the time a glyph reaches D3D8 the engine's
+text space is gone, and the plan built on that was to encode an atlas index in
+a UV float to smuggle it past the layer that lost it (`RE/text.md`).
+
+### What the seam actually carries, measured
+
+400 frames of `act0/tutorial/tutorial1`, `--no-window --d3d8 --run`
+(C270, `scratch/logs/seam-census.txt`):
+
+| | |
+|---|---|
+| draws | 36,354 (1,604 clears, 400 presents) |
+| render states set by the engine | 47 — **13 read by the draw path, 34 not** |
+| transforms set | 14 — 3 read (WORLD/VIEW/PROJECTION), 11 not |
+| vertex formats | 7 distinct FVFs; 1 vertex shader (VS 1.1, 772 draws) |
+| resources | 101 textures, 434 vertex buffers, 383 index buffers |
+| state blocks | 784 created, 784 applied, 0 re-captured |
+
+So the engine speaks a small fixed dialect, and a third of what it sets this
+backend already ignores. `src/gpu/` beneath it is already guest-free by design
+("this knows NOTHING about the guest" — `gpu_draw.h`), which is what makes the
+seam removable rather than load-bearing.
+
+### How it comes out — top down, never by decree
+
+`libIGGfx` is **5,580 recompiled functions**. The seam cannot be removed by
+deciding to; it is removed when its last caller is ours, and until then it is
+the only working path. So: port a renderer subsystem natively, watch its D3D8
+call sites go to zero, and delete what is then unreachable. Nothing is deleted
+speculatively.
+
+**First target: the 2D/UI draw path.** It is the one subsystem that is
+separable today — screen-space, unlit, unshaded, no lighting state and no
+vertex shader — it is where the seam is actively blocking work, and the port
+already has a proved screen-space draw (`d3d8_screen_space_test.c`,
+`GpuDraw.pretransformed`).
+
+### The prior attempt, and why its verdict does not settle this
+
+`src/vulkan/` substituted the engine's ARK renderer classes so the engine never
+called `Direct3DCreate8`. It was superseded by `src/d3d8/` (C129) and the
+codemap still records C128's decisive-sounding argument against it — that
+inherited engine helpers below the vtable reach the device, so a cut above the
+device can never be complete.
+
+**That argument was withdrawn by its own author.** C128's re-confirmation says
+so: the `setupTextureStages` NULL dereference was reached only because
+`vk_open` called `setupAll` with no device, "a fault of my own making, not an
+architectural wall". The case against owning the renderer is therefore weaker
+than this tree currently reads, and C129's cut is a good *staging* decision
+rather than a permanent one.
