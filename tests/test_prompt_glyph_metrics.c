@@ -77,10 +77,10 @@ int main(void)
     x2_prompt_glyph_publish_metrics(font, 2.0f);
 
     face_b = glyph(font, X2_PROMPT_GLYPH_FIRST + 1u);
-    check((int16_t)RD16(face_b + GL_WIDTH) == 36 &&
-          (int16_t)RD16(face_b + GL_HEIGHT) == 36 &&
+    check((int16_t)RD16(face_b + GL_WIDTH) == 38 &&
+          (int16_t)RD16(face_b + GL_HEIGHT) == 38 &&
           (int16_t)RD16(face_b + GL_ADVANCE) == 38,
-          "design dimensions and advance are scaled once");
+          "pad art fills its reserved advance and scales once");
     check((int32_t)RD32(face_b + GL_BASELINE) == 29,
           "the modal retail baseline is copied without double scaling");
     check((int16_t)RD16(face_b + GL_OFFSET) == 0,
