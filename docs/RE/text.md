@@ -257,7 +257,7 @@ begins. Segmenting the string means re-invoking with a correct `arg3` per
 segment, so this has to be settled before stage two can split anything. It
 is the next thing to establish, and it is NOT yet known.
 
-### Stage two: metrics and harvest work; the port cannot draw them itself
+### Stage two: metrics and harvest work; the draw is still open
 
 Two of the three pieces are in.
 
@@ -283,15 +283,44 @@ suppressing the body without honouring `RET 0x20` left 32 bytes of arguments
 on the guest stack and crashed the run, and the harvest is a FRAME's worth,
 so `gpu_frame_begin` resets it.
 
-**The port cannot draw the result itself.** The harvested coordinates are in
-the engine's text space, and that space never reaches D3D8: over a full run,
-10,815 draws issued while a prompt was harvested, 366,392 vertices compared,
-ZERO unreadable, and no vertex within 57 units of a known text corner. The
-vertex sink `FUN_005840a0` transforms them first. So the remaining route is
-to emit our quads through the engine's own emitter with a sentinel UV and
-split the draw in the port's D3D8 layer, binding the port's atlas for our
-vertex runs -- the port builds every `GpuDraw` itself, so that is its code to
-change.
+**The draw. WITHDRAWN: "the port cannot draw the result itself" was not
+established.** `fa2ace8` recorded that the engine's text space never reaches
+D3D8 -- 10,815 draws scanned while a prompt was harvested, 366,392 vertices
+compared, 0 unreadable, no vertex within 57 units of a known text corner --
+and concluded the port must instead smuggle its quads through the engine's
+emitter with a sentinel UV and split the draw in the D3D8 layer.
+
+That negative is not trustworthy and the conclusion is withdrawn. Two defects,
+both readable in the deleted probe
+(`git show fa2ace8 -- src/d3d8/d3d8_drawcall.c`):
+
+1. **It capped the interesting case.** `n = req->num_vertices > 256u ? 256u :
+   req->num_vertices` truncated every draw at 256 vertices, silently and with
+   no counter. The UI batch is the LARGEST draw in the frame -- measured on
+   frame 350, draw 92 of 94 is a single tristrip of 424 primitives on texture
+   71 -- so the probe cut off exactly the draw that could have matched. This
+   repo's own rule is to cap the boring case and never the interesting one.
+2. **It applied no transform.** It compared raw stream vertices against
+   text-space corners, while every draw carries its own `mvp` (frame 350's UI
+   batch: x scale 0.00292969, y scale 0.00520833 -- an orthographic UI
+   projection). If `FUN_005840a0` leaves coordinates in text space and the mvp
+   does the work, a raw comparison could not have seen it either way.
+
+So the question is OPEN, not answered: whether the harvested coordinates reach
+the vertex stream is unknown. What IS known is that the probe could not have
+produced a positive, which makes its negative worth nothing. Re-run it with no
+vertex cap and with the draw's own `mvp` applied before concluding anything.
+Recorded as I070, distrusted.
+
+The sentinel-UV plan built on that negative is dropped for a second and larger
+reason: it is a bandaid, and it lives entirely inside the layer this port is
+now committed to deleting (`../strategy.md`, "Removing the D3D8 seam").
+Encoding an atlas index in a UV float to smuggle it past a layer that
+destroyed the intent is not a fix. The port's own screen-space draw path
+already exists and is proved at the pixel level
+(`src/d3d8/d3d8_screen_space_test.c`, `GpuDraw.pretransformed`), so the route
+to try is the port issuing its own `GpuDraw` bound to its own atlas after the
+UI pass -- which needs the mapping above, honestly measured.
 
 ### What is still open
 
