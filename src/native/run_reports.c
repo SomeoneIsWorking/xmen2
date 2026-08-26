@@ -18,8 +18,11 @@
 #include "input_record.h"
 #include "live_session.h"
 #include "prompt_glyph_draw.h"
+#include "prompt_glyph_batch.h"
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyph_quads.h"
+#include "gpu_prompt_glyphs.h"
+#include "ui_transform.h"
 #include "threads.h"
 #include "x86_reached.h"
 #include "x86rt_native.h"
@@ -48,6 +51,9 @@ void x2_interrupt_reports(int killed)
     x2_prompt_draw_report();
     x2_prompt_glyph_metrics_report();
     x2_prompt_quads_report();
+    x2_prompt_glyph_batch_report();
+    x2_ui_transform_report();
+    gpu_prompt_glyphs_report();
     {
         char blackout[256];
         x2_boot_blackout_report(blackout, sizeof blackout);

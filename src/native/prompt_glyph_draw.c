@@ -1,47 +1,26 @@
-/* Prompt glyphs at the text renderer -- the port draws its own art.
+/* Prompt glyph harvest at the retail text renderer.
  *
- * Direction (2026-08-26): the game's fonts stay untouched. No derived font
- * pack, no in-memory atlas compositing, nothing written into a font record.
- * Instead the port overrides the exe's own glyph pipeline, established in
- * docs/RE/text.md and claim C266:
+ * The game's font assets stay untouched. FUN_005ee780 performs the retail
+ * wide-string layout and FUN_005ee400 emits each resulting quad. This owner
+ * matches those calls back to the source wchar and retains the port's private
+ * prompt rectangles with native-atlas UVs. Every call still reaches the retail
+ * emitter: a private glyph's rectangle is collapsed to zero area first. This
+ * preserves Alchemy's vertex and batch-finalization semantics (including a
+ * string made of one prompt glyph) without drawing a stock-font pixel.
+ * prompt_glyph_batch.c inserts the retained art at that finalized boundary;
+ * ordinary letters continue through the retail batch over keycap backgrounds.
  *
- *   FUN_005ef2e0  per-element orchestrator: markup -> wide line buffers
- *   FUN_005ee620  binds the font atlas, caches scales into the draw object
- *   FUN_005ee780  THE GLYPH LOOP: wchar < 256 -> record lookup -> quad via
- *                 FUN_005ee400; __fastcall(ECX=owner, EDX=&wide buf), seven
- *                 stack args, callee pops 0x1c
- *   FUN_00597c90  measurement, reached through font-table vtable +0x38
- *
- * This file is being built in stages, and stage one is DETECTION: sit on
- * FUN_005ee780, classify every string that reaches the glyph loop, and prove
- * on a real run that prompt labels carrying the port's private codepoints
- * (X2_PROMPT_GLYPH_FIRST..X2_PROMPT_GLYPH_LAST, delivered by pad_glyphs.c and
- * prompt_labels.c) actually arrive HERE. Everything downstream -- segmentation,
- * the port atlas upload, custom quads through FUN_005ee400, and the matching
- * measurer override -- depends on that arrival, so it is established and
- * counted before any pixel is drawn. A super-call happens on EVERY string;
- * without the feature gate nothing else about a string is touched.
- *
- * STAGE ONE RAN AND THE LABELS DO ARRIVE -- claim C268, docs/RE/text.md.
- * On a boot-direct tutorial run, 1,142 of 4,581 strings at this loop carried
- * 13,704 prompt codepoints, in exactly the composed shape
- * (0090 0091x5 0092x5 "Enter" 0093). So the cheap test below is sound and
- * stage two -- segmentation, the port atlas, custom quads through
- * FUN_005ee400, and the matching FUN_00597c90 measurer override -- is
- * unblocked.
- *
- * It first reported the opposite, and that was this file's fault: it read
- * the wide string from C->edx, which FUN_005ee780 overwrites from [EDI+0x8]
- * at 0x005ee797 before ever reading. See glyph_loop_string() below and
- * instrument I069 for how a wrong pointer still decoded as real text and
- * read like a working detector for a whole investigation.
+ * The string is the first STACK argument. An earlier detector read EDX, which
+ * the retail body overwrites before use; I069 and docs/RE/text.md retain that
+ * failure because the wrong pointer still decoded plausible text and made a
+ * false zero look trustworthy.
  */
 #include "prompt_glyph_draw.h"
 
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_atlas.h"   /* GENERATED: the port's own cells */
 #include "prompt_glyph_metrics.h"
-#include "prompt_glyph_pack.h"
+#include "prompt_glyphs.h"
 #include "prompt_glyph_quads.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -156,63 +135,6 @@ static uint32_t glyph_loop_string(const CPU *C)
     return RD32(C->esp + 4u);
 }
 
-/* The seven stack arguments, dumped from a REAL call that carries our
- * codepoints. `RET 0x1c` says there are seven; which one is the pen, which
- * the draw object and which the cached scales is not something to derive
- * from frame arithmetic -- ESP moves across the body's own calls, and that
- * is precisely where hand-derivation goes wrong. So the run says it.
- *
- * Each argument is printed raw, and again as a float, and if it points into
- * mapped guest memory the first six dwords behind it are printed both ways.
- * Gated by X2_GLYPH_ARGS so ordinary runs pay nothing.
- */
-static void dump_args(const CPU *C)
-{
-    unsigned a, k;
-    fprintf(stderr, "GLYPH ARGS: ecx=0x%08x edx=0x%08x esp=0x%08x\n",
-            C->ecx, C->edx, C->esp);
-    for (a = 1; a <= 7; a++) {
-        uint32_t v = RD32(C->esp + (uint32_t)a * 4u);
-        float f;
-        uint32_t probe;
-        memcpy(&f, &v, sizeof f);
-        fprintf(stderr, "GLYPH ARGS:   arg%u [esp+0x%02x] = 0x%08x  (%.4f)",
-                a, a * 4u, v, (double)f);
-        if (v && x86_peek32(v, &probe)) {
-            /* args 5 and 7 are the objects carrying the position scales and
-               offsets the stock quad is built from, so they get a deeper
-               read than the rest. */
-            unsigned depth = (a == 5u || a == 7u) ? 16u : 6u;
-            fprintf(stderr, "  ->");
-            for (k = 0; k < depth; k++) {
-                uint32_t w;
-                float wf;
-                if (!x86_peek32(v + k * 4u, &w)) break;
-                memcpy(&wf, &w, sizeof wf);
-                fprintf(stderr, " [%u]=0x%08x/%.4f", k, w, (double)wf);
-            }
-        }
-        fprintf(stderr, "\n");
-    }
-}
-
-/* The quad emitter, watched only while OUR string is being drawn.
- *
- * FUN_005ee400 is where a character becomes a quad in the current batch
- * (`RET 0x20` -- eight stack args, ECX = the batch owner). Stage two has to
- * emit through this same function, so its arguments have to be known; and
- * because the pen is a LOCAL inside FUN_005ee780 (EBP, initialised to
- * *(arg6) + arg3 and never written back), the per-character x it passes here
- * is the only way to watch the pen advance from outside.
- *
- * Scoped to a prompt-carrying string: the emitter fires for every character
- * of every string in the frame, and an unscoped dump is unreadable. The
- * scope is set around the super-call, so what prints is exactly the quads of
- * a label we composed.
- */
-static int g_watch_quads;
-static unsigned g_quads_dumped;
-
 /* Which wchar the emitter is on.
  *
  * FUN_005ee400 does not say which character it is drawing, so the override
@@ -228,7 +150,9 @@ static unsigned g_quads_dumped;
  * mismatch is reported rather than absorbed. */
 static uint32_t g_cursor_string;
 static unsigned g_cursor_index;
+static uint32_t g_cursor_color;
 static unsigned long g_intercepted, g_emitted_seen, g_predicted, g_desync;
+static unsigned long g_unavailable_refused, g_color_refused, g_queue_refused;
 static unsigned long g_emitted_seen_before;
 
 static int wchar_emits_quad(uint16_t c)
@@ -251,14 +175,14 @@ static uint16_t cursor_take(void)
 }
 
 void fn_XMen2_005ee400(CPU *C);
-static void x2_probe_005ee400_dump(CPU *C);
 
-/* The interception. While one of our labels is being drawn, each quad is
- * matched to its wchar; a quad belonging to one of the port's codepoints is
- * RECORDED with the port atlas's UVs and then NOT emitted, so the engine
- * never draws our codepoint out of its own font atlas. Every other quad
- * super-calls untouched. */
-static void x2_override_005ee400(CPU *C)
+/* The interception. The outer string override arms this only after it has
+ * validated the batch colour and capacity for every native glyph. Each native
+ * rectangle is retained, then its retail emitter call is super-called with a
+ * zero-area rectangle. The call and its RET 0x20 remain the retail body's
+ * responsibility; bypassing it removed the sole vertex from one-glyph labels
+ * and therefore removed the drawNonIndexed finalizer we render through. */
+void x2_override_005ee400(CPU *C)
 {
     if (g_cursor_string) {
         uint16_t c = cursor_take();
@@ -267,63 +191,58 @@ static void x2_override_005ee400(CPU *C)
         if (cell) {
             struct X2PromptQuad q;
             uint32_t a[8];
+            float ex0, ey0, ex1, ey1;
             unsigned i;
             for (i = 0; i < 8u; i++)
                 a[i] = RD32(C->esp + (uint32_t)(i + 1u) * 4u);
-            memcpy(&q.x0, &a[0], 4); memcpy(&q.y0, &a[1], 4);
-            memcpy(&q.x1, &a[2], 4); memcpy(&q.y1, &a[3], 4);
+            memcpy(&ex0, &a[0], 4); memcpy(&ey0, &a[1], 4);
+            memcpy(&ex1, &a[2], 4); memcpy(&ey1, &a[3], 4);
             q.u0 = cell->u0; q.v0 = cell->v0;
             q.u1 = cell->u1; q.v1 = cell->v1;
             q.codepoint = c;
-            x2_prompt_quads_add(&q);
+            /* Keep the engine coordinates exactly as FUN_005ee400 receives
+               them. The stock sink stores (x, 0, y), then the text batch's
+               world/view/projection places that plane on screen. Inverting
+               arg7's local glyph scale here was a false screen-space
+               assumption and put otherwise-correct SVG art near the origin. */
+            q.x0 = ex0; q.y0 = ey0;
+            q.x1 = ex1; q.y1 = ey1;
+            q.color = g_cursor_color;
+            if (!x2_prompt_quads_add(&q)) {
+                fprintf(stderr, "PROMPT DRAW: reserved queue capacity was "
+                                "lost inside one synchronous retail string; "
+                                "atomic interception cannot continue.\n");
+                abort();
+            }
             g_intercepted++;
-            /* Suppressed on purpose -- but the ABI still has to be honoured.
-               FUN_005ee400 is `RET 0x20`: the CALLEE pops the return address
-               and its eight dword arguments. Returning without running the
-               body has to do exactly that, or the guest stack is left 32
-               bytes deep in arguments and the caller unwinds into garbage.
-               (It does; skipping the pop crashed the run.) */
-            C->esp += 4u + 0x20u;
-            return;
+            /* Keep the call but give the retail atlas zero area. The stock
+               function owns both vertex submission and its RET 0x20 ABI. */
+            WR32(C->esp + 12u, a[0]);
+            WR32(C->esp + 16u, a[1]);
         }
     }
-    x2_probe_005ee400_dump(C);
     fn_XMen2_005ee400(C);
 }
 
-static void x2_probe_005ee400_dump(CPU *C)
+struct PromptStringPlan {
+    unsigned emitted;
+    unsigned native;
+    int unavailable;
+};
+
+static struct PromptStringPlan plan_string(uint32_t s)
 {
-    if (g_watch_quads && g_quads_dumped < 64u) {
-        unsigned a;
-        g_quads_dumped++;
-        fprintf(stderr, "QUAD: ecx=0x%08x", C->ecx);
-        for (a = 1; a <= 8u; a++) {
-            uint32_t v = RD32(C->esp + (uint32_t)a * 4u);
-            float f;
-            memcpy(&f, &v, sizeof f);
-            fprintf(stderr, "  a%u=%.3f/0x%08x", a, (double)f, v);
-        }
-        fprintf(stderr, "\n");
-        if (g_quads_dumped == 1u) {
-            /* The vertex sink, once: FUN_005ee400 pushes each corner through
-               [ECX] -> vtable +0xc. Naming that target is the last hop
-               between these coordinates and the screen, which is what the
-               port needs if it is to draw the prompt art itself. */
-            uint32_t sink, vtable, target, state;
-            if (x86_peek32(C->ecx, &sink) && x86_peek32(sink, &vtable) &&
-                x86_peek32(vtable + 0xcu, &target)) {
-                fprintf(stderr, "QUAD SINK: batch=0x%08x sink=0x%08x "
-                                "vtable=0x%08x  vtable+0xc -> 0x%08x\n",
-                        C->ecx, sink, vtable, target);
-                if (x86_peek32(C->ecx + 8u, &state))
-                    fprintf(stderr, "QUAD SINK: [batch+8] = 0x%08x\n", state);
-            } else {
-                fprintf(stderr, "QUAD SINK: could not read the sink behind "
-                                "batch 0x%08x -- no vtable, so the emitter's "
-                                "target is unknown for this call.\n", C->ecx);
-            }
-        }
+    struct PromptStringPlan plan = {0};
+    unsigned i;
+    for (i = 0; i < MAX_WALK; i++) {
+        uint16_t c = RD16(s + (uint32_t)i * 2u);
+        if (!c) break;
+        if (wchar_emits_quad(c)) plan.emitted++;
+        if (!prompt_codepoint(c)) continue;
+        if (!x2_prompt_glyph_cell(c)) plan.unavailable = 1;
+        else plan.native++;
     }
+    return plan;
 }
 
 void x2_override_005ee780(CPU *C)
@@ -332,7 +251,7 @@ void x2_override_005ee780(CPU *C)
     unsigned i;
 
     g_strings++;
-    if (prompt_glyph_pack_enabled() && s &&
+    if (x2_prompt_glyphs_enabled() && s &&
         x2_string_has_prompt_glyph(s, MAX_WALK)) {
         g_with_prompts++;
         for (i = 0; i < MAX_WALK; i++) {
@@ -343,10 +262,6 @@ void x2_override_005ee780(CPU *C)
         if (g_examples < 8) {
             g_examples++;
             log_example(s);
-            if (getenv("X2_GLYPH_ARGS")) {
-                dump_args(C);
-                g_watch_quads = 1;
-            }
         }
     } else if (s) {
         /* Diagnostic denominator: WHAT is being drawn, if not prompts?
@@ -365,78 +280,58 @@ void x2_override_005ee780(CPU *C)
         if (non_ascii) g_with_non_ascii++;
         if (first_sighting(wide_hash(s, NULL))) log_example(s);
     }
-    /* PEN PROBE. Reasoning back from the emitted quads said the pen runs
-       107 -> 300 while arg3 is 298, which cannot both be true of "the pen
-       starts at *(arg6) + arg3". Rather than do more arithmetic on a frame
-       -- the thing that has already been wrong twice here -- perturb the
-       argument and watch what moves: X2_GLYPH_PEN=<int> adds that many pen
-       units to arg3 for prompt-carrying strings only. If arg3 is the pen
-       origin, every emitted quad shifts by exactly delta * the position
-       scale; if nothing moves, it is not the origin. */
-    if (g_watch_quads) {
-        const char *delta = getenv("X2_GLYPH_PEN");
-        if (delta && *delta) {
-            uint32_t slot = C->esp + 0x0cu;
-            int32_t was = (int32_t)RD32(slot);
-            int32_t now = was + (int32_t)strtol(delta, NULL, 0);
-            WR32(slot, (uint32_t)now);
-            fprintf(stderr, "PEN PROBE: arg3 %d -> %d\n", was, now);
-        }
-    }
-    /* TRUNCATION PROBE -- the question segmentation actually turns on.
-       Splitting a string means NUL-terminating a prefix in place and drawing
-       it. That is safe only if the run's origin does NOT depend on the
-       string's own length. If the loop (or its caller's cached measurement)
-       centres the text, a shorter segment starts somewhere else and every
-       segment after it is misplaced. X2_GLYPH_TRUNC=<n> cuts the string to n
-       wchars for the draw and puts the wchar back afterwards. */
-    if (g_watch_quads) {
-        const char *cut = getenv("X2_GLYPH_TRUNC");
-        if (cut && *cut) {
-            unsigned n = (unsigned)strtoul(cut, NULL, 0);
-            uint32_t at = s + (uint32_t)n * 2u;
-            uint16_t saved = RD16(at);
-            fprintf(stderr, "TRUNC PROBE: cutting to %u wchar(s) "
-                            "(dropping 0x%04x)\n", n, saved);
-            WR16(at, 0);
-            g_super_called++;
-            fn_XMen2_005ee780(C);
-            WR16(at, saved);
-            g_watch_quads = 0;
-            return;
-        }
-    }
     /* The cursor is armed only for a string carrying our codepoints, so
        every other string's quads take the untouched path. */
-    if (prompt_glyph_pack_enabled() && s && x2_string_has_prompt_glyph(s, MAX_WALK)) {
-        unsigned k, predicted = 0;
-        for (k = 0; k < MAX_WALK; k++) {
-            uint16_t c = RD16(s + (uint32_t)k * 2u);
-            if (!c) break;
-            if (wchar_emits_quad(c)) predicted++;
+    if (x2_prompt_glyphs_enabled() && s &&
+        x2_string_has_prompt_glyph(s, MAX_WALK)) {
+        struct PromptStringPlan plan = plan_string(s);
+        uint32_t batch = RD32(C->esp + 8u);
+        uint32_t color;
+
+        /* This decision is string-atomic. Once the retail loop starts, an
+           earlier native glyph may already have been collapsed; discovering
+           a later refusal then cannot restore the original string. Validate
+           every precondition first, including the one-glyph case. */
+        if (plan.unavailable || !plan.native) {
+            g_unavailable_refused++;
+            g_super_called++;
+            fn_XMen2_005ee780(C);
+            return;
         }
-        g_predicted += predicted;
+        if (!x86_peek32(batch + 8u, &color)) {
+            g_color_refused++;
+            g_super_called++;
+            fn_XMen2_005ee780(C);
+            return;
+        }
+        if (x2_prompt_quads_available() < plan.native) {
+            g_queue_refused++;
+            g_super_called++;
+            fn_XMen2_005ee780(C);
+            return;
+        }
+
+        g_predicted += plan.emitted;
         g_emitted_seen_before = g_emitted_seen;
         g_cursor_string = s;
         g_cursor_index = 0;
+        g_cursor_color = color;
         g_super_called++;
         fn_XMen2_005ee780(C);
         g_cursor_string = 0;
-        if (g_emitted_seen - g_emitted_seen_before != predicted) {
+        if (g_emitted_seen - g_emitted_seen_before != plan.emitted) {
             g_desync++;
             fprintf(stderr, "PROMPT DRAW: quad/wchar DESYNC -- predicted %u "
                             "quad(s) for this string, the emitter produced "
                             "%lu. The cursor model is wrong, so an "
                             "interception may have hit the wrong glyph.\n",
-                    predicted,
+                    plan.emitted,
                     g_emitted_seen - g_emitted_seen_before);
         }
-        g_watch_quads = 0;
         return;
     }
     g_super_called++;
     fn_XMen2_005ee780(C);
-    g_watch_quads = 0;
 }
 
 __attribute__((constructor))
@@ -457,8 +352,12 @@ void x2_prompt_draw_report(void)
             g_super_called);
     fprintf(stderr, "PROMPT DRAW: %lu quad(s) intercepted for the port out of "
             "%lu the emitter produced for our strings (%lu predicted); "
-            "%lu desync(s)\n",
-            g_intercepted, g_emitted_seen, g_predicted, g_desync);
+            "%lu desync(s); %lu whole string(s) kept stock because a "
+            "codepoint was not private, %lu because the engine batch color "
+            "was unreadable, %lu because "
+            "the frame queue lacked capacity\n",
+            g_intercepted, g_emitted_seen, g_predicted, g_desync,
+            g_unavailable_refused, g_color_refused, g_queue_refused);
     if (g_desync)
         fprintf(stderr, "PROMPT DRAW: the quad/wchar cursor DESYNCED -- the "
                         "harvested rectangles are not trustworthy.\n");
@@ -470,13 +369,14 @@ void x2_prompt_draw_report(void)
     if (!g_strings)
         fprintf(stderr, "PROMPT DRAW: ZERO strings seen -- either nothing "
                         "drew text in this run or the override never armed.\n");
-    else if (!prompt_glyph_pack_enabled())
-        fprintf(stderr, "PROMPT DRAW: the prompt pack was DISABLED for this "
+    else if (!x2_prompt_glyphs_enabled())
+        fprintf(stderr, "PROMPT DRAW: native prompt glyphs were DISABLED for this "
                         "run (X2_PROMPT_GLYPHS unset), so no string could "
                         "have carried a prompt codepoint. This is not "
                         "evidence about the draw path.\n");
     else if (!g_with_prompts)
-        fprintf(stderr, "PROMPT DRAW: the pack was enabled and text drew, yet "
+        fprintf(stderr, "PROMPT DRAW: native prompt glyphs were enabled and "
+                        "text drew, yet "
                         "no prompt codepoint reached the glyph loop. Compare "
                         "against the composed-label count in the prompt-label "
                         "report: labels composed but never arriving here means "

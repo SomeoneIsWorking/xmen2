@@ -19,7 +19,7 @@
  * quad from 19.022 to 39.289 to 46.756). Splitting a string and redrawing the
  * pieces therefore misplaces every piece unless the port re-derives that
  * anchoring exactly -- reimplementing the engine's layout to avoid writing
- * four numbers into a record the game never uses.
+ * the metrics into records the game never uses.
  *
  * So the port publishes ITS OWN metrics for ITS OWN codepoints, in memory,
  * into records the shipped fonts leave empty, and the engine lays the label
@@ -38,6 +38,7 @@
 
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_atlas.h"
+#include "prompt_glyphs.h"
 #include "x86rt.h"
 
 #include <math.h>
@@ -51,15 +52,19 @@
 #define GL_HEIGHT     0x02u
 #define GL_ADVANCE    0x04u
 #define GL_OFFSET     0x06u
+#define GL_BASELINE   0x08u
+#define GLYPH_COUNT   256u
 
 static unsigned long g_records, g_cells_published;
 static unsigned long g_records_occupied;
+static unsigned long g_records_without_baseline;
 
 const struct x2_prompt_cell *x2_prompt_glyph_cell(uint16_t codepoint)
 {
     unsigned index;
     if (codepoint < X2_PROMPT_GLYPH_FIRST || codepoint > X2_PROMPT_GLYPH_LAST)
         return NULL;
+    if (!x2_prompt_glyph_available(codepoint)) return NULL;
     index = (unsigned)(codepoint - X2_PROMPT_GLYPH_FIRST);
     if (index >= X2_PROMPT_CELL_COUNT) return NULL;
     return &x2_prompt_cells[index];
@@ -70,50 +75,100 @@ static int16_t scaled(int design, float scale)
     return (int16_t)lrintf((float)design * scale);
 }
 
+/* The baseline is owned by the font, not by an SVG. The retired font-pack
+   path found it by majority across the shipped glyphs (11 in the unscaled HD
+   font). Publishing zero here put the otherwise-correct keycap one full
+   ascent below its stock letters. This runs after ui_text_scale, so the modal
+   value copied from the retail records is already in the drawer's units. */
+static int font_baseline(uint32_t font_record, int32_t *result)
+{
+    unsigned i, best_count = 0;
+    int32_t best = 0;
+
+    for (i = 0; i < GLYPH_COUNT; i++) {
+        uint32_t g = font_record + GLYPH_FIRST + i * GLYPH_STRIDE;
+        int32_t candidate;
+        unsigned j, count = 0;
+        if (!RD16(g + GL_WIDTH) && !RD16(g + GL_HEIGHT)) continue;
+        candidate = (int32_t)RD32(g + GL_BASELINE);
+        if (!candidate) continue;
+        for (j = 0; j < GLYPH_COUNT; j++) {
+            uint32_t other = font_record + GLYPH_FIRST + j * GLYPH_STRIDE;
+            if ((!RD16(other + GL_WIDTH) && !RD16(other + GL_HEIGHT)) ||
+                (int32_t)RD32(other + GL_BASELINE) != candidate)
+                continue;
+            count++;
+        }
+        if (count > best_count) {
+            best = candidate;
+            best_count = count;
+        }
+    }
+    if (!best_count) return 0;
+    *result = best;
+    return 1;
+}
+
 void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale)
 {
     uint16_t code;
     unsigned published = 0, occupied = 0;
+    int32_t baseline;
 
     if (!font_record) return;
     g_records++;
+    /* Occupancy is authoritative even for a font whose baseline cannot be
+       used for publication. A drawing record makes that byte non-private;
+       baseline quality does not give the port permission to ignore it. */
     for (code = X2_PROMPT_GLYPH_FIRST; code <= X2_PROMPT_GLYPH_LAST; code++) {
-        const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(code);
         uint32_t g = font_record + GLYPH_FIRST + (uint32_t)code * GLYPH_STRIDE;
-        if (!cell) continue;
-        /* A shipped font that already draws something here is NOT ours to
-           overwrite: that would be editing the game's own glyph. Counted and
-           skipped, loudly, because silently declining would look exactly like
-           a publish that worked. */
         if (RD16(g + GL_WIDTH) || RD16(g + GL_HEIGHT)) {
+            x2_prompt_glyph_mark_unavailable(code);
             occupied++;
-            continue;
         }
+    }
+    if (occupied) {
+        g_records_occupied++;
+        fprintf(stderr, "PROMPT METRICS: %u of the port's codepoints already "
+                        "draw in this font -- left alone and globally "
+                        "unavailable to native prompt labels.\n",
+                occupied);
+    }
+    if (!font_baseline(font_record, &baseline)) {
+        g_records_without_baseline++;
+        fprintf(stderr, "PROMPT METRICS: font has no non-zero baseline among "
+                        "its drawing glyphs -- publishing nothing rather "
+                        "than placing prompt art against a guessed line.\n");
+        return;
+    }
+    for (code = X2_PROMPT_GLYPH_FIRST; code <= X2_PROMPT_GLYPH_LAST; code++) {
+        uint32_t g = font_record + GLYPH_FIRST + (uint32_t)code * GLYPH_STRIDE;
+        /* The occupancy pass above already marked every retail-owned byte. */
+        if (RD16(g + GL_WIDTH) || RD16(g + GL_HEIGHT)) continue;
+        const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(code);
+        if (!cell) continue;
         WR16(g + GL_WIDTH, (uint16_t)scaled(cell->design_w, scale));
         WR16(g + GL_HEIGHT, (uint16_t)scaled(cell->design_h, scale));
         WR16(g + GL_ADVANCE, (uint16_t)scaled(cell->advance, scale));
         WR16(g + GL_OFFSET, 0);
+        WR32(g + GL_BASELINE, (uint32_t)baseline);
         published++;
     }
     g_cells_published += published;
-    if (occupied) {
-        g_records_occupied++;
-        fprintf(stderr, "PROMPT METRICS: %u of the port's codepoints already "
-                        "draw in this font -- left alone, so the label will "
-                        "lay out wrong rather than overwrite a game glyph.\n",
-                occupied);
-    }
     if (g_records == 1)
         fprintf(stderr, "PROMPT METRICS: published %u cell(s) at scale %.3f "
-                        "into the first font record (metrics only, no UVs).\n",
-                published, (double)scale);
+                        "and the font's modal baseline %d into the first font "
+                        "record (metrics only, no UVs).\n",
+                published, (double)scale, baseline);
 }
 
 void x2_prompt_glyph_metrics_report(void)
 {
     printf("  Prompt metrics: %lu cell(s) published over %lu font record(s)"
-           "; %lu record(s) had a codepoint of ours already drawing\n",
-           g_cells_published, g_records, g_records_occupied);
+           "; %lu had no evidenced baseline, %lu had a codepoint of ours "
+           "already drawing\n",
+           g_cells_published, g_records, g_records_without_baseline,
+           g_records_occupied);
     if (!g_records)
         printf("        no font record was ever offered, so the port's "
                "codepoints have NO metrics and every label will pile up in "

@@ -89,9 +89,10 @@ checkout is maintainer-only and is not fetched by the player bootstrap.
   incompatible but the engine architecture (igCore/igDisplay class model, IGB format,
   file-package system, DLL boundary) is directly analogous.
 
-Where this is going next -- performance, load time, a real input-binding UI,
-launching straight into a game -- is [`docs/roadmap.md`](docs/roadmap.md), with
-honest status against each.
+The durable outcomes are in
+[`docs/project-goals.md`](docs/project-goals.md); factual capability coverage,
+gaps and the current focus are in
+[`docs/project-state.md`](docs/project-state.md).
 
 ## The three features (all land in the input layer)
 
@@ -103,11 +104,13 @@ honest status against each.
    applies the assignments recovered from the Xbox executable—not a modern
    mapping invented by the port. Black/White pack use remains a direct-action
    RE boundary because the PC binding table has no Health/Energy rows.
-3. **Xbox button prompts** — this port's SVGs are published into unused bytes
-   of the PC font and returned at the game's RE'd physical-input naming
-   boundary only for SDL-classified Xbox controllers. Delivery and the 21-row
-   bindable Xbox preset are implemented; an in-game prompt capture remains the
-   visible-use gate.
+3. **Xbox button prompts** — the input-name overrides publish private prompt
+   codepoints for the active controller or keyboard source, and the engine's
+   own text layout positions them. The port renders shared SVG art from its own
+   GPU atlas at the RE'd Alchemy text-batch boundary; the game's font pixels
+   and UVs remain untouched. Only width, height, advance and baseline metrics
+   for those private cells are published in memory. The 21-row bindable Xbox
+   preset and native prompt draw path are implemented.
 
 ## Verification
 
@@ -179,8 +182,8 @@ What that does *not* mean. It is not playable in the sense that matters: a
 person cannot yet pick it up and play, because the frame rate is ~30 fps
 headless with the frame cap removed and nobody has driven a character with a
 controller through a level. Controller enumeration, polling and hotswap run
-end-to-end under a synthetic pad; the remaining controller work is the default
-binding/prompt experience. The
+end-to-end under a synthetic pad; an equivalent physical-pad play-through has
+not been done. The
 renderer accepts every draw the engine issues and reads every render state the
 engine sets except fog and specular, which this title disables — but "nothing
 is refused" is a statement about coverage, not about the picture being right.
@@ -196,5 +199,6 @@ Earlier facts established during RE (see the durable claims under `docs/info/`):
 - Xbox `assetsfb.wad` is ZIP-like with a trailing block; entries are raw deflate;
   extractor in `tools/extract_wad.py`.
 - The Xbox button art is not in the HUD font and is not addressable by existing
-  medium-font codepoints. This port owns SVG equivalents under `assets/buttons/`
-  and publishes them into verified-unused font cells with `make_pad_font.py`.
+  medium-font codepoints. This port rasterises shared SVG equivalents into its
+  own GPU atlas and inserts them at the RE'd Alchemy text-batch boundary; the
+  shipped font assets remain untouched.

@@ -22,6 +22,7 @@ unsigned long gpu_frame_draws_so_far(void);
 
 #include "gpu_draw.h"
 #include "gpu_device.h"
+#include "gpu_matrix.h"
 
 #include <signal.h>
 #include <stdlib.h>
@@ -2249,13 +2250,7 @@ void d3d8_worldview_transform(const D3D8State *s, float out[16])
                          ? s->transform[D3DTS_WORLD].m : ident;
     const float *v = s->transform_set[D3DTS_VIEW]
                          ? s->transform[D3DTS_VIEW].m : ident;
-    int i, j, k;
-    for (i = 0; i < 4; i++)
-        for (j = 0; j < 4; j++) {
-            float acc = 0.0f;
-            for (k = 0; k < 4; k++) acc += w[i * 4 + k] * v[k * 4 + j];
-            out[i * 4 + j] = acc;
-        }
+    gpu_matrix_multiply(w, v, out);
 }
 
 void d3d8_combine_transform(const D3D8State *s, float out[16])
@@ -2268,20 +2263,8 @@ void d3d8_combine_transform(const D3D8State *s, float out[16])
     const float *p = s->transform_set[D3DTS_PROJECTION]
                          ? s->transform[D3DTS_PROJECTION].m : ident;
     float wv[16];
-    int i, j, k;
-
-    for (i = 0; i < 4; i++)
-        for (j = 0; j < 4; j++) {
-            float acc = 0.0f;
-            for (k = 0; k < 4; k++) acc += w[i * 4 + k] * v[k * 4 + j];
-            wv[i * 4 + j] = acc;
-        }
-    for (i = 0; i < 4; i++)
-        for (j = 0; j < 4; j++) {
-            float acc = 0.0f;
-            for (k = 0; k < 4; k++) acc += wv[i * 4 + k] * p[k * 4 + j];
-            out[i * 4 + j] = acc;
-        }
+    gpu_matrix_multiply(w, v, wv);
+    gpu_matrix_multiply(wv, p, out);
 }
 
 /* For the heartbeat. The shutdown report cannot answer this: every run of

@@ -7,13 +7,15 @@ Established 2026-08-26 by static reading of the recompiled bodies, the PE's
 (`scratch/logs/probe-err.log`). Everything below is measured against the
 retail `XMen2.exe` at its linked addresses.
 
-**Why this page exists.** The port wants controller/keyboard prompt art drawn
-as its own SVG-derived glyphs WITHOUT touching any font asset or in-memory
-font record (the derived `X2_ASSETS` pack was stage one and is asset editing;
-an in-memory atlas-compositing attempt was abandoned before drawing anything).
-Doing that at the RENDERER requires knowing exactly where strings become
-glyph quads. That path had no static call sites anywhere -- every hop goes
-through object vtables -- so it took a runtime caller probe to pin down.
+**Why this page exists.** The port draws controller/keyboard prompt art as its
+own SVG-derived pixels without modifying or copying a shipped font asset. The
+retail text engine still owns layout: the port publishes metrics and the
+font's own evidenced baseline into otherwise-empty private codepoint records,
+but never writes atlas UVs or pixels there. The generated RGBA atlas and its
+GPU texture belong entirely to the port. Finding that split required locating
+both where strings become glyph quads and where libIGGfx submits the semantic
+text batch; neither path has useful static call sites because the hops are
+vtable-mediated.
 
 ## The font table
 
@@ -84,28 +86,34 @@ eight distinct return sites, two of which are 1,207 calls each --
 `FUN_005ee400` transforms and pushes the quad under whatever texture the
 engine has bound for this text -- the binding established by `FUN_005ee620`.
 
-## What this makes possible
+## The ownership split that shipped
 
-The port can now put its prompt art on screen entirely at the renderer:
+The retail engine measures and positions the string; the port owns the new
+pixels and submits them before the stock ASCII in the same semantic text draw:
 
-1. Override **`FUN_005ee780`**. If the wide string contains none of the
-   port's private codepoints (`X2_PAD_GLYPH_FIRST..X2_KEYCAP_GLYPH_LAST`),
-   super-call and change nothing -- that is every ordinary string, verified
-   cheaply before anything else runs.
-2. For a string that DOES contain one: split around each such codepoint,
-   NUL-terminate the segment in place, super-call per segment (stock glyphs,
-   stock markup, stock pen updates), and between segments emit our own quads
-   through the same **`FUN_005ee400`** under our OWN texture binding, sized
-   by the same cached scale fields the stock quads use.
-3. Mirror the same split inside an override of the measurer
-   (**`FUN_00597c90`**) so layout gives our codepoints real widths instead of
-   the zero the untouched font record answers with. No font record is
-   written; the answer comes from the port, at the renderer.
-
-The pixels come from the shared `port-assets` SVG sets rasterised at build
-time into a generated, port-owned atlas (same pattern as
-`src/recomp/gen/font_tier_ratio.h`) -- never patched into a copy of any game
-font, on disk or in memory.
+1. `prompt_glyph_metrics.c` publishes width, height, advance, offset and the
+   font's modal scaled baseline for the port's private codepoints. It writes no
+   UVs, so the game font never becomes the pixel owner.
+2. `prompt_glyph_draw.c` follows the stock wide-string loop and intercepts
+   each private-codepoint call to **`FUN_005ee400`**. Before the loop begins it
+   validates the batch colour, every codepoint and capacity for the whole
+   string. It then keeps the engine's text-plane rectangle and batch colour,
+   substitutes the matching port-atlas UVs, queues the quad, and super-calls
+   the retail emitter with `x1=x0` and `y1=y0`. That collapsed call draws no
+   stock-font pixels but preserves the engine's vertex and finalizer contract,
+   including for a string containing only one controller glyph.
+3. `prompt_glyph_batch.c` brackets
+   `Gap::Gfx::igDxVisualContext::drawNonIndexed` at libIGGfx `0x100352d0`.
+   Its nested `updateContextState` override at `0x10034e60` super-calls first,
+   then submits the queued SVG quads with the engine's finalized transform.
+   Control returns to the stock draw, so ordinary text lands over the keycap
+   background in the intended order.
+4. `gpu_prompt_glyphs.c` owns the retained RGBA texture and vertex buffer and
+   submits a `GpuDraw` from the queued rectangles. The pixels come from the
+   shared `port-assets` SVG sets rasterised at build time into the generated,
+   port-owned atlas (`tools/render_prompt_glyphs.py` ->
+   `src/recomp/gen/prompt_glyph_atlas.h`). No shipped font contributes pixels
+   to it.
 
 ## Stage one ran: the labels DO arrive (C268, after C267 was falsified)
 
@@ -174,13 +182,13 @@ Two hypotheses recorded alongside C267 are dead with it: the labels were
 never "not drawn in this scenario", and the narrow->wide step performs no
 multibyte lead-byte folding -- it is a plain zero-extend.
 
-### The two signatures stage two needs, measured from a live call
+### The two signatures the native path uses, measured from a live call
 
 Both were dumped from a real draw of a composed label rather than derived
 from frame arithmetic -- ESP moves across the body's own calls, and hand
 arithmetic on those slots is exactly what produced the EDX mistake above.
-`X2_GLYPH_ARGS=1` arms the dump (and a quad probe scoped to a
-prompt-carrying string); ordinary runs pay nothing.
+The retired `X2_GLYPH_ARGS=1` probe scoped that dump to a prompt-carrying
+string. It was deleted after the ABI was encoded in the shipping interception.
 
 **`FUN_005ee780(...)` -- `RET 0x1c`, seven stack args, ECX = owner**
 
@@ -204,7 +212,7 @@ vertices through `[ECX] -> vtable +0xc`, one per corner, with `[ECX+8]`
 riding along as the vertex state. So a quad emitted through it lands in the
 same space as the engine's own text.
 
-### What our codepoints do today, per quad
+### What untouched private codepoints did before native metrics
 
 Drawing `0090 0091x5 0092x5 "Enter" 0093` emits, in order:
 
@@ -217,78 +225,85 @@ Drawing `0090 0091x5 0092x5 "Enter" 0093` emits, in order:
 * a final degenerate quad at `53.333`, the closing `0093` after `"Enter"`
   moved the pen.
 
-This is the shape of the hole stage two fills, and it is measured, not
-assumed.
+This is the measured hole the native metrics fill. The label now composes as
+designed: left cap at 14.933, five middles advancing to 31.822, five rewinds
+stepping back to 20.622, `"Enter"` over the top from 16.356 to 43.556, and the
+right cap at 51.200. The engine remains the layout authority because the run
+is right-anchored: truncating it from 17 to 13 to 12 wchars moved the first
+quad from 19.022 to 39.289 to 46.756. A +100 perturbation of arg3 shifted every
+quad by exactly `100 * 0.177778`, settling the pen control by experiment.
 
-### The one open design decision
+## Native SVG submission at the semantic text boundary
 
-`FUN_005ee400` pushes into a batch whose TEXTURE is bound per element by
-`FUN_005ee620`. Our art is not in that atlas and must not be put there --
-that is the font-mediated route this whole direction replaced. So the port
-has to choose:
+The vertex sink behind `FUN_005ee400` is `FUN_005840a0`, reached through the
+batch's `[ECX] -> vtable 0x0069c904 +0xc`. It stores text corners as `(x,0,y)`;
+the owning batch's world/view/projection places that plane on screen. A live
+callsite probe separated the draw that matters from an adjacent indexed draw:
+the stock text plane returns inside libIGGfx `drawNonIndexed` at `0x10035489`,
+whose owning body begins at **`0x100352d0`**.
 
-1. **Emit through `FUN_005ee400` under a separate batch** bound to our own
-   texture. Needs the batch flush/bind boundary reversed.
-2. **Collect the rects and draw them in the port's own renderer.** The quad
-   coordinates are known and in the engine's own space, so the port can
-   accumulate its prompt rects during the glyph loop and draw them from
-   `src/gpu/` with the generated atlas, after the UI pass. Nothing in the
-   engine's batching is touched, and the port owns the pixels end to end --
-   which is the direction this repo already takes elsewhere.
+`prompt_glyph_batch.c` overrides that outer body only to bracket its lifetime.
+When its nested `updateContextState` at **`0x10034e60`** runs, the override
+super-calls the engine body first. `ui_transform.c` independently mirrors the
+converted projection, world and view outputs of `computeMatrix_Dx` at
+**`0x1003ec10`**, then publishes the complete engine-owned MVP. The port
+submits the queued SVG rectangles in the stock `(x,0,y)` text plane at that
+point, before control returns to `drawNonIndexed` and the stock ASCII is
+submitted. No matrix is reconstructed from lowered D3D state.
 
-The vertex sink is **`FUN_005840a0`**, reached through the batch's
-`[ECX] -> vtable 0x0069c904 +0xc`. It is an accumulating vertex-buffer
-appender -- count at `[obj+0x20]`, capacity at `[obj+0x0c]`, write pointer at
-`[obj+0x2c]`, with an overflow/flush path -- and `[batch+8]` is the vertex
-colour (`0xffffffff` for this text). So the geometry is entirely the
-engine's: a quad emitted through `FUN_005ee400` needs no projection work
-from the port.
+The port-owned atlas is RGBA, retained and uploaded by
+`gpu_prompt_glyphs.c`. Each harvested rectangle becomes two triangles with
+the engine batch colour and the generated atlas UVs. Failure to read the
+batch colour or reserve a complete string keeps that entire string on the
+retail path. Failure to obtain all three engine matrices or submit through the
+GPU path discards the matching batch at that exact boundary. The outer batch
+wrapper also discards any queue left after a draw returns without its nested
+finalizer, so native art cannot leak into an unrelated draw. None of these
+conditions is silently accepted.
 
-`arg7`'s fields carry the whole quad formula: `[1]/[2]` atlas 512x256,
-`[3]/[4]` the UV scales `1/512` and `1/256`, **`[7]/[8]` the position scale
-(0.177778 on both axes)** and `[9]/[10]` the offsets. The observed y checks
-out against it (`658 * 0.177778 = 116.98` against an emitted `116.893`).
+### Live verification and the baseline defect
 
-**The unresolved piece is the pen origin.** Working back from the emitted
-quads at scale 0.177778, the pen runs 107 -> 300 across the string, while
-`arg3` is 298 -- so `arg3` is not simply the starting pen, and something
-(most likely the caller centring the measured string) sets where the run
-begins. Segmenting the string means re-invoking with a correct `arg3` per
-segment, so this has to be settled before stage two can split anything. It
-is the next thing to establish, and it is NOT yet known.
+The windowless, silent, unbounded run in
+`scratch/logs/svg-final-unbounded.log` submitted **1,188 native keycap SVG
+quads across 99 semantic text batches**, with zero GPU refusals,
+incomplete-transform refusals, queue/colour refusals or glyph/quad desyncs.
+`scratch/screenshots/svg-final-unbounded.png` shows `ENTER` aligned inside the
+native keycap.
 
-### Stage two: metrics and harvest work; the draw is still open
+That keycap still includes stock ASCII, so it did not exercise the dangerous
+one-glyph shape. Issue #121 records the review finding: bypassing the only
+`FUN_005ee400` call could leave `drawNonIndexed` with zero primitives, skip its
+nested `updateContextState`, and carry the queued icon into a later draw. The
+corrected windowless, silent, unbounded controller run in
+`scratch/logs/svg-pad-final-unbounded.log` drove a synthetic Xbox A press and
+reported **1,073 one-codepoint controller strings, 1,073 intercepted emitter
+calls, 1,073 matching nested finalizers and 1,073 GPU submissions**. It had
+zero desyncs, unavailable-codepoint fallbacks, colour/queue failures,
+unreadable matrices, cross-context requests, transform/GPU refusals, or quads
+left after an unfinalized draw. The headless capture
+`scratch/screenshots/svg-pad-unbounded.png` shows the native green A icon
+aligned beside `CONTINUE...`.
 
-Two of the three pieces are in.
+Together these are the first native 2D/UI renderer slice: layout and transform
+still come from Alchemy, but the prompt pixels, texture, vertices and GPU
+submission do not pass through the D3D8 emulation layer.
 
-**Metrics.** `prompt_glyph_metrics.c` publishes the port's own metrics for
-the port's own codepoints into the records the shipped fonts leave empty, in
-memory, at the same moment and scale as `ui_text_scale.c`'s pass. Metrics
-only -- no UVs. The label then composes exactly as designed: left cap at
-14.933, five middles advancing to 31.822, five rewinds stepping back to
-20.622, `"Enter"` over the top from 16.356 to 43.556, right cap at 51.200.
+The first native picture placed the keycap one full ascent too low. The cause
+was not the matrix or a missing positional offset: `GL_BASELINE` (`glyph+0x08`)
+was left zero when the port published width, height and advance. The retail
+font's scaled modal baseline is **42** in the verified run. The runtime now
+copies that evidenced value into each otherwise-empty private record and
+refuses a font with no non-zero modal baseline. It is font-owned layout data,
+not a positional constant guessed for this screenshot.
 
-This is written rather than the port laying the run out itself because the
-run is RIGHT-ANCHORED: truncating the label from 17 to 13 to 12 wchars moved
-its first quad from 19.022 to 39.289 to 46.756. `arg3` was confirmed as the
-pen control by perturbation (+100 shifted every quad by exactly
-`100 * 0.177778`), not by arithmetic on a frame.
+## Withdrawn text-space probe
 
-**Harvest.** `prompt_glyph_draw.c` intercepts `FUN_005ee400`, matches each
-quad to its wchar, and records the ones belonging to a port codepoint with
-the port atlas's UVs instead of emitting them. The wchar cursor replicates
-the drawer's own skips and the run CHECKS the model rather than trusting it:
-5,661 quads predicted, 5,661 produced, 0 desync. Two bugs the running found:
-suppressing the body without honouring `RET 0x20` left 32 bytes of arguments
-on the guest stack and crashed the run, and the harvest is a FRAME's worth,
-so `gpu_frame_begin` resets it.
-
-**The draw. WITHDRAWN: "the port cannot draw the result itself" was not
-established.** `fa2ace8` recorded that the engine's text space never reaches
-D3D8 -- 10,815 draws scanned while a prompt was harvested, 366,392 vertices
-compared, 0 unreadable, no vertex within 57 units of a known text corner --
-and concluded the port must instead smuggle its quads through the engine's
-emitter with a sentinel UV and split the draw in the D3D8 layer.
+**"The port cannot draw the result itself" was not established.**
+`fa2ace8` recorded that the engine's text space never reaches D3D8 -- 10,815
+draws scanned while a prompt was harvested, 366,392 vertices compared, 0
+unreadable, no vertex within 57 units of a known text corner -- and concluded
+the port must smuggle its quads through the engine's emitter with a sentinel
+UV and split the draw in the D3D8 layer.
 
 That negative is not trustworthy and the conclusion is withdrawn. Two defects,
 both readable in the deleted probe
@@ -306,36 +321,33 @@ both readable in the deleted probe
    projection). If `FUN_005840a0` leaves coordinates in text space and the mvp
    does the work, a raw comparison could not have seen it either way.
 
-So the question is OPEN, not answered: whether the harvested coordinates reach
-the vertex stream is unknown. What IS known is that the probe could not have
-produced a positive, which makes its negative worth nothing. Re-run it with no
-vertex cap and with the draw's own `mvp` applied before concluding anything.
-Recorded as I070, distrusted.
+The probe could not have produced a positive, which makes its negative worth
+nothing. Recorded as I070, distrusted. The native path above answered the
+actual ownership question at a better boundary: it captures the engine's
+converted matrices before D3D8 lowering and renders the same text plane.
 
 The sentinel-UV plan built on that negative is dropped for a second and larger
 reason: it is a bandaid, and it lives entirely inside the layer this port is
 now committed to deleting (`../strategy.md`, "Removing the D3D8 seam").
-Encoding an atlas index in a UV float to smuggle it past a layer that
-destroyed the intent is not a fix. The port's own screen-space draw path
-already exists and is proved at the pixel level
-(`src/d3d8/d3d8_screen_space_test.c`, `GpuDraw.pretransformed`), so the route
-to try is the port issuing its own `GpuDraw` bound to its own atlas after the
-UI pass -- which needs the mapping above, honestly measured.
+Encoding an atlas index in a UV float to smuggle it through D3D8 is not a fix.
+The verified native route never encodes such a sentinel and never splits a
+lowered D3D8 draw.
 
-### What is still open
+### What remains
 
-The measurer, `FUN_00597c90`, still answers with the untouched font record's
-width for our codepoints, so layout gives them zero advance until step 3 of
-the plan overrides it. Nothing has been drawn yet: the port atlas
-(`tools/render_prompt_glyphs.py` -> `src/recomp/gen/prompt_glyph_atlas.h`) is
-generated and selftested but still has no consumer.
+Prompt SVGs prove one native 2D/UI slice, not the whole 2D renderer. Stock
+ASCII, panels, sprites, batching, render-state policy and the other libIGGfx UI
+draws still use the recompiled engine and D3D8 host. The broader work is to
+move those semantic 2D owners across the same native boundary, verify their
+output, and delete each D3D8 path only when its final caller is gone. See
+`../strategy.md`, "Removing the D3D8 seam".
 
 ## Facts that killed the earlier plans, recorded so they stay dead
 
 * The derived font pack (`tools/make_pad_font.py` + `X2_ASSETS`) WORKS
   (C219, issues #87/#91) but is an asset edit standing in for a port feature:
-  per-tier, per-localisation work inside a copy of shipped data. Replaced by
-  the renderer seam above; kept runnable until the replacement draws.
+  per-tier, per-localisation work inside a copy of shipped data. The native
+  renderer path above now draws the replacement directly from the SVG atlas.
 * In-memory atlas compositing (`prompt_glyphs_runtime.c`, removed today)
   hooked the font loader to find the atlas igImage behind the font record.
   Besides being font-mediated, its stage-one lookup never found anything:

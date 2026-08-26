@@ -15,7 +15,7 @@
 
 #include "guest_heap.h"
 #include "pad_glyph_codes.h"
-#include "prompt_glyph_pack.h"
+#include "prompt_glyphs.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -97,6 +97,14 @@ static int pad_glyph_byte(uint8_t value)
     return value >= X2_PAD_GLYPH_FIRST && value <= X2_PAD_GLYPH_LAST;
 }
 
+static int keycap_glyphs_available(void)
+{
+    return x2_prompt_glyph_available(X2_KEYCAP_GLYPH_LEFT) &&
+           x2_prompt_glyph_available(X2_KEYCAP_GLYPH_MIDDLE) &&
+           x2_prompt_glyph_available(X2_KEYCAP_GLYPH_REWIND) &&
+           x2_prompt_glyph_available(X2_KEYCAP_GLYPH_RIGHT);
+}
+
 enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
                                            uint8_t *output, size_t capacity)
 {
@@ -107,13 +115,15 @@ enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
     length = strlen((const char *)input);
     if (length == 3u && input[0] == '[' && pad_glyph_byte(input[1]) &&
         input[2] == ']') {
-        if (capacity < 2u) return PROMPT_LABEL_UNCHANGED;
+        if (capacity < 2u || !x2_prompt_glyph_available(input[1]))
+            return PROMPT_LABEL_UNCHANGED;
         output[0] = input[1];
         output[1] = 0;
         return PROMPT_LABEL_PAD_GLYPH;
     }
     if (length < 3u || input[0] != '[' || input[length - 1u] != ']')
         return PROMPT_LABEL_UNCHANGED;
+    if (!keycap_glyphs_available()) return PROMPT_LABEL_UNCHANGED;
     name_length = length - 2u;
     units = name_length;
     if (name_length > 63u ||
@@ -152,7 +162,7 @@ void x2_override_00619e30(CPU *C)
     note_caller(RD32(C->esp));
     fn_XMen2_00619e30(C);
     out = C->eax;
-    if (!out || !prompt_glyph_pack_enabled()) {
+    if (!out || !x2_prompt_glyphs_enabled()) {
         g_unchanged++;
         return;
     }

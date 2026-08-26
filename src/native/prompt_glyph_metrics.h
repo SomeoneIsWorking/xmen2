@@ -10,7 +10,8 @@
    drawer still has nothing to sample -- the pixels come from the port. */
 void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale);
 
-/* Design-space cell for a prompt codepoint, or NULL if it is not ours. */
+/* Design-space cell for an available private prompt codepoint, or NULL when
+   it is outside the atlas or any loaded retail font already owns the byte. */
 const struct x2_prompt_cell *x2_prompt_glyph_cell(uint16_t codepoint);
 
 void x2_prompt_glyph_metrics_report(void);

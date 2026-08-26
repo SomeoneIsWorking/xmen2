@@ -12,29 +12,34 @@ A static-recompilation port of **X-Men Legends II: Rise of Apocalypse** (2005 PC
 build) to native C. The x86-32 machine code of `XMen2.exe` + the `libIG*.dll`
 Alchemy engine DLLs is translated mechanically to C, so the game runs early; then
 subsystems are replaced with hand-written native code while the rest keeps
-working. `README.md` states the goal and the three shipped features;
+working. `docs/project-goals.md` owns the durable outcomes,
+`docs/project-state.md` owns factual capability coverage, and
 `docs/strategy.md` states why recomp and why the PC build (the Xbox path in
 `xbox/` is real, kept, but not the live front).
 
 ## Start here, before touching anything
 
-Three in-repo registries answer one question each. Consult them at the START of a
-task; update them in the SAME commit that changes a subsystem.
+The project-information entry point queries every in-repo authority. Consult it
+at the START of a task; update the owning authority in the SAME commit that
+changes a subsystem.
 
 ```sh
-python3 tools/info.py brief <words>     # claims (what's proven + its falsifier) + instruments (which tools can be trusted)
-python3 tools/re_frontier.py next       # the next RE-ready step;  `hacks` = the debt list
-python3 tools/catalog.py search <symptom>   # docs/issues/ — bugs and dead ends already hit
+uv run --frozen python tools/info.py brief <words>
 ```
 
-Those three are SHIMS. The tools live in the `re-harness` repo, shared with
+The registry commands under `tools/` are SHIMS. Their implementations live in
+the `re-harness` repo, shared with
 every port in the tree (nine forked copies of `info.py` had drifted into seven
 versions); the DATA they read stays here. `tools/shared_dir.py` is the one place
 a shared repo is located, and it refuses naming every path it tried rather than
 falling back to a vendored copy.
 
-- `docs/roadmap.md` — where the port is GOING, and how far each goal got.
-- `docs/codemap.md` — what exists, where, and its honest status per subsystem.
+- `docs/project-goals.md` — epic outcomes, constraints and non-goals.
+- `docs/project-state.md` — verified/partial/blocked/missing capability coverage
+  and the one current focus.
+- `docs/codemap.md` — subsystem ownership and placement only.
+- `docs/issues/` — atomic tasks, bugs, blockers, findings and dead ends.
+- `docs/re-frontier.md` — the ordered binary/asset-grounded RE dependency chain.
 - `docs/info/claims/` — each claim carries the observation that would falsify it.
   `info.py claim check` detects rot mechanically (has the cited code changed?).
 - `docs/info/instruments/` — a tool that lied is recorded here. Several have.
@@ -315,8 +320,9 @@ logged defect.
   named for its game-code subsystem (`startup.c` for boot/run-control,
   `movie.c` for the media decoder, `reportbox.c` for the error dialog,
   `conversation.c` for the conversation manager, the `dinput_*`/`pad_glyphs.c`/
-  `xbox_defaults.c` files for input, and `prompt_labels.c` plus
-  `prompt_glyph_pack.c` for prompt presentation), NOT in a
+  `xbox_defaults.c` files for input, `prompt_labels.c` for prompt composition,
+  `prompt_glyph_batch.c` for the Alchemy text-batch seam, and
+  `gpu_prompt_glyphs.c` for prompt pixels), NOT in a
   central `overrides.c` (abolished 2026-08-16). An override declares itself
   where it lives, with `x86_register_override("<module>.dll", 0x…, fn)` beside
   its implementation; the emitter scans `src/native/*.c` for those calls and

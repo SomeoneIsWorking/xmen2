@@ -123,10 +123,11 @@ deleted from the top down as that happens.**
 The reason is the same one that chose recomp over Wine: *ownership*. A D3D8
 emulator is the one part of this tree that is not ownership — it is a
 compatibility shim reconstructing intent that the engine had a moment earlier
-and threw away. That cost is not theoretical. Stage two of the prompt-glyph
-work is stuck precisely there: by the time a glyph reaches D3D8 the engine's
-text space is gone, and the plan built on that was to encode an atlas index in
-a UV float to smuggle it past the layer that lost it (`RE/text.md`).
+and threw away. The retired prompt-glyph plan demonstrated the cost: it would
+have encoded an atlas index in a UV float and split a lowered D3D8 draw. The
+native replacement instead brackets libIGGfx's semantic text draw, keeps the
+engine's own finalized transform, and submits the SVG before lowering. That is
+the ownership boundary this strategy means (`RE/text.md`).
 
 ### What the seam actually carries, measured
 
@@ -155,11 +156,28 @@ the only working path. So: port a renderer subsystem natively, watch its D3D8
 call sites go to zero, and delete what is then unreachable. Nothing is deleted
 speculatively.
 
-**First target: the 2D/UI draw path.** It is the one subsystem that is
-separable today — screen-space, unlit, unshaded, no lighting state and no
-vertex shader — it is where the seam is actively blocking work, and the port
-already has a proved screen-space draw (`d3d8_screen_space_test.c`,
-`GpuDraw.pretransformed`).
+### First native slice: SVG prompts
+
+The first 2D/UI slice now crosses above D3D8. The exe's `FUN_005ee400`
+supplies the engine-laid-out prompt rectangles. The port brackets
+`Gap::Gfx::igDxVisualContext::drawNonIndexed` at libIGGfx `0x100352d0`,
+super-calls its nested `updateContextState` at `0x10034e60`, takes the
+engine-converted world/view/projection from `computeMatrix_Dx` at `0x1003ec10`,
+and submits its own RGBA SVG atlas before the stock ASCII. The port retains a
+collapsed retail emitter call for each native glyph so even a one-glyph
+controller label reaches Alchemy's own finalizer. Windowless, silent,
+unbounded runs verify both shapes: 1,188 keycap quads in 99 batches around
+stock `ENTER`, and 1,073 pure controller icons through 1,073 matching nested
+finalizers with zero refusal, desync, or orphan counts. The latter capture
+shows the native A icon beside `CONTINUE...`.
+
+This proves the direction, not completion of the 2D renderer. The prompt path
+still deliberately consumes Alchemy's layout and transform, while stock ASCII,
+panels, sprites, batching and the other libIGGfx UI draws continue through the
+recompiled engine and D3D8 host. **The broader 2D/UI path remains the first
+subsystem target** because it is screen-space, unlit and unshaded. Each
+semantic owner moves natively, its old D3D8 call sites are measured to zero,
+and only then is that part of the compatibility layer deleted.
 
 ### The prior attempt, and why its verdict does not settle this
 

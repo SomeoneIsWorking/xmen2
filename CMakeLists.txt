@@ -61,8 +61,7 @@ endif()
 # layout README). Its viewers, dump tools and tests build from there.
 #
 # x2native itself links none of it, which is why this port needs no CMake
-# dependency on it at all -- only tools/make_pad_font.py reaches for its xmlb
-# module, through the one resolver in tools/alchemy_path.py.
+# dependency on it at all.
 
 enable_testing()
 
@@ -121,6 +120,17 @@ add_test(NAME structure
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_structure.py)
 add_test(NAME structure_selftest
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_structure.py --selftest)
+add_test(NAME project_state
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/project_state.py
+                 --root ${CMAKE_SOURCE_DIR})
+set_tests_properties(project_state PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME codemap
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/codemap.py
+                 check --map ${CMAKE_SOURCE_DIR}/docs/codemap.md
+                 src tools xbox patches)
+set_tests_properties(codemap PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(test_settings tests/test_settings.c src/config/settings.c
                src/config/input_assignments.c
@@ -172,7 +182,7 @@ target_include_directories(test_aspect_fit PRIVATE src/presentation)
 add_test(NAME aspect_fit COMMAND test_aspect_fit)
 
 add_executable(test_shadow_policy tests/test_shadow_policy.c
-               src/gpu/shadow_policy.c)
+               src/gpu/gpu_matrix.c src/gpu/shadow_policy.c)
 target_include_directories(test_shadow_policy PRIVATE src/gpu)
 target_link_libraries(test_shadow_policy PRIVATE m)
 add_test(NAME shadow_policy COMMAND test_shadow_policy)
@@ -277,6 +287,55 @@ add_custom_command(
     COMMENT "x2native: generating button-glyph codepoints")
 add_custom_target(x2_pad_glyph_header DEPENDS "${X2_PAD_GLYPH_HEADER}")
 
+# The RGBA prompt atlas is generated from the shared SVG authority. Resolve
+# that complete input set at configure time so a plain `cmake --build` sees
+# changes to the art itself, not only changes to this repository's generator.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py" --print-inputs
+    RESULT_VARIABLE X2_PROMPT_GLYPH_INPUTS_RESULT
+    OUTPUT_VARIABLE X2_PROMPT_GLYPH_INPUTS_TEXT
+    ERROR_VARIABLE X2_PROMPT_GLYPH_INPUTS_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT X2_PROMPT_GLYPH_INPUTS_RESULT EQUAL 0)
+    message(FATAL_ERROR
+        "Refusing prompt-atlas configuration: shared SVG input resolution failed:\n"
+        "${X2_PROMPT_GLYPH_INPUTS_ERROR}")
+endif()
+string(REPLACE "\r\n" "\n" X2_PROMPT_GLYPH_INPUTS_TEXT
+       "${X2_PROMPT_GLYPH_INPUTS_TEXT}")
+string(REPLACE "\n" ";" X2_PROMPT_GLYPH_INPUTS
+       "${X2_PROMPT_GLYPH_INPUTS_TEXT}")
+list(FILTER X2_PROMPT_GLYPH_INPUTS EXCLUDE REGEX "^$")
+list(LENGTH X2_PROMPT_GLYPH_INPUTS X2_PROMPT_GLYPH_INPUT_COUNT)
+if(X2_PROMPT_GLYPH_INPUT_COUNT LESS 1)
+    message(FATAL_ERROR
+        "Refusing prompt-atlas configuration: resolved 0 shared atlas inputs")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py"
+             "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+             "${CMAKE_SOURCE_DIR}/tools/shared_dir.py"
+             "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
+             ${X2_PROMPT_GLYPH_INPUTS})
+
+set(X2_PROMPT_GLYPH_ATLAS_HEADER
+    "${CMAKE_SOURCE_DIR}/src/recomp/gen/prompt_glyph_atlas.h")
+add_custom_command(
+    OUTPUT "${X2_PROMPT_GLYPH_ATLAS_HEADER}"
+    COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py"
+            "${X2_PROMPT_GLYPH_ATLAS_HEADER}"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py"
+            "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+            "${CMAKE_SOURCE_DIR}/tools/shared_dir.py"
+            "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
+            ${X2_PROMPT_GLYPH_INPUTS}
+    COMMENT "x2native: rasterising shared prompt SVGs into the native RGBA atlas"
+    VERBATIM)
+add_custom_target(x2_prompt_glyph_atlas
+                  DEPENDS "${X2_PROMPT_GLYPH_ATLAS_HEADER}")
+
 
 # The gamepad inventory, against an SDL virtual pad. dinput_pad.c depends on
 # nothing in the guest runtime -- it is SDL on one side and plain values on the
@@ -290,7 +349,7 @@ target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
 add_test(NAME dinput_pad COMMAND test_dinput_pad)
 
 add_executable(test_pad_glyphs tests/test_pad_glyphs.c
-               src/native/pad_glyphs.c src/native/prompt_glyph_pack.c
+               src/native/pad_glyphs.c src/native/prompt_glyphs.c
                src/native/prompt_labels.c src/native/input_binding_sets.c
                src/native/input_bindings.c
                tests/native_stubs.c)
@@ -304,17 +363,45 @@ add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 # The glyph-loop detector, against both classes. On the real run it has only
 # ever answered zero; this is where it is made to answer one.
 add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
-               src/native/prompt_glyph_draw.c src/native/prompt_glyph_pack.c
+               src/native/prompt_glyph_draw.c src/native/prompt_glyphs.c
+               src/native/prompt_glyph_atlas.c
                src/native/prompt_glyph_metrics.c
                src/native/prompt_glyph_quads.c
                tests/native_stubs.c)
-add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header)
+add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header
+                 x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_glyph_draw
                            PRIVATE src/recomp src/native src/recomp/gen
                                    ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE)
 target_link_libraries(test_prompt_glyph_draw PRIVATE m)
 add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
+
+add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
+               src/native/prompt_glyph_metrics.c
+               src/native/prompt_glyphs.c
+               src/native/prompt_glyph_atlas.c tests/native_stubs.c)
+add_dependencies(test_prompt_glyph_metrics x2_pad_glyph_header
+                 x2_prompt_glyph_atlas)
+target_include_directories(test_prompt_glyph_metrics
+                           PRIVATE src/recomp src/native src/recomp/gen
+                                   ${CMAKE_BINARY_DIR})
+target_compile_definitions(test_prompt_glyph_metrics PRIVATE _GNU_SOURCE)
+target_link_libraries(test_prompt_glyph_metrics PRIVATE m)
+add_test(NAME prompt_glyph_metrics COMMAND test_prompt_glyph_metrics)
+
+add_executable(test_prompt_glyph_batch tests/test_prompt_glyph_batch.c
+               src/native/prompt_glyph_batch.c tests/native_stubs.c)
+target_include_directories(test_prompt_glyph_batch
+                           PRIVATE src/recomp src/native src/gpu)
+add_test(NAME prompt_glyph_batch COMMAND test_prompt_glyph_batch)
+
+add_executable(test_ui_transform tests/test_ui_transform.c
+               src/native/ui_transform.c src/gpu/gpu_matrix.c
+               tests/native_stubs.c)
+target_include_directories(test_ui_transform
+                           PRIVATE src/recomp src/native src/gpu)
+add_test(NAME ui_transform COMMAND test_ui_transform)
 
 add_executable(test_dialog_prompts tests/test_dialog_prompts.c
                src/native/dialog_prompts.c tests/native_stubs.c)
@@ -625,10 +712,6 @@ add_test(NAME window_capture_wiring
          COMMAND ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tests/test_window_capture_wiring.py)
 
-add_test(NAME pad_font
-         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tools/make_pad_font.py --selftest)
-
 add_test(NAME pad_glyph_manifest
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py --selftest)
@@ -646,7 +729,8 @@ set_tests_properties(font_tier_ratio PROPERTIES
 
 add_test(NAME prompt_glyph_atlas
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py --selftest)
+                 ${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py --selftest
+                 --cc ${CMAKE_C_COMPILER})
 set_tests_properties(prompt_glyph_atlas PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
@@ -895,8 +979,11 @@ if(X2_MODULE_HAVE)
         src/native/ui_text_scale.c
         src/native/text_caller_probe.c
         src/native/prompt_glyph_draw.c
+        src/native/prompt_glyph_atlas.c
+        src/native/prompt_glyph_batch.c
         src/native/prompt_glyph_metrics.c
         src/native/prompt_glyph_quads.c
+        src/native/ui_transform.c
         src/input/binding_rows.c
         src/input/controller_hotplug.c
         src/input/controller_instance.c
@@ -945,7 +1032,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_pad_virtual.c
         src/native/dialog_prompts.c
         src/native/pad_glyphs.c
-        src/native/prompt_glyph_pack.c
+        src/native/prompt_glyphs.c
         src/native/prompt_labels.c
         src/native/input_binding_sets.c
         src/native/input_bindings.c
@@ -1001,6 +1088,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_stateblock.c
         src/d3d8/d3d8_d3d8.c
         src/d3d8/d3d8_device.c
+        src/d3d8/d3d8_lightlog.c
         src/d3d8/d3d8_surface.c
         src/d3d8/d3d8_resource.c
         src/d3d8/d3d8_texture_luma.c
@@ -1023,7 +1111,9 @@ if(X2_MODULE_HAVE)
         src/gpu/gpu_frame_submit.c
         src/gpu/gpu_present.c
         src/gpu/gpu_present_selftest.c
+        src/gpu/gpu_prompt_glyphs.c
         src/gpu/gpu_host_selftest.c
+        src/gpu/gpu_matrix.c
         src/gpu/gpu_upload.c
         src/gpu/gpu_upload_selftest.c
         src/gpu/gpu_selftest.c
@@ -1032,7 +1122,8 @@ if(X2_MODULE_HAVE)
         
         ${X2_MODULE_SRCS}
     )
-    add_dependencies(x2native x2_shaders x2_pad_glyph_header)
+    add_dependencies(x2native x2_shaders x2_pad_glyph_header
+                     x2_prompt_glyph_atlas)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
                                                 src/config src/presentation src/ui
                                                 src/input src/save src/audio

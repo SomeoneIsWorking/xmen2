@@ -12,7 +12,7 @@
  *                       down, up, and each gets its OWN glyph
  *
  * This port replaces only those names for a live Xbox-family SDL device and
- * only when the generated font pack is active. Every other case super-calls
+ * only when native prompt rendering is active. Every other case super-calls
  * the original recompiled body, keeping keyboard, PlayStation, generic-pad,
  * stick-click and unknown-code names faithful.
  *
@@ -37,7 +37,7 @@
 #include "dinput_pad.h"
 #include "dinput8_controller_slots.h"
 #include "pad_glyph_codes.h"
-#include "prompt_glyph_pack.h"
+#include "prompt_glyphs.h"
 #include "prompt_labels.h"
 #include "player_input.h"
 #include "x86rt.h"
@@ -146,7 +146,8 @@ void x2_override_006281f0(CPU *C)
 
     glyph = pad_glyph_code(code);
     host_pad = host_pad_for_kind(kind);
-    if (!prompt_glyph_pack_enabled() || host_pad < 0 || !glyph ||
+    if (!x2_prompt_glyphs_enabled() || host_pad < 0 || !glyph ||
+        !x2_prompt_glyph_available(glyph) ||
         !dinput_pad_uses_xbox_glyphs(host_pad) || !(out = name_buffer())) {
         g_deferred++;
         fn_XMen2_006281f0(C);
@@ -199,7 +200,7 @@ void x2_override_006294b0(CPU *C)
     uint32_t kind, code;
 
     g_rows_asked++;
-    if (!prompt_glyph_pack_enabled() || row >= INPUT_BINDING_ROWS ||
+    if (!x2_prompt_glyphs_enabled() || row >= INPUT_BINDING_ROWS ||
         !row_pad_binding(object, row, &kind, &code)) {
         g_rows_no_pad++;
         fn_XMen2_006294b0(C);
@@ -223,9 +224,9 @@ void pad_glyphs_report(void)
 {
     static int done;
     if (done++) return;
-    printf("  Xbox prompt names: %lu glyph(s), %lu original name(s); font "
-           "pack %s\n", g_mapped, g_deferred,
-           prompt_glyph_pack_enabled() ? "enabled" : "disabled");
+    printf("  Xbox prompt names: %lu glyph(s), %lu original name(s); native "
+           "prompt rendering %s\n", g_mapped, g_deferred,
+           x2_prompt_glyphs_enabled() ? "enabled" : "disabled");
     /* With the denominator, because "0 glyphs" means one thing when the label
        was never built at all and another when it was built 900 times and every
        row named the keyboard. */
