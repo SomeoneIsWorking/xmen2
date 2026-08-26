@@ -39,7 +39,10 @@
 #include "prompt_glyph_draw.h"
 
 #include "pad_glyph_codes.h"
+#include "prompt_glyph_atlas.h"   /* GENERATED: the port's own cells */
+#include "prompt_glyph_metrics.h"
 #include "prompt_glyph_pack.h"
+#include "prompt_glyph_quads.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -210,9 +213,85 @@ static void dump_args(const CPU *C)
 static int g_watch_quads;
 static unsigned g_quads_dumped;
 
-void fn_XMen2_005ee400(CPU *C);
+/* Which wchar the emitter is on.
+ *
+ * FUN_005ee400 does not say which character it is drawing, so the override
+ * walks the same string in the same order and consumes one quad per wchar
+ * THAT EMITS ONE. The exceptions are the drawer's own, read out of the body
+ * (docs/RE/text.md): a space and a tab advance the pen without drawing,
+ * colour tokens (1000..1999) and absolute pen sets (>=3000) draw nothing,
+ * and only wchar < 256 reaches the glyph path at all.
+ *
+ * If that model is wrong the cursor drifts and the wrong glyph is
+ * intercepted, so the run CHECKS it: the number of quads the emitter
+ * produced is compared against the number this walk predicted, and a
+ * mismatch is reported rather than absorbed. */
+static uint32_t g_cursor_string;
+static unsigned g_cursor_index;
+static unsigned long g_intercepted, g_emitted_seen, g_predicted, g_desync;
+static unsigned long g_emitted_seen_before;
 
-static void x2_probe_005ee400(CPU *C)
+static int wchar_emits_quad(uint16_t c)
+{
+    if (c >= 256u) return 0;          /* colour tokens, pen sets, markup */
+    if (c == ' ' || c == '\t') return 0;   /* advance without drawing */
+    return 1;
+}
+
+/* The next wchar the emitter is about to draw, advancing the cursor. */
+static uint16_t cursor_take(void)
+{
+    while (g_cursor_string) {
+        uint16_t c = RD16(g_cursor_string + (uint32_t)g_cursor_index * 2u);
+        if (!c) return 0;
+        g_cursor_index++;
+        if (wchar_emits_quad(c)) return c;
+    }
+    return 0;
+}
+
+void fn_XMen2_005ee400(CPU *C);
+static void x2_probe_005ee400_dump(CPU *C);
+
+/* The interception. While one of our labels is being drawn, each quad is
+ * matched to its wchar; a quad belonging to one of the port's codepoints is
+ * RECORDED with the port atlas's UVs and then NOT emitted, so the engine
+ * never draws our codepoint out of its own font atlas. Every other quad
+ * super-calls untouched. */
+static void x2_override_005ee400(CPU *C)
+{
+    if (g_cursor_string) {
+        uint16_t c = cursor_take();
+        const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(c);
+        g_emitted_seen++;
+        if (cell) {
+            struct X2PromptQuad q;
+            uint32_t a[8];
+            unsigned i;
+            for (i = 0; i < 8u; i++)
+                a[i] = RD32(C->esp + (uint32_t)(i + 1u) * 4u);
+            memcpy(&q.x0, &a[0], 4); memcpy(&q.y0, &a[1], 4);
+            memcpy(&q.x1, &a[2], 4); memcpy(&q.y1, &a[3], 4);
+            q.u0 = cell->u0; q.v0 = cell->v0;
+            q.u1 = cell->u1; q.v1 = cell->v1;
+            q.codepoint = c;
+            x2_prompt_quads_add(&q);
+            g_intercepted++;
+            /* Suppressed on purpose -- but the ABI still has to be honoured.
+               FUN_005ee400 is `RET 0x20`: the CALLEE pops the return address
+               and its eight dword arguments. Returning without running the
+               body has to do exactly that, or the guest stack is left 32
+               bytes deep in arguments and the caller unwinds into garbage.
+               (It does; skipping the pop crashed the run.) */
+            C->esp += 4u + 0x20u;
+            return;
+        }
+    }
+    x2_probe_005ee400_dump(C);
+    fn_XMen2_005ee400(C);
+}
+
+static void x2_probe_005ee400_dump(CPU *C)
 {
     if (g_watch_quads && g_quads_dumped < 64u) {
         unsigned a;
@@ -245,7 +324,6 @@ static void x2_probe_005ee400(CPU *C)
             }
         }
     }
-    fn_XMen2_005ee400(C);
 }
 
 void x2_override_005ee780(CPU *C)
@@ -287,7 +365,75 @@ void x2_override_005ee780(CPU *C)
         if (non_ascii) g_with_non_ascii++;
         if (first_sighting(wide_hash(s, NULL))) log_example(s);
     }
-    /* Stage one changes no pixels: the stock body runs on every string. */
+    /* PEN PROBE. Reasoning back from the emitted quads said the pen runs
+       107 -> 300 while arg3 is 298, which cannot both be true of "the pen
+       starts at *(arg6) + arg3". Rather than do more arithmetic on a frame
+       -- the thing that has already been wrong twice here -- perturb the
+       argument and watch what moves: X2_GLYPH_PEN=<int> adds that many pen
+       units to arg3 for prompt-carrying strings only. If arg3 is the pen
+       origin, every emitted quad shifts by exactly delta * the position
+       scale; if nothing moves, it is not the origin. */
+    if (g_watch_quads) {
+        const char *delta = getenv("X2_GLYPH_PEN");
+        if (delta && *delta) {
+            uint32_t slot = C->esp + 0x0cu;
+            int32_t was = (int32_t)RD32(slot);
+            int32_t now = was + (int32_t)strtol(delta, NULL, 0);
+            WR32(slot, (uint32_t)now);
+            fprintf(stderr, "PEN PROBE: arg3 %d -> %d\n", was, now);
+        }
+    }
+    /* TRUNCATION PROBE -- the question segmentation actually turns on.
+       Splitting a string means NUL-terminating a prefix in place and drawing
+       it. That is safe only if the run's origin does NOT depend on the
+       string's own length. If the loop (or its caller's cached measurement)
+       centres the text, a shorter segment starts somewhere else and every
+       segment after it is misplaced. X2_GLYPH_TRUNC=<n> cuts the string to n
+       wchars for the draw and puts the wchar back afterwards. */
+    if (g_watch_quads) {
+        const char *cut = getenv("X2_GLYPH_TRUNC");
+        if (cut && *cut) {
+            unsigned n = (unsigned)strtoul(cut, NULL, 0);
+            uint32_t at = s + (uint32_t)n * 2u;
+            uint16_t saved = RD16(at);
+            fprintf(stderr, "TRUNC PROBE: cutting to %u wchar(s) "
+                            "(dropping 0x%04x)\n", n, saved);
+            WR16(at, 0);
+            g_super_called++;
+            fn_XMen2_005ee780(C);
+            WR16(at, saved);
+            g_watch_quads = 0;
+            return;
+        }
+    }
+    /* The cursor is armed only for a string carrying our codepoints, so
+       every other string's quads take the untouched path. */
+    if (prompt_glyph_pack_enabled() && s && x2_string_has_prompt_glyph(s, MAX_WALK)) {
+        unsigned k, predicted = 0;
+        for (k = 0; k < MAX_WALK; k++) {
+            uint16_t c = RD16(s + (uint32_t)k * 2u);
+            if (!c) break;
+            if (wchar_emits_quad(c)) predicted++;
+        }
+        g_predicted += predicted;
+        g_emitted_seen_before = g_emitted_seen;
+        g_cursor_string = s;
+        g_cursor_index = 0;
+        g_super_called++;
+        fn_XMen2_005ee780(C);
+        g_cursor_string = 0;
+        if (g_emitted_seen - g_emitted_seen_before != predicted) {
+            g_desync++;
+            fprintf(stderr, "PROMPT DRAW: quad/wchar DESYNC -- predicted %u "
+                            "quad(s) for this string, the emitter produced "
+                            "%lu. The cursor model is wrong, so an "
+                            "interception may have hit the wrong glyph.\n",
+                    predicted,
+                    g_emitted_seen - g_emitted_seen_before);
+        }
+        g_watch_quads = 0;
+        return;
+    }
     g_super_called++;
     fn_XMen2_005ee780(C);
     g_watch_quads = 0;
@@ -297,8 +443,7 @@ __attribute__((constructor))
 static void x2_prompt_draw_register(void)
 {
     x86_register_override("XMen2.exe", 0x005ee780, x2_override_005ee780);
-    if (getenv("X2_GLYPH_ARGS"))
-        x86_register_override("XMen2.exe", 0x005ee400, x2_probe_005ee400);
+    x86_register_override("XMen2.exe", 0x005ee400, x2_override_005ee400);
 }
 
 void x2_prompt_draw_report(void)
@@ -310,6 +455,13 @@ void x2_prompt_draw_report(void)
             g_strings, g_with_prompts, X2_PROMPT_GLYPH_FIRST,
             X2_PROMPT_GLYPH_LAST, g_prompt_codepoints, g_with_non_ascii,
             g_super_called);
+    fprintf(stderr, "PROMPT DRAW: %lu quad(s) intercepted for the port out of "
+            "%lu the emitter produced for our strings (%lu predicted); "
+            "%lu desync(s)\n",
+            g_intercepted, g_emitted_seen, g_predicted, g_desync);
+    if (g_desync)
+        fprintf(stderr, "PROMPT DRAW: the quad/wchar cursor DESYNCED -- the "
+                        "harvested rectangles are not trustworthy.\n");
     fprintf(stderr, "PROMPT DRAW: %u distinct string(s) dumped%s\n",
             g_distinct,
             g_distinct_dropped ? " (SLOTS FULL -- later distinct strings "
