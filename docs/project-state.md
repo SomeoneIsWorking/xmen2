@@ -203,7 +203,12 @@ bodies alive for super-calls and A/B checks, and direct and indirect calls route
 through the same override table (C209). Native owners now replace selected
 boot, input, save, media, UI, and prompt-rendering behavior. C270 measures the
 current engine-to-D3D8 dialect, and S004 proves one semantic rendering slice can
-be moved above it without inventing a lowered-D3D classifier.
+be moved above it without inventing a lowered-D3D classifier. The in-game
+cutscene player also ports the BehavEd timed-fiber and title timed-event pumps,
+retains their ordinary strict-deadline behavior, and completes only causally
+owned work synchronously. The visible-record and camera-only tutorial gates
+pass 9/9 and 8/8 with control restored and no guest frame or clock advance;
+[`RE/cutscene_player.md`](RE/cutscene_player.md) records the binary chain.
 
 Gap: most of the Alchemy renderer and game remain mechanically recompiled.
 Stock 2D, scene traversal, materials, lighting, shadows, render targets, and

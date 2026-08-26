@@ -36,6 +36,7 @@ static struct {
 static int g_nnames;
 static unsigned long g_launches, g_failures, g_overflow;
 static char g_last[NAME_MAX_LEN];
+static uint32_t g_last_caller;
 static int g_live = -1;
 
 static int live(void)
@@ -80,6 +81,7 @@ void fn_XMen2_004a1320(CPU *C);
 void x2_override_004a1320(CPU *C)
 {
     char name[NAME_MAX_LEN];
+    uint32_t caller = RD32(C->esp);
     int ok;
 
     copy_guest_string(name, sizeof name, RD32(C->esp + 4u));
@@ -89,10 +91,13 @@ void x2_override_004a1320(CPU *C)
     g_launches++;
     if (!ok) g_failures++;
     snprintf(g_last, sizeof g_last, "%s", name);
+    g_last_caller = caller;
     record(name, ok);
     if (live())
-        fprintf(stderr, "SCRIPT: %-6s \"%s\" at frame %lu\n",
-                ok ? "launch" : "FAILED", name, gpu_frames_presented());
+        fprintf(stderr,
+                "SCRIPT: %-6s \"%s\" at frame %lu, caller 0x%08x\n",
+                ok ? "launch" : "FAILED", name, gpu_frames_presented(),
+                caller);
 }
 
 /*
@@ -187,6 +192,23 @@ void x2_override_0049f8c0(CPU *C)
         fprintf(stderr, "SCRIPT: lockControls at frame %lu (call #%lu)\n",
                 gpu_frames_presented(), g_lockcontrols);
     fn_XMen2_0049f8c0(C);
+}
+
+/* Spawner callback FUN_0048a7d0 is the evidenced boundary between an `act`
+ * command and the attached actor script it launches. It is indirect-only, so
+ * its live caller and arguments are part of the instrument rather than a
+ * guessed static ownership claim. */
+void fn_XMen2_0048a7d0(CPU *C);
+
+void x2_trace_0048a7d0(CPU *C)
+{
+    if (live())
+        fprintf(stderr,
+                "SCRIPT: spawner callback 0048a7d0 caller 0x%08x, self "
+                "0x%08x, args 0x%08x/0x%08x at frame %lu\n",
+                RD32(C->esp), C->ecx, RD32(C->esp + 4u),
+                RD32(C->esp + 8u), gpu_frames_presented());
+    fn_XMen2_0048a7d0(C);
 }
 
 /*
@@ -289,6 +311,7 @@ static void x2_script_trace_register_overrides(void)
     x86_register_override("XMen2.exe", 0x0049f8c0, x2_override_0049f8c0);
     x86_register_override("XMen2.exe", 0x0045c950, x2_override_0045c950);
     x86_register_override("XMen2.exe", 0x00455af0, x2_override_00455af0);
+    x86_register_override("XMen2.exe", 0x0048a7d0, x2_trace_0048a7d0);
 }
 
 void script_trace_report(void)
@@ -302,8 +325,8 @@ void script_trace_report(void)
         return;
     }
     printf("  scripts: %lu launch(es) over %d distinct name(s), %lu of which "
-           "failed to launch; last was \"%s\"\n",
-           g_launches, g_nnames, g_failures, g_last);
+           "failed to launch; last was \"%s\" from 0x%08x\n",
+           g_launches, g_nnames, g_failures, g_last, g_last_caller);
     for (i = 0; i < g_nnames; i++)
         printf("           %-52s %lu launch(es)%s, first at frame %lu\n",
                g_names[i].name, g_names[i].launches,

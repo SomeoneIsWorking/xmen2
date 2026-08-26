@@ -1,17 +1,17 @@
 /* The live input boundary for movies, retail cinematicStart, and gameplay-
- * authored conversation cutscenes.
+ * authored BehavEd cutscenes.
  *
  * XMen2.exe owns the behavior: movie-menu update 0x005ca110 consumes action
  * bit 19, while scripted-cinematic update 0x0059f1a0 consumes action bit 20.
  * FUN_00619c40 maps both to row 17 (Pause). This probe does not decide to
- * skip. Authored conversations use the production classifier reported below:
- * a deterministic authored response chain, plus camera/control state used to
- * carry one request across adjacent records without bypassing cleanup.
+ * skip. The production classifier reported below belongs to the BehavEd
+ * player. Conversation records are payloads of that player, never the owner.
  */
 #include "cutscene_skip_probe.h"
 
+#include "cutscene_player.h"
 #include "cutscene_skip_publication.h"
-#include "conversation_cutscene_skip.h"
+#include "conversation_player.h"
 #include "input_bindings.h"
 #include "rmlui_ui.h"
 #include "x86rt.h"
@@ -117,6 +117,63 @@ static void report_publication(char *out, size_t size, size_t *at,
            summary.readable, INPUT_BINDING_SETS);
 }
 
+static void report_player(CPU *cpu, char *out, size_t size, size_t *at)
+{
+    static const char *const controls[] = {
+        "unreadable", "locked", "released"
+    };
+    static const char *const conversations[] = {
+        "inactive", "waiting", "deterministic", "choice", "unreadable"
+    };
+    CutscenePlayerSnapshot player;
+    ConversationPlayerState conversation = conversation_player_state(cpu);
+    unsigned payload = conversation >= CONVERSATION_PLAYER_INACTIVE &&
+                               conversation <= CONVERSATION_PLAYER_CHOICE
+        ? (unsigned)conversation
+        : 4u;
+
+    cutscene_player_snapshot(cpu, &player);
+    append(out, size, at,
+           "Cutscene player: active %u sequence %u; %u owned BehavEd context(s)\n",
+           player.active, player.sequence, player.owned_contexts);
+    append(out, size, at,
+           "  input: %lu poll(s), %lu skip edge(s); policy: %u request(s), "
+           "%u invocation(s), %u completion(s)\n",
+           player.input_polls, player.input_edges, player.requests,
+           player.invocations, player.completions);
+    append(out, size, at,
+           "  work: %lu authored step(s) (%lu BehavEd, %lu event), "
+           "%lu conversation payload(s); "
+           "contexts: %lu allocation(s), %lu inherited, %lu freed\n",
+           player.authored_steps, player.behaved_steps, player.event_steps,
+           player.conversation_payloads,
+           player.allocations, player.inherited, player.freed);
+    append(out, size, at,
+           "  timed events: window %s owner 0x%08x, refused %u, "
+           "%lu insertion fault(s)\n",
+           player.event_window_active ? "active" : "inactive",
+           player.event_owner, player.event_refused,
+           player.event_insertion_faults);
+    append(out, size, at,
+           "                last event target 0x%08x descriptor 0x%08x\n",
+           player.last_event_target, player.last_event_descriptor);
+    append(out, size, at,
+           "  control release: %lu authored, %lu consumed on the private "
+           "cutscene timeline\n",
+           player.releases, player.private_releases);
+    append(out, size, at,
+           "  one-step invariant: %lu same-frame, %lu same-guest-time; "
+           "results completed/inactive/choice/no-progress/runaway/error "
+           "%lu/%lu/%lu/%lu/%lu/%lu\n",
+           player.same_frame, player.same_guest_time, player.results[0],
+           player.results[1], player.results[2], player.results[3],
+           player.results[4], player.results[5]);
+    append(out, size, at,
+           "  boundary: controls %s; conversation payload %s\n",
+           controls[player.control_state <= 2u ? player.control_state : 0u],
+           conversations[payload]);
+}
+
 size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
                                   uint32_t input_manager,
                                   char *out, size_t size)
@@ -162,10 +219,11 @@ size_t cutscene_skip_probe_report(CPU *cpu, unsigned controller,
     else
         append(out, size, &at,
                "  cinematic mask: UNREADABLE at input vtable +0x140\n");
-    at += conversation_cutscene_skip_probe(cpu, out + at, size - at);
+    report_player(cpu, out, size, &at);
     append(out, size, &at,
-           "  boundary rule: action 20 DOWN plus authored conversation yes "
-           "arms the response-chain skip. A branch blocks it; advances still "
-           "run retail response/chosen scripts and their cleanup.\n\n");
+           "  boundary rule: an action 20 edge asks the ported cutscene "
+           "player to finish its control-lock epoch. It drains only causally "
+           "owned timed events and BehavEd fibers; deterministic conversation "
+           "records are subordinate payloads and a branch refuses completion.\n\n");
     return at;
 }

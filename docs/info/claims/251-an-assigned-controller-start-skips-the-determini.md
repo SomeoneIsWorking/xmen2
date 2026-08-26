@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-22
 tags: cutscene,input,live
-depends: src/native/conversation.c#x2_override_0045d1a0, src/native/conversation_cutscene_skip.c#snapshot, src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_should_advance, src/native/conversation_cutscene_skip.c#conversation_cutscene_skip_observe_inactive, src/native/conversation_skip_policy.c#conversation_skip_policy_is_authored, src/native/conversation_skip_policy.c#conversation_skip_policy_update, src/input/player_input.c#x2_player_input_publish, src/native/cutscene_skip_probe.c#cutscene_skip_probe_report, src/native/script_runtime.c
+depends: src/native/cutscene_player.c#x2_override_004a00d0, src/native/cutscene_player.c#call_action_mask, src/input/player_input.c#x2_player_input_publish, src/native/cutscene_skip_probe.c#cutscene_skip_probe_report, src/native/cutscene_skip_publication.c#cutscene_skip_publication_classify
 reconfirmed: 2026-08-22
 verified_at: 2026-08-22 17:13:43
 ---
@@ -28,3 +28,11 @@ Reconfirmed after the final combined build: an assigned session-only controller 
 ## Re-confirmed 2026-08-22
 
 The tightened final classifier still admits the verified tutorial because the controller run's pre-input probe reported both camera ownership and controls lock; assigned Start still drove five retail advances, cleanup scripts, restored controls, and an idle latch.
+
+## Mechanism replaced 2026-08-27
+
+Issue #122 deleted the conversation latch and moved action 20 to the cutscene
+player. The assigned-controller observation above remains the positive evidence
+for Start publication and action-20 delivery; the new player consumes the same
+action mask as Escape. A current assigned-controller end-to-end rerun would be
+required before citing this claim as current live evidence for the new player.
