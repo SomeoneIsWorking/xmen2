@@ -5,8 +5,9 @@ status: holds
 created: 2026-08-14
 tags: launcher,native,sdl3
 depends: run.sh, bootstrap.py, tools/run.py, src/native/x2native_options.c
-reconfirmed: 2026-08-26
-verified_at: 2026-08-24 22:11:46
+reconfirmed: 2026-08-27
+verified_at: 2026-08-27 02:19:24
+falsified_on: 2026-08-27
 ---
 
 ## Claim
@@ -28,3 +29,13 @@ Cold X2_MAX_FRAMES=10 ./run.sh recreated uv/shared/generated/build inputs, linke
 ## Re-confirmed 2026-08-26
 
 Repository-local discovery selected the real `X-Men Legends II/XMen2.exe` install without `GAME_PC_DIR`. The launcher then reproduced and fixed the Homebrew Vulkan false negative: `pkg-config --exists vulkan` reports the installed 1.4.357 loader although the uv interpreter's `ctypes.util.find_library("vulkan")` returns `None`. `X2_MAX_FRAMES=10 ./run.sh` subsequently configured its own default Ninja build, linked all twenty modules, created the native Cocoa/Vulkan window, entered XMen2.exe, presented 12 frames and exited zero. Fifteen launcher contract tests passed, including root-level, immediate-child, ambiguous-install and pkg-config loader cases.
+
+## FALSIFIED 2026-08-27
+
+Real zero-argument ./run.sh refused after game validation because bootstrap.py incorrectly pinned the maintainer-only re-harness checkout; an absent or current maintainer checkout cannot be a player prerequisite.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.
+
+## Re-confirmed 2026-08-27
+
+After the maintainer-only re-harness regression was reproduced and falsified, bootstrap.py removed it from the player dependency list. A real silent ./run.sh discriminator with a deliberately nonexistent compiler validated 20 PE images, accepted exactly 3 pinned player repositories, verified all generated inputs, and handed over to tools/run.py before refusing only the injected compiler name. The launcher contract test fixes that exact dependency set; the unchanged downstream native target passed the current 116-test Clang suite after commit 3bb4472.

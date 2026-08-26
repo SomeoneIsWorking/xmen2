@@ -74,6 +74,10 @@ class LauncherContract(unittest.TestCase):
         for retired in ("RUN_ARGS", "run_wine", "require_command", 'mode = "native"'):
             self.assertNotIn(retired, text)
 
+    def test_player_bootstrap_excludes_maintainer_only_re_harness(self):
+        self.assertEqual({repo.name for repo in bootstrap.SHARED_REPOS},
+                         {"alchemy", "port-assets", "recomp-x86"})
+
     def test_bootstrap_finds_repository_local_game(self):
         for relative in (Path("."), Path("X-Men Legends II")):
             with self.subTest(relative=relative), scratch_directory() as raw:
