@@ -155,6 +155,10 @@ typedef struct {
  */
 int probe_page_readable(pr_u32 page);
 
+#ifndef PROBE_GUEST_POINTER
+#define PROBE_GUEST_POINTER(address) ((const void *)(pr_uptr)(address))
+#endif
+
 #define PROBE_PAGE 4096u
 
 static int probe_read(pr_u32 addr, void *dst, unsigned len)
@@ -168,7 +172,7 @@ static int probe_read(pr_u32 addr, void *dst, unsigned len)
         if (!probe_page_readable(p)) return 0;
         if (p == last) break;
     }
-    memcpy(dst, (const void *)(pr_uptr)addr, len);
+    memcpy(dst, PROBE_GUEST_POINTER(addr), len);
     return 1;
 }
 

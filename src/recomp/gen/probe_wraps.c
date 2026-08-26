@@ -12,102 +12,218 @@
 #include "probe_table.h"
 
 void oracle_probe_call(const Probe *p, void (*real)(CPU *), CPU *C);
+#if defined(__APPLE__)
+void x86_register_override(const char *module, uint32_t linked_ep,
+                           x86_override_fn fn);
+#endif
 
+#if defined(__APPLE__)
+void fn_libIGMath_1001d730(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001d730 fn_libIGMath_1001d730
+#else
 void __real_fn_libIGMath_1001d730(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001d730 __real_fn_libIGMath_1001d730
+#endif
 void __wrap_fn_libIGMath_1001d730(CPU *C)
 {
-    oracle_probe_call(&g_probes[0], __real_fn_libIGMath_1001d730, C);
+    oracle_probe_call(&g_probes[0], X2_PROBE_REAL_fn_libIGMath_1001d730, C);
 }
+#undef X2_PROBE_REAL_fn_libIGMath_1001d730
 
+#if defined(__APPLE__)
+void fn_libIGMath_1001da00(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001da00 fn_libIGMath_1001da00
+#else
 void __real_fn_libIGMath_1001da00(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001da00 __real_fn_libIGMath_1001da00
+#endif
 void __wrap_fn_libIGMath_1001da00(CPU *C)
 {
-    oracle_probe_call(&g_probes[1], __real_fn_libIGMath_1001da00, C);
+    oracle_probe_call(&g_probes[1], X2_PROBE_REAL_fn_libIGMath_1001da00, C);
 }
+#undef X2_PROBE_REAL_fn_libIGMath_1001da00
 
+#if defined(__APPLE__)
+void fn_libIGMath_10007600(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_10007600 fn_libIGMath_10007600
+#else
 void __real_fn_libIGMath_10007600(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_10007600 __real_fn_libIGMath_10007600
+#endif
 void __wrap_fn_libIGMath_10007600(CPU *C)
 {
-    oracle_probe_call(&g_probes[2], __real_fn_libIGMath_10007600, C);
+    oracle_probe_call(&g_probes[2], X2_PROBE_REAL_fn_libIGMath_10007600, C);
 }
+#undef X2_PROBE_REAL_fn_libIGMath_10007600
 
+#if defined(__APPLE__)
+void fn_libIGMath_1001d470(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001d470 fn_libIGMath_1001d470
+#else
 void __real_fn_libIGMath_1001d470(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001d470 __real_fn_libIGMath_1001d470
+#endif
 void __wrap_fn_libIGMath_1001d470(CPU *C)
 {
-    oracle_probe_call(&g_probes[3], __real_fn_libIGMath_1001d470, C);
+    oracle_probe_call(&g_probes[3], X2_PROBE_REAL_fn_libIGMath_1001d470, C);
 }
+#undef X2_PROBE_REAL_fn_libIGMath_1001d470
 
+#if defined(__APPLE__)
+void fn_libIGMath_1001db20(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001db20 fn_libIGMath_1001db20
+#else
 void __real_fn_libIGMath_1001db20(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001db20 __real_fn_libIGMath_1001db20
+#endif
 void __wrap_fn_libIGMath_1001db20(CPU *C)
 {
-    oracle_probe_call(&g_probes[4], __real_fn_libIGMath_1001db20, C);
+    oracle_probe_call(&g_probes[4], X2_PROBE_REAL_fn_libIGMath_1001db20, C);
 }
+#undef X2_PROBE_REAL_fn_libIGMath_1001db20
 
+#if defined(__APPLE__)
+void fn_libIGMath_10008a60(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_10008a60 fn_libIGMath_10008a60
+#else
 void __real_fn_libIGMath_10008a60(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_10008a60 __real_fn_libIGMath_10008a60
+#endif
 void __wrap_fn_libIGMath_10008a60(CPU *C)
 {
-    oracle_probe_call(&g_probes[5], __real_fn_libIGMath_10008a60, C);
+    oracle_probe_call(&g_probes[5], X2_PROBE_REAL_fn_libIGMath_10008a60, C);
 }
+#undef X2_PROBE_REAL_fn_libIGMath_10008a60
 
+#if defined(__APPLE__)
+void fn_libIGMath_1001a7f0(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001a7f0 fn_libIGMath_1001a7f0
+#else
 void __real_fn_libIGMath_1001a7f0(CPU *C);
+#define X2_PROBE_REAL_fn_libIGMath_1001a7f0 __real_fn_libIGMath_1001a7f0
+#endif
 void __wrap_fn_libIGMath_1001a7f0(CPU *C)
 {
-    oracle_probe_call(&g_probes[6], __real_fn_libIGMath_1001a7f0, C);
+    oracle_probe_call(&g_probes[6], X2_PROBE_REAL_fn_libIGMath_1001a7f0, C);
 }
+#undef X2_PROBE_REAL_fn_libIGMath_1001a7f0
 
+#if defined(__APPLE__)
+void fn_libIGSg_100184b0(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_100184b0 fn_libIGSg_100184b0
+#else
 void __real_fn_libIGSg_100184b0(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_100184b0 __real_fn_libIGSg_100184b0
+#endif
 void __wrap_fn_libIGSg_100184b0(CPU *C)
 {
-    oracle_probe_call(&g_probes[7], __real_fn_libIGSg_100184b0, C);
+    oracle_probe_call(&g_probes[7], X2_PROBE_REAL_fn_libIGSg_100184b0, C);
 }
+#undef X2_PROBE_REAL_fn_libIGSg_100184b0
 
+#if defined(__APPLE__)
+void fn_libIGSg_10018470(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10018470 fn_libIGSg_10018470
+#else
 void __real_fn_libIGSg_10018470(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10018470 __real_fn_libIGSg_10018470
+#endif
 void __wrap_fn_libIGSg_10018470(CPU *C)
 {
-    oracle_probe_call(&g_probes[8], __real_fn_libIGSg_10018470, C);
+    oracle_probe_call(&g_probes[8], X2_PROBE_REAL_fn_libIGSg_10018470, C);
 }
+#undef X2_PROBE_REAL_fn_libIGSg_10018470
 
+#if defined(__APPLE__)
+void fn_libIGSg_10016370(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10016370 fn_libIGSg_10016370
+#else
 void __real_fn_libIGSg_10016370(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10016370 __real_fn_libIGSg_10016370
+#endif
 void __wrap_fn_libIGSg_10016370(CPU *C)
 {
-    oracle_probe_call(&g_probes[9], __real_fn_libIGSg_10016370, C);
+    oracle_probe_call(&g_probes[9], X2_PROBE_REAL_fn_libIGSg_10016370, C);
 }
+#undef X2_PROBE_REAL_fn_libIGSg_10016370
 
+#if defined(__APPLE__)
+void fn_libIGSg_10057960(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10057960 fn_libIGSg_10057960
+#else
 void __real_fn_libIGSg_10057960(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10057960 __real_fn_libIGSg_10057960
+#endif
 void __wrap_fn_libIGSg_10057960(CPU *C)
 {
-    oracle_probe_call(&g_probes[10], __real_fn_libIGSg_10057960, C);
+    oracle_probe_call(&g_probes[10], X2_PROBE_REAL_fn_libIGSg_10057960, C);
 }
+#undef X2_PROBE_REAL_fn_libIGSg_10057960
 
+#if defined(__APPLE__)
+void fn_libIGSg_10059b70(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10059b70 fn_libIGSg_10059b70
+#else
 void __real_fn_libIGSg_10059b70(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_10059b70 __real_fn_libIGSg_10059b70
+#endif
 void __wrap_fn_libIGSg_10059b70(CPU *C)
 {
-    oracle_probe_call(&g_probes[11], __real_fn_libIGSg_10059b70, C);
+    oracle_probe_call(&g_probes[11], X2_PROBE_REAL_fn_libIGSg_10059b70, C);
 }
+#undef X2_PROBE_REAL_fn_libIGSg_10059b70
 
+#if defined(__APPLE__)
+void fn_libIGSg_1003eaf0(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_1003eaf0 fn_libIGSg_1003eaf0
+#else
 void __real_fn_libIGSg_1003eaf0(CPU *C);
+#define X2_PROBE_REAL_fn_libIGSg_1003eaf0 __real_fn_libIGSg_1003eaf0
+#endif
 void __wrap_fn_libIGSg_1003eaf0(CPU *C)
 {
-    oracle_probe_call(&g_probes[12], __real_fn_libIGSg_1003eaf0, C);
+    oracle_probe_call(&g_probes[12], X2_PROBE_REAL_fn_libIGSg_1003eaf0, C);
 }
+#undef X2_PROBE_REAL_fn_libIGSg_1003eaf0
 
+#if defined(__APPLE__)
+void fn_XMen2_004b64e0(CPU *C);
+#define X2_PROBE_REAL_fn_XMen2_004b64e0 fn_XMen2_004b64e0
+#else
 void __real_fn_XMen2_004b64e0(CPU *C);
+#define X2_PROBE_REAL_fn_XMen2_004b64e0 __real_fn_XMen2_004b64e0
+#endif
 void __wrap_fn_XMen2_004b64e0(CPU *C)
 {
-    oracle_probe_call(&g_probes[13], __real_fn_XMen2_004b64e0, C);
+    oracle_probe_call(&g_probes[13], X2_PROBE_REAL_fn_XMen2_004b64e0, C);
 }
+#undef X2_PROBE_REAL_fn_XMen2_004b64e0
 
+#if defined(__APPLE__)
+void fn_XMen2_004b5700(CPU *C);
+#define X2_PROBE_REAL_fn_XMen2_004b5700 fn_XMen2_004b5700
+#else
 void __real_fn_XMen2_004b5700(CPU *C);
+#define X2_PROBE_REAL_fn_XMen2_004b5700 __real_fn_XMen2_004b5700
+#endif
 void __wrap_fn_XMen2_004b5700(CPU *C)
 {
-    oracle_probe_call(&g_probes[14], __real_fn_XMen2_004b5700, C);
+    oracle_probe_call(&g_probes[14], X2_PROBE_REAL_fn_XMen2_004b5700, C);
 }
+#undef X2_PROBE_REAL_fn_XMen2_004b5700
 
+#if defined(__APPLE__)
+void fn_XMen2_006024f0(CPU *C);
+#define X2_PROBE_REAL_fn_XMen2_006024f0 fn_XMen2_006024f0
+#else
 void __real_fn_XMen2_006024f0(CPU *C);
+#define X2_PROBE_REAL_fn_XMen2_006024f0 __real_fn_XMen2_006024f0
+#endif
 void __wrap_fn_XMen2_006024f0(CPU *C)
 {
-    oracle_probe_call(&g_probes[15], __real_fn_XMen2_006024f0, C);
+    oracle_probe_call(&g_probes[15], X2_PROBE_REAL_fn_XMen2_006024f0, C);
 }
+#undef X2_PROBE_REAL_fn_XMen2_006024f0
 
 void (*const g_probe_wrapfn[PROBE_COUNT])(CPU *) = {
     __wrap_fn_libIGMath_1001d730,
@@ -127,3 +243,26 @@ void (*const g_probe_wrapfn[PROBE_COUNT])(CPU *) = {
     __wrap_fn_XMen2_004b5700,
     __wrap_fn_XMen2_006024f0,
 };
+
+#if defined(__APPLE__)
+__attribute__((constructor))
+static void x2_probe_register_overrides(void)
+{
+    x86_register_override("libIGMath.dll", 0x1001d730u, __wrap_fn_libIGMath_1001d730);
+    x86_register_override("libIGMath.dll", 0x1001da00u, __wrap_fn_libIGMath_1001da00);
+    x86_register_override("libIGMath.dll", 0x10007600u, __wrap_fn_libIGMath_10007600);
+    x86_register_override("libIGMath.dll", 0x1001d470u, __wrap_fn_libIGMath_1001d470);
+    x86_register_override("libIGMath.dll", 0x1001db20u, __wrap_fn_libIGMath_1001db20);
+    x86_register_override("libIGMath.dll", 0x10008a60u, __wrap_fn_libIGMath_10008a60);
+    x86_register_override("libIGMath.dll", 0x1001a7f0u, __wrap_fn_libIGMath_1001a7f0);
+    x86_register_override("libIGSg.dll", 0x100184b0u, __wrap_fn_libIGSg_100184b0);
+    x86_register_override("libIGSg.dll", 0x10018470u, __wrap_fn_libIGSg_10018470);
+    x86_register_override("libIGSg.dll", 0x10016370u, __wrap_fn_libIGSg_10016370);
+    x86_register_override("libIGSg.dll", 0x10057960u, __wrap_fn_libIGSg_10057960);
+    x86_register_override("libIGSg.dll", 0x10059b70u, __wrap_fn_libIGSg_10059b70);
+    x86_register_override("libIGSg.dll", 0x1003eaf0u, __wrap_fn_libIGSg_1003eaf0);
+    x86_register_override("XMen2.exe", 0x004b64e0u, __wrap_fn_XMen2_004b64e0);
+    x86_register_override("XMen2.exe", 0x004b5700u, __wrap_fn_XMen2_004b5700);
+    x86_register_override("XMen2.exe", 0x006024f0u, __wrap_fn_XMen2_006024f0);
+}
+#endif

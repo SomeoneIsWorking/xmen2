@@ -12,6 +12,17 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+static void genuine_illegal_instruction(void)
+{
+#if defined(__aarch64__)
+    __asm__ __volatile__(".inst 0");
+#elif defined(__i386__) || defined(__x86_64__)
+    __asm__ __volatile__("ud2");
+#else
+    raise(SIGILL);
+#endif
+}
+
 static int fault_child(int sig, int genuine, int control)
 {
     struct sigaction sa;
@@ -23,7 +34,7 @@ static int fault_child(int sig, int genuine, int control)
     for (i = 0; i < sizeof fatal / sizeof fatal[0]; i++)
         sigaction(fatal[i], &sa, NULL);
     if (control) { fflush(NULL); _exit(0); }
-    if (genuine) __builtin_trap();
+    if (genuine) genuine_illegal_instruction();
     raise(sig);
     fflush(NULL);
     _exit(0);                    /* the handler _exit(3)s; reaching here fails */
@@ -32,7 +43,7 @@ static int fault_child(int sig, int genuine, int control)
 int x2_fault_selftest(void)
 {
     static const struct { int sig; int genuine; const char *what; } cases[] = {
-        { SIGILL,  1, "a real UD2 illegal instruction" },
+        { SIGILL,  1, "a real illegal opcode instruction" },
         { SIGFPE,  0, "raise(SIGFPE)" },
         { SIGBUS,  0, "raise(SIGBUS)" },
         { SIGTRAP, 0, "raise(SIGTRAP)" },
@@ -115,4 +126,3 @@ int x2_fault_selftest(void)
            "with nothing printed.\n", fails ? "FAILED" : "PASSED", fails);
     return fails ? 1 : 0;
 }
-

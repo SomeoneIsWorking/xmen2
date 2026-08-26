@@ -7,10 +7,12 @@
  * parser that is only ever exercised by the game is one whose bugs show up as
  * a wrong filename or a wrong key three subsystems away.
  *
- * Guest memory is host memory under the identity mapping, so a plain array
- * stands in for the guest stack here and the walker is fed exactly what it
- * would see in a real call.
+ * A plain static array stands in for the guest stack. The test publishes the
+ * 4 GB host window containing its static data as the guest-memory base, so the
+ * same 32-bit-address translation used by the ARM64 runtime is exercised.
  */
+#include "guest_memory.h"
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -71,11 +73,22 @@ static void push_f(double d)
     slots[nslots++] = u.u[0];
     slots[nslots++] = u.u[1];
 }
-static uint32_t va(void) { return (uint32_t)(uintptr_t)slots; }
+static uint32_t gp(const void *pointer)
+{
+    if (((uintptr_t)pointer & ~(uintptr_t)UINT32_MAX) != g_guest_memory_base) {
+        fprintf(stderr, "test_vformat: static test data crossed its 4 GB "
+                        "guest window\n");
+        abort();
+    }
+    return guest_memory_address(pointer);
+}
+static uint32_t va(void) { return gp(slots); }
 
 int main(void)
 {
     char out[256];
+
+    g_guest_memory_base = (uintptr_t)slots & ~(uintptr_t)UINT32_MAX;
 
     nslots = 0; push_d(42);
     guest_vformat(out, sizeof out, "n=%d", va());
@@ -85,7 +98,7 @@ int main(void)
     guest_vformat(out, sizeof out, "%08X", va());
     eq("width+zero pad %08X", out, "DEADBEEF");
 
-    nslots = 0; push_d((uint32_t)(uintptr_t)"hello");
+    nslots = 0; push_d(gp("hello"));
     guest_vformat(out, sizeof out, "[%s]", va());
     eq("%s from a guest pointer", out, "[hello]");
 
@@ -123,7 +136,7 @@ int main(void)
 
     /* Truncation: writes at most cap, always NUL-terminates, and reports the
        length it WOULD have needed. */
-    nslots = 0; push_d((uint32_t)(uintptr_t)"abcdefghij");
+    nslots = 0; push_d(gp("abcdefghij"));
     {
         char small[5];
         int n = guest_vformat(small, sizeof small, "%s", va());
@@ -145,7 +158,7 @@ int main(void)
     {
         uint32_t a1, a2; int r;
         static uint32_t v1, v2;
-        nslots = 0; push_d((uint32_t)(uintptr_t)&v1); push_d((uint32_t)(uintptr_t)&v2);
+        nslots = 0; push_d(gp(&v1)); push_d(gp(&v2));
         v1 = v2 = 0;
         r = guest_vsscanf("12 34", "%d %d", va());
         checks++;
@@ -157,7 +170,7 @@ int main(void)
     {
         static char sbuf[32]; static uint32_t num;
         int r;
-        nslots = 0; push_d((uint32_t)(uintptr_t)sbuf); push_d((uint32_t)(uintptr_t)&num);
+        nslots = 0; push_d(gp(sbuf)); push_d(gp(&num));
         sbuf[0] = 0; num = 0;
         r = guest_vsscanf("name=alpha 7", "name=%s %d", va());
         checks++;
@@ -168,7 +181,7 @@ int main(void)
     }
     {   /* a literal that does not match must stop, and report what it DID fill */
         static uint32_t got; int r;
-        nslots = 0; push_d((uint32_t)(uintptr_t)&got);
+        nslots = 0; push_d(gp(&got));
         got = 0;
         r = guest_vsscanf("x=5", "y=%d", va());
         checks++;
@@ -179,7 +192,7 @@ int main(void)
     {   /* suppression consumes input WITHOUT consuming an argument -- getting
            that wrong shifts every later store by one slot */
         static uint32_t second; int r;
-        nslots = 0; push_d((uint32_t)(uintptr_t)&second);
+        nslots = 0; push_d(gp(&second));
         second = 0;
         r = guest_vsscanf("11 22", "%*d %d", va());
         checks++;
@@ -190,7 +203,7 @@ int main(void)
     }
     {   /* %hd must store TWO bytes, not four */
         static uint32_t box; int r;
-        nslots = 0; push_d((uint32_t)(uintptr_t)&box);
+        nslots = 0; push_d(gp(&box));
         box = 0xAAAAAAAAu;
         r = guest_vsscanf("258", "%hd", va());
         checks++;
@@ -200,12 +213,12 @@ int main(void)
     }
     {   /* %f stores a float; %lf a double */
         static float f; static double dd; int r;
-        nslots = 0; push_d((uint32_t)(uintptr_t)&f);
+        nslots = 0; push_d(gp(&f));
         f = 0;
         r = guest_vsscanf("2.5", "%f", va());
         checks++;
         if (r != 1 || f != 2.5f) { fails++; printf("  FAIL scanf %%f: r=%d f=%f\n", r, f); }
-        nslots = 0; push_d((uint32_t)(uintptr_t)&dd);
+        nslots = 0; push_d(gp(&dd));
         dd = 0;
         r = guest_vsscanf("2.5", "%lf", va());
         checks++;
@@ -214,14 +227,14 @@ int main(void)
 
     {   /* a scanset, and the negated form the engine actually uses */
         static char sc[64]; int r;
-        nslots = 0; push_d((uint32_t)(uintptr_t)sc);
+        nslots = 0; push_d(gp(sc));
         sc[0] = 0;
         r = guest_vsscanf("hello world", "%[^ ]", va());
         checks++;
         if (r != 1 || strcmp(sc, "hello") != 0) {
             fails++; printf("  FAIL scanf %%[^ ]: r=%d s=\"%s\"\n", r, sc);
         }
-        nslots = 0; push_d((uint32_t)(uintptr_t)sc);
+        nslots = 0; push_d(gp(sc));
         sc[0] = 0;
         r = guest_vsscanf("abc123", "%[a-c]", va());
         checks++;
@@ -234,7 +247,7 @@ int main(void)
            full at 67 characters. A spec buffer too small to hold it reports
            "unterminated", which reads as a bad format in the game. */
         static char id[128]; int r;
-        nslots = 0; push_d((uint32_t)(uintptr_t)id);
+        nslots = 0; push_d(gp(id));
         id[0] = 0;
         r = guest_vsscanf(" [ some_Name9./ ]",
               " [ %[_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789./\\-] ]",

@@ -23,7 +23,7 @@ unsigned long gpu_frame_draws_so_far(void);
 #include "gpu_draw.h"
 #include "gpu_device.h"
 #include "gpu_matrix.h"
-
+#include "guest_memory.h"
 #include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -1005,16 +1005,16 @@ static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out)
     if (req->index_buffer) {
         uint32_t base = req->base_vertex;
         if (req->index_is_32bit) {
-            const uint32_t *src = (const uint32_t *)(uintptr_t)
-                                  req->index_guest_bytes + req->first_index;
+            const uint32_t *src = guest_memory_const_pointer(
+                req->index_guest_bytes); src += req->first_index;
             for (i = 0; i < tris; i++) {
                 idx[i * 3 + 0] = base + src[0];
                 idx[i * 3 + 1] = base + src[i + 1];
                 idx[i * 3 + 2] = base + src[i + 2];
             }
         } else {
-            const uint16_t *src = (const uint16_t *)(uintptr_t)
-                                  req->index_guest_bytes + req->first_index;
+            const uint16_t *src = guest_memory_const_pointer(
+                req->index_guest_bytes); src += req->first_index;
             for (i = 0; i < tris; i++) {
                 idx[i * 3 + 0] = base + src[0];
                 idx[i * 3 + 1] = base + src[i + 1];
@@ -1119,12 +1119,12 @@ static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride)
             return 0;
         }
         if (req->index_is_32bit) {
-            const uint32_t *p = (const uint32_t *)(uintptr_t)
-                                req->index_guest_bytes + req->first_index;
+            const uint32_t *p = guest_memory_const_pointer(
+                req->index_guest_bytes); p += req->first_index;
             for (i = 0; i < n; i++) if (p[i] > maxi) maxi = p[i];
         } else {
-            const uint16_t *p = (const uint16_t *)(uintptr_t)
-                                req->index_guest_bytes + req->first_index;
+            const uint16_t *p = guest_memory_const_pointer(
+                req->index_guest_bytes); p += req->first_index;
             for (i = 0; i < n; i++) if (p[i] > maxi) maxi = p[i];
         }
         need = req->base_vertex + maxi + 1u;
@@ -1594,7 +1594,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                 g_ft_draw, req->vertex_guest_bytes, stride);
         return;
     }
-    vb = (const uint8_t *)(uintptr_t)req->vertex_guest_bytes;
+    vb = guest_memory_const_pointer(req->vertex_guest_bytes);
     capacity = req->vertex_bytes / stride;
     n = index_count_of(req->primitive_type, req->primitive_count);
     /*
@@ -1625,10 +1625,10 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
         float x, y, z, w;
         if (req->index_buffer && req->index_guest_bytes) {
             if (req->index_is_32bit)
-                v = ((const uint32_t *)(uintptr_t)req->index_guest_bytes)
+                v = ((const uint32_t *)guest_memory_const_pointer(req->index_guest_bytes))
                         [req->first_index + i] + req->base_vertex;
             else
-                v = ((const uint16_t *)(uintptr_t)req->index_guest_bytes)
+                v = ((const uint16_t *)guest_memory_const_pointer(req->index_guest_bytes))
                         [req->first_index + i] + req->base_vertex;
         } else {
             v = req->first_vertex + i;
@@ -1949,7 +1949,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
         vertices = malloc(bytes);
         if (!vertices) { g_refused_fvf++; return 0; }
         if (!d3d8_vs_execute(fvf, s->vertex_shader_constant,
-                (const void *)(uintptr_t)req->vertex_guest_bytes,
+                guest_memory_const_pointer(req->vertex_guest_bytes),
                 req->vertex_bytes, req->stride, 0, count, vertices)) {
             free(vertices); g_refused_fvf++; return 0;
         }

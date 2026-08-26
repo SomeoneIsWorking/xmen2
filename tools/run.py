@@ -96,6 +96,9 @@ def compiler_package_command() -> str:
 
 
 def platform_package_command() -> str:
+    if platform.system() == "Darwin":
+        return ("brew install sdl3 sdl3_image ffmpeg freetype shaderc "
+                "pkg-config molten-vk vulkan-loader")
     identities = os_release_identities()
     if identities & {"fedora", "rhel"}:
         return ("sudo dnf install SDL3-devel SDL3_image-devel ffmpeg-free-devel "
@@ -111,15 +114,14 @@ def platform_package_command() -> str:
 def require_supported_host() -> None:
     system = platform.system()
     machine = platform.machine().lower()
-    if system == "Darwin":
-        refuse("macOS is not supported yet: low guest mappings conflict with Mach-O "
-               "__PAGEZERO and Linux process/memory APIs remain in the host (issue #10). "
-               "There is no honest Homebrew command that makes this build portable")
+    if system == "Darwin" and machine in {"arm64", "aarch64"}:
+        return
     if system == "Windows":
         refuse("native Windows is not supported: the host currently requires POSIX memory, "
                "process, signal and pthread APIs. No winget/vcpkg command can fix that")
     if system != "Linux" or machine not in {"x86_64", "amd64"}:
-        refuse(f"the native host currently supports Linux x86-64, not {system} {machine}")
+        refuse(f"the native host currently supports Linux x86-64 or Apple Silicon macOS, "
+               f"not {system} {machine}")
 
 
 def command_ok(arguments: list[str], cwd: Path | None = None) -> bool:
@@ -149,7 +151,14 @@ def check_native_dependencies(toolchain: Toolchain) -> None:
             missing.append(package)
     if not shutil.which("glslc"):
         missing.append("glslc")
-    if not ctypes.util.find_library("vulkan"):
+    # The locked uv Python does not consult Homebrew's library directory in
+    # ctypes.util.find_library(), even though CMake and the linker can consume
+    # vulkan-loader through its installed pkg-config metadata.  Accept either
+    # discovery route; requiring ctypes alone made a valid Apple Silicon setup
+    # print the same brew command the user had already completed.
+    vulkan_pkg = (shutil.which("pkg-config") is not None
+                  and command_ok(["pkg-config", "--exists", "vulkan"]))
+    if not vulkan_pkg and not ctypes.util.find_library("vulkan"):
         missing.append("Vulkan loader")
     if missing:
         refuse("missing native dependency/dependencies: " + ", ".join(sorted(set(missing)))

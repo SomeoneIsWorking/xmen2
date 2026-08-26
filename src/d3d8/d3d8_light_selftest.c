@@ -3,6 +3,7 @@
 #include "d3d8_device.h"
 #include "d3d8_types.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -53,7 +54,7 @@ int d3d8_light_selftest(D3D8SelftestCall call)
                "failed.\n");
         return 1;
     }
-    light = (float *)(uintptr_t)light_address;
+    light = guest_memory_pointer(light_address);
     memset(light, 0, (26u + 3u) * sizeof(uint32_t));
     ((uint32_t *)light)[0] = 3u;                       /* directional */
     light[1] = 0.25f;

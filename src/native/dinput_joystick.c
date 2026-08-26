@@ -1,5 +1,6 @@
 /* DirectInput joystick state layout and object enumeration. */
 #include "dinput_joystick.h"
+#include "guest_memory.h"
 
 #include "dinput_pad.h"
 #include "guest_heap.h"
@@ -19,7 +20,7 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi,
        hold at startup, which is "nothing pressed" forever. */
     dinput_pad_refresh_state();
 
-    if (!x2_joystick_write_neutral((void *)(uintptr_t)out, size, lo, hi)) {
+    if (!x2_joystick_write_neutral(guest_memory_pointer(out), size, lo, hi)) {
         fprintf(stderr, "DINPUT8: a %u-byte joystick state is smaller than the "
                         "176 bytes DIJOYSTATE2 needs for axes, POVs and "
                         "buttons. Nothing is written.\n", size);
@@ -35,7 +36,7 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi,
     count = dinput_pad_button_count(pad);
     for (button = 0; button < count && 48u + (uint32_t)button < size; button++)
         if (dinput_pad_button(pad, button))
-            *((unsigned char *)(uintptr_t)out + 48 + button) = 0x80;
+            *((unsigned char *)guest_memory_pointer(out) + 48 + button) = 0x80;
 }
 
 static void object_guid(unsigned char guid[16], unsigned char low)
@@ -62,14 +63,14 @@ static void enum_object(CPU *cpu, uint32_t callback, uint32_t context,
     unsigned char guid[16];
 
     if (*stop) return;
-    memset((void *)(uintptr_t)buffer, 0, DIOBJ_BYTES);
+    memset(guest_memory_pointer(buffer), 0, DIOBJ_BYTES);
     WR32(buffer, DIOBJ_BYTES);
     object_guid(guid, guid_low);
-    memcpy((void *)(uintptr_t)(buffer + 4u), guid, sizeof guid);
+    memcpy(guest_memory_pointer(buffer + 4u), guid, sizeof guid);
     WR32(buffer + 0x14u, offset);
     WR32(buffer + 0x18u, type);
     WR32(buffer + 0x1cu, 0); /* no DIDOI_FFACTUATOR: force feedback absent */
-    snprintf((char *)(uintptr_t)(buffer + 0x20u), 260, "%s", name);
+    snprintf(guest_memory_pointer(buffer + 0x20u), 260, "%s", name);
     call = *cpu;
     call.esp -= 8u;
     WR32(call.esp, buffer);

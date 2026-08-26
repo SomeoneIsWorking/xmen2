@@ -453,16 +453,30 @@ static void pass_begin(int reopen)
     ct.clear_color.b = g_clear.b;
     ct.clear_color.a = g_clear.a;
     /*
-     * DONT_CARE, not LOAD, when the engine did not ask for a colour clear.
+     * A frame starts black when the engine does not clear colour itself.
      *
-     * The swapchain texture's previous contents belong to a frame that has
-     * already been presented and may be any buffer in the chain, so LOAD
-     * would preserve something arbitrary rather than "the last frame".
-     * DONT_CARE says truthfully that nothing is being preserved.
+     * DONT_CARE is not black: tiled GPUs may expose recycled attachment
+     * memory in every pixel the game does not overwrite. That appeared as
+     * scene fragments in the unused edges and, on sparse loading frames, as
+     * noise over nearly the whole window. LOAD is no better at frame start:
+     * swapchain history is undefined and the logical presentation texture is
+     * persistent. An opaque-black CLEAR gives D3D's discarded back buffer a
+     * deterministic value without changing an explicit game clear.
+     *
+     * A MID-frame reopen is different. Pixels drawn before a late depth-only
+     * clear are real current-frame contents and must be loaded.
      */
-    ct.load_op = (g_clear.mask & 1u) ? SDL_GPU_LOADOP_CLEAR
-               : reopen                ? SDL_GPU_LOADOP_LOAD
-                                       : SDL_GPU_LOADOP_DONT_CARE;
+    if (g_clear.mask & 1u) {
+        ct.load_op = SDL_GPU_LOADOP_CLEAR;
+    } else if (reopen) {
+        ct.load_op = SDL_GPU_LOADOP_LOAD;
+    } else {
+        ct.clear_color.r = 0.0f;
+        ct.clear_color.g = 0.0f;
+        ct.clear_color.b = 0.0f;
+        ct.clear_color.a = 1.0f;
+        ct.load_op = SDL_GPU_LOADOP_CLEAR;
+    }
     ct.store_op = SDL_GPU_STOREOP_STORE;
 
     depth = gpu_depth_target(g_swap_w, g_swap_h);

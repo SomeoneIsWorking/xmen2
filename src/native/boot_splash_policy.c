@@ -1,4 +1,5 @@
 #include "boot_splash_policy.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,7 +19,7 @@ void x2_boot_splash_trace(uint32_t command)
     if (g_splash.traced >= 40u) return;
     g_splash.traced++;
     fprintf(stderr, "BOOT CMD %lu: \"%s\"\n", g_splash.traced,
-            (const char *)(uintptr_t)command);
+            (const char *)guest_memory_const_pointer(command));
     if (g_splash.traced == 40u)
         fprintf(stderr, "BOOT CMD: trace window closed at 40 command(s); "
                         "further commands untraced.\n");
@@ -35,7 +36,7 @@ int x2_boot_splash_refuse(uint32_t command)
 {
     if (!g_splash.pending) return 0;
     if (command &&
-        !strcmp((const char *)(uintptr_t)command, "openmenu loading")) {
+        !strcmp(guest_memory_const_pointer(command), "openmenu loading")) {
         g_splash.pending = 0;
         fprintf(stderr, "BOOT SPLASH: refused \"openmenu loading\" after "
                         "the boot-mode dispatch, so the boot splash never "

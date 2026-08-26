@@ -5,6 +5,7 @@
 #include "autosave_storage.h"
 #include "boot_blackout.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "save_directory.h"
 #include "save_trace_runtime.h"
 #include "x86rt.h"
@@ -75,7 +76,7 @@ static int serialize_snapshot(const CPU *source)
 
     if (!g_snapshot) g_snapshot = guest_malloc(SNAPSHOT_OBJECT_BYTES);
     if (!g_snapshot) return 0;
-    memset((void *)(uintptr_t)g_snapshot, 0, SNAPSHOT_OBJECT_BYTES);
+    memset(guest_memory_pointer(g_snapshot), 0, SNAPSHOT_OBJECT_BYTES);
     WR32(g_snapshot + SNAPSHOT_SELF, g_snapshot);
     WR8(g_snapshot + SNAPSHOT_HEADER_FLAG_A, 0u);
     WR8(g_snapshot + SNAPSHOT_HEADER_FLAG_B, 0u);
@@ -103,7 +104,7 @@ static int publish_snapshot(const CPU *source)
         return 0;
     }
     if (!x2_autosave_header_from_payload(
-            (const unsigned char *)(uintptr_t)g_snapshot,
+            guest_memory_const_pointer(g_snapshot),
             SNAPSHOT_PAYLOAD_BYTES, header)) {
         g_last_result = AUTOSAVE_LAST_HEADER_FAILED;
         return 0;
@@ -114,7 +115,7 @@ static int publish_snapshot(const CPU *source)
         return 0;
     }
     if (!x2_autosave_storage_publish(
-            directory, header, (const void *)(uintptr_t)g_snapshot,
+            directory, header, guest_memory_const_pointer(g_snapshot),
             SNAPSHOT_PAYLOAD_BYTES, X2_AUTOSAVE_FAULT_NONE)) {
         g_last_errno = errno;
         g_last_result = AUTOSAVE_LAST_PUBLISH_FAILED;

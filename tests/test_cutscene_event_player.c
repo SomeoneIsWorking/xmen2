@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "cutscene_event_player.h"
+#include "guest_memory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -100,7 +101,7 @@ static uint32_t entry_address(uint32_t index)
 static Pair read_pair(uint32_t index)
 {
     Pair pair;
-    memcpy(&pair, (const void *)(uintptr_t)entry_address(index), sizeof pair);
+    memcpy(&pair, guest_memory_const_pointer(entry_address(index)), sizeof pair);
     return pair;
 }
 
@@ -165,7 +166,7 @@ static int queue_event(uint32_t slot, float deadline)
 
 static void reset_owner(void)
 {
-    memset((void *)(uintptr_t)OWNER, 0, HEAP_COUNT + 4u);
+    memset(guest_memory_pointer(OWNER), 0, HEAP_COUNT + 4u);
     calls[0] = '\0';
     call_count = 0;
     cascade_from = -1;
@@ -203,7 +204,7 @@ int x86_peek(uint32_t address, void *out, size_t size)
     uint64_t end = (uint64_t)address + size;
     if (address < ARENA_BASE || end > (uint64_t)ARENA_BASE + ARENA_SIZE)
         return 0;
-    memcpy(out, (const void *)(uintptr_t)address, size);
+    memcpy(out, guest_memory_const_pointer(address), size);
     return 1;
 }
 
@@ -404,11 +405,11 @@ static void test_window_claim_selection_and_followup(void)
     invoke_insert(6u, 1.0f);
     CHECK(cutscene_event_player_window_claim_new(&window) == 0,
           "foreign insertion was claimed by the cutscene window");
-    memcpy(before, (const void *)(uintptr_t)OWNER, sizeof before);
+    memcpy(before, guest_memory_const_pointer(OWNER), sizeof before);
     CHECK(cutscene_event_player_next_owned(&window, &slot) == 1 &&
               slot == 5u,
           "read-only selection did not choose the earliest owned callback");
-    CHECK(!memcmp(before, (const void *)(uintptr_t)OWNER, sizeof before),
+    CHECK(!memcmp(before, guest_memory_const_pointer(OWNER), sizeof before),
           "read-only owned selection changed guest state");
 
     cascade_from = 5;
@@ -538,12 +539,12 @@ static void test_corrupt_insertion_refusal(void)
               &window, owns_current_insertion, NULL) == 1,
           "could not watch corrupt insertion fixture");
     WR32(OWNER + HEAP_COUNT, CUTSCENE_EVENT_PLAYER_CAPACITY + 1u);
-    memcpy(before, (const void *)(uintptr_t)OWNER, sizeof before);
+    memcpy(before, guest_memory_const_pointer(OWNER), sizeof before);
     before_super = super_calls;
     invoke_insert(20u, 1.0f);
     CHECK(super_calls == before_super,
           "corrupt pre-state reached the retail insertion body");
-    CHECK(!memcmp(before, (const void *)(uintptr_t)OWNER, sizeof before),
+    CHECK(!memcmp(before, guest_memory_const_pointer(OWNER), sizeof before),
           "corrupt insertion pre-state was mutated");
     CHECK(!window.active &&
               cutscene_event_player_insertion_faults() == faults + 1u,
@@ -581,10 +582,10 @@ static void test_capacity_and_corruption_refusal(void)
     reset_owner();
     capture_owner();
     WR32(OWNER + HEAP_COUNT, CUTSCENE_EVENT_PLAYER_CAPACITY + 1u);
-    memcpy(before, (const void *)(uintptr_t)OWNER, sizeof before);
+    memcpy(before, guest_memory_const_pointer(OWNER), sizeof before);
     CHECK(cutscene_event_player_window_begin(&window) == -1,
           "oversized heap was not refused");
-    CHECK(!memcmp(before, (const void *)(uintptr_t)OWNER, sizeof before),
+    CHECK(!memcmp(before, guest_memory_const_pointer(OWNER), sizeof before),
           "oversized-heap refusal mutated guest state");
     {
         CPU cpu = fresh_cpu();
@@ -594,7 +595,7 @@ static void test_capacity_and_corruption_refusal(void)
         calls[0] = '\0';
         call_count = 0;
         registered_fn(FN_EVENT_PUMP)(&cpu);
-        CHECK(!memcmp(before, (const void *)(uintptr_t)OWNER, sizeof before),
+        CHECK(!memcmp(before, guest_memory_const_pointer(OWNER), sizeof before),
               "ordinary corrupt-state refusal mutated the queue");
         CHECK(call_count == 0u,
               "ordinary corrupt-state refusal executed a callback");
@@ -604,10 +605,10 @@ static void test_capacity_and_corruption_refusal(void)
     CHECK(queue_event(1u, 1.0f), "corruption fixture enqueue failed");
     capture_owner();
     WR32(bitmap_address(ALLOCATED_BITS, 1u), 0u);
-    memcpy(before, (const void *)(uintptr_t)OWNER, sizeof before);
+    memcpy(before, guest_memory_const_pointer(OWNER), sizeof before);
     CHECK(cutscene_event_player_window_begin(&window) == -1,
           "allocated/live bitmap disagreement was not refused");
-    CHECK(!memcmp(before, (const void *)(uintptr_t)OWNER, sizeof before),
+    CHECK(!memcmp(before, guest_memory_const_pointer(OWNER), sizeof before),
           "bitmap-corruption refusal mutated guest state");
 
     reset_owner();
@@ -621,11 +622,9 @@ static void test_capacity_and_corruption_refusal(void)
 
 int main(void)
 {
-    void *arena = mmap((void *)(uintptr_t)ARENA_BASE, ARENA_SIZE,
-                       PROT_READ | PROT_WRITE,
-                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
-                       -1, 0);
-    if (arena == MAP_FAILED) {
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(ARENA_BASE, ARENA_SIZE,
+                               PROT_READ | PROT_WRITE) != 0) {
         fprintf(stderr, "FAIL: could not map isolated guest arena\n");
         return 1;
     }

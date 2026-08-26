@@ -33,6 +33,7 @@
 #include "x87crt.h"
 #include "threads.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "win_path.h"
 
 #include <ctype.h>
@@ -46,9 +47,9 @@
 #include <sys/types.h>
 
 #define A(i)  RD32(C->esp + 4u + (uint32_t)(i) * 4u)
-#define AP(i) ((void *)(uintptr_t)A(i))
-#define AS(i) ((char *)(uintptr_t)A(i))
-#define ACS(i) ((const char *)(uintptr_t)A(i))
+#define AP(i) guest_memory_pointer(A(i))
+#define AS(i) ((char *)guest_memory_pointer(A(i)))
+#define ACS(i) ((const char *)guest_memory_const_pointer(A(i)))
 
 const char *x86_native_name_at(uint32_t addr);
 
@@ -163,7 +164,7 @@ void imp_MSVCR71___2_YAPAXI_Z(CPU *C) { ret_c(C, guest_malloc(A(0))); }
 void imp_MSVCR71_calloc(CPU *C)
 {
     uint32_t n = A(0) * A(1), p = guest_malloc(n);
-    if (p) memset((void *)(uintptr_t)p, 0, n);
+    if (p) memset(guest_memory_pointer(p), 0, n);
     ret_c(C, p);
 }
 
@@ -188,10 +189,10 @@ void imp_MSVCR71_memmove(CPU *C)
 
 /* ---- string and ctype -------------------------------------------------- */
 
-void imp_MSVCR71_strchr(CPU *C)   { ret_c(C, (uint32_t)(uintptr_t)strchr(ACS(0), (int)A(1))); }
-void imp_MSVCR71_strrchr(CPU *C)  { ret_c(C, (uint32_t)(uintptr_t)strrchr(ACS(0), (int)A(1))); }
-void imp_MSVCR71_strstr(CPU *C)   { ret_c(C, (uint32_t)(uintptr_t)strstr(ACS(0), ACS(1))); }
-void imp_MSVCR71_strtok(CPU *C)   { ret_c(C, (uint32_t)(uintptr_t)strtok(A(0) ? AS(0) : NULL, ACS(1))); }
+void imp_MSVCR71_strchr(CPU *C)   { void *p = strchr(ACS(0), (int)A(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
+void imp_MSVCR71_strrchr(CPU *C)  { void *p = strrchr(ACS(0), (int)A(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
+void imp_MSVCR71_strstr(CPU *C)   { void *p = strstr(ACS(0), ACS(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
+void imp_MSVCR71_strtok(CPU *C)   { void *p = strtok(A(0) ? AS(0) : NULL, ACS(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
 void imp_MSVCR71_strcspn(CPU *C)  { ret_c(C, (uint32_t)strcspn(ACS(0), ACS(1))); }
 void imp_MSVCR71_strncat(CPU *C)  { crt_watch_dst(A(0), strlen(ACS(1)) + 1, "strncat"); strncat(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
 void imp_MSVCR71_strncpy(CPU *C)  { crt_watch_dst(A(0), A(2), "strncpy"); strncpy(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
@@ -252,7 +253,7 @@ void imp_MSVCR71__itoa(CPU *C)
 /* ---- numbers ----------------------------------------------------------- */
 
 void imp_MSVCR71_atoi(CPU *C) { ret_c(C, (uint32_t)atoi(ACS(0))); }
-void imp_MSVCR71_atof(CPU *C) { x87_crt_atof(C); }
+void imp_MSVCR71_atof(CPU *C) { ret_d(C, atof(ACS(0))); }
 void imp_MSVCR71_ceil(CPU *C) { x87_crt_ceil(C); }
 void imp_MSVCR71_floor(CPU *C) { x87_crt_floor(C); }
 
@@ -323,7 +324,7 @@ uint32_t crt_iob_base(void)
             fprintf(stderr, "crt: could not allocate _iob on the guest heap\n");
             abort();
         }
-        memset((void *)(uintptr_t)g_iob, 0, IOB_N * IOB_SIZEOF_FILE);
+        memset(guest_memory_pointer(g_iob), 0, IOB_N * IOB_SIZEOF_FILE);
     }
     return g_iob;
 }
@@ -515,7 +516,7 @@ void imp_MSVCR71_qsort(CPU *C)
         return;
     }
     for (i = 1; i < n; i++) {
-        memcpy((void *)(uintptr_t)tmp, (void *)(uintptr_t)(base + i * sz), sz);
+        memcpy(guest_memory_pointer(tmp), guest_memory_pointer(base + i * sz), sz);
         for (j = i; j > 0; j--) {
             uint32_t prev = base + (j - 1) * sz;
             CPU K = *C;
@@ -524,10 +525,10 @@ void imp_MSVCR71_qsort(CPU *C)
             WR32(K.esp + 4u, tmp);
             x86_guest_call(&K, cmp);
             if ((int32_t)K.eax <= 0) break;
-            memmove((void *)(uintptr_t)(base + j * sz),
-                    (void *)(uintptr_t)prev, sz);
+            memmove(guest_memory_pointer(base + j * sz),
+                    guest_memory_pointer(prev), sz);
         }
-        memcpy((void *)(uintptr_t)(base + j * sz), (void *)(uintptr_t)tmp, sz);
+        memcpy(guest_memory_pointer(base + j * sz), guest_memory_pointer(tmp), sz);
     }
     guest_free(tmp);
     ret_c(C, 0);
@@ -639,7 +640,7 @@ int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va)
             /* A NULL string is printed as MSVC prints it rather than crashing
                the host on a guest bug. */
             n = snprintf(tmp, sizeof tmp, spec,
-                         sp ? (const char *)(uintptr_t)sp : "(null)");
+                         sp ? guest_memory_const_pointer(sp) : "(null)");
             break;
         }
         default:
@@ -727,8 +728,8 @@ static int rtti_same_type(uint32_t a, uint32_t b)
      */
     if (a == b) return 1;
     if (!a || !b) return 0;
-    return strcmp((const char *)(uintptr_t)(a + 8u),
-                  (const char *)(uintptr_t)(b + 8u)) == 0;
+    return strcmp(guest_memory_const_pointer(a + 8u),
+                  guest_memory_const_pointer(b + 8u)) == 0;
 }
 
 /* The offset of a base within the complete object, from its PMD. */
@@ -789,7 +790,7 @@ void imp_MSVCR71___RTDynamicCast(CPU *C)
      * silently wrong: the caller binds a reference and dereferences it.
      */
     if (is_ref) {
-        const char *nm = target ? (const char *)(uintptr_t)(target + 8u) : "?";
+        const char *nm = target ? guest_memory_const_pointer(target + 8u) : "?";
         fprintf(stderr, "crt: __RTDynamicCast failed on a REFERENCE cast to "
                         "%s, which must throw std::bad_cast -- and this build "
                         "has no unwinder to throw through. Returning NULL "
@@ -1186,7 +1187,7 @@ void imp_MSVCR71___getmainargs(CPU *C)
     if (!argv_block) {
         uint32_t strp = guest_malloc(16);
         argv_block = guest_malloc(8);
-        memcpy((void *)(uintptr_t)strp, "XMen2.exe", 10);
+        memcpy(guest_memory_pointer(strp), "XMen2.exe", 10);
         WR32(argv_block, strp);
         WR32(argv_block + 4u, 0);
     }
@@ -1269,7 +1270,7 @@ void imp_MSVCR71__strdup(CPU *C)
     /* Guest heap, not strdup(): the result is a guest pointer. */
     const char *s = ACS(0);
     uint32_t n = (uint32_t)strlen(s) + 1u, p = guest_malloc(n);
-    if (p) memcpy((void *)(uintptr_t)p, s, n);
+    if (p) memcpy(guest_memory_pointer(p), s, n);
     ret_c(C, p);
 }
 
@@ -1285,7 +1286,7 @@ void imp_MSVCR71_strtod(CPU *C)
 {
     char *end = NULL;
     double v = strtod(ACS(0), &end);
-    if (A(1)) WR32(A(1), (uint32_t)(uintptr_t)end);
+    if (A(1)) WR32(A(1), end ? guest_memory_address(end) : 0);
     ret_d(C, v);
 }
 
@@ -1322,7 +1323,7 @@ void imp_MSVCR71_getenv(CPU *C)
     uint32_t p;
     if (!v) { ret_c(C, 0); return; }
     p = guest_malloc((uint32_t)strlen(v) + 1u);
-    if (p) memcpy((void *)(uintptr_t)p, v, strlen(v) + 1);
+    if (p) memcpy(guest_memory_pointer(p), v, strlen(v) + 1);
     ret_c(C, p);
 }
 
@@ -1549,9 +1550,9 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va)
                     uint32_t dst = va_dword();
                     /* `%f` stores a float and `%lf` a double -- a four-byte
                        store for a double would leave half the value behind. */
-                    if (lng) { double dv = v; memcpy((void *)(uintptr_t)dst, &dv, 8); }
+                    if (lng) { double dv = v; memcpy(guest_memory_pointer(dst), &dv, 8); }
                     else     { float fv = (float)v;
-                               memcpy((void *)(uintptr_t)dst, &fv, 4); }
+                               memcpy(guest_memory_pointer(dst), &fv, 4); }
                     filled++;
                 }
                 break;
@@ -1564,7 +1565,7 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va)
                 pos += consumed;
                 if (!suppress) {
                     uint32_t dst = va_dword();
-                    memcpy((void *)(uintptr_t)dst, buf, strlen(buf) + 1);
+                    memcpy(guest_memory_pointer(dst), buf, strlen(buf) + 1);
                     filled++;
                 }
                 break;
@@ -1599,7 +1600,7 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va)
                 pos += consumed;
                 if (!suppress) {
                     uint32_t dst = va_dword();
-                    memcpy((void *)(uintptr_t)dst, buf, strlen(buf) + 1);
+                    memcpy(guest_memory_pointer(dst), buf, strlen(buf) + 1);
                     filled++;
                 }
                 p = q - 1;      /* the switch advances past *p below */

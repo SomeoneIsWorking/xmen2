@@ -21,8 +21,10 @@
 #include "x86rt.h"
 #include "guest_clock.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "x86rt_native.h"
 #include "pe_map.h"
+#include "platform_mman.h"
 #include "shell32.h"
 #include "winmm.h"
 #include "threads.h"
@@ -37,13 +39,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
 #define A(i)  RD32(C->esp + 4u + (uint32_t)(i) * 4u)
-#define ACS(i) ((const char *)(uintptr_t)A(i))
+#define ACS(i) ((const char *)guest_memory_const_pointer(A(i)))
 
 static void ret_std(CPU *C, uint32_t eax, int nargs)
 {
@@ -311,7 +312,7 @@ void imp_KERNEL32_GetVersionExA(CPU *C)
     WR32(p + 8u, 1);                     /* dwMinorVersion */
     WR32(p + 12u, 2600);                 /* dwBuildNumber */
     WR32(p + 16u, 2);                    /* VER_PLATFORM_WIN32_NT */
-    *(volatile char *)(uintptr_t)(p + 20u) = '\0';   /* szCSDVersion */
+    *(volatile char *)guest_memory_pointer(p + 20u) = '\0';   /* szCSDVersion */
     ret_std(C, 1, 1);
 }
 
@@ -342,7 +343,7 @@ void imp_KERNEL32_GetSystemInfo(CPU *C)
     long n = sysconf(_SC_NPROCESSORS_ONLN);
     if (n < 1) n = 1;
     if (n > 32) n = 32;                  /* dwActiveProcessorMask is 32 bits */
-    memset((void *)(uintptr_t)p, 0, 36);
+    memset(guest_memory_pointer(p), 0, 36);
     WR32(p +  0u, 0);                    /* PROCESSOR_ARCHITECTURE_INTEL */
     WR32(p +  4u, 0x1000u);              /* dwPageSize */
     WR32(p +  8u, 0x00010000u);          /* lpMinimumApplicationAddress */
@@ -362,7 +363,7 @@ void imp_KERNEL32_IsDebuggerPresent(CPU *C) { ret_std(C, 0, 0); }
 void imp_KERNEL32_GetStartupInfoA(CPU *C)
 {
     uint32_t p = A(0);
-    memset((void *)(uintptr_t)p, 0, 68);
+    memset(guest_memory_pointer(p), 0, 68);
     WR32(p, 68);                         /* cb */
     ret_std(C, 0, 1);
 }
@@ -694,7 +695,7 @@ void imp_KERNEL32_CreateFileA(CPU *C)
 void imp_KERNEL32_ReadFile(CPU *C)
 {
     Handle *hh = h_get(A(0), H_FILE);
-    ssize_t n = read(hh->fd, (void *)(uintptr_t)A(1), A(2));
+    ssize_t n = read(hh->fd, guest_memory_pointer(A(1)), A(2));
     if (A(3)) WR32(A(3), n < 0 ? 0u : (uint32_t)n);
     ret_std(C, n < 0 ? 0u : 1u, 5);
 }
@@ -702,7 +703,7 @@ void imp_KERNEL32_ReadFile(CPU *C)
 void imp_KERNEL32_WriteFile(CPU *C)
 {
     Handle *hh = h_get(A(0), H_FILE);
-    ssize_t n = write(hh->fd, (const void *)(uintptr_t)A(1), A(2));
+    ssize_t n = write(hh->fd, guest_memory_const_pointer(A(1)), A(2));
     if (A(3)) WR32(A(3), n < 0 ? 0u : (uint32_t)n);
     ret_std(C, n < 0 ? 0u : 1u, 5);
 }
@@ -743,7 +744,7 @@ void imp_KERNEL32_SetEndOfFile(CPU *C)
 static void sync_name(Handle *hh, uint32_t namep)
 {
     if (namep) snprintf(hh->name, sizeof hh->name, "%s",
-                        (const char *)(uintptr_t)namep);
+                        (const char *)guest_memory_const_pointer(namep));
     else       snprintf(hh->name, sizeof hh->name, "%s", "(unnamed)");
 }
 
@@ -1353,7 +1354,7 @@ void imp_KERNEL32_GetFullPathNameA(CPU *C)
        length WITH it when the buffer is too small. Getting that backwards
        makes a caller size a buffer one byte short, every time. */
     if (buflen < n + 1u || !buf) { ret_std(C, (uint32_t)n + 1u, 4); return; }
-    memcpy((void *)(uintptr_t)buf, full, n + 1u);
+    memcpy(guest_memory_pointer(buf), full, n + 1u);
     if (partp) {
         const char *slash = strrchr(full, '\\');
         WR32(partp, slash ? buf + (uint32_t)(slash + 1 - full) : buf);
@@ -1437,19 +1438,19 @@ void imp_KERNEL32_TlsSetValue(CPU *C)
  */
 void imp_KERNEL32_InterlockedExchange(CPU *C)
 {
-    uint32_t *p = (uint32_t *)(uintptr_t)A(0);
+    uint32_t *p = guest_memory_pointer(A(0));
     ret_std(C, __atomic_exchange_n(p, A(1), __ATOMIC_SEQ_CST), 2);
 }
 
 void imp_KERNEL32_InterlockedIncrement(CPU *C)
 {
-    int32_t *p = (int32_t *)(uintptr_t)A(0);
+    int32_t *p = guest_memory_pointer(A(0));
     ret_std(C, (uint32_t)__atomic_add_fetch(p, 1, __ATOMIC_SEQ_CST), 1);
 }
 
 void imp_KERNEL32_InterlockedDecrement(CPU *C)
 {
-    int32_t *p = (int32_t *)(uintptr_t)A(0);
+    int32_t *p = guest_memory_pointer(A(0));
     ret_std(C, (uint32_t)__atomic_sub_fetch(p, 1, __ATOMIC_SEQ_CST), 1);
 }
 
@@ -1636,7 +1637,7 @@ void imp_KERNEL32_GetModuleFileNameA(CPU *C)
      * trip: the game strips the file name off it and scans the result
      * ("<dir>\*.*"), which arrives back at win_path() as a leading-backslash
      * path, is resolved against $GAME_PC_DIR like every other guest path, and
-     * lands on <install>/<install>/*.* -- so the game's own directory scan
+     * lands on <install>/<install>/<wildcard> -- so the game's own directory scan
      * found NOTHING and said nothing. win_path already maps a drive letter to
      * the install, so naming the drive makes the round trip exact.
      *
@@ -1651,13 +1652,13 @@ void imp_KERNEL32_GetModuleFileNameA(CPU *C)
     n = (uint32_t)strlen(path);
     if (size == 0) { ret_std(C, 0, 3); return; }
     if (n >= size) {
-        memcpy((void *)(uintptr_t)buf, path, size - 1);
-        ((char *)(uintptr_t)buf)[size - 1] = 0;
+        memcpy(guest_memory_pointer(buf), path, size - 1);
+        ((char *)guest_memory_pointer(buf))[size - 1] = 0;
         g_last_error = 122u;                      /* ERROR_INSUFFICIENT_BUFFER */
         ret_std(C, size, 3);
         return;
     }
-    memcpy((void *)(uintptr_t)buf, path, n + 1);
+    memcpy(guest_memory_pointer(buf), path, n + 1);
     ret_std(C, n, 3);
 }
 
@@ -1739,7 +1740,7 @@ void imp_KERNEL32_FormatMessageA(CPU *C)
     snprintf(msg, sizeof msg, "Win32 error %u", id);
     n = (uint32_t)strlen(msg);
     if (!buf || size <= n) { g_last_error = 122u; ret_std(C, 0, 7); return; }
-    memcpy((void *)(uintptr_t)buf, msg, n + 1);
+    memcpy(guest_memory_pointer(buf), msg, n + 1);
     ret_std(C, n, 7);
 }
 
@@ -1750,7 +1751,7 @@ void imp_KERNEL32_GetSystemDirectoryA(CPU *C)
        loaded from here would be wrong. */
     const char *s = "C:\\Windows\\System32";
     uint32_t n = (uint32_t)strlen(s);
-    if (A(1) > n) memcpy((void *)(uintptr_t)A(0), s, n + 1);
+    if (A(1) > n) memcpy(guest_memory_pointer(A(0)), s, n + 1);
     ret_std(C, n, 2);
 }
 
@@ -1993,7 +1994,7 @@ void imp_KERNEL32_GetProcAddress(CPU *C)
 {
     /* The handle is an image base, so the export table is right there. */
     uint32_t mod = A(0), namep = A(1), rva;
-    const char *sym = (const char *)(uintptr_t)namep;
+    const char *sym = guest_memory_const_pointer(namep);
     const char *sm = sysmod_name(mod);
     if (namep && namep < 0x10000u) {
         fprintf(stderr, "kernel32: GetProcAddress by ORDINAL (#%u) is not "
@@ -2109,7 +2110,6 @@ void imp_KERNEL32_MapViewOfFile(CPU *C)
     uint32_t aligned = off_lo & ~(uint32_t)(page - 1);
     uint32_t delta = off_lo - aligned;
     size_t len = (want ? (size_t)want : hm->maplen - (size_t)off_lo) + delta;
-    void *got;
     int i;
 
     if (off_hi) {
@@ -2128,17 +2128,39 @@ void imp_KERNEL32_MapViewOfFile(CPU *C)
         ret_std(C, 0, 5);
         return;
     }
-    got = mmap((void *)(uintptr_t)g_view_cursor, len, PROT_READ | PROT_WRITE,
-               MAP_PRIVATE | MAP_FIXED_NOREPLACE, hm->fd, (off_t)aligned);
-    if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)g_view_cursor) {
+    {
+        uint32_t mapped_address;
+        if (guest_memory_map_any(g_view_cursor, VIEW_ARENA_END, 0x10000u,
+                                 len, PROT_READ | PROT_WRITE,
+                                 &mapped_address) != 0) {
         fprintf(stderr, "kernel32: MapViewOfFile could not place a %zu byte "
                         "view at 0x%08x: %s\n", len, g_view_cursor,
-                got == MAP_FAILED ? strerror(errno) : "the kernel chose "
-                "another address, which the guest could not reach");
-        if (got != MAP_FAILED) munmap(got, len);
+                strerror(errno));
         g_last_error = 8;
         ret_std(C, 0, 5);
         return;
+        }
+        g_view_cursor = mapped_address;
+    }
+    {
+        unsigned char *destination = guest_memory_pointer(g_view_cursor);
+        size_t remaining = len;
+        off_t file_offset = (off_t)aligned;
+        while (remaining) {
+            ssize_t bytes = pread(hm->fd, destination, remaining, file_offset);
+            if (bytes > 0) {
+                destination += bytes;
+                remaining -= (size_t)bytes;
+                file_offset += bytes;
+                continue;
+            }
+            if (bytes == 0) break;
+            if (errno == EINTR) continue;
+            guest_memory_release(g_view_cursor, len);
+            g_last_error = ERROR_FILE_NOT_FOUND;
+            ret_std(C, 0, 5);
+            return;
+        }
     }
     for (i = 0; i < MAX_VIEWS; i++)
         if (!g_views[i].addr) {
@@ -2161,7 +2183,7 @@ void imp_KERNEL32_UnmapViewOfFile(CPU *C)
     for (i = 0; i < MAX_VIEWS; i++)
         if (g_views[i].addr && addr >= g_views[i].addr &&
             addr < g_views[i].addr + g_views[i].len) {
-            munmap((void *)(uintptr_t)g_views[i].addr, g_views[i].len);
+            guest_memory_release(g_views[i].addr, g_views[i].len);
             g_views[i].addr = 0;
             ret_std(C, 1, 1);
             return;
@@ -2260,7 +2282,7 @@ static int fd_fill(uint32_t data, const char *dirpath, const char *name)
     attrs = S_ISDIR(st.st_mode) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
     if (!(st.st_mode & S_IWUSR)) attrs |= FILE_ATTRIBUTE_READONLY;
 
-    memset((void *)(uintptr_t)data, 0, FD_SIZEOF);
+    memset(guest_memory_pointer(data), 0, FD_SIZEOF);
     WR32(data + FD_ATTRIBUTES, attrs);
     fd_time(data + FD_CREATION,   st.st_ctime);   /* no birth time on POSIX;
                                                      ctime is the closest
@@ -2282,7 +2304,7 @@ static int fd_fill(uint32_t data, const char *dirpath, const char *name)
                 name, n);
         return 0;
     }
-    memcpy((void *)(uintptr_t)(data + FD_FILENAME), name, n + 1);
+    memcpy(guest_memory_pointer(data + FD_FILENAME), name, n + 1);
     /* cAlternateFileName is the 8.3 short name. There is none here, and an
        empty string is what Windows itself gives on a volume without them. */
     WR8(data + FD_ALTNAME, 0);
@@ -2409,7 +2431,7 @@ void imp_KERNEL32_MultiByteToWideChar(CPU *C)
 {
     uint32_t cp = A(0), src = A(2); int32_t srclen = (int32_t)A(3);
     uint32_t dst = A(4); int32_t dstlen = (int32_t)A(5);
-    const unsigned char *s = (const unsigned char *)(uintptr_t)src;
+    const unsigned char *s = guest_memory_const_pointer(src);
     int n, i;
     /*
      * CP_ACP (0) and CP_OEMCP (1) both resolve to this host's single code page
@@ -2450,8 +2472,8 @@ void imp_KERNEL32_WideCharToMultiByte(CPU *C)
     uint32_t dst = A(4); int32_t dstlen = (int32_t)A(5);
     uint32_t defchar = A(6), usedflag = A(7);
     int n = 0, i, lost = 0;
-    const uint16_t *w = (const uint16_t *)(uintptr_t)src;
-    char sub = defchar ? *(const char *)(uintptr_t)defchar : '?';
+    const uint16_t *w = guest_memory_const_pointer(src);
+    char sub = defchar ? *(const char *)guest_memory_const_pointer(defchar) : '?';
 
     if (srclen < 0) { while (w[n]) n++; n++; } else n = srclen;
     if (dstlen == 0) { ret_std(C, (uint32_t)n, 8); return; }
@@ -2518,7 +2540,7 @@ void imp_KERNEL32_HeapAlloc(CPU *C)
     uint32_t flags = A(1), n = A(2), p;
     heap_check(A(0));
     p = guest_malloc(n);
-    if (p && (flags & HEAP_ZERO_MEMORY)) memset((void *)(uintptr_t)p, 0, n);
+    if (p && (flags & HEAP_ZERO_MEMORY)) memset(guest_memory_pointer(p), 0, n);
     ret_std(C, p, 3);
 }
 
@@ -2712,11 +2734,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
            it silently. */
         uint32_t base = addr & ~0xFFFu;
         uint32_t len = ((addr - base) + size + 0xFFFu) & ~0xFFFu;
-        void *got = mmap((void *)(uintptr_t)base, len, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE
-                         | MAP_NORESERVE, -1, 0);
-        if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)base) {
-            if (got != MAP_FAILED) munmap(got, len);
+        if (guest_memory_map_fixed(base, len, PROT_READ | PROT_WRITE) != 0) {
             /* Already mapped: fine ONLY if the guest reserved it. Anything
                else is our own memory and must be refused. */
             if (errno == EEXIST && guest_reserved(base, len)) {
@@ -2728,8 +2746,8 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
                  * access makes a decommit permanent, and the guest faults on
                  * the memory Win32 just told it it had. Issue #41.
                  */
-                if (mprotect((void *)(uintptr_t)base, len,
-                             PROT_READ | PROT_WRITE) != 0)
+                if (guest_memory_protect(base, len,
+                                         PROT_READ | PROT_WRITE) != 0)
                     fprintf(stderr, "kernel32: VirtualAlloc could not restore "
                                     "access to 0x%08x+%u: %s\n",
                             base, len, strerror(errno));
@@ -2774,7 +2792,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
                                 "physical memory\n",
                         g_reserved_bytes / 1048576.0,
                         X2_PHYS_BYTES / 1048576.0);
-            munmap((void *)(uintptr_t)base, len);
+            guest_memory_release(base, len);
             g_last_error = 8u;                       /* ERROR_NOT_ENOUGH_MEMORY */
             ret_std(C, 0, 4);
             return;
@@ -2810,12 +2828,8 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
         int tries;
         if (!len) { g_last_error = 87u; ret_std(C, 0, 4); return; }
         for (tries = 0; tries < 64; tries++) {
-            void *got;
             if (next + len > RES_HI || next + len < next) next = RES_LO;
-            got = mmap((void *)(uintptr_t)next, len, PROT_NONE,
-                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE
-                       | MAP_NORESERVE, -1, 0);
-            if (got != MAP_FAILED && (uintptr_t)got == (uintptr_t)next) {
+            if (guest_memory_map_fixed(next, len, PROT_NONE) == 0) {
                 uint32_t base = next;
                 next += len;
                 if (g_nreserved < MAX_RESERVED) {
@@ -2837,7 +2851,6 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
                 ret_std(C, base, 4);
                 return;
             }
-            if (got != MAP_FAILED) munmap(got, len);
             next += 0x100000u;           /* step past whatever is there */
         }
         fprintf(stderr, "kernel32: VirtualAlloc could not RESERVE %u bytes "
@@ -2849,7 +2862,7 @@ void imp_KERNEL32_VirtualAlloc(CPU *C)
         return;
     }
     p = guest_malloc(size);
-    if (p) memset((void *)(uintptr_t)p, 0, size);   /* VirtualAlloc zeroes */
+    if (p) memset(guest_memory_pointer(p), 0, size);   /* VirtualAlloc zeroes */
     ret_std(C, p, 4);
 }
 
@@ -2894,7 +2907,7 @@ void imp_KERNEL32_VirtualFree(CPU *C)
         }
         for (i = 0; i < g_nreserved; i++)
             if (g_reserved[i].base == addr) {
-                munmap((void *)(uintptr_t)addr, g_reserved[i].size);
+                guest_memory_release(addr, g_reserved[i].size);
                 g_reserved_bytes -= g_reserved[i].size;
                 g_reserved[i] = g_reserved[--g_nreserved];
                 ret_std(C, 1, 3);
@@ -2913,7 +2926,7 @@ void imp_KERNEL32_VirtualFree(CPU *C)
            readable would let a use-after-decommit read stale data silently. */
         uint32_t base = addr & ~0xFFFu;
         uint32_t len = ((addr - base) + size + 0xFFFu) & ~0xFFFu;
-        if (len && mprotect((void *)(uintptr_t)base, len, PROT_NONE) != 0)
+        if (len && guest_memory_protect(base, len, PROT_NONE) != 0)
             fprintf(stderr, "kernel32: VirtualFree(MEM_DECOMMIT) could not "
                             "protect 0x%08x+%u: %s\n", base, len, strerror(errno));
         else if (len)
@@ -3018,7 +3031,7 @@ void imp_KERNEL32_VirtualQuery(CPU *C)
                         "(%.1f MB) state %s\n", addr, base, size,
                 size / 1048576.0,
                 state == 0x10000u ? "FREE" : "COMMIT");
-    memset((void *)(uintptr_t)buf, 0, 28);
+    memset(guest_memory_pointer(buf), 0, 28);
     WR32(buf +  0u, base);               /* BaseAddress */
     WR32(buf +  4u, base);               /* AllocationBase */
     WR32(buf +  8u, protect);            /* AllocationProtect */
@@ -3069,7 +3082,7 @@ void imp_KERNEL32_GetVersion(CPU *C)
 static uint32_t guest_strdup(const char *s)
 {
     uint32_t n = (uint32_t)strlen(s) + 1u, p = guest_malloc(n);
-    if (p) memcpy((void *)(uintptr_t)p, s, n);
+    if (p) memcpy(guest_memory_pointer(p), s, n);
     return p;
 }
 
@@ -3111,7 +3124,7 @@ static uint32_t env_block(void)
     for (i = 0; environ[i]; i++) total += strlen(environ[i]) + 1;
     p = guest_malloc((uint32_t)total);
     if (!p) return 0;
-    w = (char *)(uintptr_t)p;
+    w = guest_memory_pointer(p);
     for (i = 0; environ[i]; i++) { strcpy(w, environ[i]); w += strlen(w) + 1; }
     *w = 0;
     return p;
@@ -3136,7 +3149,7 @@ void imp_KERNEL32_GetEnvironmentStringsW(CPU *C)
         for (i = 0; environ[i]; i++) total += strlen(environ[i]) + 1;
         p = guest_malloc((uint32_t)total * 2u);
         if (p) {
-            w = (uint16_t *)(uintptr_t)p;
+            w = guest_memory_pointer(p);
             for (i = 0; environ[i]; i++) {
                 const char *s = environ[i];
                 while (*s) *w++ = (uint16_t)(unsigned char)*s++;
@@ -3342,7 +3355,7 @@ void imp_KERNEL32_GetCPInfo(CPU *C)
 {
     uint32_t p = A(1);
     if (!p) { ret_std(C, 0, 2); return; }
-    memset((void *)(uintptr_t)p, 0, 20);
+    memset(guest_memory_pointer(p), 0, 20);
     WR32(p, 1);                          /* MaxCharSize */
     WR8(p + 4u, '?');                    /* DefaultChar */
     ret_std(C, 1, 2);
@@ -3390,11 +3403,11 @@ static void locale_info(CPU *C, int wide)
     if (cch == 0) { ret_std(C, n, 4); return; }   /* size query */
     if (cch < n)  { g_last_error = 122u; ret_std(C, 0, 4); return; }
     if (wide) {
-        uint16_t *w = (uint16_t *)(uintptr_t)buf;
+        uint16_t *w = guest_memory_pointer(buf);
         uint32_t i;
         for (i = 0; i < n; i++) w[i] = (uint16_t)(unsigned char)v[i];
     } else {
-        memcpy((void *)(uintptr_t)buf, v, n);
+        memcpy(guest_memory_pointer(buf), v, n);
     }
     ret_std(C, n, 4);
 }
@@ -3449,8 +3462,8 @@ static int cmp_bytes(const char *a, int na, const char *b, int nb, int fold)
    0 on error. -1 for a count means NUL-terminated. */
 void imp_KERNEL32_CompareStringA(CPU *C)
 {
-    const char *a = (const char *)(uintptr_t)A(2);
-    const char *b = (const char *)(uintptr_t)A(4);
+    const char *a = guest_memory_const_pointer(A(2));
+    const char *b = guest_memory_const_pointer(A(4));
     int na = (int32_t)A(3), nb = (int32_t)A(5), r;
     if (!a || !b) { ret_std(C, 0, 6); return; }
     if (na < 0) na = (int)strlen(a);
@@ -3461,8 +3474,8 @@ void imp_KERNEL32_CompareStringA(CPU *C)
 
 void imp_KERNEL32_CompareStringW(CPU *C)
 {
-    const uint16_t *a = (const uint16_t *)(uintptr_t)A(2);
-    const uint16_t *b = (const uint16_t *)(uintptr_t)A(4);
+    const uint16_t *a = guest_memory_const_pointer(A(2));
+    const uint16_t *b = guest_memory_const_pointer(A(4));
     int na = (int32_t)A(3), nb = (int32_t)A(5), i, n;
     int fold = (A(1) & NORM_IGNORECASE) != 0, r = 0;
     if (!a || !b) { ret_std(C, 0, 6); return; }
@@ -3496,8 +3509,8 @@ static void lcmap(CPU *C, int wide)
         return;
     }
     if (wide) {
-        const uint16_t *s = (const uint16_t *)(uintptr_t)A(2);
-        uint16_t *d = (uint16_t *)(uintptr_t)dst;
+        const uint16_t *s = guest_memory_const_pointer(A(2));
+        uint16_t *d = guest_memory_pointer(dst);
         if (nsrc < 0) { nsrc = 0; while (s[nsrc]) nsrc++; nsrc++; }
         if (ncdst == 0) { ret_std(C, (uint32_t)nsrc, 6); return; }
         if ((int)ncdst < nsrc) { g_last_error = 122u; ret_std(C, 0, 6); return; }
@@ -3508,8 +3521,8 @@ static void lcmap(CPU *C, int wide)
             d[i] = (uint16_t)c;
         }
     } else {
-        const char *s = (const char *)(uintptr_t)A(2);
-        char *d = (char *)(uintptr_t)dst;
+        const char *s = guest_memory_const_pointer(A(2));
+        char *d = guest_memory_pointer(dst);
         if (nsrc < 0) nsrc = (int)strlen(s) + 1;
         if (ncdst == 0) { ret_std(C, (uint32_t)nsrc, 6); return; }
         if ((int)ncdst < nsrc) { g_last_error = 122u; ret_std(C, 0, 6); return; }
@@ -3552,7 +3565,7 @@ static void string_type(CPU *C, int wide, int base, int nargs)
 {
     uint32_t info = A(base), src = A(base + 1), out = A(base + 3);
     int n = (int32_t)A(base + 2), i;
-    uint16_t *d = (uint16_t *)(uintptr_t)out;
+    uint16_t *d = guest_memory_pointer(out);
     if (info != CT_CTYPE1) {
         fprintf(stderr, "kernel32: GetStringType info 0x%x is not CT_CTYPE1; "
                         "only the character-class table is implemented, so "
@@ -3563,11 +3576,11 @@ static void string_type(CPU *C, int wide, int base, int nargs)
     }
     if (!src || !out) { ret_std(C, 0, nargs); return; }
     if (wide) {
-        const uint16_t *s = (const uint16_t *)(uintptr_t)src;
+        const uint16_t *s = guest_memory_const_pointer(src);
         if (n < 0) { n = 0; while (s[n]) n++; n++; }
         for (i = 0; i < n; i++) d[i] = ctype1(s[i]);
     } else {
-        const char *s = (const char *)(uintptr_t)src;
+        const char *s = guest_memory_const_pointer(src);
         if (n < 0) n = (int)strlen(s) + 1;
         for (i = 0; i < n; i++) d[i] = ctype1((unsigned char)s[i]);
     }

@@ -1,4 +1,5 @@
 #include "options_menu.h"
+#include "guest_memory.h"
 #include "x86rt_native.h"
 
 #include <stdint.h>
@@ -103,7 +104,7 @@ void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes)
         return;
     }
     if (target == REGISTER_TARGET) {
-        const char *name = (const char *)(uintptr_t)RD32(C->esp);
+        const char *name = guest_memory_const_pointer(RD32(C->esp));
         if (callee_pop_bytes != 8u) abort();
         registration_calls++;
         registered_method = target;

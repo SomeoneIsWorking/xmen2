@@ -7,6 +7,7 @@
  * separate jobs: one is a recording, the other is a keyboard.
  */
 #include "dinput_fifo.h"
+#include "guest_memory.h"
 
 #include "dinput_system.h"
 #include "gpu_device.h"
@@ -173,8 +174,7 @@ void dinput_fifo_apply(CPU *cpu, uint32_t out, uint32_t size, double now)
                             gpu_frames_presented(),
                             g_fifo[i].via ? g_fifo[i].via : "fifo");
         if (down && (uint32_t)g_fifo[i].dik < size)
-            *((unsigned char *)(uintptr_t)out + g_fifo[i].dik) = 0x80;
+            *((unsigned char *)guest_memory_pointer(out) + g_fifo[i].dik) = 0x80;
         g_fifo[i].down = down;
     }
 }
-

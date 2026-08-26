@@ -16,6 +16,7 @@
  * concrete stop rather than a silently skipped operation.
  */
 #include "pe_map.h"
+#include "guest_memory.h"
 #include "control.h"
 #include "guest_clock.h"
 #include "x86rt.h"
@@ -38,16 +39,16 @@
 #include "input_record.h"
 #include "crt_selftest.h"
 #include "fault_report.h"
+#include "platform_mman.h"
 
-#include <dlfcn.h>
+#include <execinfo.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#include <sys/mman.h>
+#include <strings.h>
 #include <sys/wait.h>
-#include <ucontext.h>
 #include <unistd.h>
 
 #ifdef X2_WITH_SDL
@@ -55,10 +56,6 @@
 #endif
 
 __thread uint32_t g_fsbase, g_gsbase;
-
-/* argv[0], so the fault reporter can print an addr2line command that is
-   runnable as printed rather than one the reader has to complete. */
-static const char *g_argv0;
 
 /* ---- import binding ----------------------------------------------------
  *
@@ -211,9 +208,11 @@ const char *fault_name(int sig)
  */
 void fault_report(int sig, siginfo_t *si, void *uc)
 {
-    uint32_t a = (uint32_t)(uintptr_t)si->si_addr;
+    uint32_t a;
     const char *mod = NULL, *sym;
     (void)uc;
+    if (!guest_memory_host_address(si->si_addr, &a))
+        a = (uint32_t)(uintptr_t)si->si_addr;
     if (sig != SIGSEGV) {
         fprintf(stderr, "\n*** %s at %p -- %s\n",
                 fault_name(sig), si->si_addr, fault_meaning(sig, si->si_code));
@@ -267,30 +266,12 @@ void fault_report(int sig, siginfo_t *si, void *uc)
             si->si_addr, fault_meaning(sig, si->si_code));
 where:
     {
-#if defined(__x86_64__) && defined(REG_RIP)
-        ucontext_t *u = (ucontext_t *)uc;
-        unsigned long rip = (unsigned long)u->uc_mcontext.gregs[REG_RIP];
-        Dl_info di;
-        int known = dladdr((void *)rip, &di) && di.dli_fbase;
-        fprintf(stderr, "    host rip 0x%lx", rip);
-        if (known && di.dli_sname) fprintf(stderr, "  in %s", di.dli_sname);
-        fputc('\n', stderr);
-        /* This binary is PIE, so the runtime rip is NOT a file offset and an
-           addr2line on it silently answers "??" -- a command that looks
-           runnable and quietly says nothing. Subtract the load base. */
-        if (known)
-            fprintf(stderr, "    name the generated body with:  addr2line -fCe "
-                            "%s 0x%lx\n", g_argv0 ? g_argv0 : "<this binary>",
-                    rip - (unsigned long)di.dli_fbase);
-        else
-            fprintf(stderr, "    (dladdr could not give the load base, so this "
-                            "rip cannot be turned into a file offset here)\n");
-#else
-        (void)uc;
-        fprintf(stderr, "    (no host rip: this reporter reads the fault "
-                        "context only on x86-64)\n");
-#endif
+        void *frames[32];
+        int count = backtrace(frames, (int)(sizeof frames / sizeof frames[0]));
+        fprintf(stderr, "[HOST STACK] %d frame(s):\n", count);
+        backtrace_symbols_fd(frames, count, STDERR_FILENO);
     }
+    (void)uc;
     x86_regs_dump();
     /*
      * The engine's thread list is NOT printed here, and that is a correction
@@ -399,9 +380,7 @@ static void interrupted(int sig)
 static int poison_init(void)
 {
     struct sigaction sa;
-    void *p = mmap((void *)(uintptr_t)POISON_BASE, POISON_SIZE, PROT_NONE,
-                   MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-    if (p == MAP_FAILED || (uintptr_t)p != POISON_BASE) {
+    if (guest_memory_map_fixed(POISON_BASE, POISON_SIZE, PROT_NONE) != 0) {
         fprintf(stderr, "x2native: could not reserve the unbound-import page; "
                         "unresolved imports would read as plausible values\n");
         return -1;
@@ -495,10 +474,10 @@ void x86_seg_unset(const char *seg)
 }
 
 /* Guest memory, as the guest addresses it. */
-static uint32_t gr32(uint32_t a) { return *(volatile uint32_t *)(uintptr_t)a; }
-static void gw32(uint32_t a, uint32_t v) { *(volatile uint32_t *)(uintptr_t)a = v; }
-static uint8_t gr8(uint32_t a) { return *(volatile uint8_t *)(uintptr_t)a; }
-static void gw8(uint32_t a, uint8_t v) { *(volatile uint8_t *)(uintptr_t)a = v; }
+static uint32_t gr32(uint32_t a) { return *(volatile uint32_t *)guest_memory_pointer(a); }
+static void gw32(uint32_t a, uint32_t v) { *(volatile uint32_t *)guest_memory_pointer(a) = v; }
+static uint8_t gr8(uint32_t a) { return *(volatile uint8_t *)guest_memory_pointer(a); }
+static void gw8(uint32_t a, uint8_t v) { *(volatile uint8_t *)guest_memory_pointer(a) = v; }
 
 /* ---- the thread block (FS) --------------------------------------------
  *
@@ -522,7 +501,7 @@ static int tib_init(void)
     g_fsbase = TIB_BASE;
     /* Win32's end-of-chain sentinel. A zero here would look like a valid
        record at address 0 to anything that did walk the chain. */
-    *(volatile uint32_t *)(uintptr_t)TIB_BASE = 0xFFFFFFFFu;
+    *(volatile uint32_t *)guest_memory_pointer(TIB_BASE) = 0xFFFFFFFFu;
     return 0;
 }
 
@@ -748,6 +727,43 @@ static void check(const char *what, uint32_t got, uint32_t want)
     }
 }
 
+static void case_unaligned_guest_memory(void)
+{
+    const uint32_t a = SCRATCH + 1u;
+    const uint64_t q = UINT64_C(0x0123456789abcdef);
+
+    memset(guest_memory_pointer(a), 0xEE, 32u);
+    WR64(a, q);
+    check("unaligned x86 qword round-trips", RD64(a) == q, 1u);
+    WRF64(a + 9u, -123.25);
+    check("unaligned x87 double round-trips", RDF64(a + 9u) == -123.25L, 1u);
+    WR32(a + 18u, 0x89abcdefu);
+    check("unaligned x86 dword round-trips", RD32(a + 18u) == 0x89abcdefu, 1u);
+}
+
+static void case_guest_page_granularity(void)
+{
+    /* These are two Win32 pages in one 16 KiB Apple Silicon VM granule. */
+    const uint32_t live = 0x6fe01000u, decommitted = 0x6fe02000u;
+    int live_mapped = guest_memory_map_fixed(live, 0x1000u,
+                                              PROT_READ | PROT_WRITE) == 0;
+    int other_mapped = guest_memory_map_fixed(decommitted, 0x1000u,
+                                               PROT_READ | PROT_WRITE) == 0;
+
+    check("adjacent Win32 pages map", live_mapped && other_mapped, 1u);
+    if (live_mapped && other_mapped) {
+        WR32(live + 4u, 0x51a7e123u);
+        check("one Win32 page decommits",
+              guest_memory_protect(decommitted, 0x1000u, PROT_NONE) == 0, 1u);
+        check("decommitted page is tracked",
+              guest_memory_is_readable(decommitted, 1u), 0u);
+        check("committed 4K sibling survives",
+              RD32(live + 4u), 0x51a7e123u);
+    }
+    if (live_mapped) (void)guest_memory_release(live, 0x1000u);
+    if (other_mapped) (void)guest_memory_release(decommitted, 0x1000u);
+}
+
 
 /* Set up a guest frame: return address plus `nargs` stack arguments. */
 static void frame(CPU *C, const uint32_t *args, int nargs)
@@ -894,7 +910,7 @@ static void case_import_abi(void)
         uint32_t nm = SCRATCH + 0x300u, args[1];
         unsigned i;
         for (i = 0; i < sizeof miss; i++)
-            *(volatile uint8_t *)(uintptr_t)(nm + i) = (uint8_t)miss[i];
+            *(volatile uint8_t *)guest_memory_pointer(nm + i) = (uint8_t)miss[i];
         args[0] = nm;
         cpu_reset(&C);
         C.eax = 0xBADF00Du;
@@ -909,7 +925,7 @@ static void case_import_abi(void)
         uint32_t nm = SCRATCH + 0x320u, args[1], viaload;
         unsigned i;
         for (i = 0; i < sizeof have; i++)
-            *(volatile uint8_t *)(uintptr_t)(nm + i) = (uint8_t)have[i];
+            *(volatile uint8_t *)guest_memory_pointer(nm + i) = (uint8_t)have[i];
         args[0] = nm;
         cpu_reset(&C);
         C.eax = 0xBADF00Du;                  /* so the SKIPPED pass fails too */
@@ -930,7 +946,7 @@ static void case_import_abi(void)
         uint32_t args[6] = { 0, 0, 0, 0xFFFFFFFFu, 0, 0 };
         unsigned i;
         for (i = 0; i < sizeof msg; i++)
-            *(volatile uint8_t *)(uintptr_t)(src + i) = (uint8_t)msg[i];
+            *(volatile uint8_t *)guest_memory_pointer(src + i) = (uint8_t)msg[i];
         args[2] = src; args[4] = dst;
         cpu_reset(&C);
         C.eax = 0xBADF00Du;
@@ -943,9 +959,9 @@ static void case_import_abi(void)
         cpu_reset(&C);
         d = call_import(imp_KERNEL32_MultiByteToWideChar, &C, args, 6);
         check("MB2WC convert -> count", C.eax, 5u);
-        check("  wide 'S'", *(volatile uint16_t *)(uintptr_t)dst, (uint16_t)'S');
-        check("  wide 'D'", *(volatile uint16_t *)(uintptr_t)(dst + 2u), (uint16_t)'D');
-        check("  wide NUL terminator", *(volatile uint16_t *)(uintptr_t)(dst + 8u), 0u);
+        check("  wide 'S'", *(volatile uint16_t *)guest_memory_pointer(dst), (uint16_t)'S');
+        check("  wide 'D'", *(volatile uint16_t *)guest_memory_pointer(dst + 2u), (uint16_t)'D');
+        check("  wide NUL terminator", *(volatile uint16_t *)guest_memory_pointer(dst + 8u), 0u);
     }
 }
 
@@ -1069,8 +1085,8 @@ static void case_matrix_multiply(void)
     mat_rigid(B, 1, 1.3f, -4.0f,  5.0f, -6.0f);
     mat_ref(want, A, B);
 
-    memcpy((void *)(uintptr_t)gA, A, sizeof A);
-    memcpy((void *)(uintptr_t)gB, B, sizeof B);
+    memcpy(guest_memory_pointer(gA), A, sizeof A);
+    memcpy(guest_memory_pointer(gB), B, sizeof B);
 
     /* Both inputs are rigid, so the reference product is too. Check that here:
        if this ever fails the reference is wrong and every verdict below is
@@ -1098,7 +1114,7 @@ static void case_matrix_multiply(void)
 
             /* Poison the destination, so "the body never ran" cannot read as
                agreement with the reference. */
-            memset((void *)(uintptr_t)gD, 0x5A, 64);
+            memset(guest_memory_pointer(gD), 0x5A, 64);
 
             args[0] = gD; args[1] = gA; args[2] = gB;
             frame(&C, args, 3);
@@ -1109,7 +1125,7 @@ static void case_matrix_multiply(void)
                 check(lbl, 0u, 1u);
                 continue;
             }
-            memcpy(got, (const void *)(uintptr_t)gD, sizeof got);
+            memcpy(got, guest_memory_const_pointer(gD), sizeof got);
 
             for (j = 0; j < 16; j++) {
                 float e = fabsf(got[j] - want[j]);
@@ -1187,22 +1203,22 @@ static void case_guest_heap(void)
     check("malloc fits in a guest pointer", (a >> 24) != 0u && a < 0xFFFFFFFFu, 1u);
     check("two allocations differ", a != b && a != 0u && b != 0u, 1u);
     /* Writing through it must not disturb the other block. */
-    memset((void *)(uintptr_t)a, 0xAB, 100);
-    memset((void *)(uintptr_t)b, 0xCD, 200);
+    memset(guest_memory_pointer(a), 0xAB, 100);
+    memset(guest_memory_pointer(b), 0xCD, 200);
     check("no overlap after writes",
-          *(volatile uint8_t *)(uintptr_t)a == 0xABu
-          && *(volatile uint8_t *)(uintptr_t)(b + 199u) == 0xCDu, 1u);
+          *(volatile uint8_t *)guest_memory_pointer(a) == 0xABu
+          && *(volatile uint8_t *)guest_memory_pointer(b + 199u) == 0xCDu, 1u);
     guest_free(a);
     guest_free(b);
     guest_heap_stats(&used1, &free1, &blocks1);
     check("free returns every byte", used1, used0);
     check("freed space coalesces back", free1, free0);
     c = guest_realloc(0, 64);
-    memset((void *)(uintptr_t)c, 0x5A, 64);
+    memset(guest_memory_pointer(c), 0x5A, 64);
     c = guest_realloc(c, 4096);                 /* forces a move + copy */
     check("realloc preserves contents",
-          *(volatile uint8_t *)(uintptr_t)c == 0x5Au
-          && *(volatile uint8_t *)(uintptr_t)(c + 63u) == 0x5Au, 1u);
+          *(volatile uint8_t *)guest_memory_pointer(c) == 0x5Au
+          && *(volatile uint8_t *)guest_memory_pointer(c + 63u) == 0x5Au, 1u);
     guest_free(c);
 }
 
@@ -1307,7 +1323,7 @@ static void case_runtime_module(void)
     CPU C;
 
     printf("  run-time module lookup\n");
-    strcpy((char *)(uintptr_t)path, "C:\\Windows\\System32\\dinput8.dll");
+    strcpy(guest_memory_pointer(path), "C:\\Windows\\System32\\dinput8.dll");
 
     cpu_reset(&C);
     C.esp = SCRATCH + 0x200u;
@@ -1317,7 +1333,7 @@ static void case_runtime_module(void)
     h = C.eax;
     check("dinput8.dll loads by full path", h != 0u, 1u);
 
-    strcpy((char *)(uintptr_t)sym, "DirectInput8Create");
+    strcpy(guest_memory_pointer(sym), "DirectInput8Create");
     cpu_reset(&C);
     C.esp = SCRATCH + 0x200u;
     WR32(C.esp, 0);
@@ -1329,7 +1345,7 @@ static void case_runtime_module(void)
     check("and to the address it was published at",
           p, x86_native_export_addr("DINPUT8.DLL", "DirectInput8Create"));
 
-    strcpy((char *)(uintptr_t)sym, "DirectInput8CreateNoSuchThing");
+    strcpy(guest_memory_pointer(sym), "DirectInput8CreateNoSuchThing");
     cpu_reset(&C);
     C.esp = SCRATCH + 0x200u;
     WR32(C.esp, 0);
@@ -1427,7 +1443,7 @@ static void case_dinput(void)
     check("an unassigned scancode maps to nothing", C.eax, 0u);
 
     /* The device, through the IDirectInput8 vtable. */
-    memcpy((void *)(uintptr_t)guid, KBD, 16);
+    memcpy(guest_memory_pointer(guid), KBD, 16);
     cpu_reset(&C);
     C.esp = SCRATCH + 0x300u;
     WR32(C.esp, 0);
@@ -1465,12 +1481,12 @@ static void case_dinput(void)
     hr = com_call(dev, 7, NULL, 0);
     check("Acquire then succeeds", hr, 0u);
 
-    memset((void *)(uintptr_t)state, 0xA5, 256);
+    memset(guest_memory_pointer(state), 0xA5, 256);
     args[0] = 256; args[1] = state;
     hr = com_call(dev, 9, args, 2);
     check("GetDeviceState fills the declared size", hr, 0u);
     check("and cleared the buffer it was given",
-          *(volatile uint8_t *)(uintptr_t)state, 0u);
+          *(volatile uint8_t *)guest_memory_pointer(state), 0u);
 
     /* A size the caller's own format did not declare is a layout
        disagreement, and filling the smaller of the two would put the fields
@@ -1505,7 +1521,7 @@ static uint32_t rtti_typedesc(const char *name)
     uint32_t t = guest_malloc(8u + (uint32_t)strlen(name) + 1u);
     WR32(t, 0);
     WR32(t + 4u, 0);
-    strcpy((char *)(uintptr_t)(t + 8u), name);
+    strcpy(guest_memory_pointer(t + 8u), name);
     return t;
 }
 
@@ -1667,7 +1683,7 @@ static uint32_t find_count(const char *pattern, uint32_t data)
     uint32_t h, n = 0;
     uint32_t spec = guest_malloc(512);
 
-    snprintf((char *)(uintptr_t)spec, 512, "%s", pattern);
+    snprintf(guest_memory_pointer(spec), 512, "%s", pattern);
     cpu_reset(&C);
     C.esp = SCRATCH + 0x700u;
     WR32(C.esp, 0);
@@ -1701,10 +1717,10 @@ static void case_find_file(void)
     const char *name;
 
     printf("  FindFirstFileA over the install directory\n");
-    memset((void *)(uintptr_t)data, 0xEE, 320);          /* poison first */
+    memset(guest_memory_pointer(data), 0xEE, 320);       /* poison first */
 
     hits_exe  = find_count("*.exe", data);
-    name = (const char *)(uintptr_t)(data + 44u);
+    name = guest_memory_const_pointer(data + 44u);
     check("*.exe matched at least one file", hits_exe > 0, 1u);
     check("  and the name is NUL-terminated ASCII",
           (uint32_t)(name[0] > 32 && name[0] < 127 &&
@@ -1779,6 +1795,8 @@ static int run_battery(void)
     case_find_file();
     case_matrix_multiply();
     case_cross_module();
+    case_unaligned_guest_memory();
+    case_guest_page_granularity();
     printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
     printf("Established: the original image maps at its own base in a 64-bit\n"
            "process, the emitted C runs there natively, image-relative\n"
@@ -1806,7 +1824,6 @@ int main(int argc, char **argv)
        rather than corrupting -- but there is no reason to keep it tight. */
     static PeImage imgs[24];
 
-    g_argv0 = argv[0];
     /* Direct invocation is a supported launch path throughout the docs.  The
        binary therefore loads the project's gitignored .env itself; requiring
        every diagnostic command to remember shell export semantics caused a
@@ -1826,6 +1843,7 @@ int main(int argc, char **argv)
         atexit(x86_setjmp_report);
     }
     if ((rc = x2native_options_parse(argc, argv, &options)) != 0) return rc;
+    if (guest_memory_init() != 0) return 1;
     dir = options.install_dir;
     window = options.window;
     if (options.unbounded) guest_clock_set_unbounded(1);

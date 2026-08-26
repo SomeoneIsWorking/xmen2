@@ -52,13 +52,12 @@ static int resolve_case_insensitive(char *path)
     char *component, *separator, saved;
     DIR *directory;
     struct dirent *entry;
-    if (access(path, F_OK) == 0) return 1;
     component = path;
     if (*component == '/') component++;
     while (*component) {
         separator = strchr(component, '/');
         if (separator) { saved = *separator; *separator = '\0'; }
-        if (access(path, F_OK) != 0) {
+        {
             char *slash = strrchr(path, '/');
             const char *parent = ".";
             if (slash) { *slash = '\0'; parent = path[0] ? path : "/"; }
@@ -69,10 +68,8 @@ static int resolve_case_insensitive(char *path)
                 return 0;
             }
             for (entry = readdir(directory); entry; entry = readdir(directory))
-                if (strcasecmp(entry->d_name, component) == 0) {
-                    memcpy(component, entry->d_name, strlen(component));
-                    break;
-                }
+                if (strcasecmp(entry->d_name, component) == 0) break;
+            if (entry) memcpy(component, entry->d_name, strlen(component));
             closedir(directory);
             if (!entry) {
                 if (separator) *separator = saved;
@@ -90,17 +87,24 @@ const char *win_path(const char *input)
 {
     static char path[1024];
     const char *game = getenv("GAME_PC_DIR");
+    const char *tail = input;
     size_t index;
     if (!input) return NULL;
     /* S: is the writable save drive. Every other guest drive, a leading
        slash, and every relative name resolve against the read-only install. */
     if ((input[0] == X2_SAVE_DRIVE || input[0] == X2_SAVE_DRIVE + 32)
-            && input[1] == ':')
-        snprintf(path, sizeof(path), "%s/%s", x2_save_dir(), input + 2);
-    else if (input[0] && input[1] == ':')
-        snprintf(path, sizeof(path), "%s/%s", game ? game : ".", input + 2);
-    else if (input[0] == '\\' || input[0] == '/')
-        snprintf(path, sizeof(path), "%s/%s", game ? game : ".", input + 1);
+            && input[1] == ':') {
+        tail = input + 2;
+        while (*tail == '\\' || *tail == '/') tail++;
+        snprintf(path, sizeof(path), "%s/%s", x2_save_dir(), tail);
+    } else if (input[0] && input[1] == ':') {
+        tail = input + 2;
+        while (*tail == '\\' || *tail == '/') tail++;
+        snprintf(path, sizeof(path), "%s/%s", game ? game : ".", tail);
+    } else if (input[0] == '\\' || input[0] == '/') {
+        while (*tail == '\\' || *tail == '/') tail++;
+        snprintf(path, sizeof(path), "%s/%s", game ? game : ".", tail);
+    }
     else
         snprintf(path, sizeof(path), "%s/%s", game ? game : ".", input);
     for (index = 0; path[index]; ++index)
@@ -189,12 +193,14 @@ static const char *asset_replacement(const char *guest_path)
         relative[index] = guest_path[index] == '\\' ? '/' : guest_path[index];
     relative[index] = '\0';
     snprintf(path, sizeof(path), "%s/%s", root, relative);
-    if (stat(path, &status) == 0 && S_ISREG(status.st_mode)) return path;
+    if (resolve_case_insensitive(path) && stat(path, &status) == 0 &&
+        S_ISREG(status.st_mode)) return path;
     for (index = 0; relative[index]; ++index)
         if (relative[index] >= 'A' && relative[index] <= 'Z')
             relative[index] = (char)(relative[index] + 32);
     snprintf(path, sizeof(path), "%s/%s", root, relative);
-    return stat(path, &status) == 0 && S_ISREG(status.st_mode) ? path : NULL;
+    return resolve_case_insensitive(path) && stat(path, &status) == 0 &&
+           S_ISREG(status.st_mode) ? path : NULL;
 }
 
 const char *k32_open_path(const char *guest_path, int for_write)

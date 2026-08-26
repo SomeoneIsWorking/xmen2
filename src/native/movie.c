@@ -5,6 +5,7 @@
 #include "dsound.h"
 #include "fmv_player.h"
 #include "fmv_probe.h"
+#include "guest_memory.h"
 #include "movie_audio.h"
 #include "movie_image_layout.h"
 #include "x86rt.h"
@@ -99,7 +100,7 @@ static void x2_movie_load(CPU *C)
 {
     uint32_t info = RD32(C->esp + 4u);
     uint32_t path_address = info ? RD32(info + INFO_PATH) : 0;
-    const char *guest_path = (const char *)(uintptr_t)path_address;
+    const char *guest_path = guest_memory_const_pointer(path_address);
     const char *host_path;
     X2FmvAudioSink sink;
     X2FmvPlayer *player;
@@ -222,7 +223,7 @@ static void x2_movie_next_frame(CPU *C)
                                   x2_fmv_height(player), bytes, &pitch))
             pitch = 0;
         if (!data || !pitch
-                || !x2_fmv_copy_bgra(player, (void *)(uintptr_t)data,
+                || !x2_fmv_copy_bgra(player, guest_memory_pointer(data),
                                      bytes, pitch)) {
             fprintf(stderr, "movie: igImage storage is invalid for the %dx%d "
                             "native SFD frame (data=0x%08x bytes=%u)\n",
@@ -231,7 +232,7 @@ static void x2_movie_next_frame(CPU *C)
             WR32(info + INFO_STATE, 3u);
             changed = -1;
         } else {
-            x2_fmv_probe_padded((const uint8_t *)(uintptr_t)data,
+            x2_fmv_probe_padded(guest_memory_const_pointer(data),
                                 bytes, pitch);
             g_native_movie.needs_copy = 0;
         }

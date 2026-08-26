@@ -29,6 +29,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "dinput_device.h"
 
 #include <stdio.h>
@@ -206,13 +207,13 @@ static uint32_t devinst_for(int kind)
 
     if (!buf) buf = guest_malloc(580u);
     if (!buf || !guid) return 0;
-    memset((void *)(uintptr_t)buf, 0, 580u);
+    memset(guest_memory_pointer(buf), 0, 580u);
     WR32(buf + 0u, 580u);                              /* dwSize */
-    memcpy((void *)(uintptr_t)(buf + 4u), guid, 16);   /* guidInstance */
-    memcpy((void *)(uintptr_t)(buf + 20u), guid, 16);  /* guidProduct */
+    memcpy(guest_memory_pointer(buf + 4u), guid, 16);   /* guidInstance */
+    memcpy(guest_memory_pointer(buf + 20u), guid, 16);  /* guidProduct */
     WR32(buf + 36u, devtype);
-    snprintf((char *)(uintptr_t)(buf + 40u), 260, "%s", name);
-    snprintf((char *)(uintptr_t)(buf + 300u), 260, "%s", name);
+    snprintf(guest_memory_pointer(buf + 40u), 260, "%s", name);
+    snprintf(guest_memory_pointer(buf + 300u), 260, "%s", name);
     return buf;
 }
 
@@ -277,7 +278,7 @@ static void create_device(CPU *C, uint32_t guid, uint32_t out, uint32_t outer,
     WR32(out, 0);
     if (outer || !guid) { ret_com(C, DIERR_INVALIDPARAM, nargs); return; }
     if (!(kind = dinput_guid_kind(guid))) {
-        const unsigned char *b = (const unsigned char *)(uintptr_t)guid;
+        const unsigned char *b = guest_memory_const_pointer(guid);
         fprintf(stderr, "DINPUT: %s for {%02X%02X%02X%02X-...} -- not the "
                         "system keyboard or mouse, and this host enumerates "
                         "nothing else, so there is no device to open.\n",

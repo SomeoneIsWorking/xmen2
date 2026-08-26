@@ -1,4 +1,5 @@
 #include "pad_glyphs.h"
+#include "guest_memory.h"
 #include "pad_glyph_codes.h"
 #include "prompt_glyphs.h"
 #include "x86rt.h"
@@ -65,7 +66,7 @@ int x86_peek(uint32_t addr, void *out, size_t n)
 {
     if (addr < mapped_base || (uint64_t)addr + n > (uint64_t)mapped_base + SIZE)
         return 0;
-    memcpy(out, (void *)(uintptr_t)addr, n);
+    memcpy(out, guest_memory_const_pointer(addr), n);
     return 1;
 }
 int x86_peek32(uint32_t addr, uint32_t *out)
@@ -122,7 +123,7 @@ static const char *label_after(const char *name)
     WR32(stack + 4u, 7u);              /* the action id; the stub ignores it */
     c.esp = stack;
     x2_override_00619e30(&c);
-    return (const char *)(uintptr_t)c.eax;
+    return guest_memory_const_pointer(c.eax);
 }
 
 /* Write a binding straight into the guest table, using the ABI
@@ -162,7 +163,7 @@ static int check_call(uint32_t kind, uint32_t code, uint32_t want,
                       int want_real)
 {
     CPU c = {0};
-    uint32_t *stack = (uint32_t *)(uintptr_t)(mapped_base + 0x1000u);
+    uint32_t *stack = guest_memory_pointer(mapped_base + 0x1000u);
     int before = real_calls;
     stack[0] = 0xfeedfaceu;
     stack[1] = kind;
@@ -180,13 +181,13 @@ int main(int argc, char **argv)
 {
     int ok;
     (void)argc;
-    void *region = mmap(NULL, SIZE, PROT_READ | PROT_WRITE,
-                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
-    if (region == MAP_FAILED || (uintptr_t)region > UINT32_MAX) {
-        perror("test_pad_glyphs mmap");
-        return 77;
+    mapped_base = 0x10000000u;
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(mapped_base, SIZE,
+                               PROT_READ | PROT_WRITE) != 0) {
+        perror("test_pad_glyphs guest map");
+        return 1;
     }
-    mapped_base = (uint32_t)(uintptr_t)region;
     memset(host_pad_for_slot, 0xff, sizeof host_pad_for_slot);
     host_pad_for_slot[0] = 1; /* guest slot 0 is Xbox-family host pad 1 */
     host_pad_for_slot[1] = 0; /* guest slot 1 is generic host pad 0 */
@@ -252,7 +253,7 @@ int main(int argc, char **argv)
         uint32_t kind = 0, code = 0;
         g_object = controller + 0x18u;
         WR32(mapped_base + CONTROLLER0_RVA, controller);
-        memset((void *)(uintptr_t)g_object, 0, 42u * 4u * 12u);
+        memset(guest_memory_pointer(g_object), 0, 42u * 4u * 12u);
 
         put_binding(4u, ALT_SLOT, 3u, 0x15u);   /* guest 0 -> host 1 */
         put_binding(4u, 2u, 1u, 0x1cu);         /* and the menu key beside it */

@@ -38,10 +38,10 @@ claim over the game.
 
 ## Run from a fresh clone
 
-The current native host supports Linux x86-64. macOS is blocked by its low
-address-space reservation and Linux-specific host APIs; native Windows is not
-implemented. The launcher refuses those platforms rather than implying that a
-package install will fix the port.
+The native host supports Linux x86-64 and macOS on Apple Silicon. The arm64
+Mach-O keeps the normal 4 GB `__PAGEZERO`; guest addresses are translated into
+a separate reserved 4 GB arena instead of weakening the executable's page-zero
+guard. Native Windows is not implemented.
 
 Install `uv`, a C/C++ compiler (GCC or Clang), and the native development
 packages. On Fedora/RHEL-family systems:
@@ -59,8 +59,16 @@ sudo apt install libsdl3-dev libsdl3-image-dev libavformat-dev libavcodec-dev \
   pkg-config libvulkan1 mesa-vulkan-drivers
 ```
 
-Then place the matching PC release at `./game/`, or set `GAME_PC_DIR` in a
-gitignored `.env`, and run:
+On Apple Silicon macOS with Homebrew:
+
+```sh
+brew install sdl3 sdl3_image ffmpeg freetype shaderc pkg-config \
+  molten-vk vulkan-loader
+```
+
+Then place the matching PC release at `./game/`, put `XMen2.exe` and the rest
+of its install directly in the repository or in one immediate child directory,
+or set `GAME_PC_DIR` in a gitignored `.env`. Run:
 
 ```sh
 ./run.sh

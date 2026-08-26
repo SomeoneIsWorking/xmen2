@@ -1,23 +1,16 @@
 /*
- * Map a PE32 image into this process at its OWN preferred base.
+ * Map a PE32 image into the guest's 32-bit address space.
  *
  * The Wine-hosted build never needed this: the Windows loader mapped
  * libIGDisplay_orig.dll and the runtime just read `g_imgbase` off the module
  * handle. A native build has no loader, so the image has to be placed by hand
- * -- and placed at the base it was linked for, because the recompiled bodies
- * dereference guest addresses directly (`RD32(a)` is `*(uint32_t *)a`).
- *
- * That works in a 64-bit process because every PE base in this game is below
- * 4 GB: 0x00400000 for XMen2.exe, 0x10000000 for the DLLs. MAP_FIXED_NOREPLACE
- * asks for exactly that address and REFUSES rather than relocating, which is
- * the whole point -- a silently relocated image would read as "the recompiled
- * code is wrong" when it is the mapping that is wrong.
- *
- * Relocations are therefore never applied: the image is at its preferred base
- * or the mapping failed. If that ever stops being true, the .reloc section has
- * to be processed and this comment is the reason it was not.
+ * The logical addresses remain the original PE addresses. guest_memory owns
+ * whether those are identity-mapped (Linux) or translated through a high 4 GB
+ * arena (arm64 macOS, whose Mach-O __PAGEZERO occupies the low 4 GB).
  */
 #include "pe_map.h"
+#include "guest_memory.h"
+#include "platform_mman.h"
 
 #include <strings.h>   /* strcasecmp */
 
@@ -26,7 +19,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -60,7 +52,6 @@ int pe_map(const char *path, PeImage *out)
     struct stat st;
     int fd, i;
     uint32_t pe, nsec, opt, base, imgsize, hdrsize, prefbase;
-    void *got;
 
     memset(out, 0, sizeof *out);
     fd = open(path, O_RDONLY);
@@ -104,40 +95,22 @@ int pe_map(const char *path, PeImage *out)
     /* One reservation for the whole image, then the sections are written into
        it. Reserving per-section would leave the gaps between them unmapped,
        and code reads across section boundaries (padding, jump tables). */
-    got = mmap((void *)(uintptr_t)base, imgsize, PROT_READ | PROT_WRITE,
-               MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-    if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)base) {
+    if (guest_memory_map_fixed(base, imgsize, PROT_READ | PROT_WRITE) != 0) {
         /* Every libIG*.dll is linked for 0x10000000, so at most one of them
            gets its preferred base -- exactly as under the Windows loader.
            Relocation is fine because absolute references resolve against the
            module's OWN base; what would not be fine is relocating silently,
            so the new base is returned and the caller prints it. */
-        uint64_t cand;
-        if (got != MAP_FAILED) munmap(got, imgsize);
-        /* Search low addresses explicitly. Letting the kernel choose (mmap
-           with a NULL hint) returns a 64-bit address in a 64-bit process --
-           measured, on the very first two-module run -- and guest pointers are
-           32 bits, so anything above 4 GB is unusable however well it maps. */
-        got = MAP_FAILED;
-        for (cand = 0x20000000ull; cand + imgsize < 0xF0000000ull;
-             cand += 0x01000000ull) {
-            void *t = mmap((void *)(uintptr_t)cand, imgsize,
-                           PROT_READ | PROT_WRITE,
-                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE,
-                           -1, 0);
-            if (t != MAP_FAILED && (uintptr_t)t == (uintptr_t)cand) { got = t; break; }
-            if (t != MAP_FAILED) munmap(t, imgsize);
-        }
-        if (got == MAP_FAILED) {
+        if (guest_memory_map_any(0x20000000u, 0xF0000000u, 0x01000000u,
+                                 imgsize, PROT_READ | PROT_WRITE, &base) != 0) {
             fprintf(stderr, "pe_map: %s wants 0x%08x, which is taken, and no "
                             "free span of %u bytes was found below 4 GB. Guest "
                             "pointers are 32-bit, so there is nowhere else to "
                             "put it.\n", path, base, imgsize);
             goto fail;
         }
-        base = (uint32_t)(uintptr_t)got;
     }
-    memcpy((void *)(uintptr_t)base, f, hdrsize);
+    memcpy(guest_memory_pointer(base), f, hdrsize);
     for (i = 0; i < (int)nsec; i++) {
         uint32_t s = pe + 24 + RD16(f, pe + 20) + (uint32_t)i * 40;
         uint32_t va = RD32_(f, s + 12), vsz = RD32_(f, s + 8);
@@ -146,12 +119,12 @@ int pe_map(const char *path, PeImage *out)
         if (raw + n > (uint32_t)st.st_size) {
             fprintf(stderr, "pe_map: section %d of %s runs past the file\n",
                     i, path);
-            munmap((void *)(uintptr_t)base, imgsize);
+            guest_memory_release(base, imgsize);
             goto fail;
         }
         /* The rest of the section stays zero, which is what a loader does for
            the BSS tail -- and it is zero because the mapping is anonymous. */
-        if (n) memcpy((void *)(uintptr_t)(base + va), f + raw, n);
+        if (n) memcpy(guest_memory_pointer(base + va), f + raw, n);
     }
     /* Apply base relocations if the image did not land where it was linked.
      *
@@ -171,7 +144,7 @@ int pe_map(const char *path, PeImage *out)
                             "cannot be fixed, so it would run against the "
                             "wrong addresses.\n",
                     path, (uint32_t)prefbase, base);
-            munmap((void *)(uintptr_t)base, imgsize);
+            guest_memory_release(base, imgsize);
             goto fail;
         }
         n = pe_apply_relocs(base, rel, relsz, base - (uint32_t)prefbase);
@@ -190,7 +163,7 @@ fail:
 
 void pe_unmap(PeImage *img)
 {
-    if (img->base) munmap((void *)(uintptr_t)img->base, img->size);
+    if (img->base) guest_memory_release(img->base, img->size);
     img->base = 0;
 }
 
@@ -200,12 +173,9 @@ void pe_unmap(PeImage *img)
    report unrecognisable. */
 int pe_map_anon_low(uint32_t want, uint32_t size)
 {
-    void *got = mmap((void *)(uintptr_t)want, size, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-    if (got == MAP_FAILED || (uintptr_t)got != (uintptr_t)want) {
+    if (guest_memory_map_fixed(want, size, PROT_READ | PROT_WRITE) != 0) {
         fprintf(stderr, "pe_map_anon_low: wanted 0x%08x, %s\n", want,
-                got == MAP_FAILED ? strerror(errno) : "got somewhere else");
-        if (got != MAP_FAILED) munmap(got, size);
+                strerror(errno));
         return -1;
     }
     return 0;
@@ -242,7 +212,7 @@ static uint32_t data_dir_at(const unsigned char *p, int which, uint32_t *size)
 static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
                                 uint32_t delta)
 {
-    const unsigned char *img = (const unsigned char *)(uintptr_t)base;
+    const unsigned char *img = guest_memory_const_pointer(base);
     uint32_t off = 0, n = 0;
     while (off + 8 <= relsz) {
         uint32_t va = RD32_(img, rel + off);
@@ -259,7 +229,7 @@ static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
                         type, where);
                 abort();
             }
-            *(volatile uint32_t *)(uintptr_t)(base + where) += delta;
+            *(volatile uint32_t *)guest_memory_pointer(base + where) += delta;
             n++;
         }
         off += sz;
@@ -269,7 +239,7 @@ static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
 
 static uint32_t data_dir(uint32_t base, int which, uint32_t *size)
 {
-    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    const unsigned char *p = guest_memory_const_pointer(base);
     uint32_t pe = RD32_(p, 0x3C), opt = pe + 24;
     uint32_t d = opt + 96 + (uint32_t)which * 8;
     if (size) *size = RD32_(p, d + 4);
@@ -279,7 +249,7 @@ static uint32_t data_dir(uint32_t base, int which, uint32_t *size)
 uint32_t pe_export_rva(uint32_t base, const char *name)
 {
     uint32_t dir = data_dir(base, DIR_EXPORT, NULL), n, i;
-    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    const unsigned char *p = guest_memory_const_pointer(base);
     uint32_t names, ords, funcs;
     if (!dir) return 0;
     n     = RD32_(p, dir + 0x18);
@@ -288,7 +258,7 @@ uint32_t pe_export_rva(uint32_t base, const char *name)
     ords  = RD32_(p, dir + 0x24);
     for (i = 0; i < n; i++) {
         uint32_t nr = RD32_(p, names + i * 4);
-        if (strcmp((const char *)(uintptr_t)(base + nr), name) == 0) {
+        if (strcmp(guest_memory_const_pointer(base + nr), name) == 0) {
             uint16_t o = (uint16_t)RD16(p, ords + i * 2);
             return RD32_(p, funcs + (uint32_t)o * 4);
         }
@@ -311,7 +281,7 @@ int pe_bind_imports(uint32_t base,
                     void *ctx, int *out_bound, int *out_poisoned)
 {
     uint32_t dir = data_dir(base, DIR_IMPORT, NULL);
-    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    const unsigned char *p = guest_memory_const_pointer(base);
     int bound = 0, poisoned = 0;
     if (!dir) { if (out_bound) *out_bound = 0;
                 if (out_poisoned) *out_poisoned = 0; return 0; }
@@ -320,7 +290,7 @@ int pe_bind_imports(uint32_t base,
         uint32_t ft = RD32_(p, dir + 16), t;
         const char *mod;
         if (!oft && !ft && !nameR) break;
-        mod = (const char *)(uintptr_t)(base + nameR);
+        mod = guest_memory_const_pointer(base + nameR);
         if (!oft) oft = ft;                    /* some linkers omit the INT */
         for (t = 0;; t += 4) {
             uint32_t thunk = RD32_(p, oft + t), addr;
@@ -329,13 +299,13 @@ int pe_bind_imports(uint32_t base,
                 addr = resolve(mod, NULL, 1, thunk & 0xFFFFu, ctx);
             else
                 addr = resolve(mod,
-                               (const char *)(uintptr_t)(base + thunk + 2),
+                               guest_memory_const_pointer(base + thunk + 2),
                                0, 0, ctx);
             if (addr) bound++; else poisoned++;
             /* The caller's poison value arrives as resolve() returning 0; it
                is filled in by the caller afterwards via out_poisoned bookkeeping
                only if it chose to. Here a 0 is left for the caller to overwrite. */
-            *(volatile uint32_t *)(uintptr_t)(base + ft + t) = addr;
+            *(volatile uint32_t *)guest_memory_pointer(base + ft + t) = addr;
         }
     }
     if (out_bound) *out_bound = bound;
@@ -345,7 +315,7 @@ int pe_bind_imports(uint32_t base,
 
 uint32_t pe_entry_rva(uint32_t base)
 {
-    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    const unsigned char *p = guest_memory_const_pointer(base);
     uint32_t pe = RD32_(p, 0x3C);
     return RD32_(p, pe + 24 + 16);
 }
@@ -356,13 +326,13 @@ uint32_t pe_entry_rva(uint32_t base)
 int pe_imports_module(uint32_t base, const char *modname)
 {
     uint32_t dir = data_dir(base, DIR_IMPORT, NULL);
-    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    const unsigned char *p = guest_memory_const_pointer(base);
     if (!dir) return 0;
     for (;; dir += 20) {
         uint32_t oft = RD32_(p, dir + 0), nameR = RD32_(p, dir + 12);
         uint32_t ft = RD32_(p, dir + 16);
         if (!oft && !ft && !nameR) break;
-        if (strcasecmp((const char *)(uintptr_t)(base + nameR), modname) == 0)
+        if (strcasecmp(guest_memory_const_pointer(base + nameR), modname) == 0)
             return 1;
     }
     return 0;
@@ -372,7 +342,7 @@ int pe_imports_module(uint32_t base, const char *modname)
    program -- so module initialisation must not "initialise" it by running it. */
 int pe_is_dll(uint32_t base)
 {
-    const unsigned char *p = (const unsigned char *)(uintptr_t)base;
+    const unsigned char *p = guest_memory_const_pointer(base);
     uint32_t pe = RD32_(p, 0x3C);
     return (RD16(p, pe + 22) & 0x2000) != 0;   /* IMAGE_FILE_DLL */
 }

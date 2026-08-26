@@ -27,6 +27,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "shell32.h"
+#include "guest_memory.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -115,7 +116,7 @@ static void imp_SHELL32_SHGetFolderPathA(CPU *C)
        trailing separator: Windows returns "C:\\Users\\x\\Documents", and the
        caller appends its own, so a trailing one here produced
        "S:\\\\Activision\\..." in the very first path the game built. */
-    snprintf((char *)(uintptr_t)out, 260, "%c:", X2_SAVE_DRIVE);
+    snprintf(guest_memory_pointer(out), 260, "%c:", X2_SAVE_DRIVE);
     ret_std(C, S_OK_HR, 5);
 }
 

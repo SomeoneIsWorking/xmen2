@@ -32,6 +32,7 @@
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 
@@ -75,7 +76,7 @@ void imp_WS2_32__115(CPU *C)
         int i;
         WR32(data + 0u, 0);                     /* wVersion / wHighVersion */
         for (i = 4; i < 4 + 257 + 129; i++)
-            *((unsigned char *)(uintptr_t)(data + (uint32_t)i)) = 0;
+            *((unsigned char *)guest_memory_pointer(data + (uint32_t)i)) = 0;
         WR32(data + 0x18eu, 0);                 /* iMaxSockets, iMaxUdpDg */
         WR32(data + 0x192u, 0);                 /* lpVendorInfo */
     }

@@ -20,8 +20,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "win32_sdl.h"
-
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -180,7 +180,7 @@ static float sample_at(const DSBuffer *b, uint64_t frame, int channel)
     frame %= frames;
     srcch = b->channels == 1 ? 0 : channel;
     if (srcch >= b->channels) srcch = b->channels - 1;
-    p = (const unsigned char *)(uintptr_t)b->data->guest_data
+    p = (const unsigned char *)guest_memory_const_pointer(b->data->guest_data)
         + frame * b->block_align + (uint64_t)srcch * (b->bits / 8u);
     if (b->bits == 8) return ((float)p[0] - 128.0f) / 128.0f;
     if (b->bits == 16) {
@@ -625,7 +625,7 @@ static void ds_CreateSoundBuffer(CPU *C)
             free(data);b->used=0;audio_unlock();WR32(out,0);ret_com(C,DSERR_OUTOFMEMORY,3);return;
         }
         data->bytes=bytes;data->refs=1;b->data=data;
-        memset((void *)(uintptr_t)data->guest_data,b->bits==8?0x80:0,bytes);
+        memset(guest_memory_pointer(data->guest_data),b->bits==8?0x80:0,bytes);
         g_secondary_created++;
         if (g_secondary_created <= 12)
             fprintf(stderr, "DSOUND: secondary %lu -> object 0x%08x, out "
@@ -642,7 +642,7 @@ static void ds_GetCaps(CPU *C)
 {
     uint32_t p=A(1), size=p?RD32(p):0;
     if(!p||size<24u){ret_com(C,DSERR_INVALIDPARAM,1);return;}
-    memset((void *)(uintptr_t)(p+4u),0,size-4u);
+    memset(guest_memory_pointer(p+4u),0,size-4u);
     /* Primary/secondary mono+stereo, 8+16-bit, continuous rates. Mixing is
        software, so the hardware-buffer capacity fields remain zero. */
     WR32(p+4u,0x00000f1fu);
@@ -745,7 +745,7 @@ int dsound_selftest(void)
     memset(&a,0,sizeof a);memset(&b,0,sizeof b);memset(&d,0,sizeof d);
     d.guest_data=guest_malloc(sizeof pcm);d.bytes=sizeof pcm;d.refs=2;
     if(!d.guest_data){printf("DSOUND mixer selftest: FAILED -- no guest PCM allocation\n");return 1;}
-    memcpy((void *)(uintptr_t)d.guest_data,pcm,sizeof pcm);
+    memcpy(guest_memory_pointer(d.guest_data),pcm,sizeof pcm);
     a.used=b.used=1;a.data=b.data=&d;a.channels=b.channels=1;a.bits=b.bits=16;
     a.block_align=b.block_align=2;a.sample_rate=b.sample_rate=4;a.frequency=b.frequency=4;
     a.playing=b.playing=1;a.looping=b.looping=1;b.volume=-10000;

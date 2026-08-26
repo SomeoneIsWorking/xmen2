@@ -74,6 +74,31 @@ class LauncherContract(unittest.TestCase):
         for retired in ("RUN_ARGS", "run_wine", "require_command", 'mode = "native"'):
             self.assertNotIn(retired, text)
 
+    def test_bootstrap_finds_repository_local_game(self):
+        for relative in (Path("."), Path("X-Men Legends II")):
+            with self.subTest(relative=relative), scratch_directory() as raw:
+                root = Path(raw)
+                game = root / relative
+                game.mkdir(parents=True, exist_ok=True)
+                (game / "XMen2.exe").write_bytes(b"fixture executable")
+                with mock.patch.object(bootstrap, "ROOT", root), \
+                     mock.patch.dict(bootstrap.os.environ, {}, clear=True):
+                    self.assertEqual(bootstrap.find_game(), game.resolve())
+                    self.assertEqual(bootstrap.os.environ["GAME_PC_DIR"],
+                                     str(game.resolve()))
+
+    def test_bootstrap_refuses_ambiguous_repository_local_games(self):
+        with scratch_directory() as raw:
+            root = Path(raw)
+            for name in ("disc-one", "disc-two"):
+                game = root / name
+                game.mkdir()
+                (game / "XMen2.exe").write_bytes(b"fixture executable")
+            with mock.patch.object(bootstrap, "ROOT", root), \
+                 mock.patch.dict(bootstrap.os.environ, {}, clear=True), \
+                 self.assertRaisesRegex(SystemExit, "multiple repository-local"):
+                bootstrap.find_game()
+
     def test_runner_prefers_clang_and_accepts_gcc(self):
         common = {"cmake": "/uv/cmake", "ninja": "/uv/ninja"}
 
@@ -98,6 +123,14 @@ class LauncherContract(unittest.TestCase):
         selected = runner.resolve_toolchain(tools.get, {"CC": "mycc", "CXX": "mycxx"})
         self.assertEqual((selected.cc, selected.cxx),
                          ("/opt/toolchain/mycc", "/opt/toolchain/mycxx"))
+
+    def test_homebrew_vulkan_pkg_config_satisfies_dependency_probe(self):
+        toolchain = runner.Toolchain("cmake", "ninja", "clang", "clang++", "Clang")
+        with mock.patch.object(runner.shutil, "which",
+                               side_effect=lambda name: f"/opt/homebrew/bin/{name}"), \
+             mock.patch.object(runner, "command_ok", return_value=True), \
+             mock.patch.object(runner.ctypes.util, "find_library", return_value=None):
+            runner.check_native_dependencies(toolchain)
 
     def test_committed_exports_are_complete_metadata_without_encodings(self):
         expected = {f"{module}.json" for module in bootstrap.modules()}

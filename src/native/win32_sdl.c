@@ -33,10 +33,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <SDL3/SDL.h>
 
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "settings_store.h"
 #include "window_settings.h"
 #include "rmlui_ui.h"
@@ -330,7 +330,7 @@ void imp_USER32_SetWindowPos(CPU *C)
 void imp_USER32_SetWindowTextA(CPU *C)
 {
     if (g_win && hwnd_is_main(A(0)) && A(1))
-        SDL_SetWindowTitle(g_win, (const char *)(uintptr_t)A(1));
+        SDL_SetWindowTitle(g_win, guest_memory_const_pointer(A(1)));
     ret_std(C, 1, 2);
 }
 
@@ -523,8 +523,8 @@ int win32_sdl_dialog(const char *title, const char *text,
 void imp_USER32_MessageBoxA(CPU *C)
 {
     /* (hWnd, lpText, lpCaption, uType) */
-    const char *text = (const char *)(uintptr_t)A(1);
-    const char *cap  = (const char *)(uintptr_t)A(2);
+    const char *text = guest_memory_const_pointer(A(1));
+    const char *cap  = guest_memory_const_pointer(A(2));
     uint32_t type = A(3);
     /*
      * WHO decided this. The text says what the game concluded; without the
@@ -614,7 +614,7 @@ void imp_USER32_CreateWindowExA(CPU *C)
     w = (int32_t)settings->width;
     h = (int32_t)settings->height;
     window_flags = g_hide_windows ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
-    g_win = SDL_CreateWindow(name ? (const char *)(uintptr_t)name : "x2native",
+    g_win = SDL_CreateWindow(name ? guest_memory_const_pointer(name) : "x2native",
                              w, h, window_flags);
     if (!g_win) {
         fprintf(stderr, "win32_sdl: SDL_CreateWindow failed: %s\n",
@@ -810,7 +810,7 @@ static uint32_t data_alloc(uint32_t v)
     if (!g_data_arena || g_data_used + 4u > g_data_size) return 0;
     a = g_data_arena + g_data_used;
     g_data_used += 4u;
-    *(volatile uint32_t *)(uintptr_t)a = v;
+    *(volatile uint32_t *)guest_memory_pointer(a) = v;
     return a;
 }
 
@@ -838,7 +838,7 @@ uint32_t x86_native_data_export(const char *mod, const char *sym)
            one is something it could branch on. */
         if (strcmp(sym, "_acmdln") == 0) {
             uint32_t s2 = guest_malloc(1);
-            if (s2) *(volatile uint8_t *)(uintptr_t)s2 = 0;
+            if (s2) *(volatile uint8_t *)guest_memory_pointer(s2) = 0;
             return data_alloc(s2);
         }
     }

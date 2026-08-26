@@ -218,7 +218,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: rc-exe-run
 - evidence: C081/C156/C178/C209; x2native's battery checks stdcall/cdecl callback cleanup, a deliberate zero-cleanup mutation aborts, and the native D3D8 route has completed menu, movies, level load, gameplay, death dialog and return to menu with zero refused draws.
 - where: src/native/, tools/recomp.py native, CMakeLists.txt target x2native
-- gap: The native x86-64 ELF now maps and initialises the recompiled exe and game modules, supplies the reached Win32, DirectInput, DirectSound and D3D8 host surfaces, and runs the game loop. Remaining work is coverage and faithfulness: unreached imports remain fail-loud poison thunks; guest exception delivery, LAN sockets and optional COM/system facilities are still absent; fixed low-address mapping leaves macOS unverified under issue #10.
+- gap: The native x86-64 ELF and arm64 Mach-O now map and initialise the recompiled exe and game modules, supply the reached Win32, DirectInput, DirectSound and D3D8 host surfaces, and run the game loop. Apple Silicon uses a translated 4 GB guest arena under the normal Mach-O `__PAGEZERO` (issue #10 closed). Remaining work is coverage and faithfulness: unreached imports remain fail-loud poison thunks; guest exception delivery, LAN sockets and optional COM/system facilities are still absent.
 - notes: x2native composes the generated recompiled bodies with src/native, src/d3d8 and src/gpu. The former note claiming the native CMake build was unrelated to the recomp was retired as stale.
 
 ### rc-modinit — Native module initialisation: nothing runs DllMain or the CRT per module

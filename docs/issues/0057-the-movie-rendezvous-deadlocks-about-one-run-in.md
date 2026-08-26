@@ -263,7 +263,12 @@ count, waiters), waiting by condition wait rather than by spinning, and
 `GetCurrentThreadId` now returns the guest id so the two agree. Leaving a
 section owned by another thread aborts by name instead of corrupting it.
 
-### The threading model is now COROUTINES, and the preemption point moved
+### Historical coroutine phase (superseded 2026-08-26)
+
+The measurements below explain why preemption remains in `X86_ENTER_FN`, but
+the `ucontext` mechanism itself has been removed. The current implementation is
+one pthread per guest thread, serialized by a mutex and parked with condition
+variables; C159 and issue #10 carry the current validation.
 The one-guest-thread-at-a-time invariant was implemented with a pthread per
 guest thread and a global mutex. That gave the right invariant for the wrong
 reason: the **host** scheduler decided which guest thread ran next and when, so

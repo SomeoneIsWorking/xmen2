@@ -6,6 +6,7 @@
  * devices and the one authoritative SDL-scancode-to-DIK translation.
  */
 #include "dinput_system.h"
+#include "guest_memory.h"
 
 #include "dinput_device.h"
 #include "x86rt.h"
@@ -125,7 +126,7 @@ const char *dinput_system_dik_name(unsigned char dik)
 
 void dinput_system_keyboard_state(uint32_t out, uint32_t size)
 {
-    memset((void *)(uintptr_t)out, 0, size);
+    memset(guest_memory_pointer(out), 0, size);
     if (!dinput_system_available()) { say_blind("keyboard"); return; }
 #ifdef X2_WITH_SDL
     {
@@ -137,7 +138,7 @@ void dinput_system_keyboard_state(uint32_t out, uint32_t size)
         for (i = 0; i < DIK_MAP_N; i++) {
             if (DIK_MAP[i].sdl >= nkeys || !keys[DIK_MAP[i].sdl]) continue;
             if ((uint32_t)DIK_MAP[i].dik >= size) continue;
-            *((unsigned char *)(uintptr_t)out + DIK_MAP[i].dik) = 0x80;
+            *((unsigned char *)guest_memory_pointer(out) + DIK_MAP[i].dik) = 0x80;
         }
     }
 #endif
@@ -145,7 +146,7 @@ void dinput_system_keyboard_state(uint32_t out, uint32_t size)
 
 void dinput_system_mouse_state(uint32_t out, uint32_t size)
 {
-    memset((void *)(uintptr_t)out, 0, size);
+    memset(guest_memory_pointer(out), 0, size);
     if (!dinput_system_available()) { say_blind("mouse"); return; }
 #ifdef X2_WITH_SDL
     {
@@ -157,11 +158,11 @@ void dinput_system_mouse_state(uint32_t out, uint32_t size)
         if (size >= 4u) WR32(out, (uint32_t)(int32_t)dx);
         if (size >= 8u) WR32(out + 4u, (uint32_t)(int32_t)dy);
         if (count > 0u && (buttons & SDL_BUTTON_LMASK))
-            *((unsigned char *)(uintptr_t)out + 12) = 0x80;
+            *((unsigned char *)guest_memory_pointer(out) + 12) = 0x80;
         if (count > 1u && (buttons & SDL_BUTTON_RMASK))
-            *((unsigned char *)(uintptr_t)out + 13) = 0x80;
+            *((unsigned char *)guest_memory_pointer(out) + 13) = 0x80;
         if (count > 2u && (buttons & SDL_BUTTON_MMASK))
-            *((unsigned char *)(uintptr_t)out + 14) = 0x80;
+            *((unsigned char *)guest_memory_pointer(out) + 14) = 0x80;
     }
 #endif
 }
@@ -179,9 +180,9 @@ static const unsigned char GUID_SYS_MOUSE[16] = {
 int dinput_guid_kind(uint32_t guid)
 {
     if (!guid) return 0;
-    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_KEYBOARD, 16) == 0)
+    if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0)
         return DINPUT_DEV_KEYBOARD;
-    if (memcmp((const void *)(uintptr_t)guid, GUID_SYS_MOUSE, 16) == 0)
+    if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
         return DINPUT_DEV_MOUSE;
     return 0;
 }

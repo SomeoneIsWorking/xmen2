@@ -25,6 +25,7 @@
 #include "gpu_draw.h"
 #include "x86rt.h"
 #include "guest_heap.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -182,7 +183,7 @@ static int d3d8_draw_selftest(void)
         gpu_device_destroy();
         return 1;
     }
-    memcpy((void *)(uintptr_t)locked, tri, sizeof tri);
+    memcpy(guest_memory_pointer(locked), tri, sizeof tri);
     call_method(vb, 12, NULL, 0);                   /* Unlock */
 
     /* The device state the engine would have set. */
@@ -253,7 +254,7 @@ static int d3d8_draw_selftest(void)
                "not be populated.\n");
         fails++;
     } else {
-        memcpy((void *)(uintptr_t)locked, model_tri, sizeof model_tri);
+        memcpy(guest_memory_pointer(locked), model_tri, sizeof model_tri);
         call_method(model_vb, 12, NULL, 0);
         d3d8_state_reset(&st);
         st.vertex_shader = 0x0042u;
@@ -356,7 +357,7 @@ static int depth_selftest(void)
         gpu_device_destroy();
         return 1;
     }
-    memcpy((void *)(uintptr_t)locked, quad, sizeof quad);
+    memcpy(guest_memory_pointer(locked), quad, sizeof quad);
     call_method(vb, 12, NULL, 0);
 
     d3d8_state_reset(&st);
@@ -538,7 +539,7 @@ static int fan_selftest(void)
         gpu_device_destroy();
         return 1;
     }
-    memcpy((void *)(uintptr_t)locked, fan, sizeof fan);
+    memcpy(guest_memory_pointer(locked), fan, sizeof fan);
     call_method(vb, 12, NULL, 0);
 
     d3d8_state_reset(&st);
@@ -684,7 +685,7 @@ static int lighting_selftest(void)
             gpu_device_destroy();
             return fails + 1;
         }
-        memcpy((void *)(uintptr_t)locked, quad, sizeof quad);
+        memcpy(guest_memory_pointer(locked), quad, sizeof quad);
         call_method(vb, 12, NULL, 0);
 
         memset(&req, 0, sizeof req);
@@ -879,7 +880,7 @@ static int gamma_selftest(void)
         fails++;
     }
 
-    memset((void *)(uintptr_t)back, 0xA5, 3 * 256 * 2);
+    memset(guest_memory_pointer(back), 0xA5, 3 * 256 * 2);
     args[0] = back;
     call_method(dev, 19, args, 1);                       /* GetGammaRamp */
     for (i = 0; i < 3 * 256; i++)
@@ -1095,7 +1096,7 @@ static int texture_level_selftest(void)
     }
 
     /* GetDesc (slot 8) must describe LEVEL 1, not the texture. */
-    memset((void *)(uintptr_t)desc, 0xA5, 32);
+    memset(guest_memory_pointer(desc), 0xA5, 32);
     args[0] = desc;
     call_method(s1, 8, args, 1);
     if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 16u) {
@@ -1143,7 +1144,7 @@ static int texture_level_selftest(void)
         }
         if (surfptr) {
             /* Something recognisable, so the upload has real bytes to move. */
-            memset((void *)(uintptr_t)surfptr, 0x5A, 32u * 16u * 4u);
+            memset(guest_memory_pointer(surfptr), 0x5A, 32u * 16u * 4u);
         }
     }
 
@@ -1228,7 +1229,7 @@ static int cube_selftest(void)
     }
 
     /* GetLevelDesc (slot 14) for level 1 of a 64-cube: 32x32. */
-    memset((void *)(uintptr_t)desc, 0xA5, 32);
+    memset(guest_memory_pointer(desc), 0xA5, 32);
     args[0] = 1; args[1] = desc;
     call_method(cube, 14, args, 2);
     if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 32u) {

@@ -59,7 +59,7 @@ int main(void)
     failures += k32_file_gate_open();
     k32_open_note("Movies\\CINE01.SFD", 1, 1, actual);
     failures += !k32_file_gate_open() || g_save_notes != 1;
-    snprintf(expected, sizeof(expected), "%s/saves//slot.dat", root);
+    snprintf(expected, sizeof(expected), "%s/saves/slot.dat", root);
     snprintf(actual, sizeof(actual), "%s", win_path("S:\\slot.dat"));
     failures += strcmp(actual, expected) != 0;
     unlink(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");

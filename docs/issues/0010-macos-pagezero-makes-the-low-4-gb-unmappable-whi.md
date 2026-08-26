@@ -1,14 +1,41 @@
 ---
 id: 10
 title: macOS __PAGEZERO makes the low 4 GB unmappable, which is exactly where the guest image has to go
-status: open
+status: resolved
 symptom: On macOS, pe_map's MAP_FIXED_NOREPLACE at 0x10000000 (or 0x400000 for XMen2.exe) fails, so x2native reports that the kernel would not place the image at its preferred base and refuses to run
 tags: pc,recomp,native,macos,portability,rc-native
 created: 2026-08-05
-updated: 2026-08-05
+updated: 2026-08-26
 ---
 
-## Why this is written down before anyone hits it
+## Resolution
+
+Apple Silicon now runs the native arm64 build with the normal 4 GB
+`__PAGEZERO`. `src/native/guest_memory.c` reserves a separate 4 GB host arena;
+every logical 32-bit guest address is translated through its base, and every
+host/guest boundary uses the same helpers. PE images, the heap, file mappings,
+stacks, D3D8 buffers, strings and diagnostics no longer require identity maps.
+
+The alternative was measured and rejected: an arm64 Mach-O linked with
+`-Wl,-pagezero_size,0x4000` was killed before `main` (exit 137), while the
+normal 4 GB page-zero binary cannot map the PE bases by either `mmap` or
+`mach_vm`. This was a port assumption, not an OS limitation to work around.
+
+The other portability blocker was `ucontext`. Guest threads are now pthreads
+serialized by one mutex and parked/woken by condition variables. Nested Win32
+suspend counts are preserved; quantum preemption temporarily releases the
+guest mutex rather than switching C stacks.
+
+Validation on 2026-08-26: the arm64 Mach-O passed the 93-check native battery
+and the full 106-test CTest gate passed 103 with three optional-data skips.
+The battery now includes two 4 KiB Windows pages in one 16 KiB Apple hardware
+page and proves that decommitting one does not revoke its committed sibling.
+A driven D3D8 run cleared all six intro movies, passed the former allocator
+fault after `i105.sfd`, entered the playable world, enabled the world shadow
+pass and continued presenting geometry for another 50 seconds. A probe-enabled
+live run bound 16 of 16 generated probes through Mach-O override slots.
+
+## Original collision
 
 SDL3 GPU was chosen partly because it maps onto Metal on macOS. That makes
 macOS a real target, and the native design has a hard assumption that collides
@@ -16,10 +43,10 @@ with it.
 
 ## The collision
 
-`src/native/pe_map.c` maps the original PE at its OWN preferred base and
-REFUSES to relocate, because the recompiled bodies dereference guest addresses
-directly (`RD32(a)` is `*(uint32_t *)a`). Those bases are 0x00400000 for
-XMen2.exe and 0x10000000 for the DLLs -- all inside the low 4 GB.
+The original `src/native/pe_map.c` mapped the PE at its preferred host address,
+because recompiled bodies dereferenced guest addresses directly (`RD32(a)` was
+`*(uint32_t *)a`). Those bases are 0x00400000 for XMen2.exe and 0x10000000 for
+the DLLs -- all inside the low 4 GB.
 
 A 64-bit Mach-O executable is linked with a `__PAGEZERO` segment of 4 GB by
 default. That reservation is unmapped and unmappable, so every address the
@@ -46,33 +73,11 @@ base-offset every pointer crossing that boundary has to be translated. Since we
 are writing that boundary ourselves anyway (43 Win32 calls plus SDL), the
 translation belongs there and is bounded -- it is a cost, not a blocker.
 
-So the decision to make is which of the two to pay for, and it should be made on
-the boundary's shape rather than on macOS's page zero. Deferring it is fine
-while the boundary is small; it gets more expensive the more of it exists.
+The implementation chose that bounded translation cost. The generated memory
+accessors and the handwritten host boundary now share the same address model.
 
-## The mitigation, and its status
+## What would reopen it
 
-Link the native host with a small page zero:
-
-    -Wl,-pagezero_size,0x1000
-
-This is the standard approach for anything that needs fixed low addresses on
-macOS. Nothing here interprets or emulates instructions -- the guest code was
-statically recompiled to C and runs as native code; what it needs the low 4 GB
-for is that its DATA addresses are baked into that C. It is NOT verified here: this machine is Linux, and nothing in this repo
-has been built or run on macOS. Treat the mitigation as the thing to try first,
-not as a known-good fix.
-
-## What would falsify the concern entirely
-
-If a macOS build with the default page zero maps 0x10000000 successfully, the
-premise is wrong and this entry should be closed with that measurement. Do not
-close it on reasoning.
-
-## Knock-on
-
-If the mitigation does not hold, identity mapping has to be abandoned on macOS,
-and the memory accessors in `src/recomp/x86rt.h` need a base-offset form
-(`RD32(a)` becomes `*(uint32_t *)(g_mem + a)`). That is a change to the
-EMITTED code's assumptions, not just the host, so it would be far cheaper to
-find out early -- which is the reason this is filed now rather than later.
+Any raw guest-address dereference that bypasses `guest_memory_pointer`, an
+arm64 run that cannot complete the native battery, or a threaded movie run that
+stalls with a runnable worker unable to acquire the serialized guest turn.

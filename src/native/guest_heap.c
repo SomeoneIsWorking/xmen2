@@ -18,6 +18,7 @@
  * corrupting the arena and surfacing somewhere unrelated much later.
  */
 #include "guest_heap.h"
+#include "guest_memory.h"
 #include "x86rt_native.h"
 
 #include <stdio.h>
@@ -42,20 +43,15 @@ static unsigned long g_live;
 static uint32_t g_used, g_highwater;
 
 #define HDR   ((uint32_t)sizeof(Blk))
-#define BLK(a) ((volatile Blk *)(uintptr_t)(a))
+#define BLK(a) ((volatile Blk *)guest_memory_pointer(a))
 
 int guest_heap_init(uint32_t base, uint32_t size)
 {
-    void *p;
     if (size < 0x10000u) return -1;
-    p = mmap((void *)(uintptr_t)base, size, PROT_READ | PROT_WRITE,
-             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE | MAP_NORESERVE,
-             -1, 0);
-    if (p == MAP_FAILED || (uintptr_t)p != (uintptr_t)base) {
+    if (guest_memory_map_fixed(base, size, PROT_READ | PROT_WRITE) != 0) {
         fprintf(stderr, "guest_heap: could not place a %u-byte arena at "
                         "0x%08x; guest allocations have nowhere to live\n",
                 size, base);
-        if (p != MAP_FAILED) munmap(p, size);
         return -1;
     }
     g_base = base;
@@ -192,7 +188,7 @@ uint32_t guest_realloc(uint32_t p, uint32_t n)
     if (b->size >= n) return p;
     q = guest_malloc(n);
     if (!q) return 0;
-    memcpy((void *)(uintptr_t)q, (const void *)(uintptr_t)p, b->size);
+    memcpy(guest_memory_pointer(q), guest_memory_const_pointer(p), b->size);
     guest_free(p);
     return q;
 }

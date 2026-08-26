@@ -32,6 +32,7 @@
 #include "continue_runtime.h"
 #include "save_directory.h"
 #include "settings_store.h"
+#include "guest_memory.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -231,7 +232,7 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base)
     const X2BootModeDecision *decision;
     X2BootMode requested;
     if (!command || !x2_boot_mode_is_intro_command(
-                        (const char *)(uintptr_t)command))
+                        guest_memory_const_pointer(command)))
         return 0;
     requested = x2_settings_store()->boot_mode;
     decision = x2_boot_mode_runtime_prepare(
@@ -328,7 +329,7 @@ void x2_override_0055beb0(CPU *C)
                                     "buffer. Booting normally.\n");
                     mode = 0;
                 } else {
-                    memcpy((void *)(uintptr_t)BOOT_PAGE, buf,
+                    memcpy(guest_memory_pointer(BOOT_PAGE), buf,
                            (size_t)len + 1u);
                     cmd = BOOT_PAGE;
                     fprintf(stderr, "X2_BOOT_MAP: the boot's intro script is "
@@ -355,7 +356,7 @@ void x2_override_0055beb0(CPU *C)
         return;
     }
     if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
-        x2_boot_mode_is_intro_command((const char *)(uintptr_t)s)) {
+        x2_boot_mode_is_intro_command(guest_memory_const_pointer(s))) {
         /* The boot has already reset the game. Run the retail New Game owner;
            its nested menus/new_game command is intercepted below only after
            it has installed the default party. */
@@ -378,7 +379,7 @@ void x2_override_0055beb0(CPU *C)
         return;
     }
     if (mode && phase == BOOT_MAP_INITIALIZING_PARTY && cmd && exe_base && s &&
-        strncmp((const char *)(uintptr_t)s, NEW_GAME_PFX,
+        strncmp(guest_memory_const_pointer(s), NEW_GAME_PFX,
                 sizeof NEW_GAME_PFX - 1u) == 0) {
         /* startFirstMission has completed the real party setup and is about to
            run the presentation-only new_game script. Replace that script's

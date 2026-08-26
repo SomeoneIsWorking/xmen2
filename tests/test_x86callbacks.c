@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "guest_memory.h"
 #include "x86callbacks.h"
 
 #include <stdint.h>
@@ -18,12 +19,15 @@ void x86_dispatch(CPU *C, uint32_t target)
 int main(void)
 {
     CPU C;
-    uint32_t *mem = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
-    if (mem == MAP_FAILED || (uintptr_t)mem > UINT32_MAX) {
-        fprintf(stderr, "could not allocate 32-bit callback corpus\n");
+    const uint32_t memory = 0x70000000u;
+    uint32_t *mem;
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(memory, 4096,
+                               PROT_READ | PROT_WRITE) != 0) {
+        fprintf(stderr, "could not allocate guest callback corpus\n");
         return 1;
     }
+    mem = guest_memory_pointer(memory);
     memset(&C, 0, sizeof C);
     /* Leave real downward-growing stack space below the synthetic ESP.  The
        shipping adapter pushes one return word before each callback. */
@@ -31,9 +35,9 @@ int main(void)
     mem[4] = 0;
     mem[5] = 0x11111111u;
     mem[6] = 0x22222222u;
-    C.esp = (uint32_t)(uintptr_t)&mem[64];
-    mem[65] = (uint32_t)(uintptr_t)&mem[4];
-    mem[66] = (uint32_t)(uintptr_t)&mem[7];
+    C.esp = memory + 64u * 4u;
+    mem[65] = memory + 4u * 4u;
+    mem[66] = memory + 7u * 4u;
 
     x86_host_initterm(&C);
     if (seen_count != 2 || seen[0] != mem[5] || seen[1] != mem[6]) {
@@ -41,7 +45,7 @@ int main(void)
                         "%08x %08x\n", seen_count, seen[0], seen[1]);
         return 1;
     }
-    if (C.esp != (uint32_t)(uintptr_t)&mem[64]) {
+    if (C.esp != memory + 64u * 4u) {
         fprintf(stderr, "_initterm changed caller esp\n");
         return 1;
     }

@@ -1,4 +1,5 @@
 #include "dinput8_controller_slots.h"
+#include "guest_memory.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -12,6 +13,7 @@
 #define INSTANCE_OFFSET        0x27e8u
 #define DEVICE_ARRAY_OFFSET    0x0cu
 #define POLLED_MASK_OFFSET     0x129ccu
+#define MANAGER_ADDRESS        0x70000000u
 
 static unsigned char host_guid[2][16] = {{0xa1}, {0xb2}};
 static int checks;
@@ -48,7 +50,7 @@ int dinput_pad_for_guid(const unsigned char guid[16])
 static void set_poll(uint32_t manager, int controller_slot, uint32_t device,
                      int polled)
 {
-    unsigned char *base = (unsigned char *)(uintptr_t)manager;
+    unsigned char *base = guest_memory_pointer(manager);
     uint32_t *devices = (uint32_t *)(base + DEVICE_ARRAY_OFFSET);
     uint32_t *mask = (uint32_t *)(base + POLLED_MASK_OFFSET);
 
@@ -60,7 +62,7 @@ static void set_poll(uint32_t manager, int controller_slot, uint32_t device,
 static void set_slot(uint32_t manager, int controller_slot, int attached,
                      const unsigned char guid[16])
 {
-    unsigned char *base = (unsigned char *)(uintptr_t)manager;
+    unsigned char *base = guest_memory_pointer(manager);
     base[ATTACHED_OFFSET + (unsigned)controller_slot] =
         (unsigned char)attached;
     memcpy(base + INSTANCE_OFFSET + (unsigned)controller_slot * 16u, guid, 16);
@@ -69,15 +71,14 @@ static void set_slot(uint32_t manager, int controller_slot, int attached,
 int main(void)
 {
     unsigned char unknown[16] = {0xc3};
-    void *region = mmap(NULL, MANAGER_BYTES, PROT_READ | PROT_WRITE,
-                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
-    uint32_t manager;
+    uint32_t manager = MANAGER_ADDRESS;
 
-    if (region == MAP_FAILED || (uintptr_t)region > UINT32_MAX) {
-        perror("test_dinput8_controller_slots mmap");
-        return 77;
+    if (guest_memory_init() != 0 ||
+        guest_memory_map_fixed(manager, MANAGER_BYTES,
+                               PROT_READ | PROT_WRITE) != 0) {
+        perror("test_dinput8_controller_slots guest map");
+        return 1;
     }
-    manager = (uint32_t)(uintptr_t)region;
     dinput8_controller_slots_set_manager(manager);
 
     set_slot(manager, 0, 1, host_guid[1]);

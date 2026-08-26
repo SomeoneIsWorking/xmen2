@@ -28,6 +28,8 @@
 
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "guest_memory.h"
+#define PROBE_GUEST_POINTER(address) guest_memory_const_pointer(address)
 #include "probe_table.h"
 #include "oracle_trace.h"
 
@@ -40,6 +42,7 @@ static pr_u32 g_seq[PROBE_COUNT ? PROBE_COUNT : 1];
 static unsigned long long g_calls; /* probed calls SEEN, armed or not */
 static unsigned long long g_capped;
 static unsigned long long g_max = 400000;
+static int g_probe_selftest;
 
 /* ---- readable guest memory -------------------------------------------------
  *
@@ -53,7 +56,11 @@ static unsigned long long g_max = 400000;
  * PROBE_UNREADABLE across the field and counts it, so "could not read" and
  * "read zeros" stay different in the stream.
  */
+#if defined(__APPLE__) && defined(__aarch64__)
+#define PAGE_BITS 14
+#else
 #define PAGE_BITS 12
+#endif
 #define PAGE_SZ   (1u << PAGE_BITS)
 /*
  * NOT CACHED, deliberately.
@@ -71,10 +78,7 @@ static unsigned long long g_max = 400000;
  */
 int probe_page_readable(pr_u32 page)
 {
-    unsigned char vec = 0;
-    /* mincore() reports ENOMEM for an address with no mapping, which is the
-       question being asked; the residency answer itself is not used. */
-    return mincore((void *)(uintptr_t)page, PAGE_SZ, &vec) == 0;
+    return guest_memory_is_readable(page, PAGE_SZ);
 }
 
 /* ---- arming --------------------------------------------------------------- */
@@ -112,7 +116,7 @@ static void arm_once(void)
                     "(manifest 0x%08x, cap %llu records)\n",
             PROBE_COUNT, path, PROBE_MANIFEST_HASH, g_max);
     g_armed = 1;
-    oracle_probe_binding_check();
+    if (!g_probe_selftest) oracle_probe_binding_check();
 }
 
 /*
@@ -148,7 +152,8 @@ int oracle_probe_binding_check(void)
         for (m = x86_modules(); m; m = m->next) {
             size_t n = strlen(p->module);
             if (strncmp(m->name, p->module, n) == 0
-                    && (m->name[n] == 0 || strcmp(m->name + n, ".dll") == 0))
+                    && (m->name[n] == 0 || strcmp(m->name + n, ".dll") == 0 ||
+                        strcmp(m->name + n, ".exe") == 0))
                 break;
         }
         if (!m) {
@@ -165,7 +170,17 @@ int oracle_probe_binding_check(void)
                             "the address is wrong.\n",
                     p->name, p->linked, p->module);
             bad++;
-        } else if (found->fn != g_probe_wrapfn[i]) {
+        }
+#if defined(__APPLE__)
+        else if (!x86_override_is_bound(p->image, p->linked,
+                                        g_probe_wrapfn[i])) {
+            fprintf(stderr,
+                    "  probe %-44s NOT BOUND through its Mach-O override "
+                    "slot; it cannot fire.\n", p->name);
+            bad++;
+        }
+#else
+        else if (found->fn != g_probe_wrapfn[i]) {
             fprintf(stderr,
                     "  probe %-44s NOT WRAPPED: the table entry is %p, the "
                     "wrapper is %p.\n"
@@ -176,6 +191,7 @@ int oracle_probe_binding_check(void)
                     p->module);
             bad++;
         }
+#endif
     }
     fprintf(stderr, "oracle_trace: %d of %d probe(s) bound to their wrapper%s\n",
             PROBE_COUNT - bad, PROBE_COUNT,
@@ -315,6 +331,8 @@ int oracle_probe_selftest(void)
     int i, fails = 0;
     pr_u32 obj;
 
+    g_probe_selftest = 1;
+
     if (PROBE_COUNT == 0) {
         printf("probe selftest: tools/probes.json declares NO probes, so there "
                "is nothing to prove. That is a FAILURE of this test, not a "
@@ -322,13 +340,12 @@ int oracle_probe_selftest(void)
         return 1;
     }
     /* Somewhere real to point at: a page we own, so probe_read must succeed. */
-    buf = mmap(NULL, PAGE_SZ, PROT_READ | PROT_WRITE,
-               MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
-    if (buf == MAP_FAILED) {
+    if (guest_memory_map_any(0x68000000u, 0x6f000000u, PAGE_SZ, PAGE_SZ,
+                             PROT_READ | PROT_WRITE, &obj) != 0) {
         printf("probe selftest: could not map a low page -- ran NOTHING\n");
         return 1;
     }
-    obj = (pr_u32)(uintptr_t)buf;
+    buf = guest_memory_pointer(obj);
     for (i = 0; i < 16; i++) want[i] = (unsigned char)(0xA0 + i);
     memcpy(buf, want, 16);
 
@@ -340,16 +357,18 @@ int oracle_probe_selftest(void)
     {
         unsigned char probe_buf[32];
         pr_u32 cross = obj + PAGE_SZ - 8u;      /* 8 bytes either side */
-        unsigned char *big = mmap(NULL, PAGE_SZ * 2u, PROT_READ | PROT_WRITE,
-                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT,
-                                  -1, 0);
-        if (big == MAP_FAILED) {
+        pr_u32 big_address;
+        unsigned char *big;
+        if (guest_memory_map_any(0x68000000u, 0x6f000000u, PAGE_SZ,
+                                 PAGE_SZ * 2u, PROT_READ | PROT_WRITE,
+                                 &big_address) != 0) {
             printf("  FAIL  could not map two pages; the walk is UNTESTED\n");
             fails++;
         } else {
             int k;
+            big = guest_memory_pointer(big_address);
             for (k = 0; k < 32; k++) big[PAGE_SZ - 8 + k] = (unsigned char)k;
-            cross = (pr_u32)(uintptr_t)big + PAGE_SZ - 8u;
+            cross = big_address + PAGE_SZ - 8u;
             if (!probe_read(cross, probe_buf, 32)) {
                 printf("  FAIL  a 32-byte read spanning a page boundary was "
                        "refused; every field larger than the tail of a page "
@@ -361,7 +380,7 @@ int oracle_probe_selftest(void)
             } else {
                 printf("  ok    a read spanning two pages returns both\n");
             }
-            munmap(big, PAGE_SZ * 2u);
+            guest_memory_release(big_address, PAGE_SZ * 2u);
             /* And now that it is unmapped, the SAME read must be refused --
                a checker that says yes to everything is not a checker. */
             if (probe_read(cross, probe_buf, 32)) {
@@ -384,7 +403,8 @@ int oracle_probe_selftest(void)
     C.esp = obj + 0x800u;
     C.ecx = obj;
     for (i = 0; i < 4; i++) {
-        *(pr_u32 *)(uintptr_t)(C.esp + 4u + (pr_u32)i * 4u) = obj;
+        *(pr_u32 *)guest_memory_pointer(
+            C.esp + 4u + (pr_u32)i * 4u) = obj;
     }
     oracle_probe_call(&g_probes[0], selftest_body, &C);
 
@@ -425,9 +445,10 @@ int oracle_probe_selftest(void)
            (unsigned long long)g_sink.records,
            (unsigned long long)g_sink.unreadable);
     probe_sink_close(&g_sink, "selftest");
-    munmap(buf, PAGE_SZ);
+    guest_memory_release(obj, PAGE_SZ);
     unsetenv("X2_PROBE");
     g_armed = 0; g_off = 0;
+    g_probe_selftest = 0;
     printf("probe selftest: %s -- %d failure(s)\n",
            fails ? "FAILED" : "PASSED", fails);
     return fails ? 1 : 0;
