@@ -41,8 +41,6 @@ SHARED_REPOS = (
                "8282d4c7d19ef3a625866524092c1d45ec080110", "sets"),
     SharedRepo("recomp-x86", "https://github.com/SomeoneIsWorking/recomp-x86.git",
                "5a241a6a763b53496d27d369192eb20bae6ed660", "tools/recomp.py"),
-    SharedRepo("re-harness", "https://github.com/SomeoneIsWorking/re-harness.git",
-               "23c0546dc28e96105124504b5c456dbbe48ea82a", "info.py"),
 )
 
 GAME_MODULE_SHA256 = {

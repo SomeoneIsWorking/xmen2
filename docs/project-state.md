@@ -51,7 +51,9 @@ at the repository root and resolves Homebrew packages through their keg paths.
 Evidence: C182 records a cold-path run after the virtual environment, generated
 sources, native assets, shared dependencies, and build tree were moved aside;
 the launcher recreated them, presented frames, and passed its launcher and CTest
-controls. Issue #110 records the dependency defect that the cold path exposed.
+controls. Issue #110 records the original cold-path dependency defects; issue
+#125 records and tests the boundary that maintainer-only `re-harness` is not a
+player bootstrap dependency.
 
 ### S002 — Wine-free native execution: partial
 
