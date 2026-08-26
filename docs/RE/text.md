@@ -107,51 +107,80 @@ time into a generated, port-owned atlas (same pattern as
 `src/recomp/gen/font_tier_ratio.h`) -- never patched into a copy of any game
 font, on disk or in memory.
 
-## Stage one ran, and the answer was NO (C267)
-
-The plan above is a plan, not a measurement. Its first step assumes the
-port's labels arrive at `FUN_005ee780` as wide strings carrying
-`0x80..0x93`. They do not -- at least not in the scenario measured.
+## Stage one ran: the labels DO arrive (C268, after C267 was falsified)
 
 `src/native/prompt_glyph_draw.c` sits on the glyph loop and classifies every
-string. On a boot-direct tutorial run
-(`X2_BOOT_MAP=act0/tutorial/tutorial1`, `X2_MAX_FRAMES=1200`,
-`--no-window --d3d8 --run`):
+string. On a boot-direct tutorial run (`X2_BOOT_MAP=act0/tutorial/tutorial1`,
+`X2_MAX_FRAMES=1200`, `--no-window --d3d8 --run`, `X2_PROMPT_GLYPHS=1`):
 
-| | pack ON | pack OFF |
-|---|---|---|
-| strings at the glyph loop | 4541 | 4557 |
-| carrying `0x80..0x93` | **0** | 0 |
-| carrying some other non-ASCII wchar | 2273 | 2281 |
-| labels composed by `x2_override_00619e30` | 2264 keycap | 0 (2272 unchanged) |
+* 4,581 strings reached `FUN_005ee780`
+* **1,142 of them carried 13,704 prompt codepoints**, in exactly the shape
+  `prompt_labels.c` composes:
 
-Enabling the pack changes NOTHING that reaches the glyph loop. The A/B is
-the point: the ~2,270 non-ASCII strings look like they might be the labels
-until the pack-off column shows the same count and the same words
-(`9d28 01f2 08e2` -- the engine's own above-256 control values, which the
-loop routes to its colour and pen-set branches, not to a glyph).
+      0090 0091 0091 0091 0091 0091 0092 0092 0092 0092 0092 0045 006e 0074 0065 0072 0093
+      KEYCAP_LEFT  MIDDLE x5            REWIND x5             "Enter"      KEYCAP_RIGHT
 
-The zero is a measurement rather than silence because the detector has been
-made to answer one: `ctest -R prompt_glyph_draw` drives
-`x2_override_005ee780` itself over guest memory with a composed keycap
-label and watches it counted, alongside the boundaries either side of the
-range and the exact above-256 words seen on the real run.
+So **step 1 of the plan above is sound**: an override on `FUN_005ee780` can
+test each wide string for the port's codepoints and super-call unchanged for
+every ordinary one.
 
-**The mechanism this points at.** `prompt_labels.c` rewrites the retail
-label IN PLACE as a NARROW byte string (`WR8`, `strlen`, codepoints
-0x80..0x93 as single bytes). `FUN_005ee780` walks a WIDE string. Something
-between the two widens, and `0x80..0x9f` is exactly the byte range a
-multibyte conversion treats as lead bytes -- which would fold our codepoint
-and the character after it into one above-256 wchar. That is a hypothesis,
-NOT measured: the pack-off column shows the same above-256 words with no
-port label anywhere, so those particular words are the engine's own.
+### The full chain, measured
 
-**What is still open.** This run does not establish that the label
-elements were ever meant to be ON SCREEN. 2,272 label reads happen either
-way, and a read is not a draw. The decisive scenario is the Controls
-binding menu, where keycap labels are unquestionably drawn; until that runs,
-"not drawn in this scenario" and "drawn by another path" are not separated.
-Step 1 of the plan below must not be built on until it is.
+| hop | what happens |
+|---|---|
+| `x2_override_00619e30` | composes the label as NARROW bytes (`WR8`, `strlen`) |
+| `FUN_004bd720` | token resolver: calls the label builder with the action id in the low byte, then RETURNS that string pointer to its own caller at `L_004bd7ff` |
+| `FUN_00596df0` (`0x00596f5a`) and `FUN_005ef2e0` (`0x005ef757`) | the two consumers, x1143 and x1142 in one run |
+| `FUN_005ef2e0` | markup -> wide line buffers. The widening is a plain `MOVZX AX,BL` at `0x005ef7b3`, so a 0x90 byte becomes wchar 0x0090 unchanged |
+| `FUN_005ee780` | walks that wide buffer |
+
+The token-resolver census lives in `prompt_labels.c` and reports with its
+denominators (`FUN_004bd720` ran 5,448 times, handed OUR buffer back 2,285
+times). Its 1,142 consumptions at `0x005ef757` equal the 1,142 strings the
+glyph-loop detector sees -- two independent instruments agreeing.
+
+### The argument binding, and the instrument that lied about it (I069)
+
+**`FUN_005ee780` takes the wide string as its FIRST STACK ARGUMENT**, at
+`entry_esp + 4`. Read out of the retail body: the character walk at
+`0x005ee7dc` is `MOV EAX,[ESP+0x40]` / `MOVZX EAX,word [EAX]`, and the
+prologue's `SUB ESP,0x2c` plus four pushes (EBX, EBP, ESI, EDI) puts ESP
+0x3c below entry, so `[ESP+0x40]` is `entry_esp+4`. The entry prologue reads
+the same slot as `[ESP+0x30]` before the pushes, which agrees.
+
+It is NOT EDX. `0x005ee797` overwrites EDX from `[EDI+0x8]` before EDX is
+ever read, so EDX is not an input at all.
+
+This detector first shipped reading `C->edx`, on the strength of a
+"__fastcall(ECX=owner, EDX=&wide buf)" note. It reported 0 prompt codepoints
+over 4,541 strings and produced claim C267, "the port's labels never reach
+the glyph loop" -- which was false. Whatever the caller left in EDX often
+pointed at real wide text, so the wrong pointer decoded as `"Cyclops"` and
+the legal screen and read like a working instrument. A pack-on/pack-off A/B
+appeared to confirm the zero and confirmed nothing: neither column was
+looking at memory the feature touches.
+
+The unit test did not catch it because the test set `cpu.edx` ITSELF -- it
+validated the classifier against an argument binding it had assumed. It now
+builds a real guest stack (return address at ESP, string pointer at ESP+4)
+and calls the override the way the engine does, so a wrong binding fails.
+
+**The rule this earns:** on a recompiled body, read the argument out of the
+retail prologue, never from a register a comment claims. Wide text is common
+enough in neighbouring registers that a wrong pointer produces plausible
+strings rather than obvious garbage.
+
+Two hypotheses recorded alongside C267 are dead with it: the labels were
+never "not drawn in this scenario", and the narrow->wide step performs no
+multibyte lead-byte folding -- it is a plain zero-extend.
+
+### What is still open
+
+The measurer, `FUN_00597c90`, still answers with the untouched font record's
+width for our codepoints, so layout gives them zero advance until step 3 of
+the plan overrides it. Nothing has been drawn yet: the port atlas
+(`tools/render_prompt_glyphs.py` -> `src/recomp/gen/prompt_glyph_atlas.h`) is
+generated and selftested but still has no consumer.
 
 ## Facts that killed the earlier plans, recorded so they stay dead
 

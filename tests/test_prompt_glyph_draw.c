@@ -63,6 +63,25 @@ static unsigned long g_super_calls;
 
 void fn_XMen2_005ee780(CPU *C) { (void)C; g_super_calls++; }
 
+/* Bind the argument the way the GUEST does, not the way the override happens
+   to read it. FUN_005ee780 takes the wide string as its first STACK
+   argument, so the test builds a real guest stack -- return address at ESP,
+   string pointer at ESP+4. Handing it over in a register instead is what let
+   the override read C->edx for a whole investigation while every run it
+   measured reported a zero it could not have contradicted. */
+#define GUEST_STACK_TOP (GUEST_PAGE + 0xf00u)
+static uint32_t g_stack;
+
+static void call_glyph_loop(CPU *cpu, uint32_t wide_string)
+{
+    memset(cpu, 0, sizeof *cpu);
+    g_stack -= 8u;
+    *(uint32_t *)(uintptr_t)(g_stack) = 0xdeadbeefu;   /* return address */
+    *(uint32_t *)(uintptr_t)(g_stack + 4u) = wide_string;
+    cpu->esp = g_stack;
+    x2_override_005ee780(cpu);
+}
+
 static void expect(const uint16_t *codes, unsigned n, int want,
                    const char *what)
 {
@@ -96,6 +115,7 @@ int main(void)
         return 1;
     }
     g_next = GUEST_PAGE;
+    g_stack = GUEST_STACK_TOP;
 
     if (!native_stubs_registered("XMen2.exe", 0x005ee780))
         fail("the constructor did not register the glyph-loop override");
@@ -170,12 +190,8 @@ int main(void)
         CPU cpu;
         unsigned long before = g_super_calls;
 
-        memset(&cpu, 0, sizeof cpu);
-        cpu.edx = guest_wide(label, 3);
-        x2_override_005ee780(&cpu);
-        memset(&cpu, 0, sizeof cpu);
-        cpu.edx = guest_wide(plain, 2);
-        x2_override_005ee780(&cpu);
+        call_glyph_loop(&cpu, guest_wide(label, 3));
+        call_glyph_loop(&cpu, guest_wide(plain, 2));
 
         if (g_super_calls != before + 2)
             fail("the override did not super-call for every string");

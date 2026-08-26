@@ -90,6 +90,17 @@ void fn_XMen2_00619e30(CPU *c)
     c->eax = out;
     c->esp += 4u;                      /* cdecl: the caller cleans its arg */
 }
+/* FUN_004bd720 -- the token resolver prompt_labels.c probes for its consumer
+   census. This test drives the label builder directly and never goes through
+   the resolver, so reaching this body means the test exercised a path it does
+   not model: say so rather than returning a plausible-looking pointer. */
+void fn_XMen2_004bd720(CPU *c)
+{
+    (void)c;
+    fprintf(stderr, "test_pad_glyphs: the token resolver FUN_004bd720 was "
+                    "entered, but this test does not model it.\n");
+    abort();
+}
 void x86_seg_unset(const char *seg) { (void)seg; abort(); }
 __thread uint32_t g_fsbase, g_gsbase;
 
