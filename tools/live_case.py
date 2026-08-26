@@ -482,24 +482,31 @@ def case_boot_continue(case: Case) -> None:
     case.check("a party spawned in the destination map", len(party) >= 3,
                ", ".join(party))
 
-    # The loaded save replays the level's authored intro conversations. With
-    # no resolved hero the second one collides on the seen-line bitmap and
-    # never shows a line (issue #83), which is the reported Continue
-    # softlock; with the player resolved it plays and hands controls back.
+    # The loaded save replays the level's authored intro conversations, and
+    # Continue does NOT touch them: it loads the save and nothing else. So
+    # this case has to advance the scene the way a player does -- the
+    # authored-skip Escape -- BEFORE the adjacent conversation can be
+    # expected. It used to assert 0020b first and press Escape afterwards,
+    # which only ever passed because the removed boot-Continue auto-resume
+    # advanced the records and floor-clamped the script waits with no input
+    # at all. With retail pacing restored, 0020b arrives tens of thousands of
+    # frames later, on the far side of the press.
+    if not wait_controls_unlocked(case, 20):
+        code, body = case.http("/key?name=Escape&hold=0.4")
+        case.check("Escape accepted on the resumed conversation", code == 200,
+                   body.decode(errors="replace").strip())
+    # With no resolved hero the second conversation collides on the seen-line
+    # bitmap and never shows a line (issue #83), which is the reported
+    # Continue softlock; with the player resolved it plays and hands controls
+    # back.
     case.check("the adjacent conversation started with a line",
                case.wait_log('1_introlevel_0020b" -> STARTED', 240))
     line_ok = any('0020b" -> STARTED' in line and "0x13" in line
                   for line in case.log_text().splitlines())
     case.check("0020b is visible with a selected line (no seen-bit "
                "collision)", line_ok)
-    # The replayed conversation waits for the player like retail's own intro;
-    # advance it the way a player does (the authored-skip Escape) and require
-    # the normal handoff instead of a softlock. The end script's FILE open is
-    # a level-load preload, so the LAUNCH line is the completion evidence.
-    if not wait_controls_unlocked(case, 20):
-        code, body = case.http("/key?name=Escape&hold=0.4")
-        case.check("Escape accepted on the resumed conversation", code == 200,
-                   body.decode(errors="replace").strip())
+    # The end script's FILE open is a level-load preload, so the LAUNCH line
+    # is the completion evidence.
     case.check("conversation-end cleanup launched",
                case.wait_log('SCRIPT: launch "act0/tutorial/tutorial1/'
                              'conv_0020b_end"', 240))

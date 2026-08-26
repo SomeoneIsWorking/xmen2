@@ -26,7 +26,6 @@
  */
 #include "conversation_cutscene_skip.h"
 
-#include "conversation_resume.h"
 #include "conversation_skip_policy.h"
 #include "guest_clock.h"
 #include "x86rt.h"
@@ -238,9 +237,6 @@ int conversation_cutscene_skip_should_advance(CPU *cpu, uint32_t self,
 {
     ConversationCutsceneSnapshot state = snapshot(exe_base(), self, slot);
     int pressed = action20_down(cpu, input);
-    if (pressed && state.readable && state.authored) {
-        x2_conversation_resume_manual_override();
-    }
     ConversationSkipDecision decision = conversation_skip_policy_update(
         &g_policy, state.visible, state.readable && state.authored,
         state.controls_locked, pressed, state.response);
@@ -266,7 +262,6 @@ void conversation_cutscene_skip_observe_inactive(struct CPU *cpu,
         action20_down(cpu, input)) {
         g_policy.requests++;
         g_policy.active = 1;
-        x2_conversation_resume_manual_override();
     }
     (void)conversation_skip_policy_update(
         &g_policy, 0, 0, state.controls_locked, 0,
@@ -292,8 +287,7 @@ static int wait_scope_timed_out(double now_s)
  * script engine's pacing. */
 static int wait_scope_allows(uint32_t context)
 {
-    int sequence_active = g_policy.active ||
-                          x2_conversation_resume_sequence_active();
+    int sequence_active = g_policy.active;
     double wall_now = guest_clock_elapsed_s();
 
     (void)context;

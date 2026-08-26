@@ -53,3 +53,17 @@ payload deserializes. boot-continue 12/12 includes: 0020b STARTED visible with
 a line, conv_0020b_end launched, controls unlocked. Residual, cataloged
 separately as #117: a controller first seen after the load is recorded but
 not polled.
+
+### Superseded again (2026-08-26, issue #119)
+
+The resume mechanism described above is DELETED. Its arming condition was
+every successful Continue map return, which assumed the restored save had
+been taken inside a conversation. The post-map autosave (#99) is taken at
+LEVEL START, so on a Continue into the first level the opening cutscene had
+never been seen and was fast-forwarded with no key pressed -- reported by the
+user and cataloged as #119.
+
+What resolved THIS issue is untouched: the root cause was the player
+index/handle at the LOAD SUCCESSFUL ack, and `boot-continue` still verifies
+14/14 including the issue #83 seen-bit check. The resume was a convenience
+layer on top of that fix, not the fix.
