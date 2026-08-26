@@ -44,6 +44,8 @@
 #include "x86rt_native.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void fn_XMen2_005ee780(CPU *C);
 
@@ -151,6 +153,78 @@ static uint32_t glyph_loop_string(const CPU *C)
     return RD32(C->esp + 4u);
 }
 
+/* The seven stack arguments, dumped from a REAL call that carries our
+ * codepoints. `RET 0x1c` says there are seven; which one is the pen, which
+ * the draw object and which the cached scales is not something to derive
+ * from frame arithmetic -- ESP moves across the body's own calls, and that
+ * is precisely where hand-derivation goes wrong. So the run says it.
+ *
+ * Each argument is printed raw, and again as a float, and if it points into
+ * mapped guest memory the first six dwords behind it are printed both ways.
+ * Gated by X2_GLYPH_ARGS so ordinary runs pay nothing.
+ */
+static void dump_args(const CPU *C)
+{
+    unsigned a, k;
+    fprintf(stderr, "GLYPH ARGS: ecx=0x%08x edx=0x%08x esp=0x%08x\n",
+            C->ecx, C->edx, C->esp);
+    for (a = 1; a <= 7; a++) {
+        uint32_t v = RD32(C->esp + (uint32_t)a * 4u);
+        float f;
+        uint32_t probe;
+        memcpy(&f, &v, sizeof f);
+        fprintf(stderr, "GLYPH ARGS:   arg%u [esp+0x%02x] = 0x%08x  (%.4f)",
+                a, a * 4u, v, (double)f);
+        if (v && x86_peek32(v, &probe)) {
+            fprintf(stderr, "  ->");
+            for (k = 0; k < 6u; k++) {
+                uint32_t w;
+                float wf;
+                if (!x86_peek32(v + k * 4u, &w)) break;
+                memcpy(&wf, &w, sizeof wf);
+                fprintf(stderr, " [%u]=0x%08x/%.3f", k, w, (double)wf);
+            }
+        }
+        fprintf(stderr, "\n");
+    }
+}
+
+/* The quad emitter, watched only while OUR string is being drawn.
+ *
+ * FUN_005ee400 is where a character becomes a quad in the current batch
+ * (`RET 0x20` -- eight stack args, ECX = the batch owner). Stage two has to
+ * emit through this same function, so its arguments have to be known; and
+ * because the pen is a LOCAL inside FUN_005ee780 (EBP, initialised to
+ * *(arg6) + arg3 and never written back), the per-character x it passes here
+ * is the only way to watch the pen advance from outside.
+ *
+ * Scoped to a prompt-carrying string: the emitter fires for every character
+ * of every string in the frame, and an unscoped dump is unreadable. The
+ * scope is set around the super-call, so what prints is exactly the quads of
+ * a label we composed.
+ */
+static int g_watch_quads;
+static unsigned g_quads_dumped;
+
+void fn_XMen2_005ee400(CPU *C);
+
+static void x2_probe_005ee400(CPU *C)
+{
+    if (g_watch_quads && g_quads_dumped < 64u) {
+        unsigned a;
+        g_quads_dumped++;
+        fprintf(stderr, "QUAD: ecx=0x%08x", C->ecx);
+        for (a = 1; a <= 8u; a++) {
+            uint32_t v = RD32(C->esp + (uint32_t)a * 4u);
+            float f;
+            memcpy(&f, &v, sizeof f);
+            fprintf(stderr, "  a%u=%.3f/0x%08x", a, (double)f, v);
+        }
+        fprintf(stderr, "\n");
+    }
+    fn_XMen2_005ee400(C);
+}
+
 void x2_override_005ee780(CPU *C)
 {
     uint32_t s = glyph_loop_string(C);
@@ -168,6 +242,10 @@ void x2_override_005ee780(CPU *C)
         if (g_examples < 8) {
             g_examples++;
             log_example(s);
+            if (getenv("X2_GLYPH_ARGS")) {
+                dump_args(C);
+                g_watch_quads = 1;
+            }
         }
     } else if (s) {
         /* Diagnostic denominator: WHAT is being drawn, if not prompts?
@@ -189,12 +267,15 @@ void x2_override_005ee780(CPU *C)
     /* Stage one changes no pixels: the stock body runs on every string. */
     g_super_called++;
     fn_XMen2_005ee780(C);
+    g_watch_quads = 0;
 }
 
 __attribute__((constructor))
 static void x2_prompt_draw_register(void)
 {
     x86_register_override("XMen2.exe", 0x005ee780, x2_override_005ee780);
+    if (getenv("X2_GLYPH_ARGS"))
+        x86_register_override("XMen2.exe", 0x005ee400, x2_probe_005ee400);
 }
 
 void x2_prompt_draw_report(void)

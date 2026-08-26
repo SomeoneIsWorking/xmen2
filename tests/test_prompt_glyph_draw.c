@@ -26,12 +26,24 @@
 #include <sys/mman.h>
 
 int native_stubs_registered(const char *module, uint32_t linked_ep);
+
 void x2_override_005ee780(CPU *C);
 
 /* The guest's own address space is the low 4 GB, and RD16 is a raw deref of a
    32-bit address -- so the strings have to LIVE there. A page mapped at a
    fixed low address is the whole fake; nothing about the walk is simulated. */
 #define GUEST_PAGE 0x70000000u
+
+/* Guest-memory peek, used only by the X2_GLYPH_ARGS dump. The test maps a
+   real page at a fixed low address, so this reads it for real rather than
+   pretending: an address inside the mapped page succeeds, anything else
+   fails, which is exactly the contract the runtime's peek has. */
+int x86_peek32(uint32_t addr, uint32_t *out)
+{
+    if (addr < GUEST_PAGE || addr + 4u > GUEST_PAGE + 0x1000u) return 0;
+    *out = *(const uint32_t *)(uintptr_t)addr;
+    return 1;
+}
 
 static int failures;
 static uint32_t g_next;
@@ -62,6 +74,16 @@ static uint32_t guest_wide(const uint16_t *codes, unsigned n)
 static unsigned long g_super_calls;
 
 void fn_XMen2_005ee780(CPU *C) { (void)C; g_super_calls++; }
+
+/* The quad emitter. The test never drives a real draw, so reaching this body
+   means the test exercised a path it does not model. */
+void fn_XMen2_005ee400(CPU *C)
+{
+    (void)C;
+    fprintf(stderr, "test_prompt_glyph_draw: the quad emitter was entered, "
+                    "but this test does not model it.\n");
+    abort();
+}
 
 /* Bind the argument the way the GUEST does, not the way the override happens
    to read it. FUN_005ee780 takes the wide string as its first STACK

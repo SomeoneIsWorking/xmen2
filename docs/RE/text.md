@@ -174,6 +174,73 @@ Two hypotheses recorded alongside C267 are dead with it: the labels were
 never "not drawn in this scenario", and the narrow->wide step performs no
 multibyte lead-byte folding -- it is a plain zero-extend.
 
+### The two signatures stage two needs, measured from a live call
+
+Both were dumped from a real draw of a composed label rather than derived
+from frame arithmetic -- ESP moves across the body's own calls, and hand
+arithmetic on those slots is exactly what produced the EDX mistake above.
+`X2_GLYPH_ARGS=1` arms the dump (and a quad probe scoped to a
+prompt-carrying string); ordinary runs pay nothing.
+
+**`FUN_005ee780(...)` -- `RET 0x1c`, seven stack args, ECX = owner**
+
+| arg | slot | measured value | meaning |
+|---|---|---|---|
+| 1 | `entry+0x04` | `0x700ff388` -> `0090 0091x5 0092x5 "Enter" 0093` | **the wide string** |
+| 2 | `entry+0x08` | `0x700ff348` | the batch/element object -- also what `FUN_005ee400` takes in ECX |
+| 3 | `entry+0x0c` | `298` | **pen x start** |
+| 4 | `entry+0x10` | `658` | pen y |
+| 5 | `entry+0x14` | `0x008b6b38` -> `[0]=0x0292012a` (= args 4,3 packed), `[2]=1.0f` | the draw/style object |
+| 6 | `entry+0x18` | `0x700ff33c` -> `[1]=ECX` | pen base; the pen starts at `*(arg6) + arg3` |
+| 7 | `entry+0x1c` | `0x700ff35c` -> `[1]=512.0 [2]=256.0 [3]=1/512 [4]=1/256` | atlas dims and UV scales cached by `FUN_005ee620` |
+
+The pen is a LOCAL (EBP), advanced per character by the glyph record and
+**never written back**. Segmenting therefore means re-invoking with an
+adjusted `arg3`, not relying on carried state.
+
+**`FUN_005ee400(x0, y0, x1, y1, u0, v0, u1, v1)` -- `RET 0x20`, ECX = the
+batch (arg2 above).** It applies no arithmetic of its own: it pushes four
+vertices through `[ECX] -> vtable +0xc`, one per corner, with `[ECX+8]`
+riding along as the vertex state. So a quad emitted through it lands in the
+same space as the engine's own text.
+
+### What our codepoints do today, per quad
+
+Drawing `0090 0091x5 0092x5 "Enter" 0093` emits, in order:
+
+* **11 degenerate quads** -- `x0==x1`, `y0==y1`, all at pen x `19.022`, UVs
+  `(-0.001, 0.998, -0.001, 0.998)`. That is every one of our codepoints:
+  the untouched font record for `0x90..0x93` has no size and no advance, so
+  they draw nothing and move the pen nowhere.
+* **5 real quads** for `"Enter"`, the pen advancing `18.489 -> 25.067 ->
+  33.600 -> 39.111 -> 45.689`.
+* a final degenerate quad at `53.333`, the closing `0093` after `"Enter"`
+  moved the pen.
+
+This is the shape of the hole stage two fills, and it is measured, not
+assumed.
+
+### The one open design decision
+
+`FUN_005ee400` pushes into a batch whose TEXTURE is bound per element by
+`FUN_005ee620`. Our art is not in that atlas and must not be put there --
+that is the font-mediated route this whole direction replaced. So the port
+has to choose:
+
+1. **Emit through `FUN_005ee400` under a separate batch** bound to our own
+   texture. Needs the batch flush/bind boundary reversed.
+2. **Collect the rects and draw them in the port's own renderer.** The quad
+   coordinates are known and in the engine's own space, so the port can
+   accumulate its prompt rects during the glyph loop and draw them from
+   `src/gpu/` with the generated atlas, after the UI pass. Nothing in the
+   engine's batching is touched, and the port owns the pixels end to end --
+   which is the direction this repo already takes elsewhere.
+
+Option 2 needs one more fact before it can be committed to: the space those
+coordinates live in (they are ~19..117 on a 3840x2160 output, so the vertex
+sink projects them), and where the port's renderer can apply the same
+projection.
+
 ### What is still open
 
 The measurer, `FUN_00597c90`, still answers with the untouched font record's
