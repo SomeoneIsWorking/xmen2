@@ -6,7 +6,7 @@ created: 2026-08-27
 tags: cutscene,audio,native,issue-126
 depends: src/native/cutscene_player.c#finish, src/native/cutscene_dialogue.c#cutscene_dialogue_advance, src/audio/audio_play_policy.c#audio_play_policy_allow_start, src/native/dsound.c#b_Play
 reconfirmed: 2026-08-27
-verified_at: 2026-08-27 03:06:01
+verified_at: 2026-08-27 03:07:49
 ---
 
 ## Claim
@@ -24,3 +24,7 @@ if any synchronous cutscene-player invocation starts audible dialogue/SFX, repor
 ## Re-confirmed 2026-08-27
 
 Reconfirmed after the combined Clang build: live_case cutscene-skip passed 11/11 and cutscene-skip-early passed 10/10 windowless, dummy-audio, unbounded/unpaced; each suppressed two DirectSound starts, exact dialogue counters showed zero leaks, the scope retired at depth zero, and frame/time were unchanged. All 118 CTest gates passed (optional external-asset FMV decode skipped).
+
+## Re-confirmed 2026-08-27
+
+Reconfirmed at commit dc892cf after the combined Clang build: live_case cutscene-skip passed 11/11 and cutscene-skip-early passed 10/10 windowless, dummy-audio, unbounded/unpaced; each suppressed two DirectSound starts, exact dialogue counters showed zero leaks, the scope retired at depth zero, and frame/time were unchanged. All 118 CTest gates passed (optional external-asset FMV decode skipped).
