@@ -92,7 +92,7 @@ class Case:
         shutil.copy2(src, self.profile / "Activision" / "X-Men Legends 2"
                      / "Save" / leaf)
 
-    def launch(self, env_extra: dict[str, str]) -> None:
+    def launch(self, env_extra: dict[str, str], *, visible: bool = False) -> None:
         binary = SELECTED["path"]
         if not binary.is_file():
             refuse("%s does not exist; build x2native first" % binary)
@@ -110,8 +110,9 @@ class Case:
         env = dict(os.environ)
         env["X2_SAVE_DIR"] = str(self.profile)
         env["SDL_AUDIODRIVER"] = "dummy"
-        cmd = [str(binary), "--no-window", "--d3d8",
-               "--control=%d" % self.port]
+        cmd = [str(binary), "--d3d8", "--control=%d" % self.port]
+        if not visible:
+            cmd.insert(1, "--no-window")
         if PACING in ("uncapped", "fast"):
             env["X2_UNPACED"] = "1"
         if PACING == "fast":
@@ -1087,6 +1088,16 @@ CASES = {
     "selector-dialog-720": case_selector_dialog,
     "selector-dialog-4k": case_selector_dialog,
 }
+
+try:
+    from live_visible import case_live_resolution, case_mouse_click
+except ImportError as exc:
+    refuse("visible live cases could not be loaded: %s" % exc)
+
+CASES.update({
+    "live-resolution": case_live_resolution,
+    "mouse-click": case_mouse_click,
+})
 
 
 def main() -> int:
