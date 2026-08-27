@@ -13,10 +13,18 @@ typedef enum ConversationPlayerState {
     CONVERSATION_PLAYER_UNREADABLE
 } ConversationPlayerState;
 
+typedef struct ConversationPlayerSelection {
+    uint32_t manager;
+    uint32_t choose_response;
+    uint32_t selected;
+    uint32_t line_presenter;
+} ConversationPlayerSelection;
+
 /* Conversation is a payload of an authored scene, not its player.  These
- * functions expose the retail manager's current yield and its existing
- * chooseResponse transition to the BehavEd cutscene player. */
+ * functions expose the retail manager's current yield and deterministic
+ * chooseResponse transition to the cutscene-owned dialogue gate. */
 ConversationPlayerState conversation_player_state(struct CPU *cpu);
-int conversation_player_advance(struct CPU *cpu);
+int conversation_player_selection(struct CPU *cpu,
+                                  ConversationPlayerSelection *out);
 
 #endif

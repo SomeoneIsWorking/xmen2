@@ -230,8 +230,13 @@ In-game cutscene skipping belongs to `src/native/cutscene_player.{c,h}`. It
 owns the control-lock epoch, composes exact steps from the ported BehavEd
 player (`behaved_player`) and title timed-event player
 (`cutscene_event_player`), and treats `conversation_player` as a deterministic
-payload adapter only. Ordinary event/fiber pumps retain retail deadline rules;
-the synchronous skip never runs a world update or changes the guest clock.
+payload adapter only. `cutscene_dialogue` owns the synchronous player's scoped
+suppression of the exact retail response-voice and line-voice presenters and
+cancels the current handle before advancing. It also composes the generic
+`audio_play_policy` scope, which refuses every new DirectSound start caused by
+synchronous cutscene work without pausing existing ambient/gameplay voices.
+Ordinary event/fiber pumps retain retail deadline rules; the synchronous skip
+never runs a world update or changes the guest clock.
 See `docs/RE/cutscene_player.md`.
 
 Native SFD playback follows the same boundary. `src/media/fmv_player.{c,h}`

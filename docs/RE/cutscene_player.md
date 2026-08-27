@@ -3,8 +3,9 @@
 Gameplay cutscenes in the shipped title are not owned by the conversation
 manager. They are control-lock epochs composed from BehavEd fibers, the
 title's timed entity-event player, and deterministic conversation payloads.
-The native owner is `src/native/cutscene_player.c`; conversation code remains
-a payload adapter only.
+The native owner is `src/native/cutscene_player.c`; its
+`cutscene_dialogue.c` component owns dialogue suppression while conversation
+code remains a payload adapter only.
 
 ## Authored boundary
 
@@ -85,16 +86,55 @@ Selecting the final `0020b` response synchronously launches
 `conv_0020b_end`; no world update is required between response and cleanup
 fiber allocation.
 
+Retail acceptance first stops the active dialogue handle through the audio
+manager vtable at `+0x74`, clears conversation accept-state bit zero, and then
+calls `chooseResponse` (`0045d5d0`). That transition reaches two distinct
+voice presenters:
+
+- `beginResponse` (`00458700`) starts response voice data from record `+0x54`
+  and returns true to defer applying the response until a later frame.
+- `0045a170` starts a line voice from record `+0x5c`/`+0x54`, stores its handle
+  at conversation manager `+0x21b80`, and publishes its duration at `+0x239a8`.
+
+The synchronous player has no presentation frame between deterministic
+responses. Re-entering `chooseResponse` therefore started every response voice,
+while BehavEd/event work could start the next conversation's initial line
+inside the same invocation. `cutscene_dialogue` stops the currently active
+handle and scopes both exact presenters across the whole player invocation.
+Within that scope `00458700` preserves its unconditional chosen-response write
+but reports false so the authored response and scripts apply immediately;
+`0045a170` returns before line presentation. Outside the scope both overrides
+super-call their retained generated bodies. The player also opens a generic
+new-voice suppression scope in `src/audio/audio_play_policy.c`; the native
+DirectSound `Play` boundary acknowledges but does not start any buffer reached
+while that scope is active. This catches cutscene SFX and other authored audio
+without pausing the backend or disturbing already-running ambient/gameplay
+voices. Neither layer changes guest/world time, and an end-of-scope dialogue
+handle check records any unrecognized presentation path as a leak.
+
 ## Verification contract
 
 `tools/live_case.py cutscene-skip --pacing fast` presses Escape on the first
-visible tutorial record. It passes 9/9: both transition scripts and cleanup
-launch, the adjacent conversation starts with a visible line, controls return,
-and one request completes in one player invocation with frame and guest clock
-unchanged.
+visible tutorial record. It passes 11/11: both transition scripts and cleanup
+launch, the adjacent conversation starts, controls return, and one request
+completes in one player invocation with frame and guest clock unchanged. The
+player stops one active voice, suppresses five response starts and four line
+starts, blocks two additional DirectSound starts, and records zero leaked
+presentation starts.
 
 `tools/live_case.py cutscene-skip-early --pacing fast` presses during the
-camera-only locked stretch before any conversation exists. It passes 8/8 and
+camera-only locked stretch before any conversation exists. It passes 10/10,
+suppresses five response and five line starts with zero leaks, blocks two
+additional DirectSound starts, and
 proves the control-lock cutscene player—not the conversation manager—is the
 owner. Both runs launch `x2native` with `--no-window --unbounded`, dummy audio,
 and unpaced scheduling.
+
+`test_cutscene_dialogue` supplies the instrument's opposite answer: ordinary
+calls reach both retained presenter bodies and increment their ordinary-start
+counters. Its skip cases then prove current-handle cancellation, response
+application, exact presenter suppression, and whole-player suppression for an
+adjacent line without entering either retained body.
+`test_audio_play_policy` supplies the lower boundary's opposite answer and
+proves nested suppression refuses starts while ordinary playback remains
+enabled.
