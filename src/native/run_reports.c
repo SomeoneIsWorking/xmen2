@@ -15,6 +15,7 @@
  */
 #include "heartbeat.h"
 #include "boot_blackout.h"
+#include "dialog_selection_scale.h"
 #include "input_record.h"
 #include "live_session.h"
 #include "prompt_glyph_draw.h"
@@ -74,6 +75,7 @@ void x2_interrupt_reports(int killed)
     /* Input reports were registered with atexit, but clean frame-limit stops
        use _exit. Print them here so successful runs retain their denominators. */
     x2_ui_text_scale_report();
+    x2_dialog_selection_scale_report();
     dinput_device_report();
     dinput_pad_report();
     input_record_report();

@@ -56,6 +56,7 @@
 #include "font_tier_ratio.h"   /* GENERATED, see tools/font_tier_ratio.py */
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyphs.h"
+#include "retail_ui_design.h"
 #include "settings_store.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -106,7 +107,8 @@ float x2_ui_text_scale(void)
        means scaling the HD metrics DOWN to what the PC tier would have been.
        No clamp at 1.0: a clamp there would silently make 640x480 bigger than
        the game draws it. */
-    scale = (float)settings->height / 600.0f / x2_font_tier_ratio();
+    scale = (float)settings->height
+          / (float)X2_RETAIL_UI_DESIGN_HEIGHT / x2_font_tier_ratio();
     return scale;
 }
 

@@ -3,13 +3,15 @@ import unittest
 from tools import selector_probe
 
 
-def meta(width=128, height=32):
+def meta(width=128, height=32, target=selector_probe.TARGET,
+         primitive_count=0):
     return {
         "event": "meta",
         "version": selector_probe.FORMAT_VERSION,
-        "target": selector_probe.TARGET,
+        "target": target,
         "texture_width": width,
         "texture_height": height,
+        "target_primitive_count": primitive_count,
         "identity_claim": False,
         "fingerprint_algorithm": selector_probe.FINGERPRINT_ALGORITHM,
         "fingerprint_scope": selector_probe.FINGERPRINT_SCOPE,
@@ -40,6 +42,18 @@ def candidate(frame=4, order=1, fingerprint="0123456789abcdef"):
         "vertex_stride": 24,
         "position_offset": 0,
         "pretransformed": False,
+        "world_matrix_source": "10000000",
+        "world_matrix_guest": "70000000",
+        "world_matrix_set_found": True,
+        "world_matrix_set_caller": "10000004",
+        "world_matrix_set_source": "70001000",
+        "world_matrix_multiply_found": True,
+        "world_matrix_multiply_caller": "29001000",
+        "world_matrix_multiply_left": "70002000",
+        "world_matrix_multiply_right": "70003000",
+        "world_matrix_multiply_inputs_readable": True,
+        "world_matrix_multiply_chain": [],
+        "world_matrix_multiply_chain_truncated": False,
         "vertex_bytes": 144,
         "index_bytes": 0,
         "bounds_valid": True,
@@ -58,6 +72,12 @@ def candidate(frame=4, order=1, fingerprint="0123456789abcdef"):
         "positions_truncated": False,
     }
     value.update({field: 0 for field in selector_probe.STATE_FIELDS})
+    identity = [1 if index % 5 == 0 else 0 for index in range(16)]
+    value.update({name: identity for name in (
+        "world", "view", "projection", "mvp",
+        "world_matrix_multiply_left_value",
+        "world_matrix_multiply_right_value",
+    )})
     return value
 
 
@@ -118,6 +138,22 @@ class SelectorProbeTest(unittest.TestCase):
     def test_summary_uses_echoed_runtime_dimensions(self):
         with self.assertRaises(selector_probe.Refuse):
             selector_probe.summarize([meta(64, 64), candidate(), result()])
+
+    def test_summary_accepts_untextured_primitive_target(self):
+        item = candidate(fingerprint=None)
+        item.update({
+            "texture_guest": "00000000",
+            "texture_resolved": False,
+            "texture_width": 0,
+            "texture_height": 0,
+            "texture_format": 0,
+            "texture_levels": 0,
+            "texture_faces": 0,
+        })
+        summary = selector_probe.summarize([
+            meta(0, 0, "untextured-primitive-count", 4), item, result()
+        ])
+        self.assertEqual(summary.target, "untextured-primitive-count")
 
 
 if __name__ == "__main__":

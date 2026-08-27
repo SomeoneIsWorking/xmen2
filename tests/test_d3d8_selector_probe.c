@@ -31,6 +31,18 @@ static int test_texture_dimension_matcher(void)
     return d3d8_selector_request_matches(&evidence, 128, 32) ? 1 : 0;
 }
 
+static int test_untextured_matcher(void)
+{
+    D3D8DrawRequest request;
+    D3D8SelectorDrawEvidence evidence;
+    memset(&request, 0, sizeof request);
+    memset(&evidence, 0, sizeof evidence);
+    evidence.request = &request;
+    if (!d3d8_selector_request_is_untextured(&evidence)) return 1;
+    request.texture_guest = 0x12345678u;
+    return d3d8_selector_request_is_untextured(&evidence) ? 1 : 0;
+}
+
 static int test_texture_target_parser(void)
 {
     uint32_t width = 0, height = 0;
@@ -227,6 +239,7 @@ int main(void)
 {
     int failures = 0;
     failures += test_texture_dimension_matcher();
+    failures += test_untextured_matcher();
     failures += test_texture_target_parser();
     failures += test_texture_provenance_lifecycle();
     failures += test_pretransformed_bounds();

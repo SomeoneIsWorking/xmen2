@@ -49,3 +49,15 @@ def shared_dir(name, marker=None):
           "./run.sh.\n"
           "Run ./run.sh, or set %s_DIR to a checkout."
           % name.replace("-", "_").upper())
+
+
+def optional_maintainer_dir(name, marker, check_name):
+    """Resolve a maintainer-only tool, or return CTest's standard skip code."""
+    try:
+        return shared_dir(name, marker)
+    except SystemExit:
+        print(
+            f"{check_name}: SKIP — maintainer-only {name} is unavailable; "
+            f"set {name.replace('-', '_').upper()}_DIR to run this check."
+        )
+        raise SystemExit(77) from None

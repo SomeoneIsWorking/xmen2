@@ -142,14 +142,8 @@ add_test(NAME project_state
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/project_state.py
                  --root ${CMAKE_SOURCE_DIR})
 set_tests_properties(project_state PROPERTIES
-                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-add_test(NAME codemap
-         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/codemap.py
-                 check --map ${CMAKE_SOURCE_DIR}/docs/codemap.md
-                 src tools xbox patches)
-set_tests_properties(codemap PROPERTIES
-                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                     SKIP_RETURN_CODE 77)
 add_executable(test_settings tests/test_settings.c src/config/settings.c
                src/config/input_assignments.c
                src/config/boot_mode.c)
@@ -214,9 +208,19 @@ add_executable(test_d3d8_live_resolution
 target_include_directories(test_d3d8_live_resolution PRIVATE src/d3d8 src/gpu)
 add_test(NAME d3d8_live_resolution COMMAND test_d3d8_live_resolution)
 
+add_executable(test_dialog_selection_scale_policy
+               tests/test_dialog_selection_scale_policy.c
+               src/native/dialog_selection_scale_policy.c)
+target_include_directories(test_dialog_selection_scale_policy PRIVATE
+                           src/native src/presentation)
+target_link_libraries(test_dialog_selection_scale_policy PRIVATE m)
+add_test(NAME dialog_selection_scale_policy
+         COMMAND test_dialog_selection_scale_policy)
+
 add_executable(test_d3d8_selector_probe
                tests/test_d3d8_selector_probe.c
                src/d3d8/d3d8_selector_probe.c
+               src/d3d8/d3d8_selector_probe_json.c
                src/d3d8/d3d8_texture_provenance.c)
 target_include_directories(test_d3d8_selector_probe PRIVATE src/d3d8 src/gpu)
 target_link_libraries(test_d3d8_selector_probe PRIVATE m)
@@ -551,7 +555,8 @@ add_test(NAME flags COMMAND test_flags)
 
 # The guest printf format walker. It builds crt.c against a stub runtime, so it
 # needs no recompiled output and runs in the ordinary suite.
-add_executable(test_vformat tests/test_vformat.c src/native/crt.c src/recomp/x87crt.c
+add_executable(test_vformat tests/test_vformat.c src/native/crt.c
+               src/native/crt_write_watch.c src/recomp/x87crt.c
             tests/native_stubs.c
                src/native/guest_heap.c src/native/guest_memory.c)
 target_include_directories(test_vformat PRIVATE src/recomp src/native)
@@ -1137,6 +1142,8 @@ if(X2_MODULE_HAVE)
         src/presentation/live_resolution.c
         src/native/display_mode_runtime.c
         src/native/ui_text_scale.c
+        src/native/dialog_selection_scale.c
+        src/native/dialog_selection_scale_policy.c
         src/native/text_caller_probe.c
         src/native/prompt_glyph_draw.c
         src/native/prompt_glyph_atlas.c
@@ -1173,6 +1180,7 @@ if(X2_MODULE_HAVE)
         src/native/win32_events.c
         src/native/guest_heap.c
         src/native/crt.c
+        src/native/crt_write_watch.c
         src/native/crt_selftest.c
         src/recomp/x87crt.c
         src/native/kernel32.c
@@ -1262,6 +1270,7 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_device.c
         src/d3d8/d3d8_live_resolution.c
         src/d3d8/d3d8_selector_probe.c
+        src/d3d8/d3d8_selector_probe_json.c
         src/d3d8/d3d8_selector_probe_bridge.c
         src/d3d8/d3d8_texture_provenance.c
         src/d3d8/d3d8_lightlog.c

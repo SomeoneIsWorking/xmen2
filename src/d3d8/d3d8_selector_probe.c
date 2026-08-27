@@ -1,4 +1,5 @@
 #include "d3d8_selector_probe.h"
+#include "d3d8_selector_probe_json.h"
 
 #include <inttypes.h>
 #include <math.h>
@@ -8,6 +9,7 @@
 
 enum {
     MAX_POSITION_SAMPLES = 12,
+    TRANSFORM_VIEW = 2, TRANSFORM_PROJECTION = 3, TRANSFORM_WORLD = 256,
     RS_ZENABLE = 7, RS_ZWRITEENABLE = 14, RS_ALPHATESTENABLE = 15,
     RS_SRCBLEND = 19, RS_DESTBLEND = 20, RS_CULLMODE = 22, RS_ZFUNC = 23,
     RS_ALPHAREF = 24, RS_ALPHAFUNC = 25, RS_ALPHABLENDENABLE = 27,
@@ -25,9 +27,21 @@ typedef struct {
     unsigned long draw_order;
     uint32_t target_width;
     uint32_t target_height;
+    uint32_t target_primitive_count;
+    int target_untextured;
 } SelectorProbe;
 
 static SelectorProbe g_probe;
+static int g_probe_enabled = -1;
+
+int d3d8_selector_probe_enabled(void)
+{
+    if (g_probe_enabled < 0) {
+        const char *path = getenv("X2_SELECTOR_PROBE");
+        g_probe_enabled = path && *path;
+    }
+    return g_probe_enabled;
+}
 
 static int read_index(const D3D8SelectorDrawEvidence *evidence, uint32_t at,
                       uint32_t *index)
@@ -115,6 +129,13 @@ int d3d8_selector_request_matches(
         && texture->height == texture_height;
 }
 
+int d3d8_selector_request_is_untextured(
+    const D3D8SelectorDrawEvidence *evidence)
+{
+    return evidence && evidence->request
+        && evidence->request->texture_guest == 0;
+}
+
 int d3d8_selector_transformed_bounds(
     const D3D8SelectorDrawEvidence *evidence,
     D3D8SelectorBounds *bounds)
@@ -199,17 +220,24 @@ int d3d8_selector_transformed_bounds(
 static FILE *probe_output(void)
 {
     const char *path, *target;
+    const char *primitive_text;
     if (g_probe.initialized) return g_probe.output;
     g_probe.initialized = 1;
     path = getenv("X2_SELECTOR_PROBE");
     if (!path || !*path) return NULL;
     target = getenv("X2_SELECTOR_TEXTURE");
-    if (!d3d8_selector_texture_target_parse(
+    primitive_text = target && !strncmp(target, "untextured:", 11)
+        ? target + 11 : NULL;
+    g_probe.target_untextured = primitive_text
+        && parse_dimension(&primitive_text, &g_probe.target_primitive_count)
+        && !*primitive_text;
+    if (!g_probe.target_untextured && !d3d8_selector_texture_target_parse(
             target, &g_probe.target_width, &g_probe.target_height)) {
         fprintf(stderr, "selector probe: X2_SELECTOR_PROBE is armed, but "
-                        "X2_SELECTOR_TEXTURE must be exact positive WxH "
-                        "dimensions such as 128x32; refusing to guess a "
-                        "runtime texture.\n");
+                        "X2_SELECTOR_TEXTURE must be an exact positive WxH "
+                        "dimension such as 128x32 or untextured:N, where N "
+                        "is an exact primitive count; refusing to guess a "
+                        "draw class.\n");
         return NULL;
     }
     g_probe.output = fopen(path, "w");
@@ -220,13 +248,17 @@ static FILE *probe_output(void)
     }
     setvbuf(g_probe.output, NULL, _IOLBF, 0);
     fprintf(g_probe.output,
-            "{\"event\":\"meta\",\"version\":5,\"target\":"
-            "\"texture-dimensions\",\"texture_width\":%u,"
-            "\"texture_height\":%u,\"identity_claim\":false,"
+            "{\"event\":\"meta\",\"version\":13,\"target\":\"%s\","
+            "\"texture_width\":%u,"
+            "\"texture_height\":%u,\"target_primitive_count\":%u,"
+            "\"identity_claim\":false,"
             "\"fingerprint_algorithm\":\"fnv1a64-v1\","
             "\"fingerprint_scope\":"
             "\"2d-level0-after-successful-upload\"}\n",
-            g_probe.target_width, g_probe.target_height);
+            g_probe.target_untextured ? "untextured-primitive-count"
+                                      : "texture-dimensions",
+            g_probe.target_width, g_probe.target_height,
+            g_probe.target_primitive_count);
     return g_probe.output;
 }
 
@@ -269,6 +301,15 @@ static void print_position_samples(FILE *output,
             evidence->element_count > count ? "true" : "false");
 }
 
+static void print_matrix(FILE *output, const char *name, const float *matrix)
+{
+    uint32_t i;
+    fprintf(output, ",\"%s\":[", name);
+    for (i = 0; i < 16; ++i)
+        fprintf(output, "%s%.9g", i ? "," : "", matrix[i]);
+    fputc(']', output);
+}
+
 void d3d8_selector_probe_request(const D3D8SelectorDrawEvidence *evidence,
                                  D3D8SelectorProbeTicket *ticket)
 {
@@ -287,8 +328,12 @@ void d3d8_selector_probe_request(const D3D8SelectorDrawEvidence *evidence,
         g_probe.draw_order = 0;
     }
     g_probe.draw_order++;
-    if (!d3d8_selector_request_matches(
-            evidence, g_probe.target_width, g_probe.target_height))
+    if (g_probe.target_untextured
+            ? (!d3d8_selector_request_is_untextured(evidence)
+               || evidence->request->primitive_count
+                    != g_probe.target_primitive_count)
+            : !d3d8_selector_request_matches(
+                  evidence, g_probe.target_width, g_probe.target_height))
         return;
     ticket->recorded = 1;
     ticket->frame = evidence->frame;
@@ -317,6 +362,16 @@ void d3d8_selector_probe_request(const D3D8SelectorDrawEvidence *evidence,
             "\"elements\":%u,\"indexed\":%s,\"fvf\":\"%08x\","
             "\"layout_valid\":%s,\"vertex_stride\":%u,"
             "\"position_offset\":%u,\"pretransformed\":%s,"
+            "\"world_matrix_source\":\"%08x\","
+            "\"world_matrix_guest\":\"%08x\","
+            "\"world_matrix_set_found\":%s,"
+            "\"world_matrix_set_caller\":\"%08x\","
+            "\"world_matrix_set_source\":\"%08x\","
+            "\"world_matrix_multiply_found\":%s,"
+            "\"world_matrix_multiply_caller\":\"%08x\","
+            "\"world_matrix_multiply_left\":\"%08x\","
+            "\"world_matrix_multiply_right\":\"%08x\","
+            "\"world_matrix_multiply_inputs_readable\":%s,"
             "\"vertex_bytes\":%u,\"index_bytes\":%u,"
             "\"bounds_valid\":%s,\"min_x\":%.9g,\"min_y\":%.9g,"
             "\"min_z\":%.9g,\"max_x\":%.9g,\"max_y\":%.9g,"
@@ -329,6 +384,17 @@ void d3d8_selector_probe_request(const D3D8SelectorDrawEvidence *evidence,
             evidence->layout_valid ? "true" : "false",
             evidence->draw->vertex_stride, evidence->position_offset,
             evidence->draw->pretransformed ? "true" : "false",
+            evidence->world_matrix_source,
+            evidence->world_matrix_guest,
+            evidence->world_matrix_set_found ? "true" : "false",
+            evidence->world_matrix_set_caller,
+            evidence->world_matrix_set_source,
+            evidence->world_matrix_multiply_found ? "true" : "false",
+            evidence->world_matrix_multiply_caller,
+            evidence->world_matrix_multiply_left,
+            evidence->world_matrix_multiply_right,
+            evidence->world_matrix_multiply_inputs_readable
+                ? "true" : "false",
             req->vertex_bytes, req->index_bytes, valid ? "true" : "false",
             valid ? bounds.min_x : 0.0f, valid ? bounds.min_y : 0.0f,
             valid ? bounds.min_z : 0.0f, valid ? bounds.max_x : 0.0f,
@@ -336,6 +402,24 @@ void d3d8_selector_probe_request(const D3D8SelectorDrawEvidence *evidence,
             bounds.requested, bounds.used, bounds.behind, bounds.out_of_range);
     fprintf(output, ",\"unavailable\":%u", bounds.unavailable);
     print_position_samples(output, evidence);
+    print_matrix(output, "mvp", evidence->draw->mvp);
+    print_matrix(output, "world_matrix_multiply_left_value",
+                 evidence->world_matrix_multiply_left_value);
+    print_matrix(output, "world_matrix_multiply_right_value",
+                 evidence->world_matrix_multiply_right_value);
+    d3d8_selector_probe_print_multiply_chain(output, evidence);
+    if (state) {
+        static const float identity[16] = {
+            1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1
+        };
+        print_matrix(output, "world", state->transform_set[TRANSFORM_WORLD]
+            ? state->transform[TRANSFORM_WORLD].m : identity);
+        print_matrix(output, "view", state->transform_set[TRANSFORM_VIEW]
+            ? state->transform[TRANSFORM_VIEW].m : identity);
+        print_matrix(output, "projection",
+            state->transform_set[TRANSFORM_PROJECTION]
+                ? state->transform[TRANSFORM_PROJECTION].m : identity);
+    }
     fprintf(output,
             ",\"zenable\":%u,\"zwrite\":%u,\"zfunc\":%u,\"zbias\":%u,"
             "\"blend_enable\":%u,\"src_blend\":%u,\"dst_blend\":%u,"
