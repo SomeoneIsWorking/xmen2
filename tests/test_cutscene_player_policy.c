@@ -288,6 +288,8 @@ static void test_complete_sequence(void)
     CHECK(policy.authored_steps == 13u);
     CHECK(policy.conversation_payloads == 2u);
     CHECK(fixture.controls_released);
+    CHECK(fixture.fibers[CLEANUP_FIBER].active);
+    CHECK(fixture.fibers[CLEANUP_FIBER].cursor == 4u);
     CHECK(fixture.event_count == ARRAY_COUNT(expected));
     for (i = 0; i < ARRAY_COUNT(expected) && i < fixture.event_count; i++)
         CHECK(strcmp(fixture.events[i], expected[i]) == 0);

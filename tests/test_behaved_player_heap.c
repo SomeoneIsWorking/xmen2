@@ -16,7 +16,6 @@ enum {
     FN_SLOT_RELEASE = 0x004d5d00u,
     FN_POOL_RELEASE = 0x004d7c10u,
     FN_MANAGER = 0x004d8770u,
-    FN_CONTEXT_RUN = 0x004d8b30u,
     FN_CONTEXT_CLEANUP = 0x004d8ea0u,
     FN_PUMP = 0x004d9640u,
     CONTEXT_POOL = 0x0002f2f4u,
@@ -98,16 +97,21 @@ static unsigned fiber_of(uint32_t context)
     return (context - manager_address - CONTEXT_POOL) / CONTEXT_STRIDE;
 }
 
+uint32_t behaved_context_run(CPU *cpu, uint32_t context_address)
+{
+    unsigned fiber = fiber_of(context_address);
+
+    (void)cpu;
+    note('R');
+    return runner_completed[fiber];
+}
+
 void x86_guest_call_args(CPU *cpu, uint32_t target,
                          uint32_t callee_pop_bytes)
 {
     if (target == FN_MANAGER) {
         note('M');
         cpu->eax = manager_address;
-    } else if (target == FN_CONTEXT_RUN) {
-        unsigned fiber = fiber_of(cpu->ecx);
-        note('R');
-        cpu->eax = runner_completed[fiber];
     } else if (target == FN_CONTEXT_CLEANUP) {
         note('C');
     } else if (target == FN_POOL_RELEASE) {

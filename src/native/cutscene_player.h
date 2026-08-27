@@ -38,4 +38,8 @@ typedef struct CutscenePlayerSnapshot {
 /* Read-only publication for the live input probe. */
 void cutscene_player_snapshot(struct CPU *cpu, CutscenePlayerSnapshot *out);
 
+/* Publishes the current BehavEd context and returns true only while that
+ * context is owned by the synchronous player. Used by exact presenters. */
+int cutscene_player_silences_current_context(uint32_t *context);
+
 #endif

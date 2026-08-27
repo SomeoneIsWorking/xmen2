@@ -7,14 +7,10 @@
  * owns player control.  Contexts allocated by that context (and scripts
  * launched by its deterministic conversation payloads) inherit the sequence.
  *
- * A skip request repeatedly runs only those owned contexts through the ported
- * player until the authored script restores control.  Timed yields are
- * selected on a private cutscene timeline; no guest clock, frame, world tick,
- * or global scheduler deadline is advanced to make the work finish.
+ * A skip runs owned work through the ported player until authored control
+ * release, without advancing a guest clock, frame, world tick, or deadline.
  */
 #include "cutscene_player.h"
-
-#include "audio_play_policy.h"
 #include "behaved_player.h"
 #include "cutscene_dialogue.h"
 #include "conversation_player.h"
@@ -23,10 +19,8 @@
 #include "gpu_device.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
-
 #include <stdint.h>
 #include <string.h>
-
 #define EXE_PREFERRED           0x00400000u
 #define EXE_RVA(va)             ((uint32_t)(va) - EXE_PREFERRED)
 #define CURRENT_CONTEXT_RVA     EXE_RVA(0x00787730u)
@@ -81,7 +75,6 @@ static uint32_t current_context(void);
 static uint32_t exe_base(void)
 {
     X86Module *module;
-
     for (module = x86_modules(); module; module = module->next)
         if (module->preferred == EXE_PREFERRED && module->base &&
             *module->base)
@@ -237,7 +230,8 @@ static X2CutsceneControlState control_state(
         return X2_CUTSCENE_CONTROL_UNREADABLE;
     now = float_of(now_bits);
     deadline = float_of(deadline_bits);
-    if (deadline < 0.0f || deadline > now || g_player.owned_count)
+    /* Authored post-release work stays scheduled for ordinary gameplay. */
+    if (deadline < 0.0f || deadline > now)
         return X2_CUTSCENE_CONTROL_LOCKED;
     return X2_CUTSCENE_CONTROL_RELEASED;
 }
@@ -363,11 +357,11 @@ static X2CutscenePlayerResult finish(CPU *cpu)
     uint32_t time_before = 0, time_after = 1;
 
     (void)read_float_bits(g_player.clock + CLOCK_NOW, &time_before);
-    audio_play_suppression_begin(); cutscene_dialogue_skip_begin();
+    cutscene_dialogue_skip_begin();
     g_player.finishing = 1;
     result = x2_cutscene_player_finish(&g_player.policy, &ops, cpu);
     g_player.finishing = 0;
-    cutscene_dialogue_skip_end(cpu); audio_play_suppression_end();
+    cutscene_dialogue_skip_end(cpu);
     (void)read_float_bits(g_player.clock + CLOCK_NOW, &time_after);
     if (gpu_frames_presented() == frame_before) g_player.same_frame++;
     if (time_after == time_before) g_player.same_guest_time++;
@@ -484,6 +478,12 @@ void cutscene_player_snapshot(CPU *cpu, CutscenePlayerSnapshot *out)
     out->event_insertion_faults =
         cutscene_event_player_insertion_faults();
     memcpy(out->results, g_player.result, sizeof out->results);
+}
+
+int cutscene_player_silences_current_context(uint32_t *context)
+{
+    *context = current_context();
+    return g_player.finishing && owns_context(*context, NULL);
 }
 
 __attribute__((constructor))

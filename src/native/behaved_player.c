@@ -9,6 +9,7 @@
  */
 #include "behaved_player.h"
 
+#include "behaved_context.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -23,7 +24,6 @@ enum {
     FN_SCHEDULER_SLOT_RELEASE = 0x004d5d00u,
     FN_CONTEXT_POOL_RELEASE = 0x004d7c10u,
     FN_MANAGER = 0x004d8770u,
-    FN_CONTEXT_RUN = 0x004d8b30u,
     FN_CONTEXT_CLEANUP = 0x004d8ea0u,
 
     MANAGER_CONTEXT_POOL = 0x0002f2f4u,
@@ -211,8 +211,7 @@ static BehavedPlayerStep execute_entry(CPU *cpu, uint32_t base,
     if (!context_index(heap->manager, context, &fiber_index))
         return BEHAVED_PLAYER_STEP_REFUSED;
     remove_heap_entry(heap, index);
-    completed = call_guest(cpu, base + (FN_CONTEXT_RUN - EXE_PREFERRED),
-                           context, 0, 0);
+    completed = behaved_context_run(cpu, context);
     if ((completed & 0xffu) == 1u) {
         uint32_t live_manager;
         call_guest(cpu, base + (FN_CONTEXT_CLEANUP - EXE_PREFERRED),

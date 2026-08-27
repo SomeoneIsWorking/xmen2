@@ -96,10 +96,15 @@ target_include_directories(test_movie_audio PRIVATE src/audio)
 target_link_libraries(test_movie_audio PRIVATE m pthread)
 add_test(NAME movie_audio COMMAND test_movie_audio)
 
-add_executable(test_audio_play_policy tests/test_audio_play_policy.c
-               src/audio/audio_play_policy.c)
-target_include_directories(test_audio_play_policy PRIVATE src/audio)
-add_test(NAME audio_play_policy COMMAND test_audio_play_policy)
+add_executable(test_cutscene_script_audio tests/test_cutscene_script_audio.c
+               src/native/cutscene_script_audio.c src/native/guest_memory.c)
+target_include_directories(test_cutscene_script_audio PRIVATE src/native src/recomp)
+add_test(NAME cutscene_script_audio COMMAND test_cutscene_script_audio)
+
+add_executable(test_behaved_context tests/test_behaved_context.c
+               src/native/behaved_context.c src/native/guest_memory.c)
+target_include_directories(test_behaved_context PRIVATE src/native src/recomp)
+add_test(NAME behaved_context COMMAND test_behaved_context)
 
 add_executable(test_movie_image_layout tests/test_movie_image_layout.c
                src/native/movie_image_layout.c)
@@ -1102,16 +1107,17 @@ if(X2_MODULE_HAVE)
         src/native/player_participation_probe.c
         src/native/cutscene_skip_publication.c
         src/native/cutscene_skip_probe.c
+        src/native/behaved_context.c
         src/native/behaved_player.c
         src/native/cutscene_event_player.c
         src/native/conversation_player.c
         src/native/cutscene_dialogue.c
+        src/native/cutscene_script_audio.c
         src/native/cutscene_player_policy.c
         src/native/cutscene_player.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
         src/native/dsound.c
-        src/audio/audio_play_policy.c
         src/audio/movie_audio.c
         src/media/fmv_audio_decode.c
         src/media/fmv_decoder_drain.c

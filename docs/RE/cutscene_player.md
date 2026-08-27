@@ -34,6 +34,15 @@ The exact-step seam in `src/native/behaved_player.c` removes and resumes only
 an owned context, independent of its deadline, while preserving foreign heap
 pairs.
 
+`src/native/behaved_context.c` is the native port of `004d8b30`, not a wrapper
+around its recompiled body. It owns the command-graph loop: current-context
+publication/restoration, variable substitution for the seven-slot retail
+argument list, handler dispatch, named-result assignment, conditional edges,
+suspension, and pooled-result release. Both the ordinary scheduler and the
+synchronous player use this one implementation. Guest-call scratch lives
+above each reserved callee frame; putting it immediately below ESP let handler
+locals overwrite later arguments in the first live port.
+
 `waittimed` (`004d9130`) only suspends the current fiber. It is not overridden,
 and the global scheduler insertion/deadlines are never clamped.
 
@@ -76,9 +85,14 @@ ordinary callback insertion and dispatch-before-free order.
 ## Animation and conversation payloads
 
 `playanim` (`004a8a20`) synchronously resolves the actor and animation, installs
-the graph state through `00430d40`, and returns. The shipped tutorial scripts
-use explicit `waittimed` calls for every animation duration; there is no third
-animation-completion player to drain.
+the graph state through `00430d40`, and immediately raises an authored signal
+when one was supplied. Five shipped control-lock scripts contain `waitsignal`;
+their pre-release waits pair that signal with `playanim`, so the BehavEd graph
+can continue without a world update. Other observed waits occur after authored
+control release and remain scheduled for ordinary gameplay. The synchronous
+boundary is therefore control release, not an empty scheduler: 256 of 302
+shipping release scripts have commands after their final release and 86 yield
+again.
 
 The conversation adapter calls the same vtable `+0x18` transition as retail
 input, but only when exactly one response exists. Choices refuse the skip.
@@ -104,13 +118,24 @@ handle and scopes both exact presenters across the whole player invocation.
 Within that scope `00458700` preserves its unconditional chosen-response write
 but reports false so the authored response and scripts apply immediately;
 `0045a170` returns before line presentation. Outside the scope both overrides
-super-call their retained generated bodies. The player also opens a generic
-new-voice suppression scope in `src/audio/audio_play_policy.c`; the native
-DirectSound `Play` boundary acknowledges but does not start any buffer reached
-while that scope is active. This catches cutscene SFX and other authored audio
-without pausing the backend or disturbing already-running ambient/gameplay
-voices. Neither layer changes guest/world time, and an end-of-scope dialogue
-handle check records any unrecognized presentation path as a leak.
+super-call their retained generated bodies.
+
+The tutorial's remaining non-dialogue audio is exactly two authored
+`sound("PLAY_SOUND", "char/night_m/p4_power", "", "")` commands. Retail
+handler `004a7130` only presents that audio and returns zero with a caller-clean
+`RET`. `src/native/cutscene_script_audio.c` suppresses that exact handler only
+when the current context published by `004d8b30` belongs to the synchronous
+player. The handler's explicit parameter is an argument-list pointer, not the
+context; treating it as context was falsified live when both commands reached
+the ordinary path. Foreign and ordinary contexts super-call the retail body.
+DirectSound remains unmodified, so ambient/gameplay voices and unrelated audio
+started during the same host interval are not caught by a broad global gate.
+Neither dialogue nor script-audio policy changes guest/world time.
+
+`CHud::startCinematic` (`0059b3b0`), `endCinematic` (`00599da0`), and its active
+update in `0059f1a0` own the separate `cinematicStart`/`cinematicEnd` briefing
+surface used by 18 shipping scripts. That CHud player is not the general
+gameplay control-lock player and does not define when player control returns.
 
 ## Verification contract
 
@@ -119,13 +144,13 @@ visible tutorial record. It passes 11/11: both transition scripts and cleanup
 launch, the adjacent conversation starts, controls return, and one request
 completes in one player invocation with frame and guest clock unchanged. The
 player stops one active voice, suppresses five response starts and four line
-starts, blocks two additional DirectSound starts, and records zero leaked
-presentation starts.
+starts, consumes both authored `sound` commands silently in their owned
+BehavEd context, and records zero leaked presentation starts.
 
 `tools/live_case.py cutscene-skip-early --pacing fast` presses during the
 camera-only locked stretch before any conversation exists. It passes 10/10,
-suppresses five response and five line starts with zero leaks, blocks two
-additional DirectSound starts, and
+suppresses five response and five line starts with zero leaks, consumes two
+authored `sound` commands silently at the exact command seam, and
 proves the control-lock cutscene player—not the conversation manager—is the
 owner. Both runs launch `x2native` with `--no-window --unbounded`, dummy audio,
 and unpaced scheduling.
@@ -135,6 +160,6 @@ calls reach both retained presenter bodies and increment their ordinary-start
 counters. Its skip cases then prove current-handle cancellation, response
 application, exact presenter suppression, and whole-player suppression for an
 adjacent line without entering either retained body.
-`test_audio_play_policy` supplies the lower boundary's opposite answer and
-proves nested suppression refuses starts while ordinary playback remains
-enabled.
+`test_cutscene_script_audio` supplies the non-dialogue path's opposite answer:
+ordinary and foreign current contexts reach the retained handler, while an
+owned current context returns the retail zero result without entering it.
