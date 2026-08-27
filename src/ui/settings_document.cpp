@@ -22,6 +22,7 @@ extern "C" {
 #include "dinput_system.h"
 #include "gpu_shadow.h"
 #include "binding_rows.h"
+#include "live_resolution.h"
 #include "settings_store.h"
 #include "transient_controller_assignment.h"
 #include "window_settings.h"
@@ -251,26 +252,22 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
         gpu_shadow_configure(settings->dynamic_shadows, settings->shadow_resolution);
         rebuild();
         set_status(saved ? "Saved" : why);
-    } else if (id == "resolution" || id == "window-mode") {
+    } else if (id == "resolution") {
         X2Settings* settings = x2_settings_store();
         X2Settings before = *settings;
         char why[256];
-        if (id == "resolution") {
-            static const unsigned resolutions[][2] = {
-                {1280, 720}, {1600, 900}, {1920, 1080},
-                {2560, 1440}, {3840, 2160}
-            };
-            unsigned next = 0;
-            for (unsigned i = 0; i < sizeof resolutions / sizeof resolutions[0]; i++)
-                if (settings->width == resolutions[i][0] &&
-                    settings->height == resolutions[i][1])
-                    next = (i + 1) % (sizeof resolutions / sizeof resolutions[0]);
-            settings->width = resolutions[next][0];
-            settings->height = resolutions[next][1];
-        } else {
-            settings->window_mode = (X2WindowMode)(
-                ((unsigned)settings->window_mode + 1u) % 3u);
-        }
+        x2_live_resolution_select_next(settings);
+        bool applied = x2_live_resolution_apply(host_window, settings, &before,
+                                                why, sizeof why);
+        rebuild();
+        set_status(why);
+        if (!applied) return;
+    } else if (id == "window-mode") {
+        X2Settings* settings = x2_settings_store();
+        X2Settings before = *settings;
+        char why[256];
+        settings->window_mode = (X2WindowMode)(
+            ((unsigned)settings->window_mode + 1u) % 3u);
         if (!x2_window_settings_apply(host_window, settings, why, sizeof why)) {
             char rollback_why[256];
             *settings = before;
@@ -282,11 +279,6 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
         } else {
             std::string status = save_settings();
             rebuild();
-            /* The window follows immediately, but the engine parses
-               Display\Resolution once per launch to size its device, so the
-               GAME re-renders at the new size on the next launch. */
-            if (id == "resolution") status += " (game renders this on next "
-                                             "launch)";
             set_status(status);
         }
     } else if (id == "close") {

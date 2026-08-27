@@ -868,7 +868,7 @@ def case_deadzone_render(case: Case) -> None:
                    case.wait_log("[FRAME TABLE] end of frame", 30))
     time.sleep(1.0)
     second = case.shot("water-b")
-    spread, delta = png_crop_stats(first, second, (500, 0, 800, 250))
+    spread, delta = png_water_stats(first, second)
     # This camera exposes only a small, oblique wedge of sea; it cannot be
     # compared numerically with the user's horizon-facing reference crop.
     # It can still distinguish a flat fill from a textured surface, while the
@@ -899,7 +899,7 @@ def case_deadzone_water(case: Case) -> None:
     first = case.shot("water-a")
     time.sleep(1.0)
     second = case.shot("water-b")
-    spread, delta = png_crop_stats(first, second, (500, 0, 800, 250))
+    spread, delta = png_water_stats(first, second)
     case.check("the visible blue sea is not a flat fill (luma stddev > 1)",
                spread > 1.0,
                "stddev %.2f" % spread)
@@ -907,17 +907,23 @@ def case_deadzone_water(case: Case) -> None:
                delta > 0.1, "mean |delta| %.2f" % delta)
 
 
-def png_crop_stats(a: Path, b: Path,
-                   box: tuple[int, int, int, int]) -> tuple[float, float]:
+def png_water_stats(a: Path, b: Path) -> tuple[float, float]:
     from PIL import Image  # the locked uv environment owns Pillow
     try:
-        ia = Image.open(a).convert("RGB").crop(box)
-        ib = Image.open(b).convert("RGB").crop(box)
+        ia = Image.open(a).convert("RGB")
+        ib = Image.open(b).convert("RGB")
     except Exception as exc:
         print("  [WARN] water crop comparison unavailable: %s" % exc)
         return 0.0, 0.0
     if ia.size != ib.size:
         ia = ia.resize(ib.size)
+    # The first version hardcoded the equivalent 800x600 box. Issue #135
+    # made a fresh profile honor its configured 1280x720 output, exposing that
+    # the diagnostic had encoded one resolution rather than the sea region.
+    width, height = ib.size
+    box = (round(width * 5 / 8), 0, width, round(height * 5 / 12))
+    ia = ia.crop(box)
+    ib = ib.crop(box)
     pa, pb = list(ia.getdata()), list(ib.getdata())
     # Ignore rocks/foliage in the diagnostic crop. Requiring both frames to
     # classify the pixel as blue also keeps a moving silhouette edge from
@@ -941,6 +947,96 @@ def png_crop_stats(a: Path, b: Path,
                     - (0.299 * y[0] + 0.587 * y[1] + 0.114 * y[2]))
                 for x, y in pairs) / len(pairs)
     return spread, delta
+def case_selector_dialog(case: Case) -> None:
+    """Reach New Game's difficulty dialog and record every draw bound to the
+    observed 128x32 runtime texture class. The fingerprint and geometry, not
+    the dimensions alone, distinguish the three same-sized resources."""
+    width, height = ((3840, 2160) if case.name.endswith("4k") else (800, 600))
+    evidence = case.dir / "selector-128x32.jsonl"
+    case.prepare_profile([
+        "boot.mode=normal",
+        "video.width=%d" % width,
+        "video.height=%d" % height,
+        "video.mode=windowed",
+    ])
+    case.launch({
+        "X2_FILES": "1",
+        "X2_SELECTOR_PROBE": str(evidence),
+        "X2_SELECTOR_TEXTURE": "128x32",
+    })
+    case.wait_control(60)
+    case.check("main-menu map lifecycle opened",
+               case.wait_log("menus/main.pkgb", 300))
+    time.sleep(5)
+    case.shot("main-menu")
+    code, body = case.http("/key?name=Return&hold=0.4")
+    case.check("Return accepted on NEW GAME", code == 200,
+               body.decode(errors="replace").strip())
+    time.sleep(5)
+    dialog = case.shot("difficulty-dialog")
+    case.check("difficulty capture is a PNG",
+               dialog.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+
+    from selector_probe import parse_records, summarize
+    try:
+        summary = summarize(parse_records(evidence))
+    except Exception as exc:
+        case.check("128x32 selector evidence is parseable", False, str(exc))
+        return
+    fingerprints = {
+        item["fingerprint"] for item in summary.candidates
+        if item["fingerprint_available"]
+    }
+    case.check("128x32 draw requests reached the v5 probe",
+               bool(summary.candidates), "%d request(s)" % len(summary.candidates))
+    case.check("every recorded build request has a result",
+               len(summary.results) == len(summary.candidates))
+    case.check("runtime bytes identify at least one texture",
+               bool(fingerprints), ", ".join(sorted(fingerprints)))
+
+    expected_mode = "%dx%d" % (width, height)
+    cold_log = case.log_text()
+    case.check("cold profile creates the configured D3D device",
+               "CreateDevice adapter=0 hardware-vertex %s" % expected_mode
+               in cold_log)
+    case.check("cold profile resolves through the retail settings reader",
+               "DISPLAY RUNTIME: retail settings resolved configured mode %s"
+               % expected_mode in cold_log)
+    registry = (case.profile / "registry.txt").read_text(errors="replace")
+    case.check("cold profile persists the configured retail Resolution",
+               expected_mode.encode().hex() in registry)
+
+    # The fresh-profile branch and Version=7 warm branch are different retail
+    # code paths. Preserve the cold evidence, then boot the SAME profile again
+    # so one passing branch cannot be presented as evidence for the other.
+    case.shutdown()
+    shutil.copy2(case.log_path, case.dir / "cold-run.log")
+    warm_evidence = case.dir / "selector-128x32-warm.jsonl"
+    case.log_path = case.dir / "warm-run.log"
+    case.launch({
+        "X2_FILES": "1",
+        "X2_SELECTOR_PROBE": str(warm_evidence),
+        "X2_SELECTOR_TEXTURE": "128x32",
+    })
+    case.wait_control(60)
+    case.check("warm-profile main-menu lifecycle opened",
+               case.wait_log("menus/main.pkgb", 300))
+    warm_log = case.log_text()
+    case.check("warm profile keeps the configured seed",
+               "DISPLAY SEED: no change needed for video %s" % expected_mode
+               in warm_log)
+    case.check("warm profile creates the configured D3D device",
+               "CreateDevice adapter=0 hardware-vertex %s" % expected_mode
+               in warm_log)
+    warm_shot = case.shot("warm-main-menu")
+    try:
+        from PIL import Image
+        with Image.open(warm_shot) as image:
+            warm_size = image.size
+    except Exception:
+        warm_size = (0, 0)
+    case.check("warm capture has the configured dimensions",
+               warm_size == (width, height), "%dx%d" % warm_size)
 
 
 def png_mean_diff(a: Path, b: Path) -> float:
@@ -971,6 +1067,8 @@ CASES = {
     "manual-continue": case_manual_continue,
     "deadzone-render": case_deadzone_render,
     "deadzone-water": case_deadzone_water,
+    "selector-dialog-800": case_selector_dialog,
+    "selector-dialog-4k": case_selector_dialog,
 }
 
 

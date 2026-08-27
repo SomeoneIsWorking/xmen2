@@ -913,7 +913,7 @@ static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out)
 static unsigned long g_rng_checked, g_rng_unverifiable, g_rng_bad;
 static uint32_t g_rng_worst_need, g_rng_worst_have;
 
-static uint32_t index_count_of(uint32_t prim_type, uint32_t prim_count)
+uint32_t d3d8_element_count(uint32_t prim_type, uint32_t prim_count)
 {
     switch (prim_type) {
     case D3DPT_POINTLIST:     return prim_count;
@@ -928,7 +928,7 @@ static uint32_t index_count_of(uint32_t prim_type, uint32_t prim_count)
 
 static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride)
 {
-    uint32_t n = index_count_of(req->primitive_type, req->primitive_count);
+    uint32_t n = d3d8_element_count(req->primitive_type, req->primitive_count);
     uint32_t have, need = 0, i, maxi = 0;
 
     if (!stride || !n) return 1;              /* nothing this can decide */
@@ -1440,7 +1440,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
     }
     vb = guest_memory_const_pointer(req->vertex_guest_bytes);
     capacity = req->vertex_bytes / stride;
-    n = index_count_of(req->primitive_type, req->primitive_count);
+    n = d3d8_element_count(req->primitive_type, req->primitive_count);
     /*
      * The geometry dump walks the draw's declared vertex RANGE, not its index
      * list, because that is what tools/proxy_d3d8 can see on the control side
@@ -1689,8 +1689,8 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
  * picture that leads straight to this function, and an approximated one is a
  * subtly wrong picture that leads nowhere.
  */
-int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
-                    GpuDraw *out)
+int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
+                         GpuDraw *out)
 {
     D3D8VertexLayout vl;
     uint32_t fvf = s->vertex_shader;

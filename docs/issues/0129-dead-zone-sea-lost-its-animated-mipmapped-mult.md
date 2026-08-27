@@ -46,3 +46,10 @@ No stock Wine oracle was available on this macOS host, so this does not claim a
 pixel-exact port-versus-stock comparison. The user's reference image owns the
 visual target; the automated contracts cover the mechanisms that produced the
 native defect.
+
+The combined Linux verification after issue #135 exposed and corrected a
+blind spot in the bounded observation: its original upper-right water crop was
+hardcoded in 800x600 pixels because the then-unfixed fresh-profile path forced
+that resolution. The case now scales the same region to the actual capture;
+both the spawned-Critter and water-only cases must show non-flat blue detail
+and frame-to-frame motion at the configured output size.

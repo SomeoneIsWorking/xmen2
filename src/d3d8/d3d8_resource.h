@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "d3d8_com.h"
+#include "d3d8_texture_provenance.h"
 #include "gpu_draw.h"
 
 void d3d8_resource_install(void);
@@ -36,6 +37,8 @@ uint32_t   d3d8_resource_fvf(D3D8Object *o);
 uint32_t   d3d8_resource_bytes(D3D8Object *o);
 uint32_t   d3d8_resource_guest_bytes(D3D8Object *o);
 int        d3d8_resource_index_is_32bit(D3D8Object *o);
+int        d3d8_resource_texture_provenance(
+               const D3D8Object *o, D3D8TextureProvenance *out);
 
 /*
  * One SUB-RESOURCE of a texture has been unlocked -- upload it.

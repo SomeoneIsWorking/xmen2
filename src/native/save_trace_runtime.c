@@ -1,6 +1,7 @@
 #include "save_trace_runtime.h"
 
 #include "autosave_runtime.h"
+#include "load_game_menu_runtime.h"
 #include "save_trace.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -242,6 +243,8 @@ size_t x2_save_trace_runtime_report(char *out, size_t capacity)
     size_t required = 0;
     size_t trace_size;
     size_t autosave_size;
+    size_t combined_size;
+    size_t load_menu_size;
 
     if (save_trace_report(&g_trace, NULL, 0, &required)
             != SAVE_TRACE_REFUSED_CAPACITY || !required
@@ -254,7 +257,11 @@ size_t x2_save_trace_runtime_report(char *out, size_t capacity)
     autosave_size = x2_autosave_runtime_report(
         out + trace_size, capacity - trace_size);
     if (!autosave_size) return 0;
-    return trace_size + autosave_size;
+    combined_size = trace_size + autosave_size;
+    load_menu_size = x2_load_game_menu_runtime_report(
+        out + combined_size, capacity - combined_size);
+    if (!load_menu_size) return 0;
+    return combined_size + load_menu_size;
 }
 
 void x2_save_trace_runtime_print(void)

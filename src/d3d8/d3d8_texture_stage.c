@@ -1,5 +1,7 @@
 #include "d3d8_texture_stage.h"
 #include "d3d8_drawcall.h"
+#include "d3d8_com.h"
+#include "d3d8_resource.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +25,30 @@
 
 #define D3DTOP_DISABLE    1
 #define D3DTOP_MODULATE   4
+
+static unsigned long g_texture_unresolved;
+
+GpuTexture d3d8_texture_stage_resolve(unsigned stage, uint32_t guest)
+{
+    D3D8Object *texture = guest ? d3d8_object_from_guest(guest) : NULL;
+    GpuTexture gpu = texture ? d3d8_resource_texture(texture) : 0;
+    static uint8_t told[D3D8_MAX_STAGES];
+
+    if (guest && !gpu) {
+        g_texture_unresolved++;
+        if (!told[stage]++)
+            fprintf(stderr, "d3d8: texture stage %u binds guest 0x%08x, but "
+                            "it has no GPU texture; draws using it cannot "
+                            "sample that stage. Reported once.\n", stage,
+                    guest);
+    }
+    return gpu;
+}
+
+void d3d8_texture_stage_unresolved(unsigned long *count)
+{
+    *count = g_texture_unresolved;
+}
 
 int d3d8_texture_arg(uint32_t value, const char *what)
 {
