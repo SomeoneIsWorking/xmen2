@@ -8,7 +8,7 @@
  * (see gpu_selftest.c).
  *
  * What it is NOT: a D3D8 emulator. It offers the pipeline a fixed-function
- * title actually asks for -- a vertex format, a transform, one texture stage,
+ * title actually asks for -- a vertex format, transforms, two texture stages,
  * blend/depth/cull -- and REFUSES anything outside that rather than
  * approximating it. A silently approximated combiner reads as a lighting bug
  * and gets attributed to anything but the shader.
@@ -36,6 +36,7 @@ typedef enum {
 typedef enum {
     GPU_FMT_BGRA8 = 1,     /* D3DFMT_A8R8G8B8 / X8R8G8B8 */
     GPU_FMT_RGBA8,         /* native assets stored as R, G, B, A bytes */
+    GPU_FMT_BGR8,          /* D3DFMT_R8G8B8; expanded to opaque BGRA8 */
     GPU_FMT_BC1,           /* DXT1 */
     GPU_FMT_BC2,           /* DXT3 */
     GPU_FMT_BC3            /* DXT5 */
@@ -86,7 +87,7 @@ typedef struct {
     float atten[3];             /* constant, linear, quadratic */
 } GpuLight;
 
-/* What the one texture stage does with the vertex colour. */
+/* What a fixed-function texture stage does with its input colour. */
 typedef enum {
     GPU_TEXOP_NONE = 0,      /* untextured: the vertex colour is the result */
     GPU_TEXOP_MODULATE = 1,
@@ -115,7 +116,8 @@ typedef enum {
     GPU_TA_DEFAULT = 0,
     GPU_TA_DIFFUSE = 1,
     GPU_TA_TEXTURE = 2,
-    GPU_TA_TFACTOR = 3
+    GPU_TA_TFACTOR = 3,
+    GPU_TA_CURRENT = 4
 } GpuTexArg;
 
 typedef enum {
@@ -156,6 +158,7 @@ typedef struct {
     int          pretransformed;
     int          programmable;     /* position/color are VS 1.1 outputs */
     int          color_offset;
+    int          specular_offset;
     int          uv_offset;
     /* The normal, which only matters when lighting is on -- but the ATTRIBUTE
        is pipeline state, so it is part of the layout either way. */
@@ -172,8 +175,11 @@ typedef struct {
 
     /* ---- fixed-function lighting (D3DRS_LIGHTING) ---- */
     int          lighting;         /* 0: the vertex colour is used as-is */
-    int          color_vertex;     /* D3DRS_COLORVERTEX: the vertex diffuse
-                                      replaces the material's diffuse */
+    int          color_vertex;     /* D3DRS_COLORVERTEX */
+    int          normalize_normals;/* D3DRS_NORMALIZENORMALS */
+    uint32_t     diffuse_source;   /* D3DMATERIALCOLORSOURCE */
+    uint32_t     ambient_source;
+    uint32_t     emissive_source;
     int          nlights;          /* how many of `light` are enabled */
     float        global_ambient[4];
     float        mat_diffuse[4];
@@ -189,6 +195,10 @@ typedef struct {
        would be a plausible-looking wrong reflection. */
     GpuTexGen    texgen;
     float        worldview[16];
+    /* D3DTSS_TEXTURETRANSFORMFLAGS and D3DTS_TEXTURE0. The Dead Zone water
+       animates these rather than rewriting its texture pixels. */
+    uint32_t     texture_transform;
+    float        texture_matrix[16];
     /*
      * The combiner arguments, per D3D8's D3DTSS_COLORARG1/2 and ALPHAARG1/2:
      * GPU_TA_DEFAULT (0) means D3D8's own default for that slot -- TEXTURE for
@@ -206,6 +216,28 @@ typedef struct {
     float        texture_factor[4];    /* D3DRS_TEXTUREFACTOR, RGBA 0..1 */
     int          texture_clamp;    /* else wrap */
     int          texture_point;    /* else linear */
+    int          texture_mip;      /* 0 none, 1 point, 2 linear */
+    float        texture_lod_bias;
+    int          texture_min_filter; /* D3DTEXF_POINT/LINEAR/ANISOTROPIC */
+    int          texture_max_anisotropy;
+
+    /* The first observed stage-1 material modulates stage 0 with a second 2D
+       texture whose coordinates come from the camera-space normal and a
+       COUNT2 texture transform. */
+    GpuTexture   texture1;
+    GpuTexOp     texop1;
+    int          color_arg1_1, color_arg2_1;
+    GpuTexOp     alpha_op1;
+    int          alpha_arg1_1, alpha_arg2_1;
+    GpuTexGen    texgen1;
+    int          texture_transform1;
+    float        texture_matrix1[16];
+    int          texture_clamp1;
+    int          texture_point1;
+    int          texture_mip1;
+    float        texture_lod_bias1;
+    int          texture_min_filter1;
+    int          texture_max_anisotropy1;
 
     int          blend_enable;
     GpuBlend     src_blend, dst_blend;

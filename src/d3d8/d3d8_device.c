@@ -1519,6 +1519,24 @@ static unsigned long g_texture_unresolved;
 void d3d8_device_texture_unresolved(unsigned long *n)
 { *n = g_texture_unresolved; }
 
+static GpuTexture resolved_texture(unsigned stage)
+{
+    uint32_t guest = g_dev.state.texture[stage];
+    D3D8Object *texture = guest ? d3d8_object_from_guest(guest) : NULL;
+    GpuTexture gpu = texture ? d3d8_resource_texture(texture) : 0;
+    static uint8_t told[D3D8_MAX_STAGES];
+
+    if (guest && !gpu) {
+        g_texture_unresolved++;
+        if (!told[stage]++)
+            fprintf(stderr, "d3d8: texture stage %u binds guest 0x%08x, but "
+                            "it has no GPU texture; draws using it cannot "
+                            "sample that stage. Reported once.\n", stage,
+                    guest);
+    }
+    return gpu;
+}
+
 static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
                         int indexed, int require_vb)
 {
@@ -1527,8 +1545,6 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
                          : NULL;
     D3D8Object *ib = g_dev.state.indices
                          ? d3d8_object_from_guest(g_dev.state.indices) : NULL;
-    D3D8Object *tx = g_dev.state.texture[0]
-                         ? d3d8_object_from_guest(g_dev.state.texture[0]) : NULL;
 
     memset(req, 0, sizeof *req);
     if (!vb && require_vb) {
@@ -1549,40 +1565,8 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
         req->index_guest_bytes = d3d8_resource_guest_bytes(ib);
         req->index_bytes = d3d8_resource_bytes(ib);
     }
-    /*
-     * A texture the guest BOUND but this host could not resolve is a draw that
-     * comes out untextured with nothing to say so.
-     *
-     * "74,251 draws with no texture bound" is a fine number if the engine
-     * really bound none, and a serious defect if it bound one and the lookup
-     * failed -- and the two are indistinguishable from the count alone. Three
-     * ways this can happen: the guest pointer names no object of ours, the
-     * object is not a texture, or it is a texture whose GPU resource was never
-     * created (a format that was refused). All three are counted, and the
-     * first of each is named.
-     */
-    if (tx) {
-        req->texture = d3d8_resource_texture(tx);
-        if (!req->texture) {
-            static int told;
-            g_texture_unresolved++;
-            if (!told++)
-                fprintf(stderr, "d3d8: a texture bound at stage 0 (guest "
-                                "0x%08x) has no GPU resource -- its creation "
-                                "was refused, and this draw is UNTEXTURED "
-                                "rather than refused. Reported once; the total "
-                                "is in the shutdown report.\n",
-                        g_dev.state.texture[0]);
-        }
-    } else if (g_dev.state.texture[0]) {
-        static int told;
-        g_texture_unresolved++;
-        if (!told++)
-            fprintf(stderr, "d3d8: the guest bound 0x%08x at texture stage 0 "
-                            "and this host has no object at that address, so "
-                            "the draw is UNTEXTURED. Reported once.\n",
-                    g_dev.state.texture[0]);
-    }
+    req->texture = resolved_texture(0);
+    req->texture1 = resolved_texture(1);
     req->primitive_type = prim;
     req->primitive_count = count;
     return 1;

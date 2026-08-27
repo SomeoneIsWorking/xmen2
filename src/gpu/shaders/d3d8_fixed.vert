@@ -23,13 +23,15 @@ layout(location = 0) in vec4 in_pos;
 layout(location = 1) in vec4 in_color;      /* UBYTE4_NORM: B,G,R,A in memory */
 layout(location = 2) in vec2 in_uv;
 layout(location = 3) in vec3 in_normal;
+layout(location = 4) in vec4 in_specular;   /* UBYTE4_NORM: B,G,R,A in memory */
 
 layout(location = 0) out vec4 v_color;
 layout(location = 1) out vec2 v_uv;
 /* The DIRECTION a cube map is sampled with. D3D8 generates it rather than
    reading it from the vertex -- see texgen below. */
 layout(location = 2) out vec3 v_dir;
-layout(location = 3) out vec4 v_shadow;
+layout(location = 3) out vec2 v_uv1;
+layout(location = 4) out vec4 v_shadow;
 
 /* SDL_GPU binds vertex uniform buffers at set 1. */
 layout(set = 1, binding = 0) uniform VertexState {
@@ -47,6 +49,11 @@ layout(set = 1, binding = 0) uniform VertexState {
     vec4  mat_emissive;
     uint  has_normal;      /* 0 when the vertex format carries no normal */
     uint  color_vertex;    /* D3DRS_COLORVERTEX */
+    uint  has_specular;    /* 0 when COLOR2 is absent */
+    uint  normalize_normals; /* D3DRS_NORMALIZENORMALS */
+    uint  diffuse_source;  /* D3DMATERIALCOLORSOURCE */
+    uint  ambient_source;
+    uint  emissive_source;
     /*
      * D3DTSS_TEXCOORDINDEX's generator bits: 0 none, 1 camera-space
      * REFLECTION vector, 2 camera-space normal, 3 camera-space position.
@@ -56,7 +63,19 @@ layout(set = 1, binding = 0) uniform VertexState {
      */
     uint  texgen;
     uint  programmable;
+    uint  material_source_pad0;
+    uint  material_source_pad1;
+    uint  material_source_pad2;
     mat4  worldview;       /* camera space, where the generators are defined */
+    uint  texture_transform;
+    uint  texture_transform_pad0;
+    uint  texture_transform_pad1;
+    uint  texture_transform_pad2;
+    mat4  texture_matrix;
+    uint  texgen1;
+    uint  texture_transform1;
+    uvec2 stage1_pad;
+    mat4  texture_matrix1;
     /* Each light is five vec4s: diffuse, ambient, (position, range),
        (direction, type), (attenuation, unused). Packed by hand because a
        std140 array of structs would pad every member to 16 bytes anyway. */
@@ -74,14 +93,28 @@ layout(set = 1, binding = 0) uniform VertexState {
  *          + sum over lights of  diffuse_material * light_diffuse * N.L * atten
  *
  * NOT here, and each is reported by name where the state is read rather than
- * left to look applied: specular, spot cones (a spot lights as a point), and
- * D3DRS_*MATERIALSOURCE selection.
+ * left to look applied: specular lighting and spot cones (a spot lights as a
+ * point).
  */
-vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse, bool has_n)
+vec4 material_source(uint source, vec4 material, vec4 color1, vec4 color2)
 {
-    vec4 diffuse_material = (vs.color_vertex != 0u && vs.has_diffuse != 0u)
-                                ? vertex_diffuse : vs.mat_diffuse;
-    vec3 acc = vs.mat_emissive.rgb + vs.mat_ambient.rgb * vs.global_ambient.rgb;
+    if (vs.color_vertex == 0u) return material;
+    if (source == 1u && vs.has_diffuse != 0u) return color1;
+    if (source == 2u && vs.has_specular != 0u) return color2;
+    return material;
+}
+
+vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse,
+                vec4 vertex_specular, bool has_n)
+{
+    vec4 diffuse_material = material_source(vs.diffuse_source, vs.mat_diffuse,
+                                            vertex_diffuse, vertex_specular);
+    vec4 ambient_material = material_source(vs.ambient_source, vs.mat_ambient,
+                                            vertex_diffuse, vertex_specular);
+    vec4 emissive_material = material_source(vs.emissive_source, vs.mat_emissive,
+                                             vertex_diffuse, vertex_specular);
+    vec3 acc = emissive_material.rgb
+             + ambient_material.rgb * vs.global_ambient.rgb;
     /*
      * NO NORMAL is a lit case, not an unlit one.
      *
@@ -91,7 +124,8 @@ vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse, bool has_n)
      * must not go through normalize(), which is undefined for a zero vector and
      * would put a NaN into every channel.
      */
-    vec3 n = has_n ? normalize(wnormal) : vec3(0.0);
+    vec3 n = has_n ? (vs.normalize_normals != 0u ? normalize(wnormal) : wnormal)
+                   : vec3(0.0);
 
     for (uint i = 0u; i < vs.nlights; i++) {
         vec4 ldiff = vs.light[i * 5u + 0u];
@@ -112,7 +146,7 @@ vec4 lit_colour(vec3 wpos, vec3 wnormal, vec4 vertex_diffuse, bool has_n)
             float den = latt.x + latt.y * dist + latt.z * dist * dist;
             atten = den > 0.0 ? 1.0 / den : 1.0;
         }
-        acc += vs.mat_ambient.rgb * lamb.rgb * atten;
+        acc += ambient_material.rgb * lamb.rgb * atten;
         acc += diffuse_material.rgb * ldiff.rgb *
                max(dot(n, to_light), 0.0) * atten;
     }
@@ -166,6 +200,8 @@ void main()
      */
     vec4 diffuse = vs.has_diffuse != 0u
         ? (vs.programmable != 0u ? in_color : in_color.zyxw) : vec4(1.0);
+    vec4 specular = vs.has_specular != 0u
+        ? (vs.programmable != 0u ? in_specular : in_specular.zyxw) : vec4(1.0);
     if (vs.lighting != 0u && vs.pretransformed == 0u) {
         vec3 wpos = (vs.world * vec4(in_pos.xyz, 1.0)).xyz;
         /* The normal by the world matrix's upper 3x3. Correct for the rigid
@@ -177,7 +213,7 @@ void main()
            little the result contributed. */
         bool has_n = vs.has_normal != 0u;
         vec3 wnrm = has_n ? mat3(vs.world) * in_normal : vec3(0.0);
-        v_color = lit_colour(wpos, wnrm, diffuse, has_n);
+        v_color = lit_colour(wpos, wnrm, diffuse, specular, has_n);
     } else {
         v_color = diffuse;
     }
@@ -197,16 +233,39 @@ void main()
      * non-uniform scale as the lighting above.
      */
     v_dir = vec3(0.0, 0.0, 1.0);
+    v_uv1 = in_uv;
+    vec4 generated0 = vec4(in_uv, 0.0, 1.0);
     if (vs.texgen != 0u) {
         vec3 cpos = (vs.worldview * vec4(in_pos.xyz, 1.0)).xyz;
         vec3 cnrm = normalize(mat3(vs.worldview) * in_normal);
         if (vs.texgen == 1u) {
             vec3 i = normalize(cpos);
-            v_dir = i - 2.0 * dot(cnrm, i) * cnrm;
+            generated0 = vec4(i - 2.0 * dot(cnrm, i) * cnrm, 1.0);
         } else if (vs.texgen == 2u) {
-            v_dir = cnrm;
+            generated0 = vec4(cnrm, 1.0);
         } else {
-            v_dir = cpos;
+            generated0 = vec4(cpos, 1.0);
         }
+    }
+    uint count0 = vs.texture_transform & 0xffu;
+    if (count0 != 0u)
+        generated0 = vs.texture_matrix * generated0;
+    if ((vs.texture_transform & 0x100u) != 0u) {
+        if (count0 == 3u && abs(generated0.z) > 1e-8)
+            generated0.xy /= generated0.z;
+        else if (count0 == 4u && abs(generated0.w) > 1e-8)
+            generated0.xyz /= generated0.w;
+    }
+    v_uv = generated0.xy;
+    v_dir = generated0.xyz;
+    if (vs.texgen1 != 0u) {
+        vec3 cpos = (vs.worldview * vec4(in_pos.xyz, 1.0)).xyz;
+        vec3 cnrm = normalize(mat3(vs.worldview) * in_normal);
+        vec4 generated = vs.texgen1 == 2u ? vec4(cnrm, 1.0)
+                       : vs.texgen1 == 3u ? vec4(cpos, 1.0)
+                                         : vec4(in_uv, 0.0, 1.0);
+        if (vs.texture_transform1 == 2u)
+            generated = vs.texture_matrix1 * generated;
+        v_uv1 = generated.xy;
     }
 }

@@ -90,6 +90,11 @@ add_executable(test_d3d8_texture_luma tests/test_d3d8_texture_luma.c
 target_include_directories(test_d3d8_texture_luma PRIVATE src/d3d8)
 add_test(NAME d3d8_texture_luma COMMAND test_d3d8_texture_luma)
 
+add_executable(test_gpu_texture_format tests/test_gpu_texture_format.c
+    src/gpu/gpu_texture_format.c)
+target_include_directories(test_gpu_texture_format PRIVATE src/gpu)
+add_test(NAME gpu_texture_format COMMAND test_gpu_texture_format)
+
 add_executable(test_movie_audio tests/test_movie_audio.c
                src/audio/movie_audio.c)
 target_include_directories(test_movie_audio PRIVATE src/audio)
@@ -1152,6 +1157,7 @@ if(X2_MODULE_HAVE)
         src/native/security.c
         src/native/conversation.c
         src/native/script_trace.c
+        src/native/entity_spawn_probe.c
         src/native/heartbeat.c
         src/native/oracle_trace.c
         src/recomp/gen/probe_wraps.c
@@ -1165,6 +1171,9 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_surface.c
         src/d3d8/d3d8_resource.c
         src/d3d8/d3d8_texture_luma.c
+        src/d3d8/d3d8_texture_stage.c
+        src/d3d8/d3d8_vertex_layout.c
+        src/d3d8/d3d8_frame_material.c
         src/d3d8/d3d8_drawcall.c
         src/d3d8/d3d8_vertex_shader.c
         src/d3d8/d3d8_screen_space_test.c
@@ -1176,6 +1185,7 @@ if(X2_MODULE_HAVE)
         src/gpu/gpu_device.c
         src/gpu/gpu_capture.c
         src/gpu/gpu_draw.c
+        src/gpu/gpu_texture_format.c
         src/gpu/gpu_draw_trace.c
         src/gpu/gpu_frame_timing.c
         src/gpu/gpu_shadow.c
@@ -1186,6 +1196,7 @@ if(X2_MODULE_HAVE)
         src/gpu/gpu_present_selftest.c
         src/gpu/gpu_prompt_glyphs.c
         src/gpu/gpu_host_selftest.c
+        src/gpu/gpu_multistage_selftest.c
         src/gpu/gpu_matrix.c
         src/gpu/gpu_frame_init_selftest.c
         src/gpu/gpu_upload.c

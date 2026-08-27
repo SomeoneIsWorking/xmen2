@@ -838,6 +838,111 @@ def case_manual_continue(case: Case) -> None:
                resolved >= 1, " | ".join(handles))
 
 
+def case_deadzone_render(case: Case) -> None:
+    """Code-spawn a Scourge Critter and prove the Dead Zone sea is textured
+    and changing. This is deliberately a render observation, not a general
+    gameplay gate: the unit/selftests own the renderer contracts."""
+    case.prepare_profile(["boot.mode=normal"])
+    case.launch({
+        "X2_BOOT_MAP": "act1/deadzone/deadzone1",
+        "X2_FILES": "1",
+        "X2_SCRIPTS": "1",
+        "X2_SPAWN_CRITTER": "1",
+    })
+    case.wait_control(60)
+    case.check("the retail spawn path returned a Scourge Critter entity",
+               case.wait_log("factory result", 180)
+               and "factory result 0x00000000" not in case.log_text())
+    case.check("the Scourge Critter model was requested",
+               case.wait_log("actors/60_critter.igb", 180))
+    case.check("R8G8B8 is no longer refused",
+               "CreateTexture in format 20" not in case.log_text())
+
+    # The bounded boot camera leaves a blue sea wedge in the upper-right.
+    # Blue-pixel selection below excludes the rocks and foliage crossing it.
+    time.sleep(2.0)
+    first = case.shot("water-a")
+    if case.proc:
+        os.kill(case.proc.pid, signal.SIGUSR1)
+        case.check("a full visible-frame draw table completed",
+                   case.wait_log("[FRAME TABLE] end of frame", 30))
+    time.sleep(1.0)
+    second = case.shot("water-b")
+    spread, delta = png_crop_stats(first, second, (500, 0, 800, 250))
+    # This camera exposes only a small, oblique wedge of sea; it cannot be
+    # compared numerically with the user's horizon-facing reference crop.
+    # It can still distinguish a flat fill from a textured surface, while the
+    # GPU pixel selftest owns the mip-chain contract.
+    case.check("the visible blue sea is not a flat fill (luma stddev > 1)",
+               spread > 1.0,
+               "stddev %.2f" % spread)
+    case.check("the sea crop changes between frames (mean |delta| > 0.1)",
+               delta > 0.1, "mean |delta| %.2f" % delta)
+
+
+def case_deadzone_water(case: Case) -> None:
+    """Measure the Dead Zone sea before a spawned enemy can pull the camera
+    inland. The Critter reproduction remains in deadzone-render."""
+    case.prepare_profile(["boot.mode=normal"])
+    case.launch({
+        "X2_BOOT_MAP": "act1/deadzone/deadzone1",
+        "X2_FILES": "1",
+        "X2_SCRIPTS": "1",
+    })
+    case.wait_control(60)
+    case.check("the Dead Zone map opened",
+               case.wait_log("maps/act1/deadzone/deadzone1.igb", 180))
+    case.check("the Dead Zone entry script launched",
+               case.wait_log('SCRIPT: launch "act1/deadzone/deadzone1/deadzone1"',
+                             180))
+    time.sleep(3.0)
+    first = case.shot("water-a")
+    time.sleep(1.0)
+    second = case.shot("water-b")
+    spread, delta = png_crop_stats(first, second, (500, 0, 800, 250))
+    case.check("the visible blue sea is not a flat fill (luma stddev > 1)",
+               spread > 1.0,
+               "stddev %.2f" % spread)
+    case.check("the sea crop changes between frames (mean |delta| > 0.1)",
+               delta > 0.1, "mean |delta| %.2f" % delta)
+
+
+def png_crop_stats(a: Path, b: Path,
+                   box: tuple[int, int, int, int]) -> tuple[float, float]:
+    from PIL import Image  # the locked uv environment owns Pillow
+    try:
+        ia = Image.open(a).convert("RGB").crop(box)
+        ib = Image.open(b).convert("RGB").crop(box)
+    except Exception as exc:
+        print("  [WARN] water crop comparison unavailable: %s" % exc)
+        return 0.0, 0.0
+    if ia.size != ib.size:
+        ia = ia.resize(ib.size)
+    pa, pb = list(ia.getdata()), list(ib.getdata())
+    # Ignore rocks/foliage in the diagnostic crop. Requiring both frames to
+    # classify the pixel as blue also keeps a moving silhouette edge from
+    # masquerading as animated water.
+    def blue(pixel: tuple[int, int, int]) -> bool:
+        red, green, blue_channel = pixel
+        return (blue_channel > red * 1.2
+                and blue_channel > green * 1.05
+                and blue_channel > 50)
+
+    pairs = [(x, y) for x, y in zip(pa, pb, strict=True)
+             if blue(x) and blue(y)]
+    if len(pairs) < 1000:
+        return 0.0, 0.0
+    first_blue = [round(0.299 * x[0] + 0.587 * x[1] + 0.114 * x[2])
+                  for x, _ in pairs]
+    mean = sum(first_blue) / len(first_blue)
+    spread = (sum((x - mean) ** 2 for x in first_blue)
+              / len(first_blue)) ** 0.5
+    delta = sum(abs((0.299 * x[0] + 0.587 * x[1] + 0.114 * x[2])
+                    - (0.299 * y[0] + 0.587 * y[1] + 0.114 * y[2]))
+                for x, y in pairs) / len(pairs)
+    return spread, delta
+
+
 def png_mean_diff(a: Path, b: Path) -> float:
     from PIL import Image  # the locked uv environment owns Pillow
     try:
@@ -864,6 +969,8 @@ CASES = {
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,
+    "deadzone-render": case_deadzone_render,
+    "deadzone-water": case_deadzone_water,
 }
 
 

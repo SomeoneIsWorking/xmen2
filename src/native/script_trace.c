@@ -16,6 +16,7 @@
  */
 #include "script_trace.h"
 
+#include "entity_spawn_probe.h"
 #include "gpu_device.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -93,6 +94,7 @@ void x2_override_004a1320(CPU *C)
     snprintf(g_last, sizeof g_last, "%s", name);
     g_last_caller = caller;
     record(name, ok);
+    if (ok) entity_spawn_probe_after_script_launch(C, name);
     if (live())
         fprintf(stderr,
                 "SCRIPT: %-6s \"%s\" at frame %lu, caller 0x%08x\n",

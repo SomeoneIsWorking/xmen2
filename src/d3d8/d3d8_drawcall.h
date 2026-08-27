@@ -20,6 +20,7 @@ typedef struct {
     int      pos_offset;
     int      pretransformed;
     int      color_offset;
+    int      specular_offset;
     int      uv_offset;
     int      normal_offset;
     uint32_t stride;
@@ -50,12 +51,18 @@ typedef struct {
     uint32_t   min_index;
     uint32_t   num_vertices;
     GpuTexture texture;             /* 0 for untextured */
+    GpuTexture texture1;            /* texture stage 1, when enabled */
     uint32_t   primitive_type;      /* D3DPRIMITIVETYPE */
     uint32_t   primitive_count;
 } D3D8DrawRequest;
 
 /* 0 if the FVF has no position this host understands. */
 int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out);
+void d3d8_fvf_note(uint32_t fvf);
+void d3d8_fvf_report(void);
+void d3d8_frame_material_rgb(const GpuDraw *draw, uint32_t source,
+                             const uint8_t *vertex, const float material[4],
+                             double out[3]);
 
 /* 0 and a reason if the state cannot be expressed. */
 int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
