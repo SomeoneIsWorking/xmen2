@@ -1,12 +1,12 @@
 ---
 id: 132
 title: Game mouse cursor cannot click and disagrees with OS cursor
-status: active
+status: resolved
 symptom: The game-drawn cursor does not activate UI controls, is not aligned with the visible OS cursor, and both cursors are shown
 state_items: S003,S006
 tags: mouse,cursor,input,presentation,ui,user-report
 created: 2026-08-27
-updated: 2026-08-27
+updated: 2026-08-28
 ---
 
 ## Root cause
@@ -52,3 +52,8 @@ and restored outside the window or while a native overlay/modal is active.
 Hidden test windows never change desktop cursor state. `test_win32_mouse`
 pins message ordering/filtering, coordinate clamping/aspect mapping, button
 state, motion coalescing, and cursor visibility policy.
+
+The visible `mouse-click` case passed 3/3 under an isolated X11 desktop: a
+physical window click on NEW GAME changed the retail frame and opened the
+game's difficulty dialog. That exercises the real X11 -> SDL -> Win32 message
+queue -> retained WndProc path rather than a scripted keyboard substitute.

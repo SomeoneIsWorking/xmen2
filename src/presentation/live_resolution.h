@@ -12,7 +12,8 @@ void x2_live_resolution_select_next(X2Settings *settings);
  * Apply and persist one Port Settings resolution change as a transaction.
  * The caller has already placed the requested dimensions in `settings` and
  * supplies the complete prior value for rollback. On any failure, settings,
- * the SDL window policy, and the active D3D8 presentation are restored.
+ * the SDL window policy, retained title display state, and active D3D8
+ * presentation are restored.
  */
 int x2_live_resolution_apply(struct SDL_Window *window,
                              X2Settings *settings,

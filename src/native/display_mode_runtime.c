@@ -7,11 +7,13 @@
  * the retail Resolution reader itself before device creation.
  */
 #include "display_mode_seed.h"
+#include "display_mode_runtime.h"
 #include "guest_memory.h"
 #include "settings_store.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,8 +30,22 @@ enum {
     RVA_RESOLUTION_DEFAULT = 0x002a4e40u,
     RVA_RESOLUTION_OUTPUT = 0x00668d9cu,
     RVA_DEMO_FLAG = 0x002f3c2du,
+    RVA_TITLE_WIDTH = 0x00609ffcu,
+    RVA_TITLE_HEIGHT = 0x0060a000u,
+    RVA_DISPLAY_SINGLETON = 0x0060a138u,
+    RVA_DISPLAY_VTABLE = 0x002a3a9cu,
     REGISTRY_CONTEXT_BYTES = 0x78u,
     RESOLUTION_CAPACITY = 10u
+};
+
+enum {
+    DISPLAY_ASPECT = 0x10u,
+    DISPLAY_LAYOUT_ASPECT = 0x14u,
+    DISPLAY_WIDTH = 0x20u,
+    DISPLAY_HEIGHT = 0x24u,
+    DISPLAY_X_PER_PIXEL = 0x40u,
+    DISPLAY_Y_PER_PIXEL = 0x44u,
+    DISPLAY_OBJECT_BYTES = 0x64u
 };
 
 void fn_XMen2_00619770(CPU *C);
@@ -56,6 +72,88 @@ static uint32_t executable_base(void)
         }
     }
     return 0u;
+}
+
+static int report_failure(char *why, int whyn, const char *message)
+{
+    if (why && whyn > 0) snprintf(why, (size_t)whyn, "%s", message);
+    return 0;
+}
+
+static float read_float(uint32_t address)
+{
+    float value;
+    memcpy(&value, guest_memory_const_pointer(address), sizeof value);
+    return value;
+}
+
+static void write_float(uint32_t address, float value)
+{
+    memcpy(guest_memory_pointer(address), &value, sizeof value);
+}
+
+int x2_display_mode_runtime_apply(uint32_t width, uint32_t height,
+                                  char *why, int whyn)
+{
+    uint32_t exe = executable_base();
+    uint32_t display, old_width, old_height;
+    float old_aspect, old_layout_aspect, x_per_pixel, y_per_pixel;
+    float height_scale, aspect;
+
+    if (!width || !height)
+        return report_failure(why, whyn,
+                              "title display dimensions must be non-zero");
+    if (!exe)
+        return report_failure(why, whyn,
+                              "XMen2.exe mapping is unavailable");
+    if (!guest_memory_is_readable(exe + RVA_TITLE_WIDTH, 8u))
+        return report_failure(why, whyn,
+                              "title display globals are unavailable");
+
+    display = exe + RVA_DISPLAY_SINGLETON;
+    if (!guest_memory_is_readable(display, DISPLAY_OBJECT_BYTES))
+        return report_failure(why, whyn,
+                              "title display singleton is unavailable");
+    if (RD32(display) != exe + RVA_DISPLAY_VTABLE)
+        return report_failure(why, whyn,
+                              "title display singleton has an unexpected type");
+
+    old_width = RD32(exe + RVA_TITLE_WIDTH);
+    old_height = RD32(exe + RVA_TITLE_HEIGHT);
+    if (!old_width || !old_height
+        || RD32(display + DISPLAY_WIDTH) != old_width
+        || RD32(display + DISPLAY_HEIGHT) != old_height)
+        return report_failure(why, whyn,
+                              "title display dimensions disagree");
+
+    old_aspect = read_float(display + DISPLAY_ASPECT);
+    old_layout_aspect = read_float(display + DISPLAY_LAYOUT_ASPECT);
+    x_per_pixel = read_float(display + DISPLAY_X_PER_PIXEL);
+    y_per_pixel = read_float(display + DISPLAY_Y_PER_PIXEL);
+    if (!isfinite(old_aspect) || old_aspect <= 0.0f
+        || !isfinite(old_layout_aspect) || old_layout_aspect <= 0.0f
+        || !isfinite(x_per_pixel) || x_per_pixel <= 0.0f
+        || !isfinite(y_per_pixel) || y_per_pixel <= 0.0f)
+        return report_failure(why, whyn,
+                              "title display aspect or pixel scales are invalid");
+
+    aspect = (float)width / (float)height;
+    height_scale = (float)old_height / (float)height;
+    WR32(exe + RVA_TITLE_WIDTH, width);
+    WR32(exe + RVA_TITLE_HEIGHT, height);
+    WR32(display + DISPLAY_WIDTH, width);
+    WR32(display + DISPLAY_HEIGHT, height);
+    write_float(display + DISPLAY_ASPECT, aspect);
+    write_float(display + DISPLAY_LAYOUT_ASPECT,
+                old_layout_aspect / old_aspect * aspect);
+    write_float(display + DISPLAY_X_PER_PIXEL, x_per_pixel * height_scale);
+    write_float(display + DISPLAY_Y_PER_PIXEL, y_per_pixel * height_scale);
+
+    if (why && whyn > 0)
+        snprintf(why, (size_t)whyn,
+                 "title display state is now %ux%u (aspect %.6g)",
+                 width, height, (double)aspect);
+    return 1;
 }
 
 static uint32_t build_registry_context(const CPU *source, uint32_t exe)

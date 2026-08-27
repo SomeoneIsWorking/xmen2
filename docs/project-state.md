@@ -145,12 +145,12 @@ through an ordered Win32 message queue into the retained Alchemy WndProc,
 mapping physical coordinates through inverse aspect fit to the active logical
 backbuffer and giving focused retail content one game-drawn cursor. Pure tests
 pin the message, mapping, button, coalescing, and cursor-visibility contracts.
+The visible `mouse-click` case also drives a physical window click through
+X11/SDL and the retained WndProc, opening the difficulty dialog.
 
 Gap: every controller observation on this machine uses the synthetic pad. Real
 hardware still must verify hotplug, stable identity, reconnect, assignment, and
-full-range inputs; this cannot be promoted from synthetic evidence alone. The
-mouse path still needs a physical-window click-through observation on a user
-desktop; automated runs deliberately keep their SDL window hidden.
+full-range inputs; this cannot be promoted from synthetic evidence alone.
 
 ### S007 — Xbox defaults and prompt semantics: partial
 
@@ -177,8 +177,12 @@ Forward to `I`, and persisted `input.profile1.row0=23`; pure tests cover
 ownership, migration, source switching, reconnect, and slot reuse. Resolution
 selection now transactionally replaces the active logical D3D colour/depth
 targets, updates the D3D8 backbuffer/depth descriptions and viewport, applies
-the window geometry, and persists only after all live presentation owners
-accept the change; focused tests prove success and each rollback path.
+the title's retained display dimensions/aspect/pixel scales and window
+geometry, and persists only after all live presentation owners accept the
+change; focused tests prove success and each rollback path. The visible
+800x600 -> 1280x720 case passed 8/8 and directly matched the live menu geometry
+against a cold native-widescreen launch, preventing a 4:3 view from being
+stretched across the 16:9 target.
 Initial device creation also holds the configured mode on both retail branches:
 issue #135's repeatable cold-plus-warm 3840x2160 case passed 13/13 checks,
 including exact D3D device dimensions, persisted retail Resolution bytes, and

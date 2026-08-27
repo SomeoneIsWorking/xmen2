@@ -6,18 +6,21 @@
 
 struct SDL_Window { int token; };
 
-enum { STEP_D3D = 1, STEP_WINDOW, STEP_SAVE };
+enum { STEP_D3D = 1, STEP_TITLE, STEP_WINDOW, STEP_SAVE };
 
 static int checks;
 static int steps[16];
 static int step_count;
 static int d3d_calls;
+static int title_calls;
 static int window_calls;
 static int save_calls;
 static int fail_d3d_call;
+static int fail_title_call;
 static int fail_window_call;
 static int fail_save_call;
 static uint32_t d3d_width[4], d3d_height[4];
+static uint32_t title_width[4], title_height[4];
 static uint32_t window_width[4], window_height[4];
 
 static void check(int condition, const char *expression, int line)
@@ -40,6 +43,20 @@ int d3d8_live_resolution_apply(uint32_t width, uint32_t height,
     d3d_calls++;
     if (d3d_calls == fail_d3d_call) {
         snprintf(why, (size_t)whyn, "D3D refusal");
+        return 0;
+    }
+    return 1;
+}
+
+int x2_display_mode_runtime_apply(uint32_t width, uint32_t height,
+                                  char *why, int whyn)
+{
+    steps[step_count++] = STEP_TITLE;
+    title_width[title_calls] = width;
+    title_height[title_calls] = height;
+    title_calls++;
+    if (title_calls == fail_title_call) {
+        snprintf(why, (size_t)whyn, "title refusal");
         return 0;
     }
     return 1;
@@ -77,10 +94,12 @@ static void reset_calls(void)
     memset(steps, 0, sizeof steps);
     memset(d3d_width, 0, sizeof d3d_width);
     memset(d3d_height, 0, sizeof d3d_height);
+    memset(title_width, 0, sizeof title_width);
+    memset(title_height, 0, sizeof title_height);
     memset(window_width, 0, sizeof window_width);
     memset(window_height, 0, sizeof window_height);
-    step_count = d3d_calls = window_calls = save_calls = 0;
-    fail_d3d_call = fail_window_call = fail_save_call = 0;
+    step_count = d3d_calls = title_calls = window_calls = save_calls = 0;
+    fail_d3d_call = fail_title_call = fail_window_call = fail_save_call = 0;
 }
 
 static X2Settings changed(const X2Settings *before)
@@ -116,8 +135,10 @@ int main(void)
     settings = changed(&before);
     CHECK(x2_live_resolution_apply(&window, &settings, &before,
                                    why, sizeof why));
-    CHECK(step_count == 3 && steps[0] == STEP_D3D &&
-          steps[1] == STEP_WINDOW && steps[2] == STEP_SAVE);
+    CHECK(step_count == 4 && steps[0] == STEP_D3D &&
+          steps[1] == STEP_TITLE && steps[2] == STEP_WINDOW &&
+          steps[3] == STEP_SAVE);
+    CHECK(title_width[0] == 1920 && title_height[0] == 1080);
     CHECK(settings.width == 1920 && settings.height == 1080);
 
     reset_calls();
@@ -129,14 +150,26 @@ int main(void)
     CHECK(settings.width == 1280 && settings.height == 720);
 
     reset_calls();
+    fail_title_call = 1;
+    settings = changed(&before);
+    CHECK(!x2_live_resolution_apply(&window, &settings, &before,
+                                    why, sizeof why));
+    CHECK(step_count == 3 && steps[0] == STEP_D3D &&
+          steps[1] == STEP_TITLE && steps[2] == STEP_D3D);
+    CHECK(d3d_width[1] == 1280 && d3d_height[1] == 720);
+    CHECK(settings.width == 1280 && settings.height == 720);
+
+    reset_calls();
     fail_window_call = 1;
     settings = changed(&before);
     CHECK(!x2_live_resolution_apply(&window, &settings, &before,
                                     why, sizeof why));
-    CHECK(step_count == 4 && steps[0] == STEP_D3D &&
-          steps[1] == STEP_WINDOW && steps[2] == STEP_WINDOW &&
-          steps[3] == STEP_D3D);
+    CHECK(step_count == 6 && steps[0] == STEP_D3D &&
+          steps[1] == STEP_TITLE && steps[2] == STEP_WINDOW &&
+          steps[3] == STEP_WINDOW && steps[4] == STEP_TITLE &&
+          steps[5] == STEP_D3D);
     CHECK(window_width[1] == 1280 && window_height[1] == 720);
+    CHECK(title_width[1] == 1280 && title_height[1] == 720);
     CHECK(d3d_width[1] == 1280 && d3d_height[1] == 720);
     CHECK(settings.width == 1280 && settings.height == 720);
 
@@ -145,9 +178,10 @@ int main(void)
     settings = changed(&before);
     CHECK(!x2_live_resolution_apply(&window, &settings, &before,
                                     why, sizeof why));
-    CHECK(step_count == 5 && steps[0] == STEP_D3D &&
-          steps[1] == STEP_WINDOW && steps[2] == STEP_SAVE &&
-          steps[3] == STEP_WINDOW && steps[4] == STEP_D3D);
+    CHECK(step_count == 7 && steps[0] == STEP_D3D &&
+          steps[1] == STEP_TITLE && steps[2] == STEP_WINDOW &&
+          steps[3] == STEP_SAVE && steps[4] == STEP_WINDOW &&
+          steps[5] == STEP_TITLE && steps[6] == STEP_D3D);
     CHECK(settings.width == 1280 && settings.height == 720);
 
     reset_calls();

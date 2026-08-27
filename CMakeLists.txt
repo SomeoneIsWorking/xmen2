@@ -241,7 +241,7 @@ set_tests_properties(selector_probe_schema PROPERTIES
 add_executable(test_live_resolution tests/test_live_resolution.c
                src/presentation/live_resolution.c)
 target_include_directories(test_live_resolution PRIVATE
-                           src/presentation src/config src/d3d8)
+                           src/presentation src/config src/d3d8 src/native)
 add_test(NAME live_resolution COMMAND test_live_resolution)
 
 add_executable(test_load_game_menu_policy
