@@ -106,7 +106,12 @@ Alchemy finalizers, with zero desync, unavailable-byte, colour, capacity,
 transform, cross-context, GPU, or unfinalized-boundary refusals; its capture
 shows the native controller icon beside `CONTINUE...`. Issue #120 records the
 font-baseline root cause and issue #121 records the pure-glyph finalizer and
-atomicity root cause.
+atomicity root cause. Issue #133 traces the retail dialog's untextured selected
+row back from D3D8 through its world-matrix ancestry to a title-side linear
+scale that crosses zero at high output heights. The scoped extension preserves
+the exact retail formula through 800x600 and holds its retail-relative share
+above that reference; 800x600, 1280x720, and 3840x2160 cold-plus-warm live cases
+each pass 15/15 with row heights of 20.04, 24.04, and 72.14 pixels (C275).
 
 Gap: this verifies only the prompt SVG slice. Stock ASCII, panels, sprites,
 batching, and other display-list geometry still submit through the recompiled

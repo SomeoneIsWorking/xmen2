@@ -58,6 +58,8 @@ static inline double x86_loadf64(uint32_t address)
 {
     double value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
 }
+extern volatile uint32_t x2_write_watch_addr;
+extern void x2_write_watch_fire(uint32_t address, uint32_t value);
 static inline void x86_store8_raw(uint32_t address, uint8_t value)
 {
     memcpy(x86_guest_pointer(address), &value, sizeof value);
@@ -72,14 +74,28 @@ static inline void x86_store32_raw(uint32_t address, uint32_t value)
 }
 static inline void x86_store64_raw(uint32_t address, uint64_t value)
 {
+    if (x2_write_watch_addr == address)
+        x2_write_watch_fire(address, (uint32_t)value);
+    else if (x2_write_watch_addr == address + 4u)
+        x2_write_watch_fire(address + 4u, (uint32_t)(value >> 32u));
     memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
 static inline void x86_storef32(uint32_t address, float value)
 {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    if (x2_write_watch_addr == address)
+        x2_write_watch_fire(address, bits);
     memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
 static inline void x86_storef64(uint32_t address, double value)
 {
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    if (x2_write_watch_addr == address)
+        x2_write_watch_fire(address, (uint32_t)bits);
+    else if (x2_write_watch_addr == address + 4u)
+        x2_write_watch_fire(address + 4u, (uint32_t)(bits >> 32u));
     memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
 #ifdef _WIN32
@@ -378,8 +394,6 @@ void x86_fallback_report(void);
    overrun whose writer is a DIRECT call (invisible to the dispatch ring).
    Unarmed (default) it is one predictable compare. Declared before the WR
    macros because every generated body uses them. */
-extern volatile uint32_t x2_write_watch_addr;
-extern void x2_write_watch_fire(uint32_t a, uint32_t v);
 static inline void x86_store8(uint32_t address, uint8_t value)
 {
     if (x2_write_watch_addr && address == x2_write_watch_addr)

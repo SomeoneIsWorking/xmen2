@@ -11,8 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-FORMAT_VERSION = 5
-TARGET = "texture-dimensions"
+FORMAT_VERSION = 13
+TARGETS = ("texture-dimensions", "untextured-primitive-count")
+TARGET = TARGETS[0]
 FINGERPRINT_ALGORITHM = "fnv1a64-v1"
 FINGERPRINT_SCOPE = "2d-level0-after-successful-upload"
 STATE_FIELDS = (
@@ -34,6 +35,8 @@ class Summary:
     results: tuple[dict[str, Any], ...]
     target_width: int
     target_height: int
+    target: str
+    target_primitive_count: int
 
     @property
     def accepted(self) -> tuple[dict[str, Any], ...]:
@@ -119,12 +122,19 @@ def _validate_candidate(
     key: tuple[int, int],
     target_width: int,
     target_height: int,
+    target: str,
+    target_primitive_count: int,
 ) -> None:
     width = candidate.get("texture_width")
     height = candidate.get("texture_height")
-    if type(width) is not int or type(height) is not int \
-            or width != target_width or height != target_height:
+    if type(width) is not int or type(height) is not int:
+        raise Refuse(f"selector_probe: candidate at {key} has invalid dimensions")
+    if target == "texture-dimensions" \
+            and (width != target_width or height != target_height):
         raise Refuse(f"selector_probe: candidate at {key} misses target dimensions")
+    if target == "untextured-primitive-count" \
+            and candidate.get("texture_guest") != "00000000":
+        raise Refuse(f"selector_probe: candidate at {key} is textured")
     if not _is_hex(candidate.get("texture_guest"), 8):
         raise Refuse(f"selector_probe: candidate at {key} has invalid texture binding")
     bool_fields = (
@@ -150,8 +160,92 @@ def _validate_candidate(
         raise Refuse(f"selector_probe: candidate at {key} has incomplete state")
     if candidate["elements"] != candidate["elements_requested"]:
         raise Refuse(f"selector_probe: candidate at {key} changes its denominator")
+    if target == "untextured-primitive-count" \
+            and candidate["primitive_count"] != target_primitive_count:
+        raise Refuse(f"selector_probe: candidate at {key} misses primitive count")
     if not _is_hex(candidate.get("fvf"), 8):
         raise Refuse(f"selector_probe: candidate at {key} has invalid FVF")
+    if not _is_hex(candidate.get("world_matrix_source"), 8):
+        raise Refuse(f"selector_probe: candidate at {key} has invalid matrix source")
+    if not _is_hex(candidate.get("world_matrix_guest"), 8):
+        raise Refuse(f"selector_probe: candidate at {key} has invalid matrix address")
+    if type(candidate.get("world_matrix_set_found")) is not bool:
+        raise Refuse(f"selector_probe: candidate at {key} has invalid matrix provenance")
+    if not _is_hex(candidate.get("world_matrix_set_caller"), 8) \
+            or not _is_hex(candidate.get("world_matrix_set_source"), 8):
+        raise Refuse(f"selector_probe: candidate at {key} has invalid matrix provenance")
+    if not candidate["world_matrix_set_found"] \
+            and (candidate["world_matrix_set_caller"] != "00000000"
+                 or candidate["world_matrix_set_source"] != "00000000"):
+        raise Refuse(f"selector_probe: candidate at {key} invents matrix provenance")
+    if type(candidate.get("world_matrix_multiply_found")) is not bool:
+        raise Refuse(f"selector_probe: candidate at {key} has invalid multiply provenance")
+    multiply_fields = (
+        "world_matrix_multiply_caller", "world_matrix_multiply_left",
+        "world_matrix_multiply_right",
+    )
+    if any(not _is_hex(candidate.get(field), 8) for field in multiply_fields):
+        raise Refuse(f"selector_probe: candidate at {key} has invalid multiply provenance")
+    if not candidate["world_matrix_multiply_found"] \
+            and any(candidate[field] != "00000000" for field in multiply_fields):
+        raise Refuse(f"selector_probe: candidate at {key} invents multiply provenance")
+    if type(candidate.get("world_matrix_multiply_inputs_readable")) is not bool:
+        raise Refuse(f"selector_probe: candidate at {key} has invalid multiply inputs")
+    chain = candidate.get("world_matrix_multiply_chain")
+    if not isinstance(chain, list) or len(chain) > 8 \
+            or type(candidate.get("world_matrix_multiply_chain_truncated")) \
+            is not bool:
+        raise Refuse(f"selector_probe: candidate at {key} has invalid multiply chain")
+    if candidate["world_matrix_multiply_chain_truncated"] != (len(chain) == 8):
+        raise Refuse(f"selector_probe: candidate at {key} contradicts multiply chain")
+    for step in chain:
+        if not isinstance(step, dict) \
+                or any(not _is_hex(step.get(field), 8)
+                       for field in (
+                           "output", "caller", "left", "right",
+                           "left_copy_caller", "left_copy_source",
+                           "left_transform_set_caller",
+                           "left_transform_set_source",
+                           "title_builder_caller", "title_builder_this",
+                           "title_builder_translation",
+                           "title_builder_rotation",
+                       )) \
+                or any(type(step.get(field)) is not bool for field in (
+                    "inputs_readable", "left_copy_found",
+                    "left_copy_source_readable", "left_transform_set_found",
+                    "title_builder_found",
+                )):
+            raise Refuse(f"selector_probe: candidate at {key} has invalid multiply step")
+        if not step["left_copy_found"] \
+                and (step["left_copy_caller"] != "00000000"
+                     or step["left_copy_source"] != "00000000"
+                     or step["left_copy_source_readable"]):
+            raise Refuse(f"selector_probe: candidate at {key} invents matrix copy")
+        if not step["left_transform_set_found"] \
+                and (step["left_transform_set_caller"] != "00000000"
+                     or step["left_transform_set_source"] != "00000000"):
+            raise Refuse(f"selector_probe: candidate at {key} invents transform set")
+        title_scale = step.get("title_builder_scale")
+        if not isinstance(title_scale, list) or len(title_scale) != 3 \
+                or any(type(value) not in (int, float)
+                       or not math.isfinite(value) for value in title_scale):
+            raise Refuse(f"selector_probe: candidate at {key} has invalid title builder")
+        if not step["title_builder_found"] and (
+            step["title_builder_caller"] != "00000000"
+            or step["title_builder_this"] != "00000000"
+            or step["title_builder_translation"] != "00000000"
+            or step["title_builder_rotation"] != "00000000"
+            or any(title_scale)
+        ):
+            raise Refuse(f"selector_probe: candidate at {key} invents title builder")
+        for field in (
+            "left_value", "right_value", "left_copy_source_value",
+        ):
+            matrix = step.get(field)
+            if not isinstance(matrix, list) or len(matrix) != 16 \
+                    or any(type(value) not in (int, float)
+                           or not math.isfinite(value) for value in matrix):
+                raise Refuse(f"selector_probe: candidate at {key} has invalid multiply step")
     samples = candidate.get("position_samples")
     expected_samples = min(candidate["elements"], 12)
     if not isinstance(samples, list) or len(samples) != expected_samples \
@@ -163,6 +257,16 @@ def _validate_candidate(
         if not isinstance(sample, list) or len(sample) not in (3, 4) \
                 or not all(_is_hex(word, 8) for word in sample):
             raise Refuse(f"selector_probe: candidate at {key} has invalid samples")
+    for name in (
+        "world", "view", "projection", "mvp",
+        "world_matrix_multiply_left_value",
+        "world_matrix_multiply_right_value",
+    ):
+        matrix = candidate.get(name)
+        if not isinstance(matrix, list) or len(matrix) != 16 \
+                or any(type(value) not in (int, float) or not math.isfinite(value)
+                       for value in matrix):
+            raise Refuse(f"selector_probe: candidate at {key} has invalid {name}")
     _validate_bounds(candidate, key)
 
 
@@ -170,7 +274,6 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
     meta = [record for record in records if record.get("event") == "meta"]
     expected = {
         "version": FORMAT_VERSION,
-        "target": TARGET,
         "identity_claim": False,
         "fingerprint_algorithm": FINGERPRINT_ALGORITHM,
         "fingerprint_scope": FINGERPRINT_SCOPE,
@@ -184,18 +287,27 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
     ]
     if mismatches:
         raise Refuse("selector_probe: incompatible evidence: " + ", ".join(mismatches))
+    target = meta[0].get("target")
+    if target not in TARGETS:
+        raise Refuse(f"selector_probe: incompatible target {target!r}")
     target_width = meta[0].get("texture_width")
     target_height = meta[0].get("texture_height")
+    target_primitive_count = meta[0].get("target_primitive_count")
     if type(target_width) is not int or type(target_height) is not int \
-            or target_width < 1 or target_height < 1:
+            or (target == "texture-dimensions"
+                and (target_width < 1 or target_height < 1)) \
+            or type(target_primitive_count) is not int \
+            or (target == "texture-dimensions" and target_primitive_count) \
+            or (target == "untextured-primitive-count"
+                and (target_width or target_height
+                     or target_primitive_count < 1)):
         raise Refuse("selector_probe: meta has invalid target dimensions")
     candidates = tuple(
         record for record in records if record.get("event") == "candidate"
     )
     if not candidates:
         raise Refuse(
-            f"selector_probe: no {target_width}x{target_height} texture-bound "
-            "build request was observed; "
+            f"selector_probe: no {target} build request was observed; "
             "the target path was not reached by this instrument"
         )
     candidate_by_key = {}
@@ -203,7 +315,8 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
         key = _record_key(candidate)
         if key in candidate_by_key:
             raise Refuse(f"selector_probe: duplicate candidate at {key}")
-        _validate_candidate(candidate, key, target_width, target_height)
+        _validate_candidate(candidate, key, target_width, target_height,
+                            target, target_primitive_count)
         candidate_by_key[key] = candidate
     result_by_key = {}
     for result in (record for record in records if record.get("event") == "result"):
@@ -217,16 +330,18 @@ def summarize(records: list[dict[str, Any]]) -> Summary:
     if missing:
         raise Refuse(f"selector_probe: candidate {missing[0]} has no build result")
     results = tuple(result_by_key[_record_key(candidate)] for candidate in candidates)
-    return Summary(candidates, results, target_width, target_height)
+    return Summary(candidates, results, target_width, target_height,
+                   target, target_primitive_count)
 
 
 def report(path: Path, show_all: bool = False) -> None:
     summary = summarize(parse_records(path))
     print(
-        "selector_probe: dimension match only; no asset or scene identity is claimed"
+        f"selector_probe: {summary.target} match only; "
+        "no asset or scene identity is claimed"
     )
     print(
-        f"selector_probe: target {summary.target_width}x{summary.target_height}; "
+        f"selector_probe: target {summary.target}; "
         f"{len(summary.candidates)} build request(s), "
         f"{len(summary.accepted)} build-accepted, {len(summary.refused)} build-refused"
     )

@@ -35,3 +35,8 @@ and `recomp-x86`. Maintainer shims continue to resolve `re-harness` through
 
 ### Resolution (2026-08-27)
 bootstrap.py mistakenly put maintainer-only re-harness in the player SHARED_REPOS list. Removed it, fixed the runtime set at alchemy/port-assets/recomp-x86 in the launcher contract test, and proved real ./run.sh now validates/provisions all inputs and reaches tools/run.py despite the deliberately mismatched vendor re-harness checkout.
+
+The normal CTest suite now applies the same boundary to `project_state`: it
+runs when `RE_HARNESS_DIR` provides the maintainer checkout and reports a
+concise skip otherwise. The codemap remains a document and manually callable
+maintenance tool, not a build test.

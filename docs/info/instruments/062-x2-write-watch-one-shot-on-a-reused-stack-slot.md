@@ -38,10 +38,18 @@ read as a working instrument that had answered.
   and a store of zero.
 - `x86_write_watch_hits()` exposes the denominator, so a report can say
   "0 of 12,043" rather than printing nothing.
+- Native CRT `memcpy`, `memmove`, `memset`, `strncpy`, and `strncat` publish a
+  watched dword after any covering bulk write. Previously only generated
+  `WR8`/`WR16`/`WR32` stores fired the watch, so a matrix copied as a 64-byte
+  block reported its zero-initialization and silently missed its real value.
+- Generated `WR64`, `WRF32`, and `WRF64` stores now publish either covered
+  dword. The selector investigation exposed this second blind spot: an x87
+  `FSTP` wrote the matrix scale through `WRF32`, while the watch reported only
+  earlier integer zero-initialization and falsely implied that no generated
+  body wrote the nonzero value.
 
 ## What it still cannot see
 
-Writes wider than 32 bits, and writes that land on the slot without starting at
-its exact address -- the compare is address equality, not range overlap. A
-memcpy stepping over the slot from below is only caught if one of its stores
-begins exactly there.
+Non-CRT native writes that cover the slot without starting at its exact
+address. Generated 64-bit stores and the native CRT bulk-copy boundary both
+cover their complete written ranges.

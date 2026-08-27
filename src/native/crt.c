@@ -31,6 +31,7 @@
  */
 #include "x86rt.h"
 #include "x87crt.h"
+#include "crt_write_watch.h"
 #include "threads.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
@@ -183,19 +184,19 @@ void imp_MSVCR71__callnewh(CPU *C)
 void imp_MSVCR71_memmove(CPU *C)
 {
     crt_watch_dst(A(0), A(2), "memmove");
-    memmove(AP(0), AP(1), A(2));
+    memmove(AP(0), AP(1), A(2)); crt_write_watch_dst(A(0), A(2));
     ret_c(C, A(0));
 }
 
 /* ---- string and ctype -------------------------------------------------- */
 
-void imp_MSVCR71_strchr(CPU *C)   { void *p = strchr(ACS(0), (int)A(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
-void imp_MSVCR71_strrchr(CPU *C)  { void *p = strrchr(ACS(0), (int)A(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
-void imp_MSVCR71_strstr(CPU *C)   { void *p = strstr(ACS(0), ACS(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
+void imp_MSVCR71_strchr(CPU *C)   { const void *p = strchr(ACS(0), (int)A(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
+void imp_MSVCR71_strrchr(CPU *C)  { const void *p = strrchr(ACS(0), (int)A(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
+void imp_MSVCR71_strstr(CPU *C)   { const void *p = strstr(ACS(0), ACS(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
 void imp_MSVCR71_strtok(CPU *C)   { void *p = strtok(A(0) ? AS(0) : NULL, ACS(1)); ret_c(C, p ? guest_memory_address(p) : 0); }
 void imp_MSVCR71_strcspn(CPU *C)  { ret_c(C, (uint32_t)strcspn(ACS(0), ACS(1))); }
-void imp_MSVCR71_strncat(CPU *C)  { crt_watch_dst(A(0), strlen(ACS(1)) + 1, "strncat"); strncat(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
-void imp_MSVCR71_strncpy(CPU *C)  { crt_watch_dst(A(0), A(2), "strncpy"); strncpy(AS(0), ACS(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_strncat(CPU *C)  { uint32_t dst = A(0) + (uint32_t)strlen(ACS(0)), n = (uint32_t)strnlen(ACS(1), A(2)) + 1u; crt_watch_dst(dst, n, "strncat"); strncat(AS(0), ACS(1), A(2)); crt_write_watch_dst(dst, n); ret_c(C, A(0)); }
+void imp_MSVCR71_strncpy(CPU *C)  { crt_watch_dst(A(0), A(2), "strncpy"); strncpy(AS(0), ACS(1), A(2)); crt_write_watch_dst(A(0), A(2)); ret_c(C, A(0)); }
 void imp_MSVCR71_strncmp(CPU *C)  { ret_c(C, (uint32_t)strncmp(ACS(0), ACS(1), A(2))); }
 void imp_MSVCR71__strcmpi(CPU *C) { ret_c(C, (uint32_t)strcasecmp(ACS(0), ACS(1))); }
 void imp_MSVCR71__stricmp(CPU *C) { ret_c(C, (uint32_t)strcasecmp(ACS(0), ACS(1))); }
@@ -1257,8 +1258,8 @@ void imp_MSVCR71___security_error_handler(CPU *C)
 
 /* ---- memory and string primitives -------------------------------------- */
 
-void imp_MSVCR71_memcpy(CPU *C)  { crt_watch_dst(A(0), A(2), "memcpy"); memcpy(AP(0), AP(1), A(2)); ret_c(C, A(0)); }
-void imp_MSVCR71_memset(CPU *C)  { crt_watch_dst(A(0), A(2), "memset"); memset(AP(0), (int)A(1), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_memcpy(CPU *C)  { crt_watch_dst(A(0), A(2), "memcpy"); memcpy(AP(0), AP(1), A(2)); crt_write_watch_dst(A(0), A(2)); ret_c(C, A(0)); }
+void imp_MSVCR71_memset(CPU *C)  { crt_watch_dst(A(0), A(2), "memset"); memset(AP(0), (int)A(1), A(2)); crt_write_watch_dst(A(0), A(2)); ret_c(C, A(0)); }
 void imp_MSVCR71_strlen(CPU *C)  { ret_c(C, (uint32_t)strlen(ACS(0))); }
 void imp_MSVCR71_strcpy(CPU *C)  { strcpy(AS(0), ACS(1)); ret_c(C, A(0)); }
 void imp_MSVCR71_strcat(CPU *C)  { strcat(AS(0), ACS(1)); ret_c(C, A(0)); }

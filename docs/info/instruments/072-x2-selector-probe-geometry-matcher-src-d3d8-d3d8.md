@@ -1,18 +1,32 @@
 ---
 id: I072
 kind: instrument
-status: DISTRUSTED
+status: trusted
 created: 2026-08-27
 distrusted_on: 2026-08-27
+revalidated_on: 2026-08-28
 ---
 
 ## Instrument
 
-X2_SELECTOR_PROBE geometry matcher (src/d3d8/d3d8_selector_probe.c + tools/selector_probe.py)
+`X2_SELECTOR_PROBE` draw-class and transform-provenance recorder
+(`src/d3d8/d3d8_selector_probe*.c` + `tools/selector_probe.py`).
 
 ## Validated by
 
-A synthetic authored-topology fixture produced match=true and a one-field mutation produced false, but both real visible 1280x720 and absent 3840x2160 dialog captures produced zero exact matches despite I056 proving the submitted selector-class draw exists; this validation failed on real data.
+The synthetic writer/parser exercises both accepted and refused lowering
+results. Version 13 then showed the other answer on real data: the exact
+untextured eight-primitive FVF `0x42` row measured 20.04 pixels high at 800x600
+and only ~14 pixels high at 3840x2160 before the repair. After the title-scale
+repair, the same 4K class measures 72.14 pixels while the 800x600 control
+remains 20.04 pixels. Every recorded build request has a paired result in all
+three 15/15 live cases.
+
+The provenance chain independently reached `libIGMath!igMatrix44f::multiply`,
+`libIGSg!igTransform::setMatrix`, title builder `FUN_005707d0`, and exact caller
+`0x005ead9b`; its captured supplied scales match the PE formula at 600, 720,
+and 2160 lines. This revalidation distinguishes the actual row, both geometry
+outcomes, and the recovered cause; C275 records the resulting claim.
 
 ## Known failure modes
 
@@ -30,8 +44,10 @@ A synthetic authored-topology fixture produced match=true and a one-field mutati
   synthetic writer/parser has shown both answers. A corrected fresh-profile
   3840x2160 dialog run produced 9,722 requests with a result for every request
   and runtime fingerprint `a564975d5815f611`, proving the live writer path.
-  It remains distrusted until those records distinguish the actual horizontal
-  selected row from same-texture scene draws.
+  These versions remain invalid for selected-row identity.
+- Version 13's `untextured:N` mode identifies the row by its observed D3D draw
+  class, keeps complete geometry denominators, and records the matrix ancestry
+  responsible for the output.
 
 ## DISTRUSTED 2026-08-27
 
@@ -41,4 +57,6 @@ the main-menu selector behind the modal rather than the dialog row.  Every
 state conclusion gated by either matcher is unsupported. I056 remains valid
 only for the broad draw-table observation.
 
-> Every result this instrument produced is suspect until it is re-validated.
+The pre-v13 texture/topology conclusions remain suspect and must not be reused.
+Only v13 records satisfying the strict parser and paired-result checks are
+trusted.

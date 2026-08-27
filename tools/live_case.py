@@ -948,11 +948,15 @@ def png_water_stats(a: Path, b: Path) -> tuple[float, float]:
                 for x, y in pairs) / len(pairs)
     return spread, delta
 def case_selector_dialog(case: Case) -> None:
-    """Reach New Game's difficulty dialog and record every draw bound to the
-    observed 128x32 runtime texture class. The fingerprint and geometry, not
-    the dimensions alone, distinguish the three same-sized resources."""
-    width, height = ((3840, 2160) if case.name.endswith("4k") else (800, 600))
-    evidence = case.dir / "selector-128x32.jsonl"
+    """Reach New Game's difficulty dialog and record the untextured
+    eight-primitive draw class containing its selected-row geometry."""
+    if case.name.endswith("4k"):
+        width, height = 3840, 2160
+    elif case.name.endswith("720"):
+        width, height = 1280, 720
+    else:
+        width, height = 800, 600
+    evidence = case.dir / "selector-untextured-8.jsonl"
     case.prepare_profile([
         "boot.mode=normal",
         "video.width=%d" % width,
@@ -962,7 +966,7 @@ def case_selector_dialog(case: Case) -> None:
     case.launch({
         "X2_FILES": "1",
         "X2_SELECTOR_PROBE": str(evidence),
-        "X2_SELECTOR_TEXTURE": "128x32",
+        "X2_SELECTOR_TEXTURE": "untextured:8",
     })
     case.wait_control(60)
     case.check("main-menu map lifecycle opened",
@@ -976,23 +980,35 @@ def case_selector_dialog(case: Case) -> None:
     dialog = case.shot("difficulty-dialog")
     case.check("difficulty capture is a PNG",
                dialog.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
+    if case.proc:
+        os.kill(case.proc.pid, signal.SIGUSR1)
+        case.check("the dialog has a complete frame draw table",
+                   case.wait_log("[FRAME TABLE] end of frame", 30))
 
     from selector_probe import parse_records, summarize
     try:
         summary = summarize(parse_records(evidence))
     except Exception as exc:
-        case.check("128x32 selector evidence is parseable", False, str(exc))
+        case.check("selector evidence is parseable", False, str(exc))
         return
-    fingerprints = {
-        item["fingerprint"] for item in summary.candidates
-        if item["fingerprint_available"]
-    }
-    case.check("128x32 draw requests reached the v5 probe",
+    row_candidates = [
+        item for item in summary.candidates
+        if item["fvf"] == "00000042"
+        and item["primitive_count"] == 8
+        and item["bounds_valid"]
+        and item["max_x"] - item["min_x"] > width * 0.4
+    ]
+    case.check("untextured eight-primitive requests reached the v13 probe",
                bool(summary.candidates), "%d request(s)" % len(summary.candidates))
     case.check("every recorded build request has a result",
                len(summary.results) == len(summary.candidates))
-    case.check("runtime bytes identify at least one texture",
-               bool(fingerprints), ", ".join(sorted(fingerprints)))
+    case.check("the selected-row geometry class was observed",
+               bool(row_candidates), "%d candidate(s)" % len(row_candidates))
+    row_heights = [item["max_y"] - item["min_y"]
+                   for item in row_candidates]
+    case.check("the selected row keeps its retail-relative height",
+               bool(row_heights) and max(row_heights) >= height * 0.025,
+               "max %.2f px of %d" % (max(row_heights, default=0.0), height))
 
     expected_mode = "%dx%d" % (width, height)
     cold_log = case.log_text()
@@ -1011,12 +1027,12 @@ def case_selector_dialog(case: Case) -> None:
     # so one passing branch cannot be presented as evidence for the other.
     case.shutdown()
     shutil.copy2(case.log_path, case.dir / "cold-run.log")
-    warm_evidence = case.dir / "selector-128x32-warm.jsonl"
+    warm_evidence = case.dir / "selector-untextured-8-warm.jsonl"
     case.log_path = case.dir / "warm-run.log"
     case.launch({
         "X2_FILES": "1",
         "X2_SELECTOR_PROBE": str(warm_evidence),
-        "X2_SELECTOR_TEXTURE": "128x32",
+        "X2_SELECTOR_TEXTURE": "untextured:8",
     })
     case.wait_control(60)
     case.check("warm-profile main-menu lifecycle opened",
@@ -1068,6 +1084,7 @@ CASES = {
     "deadzone-render": case_deadzone_render,
     "deadzone-water": case_deadzone_water,
     "selector-dialog-800": case_selector_dialog,
+    "selector-dialog-720": case_selector_dialog,
     "selector-dialog-4k": case_selector_dialog,
 }
 

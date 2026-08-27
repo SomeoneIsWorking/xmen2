@@ -12,10 +12,12 @@ import runpy
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from shared_dir import shared_dir
+from shared_dir import optional_maintainer_dir
 
 _tool = os.path.join(
-    shared_dir("re-harness", "tools/project_state.py"),
+    optional_maintainer_dir(
+        "re-harness", "tools/project_state.py", "project_state"
+    ),
     "tools",
     "project_state.py",
 )
