@@ -96,6 +96,11 @@ target_include_directories(test_movie_audio PRIVATE src/audio)
 target_link_libraries(test_movie_audio PRIVATE m pthread)
 add_test(NAME movie_audio COMMAND test_movie_audio)
 
+add_executable(test_audio_play_policy tests/test_audio_play_policy.c
+               src/audio/audio_play_policy.c)
+target_include_directories(test_audio_play_policy PRIVATE src/audio)
+add_test(NAME audio_play_policy COMMAND test_audio_play_policy)
+
 add_executable(test_movie_image_layout tests/test_movie_image_layout.c
                src/native/movie_image_layout.c)
 target_include_directories(test_movie_image_layout PRIVATE src/native)
@@ -267,6 +272,16 @@ add_executable(test_cutscene_player_policy
                src/native/cutscene_player_policy.c)
 target_include_directories(test_cutscene_player_policy PRIVATE src/native)
 add_test(NAME cutscene_player_policy COMMAND test_cutscene_player_policy)
+
+add_executable(test_cutscene_dialogue
+               tests/test_cutscene_dialogue.c
+               src/native/cutscene_dialogue.c
+               src/native/guest_memory.c)
+target_include_directories(test_cutscene_dialogue PRIVATE
+                           src/native src/recomp)
+target_compile_definitions(test_cutscene_dialogue PRIVATE X86_NATIVE)
+target_link_libraries(test_cutscene_dialogue PRIVATE pthread)
+add_test(NAME cutscene_dialogue COMMAND test_cutscene_dialogue)
 
 add_executable(test_behaved_player_heap
                tests/test_behaved_player_heap.c
@@ -1090,11 +1105,13 @@ if(X2_MODULE_HAVE)
         src/native/behaved_player.c
         src/native/cutscene_event_player.c
         src/native/conversation_player.c
+        src/native/cutscene_dialogue.c
         src/native/cutscene_player_policy.c
         src/native/cutscene_player.c
         src/native/input_probe.c
         src/native/xbox_defaults.c
         src/native/dsound.c
+        src/audio/audio_play_policy.c
         src/audio/movie_audio.c
         src/media/fmv_audio_decode.c
         src/media/fmv_decoder_drain.c

@@ -213,7 +213,9 @@ be moved above it without inventing a lowered-D3D classifier. The in-game
 cutscene player also ports the BehavEd timed-fiber and title timed-event pumps,
 retains their ordinary strict-deadline behavior, and completes only causally
 owned work synchronously. The visible-record and camera-only tutorial gates
-pass 9/9 and 8/8 with control restored and no guest frame or clock advance;
+pass 11/11 and 10/10 with control restored, no guest frame or clock advance,
+zero dialogue-presentation leaks, and every reached cutscene-owned DirectSound
+start suppressed (C274);
 [`RE/cutscene_player.md`](RE/cutscene_player.md) records the binary chain.
 
 Gap: most of the Alchemy renderer and game remain mechanically recompiled.

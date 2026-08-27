@@ -9,7 +9,9 @@
  */
 #include "cutscene_skip_probe.h"
 
+#include "audio_play_policy.h"
 #include "cutscene_player.h"
+#include "cutscene_dialogue.h"
 #include "cutscene_skip_publication.h"
 #include "conversation_player.h"
 #include "input_bindings.h"
@@ -119,6 +121,8 @@ static void report_publication(char *out, size_t size, size_t *at,
 
 static void report_player(CPU *cpu, char *out, size_t size, size_t *at)
 {
+    AudioPlayPolicySnapshot audio;
+    CutsceneDialogueSnapshot dialogue;
     static const char *const controls[] = {
         "unreadable", "locked", "released"
     };
@@ -133,6 +137,8 @@ static void report_player(CPU *cpu, char *out, size_t size, size_t *at)
         : 4u;
 
     cutscene_player_snapshot(cpu, &player);
+    cutscene_dialogue_snapshot(&dialogue);
+    audio_play_policy_snapshot(&audio);
     append(out, size, at,
            "Cutscene player: active %u sequence %u; %u owned BehavEd context(s)\n",
            player.active, player.sequence, player.owned_contexts);
@@ -168,6 +174,27 @@ static void report_player(CPU *cpu, char *out, size_t size, size_t *at)
            player.same_frame, player.same_guest_time, player.results[0],
            player.results[1], player.results[2], player.results[3],
            player.results[4], player.results[5]);
+    append(out, size, at,
+           "  dialogue presentation: %lu ordinary response, %lu ordinary "
+           "line start(s); skip stopped %lu active voice(s), suppressed "
+           "%lu response and %lu line start(s), leaked %lu; last line "
+           "presenter 0x%08x\n",
+           dialogue.ordinary_response_starts,
+           dialogue.ordinary_line_starts,
+           dialogue.active_voice_stops,
+           dialogue.suppressed_response_starts,
+           dialogue.suppressed_line_starts,
+           dialogue.skip_presentation_starts,
+           dialogue.last_line_presenter);
+    append(out, size, at,
+           "                         manager 0x%08x, last stopped handle "
+           "0x%08x\n",
+           dialogue.last_manager, dialogue.last_stopped_handle);
+    append(out, size, at,
+           "  audio starts: %lu ordinary, %lu suppressed during skip; "
+           "suppression depth %u\n",
+           audio.ordinary_starts, audio.suppressed_starts,
+           audio.suppression_depth);
     append(out, size, at,
            "  boundary: controls %s; conversation payload %s\n",
            controls[player.control_state <= 2u ? player.control_state : 0u],

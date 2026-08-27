@@ -52,13 +52,14 @@ static void check_delete_array(uint32_t stack_top, int skip_body,
                                CrtSelftestCheck check)
 {
     CPU C;
-    uint32_t before_used, ignored_free, ignored_blocks;
+    uint32_t baseline_used, ignored_free, ignored_blocks;
     uint32_t after_used;
-    uint32_t pointer = guest_malloc(64u);
+    uint32_t pointer;
     uint32_t esp0;
     int body_found = 0;
 
-    guest_heap_stats(&before_used, &ignored_free, &ignored_blocks);
+    guest_heap_stats(&baseline_used, &ignored_free, &ignored_blocks);
+    pointer = guest_malloc(64u);
     cpu_reset(&C);
     C.esp = stack_top - 8u;
     WR32(C.esp, 0xDEADBEEFu);
@@ -73,7 +74,7 @@ static void check_delete_array(uint32_t stack_top, int skip_body,
     check("delete[] frees its guest allocation",
           (uint32_t)guest_heap_addr_is_live(pointer), 0u);
     check("delete[] cdecl esp delta", C.esp - esp0, 4u);
-    check("delete[] restores heap usage", after_used, before_used - 64u);
+    check("delete[] restores heap usage", after_used, baseline_used);
 
     if (guest_heap_addr_is_live(pointer)) guest_free(pointer);
 }

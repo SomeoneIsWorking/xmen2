@@ -14,7 +14,9 @@
  */
 #include "cutscene_player.h"
 
+#include "audio_play_policy.h"
 #include "behaved_player.h"
+#include "cutscene_dialogue.h"
 #include "conversation_player.h"
 #include "cutscene_event_player.h"
 #include "cutscene_player_policy.h"
@@ -46,7 +48,6 @@ typedef struct CutscenePlayerRuntime {
     unsigned sequence;
     unsigned active : 1;
     unsigned finishing : 1;
-    unsigned payload_depth;
     unsigned skip_down : 1;
     unsigned release_pending : 1;
     unsigned event_refused : 1;
@@ -342,11 +343,9 @@ static int play_conversation(void *context, X2CutsceneSequence sequence,
 {
     int advanced;
 
-    (void)conversation;
-    if (!g_player.active || sequence != g_player.sequence) return 0;
-    g_player.payload_depth++;
-    advanced = conversation_player_advance(context);
-    g_player.payload_depth--;
+    if (!conversation || !g_player.active || sequence != g_player.sequence)
+        return 0;
+    advanced = cutscene_dialogue_advance(context);
     return advanced && claim_events();
 }
 
@@ -364,9 +363,11 @@ static X2CutscenePlayerResult finish(CPU *cpu)
     uint32_t time_before = 0, time_after = 1;
 
     (void)read_float_bits(g_player.clock + CLOCK_NOW, &time_before);
+    audio_play_suppression_begin(); cutscene_dialogue_skip_begin();
     g_player.finishing = 1;
     result = x2_cutscene_player_finish(&g_player.policy, &ops, cpu);
     g_player.finishing = 0;
+    cutscene_dialogue_skip_end(cpu); audio_play_suppression_end();
     (void)read_float_bits(g_player.clock + CLOCK_NOW, &time_after);
     if (gpu_frames_presented() == frame_before) g_player.same_frame++;
     if (time_after == time_before) g_player.same_guest_time++;
@@ -412,7 +413,7 @@ void x2_override_004d8700(CPU *cpu)
     if (cpu->eax && x2_cutscene_player_inherits_context(
             g_player.active, owns_context(current_context(), NULL),
             cutscene_event_player_executing_owned(),
-            g_player.payload_depth != 0u))
+            cutscene_dialogue_payload_active()))
         own(cpu->eax);
 }
 

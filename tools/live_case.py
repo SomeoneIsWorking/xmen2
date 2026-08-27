@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -301,6 +302,31 @@ def wait_controls_unlocked(case: Case, timeout: float) -> bool:
     return False
 
 
+def dialogue_skip_counts(
+    report: str,
+) -> tuple[int, int, int, int, int, int] | None:
+    match = re.search(
+        r"dialogue presentation: (\d+) ordinary response, (\d+) ordinary "
+        r"line start\(s\); skip stopped (\d+) active voice\(s\), suppressed "
+        r"(\d+) response and (\d+) line start\(s\), leaked (\d+);",
+        report,
+    )
+    if not match:
+        return None
+    return tuple(int(value) for value in match.groups())
+
+
+def audio_start_counts(report: str) -> tuple[int, int, int] | None:
+    match = re.search(
+        r"audio starts: (\d+) ordinary, (\d+) suppressed during skip; "
+        r"suppression depth (\d+)",
+        report,
+    )
+    if not match:
+        return None
+    return tuple(int(value) for value in match.groups())
+
+
 def case_cutscene_skip(case: Case) -> None:
     """Escape completes the tutorial's BehavEd control-lock epoch in one
     player invocation without advancing the guest frame or clock."""
@@ -351,6 +377,17 @@ def case_cutscene_skip(case: Case) -> None:
                "1 same-frame, 1 same-guest-time" in report, evidence)
     case.check("the cutscene-player epoch retired",
                "Cutscene player: active 0" in report, evidence)
+    dialogue = dialogue_skip_counts(report)
+    case.check("skip stopped the active line and suppressed every later "
+               "dialogue presentation",
+               dialogue is not None and dialogue[2] > 0 and
+               dialogue[3] > 0 and dialogue[4] > 0 and dialogue[5] == 0,
+               "dialogue counters %s" % (dialogue,))
+    audio = audio_start_counts(report)
+    case.check("skip audio scope retired while ordinary playback remained "
+               "observable",
+               audio is not None and audio[0] > 0 and audio[2] == 0,
+               "audio counters %s" % (audio,))
     case.shot("after-skip")
 
 
@@ -414,6 +451,17 @@ def case_cutscene_skip_early(case: Case) -> None:
                and "Cutscene player: active 0" in report, status)
     case.check("camera-only completion preserved the guest frame and clock",
                "1 same-frame, 1 same-guest-time" in report, status)
+    dialogue = dialogue_skip_counts(report)
+    case.check("camera-only skip suppressed every authored dialogue "
+               "presentation",
+               dialogue is not None and dialogue[3] > 0 and
+               dialogue[4] > 0 and dialogue[5] == 0,
+               "dialogue counters %s" % (dialogue,))
+    audio = audio_start_counts(report)
+    case.check("camera-only skip audio scope retired while ordinary playback "
+               "remained observable",
+               audio is not None and audio[0] > 0 and audio[2] == 0,
+               "audio counters %s" % (audio,))
     started = sum('conversation start "' in line
                   for line in case.log_text().splitlines())
     case.check("the sequence's remaining records were consumed, not left "
