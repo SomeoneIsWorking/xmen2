@@ -1,5 +1,6 @@
 /* See gpu_draw.h. */
 #include "gpu_draw.h"
+#include "gpu_texture_format.h"
 #include "gpu_draw_trace.h"
 #include "gpu_shadow.h"
 #include "gpu_device.h"
@@ -308,6 +309,7 @@ static SDL_GPUTextureFormat sdl_format(GpuFormat f)
     switch (f) {
     case GPU_FMT_BGRA8: return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
     case GPU_FMT_RGBA8: return SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+    case GPU_FMT_BGR8:  return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
     case GPU_FMT_BC1:   return SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM;
     case GPU_FMT_BC2:   return SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM;
     case GPU_FMT_BC3:   return SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM;
@@ -321,6 +323,7 @@ static uint32_t texture_level_bytes(GpuFormat fmt, uint32_t w, uint32_t h)
     switch (fmt) {
     case GPU_FMT_BGRA8:
     case GPU_FMT_RGBA8: return w * h * 4u;
+    case GPU_FMT_BGR8:  return w * h * 4u;
     case GPU_FMT_BC1:   return blocks * 8u;
     case GPU_FMT_BC2:
     case GPU_FMT_BC3:   return blocks * 16u;
@@ -408,6 +411,9 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     SDL_GPUTextureRegion dr;
     Res *r = res_get(t, 1, "texture upload");
     uint32_t lw, lh;
+    const void *upload_data = data;
+    uint32_t upload_bytes = bytes;
+    uint8_t *expanded = NULL;
     unsigned long long t0, t1;
     int created;
 
@@ -424,9 +430,24 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     }
     lw = r->w >> level; if (!lw) lw = 1;
     lh = r->h >> level; if (!lh) lh = 1;
+    if (r->fmt == GPU_FMT_BGR8) {
+        uint32_t source_bytes = lw * lh * 3u;
+        upload_bytes = lw * lh * 4u;
+        if (bytes != source_bytes) {
+            fprintf(stderr, "gpu: BGR8 upload is %u byte(s), expected %u for "
+                            "%ux%u.\n", bytes, source_bytes, lw, lh);
+            return 0;
+        }
+        expanded = malloc(upload_bytes);
+        if (!expanded) return 0;
+        gpu_bgr8_to_bgra8(data, expanded, lw * lh);
+        upload_data = expanded;
+    }
     t0 = gpu_perf_now_ns();
 
-    tb = gpu_upload_stage(g_gpu, &r->upload, r->bytes, data, bytes, &created);
+    tb = gpu_upload_stage(g_gpu, &r->upload, r->bytes, upload_data,
+                          upload_bytes, &created);
+    free(expanded);
     if (!tb) return 0;
     g_transfer_creates += (unsigned long long)created;
     t1 = gpu_perf_now_ns();
@@ -475,7 +496,15 @@ void gpu_texture_destroy(GpuTexture t)
 /* ---- the pipeline ------------------------------------------------------ */
 
 static SDL_GPUShader *g_vs, *g_fs;
-static SDL_GPUSampler *g_sampler[4];      /* [clamp][point] */
+typedef struct {
+    int clamp, mag_point, min_filter, mip, max_anisotropy;
+    float lod_bias;
+    SDL_GPUSampler *sampler;
+} SamplerEntry;
+
+#define MAX_SAMPLERS 64
+static SamplerEntry g_sampler[MAX_SAMPLERS];
+static int g_nsamplers;
 
 static SDL_GPUShader *load_shader(const void *code, size_t len,
                                   SDL_GPUShaderStage stage, int nsamplers,
@@ -510,7 +539,7 @@ static int shaders_ready(void)
                           shader that binds more than it declared is a
                           validation error that, without a layer loaded, is
                           simply undefined texels. */
-                       SDL_GPU_SHADERSTAGE_FRAGMENT, 3, 1);
+                       SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1);
     return g_vs && g_fs;
 }
 
@@ -557,8 +586,8 @@ static SDL_GPUCompareOp sdl_compare(GpuCompare c)
  */
 typedef struct {
     uint32_t stride;
-    int      pos_offset, color_offset, uv_offset, normal_offset;
-    int      pos_is_float4, color_is_float4;
+    int      pos_offset, color_offset, specular_offset, uv_offset, normal_offset;
+    int      pos_is_float4, color_is_float4, specular_is_float4;
     int      prim;
     int      blend_enable, src_blend, dst_blend;
     int      depth_test, depth_write, depth_func;
@@ -591,7 +620,7 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
     SDL_GPUGraphicsPipelineCreateInfo ci;
     SDL_GPUColorTargetDescription ct;
     SDL_GPUVertexBufferDescription vb;
-    SDL_GPUVertexAttribute at[4];
+    SDL_GPUVertexAttribute at[5];
     int nat = 0, i;
 
     for (i = 0; i < g_npipes; i++)
@@ -640,6 +669,14 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
     at[nat].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
     at[nat].offset = (Uint32)(k->normal_offset >= 0 ? k->normal_offset
                                                     : k->pos_offset);
+    nat++;
+    at[nat].location = 4;
+    at[nat].buffer_slot = 0;
+    at[nat].format = k->specular_is_float4
+                         ? SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4
+                         : SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM;
+    at[nat].offset = (Uint32)(k->specular_offset >= 0
+                                  ? k->specular_offset : k->pos_offset);
     nat++;
 
     ci.vertex_input_state.vertex_buffer_descriptions = &vb;
@@ -713,25 +750,56 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const PipeKey *k)
     return g_pipes[g_npipes++].pipe;
 }
 
-static SDL_GPUSampler *sampler_for(int clamp, int point)
+static SDL_GPUSampler *sampler_for(int clamp, int mag_point, int min_filter,
+                                   int mip, float lod_bias,
+                                   int max_anisotropy)
 {
-    int i = (clamp ? 2 : 0) | (point ? 1 : 0);
+    int min_point = min_filter == 1;
+    int i;
     SDL_GPUSamplerCreateInfo ci;
 
-    if (g_sampler[i]) return g_sampler[i];
+    if (max_anisotropy < 1) max_anisotropy = 1;
+    for (i = 0; i < g_nsamplers; i++)
+        if (g_sampler[i].clamp == clamp
+                && g_sampler[i].mag_point == mag_point
+                && g_sampler[i].min_filter == min_filter
+                && g_sampler[i].mip == mip
+                && g_sampler[i].lod_bias == lod_bias
+                && g_sampler[i].max_anisotropy == max_anisotropy)
+            return g_sampler[i].sampler;
+    if (g_nsamplers == MAX_SAMPLERS) {
+        fprintf(stderr, "gpu: more than %d distinct sampler states.\n",
+                MAX_SAMPLERS);
+        return NULL;
+    }
     memset(&ci, 0, sizeof ci);
-    ci.min_filter = point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
-    ci.mag_filter = ci.min_filter;
-    ci.mipmap_mode = point ? SDL_GPU_SAMPLERMIPMAPMODE_NEAREST
-                           : SDL_GPU_SAMPLERMIPMAPMODE_LINEAR;
+    ci.min_filter = min_point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
+    ci.mag_filter = mag_point ? SDL_GPU_FILTER_NEAREST : SDL_GPU_FILTER_LINEAR;
+    ci.mipmap_mode = mip == 2 ? SDL_GPU_SAMPLERMIPMAPMODE_LINEAR
+                              : SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
     ci.address_mode_u = clamp ? SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE
                               : SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
     ci.address_mode_v = ci.address_mode_u;
     ci.address_mode_w = ci.address_mode_u;
-    g_sampler[i] = SDL_CreateGPUSampler(g_gpu, &ci);
-    if (!g_sampler[i])
+    ci.mip_lod_bias = lod_bias;
+    ci.enable_anisotropy = min_filter == 3;
+    ci.max_anisotropy = (float)max_anisotropy;
+    /* A zero-initialised max_lod clamps every lookup to level 0. D3D's
+       MIPFILTER=POINT/LINEAR permits the complete resident chain. */
+    ci.min_lod = 0.0f;
+    ci.max_lod = mip ? 1000.0f : 0.0f;
+    g_sampler[g_nsamplers].clamp = clamp;
+    g_sampler[g_nsamplers].mag_point = mag_point;
+    g_sampler[g_nsamplers].min_filter = min_filter;
+    g_sampler[g_nsamplers].mip = mip;
+    g_sampler[g_nsamplers].lod_bias = lod_bias;
+    g_sampler[g_nsamplers].max_anisotropy = max_anisotropy;
+    g_sampler[g_nsamplers].sampler = SDL_CreateGPUSampler(g_gpu, &ci);
+    if (!g_sampler[g_nsamplers].sampler) {
         fprintf(stderr, "gpu: SDL_CreateGPUSampler failed: %s\n", SDL_GetError());
-    return g_sampler[i];
+        return NULL;
+    }
+    return g_sampler[g_nsamplers++].sampler;
 }
 
 /* ---- the draw ---------------------------------------------------------- */
@@ -763,11 +831,24 @@ typedef struct {
     float    mat_emissive[4];
     uint32_t has_normal;
     uint32_t color_vertex;
-    /* std140: these two complete a 16-byte row, so `worldview` below starts
+    uint32_t has_specular;
+    uint32_t normalize_normals;
+    uint32_t diffuse_source;
+    uint32_t ambient_source;
+    uint32_t emissive_source;
+    /* std140: these complete a 16-byte row, so `worldview` below starts
        aligned and the light array that follows it keeps its offset. */
     uint32_t texgen;
     uint32_t programmable;
+    uint32_t material_source_pad[3];
     float    worldview[16];
+    uint32_t texture_transform;
+    uint32_t texture_transform_pad[3];
+    float    texture_matrix[16];
+    uint32_t texgen1;
+    uint32_t texture_transform1;
+    uint32_t stage1_pad[2];
+    float    texture_matrix1[16];
     /* Five vec4s per light: diffuse, ambient, (position, range),
        (direction, type), (attenuation, unused). */
     float    light[GPU_MAX_LIGHTS * 5][4];
@@ -785,6 +866,10 @@ typedef struct {
     uint32_t alpha_op, alpha_arg1, alpha_arg2;
     uint32_t pad[3];               /* std140: vec4 starts on a 16-byte row */
     float    tfactor[4];
+    uint32_t stage1_enabled, stage1_color_op;
+    uint32_t stage1_color_arg1, stage1_color_arg2;
+    uint32_t stage1_alpha_op, stage1_alpha_arg1, stage1_alpha_arg2;
+    uint32_t stage1_pad;
     uint32_t shadow_enabled;
     float    shadow_bias;
     float    shadow_darkness;
@@ -801,6 +886,7 @@ static uint32_t arg_of(int a, uint32_t dflt)
     case GPU_TA_DIFFUSE: return 0u;
     case GPU_TA_TEXTURE: return 1u;
     case GPU_TA_TFACTOR: return 2u;
+    case GPU_TA_CURRENT: return 3u;
     default:             return dflt;
     }
 }
@@ -838,8 +924,8 @@ int gpu_draw(const GpuDraw *d)
     VertexUniforms vu;
     PixelUniforms pu;
     GpuShadowSample shadow;
-    Res *vres, *ires = NULL, *tres = NULL, *cres = NULL;
-    SDL_GPUSampler *smp;
+    Res *vres, *ires = NULL, *tres = NULL, *tres1 = NULL, *cres = NULL;
+    SDL_GPUSampler *smp, *smp1;
     unsigned long long t0 = gpu_perf_now_ns();
     uint32_t n;
 
@@ -899,6 +985,14 @@ int gpu_draw(const GpuDraw *d)
             return 0;
         }
     }
+    if (d->texop1 != GPU_TEXOP_NONE && d->texture1) {
+        if (!(tres1 = res_get(d->texture1, 1, "draw stage 1"))) {
+            g_refused++;
+            return 0;
+        }
+        if (tres1->faces != 1)
+            return refuse("texture stage 1 binds a cube; only 2D is evidenced");
+    }
 
     /*
      * Everything that can allocate or submit happens BEFORE the render pass
@@ -944,6 +1038,10 @@ int gpu_draw(const GpuDraw *d)
     }
     if (!g_white_cube) return refuse("no placeholder cube texture could be made");
     if (!(cres = res_get(g_white_cube, 1, "draw"))) { g_refused++; return 0; }
+    if (!tres1 && !(tres1 = res_get(g_white, 1, "draw stage 1"))) {
+        g_refused++;
+        return 0;
+    }
     /* The real cube, when this draw has one, replaces the placeholder -- and
        then the 2D slot takes the placeholder instead. */
     if (tres && tres->faces == 6) { cres = tres; tres = res_get(g_white, 1, "draw"); }
@@ -954,7 +1052,9 @@ int gpu_draw(const GpuDraw *d)
     key.pos_offset = d->pos_offset;
     key.pos_is_float4 = (d->pretransformed || d->programmable) ? 1 : 0;
     key.color_is_float4 = d->programmable ? 1 : 0;
+    key.specular_is_float4 = d->programmable ? 1 : 0;
     key.color_offset = d->color_offset;
+    key.specular_offset = d->specular_offset;
     key.uv_offset = d->uv_offset;
     key.normal_offset = d->normal_offset;
     key.prim = (int)d->prim;
@@ -980,7 +1080,17 @@ int gpu_draw(const GpuDraw *d)
     if (!gpu_draw_trace_consider(d, gpu_frames_presented())) return 1;
 
     if (!(pipe = pipeline_for(&key))) { g_refused++; return 0; }
-    if (!(smp = sampler_for(d->texture_clamp, d->texture_point))) {
+    if (!(smp = sampler_for(d->texture_clamp, d->texture_point,
+                            d->texture_min_filter, d->texture_mip,
+                            d->texture_lod_bias,
+                            d->texture_max_anisotropy))) {
+        g_refused++;
+        return 0;
+    }
+    if (!(smp1 = sampler_for(d->texture_clamp1, d->texture_point1,
+                             d->texture_min_filter1, d->texture_mip1,
+                             d->texture_lod_bias1,
+                             d->texture_max_anisotropy1))) {
         g_refused++;
         return 0;
     }
@@ -1010,10 +1120,21 @@ int gpu_draw(const GpuDraw *d)
     vu.programmable = d->programmable ? 1u : 0u;
     vu.has_diffuse = d->color_offset >= 0 ? 1u : 0u;
     vu.has_normal = d->normal_offset >= 0 ? 1u : 0u;
+    vu.has_specular = d->specular_offset >= 0 ? 1u : 0u;
     vu.lighting = d->lighting ? 1u : 0u;
     vu.color_vertex = d->color_vertex ? 1u : 0u;
+    vu.normalize_normals = d->normalize_normals ? 1u : 0u;
+    vu.diffuse_source = d->diffuse_source;
+    vu.ambient_source = d->ambient_source;
+    vu.emissive_source = d->emissive_source;
     vu.texgen = (uint32_t)d->texgen;
     memcpy(vu.worldview, d->worldview, sizeof vu.worldview);
+    vu.texture_transform = d->texture_transform;
+    memcpy(vu.texture_matrix, d->texture_matrix, sizeof vu.texture_matrix);
+    vu.texgen1 = (uint32_t)d->texgen1;
+    vu.texture_transform1 = (uint32_t)d->texture_transform1;
+    memcpy(vu.texture_matrix1, d->texture_matrix1,
+           sizeof vu.texture_matrix1);
     if (d->lighting) {
         int li;
         memcpy(vu.world, d->world, sizeof vu.world);
@@ -1056,6 +1177,14 @@ int gpu_draw(const GpuDraw *d)
     pu.alpha_arg1 = arg_of(d->alpha_arg1, 1u);
     pu.alpha_arg2 = arg_of(d->alpha_arg2, 0u);
     memcpy(pu.tfactor, d->texture_factor, sizeof pu.tfactor);
+    pu.stage1_enabled = d->texop1 != GPU_TEXOP_NONE;
+    pu.stage1_color_op = (uint32_t)d->texop1;
+    pu.stage1_color_arg1 = arg_of(d->color_arg1_1, 1u);
+    pu.stage1_color_arg2 = arg_of(d->color_arg2_1, 3u);
+    pu.stage1_alpha_op = d->alpha_op1 ? (uint32_t)d->alpha_op1
+                                     : (uint32_t)d->texop1;
+    pu.stage1_alpha_arg1 = arg_of(d->alpha_arg1_1, 1u);
+    pu.stage1_alpha_arg2 = arg_of(d->alpha_arg2_1, 3u);
     pu.shadow_enabled = shadow.enabled ? 1u : 0u;
     pu.shadow_bias = shadow.depth_bias;
     pu.shadow_darkness = shadow.darkness;
@@ -1067,15 +1196,17 @@ int gpu_draw(const GpuDraw *d)
        shader declares one, so an unbound sampler is a validation error and,
        without a validation layer, undefined pixels. */
     {
-        SDL_GPUTextureSamplerBinding tsb2[3];
+        SDL_GPUTextureSamplerBinding tsb2[4];
         memset(tsb2, 0, sizeof tsb2);
         tsb2[0].texture = tres->tex;
         tsb2[0].sampler = smp;
         tsb2[1].texture = cres->tex;
         tsb2[1].sampler = smp;
-        tsb2[2].texture = shadow.enabled ? gpu_shadow_texture() : tres->tex;
-        tsb2[2].sampler = shadow.enabled ? gpu_shadow_sampler() : smp;
-        SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, 3);
+        tsb2[2].texture = tres1->tex;
+        tsb2[2].sampler = smp1;
+        tsb2[3].texture = shadow.enabled ? gpu_shadow_texture() : tres->tex;
+        tsb2[3].sampler = shadow.enabled ? gpu_shadow_sampler() : smp;
+        SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, 4);
     }
     (void)tsb;
 
@@ -1353,9 +1484,12 @@ void gpu_draw_shutdown(void)
     for (i = 0; i < g_npipes; i++)
         if (g_pipes[i].pipe) SDL_ReleaseGPUGraphicsPipeline(g_gpu, g_pipes[i].pipe);
     g_npipes = 0;
-    for (i = 0; i < 4; i++)
-        if (g_sampler[i]) { SDL_ReleaseGPUSampler(g_gpu, g_sampler[i]);
-                            g_sampler[i] = NULL; }
+    for (i = 0; i < g_nsamplers; i++)
+        if (g_sampler[i].sampler) {
+            SDL_ReleaseGPUSampler(g_gpu, g_sampler[i].sampler);
+            g_sampler[i].sampler = NULL;
+        }
+    g_nsamplers = 0;
     if (g_vs) { SDL_ReleaseGPUShader(g_gpu, g_vs); g_vs = NULL; }
     if (g_fs) { SDL_ReleaseGPUShader(g_gpu, g_fs); g_fs = NULL; }
     for (i = 0; i < g_nres; i++)

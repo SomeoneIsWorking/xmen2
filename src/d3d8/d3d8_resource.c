@@ -143,6 +143,7 @@ static Resource *res_of(D3D8Object *o) { return (Resource *)d3d8_object_ctx(o); 
 static GpuFormat gpu_format_of(uint32_t d3dfmt)
 {
     switch (d3dfmt) {
+    case D3DFMT_R8G8B8:   return GPU_FMT_BGR8;
     case D3DFMT_A8R8G8B8:
     case D3DFMT_X8R8G8B8: return GPU_FMT_BGRA8;
     case D3DFMT_DXT1:     return GPU_FMT_BC1;
@@ -159,6 +160,8 @@ static uint32_t level_bytes(uint32_t fmt, uint32_t w, uint32_t h)
 {
     uint32_t blocks;
     switch (fmt) {
+    case D3DFMT_R8G8B8:
+        return w * h * 3u;
     case D3DFMT_A8R8G8B8:
     case D3DFMT_X8R8G8B8:
         return w * h * 4u;
@@ -177,6 +180,7 @@ static uint32_t level_bytes(uint32_t fmt, uint32_t w, uint32_t h)
 static uint32_t row_pitch(uint32_t fmt, uint32_t w)
 {
     switch (fmt) {
+    case D3DFMT_R8G8B8:   return w * 3u;
     case D3DFMT_A8R8G8B8:
     case D3DFMT_X8R8G8B8: return w * 4u;
     case D3DFMT_DXT1:     return ((w + 3u) / 4u) * 8u;
@@ -589,6 +593,14 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
                         "whatever it held before.\n",
                 sub / r->levels, sub % r->levels, lw, lh);
         return;
+    }
+    {
+        const char *want = getenv("X2_TEXTURE_LEVELS");
+        if (want && (*want == '*' || strtoul(want, NULL, 0) == r->gtex))
+            fprintf(stderr, "d3d8: texture %u uploaded face %u level %u of %u "
+                            "(%ux%u, %u bytes)\n",
+                    r->gtex, sub / r->levels, sub % r->levels, r->levels,
+                    lw, lh, level_bytes(r->format, lw, lh));
     }
     if ((sub % r->levels) == 0)
         d3d8_texture_luma_note((uint32_t)r->gtex, r->format, lw, lh,

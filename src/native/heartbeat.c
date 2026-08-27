@@ -297,12 +297,13 @@ static void *heartbeat_thread(void *arg)
                 unsigned long ms; int most;
                 d3d8_drawcall_multistage(&ms, &most);
                 /* Printed even at ZERO, next to the draw total. "No draw
-                   wanted a second stage" is a real finding about this game and
+                   wanted a second stage" is a real finding about this route and
                    is worth as much as a large number; a line that appears only
                    when non-zero cannot be told from a check nobody ran. */
                 fprintf(stderr, "[HB]           %lu of %lu draw(s) (+%lu) "
                                 "wanted a texture stage beyond 0 (up to %d "
-                                "extra), which this backend does not read\n",
+                                "extra); stage 1 is implemented and stage 2+ "
+                                "is refused\n",
                         ms, draws, ms - p_ms, most);
                 p_ms = ms;
             }

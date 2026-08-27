@@ -7,6 +7,7 @@ int gpu_frame_init_selftest(void);
 int gpu_midframe_clear_selftest(void);
 int gpu_cube_texgen_selftest(void);
 int gpu_tfactor_selftest(void);
+int gpu_multistage_selftest(void);
 int gpu_upload_reuse_selftest(void);
 int gpu_upload_order_selftest(void);
 int gpu_shadow_selftest(void);
@@ -36,6 +37,9 @@ int gpu_host_selftest(void)
     if (result && result != 77) return result;
 
     result = gpu_tfactor_selftest();
+    if (result && result != 77) return result;
+
+    result = gpu_multistage_selftest();
     if (result && result != 77) return result;
 
     result = gpu_shadow_selftest();

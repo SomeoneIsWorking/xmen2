@@ -3,6 +3,7 @@
 #include "d3d8_types.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef struct {
     uint32_t handle;
@@ -40,6 +41,12 @@ void d3d8_texture_luma_note(uint32_t handle, uint32_t format,
     int index;
     if (!width || !height || !pixels || !bytes) return;
     switch (format) {
+    case D3DFMT_R8G8B8:
+        for (offset = 0; offset + 3 <= bytes; offset += 3) {
+            sum += bgra_luma(pixels + offset);
+            samples++;
+        }
+        break;
     case D3DFMT_A8R8G8B8:
     case D3DFMT_X8R8G8B8:
         for (offset = 0; offset + 4 <= bytes; offset += 4) {
@@ -110,6 +117,14 @@ void d3d8_texture_luma_report(void)
         printf("          none measured -- either no texture was uploaded, or "
                "every one used a format this check cannot read. It says "
                "NOTHING about the textures.\n");
+        return;
+    }
+    if (getenv("X2_TEXTURE_LUMA_ALL")) {
+        for (index = 0; index < g_luma_count; ++index)
+            printf("          handle %-4u %4ux%-4u fmt %-3u  mean luma %6.2f\n",
+                   g_luma[index].handle, g_luma[index].width,
+                   g_luma[index].height, g_luma[index].format,
+                   g_luma[index].luma);
         return;
     }
     for (rank = 0; rank < 10 && rank < g_luma_count; ++rank) {

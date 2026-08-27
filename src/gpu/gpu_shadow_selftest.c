@@ -29,6 +29,7 @@ static void describe_draw(GpuDraw *draw, GpuBuffer vertices,
     draw->pos_offset = 0;
     draw->normal_offset = 12;
     draw->color_offset = -1;
+    draw->specular_offset = -1;
     draw->uv_offset = -1;
     draw->prim = GPU_PRIM_TRIANGLELIST;
     draw->prim_count = triangles;

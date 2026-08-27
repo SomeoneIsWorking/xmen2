@@ -52,3 +52,9 @@ had looked at yet.
 
 ### Note (2026-08-11)
 Second half done: fixed-function LIGHTING is implemented (per-vertex, world space, up to 8 lights, material diffuse/ambient/emissive, D3DRS_AMBIENT, directional and point lights with range and the three attenuation terms, D3DRS_COLORVERTEX). White-when-no-diffuse stays correct for the lighting-DISABLED case; the lit case is now computed rather than approximated, so the sky, the statue and the columns are shaded. Not written, and each reported where it is dropped: specular, spot cones (a spot lights as a point), the *MATERIALSOURCE selection, and a ninth light. Covered by the lighting self-test -- the same quad drawn twice with only its normal flipped, red toward the light and black away from it -- which was run against a shader with N.L forced to 1 and caught it.
+
+### Note (2026-08-27)
+
+Issue #129 implements diffuse/ambient/emissive MATERIALSOURCE selection and
+`D3DRS_NORMALIZENORMALS`; the older missing-feature list above is retained as
+the dated observation it was. Specular lighting and spot cones remain absent.

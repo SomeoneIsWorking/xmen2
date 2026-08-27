@@ -14,7 +14,8 @@ unsigned long gpu_draw_trace_draws_so_far(void)
 static void print_draw(FILE *dst, const GpuDraw *d, unsigned long index)
 {
     fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s %s%s%s%s%s%s "
-                 "stride %2u col%+3d uv%+3d cull%d zfunc%d zbias%u "
+                 "stride %2u col%+3d uv%+3d cull%d blend%d/%d "
+                 "zfunc%d zbias%u atest%d/ref%.3f cv%d nn%d src%d/%d/%d "
                  "stencil%d/%u,%u,%u,%u ref%u mask%x write%x rgba%x\n",
             index,
             d->prim == GPU_PRIM_TRIANGLESTRIP ? "tristrip"
@@ -29,10 +30,43 @@ static void print_draw(FILE *dst, const GpuDraw *d, unsigned long index)
             d->lighting ? "lit " : "unlit ",
             d->normal_offset >= 0 ? "norm" : "nonorm",
             d->vertex_stride, d->color_offset, d->uv_offset,
-            d->cull, d->depth_func, d->depth_bias, d->stencil_enable,
+            d->cull, d->src_blend, d->dst_blend,
+            d->depth_func, d->depth_bias, d->alpha_test, d->alpha_ref,
+            d->color_vertex, d->normalize_normals,
+            d->diffuse_source, d->ambient_source, d->emissive_source,
+            d->stencil_enable,
             d->stencil_fail, d->stencil_zfail, d->stencil_pass,
             d->stencil_func, d->stencil_ref, d->stencil_mask,
             d->stencil_write_mask, d->color_write_mask);
+    if (d->texture1)
+        fprintf(dst, "           stage1 tex %-4u op%d/%d args %d,%d/%d,%d "
+                     "texgen%d transform%d clamp%d point%d min%d mip%d "
+                     "aniso%d bias%.2f "
+                     "matrix row0 [% .5g % .5g % .5g % .5g] "
+                     "row3 [% .5g % .5g % .5g % .5g]\n",
+                d->texture1, d->texop1, d->alpha_op1,
+                d->color_arg1_1, d->color_arg2_1,
+                d->alpha_arg1_1, d->alpha_arg2_1,
+                d->texgen1, d->texture_transform1,
+                d->texture_clamp1, d->texture_point1,
+                d->texture_min_filter1, d->texture_mip1,
+                d->texture_max_anisotropy1, d->texture_lod_bias1,
+                d->texture_matrix1[0], d->texture_matrix1[1],
+                d->texture_matrix1[2], d->texture_matrix1[3],
+                d->texture_matrix1[12], d->texture_matrix1[13],
+                d->texture_matrix1[14], d->texture_matrix1[15]);
+    if (d->texture && (d->texgen || d->texture_transform))
+        fprintf(dst, "           stage0 texgen%d transform0x%x min%d mip%d "
+                     "aniso%d bias%.2f "
+                     "matrix row0 [% .5g % .5g % .5g % .5g] "
+                     "row3 [% .5g % .5g % .5g % .5g]\n",
+                d->texgen, d->texture_transform, d->texture_min_filter,
+                d->texture_mip, d->texture_max_anisotropy,
+                d->texture_lod_bias,
+                d->texture_matrix[0], d->texture_matrix[1],
+                d->texture_matrix[2], d->texture_matrix[3],
+                d->texture_matrix[12], d->texture_matrix[13],
+                d->texture_matrix[14], d->texture_matrix[15]);
     fprintf(dst, "           mvp [% .6g % .6g % .6g % .6g]"
                  " [% .6g % .6g % .6g % .6g]"
                  " [% .6g % .6g % .6g % .6g]"
@@ -53,6 +87,9 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now)
     static char *capture_text;
     static size_t capture_size;
     static long range_first = -2, range_last;
+    static int texture_filter_init;
+    static uint32_t texture_filter[16];
+    static unsigned texture_filter_n;
     FILE *destination;
 
     if (want == -2) {
@@ -155,6 +192,38 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now)
          (long)g_range_index > range_last)) {
         g_range_skipped++;
         return 0;
+    }
+    if (!texture_filter_init) {
+        const char *value = getenv("X2_DRAW_TEXTURES");
+        texture_filter_init = 1;
+        if (value && *value) {
+            char copy[256], *part, *save;
+            snprintf(copy, sizeof copy, "%s", value);
+            for (part = strtok_r(copy, ",", &save); part &&
+                    texture_filter_n < sizeof texture_filter /
+                                           sizeof texture_filter[0];
+                    part = strtok_r(NULL, ",", &save))
+                texture_filter[texture_filter_n++] =
+                    (uint32_t)strtoul(part, NULL, 0);
+            fprintf(stderr, "gpu: X2_DRAW_TEXTURES -- ONLY draws using one "
+                            "of %u named texture handle(s) are submitted. "
+                            "This picture is NOT a whole frame.\n",
+                    texture_filter_n);
+        }
+    }
+    if (texture_filter_n) {
+        unsigned i;
+        int matched = 0;
+        for (i = 0; i < texture_filter_n; i++)
+            if (d->texture == texture_filter[i]
+                    || d->texture1 == texture_filter[i]) {
+                matched = 1;
+                break;
+            }
+        if (!matched) {
+            g_range_skipped++;
+            return 0;
+        }
     }
     return 1;
 }

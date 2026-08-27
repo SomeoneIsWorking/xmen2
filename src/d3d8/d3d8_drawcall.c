@@ -19,6 +19,7 @@ unsigned long gpu_frame_draws_so_far(void);
 #include "d3d8_vertex_shader.h"
 #include "d3d8_state.h"
 #include "d3d8_types.h"
+#include "d3d8_texture_stage.h"
 
 #include "gpu_draw.h"
 #include "gpu_device.h"
@@ -45,6 +46,10 @@ unsigned long gpu_frame_draws_so_far(void);
 #define D3DRS_LIGHTING         137
 #define D3DRS_AMBIENT          139
 #define D3DRS_COLORVERTEX      141
+#define D3DRS_NORMALIZENORMALS 143
+#define D3DRS_DIFFUSEMATERIALSOURCE 145
+#define D3DRS_AMBIENTMATERIALSOURCE 147
+#define D3DRS_EMISSIVEMATERIALSOURCE 148
 #define D3DRS_TEXTUREFACTOR     60
 
 /* D3DTSS_*, the ones this reads. */
@@ -54,6 +59,9 @@ unsigned long gpu_frame_draws_so_far(void);
 #define D3DTSS_ADDRESSV          14
 #define D3DTSS_MAGFILTER         16
 #define D3DTSS_MINFILTER         17
+#define D3DTSS_MIPFILTER         18
+#define D3DTSS_MIPMAPLODBIAS     19
+#define D3DTSS_MAXANISOTROPY     21
 #define D3DTSS_COLORARG1          2
 #define D3DTSS_COLORARG2          3
 #define D3DTSS_ALPHAOP            4
@@ -68,33 +76,10 @@ unsigned long gpu_frame_draws_so_far(void);
 #define D3DTOP_MODULATE          4
 #define D3DTOP_ADD               7
 
-/* D3DFVF_* */
-/*
- * The position is a 3-BIT FIELD, not a set of flags, and reading it as flags
- * is a defect this file shipped: `fvf & D3DFVF_XYZRHW` is TRUE for XYZB1
- * (0x006) and XYZB5 (0x00e), so a vertex carrying blend weights was decoded as
- * a PRE-TRANSFORMED one -- drawn in screen space, with no lighting and no
- * projection, which flattens a mesh into a plane. XYZB2/B3/B4 fell through to
- * XYZ instead, leaving every attribute after the position short by the weights.
- */
-#define D3DFVF_POSITION_MASK  0x000e
-#define D3DFVF_XYZ            0x0002
-#define D3DFVF_XYZRHW         0x0004
-#define D3DFVF_XYZB1          0x0006
-#define D3DFVF_XYZB2          0x0008
-#define D3DFVF_XYZB3          0x000a
-#define D3DFVF_XYZB4          0x000c
-#define D3DFVF_XYZB5          0x000e
-#define D3DFVF_NORMAL         0x0010
-#define D3DFVF_PSIZE          0x0020
-#define D3DFVF_DIFFUSE        0x0040
-#define D3DFVF_SPECULAR       0x0080
-#define D3DFVF_TEXCOUNT_MASK  0x0f00
-#define D3DFVF_TEXCOUNT_SHIFT 8
-
 /* D3DTS_* */
 #define D3DTS_VIEW        2
 #define D3DTS_PROJECTION  3
+#define D3DTS_TEXTURE0   16
 #define D3DTS_WORLD     256
 
 static unsigned long g_refused_prim, g_refused_fvf;
@@ -107,41 +92,6 @@ static unsigned long g_refused_prim, g_refused_fvf;
  * the wrong thing look identical from the outside, and the difference is
  * whether the engine bound a texture at all.
  */
-/*
- * The shader does not read the combiner ARGUMENTS -- it assumes D3D8's
- * defaults, ARG1 = D3DTA_TEXTURE and ARG2 = D3DTA_CURRENT. That assumption has
- * never been checked against the engine, and it is the kind that fails
- * silently: a stage set to modulate the DIFFUSE by the TEXTURE FACTOR instead
- * would come out as an ordinary textured surface of the wrong colour. Counted
- * per draw so the assumption is a measurement.
- */
-/*
- * A D3DTA_* value as the shader's argument selector.
- *
- * D3DTA_DIFFUSE and D3DTA_CURRENT are the same thing on a single-stage
- * pipeline -- CURRENT is "the result so far", and at stage 0 that IS the
- * diffuse. Anything else (SPECULAR, TEMP, or a COMPLEMENT/ALPHAREPLICATE
- * modifier) is named once and treated as the diffuse, which is the existing
- * behaviour made explicit rather than a new approximation.
- */
-static int ta_of(uint32_t v, const char *what)
-{
-    switch (v) {
-    case 0u: case 1u: return GPU_TA_DIFFUSE;   /* CURRENT is the diffuse here */
-    case 2u: return GPU_TA_TEXTURE;
-    case 3u: return GPU_TA_TFACTOR;
-    default: {
-        static int told;
-        if (!told++)
-            fprintf(stderr, "d3d8: %s = 0x%x is an argument this shader does "
-                            "not have (SPECULAR, TEMP, or a modifier); it is "
-                            "read as the diffuse colour. Reported once, and it "
-                            "is a KNOWN WRONG colour.\n", what, v);
-        return GPU_TA_DIFFUSE;
-    }
-    }
-}
-
 static unsigned long g_arg_default, g_arg_other;
 static uint32_t g_arg_first[4];
 static int g_arg_seen;
@@ -242,129 +192,6 @@ static void d3d8_untextured_report(void)
                      " one" : "");
 }
 
-/* ---- the vertex format ------------------------------------------------- */
-
-/*
- * Decode an FVF into offsets.
- *
- * The order is fixed by D3D8 and is not negotiable: position, then normal,
- * then point size, then diffuse, then specular, then texture coordinates.
- * Getting the order wrong reads colour as a coordinate, which draws geometry
- * in the right place with impossible colours -- a symptom that looks like a
- * shading bug.
- */
-int d3d8_fvf_layout(uint32_t fvf, D3D8VertexLayout *out)
-{
-    uint32_t off = 0;
-    uint32_t ntex = (fvf & D3DFVF_TEXCOUNT_MASK) >> D3DFVF_TEXCOUNT_SHIFT;
-
-    memset(out, 0, sizeof *out);
-    out->color_offset = -1;
-    out->uv_offset = -1;
-    out->normal_offset = -1;
-
-    out->pos_offset = (int)off;
-    switch (fvf & D3DFVF_POSITION_MASK) {
-    case D3DFVF_XYZ:    off += 12; break;
-    case D3DFVF_XYZRHW: out->pretransformed = 1; off += 16; break;
-    /*
-     * Position plus n blend WEIGHTS. The weights sit between the position and
-     * the normal, so they must be stepped over even though nothing here reads
-     * them: D3DRS_VERTEXBLEND is never enabled by this title, and with
-     * blending disabled D3D8 transforms by world matrix 0 alone -- which is
-     * what this backend already does. Skipping them is therefore faithful,
-     * while MIS-SIZING them moved the normal and the texture coordinates.
-     *
-     * The last weight is a packed matrix index rather than a float when
-     * D3DFVF_LASTBETA_UBYTE4 is set; it is four bytes either way, so the
-     * stride is the same and only the meaning differs.
-     */
-    case D3DFVF_XYZB1:  off += 12 + 4;  break;
-    case D3DFVF_XYZB2:  off += 12 + 8;  break;
-    case D3DFVF_XYZB3:  off += 12 + 12; break;
-    case D3DFVF_XYZB4:  off += 12 + 16; break;
-    case D3DFVF_XYZB5:  off += 12 + 20; break;
-    default:
-        /* No position at all: either a vertex shader declaration this host
-           does not read, or an FVF the engine built wrongly. Both must stop
-           here rather than draw from offset zero. */
-        return 0;
-    }
-    if (fvf & D3DFVF_NORMAL)   { out->normal_offset = (int)off; off += 12; }
-    if (fvf & D3DFVF_PSIZE)    off += 4;
-    if (fvf & D3DFVF_DIFFUSE)  { out->color_offset = (int)off; off += 4; }
-    if (fvf & D3DFVF_SPECULAR) off += 4;
-    if (ntex) {
-        out->uv_offset = (int)off;
-        off += 8u * ntex;          /* two floats each, which is the default */
-    }
-    out->stride = off;
-    return 1;
-}
-
-
-/*
- * Which vertex FORMATS this title actually draws with.
- *
- * There was no such census, so "the position field was read as flags" was a
- * defect nobody could size: the fix matters enormously if the engine draws
- * skinned meshes with blend weights and not at all if it never does, and the
- * code could not tell those apart. Every distinct FVF is counted with the
- * position type it decodes to, so the answer is a table rather than an
- * argument.
- */
-#define FVF_SEEN_MAX 16
-static struct { uint32_t fvf; unsigned long n; } g_fvf_seen[FVF_SEEN_MAX];
-static int g_fvf_n;
-static unsigned long g_fvf_dropped;
-
-static void fvf_note(uint32_t fvf)
-{
-    int i;
-    for (i = 0; i < g_fvf_n; i++)
-        if (g_fvf_seen[i].fvf == fvf) { g_fvf_seen[i].n++; return; }
-    if (g_fvf_n == FVF_SEEN_MAX) { g_fvf_dropped++; return; }
-    g_fvf_seen[g_fvf_n].fvf = fvf;
-    g_fvf_seen[g_fvf_n].n = 1;
-    g_fvf_n++;
-}
-
-static const char *fvf_position_name(uint32_t fvf)
-{
-    switch (fvf & D3DFVF_POSITION_MASK) {
-    case D3DFVF_XYZ:    return "XYZ";
-    case D3DFVF_XYZRHW: return "XYZRHW (pre-transformed)";
-    case D3DFVF_XYZB1:  return "XYZB1 (1 blend weight)";
-    case D3DFVF_XYZB2:  return "XYZB2 (2 blend weights)";
-    case D3DFVF_XYZB3:  return "XYZB3 (3 blend weights)";
-    case D3DFVF_XYZB4:  return "XYZB4 (4 blend weights)";
-    case D3DFVF_XYZB5:  return "XYZB5 (5 blend weights)";
-    default:            return "NO POSITION";
-    }
-}
-
-static void fvf_report(void)
-{
-    int i;
-    unsigned long tot = 0, blended = 0;
-    for (i = 0; i < g_fvf_n; i++) {
-        tot += g_fvf_seen[i].n;
-        if ((g_fvf_seen[i].fvf & D3DFVF_POSITION_MASK) > D3DFVF_XYZRHW)
-            blended += g_fvf_seen[i].n;
-    }
-    printf("        vertex formats: %lu fixed-function draw(s), %d distinct "
-           "FVF(s)%s; %lu of them carry BLEND WEIGHTS\n",
-           tot, g_fvf_n, g_fvf_dropped ? " (TABLE FULL -- more exist)" : "",
-           blended);
-    for (i = 0; i < g_fvf_n; i++)
-        printf("          0x%08x  %-26s x%lu\n",
-               g_fvf_seen[i].fvf, fvf_position_name(g_fvf_seen[i].fvf),
-               g_fvf_seen[i].n);
-    if (!g_fvf_n)
-        printf("          none -- no fixed-function draw reached this "
-               "backend, so this says NOTHING about the vertex formats.\n");
-}
-
 /* ---- state translation ------------------------------------------------- */
 
 static uint32_t rs(const D3D8State *s, uint32_t which, uint32_t dflt)
@@ -390,10 +217,8 @@ static uint32_t rs(const D3D8State *s, uint32_t which, uint32_t dflt)
  * call sites that could each get the layout wrong.
  *
  * NOT implemented, and each is named where it is dropped rather than left to
- * look applied: specular (the engine sets SPECULARENABLE=0), spot cones
- * (falloff/theta/phi -- a spot is treated as a point light and SAYS so), and
- * D3DRS_COLORVERTEX's per-source selection (DIFFUSEMATERIALSOURCE and
- * friends), which uses D3D's defaults.
+ * look applied: specular lighting (the engine sets SPECULARENABLE=0) and spot
+ * cones (falloff/theta/phi -- a spot is treated as a point light and SAYS so).
  */
 /* Draw-time light table vs what SetLight last wrote -- see fill_lighting. */
 static unsigned long g_lc_checked, g_lc_differ, g_lc_lost, g_lc_neverset;
@@ -419,6 +244,10 @@ static void fill_lighting(const D3D8State *s, GpuDraw *out)
     memcpy(out->world, w, sizeof out->world);
     out->lighting = rs(s, D3DRS_LIGHTING, 0) != 0;
     out->color_vertex = rs(s, D3DRS_COLORVERTEX, 1) != 0;
+    out->normalize_normals = rs(s, D3DRS_NORMALIZENORMALS, 0) != 0;
+    out->diffuse_source = rs(s, D3DRS_DIFFUSEMATERIALSOURCE, 1);
+    out->ambient_source = rs(s, D3DRS_AMBIENTMATERIALSOURCE, 0);
+    out->emissive_source = rs(s, D3DRS_EMISSIVEMATERIALSOURCE, 0);
     g_last_ambient_raw = rs(s, D3DRS_AMBIENT, 0);
     argb_to_rgba(g_last_ambient_raw, out->global_ambient);
     /* The survey has to see the UNLIT draws too, and this early return is why
@@ -730,13 +559,23 @@ static unsigned long g_sv_start_frame, g_sv_ungated;
 
 static float survey_bound(const GpuDraw *d, int ignore_atten)
 {
-    float acc[3], dm[3];
+    float acc[3], dm[3], am[3], em[3];
     int c, i;
-    int vertex_material = d->color_vertex && d->color_offset >= 0;
+    int diffuse_vertex = d->color_vertex
+        && ((d->diffuse_source == 1u && d->color_offset >= 0)
+            || (d->diffuse_source == 2u && d->specular_offset >= 0));
+    int ambient_vertex = d->color_vertex
+        && ((d->ambient_source == 1u && d->color_offset >= 0)
+            || (d->ambient_source == 2u && d->specular_offset >= 0));
+    int emissive_vertex = d->color_vertex
+        && ((d->emissive_source == 1u && d->color_offset >= 0)
+            || (d->emissive_source == 2u && d->specular_offset >= 0));
 
     for (c = 0; c < 3; c++) {
-        acc[c] = d->mat_emissive[c] + d->mat_ambient[c] * d->global_ambient[c];
-        dm[c] = vertex_material ? 1.0f : d->mat_diffuse[c];
+        dm[c] = diffuse_vertex ? 1.0f : d->mat_diffuse[c];
+        am[c] = ambient_vertex ? 1.0f : d->mat_ambient[c];
+        em[c] = emissive_vertex ? 1.0f : d->mat_emissive[c];
+        acc[c] = em[c] + am[c] * d->global_ambient[c];
     }
     for (i = 0; i < d->nlights; i++) {
         const GpuLight *L = &d->light[i];
@@ -751,7 +590,7 @@ static float survey_bound(const GpuDraw *d, int ignore_atten)
             atten = den > 0.0f ? 1.0f / den : 1.0f;
         }
         for (c = 0; c < 3; c++)
-            acc[c] += (d->mat_ambient[c] * L->ambient[c]
+            acc[c] += (am[c] * L->ambient[c]
                        + dm[c] * L->diffuse[c]) * atten;
     }
     for (c = 0; c < 3; c++) if (acc[c] > 1.0f) acc[c] = 1.0f;
@@ -842,7 +681,10 @@ static void light_survey(const GpuDraw *d)
     g_sv_seen++;
     if (!d->lighting) { g_sv_unlit++; return; }
     g_sv_lit++;
-    if (d->color_vertex && d->color_offset >= 0) g_sv_vertexcol++;
+    if (d->color_vertex
+            && ((d->diffuse_source == 1u && d->color_offset >= 0)
+                || (d->diffuse_source == 2u && d->specular_offset >= 0)))
+        g_sv_vertexcol++;
     if (!d->nlights) g_sv_nolights++;
 
     bound = survey_bound(d, 0);
@@ -1175,6 +1017,7 @@ static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride)
  */
 static int g_ft_on = -1, g_ft_done;
 static unsigned long g_ft_frame, g_ft_draw;
+
 static unsigned long g_ft_arms;
 static int g_ft_manual;      /* armed by F9: the person watching is the gate */
 static int g_ft_probed;      /* the constant-file probe fires once per arm */
@@ -1489,6 +1332,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
 {
     float minx = 1e30f, miny = 1e30f, maxx = -1e30f, maxy = -1e30f;
     float minz = 1e30f, maxz = -1e30f;
+    float uvmin[2] = { 1e30f, 1e30f }, uvmax[2] = { -1e30f, -1e30f };
     /* OBJECT space too. The screen rectangle needs a divide by w and goes to
        infinity as w approaches zero, so it cannot answer "is this mesh flat".
        The object-space extents can: a head collapsed to a plane has one extent
@@ -1533,7 +1377,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
      * can escape, which is what makes it blind to a mesh whose normals point
      * away from every light. Here N.L is the real one.
      */
-    double litsum = 0.0, litraw = 0.0, bestnl = -2.0;
+    double litsum = 0.0, bestnl = -2.0;
     uint32_t litn = 0;
     /*
      * The world matrix's SCALE, and the same lighting computed WITHOUT
@@ -1635,6 +1479,14 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
         }
         if (v >= capacity) continue;
         p = (const float *)(vb + (size_t)v * stride + pos_offset);
+        if (out->uv_offset >= 0) {
+            const float *uv = (const float *)(vb + (size_t)v * stride
+                                              + out->uv_offset);
+            if (uv[0] < uvmin[0]) uvmin[0] = uv[0];
+            if (uv[0] > uvmax[0]) uvmax[0] = uv[0];
+            if (uv[1] < uvmin[1]) uvmin[1] = uv[1];
+            if (uv[1] > uvmax[1]) uvmax[1] = uv[1];
+        }
         /* Row-vector convention, matching the shader's `mvp * vec4(pos,1)`
            with the matrix handed over as D3D lays it out. */
         x = p[0]*out->mvp[0] + p[1]*out->mvp[4] + p[2]*out->mvp[8]  + out->mvp[12];
@@ -1654,7 +1506,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                CPU for every vertex of every draw of the frame otherwise. */
             if (out->lighting && len > 1e-4 && litn < 16u &&
                 (n < 16u || (i % (n / 16u)) == 0u)) {
-                double wn[3], acc[3], sc;
+                double wn[3], acc[3], dm[3], am[3], em[3], sc;
                 int c, li;
                 /* The normal by the world matrix's upper 3x3, as the shader
                    does it, then normalised. */
@@ -1662,10 +1514,20 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                 wn[1] = q[0]*out->world[1] + q[1]*out->world[5] + q[2]*out->world[9];
                 wn[2] = q[0]*out->world[2] + q[1]*out->world[6] + q[2]*out->world[10];
                 sc = sqrt(wn[0]*wn[0] + wn[1]*wn[1] + wn[2]*wn[2]);
-                if (sc > 1e-6) { wn[0] /= sc; wn[1] /= sc; wn[2] /= sc; }
+                if (out->normalize_normals && sc > 1e-6) {
+                    wn[0] /= sc; wn[1] /= sc; wn[2] /= sc;
+                }
+                d3d8_frame_material_rgb(out, out->diffuse_source,
+                                        vb + (size_t)v * stride,
+                                        out->mat_diffuse, dm);
+                d3d8_frame_material_rgb(out, out->ambient_source,
+                                        vb + (size_t)v * stride,
+                                        out->mat_ambient, am);
+                d3d8_frame_material_rgb(out, out->emissive_source,
+                                        vb + (size_t)v * stride,
+                                        out->mat_emissive, em);
                 for (c = 0; c < 3; c++)
-                    acc[c] = out->mat_emissive[c]
-                           + out->mat_ambient[c] * out->global_ambient[c];
+                    acc[c] = em[c] + am[c] * out->global_ambient[c];
                 for (li = 0; li < out->nlights; li++) {
                     const GpuLight *L = &out->light[li];
                     double tl[3], nl, atten = 1.0, d2;
@@ -1699,17 +1561,17 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                     if (nl > bestnl) bestnl = nl;
                     if (nl < 0.0) nl = 0.0;
                     for (c = 0; c < 3; c++)
-                        acc[c] += (out->mat_ambient[c]*L->ambient[c]
-                                   + out->mat_diffuse[c]*L->diffuse[c]*nl)
+                        acc[c] += (am[c]*L->ambient[c]
+                                   + dm[c]*L->diffuse[c]*nl)
                                   * atten;
                     /* WHICH light contributes most, and what each factor of
                        its contribution is. With N.L at 1.0 and the result
                        still at 0.08, the answer is in one of these three
                        numbers and nothing else. */
                     {
-                        double contrib = (0.299*out->mat_diffuse[0]*L->diffuse[0]
-                                        + 0.587*out->mat_diffuse[1]*L->diffuse[1]
-                                        + 0.114*out->mat_diffuse[2]*L->diffuse[2])
+                        double contrib = (0.299*dm[0]*L->diffuse[0]
+                                        + 0.587*dm[1]*L->diffuse[1]
+                                        + 0.114*dm[2]*L->diffuse[2])
                                         * nl * atten;
                         if (contrib > bestcontrib) {
                             bestcontrib = contrib;
@@ -1722,38 +1584,6 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                 }
                 for (c = 0; c < 3; c++) if (acc[c] > 1.0) acc[c] = 1.0;
                 litsum += 0.299*acc[0] + 0.587*acc[1] + 0.114*acc[2];
-                /* Again, with the UNNORMALISED world normal -- what D3D8 uses
-                   when NORMALIZENORMALS is false. Only the N.L term changes. */
-                {
-                    double rn[3], racc[3];
-                    int c2, li2;
-                    rn[0] = q[0]*out->world[0] + q[1]*out->world[4] + q[2]*out->world[8];
-                    rn[1] = q[0]*out->world[1] + q[1]*out->world[5] + q[2]*out->world[9];
-                    rn[2] = q[0]*out->world[2] + q[1]*out->world[6] + q[2]*out->world[10];
-                    for (c2 = 0; c2 < 3; c2++)
-                        racc[c2] = out->mat_emissive[c2]
-                                 + out->mat_ambient[c2]*out->global_ambient[c2];
-                    for (li2 = 0; li2 < out->nlights; li2++) {
-                        const GpuLight *L = &out->light[li2];
-                        double tl[3], nl, d2;
-                        if (L->type != 3) continue;      /* directional only */
-                        d2 = sqrt((double)L->direction[0]*L->direction[0] +
-                                  (double)L->direction[1]*L->direction[1] +
-                                  (double)L->direction[2]*L->direction[2]);
-                        if (d2 < 1e-6) continue;
-                        tl[0] = -L->direction[0]/d2;
-                        tl[1] = -L->direction[1]/d2;
-                        tl[2] = -L->direction[2]/d2;
-                        nl = rn[0]*tl[0] + rn[1]*tl[1] + rn[2]*tl[2];
-                        if (nl < 0.0) nl = 0.0;
-                        for (c2 = 0; c2 < 3; c2++)
-                            racc[c2] += out->mat_ambient[c2]*L->ambient[c2]
-                                      + out->mat_diffuse[c2]*L->diffuse[c2]*nl;
-                    }
-                    for (c2 = 0; c2 < 3; c2++)
-                        if (racc[c2] > 1.0) racc[c2] = 1.0;
-                    litraw += 0.299*racc[0] + 0.587*racc[1] + 0.114*racc[2];
-                }
                 litn++;
             }
         }
@@ -1844,6 +1674,11 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
          omax[2]-omin[2] < 0.01f) ? "  <- FLAT in one axis" : "",
         behind ? "  (some behind the camera)" : "",
         nearw ? "  (some on the near plane)" : "");
+    if (out->uv_offset >= 0)
+        fprintf(stderr, "           uv %.3f..%.3f x %.3f..%.3f, "
+                        "stage0 transform 0x%x mip %d\n",
+                uvmin[0], uvmax[0], uvmin[1], uvmax[1],
+                out->texture_transform, out->texture_mip);
 }
 
 /*
@@ -1874,7 +1709,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
      * shader handle cannot be honoured here and must not be silently drawn as
      * if it were fixed-function.
      */
-    if (!programmable) fvf_note(fvf);
+    if (!programmable) d3d8_fvf_note(fvf);
     if (!programmable && !d3d8_fvf_layout(fvf, &vl)) {
         fprintf(stderr, "d3d8: FVF 0x%08x has no position.\n", fvf);
         g_refused_fvf++;
@@ -1967,12 +1802,14 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
         out->pretransformed = 0;
         out->programmable = 1;
         out->color_offset = offsetof(D3D8VSOutput, diffuse);
+        out->specular_offset = -1;
         out->uv_offset = offsetof(D3D8VSOutput, texcoord);
         out->normal_offset = -1;
     } else {
         out->pos_offset = vl.pos_offset;
         out->pretransformed = vl.pretransformed;
         out->color_offset = vl.color_offset;
+        out->specular_offset = vl.specular_offset;
         out->uv_offset = vl.uv_offset;
         out->normal_offset = vl.normal_offset;
     }
@@ -1986,7 +1823,17 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
      * decision.
      */
     d3d8_combine_transform(s, out->mvp);
-    if (!programmable) fill_lighting(s, out);
+    if (!programmable) {
+        fill_lighting(s, out);
+        if (out->diffuse_source > 2 || out->ambient_source > 2
+                || out->emissive_source > 2) {
+            fprintf(stderr, "d3d8: material color source %u/%u/%u is not "
+                            "MATERIAL, COLOR1, or COLOR2; draw refused.\n",
+                    out->diffuse_source, out->ambient_source,
+                    out->emissive_source);
+            return 0;
+        }
+    }
 
     /*
      * How many stages the draw actually ASKED for.
@@ -2012,8 +1859,7 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
         }
     }
 
-    /* Texture stage 0 only. A second stage is a combiner this shader does not
-       have, and it is reported rather than dropped. */
+    /* Texture stage 0. Stage 1 is lowered separately below. */
     {
         uint32_t op = s->stage[0][D3DTSS_COLOROP].set
                           ? s->stage[0][D3DTSS_COLOROP].value : D3DTOP_MODULATE;
@@ -2102,6 +1948,26 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                 d3d8_worldview_transform(s, out->worldview);
         }
         {
+            static const float identity[16] = {
+                1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1
+            };
+            uint32_t ttf = s->stage[0][D3DTSS_TEXTURETRANSFORMFLAGS].set
+                ? s->stage[0][D3DTSS_TEXTURETRANSFORMFLAGS].value : 0;
+            uint32_t count = ttf & 0xffu;
+            const float *matrix;
+            if (count > 4u || (ttf & ~0x1ffu) != 0u) {
+                fprintf(stderr, "d3d8: stage 0 asks "
+                                "TEXTURETRANSFORMFLAGS 0x%x; COUNT1..4 and "
+                                "PROJECTED are implemented. Draw refused.\n",
+                        ttf);
+                return 0;
+            }
+            out->texture_transform = ttf;
+            matrix = s->transform_set[D3DTS_TEXTURE0]
+                   ? s->transform[D3DTS_TEXTURE0].m : identity;
+            memcpy(out->texture_matrix, matrix, sizeof out->texture_matrix);
+        }
+        {
             /* D3DTA_DIFFUSE 0, D3DTA_CURRENT 1, D3DTA_TEXTURE 2,
                D3DTA_TFACTOR 3. The masks above 0xF are modifiers
                (COMPLEMENT/ALPHAREPLICATE) and are still not read -- an
@@ -2124,10 +1990,13 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                     g_arg_first[2] = b1; g_arg_first[3] = b2;
                 }
             }
-            out->color_arg1 = ta_of(a1, "COLORARG1");
-            out->color_arg2 = ta_of(a2, "COLORARG2");
-            out->alpha_arg1 = ta_of(b1, "ALPHAARG1");
-            out->alpha_arg2 = ta_of(b2, "ALPHAARG2");
+            out->color_arg1 = d3d8_texture_arg(a1, "COLORARG1");
+            out->color_arg2 = d3d8_texture_arg(a2, "COLORARG2");
+            out->alpha_arg1 = d3d8_texture_arg(b1, "ALPHAARG1");
+            out->alpha_arg2 = d3d8_texture_arg(b2, "ALPHAARG2");
+            if (out->color_arg1 < 0 || out->color_arg2 < 0
+                    || out->alpha_arg1 < 0 || out->alpha_arg2 < 0)
+                return 0;
             {
                 uint32_t ao = s->stage[0][D3DTSS_ALPHAOP].set
                     ? s->stage[0][D3DTSS_ALPHAOP].value : D3DTOP_MODULATE;
@@ -2178,7 +2047,31 @@ int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
         /* D3DTADDRESS_CLAMP is 3; D3DTEXF_POINT is 1. */
         out->texture_clamp = s->stage[0][D3DTSS_ADDRESSU].value == 3;
         out->texture_point = s->stage[0][D3DTSS_MAGFILTER].value == 1;
+        out->texture_min_filter = s->stage[0][D3DTSS_MINFILTER].set
+                                ? (int)s->stage[0][D3DTSS_MINFILTER].value : 1;
+        out->texture_max_anisotropy =
+            s->stage[0][D3DTSS_MAXANISOTROPY].set
+                ? (int)s->stage[0][D3DTSS_MAXANISOTROPY].value : 1;
+        out->texture_mip = s->stage[0][D3DTSS_MIPFILTER].set
+                         ? (int)s->stage[0][D3DTSS_MIPFILTER].value : 0;
+        if (s->stage[0][D3DTSS_MIPMAPLODBIAS].set) {
+            uint32_t bits = s->stage[0][D3DTSS_MIPMAPLODBIAS].value;
+            memcpy(&out->texture_lod_bias, &bits, sizeof bits);
+        }
+        if (out->texture_mip < 0 || out->texture_mip > 2) {
+            fprintf(stderr, "d3d8: stage 0 MIPFILTER %d is not NONE, POINT, "
+                            "or LINEAR; draw refused.\n", out->texture_mip);
+            return 0;
+        }
+        if (out->texture_min_filter < 1 || out->texture_min_filter > 3) {
+            fprintf(stderr, "d3d8: stage 0 MINFILTER %d is not POINT, LINEAR, "
+                            "or ANISOTROPIC; draw refused.\n",
+                    out->texture_min_filter);
+            return 0;
+        }
     }
+
+    if (!d3d8_texture_stage1_lower(s, req->texture1, out)) return 0;
 
     out->blend_enable = rs(s, D3DRS_ALPHABLENDENABLE, 0) != 0;
     srcb = rs(s, D3DRS_SRCBLEND, 2);          /* D3DBLEND_ONE */
@@ -2306,7 +2199,10 @@ int d3d8_drawcall_reads_state(uint32_t which)
         D3DRS_ZENABLE, D3DRS_ZWRITEENABLE, D3DRS_ALPHATESTENABLE,
         D3DRS_SRCBLEND, D3DRS_DESTBLEND, D3DRS_CULLMODE, D3DRS_ZFUNC,
         D3DRS_ALPHAREF, D3DRS_ALPHAFUNC, D3DRS_ALPHABLENDENABLE,
-        D3DRS_LIGHTING, D3DRS_AMBIENT, D3DRS_COLORVERTEX, D3DRS_TEXTUREFACTOR
+        D3DRS_LIGHTING, D3DRS_AMBIENT, D3DRS_COLORVERTEX,
+        D3DRS_NORMALIZENORMALS, D3DRS_DIFFUSEMATERIALSOURCE,
+        D3DRS_AMBIENTMATERIALSOURCE, D3DRS_EMISSIVEMATERIALSOURCE,
+        D3DRS_TEXTUREFACTOR
     };
     unsigned i;
     for (i = 0; i < sizeof READ / sizeof READ[0]; i++)
@@ -2333,7 +2229,7 @@ void d3d8_drawcall_report(void)
                g_ld_done ? "." :
                " -- so this run's dump says NOTHING about the lighting.");
     light_survey_report();
-    fvf_report();
+    d3d8_fvf_report();
     printf("        light table vs SetLight: %lu enabled-light read(s) "
            "compared, %lu differ from what SetLight last wrote, %lu arrive "
            "BLACK at a draw although SetLight wrote a colour, %lu were never "
@@ -2362,8 +2258,8 @@ void d3d8_drawcall_report(void)
                "cannot express (a real vertex shader, or no position)\n",
                g_refused_fvf);
     printf("        %lu draw(s) enabled a texture stage beyond stage 0 (up to "
-           "%d extra), and this backend reads stage 0 only -- those draws are "
-           "MISSING a combiner stage, not missing entirely\n",
+           "%d extra); stage 1 is lowered, and any enabled stage 2+ is "
+           "REFUSED rather than omitted\n",
            g_multistage_draws, g_multistage_max);
     printf("        texture stage: %lu modulate, %lu select-texture, %lu "
            "select-arg2, %lu add (environment map), %lu other-op-as-modulate, "

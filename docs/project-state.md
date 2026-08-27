@@ -81,12 +81,15 @@ observed fixed-function combiner behavior; C173 verifies the reached VS 1.1
 skinning program; and the renderer frontier records zero refused draws on the
 measured menu-to-gameplay-to-menu route. C273 proves that a frame without a game
 colour clear initializes every untouched logical-backbuffer pixel to opaque
-black instead of exposing recycled Metal/Vulkan attachment tiles.
+black instead of exposing recycled Metal/Vulkan attachment tiles. Issues #128
+and #129 add 24-bit R8G8B8 actor textures and the Dead Zone's animated,
+mip-filtered two-stage water material; the latter falsifies C154's earlier
+single-stage generalization.
 
 Gap: zero refusals proves reached API coverage, not pixel faithfulness.
 Non-zero pixel shaders, unobserved combiner and vertex-shader forms, engine
-off-screen render targets, and incomplete specular, spot-cone, material-source,
-and general fog behavior remain fail-loud or unverified. The D3D8 compatibility
+off-screen render targets, and incomplete specular, spot-cone, and general fog
+behavior remain fail-loud or unverified. The D3D8 compatibility
 seam also remains beneath most engine rendering.
 
 ### S004 — native Alchemy 2D/UI rendering: partial, current focus
