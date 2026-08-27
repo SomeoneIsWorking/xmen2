@@ -22,8 +22,8 @@ def reject(source, needle, where):
         raise WiringError(f"{where} still contains forbidden {needle!r}")
 
 
-def audit(conversation, player, behaved, event, dialogue, audio_policy,
-          dsound, probe, cmake):
+def audit(conversation, player, context, behaved, event, dialogue,
+          script_audio, dsound, probe, cmake):
     update_begin = conversation.find("void x2_override_0045d1a0")
     begin = conversation.find("Accept advances once", update_begin)
     end = conversation.find("0x0045d3bf", begin)
@@ -52,15 +52,17 @@ def audit(conversation, player, behaved, event, dialogue, audio_policy,
             "whole-player dialogue suppression scope")
     require(player, "cutscene_dialogue_skip_end(",
             "whole-player dialogue suppression scope")
-    require(player, "audio_play_suppression_begin(",
-            "whole-player audio suppression scope")
-    require(player, "audio_play_suppression_end(",
-            "whole-player audio suppression scope")
+    require(player, "cutscene_player_silences_current_context(",
+            "cutscene-owned audio predicate")
     require(player, "CLOCK_CONTROL_DEADLINE", "authored control release")
     require(player, "same_guest_time", "one-step clock invariant")
     require(player, "same_frame", "one-step frame invariant")
 
+    require(context, "x2_override_004d8b30", "retail BehavEd context runner")
+    require(context, "behaved_context_run(", "native command graph player")
     require(behaved, "x2_override_004d9640", "retail BehavEd timed pump")
+    require(behaved, "behaved_context_run(",
+            "scheduler-to-native-context boundary")
     require(behaved, "behaved_player_step_context(",
             "ported context runner seam")
     require(behaved, "behaved_player_next_owned(",
@@ -94,27 +96,31 @@ def audit(conversation, player, behaved, event, dialogue, audio_policy,
     reject(dialogue, "guest_clock", "cutscene dialogue policy")
     reject(dialogue, "world", "cutscene dialogue policy")
 
-    require(audio_policy, "audio_play_policy_allow_start(",
-            "audio start policy")
-    require(audio_policy, "suppressed_starts++",
-            "suppressed audio-start counter")
-    require(dsound, "if (audio_play_policy_allow_start())",
-            "DirectSound playback boundary")
+    require(script_audio, "x2_override_004a7130",
+            "BehavEd sound command seam")
+    require(script_audio, "cutscene_player_silences_current_context(&context)",
+            "owned-context sound predicate")
+    require(script_audio, "fn_XMen2_004a7130(cpu)",
+            "ordinary retail sound path")
+    require(script_audio, "g_silent_commands",
+            "silent sound-command counter")
+    reject(dsound, "cutscene_", "DirectSound backend")
 
     require(probe, "cutscene_player_snapshot(", "live probe")
     require(probe, "cutscene_dialogue_snapshot(",
             "silent-dialogue live probe")
-    require(probe, "audio_play_policy_snapshot(",
+    require(probe, "cutscene_script_audio_snapshot(",
             "silent-audio live probe")
     reject(probe, "conversation_cutscene_skip", "live probe")
     for source in (
         "src/native/behaved_player.c",
+        "src/native/behaved_context.c",
         "src/native/cutscene_event_player.c",
         "src/native/conversation_player.c",
         "src/native/cutscene_dialogue.c",
         "src/native/cutscene_player_policy.c",
         "src/native/cutscene_player.c",
-        "src/audio/audio_play_policy.c",
+        "src/native/cutscene_script_audio.c",
     ):
         require(cmake, source, "x2native sources")
     reject(cmake, "src/native/conversation_cutscene_skip.c",
@@ -127,10 +133,11 @@ def production_sources():
     return (
         (ROOT / "src/native/conversation.c").read_text(),
         (ROOT / "src/native/cutscene_player.c").read_text(),
+        (ROOT / "src/native/behaved_context.c").read_text(),
         (ROOT / "src/native/behaved_player.c").read_text(),
         (ROOT / "src/native/cutscene_event_player.c").read_text(),
         (ROOT / "src/native/cutscene_dialogue.c").read_text(),
-        (ROOT / "src/audio/audio_play_policy.c").read_text(),
+        (ROOT / "src/native/cutscene_script_audio.c").read_text(),
         (ROOT / "src/native/dsound.c").read_text(),
         (ROOT / "src/native/cutscene_skip_probe.c").read_text(),
         (ROOT / "CMakeLists.txt").read_text(),
@@ -150,24 +157,26 @@ def selftest():
         (1, "cutscene_dialogue_advance("),
         (1, "cutscene_dialogue_skip_begin("),
         (1, "cutscene_dialogue_skip_end("),
-        (1, "audio_play_suppression_begin("),
-        (1, "audio_play_suppression_end("),
+        (1, "cutscene_player_silences_current_context("),
         (1, "same_guest_time"),
-        (2, "x2_override_004d9640"),
-        (2, "behaved_player_step_context("),
-        (3, "x2_override_004b2d70"),
-        (3, "cutscene_event_player_window_claim_new("),
-        (4, "x2_override_00458700"),
-        (4, "x2_override_0045a170"),
-        (4, "fn_XMen2_00458700(cpu)"),
-        (5, "audio_play_policy_allow_start("),
-        (6, "if (audio_play_policy_allow_start())"),
-        (7, "cutscene_player_snapshot("),
-        (7, "cutscene_dialogue_snapshot("),
-        (7, "audio_play_policy_snapshot("),
-        (8, "src/native/cutscene_player.c"),
-        (8, "src/native/cutscene_dialogue.c"),
-        (8, "src/audio/audio_play_policy.c"),
+        (2, "x2_override_004d8b30"),
+        (2, "behaved_context_run("),
+        (3, "x2_override_004d9640"),
+        (3, "behaved_player_step_context("),
+        (4, "x2_override_004b2d70"),
+        (4, "cutscene_event_player_window_claim_new("),
+        (5, "x2_override_00458700"),
+        (5, "x2_override_0045a170"),
+        (5, "fn_XMen2_00458700(cpu)"),
+        (6, "x2_override_004a7130"),
+        (6, "cutscene_player_silences_current_context(&context)"),
+        (8, "cutscene_player_snapshot("),
+        (8, "cutscene_dialogue_snapshot("),
+        (8, "cutscene_script_audio_snapshot("),
+        (9, "src/native/cutscene_player.c"),
+        (9, "src/native/behaved_context.c"),
+        (9, "src/native/cutscene_dialogue.c"),
+        (9, "src/native/cutscene_script_audio.c"),
     )
     for index, needle in discriminators:
         broken = list(current)
@@ -182,9 +191,10 @@ def selftest():
     forbidden = (
         (0, "action = 20u"),
         (1, "0x004d6a00"),
-        (2, "0x004d9130"),
-        (7, "conversation_cutscene_skip"),
-        (8, "src/native/conversation_skip_policy.c"),
+        (3, "0x004d9130"),
+        (7, "cutscene_"),
+        (8, "conversation_cutscene_skip"),
+        (9, "src/native/conversation_skip_policy.c"),
     )
     for index, needle in forbidden:
         broken = list(current)

@@ -51,7 +51,7 @@ below name cross-directory seams and the entry points used to extend them.
 |---|---|---|---|---|
 | Title runner | Title-specific asset-viewer composition | `src/app/` | `x2run.c` | — |
 | Movie audio | Streaming movie voice and DirectSound-facing audio sink | `src/audio/` | `movie_audio.c` | [FMV](RE/fmv.md) |
-| Audio start policy | Own nested suppression of new DirectSound voices during synchronous cutscene completion | `src/audio/audio_play_policy.c`, `src/native/dsound.c` | `audio_play_policy_allow_start` | [Cutscene player](RE/cutscene_player.md) |
+| Gameplay cutscene player | Own BehavEd command/scheduler and timed-event steps through authored control release; silence exact dialogue and script-audio presenters only during synchronous completion | `src/native/cutscene_player.c`, `src/native/behaved_context.c`, `src/native/behaved_player.c`, `src/native/cutscene_event_player.c`, `src/native/cutscene_dialogue.c`, `src/native/cutscene_script_audio.c` | `x2_cutscene_player_finish`, `behaved_context_run` | [Cutscene player](RE/cutscene_player.md) |
 | Persistent configuration | Settings schema, storage, boot mode, and controller assignments | `src/config/` | `settings.c`, `settings_store.c` | [Co-op participation](RE/co_op_participation.md) |
 | Direct3D 8 host | COM ABI, resources, state, draw lowering, fixed/programmable vertex processing, and renderer diagnostics | `src/d3d8/` | `d3d8_d3d8.c`, `d3d8_device.c`, `d3d8_drawcall.c` | [Shadows](RE/shadows.md) |
 | Host GPU | SDL_GPU device, deterministic frame initialization, uploads, draws, capture, composition, frame submission, prompt glyphs, and shadow pass | `src/gpu/` | `gpu_device.c`, `gpu_draw.c` | [Text and prompts](RE/text.md), [Shadows](RE/shadows.md) |

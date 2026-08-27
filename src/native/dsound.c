@@ -15,7 +15,6 @@
  * Every interface method not implemented aborts by its published name.
  */
 #include "dsound.h"
-#include "audio_play_policy.h"
 #include "guest_clock.h"
 #include "movie_audio.h"
 #include "x86rt.h"
@@ -552,11 +551,9 @@ static void b_Lock(CPU *C)
 static void b_Play(CPU *C)
 {
     DSBuffer *b = this_buffer(C);
-    if (audio_play_policy_allow_start()) {
-        audio_lock(); b->playing = 1;
-        b->looping = (A(3) & DSBPLAY_LOOPING) != 0; b->plays++;
-        g_buffer_plays++; audio_unlock();
-    }
+    audio_lock(); b->playing = 1;
+    b->looping = (A(3) & DSBPLAY_LOOPING) != 0; b->plays++;
+    g_buffer_plays++; audio_unlock();
     ret_com(C, DS_OK, 3);
 }
 

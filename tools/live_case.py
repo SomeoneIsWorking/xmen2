@@ -316,15 +316,16 @@ def dialogue_skip_counts(
     return tuple(int(value) for value in match.groups())
 
 
-def audio_start_counts(report: str) -> tuple[int, int, int] | None:
+def script_sound_counts(report: str) -> tuple[int, int, int] | None:
     match = re.search(
-        r"audio starts: (\d+) ordinary, (\d+) suppressed during skip; "
-        r"suppression depth (\d+)",
+        r"script sound commands: (\d+) ordinary, (\d+) silent; "
+        r"last context 0x([0-9a-fA-F]+)",
         report,
     )
     if not match:
         return None
-    return tuple(int(value) for value in match.groups())
+    ordinary, silent, context = match.groups()
+    return int(ordinary), int(silent), int(context, 16)
 
 
 def case_cutscene_skip(case: Case) -> None:
@@ -383,11 +384,12 @@ def case_cutscene_skip(case: Case) -> None:
                dialogue is not None and dialogue[2] > 0 and
                dialogue[3] > 0 and dialogue[4] > 0 and dialogue[5] == 0,
                "dialogue counters %s" % (dialogue,))
-    audio = audio_start_counts(report)
-    case.check("skip audio scope retired while ordinary playback remained "
-               "observable",
-               audio is not None and audio[0] > 0 and audio[2] == 0,
-               "audio counters %s" % (audio,))
+    sounds = script_sound_counts(report)
+    case.check("both authored sound commands were consumed silently by their "
+               "owned BehavEd context",
+               sounds is not None and sounds[0] == 0 and sounds[1] == 2 and
+               sounds[2] != 0,
+               "script sound counters %s" % (sounds,))
     case.shot("after-skip")
 
 
@@ -457,11 +459,12 @@ def case_cutscene_skip_early(case: Case) -> None:
                dialogue is not None and dialogue[3] > 0 and
                dialogue[4] > 0 and dialogue[5] == 0,
                "dialogue counters %s" % (dialogue,))
-    audio = audio_start_counts(report)
-    case.check("camera-only skip audio scope retired while ordinary playback "
-               "remained observable",
-               audio is not None and audio[0] > 0 and audio[2] == 0,
-               "audio counters %s" % (audio,))
+    sounds = script_sound_counts(report)
+    case.check("camera-only skip consumed both authored sound commands "
+               "silently",
+               sounds is not None and sounds[0] == 0 and sounds[1] == 2 and
+               sounds[2] != 0,
+               "script sound counters %s" % (sounds,))
     started = sum('conversation start "' in line
                   for line in case.log_text().splitlines())
     case.check("the sequence's remaining records were consumed, not left "

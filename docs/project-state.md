@@ -61,8 +61,10 @@ Observed subset: `x2native` maps and initializes the original PE images, runs
 their locally generated C bodies in a 64-bit native host, supplies the reached
 Win32/CRT/DirectInput/DirectSound/D3D8 boundaries, and has traversed menus,
 movies, level load, gameplay, death, and return-to-menu paths without a hybrid
-machine-code fallback. Callback cleanup and module-aware override routing are
-checked by C178 and C209.
+machine-code fallback. The native BehavEd context/scheduler and title timed-event
+players complete the verified tutorial control-lock cutscene synchronously,
+silently, and without advancing guest frame/time (C274). Callback cleanup and
+module-aware override routing are checked by C178 and C209.
 
 Gap: coverage is not completion. Unreached imports remain fail-loud poison
 thunks; guest exception delivery, LAN networking, and optional COM/system

@@ -30,10 +30,10 @@ therefore still allowed line audio to start.
 the current retail handle and scopes both exact presenters across the entire
 synchronous player invocation. Ordinary playback retains and super-calls both
 generated bodies; skip preserves response/script application without starting
-either kind of voice. A nested `audio_play_policy` scope also blocks every new
-DirectSound buffer start reached from the synchronous player, covering authored
-cutscene audio outside the two conversation presenters without muting the
-backend or stopping unrelated existing voices.
+either kind of voice. The remaining tutorial audio is two BehavEd `sound`
+commands; `cutscene_script_audio` suppresses their exact `004a7130` handler only
+when `004d8b30` publishes an owned current context. DirectSound remains
+unchanged, so unrelated ambient/gameplay playback is outside cutscene policy.
 
 ## Verification
 
@@ -41,10 +41,10 @@ backend or stopping unrelated existing voices.
 bodies, then proves skip cancellation and suppression without either body. The
 windowless, dummy-audio, unbounded/unpaced live cases pass 11/11 and 10/10: the
 visible-record case stops one active voice and suppresses five response plus
-four line starts; the early case suppresses five plus five. Both block two
-additional DirectSound starts, record zero leaked dialogue presentations and a
-balanced audio scope, and preserve guest frame/time.
+four line starts; the early case suppresses five plus five. Both consume two
+authored sound commands silently, record zero leaked dialogue presentations,
+and preserve guest frame/time.
 Claim C274 records the production-path evidence and its falsifier.
 
 ### Resolution (2026-08-27)
-The cutscene player now stops the active dialogue, suppresses RE-grounded response/line presenters, and scopes the DirectSound Play boundary across synchronous completion. Silent unbounded live gates pass 11/11 and 10/10 with two additional audio starts blocked per run, zero dialogue leaks, and unchanged frame/time (C274).
+The cutscene player now stops the active dialogue and suppresses the RE-grounded response/line presenters plus the exact BehavEd sound handler for owned synchronous contexts. Silent unbounded live gates pass 11/11 and 10/10 with both authored sound commands silent, zero dialogue leaks, and unchanged frame/time (C274).
