@@ -2,6 +2,7 @@
 #include "boot_player_selection.h"
 #include "autosave_runtime.h"
 #include "continue_policy.h"
+#include "exact_save_load.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "save_catalog.h"
@@ -16,15 +17,8 @@
 
 enum {
     EXE_PREFERRED = 0x00400000u,
-    FN_SAVE_MANAGER = 0x000b2880u,
-    FN_STORAGE = 0x0015e9a0u,
-    FN_SET_MODE = 0x000aeb80u,
-    FN_SET_DEVICE = 0x000aece0u,
-    FN_CHOOSE_FILE = 0x000ae850u,
     FN_SUCCESS_CALLBACK = 0x0009f140u,
     FN_MAIN_MENU_HIDE = 0x001bb920u,
-    FN_READ_HEADER = 0x0015f580u,
-    FN_READ_LEAF = 0x0015fcd0u,
     FN_CONTINUE_CALLBACK = 0x001f2b70u,
     FN_INTERN_POOL = 0x00202200u,
     FN_INTERN = 0x0001a460u,
@@ -32,12 +26,8 @@ enum {
     FN_SET_VISIBLE = 0x001ade70u,
     FN_SET_TEXT = 0x001adcf0u,
     FN_LOCALIZE = 0x00229bf0u,
-    SAVE_MODE_LOAD = 3u,
-    SAVE_DEVICE_PC = 0u,
     MANAGER_MODE = 0xd4u,
     MANAGER_STATE = 0xd8u,
-    MANAGER_METADATA = 0xe4u,
-    METADATA_STRIDE = 0xa8u,
     ITEM_COMMAND = 0x24u,
     DANGER_COMPARATOR = 0x002e6628u,
     ONLINE_COMPARATOR = 0x002e662cu,
@@ -67,18 +57,17 @@ static uint32_t g_continue_command;
 static uint32_t g_original_command[X2_MAIN_MENU_ROWS];
 static int g_original_commands_ready;
 static char g_latest_leaf[X2_SAVE_LEAF_CAPACITY];
-static uint32_t g_latest_leaf_guest;
 static int g_strings_ready;
 static int g_latest_ready;
-static int g_leaf_redirect_pending;
 static int g_continue_command_armed;
 static int g_boot_load_pending;
 static X2ContinueTransaction g_transaction;
 
 void fn_XMen2_005c9260(CPU *C);
 void fn_XMen2_005f2b70(CPU *C);
-void fn_XMen2_0055ff00(CPU *C);
 void fn_XMen2_004b1280(CPU *C);
+
+static void continue_load_completed(int succeeded);
 
 static uint32_t exe_base(void)
 {
@@ -106,11 +95,8 @@ static int prepare_strings(void)
 {
     unsigned i;
     if (g_strings_ready) return 1;
-    if (!g_latest_leaf_guest)
-        g_latest_leaf_guest = guest_malloc(X2_SAVE_LEAF_CAPACITY);
     for (i = 0; i <= X2_MENU_TEXT_PLAY_ONLINE; i++)
         if (!g_text[i]) g_text[i] = copy_guest_string(TEXT[i]);
-    if (!g_latest_leaf_guest) return 0;
     for (i = 0; i <= X2_MENU_TEXT_PLAY_ONLINE; i++)
         if (!g_text[i]) return 0;
     g_strings_ready = 1;
@@ -288,51 +274,15 @@ void x2_override_005c9260(CPU *C)
 
 static int start_latest_load(const CPU *source)
 {
-    CPU call;
-    uint32_t manager;
-    uint32_t storage;
-    uint32_t entry;
     unsigned slot;
 
     if (!g_latest_ready || !prepare_strings()
         || !x2_continue_leaf_slot(g_latest_leaf, &slot)) return 0;
-    manager = guest_call0(source, g_exe + FN_SAVE_MANAGER);
-    storage = guest_call0(source, g_exe + FN_STORAGE);
-    if (!manager || !storage || RD32(manager + MANAGER_MODE) != 0u) return 0;
-    memcpy(guest_memory_pointer(g_latest_leaf_guest), g_latest_leaf,
-           strlen(g_latest_leaf) + 1u);
-
-    call = *source;
-    call.esp -= 4u; WR32(call.esp, SAVE_MODE_LOAD);
-    call.ecx = manager;
-    x86_guest_call_args(&call, g_exe + FN_SET_MODE, 4u);
-
-    entry = manager + MANAGER_METADATA + slot * METADATA_STRIDE;
-    memset(guest_memory_pointer(entry), 0, METADATA_STRIDE);
-    call = *source;
-    call.esp -= 4u; WR32(call.esp, entry);
-    call.esp -= 4u; WR32(call.esp, g_latest_leaf_guest);
-    call.esp -= 4u; WR32(call.esp, SAVE_DEVICE_PC);
-    call.ecx = storage;
-    x86_guest_call_args(&call, g_exe + FN_READ_HEADER, 12u);
-
-    call = *source;
-    call.esp -= 4u; WR32(call.esp, SAVE_DEVICE_PC);
-    call.ecx = manager;
-    x86_guest_call_args(&call, g_exe + FN_SET_DEVICE, 4u);
-    call = *source;
-    call.esp -= 4u; WR32(call.esp, slot);
-    call.ecx = manager;
-    x86_guest_call_args(&call, g_exe + FN_CHOOSE_FILE, 4u);
-    if (RD32(manager + MANAGER_MODE) != SAVE_MODE_LOAD
-        || RD32(manager + MANAGER_STATE) != 0x1cu) {
-        fprintf(stderr, "continue: retail manager refused mode3/state1c "
-                        "dispatch (mode=%u state=%u); leaf redirect not armed\n",
-                RD32(manager + MANAGER_MODE), RD32(manager + MANAGER_STATE));
+    if (!x2_exact_save_load_start(source, g_exe, g_latest_leaf, slot,
+                                  X2_EXACT_SAVE_LOAD_CONTINUE,
+                                  continue_load_completed))
         return 0;
-    }
     x2_continue_transaction_begin(&g_transaction);
-    g_leaf_redirect_pending = 1;
     return 1;
 }
 
@@ -366,20 +316,9 @@ void x2_override_005f2b70(CPU *C)
     C->esp += 4u;
 }
 
-void x2_override_0055ff00(CPU *C)
+static void continue_load_completed(int succeeded)
 {
-    int succeeded;
-
-    if (!g_leaf_redirect_pending) {
-        fn_XMen2_0055ff00(C);
-        return;
-    }
-    g_leaf_redirect_pending = 0;
-    WR32(C->esp + 8u, g_latest_leaf_guest);
-    x86_dispatch(C, g_exe + FN_READ_LEAF);
-    succeeded = (C->eax & 0xffu) != 0u;
-    x2_continue_transaction_reader_result(
-        &g_transaction, succeeded);
+    x2_continue_transaction_reader_result(&g_transaction, succeeded);
 }
 
 void x2_override_004b1280(CPU *C)
@@ -416,8 +355,6 @@ static void x2_continue_register(void)
                           x2_override_005c9260);
     x86_register_override("XMen2.exe", 0x005f2b70u,
                           x2_override_005f2b70);
-    x86_register_override("XMen2.exe", 0x0055ff00u,
-                          x2_override_0055ff00);
     x86_register_override("XMen2.exe", 0x004b1280u,
                           x2_override_004b1280);
 }

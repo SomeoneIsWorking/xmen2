@@ -1,4 +1,4 @@
-/* Logical D3D backbuffer -> physical SDL swapchain presentation. */
+/* Logical D3D colour/depth targets -> physical SDL presentation. */
 #include "gpu_present.h"
 
 #include "aspect_fit.h"
@@ -10,17 +10,97 @@
 
 static SDL_GPUTexture *g_scene;
 static uint32_t g_scene_width, g_scene_height;
-static uint32_t g_texture_width, g_texture_height;
+static SDL_GPUTexture *g_depth;
+static SDL_GPUTextureFormat g_depth_format = SDL_GPU_TEXTUREFORMAT_INVALID;
+static uint32_t g_depth_width, g_depth_height;
 
-int gpu_present_set_scene_size(uint32_t width, uint32_t height)
+static SDL_GPUTexture *make_target(SDL_GPUDevice *device, uint32_t width,
+                                   uint32_t height,
+                                   SDL_GPUTextureFormat format,
+                                   SDL_GPUTextureUsageFlags usage)
 {
+    SDL_GPUTextureCreateInfo info;
+
+    memset(&info, 0, sizeof info);
+    info.type = SDL_GPU_TEXTURETYPE_2D;
+    info.format = format;
+    info.usage = usage;
+    info.width = width;
+    info.height = height;
+    info.layer_count_or_depth = 1;
+    info.num_levels = 1;
+    return SDL_CreateGPUTexture(device, &info);
+}
+
+int gpu_present_resize_targets(SDL_GPUDevice *device,
+                               uint32_t width, uint32_t height,
+                               uint32_t depth_format_value)
+{
+    SDL_GPUTexture *scene_replacement = NULL;
+    SDL_GPUTexture *depth_replacement = NULL;
+    SDL_GPUTextureFormat depth_format =
+        (SDL_GPUTextureFormat)depth_format_value;
+    int replace_scene, replace_depth;
+
+    if (!device) {
+        fprintf(stderr, "gpu present: refusing to resize without a GPU "
+                        "device.\n");
+        return 0;
+    }
     if (!width || !height) {
         fprintf(stderr, "gpu present: refusing a zero-sized logical D3D "
                         "backbuffer (%ux%u).\n", width, height);
         return 0;
     }
-    g_scene_width = width;
-    g_scene_height = height;
+    replace_scene = !g_scene || g_scene_width != width ||
+                    g_scene_height != height;
+    replace_depth = depth_format != SDL_GPU_TEXTUREFORMAT_INVALID &&
+                    (!g_depth || g_depth_width != width ||
+                     g_depth_height != height ||
+                     g_depth_format != depth_format);
+    if (!replace_scene && !replace_depth) return 1;
+
+    if (replace_scene) {
+        scene_replacement = make_target(
+            device, width, height, SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM,
+            SDL_GPU_TEXTUREUSAGE_COLOR_TARGET |
+                SDL_GPU_TEXTUREUSAGE_SAMPLER);
+    }
+    if (replace_scene && !scene_replacement) {
+        fprintf(stderr, "gpu present: could not create a replacement logical "
+                        "%ux%u D3D backbuffer: %s. Keeping the existing "
+                        "%ux%u scene.\n", width, height, SDL_GetError(),
+                g_scene_width, g_scene_height);
+        return 0;
+    }
+    if (replace_depth)
+        depth_replacement = make_target(
+            device, width, height, depth_format,
+            SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
+    if (replace_depth && !depth_replacement) {
+        if (scene_replacement)
+            SDL_ReleaseGPUTexture(device, scene_replacement);
+        fprintf(stderr, "gpu present: could not create a replacement logical "
+                        "%ux%u depth target: %s. Keeping the existing colour "
+                        "and depth targets.\n", width, height, SDL_GetError());
+        return 0;
+    }
+
+    if (scene_replacement) {
+        if (g_scene) SDL_ReleaseGPUTexture(device, g_scene);
+        g_scene = scene_replacement;
+        g_scene_width = width;
+        g_scene_height = height;
+    }
+    if (depth_replacement) {
+        if (g_depth) SDL_ReleaseGPUTexture(device, g_depth);
+        g_depth = depth_replacement;
+        g_depth_width = width;
+        g_depth_height = height;
+        g_depth_format = depth_format;
+    }
+    printf("gpu present: logical D3D backbuffer is %ux%u; the window is "
+           "a separate aspect-fitted output.\n", width, height);
     return 1;
 }
 
@@ -32,42 +112,41 @@ int gpu_present_is_configured(void)
 SDL_GPUTexture *gpu_present_scene(SDL_GPUDevice *device,
                                   uint32_t *width, uint32_t *height)
 {
-    SDL_GPUTextureCreateInfo info;
-
-    if (!device || !gpu_present_is_configured()) return NULL;
-    if (g_scene && (g_texture_width != g_scene_width
-                    || g_texture_height != g_scene_height)) {
-        SDL_ReleaseGPUTexture(device, g_scene);
-        g_scene = NULL;
-        g_texture_width = g_texture_height = 0;
-    }
-    if (!g_scene) {
-        memset(&info, 0, sizeof info);
-        info.type = SDL_GPU_TEXTURETYPE_2D;
-        info.format = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
-        info.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET
-                     | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-        info.width = g_scene_width;
-        info.height = g_scene_height;
-        info.layer_count_or_depth = 1;
-        info.num_levels = 1;
-        g_scene = SDL_CreateGPUTexture(device, &info);
-        if (!g_scene) {
-            fprintf(stderr, "gpu present: could not create the logical %ux%u "
-                            "D3D backbuffer: %s. The game frame will not be "
-                            "drawn directly into the wrong-sized window.\n",
-                    g_scene_width, g_scene_height, SDL_GetError());
-            return NULL;
-        }
-        g_texture_width = g_scene_width;
-        g_texture_height = g_scene_height;
-        printf("gpu present: logical D3D backbuffer is %ux%u; the window is "
-               "a separate aspect-fitted output.\n",
-               g_scene_width, g_scene_height);
-    }
+    if (!device || !g_scene || !gpu_present_is_configured()) return NULL;
     if (width) *width = g_scene_width;
     if (height) *height = g_scene_height;
     return g_scene;
+}
+
+SDL_GPUTexture *gpu_present_depth_target(
+    SDL_GPUDevice *device, uint32_t width, uint32_t height,
+    uint32_t depth_format_value)
+{
+    SDL_GPUTexture *replacement;
+    SDL_GPUTextureFormat depth_format =
+        (SDL_GPUTextureFormat)depth_format_value;
+
+    if (!device || !width || !height ||
+        depth_format == SDL_GPU_TEXTUREFORMAT_INVALID)
+        return NULL;
+    if (g_depth && g_depth_width == width && g_depth_height == height &&
+        g_depth_format == depth_format)
+        return g_depth;
+    replacement = make_target(
+        device, width, height, depth_format,
+        SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
+    if (!replacement) {
+        fprintf(stderr, "gpu: the %ux%u depth target could not be made: %s -- "
+                        "keeping the existing depth target.\n",
+                width, height, SDL_GetError());
+        return NULL;
+    }
+    if (g_depth) SDL_ReleaseGPUTexture(device, g_depth);
+    g_depth = replacement;
+    g_depth_width = width;
+    g_depth_height = height;
+    g_depth_format = depth_format;
+    return g_depth;
 }
 
 int gpu_present_composite(SDL_GPUCommandBuffer *command_buffer,
@@ -107,11 +186,14 @@ int gpu_present_composite(SDL_GPUCommandBuffer *command_buffer,
 void gpu_present_shutdown(SDL_GPUDevice *device)
 {
     if (device && g_scene) SDL_ReleaseGPUTexture(device, g_scene);
+    if (device && g_depth) SDL_ReleaseGPUTexture(device, g_depth);
     g_scene = NULL;
     g_scene_width = 0;
     g_scene_height = 0;
-    g_texture_width = 0;
-    g_texture_height = 0;
+    g_depth = NULL;
+    g_depth_width = 0;
+    g_depth_height = 0;
+    g_depth_format = SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 
 void gpu_present_boot_blackout(SDL_GPUCommandBuffer *command_buffer,

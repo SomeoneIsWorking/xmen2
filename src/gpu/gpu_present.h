@@ -8,13 +8,24 @@ struct SDL_GPUDevice;
 struct SDL_GPUTexture;
 
 /* The D3D backbuffer is a logical render destination, not the host window.
-   Configure its dimensions from D3DPRESENT_PARAMETERS. */
-int gpu_present_set_scene_size(uint32_t width, uint32_t height);
+   Prepare both colour and automatic-depth replacements before committing
+   either, so a failed live resize leaves the last renderable pair and its
+   dimensions intact. INVALID depth format means this device has no depth
+   target to preserve. */
+int gpu_present_resize_targets(struct SDL_GPUDevice *device,
+                               uint32_t width, uint32_t height,
+                               uint32_t depth_format);
 int gpu_present_is_configured(void);
 
-/* Resolve the logical scene texture, creating it on first use. */
+/* Return the already-proven logical scene texture. */
 struct SDL_GPUTexture *gpu_present_scene(struct SDL_GPUDevice *device,
                                          uint32_t *width, uint32_t *height);
+
+/* The depth attachment follows whichever render destination is active. A
+   non-backbuffer size change is independently transactional. */
+struct SDL_GPUTexture *gpu_present_depth_target(
+    struct SDL_GPUDevice *device, uint32_t width, uint32_t height,
+    uint32_t depth_format);
 
 /* Clear the output to black and scale the complete logical scene into its
    centred aspect-fit rectangle. */

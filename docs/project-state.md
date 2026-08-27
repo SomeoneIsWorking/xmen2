@@ -25,7 +25,7 @@ draw paths above D3D8.
 | S003 | Faithful rendering of the reached game path | partial | S002 | G002 |
 | S004 | Native Alchemy 2D/UI rendering above the D3D8 seam | partial | S003, S012 | G002, G004, G006 |
 | S005 | Native audio mixing and SFD movie playback | verified | S002 | G002 |
-| S006 | SDL3 keyboard/controller input, assignment, and hotswap | partial | S002 | G002, G004 |
+| S006 | SDL3 keyboard/controller/mouse input, assignment, and hotswap | partial | S002 | G002, G004 |
 | S007 | Xbox-derived controller defaults and source-sensitive prompts | partial | S006 | G002, G004 |
 | S008 | Port-owned RmlUi settings and input-binding surface | partial | S003, S006 | G002, G004 |
 | S009 | Direct development boot into an initialized game | partial | S002 | G002, G004 |
@@ -135,11 +135,17 @@ DirectInput 7/8 paths; axes, buttons, triggers, assignments, Start/Pause joins,
 late attach, detach, reconnect, post-save-load polling, and active-source
 switching have end-to-end evidence. C222 proves full-scale trigger delivery;
 C224 proves RT+A reaches a gameplay power; C262 and C264 prove late attach both
-before and after loading a save.
+before and after loading a save. The host also translates SDL pointer events
+through an ordered Win32 message queue into the retained Alchemy WndProc,
+mapping physical coordinates through inverse aspect fit to the active logical
+backbuffer and giving focused retail content one game-drawn cursor. Pure tests
+pin the message, mapping, button, coalescing, and cursor-visibility contracts.
 
 Gap: every controller observation on this machine uses the synthetic pad. Real
 hardware still must verify hotplug, stable identity, reconnect, assignment, and
-full-range inputs; this cannot be promoted from synthetic evidence alone.
+full-range inputs; this cannot be promoted from synthetic evidence alone. The
+mouse path still needs a physical-window click-through observation on a user
+desktop; automated runs deliberately keep their SDL window hidden.
 
 ### S007 — Xbox defaults and prompt semantics: partial
 
@@ -163,7 +169,15 @@ window-mode choices, four keyboard profiles, controller assignment, rebinding,
 persistence, migration, join/leave policy, and neutral input publication while
 modal. A live end-to-end check configured Player 2 as Keyboard 2, rebound
 Forward to `I`, and persisted `input.profile1.row0=23`; pure tests cover
-ownership, migration, source switching, reconnect, and slot reuse.
+ownership, migration, source switching, reconnect, and slot reuse. Resolution
+selection now transactionally replaces the active logical D3D colour/depth
+targets, updates the D3D8 backbuffer/depth descriptions and viewport, applies
+the window geometry, and persists only after all live presentation owners
+accept the change; focused tests prove success and each rollback path.
+Initial device creation also holds the configured mode on both retail branches:
+issue #135's repeatable cold-plus-warm 3840x2160 case passed 13/13 checks,
+including exact D3D device dimensions, persisted retail Resolution bytes, and
+a same-profile warm capture at 3840x2160.
 
 Gap: fullscreen transitions and real-controller identity/hotplug require
 hardware/user validation, and controller UI navigation still uses focus
@@ -259,13 +273,18 @@ hardware-validation gaps described by S006 and G005.
 Observed capability: successful map-load transactions publish an exact retail
 autosave leaf without modifying the manual slot, and persisted Boot Continue
 uses the retail mode-3 save-manager/deserializer chain to restore that map and
-party without intro movies, the menu map, or user input.
+party without intro movies, the menu map, or user input. The retail Load Game
+screen also exposes that autosave after all ten manual slots, virtualizing its
+fixed ten resident rows without replacing a manual leaf; selecting autosave
+retains the retail success acknowledgement.
 
 Evidence: C246 records exact autosave size, unchanged manual-slot size/mtime,
 and a second-run retail load; C261 records the 13/13 direct-Continue live case,
 including the saved map, resolved player actor, active tutorial conversation,
 zero movie opens, and no menu-map open. Issues #99, #113, and #119 preserve the
 resolved save-authority, conversation, and first-cutscene boundary defects.
+Issue #131 records the binary-grounded 11-to-10 Load Game projection and its
+windowless full-capacity live proof.
 
 ### S016 — live control and diagnostics: verified
 

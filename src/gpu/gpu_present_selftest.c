@@ -145,7 +145,9 @@ static int composite_case(uint32_t scene_width, uint32_t scene_height,
     char why[192];
     int ok = 0;
 
-    if (!gpu_present_set_scene_size(scene_width, scene_height)) return 0;
+    if (!gpu_present_resize_targets(g_gpu, scene_width, scene_height,
+                                    gpu_depth_format()))
+        return 0;
     scene = gpu_present_scene(g_gpu, NULL, NULL);
     output = make_output();
     if (!scene || !output

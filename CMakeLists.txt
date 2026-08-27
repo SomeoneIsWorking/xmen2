@@ -65,6 +65,9 @@ endif()
 
 enable_testing()
 
+add_executable(test_assertions_enabled tests/test_assertions_enabled.c)
+add_test(NAME assertions_enabled COMMAND test_assertions_enabled)
+
 add_executable(test_fmv_policy tests/test_fmv_policy.c
                src/media/fmv_policy.c)
 target_include_directories(test_fmv_policy PRIVATE src/media)
@@ -166,6 +169,9 @@ add_executable(test_display_mode_seed tests/test_display_mode_seed.c
 target_include_directories(test_display_mode_seed PRIVATE src/presentation
                           src/native src/config)
 add_test(NAME display_mode_seed COMMAND test_display_mode_seed)
+add_test(NAME display_mode_runtime_wiring
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tests/test_display_mode_runtime_wiring.py)
 
 add_executable(test_boot_mode_policy tests/test_boot_mode_policy.c
                src/native/boot_mode_policy.c)
@@ -195,6 +201,71 @@ add_executable(test_aspect_fit tests/test_aspect_fit.c
                src/presentation/aspect_fit.c)
 target_include_directories(test_aspect_fit PRIVATE src/presentation)
 add_test(NAME aspect_fit COMMAND test_aspect_fit)
+
+add_executable(test_win32_mouse tests/test_win32_mouse.c
+               src/native/win32_mouse.c
+               src/presentation/aspect_fit.c)
+target_include_directories(test_win32_mouse PRIVATE src/native src/presentation)
+add_test(NAME win32_mouse COMMAND test_win32_mouse)
+
+add_executable(test_d3d8_live_resolution
+               tests/test_d3d8_live_resolution.c
+               src/d3d8/d3d8_live_resolution.c)
+target_include_directories(test_d3d8_live_resolution PRIVATE src/d3d8 src/gpu)
+add_test(NAME d3d8_live_resolution COMMAND test_d3d8_live_resolution)
+
+add_executable(test_d3d8_selector_probe
+               tests/test_d3d8_selector_probe.c
+               src/d3d8/d3d8_selector_probe.c
+               src/d3d8/d3d8_texture_provenance.c)
+target_include_directories(test_d3d8_selector_probe PRIVATE src/d3d8 src/gpu)
+target_link_libraries(test_d3d8_selector_probe PRIVATE m)
+add_test(NAME d3d8_selector_probe COMMAND test_d3d8_selector_probe)
+set(_x2_selector_probe_fixture
+    "${CMAKE_CURRENT_BINARY_DIR}/selector-probe-selftest.jsonl")
+add_test(NAME selector_probe_writer
+         COMMAND ${CMAKE_COMMAND} -E env
+                 X2_SELECTOR_PROBE=${_x2_selector_probe_fixture}
+                 X2_SELECTOR_TEXTURE=128x32
+                 $<TARGET_FILE:test_d3d8_selector_probe>)
+add_test(NAME selector_probe_schema
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/selector_probe.py
+                 ${_x2_selector_probe_fixture} --all)
+set_tests_properties(selector_probe_schema PROPERTIES
+                     DEPENDS selector_probe_writer)
+
+add_executable(test_live_resolution tests/test_live_resolution.c
+               src/presentation/live_resolution.c)
+target_include_directories(test_live_resolution PRIVATE
+                           src/presentation src/config src/d3d8)
+add_test(NAME live_resolution COMMAND test_live_resolution)
+
+add_executable(test_load_game_menu_policy
+               tests/test_load_game_menu_policy.c
+               src/save/load_game_menu_policy.c)
+target_include_directories(test_load_game_menu_policy PRIVATE src/save)
+add_test(NAME load_game_menu_policy COMMAND test_load_game_menu_policy)
+add_test(NAME load_game_menu_wiring
+         COMMAND ${Python3_EXECUTABLE} -m unittest
+                 tests.test_load_game_menu_wiring)
+set_tests_properties(load_game_menu_wiring PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+add_executable(test_gpu_present_resize tests/test_gpu_present_resize.c
+               src/gpu/gpu_present.c
+               src/presentation/aspect_fit.c)
+target_include_directories(test_gpu_present_resize PRIVATE src/gpu
+                           src/presentation)
+target_compile_definitions(test_gpu_present_resize PRIVATE
+    SDL_CreateGPUTexture=x2_test_create_gpu_texture
+    SDL_ReleaseGPUTexture=x2_test_release_gpu_texture)
+target_link_libraries(test_gpu_present_resize PRIVATE ${X2_SDL})
+add_test(NAME gpu_present_resize COMMAND test_gpu_present_resize)
+
+add_test(NAME selector_probe_tool
+         COMMAND ${Python3_EXECUTABLE} -m unittest tests.test_selector_probe)
+set_tests_properties(selector_probe_tool PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 add_executable(test_shadow_policy tests/test_shadow_policy.c
                src/gpu/gpu_matrix.c src/gpu/shadow_policy.c)
@@ -872,6 +943,21 @@ add_test(NAME oracle_cache
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/oracle.py --selftest)
 
+# RelWithDebInfo defines NDEBUG, but the C test programs use assert() both for
+# checks and, in older tests, for the expressions that exercise production
+# code.  A test target must never inherit the shipping assertion policy: doing
+# so made CTest report PASS without evaluating those expressions (issue #134).
+get_property(_x2_directory_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(_x2_target IN LISTS _x2_directory_targets)
+    if(_x2_target MATCHES "^test_")
+        if(MSVC)
+            target_compile_options(${_x2_target} PRIVATE /UNDEBUG)
+        else()
+            target_compile_options(${_x2_target} PRIVATE -UNDEBUG)
+        endif()
+    endif()
+endforeach()
+
 
 # ---------------------------------------------------------------------------
 # x2native -- recompiled game code as a NATIVE binary (rc-native)
@@ -1048,6 +1134,8 @@ if(X2_MODULE_HAVE)
         src/presentation/boot_blackout.c
         src/presentation/window_settings.c
         src/presentation/display_mode_seed.c
+        src/presentation/live_resolution.c
+        src/native/display_mode_runtime.c
         src/native/ui_text_scale.c
         src/native/text_caller_probe.c
         src/native/prompt_glyph_draw.c
@@ -1072,12 +1160,17 @@ if(X2_MODULE_HAVE)
         src/save/autosave_format.c
         src/save/continue_policy.c
         src/save/save_trace.c
+        src/save/load_game_menu_policy.c
         src/native/autosave_runtime.c
         src/native/boot_player_selection.c
         src/native/continue_runtime.c
+        src/native/exact_save_load.c
+        src/native/load_game_menu_runtime.c
         src/native/save_trace_runtime.c
         src/native/pe_map.c
         src/native/win32_sdl.c
+        src/native/win32_mouse.c
+        src/native/win32_events.c
         src/native/guest_heap.c
         src/native/crt.c
         src/native/crt_selftest.c
@@ -1167,6 +1260,10 @@ if(X2_MODULE_HAVE)
         src/d3d8/d3d8_stateblock.c
         src/d3d8/d3d8_d3d8.c
         src/d3d8/d3d8_device.c
+        src/d3d8/d3d8_live_resolution.c
+        src/d3d8/d3d8_selector_probe.c
+        src/d3d8/d3d8_selector_probe_bridge.c
+        src/d3d8/d3d8_texture_provenance.c
         src/d3d8/d3d8_lightlog.c
         src/d3d8/d3d8_surface.c
         src/d3d8/d3d8_resource.c

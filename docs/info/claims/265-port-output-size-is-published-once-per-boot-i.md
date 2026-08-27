@@ -1,10 +1,11 @@
 ---
 id: C265
 kind: claim
-status: holds
+status: falsified
 created: 2026-08-25
 tags: native,presentation,resolution,registry,d3d8,rmlui,settings
 depends: src/presentation/display_mode_seed.c#x2_display_mode_seed_boot, src/native/advapi32_host_store.c#advapi32_host_set_string, src/d3d8/d3d8_d3d8.c#d3d8_GetAdapterDisplayMode
+falsified_on: 2026-08-27
 ---
 
 ## Claim
@@ -40,12 +41,12 @@ C255: there, Display\Resolution was made a live synthetic VIEW of
 x2native.conf coupled into every guest read; here nothing is coupled after
 boot -- publication happens once through advapi32_host_store, announced either
 way, and afterwards the value belongs to the game exactly as if the player had
-set it in retail Options. Known policy consequence: a resolution chosen in the
-RETAIL options screen holds only until the next launch, when Port Settings'
-value is published over it; runtime changes in Port Settings resize the window
-immediately and reach game-space on the next launch (the overlay says so),
-because the engine has no runtime re-resolve path -- IDirect3DDevice8::Reset
-is unimplemented (slot 14 NULL).
+set it in retail Options. At the time of this claim Port Settings resized only
+the SDL window; its asserted next-launch-only game-rendering behavior was not a
+complete presentation contract because it left the active D3D backbuffer and
+GPU targets stale. Issue #130 replaces that behavior with a native live
+transaction while retaining this boot-seeding mechanism for initial device
+creation.
 
 ## What would falsify it
 
@@ -56,3 +57,27 @@ holding a different Resolution than was published at boot end. Also: evidence
 that the engine re-reads Display\Resolution mid-session (a retail-options
 resolution change taking effect without any device recreation) would falsify
 the "no runtime re-resolve path" half.
+
+## FALSIFIED 2026-08-27
+
+User observation on 2026-08-27 showed that Port Settings changed SDL window
+geometry without changing the active game/D3D render size, while its UI told
+the player to restart. The boot publication evidence remains valid, but the
+claim's runtime policy consequence treated a missing live presentation
+transaction as intentional behavior and lacked a transition gate. Issue #130
+now owns that transaction independently of registry re-resolution.
+
+> Anything that cited this claim as proof must be re-checked. Grep the repo for it.
+
+### Second independent falsifier: fresh-profile initialization
+
+The original boot evidence covered a profile whose Display Version was already
+7. A genuinely fresh profile proved the once-before-guest mechanism incomplete:
+retail `0x00619770` installed and persisted its 800x600 first-run default after
+the host had published 3840x2160. The run therefore created an 800x600 D3D
+device while the host window and font policy used 3840x2160. Issue #135 records
+the cause and repair. The corrected contract is two boundary-owned
+publications—not a synthetic read view: one before guest startup, then one
+after the retained settings-load body, followed by the retail
+`0x00616e10` reader. The repeatable cold-plus-warm case passed 13/13 at
+3840x2160.

@@ -49,9 +49,7 @@ static uint32_t        g_output_w, g_output_h;
    and, later, the engine's off-screen render destinations. */
 static SDL_GPUTexture *g_offscreen;
 
-static SDL_GPUTexture *g_depth_tex;
 static SDL_GPUTextureFormat g_depth_fmt;
-static uint32_t g_depth_w, g_depth_h;
 
 /* Headless: no window, and the frame renders into this instead. */
 static int             g_headless;
@@ -182,9 +180,6 @@ void gpu_device_destroy(void)
 #endif
 #ifdef X2_WITH_SDL
     if (!g_gpu) return;
-    if (g_depth_tex) SDL_ReleaseGPUTexture(g_gpu, g_depth_tex);
-    g_depth_tex = NULL;
-    g_depth_w = g_depth_h = 0;
     g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
     if (g_win) SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
     SDL_DestroyGPUDevice(g_gpu);
@@ -205,8 +200,13 @@ int gpu_device_ready(void)
 int gpu_device_set_backbuffer_size(uint32_t width, uint32_t height)
 {
 #ifdef X2_WITH_SDL
-    if (!gpu_present_set_scene_size(width, height)) return 0;
+    if (!gpu_present_resize_targets(g_gpu, width, height,
+                                    gpu_depth_format()))
+        return 0;
     if (g_headless && !g_headless_size_explicit) {
+        /* Port Settings is a windowed RmlUi path. Headless output has no
+           settings document and follows its explicit harness size instead;
+           this fallback only keeps zero-argument diagnostics compatible. */
         if (g_headless_tex) {
             SDL_ReleaseGPUTexture(g_gpu, g_headless_tex);
             g_headless_tex = NULL;
@@ -404,33 +404,9 @@ SDL_GPUTextureFormat gpu_depth_format(void)
 
 SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h)
 {
-    SDL_GPUTextureCreateInfo ci;
-
     if (!g_gpu || !w || !h) return NULL;
-    if (g_depth_tex && g_depth_w == w && g_depth_h == h) return g_depth_tex;
     if (gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID) return NULL;
-    if (g_depth_tex) {
-        SDL_ReleaseGPUTexture(g_gpu, g_depth_tex);
-        g_depth_tex = NULL;
-    }
-    memset(&ci, 0, sizeof ci);
-    ci.type = SDL_GPU_TEXTURETYPE_2D;
-    ci.format = g_depth_fmt;
-    ci.usage = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET;
-    ci.width = w;
-    ci.height = h;
-    ci.layer_count_or_depth = 1;
-    ci.num_levels = 1;
-    g_depth_tex = SDL_CreateGPUTexture(g_gpu, &ci);
-    if (!g_depth_tex) {
-        fprintf(stderr, "gpu: the %ux%u depth target could not be made: %s -- "
-                        "everything will draw in submission order.\n",
-                w, h, SDL_GetError());
-        return NULL;
-    }
-    g_depth_w = w;
-    g_depth_h = h;
-    return g_depth_tex;
+    return gpu_present_depth_target(g_gpu, w, h, g_depth_fmt);
 }
 
 /*

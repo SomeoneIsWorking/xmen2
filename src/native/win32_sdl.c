@@ -38,10 +38,10 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "settings_store.h"
+#include "win32_events.h"
 #include "window_settings.h"
 #include "rmlui_ui.h"
 #include "../gpu/gpu_device.h"
-#include "../d3d8/d3d8_drawcall.h"
 
 /* ---- guest ABI helpers ------------------------------------------------- */
 
@@ -83,8 +83,6 @@ static int         g_win_live;
 /* --no-window. Read by the dialog path as well as by CreateWindowExA, which is
    why it lives up here with the window itself rather than beside its setter. */
 static int         g_hide_windows;
-static int         g_cursor_shown = 1;   /* Win32 starts the count at 0 */
-static int         g_cursor_count;
 
 /* The renderer needs the window to put a swapchain on; see win32_sdl.h. It is
    reported only while live, so a destroyed window cannot be presented to. */
@@ -161,108 +159,6 @@ void imp_USER32_LoadIconA(CPU *C)   { static uint32_t t = 0x00E10000u; ret_std(C
 void imp_USER32_LoadCursorA(CPU *C) { static uint32_t t = 0x00E20000u; ret_std(C, ++t, 2); }
 
 
-/* ---- the message pump ---------------------------------------------------
- *
- * The guest runs a Win32 message loop and expects to drive the window through
- * it. SDL owns the real event queue here, so this pumps SDL and translates the
- * few events the game's loop actually reacts to into Win32 messages.
- *
- * PeekMessageA returning FALSE means "no messages", which is the normal state
- * of an idle frame -- so this is one of the few places where returning nothing
- * is the correct answer rather than a stub. The distinction that matters is
- * WM_QUIT: it must be delivered when SDL says the window closed, or the game
- * never exits and the port looks hung.
- */
-#define WM_QUIT     0x0012u
-#define WM_CLOSE    0x0010u
-#define WM_ACTIVATE 0x0006u
-
-static int g_quit_posted;
-
-/* MSG: hwnd, message, wParam, lParam, time, pt.x, pt.y */
-static void put_msg(uint32_t p, uint32_t msg, uint32_t wp, uint32_t lp)
-{
-    if (!p) return;
-    WR32(p +  0u, HWND_MAIN_TOK);
-    WR32(p +  4u, msg);
-    WR32(p +  8u, wp);
-    WR32(p + 12u, lp);
-    WR32(p + 16u, 0);
-    WR32(p + 20u, 0);
-    WR32(p + 24u, 0);
-}
-
-/* Drain SDL and note anything the guest's loop needs to hear about. */
-static int pump_sdl(void)
-{
-    SDL_Event e;
-    while (SDL_PollEvent(&e)) {
-        if (e.type == SDL_EVENT_QUIT ||
-            e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED)
-            g_quit_posted = 1;
-        else if (x2_ui_handle_event(&e))
-            continue;
-        /*
-         * F9 -- dump every draw of the next frame.
-         *
-         * Read here and NOT forwarded to the guest: F9 is not one of the
-         * game's bindings, and the diagnostic must not become an input the
-         * game acts on. This is the only way a person watching a live run can
-         * say "this frame, the one that looks wrong" -- every other selector
-         * is fixed before the run starts.
-         */
-        else if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
-            /*
-             * The first key EVER seen, named, once.
-             *
-             * If F9 does not arm the table, two things are indistinguishable
-             * without this line: the key never reached the process (no window
-             * manager, no focus, a compositor eating it) and the handler ran
-             * and did nothing. One says fix the rig, the other says fix the
-             * code, and a silent event loop says neither.
-             */
-            static int told;
-            if (!told++)
-                fprintf(stderr, "win32_sdl: the event loop is receiving keys "
-                        "(first was key 0x%08x). F9 arms the frame table; "
-                        "SIGUSR1 does the same without needing focus.\n",
-                        (unsigned)e.key.key);
-            if (e.key.key == SDLK_F9)
-                d3d8_frame_table_arm();
-        }
-    }
-    return g_quit_posted;
-}
-
-void imp_USER32_PeekMessageA(CPU *C)
-{
-    /* (lpMsg, hWnd, filterMin, filterMax, wRemoveMsg) */
-    if (pump_sdl()) {
-        put_msg(A(0), WM_QUIT, 0, 0);
-        ret_std(C, 1, 5);
-        return;
-    }
-    ret_std(C, 0, 5);                     /* no messages -- the idle case */
-}
-
-void imp_USER32_GetMessageA(CPU *C)
-{
-    /* Blocking in Win32. Returns 0 on WM_QUIT, which is how the loop ends. */
-    while (!pump_sdl()) SDL_Delay(1);
-    put_msg(A(0), WM_QUIT, 0, 0);
-    ret_std(C, 0, 4);
-}
-
-void imp_USER32_TranslateMessage(CPU *C) { ret_std(C, 0, 1); }
-
-void imp_USER32_DispatchMessageA(CPU *C)
-{
-    /* The guest's own WndProc is registered but never invoked here: nothing
-       synthesises the messages it would need, and calling it with an invented
-       one would run game code on an event that did not happen. */
-    ret_std(C, 0, 1);
-}
-
 void imp_USER32_DefWindowProcA(CPU *C) { ret_std(C, 0, 4); }
 
 /* ---- window state ------------------------------------------------------ */
@@ -304,7 +200,12 @@ void imp_USER32_SetWindowLongA(CPU *C)
 {
     int i = gwl_index((int32_t)A(1));
     uint32_t old = 0;
-    if (i >= 0) { old = g_gwl[i]; g_gwl[i] = A(2); }
+    if (i >= 0) {
+        old = g_gwl[i];
+        g_gwl[i] = A(2);
+        if (i == 1)
+            x2_win32_events_set_wndproc(g_gwl[i]);
+    }
     ret_std(C, old, 3);
 }
 
@@ -416,15 +317,18 @@ void imp_USER32_GetSystemMetrics(CPU *C)
 
 void imp_USER32_ScreenToClient(CPU *C)
 {
-    /* One fullscreen window at the origin, so screen and client coincide. If
-       the window is ever moved this becomes wrong, and SetWindowPos above is
-       where that would start. */
-    int x = 0, y = 0;
-    if (g_win && hwnd_is_main(A(0))) SDL_GetWindowPosition(g_win, &x, &y);
-    if (A(1)) {
-        WR32(A(1),      (uint32_t)((int32_t)RD32(A(1))      - x));
-        WR32(A(1) + 4u, (uint32_t)((int32_t)RD32(A(1) + 4u) - y));
+    uint32_t p = A(1);
+    int32_t x, y;
+
+    if (!hwnd_is_main(A(0)) || !p) { ret_std(C, 0, 2); return; }
+    x = (int32_t)RD32(p);
+    y = (int32_t)RD32(p + 4u);
+    if (!x2_win32_events_screen_to_client(&x, &y)) {
+        ret_std(C, 0, 2);
+        return;
     }
+    WR32(p, (uint32_t)x);
+    WR32(p + 4u, (uint32_t)y);
     ret_std(C, 1, 2);
 }
 
@@ -510,12 +414,15 @@ int win32_sdl_dialog(const char *title, const char *text,
     box.message = text;
     box.numbuttons = n;
     box.buttons = btn;
+    x2_win32_events_modal(1);
     if (!SDL_ShowMessageBox(&box, &chosen)) {
+        x2_win32_events_modal(0);
         fprintf(stderr, "    SDL could not show it (%s). Answering the "
                         "fallback (%d) rather than blocking.\n",
                 SDL_GetError(), fallback);
         return fallback;
     }
+    x2_win32_events_modal(0);
     fprintf(stderr, "    -> answered %d\n", chosen);
     return chosen;
 }
@@ -583,21 +490,28 @@ void imp_USER32_RegisterClassA(CPU *C)
        only thing the guest does with the atom is pass it to CreateWindowExA,
        which ignores it here. The WndProc in the struct is NOT dropped silently
        -- it is remembered, because the message path will need it. */
-    extern uint32_t g_wndproc;
     uint32_t wc = A(0);
-    g_wndproc = RD32(wc + 4u);           /* WNDCLASSA.lpfnWndProc */
+    x2_win32_events_register_wndproc(
+        RD32(wc + 4u));                  /* WNDCLASSA.lpfnWndProc */
     ret_std(C, 1, 1);
 }
 
-uint32_t g_wndproc;
-
-void win32_sdl_hide_windows(int hide) { g_hide_windows = hide; }
+void win32_sdl_hide_windows(int hide)
+{
+    g_hide_windows = hide;
+    x2_win32_events_hide_window(hide);
+}
 /* Asked by anything that must behave headlessly without owning the flag --
    the audio device is the first, since a run with no window is a run nobody
    is listening to. */
 int  win32_sdl_windows_hidden(void) { return g_hide_windows; }
 
-void imp_USER32_UnregisterClassA(CPU *C) { g_wndproc = 0; ret_std(C, 1, 2); }
+void imp_USER32_UnregisterClassA(CPU *C)
+{
+    x2_win32_events_register_wndproc(0);
+    x2_win32_events_set_wndproc(0);
+    ret_std(C, 1, 2);
+}
 
 void imp_USER32_CreateWindowExA(CPU *C)
 {
@@ -623,6 +537,9 @@ void imp_USER32_CreateWindowExA(CPU *C)
         return;
     }
     g_win_live = 1;
+    g_gwl[1] = x2_win32_events_registered_wndproc();
+    x2_win32_events_set_wndproc(g_gwl[1]);
+    x2_win32_events_window(g_win, HWND_MAIN_TOK, g_hide_windows);
     if (!g_hide_windows &&
         !x2_window_settings_apply(g_win, settings, why, (int)sizeof why))
         fprintf(stderr, "SETTINGS: could not apply requested presentation "
@@ -657,6 +574,7 @@ void imp_USER32_DestroyWindow(CPU *C)
        valid. This is also the order gpu_selftest uses. */
     x2_ui_gpu_shutdown();
     gpu_device_attach_window(NULL);
+    x2_win32_events_window(NULL, 0, 0);
     SDL_DestroyWindow(g_win);
     g_win = NULL;
     g_win_live = 0;
@@ -665,12 +583,19 @@ void imp_USER32_DestroyWindow(CPU *C)
 
 void imp_USER32_ShowWindow(CPU *C)
 {
+    int hidden;
+
     if (!hwnd_is_main(A(0))) { ret_std(C, 0, 2); return; }
     /* A headless run stays headless: the guest calls ShowWindow(SW_SHOW) at
        startup, and honouring it would undo --no-window one instruction after
        the window was created hidden. */
-    if (A(1) == 0u || g_hide_windows) SDL_HideWindow(g_win);
-    else SDL_ShowWindow(g_win);
+    hidden = A(1) == 0u || g_hide_windows;
+    if (!(hidden ? SDL_HideWindow(g_win) : SDL_ShowWindow(g_win))) {
+        fprintf(stderr, "win32_sdl: SDL could not %s the guest window: %s\n",
+                hidden ? "hide" : "show", SDL_GetError());
+        abort();
+    }
+    x2_win32_events_hide_window(hidden);
     ret_std(C, 1, 2);
 }
 
@@ -727,12 +652,18 @@ void imp_USER32_AdjustWindowRect(CPU *C)
 
 void imp_USER32_ClientToScreen(CPU *C)
 {
-    uint32_t h = A(0), p = A(1);
-    int x = 0, y = 0;
-    if (!hwnd_is_main(h)) { ret_std(C, 0, 2); return; }
-    SDL_GetWindowPosition(g_win, &x, &y);
-    WR32(p + 0u, RD32(p + 0u) + (uint32_t)x);
-    WR32(p + 4u, RD32(p + 4u) + (uint32_t)y);
+    uint32_t p = A(1);
+    int32_t x, y;
+
+    if (!hwnd_is_main(A(0)) || !p) { ret_std(C, 0, 2); return; }
+    x = (int32_t)RD32(p);
+    y = (int32_t)RD32(p + 4u);
+    if (!x2_win32_events_client_to_screen(&x, &y)) {
+        ret_std(C, 0, 2);
+        return;
+    }
+    WR32(p, (uint32_t)x);
+    WR32(p + 4u, (uint32_t)y);
     ret_std(C, 1, 2);
 }
 
@@ -743,26 +674,29 @@ void imp_USER32_ShowCursor(CPU *C)
     /* Win32 keeps a counter, not a flag, and returns it. Callers balance
        show/hide against that value, so the counter is modelled rather than
        collapsed to SDL's boolean. */
-    g_cursor_count += A(0) ? 1 : -1;
-    if (g_cursor_count >= 0 && !g_cursor_shown) { SDL_ShowCursor(); g_cursor_shown = 1; }
-    if (g_cursor_count < 0 && g_cursor_shown)   { SDL_HideCursor(); g_cursor_shown = 0; }
-    ret_std(C, (uint32_t)g_cursor_count, 1);
+    /* The game draws its own cursor in retail content. Keep USER32's counter
+       semantics, while win32_events arbitrates the one physical OS cursor. */
+    ret_std(C, (uint32_t)x2_win32_events_guest_show_cursor(A(0) != 0u), 1);
 }
 
 void imp_USER32_GetCursorPos(CPU *C)
 {
-    float x = 0.0f, y = 0.0f;
     uint32_t p = A(0);
-    SDL_GetGlobalMouseState(&x, &y);
-    WR32(p + 0u, (uint32_t)(int32_t)x);
-    WR32(p + 4u, (uint32_t)(int32_t)y);
+    int32_t x, y;
+
+    if (!p || !x2_win32_events_get_cursor_pos(&x, &y)) {
+        ret_std(C, 0, 1);
+        return;
+    }
+    WR32(p, (uint32_t)x);
+    WR32(p + 4u, (uint32_t)y);
     ret_std(C, 1, 1);
 }
 
 void imp_USER32_SetCursorPos(CPU *C)
 {
-    SDL_WarpMouseGlobal((float)(int32_t)A(0), (float)(int32_t)A(1));
-    ret_std(C, 1, 2);
+    ret_std(C, (uint32_t)x2_win32_events_set_cursor_pos(
+                       (int32_t)A(0), (int32_t)A(1)), 2);
 }
 
 void imp_USER32_ClipCursor(CPU *C)

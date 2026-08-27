@@ -83,8 +83,14 @@ int main(void)
     CHECK(x2_display_mode_seed_publish() == 1);
     CHECK(g_set_calls == 1);
     CHECK(strcmp(g_set_value, "1600x900") == 0);
+    CHECK(x2_display_mode_seed_is_current() == 1);
     CHECK(x2_display_mode_seed_publish() == 0);
     CHECK(g_set_calls == 1);
+
+    snprintf(g_stored, sizeof g_stored, "%s", "800x600");
+    CHECK(x2_display_mode_seed_is_current() == 0);
+    CHECK(x2_display_mode_seed_publish() == 1);
+    CHECK(x2_display_mode_seed_is_current() == 1);
 
     printf("test_display_mode_seed: %d publication checks passed\n", checks);
     return 0;

@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 #include "d3d8_state.h"
+#include "d3d8_texture_provenance.h"
 #include "gpu_draw.h"
 
 enum {
@@ -52,6 +53,8 @@ typedef struct {
     uint32_t   num_vertices;
     GpuTexture texture;             /* 0 for untextured */
     GpuTexture texture1;            /* texture stage 1, when enabled */
+    uint32_t   texture_guest;       /* bound stage-0 COM pointer, even unresolved */
+    D3D8TextureProvenance texture_provenance;
     uint32_t   primitive_type;      /* D3DPRIMITIVETYPE */
     uint32_t   primitive_count;
 } D3D8DrawRequest;
@@ -63,10 +66,15 @@ void d3d8_fvf_report(void);
 void d3d8_frame_material_rgb(const GpuDraw *draw, uint32_t source,
                              const uint8_t *vertex, const float material[4],
                              double out[3]);
+uint32_t d3d8_element_count(uint32_t primitive_type,
+                            uint32_t primitive_count);
 
 /* 0 and a reason if the state cannot be expressed. */
 int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
                     GpuDraw *out);
+/* Core lowering seam used only by the selector probe's passive wrapper. */
+int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
+                         GpuDraw *out);
 /* Releases transient resources owned by a built draw (programmable outputs). */
 void d3d8_release_draw(GpuDraw *draw);
 

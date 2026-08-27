@@ -75,6 +75,7 @@ typedef struct {
     D3D8Object **level_surface;
     unsigned long uploads;
     uint32_t   last_upload_level;
+    D3D8TextureProvenance provenance;
 } Resource;
 
 static unsigned long g_textures, g_cubetextures, g_vbuffers, g_ibuffers;
@@ -130,6 +131,8 @@ static void *guest_ptr(uint32_t a, const char *what)
 }
 
 static Resource *res_of(D3D8Object *o) { return (Resource *)d3d8_object_ctx(o); }
+static const Resource *const_res_of(const D3D8Object *o)
+{ return (const Resource *)d3d8_object_ctx(o); }
 
 /* ---- format translation ------------------------------------------------ */
 
@@ -275,6 +278,7 @@ static D3D8Object *texture_new(uint32_t w, uint32_t h, uint32_t levels,
     r->is_texture = 1;
     r->w = w; r->h = h; r->levels = levels; r->format = format;
     r->usage = usage; r->pool = pool; r->faces = faces;
+    d3d8_texture_provenance_init(&r->provenance, w, h, format, levels, faces);
     r->chain_bytes = total;
     total *= faces;
     r->gtex = (faces == 6) ? gpu_texture_create_cube(w, gf, levels)
@@ -379,6 +383,24 @@ int d3d8_resource_index_is_32bit(D3D8Object *o)
 {
     /* D3DFMT_INDEX32 is 102; D3DFMT_INDEX16 is 101. */
     return res_of(o)->index_format == 102;
+}
+
+int d3d8_resource_texture_provenance(
+    const D3D8Object *o, D3D8TextureProvenance *out)
+{
+    const Resource *r;
+    D3D8IfaceId iface;
+    if (!out) return 0;
+    memset(out, 0, sizeof *out);
+    if (!o) return 0;
+    iface = d3d8_object_iface(o);
+    if (iface != D3D8_IF_IDirect3DTexture8
+            && iface != D3D8_IF_IDirect3DCubeTexture8)
+        return 0;
+    r = const_res_of(o);
+    if (!r || !r->is_texture) return 0;
+    *out = r->provenance;
+    return 1;
 }
 
 /* ---- the shared IUnknown / IDirect3DResource8 half --------------------- */
@@ -572,6 +594,8 @@ static void tex_GetSurfaceLevel(D3D8Object *self, CPU *C)
 void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
 {
     Resource *r = res_of(tex);
+    const void *bytes;
+    uint32_t byte_count;
     uint32_t lw, lh;
 
     if (sub >= sub_count(r)) {
@@ -582,12 +606,12 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
         return;
     }
     sub_dims(r, sub, &lw, &lh);
+    bytes = guest_memory_const_pointer(r->guest_bytes + sub_offset(r, sub));
+    byte_count = level_bytes(r->format, lw, lh);
     /* The unlock is the only moment the guest's writes are known to be
        finished, so it is where the upload happens. */
     if (!gpu_texture_upload_face(r->gtex, sub / r->levels, sub % r->levels,
-                                 guest_memory_const_pointer(r->guest_bytes +
-                                                            sub_offset(r, sub)),
-                                 level_bytes(r->format, lw, lh))) {
+                                 bytes, byte_count)) {
         fprintf(stderr, "d3d8: the backend REFUSED the upload of texture face "
                         "%u level %u (%ux%u). That level will sample as "
                         "whatever it held before.\n",
@@ -602,15 +626,15 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub)
                     r->gtex, sub / r->levels, sub % r->levels, r->levels,
                     lw, lh, level_bytes(r->format, lw, lh));
     }
+    d3d8_texture_provenance_uploaded(&r->provenance,
+        sub / r->levels, sub % r->levels, bytes, byte_count);
     if ((sub % r->levels) == 0)
         d3d8_texture_luma_note((uint32_t)r->gtex, r->format, lw, lh,
-            guest_memory_const_pointer(r->guest_bytes + sub_offset(r, sub)),
-            level_bytes(r->format, lw, lh));
+                               bytes, byte_count);
     if ((sub % r->levels) == 0 && (r->format == D3DFMT_A8R8G8B8
                                   || r->format == D3DFMT_X8R8G8B8))
         x2_fmv_probe_upload(
-            guest_memory_const_pointer(r->guest_bytes + sub_offset(r, sub)),
-            level_bytes(r->format, lw, lh), (int)lw, (int)lh,
+            bytes, byte_count, (int)lw, (int)lh,
             row_pitch(r->format, lw));
     r->uploads++;
     r->last_upload_level = sub % r->levels;

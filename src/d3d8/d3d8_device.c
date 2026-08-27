@@ -18,12 +18,14 @@
 #include "d3d8_stateblock.h"
 #include "d3d8_host.h"
 #include "d3d8_lightlog.h"
+#include "d3d8_live_resolution.h"
 #include "d3d8_com.h"
 #include "d3d8_caps.h"
 #include "d3d8_state.h"
 #include "d3d8_surface.h"
 #include "d3d8_resource.h"
 #include "d3d8_drawcall.h"
+#include "d3d8_texture_stage.h"
 #include "d3d8_vertex_shader.h"
 #include "d3d8_types.h"
 #include "gpu_device.h"
@@ -140,6 +142,7 @@ static void device_destroyed(D3D8Object *o)
            "with it.\n");
     up_vertices_destroy();
     d3d8_vs_reset();
+    d3d8_live_resolution_unbind();
     gpu_device_destroy();
 }
 
@@ -1514,27 +1517,9 @@ static void dev_GetPixelShader(D3D8Object *self, CPU *C)
  * frame reading off the end of a buffer, and it was the game's missing
  * caption.
  */
-static unsigned long g_texture_unresolved;
-
 void d3d8_device_texture_unresolved(unsigned long *n)
-{ *n = g_texture_unresolved; }
-
-static GpuTexture resolved_texture(unsigned stage)
 {
-    uint32_t guest = g_dev.state.texture[stage];
-    D3D8Object *texture = guest ? d3d8_object_from_guest(guest) : NULL;
-    GpuTexture gpu = texture ? d3d8_resource_texture(texture) : 0;
-    static uint8_t told[D3D8_MAX_STAGES];
-
-    if (guest && !gpu) {
-        g_texture_unresolved++;
-        if (!told[stage]++)
-            fprintf(stderr, "d3d8: texture stage %u binds guest 0x%08x, but "
-                            "it has no GPU texture; draws using it cannot "
-                            "sample that stage. Reported once.\n", stage,
-                    guest);
-    }
-    return gpu;
+    d3d8_texture_stage_unresolved(n);
 }
 
 static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
@@ -1545,8 +1530,12 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
                          : NULL;
     D3D8Object *ib = g_dev.state.indices
                          ? d3d8_object_from_guest(g_dev.state.indices) : NULL;
+    D3D8Object *tx0 = g_dev.state.texture[0]
+                          ? d3d8_object_from_guest(g_dev.state.texture[0])
+                          : NULL;
 
     memset(req, 0, sizeof *req);
+    req->texture_guest = g_dev.state.texture[0];
     if (!vb && require_vb) {
         fprintf(stderr, "d3d8: a draw with no vertex buffer on stream 0.\n");
         return 0;
@@ -1565,8 +1554,11 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
         req->index_guest_bytes = d3d8_resource_guest_bytes(ib);
         req->index_bytes = d3d8_resource_bytes(ib);
     }
-    req->texture = resolved_texture(0);
-    req->texture1 = resolved_texture(1);
+    req->texture = d3d8_texture_stage_resolve(0, g_dev.state.texture[0]);
+    req->texture1 = d3d8_texture_stage_resolve(1, g_dev.state.texture[1]);
+    if (tx0)
+        (void)d3d8_resource_texture_provenance(
+            tx0, &req->texture_provenance);
     req->primitive_type = prim;
     req->primitive_count = count;
     return 1;
@@ -1881,6 +1873,10 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
         g_render_depth = g_depth;
     }
 
+    d3d8_live_resolution_bind(&g_dev.pp, d3d8_surface_of(g_backbuffer),
+                              g_depth ? d3d8_surface_of(g_depth) : NULL,
+                              &g_dev.state);
+
     g_dev_obj = d3d8_object_new(D3D8_IF_IDirect3DDevice8, &g_dev);
     d3d8_object_set_destructor(g_dev_obj, device_destroyed);
     printf("d3d8: IDirect3DDevice8 at 0x%08x\n", d3d8_object_guest(g_dev_obj));
@@ -1902,6 +1898,8 @@ int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
 
 void d3d8_device_report(void)
 {
+    unsigned long unresolved;
+
     if (!g_dev_obj) {
         printf("  d3d8: no device was ever created -- the engine did not get "
                "as far as CreateDevice.\n");
@@ -1919,9 +1917,10 @@ void d3d8_device_report(void)
      * untextured surface. This is the second half of that number, and stating
      * it as 0 of N is what makes the first half readable.
      */
+    d3d8_texture_stage_unresolved(&unresolved);
     printf("        %lu draw(s) had a texture BOUND that this host could not "
            "resolve (of %lu draws) -- those are untextured with nothing to "
-           "show for it\n", g_texture_unresolved, g_dev.draws);
+           "show for it\n", unresolved, g_dev.draws);
     d3d8_state_report(&g_dev.state);
     d3d8_sb_report();
     d3d8_vs_report();

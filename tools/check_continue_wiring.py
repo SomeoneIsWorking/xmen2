@@ -10,6 +10,7 @@ from recomp_overrides import scan_overrides
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = (ROOT / "src" / "native" / "continue_runtime.c").resolve()
+EXACT_LOAD = (ROOT / "src" / "native" / "exact_save_load.c").resolve()
 STARTUP = (ROOT / "src" / "native" / "startup.c").resolve()
 PLAYER = (ROOT / "src" / "native" / "boot_player_selection.c").resolve()
 EXPECTED = {0x005C9260, 0x005F2B70, 0x0055FF00, 0x004B1280}
@@ -21,15 +22,22 @@ def refuse(message):
 
 
 def scanned_continue_entries():
-    found = {
-        ep
-        for module, ep, path, _ in scan_overrides(ROOT)
-        if module == "XMen2.exe" and Path(path).resolve() == RUNTIME
+    expected_by_owner = {
+        RUNTIME: EXPECTED - {0x0055FF00},
+        EXACT_LOAD: {0x0055FF00},
     }
-    if found != EXPECTED:
-        missing = ", ".join(f"0x{ep:08x}" for ep in sorted(EXPECTED - found))
-        extra = ", ".join(f"0x{ep:08x}" for ep in sorted(found - EXPECTED))
-        refuse(f"authoritative src/native scan mismatch; missing [{missing}], "
+    found_by_owner = {path: set() for path in expected_by_owner}
+    for module, ep, path, _ in scan_overrides(ROOT):
+        resolved = Path(path).resolve()
+        if module == "XMen2.exe" and resolved in found_by_owner:
+            found_by_owner[resolved].add(ep)
+    for owner, expected in expected_by_owner.items():
+        found = found_by_owner[owner]
+        if found == expected:
+            continue
+        missing = ", ".join(f"0x{ep:08x}" for ep in sorted(expected - found))
+        extra = ", ".join(f"0x{ep:08x}" for ep in sorted(found - expected))
+        refuse(f"authoritative {owner.name} scan mismatch; missing [{missing}], "
                f"extra [{extra}]")
 
 
