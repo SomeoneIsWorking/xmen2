@@ -14,6 +14,24 @@ with hand-written C while the rest keeps working. The live native build links
 the exe and every shipped engine module; unsupported instructions and missing
 indirect targets refuse by name instead of silently falling back.
 
+## Screenshots
+
+These are fresh captures from the native build at 1280×720. They are
+documentation captures made from the user's own game files; no game files or
+assets are distributed here.
+
+![Native main menu](docs/screenshots/main-menu-1280x720.png)
+
+*Native main menu with the original menu presentation rendered by the port.*
+
+![Native gameplay with controller prompts](docs/screenshots/controller-gameplay-1280x720.png)
+
+*In-game party, HUD, map and controller-oriented prompt glyphs.*
+
+![Native keyboard prompt](docs/screenshots/keyboard-prompt-1280x720.png)
+
+*The same retail dialogue path showing the port's keyboard prompt treatment.*
+
 ## What is in this repository — and what is not
 
 **No game content is distributed here.** This repository contains the port's
@@ -36,7 +54,7 @@ and is produced on your machine from your copy. The MIT licence in
 [`LICENSE`](LICENSE) covers **this repository's own code only** and makes no
 claim over the game.
 
-## Run from a fresh clone
+## Setup and run from a fresh clone
 
 The native host supports Linux x86-64 and macOS on Apple Silicon. The arm64
 Mach-O keeps the normal 4 GB `__PAGEZERO`; guest addresses are translated into
@@ -102,7 +120,31 @@ The durable outcomes are in
 gaps and the current focus are in
 [`docs/project-state.md`](docs/project-state.md).
 
-## The three features (all land in the input layer)
+## Features and enhancements over the vanilla PC release
+
+The port keeps the original game data and retail game logic as its baseline,
+while adding a native host and quality-of-life improvements that the 2005 PC
+release does not provide:
+
+- **Wine-free native execution** on Linux x86-64 and Apple Silicon macOS,
+  using SDL3 and a native host instead of Windows, Wine or the original
+  machine-code runtime.
+- **Controller hot-plug and persistent assignment** through SDL3, including
+  late attach/detach and player assignment without restarting the game.
+- **Xbox/PS2-style controller defaults and source-aware prompts**, with
+  controller glyphs and keyboard keycaps selected for the active input source.
+- **Port-owned settings and presentation controls**, including window mode,
+  aspect-fit presentation and live display changes where supported by the
+  current host.
+- **Native cutscene skipping** that advances the authored cutscene work while
+  preserving the guest clock and avoiding stray dialogue/audio presentation.
+
+The current product is still an active port: native execution and the reached
+menu, movie, level and return-to-menu paths are verified, but full physical
+controller playability and complete renderer fidelity remain partial. See
+[`docs/project-state.md`](docs/project-state.md) for the exact coverage.
+
+The input-specific features are:
 
 1. **Controller hotswap** — implemented through SDL3 and the game's own
    DirectInput enumeration/connection callbacks; late attach and detach are
