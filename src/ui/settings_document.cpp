@@ -6,6 +6,7 @@
  */
 #include "settings_document.hpp"
 #include "controller_assignment_rows.hpp"
+#include "ui_resources.h"
 
 #include <RmlUi/Core.h>
 #include <SDL3/SDL.h>
@@ -389,7 +390,8 @@ bool settings_document_load(Rml::Context* context, SDL_Window* window)
 </tab-bar><content id="content"></content>
 </window></body></rml>)RML";
     host_window = window;
-    document = context->LoadDocumentFromMemory(shell, X2_UI_DOCUMENT_URL);
+    document = context->LoadDocumentFromMemory(
+        shell, x2_ui_resource_path("settings.rml"));
     if (!document) return false;
     document->Show();
     wire("close", "click");

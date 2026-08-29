@@ -36,6 +36,8 @@ draw paths above D3D8.
 | S014 | Apple Silicon macOS native host support | partial | S001 | G005 |
 | S015 | Transactional autosave and direct retail Continue restore | verified | S002 | G002 |
 | S016 | Live control, capture, input, and runtime diagnostic channel | verified | S002, S003 | G002, G006 |
+| S017 | Linux AppImage packaging and no-terminal install setup | partial | S001, S008 | G005 |
+| S018 | Android APK shell, touch controls, and measured mobile performance | missing | S002, S006, S010 | G005 |
 
 ## State details and evidence
 
@@ -54,6 +56,31 @@ the launcher recreated them, presented frames, and passed its launcher and CTest
 controls. Issue #110 records the original cold-path dependency defects; issue
 #125 records and tests the boundary that maintainer-only `re-harness` is not a
 player bootstrap dependency.
+
+### S017 — Linux AppImage packaging and no-terminal install setup: partial
+
+The repository now has a game-file-free AppImage staging path, portable UI
+resource lookup, and an SDL3 first-run prompt that validates and remembers the
+user's `XMen2.exe` directory in the OS configuration directory. It also accepts
+a ZIP containing exactly one `XMen2.exe` at any nested path and extracts it
+under that same user-data root through Lucent's shared safe ZIP implementation.
+`scratch/release/X-Men-Legends-II-x86_64.AppImage` artifact was built and its
+native selftest passed through the AppImage runtime. Focused tests cover the
+configuration-path and executable-validation seams.
+
+Gap: the interactive Browse flow has not been exercised on a clean Linux
+desktop in this state record, and no Android APK shell exists in this
+repository. Android remains a separate SDL3 Activity/document-picker task.
+
+### S018 — Android APK shell, touch controls, and measured mobile performance: missing
+
+No Android Activity, document-provider bridge, APK packaging target, or mobile
+performance run exists in this repository yet. The reusable Lucent touch router
+and the title's evidence-derived Xbox action table define the intended seam, but
+they are not an Android implementation. The required setup, touch-zone mapping,
+and device/thermal/frame-time evidence gate are specified in
+[`android-release.md`](android-release.md); desktop and Apple Silicon results do
+not count as Android performance evidence.
 
 ### S002 — Wine-free native execution: partial
 

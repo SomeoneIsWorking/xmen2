@@ -18,6 +18,7 @@
 #include "aspect_fit.h"
 #include "settings_document.hpp"
 #include "settings_overlay_state.h"
+#include "ui_resources.h"
 
 namespace {
 
@@ -113,11 +114,13 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
         system_interface.reset();
         return false;
     }
-    if (!Rml::LoadFontFace(X2_UI_FONT_PATH))
-        std::fprintf(stderr, "RMLUI: could not load font %s\n", X2_UI_FONT_PATH);
-    if (!Rml::LoadFontFace(X2_UI_FONT_BOLD_PATH))
+    const char* regular = x2_ui_resource_path("LatoLatin-Regular.ttf");
+    if (!Rml::LoadFontFace(regular))
+        std::fprintf(stderr, "RMLUI: could not load font %s\n", regular);
+    const char* bold = x2_ui_resource_path("LatoLatin-Bold.ttf");
+    if (!Rml::LoadFontFace(bold))
         std::fprintf(stderr, "RMLUI: could not load font %s\n",
-                     X2_UI_FONT_BOLD_PATH);
+                     bold);
     context = Rml::CreateContext("x2-settings",
                                  Rml::Vector2i((int)width, (int)height));
     if (!context) {

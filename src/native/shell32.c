@@ -7,12 +7,9 @@
  * nowhere to write.
  *
  * WHERE THE SAVES GO, and why not the obvious place. This port treats the
- * install as strictly read-only and keeps run state in the repo, so pointing
- * the game at $GAME_PC_DIR would break the one rule the whole project is built
- * on, and pointing it at $HOME/Documents would scatter state across a machine
- * on a run nobody asked to be permanent. The default is `scratch/saves` under
- * the working directory -- which run.sh makes the repo root -- and X2_SAVE_DIR
- * overrides it for anyone who wants their saves elsewhere.
+ * install as strictly read-only. The default is the OS per-user config
+ * directory owned by config_directory.c, and X2_SAVE_DIR overrides it for
+ * diagnostics or a deliberately portable profile.
  *
  * The directory is CREATED here, not merely named. Handing back a path that
  * does not exist moves the same failure one step later, into a CreateFileA
@@ -28,6 +25,7 @@
 #include "x86rt_native.h"
 #include "shell32.h"
 #include "guest_memory.h"
+#include "../config/config_directory.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -57,20 +55,46 @@ static void ret_std(CPU *C, uint32_t eax, int nargs)
 static char g_dir[1024];
 static int  g_ready;
 
+static int make_directories(const char *path)
+{
+    char copy[sizeof g_dir], *slash;
+    if (!path || !path[0] || strlen(path) >= sizeof copy) return 0;
+    snprintf(copy, sizeof copy, "%s", path);
+    for (slash = copy + (copy[0] == '/' ? 1 : 0); *slash; slash++) {
+        if (*slash != '/') continue;
+        *slash = 0;
+        if (mkdir(copy, 0777) != 0 && errno != EEXIST) return 0;
+        *slash = '/';
+    }
+    return mkdir(copy, 0777) == 0 || errno == EEXIST;
+}
+
 const char *x2_save_dir(void)
 {
     const char *env;
+    const char *default_dir;
     if (g_ready) return g_dir;
     g_ready = 1;
     env = getenv("X2_SAVE_DIR");
-    snprintf(g_dir, sizeof g_dir, "%s", (env && *env) ? env : "scratch/saves");
-    if (mkdir(g_dir, 0777) != 0 && errno != EEXIST) {
+    default_dir = x2_config_directory();
+    if (env && *env) {
+        snprintf(g_dir, sizeof g_dir, "%s", env);
+        if (g_dir[0] && !make_directories(g_dir)) g_dir[0] = 0;
+    } else if (default_dir) {
+        snprintf(g_dir, sizeof g_dir, "%s", default_dir);
+        if (g_dir[0] && !x2_config_directory_ensure()) g_dir[0] = 0;
+    } else {
+        g_dir[0] = 0;
+    }
+    if (!g_dir[0]) {
         /* Said once, loudly: everything downstream will fail to open files in
            a directory that is not there, and none of those failures would
            mention this one. */
         fprintf(stderr, "shell32: could not create the save directory \"%s\" "
-                        "(%s). The game will report that it cannot save, and "
-                        "it will be right.\n", g_dir, strerror(errno));
+                        "(%s). Set X2_SAVE_DIR to a writable directory and "
+                        "retry. The game will report that it cannot save, and "
+                        "it will be right.\n", g_dir, g_dir[0] ? strerror(errno) :
+                        "no user config directory");
         g_dir[0] = 0;
     }
     return g_dir;
