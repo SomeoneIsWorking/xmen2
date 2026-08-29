@@ -6,7 +6,8 @@ extern "C" {
 #endif
 
 /* Return the per-user configuration directory for this port. The path is
- * process-lifetime storage owned by this module. */
+ * thread-local storage owned by Lucent and remains valid until this thread's
+ * next call to the same Lucent path function. */
 const char *x2_config_directory(void);
 
 /* Create the directory and any missing parents. */
