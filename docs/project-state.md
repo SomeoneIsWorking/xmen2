@@ -37,7 +37,7 @@ draw paths above D3D8.
 | S015 | Transactional autosave and direct retail Continue restore | verified | S002 | G002 |
 | S016 | Live control, capture, input, and runtime diagnostic channel | verified | S002, S003 | G002, G006 |
 | S017 | Linux AppImage packaging and no-terminal install setup | partial | S001, S008 | G005 |
-| S018 | Android APK shell, touch controls, and measured mobile performance | missing | S002, S006, S010 | G005 |
+| S018 | Android APK shell, touch controls, and measured mobile performance | partial | S002, S006, S010 | G005 |
 
 ## State details and evidence
 
@@ -72,13 +72,15 @@ Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record, and no Android APK shell exists in this
 repository. Android remains a separate SDL3 Activity/document-picker task.
 
-### S018 — Android APK shell, touch controls, and measured mobile performance: missing
+### S018 — Android APK shell, touch controls, and measured mobile performance: partial
 
-No Android Activity, document-provider bridge, APK packaging target, or mobile
-performance run exists in this repository yet. The reusable Lucent touch router
-and the title's evidence-derived Xbox action table define the intended seam, but
-they are not an Android implementation. The required setup, touch-zone mapping,
-and device/thermal/frame-time evidence gate are specified in
+The title-specific safe-area-aware touch action owner now exists in
+`src/input/touch_controls.cpp`, delegates contact capture and cancellation to
+Lucent, and has focused coverage for simultaneous stick/button state, map-toggle
+click, and layout-change release. No Android Activity, document-provider bridge,
+APK packaging target, or mobile performance run exists in this repository yet.
+The required setup, touch-zone mapping, and device/thermal/frame-time evidence
+gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 

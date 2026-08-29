@@ -239,6 +239,12 @@ location lives in `src/ui/ui_resources.cpp`, and release staging lives in
 `tools/package_appimage.py` plus `packaging/`. `x2native.c` only composes the
 setup result into the existing asset mapping path.
 
+The Android touch boundary keeps the title's safe-area-aware action vocabulary
+and virtual layout in `src/input/touch_controls.cpp`; platform SDL/Activity
+event acquisition, visual feedback, and guest input publication remain outside
+that owner. `lucent::touch::Router` owns contact capture, multi-touch, and
+cancellation so the eventual Android bridge does not duplicate that policy.
+
 Boot selection follows the same boundary: `src/config/boot_mode.{c,h}` owns the
 persistent vocabulary, `src/native/boot_mode_policy.{c,h}` owns the pure
 Normal/Menu/Continue decision, `boot_mode_runtime.{c,h}` owns the one boot

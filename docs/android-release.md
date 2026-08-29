@@ -20,7 +20,8 @@ the setup screen with an actionable error.
 
 ## Touch controls
 
-The shell owns the safe-area-aware layout and maps touch contacts through
+The title owns the safe-area-aware layout and action vocabulary in
+`src/input/touch_controls.cpp`, while platform contacts map through
 `lucent::touch::Router`; Lucent owns capture, multi-touch, and cancellation, not
 the title's action vocabulary. A contact stays with its zone after leaving the
 zone until it ends or is canceled.
@@ -36,7 +37,7 @@ action rows:
 | Right bumper | `TargetLock` |
 | D-pad cluster | `NextHero`, `PreviousHero`, `DecreaseAggr`, `IncreaseAggr` |
 | Menu buttons | `Pause`, `Stats` |
-| Right virtual stick | `CameraUp`, `CameraDown`, `CameraLeft`, `CameraRight`; press is `MapToggle` |
+| Right virtual stick | `CameraUp`, `CameraDown`, `CameraLeft`, `CameraRight`; its center click is `MapToggle` |
 
 The layout must leave an inset for cutouts/navigation bars, support at least
 the left stick plus two face/shoulder contacts simultaneously, expose a
