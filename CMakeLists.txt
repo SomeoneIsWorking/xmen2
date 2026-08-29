@@ -34,7 +34,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 include(FetchContent)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 0e381a5
+    GIT_TAG 1c4c252
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(lucent)
 
@@ -80,6 +80,7 @@ add_test(NAME assertions_enabled COMMAND test_assertions_enabled)
 add_executable(test_config_directory tests/test_config_directory.c
                src/config/config_directory.c)
 target_include_directories(test_config_directory PRIVATE src/config)
+target_link_libraries(test_config_directory PRIVATE lucent::lucent)
 add_test(NAME config_directory COMMAND test_config_directory)
 
 add_executable(test_install_picker tests/test_install_picker.c
@@ -87,7 +88,7 @@ add_executable(test_install_picker tests/test_install_picker.c
 target_include_directories(test_install_picker PRIVATE src/native src/config)
 target_compile_definitions(test_install_picker PRIVATE
     X2_INSTALL_PICKER_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/appimage/XMen2.exe")
-target_link_libraries(test_install_picker PRIVATE ${X2_SDL} lucent::zip)
+target_link_libraries(test_install_picker PRIVATE ${X2_SDL} lucent::lucent lucent::zip)
 add_test(NAME install_picker COMMAND test_install_picker)
 
 add_executable(test_touch_controls tests/test_touch_controls.cpp
