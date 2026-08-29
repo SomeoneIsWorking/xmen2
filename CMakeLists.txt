@@ -29,6 +29,15 @@ endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
+# Shared port infrastructure: the desktop picker uses Lucent's safe, tested
+# archive extraction rather than carrying a second ZIP implementation here.
+include(FetchContent)
+FetchContent_Declare(lucent
+    GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
+    GIT_TAG d90aa30
+    GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(lucent)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -67,6 +76,19 @@ enable_testing()
 
 add_executable(test_assertions_enabled tests/test_assertions_enabled.c)
 add_test(NAME assertions_enabled COMMAND test_assertions_enabled)
+
+add_executable(test_config_directory tests/test_config_directory.c
+               src/config/config_directory.c)
+target_include_directories(test_config_directory PRIVATE src/config)
+add_test(NAME config_directory COMMAND test_config_directory)
+
+add_executable(test_install_picker tests/test_install_picker.c
+               src/native/install_picker.cpp src/config/config_directory.c)
+target_include_directories(test_install_picker PRIVATE src/native src/config)
+target_compile_definitions(test_install_picker PRIVATE
+    X2_INSTALL_PICKER_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/appimage/XMen2.exe")
+target_link_libraries(test_install_picker PRIVATE ${X2_SDL} lucent::zip)
+add_test(NAME install_picker COMMAND test_install_picker)
 
 add_executable(test_fmv_policy tests/test_fmv_policy.c
                src/media/fmv_policy.c)
@@ -885,6 +907,10 @@ add_test(NAME prepare_native_assets
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/prepare_native_assets.py --selftest)
 
+add_test(NAME appimage_packaging
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/package_appimage.py --selftest)
+
 add_test(NAME port_pause_menu
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/make_port_pause_menu.py --selftest)
@@ -1076,6 +1102,7 @@ if(X2_MODULE_HAVE)
     add_library(x2_rmlui_ui STATIC
         src/ui/controller_assignment_rows.cpp
         src/ui/rmlui_ui.cpp
+        src/ui/ui_resources.cpp
         src/ui/settings_document.cpp
         src/ui/settings_overlay_state.c)
     target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
@@ -1084,6 +1111,7 @@ if(X2_MODULE_HAVE)
     target_compile_definitions(x2_rmlui_ui PRIVATE
         X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
         X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
+        X2_UI_RESOURCE_DIR="${CMAKE_BINARY_DIR}/ui"
         X2_UI_DOCUMENT_URL="${CMAKE_BINARY_DIR}/ui/settings.rml")
     set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
     target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend)
@@ -1127,6 +1155,8 @@ if(X2_MODULE_HAVE)
         src/native/x2native.c
         src/native/guest_memory.c
         src/native/x2native_options.c
+        src/native/install_picker.cpp
+        src/config/config_directory.c
         src/config/settings.c
         src/config/input_assignments.c
         src/config/settings_store.c
@@ -1322,7 +1352,7 @@ if(X2_MODULE_HAVE)
                                               src/gpu src/d3d8
                                               src/oracle src/recomp/gen
                                               ${CMAKE_BINARY_DIR})
-    target_link_libraries(x2native PRIVATE x2_rmlui_ui)
+    target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::zip)
 
     # Native overrides are declared in C where they belong: x86_register_override
     # in the subsystem files, and recomp.py routes every call (direct or

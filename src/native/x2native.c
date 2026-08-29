@@ -35,6 +35,7 @@
 #include "d3d8_com.h"
 #include "env_file.h"
 #include "x2native_options.h"
+#include "install_picker.h"
 #include "live_session.h"
 #include "input_record.h"
 #include "crt_selftest.h"
@@ -42,6 +43,7 @@
 #include "platform_mman.h"
 
 #include <execinfo.h>
+#include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1843,6 +1845,19 @@ int main(int argc, char **argv)
         atexit(x86_setjmp_report);
     }
     if ((rc = x2native_options_parse(argc, argv, &options)) != 0) return rc;
+    if (options.appimage && options.product && !options.install_dir
+            && (!getenv("GAME_PC_DIR") || !getenv("GAME_PC_DIR")[0])) {
+        const char *picked = NULL;
+        if (x2_install_picker_choose(&picked) != 0 || !picked) {
+            fprintf(stderr, "x2native: no PC installation was selected; exiting.\n");
+            return 0;
+        }
+        if (setenv("GAME_PC_DIR", picked, 1) != 0) {
+            fprintf(stderr, "x2native: could not set the selected installation: %s\n",
+                    strerror(errno));
+            return 1;
+        }
+    }
     if (guest_memory_init() != 0) return 1;
     dir = options.install_dir;
     window = options.window;

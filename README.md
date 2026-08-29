@@ -28,9 +28,9 @@ assets are distributed here.
 
 *In-game party, HUD, map and controller-oriented prompt glyphs.*
 
-![Native keyboard prompt](docs/screenshots/keyboard-prompt-1280x720.png)
+![Native controller conversation prompt](docs/screenshots/controller-conversation-1280x720.png)
 
-*The same retail dialogue path showing the port's keyboard prompt treatment.*
+*The same retail dialogue path showing the port's SVG controller prompt treatment.*
 
 ## What is in this repository — and what is not
 
@@ -100,6 +100,27 @@ ImageMagick, a system Python environment, Wine, and sibling repository checkouts
 are not player prerequisites. Maintainer and diagnostic entry points live under
 `tools/`; they are deliberately not commands of `run.sh`. The `re-harness`
 checkout is maintainer-only and is not fetched by the player bootstrap.
+
+## Linux AppImage release
+
+The AppImage is launched from a desktop and does not require a terminal or an
+environment variable. On its first launch, choose **Browse** and select
+`XMen2.exe` from your legally obtained PC installation, or choose a ZIP that
+contains exactly one `XMen2.exe` at any depth. The port validates the file (or
+extracts the archive into user data), remembers the resulting directory in the
+OS user configuration directory, and keeps the source install read-only. The
+package contains no game files.
+
+Maintainers can create it after building the native target with:
+
+```sh
+uv run --frozen python tools/package_appimage.py
+```
+
+`linuxdeploy` and `appimagetool` must be available; the output is written to
+`scratch/release/X-Men-Legends-II-x86_64.AppImage`. An Android APK shell is not
+part of this release yet. Its planned setup, touch layout, and performance
+evidence gate are documented in [`docs/android-release.md`](docs/android-release.md).
 
 ## Sources
 

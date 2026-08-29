@@ -28,6 +28,6 @@ src/recomp/gen/prompt_glyph_atlas.h
 vendor/
 
 # host run state -- the emulated Windows registry (see src/native/advapi32.c).
-# It now defaults into scratch/, but keep the old root-level name ignored so a
-# stale binary cannot re-commit it.
+# It defaults into the OS user config directory, but keep the old root-level
+# name ignored so a stale binary cannot re-commit it.
 x2registry.txt

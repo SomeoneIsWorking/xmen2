@@ -13,6 +13,7 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
     o->window = 1;
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--no-window") == 0) o->window = 0;
+        else if (strcmp(argv[i], "--appimage") == 0) o->appimage = 1;
         else if (strcmp(argv[i], "--unbounded") == 0) o->unbounded = 1;
         else if (strncmp(argv[i], "--control", 9) == 0)
             o->control = argv[i][9] == '=' ? atoi(argv[i] + 10) : 8420;
@@ -39,7 +40,7 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
         else if (argv[i][0] == '-') {
             fprintf(stderr, "x2native: unknown option '%s'. Refusing rather "
                             "than treating it as the install directory.\n"
-                            "  Known: --no-window --unbounded --control[=port] "
+                            "  Known: --no-window --appimage --unbounded --control[=port] "
                             "--record-input[=path] --run "
                             "--selftest "
                             "--ark-probe "

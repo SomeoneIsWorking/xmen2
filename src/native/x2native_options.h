@@ -14,6 +14,7 @@ typedef struct {
     int control;
     /* The implicit D3D8+run route, whose supporting live tools are defaults. */
     int product;
+    int appimage;
     int selftest;
     int run;
     int ark_probe;

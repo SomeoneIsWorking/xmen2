@@ -60,6 +60,14 @@ For the default product, put the matching PC install at `./game/` or set
 machine-specific path may ever appear in a tracked file. Game assets are never
 committed or modified.
 
+The Linux AppImage is a desktop-first path: it does not require a terminal or
+`GAME_PC_DIR`. Its first launch passes `--appimage` to the native runner, which
+shows a setup prompt with Browse, validates the selected `XMen2.exe` or a ZIP
+containing exactly one copy at any depth, and remembers the resulting install
+under the OS user configuration directory. The AppImage contains no game
+files. The Android APK shell is not implemented here yet; its setup, touch
+layout, and performance evidence contract live in `docs/android-release.md`.
+
 All run artifacts go to the gitignored `scratch/`, structured by type
 (`scratch/logs/`, `screenshots/`, `recomp/`, `run/`, `build-*/`). Never `/tmp`.
 
@@ -93,6 +101,12 @@ initializer. It reconstructs all twenty gitignored recompiler outputs from the
 committed encoding-free exports plus the user's exact PE images; Ghidra is a
 maintainer-only discovery tool. Diagnostics, provisioning-only checks and Wine
 controls remain separate tools rather than launcher commands.
+
+Build a Linux AppImage from the verified native build with
+`uv run --frozen python tools/package_appimage.py`. The packager stages only
+the native binary, UI resources, desktop metadata, and libraries discovered by
+`linuxdeploy`; `appimagetool` writes the result to
+`scratch/release/X-Men-Legends-II-x86_64.AppImage`.
 
 **Drive a run instead of scripting it.** The default product opens an HTTP
 channel on loopback, records the exact post-merge DirectInput states returned to
@@ -214,6 +228,16 @@ Save paths keep the same split: `shell32.c` owns the writable profile root used
 by config and registry storage, while `src/save/save_directory.{c,h}` owns the
 one title-specific retail leaf directory below it. Catalog, Continue, boot and
 autosave consume that authority; none rebuilds `Activision/X-Men Legends 2/Save`.
+`src/config/config_directory.{c,h}` resolves and creates the OS user
+configuration directory. It is also the persistence owner for the AppImage
+install selection; `X2_SAVE_DIR` remains an explicit portable/diagnostic
+override.
+
+The AppImage setup boundary follows Dusklight's composition pattern: SDL3
+dialog/file-picker mechanics live in `src/native/install_picker.cpp`, resource
+location lives in `src/ui/ui_resources.cpp`, and release staging lives in
+`tools/package_appimage.py` plus `packaging/`. `x2native.c` only composes the
+setup result into the existing asset mapping path.
 
 Boot selection follows the same boundary: `src/config/boot_mode.{c,h}` owns the
 persistent vocabulary, `src/native/boot_mode_policy.{c,h}` owns the pure
