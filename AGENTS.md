@@ -182,9 +182,12 @@ writes to a file — the game is a GUI-subsystem process with no stderr) and the
 in-process crash reporter. Use those instead of gdb/winedbg, both of which
 produce nothing usable here (issue #1).
 
-**Xbox path** (`xbox/`, vendored toolkit in gitignored `vendor/xboxrecomp` —
-changes live as patches in `patches/`): `tools/xbox_relift.sh`,
-`tools/xbox_run.sh`, `tools/xbox_discover.sh`, `tools/check_patches.sh`.
+**Xbox path** (`xbox/`, optional gitignored `vendor/xboxrecomp` checkout from
+the maintained `SomeoneIsWorking/xboxrecomp` fork pinned in
+`xbox/xboxrecomp.lock`): `tools/xbox_relift.sh`,
+`tools/xbox_run.sh`, `tools/xbox_discover.sh`, `tools/get_xboxrecomp.py`.
+The PC product does not consume this path, and this repository has no patch
+queue for the optional Xbox toolkit.
 
 ## Architecture
 

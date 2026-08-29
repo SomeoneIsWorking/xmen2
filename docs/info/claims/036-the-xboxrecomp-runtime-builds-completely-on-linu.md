@@ -12,7 +12,7 @@ The xboxrecomp runtime builds completely on Linux after four upstream portabilit
 
 ## Evidence
 
-cmake -S . -B build && cmake --build build now returns 0 and produces libplatform.a, libxbox_kernel.a, libxbox_d3d8.a, libxbox_dsound.a, libxbox_input.a, libxbox_apu.a, libxbox_nv2a.a. Four fixes, all real Windows-vs-Linux differences rather than build-flag tweaks: (1) wcslen used on a WCHAR string -- Xbox WCHAR is UTF-16 (2 bytes) while glibc wchar_t is 4, so wcslen walks off the end; replaced with an explicit 16-bit counter, and MSVC only agreed by coincidence. (2) ERROR_NOT_OWNER missing from the Win32 vocabulary header. (3) IsDebuggerPresent/DebugBreak absent; implemented as no-debugger plus __builtin_trap, deliberately reporting FALSE so the game does not take its debug paths. (4) a missing include. Kept as patches/xboxrecomp/0001-linux-portability.patch.
+cmake -S . -B build && cmake --build build now returns 0 and produces libplatform.a, libxbox_kernel.a, libxbox_d3d8.a, libxbox_dsound.a, libxbox_input.a, libxbox_apu.a, libxbox_nv2a.a. Four fixes, all real Windows-vs-Linux differences rather than build-flag tweaks: (1) wcslen used on a WCHAR string -- Xbox WCHAR is UTF-16 (2 bytes) while glibc wchar_t is 4, so wcslen walks off the end; replaced with an explicit 16-bit counter, and MSVC only agreed by coincidence. (2) ERROR_NOT_OWNER missing from the Win32 vocabulary header. (3) IsDebuggerPresent/DebugBreak absent; implemented as no-debugger plus __builtin_trap, deliberately reporting FALSE so the game does not take its debug paths. (4) a missing include. These fixes now live in the maintained fork at the commit recorded in xbox/xboxrecomp.lock.
 
 ## What would falsify it
 

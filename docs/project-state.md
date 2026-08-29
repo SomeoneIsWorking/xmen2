@@ -287,6 +287,8 @@ sections lift to C and build; boundary, deferred-flag, ordinal-table, and
 runtime-discovery mechanisms have positive controls. The native Xbox build
 executes the game's main thread.
 
+Where: `xbox/` plus the pinned external fork recorded in `xbox/xboxrecomp.lock`.
+
 Gap: the path still reaches unresolved indirect targets, its native CRT heap is
 explicit hack debt, kernel bodies remain unaudited, 239 deleted jumps in two
 functions remain diagnosed-but-unfixed, and nothing renders. This is a

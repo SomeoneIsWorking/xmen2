@@ -99,7 +99,7 @@ below name cross-directory seams and the entry points used to extend them.
 | AppImage setup and release | Select and validate the read-only PC install through the first-run SDL3 prompt, resolve portable UI resources, and stage a game-file-free Linux desktop package | `src/native/install_picker.{cpp,h}`, `src/config/config_directory.{c,h}`, `src/ui/ui_resources.{cpp,h}`, `packaging/`, `tools/package_appimage.py`, shared `lucent::zip` | `x2_install_picker_choose`, `x2_ui_resource_path`, `tools/package_appimage.py:main` | — |
 | Stock-oracle probes | Instrument stock D3D8/title calls, cache driven controls, sample live guest state, and compare traces/frames | `tools/proxy_d3d8/`, `tools/oracle.py`, `tools/oracle_probe.py`, `tools/oracle_compare.py`, `tools/oraclediff.py`, `tools/shot_compare.py` | each tool's `main` | — |
 | Shared Alchemy formats | Own IGB, animation, XMLB, ARK, controller abstraction, and reusable viewers outside the title port | separate `alchemy` repository, resolved by `tools/alchemy_path.py` | Alchemy library/viewer entry points | external Alchemy docs |
-| Xbox recompilation | Own XBE lift/runtime integration and reproducible patches to the external recompilation toolkit | `xbox/`, `patches/xboxrecomp/`, `tools/xbox_relift.sh`, `tools/xbox_discover.sh`, `tools/xbe_query.py` | `xbox/src/main.c` | — |
+| Xbox recompilation | Own XBE lift/runtime integration and consume the maintained external recompilation fork | `xbox/`, `xbox/xboxrecomp.lock`, `vendor/xboxrecomp/`, `tools/xbox_relift.sh`, `tools/xbox_discover.sh`, `tools/get_xboxrecomp.py`, `tools/xbe_query.py` | `xbox/src/main.c` | — |
 | Structural enforcement | Enforce host-source ownership limits and keep Python automation linted | `tools/check_structure.py`, `tools/lint.py` | ctest `structure`, `python_lint` | — |
 
 ## Source tree
@@ -164,6 +164,5 @@ TOTAL: 9,125,093 lines across 406 files in 1 root(s)
   `alchemy` repository; only title-specific composition belongs here.
 - **A binary discovery or translation rule** → `tools/` or
   `tools/ghidra_scripts/`; generated code remains in `src/recomp/`.
-- **An Xbox lifter/runtime change** → the canonical external toolkit followed by
-  a reproducible patch in `patches/xboxrecomp/`; title integration belongs in
-  `xbox/src/`.
+- **An Xbox lifter/runtime change** → the maintained
+  `SomeoneIsWorking/xboxrecomp` fork; title integration belongs in `xbox/src/`.

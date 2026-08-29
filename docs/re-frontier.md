@@ -235,7 +235,8 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: re-verified
 - deps:
 - evidence: C035/C036/C038/C049; 24,663/24,663 functions across all ELEVEN executable sections, 0 failures
-- where: xbox/, vendor/xboxrecomp (patches/xboxrecomp/*.patch)
+- where: xbox/, the pinned `SomeoneIsWorking/xboxrecomp` checkout in `vendor/xboxrecomp`,
+  recorded in `xbox/xboxrecomp.lock`
 - gap: 239 jumps still deleted in 2 functions of the newly-covered sections (sub_0048447E in XGRPH, sub_0040C4E0) -- reported loudly by the translator, not yet diagnosed.
 - notes:
 
