@@ -34,7 +34,7 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 include(FetchContent)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG d90aa30
+    GIT_TAG 0e381a5
     GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(lucent)
 
@@ -89,6 +89,12 @@ target_compile_definitions(test_install_picker PRIVATE
     X2_INSTALL_PICKER_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/appimage/XMen2.exe")
 target_link_libraries(test_install_picker PRIVATE ${X2_SDL} lucent::zip)
 add_test(NAME install_picker COMMAND test_install_picker)
+
+add_executable(test_touch_controls tests/test_touch_controls.cpp
+               src/input/touch_controls.cpp)
+target_include_directories(test_touch_controls PRIVATE src/input)
+target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
+add_test(NAME touch_controls COMMAND test_touch_controls)
 
 add_executable(test_fmv_policy tests/test_fmv_policy.c
                src/media/fmv_policy.c)
@@ -1252,6 +1258,7 @@ if(X2_MODULE_HAVE)
         src/native/cutscene_player_policy.c
         src/native/cutscene_player.c
         src/native/input_probe.c
+        src/input/touch_controls.cpp
         src/native/xbox_defaults.c
         src/native/dsound.c
         src/audio/movie_audio.c
@@ -1352,7 +1359,7 @@ if(X2_MODULE_HAVE)
                                               src/gpu src/d3d8
                                               src/oracle src/recomp/gen
                                               ${CMAKE_BINARY_DIR})
-    target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::zip)
+    target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
 
     # Native overrides are declared in C where they belong: x86_register_override
     # in the subsystem files, and recomp.py routes every call (direct or
