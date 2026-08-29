@@ -24,7 +24,7 @@ src/recomp/difftest_cases.h
 src/recomp/gen/font_tier_ratio.h
 src/recomp/gen/prompt_glyph_atlas.h
 
-# vendored upstream; clone with tools/get_xboxrecomp.sh (fork before modifying)
+# optional Xbox toolkit checkout; the maintained fork already contains its changes
 vendor/
 
 # host run state -- the emulated Windows registry (see src/native/advapi32.c).

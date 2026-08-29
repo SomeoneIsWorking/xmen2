@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-05
 tags: xbox
-depends: patches/xboxrecomp/0003-recompiler-jump-tables-and-loud-drops.patch
+depends: xbox/xboxrecomp.lock
 ---
 
 ## Claim

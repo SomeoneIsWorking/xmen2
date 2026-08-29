@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-05
 tags: xbox
-depends: patches/xboxrecomp/0004-linux-veh-and-nv2a.patch
+depends: xbox/xboxrecomp.lock
 ---
 
 ## Claim
