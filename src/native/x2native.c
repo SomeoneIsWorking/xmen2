@@ -35,6 +35,8 @@
 #include "d3d8_com.h"
 #include "env_file.h"
 #include "x2native_options.h"
+#include "android_bridge.h"
+#include "config_directory.h"
 #include "install_picker.h"
 #include "live_session.h"
 #include "input_record.h"
@@ -1826,11 +1828,17 @@ int main(int argc, char **argv)
        rather than corrupting -- but there is no reason to keep it tight. */
     static PeImage imgs[24];
 
-    /* Direct invocation is a supported launch path throughout the docs.  The
-       binary therefore loads the project's gitignored .env itself; requiring
-       every diagnostic command to remember shell export semantics caused a
-       valid install to be reported as absent. Explicit launcher variables win. */
-    if (x2_load_project_env(argv[0]) < 0) return 2;
+    /* Before anything that can refuse: Android discards a process's stdio, so
+       until this runs every fatal message the port prints is invisible and a
+       deliberate exit looks like an unexplained crash. */
+    x2_android_log_stdio();
+    if ((rc = x2native_options_parse(argc, argv, &options)) != 0) return rc;
+    /* Direct developer invocation may load the project's gitignored .env.
+       Packaged --appimage setup (also used by Android) categorically may not:
+       its Browse flow and persisted OS user-data selection are the sole player
+       authority. Explicit environment variables still remain diagnostics. */
+    if (x2native_options_uses_project_env(&options)
+            && x2_load_project_env(argv[0]) < 0) return 2;
     /* Also on the ordinary exit path: a run that ends without faulting must
        still say what it reached, or the instrument only ever speaks when
        something else already went wrong. The fault handler _exit()s and so
@@ -1844,7 +1852,6 @@ int main(int argc, char **argv)
         extern void x86_setjmp_report(void);
         atexit(x86_setjmp_report);
     }
-    if ((rc = x2native_options_parse(argc, argv, &options)) != 0) return rc;
     if (options.appimage && options.product && !options.install_dir
             && (!getenv("GAME_PC_DIR") || !getenv("GAME_PC_DIR")[0])) {
         const char *picked = NULL;
@@ -1866,6 +1873,18 @@ int main(int argc, char **argv)
         int control_port = control_start(options.control);
         if (options.product && !control_port)
             control_port = control_start(8420);
+        /* A package does not own its working directory -- on Android it is not
+           even writable -- so its recordings belong with its other user data
+           rather than in a scratch/ path relative to wherever it was started. */
+        if (options.appimage && x2_config_directory_ensure()) {
+            char artifacts[512];
+            snprintf(artifacts, sizeof artifacts, "%s/recordings",
+                     x2_config_directory());
+            input_record_set_directory(artifacts);
+            snprintf(artifacts, sizeof artifacts, "%s/run",
+                     x2_config_directory());
+            live_session_set_directory(artifacts);
+        }
         if (options.input_record && !input_record_start(options.input_record)) {
             fprintf(stderr, "x2native: input recording was requested but "
                             "could not start. REFUSING an unrecorded run.\n");

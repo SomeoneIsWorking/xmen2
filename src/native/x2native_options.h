@@ -31,5 +31,7 @@ typedef struct {
 } X2NativeOptions;
 
 int x2native_options_parse(int argc, char **argv, X2NativeOptions *options);
+/* Developer launches may use the checkout's .env. Packaged setup never may. */
+int x2native_options_uses_project_env(const X2NativeOptions *options);
 
 #endif /* X2NATIVE_OPTIONS_H */

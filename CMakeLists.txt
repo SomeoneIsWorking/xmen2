@@ -994,6 +994,13 @@ add_test(NAME appimage_packaging
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/package_appimage.py --selftest)
 
+add_test(NAME appimage_env
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tests/test_appimage_env.py
+                 $<TARGET_FILE:x2native>)
+set_tests_properties(appimage_env PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME android_release
          COMMAND ${CMAKE_COMMAND} -E env
                  PYTHONPATH=${CMAKE_SOURCE_DIR} ${Python3_EXECUTABLE}
