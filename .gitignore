@@ -1,5 +1,6 @@
 .env
 scratch/
+android/.gradle/
 build/
 tools/raven-formats/
 *.o

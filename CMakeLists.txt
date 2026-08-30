@@ -34,33 +34,99 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 include(FetchContent)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 1c4c252
-    GIT_SHALLOW TRUE)
+    GIT_TAG 1c4c252aec2fbfc3ced7ff1831b8823fb9274516
+    GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(Threads REQUIRED)
 
 # SDL3, for its GPU abstraction: it is the layer that will stand in for D3D8,
 # and it maps onto Metal on macOS rather than needing MoltenVK underneath.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
-                  libavformat libavcodec libavutil libswscale libswresample)
-find_package(SDL3 QUIET)
-if(NOT SDL3_FOUND)
-    pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
-endif()
-if(TARGET SDL3::SDL3)
-    set(X2_SDL SDL3::SDL3)
-else()
-    set(X2_SDL PkgConfig::SDL3)
-endif()
+# Android is deliberately a separate dependency boundary. Host pkg-config
+# metadata can describe x86 desktop libraries while CMake is targeting ARM64;
+# accepting it creates a build that configures successfully and cannot link or
+# run on a phone.
+if(ANDROID)
+    if(NOT X2_ANDROID_FFMPEG_ROOT)
+        message(FATAL_ERROR
+            "x2native: Android requires a cross-compiled FFmpeg prefix. "
+            "Run 'uv run --frozen python tools/build_android_deps.py' first, "
+            "then configure with -DX2_ANDROID_FFMPEG_ROOT=<prefix>.")
+    endif()
+    foreach(_x2_ffmpeg_library IN ITEMS avformat avcodec swscale swresample avutil)
+        if(NOT EXISTS "${X2_ANDROID_FFMPEG_ROOT}/lib/lib${_x2_ffmpeg_library}.a")
+            message(FATAL_ERROR
+                "x2native: Android FFmpeg is incomplete: missing "
+                "${X2_ANDROID_FFMPEG_ROOT}/lib/lib${_x2_ffmpeg_library}.a. "
+                "Re-run tools/build_android_deps.py.")
+        endif()
+    endforeach()
+    add_library(x2_android_ffmpeg INTERFACE)
+    target_include_directories(x2_android_ffmpeg INTERFACE
+                               "${X2_ANDROID_FFMPEG_ROOT}/include")
+    target_link_libraries(x2_android_ffmpeg INTERFACE
+        "${X2_ANDROID_FFMPEG_ROOT}/lib/libavformat.a"
+        "${X2_ANDROID_FFMPEG_ROOT}/lib/libavcodec.a"
+        "${X2_ANDROID_FFMPEG_ROOT}/lib/libswscale.a"
+        "${X2_ANDROID_FFMPEG_ROOT}/lib/libswresample.a"
+        "${X2_ANDROID_FFMPEG_ROOT}/lib/libavutil.a"
+        log android dl z m)
+    set(X2_FFMPEG_TARGET x2_android_ffmpeg)
 
-find_package(SDL2 QUIET)          # asset viewers only -- see below
-if(NOT SDL2_FOUND)
-    pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
+    include(FetchContent)
+    set(SDL_SHARED ON CACHE BOOL "" FORCE)
+    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SDL_INSTALL_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(sdl3
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+        GIT_TAG 147a8ee32dbf9ac02f3794964490687b6bbda1bc
+        GIT_SHALLOW FALSE)
+    FetchContent_MakeAvailable(sdl3)
+    set(X2_SDL SDL3::SDL3-shared)
+    set(X2_SDL_ANDROID_JAVA_DIR
+        "${sdl3_SOURCE_DIR}/android-project/app/src/main/java")
+
+    set(SDLIMAGE_VENDORED ON CACHE BOOL "" FORCE)
+    set(SDLIMAGE_TESTS OFF CACHE BOOL "" FORCE)
+    set(SDLIMAGE_SAMPLES OFF CACHE BOOL "" FORCE)
+    # The Android shell only loads the packaged PNG UI resources. Keep the
+    # APK's native dependency closure limited to that format instead of
+    # shipping image codecs the port never calls.
+    set(SDLIMAGE_AVIF OFF CACHE BOOL "" FORCE)
+    set(SDLIMAGE_GIF OFF CACHE BOOL "" FORCE)
+    set(SDLIMAGE_JXL OFF CACHE BOOL "" FORCE)
+    set(SDLIMAGE_TIF OFF CACHE BOOL "" FORCE)
+    set(SDLIMAGE_WEBP OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(sdl3_image
+        GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
+        GIT_TAG bec9134a26c7d0f31b36d6083c25296e04cabff5
+        GIT_SHALLOW FALSE)
+    FetchContent_MakeAvailable(sdl3_image)
+    set(X2_SDL_IMAGE SDL3_image::SDL3_image)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
+                      libavformat libavcodec libavutil libswscale libswresample)
+    set(X2_FFMPEG_TARGET PkgConfig::X2_FFMPEG)
+    find_package(SDL3 QUIET)
+    if(NOT SDL3_FOUND)
+        pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+    endif()
+    if(TARGET SDL3::SDL3)
+        set(X2_SDL SDL3::SDL3)
+    else()
+        set(X2_SDL PkgConfig::SDL3)
+    endif()
+    find_package(SDL2 QUIET)          # asset viewers only -- see below
+    if(NOT SDL2_FOUND)
+        pkg_check_modules(SDL2 QUIET IMPORTED_TARGET sdl2)
+    endif()
 endif()
 
 # The Alchemy engine layer -- the IGB readers, the XMLB container, the ARK
@@ -159,7 +225,7 @@ add_executable(test_fmv_decode tests/test_fmv_decode.c
                src/media/fmv_decoder_drain.c src/media/fmv_policy.c
                src/media/fmv_probe.c src/media/fmv_timing.c)
 target_include_directories(test_fmv_decode PRIVATE src/media)
-target_link_libraries(test_fmv_decode PRIVATE PkgConfig::X2_FFMPEG m)
+    target_link_libraries(test_fmv_decode PRIVATE ${X2_FFMPEG_TARGET} m)
 add_test(NAME fmv_decode COMMAND test_fmv_decode)
 set_tests_properties(fmv_decode PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -490,8 +556,8 @@ add_custom_target(x2_prompt_glyph_atlas
 # nothing in the guest runtime -- it is SDL on one side and plain values on the
 # other -- so it links straight into a test binary.
 add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c
-        src/native/dinput_pad_virtual.c
-               src/native/guest_clock.c)
+        src/native/dinput_pad_virtual.c src/native/dinput_pad_virtual_actions.c
+        src/native/guest_clock.c)
 target_include_directories(test_dinput_pad PRIVATE src/native)
 target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
 target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
@@ -1077,13 +1143,23 @@ if(X2_MODULE_HAVE)
     set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
     set(RMLUI_TESTS OFF CACHE BOOL "" FORCE)
     set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
-    set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
+    if(ANDROID)
+        # Android's native target does not consume a host Freetype package.
+        # The setup UI is Java-owned and the in-game overlay remains buildable
+        # without importing a second cross-compiled font stack.
+        set(RMLUI_FONT_ENGINE none CACHE STRING "" FORCE)
+    else()
+        set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
+    endif()
     FetchContent_Declare(rmlui
         URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
         URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(rmlui)
-    find_package(SDL3_image REQUIRED)
+    if(NOT ANDROID)
+        find_package(SDL3_image REQUIRED)
+        set(X2_SDL_IMAGE SDL3_image::SDL3_image)
+    endif()
     set_target_properties(rmlui_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
     add_library(x2_rmlui_backend STATIC
@@ -1096,7 +1172,7 @@ if(X2_MODULE_HAVE)
     set_target_properties(x2_rmlui_backend PROPERTIES
         POSITION_INDEPENDENT_CODE ON)
     target_link_libraries(x2_rmlui_backend PUBLIC RmlUi::Core ${X2_SDL}
-                                                SDL3_image::SDL3_image)
+                                                ${X2_SDL_IMAGE})
     file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ui")
     configure_file(
         "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Regular.ttf"
@@ -1158,11 +1234,12 @@ if(X2_MODULE_HAVE)
     add_custom_target(x2_shaders DEPENDS ${X2_SHADER_HEADERS})
 
     message(STATUS "x2native: linking recompiled modules: ${X2_MODULE_HAVE}")
-    add_executable(x2native
+    set(X2_NATIVE_SOURCES
         src/native/x2native.c
         src/native/guest_memory.c
         src/native/x2native_options.c
         src/native/install_picker.cpp
+        src/native/android_bridge.cpp
         src/config/config_directory.c
         src/config/settings.c
         src/config/input_assignments.c
@@ -1240,6 +1317,7 @@ if(X2_MODULE_HAVE)
         src/native/dinput_joystick.c
         src/native/dinput_pad.c
         src/native/dinput_pad_virtual.c
+        src/native/dinput_pad_virtual_actions.c
         src/native/dialog_prompts.c
         src/native/pad_glyphs.c
         src/native/prompt_glyphs.c
@@ -1260,6 +1338,7 @@ if(X2_MODULE_HAVE)
         src/native/cutscene_player.c
         src/native/input_probe.c
         src/input/touch_controls.cpp
+        src/input/touch_runtime.cpp
         src/native/xbox_defaults.c
         src/native/dsound.c
         src/audio/movie_audio.c
@@ -1298,8 +1377,6 @@ if(X2_MODULE_HAVE)
         src/native/script_trace.c
         src/native/entity_spawn_probe.c
         src/native/heartbeat.c
-        src/native/oracle_trace.c
-        src/recomp/gen/probe_wraps.c
         src/d3d8/d3d8_com.c
         src/d3d8/d3d8_caps.c
         src/d3d8/d3d8_state.c
@@ -1351,6 +1428,19 @@ if(X2_MODULE_HAVE)
         
         ${X2_MODULE_SRCS}
     )
+    if(NOT ANDROID)
+        # The --wrap oracle probes depend on executable bodies and are not
+        # part of the Android shared-library product.
+        list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace.c
+                                      src/recomp/gen/probe_wraps.c)
+    else()
+        list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace_android.c)
+    endif()
+    if(ANDROID)
+        add_library(x2native SHARED ${X2_NATIVE_SOURCES})
+    else()
+        add_executable(x2native ${X2_NATIVE_SOURCES})
+    endif()
     add_dependencies(x2native x2_shaders x2_pad_glyph_header
                      x2_prompt_glyph_atlas)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
@@ -1384,7 +1474,7 @@ if(X2_MODULE_HAVE)
             "probe is silently absent. Run tools/gen_probes.py.")
     endif()
     include("${RECOMP_PROBES_CMAKE}")
-    if(NOT APPLE)
+    if(NOT APPLE AND NOT ANDROID)
         target_link_options(x2native PRIVATE ${RECOMP_PROBE_WRAPS})
     endif()
 
@@ -1450,14 +1540,30 @@ if(X2_MODULE_HAVE)
     # XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
     # and forces it to relocate for no reason.
     set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    if(NOT APPLE)
+    if(NOT APPLE AND NOT ANDROID)
         target_link_options(x2native PRIVATE -pie)
     endif()
     # libm: the exe's x87 translations use atan2l/fmodl and friends.
     # -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
     # so that a guest stuck anywhere still gets a liveness line.
-    target_link_libraries(x2native PRIVATE ${X2_SDL} PkgConfig::X2_FFMPEG
-                                           m pthread)
+    target_link_libraries(x2native PRIVATE ${X2_SDL} ${X2_FFMPEG_TARGET}
+                                           m Threads::Threads)
+    if(ANDROID)
+        set_target_properties(x2native PROPERTIES OUTPUT_NAME main)
+        # Gradle consumes this generated contract. It keeps the Android shell
+        # independent of CMake's internal target names while still refusing a
+        # stale or hand-pointed-at native library.
+        set(_x2_android_properties
+            "x2.nativeLibrary=$<TARGET_FILE:x2native>\n"
+            "x2.sdlLibrary=$<TARGET_FILE:SDL3-shared>\n"
+            "x2.androidAbi=${ANDROID_ABI}\n"
+            "x2.androidPlatform=${ANDROID_PLATFORM}\n"
+            "x2.sdlJavaDir=${X2_SDL_ANDROID_JAVA_DIR}\n"
+            "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n")
+        string(JOIN "" _x2_android_properties ${_x2_android_properties})
+        file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/x2-android.properties"
+             CONTENT "${_x2_android_properties}")
+    endif()
     # No $ENV{} here: CMake would bake in whatever GAME_PC_DIR was at CONFIGURE
     # time, which is how this test first "failed" against an empty path. x2native
     # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,

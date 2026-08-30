@@ -1,30 +1,53 @@
 # Android release contract
 
-This document is the implementation contract for a future SDL3 Android APK.
-It is not a claim that the APK exists today; the current state is recorded as
-S018 in [`project-state.md`](project-state.md).
+This document is the implementation and evidence contract for the SDL3 Android
+APK. The native target and setup shell now exist; S018 remains partial until a
+real APK is installed and measured on the supported device tiers.
 
 ## Setup and game-file access
 
-The APK has no terminal and must open an initial setup screen before starting
-the game. The screen has a Browse button that launches Android's Storage Access
-Framework document picker. It accepts either the user's `XMen2.exe` or a ZIP
-containing exactly one `XMen2.exe` anywhere below its root.
+The APK has no terminal and opens `XMen2SetupActivity` before starting
+`XMen2GameActivity`. The setup screen has a Browse button that launches
+Android's Storage Access Framework document picker. A ZIP is copied into
+private storage and accepted when it contains exactly one `XMen2.exe` at any
+nested path. If the user first chooses `XMen2.exe`, Android then requests the
+containing install folder: a single content URI grants access to one file, not
+its siblings, so pretending that the executable alone is a complete install
+would produce a broken launch. The folder is copied recursively and native
+validation still requires exactly one executable.
 
-The Activity persists the selected document URI with persistable read access.
-Because a content URI is not necessarily a filesystem path, the Android shell
-copies the selected document into app-private storage before calling the shared
-Lucent ZIP extractor. The extracted install and the URI preference are app data,
-not checkout, APK, or cache/scratch data. A missing or revoked URI returns to
-the setup screen with an actionable error.
+The Activity persists the selected document URI when the provider allows
+persistable read access. Because a content URI is not necessarily a filesystem
+path, the Android shell copies the selected document/tree into app-private
+storage before calling the shared Lucent ZIP extractor or the native folder
+validator. The staged install and source preference are app data, not checkout,
+APK, or cache/scratch data. A missing selection returns to setup with an
+actionable error. `lucent_platform_set_user_data_directory` receives the
+Activity's absolute private files root; there is no Android environment-variable
+fallback.
+
+Build it with:
+
+```sh
+uv run --frozen python tools/build_android.py
+```
+
+The script cross-builds the pinned FFmpeg subset, configures CMake for
+`arm64-v8a`, builds `libmain.so`, and assembles the release APK. Set
+`ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 24 first. On
+DNF-based systems, install the required JDK with
+`sudo dnf install java-17-openjdk-devel`, then set `JAVA_HOME` to it. The
+generated native contract is `scratch/build-android-arm64/x2-android.properties`.
 
 ## Touch controls
 
 The title owns the safe-area-aware layout and action vocabulary in
-`src/input/touch_controls.cpp`, while platform contacts map through
-`lucent::touch::Router`; Lucent owns capture, multi-touch, and cancellation, not
-the title's action vocabulary. A contact stays with its zone after leaving the
-zone until it ends or is canceled.
+`src/input/touch_controls.cpp`, while `src/input/touch_runtime.cpp` converts
+SDL contacts to the existing virtual DirectInput pad through
+`lucent::touch::Router`. Lucent owns capture, multi-touch, and cancellation,
+not the title's action vocabulary. A contact stays with its zone after leaving
+the zone until it ends or is canceled. The runtime derives safe-area insets
+from SDL and publishes releases on cancellation, rotation, or lifecycle loss.
 
 The initial landscape layout uses these zones and the existing Xbox-derived
 action rows:
@@ -57,3 +80,5 @@ the release must not silently lower fidelity or frame pacing to hide it.
 
 The evidence must include a cold setup launch, a document-picker return, the
 first movie, a representative combat scene, touch-only input, and suspend/resume.
+No desktop result substitutes for this gate, and no frame-rate cap or reduced
+render path may be enabled merely to make a device pass.

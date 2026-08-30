@@ -6,6 +6,7 @@
  * with the port's user configuration, never beside the read-only game. ZIP
  * extraction is shared with other ports through Lucent. */
 #include "install_picker.h"
+#include "android_bridge.h"
 #include "../config/config_directory.h"
 
 #include <SDL3/SDL.h>
@@ -176,6 +177,34 @@ static int is_zip_path(const char *path)
     return extension && strcasecmp(extension, ".zip") == 0;
 }
 
+static int directory_from_folder(const char *folder, char *directory,
+                                 unsigned capacity)
+{
+    std::error_code error;
+    std::filesystem::path found;
+    unsigned matches = 0;
+    const std::filesystem::path root(folder ? folder : "");
+    if (folder == nullptr || !std::filesystem::is_directory(root, error) || error)
+        return 0;
+    for (std::filesystem::recursive_directory_iterator it(
+             root, std::filesystem::directory_options::skip_permission_denied,
+             error), end;
+         it != end && !error; it.increment(error)) {
+        if (!it->is_regular_file(error) || error) {
+            error.clear();
+            continue;
+        }
+        if (strcasecmp(it->path().filename().string().c_str(), "XMen2.exe") == 0) {
+            found = it->path();
+            if (++matches > 1) return 0;
+        }
+    }
+    if (error || matches != 1) return 0;
+    const std::string path = found.string();
+    return x2_install_picker_directory_from_executable(path.c_str(), directory,
+                                                        capacity);
+}
+
 static unsigned archive_id(const char *path)
 {
     unsigned hash = 2166136261u;
@@ -190,6 +219,18 @@ static int directory_from_selection(const char *selection, char *directory,
                                     unsigned capacity, char *reason,
                                     size_t reason_capacity)
 {
+    std::error_code status_error;
+    if (selection && std::filesystem::is_directory(selection, status_error)) {
+        if (directory_from_folder(selection, directory, capacity)) return 1;
+        snprintf(reason, reason_capacity,
+                 "That folder must contain exactly one XMen2.exe, including in its subfolders.");
+        return 0;
+    }
+    if (status_error) {
+        snprintf(reason, reason_capacity, "Cannot inspect the selected path: %s",
+                 status_error.message().c_str());
+        return 0;
+    }
     if (!is_zip_path(selection)) {
         if (x2_install_picker_directory_from_executable(
                 selection, directory, capacity)) return 1;
@@ -234,6 +275,26 @@ extern "C" int x2_install_picker_choose(const char **directory)
 
     if (!directory) return -1;
     *directory = NULL;
+#if defined(__ANDROID__)
+    if (saved_directory()) {
+        *directory = g_directory;
+        return 0;
+    }
+    const char *source = x2_android_install_source();
+    if (!source) {
+        fprintf(stderr, "install picker: Android setup has not supplied an install source.\n");
+        return -1;
+    }
+    if (!directory_from_selection(source, candidate, sizeof candidate,
+                                  reason, sizeof reason)) {
+        fprintf(stderr, "install picker: Android install source rejected: %s\n", reason);
+        return -1;
+    }
+    copy_string(g_directory, sizeof g_directory, candidate);
+    remember_directory(g_directory);
+    *directory = g_directory;
+    return 0;
+#else
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "install picker: SDL video initialization failed: %s\n",
                 SDL_GetError());
@@ -290,4 +351,5 @@ extern "C" int x2_install_picker_choose(const char **directory)
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         return 0;
     }
+#endif
 }

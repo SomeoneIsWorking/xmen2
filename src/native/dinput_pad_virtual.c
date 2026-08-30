@@ -2,6 +2,7 @@
    attach/unplug, press and axis injection, and the announced identity
    override. See dinput_pad_virtual.h. */
 #include "dinput_pad_virtual.h"
+#include "dinput_pad_virtual_internal.h"
 
 #include "dinput_pad.h"
 #include "guest_clock.h"
@@ -15,13 +16,16 @@
 #endif
 
 #ifdef X2_WITH_SDL
-static int  g_virt_at_frame = -1;         /* fN form: attach at that frame */
-static SDL_JoystickID g_virt_id;
-static SDL_Joystick  *g_virt_js;   /* opened so its axes/buttons can be set */
-static int  g_virt_detach_at = -1;
-static char g_virtual_persistent_id[64];
-static unsigned long g_vbtn_clears;
-static unsigned long g_vpad_presses, g_vpad_axis_sets;
+int  g_virt_at_frame = -1;         /* fN form: attach at that frame */
+SDL_JoystickID g_virt_id;
+SDL_Joystick  *g_virt_js;   /* opened so its axes/buttons can be set */
+int  g_virt_detach_at = -1;
+char g_virtual_persistent_id[64];
+unsigned long g_vbtn_clears;
+unsigned long g_vpad_presses, g_vpad_axis_sets;
+const char *const g_vaxis_name[6] = {
+    "leftx", "lefty", "rightx", "righty", "lefttrigger", "righttrigger"
+};
 #endif
 
 /* The two axes SDL treats as TRIGGERS: it maps their whole signed joystick
@@ -29,10 +33,10 @@ static unsigned long g_vpad_presses, g_vpad_axis_sets;
    zero. Everything that writes a virtual axis has to know which it is holding.
    Index order is AXIS[] in dinput_pad_set_axis: leftx lefty rightx righty
    lefttrigger righttrigger. */
-static int axis_is_trigger(int i) { return i == 4 || i == 5; }
+int axis_is_trigger(int i) { return i == 4 || i == 5; }
 
 /* 0.0 (released) .. 1.0 (fully squeezed) as SDL's virtual-joystick value. */
-static short trigger_raw(double v)
+short trigger_raw(double v)
 {
     return (short)(-32768.0 + v * 65535.0);
 }
@@ -54,21 +58,19 @@ static short trigger_raw(double v)
  * definition: the SDL mapping string is generated from it, and a name asked
  * for over the control channel is looked up in it. See virtual_attach.
  */
-#define VBTN_N 10
-static const char *const g_vbtn_name[VBTN_N] = {
+#define VBTN_N X2_VIRTUAL_BUTTON_COUNT
+const char *const g_vbtn_name[VBTN_N] = {
     "a", "b", "x", "y", "back", "start",
     "leftstick", "rightstick", "leftshoulder", "rightshoulder"
 };
 
 /* A press held until `until` (guest seconds), so a press survives the game's
    per-frame poll the way a real thumb does. 0 = not held. */
-static double g_vbtn_until[VBTN_N];
-static double g_vaxis_until[6];
-static short  g_vaxis_value[6];
-static unsigned long g_vpad_presses, g_vpad_axis_sets;
+double g_vbtn_until[VBTN_N];
+double g_vaxis_until[6];
+short  g_vaxis_value[6];
 
 static void virtual_attach(void);
-static void virtual_expire(void);
 
 void dinput_pad_virtual_from_env(void)
 {
@@ -280,9 +282,6 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                            char *why, int whyn)
 {
 #ifdef X2_WITH_SDL
-    static const char *const AXIS[6] = {
-        "leftx", "lefty", "rightx", "righty", "lefttrigger", "righttrigger"
-    };
     double now = guest_clock_now_s();
     int i;
 
@@ -378,8 +377,23 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
             }
             return 1;
         }
+    if (!strcmp(what, "up") || !strcmp(what, "down") ||
+        !strcmp(what, "left") || !strcmp(what, "right")) {
+        Uint8 hat = !strcmp(what, "up") ? SDL_HAT_UP :
+                    !strcmp(what, "down") ? SDL_HAT_DOWN :
+                    !strcmp(what, "left") ? SDL_HAT_LEFT : SDL_HAT_RIGHT;
+        if (!SDL_SetJoystickVirtualHat(g_virt_js, 0, hat)) {
+            snprintf(why, (size_t)whyn, "SDL refused hat direction %s: %s",
+                     what, SDL_GetError());
+            return 0;
+        }
+        SDL_UpdateJoysticks();
+        SDL_UpdateGamepads();
+        snprintf(why, (size_t)whyn, "virtual d-pad direction %s is down", what);
+        return 1;
+    }
     for (i = 0; i < 6; i++)
-        if (!strcmp(what, AXIS[i])) {
+        if (!strcmp(what, g_vaxis_name[i])) {
             /* -1..1 from the caller, SDL's signed 16-bit range on the wire --
                EXCEPT for the triggers, which have no negative half. SDL maps a
                virtual joystick axis's whole -32768..32767 travel onto a
@@ -438,44 +452,6 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
     return 0;
 #endif
 }
-
-/* Release whatever has been held long enough. Called once a frame beside the
-   attach/detach schedule, so a press lasts real frames rather than one poll. */
-static void virtual_expire(void)
-{
-#ifdef X2_WITH_SDL
-    double now = guest_clock_now_s();
-    int i;
-    if (!g_virt_js) return;
-    for (i = 0; i < VBTN_N; i++)
-        if (g_vbtn_until[i] != 0.0 && now >= g_vbtn_until[i]) {
-            double held = now - g_vbtn_until[i];
-            g_vbtn_until[i] = 0.0;
-            g_vbtn_clears++;
-            /* How LONG after the deadline, because a clear that happens the
-               instant the press is made means the deadline was already in the
-               past -- a clock disagreement, not an expiry. */
-            if (g_vbtn_clears <= 4)
-                fprintf(stderr, "DINPUT-PAD: releasing button %d, %.3fs past "
-                                "its deadline (clear #%lu)\n",
-                        i, held, g_vbtn_clears);
-            SDL_SetJoystickVirtualButton(g_virt_js, i, false);
-        }
-    for (i = 0; i < 6; i++)
-        if (g_vaxis_until[i] != 0.0 && now >= g_vaxis_until[i]) {
-            /* A trigger's rest is the axis MINIMUM, not zero. Releasing it to
-               zero left it reading half held for the remainder of the run --
-               silently, because nothing prints an axis that is merely
-               half-way. */
-            short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
-            g_vaxis_until[i] = 0.0;
-            g_vaxis_value[i] = rest;
-            SDL_SetJoystickVirtualAxis(g_virt_js, i, rest);
-        }
-#endif
-}
-
-
 
 const char *dinput_pad_virtual_identity_override(unsigned int joystick_id)
 {

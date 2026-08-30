@@ -1,0 +1,122 @@
+plugins {
+    id "com.android.application"
+}
+
+import java.util.Properties
+
+def propertiesPath = project.findProperty("x2NativeProperties")
+if (!propertiesPath) {
+    propertiesPath = System.getenv("X2_ANDROID_PROPERTIES")
+}
+if (!propertiesPath) {
+    throw new GradleException(
+        "x2-android.properties is not selected. Configure the Android CMake target first " +
+        "and pass -Px2NativeProperties=<build>/x2-android.properties.")
+}
+def nativePropertiesFile = file(propertiesPath)
+if (!nativePropertiesFile.isFile()) {
+    throw new GradleException("Android native properties are missing: ${nativePropertiesFile}")
+}
+def nativeProperties = new Properties()
+nativePropertiesFile.withInputStream { nativeProperties.load(it) }
+def required = { String name ->
+    def value = nativeProperties.getProperty(name)
+    if (!value) throw new GradleException("Missing ${name} in ${nativePropertiesFile}")
+    value
+}
+
+def nativeLibrary = file(required("x2.nativeLibrary"))
+def sdlLibrary = file(required("x2.sdlLibrary"))
+def androidAbi = required("x2.androidAbi")
+def androidPlatform = required("x2.androidPlatform")
+def sdlJavaDir = file(required("x2.sdlJavaDir"))
+def uiDir = file(required("x2.uiDir"))
+def sdkPath = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+if (!sdkPath) throw new GradleException("ANDROID_HOME or ANDROID_SDK_ROOT is not available")
+def ndkVersionValue = System.getenv("ANDROID_NDK_VERSION")
+if (!ndkVersionValue) {
+    def ndkRoot = new File(sdkPath, "ndk")
+    def candidates = ndkRoot.listFiles()?.findAll { it.isDirectory() } ?: []
+    if (candidates.size() == 1) ndkVersionValue = candidates[0].name
+}
+if (!ndkVersionValue) throw new GradleException("ANDROID_NDK_VERSION is not available")
+def ndkDir = new File(sdkPath, "ndk/${ndkVersionValue}")
+def triple = [
+    "arm64-v8a": "aarch64-linux-android",
+    "armeabi-v7a": "arm-linux-androideabi",
+    "x86": "i686-linux-android",
+    "x86_64": "x86_64-linux-android"
+][androidAbi]
+if (!triple) throw new GradleException("Unsupported Android ABI: ${androidAbi}")
+def llvmRoot = new File(ndkDir, "toolchains/llvm/prebuilt")
+def llvmDir = llvmRoot.listFiles()?.find { it.isDirectory() }
+def stlLibrary = llvmDir == null ? null :
+    new File(llvmDir, "sysroot/usr/lib/${triple}/libc++_shared.so")
+if (stlLibrary == null || !stlLibrary.isFile())
+    throw new GradleException("libc++_shared.so is missing for ${androidAbi} in ${ndkDir}")
+if (!sdlJavaDir.isDirectory()) throw new GradleException("SDL Android Java sources are missing: ${sdlJavaDir}")
+if (!uiDir.isDirectory()) throw new GradleException("Native UI assets are missing: ${uiDir}")
+
+def stagedJniLibs = layout.buildDirectory.dir("generated/jniLibs/x2")
+def stageJniLibs = tasks.register("stageX2JniLibs", Sync) {
+    from(nativeLibrary) {
+        rename { "libmain.so" }
+        into(androidAbi)
+    }
+    from(stlLibrary) {
+        rename { "libc++_shared.so" }
+        into(androidAbi)
+    }
+    from(sdlLibrary) {
+        rename { "libSDL3.so" }
+        into(androidAbi)
+    }
+    into(stagedJniLibs)
+    doFirst {
+        if (!nativeLibrary.isFile())
+            throw new GradleException("Native library is missing: ${nativeLibrary}. Build x2native first.")
+    }
+}
+
+def stagedAssets = layout.buildDirectory.dir("generated/assets/x2")
+def syncAssets = tasks.register("syncX2Assets", Sync) {
+    from(uiDir) { into("ui") }
+    into(stagedAssets)
+}
+
+android {
+    namespace "com.someoneisworking.xmen2"
+    compileSdk 36
+    ndkVersion ndkVersionValue
+    defaultConfig {
+        applicationId "com.someoneisworking.xmen2"
+        minSdk androidPlatform.replaceFirst("^android-", "").toInteger()
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0"
+    }
+    buildTypes {
+        debug { minifyEnabled false }
+        release { minifyEnabled false }
+    }
+    sourceSets {
+        main {
+            jniLibs.srcDirs = [stagedJniLibs]
+            assets.srcDirs = [stagedAssets]
+            java.srcDirs += [sdlJavaDir]
+        }
+    }
+    splits {
+        abi {
+            enable true
+            reset()
+            include androidAbi
+            universalApk false
+        }
+    }
+    packaging {
+        jniLibs { useLegacyPackaging true }
+    }
+}
+
+tasks.named("preBuild").configure { dependsOn(stageJniLibs, syncAssets) }

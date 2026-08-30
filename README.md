@@ -118,9 +118,15 @@ uv run --frozen python tools/package_appimage.py
 ```
 
 `linuxdeploy` and `appimagetool` must be available; the output is written to
-`scratch/release/X-Men-Legends-II-x86_64.AppImage`. An Android APK shell is not
-part of this release yet. Its planned setup, touch layout, and performance
-evidence gate are documented in [`docs/android-release.md`](docs/android-release.md).
+`scratch/release/X-Men-Legends-II-x86_64.AppImage`.
+
+The Android APK has the same no-terminal setup rule. Build it with
+`uv run --frozen python tools/build_android.py` after selecting the Android SDK
+and NDK. Its Browse screen uses SAF, stages a ZIP or install folder into
+app-private storage, and supplies the same Lucent user-data root used for
+saves/configuration. Touch controls publish through the existing virtual pad.
+Mobile performance evidence is tracked separately in
+[`docs/android-release.md`](docs/android-release.md).
 
 ## Sources
 
