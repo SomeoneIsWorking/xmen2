@@ -24,6 +24,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--skip-deps", action="store_true")
     parser.add_argument("--no-assemble", action="store_true")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Assemble a debug-signed APK for local device testing. The "
+             "artifact stays in Gradle's build output and is never published "
+             "to scratch/release; it is not a release candidate.",
+    )
     return parser.parse_args()
 
 
@@ -129,6 +136,18 @@ def apksigner_path() -> Path:
     return candidates[0]
 
 
+def debug_apk(root: Path) -> Path:
+    """The debug artifact, which stays in Gradle's output and is never published."""
+    outputs = root / "android/app/build/outputs/apk/debug"
+    candidates = sorted(outputs.glob("*-debug.apk"))
+    if len(candidates) != 1:
+        found = ", ".join(path.name for path in sorted(outputs.glob("*.apk")))
+        raise SystemExit(
+            f"Expected exactly one debug APK in {outputs}; found: {found or 'none'}"
+        )
+    return candidates[0]
+
+
 def publish_apk(root: Path, abi: str) -> Path:
     outputs = root / "android/app/build/outputs/apk/release"
     candidates = [path for path in outputs.glob("*-release.apk")
@@ -159,7 +178,7 @@ def main() -> int:
     build.mkdir(parents=True, exist_ok=True)
     ndk = ndk_path()
     gradle_java = java_home() if not args.no_assemble else None
-    signing = release_signing() if not args.no_assemble else None
+    signing = release_signing() if not args.no_assemble and not args.debug else None
     prefix = root / "scratch" / "android-deps" / args.abi
     if not args.skip_deps:
         run(
@@ -195,25 +214,33 @@ def main() -> int:
         ],
         cwd=root,
     )
-    run(["cmake", "--build", str(build), "--target", "x2native", "-j2"], cwd=root)
+    run(["cmake", "--build", str(build), "--target", "x2native", f"-j{os.cpu_count() or 4}"], cwd=root)
     if not args.no_assemble:
-        assert gradle_java is not None and signing is not None
+        assert gradle_java is not None
         gradle_environment = os.environ.copy()
-        gradle_environment.update(signing)
-        print("+ ./gradlew --no-daemon <release signing hidden> :app:assembleRelease")
+        task = ":app:assembleDebug" if args.debug else ":app:assembleRelease"
+        if args.debug:
+            print(f"+ ./gradlew --no-daemon {task}")
+        else:
+            assert signing is not None
+            gradle_environment.update(signing)
+            print(f"+ ./gradlew --no-daemon <release signing hidden> {task}")
         subprocess.run(
             [
                 "./gradlew",
                 "--no-daemon",
                 "-Dorg.gradle.java.home=" + str(gradle_java),
                 "-Px2NativeProperties=" + str(build / "x2-android.properties"),
-                ":app:assembleRelease",
+                task,
             ],
             cwd=root / "android",
             env=gradle_environment,
             check=True,
         )
-        publish_apk(root, args.abi)
+        if args.debug:
+            print(f"android: debug APK left in {debug_apk(root)} (not a release)")
+        else:
+            publish_apk(root, args.abi)
     return 0
 
 

@@ -35,16 +35,14 @@ def releaseKeystore = System.getenv("X2_ANDROID_KEYSTORE")
 def releaseKeyAlias = System.getenv("X2_ANDROID_KEY_ALIAS")
 def releaseStorePassword = System.getenv("X2_ANDROID_STORE_PASSWORD")
 def releaseKeyPassword = System.getenv("X2_ANDROID_KEY_PASSWORD")
-def signingValues = [releaseKeystore, releaseKeyAlias,
-                     releaseStorePassword, releaseKeyPassword]
-if (signingValues.any { !it }) {
-    throw new GradleException(
-        "Release signing requires X2_ANDROID_KEYSTORE, X2_ANDROID_KEY_ALIAS, " +
-        "X2_ANDROID_STORE_PASSWORD, and X2_ANDROID_KEY_PASSWORD. Refusing to " +
-        "produce an unsigned release APK.")
-}
-def releaseKeystoreFile = file(releaseKeystore)
-if (!releaseKeystoreFile.isFile()) {
+/* Release signing is deliberately absent for a debug-only local build, which
+   must still configure. The release APK is refused instead at the two gates
+   that own publication: tools/build_android.py refuses to start a release
+   without all four values, and publish_apk refuses any unsigned artifact. */
+def releaseSigned = [releaseKeystore, releaseKeyAlias,
+                     releaseStorePassword, releaseKeyPassword].every { it }
+def releaseKeystoreFile = releaseSigned ? file(releaseKeystore) : null
+if (releaseSigned && !releaseKeystoreFile.isFile()) {
     throw new GradleException("Release keystore is missing: ${releaseKeystoreFile}")
 }
 def versionCodeValue = (System.getenv("X2_ANDROID_VERSION_CODE") ?: "2").toInteger()
@@ -106,15 +104,17 @@ android {
     namespace = "com.someoneisworking.xmen2"
     compileSdk = 36
     ndkVersion = ndkVersionValue
-    signingConfigs {
-        release {
-            storeFile = releaseKeystoreFile
-            storePassword = releaseStorePassword
-            keyAlias = releaseKeyAlias
-            keyPassword = releaseKeyPassword
-            enableV1Signing = true
-            enableV2Signing = true
-            enableV3Signing = true
+    if (releaseSigned) {
+        signingConfigs {
+            release {
+                storeFile = releaseKeystoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
         }
     }
     defaultConfig {
@@ -128,7 +128,7 @@ android {
         debug { minifyEnabled = false }
         release {
             minifyEnabled = false
-            signingConfig = signingConfigs.release
+            if (releaseSigned) signingConfig = signingConfigs.release
         }
     }
     sourceSets {

@@ -6,6 +6,11 @@
 #if defined(__ANDROID__)
 #include <jni.h>
 
+#include <android/log.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <cstdio>
+
 #include <lucent/platform_c.h>
 
 namespace {
@@ -50,11 +55,59 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
     return ::setenv("X2_VIRTUAL_PAD", "1", 1) == 0 ? JNI_TRUE : JNI_FALSE;
 }
 
+namespace {
+
+/*
+ * Writes straight to logcat on the calling thread. A pipe drained by a reader
+ * thread loses whatever is still in flight when exit() tears the process down,
+ * which is exactly the refusal that explains a short run -- the message that
+ * matters most is the one such a scheme drops.
+ */
+int log_write(void *cookie, const char *data, int size)
+{
+    if (size > 0)
+        __android_log_print(ANDROID_LOG_INFO, static_cast<const char *>(cookie),
+                            "%.*s", size, data);
+    return size;
+}
+
+FILE *log_stream(const char *tag)
+{
+    FILE *stream = ::funopen(const_cast<char *>(tag), nullptr, log_write,
+                             nullptr, nullptr);
+    if (stream) ::setvbuf(stream, nullptr, _IOLBF, 0);
+    return stream;
+}
+
+} // namespace
+
+extern "C" void x2_android_log_stdio(void)
+{
+    static bool routed = false;
+    if (routed) return;
+    FILE *out = log_stream("x2native");
+    FILE *err = log_stream("x2native");
+    if (!out || !err) {
+        if (out) ::fclose(out);
+        if (err) ::fclose(err);
+        return;
+    }
+    stdout = out;
+    stderr = err;
+    /* Line buffering would hold a refusal that does not end in a newline. */
+    ::setvbuf(stderr, nullptr, _IONBF, 0);
+    routed = true;
+}
+
 #else
 
 extern "C" const char *x2_android_install_source(void)
 {
     return nullptr;
+}
+
+extern "C" void x2_android_log_stdio(void)
+{
 }
 
 #endif

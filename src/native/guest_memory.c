@@ -1,9 +1,10 @@
 /*
- * The guest owns a 32-bit address space; the arm64 Mach-O does not.
+ * The guest owns a 32-bit address space; several hosts will not lend it.
  *
  * Apple Silicon requires the normal 4 GB __PAGEZERO reservation and kills a
- * binary with a smaller one before main().  Reserve a separate 4 GB host arena
- * and add its base at every guest-memory access instead.  Linux and Intel
+ * binary with a smaller one before main(); Android's loader and ART already
+ * occupy the low addresses.  Both reserve a separate 4 GB host arena and add
+ * its base at every guest-memory access instead.  Desktop Linux and Intel
  * hosts retain identity mappings, so the same boundary also centralises the
  * collision checks that used to be open-coded around mmap.
  */
@@ -29,6 +30,25 @@
 #endif
 #define GUEST_PAGE_COUNT (GUEST_SPACE_SIZE / GUEST_PAGE_SIZE)
 #define PAGE_MAPPED 0x80u
+
+/*
+ * Whether the host refuses to hand this process the low 4 GB one-to-one, so
+ * the guest space must be reserved up front and every address rebased into it.
+ * Apple Silicon refuses those addresses outright; on Android the loader and
+ * ART already occupy them, and a fixed map of the guest heap at 0x71000000
+ * fails with the arena having nowhere to live.
+ *
+ * Such a host must also never munmap inside the arena -- it drops protection
+ * instead, so that nothing else can claim the hole it would leave. This is a
+ * separate question from HOST_PAGE_SIZE above: Apple's 16 KiB granule needs
+ * the grouping in apply_host_protection, while a 4 KiB Android page makes the
+ * same code a one-page no-op.
+ */
+#if (defined(__APPLE__) && defined(__aarch64__)) || defined(__ANDROID__)
+#define GUEST_ARENA_RESERVED 1
+#else
+#define GUEST_ARENA_RESERVED 0
+#endif
 
 uintptr_t g_guest_memory_base;
 
@@ -61,9 +81,13 @@ static int span(uint32_t address, size_t size, uint32_t *first, uint32_t *count)
     return 0;
 }
 
-#if defined(__APPLE__) && defined(__aarch64__)
+#if GUEST_ARENA_RESERVED
 /*
- * Apply the logical 4 KiB page table to macOS's 16 KiB VM granules.
+ * Apply the logical 4 KiB page table to the host's VM granule.
+ *
+ * On macOS that granule is 16 KiB and the grouping below is load-bearing; on a
+ * 4 KiB host such as Android it collapses to one page per group and the loop
+ * is an ordinary mprotect.
  *
  * A granule must remain accessible while ANY Windows page in it is accessible.
  * The per-4-KiB table remains authoritative for VirtualQuery and validation;
@@ -94,16 +118,16 @@ static int apply_host_protection(uint32_t first, uint32_t count)
 int guest_memory_init(void)
 {
     if (g_ready) return 0;
-#if defined(__APPLE__) && defined(__aarch64__)
+#if GUEST_ARENA_RESERVED
     void *arena = mmap(NULL, (size_t)GUEST_SPACE_SIZE, PROT_NONE,
                        MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     if (arena == MAP_FAILED) {
-        fprintf(stderr, "guest_memory: cannot reserve the 4 GB arm64 arena: %s\n",
+        fprintf(stderr, "guest_memory: cannot reserve the 4 GB guest arena: %s\n",
                 strerror(errno));
         return -1;
     }
     g_guest_memory_base = (uintptr_t)arena;
-    fprintf(stderr, "guest_memory: arm64 guest arena 0x%llx..0x%llx\n",
+    fprintf(stderr, "guest_memory: reserved guest arena 0x%llx..0x%llx\n",
             (unsigned long long)g_guest_memory_base,
             (unsigned long long)(g_guest_memory_base + GUEST_SPACE_SIZE));
 #else
@@ -140,7 +164,7 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection)
     }
     start = (uint64_t)first * GUEST_PAGE_SIZE;
     host = host_pointer((uint32_t)start);
-#if defined(__APPLE__) && defined(__aarch64__)
+#if GUEST_ARENA_RESERVED
     memset(g_pages + first, PAGE_MAPPED | (unsigned char)protection, count);
     if (apply_host_protection(first, count) != 0) {
         memset(g_pages + first, 0, count);
@@ -159,7 +183,7 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection)
         return -1;
     }
 #endif
-#if !defined(__APPLE__) || !defined(__aarch64__)
+#if !GUEST_ARENA_RESERVED
     memset(g_pages + first, PAGE_MAPPED | (unsigned char)protection, count);
 #endif
     pthread_mutex_unlock(&g_pages_lock);
@@ -189,7 +213,7 @@ int guest_memory_protect(uint32_t address, size_t size, int protection)
     uint32_t first, count, i;
     int result;
     if (span(address, size, &first, &count) != 0) return -1;
-#if defined(__APPLE__) && defined(__aarch64__)
+#if GUEST_ARENA_RESERVED
     pthread_mutex_lock(&g_pages_lock);
     for (i = 0; i < count; i++)
         if (g_pages[first + i] & PAGE_MAPPED)
@@ -217,7 +241,7 @@ int guest_memory_release(uint32_t address, size_t size)
     if (span(address, size, &first, &count) != 0) return -1;
     host = host_pointer(first * GUEST_PAGE_SIZE);
     pthread_mutex_lock(&g_pages_lock);
-#if defined(__APPLE__) && defined(__aarch64__)
+#if GUEST_ARENA_RESERVED
     for (i = 0; i < count; i++) g_pages[first + i] = 0;
     if (apply_host_protection(first, count) != 0) {
         pthread_mutex_unlock(&g_pages_lock);
@@ -229,7 +253,7 @@ int guest_memory_release(uint32_t address, size_t size)
         return -1;
     }
 #endif
-#if !defined(__APPLE__) || !defined(__aarch64__)
+#if !GUEST_ARENA_RESERVED
     for (i = 0; i < count; i++) g_pages[first + i] = 0;
 #endif
     pthread_mutex_unlock(&g_pages_lock);

@@ -437,8 +437,10 @@ target_include_directories(test_controller_assignment_rows PRIVATE
 add_test(NAME controller_assignment_rows COMMAND test_controller_assignment_rows)
 
 add_executable(test_input_record tests/test_input_record.c
-               src/input/input_record.c src/native/json_string.c)
-target_include_directories(test_input_record PRIVATE src/input src/native)
+               src/input/input_record.c src/native/json_string.c
+               src/config/directory_create.c)
+target_include_directories(test_input_record PRIVATE src/input src/native
+                           src/config)
 add_test(NAME input_record COMMAND test_input_record)
 set_tests_properties(input_record PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
@@ -1275,6 +1277,7 @@ if(X2_MODULE_HAVE)
         src/native/install_archive.cpp
         src/native/android_bridge.cpp
         src/config/config_directory.c
+        src/config/directory_create.c
         src/config/settings.c
         src/config/input_assignments.c
         src/config/settings_store.c
