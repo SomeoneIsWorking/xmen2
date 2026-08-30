@@ -103,6 +103,24 @@ void discard_partial_initialization()
     host_window = nullptr;
 }
 
+/*
+ * Say which step failed, once.
+ *
+ * x2_ui_render calls initialize every frame, so a failure here is retried
+ * forever. Three of its four exits used to return silently: the settings
+ * overlay and the Android touch overlay simply never appeared, with nothing
+ * in the log to say the attempt had even been made. Reporting once names the
+ * step without turning a failure into a per-frame flood.
+ */
+bool initialize_failed(const char* step)
+{
+    static bool reported;
+    if (!reported)
+        std::fprintf(stderr, "RMLUI: overlay unavailable, %s failed.\n", step);
+    reported = true;
+    return false;
+}
+
 bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
                 unsigned height)
 {
@@ -115,7 +133,7 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
     if (!Rml::Initialise()) {
         render_interface.reset();
         system_interface.reset();
-        return false;
+        return initialize_failed("Rml::Initialise");
     }
     const char* regular = x2_ui_resource_path("LatoLatin-Regular.ttf");
     if (!Rml::LoadFontFace(regular))
@@ -128,16 +146,16 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
                                  Rml::Vector2i((int)width, (int)height));
     if (!context) {
         discard_partial_initialization();
-        return false;
+        return initialize_failed("Rml::CreateContext");
     }
     sync_surface_metrics(window, width, height);
     if (!x2::ui::settings_document_load(context, window)) {
         discard_partial_initialization();
-        return false;
+        return initialize_failed("loading the settings document");
     }
     if (!x2::ui::touch_document_load(context)) {
         discard_partial_initialization();
-        return false;
+        return initialize_failed("loading the touch overlay document");
     }
     initialized = true;
     std::fprintf(stderr, "RMLUI: Port Settings overlay initialized.\n");
