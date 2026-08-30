@@ -69,18 +69,19 @@ native selftest passed through the AppImage runtime. Focused tests cover the
 configuration-path and executable-validation seams.
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
-desktop in this state record, and no Android APK shell exists in this
-repository. Android remains a separate SDL3 Activity/document-picker task.
+desktop in this state record. The Android shell now has a native target and
+setup/touch implementation, but the APK still lacks installed-device and
+performance evidence.
 
 ### S018 — Android APK shell, touch controls, and measured mobile performance: partial
 
-The title-specific safe-area-aware touch action owner now exists in
-`src/input/touch_controls.cpp`, delegates contact capture and cancellation to
-Lucent, and has focused coverage for simultaneous stick/button state, map-toggle
-click, and layout-change release. No Android Activity, document-provider bridge,
-APK packaging target, or mobile performance run exists in this repository yet.
-The required setup, touch-zone mapping, and device/thermal/frame-time evidence
-gate are specified in
+The title-specific safe-area-aware touch action owner exists in
+`src/input/touch_controls.cpp`, with SDL contact acquisition in
+`src/input/touch_runtime.cpp`, Android setup/SAF staging in `android/`, and a
+real ARM64 shared native target/Gradle assembly path. Focused tests cover the
+title mapping and lifecycle release behavior. No installed-device APK run or
+mobile performance evidence exists yet. The required setup, touch-zone mapping,
+and device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 

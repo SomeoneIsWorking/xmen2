@@ -7,6 +7,7 @@
 
 #include "d3d8_drawcall.h"
 #include "rmlui_ui.h"
+#include "../input/touch_runtime.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -76,6 +77,7 @@ static void apply_cursor_policy(void)
 void x2_win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden)
 {
     if (!window) {
+        x2_touch_runtime_cancel();
         x2_win32_mouse_window_state(&g_mouse, 0, 0, 0);
         apply_cursor_policy();
         g_window = NULL;
@@ -84,6 +86,7 @@ void x2_win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden)
     }
 
     g_window = window;
+    x2_touch_runtime_window(window);
     g_hwnd = hwnd;
     g_hidden = hidden != 0;
     {
@@ -392,6 +395,8 @@ static void pump_sdl(void)
             }
             continue;
         }
+
+        if (x2_touch_runtime_event(&event)) continue;
 
         if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
             x2_win32_mouse_window_state(&g_mouse, g_hidden, 1,

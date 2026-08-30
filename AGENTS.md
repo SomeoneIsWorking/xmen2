@@ -65,8 +65,12 @@ The Linux AppImage is a desktop-first path: it does not require a terminal or
 shows a setup prompt with Browse, validates the selected `XMen2.exe` or a ZIP
 containing exactly one copy at any depth, and remembers the resulting install
 under the OS user configuration directory. The AppImage contains no game
-files. The Android APK shell is not implemented here yet; its setup, touch
-layout, and performance evidence contract live in `docs/android-release.md`.
+files. The Android APK has a separate setup Activity: it uses SAF to stage a
+ZIP or an install folder into app-private storage, then starts SDL only after
+the native bridge has supplied Lucent's Android user-data root. Its touch
+events feed the same virtual DirectInput pad as every other controller path.
+The remaining mobile release gate is measured device performance; see
+`docs/android-release.md`.
 
 All run artifacts go to the gitignored `scratch/`, structured by type
 (`scratch/logs/`, `screenshots/`, `recomp/`, `run/`, `build-*/`). Never `/tmp`.
@@ -107,6 +111,13 @@ Build a Linux AppImage from the verified native build with
 the native binary, UI resources, desktop metadata, and libraries discovered by
 `linuxdeploy`; `appimagetool` writes the result to
 `scratch/release/X-Men-Legends-II-x86_64.AppImage`.
+
+Build the ARM64 APK from a selected Android SDK/NDK with
+`uv run --frozen python tools/build_android.py`. The dependency step builds a
+small, pinned FFmpeg prefix under `scratch/android-deps/`; Android CMake never
+consults host `pkg-config`. The Gradle project consumes the generated
+`x2-android.properties` contract and stages only native code, UI resources,
+and SDL's Java shell, never game files.
 
 **Drive a run instead of scripting it.** The default product opens an HTTP
 channel on loopback, records the exact post-merge DirectInput states returned to
@@ -241,6 +252,14 @@ dialog/file-picker mechanics live in `src/native/install_picker.cpp`, resource
 location lives in `src/ui/ui_resources.cpp`, and release staging lives in
 `tools/package_appimage.py` plus `packaging/`. `x2native.c` only composes the
 setup result into the existing asset mapping path.
+
+The Android setup boundary follows the same pattern: `android/` owns Activity
+lifecycle, SAF URI permissions, and app-private staging;
+`src/native/android_bridge.cpp` only transfers the absolute storage/source
+contract; `install_picker.cpp` owns title validation and shared Lucent ZIP
+extraction. The Android touch boundary keeps the title's safe-area-aware action
+vocabulary in `src/input/touch_controls.cpp`; `src/input/touch_runtime.cpp`
+owns SDL contact acquisition and publication into the existing virtual pad.
 
 The Android touch boundary keeps the title's safe-area-aware action vocabulary
 and virtual layout in `src/input/touch_controls.cpp`; platform SDL/Activity
