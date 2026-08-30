@@ -34,7 +34,7 @@ uv run --frozen python tools/build_android.py
 
 The script cross-builds the pinned FFmpeg subset, configures CMake for
 `arm64-v8a`, builds `libmain.so`, and assembles the release APK. Set
-`ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 24 first. On
+`ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 26 first. On
 DNF-based systems, install the required JDK with
 `sudo dnf install java-17-openjdk-devel`, then set `JAVA_HOME` to it. The
 generated native contract is `scratch/build-android-arm64/x2-android.properties`.
