@@ -66,10 +66,10 @@ def java_home() -> Path:
             major = int(major_text)
         except (IndexError, ValueError):
             continue
-        if 17 <= major <= 26:
+        if 17 <= major <= 24:
             return home
     raise SystemExit(
-        "Android Gradle build needs a JDK from 17 through 26, but no supported "
+        "Android Gradle build needs a JDK from 17 through 24, but no supported "
         "JDK was found. On this DNF system install it with: "
         "sudo dnf install java-17-openjdk-devel; then set JAVA_HOME to that JDK."
     )
