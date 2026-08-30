@@ -73,7 +73,9 @@ and no `XMen2.exe` or game-data directory; SHA-256 is
 `117aca75b43153b32f565ca4d487261426fd677bd91da721ea60cdf2ab8ed2ea`.
 The 138-test combined gate passes (two explicit data/tool skips), including the
 configuration path, executable validation, and transactional replacement
-seams.
+seams. The same digest is published in the public
+[`v0.1.1` AppImage release](https://github.com/SomeoneIsWorking/xmen2-recomp/releases/tag/v0.1.1)
+at commit `e280d681a3c765138209fc948f1f01071f2efbde`.
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target and
