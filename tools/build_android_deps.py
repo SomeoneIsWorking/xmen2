@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import subprocess
 import tarfile
 import urllib.request
@@ -63,23 +63,40 @@ def archive(cache: Path) -> Path:
     return downloaded
 
 
+def archive_root(members: list[tarfile.TarInfo]) -> str:
+    """The archive's single top-level directory, read rather than guessed.
+
+    FFmpeg's GitHub tarball roots at "FFmpeg-n7.1.1" while the download URL
+    spells the same version "ffmpeg-n7.1.1", so a name composed from the
+    version never matched on a case-sensitive filesystem: the tree was
+    re-extracted on every run and then refused as missing.
+    """
+    roots = {PurePosixPath(member.name).parts[0] for member in members if member.name.strip("./")}
+    if len(roots) != 1:
+        raise SystemExit(
+            f"FFmpeg archive must hold exactly one top-level directory, found {sorted(roots)}"
+        )
+    return roots.pop()
+
+
 def source_tree(cache: Path) -> Path:
-    source = cache / f"ffmpeg-{FFMPEG_VERSION}"
-    if source.is_dir() and (source / "configure").is_file():
-        return source
     downloaded = archive(cache)
-    print(f"Extracting {downloaded} into {cache}")
     with tarfile.open(downloaded, "r:gz") as bundle:
+        members = bundle.getmembers()
+        source = cache / archive_root(members)
+        if source.is_dir() and (source / "configure").is_file():
+            return source
+        print(f"Extracting {downloaded} into {cache}")
         destination = cache.resolve()
-        for member in bundle.getmembers():
+        for member in members:
             if member.issym() or member.islnk():
                 raise SystemExit(f"Refusing linked FFmpeg archive member: {member.name}")
             target = (cache / member.name).resolve()
             if target != destination and destination not in target.parents:
                 raise SystemExit(f"Refusing unsafe FFmpeg archive member: {member.name}")
             bundle.extract(member, cache)
-    if not source.is_dir():
-        raise SystemExit(f"FFmpeg archive did not contain {source}")
+    if not (source / "configure").is_file():
+        raise SystemExit(f"FFmpeg archive did not unpack a source tree at {source}")
     return source
 
 

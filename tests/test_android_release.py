@@ -2,9 +2,10 @@
 """Fail-closed checks for the Android entry point and signing contract."""
 
 from pathlib import Path
+import tarfile
 import tempfile
 
-from tools import build_android
+from tools import build_android, build_android_deps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -102,6 +103,20 @@ def main() -> int:
     # A provider without a filesystem path is refused by name, never staged.
     assert "return null" in location
     assert 'relative.contains("..")' in location
+
+    # The FFmpeg tree's directory name comes from the archive. Composing it
+    # from the version spelled it "ffmpeg-n7.1.1" while GitHub's tarball roots
+    # at "FFmpeg-n7.1.1", so it never matched: every build re-extracted the
+    # 15 MB archive and then refused it as missing.
+    members = [tarfile.TarInfo("FFmpeg-n7.1.1"),
+               tarfile.TarInfo("FFmpeg-n7.1.1/configure")]
+    assert build_android_deps.archive_root(members) == "FFmpeg-n7.1.1"
+    try:
+        build_android_deps.archive_root(members + [tarfile.TarInfo("elsewhere/x")])
+    except SystemExit as error:
+        assert "exactly one top-level directory" in str(error)
+    else:
+        raise AssertionError("an archive with two roots was accepted")
 
     assert "protected String getMainFunction()" in activity
     assert 'return "main";' in activity
