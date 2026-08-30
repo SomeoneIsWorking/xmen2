@@ -78,10 +78,20 @@ performance evidence.
 The title-specific safe-area-aware touch action owner exists in
 `src/input/touch_controls.cpp`, with SDL contact acquisition in
 `src/input/touch_runtime.cpp`, Android setup/SAF staging in `android/`, and a
-real ARM64 shared native target/Gradle assembly path. Focused tests cover the
-title mapping and lifecycle release behavior. No installed-device APK run or
-mobile performance evidence exists yet. The required setup, touch-zone mapping,
-and device/thermal/frame-time evidence gate are specified in
+real ARM64 shared native target/Gradle assembly path. The touch feedback layer
+mirrors the production zones with the shared SVG controller set, publishes
+signed axes once per contact update, holds buttons until finger release, cancels
+on focus/rotation/lifecycle loss, and has a persistent hide setting. An NDK 28
+ARM64 build linked the combined `libmain.so`; the Activity now dispatches to its
+exported `main`, Android launcher-icon resources compile with build-tools 36,
+and release assembly refuses missing long-lived signing inputs instead of
+emitting an unsigned APK. The 136-test native suite passes with the two
+documented skips.
+
+Gap: the signed APK cannot be assembled on this host until a supported JDK and
+the maintainer's release keystore are supplied. No installed-device setup/game
+run or mobile performance evidence exists yet. The required setup, touch-zone
+mapping, and device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 

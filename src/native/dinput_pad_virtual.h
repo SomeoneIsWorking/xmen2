@@ -15,6 +15,8 @@ extern "C" {
 
 void dinput_pad_virtual_from_env(void);
 void dinput_pad_virtual_tick(unsigned long frame);
+/* Button hold: 0 selects the default timed press, negative persists until
+   dinput_pad_virtual_release. Axis hold 0 persists until changed/released. */
 int dinput_pad_virtual_set(const char *what, double value, double hold,
                            char *why, int whyn);
 int dinput_pad_virtual_release(const char *what);

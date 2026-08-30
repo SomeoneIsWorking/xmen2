@@ -129,6 +129,9 @@ void rebuild()
     } else {
         visible_controllers = controller_assignment_rows(*settings);
         rml << "<pane><div class='section-heading'>Device assignments</div>"
+               "<select-button id='touch-controls'><key>Touch controls</key><value>"
+            << (settings->touch_controls ? "On" : "Off")
+            << "</value></select-button>"
                "<div class='help'>Player 1 may use keyboard and controller "
                "together. Players 2–4 use one device each and press Start to "
                "join. Session-only rows are not saved and temporarily "
@@ -186,6 +189,8 @@ void rebuild()
         wire("shadow-resolution", "click");
         wire("shadow-resolution", "keydown");
     } else {
+        wire("touch-controls", "click");
+        wire("touch-controls", "keydown");
         wire("profile", "click");
         wire("profile", "keydown");
         for (unsigned p = 0; p < X2_SETTINGS_KEYBOARD_PROFILES; p++)
@@ -335,6 +340,14 @@ void SettingsListener::ProcessEvent(Rml::Event& event)
         std::string status = save_settings();
         rebuild();
         set_status(status);
+    } else if (id == "touch-controls") {
+        X2Settings* settings = x2_settings_store();
+        X2Settings before = *settings;
+        settings->touch_controls ^= 1u;
+        std::string status = save_settings();
+        if (status != "Saved") *settings = before;
+        rebuild();
+        set_status(status);
     } else if (id == "profile") {
         selected_profile = (selected_profile + 1u) %
                            X2_SETTINGS_KEYBOARD_PROFILES;
@@ -418,6 +431,13 @@ void settings_document_shutdown()
     close_requested = false;
     observed_pad_generation = 0;
     visible_controllers.clear();
+}
+
+void settings_document_set_visible(bool visible)
+{
+    if (!document) return;
+    if (visible) document->Show();
+    else document->Hide();
 }
 
 bool settings_document_handle_event(const SDL_Event& event)

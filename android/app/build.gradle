@@ -31,6 +31,24 @@ def androidAbi = required("x2.androidAbi")
 def androidPlatform = required("x2.androidPlatform")
 def sdlJavaDir = file(required("x2.sdlJavaDir"))
 def uiDir = file(required("x2.uiDir"))
+def releaseKeystore = System.getenv("X2_ANDROID_KEYSTORE")
+def releaseKeyAlias = System.getenv("X2_ANDROID_KEY_ALIAS")
+def releaseStorePassword = System.getenv("X2_ANDROID_STORE_PASSWORD")
+def releaseKeyPassword = System.getenv("X2_ANDROID_KEY_PASSWORD")
+def signingValues = [releaseKeystore, releaseKeyAlias,
+                     releaseStorePassword, releaseKeyPassword]
+if (signingValues.any { !it }) {
+    throw new GradleException(
+        "Release signing requires X2_ANDROID_KEYSTORE, X2_ANDROID_KEY_ALIAS, " +
+        "X2_ANDROID_STORE_PASSWORD, and X2_ANDROID_KEY_PASSWORD. Refusing to " +
+        "produce an unsigned release APK.")
+}
+def releaseKeystoreFile = file(releaseKeystore)
+if (!releaseKeystoreFile.isFile()) {
+    throw new GradleException("Release keystore is missing: ${releaseKeystoreFile}")
+}
+def versionCodeValue = (System.getenv("X2_ANDROID_VERSION_CODE") ?: "2").toInteger()
+def versionNameValue = System.getenv("X2_ANDROID_VERSION_NAME") ?: "0.2.0"
 def sdkPath = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
 if (!sdkPath) throw new GradleException("ANDROID_HOME or ANDROID_SDK_ROOT is not available")
 def ndkVersionValue = System.getenv("ANDROID_NDK_VERSION")
@@ -88,16 +106,30 @@ android {
     namespace "com.someoneisworking.xmen2"
     compileSdk 36
     ndkVersion ndkVersionValue
+    signingConfigs {
+        release {
+            storeFile releaseKeystoreFile
+            storePassword releaseStorePassword
+            keyAlias releaseKeyAlias
+            keyPassword releaseKeyPassword
+            v1SigningEnabled true
+            v2SigningEnabled true
+            v3SigningEnabled true
+        }
+    }
     defaultConfig {
         applicationId "com.someoneisworking.xmen2"
         minSdk androidPlatform.replaceFirst("^android-", "").toInteger()
         targetSdk 36
-        versionCode 1
-        versionName "0.1.0"
+        versionCode versionCodeValue
+        versionName versionNameValue
     }
     buildTypes {
         debug { minifyEnabled false }
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
     }
     sourceSets {
         main {

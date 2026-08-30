@@ -45,6 +45,7 @@ void x2_settings_defaults(X2Settings *settings)
     settings->shadow_resolution = 1024;
     settings->text_scale = 0.0f;             /* auto */
     settings->boot_mode = X2_BOOT_NORMAL;
+    settings->touch_controls = 1;
     for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
         settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
     for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
@@ -173,6 +174,12 @@ static int parse_line(ParseState *state, char *line)
     }
     if (strcmp(key, "boot.mode") == 0)
         return x2_boot_mode_parse(value, &settings->boot_mode);
+    if (strcmp(key, "input.touch_controls") == 0) {
+        unsigned enabled;
+        if (!number(value, 0, 1, &enabled)) return 0;
+        settings->touch_controls = (uint8_t)enabled;
+        return 1;
+    }
     if (strcmp(key, "input.assignment_version") == 0) {
         state->saw_grid = 1;
         return strcmp(value, "2") == 0;
@@ -225,7 +232,8 @@ static int parse_line(ParseState *state, char *line)
 static int settings_valid(const X2Settings *settings)
 {
     unsigned i, j;
-    if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE) return 0;
+    if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE ||
+        settings->touch_controls > 1) return 0;
     if (settings->dynamic_shadows > 1 ||
         (settings->shadow_resolution != 512 &&
          settings->shadow_resolution != 1024 &&
@@ -384,6 +392,7 @@ int x2_settings_save(const X2Settings *settings, const char *path,
             settings->dynamic_shadows, settings->shadow_resolution);
     fprintf(file, "ui.text_scale=%g\n", (double)settings->text_scale);
     fprintf(file, "boot.mode=%s\n", x2_boot_mode_name(settings->boot_mode));
+    fprintf(file, "input.touch_controls=%u\n", settings->touch_controls);
     fprintf(file, "input.assignment_version=2\n");
     for (profile = 0; profile < X2_SETTINGS_KEYBOARD_PROFILES; profile++) {
         int owner = settings->keyboard_player[profile];

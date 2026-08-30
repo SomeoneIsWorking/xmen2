@@ -38,6 +38,7 @@ typedef struct {
        share of the screen the text has at 800x600. See ui_text_scale.c. */
     float text_scale;
     X2BootMode boot_mode;
+    uint8_t touch_controls;
     /* Device-assignment grid: each row has one owner or is unassigned. P1 may
        own one row of each kind for hotswap. P2-P4 own one device total. */
     int8_t keyboard_player[X2_SETTINGS_KEYBOARD_PROFILES];

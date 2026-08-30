@@ -3,11 +3,19 @@
 
 #include "settings.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Process-wide shipping settings. The parser remains independently testable;
    this layer only owns the save-directory path and publication lifetime. */
 void x2_settings_store_init(void);
 X2Settings *x2_settings_store(void);
 int x2_settings_store_save(char *why, int whyn);
 const char *x2_settings_store_path(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

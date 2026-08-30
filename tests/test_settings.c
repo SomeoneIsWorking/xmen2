@@ -19,6 +19,7 @@ int main(void)
     CHECK(saved.width == 1280 && saved.height == 720);
     CHECK(saved.window_mode == X2_WINDOW_WINDOWED);
     CHECK(saved.dynamic_shadows == 1 && saved.shadow_resolution == 1024);
+    CHECK(saved.touch_controls == 1);
     CHECK(saved.boot_mode == X2_BOOT_NORMAL);
     CHECK(strcmp(x2_boot_mode_label(saved.boot_mode), "Boot normally") == 0);
     CHECK(x2_boot_mode_parse("menu", &saved.boot_mode));
@@ -32,6 +33,7 @@ int main(void)
     saved.window_mode = X2_WINDOW_BORDERLESS;
     saved.dynamic_shadows = 0;
     saved.shadow_resolution = 2048;
+    saved.touch_controls = 0;
     saved.boot_mode = X2_BOOT_CONTINUE;
     CHECK(x2_settings_assign_keyboard(&saved, 2, 0));
     CHECK(x2_settings_player_keyboard(&saved, 0) == 2);
