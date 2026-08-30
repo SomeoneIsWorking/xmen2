@@ -371,7 +371,7 @@ void x2_prompt_draw_report(void)
                         "drew text in this run or the override never armed.\n");
     else if (!x2_prompt_glyphs_enabled())
         fprintf(stderr, "PROMPT DRAW: native prompt glyphs were DISABLED for this "
-                        "run (X2_PROMPT_GLYPHS unset), so no string could "
+                        "run (X2_PROMPT_GLYPHS=0), so no string could "
                         "have carried a prompt codepoint. This is not "
                         "evidence about the draw path.\n");
     else if (!g_with_prompts)

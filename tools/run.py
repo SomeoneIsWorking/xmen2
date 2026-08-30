@@ -229,7 +229,6 @@ def run_native() -> int:
         subprocess.run([sys.executable, str(ROOT / "tools/prepare_native_assets.py"),
                         game_value, assets], cwd=ROOT, check=True)
         os.environ["X2_ASSETS"] = assets
-    os.environ["X2_PROMPT_GLYPHS"] = "1"
     build = build_directory()
     prepare_build_directory(build, toolchain)
     configure = [toolchain.cmake, "-S", str(ROOT), "-B", str(build), "-G", "Ninja",

@@ -192,7 +192,7 @@ int main(int argc, char **argv)
     host_pad_for_slot[0] = 1; /* guest slot 0 is Xbox-family host pad 1 */
     host_pad_for_slot[1] = 0; /* guest slot 1 is generic host pad 0 */
     if (argc == 2 && strcmp(argv[1], "--disabled") == 0) {
-        unsetenv("X2_PROMPT_GLYPHS");
+        setenv("X2_PROMPT_GLYPHS", "0", 1);
         unsetenv("X2_PAD_GLYPHS");
         ok = check_call(3, 0x15, 0, 1);
         printf("pad glyph disabled gate: %s\n", ok ? "ok" : "FAIL");
