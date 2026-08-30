@@ -2,11 +2,15 @@
 
 #include "touch_controls.h"
 #include "../native/dinput_pad_virtual.h"
+#include "../config/settings_store.h"
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <map>
+#include <set>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -20,6 +24,7 @@ struct ContactState {
 
 x2::input::TouchControls controls;
 std::map<SDL_FingerID, ContactState> contacts;
+std::set<std::uint32_t> active_zones;
 SDL_Window *window;
 
 const char *button_name(x2::input::TouchAction action)
@@ -44,55 +49,61 @@ const char *button_name(x2::input::TouchAction action)
     }
 }
 
-const char *axis_name(x2::input::TouchAction action)
-{
-    using x2::input::TouchAction;
-    switch (action) {
-    case TouchAction::Forward:
-    case TouchAction::Backward: return "lefty";
-    case TouchAction::MoveLeft:
-    case TouchAction::MoveRight: return "leftx";
-    case TouchAction::CameraUp:
-    case TouchAction::CameraDown: return "righty";
-    case TouchAction::CameraLeft:
-    case TouchAction::CameraRight: return "rightx";
-    default: return nullptr;
-    }
-}
-
-void publish(const x2::input::ActionEvent &event)
+void publish_button(const x2::input::ActionEvent &event)
 {
     const bool release = event.phase == lucent::touch::Phase::ended ||
                          event.phase == lucent::touch::Phase::canceled;
     const char *button = button_name(event.action);
-    const char *axis = axis_name(event.action);
     char reason[256];
-    if (button) {
-        if (release) {
-            if (!dinput_pad_virtual_release(button))
-                std::fprintf(stderr, "touch: could not release virtual button %s\n", button);
-        } else if (!dinput_pad_virtual_set(button, event.value, 0.12, reason,
-                                           sizeof reason)) {
-            std::fprintf(stderr, "touch: could not press virtual button %s: %s\n",
-                         button, reason);
-        }
-        return;
+    if (!button) return;
+    if (release) {
+        if (!dinput_pad_virtual_release(button))
+            std::fprintf(stderr, "touch: could not release virtual button %s\n", button);
+    } else if (!dinput_pad_virtual_set(button, event.value, -1.0, reason,
+                                       sizeof reason)) {
+        std::fprintf(stderr, "touch: could not press virtual button %s: %s\n",
+                     button, reason);
     }
-    if (axis) {
-        if (release) {
-            if (!dinput_pad_virtual_release(axis))
-                std::fprintf(stderr, "touch: could not release virtual axis %s\n", axis);
-        } else if (!dinput_pad_virtual_set(axis, event.value, 0.18, reason,
-                                           sizeof reason)) {
-            std::fprintf(stderr, "touch: could not move virtual axis %s: %s\n",
-                         axis, reason);
-        }
+}
+
+void publish_axis(std::span<const x2::input::ActionEvent> events,
+                  const char *name, x2::input::TouchAction negative,
+                  x2::input::TouchAction positive)
+{
+    const auto value = x2::input::touch_axis_value(events, negative, positive);
+    if (!value) return;
+    const bool released = std::any_of(events.begin(), events.end(),
+                                     [negative, positive](const auto &event) {
+                                         return (event.action == negative ||
+                                                 event.action == positive) &&
+                                                (event.phase == lucent::touch::Phase::ended ||
+                                                 event.phase == lucent::touch::Phase::canceled);
+                                     });
+    char reason[256];
+    if (released) {
+        if (!dinput_pad_virtual_release(name))
+            std::fprintf(stderr, "touch: could not release virtual axis %s\n", name);
+    } else if (!dinput_pad_virtual_set(name, *value, 0.0, reason, sizeof reason)) {
+        std::fprintf(stderr, "touch: could not move virtual axis %s: %s\n", name,
+                     reason);
     }
 }
 
 void publish(const std::vector<x2::input::ActionEvent> &events)
 {
-    for (const auto &event : events) publish(event);
+    using x2::input::TouchAction;
+    for (const auto &event : events) {
+        if (event.phase == lucent::touch::Phase::ended ||
+            event.phase == lucent::touch::Phase::canceled)
+            active_zones.erase(event.zone_id);
+        else
+            active_zones.insert(event.zone_id);
+    }
+    for (const auto &event : events) publish_button(event);
+    publish_axis(events, "lefty", TouchAction::Forward, TouchAction::Backward);
+    publish_axis(events, "leftx", TouchAction::MoveLeft, TouchAction::MoveRight);
+    publish_axis(events, "righty", TouchAction::CameraUp, TouchAction::CameraDown);
+    publish_axis(events, "rightx", TouchAction::CameraLeft, TouchAction::CameraRight);
 }
 
 } // namespace
@@ -118,6 +129,10 @@ void x2_touch_runtime_window(SDL_Window *new_window)
 int x2_touch_runtime_event(const SDL_Event *event)
 {
     if (!window || !event) return 0;
+    if (!x2_settings_store()->touch_controls) {
+        if (!contacts.empty()) x2_touch_runtime_cancel();
+        return 0;
+    }
     if (event->type != SDL_EVENT_FINGER_DOWN &&
         event->type != SDL_EVENT_FINGER_MOTION &&
         event->type != SDL_EVENT_FINGER_UP &&
@@ -151,8 +166,53 @@ int x2_touch_runtime_event(const SDL_Event *event)
     return 1;
 }
 
+void x2_touch_runtime_lifecycle_event(const SDL_Event *event)
+{
+    if (!window || !event) return;
+    if (event->type == SDL_EVENT_WINDOW_FOCUS_LOST ||
+        event->type == SDL_EVENT_WINDOW_HIDDEN ||
+        event->type == SDL_EVENT_WINDOW_MINIMIZED) {
+        x2_touch_runtime_cancel();
+    } else if (event->type == SDL_EVENT_WINDOW_RESIZED ||
+               event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
+               event->type == SDL_EVENT_WINDOW_SAFE_AREA_CHANGED) {
+        x2_touch_runtime_window(window);
+    }
+}
+
 void x2_touch_runtime_cancel(void)
 {
     publish(controls.cancel());
     contacts.clear();
+    active_zones.clear();
+}
+
+size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity)
+{
+    const auto zones = controls.zones();
+    if (!out) return zones.size();
+    const size_t count = std::min(capacity, zones.size());
+    for (size_t index = 0; index < count; ++index) {
+        const auto &visual = zones[index];
+        out[index] = {
+            visual.zone.id,
+            visual.zone.left,
+            visual.zone.top,
+            visual.zone.right,
+            visual.zone.bottom,
+            static_cast<int>(visual.action),
+            active_zones.contains(visual.zone.id) ? 1 : 0,
+            visual.stick ? 1 : 0,
+        };
+    }
+    return zones.size();
+}
+
+int x2_touch_runtime_overlay_visible(void)
+{
+#ifdef __ANDROID__
+    return window != nullptr && x2_settings_store()->touch_controls;
+#else
+    return 0;
+#endif
 }

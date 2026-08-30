@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
+        android:icon="@drawable/xmen2_port_icon"
         android:label="X-Men Legends II"
         android:theme="@style/AppTheme"
         android:allowBackup="false"

@@ -1,0 +1,44 @@
+*, *:before, *:after {
+    box-sizing: border-box;
+}
+
+body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.touch-zone {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2dp rgba(220, 238, 255, 42%);
+    border-radius: 18dp;
+    background-color: rgba(15, 25, 48, 34%);
+    opacity: 0.68;
+}
+
+.touch-zone.stick {
+    border-radius: 50%;
+    background-color: rgba(15, 25, 48, 24%);
+}
+
+.touch-zone.active {
+    border-color: rgba(112, 231, 249, 88%);
+    background-color: rgba(40, 115, 145, 58%);
+    opacity: 1;
+}
+
+.touch-zone img {
+    width: 62%;
+    height: 62%;
+    opacity: 0.92;
+}
+
+.touch-zone.stick img {
+    width: 40%;
+    height: 40%;
+}

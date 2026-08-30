@@ -984,6 +984,13 @@ add_test(NAME appimage_packaging
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/package_appimage.py --selftest)
 
+add_test(NAME android_release
+         COMMAND ${CMAKE_COMMAND} -E env
+                 PYTHONPATH=${CMAKE_SOURCE_DIR} ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tests/test_android_release.py)
+set_tests_properties(android_release PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME port_pause_menu
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/make_port_pause_menu.py --selftest)
@@ -1182,12 +1189,29 @@ if(X2_MODULE_HAVE)
         "${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf" COPYONLY)
     configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                    "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
+    configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
+                   "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
+    set(X2_TOUCH_ICON_STAMP "${CMAKE_BINARY_DIR}/ui/touch/.touch-icons.stamp")
+    add_custom_command(
+        OUTPUT "${X2_TOUCH_ICON_STAMP}"
+        COMMAND ${Python3_EXECUTABLE}
+                "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+                --copy-svg-dir "${CMAKE_BINARY_DIR}/ui/touch"
+        DEPENDS "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+                "${CMAKE_SOURCE_DIR}/tools/shared_dir.py"
+                "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
+                ${X2_PROMPT_GLYPH_INPUTS}
+        COMMENT "x2native: staging shared SVGs for touch-control feedback"
+        VERBATIM)
+    add_custom_target(x2_touch_icons DEPENDS "${X2_TOUCH_ICON_STAMP}")
     add_library(x2_rmlui_ui STATIC
         src/ui/controller_assignment_rows.cpp
         src/ui/rmlui_ui.cpp
         src/ui/ui_resources.cpp
         src/ui/settings_document.cpp
+        src/ui/touch_document.cpp
         src/ui/settings_overlay_state.c)
+    add_dependencies(x2_rmlui_ui x2_touch_icons)
     target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
                                                    src/presentation src/input
                                                    src/gpu)
@@ -1197,7 +1221,8 @@ if(X2_MODULE_HAVE)
         X2_UI_RESOURCE_DIR="${CMAKE_BINARY_DIR}/ui"
         X2_UI_DOCUMENT_URL="${CMAKE_BINARY_DIR}/ui/settings.rml")
     set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend)
+    target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
+                                            PRIVATE lucent::lucent)
 
     # ---- shaders -------------------------------------------------------
     #

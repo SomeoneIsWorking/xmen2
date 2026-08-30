@@ -1,6 +1,9 @@
 #ifndef X2_TOUCH_RUNTIME_H
 #define X2_TOUCH_RUNTIME_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 union SDL_Event;
 struct SDL_Window;
 
@@ -12,7 +15,22 @@ extern "C" {
  * DirectInput pad. Title layout remains owned by TouchControls. */
 void x2_touch_runtime_window(struct SDL_Window *window);
 int x2_touch_runtime_event(const union SDL_Event *event);
+void x2_touch_runtime_lifecycle_event(const union SDL_Event *event);
 void x2_touch_runtime_cancel(void);
+
+typedef struct X2TouchVisual {
+    uint32_t id;
+    float left;
+    float top;
+    float right;
+    float bottom;
+    int action;
+    int active;
+    int stick;
+} X2TouchVisual;
+
+size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
+int x2_touch_runtime_overlay_visible(void);
 
 #ifdef __cplusplus
 }

@@ -21,6 +21,11 @@ public final class XMen2GameActivity extends SDLActivity {
     }
 
     @Override
+    protected String getMainFunction() {
+        return "main";
+    }
+
+    @Override
     protected String[] getArguments() {
         return new String[]{"--appimage"};
     }

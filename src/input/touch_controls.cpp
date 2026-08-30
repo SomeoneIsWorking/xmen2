@@ -27,7 +27,7 @@ void add_button_events(std::vector<ActionEvent> &out,
                                 event.phase == lucent::touch::Phase::canceled
                             ? 0.0F
                             : 1.0F;
-    out.push_back({event.contact_id, action, value, event.phase});
+    out.push_back({event.contact_id, event.zone_id, action, value, event.phase});
 }
 
 void add_stick_events(std::vector<ActionEvent> &out,
@@ -46,13 +46,29 @@ void add_stick_events(std::vector<ActionEvent> &out,
     const std::array<float, 4> values = release
                                             ? std::array<float, 4>{0.0F, 0.0F, 0.0F, 0.0F}
                                             : std::array<float, 4>{
-                                                  clamp_unit(-vertical), vertical,
-                                                  clamp_unit(-horizontal), horizontal};
+                                                  clamp_unit(-vertical), clamp_unit(vertical),
+                                                  clamp_unit(-horizontal), clamp_unit(horizontal)};
     for (std::size_t index = 0; index < actions.size(); ++index)
-        out.push_back({event.contact_id, actions[index], values[index], event.phase});
+        out.push_back({event.contact_id, event.zone_id, actions[index], values[index],
+                       event.phase});
 }
 
 } // namespace
+
+std::optional<float> touch_axis_value(
+    std::span<const ActionEvent> events, TouchAction negative,
+    TouchAction positive)
+{
+    std::optional<float> negative_value;
+    std::optional<float> positive_value;
+    for (const auto &event : events) {
+        if (event.action == negative) negative_value = event.value;
+        else if (event.action == positive) positive_value = event.value;
+    }
+    if (!negative_value && !positive_value) return std::nullopt;
+    return clamp_axis(positive_value.value_or(0.0F) -
+                      negative_value.value_or(0.0F));
+}
 
 std::vector<ActionEvent> TouchControls::set_viewport(Viewport viewport)
 {

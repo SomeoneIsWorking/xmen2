@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import os
 from pathlib import Path
 import shutil
@@ -75,6 +76,58 @@ def java_home() -> Path:
     )
 
 
+def release_signing(environment: Mapping[str, str] = os.environ) -> dict[str, str]:
+    names = (
+        "X2_ANDROID_KEYSTORE",
+        "X2_ANDROID_KEY_ALIAS",
+        "X2_ANDROID_STORE_PASSWORD",
+        "X2_ANDROID_KEY_PASSWORD",
+    )
+    values = {name: environment.get(name, "") for name in names}
+    missing = [name for name, value in values.items() if not value]
+    if missing:
+        raise SystemExit(
+            "Android release signing is incomplete; set " + ", ".join(missing) +
+            ". Refusing to produce an unsigned release APK."
+        )
+    keystore = Path(values["X2_ANDROID_KEYSTORE"]).expanduser()
+    if not keystore.is_file():
+        raise SystemExit(f"Android release keystore is missing: {keystore}")
+    values["X2_ANDROID_KEYSTORE"] = str(keystore.resolve())
+    return values
+
+
+def apksigner_path() -> Path:
+    sdk_value = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
+    if not sdk_value:
+        raise SystemExit("ANDROID_HOME or ANDROID_SDK_ROOT is required")
+    tools = Path(sdk_value) / "build-tools"
+    candidates = sorted(tools.glob("*/apksigner"), reverse=True)
+    if not candidates:
+        raise SystemExit(f"Android apksigner is missing under {tools}")
+    return candidates[0]
+
+
+def publish_apk(root: Path, abi: str) -> Path:
+    outputs = root / "android/app/build/outputs/apk/release"
+    candidates = [path for path in outputs.glob("*-release.apk")
+                  if "unsigned" not in path.name]
+    if len(candidates) != 1:
+        found = ", ".join(path.name for path in sorted(outputs.glob("*.apk")))
+        raise SystemExit(
+            f"Expected exactly one signed release APK in {outputs}; found: {found or 'none'}"
+        )
+    signer = apksigner_path()
+    run([str(signer), "verify", "--verbose", "--print-certs",
+         str(candidates[0])], cwd=root)
+    release = root / "scratch/release"
+    release.mkdir(parents=True, exist_ok=True)
+    destination = release / f"X-Men-Legends-II-{abi}.apk"
+    shutil.copy2(candidates[0], destination)
+    print(f"android: created signed release {destination} ({destination.stat().st_size} bytes)")
+    return destination
+
+
 def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parents[1]
@@ -84,7 +137,8 @@ def main() -> int:
         raise SystemExit(f"Refusing Android build output outside scratch/: {build}")
     build.mkdir(parents=True, exist_ok=True)
     ndk = ndk_path()
-    gradle_java = java_home()
+    gradle_java = java_home() if not args.no_assemble else None
+    signing = release_signing() if not args.no_assemble else None
     prefix = root / "scratch" / "android-deps" / args.abi
     if not args.skip_deps:
         run(
@@ -122,7 +176,11 @@ def main() -> int:
     )
     run(["cmake", "--build", str(build), "--target", "x2native", "-j2"], cwd=root)
     if not args.no_assemble:
-        run(
+        assert gradle_java is not None and signing is not None
+        gradle_environment = os.environ.copy()
+        gradle_environment.update(signing)
+        print("+ ./gradlew --no-daemon <release signing hidden> :app:assembleRelease")
+        subprocess.run(
             [
                 "./gradlew",
                 "--no-daemon",
@@ -131,7 +189,10 @@ def main() -> int:
                 ":app:assembleRelease",
             ],
             cwd=root / "android",
+            env=gradle_environment,
+            check=True,
         )
+        publish_apk(root, args.abi)
     return 0
 
 

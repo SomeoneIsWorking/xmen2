@@ -396,8 +396,6 @@ static void pump_sdl(void)
             continue;
         }
 
-        if (x2_touch_runtime_event(&event)) continue;
-
         if (event.type == SDL_EVENT_WINDOW_FOCUS_GAINED) {
             x2_win32_mouse_window_state(&g_mouse, g_hidden, 1,
                                         g_mouse.pointer_inside);
@@ -413,12 +411,14 @@ static void pump_sdl(void)
             x2_win32_mouse_window_state(&g_mouse, g_hidden,
                                         g_mouse.window_focused, 0);
         }
+        x2_touch_runtime_lifecycle_event(&event);
 
         if (x2_ui_handle_event(&event)) {
             x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
             apply_cursor_policy();
             continue;
         }
+        if (x2_touch_runtime_event(&event)) continue;
         x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
 
         if (event.type == SDL_EVENT_MOUSE_MOTION ||

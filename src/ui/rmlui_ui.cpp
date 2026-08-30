@@ -18,6 +18,8 @@
 #include "aspect_fit.h"
 #include "settings_document.hpp"
 #include "settings_overlay_state.h"
+#include "touch_document.hpp"
+#include "touch_runtime.h"
 #include "ui_resources.h"
 
 namespace {
@@ -91,6 +93,7 @@ bool gamepad_navigation(const SDL_Event& event)
 
 void discard_partial_initialization()
 {
+    x2::ui::touch_document_shutdown();
     x2::ui::settings_document_shutdown();
     context = nullptr;
     Rml::Shutdown();
@@ -129,6 +132,10 @@ bool initialize(SDL_GPUDevice* device, SDL_Window* window, unsigned width,
     }
     sync_surface_metrics(window, width, height);
     if (!x2::ui::settings_document_load(context, window)) {
+        discard_partial_initialization();
+        return false;
+    }
+    if (!x2::ui::touch_document_load(context)) {
         discard_partial_initialization();
         return false;
     }
@@ -200,10 +207,14 @@ extern "C" void x2_ui_render(SDL_GPUDevice* device,
                                  "settings overlay at startup.\n");
         }
     }
-    if (!x2_settings_overlay_visible() || !device || !command_buffer ||
+    const bool settings_visible = x2_settings_overlay_visible();
+    const bool touch_visible = x2_touch_runtime_overlay_visible() && !settings_visible;
+    if ((!settings_visible && !touch_visible) || !device || !command_buffer ||
         !swapchain || !window)
         return;
     if (!initialize(device, window, width, height)) return;
+    x2::ui::settings_document_set_visible(settings_visible);
+    x2::ui::touch_document_set_visible(touch_visible);
     /* The overlay may have been hidden while the window moved to a display
        with another DPI. Hidden events deliberately bypass RmlUi, so reconcile
        both pixel dimensions and dp scale from current output state here. */
@@ -214,6 +225,7 @@ extern "C" void x2_ui_render(SDL_GPUDevice* device,
        corrupts both UI vertices and the frame under the overlay. */
     render_interface->BeginFrame(command_buffer, swapchain, width, height);
     x2::ui::settings_document_update();
+    x2::ui::touch_document_update();
     context->Update();
     context->Render();
     render_interface->EndFrame();
@@ -222,6 +234,7 @@ extern "C" void x2_ui_render(SDL_GPUDevice* device,
 extern "C" void x2_ui_gpu_shutdown(void)
 {
     if (!initialized) return;
+    x2::ui::touch_document_shutdown();
     x2::ui::settings_document_shutdown();
     context = nullptr;
     Rml::Shutdown();

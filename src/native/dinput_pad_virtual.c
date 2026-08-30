@@ -325,7 +325,10 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                          i, what, SDL_GetError());
                 return 0;
             }
-            g_vbtn_until[i] = now + (hold > 0.0 ? hold : 0.30);
+            /* A negative hold is an explicit until-release state used by
+               physical touch contacts. Zero retains the control-channel's
+               historical short-press default. */
+            g_vbtn_until[i] = hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30);
             g_vpad_presses++;
             /*
              * READ IT BACK, through the same call the game uses.

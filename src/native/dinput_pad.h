@@ -101,8 +101,9 @@ void dinput_pad_report(void);
 
 /*
  * Press a button ("a", "start", ...) or set an axis ("leftx", -1.0..1.0) on
- * the SYNTHETIC pad, held for `hold` seconds (0 = a default press; for an axis
- * 0 means hold it until changed). Returns 0 with a reason in `why`.
+ * the SYNTHETIC pad, held for `hold` seconds (button: 0 = default press,
+ * negative = until explicit release; axis: 0 = until changed). Returns 0 with
+ * a reason in `why`.
  *
  * SDL's virtual joystick reads zero everywhere until something sets it, so
  * without this a run with X2_VIRTUAL_PAD proved the game FINDS a pad and never

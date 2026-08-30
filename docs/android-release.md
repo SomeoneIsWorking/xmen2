@@ -38,6 +38,12 @@ The script cross-builds the pinned FFmpeg subset, configures CMake for
 DNF-based systems, install the required JDK with
 `sudo dnf install java-17-openjdk-devel`, then set `JAVA_HOME` to it. The
 generated native contract is `scratch/build-android-arm64/x2-android.properties`.
+Release assembly also requires the long-lived update key through
+`X2_ANDROID_KEYSTORE`, `X2_ANDROID_KEY_ALIAS`, `X2_ANDROID_STORE_PASSWORD`, and
+`X2_ANDROID_KEY_PASSWORD`. These are maintainer build inputs, never player
+setup inputs or tracked files. The build refuses an unsigned release, verifies
+the signature with the SDK's `apksigner`, and stages
+`scratch/release/X-Men-Legends-II-arm64-v8a.apk`.
 
 ## Touch controls
 
@@ -67,6 +73,10 @@ the left stick plus two face/shoulder contacts simultaneously, expose a
 reconfigure/hide-controls setting, and make touch feedback visible without
 changing the input action delivered to the guest. The mapping is derived from
 [`xbox_defaults.c`](../src/native/xbox_defaults.c), not invented per screen.
+The shipped feedback document mirrors those production zones with the shared
+Xbox SVG set, highlights captured zones, and the persistent Input setting can
+hide the controls. Held contacts persist until finger-up/cancel rather than
+expiring on a test-channel timeout.
 
 ## Performance gate
 

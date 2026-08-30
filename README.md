@@ -122,7 +122,8 @@ uv run --frozen python tools/package_appimage.py
 
 The Android APK has the same no-terminal setup rule. Build it with
 `uv run --frozen python tools/build_android.py` after selecting the Android SDK
-and NDK. Its Browse screen uses SAF, stages a ZIP or install folder into
+and NDK, a supported JDK, and the release signing inputs documented in
+[`docs/android-release.md`](docs/android-release.md). Its Browse screen uses SAF, stages a ZIP or install folder into
 app-private storage, and supplies the same Lucent user-data root used for
 saves/configuration. Touch controls publish through the existing virtual pad.
 Mobile performance evidence is tracked separately in

@@ -38,6 +38,16 @@ int main()
         std::cerr << "left stick did not produce the expected action values\n";
         return 1;
     }
+    const auto left_y = x2::input::touch_axis_value(
+        moved, x2::input::TouchAction::Forward,
+        x2::input::TouchAction::Backward);
+    const auto left_x = x2::input::touch_axis_value(
+        moved, x2::input::TouchAction::MoveLeft,
+        x2::input::TouchAction::MoveRight);
+    if (!left_y || *left_y >= -0.5F || !left_x || *left_x >= -0.01F) {
+        std::cerr << "touch controls: directional events did not compose into signed axes\n";
+        return 1;
+    }
 
     const std::vector<lucent::touch::Contact> button = {
         {2, {800.0F, 230.0F}, lucent::touch::Phase::began}};
