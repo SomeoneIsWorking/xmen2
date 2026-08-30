@@ -97,10 +97,15 @@ and release assembly refuses missing long-lived signing inputs instead of
 emitting an unsigned APK. The 136-test native suite passes with the two
 documented skips.
 
-Gap: the signed APK cannot be assembled on this host until a supported JDK and
-the maintainer's release keystore are supplied. No installed-device setup/game
-run or mobile performance evidence exists yet. The required setup, touch-zone
-mapping, and device/thermal/frame-time evidence gate are specified in
+The Android build now pins Gradle 9.4.1 and Android Gradle Plugin 9.2.1, which
+officially support this host's complete Java 26 JDK; the obsolete JDK 24 ceiling
+is gone and the build rejects mismatched `java`/`javac` homes. A release assembly
+completed all 50 AGP tasks under a one-day local verification key, and
+`apksigner` verified its v3 signature; that artifact was deliberately not staged
+as a release. Gap: a publishable APK still requires the maintainer's long-lived
+keystore. No installed-device setup/game run or mobile performance evidence
+exists yet. The required setup, touch-zone mapping, and
+device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 

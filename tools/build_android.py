@@ -12,6 +12,11 @@ import subprocess
 import sys
 
 
+GRADLE_VERSION = "9.4.1"
+GRADLE_JAVA_MIN = 17
+GRADLE_JAVA_MAX = 26
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--abi", default="arm64-v8a", choices=("arm64-v8a", "x86_64"))
@@ -41,6 +46,24 @@ def run(command: list[str], *, cwd: Path) -> None:
     subprocess.run(command, cwd=cwd, check=True)
 
 
+def parse_java_major(version_output: str) -> int | None:
+    first = version_output.splitlines()[0] if version_output.splitlines() else ""
+    try:
+        version = first.split('version "', 1)[1].split('"', 1)[0]
+        components = version.split(".")
+        return int(components[1] if components[0] == "1" else components[0])
+    except (IndexError, ValueError):
+        return None
+
+
+def parse_javac_major(version_output: str) -> int | None:
+    first = version_output.splitlines()[0] if version_output.splitlines() else ""
+    try:
+        return int(first.split("javac ", 1)[1].split(".", 1)[0])
+    except (IndexError, ValueError):
+        return None
+
+
 def java_home() -> Path:
     candidates: list[Path] = []
     configured = os.environ.get("JAVA_HOME")
@@ -58,21 +81,19 @@ def java_home() -> Path:
                 or not (home / "bin/javac").is_file()):
             continue
         seen.add(home)
-        result = subprocess.run([str(home / "bin/java"), "-version"],
-                                capture_output=True, text=True)
-        version = result.stderr + result.stdout
-        first = version.splitlines()[0] if version.splitlines() else ""
-        try:
-            major_text = first.split('version "', 1)[1].split(".", 1)[0]
-            major = int(major_text)
-        except (IndexError, ValueError):
-            continue
-        if 17 <= major <= 24:
+        java = subprocess.run([str(home / "bin/java"), "-version"],
+                              capture_output=True, text=True)
+        javac = subprocess.run([str(home / "bin/javac"), "-version"],
+                               capture_output=True, text=True)
+        java_major = parse_java_major(java.stderr + java.stdout)
+        javac_major = parse_javac_major(javac.stderr + javac.stdout)
+        if (java_major == javac_major and java_major is not None
+                and GRADLE_JAVA_MIN <= java_major <= GRADLE_JAVA_MAX):
             return home
     raise SystemExit(
-        "Android Gradle build needs a JDK from 17 through 24, but no supported "
-        "JDK was found. On this DNF system install it with: "
-        "sudo dnf install java-17-openjdk-devel; then set JAVA_HOME to that JDK."
+        f"Gradle {GRADLE_VERSION} needs a coherent JDK from {GRADLE_JAVA_MIN} "
+        f"through {GRADLE_JAVA_MAX}, but no home with matching java and javac "
+        "versions was found. Select one with JAVA_HOME."
     )
 
 

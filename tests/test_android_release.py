@@ -11,6 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
+    assert build_android.parse_java_major('openjdk version "25.0.4" 2026-08-18') == 25
+    assert build_android.parse_java_major('openjdk version "26.0.2" 2026-07-21') == 26
+    assert build_android.parse_java_major('java version "1.8.0_412"') == 8
+    assert build_android.parse_java_major('java version "1"') is None
+    assert build_android.parse_java_major("unrecognized runtime") is None
+    assert build_android.parse_javac_major("javac 26.0.2") == 26
+    assert build_android.parse_javac_major("unrecognized compiler") is None
+
     try:
         build_android.release_signing({})
     except SystemExit as error:
@@ -36,12 +44,19 @@ def main() -> int:
     manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(
         encoding="utf-8")
     gradle = (ROOT / "android/app/build.gradle").read_text(encoding="utf-8")
+    root_gradle = (ROOT / "android/build.gradle").read_text(encoding="utf-8")
+    wrapper = (ROOT / "android/gradle/wrapper/gradle-wrapper.properties").read_text(
+        encoding="utf-8")
     assert "protected String getMainFunction()" in activity
     assert 'return "main";' in activity
     assert 'android:icon="@drawable/xmen2_port_icon"' in manifest
-    assert "signingConfig signingConfigs.release" in gradle
+    assert "signingConfig = signingConfigs.release" in gradle
+    assert "enableV3Signing = true" in gradle
     assert "Refusing to" in gradle and "unsigned release APK." in gradle
-    print("android release: entry point, icon, and fail-closed signing passed")
+    assert 'version "9.2.1"' in root_gradle
+    assert "gradle-9.4.1-bin.zip" in wrapper
+    assert "distributionSha256Sum=" in wrapper
+    print("android release: toolchain, entry point, icon, and signing passed")
     return 0
 
 
