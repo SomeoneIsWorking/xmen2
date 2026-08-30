@@ -103,32 +103,32 @@ def syncAssets = tasks.register("syncX2Assets", Sync) {
 }
 
 android {
-    namespace "com.someoneisworking.xmen2"
-    compileSdk 36
-    ndkVersion ndkVersionValue
+    namespace = "com.someoneisworking.xmen2"
+    compileSdk = 36
+    ndkVersion = ndkVersionValue
     signingConfigs {
         release {
-            storeFile releaseKeystoreFile
-            storePassword releaseStorePassword
-            keyAlias releaseKeyAlias
-            keyPassword releaseKeyPassword
-            v1SigningEnabled true
-            v2SigningEnabled true
-            v3SigningEnabled true
+            storeFile = releaseKeystoreFile
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
     defaultConfig {
-        applicationId "com.someoneisworking.xmen2"
-        minSdk androidPlatform.replaceFirst("^android-", "").toInteger()
-        targetSdk 36
-        versionCode versionCodeValue
-        versionName versionNameValue
+        applicationId = "com.someoneisworking.xmen2"
+        minSdk = androidPlatform.replaceFirst("^android-", "").toInteger()
+        targetSdk = 36
+        versionCode = versionCodeValue
+        versionName = versionNameValue
     }
     buildTypes {
-        debug { minifyEnabled false }
+        debug { minifyEnabled = false }
         release {
-            minifyEnabled false
-            signingConfig signingConfigs.release
+            minifyEnabled = false
+            signingConfig = signingConfigs.release
         }
     }
     sourceSets {
@@ -140,14 +140,14 @@ android {
     }
     splits {
         abi {
-            enable true
+            enable = true
             reset()
             include androidAbi
-            universalApk false
+            universalApk = false
         }
     }
     packaging {
-        jniLibs { useLegacyPackaging true }
+        jniLibs { useLegacyPackaging = true }
     }
 }
 

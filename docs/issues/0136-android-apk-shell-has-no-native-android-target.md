@@ -16,9 +16,12 @@ contracts. Host pkg-config cannot describe Android ARM64 libraries, and SDL's
 desktop picker cannot acquire Android content URIs. The Android target now has
 an explicit cross-compiled FFmpeg prefix, Gradle/Activity/JNI shell, SAF copy
 boundary, touch publication/feedback path, correct native Activity entry point,
-and fail-closed release signing contract. The remaining gap is a long-lived
-maintainer signing key, supported build JDK, and installed-device/performance
-evidence.
+and fail-closed release signing contract. Gradle 9.4.1 and Android Gradle
+Plugin 9.2.1 now make the installed Java 26 JDK a supported build path.
+The build rejects split `java`/`javac` homes. A 50-task release assembly signed
+with a one-day local verification key passed `apksigner` v3 verification; it was
+not staged or treated as publishable. The remaining gap is a long-lived
+maintainer signing key and installed-device/performance evidence.
 
 ## What was tried / dead ends
 
@@ -32,8 +35,8 @@ evidence, and the pre-existing unsigned APK is not a release candidate.
 
 ## Proper fix
 
-Supply a JDK from 17 through 24 and the long-lived Android release keystore,
-then build and install the real SDL3 target using `tools/build_android.py`.
+Supply the long-lived Android release keystore, then build and install the real
+SDL3 target using `tools/build_android.py`.
 Exercise setup selection for both a direct install and nested ZIP, touch-only
 gameplay, suspend/resume, audio, and the launcher/update signature. Measure the
 APK on low, target, and high Android tiers before changing S018 to verified.

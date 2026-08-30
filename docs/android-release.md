@@ -34,16 +34,25 @@ uv run --frozen python tools/build_android.py
 
 The script cross-builds the pinned FFmpeg subset, configures CMake for
 `arm64-v8a`, builds `libmain.so`, and assembles the release APK. Set
-`ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 24 first. On
-DNF-based systems, install the required JDK with
-`sudo dnf install java-17-openjdk-devel`, then set `JAVA_HOME` to it. The
-generated native contract is `scratch/build-android-arm64/x2-android.properties`.
+`ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 26 first. The
+project pins Gradle 9.4.1, the first maintained patch line that officially runs
+on Java 26, together with its compatible Android Gradle Plugin 9.2.1 and the
+Gradle distribution checksum. Select an installed compatible JDK with
+`JAVA_HOME`; the build does not require an older JDK when the pinned toolchain
+supports the current one. The generated native contract is
+`scratch/build-android-arm64/x2-android.properties`.
 Release assembly also requires the long-lived update key through
 `X2_ANDROID_KEYSTORE`, `X2_ANDROID_KEY_ALIAS`, `X2_ANDROID_STORE_PASSWORD`, and
 `X2_ANDROID_KEY_PASSWORD`. These are maintainer build inputs, never player
 setup inputs or tracked files. The build refuses an unsigned release, verifies
 the signature with the SDK's `apksigner`, and stages
 `scratch/release/X-Men-Legends-II-arm64-v8a.apk`.
+
+Local pipeline verification may use an explicitly ephemeral key only if the
+artifact stays in Gradle's build output and is never staged or published. On
+2026-08-30, Java 26, Gradle 9.4.1, and AGP 9.2.1 completed all 50 release tasks;
+`apksigner` verified the resulting v3 signature under the one-day local test
+certificate. This proves assembly, not release identity or device fitness.
 
 ## Touch controls
 
