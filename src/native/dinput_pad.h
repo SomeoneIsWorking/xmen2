@@ -66,6 +66,11 @@ int dinput_pad_for_persistent_id(const char *id);
    a GUID an enumeration handed out finds its way back to a pad. */
 int  dinput_pad_for_guid(const unsigned char guid[16]);
 
+/* Which slot holds the pad with this live SDL joystick id, or -1. A caller
+   that attached a joystick itself knows only that id, and needs the inventory
+   slot to reason about player assignment. */
+int  dinput_pad_for_joystick_id(unsigned int joystick_id);
+
 /*
  * Live state. Axes come back in DirectInput's own signed range as the GAME
  * asked for it -- XMen2.exe sets every axis to [-1000, 1000] through

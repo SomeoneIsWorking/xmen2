@@ -2,7 +2,9 @@
 
 #include "touch_controls.h"
 #include "../native/dinput_pad_virtual.h"
+#include "../config/settings.h"
 #include "../config/settings_store.h"
+#include "transient_controller_assignment.h"
 
 #include <SDL3/SDL.h>
 
@@ -89,9 +91,39 @@ void publish_axis(std::span<const x2::input::ActionEvent> events,
     }
 }
 
+/*
+ * Claim player one for the pad that touch publishes through.
+ *
+ * A pad only reaches the guest once a player resolves to it, and a player
+ * resolves only from an explicit transient assignment or a persisted
+ * reservation. On a phone neither exists on a first run, so every touch was
+ * routed into a pad no player was reading: the probe reported the game
+ * polling buttons that were never down, while SDL's own touch-to-mouse
+ * emulation carried presses to menus and nothing to gameplay.
+ *
+ * A controller the player already chose keeps player one, so plugging a real
+ * pad in still wins; this only fills the vacancy.
+ */
+void claim_player_one()
+{
+    static bool attempted = false;
+    if (attempted) return;
+    if (x2_transient_controller_has_assignment(0) ||
+        x2_settings_player_controller(x2_settings_store(), 0))
+        return;
+    const int slot = dinput_pad_virtual_slot();
+    if (slot < 0) return;  /* Not opened yet; try again on the next contact. */
+    attempted = true;
+    if (!x2_transient_controller_assign(slot, 0))
+        std::fprintf(stderr, "touch: could not assign the touch pad (slot %d) "
+                             "to player 1; touch will not reach gameplay\n",
+                     slot);
+}
+
 void publish(const std::vector<x2::input::ActionEvent> &events)
 {
     using x2::input::TouchAction;
+    claim_player_one();
     for (const auto &event : events) {
         if (event.phase == lucent::touch::Phase::ended ||
             event.phase == lucent::touch::Phase::canceled)

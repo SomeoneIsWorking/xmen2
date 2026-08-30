@@ -456,6 +456,16 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
 #endif
 }
 
+int dinput_pad_virtual_slot(void)
+{
+#ifdef X2_WITH_SDL
+    if (!g_virt_id) return -1;
+    return dinput_pad_for_joystick_id((unsigned int)g_virt_id);
+#else
+    return -1;
+#endif
+}
+
 const char *dinput_pad_virtual_identity_override(unsigned int joystick_id)
 {
 #ifdef X2_WITH_SDL

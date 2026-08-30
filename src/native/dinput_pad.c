@@ -353,6 +353,16 @@ int dinput_pad_for_guid(const unsigned char guid[16])
     return -1;
 }
 
+int dinput_pad_for_joystick_id(unsigned int joystick_id)
+{
+#ifdef X2_WITH_SDL
+    return slot_of_id((SDL_JoystickID)joystick_id);
+#else
+    (void)joystick_id;
+    return -1;
+#endif
+}
+
 int dinput_pad_button_count(int pad)
 {
     Pad *p = pad_at(pad);
