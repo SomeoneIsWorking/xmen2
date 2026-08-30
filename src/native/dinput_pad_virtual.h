@@ -26,6 +26,11 @@ int dinput_pad_virtual_release(const char *what);
    otherwise. */
 const char *dinput_pad_virtual_identity_override(unsigned int joystick_id);
 
+/* The inventory slot the synthetic pad occupies, or -1 when it is not
+   attached or not yet opened. Touch publishes through this pad, so the touch
+   layer needs its slot to claim a player for it. */
+int dinput_pad_virtual_slot(void);
+
 /* Denominators for the shutdown report. */
 void dinput_pad_virtual_counts(unsigned long *presses, unsigned long *axis_sets,
                                unsigned long *clears);

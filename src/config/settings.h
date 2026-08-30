@@ -5,6 +5,10 @@
 
 #include "boot_mode.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define X2_SETTINGS_PLAYERS 4u
 #define X2_SETTINGS_KEYBOARD_PROFILES 4u
 #define X2_SETTINGS_ROWS 42u
@@ -61,5 +65,9 @@ int x2_settings_controller_player(const X2Settings *settings, const char *id);
 const char *x2_settings_player_controller(const X2Settings *settings,
                                           unsigned player);
 int x2_settings_player_keyboard(const X2Settings *settings, unsigned player);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
