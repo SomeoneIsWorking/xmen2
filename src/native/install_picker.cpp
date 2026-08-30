@@ -6,6 +6,7 @@
  * with the port's user configuration, never beside the read-only game. ZIP
  * extraction is shared with other ports through Lucent. */
 #include "install_picker.h"
+#include "install_archive.h"
 #include "android_bridge.h"
 #include "../config/config_directory.h"
 
@@ -205,16 +206,6 @@ static int directory_from_folder(const char *folder, char *directory,
                                                         capacity);
 }
 
-static unsigned archive_id(const char *path)
-{
-    unsigned hash = 2166136261u;
-    for (const unsigned char *cursor = (const unsigned char *)path; *cursor; ++cursor) {
-        hash ^= *cursor;
-        hash *= 16777619u;
-    }
-    return hash;
-}
-
 static int directory_from_selection(const char *selection, char *directory,
                                     unsigned capacity, char *reason,
                                     size_t reason_capacity)
@@ -239,29 +230,14 @@ static int directory_from_selection(const char *selection, char *directory,
         return 0;
     }
 
-    const char *base = x2_config_directory();
-    if (!base || !x2_config_directory_ensure()) {
-        snprintf(reason, reason_capacity,
-                 "The user configuration directory could not be created.");
-        return 0;
-    }
-    char destination[X2_INSTALL_PATH_SIZE];
-    const int written = snprintf(destination, sizeof destination,
-                                  "%s/xmen2-install-%08x", base,
-                                  archive_id(selection));
-    if (written <= 0 || (size_t)written >= sizeof destination) {
-        snprintf(reason, reason_capacity, "The selected archive path is too long.");
-        return 0;
-    }
-
-    std::filesystem::path executable;
-    std::string extraction_error;
-    if (!lucent::zip::extract_install(selection, destination, "XMen2.exe",
-                                      executable, extraction_error) ||
+    char executable[X2_INSTALL_PATH_SIZE];
+    if (!x2_install_archive_prepare(selection, executable, sizeof executable,
+                                    reason, reason_capacity) ||
         !x2_install_picker_directory_from_executable(
-            executable.string().c_str(), directory, capacity)) {
-        snprintf(reason, reason_capacity,
-                 "That ZIP could not be used: %s", extraction_error.c_str());
+            executable, directory, capacity)) {
+        if (!reason[0])
+            snprintf(reason, reason_capacity,
+                     "That ZIP did not produce a usable XMen2.exe.");
         return 0;
     }
     return 1;

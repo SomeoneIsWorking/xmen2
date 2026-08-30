@@ -64,9 +64,16 @@ resource lookup, and an SDL3 first-run prompt that validates and remembers the
 user's `XMen2.exe` directory in the OS configuration directory. It also accepts
 a ZIP containing exactly one `XMen2.exe` at any nested path and extracts it
 under that same user-data root through Lucent's shared safe ZIP implementation.
+ZIP preparation is staged separately and atomically replaces only a validated
+extraction, so an invalid replacement preserves the prior working install.
 `scratch/release/X-Men-Legends-II-x86_64.AppImage` artifact was built and its
-native selftest passed through the AppImage runtime. Focused tests cover the
-configuration-path and executable-validation seams.
+native selftest passed through the AppImage runtime. Its extracted 241-file
+inventory contains the launcher, native binary, desktop metadata, and SVG icon
+and no `XMen2.exe` or game-data directory; SHA-256 is
+`117aca75b43153b32f565ca4d487261426fd677bd91da721ea60cdf2ab8ed2ea`.
+The 138-test combined gate passes (two explicit data/tool skips), including the
+configuration path, executable validation, and transactional replacement
+seams.
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target and
