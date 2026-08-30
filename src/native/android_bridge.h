@@ -9,6 +9,11 @@ extern "C" {
  * starts. Desktop builds return NULL and keep their normal picker contract. */
 const char *x2_android_install_source(void);
 
+/* Route stdout/stderr to logcat. Android discards a process's stdio, so every
+ * refusal the port prints on its way to exit() is otherwise invisible and a
+ * deliberate exit is indistinguishable from a crash. No-op off Android. */
+void x2_android_log_stdio(void);
+
 #ifdef __cplusplus
 }
 #endif

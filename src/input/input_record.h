@@ -11,6 +11,14 @@
  * still leaves the input that led to it.
  */
 int input_record_start(const char *path);
+
+/*
+ * Directory that an empty path creates its recording in, replacing the default
+ * scratch/recordings/. A packaged build must set the OS user-data location:
+ * the default is relative to the process's working directory, which a package
+ * does not own and which is not writable on Android.
+ */
+void input_record_set_directory(const char *directory);
 void input_record_keyboard(const void *state, size_t bytes,
                            unsigned long frame, double guest_time_s);
 void input_record_mouse(const void *state, size_t bytes,

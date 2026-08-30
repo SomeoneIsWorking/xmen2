@@ -1,5 +1,6 @@
 /* Exact, change-only recording of the DirectInput state delivered to XMen2. */
 #include "input_record.h"
+#include "directory_create.h"
 #include "json_string.h"
 
 #include <errno.h>
@@ -22,6 +23,8 @@ typedef struct {
 
 static FILE *g_file;
 static char g_path[512];
+/* Developer default; a packaged run replaces it with the OS user-data path. */
+static char g_directory[400] = "scratch/recordings";
 static PreviousState g_keyboard;
 static PreviousState g_mouse;
 static PreviousState g_gamepad[GAMEPADS];
@@ -62,6 +65,12 @@ static void record_down_bytes(const unsigned char *state, size_t start,
     fputc(']', g_file);
 }
 
+void input_record_set_directory(const char *directory)
+{
+    if (!directory || !directory[0]) return;
+    snprintf(g_directory, sizeof g_directory, "%s", directory);
+}
+
 int input_record_start(const char *path)
 {
     time_t now;
@@ -70,13 +79,16 @@ int input_record_start(const char *path)
     if (!path) return 0;
     if (g_file) return 1;
     if (!path[0]) {
-        if (mkdir("scratch", 0775) != 0 && errno != EEXIST) return 0;
-        if (mkdir("scratch/recordings", 0775) != 0 && errno != EEXIST)
+        if (!x2_directory_create(g_directory)) {
+            fprintf(stderr, "input record: cannot create %s: %s. REFUSING to "
+                            "call this run recorded.\n",
+                    g_directory, strerror(errno));
             return 0;
+        }
         now = time(NULL);
         gmtime_r(&now, &utc);
         snprintf(g_path, sizeof g_path,
-                 "scratch/recordings/input-%04d%02d%02d-%02d%02d%02d-%ld.jsonl",
+                 "%s/input-%04d%02d%02d-%02d%02d%02d-%ld.jsonl", g_directory,
                  utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday,
                  utc.tm_hour, utc.tm_min, utc.tm_sec, (long)getpid());
     } else {

@@ -7,24 +7,36 @@ real APK is installed and measured on the supported device tiers.
 ## Setup and game-file access
 
 The APK has no terminal and opens `XMen2SetupActivity` before starting
-`XMen2GameActivity`. The setup screen has a Browse button that launches
-Android's Storage Access Framework document picker. A ZIP is copied into
-private storage and accepted when it contains exactly one `XMen2.exe` at any
-nested path. If the user first chooses `XMen2.exe`, Android then requests the
-containing install folder: a single content URI grants access to one file, not
-its siblings, so pretending that the executable alone is a complete install
-would produce a broken launch. The folder is copied recursively and native
-validation still requires exactly one executable.
+`XMen2GameActivity`. The port **reads the user's install where it already
+sits**; it does not copy it. The setup screen therefore asks for
+`MANAGE_EXTERNAL_STORAGE` ("Allow access to manage all files") and offers two
+explicit choices: "Choose install folder", which opens
+`ACTION_OPEN_DOCUMENT_TREE`, and "Choose ZIP", which opens
+`ACTION_OPEN_DOCUMENT`. `InstallLocation` resolves the returned document id to
+a filesystem path, and native validation still requires exactly one
+`XMen2.exe`.
 
-The Activity persists the selected document URI when the provider allows
-persistable read access. Because a content URI is not necessarily a filesystem
-path, the Android shell copies the selected document/tree into app-private
-storage before calling the shared Lucent ZIP extractor or the native folder
-validator. The staged install and source preference are app data, not checkout,
-APK, or cache/scratch data. A missing selection returns to setup with an
-actionable error. `lucent_platform_set_user_data_directory` receives the
-Activity's absolute private files root; there is no Android environment-variable
-fallback.
+The earlier design copied the selection into app-private storage, because a
+content URI is not guaranteed to have a filesystem path. Measured on device
+that cost a content-provider round trip per file and ran at **0.05 MB/s across
+this game's many small files** -- around twelve minutes for a 2.2 GB install,
+plus a duplicate copy of it on the device, and the OEM power manager killed the
+copy when it lost foreground. A provider that genuinely has no filesystem path
+(a cloud document) is now refused by name at the picker instead, which is the
+honest answer; staging it slowly was not.
+
+The setup persists the resolved path. A missing or unusable selection returns
+to setup with an actionable error.
+`lucent_platform_set_user_data_directory` receives the Activity's absolute
+private files root; there is no Android environment-variable fallback. Saves,
+settings, input recordings, and the live-session record all live below that
+root -- never in the working directory, which a package does not own and which
+is read-only on Android.
+
+The APK also declares `INTERNET`. The product target always opens the agent
+control channel on loopback, and creating any socket requires that permission's
+`inet` group; without it `socket()` fails with `EACCES` and `control_start()`
+exits before the game runs.
 
 Build it with:
 
