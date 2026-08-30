@@ -71,3 +71,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
     }
     return 0;
 }
+
+int x2native_options_uses_project_env(const X2NativeOptions *options)
+{
+    return options && !options->appimage;
+}

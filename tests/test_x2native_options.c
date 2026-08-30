@@ -25,6 +25,8 @@ int main(void)
                    o.input_record && !o.input_record[0],
                    "zero arguments did not select the inspectable, recorded "
                    "SDL3 GPU game");
+    fails += check(x2native_options_uses_project_env(&o),
+                   "developer launch lost project .env support");
     fails += check(x2native_options_parse(2, headless, &o) == 0,
                    "headless parse failed");
     fails += check(o.run && o.d3d8 && !o.window && o.product,
@@ -36,10 +38,12 @@ int main(void)
     fails += check(x2native_options_parse(2, appimage, &o) == 0
                    && o.appimage && o.run && o.d3d8 && o.product,
                    "AppImage launch did not retain the product route");
+    fails += check(!x2native_options_uses_project_env(&o),
+                   "AppImage launch accepted the developer project .env");
     fails += check(x2native_options_parse(2, diagnostic, &o) == 0,
                    "selftest parse failed");
     fails += check(o.selftest && !o.run && !o.d3d8,
                    "a diagnostic was replaced by the default product");
-    printf("x2native options: %d of 9 checks passed\n", 9 - fails);
+    printf("x2native options: %d of 11 checks passed\n", 11 - fails);
     return fails ? 1 : 0;
 }
