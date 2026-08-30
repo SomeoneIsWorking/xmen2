@@ -528,6 +528,18 @@ void imp_USER32_CreateWindowExA(CPU *C)
     w = (int32_t)settings->width;
     h = (int32_t)settings->height;
     window_flags = g_hide_windows ? SDL_WINDOW_HIDDEN : SDL_WINDOW_RESIZABLE;
+    /*
+     * Landscape, stated rather than inferred.
+     *
+     * On mobile SDL sets the Activity's orientation itself and overrides the
+     * manifest. With no hint it reads the request off the window: a resizable
+     * one means "any orientation, follow the device", so a phone held upright
+     * (or rotation-locked) came up portrait with this landscape game
+     * letterboxed into a strip. Naming both landscape orientations makes SDL
+     * allow only those, while still letting the player flip the phone over.
+     * Desktop video drivers ignore the hint.
+     */
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     g_win = SDL_CreateWindow(name ? guest_memory_const_pointer(name) : "x2native",
                              w, h, window_flags);
     if (!g_win) {
