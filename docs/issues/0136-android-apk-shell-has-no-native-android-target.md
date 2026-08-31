@@ -69,8 +69,9 @@ change the failure: the emulator launcher itself segfaults before Android boot
 with both SwiftShader and software GPU modes. The storage image is therefore
 not its cause. Fedora's audit log identifies the host cause: SELinux denies
 `qemu-system` executable-heap access, after which its `RenderThread` receives
-SIGSEGV. Repairing that host policy requires an administrator-authorized
-SELinux module; a port change cannot correct it.
+SIGSEGV. `audit2allow` cannot provide a narrow local module: the emulator is
+labelled `unconfined_t`, so its proposed `execheap` rule would apply to every
+process in that domain. A port change cannot correct this host policy defect.
 
 ## Proper fix
 
@@ -82,6 +83,7 @@ APK on low, target, and high Android tiers before changing S018 to verified.
 Resolve the Android semaphore/allocator divergence first, then repeat the
 complete ZIP and direct-install flows through to gameplay before qualifying
 touch controls and performance.
-Before collecting the new trace, authorize and install the narrowly generated
-SELinux policy for `qemu-system-aar` that Fedora's audit record identifies;
-do not disable SELinux system-wide.
+Before collecting the new trace, repair the Fedora Android Emulator SELinux
+integration so QEMU receives a dedicated confined label with only the required
+access. Do not install the broad `unconfined_t` `audit2allow` rule or disable
+SELinux system-wide.
