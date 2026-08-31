@@ -23,6 +23,8 @@
 #ifndef X2_CONTROL_H
 #define X2_CONTROL_H
 
+#include <stddef.h>
+
 /* Start the server. Port from the argument, else X2_CONTROL, else off.
    REFUSES loudly (and returns 0) if a port was asked for and cannot be bound --
    a control channel that silently failed to listen is a run that ignores every
@@ -45,5 +47,7 @@ void control_report(void);
  * instruments (the reached endpoint is x86_reached.c's, not this file's). */
 void control_reply_text(int fd, int code, const char *status,
                         const char *fmt, ...);
+void control_reply_json(int fd, int code, const char *status,
+                        const char *body, size_t size);
 
 #endif

@@ -116,9 +116,17 @@ def cmd_status(args):
     print("frame %-8d  guest %8.2fs  %s"
           % (s["frames_presented"], s["guest_time_s"],
              "UNBOUNDED" if s["unbounded"] else "wall-clock paced"))
+    if "renderer_backend" in s:
+        print("  renderer    %s  %dx%d" % (s["renderer_backend"],
+              s.get("presentation_width", 0), s.get("presentation_height", 0)))
     print("  frame time  avg %.2f ms  min %.2f ms  max %.2f ms  over %d interval(s)"
           % (s["frame_ms_avg"], s["frame_ms_min"], s["frame_ms_max"],
              s["frame_intervals"]))
+    percentile_keys = ("frame_ms_p50", "frame_ms_p95", "frame_ms_p99")
+    if all(key in s for key in percentile_keys):
+        print("  percentiles p50 %.2f ms  p95 %.2f ms  p99 %.2f ms  over %d sample(s)"
+              % (s["frame_ms_p50"], s["frame_ms_p95"], s["frame_ms_p99"],
+                 s.get("frame_sample_count", 0)))
     c = s["control"]
     print("  control     %d request(s), %d key(s) pressed, %d refused, %d shot(s)"
           % (c["requests"], c["keys_pressed"], c["keys_refused"],

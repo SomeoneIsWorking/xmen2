@@ -1,14 +1,19 @@
 #include "control.h"
+#include "control_command_bridge.h"
 #include "x86_reached.h"
 
 #include "control_query.h"
+#include "control_performance_route.h"
+#include "control_save_route.h"
 #include "control_screenshot.h"
 #include "control_status.h"
+#include "control_status_route.h"
 #include "autosave_runtime.h"
 #include "dinput_fifo.h"
 #include "dinput_pad.h"
 #include "gpu_capture.h"
 #include "gpu_device.h"
+#include "gpu_frame_timing.h"
 #include "input_probe.h"
 #include "save_trace_runtime.h"
 #include "transient_controller_assignment.h"
@@ -41,7 +46,7 @@
  */
 enum {
     CMD_NONE = 0, CMD_KEY, CMD_SHOT, CMD_PAD, CMD_INPUT, CMD_SAVE,
-    CMD_ASSIGNMENT
+    CMD_ASSIGNMENT, CMD_PERFORMANCE_RESET
 };
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -134,6 +139,11 @@ void control_pump(CPU *cpu, double now)
                           "fewer events or increase the production bound",
                           PROBE_BYTES);
         }
+    } else if (cmd == CMD_PERFORMANCE_RESET) {
+        gpu_frame_timing_reset();
+        g_cmd_ok = 1;
+        snprintf(g_cmd_why, sizeof g_cmd_why,
+                 "frame-time qualification window reset at the guest input boundary");
     }
 
     g_cmd = CMD_NONE;
@@ -188,6 +198,24 @@ static int submit(int cmd, double timeout_s)
     return rc;
 }
 
+int control_command_save(const char **report, size_t *report_size,
+                         char *reason, size_t reason_capacity)
+{
+    if (!submit(CMD_SAVE, 10.0)) return -1;
+    snprintf(reason, reason_capacity, "%s", g_cmd_why);
+    if (!g_cmd_ok) return 0;
+    *report = g_probe;
+    *report_size = g_probe_len;
+    return 1;
+}
+
+int control_command_performance_reset(char *reason, size_t reason_capacity)
+{
+    if (!submit(CMD_PERFORMANCE_RESET, 10.0)) return -1;
+    snprintf(reason, reason_capacity, "%s", g_cmd_why);
+    return g_cmd_ok;
+}
+
 /* -------------------------------------------------------------- serving --- */
 
 static void send_all(int fd, const void *p, size_t n)
@@ -223,18 +251,8 @@ void control_reply_text(int fd, int code, const char *status, const char *fmt, .
     reply(fd, code, status, "text/plain; charset=utf-8", body, (size_t)n);
 }
 
-static void route_status(int fd)
-{
-    char body[4096];
-    size_t size = control_status_format(body, sizeof body, g_requests,
-                                        g_keys_pressed, g_keys_refused, g_shots);
-    if (!size) {
-        control_reply_text(fd, 500, "Internal Server Error",
-                   "live status exceeded its bounded response buffer\n");
-        return;
-    }
-    reply(fd, 200, "OK", "application/json", body, size);
-}
+void control_reply_json(int fd, int code, const char *status, const char *body, size_t size)
+{ reply(fd, code, status, "application/json", body, size); }
 
 static void route_key(int fd, const char *query)
 {
@@ -362,19 +380,6 @@ static void route_input(int fd, const char *query)
     reply(fd, 200, "OK", "text/plain; charset=utf-8", g_probe, g_probe_len);
 }
 
-static void route_save(int fd)
-{
-    if (!submit(CMD_SAVE, 10.0)) {
-        control_reply_text(fd, 504, "Gateway Timeout",
-                   "the guest did not reach an input poll within 10s, so the "
-                   "save trace was not read. The run is stuck, still loading, "
-                   "or has not reached its input loop.\n");
-        return;
-    }
-    if (!g_cmd_ok) { control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why); return; }
-    reply(fd, 200, "OK", "text/plain; charset=utf-8", g_probe, g_probe_len);
-}
-
 static void serve(int fd)
 {
     char req[1024], *path, *query, *sp;
@@ -392,13 +397,15 @@ static void serve(int fd)
     query = strchr(path, '?');
     if (query) *query++ = '\0';
 
-    if (!strcmp(path, "/status"))          route_status(fd);
+    if (!strcmp(path, "/status"))          control_status_route(
+        fd, g_requests, g_keys_pressed, g_keys_refused, g_shots);
     else if (!strcmp(path, "/key"))        route_key(fd, query ? query : "");
     else if (!strcmp(path, "/pad"))        route_pad(fd, query ? query : "");
     else if (!strcmp(path, "/assignment")) route_assignment(fd, query ? query : "");
     else if (!strcmp(path, "/screenshot")) route_shot(fd);
     else if (!strcmp(path, "/input"))      route_input(fd, query ? query : "");
-    else if (!strcmp(path, "/save"))       route_save(fd);
+    else if (!strcmp(path, "/save"))       control_save_route(fd);
+    else if (!strcmp(path, "/performance/reset")) control_performance_reset_route(fd);
     else if (!strcmp(path, "/reached"))    x86_reached_route(fd, query ? query : "");
     else
         control_reply_text(fd, 404, "Not Found",
@@ -412,6 +419,7 @@ static void serve(int fd)
                    "  GET /input[?controller=N]  the GAME's binding table "
                    "and which actions read down\n"
                    "  GET /save         bounded retail save/load trace\n"
+                   "  GET /performance/reset  start a fresh frame-time window\n"
                    "  GET /reached      has the game ever entered that "
                    "function? (self-documents)\n",
                    path);
@@ -465,7 +473,7 @@ int control_start(int port)
     g_port = port;
     gpu_capture_set_frame_observer(control_frame_pump);
     printf("control: http://127.0.0.1:%d  -- /status /key?name=X /pad "
-           "/screenshot /input /save\n"
+           "/screenshot /input /save /performance/reset\n"
            "control: loopback only; guest commands use its input poll and "
            "screenshots use the render boundary, never the server thread.\n",
            port);

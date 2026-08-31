@@ -28,6 +28,7 @@
 #include "gpu_present.h"
 #include "gpu_prompt_glyphs.h"
 #include "gpu_shadow.h"
+#include "gpu_frame_timing_report.h"
 #include "boot_blackout.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
@@ -93,18 +94,6 @@ static unsigned long g_frames_presented, g_frames_no_swapchain,
 static unsigned long long g_frame_end_submits;
 #endif
 
-static void slow_frame_report(unsigned long frame, unsigned long long dt_ns)
-{
-    unsigned long long dns, uns;
-    gpu_frame_host_share(&dns, &uns);
-    fprintf(stderr,
-            "gpu: frame %lu took %.0f ms; host draw %.1f ms + "
-            "upload %.1f ms, the rest is guest logic and the "
-            "submit\n",
-            frame, (double)dt_ns * 1e-6, (double)dns * 1e-6,
-            (double)uns * 1e-6);
-}
-
 int gpu_device_create(void)
 {
 #ifndef X2_WITH_SDL
@@ -112,7 +101,7 @@ int gpu_device_create(void)
     return 0;
 #else
     X2Settings *settings = x2_settings_store();
-    gpu_frame_timing_slow_hook = slow_frame_report;
+    gpu_frame_timing_report_install();
     gpu_shadow_configure(settings->dynamic_shadows,
                          settings->shadow_resolution);
     if (g_gpu) return 1;
@@ -194,6 +183,28 @@ int gpu_device_ready(void)
     return g_gpu != NULL;
 #else
     return 0;
+#endif
+}
+
+const char *gpu_device_backend(void)
+{
+#ifdef X2_WITH_SDL
+    const char *backend = g_gpu ? SDL_GetGPUDeviceDriver(g_gpu) : NULL;
+    return backend ? backend : "unavailable";
+#else
+    return "unavailable";
+#endif
+}
+
+void gpu_device_presentation_size(uint32_t *width, uint32_t *height)
+{
+    if (!width || !height) return;
+#ifdef X2_WITH_SDL
+    *width = g_swap_w;
+    *height = g_swap_h;
+#else
+    *width = 0;
+    *height = 0;
 #endif
 }
 
@@ -369,6 +380,14 @@ void gpu_device_perf(unsigned long long *frame_ns,
     gpu_frame_timing_perf(frame_ns, frame_ns_min, frame_ns_max,
                           intervals, hist);
     *end_submits = g_frame_end_submits;
+}
+
+void gpu_device_frame_percentiles(unsigned long long *p50_ns,
+                                  unsigned long long *p95_ns,
+                                  unsigned long long *p99_ns,
+                                  unsigned long *samples)
+{
+    gpu_frame_timing_percentiles(p50_ns, p95_ns, p99_ns, samples);
 }
 
 SDL_GPUTextureFormat gpu_depth_format(void)
