@@ -131,19 +131,23 @@ needs installed-APK visual and input verification. The shipping control status
 now exposes exact bounded p50/p95/p99 frame timings, and
 `tools/android_qualify.py` refuses a less-than-20-minute or incomplete-scenario
 named-device collection while recording PSS and thermal-service observations.
-The shared API 35 emulator was recreated with a 16 GiB data image. It now
-imports the complete 1.57 GiB ZIP and promotes the resulting 2.37 GiB
-installation under app-private storage, proving the bounded staging and
-complete-install validator on a real APK. The runner then reaches the
-recompiled executable and faults while `igArenaMemoryPool` calls
+The former shared API 35 emulator, with a 16 GiB data image, imported the
+complete 1.57 GiB ZIP and promoted the resulting 2.37 GiB installation under
+app-private storage, proving bounded staging and complete-install validation on
+a real APK. The runner then reached the recompiled executable and faulted while
+`igArenaMemoryPool` called
 `igPthreadSemaphore::obtainResource`: its semaphore field is the invalid guest
 address `0xffffffec`. The same native sequence runs on desktop, so the Android
 startup failure remains an unproven runtime/allocator divergence rather than a
-setup or storage defect. It blocks gameplay, visual touch/HUD verification,
-and Android performance qualification.
-Gap: a publishable APK still requires resolution of that startup fault, the
-maintainer's long-lived keystore, and measured named-device performance. The
-required setup, touch-zone mapping, and device/thermal/frame-time evidence gate are specified in
+setup or storage defect. Its replacement has a fresh 32 GiB data partition,
+but the host emulator launcher now segfaults before Android boot with both
+SwiftShader and software GPU modes; it must be repaired before the trace APK
+can instrument that allocator divergence. These independent blockers prevent
+gameplay, visual touch/HUD verification, and Android performance qualification.
+Gap: a publishable APK still requires a stable Android test device, resolution
+of the startup fault, the maintainer's long-lived keystore, and measured
+named-device performance. The required setup, touch-zone mapping, and
+device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 
