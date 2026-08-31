@@ -162,7 +162,8 @@ public final class XMen2SetupActivity extends Activity {
     /** Retains only a complete, title-validated selection. */
     private void acceptImported(LucentDocumentImport.Result result) {
         if (!result.isTree && !result.documentName.toLowerCase(Locale.ROOT).endsWith(".zip")) {
-            showError("That is not a ZIP archive. Choose a ZIP, or use \"Choose install folder\".");
+            showError("That is not a ZIP archive. Choose a ZIP, or use \"Choose install folder\"."
+                    + discardRejectedImport(result));
             return;
         }
         File pickedSource = result.isTree ? result.stagingDirectory
@@ -170,10 +171,12 @@ public final class XMen2SetupActivity extends Activity {
         File stagedSource = sourceFor(result, result.stagingDirectory);
         if (!nativeValidateInstall(pickedSource.getAbsolutePath(),
                                    result.isTree ? "" : stagedSource.getAbsolutePath())) {
-            showError("That is not a usable X-Men Legends II install.");
+            showError("That is not a usable X-Men Legends II install."
+                    + discardRejectedImport(result));
             return;
         }
         try {
+            if (!result.isTree) importer.discardValidatedDocument(result);
             File installed = importer.promoteValidated(result, INSTALL_DIRECTORY);
             File source = sourceFor(result, installed);
             if (!configureNative(source)) {
@@ -185,6 +188,17 @@ public final class XMen2SetupActivity extends Activity {
             startGame();
         } catch (IOException error) {
             showError("Could not retain the selected game files: " + error.getMessage());
+        }
+    }
+
+    private String discardRejectedImport(LucentDocumentImport.Result result) {
+        try {
+            importer.discard(result);
+            return "";
+        } catch (IOException error) {
+            String detail = error.getMessage();
+            return " Android could not discard its private staging"
+                    + (detail == null ? "." : ": " + detail);
         }
     }
 

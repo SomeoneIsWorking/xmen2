@@ -131,6 +131,13 @@ needs installed-APK visual and input verification. The shipping control status
 now exposes exact bounded p50/p95/p99 frame timings, and
 `tools/android_qualify.py` refuses a less-than-20-minute or incomplete-scenario
 named-device collection while recording PSS and thermal-service observations.
+The shared API 35 emulator's virtual data-image chain is configured for 16 GiB,
+but its mounted encrypted ext4 `/data` volume remains 5.8 GiB because this
+system image refuses online filesystem growth. It has 4.2 GiB free, while a
+full test needs the 1.57 GiB ZIP, its private staged copy, and the 2.21 GiB
+extracted tree at once; the import transaction therefore cannot be weakened or
+fully exercised there. Expanding it further requires a coordinated destructive
+AVD data-image regeneration or a sufficiently provisioned physical device.
 Gap: a publishable APK still requires the maintainer's long-lived keystore, and
 no mobile performance
 measurements exist yet. The required setup, touch-zone mapping, and

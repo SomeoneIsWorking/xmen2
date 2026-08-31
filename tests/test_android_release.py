@@ -93,6 +93,9 @@ def main() -> int:
     # validation. No port code may reconstruct a provider filesystem path or
     # request broad all-files access.
     assert "LucentDocumentImport" in setup
+    assert "discardValidatedDocument" in setup
+    assert "discardRejectedImport" in setup
+    assert setup.count("discardRejectedImport(result)") == 2
     assert "pickTree" in setup
     assert "pickDocument" in setup
     assert "promoteValidated" in setup
@@ -100,7 +103,7 @@ def main() -> int:
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
     assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "InstallLocation.java").exists()
-    assert "70a61b2" in cmake
+    assert "f273d60" in cmake
     assert "x2.lucentJavaDir" in cmake
     assert "lucentJavaDir" in gradle
     # The product target always opens the control channel, and socket() needs

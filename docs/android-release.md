@@ -18,7 +18,10 @@ boot-time asset family before Lucent promotes the staged selection to the
 persistent private `game/` leaf; for a ZIP, Lucent validates and extracts the
 complete archive into that same transaction before promotion. The prior valid
 selection remains usable until the replacement has passed this complete
-validation and private promotion. No filesystem path is inferred from a SAF URI
+validation and private promotion. After a ZIP extraction passes title validation,
+Lucent discards the staged ZIP before promotion so the retained private install
+contains only the extracted game tree; rejected imports discard their bounded
+staging instead. No filesystem path is inferred from a SAF URI
 and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
 
 This deliberately makes the first import a one-time copy. It supports cloud

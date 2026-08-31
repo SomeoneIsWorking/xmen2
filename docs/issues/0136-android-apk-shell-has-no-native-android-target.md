@@ -56,3 +56,8 @@ SDL3 target using `tools/build_android.py`.
 Exercise setup selection for both a direct install and nested ZIP, touch-only
 gameplay, suspend/resume, audio, and the launcher/update signature. Measure the
 APK on low, target, and high Android tiers before changing S018 to verified.
+The shared emulator's QCOW2 device was enlarged to 16 GiB, but Android's
+mounted encrypted ext4 `/data` volume remains 5.8 GiB: this system image does
+not support its required online filesystem expansion. The full import still
+requires a sufficiently provisioned physical device or a coordinated,
+destructive AVD data-image regeneration at the larger size.
