@@ -176,6 +176,11 @@ add_executable(test_touch_hud_layout tests/test_touch_hud_layout.c
                src/presentation/touch_hud_layout.c)
 add_test(NAME touch_hud_layout COMMAND test_touch_hud_layout)
 
+add_executable(test_gpu_frame_timing tests/test_gpu_frame_timing.c
+               src/gpu/gpu_frame_timing.c)
+target_include_directories(test_gpu_frame_timing PRIVATE src/gpu)
+add_test(NAME gpu_frame_timing COMMAND test_gpu_frame_timing)
+
 add_executable(test_fmv_policy tests/test_fmv_policy.c
                src/media/fmv_policy.c)
 target_include_directories(test_fmv_policy PRIVATE src/media)
@@ -1013,6 +1018,12 @@ add_test(NAME android_release
 set_tests_properties(android_release PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME android_qualify
+         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tests/test_android_qualify.py)
+set_tests_properties(android_qualify PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME port_pause_menu
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/make_port_pause_menu.py --selftest)
@@ -1422,6 +1433,9 @@ if(X2_MODULE_HAVE)
         src/media/fmv_timing.c
         src/native/guest_clock.c
         src/native/control.c
+        src/native/control_save_route.c
+        src/native/control_performance_route.c
+        src/native/control_status_route.c
         src/native/control_png.c
         src/native/control_query.c
         src/native/control_screenshot.c
@@ -1481,6 +1495,7 @@ if(X2_MODULE_HAVE)
         src/gpu/gpu_texture_format.c
         src/gpu/gpu_draw_trace.c
         src/gpu/gpu_frame_timing.c
+        src/gpu/gpu_frame_timing_report.c
         src/gpu/gpu_shadow.c
         src/gpu/gpu_shadow_selftest.c
         src/gpu/shadow_policy.c

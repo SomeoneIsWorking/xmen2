@@ -9,6 +9,7 @@ import unittest
 import urllib.parse
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "tools"))
+import android_qualify
 import x2ctl
 
 
@@ -24,9 +25,16 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
                 "frames_presented": 42,
                 "guest_time_s": 1.5,
                 "unbounded": True,
+                "renderer_backend": "vulkan",
+                "presentation_width": 1920,
+                "presentation_height": 1080,
                 "frame_ms_avg": 16.6,
                 "frame_ms_min": 15.0,
                 "frame_ms_max": 20.0,
+                "frame_ms_p50": 16.0,
+                "frame_ms_p95": 19.0,
+                "frame_ms_p99": 20.0,
+                "frame_sample_count": 41,
                 "frame_intervals": 41,
                 "pid": os.getpid(),
                 "input_recording": {
@@ -83,6 +91,11 @@ class MockHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(
                 b"save-trace enabled=1 attempts=2 recorded=2 retained=2/64\n"
             )
+        elif url.path == "/performance/reset":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"frame-time qualification window reset\n")
         else:
             self.send_response(404)
             self.end_headers()
@@ -114,6 +127,9 @@ class TestX2ctl(unittest.TestCase):
     def test_cmd_status(self):
         rc = x2ctl.cmd_status(argparse.Namespace(port=self.port))
         self.assertEqual(rc, 0)
+
+    def test_reset_frame_timing(self):
+        android_qualify.reset_frame_timing(self.port)
 
     def test_cmd_key_ok(self):
         rc = x2ctl.cmd_key(argparse.Namespace(port=self.port, names=["Return"], hold=0.0, gap=0.0))

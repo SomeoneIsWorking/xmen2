@@ -21,7 +21,7 @@ LEGACY_LIMITS = {
     "src/gpu/gpu_draw.c": 1538,
     "src/d3d8/d3d8_report.c": 1408,
     "src/native/threads.c": 1175,
-    "src/gpu/gpu_device.c": 981,
+    "src/gpu/gpu_device.c": 976,
     "src/d3d8/d3d8_resource.c": 1004,
     "src/native/dinput_pad.c": 1003,
     "src/native/win32_sdl.c": 984,

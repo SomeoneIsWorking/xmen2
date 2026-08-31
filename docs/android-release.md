@@ -114,3 +114,23 @@ The evidence must include a cold setup launch, a document-picker return, the
 first movie, a representative combat scene, touch-only input, and suspend/resume.
 No desktop result substitutes for this gate, and no frame-rate cap or reduced
 render path may be enabled merely to make a device pass.
+
+Use the shipping loopback control endpoint through a single explicit collector:
+
+```sh
+uv run --frozen python tools/android_qualify.py --serial <adb-serial> --tier <low|target|high> \
+  --startup-ms <cold-start-ms> --level-load-ms <representative-level-load-ms> --audio-verified \
+  --scenario cold-setup --scenario picker-return --scenario first-movie \
+  --scenario combat --scenario touch-only --scenario suspend-resume
+```
+
+The game must already be running on that device. The collector creates and
+removes only its exact `adb forward` mapping, resets the frame-time window at
+the guest-input boundary, then samples the runner's bounded exact p50/p95/p99
+frame timings. It records `dumpsys meminfo` PSS and thermal-service observations
+for the full 20-minute interval, and writes one replace-in-place JSON report at
+`scratch/run/android-qualification.json`. It refuses a reset that did not reach
+the guest, shorter runs, missing scenarios, absent frame samples, a
+non-presenting renderer, or an ambiguous/offline device. The report is release
+evidence, not a release decision: all three named tiers, the signed APK, and
+manual rendering/audio correctness review remain required before publication.

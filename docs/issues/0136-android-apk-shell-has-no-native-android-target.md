@@ -23,7 +23,11 @@ Plugin 9.2.1 now make the installed Java 26 JDK a supported build path.
 The build rejects split `java`/`javac` homes. A 50-task release assembly signed
 with a one-day local verification key passed `apksigner` v3 verification; it was
 not staged or treated as publishable. The remaining gap is a long-lived
-maintainer signing key and installed-device/performance evidence.
+maintainer signing key and installed-device/performance evidence. The shipping
+control endpoint now supplies exact bounded p50/p95/p99 frame times, and
+`tools/android_qualify.py` records a fail-closed 20-minute named-device
+collection with PSS, thermal-service observations, and each required manually
+exercised scenario.
 
 ## What was tried / dead ends
 

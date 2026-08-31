@@ -104,7 +104,7 @@ health/energy panels only while Android touch mode is active. An NDK 28
 ARM64 build linked the combined `libmain.so`; the Activity now dispatches to its
 exported `main`, Android launcher-icon resources compile with build-tools 36,
 and release assembly refuses missing long-lived signing inputs instead of
-emitting an unsigned APK. The 136-test native suite passes with the two
+emitting an unsigned APK. The 143-test combined native gate passes with the two
 documented skips.
 
 The Android build now pins Gradle 9.4.1 and Android Gradle Plugin 9.2.1, which
@@ -117,8 +117,12 @@ device. A freshly cleared API 35 x86-64 emulator installed the debug APK and
 showed the landscape setup screen; its install-folder and ZIP controls each
 opened Android's DocumentsUI picker. This proves the packaged first-run shell,
 not importing a real install or gameplay. The revised touch/HUD layout still
-needs installed-APK visual and input verification. Gap: a publishable APK still
-requires the maintainer's long-lived keystore, and no mobile performance
+needs installed-APK visual and input verification. The shipping control status
+now exposes exact bounded p50/p95/p99 frame timings, and
+`tools/android_qualify.py` refuses a less-than-20-minute or incomplete-scenario
+named-device collection while recording PSS and thermal-service observations.
+Gap: a publishable APK still requires the maintainer's long-lived keystore, and
+no mobile performance
 measurements exist yet. The required setup, touch-zone mapping, and
 device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do

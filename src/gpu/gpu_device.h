@@ -32,6 +32,12 @@ void gpu_device_destroy(void);
    `this+0x144 == 0 -> error` test becomes for this backend. */
 int gpu_device_ready(void);
 
+/* The active SDL GPU backend and the last presented target dimensions, for
+ * release qualification. The backend string is static; zero dimensions mean
+ * no frame has reached the presentation boundary yet. */
+const char *gpu_device_backend(void);
+void gpu_device_presentation_size(uint32_t *width, uint32_t *height);
+
 /* The D3D device's logical backbuffer size. Colour and automatic depth are
    replaced as one transaction; failure preserves the active pair. The
    window/swapchain is an independent presentation target and may have any
@@ -142,6 +148,10 @@ void gpu_device_perf(unsigned long long *frame_ns,
                      unsigned long long *end_submits,
                      unsigned long *intervals,
                      const unsigned long **hist);
+void gpu_device_frame_percentiles(unsigned long long *p50_ns,
+                                  unsigned long long *p95_ns,
+                                  unsigned long long *p99_ns,
+                                  unsigned long *samples);
 /* True when the frame currently ending received at least one programmable
    draw, even if X2_DRAW_RANGE skipped it. Used by content-selected captures. */
 int gpu_frame_had_programmable(void);
