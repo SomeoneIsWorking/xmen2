@@ -7,6 +7,7 @@
  * extraction is shared with other ports through Lucent. */
 #include "install_picker.h"
 #include "install_archive.h"
+#include "install_validation.h"
 #include "android_bridge.h"
 #include "../config/config_directory.h"
 
@@ -52,6 +53,7 @@ extern "C" int x2_install_picker_directory_from_executable(const char *path,
     slash = strrchr(path, '/');
     if (!slash || slash == path || strcasecmp(slash + 1, "XMen2.exe") != 0)
         return 0;
+    if (!x2_install_validate_executable(path, NULL, 0)) return 0;
     length = (size_t)(slash - path);
     if (!length || length >= capacity) return 0;
     memcpy(directory, path, length);
@@ -179,14 +181,17 @@ static int is_zip_path(const char *path)
 }
 
 static int directory_from_folder(const char *folder, char *directory,
-                                 unsigned capacity)
+                                 unsigned capacity, char *reason,
+                                 size_t reason_capacity)
 {
     std::error_code error;
     std::filesystem::path found;
     unsigned matches = 0;
     const std::filesystem::path root(folder ? folder : "");
-    if (folder == nullptr || !std::filesystem::is_directory(root, error) || error)
+    if (folder == nullptr || !std::filesystem::is_directory(root, error) || error) {
+        snprintf(reason, reason_capacity, "Cannot inspect the selected folder.");
         return 0;
+    }
     for (std::filesystem::recursive_directory_iterator it(
              root, std::filesystem::directory_options::skip_permission_denied,
              error), end;
@@ -200,8 +205,18 @@ static int directory_from_folder(const char *folder, char *directory,
             if (++matches > 1) return 0;
         }
     }
-    if (error || matches != 1) return 0;
+    if (error) {
+        snprintf(reason, reason_capacity, "Cannot inspect the selected folder.");
+        return 0;
+    }
+    if (matches != 1) {
+        snprintf(reason, reason_capacity,
+                 "That folder must contain exactly one XMen2.exe, including in its subfolders.");
+        return 0;
+    }
     const std::string path = found.string();
+    if (!x2_install_validate_executable(path.c_str(), reason, reason_capacity))
+        return 0;
     return x2_install_picker_directory_from_executable(path.c_str(), directory,
                                                         capacity);
 }
@@ -212,11 +227,13 @@ static int directory_from_selection(const char *selection, char *directory,
                                     const char *archive_destination = nullptr)
 {
     std::error_code status_error;
-    if (selection && std::filesystem::is_directory(selection, status_error)) {
-        if (directory_from_folder(selection, directory, capacity)) return 1;
-        snprintf(reason, reason_capacity,
-                 "That folder must contain exactly one XMen2.exe, including in its subfolders.");
+    if (!selection || !*selection) {
+        snprintf(reason, reason_capacity, "No XMen2.exe or ZIP was selected.");
         return 0;
+    }
+    if (selection && std::filesystem::is_directory(selection, status_error)) {
+        return directory_from_folder(selection, directory, capacity,
+                                     reason, reason_capacity);
     }
     if (status_error) {
         snprintf(reason, reason_capacity, "Cannot inspect the selected path: %s",
@@ -224,6 +241,8 @@ static int directory_from_selection(const char *selection, char *directory,
         return 0;
     }
     if (!is_zip_path(selection)) {
+        if (!x2_install_validate_executable(selection, reason, reason_capacity))
+            return 0;
         if (x2_install_picker_directory_from_executable(
                 selection, directory, capacity)) return 1;
         snprintf(reason, reason_capacity,

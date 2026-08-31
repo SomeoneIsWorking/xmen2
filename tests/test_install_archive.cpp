@@ -1,4 +1,5 @@
 #include "install_archive.h"
+#include "install_requirements.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -93,6 +94,19 @@ std::string read_file(const std::filesystem::path &path)
                        std::istreambuf_iterator<char>());
 }
 
+std::vector<std::pair<std::string, std::string>> complete_install(
+    std::string_view directory, std::string_view executable_contents)
+{
+    std::vector<std::pair<std::string, std::string>> files;
+    for (unsigned i = 0; i < X2_INSTALL_REQUIRED_IMAGE_COUNT; ++i) {
+        const std::string name = x2_install_required_images[i];
+        files.emplace_back(std::string(directory) + "/" + name,
+                           name == "XMen2.exe" ? std::string(executable_contents)
+                                                : "required");
+    }
+    return files;
+}
+
 } // namespace
 
 int main()
@@ -107,8 +121,9 @@ int main()
 
     char executable[4096];
     char reason[512];
-    write_archive(archive, {{"Old/Sub/XMen2.exe", "old"},
-                            {"Old/stale.txt", "stale"}});
+    auto old_install = complete_install("Old/Sub", "old");
+    old_install.emplace_back("Old/stale.txt", "stale");
+    write_archive(archive, old_install);
     if (!x2_install_archive_prepare(archive.string().c_str(), executable,
                                     sizeof executable, reason, sizeof reason) ||
         read_file(executable) != "old") {
@@ -122,7 +137,7 @@ int main()
         return 1;
     }
 
-    write_archive(archive, {{"New/Deep/XMen2.exe", "new"}});
+    write_archive(archive, complete_install("New/Deep", "new"));
     if (!x2_install_archive_prepare(archive.string().c_str(), executable,
                                     sizeof executable, reason, sizeof reason) ||
         read_file(executable) != "new" ||
@@ -145,7 +160,7 @@ int main()
         return 1;
     }
 
-    write_archive(archive, {{"Broken/readme.txt", "invalid"}});
+    write_archive(archive, {{"Broken/XMen2.exe", "invalid"}});
     if (x2_install_archive_prepare(archive.string().c_str(), executable,
                                    sizeof executable, reason, sizeof reason) ||
         read_file(replacement) != "new" ||

@@ -11,12 +11,13 @@ The APK has no terminal and opens `XMen2SetupActivity` before starting
 folder containing `XMen2.exe` (`ACTION_OPEN_DOCUMENT_TREE`) or a ZIP
 (`ACTION_OPEN_DOCUMENT`). `LucentDocumentImport` owns the persisted read grant,
 bounded background copy into app-private staging, cancellation, and recovery.
-The title validates exactly one `XMen2.exe` before Lucent promotes the staged
-selection to the persistent private `game/` leaf; for a ZIP, Lucent validates
-and extracts the complete archive into that same transaction before promotion.
-The prior valid selection remains usable until the replacement has passed this
-complete validation and private promotion. No filesystem path is inferred from
-a SAF URI and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
+The title validates exactly one `XMen2.exe` and every original DLL the native
+runner maps beside it before Lucent promotes the staged selection to the
+persistent private `game/` leaf; for a ZIP, Lucent validates and extracts the
+complete archive into that same transaction before promotion. The prior valid
+selection remains usable until the replacement has passed this complete
+validation and private promotion. No filesystem path is inferred from a SAF URI
+and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
 
 This deliberately makes the first import a one-time copy. It supports cloud
 and removable-storage providers correctly, avoids broad device access, and

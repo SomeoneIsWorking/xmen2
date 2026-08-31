@@ -1,0 +1,13 @@
+#ifndef X2_INSTALL_REQUIREMENTS_H
+#define X2_INSTALL_REQUIREMENTS_H
+
+/* Generated from CMake's X2_MODULES list. The loader and packaged setup must
+ * agree on the exact set of original PC images required beside XMen2.exe. */
+static const char *const x2_install_required_images[] = {
+    "@X2_INSTALL_REQUIRED_IMAGES_LITERAL@"
+};
+
+#define X2_INSTALL_REQUIRED_IMAGE_COUNT \
+    ((unsigned)(sizeof x2_install_required_images / sizeof x2_install_required_images[0]))
+
+#endif /* X2_INSTALL_REQUIREMENTS_H */
