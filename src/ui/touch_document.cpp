@@ -22,27 +22,23 @@ Rml::Element *root;
 std::vector<X2TouchVisual> visuals;
 bool document_visible;
 
-const char *icon_name(int action, bool stick)
+const char *label(int action)
 {
     using x2::input::TouchAction;
-    if (stick)
-        return action == static_cast<int>(TouchAction::MoveLeft) ? "ls.svg" : "rs.svg";
     switch (static_cast<TouchAction>(action)) {
-    case TouchAction::LowAttack: return "face_a.svg";
-    case TouchAction::HighAttack: return "face_b.svg";
-    case TouchAction::Guard: return "face_x.svg";
-    case TouchAction::Jump: return "face_y.svg";
-    case TouchAction::Power: return "rt.svg";
-    case TouchAction::Ally: return "lt.svg";
-    case TouchAction::TargetLock: return "rb.svg";
-    case TouchAction::NextHero: return "dpad_up.svg";
-    case TouchAction::PreviousHero: return "dpad_down.svg";
-    case TouchAction::DecreaseAggr: return "dpad_left.svg";
-    case TouchAction::IncreaseAggr: return "dpad_right.svg";
-    case TouchAction::MapToggle: return "rs.svg";
-    case TouchAction::Pause: return "start.svg";
-    case TouchAction::Stats: return "back.svg";
-    default: return "face_a.svg";
+    case TouchAction::LightAttack: return "Light";
+    case TouchAction::HeavyAttack: return "Heavy";
+    case TouchAction::Use: return "Use";
+    case TouchAction::Jump: return "Jump";
+    case TouchAction::Powers: return "Powers";
+    case TouchAction::EnergyPack: return "Energy";
+    case TouchAction::HealthPack: return "Health";
+    case TouchAction::DecreaseAggr: return "Team -";
+    case TouchAction::IncreaseAggr: return "Team +";
+    case TouchAction::MapToggle: return "Map";
+    case TouchAction::Pause: return "Pause";
+    case TouchAction::Stats: return "Stats";
+    default: return "";
     }
 }
 
@@ -58,10 +54,13 @@ void rebuild()
     x2_touch_runtime_visuals(visuals.data(), visuals.size());
     std::ostringstream rml;
     for (const auto &visual : visuals) {
-        const char *icon = icon_name(visual.action, visual.stick != 0);
         rml << "<div id='touch-zone-" << visual.id << "' class='touch-zone"
-            << (visual.stick ? " stick" : "") << "'><img src='"
-            << resource(std::string("touch/") + icon) << "' /></div>";
+            << (visual.stick ? " stick" : "") << "'>";
+        if (visual.stick)
+            rml << "<div class='touch-stick-knob'></div>";
+        else
+            rml << "<span class='touch-label'>" << label(visual.action) << "</span>";
+        rml << "</div>";
     }
     if (root) root->SetInnerRML(rml.str());
 }

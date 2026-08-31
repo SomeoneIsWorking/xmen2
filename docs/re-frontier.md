@@ -252,7 +252,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - status: re-verified
 - deps: xb-lift
 - evidence: C040/C041/C054; 1311 seeds -- 23 observed at runtime, 1288 harvested from vtables in one pass
-- where: tools/xbox_relift.sh, tools/xbox_discover.sh, tools/xbox_vtable_seeds.py, xbox/seeds.json
+- where: tools/xbox_relift.py, tools/xbox_discover.py, tools/xbox_vtable_seeds.py, xbox/seeds.json
 - gap:
 - notes:
 

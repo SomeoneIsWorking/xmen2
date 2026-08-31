@@ -2,7 +2,7 @@
 """Launch and drive a bounded live x2native run for one named scenario.
 
 This is an agent-owned harness. It never invokes run.sh or tools/run.py: it
-starts scratch/build-native/x2native DIRECTLY, on an isolated profile, with a
+starts build/native/x2native DIRECTLY, on an isolated profile, with a
 dedicated control port, and talks to that port itself rather than through
 scratch/run/live.json.
 
@@ -33,7 +33,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BINARY = ROOT / "scratch" / "build-native" / "x2native"
+BINARY = ROOT / "build" / "native" / "x2native"
 SELECTED = {"path": BINARY}
 CASES_DIR = ROOT / "scratch" / "run" / "cases"
 LIVE_JSON = ROOT / "scratch" / "run" / "live.json"

@@ -12,11 +12,12 @@ namespace x2::input {
 
 enum class TouchAction : std::uint8_t {
     Forward, Backward, MoveLeft, MoveRight,
-    LowAttack, HighAttack, Jump, Guard,
-    Power, Ally, TargetLock,
+    LightAttack, HeavyAttack, Jump, Use,
+    Powers, EnergyPack, HealthPack,
     NextHero, PreviousHero, DecreaseAggr, IncreaseAggr, MapToggle,
     Pause, Stats,
     CameraUp, CameraDown, CameraLeft, CameraRight,
+    SelectHero1, SelectHero2, SelectHero3, SelectHero4,
 };
 
 struct SafeArea {
@@ -37,6 +38,7 @@ struct ActionEvent {
     std::uint32_t zone_id = 0;
     TouchAction action = TouchAction::Pause;
     float value = 0.0F;
+    lucent::touch::Point position;
     lucent::touch::Phase phase = lucent::touch::Phase::moved;
 };
 
@@ -52,6 +54,7 @@ public:
         lucent::touch::Zone zone;
         TouchAction action = TouchAction::Pause;
         bool stick = false;
+        bool visible = true;
     };
 
     // Returns cancellation events for contacts captured under the old layout. The caller must

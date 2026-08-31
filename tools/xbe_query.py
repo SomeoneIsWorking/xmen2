@@ -138,7 +138,7 @@ def asm_path() -> Path:
     p = DISASM / "asm/text.asm"
     if not p.exists():
         raise Missing(
-            f"{p} does not exist -- run tools/xbox_relift.sh (its disasm stage "
+            f"{p} does not exist -- run tools/xbox_relift.py (its disasm stage "
             f"writes it); scanned NOTHING")
     return p
 
@@ -146,7 +146,7 @@ def asm_path() -> Path:
 def functions_db() -> list[dict]:
     p = DISASM / "functions.json"
     if not p.exists():
-        raise Missing(f"{p} does not exist -- run tools/xbox_relift.sh; "
+        raise Missing(f"{p} does not exist -- run tools/xbox_relift.py; "
                       f"scanned NOTHING")
     return json.loads(p.read_text())
 

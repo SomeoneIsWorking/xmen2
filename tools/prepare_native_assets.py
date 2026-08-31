@@ -19,6 +19,7 @@ from make_port_pause_menu import (RESERVED_NODE_COPIES,           # noqa: E402
                                   write_derived_pause_menu)
 
 SCRATCH = ROOT / "scratch"
+BUILD = ROOT / "build"
 PAUSE_IGB = ("UI", "menus", "pause.IGB")
 PAUSE_MENUS = (
     ("UI", "menus", "pause.XMLB"),
@@ -76,11 +77,11 @@ def cached_outputs_match(root: Path, expected: object) -> bool:
 
 
 def cleanup_tree(path: Path) -> None:
-    """Remove exactly one generated tree, refusing anything outside scratch."""
-    scratch = SCRATCH.resolve()
+    """Remove one generated tree below the project scratch or build root."""
+    roots = (SCRATCH.resolve(), BUILD.resolve())
     target = path.resolve()
-    if target == scratch or scratch not in target.parents:
-        raise RuntimeError(f"REFUSING cleanup outside project scratch: {target}")
+    if not any(target != root and root in target.parents for root in roots):
+        raise RuntimeError(f"REFUSING cleanup outside project scratch/build roots: {target}")
     if not path.exists():
         return
     for child in sorted(path.rglob("*"), key=lambda p: len(p.parts), reverse=True):

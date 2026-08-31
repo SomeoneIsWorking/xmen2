@@ -1,30 +1,21 @@
 cmake_minimum_required(VERSION 3.16)
 project(xmen2_sdl LANGUAGES C CXX)
 
-# ONE build tree. `./run.sh` maintains scratch/build-native, and that is the
-# tree tools/live_case.py, tools/native_discover.sh and tools/run.py all
-# execute. A second in-source tree (the hand-configured `build/`) emitted a
-# target of the same name that no harness ever ran: building it produced a
-# binary that looked current and was not, and a full live PASS report once
-# described an hour-old binary (issue #118). Its bare configure also picked up
-# the system interpreter rather than the locked .venv, so tests needing Pillow
-# failed for a reason that had nothing to do with the code.
-#
-# An in-source directory under scratch/ is fine (scratch/ is gitignored and is
-# where every run artifact belongs) and so is any tree outside the source root,
-# which is what BUILD=<path> in tools/run.py configures. Anything else is the
-# mistake above, and it is refused rather than silently allowed.
+# ONE build tree. `./run.sh` maintains build/native, and every live harness
+# executes that exact binary. A second same-named target once let a full live
+# PASS describe an hour-old executable (issue #118), so arbitrary in-tree
+# build directories remain refused. `scratch/` is only transient run data.
 file(RELATIVE_PATH _x2_build_rel "${CMAKE_SOURCE_DIR}" "${CMAKE_BINARY_DIR}")
-if(NOT _x2_build_rel MATCHES "^\\.\\./" AND NOT _x2_build_rel MATCHES "^scratch/")
+if(NOT _x2_build_rel MATCHES "^\\.\\./" AND NOT _x2_build_rel MATCHES "^build/")
     message(FATAL_ERROR
         "Refusing to configure into '${_x2_build_rel}'.\n"
-        "This project has ONE build tree: scratch/build-native, maintained by "
+        "This project has ONE build tree: build/native, maintained by "
         "./run.sh and executed by every live harness. A second in-source tree "
         "builds a same-named x2native that nothing runs (issue #118).\n"
         "  ./run.sh                                    provision, build, launch\n"
-        "  cmake --build scratch/build-native -j$(nproc)\n"
-        "  ctest --test-dir scratch/build-native --output-on-failure\n"
-        "Use a path under scratch/, or one outside the source root (BUILD=...).")
+        "  cmake --build build/native -j$(nproc)\n"
+        "  ctest --test-dir build/native --output-on-failure\n"
+        "Use build/native, another path under build/, or an external BUILD path.")
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
@@ -35,7 +26,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 812a4989821a445a3ed913515fea022a44362e59
+    GIT_TAG 4e5b2452d2750ba462a6ea5fb5c46202815056e4
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
@@ -170,6 +161,10 @@ add_executable(test_touch_controls tests/test_touch_controls.cpp
 target_include_directories(test_touch_controls PRIVATE src/input)
 target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
 add_test(NAME touch_controls COMMAND test_touch_controls)
+
+add_executable(test_touch_hud_layout tests/test_touch_hud_layout.c
+               src/presentation/touch_hud_layout.c)
+add_test(NAME touch_hud_layout COMMAND test_touch_hud_layout)
 
 add_executable(test_fmv_policy tests/test_fmv_policy.c
                src/media/fmv_policy.c)
@@ -1050,6 +1045,13 @@ add_test(NAME python_lint
 set_tests_properties(python_lint PROPERTIES SKIP_RETURN_CODE 77
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME port_tool_migrations
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tests/test_port_tool_migrations.py)
+set_tests_properties(port_tool_migrations PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                     ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}")
+
 add_test(NAME x2ctl COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_x2ctl.py)
 set_tests_properties(x2ctl PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
@@ -1335,6 +1337,7 @@ if(X2_MODULE_HAVE)
         src/native/pe_map.c
         src/native/win32_sdl.c
         src/native/win32_mouse.c
+        src/native/win32_pointer.c
         src/native/win32_events.c
         src/native/guest_heap.c
         src/native/crt.c
@@ -1383,6 +1386,8 @@ if(X2_MODULE_HAVE)
         src/native/input_probe.c
         src/input/touch_controls.cpp
         src/input/touch_runtime.cpp
+        src/presentation/touch_hud_layout.c
+        src/native/touch_hud_runtime.c
         src/native/xbox_defaults.c
         src/native/dsound.c
         src/audio/movie_audio.c

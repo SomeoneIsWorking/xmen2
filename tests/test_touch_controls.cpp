@@ -50,23 +50,64 @@ int main()
     }
 
     const std::vector<lucent::touch::Contact> button = {
-        {2, {800.0F, 230.0F}, lucent::touch::Phase::began}};
+        {2, {807.0F, 454.0F}, lucent::touch::Phase::began}};
     const auto button_events = controls.route(button);
-    if (!has_value(button_events, x2::input::TouchAction::LowAttack, 1.0F)) {
-        std::cerr << "face-button zone was not reachable\n";
+    if (!has_value(button_events, x2::input::TouchAction::LightAttack, 1.0F)) {
+        std::cerr << "light-attack zone was not reachable\n";
         return 1;
     }
 
     const std::vector<lucent::touch::Contact> map_button = {
-        {3, {775.0F, 456.0F}, lucent::touch::Phase::began}};
+        {3, {644.0F, 65.0F}, lucent::touch::Phase::began}};
     const auto map_button_events = controls.route(map_button);
     if (!has_value(map_button_events, x2::input::TouchAction::MapToggle, 1.0F)) {
-        std::cerr << "right-stick click zone was not reachable\n";
+        std::cerr << "map zone was not reachable\n";
+        return 1;
+    }
+
+    const std::vector<lucent::touch::Contact> camera_down = {
+        {4, {500.0F, 250.0F}, lucent::touch::Phase::began}};
+    const auto camera_neutral = controls.route(camera_down);
+    if (camera_neutral.size() != 4 ||
+        has_value(camera_neutral, x2::input::TouchAction::CameraRight, 0.01F)) {
+        std::cerr << "camera swipe did not capture with neutral axes\n";
+        return 1;
+    }
+    const std::vector<lucent::touch::Contact> camera_move = {
+        {4, {600.0F, 200.0F}, lucent::touch::Phase::moved}};
+    const auto camera_events = controls.route(camera_move);
+    if (!has_value(camera_events, x2::input::TouchAction::CameraRight, 0.5F) ||
+        !has_value(camera_events, x2::input::TouchAction::CameraUp, 0.3F)) {
+        std::cerr << "camera swipe was not relative to its capture point\n";
+        return 1;
+    }
+
+    const std::vector<lucent::touch::Contact> portrait = {
+        {5, {899.0F, 51.0F}, lucent::touch::Phase::began}};
+    const auto portrait_events = controls.route(portrait);
+    if (portrait_events.size() != 1 ||
+        portrait_events.front().action != x2::input::TouchAction::SelectHero1 ||
+        portrait_events.front().position.x != 899.0F ||
+        portrait_events.front().position.y != 51.0F) {
+        std::cerr << "retail portrait zone did not preserve its pointer coordinate\n";
+        return 1;
+    }
+
+    const auto zones = controls.zones();
+    if (std::any_of(zones.begin(), zones.end(), [](const auto &zone) {
+            return zone.visible &&
+                   (zone.action == x2::input::TouchAction::CameraLeft ||
+                    zone.action == x2::input::TouchAction::SelectHero1 ||
+                    zone.action == x2::input::TouchAction::SelectHero2 ||
+                    zone.action == x2::input::TouchAction::SelectHero3 ||
+                    zone.action == x2::input::TouchAction::SelectHero4);
+        })) {
+        std::cerr << "gesture or retail portrait hit zones leaked into the visual overlay\n";
         return 1;
     }
 
     const auto canceled = controls.cancel();
-    if (canceled.size() != 6 ||
+    if (canceled.size() != 11 ||
         !std::all_of(canceled.begin(), canceled.end(), [](const auto &event) {
             return event.value == 0.0F && event.phase == lucent::touch::Phase::canceled;
         })) {
@@ -76,11 +117,12 @@ int main()
     }
 
     const std::vector<lucent::touch::Contact> held_button = {
-        {4, {800.0F, 230.0F}, lucent::touch::Phase::began}};
+        {6, {807.0F, 454.0F}, lucent::touch::Phase::began}};
     controls.route(held_button);
     const auto rotated = controls.set_viewport(
         {600.0F, 1000.0F, {10.0F, 20.0F, 10.0F, 20.0F}});
-    if (rotated.size() != 1 || rotated.front().action != x2::input::TouchAction::LowAttack ||
+    if (rotated.size() != 1 ||
+        rotated.front().action != x2::input::TouchAction::LightAttack ||
         rotated.front().value != 0.0F ||
         rotated.front().phase != lucent::touch::Phase::canceled) {
         std::cerr << "viewport change did not release the old layout\n";

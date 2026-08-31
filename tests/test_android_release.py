@@ -67,7 +67,7 @@ def main() -> int:
         debug.write_bytes(b"fixture")
         # A debug artifact stays in Gradle's output; it is never a release.
         assert build_android.debug_apk(fake_root) == debug
-        assert not (fake_root / "scratch/release").exists()
+        assert not (fake_root / "build/release").exists()
 
     activity = (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "XMen2GameActivity.java").read_text(encoding="utf-8")
@@ -112,7 +112,7 @@ def main() -> int:
                tarfile.TarInfo("FFmpeg-n7.1.1/configure")]
     assert build_android_deps.archive_root(members) == "FFmpeg-n7.1.1"
     try:
-        build_android_deps.archive_root(members + [tarfile.TarInfo("elsewhere/x")])
+        build_android_deps.archive_root([*members, tarfile.TarInfo("elsewhere/x")])
     except SystemExit as error:
         assert "exactly one top-level directory" in str(error)
     else:

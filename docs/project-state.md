@@ -66,16 +66,15 @@ a ZIP containing exactly one `XMen2.exe` at any nested path and extracts it
 under that same user-data root through Lucent's shared safe ZIP implementation.
 ZIP preparation is staged separately and atomically replaces only a validated
 extraction, so an invalid replacement preserves the prior working install.
-`scratch/release/X-Men-Legends-II-x86_64.AppImage` artifact was built and its
-native selftest passed through the AppImage runtime. Its extracted 241-file
-inventory contains the launcher, native binary, desktop metadata, and SVG icon
-and no `XMen2.exe` or game-data directory; SHA-256 is
-`117aca75b43153b32f565ca4d487261426fd677bd91da721ea60cdf2ab8ed2ea`.
-The 138-test combined gate passes (two explicit data/tool skips), including the
-configuration path, executable validation, and transactional replacement
-seams. The same digest is published in the public
-[`v0.1.1` AppImage release](https://github.com/SomeoneIsWorking/xmen2-recomp/releases/tag/v0.1.1)
-at commit `e280d681a3c765138209fc948f1f01071f2efbde`.
+`build/release/X-Men-Legends-II-x86_64.AppImage` was rebuilt with current
+linuxdeploy after an older deployer was proven to corrupt modern Fedora ELF
+runtime paths. The packager now runs the deployed binary before writing the
+image and rejects any loader crash or failed selftest; the extracted image's
+runner selftest passes. Its extracted 241-file inventory contains the launcher,
+native binary, desktop metadata, and SVG icon, with no `XMen2.exe`; SHA-256 is
+`1a5f6493015ca5915dfee4f9fcd96a555af5235cb27101c85780d030f4e2f366`.
+The 141-test combined gate passes (two explicit data/tool skips), including the
+configuration path, executable validation, and transactional replacement seams.
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target and
@@ -88,9 +87,12 @@ The title-specific safe-area-aware touch action owner exists in
 `src/input/touch_controls.cpp`, with SDL contact acquisition in
 `src/input/touch_runtime.cpp`, Android setup/SAF staging in `android/`, and a
 real ARM64 shared native target/Gradle assembly path. The touch feedback layer
-mirrors the production zones with the shared SVG controller set, publishes
-signed axes once per contact update, holds buttons until finger release, cancels
-on focus/rotation/lifecycle loss, and has a persistent hide setting. An NDK 28
+shows authored action labels rather than misleading internal controller names,
+publishes signed axes once per contact update, holds buttons until finger
+release, cancels on focus/rotation/lifecycle loss, and has a persistent hide
+setting. Camera movement is an invisible relative swipe, portrait taps use the
+retail click handler, and scoped CHud overrides relocate the party cross and
+health/energy panels only while Android touch mode is active. An NDK 28
 ARM64 build linked the combined `libmain.so`; the Activity now dispatches to its
 exported `main`, Android launcher-icon resources compile with build-tools 36,
 and release assembly refuses missing long-lived signing inputs instead of
@@ -102,10 +104,11 @@ officially support this host's complete Java 26 JDK; the obsolete JDK 24 ceiling
 is gone and the build rejects mismatched `java`/`javac` homes. A release assembly
 completed all 50 AGP tasks under a one-day local verification key, and
 `apksigner` verified its v3 signature; that artifact was deliberately not staged
-as a release. Gap: a publishable APK still requires the maintainer's long-lived
-keystore. No installed-device setup/game run or mobile performance evidence
-exists yet. The required setup, touch-zone mapping, and
-device/thermal/frame-time evidence gate are specified in
+as a release. The user reported that the Android setup and game path runs on a
+device; the revised touch/HUD layout still needs installed-APK visual and input
+verification. Gap: a publishable APK still requires the maintainer's long-lived
+keystore, and no mobile performance measurements exist yet. The required setup,
+touch-zone mapping, and device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 

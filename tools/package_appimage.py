@@ -9,6 +9,7 @@ the player supplies a legally obtained install through the first-run picker.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,6 +18,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRATCH = ROOT / "scratch"
+BUILD = ROOT / "build"
 PACKAGING = ROOT / "packaging"
 
 
@@ -31,9 +33,11 @@ def require_file(path: Path, label: str) -> Path:
 
 
 def tool(name: str, configured: str | None) -> str:
-    result = configured or shutil.which(name)
+    result = str(Path(configured).expanduser().resolve()) if configured else shutil.which(name)
     if not result:
         refuse(f"{name} is required; install it or set the corresponding option")
+    if not Path(result).is_file():
+        refuse(f"{name} is missing: {result}")
     return result
 
 
@@ -74,6 +78,26 @@ def stage_appdir(appdir: Path, binary: Path, ui_directory: Path) -> None:
     appdir.joinpath("usr/bin/x2native").chmod(0o755)
 
 
+def verify_deployed_runtime(appdir: Path, working_directory: Path) -> None:
+    """Reject a deployer that produced an ELF which dies before the runner starts.
+
+    A missing player install is an expected setup-state exit (77).  A loader
+    failure, signal, or failed selftest is not: it means the deployed library
+    closure differs from the verified native binary.
+    """
+    binary = appdir / "usr/bin/x2native"
+    environment = dict(os.environ)
+    environment["X2_UI_RESOURCE_DIR"] = str(appdir / "usr/share/xmen2")
+    result = subprocess.run([str(binary), "--no-window", "--selftest"],
+                            cwd=working_directory, env=environment,
+                            text=True, capture_output=True, check=False)
+    if result.returncode in (0, 77):
+        return
+    detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
+    refuse("deployed runtime failed before release validation "
+           f"(exit {result.returncode}): {detail}")
+
+
 def build_appimage(binary: Path, ui_directory: Path, output: Path,
                    linuxdeploy: str, appimagetool: str) -> None:
     raw = SCRATCH / "raw"
@@ -87,6 +111,7 @@ def build_appimage(binary: Path, ui_directory: Path, output: Path,
             "--appdir", str(appdir),
             "--executable", str(appdir / "usr/bin/x2native"),
         ], cwd=temporary, check=True)
+        verify_deployed_runtime(appdir, temporary)
         output.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run([appimagetool, str(appdir), str(output)],
                        cwd=temporary, check=True)
@@ -128,9 +153,12 @@ def selftest() -> int:
                           for path in appdir.rglob("*"))
         launcher = (appdir / "AppRun").read_text()
         portable = "X2_UI_RESOURCE_DIR" in launcher and "--appimage" in launcher
+        relative_tool = tool("fixture", os.path.relpath(binary, Path.cwd()))
+        tool_is_absolute = Path(relative_tool).is_absolute() and Path(relative_tool) == binary
         print("package_appimage selftest: "
-              f"complete={complete} no-game-files={no_game} portable-resources={portable}")
-        return 0 if complete and no_game and portable else 1
+              f"complete={complete} no-game-files={no_game} portable-resources={portable} "
+              f"absolute-tools={tool_is_absolute}")
+        return 0 if complete and no_game and portable and tool_is_absolute else 1
     finally:
         shutil.rmtree(temporary)
 
@@ -138,9 +166,9 @@ def selftest() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selftest", action="store_true")
-    parser.add_argument("--build-dir", type=Path, default=SCRATCH / "build-native")
+    parser.add_argument("--build-dir", type=Path, default=BUILD / "native")
     parser.add_argument("--output", type=Path,
-                        default=SCRATCH / "release" / "X-Men-Legends-II-x86_64.AppImage")
+                        default=BUILD / "release" / "X-Men-Legends-II-x86_64.AppImage")
     parser.add_argument("--linuxdeploy")
     parser.add_argument("--appimagetool")
     args = parser.parse_args(argv)

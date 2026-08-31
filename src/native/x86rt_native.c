@@ -1299,7 +1299,7 @@ void x86_args_build_check(void)
     fprintf(stderr,
         "[ARGS] X2_ARGS=%s is set and THIS BUILD CANNOT HONOUR IT. The watch "
         "sits on the body-entry hook, which only exists with\n"
-        "       cmake -S . -B scratch/build-native -DX2_NATIVE_TRACE=ON\n"
+        "       cmake -S . -B build/native -DX2_NATIVE_TRACE=ON\n"
         "       NOTHING will be watched in this run, and its silence about "
         "those entry points means nothing.\n", e);
 #else
@@ -2301,7 +2301,7 @@ static void x86_dispatch_one(CPU *C, uint32_t target)
     }
     /* If it is inside a module, it is a function static analysis missed --
        exactly what the constructor-table report describes, so it is printed in
-       the SAME shape and tools/native_discover.sh seeds it without needing to
+       the SAME shape and tools/native_discover.py seeds it without needing to
        know that an indirect call target is a different kind of gap. */
     x86_diag_dump();
     m = x86_module_for(target);
@@ -2435,7 +2435,7 @@ void x86_call_unknown(CPU *C, uint32_t target)
             target);
     where(target);
     /* Report it in the SAME shape as a missing dispatch target and a missing
-       constructor target, because tools/native_discover.sh parses that shape
+       constructor target, because tools/native_discover.py parses that shape
        and is otherwise blind to this one -- a direct call to an address Ghidra
        did not identify is the same kind of gap and the same kind of seed, and
        the loop having three reporters and understanding two of them is how a

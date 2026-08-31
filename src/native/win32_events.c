@@ -1,7 +1,7 @@
 #include "win32_events.h"
 
-#include "settings_store.h"
 #include "win32_mouse.h"
+#include "win32_pointer.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -26,15 +26,6 @@ static int g_hidden;
    owned before giving the desktop back. */
 static int g_cursor_hidden;
 static X2Win32Mouse g_mouse;
-
-typedef struct {
-    int32_t window_x;
-    int32_t window_y;
-    uint32_t window_width;
-    uint32_t window_height;
-    uint32_t game_width;
-    uint32_t game_height;
-} MouseGeometry;
 
 static void ret_std(CPU *C, uint32_t eax, int nargs)
 {
@@ -78,6 +69,7 @@ void x2_win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden)
 {
     if (!window) {
         x2_touch_runtime_cancel();
+        x2_win32_pointer_window(NULL);
         x2_win32_mouse_window_state(&g_mouse, 0, 0, 0);
         apply_cursor_policy();
         g_window = NULL;
@@ -86,6 +78,7 @@ void x2_win32_events_window(SDL_Window *window, uint32_t hwnd, int hidden)
     }
 
     g_window = window;
+    x2_win32_pointer_window(window);
     x2_touch_runtime_window(window);
     g_hwnd = hwnd;
     g_hidden = hidden != 0;
@@ -135,125 +128,24 @@ int x2_win32_events_guest_show_cursor(int show)
     return x2_win32_mouse_guest_show_cursor(&g_mouse, show);
 }
 
-static void mouse_geometry(MouseGeometry *geometry)
-{
-    const X2Settings *settings = x2_settings_store();
-    int window_x, window_y, window_width, window_height;
-
-    if (!g_window) {
-        fprintf(stderr, "win32 events: cursor coordinates require an "
-                        "attached guest window\n");
-        abort();
-    }
-    if (!SDL_GetWindowPosition(g_window, &window_x, &window_y)) {
-        fprintf(stderr, "win32 events: cannot read the guest window "
-                        "position: %s\n", SDL_GetError());
-        abort();
-    }
-    if (!SDL_GetWindowSize(g_window, &window_width, &window_height)) {
-        fprintf(stderr, "win32 events: cannot read the guest window size: "
-                        "%s\n", SDL_GetError());
-        abort();
-    }
-    if (window_width <= 0 || window_height <= 0) {
-        fprintf(stderr, "win32 events: guest window has invalid size %dx%d\n",
-                window_width, window_height);
-        abort();
-    }
-    geometry->window_x = window_x;
-    geometry->window_y = window_y;
-    geometry->window_width = (uint32_t)window_width;
-    geometry->window_height = (uint32_t)window_height;
-    geometry->game_width = settings->width;
-    geometry->game_height = settings->height;
-}
-
-static int32_t coordinate_add(int32_t coordinate, int64_t offset,
-                              const char *axis)
-{
-    int64_t result = (int64_t)coordinate + offset;
-
-    if (result < INT32_MIN || result > INT32_MAX) {
-        fprintf(stderr, "win32 events: %s cursor coordinate is outside the "
-                        "guest 32-bit range\n", axis);
-        abort();
-    }
-    return (int32_t)result;
-}
-
 int x2_win32_events_client_to_screen(int32_t *x, int32_t *y)
 {
-    MouseGeometry geometry;
-
-    if (!x || !y)
-        return 0;
-    mouse_geometry(&geometry);
-    *x = coordinate_add(*x, geometry.window_x, "horizontal");
-    *y = coordinate_add(*y, geometry.window_y, "vertical");
-    return 1;
+    return x2_win32_pointer_client_to_screen(x, y);
 }
 
 int x2_win32_events_screen_to_client(int32_t *x, int32_t *y)
 {
-    MouseGeometry geometry;
-
-    if (!x || !y)
-        return 0;
-    mouse_geometry(&geometry);
-    *x = coordinate_add(*x, -(int64_t)geometry.window_x, "horizontal");
-    *y = coordinate_add(*y, -(int64_t)geometry.window_y, "vertical");
-    return 1;
+    return x2_win32_pointer_screen_to_client(x, y);
 }
 
 int x2_win32_events_get_cursor_pos(int32_t *x, int32_t *y)
 {
-    MouseGeometry geometry;
-    float global_x, global_y;
-    int32_t client_x, client_y;
-
-    if (!x || !y)
-        return 0;
-    mouse_geometry(&geometry);
-    SDL_GetGlobalMouseState(&global_x, &global_y);
-    if (!x2_win32_mouse_map_point(
-            coordinate_add((int32_t)global_x,
-                           -(int64_t)geometry.window_x, "horizontal"),
-            coordinate_add((int32_t)global_y,
-                           -(int64_t)geometry.window_y, "vertical"),
-            geometry.window_width, geometry.window_height,
-            geometry.game_width, geometry.game_height,
-            &client_x, &client_y)) {
-        fprintf(stderr, "win32 events: cannot map the physical cursor from "
-                        "window %ux%u to game %ux%u\n",
-                geometry.window_width, geometry.window_height,
-                geometry.game_width, geometry.game_height);
-        abort();
-    }
-    *x = coordinate_add(client_x, geometry.window_x, "horizontal");
-    *y = coordinate_add(client_y, geometry.window_y, "vertical");
-    return 1;
+    return x2_win32_pointer_get_cursor_pos(x, y);
 }
 
 int x2_win32_events_set_cursor_pos(int32_t x, int32_t y)
 {
-    MouseGeometry geometry;
-    int32_t host_x, host_y;
-
-    mouse_geometry(&geometry);
-    if (!x2_win32_mouse_unmap_point(
-            coordinate_add(x, -(int64_t)geometry.window_x, "horizontal"),
-            coordinate_add(y, -(int64_t)geometry.window_y, "vertical"),
-            geometry.window_width, geometry.window_height,
-            geometry.game_width, geometry.game_height, &host_x, &host_y)) {
-        fprintf(stderr, "win32 events: cannot map the guest cursor from game "
-                        "%ux%u to window %ux%u\n",
-                geometry.game_width, geometry.game_height,
-                geometry.window_width, geometry.window_height);
-        abort();
-    }
-    host_x = coordinate_add(host_x, geometry.window_x, "horizontal");
-    host_y = coordinate_add(host_y, geometry.window_y, "vertical");
-    return SDL_WarpMouseGlobal((float)host_x, (float)host_y);
+    return x2_win32_pointer_set_cursor_pos(x, y);
 }
 
 static void put_msg(uint32_t p, const X2Win32Message *message)
@@ -279,55 +171,6 @@ static void post_message_or_abort(const X2Win32Message *message,
     abort();
 }
 
-static uint32_t mouse_modifiers(void)
-{
-    SDL_Keymod modifiers = SDL_GetModState();
-    uint32_t result = 0;
-
-    if (modifiers & SDL_KMOD_SHIFT)
-        result |= X2_MK_SHIFT;
-    if (modifiers & SDL_KMOD_CTRL)
-        result |= X2_MK_CONTROL;
-    return result;
-}
-
-static uint32_t mouse_buttons(SDL_MouseButtonFlags state)
-{
-    uint32_t result = 0;
-
-    if (state & SDL_BUTTON_LMASK)
-        result |= X2_MK_LBUTTON;
-    if (state & SDL_BUTTON_RMASK)
-        result |= X2_MK_RBUTTON;
-    if (state & SDL_BUTTON_MMASK)
-        result |= X2_MK_MBUTTON;
-    return result;
-}
-
-static void mouse_point(float host_x, float host_y,
-                        int32_t *client_x, int32_t *client_y,
-                        int32_t *screen_x, int32_t *screen_y)
-{
-    MouseGeometry geometry;
-    int32_t x = (int32_t)host_x;
-    int32_t y = (int32_t)host_y;
-
-    mouse_geometry(&geometry);
-    if (!x2_win32_mouse_map_point(x, y,
-                                  geometry.window_width,
-                                  geometry.window_height,
-                                  geometry.game_width, geometry.game_height,
-                                  client_x, client_y)) {
-        fprintf(stderr, "win32 events: cannot map mouse coordinate (%d,%d) "
-                        "from window %ux%u to game %ux%u\n",
-                x, y, geometry.window_width, geometry.window_height,
-                geometry.game_width, geometry.game_height);
-        abort();
-    }
-    *screen_x = coordinate_add(*client_x, geometry.window_x, "horizontal");
-    *screen_y = coordinate_add(*client_y, geometry.window_y, "vertical");
-}
-
 static void post_activation(int active, uint64_t timestamp)
 {
     X2Win32Message message;
@@ -340,52 +183,12 @@ static void post_activation(int active, uint64_t timestamp)
     post_message_or_abort(&message, "WM_ACTIVATE");
 }
 
-static void translate_mouse_event(const SDL_Event *event)
-{
-    int32_t client_x, client_y, screen_x, screen_y;
-    uint32_t time, modifiers;
-    int queued = 1;
-
-    modifiers = mouse_modifiers();
-    if (event->type == SDL_EVENT_MOUSE_MOTION) {
-        mouse_point(event->motion.x, event->motion.y,
-                    &client_x, &client_y, &screen_x, &screen_y);
-        time = (uint32_t)(event->motion.timestamp / 1000000u);
-        queued = x2_win32_mouse_motion(&g_mouse, g_hwnd,
-                                       client_x, client_y,
-                                       screen_x, screen_y, time,
-                                       mouse_buttons(event->motion.state),
-                                       modifiers);
-    } else if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
-               event->type == SDL_EVENT_MOUSE_BUTTON_UP) {
-        X2Win32MouseButton button;
-
-        switch (event->button.button) {
-        case SDL_BUTTON_LEFT: button = X2_WIN32_MOUSE_LEFT; break;
-        case SDL_BUTTON_RIGHT: button = X2_WIN32_MOUSE_RIGHT; break;
-        case SDL_BUTTON_MIDDLE: button = X2_WIN32_MOUSE_MIDDLE; break;
-        default: return;
-        }
-        mouse_point(event->button.x, event->button.y,
-                    &client_x, &client_y, &screen_x, &screen_y);
-        time = (uint32_t)(event->button.timestamp / 1000000u);
-        queued = x2_win32_mouse_button(
-            &g_mouse, g_hwnd, button,
-            event->type == SDL_EVENT_MOUSE_BUTTON_DOWN,
-            client_x, client_y, screen_x, screen_y, time, modifiers);
-    }
-    if (!queued) {
-        fprintf(stderr, "win32 events: ordered queue filled while posting a "
-                        "mouse event; refusing to discard it\n");
-        abort();
-    }
-}
-
 static void pump_sdl(void)
 {
     SDL_Event event;
 
     while (SDL_PollEvent(&event)) {
+        X2TouchPointer touch_pointer;
         if (event.type == SDL_EVENT_QUIT ||
             event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
             if (!x2_win32_message_post_quit(&g_mouse)) {
@@ -418,13 +221,16 @@ static void pump_sdl(void)
             apply_cursor_policy();
             continue;
         }
-        if (x2_touch_runtime_event(&event)) continue;
+        if (x2_touch_runtime_event(&event, &touch_pointer)) {
+            x2_win32_pointer_translate_touch(&touch_pointer, &g_mouse, g_hwnd);
+            continue;
+        }
         x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
 
         if (event.type == SDL_EVENT_MOUSE_MOTION ||
             event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
             event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-            translate_mouse_event(&event);
+            x2_win32_pointer_translate_mouse(&event, &g_mouse, g_hwnd);
         } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
             static int told;
             if (!told++)

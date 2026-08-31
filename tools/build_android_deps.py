@@ -28,7 +28,8 @@ LIBRARIES = ("avformat", "avcodec", "swscale", "swresample", "avutil")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--prefix", type=Path, default=Path("scratch/android-deps/arm64-v8a"))
+    parser.add_argument("--prefix", type=Path,
+                        default=Path("build/deps/android/arm64-v8a"))
     parser.add_argument("--abi", default="arm64-v8a", choices=("arm64-v8a", "x86_64"))
     parser.add_argument("--api", type=int, default=34)
     parser.add_argument("--ndk", type=Path)
@@ -117,12 +118,13 @@ def build(args: argparse.Namespace) -> None:
             raise SystemExit(f"Android compiler is missing: {program}")
 
     root = Path(__file__).resolve().parents[1]
-    cache = root / "scratch/android-deps/source"
+    cache = root / "build/deps/android/source"
     source = source_tree(cache)
     prefix = args.prefix if args.prefix.is_absolute() else root / args.prefix
     prefix = prefix.resolve()
-    if not str(prefix).startswith(str((root / "scratch").resolve()) + os.sep):
-        raise SystemExit(f"Refusing Android dependency output outside scratch/: {prefix}")
+    build_root = (root / "build").resolve()
+    if prefix == build_root or build_root not in prefix.parents:
+        raise SystemExit(f"Refusing Android dependency output outside build/: {prefix}")
 
     required = [prefix / "include/libavutil/avutil.h"]
     required.extend(prefix / "lib" / f"lib{name}.a" for name in LIBRARIES)
@@ -130,7 +132,7 @@ def build(args: argparse.Namespace) -> None:
         print(f"Android FFmpeg prefix already exists: {prefix}")
         return
 
-    build_dir = root / "scratch/android-deps" / f"build-{args.abi}"
+    build_dir = root / "build/deps/android" / f"build-{args.abi}"
     build_dir.mkdir(parents=True, exist_ok=True)
     configure = [
         str(source / "configure"),

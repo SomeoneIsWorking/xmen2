@@ -43,7 +43,7 @@ EXPORTS
     def test_compile_sources_are_explicit_and_include_shadow_trace(self) -> None:
         root = Path("/repo")
         command = build_stocklog.compile_command(
-            root, root / "scratch/build-proxy/d3d8.dll", root / "proxy.def"
+            root, root / "build/proxy/d3d8.dll", root / "proxy.def"
         )
         source_args = [arg for arg in command if arg.endswith((".c", ".S"))]
         self.assertEqual(

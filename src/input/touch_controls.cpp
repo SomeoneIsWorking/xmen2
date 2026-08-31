@@ -7,7 +7,7 @@ namespace x2::input {
 namespace {
 
 constexpr std::uint32_t left_stick = 1;
-constexpr std::uint32_t right_stick = 2;
+constexpr std::uint32_t camera_swipe = 2;
 
 float clamp_unit(float value)
 {
@@ -27,7 +27,8 @@ void add_button_events(std::vector<ActionEvent> &out,
                                 event.phase == lucent::touch::Phase::canceled
                             ? 0.0F
                             : 1.0F;
-    out.push_back({event.contact_id, event.zone_id, action, value, event.phase});
+    out.push_back({event.contact_id, event.zone_id, action, value,
+                   event.position, event.phase});
 }
 
 void add_stick_events(std::vector<ActionEvent> &out,
@@ -50,7 +51,32 @@ void add_stick_events(std::vector<ActionEvent> &out,
                                                   clamp_unit(-horizontal), clamp_unit(horizontal)};
     for (std::size_t index = 0; index < actions.size(); ++index)
         out.push_back({event.contact_id, event.zone_id, actions[index], values[index],
-                       event.phase});
+                       event.position, event.phase});
+}
+
+void add_camera_events(std::vector<ActionEvent> &out,
+                       const lucent::touch::Event &event,
+                       const lucent::touch::Zone &zone)
+{
+    const float travel = std::min(zone.right - zone.left,
+                                  zone.bottom - zone.top) * 0.22F;
+    const bool release = event.phase == lucent::touch::Phase::ended ||
+                         event.phase == lucent::touch::Phase::canceled;
+    const float horizontal = release || travel <= 0.0F
+                                 ? 0.0F
+                                 : clamp_axis((event.position.x - event.origin.x) / travel);
+    const float vertical = release || travel <= 0.0F
+                               ? 0.0F
+                               : clamp_axis((event.position.y - event.origin.y) / travel);
+    const std::array<TouchAction, 4> actions = {
+        TouchAction::CameraUp, TouchAction::CameraDown,
+        TouchAction::CameraLeft, TouchAction::CameraRight};
+    const std::array<float, 4> values = {
+        clamp_unit(-vertical), clamp_unit(vertical),
+        clamp_unit(-horizontal), clamp_unit(horizontal)};
+    for (std::size_t index = 0; index < actions.size(); ++index)
+        out.push_back({event.contact_id, event.zone_id, actions[index], values[index],
+                       event.position, event.phase});
 }
 
 } // namespace
@@ -95,54 +121,76 @@ void TouchControls::rebuild_zones()
 
     auto add = [this](std::uint32_t id, float zone_left, float zone_top,
                       float zone_right, float zone_bottom, int priority,
-                      TouchAction action, bool stick) {
+                      TouchAction action, bool stick, bool visible = true) {
         zones_.push_back({{id, zone_left, zone_top, zone_right, zone_bottom, priority},
-                          action, stick});
+                          action, stick, visible});
     };
     add(left_stick, left + width * 0.04F, top + height * 0.57F,
         left + width * 0.39F, bottom - height * 0.04F, 0, TouchAction::MoveLeft, true);
-    const float right_stick_left = left + width * 0.61F;
-    const float right_stick_top = top + height * 0.57F;
-    const float right_stick_right = left + width * 0.96F;
-    const float right_stick_bottom = bottom - height * 0.04F;
-    add(right_stick, right_stick_left, right_stick_top, right_stick_right,
-        right_stick_bottom, 0, TouchAction::CameraLeft, true);
 
-    // Buttons have higher priority than the broad stick rectangles. Explicit gaps keep a thumb
-    // on a face button from being interpreted as a camera movement.
-    add(10, left + width * 0.75F, top + height * 0.29F,
-        left + width * 0.84F, top + height * 0.41F, 10, TouchAction::LowAttack, false);
-    add(11, left + width * 0.85F, top + height * 0.39F,
-        left + width * 0.94F, top + height * 0.51F, 10, TouchAction::HighAttack, false);
-    add(12, left + width * 0.65F, top + height * 0.39F,
-        left + width * 0.74F, top + height * 0.51F, 10, TouchAction::Guard, false);
-    add(13, left + width * 0.75F, top + height * 0.51F,
-        left + width * 0.84F, top + height * 0.63F, 10, TouchAction::Jump, false);
-    add(20, left + width * 0.63F, top + height * 0.08F,
-        left + width * 0.74F, top + height * 0.19F, 10, TouchAction::Power, false);
-    add(21, left + width * 0.76F, top + height * 0.08F,
-        left + width * 0.87F, top + height * 0.19F, 10, TouchAction::Ally, false);
-    add(22, left + width * 0.88F, top + height * 0.08F,
-        left + width * 0.99F, top + height * 0.19F, 10, TouchAction::TargetLock, false);
-    const float right_stick_center_x = (right_stick_left + right_stick_right) * 0.5F;
-    const float right_stick_center_y = (right_stick_top + right_stick_bottom) * 0.5F;
-    const float right_stick_click_size = std::min(width, height) * 0.09F;
-    add(23, right_stick_center_x - right_stick_click_size,
-        right_stick_center_y - right_stick_click_size,
-        right_stick_center_x + right_stick_click_size,
-        right_stick_center_y + right_stick_click_size, 20, TouchAction::MapToggle, false);
-    add(30, left + width * 0.04F, top + height * 0.28F,
-        left + width * 0.14F, top + height * 0.39F, 10, TouchAction::NextHero, false);
-    add(31, left + width * 0.16F, top + height * 0.28F,
-        left + width * 0.26F, top + height * 0.39F, 10, TouchAction::PreviousHero, false);
-    add(32, left + width * 0.04F, top + height * 0.41F,
-        left + width * 0.14F, top + height * 0.52F, 10, TouchAction::DecreaseAggr, false);
-    add(33, left + width * 0.16F, top + height * 0.41F,
-        left + width * 0.26F, top + height * 0.52F, 10, TouchAction::IncreaseAggr, false);
-    add(40, left + width * 0.04F, top + height * 0.08F,
-        left + width * 0.15F, top + height * 0.19F, 10, TouchAction::Pause, false);
-    add(41, left + width * 0.17F, top + height * 0.08F,
-        left + width * 0.28F, top + height * 0.19F, 10, TouchAction::Stats, false);
+    // Camera is a relative swipe over otherwise unused playfield. Buttons and
+    // retail portrait taps capture first, so a combat chord never moves it.
+    add(camera_swipe, left + width * 0.35F, top + height * 0.18F,
+        left + width * 0.98F, top + height * 0.62F, -10,
+        TouchAction::CameraLeft, false, false);
+
+    add(10, left + width * 0.77F, top + height * 0.70F,
+        left + width * 0.87F, top + height * 0.83F, 20,
+        TouchAction::LightAttack, false);
+    add(11, left + width * 0.88F, top + height * 0.61F,
+        left + width * 0.98F, top + height * 0.74F, 20,
+        TouchAction::HeavyAttack, false);
+    add(12, left + width * 0.66F, top + height * 0.61F,
+        left + width * 0.76F, top + height * 0.74F, 20,
+        TouchAction::Use, false);
+    add(13, left + width * 0.77F, top + height * 0.52F,
+        left + width * 0.87F, top + height * 0.65F, 20,
+        TouchAction::Jump, false);
+    add(20, left + width * 0.66F, top + height * 0.78F,
+        left + width * 0.76F, top + height * 0.91F, 20,
+        TouchAction::Powers, false);
+    add(21, left + width * 0.77F, top + height * 0.85F,
+        left + width * 0.87F, top + height * 0.98F, 20,
+        TouchAction::EnergyPack, false);
+    add(22, left + width * 0.88F, top + height * 0.78F,
+        left + width * 0.98F, top + height * 0.91F, 20,
+        TouchAction::HealthPack, false);
+    add(23, left + width * 0.61F, top + height * 0.04F,
+        left + width * 0.69F, top + height * 0.15F, 20,
+        TouchAction::MapToggle, false);
+    add(32, left + width * 0.43F, top + height * 0.84F,
+        left + width * 0.51F, top + height * 0.95F, 20,
+        TouchAction::DecreaseAggr, false);
+    add(33, left + width * 0.52F, top + height * 0.84F,
+        left + width * 0.60F, top + height * 0.95F, 20,
+        TouchAction::IncreaseAggr, false);
+    add(40, left + width * 0.43F, top + height * 0.04F,
+        left + width * 0.51F, top + height * 0.15F, 20,
+        TouchAction::Pause, false);
+    add(41, left + width * 0.52F, top + height * 0.04F,
+        left + width * 0.60F, top + height * 0.15F, 20,
+        TouchAction::Stats, false);
+
+    // The retail party cross is relocated to this top-right cluster in touch
+    // mode. These zones emit pointer events so its existing click handler,
+    // including direct hero selection, remains the only behavior owner.
+    const float portrait_radius = std::min(width, height) * 0.07F;
+    const float portrait_center_x = right - portrait_radius * 2.0F;
+    const float portrait_center_y = top + portrait_radius * 2.0F;
+    auto portrait = [&](std::uint32_t id, float center_x, float center_y,
+                        TouchAction action) {
+        add(id, center_x - portrait_radius, center_y - portrait_radius,
+            center_x + portrait_radius, center_y + portrait_radius, 30,
+            action, false, false);
+    };
+    portrait(50, portrait_center_x, portrait_center_y - portrait_radius,
+             TouchAction::SelectHero1);
+    portrait(51, portrait_center_x + portrait_radius, portrait_center_y,
+             TouchAction::SelectHero2);
+    portrait(52, portrait_center_x, portrait_center_y + portrait_radius,
+             TouchAction::SelectHero3);
+    portrait(53, portrait_center_x - portrait_radius, portrait_center_y,
+             TouchAction::SelectHero4);
 
     std::vector<lucent::touch::Zone> router_zones;
     router_zones.reserve(zones_.size());
@@ -181,11 +229,9 @@ std::vector<ActionEvent> TouchControls::translate(
                 add_stick_events(actions, event, found->zone,
                                  {TouchAction::Forward, TouchAction::Backward,
                                   TouchAction::MoveLeft, TouchAction::MoveRight});
-            } else {
-                add_stick_events(actions, event, found->zone,
-                                 {TouchAction::CameraUp, TouchAction::CameraDown,
-                                  TouchAction::CameraLeft, TouchAction::CameraRight});
             }
+        } else if (event.zone_id == camera_swipe) {
+            add_camera_events(actions, event, found->zone);
         } else {
             add_button_events(actions, event, found->action);
         }

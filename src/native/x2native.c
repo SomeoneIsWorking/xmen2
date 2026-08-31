@@ -318,7 +318,7 @@ const char *x86_poison_name(uint32_t addr, const char **mod)
  *
  * It is the one failure mode with nothing to read afterwards: a crash names a
  * body, an abort names a symbol, and a run that never returns leaves a log
- * that stops mid-sentence. tools/native_discover.sh sat on one round for fifty
+ * that stops mid-sentence. tools/native_discover.py sat on one round for fifty
  * minutes and then reported CONVERGENCE, because a killed run and a run that
  * found nothing look identical from outside.
  *
@@ -434,7 +434,7 @@ static int poison_init(void)
      * A HANG had no report at all, and that is the one failure mode with
      * nothing to read afterwards: a crash names a body, an abort names a
      * symbol, and a run that simply never returns produces a log that stops
-     * mid-sentence. tools/native_discover.sh sat on one round for fifty
+     * mid-sentence. tools/native_discover.py sat on one round for fifty
      * minutes and then reported CONVERGENCE, because a killed run and a run
      * that found nothing look identical from outside.
      *
@@ -565,7 +565,7 @@ static int module_init_one(X86Module *m)
     const char *nm = x86_native_name_at(entry);
     if (!nm) {
         /* Reported in the SAME format the constructor-target list uses, so
-           tools/native_discover.sh picks it up and seeds it without needing to
+           tools/native_discover.py picks it up and seeds it without needing to
            know that entry points are a separate case. One report shape, one
            loop. */
         fprintf(stderr, "\n*** module entry point with no recompiled body.\n"
