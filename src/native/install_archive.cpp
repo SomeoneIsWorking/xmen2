@@ -11,6 +11,18 @@
 
 namespace {
 
+/* The retail PC installation currently contains 13,382 files (2.37 GiB
+ * expanded); its largest individual file is 120 MiB. These are title policy,
+ * not Lucent defaults: other ports retain the library's conservative archive
+ * limits. The headroom accepts a complete legal install in a ZIP while still
+ * bounding direct and one-level-nested archive input. */
+constexpr lucent::zip::ExtractionLimits x2_install_archive_limits{
+    .max_archive_bytes = 4ULL * 1024ULL * 1024ULL * 1024ULL,
+    .max_extracted_bytes = 4ULL * 1024ULL * 1024ULL * 1024ULL,
+    .max_entry_bytes = 256ULL * 1024ULL * 1024ULL,
+    .max_entries = 20000,
+};
+
 bool copy_path(const std::filesystem::path &source, char *destination,
                unsigned capacity)
 {
@@ -126,7 +138,8 @@ extern "C" int x2_install_archive_prepare_to(const char *archive,
 
     std::filesystem::path prepared_executable;
     if (!lucent::zip::extract_install(archive, preparing, "XMen2.exe",
-                                      prepared_executable, error)) {
+                                      prepared_executable, error,
+                                      x2_install_archive_limits)) {
         std::string cleanup_error;
         clean_tree(preparing, cleanup_error);
         if (!cleanup_error.empty()) error += "; " + cleanup_error;

@@ -12,6 +12,9 @@ The APK has no terminal and opens `XMen2SetupActivity` before starting
 folder containing `XMen2.exe` (`ACTION_OPEN_DOCUMENT_TREE`) or a ZIP
 (`ACTION_OPEN_DOCUMENT`). `LucentDocumentImport` owns the persisted read grant,
 bounded background copy into app-private staging, cancellation, and recovery.
+For a selected direct archive, Lucent maps the staged file instead of duplicating
+it in native heap; X-Men's title policy bounds the known 2.37 GiB PC install
+to 4 GiB compressed/expanded, 256 MiB per entry, and 20,000 entries.
 The title validates exactly one `XMen2.exe`, every original DLL the native
 runner maps beside it, and title-owned content sentinels spanning every
 boot-time asset family before Lucent promotes the staged selection to the

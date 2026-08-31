@@ -553,6 +553,16 @@ void imp_KERNEL32_TryEnterCriticalSection(CPU *C)
     ret_std(C, (uint32_t)cs_try_take(A(0), guest_current_tid()), 1);
 }
 
+/* XMen2 resolves this through GetProcAddress rather than importing it.  The
+ * implementation above is therefore insufficient on its own: only a native
+ * export creates the guest-callable thunk that GetProcAddress may return. */
+__attribute__((constructor))
+static void kernel32_runtime_exports(void)
+{
+    x86_native_export("KERNEL32.DLL", "TryEnterCriticalSection",
+                      imp_KERNEL32_TryEnterCriticalSection);
+}
+
 void imp_KERNEL32_LeaveCriticalSection(CPU *C)
 {
     uint32_t p = A(0), tid = guest_current_tid();

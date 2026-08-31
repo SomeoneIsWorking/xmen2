@@ -862,6 +862,7 @@ static void case_arkinit(void)
 void imp_KERNEL32_GetModuleHandleA(CPU *C);
 void imp_KERNEL32_LoadLibraryA(CPU *C);
 void imp_KERNEL32_GetProcAddress(CPU *C);
+void imp_KERNEL32_TryEnterCriticalSection(CPU *C);
 void imp_USER32_MapVirtualKeyA(CPU *C);
 void imp_DINPUT8_DirectInput8Create(CPU *C);
 void imp_MSVCR71___RTDynamicCast(CPU *C);
@@ -1357,6 +1358,31 @@ static void case_runtime_module(void)
     WR32(C.esp + 8u, sym);
     imp_KERNEL32_GetProcAddress(&C);
     check("a symbol this host lacks is still NULL", C.eax, 0u);
+
+    /* The title dynamically resolves TryEnterCriticalSection during startup.
+     * It is implemented in kernel32.c but has no static import slot, so the
+     * lookup must use the native runtime-export path used by DInput above. */
+    strcpy(guest_memory_pointer(path), "KERNEL32.DLL");
+    cpu_reset(&C);
+    C.esp = SCRATCH + 0x200u;
+    WR32(C.esp, 0);
+    WR32(C.esp + 4u, path);
+    imp_KERNEL32_LoadLibraryA(&C);
+    h = C.eax;
+    check("KERNEL32.DLL has a native system-module handle", h != 0u, 1u);
+
+    strcpy(guest_memory_pointer(sym), "TryEnterCriticalSection");
+    cpu_reset(&C);
+    C.esp = SCRATCH + 0x200u;
+    WR32(C.esp, 0);
+    WR32(C.esp + 4u, h);
+    WR32(C.esp + 8u, sym);
+    imp_KERNEL32_GetProcAddress(&C);
+    p = C.eax;
+    check("TryEnterCriticalSection resolves at runtime", p,
+          x86_native_export_addr("KERNEL32.DLL", "TryEnterCriticalSection"));
+    check("TryEnterCriticalSection export names its implementation", p != 0u,
+          1u);
 
     /* Host->guest callbacks need the callee-cleaned byte count in their ABI
        contract. Without it, a correct RET 8 was reported as an imbalance and

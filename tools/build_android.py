@@ -21,6 +21,7 @@ GRADLE_VERSION = "9.4.1"
 GRADLE_JAVA_MIN = 17
 GRADLE_JAVA_MAX = 26
 DEFAULT_NATIVE_JOBS = 2
+NATIVE_GENERATOR = "Ninja"
 
 
 def parse_args() -> argparse.Namespace:
@@ -156,6 +157,41 @@ def native_jobs(environment: Mapping[str, str] = os.environ) -> int:
     return jobs
 
 
+def cached_generator(build: Path) -> str | None:
+    """Return CMake's recorded generator, refusing no state as no generator."""
+    cache = build / "CMakeCache.txt"
+    if not cache.is_file():
+        return None
+    for line in cache.read_text(encoding="utf-8").splitlines():
+        if line.startswith("CMAKE_GENERATOR:INTERNAL="):
+            return line.partition("=")[2]
+    raise SystemExit(f"Android CMake cache has no generator declaration: {cache}")
+
+
+def prepare_native_build_directory(build: Path, build_root: Path) -> None:
+    """Migrate the generated Android tree to Ninja when CMake recorded another generator.
+
+    Makefiles conservatively make every object depend on their regenerated
+    flags.make. Consequently an otherwise harmless CMake reconfigure rebuilds
+    the whole translated game. Ninja compares the real compiler command instead.
+    A generator cannot be changed in place, so this removes only the resolved,
+    generated Android tree beneath the project's build root.
+    """
+    resolved_build = build.resolve()
+    resolved_root = build_root.resolve()
+    if resolved_build.parent != resolved_root:
+        raise SystemExit(
+            f"Refusing Android build migration outside direct build/ child: {build}")
+    generator = cached_generator(resolved_build)
+    if generator is None or generator == NATIVE_GENERATOR:
+        resolved_build.mkdir(parents=True, exist_ok=True)
+        return
+    print(f"android: replacing {generator} build tree with {NATIVE_GENERATOR}: "
+          f"{resolved_build}")
+    shutil.rmtree(resolved_build)
+    resolved_build.mkdir(parents=True, exist_ok=True)
+
+
 def apksigner_path() -> Path:
     sdk_value = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
     if not sdk_value:
@@ -207,7 +243,7 @@ def main() -> int:
     build = build if build.is_absolute() else root / build
     if not str(build.resolve()).startswith(str(build_root.resolve()) + os.sep):
         raise SystemExit(f"Refusing Android build output outside build/: {build}")
-    build.mkdir(parents=True, exist_ok=True)
+    prepare_native_build_directory(build, build_root)
     ndk = ndk_path()
     gradle_java = java_home() if not args.no_assemble else None
     signing = release_signing() if not args.no_assemble and not args.debug else None
@@ -239,11 +275,16 @@ def main() -> int:
             str(root),
             "-B",
             str(build),
+            "-G",
+            NATIVE_GENERATOR,
             f"-DCMAKE_TOOLCHAIN_FILE={ndk / 'build/cmake/android.toolchain.cmake'}",
             f"-DANDROID_ABI={args.abi}",
             f"-DANDROID_PLATFORM=android-{args.api}",
             "-DANDROID_STL=c++_shared",
             "-DCMAKE_BUILD_TYPE=Release",
+            # A diagnostic cache entry must never leak from a local Android
+            # investigation into the packaged product tree.
+            "-DX2_NATIVE_TRACE=OFF",
             f"-DPython3_EXECUTABLE={sys.executable}",
             f"-DX2_ANDROID_PORT_PREFIX={prefix}",
         ],
