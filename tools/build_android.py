@@ -15,6 +15,7 @@ import sys
 GRADLE_VERSION = "9.4.1"
 GRADLE_JAVA_MIN = 17
 GRADLE_JAVA_MAX = 26
+DEFAULT_NATIVE_JOBS = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -125,6 +126,26 @@ def release_signing(environment: Mapping[str, str] = os.environ) -> dict[str, st
     return values
 
 
+def native_jobs(environment: Mapping[str, str] = os.environ) -> int:
+    """Return a memory-safe parallelism level for translated Android code.
+
+    A translated X-Men module can consume more than a gigabyte while Clang
+    optimizes it.  Building one job per logical CPU turns a 16 GB workstation
+    into a swap storm, so Android builds default to two jobs.  Builders with
+    measured headroom can deliberately raise the cap.
+    """
+    configured = environment.get("X2_ANDROID_NATIVE_JOBS")
+    if configured is None:
+        return DEFAULT_NATIVE_JOBS
+    try:
+        jobs = int(configured)
+    except ValueError as error:
+        raise SystemExit("X2_ANDROID_NATIVE_JOBS must be a positive integer") from error
+    if jobs <= 0:
+        raise SystemExit("X2_ANDROID_NATIVE_JOBS must be a positive integer")
+    return jobs
+
+
 def apksigner_path() -> Path:
     sdk_value = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT")
     if not sdk_value:
@@ -136,14 +157,14 @@ def apksigner_path() -> Path:
     return candidates[0]
 
 
-def debug_apk(root: Path) -> Path:
+def debug_apk(root: Path, abi: str) -> Path:
     """The debug artifact, which stays in Gradle's output and is never published."""
     outputs = root / "android/app/build/outputs/apk/debug"
-    candidates = sorted(outputs.glob("*-debug.apk"))
+    candidates = sorted(outputs.glob(f"*{abi}-debug.apk"))
     if len(candidates) != 1:
-        found = ", ".join(path.name for path in sorted(outputs.glob("*.apk")))
+        found = ", ".join(path.name for path in sorted(outputs.glob(f"*{abi}*.apk")))
         raise SystemExit(
-            f"Expected exactly one debug APK in {outputs}; found: {found or 'none'}"
+            f"Expected exactly one {abi} debug APK in {outputs}; found: {found or 'none'}"
         )
     return candidates[0]
 
@@ -215,7 +236,7 @@ def main() -> int:
         ],
         cwd=root,
     )
-    run(["cmake", "--build", str(build), "--target", "x2native", f"-j{os.cpu_count() or 4}"], cwd=root)
+    run(["cmake", "--build", str(build), "--target", "x2native", f"-j{native_jobs()}"], cwd=root)
     if not args.no_assemble:
         assert gradle_java is not None
         gradle_environment = os.environ.copy()
@@ -239,7 +260,7 @@ def main() -> int:
             check=True,
         )
         if args.debug:
-            print(f"android: debug APK left in {debug_apk(root)} (not a release)")
+            print(f"android: debug APK left in {debug_apk(root, args.abi)} (not a release)")
         else:
             publish_apk(root, args.abi)
     return 0

@@ -108,10 +108,14 @@ is gone and the build rejects mismatched `java`/`javac` homes. A release assembl
 completed all 50 AGP tasks under a one-day local verification key, and
 `apksigner` verified its v3 signature; that artifact was deliberately not staged
 as a release. The user reported that the Android setup and game path runs on a
-device; the revised touch/HUD layout still needs installed-APK visual and input
-verification. Gap: a publishable APK still requires the maintainer's long-lived
-keystore, and no mobile performance measurements exist yet. The required setup,
-touch-zone mapping, and device/thermal/frame-time evidence gate are specified in
+device. A freshly cleared API 35 x86-64 emulator installed the debug APK and
+showed the landscape setup screen; its install-folder and ZIP controls each
+opened Android's DocumentsUI picker. This proves the packaged first-run shell,
+not importing a real install or gameplay. The revised touch/HUD layout still
+needs installed-APK visual and input verification. Gap: a publishable APK still
+requires the maintainer's long-lived keystore, and no mobile performance
+measurements exist yet. The required setup, touch-zone mapping, and
+device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 

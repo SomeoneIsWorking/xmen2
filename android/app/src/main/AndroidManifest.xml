@@ -1,8 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- The port reads the user's PC install where it already sits. Copying it
-         into app-private storage costs a content-provider round trip per file,
-         measured at 0.05 MB/s across this game's many small files. -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <!-- The product target always opens the agent control channel, and creating
          any socket needs this permission's `inet` group: without it socket()
          fails with EACCES and control_start() exits before the game runs. The

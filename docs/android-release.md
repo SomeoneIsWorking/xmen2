@@ -7,25 +7,21 @@ real APK is installed and measured on the supported device tiers.
 ## Setup and game-file access
 
 The APK has no terminal and opens `XMen2SetupActivity` before starting
-`XMen2GameActivity`. The port **reads the user's install where it already
-sits**; it does not copy it. The setup screen therefore asks for
-`MANAGE_EXTERNAL_STORAGE` ("Allow access to manage all files") and offers two
-explicit choices: "Choose install folder", which opens
-`ACTION_OPEN_DOCUMENT_TREE`, and "Choose ZIP", which opens
-`ACTION_OPEN_DOCUMENT`. `InstallLocation` resolves the returned document id to
-a filesystem path, and native validation still requires exactly one
-`XMen2.exe`.
+`XMen2GameActivity`. It offers native Android Browse actions for the install
+folder containing `XMen2.exe` (`ACTION_OPEN_DOCUMENT_TREE`) or a ZIP
+(`ACTION_OPEN_DOCUMENT`). `LucentDocumentImport` owns the persisted read grant,
+bounded background copy into app-private staging, cancellation, and recovery.
+The title validates exactly one `XMen2.exe` before Lucent promotes the staged
+selection to the persistent private `game/` leaf; for a ZIP, Lucent validates
+and extracts the complete archive into that same transaction before promotion.
+The prior valid selection remains usable until the replacement has passed this
+complete validation and private promotion. No filesystem path is inferred from
+a SAF URI and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
 
-The earlier design copied the selection into app-private storage, because a
-content URI is not guaranteed to have a filesystem path. Measured on device
-that cost a content-provider round trip per file and ran at **0.05 MB/s across
-this game's many small files** -- around twelve minutes for a 2.2 GB install,
-plus a duplicate copy of it on the device, and the OEM power manager killed the
-copy when it lost foreground. A provider that genuinely has no filesystem path
-(a cloud document) is now refused by name at the picker instead, which is the
-honest answer; staging it slowly was not.
-
-The setup persists the resolved path. A missing or unusable selection returns
+This deliberately makes the first import a one-time copy. It supports cloud
+and removable-storage providers correctly, avoids broad device access, and
+means later launches never depend on a provider or a working directory. The
+setup persists the private source path. A missing or unusable selection returns
 to setup with an actionable error.
 `lucent_platform_set_user_data_directory` receives the Activity's absolute
 private files root; there is no Android environment-variable fallback. Saves,

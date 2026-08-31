@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import os
 from pathlib import Path, PurePosixPath
+import shutil
 import subprocess
 import tarfile
 import urllib.request
@@ -28,8 +29,7 @@ LIBRARIES = ("avformat", "avcodec", "swscale", "swresample", "avutil")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--prefix", type=Path,
-                        default=Path("build/deps/android/arm64-v8a"))
+    parser.add_argument("--prefix", type=Path)
     parser.add_argument("--abi", default="arm64-v8a", choices=("arm64-v8a", "x86_64"))
     parser.add_argument("--api", type=int, default=34)
     parser.add_argument("--ndk", type=Path)
@@ -105,6 +105,31 @@ def target_triple(abi: str) -> str:
     return {"arm64-v8a": "aarch64-linux-android", "x86_64": "x86_64-linux-android"}[abi]
 
 
+def assembly_configuration(abi: str) -> tuple[str, ...]:
+    """Keep x86 emulator builds independent of a host NASM installation.
+
+    The shipping ABI is ARM64 and uses its own assembler path.  Android's x86
+    emulator ABI is an integration target, so FFmpeg's portable C paths are
+    preferable to making a distro-only NASM package a player/maintainer gate.
+    """
+    return ("--disable-x86asm", "--disable-inline-asm") if abi == "x86_64" else ()
+
+
+def build_contract(abi: str, api: int) -> str:
+    """The installed prefix is valid only for these exact codegen inputs."""
+    return "\n".join((
+        f"ffmpeg={FFMPEG_VERSION}",
+        f"abi={abi}",
+        f"api={api}",
+        *assembly_configuration(abi),
+        "",
+    ))
+
+
+def default_prefix(abi: str) -> Path:
+    return Path("build/deps/android") / abi
+
+
 def build(args: argparse.Namespace) -> None:
     ndk = find_ndk(args.ndk).resolve()
     toolchain = ndk / "toolchains/llvm/prebuilt/linux-x86_64/bin"
@@ -120,7 +145,8 @@ def build(args: argparse.Namespace) -> None:
     root = Path(__file__).resolve().parents[1]
     cache = root / "build/deps/android/source"
     source = source_tree(cache)
-    prefix = args.prefix if args.prefix.is_absolute() else root / args.prefix
+    selected_prefix = args.prefix or default_prefix(args.abi)
+    prefix = selected_prefix if selected_prefix.is_absolute() else root / selected_prefix
     prefix = prefix.resolve()
     build_root = (root / "build").resolve()
     if prefix == build_root or build_root not in prefix.parents:
@@ -128,11 +154,21 @@ def build(args: argparse.Namespace) -> None:
 
     required = [prefix / "include/libavutil/avutil.h"]
     required.extend(prefix / "lib" / f"lib{name}.a" for name in LIBRARIES)
-    if all(path.is_file() for path in required):
+    marker = prefix / ".x2-ffmpeg-contract"
+    contract = build_contract(args.abi, args.api)
+    if (marker.is_file() and all(path.is_file() for path in required)
+            and marker.read_text(encoding="utf-8") == contract):
         print(f"Android FFmpeg prefix already exists: {prefix}")
         return
 
     build_dir = root / "build/deps/android" / f"build-{args.abi}"
+    # A static archive built with older assembler/PIC flags can exist and look
+    # complete while being un-linkable in libmain.so. Rebuild only this exact
+    # ABI prefix and its generated tree when the explicit contract changes.
+    if prefix.exists():
+        shutil.rmtree(prefix)
+    if build_dir.exists():
+        shutil.rmtree(build_dir)
     build_dir.mkdir(parents=True, exist_ok=True)
     configure = [
         str(source / "configure"),
@@ -186,12 +222,14 @@ def build(args: argparse.Namespace) -> None:
         "--extra-cflags=-fPIC",
         "--extra-ldflags=-fPIC",
         "--extra-version=x2-android",
+        *assembly_configuration(args.abi),
     ]
     subprocess.run(configure, cwd=build_dir, check=True)
     subprocess.run(["make", f"-j{args.jobs}"], cwd=build_dir, check=True)
     subprocess.run(["make", "install"], cwd=build_dir, check=True)
     if not all(path.is_file() for path in required):
         raise SystemExit(f"FFmpeg install completed without the required files: {prefix}")
+    marker.write_text(contract, encoding="utf-8")
     print(f"Android FFmpeg prefix: {prefix}")
 
 

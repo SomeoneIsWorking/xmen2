@@ -1,4 +1,5 @@
 #include "android_bridge.h"
+#include "install_picker.h"
 
 #include <cstring>
 #include <cstdlib>
@@ -53,6 +54,21 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
      * SDL virtual pad. Android supplies touch actions to that same pad, so
      * there is one binding path instead of a second mobile-only input stack. */
     return ::setenv("X2_VIRTUAL_PAD", "1", 1) == 0 ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeValidateInstall(
+    JNIEnv *environment, jclass, jstring source, jstring archive_destination)
+{
+    char source_path[sizeof install_source];
+    char destination[sizeof install_source];
+    char reason[512];
+    if (!read_string(environment, source, source_path) ||
+        !read_string(environment, archive_destination, destination)) return JNI_FALSE;
+    return x2_install_picker_prepare_selection(
+               source_path, destination[0] ? destination : nullptr,
+               reason, sizeof reason)
+               ? JNI_TRUE : JNI_FALSE;
 }
 
 namespace {

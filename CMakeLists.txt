@@ -26,9 +26,11 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 4e5b2452d2750ba462a6ea5fb5c46202815056e4
+    GIT_TAG 70a61b2
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
+set(X2_LUCENT_ANDROID_JAVA_DIR
+    "${lucent_SOURCE_DIR}/platforms/android/java")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -98,7 +100,13 @@ if(ANDROID)
     FetchContent_Declare(sdl3_image
         GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
         GIT_TAG bec9134a26c7d0f31b36d6083c25296e04cabff5
-        GIT_SHALLOW FALSE)
+        GIT_SHALLOW FALSE
+        # PNG is the only Android format enabled below. Fetching every image
+        # codec recursively pulls AV1/JXL/WebP trees before CMake can disable
+        # them, turning an ordinary debug install into a multi-minute network
+        # operation. SDL_image's vendored PNG path needs only these two.
+        GIT_SUBMODULES external/zlib external/libpng
+        GIT_SUBMODULES_RECURSE FALSE)
     FetchContent_MakeAvailable(sdl3_image)
     set(X2_SDL_IMAGE SDL3_image::SDL3_image)
 else()
@@ -1608,6 +1616,7 @@ if(X2_MODULE_HAVE)
             "x2.androidAbi=${ANDROID_ABI}\n"
             "x2.androidPlatform=${ANDROID_PLATFORM}\n"
             "x2.sdlJavaDir=${X2_SDL_ANDROID_JAVA_DIR}\n"
+            "x2.lucentJavaDir=${X2_LUCENT_ANDROID_JAVA_DIR}\n"
             "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n")
         string(JOIN "" _x2_android_properties ${_x2_android_properties})
         file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/x2-android.properties"

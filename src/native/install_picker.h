@@ -14,6 +14,13 @@ int x2_install_picker_directory_from_executable(const char *path,
                                                 char *directory,
                                                 unsigned capacity);
 
+/* Validate a player selection before the platform publishes it. ZIP installs
+ * are extracted into the supplied fresh private destination; folder installs
+ * ignore that argument. */
+int x2_install_picker_prepare_selection(const char *selection,
+                                        const char *archive_destination,
+                                        char *reason, unsigned reason_capacity);
+
 #ifdef __cplusplus
 }
 #endif

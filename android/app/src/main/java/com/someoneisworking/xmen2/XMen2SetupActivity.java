@@ -1,18 +1,16 @@
 package com.someoneisworking.xmen2;
 
 import android.app.Activity;
-import android.content.ActivityNotFoundException;
 import android.content.Intent;
-import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import io.github.someoneisworking.lucent.LucentDocumentImport;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -21,28 +19,36 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Locale;
 
-/** Android-owned first-run setup. Native code only validates the chosen install. */
+/** Android-owned first-run setup. Native code retains title validation. */
 public final class XMen2SetupActivity extends Activity {
     private static final int FOLDER_REQUEST = 0x5846;
     private static final int ZIP_REQUEST = 0x5847;
     private static final String SOURCE_PATH = "source-path";
+    private static final String INSTALL_DIRECTORY = "game";
+    private static final int MAXIMUM_ENTRIES = 100_000;
+    private static final long MAXIMUM_IMPORT_BYTES = 4L * 1024L * 1024L * 1024L;
 
     static {
         System.loadLibrary("main");
     }
 
     private static native boolean nativeConfigureStorage(String dataDirectory,
-                                                          String installSource);
+                                                         String installSource);
+    private static native boolean nativeValidateInstall(String installSource,
+                                                        String archiveDestination);
 
     private TextView status;
     private LinearLayout choices;
-    private Button grant;
-    /** onResume runs after onActivityResult, and must not erase its message. */
-    private boolean rejectionShown;
+    private LucentDocumentImport importer;
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        importer = new LucentDocumentImport(
+                this, new LucentDocumentImport.Limits(MAXIMUM_ENTRIES,
+                                                       MAXIMUM_IMPORT_BYTES,
+                                                       64 * 1024));
+        importer.cleanStaleImports();
         buildLayout();
         try {
             copyAssetTree("ui", new File(getFilesDir(), "ui"));
@@ -54,21 +60,15 @@ public final class XMen2SetupActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        /* Storage access is granted in Settings, outside this Activity, so the
-           gate is re-evaluated on every return rather than only at creation. */
-        if (!Environment.isExternalStorageManager()) {
-            showPermissionRequest();
-            return;
-        }
-        if (rejectionShown) {
-            rejectionShown = false;
-            choices.setVisibility(View.VISIBLE);
-            grant.setVisibility(View.GONE);
-            return;
-        }
         String saved = getPreferences(MODE_PRIVATE).getString(SOURCE_PATH, null);
-        if (saved != null && new File(saved).exists() && acceptSource(new File(saved))) return;
+        if (saved != null && acceptStoredSource(new File(saved))) return;
         showChoices();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (isFinishing()) importer.cancel();
+        super.onDestroy();
     }
 
     // --- Screens ---
@@ -93,12 +93,6 @@ public final class XMen2SetupActivity extends Activity {
         textParams.setMargins(0, padding / 2, 0, padding / 2);
         layout.addView(status, textParams);
 
-        grant = new Button(this);
-        grant.setText("Grant file access");
-        grant.setVisibility(View.GONE);
-        grant.setOnClickListener(view -> openStorageSettings());
-        layout.addView(grant, new LinearLayout.LayoutParams(-2, -2));
-
         choices = new LinearLayout(this);
         choices.setOrientation(LinearLayout.HORIZONTAL);
         choices.setGravity(Gravity.CENTER);
@@ -117,96 +111,99 @@ public final class XMen2SetupActivity extends Activity {
         setContentView(layout);
     }
 
-    private void showPermissionRequest() {
-        status.setText("X-Men Legends II reads your PC install where it already is, so it needs permission to access your files.\n\nTap below, then turn on \"Allow access to manage all files\".");
-        grant.setVisibility(View.VISIBLE);
-        choices.setVisibility(View.GONE);
-    }
-
     private void showChoices() {
-        status.setText("Choose the folder containing XMen2.exe, or a ZIP of your legally obtained PC install.\n\nThe game is read where it is; nothing is copied.");
-        grant.setVisibility(View.GONE);
+        status.setText("Choose the folder containing XMen2.exe, or a ZIP of your legally obtained PC install.\n\nThe game files are copied once into this app’s private storage and kept there for future launches.");
         choices.setVisibility(View.VISIBLE);
     }
 
     // --- Pickers ---
 
-    private void openStorageSettings() {
-        Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                                   Uri.parse("package:" + getPackageName()));
-        try {
-            startActivity(intent);
-        } catch (ActivityNotFoundException error) {
-            /* Some builds only offer the device-wide list. */
-            try {
-                startActivity(new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
-            } catch (ActivityNotFoundException fallback) {
-                showError("This device has no all-files-access setting to open.");
+    private LucentDocumentImport.Callback importCallback() {
+        return new LucentDocumentImport.Callback() {
+            @Override
+            public void onImported(LucentDocumentImport.Result result) {
+                acceptImported(result);
             }
-        }
+
+            @Override
+            public void onCancelled() {
+                showChoices();
+            }
+
+            @Override
+            public void onFailed(String message) {
+                showError(message);
+            }
+        };
     }
 
-    /**
-     * The install is a folder, so the folder picker is the only selection that
-     * can produce one: a single-document URI names one file, not its siblings.
-     */
     private void openFolderPicker() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
-        launchPicker(intent, FOLDER_REQUEST, "No Android folder picker is available.");
+        choices.setVisibility(View.GONE);
+        importer.pickTree(FOLDER_REQUEST, importCallback());
     }
 
     private void openZipPicker() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        /* Providers disagree on the ZIP media type -- some report
-           application/octet-stream -- so the name is what gets validated. */
-        intent.setType("*/*");
-        launchPicker(intent, ZIP_REQUEST, "No Android document picker is available.");
-    }
-
-    private void launchPicker(Intent intent, int request, String unavailable) {
-        try {
-            startActivityForResult(intent, request);
-        } catch (ActivityNotFoundException error) {
-            showError(unavailable);
-        }
+        choices.setVisibility(View.GONE);
+        importer.pickDocument(ZIP_REQUEST, importCallback());
     }
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
-        super.onActivityResult(request, result, data);
-        if (result != RESULT_OK || data == null || data.getData() == null) return;
-        Uri uri = data.getData();
-        File path = request == FOLDER_REQUEST ? InstallLocation.fromTree(uri)
-                                              : InstallLocation.fromDocument(uri);
-        if (path == null || !path.exists()) {
-            /* Cloud and other non-file providers have no path to read in place.
-               Saying so beats silently copying gigabytes at provider speed. */
-            showError("That location is not a folder on this device. Choose the install from internal storage or an SD card.");
-            return;
-        }
-        if (request == ZIP_REQUEST
-                && !path.getName().toLowerCase(Locale.ROOT).endsWith(".zip")) {
-            showError("That is not a ZIP archive. Choose a ZIP, or use \"Choose install folder\".");
-            return;
-        }
-        acceptSource(path);
+        if (!importer.handleActivityResult(request, result, data))
+            super.onActivityResult(request, result, data);
     }
 
     // --- Handoff ---
 
-    /** Hands the chosen install to native validation and starts the game. */
-    private boolean acceptSource(File source) {
-        if (!nativeConfigureStorage(getFilesDir().getAbsolutePath(),
-                                    source.getAbsolutePath())) {
-            showError("That is not a usable X-Men Legends II install.");
-            return false;
+    private File sourceFor(LucentDocumentImport.Result result, File root) {
+        return result.isTree ? root : new File(root, ".x2-prepared");
+    }
+
+    /** Retains only a complete, title-validated selection. */
+    private void acceptImported(LucentDocumentImport.Result result) {
+        if (!result.isTree && !result.documentName.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+            showError("That is not a ZIP archive. Choose a ZIP, or use \"Choose install folder\".");
+            return;
         }
-        getPreferences(MODE_PRIVATE).edit()
-                .putString(SOURCE_PATH, source.getAbsolutePath()).apply();
+        File pickedSource = result.isTree ? result.stagingDirectory
+                : new File(result.stagingDirectory, result.documentName);
+        File stagedSource = sourceFor(result, result.stagingDirectory);
+        if (!nativeValidateInstall(pickedSource.getAbsolutePath(),
+                                   result.isTree ? "" : stagedSource.getAbsolutePath())) {
+            showError("That is not a usable X-Men Legends II install.");
+            return;
+        }
+        try {
+            File installed = importer.promoteValidated(result, INSTALL_DIRECTORY);
+            File source = sourceFor(result, installed);
+            if (!configureNative(source)) {
+                showError("Could not retain the selected X-Men Legends II install.");
+                return;
+            }
+            getPreferences(MODE_PRIVATE).edit()
+                    .putString(SOURCE_PATH, source.getAbsolutePath()).apply();
+            startGame();
+        } catch (IOException error) {
+            showError("Could not retain the selected game files: " + error.getMessage());
+        }
+    }
+
+    private boolean acceptStoredSource(File source) {
+        if (!source.exists() || !source.getAbsolutePath().startsWith(
+                new File(getFilesDir(), INSTALL_DIRECTORY).getAbsolutePath())) return false;
+        if (!nativeValidateInstall(source.getAbsolutePath(), "") ||
+            !configureNative(source)) return false;
+        startGame();
+        return true;
+    }
+
+    private boolean configureNative(File source) {
+        return nativeConfigureStorage(getFilesDir().getAbsolutePath(), source.getAbsolutePath());
+    }
+
+    private void startGame() {
         startActivity(new Intent(this, XMen2GameActivity.class));
         finish();
-        return true;
     }
 
     // --- Bundled UI assets ---
@@ -217,8 +214,7 @@ public final class XMen2SetupActivity extends Activity {
             try (InputStream input = getAssets().open(assetPath);
                  OutputStream output = new FileOutputStream(destination)) {
                 byte[] buffer = new byte[64 * 1024];
-                int count;
-                while ((count = input.read(buffer)) >= 0) {
+                for (int count; (count = input.read(buffer)) >= 0; ) {
                     if (count > 0) output.write(buffer, 0, count);
                 }
             }
@@ -234,8 +230,8 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private void showError(String message) {
-        rejectionShown = true;
         if (status != null) status.setText(message);
+        if (choices != null) choices.setVisibility(View.VISIBLE);
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 }

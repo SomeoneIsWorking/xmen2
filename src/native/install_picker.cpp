@@ -208,7 +208,8 @@ static int directory_from_folder(const char *folder, char *directory,
 
 static int directory_from_selection(const char *selection, char *directory,
                                     unsigned capacity, char *reason,
-                                    size_t reason_capacity)
+                                    size_t reason_capacity,
+                                    const char *archive_destination = nullptr)
 {
     std::error_code status_error;
     if (selection && std::filesystem::is_directory(selection, status_error)) {
@@ -231,8 +232,14 @@ static int directory_from_selection(const char *selection, char *directory,
     }
 
     char executable[X2_INSTALL_PATH_SIZE];
-    if (!x2_install_archive_prepare(selection, executable, sizeof executable,
-                                    reason, reason_capacity) ||
+    const int extracted = archive_destination
+                              ? x2_install_archive_prepare_to(selection, archive_destination,
+                                                              executable, sizeof executable,
+                                                              reason, reason_capacity)
+                              : x2_install_archive_prepare(selection, executable,
+                                                           sizeof executable,
+                                                           reason, reason_capacity);
+    if (!extracted ||
         !x2_install_picker_directory_from_executable(
             executable, directory, capacity)) {
         if (!reason[0])
@@ -241,6 +248,18 @@ static int directory_from_selection(const char *selection, char *directory,
         return 0;
     }
     return 1;
+}
+
+extern "C" int x2_install_picker_prepare_selection(const char *selection,
+                                                     const char *archive_destination,
+                                                     char *reason,
+                                                     unsigned reason_capacity)
+{
+    char directory[X2_INSTALL_PATH_SIZE];
+    if (!reason || reason_capacity < 2) return 0;
+    reason[0] = 0;
+    return directory_from_selection(selection, directory, sizeof directory,
+                                    reason, reason_capacity, archive_destination);
 }
 
 extern "C" int x2_install_picker_choose(const char **directory)

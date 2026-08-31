@@ -99,26 +99,20 @@ bool accept_preparation(const std::filesystem::path &preparing,
 
 } // namespace
 
-extern "C" int x2_install_archive_prepare(const char *archive,
-                                           char *executable,
-                                           unsigned executable_capacity,
-                                           char *reason,
-                                           unsigned reason_capacity)
+extern "C" int x2_install_archive_prepare_to(const char *archive,
+                                              const char *destination_text,
+                                              char *executable,
+                                              unsigned executable_capacity,
+                                              char *reason,
+                                              unsigned reason_capacity)
 {
-    if (!archive || !*archive || !executable || executable_capacity < 2 ||
+    if (!archive || !*archive || !destination_text || !*destination_text ||
+        !executable || executable_capacity < 2 ||
         !reason || reason_capacity < 2) return 0;
     executable[0] = 0;
     reason[0] = 0;
 
-    const char *base = x2_config_directory();
-    if (!base || !x2_config_directory_ensure()) {
-        std::snprintf(reason, reason_capacity,
-                      "The user configuration directory could not be created.");
-        return 0;
-    }
-
-    const std::filesystem::path destination =
-        std::filesystem::path(base) / "xmen2-install";
+    const std::filesystem::path destination(destination_text);
     const std::filesystem::path preparing = destination.string() + ".preparing";
     const std::filesystem::path previous = destination.string() + ".previous";
 
@@ -161,4 +155,23 @@ extern "C" int x2_install_archive_prepare(const char *archive,
         return 0;
     }
     return 1;
+}
+
+extern "C" int x2_install_archive_prepare(const char *archive,
+                                           char *executable,
+                                           unsigned executable_capacity,
+                                           char *reason,
+                                           unsigned reason_capacity)
+{
+    const char *base = x2_config_directory();
+    if (!base || !x2_config_directory_ensure()) {
+        std::snprintf(reason, reason_capacity,
+                      "The user configuration directory could not be created.");
+        return 0;
+    }
+    const std::filesystem::path destination =
+        std::filesystem::path(base) / "xmen2-install";
+    return x2_install_archive_prepare_to(archive, destination.string().c_str(),
+                                         executable, executable_capacity,
+                                         reason, reason_capacity);
 }
