@@ -3,6 +3,10 @@
 
 #include <cstring>
 #include <cstdlib>
+#include <cerrno>
+#include <array>
+#include <string>
+#include <thread>
 
 #if defined(__ANDROID__)
 #include <jni.h>
@@ -157,26 +161,38 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeValidateInstall(
 
 namespace {
 
-/*
- * Writes straight to logcat on the calling thread. A pipe drained by a reader
- * thread loses whatever is still in flight when exit() tears the process down,
- * which is exactly the refusal that explains a short run -- the message that
- * matters most is the one such a scheme drops.
- */
-int log_write(void *cookie, const char *data, int size)
+std::thread *log_reader;
+
+void logcat_reader(int descriptor)
 {
-    if (size > 0)
-        __android_log_print(ANDROID_LOG_INFO, static_cast<const char *>(cookie),
-                            "%.*s", size, data);
-    return size;
+    std::array<char, 1024> bytes;
+    std::string pending;
+    for (;;) {
+        const ssize_t count = ::read(descriptor, bytes.data(), bytes.size());
+        if (count == 0) break;
+        if (count < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
+        pending.append(bytes.data(), static_cast<size_t>(count));
+        size_t newline;
+        while ((newline = pending.find('\n')) != std::string::npos) {
+            __android_log_write(ANDROID_LOG_INFO, "x2native",
+                                pending.substr(0, newline).c_str());
+            pending.erase(0, newline + 1);
+        }
+    }
+    if (!pending.empty())
+        __android_log_write(ANDROID_LOG_INFO, "x2native", pending.c_str());
+    ::close(descriptor);
 }
 
-FILE *log_stream(const char *tag)
+void stop_log_router()
 {
-    FILE *stream = ::funopen(const_cast<char *>(tag), nullptr, log_write,
-                             nullptr, nullptr);
-    if (stream) ::setvbuf(stream, nullptr, _IOLBF, 0);
-    return stream;
+    ::fflush(nullptr);
+    ::close(STDOUT_FILENO);
+    ::close(STDERR_FILENO);
+    if (log_reader && log_reader->joinable()) log_reader->join();
 }
 
 } // namespace
@@ -185,17 +201,21 @@ extern "C" void x2_android_log_stdio(void)
 {
     static bool routed = false;
     if (routed) return;
-    FILE *out = log_stream("x2native");
-    FILE *err = log_stream("x2native");
-    if (!out || !err) {
-        if (out) ::fclose(out);
-        if (err) ::fclose(err);
+    int pipe_descriptors[2];
+    if (::pipe(pipe_descriptors) != 0) return;
+    if (::dup2(pipe_descriptors[1], STDOUT_FILENO) < 0 ||
+        ::dup2(pipe_descriptors[1], STDERR_FILENO) < 0) {
+        ::close(pipe_descriptors[0]);
+        ::close(pipe_descriptors[1]);
         return;
     }
-    stdout = out;
-    stderr = err;
-    /* Line buffering would hold a refusal that does not end in a newline. */
+    ::close(pipe_descriptors[1]);
+    /* The reader receives every completed write. On normal exit the atexit
+     * hook flushes, closes, and joins it before process teardown. */
+    log_reader = new std::thread(logcat_reader, pipe_descriptors[0]);
+    ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::setvbuf(stderr, nullptr, _IONBF, 0);
+    ::atexit(stop_log_router);
     routed = true;
 }
 

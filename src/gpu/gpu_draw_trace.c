@@ -1,10 +1,68 @@
 #include "gpu_draw_trace.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 static unsigned long g_range_index, g_range_skipped;
+
+#if defined(__ANDROID__)
+/* Bionic's API-21 libc has funopen but not glibc's open_memstream. The frame
+ * trace needs a real capture buffer so it can reject non-matching frames
+ * without leaking their draws to the diagnostic output. */
+typedef struct DrawTraceCapture {
+    char *text;
+    size_t size;
+} DrawTraceCapture;
+
+static DrawTraceCapture g_capture;
+
+static int capture_write(void *cookie, const char *data, int size)
+{
+    DrawTraceCapture *capture = cookie;
+    size_t required;
+    char *grown;
+    if (size <= 0) return size;
+    if (capture->size > SIZE_MAX - (size_t)size - 1u) return -1;
+    required = capture->size + (size_t)size + 1u;
+    grown = realloc(capture->text, required);
+    if (!grown) return -1;
+    capture->text = grown;
+    memcpy(capture->text + capture->size, data, (size_t)size);
+    capture->size += (size_t)size;
+    capture->text[capture->size] = 0;
+    return size;
+}
+#endif
+
+static FILE *capture_open(char **text, size_t *size)
+{
+    *text = NULL;
+    *size = 0;
+#if defined(__ANDROID__)
+    free(g_capture.text);
+    g_capture.text = NULL;
+    g_capture.size = 0;
+    return funopen(&g_capture, NULL, capture_write, NULL, NULL);
+#else
+    return open_memstream(text, size);
+#endif
+}
+
+static void capture_close(FILE *capture, char **text, size_t *size)
+{
+    fclose(capture);
+#if defined(__ANDROID__)
+    *text = g_capture.text;
+    *size = g_capture.size;
+    g_capture.text = NULL;
+    g_capture.size = 0;
+#else
+    (void)text;
+    (void)size;
+#endif
+}
 
 unsigned long gpu_draw_trace_draws_so_far(void)
 {
@@ -110,7 +168,7 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now)
     }
     if (now != seen_frame) {
         if (capture && want == (long)seen_frame) {
-            fclose(capture);
+            capture_close(capture, &capture_text, &capture_size);
             capture = NULL;
             if (seek_vs && this_has_vs) {
                 fprintf(stderr, "gpu: X2_FRAME_DUMP=vs -- frame %lu contained "
@@ -152,14 +210,14 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now)
     g_range_index = this_draws;
     if (want == -3 && prev_draws >= busy_min) {
         want = (long)now;
-        capture = open_memstream(&capture_text, &capture_size);
+        capture = capture_open(&capture_text, &capture_size);
         if (!capture)
             fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- cannot hold frame %ld "
-                    "back (open_memstream failed); its draws go straight out "
+                    "back (memory capture failed); its draws go straight out "
                     "and may belong to a light frame.\n", want);
     } else if (want == -4) {
         want = (long)now;
-        capture = open_memstream(&capture_text, &capture_size);
+        capture = capture_open(&capture_text, &capture_size);
     }
     destination = capture ? capture : stderr;
     if (want >= 0 && (long)now == want) {

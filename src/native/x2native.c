@@ -44,7 +44,9 @@
 #include "fault_report.h"
 #include "platform_mman.h"
 
+#if !defined(__ANDROID__)
 #include <execinfo.h>
+#endif
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -269,12 +271,19 @@ void fault_report(int sig, siginfo_t *si, void *uc)
     fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot) -- %s\n",
             si->si_addr, fault_meaning(sig, si->si_code));
 where:
+#if defined(__ANDROID__)
+    /* Bionic does not provide glibc's execinfo backtrace API. The preceding
+     * guest-state report is still emitted; name the absent host stack instead
+     * of failing to compile or silently claiming no frames were captured. */
+    fprintf(stderr, "[HOST STACK] unavailable on Android (no execinfo API)\n");
+#else
     {
         void *frames[32];
         int count = backtrace(frames, (int)(sizeof frames / sizeof frames[0]));
         fprintf(stderr, "[HOST STACK] %d frame(s):\n", count);
         backtrace_symbols_fd(frames, count, STDERR_FILENO);
     }
+#endif
     (void)uc;
     x86_regs_dump();
     /*

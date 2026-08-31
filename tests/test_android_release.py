@@ -20,8 +20,11 @@ def main() -> int:
     assert build_android.parse_java_major("unrecognized runtime") is None
     assert build_android.parse_javac_major("javac 26.0.2") == 26
     assert build_android.parse_javac_major("unrecognized compiler") is None
+    assert build_android.DEFAULT_ANDROID_API == 21
     assert build_android.native_jobs({}) == 2
     assert build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": "6"}) == 6
+    assert build_android.native_prefix(Path("build"), 33, "x86_64") == (
+        Path("build/deps/android/android-33/x86_64"))
     for invalid in ("0", "-1", "many"):
         try:
             build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": invalid})
@@ -136,10 +139,20 @@ def main() -> int:
     assert "com.someoneisworking.xmen2.trace.arguments" in setup
     assert "com.someoneisworking.xmen2.trace.cap" in setup
     bridge = (ROOT / "src/native/android_bridge.cpp").read_text(encoding="utf-8")
+    native_runner = (ROOT / "src/native/x2native.c").read_text(encoding="utf-8")
     assert "valid_trace_watch" in bridge
     assert '::setenv("X2_ARGS", arguments, 1)' in bridge
     assert "generic setenv bridge" in bridge
     assert "buildConfig = true" in gradle
+    assert "#if !defined(__ANDROID__)\n#include <execinfo.h>" in native_runner
+    assert "[HOST STACK] unavailable on Android" in native_runner
+    assert "::dup2(pipe_descriptors[1], STDOUT_FILENO)" in bridge
+    assert "::dup2(pipe_descriptors[1], STDERR_FILENO)" in bridge
+    runtime = (ROOT / "src/native/x86rt_native.c").read_text(encoding="utf-8")
+    assert "syscall(SYS_process_vm_readv" in runtime
+    draw_trace = (ROOT / "src/gpu/gpu_draw_trace.c").read_text(encoding="utf-8")
+    assert "funopen(&g_capture" in draw_trace
+    assert "capture_close(capture, &capture_text, &capture_size)" in draw_trace
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
     assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "InstallLocation.java").exists()
@@ -156,6 +169,8 @@ def main() -> int:
 
     # The common Android prefix owns FFmpeg's source/archive mechanics as well
     # as SDL. X-Men only resolves and consumes that one shared build contract.
+    # A prefix is also API-specific: one Android API build must never replace
+    # another API build's libraries with a different compatibility floor.
     android_port = ROOT / "vendor/shared/android-port"
     original_shared_dir = build_android.shared_dir
     build_android.shared_dir = lambda name, marker: str(android_port)
@@ -169,6 +184,8 @@ def main() -> int:
     assert '"-DX2_NATIVE_TRACE=OFF"' in (ROOT / "tools/build_android.py").read_text(
         encoding="utf-8")
 
+    assert "extends LucentActivity" in activity
+    assert "WindowInsetsController" not in activity
     assert "protected String getMainFunction()" in activity
     assert 'return "main";' in activity
     assert 'android:icon="@drawable/xmen2_port_icon"' in manifest

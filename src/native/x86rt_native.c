@@ -21,6 +21,9 @@
 #include <sys/uio.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#if defined(__ANDROID__)
+#include <sys/syscall.h>
+#endif
 #if defined(__APPLE__)
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
@@ -1990,7 +1993,15 @@ static int process_read(uint32_t addr, void *dst, size_t n)
     struct iovec loc, rem;
     loc.iov_base = dst;                        loc.iov_len = n;
     rem.iov_base = (void *)source;             rem.iov_len = n;
+#if defined(__ANDROID__)
+    /* Bionic exposes the libc wrapper only from API 23, but the checked Linux
+     * syscall exists at the API-21 64-bit floor. Keep the signal-handler-safe
+     * read contract instead of replacing it with a faulting dereference. */
+    return syscall(SYS_process_vm_readv, getpid(), &loc, 1, &rem, 1, 0)
+           == (ssize_t)n;
+#else
     return process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) == (ssize_t)n;
+#endif
 #endif
 }
 

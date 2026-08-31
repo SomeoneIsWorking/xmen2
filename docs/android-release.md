@@ -53,7 +53,12 @@ uv run --frozen python tools/build_android.py
 
 The script invokes the pinned shared `android-port` native-prefix build (SDL,
 SDL_image, FreeType, fmt, FFmpeg, and NDK C++ runtime), configures CMake for
-`arm64-v8a`, builds `libmain.so`, and assembles the release APK. Set
+`arm64-v8a` at Android API 21, builds `libmain.so`, and assembles the release
+APK. API 21 is the common floor for 64-bit Android ABIs and covers Lucent's
+SAF import path; newer Android calls stay behind runtime guards in Lucent.
+Native prefixes are isolated by Android API and ABI under
+`build/deps/android/android-<api>/<abi>/`; a compatibility build cannot
+replace the release build's libraries with a lower API floor. Set
 `ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 26 first. The
 project pins Gradle 9.4.1, the first maintained patch line that officially runs
 on Java 26, together with its compatible Android Gradle Plugin 9.2.1 and the

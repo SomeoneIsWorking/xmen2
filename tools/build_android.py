@@ -22,12 +22,13 @@ GRADLE_JAVA_MIN = 17
 GRADLE_JAVA_MAX = 26
 DEFAULT_NATIVE_JOBS = 2
 NATIVE_GENERATOR = "Ninja"
+DEFAULT_ANDROID_API = 21
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--abi", default="arm64-v8a", choices=("arm64-v8a", "x86_64"))
-    parser.add_argument("--api", type=int, default=34)
+    parser.add_argument("--api", type=int, default=DEFAULT_ANDROID_API)
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--skip-deps", action="store_true")
     parser.add_argument("--no-assemble", action="store_true")
@@ -63,6 +64,11 @@ def run(command: list[str], *, cwd: Path) -> None:
 def android_port_tool() -> Path:
     root = Path(shared_dir("android-port", "tools/android_port.py"))
     return root / "tools" / "android_port.py"
+
+
+def native_prefix(build_root: Path, api: int, abi: str) -> Path:
+    """Return the ABI and Android-API-specific shared native dependency prefix."""
+    return build_root / "deps/android" / f"android-{api}" / abi
 
 
 def parse_java_major(version_output: str) -> int | None:
@@ -247,7 +253,7 @@ def main() -> int:
     ndk = ndk_path()
     gradle_java = java_home() if not args.no_assemble else None
     signing = release_signing() if not args.no_assemble and not args.debug else None
-    prefix = build_root / "deps/android" / args.abi
+    prefix = native_prefix(build_root, args.api, args.abi)
     if not args.skip_deps:
         run(
             [
