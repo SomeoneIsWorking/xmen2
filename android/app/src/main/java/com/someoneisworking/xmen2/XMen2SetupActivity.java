@@ -64,6 +64,10 @@ public final class XMen2SetupActivity extends Activity {
             copyAssetTree("ui", new File(getFilesDir(), "ui"));
         } catch (IOException error) {
             showError("Could not prepare the built-in UI: " + error.getMessage());
+            return;
+        }
+        if (launchDebugPrivateInstall()) {
+            return;
         }
     }
 
@@ -155,6 +159,24 @@ public final class XMen2SetupActivity extends Activity {
     private void openZipPicker() {
         choices.setVisibility(View.GONE);
         importer.pickDocument(ZIP_REQUEST, importCallback());
+    }
+
+    /** Drives the native product through an app-private debug source, never the release picker. */
+    private boolean launchDebugPrivateInstall() {
+        File source = XMen2DebugInstall.requestedSource(this);
+        if (source == null) {
+            return false;
+        }
+        if (!nativeValidateInstall(source.getAbsolutePath(), "")) {
+            showError("The debug private install is not a usable X-Men Legends II install.");
+            return true;
+        }
+        if (!configureNative(source)) {
+            showError("Could not configure the debug private install.");
+            return true;
+        }
+        startGame();
+        return true;
     }
 
     @Override

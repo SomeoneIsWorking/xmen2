@@ -26,7 +26,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 8e126b2
+    GIT_TAG ba7c0d6
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 set(X2_LUCENT_ANDROID_JAVA_DIR
