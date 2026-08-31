@@ -30,6 +30,7 @@ def sdlLibrary = file(required("x2.sdlLibrary"))
 def androidAbi = required("x2.androidAbi")
 def androidPlatform = required("x2.androidPlatform")
 def sdlJavaDir = file(required("x2.sdlJavaDir"))
+def lucentJavaDir = file(required("x2.lucentJavaDir"))
 def uiDir = file(required("x2.uiDir"))
 def releaseKeystore = System.getenv("X2_ANDROID_KEYSTORE")
 def releaseKeyAlias = System.getenv("X2_ANDROID_KEY_ALIAS")
@@ -71,6 +72,7 @@ def stlLibrary = llvmDir == null ? null :
 if (stlLibrary == null || !stlLibrary.isFile())
     throw new GradleException("libc++_shared.so is missing for ${androidAbi} in ${ndkDir}")
 if (!sdlJavaDir.isDirectory()) throw new GradleException("SDL Android Java sources are missing: ${sdlJavaDir}")
+if (!lucentJavaDir.isDirectory()) throw new GradleException("Lucent Android Java sources are missing: ${lucentJavaDir}")
 if (!uiDir.isDirectory()) throw new GradleException("Native UI assets are missing: ${uiDir}")
 
 def stagedJniLibs = layout.buildDirectory.dir("generated/jniLibs/x2")
@@ -135,7 +137,7 @@ android {
         main {
             jniLibs.srcDirs = [stagedJniLibs]
             assets.srcDirs = [stagedAssets]
-            java.srcDirs += [sdlJavaDir]
+            java.srcDirs += [sdlJavaDir, lucentJavaDir]
         }
     }
     splits {

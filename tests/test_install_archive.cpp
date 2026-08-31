@@ -133,6 +133,18 @@ int main()
     }
     const std::filesystem::path replacement = executable;
 
+    const std::filesystem::path staged_destination = root / "staging/.x2-prepared";
+    std::filesystem::create_directories(staged_destination.parent_path());
+    if (!x2_install_archive_prepare_to(archive.string().c_str(),
+                                       staged_destination.string().c_str(),
+                                       executable, sizeof executable,
+                                       reason, sizeof reason) ||
+        !std::filesystem::path(executable).string().starts_with(
+            staged_destination.string()) || read_file(executable) != "new") {
+        std::cerr << "private staged extraction failed: " << reason << "\n";
+        return 1;
+    }
+
     write_archive(archive, {{"Broken/readme.txt", "invalid"}});
     if (x2_install_archive_prepare(archive.string().c_str(), executable,
                                    sizeof executable, reason, sizeof reason) ||

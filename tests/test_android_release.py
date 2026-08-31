@@ -19,6 +19,15 @@ def main() -> int:
     assert build_android.parse_java_major("unrecognized runtime") is None
     assert build_android.parse_javac_major("javac 26.0.2") == 26
     assert build_android.parse_javac_major("unrecognized compiler") is None
+    assert build_android.native_jobs({}) == 2
+    assert build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": "6"}) == 6
+    for invalid in ("0", "-1", "many"):
+        try:
+            build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": invalid})
+        except SystemExit as error:
+            assert "positive integer" in str(error)
+        else:
+            raise AssertionError(f"invalid Android native job count accepted: {invalid}")
 
     try:
         build_android.release_signing({})
@@ -58,15 +67,15 @@ def main() -> int:
         debug_outputs = fake_root / "android/app/build/outputs/apk/debug"
         debug_outputs.mkdir(parents=True)
         try:
-            build_android.debug_apk(fake_root)
+            build_android.debug_apk(fake_root, "arm64-v8a")
         except SystemExit as error:
-            assert "Expected exactly one debug APK" in str(error)
+            assert "Expected exactly one arm64-v8a debug APK" in str(error)
         else:
             raise AssertionError("a missing debug APK was accepted")
         debug = debug_outputs / "app-arm64-v8a-debug.apk"
         debug.write_bytes(b"fixture")
         # A debug artifact stays in Gradle's output; it is never a release.
-        assert build_android.debug_apk(fake_root) == debug
+        assert build_android.debug_apk(fake_root, "arm64-v8a") == debug
         assert not (fake_root / "build/release").exists()
 
     activity = (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
@@ -79,30 +88,29 @@ def main() -> int:
         encoding="utf-8")
     setup = (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
              "XMen2SetupActivity.java").read_text(encoding="utf-8")
-    location = (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
-                "InstallLocation.java").read_text(encoding="utf-8")
-    # Browse opens the folder picker directly. A single-document URI grants
-    # access to one file, so an XMen2.exe selection can never yield an install;
-    # the setup must not ask for the executable and then ask again for a folder.
-    assert "ACTION_OPEN_DOCUMENT_TREE" in setup
-    assert 'endsWith(".exe")' not in setup
-    # The install is read in place. Copying it through a content provider cost
-    # 0.05 MB/s across this game's many small files, so no staging copy may
-    # come back: no provider streaming, and no per-document tree walk.
-    assert "MANAGE_EXTERNAL_STORAGE" in manifest
-    assert "isExternalStorageManager" in setup
+    cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    # The setup uses Android's scoped picker: Lucent owns persisted SAF grants,
+    # bounded app-private staging, cancellation, and promotion after title
+    # validation. No port code may reconstruct a provider filesystem path or
+    # request broad all-files access.
+    assert "LucentDocumentImport" in setup
+    assert "pickTree" in setup
+    assert "pickDocument" in setup
+    assert "promoteValidated" in setup
+    assert "nativeValidateInstall" in setup
+    assert "MANAGE_EXTERNAL_STORAGE" not in manifest
+    assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
+                "InstallLocation.java").exists()
+    assert "70a61b2" in cmake
+    assert "x2.lucentJavaDir" in cmake
+    assert "lucentJavaDir" in gradle
     # The product target always opens the control channel, and socket() needs
     # this permission's inet group; without it control_start() exit(2)s before
     # the game runs, which presented as an unexplained crash on device.
     assert "android.permission.INTERNET" in manifest
-    for copying in ("openInputStream", "buildChildDocumentsUriUsingTree",
-                    "buildDocumentUriUsingTree"):
-        assert copying not in setup, f"{copying} would reintroduce the staging copy"
-    assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
-                "InstallStaging.java").exists(), "the staging copy must not return"
-    # A provider without a filesystem path is refused by name, never staged.
-    assert "return null" in location
-    assert 'relative.contains("..")' in location
+    for unsafe in ("getExternalStorageDirectory", "/storage",
+                   "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION"):
+        assert unsafe not in setup, f"{unsafe} would bypass the scoped picker"
 
     # The FFmpeg tree's directory name comes from the archive. Composing it
     # from the version spelled it "ffmpeg-n7.1.1" while GitHub's tarball roots
@@ -117,6 +125,11 @@ def main() -> int:
         assert "exactly one top-level directory" in str(error)
     else:
         raise AssertionError("an archive with two roots was accepted")
+    assert build_android_deps.assembly_configuration("arm64-v8a") == ()
+    assert build_android_deps.assembly_configuration("x86_64") == (
+        "--disable-x86asm", "--disable-inline-asm")
+    assert "--disable-inline-asm" in build_android_deps.build_contract("x86_64", 34)
+    assert build_android_deps.default_prefix("x86_64") == Path("build/deps/android/x86_64")
 
     assert "protected String getMainFunction()" in activity
     assert 'return "main";' in activity
