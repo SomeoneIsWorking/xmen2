@@ -118,8 +118,13 @@ completed all 50 AGP tasks under a one-day local verification key, and
 as a release. The user reported that the Android setup and game path runs on a
 device. A freshly cleared API 35 x86-64 emulator installed the debug APK and
 showed the landscape setup screen; its install-folder and ZIP controls each
-opened Android's DocumentsUI picker. This proves the packaged first-run shell,
-not importing a real install or gameplay. The revised touch/HUD layout still
+opened Android's DocumentsUI picker. A loader-image-only folder then completed
+the DocumentsUI tree flow, promoted the validated selection into app-private
+storage, and on a cold relaunch started SDL and mapped every required loader
+image from that retained selection. Canonical private-path containment prevents
+Android's `/data/data` and `/data/user/0` aliases from rejecting that valid
+selection. This proves the packaged first-run shell and retained-install
+handoff, not importing a complete install or gameplay. The revised touch/HUD layout still
 needs installed-APK visual and input verification. The shipping control status
 now exposes exact bounded p50/p95/p99 frame timings, and
 `tools/android_qualify.py` refuses a less-than-20-minute or incomplete-scenario

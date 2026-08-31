@@ -189,12 +189,23 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private boolean acceptStoredSource(File source) {
-        if (!source.exists() || !source.getAbsolutePath().startsWith(
-                new File(getFilesDir(), INSTALL_DIRECTORY).getAbsolutePath())) return false;
-        if (!nativeValidateInstall(source.getAbsolutePath(), "") ||
-            !configureNative(source)) return false;
+        File privateSource = privateInstallSource(source);
+        if (privateSource == null || !privateSource.exists()) return false;
+        if (!nativeValidateInstall(privateSource.getAbsolutePath(), "") ||
+            !configureNative(privateSource)) return false;
         startGame();
         return true;
+    }
+
+    /** Resolves Android's equivalent data-directory aliases before enforcing containment. */
+    private File privateInstallSource(File source) {
+        try {
+            File root = new File(getFilesDir(), INSTALL_DIRECTORY).getCanonicalFile();
+            File candidate = source.getCanonicalFile();
+            return candidate.toPath().startsWith(root.toPath()) ? candidate : null;
+        } catch (IOException error) {
+            return null;
+        }
     }
 
     private boolean configureNative(File source) {

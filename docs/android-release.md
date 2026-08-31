@@ -22,8 +22,10 @@ and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
 This deliberately makes the first import a one-time copy. It supports cloud
 and removable-storage providers correctly, avoids broad device access, and
 means later launches never depend on a provider or a working directory. The
-setup persists the private source path. A missing or unusable selection returns
-to setup with an actionable error.
+setup persists a canonical private source path, so Android's equivalent
+`/data/data` and `/data/user/0` aliases cannot make a valid retained install
+appear to be outside the app. A missing or unusable selection returns to setup
+with an actionable error.
 `lucent_platform_set_user_data_directory` receives the Activity's absolute
 private files root; there is no Android environment-variable fallback. Saves,
 settings, input recordings, and the live-session record all live below that
