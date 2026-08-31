@@ -8,6 +8,7 @@
 
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,7 @@
 #include <unistd.h>
 
 #define ASSET_MAX 1024
+#define WIN_PATH_MAX 1024
 
 static char g_asset[ASSET_MAX][96];
 static int g_nasset, g_asset_over, g_file_gate_hit;
@@ -47,56 +49,128 @@ void k32_file_trace(const char *operation, const char *guest_path,
             host_path ? host_path : "(null)", outcome);
 }
 
-static int resolve_case_insensitive(char *path)
+/* `known_root` is an already validated host directory, not guest input.  It
+ * keeps Android's resolver inside the app sandbox: an app may access its own
+ * /data/user/... tree but cannot enumerate /data itself. */
+static int resolve_case_insensitive(char *path, const char *known_root)
 {
-    char *component, *separator, saved;
+    char resolved[WIN_PATH_MAX];
+    char *component, *separator;
     DIR *directory;
     struct dirent *entry;
-    component = path;
-    if (*component == '/') component++;
-    while (*component) {
-        separator = strchr(component, '/');
-        if (separator) { saved = *separator; *separator = '\0'; }
-        {
-            char *slash = strrchr(path, '/');
-            const char *parent = ".";
-            if (slash) { *slash = '\0'; parent = path[0] ? path : "/"; }
-            directory = opendir(parent);
-            if (slash) *slash = '/';
-            if (!directory) {
-                if (separator) *separator = saved;
-                return 0;
-            }
-            for (entry = readdir(directory); entry; entry = readdir(directory))
-                if (strcasecmp(entry->d_name, component) == 0) break;
-            if (entry) memcpy(component, entry->d_name, strlen(component));
-            closedir(directory);
-            if (!entry) {
-                if (separator) *separator = saved;
-                return 0;
-            }
+    size_t used;
+    size_t root_size = 0;
+
+    if (!path || !*path) return 0;
+    if (known_root && *known_root) {
+        root_size = strlen(known_root);
+        while (root_size > 1 && known_root[root_size - 1] == '/') root_size--;
+        if (strncmp(path, known_root, root_size) == 0
+            && (path[root_size] == '\0' || path[root_size] == '/')) {
+            if (root_size >= sizeof resolved) return 0;
+            memcpy(resolved, known_root, root_size);
+            resolved[root_size] = '\0';
+            component = path + root_size;
+            while (*component == '/') component++;
+        } else {
+            root_size = 0;
+            component = path;
         }
+    } else {
+        component = path;
+    }
+    if (!root_size && path[0] == '/') {
+        resolved[0] = '/';
+        resolved[1] = '\0';
+        component = path + 1;
+    } else if (!root_size) {
+        resolved[0] = '\0';
+    }
+    used = strlen(resolved);
+    while (*component) {
+        char matched[NAME_MAX + 1];
+        size_t component_size;
+        int found = 0;
+
+        separator = strchr(component, '/');
+        component_size = separator ? (size_t)(separator - component)
+                                   : strlen(component);
+        if (!component_size) {
+            if (files_traced())
+                fprintf(stderr, "[FILE] path resolver refused an empty component in \"%s\"\n",
+                        path);
+            return 0;
+        }
+        directory = opendir(resolved[0] ? resolved : ".");
+        if (!directory) {
+            if (files_traced())
+                fprintf(stderr, "[FILE] path resolver cannot open \"%s\" while resolving \"%.*s\": %s\n",
+                        resolved[0] ? resolved : ".", (int)component_size,
+                        component, strerror(errno));
+            return 0;
+        }
+        for (entry = readdir(directory); entry; entry = readdir(directory))
+            if (strlen(entry->d_name) == component_size
+                && strncasecmp(entry->d_name, component, component_size) == 0)
+                break;
+        if (entry) {
+            snprintf(matched, sizeof matched, "%s", entry->d_name);
+            found = 1;
+        }
+        closedir(directory);
+        if (!found) {
+            if (files_traced())
+                fprintf(stderr, "[FILE] path resolver found no \"%.*s\" under \"%s\"\n",
+                        (int)component_size, component,
+                        resolved[0] ? resolved : ".");
+            return 0;
+        }
+        if (used && resolved[used - 1] != '/') {
+            if (used + 1 >= sizeof resolved) {
+                if (files_traced())
+                    fprintf(stderr, "[FILE] path resolver exceeded %u bytes resolving \"%s\"\n",
+                            (unsigned)sizeof resolved, path);
+                return 0;
+            }
+            resolved[used++] = '/';
+            resolved[used] = '\0';
+        }
+        if (used + component_size >= sizeof resolved) {
+            if (files_traced())
+                fprintf(stderr, "[FILE] path resolver exceeded %u bytes resolving \"%s\"\n",
+                        (unsigned)sizeof resolved, path);
+            return 0;
+        }
+        memcpy(resolved + used, matched, component_size);
+        used += component_size;
+        resolved[used] = '\0';
         if (!separator) break;
-        *separator = saved;
         component = separator + 1;
     }
-    return access(path, F_OK) == 0;
+    snprintf(path, WIN_PATH_MAX, "%s", resolved);
+    if (access(path, F_OK) == 0) return 1;
+    if (files_traced())
+        fprintf(stderr, "[FILE] path resolver reached \"%s\" but access failed: %s\n",
+                path, strerror(errno));
+    return 0;
 }
 
 const char *win_path(const char *input)
 {
-    static char path[1024];
+    static char path[WIN_PATH_MAX];
     const char *game = getenv("GAME_PC_DIR");
     const char *tail = input;
+    const char *root = game;
     size_t index;
     if (!input) return NULL;
     /* S: is the writable save drive. Every other guest drive, a leading
        slash, and every relative name resolve against the read-only install. */
     if ((input[0] == X2_SAVE_DRIVE || input[0] == X2_SAVE_DRIVE + 32)
             && input[1] == ':') {
+        root = x2_save_dir();
         tail = input + 2;
         while (*tail == '\\' || *tail == '/') tail++;
-        snprintf(path, sizeof(path), "%s/%s", x2_save_dir(), tail);
+        snprintf(path, sizeof(path), "%s/%s", root, tail);
     } else if (input[0] && input[1] == ':') {
         tail = input + 2;
         while (*tail == '\\' || *tail == '/') tail++;
@@ -109,7 +183,7 @@ const char *win_path(const char *input)
         snprintf(path, sizeof(path), "%s/%s", game ? game : ".", input);
     for (index = 0; path[index]; ++index)
         if (path[index] == '\\') path[index] = '/';
-    resolve_case_insensitive(path);
+    resolve_case_insensitive(path, root);
     return path;
 }
 
@@ -133,7 +207,8 @@ int k32_file_gate_open(void)
     return !wanted || !*wanted || g_file_gate_hit;
 }
 
-static void note_asset(const char *guest_path, int succeeded)
+static void note_asset(const char *guest_path, int succeeded,
+                       const char *host_path)
 {
     int index;
     g_opens_total++;
@@ -154,7 +229,9 @@ static void note_asset(const char *guest_path, int succeeded)
     if (g_nasset == ASSET_MAX) { g_asset_over++; return; }
     snprintf(g_asset[g_nasset++], sizeof(g_asset[0]), "%s", guest_path);
     if (files_traced())
-        fprintf(stderr, "[FILE] first open of \"%s\"%s\n", guest_path,
+        fprintf(stderr, "[FILE] first open of \"%s\"\n"
+                        "       -> \"%s\"%s\n",
+                guest_path, host_path ? host_path : "(null)",
                 succeeded ? "" : "  -- NOT FOUND");
 }
 
@@ -193,13 +270,13 @@ static const char *asset_replacement(const char *guest_path)
         relative[index] = guest_path[index] == '\\' ? '/' : guest_path[index];
     relative[index] = '\0';
     snprintf(path, sizeof(path), "%s/%s", root, relative);
-    if (resolve_case_insensitive(path) && stat(path, &status) == 0 &&
+    if (resolve_case_insensitive(path, root) && stat(path, &status) == 0 &&
         S_ISREG(status.st_mode)) return path;
     for (index = 0; relative[index]; ++index)
         if (relative[index] >= 'A' && relative[index] <= 'Z')
             relative[index] = (char)(relative[index] + 32);
     snprintf(path, sizeof(path), "%s/%s", root, relative);
-    return resolve_case_insensitive(path) && stat(path, &status) == 0 &&
+    return resolve_case_insensitive(path, root) && stat(path, &status) == 0 &&
            S_ISREG(status.st_mode) ? path : NULL;
 }
 
@@ -217,7 +294,7 @@ int k32_open_replaced(const char *guest_path, int for_write)
 void k32_open_note(const char *guest_path, int succeeded, int replaced,
                    const char *host_path)
 {
-    note_asset(guest_path, succeeded);
+    note_asset(guest_path, succeeded, host_path);
     x2_save_trace_asset_open(guest_path, succeeded);
     if (!replaced || !succeeded) return;
     {

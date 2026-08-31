@@ -113,6 +113,7 @@ void TouchControls::rebuild_zones()
     const float bottom = viewport_.height - viewport_.safe_area.bottom;
     const float width = right - left;
     const float height = bottom - top;
+    const float stick_diameter = std::min(width, height) * 0.36F;
     if (width <= 0.0F || height <= 0.0F) {
         const std::vector<lucent::touch::Zone> empty;
         router_.set_zones(empty);
@@ -125,8 +126,11 @@ void TouchControls::rebuild_zones()
         zones_.push_back({{id, zone_left, zone_top, zone_right, zone_bottom, priority},
                           action, stick, visible});
     };
-    add(left_stick, left + width * 0.04F, top + height * 0.57F,
-        left + width * 0.39F, bottom - height * 0.04F, 0, TouchAction::MoveLeft, true);
+    const float stick_center_x = left + width * 0.215F;
+    const float stick_bottom = bottom - height * 0.04F;
+    add(left_stick, stick_center_x - stick_diameter * 0.5F,
+        stick_bottom - stick_diameter, stick_center_x + stick_diameter * 0.5F,
+        stick_bottom, 0, TouchAction::MoveLeft, true);
 
     // Camera is a relative swipe over otherwise unused playfield. Buttons and
     // retail portrait taps capture first, so a combat chord never moves it.

@@ -22,7 +22,7 @@ int main()
     controls.set_viewport({1000.0F, 600.0F, {20.0F, 10.0F, 20.0F, 10.0F}});
 
     const std::vector<lucent::touch::Contact> stick_down = {
-        {1, {226.0F, 456.0F}, lucent::touch::Phase::began}};
+        {1, {226.0F, 462.0F}, lucent::touch::Phase::began}};
     const auto began = controls.route(stick_down);
     if (began.size() != 4 || has_value(began, x2::input::TouchAction::Forward, 0.01F) ||
         has_value(began, x2::input::TouchAction::MoveLeft, 0.01F)) {
@@ -31,7 +31,7 @@ int main()
     }
 
     const std::vector<lucent::touch::Contact> stick_up = {
-        {1, {150.0F, 300.0F}, lucent::touch::Phase::moved}};
+        {1, {150.0F, 375.0F}, lucent::touch::Phase::moved}};
     const auto moved = controls.route(stick_up);
     if (!has_value(moved, x2::input::TouchAction::Forward, 0.5F) ||
         !has_value(moved, x2::input::TouchAction::MoveLeft, 0.01F)) {

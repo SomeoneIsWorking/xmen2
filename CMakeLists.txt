@@ -117,6 +117,17 @@ if(ANDROID)
     else()
         message(FATAL_ERROR "x2native: shared android-port prefix omitted SDL3_image target")
     endif()
+
+    # RmlUi needs a font engine to initialise. The shared Android prefix owns
+    # the matching cross-compiled FreeType capability; resolving it here keeps
+    # the title from ever falling back to a host package.
+    find_package(Freetype CONFIG REQUIRED
+                 PATHS "${X2_ANDROID_PORT_PREFIX}/lib/cmake/freetype"
+                 NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+    if(NOT TARGET Freetype::Freetype)
+        message(FATAL_ERROR
+            "x2native: shared android-port prefix omitted Freetype::Freetype")
+    endif()
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
@@ -1231,19 +1242,31 @@ if(X2_MODULE_HAVE)
     set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
     set(RMLUI_TESTS OFF CACHE BOOL "" FORCE)
     set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
-    if(ANDROID)
-        # Android's native target does not consume a host Freetype package.
-        # The setup UI is Java-owned and the in-game overlay remains buildable
-        # without importing a second cross-compiled font stack.
-        set(RMLUI_FONT_ENGINE none CACHE STRING "" FORCE)
-    else()
-        set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
+    # Every packaged UI needs RmlUi's font engine at runtime. Android resolves
+    # the same target from the shared cross-compiled dependency prefix above.
+    set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
+    # RmlUi asks CMake for Freetype again. Prefer the already resolved config
+    # package so its generic finder does not probe host paths or print a false
+    # "library missing" warning for the valid Android imported target.
+    if(DEFINED CMAKE_FIND_PACKAGE_PREFER_CONFIG)
+        set(_x2_previous_find_package_preference
+            "${CMAKE_FIND_PACKAGE_PREFER_CONFIG}")
+        set(_x2_had_find_package_preference TRUE)
     endif()
+    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
     FetchContent_Declare(rmlui
         URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
         URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(rmlui)
+    if(_x2_had_find_package_preference)
+        set(CMAKE_FIND_PACKAGE_PREFER_CONFIG
+            "${_x2_previous_find_package_preference}")
+    else()
+        unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG)
+    endif()
+    unset(_x2_previous_find_package_preference)
+    unset(_x2_had_find_package_preference)
     if(NOT ANDROID)
         find_package(SDL3_image REQUIRED)
         set(X2_SDL_IMAGE SDL3_image::SDL3_image)
@@ -1342,6 +1365,8 @@ if(X2_MODULE_HAVE)
     message(STATUS "x2native: linking recompiled modules: ${X2_MODULE_HAVE}")
     set(X2_NATIVE_SOURCES
         src/native/x2native.c
+        src/native/fault_report.c
+        src/native/engine_file_path.c
         src/native/guest_memory.c
         src/native/x2native_options.c
         src/native/install_picker.cpp

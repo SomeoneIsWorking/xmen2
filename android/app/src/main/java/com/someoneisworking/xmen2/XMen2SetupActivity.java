@@ -26,6 +26,7 @@ public final class XMen2SetupActivity extends Activity {
     private static final String SOURCE_PATH = "source-path";
     private static final String TRACE_ARGUMENTS = "com.someoneisworking.xmen2.trace.arguments";
     private static final String TRACE_CAP = "com.someoneisworking.xmen2.trace.cap";
+    private static final String TRACE_FILES = "com.someoneisworking.xmen2.trace.files";
     private static final String INSTALL_DIRECTORY = "game";
     private static final int MAXIMUM_ENTRIES = 100_000;
     private static final long MAXIMUM_IMPORT_BYTES = 4L * 1024L * 1024L * 1024L;
@@ -37,7 +38,8 @@ public final class XMen2SetupActivity extends Activity {
     private static native boolean nativeConfigureStorage(String dataDirectory,
                                                          String installSource,
                                                          String traceArguments,
-                                                         int traceCap);
+                                                         int traceCap,
+                                                         boolean traceFiles);
     private static native boolean nativeValidateInstall(String installSource,
                                                         String archiveDestination);
 
@@ -46,6 +48,7 @@ public final class XMen2SetupActivity extends Activity {
     private LucentDocumentImport importer;
     private String traceArguments;
     private int traceCap;
+    private boolean traceFiles;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -53,6 +56,7 @@ public final class XMen2SetupActivity extends Activity {
         if (BuildConfig.DEBUG) {
             traceArguments = getIntent().getStringExtra(TRACE_ARGUMENTS);
             traceCap = getIntent().getIntExtra(TRACE_CAP, 0);
+            traceFiles = getIntent().getBooleanExtra(TRACE_FILES, false);
         }
         importer = new LucentDocumentImport(
                 this, new LucentDocumentImport.Limits(MAXIMUM_ENTRIES,
@@ -256,7 +260,7 @@ public final class XMen2SetupActivity extends Activity {
 
     private boolean configureNative(File source) {
         return nativeConfigureStorage(getFilesDir().getAbsolutePath(), source.getAbsolutePath(),
-                                      traceArguments, traceCap);
+                                      traceArguments, traceCap, traceFiles);
     }
 
     private void startGame() {

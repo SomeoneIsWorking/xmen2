@@ -126,7 +126,7 @@ bool configure_trace_watch(const char *arguments, jint cap)
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
     JNIEnv *environment, jclass, jstring data_directory, jstring source,
-    jstring trace_watch, jint trace_cap)
+    jstring trace_watch, jint trace_cap, jboolean trace_files)
 {
     char source_path[sizeof install_source];
     if (!read_string(environment, data_directory, source_path, sizeof source_path) ||
@@ -136,6 +136,11 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
     if (!lucent_platform_set_user_data_directory(source_path)) return JNI_FALSE;
     if (!read_string(environment, source, install_source, sizeof install_source))
         return JNI_FALSE;
+    if (trace_files == JNI_TRUE) {
+        if (::setenv("X2_FILES", "1", 1) != 0) return JNI_FALSE;
+    } else {
+        ::unsetenv("X2_FILES");
+    }
     /* The existing guest input path already knows how to create and map the
      * SDL virtual pad. Android supplies touch actions to that same pad, so
      * there is one binding path instead of a second mobile-only input stack. */

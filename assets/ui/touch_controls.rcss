@@ -8,6 +8,7 @@ body {
     margin: 0;
     overflow: hidden;
     pointer-events: none;
+    font-family: "LatoLatin";
 }
 
 .touch-zone {
@@ -22,7 +23,7 @@ body {
 }
 
 .touch-zone.stick {
-    border-radius: 50%;
+    border-radius: 512dp;
     background-color: rgba(15, 25, 48, 24%);
 }
 
@@ -42,6 +43,6 @@ body {
     width: 38%;
     height: 38%;
     border: 2dp rgba(220, 238, 255, 55%);
-    border-radius: 50%;
+    border-radius: 256dp;
     background-color: rgba(82, 116, 148, 38%);
 }

@@ -111,14 +111,15 @@ int x2_fault_selftest(void)
         }
         {
             int named = strstr(buf, want) != NULL;
+            int host_pc = strstr(buf, "[HOST PC]") != NULL;
             int reported = WIFEXITED(status) && WEXITSTATUS(status) == 3;
             printf("  %-8s via %-32s -- %s (exit %d, %zu byte(s) reported)\n",
                    want, cases[i].what,
-                   named && reported ? "reported by name"
+                   named && host_pc && reported ? "reported by name with host PC"
                                      : "FAILED: no report reached stderr",
                    WIFEXITED(status) ? WEXITSTATUS(status)
-                                     : -WTERMSIG(status), got);
-            if (!named || !reported) fails++;
+                                         : -WTERMSIG(status), got);
+            if (!named || !host_pc || !reported) fails++;
         }
     }
     printf("x2native --fault-selftest: %s -- %d failure(s). Before this, only "

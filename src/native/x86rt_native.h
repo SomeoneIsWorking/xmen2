@@ -105,6 +105,11 @@ void     x86_native_export_report(void);
 /* Head of the registered-module list. */
 X86Module *x86_modules(void);
 
+/* Lookup helpers for diagnostics. A thunk is a bound native import; poison is
+ * an intentionally unmapped placeholder for an import that could not bind. */
+const char *x86_thunk_name(uint32_t addr, const char **module_out);
+const char *x86_poison_name(uint32_t addr, const char **module_out);
+
 /* Run `fn` when the guest calls `addr`, before the body, RETRYING on every
    call until it returns non-zero. Used to act at a moment during the run --
    engine startup completes long after module init, and some host work (ARK

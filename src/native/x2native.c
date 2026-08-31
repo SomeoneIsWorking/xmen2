@@ -44,9 +44,6 @@
 #include "fault_report.h"
 #include "platform_mman.h"
 
-#if !defined(__ANDROID__)
-#include <execinfo.h>
-#endif
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
@@ -99,9 +96,6 @@ static uint32_t poison_for(const char *mod, const char *sym, uint32_t ordinal)
     return a;
 }
 
-const char *x86_poison_name(uint32_t addr, const char **mod);
-const char *x86_thunk_name(uint32_t addr, const char **mod);
-
 static const char *poison_name(uint32_t addr, const char **mod)
 {
     int i;
@@ -145,175 +139,6 @@ static uint32_t resolve_import(const char *mod, const char *sym,
         if (t) { g_nbound++; return t; }
     }
     return poison_for(mod, sym, ordinal);
-}
-
-/*
- * What a fatal signal MEANS, in the words its si_code carries.
- *
- * Reported because "the process died" was, for every signal except SIGSEGV,
- * the entire report: only SIGSEGV was handled, so an illegal instruction, a
- * misaligned access or a divide by zero killed the run with NOTHING printed --
- * indistinguishable, from outside, from the window simply closing. That is the
- * shape of the crash this reporter was extended to name.
- */
-static const char *fault_meaning(int sig, int code)
-{
-    switch (sig) {
-    case SIGSEGV:
-        return code == SEGV_MAPERR ? "address not mapped"
-             : code == SEGV_ACCERR ? "no permission for that access"
-             : "a memory access fault";
-    case SIGILL:
-        return code == ILL_ILLOPC ? "illegal OPCODE -- the instruction at this "
-                                    "address is not an instruction"
-             : code == ILL_ILLOPN ? "illegal operand"
-             : code == ILL_ILLADR ? "illegal addressing mode"
-             : code == ILL_PRVOPC ? "privileged opcode"
-             : code == ILL_ILLTRP ? "illegal trap"
-             : "an illegal instruction";
-    case SIGFPE:
-        return code == FPE_INTDIV ? "integer divide by zero"
-             : code == FPE_INTOVF ? "integer overflow"
-             : code == FPE_FLTDIV ? "floating-point divide by zero"
-             : code == FPE_FLTINV ? "invalid floating-point operation"
-             : "an arithmetic fault";
-    case SIGBUS:
-        return code == BUS_ADRALN ? "misaligned address"
-             : code == BUS_ADRERR ? "no such physical address"
-             : code == BUS_OBJERR ? "object-specific hardware error"
-             : "a bus error";
-    case SIGTRAP:
-        return "a trap instruction (INT3/INT1) executed with no debugger to "
-               "take it";
-    default:
-        return "a fatal signal";
-    }
-}
-
-const char *fault_name(int sig)
-{
-    switch (sig) {
-    case SIGSEGV: return "SIGSEGV";
-    case SIGILL:  return "SIGILL";
-    case SIGFPE:  return "SIGFPE";
-    case SIGBUS:  return "SIGBUS";
-    case SIGTRAP: return "SIGTRAP";
-    default:      return "signal";
-    }
-}
-
-/*
- * A fault in the poison region is an unbound import being used. Say which.
- *
- * Every other fatal signal lands here too, and the import analysis below is
- * SIGSEGV's alone: for SIGILL/SIGTRAP `si_addr` is the instruction, for SIGFPE
- * the faulting operation, and reading any of them as an import slot would
- * invent an explanation. What they share is the context under `where:` -- the
- * host rip, the guest registers and the boundary ring -- which is the part
- * that names where the guest was.
- */
-void fault_report(int sig, siginfo_t *si, void *uc)
-{
-    uint32_t a;
-    const char *mod = NULL, *sym;
-    (void)uc;
-    if (!guest_memory_host_address(si->si_addr, &a))
-        a = (uint32_t)(uintptr_t)si->si_addr;
-    if (sig != SIGSEGV) {
-        fprintf(stderr, "\n*** %s at %p -- %s\n",
-                fault_name(sig), si->si_addr, fault_meaning(sig, si->si_code));
-        if (sig == SIGILL || sig == SIGTRAP)
-            fprintf(stderr,
-                "    For a recompiled body this usually means control reached "
-                "something that is not code:\n"
-                "    a jump through a stale or wrong function pointer, or a "
-                "guest RET onto a corrupted stack.\n"
-                "    The guest registers and the ring below say where the run "
-                "was; si_addr is the host address it tried to execute.\n");
-        goto where;
-    }
-    sym = x86_thunk_name(a, &mod);
-    if (sym) {
-        /*
-         * Report the OBSERVATION, then the two readings of it -- the original
-         * message asserted "this import is DATA", which is one conclusion and
-         * was the wrong one the first time a class callback landed here. What
-         * is actually known is that the synthetic range is unmapped and
-         * something touched this address instead of calling it.
-         */
-        fprintf(stderr, "\n*** the synthetic address 0x%08x was ACCESSED, not "
-                        "called: %s!%s\n"
-                        "    That range is deliberately unmapped, so any read, "
-                        "write or jump into it faults here.\n"
-                        "    Either the guest wants this symbol's VALUE (an "
-                        "import that is data, not a function -- see\n"
-                        "    x86_native_data_export), or a call reached it by a "
-                        "path that bypasses the dispatcher.\n",
-                a, mod, sym);
-        goto where;
-    }
-    sym = poison_name(a, &mod);
-    if (sym) {
-        fprintf(stderr, "\n*** unbound import used: %s!%s\n"
-                        "    The guest read or called import slot 0x%08x, which "
-                        "nothing could resolve.\n"
-                        "    That module is either not linked into this binary "
-                        "or does not export that symbol.\n", mod, sym, a);
-        _exit(3);
-    }
-    /*
-     * Not an import slot, so this is the guest faulting on its own terms and
-     * the address alone says nothing -- "SIGSEGV at 0x4" was the entire report
-     * for the failure in issue #14, which is indistinguishable from a crash
-     * with no context at all. Everything the process still knows goes out
-     * here, and what it CANNOT know is stated rather than left as silence.
-     */
-    fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot) -- %s\n",
-            si->si_addr, fault_meaning(sig, si->si_code));
-where:
-#if defined(__ANDROID__)
-    /* Bionic does not provide glibc's execinfo backtrace API. The preceding
-     * guest-state report is still emitted; name the absent host stack instead
-     * of failing to compile or silently claiming no frames were captured. */
-    fprintf(stderr, "[HOST STACK] unavailable on Android (no execinfo API)\n");
-#else
-    {
-        void *frames[32];
-        int count = backtrace(frames, (int)(sizeof frames / sizeof frames[0]));
-        fprintf(stderr, "[HOST STACK] %d frame(s):\n", count);
-        backtrace_symbols_fd(frames, count, STDERR_FILENO);
-    }
-#endif
-    (void)uc;
-    x86_regs_dump();
-    /*
-     * The engine's thread list is NOT printed here, and that is a correction
-     * rather than an omission.
-     *
-     * It was called from this handler, because issue #61's fault is exactly
-     * the case that wants it and the shutdown report below never runs on this
-     * path. But `guest_engine_thread_report` uses printf, and stdio in a
-     * signal handler deadlocks on the lock the interrupted code may hold --
-     * the same hazard that made the SIGTERM report write(2) its lines (issue
-     * #34). What actually happened was worse than a deadlock: the process died
-     * of a second SIGSEGV inside the handler and exited 139 with NO report at
-     * all, turning a fault that named its own function into a silent one.
-     *
-     * The measurement stays in the shutdown report, where stdio is safe. To
-     * get it at a fault, it needs a write(2) formatter of its own.
-     */
-    x86_diag_dump();
-    x86_reached_report();
-#ifndef X86_NATIVE_TRACE
-    fprintf(stderr,
-        "[TRACE] BLIND SPOT: this build has X2_NATIVE_TRACE=OFF, so the ring "
-        "above holds ONLY guest/host boundary crossings --\n"
-        "[TRACE] not guest-to-guest calls, which are plain C calls and cross "
-        "nothing. The faulting function is very likely NOT in it.\n"
-        "[TRACE] Reconfigure with -DX2_NATIVE_TRACE=ON to record every "
-        "recompiled body entry and exit.\n");
-#endif
-    _exit(3);
 }
 
 /* The runtime's hook (weak default in x86rt_native.c). */
@@ -2109,7 +1934,6 @@ int main(int argc, char **argv)
                         "not built, so nothing below would mean anything\n");
         return 1;
     }
-
 #ifdef X2_WITH_SDL
     if (window) {
         SDL_Window *w;
