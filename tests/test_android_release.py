@@ -129,6 +129,17 @@ def main() -> int:
     assert "pickDocument" in setup
     assert "promoteValidated" in setup
     assert "nativeValidateInstall" in setup
+    # Trace watches are diagnostic-only and are intentionally exposed only by
+    # a debug build. The JNI bridge accepts the recompiler watch grammar, not
+    # arbitrary environment-variable names or values.
+    assert "BuildConfig.DEBUG" in setup
+    assert "com.someoneisworking.xmen2.trace.arguments" in setup
+    assert "com.someoneisworking.xmen2.trace.cap" in setup
+    bridge = (ROOT / "src/native/android_bridge.cpp").read_text(encoding="utf-8")
+    assert "valid_trace_watch" in bridge
+    assert '::setenv("X2_ARGS", arguments, 1)' in bridge
+    assert "generic setenv bridge" in bridge
+    assert "buildConfig = true" in gradle
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
     assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "InstallLocation.java").exists()

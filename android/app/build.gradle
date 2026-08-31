@@ -89,6 +89,11 @@ android {
     namespace = "com.someoneisworking.xmen2"
     compileSdk = 36
     ndkVersion = ndkVersionValue
+    // AGP 9 does not generate BuildConfig unless a title uses it. The setup
+    // Activity needs DEBUG to keep its trace Intent unavailable in releases.
+    buildFeatures {
+        buildConfig = true
+    }
     if (releaseSigned) {
         signingConfigs {
             release {
