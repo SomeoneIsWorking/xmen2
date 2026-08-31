@@ -167,7 +167,7 @@ def check_native_dependencies(toolchain: Toolchain) -> None:
 
 def build_directory() -> Path:
     configured = os.environ.get("BUILD")
-    return Path(configured).expanduser() if configured else ROOT / "scratch/build-native"
+    return Path(configured).expanduser() if configured else ROOT / "build/native"
 
 
 def prepare_build_directory(path: Path, toolchain: Toolchain) -> None:
@@ -191,10 +191,10 @@ def prepare_build_directory(path: Path, toolchain: Toolchain) -> None:
             incompatible.append(f"{key}={found} (need {wanted})")
     if not incompatible:
         return
-    scratch = (ROOT / "scratch").resolve()
+    build_root = (ROOT / "build").resolve()
     target = path.resolve()
-    if target == scratch or scratch not in target.parents:
-        refuse(f"incompatible build cache is outside project scratch: {target}; "
+    if target == build_root or build_root not in target.parents:
+        refuse(f"incompatible build cache is outside project build root: {target}; "
                + "; ".join(incompatible))
     print("run: replacing incompatible project-local build cache: " + "; ".join(incompatible))
     shutil.rmtree(target)
@@ -225,7 +225,7 @@ def run_native() -> int:
     check_native_dependencies(toolchain)
     assets = os.environ.get("X2_ASSETS")
     if not assets:
-        assets = str(ROOT / "scratch/generated-assets/native")
+        assets = str(ROOT / "build/generated-assets/native")
         subprocess.run([sys.executable, str(ROOT / "tools/prepare_native_assets.py"),
                         game_value, assets], cwd=ROOT, check=True)
         os.environ["X2_ASSETS"] = assets

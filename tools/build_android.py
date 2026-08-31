@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Assemble a debug-signed APK for local device testing. The "
              "artifact stays in Gradle's build output and is never published "
-             "to scratch/release; it is not a release candidate.",
+             "to build/release; it is not a release candidate.",
     )
     return parser.parse_args()
 
@@ -160,7 +160,7 @@ def publish_apk(root: Path, abi: str) -> Path:
     signer = apksigner_path()
     run([str(signer), "verify", "--verbose", "--print-certs",
          str(candidates[0])], cwd=root)
-    release = root / "scratch/release"
+    release = root / "build/release"
     release.mkdir(parents=True, exist_ok=True)
     destination = release / f"X-Men-Legends-II-{abi}.apk"
     shutil.copy2(candidates[0], destination)
@@ -171,15 +171,16 @@ def publish_apk(root: Path, abi: str) -> Path:
 def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parents[1]
-    build = args.build_dir or root / "scratch" / f"build-android-{args.abi}"
+    build_root = root / "build"
+    build = args.build_dir or build_root / f"android-{args.abi}"
     build = build if build.is_absolute() else root / build
-    if not str(build.resolve()).startswith(str((root / "scratch").resolve()) + os.sep):
-        raise SystemExit(f"Refusing Android build output outside scratch/: {build}")
+    if not str(build.resolve()).startswith(str(build_root.resolve()) + os.sep):
+        raise SystemExit(f"Refusing Android build output outside build/: {build}")
     build.mkdir(parents=True, exist_ok=True)
     ndk = ndk_path()
     gradle_java = java_home() if not args.no_assemble else None
     signing = release_signing() if not args.no_assemble and not args.debug else None
-    prefix = root / "scratch" / "android-deps" / args.abi
+    prefix = build_root / "deps/android" / args.abi
     if not args.skip_deps:
         run(
             [

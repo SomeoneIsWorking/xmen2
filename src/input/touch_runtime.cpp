@@ -33,13 +33,13 @@ const char *button_name(x2::input::TouchAction action)
 {
     using x2::input::TouchAction;
     switch (action) {
-    case TouchAction::LowAttack: return "a";
-    case TouchAction::HighAttack: return "b";
+    case TouchAction::LightAttack: return "a";
+    case TouchAction::HeavyAttack: return "b";
     case TouchAction::Jump: return "y";
-    case TouchAction::Guard: return "x";
-    case TouchAction::Power: return "righttrigger";
-    case TouchAction::Ally: return "lefttrigger";
-    case TouchAction::TargetLock: return "rightshoulder";
+    case TouchAction::Use: return "x";
+    case TouchAction::Powers: return "righttrigger";
+    case TouchAction::EnergyPack: return "lefttrigger";
+    case TouchAction::HealthPack: return "rightshoulder";
     case TouchAction::NextHero: return "up";
     case TouchAction::PreviousHero: return "down";
     case TouchAction::DecreaseAggr: return "left";
@@ -49,6 +49,15 @@ const char *button_name(x2::input::TouchAction action)
     case TouchAction::Stats: return "back";
     default: return nullptr;
     }
+}
+
+bool is_portrait_action(x2::input::TouchAction action)
+{
+    using x2::input::TouchAction;
+    return action == TouchAction::SelectHero1 ||
+           action == TouchAction::SelectHero2 ||
+           action == TouchAction::SelectHero3 ||
+           action == TouchAction::SelectHero4;
 }
 
 void publish_button(const x2::input::ActionEvent &event)
@@ -158,8 +167,9 @@ void x2_touch_runtime_window(SDL_Window *new_window)
                             static_cast<float>(height - safe.y - safe.h)}});
 }
 
-int x2_touch_runtime_event(const SDL_Event *event)
+int x2_touch_runtime_event(const SDL_Event *event, X2TouchPointer *pointer)
 {
+    if (pointer) *pointer = {};
     if (!window || !event) return 0;
     if (!x2_settings_store()->touch_controls) {
         if (!contacts.empty()) x2_touch_runtime_cancel();
@@ -193,7 +203,27 @@ int x2_touch_runtime_event(const SDL_Event *event)
             active.push_back({static_cast<std::int64_t>(id), {value.x, value.y},
                               id == finger.fingerID ? phase
                                                     : lucent::touch::Phase::moved});
-    publish(controls.route(active));
+    const auto actions = controls.route(active);
+    publish(actions);
+    if (pointer) {
+        const auto selected = std::find_if(
+            actions.begin(), actions.end(), [&finger](const auto &action) {
+                return action.contact_id == static_cast<std::int64_t>(finger.fingerID) &&
+                       is_portrait_action(action.action);
+            });
+        if (selected != actions.end()) {
+            pointer->valid = 1;
+            pointer->x = selected->position.x;
+            pointer->y = selected->position.y;
+            pointer->button_change = selected->phase == lucent::touch::Phase::began
+                                         ? 1
+                                         : selected->phase == lucent::touch::Phase::ended ||
+                                                   selected->phase == lucent::touch::Phase::canceled
+                                               ? 0
+                                               : -1;
+            pointer->time_ms = static_cast<uint32_t>(finger.timestamp / 1000000u);
+        }
+    }
     if (!contact.active) contacts.erase(finger.fingerID);
     return 1;
 }
@@ -222,11 +252,13 @@ void x2_touch_runtime_cancel(void)
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity)
 {
     const auto zones = controls.zones();
-    if (!out) return zones.size();
-    const size_t count = std::min(capacity, zones.size());
-    for (size_t index = 0; index < count; ++index) {
-        const auto &visual = zones[index];
-        out[index] = {
+    const size_t visible_count = static_cast<size_t>(std::count_if(
+        zones.begin(), zones.end(), [](const auto &zone) { return zone.visible; }));
+    if (!out) return visible_count;
+    size_t output_index = 0;
+    for (const auto &visual : zones) {
+        if (!visual.visible) continue;
+        if (output_index < capacity) out[output_index] = {
             visual.zone.id,
             visual.zone.left,
             visual.zone.top,
@@ -236,8 +268,9 @@ size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity)
             active_zones.contains(visual.zone.id) ? 1 : 0,
             visual.stick ? 1 : 0,
         };
+        ++output_index;
     }
-    return zones.size();
+    return visible_count;
 }
 
 int x2_touch_runtime_overlay_visible(void)

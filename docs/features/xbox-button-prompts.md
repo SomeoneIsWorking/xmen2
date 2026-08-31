@@ -172,7 +172,7 @@ glyphs. What is missing is the **source art**, and finding it is an RE question
 about the XBOX build, not about this host:
 
 1. Where does the Xbox build's UI get a button prompt from? `default.xbe` is
-   already lifted by this repo's own Xbox path (`xbox/`, `tools/xbox_relift.sh`),
+   already lifted by this repo's own Xbox path (`xbox/`, `tools/xbox_relift.py`),
    so its UI code can be read the way `XMen2.exe`'s controller code was.
 2. Is a prompt a TEXTURE at all, or a character drawn from a font whose atlas
    is shared and whose *metrics* differ? The `.xmlb` metrics files were NOT
@@ -196,7 +196,7 @@ take.
 **Feature 3 as written in `README.md` cannot be built, and this is a disproof
 rather than a difficulty.** The next work is to find how the Xbox build draws a
 button prompt at all -- most cheaply by reading its UI code, since this repo
-already lifts `default.xbe` (`xbox/`, `tools/xbox_relift.sh`) -- or to accept
+already lifts `default.xbe` (`xbox/`, `tools/xbox_relift.py`) -- or to accept
 that the prompts are drawn from art that is not in `assetsfb.wad` and extract
 the rest of the ISO. Either way it starts from the Xbox build, not from this
 host, and not from a font that turned out to be a copy of the PC one.

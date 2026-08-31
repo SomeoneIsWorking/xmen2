@@ -25,6 +25,7 @@
 #include "gpu_prompt_glyphs.h"
 #include "ui_transform.h"
 #include "threads.h"
+#include "touch_hud_runtime.h"
 #include "x86_reached.h"
 #include "x86rt_native.h"
 
@@ -76,6 +77,7 @@ void x2_interrupt_reports(int killed)
        use _exit. Print them here so successful runs retain their denominators. */
     x2_ui_text_scale_report();
     x2_dialog_selection_scale_report();
+    x2_touch_hud_report();
     dinput_device_report();
     dinput_pad_report();
     input_record_report();

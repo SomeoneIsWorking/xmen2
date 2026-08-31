@@ -52,13 +52,13 @@ on Java 26, together with its compatible Android Gradle Plugin 9.2.1 and the
 Gradle distribution checksum. Select an installed compatible JDK with
 `JAVA_HOME`; the build does not require an older JDK when the pinned toolchain
 supports the current one. The generated native contract is
-`scratch/build-android-arm64/x2-android.properties`.
+`build/android-arm64-v8a/x2-android.properties`.
 Release assembly also requires the long-lived update key through
 `X2_ANDROID_KEYSTORE`, `X2_ANDROID_KEY_ALIAS`, `X2_ANDROID_STORE_PASSWORD`, and
 `X2_ANDROID_KEY_PASSWORD`. These are maintainer build inputs, never player
 setup inputs or tracked files. The build refuses an unsigned release, verifies
 the signature with the SDK's `apksigner`, and stages
-`scratch/release/X-Men-Legends-II-arm64-v8a.apk`.
+`build/release/X-Men-Legends-II-arm64-v8a.apk`.
 
 Local pipeline verification may use an explicitly ephemeral key only if the
 artifact stays in Gradle's build output and is never staged or published. On
@@ -76,28 +76,32 @@ not the title's action vocabulary. A contact stays with its zone after leaving
 the zone until it ends or is canceled. The runtime derives safe-area insets
 from SDL and publishes releases on cancellation, rotation, or lifecycle loss.
 
-The initial landscape layout uses these zones and the existing Xbox-derived
-action rows:
+The landscape layout uses these zones and the existing Xbox-derived action
+rows. Internal retail storage names are not player-facing labels: the touch
+document uses the action meanings proven by `binding_rows.c` and
+`xbox_defaults.c`.
 
 | Zone | Action mapping |
 |---|---|
 | Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight` |
-| Face cluster A/B/X/Y | `LowAttack`, `HighAttack`, `Guard`, `Jump` |
-| Right shoulder buttons | `Power`, `Ally` |
-| Right bumper | `TargetLock` |
-| D-pad cluster | `NextHero`, `PreviousHero`, `DecreaseAggr`, `IncreaseAggr` |
+| Bottom-right action cluster | Light attack, heavy attack, use, jump, mutant powers, energy pack, health pack |
+| Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
+| Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
 | Menu buttons | `Pause`, `Stats` |
-| Right virtual stick | `CameraUp`, `CameraDown`, `CameraLeft`, `CameraRight`; its center click is `MapToggle` |
+| Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
+| Retail health/energy HUD, top-left | The retained CHud draw path, relocated only while touch mode is active |
 
 The layout must leave an inset for cutouts/navigation bars, support at least
 the left stick plus two face/shoulder contacts simultaneously, expose a
 reconfigure/hide-controls setting, and make touch feedback visible without
 changing the input action delivered to the guest. The mapping is derived from
 [`xbox_defaults.c`](../src/native/xbox_defaults.c), not invented per screen.
-The shipped feedback document mirrors those production zones with the shared
-Xbox SVG set, highlights captured zones, and the persistent Input setting can
-hide the controls. Held contacts persist until finger-up/cancel rather than
-expiring on a test-channel timeout.
+The shipped feedback document mirrors only authored touch controls with text
+labels, rather than showing controller glyphs whose internal action names are
+misleading. Gesture and portrait hit regions remain invisible, captured zones
+highlight, and the persistent Input setting can hide the controls. Held
+contacts persist until finger-up/cancel rather than expiring on a test-channel
+timeout.
 
 ## Performance gate
 

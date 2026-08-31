@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Harvest function entry points out of the XBE's vtables.
 
-The runtime discovery loop (tools/xbox_discover.sh) finds ONE statically
+The runtime discovery loop (tools/xbox_discover.py) finds ONE statically
 invisible function per run: the game calls it, the call fails, the address
 goes into xbox/seeds.json. That is correct but slow -- a virtual call reached
 only after ten minutes of boot costs a full re-lift to discover.
@@ -85,7 +85,7 @@ def main():
     for path in (args.xbe, args.functions):
         if not os.path.exists(path):
             print(f"xbox_vtable_seeds: required input missing: {path}\n"
-                  f"  Nothing was scanned. Run tools/xbox_relift.sh first.",
+                  f"  Nothing was scanned. Run tools/xbox_relift.py first.",
                   file=sys.stderr)
             return 2
 

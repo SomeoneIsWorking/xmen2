@@ -6,6 +6,7 @@ dependencies = [
     "cmake==4.1.0",
     "ninja==1.13.0",
     "pillow==11.3.0",
+    "pytest==9.0.2",
     "resvg-py==0.4.0",
     "ruff==0.12.10",
 ]

@@ -32,13 +32,16 @@ body {
     opacity: 1;
 }
 
-.touch-zone img {
-    width: 62%;
-    height: 62%;
-    opacity: 0.92;
+.touch-label {
+    color: rgba(244, 249, 255, 94%);
+    font-size: 16dp;
+    text-align: center;
 }
 
-.touch-zone.stick img {
-    width: 40%;
-    height: 40%;
+.touch-stick-knob {
+    width: 38%;
+    height: 38%;
+    border: 2dp rgba(220, 238, 255, 55%);
+    border-radius: 50%;
+    background-color: rgba(82, 116, 148, 38%);
 }

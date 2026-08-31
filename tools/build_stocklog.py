@@ -118,7 +118,7 @@ def configured_paths(root: Path, run_name: str, env: Mapping[str, str]) -> dict[
 
     relative_run = validate_run_name(run_name)
     wine_dir = _rooted_path(root, wine_text)
-    build_dir = root / "scratch/build-proxy"
+    build_dir = root / "build/proxy"
     return {
         "game": game_dir,
         "real": wine_dir / "drive_c/windows/syswow64/d3d8.dll",

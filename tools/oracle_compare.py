@@ -109,11 +109,11 @@ class Paths:
 
     @property
     def native(self) -> Path:
-        return self.root / "scratch/build-native/x2native"
+        return self.root / "build/native/x2native"
 
     @property
     def proxy(self) -> Path:
-        return self.root / "scratch/build-proxy/d3d8.dll"
+        return self.root / "build/proxy/d3d8.dll"
 
 
 def _python(root: Path, tool: str, *arguments: str) -> list[str]:
@@ -212,7 +212,7 @@ def command_check(paths: Paths, runner: Runner) -> int:
     if not paths.proxy.is_file():
         print("  NOT BUILT -- run 'tools/oracle_compare.py build' (needs mingw32 + a Wine prefix)")
         return 0
-    print("  built: scratch/build-proxy/d3d8.dll")
+    print("  built: build/proxy/d3d8.dll")
     nm = runner.run(["i686-w64-mingw32-nm", str(paths.proxy)], cwd=paths.root)
     if nm.returncode == 0 and "probe_stub_0" in nm.output:
         print("  ok    the probe stubs are linked into it")
@@ -260,7 +260,7 @@ def command_build(paths: Paths, runner: Runner) -> int:
             "-S",
             str(paths.root),
             "-B",
-            str(paths.root / "scratch/build-native"),
+            str(paths.root / "build/native"),
             "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
         ],
         root=paths.root,
@@ -271,7 +271,7 @@ def command_build(paths: Paths, runner: Runner) -> int:
         [
             "cmake",
             "--build",
-            str(paths.root / "scratch/build-native"),
+            str(paths.root / "build/native"),
             "--target",
             "x2native",
             f"-j{os.cpu_count() or 1}",

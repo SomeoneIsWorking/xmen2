@@ -118,7 +118,7 @@ uv run --frozen python tools/package_appimage.py
 ```
 
 `linuxdeploy` and `appimagetool` must be available; the output is written to
-`scratch/release/X-Men-Legends-II-x86_64.AppImage`.
+`build/release/X-Men-Legends-II-x86_64.AppImage`.
 
 The Android APK has the same no-terminal setup rule. Build it with
 `uv run --frozen python tools/build_android.py` after selecting the Android SDK
@@ -231,7 +231,9 @@ names shortcut debt. `python3 tools/re_frontier.py next` is the executable view.
 
 - Repo root is CWD for all work. Machine-specific paths live only in `.env`
   (gitignored), template in `.env.example`.
-- All run artifacts go to gitignored `scratch/` (structured by type), never `/tmp`.
+- Transient run artifacts go to gitignored `scratch/`; compiler outputs,
+  generated assets, dependencies, and packages go to gitignored `build/`.
+  Nothing uses `/tmp`.
 - RE scripts in `tools/`; Ghidra project in `build/ghidra/`.
 - `tools/pe.py` reads PE32 exports/imports/sections and generates proxy `.def`
   files; `tools/run_shim.sh` runs the game headless for A/B comparison.

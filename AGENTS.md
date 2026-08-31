@@ -72,14 +72,16 @@ events feed the same virtual DirectInput pad as every other controller path.
 The remaining mobile release gate is measured device performance; see
 `docs/android-release.md`.
 
-All run artifacts go to the gitignored `scratch/`, structured by type
-(`scratch/logs/`, `screenshots/`, `recomp/`, `run/`, `build-*/`). Never `/tmp`.
+Transient run artifacts go to the gitignored `scratch/`, structured by type
+(`scratch/logs/`, `screenshots/`, `recomp/`, `run/`). Compiler outputs,
+generated assets, dependencies, and packages live under top-level `build/`.
+Never `/tmp`.
 
 ## Build and run
 
-**There is ONE build directory: `scratch/build-native/`.** `./run.sh` creates
+**There is ONE native build directory: `build/native/`.** `./run.sh` creates
 and maintains it, and it is the tree every live harness runs
-(`tools/live_case.py`, `tools/native_discover.sh`, `tools/x2ctl.py`'s target).
+(`tools/live_case.py`, `tools/native_discover.py`, `tools/x2ctl.py`'s target).
 It holds the asset viewers, every unit test and `x2native` itself.
 
 A second tree configured by hand (`cmake -S . -B build`) used to exist and is
@@ -91,13 +93,13 @@ configure picked up the system interpreter instead of the locked `.venv`, so
 
 ```sh
 ./run.sh                         # provision, build and launch the one default product
-cmake --build scratch/build-native -j$(nproc)          # build without launching
-ctest --test-dir scratch/build-native --output-on-failure
-ctest --test-dir scratch/build-native -R controller    # one test
+cmake --build build/native -j$(nproc)          # build without launching
+ctest --test-dir build/native --output-on-failure
+ctest --test-dir build/native -R controller    # one test
 uv run --frozen python tools/provision.py  # provision-only maintainer/cold-path check
-scratch/build-native/x2native --no-window --selftest   # postcondition battery; exit 77 = SKIP (no GAME_PC_DIR)
-scratch/build-native/x2native --no-window --run        # module init + the exe's CRT startup, NO renderer
-scratch/build-native/x2native --d3d8                   # the LIVE path: arms the host Direct3D 8, and implies --run
+build/native/x2native --no-window --selftest   # postcondition battery; exit 77 = SKIP (no GAME_PC_DIR)
+build/native/x2native --no-window --run        # module init + the exe's CRT startup, NO renderer
+build/native/x2native --d3d8                   # the LIVE path: arms the host Direct3D 8, and implies --run
 ```
 
 `run.sh` takes no arguments and delegates directly to the locked Python
@@ -110,11 +112,11 @@ Build a Linux AppImage from the verified native build with
 `uv run --frozen python tools/package_appimage.py`. The packager stages only
 the native binary, UI resources, desktop metadata, and libraries discovered by
 `linuxdeploy`; `appimagetool` writes the result to
-`scratch/release/X-Men-Legends-II-x86_64.AppImage`.
+`build/release/X-Men-Legends-II-x86_64.AppImage`.
 
 Build the ARM64 APK from a selected Android SDK/NDK with
 `uv run --frozen python tools/build_android.py`. The dependency step builds a
-small, pinned FFmpeg prefix under `scratch/android-deps/`; Android CMake never
+small, pinned FFmpeg prefix under `build/deps/android/`; Android CMake never
 consults host `pkg-config`. The Gradle project consumes the generated
 `x2-android.properties` contract and stages only native code, UI resources,
 and SDL's Java shell, never game files.
@@ -151,7 +153,7 @@ only by a data pointer). This feeds the runtime's missing-target report back int
 Ghidra as seeds and rebuilds until a round finds nothing:
 
 ```sh
-tools/native_discover.sh [max-rounds]
+tools/native_discover.py [max-rounds]
 ```
 
 **Wine oracle / hybrid DLL path** (the original game with one recompiled DLL
@@ -195,8 +197,8 @@ produce nothing usable here (issue #1).
 
 **Xbox path** (`xbox/`, optional gitignored `vendor/xboxrecomp` checkout from
 the maintained `SomeoneIsWorking/xboxrecomp` fork pinned in
-`xbox/xboxrecomp.lock`): `tools/xbox_relift.sh`,
-`tools/xbox_run.sh`, `tools/xbox_discover.sh`, `tools/get_xboxrecomp.py`.
+`xbox/xboxrecomp.lock`): `tools/xbox_relift.py`,
+`tools/xbox_run.py`, `tools/xbox_discover.py`, `tools/get_xboxrecomp.py`.
 The PC product does not consume this path, and this repository has no patch
 queue for the optional Xbox toolkit.
 
@@ -258,14 +260,13 @@ lifecycle, SAF URI permissions, and app-private staging;
 `src/native/android_bridge.cpp` only transfers the absolute storage/source
 contract; `install_picker.cpp` owns title validation and shared Lucent ZIP
 extraction. The Android touch boundary keeps the title's safe-area-aware action
-vocabulary in `src/input/touch_controls.cpp`; `src/input/touch_runtime.cpp`
-owns SDL contact acquisition and publication into the existing virtual pad.
-
-The Android touch boundary keeps the title's safe-area-aware action vocabulary
-and virtual layout in `src/input/touch_controls.cpp`; platform SDL/Activity
-event acquisition, visual feedback, and guest input publication remain outside
-that owner. `lucent::touch::Router` owns contact capture, multi-touch, and
-cancellation so the eventual Android bridge does not duplicate that policy.
+vocabulary and virtual layout in `src/input/touch_controls.cpp`; platform
+SDL/Activity event acquisition, visual feedback, and guest input publication
+remain outside that owner. `lucent::touch::Router` owns contact capture,
+multi-touch, and cancellation. `src/presentation/touch_hud_layout.c` owns the
+pure edge-relocation policy and `src/native/touch_hud_runtime.c` scopes it
+around the retained CHud bodies; portrait taps re-enter the existing retail
+mouse handler.
 
 Boot selection follows the same boundary: `src/config/boot_mode.{c,h}` owns the
 persistent vocabulary, `src/native/boot_mode_policy.{c,h}` owns the pure
@@ -356,7 +357,7 @@ logged defect.
   (`tools/verify_export.py`, wired into the discovery loop after issue #12).
 - **A negative result must carry its denominator and its blind spots.** "Found
   nothing" and "never looked" must be distinguishable — see the shape of the
-  reports in `native_discover.sh`.
+  reports in `native_discover.py`.
 - **An override must reproduce the original's RETURN VALUE, not just its stack
   effect.** Check the CALL SITE, not the decompiler's signature: Ghidra typed
   the DirectX check `void`, the caller does `TEST AL,AL` on it, and an override

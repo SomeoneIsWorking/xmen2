@@ -15,7 +15,7 @@ competing with a shipped answer.
 ## What has to be found, before any of it is written
 
 - **Where the Xbox port stores its default pad mapping.** `default.xbe` is
-  lifted by the same recompiler (`xbox/`, `tools/xbox_relift.sh`), so the table
+  lifted by the same recompiler (`xbox/`, `tools/xbox_relift.py`), so the table
   can be located the same way every other structure in this project has been:
   find the code that reads it, not a plausible-looking blob.
 - **The ACTION set it maps to.** The PC build's `x2_button` enum

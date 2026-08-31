@@ -14,7 +14,17 @@ extern "C" {
 /* SDL/Android contact acquisition and publication into the existing virtual
  * DirectInput pad. Title layout remains owned by TouchControls. */
 void x2_touch_runtime_window(struct SDL_Window *window);
-int x2_touch_runtime_event(const union SDL_Event *event);
+
+typedef struct X2TouchPointer {
+    int valid;
+    float x;
+    float y;
+    int button_change; /* 1 = press, 0 = release, -1 = motion only. */
+    uint32_t time_ms;
+} X2TouchPointer;
+
+int x2_touch_runtime_event(const union SDL_Event *event,
+                           X2TouchPointer *pointer);
 void x2_touch_runtime_lifecycle_event(const union SDL_Event *event);
 void x2_touch_runtime_cancel(void);
 
