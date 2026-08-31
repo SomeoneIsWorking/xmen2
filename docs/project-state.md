@@ -69,18 +69,21 @@ image set from CMake's `X2_MODULES` and rejects an EXE, selected folder, or ZIP
 that lacks any required sibling image before replacing the prior selection.
 ZIP preparation is staged separately and atomically replaces only a validated
 extraction, so an invalid replacement preserves the prior working install.
-`build/release/X-Men-Legends-II-x86_64.AppImage` was rebuilt with current
-linuxdeploy after an older deployer was proven to corrupt modern Fedora ELF
-runtime paths. The packager now runs the deployed binary before writing the
-image and rejects any loader crash or failed selftest; the extracted image's
-runner selftest passes. Its extracted 241-file inventory contains the launcher,
-native binary, desktop metadata, and SVG icon, with no `XMen2.exe`; SHA-256 is
-`1a5f6493015ca5915dfee4f9fcd96a555af5235cb27101c85780d030f4e2f366`.
-The 141-test combined gate passes (two explicit data/tool skips), including the
+`build/release/X-Men-Legends-II-x86_64.AppImage` was rebuilt through current
+linuxdeploy after its embedded pre-0.19 `patchelf` was proven to leave `DT_INIT`
+stale while rewriting modern Fedora ELFs, causing a loader-time SIGSEGV. The
+packager injects an external `patchelf` 0.19+ into linuxdeploy's temporary
+payload and sets its supported `NO_STRIP=1` mode, preserving RELR-bearing
+libraries while retaining the deployer's dependency scan. It runs the deployed
+binary before writing the image and rejects any loader crash or failed selftest;
+the final artifact independently passes its fresh no-install setup-state check.
+Its extracted 241-file inventory contains the launcher, native binary, desktop
+metadata, and SVG icon, with no `XMen2.exe`; SHA-256 is
+`d6f211d0f61543bf3a43a0dbee56e7c70ba69fa4a99493541a896217e63c04db`.
+The 143-test combined gate passes (two explicit data/tool skips), including the
 configuration path, executable validation, and transactional replacement seams.
 This digest is published in the public
-[`v0.1.2` AppImage release](https://github.com/SomeoneIsWorking/xmen2-recomp/releases/tag/v0.1.2)
-from commit `55b11df94893eb349eb11f1e876ae1f5ad2b5260`.
+[`v0.1.3` AppImage release](https://github.com/SomeoneIsWorking/xmen2-recomp/releases/tag/v0.1.3).
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target and

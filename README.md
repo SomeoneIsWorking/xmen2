@@ -115,7 +115,10 @@ source install read-only. The package contains no game files.
 Maintainers can create it after building the native target with:
 
 ```sh
-uv run --frozen python tools/package_appimage.py
+uv run --frozen python tools/package_appimage.py \
+  --linuxdeploy <linuxdeploy.AppImage> \
+  --appimagetool <appimagetool.AppImage> \
+  --patchelf <patchelf-0.19-or-newer>
 ```
 
 `linuxdeploy` and `appimagetool` must be available; the output is written to
