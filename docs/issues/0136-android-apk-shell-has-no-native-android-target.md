@@ -39,13 +39,20 @@ refused and `XMen2SetupActivity` remained the resumed Activity. Canonical,
 path-boundary-aware containment still admits valid retained selections through
 Android's `/data/data` and `/data/user/0` aliases. The emulator was then
 recreated with a 16 GiB data image and completed a full 1.57 GiB ZIP import to
-a 2.37 GiB app-private installation. The native runner reaches the executable
-but faults when `igArenaMemoryPool` calls
-`igPthreadSemaphore::obtainResource`: the pool's semaphore field is
-`0xffffffec`, an invalid guest address. The equivalent desktop path succeeds.
-This moves the blocker from setup/storage capacity to an Android runtime or
-allocator divergence; it prevents gameplay, touch visual verification, and
-performance evidence.
+a 2.37 GiB app-private installation. The native runner's apparent
+`igArenaMemoryPool` fault was downstream of an empty `igFile` search root: its
+retained registry lookup has no Android value, so opening `sounds/badaudio.wav`
+returned null. The native file-path override now retains the original body,
+supplies the selected install as virtual `C:\\` through the title's retained
+setter at the allocator-valid call seam, and verifies the result. `win_path.c`
+also folds case only below the validated selected root; trying to enumerate
+`/data` is forbidden to the app even for its own private source. An Android 13
+Waydroid trace resolves that first request to `.../Sounds/badaudio.wav`, maps
+the PC images, and reaches the retail difficulty menu. The RmlUi overlay now
+consumes the shared FreeType prefix; a held Light touch visibly advances that
+menu, proving the contact-to-title-input route. This is debug-private-source
+runtime evidence, not a replacement for the production SAF import proof or a
+performance result.
 
 ## What was tried / dead ends
 
@@ -54,8 +61,9 @@ persistent hide setting, lifecycle cancellation, and held-contact semantics
 were added and tested. NDK 28 Clang linked the real ARM64 `libmain.so`; its
 exported `main` matches `XMen2GameActivity.getMainFunction()`. The release tool
 now refuses unsigned output and verifies signed output with `apksigner`. A
-desktop build or M2 Air observation still cannot substitute for Android device
-evidence, and the pre-existing unsigned APK is not a release candidate.
+desktop build, M2 Air observation, or Waydroid's roughly 700 ms frames cannot
+substitute for Android device evidence, and the pre-existing unsigned APK is
+not a release candidate.
 
 A separate x86-64 trace APK compiles against the same Android prefix without
 changing the shipping Ninja tree. Its debug-only setup Intent accepts only the
@@ -80,8 +88,8 @@ SDL3 target using `tools/build_android.py`.
 Exercise setup selection for both a direct install and nested ZIP, touch-only
 gameplay, suspend/resume, audio, and the launcher/update signature. Measure the
 APK on low, target, and high Android tiers before changing S018 to verified.
-Resolve the Android semaphore/allocator divergence first, then repeat the
-complete ZIP and direct-install flows through to gameplay before qualifying
+Repeat complete ZIP and direct-install flows through gameplay on a physical
+device, verify the relocated gameplay HUD and portrait tapping, then qualify
 touch controls and performance.
 Before collecting the new trace, repair the Fedora Android Emulator SELinux
 integration so QEMU receives a dedicated confined label with only the required

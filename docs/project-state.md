@@ -141,25 +141,35 @@ named-device collection while recording PSS and thermal-service observations.
 The former shared API 35 emulator, with a 16 GiB data image, imported the
 complete 1.57 GiB ZIP and promoted the resulting 2.37 GiB installation under
 app-private storage, proving bounded staging and complete-install validation on
-a real APK. The runner then reached the recompiled executable and faulted while
-`igArenaMemoryPool` called
-`igPthreadSemaphore::obtainResource`: its semaphore field is the invalid guest
-address `0xffffffec`. The same native sequence runs on desktop, so the Android
-startup failure remains an unproven runtime/allocator divergence rather than a
-setup or storage defect. A current Android 13 Waydroid image runs the API-21
-debug APK and its first-run screen. Its folder and ZIP selections both receive
-persisted read grants (the tree grant has the required prefix scope), proving
-that the app requests, receives, and retains the correct SAF capability. The
-image then fails its own external-storage `MediaProvider` open path: its AppOps
-package check receives a null package name after the grant is accepted. That
-prevents this image from copying a non-empty selected document, but is not
-evidence of a malformed URI or missing app grant; the earlier API-35 emulator
-import remains the complete-install proof. The Waydroid failure and the native
-startup fault independently prevent gameplay, visual touch/HUD verification,
-and Android performance qualification.
-Gap: a publishable APK still requires a stable Android test device, resolution
-of the startup fault, the maintainer's long-lived keystore, and measured
-named-device performance. The required setup, touch-zone mapping, and
+a real APK. An earlier Android run reached the recompiled executable and
+faulted after `igArenaMemoryPool` called
+`igPthreadSemaphore::obtainResource` with an invalid `0xffffffec` semaphore
+field. That apparent startup fault is now resolved: `libIGCore`'s
+retained registry-backed `igFile` setup has no Android value, so opening
+`sounds/badaudio.wav` returned null. `engine_file_path.c` super-calls that body
+and, at its live allocator seam, passes the selected install through the
+retained setter as virtual `C:\\`. The generic case-insensitive resolver now
+begins below that validated install root because the Android app cannot
+enumerate `/data`; its trace resolves the guest request to the real
+`Sounds/badaudio.wav`. A current Android 13 Waydroid image therefore runs the
+API-21 debug APK from a deliberate debug-only complete app-private source,
+maps the PC images, and reaches the retail difficulty menu. Its ordinary folder
+and ZIP selections still receive persisted read grants (the tree grant has the
+required prefix scope), but this image's external-storage `MediaProvider` copy
+path fails its AppOps package check after accepting the grant. The earlier
+API-35 emulator import remains the complete production-setup proof.
+
+The Android RmlUi overlay originally disabled its font engine despite the shared
+prefix supplying FreeType. It now consumes that prefix, renders the circular
+analog/action overlay, and a held Light touch visibly advances the real game to
+the difficulty menu. This proves the Android contact-to-title-input route and
+menu-state overlay feedback, not full gameplay HUD relocation. Waydroid's
+roughly 700 ms frames are an emulator diagnostic only, not Android performance
+evidence.
+
+Gap: a publishable APK still requires a stable physical Android test device,
+full-gameplay HUD verification, the maintainer's long-lived keystore, and
+measured named-device performance. The required setup, touch-zone mapping, and
 device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
