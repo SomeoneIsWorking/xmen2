@@ -75,6 +75,9 @@ native binary, desktop metadata, and SVG icon, with no `XMen2.exe`; SHA-256 is
 `1a5f6493015ca5915dfee4f9fcd96a555af5235cb27101c85780d030f4e2f366`.
 The 141-test combined gate passes (two explicit data/tool skips), including the
 configuration path, executable validation, and transactional replacement seams.
+This digest is published in the public
+[`v0.1.2` AppImage release](https://github.com/SomeoneIsWorking/xmen2-recomp/releases/tag/v0.1.2)
+from commit `55b11df94893eb349eb11f1e876ae1f5ad2b5260`.
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
 desktop in this state record. The Android shell now has a native target and
