@@ -131,17 +131,19 @@ needs installed-APK visual and input verification. The shipping control status
 now exposes exact bounded p50/p95/p99 frame timings, and
 `tools/android_qualify.py` refuses a less-than-20-minute or incomplete-scenario
 named-device collection while recording PSS and thermal-service observations.
-The shared API 35 emulator's virtual data-image chain is configured for 16 GiB,
-but its mounted encrypted ext4 `/data` volume remains 5.8 GiB because this
-system image refuses online filesystem growth. It has 4.2 GiB free, while a
-full test needs the 1.57 GiB ZIP, its private staged copy, and the 2.21 GiB
-extracted tree at once; the import transaction therefore cannot be weakened or
-fully exercised there. Expanding it further requires a coordinated destructive
-AVD data-image regeneration or a sufficiently provisioned physical device.
-Gap: a publishable APK still requires the maintainer's long-lived keystore, and
-no mobile performance
-measurements exist yet. The required setup, touch-zone mapping, and
-device/thermal/frame-time evidence gate are specified in
+The shared API 35 emulator was recreated with a 16 GiB data image. It now
+imports the complete 1.57 GiB ZIP and promotes the resulting 2.37 GiB
+installation under app-private storage, proving the bounded staging and
+complete-install validator on a real APK. The runner then reaches the
+recompiled executable and faults while `igArenaMemoryPool` calls
+`igPthreadSemaphore::obtainResource`: its semaphore field is the invalid guest
+address `0xffffffec`. The same native sequence runs on desktop, so the Android
+startup failure remains an unproven runtime/allocator divergence rather than a
+setup or storage defect. It blocks gameplay, visual touch/HUD verification,
+and Android performance qualification.
+Gap: a publishable APK still requires resolution of that startup fault, the
+maintainer's long-lived keystore, and measured named-device performance. The
+required setup, touch-zone mapping, and device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 

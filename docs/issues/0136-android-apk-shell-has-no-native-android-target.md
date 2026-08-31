@@ -37,7 +37,15 @@ promotion by requiring title-owned content sentinels as well as every PE image.
 After installing the rebuilt debug APK, its retained incomplete selection was
 refused and `XMen2SetupActivity` remained the resumed Activity. Canonical,
 path-boundary-aware containment still admits valid retained selections through
-Android's `/data/data` and `/data/user/0` aliases.
+Android's `/data/data` and `/data/user/0` aliases. The emulator was then
+recreated with a 16 GiB data image and completed a full 1.57 GiB ZIP import to
+a 2.37 GiB app-private installation. The native runner reaches the executable
+but faults when `igArenaMemoryPool` calls
+`igPthreadSemaphore::obtainResource`: the pool's semaphore field is
+`0xffffffec`, an invalid guest address. The equivalent desktop path succeeds.
+This moves the blocker from setup/storage capacity to an Android runtime or
+allocator divergence; it prevents gameplay, touch visual verification, and
+performance evidence.
 
 ## What was tried / dead ends
 
@@ -56,8 +64,6 @@ SDL3 target using `tools/build_android.py`.
 Exercise setup selection for both a direct install and nested ZIP, touch-only
 gameplay, suspend/resume, audio, and the launcher/update signature. Measure the
 APK on low, target, and high Android tiers before changing S018 to verified.
-The shared emulator's QCOW2 device was enlarged to 16 GiB, but Android's
-mounted encrypted ext4 `/data` volume remains 5.8 GiB: this system image does
-not support its required online filesystem expansion. The full import still
-requires a sufficiently provisioned physical device or a coordinated,
-destructive AVD data-image regeneration at the larger size.
+Resolve the Android semaphore/allocator divergence first, then repeat the
+complete ZIP and direct-install flows through to gameplay before qualifying
+touch controls and performance.
