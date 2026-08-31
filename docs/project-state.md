@@ -141,8 +141,10 @@ address `0xffffffec`. The same native sequence runs on desktop, so the Android
 startup failure remains an unproven runtime/allocator divergence rather than a
 setup or storage defect. Its replacement has a fresh 32 GiB data partition,
 but the host emulator launcher now segfaults before Android boot with both
-SwiftShader and software GPU modes; it must be repaired before the trace APK
-can instrument that allocator divergence. These independent blockers prevent
+SwiftShader and software GPU modes because Fedora SELinux denies its
+`qemu-system` executable-heap access; an administrator-authorized narrow policy
+module must repair the host before the trace APK can instrument that allocator
+divergence. These independent blockers prevent
 gameplay, visual touch/HUD verification, and Android performance qualification.
 Gap: a publishable APK still requires a stable Android test device, resolution
 of the startup fault, the maintainer's long-lived keystore, and measured
