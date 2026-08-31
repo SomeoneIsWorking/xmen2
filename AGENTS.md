@@ -111,7 +111,9 @@ controls remain separate tools rather than launcher commands.
 Build a Linux AppImage from the verified native build with
 `uv run --frozen python tools/package_appimage.py`. The packager stages only
 the native binary, UI resources, desktop metadata, and libraries discovered by
-`linuxdeploy`; `appimagetool` writes the result to
+`linuxdeploy`. It injects a `patchelf` 0.19+ binary into the deployer's
+temporary AppImage payload, because older patchers corrupt `DT_INIT` in current
+Fedora ELFs; `appimagetool` writes the result to
 `build/release/X-Men-Legends-II-x86_64.AppImage`.
 
 Build the ARM64 APK from a selected Android SDK/NDK with
