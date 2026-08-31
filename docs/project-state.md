@@ -1,5 +1,12 @@
 # X-Men Legends II project state
 
+## Comparison baseline
+
+The baseline is the unmodified 2005 Windows PC release of *X-Men Legends II* running on Windows or
+through Wine, with its original Direct3D 8 renderer, PC control defaults, prompts, settings, loading,
+and save flow. The port's intended differences are Wine-free native execution and a modern native-PC
+presentation, controller, settings, packaging, and diagnostics experience without changing the game.
+
 This is the authoritative inventory of what the port demonstrably does now and
 what remains partial, blocked, or absent. Epic intent belongs in
 [`project-goals.md`](project-goals.md), atomic work in [`issues/`](issues/),
