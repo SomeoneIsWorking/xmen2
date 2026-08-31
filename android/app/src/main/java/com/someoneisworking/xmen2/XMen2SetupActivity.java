@@ -108,10 +108,10 @@ public final class XMen2SetupActivity extends Activity {
         choices.setGravity(Gravity.CENTER);
         layout.addView(choices, new LinearLayout.LayoutParams(-1, -2));
 
-        Button folder = new Button(this);
-        folder.setText("Choose install folder");
-        folder.setOnClickListener(view -> openFolderPicker());
-        choices.addView(folder, new LinearLayout.LayoutParams(-2, -2));
+        Button executable = new Button(this);
+        executable.setText("Browse for XMen2.exe");
+        executable.setOnClickListener(view -> openFolderPicker());
+        choices.addView(executable, new LinearLayout.LayoutParams(-2, -2));
 
         Button zip = new Button(this);
         zip.setText("Choose ZIP");
@@ -122,7 +122,7 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private void showChoices() {
-        status.setText("Choose the folder containing XMen2.exe, or a ZIP of your legally obtained PC install.\n\nThe game files are copied once into this app’s private storage and kept there for future launches.");
+        status.setText("Browse to the folder containing XMen2.exe, or choose a ZIP of your legally obtained PC install. Android needs the whole install folder so it can validate and copy the required game files.\n\nThe game files are copied once into this app’s private storage and kept there for future launches.");
         choices.setVisibility(View.VISIBLE);
     }
 
@@ -172,7 +172,7 @@ public final class XMen2SetupActivity extends Activity {
     /** Retains only a complete, title-validated selection. */
     private void acceptImported(LucentDocumentImport.Result result) {
         if (!result.isTree && !result.documentName.toLowerCase(Locale.ROOT).endsWith(".zip")) {
-            showError("That is not a ZIP archive. Choose a ZIP, or use \"Choose install folder\"."
+            showError("That is not a ZIP archive. Choose a ZIP, or use \"Browse for XMen2.exe\"."
                     + discardRejectedImport(result));
             return;
         }

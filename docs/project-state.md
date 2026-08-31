@@ -146,15 +146,17 @@ a real APK. The runner then reached the recompiled executable and faulted while
 `igPthreadSemaphore::obtainResource`: its semaphore field is the invalid guest
 address `0xffffffec`. The same native sequence runs on desktop, so the Android
 startup failure remains an unproven runtime/allocator divergence rather than a
-setup or storage defect. Its replacement has a fresh 32 GiB data partition,
-but the host emulator launcher now segfaults before Android boot with both
-SwiftShader and software GPU modes because Fedora SELinux denies its
-`qemu-system` executable-heap access. The process is labelled `unconfined_t`,
-so `audit2allow` would broaden that entire host domain rather than repairing the
-emulator specifically; Fedora's emulator SELinux integration must instead give
-QEMU a dedicated confined label before the trace APK can instrument that
-allocator divergence. These independent blockers prevent
-gameplay, visual touch/HUD verification, and Android performance qualification.
+setup or storage defect. A current Android 13 Waydroid image runs the API-21
+debug APK and its first-run screen. Its folder and ZIP selections both receive
+persisted read grants (the tree grant has the required prefix scope), proving
+that the app requests, receives, and retains the correct SAF capability. The
+image then fails its own external-storage `MediaProvider` open path: its AppOps
+package check receives a null package name after the grant is accepted. That
+prevents this image from copying a non-empty selected document, but is not
+evidence of a malformed URI or missing app grant; the earlier API-35 emulator
+import remains the complete-install proof. The Waydroid failure and the native
+startup fault independently prevent gameplay, visual touch/HUD verification,
+and Android performance qualification.
 Gap: a publishable APK still requires a stable Android test device, resolution
 of the startup fault, the maintainer's long-lived keystore, and measured
 named-device performance. The required setup, touch-zone mapping, and

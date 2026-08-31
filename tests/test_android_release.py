@@ -156,7 +156,7 @@ def main() -> int:
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
     assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "InstallLocation.java").exists()
-    assert "d2e7609" in cmake
+    assert "8e126b2" in cmake
     assert "x2.lucentJavaDir" in cmake
     assert "lucentJavaDir" in gradle
     # The product target always opens the control channel, and socket() needs
@@ -186,6 +186,8 @@ def main() -> int:
 
     assert "extends LucentActivity" in activity
     assert "WindowInsetsController" not in activity
+    assert 'setText("Browse for XMen2.exe")' in setup
+    assert "folder containing XMen2.exe" in setup
     assert "protected String getMainFunction()" in activity
     assert 'return "main";' in activity
     assert 'android:icon="@drawable/xmen2_port_icon"' in manifest
