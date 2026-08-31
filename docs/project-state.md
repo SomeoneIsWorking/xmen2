@@ -64,6 +64,9 @@ resource lookup, and an SDL3 first-run prompt that validates and remembers the
 user's `XMen2.exe` directory in the OS configuration directory. It also accepts
 a ZIP containing exactly one `XMen2.exe` at any nested path and extracts it
 under that same user-data root through Lucent's shared safe ZIP implementation.
+The same generated validator derives the native runner's complete original-PC
+image set from CMake's `X2_MODULES` and rejects an EXE, selected folder, or ZIP
+that lacks any required sibling image before replacing the prior selection.
 ZIP preparation is staged separately and atomically replaces only a validated
 extraction, so an invalid replacement preserves the prior working install.
 `build/release/X-Men-Legends-II-x86_64.AppImage` was rebuilt with current
@@ -89,7 +92,9 @@ performance evidence.
 The title-specific safe-area-aware touch action owner exists in
 `src/input/touch_controls.cpp`, with SDL contact acquisition in
 `src/input/touch_runtime.cpp`, Android setup/SAF staging in `android/`, and a
-real ARM64 shared native target/Gradle assembly path. The touch feedback layer
+real ARM64 shared native target/Gradle assembly path. Android selection uses the
+same generated complete-install validator before Lucent promotes staged files.
+The touch feedback layer
 shows authored action labels rather than misleading internal controller names,
 publishes signed axes once per contact update, holds buttons until finger
 release, cancels on focus/rotation/lifecycle loss, and has a persistent hide

@@ -6,7 +6,7 @@ symptom: Android setup/native packaging exists, but no signed installed-device o
 state_items: S018
 tags: android,apk,sdl3,touch,performance
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-08-31
 ---
 
 ## Root cause
@@ -16,7 +16,9 @@ contracts. Host pkg-config cannot describe Android ARM64 libraries, and SDL's
 desktop picker cannot acquire Android content URIs. The Android target now has
 an explicit cross-compiled FFmpeg prefix, Gradle/Activity/JNI shell, SAF copy
 boundary, touch publication/feedback path, correct native Activity entry point,
-and fail-closed release signing contract. Gradle 9.4.1 and Android Gradle
+and fail-closed release signing contract. Selection now proves the complete
+original PC image set required by the native loader (generated from
+`X2_MODULES`) before Lucent promotes a direct install or nested ZIP. Gradle 9.4.1 and Android Gradle
 Plugin 9.2.1 now make the installed Java 26 JDK a supported build path.
 The build rejects split `java`/`javac` homes. A 50-task release assembly signed
 with a one-day local verification key passed `apksigner` v3 verification; it was

@@ -106,10 +106,11 @@ checkout is maintainer-only and is not fetched by the player bootstrap.
 The AppImage is launched from a desktop and does not require a terminal or an
 environment variable. On its first launch, choose **Browse** and select
 `XMen2.exe` from your legally obtained PC installation, or choose a ZIP that
-contains exactly one `XMen2.exe` at any depth. The port validates the file (or
-extracts the archive into user data), remembers the resulting directory in the
-OS user configuration directory, and keeps the source install read-only. The
-package contains no game files.
+contains exactly one `XMen2.exe` at any depth. The port also checks that every
+original DLL the native runner maps is beside that executable; it rejects an
+incomplete selection before replacing a previous one. It then remembers the
+resulting directory in the OS user configuration directory and keeps the
+source install read-only. The package contains no game files.
 
 Maintainers can create it after building the native target with:
 
@@ -124,8 +125,9 @@ The Android APK has the same no-terminal setup rule. Build it with
 `uv run --frozen python tools/build_android.py` after selecting the Android SDK
 and NDK, a supported JDK, and the release signing inputs documented in
 [`docs/android-release.md`](docs/android-release.md). Its Browse screen uses SAF, stages a ZIP or install folder into
-app-private storage, and supplies the same Lucent user-data root used for
-saves/configuration. Touch controls publish through the existing virtual pad.
+app-private storage only after the complete PC install validates, and supplies
+the same Lucent user-data root used for saves/configuration. Touch controls
+publish through the existing virtual pad.
 Mobile performance evidence is tracked separately in
 [`docs/android-release.md`](docs/android-release.md).
 

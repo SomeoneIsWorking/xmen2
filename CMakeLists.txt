@@ -151,16 +151,18 @@ add_test(NAME config_directory COMMAND test_config_directory)
 
 add_executable(test_install_picker tests/test_install_picker.c
                src/native/install_picker.cpp src/native/install_archive.cpp
+               src/native/install_validation.cpp
                src/config/config_directory.c)
-target_include_directories(test_install_picker PRIVATE src/native src/config)
-target_compile_definitions(test_install_picker PRIVATE
-    X2_INSTALL_PICKER_FIXTURE="${CMAKE_SOURCE_DIR}/tests/fixtures/appimage/XMen2.exe")
+target_include_directories(test_install_picker PRIVATE src/native src/config
+                           ${CMAKE_BINARY_DIR})
 target_link_libraries(test_install_picker PRIVATE ${X2_SDL} lucent::lucent lucent::zip)
 add_test(NAME install_picker COMMAND test_install_picker)
 
 add_executable(test_install_archive tests/test_install_archive.cpp
-               src/native/install_archive.cpp src/config/config_directory.c)
-target_include_directories(test_install_archive PRIVATE src/native src/config)
+               src/native/install_archive.cpp src/native/install_validation.cpp
+               src/config/config_directory.c)
+target_include_directories(test_install_archive PRIVATE src/native src/config
+                            ${CMAKE_BINARY_DIR})
 target_link_libraries(test_install_archive PRIVATE lucent::lucent lucent::zip)
 add_test(NAME install_archive COMMAND test_install_archive)
 
@@ -1140,6 +1142,18 @@ set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
                libMovie libCriMovie libIGAudio libIGCollision
                libIGInsight libIGViewer
                cg cgD3D8 msdia80 XMen2)
+set(X2_INSTALL_REQUIRED_IMAGES "")
+foreach(m ${X2_MODULES})
+    if(m STREQUAL "XMen2")
+        list(APPEND X2_INSTALL_REQUIRED_IMAGES "${m}.exe")
+    else()
+        list(APPEND X2_INSTALL_REQUIRED_IMAGES "${m}.dll")
+    endif()
+endforeach()
+list(JOIN X2_INSTALL_REQUIRED_IMAGES "\",\n    \""
+     X2_INSTALL_REQUIRED_IMAGES_LITERAL)
+configure_file(src/native/install_requirements.h.in
+               ${CMAKE_BINARY_DIR}/install_requirements.h @ONLY)
 set(X2_MODULE_SRCS "")
 set(X2_MODULE_HAVE "")
 foreach(m ${X2_MODULES})
@@ -1292,6 +1306,7 @@ if(X2_MODULE_HAVE)
         src/native/x2native_options.c
         src/native/install_picker.cpp
         src/native/install_archive.cpp
+        src/native/install_validation.cpp
         src/native/android_bridge.cpp
         src/config/config_directory.c
         src/config/directory_create.c

@@ -1,4 +1,5 @@
 #include "install_archive.h"
+#include "install_validation.h"
 #include "../config/config_directory.h"
 
 #include <cstdio>
@@ -131,6 +132,17 @@ extern "C" int x2_install_archive_prepare_to(const char *archive,
         if (!cleanup_error.empty()) error += "; " + cleanup_error;
         std::snprintf(reason, reason_capacity,
                       "That ZIP could not be used: %s", error.c_str());
+        return 0;
+    }
+    if (!x2_install_validate_executable(prepared_executable.string().c_str(),
+                                        reason, reason_capacity)) {
+        std::string cleanup_error;
+        clean_tree(preparing, cleanup_error);
+        if (!cleanup_error.empty()) {
+            const size_t used = std::strlen(reason);
+            std::snprintf(reason + used, reason_capacity > used ? reason_capacity - used : 0,
+                          "; %s", cleanup_error.c_str());
+        }
         return 0;
     }
 
