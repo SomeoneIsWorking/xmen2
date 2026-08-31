@@ -5,8 +5,9 @@
 extern "C" {
 #endif
 
-/* Validate the selected executable and the exact original images the native
- * loader will map from its containing directory. `reason` is optional. */
+/* Validate the selected executable, the original images the native loader
+ * maps, and title-owned content sentinels needed for a launchable install.
+ * `reason` is optional. */
 int x2_install_validate_executable(const char *executable, char *reason,
                                    unsigned reason_capacity);
 

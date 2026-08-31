@@ -66,8 +66,9 @@ shows a setup prompt with Browse, validates the selected `XMen2.exe` or a ZIP
 containing exactly one copy at any depth, and remembers the resulting install
 under the OS user configuration directory. The AppImage contains no game
 files. The Android APK has a separate setup Activity: it uses SAF to stage a
-ZIP or an install folder into app-private storage, then starts SDL only after
-the native bridge has supplied Lucent's Android user-data root. Its touch
+ZIP or an install folder into app-private storage, validates the loader and
+title content sentinels, then starts SDL only after the native bridge has
+supplied Lucent's Android user-data root. Its touch
 events feed the same virtual DirectInput pad as every other controller path.
 The remaining mobile release gate is measured device performance; see
 `docs/android-release.md`.
@@ -117,9 +118,10 @@ Fedora ELFs; `appimagetool` writes the result to
 `build/release/X-Men-Legends-II-x86_64.AppImage`.
 
 Build the ARM64 APK from a selected Android SDK/NDK with
-`uv run --frozen python tools/build_android.py`. The dependency step builds a
-small, pinned FFmpeg prefix under `build/deps/android/`; Android CMake never
-consults host `pkg-config`. The Gradle project consumes the generated
+`uv run --frozen python tools/build_android.py`. The dependency step consumes
+the pinned `shared/android-port` prefix under `build/deps/android/`; Android
+CMake never consults host `pkg-config` or fetches title-local SDL/FFmpeg
+sources. The Gradle project consumes the generated
 `x2-android.properties` contract and stages only native code, UI resources,
 and SDL's Java shell, never game files.
 

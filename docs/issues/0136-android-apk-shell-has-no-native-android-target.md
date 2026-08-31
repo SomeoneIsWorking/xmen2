@@ -13,12 +13,13 @@ updated: 2026-08-31
 
 The desktop and Android targets have different dependency and lifecycle
 contracts. Host pkg-config cannot describe Android ARM64 libraries, and SDL's
-desktop picker cannot acquire Android content URIs. The Android target now has
-an explicit cross-compiled FFmpeg prefix, Gradle/Activity/JNI shell, SAF copy
-boundary, touch publication/feedback path, correct native Activity entry point,
-and fail-closed release signing contract. Selection now proves the complete
-original PC image set required by the native loader (generated from
-`X2_MODULES`) before Lucent promotes a direct install or nested ZIP. Gradle 9.4.1 and Android Gradle
+desktop picker cannot acquire Android content URIs. The Android target now
+consumes the shared cross-compiled Android prefix, plus a Gradle/Activity/JNI
+shell, SAF copy boundary, touch publication/feedback path, correct native Activity entry point,
+and fail-closed release signing contract. Selection now proves the original PC
+image set required by the native loader (generated from `X2_MODULES`) plus
+title-owned content sentinels across the boot-time asset families before Lucent
+promotes a direct install or nested ZIP. Gradle 9.4.1 and Android Gradle
 Plugin 9.2.1 now make the installed Java 26 JDK a supported build path.
 The build rejects split `java`/`javac` homes. A 50-task release assembly signed
 with a one-day local verification key passed `apksigner` v3 verification; it was
@@ -29,14 +30,14 @@ control endpoint now supplies exact bounded p50/p95/p99 frame times, and
 collection with PSS, thermal-service observations, and each required manually
 exercised scenario.
 
-An API 35 x86-64 emulator exercised a real DocumentsUI folder return against a
-loader-image-only source: the title validator accepted all twenty-one required
-PE images, Lucent promoted them atomically to app-private `game/`, and a cold
-relaunch entered SDL and mapped every loader image. The first implementation
-then falsely returned to setup because it compared Android's `/data/data` and
-`/data/user/0` aliases as raw paths. Canonical, path-boundary-aware containment
-now admits the retained private selection. The reduced source intentionally
-lacks gameplay archives, so its clean post-loader exit is not gameplay evidence.
+An API 35 x86-64 emulator exercised a real DocumentsUI folder return and
+revealed that the former loader-image-only validator could promote an
+unplayable selection. The validator now rejects that reduced selection before
+promotion by requiring title-owned content sentinels as well as every PE image.
+After installing the rebuilt debug APK, its retained incomplete selection was
+refused and `XMen2SetupActivity` remained the resumed Activity. Canonical,
+path-boundary-aware containment still admits valid retained selections through
+Android's `/data/data` and `/data/user/0` aliases.
 
 ## What was tried / dead ends
 

@@ -39,6 +39,8 @@ SHARED_REPOS = (
                "196bc4d968678b4a8a2b5020cb0cd58874596e0d", "src/igb.h"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
                "8282d4c7d19ef3a625866524092c1d45ec080110", "sets"),
+    SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
+               "ab154c7d90f29959e9391217ecfc4b8e5874b9bd", "tools/android_port.py"),
     SharedRepo("recomp-x86", "https://github.com/SomeoneIsWorking/recomp-x86.git",
                "5a241a6a763b53496d27d369192eb20bae6ed660", "tools/recomp.py"),
 )

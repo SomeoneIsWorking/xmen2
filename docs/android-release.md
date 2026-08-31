@@ -1,8 +1,9 @@
 # Android release contract
 
 This document is the implementation and evidence contract for the SDL3 Android
-APK. The native target and setup shell now exist; S018 remains partial until a
-real APK is installed and measured on the supported device tiers.
+APK. The debug APK and setup shell have been installed on the shared emulator;
+S018 remains partial until a signed build is measured on the supported device
+tiers.
 
 ## Setup and game-file access
 
@@ -11,8 +12,9 @@ The APK has no terminal and opens `XMen2SetupActivity` before starting
 folder containing `XMen2.exe` (`ACTION_OPEN_DOCUMENT_TREE`) or a ZIP
 (`ACTION_OPEN_DOCUMENT`). `LucentDocumentImport` owns the persisted read grant,
 bounded background copy into app-private staging, cancellation, and recovery.
-The title validates exactly one `XMen2.exe` and every original DLL the native
-runner maps beside it before Lucent promotes the staged selection to the
+The title validates exactly one `XMen2.exe`, every original DLL the native
+runner maps beside it, and title-owned content sentinels spanning every
+boot-time asset family before Lucent promotes the staged selection to the
 persistent private `game/` leaf; for a ZIP, Lucent validates and extracts the
 complete archive into that same transaction before promotion. The prior valid
 selection remains usable until the replacement has passed this complete
@@ -43,7 +45,8 @@ Build it with:
 uv run --frozen python tools/build_android.py
 ```
 
-The script cross-builds the pinned FFmpeg subset, configures CMake for
+The script invokes the pinned shared `android-port` native-prefix build (SDL,
+SDL_image, FreeType, fmt, FFmpeg, and NDK C++ runtime), configures CMake for
 `arm64-v8a`, builds `libmain.so`, and assembles the release APK. Set
 `ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 26 first. The
 project pins Gradle 9.4.1, the first maintained patch line that officially runs

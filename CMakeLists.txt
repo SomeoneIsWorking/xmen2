@@ -45,70 +45,78 @@ find_package(Threads REQUIRED)
 # accepting it creates a build that configures successfully and cannot link or
 # run on a phone.
 if(ANDROID)
-    if(NOT X2_ANDROID_FFMPEG_ROOT)
+    if(NOT X2_ANDROID_PORT_PREFIX)
         message(FATAL_ERROR
-            "x2native: Android requires a cross-compiled FFmpeg prefix. "
-            "Run 'uv run --frozen python tools/build_android_deps.py' first, "
-            "then configure with -DX2_ANDROID_FFMPEG_ROOT=<prefix>.")
+            "x2native: Android requires the shared android-port native prefix. "
+            "Run tools/build_android.py without --skip-deps, then configure with "
+            "-DX2_ANDROID_PORT_PREFIX=<prefix>.")
+    endif()
+    set(_x2_android_manifest
+        "${X2_ANDROID_PORT_PREFIX}/android-port-dependencies.json")
+    if(NOT EXISTS "${_x2_android_manifest}")
+        message(FATAL_ERROR
+            "x2native: Android dependency manifest is missing: ${_x2_android_manifest}. "
+            "Rebuild the shared android-port prefix.")
+    endif()
+    file(READ "${_x2_android_manifest}" _x2_android_manifest_text)
+    string(REGEX MATCH "\"abi\"[ \t\r\n]*:[ \t\r\n]*\"${ANDROID_ABI}\""
+           _x2_android_abi_match "${_x2_android_manifest_text}")
+    if(NOT _x2_android_abi_match)
+        message(FATAL_ERROR
+            "x2native: ${_x2_android_manifest} does not describe ABI ${ANDROID_ABI}.")
+    endif()
+    string(REGEX MATCH "\"platform\"[ \t\r\n]*:[ \t\r\n]*\"${ANDROID_PLATFORM}\""
+           _x2_android_platform_match "${_x2_android_manifest_text}")
+    if(NOT _x2_android_platform_match)
+        message(FATAL_ERROR
+            "x2native: ${_x2_android_manifest} does not describe platform ${ANDROID_PLATFORM}.")
     endif()
     foreach(_x2_ffmpeg_library IN ITEMS avformat avcodec swscale swresample avutil)
-        if(NOT EXISTS "${X2_ANDROID_FFMPEG_ROOT}/lib/lib${_x2_ffmpeg_library}.a")
+        if(NOT EXISTS "${X2_ANDROID_PORT_PREFIX}/lib/lib${_x2_ffmpeg_library}.a")
             message(FATAL_ERROR
                 "x2native: Android FFmpeg is incomplete: missing "
-                "${X2_ANDROID_FFMPEG_ROOT}/lib/lib${_x2_ffmpeg_library}.a. "
-                "Re-run tools/build_android_deps.py.")
+                "${X2_ANDROID_PORT_PREFIX}/lib/lib${_x2_ffmpeg_library}.a. "
+                "Rebuild the shared android-port prefix.")
         endif()
     endforeach()
     add_library(x2_android_ffmpeg INTERFACE)
     target_include_directories(x2_android_ffmpeg INTERFACE
-                               "${X2_ANDROID_FFMPEG_ROOT}/include")
+                               "${X2_ANDROID_PORT_PREFIX}/include")
     target_link_libraries(x2_android_ffmpeg INTERFACE
-        "${X2_ANDROID_FFMPEG_ROOT}/lib/libavformat.a"
-        "${X2_ANDROID_FFMPEG_ROOT}/lib/libavcodec.a"
-        "${X2_ANDROID_FFMPEG_ROOT}/lib/libswscale.a"
-        "${X2_ANDROID_FFMPEG_ROOT}/lib/libswresample.a"
-        "${X2_ANDROID_FFMPEG_ROOT}/lib/libavutil.a"
+        "${X2_ANDROID_PORT_PREFIX}/lib/libavformat.a"
+        "${X2_ANDROID_PORT_PREFIX}/lib/libavcodec.a"
+        "${X2_ANDROID_PORT_PREFIX}/lib/libswscale.a"
+        "${X2_ANDROID_PORT_PREFIX}/lib/libswresample.a"
+        "${X2_ANDROID_PORT_PREFIX}/lib/libavutil.a"
         log android dl z m)
     set(X2_FFMPEG_TARGET x2_android_ffmpeg)
 
-    include(FetchContent)
-    set(SDL_SHARED ON CACHE BOOL "" FORCE)
-    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
-    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
-    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(SDL_INSTALL_TESTS OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(sdl3
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG 147a8ee32dbf9ac02f3794964490687b6bbda1bc
-        GIT_SHALLOW FALSE)
-    FetchContent_MakeAvailable(sdl3)
+    find_package(SDL3 CONFIG REQUIRED
+                 PATHS "${X2_ANDROID_PORT_PREFIX}/lib/cmake/SDL3"
+                 NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+    if(NOT TARGET SDL3::SDL3-shared)
+        message(FATAL_ERROR "x2native: shared android-port prefix omitted SDL3::SDL3-shared")
+    endif()
     set(X2_SDL SDL3::SDL3-shared)
     set(X2_SDL_ANDROID_JAVA_DIR
-        "${sdl3_SOURCE_DIR}/android-project/app/src/main/java")
+        "${X2_ANDROID_PORT_PREFIX}/share/android-port/sdl3-java")
+    set(X2_ANDROID_CXX_LIBRARY
+        "${X2_ANDROID_PORT_PREFIX}/share/android-port/cxx/${ANDROID_ABI}/libc++_shared.so")
+    if(NOT EXISTS "${X2_ANDROID_CXX_LIBRARY}")
+        message(FATAL_ERROR
+            "x2native: shared android-port prefix omitted ${X2_ANDROID_CXX_LIBRARY}.")
+    endif()
 
-    set(SDLIMAGE_VENDORED ON CACHE BOOL "" FORCE)
-    set(SDLIMAGE_TESTS OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_SAMPLES OFF CACHE BOOL "" FORCE)
-    # The Android shell only loads the packaged PNG UI resources. Keep the
-    # APK's native dependency closure limited to that format instead of
-    # shipping image codecs the port never calls.
-    set(SDLIMAGE_AVIF OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_GIF OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_JXL OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_TIF OFF CACHE BOOL "" FORCE)
-    set(SDLIMAGE_WEBP OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(sdl3_image
-        GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
-        GIT_TAG bec9134a26c7d0f31b36d6083c25296e04cabff5
-        GIT_SHALLOW FALSE
-        # PNG is the only Android format enabled below. Fetching every image
-        # codec recursively pulls AV1/JXL/WebP trees before CMake can disable
-        # them, turning an ordinary debug install into a multi-minute network
-        # operation. SDL_image's vendored PNG path needs only these two.
-        GIT_SUBMODULES external/zlib external/libpng
-        GIT_SUBMODULES_RECURSE FALSE)
-    FetchContent_MakeAvailable(sdl3_image)
-    set(X2_SDL_IMAGE SDL3_image::SDL3_image)
+    find_package(SDL3_image CONFIG REQUIRED
+                 PATHS "${X2_ANDROID_PORT_PREFIX}/lib/cmake/SDL3_image"
+                 NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
+    if(TARGET SDL3_image::SDL3_image-static)
+        set(X2_SDL_IMAGE SDL3_image::SDL3_image-static)
+    elseif(TARGET SDL3_image::SDL3_image)
+        set(X2_SDL_IMAGE SDL3_image::SDL3_image)
+    else()
+        message(FATAL_ERROR "x2native: shared android-port prefix omitted SDL3_image target")
+    endif()
 else()
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(X2_FFMPEG REQUIRED IMPORTED_TARGET
@@ -1163,6 +1171,27 @@ foreach(m ${X2_MODULES})
 endforeach()
 list(JOIN X2_INSTALL_REQUIRED_IMAGES "\",\n    \""
      X2_INSTALL_REQUIRED_IMAGES_LITERAL)
+# A selected executable and its loader DLLs are not a playable PC install.
+# These title-owned assets cover every boot-time content family, so the
+# desktop and Android setup boundaries reject a copied loader-only directory
+# before it becomes the persisted selection.
+set(X2_INSTALL_REQUIRED_CONTENT
+    build.ini
+    xmen.ini
+    Actors/0000.IGB
+    Conversations/1_deadzone2_0040.XMLB
+    Data/common_ents.XMLB
+    Dialogs/standard_ok.XMLB
+    HUD/hud_head_0000.IGB
+    Maps/Act0/tutorial/tutorial1.IGB
+    Movies/cine01.XMLB
+    Packages/generated/characters/abyss_0101.PKGB
+    Scripts/act0/tutorial/tutorial1/1stspscr_set_invisible_f.PY
+    Sounds/badaudio.wav
+    Textures/alphagrit.IGB
+    UI/fonts/fonts.XMLB)
+list(JOIN X2_INSTALL_REQUIRED_CONTENT "\",\n    \""
+     X2_INSTALL_REQUIRED_CONTENT_LITERAL)
 configure_file(src/native/install_requirements.h.in
                ${CMAKE_BINARY_DIR}/install_requirements.h @ONLY)
 set(X2_MODULE_SRCS "")
@@ -1637,14 +1666,20 @@ if(X2_MODULE_HAVE)
                                            m Threads::Threads)
     if(ANDROID)
         set_target_properties(x2native PROPERTIES OUTPUT_NAME main)
+        get_filename_component(_x2_android_ndk_version "${CMAKE_ANDROID_NDK}" NAME)
+        if(NOT _x2_android_ndk_version)
+            message(FATAL_ERROR "x2native: Android toolchain did not expose its NDK version")
+        endif()
         # Gradle consumes this generated contract. It keeps the Android shell
         # independent of CMake's internal target names while still refusing a
         # stale or hand-pointed-at native library.
         set(_x2_android_properties
             "x2.nativeLibrary=$<TARGET_FILE:x2native>\n"
-            "x2.sdlLibrary=$<TARGET_FILE:SDL3-shared>\n"
+            "x2.sdlLibrary=$<TARGET_FILE:${X2_SDL}>\n"
+            "x2.cxxLibrary=${X2_ANDROID_CXX_LIBRARY}\n"
             "x2.androidAbi=${ANDROID_ABI}\n"
             "x2.androidPlatform=${ANDROID_PLATFORM}\n"
+            "x2.ndkVersion=${_x2_android_ndk_version}\n"
             "x2.sdlJavaDir=${X2_SDL_ANDROID_JAVA_DIR}\n"
             "x2.lucentJavaDir=${X2_LUCENT_ANDROID_JAVA_DIR}\n"
             "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n")

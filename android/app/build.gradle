@@ -27,8 +27,10 @@ def required = { String name ->
 
 def nativeLibrary = file(required("x2.nativeLibrary"))
 def sdlLibrary = file(required("x2.sdlLibrary"))
+def cxxLibrary = file(required("x2.cxxLibrary"))
 def androidAbi = required("x2.androidAbi")
 def androidPlatform = required("x2.androidPlatform")
+def ndkVersionValue = required("x2.ndkVersion")
 def sdlJavaDir = file(required("x2.sdlJavaDir"))
 def lucentJavaDir = file(required("x2.lucentJavaDir"))
 def uiDir = file(required("x2.uiDir"))
@@ -50,27 +52,8 @@ def versionCodeValue = (System.getenv("X2_ANDROID_VERSION_CODE") ?: "2").toInteg
 def versionNameValue = System.getenv("X2_ANDROID_VERSION_NAME") ?: "0.2.0"
 def sdkPath = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
 if (!sdkPath) throw new GradleException("ANDROID_HOME or ANDROID_SDK_ROOT is not available")
-def ndkVersionValue = System.getenv("ANDROID_NDK_VERSION")
-if (!ndkVersionValue) {
-    def ndkRoot = new File(sdkPath, "ndk")
-    def candidates = ndkRoot.listFiles()?.findAll { it.isDirectory() } ?: []
-    if (candidates.size() == 1) ndkVersionValue = candidates[0].name
-}
-if (!ndkVersionValue) throw new GradleException("ANDROID_NDK_VERSION is not available")
-def ndkDir = new File(sdkPath, "ndk/${ndkVersionValue}")
-def triple = [
-    "arm64-v8a": "aarch64-linux-android",
-    "armeabi-v7a": "arm-linux-androideabi",
-    "x86": "i686-linux-android",
-    "x86_64": "x86_64-linux-android"
-][androidAbi]
-if (!triple) throw new GradleException("Unsupported Android ABI: ${androidAbi}")
-def llvmRoot = new File(ndkDir, "toolchains/llvm/prebuilt")
-def llvmDir = llvmRoot.listFiles()?.find { it.isDirectory() }
-def stlLibrary = llvmDir == null ? null :
-    new File(llvmDir, "sysroot/usr/lib/${triple}/libc++_shared.so")
-if (stlLibrary == null || !stlLibrary.isFile())
-    throw new GradleException("libc++_shared.so is missing for ${androidAbi} in ${ndkDir}")
+if (!cxxLibrary.isFile())
+    throw new GradleException("Shared Android C++ runtime is missing: ${cxxLibrary}")
 if (!sdlJavaDir.isDirectory()) throw new GradleException("SDL Android Java sources are missing: ${sdlJavaDir}")
 if (!lucentJavaDir.isDirectory()) throw new GradleException("Lucent Android Java sources are missing: ${lucentJavaDir}")
 if (!uiDir.isDirectory()) throw new GradleException("Native UI assets are missing: ${uiDir}")
@@ -81,7 +64,7 @@ def stageJniLibs = tasks.register("stageX2JniLibs", Sync) {
         rename { "libmain.so" }
         into(androidAbi)
     }
-    from(stlLibrary) {
+    from(cxxLibrary) {
         rename { "libc++_shared.so" }
         into(androidAbi)
     }

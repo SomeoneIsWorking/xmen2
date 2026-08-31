@@ -11,6 +11,11 @@ import shutil
 import subprocess
 import sys
 
+try:
+    from .shared_dir import shared_dir
+except ImportError:
+    from shared_dir import shared_dir
+
 
 GRADLE_VERSION = "9.4.1"
 GRADLE_JAVA_MIN = 17
@@ -52,6 +57,11 @@ def ndk_path() -> Path:
 def run(command: list[str], *, cwd: Path) -> None:
     print("+", " ".join(command))
     subprocess.run(command, cwd=cwd, check=True)
+
+
+def android_port_tool() -> Path:
+    root = Path(shared_dir("android-port", "tools/android_port.py"))
+    return root / "tools" / "android_port.py"
 
 
 def parse_java_major(version_output: str) -> int | None:
@@ -206,15 +216,18 @@ def main() -> int:
         run(
             [
                 sys.executable,
-                str(root / "tools/build_android_deps.py"),
-                "--abi",
-                args.abi,
-                "--api",
-                str(args.api),
+                str(android_port_tool()),
+                "build-native-deps",
                 "--ndk",
                 str(ndk),
                 "--prefix",
                 str(prefix),
+                "--abi",
+                args.abi,
+                "--api",
+                str(args.api),
+                "--jobs",
+                str(native_jobs()),
             ],
             cwd=root,
         )
@@ -232,7 +245,7 @@ def main() -> int:
             "-DANDROID_STL=c++_shared",
             "-DCMAKE_BUILD_TYPE=Release",
             f"-DPython3_EXECUTABLE={sys.executable}",
-            f"-DX2_ANDROID_FFMPEG_ROOT={prefix}",
+            f"-DX2_ANDROID_PORT_PREFIX={prefix}",
         ],
         cwd=root,
     )

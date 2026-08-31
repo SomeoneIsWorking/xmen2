@@ -2,10 +2,9 @@
 """Fail-closed checks for the Android entry point and signing contract."""
 
 from pathlib import Path
-import tarfile
 import tempfile
 
-from tools import build_android, build_android_deps
+from tools import build_android
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -112,24 +111,18 @@ def main() -> int:
                    "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION"):
         assert unsafe not in setup, f"{unsafe} would bypass the scoped picker"
 
-    # The FFmpeg tree's directory name comes from the archive. Composing it
-    # from the version spelled it "ffmpeg-n7.1.1" while GitHub's tarball roots
-    # at "FFmpeg-n7.1.1", so it never matched: every build re-extracted the
-    # 15 MB archive and then refused it as missing.
-    members = [tarfile.TarInfo("FFmpeg-n7.1.1"),
-               tarfile.TarInfo("FFmpeg-n7.1.1/configure")]
-    assert build_android_deps.archive_root(members) == "FFmpeg-n7.1.1"
+    # The common Android prefix owns FFmpeg's source/archive mechanics as well
+    # as SDL. X-Men only resolves and consumes that one shared build contract.
+    android_port = ROOT / "vendor/shared/android-port"
+    original_shared_dir = build_android.shared_dir
+    build_android.shared_dir = lambda name, marker: str(android_port)
     try:
-        build_android_deps.archive_root([*members, tarfile.TarInfo("elsewhere/x")])
-    except SystemExit as error:
-        assert "exactly one top-level directory" in str(error)
-    else:
-        raise AssertionError("an archive with two roots was accepted")
-    assert build_android_deps.assembly_configuration("arm64-v8a") == ()
-    assert build_android_deps.assembly_configuration("x86_64") == (
-        "--disable-x86asm", "--disable-inline-asm")
-    assert "--disable-inline-asm" in build_android_deps.build_contract("x86_64", 34)
-    assert build_android_deps.default_prefix("x86_64") == Path("build/deps/android/x86_64")
+        assert build_android.android_port_tool() == android_port / "tools/android_port.py"
+    finally:
+        build_android.shared_dir = original_shared_dir
+    assert "build_android_deps.py" not in cmake
+    assert "X2_ANDROID_PORT_PREFIX" in cmake
+    assert not (ROOT / "tools/build_android_deps.py").exists()
 
     assert "protected String getMainFunction()" in activity
     assert 'return "main";' in activity

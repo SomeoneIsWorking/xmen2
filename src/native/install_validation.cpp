@@ -3,6 +3,7 @@
 #include "install_requirements.h"
 
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <strings.h>
@@ -40,6 +41,42 @@ RequiredFile regular_file_named(const std::filesystem::path &directory,
     return error ? RequiredFile::Unreadable : RequiredFile::Missing;
 }
 
+RequiredFile regular_file_at(const std::filesystem::path &directory,
+                             const char *relative_path)
+{
+    std::filesystem::path current = directory;
+    std::string component;
+    const char *cursor = relative_path;
+
+    while (cursor && *cursor) {
+        const char *separator = std::strchr(cursor, '/');
+        component.assign(cursor, separator ? separator - cursor : std::strlen(cursor));
+        if (component.empty() || component == "." || component == "..")
+            return RequiredFile::Missing;
+
+        std::error_code error;
+        bool found = false;
+        for (std::filesystem::directory_iterator it(
+                 current, std::filesystem::directory_options::skip_permission_denied,
+                 error), end;
+             it != end && !error; it.increment(error)) {
+            const std::string name = it->path().filename().string();
+            if (strcasecmp(name.c_str(), component.c_str()) != 0) continue;
+            current = it->path();
+            found = true;
+            break;
+        }
+        if (error) return RequiredFile::Unreadable;
+        if (!found) return RequiredFile::Missing;
+        cursor = separator ? separator + 1 : nullptr;
+    }
+
+    std::error_code error;
+    return std::filesystem::is_regular_file(current, error) && !error
+               ? RequiredFile::Found
+               : error ? RequiredFile::Unreadable : RequiredFile::Missing;
+}
+
 } // namespace
 
 extern "C" int x2_install_validate_executable(const char *executable,
@@ -71,6 +108,18 @@ extern "C" int x2_install_validate_executable(const char *executable,
             return set_reason(reason, reason_capacity,
                               "Install is incomplete: missing %s beside XMen2.exe.",
                               x2_install_required_images[i]);
+    }
+    for (unsigned i = 0; i < X2_INSTALL_REQUIRED_CONTENT_COUNT; ++i) {
+        const RequiredFile required =
+            regular_file_at(directory, x2_install_required_content[i]);
+        if (required == RequiredFile::Unreadable)
+            return set_reason(reason, reason_capacity,
+                              "Cannot inspect the selected game content: %s.",
+                              x2_install_required_content[i]);
+        if (required == RequiredFile::Missing)
+            return set_reason(reason, reason_capacity,
+                              "Install is incomplete: missing game file %s.",
+                              x2_install_required_content[i]);
     }
     return 1;
 }

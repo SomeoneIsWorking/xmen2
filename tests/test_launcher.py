@@ -76,7 +76,7 @@ class LauncherContract(unittest.TestCase):
 
     def test_player_bootstrap_excludes_maintainer_only_re_harness(self):
         self.assertEqual({repo.name for repo in bootstrap.SHARED_REPOS},
-                         {"alchemy", "port-assets", "recomp-x86"})
+                         {"alchemy", "android-port", "port-assets", "recomp-x86"})
 
     def test_bootstrap_finds_repository_local_game(self):
         for relative in (Path("."), Path("X-Men Legends II")):

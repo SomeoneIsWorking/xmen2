@@ -104,6 +104,11 @@ std::vector<std::pair<std::string, std::string>> complete_install(
                            name == "XMen2.exe" ? std::string(executable_contents)
                                                 : "required");
     }
+    for (unsigned i = 0; i < X2_INSTALL_REQUIRED_CONTENT_COUNT; ++i) {
+        files.emplace_back(std::string(directory) + "/" +
+                               x2_install_required_content[i],
+                           "required content");
+    }
     return files;
 }
 

@@ -96,7 +96,9 @@ The title-specific safe-area-aware touch action owner exists in
 `src/input/touch_controls.cpp`, with SDL contact acquisition in
 `src/input/touch_runtime.cpp`, Android setup/SAF staging in `android/`, and a
 real ARM64 shared native target/Gradle assembly path. Android selection uses the
-same generated complete-install validator before Lucent promotes staged files.
+same generated validator before Lucent promotes staged files: it requires every
+loader PE image and title-owned content sentinels spanning each boot-time asset
+family, so a loader-only selection cannot become the retained install.
 The touch feedback layer
 shows authored action labels rather than misleading internal controller names,
 publishes signed axes once per contact update, holds buttons until finger
@@ -116,15 +118,15 @@ is gone and the build rejects mismatched `java`/`javac` homes. A release assembl
 completed all 50 AGP tasks under a one-day local verification key, and
 `apksigner` verified its v3 signature; that artifact was deliberately not staged
 as a release. The user reported that the Android setup and game path runs on a
-device. A freshly cleared API 35 x86-64 emulator installed the debug APK and
-showed the landscape setup screen; its install-folder and ZIP controls each
-opened Android's DocumentsUI picker. A loader-image-only folder then completed
-the DocumentsUI tree flow, promoted the validated selection into app-private
-storage, and on a cold relaunch started SDL and mapped every required loader
-image from that retained selection. Canonical private-path containment prevents
-Android's `/data/data` and `/data/user/0` aliases from rejecting that valid
-selection. This proves the packaged first-run shell and retained-install
-handoff, not importing a complete install or gameplay. The revised touch/HUD layout still
+device. An API 35 x86-64 emulator installed the debug APK, and its install-folder
+and ZIP controls each opened Android's DocumentsUI picker. The former
+loader-image-only DocumentsUI fixture exposed an install-validation defect: it
+could reach SDL without gameplay content. The revised validator now refuses
+that retained incomplete source and keeps `XMen2SetupActivity` resumed after
+the rebuilt APK is installed. Canonical private-path containment prevents
+Android's `/data/data` and `/data/user/0` aliases from rejecting a valid
+selection. This proves the packaged first-run shell and its incomplete-install
+refusal, not importing a complete install or gameplay. The revised touch/HUD layout still
 needs installed-APK visual and input verification. The shipping control status
 now exposes exact bounded p50/p95/p99 frame timings, and
 `tools/android_qualify.py` refuses a less-than-20-minute or incomplete-scenario
