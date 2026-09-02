@@ -42,14 +42,22 @@
 #define ENGINE_RETURN_ADDR ENGINE_RETURN_PAGE
 
 /*
- * Zero the run counters.
+ * The engine's own work is done; everything from here is the game.
  *
- * The selftest executes real guest instructions through the real entry point,
- * so its work lands in the same counters the game's does. Subtracting its call
- * and its instructions was not enough -- the nesting high-water mark stayed at
- * 1, and the report then read "0 calls, deepest nesting 1", which is not a
- * state that can happen. Everything resets, together.
+ * Called once, by the selftest, when it passes. It does two things that both
+ * belong to that one moment:
+ *
+ *   - Zeroes the run counters. The selftest executes real guest instructions
+ *     through the real entry point, so its work lands in the same counters the
+ *     game's does. Subtracting its call and its instructions was not enough --
+ *     the nesting high-water mark stayed at 1, and the report then read "0
+ *     calls, deepest nesting 1", which is not a state that can happen.
+ *   - Arms the per-thread TEB check. A thread running GAME code must have one,
+ *     and the engine refuses a call from a thread that does not. The selftest
+ *     itself runs on the startup thread before the TEB exists and executes a
+ *     program with no FS-relative access at all, so the invariant is about
+ *     what comes after it, not about every entry.
  */
-void x2_engine_forget_run(void);
+void x2_engine_enter_service(void);
 
 #endif

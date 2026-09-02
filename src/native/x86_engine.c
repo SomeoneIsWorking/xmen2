@@ -43,6 +43,7 @@ static struct {
     X86pEngine selected;
     X86pMem mem;
     int ready;
+    int in_service; /* the selftest has passed; what runs now is the game */
     unsigned long calls;
     unsigned long taken;
     unsigned long long insns;
@@ -50,6 +51,24 @@ static struct {
     unsigned long deepest;
     unsigned long depth;
 } g_engine;
+
+/*
+ * The engine's own call stack, for a fault report.
+ *
+ * A host backtrace stops at x2_engine_call: everything below it is one C loop,
+ * so a fault inside interpreted code reads as "somewhere in the engine" and
+ * names no guest function at all. The first bisect run proved that -- a
+ * SIGSEGV at 0x3 with a [REGS] line naming an import thunk, which was the last
+ * body to cross the boundary and had nothing to do with it.
+ *
+ * A POINTER to each frame's live CPU rather than a copy of its EIP: the value
+ * is then always current without a store per interpreted instruction.
+ */
+#define ENGINE_FRAMES 64
+static struct {
+    uint32_t entry;
+    const X86pCpu *cpu;
+} g_frame[ENGINE_FRAMES];
 
 /* ---- state bridge ------------------------------------------------------ */
 
@@ -80,6 +99,24 @@ static void to_x86p(const CPU *C, X86pCpu *out)
     out->reg[kX86pEdi] = C->edi;
     x86p_flags_set_explicit(&out->flags, x86_eflags(C));
     out->df = 0;
+    /*
+     * THE SEGMENT BASES, which are per-THREAD and not part of the CPU struct
+     * on either side. The substrate reads them from `g_fsbase`/`g_gsbase`
+     * thread-locals; x86port keeps them in the CPU because which address the
+     * TEB lives at is a property of the process the port builds.
+     *
+     * Not bridging these is what the first taken module found. `mov eax,
+     * fs:[0]` is the opening of every /GS-compiled function's SEH prologue --
+     * seven bytes into FUN_004874b0, the first function taken -- and with a
+     * zero base it reads guest address 0 instead of the TIB. It faulted at
+     * 0x3, which is a plausible-looking null dereference and says nothing at
+     * all about segments.
+     *
+     * One way only: nothing a guest executes changes a segment base. The OS
+     * sets it, and on this port that is threads.c.
+     */
+    out->fs_base = g_fsbase;
+    out->gs_base = g_gsbase;
     x86p_x87_reset(&out->x87);
     out->x87.control = (uint16_t)C->fcw;
     /* C0-C3 only. TOP is merged in on read from the engine's own stack, and
@@ -212,8 +249,34 @@ int x2_engine_call(uint32_t addr, CPU *C)
 
     if (!g_engine.ready) return 0;
 
+    /*
+     * A thread with no TEB cannot run interpreted code correctly, and the
+     * failure is not one anybody would recognise: FS-relative accesses become
+     * absolute low addresses, which fault as null dereferences somewhere the
+     * segment override is nowhere in sight.
+     *
+     * The substrate refuses this lazily, at the FS access itself
+     * (x86_fs_check). The engine cannot -- the check would be inside x86port's
+     * effective-address path, once per memory operand -- so it refuses at the
+     * boundary instead. Every guest thread in this port is given a TEB by
+     * threads.c, so a zero here is a broken thread, not a legitimate one.
+     */
+    if (g_engine.in_service && !g_fsbase) {
+        fprintf(stderr,
+                "\n*** engine: the call at 0x%08x (%s) is on a thread with no "
+                "TEB (g_fsbase is 0), so every FS-relative access would read "
+                "low memory instead.\n",
+                addr, named(addr));
+        x86_diag_dump();
+        abort();
+    }
+
     g_engine.calls++;
     if (++g_engine.depth > g_engine.deepest) g_engine.deepest = g_engine.depth;
+    if (g_engine.depth <= ENGINE_FRAMES) {
+        g_frame[g_engine.depth - 1].entry = addr;
+        g_frame[g_engine.depth - 1].cpu = &cpu;
+    }
 
     to_x86p(C, &cpu);
     /*
@@ -268,7 +331,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
          * while looking like it worked.
          */
         if (cpu.eip != addr && x86_native_body_at(cpu.eip)
-            && !x2_take_has(cpu.eip)) {
+            && !x2_take_has(cpu.eip, kX2TakeInline)) {
             const uint32_t target = cpu.eip;
             /*
              * The return address is read HERE, before the body runs. After it,
@@ -331,8 +394,35 @@ int x2_engine_call(uint32_t addr, CPU *C)
         abort();
     }
     from_x86p(&cpu, C);
+    if (g_engine.depth <= ENGINE_FRAMES) g_frame[g_engine.depth - 1].cpu = NULL;
     g_engine.depth--;
     return 1;
+}
+
+void x2_engine_where(void)
+{
+    unsigned long i;
+    if (!g_engine.ready) return;
+    if (!g_engine.depth) {
+        fprintf(stderr, "[ENGINE] no interpreted call is on the stack, so the "
+                        "engine was not executing when this happened.\n");
+        return;
+    }
+    fprintf(stderr, "[ENGINE] %lu interpreted call(s) on the stack, innermost "
+                    "last:\n", g_engine.depth);
+    for (i = 0; i < g_engine.depth && i < ENGINE_FRAMES; i++) {
+        const X86pCpu *c = g_frame[i].cpu;
+        fprintf(stderr, "[ENGINE]   0x%08x (%s)", g_frame[i].entry,
+                named(g_frame[i].entry));
+        if (c)
+            fprintf(stderr, " at 0x%08x (%s), esp %08x", c->eip,
+                    named(c->eip), c->reg[kX86pEsp]);
+        fputc('\n', stderr);
+    }
+    if (g_engine.depth > ENGINE_FRAMES)
+        fprintf(stderr, "[ENGINE]   ... %lu deeper frame(s) not recorded "
+                        "(ENGINE_FRAMES is %d).\n",
+                g_engine.depth - ENGINE_FRAMES, ENGINE_FRAMES);
 }
 
 /*
@@ -375,8 +465,9 @@ void x2_engine_report(void)
     x2_take_report();
 }
 
-void x2_engine_forget_run(void)
+void x2_engine_enter_service(void)
 {
+    g_engine.in_service = 1;
     g_engine.calls = 0;
     g_engine.taken = 0;
     g_engine.insns = 0;

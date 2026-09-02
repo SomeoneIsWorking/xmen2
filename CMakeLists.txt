@@ -1392,6 +1392,7 @@ if(X2_MODULE_HAVE)
         src/native/x86_engine_take.c
         src/native/x86_engine_selftest.c
         src/native/x86_dispatch.c
+        src/native/x86_diag_dump.c
         src/native/x86_dispatch_report.c
         src/presentation/aspect_fit.c
         src/presentation/boot_blackout.c

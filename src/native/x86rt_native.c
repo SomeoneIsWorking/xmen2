@@ -2199,29 +2199,6 @@ void x86_peek_report(void)
  * the failures worth reporting. An instrument that goes quiet when the run
  * fails is not an instrument.
  */
-void x86_diag_dump(void)
-{
-    /*
-     * The THREAD table, on every stop path. It is registered with atexit()
-     * too, and atexit does not run on abort() -- so at exactly the stops worth
-     * reading (a stall, a missing import, a fault) the one fact that explains
-     * a stalled run, "tid N is suspended and nobody resumed it", was silent.
-     */
-    /* The thread and critical-section reports are NOT printed here: they moved
-       to x2_interrupt_reports, which runs on every ending rather than only on
-       the ones that dump the ring. Printing them in both places would double
-       every number on a killed run. */
-    /* The multimedia timers, for the same reason: a stall whose cause is "the
-       callback that would have ended this wait has never run" is invisible
-       unless the fire count is printed where the stall is. */
-    { extern void winmm_report(void); winmm_report(); }
-    x86_peek_report();
-    x86_reached_report();
-#ifdef X86_NATIVE_TRACE
-    x86_args_report();
-#endif
-    x86_ring_dump();
-}
 
 void x86_ring_dump(void)
 {

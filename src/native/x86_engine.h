@@ -91,6 +91,14 @@ int x2_engine_call_taken(uint32_t addr, struct CPU *C);
  */
 int x2_engine_selftest(void);
 
+/*
+ * Where the engine is, RIGHT NOW. Printed on every stop path, because a host
+ * backtrace stops at x2_engine_call and names no guest function below it.
+ * Silent when no engine is selected; says so when one is and nothing is on its
+ * stack, which is a different fact from "the engine is not here".
+ */
+void x2_engine_where(void);
+
 void x2_engine_report(void);
 
 #endif

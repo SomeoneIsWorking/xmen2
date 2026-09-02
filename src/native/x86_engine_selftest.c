@@ -157,7 +157,8 @@ int x2_engine_selftest(void)
      * being dropped -- the resulting measurement would be of a different set.
      */
     if (!x2_take_validate()) return 0;
-    /* The selftest's own work is not a measurement of the game. */
-    x2_engine_forget_run();
+    /* The selftest's own work is not a measurement of the game, and the
+       invariants that hold for the game do not hold for it. */
+    x2_engine_enter_service();
     return 1;
 }

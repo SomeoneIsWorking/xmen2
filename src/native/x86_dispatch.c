@@ -44,7 +44,9 @@ static void x86_dispatch_one(CPU *C, uint32_t target)
      * the default -- so this line is inert on an ordinary run rather than
      * being a branch that has to be reasoned about.
      */
-    if (x2_take_has(target) && x2_engine_call_taken(target, C)) return;
+    if (x2_take_has(target, kX2TakeDispatch)
+        && x2_engine_call_taken(target, C))
+        return;
     if (x86_native_call_at(target, C)) return;
     /*
      * No body here -- which is exactly where a runtime engine plugs in

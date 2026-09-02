@@ -13,7 +13,7 @@ DEFAULT_LIMIT = 500
 # debt, not examples: extraction should lower these numbers, never raise them.
 LEGACY_LIMITS = {
     "src/native/kernel32.c": 4010,
-    "src/native/x86rt_native.c": 2673,
+    "src/native/x86rt_native.c": 2650,
     "src/native/x2native.c": 2278,
     "src/d3d8/d3d8_drawcall.c": 2273,
     "src/d3d8/d3d8_device.c": 1934,
