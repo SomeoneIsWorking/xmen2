@@ -143,3 +143,23 @@ draw path: a scoped native override mirrors its authored root to the top-right,
 while the retained `FUN_005a3320` character-panel body is remapped to the
 top-left. The original vectors are restored after each super-call, and desktop
 behavior is unchanged because relocation requires the Android touch overlay.
+
+## 2026-09-02: the root shift FRACTURES the HUD -- measured, then removed
+
+Shifting the authored `igVec3f` at `CHud+8` does move part of the retained
+tree: the selector wheel and the health/energy bars follow it. The four
+character portraits do NOT -- they are placed from their own coordinates.
+So the shift pulled the group apart on screen: portraits left in place, the
+X wheel and the bars gone from between them. User-reported, then reproduced
+and settled by two captures of the same scene (same save, same camera), one
+with the shift and one without.
+
+That falsifies the module's founding claim -- that `this+8` is "the origin
+every element is laid out from". It is the origin of SOME of them.
+
+The shift and the per-character hook are removed. `touch_hud_runtime.c` now
+only publishes the gameplay-HUD heartbeat to the control gate, and the retail
+HUD draws exactly as authored. `touch_layout.c` still owns the three HUD
+slots -- where the elements are MEANT to go is decided and tested; what is
+missing is per-element placement, which needs the scene-graph structure under
+CHud element by element.
