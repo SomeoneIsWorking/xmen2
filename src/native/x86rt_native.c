@@ -6,6 +6,8 @@
 #include "x86rt.h"
 #include "x86_reached.h"
 #include "x86rt_native.h"
+#include "x86_engine.h"
+#include "x86_dispatch_report.h"
 #include "guest_memory.h"
 #include "threads.h"
 #include "guest_heap.h"
@@ -219,6 +221,19 @@ int x86_override_resolve_check(const char *module, uint32_t linked_ep,
    and the recompiled body answers instead -- which is indistinguishable from a
    working build until something downstream is wrong for reasons that look
    unrelated. */
+/*
+ * The mapped entry point of a resolved override, by index, or 0.
+ *
+ * Exists so a caller can obtain an address that x86_native_body_at MUST answer
+ * yes for. A predicate that has only ever been asked about addresses it says no
+ * to has not been tested -- it is indistinguishable from `return 0`.
+ */
+uint32_t x86_override_mapped_ep(int index)
+{
+    if (index < 0 || index >= g_noverride) return 0;
+    return g_override[index].mapped_ep;
+}
+
 void x86_overrides_resolve(void)
 {
     int i, bad = 0;
@@ -1270,6 +1285,35 @@ static int thunk_call(uint32_t addr, CPU *C)
     return 1;
 }
 
+/*
+ * Is there something at this address that this dispatcher would RUN?
+ *
+ * The lookup half of x86_native_call_at, without the running half and without
+ * any of its side effects -- no trigger arming, no entry-point counting, no
+ * stack-check bookkeeping. The runtime execution engine needs to ask the
+ * question at every instruction it executes: guest code it is interpreting can
+ * CALL an import thunk, a native override, or a statically recompiled body,
+ * and each of those is HOST code that the interpreter must not walk into.
+ *
+ * Kept beside x86_native_call_at deliberately, and in the same order, because
+ * a disagreement between the two would be silent: the engine would either walk
+ * into host memory (owned, not reported) or hand back a call the dispatcher
+ * cannot make (reported, not owned). Change one, change the other.
+ */
+int x86_native_body_at(uint32_t addr)
+{
+    X86Module *m;
+    int i;
+    if (addr >= THUNK_BASE && addr < THUNK_BASE + (uint32_t)THUNK_MAX * 16u) {
+        uint32_t t = (addr - THUNK_BASE) / 16u;
+        if ((int)t < g_nthunk && g_thunk[t].stub) return 1;
+    }
+    for (i = 0; i < g_noverride; i++)
+        if (g_override[i].mapped_ep == addr) return 1;
+    m = x86_module_for(addr);
+    return m && find(m, addr) ? 1 : 0;
+}
+
 /* ---- the boundary ring -------------------------------------------------
  *
  * The hosted build has one of these (src/x86watch.c) and the native build
@@ -2261,68 +2305,21 @@ const char *x86_poison_name(uint32_t addr, const char **mod)
     return NULL;
 }
 
-static void where(uint32_t addr)
-{
-    X86Module *m = x86_module_for(addr);
-    const char *mod = NULL, *sym = x86_poison_name(addr, &mod);
-    if (sym) {
-        fprintf(stderr, "  that address is an UNBOUND IMPORT: %s!%s\n"
-                        "  it was reached as a call target, so something took "
-                        "its address from the IAT\n", mod, sym);
-        return;
-    }
-    if (m)
-        fprintf(stderr, "  mapped 0x%08x is in %s (guest 0x%08x)\n",
-                addr, m->name, m->preferred + (addr - *m->base));
-    else
-        fprintf(stderr, "  address is in NO registered module -- either it is "
-                        "host memory or a module was never linked in\n");
-}
-
 static void x86_dispatch_one(CPU *C, uint32_t target)
 {
-    X86Module *m;
     if (x86_native_call_at(target, C)) return;
-    fprintf(stderr, "x86_dispatch: no recompiled body at 0x%08x\n", target);
-    where(target);
     /*
-     * WHO dispatched there. Every emitted indirect call pushes its own return
-     * address before dispatching, so the word at ESP names the call site --
-     * and without it this report says only that a bad target was reached,
-     * which is the one thing the reader already knows. The value is checked
-     * against the module list rather than trusted: if the stack is the thing
-     * that is wrong, the return address is wrong too, and saying so is part of
-     * the answer.
+     * No body here -- which is exactly where a runtime engine plugs in
+     * (jit-common I004). It returns 0 when no engine is selected, and then the
+     * report below is still the right answer; nothing has been touched.
+     *
+     * It is asked AFTER x86_native_call_at rather than instead of it, so the
+     * statically recompiled corpus keeps running and the engine takes only
+     * what that corpus could not translate. That is what makes this
+     * incremental rather than a switch-over.
      */
-    {
-        uint32_t ra = RD32(C->esp);
-        const char *nm = x86_native_name_at(ra);
-        X86Module *rm = x86_module_for(ra);
-        if (nm)
-            fprintf(stderr, "  dispatched from 0x%08x -- %s\n", ra, nm);
-        else if (rm)
-            fprintf(stderr, "  dispatched from 0x%08x, inside %s (guest "
-                            "0x%08x) but not at a body this host can name\n",
-                    ra, rm->name, rm->preferred + (ra - *rm->base));
-        else
-            fprintf(stderr, "  the return address on the guest stack is "
-                            "0x%08x, which is in no module either -- so the "
-                            "STACK is suspect, not just the target\n", ra);
-    }
-    /* If it is inside a module, it is a function static analysis missed --
-       exactly what the constructor-table report describes, so it is printed in
-       the SAME shape and tools/native_discover.py seeds it without needing to
-       know that an indirect call target is a different kind of gap. */
-    x86_diag_dump();
-    m = x86_module_for(target);
-    if (m) {
-        fprintf(stderr, "\n*** dispatch target with no recompiled body.\n"
-                        "    Reached as an indirect call, so nothing in the "
-                        "database references it as code.\n");
-        fprintf(stderr, "    %-18s 0x%08x\n", m->name,
-                m->preferred + (target - *m->base));
-        fprintf(stderr, "*** 1 of 1 dispatch target is missing a body\n");
-    }
+    if (x2_engine_call(target, C)) return;
+    x86_report_missing_body(C, target);
     abort();
 }
 
@@ -2432,7 +2429,7 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected)
                     "prologue: its detected boundaries are wrong, or an\n"
                     "  instruction in it was mistranslated.\n",
                     target, fn_ep, nm ? nm : "?", expected, target);
-    where(target);
+    x86_report_where(target);
     x86_diag_dump();
     abort();
 }
@@ -2443,7 +2440,7 @@ void x86_call_unknown(CPU *C, uint32_t target)
     (void)C;
     fprintf(stderr, "x86_call_unknown: 0x%08x has no identified function\n",
             target);
-    where(target);
+    x86_report_where(target);
     /* Report it in the SAME shape as a missing dispatch target and a missing
        constructor target, because tools/native_discover.py parses that shape
        and is otherwise blind to this one -- a direct call to an address Ghidra
@@ -2572,7 +2569,7 @@ void x86_fallthrough(uint32_t fn_ep, uint32_t next)
                     "known function.\n"
                     "  Its detected boundaries are wrong and the code it runs "
                     "into has never been translated.\n", fn_ep, next);
-    where(next);
+    x86_report_where(next);
     x86_diag_dump();
     abort();
 }
@@ -2602,7 +2599,7 @@ void x86_int3(uint32_t addr)
                     "trap at guest 0x%08x.\n"
                     "  MSVC emits INT3 after a call it proved never returns, "
                     "so a noreturn function returned.\n", addr);
-    where(addr);
+    x86_report_where(addr);
     x86_diag_dump();
     abort();
 }

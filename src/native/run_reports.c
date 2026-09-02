@@ -16,6 +16,7 @@
 #include "heartbeat.h"
 #include "boot_blackout.h"
 #include "dialog_selection_scale.h"
+#include "x86_engine.h"
 #include "input_record.h"
 #include "live_session.h"
 #include "prompt_glyph_draw.h"
@@ -62,6 +63,7 @@ void x2_interrupt_reports(int killed)
         printf("        %s", blackout);
     }
     x86_fallback_report();
+    x2_engine_report();
     d3d8_host_report();
     guest_heap_report();
     /* The threads and their critical sections are reported on EVERY ending,

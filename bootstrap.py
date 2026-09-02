@@ -43,6 +43,20 @@ SHARED_REPOS = (
                "ab154c7d90f29959e9391217ecfc4b8e5874b9bd", "tools/android_port.py"),
     SharedRepo("recomp-x86", "https://github.com/SomeoneIsWorking/recomp-x86.git",
                "5a241a6a763b53496d27d369192eb20bae6ed660", "tools/recomp.py"),
+    # The runtime execution engine (jit-common S040/S047). Pinned to an exact
+    # revision, never a branch: a fresh clone that resolved to whatever `main`
+    # happened to be would make two machines run different engines while
+    # reporting the same port revision.
+    #
+    # jit-common is listed SEPARATELY rather than left to x86port to fetch,
+    # because x86port CONSUMES it and refuses to configure without it. Both are
+    # this port's inputs, so both are this port's pins.
+    SharedRepo("jit-common", "https://github.com/SomeoneIsWorking/jit-common.git",
+               "3b876296e39371741f0793dae792583ee98b5bc0",
+               "src/jitcommon/block_cache.h"),
+    SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
+               "4e40796bec544172d4f6797cd5482f2f99da6f6f",
+               "src/x86port/engine.h"),
 )
 
 GAME_MODULE_SHA256 = {

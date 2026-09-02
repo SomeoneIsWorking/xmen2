@@ -1388,6 +1388,8 @@ if(X2_MODULE_HAVE)
         src/native/boot_mode_runtime.c
         src/native/boot_menu_transition.c
         src/native/boot_splash_policy.c
+        src/native/x86_engine.c
+        src/native/x86_dispatch_report.c
         src/presentation/aspect_fit.c
         src/presentation/boot_blackout.c
         src/presentation/window_settings.c
@@ -1589,6 +1591,53 @@ if(X2_MODULE_HAVE)
     else()
         add_executable(x2native ${X2_NATIVE_SOURCES})
     endif()
+    # -----------------------------------------------------------------
+    # The runtime execution engine (jit-common S040/S047).
+    #
+    # CONSUMED, never vendored: `shared/x86port` owns x86-32 semantics for
+    # every title over it, and a copy in this tree that silently won is the
+    # exact failure that split exists to end. It is resolved by the same
+    # tools/shared_dir.py every other shared repo goes through, so there is one
+    # answer to "where is it" and one refusal naming every path tried.
+    #
+    # x86port itself consumes jit-common, and finds it beside its own checkout
+    # -- which is where bootstrap.py provisions it. The path is passed
+    # EXPLICITLY anyway rather than left to that adjacency, so a maintainer
+    # pointing X86PORT_DIR at a working tree does not silently pick up a
+    # different jit-common than the pin.
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c
+                "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
+                "${CMAKE_SOURCE_DIR}/tools" x86port src/x86port/engine.h
+        OUTPUT_VARIABLE X2_X86PORT_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_VARIABLE X2_X86PORT_WHY RESULT_VARIABLE X2_X86PORT_RC)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c
+                "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
+                "${CMAKE_SOURCE_DIR}/tools" jit-common src/jitcommon/block_cache.h
+        OUTPUT_VARIABLE X2_JITCOMMON_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_VARIABLE X2_JITCOMMON_WHY RESULT_VARIABLE X2_JITCOMMON_RC)
+    if(X2_X86PORT_RC OR X2_JITCOMMON_RC)
+        # REFUSED, not skipped. An engine that is absent and an engine that is
+        # present but never selected produce identical runs, and telling those
+        # apart is the whole point of the migration's measurement.
+        message(FATAL_ERROR
+            "x2native: the execution engine could not be resolved.\n"
+            "${X2_X86PORT_WHY}${X2_JITCOMMON_WHY}"
+            "Run ./run.sh to provision it, or set SHARED_DIR to a checkout root.")
+    endif()
+    set(X86PORT_JITCOMMON_DIR "${X2_JITCOMMON_DIR}" CACHE PATH
+        "jit-common checkout x86port builds against" FORCE)
+    # x2native links as a PIE (and on Android as a shared object), so every
+    # static library it pulls in has to be position-independent. Set here
+    # rather than in x86port, because it is this consumer's link mode that
+    # requires it -- x86port's own build has no reason to care, and the
+    # variable propagates into jitcommon and Zydis, which are added by
+    # x86port's CMakeLists and would otherwise fail the same way.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    add_subdirectory("${X2_X86PORT_DIR}" "${CMAKE_BINARY_DIR}/x86port"
+                     EXCLUDE_FROM_ALL)
+
     add_dependencies(x2native x2_shaders x2_pad_glyph_header
                      x2_prompt_glyph_atlas)
     target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
@@ -1599,6 +1648,7 @@ if(X2_MODULE_HAVE)
                                               src/oracle src/recomp/gen
                                               ${CMAKE_BINARY_DIR})
     target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
+    target_link_libraries(x2native PRIVATE x86port)
 
     # Native overrides are declared in C where they belong: x86_register_override
     # in the subsystem files, and recomp.py routes every call (direct or

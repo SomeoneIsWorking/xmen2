@@ -17,6 +17,7 @@
  */
 #include "pe_map.h"
 #include "guest_memory.h"
+#include "x86_engine.h"
 #include "control.h"
 #include "guest_clock.h"
 #include "x86rt.h"
@@ -1726,6 +1727,18 @@ int main(int argc, char **argv)
         }
     }
     if (guest_memory_init() != 0) return 1;
+    /* The execution engine, selected before any guest code runs. It maps its
+       return trampoline into the arena, so it goes after guest_memory_init and
+       before anything that could claim that range. A refusal is fatal: an
+       engine that was asked for and silently not provided is the one failure
+       jit-common I001 exists to prevent. */
+    {
+        char why[256] = "";
+        if (!x2_engine_init(why, sizeof why)) {
+            fprintf(stderr, "x2native: %s\n", why);
+            return 1;
+        }
+    }
     dir = options.install_dir;
     window = options.window;
     if (options.unbounded) guest_clock_set_unbounded(1);
@@ -1848,6 +1861,11 @@ int main(int argc, char **argv)
        the recompiled bodies answer instead. */
     x86_overrides_resolve();
     if (options.override_selftest) return override_selftest();
+    /* The engine proves it can execute before it is allowed to. It goes here
+       because half of what it checks is the predicate that decides when the
+       engine hands an address back to this dispatcher, and that predicate has
+       nothing to answer before the overrides are resolved. */
+    if (!x2_engine_selftest()) return 1;
 
     /* Bind imports only once every module is mapped: a slot pointing into a
        module that has not been placed yet would be bound to a stale base. */

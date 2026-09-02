@@ -62,6 +62,15 @@ X86Module *x86_module_for(uint32_t addr);
 /* Run the recompiled body at a mapped address. Returns 0 if there is none --
    the caller must say so rather than treating a miss as a no-op. */
 int x86_native_call_at(uint32_t addr, struct CPU *C);
+/* Whether x86_native_call_at would find something to run at `addr`, WITHOUT
+   running it or touching any of its bookkeeping. The execution engine asks
+   this at every instruction: an import thunk, a native override and a
+   recompiled body are all HOST code it must hand back rather than interpret. */
+int x86_native_body_at(uint32_t addr);
+/* The mapped entry point of a resolved override, by index, or 0 past the end.
+   An address x86_native_body_at must answer yes for, so that predicate can be
+   checked against both answers rather than only the one it gives most often. */
+uint32_t x86_override_mapped_ep(int index);
 
 /* Name of the body at a mapped address, or NULL. */
 const char *x86_native_name_at(uint32_t addr);
