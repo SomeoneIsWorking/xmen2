@@ -886,27 +886,6 @@ set_tests_properties(oracle_compare_tool PROPERTIES
 
 
 
-# The lift pipeline's step guard. Every Ghidra step appends to one log and then
-# greps the WHOLE file, so a step that DIED still printed the previous run's
-# lines and read as success -- which is how a Jython SyntaxError announced
-# "recreate 42 function bodies" and repaired none. This runs the guard's own
-# self-test, which needs neither Ghidra nor the game install.
-add_test(NAME lift_step_guard
-         COMMAND ${CMAKE_SOURCE_DIR}/tools/ghidra_export.sh --selftest)
-
-# Native overrides. An override is keyed on (module, entry point at the
-# module's PREFERRED base), never a bare address: every libIG*.dll in this game
-# is linked for 0x10000000, so one linked address is a real function in eight
-# different modules while dispatch works in mapped addresses. Keyed on the
-# address alone, an override for a relocated module could never fire AND could
-# fire for whichever unrelated module kept the preferred base -- both silent,
-# because a missing override just means the recompiled body answers and the run
-# looks healthy. The selftest proves the emitter-side gates REJECT a bare
-# address, an entry point the named module lacks, a missing source tree, and
-# another module's registration -- paths that never run during a normal emit,
-# because every registration in the tree is correct.
-add_test(NAME overrides COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/recomp_overrides.py --selftest)
 add_test(NAME save_trace_wiring COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py)
 set_tests_properties(save_trace_wiring PROPERTIES SKIP_RETURN_CODE 77)
@@ -950,13 +929,6 @@ add_test(NAME probes_current COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/gen_probes.py --check)
 add_test(NAME oraclediff COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/oraclediff.py --selftest)
-
-# The staleness gate's own discriminator: it must read a current stamp as
-# current, a wrong one as stale, an ABSENT one as stale, and the fingerprint
-# must move when the translator is edited. A checker only ever run against the
-# good case is not a checker.
-add_test(NAME emitted_stamp COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/check_emitted.py --selftest)
 
 
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
@@ -1055,12 +1027,6 @@ add_test(NAME port_pause_menu
 add_test(NAME launcher
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_launcher.py)
 set_tests_properties(launcher PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-add_test(NAME capture_recomp_metadata
-         COMMAND ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tools/capture_recomp_metadata.py --selftest)
-set_tests_properties(capture_recomp_metadata PROPERTIES
-                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 
 # The 42 binding-row storage keys and display labels in
@@ -1210,622 +1176,533 @@ list(JOIN X2_INSTALL_REQUIRED_CONTENT "\",\n    \""
      X2_INSTALL_REQUIRED_CONTENT_LITERAL)
 configure_file(src/native/install_requirements.h.in
                ${CMAKE_BINARY_DIR}/install_requirements.h @ONLY)
-set(X2_MODULE_SRCS "")
-set(X2_MODULE_HAVE "")
-foreach(m ${X2_MODULES})
-    # A module is emitted either as one file or, for the big ones, as numbered
-    # chunks (tools/recomp.py emit --split). Globbing the chunks explicitly by
-    # digits so that <m>_native.c is never swept in with them.
-    set(_b ${CMAKE_SOURCE_DIR}/src/recomp/${m}.c)
-    set(_n ${CMAKE_SOURCE_DIR}/src/recomp/${m}_native.c)
-    # CONFIGURE_DEPENDS so the glob is re-checked at BUILD time. Without it the
-    # chunk list is frozen at configure time, and re-emitting with a different
-    # --split silently builds a stale set -- or fails on a chunk that no longer
-    # exists, which is how this was found.
-    file(GLOB _chunks CONFIGURE_DEPENDS
-         ${CMAKE_SOURCE_DIR}/src/recomp/${m}_[0-9][0-9][0-9].c)
-    if(EXISTS ${_b})
-        set(_bodies ${_b})
-    else()
-        set(_bodies ${_chunks})
-    endif()
-    if(_bodies AND EXISTS ${_n})
-        list(LENGTH _bodies _nb)
-        list(APPEND X2_MODULE_SRCS ${_bodies} ${_n})
-        list(APPEND X2_MODULE_HAVE "${m}(${_nb} TU)")
-    else()
-        message(STATUS "x2native: ${m} NOT linked -- run tools/ghidra_export.sh "
-                       "${m} then tools/recomp.py emit/native for it")
-    endif()
-endforeach()
-if(X2_MODULE_HAVE)
-    # Dusklight's exact RmlUi revision, including its maintained SDL3/SDL_GPU
-    # backend. Pin both the commit and archive digest: a UI dependency update
-    # is a reviewed source change, never whatever GitHub serves that day.
-    include(FetchContent)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
-    set(RMLUI_TESTS OFF CACHE BOOL "" FORCE)
-    set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
-    # Every packaged UI needs RmlUi's font engine at runtime. Android resolves
-    # the same target from the shared cross-compiled dependency prefix above.
-    set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
-    # RmlUi asks CMake for Freetype again. Prefer the already resolved config
-    # package so its generic finder does not probe host paths or print a false
-    # "library missing" warning for the valid Android imported target.
-    if(DEFINED CMAKE_FIND_PACKAGE_PREFER_CONFIG)
-        set(_x2_previous_find_package_preference
-            "${CMAKE_FIND_PACKAGE_PREFER_CONFIG}")
-        set(_x2_had_find_package_preference TRUE)
-    endif()
-    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
-    FetchContent_Declare(rmlui
-        URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
-        URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
-        DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
-    FetchContent_MakeAvailable(rmlui)
-    if(_x2_had_find_package_preference)
-        set(CMAKE_FIND_PACKAGE_PREFER_CONFIG
-            "${_x2_previous_find_package_preference}")
-    else()
-        unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG)
-    endif()
-    unset(_x2_previous_find_package_preference)
-    unset(_x2_had_find_package_preference)
-    if(NOT ANDROID)
-        find_package(SDL3_image REQUIRED)
-        set(X2_SDL_IMAGE SDL3_image::SDL3_image)
-    endif()
-    set_target_properties(rmlui_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-    add_library(x2_rmlui_backend STATIC
-        ${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp
-        ${rmlui_SOURCE_DIR}/Backends/RmlUi_Renderer_SDL_GPU.cpp)
-    target_include_directories(x2_rmlui_backend PUBLIC
-        ${rmlui_SOURCE_DIR}/Backends)
-    target_compile_definitions(x2_rmlui_backend PUBLIC
-        RMLUI_SDL_VERSION_MAJOR=3)
-    set_target_properties(x2_rmlui_backend PROPERTIES
-        POSITION_INDEPENDENT_CODE ON)
-    target_link_libraries(x2_rmlui_backend PUBLIC RmlUi::Core ${X2_SDL}
-                                                ${X2_SDL_IMAGE})
-    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ui")
-    configure_file(
-        "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Regular.ttf"
-        "${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf" COPYONLY)
-    configure_file(
-        "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Bold.ttf"
-        "${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf" COPYONLY)
-    configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
-                   "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
-    configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
-                   "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
-    set(X2_TOUCH_ICON_STAMP "${CMAKE_BINARY_DIR}/ui/touch/.touch-icons.stamp")
-    add_custom_command(
-        OUTPUT "${X2_TOUCH_ICON_STAMP}"
-        COMMAND ${Python3_EXECUTABLE}
-                "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
-                --copy-svg-dir "${CMAKE_BINARY_DIR}/ui/touch"
-        DEPENDS "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
-                "${CMAKE_SOURCE_DIR}/tools/shared_dir.py"
-                "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
-                ${X2_PROMPT_GLYPH_INPUTS}
-        COMMENT "x2native: staging shared SVGs for touch-control feedback"
-        VERBATIM)
-    add_custom_target(x2_touch_icons DEPENDS "${X2_TOUCH_ICON_STAMP}")
-    add_library(x2_rmlui_ui STATIC
-        src/ui/controller_assignment_rows.cpp
-        src/ui/rmlui_ui.cpp
-        src/ui/ui_resources.cpp
-        src/ui/settings_document.cpp
-        src/ui/touch_document.cpp
-        src/ui/settings_overlay_state.c)
-    add_dependencies(x2_rmlui_ui x2_touch_icons)
-    target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
-                                                   src/presentation src/input
-                                                   src/gpu)
-    target_compile_definitions(x2_rmlui_ui PRIVATE
-        X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
-        X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
-        X2_UI_RESOURCE_DIR="${CMAKE_BINARY_DIR}/ui"
-        X2_UI_DOCUMENT_URL="${CMAKE_BINARY_DIR}/ui/settings.rml")
-    set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
-                                            PRIVATE lucent::lucent)
-
-    # ---- shaders -------------------------------------------------------
-    #
-    # SDL_GPU takes SPIR-V, so the fixed-function shaders are compiled at build
-    # time and embedded as C arrays. glslc is REQUIRED rather than optional: a
-    # build that silently had no shaders would link, run, and draw nothing --
-    # which is the single hardest rendering failure to attribute.
-    find_program(X2_GLSLC NAMES glslc)
-    if(NOT X2_GLSLC)
-        message(FATAL_ERROR
-            "x2native: no glslc found, so the renderer's "
-            "shaders cannot be built. Install shaderc/glslang. Refusing rather "
-            "than building a binary that would run and draw nothing.")
-    endif()
-    set(X2_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
-    file(MAKE_DIRECTORY ${X2_SHADER_DIR})
-    set(X2_SHADER_HEADERS "")
-    foreach(shader d3d8_fixed shadow_depth)
-      foreach(st vert frag)
-        set(_src ${CMAKE_SOURCE_DIR}/src/gpu/shaders/${shader}.${st})
-        set(_out ${X2_SHADER_DIR}/${shader}_${st}.inc)
-        # glslc -mfmt=c emits exactly a braced initialiser, so the .inc is
-        # #included as one rather than assembled by echo and cat -- which is
-        # shell redirection inside a custom command, and it silently produced a
-        # malformed header for one of the two stages.
-        add_custom_command(
-            OUTPUT ${_out}
-            COMMAND ${X2_GLSLC} -fshader-stage=${st} ${_src} -mfmt=c -o ${_out}
-            DEPENDS ${_src}
-            COMMENT "x2native: compiling ${shader}.${st} to SPIR-V")
-        list(APPEND X2_SHADER_HEADERS ${_out})
-      endforeach()
-    endforeach()
-    add_custom_target(x2_shaders DEPENDS ${X2_SHADER_HEADERS})
-
-    message(STATUS "x2native: linking recompiled modules: ${X2_MODULE_HAVE}")
-    set(X2_NATIVE_SOURCES
-        src/native/x2native.c
-        src/native/fault_report.c
-        src/native/engine_file_path.c
-        src/native/guest_memory.c
-        src/native/x2native_options.c
-        src/native/install_picker.cpp
-        src/native/install_archive.cpp
-        src/native/install_validation.cpp
-        src/native/android_bridge.cpp
-        src/config/config_directory.c
-        src/config/directory_create.c
-        src/config/settings.c
-        src/config/input_assignments.c
-        src/config/settings_store.c
-        src/config/boot_mode.c
-        src/native/boot_mode_policy.c
-        src/native/boot_mode_runtime.c
-        src/native/boot_menu_transition.c
-        src/native/boot_splash_policy.c
-        src/native/x86_engine.c
-        src/native/x86_engine_take.c
-        src/native/x86_engine_selftest.c
-        src/native/x86_dispatch.c
-        src/native/x86_diag_dump.c
-        src/native/x86_engine_bridge.c
-        src/native/x86_dispatch_report.c
-        src/presentation/aspect_fit.c
-        src/presentation/boot_blackout.c
-        src/presentation/window_settings.c
-        src/presentation/display_mode_seed.c
-        src/presentation/live_resolution.c
-        src/native/display_mode_runtime.c
-        src/native/ui_text_scale.c
-        src/native/dialog_selection_scale.c
-        src/native/dialog_selection_scale_policy.c
-        src/native/text_caller_probe.c
-        src/native/prompt_glyph_draw.c
-        src/native/prompt_glyph_atlas.c
-        src/native/prompt_glyph_batch.c
-        src/native/prompt_glyph_metrics.c
-        src/native/prompt_glyph_quads.c
-        src/native/ui_transform.c
-        src/input/binding_rows.c
-        src/input/controller_hotplug.c
-        src/input/controller_instance.c
-        src/input/input_probe_lifecycle.c
-        src/input/joystick_neutral.c
-        src/input/player_input.c
-        src/input/player_participation_policy.c
-        src/input/transient_controller_assignment.c
-        src/input/input_record.c
-        src/save/save_catalog.c
-        src/save/save_directory.c
-        src/save/autosave_policy.c
-        src/save/autosave_storage.c
-        src/save/autosave_format.c
-        src/save/continue_policy.c
-        src/save/save_trace.c
-        src/save/load_game_menu_policy.c
-        src/native/autosave_runtime.c
-        src/native/boot_player_selection.c
-        src/native/continue_runtime.c
-        src/native/exact_save_load.c
-        src/native/load_game_menu_runtime.c
-        src/native/save_trace_runtime.c
-        src/native/pe_map.c
-        src/native/win32_sdl.c
-        src/native/win32_mouse.c
-        src/native/win32_pointer.c
-        src/native/win32_events.c
-        src/native/guest_heap.c
-        src/native/crt.c
-        src/native/crt_setjmp.c
-        src/native/crt_write_watch.c
-        src/native/crt_selftest.c
-        src/recomp/x87crt.c
-        src/native/kernel32.c
-        src/native/win_path.c
-        src/native/advapi32.c
-        src/native/advapi32_host_store.c
-        src/native/fault_selftest.c
-        src/native/ole32.c
-        src/native/gdi32.c
-        src/native/dinput.c
-        src/native/dinput8.c
-        src/native/dinput8_controller_slots.c
-        src/native/dinput8_hotplug.c
-        src/native/dinput_device.c
-        src/native/dinput_device_registry.c
-        src/native/dinput_device_state.c
-        src/native/dinput_system.c
-        src/native/dinput_fifo.c
-        src/native/dinput_script.c
-        src/native/dinput_joystick.c
-        src/native/dinput_pad.c
-        src/native/dinput_pad_virtual.c
-        src/native/dinput_pad_virtual_actions.c
-        src/native/dialog_prompts.c
-        src/native/pad_glyphs.c
-        src/native/prompt_glyphs.c
-        src/native/prompt_labels.c
-        src/native/input_binding_sets.c
-        src/native/input_bindings.c
-        src/native/player_participation.c
-        src/native/player_participation_probe.c
-        src/native/cutscene_skip_publication.c
-        src/native/cutscene_skip_probe.c
-        src/native/behaved_context.c
-        src/native/behaved_player.c
-        src/native/cutscene_event_player.c
-        src/native/conversation_player.c
-        src/native/cutscene_dialogue.c
-        src/native/cutscene_script_audio.c
-        src/native/cutscene_player_policy.c
-        src/native/cutscene_control_clock.c
-        src/native/cutscene_player.c
-        src/native/input_probe.c
-        src/input/touch_controls.cpp
-        src/input/touch_runtime.cpp
-        src/presentation/touch_layout.c
-        src/input/gameplay_control.c
-        src/native/touch_hud_runtime.c
-        src/native/xbox_defaults.c
-        src/native/dsound.c
-        src/audio/movie_audio.c
-        src/media/fmv_audio_decode.c
-        src/media/fmv_decoder_drain.c
-        src/media/fmv_player.c
-        src/media/fmv_policy.c
-        src/media/fmv_probe.c
-        src/media/fmv_timing.c
-        src/native/guest_clock.c
-        src/native/control.c
-        src/native/control_save_route.c
-        src/native/control_performance_route.c
-        src/native/control_status_route.c
-        src/native/control_png.c
-        src/native/control_query.c
-        src/native/control_screenshot.c
-        src/native/control_status.c
-        src/native/json_string.c
-        src/native/live_session.c
-        src/native/ws2_32.c
-        src/native/advapi32.c
-        src/native/shell32.c
-        src/native/winmm.c
-        src/native/threads.c
-        src/native/x86_tail_policy.c
-        src/native/x86_reached.c
-        src/native/run_reports.c
-        src/native/x86rt_native.c
-        src/native/x86_record.c
-        src/native/env_file.c
-        src/native/startup.c
-        src/native/movie.c
-        src/native/movie_image_layout.c
-        src/native/options_menu.c
-        src/native/reportbox.c
-        src/native/security.c
-        src/native/conversation.c
-        src/native/script_trace.c
-        src/native/entity_spawn_probe.c
-        src/native/heartbeat.c
-        src/d3d8/d3d8_com.c
-        src/d3d8/d3d8_caps.c
-        src/d3d8/d3d8_state.c
-        src/d3d8/d3d8_stateblock.c
-        src/d3d8/d3d8_d3d8.c
-        src/d3d8/d3d8_device.c
-        src/d3d8/d3d8_live_resolution.c
-        src/d3d8/d3d8_selector_probe.c
-        src/d3d8/d3d8_selector_probe_json.c
-        src/d3d8/d3d8_selector_probe_bridge.c
-        src/d3d8/d3d8_texture_provenance.c
-        src/d3d8/d3d8_lightlog.c
-        src/d3d8/d3d8_surface.c
-        src/d3d8/d3d8_resource.c
-        src/d3d8/d3d8_texture_luma.c
-        src/d3d8/d3d8_texture_stage.c
-        src/d3d8/d3d8_vertex_layout.c
-        src/d3d8/d3d8_frame_material.c
-        src/d3d8/d3d8_drawcall.c
-        src/d3d8/d3d8_vertex_shader.c
-        src/d3d8/d3d8_screen_space_test.c
-        src/d3d8/d3d8_light_selftest.c
-        src/d3d8/d3d8_report.c
-        src/vulkan/igvk_ark.c
-        src/vulkan/igvk_probe.c
-        src/vulkan/igvk_context.c
-        src/gpu/gpu_device.c
-        src/gpu/gpu_capture.c
-        src/gpu/gpu_draw.c
-        src/gpu/gpu_texture_format.c
-        src/gpu/gpu_draw_trace.c
-        src/gpu/gpu_frame_timing.c
-        src/gpu/gpu_frame_timing_report.c
-        src/gpu/gpu_shadow.c
-        src/gpu/gpu_shadow_selftest.c
-        src/gpu/shadow_policy.c
-        src/gpu/gpu_frame_submit.c
-        src/gpu/gpu_present.c
-        src/gpu/gpu_present_selftest.c
-        src/gpu/gpu_prompt_glyphs.c
-        src/gpu/gpu_host_selftest.c
-        src/gpu/gpu_multistage_selftest.c
-        src/gpu/gpu_matrix.c
-        src/gpu/gpu_frame_init_selftest.c
-        src/gpu/gpu_upload.c
-        src/gpu/gpu_upload_selftest.c
-        src/gpu/gpu_selftest.c
-        src/vulkan/igvk_slots_lifecycle.c
-        src/vulkan/igvk_slots_frame.c
-        
-        ${X2_MODULE_SRCS}
-    )
-    if(NOT ANDROID)
-        # The --wrap oracle probes depend on executable bodies and are not
-        # part of the Android shared-library product.
-        list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace.c
-                                      src/recomp/gen/probe_wraps.c)
-    else()
-        list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace_android.c)
-    endif()
-    if(ANDROID)
-        add_library(x2native SHARED ${X2_NATIVE_SOURCES})
-    else()
-        add_executable(x2native ${X2_NATIVE_SOURCES})
-    endif()
-    # -----------------------------------------------------------------
-    # The runtime execution engine (jit-common S040/S047).
-    #
-    # CONSUMED, never vendored: `shared/x86port` owns x86-32 semantics for
-    # every title over it, and a copy in this tree that silently won is the
-    # exact failure that split exists to end. It is resolved by the same
-    # tools/shared_dir.py every other shared repo goes through, so there is one
-    # answer to "where is it" and one refusal naming every path tried.
-    #
-    # x86port itself consumes jit-common, and finds it beside its own checkout
-    # -- which is where bootstrap.py provisions it. The path is passed
-    # EXPLICITLY anyway rather than left to that adjacency, so a maintainer
-    # pointing X86PORT_DIR at a working tree does not silently pick up a
-    # different jit-common than the pin.
-    execute_process(
-        COMMAND ${Python3_EXECUTABLE} -c
-                "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
-                "${CMAKE_SOURCE_DIR}/tools" x86port src/x86port/engine.h
-        OUTPUT_VARIABLE X2_X86PORT_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_VARIABLE X2_X86PORT_WHY RESULT_VARIABLE X2_X86PORT_RC)
-    execute_process(
-        COMMAND ${Python3_EXECUTABLE} -c
-                "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
-                "${CMAKE_SOURCE_DIR}/tools" jit-common src/jitcommon/block_cache.h
-        OUTPUT_VARIABLE X2_JITCOMMON_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
-        ERROR_VARIABLE X2_JITCOMMON_WHY RESULT_VARIABLE X2_JITCOMMON_RC)
-    if(X2_X86PORT_RC OR X2_JITCOMMON_RC)
-        # REFUSED, not skipped. An engine that is absent and an engine that is
-        # present but never selected produce identical runs, and telling those
-        # apart is the whole point of the migration's measurement.
-        message(FATAL_ERROR
-            "x2native: the execution engine could not be resolved.\n"
-            "${X2_X86PORT_WHY}${X2_JITCOMMON_WHY}"
-            "Run ./run.sh to provision it, or set SHARED_DIR to a checkout root.")
-    endif()
-    set(X86PORT_JITCOMMON_DIR "${X2_JITCOMMON_DIR}" CACHE PATH
-        "jit-common checkout x86port builds against" FORCE)
-    # x2native links as a PIE (and on Android as a shared object), so every
-    # static library it pulls in has to be position-independent. Set here
-    # rather than in x86port, because it is this consumer's link mode that
-    # requires it -- x86port's own build has no reason to care, and the
-    # variable propagates into jitcommon and Zydis, which are added by
-    # x86port's CMakeLists and would otherwise fail the same way.
-    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-    add_subdirectory("${X2_X86PORT_DIR}" "${CMAKE_BINARY_DIR}/x86port"
-                     EXCLUDE_FROM_ALL)
-
-    add_dependencies(x2native x2_shaders x2_pad_glyph_header
-                     x2_prompt_glyph_atlas)
-    target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
-                                                src/config src/presentation src/ui
-                                                src/input src/save src/audio
-                                                src/media
-                                              src/gpu src/d3d8
-                                              src/oracle src/recomp/gen
-                                              ${CMAKE_BINARY_DIR})
-    target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
-    target_link_libraries(x2native PRIVATE x86port)
-
-    # Native overrides are declared in C where they belong: x86_register_override
-    # in the subsystem files, and recomp.py routes every call (direct or
-    # indirect) to a registered entry point through the dispatcher's override
-    # slot, which x86_native_call_at consults before the recompiled body. No
-    # generated wiring, no --wrap, no --isolate; the C is the single source of
-    # truth.
-
-    # Oracle probes: --wrap, for recording rather than replacing. Generated from
-    # tools/probes.json by tools/gen_probes.py, which also writes the --isolate
-    # lists -- the ONLY remaining user of the isolate mechanism. Missing is
-    # FATAL for the same reason: a build without these flags records nothing
-    # and reads as a port that agrees with the control.
-    set(RECOMP_PROBES_CMAKE
-        "${CMAKE_SOURCE_DIR}/src/recomp/gen/recomp_probes.cmake")
-    if(NOT EXISTS "${RECOMP_PROBES_CMAKE}")
-        message(FATAL_ERROR
-            "Missing ${RECOMP_PROBES_CMAKE}.\n"
-            "It is generated by tools/gen_probes.py from tools/probes.json. "
-            "Building without it would link a binary in which every oracle "
-            "probe is silently absent. Run tools/gen_probes.py.")
-    endif()
-    include("${RECOMP_PROBES_CMAKE}")
-    if(NOT APPLE AND NOT ANDROID)
-        target_link_options(x2native PRIVATE ${RECOMP_PROBE_WRAPS})
-    endif()
-
-    # The recompiled C must have been emitted by the translator in THIS tree.
-    #
-    # src/recomp/*.c is generated and gitignored, so nothing tracked ever shows
-    # that a module has fallen behind tools/recomp.py -- and a stale module
-    # compiles, links, runs and is wrong in whatever way the fix it missed was
-    # about to correct. libIGSg sat two translator fixes behind for days and
-    # the port drew warped characters the whole time (issue #80); it came right
-    # only when the module was re-emitted for an unrelated reason.
-    execute_process(
-        # --root explicitly: the translator is a SHARED repo now, so the tool
-        # can neither assume its own location is the port nor assume the
-        # working directory is (CMake runs it from the build tree).
-        COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/check_emitted.py"
-                --root "${CMAKE_SOURCE_DIR}"
-        RESULT_VARIABLE X2_EMIT_STALE
-        OUTPUT_VARIABLE X2_EMIT_OUT
-        ERROR_VARIABLE  X2_EMIT_ERR)
-    if(NOT X2_EMIT_STALE EQUAL 0)
-        message(FATAL_ERROR
-            "Recompiled C is stale.\n${X2_EMIT_ERR}${X2_EMIT_OUT}")
-    endif()
-    message(STATUS "x2native: ${X2_EMIT_OUT}")
-    target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
-    # -DX2_NATIVE_TRACE=ON traces every recompiled body into the boundary ring.
-    # Off by default: it costs a ring write per call, and the generated bodies
-    # are otherwise IDENTICAL between the two builds, so what a traced run shows
-    # applies to an untraced one.
-    if(X2_NATIVE_TRACE)
-        target_compile_definitions(x2native PRIVATE X86_NATIVE_TRACE)
-    endif()
-    # -DX2_DCHECK=ON checks that every guest-to-guest DIRECT call returns the
-    # esp its callee's own RET promises. Off by default and free when off: the
-    # emitted call is the same plain call either way (X86_DCALL_CHECK expands
-    # to nothing), so this is a rebuild, not a re-emit. It is the one boundary
-    # tools/stackcheck.py cannot reach -- that checks calls going THROUGH the
-    # dispatcher, and a direct call by definition does not.
-    if(X2_DCHECK)
-        target_compile_definitions(x2native PRIVATE X2_DCHECK)
-    endif()
-    # -DX2_NATIVE_REACHED=ON records WHICH bodies were ever entered -- a set,
-    # not a history, so it answers "was this function ever reached?" which the
-    # ring cannot: the ring evicts, so a startup call is gone by the time
-    # anything fails. Mutually exclusive with the trace: both claim
-    # X86_ENTER_FN, and a build that silently honoured only one would report a
-    # ring while the caller believed they had a reached set.
-    # The reached set is compiled into EVERY native build (X86_NATIVE) behind
-    # a runtime-armed flag, so "does the engine ever call this?" is a question
-    # this binary can answer -- it used to need a second 272MB build tree, and
-    # a diagnostic that costs a rebuild is a diagnostic nobody runs.
-    target_compile_definitions(x2native PRIVATE X86_NATIVE)
-    if(X2_NATIVE_REACHED)
-        if(X2_NATIVE_TRACE)
-            message(FATAL_ERROR
-                "x2native: X2_NATIVE_TRACE and X2_NATIVE_REACHED both use the "
-                "body-entry hook and cannot be enabled together. Pick one.")
-        endif()
-        target_compile_definitions(x2native PRIVATE X86_NATIVE_REACHED)
-    endif()
-    # PIE, so this binary does not sit at 0x400000 -- which is exactly where
-    # XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
-    # and forces it to relocate for no reason.
-    set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    if(NOT APPLE AND NOT ANDROID)
-        target_link_options(x2native PRIVATE -pie)
-    endif()
-    # libm: the exe's x87 translations use atan2l/fmodl and friends.
-    # -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
-    # so that a guest stuck anywhere still gets a liveness line.
-    target_link_libraries(x2native PRIVATE ${X2_SDL} ${X2_FFMPEG_TARGET}
-                                           m Threads::Threads)
-    if(ANDROID)
-        set_target_properties(x2native PROPERTIES OUTPUT_NAME main)
-        get_filename_component(_x2_android_ndk_version "${CMAKE_ANDROID_NDK}" NAME)
-        if(NOT _x2_android_ndk_version)
-            message(FATAL_ERROR "x2native: Android toolchain did not expose its NDK version")
-        endif()
-        # Gradle consumes this generated contract. It keeps the Android shell
-        # independent of CMake's internal target names while still refusing a
-        # stale or hand-pointed-at native library.
-        set(_x2_android_properties
-            "x2.nativeLibrary=$<TARGET_FILE:x2native>\n"
-            "x2.sdlLibrary=$<TARGET_FILE:${X2_SDL}>\n"
-            "x2.cxxLibrary=${X2_ANDROID_CXX_LIBRARY}\n"
-            "x2.androidAbi=${ANDROID_ABI}\n"
-            "x2.androidPlatform=${ANDROID_PLATFORM}\n"
-            "x2.ndkVersion=${_x2_android_ndk_version}\n"
-            "x2.sdlJavaDir=${X2_SDL_ANDROID_JAVA_DIR}\n"
-            "x2.lucentJavaDir=${X2_LUCENT_ANDROID_JAVA_DIR}\n"
-            "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n")
-        string(JOIN "" _x2_android_properties ${_x2_android_properties})
-        file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/x2-android.properties"
-             CONTENT "${_x2_android_properties}")
-    endif()
-    # No $ENV{} here: CMake would bake in whatever GAME_PC_DIR was at CONFIGURE
-    # time, which is how this test first "failed" against an empty path. x2native
-    # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,
-    # saying so -- a skip that announces itself, not a silent pass.
-    # -DX2_NATIVE_O0=<file> compiles ONE generated chunk at -O0, so addr2line
-    # names the exact guest instruction in it. At -O2 the line attribution
-    # inside a 200k-line translated body is approximate, and reading a fault as
-    # being at the wrong instruction is worse than admitting it is unknown --
-    # a nearby line looks like an answer. Whole-build -O0 is not an option:
-    # 2M lines of translated code, so this is per-chunk and opt-in.
-    if(X2_NATIVE_O0)
-        if(NOT EXISTS ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0})
-            message(FATAL_ERROR "X2_NATIVE_O0: no such generated chunk: "
-                                "src/recomp/${X2_NATIVE_O0}")
-        endif()
-        message(STATUS "x2native: ${X2_NATIVE_O0} at -O0 for exact fault lines")
-        set_source_files_properties(
-            ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0}
-            PROPERTIES COMPILE_OPTIONS "-O0")
-    endif()
-    add_test(NAME native_battery
-             COMMAND x2native --no-window --selftest)
-    set_tests_properties(native_battery PROPERTIES SKIP_RETURN_CODE 77)
-    # The renderer's HOST half, driven with no engine and no game install.
-    # It needs neither, which is the point: the game has never reached a
-    # frame, so without this nothing would ever have run that code.
-    add_test(NAME vk_frame_path
-             COMMAND x2native --no-window --vk-selftest)
-    set_tests_properties(vk_frame_path PROPERTIES SKIP_RETURN_CODE 77)
-    # The host D3D8's ABI tables, vtable dispatch and caps block. Also needs
-    # no game: what it checks is that slot N reaches method N and that an
-    # unimplemented method REPORTS, which are host-side facts.
-    add_test(NAME d3d8_host
-             COMMAND x2native --no-window --d3d8-selftest)
-    set_tests_properties(d3d8_host PROPERTIES SKIP_RETURN_CODE 77)
-    # The engine's error dialog, which only ever runs when something has
-    # already gone wrong -- so nothing else exercises it. Drives the override
-    # with a synthetic call frame and checks the ABI and the screenless answer.
-    add_test(NAME report_box
-             COMMAND x2native --no-window --dialog-selftest)
-    set_tests_properties(report_box PROPERTIES SKIP_RETURN_CODE 77)
-    # The crash reporter, proved by crashing. Only SIGSEGV used to be handled,
-    # so an illegal instruction or an arithmetic fault killed a run with
-    # nothing printed at all -- a crash that read, from a log, exactly like the
-    # window being closed. Each signal is raised in a child and the report must
-    # name it; a control child that does not fault must stay silent.
-    add_test(NAME fault_reporter
-             COMMAND x2native --no-window --fault-selftest)
-    set_tests_properties(fault_reporter PROPERTIES SKIP_RETURN_CODE 77)
-else()
-    message(STATUS
-        "x2native: SKIPPED -- no module has generated output. "
-        "Run tools/recomp.py emit and tools/recomp.py native (see above).")
+# Dusklight's exact RmlUi revision, including its maintained SDL3/SDL_GPU
+# backend. Pin both the commit and archive digest: a UI dependency update
+# is a reviewed source change, never whatever GitHub serves that day.
+include(FetchContent)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
+set(RMLUI_TESTS OFF CACHE BOOL "" FORCE)
+set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
+# Every packaged UI needs RmlUi's font engine at runtime. Android resolves
+# the same target from the shared cross-compiled dependency prefix above.
+set(RMLUI_FONT_ENGINE freetype CACHE STRING "" FORCE)
+# RmlUi asks CMake for Freetype again. Prefer the already resolved config
+# package so its generic finder does not probe host paths or print a false
+# "library missing" warning for the valid Android imported target.
+if(DEFINED CMAKE_FIND_PACKAGE_PREFER_CONFIG)
+    set(_x2_previous_find_package_preference
+        "${CMAKE_FIND_PACKAGE_PREFER_CONFIG}")
+    set(_x2_had_find_package_preference TRUE)
 endif()
+set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
+FetchContent_Declare(rmlui
+    URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
+    URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_MakeAvailable(rmlui)
+if(_x2_had_find_package_preference)
+    set(CMAKE_FIND_PACKAGE_PREFER_CONFIG
+        "${_x2_previous_find_package_preference}")
+else()
+    unset(CMAKE_FIND_PACKAGE_PREFER_CONFIG)
+endif()
+unset(_x2_previous_find_package_preference)
+unset(_x2_had_find_package_preference)
+if(NOT ANDROID)
+    find_package(SDL3_image REQUIRED)
+    set(X2_SDL_IMAGE SDL3_image::SDL3_image)
+endif()
+set_target_properties(rmlui_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+add_library(x2_rmlui_backend STATIC
+    ${rmlui_SOURCE_DIR}/Backends/RmlUi_Platform_SDL.cpp
+    ${rmlui_SOURCE_DIR}/Backends/RmlUi_Renderer_SDL_GPU.cpp)
+target_include_directories(x2_rmlui_backend PUBLIC
+    ${rmlui_SOURCE_DIR}/Backends)
+target_compile_definitions(x2_rmlui_backend PUBLIC
+    RMLUI_SDL_VERSION_MAJOR=3)
+set_target_properties(x2_rmlui_backend PROPERTIES
+    POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(x2_rmlui_backend PUBLIC RmlUi::Core ${X2_SDL}
+                                            ${X2_SDL_IMAGE})
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ui")
+configure_file(
+    "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Regular.ttf"
+    "${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf" COPYONLY)
+configure_file(
+    "${rmlui_SOURCE_DIR}/Samples/assets/LatoLatin-Bold.ttf"
+    "${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf" COPYONLY)
+configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
+               "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
+configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
+               "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
+set(X2_TOUCH_ICON_STAMP "${CMAKE_BINARY_DIR}/ui/touch/.touch-icons.stamp")
+add_custom_command(
+    OUTPUT "${X2_TOUCH_ICON_STAMP}"
+    COMMAND ${Python3_EXECUTABLE}
+            "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+            --copy-svg-dir "${CMAKE_BINARY_DIR}/ui/touch"
+    DEPENDS "${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py"
+            "${CMAKE_SOURCE_DIR}/tools/shared_dir.py"
+            "${CMAKE_SOURCE_DIR}/assets/buttons/glyphs.json"
+            ${X2_PROMPT_GLYPH_INPUTS}
+    COMMENT "x2native: staging shared SVGs for touch-control feedback"
+    VERBATIM)
+add_custom_target(x2_touch_icons DEPENDS "${X2_TOUCH_ICON_STAMP}")
+add_library(x2_rmlui_ui STATIC
+    src/ui/controller_assignment_rows.cpp
+    src/ui/rmlui_ui.cpp
+    src/ui/ui_resources.cpp
+    src/ui/settings_document.cpp
+    src/ui/touch_document.cpp
+    src/ui/settings_overlay_state.c)
+add_dependencies(x2_rmlui_ui x2_touch_icons)
+target_include_directories(x2_rmlui_ui PRIVATE src/native src/config
+                                               src/presentation src/input
+                                               src/gpu)
+target_compile_definitions(x2_rmlui_ui PRIVATE
+    X2_UI_FONT_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Regular.ttf"
+    X2_UI_FONT_BOLD_PATH="${CMAKE_BINARY_DIR}/ui/LatoLatin-Bold.ttf"
+    X2_UI_RESOURCE_DIR="${CMAKE_BINARY_DIR}/ui"
+    X2_UI_DOCUMENT_URL="${CMAKE_BINARY_DIR}/ui/settings.rml")
+set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
+                                        PRIVATE lucent::lucent)
+
+# ---- shaders -------------------------------------------------------
+#
+# SDL_GPU takes SPIR-V, so the fixed-function shaders are compiled at build
+# time and embedded as C arrays. glslc is REQUIRED rather than optional: a
+# build that silently had no shaders would link, run, and draw nothing --
+# which is the single hardest rendering failure to attribute.
+find_program(X2_GLSLC NAMES glslc)
+if(NOT X2_GLSLC)
+    message(FATAL_ERROR
+        "x2native: no glslc found, so the renderer's "
+        "shaders cannot be built. Install shaderc/glslang. Refusing rather "
+        "than building a binary that would run and draw nothing.")
+endif()
+set(X2_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
+file(MAKE_DIRECTORY ${X2_SHADER_DIR})
+set(X2_SHADER_HEADERS "")
+foreach(shader d3d8_fixed shadow_depth)
+  foreach(st vert frag)
+    set(_src ${CMAKE_SOURCE_DIR}/src/gpu/shaders/${shader}.${st})
+    set(_out ${X2_SHADER_DIR}/${shader}_${st}.inc)
+    # glslc -mfmt=c emits exactly a braced initialiser, so the .inc is
+    # #included as one rather than assembled by echo and cat -- which is
+    # shell redirection inside a custom command, and it silently produced a
+    # malformed header for one of the two stages.
+    add_custom_command(
+        OUTPUT ${_out}
+        COMMAND ${X2_GLSLC} -fshader-stage=${st} ${_src} -mfmt=c -o ${_out}
+        DEPENDS ${_src}
+        COMMENT "x2native: compiling ${shader}.${st} to SPIR-V")
+    list(APPEND X2_SHADER_HEADERS ${_out})
+  endforeach()
+endforeach()
+add_custom_target(x2_shaders DEPENDS ${X2_SHADER_HEADERS})
+
+set(X2_NATIVE_SOURCES
+    src/native/x2native.c
+    src/native/fault_report.c
+    src/native/engine_file_path.c
+    src/native/guest_memory.c
+    src/native/x2native_options.c
+    src/native/install_picker.cpp
+    src/native/install_archive.cpp
+    src/native/install_validation.cpp
+    src/native/android_bridge.cpp
+    src/config/config_directory.c
+    src/config/directory_create.c
+    src/config/settings.c
+    src/config/input_assignments.c
+    src/config/settings_store.c
+    src/config/boot_mode.c
+    src/native/boot_mode_policy.c
+    src/native/boot_mode_runtime.c
+    src/native/boot_menu_transition.c
+    src/native/boot_splash_policy.c
+    src/native/x86_engine.c
+    src/native/x86_engine_take.c
+    src/native/x86_engine_selftest.c
+    src/native/x86_dispatch.c
+    src/native/x86_diag_dump.c
+    src/native/x86_engine_bridge.c
+    src/native/x86_dispatch_report.c
+    src/presentation/aspect_fit.c
+    src/presentation/boot_blackout.c
+    src/presentation/window_settings.c
+    src/presentation/display_mode_seed.c
+    src/presentation/live_resolution.c
+    src/native/display_mode_runtime.c
+    src/native/ui_text_scale.c
+    src/native/dialog_selection_scale.c
+    src/native/dialog_selection_scale_policy.c
+    src/native/text_caller_probe.c
+    src/native/prompt_glyph_draw.c
+    src/native/prompt_glyph_atlas.c
+    src/native/prompt_glyph_batch.c
+    src/native/prompt_glyph_metrics.c
+    src/native/prompt_glyph_quads.c
+    src/native/ui_transform.c
+    src/input/binding_rows.c
+    src/input/controller_hotplug.c
+    src/input/controller_instance.c
+    src/input/input_probe_lifecycle.c
+    src/input/joystick_neutral.c
+    src/input/player_input.c
+    src/input/player_participation_policy.c
+    src/input/transient_controller_assignment.c
+    src/input/input_record.c
+    src/save/save_catalog.c
+    src/save/save_directory.c
+    src/save/autosave_policy.c
+    src/save/autosave_storage.c
+    src/save/autosave_format.c
+    src/save/continue_policy.c
+    src/save/save_trace.c
+    src/save/load_game_menu_policy.c
+    src/native/autosave_runtime.c
+    src/native/boot_player_selection.c
+    src/native/continue_runtime.c
+    src/native/exact_save_load.c
+    src/native/load_game_menu_runtime.c
+    src/native/save_trace_runtime.c
+    src/native/pe_map.c
+    src/native/win32_sdl.c
+    src/native/win32_mouse.c
+    src/native/win32_pointer.c
+    src/native/win32_events.c
+    src/native/guest_heap.c
+    src/native/crt.c
+    src/native/crt_setjmp.c
+    src/native/crt_write_watch.c
+    src/native/crt_selftest.c
+    src/recomp/x87crt.c
+    src/native/kernel32.c
+    src/native/win_path.c
+    src/native/advapi32.c
+    src/native/advapi32_host_store.c
+    src/native/fault_selftest.c
+    src/native/ole32.c
+    src/native/gdi32.c
+    src/native/dinput.c
+    src/native/dinput8.c
+    src/native/dinput8_controller_slots.c
+    src/native/dinput8_hotplug.c
+    src/native/dinput_device.c
+    src/native/dinput_device_registry.c
+    src/native/dinput_device_state.c
+    src/native/dinput_system.c
+    src/native/dinput_fifo.c
+    src/native/dinput_script.c
+    src/native/dinput_joystick.c
+    src/native/dinput_pad.c
+    src/native/dinput_pad_virtual.c
+    src/native/dinput_pad_virtual_actions.c
+    src/native/dialog_prompts.c
+    src/native/pad_glyphs.c
+    src/native/prompt_glyphs.c
+    src/native/prompt_labels.c
+    src/native/input_binding_sets.c
+    src/native/input_bindings.c
+    src/native/player_participation.c
+    src/native/player_participation_probe.c
+    src/native/cutscene_skip_publication.c
+    src/native/cutscene_skip_probe.c
+    src/native/behaved_context.c
+    src/native/behaved_player.c
+    src/native/cutscene_event_player.c
+    src/native/conversation_player.c
+    src/native/cutscene_dialogue.c
+    src/native/cutscene_script_audio.c
+    src/native/cutscene_player_policy.c
+    src/native/cutscene_control_clock.c
+    src/native/cutscene_player.c
+    src/native/input_probe.c
+    src/input/touch_controls.cpp
+    src/input/touch_runtime.cpp
+    src/presentation/touch_layout.c
+    src/input/gameplay_control.c
+    src/native/touch_hud_runtime.c
+    src/native/xbox_defaults.c
+    src/native/dsound.c
+    src/audio/movie_audio.c
+    src/media/fmv_audio_decode.c
+    src/media/fmv_decoder_drain.c
+    src/media/fmv_player.c
+    src/media/fmv_policy.c
+    src/media/fmv_probe.c
+    src/media/fmv_timing.c
+    src/native/guest_clock.c
+    src/native/control.c
+    src/native/control_save_route.c
+    src/native/control_performance_route.c
+    src/native/control_status_route.c
+    src/native/control_png.c
+    src/native/control_query.c
+    src/native/control_screenshot.c
+    src/native/control_status.c
+    src/native/json_string.c
+    src/native/live_session.c
+    src/native/ws2_32.c
+    src/native/advapi32.c
+    src/native/shell32.c
+    src/native/winmm.c
+    src/native/threads.c
+    src/native/x86_tail_policy.c
+    src/native/x86_reached.c
+    src/native/run_reports.c
+    src/native/x86rt_native.c
+    src/native/x86_record.c
+    src/native/env_file.c
+    src/native/startup.c
+    src/native/movie.c
+    src/native/movie_image_layout.c
+    src/native/options_menu.c
+    src/native/reportbox.c
+    src/native/security.c
+    src/native/conversation.c
+    src/native/script_trace.c
+    src/native/entity_spawn_probe.c
+    src/native/heartbeat.c
+    src/d3d8/d3d8_com.c
+    src/d3d8/d3d8_caps.c
+    src/d3d8/d3d8_state.c
+    src/d3d8/d3d8_stateblock.c
+    src/d3d8/d3d8_d3d8.c
+    src/d3d8/d3d8_device.c
+    src/d3d8/d3d8_live_resolution.c
+    src/d3d8/d3d8_selector_probe.c
+    src/d3d8/d3d8_selector_probe_json.c
+    src/d3d8/d3d8_selector_probe_bridge.c
+    src/d3d8/d3d8_texture_provenance.c
+    src/d3d8/d3d8_lightlog.c
+    src/d3d8/d3d8_surface.c
+    src/d3d8/d3d8_resource.c
+    src/d3d8/d3d8_texture_luma.c
+    src/d3d8/d3d8_texture_stage.c
+    src/d3d8/d3d8_vertex_layout.c
+    src/d3d8/d3d8_frame_material.c
+    src/d3d8/d3d8_drawcall.c
+    src/d3d8/d3d8_vertex_shader.c
+    src/d3d8/d3d8_screen_space_test.c
+    src/d3d8/d3d8_light_selftest.c
+    src/d3d8/d3d8_report.c
+    src/vulkan/igvk_ark.c
+    src/vulkan/igvk_probe.c
+    src/vulkan/igvk_context.c
+    src/gpu/gpu_device.c
+    src/gpu/gpu_capture.c
+    src/gpu/gpu_draw.c
+    src/gpu/gpu_texture_format.c
+    src/gpu/gpu_draw_trace.c
+    src/gpu/gpu_frame_timing.c
+    src/gpu/gpu_frame_timing_report.c
+    src/gpu/gpu_shadow.c
+    src/gpu/gpu_shadow_selftest.c
+    src/gpu/shadow_policy.c
+    src/gpu/gpu_frame_submit.c
+    src/gpu/gpu_present.c
+    src/gpu/gpu_present_selftest.c
+    src/gpu/gpu_prompt_glyphs.c
+    src/gpu/gpu_host_selftest.c
+    src/gpu/gpu_multistage_selftest.c
+    src/gpu/gpu_matrix.c
+    src/gpu/gpu_frame_init_selftest.c
+    src/gpu/gpu_upload.c
+    src/gpu/gpu_upload_selftest.c
+    src/gpu/gpu_selftest.c
+    src/vulkan/igvk_slots_lifecycle.c
+    src/vulkan/igvk_slots_frame.c
+)
+if(NOT ANDROID)
+    # The --wrap oracle probes depend on executable bodies and are not
+    # part of the Android shared-library product.
+    list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace.c
+                                  src/recomp/gen/probe_wraps.c)
+else()
+    list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace_android.c)
+endif()
+if(ANDROID)
+    add_library(x2native SHARED ${X2_NATIVE_SOURCES})
+else()
+    add_executable(x2native ${X2_NATIVE_SOURCES})
+endif()
+# -----------------------------------------------------------------
+# The runtime execution engine (jit-common S040/S047).
+#
+# CONSUMED, never vendored: `shared/x86port` owns x86-32 semantics for
+# every title over it, and a copy in this tree that silently won is the
+# exact failure that split exists to end. It is resolved by the same
+# tools/shared_dir.py every other shared repo goes through, so there is one
+# answer to "where is it" and one refusal naming every path tried.
+#
+# x86port itself consumes jit-common, and finds it beside its own checkout
+# -- which is where bootstrap.py provisions it. The path is passed
+# EXPLICITLY anyway rather than left to that adjacency, so a maintainer
+# pointing X86PORT_DIR at a working tree does not silently pick up a
+# different jit-common than the pin.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} -c
+            "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
+            "${CMAKE_SOURCE_DIR}/tools" x86port src/x86port/engine.h
+    OUTPUT_VARIABLE X2_X86PORT_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_VARIABLE X2_X86PORT_WHY RESULT_VARIABLE X2_X86PORT_RC)
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} -c
+            "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
+            "${CMAKE_SOURCE_DIR}/tools" jit-common src/jitcommon/block_cache.h
+    OUTPUT_VARIABLE X2_JITCOMMON_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_VARIABLE X2_JITCOMMON_WHY RESULT_VARIABLE X2_JITCOMMON_RC)
+if(X2_X86PORT_RC OR X2_JITCOMMON_RC)
+    # REFUSED, not skipped. An engine that is absent and an engine that is
+    # present but never selected produce identical runs, and telling those
+    # apart is the whole point of the migration's measurement.
+    message(FATAL_ERROR
+        "x2native: the execution engine could not be resolved.\n"
+        "${X2_X86PORT_WHY}${X2_JITCOMMON_WHY}"
+        "Run ./run.sh to provision it, or set SHARED_DIR to a checkout root.")
+endif()
+set(X86PORT_JITCOMMON_DIR "${X2_JITCOMMON_DIR}" CACHE PATH
+    "jit-common checkout x86port builds against" FORCE)
+# x2native links as a PIE (and on Android as a shared object), so every
+# static library it pulls in has to be position-independent. Set here
+# rather than in x86port, because it is this consumer's link mode that
+# requires it -- x86port's own build has no reason to care, and the
+# variable propagates into jitcommon and Zydis, which are added by
+# x86port's CMakeLists and would otherwise fail the same way.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+add_subdirectory("${X2_X86PORT_DIR}" "${CMAKE_BINARY_DIR}/x86port"
+                 EXCLUDE_FROM_ALL)
+
+add_dependencies(x2native x2_shaders x2_pad_glyph_header
+                 x2_prompt_glyph_atlas)
+target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
+                                            src/config src/presentation src/ui
+                                            src/input src/save src/audio
+                                            src/media
+                                          src/gpu src/d3d8
+                                          src/oracle src/recomp/gen
+                                          ${CMAKE_BINARY_DIR})
+target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
+target_link_libraries(x2native PRIVATE x86port)
+
+# Native overrides are declared in C where they belong: x86_register_override
+# in the subsystem files, and recomp.py routes every call (direct or
+# indirect) to a registered entry point through the dispatcher's override
+# slot, which x86_native_call_at consults before the recompiled body. No
+# generated wiring, no --wrap, no --isolate; the C is the single source of
+# truth.
+
+# Oracle probes: --wrap, for recording rather than replacing. Generated from
+# tools/probes.json by tools/gen_probes.py, which also writes the --isolate
+# lists -- the ONLY remaining user of the isolate mechanism. Missing is
+# FATAL for the same reason: a build without these flags records nothing
+# and reads as a port that agrees with the control.
+set(RECOMP_PROBES_CMAKE
+    "${CMAKE_SOURCE_DIR}/src/recomp/gen/recomp_probes.cmake")
+if(NOT EXISTS "${RECOMP_PROBES_CMAKE}")
+    message(FATAL_ERROR
+        "Missing ${RECOMP_PROBES_CMAKE}.\n"
+        "It is generated by tools/gen_probes.py from tools/probes.json. "
+        "Building without it would link a binary in which every oracle "
+        "probe is silently absent. Run tools/gen_probes.py.")
+endif()
+include("${RECOMP_PROBES_CMAKE}")
+if(NOT APPLE AND NOT ANDROID)
+    target_link_options(x2native PRIVATE ${RECOMP_PROBE_WRAPS})
+endif()
+
+target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
+target_compile_definitions(x2native PRIVATE X86_NATIVE)
+# PIE, so this binary does not sit at 0x400000 -- which is exactly where
+# XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
+# and forces it to relocate for no reason.
+set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(NOT APPLE AND NOT ANDROID)
+    target_link_options(x2native PRIVATE -pie)
+endif()
+# libm: the exe's x87 translations use atan2l/fmodl and friends.
+# -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
+# so that a guest stuck anywhere still gets a liveness line.
+target_link_libraries(x2native PRIVATE ${X2_SDL} ${X2_FFMPEG_TARGET}
+                                       m Threads::Threads)
+if(ANDROID)
+    set_target_properties(x2native PROPERTIES OUTPUT_NAME main)
+    get_filename_component(_x2_android_ndk_version "${CMAKE_ANDROID_NDK}" NAME)
+    if(NOT _x2_android_ndk_version)
+        message(FATAL_ERROR "x2native: Android toolchain did not expose its NDK version")
+    endif()
+    # Gradle consumes this generated contract. It keeps the Android shell
+    # independent of CMake's internal target names while still refusing a
+    # stale or hand-pointed-at native library.
+    set(_x2_android_properties
+        "x2.nativeLibrary=$<TARGET_FILE:x2native>\n"
+        "x2.sdlLibrary=$<TARGET_FILE:${X2_SDL}>\n"
+        "x2.cxxLibrary=${X2_ANDROID_CXX_LIBRARY}\n"
+        "x2.androidAbi=${ANDROID_ABI}\n"
+        "x2.androidPlatform=${ANDROID_PLATFORM}\n"
+        "x2.ndkVersion=${_x2_android_ndk_version}\n"
+        "x2.sdlJavaDir=${X2_SDL_ANDROID_JAVA_DIR}\n"
+        "x2.lucentJavaDir=${X2_LUCENT_ANDROID_JAVA_DIR}\n"
+        "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n")
+    string(JOIN "" _x2_android_properties ${_x2_android_properties})
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/x2-android.properties"
+         CONTENT "${_x2_android_properties}")
+endif()
+# No $ENV{} here: CMake would bake in whatever GAME_PC_DIR was at CONFIGURE
+# time, which is how this test first "failed" against an empty path. x2native
+# reads it itself at run time and exits 77 (ctest SKIP) if it is unset,
+# saying so -- a skip that announces itself, not a silent pass.
+# -DX2_NATIVE_O0=<file> compiles ONE generated chunk at -O0, so addr2line
+# names the exact guest instruction in it. At -O2 the line attribution
+# inside a 200k-line translated body is approximate, and reading a fault as
+# being at the wrong instruction is worse than admitting it is unknown --
+# a nearby line looks like an answer. Whole-build -O0 is not an option:
+# 2M lines of translated code, so this is per-chunk and opt-in.
+if(X2_NATIVE_O0)
+    if(NOT EXISTS ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0})
+        message(FATAL_ERROR "X2_NATIVE_O0: no such generated chunk: "
+                            "src/recomp/${X2_NATIVE_O0}")
+    endif()
+    message(STATUS "x2native: ${X2_NATIVE_O0} at -O0 for exact fault lines")
+    set_source_files_properties(
+        ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0}
+        PROPERTIES COMPILE_OPTIONS "-O0")
+endif()
+add_test(NAME native_battery
+         COMMAND x2native --no-window --selftest)
+set_tests_properties(native_battery PROPERTIES SKIP_RETURN_CODE 77)
+# The renderer's HOST half, driven with no engine and no game install.
+# It needs neither, which is the point: the game has never reached a
+# frame, so without this nothing would ever have run that code.
+add_test(NAME vk_frame_path
+         COMMAND x2native --no-window --vk-selftest)
+set_tests_properties(vk_frame_path PROPERTIES SKIP_RETURN_CODE 77)
+# The host D3D8's ABI tables, vtable dispatch and caps block. Also needs
+# no game: what it checks is that slot N reaches method N and that an
+# unimplemented method REPORTS, which are host-side facts.
+add_test(NAME d3d8_host
+         COMMAND x2native --no-window --d3d8-selftest)
+set_tests_properties(d3d8_host PROPERTIES SKIP_RETURN_CODE 77)
+# The engine's error dialog, which only ever runs when something has
+# already gone wrong -- so nothing else exercises it. Drives the override
+# with a synthetic call frame and checks the ABI and the screenless answer.
+add_test(NAME report_box
+         COMMAND x2native --no-window --dialog-selftest)
+set_tests_properties(report_box PROPERTIES SKIP_RETURN_CODE 77)
+# The crash reporter, proved by crashing. Only SIGSEGV used to be handled,
+# so an illegal instruction or an arithmetic fault killed a run with
+# nothing printed at all -- a crash that read, from a log, exactly like the
+# window being closed. Each signal is raised in a child and the report must
+# name it; a control child that does not fault must stay silent.
+add_test(NAME fault_reporter
+         COMMAND x2native --no-window --fault-selftest)
+set_tests_properties(fault_reporter PROPERTIES SKIP_RETURN_CODE 77)
+else()
+message(STATUS
+    "x2native: SKIPPED -- no module has generated output. "
+    "Run tools/recomp.py emit and tools/recomp.py native (see above).")

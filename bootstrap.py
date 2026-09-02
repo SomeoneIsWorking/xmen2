@@ -23,7 +23,6 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parent
-SPLIT = 1500
 
 
 @dataclass(frozen=True)
@@ -41,8 +40,6 @@ SHARED_REPOS = (
                "8282d4c7d19ef3a625866524092c1d45ec080110", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
                "ab154c7d90f29959e9391217ecfc4b8e5874b9bd", "tools/android_port.py"),
-    SharedRepo("recomp-x86", "https://github.com/SomeoneIsWorking/recomp-x86.git",
-               "5a241a6a763b53496d27d369192eb20bae6ed660", "tools/recomp.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact
     # revision, never a branch: a fresh clone that resolved to whatever `main`
     # happened to be would make two machines run different engines while
@@ -93,27 +90,6 @@ def hash_file(path: Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def hash_files(paths: tuple[Path, ...]) -> str:
-    digest = hashlib.sha256()
-    for path in paths:
-        digest.update(path.name.encode())
-        digest.update(bytes.fromhex(hash_file(path)))
-    return digest.hexdigest()
-
-
-def has_instruction_encodings(path: Path) -> bool:
-    """Check canonical captured JSON without loading a multi-megabyte export."""
-    needle = b'"b":'
-    overlap = b""
-    with path.open("rb") as source:
-        for block in iter(lambda: source.read(1024 * 1024), b""):
-            haystack = overlap + block
-            if needle in haystack:
-                return True
-            overlap = haystack[-(len(needle) - 1):]
-    return False
 
 
 def modules() -> list[str]:
@@ -331,83 +307,6 @@ def publish_text(path: Path, content: str) -> bool:
     return True
 
 
-def read_stamp(path: Path) -> dict[str, object] | None:
-    try:
-        value = json.loads(path.read_text())
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None
-    return value if isinstance(value, dict) else None
-
-
-def write_stamp(path: Path, value: dict[str, object]) -> None:
-    publish_text(path, json.dumps(value, sort_keys=True) + "\n")
-
-
-def ensure_iat(module: str, image: Path, image_hash: str, pe_tool: Path) -> str:
-    """Return a verified import-table hash, regenerating any inexact cache.
-
-    The output, exact PE image, local entry point and shared implementation are
-    one provenance unit. A valid-looking timestamp cannot bless a truncated or
-    hand-edited table, and every publication goes through ``publish_text``.
-    """
-    scratch = ROOT / "scratch/recomp"
-    iat = scratch / f"{module}.iat"
-    stamp = scratch / f".{module}.iat.json"
-    expected = {
-        "schema": 1,
-        "image": image_hash,
-        "tool": hash_files((ROOT / "tools/pe.py", pe_tool)),
-    }
-    prior = read_stamp(stamp)
-    output_hash = hash_file(iat) if iat.is_file() else None
-    if output_hash and prior == {**expected, "output": output_hash}:
-        return output_hash
-
-    text = run_tool([str(ROOT / "tools/pe.py"), "iat", str(image)],
-                    f"deriving {module} import table", capture=True)
-    if not text.strip():
-        refuse(f"PE parser produced an empty import table for {module}")
-    publish_text(iat, text)
-    output_hash = hash_file(iat)
-    write_stamp(stamp, {**expected, "output": output_hash})
-    return output_hash
-
-
-def restore_exports(images: dict[str, Path]) -> dict[str, dict[str, object]]:
-    scratch = ROOT / "scratch/recomp"
-    scratch.mkdir(parents=True, exist_ok=True)
-    states: dict[str, dict[str, object]] = {}
-    recomp_repo = next(repo for repo in SHARED_REPOS if repo.name == "recomp-x86")
-    recomp_root = shared_target(recomp_repo)
-    reinject_tool = recomp_root / "tools/reinject_bytes.py"
-    pe_tool = recomp_root / "tools/pe.py"
-    tool_hash = hash_files((reinject_tool, pe_tool))
-    for module in modules():
-        frozen = ROOT / "re/ghidra" / f"{module}.json"
-        live = scratch / f"{module}.json"
-        if not frozen.is_file():
-            refuse(f"missing committed export {frozen}; Ghidra is not a player prerequisite")
-        if has_instruction_encodings(frozen):
-            refuse(f"{frozen} contains instruction encodings; committed exports must be metadata only")
-        source_hash = hash_file(frozen)
-        image_hash = GAME_MODULE_SHA256[module]
-        stamp_path = scratch / f".{module}.reinject.json"
-        expected = {"schema": 1, "source": source_hash, "image": image_hash,
-                    "tool": tool_hash}
-        prior = read_stamp(stamp_path)
-        live_hash = hash_file(live) if live.is_file() else None
-        if not (live_hash and prior == {**expected, "output": live_hash}):
-            shutil.copyfile(frozen, live)
-            run_tool([str(ROOT / "tools/reinject_bytes.py"), str(live),
-                      str(images[module])], f"restoring {module} instruction bytes")
-            live_hash = hash_file(live)
-            write_stamp(stamp_path, {**expected, "output": live_hash})
-
-        iat_hash = ensure_iat(module, images[module], image_hash, pe_tool)
-        states[module] = {"json": live_hash, "iat": iat_hash}
-    return states
-
-
 def load_probe_generator():
     """Load the authoritative renderer without invoking its in-place writer."""
     path = ROOT / "tools/gen_probes.py"
@@ -455,39 +354,6 @@ def publish_probe_artifacts(generator=None) -> int:
     return changed
 
 
-def generated_bodies(module: str) -> list[Path]:
-    single = ROOT / "src/recomp" / f"{module}.c"
-    chunks = sorted((ROOT / "src/recomp").glob(f"{module}_[0-9][0-9][0-9].c"))
-    return [single] if single.is_file() else chunks
-
-
-def emit_modules(states: dict[str, dict[str, object]]) -> None:
-    recomp_revision = next(repo.revision for repo in SHARED_REPOS
-                           if repo.name == "recomp-x86")
-    for module in modules():
-        isolate = ROOT / "scratch/recomp" / f"{module}.isolate"
-        provenance = {"schema": 1, "split": SPLIT, "recomp": recomp_revision,
-                      **states[module],
-                      "isolate": hash_file(isolate) if isolate.is_file() else None}
-        stamp = ROOT / "scratch/recomp" / f".{module}.emit.json"
-        native = ROOT / "src/recomp" / f"{module}_native.c"
-        if read_stamp(stamp) == provenance and native.is_file() and generated_bodies(module):
-            continue
-        for old in (ROOT / "src/recomp").glob(f"{module}_[0-9][0-9][0-9].c"):
-            old.unlink()
-        (ROOT / "src/recomp" / f"{module}.c").unlink(missing_ok=True)
-        live = ROOT / "scratch/recomp" / f"{module}.json"
-        print(f"bootstrap: emitting {module}")
-        run_tool([str(ROOT / "tools/recomp.py"), "emit", str(live),
-                  str(ROOT / "src/recomp" / f"{module}.c"), "--split", str(SPLIT)],
-                 f"emitting {module} bodies")
-        run_tool([str(ROOT / "tools/recomp.py"), "native", str(live), str(native)],
-                 f"emitting {module} dispatch")
-        if not native.is_file() or not generated_bodies(module):
-            refuse(f"translator reported success but emitted no complete {module} output")
-        write_stamp(stamp, provenance)
-
-
 def publish_font_tier_ratio(game: Path) -> None:
     """Measure this install's own PC->HD font step into a generated header.
 
@@ -513,23 +379,25 @@ def publish_prompt_glyph_atlas() -> None:
              "rasterising the prompt glyph atlas")
 
 
-def provision(images: dict[str, Path], game: Path) -> None:
-    states = restore_exports(images)
+def provision(game: Path) -> None:
+    """Publish the portable inputs the launcher's build needs.
+
+    There is no code-generation step: the guest's own instruction bytes are
+    read out of the player's images at run time and executed by the engine, so
+    the only things published here are derived assets.
+    """
     publish_font_tier_ratio(game)
     publish_prompt_glyph_atlas()
     publish_probe_artifacts()
-    emit_modules(states)
-    run_tool([str(ROOT / "tools/check_emitted.py"), "--root", str(ROOT)],
-             "verifying emitted code provenance")
-    print(f"bootstrap: native inputs ready ({len(states)} module(s), Ghidra not used)")
+    print("bootstrap: native inputs ready")
 
 
 def initialize() -> None:
     os.chdir(ROOT)
     game = find_game()
-    images = validate_game(game)
+    validate_game(game)
     ensure_shared()
-    provision(images, game)
+    provision(game)
 
 
 def main() -> int:
