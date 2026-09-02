@@ -11,6 +11,10 @@
 #include "d3d8_texture_provenance.h"
 #include "gpu_draw.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum {
     D3DPT_POINTLIST = 1, D3DPT_LINELIST, D3DPT_LINESTRIP,
     D3DPT_TRIANGLELIST, D3DPT_TRIANGLESTRIP, D3DPT_TRIANGLEFAN
@@ -107,5 +111,9 @@ void d3d8_frame_table_install_signal(void);
 
 /* Feeds a rigid palette and a corrupt one through the shipping probe. */
 int d3d8_constants_probe_selftest(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* D3D8_DRAWCALL_H */

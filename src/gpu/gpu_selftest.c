@@ -562,6 +562,94 @@ int gpu_tfactor_selftest(void)
 #endif
 }
 
+/*
+ * BC1 is the game's DXT1 source format. A device advertising the format but
+ * returning a black texel is not usable by this port, so sample the texture
+ * through the shipping fixed-function shader and read the resulting pixel.
+ */
+int gpu_bc1_texture_selftest(void)
+{
+#ifndef X2_WITH_SDL
+    printf("gpu BC1 texture selftest: SKIPPED -- built without SDL. This is "
+           "not a pass.\n");
+    return 77;
+#else
+    struct Vertex { float x, y, z, rhw, u, v; };
+    static const struct Vertex quad[6] = {
+        {0, 0, 0.5f, 1, .5f, .5f}, {OFF_W, 0, 0.5f, 1, .5f, .5f},
+        {0, OFF_H, 0.5f, 1, .5f, .5f},
+        {0, OFF_H, 0.5f, 1, .5f, .5f}, {OFF_W, 0, 0.5f, 1, .5f, .5f},
+        {OFF_W, OFF_H, 0.5f, 1, .5f, .5f}
+    };
+    /* One opaque-red DXT1 block: c0 = RGB565 red, every index selects c0. */
+    static const uint8_t red_block[8] = {0x00, 0xf8, 0, 0, 0, 0, 0, 0};
+    static uint32_t image[OFF_W * OFF_H];
+    GpuBuffer vertices;
+    GpuTexture texture;
+    GpuDraw draw;
+    uint32_t centre;
+
+    printf("\n=== gpu BC1 texture selftest: compressed texel through the "
+           "shipping shader ===\n");
+    if (!gpu_device_create()) {
+        printf("gpu BC1 texture selftest: FAILED -- no GPU device.\n");
+        return 1;
+    }
+    vertices = gpu_buffer_create(GPU_BUF_VERTEX, sizeof quad);
+    texture = gpu_texture_create(4, 4, GPU_FMT_BC1, 1);
+    if (!vertices || !texture
+        || !gpu_buffer_upload(vertices, 0, quad, sizeof quad)
+        || !gpu_texture_upload(texture, 0, red_block, sizeof red_block)) {
+        printf("gpu BC1 texture selftest: FAILED -- could not create and "
+               "upload the DXT1 control block.\n");
+        if (texture) gpu_texture_destroy(texture);
+        if (vertices) gpu_buffer_destroy(vertices);
+        gpu_device_destroy();
+        return 1;
+    }
+    memset(&draw, 0, sizeof draw);
+    draw.vertices = vertices;
+    draw.vertex_stride = sizeof quad[0];
+    draw.prim = GPU_PRIM_TRIANGLELIST;
+    draw.prim_count = 2;
+    draw.pos_offset = 0;
+    draw.pretransformed = 1;
+    draw.color_offset = -1;
+    draw.specular_offset = -1;
+    draw.uv_offset = 16;
+    draw.normal_offset = -1;
+    draw.texture = texture;
+    draw.texop = GPU_TEXOP_SELECT_TEXTURE;
+    draw.cull = GPU_CULL_NONE;
+    draw.depth_func = GPU_CMP_ALWAYS;
+    if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f)
+        || !gpu_draw(&draw)
+        || !gpu_offscreen_read(image, sizeof image)) {
+        printf("gpu BC1 texture selftest: FAILED -- draw/readback did not "
+               "complete.\n");
+        gpu_offscreen_end();
+        gpu_texture_destroy(texture);
+        gpu_buffer_destroy(vertices);
+        gpu_device_destroy();
+        return 1;
+    }
+    gpu_offscreen_end();
+    centre = image[(OFF_H / 2) * OFF_W + OFF_W / 2];
+    gpu_texture_destroy(texture);
+    gpu_buffer_destroy(vertices);
+    gpu_device_destroy();
+    if (centre != 0xFFFF0000u) {
+        printf("gpu BC1 texture selftest: FAILED -- centre is 0x%08x, "
+               "expected opaque red. The device advertised BC1 but the "
+               "shipping texture path did not produce its texel.\n", centre);
+        return 1;
+    }
+    printf("gpu BC1 texture selftest: PASSED -- uploaded DXT1 sampled as "
+           "opaque red.\n");
+    return 0;
+#endif
+}
+
 int gpu_draw_selftest(void)
 {
 #ifndef X2_WITH_SDL

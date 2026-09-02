@@ -62,6 +62,43 @@
    state table gives them (and tools/proxy_d3d8/proxy.c repeats). */
 #define D3D8_RS_LIGHTING 137
 #define D3D8_RS_AMBIENT  139
+#define D3D8_RS_TEXTUREFACTOR 60
+
+static int g_texture_factor_trace;
+static unsigned long g_texture_factor_trace_count;
+static uint32_t g_texture_factor_trace_last;
+
+#define TEXTURE_FACTOR_TRACE_LIMIT 64u
+
+void d3d8_device_trace_texture_factor(int enabled)
+{
+    g_texture_factor_trace = enabled != 0;
+    g_texture_factor_trace_count = 0;
+    g_texture_factor_trace_last = 0;
+}
+
+static void trace_texture_factor_write(CPU *C, uint32_t value)
+{
+    const uint32_t caller = RD32(C->esp);
+    const uint32_t context_field = C->esi + 0x4c8u;
+    const void *context_field_host = guest_memory_const_pointer(context_field);
+    const int changed = g_texture_factor_trace_count == 0 ||
+                        value != g_texture_factor_trace_last;
+
+    if (!g_texture_factor_trace) return;
+    if (g_texture_factor_trace_count < TEXTURE_FACTOR_TRACE_LIMIT)
+        fprintf(stderr, "d3d8: TFACTOR write %lu value 0x%08x caller 0x%08x "
+                        "context 0x%08x field 0x%08x host %p%s\n",
+                g_texture_factor_trace_count + 1, value, caller, C->esi,
+                context_field, context_field_host,
+                changed ? " (value changed)" : "");
+    else if (g_texture_factor_trace_count == TEXTURE_FACTOR_TRACE_LIMIT)
+        fprintf(stderr, "d3d8: TFACTOR trace capped after %u writes; draw "
+                        "dump remains armed.\n",
+                TEXTURE_FACTOR_TRACE_LIMIT);
+    g_texture_factor_trace_last = value;
+    g_texture_factor_trace_count++;
+}
 
 
 typedef struct {
@@ -532,6 +569,8 @@ static void dev_SetRenderState(D3D8Object *self, CPU *C)
     else if (which == D3D8_RS_AMBIENT)
         d3d8_lightlog("SETRENDERSTATE t=%lu AMBIENT=%08lx",
                       d3d8_lightlog_ms(), (unsigned long)value);
+    else if (which == D3D8_RS_TEXTUREFACTOR)
+        trace_texture_factor_write(C, value);
     d3d8_ret(C, d3d8_state_set_render(&g_dev.state, which, value)
                 ? D3D_OK : D3DERR_INVALIDCALL);
 }

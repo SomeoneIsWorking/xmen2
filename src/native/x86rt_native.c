@@ -372,9 +372,10 @@ static void hotep_count(uint32_t ep, unsigned long long ns);
 static unsigned long g_return_to_calls;
 extern const CPU *g_cpu_current;
 
-/* Guard for the wall-time attribution probe (see below). Zero in the default
-   build, which is one predictable branch per dispatch; set by X2_HOTEP. */
-static int g_probe_time;
+/* X2_HOTEP's bounded entry-point table is also the sole arming state for its
+ * wall-time attribution. Keeping a second boolean allowed count and timing to
+ * disagree on Android, producing a false "unarmed" report after HOTEP started. */
+static unsigned g_hotep_cap;
 
 /* Cumulative EXCLUSIVE ns inside host import stubs and inside guest bodies
    since arming, for x86_probe_time_delta. Read with the same torn-read trade
@@ -863,7 +864,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
         if (g_epc_n < 0) epcount_init();
         g_epc_dispatches++;
         g_sample_ep = addr;
-        if (g_probe_time) span_push();
+        if (g_hotep_cap) span_push();
         if (g_epc_n) {
             int i;
             for (i = 0; i < g_epc_n; i++)
@@ -897,7 +898,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
                 }
         }
         f->fn(C);
-        if (g_probe_time) {
+        if (g_hotep_cap) {
             unsigned long long excl = span_pop();
             g_guest_body_ns += excl;
             hotep_count(addr, excl);
@@ -1047,7 +1048,6 @@ static unsigned long g_thunk_hits[THUNK_MAX];
 static uint32_t      g_hotep_key[HOTEP_MAX];
 static unsigned long g_hotep_n[HOTEP_MAX];
 static unsigned long long g_hotep_ns[HOTEP_MAX];
-static unsigned      g_hotep_cap;       /* tracked EPs; 0 = probe unarmed */
 static unsigned      g_hotep_collisions;
 
 void x86_hotep_arm(const char *arg)
@@ -1055,7 +1055,6 @@ void x86_hotep_arm(const char *arg)
     unsigned long want = arg ? strtoul(arg, NULL, 10) : 0;
     g_hotep_cap = want > HOTEP_MAX ? HOTEP_MAX : (unsigned)want;
     g_hotep_collisions = 0;
-    g_probe_time = want != 0;
     if (g_hotep_cap)
         fprintf(stderr, "[HOTEP] armed for the top %u guest entry points.\n",
                 g_hotep_cap);
@@ -1252,9 +1251,9 @@ static int thunk_call(uint32_t addr, CPU *C)
     {
         void *save = g_cb_ctx;
         g_cb_ctx = g_thunk[i].ctx;
-        if (g_probe_time) span_push();
+        if (g_hotep_cap) span_push();
         g_thunk[i].stub(C);
-        if (g_probe_time) g_host_import_ns += span_pop();
+        if (g_hotep_cap) g_host_import_ns += span_pop();
         g_cb_ctx = save;
     }
     ring_note(g_thunk[i].sym, addr, 0, in, C->esp, 0);
@@ -1556,7 +1555,7 @@ void x86_probe_time_delta(unsigned long long *host_import_ns,
                           unsigned long long *guest_body_ns)
 {
     static unsigned long long phost, pguest;
-    if (!g_probe_time) {
+    if (!g_hotep_cap) {
         *host_import_ns = *guest_body_ns = 0;
         return;
     }

@@ -11,6 +11,10 @@
 #include "d3d8_com.h"
 #include "d3d8_types.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Install the device's method table. Called once, from Direct3DCreate8, so
    that a build which never creates a Direct3D never builds a device vtable
    either. */
@@ -39,6 +43,10 @@ void d3d8_device_report(void);
    lost inside the host. */
 int d3d8_last_setlight_diffuse(unsigned idx, float out[3]);
 
+/* Bounded debug trace for the render-state value that colours an untextured
+   SELECTARG(TFACTOR) pass. Android's debug setup arms it before game startup. */
+void d3d8_device_trace_texture_factor(int enabled);
+
 /*
  * The same counters, live, for the heartbeat (src/native/heartbeat.c).
  *
@@ -54,5 +62,9 @@ int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
    "no call site identified" and "this never ran" are different findings. */
 int  d3d8_vsconst_caller_line(char *buf, int n);
 void d3d8_vsconst_caller_report(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* D3D8_DEVICE_H */

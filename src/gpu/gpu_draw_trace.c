@@ -7,6 +7,24 @@
 
 static unsigned long g_range_index, g_range_skipped;
 
+typedef struct FrameDumpTrace {
+    long want;
+    unsigned long busy_min;
+    unsigned long dumped;
+    unsigned long dumped_frame;
+    unsigned long rejected;
+    unsigned long seen_frame;
+    unsigned long this_draws;
+    unsigned long prev_draws;
+    int seek_vs;
+    int this_has_vs;
+    FILE *capture;
+    char *capture_text;
+    size_t capture_size;
+} FrameDumpTrace;
+
+static FrameDumpTrace g_frame_dump = { .want = -2 };
+
 #if defined(__ANDROID__)
 /* Bionic's API-21 libc has funopen but not glibc's open_memstream. The frame
  * trace needs a real capture buffer so it can reject non-matching frames
@@ -69,9 +87,21 @@ unsigned long gpu_draw_trace_draws_so_far(void)
     return g_range_index;
 }
 
+void gpu_draw_trace_arm_busy_frame(unsigned long minimum_draws)
+{
+    g_frame_dump.want = -3;
+    g_frame_dump.busy_min = minimum_draws ? minimum_draws : 100u;
+}
+
+void gpu_draw_trace_disarm_frame_dump(void)
+{
+    g_frame_dump.want = -1;
+}
+
 static void print_draw(FILE *dst, const GpuDraw *d, unsigned long index)
 {
-    fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s %s%s%s%s%s%s "
+    fprintf(dst, "  draw %4lu %-13s x%-5u tex %-4u %-9s args%d/%d a%d/%d "
+                 "tf[%.3f %.3f %.3f %.3f] %s%s%s%s%s%s "
                  "stride %2u col%+3d uv%+3d cull%d blend%d/%d "
                  "zfunc%d zbias%u atest%d/ref%.3f cv%d nn%d src%d/%d/%d "
                  "stencil%d/%u,%u,%u,%u ref%u mask%x write%x rgba%x\n",
@@ -81,6 +111,9 @@ static void print_draw(FILE *dst, const GpuDraw *d, unsigned long index)
             d->prim_count, d->texture,
             d->texop == GPU_TEXOP_NONE ? "UNTEXTURED"
             : d->texop == GPU_TEXOP_MODULATE ? "modulate" : "select",
+            d->color_arg1, d->color_arg2, d->alpha_arg1, d->alpha_arg2,
+            d->texture_factor[0], d->texture_factor[1],
+            d->texture_factor[2], d->texture_factor[3],
             d->programmable ? "VS " : "FVF ",
             d->blend_enable ? "blend " : "",
             d->depth_test ? "ztest " : "",
@@ -96,6 +129,40 @@ static void print_draw(FILE *dst, const GpuDraw *d, unsigned long index)
             d->stencil_fail, d->stencil_zfail, d->stencil_pass,
             d->stencil_func, d->stencil_ref, d->stencil_mask,
             d->stencil_write_mask, d->color_write_mask);
+    if (d->texture && d->texture_metadata_valid)
+        fprintf(dst, "           texture0 %ux%u fmt%u levels%u faces%u "
+                     "uploads%u level-mask0x%llx base%s rev%llu hash%016llx\n",
+                d->texture_width, d->texture_height, d->texture_format,
+                d->texture_levels, d->texture_faces, d->texture_upload_count,
+                (unsigned long long)d->texture_uploaded_level_mask,
+                d->texture_level0_fingerprint_valid ? "-present" : "-missing",
+                (unsigned long long)d->texture_level0_revision,
+                (unsigned long long)d->texture_level0_fingerprint);
+    if (d->lighting) {
+        int i;
+        fprintf(dst, "           lighting n%d cv%d sources%d/%d/%d ambient "
+                     "[%.3f %.3f %.3f] material d[%.3f %.3f %.3f] "
+                     "a[%.3f %.3f %.3f] e[%.3f %.3f %.3f]\n",
+                d->nlights, d->color_vertex, d->diffuse_source,
+                d->ambient_source, d->emissive_source,
+                d->global_ambient[0], d->global_ambient[1],
+                d->global_ambient[2], d->mat_diffuse[0],
+                d->mat_diffuse[1], d->mat_diffuse[2],
+                d->mat_ambient[0], d->mat_ambient[1], d->mat_ambient[2],
+                d->mat_emissive[0], d->mat_emissive[1],
+                d->mat_emissive[2]);
+        for (i = 0; i < d->nlights; ++i) {
+            const GpuLight *light = &d->light[i];
+            fprintf(dst, "           light%d type%d d[%.3f %.3f %.3f] "
+                         "a[%.3f %.3f %.3f] pos[%.1f %.1f %.1f] range%.1f "
+                         "atten[%.5f %.5f %.8f]\n",
+                    i, light->type, light->diffuse[0], light->diffuse[1],
+                    light->diffuse[2], light->ambient[0], light->ambient[1],
+                    light->ambient[2], light->position[0], light->position[1],
+                    light->position[2], light->range, light->atten[0],
+                    light->atten[1], light->atten[2]);
+        }
+    }
     if (d->texture1)
         fprintf(dst, "           stage1 tex %-4u op%d/%d args %d,%d/%d,%d "
                      "texgen%d transform%d clamp%d point%d min%d mip%d "
@@ -137,98 +204,102 @@ static void print_draw(FILE *dst, const GpuDraw *d, unsigned long index)
 
 int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now)
 {
-    static long want = -2;
-    static unsigned long busy_min, dumped, dumped_frame, rejected;
-    static unsigned long seen_frame, this_draws, prev_draws;
-    static int seek_vs, this_has_vs;
-    static FILE *capture;
-    static char *capture_text;
-    static size_t capture_size;
     static long range_first = -2, range_last;
     static int texture_filter_init;
     static uint32_t texture_filter[16];
     static unsigned texture_filter_n;
     FILE *destination;
 
-    if (want == -2) {
+    if (g_frame_dump.want == -2) {
         const char *value = getenv("X2_FRAME_DUMP");
-        want = -1;
+        g_frame_dump.want = -1;
         if (value && *value) {
             if (!strncmp(value, "busy", 4)) {
-                busy_min = value[4] == ':' ? strtoul(value + 5, NULL, 10) : 100u;
-                if (!busy_min) busy_min = 100u;
-                want = -3;
+                g_frame_dump.busy_min = value[4] == ':' ?
+                    strtoul(value + 5, NULL, 10) : 100u;
+                if (!g_frame_dump.busy_min) g_frame_dump.busy_min = 100u;
+                g_frame_dump.want = -3;
             } else if (!strcmp(value, "vs")) {
-                seek_vs = 1;
-                want = -4;
+                g_frame_dump.seek_vs = 1;
+                g_frame_dump.want = -4;
             } else {
-                want = atol(value);
+                g_frame_dump.want = atol(value);
             }
         }
     }
-    if (now != seen_frame) {
-        if (capture && want == (long)seen_frame) {
-            capture_close(capture, &capture_text, &capture_size);
-            capture = NULL;
-            if (seek_vs && this_has_vs) {
+    if (now != g_frame_dump.seen_frame) {
+        if (g_frame_dump.capture &&
+            g_frame_dump.want == (long)g_frame_dump.seen_frame) {
+            capture_close(g_frame_dump.capture, &g_frame_dump.capture_text,
+                          &g_frame_dump.capture_size);
+            g_frame_dump.capture = NULL;
+            if (g_frame_dump.seek_vs && g_frame_dump.this_has_vs) {
                 fprintf(stderr, "gpu: X2_FRAME_DUMP=vs -- frame %lu contained "
                         "a programmable draw and drew %lu times total. Every "
-                        "draw of it follows.\n", seen_frame, this_draws);
-                fputs(capture_text ? capture_text : "", stderr);
-                seek_vs = 0;
-                want = -1;
-            } else if (seek_vs) {
-                want = -4;
-            } else if (this_draws >= busy_min) {
+                        "draw of it follows.\n", g_frame_dump.seen_frame,
+                        g_frame_dump.this_draws);
+                fputs(g_frame_dump.capture_text ? g_frame_dump.capture_text : "", stderr);
+                g_frame_dump.seek_vs = 0;
+                g_frame_dump.want = -1;
+            } else if (g_frame_dump.seek_vs) {
+                g_frame_dump.want = -4;
+            } else if (g_frame_dump.this_draws >= g_frame_dump.busy_min) {
                 fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu drew %lu "
                         "times itself (at least %lu asked for). Every draw of "
-                        "it follows.\n", seen_frame, this_draws, busy_min);
-                fputs(capture_text ? capture_text : "", stderr);
-                if (dumped > 400)
+                        "it follows.\n", g_frame_dump.seen_frame,
+                        g_frame_dump.this_draws, g_frame_dump.busy_min);
+                fputs(g_frame_dump.capture_text ? g_frame_dump.capture_text : "", stderr);
+                if (g_frame_dump.dumped > 400)
                     fprintf(stderr, "  ... capped at 400 draws; frame %lu had "
-                            "%lu.\n", seen_frame, this_draws);
+                            "%lu.\n", g_frame_dump.seen_frame,
+                            g_frame_dump.this_draws);
             } else {
-                rejected++;
+                g_frame_dump.rejected++;
                 fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- frame %lu is "
                         "DISCARDED: its predecessor drew %lu times but it drew "
                         "only %lu, under the %lu asked for. Looking for another "
-                        "(%lu discarded so far).\n", seen_frame, prev_draws,
-                        this_draws, busy_min, rejected);
-                want = -3;
+                        "(%lu discarded so far).\n", g_frame_dump.seen_frame,
+                        g_frame_dump.prev_draws, g_frame_dump.this_draws,
+                        g_frame_dump.busy_min, g_frame_dump.rejected);
+                g_frame_dump.want = -3;
             }
-            free(capture_text);
-            capture_text = NULL;
-            dumped = 0;
+            free(g_frame_dump.capture_text);
+            g_frame_dump.capture_text = NULL;
+            g_frame_dump.dumped = 0;
         }
-        prev_draws = this_draws;
-        this_draws = 0;
-        this_has_vs = 0;
-        seen_frame = now;
+        g_frame_dump.prev_draws = g_frame_dump.this_draws;
+        g_frame_dump.this_draws = 0;
+        g_frame_dump.this_has_vs = 0;
+        g_frame_dump.seen_frame = now;
     }
-    this_draws++;
-    if (d->programmable) this_has_vs = 1;
-    g_range_index = this_draws;
-    if (want == -3 && prev_draws >= busy_min) {
-        want = (long)now;
-        capture = capture_open(&capture_text, &capture_size);
-        if (!capture)
+    g_frame_dump.this_draws++;
+    if (d->programmable) g_frame_dump.this_has_vs = 1;
+    g_range_index = g_frame_dump.this_draws;
+    if (g_frame_dump.want == -3 &&
+        g_frame_dump.prev_draws >= g_frame_dump.busy_min) {
+        g_frame_dump.want = (long)now;
+        g_frame_dump.capture = capture_open(&g_frame_dump.capture_text,
+                                            &g_frame_dump.capture_size);
+        if (!g_frame_dump.capture)
             fprintf(stderr, "gpu: X2_FRAME_DUMP=busy -- cannot hold frame %ld "
                     "back (memory capture failed); its draws go straight out "
-                    "and may belong to a light frame.\n", want);
-    } else if (want == -4) {
-        want = (long)now;
-        capture = capture_open(&capture_text, &capture_size);
+                    "and may belong to a light frame.\n", g_frame_dump.want);
+    } else if (g_frame_dump.want == -4) {
+        g_frame_dump.want = (long)now;
+        g_frame_dump.capture = capture_open(&g_frame_dump.capture_text,
+                                            &g_frame_dump.capture_size);
     }
-    destination = capture ? capture : stderr;
-    if (want >= 0 && (long)now == want) {
-        if (!dumped++ && !capture)
+    destination = g_frame_dump.capture ? g_frame_dump.capture : stderr;
+    if (g_frame_dump.want >= 0 && (long)now == g_frame_dump.want) {
+        if (!g_frame_dump.dumped++ && !g_frame_dump.capture)
             fprintf(stderr, "gpu: X2_FRAME_DUMP -- every draw of frame %ld "
-                    "follows.\n", want);
-        dumped_frame = now;
-        if (dumped <= 400) print_draw(destination, d, dumped);
-        else if (dumped == 401 && !capture)
+                    "follows.\n", g_frame_dump.want);
+        g_frame_dump.dumped_frame = now;
+        if (g_frame_dump.dumped <= 400)
+            print_draw(destination, d, g_frame_dump.dumped);
+        else if (g_frame_dump.dumped == 401 && !g_frame_dump.capture)
             fprintf(stderr, "  ... capped at 400 draws; frame %lu had more.\n",
-                    dumped_frame);
+                    g_frame_dump.dumped_frame);
     }
 
     if (range_first == -2) {

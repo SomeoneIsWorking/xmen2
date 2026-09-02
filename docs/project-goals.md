@@ -5,35 +5,58 @@ does not report implementation progress or choose the next task; factual
 capability coverage belongs in `project-state.md`, and atomic work belongs in
 `issues/`.
 
-## G001 — A native, buildable X-Men Legends II codebase
+## G001 — A native X-Men Legends II codebase with runtime-translated guest code
 
-**Outcome.** X-Men Legends II runs as a native program built from mechanically
-translated C and progressively replaced native source, without executing the
-retail x86 code or requiring Wine at runtime.
+**Outcome.** X-Men Legends II runs as a native program: a runtime translator
+(JIT) executes the retail x86-32 code it has not yet replaced, while native
+source progressively takes ownership subsystem by subsystem. No Wine, no
+build-time translation of the guest binary, and no shipped copy of
+game-derived code.
 
-**Why it matters.** A complete translated baseline makes the game runnable
-before every subsystem has been rewritten, while keeping each subsystem
-available for deliberate native replacement.
+**Why it matters.** This replaces static recompilation, and the reason is
+structural rather than stylistic. A static recompiler must decide before
+running anything which bytes are code, which is undecidable in general — so
+everything not statically discoverable has to be hand-seeded: computed calls,
+jump tables, virtual dispatch, overlays, anything reached only through a
+pointer. This port measured that cost directly: 8,234 instructions its
+translator could not translate, and ~460,000 distinct entry points its level
+build dispatches through. Every seed is a hand-maintained claim that can go
+stale, and a missing one is not a build error but a wrong branch at run time.
+Translating at run time deletes that problem by construction — code is
+whatever the program branches to, discovered exactly, when it is reached.
+
+It also changes what can be shipped. Static recompilation puts game-derived
+code in the build output, which is why these projects are built locally and
+never in CI. A runtime translator keeps the shipped binary free of game code,
+so Windows/macOS/Linux/Android builds can be produced and released normally
+with the user supplying their own copy.
 
 **Success conditions.**
 
-- The PC executable and every shipped engine module needed by the game are
-  represented in the native build.
+- The retail executable and every shipped engine module the game needs execute
+  through the runtime translator without a build-time translation step.
+- **Performance is close to the static-recompilation baseline, not merely
+  playable.** An interpreter is not an acceptable substrate for this title
+  regardless of measured frame rate. The translator keeps guest registers in
+  host registers within a block, evaluates flags lazily and inlines the common
+  arithmetic rather than calling out per instruction, chains blocks directly
+  so a taken branch does not return to a dispatcher, and reuses translations
+  across runs through the persistent translation cache.
 - Unsupported instructions, unresolved calls, and missing modules refuse by
   name instead of silently falling back or producing a smaller program.
 - Native replacements can take ownership one subsystem at a time while the
-  unreplaced program continues through the mechanically translated path.
-- The resulting executable contains no interpreter, JIT, Wine dependency, or
-  runtime path that executes the original machine code.
+  unreplaced program continues through the translated path.
+- The shipped executable contains no Wine dependency and no game-derived code;
+  the guest binary is supplied by the user at run time.
 
 **Constraints.** The 2005 PC release remains the base for this port. Restricted
 data, relocation layouts, and other non-code PE content come from the user's
-matching copy. Mechanically generated C remains reproducible rather than
-hand-maintained.
+matching copy. The translator is `shared/x86port`, built on `shared/jit-common`;
+this project owns title knowledge, not CPU or JIT mechanics.
 
 **Non-goals.** Rewriting the whole game before it can run; changing this port's
-base to the Xbox release; treating a hybrid or silent fallback path as the
-finished native product.
+base to the Xbox release; shipping an interpreter as the production substrate;
+returning to build-time translation of the guest binary.
 
 **Contributing state items.** S001, S002, S012.
 

@@ -1,4 +1,8 @@
 #include "android_bridge.h"
+#include "d3d8_device.h"
+#include "d3d8_drawcall.h"
+#include "gpu_draw.h"
+#include "gpu_draw_trace.h"
 #include "install_picker.h"
 
 #include <cstring>
@@ -121,18 +125,55 @@ bool configure_trace_watch(const char *arguments, jint cap)
     return false;
 }
 
+/* This is intentionally a fixed diagnostic switch rather than an Activity
+ * supplied environment map. The profiler is x86-runtime-specific and the
+ * values give two useful heartbeats quickly without becoming player policy. */
+bool configure_performance_trace(jboolean enabled)
+{
+    if (enabled != JNI_TRUE) {
+        ::unsetenv("X2_HOTEP");
+        ::unsetenv("X2_HEARTBEAT");
+        return true;
+    }
+    return ::setenv("X2_HOTEP", "4096", 1) == 0 &&
+           ::setenv("X2_HEARTBEAT", "2", 1) == 0;
+}
+
+/* The first sufficiently busy frame captures the complete D3D8 state that
+ * makes the visible menu backdrop. This keeps Android diagnostics specific to
+ * an existing renderer instrument instead of accepting arbitrary environment. */
+bool configure_draw_dump(jboolean enabled)
+{
+    if (enabled == JNI_TRUE) {
+        gpu_draw_trace_arm_busy_frame(100u);
+        d3d8_device_trace_texture_factor(1);
+        gpu_draw_diagnostic_disable_depth(1);
+        gpu_texture_request_format_support_report();
+        __android_log_print(ANDROID_LOG_INFO, "XMen2",
+                            "armed renderer busy-frame dump and TFACTOR trace");
+    } else {
+        gpu_draw_trace_disarm_frame_dump();
+        d3d8_device_trace_texture_factor(0);
+        gpu_draw_diagnostic_disable_depth(0);
+    }
+    return true;
+}
+
 } // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
     JNIEnv *environment, jclass, jstring data_directory, jstring source,
-    jstring trace_watch, jint trace_cap, jboolean trace_files)
+    jstring trace_watch, jint trace_cap, jboolean trace_files,
+    jboolean trace_performance, jboolean trace_draw_dump)
 {
     char source_path[sizeof install_source];
     if (!read_string(environment, data_directory, source_path, sizeof source_path) ||
         !read_string(environment, trace_watch, trace_arguments,
                      sizeof trace_arguments) ||
-        !configure_trace_watch(trace_arguments, trace_cap)) return JNI_FALSE;
+        !configure_trace_watch(trace_arguments, trace_cap) ||
+        !configure_performance_trace(trace_performance) ||
+        !configure_draw_dump(trace_draw_dump)) return JNI_FALSE;
     if (!lucent_platform_set_user_data_directory(source_path)) return JNI_FALSE;
     if (!read_string(environment, source, install_source, sizeof install_source))
         return JNI_FALSE;

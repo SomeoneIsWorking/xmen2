@@ -3,6 +3,7 @@ package com.someoneisworking.xmen2;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -27,6 +28,9 @@ public final class XMen2SetupActivity extends Activity {
     private static final String TRACE_ARGUMENTS = "com.someoneisworking.xmen2.trace.arguments";
     private static final String TRACE_CAP = "com.someoneisworking.xmen2.trace.cap";
     private static final String TRACE_FILES = "com.someoneisworking.xmen2.trace.files";
+    private static final String TRACE_PERFORMANCE =
+            "com.someoneisworking.xmen2.trace.performance";
+    private static final String TRACE_DRAW_DUMP = "com.someoneisworking.xmen2.trace.draw_dump";
     private static final String INSTALL_DIRECTORY = "game";
     private static final int MAXIMUM_ENTRIES = 100_000;
     private static final long MAXIMUM_IMPORT_BYTES = 4L * 1024L * 1024L * 1024L;
@@ -39,7 +43,9 @@ public final class XMen2SetupActivity extends Activity {
                                                          String installSource,
                                                          String traceArguments,
                                                          int traceCap,
-                                                         boolean traceFiles);
+                                                         boolean traceFiles,
+                                                         boolean tracePerformance,
+                                                         boolean traceDrawDump);
     private static native boolean nativeValidateInstall(String installSource,
                                                         String archiveDestination);
 
@@ -49,6 +55,9 @@ public final class XMen2SetupActivity extends Activity {
     private String traceArguments;
     private int traceCap;
     private boolean traceFiles;
+    private boolean tracePerformance;
+    private boolean traceDrawDump;
+    private boolean gpuSelftest;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -57,6 +66,11 @@ public final class XMen2SetupActivity extends Activity {
             traceArguments = getIntent().getStringExtra(TRACE_ARGUMENTS);
             traceCap = getIntent().getIntExtra(TRACE_CAP, 0);
             traceFiles = getIntent().getBooleanExtra(TRACE_FILES, false);
+            tracePerformance = getIntent().getBooleanExtra(TRACE_PERFORMANCE, false);
+            traceDrawDump = getIntent().getBooleanExtra(TRACE_DRAW_DUMP, false);
+            gpuSelftest = getIntent().getBooleanExtra(XMen2GameActivity.GPU_SELFTEST, false);
+            Log.i("XMen2", "debug setup: performance=" + tracePerformance
+                    + " drawDump=" + traceDrawDump);
         }
         importer = new LucentDocumentImport(
                 this, new LucentDocumentImport.Limits(MAXIMUM_ENTRIES,
@@ -260,11 +274,16 @@ public final class XMen2SetupActivity extends Activity {
 
     private boolean configureNative(File source) {
         return nativeConfigureStorage(getFilesDir().getAbsolutePath(), source.getAbsolutePath(),
-                                      traceArguments, traceCap, traceFiles);
+                                      traceArguments, traceCap, traceFiles, tracePerformance,
+                                      traceDrawDump);
     }
 
     private void startGame() {
-        startActivity(new Intent(this, XMen2GameActivity.class));
+        Intent game = new Intent(this, XMen2GameActivity.class);
+        if (BuildConfig.DEBUG && gpuSelftest) {
+            game.putExtra(XMen2GameActivity.GPU_SELFTEST, true);
+        }
+        startActivity(game);
         finish();
     }
 

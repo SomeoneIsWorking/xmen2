@@ -18,6 +18,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Opaque handles. 0 is "none" everywhere, so a zeroed description is a valid
    "nothing bound" rather than a dangling reference. */
 typedef uint32_t GpuBuffer;
@@ -188,6 +192,16 @@ typedef struct {
     GpuLight     light[GPU_MAX_LIGHTS];
 
     GpuTexture   texture;
+    /* Runtime identity of stage 0, copied from the D3D8 resource boundary.
+       The renderer does not consume these fields; traces use them to prove
+       which complete (or incomplete) mip chain a black draw actually bound. */
+    uint32_t     texture_width, texture_height, texture_format;
+    uint32_t     texture_levels, texture_faces, texture_upload_count;
+    uint64_t     texture_uploaded_level_mask;
+    uint64_t     texture_level0_fingerprint;
+    uint64_t     texture_level0_revision;
+    int          texture_metadata_valid;
+    int          texture_level0_fingerprint_valid;
     GpuTexOp     texop;
     /* Non-zero means the texture stage is addressed by a GENERATED direction
        rather than by the vertex's UVs. A CUBE texture with GPU_TEXGEN_NONE is
@@ -269,6 +283,15 @@ void       gpu_buffer_destroy(GpuBuffer b);
 
 GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
                               uint32_t levels);
+/* Request a one-time report of the device's sampling support for every source
+   format this D3D8 boundary accepts. The report is emitted once the GPU device
+   exists, rather than pretending an early startup query has an answer. */
+void       gpu_texture_request_format_support_report(void);
+
+/* Debug-only renderer discriminator. It changes only depth comparison, so a
+   captured black scene can establish whether colour generation or occlusion
+   is at fault. Production callers must leave it disabled. */
+void       gpu_draw_diagnostic_disable_depth(int enabled);
 int        gpu_texture_upload(GpuTexture t, uint32_t level,
                               const void *data, uint32_t bytes);
 void       gpu_texture_destroy(GpuTexture t);
@@ -349,5 +372,9 @@ int  gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
 int  gpu_offscreen_next_no_clear(void);
 int  gpu_offscreen_read(void *bgra_out, uint32_t bytes);
 void gpu_offscreen_end(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* GPU_DRAW_H */

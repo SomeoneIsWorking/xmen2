@@ -2009,6 +2009,23 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
                          out->texture_factor);
         }
         out->texture = req->texture;
+        if (req->texture_provenance.metadata_valid) {
+            out->texture_metadata_valid = 1;
+            out->texture_width = req->texture_provenance.width;
+            out->texture_height = req->texture_provenance.height;
+            out->texture_format = req->texture_provenance.format;
+            out->texture_levels = req->texture_provenance.levels;
+            out->texture_faces = req->texture_provenance.faces;
+            out->texture_upload_count = req->texture_provenance.upload_count;
+            out->texture_uploaded_level_mask =
+                req->texture_provenance.uploaded_level_mask;
+            out->texture_level0_fingerprint =
+                req->texture_provenance.level0_fingerprint;
+            out->texture_level0_revision =
+                req->texture_provenance.level0_revision;
+            out->texture_level0_fingerprint_valid =
+                req->texture_provenance.level0_fingerprint_valid;
+        }
         /*
          * A cube bound to the stage is refused downstream, and "cube sampling
          * is not implemented" is only half the question. A cube map is

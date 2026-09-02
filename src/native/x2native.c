@@ -1936,6 +1936,15 @@ int main(int argc, char **argv)
     }
 #ifdef X2_WITH_SDL
     if (window) {
+#if defined(__ANDROID__)
+        /* LucentActivity already owns Android's SDL lifecycle and surface.
+         * A temporary 800x600 window is useful on desktop only: on Android it
+         * asks the Activity to rotate/resize before the retail window has
+         * chosen its configured mode. That transient surface is observable by
+         * the title during startup and is not a harmless renderer preflight. */
+        printf("SDL: Android Activity owns the initial surface; skipping the "
+               "desktop temporary-window preflight.\n");
+#else
         SDL_Window *w;
         /* SDL3 returns true on success, where SDL2 returned 0. */
         if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -1953,6 +1962,7 @@ int main(int argc, char **argv)
                " surface lands.\n");
         SDL_DestroyWindow(w);
         SDL_Quit();
+#endif
     } else {
         printf("SDL: window skipped (--no-window); the guest's own window "
                "will be created HIDDEN and the renderer goes off-screen\n");

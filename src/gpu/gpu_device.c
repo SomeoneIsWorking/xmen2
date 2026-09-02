@@ -143,6 +143,7 @@ int gpu_device_create(void)
     printf("gpu: GPU device created -- backend \"%s\"\n",
            SDL_GetGPUDeviceDriver(g_gpu));
     fflush(stdout);
+    gpu_texture_flush_format_support_report();
 
     /* Attach immediately if a window already exists -- under x2native the
        guest's CreateWindowExA usually runs well before the renderer is

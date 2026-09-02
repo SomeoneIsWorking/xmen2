@@ -73,6 +73,9 @@ void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h);
 /* Release every resource gpu_draw.c owns; called from gpu_device_destroy so
    the teardown order is the device's business, not a second lifetime. */
 void gpu_draw_shutdown(void);
+/* Flushes the opt-in texture-format capability diagnostic after gpu_device.c
+   has established the SDL device. */
+void gpu_texture_flush_format_support_report(void);
 /* Draws this frame has received so far (before any X2_DRAW_RANGE skip). */
 unsigned long gpu_frame_draws_so_far(void);
 

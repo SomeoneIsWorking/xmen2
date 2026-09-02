@@ -29,6 +29,10 @@ int gpu_buffer_upload(GpuBuffer b, uint32_t o, const void *d, uint32_t n)
 void gpu_buffer_destroy(GpuBuffer b) { (void)b; }
 GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat f, uint32_t l)
 { (void)w; (void)h; (void)f; (void)l; return (GpuTexture)no_sdl("texture create"); }
+void gpu_texture_request_format_support_report(void)
+{ no_sdl("texture format query"); }
+void gpu_texture_flush_format_support_report(void) { }
+void gpu_draw_diagnostic_disable_depth(int enabled) { (void)enabled; }
 int gpu_texture_upload(GpuTexture t, uint32_t l, const void *d, uint32_t n)
 { (void)t; (void)l; (void)d; (void)n; return no_sdl("texture upload"); }
 void gpu_texture_destroy(GpuTexture t) { (void)t; }
@@ -88,6 +92,15 @@ typedef struct {
 } Res;
 
 static unsigned long g_vs_frame = (unsigned long)-1;
+static int g_diagnostic_disable_depth;
+
+void gpu_draw_diagnostic_disable_depth(int enabled)
+{
+    g_diagnostic_disable_depth = enabled != 0;
+    if (g_diagnostic_disable_depth)
+        fprintf(stderr, "gpu: DEBUG depth comparison is disabled. This run "
+                        "cannot establish correct occlusion.\n");
+}
 
 /* How many draws this frame has RECEIVED -- counted before X2_DRAW_RANGE skips
    any, so a range does not change which frames look busy. X2_SHOT_MIN_DRAWS
@@ -315,6 +328,51 @@ static SDL_GPUTextureFormat sdl_format(GpuFormat f)
     case GPU_FMT_BC3:   return SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM;
     }
     return SDL_GPU_TEXTUREFORMAT_INVALID;
+}
+
+static const char *gpu_format_name(GpuFormat f)
+{
+    switch (f) {
+    case GPU_FMT_BGRA8: return "BGRA8";
+    case GPU_FMT_RGBA8: return "RGBA8";
+    case GPU_FMT_BGR8: return "BGR8";
+    case GPU_FMT_BC1: return "BC1/DXT1";
+    case GPU_FMT_BC2: return "BC2/DXT3";
+    case GPU_FMT_BC3: return "BC3/DXT5";
+    }
+    return "unknown";
+}
+
+static int g_format_support_report_requested;
+
+void gpu_texture_request_format_support_report(void)
+{
+    static const GpuFormat formats[] = {
+        GPU_FMT_BGRA8, GPU_FMT_RGBA8, GPU_FMT_BGR8,
+        GPU_FMT_BC1, GPU_FMT_BC2, GPU_FMT_BC3
+    };
+    unsigned int i;
+
+    g_format_support_report_requested = 1;
+    if (!g_gpu) {
+        return;
+    }
+    g_format_support_report_requested = 0;
+    for (i = 0; i < sizeof formats / sizeof formats[0]; ++i) {
+        SDL_GPUTextureFormat format = sdl_format(formats[i]);
+        int supported = SDL_GPUTextureSupportsFormat(
+            g_gpu, format, SDL_GPU_TEXTURETYPE_2D,
+            SDL_GPU_TEXTUREUSAGE_SAMPLER) ? 1 : 0;
+        fprintf(stderr, "gpu: texture format %s (%d) 2D sampler: %s\n",
+                gpu_format_name(formats[i]), (int)format,
+                supported ? "supported" : "UNSUPPORTED");
+    }
+}
+
+void gpu_texture_flush_format_support_report(void)
+{
+    if (g_format_support_report_requested)
+        gpu_texture_request_format_support_report();
 }
 
 static uint32_t texture_level_bytes(GpuFormat fmt, uint32_t w, uint32_t h)
@@ -928,6 +986,7 @@ int gpu_draw(const GpuDraw *d)
     SDL_GPUSampler *smp, *smp1;
     unsigned long long t0 = gpu_perf_now_ns();
     uint32_t n;
+    int depth_test;
 
     if (!g_cmd) return refuse("no frame is open");
     if (!(vres = res_get(d->vertices, 0, "draw"))) { g_refused++; return 0; }
@@ -1061,7 +1120,8 @@ int gpu_draw(const GpuDraw *d)
     key.blend_enable = d->blend_enable;
     key.src_blend = (int)d->src_blend;
     key.dst_blend = (int)d->dst_blend;
-    key.depth_test = d->depth_test;
+    depth_test = d->depth_test && !g_diagnostic_disable_depth;
+    key.depth_test = depth_test;
     key.depth_write = d->depth_write;
     key.depth_func = (int)d->depth_func;
     key.cull = (int)d->cull;
@@ -1071,7 +1131,7 @@ int gpu_draw(const GpuDraw *d)
         (sdl_blend(d->src_blend) == SDL_GPU_BLENDFACTOR_INVALID ||
          sdl_blend(d->dst_blend) == SDL_GPU_BLENDFACTOR_INVALID))
         return refuse("a blend factor this backend does not have");
-    if (d->depth_test && gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID &&
+    if (depth_test && gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID &&
         !g_depth_ignored++)
         fprintf(stderr, "gpu: the depth test is requested and this device has "
                         "no depth format, so it is IGNORED. Everything draws "

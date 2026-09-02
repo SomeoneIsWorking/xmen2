@@ -33,9 +33,12 @@ void d3d8_texture_provenance_uploaded(D3D8TextureProvenance *provenance,
                                       uint32_t face, uint32_t level,
                                       const void *bytes, size_t byte_count)
 {
-    if (!provenance || !bytes || provenance->faces != 1
-            || face != 0 || level != 0)
-        return;
+    if (!provenance || !bytes) return;
+    provenance->upload_count++;
+    if (provenance->faces != 1 || face != 0) return;
+    if (level < 64u)
+        provenance->uploaded_level_mask |= UINT64_C(1) << level;
+    if (level != 0) return;
     provenance->level0_fingerprint = fnv1a64(bytes, byte_count);
     provenance->level0_fingerprint_valid = 1;
     provenance->level0_revision++;
