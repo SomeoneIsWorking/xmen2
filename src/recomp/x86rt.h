@@ -300,6 +300,10 @@ void x86_guest_call(CPU *C, uint32_t target);
  *
  * Both are __cdecl, so only the return address is popped.
  */
+/* Whether `addr` is the import thunk for _setjmp3. The execution engine asks,
+   because it must take the setjmp in its own live frame rather than let the
+   stub record an unresumable one. */
+int x86_setjmp3_thunk(uint32_t addr);
 jmp_buf *x86_setjmp_buf(CPU *C);
 void x86_setjmp_done(CPU *C, int rc);
 /*

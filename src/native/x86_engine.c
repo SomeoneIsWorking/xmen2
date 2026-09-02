@@ -12,6 +12,7 @@
 #include "x87.h"
 
 #include <stdio.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -50,6 +51,8 @@ static struct {
     unsigned long callouts;
     unsigned long deepest;
     unsigned long depth;
+    unsigned long setjmps;
+    unsigned long longjmps;
 } g_engine;
 
 /*
@@ -69,90 +72,6 @@ static struct {
     uint32_t entry;
     const X86pCpu *cpu;
 } g_frame[ENGINE_FRAMES];
-
-/* ---- state bridge ------------------------------------------------------ */
-
-/*
- * The six arithmetic flags travel as a materialised EFLAGS word rather than as
- * a lazy tuple.
- *
- * Both models are lazy and neither can express the other's kinds: the
- * substrate has no AF at all, and x86port has three shift kinds where the
- * substrate has one. Translating kind-to-kind would be a second authority on
- * what a flag means, and a disagreement would be invisible -- a wrong CF
- * surfaces as a branch taken differently much later. Materialising is exact
- * for everything both models hold, and it is exact for AF and DF too at the
- * one place this is used: a Win32 call boundary, where the ABI requires DF
- * clear and nothing a compiler emits reads AF across a call.
- */
-static void to_x86p(const CPU *C, X86pCpu *out)
-{
-    int i;
-    memset(out, 0, sizeof *out);
-    out->reg[kX86pEax] = C->eax;
-    out->reg[kX86pEcx] = C->ecx;
-    out->reg[kX86pEdx] = C->edx;
-    out->reg[kX86pEbx] = C->ebx;
-    out->reg[kX86pEsp] = C->esp;
-    out->reg[kX86pEbp] = C->ebp;
-    out->reg[kX86pEsi] = C->esi;
-    out->reg[kX86pEdi] = C->edi;
-    x86p_flags_set_explicit(&out->flags, x86_eflags(C));
-    out->df = 0;
-    /*
-     * THE SEGMENT BASES, which are per-THREAD and not part of the CPU struct
-     * on either side. The substrate reads them from `g_fsbase`/`g_gsbase`
-     * thread-locals; x86port keeps them in the CPU because which address the
-     * TEB lives at is a property of the process the port builds.
-     *
-     * Not bridging these is what the first taken module found. `mov eax,
-     * fs:[0]` is the opening of every /GS-compiled function's SEH prologue --
-     * seven bytes into FUN_004874b0, the first function taken -- and with a
-     * zero base it reads guest address 0 instead of the TIB. It faulted at
-     * 0x3, which is a plausible-looking null dereference and says nothing at
-     * all about segments.
-     *
-     * One way only: nothing a guest executes changes a segment base. The OS
-     * sets it, and on this port that is threads.c.
-     */
-    out->fs_base = g_fsbase;
-    out->gs_base = g_gsbase;
-    x86p_x87_reset(&out->x87);
-    out->x87.control = (uint16_t)C->fcw;
-    /* C0-C3 only. TOP is merged in on read from the engine's own stack, and
-       the exception flags are not modelled on the substrate side. */
-    out->x87.status = (uint16_t)(C->fsw & 0x4700u);
-    /* Deepest first, so ST(0) ends up on top of the engine's stack in the same
-       order the substrate holds it. Anything below `depth` is not live. */
-    for (i = C->depth - 1; i >= 0; i--)
-        x86p_x87_push(&out->x87, C->st[(C->top + i) & 7]);
-    for (i = 0; i < 8; i++) memcpy(out->xmm[i], C->xmm[i], 16);
-}
-
-static void from_x86p(const X86pCpu *in, CPU *C)
-{
-    int depth, i;
-    C->eax = in->reg[kX86pEax];
-    C->ecx = in->reg[kX86pEcx];
-    C->edx = in->reg[kX86pEdx];
-    C->ebx = in->reg[kX86pEbx];
-    C->esp = in->reg[kX86pEsp];
-    C->ebp = in->reg[kX86pEbp];
-    C->esi = in->reg[kX86pEsi];
-    C->edi = in->reg[kX86pEdi];
-    SETFLAGS(C, FK_EXPLICIT, x86p_eflags(&in->flags), 0u, 0u, 4);
-    C->fcw = in->x87.control;
-    C->fsw = (uint32_t)(x86p_x87_status(&in->x87) & 0x4700u);
-    depth = x86p_x87_depth(&in->x87);
-    C->top = 0;
-    C->depth = 0;
-    for (i = depth - 1; i >= 0; i--) {
-        long double v = 0.0L;
-        x86p_x87_get(&in->x87, i, &v);
-        x87_push(C, v);
-    }
-    for (i = 0; i < 8; i++) memcpy(C->xmm[i], in->xmm[i], 16);
-}
 
 /* ---- selection and setup ---------------------------------------------- */
 
@@ -244,8 +163,14 @@ int x2_engine_call(uint32_t addr, CPU *C)
 {
     X86pCpu cpu;
     X86pStepReport report;
-    uint32_t entry_esp, return_to;
-    unsigned long long steps = 0;
+    /*
+     * volatile because this frame takes a host setjmp below, and a longjmp
+     * back into it leaves every non-volatile local indeterminate. `cpu` is
+     * exempt: it is rebuilt wholesale from C on the resume path.
+     */
+    volatile uint32_t entry_esp, return_to;
+    volatile uint32_t entry = addr;
+    volatile unsigned long long steps = 0;
 
     if (!g_engine.ready) return 0;
 
@@ -278,7 +203,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
         g_frame[g_engine.depth - 1].cpu = &cpu;
     }
 
-    to_x86p(C, &cpu);
+    x2_engine_to_x86p(C, &cpu);
     /*
      * THE RETURN ADDRESS IS ALREADY ON THE STACK. Nothing is pushed here.
      *
@@ -299,6 +224,53 @@ int x2_engine_call(uint32_t addr, CPU *C)
 
     for (;;) {
         X86pStepStatus status;
+        /*
+         * GUEST setjmp, taken in the engine's own frame.
+         *
+         * The import stub cannot do this: it records the guest state and
+         * RETURNS, so the host frame longjmp would resume into is gone before
+         * it is needed, and it honestly marks the buffer unresumable. That is
+         * what killed the whole-module take -- the exe reaches _setjmp3
+         * through its IAT, so every setjmp inside interpreted code was
+         * unresumable and the first longjmp had nothing to jump to.
+         *
+         * A generated body solves it by taking the host setjmp inline, and so
+         * does this: the engine's run loop is a live host frame for as long as
+         * the interpreted function is running, which is exactly the lifetime
+         * the guest's jmp_buf is supposed to have. Same table, same
+         * x86_setjmp_buf / x86_setjmp_done pair, same reclaim rules -- a
+         * second mechanism here would be a second answer to "which buffers are
+         * still live".
+         */
+        if (cpu.eip != entry && x86_setjmp3_thunk(cpu.eip)) {
+            /* volatile: written before the setjmp and read after it, across a
+               longjmp that makes every other local in this frame
+               indeterminate. */
+            volatile uint32_t resume = RD32(cpu.reg[kX86pEsp]);
+            volatile unsigned long frame_depth = g_engine.depth;
+            int rc;
+            x2_engine_from_x86p(&cpu, C);
+            g_engine.setjmps++;
+            rc = setjmp(*x86_setjmp_buf(C));
+            x86_setjmp_done(C, rc);
+            if (rc) {
+                /* Arrived by longjmp. Every engine frame between the jump and
+                   this one is gone with the host frames they lived in, so the
+                   nesting count has to come back with them; leaving it would
+                   make the deepest-nesting figure a record of a stack that no
+                   longer existed. */
+                g_engine.depth = frame_depth;
+                if (!g_engine.longjmps++)
+                    fprintf(stderr,
+                            "[ENGINE] a longjmp RESUMED into interpreted code "
+                            "(guest esp 0x%08x). Reported once; the total is "
+                            "in the shutdown report.\n",
+                            C->esp);
+            }
+            x2_engine_to_x86p(C, &cpu);
+            cpu.eip = resume;
+            continue;
+        }
         /*
          * Left when control reaches the caller's return address with the stack
          * unwound past it. Both halves are needed: the address alone would
@@ -330,7 +302,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
          * handed itself straight back would make that measurement impossible
          * while looking like it worked.
          */
-        if (cpu.eip != addr && x86_native_body_at(cpu.eip)
+        if (cpu.eip != entry && x86_native_body_at(cpu.eip)
             && !x2_take_has(cpu.eip, kX2TakeInline)) {
             const uint32_t target = cpu.eip;
             /*
@@ -342,7 +314,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
              * everything else.
              */
             const uint32_t ret = RD32(cpu.reg[kX86pEsp]);
-            from_x86p(&cpu, C);
+            x2_engine_from_x86p(&cpu, C);
             g_engine.callouts++;
             /*
              * x86_dispatch, not x86_native_call_at.
@@ -360,7 +332,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
              * disagree, which is the same fact the removed refusal named.
              */
             x86_dispatch(C, target);
-            to_x86p(C, &cpu);
+            x2_engine_to_x86p(C, &cpu);
             /* The dispatched body emulated its own RET, so the guest ESP it
                returns with is already right. Only EIP is this loop's to
                restore. */
@@ -369,10 +341,10 @@ int x2_engine_call(uint32_t addr, CPU *C)
         }
         status = x86p_step(&cpu, &g_engine.mem, &report);
         if (status != kX86pStepOk)
-            refuse(addr, cpu.eip, x86p_step_status_name(status), &report);
+            refuse(entry, cpu.eip, x86p_step_status_name(status), &report);
         g_engine.insns++;
         if (++steps > ENGINE_STEP_CAP)
-            refuse(addr, cpu.eip,
+            refuse(entry, cpu.eip,
                    "the call has not returned within the step cap -- it is "
                    "not finishing",
                    &report);
@@ -390,10 +362,10 @@ int x2_engine_call(uint32_t addr, CPU *C)
                 "\n*** engine: the call at 0x%08x (%s) returned with the guest "
                 "stack below its own return address\n"
                 "    entry esp 0x%08x, return esp 0x%08x\n",
-                addr, named(addr), entry_esp, cpu.reg[kX86pEsp]);
+                entry, named(entry), entry_esp, cpu.reg[kX86pEsp]);
         abort();
     }
-    from_x86p(&cpu, C);
+    x2_engine_from_x86p(&cpu, C);
     if (g_engine.depth <= ENGINE_FRAMES) g_frame[g_engine.depth - 1].cpu = NULL;
     g_engine.depth--;
     return 1;
@@ -455,13 +427,13 @@ void x2_engine_report(void)
             "[ENGINE] %s: %lu call(s) entered (%lu of them TAKEN from the "
             "substrate, %lu because it had no body), %llu guest instruction(s) "
             "executed, %lu handed back to the dispatcher, deepest nesting "
-            "%lu.\n"
+            "%lu, %lu setjmp(s) taken and %lu longjmp(s) resumed.\n"
             "[ENGINE] A zero call count is a measurement only because the "
             "denominator is beside it: it means the substrate had a body for "
             "every address reached and nothing was taken from it.\n",
             x86p_engine_name(g_engine.selected), g_engine.calls, g_engine.taken,
             g_engine.calls - g_engine.taken, g_engine.insns, g_engine.callouts,
-            g_engine.deepest);
+            g_engine.deepest, g_engine.setjmps, g_engine.longjmps);
     x2_take_report();
 }
 
@@ -473,4 +445,6 @@ void x2_engine_enter_service(void)
     g_engine.insns = 0;
     g_engine.callouts = 0;
     g_engine.deepest = 0;
+    g_engine.setjmps = 0;
+    g_engine.longjmps = 0;
 }

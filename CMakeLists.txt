@@ -1393,6 +1393,7 @@ if(X2_MODULE_HAVE)
         src/native/x86_engine_selftest.c
         src/native/x86_dispatch.c
         src/native/x86_diag_dump.c
+        src/native/x86_engine_bridge.c
         src/native/x86_dispatch_report.c
         src/presentation/aspect_fit.c
         src/presentation/boot_blackout.c
@@ -1440,6 +1441,7 @@ if(X2_MODULE_HAVE)
         src/native/win32_events.c
         src/native/guest_heap.c
         src/native/crt.c
+        src/native/crt_setjmp.c
         src/native/crt_write_watch.c
         src/native/crt_selftest.c
         src/recomp/x87crt.c

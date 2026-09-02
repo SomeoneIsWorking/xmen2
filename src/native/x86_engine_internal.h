@@ -60,4 +60,13 @@
  */
 void x2_engine_enter_service(void);
 
+/*
+ * The state bridge, in both directions. See x86_engine.h for the boundary it
+ * is exact at; x86_engine_bridge.c owns the implementation and the argument.
+ */
+struct CPU;
+typedef struct X86pCpu X86pCpu;
+void x2_engine_to_x86p(const struct CPU *C, X86pCpu *out);
+void x2_engine_from_x86p(const X86pCpu *in, struct CPU *C);
+
 #endif
