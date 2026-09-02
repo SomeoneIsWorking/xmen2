@@ -2305,66 +2305,6 @@ const char *x86_poison_name(uint32_t addr, const char **mod)
     return NULL;
 }
 
-static void x86_dispatch_one(CPU *C, uint32_t target)
-{
-    if (x86_native_call_at(target, C)) return;
-    /*
-     * No body here -- which is exactly where a runtime engine plugs in
-     * (jit-common I004). It returns 0 when no engine is selected, and then the
-     * report below is still the right answer; nothing has been touched.
-     *
-     * It is asked AFTER x86_native_call_at rather than instead of it, so the
-     * statically recompiled corpus keeps running and the engine takes only
-     * what that corpus could not translate. That is what makes this
-     * incremental rather than a switch-over.
-     */
-    if (x2_engine_call(target, C)) return;
-    x86_report_missing_body(C, target);
-    abort();
-}
-
-void x86_dispatch(CPU *C, uint32_t target)
-{
-    uint32_t outer_depth = C->dispatch_depth;
-    uint32_t outer_target = C->tail_target;
-    C->dispatch_depth = C->call_depth + 1u;
-    do {
-        C->tail_target = 0;
-        x86_dispatch_one(C, target);
-        target = C->tail_target;
-    } while (target);
-    C->dispatch_depth = outer_depth;
-    C->tail_target = outer_target;
-}
-
-void x86_tail_dispatch(CPU *C, uint32_t target)
-{
-    /*
-     * Same generated-body contract as the hosted runtime (C181). A tail jump
-     * reached through a direct C call must finish before that direct caller
-     * resumes; only a tail at THIS dispatch frame may be queued for the loop.
-     *
-     * The one-level depth relation is the whole test. X86_TAIL_FN has already
-     * decremented call_depth by the time this runs -- the body is leaving --
-     * so the body that IS the dispatch frame arrives at dispatch_depth - 1,
-     * and a body one direct call deeper arrives at exactly dispatch_depth.
-     * Comparing the depths for equality therefore queued precisely the case
-     * that must run inline: exactly backwards.
-     *
-     * What that cost: FUN_0046b750 -> FUN_00427c30 -> FUN_00426330, then a
-     * tail jump to __security_check_cookie. The cookie check was queued rather
-     * than run, so the return address it should have popped stayed on the
-     * stack, FUN_0046b750 resumed four bytes low, and its own /GS epilogue
-     * read the word below its cookie and reported a stack buffer overrun that
-     * had never happened (issue #81, C213).
-     */
-    if (x86_tail_route(C->dispatch_depth, C->call_depth) == X86_TAIL_QUEUE) {
-        C->tail_target = target;
-        return;
-    }
-    x86_dispatch(C, target);
-}
-
 /*
  * How often this fires is itself a measurement.
  *

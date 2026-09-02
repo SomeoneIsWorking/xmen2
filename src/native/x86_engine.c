@@ -1,6 +1,8 @@
 #include "x86_engine.h"
 
 #include "guest_memory.h"
+#include "x86_engine_internal.h"
+#include "x86_engine_take.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -32,38 +34,6 @@
  */
 #define ENGINE_MEM_SIZE 0xFFFFFFFFu
 
-/*
- * Where a function this engine runs returns TO.
- *
- * The substrate's CPU has no EIP because its bodies are C functions: a call
- * returns when the C function returns. An interpreted function returns by
- * popping an address and jumping to it, so it needs a real address to return
- * to -- one that stops the interpreter instead of executing something.
- *
- * A page of INT3 in the low range this port reserves for host-owned objects.
- * That range is claimed at fixed addresses, so this one is stated beside them
- * rather than found by a search that would take a page one of them wants:
- *
- *   0x00080000   this page, the engine's return trampoline
- *   0x00090000   the unbound-import poison page (64 KB, PROT_NONE)
- *   0x000A0000   the thread information block
- *   0x000B0000   the data arena
- *   0x000C0000   the import thunks
- *
- * Two of those were found by taking them: this page sat at 0x000B0000 and the
- * data arena refused, then at 0x00090000 and poison_init refused. Neither
- * shared silently, which is the behaviour that made the collision a one-line
- * fix instead of a corruption hunt.
- *
- * INT3 rather than an unmapped address because the whole reservation is inside
- * X86pMem: a fetch from an unmapped page would segfault the host rather than
- * report a fault this could recognise. INT3 is a MODELLED instruction with a
- * named outcome, so a return and a guest that really did execute an INT3 stay
- * distinguishable.
- */
-#define ENGINE_RETURN_PAGE 0x00080000u
-#define ENGINE_RETURN_ADDR ENGINE_RETURN_PAGE
-
 /* A run that has executed this many instructions inside ONE call is not
    finishing. Reported with the entry point, so a runaway is a named function
    rather than a hang. */
@@ -74,6 +44,7 @@ static struct {
     X86pMem mem;
     int ready;
     unsigned long calls;
+    unsigned long taken;
     unsigned long long insns;
     unsigned long callouts;
     unsigned long deepest;
@@ -181,7 +152,12 @@ int x2_engine_init(char *reason, unsigned reason_len)
     if (!x86p_engine_resolve(request, X86P_ENGINE_DEFAULT, available,
                              &g_engine.selected, reason, reason_len))
         return 0;
-    if (g_engine.selected == kX86pEngineSubstrate) return 1;
+    /* Still asked on the substrate arm, because the answer there is a
+       REFUSAL: X2_ENGINE_TAKE with no engine to hand the bodies to would
+       otherwise run the whole game on the substrate while looking like a
+       measurement of the engine. */
+    if (g_engine.selected == kX86pEngineSubstrate)
+        return x2_take_init(0, reason, reason_len);
     if (!map_return_page(reason, reason_len)) return 0;
     /* Not guest_memory_pointer(0): it answers NULL for address 0 by design,
        and the arena base is exactly what X86pMem wants. */
@@ -195,7 +171,7 @@ int x2_engine_init(char *reason, unsigned reason_len)
             x86p_engine_name(g_engine.selected),
             g_guest_memory_base ? "relocated" : "at the host's own addresses",
             ENGINE_RETURN_ADDR);
-    return 1;
+    return x2_take_init(1, reason, reason_len);
 }
 
 int x2_engine_active(void) { return g_engine.ready; }
@@ -231,7 +207,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
 {
     X86pCpu cpu;
     X86pStepReport report;
-    uint32_t entry_esp;
+    uint32_t entry_esp, return_to;
     unsigned long long steps = 0;
 
     if (!g_engine.ready) return 0;
@@ -240,16 +216,38 @@ int x2_engine_call(uint32_t addr, CPU *C)
     if (++g_engine.depth > g_engine.deepest) g_engine.deepest = g_engine.depth;
 
     to_x86p(C, &cpu);
-    /* Push the return address the guest's own RET will pop. The substrate's
-       x86_guest_call does exactly this, for the same reason: dispatching
-       without it leaks guest stack, upward, silently. */
-    cpu.reg[kX86pEsp] -= 4u;
-    WR32(cpu.reg[kX86pEsp], ENGINE_RETURN_ADDR);
+    /*
+     * THE RETURN ADDRESS IS ALREADY ON THE STACK. Nothing is pushed here.
+     *
+     * Every caller of this -- x86_dispatch from a recompiled body, and
+     * x86_guest_call_args from host code, which writes 0xDEADBEEF there
+     * explicitly -- has already pushed the word the callee's RET will pop.
+     * This used to push a SECOND one, which is a return address the guest
+     * never pops: the function returned to the trampoline correctly, the
+     * engine's own stack check passed because its frame balanced, and the
+     * caller's return address was still sitting there. It cost 4 bytes of
+     * guest stack per taken call and x86_guest_call caught it on the first
+     * one -- but only once a body was TAKEN, because until then the seam had
+     * never run a function the game called.
+     */
     entry_esp = cpu.reg[kX86pEsp];
+    return_to = RD32(entry_esp);
     cpu.eip = addr;
 
     for (;;) {
         X86pStepStatus status;
+        /*
+         * Left when control reaches the caller's return address with the stack
+         * unwound past it. Both halves are needed: the address alone would
+         * also match a CALL to it from deeper inside (where ESP is lower), and
+         * the stack alone says nothing about where control went.
+         *
+         * The trampoline page is still mapped and still full of INT3, for the
+         * case x86_guest_call_args creates: its 0xDEADBEEF is not a mapped
+         * address, so a function that returns somewhere unexpected must land
+         * on something that reports rather than on whatever is there.
+         */
+        if (cpu.eip == return_to && cpu.reg[kX86pEsp] >= entry_esp + 4u) break;
         if (cpu.eip == ENGINE_RETURN_ADDR) break;
         /*
          * A target this dispatcher owns is HOST code -- an import thunk, a
@@ -269,7 +267,8 @@ int x2_engine_call(uint32_t addr, CPU *C)
          * handed itself straight back would make that measurement impossible
          * while looking like it worked.
          */
-        if (cpu.eip != addr && x86_native_body_at(cpu.eip)) {
+        if (cpu.eip != addr && x86_native_body_at(cpu.eip)
+            && !x2_take_has(cpu.eip)) {
             const uint32_t target = cpu.eip;
             /*
              * The return address is read HERE, before the body runs. After it,
@@ -282,11 +281,22 @@ int x2_engine_call(uint32_t addr, CPU *C)
             const uint32_t ret = RD32(cpu.reg[kX86pEsp]);
             from_x86p(&cpu, C);
             g_engine.callouts++;
-            if (!x86_native_call_at(target, C))
-                refuse(addr, target,
-                       "a body x86_native_body_at claimed exists could not be "
-                       "called -- the two lookups disagree",
-                       NULL);
+            /*
+             * x86_dispatch, not x86_native_call_at.
+             *
+             * A recompiled body may end in a TAIL JUMP, which it reports by
+             * leaving C->tail_target set and returning; only x86_dispatch's
+             * loop drains that. Calling the body directly ran the function and
+             * silently dropped whatever it jumped to -- a bug this seam had
+             * from the day it landed, and one nothing would have found until a
+             * taken body called a tail-jumping one and returned to a caller
+             * whose work was half done.
+             *
+             * The lookup above already said there IS a body here, so a "no
+             * recompiled body" abort out of x86_dispatch means the two lookups
+             * disagree, which is the same fact the removed refusal named.
+             */
+            x86_dispatch(C, target);
             to_x86p(C, &cpu);
             /* The dispatched body emulated its own RET, so the guest ESP it
                returns with is already right. Only EIP is this loop's to
@@ -325,6 +335,23 @@ int x2_engine_call(uint32_t addr, CPU *C)
     return 1;
 }
 
+/*
+ * The engine entered because the substrate was made to DECLINE, not because it
+ * had nothing.
+ *
+ * A separate entry point rather than a flag, so the report can keep the two
+ * apart: "the corpus could not translate this" and "we took this deliberately
+ * to measure it" are different facts about a run, and a single call counter
+ * covering both would make a take set that never fired indistinguishable from
+ * a corpus with holes.
+ */
+int x2_engine_call_taken(uint32_t addr, CPU *C)
+{
+    if (!x2_engine_call(addr, C)) return 0;
+    g_engine.taken++;
+    return 1;
+}
+
 void x2_engine_report(void)
 {
     if (!g_engine.ready) {
@@ -333,157 +360,26 @@ void x2_engine_report(void)
                 x86p_engine_name(g_engine.selected));
         return;
     }
+
     fprintf(stderr,
-            "[ENGINE] %s: %lu call(s) entered, %llu guest instruction(s) "
+            "[ENGINE] %s: %lu call(s) entered (%lu of them TAKEN from the "
+            "substrate, %lu because it had no body), %llu guest instruction(s) "
             "executed, %lu handed back to the dispatcher, deepest nesting "
             "%lu.\n"
             "[ENGINE] A zero call count is a measurement only because the "
             "denominator is beside it: it means the substrate had a body for "
-            "every address reached.\n",
-            x86p_engine_name(g_engine.selected), g_engine.calls, g_engine.insns,
-            g_engine.callouts, g_engine.deepest);
+            "every address reached and nothing was taken from it.\n",
+            x86p_engine_name(g_engine.selected), g_engine.calls, g_engine.taken,
+            g_engine.calls - g_engine.taken, g_engine.insns, g_engine.callouts,
+            g_engine.deepest);
+    x2_take_report();
 }
 
-/* ---- selftest ---------------------------------------------------------- */
-
-/*
- * PROVE IT FIRES, IN THE SHIPPING ARTEFACT.
- *
- * The seam this engine sits on is a MISS: `x86_dispatch_one` reaches it only
- * when the statically recompiled corpus has no body for an address. On a run
- * that never hits one, x2_engine_report prints zeros -- and zeros from an
- * engine that works and zeros from an engine whose bridge is broken are the
- * same two lines. Nothing downstream could tell them apart.
- *
- * So the engine executes a program of its own before the game starts. It is a
- * real guest program, written into guest memory, entered through the same
- * x2_engine_call the dispatcher uses, and checked for the register, flag and
- * stack state it must produce. A failure here stops the run: an engine that
- * cannot run six instructions correctly must not be handed a function.
- */
-
-#define SELFTEST_PAGE 0x00070000u
-
-static int check(const char *what, uint32_t got, uint32_t want, int *failures)
+void x2_engine_forget_run(void)
 {
-    if (got == want) return 1;
-    fprintf(stderr, "[ENGINE] selftest: %s is 0x%08x, expected 0x%08x\n", what,
-            got, want);
-    (*failures)++;
-    return 0;
-}
-
-int x2_engine_selftest(void)
-{
-    /*
-     *   mov  eax, 0x0000002A
-     *   add  eax, 8              -> 0x32
-     *   push eax
-     *   pop  ebx
-     *   xor  ebx, 0x000000FF     -> 0xCD, and CF/OF cleared by a logic op
-     *   ret
-     *
-     * Chosen so every part of the bridge is load-bearing: two registers that
-     * are not the accumulator, a PUSH/POP pair that moves ESP down and back
-     * (so a stack the bridge mishandled would not balance), and a flag-writing
-     * operation whose result is read back through the substrate's own model
-     * rather than x86port's.
-     */
-    static const uint8_t program[] = {0xB8, 0x2A, 0x00, 0x00, 0x00,
-                                      0x83, 0xC0, 0x08,
-                                      0x50,
-                                      0x5B,
-                                      0x81, 0xF3, 0xFF, 0x00, 0x00, 0x00,
-                                      0xC3};
-    CPU cpu;
-    uint32_t stack;
-    int failures = 0;
-
-    if (!g_engine.ready) return 1; /* nothing selected: nothing to prove */
-
-    if (guest_memory_map_fixed(SELFTEST_PAGE, 0x1000u,
-                               PROT_READ | PROT_WRITE) != 0) {
-        fprintf(stderr, "[ENGINE] selftest: could not map its own page at "
-                        "0x%08x -- the engine is UNVERIFIED for this run.\n",
-                SELFTEST_PAGE);
-        return 0;
-    }
-    memcpy(guest_memory_pointer(SELFTEST_PAGE), program, sizeof program);
-
-    /* A stack inside the same page, above the program. The engine pushes a
-       return address onto it and the program pushes one word of its own. */
-    stack = SELFTEST_PAGE + 0x800u;
-
-    memset(&cpu, 0, sizeof cpu);
-    cpu.esp = stack;
-    cpu.fcw = X87_CW_INIT;
-    cpu.eax = 0xDEADBEEFu;
-    cpu.ebx = 0xDEADBEEFu;
-
-    if (!x2_engine_call(SELFTEST_PAGE, &cpu)) {
-        fprintf(stderr, "[ENGINE] selftest: x2_engine_call declined its own "
-                        "program while an engine is selected.\n");
-        return 0;
-    }
-
-    check("eax", cpu.eax, 0x32u, &failures);
-    check("ebx", cpu.ebx, 0xCDu, &failures);
-    check("esp", cpu.esp, stack, &failures);
-    /* The flags XOR left, read back through the SUBSTRATE's accessors: this is
-       the direction the bridge is used in when a dispatched call returns, so
-       it is the direction that has to be checked. 0xCD has five set bits, so
-       PF is clear; the result is neither zero nor negative at 32 bits; a logic
-       operation clears CF and OF. */
-    check("ZF", (uint32_t)FLAG_Z(&cpu), 0u, &failures);
-    check("SF", (uint32_t)FLAG_S(&cpu), 0u, &failures);
-    check("PF", (uint32_t)FLAG_P(&cpu), 0u, &failures);
-    check("CF", (uint32_t)FLAG_C(&cpu), 0u, &failures);
-    check("OF", (uint32_t)FLAG_O(&cpu), 0u, &failures);
-
-    /*
-     * The call-out predicate, against BOTH answers.
-     *
-     * x86_native_body_at decides whether the engine hands an address back to
-     * the dispatcher, and a predicate that has only ever been asked about
-     * addresses it says no to is indistinguishable from `return 0` -- it would
-     * let the interpreter walk into a recompiled body and decode host memory
-     * as x86-32. The positive case is a resolved override, whose mapped entry
-     * point is a body by construction; the negative is this selftest's own
-     * page, which is guest memory and nothing else.
-     */
-    {
-        const uint32_t body = x86_override_mapped_ep(0);
-        if (!body) {
-            fprintf(stderr, "[ENGINE] selftest: no resolved override to ask "
-                            "x86_native_body_at about, so its POSITIVE answer "
-                            "is unchecked this run.\n");
-            failures++;
-        } else {
-            check("body_at(an override)", (uint32_t)x86_native_body_at(body), 1u,
-                  &failures);
-        }
-        check("body_at(guest data)",
-              (uint32_t)x86_native_body_at(SELFTEST_PAGE), 0u, &failures);
-    }
-
-    guest_memory_release(SELFTEST_PAGE, 0x1000u);
-
-    if (failures) {
-        fprintf(stderr, "[ENGINE] selftest FAILED with %d mismatch(es). The "
-                        "engine is not safe to dispatch to.\n", failures);
-        return 0;
-    }
-    fprintf(stderr, "[ENGINE] selftest passed: 6 guest instructions executed "
-                    "through the bridge, 10 checks, and the call-out predicate "
-                    "answered both ways.\n");
-    /* The selftest's own work is not a measurement of the game, so the run
-       counters start from zero AFTER it. Subtracting its call and its six
-       instructions was not enough -- the nesting high-water mark stayed at 1,
-       so the report said "0 calls, deepest nesting 1", which is not a state
-       that can happen. */
     g_engine.calls = 0;
+    g_engine.taken = 0;
     g_engine.insns = 0;
     g_engine.callouts = 0;
     g_engine.deepest = 0;
-    return 1;
 }

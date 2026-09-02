@@ -66,6 +66,13 @@ const char *x2_engine_name(void);
 int x2_engine_call(uint32_t addr, struct CPU *C);
 
 /*
+ * The same call, entered because X2_ENGINE_TAKE made the substrate DECLINE a
+ * body it has -- see x86_engine_take.h. Counted apart from the miss path, so a
+ * run can say which of the two reasons put guest code through the engine.
+ */
+int x2_engine_call_taken(uint32_t addr, struct CPU *C);
+
+/*
  * What the engine did. Printed at shutdown beside the other run reports.
  *
  * Both halves of every ratio are published: calls that entered the engine
