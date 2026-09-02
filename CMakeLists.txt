@@ -186,14 +186,19 @@ target_link_libraries(test_install_archive PRIVATE lucent::lucent lucent::zip)
 add_test(NAME install_archive COMMAND test_install_archive)
 
 add_executable(test_touch_controls tests/test_touch_controls.cpp
-               src/input/touch_controls.cpp)
+               src/input/touch_controls.cpp
+               src/presentation/touch_layout.c)
 target_include_directories(test_touch_controls PRIVATE src/input)
 target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
 add_test(NAME touch_controls COMMAND test_touch_controls)
 
-add_executable(test_touch_hud_layout tests/test_touch_hud_layout.c
-               src/presentation/touch_hud_layout.c)
-add_test(NAME touch_hud_layout COMMAND test_touch_hud_layout)
+add_executable(test_gameplay_control tests/test_gameplay_control.c
+               src/input/gameplay_control.c)
+add_test(NAME gameplay_control COMMAND test_gameplay_control)
+
+add_executable(test_touch_layout tests/test_touch_layout.c
+               src/presentation/touch_layout.c)
+add_test(NAME touch_layout COMMAND test_touch_layout)
 
 add_executable(test_gpu_frame_timing tests/test_gpu_frame_timing.c
                src/gpu/gpu_frame_timing.c)
@@ -1470,11 +1475,13 @@ if(X2_MODULE_HAVE)
         src/native/cutscene_dialogue.c
         src/native/cutscene_script_audio.c
         src/native/cutscene_player_policy.c
+        src/native/cutscene_control_clock.c
         src/native/cutscene_player.c
         src/native/input_probe.c
         src/input/touch_controls.cpp
         src/input/touch_runtime.cpp
-        src/presentation/touch_hud_layout.c
+        src/presentation/touch_layout.c
+        src/input/gameplay_control.c
         src/native/touch_hud_runtime.c
         src/native/xbox_defaults.c
         src/native/dsound.c

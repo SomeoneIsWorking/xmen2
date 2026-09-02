@@ -1,6 +1,8 @@
 #ifndef X2_TOUCH_RUNTIME_H
 #define X2_TOUCH_RUNTIME_H
 
+#include "../presentation/touch_layout.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -38,6 +40,16 @@ typedef struct X2TouchVisual {
     int active;
     int stick;
 } X2TouchVisual;
+
+/* The viewport the touch layout is currently built from -- the window's pixel
+ * size and its safe area. Exposed so the HUD relocation and the control zones
+ * are laid out from ONE viewport rather than each fetching its own idea of the
+ * output size; the settings' width/height and the window's pixel size are not
+ * always the same number, and a HUD placed against one while the zones are
+ * placed against the other is the two-sources-of-truth bug again.
+ *
+ * Returns 0 when there is no window, leaving *out untouched. */
+int x2_touch_runtime_viewport(X2LayoutViewport *out);
 
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
 int x2_touch_runtime_overlay_visible(void);

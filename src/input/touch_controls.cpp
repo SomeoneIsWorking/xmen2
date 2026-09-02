@@ -1,5 +1,7 @@
 #include "touch_controls.h"
 
+#include "../presentation/touch_layout.h"
+
 #include <algorithm>
 #include <array>
 
@@ -107,94 +109,68 @@ std::vector<ActionEvent> TouchControls::set_viewport(Viewport viewport)
 void TouchControls::rebuild_zones()
 {
     zones_.clear();
-    const float left = viewport_.safe_area.left;
-    const float top = viewport_.safe_area.top;
-    const float right = viewport_.width - viewport_.safe_area.right;
-    const float bottom = viewport_.height - viewport_.safe_area.bottom;
-    const float width = right - left;
-    const float height = bottom - top;
-    const float stick_diameter = std::min(width, height) * 0.36F;
-    if (width <= 0.0F || height <= 0.0F) {
+    X2LayoutViewport layout_viewport{viewport_.width,
+                                     viewport_.height,
+                                     viewport_.safe_area.left,
+                                     viewport_.safe_area.top,
+                                     viewport_.safe_area.right,
+                                     viewport_.safe_area.bottom};
+    X2Rect slots[kX2SlotCount];
+    if (!x2_layout_build(layout_viewport, slots)) {
+        // No usable area: no zones. Distinct from "zones that cover nothing" --
+        // the router is told there is nothing to route against.
         const std::vector<lucent::touch::Zone> empty;
         router_.set_zones(empty);
         return;
     }
 
-    auto add = [this](std::uint32_t id, float zone_left, float zone_top,
-                      float zone_right, float zone_bottom, int priority,
-                      TouchAction action, bool stick, bool visible = true) {
-        zones_.push_back({{id, zone_left, zone_top, zone_right, zone_bottom, priority},
+    auto add = [this](std::uint32_t id, X2Rect r, int priority, TouchAction action,
+                      bool stick, bool visible = true) {
+        zones_.push_back({{id, r.left, r.top, r.right, r.bottom, priority},
                           action, stick, visible});
     };
-    const float stick_center_x = left + width * 0.215F;
-    const float stick_bottom = bottom - height * 0.04F;
-    add(left_stick, stick_center_x - stick_diameter * 0.5F,
-        stick_bottom - stick_diameter, stick_center_x + stick_diameter * 0.5F,
-        stick_bottom, 0, TouchAction::MoveLeft, true);
 
-    // Camera is a relative swipe over otherwise unused playfield. Buttons and
-    // retail portrait taps capture first, so a combat chord never moves it.
-    add(camera_swipe, left + width * 0.35F, top + height * 0.18F,
-        left + width * 0.98F, top + height * 0.62F, -10,
-        TouchAction::CameraLeft, false, false);
+    // Movement and the action cluster come STRAIGHT from the layout. Their
+    // rectangles are not recomputed here, because the previous version's
+    // eighteen hand-tuned fractions were what let the drawn HUD and the
+    // touchable zones drift apart.
+    add(left_stick, slots[kX2SlotStick], 0, TouchAction::MoveLeft, true);
+    add(10, slots[kX2SlotLightAttack], 20, TouchAction::LightAttack, false);
+    add(11, slots[kX2SlotHeavyAttack], 20, TouchAction::HeavyAttack, false);
+    add(12, slots[kX2SlotUse], 20, TouchAction::Use, false);
+    add(20, slots[kX2SlotPowers], 20, TouchAction::Powers, false);
+    add(13, slots[kX2SlotJump], 20, TouchAction::Jump, false);
+    add(40, slots[kX2SlotPause], 20, TouchAction::Pause, false);
 
-    add(10, left + width * 0.77F, top + height * 0.70F,
-        left + width * 0.87F, top + height * 0.83F, 20,
-        TouchAction::LightAttack, false);
-    add(11, left + width * 0.88F, top + height * 0.61F,
-        left + width * 0.98F, top + height * 0.74F, 20,
-        TouchAction::HeavyAttack, false);
-    add(12, left + width * 0.66F, top + height * 0.61F,
-        left + width * 0.76F, top + height * 0.74F, 20,
-        TouchAction::Use, false);
-    add(13, left + width * 0.77F, top + height * 0.52F,
-        left + width * 0.87F, top + height * 0.65F, 20,
-        TouchAction::Jump, false);
-    add(20, left + width * 0.66F, top + height * 0.78F,
-        left + width * 0.76F, top + height * 0.91F, 20,
-        TouchAction::Powers, false);
-    add(21, left + width * 0.77F, top + height * 0.85F,
-        left + width * 0.87F, top + height * 0.98F, 20,
-        TouchAction::EnergyPack, false);
-    add(22, left + width * 0.88F, top + height * 0.78F,
-        left + width * 0.98F, top + height * 0.91F, 20,
-        TouchAction::HealthPack, false);
-    add(23, left + width * 0.61F, top + height * 0.04F,
-        left + width * 0.69F, top + height * 0.15F, 20,
-        TouchAction::MapToggle, false);
-    add(32, left + width * 0.43F, top + height * 0.84F,
-        left + width * 0.51F, top + height * 0.95F, 20,
-        TouchAction::DecreaseAggr, false);
-    add(33, left + width * 0.52F, top + height * 0.84F,
-        left + width * 0.60F, top + height * 0.95F, 20,
-        TouchAction::IncreaseAggr, false);
-    add(40, left + width * 0.43F, top + height * 0.04F,
-        left + width * 0.51F, top + height * 0.15F, 20,
-        TouchAction::Pause, false);
-    add(41, left + width * 0.52F, top + height * 0.04F,
-        left + width * 0.60F, top + height * 0.15F, 20,
-        TouchAction::Stats, false);
+    // Camera is an invisible relative swipe over the playfield -- everything
+    // the controls and the HUD do not claim. Lowest priority, so a combat
+    // chord or a portrait tap never moves it.
+    {
+        const float left = layout_viewport.safe_left;
+        const float top = slots[kX2SlotVitals].bottom;
+        const float right = layout_viewport.width - layout_viewport.safe_right;
+        const float bottom = slots[kX2SlotStick].top;
+        if (bottom > top && right > left)
+            add(camera_swipe, {left, top, right, bottom}, -10,
+                TouchAction::CameraLeft, false, false);
+    }
 
-    // The retail party cross is relocated to this top-right cluster in touch
-    // mode. These zones emit pointer events so its existing click handler,
-    // including direct hero selection, remains the only behavior owner.
-    const float portrait_radius = std::min(width, height) * 0.07F;
-    const float portrait_center_x = right - portrait_radius * 2.0F;
-    const float portrait_center_y = top + portrait_radius * 2.0F;
-    auto portrait = [&](std::uint32_t id, float center_x, float center_y,
-                        TouchAction action) {
-        add(id, center_x - portrait_radius, center_y - portrait_radius,
-            center_x + portrait_radius, center_y + portrait_radius, 30,
-            action, false, false);
-    };
-    portrait(50, portrait_center_x, portrait_center_y - portrait_radius,
-             TouchAction::SelectHero1);
-    portrait(51, portrait_center_x + portrait_radius, portrait_center_y,
-             TouchAction::SelectHero2);
-    portrait(52, portrait_center_x, portrait_center_y + portrait_radius,
-             TouchAction::SelectHero3);
-    portrait(53, portrait_center_x - portrait_radius, portrait_center_y,
-             TouchAction::SelectHero4);
+    // The party portraits are WHERE THE HUD DRAWS THEM, because both read the
+    // same slot. These zones emit pointer events so the retail click handler,
+    // including direct hero selection, remains the only behavior owner --
+    // which is also why they are invisible: the game draws them itself.
+    {
+        const X2Rect faces = slots[kX2SlotPortraits];
+        const float cell = (faces.right - faces.left) * 0.25F;
+        const TouchAction heroes[4] = {
+            TouchAction::SelectHero1, TouchAction::SelectHero2,
+            TouchAction::SelectHero3, TouchAction::SelectHero4};
+        for (std::uint32_t i = 0; i < 4; ++i)
+            add(50 + i,
+                {faces.left + cell * static_cast<float>(i), faces.top,
+                 faces.left + cell * static_cast<float>(i + 1), faces.bottom},
+                30, heroes[i], false, false);
+    }
 
     std::vector<lucent::touch::Zone> router_zones;
     router_zones.reserve(zones_.size());

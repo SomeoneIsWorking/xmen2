@@ -11,6 +11,9 @@
  * release, without advancing a guest clock, frame, world tick, or deadline.
  */
 #include "cutscene_player.h"
+
+#include "../input/gameplay_control.h"
+#include "cutscene_control_clock.h"
 #include "behaved_player.h"
 #include "cutscene_dialogue.h"
 #include "conversation_player.h"
@@ -27,8 +30,6 @@
 #define FN_INPUT                0x005d8920u
 #define INPUT_ACTION_MASK_SLOT  0x140u
 #define CINEMATIC_SKIP_ACTION   20u
-#define CLOCK_NOW               0x3e8u
-#define CLOCK_CONTROL_DEADLINE  0x3f4u
 #define OWNED_CONTEXT_LIMIT     30u
 #define CONVERSATION_FIBER      ((X2CutsceneFiber)UINTPTR_MAX)
 #define EVENT_FIBER_BASE        ((X2CutsceneFiber)UINT64_C(0x100000000))
@@ -176,19 +177,6 @@ static int claim_events(void)
     return claimed >= 0;
 }
 
-static int read_float_bits(uint32_t address, uint32_t *bits)
-{
-    return address && x86_peek32(address, bits);
-}
-
-static float float_of(uint32_t bits)
-{
-    float value;
-
-    memcpy(&value, &bits, sizeof value);
-    return value;
-}
-
 static int call_action_mask(CPU *cpu, uint32_t *mask)
 {
     CPU call;
@@ -219,34 +207,25 @@ static int active_sequence(void *context, X2CutsceneSequence *sequence)
 static X2CutsceneControlState control_state(
     void *context, X2CutsceneSequence sequence)
 {
-    uint32_t now_bits, deadline_bits;
-    float now, deadline;
-
     (void)context;
-    if (!g_player.active || sequence != g_player.sequence ||
-        !read_float_bits(g_player.clock + CLOCK_NOW, &now_bits) ||
-        !read_float_bits(g_player.clock + CLOCK_CONTROL_DEADLINE,
-                         &deadline_bits))
+    if (!g_player.active || sequence != g_player.sequence)
         return X2_CUTSCENE_CONTROL_UNREADABLE;
-    now = float_of(now_bits);
-    deadline = float_of(deadline_bits);
-    /* Authored post-release work stays scheduled for ordinary gameplay. */
-    if (deadline < 0.0f || deadline > now)
+    switch (cutscene_control_clock_state(g_player.clock)) {
+    case kX2CutsceneClockLocked:
         return X2_CUTSCENE_CONTROL_LOCKED;
-    return X2_CUTSCENE_CONTROL_RELEASED;
+    case kX2CutsceneClockReleased:
+        return X2_CUTSCENE_CONTROL_RELEASED;
+    default:
+        return X2_CUTSCENE_CONTROL_UNREADABLE;
+    }
 }
 
 static void retire_released_sequence(void)
 {
-    uint32_t now_bits, deadline_bits;
-
     if (!g_player.active || !g_player.release_pending ||
         g_player.owned_count ||
-        !read_float_bits(g_player.clock + CLOCK_NOW, &now_bits) ||
-        !read_float_bits(g_player.clock + CLOCK_CONTROL_DEADLINE,
-                         &deadline_bits) ||
-        float_of(deadline_bits) < 0.0f ||
-        float_of(deadline_bits) > float_of(now_bits))
+        cutscene_control_clock_state(g_player.clock) !=
+            kX2CutsceneClockReleased)
         return;
     g_player.active = 0;
     g_player.release_pending = 0;
@@ -356,13 +335,13 @@ static X2CutscenePlayerResult finish(CPU *cpu)
     unsigned long frame_before = gpu_frames_presented();
     uint32_t time_before = 0, time_after = 1;
 
-    (void)read_float_bits(g_player.clock + CLOCK_NOW, &time_before);
+    (void)cutscene_control_clock_now_bits(g_player.clock, &time_before);
     cutscene_dialogue_skip_begin();
     g_player.finishing = 1;
     result = x2_cutscene_player_finish(&g_player.policy, &ops, cpu);
     g_player.finishing = 0;
     cutscene_dialogue_skip_end(cpu);
-    (void)read_float_bits(g_player.clock + CLOCK_NOW, &time_after);
+    (void)cutscene_control_clock_now_bits(g_player.clock, &time_after);
     if (gpu_frames_presented() == frame_before) g_player.same_frame++;
     if (time_after == time_before) g_player.same_guest_time++;
     if ((unsigned)result < sizeof g_player.result / sizeof g_player.result[0])
@@ -380,7 +359,7 @@ static X2CutscenePlayerResult finish(CPU *cpu)
 void x2_override_00469130(CPU *cpu)
 {
     uint32_t bits = RD32(cpu->esp + 4u);
-    float seconds = float_of(bits);
+    float seconds = cutscene_control_clock_seconds(bits);
     uint32_t context = current_context();
 
     if (seconds < 0.0f && context) {
@@ -389,14 +368,11 @@ void x2_override_00469130(CPU *cpu)
     }
     fn_XMen2_00469130(cpu);
     if (seconds >= 0.0f && g_player.active) {
-        uint32_t now_bits;
         g_player.release_pending = 1;
         g_player.releases++;
         if (g_player.finishing &&
-            read_float_bits(g_player.clock + CLOCK_NOW, &now_bits)) {
-            WR32(g_player.clock + CLOCK_CONTROL_DEADLINE, now_bits);
+            cutscene_control_clock_release_now(g_player.clock))
             g_player.private_releases++;
-        }
     }
 }
 
@@ -432,6 +408,12 @@ void x2_override_004a00d0(CPU *cpu)
 
     fn_XMen2_004a00d0(cpu);
     retire_released_sequence();
+    /* Publish the lock to the one owner of "does the player control a
+       character": this override runs every input poll, cutscene or not, so
+       the RELEASE is published as reliably as the acquisition. */
+    x2_gameplay_control_set_cutscene_locked(
+        g_player.active &&
+        control_state(cpu, g_player.sequence) == X2_CUTSCENE_CONTROL_LOCKED);
     g_player.input_polls++;
     if (call_action_mask(cpu, &mask))
         down = !!(mask & (1u << CINEMATIC_SKIP_ACTION));

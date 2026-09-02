@@ -74,11 +74,16 @@ void set_percent(Rml::Element *element, Rml::PropertyId property, float value)
 
 bool touch_document_load(Rml::Context *context)
 {
-    const std::string style = resource("touch_controls.rcss");
+    /* The href is RELATIVE and resolved against `base`, exactly as the
+       settings document does it. An absolute path here lost its leading
+       slash inside RmlUi's path join, so the stylesheet silently failed to
+       load and every zone rendered with no style at all -- present in the
+       document, invisible on screen. */
     const std::string base = resource("touch_controls.rml");
     const std::string shell =
-        "<rml><head><title>Touch Controls</title><link type='text/rcss' href='" +
-        style + "' /></head><body id='touch-root'></body></rml>";
+        "<rml><head><title>Touch Controls</title><link type='text/rcss' "
+        "href='touch_controls.rcss' /></head>"
+        "<body id='touch-root'></body></rml>";
     document = context->LoadDocumentFromMemory(shell, base);
     if (!document) return false;
     root = document->GetElementById("touch-root");

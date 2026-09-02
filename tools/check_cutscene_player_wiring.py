@@ -23,7 +23,7 @@ def reject(source, needle, where):
 
 
 def audit(conversation, player, context, behaved, event, dialogue,
-          script_audio, dsound, probe, cmake):
+          script_audio, dsound, probe, cmake, clock):
     update_begin = conversation.find("void x2_override_0045d1a0")
     begin = conversation.find("Accept advances once", update_begin)
     end = conversation.find("0x0045d3bf", begin)
@@ -54,7 +54,17 @@ def audit(conversation, player, context, behaved, event, dialogue,
             "whole-player dialogue suppression scope")
     require(player, "cutscene_player_silences_current_context(",
             "cutscene-owned audio predicate")
-    require(player, "CLOCK_CONTROL_DEADLINE", "authored control release")
+    # The release moved to the clock owner, so the chain is checked across
+    # BOTH ends: the player must ask for it, and the clock must be the one
+    # that writes the deadline. Checking only the call would pass a clock that
+    # returns success without writing anything.
+    require(player, "cutscene_control_clock_release_now(",
+            "authored control release")
+    require(clock, "CLOCK_CONTROL_DEADLINE", "authored control release write")
+    require(clock, "cutscene_control_clock_state(",
+            "single control-lock predicate")
+    require(player, "x2_gameplay_control_set_cutscene_locked(",
+            "cinematic lock published to the gameplay gate")
     require(player, "same_guest_time", "one-step clock invariant")
     require(player, "same_frame", "one-step frame invariant")
 
@@ -127,6 +137,7 @@ def audit(conversation, player, context, behaved, event, dialogue,
            "x2native sources")
     reject(cmake, "src/native/conversation_skip_policy.c",
            "x2native sources")
+    require(cmake, "src/native/cutscene_control_clock.c", "x2native sources")
 
 
 def production_sources():
@@ -141,6 +152,7 @@ def production_sources():
         (ROOT / "src/native/dsound.c").read_text(),
         (ROOT / "src/native/cutscene_skip_probe.c").read_text(),
         (ROOT / "CMakeLists.txt").read_text(),
+        (ROOT / "src/native/cutscene_control_clock.c").read_text(),
     )
 
 
@@ -177,6 +189,11 @@ def selftest():
         (9, "src/native/behaved_context.c"),
         (9, "src/native/cutscene_dialogue.c"),
         (9, "src/native/cutscene_script_audio.c"),
+        (9, "src/native/cutscene_control_clock.c"),
+        (1, "cutscene_control_clock_release_now("),
+        (1, "x2_gameplay_control_set_cutscene_locked("),
+        (10, "CLOCK_CONTROL_DEADLINE"),
+        (10, "cutscene_control_clock_state("),
     )
     for index, needle in discriminators:
         broken = list(current)

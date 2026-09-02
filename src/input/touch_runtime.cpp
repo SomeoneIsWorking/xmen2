@@ -1,5 +1,10 @@
 #include "touch_runtime.h"
 
+extern "C" {
+#include "../native/guest_clock.h"
+}
+#include "gameplay_control.h"
+
 #include "touch_controls.h"
 #include "../native/dinput_pad_virtual.h"
 #include "../config/settings.h"
@@ -28,6 +33,9 @@ x2::input::TouchControls controls;
 std::map<SDL_FingerID, ContactState> contacts;
 std::set<std::uint32_t> active_zones;
 SDL_Window *window;
+/* The one viewport both the control zones and the HUD relocation lay out
+   from. Set with the window, so neither owner computes its own. */
+X2LayoutViewport viewport;
 
 const char *button_name(x2::input::TouchAction action)
 {
@@ -161,10 +169,26 @@ void x2_touch_runtime_window(SDL_Window *new_window)
         return;
     SDL_Rect safe{0, 0, width, height};
     if (!SDL_GetWindowSafeArea(window, &safe)) safe = {0, 0, width, height};
-    controls.set_viewport({static_cast<float>(width), static_cast<float>(height),
-                           {static_cast<float>(safe.x), static_cast<float>(safe.y),
-                            static_cast<float>(width - safe.x - safe.w),
-                            static_cast<float>(height - safe.y - safe.h)}});
+    viewport = {static_cast<float>(width),
+                static_cast<float>(height),
+                static_cast<float>(safe.x),
+                static_cast<float>(safe.y),
+                static_cast<float>(width - safe.x - safe.w),
+                static_cast<float>(height - safe.y - safe.h)};
+    /* One viewport, two consumers: the controls and the relocated HUD read
+       the same numbers, which is what stops the drawn HUD and the touchable
+       zones from disagreeing about where the screen is. */
+    controls.set_viewport({viewport.width,
+                           viewport.height,
+                           {viewport.safe_left, viewport.safe_top,
+                            viewport.safe_right, viewport.safe_bottom}});
+}
+
+int x2_touch_runtime_viewport(X2LayoutViewport *out)
+{
+    if (!out || !window) return 0;
+    *out = viewport;
+    return 1;
 }
 
 int x2_touch_runtime_event(const SDL_Event *event, X2TouchPointer *pointer)
@@ -275,9 +299,11 @@ size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity)
 
 int x2_touch_runtime_overlay_visible(void)
 {
-#ifdef __ANDROID__
-    return window != nullptr && x2_settings_store()->touch_controls;
-#else
-    return 0;
-#endif
+    /* The setting decides, on every platform. It used to be compiled out
+       except on Android, which made the touch layout unreachable on the one
+       host where it can be iterated on and looked at -- and a layout nobody
+       can see until it is on a phone is a layout that gets shipped wrong.
+       Desktop defaults are the player's to set; see settings.c. */
+    return window != nullptr && x2_settings_store()->touch_controls != 0 &&
+           x2_gameplay_control_active(guest_clock_now_s());
 }
