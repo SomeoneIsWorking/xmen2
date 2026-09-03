@@ -13,6 +13,8 @@
 #include "jit_x64.h"
 #include "x87.h"
 
+#include <lucent/cvar_c.h>
+
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -123,7 +125,11 @@ int x2_engine_init(char *reason, unsigned reason_len) {
     available |= x86p_engine_bit(kX86pEngineJit);
     default_engine = kX86pEngineJit;
   }
-  const char *request = getenv("X2_ENGINE");
+  /* Layered: compiled default "jit" < x2native-runtime.conf < X2_ENGINE env <
+     --set engine=. Resolved once by x2_runtime_config_init before main's
+     engine setup; x86p_engine_resolve still maps the string to an engine and
+     reports an unavailable request. */
+  const char *request = lucent_cvar_text("engine");
   if (!x86p_engine_resolve(request, default_engine, available,
                            &g_engine.selected, reason, reason_len))
     return 0;

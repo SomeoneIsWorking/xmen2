@@ -26,7 +26,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG ba7c0d6
+    GIT_TAG 66cc05f
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 set(X2_LUCENT_ANDROID_JAVA_DIR
@@ -1242,6 +1242,7 @@ set(X2_NATIVE_SOURCES
     src/native/install_validation.cpp
     src/native/android_bridge.cpp
     src/config/config_directory.c
+    src/config/runtime_cvars.cpp
     src/config/directory_create.c
     src/config/settings.c
     src/config/input_assignments.c

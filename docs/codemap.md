@@ -53,6 +53,7 @@ below name cross-directory seams and the entry points used to extend them.
 | Movie audio | Streaming movie voice and DirectSound-facing audio sink | `src/audio/` | `movie_audio.c` | [FMV](RE/fmv.md) |
 | Gameplay cutscene player | Own BehavEd command/scheduler and timed-event steps through authored control release; silence exact dialogue and script-audio presenters only during synchronous completion | `src/native/cutscene_player.c`, `src/native/behaved_context.c`, `src/native/behaved_player.c`, `src/native/cutscene_event_player.c`, `src/native/cutscene_dialogue.c`, `src/native/cutscene_script_audio.c` | `x2_cutscene_player_finish`, `behaved_context_run` | [Cutscene player](RE/cutscene_player.md) |
 | Persistent configuration | Settings schema, OS user configuration directory, storage, boot mode, and controller assignments | `src/config/` | `config_directory.c`, `settings.c`, `settings_store.c` | [Co-op participation](RE/co_op_participation.md) |
+| Runtime CVars | Register the port's engine/JIT knobs and resolve them through layers (compiled default < `x2native-runtime.conf` < `X2_*` env < `--set NAME=VALUE`); the `lucent::cvar` library owns the layering, this file owns the definitions and the config-file location | `src/config/runtime_cvars.{cpp,h}` | `x2_runtime_config_init`; `lucent_cvar_text("engine")` from `x86_engine.c` | — |
 | Direct3D 8 host | COM ABI, resources/formats, state, two-stage texture lowering, fixed/programmable vertex processing, and renderer diagnostics | `src/d3d8/`, `src/gpu/gpu_texture_format.c` | `d3d8_d3d8.c`, `d3d8_device.c`, `d3d8_drawcall.c`, `d3d8_texture_stage.c` | [Shadows](RE/shadows.md) |
 | D3D8 texture provenance | Own immutable runtime texture metadata plus successful 2D base-level content fingerprint/revision, without asset-name claims | `src/d3d8/d3d8_texture_provenance.{c,h}` | initialized and updated by `d3d8_resource.c`, snapshotted into `D3D8DrawRequest` | — |
 | D3D8 selector evidence | Passively correlate an exact texture or untextured draw class with pre-build geometry, accepted/refused lowering results, and world-matrix ancestry, without asserting identity the evidence does not establish | `src/d3d8/d3d8_selector_probe.{c,h}`, `src/d3d8/d3d8_selector_probe_json.{c,h}`, `src/d3d8/d3d8_selector_probe_bridge.c`, `tools/selector_probe.py` | `d3d8_selector_probe_build_request`, `tools/selector_probe.py` | — |
@@ -119,7 +120,7 @@ regenerated rather than hand-edited. This tree was produced with
 src/  —  9,125,093 lines, 406 files
 ├─ app/  312 lines  3 files  [.c .h]
 ├─ audio/  222 lines  2 files  [.c .h]
-├─ config/  761 lines  8 files  [.c .h]
+├─ config/  966 lines  14 files  [.c .h .cpp]
 ├─ d3d8/  11,077 lines  32 files  [.h .c]
 ├─ gpu/  6,172 lines  31 files  [.c .h]
 ├─ input/  1,054 lines  18 files  [.c .h]

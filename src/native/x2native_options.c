@@ -45,6 +45,13 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
       o->override_selftest = 1;
     else if (strcmp(argv[i], "--fault-selftest") == 0)
       o->fault_selftest = 1;
+    /* Runtime CVar overrides are consumed by x2_runtime_config_init, which
+       re-scans argv. Recognise the token (and its value form) here so the
+       unknown-option guard below does not reject it. */
+    else if (strcmp(argv[i], "--set") == 0)
+      i++;
+    else if (strncmp(argv[i], "--set=", 6) == 0)
+      ;
     else if (argv[i][0] == '-') {
       fprintf(stderr,
               "x2native: unknown option '%s'. Refusing rather "
@@ -57,7 +64,9 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
               "         --d3d8 --d3d8-selftest "
               "--d3d8-permissive --dialog-selftest\n"
               "         --fault-selftest "
-              "--override-selftest\n",
+              "--override-selftest\n"
+              "         --set NAME=VALUE (repeatable runtime CVar override, "
+              "e.g. --set engine=interpreter)\n",
               argv[i]);
       return 2;
     } else {

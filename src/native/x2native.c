@@ -39,6 +39,7 @@
 #include "live_session.h"
 #include "pe_map.h"
 #include "platform_mman.h"
+#include "runtime_cvars.h"
 #include "shell32.h"
 #include "threads.h"
 #include "win32_sdl.h"
@@ -1832,6 +1833,10 @@ int main(int argc, char **argv) {
   if (x2native_options_uses_project_env(&options) &&
       x2_load_project_env(argv[0]) < 0)
     return 2;
+  /* Runtime CVars (engine selection, JIT knobs): compiled default < the
+     x2native-runtime.conf file < environment X2_* < --set. Must precede the
+     engine setup below, which reads the resolved `engine` value. */
+  x2_runtime_config_init(argc, argv);
   /* Also on the ordinary exit path: a run that ends without faulting must
      still say what it reached, or the instrument only ever speaks when
      something else already went wrong. The fault handler _exit()s and so
@@ -1845,18 +1850,11 @@ int main(int argc, char **argv) {
     extern void x86_setjmp_report(void);
     atexit(x86_setjmp_report);
   }
-  if (options.appimage && options.product && !options.install_dir &&
-      (!getenv("GAME_PC_DIR") || !getenv("GAME_PC_DIR")[0])) {
-    const char *picked = NULL;
-    if (x2_install_picker_choose(&picked) != 0 || !picked) {
-      fprintf(stderr, "x2native: no PC installation was selected; exiting.\n");
-      return 0;
-    }
-    if (setenv("GAME_PC_DIR", picked, 1) != 0) {
-      fprintf(stderr, "x2native: could not set the selected installation: %s\n",
-              strerror(errno));
-      return 1;
-    }
+  {
+    int r = x2_install_picker_resolve_env(options.appimage && options.product,
+                                          options.install_dir != NULL);
+    if (r)
+      return r == 1 ? 0 : 1; /* 1: nothing selected; 2: publish failed */
   }
   if (guest_memory_init() != 0)
     return 1;

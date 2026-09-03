@@ -381,3 +381,21 @@ extern "C" int x2_install_picker_choose(const char **directory) {
   }
 #endif
 }
+
+extern "C" int x2_install_picker_resolve_env(int appimage_product,
+                                             int have_install_dir) {
+  const char *current = getenv("GAME_PC_DIR");
+  if (!appimage_product || have_install_dir || (current && current[0]))
+    return 0;
+  const char *picked = nullptr;
+  if (x2_install_picker_choose(&picked) != 0 || !picked) {
+    fprintf(stderr, "x2native: no PC installation was selected; exiting.\n");
+    return 1;
+  }
+  if (setenv("GAME_PC_DIR", picked, 1) != 0) {
+    fprintf(stderr, "x2native: could not set the selected installation: %s\n",
+            strerror(errno));
+    return 2;
+  }
+  return 0;
+}
