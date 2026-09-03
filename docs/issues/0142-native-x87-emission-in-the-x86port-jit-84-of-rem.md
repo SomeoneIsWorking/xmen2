@@ -32,3 +32,60 @@ x87 native emission is large and correctness-sensitive:
 - Precision control: honour the guest control word or prove XMLII only ever uses one mode
 
 ## Not started. Needs a dedicated session.
+
+## Progress (2026-09-04) -- perf confirmed the size; phase 1 (native FLD) landed
+
+**Profiling settled the magnitude.** `perf record` over a 600-frame
+act0/tutorial run (engine=jit): x87 is ~35-40% of CPU --
+`x86p_x87_arith` 11.3%, `x86p_x87_execute` 8.3%, `x86p_x87_push` 3.4%,
+`x86p_x87_from_f32` 2.7%, `read_float` 1.5%, `x86p_x87_get`/`to_f32`
+~1% each, plus a large share of `x86p_execute_decoded` 4.5%. This is THE
+in-game CPU lever, above every localized native override left.
+
+`perf annotate` on `x86p_x87_arith` and `x86p_x87_push`: the cost is
+**long dependency chains of x87 ops plus constant `long double` spills
+to/from the stack** across the C call boundaries (`x86p_x87_get` returns
+by pointer, helpers take `long double` by memory, `classify()` re-spills
+to inspect the exponent). `fldcw` is NOT the bottleneck on this microarch
+(<0.1% in the annotate). The fix is native emission that keeps values on
+the host x87 stack within a block and shortens the chains.
+
+**Phase 1 landed (x86port `6d1523b`, C287): native FLD.** FLD is the one
+x87 instruction with no rounding and no reverse-operand trap -- float
+widening to 80 bits is exact for every value -- so `fld dword`/`fld qword`
+matches `x86p_x87_from_f32/f64` bit-for-bit. `emit_x87_load` widens inline
+and calls `x86p_x87_push`/`x86p_x87_get` directly (DRY: the interpreter's
+own functions own overflow flags / tags / TOP). Infra added and reusable
+for the rest: `x86p_emit_alu_r64_imm8` (stack scratch), `x86p_emit_x87_m`
+/ `x86p_emit_x87_reg`, the `sub rsp,16 / ... / add rsp,16` scratch-slot
+pattern with the bounds check kept before the sub. 246M jit.verify block
+entries agree, 0 divergence. Measured: -1.0% `x87_execute`, -1.0%
+`from_f32`, -0.5% `read_float`, -0.6% `execute_decoded`; net ~2-3% CPU
+(FLD is the cheapest x87 family -- no arith).
+
+## Phase 2+ design notes (for the next session)
+
+**FST/FSTP** (21k, 23% of x87): the trap is that `x86p_x87_to_f32` does a
+C `(float)v` cast, which rounds to nearest **ignoring the guest control
+word**. Host `fstp dword` honours the CW's RC field. To match the
+interpreter exactly a native FST must force round-to-nearest (`fldcw` a
+nearest CW, restore after) OR the interpreter's `to_f32`/`to_f64` should
+first be fixed to honour RC and the native path made to match. Decide
+which is the authority before emitting. Register forms (FST/FSTP ST(i))
+have no rounding -- do those first, they are just get + set + pop.
+
+**FADD/FSUB/FMUL/FDIV** (18k+, the `x86p_x87_arith` 11.3%): emit `fldt`
+both operands from `reg[phys]`, the host op, `fstpt` back, with the guest
+CW loaded (`fnstcw`/`fldcw`/`fldcw` per op like `HOST_OP`, or once per
+block if a frame is added). The reverse-operand forms (FSUBR/FDIVR and
+the `DC`/`DE` register encodings) must be gotten right by construction --
+load operands in the order that makes non-reverse a plain `fsub %st(1),%st`.
+Status word: replicate `x86p_x87_arith`'s `ZE` on div-by-zero and
+`IE|SF` on an empty dst -- `jit.verify` compares SW, so any miss fails
+the gate on the first NaN/zero. `classify()` for the result tag: match
+its exact Zero/Special/Valid rule (denormals are Valid), FNSAVE's tag
+word makes the distinction observable.
+
+**`classify()` itself** is a cheap independent win for the
+interpreter+helper path: rewrite it to read the stored 80-bit exponent
+field instead of `fldz`/`fucompi` + re-spill. ~1% and near-zero risk.
