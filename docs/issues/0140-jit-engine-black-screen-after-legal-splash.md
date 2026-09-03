@@ -91,7 +91,13 @@ follow-up, not this issue.
 * x86port `tests/test_jit_engine.c`:
   `test_boundary_ends_a_block_before_a_flagged_address`,
   `test_verify_reports_an_in_block_self_modification`.
-* xmen2 headless boot parity test: pending (`tests/test_jit_boot_parity`).
+* xmen2 `tests/test_engine_frames.c`: two pthreads keep independent frame
+  stacks (aborts if the stack is made shared again), plus the single-thread
+  push/pop/depth-restore contract.
+* A full headless boot-to-menu parity run is an observation, not a gate
+  ([[game-playing-runs-are-observation-not-gates]]): verified once by hand here
+  (both engines reach the menu, `engine=jit` 1.06B block entries, 0 fallbacks,
+  0 refusals, no crash).
 
 ## Do not
 
