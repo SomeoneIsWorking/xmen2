@@ -4,6 +4,7 @@
 #include "x86_engine_internal.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "x86_hotep.h"
 
 #include "cpu.h"
 #include "engine.h"
@@ -207,6 +208,8 @@ int x2_engine_call(uint32_t addr, CPU *C)
     }
 
     g_engine.calls++;
+    /* The hot-body probe's span: this is where a guest body runs now. */
+    if (x86_hotep_armed()) x86_probe_span_push();
     if (++g_engine.depth > g_engine.deepest) g_engine.deepest = g_engine.depth;
     if (g_engine.depth <= ENGINE_FRAMES) {
         g_frame[g_engine.depth - 1].entry = addr;
@@ -378,6 +381,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
     x2_engine_from_x86p(&cpu, C);
     if (g_engine.depth <= ENGINE_FRAMES) g_frame[g_engine.depth - 1].cpu = NULL;
     g_engine.depth--;
+    if (x86_hotep_armed()) x86_probe_guest_body_end(entry);
     return 1;
 }
 

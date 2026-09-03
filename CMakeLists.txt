@@ -1449,6 +1449,7 @@ set(X2_NATIVE_SOURCES
     src/native/threads.c
     src/native/x86_tail_policy.c
     src/native/x86_reached.c
+    src/native/x86_hotep.c
     src/native/run_reports.c
     src/native/x86rt_native.c
     src/native/x86_record.c

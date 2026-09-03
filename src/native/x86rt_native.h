@@ -272,28 +272,32 @@ const char   *x86_crossings_what(void);
 
 /*
  * The raw per-import call probe: the most-called host imports in an interval,
- * descending. The caller allocates `snapshot` with x86_thunk_count() entries,
- * zero-filled once, and keeps it across calls: each call fills `mod/sym/hits`
- * with the top `cap` imports by DELTA since the previous call and updates
- * `snapshot`, so the heartbeat can name the imports behind a slow window.
+ * descending. The caller allocates `snapshot` with x86_thunk_capacity()
+ * entries, zero-filled once, and keeps it across calls: each call fills
+ * `mod/sym/hits` with the top `cap` imports by DELTA since the previous call
+ * and updates `snapshot`, so the heartbeat can name the imports behind a slow
+ * window.
+ *
+ * CAPACITY, NOT COUNT. The table grows while the game runs -- every
+ * GetProcAddress and every native callback claims a slot -- and the probe runs
+ * on the heartbeat thread, so a snapshot sized by the count at first use is
+ * already too small by the next interval. It was, and the write past its end
+ * corrupted glibc's heap into an abort with nothing pointing back here. The
+ * capacity is fixed for the life of the process, so one allocation is enough;
+ * `snapshot_cap` is passed back so the probe refuses rather than assumes it.
  */
 unsigned int x86_thunk_count(void);
+unsigned int x86_thunk_capacity(void);
 unsigned int x86_thunk_crossings_sorted(unsigned long *snapshot,
+                                        unsigned int snapshot_cap,
                                         const char **mod, const char **sym,
                                         unsigned long *hits, unsigned int cap);
 
-/*
- * The hot-guest-body probe: raw per-entry-point dispatch counts since armed,
- * for naming the guest body a slow window spends its crossings in. X2_HOTEP
- * arms it (see x86_hotep_arm). x86_hotep_sorted returns the top `cap` EPs by
- * count, decoded to module+name by the caller. x86_hotep_collisions counts
- * hash collisions -- non-zero means the table had to refuse new keys and the
- * probe may be missing the true top.
- */
-void         x86_hotep_arm(const char *arg);
-unsigned int x86_hotep_sorted(uint32_t *ep, unsigned long long *ns,
-                              unsigned long *hits, unsigned int cap);
-unsigned int x86_hotep_collisions(void);
+/* The hot-guest-body probe has its own owner: see x86_hotep.h. Whoever runs a
+   guest body brackets it with these when the probe is armed, so the exclusive
+   time is attributed to the entry point that spent it. */
+void x86_probe_span_push(void);
+void x86_probe_guest_body_end(uint32_t ep);
 
 /* Wall-time split between host import stubs and guest bodies per interval
    (see x86_probe_time_delta). Armed with X2_HOTEP; otherwise zeroes. */

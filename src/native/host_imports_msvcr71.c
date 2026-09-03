@@ -17,8 +17,12 @@
   X(_CIasin)                                                                   \
   X(_CIfmod)                                                                   \
   X(_CIpow)                                                                    \
+  XN("??2@YAPAXI@Z", __2_YAPAXI_Z)                                             \
+  XN("??3@YAXPAX@Z", __3_YAXPAX_Z)                                             \
   X(__RTDynamicCast)                                                           \
+  XN("??_V@YAXPAX@Z", ___V_YAXPAX_Z)                                           \
   X(__dllonexit)                                                               \
+  X(__getmainargs)                                                             \
   X(__p__commode)                                                              \
   X(__p__fmode)                                                                \
   X(__security_error_handler)                                                  \
@@ -26,6 +30,7 @@
   X(__setusermatherr)                                                          \
   X(_amsg_exit)                                                                \
   X(_beginthreadex)                                                            \
+  X(_c_exit)                                                                   \
   X(_callnewh)                                                                 \
   X(_cexit)                                                                    \
   X(_controlfp)                                                                \
@@ -36,6 +41,7 @@
   X(_ftol)                                                                     \
   X(_initterm)                                                                 \
   X(_ismbblead)                                                                \
+  X(_itoa)                                                                     \
   X(_mkdir)                                                                    \
   X(_onexit)                                                                   \
   X(_purecall)                                                                 \
@@ -45,6 +51,7 @@
   X(_strdup)                                                                   \
   X(_stricmp)                                                                  \
   X(_strlwr)                                                                   \
+  X(_strnicmp)                                                                 \
   X(_strnset)                                                                  \
   X(_strupr)                                                                   \
   X(_vsnprintf)                                                                \
@@ -55,6 +62,7 @@
   X(calloc)                                                                    \
   X(ceil)                                                                      \
   X(clock)                                                                     \
+  X(exit)                                                                      \
   X(exp)                                                                       \
   X(fabs)                                                                      \
   X(fclose)                                                                    \
@@ -65,6 +73,7 @@
   X(fopen)                                                                     \
   X(fprintf)                                                                   \
   X(fputc)                                                                     \
+  X(fputs)                                                                     \
   X(fread)                                                                     \
   X(free)                                                                      \
   X(fscanf)                                                                    \
@@ -74,6 +83,7 @@
   X(getenv)                                                                    \
   X(isalnum)                                                                   \
   X(isalpha)                                                                   \
+  X(isdigit)                                                                   \
   X(islower)                                                                   \
   X(ispunct)                                                                   \
   X(isspace)                                                                   \
@@ -82,6 +92,7 @@
   X(malloc)                                                                    \
   X(memcpy)                                                                    \
   X(memmove)                                                                   \
+  X(memset)                                                                    \
   X(pow)                                                                       \
   X(printf)                                                                    \
   X(qsort)                                                                     \
@@ -89,22 +100,26 @@
   X(realloc)                                                                   \
   X(setlocale)                                                                 \
   X(sprintf)                                                                   \
+  X(sqrt)                                                                      \
   X(srand)                                                                     \
   X(sscanf)                                                                    \
   X(strcat)                                                                    \
   X(strchr)                                                                    \
   X(strcmp)                                                                    \
   X(strcpy)                                                                    \
+  X(strcspn)                                                                   \
   X(strlen)                                                                    \
   X(strncat)                                                                   \
   X(strncmp)                                                                   \
   X(strncpy)                                                                   \
   X(strrchr)                                                                   \
+  X(strstr)                                                                    \
   X(strtod)                                                                    \
   X(strtok)                                                                    \
   X(time)                                                                      \
   X(tolower)                                                                   \
   X(toupper)                                                                   \
+  X(ungetc)                                                                    \
   X(vfprintf)                                                                  \
   X(vprintf)                                                                   \
   X(vsprintf)

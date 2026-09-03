@@ -7,6 +7,7 @@
 
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "x86_hotep.h"
 #include "d3d8_resource.h"
 #include "d3d8_vertex_shader.h"
 #include "d3d8_device.h"
@@ -167,19 +168,20 @@ static void *heartbeat_thread(void *arg)
             static const char *mods[5], *syms[5];
             static unsigned long hits[5];
             unsigned int i, n;
-            extern unsigned int x86_thunk_count(void);
-            extern unsigned int x86_thunk_crossings_sorted(
-                unsigned long *, const char **, const char **,
-                unsigned long *, unsigned int);
+            /* The table's CAPACITY, not its current count: it grows while
+               the game runs and this thread is not the one growing it. */
+            static unsigned int snap_cap;
             if (!snap) {
-                snap = calloc(x86_thunk_count(), sizeof *snap);
+                snap_cap = x86_thunk_capacity();
+                snap = calloc(snap_cap, sizeof *snap);
                 if (!snap) {
                     fprintf(stderr, "[HB] thunk probe: calloc failed, "
                                     "disabling the import probe\n");
                     goto thunk_probe_disabled;
                 }
             }
-            n = x86_thunk_crossings_sorted(snap, mods, syms, hits, 5);
+            n = x86_thunk_crossings_sorted(snap, snap_cap, mods, syms,
+                                           hits, 5);
             for (i = 0; i < n; i++)
                 fprintf(stderr, "[HB]           import %s!%s: %lu call(s)\n",
                         mods[i] ? mods[i] : "?", syms[i] ? syms[i] : "?",
@@ -192,9 +194,6 @@ static void *heartbeat_thread(void *arg)
                X2_HOTEP=<n>; unarmed, this prints nothing -- a deliberate
                silence, not a missing line, because the probe has zero meaning
                if it never counted. */
-            extern unsigned int x86_hotep_sorted(uint32_t *, unsigned long long *,
-                                             unsigned long *, unsigned int);
-            extern unsigned int x86_hotep_collisions(void);
             uint32_t eps[5];
             unsigned long long nss[5];
             unsigned long hns[5];

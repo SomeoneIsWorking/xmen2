@@ -21,6 +21,7 @@
   X(CreateEventA)                                                              \
   X(CreateFileA)                                                               \
   X(CreateFileMappingA)                                                        \
+  X(CreateFileW)                                                               \
   X(CreateMutexA)                                                              \
   X(CreateSemaphoreA)                                                          \
   X(DebugBreak)                                                                \
@@ -32,6 +33,7 @@
   X(EnumSystemLocalesA)                                                        \
   X(ExitProcess)                                                               \
   X(FindClose)                                                                 \
+  X(FindFirstFileA)                                                            \
   X(FindNextFileA)                                                             \
   X(FlushFileBuffers)                                                          \
   X(FormatMessageA)                                                            \
@@ -42,12 +44,14 @@
   X(GetCPInfo)                                                                 \
   X(GetCommandLineA)                                                           \
   X(GetCurrentProcess)                                                         \
+  X(GetCurrentProcessId)                                                       \
   X(GetCurrentThread)                                                          \
   X(GetCurrentThreadId)                                                        \
   X(GetDiskFreeSpaceExA)                                                       \
   X(GetEnvironmentStrings)                                                     \
   X(GetEnvironmentStringsW)                                                    \
   X(GetFileAttributesA)                                                        \
+  X(GetFileSize)                                                               \
   X(GetFileType)                                                               \
   X(GetFullPathNameA)                                                          \
   X(GetLastError)                                                              \
@@ -57,11 +61,13 @@
   X(GetModuleHandleA)                                                          \
   X(GetOEMCP)                                                                  \
   X(GetPriorityClass)                                                          \
+  X(GetProcAddress)                                                            \
   X(GetProcessHeap)                                                            \
   X(GetProcessTimes)                                                           \
   X(GetStartupInfoA)                                                           \
   X(GetStdHandle)                                                              \
   X(GetStringTypeA)                                                            \
+  X(GetStringTypeW)                                                            \
   X(GetSystemDirectoryA)                                                       \
   X(GetSystemInfo)                                                             \
   X(GetSystemTimeAsFileTime)                                                   \
@@ -69,6 +75,7 @@
   X(GetThreadTimes)                                                            \
   X(GetTickCount)                                                              \
   X(GetUserDefaultLCID)                                                        \
+  X(GetVersion)                                                                \
   X(GetVersionExA)                                                             \
   X(GlobalMemoryStatus)                                                        \
   X(HeapAlloc)                                                                 \
@@ -78,48 +85,60 @@
   X(HeapReAlloc)                                                               \
   X(HeapSize)                                                                  \
   X(InitializeCriticalSection)                                                 \
+  X(InitializeCriticalSectionAndSpinCount)                                     \
   X(InterlockedDecrement)                                                      \
   X(InterlockedExchange)                                                       \
   X(InterlockedIncrement)                                                      \
   X(IsBadCodePtr)                                                              \
   X(IsBadReadPtr)                                                              \
+  X(IsBadWritePtr)                                                             \
   X(IsDebuggerPresent)                                                         \
   X(IsProcessorFeaturePresent)                                                 \
   X(IsValidCodePage)                                                           \
   X(IsValidLocale)                                                             \
   X(LCMapStringA)                                                              \
   X(LCMapStringW)                                                              \
+  X(LeaveCriticalSection)                                                      \
   X(LoadLibraryA)                                                              \
   X(LocalFree)                                                                 \
   X(MapViewOfFile)                                                             \
   X(MultiByteToWideChar)                                                       \
   X(OutputDebugStringA)                                                        \
+  X(PulseEvent)                                                                \
   X(QueryPerformanceCounter)                                                   \
   X(QueryPerformanceFrequency)                                                 \
   X(RaiseException)                                                            \
   X(ReadFile)                                                                  \
   X(ReleaseMutex)                                                              \
+  X(ReleaseSemaphore)                                                          \
   X(RemoveDirectoryA)                                                          \
   X(ResetEvent)                                                                \
   X(ResumeThread)                                                              \
   X(RtlUnwind)                                                                 \
   X(SetEndOfFile)                                                              \
+  X(SetEnvironmentVariableA)                                                   \
   X(SetEvent)                                                                  \
   X(SetFilePointer)                                                            \
   X(SetHandleCount)                                                            \
   X(SetLastError)                                                              \
+  X(SetPriorityClass)                                                          \
   X(SetStdHandle)                                                              \
   X(SetThreadAffinityMask)                                                     \
   X(SetThreadPriority)                                                         \
+  X(SetThreadPriorityBoost)                                                    \
   X(SetUnhandledExceptionFilter)                                               \
   X(Sleep)                                                                     \
   X(SuspendThread)                                                             \
+  X(TerminateProcess)                                                          \
   X(TlsAlloc)                                                                  \
   X(TlsFree)                                                                   \
   X(TlsGetValue)                                                               \
+  X(TlsSetValue)                                                               \
   X(TryEnterCriticalSection)                                                   \
   X(UnmapViewOfFile)                                                           \
+  X(VirtualAlloc)                                                              \
   X(VirtualFree)                                                               \
+  X(VirtualQuery)                                                              \
   X(WaitForMultipleObjects)                                                    \
   X(WaitForSingleObject)                                                       \
   X(WideCharToMultiByte)                                                       \

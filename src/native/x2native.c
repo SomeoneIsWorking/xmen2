@@ -25,6 +25,7 @@
 #include "x86_reached.h"
 #include "x86rt_native.h"
 #include "host_imports.h"
+#include "x86_hotep.h"
 #include "heartbeat.h"
 #include "dinput_device.h"
 #include "win32_sdl.h"
@@ -2085,8 +2086,7 @@ int main(int argc, char **argv)
             heartbeat_start();
             x86_args_build_check();
             guest_quantum_from_env();
-            { extern void x86_hotep_arm(const char *);
-              x86_hotep_arm(getenv("X2_HOTEP")); }
+            x86_hotep_arm(getenv("X2_HOTEP"));
             { extern void x86_profiler_start(const char *);
               x86_profiler_start(getenv("X2_PROFILE")); }
             x86_reached_arm_from_env();

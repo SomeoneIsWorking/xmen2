@@ -44,7 +44,14 @@
  * the grouping in apply_host_protection, while a 4 KiB Android page makes the
  * same code a one-page no-op.
  */
-#if (defined(__APPLE__) && defined(__aarch64__)) || defined(__ANDROID__)
+/* X2_GUEST_ARENA_RESERVED forces the answer either way. It exists for the
+ * sanitizers: AddressSanitizer's own shadow lives at low addresses and
+ * collides with an identity-mapped guest at 0x00400000, so a desktop build
+ * that wants ASan has to take the rebased path -- the same path Apple and
+ * Android take in production, not a debug-only variant of it. */
+#if defined(X2_GUEST_ARENA_RESERVED)
+#define GUEST_ARENA_RESERVED X2_GUEST_ARENA_RESERVED
+#elif (defined(__APPLE__) && defined(__aarch64__)) || defined(__ANDROID__)
 #define GUEST_ARENA_RESERVED 1
 #else
 #define GUEST_ARENA_RESERVED 0

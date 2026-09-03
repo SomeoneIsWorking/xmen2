@@ -18,8 +18,12 @@
   X(_CIasin)                                                                   \
   X(_CIfmod)                                                                   \
   X(_CIpow)                                                                    \
+  XN("??2@YAPAXI@Z", __2_YAPAXI_Z)                                             \
+  XN("??3@YAXPAX@Z", __3_YAXPAX_Z)                                             \
+  XN("??_V@YAXPAX@Z", ___V_YAXPAX_Z)                                           \
   X(__dllonexit)                                                               \
   X(_beginthreadex)                                                            \
+  X(_endthreadex)                                                              \
   X(_errno)                                                                    \
   X(_exit)                                                                     \
   X(_finite)                                                                   \
@@ -31,6 +35,7 @@
   X(_snprintf)                                                                 \
   X(_strdup)                                                                   \
   X(_stricmp)                                                                  \
+  X(_strlwr)                                                                   \
   X(_strnicmp)                                                                 \
   X(_strupr)                                                                   \
   X(_vsnprintf)                                                                \
@@ -50,6 +55,7 @@
   X(floor)                                                                     \
   X(fopen)                                                                     \
   X(fprintf)                                                                   \
+  X(fputc)                                                                     \
   X(fputs)                                                                     \
   X(fread)                                                                     \
   X(free)                                                                      \
@@ -61,6 +67,7 @@
   X(isalnum)                                                                   \
   X(isalpha)                                                                   \
   X(isdigit)                                                                   \
+  X(isspace)                                                                   \
   X(log)                                                                       \
   X(malloc)                                                                    \
   X(memcpy)                                                                    \
@@ -71,6 +78,7 @@
   X(qsort)                                                                     \
   X(rand)                                                                      \
   X(realloc)                                                                   \
+  X(setlocale)                                                                 \
   X(sprintf)                                                                   \
   X(sqrt)                                                                      \
   X(srand)                                                                     \
@@ -84,15 +92,14 @@
   X(strncmp)                                                                   \
   X(strncpy)                                                                   \
   X(strrchr)                                                                   \
+  X(strstr)                                                                    \
   X(strtod)                                                                    \
   X(strtok)                                                                    \
   X(tolower)                                                                   \
   X(ungetc)                                                                    \
   X(vfprintf)                                                                  \
   X(vprintf)                                                                   \
-  X(vsprintf)                                                                  \
-  XN("??2@YAPAXI@Z", __2_YAPAXI_Z)                                             \
-  XN("??3@YAXPAX@Z", __3_YAXPAX_Z)
+  X(vsprintf)
 
 #define DECL(n) void imp_MSVCRT_##n(CPU *C);
 #define DECL_N(s, n) void imp_MSVCRT_##n(CPU *C);
