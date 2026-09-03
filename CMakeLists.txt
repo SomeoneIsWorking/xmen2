@@ -736,6 +736,14 @@ target_compile_definitions(test_engine_leaf_thunks PRIVATE TEST_SUITE=1)
 target_link_libraries(test_engine_leaf_thunks PRIVATE x86port lucent::lucent)
 add_test(NAME engine_leaf_thunks COMMAND test_engine_leaf_thunks)
 
+add_executable(test_attr_stack tests/test_attr_stack.c
+               src/native/attr_stack.c src/native/guest_memory.c
+               tests/native_stubs.c)
+target_include_directories(test_attr_stack PRIVATE src/native src/recomp)
+target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1)
+target_link_libraries(test_attr_stack PRIVATE lucent::lucent)
+add_test(NAME attr_stack COMMAND test_attr_stack)
+
 target_include_directories(test_x87crt PRIVATE src/recomp)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
@@ -1324,6 +1332,8 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine_intercept.c
     src/native/x86_engine_dispatch.c
     src/native/engine_leaf_thunks.c
+    src/native/attr_stack.c
+    src/native/attr_stack_verify.c
     src/native/x86_engine_jit_diag.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c

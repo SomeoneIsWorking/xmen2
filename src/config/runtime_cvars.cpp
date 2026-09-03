@@ -54,6 +54,17 @@ lucent::cvar::Var<bool> g_gfx_vtx_swizzle_verify{"gfx.vtx_swizzle_verify",
 lucent::cvar::Var<bool> g_gfx_vtx_builder_verify{"gfx.vtx_builder_verify",
                                                  false};
 
+/* on: fast-path native override for igAttrStackManager::reset and
+ * igAttrStack::customReset (libIGSg.dll 0x10034d30 / 0x10034d10).
+ * off restores full guest JIT execution of the attribute stack resets. */
+lucent::cvar::Var<bool> g_sg_attr_stack{"sg.attr_stack", true};
+
+/* on: after each native igAttrStackManager::reset (libIGSg.dll 0x10034d30),
+ * re-run the guest's own body from the same start state and abort on any
+ * output or state mismatch. The differential proof for the native attr stack;
+ * off in normal play. */
+lucent::cvar::Var<bool> g_sg_attr_stack_verify{"sg.attr_stack_verify", false};
+
 /* on: pure leaf import thunks (_ftol, _stricmp, QPC, etc.) bypass the substrate
  * callout bridge and run directly from the host dispatch loop on the
  * x86port CPU state. off restores the full substrate callout bridge. */
@@ -88,6 +99,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_audio_adpcm_verify);
   lucent::cvar::register_var(g_gfx_vtx_swizzle_verify);
   lucent::cvar::register_var(g_gfx_vtx_builder_verify);
+  lucent::cvar::register_var(g_sg_attr_stack);
+  lucent::cvar::register_var(g_sg_attr_stack_verify);
 
   const std::string path =
       std::string(x2_config_directory()) + "/x2native-runtime.conf";

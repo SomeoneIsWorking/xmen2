@@ -242,3 +242,21 @@ draw/skinning cost up but the crossing cost scales with it.
   In a 2000-frame in-game run (`act0/tutorial/tutorial1`), average frame wall time
   improved from 16.89 ms to 14.57 ms (-13.7% overall frame time), with average
   present framerate rising from ~59.2 FPS to ~68.6 FPS.
+
+## Progress (2026-09-04)
+
+- **Option 4 implemented for Scene Graph attribute stack reset (Claim C282)**:
+  Profiling with `jit.profile=65536` identified `igAttrStack::customReset` (`0x10034d10`)
+  as the hottest block in `libIGSg.dll` (~3.26M entries, 9.8M JIT block transitions,
+  ~2.4% of total guest execution time), called in an inner loop by
+  `igAttrStackManager::reset` (`0x10034d30`).
+  Implemented native overrides for `0x10034d10` and `0x10034d30` in `src/native/attr_stack.{c,h}`,
+  running the attribute stack loop natively in host C, executing `clearLightHandles`
+  via `x86_guest_call_args`, and correctly popping the return address (`C->esp += 4u`).
+  Added runtime CVar `sg.attr_stack` (default enabled) in `src/config/runtime_cvars.cpp`.
+  Added differential verification harness in `src/native/attr_stack_verify.{c,h}`
+  (`sg.attr_stack_verify=1`), verified over 1,740 in-game frames with 0 divergences.
+  Added unit test suite in `tests/test_attr_stack.c` (test #76).
+  In a 2000-frame in-game benchmark (`act0/tutorial/tutorial1`, `X2_UNPACED=1`):
+  Average frame time reduced from 16.62 ms to 15.14 ms (-8.9%), with present
+  framerate increasing from 57.4 FPS to 62.7 FPS (+9.2%).
