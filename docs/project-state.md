@@ -346,6 +346,11 @@ staging fixes with measured reductions (C207 and C233).
 Gap: no target frame-time or load-time budget defines "fast enough"; current
 headless performance remains roughly 30 fps with the game cap removed, the
 roughly 500 ms load hitch remains visible, and asset I/O has not been profiled.
+Under `engine=jit` the `X2_HOTEP` wall-time split attributes the majority of a
+steady-state menu interval to guest->host import crossings rather than JIT
+guest bodies, dominated by a ~20k-calls/frame `QueryPerformanceCounter` pacing
+spin (issue #141); the per-thunk unwind of `x86p_jit_engine_run` is the
+structural cost.
 
 ### S011 — oracle and differential RE workflow: partial
 
