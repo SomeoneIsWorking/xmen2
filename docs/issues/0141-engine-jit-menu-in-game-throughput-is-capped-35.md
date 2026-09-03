@@ -120,21 +120,28 @@ cost (the Android target) more than uncapped FPS.
 ```
 0x006167xx / 0x006721xx are gone -- both clusters are natively owned.
 
-**Next target: `0x2b046cfa` in libIGGfx (Alchemy), 4.4%.** A `jmp [table*4]`
-switch (table at `0x10046cb5`) inside a vertex/pixel **format-conversion**
-routine; case 2 (`cmp [ebp+4], 2`) is the hot loop at `0x10046cfa`: for each
-element it loads a 32-bit word at `buffer[stride*i + off]` (stride `[ecx+0x38]`,
-off `[ecx+0x3b]`, base `[[ecx+8]+0x50]`) and swaps bytes 0 and 2 while keeping
-bytes 1 and 3 -- a **BGRA<->RGBA channel swap**. SIMD-friendly (`pshufb` over 4
-pixels), but the enclosing function uses virtual dispatch (`call [edx+0x5c]`)
-and has many other switch cases, so a native override must either replace the
-whole switch or intercept only the swap loop. This is Alchemy shared code
-(`shared/alchemy`) -- the mono/stereo colour-swap belongs there if XMLI needs
-it too. Not yet started: needs the function entry, the full case table, the
-`ecx`/`ebp` struct layouts, and a differential test vs the guest.
+- **`0x2b046cfa` in libIGGfx = `0x10046ce0`, ~4.4%. LANDED 2026-09-03.** A
+  shared virtual method of `igDxVertexArray1_1` / `igDx8VertexArray1_1` (same
+  vtable slot in both) -- `__thiscall void(Desc *d, int flags)`, `ret 8`. For
+  `d->type == 2` it walks vertices `[d->start, d->start+d->count)` and swaps
+  bytes 0 and 2 of the 32-bit colour word at `base + stride*i + colour_off`
+  (`base = [[this+8]+0x50]`, `stride = [this+0x38]`, `colour_off = [this+0x3b]`),
+  keeping bytes 1 and 3 -- a **BGRA<->RGBA channel swap** for D3D vertex colour.
+  Then it bumps `[this+0x60]` (dirty) and `[this+0x68]` (lock) per `flags`.
+  `src/native/vertex_color_swizzle.c` registers a native override;
+  `src/native/vertex_color_swizzle_verify.c` + `--set gfx.vtx_swizzle_verify=1`
+  snapshots the vertex span, re-runs the guest body, and aborts on any mismatch.
+  `test_vertex_color_swizzle` checks the swap, the flag-bit tail, the non-colour
+  type-1 path, and cdecl `esp` against an independent byte-level reference.
+  Driven in-game: the override fires (`gfx.vtx_swizzle_verify=1` reported the
+  first colour-path swap of a 122,884-byte vertex buffer matching the guest
+  body, 0 disagreements); with verify off `0x10046cxx` leaves the `jit.profile`
+  output entirely (was profile block #1 at 4.4%).
 
-`igAttrStack::customReset` (3.3%) and the `igArenaMemoryPool` allocator cluster
-(~3%) are the other named localized targets, both also Alchemy.
+`igAttrStack::customReset` (now #2 at ~3.9%) is next by size but is a
+pure-integer leaf (7 `mov [this+d], imm` stores) that the JIT already
+translates -- a native override would add a crossing per call for no
+per-instruction saving. The remaining lever is broad x86port codegen quality.
 
 
 ## Where the time goes
