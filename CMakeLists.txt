@@ -26,7 +26,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 66cc05f
+    GIT_TAG 30ef243
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 set(X2_LUCENT_ANDROID_JAVA_DIR
@@ -1452,7 +1452,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_light_dump.c
     src/d3d8/d3d8_light_survey.c
     src/d3d8/d3d8_vertex_shader.c
-    src/d3d8/d3d8_vs_execute.c
+    src/d3d8/d3d8_vs_execute.cpp
     src/d3d8/d3d8_screen_space_test.c
     src/d3d8/d3d8_light_selftest.c
     src/d3d8/d3d8_report.c

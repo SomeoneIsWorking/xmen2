@@ -40,7 +40,6 @@
  */
 #include "threads.h"
 #include "guest_clock.h"
-
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "pe_map.h"
@@ -65,7 +64,6 @@ void k32_handle_thread_done(void *rec);
 void k32_tls_switch(int slot);
 uint32_t k32_tls_peek(int slot, uint32_t index);
 int k32_tls_slot_count(void);
-
 /* ---- what each guest thread is doing ------------------------------------ */
 
 enum {
@@ -77,13 +75,10 @@ enum {
   TS_SUSPENDED,
   TS_DONE
 };
-static const char *const TS_NAME[] = {"new",
-                                      "running guest code",
-                                      "runnable, waiting its turn",
-                                      "in a WAIT (condition variable)",
-                                      "in a blocking host call",
-                                      "SUSPENDED",
-                                      "finished"};
+static const char *const TS_NAME[] = {
+    "new", "running guest code", "runnable, waiting its turn",
+    "in a WAIT (condition variable)", "in a blocking host call",
+    "SUSPENDED", "finished"};
 
 #define MAX_THREADS 16
 #define MAIN_SLOT MAX_THREADS /* the main thread's TLS slot */
@@ -129,10 +124,8 @@ typedef struct {
   int depth;        /* guest_lock nesting, for guest_quantum */
   int32_t priority; /* SetThreadPriority, per thread */
 } GuestThread;
-
 static GuestThread g_thread[MAX_THREADS + 1]; /* +1: the main thread */
 static __thread GuestThread *g_self;
-
 /* Declared in x86rt.h and naturally separated by the host pthreads. */
 extern __thread uint32_t g_fsbase, g_gsbase;
 
@@ -162,7 +155,6 @@ static void state_set(int st) {
  */
 #define MAIN_TID 999u
 static void sched_attach_main(void);
-
 uint32_t guest_current_tid(void) { return g_self ? g_self->tid : MAIN_TID; }
 
 void *guest_thread_current_record(void) {
@@ -194,7 +186,7 @@ int32_t guest_thread_priority_get(void) {
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t g_cond = PTHREAD_COND_INITIALIZER;
-static _Atomic int g_waiters;
+static _Atomic int g_waiters, g_cond_waiters;
 static unsigned long g_contended;
 static unsigned long g_switches; /* mutex hand-offs performed */
 static unsigned long g_quanta;   /* preemptions actually taken */
@@ -204,7 +196,6 @@ static unsigned long g_resume_unknown, g_suspend_unknown, g_resume_noop;
 static uint32_t g_next_tid = 1000;
 
 static void guest_suspend_point(void);
-
 static int scheduler_has_waiter(void) {
   int i;
   if (g_waiters)
@@ -356,6 +347,7 @@ void guest_cond_wait_ms(uint32_t ms) {
   }
   state_set(TS_COND);
   g_switches++;
+  g_cond_waiters++;
   if (ms == 0xFFFFFFFFu) {
     pthread_cond_wait(&g_cond, &g_lock);
   } else {
@@ -369,6 +361,7 @@ void guest_cond_wait_ms(uint32_t ms) {
     }
     pthread_cond_timedwait(&g_cond, &g_lock, &ts);
   }
+  g_cond_waiters--;
   k32_tls_switch(t->slot);
   state_set(TS_RUNNING);
   guest_suspend_point();
@@ -378,7 +371,10 @@ void guest_cond_wait_ms(uint32_t ms) {
    signalled -- a thread exiting, an event set, a critical section left. Does
    NOT switch: the caller is in the middle of guest code and Win32's SetEvent
    does not yield either. */
-void guest_cond_broadcast(void) { pthread_cond_broadcast(&g_cond); }
+void guest_cond_broadcast(void) {
+  if (g_cond_waiters > 0)
+    pthread_cond_broadcast(&g_cond);
+}
 
 /*
  * Sleep.
@@ -442,9 +438,12 @@ static void *thread_main(void *argument) {
 
   g_self = t;
   guest_lock();
-  while (t->suspended) {
+  if (t->suspended)
     state_set(TS_SUSPENDED);
+  while (t->suspended) {
+    g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
+    g_cond_waiters--;
   }
   state_set(TS_RUNNING);
   /* Its own TIB, so this thread's SEH chain is its own. The sentinel is
@@ -669,8 +668,11 @@ static void guest_suspend_point(void) {
   if (!t || !t->suspended)
     return;
   state_set(TS_SUSPENDED);
-  while (t->suspended)
+  while (t->suspended) {
+    g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
+    g_cond_waiters--;
+  }
   k32_tls_switch(t->slot);
   state_set(TS_RUNNING);
 }

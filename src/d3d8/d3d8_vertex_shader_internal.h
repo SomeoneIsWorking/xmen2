@@ -3,7 +3,7 @@
 
 /*
  * The shader object's layout, shared by its two owners: the handle store in
- * d3d8_vertex_shader.c and the VS 1.1 executor in d3d8_vs_execute.c.
+ * d3d8_vertex_shader.c and the VS 1.1 executor in d3d8_vs_execute.cpp.
  *
  * Private to those two. Everything outside holds an opaque handle and goes
  * through d3d8_vertex_shader.h, which is what makes the generation counter in
@@ -31,6 +31,10 @@
  */
 #define VS_CONSTANTS D3D8_MAX_VS_CONSTANTS
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct D3D8VertexShader {
   int used;
   uint16_t generation;
@@ -43,5 +47,9 @@ struct D3D8VertexShader {
 
 /* How much the executor did, for the store's run report. */
 void d3d8_vs_execution_counts(unsigned long *draws, unsigned long *vertices);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* D3D8_VERTEX_SHADER_INTERNAL_H */

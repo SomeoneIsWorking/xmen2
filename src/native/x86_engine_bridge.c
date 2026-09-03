@@ -115,10 +115,12 @@ void x2_engine_callout_from_x86p(const X86pCpu *in, CPU *C) {
   depth = x86p_x87_depth(&in->x87);
   C->top = 0;
   C->depth = 0;
-  for (i = depth - 1; i >= 0; i--) {
-    long double v = 0.0L;
-    x86p_x87_get(&in->x87, i, &v);
-    x87_push(C, v);
+  if (__builtin_expect(depth > 0, 0)) {
+    for (i = depth - 1; i >= 0; i--) {
+      long double v = 0.0L;
+      x86p_x87_get(&in->x87, i, &v);
+      x87_push(C, v);
+    }
   }
 }
 
@@ -132,9 +134,17 @@ void x2_engine_callout_to_x86p(const CPU *C, X86pCpu *out) {
   out->reg[kX86pEbp] = C->ebp;
   out->reg[kX86pEsi] = C->esi;
   out->reg[kX86pEdi] = C->edi;
-  x86p_x87_reset(&out->x87);
   out->x87.control = (uint16_t)C->fcw;
   out->x87.status = (uint16_t)(C->fsw & 0x4700u);
-  for (i = C->depth - 1; i >= 0; i--)
-    x86p_x87_push(&out->x87, C->st[(C->top + i) & 7]);
+  if (__builtin_expect(C->depth > 0, 0)) {
+    x86p_x87_reset(&out->x87);
+    out->x87.control = (uint16_t)C->fcw;
+    out->x87.status = (uint16_t)(C->fsw & 0x4700u);
+    for (i = C->depth - 1; i >= 0; i--)
+      x86p_x87_push(&out->x87, C->st[(C->top + i) & 7]);
+  } else if (__builtin_expect(x86p_x87_depth(&out->x87) > 0, 0)) {
+    x86p_x87_reset(&out->x87);
+    out->x87.control = (uint16_t)C->fcw;
+    out->x87.status = (uint16_t)(C->fsw & 0x4700u);
+  }
 }

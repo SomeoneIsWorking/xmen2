@@ -13,9 +13,10 @@
 
 #include "d3d8_state.h"
 
-#include <math.h>
-#include <stdio.h>
-#include <string.h>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <lucent/log.h>
 
 #define VS_CONSTANTS D3D8_MAX_VS_CONSTANTS
 
@@ -133,14 +134,10 @@ static Vec source(uint32_t t, Vec temp[12], Vec in[17], Vec c[VS_CONSTANTS],
     if (t & 0x00002000u)
       idx += (int)floorf(addr->x[0] + 0.5f);
     if (idx < 0 || idx >= VS_CONSTANTS) {
-      static unsigned long refused;
-      if (!refused++)
-        fprintf(stderr,
-                "d3d8: VS 1.1 indexed constant c[%d] is "
-                "outside the %d-register file, which is what "
-                "D3DCAPS8::MaxVertexShaderConst promised the engine. "
-                "The draw is REFUSED. Reported once.\n",
-                idx, VS_CONSTANTS);
+      lucent::warn("d3d8",
+                   "VS 1.1 indexed constant c[{}] is outside the {}-register "
+                   "file; draw refused",
+                   idx, VS_CONSTANTS);
       *ok = 0;
       return raw;
     }
@@ -281,7 +278,7 @@ int d3d8_vs_execute(uint32_t handle, const float constants[VS_CONSTANTS][4],
   Input decl[17];
   Vec c[VS_CONSTANTS];
   unsigned v, i;
-  const uint8_t *base = vertices;
+  const auto *base = static_cast<const uint8_t *>(vertices);
   if (!s || !vertices || !stride || !output || !decode_inputs(s, decl))
     return 0;
   if (first > UINT32_MAX - count ||

@@ -785,10 +785,6 @@ void imp_KERNEL32_CreateSemaphoreA(CPU *C) {
 }
 
 void imp_KERNEL32_ReleaseSemaphore(CPU *C) {
-  /* Something a wait could be blocked on has been signalled: wake the
-     waiters. A signal nothing is told about leaves a guest thread asleep
-     on an object that is already ready. */
-  guest_cond_broadcast();
   /* (handle, lReleaseCount, lpPreviousCount) */
   Handle *hh = h_get(A(0), H_SEM);
   int32_t prev = hh->count;
@@ -800,6 +796,8 @@ void imp_KERNEL32_ReleaseSemaphore(CPU *C) {
   hh->count += (int32_t)A(1);
   if (A(2))
     WR32(A(2), (uint32_t)prev);
+  if (hh->waiters > 0)
+    guest_cond_broadcast();
   ret_std(C, 1, 3);
 }
 
@@ -817,15 +815,11 @@ void imp_KERNEL32_CreateEventA(CPU *C) {
 }
 
 void imp_KERNEL32_SetEvent(CPU *C) {
-  /* Something a wait could be blocked on has been signalled: wake the
-     waiters. A signal nothing is told about leaves a guest thread asleep
-     on an object that is already ready. */
-  {
-    Handle *hh = h_get(A(0), H_EVENT);
-    hh->n_set++;
+  Handle *hh = h_get(A(0), H_EVENT);
+  hh->n_set++;
+  hh->count = 1;
+  if (hh->waiters > 0)
     guest_cond_broadcast();
-    hh->count = 1;
-  }
   ret_std(C, 1, 1);
 }
 
@@ -915,10 +909,6 @@ void imp_KERNEL32_CreateMutexA(CPU *C) {
 }
 
 void imp_KERNEL32_ReleaseMutex(CPU *C) {
-  /* Something a wait could be blocked on has been signalled: wake the
-     waiters. A signal nothing is told about leaves a guest thread asleep
-     on an object that is already ready. */
-  guest_cond_broadcast();
   Handle *hh = h_get(A(0), H_MUTEX);
   uint32_t me = guest_current_tid();
   if (hh->count <= 0 || hh->owner_tid != me) {
@@ -930,8 +920,11 @@ void imp_KERNEL32_ReleaseMutex(CPU *C) {
     ret_std(C, 0, 1);
     return;
   }
-  if (--hh->count == 0)
+  if (--hh->count == 0) {
     hh->owner_tid = 0;
+    if (hh->waiters > 0)
+      guest_cond_broadcast();
+  }
   ret_std(C, 1, 1);
 }
 

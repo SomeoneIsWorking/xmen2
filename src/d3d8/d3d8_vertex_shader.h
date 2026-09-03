@@ -9,6 +9,10 @@
 
 #define D3D8_VS_CONSTANTS 96
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct D3D8VertexShader D3D8VertexShader;
 
 uint32_t d3d8_vs_create(const uint32_t *declaration, const uint32_t *function,
@@ -44,5 +48,9 @@ void d3d8_vertex_shader_binding_report(void);
 
 /* The same census as one heartbeat line; a '*' marks a shader handle. */
 void d3d8_vertex_shader_binding_line(char *buf, size_t n);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

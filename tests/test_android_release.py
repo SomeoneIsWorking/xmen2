@@ -151,7 +151,7 @@ def main() -> int:
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
     assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "InstallLocation.java").exists()
-    assert "66cc05f" in cmake
+    assert "30ef243" in cmake
     assert "x2.lucentJavaDir" in cmake
     assert "lucentJavaDir" in gradle
     # The product target always opens the control channel, and socket() needs
