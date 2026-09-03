@@ -34,6 +34,12 @@ lucent::cvar::Var<bool> g_jit_verify{"jit.verify", false};
  * A/B for measuring the inline handler's effect. */
 lucent::cvar::Var<bool> g_jit_inline_dispatch{"jit.inline_dispatch", true};
 
+/* on: after each native IMA ADPCM decode (XMen2.exe 0x00616770 / 0x00616880),
+ * re-run the guest's own body from the same start state and abort on any
+ * output or state mismatch. The differential proof for the native decoder;
+ * off in normal play. */
+lucent::cvar::Var<bool> g_audio_adpcm_verify{"audio.adpcm_verify", false};
+
 /* >0: arm x86port's block-entry histogram, sized for that many distinct block
  * addresses; the hottest blocks print at shutdown. A diagnostic -- it answers
  * "where does in-game guest time go" now that the crossing cost is gone. */
@@ -59,6 +65,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_verify);
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
+  lucent::cvar::register_var(g_audio_adpcm_verify);
 
   const std::string path =
       std::string(x2_config_directory()) + "/x2native-runtime.conf";

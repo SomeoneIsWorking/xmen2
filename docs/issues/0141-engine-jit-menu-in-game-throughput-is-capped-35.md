@@ -61,23 +61,35 @@ are ~25%. There is no one hot loop to crush -- the game's per-frame guest work
 entered 1.24e9`, `0 fallback steps`, `28,891 insns via helper` of 597k
 translated (~5%). So the lever is not coverage (already complete) and not one
 override; it is either broad x86port codegen quality (a long grind of better
-emitters, measurable now with this profile) or native ownership of the two
-localized XMen2.exe clusters at 0x00616xxx (~7%) and 0x006721xx (~2.8%) -- which
-need RE first. The 0x0055b610 frame-limiter spin (option 2) is real but its
+emitters, measurable now with this profile) or native ownership of localized
+XMen2.exe clusters. The two largest such clusters are now natively owned:
+0x006167xx/0x006168xx (~7%, IMA ADPCM) and 0x006721xx (~2.8%, `_ftol2`), both
+LANDED 2026-09-03 -- see below. The 0x0055b610 frame-limiter spin (option 2) is real but its
 count here is inflated by `X2_UNPACED`; collapsing it helps paced CPU/thermal
 cost (the Android target) more than uncapped FPS.
 
 ### The two localized XMen2.exe clusters, disassembled (2026-09-03)
 
-- **`0x006167a1..0x00616873` (~7%, trip count 4,669,440/run)** -- a tight
-  nibble-stream decode loop: reads 4-bit codes from `[ecx]`, indexes step/delta
-  tables at `0x006e9588` and `0x006e95a8`, accumulates with
-  `esi>>3 + esi + esi>>1 + esi>>2` (a fixed-point step multiply), clamps to
-  int16 `[-0x8000, 0x7fff]`, writes 16-bit PCM to `[esp+0x18]`. This is
-  **ADPCM audio decode**. `0x00616880` is a second variant of the same
-  algorithm (stereo/other block size). Candidate for a native override
-  (`more native ownership`) -- needs the function boundary and the two table
-  layouts pinned and a bit-exact differential test vs the guest.
+- **`0x006167a1..0x00616873` (~7%, trip count 4,669,440/run) -- statically-linked
+  IMA ADPCM decoders. LANDED 2026-09-03.** `0x00616770` is mono
+  (`void(int16_t *out, const uint8_t *in, int count, int *predictor, int *step_index)`,
+  `__cdecl`, `eax = count`); `0x00616880` is stereo (low nibble = left, high
+  nibble = right, one byte per frame, interleaved output, `eax = out + frames*4`).
+  Both are textbook IMA: pre-update `step = kStep[stepIndex]`, advance
+  `stepIndex += {-1,-1,-1,-1,2,4,6,8}[nibble & 7]` clamped `[0,88]`,
+  `diff = step>>3 (+step,+step>>1,+step>>2 for bits 2,1,0)`, predictor `+/- diff`
+  per bit 3 clamped `[-32768,32767]`. The tables at `0x006e95a8` (89-entry step)
+  and `0x006e9588` (8-entry index) were dumped from the retail image and match
+  the canonical IMA tables byte-for-byte. `src/native/audio_adpcm.c` registers
+  native overrides on both; `src/native/audio_adpcm_verify.c` +
+  `--set audio.adpcm_verify=1` re-runs the guest body from the same start state
+  after every native decode and aborts on any output or state mismatch.
+  `test_audio_adpcm` checks both overrides bit-for-bit against an independent
+  reference decoder (40 mono samples + 24 stereo frames, state write-back, cdecl
+  `esp`). Driven in-game: the override fires on real audio (`audio.adpcm_verify=1`
+  reported the first native decode of a 1552-byte mono stream matching the guest
+  body, 0 disagreements over the session); with verify off the `0x006167xx` /
+  `0x006168xx` blocks leave the `jit.profile` output entirely.
 - **`0x0067217c..0x006721f0` (~2.8%) -- statically-linked `_ftol2`. LANDED
   2026-09-03.** MSVC's control-word-independent float->int64 helper
   (`fld st(0); fistp qword; fild; fsubp; add 0x7fffffff/adc`), a pure-x87 leaf

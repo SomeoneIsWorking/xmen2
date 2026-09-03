@@ -709,6 +709,12 @@ add_executable(test_crt_static_overrides tests/test_crt_static_overrides.c
 target_include_directories(test_crt_static_overrides PRIVATE src/native src/recomp)
 target_link_libraries(test_crt_static_overrides PRIVATE m)
 add_test(NAME crt_static_overrides COMMAND test_crt_static_overrides)
+
+add_executable(test_audio_adpcm tests/test_audio_adpcm.c
+               src/native/audio_adpcm.c src/native/guest_memory.c
+               tests/native_stubs.c)
+target_include_directories(test_audio_adpcm PRIVATE src/native src/recomp)
+add_test(NAME audio_adpcm COMMAND test_audio_adpcm)
 target_include_directories(test_x87crt PRIVATE src/recomp)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
@@ -1348,6 +1354,8 @@ set(X2_NATIVE_SOURCES
     src/native/crt_write_watch.c
     src/native/crt_selftest.c
     src/native/crt_static_overrides.c
+    src/native/audio_adpcm.c
+    src/native/audio_adpcm_verify.c
     src/recomp/x87crt.c
     src/native/kernel32.c
     src/native/win_path.c
