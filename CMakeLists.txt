@@ -728,6 +728,14 @@ add_executable(test_vertex_builder tests/test_vertex_builder.c
 target_include_directories(test_vertex_builder PRIVATE src/native src/recomp)
 add_test(NAME vertex_builder COMMAND test_vertex_builder)
 
+add_executable(test_engine_leaf_thunks tests/test_engine_leaf_thunks.c
+               src/native/engine_leaf_thunks.c src/native/guest_memory.c
+               tests/native_stubs.c)
+target_include_directories(test_engine_leaf_thunks PRIVATE src/native src/recomp)
+target_compile_definitions(test_engine_leaf_thunks PRIVATE TEST_SUITE=1)
+target_link_libraries(test_engine_leaf_thunks PRIVATE x86port lucent::lucent)
+add_test(NAME engine_leaf_thunks COMMAND test_engine_leaf_thunks)
+
 target_include_directories(test_x87crt PRIVATE src/recomp)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
@@ -1315,6 +1323,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine_frames.c
     src/native/x86_engine_intercept.c
     src/native/x86_engine_dispatch.c
+    src/native/engine_leaf_thunks.c
     src/native/x86_engine_jit_diag.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c

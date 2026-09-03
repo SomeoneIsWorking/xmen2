@@ -228,3 +228,17 @@ Rendering is already cheap at the menu (host draw ~0.1 ms/frame,
 upload ~0.04 ms/frame); it is not the in-menu bottleneck. In-game (a real
 level, not measurable headless without input scripting yet) will shift the
 draw/skinning cost up but the crossing cost scales with it.
+
+## Progress (2026-09-02)
+
+- **Option 3 implemented**: `src/native/engine_leaf_thunks.{c,h}` creates a unified
+  leaf thunk dispatch table indexed directly by `(eip - THUNK_BASE) >> 4`.
+  Pure leaf thunks execute directly against the `X86pCpu` struct, bypassing
+  `x2_engine_callout_from_x86p`, `x86_dispatch`, and `x2_engine_callout_to_x86p`.
+  Covered functions: `_ftol`, `_stricmp`, `_strcmpi`, `QueryPerformanceCounter`,
+  `QueryPerformanceFrequency`, `toupper`, `tolower`, `strstr`, and `TlsGetValue`.
+  Controlled by runtime CVar `engine.leaf_thunks` (default enabled).
+  Unit tested in `tests/test_engine_leaf_thunks.c`.
+  In a 2000-frame in-game run (`act0/tutorial/tutorial1`), average frame wall time
+  improved from 16.89 ms to 14.57 ms (-13.7% overall frame time), with average
+  present framerate rising from ~59.2 FPS to ~68.6 FPS.

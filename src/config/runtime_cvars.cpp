@@ -54,6 +54,11 @@ lucent::cvar::Var<bool> g_gfx_vtx_swizzle_verify{"gfx.vtx_swizzle_verify",
 lucent::cvar::Var<bool> g_gfx_vtx_builder_verify{"gfx.vtx_builder_verify",
                                                  false};
 
+/* on: pure leaf import thunks (_ftol, _stricmp, QPC, etc.) bypass the substrate
+ * callout bridge and run directly from the host dispatch loop on the
+ * x86port CPU state. off restores the full substrate callout bridge. */
+lucent::cvar::Var<bool> g_engine_leaf_thunks{"engine.leaf_thunks", true};
+
 /* >0: arm x86port's block-entry histogram, sized for that many distinct block
  * addresses; the hottest blocks print at shutdown. A diagnostic -- it answers
  * "where does in-game guest time go" now that the crossing cost is gone. */
@@ -79,6 +84,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_verify);
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
+  lucent::cvar::register_var(g_engine_leaf_thunks);
   lucent::cvar::register_var(g_audio_adpcm_verify);
   lucent::cvar::register_var(g_gfx_vtx_swizzle_verify);
   lucent::cvar::register_var(g_gfx_vtx_builder_verify);

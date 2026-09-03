@@ -1465,18 +1465,18 @@ void imp_KERNEL32_TlsFree(CPU *C) {
   ret_std(C, 1, 1);
 }
 
-void imp_KERNEL32_TlsGetValue(CPU *C) {
-  uint32_t i = A(0);
-  if (i >= MAX_TLS || !g_tls_used[i]) {
-    /* Not a fatal error in Win32 -- it sets last-error and returns 0 --
-       but it is always a bug in the caller, so it is reported. */
-    fprintf(stderr, "kernel32: TlsGetValue(%u) on an unallocated index\n", i);
-    g_last_error = 87u;
-    ret_std(C, 0, 1);
-    return;
+uint32_t k32_tls_get_value(uint32_t index) {
+  if (__builtin_expect(index < MAX_TLS && g_tls_used[index], 1)) {
+    g_last_error = 0;
+    return g_tls[index];
   }
-  g_last_error = 0;
-  ret_std(C, g_tls[i], 1);
+  fprintf(stderr, "kernel32: TlsGetValue(%u) on an unallocated index\n", index);
+  g_last_error = 87u;
+  return 0;
+}
+
+void imp_KERNEL32_TlsGetValue(CPU *C) {
+  ret_std(C, k32_tls_get_value(A(0)), 1);
 }
 
 void imp_KERNEL32_TlsSetValue(CPU *C) {

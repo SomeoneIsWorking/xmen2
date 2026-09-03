@@ -250,6 +250,7 @@ uint32_t x86_native_thunk(const char *mod, const char *sym);
 /* The same, for a slot imported BY ORDINAL: pass sym NULL and the ordinal. */
 uint32_t x86_native_thunk_at(const char *mod, const char *sym,
                              uint32_t ordinal);
+void x86_thunk_record_hit(uint32_t idx);
 
 /* Dump guest memory named by X2_PEEK (see the definition for the format).
    Safe from a signal handler: reads via process_vm_readv, so an unmapped

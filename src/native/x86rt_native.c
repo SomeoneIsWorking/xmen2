@@ -1049,6 +1049,11 @@ static int g_nthunk;
  */
 static unsigned long g_thunk_hits[THUNK_MAX];
 
+void x86_thunk_record_hit(uint32_t idx) {
+  if (idx < THUNK_MAX)
+    g_thunk_hits[idx]++;
+}
+
 /* The context of the callback currently executing, for x86_callback_ctx. A
    native class's hooks are shared C functions -- what distinguishes one
    class's getClassMetaSafe from another's is the synthetic address the guest
