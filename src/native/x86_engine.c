@@ -420,6 +420,11 @@ void x2_engine_report(void) {
             (size_t)(js.code_bytes_used / 1024), x86p_jit_engine_mechanism());
     x86_engine_jit_diag_report(&js);
     {
+      char hh[640];
+      x86p_jit_helper_histogram_report(hh, sizeof hh);
+      fprintf(stderr, "[ENGINE] %s\n", hh);
+    }
+    {
       const X86pJitProfile *prof = x86p_jit_engine_profile(g_engine.jit);
       if (prof && x86p_jit_profile_distinct(prof) > 0u) {
         X86pJitProfileEntry top[40];
