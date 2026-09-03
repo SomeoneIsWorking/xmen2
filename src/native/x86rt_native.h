@@ -61,6 +61,24 @@ int x86_native_body_at(uint32_t addr);
 static inline int x86_is_thunk(uint32_t addr) {
   return (uint32_t)(addr - THUNK_BASE) < ((uint32_t)THUNK_MAX * 16u);
 }
+
+#if defined(__GNUC__) || defined(__clang__)
+#define X2_INTERNAL __attribute__((visibility("hidden")))
+#else
+#define X2_INTERNAL
+#endif
+
+X2_INTERNAL extern uint32_t g_override_bloom[64];
+
+static inline void x86_override_bloom_add(uint32_t a) {
+  g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] |=
+      (1u << (((a >> 2) * 2654435761u) & 31u));
+}
+
+static inline int x86_override_bloom_has(uint32_t a) {
+  return (g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] &
+          (1u << (((a >> 2) * 2654435761u) & 31u))) != 0;
+}
 /* The mapped entry point of a resolved override, by index, or 0 past the end.
    An address x86_native_body_at must answer yes for, so that predicate can be
    checked against both answers rather than only the one it gives most often. */

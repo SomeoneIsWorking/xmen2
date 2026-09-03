@@ -28,15 +28,28 @@ typedef struct {
   const struct X86pCpu *cpu;
 } EngineFrame;
 
+#if defined(__GNUC__) || defined(__clang__)
+#define X2_TLS_INTERNAL __attribute__((visibility("hidden"), tls_model("initial-exec")))
+#else
+#define X2_TLS_INTERNAL
+#endif
+
+X2_TLS_INTERNAL extern __thread EngineFrame t_engine_frame[ENGINE_FRAMES_MAX];
+X2_TLS_INTERNAL extern __thread unsigned long t_engine_depth;
+X2_TLS_INTERNAL extern __thread const EngineFrame *t_engine_top;
+
 void engine_frame_push(uint32_t entry, uint32_t return_to, uint32_t entry_esp,
                        const struct X86pCpu *cpu);
 void engine_frame_pop(void);
-unsigned long engine_frame_depth(void);
+
+static inline unsigned long engine_frame_depth(void) { return t_engine_depth; }
+
 /* Put the depth back after a longjmp unwound the host frames it counted. */
 void engine_frame_restore_depth(unsigned long depth);
+
 /* The innermost stored frame, or NULL when the stack is empty or is deeper
    than ENGINE_FRAMES_MAX. */
-const EngineFrame *engine_frame_top(void);
+static inline const EngineFrame *engine_frame_top(void) { return t_engine_top; }
 /* Frame i (0 = outermost) for the fault dump; NULL once past what is stored. */
 const EngineFrame *engine_frame_at(unsigned long i);
 

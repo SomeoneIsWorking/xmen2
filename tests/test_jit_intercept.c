@@ -14,6 +14,7 @@
  */
 #include "x86_engine_frames.h"
 #include "x86_engine_intercept.h"
+#include "x86rt_native.h"
 
 #include "cpu.h"
 
@@ -24,6 +25,8 @@
 #define OVERRIDE_BODY 0x00596af0u /* a resolved native override entry point */
 #define PLAIN_GUEST 0x00401234u   /* ordinary guest code, run in place */
 #define THUNK_ADDR 0x000c0010u    /* an import thunk (THUNK_BASE + 1 slot) */
+
+X2_INTERNAL uint32_t g_override_bloom[64];
 
 /* Stand in for x86rt_native.c: the override resolver would have inserted
    OVERRIDE_BODY into the owned set. */
@@ -97,6 +100,7 @@ static void selftest_entry_is_still_run_in_place(void) {
 }
 
 int main(void) {
+  x86_override_bloom_add(OVERRIDE_BODY);
   addr_predicate_is_frame_independent();
   selftest_entry_is_still_run_in_place();
   printf("test_jit_intercept: %d check(s) passed\n", checks);

@@ -76,15 +76,7 @@ static int g_overrides_resolved;
  */
 #define OWNED_SLOTS (X2_MAX_OVERRIDES * 4)
 static uint32_t g_owned[OWNED_SLOTS];
-static uint32_t g_override_bloom[64];
-static inline void override_bloom_add(uint32_t a) {
-  g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] |=
-      (1u << (((a >> 2) * 2654435761u) & 31u));
-}
-static inline int override_bloom_has(uint32_t a) {
-  return (g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] &
-          (1u << (((a >> 2) * 2654435761u) & 31u))) != 0;
-}
+X2_INTERNAL uint32_t g_override_bloom[64];
 
 static unsigned owned_slot(uint32_t addr) {
   /* Entry points are 4- or 16-byte aligned, so the low bits carry little;
@@ -105,7 +97,7 @@ static void owned_insert(uint32_t addr) {
     }
   }
   g_owned[i] = addr;
-  override_bloom_add(addr);
+  x86_override_bloom_add(addr);
 }
 
 static int owned_has(uint32_t addr) {
@@ -1285,7 +1277,7 @@ int x86_native_body_at(uint32_t addr) {
     uint32_t t = (addr - THUNK_BASE) / 16u;
     return (int)t < g_nthunk && g_thunk[t].stub ? 1 : 0;
   }
-  return override_bloom_has(addr) && owned_has(addr);
+  return x86_override_bloom_has(addr) && owned_has(addr);
 }
 
 /* ---- the boundary ring -------------------------------------------------

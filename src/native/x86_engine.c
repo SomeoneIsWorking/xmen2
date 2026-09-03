@@ -285,8 +285,13 @@ int x2_engine_call(uint32_t addr, CPU *C) {
      * handed itself straight back would make that measurement impossible
      * while looking like it worked.
      */
-    if (x86_is_thunk(cpu.eip) ||
-        (cpu.eip != entry && x86_native_body_at(cpu.eip))) {
+    int is_host = 0;
+    if (__builtin_expect((uint32_t)(cpu.eip - 0x00080000u) < 0x50000u, 0)) {
+      is_host = x86_is_thunk(cpu.eip);
+    } else if (cpu.eip != entry && x86_override_bloom_has(cpu.eip)) {
+      is_host = x86_native_body_at(cpu.eip);
+    }
+    if (is_host) {
       const uint32_t target = cpu.eip;
       /*
        * The return address is read HERE, before the body runs. After it,
