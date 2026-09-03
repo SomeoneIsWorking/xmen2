@@ -31,23 +31,37 @@ enum {
 };
 
 uint32_t vtx_color_swizzle_word(uint32_t w) {
-  return (w & 0xff00ff00u) | ((w & 0x000000ffu) << 16) |
-         ((w >> 16) & 0x000000ffu);
+  const uint32_t x = (w ^ (w >> 16)) & 0x000000ffu;
+  return w ^ x ^ (x << 16);
 }
 
 static void swizzle_range(uint32_t self, uint32_t desc) {
   if (RD32(desc + DESC_TYPE) != DESC_TYPE_COLOR)
     return;
 
+  const uint32_t count = RD32(desc + DESC_COUNT);
+  if (count == 0)
+    return;
+
   const uint32_t base = RD32(RD32(self + SELF_BUFINFO) + BUFINFO_BASE);
   const uint32_t stride = RD8(self + SELF_STRIDE);
   const uint32_t coloff = RD8(self + SELF_COLOFF);
   const uint32_t start = RD32(desc + DESC_START);
-  const uint32_t end = start + RD32(desc + DESC_COUNT);
 
-  for (uint32_t i = start; i < end; i++) {
-    const uint32_t p = base + stride * i + coloff;
-    WR32(p, vtx_color_swizzle_word(RD32(p)));
+  if (__builtin_expect(x2_write_watch_addr != 0, 0)) {
+    const uint32_t end = start + count;
+    for (uint32_t i = start; i < end; i++) {
+      const uint32_t p = base + stride * i + coloff;
+      WR32(p, vtx_color_swizzle_word(RD32(p)));
+    }
+    return;
+  }
+
+  uint8_t *p = (uint8_t *)x86_guest_pointer(base + stride * start + coloff);
+  for (uint32_t i = 0; i < count; i++, p += stride) {
+    const uint8_t t = p[0];
+    p[0] = p[2];
+    p[2] = t;
   }
 }
 

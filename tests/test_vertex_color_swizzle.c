@@ -166,13 +166,19 @@ static void test_non_colour_type(void) {
 }
 
 static void test_word_helper(void) {
-  /* 0xAABBCCDD -> keep BB,DD; swap AA<->CC : 0xAADDCCBB... check by bytes */
-  uint32_t w = 0xaabbccddu;
-  uint32_t got = vtx_color_swizzle_word(w);
-  uint32_t want = (w & 0xff00ff00u) | ((w & 0xffu) << 16) | ((w >> 16) & 0xffu);
-  if (got != want) {
-    fprintf(stderr, "swizzle_word(%08x) = %08x, want %08x\n", w, got, want);
-    failures++;
+  const uint32_t samples[] = {
+      0x00000000u, 0xffffffffu, 0xaabbccddu, 0x12345678u,
+      0x01020304u, 0x80402010u, 0x55aa55aau, 0xdeadbeefu,
+  };
+  for (size_t i = 0; i < sizeof(samples) / sizeof(samples[0]); i++) {
+    uint32_t w = samples[i];
+    uint32_t got = vtx_color_swizzle_word(w);
+    uint32_t want =
+        (w & 0xff00ff00u) | ((w & 0xffu) << 16) | ((w >> 16) & 0xffu);
+    if (got != want) {
+      fprintf(stderr, "swizzle_word(%08x) = %08x, want %08x\n", w, got, want);
+      failures++;
+    }
   }
 }
 
