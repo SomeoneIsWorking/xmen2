@@ -67,6 +67,34 @@ need RE first. The 0x0055b610 frame-limiter spin (option 2) is real but its
 count here is inflated by `X2_UNPACED`; collapsing it helps paced CPU/thermal
 cost (the Android target) more than uncapped FPS.
 
+### The two localized XMen2.exe clusters, disassembled (2026-09-03)
+
+- **`0x006167a1..0x00616873` (~7%, trip count 4,669,440/run)** -- a tight
+  nibble-stream decode loop: reads 4-bit codes from `[ecx]`, indexes step/delta
+  tables at `0x006e9588` and `0x006e95a8`, accumulates with
+  `esi>>3 + esi + esi>>1 + esi>>2` (a fixed-point step multiply), clamps to
+  int16 `[-0x8000, 0x7fff]`, writes 16-bit PCM to `[esp+0x18]`. This is
+  **ADPCM audio decode**. `0x00616880` is a second variant of the same
+  algorithm (stereo/other block size). Candidate for a native override
+  (`more native ownership`) -- needs the function boundary and the two table
+  layouts pinned and a bit-exact differential test vs the guest.
+- **`0x0067217c..0x006721f0` (~2.8%) -- statically-linked `_ftol2`. LANDED
+  2026-09-03.** MSVC's control-word-independent float->int64 helper
+  (`fld st(0); fistp qword; fild; fsubp; add 0x7fffffff/adc`), a pure-x87 leaf
+  whose body the JIT ran one instruction at a time through the interpreter
+  helper on every conversion. `src/native/crt_static_overrides.c` registers a
+  native override on `XMen2.exe!0x0067217c` that reuses `x87_crt_ftol` (the
+  imported-`_ftol` implementation -- identical observable contract: pop ST(0),
+  truncate toward zero, int64 in EDX:EAX, `__cdecl`). `crt_static_overrides`
+  test covers the semantics + registration; a driven in-game session confirms
+  the `0x006721xx` blocks leave the execution profile entirely (top block
+  count 1.24e9 -> 1.10e9 in a matched window) and gameplay renders correctly.
+  The fully-replacing (non-`x86_guest_body`) override contract works: the
+  resolver only checks the address is inside the mapped image, and
+  `x86_native_call_at` already documents that a hand-written override emulates
+  the guest RET itself.
+
+
 
 
 ## Where the time goes

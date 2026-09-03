@@ -702,6 +702,13 @@ target_link_libraries(test_vformat PRIVATE m pthread)
 add_test(NAME vformat COMMAND test_vformat)
 
 add_executable(test_x87crt tests/test_x87crt.c src/recomp/x87crt.c)
+
+add_executable(test_crt_static_overrides tests/test_crt_static_overrides.c
+               src/native/crt_static_overrides.c src/recomp/x87crt.c
+               tests/native_stubs.c)
+target_include_directories(test_crt_static_overrides PRIVATE src/native src/recomp)
+target_link_libraries(test_crt_static_overrides PRIVATE m)
+add_test(NAME crt_static_overrides COMMAND test_crt_static_overrides)
 target_include_directories(test_x87crt PRIVATE src/recomp)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
@@ -1340,6 +1347,7 @@ set(X2_NATIVE_SOURCES
     src/native/crt_setjmp.c
     src/native/crt_write_watch.c
     src/native/crt_selftest.c
+    src/native/crt_static_overrides.c
     src/recomp/x87crt.c
     src/native/kernel32.c
     src/native/win_path.c
