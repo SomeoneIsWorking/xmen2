@@ -82,9 +82,22 @@ also took `x86_engine.c` back under the 500-line cap.
 `engine=jit` now plays the intro FMV reel correctly (Activision logo, then the
 X-Men Legends II opening cinematic -- proper colours, pillarboxed), decoder
 thread running, MAIN yielding on ~0.0 s intervals, no `0xdeadbeef` crash. The
-movie phase runs slower than the interpreter's (~10 FPS vs ~21) -- the slice
-quantum and `sched_yield` cadence want tuning -- but that is a performance
-follow-up, not this issue.
+movie phase runs slower than the interpreter's (~8-12 FPS vs ~21) -- a
+performance follow-up, not this issue.
+
+**Follow-up, measured 2026-09-03:** the movie phase is *not* yield-cadence
+bound. A full headless movie-reel run reported `0 preemption(s)` for its entire
+duration -- the libCriMovie decoder is scheduled through
+`__wrap_fn_libCriMovie_10002520`'s `guest_cond_wait_ms`, not through guest-lock
+contention, so `guest_quantum()` between JIT slices never fires there. Coarsening
+the JIT slice from the 200k-instruction cap to 1<<20 changed nothing
+(~8-12 FPS either way). Each movie frame is ~170 ms of pure guest logic; the
+cost is x86port executing libCriMovie's decode/colour-convert loop, which the
+interpreter happens to run faster per-frame here. A real fix needs profiling
+that loop under the JIT (block-entry churn vs a hot arithmetic/SIMD path
+x86port lowers poorly), not scheduler tuning. Menu renders correctly at
+~21-43 FPS; movie renders correctly (Marvel/Raven/Activision logos + opening
+cinematic, proper colours, pillarboxed). Not blocking.
 
 ## Regression coverage
 
@@ -102,4 +115,7 @@ follow-up, not this issue.
 ## Do not
 
 Do not "fix" the slow movie phase by removing the quantum yield -- that is what
-unsticks the rendezvous. Do not make the engine frame stack shared again.
+unsticks the rendezvous. Do not make the engine frame stack shared again. Do
+not tune the JIT slice size for the movie phase: it was measured to have no
+effect (0 preemptions there); the slowness is JIT execution cost in the
+libCriMovie decode loop, addressable only by profiling that loop.
