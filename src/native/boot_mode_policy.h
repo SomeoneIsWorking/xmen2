@@ -4,9 +4,9 @@
 #include "boot_mode.h"
 
 typedef struct {
-    X2BootMode requested;
-    X2BootMode effective;
-    int fell_back_to_menu;
+  X2BootMode requested;
+  X2BootMode effective;
+  int fell_back_to_menu;
 } X2BootModeDecision;
 
 /* Resolve only policy. The caller owns save discovery and guest dispatch. */

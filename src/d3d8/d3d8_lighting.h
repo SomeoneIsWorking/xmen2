@@ -22,8 +22,6 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out);
 /* D3DCOLOR (ARGB dword) to the shader's RGBA floats. */
 void d3d8_argb_to_rgba(uint32_t c, float *out);
 
-
-
 /* Everything the lighting diagnostics measured, for the run report. */
 void d3d8_lighting_report(void);
 

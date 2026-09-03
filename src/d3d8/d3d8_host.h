@@ -48,7 +48,7 @@
  * is what makes the two paths comparable in the same binary.
  */
 void d3d8_host_enable(void);
-int  d3d8_host_enabled(void);
+int d3d8_host_enabled(void);
 
 /* Printed at shutdown: what was created, what was drawn, what was skipped. A
    run that presented no frames and a run whose renderer was never reached look
@@ -66,7 +66,7 @@ int d3d8_host_selftest(void);
    and a counted reference for IDirect3DDevice8::GetDirect3D. */
 uint32_t d3d8_the_direct3d8(void);
 unsigned d3d8_the_direct3d8_refs(void);
-void     d3d8_the_direct3d8_ensure(void);
-int      d3d8_the_direct3d8_addref(void);
+void d3d8_the_direct3d8_ensure(void);
+int d3d8_the_direct3d8_addref(void);
 
 #endif /* D3D8_HOST_H */

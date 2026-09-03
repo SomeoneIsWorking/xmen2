@@ -19,13 +19,12 @@ void d3d8_vs_reset(void);
 
 const uint32_t *d3d8_vs_declaration(const D3D8VertexShader *shader,
                                     size_t *bytes);
-const uint32_t *d3d8_vs_function(const D3D8VertexShader *shader,
-                                 size_t *bytes);
+const uint32_t *d3d8_vs_function(const D3D8VertexShader *shader, size_t *bytes);
 
 typedef struct {
-    float position[4];
-    float diffuse[4];
-    float texcoord[2];
+  float position[4];
+  float diffuse[4];
+  float texcoord[2];
 } D3D8VSOutput;
 
 /* Execute the original VS 1.1 program over host-visible vertex bytes. */

@@ -62,9 +62,12 @@ it as build input:
 
 **What this does not settle.** That measurement predates the whole game being
 interpreted — the Alchemy DLLs were still on the substrate at the time — and the
-current 5-frame runs are correctness, not performance. If the whole-game steady
-state does not fit the budget, the answer is a dynarec behind the same
-`X2_ENGINE` selector, not a return to generating C.
+5-frame runs were correctness, not performance. In 3D gameplay where all modules
+run through runtime execution, pure interpreter throughput led to multi-second
+frame times. The x86-64 basic block JIT in `shared/x86port` is integrated into
+`src/native/x86_engine.c` with intercept support for host thunks, native
+overrides, and setjmp frames, and is selected by default (`X2_ENGINE=jit`),
+delivering ~7.6M blocks/second and eliminating the interpreter bottleneck.
 
 ## Why the PC build, not the Xbox build
 

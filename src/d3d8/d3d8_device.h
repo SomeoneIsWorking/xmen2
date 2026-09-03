@@ -45,7 +45,8 @@ void d3d8_device_report(void);
 int d3d8_last_setlight_diffuse(unsigned idx, float out[3]);
 
 /* Bounded debug trace for the render-state value that colours an untextured
-   SELECTARG(TFACTOR) pass. Android's debug setup arms it before game startup. */
+   SELECTARG(TFACTOR) pass. Android's debug setup arms it before game startup.
+ */
 void d3d8_device_trace_texture_factor(int enabled);
 
 /*
@@ -61,7 +62,7 @@ int d3d8_device_counts(unsigned long *scenes, unsigned long *presents,
 /* Which guest function(s) fill the vertex-shader constants -- the bone palette
    (issue #80). A census of distinct call sites, printed with its denominator:
    "no call site identified" and "this never ran" are different findings. */
-int  d3d8_vsconst_caller_line(char *buf, int n);
+int d3d8_vsconst_caller_line(char *buf, int n);
 void d3d8_vsconst_caller_report(void);
 
 #ifdef __cplusplus

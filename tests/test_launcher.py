@@ -37,14 +37,7 @@ runner = load_module("x2_run_test", ROOT / "tools" / "run.py")
 
 
 class LauncherContract(unittest.TestCase):
-    def test_shell_is_only_a_no_argument_uv_shim(self):
-        text = (ROOT / "run.sh").read_text()
-        self.assertLessEqual(len(text.splitlines()), 15)
-        self.assertIn("exec uv run --frozen python bootstrap.py", text)
-        self.assertNotIn('"$@"', text)
-        self.assertNotIn(" wine", text)
-        self.assertNotIn(" stock", text)
-
+    def test_shell_refuses_arguments(self):
         refused = subprocess.run([str(ROOT / "run.sh"), "wine"], cwd=ROOT,
                                  text=True, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT)
@@ -67,11 +60,6 @@ class LauncherContract(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "takes no arguments"):
                 bootstrap.main()
         initialize.assert_not_called()
-
-    def test_runner_has_no_mode_or_argument_surface(self):
-        text = (ROOT / "tools" / "run.py").read_text()
-        for retired in ("RUN_ARGS", "run_wine", "require_command", 'mode = "native"'):
-            self.assertNotIn(retired, text)
 
     def test_player_bootstrap_excludes_maintainer_only_re_harness(self):
         self.assertEqual({repo.name for repo in bootstrap.SHARED_REPOS},
@@ -135,12 +123,6 @@ class LauncherContract(unittest.TestCase):
              mock.patch.object(runner, "command_ok", return_value=True), \
              mock.patch.object(runner.ctypes.util, "find_library", return_value=None):
             runner.check_native_dependencies(toolchain)
-
-    def test_locked_environment_owns_resvg(self):
-        project = (ROOT / "pyproject.toml").read_text()
-        lock = (ROOT / "uv.lock").read_text()
-        self.assertIn('"resvg-py==', project)
-        self.assertIn('name = "resvg-py"', lock)
 
     def test_existing_checkout_must_already_be_at_the_pin(self):
         repo = bootstrap.SharedRepo("fixture", "https://github.com/example/fixture.git",

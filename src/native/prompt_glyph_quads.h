@@ -9,10 +9,10 @@
    u0..v1 are the port atlas's bottom-origin UVs; color is the D3DCOLOR
    captured from the engine's text batch. */
 struct X2PromptQuad {
-    float x0, y0, x1, y1;
-    float u0, v0, u1, v1;
-    uint32_t color;
-    uint16_t codepoint;
+  float x0, y0, x1, y1;
+  float u0, v0, u1, v1;
+  uint32_t color;
+  uint16_t codepoint;
 };
 
 #define X2_PROMPT_QUADS_MAX 512u
@@ -29,6 +29,5 @@ unsigned x2_prompt_quads_available(void);
    string before its first call; 0 after reservation is an invariant failure. */
 int x2_prompt_quads_add(const struct X2PromptQuad *quad);
 void x2_prompt_quads_report(void);
-
 
 #endif

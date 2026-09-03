@@ -26,15 +26,15 @@
  * between two otherwise-identical keys.
  */
 typedef struct {
-    uint32_t stride;
-    int      pos_offset, color_offset, specular_offset, uv_offset, normal_offset;
-    int      pos_is_float4, color_is_float4, specular_is_float4;
-    int      prim;
-    int      blend_enable, src_blend, dst_blend;
-    int      depth_test, depth_write, depth_func;
-    int      cull;
-    int      pretransformed;
-    int      has_depth_target;
+  uint32_t stride;
+  int pos_offset, color_offset, specular_offset, uv_offset, normal_offset;
+  int pos_is_float4, color_is_float4, specular_is_float4;
+  int prim;
+  int blend_enable, src_blend, dst_blend;
+  int depth_test, depth_write, depth_func;
+  int cull;
+  int pretransformed;
+  int has_depth_target;
 } PipeKey;
 
 /* The cached pipeline for this state, built on first use. NULL means it could

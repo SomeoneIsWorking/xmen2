@@ -23,9 +23,8 @@ int x2_ui_captures_input(void);
 /* Render after the guest pass and before command-buffer submission. */
 void x2_ui_render(struct SDL_GPUDevice *device,
                   struct SDL_GPUCommandBuffer *command_buffer,
-                  struct SDL_GPUTexture *swapchain,
-                  uint32_t width, uint32_t height,
-                  struct SDL_Window *window);
+                  struct SDL_GPUTexture *swapchain, uint32_t width,
+                  uint32_t height, struct SDL_Window *window);
 void x2_ui_gpu_shutdown(void);
 
 #ifdef __cplusplus

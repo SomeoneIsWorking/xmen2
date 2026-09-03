@@ -16,51 +16,55 @@ extern "C" {
 #endif
 
 enum {
-    D3DPT_POINTLIST = 1, D3DPT_LINELIST, D3DPT_LINESTRIP,
-    D3DPT_TRIANGLELIST, D3DPT_TRIANGLESTRIP, D3DPT_TRIANGLEFAN
+  D3DPT_POINTLIST = 1,
+  D3DPT_LINELIST,
+  D3DPT_LINESTRIP,
+  D3DPT_TRIANGLELIST,
+  D3DPT_TRIANGLESTRIP,
+  D3DPT_TRIANGLEFAN
 };
 
 /* Byte offsets within a vertex, decoded from an FVF. -1 means absent. */
 typedef struct {
-    int      pos_offset;
-    int      pretransformed;
-    int      color_offset;
-    int      specular_offset;
-    int      uv_offset;
-    int      normal_offset;
-    uint32_t stride;
+  int pos_offset;
+  int pretransformed;
+  int color_offset;
+  int specular_offset;
+  int uv_offset;
+  int normal_offset;
+  uint32_t stride;
 } D3D8VertexLayout;
 
 /* What the draw call itself supplies, as opposed to the sticky state. */
 typedef struct {
-    GpuBuffer  vertex_buffer;
-    uint32_t   vertex_guest_bytes;  /* host-visible source bytes for VS 1.1 */
-    uint32_t   vertex_bytes;
-    uint32_t   stride;              /* 0 to use the FVF's own */
-    uint32_t   first_vertex;
-    GpuBuffer  index_buffer;        /* 0 for non-indexed */
-    int        index_is_32bit;
-    /* Guest address of the index data, so a TRIANGLEFAN can be expanded on
-       the CPU. 0 when there is no index buffer. */
-    uint32_t   index_guest_bytes;
-    /* Size of the index buffer, so the range check below can read the indices
-       WITHOUT running off the end of the buffer it is checking. */
-    uint32_t   index_bytes;
-    uint32_t   first_index;
-    uint32_t   base_vertex;
-    /* D3D8 hands DrawIndexedPrimitive the exact vertex RANGE the draw
-       reads: BaseVertexIndex + MinIndex, for NumVertices. The geometry
-       dump uses it so the port and tools/proxy_d3d8 write the same
-       vertices -- comparing different subsets of a shared buffer would
-       look exactly like a mesh that differs. */
-    uint32_t   min_index;
-    uint32_t   num_vertices;
-    GpuTexture texture;             /* 0 for untextured */
-    GpuTexture texture1;            /* texture stage 1, when enabled */
-    uint32_t   texture_guest;       /* bound stage-0 COM pointer, even unresolved */
-    D3D8TextureProvenance texture_provenance;
-    uint32_t   primitive_type;      /* D3DPRIMITIVETYPE */
-    uint32_t   primitive_count;
+  GpuBuffer vertex_buffer;
+  uint32_t vertex_guest_bytes; /* host-visible source bytes for VS 1.1 */
+  uint32_t vertex_bytes;
+  uint32_t stride; /* 0 to use the FVF's own */
+  uint32_t first_vertex;
+  GpuBuffer index_buffer; /* 0 for non-indexed */
+  int index_is_32bit;
+  /* Guest address of the index data, so a TRIANGLEFAN can be expanded on
+     the CPU. 0 when there is no index buffer. */
+  uint32_t index_guest_bytes;
+  /* Size of the index buffer, so the range check below can read the indices
+     WITHOUT running off the end of the buffer it is checking. */
+  uint32_t index_bytes;
+  uint32_t first_index;
+  uint32_t base_vertex;
+  /* D3D8 hands DrawIndexedPrimitive the exact vertex RANGE the draw
+     reads: BaseVertexIndex + MinIndex, for NumVertices. The geometry
+     dump uses it so the port and tools/proxy_d3d8 write the same
+     vertices -- comparing different subsets of a shared buffer would
+     look exactly like a mesh that differs. */
+  uint32_t min_index;
+  uint32_t num_vertices;
+  GpuTexture texture;     /* 0 for untextured */
+  GpuTexture texture1;    /* texture stage 1, when enabled */
+  uint32_t texture_guest; /* bound stage-0 COM pointer, even unresolved */
+  D3D8TextureProvenance texture_provenance;
+  uint32_t primitive_type; /* D3DPRIMITIVETYPE */
+  uint32_t primitive_count;
 } D3D8DrawRequest;
 
 /* 0 if the FVF has no position this host understands. */
@@ -70,8 +74,7 @@ void d3d8_fvf_report(void);
 void d3d8_frame_material_rgb(const GpuDraw *draw, uint32_t source,
                              const uint8_t *vertex, const float material[4],
                              double out[3]);
-uint32_t d3d8_element_count(uint32_t primitive_type,
-                            uint32_t primitive_count);
+uint32_t d3d8_element_count(uint32_t primitive_type, uint32_t primitive_count);
 
 /* 0 and a reason if the state cannot be expressed. */
 int d3d8_build_draw(const D3D8State *s, const D3D8DrawRequest *req,
@@ -89,7 +92,7 @@ void d3d8_worldview_transform(const D3D8State *s, float out[16]);
 
 /* 1 if the draw path reads this render state. The report asks, rather than
    keeping its own list -- see d3d8_drawcall.c for the drift that caused. */
-int  d3d8_drawcall_reads_state(uint32_t which);
+int d3d8_drawcall_reads_state(uint32_t which);
 void d3d8_drawcall_report(void);
 /* Draws that enabled a texture stage beyond stage 0, and the most extra
    stages any one of them asked for. Live, for the heartbeat. */

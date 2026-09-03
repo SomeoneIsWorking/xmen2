@@ -22,7 +22,7 @@ void gpu_capture_set_frame_observer(void (*fn)(void));
 void gpu_capture_shutdown(void);
 
 /* Apply the X2_SHOT policy at the safe, same-thread end-of-frame boundary. */
-void gpu_capture_frame(int headless, unsigned long frame,
-                       uint32_t width, uint32_t height);
+void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
+                       uint32_t height);
 
 #endif

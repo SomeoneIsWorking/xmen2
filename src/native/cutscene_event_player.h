@@ -9,28 +9,27 @@ struct CPU;
  * records. Each record is 0x18 bytes and has one entry in both allocator
  * bitsets. */
 enum {
-    CUTSCENE_EVENT_PLAYER_CAPACITY = 0x465u,
-    CUTSCENE_EVENT_PLAYER_SLOT_WORDS =
-        (CUTSCENE_EVENT_PLAYER_CAPACITY + 31u) / 32u
+  CUTSCENE_EVENT_PLAYER_CAPACITY = 0x465u,
+  CUTSCENE_EVENT_PLAYER_SLOT_WORDS =
+      (CUTSCENE_EVENT_PLAYER_CAPACITY + 31u) / 32u
 };
 
 typedef enum CutsceneEventPlayerStep {
-    CUTSCENE_EVENT_PLAYER_STEP_REFUSED = -1,
-    CUTSCENE_EVENT_PLAYER_STEP_NONE = 0,
-    CUTSCENE_EVENT_PLAYER_STEP_RAN = 1,
-    CUTSCENE_EVENT_PLAYER_STEP_RAN_CORRUPT = 2
+  CUTSCENE_EVENT_PLAYER_STEP_REFUSED = -1,
+  CUTSCENE_EVENT_PLAYER_STEP_NONE = 0,
+  CUTSCENE_EVENT_PLAYER_STEP_RAN = 1,
+  CUTSCENE_EVENT_PLAYER_STEP_RAN_CORRUPT = 2
 } CutsceneEventPlayerStep;
 
 typedef struct CutsceneEventOwnershipWindow {
-    uint32_t owner;
-    uint32_t excluded[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
-    uint32_t owned[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
-    uint32_t reported[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
-    uint8_t active;
+  uint32_t owner;
+  uint32_t excluded[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
+  uint32_t owned[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
+  uint32_t reported[CUTSCENE_EVENT_PLAYER_SLOT_WORDS];
+  uint8_t active;
 } CutsceneEventOwnershipWindow;
 
-typedef int (*CutsceneEventInsertionOwner)(const struct CPU *cpu,
-                                           void *opaque);
+typedef int (*CutsceneEventInsertionOwner)(const struct CPU *cpu, void *opaque);
 
 /* The event owner is learned from a validated ordinary FUN_004b2d70 call. */
 uint32_t cutscene_event_player_captured_owner(void);
@@ -59,16 +58,17 @@ int cutscene_event_player_executing_owned(void);
 
 /* Read-only selection of the minimum-deadline queued slot owned by window.
  * Returns one with slot filled, zero when none exists, and -1 on refusal. */
-int cutscene_event_player_next_owned(
-    const CutsceneEventOwnershipWindow *window, uint32_t *slot);
+int cutscene_event_player_next_owned(const CutsceneEventOwnershipWindow *window,
+                                     uint32_t *slot);
 
 /* Remove and execute exactly this queued owned callback, independent of its
  * deadline. Unowned deadline/slot pairs are preserved byte-for-byte. */
 CutsceneEventPlayerStep cutscene_event_player_step_owned_slot(
     struct CPU *cpu, CutsceneEventOwnershipWindow *window, uint32_t slot);
 
-CutsceneEventPlayerStep cutscene_event_player_step_owned(
-    struct CPU *cpu, CutsceneEventOwnershipWindow *window);
+CutsceneEventPlayerStep
+cutscene_event_player_step_owned(struct CPU *cpu,
+                                 CutsceneEventOwnershipWindow *window);
 
 /* Native thiscall replacement for XMen2.exe FUN_004b2d70(owner, now). */
 void x2_override_004b2d70(struct CPU *cpu);

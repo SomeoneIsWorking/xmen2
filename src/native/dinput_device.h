@@ -13,9 +13,9 @@
 #include <stdint.h>
 
 typedef enum {
-    DINPUT_DEV_KEYBOARD = 1,
-    DINPUT_DEV_MOUSE,
-    DINPUT_DEV_JOYSTICK
+  DINPUT_DEV_KEYBOARD = 1,
+  DINPUT_DEV_MOUSE,
+  DINPUT_DEV_JOYSTICK
 } DInputDeviceKind;
 
 /* The guest address of the device object, or 0. One object per kind for the

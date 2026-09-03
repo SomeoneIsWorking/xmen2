@@ -16,7 +16,7 @@
 
 void x2_boot_blackout_arm(const char *mode_name);
 void x2_boot_blackout_disarm(const char *why);
-int  x2_boot_blackout_active(void);
+int x2_boot_blackout_active(void);
 /* Counted at present time by the renderer, so the report says how many
  * frames the player actually spent black. */
 void x2_boot_blackout_frame_presented(void);

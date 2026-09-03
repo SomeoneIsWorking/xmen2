@@ -1,8 +1,8 @@
 #ifndef X2_DINPUT8_CONTROLLER_SLOTS_H
 #define X2_DINPUT8_CONTROLLER_SLOTS_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 /* The IDirectInput8 owner publishes the retail input-manager instance when
    the game's controller enumeration reaches it. */

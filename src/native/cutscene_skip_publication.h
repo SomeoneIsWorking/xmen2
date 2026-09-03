@@ -4,19 +4,18 @@
 #define CUTSCENE_SKIP_PUBLICATION_BANKS 3u
 
 typedef struct {
-    int readable;
-    int escape;
-    int start;
+  int readable;
+  int escape;
+  int start;
 } CutsceneSkipPublicationBank;
 
 typedef struct {
-    unsigned readable;
-    unsigned escape;
-    unsigned start;
+  unsigned readable;
+  unsigned escape;
+  unsigned start;
 } CutsceneSkipPublicationSummary;
 
 CutsceneSkipPublicationSummary cutscene_skip_publication_classify(
-    const CutsceneSkipPublicationBank
-        bank[CUTSCENE_SKIP_PUBLICATION_BANKS]);
+    const CutsceneSkipPublicationBank bank[CUTSCENE_SKIP_PUBLICATION_BANKS]);
 
 #endif

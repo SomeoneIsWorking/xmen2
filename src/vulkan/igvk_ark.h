@@ -50,8 +50,8 @@ uint32_t ark_call_cdecl(uint32_t target, const uint32_t *args, int n);
 uint32_t ark_call_stdcall(uint32_t target, const uint32_t *args, int n);
 
 /* Call a guest __thiscall member: ECX = this, `n` stack arguments. */
-uint32_t ark_call_this(uint32_t target, uint32_t self,
-                       const uint32_t *args, int n);
+uint32_t ark_call_this(uint32_t target, uint32_t self, const uint32_t *args,
+                       int n);
 
 /* A copy of `s` in guest-addressable memory, valid for the process lifetime. */
 uint32_t ark_guest_str(const char *s);
@@ -77,28 +77,28 @@ void ark_ret(struct CPU *C, uint32_t eax, int stack_args);
 /* ---- describing a host class ------------------------------------------ */
 
 typedef struct ArkClass {
-    const char *name;             /* as ARK will know it */
-    uint32_t    instance_size;    /* bytes, before the pool prefix */
-    int         is_abstract;
+  const char *name;       /* as ARK will know it */
+  uint32_t instance_size; /* bytes, before the pool prefix */
+  int is_abstract;
 
-    /* The parent's two static hooks. Either by mangled export name (libIGCore
-       exports its own), or -- when the module exports neither, which is every
-       libIG*.dll but Core -- as LINKED addresses recovered by ark_classes.py.
-       Exactly one pair must be set. */
-    const char *base_module;
-    const char *base_register_internal;      /* mangled name, or NULL */
-    const char *base_get_class_meta;         /* mangled name, or NULL */
-    uint32_t    base_register_internal_va;   /* linked address, or 0 */
-    uint32_t    base_get_class_meta_va;      /* linked address, or 0 */
+  /* The parent's two static hooks. Either by mangled export name (libIGCore
+     exports its own), or -- when the module exports neither, which is every
+     libIG*.dll but Core -- as LINKED addresses recovered by ark_classes.py.
+     Exactly one pair must be set. */
+  const char *base_module;
+  const char *base_register_internal; /* mangled name, or NULL */
+  const char *base_get_class_meta;    /* mangled name, or NULL */
+  uint32_t base_register_internal_va; /* linked address, or 0 */
+  uint32_t base_get_class_meta_va;    /* linked address, or 0 */
 
-    /* Filled in by ark_register_class. */
-    uint32_t    meta_slot;        /* guest address of our igMetaObject* */
-    uint32_t    vtable;           /* guest address of our vtable array */
-    int         nslots;
+  /* Filled in by ark_register_class. */
+  uint32_t meta_slot; /* guest address of our igMetaObject* */
+  uint32_t vtable;    /* guest address of our vtable array */
+  int nslots;
 
-    /* Optional: run after registration, to append meta fields or bind an
-       abstract parent's _Meta+0x3c. NULL if the class needs neither. */
-    void      (*on_initialize)(struct ArkClass *);
+  /* Optional: run after registration, to append meta fields or bind an
+     abstract parent's _Meta+0x3c. NULL if the class needs neither. */
+  void (*on_initialize)(struct ArkClass *);
 } ArkClass;
 
 /*
@@ -111,8 +111,8 @@ typedef struct ArkClass {
  * needed to go and implement it. See igvk_vtable_fill_unimplemented.
  */
 uint32_t igvk_vtable_new(const char *owner, int nslots);
-void     igvk_vtable_set(uint32_t vtable, int slot, void (*fn)(struct CPU *),
-                         const char *owner, const char *name, void *ctx);
+void igvk_vtable_set(uint32_t vtable, int slot, void (*fn)(struct CPU *),
+                     const char *owner, const char *name, void *ctx);
 /*
  * Point every still-unset slot at the reporter.
  *
@@ -122,9 +122,8 @@ void     igvk_vtable_set(uint32_t vtable, int slot, void (*fn)(struct CPU *),
  * difference between "this slot did nothing" and "this slot corrupted the
  * guest stack".
  */
-void     igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
-                                        int nslots,
-                                        const signed char *slot_args);
+void igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
+                                    int nslots, const signed char *slot_args);
 
 /*
  * PERMISSIVE MODE -- a staging tool, not a way of being finished.
@@ -145,8 +144,8 @@ void     igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
  * it would shift the guest stack, which is a different and much worse
  * failure than not implementing the slot.
  */
-void     igvk_vtable_permissive(int on);
-void     igvk_vtable_permissive_report(void);
+void igvk_vtable_permissive(int on);
+void igvk_vtable_permissive_report(void);
 
 /*
  * Register the class with libIGCore. Returns 1 on success.

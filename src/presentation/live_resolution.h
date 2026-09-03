@@ -15,9 +15,7 @@ void x2_live_resolution_select_next(X2Settings *settings);
  * the SDL window policy, retained title display state, and active D3D8
  * presentation are restored.
  */
-int x2_live_resolution_apply(struct SDL_Window *window,
-                             X2Settings *settings,
-                             const X2Settings *before,
-                             char *why, int whyn);
+int x2_live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
+                             const X2Settings *before, char *why, int whyn);
 
 #endif /* X2_LIVE_RESOLUTION_H */

@@ -27,10 +27,7 @@ extern "C" {
 typedef uint32_t GpuBuffer;
 typedef uint32_t GpuTexture;
 
-typedef enum {
-    GPU_BUF_VERTEX = 1,
-    GPU_BUF_INDEX
-} GpuBufferKind;
+typedef enum { GPU_BUF_VERTEX = 1, GPU_BUF_INDEX } GpuBufferKind;
 
 /*
  * Pixel formats, named for what they are rather than by D3D's numbering: the
@@ -38,33 +35,45 @@ typedef enum {
  * is refused there with the D3D name the engine used.
  */
 typedef enum {
-    GPU_FMT_BGRA8 = 1,     /* D3DFMT_A8R8G8B8 / X8R8G8B8 */
-    GPU_FMT_RGBA8,         /* native assets stored as R, G, B, A bytes */
-    GPU_FMT_BGR8,          /* D3DFMT_R8G8B8; expanded to opaque BGRA8 */
-    GPU_FMT_BC1,           /* DXT1 */
-    GPU_FMT_BC2,           /* DXT3 */
-    GPU_FMT_BC3            /* DXT5 */
+  GPU_FMT_BGRA8 = 1, /* D3DFMT_A8R8G8B8 / X8R8G8B8 */
+  GPU_FMT_RGBA8,     /* native assets stored as R, G, B, A bytes */
+  GPU_FMT_BGR8,      /* D3DFMT_R8G8B8; expanded to opaque BGRA8 */
+  GPU_FMT_BC1,       /* DXT1 */
+  GPU_FMT_BC2,       /* DXT3 */
+  GPU_FMT_BC3        /* DXT5 */
 } GpuFormat;
 
 typedef enum {
-    GPU_PRIM_TRIANGLELIST = 1,
-    GPU_PRIM_TRIANGLESTRIP,
-    GPU_PRIM_LINELIST
+  GPU_PRIM_TRIANGLELIST = 1,
+  GPU_PRIM_TRIANGLESTRIP,
+  GPU_PRIM_LINELIST
 } GpuPrimitive;
 
 /* D3DBLEND, translated at the boundary. */
 typedef enum {
-    GPU_BLEND_ZERO = 1, GPU_BLEND_ONE, GPU_BLEND_SRCALPHA,
-    GPU_BLEND_INVSRCALPHA, GPU_BLEND_SRCCOLOR, GPU_BLEND_INVSRCCOLOR,
-    GPU_BLEND_DESTALPHA, GPU_BLEND_INVDESTALPHA, GPU_BLEND_DESTCOLOR,
-    GPU_BLEND_INVDESTCOLOR
+  GPU_BLEND_ZERO = 1,
+  GPU_BLEND_ONE,
+  GPU_BLEND_SRCALPHA,
+  GPU_BLEND_INVSRCALPHA,
+  GPU_BLEND_SRCCOLOR,
+  GPU_BLEND_INVSRCCOLOR,
+  GPU_BLEND_DESTALPHA,
+  GPU_BLEND_INVDESTALPHA,
+  GPU_BLEND_DESTCOLOR,
+  GPU_BLEND_INVDESTCOLOR
 } GpuBlend;
 
 typedef enum { GPU_CULL_NONE = 1, GPU_CULL_CW, GPU_CULL_CCW } GpuCull;
 
 typedef enum {
-    GPU_CMP_NEVER = 1, GPU_CMP_LESS, GPU_CMP_EQUAL, GPU_CMP_LESSEQUAL,
-    GPU_CMP_GREATER, GPU_CMP_NOTEQUAL, GPU_CMP_GREATEREQUAL, GPU_CMP_ALWAYS
+  GPU_CMP_NEVER = 1,
+  GPU_CMP_LESS,
+  GPU_CMP_EQUAL,
+  GPU_CMP_LESSEQUAL,
+  GPU_CMP_GREATER,
+  GPU_CMP_NOTEQUAL,
+  GPU_CMP_GREATEREQUAL,
+  GPU_CMP_ALWAYS
 } GpuCompare;
 
 /*
@@ -78,31 +87,33 @@ typedef enum {
 #define GPU_MAX_LIGHTS 8
 
 typedef enum {
-    GPU_LIGHT_POINT = 1, GPU_LIGHT_SPOT = 2, GPU_LIGHT_DIRECTIONAL = 3
+  GPU_LIGHT_POINT = 1,
+  GPU_LIGHT_SPOT = 2,
+  GPU_LIGHT_DIRECTIONAL = 3
 } GpuLightType;
 
 typedef struct {
-    int   type;                 /* GpuLightType */
-    float diffuse[4];
-    float ambient[4];
-    float position[3];
-    float direction[3];         /* points FROM the light, as D3D defines it */
-    float range;
-    float atten[3];             /* constant, linear, quadratic */
+  int type; /* GpuLightType */
+  float diffuse[4];
+  float ambient[4];
+  float position[3];
+  float direction[3]; /* points FROM the light, as D3D defines it */
+  float range;
+  float atten[3]; /* constant, linear, quadratic */
 } GpuLight;
 
 /* What a fixed-function texture stage does with its input colour. */
 typedef enum {
-    GPU_TEXOP_NONE = 0,      /* untextured: the vertex colour is the result */
-    GPU_TEXOP_MODULATE = 1,
-    GPU_TEXOP_SELECT_TEXTURE = 2,
-    /* D3DTOP_ADD. The environment map is added to the lit surface, which is
-       what makes a reflection a highlight rather than a repaint. */
-    GPU_TEXOP_ADD = 3,
-    /* SELECTARG2. Not a curiosity: 1,070 draws a run pick arg2, and where
-       arg2 is the texture factor the draw needs NO texture at all -- which is
-       how a sky dome of position-only vertices gets its colour. */
-    GPU_TEXOP_SELECT_ARG2 = 4
+  GPU_TEXOP_NONE = 0, /* untextured: the vertex colour is the result */
+  GPU_TEXOP_MODULATE = 1,
+  GPU_TEXOP_SELECT_TEXTURE = 2,
+  /* D3DTOP_ADD. The environment map is added to the lit surface, which is
+     what makes a reflection a highlight rather than a repaint. */
+  GPU_TEXOP_ADD = 3,
+  /* SELECTARG2. Not a curiosity: 1,070 draws a run pick arg2, and where
+     arg2 is the texture factor the draw needs NO texture at all -- which is
+     how a sky dome of position-only vertices gets its colour. */
+  GPU_TEXOP_SELECT_ARG2 = 4
 } GpuTexOp;
 
 /*
@@ -117,18 +128,18 @@ typedef enum {
 /* A combiner argument. DEFAULT keeps a zeroed draw meaning what it always
    meant; see the fields in GpuDraw. */
 typedef enum {
-    GPU_TA_DEFAULT = 0,
-    GPU_TA_DIFFUSE = 1,
-    GPU_TA_TEXTURE = 2,
-    GPU_TA_TFACTOR = 3,
-    GPU_TA_CURRENT = 4
+  GPU_TA_DEFAULT = 0,
+  GPU_TA_DIFFUSE = 1,
+  GPU_TA_TEXTURE = 2,
+  GPU_TA_TFACTOR = 3,
+  GPU_TA_CURRENT = 4
 } GpuTexArg;
 
 typedef enum {
-    GPU_TEXGEN_NONE = 0,
-    GPU_TEXGEN_CAMERA_REFLECTION = 1,   /* D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR */
-    GPU_TEXGEN_CAMERA_NORMAL = 2,       /* D3DTSS_TCI_CAMERASPACENORMAL */
-    GPU_TEXGEN_CAMERA_POSITION = 3      /* D3DTSS_TCI_CAMERASPACEPOSITION */
+  GPU_TEXGEN_NONE = 0,
+  GPU_TEXGEN_CAMERA_REFLECTION = 1, /* D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR */
+  GPU_TEXGEN_CAMERA_NORMAL = 2,     /* D3DTSS_TCI_CAMERASPACENORMAL */
+  GPU_TEXGEN_CAMERA_POSITION = 3    /* D3DTSS_TCI_CAMERASPACEPOSITION */
 } GpuTexGen;
 
 /*
@@ -139,162 +150,162 @@ typedef enum {
  * this struct alone.
  */
 typedef struct {
-    GpuBuffer    vertices;
-    int          owns_vertices;      /* boundary-created transient buffer */
-    uint32_t     vertex_stride;
-    uint32_t     first_vertex;
-    GpuBuffer    indices;          /* 0 for non-indexed */
-    int          index_is_32bit;
-    uint32_t     first_index;
-    uint32_t     base_vertex;
+  GpuBuffer vertices;
+  int owns_vertices; /* boundary-created transient buffer */
+  uint32_t vertex_stride;
+  uint32_t first_vertex;
+  GpuBuffer indices; /* 0 for non-indexed */
+  int index_is_32bit;
+  uint32_t first_index;
+  uint32_t base_vertex;
 
-    GpuPrimitive prim;
-    uint32_t     prim_count;
+  GpuPrimitive prim;
+  uint32_t prim_count;
 
-    /* Vertex layout. Offsets are byte offsets into a vertex; -1 means the
-       component is absent. Position is required. */
-    int          pos_offset;
-    /*
-     * D3DFVF_XYZRHW: the position is four floats already in screen space.
-     * D3DFVF_XYZ is three, and the difference is not cosmetic -- binding four
-     * where the vertex has three reads the next field as W.
-     */
-    int          pretransformed;
-    int          programmable;     /* position/color are VS 1.1 outputs */
-    int          color_offset;
-    int          specular_offset;
-    int          uv_offset;
-    /* The normal, which only matters when lighting is on -- but the ATTRIBUTE
-       is pipeline state, so it is part of the layout either way. */
-    int          normal_offset;
+  /* Vertex layout. Offsets are byte offsets into a vertex; -1 means the
+     component is absent. Position is required. */
+  int pos_offset;
+  /*
+   * D3DFVF_XYZRHW: the position is four floats already in screen space.
+   * D3DFVF_XYZ is three, and the difference is not cosmetic -- binding four
+   * where the vertex has three reads the next field as W.
+   */
+  int pretransformed;
+  int programmable; /* position/color are VS 1.1 outputs */
+  int color_offset;
+  int specular_offset;
+  int uv_offset;
+  /* The normal, which only matters when lighting is on -- but the ATTRIBUTE
+     is pipeline state, so it is part of the layout either way. */
+  int normal_offset;
 
-    float        mvp[16];          /* row-major, as D3D hands it over */
-    /*
-     * The WORLD matrix on its own, because D3D8 computes fixed-function
-     * lighting in world space: the light positions and directions the engine
-     * sets are world-space, so the vertex and its normal have to get there
-     * too, and the combined mvp cannot be taken apart again.
-     */
-    float        world[16];
+  float mvp[16]; /* row-major, as D3D hands it over */
+  /*
+   * The WORLD matrix on its own, because D3D8 computes fixed-function
+   * lighting in world space: the light positions and directions the engine
+   * sets are world-space, so the vertex and its normal have to get there
+   * too, and the combined mvp cannot be taken apart again.
+   */
+  float world[16];
 
-    /* ---- fixed-function lighting (D3DRS_LIGHTING) ---- */
-    int          lighting;         /* 0: the vertex colour is used as-is */
-    int          color_vertex;     /* D3DRS_COLORVERTEX */
-    int          normalize_normals;/* D3DRS_NORMALIZENORMALS */
-    uint32_t     diffuse_source;   /* D3DMATERIALCOLORSOURCE */
-    uint32_t     ambient_source;
-    uint32_t     emissive_source;
-    int          nlights;          /* how many of `light` are enabled */
-    float        global_ambient[4];
-    float        mat_diffuse[4];
-    float        mat_ambient[4];
-    float        mat_emissive[4];
-    GpuLight     light[GPU_MAX_LIGHTS];
+  /* ---- fixed-function lighting (D3DRS_LIGHTING) ---- */
+  int lighting;            /* 0: the vertex colour is used as-is */
+  int color_vertex;        /* D3DRS_COLORVERTEX */
+  int normalize_normals;   /* D3DRS_NORMALIZENORMALS */
+  uint32_t diffuse_source; /* D3DMATERIALCOLORSOURCE */
+  uint32_t ambient_source;
+  uint32_t emissive_source;
+  int nlights; /* how many of `light` are enabled */
+  float global_ambient[4];
+  float mat_diffuse[4];
+  float mat_ambient[4];
+  float mat_emissive[4];
+  GpuLight light[GPU_MAX_LIGHTS];
 
-    GpuTexture   texture;
-    /* Runtime identity of stage 0, copied from the D3D8 resource boundary.
-       The renderer does not consume these fields; traces use them to prove
-       which complete (or incomplete) mip chain a black draw actually bound. */
-    uint32_t     texture_width, texture_height, texture_format;
-    uint32_t     texture_levels, texture_faces, texture_upload_count;
-    uint64_t     texture_uploaded_level_mask;
-    uint64_t     texture_level0_fingerprint;
-    uint64_t     texture_level0_revision;
-    int          texture_metadata_valid;
-    int          texture_level0_fingerprint_valid;
-    GpuTexOp     texop;
-    /* Non-zero means the texture stage is addressed by a GENERATED direction
-       rather than by the vertex's UVs. A CUBE texture with GPU_TEXGEN_NONE is
-       still refused: there is no direction to sample it with, and face 0
-       would be a plausible-looking wrong reflection. */
-    GpuTexGen    texgen;
-    float        worldview[16];
-    /* D3DTSS_TEXTURETRANSFORMFLAGS and D3DTS_TEXTURE0. The Dead Zone water
-       animates these rather than rewriting its texture pixels. */
-    uint32_t     texture_transform;
-    float        texture_matrix[16];
-    /*
-     * The combiner arguments, per D3D8's D3DTSS_COLORARG1/2 and ALPHAARG1/2:
-     * GPU_TA_DEFAULT (0) means D3D8's own default for that slot -- TEXTURE for
-     * ARG1, DIFFUSE for ARG2 -- so a zeroed GpuDraw still describes exactly
-     * the draw it described before these fields existed. That is not a
-     * convenience: every self-test and every caller that builds a draw by
-     * memset would otherwise have quietly changed meaning.
-     *
-     * The stage used to ASSUME those defaults. 4% of this title's draws set
-     * ARG2 to the texture factor, which came out as the diffuse colour.
-     */
-    int          color_arg1, color_arg2;   /* GpuTexArg */
-    GpuTexOp     alpha_op;
-    int          alpha_arg1, alpha_arg2;
-    float        texture_factor[4];    /* D3DRS_TEXTUREFACTOR, RGBA 0..1 */
-    int          texture_clamp;    /* else wrap */
-    int          texture_point;    /* else linear */
-    int          texture_mip;      /* 0 none, 1 point, 2 linear */
-    float        texture_lod_bias;
-    int          texture_min_filter; /* D3DTEXF_POINT/LINEAR/ANISOTROPIC */
-    int          texture_max_anisotropy;
+  GpuTexture texture;
+  /* Runtime identity of stage 0, copied from the D3D8 resource boundary.
+     The renderer does not consume these fields; traces use them to prove
+     which complete (or incomplete) mip chain a black draw actually bound. */
+  uint32_t texture_width, texture_height, texture_format;
+  uint32_t texture_levels, texture_faces, texture_upload_count;
+  uint64_t texture_uploaded_level_mask;
+  uint64_t texture_level0_fingerprint;
+  uint64_t texture_level0_revision;
+  int texture_metadata_valid;
+  int texture_level0_fingerprint_valid;
+  GpuTexOp texop;
+  /* Non-zero means the texture stage is addressed by a GENERATED direction
+     rather than by the vertex's UVs. A CUBE texture with GPU_TEXGEN_NONE is
+     still refused: there is no direction to sample it with, and face 0
+     would be a plausible-looking wrong reflection. */
+  GpuTexGen texgen;
+  float worldview[16];
+  /* D3DTSS_TEXTURETRANSFORMFLAGS and D3DTS_TEXTURE0. The Dead Zone water
+     animates these rather than rewriting its texture pixels. */
+  uint32_t texture_transform;
+  float texture_matrix[16];
+  /*
+   * The combiner arguments, per D3D8's D3DTSS_COLORARG1/2 and ALPHAARG1/2:
+   * GPU_TA_DEFAULT (0) means D3D8's own default for that slot -- TEXTURE for
+   * ARG1, DIFFUSE for ARG2 -- so a zeroed GpuDraw still describes exactly
+   * the draw it described before these fields existed. That is not a
+   * convenience: every self-test and every caller that builds a draw by
+   * memset would otherwise have quietly changed meaning.
+   *
+   * The stage used to ASSUME those defaults. 4% of this title's draws set
+   * ARG2 to the texture factor, which came out as the diffuse colour.
+   */
+  int color_arg1, color_arg2; /* GpuTexArg */
+  GpuTexOp alpha_op;
+  int alpha_arg1, alpha_arg2;
+  float texture_factor[4]; /* D3DRS_TEXTUREFACTOR, RGBA 0..1 */
+  int texture_clamp;       /* else wrap */
+  int texture_point;       /* else linear */
+  int texture_mip;         /* 0 none, 1 point, 2 linear */
+  float texture_lod_bias;
+  int texture_min_filter; /* D3DTEXF_POINT/LINEAR/ANISOTROPIC */
+  int texture_max_anisotropy;
 
-    /* The first observed stage-1 material modulates stage 0 with a second 2D
-       texture whose coordinates come from the camera-space normal and a
-       COUNT2 texture transform. */
-    GpuTexture   texture1;
-    GpuTexOp     texop1;
-    int          color_arg1_1, color_arg2_1;
-    GpuTexOp     alpha_op1;
-    int          alpha_arg1_1, alpha_arg2_1;
-    GpuTexGen    texgen1;
-    int          texture_transform1;
-    float        texture_matrix1[16];
-    int          texture_clamp1;
-    int          texture_point1;
-    int          texture_mip1;
-    float        texture_lod_bias1;
-    int          texture_min_filter1;
-    int          texture_max_anisotropy1;
+  /* The first observed stage-1 material modulates stage 0 with a second 2D
+     texture whose coordinates come from the camera-space normal and a
+     COUNT2 texture transform. */
+  GpuTexture texture1;
+  GpuTexOp texop1;
+  int color_arg1_1, color_arg2_1;
+  GpuTexOp alpha_op1;
+  int alpha_arg1_1, alpha_arg2_1;
+  GpuTexGen texgen1;
+  int texture_transform1;
+  float texture_matrix1[16];
+  int texture_clamp1;
+  int texture_point1;
+  int texture_mip1;
+  float texture_lod_bias1;
+  int texture_min_filter1;
+  int texture_max_anisotropy1;
 
-    int          blend_enable;
-    GpuBlend     src_blend, dst_blend;
-    int          depth_test;
-    int          depth_write;
-    GpuCompare   depth_func;
-    uint32_t     depth_bias;       /* Raw D3D8 D3DRS_ZBIAS value. */
-    /* Raw D3D8 stencil/color-write state, retained even before the GPU path
-       consumes it so diagnostics cannot call an ignored pass ordinary. */
-    int          stencil_enable;
-    uint32_t     stencil_fail, stencil_zfail, stencil_pass, stencil_func;
-    uint32_t     stencil_ref, stencil_mask, stencil_write_mask;
-    uint32_t     color_write_mask;
-    GpuCull      cull;
-    int          alpha_test;
-    float        alpha_ref;
+  int blend_enable;
+  GpuBlend src_blend, dst_blend;
+  int depth_test;
+  int depth_write;
+  GpuCompare depth_func;
+  uint32_t depth_bias; /* Raw D3D8 D3DRS_ZBIAS value. */
+  /* Raw D3D8 stencil/color-write state, retained even before the GPU path
+     consumes it so diagnostics cannot call an ignored pass ordinary. */
+  int stencil_enable;
+  uint32_t stencil_fail, stencil_zfail, stencil_pass, stencil_func;
+  uint32_t stencil_ref, stencil_mask, stencil_write_mask;
+  uint32_t color_write_mask;
+  GpuCull cull;
+  int alpha_test;
+  float alpha_ref;
 } GpuDraw;
 
 /* ---- resources --------------------------------------------------------- */
 
-GpuBuffer  gpu_buffer_create(GpuBufferKind kind, uint32_t bytes);
+GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes);
 /* Returns 0 and reports if the range is outside the buffer -- an out-of-range
    upload is the guest telling us the size is wrong, not something to clamp.
    Uploading after a draw cycles the buffer's backing storage; only the
    uploaded range is defined in that new generation. */
-int        gpu_buffer_upload(GpuBuffer b, uint32_t offset,
-                             const void *data, uint32_t bytes);
-void       gpu_buffer_destroy(GpuBuffer b);
+int gpu_buffer_upload(GpuBuffer b, uint32_t offset, const void *data,
+                      uint32_t bytes);
+void gpu_buffer_destroy(GpuBuffer b);
 
 GpuTexture gpu_texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
                               uint32_t levels);
 /* Request a one-time report of the device's sampling support for every source
    format this D3D8 boundary accepts. The report is emitted once the GPU device
    exists, rather than pretending an early startup query has an answer. */
-void       gpu_texture_request_format_support_report(void);
+void gpu_texture_request_format_support_report(void);
 
 /* Debug-only renderer discriminator. It changes only depth comparison, so a
    captured black scene can establish whether colour generation or occlusion
    is at fault. Production callers must leave it disabled. */
-void       gpu_draw_diagnostic_disable_depth(int enabled);
-int        gpu_texture_upload(GpuTexture t, uint32_t level,
-                              const void *data, uint32_t bytes);
-void       gpu_texture_destroy(GpuTexture t);
+void gpu_draw_diagnostic_disable_depth(int enabled);
+int gpu_texture_upload(GpuTexture t, uint32_t level, const void *data,
+                       uint32_t bytes);
+void gpu_texture_destroy(GpuTexture t);
 
 /*
  * A cube texture: six square faces, in D3D8's face order (+X, -X, +Y, -Y,
@@ -308,12 +319,12 @@ void       gpu_texture_destroy(GpuTexture t);
  */
 GpuTexture gpu_texture_create_cube(uint32_t size, GpuFormat fmt,
                                    uint32_t levels);
-int        gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
-                                   const void *data, uint32_t bytes);
+int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
+                            const void *data, uint32_t bytes);
 /* 1 if this handle is a cube texture; 0 for a 2D one OR for a handle that is
    not a live texture at all -- callers use it to choose a message, never to
    decide the handle is valid. */
-int        gpu_texture_is_cube(GpuTexture t);
+int gpu_texture_is_cube(GpuTexture t);
 
 /* ---- drawing ----------------------------------------------------------- */
 
@@ -364,13 +375,13 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
  * gpu_offscreen_begin opens a frame targeting a fresh texture; _read copies it
  * back to host memory as BGRA8; _end finishes. Returns 0 on failure, loudly.
  */
-int  gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
-                         float a);
+int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
+                        float a);
 /* Finish the current off-screen frame and begin another on the same target,
    with no game colour clear. The frame-initialisation self-test uses this to
    distinguish black initialization from accidentally preserved contents. */
-int  gpu_offscreen_next_no_clear(void);
-int  gpu_offscreen_read(void *bgra_out, uint32_t bytes);
+int gpu_offscreen_next_no_clear(void);
+int gpu_offscreen_read(void *bgra_out, uint32_t bytes);
 void gpu_offscreen_end(void);
 
 #ifdef __cplusplus

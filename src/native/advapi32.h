@@ -13,8 +13,8 @@ void advapi32_report(void);
    values, encoding and persistence as guest RegSetValueExA writes, for the
    one boot-time publisher (display_mode_seed). Not a live view: after these
    run, the value belongs to the game exactly as if it had written it. */
-int advapi32_host_get_string(const char *path, const char *name,
-                             char *out, int cap);
+int advapi32_host_get_string(const char *path, const char *name, char *out,
+                             int cap);
 int advapi32_host_set_string(const char *path, const char *name,
                              const char *value);
 

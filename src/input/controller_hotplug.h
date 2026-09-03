@@ -9,11 +9,11 @@
  * may see arbitrarily many new GUIDs while still having only eight live pads.
  */
 typedef struct {
-    uint64_t processed_generation;
-    unsigned long admissions;
-    int initialized;
-    int connected;
-    int last_reported;
+  uint64_t processed_generation;
+  unsigned long admissions;
+  int initialized;
+  int connected;
+  int last_reported;
 } X2ControllerHotplug;
 
 int x2_controller_hotplug_needs_admission(X2ControllerHotplug *state,

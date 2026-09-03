@@ -28,21 +28,20 @@
  * Said here so a slow frame is not chased through an instrument that caused
  * the slowness.
  */
-static inline unsigned long long gpu_perf_now_ns(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (unsigned long long)ts.tv_sec * 1000000000ull + ts.tv_nsec;
+static inline unsigned long long gpu_perf_now_ns(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (unsigned long long)ts.tv_sec * 1000000000ull + ts.tv_nsec;
 }
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
-extern SDL_GPUDevice        *g_gpu;
+extern SDL_GPUDevice *g_gpu;
 extern SDL_GPUCommandBuffer *g_cmd;
-extern SDL_GPURenderPass    *g_pass;
-extern SDL_GPUTexture       *g_swap;
-extern uint32_t              g_swap_w, g_swap_h;
+extern SDL_GPURenderPass *g_pass;
+extern SDL_GPUTexture *g_swap;
+extern uint32_t g_swap_w, g_swap_h;
 
 /*
  * The depth/stencil target the current pass renders against, and its format.
@@ -59,7 +58,7 @@ SDL_GPUTextureFormat gpu_depth_format(void);
 /* How many frames have been presented. gpu_draw.c uses it to know which frame
    a draw belongs to, for X2_FRAME_DUMP. */
 unsigned long gpu_frames_presented(void);
-SDL_GPUTexture      *gpu_depth_target(uint32_t w, uint32_t h);
+SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h);
 
 /* Open the render pass if it is not open yet, clearing as the engine asked.
    Drawing needs the pass, and the pass has to be opened by whoever gets there

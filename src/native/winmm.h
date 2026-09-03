@@ -7,6 +7,8 @@
 #ifndef X2_WINMM_H
 #define X2_WINMM_H
 
+#include <stdint.h>
+
 /*
  * Run any timer callback that is due. Called from places the guest reaches
  * anyway -- a clock read, a sleep -- because a timer nobody pumps never fires,

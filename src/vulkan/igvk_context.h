@@ -58,9 +58,9 @@
 #ifndef IGVK_CONTEXT_H
 #define IGVK_CONTEXT_H
 
-#include <stdint.h>
 #include "igvk_ark.h"
 #include "x86rt.h"
+#include <stdint.h>
 
 /* The module libIGGfx is, spelled once. */
 #define IGVK_GFX "libIGGfx.dll"
@@ -68,8 +68,8 @@
 /* ---- what a slot stub sees ------------------------------------------- */
 
 /* `this`, and the i-th stack argument (0-based, after the return address). */
-#define IGVK_SELF(C)     ((C)->ecx)
-#define IGVK_ARG(C, i)   RD32((C)->esp + 4u + (uint32_t)(i) * 4u)
+#define IGVK_SELF(C) ((C)->ecx)
+#define IGVK_ARG(C, i) RD32((C)->esp + 4u + (uint32_t)(i) * 4u)
 
 /* The i-th stack argument reinterpreted as a float. The engine passes floats
    on the stack as their bit patterns; punning through a union rather than a

@@ -20,17 +20,17 @@
  * smearing between frames and be attributed to anything but this.
  */
 #include "gpu_device.h"
+#include "boot_blackout.h"
 #include "gpu_capture.h"
 #include "gpu_capture_internal.h"
 #include "gpu_draw.h"
 #include "gpu_frame_timing.h"
+#include "gpu_frame_timing_report.h"
+#include "gpu_headless.h"
 #include "gpu_internal.h"
 #include "gpu_present.h"
 #include "gpu_prompt_glyphs.h"
 #include "gpu_shadow.h"
-#include "gpu_headless.h"
-#include "gpu_frame_timing_report.h"
-#include "boot_blackout.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include <stdio.h>
@@ -39,14 +39,14 @@
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 
-SDL_GPUDevice        *g_gpu;
-static SDL_Window    *g_win;              /* swapchain claimed on this */
+SDL_GPUDevice *g_gpu;
+static SDL_Window *g_win; /* swapchain claimed on this */
 SDL_GPUCommandBuffer *g_cmd;
-SDL_GPUTexture       *g_swap;
-SDL_GPURenderPass    *g_pass;
-uint32_t              g_swap_w, g_swap_h;
+SDL_GPUTexture *g_swap;
+SDL_GPURenderPass *g_pass;
+uint32_t g_swap_w, g_swap_h;
 static SDL_GPUTexture *g_output;
-static uint32_t        g_output_w, g_output_h;
+static uint32_t g_output_w, g_output_h;
 /* Where the frame goes when it is not going to the swapchain: the self-test
    and, later, the engine's off-screen render destinations. */
 static SDL_GPUTexture *g_offscreen;
@@ -57,12 +57,16 @@ static SDL_Window *(*g_window_provider)(void);
 
 /* What the next render pass must clear with. */
 static struct {
-    unsigned mask;
-    float    r, g, b, a, depth;
-    uint32_t stencil;
+  unsigned mask;
+  float r, g, b, a, depth;
+  uint32_t stencil;
 } g_clear;
 
-static struct { int x, y, w, h; float minz, maxz; int set; } g_viewport;
+static struct {
+  int x, y, w, h;
+  float minz, maxz;
+  int set;
+} g_viewport;
 
 /* Counters. A black screen is ambiguous; these disambiguate it. */
 /* Set when X2_MAX_FRAMES is reached. READ by the host's heartbeat thread,
@@ -70,7 +74,7 @@ static struct { int x, y, w, h; float minz, maxz; int set; } g_viewport;
    exists, and keeping it that way is the point of the file comment above. */
 static int g_frame_limit_hit;
 static unsigned long g_frames_presented, g_frames_no_swapchain,
-                     g_frames_no_window, g_late_clears;
+    g_frames_no_window, g_late_clears;
 
 /*
  * The frame-phase profiler's device side.
@@ -89,170 +93,170 @@ static unsigned long g_frames_presented, g_frames_no_swapchain,
 static unsigned long long g_frame_end_submits;
 #endif
 
-int gpu_device_create(void)
-{
+int gpu_device_create(void) {
 #ifndef X2_WITH_SDL
-    fprintf(stderr, "gpu: built without SDL; no GPU device can be made.\n");
-    return 0;
+  fprintf(stderr, "gpu: built without SDL; no GPU device can be made.\n");
+  return 0;
 #else
-    X2Settings *settings = x2_settings_store();
-    gpu_frame_timing_report_install();
-    gpu_shadow_configure(settings->dynamic_shadows,
-                         settings->shadow_resolution);
-    if (g_gpu) return 1;
-    if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_Init(SDL_INIT_VIDEO))
-        fprintf(stderr, "gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
-
-    /*
-     * The Vulkan VALIDATION LAYER, and whether it is loaded, said out loud.
-     *
-     * This was hardcoded true. SDL's debug_mode loads
-     * libVkLayer_khronos_validation.so, which inspects every draw, every bind
-     * and every upload -- and this backend submits half a million draws in a
-     * driven run. A backtrace of a live run showed the layer's own queue
-     * thread in the process, so the tax was being paid and nothing said so:
-     * "the native version is laggy" was measured against a build with a
-     * per-draw validator in it.
-     *
-     * Off by default, on with X2_GPU_DEBUG=1, and ANNOUNCED either way --
-     * because the thing that made this expensive to find was not that it was
-     * on, it was that no line of output distinguished the two builds.
-     */
-    {
-        const char *e = getenv("X2_GPU_DEBUG");
-        int debug = e && *e && *e != '0';
-        printf("gpu: Vulkan validation is %s (X2_GPU_DEBUG=%s). It inspects "
-               "EVERY draw; a timing measured with it on is not a timing of "
-               "this renderer.\n",
-               debug ? "ON" : "off", e && *e ? e : "unset");
-        fflush(stdout);
-        g_gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, debug, NULL);
-    }
-    if (!g_gpu) {
-        fprintf(stderr,
-                "gpu: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"
-                "  No GPU device means nothing can be drawn. Reported here "
-                "rather than later as a blank frame.\n", SDL_GetError());
-        return 0;
-    }
-    printf("gpu: GPU device created -- backend \"%s\"\n",
-           SDL_GetGPUDeviceDriver(g_gpu));
-    fflush(stdout);
-    gpu_texture_flush_format_support_report();
-
-    /* Attach immediately if a window already exists -- under x2native the
-       guest's CreateWindowExA usually runs well before the renderer is
-       instantiated. A front-end that attaches its own window installs no
-       provider and simply does it itself. */
-    if (g_window_provider) gpu_device_attach_window(g_window_provider());
+  X2Settings *settings = x2_settings_store();
+  gpu_frame_timing_report_install();
+  gpu_shadow_configure(settings->dynamic_shadows, settings->shadow_resolution);
+  if (g_gpu)
     return 1;
+  if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_Init(SDL_INIT_VIDEO))
+    fprintf(stderr, "gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
+
+  /*
+   * The Vulkan VALIDATION LAYER, and whether it is loaded, said out loud.
+   *
+   * This was hardcoded true. SDL's debug_mode loads
+   * libVkLayer_khronos_validation.so, which inspects every draw, every bind
+   * and every upload -- and this backend submits half a million draws in a
+   * driven run. A backtrace of a live run showed the layer's own queue
+   * thread in the process, so the tax was being paid and nothing said so:
+   * "the native version is laggy" was measured against a build with a
+   * per-draw validator in it.
+   *
+   * Off by default, on with X2_GPU_DEBUG=1, and ANNOUNCED either way --
+   * because the thing that made this expensive to find was not that it was
+   * on, it was that no line of output distinguished the two builds.
+   */
+  {
+    const char *e = getenv("X2_GPU_DEBUG");
+    int debug = e && *e && *e != '0';
+    printf("gpu: Vulkan validation is %s (X2_GPU_DEBUG=%s). It inspects "
+           "EVERY draw; a timing measured with it on is not a timing of "
+           "this renderer.\n",
+           debug ? "ON" : "off", e && *e ? e : "unset");
+    fflush(stdout);
+    g_gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, debug, NULL);
+  }
+  if (!g_gpu) {
+    fprintf(stderr,
+            "gpu: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"
+            "  No GPU device means nothing can be drawn. Reported here "
+            "rather than later as a blank frame.\n",
+            SDL_GetError());
+    return 0;
+  }
+  printf("gpu: GPU device created -- backend \"%s\"\n",
+         SDL_GetGPUDeviceDriver(g_gpu));
+  fflush(stdout);
+  gpu_texture_flush_format_support_report();
+
+  /* Attach immediately if a window already exists -- under x2native the
+     guest's CreateWindowExA usually runs well before the renderer is
+     instantiated. A front-end that attaches its own window installs no
+     provider and simply does it itself. */
+  if (g_window_provider)
+    gpu_device_attach_window(g_window_provider());
+  return 1;
 #endif
 }
 
-void gpu_device_destroy(void)
-{
+void gpu_device_destroy(void) {
 #ifdef X2_WITH_SDL
-    /* RmlUi owns pipelines, buffers and textures on this device. Its backend
-       must release them before the device and before the claimed window. */
-    x2_ui_gpu_shutdown();
-    gpu_prompt_glyphs_shutdown();
-    /* Buffers, textures and pipelines belong to the device, so they go before
-       it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
-       that only shows up under a validation layer. */
-    gpu_draw_shutdown();
-    gpu_capture_shutdown();
-    gpu_present_shutdown(g_gpu);
+  /* RmlUi owns pipelines, buffers and textures on this device. Its backend
+     must release them before the device and before the claimed window. */
+  x2_ui_gpu_shutdown();
+  gpu_prompt_glyphs_shutdown();
+  /* Buffers, textures and pipelines belong to the device, so they go before
+     it does. Releasing them after SDL_DestroyGPUDevice is a use-after-free
+     that only shows up under a validation layer. */
+  gpu_draw_shutdown();
+  gpu_capture_shutdown();
+  gpu_present_shutdown(g_gpu);
 #endif
 #ifdef X2_WITH_SDL
-    if (!g_gpu) return;
-    g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
-    if (g_win) SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
-    SDL_DestroyGPUDevice(g_gpu);
-    g_gpu = NULL;
+  if (!g_gpu)
+    return;
+  g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+  if (g_win)
+    SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
+  SDL_DestroyGPUDevice(g_gpu);
+  g_gpu = NULL;
+  g_win = NULL;
+#endif
+}
+
+int gpu_device_ready(void) {
+#ifdef X2_WITH_SDL
+  return g_gpu != NULL;
+#else
+  return 0;
+#endif
+}
+
+const char *gpu_device_backend(void) {
+#ifdef X2_WITH_SDL
+  const char *backend = g_gpu ? SDL_GetGPUDeviceDriver(g_gpu) : NULL;
+  return backend ? backend : "unavailable";
+#else
+  return "unavailable";
+#endif
+}
+
+void gpu_device_presentation_size(uint32_t *width, uint32_t *height) {
+  if (!width || !height)
+    return;
+#ifdef X2_WITH_SDL
+  *width = g_swap_w;
+  *height = g_swap_h;
+#else
+  *width = 0;
+  *height = 0;
+#endif
+}
+
+int gpu_device_set_backbuffer_size(uint32_t width, uint32_t height) {
+#ifdef X2_WITH_SDL
+  if (!gpu_present_resize_targets(g_gpu, width, height, gpu_depth_format()))
+    return 0;
+  gpu_headless_follow_backbuffer(width, height);
+  return 1;
+#else
+  (void)width;
+  (void)height;
+  return 0;
+#endif
+}
+
+void gpu_device_set_window_provider(struct SDL_Window *(*fn)(void)) {
+#ifdef X2_WITH_SDL
+  g_window_provider = fn;
+#else
+  (void)fn;
+#endif
+}
+
+int gpu_device_attach_window(struct SDL_Window *w) {
+#ifndef X2_WITH_SDL
+  (void)w;
+  return 0;
+#else
+  SDL_Window *win = (SDL_Window *)w;
+  if (!g_gpu)
+    return 0;
+  if (win == g_win)
+    return win != NULL;
+  if (g_win) {
+    SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
     g_win = NULL;
-#endif
-}
-
-int gpu_device_ready(void)
-{
-#ifdef X2_WITH_SDL
-    return g_gpu != NULL;
-#else
+  }
+  if (!win)
     return 0;
-#endif
-}
-
-const char *gpu_device_backend(void)
-{
-#ifdef X2_WITH_SDL
-    const char *backend = g_gpu ? SDL_GetGPUDeviceDriver(g_gpu) : NULL;
-    return backend ? backend : "unavailable";
-#else
-    return "unavailable";
-#endif
-}
-
-void gpu_device_presentation_size(uint32_t *width, uint32_t *height)
-{
-    if (!width || !height) return;
-#ifdef X2_WITH_SDL
-    *width = g_swap_w;
-    *height = g_swap_h;
-#else
-    *width = 0;
-    *height = 0;
-#endif
-}
-
-int gpu_device_set_backbuffer_size(uint32_t width, uint32_t height)
-{
-#ifdef X2_WITH_SDL
-    if (!gpu_present_resize_targets(g_gpu, width, height,
-                                    gpu_depth_format()))
-        return 0;
-    gpu_headless_follow_backbuffer(width, height);
-    return 1;
-#else
-    (void)width;
-    (void)height;
+  if (!SDL_ClaimWindowForGPUDevice(g_gpu, win)) {
+    fprintf(stderr,
+            "gpu: SDL_ClaimWindowForGPUDevice failed: %s\n"
+            "  There is a window and a device but no swapchain "
+            "between them, so nothing can reach the screen.\n",
+            SDL_GetError());
     return 0;
-#endif
-}
-
-void gpu_device_set_window_provider(struct SDL_Window *(*fn)(void))
-{
-#ifdef X2_WITH_SDL
-    g_window_provider = fn;
-#else
-    (void)fn;
-#endif
-}
-
-int gpu_device_attach_window(struct SDL_Window *w)
-{
-#ifndef X2_WITH_SDL
-    (void)w;
-    return 0;
-#else
-    SDL_Window *win = (SDL_Window *)w;
-    if (!g_gpu) return 0;
-    if (win == g_win) return win != NULL;
-    if (g_win) {
-        SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
-        g_win = NULL;
-    }
-    if (!win) return 0;
-    if (!SDL_ClaimWindowForGPUDevice(g_gpu, win)) {
-        fprintf(stderr, "gpu: SDL_ClaimWindowForGPUDevice failed: %s\n"
-                        "  There is a window and a device but no swapchain "
-                        "between them, so nothing can reach the screen.\n",
-                SDL_GetError());
-        return 0;
-    }
-    g_win = win;
-    printf("gpu: swapchain claimed on window %p\n", (void *)win);
-    fflush(stdout);
-    return 1;
+  }
+  g_win = win;
+  printf("gpu: swapchain claimed on window %p\n", (void *)win);
+  fflush(stdout);
+  return 1;
 #endif
 }
 
@@ -269,45 +273,58 @@ int gpu_device_attach_window(struct SDL_Window *w)
  * Nothing to clamp against before the swapchain texture is acquired, so this
  * is called from pass_begin rather than from the setter.
  */
-static void apply_viewport(void)
-{
-    SDL_GPUViewport vp;
-    int x, y, w, h;
+static void apply_viewport(void) {
+  SDL_GPUViewport vp;
+  int x, y, w, h;
 
-    if (!g_pass) return;
-    if (!g_viewport.set) {
-        /* No setViewport yet: the whole target, which is what a freshly
-           created D3D device would also have. */
-        vp.x = 0.0f; vp.y = 0.0f;
-        vp.w = (float)g_swap_w; vp.h = (float)g_swap_h;
-        vp.min_depth = 0.0f; vp.max_depth = 1.0f;
-        SDL_SetGPUViewport(g_pass, &vp);
-        return;
-    }
-    x = g_viewport.x < 0 ? 0 : g_viewport.x;
-    y = g_viewport.y < 0 ? 0 : g_viewport.y;
-    if (x > (int)g_swap_w) x = (int)g_swap_w;
-    if (y > (int)g_swap_h) y = (int)g_swap_h;
-    w = g_viewport.w;
-    h = g_viewport.h;
-    if (w < 1) w = 1;
-    if (h < 1) h = 1;
-    if (x + w > (int)g_swap_w) w = (int)g_swap_w - x;
-    if (y + h > (int)g_swap_h) h = (int)g_swap_h - y;
-    if (w < 1 || h < 1) {
-        static int told;
-        if (!told++)
-            fprintf(stderr, "gpu: the requested viewport %dx%d at (%d,%d) "
-                            "does not intersect the %ux%u target; leaving the "
-                            "previous one.\n", g_viewport.w, g_viewport.h,
-                    g_viewport.x, g_viewport.y, g_swap_w, g_swap_h);
-        return;
-    }
-    vp.x = (float)x; vp.y = (float)y;
-    vp.w = (float)w; vp.h = (float)h;
-    vp.min_depth = g_viewport.minz;
-    vp.max_depth = g_viewport.maxz;
+  if (!g_pass)
+    return;
+  if (!g_viewport.set) {
+    /* No setViewport yet: the whole target, which is what a freshly
+       created D3D device would also have. */
+    vp.x = 0.0f;
+    vp.y = 0.0f;
+    vp.w = (float)g_swap_w;
+    vp.h = (float)g_swap_h;
+    vp.min_depth = 0.0f;
+    vp.max_depth = 1.0f;
     SDL_SetGPUViewport(g_pass, &vp);
+    return;
+  }
+  x = g_viewport.x < 0 ? 0 : g_viewport.x;
+  y = g_viewport.y < 0 ? 0 : g_viewport.y;
+  if (x > (int)g_swap_w)
+    x = (int)g_swap_w;
+  if (y > (int)g_swap_h)
+    y = (int)g_swap_h;
+  w = g_viewport.w;
+  h = g_viewport.h;
+  if (w < 1)
+    w = 1;
+  if (h < 1)
+    h = 1;
+  if (x + w > (int)g_swap_w)
+    w = (int)g_swap_w - x;
+  if (y + h > (int)g_swap_h)
+    h = (int)g_swap_h - y;
+  if (w < 1 || h < 1) {
+    static int told;
+    if (!told++)
+      fprintf(stderr,
+              "gpu: the requested viewport %dx%d at (%d,%d) "
+              "does not intersect the %ux%u target; leaving the "
+              "previous one.\n",
+              g_viewport.w, g_viewport.h, g_viewport.x, g_viewport.y, g_swap_w,
+              g_swap_h);
+    return;
+  }
+  vp.x = (float)x;
+  vp.y = (float)y;
+  vp.w = (float)w;
+  vp.h = (float)h;
+  vp.min_depth = g_viewport.minz;
+  vp.max_depth = g_viewport.maxz;
+  SDL_SetGPUViewport(g_pass, &vp);
 }
 
 /*
@@ -316,10 +333,13 @@ static void apply_viewport(void)
  * Everything that draws goes through here first. Called at most once per
  * frame; the pass stays open until gpu_frame_end.
  */
-void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h)
-{
-    g_offscreen = t;
-    if (t) { g_swap = t; g_swap_w = w; g_swap_h = h; }
+void gpu_set_offscreen_target(SDL_GPUTexture *t, uint32_t w, uint32_t h) {
+  g_offscreen = t;
+  if (t) {
+    g_swap = t;
+    g_swap_w = w;
+    g_swap_h = h;
+  }
 }
 
 /*
@@ -359,59 +379,57 @@ int gpu_frame_limit_reached(void) { return g_frame_limit_hit; }
 void gpu_device_perf(unsigned long long *frame_ns,
                      unsigned long long *frame_ns_min,
                      unsigned long long *frame_ns_max,
-                     unsigned long long *end_submits,
-                     unsigned long *intervals,
-                     const unsigned long **hist)
-{
-    gpu_frame_timing_perf(frame_ns, frame_ns_min, frame_ns_max,
-                          intervals, hist);
-    *end_submits = g_frame_end_submits;
+                     unsigned long long *end_submits, unsigned long *intervals,
+                     const unsigned long **hist) {
+  gpu_frame_timing_perf(frame_ns, frame_ns_min, frame_ns_max, intervals, hist);
+  *end_submits = g_frame_end_submits;
 }
 
 void gpu_device_frame_percentiles(unsigned long long *p50_ns,
                                   unsigned long long *p95_ns,
                                   unsigned long long *p99_ns,
-                                  unsigned long *samples)
-{
-    gpu_frame_timing_percentiles(p50_ns, p95_ns, p99_ns, samples);
+                                  unsigned long *samples) {
+  gpu_frame_timing_percentiles(p50_ns, p95_ns, p99_ns, samples);
 }
 
-SDL_GPUTextureFormat gpu_depth_format(void)
-{
-    static const SDL_GPUTextureFormat WANT[] = {
-        SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
-        SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
-        SDL_GPU_TEXTUREFORMAT_D24_UNORM,
-        SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-        SDL_GPU_TEXTUREFORMAT_D16_UNORM,
-    };
-    unsigned i;
+SDL_GPUTextureFormat gpu_depth_format(void) {
+  static const SDL_GPUTextureFormat WANT[] = {
+      SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
+      SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
+      SDL_GPU_TEXTUREFORMAT_D24_UNORM,
+      SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
+      SDL_GPU_TEXTUREFORMAT_D16_UNORM,
+  };
+  unsigned i;
 
-    if (g_depth_fmt != SDL_GPU_TEXTUREFORMAT_INVALID) return g_depth_fmt;
-    if (!g_gpu) return SDL_GPU_TEXTUREFORMAT_INVALID;
-    for (i = 0; i < sizeof WANT / sizeof WANT[0]; i++) {
-        if (SDL_GPUTextureSupportsFormat(g_gpu, WANT[i],
-                                         SDL_GPU_TEXTURETYPE_2D,
-                                         SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
-            g_depth_fmt = WANT[i];
-            return g_depth_fmt;
-        }
-    }
-    {
-        static int told;
-        if (!told++)
-            fprintf(stderr, "gpu: this device supports NONE of the five depth "
-                            "formats asked for, so there is no depth buffer "
-                            "and everything draws in submission order.\n");
-    }
+  if (g_depth_fmt != SDL_GPU_TEXTUREFORMAT_INVALID)
+    return g_depth_fmt;
+  if (!g_gpu)
     return SDL_GPU_TEXTUREFORMAT_INVALID;
+  for (i = 0; i < sizeof WANT / sizeof WANT[0]; i++) {
+    if (SDL_GPUTextureSupportsFormat(
+            g_gpu, WANT[i], SDL_GPU_TEXTURETYPE_2D,
+            SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+      g_depth_fmt = WANT[i];
+      return g_depth_fmt;
+    }
+  }
+  {
+    static int told;
+    if (!told++)
+      fprintf(stderr, "gpu: this device supports NONE of the five depth "
+                      "formats asked for, so there is no depth buffer "
+                      "and everything draws in submission order.\n");
+  }
+  return SDL_GPU_TEXTUREFORMAT_INVALID;
 }
 
-SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h)
-{
-    if (!g_gpu || !w || !h) return NULL;
-    if (gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID) return NULL;
-    return gpu_present_depth_target(g_gpu, w, h, g_depth_fmt);
+SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h) {
+  if (!g_gpu || !w || !h)
+    return NULL;
+  if (gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID)
+    return NULL;
+  return gpu_present_depth_target(g_gpu, w, h, g_depth_fmt);
 }
 
 /*
@@ -420,384 +438,398 @@ SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h)
  * attachments that are NOT being cleared: at frame start nothing is worth
  * preserving, mid-frame everything drawn so far is.
  */
-static void pass_begin(int reopen)
-{
-    SDL_GPUColorTargetInfo ct;
-    SDL_GPUDepthStencilTargetInfo dt;
-    SDL_GPUTexture *depth;
+static void pass_begin(int reopen) {
+  SDL_GPUColorTargetInfo ct;
+  SDL_GPUDepthStencilTargetInfo dt;
+  SDL_GPUTexture *depth;
 
-    if (g_pass || !g_cmd || !g_swap) return;
-    memset(&ct, 0, sizeof ct);
-    ct.texture = g_swap;
-    ct.clear_color.r = g_clear.r;
-    ct.clear_color.g = g_clear.g;
-    ct.clear_color.b = g_clear.b;
-    ct.clear_color.a = g_clear.a;
+  if (g_pass || !g_cmd || !g_swap)
+    return;
+  memset(&ct, 0, sizeof ct);
+  ct.texture = g_swap;
+  ct.clear_color.r = g_clear.r;
+  ct.clear_color.g = g_clear.g;
+  ct.clear_color.b = g_clear.b;
+  ct.clear_color.a = g_clear.a;
+  /*
+   * A frame starts black when the engine does not clear colour itself.
+   *
+   * DONT_CARE is not black: tiled GPUs may expose recycled attachment
+   * memory in every pixel the game does not overwrite. That appeared as
+   * scene fragments in the unused edges and, on sparse loading frames, as
+   * noise over nearly the whole window. LOAD is no better at frame start:
+   * swapchain history is undefined and the logical presentation texture is
+   * persistent. An opaque-black CLEAR gives D3D's discarded back buffer a
+   * deterministic value without changing an explicit game clear.
+   *
+   * A MID-frame reopen is different. Pixels drawn before a late depth-only
+   * clear are real current-frame contents and must be loaded.
+   */
+  if (g_clear.mask & 1u) {
+    ct.load_op = SDL_GPU_LOADOP_CLEAR;
+  } else if (reopen) {
+    ct.load_op = SDL_GPU_LOADOP_LOAD;
+  } else {
+    ct.clear_color.r = 0.0f;
+    ct.clear_color.g = 0.0f;
+    ct.clear_color.b = 0.0f;
+    ct.clear_color.a = 1.0f;
+    ct.load_op = SDL_GPU_LOADOP_CLEAR;
+  }
+  ct.store_op = SDL_GPU_STOREOP_STORE;
+
+  depth = gpu_depth_target(g_swap_w, g_swap_h);
+  memset(&dt, 0, sizeof dt);
+  if (depth) {
+    dt.texture = depth;
     /*
-     * A frame starts black when the engine does not clear colour itself.
+     * CLEAR when the engine asked, and CLEAR when it did not.
      *
-     * DONT_CARE is not black: tiled GPUs may expose recycled attachment
-     * memory in every pixel the game does not overwrite. That appeared as
-     * scene fragments in the unused edges and, on sparse loading frames, as
-     * noise over nearly the whole window. LOAD is no better at frame start:
-     * swapchain history is undefined and the logical presentation texture is
-     * persistent. An opaque-black CLEAR gives D3D's discarded back buffer a
-     * deterministic value without changing an explicit game clear.
-     *
-     * A MID-frame reopen is different. Pixels drawn before a late depth-only
-     * clear are real current-frame contents and must be loaded.
+     * The contents from the previous frame are meaningless to this one and
+     * LOADing them would depth-test against the last frame's geometry.
+     * D3D8's own semantics are that a frame that draws depth-tested
+     * geometry clears Z first; a frame that forgets is drawing against
+     * garbage on real hardware too, and 1.0 is the value that lets
+     * everything through rather than a value chosen to hide the mistake.
      */
-    if (g_clear.mask & 1u) {
-        ct.load_op = SDL_GPU_LOADOP_CLEAR;
-    } else if (reopen) {
-        ct.load_op = SDL_GPU_LOADOP_LOAD;
-    } else {
-        ct.clear_color.r = 0.0f;
-        ct.clear_color.g = 0.0f;
-        ct.clear_color.b = 0.0f;
-        ct.clear_color.a = 1.0f;
-        ct.load_op = SDL_GPU_LOADOP_CLEAR;
-    }
-    ct.store_op = SDL_GPU_STOREOP_STORE;
+    dt.clear_depth = (g_clear.mask & 2u) ? g_clear.depth : 1.0f;
+    dt.clear_stencil = (Uint8)((g_clear.mask & 4u) ? g_clear.stencil : 0u);
+    /* Mid-frame, only what the engine ASKED to clear is cleared: a depth
+       clear before the HUD must not throw away the colour, and a colour
+       clear must not throw away the depth. */
+    dt.load_op = (!reopen || (g_clear.mask & 2u)) ? SDL_GPU_LOADOP_CLEAR
+                                                  : SDL_GPU_LOADOP_LOAD;
+    dt.store_op = SDL_GPU_STOREOP_STORE;
+    dt.stencil_load_op = (!reopen || (g_clear.mask & 4u)) ? SDL_GPU_LOADOP_CLEAR
+                                                          : SDL_GPU_LOADOP_LOAD;
+    dt.stencil_store_op = SDL_GPU_STOREOP_STORE;
+  }
 
-    depth = gpu_depth_target(g_swap_w, g_swap_h);
-    memset(&dt, 0, sizeof dt);
-    if (depth) {
-        dt.texture = depth;
-        /*
-         * CLEAR when the engine asked, and CLEAR when it did not.
-         *
-         * The contents from the previous frame are meaningless to this one and
-         * LOADing them would depth-test against the last frame's geometry.
-         * D3D8's own semantics are that a frame that draws depth-tested
-         * geometry clears Z first; a frame that forgets is drawing against
-         * garbage on real hardware too, and 1.0 is the value that lets
-         * everything through rather than a value chosen to hide the mistake.
-         */
-        dt.clear_depth = (g_clear.mask & 2u) ? g_clear.depth : 1.0f;
-        dt.clear_stencil = (Uint8)((g_clear.mask & 4u) ? g_clear.stencil : 0u);
-        /* Mid-frame, only what the engine ASKED to clear is cleared: a depth
-           clear before the HUD must not throw away the colour, and a colour
-           clear must not throw away the depth. */
-        dt.load_op = (!reopen || (g_clear.mask & 2u)) ? SDL_GPU_LOADOP_CLEAR
-                                                      : SDL_GPU_LOADOP_LOAD;
-        dt.store_op = SDL_GPU_STOREOP_STORE;
-        dt.stencil_load_op = (!reopen || (g_clear.mask & 4u))
-                                 ? SDL_GPU_LOADOP_CLEAR : SDL_GPU_LOADOP_LOAD;
-        dt.stencil_store_op = SDL_GPU_STOREOP_STORE;
-    }
-
-    g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, depth ? &dt : NULL);
-    if (!g_pass) {
-        fprintf(stderr, "gpu: SDL_BeginGPURenderPass failed: %s\n",
-                SDL_GetError());
-        return;
-    }
-    apply_viewport();
+  g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, depth ? &dt : NULL);
+  if (!g_pass) {
+    fprintf(stderr, "gpu: SDL_BeginGPURenderPass failed: %s\n", SDL_GetError());
+    return;
+  }
+  apply_viewport();
 }
 
 void gpu_pass_begin(void) { pass_begin(0); }
 #endif
 
-int gpu_frame_begin(void)
-{
-    /* Reset the frame-owned prompt harvest and create its retained resources
-       before a render pass can open. Uploading them from the UI hook would
-       submit a copy command after engine drawing had already begun. */
-    gpu_prompt_glyphs_frame_begin();
+int gpu_frame_begin(void) {
+  /* Reset the frame-owned prompt harvest and create its retained resources
+     before a render pass can open. Uploading them from the UI hook would
+     submit a copy command after engine drawing had already begun. */
+  gpu_prompt_glyphs_frame_begin();
 #ifndef X2_WITH_SDL
-    return 0;
+  return 0;
 #else
-    static int told_no_window;
+  static int told_no_window;
 
-    if (!g_gpu) return 0;
-    if (gpu_headless_active()) {
-        SDL_GPUTexture *t = gpu_headless_target();
-        if (!t) return 0;
-        if (g_cmd) gpu_frame_end();
-        g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-        if (!g_cmd) {
-            fprintf(stderr, "gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
-                    SDL_GetError());
-            return 0;
-        }
-        gpu_set_offscreen_target(t, gpu_headless_width(),
-                                 gpu_headless_height());
-        gpu_shadow_frame_begin();
-        g_clear.mask = 0;
-        gpu_frame_host_reset();
-        gpu_headless_note_frame();
-        return 1;
-    }
-    if (!g_win) {
-        /* Re-try the attach: the guest may have created its window after the
-           renderer was instantiated. */
-        if (!g_window_provider ||
-            !gpu_device_attach_window(g_window_provider())) {
-            g_frames_no_window++;
-            if (!told_no_window++)
-                printf("gpu: frames are being driven with no window to "
-                       "present to (--no-window, or the guest made none). "
-                       "The frame loop runs; nothing reaches a screen.\n");
-            return 0;
-        }
-    }
-    if (g_cmd) {
-        fprintf(stderr, "gpu: beginDraw while a frame is already open -- the "
-                        "previous one was never ended. Ending it.\n");
-        gpu_frame_end();
-    }
+  if (!g_gpu)
+    return 0;
+  if (gpu_headless_active()) {
+    SDL_GPUTexture *t = gpu_headless_target();
+    if (!t)
+      return 0;
+    if (g_cmd)
+      gpu_frame_end();
     g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
     if (!g_cmd) {
-        fprintf(stderr, "gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
-                SDL_GetError());
-        return 0;
+      fprintf(stderr, "gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
+              SDL_GetError());
+      return 0;
     }
-    if (!SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_output,
-                                               &g_output_w, &g_output_h)) {
-        fprintf(stderr, "gpu: acquiring the swapchain texture failed: %s\n",
-                SDL_GetError());
-        SDL_CancelGPUCommandBuffer(g_cmd);
-        g_cmd = NULL;
-        return 0;
-    }
-    if (!g_output) {
-        /* Legitimate and transient -- the window is minimised, or every image
-           is still in flight. Counted so a run that NEVER gets one is
-           distinguishable from one that occasionally misses. */
-        SDL_CancelGPUCommandBuffer(g_cmd);
-        g_cmd = NULL;
-        g_frames_no_swapchain++;
-        return 0;
-    }
-    g_swap = g_output;
-    g_swap_w = g_output_w;
-    g_swap_h = g_output_h;
-    if (gpu_present_is_configured()) {
-        g_swap = gpu_present_scene(g_gpu, &g_swap_w, &g_swap_h);
-        if (!g_swap) {
-            SDL_CancelGPUCommandBuffer(g_cmd);
-            g_cmd = NULL;
-            g_output = NULL;
-            return 0;
-        }
-    } else
-        g_swap = gpu_capture_frame_target(g_gpu, g_output, g_output_w, g_output_h);
+    gpu_set_offscreen_target(t, gpu_headless_width(), gpu_headless_height());
     gpu_shadow_frame_begin();
     g_clear.mask = 0;
     gpu_frame_host_reset();
+    gpu_headless_note_frame();
     return 1;
-#endif
-}
-
-void gpu_frame_end(void)
-{
-#ifdef X2_WITH_SDL
-    SDL_GPUTexture *final_output;
-    if (!g_cmd) return;
-    gpu_shadow_frame_submit();
-    gpu_frame_timing_note(gpu_perf_now_ns(), g_frames_presented);
-    /*
-     * Open the pass even if nothing drew.
-     *
-     * A frame in which the engine only cleared is a real frame -- it is what
-     * the port produces before any geometry works -- and without this the
-     * clear would never be executed and the window would stay whatever the
-     * compositor left in it.
-     */
-    gpu_pass_begin();
-    if (g_pass) {
-        SDL_EndGPURenderPass(g_pass);
-        g_pass = NULL;
+  }
+  if (!g_win) {
+    /* Re-try the attach: the guest may have created its window after the
+       renderer was instantiated. */
+    if (!g_window_provider || !gpu_device_attach_window(g_window_provider())) {
+      g_frames_no_window++;
+      if (!told_no_window++)
+        printf("gpu: frames are being driven with no window to "
+               "present to (--no-window, or the guest made none). "
+               "The frame loop runs; nothing reaches a screen.\n");
+      return 0;
     }
-    final_output = g_output;
-    if (!g_offscreen && g_output && gpu_present_is_configured())
-        final_output = gpu_capture_frame_target(
-            g_gpu, g_output, g_output_w, g_output_h);
-    else if (!g_offscreen && g_output && g_swap != g_output)
-        final_output = g_swap;
-    if (!g_offscreen && g_output && gpu_present_is_configured() &&
-        !gpu_present_composite(g_cmd, final_output, g_output_w, g_output_h)) {
-        SDL_CancelGPUCommandBuffer(g_cmd);
-        g_cmd = NULL;
-        g_swap = NULL;
-        g_output = NULL;
-        return;
-    }
-    if (!g_offscreen) x2_ui_render(g_gpu, g_cmd, final_output,
-                                   g_output_w, g_output_h, g_win);
-    /* Boot presentation policy: withhold the retail boot's branding (legal
-       loading backdrop, splash art) by presenting black until the
-       destination map is up; see src/presentation/boot_blackout.c. */
-    if (x2_boot_blackout_active())
-        gpu_present_boot_blackout(g_cmd,
-                                  gpu_headless_active() ? g_swap : final_output);
-    gpu_capture_submit_frame(
-        g_gpu, g_cmd, gpu_headless_active(),
-        gpu_headless_active() ? g_swap : final_output,
-        gpu_headless_active() ? NULL : g_output,
-        gpu_headless_active() ? g_swap_w : g_output_w,
-        gpu_headless_active() ? g_swap_h : g_output_h);
-    g_cmd = NULL;
-    g_frame_end_submits++;
-    if (!g_offscreen) {
-        g_swap = NULL;
-        g_output = NULL;
-    }
-    g_frames_presented++;
-    gpu_capture_frame(gpu_headless_active(), gpu_headless_frames(),
-                      gpu_headless_width(), gpu_headless_height());
-    /*
-     * X2_MAX_FRAMES: stop cleanly after this many frames.
-     *
-     * This game never stops on its own, so every measured run has been ended
-     * by a timeout -- which means every run costs its whole timeout even when
-     * the thing being measured finished a minute earlier, and the reports come
-     * out of a signal handler. Ending on the game's OWN frame counter makes a
-     * run take as long as it needs and no longer, and makes two runs of the
-     * same script the same length.
-     *
-     * It goes through the same path a SIGTERM does (the heartbeat thread does
-     * the reports, because they are stdio), so nothing new has to be trusted.
-     */
-    {
-        static long limit = -2;
-        if (limit == -2) {
-            const char *e = getenv("X2_MAX_FRAMES");
-            limit = (e && *e) ? strtol(e, NULL, 0) : -1;
-            if (limit > 0)
-                fprintf(stderr, "gpu: X2_MAX_FRAMES=%ld -- the run will stop "
-                                "cleanly after that many presented frames.\n",
-                        limit);
-        }
-        /*
-         * Said ONCE. The limit is a level, not an edge -- every frame after it
-         * satisfies the test -- and without this guard the line repeated for as
-         * long as the guest kept presenting. One run emitted 3,847 copies of it
-         * and they were interleaved through the shutdown report, which is how a
-         * report that HUNG midway looked like a report that had finished.
-         * The frame number in the line is still the FIRST one over the limit,
-         * which is the useful one; how far the guest ran after the stop was
-         * requested is the stopping path's business to report, not this one's.
-         */
-        if (limit > 0 && (long)g_frames_presented >= limit
-            && !g_frame_limit_hit) {
-            fprintf(stderr, "\ngpu: X2_MAX_FRAMES reached (%lu presented). "
-                            "Stopping; the reports follow.\n",
-                    g_frames_presented);
-            g_frame_limit_hit = 1;
-        }
-    }
-#endif
-}
-
-int gpu_frame_in_progress(void)
-{
-#ifdef X2_WITH_SDL
-    return g_cmd != NULL;
-#else
+  }
+  if (g_cmd) {
+    fprintf(stderr, "gpu: beginDraw while a frame is already open -- the "
+                    "previous one was never ended. Ending it.\n");
+    gpu_frame_end();
+  }
+  g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
+  if (!g_cmd) {
+    fprintf(stderr, "gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
+            SDL_GetError());
     return 0;
+  }
+  if (!SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_output,
+                                             &g_output_w, &g_output_h)) {
+    fprintf(stderr, "gpu: acquiring the swapchain texture failed: %s\n",
+            SDL_GetError());
+    SDL_CancelGPUCommandBuffer(g_cmd);
+    g_cmd = NULL;
+    return 0;
+  }
+  if (!g_output) {
+    /* Legitimate and transient -- the window is minimised, or every image
+       is still in flight. Counted so a run that NEVER gets one is
+       distinguishable from one that occasionally misses. */
+    SDL_CancelGPUCommandBuffer(g_cmd);
+    g_cmd = NULL;
+    g_frames_no_swapchain++;
+    return 0;
+  }
+  g_swap = g_output;
+  g_swap_w = g_output_w;
+  g_swap_h = g_output_h;
+  if (gpu_present_is_configured()) {
+    g_swap = gpu_present_scene(g_gpu, &g_swap_w, &g_swap_h);
+    if (!g_swap) {
+      SDL_CancelGPUCommandBuffer(g_cmd);
+      g_cmd = NULL;
+      g_output = NULL;
+      return 0;
+    }
+  } else
+    g_swap = gpu_capture_frame_target(g_gpu, g_output, g_output_w, g_output_h);
+  gpu_shadow_frame_begin();
+  g_clear.mask = 0;
+  gpu_frame_host_reset();
+  return 1;
+#endif
+}
+
+void gpu_frame_end(void) {
+#ifdef X2_WITH_SDL
+  SDL_GPUTexture *final_output;
+  if (!g_cmd)
+    return;
+  gpu_shadow_frame_submit();
+  gpu_frame_timing_note(gpu_perf_now_ns(), g_frames_presented);
+  /*
+   * Open the pass even if nothing drew.
+   *
+   * A frame in which the engine only cleared is a real frame -- it is what
+   * the port produces before any geometry works -- and without this the
+   * clear would never be executed and the window would stay whatever the
+   * compositor left in it.
+   */
+  gpu_pass_begin();
+  if (g_pass) {
+    SDL_EndGPURenderPass(g_pass);
+    g_pass = NULL;
+  }
+  final_output = g_output;
+  if (!g_offscreen && g_output && gpu_present_is_configured())
+    final_output =
+        gpu_capture_frame_target(g_gpu, g_output, g_output_w, g_output_h);
+  else if (!g_offscreen && g_output && g_swap != g_output)
+    final_output = g_swap;
+  if (!g_offscreen && g_output && gpu_present_is_configured() &&
+      !gpu_present_composite(g_cmd, final_output, g_output_w, g_output_h)) {
+    SDL_CancelGPUCommandBuffer(g_cmd);
+    g_cmd = NULL;
+    g_swap = NULL;
+    g_output = NULL;
+    return;
+  }
+  if (!g_offscreen)
+    x2_ui_render(g_gpu, g_cmd, final_output, g_output_w, g_output_h, g_win);
+  /* Boot presentation policy: withhold the retail boot's branding (legal
+     loading backdrop, splash art) by presenting black until the
+     destination map is up; see src/presentation/boot_blackout.c. */
+  if (x2_boot_blackout_active())
+    gpu_present_boot_blackout(g_cmd,
+                              gpu_headless_active() ? g_swap : final_output);
+  gpu_capture_submit_frame(g_gpu, g_cmd, gpu_headless_active(),
+                           gpu_headless_active() ? g_swap : final_output,
+                           gpu_headless_active() ? NULL : g_output,
+                           gpu_headless_active() ? g_swap_w : g_output_w,
+                           gpu_headless_active() ? g_swap_h : g_output_h);
+  g_cmd = NULL;
+  g_frame_end_submits++;
+  if (!g_offscreen) {
+    g_swap = NULL;
+    g_output = NULL;
+  }
+  g_frames_presented++;
+  gpu_capture_frame(gpu_headless_active(), gpu_headless_frames(),
+                    gpu_headless_width(), gpu_headless_height());
+  /*
+   * X2_MAX_FRAMES: stop cleanly after this many frames.
+   *
+   * This game never stops on its own, so every measured run has been ended
+   * by a timeout -- which means every run costs its whole timeout even when
+   * the thing being measured finished a minute earlier, and the reports come
+   * out of a signal handler. Ending on the game's OWN frame counter makes a
+   * run take as long as it needs and no longer, and makes two runs of the
+   * same script the same length.
+   *
+   * It goes through the same path a SIGTERM does (the heartbeat thread does
+   * the reports, because they are stdio), so nothing new has to be trusted.
+   */
+  {
+    static long limit = -2;
+    if (limit == -2) {
+      const char *e = getenv("X2_MAX_FRAMES");
+      limit = (e && *e) ? strtol(e, NULL, 0) : -1;
+      if (limit > 0)
+        fprintf(stderr,
+                "gpu: X2_MAX_FRAMES=%ld -- the run will stop "
+                "cleanly after that many presented frames.\n",
+                limit);
+    }
+    /*
+     * Said ONCE. The limit is a level, not an edge -- every frame after it
+     * satisfies the test -- and without this guard the line repeated for as
+     * long as the guest kept presenting. One run emitted 3,847 copies of it
+     * and they were interleaved through the shutdown report, which is how a
+     * report that HUNG midway looked like a report that had finished.
+     * The frame number in the line is still the FIRST one over the limit,
+     * which is the useful one; how far the guest ran after the stop was
+     * requested is the stopping path's business to report, not this one's.
+     */
+    if (limit > 0 && (long)g_frames_presented >= limit && !g_frame_limit_hit) {
+      fprintf(stderr,
+              "\ngpu: X2_MAX_FRAMES reached (%lu presented). "
+              "Stopping; the reports follow.\n",
+              g_frames_presented);
+      g_frame_limit_hit = 1;
+    }
+  }
+#endif
+}
+
+int gpu_frame_in_progress(void) {
+#ifdef X2_WITH_SDL
+  return g_cmd != NULL;
+#else
+  return 0;
 #endif
 }
 
 void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
-                      float depth, uint32_t stencil)
-{
+                     float depth, uint32_t stencil) {
 #ifndef X2_WITH_SDL
-    (void)mask; (void)r; (void)g; (void)b; (void)a; (void)depth; (void)stencil;
+  (void)mask;
+  (void)r;
+  (void)g;
+  (void)b;
+  (void)a;
+  (void)depth;
+  (void)stencil;
 #else
-    if (!g_cmd) return;              /* outside a frame; nothing to clear */
-    g_clear.mask = mask;
-    g_clear.r = r; g_clear.g = g; g_clear.b = b; g_clear.a = a;
-    g_clear.depth = depth;
-    g_clear.stencil = stencil;
-    if (g_pass) {
-        /*
-         * A clear arrived after drawing began. SDL_GPU clears only on pass
-         * entry, so this used to be COUNTED AND DROPPED -- 3,833 of them in
-         * one gameplay run, every one a clear the engine asked for and did not
-         * get. Ending the pass and starting another with this clear as its
-         * load op is what the API offers, and it is exactly the operation
-         * D3D8's Clear names: the attachments the engine did not ask to clear
-         * are LOADed, so nothing drawn so far is lost.
-         */
-        SDL_EndGPURenderPass(g_pass);
-        g_pass = NULL;
-        g_late_clears++;
-        pass_begin(1);
-    }
+  if (!g_cmd)
+    return; /* outside a frame; nothing to clear */
+  g_clear.mask = mask;
+  g_clear.r = r;
+  g_clear.g = g;
+  g_clear.b = b;
+  g_clear.a = a;
+  g_clear.depth = depth;
+  g_clear.stencil = stencil;
+  if (g_pass) {
+    /*
+     * A clear arrived after drawing began. SDL_GPU clears only on pass
+     * entry, so this used to be COUNTED AND DROPPED -- 3,833 of them in
+     * one gameplay run, every one a clear the engine asked for and did not
+     * get. Ending the pass and starting another with this clear as its
+     * load op is what the API offers, and it is exactly the operation
+     * D3D8's Clear names: the attachments the engine did not ask to clear
+     * are LOADed, so nothing drawn so far is lost.
+     */
+    SDL_EndGPURenderPass(g_pass);
+    g_pass = NULL;
+    g_late_clears++;
+    pass_begin(1);
+  }
 #endif
 }
 
-void gpu_frame_bind_target(unsigned index)
-{
+void gpu_frame_bind_target(unsigned index) {
 #ifndef X2_WITH_SDL
-    (void)index;
+  (void)index;
 #else
-    static unsigned told_index = 0u - 1u;
-    if (index == 0u) return;                 /* the back buffer: what we have */
-    if (told_index != index) {
-        told_index = index;
-        fprintf(stderr,
-                "gpu: the engine bound render destination %u, which is an "
-                "OFF-SCREEN target this backend does not have -- there is only "
-                "the swapchain. Drawing that follows goes to the back buffer "
-                "instead of where the engine intends.\n", index);
-    }
+  static unsigned told_index = 0u - 1u;
+  if (index == 0u)
+    return; /* the back buffer: what we have */
+  if (told_index != index) {
+    told_index = index;
+    fprintf(stderr,
+            "gpu: the engine bound render destination %u, which is an "
+            "OFF-SCREEN target this backend does not have -- there is only "
+            "the swapchain. Drawing that follows goes to the back buffer "
+            "instead of where the engine intends.\n",
+            index);
+  }
 #endif
 }
 
-void gpu_frame_viewport(int x, int y, int w, int h, float minz, float maxz)
-{
+void gpu_frame_viewport(int x, int y, int w, int h, float minz, float maxz) {
 #ifndef X2_WITH_SDL
-    (void)x; (void)y; (void)w; (void)h; (void)minz; (void)maxz;
+  (void)x;
+  (void)y;
+  (void)w;
+  (void)h;
+  (void)minz;
+  (void)maxz;
 #else
-    g_viewport.x = x; g_viewport.y = y;
-    g_viewport.w = w; g_viewport.h = h;
-    g_viewport.minz = minz; g_viewport.maxz = maxz;
-    g_viewport.set = 1;
-    apply_viewport();               /* no-op until a pass is open */
+  g_viewport.x = x;
+  g_viewport.y = y;
+  g_viewport.w = w;
+  g_viewport.h = h;
+  g_viewport.minz = minz;
+  g_viewport.maxz = maxz;
+  g_viewport.set = 1;
+  apply_viewport(); /* no-op until a pass is open */
 #endif
 }
 
-void gpu_device_report(void)
-{
+void gpu_device_report(void) {
 #ifdef X2_WITH_SDL
-    unsigned long long frame_ns, frame_ns_min, frame_ns_max;
-    unsigned long intervals;
-    const unsigned long *hist;
-    if (!g_gpu && !g_frames_no_window) return;
-    printf("gpu: %lu frame(s) presented, %lu skipped for no swapchain "
-           "texture, %lu with no window, %lu clear(s) that arrived mid-frame "
-           "and reopened the pass\n",
-           g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
-           g_late_clears);
-    fflush(stdout);
-    gpu_frame_timing_perf(&frame_ns, &frame_ns_min, &frame_ns_max,
-                          &intervals, &hist);
-    if (frame_ns && intervals) {
-        double avg_ms = (double)frame_ns * 1e-6 / (double)intervals;
-        unsigned i;
-        printf("  perf: frame wall avg %.2f ms, min %.2f ms, max %.2f ms, "
-               "%llu submit(s) at frame end; ms histogram:\n",
-               avg_ms, (double)frame_ns_min * 1e-6,
-               (double)frame_ns_max * 1e-6,
-               (unsigned long long)g_frame_end_submits);
-        printf("        ");
-        for (i = 0; i < GPU_FRAME_HISTOGRAM_BUCKETS; i++) {
-            static const char *LBL[] = {
-                "<1", "1-2", "2-4", "4-6", "6-10", "10-16", "16-25",
-                "25-40", "40-60", "60-80", "80-120", "120-200", ">=200",
-            };
-            if (i) printf(" ");
-            printf("%s=%lu", LBL[i], hist[i]);
-        }
-        printf("\n");
-        fflush(stdout);
+  unsigned long long frame_ns, frame_ns_min, frame_ns_max;
+  unsigned long intervals;
+  const unsigned long *hist;
+  if (!g_gpu && !g_frames_no_window)
+    return;
+  printf("gpu: %lu frame(s) presented, %lu skipped for no swapchain "
+         "texture, %lu with no window, %lu clear(s) that arrived mid-frame "
+         "and reopened the pass\n",
+         g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
+         g_late_clears);
+  fflush(stdout);
+  gpu_frame_timing_perf(&frame_ns, &frame_ns_min, &frame_ns_max, &intervals,
+                        &hist);
+  if (frame_ns && intervals) {
+    double avg_ms = (double)frame_ns * 1e-6 / (double)intervals;
+    unsigned i;
+    printf("  perf: frame wall avg %.2f ms, min %.2f ms, max %.2f ms, "
+           "%llu submit(s) at frame end; ms histogram:\n",
+           avg_ms, (double)frame_ns_min * 1e-6, (double)frame_ns_max * 1e-6,
+           (unsigned long long)g_frame_end_submits);
+    printf("        ");
+    for (i = 0; i < GPU_FRAME_HISTOGRAM_BUCKETS; i++) {
+      static const char *LBL[] = {
+          "<1",    "1-2",   "2-4",   "4-6",    "6-10",    "10-16", "16-25",
+          "25-40", "40-60", "60-80", "80-120", "120-200", ">=200",
+      };
+      if (i)
+        printf(" ");
+      printf("%s=%lu", LBL[i], hist[i]);
     }
+    printf("\n");
+    fflush(stdout);
+  }
 #endif
 }
-
 
 /*
  * The headless target's pixels.
@@ -807,4 +839,3 @@ void gpu_device_report(void)
  * frame. This reads the target the game has been rendering into, after
  * whatever frame last finished.
  */
-

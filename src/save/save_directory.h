@@ -8,8 +8,8 @@
 /* Resolve the title's retail save-leaf directory under the host writable
    storage root. The root itself also owns host config and registry data, so
    callers that enumerate or publish game saves must not use it directly. */
-int x2_retail_save_directory_from_root(const char *storage_root,
-                                       char *out, size_t capacity);
+int x2_retail_save_directory_from_root(const char *storage_root, char *out,
+                                       size_t capacity);
 
 /* Process-lifetime host path backed by x2_save_dir(). NULL means the storage
    root is unavailable or the complete retail path does not fit. */

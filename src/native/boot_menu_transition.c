@@ -15,11 +15,11 @@
  */
 #define MAIN_MENU_EXIT_FORCED_RVA 0x0009fb00u
 
-int x2_boot_menu_open(const CPU *source, uint32_t exe_base)
-{
-    CPU call;
-    if (!source || !exe_base) return 0;
-    call = *source;
-    x86_guest_call_args(&call, exe_base + MAIN_MENU_EXIT_FORCED_RVA, 0u);
-    return 1;
+int x2_boot_menu_open(const CPU *source, uint32_t exe_base) {
+  CPU call;
+  if (!source || !exe_base)
+    return 0;
+  call = *source;
+  x86_guest_call_args(&call, exe_base + MAIN_MENU_EXIT_FORCED_RVA, 0u);
+  return 1;
 }

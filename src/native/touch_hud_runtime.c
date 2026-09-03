@@ -40,8 +40,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
-#include <stdio.h>
 #include "guest_body.h"
+#include <stdio.h>
 
 enum { CHUD_DRAW = 0x005a43d0u };
 
@@ -50,29 +50,25 @@ enum { CHUD_DRAW = 0x005a43d0u };
  * cannot tell them apart cannot be debugged. */
 static unsigned long g_root_calls;
 
-
-static void x2_touch_hud_draw(CPU *C)
-{
-    g_root_calls++;
-    x2_gameplay_control_hud_drawn(guest_clock_now_s());
-    x86_guest_body(C, "XMen2.exe", 0x005a43d0u);
+static void x2_touch_hud_draw(CPU *C) {
+  g_root_calls++;
+  x2_gameplay_control_hud_drawn(guest_clock_now_s());
+  x86_guest_body(C, "XMen2.exe", 0x005a43d0u);
 }
 
-void x2_touch_hud_report(void)
-{
-    /* Reported at zero too: no gameplay HUD frame at all is a fact about the
-       run -- it means the overlay could never have appeared -- and it is not
-       the same as the run never having built this instrument. */
-    fprintf(stderr,
-            "TOUCH HUD: %lu gameplay HUD frame(s) published to the control "
-            "gate; the retail HUD is drawn as authored (see the header for "
-            "why it is not relocated). Last gate answer: %s.\n",
-            g_root_calls,
-            x2_gameplay_control_name(
-                (int)x2_gameplay_control_state(guest_clock_now_s())));
+void x2_touch_hud_report(void) {
+  /* Reported at zero too: no gameplay HUD frame at all is a fact about the
+     run -- it means the overlay could never have appeared -- and it is not
+     the same as the run never having built this instrument. */
+  fprintf(stderr,
+          "TOUCH HUD: %lu gameplay HUD frame(s) published to the control "
+          "gate; the retail HUD is drawn as authored (see the header for "
+          "why it is not relocated). Last gate answer: %s.\n",
+          g_root_calls,
+          x2_gameplay_control_name(
+              (int)x2_gameplay_control_state(guest_clock_now_s())));
 }
 
-__attribute__((constructor)) static void x2_touch_hud_register(void)
-{
-    x86_register_override("XMen2.exe", CHUD_DRAW, x2_touch_hud_draw);
+__attribute__((constructor)) static void x2_touch_hud_register(void) {
+  x86_register_override("XMen2.exe", CHUD_DRAW, x2_touch_hud_draw);
 }

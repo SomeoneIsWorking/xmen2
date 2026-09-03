@@ -19,21 +19,21 @@
 
 #include "x86_tail_policy.h"
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 struct CPU;
 
 typedef struct X86Module {
-    const char     *name;
-    /* POINTER TO where it actually got mapped -- the generated module owns the
-       variable and the loader fills it in, so this is `*m->base`, never
-       `m->base`. Reading the pointer as the base gives a host address that can
-       look plausible; it cost two crashes in a shutdown diagnostic. */
-    uint32_t       *base;
-    uint32_t        preferred;       /* what it was linked for */
-    uint32_t        size;            /* SizeOfImage */
-    struct X86Module *next;
+  const char *name;
+  /* POINTER TO where it actually got mapped -- the generated module owns the
+     variable and the loader fills it in, so this is `*m->base`, never
+     `m->base`. Reading the pointer as the base gives a host address that can
+     look plausible; it cost two crashes in a shutdown diagnostic. */
+  uint32_t *base;
+  uint32_t preferred; /* what it was linked for */
+  uint32_t size;      /* SizeOfImage */
+  struct X86Module *next;
 } X86Module;
 
 /* Called from each generated module's constructor. */
@@ -55,6 +55,7 @@ int x86_native_call_at(uint32_t addr, struct CPU *C);
    this at every instruction: an import thunk, a native override and a
    recompiled body are all HOST code it must hand back rather than interpret. */
 int x86_native_body_at(uint32_t addr);
+int x86_is_thunk(uint32_t addr);
 /* The mapped entry point of a resolved override, by index, or 0 past the end.
    An address x86_native_body_at must answer yes for, so that predicate can be
    checked against both answers rather than only the one it gives most often. */
@@ -77,7 +78,8 @@ uint32_t x86_native_callback(void (*fn)(struct CPU *), const char *owner,
                              const char *name, void *ctx);
 
 /* Inside a callback: the `ctx` it was registered with. One C function can then
-   serve many objects, told apart by which synthetic address the guest called. */
+   serve many objects, told apart by which synthetic address the guest called.
+ */
 void *x86_callback_ctx(void);
 
 /* Host->guest call with an explicit stdcall/thiscall cleanup contract. The
@@ -95,11 +97,11 @@ void x86_guest_call_args(struct CPU *C, uint32_t target,
  * source of truth for BOTH questions: which entry points exist, and therefore
  * which modules LoadLibraryA may honestly hand back a handle for.
  */
-void     x86_native_export(const char *mod, const char *sym,
-                           void (*fn)(struct CPU *));
+void x86_native_export(const char *mod, const char *sym,
+                       void (*fn)(struct CPU *));
 uint32_t x86_native_export_addr(const char *mod, const char *sym);
-int      x86_native_module_implemented(const char *mod);
-void     x86_native_export_report(void);
+int x86_native_module_implemented(const char *mod);
+void x86_native_export_report(void);
 
 /* Head of the registered-module list. */
 X86Module *x86_modules(void);
@@ -113,7 +115,8 @@ const char *x86_poison_name(uint32_t addr, const char **module_out);
    call until it returns non-zero. Used to act at a moment during the run --
    engine startup completes long after module init, and some host work (ARK
    registration) is only legal once the subsystem it touches has registered,
-   which is a state the handler must test rather than a call site we can name. */
+   which is a state the handler must test rather than a call site we can name.
+ */
 void x86_at_first_call(uint32_t addr, int (*fn)(void), const char *why);
 
 /* Complain about every armed trigger that never fired; returns how many. */
@@ -142,7 +145,7 @@ int x86_triggers_report(void);
    and letting the two drift. */
 #include "x86rt.h"
 long x86_override_slot_count(void);
-int  x86_override_chunk_count(void);
+int x86_override_chunk_count(void);
 void x86_register_override(const char *module, uint32_t linked_ep,
                            x86_override_fn fn);
 int x86_override_is_bound(const char *module, uint32_t linked_ep,
@@ -175,12 +178,12 @@ int x86_override_resolve_check(const char *module, uint32_t linked_ep,
  * arms before the first guest instruction for the cases that need it.
  */
 void x86_reached_arm(const char *why);
-int  x86_reached_is_armed(void);
+int x86_reached_is_armed(void);
 /* Ask about one linked entry point: 1 if it was entered, with *count and *seq
    filled in (seq is the 1-based order of first entry). 0 for never entered --
    which is only meaningful when the set is armed, so callers must check. */
-int  x86_reached_query(uint32_t linked_ep, const char *module,
-                       unsigned long *count, unsigned long *seq);
+int x86_reached_query(uint32_t linked_ep, const char *module,
+                      unsigned long *count, unsigned long *seq);
 
 /* Count of registered native overrides (0 is a measurement, not silence). */
 int x86_override_count(void);
@@ -257,7 +260,7 @@ void x86_diag_dump(void);
  * reader assume.
  */
 unsigned long x86_crossings(void);
-const char   *x86_crossings_what(void);
+const char *x86_crossings_what(void);
 
 /*
  * The raw per-import call probe: the most-called host imports in an interval,

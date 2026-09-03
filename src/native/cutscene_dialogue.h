@@ -4,16 +4,16 @@
 struct CPU;
 
 typedef struct CutsceneDialogueSnapshot {
-    unsigned long advances;
-    unsigned long active_voice_stops;
-    unsigned long ordinary_response_starts;
-    unsigned long ordinary_line_starts;
-    unsigned long suppressed_response_starts;
-    unsigned long suppressed_line_starts;
-    unsigned long skip_presentation_starts;
-    unsigned last_manager;
-    unsigned last_stopped_handle;
-    unsigned last_line_presenter;
+  unsigned long advances;
+  unsigned long active_voice_stops;
+  unsigned long ordinary_response_starts;
+  unsigned long ordinary_line_starts;
+  unsigned long suppressed_response_starts;
+  unsigned long suppressed_line_starts;
+  unsigned long skip_presentation_starts;
+  unsigned last_manager;
+  unsigned last_stopped_handle;
+  unsigned last_line_presenter;
 } CutsceneDialogueSnapshot;
 
 /* Consume one deterministic conversation payload without presenting its

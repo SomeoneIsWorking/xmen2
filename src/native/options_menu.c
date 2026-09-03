@@ -16,92 +16,88 @@
 #include "settings_overlay_state.h"
 #include "x86rt_native.h"
 
+#include "guest_body.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "guest_body.h"
 
 enum {
-    EXE_PREFERRED = 0x00400000u,
-    COMMAND_REGISTRY_RVA = 0x0015c890u,
-    REGISTER_COMMAND_VSLOT = 0x10u
+  EXE_PREFERRED = 0x00400000u,
+  COMMAND_REGISTRY_RVA = 0x0015c890u,
+  REGISTER_COMMAND_VSLOT = 0x10u
 };
 
 static uint32_t g_exe;
 static uint32_t g_port_settings_callback;
 static int g_port_settings_registered;
 
-
-static uint32_t exe_base(void)
-{
-    const X86Module *module;
-    if (g_exe) return g_exe;
-    for (module = x86_modules(); module; module = module->next)
-        if (module->preferred == EXE_PREFERRED && *module->base) {
-            g_exe = *module->base;
-            break;
-        }
+static uint32_t exe_base(void) {
+  const X86Module *module;
+  if (g_exe)
     return g_exe;
+  for (module = x86_modules(); module; module = module->next)
+    if (module->preferred == EXE_PREFERRED && *module->base) {
+      g_exe = *module->base;
+      break;
+    }
+  return g_exe;
 }
 
-void x2_port_settings_command(CPU *C)
-{
-    x2_settings_overlay_show();
-    /* BehavEd menu commands are void/no-argument callbacks ending in RET. */
-    C->esp += 4u;
+void x2_port_settings_command(CPU *C) {
+  x2_settings_overlay_show();
+  /* BehavEd menu commands are void/no-argument callbacks ending in RET. */
+  C->esp += 4u;
 }
 
-static void refuse_registration(const char *reason)
-{
-    fprintf(stderr, "options menu: cannot register `port_settings`: %s\n",
-            reason);
-    abort();
+static void refuse_registration(const char *reason) {
+  fprintf(stderr, "options menu: cannot register `port_settings`: %s\n",
+          reason);
+  abort();
 }
 
-static void register_port_settings(const CPU *source)
-{
-    static const char command[] = "port_settings";
-    CPU call = *source;
-    uint32_t base = exe_base();
-    uint32_t manager, method, name;
+static void register_port_settings(const CPU *source) {
+  static const char command[] = "port_settings";
+  CPU call = *source;
+  uint32_t base = exe_base();
+  uint32_t manager, method, name;
 
-    if (g_port_settings_registered) return;
-    if (!base) refuse_registration("XMen2.exe is not mapped");
-    if (!g_port_settings_callback)
-        g_port_settings_callback = x86_native_callback(
-            x2_port_settings_command, "options_menu", command, NULL);
-    name = guest_malloc(sizeof command);
-    if (!name)
-        refuse_registration("guest heap could not hold the command name");
-    memcpy(guest_memory_pointer(name), command, sizeof command);
+  if (g_port_settings_registered)
+    return;
+  if (!base)
+    refuse_registration("XMen2.exe is not mapped");
+  if (!g_port_settings_callback)
+    g_port_settings_callback = x86_native_callback(
+        x2_port_settings_command, "options_menu", command, NULL);
+  name = guest_malloc(sizeof command);
+  if (!name)
+    refuse_registration("guest heap could not hold the command name");
+  memcpy(guest_memory_pointer(name), command, sizeof command);
 
-    x86_guest_call_args(&call, base + COMMAND_REGISTRY_RVA, 0u);
-    manager = call.eax;
-    if (!manager) refuse_registration("the retail command registry is absent");
-    method = RD32(RD32(manager) + REGISTER_COMMAND_VSLOT);
-    if (!method)
-        refuse_registration("the retail register-command method is absent");
-    call.esp -= 4u;
-    WR32(call.esp, g_port_settings_callback);
-    call.esp -= 4u;
-    WR32(call.esp, name);
-    call.ecx = manager;
-    x86_guest_call_args(&call, method, 8u);
-    guest_free(name);
-    if (!(call.eax & 0xffu))
-        refuse_registration("the retail registry rejected the new command");
-    g_port_settings_registered = 1;
+  x86_guest_call_args(&call, base + COMMAND_REGISTRY_RVA, 0u);
+  manager = call.eax;
+  if (!manager)
+    refuse_registration("the retail command registry is absent");
+  method = RD32(RD32(manager) + REGISTER_COMMAND_VSLOT);
+  if (!method)
+    refuse_registration("the retail register-command method is absent");
+  call.esp -= 4u;
+  WR32(call.esp, g_port_settings_callback);
+  call.esp -= 4u;
+  WR32(call.esp, name);
+  call.ecx = manager;
+  x86_guest_call_args(&call, method, 8u);
+  guest_free(name);
+  if (!(call.eax & 0xffu))
+    refuse_registration("the retail registry rejected the new command");
+  g_port_settings_registered = 1;
 }
 
-void x2_override_005f4900(CPU *C)
-{
-    x86_guest_body(C, "XMen2.exe", 0x005f4900u);
-    register_port_settings(C);
+void x2_override_005f4900(CPU *C) {
+  x86_guest_body(C, "XMen2.exe", 0x005f4900u);
+  register_port_settings(C);
 }
 
-__attribute__((constructor))
-static void x2_options_menu_register_override(void)
-{
-    x86_register_override("XMen2.exe", 0x005f4900u,
-                          x2_override_005f4900);
+__attribute__((constructor)) static void
+x2_options_menu_register_override(void) {
+  x86_register_override("XMen2.exe", 0x005f4900u, x2_override_005f4900);
 }

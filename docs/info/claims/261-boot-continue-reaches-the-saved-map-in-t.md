@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-25
 tags: continue,boot,save,conversation,splash
-depends: src/native/continue_runtime.c#x2_continue_boot_dispatch, src/native/continue_runtime.c#x2_override_004b1280, src/native/startup.c#x2_override_00402ba0, src/native/boot_player_selection.c#x2_boot_player_select_primary, tools/check_continue_wiring.py#audit_boot_dispatch
+depends: src/native/continue_runtime.c#x2_continue_boot_dispatch, src/native/continue_runtime.c#x2_override_004b1280, src/native/startup.c#x2_override_00402ba0, src/native/boot_player_selection.c#x2_boot_player_select_primary
 ---
 
 ## Claim

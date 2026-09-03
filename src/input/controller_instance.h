@@ -9,7 +9,7 @@
  * are reusable; the live instance GUID is not.
  */
 typedef struct {
-    unsigned char guid[16];
+  unsigned char guid[16];
 } X2ControllerInstance;
 
 void x2_controller_instance_bind(X2ControllerInstance *instance,

@@ -7,13 +7,13 @@
  * it is exactly where a runtime engine plugs in: the statically recompiled
  * corpus keeps running, and this takes only what it could not translate.
  *
- * WHY THIS IS NOT "THE JIT IS ON NOW". The engine selected here is the
- * INTERPRETER, x86port's semantics authority. The JIT backend translates whole
- * basic blocks including their direct CALLs, and a block that calls a
- * statically recompiled body would jump into HOST code with a guest EIP. That
- * needs a call-out predicate x86port does not have yet, so selecting `jit`
- * through this consumer is REFUSED by name rather than quietly downgraded --
- * "I selected the JIT" and "the JIT never ran" must not be the same run.
+ * RUNTIME EXECUTION ENGINES. `x86port` provides both the reference
+ * interpreter (the semantics authority) and an x86-64 basic-block JIT engine.
+ * When the x86-64 JIT backend is available, it is the shipping default so
+ * gameplay runs at native speed; the interpreter remains selectable via
+ * X2_ENGINE=interpreter. Consumer interception hooks in x86port's JIT allow
+ * host import thunks, native overrides, setjmp frames, and return sentinels
+ * to be intercepted at basic block boundaries before dispatch.
  *
  * THE BOUNDARY THIS IS ONLY CORRECT AT. x2_engine_call bridges two different
  * machine models, and it is exact only at a Win32 FUNCTION CALL boundary:

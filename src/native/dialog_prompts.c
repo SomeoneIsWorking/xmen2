@@ -17,105 +17,101 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "guest_body.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "guest_body.h"
 
-#define EXE_PREFERRED                    0x00400000u
-#define PC_HINT_LOCALIZATION_RETURN      0x005ec066u
-#define DIALOG_READER_FROM_OVERRIDE_ESP  0x1cu
-#define ASSET_TEXT_KEY                   0x00685cbcu
-#define EMPTY_TEXT                       0x00681968u
+#define EXE_PREFERRED 0x00400000u
+#define PC_HINT_LOCALIZATION_RETURN 0x005ec066u
+#define DIALOG_READER_FROM_OVERRIDE_ESP 0x1cu
+#define ASSET_TEXT_KEY 0x00685cbcu
+#define EMPTY_TEXT 0x00681968u
 
 static unsigned long g_asset_text, g_pc_text, g_other_lookups;
 
 int dialog_prompts_use_asset_text(int player_uses_gamepad,
-                                  uint32_t localization_return)
-{
-    return player_uses_gamepad &&
-           localization_return == PC_HINT_LOCALIZATION_RETURN;
+                                  uint32_t localization_return) {
+  return player_uses_gamepad &&
+         localization_return == PC_HINT_LOCALIZATION_RETURN;
 }
 
-static X86Module *exe_module(void)
-{
-    X86Module *module;
-    for (module = x86_modules(); module; module = module->next)
-        if (module->preferred == EXE_PREFERRED && module->base &&
-            *module->base)
-            return module;
-    return NULL;
+static X86Module *exe_module(void) {
+  X86Module *module;
+  for (module = x86_modules(); module; module = module->next)
+    if (module->preferred == EXE_PREFERRED && module->base && *module->base)
+      return module;
+  return NULL;
 }
 
-static uint32_t mapped_address(const X86Module *module, uint32_t linked)
-{
-    return *module->base + (linked - module->preferred);
+static uint32_t mapped_address(const X86Module *module, uint32_t linked) {
+  return *module->base + (linked - module->preferred);
 }
 
+static void return_dialog_asset_text(CPU *C, const X86Module *module) {
+  uint32_t outer_esp = C->esp;
+  uint32_t return_address = RD32(outer_esp);
 
-static void return_dialog_asset_text(CPU *C, const X86Module *module)
-{
-    uint32_t outer_esp = C->esp;
-    uint32_t return_address = RD32(outer_esp);
-
-    /* FUN_00564b70(reader, "text", "") is RET 8. Its reader is the local
-       parser object at caller ESP+0x14; localization's return and one argument
-       put that object at override-entry ESP+0x1c. */
-    C->ecx = outer_esp + DIALOG_READER_FROM_OVERRIDE_ESP;
-    C->esp -= 4u;
-    WR32(C->esp, mapped_address(module, EMPTY_TEXT));
-    C->esp -= 4u;
-    WR32(C->esp, mapped_address(module, ASSET_TEXT_KEY));
-    C->esp -= 4u;
-    WR32(C->esp, return_address);
-    x86_guest_body(C, "XMen2.exe", 0x00564b70u);
-    if (C->esp != outer_esp) {
-        fprintf(stderr, "DIALOG-PROMPTS: asset text reader returned with "
-                        "ESP 0x%08x, expected 0x%08x; refusing a corrupted "
-                        "guest stack.\n", C->esp, outer_esp);
-        abort();
-    }
-    C->esp += 4u; /* FUN_00629bf0 is cdecl: RET, caller removes its key. */
+  /* FUN_00564b70(reader, "text", "") is RET 8. Its reader is the local
+     parser object at caller ESP+0x14; localization's return and one argument
+     put that object at override-entry ESP+0x1c. */
+  C->ecx = outer_esp + DIALOG_READER_FROM_OVERRIDE_ESP;
+  C->esp -= 4u;
+  WR32(C->esp, mapped_address(module, EMPTY_TEXT));
+  C->esp -= 4u;
+  WR32(C->esp, mapped_address(module, ASSET_TEXT_KEY));
+  C->esp -= 4u;
+  WR32(C->esp, return_address);
+  x86_guest_body(C, "XMen2.exe", 0x00564b70u);
+  if (C->esp != outer_esp) {
+    fprintf(stderr,
+            "DIALOG-PROMPTS: asset text reader returned with "
+            "ESP 0x%08x, expected 0x%08x; refusing a corrupted "
+            "guest stack.\n",
+            C->esp, outer_esp);
+    abort();
+  }
+  C->esp += 4u; /* FUN_00629bf0 is cdecl: RET, caller removes its key. */
 }
 
-void x2_override_00629bf0(CPU *C)
-{
-    X86Module *module = exe_module();
-    uint32_t return_address;
-    uint32_t linked_return;
+void x2_override_00629bf0(CPU *C) {
+  X86Module *module = exe_module();
+  uint32_t return_address;
+  uint32_t linked_return;
 
-    if (!module) {
-        g_other_lookups++;
-        x86_guest_body(C, "XMen2.exe", 0x00629bf0u);
-        return;
-    }
-    return_address = RD32(C->esp);
-    if (return_address < *module->base ||
-        return_address >= *module->base + module->size)
-        linked_return = 0;
+  if (!module) {
+    g_other_lookups++;
+    x86_guest_body(C, "XMen2.exe", 0x00629bf0u);
+    return;
+  }
+  return_address = RD32(C->esp);
+  if (return_address < *module->base ||
+      return_address >= *module->base + module->size)
+    linked_return = 0;
+  else
+    linked_return = module->preferred + (return_address - *module->base);
+  if (!dialog_prompts_use_asset_text(x2_player_input_uses_gamepad(0),
+                                     linked_return)) {
+    if (linked_return == PC_HINT_LOCALIZATION_RETURN)
+      g_pc_text++;
     else
-        linked_return = module->preferred + (return_address - *module->base);
-    if (!dialog_prompts_use_asset_text(x2_player_input_uses_gamepad(0),
-                                       linked_return)) {
-        if (linked_return == PC_HINT_LOCALIZATION_RETURN) g_pc_text++;
-        else g_other_lookups++;
-        x86_guest_body(C, "XMen2.exe", 0x00629bf0u);
-        return;
-    }
-    return_dialog_asset_text(C, module);
-    g_asset_text++;
+      g_other_lookups++;
+    x86_guest_body(C, "XMen2.exe", 0x00629bf0u);
+    return;
+  }
+  return_dialog_asset_text(C, module);
+  g_asset_text++;
 }
 
-__attribute__((constructor))
-static void x2_dialog_prompts_register_override(void)
-{
-    x86_register_override("XMen2.exe", 0x00629bf0, x2_override_00629bf0);
+__attribute__((constructor)) static void
+x2_dialog_prompts_register_override(void) {
+  x86_register_override("XMen2.exe", 0x00629bf0, x2_override_00629bf0);
 }
 
-void dialog_prompts_report(void)
-{
-    static int done;
-    if (done++) return;
-    printf("  Tutorial dialog text: %lu controller asset, %lu PC override, "
-           "%lu unrelated localization lookup(s)\n",
-           g_asset_text, g_pc_text, g_other_lookups);
+void dialog_prompts_report(void) {
+  static int done;
+  if (done++)
+    return;
+  printf("  Tutorial dialog text: %lu controller asset, %lu PC override, "
+         "%lu unrelated localization lookup(s)\n",
+         g_asset_text, g_pc_text, g_other_lookups);
 }

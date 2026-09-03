@@ -8,17 +8,17 @@
    name: dimensions, format, and a content hash do not establish provenance
    above the D3D8 resource boundary. */
 typedef struct {
-    int metadata_valid;
-    uint32_t width, height, format, levels, faces;
-    /* The complete texture install is a set of sub-resource unlocks, not just
-       its base level. Keep the bounded 2D level coverage alongside the base
-       fingerprint so a draw trace can distinguish a real mip chain from a
-       texture whose stricter mobile sampler reaches never-uploaded mips. */
-    uint64_t uploaded_level_mask;
-    uint32_t upload_count;
-    int level0_fingerprint_valid;
-    uint64_t level0_fingerprint;
-    uint64_t level0_revision;
+  int metadata_valid;
+  uint32_t width, height, format, levels, faces;
+  /* The complete texture install is a set of sub-resource unlocks, not just
+     its base level. Keep the bounded 2D level coverage alongside the base
+     fingerprint so a draw trace can distinguish a real mip chain from a
+     texture whose stricter mobile sampler reaches never-uploaded mips. */
+  uint64_t uploaded_level_mask;
+  uint32_t upload_count;
+  int level0_fingerprint_valid;
+  uint64_t level0_fingerprint;
+  uint64_t level0_revision;
 } D3D8TextureProvenance;
 
 void d3d8_texture_provenance_init(D3D8TextureProvenance *provenance,

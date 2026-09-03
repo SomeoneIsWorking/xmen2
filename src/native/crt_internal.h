@@ -18,7 +18,10 @@
 
 /* Return from a __cdecl stub: set EAX and pop the return address. The callee
    pops nothing else, which is what __cdecl means. */
-static inline void ret_c(CPU *C, uint32_t eax) { C->eax = eax; C->esp += 4u; }
+static inline void ret_c(CPU *C, uint32_t eax) {
+  C->eax = eax;
+  C->esp += 4u;
+}
 
 /* Stop, naming the import and why it cannot be served. There is no plausible
    value to return: see the abort-paths note in x86rt_native.c. */

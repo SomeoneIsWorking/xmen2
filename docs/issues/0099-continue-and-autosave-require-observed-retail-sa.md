@@ -128,4 +128,4 @@ until the LOAD SUCCESSFUL ack re-selects the primary player: the menu
 lifecycle between the Show intercept and the ack clears CPadManager
 (write-watch: select 0, Show clears, Hide restores, later menu Shows clear and
 never restore), and the save payload keys its party writes off that player.
-tools/check_continue_wiring.py now refuses an ack without the re-selection.
+The ack path re-selects the primary player before the payload deserializes.

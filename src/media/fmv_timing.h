@@ -4,12 +4,12 @@
 #include <stdint.h>
 
 typedef struct {
-    double next_fallback;
-    double frame_duration;
-    double last_timestamp;
-    unsigned timestamp_fallbacks;
-    unsigned timestamp_clamps;
-    int have_last;
+  double next_fallback;
+  double frame_duration;
+  double last_timestamp;
+  unsigned timestamp_fallbacks;
+  unsigned timestamp_clamps;
+  int have_last;
 } X2FmvTimeline;
 
 void x2_fmv_timeline_init(X2FmvTimeline *timeline, double frame_rate);

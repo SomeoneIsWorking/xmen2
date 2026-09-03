@@ -9,12 +9,12 @@
  * stays emitted and linked as fn_libIGCore_10069c70, so the two stay
  * diffable.
  */
-#include "x86rt.h"
-#include "x86rt_native.h"
-#include "win32_sdl.h"
+#include "guest_memory.h"
 #include "pe_map.h"
 #include "threads.h"
-#include "guest_memory.h"
+#include "win32_sdl.h"
+#include "x86rt.h"
+#include "x86rt_native.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,26 +50,24 @@
  * Ignore is the fallback for a run with no screen, because it is the only
  * answer that neither kills the process nor invents a debugger.
  */
-void x2_override_10069c70(CPU *C)
-{
-    static const char *const labels[] = {
-        "Exit", "Debug", "Ignore", "Ignore, don't tell me again"
-    };
-    static const int ids[] = { 3, 4, 5, 6 };
-    const char *text = guest_memory_const_pointer(RD32(C->esp + 4u));
-    static int said;
-    int answer;
+void x2_override_10069c70(CPU *C) {
+  static const char *const labels[] = {"Exit", "Debug", "Ignore",
+                                       "Ignore, don't tell me again"};
+  static const int ids[] = {3, 4, 5, 6};
+  const char *text = guest_memory_const_pointer(RD32(C->esp + 4u));
+  static int said;
+  int answer;
 
-    if (!said++)
-        fprintf(stderr, "override: the Alchemy report box is drawn by SDL, not "
-                        "by USER32's dialog manager (issue #47).\n"
-                        "  Same title, same buttons, same return codes; the "
-                        "checkbox is a fourth button.\n");
-    answer = win32_sdl_dialog("Alchemy Report Handler",
-                              text ? text : "(the report box was given no text)",
-                              labels, ids, 4, 5);
-    C->eax = (uint32_t)answer;
-    C->esp += 8u;                /* RET 0x4: the return address and one arg */
+  if (!said++)
+    fprintf(stderr, "override: the Alchemy report box is drawn by SDL, not "
+                    "by USER32's dialog manager (issue #47).\n"
+                    "  Same title, same buttons, same return codes; the "
+                    "checkbox is a fourth button.\n");
+  answer = win32_sdl_dialog("Alchemy Report Handler",
+                            text ? text : "(the report box was given no text)",
+                            labels, ids, 4, 5);
+  C->eax = (uint32_t)answer;
+  C->esp += 8u; /* RET 0x4: the return address and one arg */
 }
 
 /*
@@ -91,51 +89,50 @@ void x2_override_10069c70(CPU *C)
  */
 #define SELFTEST_PAGE 0x00100000u
 
-int report_box_selftest(void)
-{
-    static const char text[] = "SELFTEST: a report the engine would have shown";
-    uint32_t esp = SELFTEST_PAGE + 0x800u;
-    uint32_t textp = SELFTEST_PAGE + 0x100u;
-    CPU C;
-    int fails = 0;
+int report_box_selftest(void) {
+  static const char text[] = "SELFTEST: a report the engine would have shown";
+  uint32_t esp = SELFTEST_PAGE + 0x800u;
+  uint32_t textp = SELFTEST_PAGE + 0x100u;
+  CPU C;
+  int fails = 0;
 
-    if (pe_map_anon_low(SELFTEST_PAGE, 0x1000u) != 0) {
-        printf("x2native --dialog-selftest: could not map a page at 0x%08x for "
-               "the guest frame -- NOTHING was checked.\n", SELFTEST_PAGE);
-        return 1;
-    }
-    memcpy(guest_memory_pointer(textp), text, sizeof text);
-    memset(&C, 0, sizeof C);
-    WR32(esp, 0xDEADBEEFu);                      /* the return address */
-    WR32(esp + 4u, textp);                       /* the one argument */
-    C.esp = esp;
+  if (pe_map_anon_low(SELFTEST_PAGE, 0x1000u) != 0) {
+    printf("x2native --dialog-selftest: could not map a page at 0x%08x for "
+           "the guest frame -- NOTHING was checked.\n",
+           SELFTEST_PAGE);
+    return 1;
+  }
+  memcpy(guest_memory_pointer(textp), text, sizeof text);
+  memset(&C, 0, sizeof C);
+  WR32(esp, 0xDEADBEEFu); /* the return address */
+  WR32(esp + 4u, textp);  /* the one argument */
+  C.esp = esp;
 
-    printf("x2native --dialog-selftest: the Alchemy report box, with no "
-           "screen to show it on.\n");
-    x2_override_10069c70(&C);
+  printf("x2native --dialog-selftest: the Alchemy report box, with no "
+         "screen to show it on.\n");
+  x2_override_10069c70(&C);
 
-    if (C.eax != 5u) {
-        printf("  FAIL: answered %u; a run with no screen must answer 5 "
-               "(Ignore), the only code that neither exits nor asks for a "
-               "debugger\n", C.eax);
-        fails++;
-    }
-    if (C.esp != esp + 8u) {
-        printf("  FAIL: esp moved by %d, not 8. The original ends in RET 0x4, "
-               "so it pops its return address AND its argument; anything else "
-               "shifts the guest stack by a word and the damage appears "
-               "somewhere else entirely\n",
-               (int)(C.esp - esp));
-        fails++;
-    }
-    printf("x2native --dialog-selftest: %s (%d failure(s)). The message text "
-           "is on stderr above -- if it is not, the box swallowed it.\n",
-           fails ? "FAILED" : "PASSED", fails);
-    return fails;
+  if (C.eax != 5u) {
+    printf("  FAIL: answered %u; a run with no screen must answer 5 "
+           "(Ignore), the only code that neither exits nor asks for a "
+           "debugger\n",
+           C.eax);
+    fails++;
+  }
+  if (C.esp != esp + 8u) {
+    printf("  FAIL: esp moved by %d, not 8. The original ends in RET 0x4, "
+           "so it pops its return address AND its argument; anything else "
+           "shifts the guest stack by a word and the damage appears "
+           "somewhere else entirely\n",
+           (int)(C.esp - esp));
+    fails++;
+  }
+  printf("x2native --dialog-selftest: %s (%d failure(s)). The message text "
+         "is on stderr above -- if it is not, the box swallowed it.\n",
+         fails ? "FAILED" : "PASSED", fails);
+  return fails;
 }
 
-__attribute__((constructor))
-static void x2_reportbox_register_overrides(void)
-{
-    x86_register_override("libIGCore.dll", 0x10069c70, x2_override_10069c70);
+__attribute__((constructor)) static void x2_reportbox_register_overrides(void) {
+  x86_register_override("libIGCore.dll", 0x10069c70, x2_override_10069c70);
 }

@@ -8,19 +8,17 @@
    pointer.  On hosts that can map the low 4 GB this base remains zero. */
 extern uintptr_t g_guest_memory_base;
 
-static inline void *guest_memory_pointer(uint32_t address)
-{
-    return address ? (void *)(g_guest_memory_base + (uintptr_t)address) : NULL;
+static inline void *guest_memory_pointer(uint32_t address) {
+  return address ? (void *)(g_guest_memory_base + (uintptr_t)address) : NULL;
 }
 
-static inline const void *guest_memory_const_pointer(uint32_t address)
-{
-    return address ? (const void *)(g_guest_memory_base + (uintptr_t)address) : NULL;
+static inline const void *guest_memory_const_pointer(uint32_t address) {
+  return address ? (const void *)(g_guest_memory_base + (uintptr_t)address)
+                 : NULL;
 }
 
-static inline uint32_t guest_memory_address(const void *pointer)
-{
-    return (uint32_t)((uintptr_t)pointer - g_guest_memory_base);
+static inline uint32_t guest_memory_address(const void *pointer) {
+  return (uint32_t)((uintptr_t)pointer - g_guest_memory_base);
 }
 
 int guest_memory_host_address(const void *pointer, uint32_t *address);

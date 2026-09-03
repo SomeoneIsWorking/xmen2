@@ -18,11 +18,11 @@ extern "C" {
 void x2_touch_runtime_window(struct SDL_Window *window);
 
 typedef struct X2TouchPointer {
-    int valid;
-    float x;
-    float y;
-    int button_change; /* 1 = press, 0 = release, -1 = motion only. */
-    uint32_t time_ms;
+  int valid;
+  float x;
+  float y;
+  int button_change; /* 1 = press, 0 = release, -1 = motion only. */
+  uint32_t time_ms;
 } X2TouchPointer;
 
 int x2_touch_runtime_event(const union SDL_Event *event,
@@ -31,14 +31,14 @@ void x2_touch_runtime_lifecycle_event(const union SDL_Event *event);
 void x2_touch_runtime_cancel(void);
 
 typedef struct X2TouchVisual {
-    uint32_t id;
-    float left;
-    float top;
-    float right;
-    float bottom;
-    int action;
-    int active;
-    int stick;
+  uint32_t id;
+  float left;
+  float top;
+  float right;
+  float bottom;
+  int action;
+  int active;
+  int stick;
 } X2TouchVisual;
 
 /* The viewport the touch layout is currently built from -- the window's pixel

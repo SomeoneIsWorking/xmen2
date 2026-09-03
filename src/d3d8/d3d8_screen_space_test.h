@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-int d3d8_screen_space_pixels_check(const uint32_t *pixels,
-                                   int width, int height);
+int d3d8_screen_space_pixels_check(const uint32_t *pixels, int width,
+                                   int height);
 
 #endif

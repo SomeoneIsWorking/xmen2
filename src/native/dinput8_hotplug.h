@@ -19,8 +19,8 @@ void dinput8_hotplug_note_game_enumeration(unsigned int callback,
                                            const char *routine_name);
 
 /* The guest's EnumDevices ran: the inventory generation it reported. */
-void dinput8_hotplug_enumerated(unsigned long long generation,
-                                int connected, int reported);
+void dinput8_hotplug_enumerated(unsigned long long generation, int connected,
+                                int reported);
 
 /* Called once a frame from the first input call; re-admits the inventory
    when its generation changed or the table stopped matching the live pads. */

@@ -20,24 +20,24 @@
  * which the game skipped a check must not be indistinguishable from one in
  * which it passed.
  */
-#include "x86rt.h"
-#include "x86rt_native.h"
-#include "win32_sdl.h"
-#include "pe_map.h"
-#include "threads.h"
-#include "boot_mode_runtime.h"
-#include "boot_menu_transition.h"
-#include "boot_splash_policy.h"
 #include "boot_blackout.h"
+#include "boot_menu_transition.h"
+#include "boot_mode_runtime.h"
+#include "boot_splash_policy.h"
 #include "continue_runtime.h"
+#include "guest_memory.h"
+#include "pe_map.h"
 #include "save_directory.h"
 #include "settings_store.h"
-#include "guest_memory.h"
+#include "threads.h"
+#include "win32_sdl.h"
+#include "x86rt.h"
+#include "x86rt_native.h"
 
+#include "guest_body.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "guest_body.h"
 
 /* ---------------------------------------------------------------------
  * XMen2.exe 0x00617480 -- the DirectX 9.0c presence check (issue #18).
@@ -76,26 +76,24 @@
  * question's answer is "proceed" -- AL = 1, exactly as the original's true
  * path writes it, low byte only.
  */
-void x2_override_00617480(CPU *C)
-{
-    static int said;
-    if (!said++) {
-        printf("override: XMen2.exe 0x00617480, the DirectX 9.0c presence "
-               "check, is REPLACED.\n"
-               "  It was not passed -- it was retired. This port renders "
-               "natively and does not load Microsoft's D3D,\n"
-               "  so the question the check asks no longer decides anything. "
-               "Declared in src/native/startup.c.\n");
-        fflush(stdout);
-    }
-    /* TRUE, in AL only -- the original's true path is `MOV AL,0x1`, which
-       leaves the rest of EAX alone, and a caller that reads EAX rather than AL
-       must see what the original would have left. */
-    C->eax = (C->eax & ~0xFFu) | 1u;
-    /* Pop the return address the call site pushed, as the body's RET would. */
-    C->esp += 4u;
+void x2_override_00617480(CPU *C) {
+  static int said;
+  if (!said++) {
+    printf("override: XMen2.exe 0x00617480, the DirectX 9.0c presence "
+           "check, is REPLACED.\n"
+           "  It was not passed -- it was retired. This port renders "
+           "natively and does not load Microsoft's D3D,\n"
+           "  so the question the check asks no longer decides anything. "
+           "Declared in src/native/startup.c.\n");
+    fflush(stdout);
+  }
+  /* TRUE, in AL only -- the original's true path is `MOV AL,0x1`, which
+     leaves the rest of EAX alone, and a caller that reads EAX rather than AL
+     must see what the original would have left. */
+  C->eax = (C->eax & ~0xFFu) | 1u;
+  /* Pop the return address the call site pushed, as the body's RET would. */
+  C->esp += 4u;
 }
-
 
 /* ---------------------------------------------------------------------
  * X2_UNPACED -- run the frame loop as fast as it will go.
@@ -125,41 +123,41 @@ void x2_override_00617480(CPU *C)
  * the module's mapped base rather than assumed, because the exe does not have
  * to land at its preferred address.
  */
-#define APP_OBJECT_RVA   0x002f3ac4u          /* 0x006f3ac4 - 0x00400000 */
-#define APP_FRAME_CAP    0x18u                /* float, minimum seconds/frame */
+#define APP_OBJECT_RVA 0x002f3ac4u /* 0x006f3ac4 - 0x00400000 */
+#define APP_FRAME_CAP 0x18u        /* float, minimum seconds/frame */
 
+void x2_override_0055b610(CPU *C) {
+  static int mode = -1; /* -1 unknown, 0 off, 1 on */
+  static uint32_t field;
 
-void x2_override_0055b610(CPU *C)
-{
-    static int mode = -1;                     /* -1 unknown, 0 off, 1 on */
-    static uint32_t field;
-
-    if (mode < 0) {
-        const char *e = getenv("X2_UNPACED");
-        mode = (e && *e && *e != '0') ? 1 : 0;
-        if (mode) {
-            X86Module *m;
-            for (m = x86_modules(); m; m = m->next)
-                if (m->preferred == 0x00400000u && *m->base) break;
-            if (!m) {
-                fprintf(stderr, "X2_UNPACED: the exe is not mapped, so the "
-                                "frame cap could not be found. The run is "
-                                "PACED, whatever the variable says.\n");
-                mode = 0;
-            } else {
-                field = *m->base + APP_OBJECT_RVA + APP_FRAME_CAP;
-                printf("X2_UNPACED: the game's frame cap at 0x%08x is zeroed "
-                       "before every clock read, so the frame loop runs as "
-                       "fast as it can. The clock is NOT scaled -- everything "
-                       "still sees real elapsed time.\n", field);
-                fflush(stdout);
-            }
-        }
+  if (mode < 0) {
+    const char *e = getenv("X2_UNPACED");
+    mode = (e && *e && *e != '0') ? 1 : 0;
+    if (mode) {
+      X86Module *m;
+      for (m = x86_modules(); m; m = m->next)
+        if (m->preferred == 0x00400000u && *m->base)
+          break;
+      if (!m) {
+        fprintf(stderr, "X2_UNPACED: the exe is not mapped, so the "
+                        "frame cap could not be found. The run is "
+                        "PACED, whatever the variable says.\n");
+        mode = 0;
+      } else {
+        field = *m->base + APP_OBJECT_RVA + APP_FRAME_CAP;
+        printf("X2_UNPACED: the game's frame cap at 0x%08x is zeroed "
+               "before every clock read, so the frame loop runs as "
+               "fast as it can. The clock is NOT scaled -- everything "
+               "still sees real elapsed time.\n",
+               field);
+        fflush(stdout);
+      }
     }
-    if (mode) WRF32(field, 0.0f);
-    x86_guest_body(C, "XMen2.exe", 0x0055b610u);
+  }
+  if (mode)
+    WRF32(field, 0.0f);
+  x86_guest_body(C, "XMen2.exe", 0x0055b610u);
 }
-
 
 /* ---------------------------------------------------------------------
  * X2_BOOT_MAP -- boot straight into a level with a real new-game party.
@@ -195,205 +193,205 @@ void x2_override_0055b610(CPU *C)
  * hero handles and a suppressed tutorial conversation. That observation is the
  * regression test for this path, not an accepted limitation.
  */
-#define NEW_GAME_PFX      "runscript menus/new_game"
-#define BOOT_PAGE         0x00110000u
-#define BOOT_CONSOLE_RVA  0x0015c410u   /* console vtable +0x1c, 0x0055c410 */
-#define START_MISSION_RVA 0x000a7b10u   /* BehavEd startFirstMission, 0x004a7b10 */
-#define BOOT_MGR_VA       0x007ac290u   /* &DAT_007ac290, the console singleton */
+#define NEW_GAME_PFX "runscript menus/new_game"
+#define BOOT_PAGE 0x00110000u
+#define BOOT_CONSOLE_RVA 0x0015c410u /* console vtable +0x1c, 0x0055c410 */
+#define START_MISSION_RVA                                                      \
+  0x000a7b10u                   /* BehavEd startFirstMission, 0x004a7b10 */
+#define BOOT_MGR_VA 0x007ac290u /* &DAT_007ac290, the console singleton */
 
 enum BootMapPhase {
-    BOOT_MAP_WAITING_FOR_INTRO,
-    BOOT_MAP_INITIALIZING_PARTY,
-    BOOT_MAP_LOADING,
-    BOOT_MAP_LOADED
+  BOOT_MAP_WAITING_FOR_INTRO,
+  BOOT_MAP_INITIALIZING_PARTY,
+  BOOT_MAP_LOADING,
+  BOOT_MAP_LOADED
 };
 
 static void boot_console_line(const CPU *source, uint32_t exe_base,
-                              uint32_t command)
-{
-    CPU K = *source;
-    K.esp -= 4u;
-    WR32(K.esp, command);
-    K.ecx = BOOT_MGR_VA;
-    x86_guest_call_args(&K, exe_base + BOOT_CONSOLE_RVA, 4u);
+                              uint32_t command) {
+  CPU K = *source;
+  K.esp -= 4u;
+  WR32(K.esp, command);
+  K.ecx = BOOT_MGR_VA;
+  x86_guest_call_args(&K, exe_base + BOOT_CONSOLE_RVA, 4u);
 }
 
-static uint32_t mapped_exe_base(void)
-{
-    const X86Module *module;
-    for (module = x86_modules(); module; module = module->next)
-        if (module->preferred == 0x00400000u && *module->base)
-            return *module->base;
+static uint32_t mapped_exe_base(void) {
+  const X86Module *module;
+  for (module = x86_modules(); module; module = module->next)
+    if (module->preferred == 0x00400000u && *module->base)
+      return *module->base;
+  return 0;
+}
+
+static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base) {
+  const X2BootModeDecision *decision;
+  X2BootMode requested;
+  if (!command ||
+      !x2_boot_mode_is_intro_command(guest_memory_const_pointer(command)))
     return 0;
+  requested = x2_settings_store()->boot_mode;
+  decision =
+      x2_boot_mode_runtime_prepare(requested, x2_retail_save_directory());
+  if (decision->effective == X2_BOOT_NORMAL)
+    return 0;
+  if (!exe_base) {
+    fprintf(stderr, "BOOT MODE: the executable is not mapped; preserving "
+                    "the normal retail boot.\n");
+    return 0;
+  }
+  if (decision->fell_back_to_menu) {
+    if (x2_boot_mode_runtime_catalog_failed())
+      fprintf(stderr, "BOOT MODE: Continue was requested but the save "
+                      "directory could not be read; opening the retail "
+                      "main menu.\n");
+    else
+      fprintf(stderr, "BOOT MODE: Continue was requested but no valid "
+                      "save exists; opening the retail main menu.\n");
+  } else if (decision->effective == X2_BOOT_CONTINUE) {
+    /* Direct dispatch. The boot's intro phase has already executed its
+       subsystem init and `resetgame` by the time the intro command
+       fires, so the retail save chain runs from the pristine state
+       without the menu map, the menu, or any interaction. The ack
+       re-selection supplies what the first falsified attempt lacked
+       (the payload's party writes key off CPadManager's current
+       player). Anything refuses: fall back to the retail menu path
+       below rather than guessing. */
+    fprintf(stderr,
+            "BOOT MODE: skipping the introduction, splash wait "
+            "and menu; dispatching the retail save chain for "
+            "%s directly.\n",
+            x2_boot_mode_runtime_continue_leaf());
+    fflush(stderr);
+    if (x2_continue_boot_dispatch(C)) {
+      C->eax = 1u;
+      C->esp += 8u;
+      return 1;
+    }
+    fprintf(stderr, "BOOT MODE: the retail manager refused the direct "
+                    "dispatch; opening the retail main menu instead.\n");
+    fflush(stderr);
+  } else
+    fprintf(stderr, "BOOT MODE: skipping the introduction and opening "
+                    "the retail main menu.\n");
+  fflush(stderr);
+  /* Menu mode and the Continue fallback call the retail forced main-menu
+     handler. It executes `mainmenuexit 1`, whose command owner resets and
+     loads menu/main_back; the retained CMenuMain::Show intercept then
+     supplies the title-screen player selection and dispatches the pending
+     Continue synchronously, before any menu interaction. */
+  if (!x2_boot_menu_open(C, exe_base))
+    return 0;
+  C->eax = 1u;
+  C->esp += 8u;
+  return 1;
 }
 
-static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base)
-{
-    const X2BootModeDecision *decision;
-    X2BootMode requested;
-    if (!command || !x2_boot_mode_is_intro_command(
-                        guest_memory_const_pointer(command)))
-        return 0;
-    requested = x2_settings_store()->boot_mode;
-    decision = x2_boot_mode_runtime_prepare(
-        requested, x2_retail_save_directory());
-    if (decision->effective == X2_BOOT_NORMAL) return 0;
-    if (!exe_base) {
-        fprintf(stderr, "BOOT MODE: the executable is not mapped; preserving "
-                        "the normal retail boot.\n");
-        return 0;
-    }
-    if (decision->fell_back_to_menu) {
-        if (x2_boot_mode_runtime_catalog_failed())
-            fprintf(stderr, "BOOT MODE: Continue was requested but the save "
-                            "directory could not be read; opening the retail "
-                            "main menu.\n");
-        else
-            fprintf(stderr, "BOOT MODE: Continue was requested but no valid "
-                            "save exists; opening the retail main menu.\n");
-    } else if (decision->effective == X2_BOOT_CONTINUE) {
-        /* Direct dispatch. The boot's intro phase has already executed its
-           subsystem init and `resetgame` by the time the intro command
-           fires, so the retail save chain runs from the pristine state
-           without the menu map, the menu, or any interaction. The ack
-           re-selection supplies what the first falsified attempt lacked
-           (the payload's party writes key off CPadManager's current
-           player). Anything refuses: fall back to the retail menu path
-           below rather than guessing. */
-        fprintf(stderr, "BOOT MODE: skipping the introduction, splash wait "
-                        "and menu; dispatching the retail save chain for "
-                        "%s directly.\n",
-                x2_boot_mode_runtime_continue_leaf());
-        fflush(stderr);
-        if (x2_continue_boot_dispatch(C)) {
-            C->eax = 1u;
-            C->esp += 8u;
-            return 1;
+void x2_override_0055beb0(CPU *C) {
+  static int mode = -1;     /* -1 unknown, 0 off, 1 on */
+  static int map_requested; /* failure preserves retail normal boot */
+  static uint32_t cmd;      /* guest pointer to "loadmap <map> 0 0" */
+  static uint32_t exe_base;
+  static enum BootMapPhase phase = BOOT_MAP_WAITING_FOR_INTRO;
+  uint32_t s = RD32(C->esp + 4u); /* param_2: the command string */
+
+  x2_boot_splash_trace(s);
+
+  if (mode < 0) {
+    const char *e = getenv("X2_BOOT_MAP");
+    /* Only the exact string "0" disables: real map names start with
+       digits ("0020b"), so a first-character test would silently refuse
+       them and boot retail instead. */
+    mode = (e && *e && strcmp(e, "0") != 0) ? 1 : 0;
+    map_requested = mode;
+    if (mode) {
+      char buf[128];
+      int len;
+      exe_base = mapped_exe_base();
+      if (!exe_base) {
+        fprintf(stderr, "X2_BOOT_MAP: the exe is not mapped, so the "
+                        "loadmap command could not be built. Booting "
+                        "normally.\n");
+        mode = 0;
+      } else if (pe_map_anon_low(BOOT_PAGE, 0x1000u) != 0) {
+        fprintf(stderr, "X2_BOOT_MAP: could not map a guest page for "
+                        "the loadmap command. Booting normally.\n");
+        mode = 0;
+      } else {
+        len = snprintf(buf, sizeof buf, "loadmap %s 0 0", e);
+        if (len < 0 || (size_t)len >= sizeof buf) {
+          fprintf(stderr, "X2_BOOT_MAP: the requested map name is "
+                          "too long for the game's 128-byte command "
+                          "buffer. Booting normally.\n");
+          mode = 0;
+        } else {
+          memcpy(guest_memory_pointer(BOOT_PAGE), buf, (size_t)len + 1u);
+          cmd = BOOT_PAGE;
+          fprintf(stderr,
+                  "X2_BOOT_MAP: the boot's intro script is "
+                  "replaced by the retail startFirstMission "
+                  "initializer, then a direct load of \"%s\". "
+                  "Unset or 0 to boot normally.\n",
+                  e);
+          fflush(stderr);
         }
-        fprintf(stderr, "BOOT MODE: the retail manager refused the direct "
-                        "dispatch; opening the retail main menu instead.\n");
-        fflush(stderr);
-    } else
-        fprintf(stderr, "BOOT MODE: skipping the introduction and opening "
-                        "the retail main menu.\n");
+      }
+    }
+  }
+  if (!map_requested && phase == BOOT_MAP_WAITING_FOR_INTRO) {
+    if (!exe_base)
+      exe_base = mapped_exe_base();
+    if (boot_to_host_mode(C, s, exe_base)) {
+      x2_boot_splash_arm();
+      x2_boot_blackout_arm(x2_boot_mode_name(x2_settings_store()->boot_mode));
+      return;
+    }
+  }
+  if (x2_boot_splash_refuse(s)) {
+    C->eax = 1u;  /* "a command ran" */
+    C->esp += 8u; /* RET 0x4: return address and one argument */
+    return;
+  }
+  if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
+      x2_boot_mode_is_intro_command(guest_memory_const_pointer(s))) {
+    /* The boot has already reset the game. Run the retail New Game owner;
+       its nested menus/new_game command is intercepted below only after
+       it has installed the default party. */
+    CPU K = *C;
+    phase = BOOT_MAP_INITIALIZING_PARTY;
+    x86_guest_call_args(&K, exe_base + START_MISSION_RVA, 0u);
+    if (phase != BOOT_MAP_LOADED) {
+      fprintf(stderr, "X2_BOOT_MAP: the retail startFirstMission "
+                      "function returned without requesting its "
+                      "new-game script. Refusing a bare map load because "
+                      "it would create a level with no party; continuing "
+                      "through the normal intro.\n");
+      fflush(stderr);
+      mode = 0;
+      x86_guest_body(C, "XMen2.exe", 0x0055beb0u);
+      return;
+    }
+    C->eax = 1u;  /* "a command ran"; the boot does not read EAX here */
+    C->esp += 8u; /* RET 0x4: the return address and the one arg */
+    return;
+  }
+  if (mode && phase == BOOT_MAP_INITIALIZING_PARTY && cmd && exe_base && s &&
+      strncmp(guest_memory_const_pointer(s), NEW_GAME_PFX,
+              sizeof NEW_GAME_PFX - 1u) == 0) {
+    /* startFirstMission has completed the real party setup and is about to
+       run the presentation-only new_game script. Replace that script's
+       movie and hardcoded tutorial map with the requested map. */
+    phase = BOOT_MAP_LOADING;
+    boot_console_line(C, exe_base, cmd);
+    phase = BOOT_MAP_LOADED;
+    fprintf(stderr, "X2_BOOT_MAP: startFirstMission installed the retail "
+                    "default party; loading the requested map now.\n");
     fflush(stderr);
-    /* Menu mode and the Continue fallback call the retail forced main-menu
-       handler. It executes `mainmenuexit 1`, whose command owner resets and
-       loads menu/main_back; the retained CMenuMain::Show intercept then
-       supplies the title-screen player selection and dispatches the pending
-       Continue synchronously, before any menu interaction. */
-    if (!x2_boot_menu_open(C, exe_base)) return 0;
     C->eax = 1u;
     C->esp += 8u;
-    return 1;
-}
-
-
-void x2_override_0055beb0(CPU *C)
-{
-    static int mode = -1;               /* -1 unknown, 0 off, 1 on */
-    static int map_requested;            /* failure preserves retail normal boot */
-    static uint32_t cmd;                /* guest pointer to "loadmap <map> 0 0" */
-    static uint32_t exe_base;
-    static enum BootMapPhase phase = BOOT_MAP_WAITING_FOR_INTRO;
-    uint32_t s = RD32(C->esp + 4u);     /* param_2: the command string */
-
-    x2_boot_splash_trace(s);
-
-    if (mode < 0) {
-        const char *e = getenv("X2_BOOT_MAP");
-        /* Only the exact string "0" disables: real map names start with
-           digits ("0020b"), so a first-character test would silently refuse
-           them and boot retail instead. */
-        mode = (e && *e && strcmp(e, "0") != 0) ? 1 : 0;
-        map_requested = mode;
-        if (mode) {
-            char buf[128];
-            int len;
-            exe_base = mapped_exe_base();
-            if (!exe_base) {
-                fprintf(stderr, "X2_BOOT_MAP: the exe is not mapped, so the "
-                                "loadmap command could not be built. Booting "
-                                "normally.\n");
-                mode = 0;
-            } else if (pe_map_anon_low(BOOT_PAGE, 0x1000u) != 0) {
-                fprintf(stderr, "X2_BOOT_MAP: could not map a guest page for "
-                                "the loadmap command. Booting normally.\n");
-                mode = 0;
-            } else {
-                len = snprintf(buf, sizeof buf, "loadmap %s 0 0", e);
-                if (len < 0 || (size_t)len >= sizeof buf) {
-                    fprintf(stderr, "X2_BOOT_MAP: the requested map name is "
-                                    "too long for the game's 128-byte command "
-                                    "buffer. Booting normally.\n");
-                    mode = 0;
-                } else {
-                    memcpy(guest_memory_pointer(BOOT_PAGE), buf,
-                           (size_t)len + 1u);
-                    cmd = BOOT_PAGE;
-                    fprintf(stderr, "X2_BOOT_MAP: the boot's intro script is "
-                                    "replaced by the retail startFirstMission "
-                                    "initializer, then a direct load of \"%s\". "
-                                    "Unset or 0 to boot normally.\n", e);
-                    fflush(stderr);
-                }
-            }
-        }
-    }
-    if (!map_requested && phase == BOOT_MAP_WAITING_FOR_INTRO) {
-        if (!exe_base) exe_base = mapped_exe_base();
-        if (boot_to_host_mode(C, s, exe_base)) {
-            x2_boot_splash_arm();
-            x2_boot_blackout_arm(x2_boot_mode_name(
-                x2_settings_store()->boot_mode));
-            return;
-        }
-    }
-    if (x2_boot_splash_refuse(s)) {
-        C->eax = 1u;        /* "a command ran" */
-        C->esp += 8u;       /* RET 0x4: return address and one argument */
-        return;
-    }
-    if (mode && phase == BOOT_MAP_WAITING_FOR_INTRO && cmd && exe_base && s &&
-        x2_boot_mode_is_intro_command(guest_memory_const_pointer(s))) {
-        /* The boot has already reset the game. Run the retail New Game owner;
-           its nested menus/new_game command is intercepted below only after
-           it has installed the default party. */
-        CPU K = *C;
-        phase = BOOT_MAP_INITIALIZING_PARTY;
-        x86_guest_call_args(&K, exe_base + START_MISSION_RVA, 0u);
-        if (phase != BOOT_MAP_LOADED) {
-            fprintf(stderr, "X2_BOOT_MAP: the retail startFirstMission "
-                            "function returned without requesting its "
-                            "new-game script. Refusing a bare map load because "
-                            "it would create a level with no party; continuing "
-                            "through the normal intro.\n");
-            fflush(stderr);
-            mode = 0;
-            x86_guest_body(C, "XMen2.exe", 0x0055beb0u);
-            return;
-        }
-        C->eax = 1u;      /* "a command ran"; the boot does not read EAX here */
-        C->esp += 8u;     /* RET 0x4: the return address and the one arg */
-        return;
-    }
-    if (mode && phase == BOOT_MAP_INITIALIZING_PARTY && cmd && exe_base && s &&
-        strncmp(guest_memory_const_pointer(s), NEW_GAME_PFX,
-                sizeof NEW_GAME_PFX - 1u) == 0) {
-        /* startFirstMission has completed the real party setup and is about to
-           run the presentation-only new_game script. Replace that script's
-           movie and hardcoded tutorial map with the requested map. */
-        phase = BOOT_MAP_LOADING;
-        boot_console_line(C, exe_base, cmd);
-        phase = BOOT_MAP_LOADED;
-        fprintf(stderr, "X2_BOOT_MAP: startFirstMission installed the retail "
-                        "default party; loading the requested map now.\n");
-        fflush(stderr);
-        C->eax = 1u;
-        C->esp += 8u;
-        return;
-    }
-    x86_guest_body(C, "XMen2.exe", 0x0055beb0u);
+    return;
+  }
+  x86_guest_body(C, "XMen2.exe", 0x0055beb0u);
 }
 
 /* FUN_00402ba0 -- the boot frontend's intro phase. Retail holds the legal
@@ -410,50 +408,49 @@ void x2_override_0055beb0(CPU *C)
  * Every effect of the phase except the delay is the retail effect. Normal
  * boot keeps the retail wait. */
 
-void x2_override_00402ba0(CPU *C)
-{
-    static const float long_past = -1.0e9f;
-    static int reported;
-    uint32_t phase = C->ecx;
-    X2BootMode mode = x2_settings_store()->boot_mode;
-    uint32_t bits;
-    float was;
+void x2_override_00402ba0(CPU *C) {
+  static const float long_past = -1.0e9f;
+  static int reported;
+  uint32_t phase = C->ecx;
+  X2BootMode mode = x2_settings_store()->boot_mode;
+  uint32_t bits;
+  float was;
 
-    /* Report on the first tick whichever way it goes. An override that only
-       spoke when it acted would be indistinguishable, in a log, from one that
-       was never reached -- and "the splash was skipped" is exactly the claim
-       a silent negative would let through. */
-    if (phase && (mode == X2_BOOT_CONTINUE || mode == X2_BOOT_MENU)) {
-        bits = RD32(phase + 0x24u);
-        memcpy(&was, &bits, sizeof was);
-        memcpy(&bits, &long_past, sizeof bits);
-        WR32(phase + 0x24u, bits);
-        if (!reported) {
-            reported = 1;
-            fprintf(stderr, "BOOT SPLASH: intro phase start stamp %.3f -> "
-                            "%.1f, so the phase's own wait is already past on "
-                            "its first tick and the intro command dispatches "
-                            "the %s boot path immediately.\n",
-                    (double)was, (double)long_past, x2_boot_mode_name(mode));
-            fflush(stderr);
-        }
-    } else if (!reported) {
-        reported = 1;
-        fprintf(stderr, "BOOT SPLASH: retail splash wait left intact (boot "
-                        "mode %s, phase %s).\n",
-                x2_boot_mode_name(mode), phase ? "present" : "NULL");
-        fflush(stderr);
+  /* Report on the first tick whichever way it goes. An override that only
+     spoke when it acted would be indistinguishable, in a log, from one that
+     was never reached -- and "the splash was skipped" is exactly the claim
+     a silent negative would let through. */
+  if (phase && (mode == X2_BOOT_CONTINUE || mode == X2_BOOT_MENU)) {
+    bits = RD32(phase + 0x24u);
+    memcpy(&was, &bits, sizeof was);
+    memcpy(&bits, &long_past, sizeof bits);
+    WR32(phase + 0x24u, bits);
+    if (!reported) {
+      reported = 1;
+      fprintf(stderr,
+              "BOOT SPLASH: intro phase start stamp %.3f -> "
+              "%.1f, so the phase's own wait is already past on "
+              "its first tick and the intro command dispatches "
+              "the %s boot path immediately.\n",
+              (double)was, (double)long_past, x2_boot_mode_name(mode));
+      fflush(stderr);
     }
-    x86_guest_body(C, "XMen2.exe", 0x00402ba0u);
+  } else if (!reported) {
+    reported = 1;
+    fprintf(stderr,
+            "BOOT SPLASH: retail splash wait left intact (boot "
+            "mode %s, phase %s).\n",
+            x2_boot_mode_name(mode), phase ? "present" : "NULL");
+    fflush(stderr);
+  }
+  x86_guest_body(C, "XMen2.exe", 0x00402ba0u);
 }
 
 /* Register this file's overrides. Runs before main; the dispatcher consults
    the table only when the guest actually calls one of these entry points. */
-__attribute__((constructor))
-static void x2_startup_register_overrides(void)
-{
-    x86_register_override("XMen2.exe", 0x00617480, x2_override_00617480);
-    x86_register_override("XMen2.exe", 0x0055b610, x2_override_0055b610);
-    x86_register_override("XMen2.exe", 0x0055beb0, x2_override_0055beb0);
-    x86_register_override("XMen2.exe", 0x00402ba0, x2_override_00402ba0);
+__attribute__((constructor)) static void x2_startup_register_overrides(void) {
+  x86_register_override("XMen2.exe", 0x00617480, x2_override_00617480);
+  x86_register_override("XMen2.exe", 0x0055b610, x2_override_0055b610);
+  x86_register_override("XMen2.exe", 0x0055beb0, x2_override_0055beb0);
+  x86_register_override("XMen2.exe", 0x00402ba0, x2_override_00402ba0);
 }

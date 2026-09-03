@@ -26,30 +26,30 @@
  * invented.
  */
 typedef enum {
-    D3D8_SURF_BACKBUFFER,      /* the swapchain image; owned by src/gpu */
-    D3D8_SURF_DEPTHSTENCIL,    /* the device's automatic depth buffer */
-    D3D8_SURF_RENDERTARGET,    /* an off-screen target the engine created */
-    D3D8_SURF_SYSTEM,          /* plain host memory: CreateImageSurface */
-    D3D8_SURF_TEXLEVEL         /* one mip level of a texture: GetSurfaceLevel */
+  D3D8_SURF_BACKBUFFER,   /* the swapchain image; owned by src/gpu */
+  D3D8_SURF_DEPTHSTENCIL, /* the device's automatic depth buffer */
+  D3D8_SURF_RENDERTARGET, /* an off-screen target the engine created */
+  D3D8_SURF_SYSTEM,       /* plain host memory: CreateImageSurface */
+  D3D8_SURF_TEXLEVEL      /* one mip level of a texture: GetSurfaceLevel */
 } D3D8SurfaceKind;
 
 typedef struct {
-    D3D8SurfaceKind kind;
-    uint32_t        width, height;
-    uint32_t        format;
-    uint32_t        usage, pool;
-    uint32_t        bytes_per_pixel;
-    unsigned char  *pixels;        /* SYSTEM surfaces only; NULL otherwise */
-    uint32_t        guest_pixels;  /* guest-addressable copy, for LockRect */
-    uint32_t        pitch;
-    uint32_t        size;          /* bytes; NOT pitch*height for DXT */
-    int             locked;
-    /* TEXLEVEL only: whose bytes these are, and which level of it. */
-    D3D8Object     *owner;
-    uint32_t        level;
+  D3D8SurfaceKind kind;
+  uint32_t width, height;
+  uint32_t format;
+  uint32_t usage, pool;
+  uint32_t bytes_per_pixel;
+  unsigned char *pixels; /* SYSTEM surfaces only; NULL otherwise */
+  uint32_t guest_pixels; /* guest-addressable copy, for LockRect */
+  uint32_t pitch;
+  uint32_t size; /* bytes; NOT pitch*height for DXT */
+  int locked;
+  /* TEXLEVEL only: whose bytes these are, and which level of it. */
+  D3D8Object *owner;
+  uint32_t level;
 } D3D8Surface;
 
-void        d3d8_surface_install(void);
+void d3d8_surface_install(void);
 D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
                              uint32_t format, uint32_t usage, uint32_t pool);
 

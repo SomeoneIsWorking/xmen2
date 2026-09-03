@@ -15,10 +15,10 @@
  * knows the machine is the one that opened the device.
  */
 typedef struct {
-    uint32_t max_texture_dim;
-    uint32_t max_volume_extent;
-    uint32_t max_anisotropy;
-    uint32_t max_simultaneous_textures;
+  uint32_t max_texture_dim;
+  uint32_t max_volume_extent;
+  uint32_t max_anisotropy;
+  uint32_t max_simultaneous_textures;
 } D3D8CapsLimits;
 
 /* Conservative values for before a device exists -- GetDeviceCaps is legal on

@@ -8,24 +8,21 @@
 #define X2_LOAD_GAME_VISIBLE_ROWS 10u
 #define X2_LOAD_GAME_MAX_ENTRIES 11u
 
-typedef enum {
-    X2_LOAD_GAME_MANUAL,
-    X2_LOAD_GAME_AUTOSAVE
-} X2LoadGameEntryKind;
+typedef enum { X2_LOAD_GAME_MANUAL, X2_LOAD_GAME_AUTOSAVE } X2LoadGameEntryKind;
 
 typedef struct {
-    X2LoadGameEntryKind kind;
-    unsigned manual_slot;
+  X2LoadGameEntryKind kind;
+  unsigned manual_slot;
 } X2LoadGameEntry;
 
 typedef struct {
-    X2LoadGameEntry entries[X2_LOAD_GAME_MAX_ENTRIES];
-    size_t count;
+  X2LoadGameEntry entries[X2_LOAD_GAME_MAX_ENTRIES];
+  size_t count;
 } X2LoadGameMenuPlan;
 
 typedef struct {
-    size_t first;
-    size_t selected;
+  size_t first;
+  size_t selected;
 } X2LoadGameMenuWindow;
 
 /* Manual saves retain numeric slot order. Autosave is the final logical entry,

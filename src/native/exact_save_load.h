@@ -6,9 +6,9 @@
 struct CPU;
 
 typedef enum {
-    X2_EXACT_SAVE_LOAD_NONE,
-    X2_EXACT_SAVE_LOAD_CONTINUE,
-    X2_EXACT_SAVE_LOAD_MENU
+  X2_EXACT_SAVE_LOAD_NONE,
+  X2_EXACT_SAVE_LOAD_CONTINUE,
+  X2_EXACT_SAVE_LOAD_MENU
 } X2ExactSaveLoadOwner;
 
 typedef void (*X2ExactSaveLoadCompletion)(int succeeded);

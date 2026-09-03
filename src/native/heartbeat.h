@@ -24,7 +24,7 @@
 #ifndef X2_HEARTBEAT_H
 #define X2_HEARTBEAT_H
 
-#include <signal.h>          /* sig_atomic_t, for the interrupt flag below */
+#include <signal.h> /* sig_atomic_t, for the interrupt flag below */
 
 /* Starts the thread. Announces itself (or that it is disabled) on stderr, so a
    run with no [HB] lines cannot be mistaken for a run that produced none. */

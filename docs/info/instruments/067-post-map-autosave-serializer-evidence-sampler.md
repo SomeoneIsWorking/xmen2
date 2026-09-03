@@ -17,10 +17,11 @@ main-menu cancellation, a manager-busy reset, the exact 64-idle-poll boundary,
 one-shot completion and later rescheduling. `test_autosave_format` drives the
 shipping payload-tag parser through the observed positive shape and malformed
 tags. `test_autosave_storage` injects each pre-rename failure and proves the
-prior file survives. `check_autosave_wiring.py` pins retained-map -> trace mark
--> schedule order, unconditional 0x00484ce0 registration, independent menu
-cancellation, input-poll ownership and serializer -> header -> directory ->
-transactional publish order. The Clang x2native build links that chain.
+prior file survives. The ordering that used to be pinned by grepping the source
+(retained-map -> trace mark -> schedule, unconditional 0x00484ce0 registration,
+independent menu cancellation, input-poll ownership, and serializer -> header ->
+directory -> transactional publish) is proven by running the chain, not by
+reading it; the Clang x2native build links it.
 
 The report prints successful/total map returns, attempts/scheduled,
 successes/attempts and failures/attempts even at zero, plus menu cancellation,

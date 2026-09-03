@@ -23,12 +23,12 @@
 #include <stdint.h>
 
 /* Seconds, monotonic, as the guest sees them. */
-double   guest_clock_now_s(void);
+double guest_clock_now_s(void);
 
 /* Seconds since the process started -- what to REPORT. guest_clock_now_s
    counts from the machine's boot, which the guest does not care about and a
    human reading a status line very much does. */
-double   guest_clock_elapsed_s(void);
+double guest_clock_elapsed_s(void);
 
 /* The same instant in nanoseconds, for QueryPerformanceCounter (which this
    port defines as a nanosecond counter) and GetTickCount. */
@@ -47,13 +47,13 @@ uint64_t guest_clock_ns(void);
  * caller should sleep for real -- which is the answer whenever unbounded mode
  * is off, and the reason the default run is still wall-clock paced.
  */
-int      guest_clock_skip_idle_to(double deadline);
+int guest_clock_skip_idle_to(double deadline);
 
 /* Enabled by --unbounded or X2_UNBOUNDED=1. */
-int      guest_clock_unbounded(void);
-void     guest_clock_set_unbounded(int on);
+int guest_clock_unbounded(void);
+void guest_clock_set_unbounded(int on);
 
 /* Into the heartbeat and the shutdown report, at zero and with denominators. */
-void     guest_clock_report(void);
+void guest_clock_report(void);
 
 #endif

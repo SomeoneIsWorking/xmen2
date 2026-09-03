@@ -29,7 +29,7 @@
    REFUSES loudly (and returns 0) if a port was asked for and cannot be bound --
    a control channel that silently failed to listen is a run that ignores every
    command while looking healthy. */
-int  control_start(int port);
+int control_start(int port);
 
 /* Guest-state commands are drained on each keyboard poll, from the thread that
    owns guest input.
@@ -45,9 +45,9 @@ void control_report(void);
 
 /* The HTTP wire helpers, shared with the endpoints that live beside their
  * instruments (the reached endpoint is x86_reached.c's, not this file's). */
-void control_reply_text(int fd, int code, const char *status,
-                        const char *fmt, ...);
-void control_reply_json(int fd, int code, const char *status,
-                        const char *body, size_t size);
+void control_reply_text(int fd, int code, const char *status, const char *fmt,
+                        ...);
+void control_reply_json(int fd, int code, const char *status, const char *body,
+                        size_t size);
 
 #endif

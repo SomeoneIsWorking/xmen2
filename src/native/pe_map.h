@@ -6,18 +6,18 @@
 #include <stdint.h>
 
 typedef struct PeImage {
-    uint32_t base;       /* where it actually landed */
-    uint32_t preferred;  /* what it was linked for; differs when relocated */
-    uint32_t size;       /* SizeOfImage */
-    int      nsections;
+  uint32_t base;      /* where it actually landed */
+  uint32_t preferred; /* what it was linked for; differs when relocated */
+  uint32_t size;      /* SizeOfImage */
+  int nsections;
 } PeImage;
 
-int  pe_map(const char *path, PeImage *out);
+int pe_map(const char *path, PeImage *out);
 /* As pe_map, naming the base the caller hoped for (reporting only). */
-int  pe_map_at(const char *path, uint32_t want, PeImage *out);
+int pe_map_at(const char *path, uint32_t want, PeImage *out);
 /* A fixed low anonymous mapping (guest stack, scratch objects). Same refusal
    rule: it lands where asked or it fails. */
-int  pe_map_anon_low(uint32_t want, uint32_t size);
+int pe_map_anon_low(uint32_t want, uint32_t size);
 void pe_unmap(PeImage *img);
 
 /* Export RVA for a name in a MAPPED image, or 0. */

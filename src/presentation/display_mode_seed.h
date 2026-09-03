@@ -21,9 +21,9 @@ extern "C" {
    This is deliberately NOT the synthetic registry view rejected in issue
    #111 / claim C255: this does not synthesize a different value on guest
    reads. After publication the value belongs to the game exactly as if a
-   player had set it in retail Options. The corollary, which is policy: a resolution
-   chosen in the RETAIL options screen holds only until the next launch,
-   when the port's own setting is published over it. */
+   player had set it in retail Options. The corollary, which is policy: a
+   resolution chosen in the RETAIL options screen holds only until the next
+   launch, when the port's own setting is published over it. */
 
 /* Composed from boot control (startup.c) at the first guest call, ahead of
    the engine's settings registration; announces one line either way. */
@@ -35,8 +35,8 @@ int x2_display_mode_seed_publish(void);
 
 /* The one authoritative retail Resolution encoding. Returns 1 only when
    dimensions are plausible and the complete "%ux%u" value fits. */
-int x2_display_mode_seed_format(unsigned w, unsigned h,
-                                char *out_value, int cap);
+int x2_display_mode_seed_format(unsigned w, unsigned h, char *out_value,
+                                int cap);
 
 /* Whether the retail store currently contains the configured output mode.
    This distinguishes a no-op because the value already matched from a

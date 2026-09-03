@@ -16,8 +16,8 @@
 #ifndef GUEST_BODY_H
 #define GUEST_BODY_H
 
-#include <stdint.h>
 #include "x86rt.h"
+#include <stdint.h>
 
 /* `module` is the image's file name as the loader knows it ("XMen2.exe"), and
    `linked_ep` the entry point at that module's PREFERRED base -- the address

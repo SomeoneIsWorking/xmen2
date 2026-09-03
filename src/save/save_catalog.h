@@ -6,8 +6,8 @@
 #define X2_SAVE_LEAF_CAPACITY 16
 
 typedef struct {
-    char leaf[X2_SAVE_LEAF_CAPACITY];
-    int64_t mtime_ns;
+  char leaf[X2_SAVE_LEAF_CAPACITY];
+  int64_t mtime_ns;
 } X2SaveCandidate;
 
 /* Find the newest regular save leaf in directory. Only saveslot0..9.save and

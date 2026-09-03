@@ -3,10 +3,7 @@
 
 #include <stdint.h>
 
-typedef enum X86TailRoute {
-    X86_TAIL_INLINE,
-    X86_TAIL_QUEUE
-} X86TailRoute;
+typedef enum X86TailRoute { X86_TAIL_INLINE, X86_TAIL_QUEUE } X86TailRoute;
 
 /*
  * A generated tail jump at the current dispatch frame may return to the

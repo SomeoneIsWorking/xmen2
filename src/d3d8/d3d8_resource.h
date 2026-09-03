@@ -17,9 +17,8 @@ void d3d8_resource_install(void);
 D3D8Object *d3d8_texture_new(uint32_t w, uint32_t h, uint32_t levels,
                              uint32_t usage, uint32_t format, uint32_t pool);
 /* A cube map: six square faces of `size`, each with its own mip chain. */
-D3D8Object *d3d8_cubetexture_new(uint32_t size, uint32_t levels,
-                                 uint32_t usage, uint32_t format,
-                                 uint32_t pool);
+D3D8Object *d3d8_cubetexture_new(uint32_t size, uint32_t levels, uint32_t usage,
+                                 uint32_t format, uint32_t pool);
 D3D8Object *d3d8_vertexbuffer_new(uint32_t bytes, uint32_t usage, uint32_t fvf,
                                   uint32_t pool);
 D3D8Object *d3d8_indexbuffer_new(uint32_t bytes, uint32_t usage,
@@ -30,15 +29,15 @@ D3D8Object *d3d8_indexbuffer_new(uint32_t bytes, uint32_t usage,
 void d3d8_resource_attach_destructor(D3D8Object *o);
 
 /* What the draw path needs from a bound resource. */
-GpuBuffer  d3d8_resource_buffer(D3D8Object *o);
+GpuBuffer d3d8_resource_buffer(D3D8Object *o);
 GpuTexture d3d8_resource_texture(D3D8Object *o);
-uint32_t   d3d8_resource_fvf(D3D8Object *o);
+uint32_t d3d8_resource_fvf(D3D8Object *o);
 /* The buffer's length in BYTES, as the guest asked for it. */
-uint32_t   d3d8_resource_bytes(D3D8Object *o);
-uint32_t   d3d8_resource_guest_bytes(D3D8Object *o);
-int        d3d8_resource_index_is_32bit(D3D8Object *o);
-int        d3d8_resource_texture_provenance(
-               const D3D8Object *o, D3D8TextureProvenance *out);
+uint32_t d3d8_resource_bytes(D3D8Object *o);
+uint32_t d3d8_resource_guest_bytes(D3D8Object *o);
+int d3d8_resource_index_is_32bit(D3D8Object *o);
+int d3d8_resource_texture_provenance(const D3D8Object *o,
+                                     D3D8TextureProvenance *out);
 
 /*
  * One SUB-RESOURCE of a texture has been unlocked -- upload it.
@@ -59,7 +58,7 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub);
    level uploaded. The self-test uses them to tell "the unlock uploaded" from
    "the unlock returned OK and did nothing", which look identical otherwise. */
 unsigned long d3d8_texture_uploads(D3D8Object *o);
-uint32_t      d3d8_texture_last_upload_level(D3D8Object *o);
+uint32_t d3d8_texture_last_upload_level(D3D8Object *o);
 
 /*
  * The dynamic-buffer census: Lock flags, what Unlock moves, and how often a

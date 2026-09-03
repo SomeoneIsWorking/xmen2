@@ -34,9 +34,9 @@
 #include "d3d8_state.h"
 
 /* D3DSTATEBLOCKTYPE */
-#define D3DSBT_ALL          1u
-#define D3DSBT_PIXELSTATE   2u
-#define D3DSBT_VERTEXSTATE  3u
+#define D3DSBT_ALL 1u
+#define D3DSBT_PIXELSTATE 2u
+#define D3DSBT_VERTEXSTATE 3u
 
 /*
  * Capture `now` into a new block and hand back its token.

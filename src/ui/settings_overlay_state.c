@@ -7,24 +7,15 @@
 
 static int g_visible;
 
-void x2_settings_overlay_show(void)
-{
-    g_visible = 1;
-}
+void x2_settings_overlay_show(void) { g_visible = 1; }
 
-void x2_settings_overlay_hide(void)
-{
-    g_visible = 0;
-}
+void x2_settings_overlay_hide(void) { g_visible = 0; }
 
-int x2_settings_overlay_visible(void)
-{
-    return g_visible;
-}
+int x2_settings_overlay_visible(void) { return g_visible; }
 
-int x2_settings_overlay_toggle_key(int keycode, int is_down, int repeat)
-{
-    if (keycode != X2_OVERLAY_TOGGLE_KEY || !is_down || repeat) return 0;
-    g_visible = !g_visible;
-    return 1;
+int x2_settings_overlay_toggle_key(int keycode, int is_down, int repeat) {
+  if (keycode != X2_OVERLAY_TOGGLE_KEY || !is_down || repeat)
+    return 0;
+  g_visible = !g_visible;
+  return 1;
 }

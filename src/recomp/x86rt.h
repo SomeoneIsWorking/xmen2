@@ -20,83 +20,81 @@
 
 #ifdef X86_NATIVE
 extern uintptr_t g_guest_memory_base;
-static inline void *x86_guest_pointer(uint32_t address)
-{
-    return (void *)(g_guest_memory_base + (uintptr_t)address);
+static inline void *x86_guest_pointer(uint32_t address) {
+  return (void *)(g_guest_memory_base + (uintptr_t)address);
 }
 #else
-static inline void *x86_guest_pointer(uint32_t address)
-{
-    return (void *)(uintptr_t)address;
+static inline void *x86_guest_pointer(uint32_t address) {
+  return (void *)(uintptr_t)address;
 }
 #endif
 
 /* x86 permits unaligned integer and floating-point memory operands. memcpy is
    the C spelling that preserves that contract without promising alignment to
    an AArch64 compiler. These inline to ordinary unaligned loads/stores. */
-static inline uint8_t x86_load8(uint32_t address)
-{
-    uint8_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+static inline uint8_t x86_load8(uint32_t address) {
+  uint8_t value;
+  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  return value;
 }
-static inline uint16_t x86_load16(uint32_t address)
-{
-    uint16_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+static inline uint16_t x86_load16(uint32_t address) {
+  uint16_t value;
+  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  return value;
 }
-static inline uint32_t x86_load32(uint32_t address)
-{
-    uint32_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+static inline uint32_t x86_load32(uint32_t address) {
+  uint32_t value;
+  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  return value;
 }
-static inline uint64_t x86_load64(uint32_t address)
-{
-    uint64_t value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+static inline uint64_t x86_load64(uint32_t address) {
+  uint64_t value;
+  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  return value;
 }
-static inline float x86_loadf32(uint32_t address)
-{
-    float value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+static inline float x86_loadf32(uint32_t address) {
+  float value;
+  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  return value;
 }
-static inline double x86_loadf64(uint32_t address)
-{
-    double value; memcpy(&value, x86_guest_pointer(address), sizeof value); return value;
+static inline double x86_loadf64(uint32_t address) {
+  double value;
+  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  return value;
 }
 extern volatile uint32_t x2_write_watch_addr;
 extern void x2_write_watch_fire(uint32_t address, uint32_t value);
-static inline void x86_store8_raw(uint32_t address, uint8_t value)
-{
-    memcpy(x86_guest_pointer(address), &value, sizeof value);
+static inline void x86_store8_raw(uint32_t address, uint8_t value) {
+  memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
-static inline void x86_store16_raw(uint32_t address, uint16_t value)
-{
-    memcpy(x86_guest_pointer(address), &value, sizeof value);
+static inline void x86_store16_raw(uint32_t address, uint16_t value) {
+  memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
-static inline void x86_store32_raw(uint32_t address, uint32_t value)
-{
-    memcpy(x86_guest_pointer(address), &value, sizeof value);
+static inline void x86_store32_raw(uint32_t address, uint32_t value) {
+  memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
-static inline void x86_store64_raw(uint32_t address, uint64_t value)
-{
-    if (x2_write_watch_addr == address)
-        x2_write_watch_fire(address, (uint32_t)value);
-    else if (x2_write_watch_addr == address + 4u)
-        x2_write_watch_fire(address + 4u, (uint32_t)(value >> 32u));
-    memcpy(x86_guest_pointer(address), &value, sizeof value);
+static inline void x86_store64_raw(uint32_t address, uint64_t value) {
+  if (x2_write_watch_addr == address)
+    x2_write_watch_fire(address, (uint32_t)value);
+  else if (x2_write_watch_addr == address + 4u)
+    x2_write_watch_fire(address + 4u, (uint32_t)(value >> 32u));
+  memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
-static inline void x86_storef32(uint32_t address, float value)
-{
-    uint32_t bits;
-    memcpy(&bits, &value, sizeof bits);
-    if (x2_write_watch_addr == address)
-        x2_write_watch_fire(address, bits);
-    memcpy(x86_guest_pointer(address), &value, sizeof value);
+static inline void x86_storef32(uint32_t address, float value) {
+  uint32_t bits;
+  memcpy(&bits, &value, sizeof bits);
+  if (x2_write_watch_addr == address)
+    x2_write_watch_fire(address, bits);
+  memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
-static inline void x86_storef64(uint32_t address, double value)
-{
-    uint64_t bits;
-    memcpy(&bits, &value, sizeof bits);
-    if (x2_write_watch_addr == address)
-        x2_write_watch_fire(address, (uint32_t)bits);
-    else if (x2_write_watch_addr == address + 4u)
-        x2_write_watch_fire(address + 4u, (uint32_t)(bits >> 32u));
-    memcpy(x86_guest_pointer(address), &value, sizeof value);
+static inline void x86_storef64(uint32_t address, double value) {
+  uint64_t bits;
+  memcpy(&bits, &value, sizeof bits);
+  if (x2_write_watch_addr == address)
+    x2_write_watch_fire(address, (uint32_t)bits);
+  else if (x2_write_watch_addr == address + 4u)
+    x2_write_watch_fire(address + 4u, (uint32_t)(bits >> 32u));
+  memcpy(x86_guest_pointer(address), &value, sizeof value);
 }
 #ifdef _WIN32
 #include <intrin.h>
@@ -118,25 +116,25 @@ static inline void x86_storef64(uint32_t address, double value)
  */
 extern __thread uint32_t g_fsbase, g_gsbase;
 void x86_seg_unset(const char *seg);
-static inline uint32_t __readfsdword(unsigned long o)
-{
-    if (!g_fsbase) x86_seg_unset("FS");
-    return x86_load32(g_fsbase + (uint32_t)o);
+static inline uint32_t __readfsdword(unsigned long o) {
+  if (!g_fsbase)
+    x86_seg_unset("FS");
+  return x86_load32(g_fsbase + (uint32_t)o);
 }
-static inline void __writefsdword(unsigned long o, uint32_t v)
-{
-    if (!g_fsbase) x86_seg_unset("FS");
-    x86_store32_raw(g_fsbase + (uint32_t)o, v);
+static inline void __writefsdword(unsigned long o, uint32_t v) {
+  if (!g_fsbase)
+    x86_seg_unset("FS");
+  x86_store32_raw(g_fsbase + (uint32_t)o, v);
 }
-static inline uint32_t __readgsdword(unsigned long o)
-{
-    if (!g_gsbase) x86_seg_unset("GS");
-    return x86_load32(g_gsbase + (uint32_t)o);
+static inline uint32_t __readgsdword(unsigned long o) {
+  if (!g_gsbase)
+    x86_seg_unset("GS");
+  return x86_load32(g_gsbase + (uint32_t)o);
 }
-static inline void __writegsdword(unsigned long o, uint32_t v)
-{
-    if (!g_gsbase) x86_seg_unset("GS");
-    x86_store32_raw(g_gsbase + (uint32_t)o, v);
+static inline void __writegsdword(unsigned long o, uint32_t v) {
+  if (!g_gsbase)
+    x86_seg_unset("GS");
+  x86_store32_raw(g_gsbase + (uint32_t)o, v);
 }
 
 /*
@@ -151,53 +149,49 @@ static inline void __writegsdword(unsigned long o, uint32_t v)
 /* Written out rather than taken from <cpuid.h>: glibc defines __cpuid there as
    a five-argument macro, which collides with the MSVC-shaped __cpuid(int[4],
    int) the emitted code calls. */
-static inline void __cpuid(int regs[4], int leaf)
-{
-    __asm__ __volatile__("cpuid"
-                         : "=a"(regs[0]), "=b"(regs[1]),
-                           "=c"(regs[2]), "=d"(regs[3])
-                         : "a"(leaf), "c"(0));
+static inline void __cpuid(int regs[4], int leaf) {
+  __asm__ __volatile__("cpuid"
+                       : "=a"(regs[0]), "=b"(regs[1]), "=c"(regs[2]),
+                         "=d"(regs[3])
+                       : "a"(leaf), "c"(0));
 }
-static inline uint64_t __rdtsc(void)
-{
-    uint32_t lo, hi;
-    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
-    return ((uint64_t)hi << 32) | lo;
+static inline uint64_t __rdtsc(void) {
+  uint32_t lo, hi;
+  __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+  return ((uint64_t)hi << 32) | lo;
 }
 #elif defined(__aarch64__)
-static inline void __cpuid(int regs[4], int leaf)
-{
-    static const char brand[48] = "X2 recomp AArch64 runtime";
-    memset(regs, 0, 4 * sizeof *regs);
-    switch ((uint32_t)leaf) {
-    case 0:
-        regs[0] = 1;
-        regs[1] = 0x756e6547; /* GenuineIntel: EBX, EDX, ECX */
-        regs[3] = 0x49656e69;
-        regs[2] = 0x6c65746e;
-        break;
-    case 1:
-        regs[0] = 0x000006a0;
-        regs[3] = (1u << 0)  | (1u << 4)  | (1u << 8) | (1u << 15)
-                | (1u << 23) | (1u << 24) | (1u << 25) | (1u << 26);
-        break;
-    case 0x80000000u:
-        regs[0] = (int)0x80000004u;
-        break;
-    case 0x80000002u:
-    case 0x80000003u:
-    case 0x80000004u:
-        memcpy(regs, brand + ((uint32_t)leaf - 0x80000002u) * 16u, 16);
-        break;
-    default:
-        break;
-    }
+static inline void __cpuid(int regs[4], int leaf) {
+  static const char brand[48] = "X2 recomp AArch64 runtime";
+  memset(regs, 0, 4 * sizeof *regs);
+  switch ((uint32_t)leaf) {
+  case 0:
+    regs[0] = 1;
+    regs[1] = 0x756e6547; /* GenuineIntel: EBX, EDX, ECX */
+    regs[3] = 0x49656e69;
+    regs[2] = 0x6c65746e;
+    break;
+  case 1:
+    regs[0] = 0x000006a0;
+    regs[3] = (1u << 0) | (1u << 4) | (1u << 8) | (1u << 15) | (1u << 23) |
+              (1u << 24) | (1u << 25) | (1u << 26);
+    break;
+  case 0x80000000u:
+    regs[0] = (int)0x80000004u;
+    break;
+  case 0x80000002u:
+  case 0x80000003u:
+  case 0x80000004u:
+    memcpy(regs, brand + ((uint32_t)leaf - 0x80000002u) * 16u, 16);
+    break;
+  default:
+    break;
+  }
 }
-static inline uint64_t __rdtsc(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+static inline uint64_t __rdtsc(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
 #else
 #error "CPUID/RDTSC need an x86 or AArch64 host implementation"
@@ -205,50 +199,56 @@ static inline uint64_t __rdtsc(void)
 #endif
 
 enum {
-    FK_NONE = 0, FK_ADD, FK_SUB, FK_LOGIC, FK_INC, FK_DEC, FK_SHIFT,
-    /* Flags restored from a real EFLAGS word (POPFD) rather than derived from
-       an operation. PUSHFD/POPFD appear in CPU-feature detection, which the CRT
-       runs at startup, so the lazy model has to be able to round-trip. */
-    FK_EXPLICIT
+  FK_NONE = 0,
+  FK_ADD,
+  FK_SUB,
+  FK_LOGIC,
+  FK_INC,
+  FK_DEC,
+  FK_SHIFT,
+  /* Flags restored from a real EFLAGS word (POPFD) rather than derived from
+     an operation. PUSHFD/POPFD appear in CPU-feature detection, which the CRT
+     runs at startup, so the lazy model has to be able to round-trip. */
+  FK_EXPLICIT
 };
 
 typedef struct CPU {
-    uint32_t eax, ecx, edx, ebx, esp, ebp, esi, edi;
-    /* lazy flag state */
-    uint32_t f_a, f_b, f_r;
-    int      f_kind;
-    int      f_w;        /* operand width in bytes: 1, 2 or 4 */
-    long double st[8];   /* x87 register stack */
-    int      top;        /* index of ST(0) */
-    int      depth;      /* live registers; guards under/overflow */
-    uint32_t fsw;        /* status word bits set by FCOM, read by FNSTSW */
-    uint32_t fcw;        /* control word: rounding control AND the exception
-                            masks. Both are read by guest code -- see
-                            X87_CW_INIT and cpu_reset() below. */
-    uint64_t mm[8];      /* MMX registers, kept SEPARATE from st[] -- see below */
-    /* SSE. Present so that packed-logic instructions are translated for real
-       rather than special-cased: the engine probes for SSE by executing
-       ORPS XMM0,XMM0, and a no-op would be right for that one operand pair and
-       wrong for any other. */
-    uint64_t xmm[8][2];
-    /* Logical generated-call nesting and the hosted tail-dispatch frame. */
-    uint32_t call_depth;
-    uint32_t dispatch_depth;
-    uint32_t tail_target;
-    /* Enter the next body at a LABEL rather than at its entry point.
-     *
-     * MSVC shares one epilogue between paths, so a JMP lands in the middle of
-     * another function -- 28 such targets in XMen2.exe, the worked example
-     * being 0x0066cf3c inside FUN_0066ced2, reached by the switch in the block
-     * after it (issue #29). The target has no function name, so before this it
-     * became x86_call_unknown and stopped the run.
-     *
-     * Set by the jumping body (or by a dispatch shim) to the MAPPED address to
-     * resume at; the entered body consumes it -- CLEARING it -- and jumps
-     * through the same offset switch its computed jumps use. Cleared on
-     * consumption because a value left set would send the next ordinary call
-     * to that label and silently skip the prologue. */
-    uint32_t enter_at;
+  uint32_t eax, ecx, edx, ebx, esp, ebp, esi, edi;
+  /* lazy flag state */
+  uint32_t f_a, f_b, f_r;
+  int f_kind;
+  int f_w;           /* operand width in bytes: 1, 2 or 4 */
+  long double st[8]; /* x87 register stack */
+  int top;           /* index of ST(0) */
+  int depth;         /* live registers; guards under/overflow */
+  uint32_t fsw;      /* status word bits set by FCOM, read by FNSTSW */
+  uint32_t fcw;      /* control word: rounding control AND the exception
+                        masks. Both are read by guest code -- see
+                        X87_CW_INIT and cpu_reset() below. */
+  uint64_t mm[8];    /* MMX registers, kept SEPARATE from st[] -- see below */
+  /* SSE. Present so that packed-logic instructions are translated for real
+     rather than special-cased: the engine probes for SSE by executing
+     ORPS XMM0,XMM0, and a no-op would be right for that one operand pair and
+     wrong for any other. */
+  uint64_t xmm[8][2];
+  /* Logical generated-call nesting and the hosted tail-dispatch frame. */
+  uint32_t call_depth;
+  uint32_t dispatch_depth;
+  uint32_t tail_target;
+  /* Enter the next body at a LABEL rather than at its entry point.
+   *
+   * MSVC shares one epilogue between paths, so a JMP lands in the middle of
+   * another function -- 28 such targets in XMen2.exe, the worked example
+   * being 0x0066cf3c inside FUN_0066ced2, reached by the switch in the block
+   * after it (issue #29). The target has no function name, so before this it
+   * became x86_call_unknown and stopped the run.
+   *
+   * Set by the jumping body (or by a dispatch shim) to the MAPPED address to
+   * resume at; the entered body consumes it -- CLEARING it -- and jumps
+   * through the same offset switch its computed jumps use. Cleared on
+   * consumption because a value left set would send the next ordinary call
+   * to that label and silently skip the prologue. */
+  uint32_t enter_at;
 } CPU;
 
 /* Runtime base of the ORIGINAL module. Absolute references into the module's
@@ -263,7 +263,7 @@ extern uint32_t g_imgbase;
 #ifndef X86_IMGBASE
 #define X86_IMGBASE g_imgbase
 #endif
-extern uint32_t g_image_lo, g_image_hi;   /* guest image bounds; outside = host */
+extern uint32_t g_image_lo, g_image_hi; /* guest image bounds; outside = host */
 /* Preferred base recorded by the hosted runtime generator. Diagnostics use
    this to translate mapped addresses back to disassembly addresses. */
 extern uint32_t g_guest_preferred_base;
@@ -271,7 +271,8 @@ extern uint32_t g_guest_preferred_base;
    nothing honest to return. */
 void x86_missing_import(const char *mod, const char *sym);
 /* Call an import through its (loader-bound) IAT slot; names it if unbound. */
-void x86_import_call(CPU *C, uint32_t slot_va, const char *mod, const char *sym);
+void x86_import_call(CPU *C, uint32_t slot_va, const char *mod,
+                     const char *sym);
 /* Call a guest function from HOST code: pushes the return address the body's
    RET will pop. Dispatching without it leaks guest stack, upward, silently. */
 void x86_guest_call(CPU *C, uint32_t target);
@@ -319,16 +320,18 @@ void x86_ring_dump(void);
 /* FS/GS-relative access. Not modelled: this code runs as a genuine 32-bit PE,
    so FS still addresses the TIB and FS:[0] is the real SEH chain. MSVC emits
    these in the prologue of every function with a try/catch or a destructor --
-   825 functions in XMen2.exe -- so faking them would break unwinding wholesale. */
-#define SEGRD32(seg, a)     __read##seg##dword((unsigned long)(a))
-#define SEGWR32(seg, a, v)  __write##seg##dword((unsigned long)(a), (unsigned long)(v))
-#define __readFSdword(o)     __readfsdword(o)
+   825 functions in XMen2.exe -- so faking them would break unwinding wholesale.
+ */
+#define SEGRD32(seg, a) __read##seg##dword((unsigned long)(a))
+#define SEGWR32(seg, a, v)                                                     \
+  __write##seg##dword((unsigned long)(a), (unsigned long)(v))
+#define __readFSdword(o) __readfsdword(o)
 #define __writeFSdword(o, v) __writefsdword((o), (v))
-#define __readGSdword(o)     __readgsdword(o)
+#define __readGSdword(o) __readgsdword(o)
 #define __writeGSdword(o, v) __writegsdword((o), (v))
 
-#define RDF32(a)    ((long double)x86_loadf32((uint32_t)(a)))
-#define RDF64(a)    ((long double)x86_loadf64((uint32_t)(a)))
+#define RDF32(a) ((long double)x86_loadf32((uint32_t)(a)))
+#define RDF64(a) ((long double)x86_loadf64((uint32_t)(a)))
 #define WRF32(a, v) x86_storef32((uint32_t)(a), (float)(v))
 #define WRF64(a, v) x86_storef64((uint32_t)(a), (double)(v))
 /*
@@ -341,78 +344,76 @@ void x86_ring_dump(void);
  * of run time -- and the frame limiter at XMen2.exe 0x00401ff0 spun forever
  * waiting for a clock that had gone backwards (issue #35).
  */
-#define RDI16(a)    ((long double)(int16_t)RD16(a))
-#define RDI32(a)    ((long double)(int32_t)RD32(a))
-#define RDI64(a)    ((long double)(int64_t)RD64(a))
+#define RDI16(a) ((long double)(int16_t)RD16(a))
+#define RDI32(a) ((long double)(int32_t)RD32(a))
+#define RDI64(a) ((long double)(int64_t)RD64(a))
 
-#define RD8(a)      x86_load8((uint32_t)(a))
-#define RD16(a)     x86_load16((uint32_t)(a))
-#define RD32(a)     x86_load32((uint32_t)(a))
+#define RD8(a) x86_load8((uint32_t)(a))
+#define RD16(a) x86_load16((uint32_t)(a))
+#define RD32(a) x86_load32((uint32_t)(a))
 /* The guest write-watch. When x2_write_watch_addr is armed, WR8/16/32 report
    ANY write to it with a body backtrace -- the definitive catch for a stack
    overrun whose writer is a DIRECT call (invisible to the dispatch ring).
    Unarmed (default) it is one predictable compare. Declared before the WR
    macros because every generated body uses them. */
-static inline void x86_store8(uint32_t address, uint8_t value)
-{
-    if (x2_write_watch_addr && address == x2_write_watch_addr)
-        x2_write_watch_fire(address, value);
-    x86_store8_raw(address, value);
+static inline void x86_store8(uint32_t address, uint8_t value) {
+  if (x2_write_watch_addr && address == x2_write_watch_addr)
+    x2_write_watch_fire(address, value);
+  x86_store8_raw(address, value);
 }
-static inline void x86_store16(uint32_t address, uint16_t value)
-{
-    if (x2_write_watch_addr && address == x2_write_watch_addr)
-        x2_write_watch_fire(address, value);
-    x86_store16_raw(address, value);
+static inline void x86_store16(uint32_t address, uint16_t value) {
+  if (x2_write_watch_addr && address == x2_write_watch_addr)
+    x2_write_watch_fire(address, value);
+  x86_store16_raw(address, value);
 }
-static inline void x86_store32(uint32_t address, uint32_t value)
-{
-    if (x2_write_watch_addr && address == x2_write_watch_addr)
-        x2_write_watch_fire(address, value);
-    x86_store32_raw(address, value);
+static inline void x86_store32(uint32_t address, uint32_t value) {
+  if (x2_write_watch_addr && address == x2_write_watch_addr)
+    x2_write_watch_fire(address, value);
+  x86_store32_raw(address, value);
 }
-#define WR8(a, v)   x86_store8((uint32_t)(a), (uint8_t)(v))
-#define WR16(a, v)  x86_store16((uint32_t)(a), (uint16_t)(v))
-#define RD64(a)     x86_load64((uint32_t)(a))
-#define WR64(a, v)  x86_store64_raw((uint32_t)(a), (uint64_t)(v))
+#define WR8(a, v) x86_store8((uint32_t)(a), (uint8_t)(v))
+#define WR16(a, v) x86_store16((uint32_t)(a), (uint16_t)(v))
+#define RD64(a) x86_load64((uint32_t)(a))
+#define WR64(a, v) x86_store64_raw((uint32_t)(a), (uint64_t)(v))
 /* WR32 is the hottest store in the guest; the watch is above, shared. */
-#define WR32(a, v)  x86_store32((uint32_t)(a), (uint32_t)(v))
+#define WR32(a, v) x86_store32((uint32_t)(a), (uint32_t)(v))
 
 /* ---- lazy flags ---- */
-#define SETFLAGS(C, kind, a, b, r, w) \
-    do { (C)->f_kind = (kind); (C)->f_a = (a); (C)->f_b = (b); \
-         (C)->f_r = (r); (C)->f_w = (w); } while (0)
+#define SETFLAGS(C, kind, a, b, r, w)                                          \
+  do {                                                                         \
+    (C)->f_kind = (kind);                                                      \
+    (C)->f_a = (a);                                                            \
+    (C)->f_b = (b);                                                            \
+    (C)->f_r = (r);                                                            \
+    (C)->f_w = (w);                                                            \
+  } while (0)
 
 /* INC/DEC leave CF untouched; the recompiler emits this form for them. The
    distinction matters: code does `inc` inside a carry-carrying loop. */
 #define SETFLAGS_NC(C, kind, a, b, r, w) SETFLAGS(C, kind, a, b, r, w)
-#define SETFLAGS_SHIFT(C, a, c, r, w)    SETFLAGS(C, FK_SHIFT, a, c, r, w)
+#define SETFLAGS_SHIFT(C, a, c, r, w) SETFLAGS(C, FK_SHIFT, a, c, r, w)
 
-static inline uint32_t x86_mask(int w)
-{
-    return w == 1 ? 0xFFU : w == 2 ? 0xFFFFU : 0xFFFFFFFFU;
+static inline uint32_t x86_mask(int w) {
+  return w == 1 ? 0xFFU : w == 2 ? 0xFFFFU : 0xFFFFFFFFU;
 }
 
 /* Materialise a real EFLAGS word from the lazy state. Bit 1 is always set. */
 static inline uint32_t x86_eflags(const CPU *C);
 
-static inline int x86_msb(uint32_t v, int w)
-{
-    return (int)((v >> (w * 8 - 1)) & 1U);
+static inline int x86_msb(uint32_t v, int w) {
+  return (int)((v >> (w * 8 - 1)) & 1U);
 }
 
-static inline int FLAG_Z(const CPU *C)
-{
-    if (C->f_kind == FK_EXPLICIT)
-        return (int)((C->f_a >> 6) & 1U);
-    return (C->f_r & x86_mask(C->f_w)) == 0;
+static inline int FLAG_Z(const CPU *C) {
+  if (C->f_kind == FK_EXPLICIT)
+    return (int)((C->f_a >> 6) & 1U);
+  return (C->f_r & x86_mask(C->f_w)) == 0;
 }
 
-static inline int FLAG_S(const CPU *C)
-{
-    if (C->f_kind == FK_EXPLICIT)
-        return (int)((C->f_a >> 7) & 1U);
-    return x86_msb(C->f_r, C->f_w);
+static inline int FLAG_S(const CPU *C) {
+  if (C->f_kind == FK_EXPLICIT)
+    return (int)((C->f_a >> 7) & 1U);
+  return x86_msb(C->f_r, C->f_w);
 }
 
 /*
@@ -435,80 +436,100 @@ static inline int FLAG_S(const CPU *C)
  * invisible until something reads CF three instructions later.
  */
 static inline uint32_t x86_flags_adc(uint32_t a, uint32_t b, uint32_t c,
-                                     uint32_t r, int w)
-{
-    uint32_t m = x86_mask(w), f = 0;
-    uint64_t full = (uint64_t)(a & m) + (uint64_t)(b & m) + (uint64_t)c;
-    a &= m; b &= m; r &= m;
-    if ((full >> (w * 8)) & 1U)                 f |= 1U << 0;   /* CF */
-    if (r == 0)                                 f |= 1U << 6;   /* ZF */
-    if (x86_msb(r, w))                          f |= 1U << 7;   /* SF */
-    if (((~(a ^ b) & (a ^ r)) >> (w * 8 - 1)) & 1U) f |= 1U << 11; /* OF */
-    return f;
+                                     uint32_t r, int w) {
+  uint32_t m = x86_mask(w), f = 0;
+  uint64_t full = (uint64_t)(a & m) + (uint64_t)(b & m) + (uint64_t)c;
+  a &= m;
+  b &= m;
+  r &= m;
+  if ((full >> (w * 8)) & 1U)
+    f |= 1U << 0; /* CF */
+  if (r == 0)
+    f |= 1U << 6; /* ZF */
+  if (x86_msb(r, w))
+    f |= 1U << 7; /* SF */
+  if (((~(a ^ b) & (a ^ r)) >> (w * 8 - 1)) & 1U)
+    f |= 1U << 11; /* OF */
+  return f;
 }
 
 static inline uint32_t x86_flags_sbb(uint32_t a, uint32_t b, uint32_t c,
-                                     uint32_t r, int w)
-{
-    uint32_t m = x86_mask(w), f = 0;
-    uint64_t full = (uint64_t)(a & m) - (uint64_t)(b & m) - (uint64_t)c;
-    a &= m; b &= m; r &= m;
-    if ((full >> (w * 8)) & 1U)                 f |= 1U << 0;   /* CF (borrow) */
-    if (r == 0)                                 f |= 1U << 6;   /* ZF */
-    if (x86_msb(r, w))                          f |= 1U << 7;   /* SF */
-    if ((((a ^ b) & (a ^ r)) >> (w * 8 - 1)) & 1U) f |= 1U << 11; /* OF */
-    return f;
+                                     uint32_t r, int w) {
+  uint32_t m = x86_mask(w), f = 0;
+  uint64_t full = (uint64_t)(a & m) - (uint64_t)(b & m) - (uint64_t)c;
+  a &= m;
+  b &= m;
+  r &= m;
+  if ((full >> (w * 8)) & 1U)
+    f |= 1U << 0; /* CF (borrow) */
+  if (r == 0)
+    f |= 1U << 6; /* ZF */
+  if (x86_msb(r, w))
+    f |= 1U << 7; /* SF */
+  if ((((a ^ b) & (a ^ r)) >> (w * 8 - 1)) & 1U)
+    f |= 1U << 11; /* OF */
+  return f;
 }
 
-static inline int FLAG_C(const CPU *C)
-{
-    if (C->f_kind == FK_EXPLICIT)
-        return (int)((C->f_a >> 0) & 1U);
-    uint32_t m = x86_mask(C->f_w);
-    switch (C->f_kind) {
-    case FK_ADD:   return (C->f_r & m) < (C->f_a & m);
-    case FK_SUB:   return (C->f_a & m) < (C->f_b & m);
-    case FK_SHIFT: return (int)((C->f_a >> (C->f_b - 1)) & 1U);
-    default:       return 0;              /* logic ops clear CF; INC/DEC keep it */
-    }
+static inline int FLAG_C(const CPU *C) {
+  if (C->f_kind == FK_EXPLICIT)
+    return (int)((C->f_a >> 0) & 1U);
+  uint32_t m = x86_mask(C->f_w);
+  switch (C->f_kind) {
+  case FK_ADD:
+    return (C->f_r & m) < (C->f_a & m);
+  case FK_SUB:
+    return (C->f_a & m) < (C->f_b & m);
+  case FK_SHIFT:
+    return (int)((C->f_a >> (C->f_b - 1)) & 1U);
+  default:
+    return 0; /* logic ops clear CF; INC/DEC keep it */
+  }
 }
 
-static inline int FLAG_O(const CPU *C)
-{
-    if (C->f_kind == FK_EXPLICIT)
-        return (int)((C->f_a >> 11) & 1U);
-    int sa = x86_msb(C->f_a, C->f_w);
-    int sb = x86_msb(C->f_b, C->f_w);
-    int sr = x86_msb(C->f_r, C->f_w);
-    switch (C->f_kind) {
-    case FK_ADD: return (sa == sb) && (sr != sa);
-    case FK_SUB: return (sa != sb) && (sr != sa);
-    case FK_INC: return (C->f_r & x86_mask(C->f_w))
-                        == (0x80000000U >> ((4 - C->f_w) * 8));
-    case FK_DEC: return (C->f_a & x86_mask(C->f_w))
-                        == (0x80000000U >> ((4 - C->f_w) * 8));
-    default:     return 0;
-    }
+static inline int FLAG_O(const CPU *C) {
+  if (C->f_kind == FK_EXPLICIT)
+    return (int)((C->f_a >> 11) & 1U);
+  int sa = x86_msb(C->f_a, C->f_w);
+  int sb = x86_msb(C->f_b, C->f_w);
+  int sr = x86_msb(C->f_r, C->f_w);
+  switch (C->f_kind) {
+  case FK_ADD:
+    return (sa == sb) && (sr != sa);
+  case FK_SUB:
+    return (sa != sb) && (sr != sa);
+  case FK_INC:
+    return (C->f_r & x86_mask(C->f_w)) == (0x80000000U >> ((4 - C->f_w) * 8));
+  case FK_DEC:
+    return (C->f_a & x86_mask(C->f_w)) == (0x80000000U >> ((4 - C->f_w) * 8));
+  default:
+    return 0;
+  }
 }
 
-static inline int FLAG_P(const CPU *C)
-{
-    if (C->f_kind == FK_EXPLICIT)
-        return (int)((C->f_a >> 2) & 1U);
-    uint32_t v = C->f_r & 0xFFU;
-    v ^= v >> 4; v ^= v >> 2; v ^= v >> 1;
-    return (int)(~v & 1U);
+static inline int FLAG_P(const CPU *C) {
+  if (C->f_kind == FK_EXPLICIT)
+    return (int)((C->f_a >> 2) & 1U);
+  uint32_t v = C->f_r & 0xFFU;
+  v ^= v >> 4;
+  v ^= v >> 2;
+  v ^= v >> 1;
+  return (int)(~v & 1U);
 }
 
-static inline uint32_t x86_eflags(const CPU *C)
-{
-    uint32_t f = 0x00000202U;          /* bit 1 reserved-1, IF set */
-    if (FLAG_C(C)) f |= 1U << 0;
-    if (FLAG_P(C)) f |= 1U << 2;
-    if (FLAG_Z(C)) f |= 1U << 6;
-    if (FLAG_S(C)) f |= 1U << 7;
-    if (FLAG_O(C)) f |= 1U << 11;
-    return f;
+static inline uint32_t x86_eflags(const CPU *C) {
+  uint32_t f = 0x00000202U; /* bit 1 reserved-1, IF set */
+  if (FLAG_C(C))
+    f |= 1U << 0;
+  if (FLAG_P(C))
+    f |= 1U << 2;
+  if (FLAG_Z(C))
+    f |= 1U << 6;
+  if (FLAG_S(C))
+    f |= 1U << 7;
+  if (FLAG_O(C))
+    f |= 1U << 11;
+  return f;
 }
 
 /* ---- rotates ----
@@ -536,63 +557,64 @@ static inline uint32_t x86_eflags(const CPU *C)
 #define X86_RCR 3
 
 static inline uint32_t x86_rotate(uint32_t v, uint32_t cnt, int w, int kind,
-                                  uint32_t *fl)
-{
-    unsigned bits = (unsigned)w * 8u;
-    uint32_t mask = x86_mask(w);
-    uint32_t a = v & mask, r;
-    uint32_t cf = *fl & 1u, cf_in = cf, of;
-    unsigned n = cnt & 31u;              /* 386 and later mask the count */
+                                  uint32_t *fl) {
+  unsigned bits = (unsigned)w * 8u;
+  uint32_t mask = x86_mask(w);
+  uint32_t a = v & mask, r;
+  uint32_t cf = *fl & 1u, cf_in = cf, of;
+  unsigned n = cnt & 31u; /* 386 and later mask the count */
 
-    /*
-     * A count of zero AFTER the 5-bit mask does nothing at all -- not even to
-     * the flags. A count that is a nonzero MULTIPLE of the width is a
-     * different case and the difference is measurable: `rol al, 8` leaves the
-     * value alone but still writes CF from the result, because the SDM's CF
-     * assignment sits outside the rotate loop. A model that returned early on
-     * "the value will not change" got that wrong on the host CPU.
-     *
-     * The through-carry forms rotate a quantity one bit wider, so their count
-     * is taken modulo width+1 -- and there a modded count of zero DOES leave
-     * the flags alone, because RCL/RCR assign CF inside the loop.
-     */
-    if (!n) return a;
-    if (kind == X86_RCL || kind == X86_RCR) {
-        n %= bits + 1u;
-        if (!n) return a;
-    } else {
-        n %= bits;
-    }
+  /*
+   * A count of zero AFTER the 5-bit mask does nothing at all -- not even to
+   * the flags. A count that is a nonzero MULTIPLE of the width is a
+   * different case and the difference is measurable: `rol al, 8` leaves the
+   * value alone but still writes CF from the result, because the SDM's CF
+   * assignment sits outside the rotate loop. A model that returned early on
+   * "the value will not change" got that wrong on the host CPU.
+   *
+   * The through-carry forms rotate a quantity one bit wider, so their count
+   * is taken modulo width+1 -- and there a modded count of zero DOES leave
+   * the flags alone, because RCL/RCR assign CF inside the loop.
+   */
+  if (!n)
+    return a;
+  if (kind == X86_RCL || kind == X86_RCR) {
+    n %= bits + 1u;
+    if (!n)
+      return a;
+  } else {
+    n %= bits;
+  }
 
-    if (kind == X86_ROL) {
-        r = n ? (((a << n) | (a >> (bits - n))) & mask) : a;
-        cf = r & 1u;
-        of = ((r >> (bits - 1)) & 1u) ^ cf;
-    } else if (kind == X86_ROR) {
-        r = n ? (((a >> n) | (a << (bits - n))) & mask) : a;
-        cf = (r >> (bits - 1)) & 1u;
-        of = ((r >> (bits - 1)) & 1u) ^ ((r >> (bits - 2)) & 1u);
-    } else {
-        unsigned i;
-        r = a;
-        for (i = 0; i < n; i++) {
-            if (kind == X86_RCL) {
-                uint32_t top = (r >> (bits - 1)) & 1u;
-                r = ((r << 1) | cf) & mask;
-                cf = top;
-            } else {
-                uint32_t bot = r & 1u;
-                r = ((r >> 1) | (cf << (bits - 1))) & mask;
-                cf = bot;
-            }
-        }
-        of = (kind == X86_RCL)
-                 ? (((r >> (bits - 1)) & 1u) ^ cf)
-                 /* RCR's OF is taken from the operand BEFORE the rotate. */
-                 : (((a >> (bits - 1)) & 1u) ^ cf_in);
+  if (kind == X86_ROL) {
+    r = n ? (((a << n) | (a >> (bits - n))) & mask) : a;
+    cf = r & 1u;
+    of = ((r >> (bits - 1)) & 1u) ^ cf;
+  } else if (kind == X86_ROR) {
+    r = n ? (((a >> n) | (a << (bits - n))) & mask) : a;
+    cf = (r >> (bits - 1)) & 1u;
+    of = ((r >> (bits - 1)) & 1u) ^ ((r >> (bits - 2)) & 1u);
+  } else {
+    unsigned i;
+    r = a;
+    for (i = 0; i < n; i++) {
+      if (kind == X86_RCL) {
+        uint32_t top = (r >> (bits - 1)) & 1u;
+        r = ((r << 1) | cf) & mask;
+        cf = top;
+      } else {
+        uint32_t bot = r & 1u;
+        r = ((r >> 1) | (cf << (bits - 1))) & mask;
+        cf = bot;
+      }
     }
-    *fl = (*fl & ~((1u << 0) | (1u << 11))) | cf | (of << 11);
-    return r;
+    of = (kind == X86_RCL)
+             ? (((r >> (bits - 1)) & 1u) ^ cf)
+             /* RCR's OF is taken from the operand BEFORE the rotate. */
+             : (((a >> (bits - 1)) & 1u) ^ cf_in);
+  }
+  *fl = (*fl & ~((1u << 0) | (1u << 11))) | cf | (of << 11);
+  return r;
 }
 
 /* ---- x87 ----
@@ -603,7 +625,7 @@ static inline uint32_t x86_rotate(uint32_t v, uint32_t cnt, int w, int kind,
  * Stack faults are hard errors: silently wrapping TOP would turn a translation
  * bug into slightly-wrong arithmetic instead of a stop.
  */
-#define X87_ST(C, i)  ((C)->st[((C)->top + (i)) & 7])
+#define X87_ST(C, i) ((C)->st[((C)->top + (i)) & 7])
 
 /*
  * The x87 control word a real FPU powers up with, and what FINIT restores.
@@ -626,10 +648,9 @@ static inline uint32_t x86_rotate(uint32_t v, uint32_t cnt, int w, int kind,
  * NOT zero at power-on. Every fresh guest context has to go through this --
  * a bare memset leaves the FPU claiming a configuration no real one has.
  */
-static inline void cpu_reset(struct CPU *C)
-{
-    memset(C, 0, sizeof *C);
-    C->fcw = X87_CW_INIT;
+static inline void cpu_reset(struct CPU *C) {
+  memset(C, 0, sizeof *C);
+  C->fcw = X87_CW_INIT;
 }
 
 void x87_fault(const char *what);
@@ -646,8 +667,8 @@ void x87_fault(const char *what);
 struct CPU;
 typedef void (*x86_override_fn)(struct CPU *C);
 typedef struct {
-    uint32_t          linked_ep;
-    x86_override_fn  *slot;
+  uint32_t linked_ep;
+  x86_override_fn *slot;
 } X86OverrideSlot;
 void x86_override_slots_register(const char *module, const uint32_t *base,
                                  const X86OverrideSlot *slots, int n);
@@ -657,12 +678,12 @@ void x86_override_slots_register(const char *module, const uint32_t *base,
    bisect by hand. Compiled out entirely unless X86_TRACE_CALLS is defined, so
    the shipping build pays nothing. */
 #ifdef X86_TRACE_CALLS
-# define X86_HIST 64
+#define X86_HIST 64
 extern uint32_t x86_hist[X86_HIST];
 extern unsigned x86_hist_n;
 extern volatile unsigned long x86_fn_calls;
-# define X86_ENTER_FN_DIAG(a) (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a), \
-                          x86_fn_calls++)
+#define X86_ENTER_FN_DIAG(a)                                                   \
+  (x86_hist[x86_hist_n++ & (X86_HIST - 1)] = (a), x86_fn_calls++)
 void x86_dump_history(void);
 #elif defined(X86_WATCH)
 /* Entry-point watch (src/x86watch.c). The macro is expanded inside a
@@ -684,11 +705,12 @@ void x86_watch_note(int kind, uint32_t a, uint32_t b);
 /* Reports where a recompiled body's C frame sits relative to the guest stack
    pointer it was entered with -- the fact that decides whether a guest PUSH
    overwrites live C state. */
-void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned long cpu_size);
-# define X86_ENTER_FN_DIAG(a) x86_watch_enter((a), C)
-# define X86_EXIT_FN_DIAG(a)  x86_watch_exit((a), C)
-# define x86_dump_history() ((void)0)
-# define x86_dump_history() ((void)0)
+void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu,
+                     unsigned long cpu_size);
+#define X86_ENTER_FN_DIAG(a) x86_watch_enter((a), C)
+#define X86_EXIT_FN_DIAG(a) x86_watch_exit((a), C)
+#define x86_dump_history() ((void)0)
+#define x86_dump_history() ((void)0)
 #elif defined(X86_NATIVE_REACHED) || defined(X86_NATIVE)
 /* Native build, recording WHICH bodies were ever entered.
  *
@@ -722,16 +744,18 @@ void x86_reached_report(void);
 /* Non-zero once armed. `volatile` because the control channel arms it from
    another thread while guest bodies are running. */
 extern volatile int x86_reached_armed;
-# define X86_ENTER_FN_DIAG(a) \
-    do { if (__builtin_expect(x86_reached_armed != 0, 0)) \
-             x86_reached_enter((a), X86_IMGBASE); } while (0)
-# define x86_dump_history() ((void)0)
+#define X86_ENTER_FN_DIAG(a)                                                   \
+  do {                                                                         \
+    if (__builtin_expect(x86_reached_armed != 0, 0))                           \
+      x86_reached_enter((a), X86_IMGBASE);                                     \
+  } while (0)
+#define x86_dump_history() ((void)0)
 #else
-# define X86_ENTER_FN_DIAG(a) ((void)0)
-# define x86_dump_history() ((void)0)
+#define X86_ENTER_FN_DIAG(a) ((void)0)
+#define x86_dump_history() ((void)0)
 #endif
 #ifndef X86_EXIT_FN_DIAG
-# define X86_EXIT_FN_DIAG(a) ((void)0)
+#define X86_EXIT_FN_DIAG(a) ((void)0)
 #endif
 
 /*
@@ -757,14 +781,23 @@ extern volatile int x86_reached_armed;
  */
 extern unsigned long x86_preempt_budget;
 void x86_preempt_now(void);
-#define X86_ENTER_FN(a) \
-    do { if (--x86_preempt_budget == 0) x86_preempt_now(); \
-         C->call_depth++; \
-         X86_ENTER_FN_DIAG(a); } while (0)
-#define X86_EXIT_FN(a) \
-    do { X86_EXIT_FN_DIAG(a); C->call_depth--; } while (0)
-#define X86_TAIL_FN(a) \
-    do { (void)(a); C->call_depth--; } while (0)
+#define X86_ENTER_FN(a)                                                        \
+  do {                                                                         \
+    if (--x86_preempt_budget == 0)                                             \
+      x86_preempt_now();                                                       \
+    C->call_depth++;                                                           \
+    X86_ENTER_FN_DIAG(a);                                                      \
+  } while (0)
+#define X86_EXIT_FN(a)                                                         \
+  do {                                                                         \
+    X86_EXIT_FN_DIAG(a);                                                       \
+    C->call_depth--;                                                           \
+  } while (0)
+#define X86_TAIL_FN(a)                                                         \
+  do {                                                                         \
+    (void)(a);                                                                 \
+    C->call_depth--;                                                           \
+  } while (0)
 /* call/jump into the region with no identified function; aborts by address */
 void x86_call_unknown(CPU *C, uint32_t target);
 /* RET popped an address other than the one the function was entered with */
@@ -778,23 +811,25 @@ void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected);
    cast sets RC=truncate, does the store, then restores -- so treating FLDCW as
    a no-op and always truncating would be right for that idiom and WRONG for
    everything else. Model it rather than assume the common case. */
-static inline int64_t x87_to_i64(const CPU *C, long double v)
-{
-    switch ((C->fcw >> 10) & 3) {
-    case 1:  return (int64_t)__builtin_floorl(v);          /* round down */
-    case 2:  return (int64_t)__builtin_ceill(v);           /* round up   */
-    case 3:  return (int64_t)v;                            /* truncate   */
-    default: return (int64_t)__builtin_rintl(v);           /* to nearest */
-    }
+static inline int64_t x87_to_i64(const CPU *C, long double v) {
+  switch ((C->fcw >> 10) & 3) {
+  case 1:
+    return (int64_t)__builtin_floorl(v); /* round down */
+  case 2:
+    return (int64_t)__builtin_ceill(v); /* round up   */
+  case 3:
+    return (int64_t)v; /* truncate   */
+  default:
+    return (int64_t)__builtin_rintl(v); /* to nearest */
+  }
 }
 
 /* The narrow stores. Rounding happens at full width and the result is then
    narrowed, which is what the hardware does; a store whose value does not fit
    is a different question (the hardware writes the integer indefinite) and is
    not modelled here. */
-static inline int32_t x87_to_int(const CPU *C, long double v)
-{
-    return (int32_t)x87_to_i64(C, v);
+static inline int32_t x87_to_int(const CPU *C, long double v) {
+  return (int32_t)x87_to_i64(C, v);
 }
 
 /* On real hardware MMX registers ALIAS the x87 stack, which is why EMMS exists.
@@ -821,178 +856,199 @@ static inline int32_t x87_to_int(const CPU *C, long double v)
  */
 #define MMX_LANES(w) (64 / (w))
 
-static inline uint64_t mmx_lane_get(uint64_t v, int i, int w)
-{
-    return (v >> (i * w)) & (w == 64 ? ~0ULL : ((1ULL << w) - 1ULL));
+static inline uint64_t mmx_lane_get(uint64_t v, int i, int w) {
+  return (v >> (i * w)) & (w == 64 ? ~0ULL : ((1ULL << w) - 1ULL));
 }
-static inline uint64_t mmx_lane_put(uint64_t acc, int i, int w, uint64_t v)
-{
-    uint64_t mask = (w == 64 ? ~0ULL : ((1ULL << w) - 1ULL));
-    return (acc & ~(mask << (i * w))) | ((v & mask) << (i * w));
+static inline uint64_t mmx_lane_put(uint64_t acc, int i, int w, uint64_t v) {
+  uint64_t mask = (w == 64 ? ~0ULL : ((1ULL << w) - 1ULL));
+  return (acc & ~(mask << (i * w))) | ((v & mask) << (i * w));
 }
 
 /* Signed view of a lane, sign-extended to int64_t. */
-static inline int64_t mmx_lane_s(uint64_t v, int i, int w)
-{
-    uint64_t u = mmx_lane_get(v, i, w);
-    uint64_t sign = 1ULL << (w - 1);
-    return (int64_t)((u ^ sign) - sign);
+static inline int64_t mmx_lane_s(uint64_t v, int i, int w) {
+  uint64_t u = mmx_lane_get(v, i, w);
+  uint64_t sign = 1ULL << (w - 1);
+  return (int64_t)((u ^ sign) - sign);
 }
 
-#define MMX_BINOP(name, w, expr)                                        \
-static inline uint64_t name(uint64_t a, uint64_t b)                     \
-{                                                                       \
-    uint64_t r = 0; int i;                                              \
-    for (i = 0; i < MMX_LANES(w); i++) {                                \
-        int64_t x = mmx_lane_s(a, i, w), y = mmx_lane_s(b, i, w);       \
-        uint64_t ux = mmx_lane_get(a, i, w), uy = mmx_lane_get(b, i, w);\
-        (void)x; (void)y; (void)ux; (void)uy;                           \
-        r = mmx_lane_put(r, i, w, (uint64_t)(expr));                    \
-    }                                                                   \
-    return r;                                                           \
-}
+#define MMX_BINOP(name, w, expr)                                               \
+  static inline uint64_t name(uint64_t a, uint64_t b) {                        \
+    uint64_t r = 0;                                                            \
+    int i;                                                                     \
+    for (i = 0; i < MMX_LANES(w); i++) {                                       \
+      int64_t x = mmx_lane_s(a, i, w), y = mmx_lane_s(b, i, w);                \
+      uint64_t ux = mmx_lane_get(a, i, w), uy = mmx_lane_get(b, i, w);         \
+      (void)x;                                                                 \
+      (void)y;                                                                 \
+      (void)ux;                                                                \
+      (void)uy;                                                                \
+      r = mmx_lane_put(r, i, w, (uint64_t)(expr));                             \
+    }                                                                          \
+    return r;                                                                  \
+  }
 
-MMX_BINOP(mmx_paddb,  8,  ux + uy)
-MMX_BINOP(mmx_paddw, 16,  ux + uy)
-MMX_BINOP(mmx_paddd, 32,  ux + uy)
-MMX_BINOP(mmx_psubb,  8,  ux - uy)
-MMX_BINOP(mmx_psubw, 16,  ux - uy)
-MMX_BINOP(mmx_psubd, 32,  ux - uy)
+MMX_BINOP(mmx_paddb, 8, ux + uy)
+MMX_BINOP(mmx_paddw, 16, ux + uy)
+MMX_BINOP(mmx_paddd, 32, ux + uy)
+MMX_BINOP(mmx_psubb, 8, ux - uy)
+MMX_BINOP(mmx_psubw, 16, ux - uy)
+MMX_BINOP(mmx_psubd, 32, ux - uy)
 /* Unsigned saturating: clamp at the lane's maximum, never wrap. */
-MMX_BINOP(mmx_paddusb, 8,  (ux + uy) > 0xFFULL   ? 0xFFULL   : ux + uy)
+MMX_BINOP(mmx_paddusb, 8, (ux + uy) > 0xFFULL ? 0xFFULL : ux + uy)
 MMX_BINOP(mmx_paddusw, 16, (ux + uy) > 0xFFFFULL ? 0xFFFFULL : ux + uy)
-MMX_BINOP(mmx_psubusb, 8,  ux > uy ? ux - uy : 0)
+MMX_BINOP(mmx_psubusb, 8, ux > uy ? ux - uy : 0)
 MMX_BINOP(mmx_psubusw, 16, ux > uy ? ux - uy : 0)
 /* Signed saturating. */
-MMX_BINOP(mmx_paddsb,  8,  (x + y) >  127 ?  127 : (x + y) <  -128 ?  -128 : x + y)
-MMX_BINOP(mmx_paddsw, 16,  (x + y) >  32767 ? 32767 : (x + y) < -32768 ? -32768 : x + y)
-MMX_BINOP(mmx_psubsb,  8,  (x - y) >  127 ?  127 : (x - y) <  -128 ?  -128 : x - y)
-MMX_BINOP(mmx_psubsw, 16,  (x - y) >  32767 ? 32767 : (x - y) < -32768 ? -32768 : x - y)
+MMX_BINOP(mmx_paddsb, 8, (x + y) > 127 ? 127 : (x + y) < -128 ? -128 : x + y)
+MMX_BINOP(mmx_paddsw, 16,
+          (x + y) > 32767    ? 32767
+          : (x + y) < -32768 ? -32768
+                             : x + y)
+MMX_BINOP(mmx_psubsb, 8, (x - y) > 127 ? 127 : (x - y) < -128 ? -128 : x - y)
+MMX_BINOP(mmx_psubsw, 16,
+          (x - y) > 32767    ? 32767
+          : (x - y) < -32768 ? -32768
+                             : x - y)
 /* PMULLW keeps the low half of a 16x16 product, PMULHW the high half; the
    product is SIGNED in both (PMULHUW is the unsigned one and is separate). */
 MMX_BINOP(mmx_pmullw, 16, (uint64_t)(x * y))
 MMX_BINOP(mmx_pmulhw, 16, (uint64_t)((x * y) >> 16))
 MMX_BINOP(mmx_pmulhuw, 16, (uint64_t)((ux * uy) >> 16))
 /* Rounding average, which is why the +1 is there and not a detail. */
-MMX_BINOP(mmx_pavgb,  8,  (ux + uy + 1) >> 1)
-MMX_BINOP(mmx_pavgw, 16,  (ux + uy + 1) >> 1)
-/* Compare-equal / greater-than produce an all-ones or all-zero MASK per lane. */
-MMX_BINOP(mmx_pcmpeqb,  8,  ux == uy ? 0xFFULL : 0)
-MMX_BINOP(mmx_pcmpeqw, 16,  ux == uy ? 0xFFFFULL : 0)
-MMX_BINOP(mmx_pcmpeqd, 32,  ux == uy ? 0xFFFFFFFFULL : 0)
-MMX_BINOP(mmx_pcmpgtb,  8,  x > y ? 0xFFULL : 0)
-MMX_BINOP(mmx_pcmpgtw, 16,  x > y ? 0xFFFFULL : 0)
-MMX_BINOP(mmx_pcmpgtd, 32,  x > y ? 0xFFFFFFFFULL : 0)
-MMX_BINOP(mmx_pminub,  8,  ux < uy ? ux : uy)
-MMX_BINOP(mmx_pmaxub,  8,  ux > uy ? ux : uy)
-MMX_BINOP(mmx_pminsw, 16,  x < y ? (uint64_t)x : (uint64_t)y)
-MMX_BINOP(mmx_pmaxsw, 16,  x > y ? (uint64_t)x : (uint64_t)y)
+MMX_BINOP(mmx_pavgb, 8, (ux + uy + 1) >> 1)
+MMX_BINOP(mmx_pavgw, 16, (ux + uy + 1) >> 1)
+/* Compare-equal / greater-than produce an all-ones or all-zero MASK per lane.
+ */
+MMX_BINOP(mmx_pcmpeqb, 8, ux == uy ? 0xFFULL : 0)
+MMX_BINOP(mmx_pcmpeqw, 16, ux == uy ? 0xFFFFULL : 0)
+MMX_BINOP(mmx_pcmpeqd, 32, ux == uy ? 0xFFFFFFFFULL : 0)
+MMX_BINOP(mmx_pcmpgtb, 8, x > y ? 0xFFULL : 0)
+MMX_BINOP(mmx_pcmpgtw, 16, x > y ? 0xFFFFULL : 0)
+MMX_BINOP(mmx_pcmpgtd, 32, x > y ? 0xFFFFFFFFULL : 0)
+MMX_BINOP(mmx_pminub, 8, ux < uy ? ux : uy)
+MMX_BINOP(mmx_pmaxub, 8, ux > uy ? ux : uy)
+MMX_BINOP(mmx_pminsw, 16, x < y ? (uint64_t)x : (uint64_t)y)
+MMX_BINOP(mmx_pmaxsw, 16, x > y ? (uint64_t)x : (uint64_t)y)
 
 /* Shifts. The count is the WHOLE source operand, and a count at or past the
    lane width is defined: zero for a logical shift, the sign bit replicated for
    an arithmetic one. Getting that wrong shows up only on the rare large
    count, which is the worst kind of difference to chase. */
-#define MMX_SHIFT(name, w, kind)                                        \
-static inline uint64_t name(uint64_t a, uint64_t cnt)                   \
-{                                                                       \
-    uint64_t r = 0; int i;                                              \
-    for (i = 0; i < MMX_LANES(w); i++) {                                \
-        uint64_t u = mmx_lane_get(a, i, w);                             \
-        int64_t  sv = mmx_lane_s(a, i, w);                              \
-        uint64_t o;                                                     \
-        if (kind == 2) o = (uint64_t)(cnt >= (uint64_t)(w) ? (sv < 0 ? -1 : 0) \
-                                                          : (sv >> cnt));     \
-        else if (kind == 1) o = cnt >= (uint64_t)(w) ? 0 : (u >> cnt);   \
-        else               o = cnt >= (uint64_t)(w) ? 0 : (u << cnt);   \
-        (void)sv;                                                       \
-        r = mmx_lane_put(r, i, w, o);                                   \
-    }                                                                   \
-    return r;                                                           \
-}
+#define MMX_SHIFT(name, w, kind)                                               \
+  static inline uint64_t name(uint64_t a, uint64_t cnt) {                      \
+    uint64_t r = 0;                                                            \
+    int i;                                                                     \
+    for (i = 0; i < MMX_LANES(w); i++) {                                       \
+      uint64_t u = mmx_lane_get(a, i, w);                                      \
+      int64_t sv = mmx_lane_s(a, i, w);                                        \
+      uint64_t o;                                                              \
+      if (kind == 2)                                                           \
+        o = (uint64_t)(cnt >= (uint64_t)(w) ? (sv < 0 ? -1 : 0)                \
+                                            : (sv >> cnt));                    \
+      else if (kind == 1)                                                      \
+        o = cnt >= (uint64_t)(w) ? 0 : (u >> cnt);                             \
+      else                                                                     \
+        o = cnt >= (uint64_t)(w) ? 0 : (u << cnt);                             \
+      (void)sv;                                                                \
+      r = mmx_lane_put(r, i, w, o);                                            \
+    }                                                                          \
+    return r;                                                                  \
+  }
 MMX_SHIFT(mmx_psllw, 16, 0)
 MMX_SHIFT(mmx_pslld, 32, 0)
 MMX_SHIFT(mmx_psrlw, 16, 1)
 MMX_SHIFT(mmx_psrld, 32, 1)
 MMX_SHIFT(mmx_psraw, 16, 2)
 MMX_SHIFT(mmx_psrad, 32, 2)
-static inline uint64_t mmx_psllq(uint64_t a, uint64_t c)
-{ return c >= 64 ? 0 : (a << c); }
-static inline uint64_t mmx_psrlq(uint64_t a, uint64_t c)
-{ return c >= 64 ? 0 : (a >> c); }
+static inline uint64_t mmx_psllq(uint64_t a, uint64_t c) {
+  return c >= 64 ? 0 : (a << c);
+}
+static inline uint64_t mmx_psrlq(uint64_t a, uint64_t c) {
+  return c >= 64 ? 0 : (a >> c);
+}
 
 /* Packs: the DESTINATION supplies the low half of the result and the source
    the high half, and both saturate. PACKUSWB saturates to UNSIGNED bytes even
    though its input is signed words -- which is exactly what makes it the last
    step of an IDCT, and exactly what an unsigned-in reading would get wrong. */
-static inline uint64_t mmx_packuswb(uint64_t d, uint64_t s)
-{
-    uint64_t r = 0; int i;
-    for (i = 0; i < 4; i++) {
-        int64_t v = mmx_lane_s(d, i, 16);
-        r = mmx_lane_put(r, i, 8, (uint64_t)(v < 0 ? 0 : v > 255 ? 255 : v));
-    }
-    for (i = 0; i < 4; i++) {
-        int64_t v = mmx_lane_s(s, i, 16);
-        r = mmx_lane_put(r, 4 + i, 8, (uint64_t)(v < 0 ? 0 : v > 255 ? 255 : v));
-    }
-    return r;
+static inline uint64_t mmx_packuswb(uint64_t d, uint64_t s) {
+  uint64_t r = 0;
+  int i;
+  for (i = 0; i < 4; i++) {
+    int64_t v = mmx_lane_s(d, i, 16);
+    r = mmx_lane_put(r, i, 8, (uint64_t)(v < 0 ? 0 : v > 255 ? 255 : v));
+  }
+  for (i = 0; i < 4; i++) {
+    int64_t v = mmx_lane_s(s, i, 16);
+    r = mmx_lane_put(r, 4 + i, 8, (uint64_t)(v < 0 ? 0 : v > 255 ? 255 : v));
+  }
+  return r;
 }
-static inline uint64_t mmx_packsswb(uint64_t d, uint64_t s)
-{
-    uint64_t r = 0; int i;
-    for (i = 0; i < 4; i++) {
-        int64_t v = mmx_lane_s(d, i, 16);
-        r = mmx_lane_put(r, i, 8, (uint64_t)(v < -128 ? -128 : v > 127 ? 127 : v));
-    }
-    for (i = 0; i < 4; i++) {
-        int64_t v = mmx_lane_s(s, i, 16);
-        r = mmx_lane_put(r, 4 + i, 8, (uint64_t)(v < -128 ? -128 : v > 127 ? 127 : v));
-    }
-    return r;
+static inline uint64_t mmx_packsswb(uint64_t d, uint64_t s) {
+  uint64_t r = 0;
+  int i;
+  for (i = 0; i < 4; i++) {
+    int64_t v = mmx_lane_s(d, i, 16);
+    r = mmx_lane_put(r, i, 8, (uint64_t)(v < -128 ? -128 : v > 127 ? 127 : v));
+  }
+  for (i = 0; i < 4; i++) {
+    int64_t v = mmx_lane_s(s, i, 16);
+    r = mmx_lane_put(r, 4 + i, 8,
+                     (uint64_t)(v < -128  ? -128
+                                : v > 127 ? 127
+                                          : v));
+  }
+  return r;
 }
-static inline uint64_t mmx_packssdw(uint64_t d, uint64_t s)
-{
-    uint64_t r = 0; int i;
-    for (i = 0; i < 2; i++) {
-        int64_t v = mmx_lane_s(d, i, 32);
-        r = mmx_lane_put(r, i, 16, (uint64_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v));
-    }
-    for (i = 0; i < 2; i++) {
-        int64_t v = mmx_lane_s(s, i, 32);
-        r = mmx_lane_put(r, 2 + i, 16, (uint64_t)(v < -32768 ? -32768 : v > 32767 ? 32767 : v));
-    }
-    return r;
+static inline uint64_t mmx_packssdw(uint64_t d, uint64_t s) {
+  uint64_t r = 0;
+  int i;
+  for (i = 0; i < 2; i++) {
+    int64_t v = mmx_lane_s(d, i, 32);
+    r = mmx_lane_put(r, i, 16,
+                     (uint64_t)(v < -32768  ? -32768
+                                : v > 32767 ? 32767
+                                            : v));
+  }
+  for (i = 0; i < 2; i++) {
+    int64_t v = mmx_lane_s(s, i, 32);
+    r = mmx_lane_put(r, 2 + i, 16,
+                     (uint64_t)(v < -32768  ? -32768
+                                : v > 32767 ? 32767
+                                            : v));
+  }
+  return r;
 }
 
 /* Interleave. LOW takes the low half of each operand, HIGH the high half, and
    the DESTINATION's lane comes first in every pair. */
-#define MMX_UNPACK(name, w, high)                                       \
-static inline uint64_t name(uint64_t d, uint64_t s)                     \
-{                                                                       \
-    uint64_t r = 0; int i, n = MMX_LANES(w) / 2, base = (high) ? n : 0; \
-    for (i = 0; i < n; i++) {                                           \
-        r = mmx_lane_put(r, 2 * i,     w, mmx_lane_get(d, base + i, w)); \
-        r = mmx_lane_put(r, 2 * i + 1, w, mmx_lane_get(s, base + i, w)); \
-    }                                                                   \
-    return r;                                                           \
-}
-MMX_UNPACK(mmx_punpcklbw,  8, 0)
-MMX_UNPACK(mmx_punpckhbw,  8, 1)
+#define MMX_UNPACK(name, w, high)                                              \
+  static inline uint64_t name(uint64_t d, uint64_t s) {                        \
+    uint64_t r = 0;                                                            \
+    int i, n = MMX_LANES(w) / 2, base = (high) ? n : 0;                        \
+    for (i = 0; i < n; i++) {                                                  \
+      r = mmx_lane_put(r, 2 * i, w, mmx_lane_get(d, base + i, w));             \
+      r = mmx_lane_put(r, 2 * i + 1, w, mmx_lane_get(s, base + i, w));         \
+    }                                                                          \
+    return r;                                                                  \
+  }
+MMX_UNPACK(mmx_punpcklbw, 8, 0)
+MMX_UNPACK(mmx_punpckhbw, 8, 1)
 MMX_UNPACK(mmx_punpcklwd, 16, 0)
 MMX_UNPACK(mmx_punpckhwd, 16, 1)
 MMX_UNPACK(mmx_punpckldq, 32, 0)
 MMX_UNPACK(mmx_punpckhdq, 32, 1)
 
 /* PMADDWD: four signed 16x16 products, added in pairs into two dwords. */
-static inline uint64_t mmx_pmaddwd(uint64_t a, uint64_t b)
-{
-    uint64_t r = 0; int i;
-    for (i = 0; i < 2; i++) {
-        int64_t lo = mmx_lane_s(a, 2 * i, 16)     * mmx_lane_s(b, 2 * i, 16);
-        int64_t hi = mmx_lane_s(a, 2 * i + 1, 16) * mmx_lane_s(b, 2 * i + 1, 16);
-        r = mmx_lane_put(r, i, 32, (uint64_t)(int64_t)(int32_t)(lo + hi));
-    }
-    return r;
+static inline uint64_t mmx_pmaddwd(uint64_t a, uint64_t b) {
+  uint64_t r = 0;
+  int i;
+  for (i = 0; i < 2; i++) {
+    int64_t lo = mmx_lane_s(a, 2 * i, 16) * mmx_lane_s(b, 2 * i, 16);
+    int64_t hi = mmx_lane_s(a, 2 * i + 1, 16) * mmx_lane_s(b, 2 * i + 1, 16);
+    r = mmx_lane_put(r, i, 32, (uint64_t)(int64_t)(int32_t)(lo + hi));
+  }
+  return r;
 }
 
 /*
@@ -1030,55 +1086,54 @@ static inline uint64_t mmx_pmaddwd(uint64_t a, uint64_t b)
 #error "The SSE model needs an x86 SSE or AArch64 NEON host"
 #endif
 
-typedef struct { uint64_t q[2]; } X86Xmm;
+typedef struct {
+  uint64_t q[2];
+} X86Xmm;
 
 /* The emitter represents an SSE memory operand with a pointer-shaped cast,
    while register operands are real host pointers into CPU.xmm.  Translate the
    former when a non-identity guest arena is active, leaving register operands
    untouched. */
-static inline const uint64_t *sse_source(const uint64_t *pointer)
-{
-    uintptr_t value = (uintptr_t)pointer;
-    return value <= UINT32_MAX
-        ? (const uint64_t *)x86_guest_pointer((uint32_t)value) : pointer;
+static inline const uint64_t *sse_source(const uint64_t *pointer) {
+  uintptr_t value = (uintptr_t)pointer;
+  return value <= UINT32_MAX
+             ? (const uint64_t *)x86_guest_pointer((uint32_t)value)
+             : pointer;
 }
 
 /* One 32-bit lane, as bits. Lane 0 is the LOW dword -- the same numbering the
    manual's [127:96][95:64][63:32][31:0] diagrams use read right to left. */
-static inline uint32_t sse_lane(const uint64_t *x, int i)
-{
-    x = sse_source(x);
-    return (uint32_t)(x[i >> 1] >> ((i & 1) * 32));
+static inline uint32_t sse_lane(const uint64_t *x, int i) {
+  x = sse_source(x);
+  return (uint32_t)(x[i >> 1] >> ((i & 1) * 32));
 }
-static inline void sse_lane_put(uint64_t *x, int i, uint32_t v)
-{
-    int sh = (i & 1) * 32;
-    x[i >> 1] = (x[i >> 1] & ~(0xFFFFFFFFULL << sh)) | ((uint64_t)v << sh);
+static inline void sse_lane_put(uint64_t *x, int i, uint32_t v) {
+  int sh = (i & 1) * 32;
+  x[i >> 1] = (x[i >> 1] & ~(0xFFFFFFFFULL << sh)) | ((uint64_t)v << sh);
 }
 
 #if defined(__x86_64__) || defined(__i386__)
 
-static inline __m128 sse_ld(const uint64_t *x)
-{
-    x = sse_source(x);
-    __m128 v; memcpy(&v, x, 16); return v;
+static inline __m128 sse_ld(const uint64_t *x) {
+  x = sse_source(x);
+  __m128 v;
+  memcpy(&v, x, 16);
+  return v;
 }
-static inline void sse_st(uint64_t *x, __m128 v)
-{
-    memcpy(x, &v, 16);
-}
+static inline void sse_st(uint64_t *x, __m128 v) { memcpy(x, &v, 16); }
 
-#define SSE_BINOP(name, ins)                                            \
-static inline void name(uint64_t *d, const uint64_t *s)                 \
-{ sse_st(d, ins(sse_ld(d), sse_ld(s))); }
+#define SSE_BINOP(name, ins)                                                   \
+  static inline void name(uint64_t *d, const uint64_t *s) {                    \
+    sse_st(d, ins(sse_ld(d), sse_ld(s)));                                      \
+  }
 SSE_BINOP(sse_addps, _mm_add_ps)
 SSE_BINOP(sse_subps, _mm_sub_ps)
 SSE_BINOP(sse_divps, _mm_div_ps)
 SSE_BINOP(sse_minps, _mm_min_ps)
 SSE_BINOP(sse_maxps, _mm_max_ps)
 SSE_BINOP(sse_andps, _mm_and_ps)
-SSE_BINOP(sse_andnps, _mm_andnot_ps)   /* ~dst & src, in THAT order */
-SSE_BINOP(sse_orps,  _mm_or_ps)
+SSE_BINOP(sse_andnps, _mm_andnot_ps) /* ~dst & src, in THAT order */
+SSE_BINOP(sse_orps, _mm_or_ps)
 SSE_BINOP(sse_xorps, _mm_xor_ps)
 
 /* MULPS is mathematically commutative but bit-exact x86 is not when both
@@ -1086,19 +1141,19 @@ SSE_BINOP(sse_xorps, _mm_xor_ps)
    destination. GCC may swap the operands of _mm_mul_ps and did so here,
    disagreeing with silicon in six differential cases. Pin the architectural
    destination with a read/write constraint. */
-static inline void sse_mulps(uint64_t *d, const uint64_t *s)
-{
-    __m128 dst = sse_ld(d), src = sse_ld(s);
-    __asm__ volatile("mulps %1, %0" : "+x"(dst) : "x"(src));
-    sse_st(d, dst);
+static inline void sse_mulps(uint64_t *d, const uint64_t *s) {
+  __m128 dst = sse_ld(d), src = sse_ld(s);
+  __asm__ volatile("mulps %1, %0" : "+x"(dst) : "x"(src));
+  sse_st(d, dst);
 }
 
 /* The scalar forms touch lane 0 ONLY; lanes 1..3 of the destination are
    preserved, which is what makes MULSS usable on a register also holding a
    vector. _mm_*_ss has exactly that semantics. */
-#define SSE_SCALAROP(name, ins)                                         \
-static inline void name(uint64_t *d, const uint64_t *s)                 \
-{ sse_st(d, ins(sse_ld(d), sse_ld(s))); }
+#define SSE_SCALAROP(name, ins)                                                \
+  static inline void name(uint64_t *d, const uint64_t *s) {                    \
+    sse_st(d, ins(sse_ld(d), sse_ld(s)));                                      \
+  }
 SSE_SCALAROP(sse_addss, _mm_add_ss)
 SSE_SCALAROP(sse_subss, _mm_sub_ss)
 SSE_SCALAROP(sse_mulss, _mm_mul_ss)
@@ -1106,172 +1161,221 @@ SSE_SCALAROP(sse_divss, _mm_div_ss)
 SSE_SCALAROP(sse_minss, _mm_min_ss)
 SSE_SCALAROP(sse_maxss, _mm_max_ss)
 
-static inline void sse_sqrtps(uint64_t *d, const uint64_t *s)
-{ sse_st(d, _mm_sqrt_ps(sse_ld(s))); }
-static inline void sse_rcpps(uint64_t *d, const uint64_t *s)
-{ sse_st(d, _mm_rcp_ps(sse_ld(s))); }
-static inline void sse_rsqrtps(uint64_t *d, const uint64_t *s)
-{ sse_st(d, _mm_rsqrt_ps(sse_ld(s))); }
+static inline void sse_sqrtps(uint64_t *d, const uint64_t *s) {
+  sse_st(d, _mm_sqrt_ps(sse_ld(s)));
+}
+static inline void sse_rcpps(uint64_t *d, const uint64_t *s) {
+  sse_st(d, _mm_rcp_ps(sse_ld(s)));
+}
+static inline void sse_rsqrtps(uint64_t *d, const uint64_t *s) {
+  sse_st(d, _mm_rsqrt_ps(sse_ld(s)));
+}
 /* The scalar unary forms take lane 0 from the SOURCE and lanes 1..3 from the
    DESTINATION -- not from the source, which is the easy misreading. */
-static inline void sse_sqrtss(uint64_t *d, const uint64_t *s)
-{ sse_st(d, _mm_sqrt_ss(_mm_move_ss(sse_ld(d), sse_ld(s)))); }
-static inline void sse_rcpss(uint64_t *d, const uint64_t *s)
-{ sse_st(d, _mm_rcp_ss(_mm_move_ss(sse_ld(d), sse_ld(s)))); }
-static inline void sse_rsqrtss(uint64_t *d, const uint64_t *s)
-{ sse_st(d, _mm_rsqrt_ss(_mm_move_ss(sse_ld(d), sse_ld(s)))); }
+static inline void sse_sqrtss(uint64_t *d, const uint64_t *s) {
+  sse_st(d, _mm_sqrt_ss(_mm_move_ss(sse_ld(d), sse_ld(s))));
+}
+static inline void sse_rcpss(uint64_t *d, const uint64_t *s) {
+  sse_st(d, _mm_rcp_ss(_mm_move_ss(sse_ld(d), sse_ld(s))));
+}
+static inline void sse_rsqrtss(uint64_t *d, const uint64_t *s) {
+  sse_st(d, _mm_rsqrt_ss(_mm_move_ss(sse_ld(d), sse_ld(s))));
+}
 
 /* CMPPS/CMPSS produce a MASK (all ones or all zeros per lane), not a boolean.
    The predicate is the instruction's imm8; Ghidra spells the common ones as
    separate mnemonics (CMPNEQPS), so the emitter passes the number. */
-static inline void sse_cmpps(uint64_t *d, const uint64_t *s, int pred)
-{
-    __m128 a = sse_ld(d), b = sse_ld(s), r;
-    switch (pred) {
-    case 0: r = _mm_cmpeq_ps(a, b);   break;
-    case 1: r = _mm_cmplt_ps(a, b);   break;
-    case 2: r = _mm_cmple_ps(a, b);   break;
-    case 3: r = _mm_cmpunord_ps(a, b); break;
-    case 4: r = _mm_cmpneq_ps(a, b);  break;
-    case 5: r = _mm_cmpnlt_ps(a, b);  break;
-    case 6: r = _mm_cmpnle_ps(a, b);  break;
-    default: r = _mm_cmpord_ps(a, b); break;
-    }
-    sse_st(d, r);
+static inline void sse_cmpps(uint64_t *d, const uint64_t *s, int pred) {
+  __m128 a = sse_ld(d), b = sse_ld(s), r;
+  switch (pred) {
+  case 0:
+    r = _mm_cmpeq_ps(a, b);
+    break;
+  case 1:
+    r = _mm_cmplt_ps(a, b);
+    break;
+  case 2:
+    r = _mm_cmple_ps(a, b);
+    break;
+  case 3:
+    r = _mm_cmpunord_ps(a, b);
+    break;
+  case 4:
+    r = _mm_cmpneq_ps(a, b);
+    break;
+  case 5:
+    r = _mm_cmpnlt_ps(a, b);
+    break;
+  case 6:
+    r = _mm_cmpnle_ps(a, b);
+    break;
+  default:
+    r = _mm_cmpord_ps(a, b);
+    break;
+  }
+  sse_st(d, r);
 }
-static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred)
-{
-    __m128 a = sse_ld(d), b = sse_ld(s), r;
-    switch (pred) {
-    case 0: r = _mm_cmpeq_ss(a, b);   break;
-    case 1: r = _mm_cmplt_ss(a, b);   break;
-    case 2: r = _mm_cmple_ss(a, b);   break;
-    case 3: r = _mm_cmpunord_ss(a, b); break;
-    case 4: r = _mm_cmpneq_ss(a, b);  break;
-    case 5: r = _mm_cmpnlt_ss(a, b);  break;
-    case 6: r = _mm_cmpnle_ss(a, b);  break;
-    default: r = _mm_cmpord_ss(a, b); break;
-    }
-    sse_st(d, r);
+static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred) {
+  __m128 a = sse_ld(d), b = sse_ld(s), r;
+  switch (pred) {
+  case 0:
+    r = _mm_cmpeq_ss(a, b);
+    break;
+  case 1:
+    r = _mm_cmplt_ss(a, b);
+    break;
+  case 2:
+    r = _mm_cmple_ss(a, b);
+    break;
+  case 3:
+    r = _mm_cmpunord_ss(a, b);
+    break;
+  case 4:
+    r = _mm_cmpneq_ss(a, b);
+    break;
+  case 5:
+    r = _mm_cmpnlt_ss(a, b);
+    break;
+  case 6:
+    r = _mm_cmpnle_ss(a, b);
+    break;
+  default:
+    r = _mm_cmpord_ss(a, b);
+    break;
+  }
+  sse_st(d, r);
 }
 
 #elif defined(__aarch64__)
 
-static inline float32x4_t sse_ld(const uint64_t *x)
-{
-    x = sse_source(x);
-    float32x4_t v; memcpy(&v, x, 16); return v;
+static inline float32x4_t sse_ld(const uint64_t *x) {
+  x = sse_source(x);
+  float32x4_t v;
+  memcpy(&v, x, 16);
+  return v;
 }
-static inline void sse_st(uint64_t *x, float32x4_t v)
-{
-    memcpy(x, &v, 16);
+static inline void sse_st(uint64_t *x, float32x4_t v) { memcpy(x, &v, 16); }
+static inline uint32x4_t sse_bits(const uint64_t *x) {
+  x = sse_source(x);
+  uint32x4_t v;
+  memcpy(&v, x, 16);
+  return v;
 }
-static inline uint32x4_t sse_bits(const uint64_t *x)
-{
-    x = sse_source(x);
-    uint32x4_t v; memcpy(&v, x, 16); return v;
-}
-static inline void sse_bits_st(uint64_t *x, uint32x4_t v)
-{
-    memcpy(x, &v, 16);
-}
+static inline void sse_bits_st(uint64_t *x, uint32x4_t v) { memcpy(x, &v, 16); }
 
-#define SSE_NEON_BINOP(name, ins)                                      \
-static inline void name(uint64_t *d, const uint64_t *s)                \
-{ sse_st(d, ins(sse_ld(d), sse_ld(s))); }
+#define SSE_NEON_BINOP(name, ins)                                              \
+  static inline void name(uint64_t *d, const uint64_t *s) {                    \
+    sse_st(d, ins(sse_ld(d), sse_ld(s)));                                      \
+  }
 SSE_NEON_BINOP(sse_addps, vaddq_f32)
 SSE_NEON_BINOP(sse_subps, vsubq_f32)
 SSE_NEON_BINOP(sse_mulps, vmulq_f32)
 SSE_NEON_BINOP(sse_divps, vdivq_f32)
 
-static inline void sse_minps(uint64_t *d, const uint64_t *s)
-{
-    float32x4_t a = sse_ld(d), b = sse_ld(s);
-    sse_st(d, vbslq_f32(vcltq_f32(a, b), a, b));
+static inline void sse_minps(uint64_t *d, const uint64_t *s) {
+  float32x4_t a = sse_ld(d), b = sse_ld(s);
+  sse_st(d, vbslq_f32(vcltq_f32(a, b), a, b));
 }
-static inline void sse_maxps(uint64_t *d, const uint64_t *s)
-{
-    float32x4_t a = sse_ld(d), b = sse_ld(s);
-    sse_st(d, vbslq_f32(vcgtq_f32(a, b), a, b));
+static inline void sse_maxps(uint64_t *d, const uint64_t *s) {
+  float32x4_t a = sse_ld(d), b = sse_ld(s);
+  sse_st(d, vbslq_f32(vcgtq_f32(a, b), a, b));
 }
-static inline void sse_andps(uint64_t *d, const uint64_t *s)
-{ sse_bits_st(d, vandq_u32(sse_bits(d), sse_bits(s))); }
-static inline void sse_andnps(uint64_t *d, const uint64_t *s)
-{ sse_bits_st(d, vbicq_u32(sse_bits(s), sse_bits(d))); }
-static inline void sse_orps(uint64_t *d, const uint64_t *s)
-{ sse_bits_st(d, vorrq_u32(sse_bits(d), sse_bits(s))); }
-static inline void sse_xorps(uint64_t *d, const uint64_t *s)
-{ sse_bits_st(d, veorq_u32(sse_bits(d), sse_bits(s))); }
+static inline void sse_andps(uint64_t *d, const uint64_t *s) {
+  sse_bits_st(d, vandq_u32(sse_bits(d), sse_bits(s)));
+}
+static inline void sse_andnps(uint64_t *d, const uint64_t *s) {
+  sse_bits_st(d, vbicq_u32(sse_bits(s), sse_bits(d)));
+}
+static inline void sse_orps(uint64_t *d, const uint64_t *s) {
+  sse_bits_st(d, vorrq_u32(sse_bits(d), sse_bits(s)));
+}
+static inline void sse_xorps(uint64_t *d, const uint64_t *s) {
+  sse_bits_st(d, veorq_u32(sse_bits(d), sse_bits(s)));
+}
 
-#define SSE_NEON_SCALAROP(name, ins)                                   \
-static inline void name(uint64_t *d, const uint64_t *s)                \
-{                                                                       \
-    float32x4_t a = sse_ld(d), b = sse_ld(s);                           \
-    a = vsetq_lane_f32(vgetq_lane_f32(ins(a, b), 0), a, 0);             \
-    sse_st(d, a);                                                       \
-}
+#define SSE_NEON_SCALAROP(name, ins)                                           \
+  static inline void name(uint64_t *d, const uint64_t *s) {                    \
+    float32x4_t a = sse_ld(d), b = sse_ld(s);                                  \
+    a = vsetq_lane_f32(vgetq_lane_f32(ins(a, b), 0), a, 0);                    \
+    sse_st(d, a);                                                              \
+  }
 SSE_NEON_SCALAROP(sse_addss, vaddq_f32)
 SSE_NEON_SCALAROP(sse_subss, vsubq_f32)
 SSE_NEON_SCALAROP(sse_mulss, vmulq_f32)
 SSE_NEON_SCALAROP(sse_divss, vdivq_f32)
 
-static inline void sse_minss(uint64_t *d, const uint64_t *s)
-{
-    float a, b, r; uint32_t bits;
-    bits = sse_lane(d, 0); memcpy(&a, &bits, 4);
-    bits = sse_lane(s, 0); memcpy(&b, &bits, 4);
-    r = a < b ? a : b; memcpy(&bits, &r, 4); sse_lane_put(d, 0, bits);
+static inline void sse_minss(uint64_t *d, const uint64_t *s) {
+  float a, b, r;
+  uint32_t bits;
+  bits = sse_lane(d, 0);
+  memcpy(&a, &bits, 4);
+  bits = sse_lane(s, 0);
+  memcpy(&b, &bits, 4);
+  r = a < b ? a : b;
+  memcpy(&bits, &r, 4);
+  sse_lane_put(d, 0, bits);
 }
-static inline void sse_maxss(uint64_t *d, const uint64_t *s)
-{
-    float a, b, r; uint32_t bits;
-    bits = sse_lane(d, 0); memcpy(&a, &bits, 4);
-    bits = sse_lane(s, 0); memcpy(&b, &bits, 4);
-    r = a > b ? a : b; memcpy(&bits, &r, 4); sse_lane_put(d, 0, bits);
-}
-
-static inline void sse_sqrtps(uint64_t *d, const uint64_t *s)
-{ sse_st(d, vsqrtq_f32(sse_ld(s))); }
-static inline void sse_rcpps(uint64_t *d, const uint64_t *s)
-{ sse_st(d, vrecpeq_f32(sse_ld(s))); }
-static inline void sse_rsqrtps(uint64_t *d, const uint64_t *s)
-{ sse_st(d, vrsqrteq_f32(sse_ld(s))); }
-static inline void sse_sqrtss(uint64_t *d, const uint64_t *s)
-{
-    float32x4_t out = sse_ld(d), v = vsqrtq_f32(sse_ld(s));
-    sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
-}
-static inline void sse_rcpss(uint64_t *d, const uint64_t *s)
-{
-    float32x4_t out = sse_ld(d), v = vrecpeq_f32(sse_ld(s));
-    sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
-}
-static inline void sse_rsqrtss(uint64_t *d, const uint64_t *s)
-{
-    float32x4_t out = sse_ld(d), v = vrsqrteq_f32(sse_ld(s));
-    sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
+static inline void sse_maxss(uint64_t *d, const uint64_t *s) {
+  float a, b, r;
+  uint32_t bits;
+  bits = sse_lane(d, 0);
+  memcpy(&a, &bits, 4);
+  bits = sse_lane(s, 0);
+  memcpy(&b, &bits, 4);
+  r = a > b ? a : b;
+  memcpy(&bits, &r, 4);
+  sse_lane_put(d, 0, bits);
 }
 
-static inline uint32x4_t sse_cmp_mask(float32x4_t a, float32x4_t b, int pred)
-{
-    uint32x4_t unordered = vmvnq_u32(vandq_u32(vceqq_f32(a, a), vceqq_f32(b, b)));
-    switch (pred & 7) {
-    case 0: return vceqq_f32(a, b);
-    case 1: return vcltq_f32(a, b);
-    case 2: return vcleq_f32(a, b);
-    case 3: return unordered;
-    case 4: return vmvnq_u32(vceqq_f32(a, b));
-    case 5: return vmvnq_u32(vcltq_f32(a, b));
-    case 6: return vmvnq_u32(vcleq_f32(a, b));
-    default: return vmvnq_u32(unordered);
-    }
+static inline void sse_sqrtps(uint64_t *d, const uint64_t *s) {
+  sse_st(d, vsqrtq_f32(sse_ld(s)));
 }
-static inline void sse_cmpps(uint64_t *d, const uint64_t *s, int pred)
-{ sse_bits_st(d, sse_cmp_mask(sse_ld(d), sse_ld(s), pred)); }
-static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred)
-{
-    uint32x4_t r = sse_cmp_mask(sse_ld(d), sse_ld(s), pred);
-    sse_lane_put(d, 0, vgetq_lane_u32(r, 0));
+static inline void sse_rcpps(uint64_t *d, const uint64_t *s) {
+  sse_st(d, vrecpeq_f32(sse_ld(s)));
+}
+static inline void sse_rsqrtps(uint64_t *d, const uint64_t *s) {
+  sse_st(d, vrsqrteq_f32(sse_ld(s)));
+}
+static inline void sse_sqrtss(uint64_t *d, const uint64_t *s) {
+  float32x4_t out = sse_ld(d), v = vsqrtq_f32(sse_ld(s));
+  sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
+}
+static inline void sse_rcpss(uint64_t *d, const uint64_t *s) {
+  float32x4_t out = sse_ld(d), v = vrecpeq_f32(sse_ld(s));
+  sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
+}
+static inline void sse_rsqrtss(uint64_t *d, const uint64_t *s) {
+  float32x4_t out = sse_ld(d), v = vrsqrteq_f32(sse_ld(s));
+  sse_st(d, vsetq_lane_f32(vgetq_lane_f32(v, 0), out, 0));
+}
+
+static inline uint32x4_t sse_cmp_mask(float32x4_t a, float32x4_t b, int pred) {
+  uint32x4_t unordered = vmvnq_u32(vandq_u32(vceqq_f32(a, a), vceqq_f32(b, b)));
+  switch (pred & 7) {
+  case 0:
+    return vceqq_f32(a, b);
+  case 1:
+    return vcltq_f32(a, b);
+  case 2:
+    return vcleq_f32(a, b);
+  case 3:
+    return unordered;
+  case 4:
+    return vmvnq_u32(vceqq_f32(a, b));
+  case 5:
+    return vmvnq_u32(vcltq_f32(a, b));
+  case 6:
+    return vmvnq_u32(vcleq_f32(a, b));
+  default:
+    return vmvnq_u32(unordered);
+  }
+}
+static inline void sse_cmpps(uint64_t *d, const uint64_t *s, int pred) {
+  sse_bits_st(d, sse_cmp_mask(sse_ld(d), sse_ld(s), pred));
+}
+static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred) {
+  uint32x4_t r = sse_cmp_mask(sse_ld(d), sse_ld(s), pred);
+  sse_lane_put(d, 0, vgetq_lane_u32(r, 0));
 }
 
 #endif
@@ -1279,51 +1383,56 @@ static inline void sse_cmpss(uint64_t *d, const uint64_t *s, int pred)
 /* SHUFPS: the low two lanes of the result come from the DESTINATION and the
    high two from the SOURCE. Two selectors index each operand's own four
    lanes. */
-static inline void sse_shufps(uint64_t *d, const uint64_t *s, unsigned imm)
-{
-    uint32_t r[4];
-    r[0] = sse_lane(d, (int)( imm       & 3));
-    r[1] = sse_lane(d, (int)((imm >> 2) & 3));
-    r[2] = sse_lane(s, (int)((imm >> 4) & 3));
-    r[3] = sse_lane(s, (int)((imm >> 6) & 3));
-    d[0] = (uint64_t)r[0] | ((uint64_t)r[1] << 32);
-    d[1] = (uint64_t)r[2] | ((uint64_t)r[3] << 32);
+static inline void sse_shufps(uint64_t *d, const uint64_t *s, unsigned imm) {
+  uint32_t r[4];
+  r[0] = sse_lane(d, (int)(imm & 3));
+  r[1] = sse_lane(d, (int)((imm >> 2) & 3));
+  r[2] = sse_lane(s, (int)((imm >> 4) & 3));
+  r[3] = sse_lane(s, (int)((imm >> 6) & 3));
+  d[0] = (uint64_t)r[0] | ((uint64_t)r[1] << 32);
+  d[1] = (uint64_t)r[2] | ((uint64_t)r[3] << 32);
 }
 
 /* UNPCKLPS interleaves the LOW two lanes of each operand, UNPCKHPS the high
    two, destination lane first in every pair. */
-static inline void sse_unpcklps(uint64_t *d, const uint64_t *s)
-{
-    uint32_t d0 = sse_lane(d, 0), d1 = sse_lane(d, 1);
-    uint32_t s0 = sse_lane(s, 0), s1 = sse_lane(s, 1);
-    d[0] = (uint64_t)d0 | ((uint64_t)s0 << 32);
-    d[1] = (uint64_t)d1 | ((uint64_t)s1 << 32);
+static inline void sse_unpcklps(uint64_t *d, const uint64_t *s) {
+  uint32_t d0 = sse_lane(d, 0), d1 = sse_lane(d, 1);
+  uint32_t s0 = sse_lane(s, 0), s1 = sse_lane(s, 1);
+  d[0] = (uint64_t)d0 | ((uint64_t)s0 << 32);
+  d[1] = (uint64_t)d1 | ((uint64_t)s1 << 32);
 }
-static inline void sse_unpckhps(uint64_t *d, const uint64_t *s)
-{
-    uint32_t d2 = sse_lane(d, 2), d3 = sse_lane(d, 3);
-    uint32_t s2 = sse_lane(s, 2), s3 = sse_lane(s, 3);
-    d[0] = (uint64_t)d2 | ((uint64_t)s2 << 32);
-    d[1] = (uint64_t)d3 | ((uint64_t)s3 << 32);
+static inline void sse_unpckhps(uint64_t *d, const uint64_t *s) {
+  uint32_t d2 = sse_lane(d, 2), d3 = sse_lane(d, 3);
+  uint32_t s2 = sse_lane(s, 2), s3 = sse_lane(s, 3);
+  d[0] = (uint64_t)d2 | ((uint64_t)s2 << 32);
+  d[1] = (uint64_t)d3 | ((uint64_t)s3 << 32);
 }
 
 /* MOVSS between two REGISTERS writes lane 0 and leaves 1..3 alone; the form
    that loads from MEMORY zeroes them. Two different instructions sharing one
    mnemonic, and the difference is a matrix column full of stale data. */
-static inline void sse_movss_rr(uint64_t *d, const uint64_t *s)
-{ sse_lane_put(d, 0, sse_lane(s, 0)); }
-static inline void sse_movss_load(uint64_t *d, uint32_t bits)
-{ d[0] = bits; d[1] = 0; }
+static inline void sse_movss_rr(uint64_t *d, const uint64_t *s) {
+  sse_lane_put(d, 0, sse_lane(s, 0));
+}
+static inline void sse_movss_load(uint64_t *d, uint32_t bits) {
+  d[0] = bits;
+  d[1] = 0;
+}
 
-static inline void sse_movhlps(uint64_t *d, const uint64_t *s) { s = sse_source(s); d[0] = s[1]; }
-static inline void sse_movlhps(uint64_t *d, const uint64_t *s) { s = sse_source(s); d[1] = s[0]; }
+static inline void sse_movhlps(uint64_t *d, const uint64_t *s) {
+  s = sse_source(s);
+  d[0] = s[1];
+}
+static inline void sse_movlhps(uint64_t *d, const uint64_t *s) {
+  s = sse_source(s);
+  d[1] = s[0];
+}
 
 /* MOVMSKPS: one bit per lane, taken from the SIGN bit. */
-static inline uint32_t sse_movmskps(const uint64_t *s)
-{
-    return ((sse_lane(s, 0) >> 31) & 1u) | (((sse_lane(s, 1) >> 31) & 1u) << 1)
-         | (((sse_lane(s, 2) >> 31) & 1u) << 2)
-         | (((sse_lane(s, 3) >> 31) & 1u) << 3);
+static inline uint32_t sse_movmskps(const uint64_t *s) {
+  return ((sse_lane(s, 0) >> 31) & 1u) | (((sse_lane(s, 1) >> 31) & 1u) << 1) |
+         (((sse_lane(s, 2) >> 31) & 1u) << 2) |
+         (((sse_lane(s, 3) >> 31) & 1u) << 3);
 }
 
 /*
@@ -1333,39 +1442,43 @@ static inline uint32_t sse_movmskps(const uint64_t *s)
  * the two instructions is only which NaNs raise an exception, and exceptions
  * are masked here, so they compute the same flags.
  */
-static inline void sse_comiss(CPU *C, const uint64_t *a, const uint64_t *b)
-{
-    float x, y; uint32_t xb = sse_lane(a, 0), yb = sse_lane(b, 0);
-    uint32_t fl;
-    memcpy(&x, &xb, 4); memcpy(&y, &yb, 4);
-    /* Bit positions as FK_EXPLICIT stores them: CF 0, PF 2, ZF 6. */
-    if (x != x || y != y)  fl = (1U << 6) | (1U << 2) | (1U << 0);
-    else if (x > y)        fl = 0;
-    else if (x < y)        fl = 1U << 0;
-    else                   fl = 1U << 6;
-    SETFLAGS(C, FK_EXPLICIT, fl, 0U, 0U, 4);
+static inline void sse_comiss(CPU *C, const uint64_t *a, const uint64_t *b) {
+  float x, y;
+  uint32_t xb = sse_lane(a, 0), yb = sse_lane(b, 0);
+  uint32_t fl;
+  memcpy(&x, &xb, 4);
+  memcpy(&y, &yb, 4);
+  /* Bit positions as FK_EXPLICIT stores them: CF 0, PF 2, ZF 6. */
+  if (x != x || y != y)
+    fl = (1U << 6) | (1U << 2) | (1U << 0);
+  else if (x > y)
+    fl = 0;
+  else if (x < y)
+    fl = 1U << 0;
+  else
+    fl = 1U << 6;
+  SETFLAGS(C, FK_EXPLICIT, fl, 0U, 0U, 4);
 }
 
-static inline void x87_push(CPU *C, long double v)
-{
-    C->top = (C->top - 1) & 7;
-    if (++C->depth > 8) x87_fault("x87 stack overflow");
-    C->st[C->top] = v;
+static inline void x87_push(CPU *C, long double v) {
+  C->top = (C->top - 1) & 7;
+  if (++C->depth > 8)
+    x87_fault("x87 stack overflow");
+  C->st[C->top] = v;
 }
 
-static inline long double x87_pop(CPU *C)
-{
-    long double v;
-    if (--C->depth < 0) x87_fault("x87 stack underflow");
-    v = C->st[C->top];
-    C->top = (C->top + 1) & 7;
-    return v;
+static inline long double x87_pop(CPU *C) {
+  long double v;
+  if (--C->depth < 0)
+    x87_fault("x87 stack underflow");
+  v = C->st[C->top];
+  C->top = (C->top + 1) & 7;
+  return v;
 }
 
 /* C3/C2/C0 of the status word, as FNSTSW AX delivers them. */
-static inline void x87_cmp(CPU *C, long double a, long double b)
-{
-    C->fsw = (a > b) ? 0x0000U : (a < b) ? 0x0100U : (a == b) ? 0x4000U : 0x4500U;
+static inline void x87_cmp(CPU *C, long double a, long double b) {
+  C->fsw = (a > b) ? 0x0000U : (a < b) ? 0x0100U : (a == b) ? 0x4000U : 0x4500U;
 }
 
 /* ---- indirect dispatch ----
@@ -1380,13 +1493,13 @@ void x86_tail_dispatch(CPU *C, uint32_t target);
 /* Entry from host code into a recompiled body. Reached by `jmp` from a naked
    export shim with the guest's own ESP still in place -- see x86_enter_tramp in
    the generated runtime for why nothing may be pushed before the switch. */
-void     x86_enter_tramp(void);
+void x86_enter_tramp(void);
 uint32_t x86_enter_body(uint32_t ep, uint32_t guest_esp, uint32_t ecx);
 /* The runtime's private per-thread stack. Everything below a recompiled
    function's entry esp belongs to the GUEST -- guest pushes descend into it and
    host callees run their frames there -- so the runtime's own C frames cannot
    live there too. init in DLL_PROCESS_ATTACH, free in DLL_THREAD_DETACH. */
-int  x86_rt_stack_init(void);
+int x86_rt_stack_init(void);
 void x86_rt_stack_free(void);
 uint32_t x86_rt_stack_take(void);
 void x86_rt_stack_give(void);
@@ -1410,8 +1523,8 @@ void x86_call_host(CPU *C, void *fn, const char *what);
 #ifdef X2_DCHECK
 void x86_dcall_check(uint32_t site, uint32_t esp_before, uint32_t esp_after,
                      int imm);
-#define X86_DCALL_CHECK(C, e0, site, imm) \
-    x86_dcall_check((site), (e0), (C)->esp, (imm))
+#define X86_DCALL_CHECK(C, e0, site, imm)                                      \
+  x86_dcall_check((site), (e0), (C)->esp, (imm))
 #else
 #define X86_DCALL_CHECK(C, e0, site, imm) ((void)0)
 #endif

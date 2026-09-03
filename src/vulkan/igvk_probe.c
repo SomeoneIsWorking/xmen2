@@ -27,10 +27,10 @@
 #define CORE "libIGCore.dll"
 
 /* igObject's two static hooks, as libIGGfx itself imports them. */
-#define IGOBJ_REGINTERNAL \
-    "?arkRegisterInternal@igObject@Core@Gap@@SAPAV__internalFunctionList@23@XZ"
-#define IGOBJ_GETCLASSMETA \
-    "?getClassMeta@igObject@Core@Gap@@SAPAVigMetaObject@23@XZ"
+#define IGOBJ_REGINTERNAL                                                      \
+  "?arkRegisterInternal@igObject@Core@Gap@@SAPAV__internalFunctionList@23@XZ"
+#define IGOBJ_GETCLASSMETA                                                     \
+  "?getClassMeta@igObject@Core@Gap@@SAPAVigMetaObject@23@XZ"
 
 /* Generous: igObject's own vtable length in libIGCore has not been read out,
    and over-allocating costs guest bytes while under-allocating would let a
@@ -43,12 +43,11 @@ static int g_ctor_ran;
    layout. We do not know that for certain here, which is the point: this is
    wired only to observe whether ANY slot of ours is dispatched during
    construction, and to say which. */
-static void probe_slot0(CPU *C)
-{
-    g_ctor_ran++;
-    /* MSVC's scalar-deleting destructor is __thiscall taking one stack
-       argument (the deleting flag) and returning `this`. */
-    ark_ret(C, C->ecx, 1);
+static void probe_slot0(CPU *C) {
+  g_ctor_ran++;
+  /* MSVC's scalar-deleting destructor is __thiscall taking one stack
+     argument (the deleting flag) and returning `this`. */
+  ark_ret(C, C->ecx, 1);
 }
 
 /*
@@ -66,12 +65,12 @@ static void probe_slot0(CPU *C)
  * So the inherited behaviour is genuinely nothing for 17 of 21, and copying it
  * is not stubbing: it is what igObject itself does.
  */
-static const unsigned char IGOBJ_RET0[]  = {0,2,8,9,10,12,13,14,15,16};
-static const unsigned char IGOBJ_RET1[]  = {1,3,4,7,11,17,18};
-static const unsigned char IGOBJ_TRUE1[] = {5,6};
+static const unsigned char IGOBJ_RET0[] = {0, 2, 8, 9, 10, 12, 13, 14, 15, 16};
+static const unsigned char IGOBJ_RET1[] = {1, 3, 4, 7, 11, 17, 18};
+static const unsigned char IGOBJ_TRUE1[] = {5, 6};
 
-static void ig_ret0(CPU *C)  { ark_ret(C, 0, 0); }
-static void ig_ret1(CPU *C)  { ark_ret(C, 0, 1); }
+static void ig_ret0(CPU *C) { ark_ret(C, 0, 0); }
+static void ig_ret1(CPU *C) { ark_ret(C, 0, 1); }
 static void ig_true1(CPU *C) { ark_ret(C, 1, 1); }
 
 /*
@@ -91,15 +90,14 @@ static void probe_get_class_meta(CPU *C);
 /* Designated, so adding a field to ArkClass cannot silently shift these --
    which it already did once: the two lifted-address fields landed in the middle
    and turned base_get_class_meta into an integer. */
-static ArkClass g_probe = {
-    .name = "igVkProbe",
-    .instance_size = 0x10,       /* comfortably over igObject's 8 */
-    .is_abstract = 0,
-    .base_module = CORE,
-    .base_register_internal = IGOBJ_REGINTERNAL,
-    .base_get_class_meta = IGOBJ_GETCLASSMETA,
-    .nslots = PROBE_SLOTS
-};
+static ArkClass g_probe = {.name = "igVkProbe",
+                           .instance_size =
+                               0x10, /* comfortably over igObject's 8 */
+                           .is_abstract = 0,
+                           .base_module = CORE,
+                           .base_register_internal = IGOBJ_REGINTERNAL,
+                           .base_get_class_meta = IGOBJ_GETCLASSMETA,
+                           .nslots = PROBE_SLOTS};
 
 /*
  * WHEN this can run, which was not obvious and cost a fault to learn.
@@ -118,118 +116,118 @@ static ArkClass g_probe = {
  */
 static int g_probe_rc = -1;
 
-static int probe_trigger(void)
-{
-    extern int igvk_ark_probe(void);
-    g_probe_rc = igvk_ark_probe();
-    return 1;                    /* runs once; it needs nothing but pools */
+static int probe_trigger(void) {
+  extern int igvk_ark_probe(void);
+  g_probe_rc = igvk_ark_probe();
+  return 1; /* runs once; it needs nothing but pools */
 }
 
-int igvk_ark_probe_arm(void)
-{
-    uint32_t ci = ark_export(CORE,
-        "?createInstance@igMetaObject@Core@Gap@@QBEPAVigObject@23@"
-        "PAVigMemoryPool@23@@Z");
-    if (!ci) {
-        fprintf(stderr, "probe: libIGCore does not export createInstance; "
-                        "cannot arm\n");
-        return 1;
-    }
-    x86_at_first_call(ci, probe_trigger,
-                      "the engine's first createInstance -- proof that pools "
-                      "and ARK are up, which is when a host class may register");
-    printf("probe: armed on igMetaObject::createInstance 0x%08x\n", ci);
-    return 0;
+int igvk_ark_probe_arm(void) {
+  uint32_t ci = ark_export(
+      CORE, "?createInstance@igMetaObject@Core@Gap@@QBEPAVigObject@23@"
+            "PAVigMemoryPool@23@@Z");
+  if (!ci) {
+    fprintf(stderr, "probe: libIGCore does not export createInstance; "
+                    "cannot arm\n");
+    return 1;
+  }
+  x86_at_first_call(ci, probe_trigger,
+                    "the engine's first createInstance -- proof that pools "
+                    "and ARK are up, which is when a host class may register");
+  printf("probe: armed on igMetaObject::createInstance 0x%08x\n", ci);
+  return 0;
 }
 
 int igvk_ark_probe_result(void) { return g_probe_rc; }
 
-int igvk_ark_probe(void)
-{
-    uint32_t meta, obj, vptr;
-    int fails = 0;
+int igvk_ark_probe(void) {
+  uint32_t meta, obj, vptr;
+  int fails = 0;
 
-    printf("\n=== ARK host-class probe (C008: is the mechanism EXERCISED?) ===\n");
-    fflush(stdout);   /* an abort inside the guest must not swallow the report */
+  printf(
+      "\n=== ARK host-class probe (C008: is the mechanism EXERCISED?) ===\n");
+  fflush(stdout); /* an abort inside the guest must not swallow the report */
 
-    g_probe.vtable = igvk_vtable_new(g_probe.name, PROBE_SLOTS);
-    igvk_vtable_set(g_probe.vtable, 0, probe_slot0, g_probe.name,
-                    "slot0", &g_probe);
-    igvk_vtable_set(g_probe.vtable, 20, probe_get_class_meta, g_probe.name,
-                    "getClassMeta", &g_probe);
-    {
-        size_t k;
-        for (k = 0; k < sizeof IGOBJ_RET0; k++)
-            igvk_vtable_set(g_probe.vtable, IGOBJ_RET0[k], ig_ret0,
-                            g_probe.name, "igObject:<ret>", &g_probe);
-        for (k = 0; k < sizeof IGOBJ_RET1; k++)
-            igvk_vtable_set(g_probe.vtable, IGOBJ_RET1[k], ig_ret1,
-                            g_probe.name, "igObject:<ret 4>", &g_probe);
-        for (k = 0; k < sizeof IGOBJ_TRUE1; k++)
-            igvk_vtable_set(g_probe.vtable, IGOBJ_TRUE1[k], ig_true1,
-                            g_probe.name, "igObject:<return true>", &g_probe);
-    }
-    igvk_vtable_fill_unimplemented(g_probe.vtable, g_probe.name, PROBE_SLOTS, NULL);
+  g_probe.vtable = igvk_vtable_new(g_probe.name, PROBE_SLOTS);
+  igvk_vtable_set(g_probe.vtable, 0, probe_slot0, g_probe.name, "slot0",
+                  &g_probe);
+  igvk_vtable_set(g_probe.vtable, 20, probe_get_class_meta, g_probe.name,
+                  "getClassMeta", &g_probe);
+  {
+    size_t k;
+    for (k = 0; k < sizeof IGOBJ_RET0; k++)
+      igvk_vtable_set(g_probe.vtable, IGOBJ_RET0[k], ig_ret0, g_probe.name,
+                      "igObject:<ret>", &g_probe);
+    for (k = 0; k < sizeof IGOBJ_RET1; k++)
+      igvk_vtable_set(g_probe.vtable, IGOBJ_RET1[k], ig_ret1, g_probe.name,
+                      "igObject:<ret 4>", &g_probe);
+    for (k = 0; k < sizeof IGOBJ_TRUE1; k++)
+      igvk_vtable_set(g_probe.vtable, IGOBJ_TRUE1[k], ig_true1, g_probe.name,
+                      "igObject:<return true>", &g_probe);
+  }
+  igvk_vtable_fill_unimplemented(g_probe.vtable, g_probe.name, PROBE_SLOTS,
+                                 NULL);
 
-    if (!ark_register_class(&g_probe)) {
-        printf("  FAIL  registration did not complete\n");
-        return 1;
-    }
+  if (!ark_register_class(&g_probe)) {
+    printf("  FAIL  registration did not complete\n");
+    return 1;
+  }
 
-    meta = RD32(g_probe.meta_slot);
-    printf("  ok    meta object allocated            0x%08x\n", meta);
+  meta = RD32(g_probe.meta_slot);
+  printf("  ok    meta object allocated            0x%08x\n", meta);
 
-    /* +0x48 is the instance size libIGCore recorded, +0x1a the isAbstract
-       byte (docs/RE/ark.md). Reading them back checks that our eleven
-       arguments landed where the engine expects, not merely that the call
-       returned. */
-    {
-        uint32_t sz = RD32(meta + 0x48u);
-        uint8_t ab = RD8(meta + 0x1au);
-        if (sz != g_probe.instance_size) {
-            printf("  FAIL  meta+0x48 instance size       0x%08x, want 0x%x\n",
-                   sz, g_probe.instance_size);
-            fails++;
-        } else {
-            printf("  ok    meta+0x48 instance size       0x%x\n", sz);
-        }
-        if (ab != 0) {
-            printf("  FAIL  meta+0x1a isAbstract          %u, want 0 "
-                   "(createInstance refuses an abstract meta)\n", ab);
-            fails++;
-        } else {
-            printf("  ok    meta+0x1a isAbstract          0\n");
-        }
-    }
-
-    obj = ark_create_instance(meta, 0);
-    if (!obj) {
-        printf("  FAIL  createInstance returned NULL -- libIGCore declined to "
-               "construct the class\n");
-        return fails + 1;
-    }
-    printf("  ok    createInstance returned         0x%08x\n", obj);
-
-    vptr = RD32(obj);
-    if (vptr != g_probe.vtable) {
-        printf("  FAIL  object vptr 0x%08x, want our vtable 0x%08x\n"
-               "        libIGCore built something, but not with our vtable, so "
-               "dispatch would not reach this host at all.\n",
-               vptr, g_probe.vtable);
-        fails++;
+  /* +0x48 is the instance size libIGCore recorded, +0x1a the isAbstract
+     byte (docs/RE/ark.md). Reading them back checks that our eleven
+     arguments landed where the engine expects, not merely that the call
+     returned. */
+  {
+    uint32_t sz = RD32(meta + 0x48u);
+    uint8_t ab = RD8(meta + 0x1au);
+    if (sz != g_probe.instance_size) {
+      printf("  FAIL  meta+0x48 instance size       0x%08x, want 0x%x\n", sz,
+             g_probe.instance_size);
+      fails++;
     } else {
-        printf("  ok    object vptr == our vtable      0x%08x\n", vptr);
+      printf("  ok    meta+0x48 instance size       0x%x\n", sz);
     }
-    printf("  info  host vtable slots dispatched during construction: %d\n",
-           g_ctor_ran);
+    if (ab != 0) {
+      printf("  FAIL  meta+0x1a isAbstract          %u, want 0 "
+             "(createInstance refuses an abstract meta)\n",
+             ab);
+      fails++;
+    } else {
+      printf("  ok    meta+0x1a isAbstract          0\n");
+    }
+  }
 
-    printf("  %s\n", fails ? "PROBE FAILED" :
-           "PROBE PASSED -- libIGCore constructs a host-defined class");
-    fflush(stdout);
-    return fails;
+  obj = ark_create_instance(meta, 0);
+  if (!obj) {
+    printf("  FAIL  createInstance returned NULL -- libIGCore declined to "
+           "construct the class\n");
+    return fails + 1;
+  }
+  printf("  ok    createInstance returned         0x%08x\n", obj);
+
+  vptr = RD32(obj);
+  if (vptr != g_probe.vtable) {
+    printf("  FAIL  object vptr 0x%08x, want our vtable 0x%08x\n"
+           "        libIGCore built something, but not with our vtable, so "
+           "dispatch would not reach this host at all.\n",
+           vptr, g_probe.vtable);
+    fails++;
+  } else {
+    printf("  ok    object vptr == our vtable      0x%08x\n", vptr);
+  }
+  printf("  info  host vtable slots dispatched during construction: %d\n",
+         g_ctor_ran);
+
+  printf("  %s\n",
+         fails ? "PROBE FAILED"
+               : "PROBE PASSED -- libIGCore constructs a host-defined class");
+  fflush(stdout);
+  return fails;
 }
 
-static void probe_get_class_meta(CPU *C)
-{
-    ark_ret(C, RD32(g_probe.meta_slot), 0);
+static void probe_get_class_meta(CPU *C) {
+  ark_ret(C, RD32(g_probe.meta_slot), 0);
 }

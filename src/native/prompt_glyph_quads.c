@@ -26,49 +26,47 @@ static unsigned g_count;
 static int g_frame_had_any;
 static unsigned long g_total, g_overflow, g_frames;
 
-void x2_prompt_quads_reset(void)
-{
-    if (g_frame_had_any) g_frames++;
-    g_count = 0;
-    g_frame_had_any = 0;
+void x2_prompt_quads_reset(void) {
+  if (g_frame_had_any)
+    g_frames++;
+  g_count = 0;
+  g_frame_had_any = 0;
 }
 
-void x2_prompt_quads_consume(void)
-{
-    g_count = 0;
+void x2_prompt_quads_consume(void) { g_count = 0; }
+
+unsigned x2_prompt_quads_available(void) {
+  return X2_PROMPT_QUADS_MAX - g_count;
 }
 
-unsigned x2_prompt_quads_available(void)
-{
-    return X2_PROMPT_QUADS_MAX - g_count;
+int x2_prompt_quads_add(const struct X2PromptQuad *quad) {
+  if (!quad)
+    return 0;
+  g_total++;
+  if (g_count == X2_PROMPT_QUADS_MAX) {
+    g_overflow++;
+    return 0;
+  }
+  g_quads[g_count++] = *quad;
+  g_frame_had_any = 1;
+  return 1;
 }
 
-int x2_prompt_quads_add(const struct X2PromptQuad *quad)
-{
-    if (!quad) return 0;
-    g_total++;
-    if (g_count == X2_PROMPT_QUADS_MAX) { g_overflow++; return 0; }
-    g_quads[g_count++] = *quad;
-    g_frame_had_any = 1;
-    return 1;
+const struct X2PromptQuad *x2_prompt_quads(unsigned *count) {
+  if (count)
+    *count = g_count;
+  return g_quads;
 }
 
-const struct X2PromptQuad *x2_prompt_quads(unsigned *count)
-{
-    if (count) *count = g_count;
-    return g_quads;
-}
-
-void x2_prompt_quads_report(void)
-{
-    printf("  Prompt quads: %lu harvested over %lu frame(s) that had any"
-           "; %lu dropped past the %u cap\n",
-           g_total, g_frames, g_overflow, X2_PROMPT_QUADS_MAX);
-    if (!g_total)
-        printf("        NONE harvested -- either no label was drawn or the "
-               "emitter interception never fired; the port has nothing to "
-               "draw either way.\n");
-    if (g_overflow)
-        printf("        the preflight capacity contract was violated; native "
-               "interception refuses to continue after this condition.\n");
+void x2_prompt_quads_report(void) {
+  printf("  Prompt quads: %lu harvested over %lu frame(s) that had any"
+         "; %lu dropped past the %u cap\n",
+         g_total, g_frames, g_overflow, X2_PROMPT_QUADS_MAX);
+  if (!g_total)
+    printf("        NONE harvested -- either no label was drawn or the "
+           "emitter interception never fired; the port has nothing to "
+           "draw either way.\n");
+  if (g_overflow)
+    printf("        the preflight capacity contract was violated; native "
+           "interception refuses to continue after this condition.\n");
 }

@@ -29,7 +29,7 @@ struct SDL_Window *win32_sdl_window(void);
  * EXISTS (the swapchain needs one, and so do the input paths); it is not shown.
  */
 void win32_sdl_hide_windows(int hide);
-int  win32_sdl_windows_hidden(void);
+int win32_sdl_windows_hidden(void);
 
 /*
  * A modal dialog with buttons, on SDL -- the replacement for USER32's dialog

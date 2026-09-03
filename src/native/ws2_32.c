@@ -30,18 +30,17 @@
  * table). It is a bounded job, it is not this one, and it cannot be verified
  * without two instances talking to each other.
  */
+#include "guest_memory.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
-#include "guest_memory.h"
 
 #include <stdio.h>
 
-#define A(i)  RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
 
-static void ret_std(CPU *C, uint32_t eax, int nargs)
-{
-    C->eax = eax;
-    C->esp += 4u + (uint32_t)nargs * 4u;
+static void ret_std(CPU *C, uint32_t eax, int nargs) {
+  C->eax = eax;
+  C->esp += 4u + (uint32_t)nargs * 4u;
 }
 
 #define WSASYSNOTREADY 10091u
@@ -57,12 +56,11 @@ static unsigned long g_startups, g_cleanups;
  * The 400-byte layout is Winsock 2's: wVersion, wHighVersion, szDescription
  * [257], szSystemStatus[129], iMaxSockets, iMaxUdpDg, lpVendorInfo.
  */
-void imp_WS2_32__115(CPU *C)
-{
-    uint32_t want = A(0), data = A(1);
+void imp_WS2_32__115(CPU *C) {
+  uint32_t want = A(0), data = A(1);
 
-    if (!g_startups++)
-        fprintf(stderr,
+  if (!g_startups++)
+    fprintf(stderr,
             "ws2_32: WSAStartup(version %u.%u) -> WSASYSNOTREADY. This host "
             "implements NO networking, so the honest Win32 answer is that the "
             "network subsystem is not ready.\n"
@@ -72,37 +70,35 @@ void imp_WS2_32__115(CPU *C)
             "  Reported once. See src/native/ws2_32.c for what implementing "
             "them would take.\n",
             want & 0xffu, (want >> 8) & 0xffu);
-    if (data) {
-        int i;
-        WR32(data + 0u, 0);                     /* wVersion / wHighVersion */
-        for (i = 4; i < 4 + 257 + 129; i++)
-            *((unsigned char *)guest_memory_pointer(data + (uint32_t)i)) = 0;
-        WR32(data + 0x18eu, 0);                 /* iMaxSockets, iMaxUdpDg */
-        WR32(data + 0x192u, 0);                 /* lpVendorInfo */
-    }
-    ret_std(C, WSASYSNOTREADY, 2);
+  if (data) {
+    int i;
+    WR32(data + 0u, 0); /* wVersion / wHighVersion */
+    for (i = 4; i < 4 + 257 + 129; i++)
+      *((unsigned char *)guest_memory_pointer(data + (uint32_t)i)) = 0;
+    WR32(data + 0x18eu, 0); /* iMaxSockets, iMaxUdpDg */
+    WR32(data + 0x192u, 0); /* lpVendorInfo */
+  }
+  ret_std(C, WSASYSNOTREADY, 2);
 }
 
 /* int WSACleanup(void) -- succeeds; there is nothing to tear down. Win32
    returns SOCKET_ERROR if no successful startup happened, but a game shutting
    down does not check, and reporting failure here would only add noise to an
    exit path. */
-void imp_WS2_32__116(CPU *C)
-{
-    g_cleanups++;
-    ret_std(C, 0, 0);
+void imp_WS2_32__116(CPU *C) {
+  g_cleanups++;
+  ret_std(C, 0, 0);
 }
 
-void ws2_report(void)
-{
-    /* At zero as well: "the game never asked for networking" and "networking
-       is not implemented" are different facts about a run. */
-    if (!g_startups) {
-        printf("  ws2_32: the game never called WSAStartup, so it never tried "
-               "to use the network in this run.\n");
-        return;
-    }
-    printf("  ws2_32: %lu WSAStartup call(s), all answered WSASYSNOTREADY "
-           "(%lu WSACleanup). LAN multiplayer is unavailable in this port.\n",
-           g_startups, g_cleanups);
+void ws2_report(void) {
+  /* At zero as well: "the game never asked for networking" and "networking
+     is not implemented" are different facts about a run. */
+  if (!g_startups) {
+    printf("  ws2_32: the game never called WSAStartup, so it never tried "
+           "to use the network in this run.\n");
+    return;
+  }
+  printf("  ws2_32: %lu WSAStartup call(s), all answered WSASYSNOTREADY "
+         "(%lu WSACleanup). LAN multiplayer is unavailable in this port.\n",
+         g_startups, g_cleanups);
 }

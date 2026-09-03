@@ -21,13 +21,14 @@
 
 #ifdef X2_WITH_SDL
 static inline int px_is(const uint32_t *img, int x, int y, uint32_t bgra,
-                        const char *what)
-{
-    uint32_t got = img[(size_t)y * OFF_W + x];
-    if (got == bgra) return 1;
-    printf("gpu selftest: FAILED -- pixel (%d,%d) is 0x%08x, expected 0x%08x "
-           "(%s)\n", x, y, got, bgra, what);
-    return 0;
+                        const char *what) {
+  uint32_t got = img[(size_t)y * OFF_W + x];
+  if (got == bgra)
+    return 1;
+  printf("gpu selftest: FAILED -- pixel (%d,%d) is 0x%08x, expected 0x%08x "
+         "(%s)\n",
+         x, y, got, bgra, what);
+  return 0;
 }
 #endif
 

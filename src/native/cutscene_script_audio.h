@@ -4,9 +4,9 @@
 struct CPU;
 
 typedef struct CutsceneScriptAudioSnapshot {
-    unsigned long ordinary_commands;
-    unsigned long silent_commands;
-    unsigned last_context;
+  unsigned long ordinary_commands;
+  unsigned long silent_commands;
+  unsigned last_context;
 } CutsceneScriptAudioSnapshot;
 
 void cutscene_script_audio_snapshot(CutsceneScriptAudioSnapshot *out);

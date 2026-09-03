@@ -22,7 +22,7 @@ struct CPU;
  * Returns the number of bytes written. It always writes something: an empty
  * report would be indistinguishable from "the probe never ran".
  */
-size_t input_probe_report(struct CPU *cpu, unsigned controller,
-                          char *out, size_t n);
+size_t input_probe_report(struct CPU *cpu, unsigned controller, char *out,
+                          size_t n);
 
 #endif

@@ -4,7 +4,7 @@ kind: claim
 status: holds
 created: 2026-08-25
 tags: cutscene,player,input,live
-depends: src/native/cutscene_player.c#x2_override_004a00d0, src/native/cutscene_player.c#begin_sequence, src/native/behaved_player.c#behaved_player_step_context, src/native/cutscene_event_player.c#x2_override_004b2b40, tools/live_case.py#case_cutscene_skip_early, tools/check_cutscene_player_wiring.py#audit
+depends: src/native/cutscene_player.c#x2_override_004a00d0, src/native/cutscene_player.c#begin_sequence, src/native/behaved_player.c#behaved_player_step_context, src/native/cutscene_event_player.c#x2_override_004b2b40, tools/live_case.py#case_cutscene_skip_early
 reconfirmed: 2026-08-27
 verified_at: 2026-08-27
 ---

@@ -8,70 +8,70 @@
 #define SAVE_TRACE_LABEL_CAPACITY 48u
 
 typedef enum {
-    SAVE_TRACE_MENU_BUILD,
-    SAVE_TRACE_MENU_OPEN,
-    SAVE_TRACE_MAIN_ENGB_OPEN,
-    SAVE_TRACE_LOAD_0055FCD0,
-    SAVE_TRACE_LOAD_004AED10,
-    SAVE_TRACE_LOAD_0046E2B0,
-    SAVE_TRACE_LOAD_0049F140,
-    SAVE_TRACE_SAVE_004AEB80,
-    SAVE_TRACE_SAVE_004B15B0,
-    SAVE_TRACE_SAVE_004B1746,
-    SAVE_TRACE_SAVE_004B177A,
-    SAVE_TRACE_SAVE_MODE_CYCLE,
-    SAVE_TRACE_MAP_00484CE0,
-    SAVE_TRACE_LOCK_COMBAT,
-    SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
-    SAVE_TRACE_POINT_COUNT
+  SAVE_TRACE_MENU_BUILD,
+  SAVE_TRACE_MENU_OPEN,
+  SAVE_TRACE_MAIN_ENGB_OPEN,
+  SAVE_TRACE_LOAD_0055FCD0,
+  SAVE_TRACE_LOAD_004AED10,
+  SAVE_TRACE_LOAD_0046E2B0,
+  SAVE_TRACE_LOAD_0049F140,
+  SAVE_TRACE_SAVE_004AEB80,
+  SAVE_TRACE_SAVE_004B15B0,
+  SAVE_TRACE_SAVE_004B1746,
+  SAVE_TRACE_SAVE_004B177A,
+  SAVE_TRACE_SAVE_MODE_CYCLE,
+  SAVE_TRACE_MAP_00484CE0,
+  SAVE_TRACE_LOCK_COMBAT,
+  SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
+  SAVE_TRACE_POINT_COUNT
 } SaveTracePoint;
 
 typedef enum {
-    SAVE_TRACE_ANSWER_UNKNOWN,
-    SAVE_TRACE_ANSWER_NO,
-    SAVE_TRACE_ANSWER_YES
+  SAVE_TRACE_ANSWER_UNKNOWN,
+  SAVE_TRACE_ANSWER_NO,
+  SAVE_TRACE_ANSWER_YES
 } SaveTraceAnswer;
 
 typedef enum {
-    SAVE_TRACE_RECORDED,
-    SAVE_TRACE_REFUSED_DISABLED,
-    SAVE_TRACE_REFUSED_INVALID,
-    SAVE_TRACE_REFUSED_CAPACITY
+  SAVE_TRACE_RECORDED,
+  SAVE_TRACE_REFUSED_DISABLED,
+  SAVE_TRACE_REFUSED_INVALID,
+  SAVE_TRACE_REFUSED_CAPACITY
 } SaveTraceResult;
 
 typedef struct {
-    uint64_t attempts;
-    uint64_t recorded;
-    uint64_t yes;
-    uint64_t no;
-    uint64_t unknown;
+  uint64_t attempts;
+  uint64_t recorded;
+  uint64_t yes;
+  uint64_t no;
+  uint64_t unknown;
 } SaveTracePointStats;
 
 typedef struct {
-    uint64_t sequence;
-    SaveTracePoint point;
-    SaveTraceAnswer answer;
-    uint32_t mode;
-    uint32_t state;
-    uint32_t device;
-    uint32_t selection;
-    uint32_t buffer;
-    int label_truncated;
-    char label[SAVE_TRACE_LABEL_CAPACITY];
+  uint64_t sequence;
+  SaveTracePoint point;
+  SaveTraceAnswer answer;
+  uint32_t mode;
+  uint32_t state;
+  uint32_t device;
+  uint32_t selection;
+  uint32_t buffer;
+  int label_truncated;
+  char label[SAVE_TRACE_LABEL_CAPACITY];
 } SaveTraceEvent;
 
 typedef struct {
-    int enabled;
-    uint64_t attempts;
-    uint64_t recorded;
-    uint64_t refused_disabled;
-    uint64_t refused_invalid;
-    uint64_t overwritten;
-    uint64_t truncated_labels;
-    size_t first;
-    size_t retained;
-    SaveTracePointStats point[SAVE_TRACE_POINT_COUNT];
-    SaveTraceEvent event[SAVE_TRACE_EVENT_CAPACITY];
+  int enabled;
+  uint64_t attempts;
+  uint64_t recorded;
+  uint64_t refused_disabled;
+  uint64_t refused_invalid;
+  uint64_t overwritten;
+  uint64_t truncated_labels;
+  size_t first;
+  size_t retained;
+  SaveTracePointStats point[SAVE_TRACE_POINT_COUNT];
+  SaveTraceEvent event[SAVE_TRACE_EVENT_CAPACITY];
 } SaveTrace;
 
 /* This collector is intentionally inert until enabled. Disabled observations
@@ -95,8 +95,7 @@ SaveTraceResult save_trace_load_manager(SaveTrace *trace,
                                         uint32_t buffer);
 
 /* Exact mode transition observed around the retail save path. */
-SaveTraceResult save_trace_mode_cycle(SaveTrace *trace,
-                                      uint32_t previous_mode,
+SaveTraceResult save_trace_mode_cycle(SaveTrace *trace, uint32_t previous_mode,
                                       uint32_t next_mode);
 
 const char *save_trace_point_name(SaveTracePoint point);

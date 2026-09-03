@@ -20,15 +20,15 @@
  * callers routinely ignore HRESULTs and read the out-parameter instead, so a
  * plausible failure code would be indistinguishable from working.
  */
-#include "x86rt.h"
-#include "x86rt_native.h"
-#include "guest_heap.h"
-#include "guest_memory.h"
-#include "dinput_device.h"
-#include "dinput_pad.h"
 #include "dinput8_controller_slots.h"
 #include "dinput8_hotplug.h"
+#include "dinput_device.h"
+#include "dinput_pad.h"
+#include "guest_heap.h"
+#include "guest_memory.h"
 #include "player_input.h"
+#include "x86rt.h"
+#include "x86rt_native.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,17 +37,16 @@
 #define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
 
-static void ret_com(CPU *C, uint32_t hr, int nargs)
-{
-    C->eax = hr;
-    C->esp += 4u + (uint32_t)(nargs + 1) * 4u;
+static void ret_com(CPU *C, uint32_t hr, int nargs) {
+  C->eax = hr;
+  C->esp += 4u + (uint32_t)(nargs + 1) * 4u;
 }
 
-#define S_OK          0x00000000u
-#define S_FALSE       0x00000001u
+#define S_OK 0x00000000u
+#define S_FALSE 0x00000001u
 #define DIERR_INVALIDPARAM 0x80070057u
 #define DIERR_DEVICENOTREG 0x80040154u
-#define DIERR_OUTOFMEMORY  0x8007000Eu
+#define DIERR_OUTOFMEMORY 0x8007000Eu
 
 /*
  * The IDirectInput8 vtable, in order.
@@ -59,37 +58,48 @@ static void ret_com(CPU *C, uint32_t hr, int nargs)
  * dispatch through [vtable+0x0c] for CreateDevice confirms slot 3.
  */
 enum {
-    VT_QueryInterface, VT_AddRef, VT_Release,
-    VT_CreateDevice, VT_EnumDevices, VT_GetDeviceStatus,
-    VT_RunControlPanel, VT_Initialize,
-    VT_FindDevice, VT_EnumDevicesBySemantics, VT_ConfigureDevices,
-    VT_COUNT
+  VT_QueryInterface,
+  VT_AddRef,
+  VT_Release,
+  VT_CreateDevice,
+  VT_EnumDevices,
+  VT_GetDeviceStatus,
+  VT_RunControlPanel,
+  VT_Initialize,
+  VT_FindDevice,
+  VT_EnumDevicesBySemantics,
+  VT_ConfigureDevices,
+  VT_COUNT
 };
 
 static const char *const VT_NAME[VT_COUNT] = {
-    "QueryInterface", "AddRef", "Release",
-    "CreateDevice", "EnumDevices", "GetDeviceStatus",
-    "RunControlPanel", "Initialize", "FindDevice",
-    "EnumDevicesBySemantics", "ConfigureDevices"
-};
+    "QueryInterface",         "AddRef",          "Release",
+    "CreateDevice",           "EnumDevices",     "GetDeviceStatus",
+    "RunControlPanel",        "Initialize",      "FindDevice",
+    "EnumDevicesBySemantics", "ConfigureDevices"};
 
 /* DI8DEVCLASS_* -- the DirectInput 8 numbering, which is NOT DIDEVTYPE_*. */
-#define DI8DEVCLASS_ALL        0
-#define DI8DEVCLASS_DEVICE     1
-#define DI8DEVCLASS_POINTER    2
-#define DI8DEVCLASS_KEYBOARD   3
-#define DI8DEVCLASS_GAMECTRL   4
+#define DI8DEVCLASS_ALL 0
+#define DI8DEVCLASS_DEVICE 1
+#define DI8DEVCLASS_POINTER 2
+#define DI8DEVCLASS_KEYBOARD 3
+#define DI8DEVCLASS_GAMECTRL 4
 
-static const char *devclass_name(uint32_t t)
-{
-    switch (t) {
-    case DI8DEVCLASS_ALL:      return "ALL";
-    case DI8DEVCLASS_DEVICE:   return "DEVICE";
-    case DI8DEVCLASS_POINTER:  return "POINTER";
-    case DI8DEVCLASS_KEYBOARD: return "KEYBOARD";
-    case DI8DEVCLASS_GAMECTRL: return "GAMECTRL";
-    default:                   return "(device type, not a class)";
-    }
+static const char *devclass_name(uint32_t t) {
+  switch (t) {
+  case DI8DEVCLASS_ALL:
+    return "ALL";
+  case DI8DEVCLASS_DEVICE:
+    return "DEVICE";
+  case DI8DEVCLASS_POINTER:
+    return "POINTER";
+  case DI8DEVCLASS_KEYBOARD:
+    return "KEYBOARD";
+  case DI8DEVCLASS_GAMECTRL:
+    return "GAMECTRL";
+  default:
+    return "(device type, not a class)";
+  }
 }
 
 static uint32_t g_vtable, g_object;
@@ -97,34 +107,33 @@ static unsigned long g_creates;
 
 /* ---- the methods ------------------------------------------------------- */
 
-static void m_QueryInterface(CPU *C)
-{
-    /* (this, riid, ppvObj). There is one interface here and every riid the
-       game asks for is answered with it; callers read the pointer, not the
-       HRESULT. */
-    uint32_t ppv = A(2);
-    if (ppv) WR32(ppv, THIS);
-    ret_com(C, S_OK, 2);
+static void m_QueryInterface(CPU *C) {
+  /* (this, riid, ppvObj). There is one interface here and every riid the
+     game asks for is answered with it; callers read the pointer, not the
+     HRESULT. */
+  uint32_t ppv = A(2);
+  if (ppv)
+    WR32(ppv, THIS);
+  ret_com(C, S_OK, 2);
 }
 
-static void m_AddRef(CPU *C)
-{
-    uint32_t n = RD32(THIS + 4u) + 1u;
-    WR32(THIS + 4u, n);
-    C->eax = n;
-    C->esp += 4u + 4u;
+static void m_AddRef(CPU *C) {
+  uint32_t n = RD32(THIS + 4u) + 1u;
+  WR32(THIS + 4u, n);
+  C->eax = n;
+  C->esp += 4u + 4u;
 }
 
-static void m_Release(CPU *C)
-{
-    uint32_t n = RD32(THIS + 4u);
-    if (n) n--;
-    WR32(THIS + 4u, n);
-    /* Not freed at zero, for the reason dinput.c gives: the object is
-       process-wide, more than one caller holds it, and handing the second a
-       dangling vtable pointer would fault somewhere that looks like input. */
-    C->eax = n;
-    C->esp += 4u + 4u;
+static void m_Release(CPU *C) {
+  uint32_t n = RD32(THIS + 4u);
+  if (n)
+    n--;
+  WR32(THIS + 4u, n);
+  /* Not freed at zero, for the reason dinput.c gives: the object is
+     process-wide, more than one caller holds it, and handing the second a
+     dangling vtable pointer would fault somewhere that looks like input. */
+  C->eax = n;
+  C->esp += 4u + 4u;
 }
 
 /*
@@ -137,11 +146,10 @@ static void m_Release(CPU *C)
  */
 #define ENUM_SEEN 8
 static struct {
-    uint32_t cls, flags, cb;
-    unsigned long n, total_reported;
-    int first_reported, last_reported;
-}
-    g_enum[ENUM_SEEN];
+  uint32_t cls, flags, cb;
+  unsigned long n, total_reported;
+  int first_reported, last_reported;
+} g_enum[ENUM_SEEN];
 static int g_nenum;
 
 /*
@@ -153,44 +161,47 @@ static int g_nenum;
  * answer was zero -- printed with its reason so that it could not be mistaken
  * for a machine with no pad plugged in.
  */
-static void enum_seen(uint32_t cls, uint32_t flags, uint32_t cb, int reported)
-{
-    int i;
-    for (i = 0; i < g_nenum; i++)
-        if (g_enum[i].cls == cls && g_enum[i].flags == flags
-            && g_enum[i].cb == cb) {
-            g_enum[i].n++;
-            g_enum[i].last_reported = reported;
-            g_enum[i].total_reported += (unsigned long)reported;
-            return;
-        }
-    if (g_nenum == ENUM_SEEN) return;
-    g_enum[g_nenum].cls = cls;
-    g_enum[g_nenum].flags = flags;
-    g_enum[g_nenum].cb = cb;
-    g_enum[g_nenum].n = 1;
-    g_enum[g_nenum].first_reported = reported;
-    g_enum[g_nenum].last_reported = reported;
-    g_enum[g_nenum].total_reported = (unsigned long)reported;
-    g_nenum++;
-    {
-        const char *nm = x86_native_name_at(cb);
-        if (reported > 0)
-            fprintf(stderr, "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
-                            "offered %d device(s) to the callback at 0x%08x "
-                            "(%s).\n", cls, devclass_name(cls), flags,
-                    reported, cb, nm ? nm : "in no body this host can name");
-        else
-            fprintf(stderr, "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
-                            "found NO device to offer.\n"
-                            "  The protocol works -- the callback at 0x%08x "
-                            "(%s) would run once per device -- so this is an "
-                            "empty device list, not a missing one. For a "
-                            "gamepad class, plug one in; see "
-                            "src/native/dinput_pad.c.\n",
-                    cls, devclass_name(cls), flags, cb,
-                    nm ? nm : "in no body this host can name");
+static void enum_seen(uint32_t cls, uint32_t flags, uint32_t cb, int reported) {
+  int i;
+  for (i = 0; i < g_nenum; i++)
+    if (g_enum[i].cls == cls && g_enum[i].flags == flags &&
+        g_enum[i].cb == cb) {
+      g_enum[i].n++;
+      g_enum[i].last_reported = reported;
+      g_enum[i].total_reported += (unsigned long)reported;
+      return;
     }
+  if (g_nenum == ENUM_SEEN)
+    return;
+  g_enum[g_nenum].cls = cls;
+  g_enum[g_nenum].flags = flags;
+  g_enum[g_nenum].cb = cb;
+  g_enum[g_nenum].n = 1;
+  g_enum[g_nenum].first_reported = reported;
+  g_enum[g_nenum].last_reported = reported;
+  g_enum[g_nenum].total_reported = (unsigned long)reported;
+  g_nenum++;
+  {
+    const char *nm = x86_native_name_at(cb);
+    if (reported > 0)
+      fprintf(stderr,
+              "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
+              "offered %d device(s) to the callback at 0x%08x "
+              "(%s).\n",
+              cls, devclass_name(cls), flags, reported, cb,
+              nm ? nm : "in no body this host can name");
+    else
+      fprintf(stderr,
+              "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
+              "found NO device to offer.\n"
+              "  The protocol works -- the callback at 0x%08x "
+              "(%s) would run once per device -- so this is an "
+              "empty device list, not a missing one. For a "
+              "gamepad class, plug one in; see "
+              "src/native/dinput_pad.c.\n",
+              cls, devclass_name(cls), flags, cb,
+              nm ? nm : "in no body this host can name");
+  }
 }
 
 /*
@@ -204,27 +215,30 @@ static void enum_seen(uint32_t cls, uint32_t flags, uint32_t cb, int reported)
  */
 #define DIDEVINST_BYTES 580u
 
-static uint32_t padinst_for(int pad)
-{
-    static uint32_t buf;
-    unsigned char inst[16], prod[16];
-    const char *nm = dinput_pad_name(pad);
+static uint32_t padinst_for(int pad) {
+  static uint32_t buf;
+  unsigned char inst[16], prod[16];
+  const char *nm = dinput_pad_name(pad);
 
-    if (!dinput_pad_instance_guid(pad, inst)) return 0;
-    if (!dinput_pad_product_guid(pad, prod))  return 0;
-    if (!buf) buf = guest_malloc(DIDEVINST_BYTES);
-    if (!buf) return 0;
-    memset(guest_memory_pointer(buf), 0, DIDEVINST_BYTES);
-    WR32(buf + 0u, DIDEVINST_BYTES);                     /* dwSize */
-    memcpy(guest_memory_pointer(buf + 4u),  inst, 16);    /* guidInstance */
-    memcpy(guest_memory_pointer(buf + 20u), prod, 16);    /* guidProduct */
-    /* DI8DEVTYPE_GAMEPAD with DI8DEVTYPEGAMEPAD_STANDARD in the second byte,
-       and DIDEVTYPE_HID (0x00010000) set: a caller that switches on the
-       subtype gets a real one rather than zero. */
-    WR32(buf + 36u, 0x00010115u);
-    snprintf(guest_memory_pointer(buf + 40u),  260, "%s", nm ? nm : "Gamepad");
-    snprintf(guest_memory_pointer(buf + 300u), 260, "%s", nm ? nm : "Gamepad");
-    return buf;
+  if (!dinput_pad_instance_guid(pad, inst))
+    return 0;
+  if (!dinput_pad_product_guid(pad, prod))
+    return 0;
+  if (!buf)
+    buf = guest_malloc(DIDEVINST_BYTES);
+  if (!buf)
+    return 0;
+  memset(guest_memory_pointer(buf), 0, DIDEVINST_BYTES);
+  WR32(buf + 0u, DIDEVINST_BYTES);                   /* dwSize */
+  memcpy(guest_memory_pointer(buf + 4u), inst, 16);  /* guidInstance */
+  memcpy(guest_memory_pointer(buf + 20u), prod, 16); /* guidProduct */
+  /* DI8DEVTYPE_GAMEPAD with DI8DEVTYPEGAMEPAD_STANDARD in the second byte,
+     and DIDEVTYPE_HID (0x00010000) set: a caller that switches on the
+     subtype gets a real one rather than zero. */
+  WR32(buf + 36u, 0x00010115u);
+  snprintf(guest_memory_pointer(buf + 40u), 260, "%s", nm ? nm : "Gamepad");
+  snprintf(guest_memory_pointer(buf + 300u), 260, "%s", nm ? nm : "Gamepad");
+  return buf;
 }
 
 /*
@@ -255,203 +269,213 @@ static uint32_t padinst_for(int pad)
  * from a header.
  */
 static const unsigned char GUID_SYS_KEYBOARD[16] = {
-    0x61,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
-    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
-};
+    0x61, 0x2B, 0x1D, 0x6F, 0xA0, 0xD5, 0xCF, 0x11,
+    0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00};
 static const unsigned char GUID_SYS_MOUSE[16] = {
-    0x60,0x2B,0x1D,0x6F, 0xA0,0xD5, 0xCF,0x11,
-    0xBF,0xC7, 0x44,0x45,0x53,0x54,0x00,0x00
-};
+    0x60, 0x2B, 0x1D, 0x6F, 0xA0, 0xD5, 0xCF, 0x11,
+    0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00};
 
-static void guid_text(uint32_t g, char *out, size_t n)
-{
-    const unsigned char *b = guest_memory_const_pointer(g);
-    snprintf(out, n, "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
-                     "%02X%02X%02X%02X%02X%02X}",
-             b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9],
-             b[10], b[11], b[12], b[13], b[14], b[15]);
+static void guid_text(uint32_t g, char *out, size_t n) {
+  const unsigned char *b = guest_memory_const_pointer(g);
+  snprintf(out, n,
+           "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-"
+           "%02X%02X%02X%02X%02X%02X}",
+           b[3], b[2], b[1], b[0], b[5], b[4], b[7], b[6], b[8], b[9], b[10],
+           b[11], b[12], b[13], b[14], b[15]);
 }
 
-static void m_EnumDevices(CPU *C)
-{
-    /* (this, dwDevType, lpCallback, pvRef, dwFlags) */
-    uint32_t cls = A(1), cb = A(2), pvref = A(3), flags = A(4);
-    int reported = 0, i, npad;
+static void m_EnumDevices(CPU *C) {
+  /* (this, dwDevType, lpCallback, pvRef, dwFlags) */
+  uint32_t cls = A(1), cb = A(2), pvref = A(3), flags = A(4);
+  int reported = 0, i, npad;
 
-    if (!cb) { ret_com(C, DIERR_INVALIDPARAM, 4); return; }
-    dinput_pad_refresh();
-    npad = dinput_pad_count();
-    if (cls == DI8DEVCLASS_GAMECTRL) {
-        /*
-         * Remember the game's own RE-ENUMERATION ROUTINE, found by asking which
-         * function this call came from rather than by hardcoding its address.
-         *
-         * XMen2.exe's FUN_00628e20 takes one BOOL argument, stores it at
-         * `this+2`, clears the attached flags at `this+0x4e4`, calls
-         * EnumDevices(GAMECTRL, ...) and clears the flag again on the way out.
-         * That flag is what its per-device callback checks before recording a
-         * controller's GUID in the ten-slot table at `this+0x27e8` -- and a
-         * device whose GUID is not in that table is created and then never
-         * stored, so the game never polls it. That is exactly what a hotswap
-         * that called the per-device callback directly produced: the pad was
-         * created and configured, and read zero times.
-         *
-         * So hotswap calls THIS, with the same argument startup uses. No host
-         * code writes guest state; the game admits the controller by its own
-         * rules.
-         */
-        const char *nm = NULL;
-        uint32_t here = x86_native_entry_containing(RD32(C->esp), &nm);
-        dinput8_controller_slots_set_manager(pvref);
-        dinput8_hotplug_note_game_enumeration(cb, pvref, here, nm);
+  if (!cb) {
+    ret_com(C, DIERR_INVALIDPARAM, 4);
+    return;
+  }
+  dinput_pad_refresh();
+  npad = dinput_pad_count();
+  if (cls == DI8DEVCLASS_GAMECTRL) {
+    /*
+     * Remember the game's own RE-ENUMERATION ROUTINE, found by asking which
+     * function this call came from rather than by hardcoding its address.
+     *
+     * XMen2.exe's FUN_00628e20 takes one BOOL argument, stores it at
+     * `this+2`, clears the attached flags at `this+0x4e4`, calls
+     * EnumDevices(GAMECTRL, ...) and clears the flag again on the way out.
+     * That flag is what its per-device callback checks before recording a
+     * controller's GUID in the ten-slot table at `this+0x27e8` -- and a
+     * device whose GUID is not in that table is created and then never
+     * stored, so the game never polls it. That is exactly what a hotswap
+     * that called the per-device callback directly produced: the pad was
+     * created and configured, and read zero times.
+     *
+     * So hotswap calls THIS, with the same argument startup uses. No host
+     * code writes guest state; the game admits the controller by its own
+     * rules.
+     */
+    const char *nm = NULL;
+    uint32_t here = x86_native_entry_containing(RD32(C->esp), &nm);
+    dinput8_controller_slots_set_manager(pvref);
+    dinput8_hotplug_note_game_enumeration(cb, pvref, here, nm);
+  }
+
+  /* DI8DEVCLASS_ALL is 0. GAMECTRL is the only class with anything in it
+     here; the keyboard and mouse are reached by their fixed GUIDs and this
+     game never enumerates them through DirectInput 8. */
+  if (cls == 0u || cls == DI8DEVCLASS_GAMECTRL) {
+    for (i = 0; i < DINPUT_PAD_MAX && reported < npad; i++) {
+      uint32_t inst = padinst_for(i);
+      CPU K;
+      if (!inst)
+        continue;
+      K = *C;
+      K.esp -= 8u;
+      WR32(K.esp + 0u, inst);
+      WR32(K.esp + 4u, pvref);
+      x86_guest_call_args(&K, cb, 8u);
+      reported++;
+      if (K.eax == 0u)
+        break; /* DIENUM_STOP */
     }
-
-    /* DI8DEVCLASS_ALL is 0. GAMECTRL is the only class with anything in it
-       here; the keyboard and mouse are reached by their fixed GUIDs and this
-       game never enumerates them through DirectInput 8. */
-    if (cls == 0u || cls == DI8DEVCLASS_GAMECTRL) {
-        for (i = 0; i < DINPUT_PAD_MAX && reported < npad; i++) {
-            uint32_t inst = padinst_for(i);
-            CPU K;
-            if (!inst) continue;
-            K = *C;
-            K.esp -= 8u;
-            WR32(K.esp + 0u, inst);
-            WR32(K.esp + 4u, pvref);
-            x86_guest_call_args(&K, cb, 8u);
-            reported++;
-            if (K.eax == 0u) break;                 /* DIENUM_STOP */
-        }
-    }
-    if (cls == DI8DEVCLASS_GAMECTRL)
-        dinput8_hotplug_enumerated(
-                                         dinput_pad_generation(), npad,
-                                         reported);
-    enum_seen(cls, flags, cb, reported);
-    ret_com(C, S_OK, 4);
+  }
+  if (cls == DI8DEVCLASS_GAMECTRL)
+    dinput8_hotplug_enumerated(dinput_pad_generation(), npad, reported);
+  enum_seen(cls, flags, cb, reported);
+  ret_com(C, S_OK, 4);
 }
 
+static void m_CreateDevice(CPU *C) {
+  /* (this, rguid, lplpDirectInputDevice, pUnkOuter) */
+  uint32_t guid = A(1), out = A(2), outer = A(3);
+  uint32_t obj = 0;
 
-static void m_CreateDevice(CPU *C)
-{
-    /* (this, rguid, lplpDirectInputDevice, pUnkOuter) */
-    uint32_t guid = A(1), out = A(2), outer = A(3);
-    uint32_t obj = 0;
+  if (!out) {
+    ret_com(C, DIERR_INVALIDPARAM, 3);
+    return;
+  }
+  WR32(out, 0);
+  if (outer || !guid) {
+    ret_com(C, DIERR_INVALIDPARAM, 3);
+    return;
+  }
 
-    if (!out) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
-    WR32(out, 0);
-    if (outer || !guid) { ret_com(C, DIERR_INVALIDPARAM, 3); return; }
-
-    if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0)
-        obj = dinput_device_new(DINPUT_DEV_KEYBOARD);
-    else if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
-        obj = dinput_device_new(DINPUT_DEV_MOUSE);
-    else if (dinput_pad_for_guid(guest_memory_const_pointer(guid)) >= 0) {
-        /* A GUID the enumeration above handed out. A device enumerated under
-           one GUID and creatable only under another is a device the game can
-           see and never open, so the two go through the same inventory. */
-        obj = dinput_device_new_pad(
-                  guest_memory_const_pointer(guid));
-    } else {
-        /*
-         * NOT a system device, so it is one that enumeration would have had to
-         * produce -- and enumeration reports none. DIERR_DEVICENOTREG is the
-         * truthful answer and the caller checks it (FUN_00628e20 tests the
-         * HRESULT with JL before touching the pointer).
-         *
-         * Named, because "a device this host does not have" and "a GUID this
-         * host failed to recognise" are the same return value and different
-         * bugs.
-         */
-        char t[64];
-        guid_text(guid, t, sizeof t);
-        fprintf(stderr, "DINPUT8: CreateDevice(%s) -- not the system keyboard "
-                        "or mouse, and no enumerated device can match it "
-                        "because EnumDevices reports none.\n", t);
-        ret_com(C, DIERR_DEVICENOTREG, 3);
-        return;
-    }
-    if (!obj) { ret_com(C, DIERR_OUTOFMEMORY, 3); return; }
-    WR32(out, obj);
-    ret_com(C, S_OK, 3);
-}
-
-static void m_GetDeviceStatus(CPU *C)
-{
-    /* (this, rguidInstance) -- S_FALSE is DirectInput's "not attached". */
-    uint32_t guid = A(1);
-    int attached = 0;
-    if (!guid) { ret_com(C, DIERR_INVALIDPARAM, 1); return; }
-    if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0 ||
-        memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
-        attached = 1;
-    else {
-        dinput_pad_refresh();
-        attached = dinput_pad_for_guid(
-                       guest_memory_const_pointer(guid)) >= 0;
-    }
-    ret_com(C, attached ? S_OK : S_FALSE, 1);
-}
-
-static void m_RunControlPanel(CPU *C)
-{
-    /* (this, hwndOwner, dwFlags) -- there is no control panel to run. */
-    ret_com(C, S_OK, 2);
-}
-
-static void m_Initialize(CPU *C)
-{
-    /* (this, hinst, dwVersion) -- already initialised by construction. */
-    ret_com(C, S_OK, 2);
-}
-
-static void m_unimplemented(CPU *C)
-{
-    const char *nm = (const char *)x86_callback_ctx();
+  if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0)
+    obj = dinput_device_new(DINPUT_DEV_KEYBOARD);
+  else if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
+    obj = dinput_device_new(DINPUT_DEV_MOUSE);
+  else if (dinput_pad_for_guid(guest_memory_const_pointer(guid)) >= 0) {
+    /* A GUID the enumeration above handed out. A device enumerated under
+       one GUID and creatable only under another is a device the game can
+       see and never open, so the two go through the same inventory. */
+    obj = dinput_device_new_pad(guest_memory_const_pointer(guid));
+  } else {
+    /*
+     * NOT a system device, so it is one that enumeration would have had to
+     * produce -- and enumeration reports none. DIERR_DEVICENOTREG is the
+     * truthful answer and the caller checks it (FUN_00628e20 tests the
+     * HRESULT with JL before touching the pointer).
+     *
+     * Named, because "a device this host does not have" and "a GUID this
+     * host failed to recognise" are the same return value and different
+     * bugs.
+     */
+    char t[64];
+    guid_text(guid, t, sizeof t);
     fprintf(stderr,
-            "\n*** DINPUT8: IDirectInput8::%s was called, and is not "
-            "implemented.\n"
-            "    EnumDevices reports no devices, so nothing should have a "
-            "device to ask about --\n"
-            "    reaching this means the game wants one anyway, and THAT is "
-            "the work item.\n"
-            "    See src/native/dinput8.c and issue #32.\n",
-            nm ? nm : "(unknown slot)");
-    fflush(stderr);
-    x86_diag_dump();
-    abort();
-    (void)C;
+            "DINPUT8: CreateDevice(%s) -- not the system keyboard "
+            "or mouse, and no enumerated device can match it "
+            "because EnumDevices reports none.\n",
+            t);
+    ret_com(C, DIERR_DEVICENOTREG, 3);
+    return;
+  }
+  if (!obj) {
+    ret_com(C, DIERR_OUTOFMEMORY, 3);
+    return;
+  }
+  WR32(out, obj);
+  ret_com(C, S_OK, 3);
+}
+
+static void m_GetDeviceStatus(CPU *C) {
+  /* (this, rguidInstance) -- S_FALSE is DirectInput's "not attached". */
+  uint32_t guid = A(1);
+  int attached = 0;
+  if (!guid) {
+    ret_com(C, DIERR_INVALIDPARAM, 1);
+    return;
+  }
+  if (memcmp(guest_memory_const_pointer(guid), GUID_SYS_KEYBOARD, 16) == 0 ||
+      memcmp(guest_memory_const_pointer(guid), GUID_SYS_MOUSE, 16) == 0)
+    attached = 1;
+  else {
+    dinput_pad_refresh();
+    attached = dinput_pad_for_guid(guest_memory_const_pointer(guid)) >= 0;
+  }
+  ret_com(C, attached ? S_OK : S_FALSE, 1);
+}
+
+static void m_RunControlPanel(CPU *C) {
+  /* (this, hwndOwner, dwFlags) -- there is no control panel to run. */
+  ret_com(C, S_OK, 2);
+}
+
+static void m_Initialize(CPU *C) {
+  /* (this, hinst, dwVersion) -- already initialised by construction. */
+  ret_com(C, S_OK, 2);
+}
+
+static void m_unimplemented(CPU *C) {
+  const char *nm = (const char *)x86_callback_ctx();
+  fprintf(stderr,
+          "\n*** DINPUT8: IDirectInput8::%s was called, and is not "
+          "implemented.\n"
+          "    EnumDevices reports no devices, so nothing should have a "
+          "device to ask about --\n"
+          "    reaching this means the game wants one anyway, and THAT is "
+          "the work item.\n"
+          "    See src/native/dinput8.c and issue #32.\n",
+          nm ? nm : "(unknown slot)");
+  fflush(stderr);
+  x86_diag_dump();
+  abort();
+  (void)C;
 }
 
 /* ---- construction ------------------------------------------------------ */
 
-static void build(void)
-{
-    static void (*const impl[VT_COUNT])(CPU *) = {
-        m_QueryInterface, m_AddRef, m_Release,
-        m_CreateDevice,
-        m_EnumDevices, m_GetDeviceStatus, m_RunControlPanel, m_Initialize,
-        NULL,                       /* FindDevice */
-        NULL,                       /* EnumDevicesBySemantics */
-        NULL                        /* ConfigureDevices */
-    };
-    int k;
-    if (g_object) return;
+static void build(void) {
+  static void (*const impl[VT_COUNT])(CPU *) = {
+      m_QueryInterface,
+      m_AddRef,
+      m_Release,
+      m_CreateDevice,
+      m_EnumDevices,
+      m_GetDeviceStatus,
+      m_RunControlPanel,
+      m_Initialize,
+      NULL, /* FindDevice */
+      NULL, /* EnumDevicesBySemantics */
+      NULL  /* ConfigureDevices */
+  };
+  int k;
+  if (g_object)
+    return;
 
-    g_vtable = guest_malloc(VT_COUNT * 4u);
-    g_object = guest_malloc(8u);
-    if (!g_vtable || !g_object) {
-        fprintf(stderr, "DINPUT8: no guest memory for the IDirectInput8 "
-                        "object\n");
-        abort();
-    }
-    for (k = 0; k < VT_COUNT; k++)
-        WR32(g_vtable + (uint32_t)k * 4u,
-             x86_native_callback(impl[k] ? impl[k] : m_unimplemented,
-                                 "IDirectInput8", VT_NAME[k],
-                                 (void *)VT_NAME[k]));
-    WR32(g_object + 0u, g_vtable);
-    WR32(g_object + 4u, 1u);          /* refcount */
+  g_vtable = guest_malloc(VT_COUNT * 4u);
+  g_object = guest_malloc(8u);
+  if (!g_vtable || !g_object) {
+    fprintf(stderr, "DINPUT8: no guest memory for the IDirectInput8 "
+                    "object\n");
+    abort();
+  }
+  for (k = 0; k < VT_COUNT; k++)
+    WR32(g_vtable + (uint32_t)k * 4u,
+         x86_native_callback(impl[k] ? impl[k] : m_unimplemented,
+                             "IDirectInput8", VT_NAME[k], (void *)VT_NAME[k]));
+  WR32(g_object + 0u, g_vtable);
+  WR32(g_object + 4u, 1u); /* refcount */
 }
 
 /*
@@ -461,56 +485,55 @@ static void build(void)
  * what matters is the OUT-POINTER: it writes the object into the field it will
  * dispatch through for the rest of the run.
  */
-void imp_DINPUT8_DirectInput8Create(CPU *C)
-{
-    uint32_t version = A(1), ppv = A(3), outer = A(4);
+void imp_DINPUT8_DirectInput8Create(CPU *C) {
+  uint32_t version = A(1), ppv = A(3), outer = A(4);
 
-    if (outer) {                        /* aggregation is not supported */
-        if (ppv) WR32(ppv, 0);
-        C->eax = DIERR_INVALIDPARAM;
-        C->esp += 4u + 5u * 4u;
-        return;
-    }
-    build();
-    if (!g_creates++)
-        fprintf(stderr, "DINPUT8: DirectInput8Create(version=0x%x) -> a native "
-                        "IDirectInput8 at 0x%08x. Input is no longer disabled "
-                        "wholesale; connected gamepads are enumerated.\n",
-                version, g_object);
-    if (ppv) WR32(ppv, g_object);
-    WR32(g_object + 4u, RD32(g_object + 4u) + 1u);
-    C->eax = S_OK;
+  if (outer) { /* aggregation is not supported */
+    if (ppv)
+      WR32(ppv, 0);
+    C->eax = DIERR_INVALIDPARAM;
     C->esp += 4u + 5u * 4u;
+    return;
+  }
+  build();
+  if (!g_creates++)
+    fprintf(stderr,
+            "DINPUT8: DirectInput8Create(version=0x%x) -> a native "
+            "IDirectInput8 at 0x%08x. Input is no longer disabled "
+            "wholesale; connected gamepads are enumerated.\n",
+            version, g_object);
+  if (ppv)
+    WR32(ppv, g_object);
+  WR32(g_object + 4u, RD32(g_object + 4u) + 1u);
+  C->eax = S_OK;
+  C->esp += 4u + 5u * 4u;
 }
 
-void dinput8_install(void)
-{
-    x86_native_export("DINPUT8.DLL", "DirectInput8Create",
-                      imp_DINPUT8_DirectInput8Create);
+void dinput8_install(void) {
+  x86_native_export("DINPUT8.DLL", "DirectInput8Create",
+                    imp_DINPUT8_DirectInput8Create);
 }
 
-void dinput8_report(void)
-{
-    int i;
-    if (!g_creates) {
-        printf("  dinput8: DirectInput8Create was never called.\n");
-        return;
-    }
-    printf("  dinput8: %lu DirectInput8Create call(s)", g_creates);
-    if (!g_nenum) {
-        printf(", and EnumDevices was never reached.\n");
-        return;
-    }
-    printf("; %d distinct EnumDevices signature(s); %lu controller inventory "
-           "generation admission(s):\n", g_nenum,
-           dinput8_hotplug_admissions());
-    for (i = 0; i < g_nenum; i++) {
-        const char *nm = x86_native_name_at(g_enum[i].cb);
-        printf("        class %u %-9s flags 0x%-4x  x%-5lu  offered "
-               "%lu total (first %d, last %d)  callback 0x%08x %s\n",
-               g_enum[i].cls, devclass_name(g_enum[i].cls), g_enum[i].flags,
-               g_enum[i].n, g_enum[i].total_reported,
-               g_enum[i].first_reported, g_enum[i].last_reported,
-               g_enum[i].cb, nm ? nm : "");
-    }
+void dinput8_report(void) {
+  int i;
+  if (!g_creates) {
+    printf("  dinput8: DirectInput8Create was never called.\n");
+    return;
+  }
+  printf("  dinput8: %lu DirectInput8Create call(s)", g_creates);
+  if (!g_nenum) {
+    printf(", and EnumDevices was never reached.\n");
+    return;
+  }
+  printf("; %d distinct EnumDevices signature(s); %lu controller inventory "
+         "generation admission(s):\n",
+         g_nenum, dinput8_hotplug_admissions());
+  for (i = 0; i < g_nenum; i++) {
+    const char *nm = x86_native_name_at(g_enum[i].cb);
+    printf("        class %u %-9s flags 0x%-4x  x%-5lu  offered "
+           "%lu total (first %d, last %d)  callback 0x%08x %s\n",
+           g_enum[i].cls, devclass_name(g_enum[i].cls), g_enum[i].flags,
+           g_enum[i].n, g_enum[i].total_reported, g_enum[i].first_reported,
+           g_enum[i].last_reported, g_enum[i].cb, nm ? nm : "");
+  }
 }

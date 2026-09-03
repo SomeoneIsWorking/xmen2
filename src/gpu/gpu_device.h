@@ -72,14 +72,14 @@ void gpu_device_headless(int on, uint32_t w, uint32_t h);
 
 /* The headless target's pixels, BGRA8, w*h*4 bytes. 0 (and says why) when the
    run is not headless or no frame has been rendered yet. */
-int  gpu_device_headless_read(void *bgra_out, uint32_t bytes,
-                              uint32_t *w_out, uint32_t *h_out);
+int gpu_device_headless_read(void *bgra_out, uint32_t bytes, uint32_t *w_out,
+                             uint32_t *h_out);
 
 /* The size a readback would need, or 0 with the reason in `why` -- not
    headless, or no frame rendered yet. Those are different answers and a caller
    deciding what to report has to be able to tell them apart. */
-int  gpu_device_headless_size(uint32_t *w_out, uint32_t *h_out, char *why,
-                              int whyn);
+int gpu_device_headless_size(uint32_t *w_out, uint32_t *h_out, char *why,
+                             int whyn);
 
 /*
  * Where to find a window if none is attached yet.
@@ -105,9 +105,9 @@ void gpu_device_set_window_provider(struct SDL_Window *(*fn)(void));
  * propagated -- the engine's beginDraw returns a bool for exactly this and
  * skips the frame when it is false.
  */
-int  gpu_frame_begin(void);
+int gpu_frame_begin(void);
 void gpu_frame_end(void);
-int  gpu_frame_in_progress(void);
+int gpu_frame_in_progress(void);
 
 /*
  * Clear the current render destination.
@@ -124,7 +124,7 @@ int  gpu_frame_in_progress(void);
  * rather than a frame restarted.
  */
 void gpu_frame_clear(unsigned mask, float r, float g, float b, float a,
-                      float depth, uint32_t stencil);
+                     float depth, uint32_t stencil);
 
 /*
  * Frames actually presented. The game's own measure of progress, which is what
@@ -145,8 +145,7 @@ unsigned long gpu_frames_presented(void);
 void gpu_device_perf(unsigned long long *frame_ns,
                      unsigned long long *frame_ns_min,
                      unsigned long long *frame_ns_max,
-                     unsigned long long *end_submits,
-                     unsigned long *intervals,
+                     unsigned long long *end_submits, unsigned long *intervals,
                      const unsigned long **hist);
 void gpu_device_frame_percentiles(unsigned long long *p50_ns,
                                   unsigned long long *p95_ns,

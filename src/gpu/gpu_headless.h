@@ -20,11 +20,11 @@ struct SDL_GPUTexture;
 struct SDL_GPUTexture *gpu_headless_target(void);
 #endif
 
-int      gpu_headless_active(void);
+int gpu_headless_active(void);
 uint32_t gpu_headless_width(void);
 uint32_t gpu_headless_height(void);
 unsigned long gpu_headless_frames(void);
-void     gpu_headless_note_frame(void);
+void gpu_headless_note_frame(void);
 
 /*
  * Follow a backbuffer resize, unless the harness gave an explicit size.

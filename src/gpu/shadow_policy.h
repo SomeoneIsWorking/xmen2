@@ -3,16 +3,12 @@
 
 #include "gpu_draw.h"
 
-enum {
-    GPU_SHADOW_NONE = 0,
-    GPU_SHADOW_CASTER = 1,
-    GPU_SHADOW_RECEIVER = 2
-};
+enum { GPU_SHADOW_NONE = 0, GPU_SHADOW_CASTER = 1, GPU_SHADOW_RECEIVER = 2 };
 
 typedef struct {
-    float light_view_projection[16];
-    float inverse_view_projection[16];
-    float light_direction[3];
+  float light_view_projection[16];
+  float inverse_view_projection[16];
+  float light_direction[3];
 } GpuShadowFramePolicy;
 
 /* Enhancement policy, deliberately independent of SDL resource mechanics. */

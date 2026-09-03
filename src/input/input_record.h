@@ -19,13 +19,13 @@ int input_record_start(const char *path);
  * does not own and which is not writable on Android.
  */
 void input_record_set_directory(const char *directory);
-void input_record_keyboard(const void *state, size_t bytes,
-                           unsigned long frame, double guest_time_s);
-void input_record_mouse(const void *state, size_t bytes,
-                        unsigned long frame, double guest_time_s);
+void input_record_keyboard(const void *state, size_t bytes, unsigned long frame,
+                           double guest_time_s);
+void input_record_mouse(const void *state, size_t bytes, unsigned long frame,
+                        double guest_time_s);
 void input_record_gamepad(unsigned pad, const char *persistent_id,
-                          const void *state, size_t bytes,
-                          unsigned long frame, double guest_time_s);
+                          const void *state, size_t bytes, unsigned long frame,
+                          double guest_time_s);
 
 const char *input_record_path(void);
 unsigned long input_record_event_count(void);

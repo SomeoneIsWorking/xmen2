@@ -12,8 +12,8 @@
 #include <stddef.h>
 
 typedef struct {
-    const char *storage_key;
-    const char *display_label;
+  const char *storage_key;
+  const char *display_label;
 } BindingRow;
 
 static const BindingRow ROWS[INPUT_BINDING_ROWS] = {
@@ -64,12 +64,10 @@ static const BindingRow ROWS[INPUT_BINDING_ROWS] = {
 _Static_assert(sizeof ROWS / sizeof ROWS[0] == INPUT_BINDING_ROWS,
                "binding-row catalogue must describe every guest row");
 
-const char *input_binding_row_storage_key(uint32_t row)
-{
-    return row < INPUT_BINDING_ROWS ? ROWS[row].storage_key : NULL;
+const char *input_binding_row_storage_key(uint32_t row) {
+  return row < INPUT_BINDING_ROWS ? ROWS[row].storage_key : NULL;
 }
 
-const char *input_binding_row_display_label(uint32_t row)
-{
-    return row < INPUT_BINDING_ROWS ? ROWS[row].display_label : NULL;
+const char *input_binding_row_display_label(uint32_t row) {
+  return row < INPUT_BINDING_ROWS ? ROWS[row].display_label : NULL;
 }

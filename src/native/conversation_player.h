@@ -6,18 +6,18 @@
 struct CPU;
 
 typedef enum ConversationPlayerState {
-    CONVERSATION_PLAYER_INACTIVE,
-    CONVERSATION_PLAYER_WAITING,
-    CONVERSATION_PLAYER_DETERMINISTIC,
-    CONVERSATION_PLAYER_CHOICE,
-    CONVERSATION_PLAYER_UNREADABLE
+  CONVERSATION_PLAYER_INACTIVE,
+  CONVERSATION_PLAYER_WAITING,
+  CONVERSATION_PLAYER_DETERMINISTIC,
+  CONVERSATION_PLAYER_CHOICE,
+  CONVERSATION_PLAYER_UNREADABLE
 } ConversationPlayerState;
 
 typedef struct ConversationPlayerSelection {
-    uint32_t manager;
-    uint32_t choose_response;
-    uint32_t selected;
-    uint32_t line_presenter;
+  uint32_t manager;
+  uint32_t choose_response;
+  uint32_t selected;
+  uint32_t line_presenter;
 } ConversationPlayerSelection;
 
 /* Conversation is a payload of an authored scene, not its player.  These

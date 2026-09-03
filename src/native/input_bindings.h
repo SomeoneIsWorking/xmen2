@@ -20,7 +20,7 @@ struct CPU;
  *
  * Device kinds: 1 keyboard, 2 mouse, 3..0xc gamepad 0..9 (FUN_006281f0).
  */
-#define INPUT_BINDING_SLOTS      4u
+#define INPUT_BINDING_SLOTS 4u
 
 /*
  * The controller objects, and which of them matter.
@@ -45,10 +45,10 @@ struct CPU;
  * being overwritten by the game's own defaults.
  */
 #define INPUT_CONTROLLERS 16u
-#define INPUT_SET_MASTER   0u
-#define INPUT_SET_WORKING  4u
-#define INPUT_SET_MENU    12u
-#define INPUT_PLAYERS      4u
+#define INPUT_SET_MASTER 0u
+#define INPUT_SET_WORKING 4u
+#define INPUT_SET_MENU 12u
+#define INPUT_PLAYERS 4u
 #define INPUT_BINDING_ALT_SLOT 1u
 
 /* Controller `index`'s binding object, or 0 -- in which case `why` says which
@@ -60,8 +60,8 @@ uint32_t input_bindings_object_at(uint32_t index, char *why, int whyn);
 /* Player 0's, which is what the gameplay bindings mean by "the" table. */
 uint32_t input_bindings_object(char *why, int whyn);
 
-int  input_bindings_read(uint32_t object, uint32_t row, uint32_t slot,
-                         uint32_t *kind, uint32_t *code);
+int input_bindings_read(uint32_t object, uint32_t row, uint32_t slot,
+                        uint32_t *kind, uint32_t *code);
 
 /*
  * Write one binding into every set that carries `player`'s bindings: the
@@ -72,8 +72,8 @@ int  input_bindings_read(uint32_t object, uint32_t row, uint32_t slot,
  */
 #define INPUT_BINDING_SETS 3u
 unsigned input_bindings_write_player(struct CPU *cpu, uint32_t player,
-                                     uint32_t row, uint32_t slot,
-                                     uint32_t kind, uint32_t code);
+                                     uint32_t row, uint32_t slot, uint32_t kind,
+                                     uint32_t code);
 void input_bindings_write(struct CPU *cpu, uint32_t object, uint32_t row,
                           uint32_t slot, uint32_t kind, uint32_t code);
 

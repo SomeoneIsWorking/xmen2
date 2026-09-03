@@ -30,9 +30,9 @@ struct CPU;
 
 typedef enum {
 #define D3D8_ENUM(name) D3D8_IF_##name,
-    D3D8_INTERFACES(D3D8_ENUM)
+  D3D8_INTERFACES(D3D8_ENUM)
 #undef D3D8_ENUM
-    D3D8_IF_COUNT
+      D3D8_IF_COUNT
 } D3D8IfaceId;
 
 typedef struct D3D8Object D3D8Object;
@@ -63,7 +63,7 @@ void d3d8_iface_implement(D3D8IfaceId id, const D3D8MethodFn *impl, int n);
 uint32_t d3d8_iface_vtable(D3D8IfaceId id);
 
 const char *d3d8_iface_name(D3D8IfaceId id);
-int         d3d8_iface_method_count(D3D8IfaceId id);
+int d3d8_iface_method_count(D3D8IfaceId id);
 
 /*
  * A new object. `ctx` is whatever the implementing file wants to hang off it
@@ -74,8 +74,8 @@ int         d3d8_iface_method_count(D3D8IfaceId id);
  * nothing in the engine reads it -- COM objects are opaque by contract.
  */
 D3D8Object *d3d8_object_new(D3D8IfaceId id, void *ctx);
-uint32_t    d3d8_object_guest(const D3D8Object *o);
-void       *d3d8_object_ctx(const D3D8Object *o);
+uint32_t d3d8_object_guest(const D3D8Object *o);
+void *d3d8_object_ctx(const D3D8Object *o);
 D3D8IfaceId d3d8_object_iface(const D3D8Object *o);
 
 /* The object at a guest address, or NULL if that address is not one of ours. */
@@ -111,7 +111,7 @@ void d3d8_object_set_destructor(D3D8Object *o, void (*fn)(D3D8Object *));
  * owned object's own count is inert and it is excluded from the leak listing,
  * because a permanent count of 1 that nobody can release reads as a leak.
  */
-void        d3d8_object_set_owner(D3D8Object *o, D3D8Object *owner);
+void d3d8_object_set_owner(D3D8Object *o, D3D8Object *owner);
 D3D8Object *d3d8_object_owner(const D3D8Object *o);
 
 /* Objects still holding a reference at shutdown, named. A surface the engine
@@ -123,7 +123,7 @@ void d3d8_object_report(void);
 
 /* Argument i, counting from 0 AFTER the this-pointer. */
 uint32_t d3d8_arg(struct CPU *C, int i);
-float    d3d8_argf(struct CPU *C, int i);
+float d3d8_argf(struct CPU *C, int i);
 
 /* Finish, returning `hr` in EAX and popping this + the declared arguments. */
 void d3d8_ret(struct CPU *C, uint32_t hr);

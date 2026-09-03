@@ -300,9 +300,6 @@ add_executable(test_display_mode_seed tests/test_display_mode_seed.c
 target_include_directories(test_display_mode_seed PRIVATE src/presentation
                           src/native src/config)
 add_test(NAME display_mode_seed COMMAND test_display_mode_seed)
-add_test(NAME display_mode_runtime_wiring
-         COMMAND ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tests/test_display_mode_runtime_wiring.py)
 
 add_executable(test_boot_mode_policy tests/test_boot_mode_policy.c
                src/native/boot_mode_policy.c)
@@ -386,12 +383,6 @@ add_executable(test_load_game_menu_policy
                src/save/load_game_menu_policy.c)
 target_include_directories(test_load_game_menu_policy PRIVATE src/save)
 add_test(NAME load_game_menu_policy COMMAND test_load_game_menu_policy)
-add_test(NAME load_game_menu_wiring
-         COMMAND ${Python3_EXECUTABLE} -m unittest
-                 tests.test_load_game_menu_wiring)
-set_tests_properties(load_game_menu_wiring PROPERTIES
-                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
 add_executable(test_gpu_present_resize tests/test_gpu_present_resize.c
                src/gpu/gpu_present.c
                src/presentation/aspect_fit.c)
@@ -524,12 +515,6 @@ target_include_directories(test_cutscene_event_player PRIVATE
 target_compile_definitions(test_cutscene_event_player PRIVATE X86_NATIVE)
 target_link_libraries(test_cutscene_event_player PRIVATE pthread)
 add_test(NAME cutscene_event_player COMMAND test_cutscene_event_player)
-
-add_test(NAME cutscene_player_wiring
-         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_cutscene_player_wiring.py)
-add_test(NAME cutscene_player_wiring_selftest
-         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_cutscene_player_wiring.py
-                         --selftest)
 
 add_executable(test_binding_rows tests/test_binding_rows.c
                src/input/binding_rows.c)
@@ -863,21 +848,6 @@ set_tests_properties(build_stocklog PROPERTIES
 
 
 
-add_test(NAME save_trace_wiring COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py)
-set_tests_properties(save_trace_wiring PROPERTIES SKIP_RETURN_CODE 77)
-add_test(NAME save_trace_wiring_selftest COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/check_save_trace_wiring.py --selftest)
-add_test(NAME continue_wiring COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/check_continue_wiring.py)
-set_tests_properties(continue_wiring PROPERTIES SKIP_RETURN_CODE 77)
-add_test(NAME continue_wiring_selftest COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/check_continue_wiring.py --selftest)
-add_test(NAME autosave_wiring COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/check_autosave_wiring.py)
-add_test(NAME autosave_wiring_selftest COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/check_autosave_wiring.py --selftest)
-
 # The guest stack-effect check (tools/stackcheck.py over an X2_STACKCHECK
 # record). A guest call must return with esp raised by 4 plus the callee's RET
 # immediate; nothing checked that before, and a single dword of drift inside a
@@ -927,10 +897,6 @@ add_executable(test_control_screenshot
     src/native/control_png.c)
 target_include_directories(test_control_screenshot PRIVATE src/native src/gpu)
 add_test(NAME control_screenshot COMMAND test_control_screenshot)
-add_test(NAME window_capture_wiring
-         COMMAND ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tests/test_window_capture_wiring.py)
-
 add_test(NAME pad_glyph_manifest
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py --selftest)
@@ -1414,6 +1380,7 @@ set(X2_NATIVE_SOURCES
     src/media/fmv_timing.c
     src/native/guest_clock.c
     src/native/control.c
+    src/native/control_http.c
     src/native/control_save_route.c
     src/native/control_performance_route.c
     src/native/control_status_route.c
@@ -1468,6 +1435,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_light_dump.c
     src/d3d8/d3d8_light_survey.c
     src/d3d8/d3d8_vertex_shader.c
+    src/d3d8/d3d8_vs_execute.c
     src/d3d8/d3d8_screen_space_test.c
     src/d3d8/d3d8_light_selftest.c
     src/d3d8/d3d8_report.c

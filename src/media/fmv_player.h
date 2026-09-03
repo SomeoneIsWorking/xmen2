@@ -9,11 +9,11 @@
 typedef struct X2FmvPlayer X2FmvPlayer;
 
 typedef enum {
-    X2_FMV_READY,
-    X2_FMV_PLAYING,
-    X2_FMV_PAUSED,
-    X2_FMV_FINISHED,
-    X2_FMV_FAILED
+  X2_FMV_READY,
+  X2_FMV_PLAYING,
+  X2_FMV_PAUSED,
+  X2_FMV_FINISHED,
+  X2_FMV_FAILED
 } X2FmvState;
 
 X2FmvPlayer *x2_fmv_open(const char *path, const X2FmvAudioSink *sink,

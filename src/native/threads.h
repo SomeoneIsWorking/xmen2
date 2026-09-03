@@ -39,7 +39,7 @@ void *guest_thread_current_record(void);
 /* SetThreadPriority/GetThreadPriority: recorded per thread and round-tripped.
    The schedule is round-robin and a priority cannot change it, but Get must
    return what THIS thread set. */
-void    guest_thread_priority_set(int32_t p);
+void guest_thread_priority_set(int32_t p);
 int32_t guest_thread_priority_get(void);
 
 /*
@@ -101,11 +101,11 @@ int guest_thread_suspend(uint32_t handle);
 /* Whether a handle names a live guest thread, and its exit code once it is
    not. Used by WaitForSingleObject (a thread handle signals when it exits) and
    by GetExitCodeThread. */
-int  guest_thread_is_thread(uint32_t handle);
-int  guest_thread_finished(uint32_t handle, uint32_t *exit_code);
+int guest_thread_is_thread(uint32_t handle);
+int guest_thread_finished(uint32_t handle, uint32_t *exit_code);
 
 /* Block until that thread exits, or until `ms` elapses. 1 if it exited. */
-int  guest_thread_join(uint32_t handle, uint32_t ms);
+int guest_thread_join(uint32_t handle, uint32_t ms);
 
 /*
  * CloseHandle on a thread handle. kernel32 REUSES handle numbers, so a record
