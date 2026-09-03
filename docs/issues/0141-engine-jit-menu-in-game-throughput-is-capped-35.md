@@ -320,3 +320,30 @@ GPU is confirmed *not* an in-game bottleneck in this benchmark: host draw
 retained/cycled, not re-allocated per frame) out of a ~21 ms frame -- ~2.5%.
 The ~21 ms is guest-body execution; the remaining lever stays x86port codegen
 quality plus the localized clusters above.
+
+## Progress (2026-09-04) -- first broad codegen lever: dead flag-store elimination
+
+x86port `dd6105b` (pin bumped in `bootstrap.py`). The inlined-ALU emitter wrote
+the six-field lazy-flag tuple on every op; `flag_write_is_dead()` now skips the
+tuple (and its carry-in computation) when a later in-block register/immediate
+ALU provably overwrites every EFLAGS bit before any reader or faultable access.
+Conservative: reg/imm killers only, 8-insn lookahead, `count`/code-budget
+cutoffs so the killer is always an instruction the block actually emits.
+
+Verified behaviour-equivalent (C285): `jit.verify` over 211,006,759 in-game
+block entries, 0 divergence; x86port suite 19/19.
+
+Effect: `jit_bench`'s flag-heavy/flags-unread kernel drops 2279 -> 808 host
+bytes and 1.00 -> 0.40 ns/insn (score 1.49x -> 0.60x native+flags). **Real
+in-game translated code is only ~1.1% smaller** (7456 -> 7372 KB over 89,900
+blocks): most guest flag writes here ARE consumed -- `cmp`/`test` feeding a
+`jcc`, `adc` chains, INC/DEC address math. Frame-wall delta is below this
+benchmark's noise floor (~31.4 vs ~31.5 ms, dominated by a ~1 s level-load
+hitch). It is a correct, compounding codegen improvement and a prerequisite for
+further flag-liveness work, not the 35->60 lever on its own.
+
+Bigger codegen levers still open: (a) allow memory-operand ALU killers by first
+extending `jit.verify` to compare CPU state on fault/unsupported exits (it
+currently skips non-BlockEnd), (b) cross-block flag liveness at the dispatcher,
+(c) widen the translatable set so fewer blocks end early into the interpreter
+(24,423 of 448,457 insns still run via helper).
