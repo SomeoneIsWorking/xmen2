@@ -69,13 +69,15 @@ frame times. The x86 basic block JIT in `shared/x86port` is integrated into
 overrides, and setjmp frames, and is selected by default (`engine=jit`).
 
 Its first landing (`775712c`) rendered black and was never verified; issue #140
-fixed three causes (blocks translated through interception points, a JITted
-thread monopolising the guest lock, a thread-shared engine call stack) and it
-now reaches the rendered main menu (~43 FPS there) and plays the intro FMV
-correctly. The movie phase is still slower than the interpreter's — measured
-(2026-09-03) to be JIT execution cost in libCriMovie's decode loop, not
-scheduler cadence (0 preemptions there, slice size makes no difference). A
-performance follow-up tracked in issue #140, not a settled number to quote here.
+fixed four causes (blocks translated through interception points, a JITted
+thread monopolising the guest lock, a thread-shared engine call stack, and —
+root-caused 2026-09-03 — `jit_intercept` gating the native-override hand-back on
+an engine frame that goes NULL once boot nesting passes `ENGINE_FRAMES_MAX`,
+which silently ran the font, splash, prompt-glyph and native-FMV overrides as
+raw guest x86 and made the intro decode through the guest's own MMX kernel).
+It now reaches the rendered main menu and plays the intro FMV through native
+FFmpeg, at roughly the interpreter's wall-clock to the menu and much faster
+once warm.
 
 ## Why the PC build, not the Xbox build
 

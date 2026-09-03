@@ -326,6 +326,13 @@ target_include_directories(test_engine_frames PRIVATE src/native)
 target_link_libraries(test_engine_frames PRIVATE Threads::Threads)
 add_test(NAME engine_frames COMMAND test_engine_frames)
 
+add_executable(test_jit_intercept tests/test_jit_intercept.c
+               src/native/x86_engine_intercept.c
+               src/native/x86_engine_frames.c)
+target_include_directories(test_jit_intercept PRIVATE src/native src/recomp)
+target_link_libraries(test_jit_intercept PRIVATE x86port)
+add_test(NAME jit_intercept COMMAND test_jit_intercept)
+
 add_executable(test_joystick_neutral tests/test_joystick_neutral.c
                src/input/joystick_neutral.c)
 target_include_directories(test_joystick_neutral PRIVATE src/input)
@@ -1280,6 +1287,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_diag_dump.c
     src/native/x86_engine_bridge.c
     src/native/x86_engine_frames.c
+    src/native/x86_engine_intercept.c
     src/native/x86_engine_jit_diag.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c

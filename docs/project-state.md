@@ -185,8 +185,14 @@ a fill-in x86-32 execution engine, `engine=interpreter` or the default
 `engine=jit` (x86port); both now reach the rendered main menu. The JIT default
 was black-screen-broken from its first landing (`775712c`) until issue #140:
 translated blocks ran through host interception points, a JITted thread never
-yielded the guest lock, and the engine's call-frame stack was shared across
-threads. The native BehavEd context/scheduler and title timed-event
+yielded the guest lock, the engine's call-frame stack was shared across
+threads, and `jit_intercept` gated the native-override hand-back on an engine
+frame that goes NULL once boot nesting passes `ENGINE_FRAMES_MAX` (which ran the
+font, splash, prompt-glyph and native-FMV overrides as raw guest x86). With all
+four fixed, `engine=jit` reaches the title screen at roughly the interpreter's
+wall-clock and plays the intro reel through native FFmpeg;
+`tests/test_jit_intercept.c` locks the override hand-back against the frame
+depth. The native BehavEd context/scheduler and title timed-event
 players complete the verified tutorial control-lock cutscene synchronously,
 silently, and without advancing guest frame/time (C274). Callback cleanup and
 module-aware override routing are checked by C178 and C209.

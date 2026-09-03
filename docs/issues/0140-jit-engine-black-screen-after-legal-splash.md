@@ -85,19 +85,39 @@ thread running, MAIN yielding on ~0.0 s intervals, no `0xdeadbeef` crash. The
 movie phase runs slower than the interpreter's (~8-12 FPS vs ~21) -- a
 performance follow-up, not this issue.
 
-**Follow-up, measured 2026-09-03:** the movie phase is *not* yield-cadence
-bound. A full headless movie-reel run reported `0 preemption(s)` for its entire
-duration -- the libCriMovie decoder is scheduled through
-`__wrap_fn_libCriMovie_10002520`'s `guest_cond_wait_ms`, not through guest-lock
-contention, so `guest_quantum()` between JIT slices never fires there. Coarsening
-the JIT slice from the 200k-instruction cap to 1<<20 changed nothing
-(~8-12 FPS either way). Each movie frame is ~170 ms of pure guest logic; the
-cost is x86port executing libCriMovie's decode/colour-convert loop, which the
-interpreter happens to run faster per-frame here. A real fix needs profiling
-that loop under the JIT (block-entry churn vs a hot arithmetic/SIMD path
-x86port lowers poorly), not scheduler tuning. Menu renders correctly at
-~21-43 FPS; movie renders correctly (Marvel/Raven/Activision logos + opening
-cinematic, proper colours, pillarboxed). Not blocking.
+### 4. jit_intercept lost every native override once nesting passed ENGINE_FRAMES_MAX
+
+**Root-caused 2026-09-03 (supersedes the earlier "it's just JIT execution cost"
+follow-up, which was wrong).** Under `engine=jit` the run still reached the menu
+but on a degraded path: ~2x the interpreter's wall-clock to the menu, and the
+intro reel played through the guest's own libCriMovie MMX IDCT decoder (running
+in x86port's scalar per-lane SIMD interpreter -- ~45% of movie-phase CPU)
+instead of the native FFmpeg FMV. The legal splash, per-font scaling, boot
+splash and prompt-glyph overrides never fired either.
+
+`x86_engine.c`'s `jit_intercept` (x86port's between-blocks hook) gated the
+`x86_native_body_at` check on `engine_frame_top()` returning a frame:
+
+    const EngineFrame *f = engine_frame_top();
+    if (f) { ...; if (eip != f->entry && x86_native_body_at(eip)) return 1; }
+
+`engine_frame_top()` returns NULL once interpreted-call nesting passes
+`ENGINE_FRAMES_MAX` (64) -- which the boot call graph does routinely now that
+nothing is statically recompiled and every exe->DLL / override call re-enters
+`x2_engine_call`. With `f` NULL the override-body hand-back was skipped, so the
+JIT translated the override entry point as raw guest x86 and ran the original
+body. Import thunks were unaffected (checked before the frame block), which is
+why DirectInput/DirectSound came up but text and FMV did not. The interpreter
+path was unaffected: its top-level loop checks `x86_native_body_at` directly,
+with no frame gate.
+
+Fix: the predicates moved to `src/native/x86_engine_intercept.{c,h}` (also
+taking `x86_engine.c` back under the 500-line cap), and the thunk/return/body
+check is now unconditional -- the frame is only a refinement for the
+stack-relative return. Verified: `engine=jit` now emits `UI TEXT: scaling every
+font`, the legal-splash `PROMPT DRAW` strings, `BOOT SPLASH`, and
+`movie: loaded native MPEG-1/ADX SFD` for the full i101-i107 reel, and reaches
+the menu at roughly the interpreter's wall-clock, ~33 FPS steady there.
 
 ## Regression coverage
 
@@ -107,6 +127,11 @@ cinematic, proper colours, pillarboxed). Not blocking.
 * xmen2 `tests/test_engine_frames.c`: two pthreads keep independent frame
   stacks (aborts if the stack is made shared again), plus the single-thread
   push/pop/depth-restore contract.
+* xmen2 `tests/test_jit_intercept.c` (cause 4): pushes the frame stack past
+  `ENGINE_FRAMES_MAX` so `engine_frame_top()` returns NULL, then asserts
+  `x86_engine_jit_intercept` still hands a native-override body back to the host;
+  also covers the no-frame, shallow-frame, thunk, plain-guest, and
+  selftest-in-place cases and `x86_engine_jit_boundary`.
 * A full headless boot-to-menu parity run is an observation, not a gate
   ([[game-playing-runs-are-observation-not-gates]]): verified once by hand here
   (both engines reach the menu, `engine=jit` 1.06B block entries, 0 fallbacks,
@@ -114,8 +139,12 @@ cinematic, proper colours, pillarboxed). Not blocking.
 
 ## Do not
 
-Do not "fix" the slow movie phase by removing the quantum yield -- that is what
-unsticks the rendezvous. Do not make the engine frame stack shared again. Do
-not tune the JIT slice size for the movie phase: it was measured to have no
-effect (0 preemptions there); the slowness is JIT execution cost in the
-libCriMovie decode loop, addressable only by profiling that loop.
+Do not remove the quantum yield -- that is what unsticks the movie rendezvous.
+Do not make the engine frame stack shared again. Do not gate the
+thunk/return-addr/native-body checks in `x86_engine_jit_intercept` /
+`x86_engine_jit_boundary` on `engine_frame_top()` returning non-NULL: the frame
+stack stops recording past `ENGINE_FRAMES_MAX` and boot nesting passes that
+routinely (that was cause 4). The earlier note here claimed the movie phase was
+"JIT execution cost in the libCriMovie decode loop" -- that was wrong; the intro
+was decoding through the guest's MMX kernel because cause 4 suppressed the
+native FMV override. With the fix the reel plays through native FFmpeg.

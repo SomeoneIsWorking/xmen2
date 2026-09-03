@@ -3,6 +3,7 @@
 #include "guest_memory.h"
 #include "x86_engine_internal.h"
 #include "x86_engine_frames.h"
+#include "x86_engine_intercept.h"
 #include "x86_engine_jit_diag.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
@@ -67,39 +68,9 @@ static X86pDecodeCache g_decode_cache;
  * The engine's own per-thread call stack, for a fault report and for the
  * intercept checks. x86_engine_frames.c owns it; a host backtrace stops at
  * x2_engine_call, so without this a fault inside interpreted code names no
- * guest function at all.
+ * guest function at all. The interception predicates handed to x86port's JIT
+ * live in x86_engine_intercept.c.
  */
-
-static int jit_intercept(const X86pCpu *cpu, void *user) {
-  (void)user;
-  const uint32_t eip = cpu->eip;
-  if (__builtin_expect((uint32_t)(eip - 0x00080000u) < 0x50000u, 0)) {
-    if (x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR)
-      return 1;
-  }
-  {
-    const EngineFrame *f = engine_frame_top();
-    if (f) {
-      if (eip == f->return_to && cpu->reg[kX86pEsp] >= f->entry_esp + 4u)
-        return 1;
-      if (eip != f->entry && x86_native_body_at(eip))
-        return 1;
-    }
-  }
-  return 0;
-}
-
-/*
- * The pure-EIP subset of jit_intercept, given to the translator so a block is
- * never emitted THROUGH an interception point reached by fall-through rather
- * than by a call. The stack-relative return check is omitted: a RET already
- * ends a block, so the translator never needs it.
- */
-static int jit_boundary(uint32_t eip, void *user) {
-  (void)user;
-  return x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR ||
-         x86_native_body_at(eip) || x86_setjmp3_thunk(eip);
-}
 
 /* ---- selection and setup ---------------------------------------------- */
 
@@ -143,8 +114,8 @@ int x2_engine_init(char *reason, unsigned reason_len) {
                                           reason, reason_len);
     if (!g_engine.jit)
       return 0;
-    x86p_jit_engine_set_intercept(g_engine.jit, jit_intercept, NULL);
-    x86p_jit_engine_set_boundary(g_engine.jit, jit_boundary, NULL);
+    x86p_jit_engine_set_intercept(g_engine.jit, x86_engine_jit_intercept, NULL);
+    x86p_jit_engine_set_boundary(g_engine.jit, x86_engine_jit_boundary, NULL);
     x86_engine_jit_diag_configure(g_engine.jit);
   }
   g_engine.ready = 1;
