@@ -260,3 +260,13 @@ draw/skinning cost up but the crossing cost scales with it.
   In a 2000-frame in-game benchmark (`act0/tutorial/tutorial1`, `X2_UNPACED=1`):
   Average frame time reduced from 16.62 ms to 15.14 ms (-8.9%), with present
   framerate increasing from 57.4 FPS to 62.7 FPS (+9.2%).
+
+- **Fast-path Meyers singleton getter for timer (Claim C283)**:
+  `XMen2.exe!0x0055b610` was entered ~2.8M times per 2000 frames to retrieve the
+  global timer singleton (`0x007ac248`). Each call previously set up and tore down
+  a full MSVC SEH exception frame via `x86_guest_body`.
+  In `src/native/startup.c`, `x2_override_0055b610` now directly returns `0x007ac248`
+  in `C->eax` and pops `ret` (`C->esp += 4u`) once the guard byte is set, skipping
+  SEH construction and engine re-entry.
+  Average frame time dropped further to 14.65 ms, with framerate rising to 64.7 FPS
+  (2000 frames completed in 30.95s vs 34.95s originally, a cumulative +12.7% FPS improvement).

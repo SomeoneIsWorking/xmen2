@@ -129,21 +129,20 @@ void x2_override_00617480(CPU *C) {
 void x2_override_0055b610(CPU *C) {
   static int mode = -1; /* -1 unknown, 0 off, 1 on */
   static uint32_t field;
+  static uint32_t s_guard_addr;
+  static uint32_t s_inst_addr;
 
-  if (mode < 0) {
+  if (__builtin_expect(mode < 0, 0)) {
     const char *e = getenv("X2_UNPACED");
     mode = (e && *e && *e != '0') ? 1 : 0;
-    if (mode) {
-      X86Module *m;
-      for (m = x86_modules(); m; m = m->next)
-        if (m->preferred == 0x00400000u && *m->base)
-          break;
-      if (!m) {
-        fprintf(stderr, "X2_UNPACED: the exe is not mapped, so the "
-                        "frame cap could not be found. The run is "
-                        "PACED, whatever the variable says.\n");
-        mode = 0;
-      } else {
+    X86Module *m;
+    for (m = x86_modules(); m; m = m->next)
+      if (m->preferred == 0x00400000u && *m->base)
+        break;
+    if (m) {
+      s_guard_addr = *m->base + (0x007ac288u - 0x00400000u);
+      s_inst_addr = *m->base + (0x007ac248u - 0x00400000u);
+      if (mode) {
         field = *m->base + APP_OBJECT_RVA + APP_FRAME_CAP;
         printf("X2_UNPACED: the game's frame cap at 0x%08x is zeroed "
                "before every clock read, so the frame loop runs as "
@@ -152,10 +151,25 @@ void x2_override_0055b610(CPU *C) {
                field);
         fflush(stdout);
       }
+    } else if (mode) {
+      fprintf(stderr, "X2_UNPACED: the exe is not mapped, so the "
+                      "frame cap could not be found. The run is "
+                      "PACED, whatever the variable says.\n");
+      mode = 0;
     }
   }
   if (mode)
     WRF32(field, 0.0f);
+
+  /* Fast path: once initialized, 0x0055b610 is a pure Meyers singleton getter
+     returning the address of the global timer instance at 0x007ac248.
+     Bypassing x86_guest_body avoids 2.8M guest SEH frame setups per 2000 frames. */
+  if (__builtin_expect(s_guard_addr && (RD8(s_guard_addr) & 1u), 1)) {
+    C->eax = s_inst_addr;
+    C->esp += 4u;
+    return;
+  }
+
   x86_guest_body(C, "XMen2.exe", 0x0055b610u);
 }
 
