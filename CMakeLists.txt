@@ -320,6 +320,12 @@ add_executable(test_boot_menu_transition tests/test_boot_menu_transition.c
 target_include_directories(test_boot_menu_transition PRIVATE src/native src/recomp)
 add_test(NAME boot_menu_transition COMMAND test_boot_menu_transition)
 
+add_executable(test_engine_frames tests/test_engine_frames.c
+               src/native/x86_engine_frames.c)
+target_include_directories(test_engine_frames PRIVATE src/native)
+target_link_libraries(test_engine_frames PRIVATE Threads::Threads)
+add_test(NAME engine_frames COMMAND test_engine_frames)
+
 add_executable(test_joystick_neutral tests/test_joystick_neutral.c
                src/input/joystick_neutral.c)
 target_include_directories(test_joystick_neutral PRIVATE src/input)
