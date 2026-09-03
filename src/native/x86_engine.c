@@ -84,17 +84,16 @@ static struct {
 static int jit_intercept(const X86pCpu *cpu, void *user) {
   (void)user;
   const uint32_t eip = cpu->eip;
-  if (x86_is_thunk(eip))
-    return 1;
-  if (eip == ENGINE_RETURN_ADDR)
-    return 1;
+  if (__builtin_expect((uint32_t)(eip - 0x00080000u) < 0x50000u, 0)) {
+    if (x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR)
+      return 1;
+  }
   if (g_engine.depth > 0 && g_engine.depth <= ENGINE_FRAMES) {
     const uint32_t return_to = g_frame[g_engine.depth - 1].return_to;
-    const uint32_t entry_esp = g_frame[g_engine.depth - 1].entry_esp;
-    const uint32_t entry = g_frame[g_engine.depth - 1].entry;
-    if (eip == return_to && cpu->reg[kX86pEsp] >= entry_esp + 4u)
+    if (eip == return_to &&
+        cpu->reg[kX86pEsp] >= g_frame[g_engine.depth - 1].entry_esp + 4u)
       return 1;
-    if (eip != entry && x86_native_body_at(eip))
+    if (eip != g_frame[g_engine.depth - 1].entry && x86_native_body_at(eip))
       return 1;
   }
   return 0;

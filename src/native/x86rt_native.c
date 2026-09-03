@@ -76,6 +76,15 @@ static int g_overrides_resolved;
  */
 #define OWNED_SLOTS (X2_MAX_OVERRIDES * 4)
 static uint32_t g_owned[OWNED_SLOTS];
+static uint32_t g_override_bloom[64];
+static inline void override_bloom_add(uint32_t a) {
+  g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] |=
+      (1u << (((a >> 2) * 2654435761u) & 31u));
+}
+static inline int override_bloom_has(uint32_t a) {
+  return (g_override_bloom[(((a >> 2) * 2654435761u) >> 5) & 63u] &
+          (1u << (((a >> 2) * 2654435761u) & 31u))) != 0;
+}
 
 static unsigned owned_slot(uint32_t addr) {
   /* Entry points are 4- or 16-byte aligned, so the low bits carry little;
@@ -90,15 +99,13 @@ static void owned_insert(uint32_t addr) {
       return;
     i = (i + 1u) & (OWNED_SLOTS - 1u);
     if (++n == OWNED_SLOTS) {
-      fprintf(stderr,
-              "x86rt: the owned-address set is full at %d "
-              "entries, so 0x%08x would be dispatched as guest "
-              "code and interpreted as x86.\n",
+      fprintf(stderr, "x86rt: owned-address set full at %d, addr 0x%08x\n",
               OWNED_SLOTS, addr);
       abort();
     }
   }
   g_owned[i] = addr;
+  override_bloom_add(addr);
 }
 
 static int owned_has(uint32_t addr) {
@@ -1030,9 +1037,6 @@ const char *x86_native_name_at(uint32_t addr) {
  * module whose import is still the weak stub gets no thunk, and stays
  * poisoned, so nothing is silently promoted to "working".
  */
-#define THUNK_BASE 0x000C0000u
-#define THUNK_MAX 2048
-
 static struct {
   void (*stub)(CPU *);
   const char *mod, *sym;
@@ -1277,11 +1281,11 @@ static int thunk_call(uint32_t addr, CPU *C) {
  * cannot make (reported, not owned). Change one, change the other.
  */
 int x86_native_body_at(uint32_t addr) {
-  if (addr >= THUNK_BASE && addr < THUNK_BASE + (uint32_t)THUNK_MAX * 16u) {
+  if (x86_is_thunk(addr)) {
     uint32_t t = (addr - THUNK_BASE) / 16u;
     return (int)t < g_nthunk && g_thunk[t].stub ? 1 : 0;
   }
-  return owned_has(addr);
+  return override_bloom_has(addr) && owned_has(addr);
 }
 
 /* ---- the boundary ring -------------------------------------------------
@@ -2192,10 +2196,6 @@ void x87_fault(const char *what) {
  * case: an unbound slot holds a poison address, and reporting "libIGCore.dll!
  * ?createInstance@..." is worth far more than reporting 0x00090120.
  */
-int x86_is_thunk(uint32_t addr) {
-  return addr >= THUNK_BASE && addr < THUNK_BASE + (uint32_t)THUNK_MAX * 16u;
-}
-
 void x86_import_call(CPU *C, uint32_t slot_va, const char *mod,
                      const char *sym) {
   uint32_t target = *(volatile uint32_t *)x86_guest_pointer(slot_va);

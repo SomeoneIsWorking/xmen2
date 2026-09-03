@@ -55,7 +55,12 @@ int x86_native_call_at(uint32_t addr, struct CPU *C);
    this at every instruction: an import thunk, a native override and a
    recompiled body are all HOST code it must hand back rather than interpret. */
 int x86_native_body_at(uint32_t addr);
-int x86_is_thunk(uint32_t addr);
+#define THUNK_BASE 0x000C0000u
+#define THUNK_MAX 2048
+
+static inline int x86_is_thunk(uint32_t addr) {
+  return (uint32_t)(addr - THUNK_BASE) < ((uint32_t)THUNK_MAX * 16u);
+}
 /* The mapped entry point of a resolved override, by index, or 0 past the end.
    An address x86_native_body_at must answer yes for, so that predicate can be
    checked against both answers rather than only the one it gives most often. */
