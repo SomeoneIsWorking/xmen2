@@ -346,11 +346,15 @@ staging fixes with measured reductions (C207 and C233).
 Gap: no target frame-time or load-time budget defines "fast enough"; current
 headless performance remains roughly 30 fps with the game cap removed, the
 roughly 500 ms load hitch remains visible, and asset I/O has not been profiled.
-Under `engine=jit` the `X2_HOTEP` wall-time split attributes the majority of a
-steady-state menu interval to guest->host import crossings rather than JIT
-guest bodies, dominated by a ~20k-calls/frame `QueryPerformanceCounter` pacing
-spin (issue #141); the per-thunk unwind of `x86p_jit_engine_run` is the
-structural cost.
+Under `engine=jit` the per-thunk unwind of `x86p_jit_engine_run` was the
+structural crossing cost (issue #141). x86port `d5d3b00` adds an inline
+between-blocks dispatch hook and xmen2 services import thunks / override bodies
+without unwinding the JIT slice (`x86_engine_dispatch.c`, CVar
+`jit.inline_dispatch`, default on). Measured in-game on an identical driven
+input path: host-import share of wall time fell from ~62% to ~18% and frames
+rendered per fixed wall-time window rose ~15%. The remaining gap is now JIT
+guest-body execution cost (x86port translator quality), plus the still-open
+`QueryPerformanceCounter` pacing spin (issue #141 option 2).
 
 ### S011 — oracle and differential RE workflow: partial
 

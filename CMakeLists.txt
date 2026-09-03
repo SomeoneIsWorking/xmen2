@@ -1288,6 +1288,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine_bridge.c
     src/native/x86_engine_frames.c
     src/native/x86_engine_intercept.c
+    src/native/x86_engine_dispatch.c
     src/native/x86_engine_jit_diag.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c
@@ -1412,6 +1413,7 @@ set(X2_NATIVE_SOURCES
     src/native/shell32.c
     src/native/winmm.c
     src/native/threads.c
+    src/native/threads_engine_report.c
     src/native/x86_tail_policy.c
     src/native/x86_reached.c
     src/native/x86_hotep.c

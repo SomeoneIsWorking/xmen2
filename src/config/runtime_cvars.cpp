@@ -27,13 +27,22 @@ lucent::cvar::Var<bool> g_jit_cache{"jit.cache", true};
  * first whole-machine divergence. */
 lucent::cvar::Var<bool> g_jit_verify{"jit.verify", false};
 
+/* on: an interception point that lands on host code this dispatcher owns (an
+ * import thunk or a resolved native override body) is serviced inline and the
+ * JIT run carries on, instead of unwinding x86p_jit_engine_run and being
+ * re-entered per crossing. off restores the unwind-per-crossing path -- the
+ * A/B for measuring the inline handler's effect. */
+lucent::cvar::Var<bool> g_jit_inline_dispatch{"jit.inline_dispatch", true};
+
 void apply_set_token(const char *token) {
   const char *eq = std::strchr(token, '=');
   if (eq == nullptr || eq == token) {
-    std::fprintf(stderr, "x2native: --set expects NAME=VALUE, got '%s'\n", token);
+    std::fprintf(stderr, "x2native: --set expects NAME=VALUE, got '%s'\n",
+                 token);
     return;
   }
-  lucent::cvar::set_arg(std::string(token, static_cast<size_t>(eq - token)), eq + 1);
+  lucent::cvar::set_arg(std::string(token, static_cast<size_t>(eq - token)),
+                        eq + 1);
 }
 
 } // namespace
@@ -43,8 +52,10 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_engine);
   lucent::cvar::register_var(g_jit_cache);
   lucent::cvar::register_var(g_jit_verify);
+  lucent::cvar::register_var(g_jit_inline_dispatch);
 
-  const std::string path = std::string(x2_config_directory()) + "/x2native-runtime.conf";
+  const std::string path =
+      std::string(x2_config_directory()) + "/x2native-runtime.conf";
   lucent::cvar::load_file(path.c_str());
 
   for (int i = 1; i < argc; i++) {

@@ -28,7 +28,7 @@ LEGACY_LIMITS = {
     "src/recomp/x86rt.h": 1535,               # was 1422
     "src/gpu/gpu_draw.c": 1369,               # was 1250
     "src/d3d8/d3d8_report.c": 1530,           # was 1395
-    "src/native/threads.c": 1070,             # was 1013
+    "src/native/threads.c": 842,              # was 1070; igThreadManager report -> threads_engine_report.c
     "src/gpu/gpu_device.c": 841,              # was 810
     "src/d3d8/d3d8_resource.c": 1050,         # was 924
     "src/native/dinput_pad.c": 651,           # was 619

@@ -71,4 +71,8 @@ void x2_engine_from_x86p(const X86pCpu *in, struct CPU *C);
 void x2_engine_callout_to_x86p(const struct CPU *C, X86pCpu *out);
 void x2_engine_callout_from_x86p(const X86pCpu *in, struct CPU *C);
 
+/* One host thunk / override crossing happened. A run counter for the shutdown
+   report; kept in x86_engine.c with the rest of g_engine. */
+void x2_engine_note_callout(void);
+
 #endif

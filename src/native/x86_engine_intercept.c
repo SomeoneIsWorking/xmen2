@@ -7,6 +7,16 @@
 
 #include "cpu.h"
 
+#include <stdint.h>
+
+int x86_engine_host_body_at(uint32_t eip, uint32_t entry) {
+  if (__builtin_expect((uint32_t)(eip - 0x00080000u) < 0x50000u, 0))
+    return x86_is_thunk(eip);
+  if (eip != entry && x86_override_bloom_has(eip))
+    return x86_native_body_at(eip);
+  return 0;
+}
+
 int x86_engine_intercepts_addr(uint32_t eip) {
   if (__builtin_expect((uint32_t)(eip - 0x00080000u) < 0x50000u, 0)) {
     if (x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR)

@@ -8,6 +8,37 @@ created: 2026-09-03
 updated: 2026-09-03
 ---
 
+## Option 1 landed: inline intercept dispatch (2026-09-03)
+
+x86port `d5d3b00` adds `x86p_jit_engine_set_dispatch` -- a between-blocks hook
+called *after* the intercept predicate fires. It either services the hand-back
+and returns `kX86pDispatchContinue` (the run stays inside `x86p_jit_engine_run`)
+or returns `kX86pDispatchUnwind` for the cases that need the interpreter loop's
+host frame back (a return to the interpreted call's caller, a setjmp3 thunk, the
+engine return trampoline, an address this handler does not own). xmen2 side:
+`src/native/x86_engine_dispatch.c` (`x86_engine_jit_dispatch` + the per-thread
+`EngineCallCtx` stack), gated by the layered CVar `jit.inline_dispatch`
+(default on; `--set jit.inline_dispatch=0` is the A/B).
+
+Measured, driven interactively into a real in-game level (not a script),
+identical timed input path, matched wall-time windows:
+
+| metric (45-70s window) | inline_dispatch=0 | inline_dispatch=1 |
+|---|---|---|
+| host-import share of wall time | 60-64% | 17-19% |
+| cumulative frames rendered by 70s | 2725 | 3124 (+14.6%) |
+| frame wall avg at 70s | 25.3 ms | 22.1 ms |
+
+The crossing cost is no longer the dominant term in-game: with it removed, the
+wall-time split is ~82% guest bodies / ~18% host imports. The remaining gap to
+60 FPS is **JIT-translated guest-body execution cost** -- translator quality, a
+separate x86port workstream. Per-interval present rate held steady (~12 FPS in
+that level, dispatch on or off); the rising *cumulative* frame-wall average is
+the fast attract-sequence frames being averaged out, not a regression.
+
+Options 2-4 below remain open and are now the next levers.
+
+
 ## Where the time goes
 
 Headless `--d3d8 --no-window --set engine=jit --unbounded`, run to steady
