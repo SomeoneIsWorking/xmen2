@@ -152,15 +152,24 @@ class LauncherContract(unittest.TestCase):
             local_ref = target / ".git/valuable-local-ref"
             local_ref.write_text("must survive")
 
-            pinned = [repo.url, "", repo.revision]
+            # url, status, HEAD, submodule status
+            pinned = [repo.url, "", repo.revision, ""]
             with mock.patch.object(bootstrap, "run_git", side_effect=pinned):
                 bootstrap.validate_checkout(repo, target)
 
-            outdated = [repo.url, "", "b" * 40]
+            outdated = [repo.url, "", "b" * 40, ""]
             with mock.patch.object(bootstrap, "run_git", side_effect=outdated):
                 with self.assertRaisesRegex(SystemExit, "move it aside"):
                     bootstrap.validate_checkout(repo, target)
             self.assertEqual(local_ref.read_text(), "must survive")
+
+            # A pin covers the submodules too: x86port's Zydis is one, and an
+            # uninitialized one validates clean and then fails in CMake.
+            missing = [repo.url, "", repo.revision,
+                       "-0000000000000000000000000000000000000000 vendor/zydis"]
+            with mock.patch.object(bootstrap, "run_git", side_effect=missing):
+                with self.assertRaisesRegex(SystemExit, "vendor/zydis"):
+                    bootstrap.validate_checkout(repo, target)
 
     def test_atomic_text_publication_preserves_old_value_on_failure(self):
         with scratch_directory() as raw:

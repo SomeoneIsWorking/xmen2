@@ -34,11 +34,11 @@ class SharedRepo:
 
 SHARED_REPOS = (
     SharedRepo("alchemy", "https://github.com/SomeoneIsWorking/alchemy.git",
-               "196bc4d968678b4a8a2b5020cb0cd58874596e0d", "src/igb.h"),
+               "f95e0931c6ea97f14f02188df641d8ddd9cea227", "src/igb.h"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
-               "8282d4c7d19ef3a625866524092c1d45ec080110", "sets"),
+               "42a1648ab0414418893b0ebd6eec69fe5b6a97d4", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
-               "ab154c7d90f29959e9391217ecfc4b8e5874b9bd", "tools/android_port.py"),
+               "2dc4bcb12483aeae183387e8b46ec5b76a381de2", "tools/android_port.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact
     # revision, never a branch: a fresh clone that resolved to whatever `main`
     # happened to be would make two machines run different engines while
@@ -244,6 +244,14 @@ def validate_checkout(repo: SharedRepo, target: Path) -> None:
                "move it aside or configure a different checkout")
     if not (target / repo.marker).exists():
         refuse(f"{target} is pinned but missing required marker {repo.marker}")
+    uninitialized = [line.split()[1]
+                     for line in run_git(["submodule", "status", "--recursive"],
+                                         target).splitlines()
+                     if line.startswith("-")]
+    if uninitialized:
+        refuse(f"{target} is at the pin but its submodules are not checked out: "
+               + ", ".join(uninitialized)
+               + "; run `git submodule update --init --recursive` there")
 
 
 def clone_repo(repo: SharedRepo, target: Path) -> None:
@@ -253,6 +261,10 @@ def clone_repo(repo: SharedRepo, target: Path) -> None:
         print(f"bootstrap: cloning {repo.url} at {repo.revision}")
         run_git(["clone", "--no-checkout", repo.url, str(staged)])
         run_git(["checkout", "--detach", repo.revision], staged)
+        # A pinned repository's submodules are part of that pin. Without this a
+        # cold clone validates clean and then fails in CMake with a directory
+        # that "does not contain a CMakeLists.txt file" -- x86port's Zydis.
+        run_git(["submodule", "update", "--init", "--recursive"], staged)
         validate_checkout(repo, staged)
         if target.exists():
             refuse(f"{target} appeared during provisioning; refusing to overwrite it")
