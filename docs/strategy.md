@@ -4,15 +4,15 @@
 functions with hand-written native code incrementally. Target is the PC build,
 not the Xbox build.**
 
-**Superseded 2026-09-03: this document used to decide for STATIC
-recompilation** — an offline lifter turning Ghidra-derived function boundaries
-into C, 116,500 functions and 307 MB of generated source, regenerated at build
-time. That corpus, its generator and its inputs are deleted (27f0a7b), and the
-game now runs entirely on `shared/x86port`'s interpreter. What is gone is
-*static* recompilation; translating guest code to host code **at runtime** — a
-dynarec — remains open and is an optimisation decision, taken on a measurement,
-not a matter of principle. See `shared/jit-common/docs/migration.md` and its
-I004.
+**Superseded 2026-09-03: this document used to decide for CODE GENERATION** —
+an offline lifter turning Ghidra-derived function boundaries into C, 116,500
+functions and 307 MB of generated source, regenerated at build time. That
+corpus, its generator and its inputs are deleted (27f0a7b), and the game now
+runs entirely on `shared/x86port`'s interpreter. What is ruled out is
+**generating guest code as source for the build to compile — that, and only
+that**. Every other way of executing the guest stays open, including a dynarec
+or a JIT, and choosing one is an optimisation decision taken on a measurement.
+See `shared/jit-common/docs/migration.md` and its I004.
 
 Measurements behind this are in `docs/info/claims/` with their falsifiers.
 
@@ -34,10 +34,12 @@ builds are already x86, so Wine already solves the problem. **That was wrong and
 has been falsified.** It scored the port only on escaping an alien ISA and
 ignored ownership.
 
-## Why runtime execution rather than static recompilation
+## Why runtime execution rather than generated source
 
 Both answer "what runs the guest's code" and both keep the same override model
-above it. The reasons the static answer lost are cost, not capability:
+above it. The reasons generated source lost are cost, not capability — and note
+that none of them argues against translating guest code, only against emitting
+it as build input:
 
 - **The build.** 307 MB of generated C across 89 translation units, regenerated
   from the player's own images, is the single biggest thing in the build and it
