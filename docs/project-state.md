@@ -179,8 +179,14 @@ not count as Android performance evidence.
 Observed subset: `x2native` maps and initializes the original PE images, runs
 their locally generated C bodies in a 64-bit native host, supplies the reached
 Win32/CRT/DirectInput/DirectSound/D3D8 boundaries, and has traversed menus,
-movies, level load, gameplay, death, and return-to-menu paths without a hybrid
-machine-code fallback. The native BehavEd context/scheduler and title timed-event
+movies, level load, gameplay, death, and return-to-menu paths. Guest code with
+no generated body (the runtime-loaded DLLs, libCriMovie among them) runs through
+a fill-in x86-32 execution engine, `engine=interpreter` or the default
+`engine=jit` (x86port); both now reach the rendered main menu. The JIT default
+was black-screen-broken from its first landing (`775712c`) until issue #140:
+translated blocks ran through host interception points, a JITted thread never
+yielded the guest lock, and the engine's call-frame stack was shared across
+threads. The native BehavEd context/scheduler and title timed-event
 players complete the verified tutorial control-lock cutscene synchronously,
 silently, and without advancing guest frame/time (C274). Callback cleanup and
 module-aware override routing are checked by C178 and C209.

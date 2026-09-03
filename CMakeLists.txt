@@ -1273,6 +1273,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_dispatch.c
     src/native/x86_diag_dump.c
     src/native/x86_engine_bridge.c
+    src/native/x86_engine_frames.c
     src/native/x86_engine_jit_diag.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c

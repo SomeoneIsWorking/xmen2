@@ -64,10 +64,17 @@ it as build input:
 interpreted — the Alchemy DLLs were still on the substrate at the time — and the
 5-frame runs were correctness, not performance. In 3D gameplay where all modules
 run through runtime execution, pure interpreter throughput led to multi-second
-frame times. The x86-64 basic block JIT in `shared/x86port` is integrated into
+frame times. The x86 basic block JIT in `shared/x86port` is integrated into
 `src/native/x86_engine.c` with intercept support for host thunks, native
-overrides, and setjmp frames, and is selected by default (`X2_ENGINE=jit`),
-delivering ~7.6M blocks/second and eliminating the interpreter bottleneck.
+overrides, and setjmp frames, and is selected by default (`engine=jit`).
+
+Its first landing (`775712c`) rendered black and was never verified; issue #140
+fixed three causes (blocks translated through interception points, a JITted
+thread monopolising the guest lock, a thread-shared engine call stack) and it
+now reaches the rendered main menu (~43 FPS there) and plays the intro FMV
+correctly. The movie phase is still slower than the interpreter's and the
+`guest_quantum()` slice cadence wants tuning — a measured performance
+follow-up, tracked in issue #140, not a settled number to quote here.
 
 ## Why the PC build, not the Xbox build
 

@@ -2,6 +2,7 @@
 
 #include "guest_memory.h"
 #include "x86_engine_internal.h"
+#include "x86_engine_frames.h"
 #include "x86_engine_jit_diag.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
@@ -13,6 +14,7 @@
 #include "jit_engine.h"
 #include "jit_x64.h"
 #include "x87.h"
+#include "threads.h"
 
 #include <lucent/cvar_c.h>
 
@@ -45,8 +47,6 @@ static struct {
   unsigned long taken;
   unsigned long long insns;
   unsigned long callouts;
-  unsigned long deepest;
-  unsigned long depth;
   uint32_t program_entry; /* 0 until the program itself is entered */
   unsigned long setjmps;
   unsigned long longjmps;
@@ -55,34 +55,20 @@ static struct {
 /*
  * The decode cache, one for the whole engine.
  *
- * Guest threads take the guest lock before running guest code, so exactly one
- * of them is inside this loop at a time -- the same assumption g_frame and the
- * depth counter already make. Its entries validate themselves against the
- * guest bytes on every hit (see x86port's decode_cache.h), so a stale entry
- * cannot execute; what a second concurrent runner would cost is a torn write,
- * which is why this is stated as an invariant rather than left to chance.
+ * Its entries validate themselves against the guest bytes on every hit (see
+ * x86port's decode_cache.h), so a stale entry cannot execute; the interpreter
+ * path that uses it is rarely entered by two guest threads at once, and the
+ * only cost if it is would be a torn write that the next hit's validation
+ * rejects.
  */
 static X86pDecodeCache g_decode_cache;
 
 /*
- * The engine's own call stack, for a fault report.
- *
- * A host backtrace stops at x2_engine_call: everything below it is one C loop,
- * so a fault inside interpreted code reads as "somewhere in the engine" and
- * names no guest function at all. The first bisect run proved that -- a
- * SIGSEGV at 0x3 with a [REGS] line naming an import thunk, which was the last
- * body to cross the boundary and had nothing to do with it.
- *
- * A POINTER to each frame's live CPU rather than a copy of its EIP: the value
- * is then always current without a store per interpreted instruction.
+ * The engine's own per-thread call stack, for a fault report and for the
+ * intercept checks. x86_engine_frames.c owns it; a host backtrace stops at
+ * x2_engine_call, so without this a fault inside interpreted code names no
+ * guest function at all.
  */
-#define ENGINE_FRAMES 64
-static struct {
-  uint32_t entry;
-  uint32_t return_to;
-  uint32_t entry_esp;
-  const X86pCpu *cpu;
-} g_frame[ENGINE_FRAMES];
 
 static int jit_intercept(const X86pCpu *cpu, void *user) {
   (void)user;
@@ -91,24 +77,23 @@ static int jit_intercept(const X86pCpu *cpu, void *user) {
     if (x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR)
       return 1;
   }
-  if (g_engine.depth > 0 && g_engine.depth <= ENGINE_FRAMES) {
-    const uint32_t return_to = g_frame[g_engine.depth - 1].return_to;
-    if (eip == return_to &&
-        cpu->reg[kX86pEsp] >= g_frame[g_engine.depth - 1].entry_esp + 4u)
-      return 1;
-    if (eip != g_frame[g_engine.depth - 1].entry && x86_native_body_at(eip))
-      return 1;
+  {
+    const EngineFrame *f = engine_frame_top();
+    if (f) {
+      if (eip == f->return_to && cpu->reg[kX86pEsp] >= f->entry_esp + 4u)
+        return 1;
+      if (eip != f->entry && x86_native_body_at(eip))
+        return 1;
+    }
   }
   return 0;
 }
 
 /*
- * Addresses the run loop below takes over from the JIT. jit_intercept checks
- * these between blocks; this is the same set for the translator, so a block is
- * never emitted THROUGH one (a native override entry or thunk reached by
- * fall-through rather than by a call). Pure-EIP only -- the stack-relative
- * return check in jit_intercept cannot be made at translation time, and does
- * not need to be: a RET already ends a block.
+ * The pure-EIP subset of jit_intercept, given to the translator so a block is
+ * never emitted THROUGH an interception point reached by fall-through rather
+ * than by a call. The stack-relative return check is omitted: a RET already
+ * ends a block, so the translator never needs it.
  */
 static int jit_boundary(uint32_t eip, void *user) {
   (void)user;
@@ -241,19 +226,11 @@ int x2_engine_call(uint32_t addr, CPU *C) {
   /* The hot-body probe's span: this is where a guest body runs now. */
   if (x86_hotep_armed())
     x86_probe_span_push();
-  if (++g_engine.depth > g_engine.deepest)
-    g_engine.deepest = g_engine.depth;
-
   x2_engine_to_x86p(C, &cpu);
   entry_esp = cpu.reg[kX86pEsp];
   return_to = RD32(entry_esp);
   cpu.eip = addr;
-  if (g_engine.depth <= ENGINE_FRAMES) {
-    g_frame[g_engine.depth - 1].entry = addr;
-    g_frame[g_engine.depth - 1].return_to = return_to;
-    g_frame[g_engine.depth - 1].entry_esp = entry_esp;
-    g_frame[g_engine.depth - 1].cpu = &cpu;
-  }
+  engine_frame_push(addr, return_to, entry_esp, &cpu);
 
   for (;;) {
     X86pStepStatus status;
@@ -280,7 +257,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
          longjmp that makes every other local in this frame
          indeterminate. */
       volatile uint32_t resume = RD32(cpu.reg[kX86pEsp]);
-      volatile unsigned long frame_depth = g_engine.depth;
+      volatile unsigned long frame_depth = engine_frame_depth();
       int rc;
       x2_engine_from_x86p(&cpu, C);
       g_engine.setjmps++;
@@ -292,7 +269,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
            nesting count has to come back with them; leaving it would
            make the deepest-nesting figure a record of a stack that no
            longer existed. */
-        g_engine.depth = frame_depth;
+        engine_frame_restore_depth(frame_depth);
         if (!g_engine.longjmps++)
           fprintf(stderr,
                   "[ENGINE] a longjmp RESUMED into interpreted code "
@@ -362,10 +339,18 @@ int x2_engine_call(uint32_t addr, CPU *C) {
     if (g_engine.selected == kX86pEngineJit) {
       char why[192];
       why[0] = '\0';
+      /* Slice the JIT and offer the guest lock up between slices: JITted code
+         never reaches the X86_ENTER_FN preemption point, so a thread stuck in
+         a libCriMovie playback loop would hold the one guest lock forever and
+         starve the decoder's feeders (issue #57). No-op with no lock waiter. */
+      uint64_t slice = guest_quantum_size();
+      if (slice > 200000ULL)
+        slice = 200000ULL;
       X86pJitRunStatus st =
-          x86p_jit_engine_run(g_engine.jit, &cpu, 100000ULL, why, sizeof why);
+          x86p_jit_engine_run(g_engine.jit, &cpu, slice, why, sizeof why);
       if (st != kX86pRunIntercept && st != kX86pRunBudget)
         refuse(entry, cpu.eip, why[0] ? why : x86p_jit_run_status_name(st), NULL);
+      guest_quantum();
     } else {
       status = x86p_step_cached(&cpu, &g_engine.mem, &g_decode_cache, &report);
       if (status != kX86pStepOk)
@@ -395,41 +380,41 @@ int x2_engine_call(uint32_t addr, CPU *C) {
     abort();
   }
   x2_engine_from_x86p(&cpu, C);
-  if (g_engine.depth <= ENGINE_FRAMES)
-    g_frame[g_engine.depth - 1].cpu = NULL;
-  g_engine.depth--;
+  engine_frame_pop();
   if (x86_hotep_armed())
     x86_probe_guest_body_end(entry);
   return 1;
 }
 
 void x2_engine_where(void) {
-  unsigned long i;
   if (!g_engine.ready)
     return;
-  if (!g_engine.depth) {
-    fprintf(stderr, "[ENGINE] no interpreted call is on the stack, so the "
-                    "engine was not executing when this happened.\n");
-    return;
-  }
-  fprintf(stderr,
-          "[ENGINE] %lu interpreted call(s) on the stack, innermost "
-          "last:\n",
-          g_engine.depth);
-  for (i = 0; i < g_engine.depth && i < ENGINE_FRAMES; i++) {
-    const X86pCpu *c = g_frame[i].cpu;
-    fprintf(stderr, "[ENGINE]   0x%08x (%s)", g_frame[i].entry,
-            named(g_frame[i].entry));
-    if (c)
-      fprintf(stderr, " at 0x%08x (%s), esp %08x", c->eip, named(c->eip),
-              c->reg[kX86pEsp]);
-    fputc('\n', stderr);
-  }
-  if (g_engine.depth > ENGINE_FRAMES)
+  {
+    unsigned long depth = engine_frame_depth(), i;
+    const EngineFrame *f;
+    if (!depth) {
+      fprintf(stderr, "[ENGINE] no interpreted call is on the stack, so the "
+                      "engine was not executing when this happened.\n");
+      return;
+    }
     fprintf(stderr,
-            "[ENGINE]   ... %lu deeper frame(s) not recorded "
-            "(ENGINE_FRAMES is %d).\n",
-            g_engine.depth - ENGINE_FRAMES, ENGINE_FRAMES);
+            "[ENGINE] %lu interpreted call(s) on the stack, innermost "
+            "last:\n",
+            depth);
+    for (i = 0; (f = engine_frame_at(i)) != NULL; i++) {
+      const X86pCpu *c = f->cpu;
+      fprintf(stderr, "[ENGINE]   0x%08x (%s)", f->entry, named(f->entry));
+      if (c)
+        fprintf(stderr, " at 0x%08x (%s), esp %08x", c->eip, named(c->eip),
+                c->reg[kX86pEsp]);
+      fputc('\n', stderr);
+    }
+    if (depth > ENGINE_FRAMES_MAX)
+      fprintf(stderr,
+              "[ENGINE]   ... %lu deeper frame(s) not recorded "
+              "(ENGINE_FRAMES_MAX is %d).\n",
+              depth - ENGINE_FRAMES_MAX, ENGINE_FRAMES_MAX);
+  }
 }
 
 void x2_engine_report(void) {
@@ -450,7 +435,7 @@ void x2_engine_report(void) {
           "every address reached and nothing was taken from it.\n",
           x86p_engine_name(g_engine.selected), g_engine.calls, g_engine.taken,
           g_engine.calls - g_engine.taken, g_engine.insns, g_engine.callouts,
-          g_engine.deepest, g_engine.setjmps, g_engine.longjmps);
+          engine_frame_deepest(), g_engine.setjmps, g_engine.longjmps);
   if (g_engine.jit) {
     X86pJitEngineStats js;
     x86p_jit_engine_stats(g_engine.jit, &js);
@@ -487,7 +472,7 @@ void x2_engine_enter_service(void) {
   g_engine.taken = 0;
   g_engine.insns = 0;
   g_engine.callouts = 0;
-  g_engine.deepest = 0;
+  engine_frame_reset_deepest();
   g_engine.setjmps = 0;
   g_engine.longjmps = 0;
   /* The startup decode work is not the game's, and leaving it folded in
