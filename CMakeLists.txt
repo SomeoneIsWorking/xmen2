@@ -722,6 +722,12 @@ add_executable(test_vertex_color_swizzle tests/test_vertex_color_swizzle.c
 target_include_directories(test_vertex_color_swizzle PRIVATE src/native src/recomp)
 add_test(NAME vertex_color_swizzle COMMAND test_vertex_color_swizzle)
 
+add_executable(test_vertex_builder tests/test_vertex_builder.c
+               src/native/vertex_builder.c src/native/guest_memory.c
+               tests/native_stubs.c)
+target_include_directories(test_vertex_builder PRIVATE src/native src/recomp)
+add_test(NAME vertex_builder COMMAND test_vertex_builder)
+
 target_include_directories(test_x87crt PRIVATE src/recomp)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
@@ -1365,6 +1371,8 @@ set(X2_NATIVE_SOURCES
     src/native/audio_adpcm_verify.c
     src/native/vertex_color_swizzle.c
     src/native/vertex_color_swizzle_verify.c
+    src/native/vertex_builder.c
+    src/native/vertex_builder_verify.c
     src/recomp/x87crt.c
     src/native/kernel32.c
     src/native/win_path.c

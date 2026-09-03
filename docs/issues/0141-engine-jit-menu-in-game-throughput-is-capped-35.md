@@ -138,7 +138,26 @@ cost (the Android target) more than uncapped FPS.
   body, 0 disagreements); with verify off `0x10046cxx` leaves the `jit.profile`
   output entirely (was profile block #1 at 4.4%).
 
-`igAttrStack::customReset` (now #2 at ~3.9%) is next by size but is a
+- **`0x005840a0` in XMen2.exe -- `CDxImmediateBuilder::addVertex`, ~15% of all
+  blocks. LANDED 2026-09-03.** The retail 2D/3D immediate-mode vertex sink for
+  text, HUD, decals, particles, and immediate geometry (`__thiscall
+  void(const igVec3f *pos, const igVec2f *uv, uint32_t col)`, ret 0xc; vtable
+  `0x0069c904` slot `+0x0c`). For each vertex it copies Vec3f position, optional
+  Vec2f UV (if `[this+0x24] > 0`), and 32-bit color, then advances destination
+  pointers by their respective strides. In retail it performed cross-module
+  calls into `libIGMath.dll!??4igVec3f` and `??4igVec2f` for every single
+  vertex. In a 1000-frame in-game run, this was entered 2,616,028 times (~2,600
+  times per frame), producing 6 hot blocks in XMen2.exe plus the two vector
+  assignments totaling **20.9 million block entries (15.0% of all JIT
+  execution)**.
+  `src/native/vertex_builder.c` registers a native override performing direct
+  memory copies and stride updates; `src/native/vertex_builder_verify.c` +
+  `--set gfx.vtx_builder_verify=1` verifies bit-for-bit equivalence against the
+  guest body. Driven in-game for 500 frames with verify active: 0 disagreements.
+  With the override active, all 8 top blocks leave `jit.profile` top 40 entirely
+  and total block entries dropped from 139.6M to 116.4M (-16.6% across 1000 frames).
+
+`igAttrStack::customReset` is next by size but is a
 pure-integer leaf (7 `mov [this+d], imm` stores) that the JIT already
 translates -- a native override would add a crossing per call for no
 per-instruction saving. The remaining lever is broad x86port codegen quality.

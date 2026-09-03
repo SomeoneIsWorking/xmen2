@@ -47,6 +47,13 @@ lucent::cvar::Var<bool> g_audio_adpcm_verify{"audio.adpcm_verify", false};
 lucent::cvar::Var<bool> g_gfx_vtx_swizzle_verify{"gfx.vtx_swizzle_verify",
                                                  false};
 
+/* on: after each native CDxImmediateBuilder::addVertex (XMen2.exe 0x005840a0),
+ * re-run the guest's own body from the same start state and abort on any
+ * output or state mismatch. The differential proof for the native vertex builder;
+ * off in normal play. */
+lucent::cvar::Var<bool> g_gfx_vtx_builder_verify{"gfx.vtx_builder_verify",
+                                                 false};
+
 /* >0: arm x86port's block-entry histogram, sized for that many distinct block
  * addresses; the hottest blocks print at shutdown. A diagnostic -- it answers
  * "where does in-game guest time go" now that the crossing cost is gone. */
@@ -74,6 +81,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_profile);
   lucent::cvar::register_var(g_audio_adpcm_verify);
   lucent::cvar::register_var(g_gfx_vtx_swizzle_verify);
+  lucent::cvar::register_var(g_gfx_vtx_builder_verify);
 
   const std::string path =
       std::string(x2_config_directory()) + "/x2native-runtime.conf";
