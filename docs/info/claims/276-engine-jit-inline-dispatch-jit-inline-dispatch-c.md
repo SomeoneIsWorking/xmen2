@@ -13,7 +13,7 @@ engine=jit inline dispatch (jit.inline_dispatch) cuts host-import wall-time shar
 
 ## Evidence
 
-A/B on identical driven input path 2026-09-03, X2_HOTEP=64 wall-time split + present counts, scratch/logs/ab_on.log vs ab_off.log; x86port d5d3b00 + src/native/x86_engine_dispatch.c
+A/B on identical driven input path 2026-09-03, X2_HOTEP=64 wall-time split + present counts, numbers recorded in docs/issues/0141 (scratch logs since GC'd); x86port d5d3b00 + src/native/x86_engine_dispatch.c
 
 ## What would falsify it
 
