@@ -33,8 +33,5 @@ void x86_diag_dump(void)
     x2_engine_where();
     x86_peek_report();
     x86_reached_report();
-#ifdef X86_NATIVE_TRACE
-    x86_args_report();
-#endif
     x86_ring_dump();
 }

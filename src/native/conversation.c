@@ -617,10 +617,9 @@ void x2_override_00458020(CPU *C)
  * It was left un-ported once, on the grounds that its subtitle-draw block
  * could not be read off the disassembly -- MSVC leaves floats on the x87 stack
  * across intervening integer pushes. That was the wrong answer, and the right
- * one was to build the capability to capture it: `recomp.py emit --record
- * 0x0045d1a0-0x0045d5c8` plus src/native/x86_record.c produced 24,942
- * instructions over 221 passes, and the block reads off the trace exactly
- * (issue #63, instrument I050). What the listing hid and the capture showed:
+ * one was to capture what the block actually did: a per-instruction trace of
+ * 0x0045d1a0-0x0045d5c8 over 221 passes, from which the block reads exactly
+ * (issue #63). What the listing hid and the capture showed:
  *
  *   * 0x0067217c is __ftol. It takes its argument on the X87 STACK and
  *     consumes NOTHING from the integer stack -- so the five PUSHes around it

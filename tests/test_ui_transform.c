@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 
@@ -45,7 +46,7 @@ int x86_peek32(uint32_t addr, uint32_t *out)
     return 1;
 }
 
-void fn_libIGGfx_1003ec10(CPU *C)
+static void guest_body_1003ec10(CPU *C)
 {
     float ignored[16];
     unsigned i;
@@ -143,4 +144,19 @@ int main(void)
     x2_ui_transform_report();
     printf("\ntest_ui_transform: %d failure(s)\n", failures);
     return failures ? 1 : 0;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x1003ec10u && !strcmp(module, "libIGGfx.dll"))
+        { guest_body_1003ec10(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_ui_transform.c", module, linked_ep);
+    abort();
 }

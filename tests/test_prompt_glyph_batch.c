@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 int native_stubs_registered(const char *module, uint32_t linked_ep);
@@ -74,7 +75,7 @@ int gpu_prompt_glyphs_render(const float mvp[16])
     return gpu_ok;
 }
 
-void fn_libIGGfx_100352d0(CPU *C)
+static void guest_body_100352d0(CPU *C)
 {
     super_calls++;
     if (super_runs_finalizer)
@@ -82,7 +83,7 @@ void fn_libIGGfx_100352d0(CPU *C)
     note('D'); /* The original body submits to D3D after its finalizer. */
 }
 
-void fn_libIGGfx_10034e60(CPU *C)
+static void guest_body_10034e60(CPU *C)
 {
     note('U');
     /* ECX is caller-saved. The wrapper must retain the visual-context key it
@@ -169,4 +170,21 @@ int main(void)
     x2_prompt_glyph_batch_report();
     printf("\ntest_prompt_glyph_batch: %d failure(s)\n", failures);
     return failures ? 1 : 0;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x100352d0u && !strcmp(module, "libIGGfx.dll"))
+        { guest_body_100352d0(C); return; }
+    if (linked_ep == 0x10034e60u && !strcmp(module, "libIGGfx.dll"))
+        { guest_body_10034e60(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_prompt_glyph_batch.c", module, linked_ep);
+    abort();
 }

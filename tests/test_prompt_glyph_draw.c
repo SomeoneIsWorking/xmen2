@@ -91,7 +91,7 @@ static float bits_float(uint32_t bits)
 
 /* The real emitter owns RET 0x20. Recording its received rectangle proves the
    override did not imitate that ABI by manually moving ESP. */
-void fn_XMen2_005ee400(CPU *C)
+static void guest_body_005ee400(CPU *C)
 {
     unsigned i;
     if (g_emitter_calls < 1024u)
@@ -105,7 +105,7 @@ void fn_XMen2_005ee400(CPU *C)
 /* A narrow model of the retail loop: one emitter call for each drawable
    wchar, with distinct non-zero rectangles. The production override, not a
    test copy, decides which of those calls is harvested and collapsed. */
-void fn_XMen2_005ee780(CPU *C)
+static void guest_body_005ee780(CPU *C)
 {
     uint32_t s = RD32(C->esp + 4u);
     unsigned i;
@@ -380,4 +380,21 @@ int main(void)
 
     printf("\ntest_prompt_glyph_draw: %d failure(s)\n", failures);
     return failures ? 1 : 0;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x005ee400u && !strcmp(module, "XMen2.exe"))
+        { guest_body_005ee400(C); return; }
+    if (linked_ep == 0x005ee780u && !strcmp(module, "XMen2.exe"))
+        { guest_body_005ee780(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_prompt_glyph_draw.c", module, linked_ep);
+    abort();
 }

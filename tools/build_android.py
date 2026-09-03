@@ -290,7 +290,6 @@ def main() -> int:
             "-DCMAKE_BUILD_TYPE=Release",
             # A diagnostic cache entry must never leak from a local Android
             # investigation into the packaged product tree.
-            "-DX2_NATIVE_TRACE=OFF",
             f"-DPython3_EXECUTABLE={sys.executable}",
             f"-DX2_ANDROID_PORT_PREFIX={prefix}",
         ],

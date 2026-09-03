@@ -45,7 +45,7 @@ int x2_player_input_pad_is_active_source(int pad)
 {
     return pad == active_pad;
 }
-void fn_XMen2_006281f0(CPU *c)
+static void guest_body_006281f0(CPU *c)
 {
     real_calls++;
     c->eax = 0x12345678u;
@@ -54,7 +54,7 @@ void fn_XMen2_006281f0(CPU *c)
 /* FUN_006294b0(row, slot, *kind, *code) -- the label's binding reader. The
    stub answers with a keyboard binding, so a super-call is visible as "the
    keyboard won" and the override's answer is visible as the pad. */
-void fn_XMen2_006294b0(CPU *c)
+static void guest_body_006294b0(CPU *c)
 {
     uint32_t out_kind = RD32(c->esp + 0xcu), out_code = RD32(c->esp + 0x10u);
     reader_calls++;
@@ -80,7 +80,7 @@ void x86_guest_call_args(CPU *c, uint32_t target, uint32_t pop)
 /* FUN_00619e30 -- the label builder. The stub composes "[%s]" into the guest
    buffer exactly as the original's sprintf does, from a name the test picks. */
 static uint32_t g_label_name;
-void fn_XMen2_00619e30(CPU *c)
+static void guest_body_00619e30(CPU *c)
 {
     uint32_t out = mapped_base + BUFFER_RVA;
     uint32_t i = 0, ch;
@@ -96,7 +96,7 @@ void fn_XMen2_00619e30(CPU *c)
    census. This test drives the label builder directly and never goes through
    the resolver, so reaching this body means the test exercised a path it does
    not model: say so rather than returning a plausible-looking pointer. */
-void fn_XMen2_004bd720(CPU *c)
+static void guest_body_004bd720(CPU *c)
 {
     (void)c;
     fprintf(stderr, "test_pad_glyphs: the token resolver FUN_004bd720 was "
@@ -371,4 +371,25 @@ int main(int argc, char **argv)
     printf("pad glyph wrapper: enabled, reordered, unresolved and disabled "
            "mappings plus pad/keycap/unmapped/occupied label cases passed\n");
     return 0;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x006281f0u && !strcmp(module, "XMen2.exe"))
+        { guest_body_006281f0(C); return; }
+    if (linked_ep == 0x006294b0u && !strcmp(module, "XMen2.exe"))
+        { guest_body_006294b0(C); return; }
+    if (linked_ep == 0x00619e30u && !strcmp(module, "XMen2.exe"))
+        { guest_body_00619e30(C); return; }
+    if (linked_ep == 0x004bd720u && !strcmp(module, "XMen2.exe"))
+        { guest_body_004bd720(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_pad_glyphs.c", module, linked_ep);
+    abort();
 }

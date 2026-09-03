@@ -106,14 +106,14 @@ void x86_register_override(const char *name, uint32_t ep,
         fail("dialogue override registered for the wrong entry point");
 }
 
-void fn_XMen2_00458700(CPU *cpu)
+static void guest_body_00458700(CPU *cpu)
 {
     ++original_presentations;
     cpu->eax = (cpu->eax & ~0xffu) | 1u;
     cpu->esp += 8u;
 }
 
-void fn_XMen2_0045a170(CPU *cpu)
+static void guest_body_0045a170(CPU *cpu)
 {
     ++original_presentations;
     WR32(MANAGER + CV_SOUND_HANDLE, 0x00000099u);
@@ -299,4 +299,21 @@ int main(void)
     test_skip_stops_and_suppresses_dialogue();
     test_skip_scope_suppresses_adjacent_line();
     return failures != 0u;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x00458700u && !strcmp(module, "XMen2.exe"))
+        { guest_body_00458700(C); return; }
+    if (linked_ep == 0x0045a170u && !strcmp(module, "XMen2.exe"))
+        { guest_body_0045a170(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_cutscene_dialogue.c", module, linked_ep);
+    abort();
 }

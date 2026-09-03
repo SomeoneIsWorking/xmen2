@@ -26,7 +26,6 @@
 uint32_t g_imgbase = 0x10000000U;
 uint32_t g_image_lo, g_image_hi;
 __thread uint32_t g_fsbase, g_gsbase;
-int x86_allow_fallback;
 
 static int fails, checks;
 

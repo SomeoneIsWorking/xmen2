@@ -38,7 +38,6 @@ void x2_interrupt_reports(int killed)
 {
     extern void d3d8_host_report(void);
     extern void guest_heap_report(void);
-    extern void x86_fallback_report(void);
     extern void guest_thread_report(void);
     extern void k32_critsec_report(void);
     extern void dinput_device_report(void);
@@ -62,7 +61,6 @@ void x2_interrupt_reports(int killed)
         x2_boot_blackout_report(blackout, sizeof blackout);
         printf("        %s", blackout);
     }
-    x86_fallback_report();
     x2_engine_report();
     d3d8_host_report();
     guest_heap_report();
@@ -91,7 +89,6 @@ void x2_interrupt_reports(int killed)
       k32_asset_report(); ws2_report(); }
     { extern void conversation_report(void); conversation_report(); }
     { extern void script_trace_report(void); script_trace_report(); }
-    { extern void x86_record_report(void); x86_record_report(); }
     { extern void x86_profiler_report(void); x86_profiler_report(); }
     /* shell32's save-path report was registered with atexit, and the clean
        X2_MAX_FRAMES stop leaves through _exit -- so on precisely the runs

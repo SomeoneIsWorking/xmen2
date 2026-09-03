@@ -172,14 +172,5 @@ where:
     x86_regs_dump();
     x86_diag_dump();
     x86_reached_report();
-#ifndef X86_NATIVE_TRACE
-    fprintf(stderr,
-        "[TRACE] BLIND SPOT: this build has X2_NATIVE_TRACE=OFF, so the ring "
-        "above holds ONLY guest/host boundary crossings --\n"
-        "[TRACE] not guest-to-guest calls, which are plain C calls and cross "
-        "nothing. The faulting function is very likely NOT in it.\n"
-        "[TRACE] Reconfigure with -DX2_NATIVE_TRACE=ON to record every "
-        "recompiled body entry and exit.\n");
-#endif
     _exit(3);
 }

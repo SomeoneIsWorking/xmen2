@@ -132,19 +132,12 @@ def main() -> int:
     assert "pickDocument" in setup
     assert "promoteValidated" in setup
     assert "nativeValidateInstall" in setup
-    # Trace watches are diagnostic-only and are intentionally exposed only by
-    # a debug build. The JNI bridge accepts the recompiler watch grammar, not
-    # arbitrary environment-variable names or values.
+    # Diagnostic switches are exposed only by a debug build.
     assert "BuildConfig.DEBUG" in setup
-    assert "com.someoneisworking.xmen2.trace.arguments" in setup
-    assert "com.someoneisworking.xmen2.trace.cap" in setup
     bridge = (ROOT / "src/native/android_bridge.cpp").read_text(encoding="utf-8")
     # The host-backtrace half of a fault report has its own owner; the check
     # follows the code rather than the file it used to live in.
     fault_report = (ROOT / "src/native/fault_report.c").read_text(encoding="utf-8")
-    assert "valid_trace_watch" in bridge
-    assert '::setenv("X2_ARGS", arguments, 1)' in bridge
-    assert "generic setenv bridge" in bridge
     assert "buildConfig = true" in gradle
     assert "#if !defined(__ANDROID__)\n#include <execinfo.h>" in fault_report
     assert "[HOST STACK] unavailable on Android" in fault_report
@@ -183,9 +176,6 @@ def main() -> int:
     assert "build_android_deps.py" not in cmake
     assert "X2_ANDROID_PORT_PREFIX" in cmake
     assert not (ROOT / "tools/build_android_deps.py").exists()
-    assert '"-DX2_NATIVE_TRACE=OFF"' in (ROOT / "tools/build_android.py").read_text(
-        encoding="utf-8")
-
     assert "extends LucentActivity" in activity
     assert "WindowInsetsController" not in activity
     assert 'setText("Browse for XMen2.exe")' in setup

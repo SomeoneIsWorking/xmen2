@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 
@@ -38,7 +39,7 @@ int cutscene_player_silences_current_context(uint32_t *context)
     return silent && *context == OWNED_CONTEXT;
 }
 
-void fn_XMen2_004a7130(CPU *cpu)
+static void guest_body_004a7130(CPU *cpu)
 {
     super_calls++;
     cpu->eax = 0xabcdef00u;
@@ -100,4 +101,19 @@ int main(void)
            "command is silent; ordinary and foreign contexts super-call\n",
            failures ? "FAILED" : "PASSED");
     return failures != 0;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x004a7130u && !strcmp(module, "XMen2.exe"))
+        { guest_body_004a7130(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_cutscene_script_audio.c", module, linked_ep);
+    abort();
 }

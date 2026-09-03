@@ -267,11 +267,6 @@ extern uint32_t g_image_lo, g_image_hi;   /* guest image bounds; outside = host 
 /* Preferred base recorded by the hosted runtime generator. Diagnostics use
    this to translate mapped addresses back to disassembly addresses. */
 extern uint32_t g_guest_preferred_base;
-/* Hybrid execution: run ORIGINAL machine code where no recompiled body exists.
-   Opt-in, and every distinct fallback address is reported -- a recompilation
-   that quietly runs the original is not a recompilation. */
-extern int x86_allow_fallback;
-void x86_note_fallback(uint32_t target);
 /* An import with no native implementation. Names it and stops -- there is
    nothing honest to return. */
 void x86_missing_import(const char *mod, const char *sym);
@@ -317,47 +312,7 @@ int x86_setjmp_reclaim(void);
 int x86_setjmp_live(void);
 /* Dump the last crossings between guest and host, with ESP on both sides. */
 void x86_ring_dump(void);
-void x86_untranslated(uint32_t ep, const char *name, const char *reason);
-/* A single instruction the translator could not handle, reached at run time.
-   The rest of its function IS translated -- see translate() in recomp.py for
-   why that is sound -- so this names the exact instruction rather than the
-   whole body. */
-void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
-                          const char *reason);
-/*
- * REGION RECORDING -- capture what a stretch of guest code actually does.
- *
- * Some blocks cannot be ported from the disassembly alone: MSVC leaves floats
- * on the x87 stack across intervening pushes, and which helper consumes which
- * is not visible in the listing. Declining to port such a block leaves the
- * translated original in place forever; guessing at it ships a defect. So the
- * third option is built here -- RUN it and write down exactly what happened,
- * one line per instruction, with the registers, the x87 stack and the top of
- * the guest stack.
- *
- * `recomp.py emit --record LO-HI` (repeatable) inserts the call before each
- * instruction in the range and NOWHERE else, so a build with no ranges pays
- * nothing. The runtime announces the compiled-in ranges at startup and reports
- * at zero, because "the block never executed" and "recording was not compiled
- * in" are the two answers that must not look alike. `X2_RECORD_ARM=<guest
- * address>` ignores those calls until the named recorded instruction runs, so
- * a shared helper can be correlated to its caller rather than filling the ring
- * earlier in the run.
- */
-void x86_record(uint32_t addr, const struct CPU *C, const char *text);
-extern int x86_record_on;
-#define X86_RECORD(a, C, t) \
-    do { if (x86_record_on) x86_record((a), (C), (t)); } while (0)
 
-/* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
-void x86_int3(uint32_t addr);
-/* A function body ended without a terminator and the address it falls through
-   to is not a known function. */
-void x86_fallthrough(uint32_t fn_ep, uint32_t next);
-/* The body ends at a call to a function that never returns; getting past it
-   means this port's implementation of that callee came back. */
-void x86_after_noreturn(uint32_t fn_ep, const char *callee);
-void x86_fallback_report(void);
 #define G_IMGBASE (X86_IMGBASE)
 
 /* ---- guest memory ---------------------------------------------------- */
@@ -733,23 +688,6 @@ void x86_watch_stack(uint32_t ep, uint32_t guest_esp, const void *cpu, unsigned 
 # define X86_ENTER_FN_DIAG(a) x86_watch_enter((a), C)
 # define X86_EXIT_FN_DIAG(a)  x86_watch_exit((a), C)
 # define x86_dump_history() ((void)0)
-#elif defined(X86_NATIVE_TRACE)
-/* Native build, tracing every recompiled body.
- *
- * The boundary ring only sees DISPATCHED calls, because a guest-to-guest call
- * inside a module is emitted as a direct C call and never touches the
- * dispatcher. That is most of them -- which is why a stack imbalance in an
- * ordinary function left no trace at all. This makes every entry and exit
- * visible, at the cost of a ring write per call, so it is a build option
- * rather than the default.
- *
- * The hook is passed the module's own base as well as the entry point, because
- * generated code knows only its LINKED ep and the ring has to be able to tell
- * which module that ep belongs to -- see the ring in x86rt_native.c. */
-void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C);
-void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C);
-# define X86_ENTER_FN_DIAG(a) x86_trace_enter((a), X86_IMGBASE, C)
-# define X86_EXIT_FN_DIAG(a)  x86_trace_exit((a), X86_IMGBASE, C)
 # define x86_dump_history() ((void)0)
 #elif defined(X86_NATIVE_REACHED) || defined(X86_NATIVE)
 /* Native build, recording WHICH bodies were ever entered.
@@ -1437,21 +1375,6 @@ static inline void x87_cmp(CPU *C, long double a, long double b)
  */
 void x86_dispatch(CPU *C, uint32_t target);
 void x86_tail_dispatch(CPU *C, uint32_t target);
-/* called when an indirect target has no recompiled body; aborts by default */
-void x86_dispatch_miss(uint32_t target);
-
-/* A function the recompiler could not translate. Emitted as its whole body so
-   the module links; reaching one aborts naming the function and the exact
-   instruction form that blocked it, which is the work item. */
-void x86_untranslated(uint32_t ep, const char *name, const char *reason);
-/* INT3: the compiler's unreachable trap. Reaching one is a real failure. */
-void x86_int3(uint32_t addr);
-/* A function body ended without a terminator and the address it falls through
-   to is not a known function. */
-void x86_fallthrough(uint32_t fn_ep, uint32_t next);
-/* The body ends at a call to a function that never returns; getting past it
-   means this port's implementation of that callee came back. */
-void x86_after_noreturn(uint32_t fn_ep, const char *callee);
 
 /* real code -> recompiled body; returns EAX */
 /* Entry from host code into a recompiled body. Reached by `jmp` from a naked

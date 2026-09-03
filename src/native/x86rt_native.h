@@ -250,16 +250,11 @@ void x86_regs_dump(void);
    silent on exactly the failures worth reporting. */
 void x86_diag_dump(void);
 
-/* Argument watch (X2_ARGS), trace builds only. Reports at exit whether any
-   watched entry point was entered at all. */
-void x86_args_report(void);
-
 /*
  * A monotonic count of everything the ring records, for the heartbeat: it is
- * the cheapest proof that the guest is still executing. WHAT it counts differs
- * by build -- every body entry and exit in a trace build, only host-boundary
- * crossings otherwise -- so x86_crossings_what() says which, and the heartbeat
- * prints it rather than letting a reader assume.
+ * the cheapest proof that the guest is still executing. x86_crossings_what()
+ * says what it counts, so the heartbeat prints that rather than letting a
+ * reader assume.
  */
 unsigned long x86_crossings(void);
 const char   *x86_crossings_what(void);
@@ -300,9 +295,6 @@ void x86_probe_time_delta(unsigned long long *host_import_ns,
 
 /* Every registered module, for reporting. */
 X86Module *x86_modules(void);
-
-/* Say at STARTUP whether X2_ARGS can be honoured by this build. */
-void x86_args_build_check(void);
 
 /* X2_EPCOUNT: how often a dispatched body is entered. Reports at zero. */
 void x86_epcount_report(void);

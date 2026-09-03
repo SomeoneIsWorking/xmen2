@@ -259,7 +259,7 @@ static x86_override_fn registered_fn(uint32_t ep)
     return NULL;
 }
 
-void fn_XMen2_004b2b40(CPU *cpu)
+static void guest_body_004b2b40(CPU *cpu)
 {
     ++super_calls;
     if (super_mode >= 1)
@@ -638,4 +638,19 @@ int main(void)
     test_corrupt_insertion_refusal();
     test_capacity_and_corruption_refusal();
     return failures != 0u;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x004b2b40u && !strcmp(module, "XMen2.exe"))
+        { guest_body_004b2b40(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_cutscene_event_player.c", module, linked_ep);
+    abort();
 }

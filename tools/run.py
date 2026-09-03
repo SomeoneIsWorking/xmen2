@@ -237,8 +237,6 @@ def run_native() -> int:
                  f"-DCMAKE_CXX_COMPILER={toolchain.cxx}",
                  f"-DPython3_EXECUTABLE={sys.executable}",
                  "-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
-    if os.environ.get("TRACE"):
-        configure.append("-DX2_NATIVE_TRACE=ON")
     print(f"run: configuring x2native in {build} with {toolchain.cxx}")
     subprocess.run(configure, cwd=ROOT, check=True)
     subprocess.run([toolchain.cmake, "--build", str(build), "--target", "x2native",

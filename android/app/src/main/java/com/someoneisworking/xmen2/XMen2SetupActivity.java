@@ -25,8 +25,6 @@ public final class XMen2SetupActivity extends Activity {
     private static final int FOLDER_REQUEST = 0x5846;
     private static final int ZIP_REQUEST = 0x5847;
     private static final String SOURCE_PATH = "source-path";
-    private static final String TRACE_ARGUMENTS = "com.someoneisworking.xmen2.trace.arguments";
-    private static final String TRACE_CAP = "com.someoneisworking.xmen2.trace.cap";
     private static final String TRACE_FILES = "com.someoneisworking.xmen2.trace.files";
     private static final String TRACE_PERFORMANCE =
             "com.someoneisworking.xmen2.trace.performance";
@@ -41,8 +39,6 @@ public final class XMen2SetupActivity extends Activity {
 
     private static native boolean nativeConfigureStorage(String dataDirectory,
                                                          String installSource,
-                                                         String traceArguments,
-                                                         int traceCap,
                                                          boolean traceFiles,
                                                          boolean tracePerformance,
                                                          boolean traceDrawDump);
@@ -52,8 +48,6 @@ public final class XMen2SetupActivity extends Activity {
     private TextView status;
     private LinearLayout choices;
     private LucentDocumentImport importer;
-    private String traceArguments;
-    private int traceCap;
     private boolean traceFiles;
     private boolean tracePerformance;
     private boolean traceDrawDump;
@@ -63,8 +57,6 @@ public final class XMen2SetupActivity extends Activity {
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         if (BuildConfig.DEBUG) {
-            traceArguments = getIntent().getStringExtra(TRACE_ARGUMENTS);
-            traceCap = getIntent().getIntExtra(TRACE_CAP, 0);
             traceFiles = getIntent().getBooleanExtra(TRACE_FILES, false);
             tracePerformance = getIntent().getBooleanExtra(TRACE_PERFORMANCE, false);
             traceDrawDump = getIntent().getBooleanExtra(TRACE_DRAW_DUMP, false);
@@ -274,8 +266,7 @@ public final class XMen2SetupActivity extends Activity {
 
     private boolean configureNative(File source) {
         return nativeConfigureStorage(getFilesDir().getAbsolutePath(), source.getAbsolutePath(),
-                                      traceArguments, traceCap, traceFiles, tracePerformance,
-                                      traceDrawDump);
+                                      traceFiles, tracePerformance, traceDrawDump);
     }
 
     private void startGame() {

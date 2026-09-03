@@ -70,7 +70,7 @@ int options_menu_stubs_override_is(const char *name, uint32_t ep)
     return 0;
 }
 
-void fn_XMen2_005f4900(CPU *C)
+static void guest_body_005f4900(CPU *C)
 {
     original_calls++;
     C->eax = 0x12345678u;
@@ -133,4 +133,19 @@ void x86_register_override(const char *name, uint32_t ep,
 void x86_diag_dump(void)
 {
     fprintf(stderr, "options menu stub: unexpected guest-heap diagnostic\n");
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x005f4900u && !strcmp(module, "XMen2.exe"))
+        { guest_body_005f4900(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "options_menu_stubs.c", module, linked_ep);
+    abort();
 }

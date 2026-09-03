@@ -26,7 +26,6 @@ uint32_t g_image_lo, g_image_hi;
    the test stopped BUILDING -- which ctest reports as "Not Run", not as a
    failure, so the suite went green with two tests missing. */
 __thread uint32_t g_fsbase, g_gsbase;
-int x86_allow_fallback;
 
 static int fails, checks;
 

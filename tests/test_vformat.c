@@ -25,7 +25,6 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va);
 uint32_t g_imgbase = 0x10000000U;
 uint32_t g_image_lo, g_image_hi;
 uint32_t g_fsbase, g_gsbase;
-int x86_allow_fallback;
 
 /* crt.c also owns the guest stdio table. These parser tests never open a
    file, so a reached file hook is a test-scope violation and must fail rather

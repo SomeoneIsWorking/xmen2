@@ -2096,7 +2096,6 @@ int main(int argc, char **argv)
                From the entry point on, the guest owns the thread and silence
                becomes ambiguous. */
             heartbeat_start();
-            x86_args_build_check();
             guest_quantum_from_env();
             x86_hotep_arm(getenv("X2_HOTEP"));
             { extern void x86_profiler_start(const char *);

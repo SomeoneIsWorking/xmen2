@@ -506,7 +506,6 @@ static inline unsigned long long span_pop(void)
    single-module build still reference the plain symbol. */
 uint32_t g_imgbase = 0x10000000U;
 uint32_t g_image_lo, g_image_hi;
-int x86_allow_fallback;
 
 void x86_module_register(X86Module *m)
 {
@@ -589,9 +588,7 @@ int x86_triggers_report(void)
  * X2_EPCOUNT=0x004a11c0,0x004a1320 -- how often a body is ENTERED, in an
  * ordinary build.
  *
- * X2_ARGS answers this too but only in a trace build (I047), and a trace build
- * is slow enough that the run never reaches the scene the question is about.
- * This costs one comparison per DISPATCHED call, which is the only way a body
+ * It costs one comparison per DISPATCHED call, which is the only way a body
  * with no direct call site can be reached at all -- and the two script-launch
  * functions in XMen2.exe have exactly zero direct call sites, so every entry
  * they get comes through here.
@@ -1247,39 +1244,7 @@ int x86_native_body_at(uint32_t addr)
  * at some later RET that picks up the wrong word entirely. The imbalance is
  * invisible in a backtrace and obvious in a column of ESP values.
  */
-/* Large, because with X86_NATIVE_TRACE every body entry and exit lands here
-   and 96 entries covers a few microseconds of startup. It is a static array in
-   a diagnostic build; the memory is not worth economising. */
-/*
- * X2_ARGS is a TRACE-BUILD instrument. In an ordinary build it printed nothing
- * at all -- no banner, no report, no refusal -- so a run asking "is this
- * function ever entered" came back silent, and silence reads as "never
- * entered" when it actually means "never watched". This says which it is, at
- * STARTUP rather than at exit, because the answer changes whether the run is
- * worth waiting for.
- */
-void x86_args_build_check(void)
-{
-    const char *e = getenv("X2_ARGS");
-    if (!e || !*e) return;
-#ifndef X86_NATIVE_TRACE
-    fprintf(stderr,
-        "[ARGS] X2_ARGS=%s is set and THIS BUILD CANNOT HONOUR IT. The watch "
-        "sits on the body-entry hook, which only exists with\n"
-        "       cmake -S . -B build/native -DX2_NATIVE_TRACE=ON\n"
-        "       NOTHING will be watched in this run, and its silence about "
-        "those entry points means nothing.\n", e);
-#else
-    fprintf(stderr, "[ARGS] X2_ARGS=%s -- this is a trace build, so the watch "
-                    "is live.\n", e);
-#endif
-}
-
-#ifdef X86_NATIVE_TRACE
-#define RING 8192
-#else
 #define RING 96
-#endif
 /* `base` distinguishes the two address spaces this ring records. Host-side
    crossings note a MAPPED address (base 0); the per-body trace hook is called
    from generated code, which only knows its own LINKED entry point, so it also
@@ -1544,12 +1509,8 @@ void x86_preempt_now(void)
 
 const char *x86_crossings_what(void)
 {
-#ifdef X86_NATIVE_TRACE
-    return "body entries and exits";
-#else
-    return "host-boundary crossings only (this is not a trace build, so "
-           "guest-to-guest calls are invisible here)";
-#endif
+    return "host-boundary crossings only: a guest-to-guest call inside "
+           "the interpreter crosses nothing and is invisible here";
 }
 
 static void ring_note(const char *what, uint32_t addr, uint32_t base,
@@ -1637,289 +1598,6 @@ static int args_string_at(uint32_t a, char *out, size_t cap)
     if (i >= 8) { memcpy(out + i - 3, "...", 4); return 1; }
     return 0;
 }
-
-#ifdef X86_NATIVE_TRACE
-/*
- * Entry and exit of every recompiled body.
- *
- * Exit records the ESP the body is LEAVING with, so a mismatched prologue and
- * epilogue shows up as a body whose exit ESP is not its entry ESP plus the
- * bytes its RET should have popped. That is the failure this exists to find,
- * and it is invisible without it: an ordinary guest-to-guest call is a direct
- * C call and crosses no boundary at all.
- */
-/*
- * Argument watch: X2_ARGS=0x10056330,0x1005ae50
- *
- * The native counterpart of the hosted build's X2_WATCH (I019), which the
- * native build did not have -- so "how many times was it called" was
- * answerable (the reached set) and "what was it called WITH" was not.
- *
- * On entry it prints ECX (the __thiscall `this`) and the first four stack
- * words above the return address; on exit, EAX. It CANNOT know a function's
- * real argument count -- nothing here does, which is why the export shims are
- * built not to need it -- so it prints a fixed four and says so. Words beyond
- * the real count are whatever the caller's frame holds, not arguments.
- */
-/*
- * Capping: by NOVELTY, not by count.
- *
- * A flat cap ("print the first 8 calls") and no cap at all fail the same
- * function called from a loop -- the first drowns the interesting call sites
- * under the boring one, the second drowns the log. What identifies a caller is
- * the RETURN ADDRESS, so the cap is per (entry point, return address): every
- * distinct call site is always printed the first time it appears, and repeats
- * from a site already seen stop after X2_ARGS_MAX (default 8).
- *
- * The suppressed calls are COUNTED, per site, and printed in the report. A
- * watch that silently dropped them would make one call site indistinguishable
- * from a million, which is the whole question when the symptom is a spin.
- */
-#define ARGS_MAX   16
-#define ARGS_SITES 24
-static struct ArgsWatch {
-    uint32_t      ep;
-    char          mod[24];               /* "" = any module (see args_init) */
-    unsigned long calls;                 /* entries seen for this ep */
-    int           nsites;
-    int           lost;                  /* distinct sites past ARGS_SITES */
-    unsigned long lost_calls;
-    struct { uint32_t ret; unsigned long n, shown; } site[ARGS_SITES];
-    int           shown;                 /* the last entry printed (see below) */
-} g_args[ARGS_MAX];
-static int g_args_n = -1, g_args_hits, g_args_cap = 8, g_args_printed;
-
-/* One line per word that decoded, and nothing at all when none did -- so a
-   silent watch means "no argument pointed at a string I could reach", not
-   "there were no strings". */
-static void args_print_strings(const char *tag, const uint32_t *w, int n)
-{
-    char buf[120];
-    int i;
-    for (i = 0; i < n; i++)
-        if (args_string_at(w[i], buf, sizeof buf))
-            fprintf(stderr, "[ARGS]      %s[%d] 0x%08x -> \"%s\"\n",
-                    tag, i, w[i], buf);
-}
-
-static void args_init(void)
-{
-    const char *e = getenv("X2_ARGS"), *c = getenv("X2_ARGS_MAX");
-    char buf[256], *p, *save;
-    g_args_n = 0;
-    if (c && *c) g_args_cap = (int)strtol(c, NULL, 0);
-    if (!e || !*e) return;
-    snprintf(buf, sizeof buf, "%s", e);
-    /*
-     * "0x10068da0" or "libCriMovie:0x100026f0".
-     *
-     * The qualifier is not decoration. Every libIG*.dll and libCriMovie is
-     * LINKED for 0x10000000, so a bare guest address names a function in each
-     * of nineteen modules at once -- and the watch printed libIGSg's
-     * igMatrixObjectPool::getClassMeta for a run that was asking about
-     * libCriMovie's movie init, with nothing in the output to say so. An
-     * unqualified address still matches any module, because that is what the
-     * exe's addresses need and what every existing use expects.
-     */
-    for (p = strtok_r(buf, ",", &save); p && g_args_n < ARGS_MAX;
-         p = strtok_r(NULL, ",", &save)) {
-        char *colon = strchr(p, ':');
-        struct ArgsWatch *w = &g_args[g_args_n++];
-        memset(w->mod, 0, sizeof w->mod);
-        if (colon) {
-            *colon = 0;
-            snprintf(w->mod, sizeof w->mod, "%s", p);
-            p = colon + 1;
-        }
-        w->ep = (uint32_t)strtoul(p, NULL, 0);
-    }
-    {   int i;
-        for (i = 0; i < g_args_n; i++)
-            fprintf(stderr, "[ARGS]   0x%08x in %s\n", g_args[i].ep,
-                    g_args[i].mod[0] ? g_args[i].mod
-                                     : "ANY module (every libIG*.dll is linked "
-                                       "for 0x10000000, so this may match "
-                                       "several -- qualify it as mod:0xADDR)");
-    }
-    fprintf(stderr, "[ARGS] watching %d entry point(s); ECX and 4 stack words "
-                    "per call. The real argument count is unknown, so trailing "
-                    "words may be the caller's frame rather than arguments.\n"
-                    "[ARGS] every distinct return address is printed once; "
-                    "repeats from a known one stop after %d (X2_ARGS_MAX) and "
-                    "are counted in the report.\n",
-            g_args_n, g_args_cap);
-}
-
-/* The module a MAPPED base belongs to, or NULL. */
-static const char *args_module_of(uint32_t base)
-{
-    X86Module *m;
-    for (m = x86_modules(); m; m = m->next)
-        if (*m->base == base) return m->name;
-    return NULL;
-}
-
-/* A qualifier matches the module's file name up to its extension, so
-   "libCriMovie" matches "libCriMovie.dll" and "XMen2" matches "XMen2.exe". */
-static int args_mod_matches(const char *want, const char *have)
-{
-    size_t n;
-    if (!want || !*want) return 1;
-    if (!have) return 0;
-    n = strlen(want);
-    return strncasecmp(have, want, n) == 0 && (have[n] == 0 || have[n] == '.');
-}
-
-static struct ArgsWatch *args_watched(uint32_t ep, uint32_t base)
-{
-    int i;
-    if (g_args_n < 0) args_init();
-    for (i = 0; i < g_args_n; i++)
-        if (g_args[i].ep == ep
-            && args_mod_matches(g_args[i].mod, args_module_of(base)))
-            return &g_args[i];
-    return NULL;
-}
-
-/* Returns 1 if this call should be printed, and says whether the call site is
-   one never seen before -- a new site is worth a marker in the line, because
-   it is the only kind of line that can answer "who else calls this". */
-static int args_should_print(struct ArgsWatch *w, uint32_t ret, int *is_new)
-{
-    int i;
-    *is_new = 0;
-    w->calls++;
-    for (i = 0; i < w->nsites; i++)
-        if (w->site[i].ret == ret) {
-            w->site[i].n++;
-            if ((long)w->site[i].shown >= g_args_cap) return 0;
-            w->site[i].shown++;
-            return 1;
-        }
-    if (w->nsites == ARGS_SITES) {       /* a blind spot, so it is reported */
-        w->lost++;
-        w->lost_calls++;
-        return 0;
-    }
-    i = w->nsites++;
-    w->site[i].ret = ret;
-    w->site[i].n = w->site[i].shown = 1;
-    *is_new = 1;
-    return 1;
-}
-
-/* Reported at exit so a watch that never fired cannot be read as "it was
-   called with nothing interesting". Per watched entry point, so one that was
-   never entered is distinguishable from one that was -- and with the call
-   sites and their counts, which is what turns "it spins" into "it spins from
-   HERE". */
-void x86_args_report(void)
-{
-    int i, j;
-    if (g_args_n < 0) args_init();
-    if (!g_args_n) return;
-    if (!g_args_hits) {
-        fprintf(stderr, "[ARGS] NONE of the %d watched entry point(s) was "
-                        "entered -- this run says nothing about their "
-                        "arguments.\n", g_args_n);
-        return;
-    }
-    fprintf(stderr, "[ARGS] %d call(s), %d printed, across %d watched entry "
-                    "point(s):\n", g_args_hits, g_args_printed, g_args_n);
-    for (i = 0; i < g_args_n; i++) {
-        struct ArgsWatch *w = &g_args[i];
-        if (!w->calls) {
-            fprintf(stderr, "[ARGS]   0x%08x  NEVER ENTERED\n", w->ep);
-            continue;
-        }
-        fprintf(stderr, "[ARGS]   0x%08x  %lu call(s) from %d call site(s):\n",
-                w->ep, w->calls, w->nsites);
-        for (j = 0; j < w->nsites; j++)
-            fprintf(stderr, "[ARGS]       ret to %08x  x%lu\n",
-                    w->site[j].ret, w->site[j].n);
-        if (w->lost)
-            fprintf(stderr, "[ARGS]       ... and %lu call(s) from call sites "
-                            "BEYOND the %d this watch can hold -- those "
-                            "addresses were not recorded.\n",
-                    w->lost_calls, ARGS_SITES);
-    }
-}
-
-/* `w->shown` is set by an entry that printed and read by the matching exit: an
-   exit line for a call whose entry was suppressed is noise with nothing to
-   attach to. Per watched entry point, so a watched function calling another
-   watched function pairs correctly; direct recursion of ONE watched function
-   can still pair an exit with the wrong entry, and only the eax value is at
-   stake there. */
-void x86_trace_enter(uint32_t ep, uint32_t base, const CPU *C)
-{
-    struct ArgsWatch *w;
-    ring_note("enter", ep, base, C->esp, C->esp, RD32(C->esp));
-    if ((w = args_watched(ep, base)) != NULL) {
-        /* Resolve through the module that HAS this base, never by assuming a
-           preferred address: the exe is linked for 0x400000, not 0x10000000,
-           and hardcoding one is how a report names the wrong function. */
-        X86Module *m;
-        const char *nm = NULL;
-        uint32_t ret = RD32(C->esp);
-        int is_new;
-        g_args_hits++;
-        w->shown = args_should_print(w, ret, &is_new);
-        if (!w->shown) return;
-        for (m = x86_modules(); m; m = m->next)
-            if (*m->base == base) { nm = x86_native_name_at(base + (ep - m->preferred)); break; }
-        g_args_printed++;
-        fprintf(stderr, "[ARGS] -> 0x%08x %-38s ecx %08x  args %08x %08x "
-                        "%08x %08x  (ret to %08x%s)\n",
-                ep, nm ? nm : "", C->ecx,
-                RD32(C->esp + 4), RD32(C->esp + 8),
-                RD32(C->esp + 12), RD32(C->esp + 16), ret,
-                is_new ? ", NEW call site" : "");
-        /* The callee-saved four, at the moment of entry -- so they are still
-           the CALLER's. A caller that indexes off EDI or EBP across a call
-           (issue #36) cannot be diagnosed from the arguments alone: the
-           question there is whether the value the caller is still using is
-           the one it had, and only the register file answers it. */
-        fprintf(stderr, "[ARGS]      caller-live  ebx %08x  ebp %08x  "
-                        "esi %08x  edi %08x\n",
-                C->ebx, C->ebp, C->esi, C->edi);
-        {   /* ecx first: a __thiscall's `this` is not a string, but the four
-               stack words are as likely to be char* as anything else. */
-            uint32_t words[5];
-            words[0] = C->ecx;
-            words[1] = RD32(C->esp + 4);
-            words[2] = RD32(C->esp + 8);
-            words[3] = RD32(C->esp + 12);
-            words[4] = RD32(C->esp + 16);
-            args_print_strings("arg", words, 5);
-        }
-        /* X2_PEEK at every watched call, not only at the fault. A dump taken
-           once at the end shows the wreckage; what identifies WHICH call broke
-           an invariant is the same addresses before and after each one. */
-        x86_peek_report();
-    }
-}
-
-void x86_trace_exit(uint32_t ep, uint32_t base, const CPU *C)
-{
-    ring_note("exit", ep, base, C->esp, C->esp, 0);
-    struct ArgsWatch *w = args_watched(ep, base);
-    if (w && w->shown) {
-        /* edx as well as eax: a 64-bit return comes back in EDX:EAX, and a
-           watch that prints only the low half reports a saturating or
-           truncated 64-bit value as a plausible small one. edx is meaningless
-           for a 32-bit return, which is why it is labelled rather than merged
-           into one number. */
-        fprintf(stderr, "[ARGS] <- 0x%08x  eax %08x  edx %08x  (as int64 %lld)\n"
-                        "[ARGS]      returned-with ebx %08x  ebp %08x  "
-                        "esi %08x  edi %08x\n",
-                ep, C->eax, C->edx,
-                (long long)(((uint64_t)C->edx << 32) | C->eax),
-                C->ebx, C->ebp, C->esi, C->edi);
-        x86_peek_report();
-    }
-}
-#endif
 
 /* ---- guest-memory peek ------------------------------------------------
  *
@@ -2333,110 +2011,12 @@ void x86_missing_import(const char *mod, const char *sym)
     abort();
 }
 
-void x86_unsupported_insn(uint32_t ep, uint32_t addr, const char *name,
-                          const char *reason)
-{
-    /* Guest (linked) addresses, labelled -- see x86_untranslated. */
-    fprintf(stderr, "x86_unsupported_insn: reached guest 0x%08x, inside guest "
-                    "0x%08x %s\n"
-                    "  the translator could not handle it: %s\n"
-                    "  The rest of that function IS translated; this is the one "
-                    "instruction, and it was actually executed.\n",
-            addr, ep, name, reason);
-    x86_diag_dump();
-    abort();
-}
-
-void x86_untranslated(uint32_t ep, const char *name, const char *reason)
-{
-    /* A GUEST (linked) address deliberately: it is what a reader pastes into
-       Ghidra. It is labelled because three separate reporters have already
-       named the wrong module by leaving that ambiguous (C101). */
-    fprintf(stderr, "x86_untranslated: reached guest 0x%08x %s -- blocked by: "
-                    "%s\n",
-            ep, name, reason);
-    x86_diag_dump();
-    abort();
-}
-
-void x86_note_fallback(uint32_t target)
-{
-    fprintf(stderr, "x86_note_fallback: 0x%08x -- the native build has no "
-                    "original image to fall back to\n", target);
-    abort();
-}
-
-/*
- * The native build has NO hybrid fallback, and says so.
- *
- * On the Wine path a dispatched target with no recompiled body falls back to
- * the ORIGINAL machine code, which keeps the program alive and is honest only
- * because it is loud -- re-frontier carries it as `rc-hybrid`, standing debt.
- * Natively there is no such path: x86_allow_fallback is never set (only
- * src/app/x2run.c sets it, and that is the Wine front end), and
- * x86_note_fallback aborts by name rather than running anything.
- *
- * This used to be an empty function. Nothing calls it on this path, so it was
- * not lying -- but the fact it could have stated is worth stating: every
- * instruction a native run executes came from the translator. That is the
- * property the whole project is for, and it was going unreported.
- */
-void x86_fallback_report(void)
-{
-    printf("  recomp: NO original machine code ran. The native build has no "
-           "hybrid fallback -- a dispatched target with no recompiled body "
-           "aborts by name (x86_note_fallback), so reaching this line at all "
-           "means every instruction executed came from the translator.\n");
-}
-
 void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest)
 {
     X86Module *m = x86_module_for(addr);
     if (!m) { *mod = NULL; *guest = addr; return; }
     *mod = m->name;
     *guest = m->preferred + (addr - *m->base);
-}
-
-void x86_fallthrough(uint32_t fn_ep, uint32_t next)
-{
-    fprintf(stderr, "x86_fallthrough: the body of 0x%08x ended without a "
-                    "terminator and falls through to 0x%08x, which is not a "
-                    "known function.\n"
-                    "  Its detected boundaries are wrong and the code it runs "
-                    "into has never been translated.\n", fn_ep, next);
-    x86_report_where(next);
-    x86_diag_dump();
-    abort();
-}
-
-/*
- * The body ended at a call the ORIGINAL analyser proved never returns
- * (longjmp, exit, terminate, _CxxThrowException). Getting here is not a
- * boundary defect -- the boundaries are right -- it means OUR implementation
- * of that callee came back. Naming the callee is the whole point: the two
- * failures need completely different work, and for six of XMen2.exe's fifteen
- * "truncated" bodies the boundary story was simply wrong.
- */
-void x86_after_noreturn(uint32_t fn_ep, const char *callee)
-{
-    fprintf(stderr, "x86_after_noreturn: the body of 0x%08x ends at a call to "
-                    "%s, which NEVER RETURNS.\n"
-                    "  Execution came back from it, so the defect is in this "
-                    "port's %s, not in the function's boundaries.\n",
-            fn_ep, callee, callee);
-    x86_diag_dump();
-    abort();
-}
-
-void x86_int3(uint32_t addr)
-{
-    fprintf(stderr, "x86_int3: execution reached the compiler's unreachable "
-                    "trap at guest 0x%08x.\n"
-                    "  MSVC emits INT3 after a call it proved never returns, "
-                    "so a noreturn function returned.\n", addr);
-    x86_report_where(addr);
-    x86_diag_dump();
-    abort();
 }
 
 void x87_fault(const char *what)

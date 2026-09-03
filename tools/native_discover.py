@@ -285,10 +285,6 @@ def main() -> int:
     binary = BUILD / "x2native"
     if not os.access(binary, os.X_OK):
         raise SystemExit(f"native_discover: {binary} is not built -- discovered NOTHING")
-    watched = os.environ.get("X2_ARGS", "")
-    if watched and not watched.startswith("-"):
-        print(f"native_discover: X2_ARGS is the runtime argument watch ({watched!r}), "
-              "not this tool's command line; use RUN_ARGS instead", file=sys.stderr)
     verification = command([sys.executable, "tools/verify_export.py"], capture=True)
     if verification.returncode:
         print("native_discover: an export does not match its shipped binary --",

@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 
@@ -33,14 +34,14 @@ int x2_player_input_uses_gamepad(unsigned player)
     return player_uses_gamepad;
 }
 
-void fn_XMen2_00629bf0(CPU *C)
+static void guest_body_00629bf0(CPU *C)
 {
     super_calls++;
     C->eax = 0x11112222u;
     C->esp += 4u;
 }
 
-void fn_XMen2_00564b70(CPU *C)
+static void guest_body_00564b70(CPU *C)
 {
     asset_calls++;
     CHECK(C->ecx == expected_outer_esp + 0x1cu);
@@ -102,4 +103,21 @@ int main(void)
     CHECK(result == 0);
     printf("dialog_prompts: %d checks passed\n", checks);
     return 0;
+}
+
+/*
+ * The retail bodies these tests super-call into. Production reaches them
+ * through x86_guest_body, so the test models the same seam rather than a
+ * symbol per function -- and an entry point this test does not model is a
+ * FAILURE that names itself, never a silent return.
+ */
+void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
+{
+    if (linked_ep == 0x00629bf0u && !strcmp(module, "XMen2.exe"))
+        { guest_body_00629bf0(C); return; }
+    if (linked_ep == 0x00564b70u && !strcmp(module, "XMen2.exe"))
+        { guest_body_00564b70(C); return; }
+    fprintf(stderr, "%s: x86_guest_body(%s, 0x%08x) is not modelled by this test.\n",
+            "test_dialog_prompts.c", module, linked_ep);
+    abort();
 }
