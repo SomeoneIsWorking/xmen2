@@ -65,6 +65,16 @@ lucent::cvar::Var<bool> g_sg_attr_stack{"sg.attr_stack", true};
  * off in normal play. */
 lucent::cvar::Var<bool> g_sg_attr_stack_verify{"sg.attr_stack_verify", false};
 
+/* on: native override for the per-frame audio channel poll (XMen2.exe
+ * 0x00594500). off restores full guest JIT execution of the 24-channel
+ * completion sweep. */
+lucent::cvar::Var<bool> g_audio_channel_poll{"audio.channel_poll", true};
+
+/* on: after each native audio channel poll, run the guest body, capture its
+ * memory effects, rewind, and abort on any divergence. off in normal play. */
+lucent::cvar::Var<bool> g_audio_channel_poll_verify{"audio.channel_poll_verify",
+                                                    false};
+
 /* on: pure leaf import thunks (_ftol, _stricmp, QPC, etc.) bypass the substrate
  * callout bridge and run directly from the host dispatch loop on the
  * x86port CPU state. off restores the full substrate callout bridge. */
@@ -101,6 +111,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_gfx_vtx_builder_verify);
   lucent::cvar::register_var(g_sg_attr_stack);
   lucent::cvar::register_var(g_sg_attr_stack_verify);
+  lucent::cvar::register_var(g_audio_channel_poll);
+  lucent::cvar::register_var(g_audio_channel_poll_verify);
 
   const std::string path =
       std::string(x2_config_directory()) + "/x2native-runtime.conf";

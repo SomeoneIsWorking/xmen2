@@ -510,17 +510,25 @@ static void b_AddRef(CPU *C) {
   ret_com(C, b->refs, 0);
 }
 
-static void b_Release(CPU *C) {
-  DSBuffer *b = this_buffer(C);
-  unsigned n;
+int dsound_buffer_is_playing(uint32_t guest) {
+  DSBuffer *b = buffer_of(guest);
+  if (!b)
+    return 0;
+  silent_advance();
+  return b->playing ? 1 : 0;
+}
+
+unsigned dsound_buffer_release_guest(uint32_t guest) {
+  DSBuffer *b = buffer_of(guest);
+  if (!b)
+    return 0;
   audio_lock();
-  n = b->refs ? --b->refs : 0;
+  unsigned n = b->refs ? --b->refs : 0;
   WR32(b->guest + 4u, n);
   if (!n) {
     if (g_buffer_releases < 8)
       fprintf(stderr,
-              "DSOUND: secondary object 0x%08x released to "
-              "zero%s\n",
+              "DSOUND: secondary object 0x%08x released to zero%s\n",
               b->guest,
               b->data && b->data->refs > 1
                   ? " (shared PCM remains through a duplicate)"
@@ -535,7 +543,11 @@ static void b_Release(CPU *C) {
     b->used = 0;
   }
   audio_unlock();
-  ret_com(C, n, 0);
+  return n;
+}
+
+static void b_Release(CPU *C) {
+  ret_com(C, dsound_buffer_release_guest(THIS), 0);
 }
 
 static void b_GetCaps(CPU *C) {
@@ -918,27 +930,11 @@ static void build_vtables(void) {
       ds_CreateSoundBuffer,   ds_GetCaps,   ds_DuplicateSoundBuffer,
       ds_SetCooperativeLevel, ds_Compact,   ds_GetSpeakerConfig,
       ds_SetSpeakerConfig,    ds_Initialize};
-  static void (*const b_impl[BVT_COUNT])(CPU *) = {b_QueryInterface,
-                                                   b_AddRef,
-                                                   b_Release,
-                                                   b_GetCaps,
-                                                   b_GetCurrentPosition,
-                                                   b_GetFormat,
-                                                   b_GetVolume,
-                                                   b_GetPan,
-                                                   b_GetFrequency,
-                                                   b_GetStatus,
-                                                   b_unimplemented,
-                                                   b_Lock,
-                                                   b_Play,
-                                                   b_SetCurrentPosition,
-                                                   b_SetFormat,
-                                                   b_SetVolume,
-                                                   b_SetPan,
-                                                   b_SetFrequency,
-                                                   b_Stop,
-                                                   b_Unlock,
-                                                   b_Restore};
+  static void (*const b_impl[BVT_COUNT])(CPU *) = {
+      b_QueryInterface, b_AddRef, b_Release, b_GetCaps, b_GetCurrentPosition,
+      b_GetFormat, b_GetVolume, b_GetPan, b_GetFrequency, b_GetStatus,
+      b_unimplemented, b_Lock, b_Play, b_SetCurrentPosition, b_SetFormat,
+      b_SetVolume, b_SetPan, b_SetFrequency, b_Stop, b_Unlock, b_Restore};
   int i;
   if (g_ds_vtable)
     return;

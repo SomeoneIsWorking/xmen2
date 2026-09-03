@@ -744,6 +744,14 @@ target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1)
 target_link_libraries(test_attr_stack PRIVATE lucent::lucent)
 add_test(NAME attr_stack COMMAND test_attr_stack)
 
+add_executable(test_audio_channel_poll tests/test_audio_channel_poll.c
+               src/native/audio_channel_poll.c src/native/guest_memory.c
+               tests/native_stubs.c)
+target_include_directories(test_audio_channel_poll PRIVATE src/native src/recomp)
+target_compile_definitions(test_audio_channel_poll PRIVATE TEST_SUITE=1)
+target_link_libraries(test_audio_channel_poll PRIVATE lucent::lucent)
+add_test(NAME audio_channel_poll COMMAND test_audio_channel_poll)
+
 target_include_directories(test_x87crt PRIVATE src/recomp)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
@@ -1392,6 +1400,8 @@ set(X2_NATIVE_SOURCES
     src/native/vertex_color_swizzle_verify.c
     src/native/vertex_builder.c
     src/native/vertex_builder_verify.c
+    src/native/audio_channel_poll.c
+    src/native/audio_channel_poll_verify.c
     src/recomp/x87crt.c
     src/native/kernel32.c
     src/native/win_path.c

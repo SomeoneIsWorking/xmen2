@@ -270,3 +270,53 @@ draw/skinning cost up but the crossing cost scales with it.
   SEH construction and engine re-entry.
   Average frame time dropped further to 14.65 ms, with framerate rising to 64.7 FPS
   (2000 frames completed in 30.95s vs 34.95s originally, a cumulative +12.7% FPS improvement).
+
+- **Native override for the per-frame audio channel poll (`XMen2.exe!0x00594500`)**:
+  Tail-called from the audio service tick (`FUN_0058f9a0`), this walks a fixed
+  24-entry channel table (`0x00804198`, stride 16) and for every channel in
+  state 2 crosses into `IDirectSoundBuffer::GetStatus` through the guest vtable;
+  when a buffer is no longer playing it Releases the owned buffer and frees the
+  slot, or drops a non-owning channel to state 1. In the boot-map tutorial
+  benchmark (`act0/tutorial/tutorial1`, `X2_UNPACED=1`, 3000 frames,
+  `jit.profile=65536`) the loop's two blocks were profile #3/#4 --
+  `0x00594578` 3.67M entries and `0x00594524` 3.52M entries, ~1.2% of guest
+  block-entry weight combined -- and each poll also made up to 24 guest->host
+  COM crossings.
+  `src/native/audio_channel_poll.{c,h}` runs the whole sweep natively, calling
+  `dsound.c`'s `dsound_buffer_is_playing` / `dsound_buffer_release_guest`
+  directly (no crossing). The retail `b_Release` body was refactored into the
+  shared `dsound_buffer_release_guest` so both paths use one implementation.
+  Runtime cvar `audio.channel_poll` (default on) A/Bs it;
+  `audio.channel_poll_verify` runs the guest body, captures its guest-memory
+  effects, rewinds, runs the native poll, and aborts on divergence -- clean over
+  an 800-frame driven run. Unit test `tests/test_audio_channel_poll.c` (test
+  #77) covers every branch. With the override on, `0x00594524`/`0x00594578`
+  leave the `jit.profile` top 40 entirely. Frame-time delta in this benchmark
+  was within run-to-run noise (21.3 ms both ways; the ~2.5% cited earlier was a
+  heavier-audio session) -- the crossing removal matters more for the paced /
+  Android CPU-and-thermal budget than for uncapped FPS here.
+
+### Next localized XMen2.exe levers (2026-09-04, from the same profile)
+
+With the audio poll owned, the top XMen2.exe blocks in the boot-map benchmark
+are:
+
+- **`0x006276d0` (`FUN_006276d0`, `ret 8`) -- profile #1/#2, `0x00627750`
+  1.0% + `0x006276f6` 0.8%.** A nested loop writing a stride-12 (vec3) array,
+  calling `FUN_00627150` / `FUN_00627650` per element on a mode switch -- a
+  vector/transform-array operation. Porting it also pulls in those two callees;
+  a decomp-port task, not a leaf override.
+- **`igArenaMemoryPool::isActive` / `::contains` / `igMemoryPool` cluster
+  (`0x2f05a770`, `0x2f05be60`, `0x2f03af..`, ~15 blocks at ~0.4% each,
+  ~6% combined).** In `libIGMemory`/`Core`; needs the Alchemy DLL disassembled
+  (linked at `0x10000000`, mapped base varies) the same way `objdump` was used
+  on `XMen2.exe` here.
+- **`igWin32LongTimer::getTimeOfDay` / `igLongTimer::getTimeAsLong`
+  (`0x2f068fd0` and neighbours, ~0.6% each).** The QPC-derived clock path;
+  related to the leaf-thunk QPC fast path already landed.
+
+GPU is confirmed *not* an in-game bottleneck in this benchmark: host draw
+~0.18 ms/frame and host upload ~0.31 ms/frame (transfer staging is already
+retained/cycled, not re-allocated per frame) out of a ~21 ms frame -- ~2.5%.
+The ~21 ms is guest-body execution; the remaining lever stays x86port codegen
+quality plus the localized clusters above.
