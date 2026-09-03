@@ -106,7 +106,35 @@ cost (the Android target) more than uncapped FPS.
   `x86_native_call_at` already documents that a hand-written override emulates
   the guest RET itself.
 
+### Profile after both clusters landed (2026-09-03, verify off, ~110 s driven)
 
+```
+836,989,734 block entries, 97,758 distinct hot blocks
+ 1. 0x2b046cfa  libIGGfx  (unnamed)                 4.4%   <- now the single biggest
+ 3-4. 0x00594524/78  XMen2.exe                      2.5%
+ 5-7. 0x2e034d10/44/52  igAttrStack::customReset    3.3%
+ 8-9. 0x006276f6/750  XMen2.exe                     1.6%
+10-11,18-20. 0x0055b4xx/0x0055b6xx  frame limiter   1.5%  (inflated by UNPACED, issue #35)
+12-17. igWin32LongTimer::getTimeOfDay / igLongTimer::getTimeAsLong  1.5%
+25-40. igMemoryPool::getMemoryPoolByIndex / igArenaMemoryPool::isActive / ::contains  ~3%
+```
+0x006167xx / 0x006721xx are gone -- both clusters are natively owned.
+
+**Next target: `0x2b046cfa` in libIGGfx (Alchemy), 4.4%.** A `jmp [table*4]`
+switch (table at `0x10046cb5`) inside a vertex/pixel **format-conversion**
+routine; case 2 (`cmp [ebp+4], 2`) is the hot loop at `0x10046cfa`: for each
+element it loads a 32-bit word at `buffer[stride*i + off]` (stride `[ecx+0x38]`,
+off `[ecx+0x3b]`, base `[[ecx+8]+0x50]`) and swaps bytes 0 and 2 while keeping
+bytes 1 and 3 -- a **BGRA<->RGBA channel swap**. SIMD-friendly (`pshufb` over 4
+pixels), but the enclosing function uses virtual dispatch (`call [edx+0x5c]`)
+and has many other switch cases, so a native override must either replace the
+whole switch or intercept only the swap loop. This is Alchemy shared code
+(`shared/alchemy`) -- the mono/stereo colour-swap belongs there if XMLI needs
+it too. Not yet started: needs the function entry, the full case table, the
+`ecx`/`ebp` struct layouts, and a differential test vs the guest.
+
+`igAttrStack::customReset` (3.3%) and the `igArenaMemoryPool` allocator cluster
+(~3%) are the other named localized targets, both also Alchemy.
 
 
 ## Where the time goes
