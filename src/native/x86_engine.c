@@ -86,8 +86,6 @@ static int jit_intercept(const X86pCpu *cpu, void *user) {
   const uint32_t eip = cpu->eip;
   if (x86_is_thunk(eip))
     return 1;
-  if (x86_setjmp3_thunk(eip))
-    return 1;
   if (eip == ENGINE_RETURN_ADDR)
     return 1;
   if (g_engine.depth > 0 && g_engine.depth <= ENGINE_FRAMES) {

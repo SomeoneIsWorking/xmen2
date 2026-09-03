@@ -291,9 +291,16 @@ void x86_setjmp_done(CPU *C, int rc) {
  * import MSVCRT.dll, and the symbol is the same function either way.
  */
 int x86_setjmp3_thunk(uint32_t addr) {
-  const char *mod = NULL;
-  const char *sym = x86_thunk_name(addr, &mod);
-  return sym && !strcmp(sym, "_setjmp3");
+  static uint32_t s_addr1 = 0, s_addr2 = 0;
+  static int s_cached = 0;
+  if (!x86_is_thunk(addr))
+    return 0;
+  if (!s_cached) {
+    s_addr1 = x86_native_thunk("MSVCR71.DLL", "_setjmp3");
+    s_addr2 = x86_native_thunk("MSVCRT.DLL", "_setjmp3");
+    s_cached = 1;
+  }
+  return (s_addr1 && addr == s_addr1) || (s_addr2 && addr == s_addr2);
 }
 
 /*
