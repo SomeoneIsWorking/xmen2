@@ -38,6 +38,36 @@ the fast attract-sequence frames being averaged out, not a regression.
 
 Options 2-4 below remain open and are now the next levers.
 
+## Where the in-game guest time goes (2026-09-03, `jit.profile`)
+
+x86port `787aa3f` adds an execution-weighted block-entry histogram
+(`x86p_jit_engine_set_profile`); xmen2 arms it with `--set jit.profile=<slots>`
+and prints the top 40 at shutdown. Driven in-game, ~115 s, `X2_UNPACED=1`:
+
+```
+1,240,004,563 block entries, 97,568 distinct hot blocks, 0 dropped
+ 1. 0x2b046cfa  (module)                            3.6%
+ 2. 0x2d022e1d  (module)                            1.6%
+ 3-5. 0x2e034d10/44/52  igAttrStack::customReset    2.7% (3 blocks, identical counts)
+ 8-11. 0x0067217c..0x006721ef  XMen2.exe            2.8% (one tight loop)
+19-34. 0x006167a1..0x006169dd  XMen2.exe           ~7%   (~16 blocks, ~4.67M each)
+35-36. 0x0055b610/59  frame limiter (issue #35)     0.8% (inflated by UNPACED)
+38,40. igWin32LongTimer::getTimeOfDay / igLongTimer::getTimeAsLong  0.6%
+```
+
+**The profile is flat.** The hottest single block is 3.6%; the top 40 together
+are ~25%. There is no one hot loop to crush -- the game's per-frame guest work
+(scene graph, attribute stack, math) is spread across ~100k blocks. `blocks
+entered 1.24e9`, `0 fallback steps`, `28,891 insns via helper` of 597k
+translated (~5%). So the lever is not coverage (already complete) and not one
+override; it is either broad x86port codegen quality (a long grind of better
+emitters, measurable now with this profile) or native ownership of the two
+localized XMen2.exe clusters at 0x00616xxx (~7%) and 0x006721xx (~2.8%) -- which
+need RE first. The 0x0055b610 frame-limiter spin (option 2) is real but its
+count here is inflated by `X2_UNPACED`; collapsing it helps paced CPU/thermal
+cost (the Android target) more than uncapped FPS.
+
+
 
 ## Where the time goes
 

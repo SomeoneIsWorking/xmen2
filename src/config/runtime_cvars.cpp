@@ -34,6 +34,11 @@ lucent::cvar::Var<bool> g_jit_verify{"jit.verify", false};
  * A/B for measuring the inline handler's effect. */
 lucent::cvar::Var<bool> g_jit_inline_dispatch{"jit.inline_dispatch", true};
 
+/* >0: arm x86port's block-entry histogram, sized for that many distinct block
+ * addresses; the hottest blocks print at shutdown. A diagnostic -- it answers
+ * "where does in-game guest time go" now that the crossing cost is gone. */
+lucent::cvar::Var<long> g_jit_profile{"jit.profile", 0};
+
 void apply_set_token(const char *token) {
   const char *eq = std::strchr(token, '=');
   if (eq == nullptr || eq == token) {
@@ -53,6 +58,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_cache);
   lucent::cvar::register_var(g_jit_verify);
   lucent::cvar::register_var(g_jit_inline_dispatch);
+  lucent::cvar::register_var(g_jit_profile);
 
   const std::string path =
       std::string(x2_config_directory()) + "/x2native-runtime.conf";

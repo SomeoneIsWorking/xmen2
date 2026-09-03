@@ -19,6 +19,16 @@ void x86_engine_jit_diag_configure(struct X86pJitEngine *jit) {
             "[ENGINE] jit.verify=on: every block entry is cross-checked "
             "against the interpreter\n");
   }
+  {
+    long slots = lucent_cvar_number("jit.profile", 0);
+    if (slots > 0) {
+      x86p_jit_engine_set_profile(jit, 1, (uint32_t)slots);
+      fprintf(stderr,
+              "[ENGINE] jit.profile=%ld: block-entry histogram armed; the "
+              "hottest blocks print at shutdown\n",
+              slots);
+    }
+  }
 }
 
 void x86_engine_jit_diag_report(const struct X86pJitEngineStats *stats) {

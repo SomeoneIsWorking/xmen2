@@ -419,6 +419,25 @@ void x2_engine_report(void) {
             (unsigned long long)js.cache_flushes,
             (size_t)(js.code_bytes_used / 1024), x86p_jit_engine_mechanism());
     x86_engine_jit_diag_report(&js);
+    {
+      const X86pJitProfile *prof = x86p_jit_engine_profile(g_engine.jit);
+      if (prof && x86p_jit_profile_distinct(prof) > 0u) {
+        X86pJitProfileEntry top[40];
+        uint32_t n = x86p_jit_profile_top(prof, top, 40u), i;
+        uint64_t total = x86p_jit_profile_total_hits(prof);
+        fprintf(stderr,
+                "[ENGINE] jit hot blocks: %u distinct, %llu entr(ies) total, "
+                "%llu key(s) dropped (table full -- tail is under-counted). "
+                "Top %u by entry count:\n",
+                x86p_jit_profile_distinct(prof), (unsigned long long)total,
+                (unsigned long long)x86p_jit_profile_dropped_keys(prof), n);
+        for (i = 0; i < n; i++)
+          fprintf(stderr, "[ENGINE]   %2u. 0x%08x  %-40s  %10llu  %5.1f%%\n",
+                  i + 1u, top[i].guest_eip, named(top[i].guest_eip),
+                  (unsigned long long)top[i].entries,
+                  total ? 100.0 * (double)top[i].entries / (double)total : 0.0);
+      }
+    }
   }
   {
     unsigned long long look = x86p_decode_cache_lookups(&g_decode_cache);
