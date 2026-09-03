@@ -68,5 +68,7 @@ struct CPU;
 typedef struct X86pCpu X86pCpu;
 void x2_engine_to_x86p(const struct CPU *C, X86pCpu *out);
 void x2_engine_from_x86p(const X86pCpu *in, struct CPU *C);
+void x2_engine_callout_to_x86p(const struct CPU *C, X86pCpu *out);
+void x2_engine_callout_from_x86p(const X86pCpu *in, struct CPU *C);
 
 #endif

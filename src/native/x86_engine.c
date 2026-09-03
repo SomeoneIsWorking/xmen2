@@ -327,25 +327,10 @@ int x2_engine_call(uint32_t addr, CPU *C) {
        * everything else.
        */
       const uint32_t ret = RD32(cpu.reg[kX86pEsp]);
-      x2_engine_from_x86p(&cpu, C);
+      x2_engine_callout_from_x86p(&cpu, C);
       g_engine.callouts++;
-      /*
-       * x86_dispatch, not x86_native_call_at.
-       *
-       * A recompiled body may end in a TAIL JUMP, which it reports by
-       * leaving C->tail_target set and returning; only x86_dispatch's
-       * loop drains that. Calling the body directly ran the function and
-       * silently dropped whatever it jumped to -- a bug this seam had
-       * from the day it landed, and one nothing would have found until a
-       * taken body called a tail-jumping one and returned to a caller
-       * whose work was half done.
-       *
-       * The lookup above already said there IS a body here, so a "no
-       * recompiled body" abort out of x86_dispatch means the two lookups
-       * disagree, which is the same fact the removed refusal named.
-       */
       x86_dispatch(C, target);
-      x2_engine_to_x86p(C, &cpu);
+      x2_engine_callout_to_x86p(C, &cpu);
       /* The dispatched body emulated its own RET, so the guest ESP it
          returns with is already right. Only EIP is this loop's to
          restore. */

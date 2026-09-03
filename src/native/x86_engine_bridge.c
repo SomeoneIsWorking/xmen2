@@ -99,3 +99,42 @@ void x2_engine_from_x86p(const X86pCpu *in, CPU *C) {
   for (i = 0; i < 8; i++)
     memcpy(C->xmm[i], in->xmm[i], 16);
 }
+
+void x2_engine_callout_from_x86p(const X86pCpu *in, CPU *C) {
+  int depth, i;
+  C->eax = in->reg[kX86pEax];
+  C->ecx = in->reg[kX86pEcx];
+  C->edx = in->reg[kX86pEdx];
+  C->ebx = in->reg[kX86pEbx];
+  C->esp = in->reg[kX86pEsp];
+  C->ebp = in->reg[kX86pEbp];
+  C->esi = in->reg[kX86pEsi];
+  C->edi = in->reg[kX86pEdi];
+  C->fcw = in->x87.control;
+  C->fsw = (uint32_t)(x86p_x87_status(&in->x87) & 0x4700u);
+  depth = x86p_x87_depth(&in->x87);
+  C->top = 0;
+  C->depth = 0;
+  for (i = depth - 1; i >= 0; i--) {
+    long double v = 0.0L;
+    x86p_x87_get(&in->x87, i, &v);
+    x87_push(C, v);
+  }
+}
+
+void x2_engine_callout_to_x86p(const CPU *C, X86pCpu *out) {
+  int i;
+  out->reg[kX86pEax] = C->eax;
+  out->reg[kX86pEcx] = C->ecx;
+  out->reg[kX86pEdx] = C->edx;
+  out->reg[kX86pEbx] = C->ebx;
+  out->reg[kX86pEsp] = C->esp;
+  out->reg[kX86pEbp] = C->ebp;
+  out->reg[kX86pEsi] = C->esi;
+  out->reg[kX86pEdi] = C->edi;
+  x86p_x87_reset(&out->x87);
+  out->x87.control = (uint16_t)C->fcw;
+  out->x87.status = (uint16_t)(C->fsw & 0x4700u);
+  for (i = C->depth - 1; i >= 0; i--)
+    x86p_x87_push(&out->x87, C->st[(C->top + i) & 7]);
+}
