@@ -3,6 +3,7 @@
 
 from pathlib import Path
 import sys
+from check_save_trace_wiring import retail_body_call
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,7 +98,7 @@ def audit(conversation, player, context, behaved, event, dialogue,
             "scoped line-audio suppression")
     require(dialogue, "if (!g_dialogue.depth)",
             "ordinary dialogue super-call scope")
-    require(dialogue, "fn_XMen2_00458700(cpu)",
+    require(dialogue, retail_body_call(0x00458700, "cpu"),
             "ordinary dialogue retail path")
     require(dialogue, "suppressed_response_starts++",
             "silent response counter")
@@ -110,7 +111,7 @@ def audit(conversation, player, context, behaved, event, dialogue,
             "BehavEd sound command seam")
     require(script_audio, "cutscene_player_silences_current_context(&context)",
             "owned-context sound predicate")
-    require(script_audio, "fn_XMen2_004a7130(cpu)",
+    require(script_audio, retail_body_call(0x004A7130, "cpu"),
             "ordinary retail sound path")
     require(script_audio, "g_silent_commands",
             "silent sound-command counter")
@@ -179,7 +180,7 @@ def selftest():
         (4, "cutscene_event_player_window_claim_new("),
         (5, "x2_override_00458700"),
         (5, "x2_override_0045a170"),
-        (5, "fn_XMen2_00458700(cpu)"),
+        (5, retail_body_call(0x00458700, "cpu")),
         (6, "x2_override_004a7130"),
         (6, "cutscene_player_silences_current_context(&context)"),
         (8, "cutscene_player_snapshot("),

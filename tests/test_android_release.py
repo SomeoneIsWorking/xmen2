@@ -139,20 +139,22 @@ def main() -> int:
     assert "com.someoneisworking.xmen2.trace.arguments" in setup
     assert "com.someoneisworking.xmen2.trace.cap" in setup
     bridge = (ROOT / "src/native/android_bridge.cpp").read_text(encoding="utf-8")
-    native_runner = (ROOT / "src/native/x2native.c").read_text(encoding="utf-8")
+    # The host-backtrace half of a fault report has its own owner; the check
+    # follows the code rather than the file it used to live in.
+    fault_report = (ROOT / "src/native/fault_report.c").read_text(encoding="utf-8")
     assert "valid_trace_watch" in bridge
     assert '::setenv("X2_ARGS", arguments, 1)' in bridge
     assert "generic setenv bridge" in bridge
     assert "buildConfig = true" in gradle
-    assert "#if !defined(__ANDROID__)\n#include <execinfo.h>" in native_runner
-    assert "[HOST STACK] unavailable on Android" in native_runner
+    assert "#if !defined(__ANDROID__)\n#include <execinfo.h>" in fault_report
+    assert "[HOST STACK] unavailable on Android" in fault_report
     assert "::dup2(pipe_descriptors[1], STDOUT_FILENO)" in bridge
     assert "::dup2(pipe_descriptors[1], STDERR_FILENO)" in bridge
     runtime = (ROOT / "src/native/x86rt_native.c").read_text(encoding="utf-8")
     assert "syscall(SYS_process_vm_readv" in runtime
     draw_trace = (ROOT / "src/gpu/gpu_draw_trace.c").read_text(encoding="utf-8")
     assert "funopen(&g_capture" in draw_trace
-    assert "capture_close(capture, &capture_text, &capture_size)" in draw_trace
+    assert "capture_close(g_frame_dump.capture" in draw_trace
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
     assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "InstallLocation.java").exists()

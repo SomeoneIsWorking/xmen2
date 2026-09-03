@@ -4,7 +4,8 @@
 from pathlib import Path
 import sys
 
-from recomp_overrides import scan_overrides
+from check_save_trace_wiring import retail_body_call
+from native_overrides import scan_overrides
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,7 +35,7 @@ def audit(runtime, menu, control):
         raise WiringError("production autosave registration is gated by the "
                           "optional save trace")
     require_order(runtime, [
-        "fn_XMen2_00484ce0(C);",
+        retail_body_call(0x00484CE0),
         "x2_save_trace_map_return(map, succeeded);",
         "x2_autosave_runtime_map_return(succeeded);",
     ])

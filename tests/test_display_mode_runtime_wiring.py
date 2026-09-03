@@ -2,6 +2,10 @@
 """Pin the evidenced retail resolution-load override and its ordering."""
 
 from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+from check_save_trace_wiring import retail_body_call
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +21,7 @@ def require(source: str, needle: str) -> int:
 
 def main() -> int:
     source = SOURCE.read_text(encoding="utf-8")
-    retained = require(source, "fn_XMen2_00619770(C);")
+    retained = require(source, retail_body_call(0x00619770) + ";")
     publish = require(source, "(void)x2_display_mode_seed_publish();")
     reread = require(source, "reread_resolution(C, exe, expected);")
 

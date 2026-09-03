@@ -2015,13 +2015,16 @@ void imp_KERNEL32_GetProcAddress(CPU *C)
         /* A natively implemented system DLL: hand back a real thunk, or NULL
            if this host does not implement that entry point.
 
-           Two registries, asked in order, because they answer different
-           questions: x86_native_thunk finds a symbol some mapped module
-           IMPORTS, and x86_native_export_addr finds one this host publishes
-           that nothing imports -- which is the only kind a run-time lookup
-           like dinput8's can be. */
-        uint32_t t = x86_native_thunk(sm, sym);
-        if (!t) t = x86_native_export_addr(sm, sym);
+           Two registries, and the PUBLISHED one is asked first. Both can
+           answer for the same symbol -- the host-import registry mints a
+           thunk for anything this host implements, and the export registry
+           holds what it publishes for run-time lookup -- and they mint
+           different synthetic addresses. A caller that resolves an entry
+           point twice, once through an IAT and once through GetProcAddress,
+           must get ONE address for it, so the published address wins where
+           there is one. */
+        uint32_t t = x86_native_export_addr(sm, sym);
+        if (!t) t = x86_native_thunk(sm, sym);
         if (t) { ret_std(C, t, 2); return; }
         fprintf(stderr, "kernel32: GetProcAddress(%s, \"%s\") -- this host does "
                         "not implement that entry point, so NULL\n",

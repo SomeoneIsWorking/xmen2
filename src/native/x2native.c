@@ -15,6 +15,7 @@
  * still-unimplemented host import aborts by name, so incomplete coverage is a
  * concrete stop rather than a silently skipped operation.
  */
+#include "guest_body.h"
 #include "pe_map.h"
 #include "guest_modules.h"
 #include "guest_memory.h"
@@ -543,10 +544,19 @@ static int override_selftest(void)
 
 static int selftest, skip_body;
 
-static int call_body(uint32_t ep, CPU *C)
+/* Run one of libIGDisplay's own functions, named as the disassembly names it.
+   The battery quotes LINKED addresses because those are stable; the module is
+   relocated at run time, so the mapping is resolved here rather than in every
+   case. Reports rather than stopping: "the module is not mapped" is a result
+   this battery exists to print. */
+static int call_body(uint32_t linked_ep, CPU *C)
 {
+    char why[256];
     if (skip_body) return 1;              /* pretend it ran; nothing changes */
-    return x86_native_call(ep, C);
+    if (x86_guest_body_try(C, "libIGDisplay.dll", linked_ep, why, sizeof why))
+        return 1;
+    printf("    (%s)\n", why);
+    return 0;
 }
 
 static int checks;
@@ -619,7 +629,7 @@ static void case_enumerate(void)
     frame(&C, args, 2);
     esp0 = C.esp;
     C.eax = 0x11223344u;                          /* must be zeroed by XOR */
-    if (!call_body(0x10005660u, &C)) { printf("    FAIL  not in table\n"); fails++; return; }
+    if (!call_body(0x10005660u, &C)) { printf("    FAIL  body did not run\n"); fails++; return; }
     check("byte [imgbase+0x21d4c]", gr8(g_imgbase + 0x21d4cu), 1u);
     check("eax after XOR EAX,EAX", C.eax, 0u);
     check("esp delta (RET 8 = 4+8)", C.esp - esp0, 12u);
@@ -636,7 +646,7 @@ static void case_getscreensize(void)
     gw32(SCRATCH + 16u, 0xBADF00Du);
     frame(&C, args, 2);
     esp0 = C.esp;
-    if (!call_body(0x10006280u, &C)) { printf("    FAIL  not in table\n"); fails++; return; }
+    if (!call_body(0x10006280u, &C)) { printf("    FAIL  body did not run\n"); fails++; return; }
     check("*out_width  <- [0x10021d54]", gr32(SCRATCH), 0x320u);
     check("*out_height <- [0x10021d58]", gr32(SCRATCH + 16u), 0x258u);
     check("esp delta (RET 8 = 4+8)", C.esp - esp0, 12u);
@@ -654,7 +664,7 @@ static void case_findmouse(void)
     /* Poisoned, or "eax is 0" would be true before the body ran as well --
        --selftest caught exactly that: 13 of 14 checks bound, this one did not. */
     C.eax = 0x11223344u;
-    if (!call_body(0x100051c0u, &C)) { printf("    FAIL  not in table\n"); fails++; return; }
+    if (!call_body(0x100051c0u, &C)) { printf("    FAIL  body did not run\n"); fails++; return; }
     for (i = 0; i < 4; i++) {
         char lbl[64];
         snprintf(lbl, sizeof lbl, "[imgbase+0x%x] <- [obj+0x%x]",
@@ -673,7 +683,7 @@ static void case_arkinit(void)
     gw32(g_imgbase + 0x21b80u, SCRATCH);          /* the class meta object */
     gw32(SCRATCH + 0x3cu, 0xBADF00Du);
     frame(&C, NULL, 0);
-    if (!call_body(0x10002cc0u, &C)) { printf("    FAIL  not in table\n"); fails++; return; }
+    if (!call_body(0x10002cc0u, &C)) { printf("    FAIL  body did not run\n"); fails++; return; }
     check("eax <- [0x10021b80]", C.eax, SCRATCH);
     /* The point of this one: an immediate holding an image address must be
        REBASED to where we mapped it, not emitted as the literal 0x10002370. */
@@ -943,7 +953,7 @@ static void case_matrix_multiply(void)
             CPU C;
             float got[16];
             float worst = 0.0f;
-            char lbl[96];
+            char lbl[96], lbl2[256];
             int j;
 
             /* Poison the destination, so "the body never ran" cannot read as
@@ -954,9 +964,11 @@ static void case_matrix_multiply(void)
             frame(&C, args, 3);
             if (skip_body) {
                 /* the negative control: leave the poison in place */
-            } else if (!x86_native_call_at(IGM(BODY[i].ep), &C)) {
-                snprintf(lbl, sizeof lbl, "%s is in the table", BODY[i].name);
+            } else if (!x86_guest_body_try(&C, "libIGMath.dll", BODY[i].ep,
+                                           lbl2, sizeof lbl2)) {
+                snprintf(lbl, sizeof lbl, "%s could be run", BODY[i].name);
                 check(lbl, 0u, 1u);
+                printf("      (%s)\n", lbl2);
                 continue;
             }
             memcpy(got, guest_memory_const_pointer(gD), sizeof got);

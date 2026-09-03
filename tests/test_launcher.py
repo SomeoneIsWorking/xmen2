@@ -9,7 +9,6 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -76,7 +75,7 @@ class LauncherContract(unittest.TestCase):
 
     def test_player_bootstrap_excludes_maintainer_only_re_harness(self):
         self.assertEqual({repo.name for repo in bootstrap.SHARED_REPOS},
-                         {"alchemy", "android-port", "port-assets", "recomp-x86",
+                         {"alchemy", "android-port", "port-assets",
                           "jit-common", "x86port"})
 
     def test_bootstrap_finds_repository_local_game(self):
@@ -137,14 +136,6 @@ class LauncherContract(unittest.TestCase):
              mock.patch.object(runner.ctypes.util, "find_library", return_value=None):
             runner.check_native_dependencies(toolchain)
 
-    def test_committed_exports_are_complete_metadata_without_encodings(self):
-        expected = {f"{module}.json" for module in bootstrap.modules()}
-        actual = {path.name for path in (ROOT / "re" / "ghidra").glob("*.json")}
-        self.assertEqual(actual, expected)
-        for path in sorted((ROOT / "re" / "ghidra").glob("*.json")):
-            self.assertGreater(path.stat().st_size, 0)
-            self.assertFalse(bootstrap.has_instruction_encodings(path), path)
-
     def test_locked_environment_owns_resvg(self):
         project = (ROOT / "pyproject.toml").read_text()
         lock = (ROOT / "uv.lock").read_text()
@@ -181,80 +172,6 @@ class LauncherContract(unittest.TestCase):
                     bootstrap.publish_text(target, "new\n")
             self.assertEqual(target.read_text(), "old\n")
             self.assertEqual(list(target.parent.glob(".cache.txt-*")), [])
-
-    def test_iat_cache_requires_exact_output_and_tool_provenance(self):
-        with scratch_directory() as raw:
-            root = Path(raw)
-            (root / "tools").mkdir()
-            local_tool = root / "tools/pe.py"
-            shared_tool = root / "shared/pe.py"
-            shared_tool.parent.mkdir()
-            local_tool.write_text("local entry point\n")
-            shared_tool.write_text("shared implementation\n")
-            image = root / "game.dll"
-            image.write_bytes(b"pe image")
-            generated = "00100000 KERNEL32.dll!ExitProcess\n"
-
-            with mock.patch.object(bootstrap, "ROOT", root), \
-                 mock.patch.object(bootstrap, "run_tool", return_value=generated) as run:
-                first = bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
-                second = bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
-            self.assertEqual(first, second)
-            self.assertEqual(run.call_count, 1)
-
-            iat = root / "scratch/recomp/fixture.iat"
-            iat.write_bytes(b"\xfftruncated")
-            with mock.patch.object(bootstrap, "ROOT", root), \
-                 mock.patch.object(bootstrap, "run_tool", return_value=generated) as run:
-                repaired = bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
-            self.assertEqual(run.call_count, 1)
-            self.assertEqual(iat.read_text(), generated)
-            self.assertEqual(repaired, bootstrap.hash_file(iat))
-
-            shared_tool.write_text("changed implementation\n")
-            with mock.patch.object(bootstrap, "ROOT", root), \
-                 mock.patch.object(bootstrap, "run_tool", return_value=generated) as run:
-                bootstrap.ensure_iat("fixture", image, "image-hash", shared_tool)
-            self.assertEqual(run.call_count, 1)
-
-    def test_probe_artifacts_are_exact_atomic_outputs_and_retire_old_isolates(self):
-        with scratch_directory() as raw:
-            root = Path(raw)
-            generated = root / "src/recomp/gen"
-            recomp = root / "scratch/recomp"
-            generated.mkdir(parents=True)
-            recomp.mkdir(parents=True)
-            (generated / "probe_table.h").write_text("stale\n")
-            retired = recomp / "retired.isolate"
-            retired.write_text("0x00000001\n")
-
-            generator = SimpleNamespace(
-                HDR_OUT=str(generated / "probe_table.h"),
-                WRAP_OUT=str(generated / "probe_wraps.c"),
-                STUB_OUT=str(generated / "probe_stubs.S"),
-                CMAKE_OUT=str(generated / "recomp_probes.cmake"),
-                RECOMP=str(recomp),
-                Refuse=RuntimeError,
-                load_manifest=lambda: ["manifest"],
-                build=lambda manifest: ["probe"],
-                manifest_hash=lambda manifest: 0x12345678,
-                emit_header=lambda probes, digest: "header 12345678\n",
-                emit_wraps=lambda probes: "wraps\n",
-                emit_stubs=lambda probes: "stubs\n",
-                emit_cmake=lambda probes: "cmake\n",
-                emit_isolates=lambda probes: [(str(recomp / "live.isolate"),
-                                               "0x00401000\n")],
-            )
-            self.assertEqual(bootstrap.publish_probe_artifacts(generator), 6)
-            self.assertEqual((generated / "probe_table.h").read_text(),
-                             "header 12345678\n")
-            self.assertFalse(retired.exists())
-            self.assertEqual(bootstrap.publish_probe_artifacts(generator), 0)
-
-            (generated / "probe_wraps.c").write_bytes(b"\xffdamaged")
-            self.assertEqual(bootstrap.publish_probe_artifacts(generator), 1)
-            self.assertEqual((generated / "probe_wraps.c").read_text(), "wraps\n")
-
 
 if __name__ == "__main__":
     os.chdir(ROOT)

@@ -1,4 +1,5 @@
 /* Shipping-path checks for the native CRT import surface. */
+#include "guest_body.h"
 #include "crt_selftest.h"
 
 #include "guest_heap.h"
@@ -66,11 +67,19 @@ static void check_delete_array(uint32_t stack_top, int skip_body,
     WR32(C.esp + 4u, pointer);
     esp0 = C.esp;
 
-    if (!skip_body)
-        body_found = x86_native_call_at(XMEN2_OPERATOR_DELETE_ARRAY_THUNK, &C);
+    if (!skip_body) {
+        char why[256];
+        body_found = x86_guest_body_try(&C, "XMen2.exe",
+                                        XMEN2_OPERATOR_DELETE_ARRAY_THUNK,
+                                        why, sizeof why);
+        if (!body_found) printf("    (%s)\n", why);
+    }
     guest_heap_stats(&after_used, &ignored_free, &ignored_blocks);
 
-    check("delete[] thunk is in shipping table", (uint32_t)body_found, 1u);
+    /* The exe's own operator delete[] is a JMP through its IAT, so running it
+       proves the whole route: guest thunk -> bound import slot -> host stub. */
+    check("delete[] route runs from the exe's own thunk",
+          (uint32_t)body_found, 1u);
     check("delete[] frees its guest allocation",
           (uint32_t)guest_heap_addr_is_live(pointer), 0u);
     check("delete[] cdecl esp delta", C.esp - esp0, 4u);

@@ -27,4 +27,12 @@
    state nothing downstream can explain. */
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep);
 
+/* The same call for code that must REPORT a failure rather than stop: returns
+   1 when the body ran, 0 with the reason in `why` when the module is not
+   mapped or the engine declined it. For the self-test battery, whose whole job
+   is to report; production overrides use x86_guest_body, because there a
+   skipped body is not a result. */
+int x86_guest_body_try(CPU *C, const char *module, uint32_t linked_ep,
+                       char *why, unsigned why_len);
+
 #endif /* GUEST_BODY_H */

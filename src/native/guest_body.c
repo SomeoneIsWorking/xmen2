@@ -6,6 +6,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+int x86_guest_body_try(CPU *C, const char *module, uint32_t linked_ep,
+                       char *why, unsigned why_len)
+{
+    uint32_t mapped = 0;
+    if (x86_override_resolve_check(module, linked_ep, &mapped,
+                                   why, why_len) != 0)
+        return 0;
+    return x2_engine_call(mapped, C) ? 1 : 0;
+}
+
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep)
 {
     char why[256];

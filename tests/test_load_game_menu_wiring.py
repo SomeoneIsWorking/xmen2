@@ -3,6 +3,10 @@
 
 from pathlib import Path
 import unittest
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+from check_save_trace_wiring import retail_body_call
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +22,7 @@ class LoadGameMenuWiringTest(unittest.TestCase):
 
         build = source[source.index("static void x2_override_004b0d20(") :]
         self.assertLess(
-            build.index("fn_XMen2_004b0d20(C)"),
+            build.index(retail_body_call(0x004B0D20)),
             build.index("activate_projection(C, manager)"),
         )
         self.assertIn("PAGE_COUNT = 0x1558u", source)
@@ -32,12 +36,12 @@ class LoadGameMenuWiringTest(unittest.TestCase):
         choose = source[start:end]
 
         self.assertIn("selection != AUTOSAVE_SCRIPT_SLOT", choose)
-        self.assertIn("fn_XMen2_0049f010(C)", choose)
+        self.assertIn(retail_body_call(0x0049F010), choose)
         self.assertIn("X2_EXACT_SAVE_LOAD_MENU", choose)
         self.assertIn("AUTOSAVE_LEAF, 0u", choose)
         self.assertLess(
             choose.index("selection != AUTOSAVE_SCRIPT_SLOT"),
-            choose.index("fn_XMen2_0049f010(C)"),
+            choose.index(retail_body_call(0x0049F010)),
         )
 
     def test_continue_and_menu_share_one_exact_leaf_reader(self) -> None:
@@ -72,7 +76,7 @@ class LoadGameMenuWiringTest(unittest.TestCase):
         self.assertIn(
             'x86_register_override("XMen2.exe", 0x0055ff00u', redirect
         )
-        self.assertIn("fn_XMen2_0055ff00(C)", redirect)
+        self.assertIn(retail_body_call(0x0055FF00), redirect)
         self.assertIn("if (completion) completion(succeeded)", redirect)
         self.assertLess(
             redirect.index("WR32(cpu->esp + 8u, g_leaf_guest)"),
