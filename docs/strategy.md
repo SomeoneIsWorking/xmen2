@@ -1,34 +1,68 @@
-# Strategy: static recompilation + native overrides
+# Strategy: run the guest at runtime + native overrides
 
-**Decision: recompile the PC build to native C, then replace functions with
-hand-written native code incrementally. Target is the PC build, not the Xbox
-build.**
+**Decision: execute the PC build's own machine code at runtime, and replace
+functions with hand-written native code incrementally. Target is the PC build,
+not the Xbox build.**
+
+**Superseded 2026-09-03: this document used to decide for STATIC
+recompilation** — an offline lifter turning Ghidra-derived function boundaries
+into C, 116,500 functions and 307 MB of generated source, regenerated at build
+time. That corpus, its generator and its inputs are deleted (27f0a7b), and the
+game now runs entirely on `shared/x86port`'s interpreter. What is gone is
+*static* recompilation; translating guest code to host code **at runtime** — a
+dynarec — remains open and is an optimisation decision, taken on a measurement,
+not a matter of principle. See `shared/jit-common/docs/migration.md` and its
+I004.
 
 Measurements behind this are in `docs/info/claims/` with their falsifiers.
-Reproduce them with `tools/pe.py`, `tools/ghidra_scripts/InstrHisto.py`, and
-`tools/run_shim.sh`.
 
-## Why recomp rather than clean reimplementation
+## Why not a clean reimplementation
 
 A clean reimplementation is bounded but *long*: the exe→engine contract is 794
 named symbols (C001), yet behind it sit a scene graph, renderer, animation
 system and the game's own logic. Nothing runs until a great deal of it exists,
 and the first playable build is person-years away.
 
-Recompilation inverts that. The whole binary is translated mechanically, so the
-game runs from early on, and each subsystem is replaced with native code *while
-the rest keeps working*. What you buy is **ownership**: a native, buildable,
-portable codebase where any function can be single-stepped, edited, or swapped —
-none of which Wine gives you, because Wine runs the original binary rather than
-yielding source.
+Executing the shipped binary inverts that. The whole game runs from early on,
+and each subsystem is replaced with native code *while the rest keeps working*.
+What you buy is **ownership**: a native, buildable, portable codebase where any
+function can be traced, intercepted or swapped — none of which Wine gives you,
+because Wine runs the original binary rather than yielding a program you own.
 
-An earlier claim (C003) said recomp was "value-negative" here because both
-shipped builds are already x86 so Wine already solves the problem. **That was
-wrong and has been falsified.** It scored recomp only on escaping an alien ISA
-and ignored ownership. What survives from it is the *difficulty* argument, which
-is real: x86 has variable-length instructions, so code/data separation is
-undecidable in general, and this engine dispatches through C++ vtables
-throughout.
+An earlier claim (C003) said this was "value-negative" here because both shipped
+builds are already x86, so Wine already solves the problem. **That was wrong and
+has been falsified.** It scored the port only on escaping an alien ISA and
+ignored ownership.
+
+## Why runtime execution rather than static recompilation
+
+Both answer "what runs the guest's code" and both keep the same override model
+above it. The reasons the static answer lost are cost, not capability:
+
+- **The build.** 307 MB of generated C across 89 translation units, regenerated
+  from the player's own images, is the single biggest thing in the build and it
+  had to exist before anything could run. The binary went from ~272 MB to 34 MB
+  when it was deleted.
+- **Coverage was a permanent job.** x86 has variable-length instructions, so
+  code/data separation is undecidable in general; every function the lifter
+  could not see was a hole to seed and re-lift. `_initterm`'s constructor
+  tables — function pointers in `.rdata` that static analysis never marks as
+  code — produced an abort listing every target so it could be fed back as
+  seeds. An interpreter decodes the bytes that are actually there and the whole
+  category disappears.
+- **Ghidra was in the loop.** A maintainer-only tool can never be a player
+  prerequisite (global rule), so a static pipeline meant shipping derived
+  artefacts and keeping them in step with the images they came from.
+- **It was fast enough without one.** Measured on this game, offscreen: the
+  interpreter runs `XMen2.exe`'s share at **10.9 ms/frame against a 16.67 ms
+  budget** (I004 §3), which is the same verdict psxport reached independently
+  (6.10 ms/frame, jit-common S011).
+
+**What this does not settle.** That measurement predates the whole game being
+interpreted — the Alchemy DLLs were still on the substrate at the time — and the
+current 5-frame runs are correctness, not performance. If the whole-game steady
+state does not fit the budget, the answer is a dynarec behind the same
+`X2_ENGINE` selector, not a return to generating C.
 
 ## Why the PC build, not the Xbox build
 
@@ -41,69 +75,69 @@ throughout.
 
 The GPU boundary alone would decide it: replacing D3D8 API calls is tractable
 work, whereas the XBE statically links D3D/DSOUND/XGRPH/DOLBY and drives the
-hardware directly.
+hardware directly. This is unchanged by the execution decision above.
 
-## Feasibility, measured
+## Instruction mix, measured
 
-`InstrHisto.py` counts instructions inside Ghidra-identified function bodies —
+`InstrHisto.py` counted instructions inside Ghidra-identified function bodies —
 *not* a linear sweep, which decodes padding and data as code (objdump reported
 29% `nop` and 146 `aas` for libIGDisplay, both artefacts).
 
 | | XMen2.exe | libIGDisplay.dll |
 |---|---|---|
 | functions identified | 11,106 | 521 |
-| exec bytes covered | 2,025,452 / 2,613,248 = **77.5%** | 26,220 / 32,768 = **80.0%** |
 | instructions | 643,647 | 8,754 |
 | distinct mnemonics | 186 | 54 |
 | top-50 mnemonics cover | 98.76% | 99.95% |
 
-The headline worry — that `XMen2.exe` exports nothing and so has the Xbox's
-discovery problem — **did not survive measurement.** Coverage of the symbol-free
-exe (77.5%) matches the fully-symbolised DLL (80.0%). Symbols supply *names and
-types*; boundaries come from analysis, and analysis works.
+The integer core (MOV/PUSH/CALL/LEA/POP/TEST/ADD/JZ/CMP/JNZ) is 80% of the exe,
+x87 is 41 mnemonics at 5.83%, SSE is 0.18%.
 
-Instruction mix is benign: the integer core (MOV/PUSH/CALL/LEA/POP/TEST/ADD/JZ/
-CMP/JNZ) is 80% of the exe, x87 is 41 mnemonics at 5.83%, SSE is 0.18%. A
-decoder covering ~80 mnemonics reaches 99.7%.
-
-**What this does not establish:** that the identified boundaries are *correct*
-rather than merely present; what the remaining 22.5% of exec bytes is (data,
-padding, or reachable code); and — most importantly — instruction-count coverage
-is not semantic coverage. One mis-modelled flag or x87 precision case breaks
-execution regardless of histogram share.
+**What this measured, and what it no longer decides.** It was collected to argue
+that static translation could reach enough of the binary; the *coverage* half of
+that argument (77.5% of exec bytes inside identified functions) is moot, because
+an interpreter does not need boundaries at all. The *mix* half still holds and
+still sizes work: it is the opcode surface `x86port` has to implement, and it is
+why 3DNow!'s 20 opcodes were the first module (they clear 90% of the corpus's
+holes, I004 §1). Instruction-count coverage is not semantic coverage in either
+design: one mis-modelled flag or x87 precision case breaks execution regardless
+of histogram share.
 
 ## Shape of the work
 
-- **Recompiler** (offline): PE + Ghidra-derived function boundaries → C. One C
-  function per identified function, operating on a CPU state struct. Direct
-  calls where the target is known; a dispatch table for indirect calls.
-- **Generated output**: gitignored, regenerable, never hand-edited.
-- **Runtime**: host implementations of the imported Win32 / D3D8 / DirectInput /
-  msvcr71 surface (989 named imports total, C001).
-- **Overrides**: hand-written native C replacing recompiled functions one at a
-  time, with the recompiled body kept alive and A/B-toggleable.
-- **Harness**: the recompiled build diffed against the Wine oracle.
+- **The engine** (`shared/x86port`, selected by `X2_ENGINE`): decodes and
+  executes the guest's own bytes, read from the player's images at run time.
+  Zydis for decode only; semantics are x86port's, under test there.
+- **The loader** (`src/native/pe_map.c`, `guest_modules.c`): maps each image,
+  applies base relocations when it has to relocate, and binds the IAT.
+- **The host surface** (`src/native/host_imports*.c`, and the modules behind
+  it): what this port implements of Win32, the CRT, D3D8, DirectInput and
+  DirectSound — 398 import entries across 12 DLL surfaces, plus the run-time
+  export registry for what `LoadLibrary`/`GetProcAddress` resolve. A slot
+  nothing can answer is poisoned and faults BY NAME rather than binding to
+  something plausible.
+- **Overrides**: hand-written native C replacing guest functions one at a time,
+  registered at a module + linked entry point. `x86_guest_body()` runs the
+  original when an override wants to super-call it.
+- **Harness**: the port diffed against the Wine oracle, plus the port's own
+  control channel for driving a running build.
 
 ### Order
 
-`libIGDisplay.dll` is the first recompiler target — 32 KB, 521 functions, 54
-mnemonics — because the drop-in swap and tracing infrastructure for it already
-exists and works (C004, C006). It is a proving ground for the recompiler, not a
-milestone in itself. `XMen2.exe` is the eventual target.
+There is no lifting order any more — every module is executed the same way from
+the first frame. What is ordered is the override work, and that is the D3D8 seam
+below.
 
-## What carries over from the reimplementation work
+## What carries over
 
-Nothing built so far is wasted:
-
-- `tools/pe.py` — PE sections/imports/exports; the recompiler needs all of it.
-- `tools/run_shim.sh` — the Wine oracle (C005), now the differential reference.
+- `tools/pe.py` — PE sections/imports/exports.
+- `tools/run_shim.sh` — the Wine oracle (C005), the differential reference.
 - `tools/build_shim.sh` + `tools/gen_trace.py` — drop a replacement DLL into the
-  running game and trace the boundary. A recompiled DLL is dropped in exactly
-  the same way, and the tracer gives ground-truth call sequences from the
-  original to diff a recompiled build against.
-- `docs/RE/ark.md` — the ARK meta-object system (C008, C009). Recompiled code
-  reproduces it automatically, but overrides need it understood.
-- `src/core/` — IGB/DXT/mesh/Enbaya decoders, for asset-level work and overrides.
+  running game under Wine and trace the boundary; the tracer gives ground-truth
+  call sequences from the original to diff this port against.
+- `docs/RE/ark.md` — the ARK meta-object system (C008, C009). The guest's own
+  code reproduces it automatically; overrides need it understood.
+- `xbox/` — the Xbox seeds and override map, real and kept, not the live front.
 
 ## Known limits carried forward
 
@@ -120,7 +154,8 @@ Nothing built so far is wasted:
 destination. The port owns the engine's renderer instead, and `src/d3d8/` is
 deleted from the top down as that happens.**
 
-The reason is the same one that chose recomp over Wine: *ownership*. A D3D8
+The reason is the same one that chose running the guest ourselves over Wine:
+*ownership*. A D3D8
 emulator is the one part of this tree that is not ownership — it is a
 compatibility shim reconstructing intent that the engine had a moment earlier
 and threw away. The retired prompt-glyph plan demonstrated the cost: it would
@@ -150,7 +185,7 @@ seam removable rather than load-bearing.
 
 ### How it comes out — top down, never by decree
 
-`libIGGfx` is **5,580 recompiled functions**. The seam cannot be removed by
+`libIGGfx` is **5,580 guest functions**. The seam cannot be removed by
 deciding to; it is removed when its last caller is ours, and until then it is
 the only working path. So: port a renderer subsystem natively, watch its D3D8
 call sites go to zero, and delete what is then unreachable. Nothing is deleted
@@ -174,7 +209,7 @@ shows the native A icon beside `CONTINUE...`.
 This proves the direction, not completion of the 2D renderer. The prompt path
 still deliberately consumes Alchemy's layout and transform, while stock ASCII,
 panels, sprites, batching and the other libIGGfx UI draws continue through the
-recompiled engine and D3D8 host. **The broader 2D/UI path remains the first
+guest engine and the D3D8 host. **The broader 2D/UI path remains the first
 subsystem target** because it is screen-space, unlit and unshaded. Each
 semantic owner moves natively, its old D3D8 call sites are measured to zero,
 and only then is that part of the compatibility layer deleted.

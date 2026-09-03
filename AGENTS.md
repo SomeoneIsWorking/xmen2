@@ -8,14 +8,16 @@ be read, and neither improvement reached the other.
 
 ## What this is
 
-A static-recompilation port of **X-Men Legends II: Rise of Apocalypse** (2005 PC
-build) to native C. The x86-32 machine code of `XMen2.exe` + the `libIG*.dll`
-Alchemy engine DLLs is translated mechanically to C, so the game runs early; then
-subsystems are replaced with hand-written native code while the rest keeps
-working. `docs/project-goals.md` owns the durable outcomes,
-`docs/project-state.md` owns factual capability coverage, and
-`docs/strategy.md` states why recomp and why the PC build (the Xbox path in
-`xbox/` is real, kept, but not the live front).
+A native port of **X-Men Legends II: Rise of Apocalypse** (2005 PC build). The
+x86-32 machine code of `XMen2.exe` + the `libIG*.dll` Alchemy engine DLLs is
+executed at runtime by `shared/x86port`'s engine, read from the player's own
+images, so the game runs from the start; then subsystems are replaced with
+hand-written native code while the rest keeps working. Nothing is statically
+recompiled to C -- that corpus and its generator were deleted 2026-09-02.
+`docs/project-goals.md` owns the durable outcomes, `docs/project-state.md` owns
+factual capability coverage, and `docs/strategy.md` states why the guest is run
+at runtime and why the PC build (the Xbox path in `xbox/` is real, kept, but not
+the live front).
 
 ## Start here, before touching anything
 
