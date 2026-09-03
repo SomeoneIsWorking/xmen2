@@ -13,6 +13,7 @@
 #include "guest_heap.h"
 #include "host_imports.h"
 #include "x86_hotep.h"
+#include "pe_map.h"
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
@@ -34,7 +35,6 @@
 #endif
 
 static X86Module *g_head;
-static const X86Fn *find(X86Module *m, uint32_t addr);
 
 /* Native overrides: (module, linked entry point) -> C implementation.
    Registered from the subsystem files by x86_register_override; the dispatcher
@@ -59,6 +59,58 @@ static struct {
 } g_override[X2_MAX_OVERRIDES];
 static int g_noverride;
 static int g_overrides_resolved;
+
+/*
+ * The set of mapped addresses this dispatcher owns, as a hash set.
+ *
+ * The execution engine asks "is there host code here?" at EVERY guest
+ * instruction, so the answer has to be a probe rather than a walk. The thunk
+ * range answers itself (it is contiguous); this holds the override entry
+ * points, which are not.
+ *
+ * Zero means empty, which is safe because 0 is never a mapped entry point --
+ * an image mapped at 0 is refused by pe_map long before this. Sized a power of
+ * two four times X2_MAX_OVERRIDES so the load factor stays low enough that a
+ * miss is one or two probes; a full table would loop forever, so insertion
+ * refuses rather than trusting that it cannot fill.
+ */
+#define OWNED_SLOTS (X2_MAX_OVERRIDES * 4)
+static uint32_t g_owned[OWNED_SLOTS];
+
+static unsigned owned_slot(uint32_t addr)
+{
+    /* Entry points are 4- or 16-byte aligned, so the low bits carry little;
+       Fibonacci hashing spreads the useful ones over the table. */
+    return (unsigned)(((addr * 2654435761u) >> 8) & (OWNED_SLOTS - 1u));
+}
+
+static void owned_insert(uint32_t addr)
+{
+    unsigned i = owned_slot(addr), n = 0;
+    while (g_owned[i]) {
+        if (g_owned[i] == addr) return;
+        i = (i + 1u) & (OWNED_SLOTS - 1u);
+        if (++n == OWNED_SLOTS) {
+            fprintf(stderr, "x86rt: the owned-address set is full at %d "
+                            "entries, so 0x%08x would be dispatched as guest "
+                            "code and interpreted as x86.\n",
+                    OWNED_SLOTS, addr);
+            abort();
+        }
+    }
+    g_owned[i] = addr;
+}
+
+static int owned_has(uint32_t addr)
+{
+    unsigned i = owned_slot(addr);
+    for (;;) {
+        uint32_t v = g_owned[i];
+        if (!v) return 0;
+        if (v == addr) return 1;
+        i = (i + 1u) & (OWNED_SLOTS - 1u);
+    }
+}
 
 /* ---- per-function override slots ----------------------------------------
  *
@@ -161,6 +213,23 @@ void x86_register_override(const char *module, uint32_t linked_ep,
     g_override[g_noverride].mapped_ep = 0;
     g_override[g_noverride].fn        = fn;
     g_noverride++;
+    /* Registered after the resolve pass -- an ARK class substituted from a
+       trigger, for instance -- resolves now. Leaving mapped_ep at 0 would let
+       the override sit in the table and never fire, which is the failure
+       x86_overrides_resolve aborts to prevent. */
+    if (g_overrides_resolved) {
+        char     why[256];
+        uint32_t mapped = 0;
+        if (x86_override_resolve_check(module, linked_ep, &mapped,
+                                       why, sizeof why) != 0) {
+            fprintf(stderr, "x86_register_override: %s 0x%08x is registered "
+                            "after the resolve pass and cannot be resolved "
+                            "now: %s\n", module, linked_ep, why);
+            abort();
+        }
+        g_override[g_noverride - 1].mapped_ep = mapped;
+        owned_insert(mapped);
+    }
 }
 
 int x86_override_count(void) { return g_noverride; }
@@ -258,6 +327,7 @@ void x86_overrides_resolve(void)
             continue;
         }
         g_override[i].mapped_ep = mapped;
+        owned_insert(mapped);
     }
     if (bad) {
         fprintf(stderr, "x86_overrides_resolve: %d of %d override(s) could not "
@@ -460,29 +530,6 @@ X86Module *x86_module_for(uint32_t addr)
             abort();
         }
         if (b && addr >= b && addr - b < m->size) return m;
-    }
-    return NULL;
-}
-
-/* Binary search over the module's function table, which recomp.py native
-   emits SORTED by entry point. It used to be linear ("5769 entries is small
-   enough"), and that was true until the load window was measured: the arena
-   pool's 2-instruction isActive is reached only by DISPATCH, the load calls
-   it hundreds of thousands of times per frame, and a linear scan of a
-   ~6000-entry table on every dispatch made it the single most-sampled body
-   in the load (15.6%) with the check itself doing no work. log2(6000) is 13
-   compares. A duplicate EP cannot occur: interior entries are addresses
-   inside another body, never a function start. */
-static const X86Fn *find(X86Module *m, uint32_t addr)
-{
-    uint32_t ep = m->preferred + (addr - *m->base);
-    int lo = 0, hi = m->nfns - 1;
-    while (lo <= hi) {
-        int mid = (lo + hi) / 2;
-        uint32_t mep = m->fns[mid].ep;
-        if (mep == ep) return &m->fns[mid];
-        if (mep < ep) lo = mid + 1;
-        else hi = mid - 1;
     }
     return NULL;
 }
@@ -841,73 +888,7 @@ int x86_native_call_at(uint32_t addr, CPU *C)
                 return 1;
             }
     }
-    m = x86_module_for(addr);
-    const X86Fn *f = m ? find(m, addr) : NULL;
-    if (!f) return 0;
-    {
-        uint32_t in = C->esp;
-        /* X2_GUEST_WATCH=<addr>: catch WHO zeroed a guest address. Every
-           dispatch, if the watched dword has become 0, the PREVIOUS body was
-           the writer (a cookie slot going to 0 is the signature of a strncpy
-           zero-pad overrun). One shot. */
-        if (g_guest_watch_addr && RD32(g_guest_watch_addr) == 0) {
-            const char *wn = x86_native_name_at(g_last_dispatch_ep);
-            fprintf(stderr, "[GWATCH] guest 0x%08x went ZERO; last body was "
-                            "0x%08x %s\n",
-                    g_guest_watch_addr, g_last_dispatch_ep,
-                    wn ? wn : "(?)");
-            g_guest_watch_addr = 0;
-        }
-        g_last_dispatch_ep = addr;
-        /*
-         * The preemption point. This is the boundary every dispatched call
-         * crosses, so it is the one place a quantum can be counted without a
-         * hook in every generated body -- and a guest thread that never
-         * dispatches is not running guest code at all.
-         */
-        g_cpu_current = C;
-        if (g_epc_n < 0) epcount_init();
-        g_epc_dispatches++;
-        g_sample_ep = addr;
-        if (x86_hotep_armed()) x86_probe_span_push();
-        if (g_epc_n) {
-            int i;
-            for (i = 0; i < g_epc_n; i++)
-                if (g_epc[i].ep == addr) {
-                    int k, w;
-                    uint32_t ra = RD32(C->esp);
-                    g_epc[i].n++;
-                    for (k = 0; k < g_epc[i].nrets; k++)
-                        if (g_epc[i].ret[k] == ra) break;
-                    if (k == g_epc[i].nrets) {
-                        if (g_epc[i].nrets < EPCOUNT_WORDS)
-                            g_epc[i].ret[g_epc[i].nrets++] = ra;
-                        else
-                            g_epc[i].retlost++;
-                    }
-                    /* ECX (a __thiscall `this`) and the first three stack words
-                       above the return address. Values only. */
-                    for (w = 0; w < 4; w++) {
-                        uint32_t v = w == 0
-                            ? C->ecx
-                            : RD32(C->esp + 4u + (uint32_t)(w - 1) * 4u);
-                        for (k = 0; k < g_epc[i].nwords; k++)
-                            if (g_epc[i].word[k] == v) break;
-                        if (k < g_epc[i].nwords) continue;
-                        if (g_epc[i].nwords < EPCOUNT_WORDS)
-                            g_epc[i].word[g_epc[i].nwords++] = v;
-                        else
-                            g_epc[i].lost++;
-                    }
-                    break;
-                }
-        }
-        f->fn(C);
-        if (x86_hotep_armed()) x86_probe_guest_body_end(addr);
-        stackcheck_note(m, addr, in, C->esp);
-        ring_note("guest", addr, 0, in, C->esp, 0);
-    }
-    return 1;
+    return 0;
 }
 
 /*
@@ -949,8 +930,8 @@ void x86_regs_dump(void)
 }
 
 /*
- * The entry point of the function CONTAINING an address -- the greatest entry
- * point at or below it, within the same module.
+ * The entry point of the function CONTAINING an address -- the greatest
+ * EXPORTED entry point at or below it, within the same mapped image.
  *
  * Exists so that host code can identify its own caller by ROUTINE rather than
  * by a hardcoded address. The DirectInput layer uses it to find the game's
@@ -958,35 +939,34 @@ void x86_regs_dump(void)
  * asking "which function am I in" is self-identifying in a way that a constant
  * in this repository would not be.
  *
- * It is an APPROXIMATION and says so: the table carries entry points, not
- * sizes, so an address in a gap Ghidra never claimed will be attributed to the
- * function before it. Callers must sanity-check what comes back -- the one
- * here checks the name -- rather than trusting the answer blind.
+ * It is an APPROXIMATION and says so: the export table carries entry points,
+ * not sizes, and it names only what the image chose to export, so an address
+ * inside an unexported function is attributed to the exported one before it.
+ * Callers must sanity-check what comes back -- the one here checks the name --
+ * rather than trusting the answer blind.
  */
 uint32_t x86_native_entry_containing(uint32_t addr, const char **name_out)
 {
     X86Module *m = x86_module_for(addr);
-    uint32_t want, best = 0;
-    const char *bestnm = NULL;
-    int i;
+    uint32_t rva;
     if (name_out) *name_out = NULL;
     if (!m) return 0;
-    want = m->preferred + (addr - *m->base);
-    for (i = 0; i < m->nfns; i++)
-        if (m->fns[i].ep <= want && m->fns[i].ep > best) {
-            best = m->fns[i].ep;
-            bestnm = m->fns[i].name;
-        }
-    if (!best) return 0;
-    if (name_out) *name_out = bestnm;
-    return *m->base + (best - m->preferred);        /* MAPPED address */
+    rva = pe_export_containing(*m->base, addr - *m->base, name_out);
+    return rva ? *m->base + rva : 0;               /* MAPPED address */
 }
 
+/* The name of the function that STARTS at a mapped address, or NULL. NULL is
+   the common answer and an honest one: only exported entry points have a name
+   here, and these images export a fraction of what they contain. */
 const char *x86_native_name_at(uint32_t addr)
 {
     X86Module *m = x86_module_for(addr);
-    const X86Fn *f = m ? find(m, addr) : NULL;
-    return f ? f->name : NULL;
+    const char *name = NULL;
+    if (!m) return NULL;
+    if (pe_export_containing(*m->base, addr - *m->base, &name)
+        != addr - *m->base)
+        return NULL;
+    return name;
 }
 
 /* ---- native import thunks ---------------------------------------------
@@ -1248,16 +1228,11 @@ static int thunk_call(uint32_t addr, CPU *C)
  */
 int x86_native_body_at(uint32_t addr)
 {
-    X86Module *m;
-    int i;
     if (addr >= THUNK_BASE && addr < THUNK_BASE + (uint32_t)THUNK_MAX * 16u) {
         uint32_t t = (addr - THUNK_BASE) / 16u;
-        if ((int)t < g_nthunk && g_thunk[t].stub) return 1;
+        return (int)t < g_nthunk && g_thunk[t].stub ? 1 : 0;
     }
-    for (i = 0; i < g_noverride; i++)
-        if (g_override[i].mapped_ep == addr) return 1;
-    m = x86_module_for(addr);
-    return m && find(m, addr) ? 1 : 0;
+    return owned_has(addr);
 }
 
 /* ---- the boundary ring -------------------------------------------------

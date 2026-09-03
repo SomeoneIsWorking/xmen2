@@ -268,6 +268,38 @@ uint32_t pe_export_rva(uint32_t base, const char *name)
 }
 
 /*
+ * Which exported function contains an RVA.
+ *
+ * Linear over the name table because it is a DIAGNOSTIC lookup -- fault
+ * reports, dispatch reports, the DirectInput caller check -- asked thousands
+ * of times in a run and not per instruction. A miss is reported as 0 rather
+ * than as the first export, so "no export at or below this" is an answer.
+ */
+uint32_t pe_export_containing(uint32_t base, uint32_t rva,
+                              const char **name_out)
+{
+    uint32_t dir = data_dir(base, DIR_EXPORT, NULL), n, i;
+    const unsigned char *p = guest_memory_const_pointer(base);
+    uint32_t names, ords, funcs, best = 0;
+    const char *bestnm = NULL;
+    if (name_out) *name_out = NULL;
+    if (!dir) return 0;
+    n     = RD32_(p, dir + 0x18);
+    funcs = RD32_(p, dir + 0x1C);
+    names = RD32_(p, dir + 0x20);
+    ords  = RD32_(p, dir + 0x24);
+    for (i = 0; i < n; i++) {
+        uint16_t o  = (uint16_t)RD16(p, ords + i * 2);
+        uint32_t fr = RD32_(p, funcs + (uint32_t)o * 4);
+        if (fr > rva || fr < best) continue;
+        best   = fr;
+        bestnm = guest_memory_const_pointer(base + RD32_(p, names + i * 4));
+    }
+    if (name_out) *name_out = bestnm;
+    return best;
+}
+
+/*
  * Bind every import slot, the way a loader would.
  *
  * `resolve` returns the address to write, or 0 when it cannot resolve one. A 0

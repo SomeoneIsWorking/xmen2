@@ -24,12 +24,6 @@
 
 struct CPU;
 
-typedef struct X86Fn {
-    uint32_t    ep;                  /* guest entry point at the PREFERRED base */
-    void      (*fn)(struct CPU *);
-    const char *name;
-} X86Fn;
-
 typedef struct X86Module {
     const char     *name;
     /* POINTER TO where it actually got mapped -- the generated module owns the
@@ -39,8 +33,6 @@ typedef struct X86Module {
     uint32_t       *base;
     uint32_t        preferred;       /* what it was linked for */
     uint32_t        size;            /* SizeOfImage */
-    const X86Fn    *fns;
-    int             nfns;
     struct X86Module *next;
 } X86Module;
 
@@ -68,12 +60,14 @@ int x86_native_body_at(uint32_t addr);
    checked against both answers rather than only the one it gives most often. */
 uint32_t x86_override_mapped_ep(int index);
 
-/* Name of the body at a mapped address, or NULL. */
+/* Name of the function that STARTS at a mapped address, or NULL. Only exported
+   entry points have a name; NULL is the common and honest answer. */
 const char *x86_native_name_at(uint32_t addr);
 
 /* The MAPPED entry point of the function containing `addr`, and its name.
-   An approximation -- the table has entry points, not sizes -- so check the
-   name before acting on it. See the note in x86rt_native.c. */
+   An approximation -- the export table has entry points, not sizes, and names
+   only what the image exports -- so check the name before acting on it. See
+   the note in x86rt_native.c. */
 uint32_t x86_native_entry_containing(uint32_t addr, const char **name_out);
 
 /* A guest-callable address for a native C function, so engine code can call

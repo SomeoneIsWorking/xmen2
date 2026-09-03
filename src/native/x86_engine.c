@@ -64,6 +64,18 @@ static struct {
 } g_engine;
 
 /*
+ * The decode cache, one for the whole engine.
+ *
+ * Guest threads take the guest lock before running guest code, so exactly one
+ * of them is inside this loop at a time -- the same assumption g_frame and the
+ * depth counter already make. Its entries validate themselves against the
+ * guest bytes on every hit (see x86port's decode_cache.h), so a stale entry
+ * cannot execute; what a second concurrent runner would cost is a torn write,
+ * which is why this is stated as an invariant rather than left to chance.
+ */
+static X86pDecodeCache g_decode_cache;
+
+/*
  * The engine's own call stack, for a fault report.
  *
  * A host backtrace stops at x2_engine_call: everything below it is one C loop,
@@ -352,7 +364,8 @@ int x2_engine_call(uint32_t addr, CPU *C)
             cpu.eip = ret;
             continue;
         }
-        status = x86p_step(&cpu, &g_engine.mem, &report);
+        status = x86p_step_cached(&cpu, &g_engine.mem, &g_decode_cache,
+                                  &report);
         if (status != kX86pStepOk)
             refuse(entry, cpu.eip, x86p_step_status_name(status), &report);
         g_engine.insns++;
@@ -431,6 +444,17 @@ void x2_engine_report(void)
             x86p_engine_name(g_engine.selected), g_engine.calls, g_engine.taken,
             g_engine.calls - g_engine.taken, g_engine.insns, g_engine.callouts,
             g_engine.deepest, g_engine.setjmps, g_engine.longjmps);
+    {
+        unsigned long long look = x86p_decode_cache_lookups(&g_decode_cache);
+        fprintf(stderr,
+                "[ENGINE] decode cache: %llu lookup(s) -- %llu hit, %llu cold, "
+                "%llu displaced by another address, %llu found the guest bytes "
+                "REWRITTEN (%.1f%% hit)\n",
+                look, g_decode_cache.hits, g_decode_cache.cold,
+                g_decode_cache.collisions, g_decode_cache.rewritten,
+                look ? 100.0 * (double)g_decode_cache.hits / (double)look
+                     : 0.0);
+    }
 }
 
 void x2_engine_enter_service(void)
@@ -443,4 +467,7 @@ void x2_engine_enter_service(void)
     g_engine.deepest = 0;
     g_engine.setjmps = 0;
     g_engine.longjmps = 0;
+    /* The startup decode work is not the game's, and leaving it folded in
+       would make the cache look better than it is during play. */
+    x86p_decode_cache_reset(&g_decode_cache);
 }

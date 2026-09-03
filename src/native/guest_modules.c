@@ -31,12 +31,6 @@ int guest_modules_register(void)
         }
         g_module[i].name = name;
         g_module[i].base = &g_base[i];
-        /* No function table: there are no translated bodies any more, so every
-           address in every module reaches the execution engine. The count is
-           zero rather than absent because the dispatcher's reports divide by
-           it, and "0 of 0" is an answer while a missing denominator is not. */
-        g_module[i].fns = NULL;
-        g_module[i].nfns = 0;
         x86_module_register(&g_module[i]);
     }
     return 0;

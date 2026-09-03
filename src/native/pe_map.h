@@ -23,6 +23,15 @@ void pe_unmap(PeImage *img);
 /* Export RVA for a name in a MAPPED image, or 0. */
 uint32_t pe_export_rva(uint32_t base, const char *name);
 
+/* The reverse: the greatest exported RVA at or below `rva`, and its name, or 0
+   when the image exports nothing at or below it. An APPROXIMATION of "which
+   function is this" -- the export table carries entry points and not sizes, so
+   an address inside a function that is not itself exported is attributed to
+   the nearest exported one below it. The answer is exact only when the return
+   value equals `rva`; callers that need certainty must compare. */
+uint32_t pe_export_containing(uint32_t base, uint32_t rva,
+                              const char **name_out);
+
 /* Bind every import slot of a mapped image. `resolve` returns the address to
    write, or 0 when it cannot -- see pe_map.c for why 0 must not stay 0. */
 int pe_bind_imports(uint32_t base,
