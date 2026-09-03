@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum {
     LINKED_SETTINGS_LOAD = 0x00619770u,
@@ -48,7 +49,6 @@ enum {
     DISPLAY_OBJECT_BYTES = 0x64u
 };
 
-void fn_XMen2_00619770(CPU *C);
 
 static void refuse(const char *reason, const char *expected,
                    const char *actual)
@@ -204,7 +204,7 @@ static void x2_override_display_settings_load(CPU *C)
     uint32_t exe;
     char expected[32];
 
-    fn_XMen2_00619770(C);
+    x86_guest_body(C, "XMen2.exe", 0x00619770u);
 
     settings = x2_settings_store();
     if (!x2_display_mode_seed_format(settings->width, settings->height,

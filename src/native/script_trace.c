@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 
 #define NAME_MAX_LEN 96
 #define NAMES_MAX    256
@@ -77,7 +78,6 @@ static void record(const char *name, int ok)
     if (!ok) g_names[i].failures++;
 }
 
-void fn_XMen2_004a1320(CPU *C);
 
 void x2_override_004a1320(CPU *C)
 {
@@ -86,7 +86,7 @@ void x2_override_004a1320(CPU *C)
     int ok;
 
     copy_guest_string(name, sizeof name, RD32(C->esp + 4u));
-    fn_XMen2_004a1320(C);
+    x86_guest_body(C, "XMen2.exe", 0x004a1320u);
     ok = (int)(C->eax & 0xFFu);
 
     g_launches++;
@@ -126,7 +126,6 @@ void x2_override_004a1320(CPU *C)
 
 static unsigned long g_startconv, g_startconv_took, g_lockcontrols;
 
-void fn_XMen2_004a5660(CPU *C);
 
 static uint8_t conversation_flags(void)
 {
@@ -163,7 +162,7 @@ void x2_override_004a5660(CPU *C)
 {
     uint8_t before = conversation_flags(), after;
 
-    fn_XMen2_004a5660(C);
+    x86_guest_body(C, "XMen2.exe", 0x004a5660u);
     after = conversation_flags();
     g_startconv++;
     if (after != before) g_startconv_took++;
@@ -185,7 +184,6 @@ void x2_override_004a5660(CPU *C)
  * whose negative could equally mean "I am broken" is not evidence, and this is
  * what tells the two apart.
  */
-void fn_XMen2_0049f8c0(CPU *C);
 
 void x2_override_0049f8c0(CPU *C)
 {
@@ -193,14 +191,13 @@ void x2_override_0049f8c0(CPU *C)
     if (live())
         fprintf(stderr, "SCRIPT: lockControls at frame %lu (call #%lu)\n",
                 gpu_frames_presented(), g_lockcontrols);
-    fn_XMen2_0049f8c0(C);
+    x86_guest_body(C, "XMen2.exe", 0x0049f8c0u);
 }
 
 /* Spawner callback FUN_0048a7d0 is the evidenced boundary between an `act`
  * command and the attached actor script it launches. It is indirect-only, so
  * its live caller and arguments are part of the instrument rather than a
  * guessed static ownership claim. */
-void fn_XMen2_0048a7d0(CPU *C);
 
 void x2_trace_0048a7d0(CPU *C)
 {
@@ -210,7 +207,7 @@ void x2_trace_0048a7d0(CPU *C)
                 "0x%08x, args 0x%08x/0x%08x at frame %lu\n",
                 RD32(C->esp), C->ecx, RD32(C->esp + 4u),
                 RD32(C->esp + 8u), gpu_frames_presented());
-    fn_XMen2_0048a7d0(C);
+    x86_guest_body(C, "XMen2.exe", 0x0048a7d0u);
 }
 
 /*
@@ -224,7 +221,6 @@ void x2_trace_0048a7d0(CPU *C)
  * being in the level's table. Only the fourth returns true. Recording the name
  * with the result is what separates them.
  */
-void fn_XMen2_0045c950(CPU *C);
 
 static unsigned long g_convstart, g_convstart_ok, g_reset;
 
@@ -254,7 +250,6 @@ static void seen_bitmap(uint32_t out[5])
         }
 }
 
-void fn_XMen2_00455af0(CPU *C);
 
 /* convmgr vt+0x04 -- the only thing that clears the seen bitmap. Counted so
    "it was never called" and "it ran and the bitmap was dirty anyway" cannot
@@ -266,7 +261,7 @@ void x2_override_00455af0(CPU *C)
         fprintf(stderr, "SCRIPT: conversation reset (vt+0x04) #%lu at "
                         "frame %lu\n",
                 g_reset, gpu_frames_presented());
-    fn_XMen2_00455af0(C);
+    x86_guest_body(C, "XMen2.exe", 0x00455af0u);
 }
 
 void x2_override_0045c950(CPU *C)
@@ -281,7 +276,7 @@ void x2_override_0045c950(CPU *C)
     before = conversation_flags();
     conversation_field(0x4bcu, &line_before);
     seen_bitmap(seen_before);
-    fn_XMen2_0045c950(C);
+    x86_guest_body(C, "XMen2.exe", 0x0045c950u);
     after = conversation_flags();
     conversation_field(0x4bcu, &line_after);
     seen_bitmap(seen_after);

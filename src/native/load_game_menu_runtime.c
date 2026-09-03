@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum {
     EXE_PREFERRED = 0x00400000u,
@@ -68,9 +69,6 @@ static int g_active;
 static int g_last_manager_selection = -1;
 static char g_selected_leaf[32];
 
-void fn_XMen2_004b0d20(CPU *C);
-void fn_XMen2_005e9d30(CPU *C);
-void fn_XMen2_0049f010(CPU *C);
 
 static uint32_t exe_base(void)
 {
@@ -344,7 +342,7 @@ static void x2_override_004b0d20(CPU *C)
 {
     uint32_t manager = C->ecx;
 
-    fn_XMen2_004b0d20(C);
+    x86_guest_body(C, "XMen2.exe", 0x004b0d20u);
     activate_projection(C, manager);
 }
 
@@ -355,7 +353,7 @@ static void x2_override_005e9d30(CPU *C)
     int delta;
 
     if (!projection_is_current(ui)) {
-        fn_XMen2_005e9d30(C);
+        x86_guest_body(C, "XMen2.exe", 0x005e9d30u);
         return;
     }
     resident_focus = RD8(g_page + PAGE_FOCUS);
@@ -376,7 +374,7 @@ static void x2_override_0049f010(CPU *C)
 
     if (!g_active || !script_integer_argument(C, &selection)
         || selection != AUTOSAVE_SCRIPT_SLOT) {
-        fn_XMen2_0049f010(C);
+        x86_guest_body(C, "XMen2.exe", 0x0049f010u);
         if (g_active && g_manager) {
             g_manual_choices++;
             g_last_manager_selection = (int)(int8_t)RD8(

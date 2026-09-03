@@ -18,6 +18,7 @@ LEGACY_LIMITS = {
     "src/d3d8/d3d8_drawcall.c": 2273,
     "src/d3d8/d3d8_device.c": 1934,
     "src/native/crt.c": 1390,
+    "src/recomp/x86rt.h": 1499,
     "src/gpu/gpu_draw.c": 1538,
     "src/d3d8/d3d8_report.c": 1408,
     "src/native/threads.c": 1175,
@@ -54,7 +55,9 @@ def source_counts(root: Path) -> dict[str, int]:
         relative = path.relative_to(root).as_posix()
         if not path.is_file() or path.suffix not in SOURCE_SUFFIXES:
             continue
-        if relative.startswith("src/recomp/"):
+        # src/gen holds published assets (glyph atlas, font ratios): bytes with
+        # a .h wrapper, not code anyone owns or extracts.
+        if relative.startswith("src/gen/"):
             continue
         counts[relative] = len(path.read_text(encoding="utf-8").splitlines())
     return counts

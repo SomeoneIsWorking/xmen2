@@ -19,14 +19,13 @@
 #include "x86rt_native.h"
 
 #include <stdio.h>
+#include "guest_body.h"
 
 static unsigned g_nonindexed_depth;
 static unsigned long g_calls, g_finalizer_calls, g_nested_finalizers;
 static unsigned long g_with_prompts, g_drawn;
 static unsigned long g_transform_refused, g_gpu_refused, g_unfinalized_refused;
 
-void fn_libIGGfx_100352d0(CPU *C);
-void fn_libIGGfx_10034e60(CPU *C);
 
 void x2_prompt_glyph_batch_draw_nonindexed(CPU *C)
 {
@@ -34,7 +33,7 @@ void x2_prompt_glyph_batch_draw_nonindexed(CPU *C)
 
     g_calls++;
     g_nonindexed_depth++;
-    fn_libIGGfx_100352d0(C);
+    x86_guest_body(C, "libIGGfx.dll", 0x100352d0u);
     g_nonindexed_depth--;
 
     /* updateContextState is the only evidenced point where this batch has a
@@ -54,7 +53,7 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C)
     float mvp[16];
     unsigned count;
 
-    fn_libIGGfx_10034e60(C);
+    x86_guest_body(C, "libIGGfx.dll", 0x10034e60u);
     g_finalizer_calls++;
     if (!g_nonindexed_depth) return;
     g_nested_finalizers++;

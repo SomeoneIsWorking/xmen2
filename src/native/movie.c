@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 
 #define INFO_PATH      0x14u
 #define INFO_WIDTH     0x20u
@@ -35,12 +36,6 @@ typedef struct {
 
 static NativeMovie g_native_movie;
 
-void fn_libCriMovie_10001ab0(CPU *C);
-void fn_libCriMovie_10001fa0(CPU *C);
-void fn_libCriMovie_10002040(CPU *C);
-void fn_libCriMovie_100020c0(CPU *C);
-void fn_libCriMovie_10002140(CPU *C);
-void fn_libCriMovie_100021c0(CPU *C);
 
 static int native_fmv_enabled(void)
 {
@@ -106,7 +101,7 @@ static void x2_movie_load(CPU *C)
     X2FmvPlayer *player;
     char error[256];
     int first_frame, replaced;
-    if (!native_fmv_enabled()) { fn_libCriMovie_10001ab0(C); return; }
+    if (!native_fmv_enabled()) { x86_guest_body(C, "libCriMovie.dll", 0x10001ab0u); return; }
     if (!guest_path || !*guest_path) { movie_return(C, 0, 1); return; }
     replaced = k32_open_replaced(guest_path, 0);
     host_path = k32_open_path(guest_path, 0);
@@ -155,7 +150,7 @@ static void x2_movie_load(CPU *C)
 static void x2_movie_unload(CPU *C)
 {
     uint32_t info = RD32(C->esp + 4u);
-    if (!native_fmv_enabled()) { fn_libCriMovie_10001fa0(C); return; }
+    if (!native_fmv_enabled()) { x86_guest_body(C, "libCriMovie.dll", 0x10001fa0u); return; }
     if (!movie_for(info)) { movie_return(C, 0, 1); return; }
     close_native_movie();
     movie_return(C, 1, 1);
@@ -165,7 +160,7 @@ static void x2_movie_play(CPU *C)
 {
     uint32_t info = RD32(C->esp + 4u);
     X2FmvPlayer *player;
-    if (!native_fmv_enabled()) { fn_libCriMovie_10002040(C); return; }
+    if (!native_fmv_enabled()) { x86_guest_body(C, "libCriMovie.dll", 0x10002040u); return; }
     player = movie_for(info);
     if (!player) { movie_return(C, 0, 1); return; }
     WR32(info + INFO_STATE, 0u);
@@ -179,7 +174,7 @@ static void x2_movie_pause(CPU *C)
     uint32_t info = RD32(C->esp + 4u);
     uint32_t state = RD32(C->esp + 8u);
     X2FmvPlayer *player;
-    if (!native_fmv_enabled()) { fn_libCriMovie_100020c0(C); return; }
+    if (!native_fmv_enabled()) { x86_guest_body(C, "libCriMovie.dll", 0x100020c0u); return; }
     player = movie_for(info);
     if (!player) { movie_return(C, 0, 2); return; }
     WR32(info + INFO_STATE, state);
@@ -193,7 +188,7 @@ static void x2_movie_check_state(CPU *C)
     uint32_t info = RD32(C->esp + 4u);
     X2FmvPlayer *player;
     X2FmvState state;
-    if (!native_fmv_enabled()) { fn_libCriMovie_10002140(C); return; }
+    if (!native_fmv_enabled()) { x86_guest_body(C, "libCriMovie.dll", 0x10002140u); return; }
     player = movie_for(info);
     if (!player || g_native_movie.failed) { movie_return(C, 0, 1); return; }
     state = x2_fmv_state(player);
@@ -209,7 +204,7 @@ static void x2_movie_next_frame(CPU *C)
     uint32_t image, data, bytes;
     size_t pitch;
     int changed;
-    if (!native_fmv_enabled()) { fn_libCriMovie_100021c0(C); return; }
+    if (!native_fmv_enabled()) { x86_guest_body(C, "libCriMovie.dll", 0x100021c0u); return; }
     player = movie_for(info);
     if (!player || g_native_movie.failed) { movie_return(C, 0, 1); return; }
     dsound_movie_audio_tick();
@@ -276,7 +271,6 @@ static void x2_movie_next_frame(CPU *C)
  * exactly as today -- the override cannot make the load window worse, only
  * better, and "deferred" is logged when that happens, never silent.
  */
-void fn_libCriMovie_10002520(CPU *C);
 
 #define LCR_FLAG       0x572b0u   /* 1 = "park now"; the decoder zeroes it        */
 #define LCR_SPIN_PRIO  0x57294u   /* the priority the spin raises the decoder to */
@@ -299,7 +293,7 @@ void x2_override_10002520(CPU *C)
         mode = (e && *e && *e != '0' && !strcmp(e, "spin")) ? 1 : 0;
     }
     if (mode) {                              /* the CONTROL: run as shipped */
-        fn_libCriMovie_10002520(C);
+        x86_guest_body(C, "libCriMovie.dll", 0x10002520u);
         return;
     }
 
@@ -308,7 +302,7 @@ void x2_override_10002520(CPU *C)
     if (!base) {
         fprintf(stderr, "override: libCriMovie 0x10002520 cannot find the "
                         "module; deferring the spin to the original body.\n");
-        fn_libCriMovie_10002520(C);
+        x86_guest_body(C, "libCriMovie.dll", 0x10002520u);
         return;
     }
 
@@ -334,7 +328,7 @@ void x2_override_10002520(CPU *C)
                         "DEFERRING to the original spin, which is the faithful "
                         "behaviour the override exists to avoid -- logged so "
                         "the fallback is never silent.\n", waits);
-        fn_libCriMovie_10002520(C);           /* spins as today; sets EAX */
+        x86_guest_body(C, "libCriMovie.dll", 0x10002520u);           /* spins as today; sets EAX */
         return;
     }
 

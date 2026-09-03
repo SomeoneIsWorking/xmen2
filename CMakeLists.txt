@@ -579,7 +579,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              ${X2_PROMPT_GLYPH_INPUTS})
 
 set(X2_PROMPT_GLYPH_ATLAS_HEADER
-    "${CMAKE_SOURCE_DIR}/src/recomp/gen/prompt_glyph_atlas.h")
+    "${CMAKE_SOURCE_DIR}/src/gen/prompt_glyph_atlas.h")
 add_custom_command(
     OUTPUT "${X2_PROMPT_GLYPH_ATLAS_HEADER}"
     COMMAND ${Python3_EXECUTABLE}
@@ -633,7 +633,7 @@ add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
 add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_glyph_draw
-                           PRIVATE src/recomp src/native src/recomp/gen
+                           PRIVATE src/recomp src/native src/gen
                                    ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE X86_NATIVE)
 target_link_libraries(test_prompt_glyph_draw PRIVATE m pthread)
@@ -647,7 +647,7 @@ add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
 add_dependencies(test_prompt_glyph_metrics x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_glyph_metrics
-                           PRIVATE src/recomp src/native src/recomp/gen
+                           PRIVATE src/recomp src/native src/gen
                                    ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_prompt_glyph_metrics PRIVATE _GNU_SOURCE
                                                            X86_NATIVE)
@@ -879,10 +879,6 @@ add_test(NAME build_stocklog COMMAND ${Python3_EXECUTABLE} -m unittest
          tests.test_build_stocklog)
 set_tests_properties(build_stocklog PROPERTIES
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-add_test(NAME oracle_compare_tool COMMAND ${Python3_EXECUTABLE} -m unittest
-         tests.test_oracle_compare)
-set_tests_properties(oracle_compare_tool PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 
 
@@ -913,22 +909,6 @@ add_test(NAME autosave_wiring_selftest COMMAND ${Python3_EXECUTABLE}
 add_test(NAME stackcheck COMMAND ${Python3_EXECUTABLE}
          ${CMAKE_SOURCE_DIR}/tools/stackcheck.py --selftest)
 
-# The oracle probe harness (src/oracle, tools/gen_probes.py, tools/oraclediff.py).
-#
-# Every way this harness can break produces the SAME artifact: an empty or
-# short stream. And an empty stream compared against a full one reads as "no
-# differences" unless something refuses it. So both halves carry their
-# refusals as tests -- the generator must reject an unhookable prologue, an
-# ambiguous name and an argument past the end of the frame; the comparator must
-# reject a mismatched manifest, a same-side pair and an empty capture, and must
-# distinguish a differing OUTPUT (a defect) from a differing INPUT (two runs
-# that simply drifted apart).
-add_test(NAME probes_generator COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/gen_probes.py --selftest)
-add_test(NAME probes_current COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/gen_probes.py --check)
-add_test(NAME oraclediff COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/oraclediff.py --selftest)
 
 
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
@@ -1325,7 +1305,22 @@ set(X2_NATIVE_SOURCES
     src/native/boot_menu_transition.c
     src/native/boot_splash_policy.c
     src/native/x86_engine.c
-    src/native/x86_engine_take.c
+    src/native/guest_modules.c
+    src/native/host_imports_advapi32.c
+    src/native/host_imports_all.c
+    src/native/host_imports_dinput.c
+    src/native/host_imports_dinput8.c
+    src/native/host_imports_d3d8.c
+    src/native/host_imports_gdi32.c
+    src/native/host_imports_kernel32.c
+    src/native/host_imports_msvcr71.c
+    src/native/host_imports_msvcrt.c
+    src/native/host_imports_ole32.c
+    src/native/host_imports_user32.c
+    src/native/host_imports_winmm.c
+    src/native/host_imports_ws2_32.c
+    src/native/host_imports.c
+    src/native/guest_body.c
     src/native/x86_engine_selftest.c
     src/native/x86_dispatch.c
     src/native/x86_diag_dump.c
@@ -1518,14 +1513,6 @@ set(X2_NATIVE_SOURCES
     src/vulkan/igvk_slots_lifecycle.c
     src/vulkan/igvk_slots_frame.c
 )
-if(NOT ANDROID)
-    # The --wrap oracle probes depend on executable bodies and are not
-    # part of the Android shared-library product.
-    list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace.c
-                                  src/recomp/gen/probe_wraps.c)
-else()
-    list(APPEND X2_NATIVE_SOURCES src/native/oracle_trace_android.c)
-endif()
 if(ANDROID)
     add_library(x2native SHARED ${X2_NATIVE_SOURCES})
 else()
@@ -1583,10 +1570,8 @@ add_dependencies(x2native x2_shaders x2_pad_glyph_header
 target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
                                             src/config src/presentation src/ui
                                             src/input src/save src/audio
-                                            src/media
-                                          src/gpu src/d3d8
-                                          src/oracle src/recomp/gen
-                                          ${CMAKE_BINARY_DIR})
+                                            src/media src/gpu src/d3d8 src/gen
+                                            ${CMAKE_BINARY_DIR})
 target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
 target_link_libraries(x2native PRIVATE x86port)
 
@@ -1597,24 +1582,6 @@ target_link_libraries(x2native PRIVATE x86port)
 # generated wiring, no --wrap, no --isolate; the C is the single source of
 # truth.
 
-# Oracle probes: --wrap, for recording rather than replacing. Generated from
-# tools/probes.json by tools/gen_probes.py, which also writes the --isolate
-# lists -- the ONLY remaining user of the isolate mechanism. Missing is
-# FATAL for the same reason: a build without these flags records nothing
-# and reads as a port that agrees with the control.
-set(RECOMP_PROBES_CMAKE
-    "${CMAKE_SOURCE_DIR}/src/recomp/gen/recomp_probes.cmake")
-if(NOT EXISTS "${RECOMP_PROBES_CMAKE}")
-    message(FATAL_ERROR
-        "Missing ${RECOMP_PROBES_CMAKE}.\n"
-        "It is generated by tools/gen_probes.py from tools/probes.json. "
-        "Building without it would link a binary in which every oracle "
-        "probe is silently absent. Run tools/gen_probes.py.")
-endif()
-include("${RECOMP_PROBES_CMAKE}")
-if(NOT APPLE AND NOT ANDROID)
-    target_link_options(x2native PRIVATE ${RECOMP_PROBE_WRAPS})
-endif()
 
 target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
 target_compile_definitions(x2native PRIVATE X86_NATIVE)
@@ -1702,7 +1669,3 @@ set_tests_properties(report_box PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME fault_reporter
          COMMAND x2native --no-window --fault-selftest)
 set_tests_properties(fault_reporter PROPERTIES SKIP_RETURN_CODE 77)
-else()
-message(STATUS
-    "x2native: SKIPPED -- no module has generated output. "
-    "Run tools/recomp.py emit and tools/recomp.py native (see above).")

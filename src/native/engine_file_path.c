@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include "guest_body.h"
 
 enum {
     IGCORE_PREFERRED_BASE = 0x10000000u,
@@ -52,8 +53,17 @@ static int entry_point(const X86Module *module, uint32_t linked,
         || module->preferred != IGCORE_PREFERRED_BASE)
         return fail(why, whyn, "libIGCore is not mapped at a valid base");
     target = *module->base + (linked - module->preferred);
-    if (!x86_native_name_at(target))
-        return fail(why, whyn, "libIGCore file-search entry point is not recompiled");
+    /* The test is that the address is code THIS image actually contains: the
+       engine reads the bytes there, so an entry point outside the mapping (a
+       different build of libIGCore, say) must be refused here rather than
+       decoded as whatever happens to follow. It used to ask whether a static
+       body had been recompiled for it, and there are none any more. */
+    if (linked < module->preferred
+        || linked - module->preferred >= module->size
+        || !guest_memory_is_readable(target, 1u))
+        return fail(why, whyn,
+                    "the libIGCore file-search entry point is outside the "
+                    "mapped image -- this is not the build it was measured on");
     *mapped = target;
     return 1;
 }
@@ -103,13 +113,12 @@ static int apply_search_path(const CPU *source, char *why, int whyn)
  * host supplies the virtual C: installation root only after that context is
  * live.
  */
-void fn_libIGCore_10031540(CPU *C);
 
 static void x2_override_set_search_path_from_registry(CPU *C)
 {
     char why[160];
 
-    fn_libIGCore_10031540(C);
+    x86_guest_body(C, "libIGCore.dll", 0x10031540u);
     if (!apply_search_path(C, why, (int)sizeof why)) {
         fprintf(stderr, "ENGINE FILES: cannot configure search path: %s\n", why);
         abort();

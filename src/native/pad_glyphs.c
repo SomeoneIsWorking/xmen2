@@ -50,6 +50,7 @@
 #define NAME_BUFFER_RVA     0x0066aec8u /* original static at 0x00a6aec8 */
 
 #include "input_bindings.h"
+#include "guest_body.h"
 
 static unsigned long g_mapped, g_deferred;
 static unsigned long g_rows_asked, g_rows_padded, g_rows_no_pad;
@@ -128,7 +129,6 @@ static uint32_t name_buffer(void)
     return 0;
 }
 
-void fn_XMen2_006281f0(CPU *C);
 
 static int host_pad_for_kind(uint32_t kind)
 {
@@ -150,7 +150,7 @@ void x2_override_006281f0(CPU *C)
         !x2_prompt_glyph_available(glyph) ||
         !dinput_pad_uses_xbox_glyphs(host_pad) || !(out = name_buffer())) {
         g_deferred++;
-        fn_XMen2_006281f0(C);
+        x86_guest_body(C, "XMen2.exe", 0x006281f0u);
         return;
     }
 
@@ -171,7 +171,6 @@ void x2_override_006281f0(CPU *C)
  * __thiscall, RET 0x10, and it writes nothing when the caller passes a null
  * out-pointer, which the original checks for and so does this.
  */
-void fn_XMen2_006294b0(CPU *C);
 
 /* The row's pad binding, in whichever slot holds it. 0 if it has none. */
 static int row_pad_binding(uint32_t object, uint32_t row, uint32_t *kind,
@@ -203,7 +202,7 @@ void x2_override_006294b0(CPU *C)
     if (!x2_prompt_glyphs_enabled() || row >= INPUT_BINDING_ROWS ||
         !row_pad_binding(object, row, &kind, &code)) {
         g_rows_no_pad++;
-        fn_XMen2_006294b0(C);
+        x86_guest_body(C, "XMen2.exe", 0x006294b0u);
         return;
     }
     if (out_kind) WR32(out_kind, kind);

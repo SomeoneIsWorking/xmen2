@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum {
     EXE_PREFERRED = 0x00400000u,
@@ -30,7 +31,6 @@ static uint32_t g_exe;
 static uint32_t g_port_settings_callback;
 static int g_port_settings_registered;
 
-void fn_XMen2_005f4900(CPU *C);
 
 static uint32_t exe_base(void)
 {
@@ -95,7 +95,7 @@ static void register_port_settings(const CPU *source)
 
 void x2_override_005f4900(CPU *C)
 {
-    fn_XMen2_005f4900(C);
+    x86_guest_body(C, "XMen2.exe", 0x005f4900u);
     register_port_settings(C);
 }
 

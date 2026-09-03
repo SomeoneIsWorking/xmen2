@@ -22,8 +22,8 @@ src/recomp/difftest_cases.h
 # it is not even the same number for every localisation.
 # prompt_glyph_atlas.h is rasterised from the shared port-assets SVGs; a
 # committed copy would read as current while the shared sets moved on.
-src/recomp/gen/font_tier_ratio.h
-src/recomp/gen/prompt_glyph_atlas.h
+src/gen/font_tier_ratio.h
+src/gen/prompt_glyph_atlas.h
 
 # optional Xbox toolkit checkout; the maintained fork already contains its changes
 vendor/

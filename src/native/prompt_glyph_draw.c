@@ -28,8 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 
-void fn_XMen2_005ee780(CPU *C);
 
 #define MAX_WALK 512u          /* widest line buffer the game builds */
 
@@ -174,7 +174,6 @@ static uint16_t cursor_take(void)
     return 0;
 }
 
-void fn_XMen2_005ee400(CPU *C);
 
 /* The interception. The outer string override arms this only after it has
  * validated the batch colour and capacity for every native glyph. Each native
@@ -221,7 +220,7 @@ void x2_override_005ee400(CPU *C)
             WR32(C->esp + 16u, a[1]);
         }
     }
-    fn_XMen2_005ee400(C);
+    x86_guest_body(C, "XMen2.exe", 0x005ee400u);
 }
 
 struct PromptStringPlan {
@@ -295,19 +294,19 @@ void x2_override_005ee780(CPU *C)
         if (plan.unavailable || !plan.native) {
             g_unavailable_refused++;
             g_super_called++;
-            fn_XMen2_005ee780(C);
+            x86_guest_body(C, "XMen2.exe", 0x005ee780u);
             return;
         }
         if (!x86_peek32(batch + 8u, &color)) {
             g_color_refused++;
             g_super_called++;
-            fn_XMen2_005ee780(C);
+            x86_guest_body(C, "XMen2.exe", 0x005ee780u);
             return;
         }
         if (x2_prompt_quads_available() < plan.native) {
             g_queue_refused++;
             g_super_called++;
-            fn_XMen2_005ee780(C);
+            x86_guest_body(C, "XMen2.exe", 0x005ee780u);
             return;
         }
 
@@ -317,7 +316,7 @@ void x2_override_005ee780(CPU *C)
         g_cursor_index = 0;
         g_cursor_color = color;
         g_super_called++;
-        fn_XMen2_005ee780(C);
+        x86_guest_body(C, "XMen2.exe", 0x005ee780u);
         g_cursor_string = 0;
         if (g_emitted_seen - g_emitted_seen_before != plan.emitted) {
             g_desync++;
@@ -331,7 +330,7 @@ void x2_override_005ee780(CPU *C)
         return;
     }
     g_super_called++;
-    fn_XMen2_005ee780(C);
+    x86_guest_body(C, "XMen2.exe", 0x005ee780u);
 }
 
 __attribute__((constructor))

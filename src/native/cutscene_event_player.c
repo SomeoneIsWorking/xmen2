@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include "guest_body.h"
 enum {
     EXE_PREFERRED = 0x00400000u,
     CALLBACK_STRIDE = 0x18u,
@@ -41,7 +42,6 @@ static void *watched_opaque;
 static unsigned causal_depth;
 static uint32_t causal_inflight_slot;
 static unsigned owned_execution_depth;
-extern void fn_XMen2_004b2b40(CPU *cpu);
 static uint32_t exe_base(void)
 {
     const X86Module *module;
@@ -447,7 +447,7 @@ void x2_override_004b2b40(CPU *cpu)
             owned = watched_owner(cpu, watched_opaque) != 0;
         }
     }
-    fn_XMen2_004b2b40(cpu);
+    x86_guest_body(cpu, "XMen2.exe", 0x004b2b40u);
     if (!(causal_depth
               ? validate_events_with_inflight(
                     owner, causal_inflight_slot, &after)

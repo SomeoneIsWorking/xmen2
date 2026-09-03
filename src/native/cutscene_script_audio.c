@@ -7,6 +7,7 @@
 
 #include <stdatomic.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum { FN_SCRIPT_SOUND = 0x004a7130u };
 
@@ -14,7 +15,6 @@ static _Atomic unsigned long g_ordinary_commands;
 static _Atomic unsigned long g_silent_commands;
 static _Atomic unsigned g_last_context;
 
-void fn_XMen2_004a7130(CPU *cpu);
 
 void x2_override_004a7130(CPU *cpu)
 {
@@ -36,7 +36,7 @@ void x2_override_004a7130(CPU *cpu)
         return;
     }
     atomic_store_explicit(&g_last_context, context, memory_order_relaxed);
-    fn_XMen2_004a7130(cpu);
+    x86_guest_body(cpu, "XMen2.exe", 0x004a7130u);
     atomic_fetch_add_explicit(&g_ordinary_commands, 1u,
                               memory_order_relaxed);
 }

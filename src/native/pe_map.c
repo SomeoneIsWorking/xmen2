@@ -153,6 +153,7 @@ int pe_map(const char *path, PeImage *out)
     }
     munmap(f, (size_t)st.st_size);
     out->base = base;
+    out->preferred = (uint32_t)prefbase;
     out->size = imgsize;
     out->nsections = (int)nsec;
     return 0;

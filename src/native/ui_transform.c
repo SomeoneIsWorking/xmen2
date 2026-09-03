@@ -16,6 +16,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum { UI_PROJECTION = 0, UI_WORLD = 1, UI_VIEW = 14 };
 
@@ -26,7 +27,6 @@ static unsigned g_valid;
 static unsigned long g_calls, g_context_selections, g_captured, g_unreadable;
 static unsigned long g_published, g_context_refused;
 
-void fn_libIGGfx_1003ec10(CPU *C);
 
 static int read_matrix(uint32_t guest, float out[16])
 {
@@ -71,7 +71,7 @@ void x2_ui_transform_compute_matrix(CPU *C)
        prior call can still make this set appear complete. */
     select_context(context);
     g_valid &= ~bit;
-    fn_libIGGfx_1003ec10(C);
+    x86_guest_body(C, "libIGGfx.dll", 0x1003ec10u);
     if (!bit) return;
     if (!x86_peek32(output_ref, &output) || !read_matrix(output, matrix)) {
         g_unreadable++;

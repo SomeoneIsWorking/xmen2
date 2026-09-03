@@ -6,6 +6,7 @@
 #include "x86rt_native.h"
 
 #include <string.h>
+#include "guest_body.h"
 
 static uint32_t g_world_matrix_source;
 static uint32_t g_world_matrix_guest;
@@ -85,11 +86,6 @@ static struct {
     int active;
 } g_title_builder;
 
-void fn_libIGGfx_1003e9e0(CPU *C);
-void fn_libIGAttrs_10003dd0(CPU *C);
-void fn_libIGMath_10019520(CPU *C);
-void fn_libIGMath_10019b90(CPU *C);
-void fn_libIGSg_10003f20(CPU *C);
 
 void d3d8_selector_probe_title_builder_enter(CPU *C)
 {
@@ -131,7 +127,7 @@ static void selector_probe_transform_set_matrix(CPU *C)
                sizeof record->title_builder_scale);
     }
     g_transform_set_count++;
-    fn_libIGSg_10003f20(C);
+    x86_guest_body(C, "libIGSg.dll", 0x10003f20u);
 }
 
 static void selector_probe_matrix_copy(CPU *C)
@@ -151,7 +147,7 @@ static void selector_probe_matrix_copy(CPU *C)
     else
         memset(record->source_value, 0, sizeof record->source_value);
     g_matrix_copy_count++;
-    fn_libIGMath_10019b90(C);
+    x86_guest_body(C, "libIGMath.dll", 0x10019b90u);
 }
 
 static void selector_probe_matrix_multiply(CPU *C)
@@ -177,7 +173,7 @@ static void selector_probe_matrix_multiply(CPU *C)
         memset(record->right_value, 0, sizeof record->right_value);
     }
     g_matrix_multiply_count++;
-    fn_libIGMath_10019520(C);
+    x86_guest_body(C, "libIGMath.dll", 0x10019520u);
 }
 
 static void selector_probe_attr_set_matrix(CPU *C)
@@ -189,7 +185,7 @@ static void selector_probe_attr_set_matrix(CPU *C)
     record->caller = RD32(C->esp);
     record->source = RD32(C->esp + 4u);
     g_matrix_set_count++;
-    fn_libIGAttrs_10003dd0(C);
+    x86_guest_body(C, "libIGAttrs.dll", 0x10003dd0u);
 }
 
 static void find_matrix_set(uint32_t matrix_guest)
@@ -339,7 +335,7 @@ static void selector_probe_set_matrix(CPU *C)
     uint32_t source = RD32(C->esp);
     uint32_t which = RD32(C->esp + 4u);
     uint32_t matrix_guest = RD32(C->esp + 8u);
-    fn_libIGGfx_1003e9e0(C);
+    x86_guest_body(C, "libIGGfx.dll", 0x1003e9e0u);
     if (which == 1u) {
         g_world_matrix_source = source;
         g_world_matrix_guest = matrix_guest;

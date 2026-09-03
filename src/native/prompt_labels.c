@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "guest_body.h"
 
 #define LABEL_BUFFER_BYTES 512u
 #define MAX_RETAIL_LABEL   127u
@@ -66,13 +67,12 @@ static void note_resolver(uint32_t ret)
     g_n_resolver_sites++;
 }
 
-void fn_XMen2_004bd720(CPU *C);
 
 void x2_probe_004bd720(CPU *C)
 {
     uint32_t ret = RD32(C->esp);
     g_resolver_calls++;
-    fn_XMen2_004bd720(C);
+    x86_guest_body(C, "XMen2.exe", 0x004bd720u);
     /* The resolver returns the display string in EAX. Ours is the one guest
        buffer prompt_label_rewrite publishes. */
     if (g_styled_label && C->eax == g_styled_label) {
@@ -148,7 +148,6 @@ enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
     return PROMPT_LABEL_KEYCAP;
 }
 
-void fn_XMen2_00619e30(CPU *C);
 
 void x2_override_00619e30(CPU *C)
 {
@@ -160,7 +159,7 @@ void x2_override_00619e30(CPU *C)
 
     /* Before the super-call: the retail body pops its own return address. */
     note_caller(RD32(C->esp));
-    fn_XMen2_00619e30(C);
+    x86_guest_body(C, "XMen2.exe", 0x00619e30u);
     out = C->eax;
     if (!out || !x2_prompt_glyphs_enabled()) {
         g_unchanged++;

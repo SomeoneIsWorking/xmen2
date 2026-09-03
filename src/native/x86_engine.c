@@ -2,7 +2,6 @@
 
 #include "guest_memory.h"
 #include "x86_engine_internal.h"
-#include "x86_engine_take.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -37,7 +36,14 @@
 
 /* A run that has executed this many instructions inside ONE call is not
    finishing. Reported with the entry point, so a runaway is a named function
-   rather than a hang. */
+   rather than a hang.
+
+   The PROGRAM's entry point is the exception, and the only one: main does not
+   return until the process exits, so counting its instructions against a cap
+   measures how long the game has been played. Every call it makes is still
+   capped. Whether that outermost call is making progress is a question the
+   heartbeat and the frame counters answer, and they answer it continuously
+   rather than once at 200 million. */
 #define ENGINE_STEP_CAP 200000000ULL
 
 static struct {
@@ -51,6 +57,7 @@ static struct {
     unsigned long callouts;
     unsigned long deepest;
     unsigned long depth;
+    uint32_t program_entry;          /* 0 until the program itself is entered */
     unsigned long setjmps;
     unsigned long longjmps;
 } g_engine;
@@ -102,18 +109,16 @@ int x2_engine_init(char *reason, unsigned reason_len)
      * failure engine.h exists to prevent -- so it is left out of the
      * availability mask, and asking for it is refused by name.
      */
-    const unsigned available = x86p_engine_bit(kX86pEngineSubstrate) |
-                               x86p_engine_bit(kX86pEngineInterpreter);
+    const unsigned available = x86p_engine_bit(kX86pEngineInterpreter);
     const char *request = getenv("X2_ENGINE");
-    if (!x86p_engine_resolve(request, X86P_ENGINE_DEFAULT, available,
+    /* The substrate is NOT offered, and the default is the interpreter. There
+       is no translated corpus in this binary any more, so "substrate" would
+       name an arm with nothing behind it -- and an engine that resolves to
+       something that cannot run a single instruction is worse than a refusal,
+       because it fails later and somewhere else. */
+    if (!x86p_engine_resolve(request, kX86pEngineInterpreter, available,
                              &g_engine.selected, reason, reason_len))
         return 0;
-    /* Still asked on the substrate arm, because the answer there is a
-       REFUSAL: X2_ENGINE_TAKE with no engine to hand the bodies to would
-       otherwise run the whole game on the substrate while looking like a
-       measurement of the engine. */
-    if (g_engine.selected == kX86pEngineSubstrate)
-        return x2_take_init(0, reason, reason_len);
     if (!map_return_page(reason, reason_len)) return 0;
     /* Not guest_memory_pointer(0): it answers NULL for address 0 by design,
        and the arena base is exactly what X86pMem wants. */
@@ -127,7 +132,7 @@ int x2_engine_init(char *reason, unsigned reason_len)
             x86p_engine_name(g_engine.selected),
             g_guest_memory_base ? "relocated" : "at the host's own addresses",
             ENGINE_RETURN_ADDR);
-    return x2_take_init(1, reason, reason_len);
+    return 1;
 }
 
 int x2_engine_active(void) { return g_engine.ready; }
@@ -157,6 +162,11 @@ static void refuse(uint32_t entry, uint32_t eip, const char *what,
         fprintf(stderr, "    faulting address 0x%08x\n", r->fault_addr);
     x86_diag_dump();
     abort();
+}
+
+void x2_engine_program_entry(uint32_t addr)
+{
+    g_engine.program_entry = addr;
 }
 
 int x2_engine_call(uint32_t addr, CPU *C)
@@ -303,7 +313,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
          * while looking like it worked.
          */
         if (cpu.eip != entry && x86_native_body_at(cpu.eip)
-            && !x2_take_has(cpu.eip, kX2TakeInline)) {
+            ) {
             const uint32_t target = cpu.eip;
             /*
              * The return address is read HERE, before the body runs. After it,
@@ -343,7 +353,7 @@ int x2_engine_call(uint32_t addr, CPU *C)
         if (status != kX86pStepOk)
             refuse(entry, cpu.eip, x86p_step_status_name(status), &report);
         g_engine.insns++;
-        if (++steps > ENGINE_STEP_CAP)
+        if (++steps > ENGINE_STEP_CAP && entry != g_engine.program_entry)
             refuse(entry, cpu.eip,
                    "the call has not returned within the step cap -- it is "
                    "not finishing",
@@ -397,23 +407,6 @@ void x2_engine_where(void)
                 g_engine.depth - ENGINE_FRAMES, ENGINE_FRAMES);
 }
 
-/*
- * The engine entered because the substrate was made to DECLINE, not because it
- * had nothing.
- *
- * A separate entry point rather than a flag, so the report can keep the two
- * apart: "the corpus could not translate this" and "we took this deliberately
- * to measure it" are different facts about a run, and a single call counter
- * covering both would make a take set that never fired indistinguishable from
- * a corpus with holes.
- */
-int x2_engine_call_taken(uint32_t addr, CPU *C)
-{
-    if (!x2_engine_call(addr, C)) return 0;
-    g_engine.taken++;
-    return 1;
-}
-
 void x2_engine_report(void)
 {
     if (!g_engine.ready) {
@@ -434,7 +427,6 @@ void x2_engine_report(void)
             x86p_engine_name(g_engine.selected), g_engine.calls, g_engine.taken,
             g_engine.calls - g_engine.taken, g_engine.insns, g_engine.callouts,
             g_engine.deepest, g_engine.setjmps, g_engine.longjmps);
-    x2_take_report();
 }
 
 void x2_engine_enter_service(void)

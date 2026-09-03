@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 
 #define EXE_PREFERRED       0x00400000u
 #define CONSOLE_EXEC_RVA    0x0015c410u /* FUN_0055c410, console +0x1c */
@@ -59,18 +60,16 @@ static uint32_t copy_to_guest(const char *text)
     return address;
 }
 
-void fn_XMen2_004a4420(CPU *C);
-void fn_XMen2_004612e0(CPU *C);
 
 static void x2_spawn_probe_entity(CPU *C)
 {
-    fn_XMen2_004612e0(C);
+    x86_guest_body(C, "XMen2.exe", 0x004612e0u);
     if (g_waiting && C->eax) g_spawned_entity = C->eax;
 }
 
 static void x2_spawn_probe_handler(CPU *C)
 {
-    fn_XMen2_004a4420(C);
+    x86_guest_body(C, "XMen2.exe", 0x004a4420u);
     if (!g_waiting) return;
 
     g_spawn_handlers++;

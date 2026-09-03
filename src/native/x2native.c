@@ -16,6 +16,7 @@
  * concrete stop rather than a silently skipped operation.
  */
 #include "pe_map.h"
+#include "guest_modules.h"
 #include "guest_memory.h"
 #include "x86_engine.h"
 #include "control.h"
@@ -23,6 +24,7 @@
 #include "x86rt.h"
 #include "x86_reached.h"
 #include "x86rt_native.h"
+#include "host_imports.h"
 #include "heartbeat.h"
 #include "dinput_device.h"
 #include "win32_sdl.h"
@@ -132,11 +134,18 @@ static uint32_t resolve_import(const char *mod, const char *sym,
             break;                            /* right module, no such export */
         }
     }
-    /* Not another recompiled module. If some module implements it natively,
-       bind the slot to a thunk so a call THROUGH the slot works the same as a
-       call to the named stub. */
-    if (!by_ordinal && sym) {
-        uint32_t t = x86_native_thunk(mod, sym);
+    /* Not another guest module. If this host implements it, bind the slot to a
+       thunk so a call THROUGH the slot works the same as a call to the named
+       stub. A by-ordinal slot is asked the same question by number: WS2_32 is
+       imported that way and used to fall straight through to poison. */
+    {
+        uint32_t t = by_ordinal ? x86_native_thunk_at(mod, NULL, ordinal)
+                                : x86_native_thunk(mod, sym);
+        /* The same two registries GetProcAddress asks, in the same order and
+           for the same reason: an entry point this host publishes but no
+           import table mentions (dinput8's, dsound's) can also be reached
+           through a slot in a module that DOES import it. */
+        if (!t && !by_ordinal && sym) t = x86_native_export_addr(mod, sym);
         if (t) { g_nbound++; return t; }
     }
     return poison_for(mod, sym, ordinal);
@@ -285,13 +294,10 @@ static int poison_init(void)
     return 0;
 }
 
-/* Each module's base, defined by its generated native file. The host maps the
-   images and fills these in; nothing else knows where a module went. */
-extern uint32_t g_imgbase_libIGDisplay;
 
 /* The battery talks in libIGDisplay's guest addresses, so it needs that
    module's base to turn one into the address the dispatcher uses. */
-#define DISP(ep) (g_imgbase_libIGDisplay + ((ep) - 0x10000000u))
+#define DISP(ep) (x86_module_base("libIGDisplay.dll") + ((ep) - 0x10000000u))
 
 static int x86_native_call(uint32_t ep, CPU *C)
 {
@@ -397,20 +403,13 @@ static int module_init_one(X86Module *m)
                "(use --run)\n", m->name);
         return 0;
     }
-    const char *nm = x86_native_name_at(entry);
-    if (!nm) {
-        /* Reported in the SAME format the constructor-target list uses, so
-           tools/native_discover.py picks it up and seeds it without needing to
-           know that entry points are a separate case. One report shape, one
-           loop. */
-        fprintf(stderr, "\n*** module entry point with no recompiled body.\n"
-                        "    Static analysis did not mark it as code. Seed it "
-                        "and re-lift; the address is the module's own.\n");
-        fprintf(stderr, "    %-18s 0x%08x\n", m->name,
-                m->preferred + (entry - *m->base));
-        fprintf(stderr, "*** 1 of 1 entry point is missing a body\n");
-        return -1;
-    }
+    /* No "is there a body here?" check any more. There used to be one because
+       an entry point static analysis had not marked as code produced no
+       translated function and DllMain would silently not run; the engine reads
+       the module's own bytes, so the only way to have no code at the entry
+       point is for the PE header to be wrong -- and that is pe_map's refusal,
+       not this one's. */
+
     /* __stdcall DllMain(hinstDLL, fdwReason, lpvReserved): three arguments
        plus the return address, and the callee pops them. */
     cpu_reset(&C);
@@ -419,12 +418,8 @@ static int module_init_one(X86Module *m)
     gw32(C.esp +  4u, *m->base);              /* hinstDLL IS the image base */
     gw32(C.esp +  8u, DLL_PROCESS_ATTACH);
     gw32(C.esp + 12u, 0);
-    printf("  init %-18s entry 0x%08x %s\n", m->name, entry, nm);
-    if (!x86_native_call_at(entry, &C)) {
-        fprintf(stderr, "module_init: %s entry vanished between lookup and "
-                        "call\n", m->name);
-        return -1;
-    }
+    printf("  init %-18s entry 0x%08x\n", m->name, entry);
+    x86_dispatch(&C, entry);
     printf("       returned eax=0x%08x\n", C.eax);
     return C.eax ? 0 : -1;
 }
@@ -814,7 +809,6 @@ static void case_import_abi(void)
  * Poisoning the slot first means the cross-module path MUST be taken -- if the
  * import were unbound this faults by name instead of quietly returning.
  */
-extern uint32_t g_imgbase_libIGCore;
 
 /* ---- the engine's 4x4 matrix multiply ----------------------------------
  *
@@ -843,13 +837,12 @@ extern uint32_t g_imgbase_libIGCore;
  * any backend: the product must be rigid too. That is the property that failed
  * in the game, checked here where it needs no game, no Wine and no oracle.
  */
-extern uint32_t g_imgbase_libIGMath;
 
 #define IGM_SSE      0x100192a0u        /* alignedMatrixMultiplySSE */
 #define IGM_X87      0x100193a0u        /* matrixMultiply, the fallback */
 #define IGM_3DNOW    0x100190d0u        /* alignedMatrixMultiply3dNow */
 #define IGM_BACKEND  0x1008a3c8u        /* the pointer FUN_10018e30 fills in */
-#define IGM(a)       (g_imgbase_libIGMath + ((a) - 0x10000000u))
+#define IGM(a)       (x86_module_base("libIGMath.dll") + ((a) - 0x10000000u))
 
 /* Row-vector convention, as the SSE body's own shape shows: it broadcasts
    A[i][k] and scales B's row k, so dst[i][j] = sum_k A[i][k] * B[k][j]. */
@@ -903,7 +896,7 @@ static void case_matrix_multiply(void)
 
     printf("  libIGMath igMatrix44f 4x4 multiply (issue #80: the bone palette)\n");
 
-    if (g_imgbase_libIGMath == 0) {
+    if (x86_module_base("libIGMath.dll") == 0) {
         printf("    REFUSED  libIGMath is not mapped, so NOTHING below ran.\n"
                "             This case tests nothing without it; that is a\n"
                "             build that omitted the module, not a pass.\n");
@@ -1011,8 +1004,8 @@ static void case_cross_module(void)
         check("IAT slot -> a libIGCore body", nm != NULL, 1u);
         if (nm) printf("      bound to: %s\n", nm);
         check("  target is inside libIGCore",
-              (slot >= g_imgbase_libIGCore) &&
-              (slot - g_imgbase_libIGCore < 0x200000u), 1u);
+              (slot >= x86_module_base("libIGCore.dll")) &&
+              (slot - x86_module_base("libIGCore.dll") < 0x200000u), 1u);
     }
     /* Still not run end to end, and the reason has MOVED, which is the result
        of this build. It is no longer "no module initialisation exists": both
@@ -1797,10 +1790,6 @@ int main(int argc, char **argv)
         return report_box_selftest();
     }
     /* The fault reporter, proved by faulting -- no install, no engine. */
-    if (options.probe_selftest) {
-        extern int oracle_probe_selftest(void);
-        return oracle_probe_selftest();
-    }
     if (options.fault_selftest) return x2_fault_selftest();
     if (vkselftest) {
         extern int gpu_host_selftest(void);
@@ -1833,6 +1822,7 @@ int main(int argc, char **argv)
        and the rest are relocated -- which is exactly what the loader does in
        the hosted build, and why absolute references are emitted against each
        module's own base rather than a shared one. */
+    if (guest_modules_register() != 0) return 1;
     for (m = x86_modules(); m; m = m->next) {
         char path[4096];
         if (mapped == (int)(sizeof imgs / sizeof imgs[0])) {
@@ -1840,20 +1830,21 @@ int main(int argc, char **argv)
             return 1;
         }
         snprintf(path, sizeof path, "%s/%s", dir, m->name);
-        if (pe_map_at(path, m->preferred, &imgs[mapped]) != 0) return 1;
+        if (pe_map(path, &imgs[mapped]) != 0) return 1;
         *m->base = imgs[mapped].base;
-        m->size = imgs[mapped].size;   /* the mapped truth, not a guess */
-        printf("mapped %-18s at 0x%08x (%u bytes, %d recompiled bodies)%s\n",
-               m->name, imgs[mapped].base, imgs[mapped].size, m->nfns,
-               imgs[mapped].base == m->preferred ? "" : "  [relocated]");
+        m->preferred = imgs[mapped].preferred;  /* read, not assumed */
+        m->size = imgs[mapped].size;            /* the mapped truth */
+        printf("mapped %-18s at 0x%08x (%u bytes)%s\n",
+               m->name, imgs[mapped].base, imgs[mapped].size,
+               imgs[mapped].base == imgs[mapped].preferred ? "" : "  [relocated]");
         mapped++;
     }
     if (!mapped) {
-        fprintf(stderr, "x2native: NO recompiled module is linked in -- this "
-                        "binary would check nothing\n");
+        fprintf(stderr, "x2native: NO module was registered -- this binary "
+                        "would check nothing\n");
         return 1;
     }
-    g_imgbase = g_imgbase_libIGDisplay;      /* the battery's frame of reference */
+    g_imgbase = x86_module_base("libIGDisplay.dll");  /* the battery's frame of reference */
 
     /* Every module is placed, so each override's (module, linked ep) can now
        become the mapped address the dispatcher compares. This must happen
@@ -1886,13 +1877,6 @@ int main(int argc, char **argv)
     if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x20000000u) != 0)
         return 1;
     atexit(guest_heap_report);
-    /* The oracle probe stream. An atexit like every other report here -- and
-       like them it may be cut short by the kill that ends every run, which is
-       why the stream is flushed as it is written and the live count is in the
-       heartbeat. */
-    { extern void oracle_probe_arm(void);
-      extern void oracle_probe_report(void);
-      oracle_probe_arm(); atexit(oracle_probe_report); }
     { extern void dinput_report(void); atexit(dinput_report); }
     { extern void dinput8_install(void), dinput8_report(void);
       dinput8_install(); atexit(dinput8_report); }
@@ -1931,12 +1915,22 @@ int main(int argc, char **argv)
       atexit(crt_rtti_report); }
     atexit(x86_native_export_report);
     x86_native_data_arena(DATA_ARENA, DATA_SIZE);
+    /* What this host implements of Win32 and the CRT, published before the
+       first slot is bound: an unregistered surface is an image full of poison
+       and a run that stops on its first import. */
+    host_imports_register_all();
+    {   unsigned surfaces = 0, entries = 0;
+        host_imports_report(&surfaces, &entries);
+        printf("host imports: %u entries across %u DLL surfaces\n",
+               entries, surfaces);
+    }
     for (m = x86_modules(); m; m = m->next) {
         int bound = 0, poisoned = 0;
         pe_bind_imports(*m->base, resolve_import, NULL, &bound, &poisoned);
     }
-    printf("imports: %d bound to recompiled modules, %d unresolved and poisoned"
-           " (using one faults by name)\n", g_nbound, g_npoison);
+    printf("imports: %d bound (to another guest module or to this host), %d "
+           "unresolved and poisoned (using one faults by name)\n",
+           g_nbound, g_npoison);
 
     /* Before module init, not after: the entry points run ON the guest stack,
        and with none placed their frames land at guest_stack_top - N, i.e. just
@@ -2082,7 +2076,7 @@ int main(int argc, char **argv)
         }
         {
             uint32_t entry = *x->base + pe_entry_rva(*x->base);
-            const char *nm = x86_native_name_at(entry);
+            const char *nm = x86_native_name_at(entry);   /* an override? */
             /* Started here and not earlier: everything before this point is
                host setup that either succeeds or says why, and a heartbeat
                over it would only add lines to a log that is already speaking.
@@ -2105,9 +2099,11 @@ int main(int argc, char **argv)
             dinput_script_start();
             { extern void dinput_pad_virtual_from_env(void);
               dinput_pad_virtual_from_env(); }
+            /* A name here means a native override answers for the entry
+               point; without one the engine runs the guest's own bytes, which
+               is the normal case and no longer a reason to refuse. */
             printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
-                   nm ? nm : "(NO RECOMPILED BODY)");
-            if (!nm) return 1;
+                   nm ? nm : "(the guest's own code)");
             cpu_reset(&C);
             C.esp = guest_stack_top - 4u;
             gw32(C.esp, 0xDEADBEEFu);
@@ -2115,8 +2111,10 @@ int main(int argc, char **argv)
                lock for as long as it is executing guest code, and releases it
                only where threads.c says. Taking it here rather than inside the
                dispatcher keeps it to one acquire for the whole run. */
+            /* Not a call that returns: the game leaves through exit(). */
+            x2_engine_program_entry(entry);
             guest_lock();
-            x86_native_call_at(entry, &C);
+            x86_dispatch(&C, entry);
             guest_unlock();
             printf("run: returned eax=0x%08x\n", C.eax);
             if (arkprobe) {

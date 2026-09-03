@@ -33,8 +33,6 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
             o->dialog_selftest = 1;
         else if (strcmp(argv[i], "--override-selftest") == 0)
             o->override_selftest = 1;
-        else if (strcmp(argv[i], "--probe-selftest") == 0)
-            o->probe_selftest = 1;
         else if (strcmp(argv[i], "--fault-selftest") == 0)
             o->fault_selftest = 1;
         else if (argv[i][0] == '-') {
@@ -47,7 +45,7 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
                             "--vk --vk-selftest --vk-permissive\n"
                             "         --d3d8 --d3d8-selftest "
                             "--d3d8-permissive --dialog-selftest\n"
-                            "         --fault-selftest --probe-selftest "
+                            "         --fault-selftest "
                             "--override-selftest\n",
                     argv[i]);
             return 2;
@@ -62,7 +60,7 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o)
        renderer; diagnostics and alternate renderers stay explicit. */
     if (!o->run && !o->selftest && !o->ark_probe && !o->vk &&
         !o->vk_selftest && !o->d3d8 && !o->d3d8_selftest &&
-        !o->dialog_selftest && !o->fault_selftest && !o->probe_selftest &&
+        !o->dialog_selftest && !o->fault_selftest &&
         !o->override_selftest) {
         o->d3d8 = 1;
         o->run = 1;

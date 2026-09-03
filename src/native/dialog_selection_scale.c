@@ -18,6 +18,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum {
     TITLE_TRANSFORM_BUILDER = 0x005707d0u,
@@ -27,7 +28,6 @@ enum {
 
 static unsigned long g_calls, g_selected, g_corrected, g_refused;
 
-void fn_XMen2_005707d0(CPU *C);
 
 static float stack_float(uint32_t address)
 {
@@ -67,7 +67,7 @@ static void x2_dialog_selection_transform(CPU *C)
             g_refused++;
         }
     }
-    fn_XMen2_005707d0(C);
+    x86_guest_body(C, "XMen2.exe", 0x005707d0u);
     d3d8_selector_probe_title_builder_leave();
 }
 

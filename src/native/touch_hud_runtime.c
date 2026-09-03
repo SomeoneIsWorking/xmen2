@@ -41,6 +41,7 @@
 #include "x86rt_native.h"
 
 #include <stdio.h>
+#include "guest_body.h"
 
 enum { CHUD_DRAW = 0x005a43d0u };
 
@@ -49,13 +50,12 @@ enum { CHUD_DRAW = 0x005a43d0u };
  * cannot tell them apart cannot be debugged. */
 static unsigned long g_root_calls;
 
-void fn_XMen2_005a43d0(CPU *C);
 
 static void x2_touch_hud_draw(CPU *C)
 {
     g_root_calls++;
     x2_gameplay_control_hud_drawn(guest_clock_now_s());
-    fn_XMen2_005a43d0(C);
+    x86_guest_body(C, "XMen2.exe", 0x005a43d0u);
 }
 
 void x2_touch_hud_report(void)

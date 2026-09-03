@@ -30,13 +30,6 @@ typedef struct X86Fn {
     const char *name;
 } X86Fn;
 
-typedef struct X86Import {
-    uint32_t    slot_rva;            /* where the IAT slot lives in the image */
-    void      (*stub)(struct CPU *); /* the native (or aborting) stub for it */
-    const char *mod;
-    const char *sym;
-} X86Import;
-
 typedef struct X86Module {
     const char     *name;
     /* POINTER TO where it actually got mapped -- the generated module owns the
@@ -48,8 +41,6 @@ typedef struct X86Module {
     uint32_t        size;            /* SizeOfImage */
     const X86Fn    *fns;
     int             nfns;
-    const X86Import *imports;
-    int             nimports;
     struct X86Module *next;
 } X86Module;
 
@@ -58,6 +49,11 @@ void x86_module_register(X86Module *m);
 
 /* Which module owns a mapped address, or NULL. */
 X86Module *x86_module_for(uint32_t addr);
+
+/* Where a module landed, by image file name, or 0 if it is not mapped. The
+   translated corpus used to publish a g_imgbase_<module> global per module;
+   with no generated code there is one lookup instead of twenty externs. */
+uint32_t x86_module_base(const char *image);
 
 /* Run the recompiled body at a mapped address. Returns 0 if there is none --
    the caller must say so rather than treating a miss as a no-op. */
@@ -231,6 +227,9 @@ extern void x2_write_watch_fire(uint32_t a, uint32_t v);
    import's address and calls through it, bypassing the named stub. Returns 0
    if there is no native implementation for that slot. */
 uint32_t x86_native_thunk(const char *mod, const char *sym);
+/* The same, for a slot imported BY ORDINAL: pass sym NULL and the ordinal. */
+uint32_t x86_native_thunk_at(const char *mod, const char *sym,
+                             uint32_t ordinal);
 
 /* Dump guest memory named by X2_PEEK (see the definition for the format).
    Safe from a signal handler: reads via process_vm_readv, so an unmapped

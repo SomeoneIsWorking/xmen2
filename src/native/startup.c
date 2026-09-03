@@ -37,6 +37,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 
 /* ---------------------------------------------------------------------
  * XMen2.exe 0x00617480 -- the DirectX 9.0c presence check (issue #18).
@@ -127,7 +128,6 @@ void x2_override_00617480(CPU *C)
 #define APP_OBJECT_RVA   0x002f3ac4u          /* 0x006f3ac4 - 0x00400000 */
 #define APP_FRAME_CAP    0x18u                /* float, minimum seconds/frame */
 
-void fn_XMen2_0055b610(CPU *C);
 
 void x2_override_0055b610(CPU *C)
 {
@@ -157,7 +157,7 @@ void x2_override_0055b610(CPU *C)
         }
     }
     if (mode) WRF32(field, 0.0f);
-    fn_XMen2_0055b610(C);
+    x86_guest_body(C, "XMen2.exe", 0x0055b610u);
 }
 
 
@@ -288,7 +288,6 @@ static int boot_to_host_mode(CPU *C, uint32_t command, uint32_t exe_base)
     return 1;
 }
 
-void fn_XMen2_0055beb0(CPU *C);
 
 void x2_override_0055beb0(CPU *C)
 {
@@ -371,7 +370,7 @@ void x2_override_0055beb0(CPU *C)
                             "through the normal intro.\n");
             fflush(stderr);
             mode = 0;
-            fn_XMen2_0055beb0(C);
+            x86_guest_body(C, "XMen2.exe", 0x0055beb0u);
             return;
         }
         C->eax = 1u;      /* "a command ran"; the boot does not read EAX here */
@@ -394,7 +393,7 @@ void x2_override_0055beb0(CPU *C)
         C->esp += 8u;
         return;
     }
-    fn_XMen2_0055beb0(C);
+    x86_guest_body(C, "XMen2.exe", 0x0055beb0u);
 }
 
 /* FUN_00402ba0 -- the boot frontend's intro phase. Retail holds the legal
@@ -410,7 +409,6 @@ void x2_override_0055beb0(CPU *C)
  * first tick and the intercepted intro command dispatches the mode's path.
  * Every effect of the phase except the delay is the retail effect. Normal
  * boot keeps the retail wait. */
-void fn_XMen2_00402ba0(CPU *C);
 
 void x2_override_00402ba0(CPU *C)
 {
@@ -446,7 +444,7 @@ void x2_override_00402ba0(CPU *C)
                 x2_boot_mode_name(mode), phase ? "present" : "NULL");
         fflush(stderr);
     }
-    fn_XMen2_00402ba0(C);
+    x86_guest_body(C, "XMen2.exe", 0x00402ba0u);
 }
 
 /* Register this file's overrides. Runs before main; the dispatcher consults

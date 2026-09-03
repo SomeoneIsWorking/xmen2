@@ -16,6 +16,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum {
     EXE_PREFERRED = 0x00400000u,
@@ -47,7 +48,6 @@ static AutosaveLastResult g_last_result;
 static int g_last_errno;
 static int g_initialized;
 
-void fn_XMen2_00484ce0(CPU *C);
 
 static void initialize(void)
 {
@@ -189,7 +189,7 @@ static void x2_autosave_override_00484ce0(CPU *C)
     uint32_t map = C->ecx;
     int succeeded;
 
-    fn_XMen2_00484ce0(C);
+    x86_guest_body(C, "XMen2.exe", 0x00484ce0u);
     succeeded = (C->eax & 0xffu) != 0u;
     x2_save_trace_map_return(map, succeeded);
     x2_autosave_runtime_map_return(succeeded);

@@ -66,11 +66,13 @@ const char *x2_engine_name(void);
 int x2_engine_call(uint32_t addr, struct CPU *C);
 
 /*
- * The same call, entered because X2_ENGINE_TAKE made the substrate DECLINE a
- * body it has -- see x86_engine_take.h. Counted apart from the miss path, so a
- * run can say which of the two reasons put guest code through the engine.
+ * The program's own entry point, named before it is entered.
+ *
+ * It is the one call that is not meant to return: the game leaves through
+ * exit(), so the engine's "this call is not finishing" cap must not apply to
+ * it. Calls made FROM it are capped normally.
  */
-int x2_engine_call_taken(uint32_t addr, struct CPU *C);
+void x2_engine_program_entry(uint32_t addr);
 
 /*
  * What the engine did. Printed at shutdown beside the other run reports.

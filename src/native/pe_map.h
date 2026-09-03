@@ -6,7 +6,8 @@
 #include <stdint.h>
 
 typedef struct PeImage {
-    uint32_t base;       /* preferred base, and where it actually landed */
+    uint32_t base;       /* where it actually landed */
+    uint32_t preferred;  /* what it was linked for; differs when relocated */
     uint32_t size;       /* SizeOfImage */
     int      nsections;
 } PeImage;

@@ -64,6 +64,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "guest_body.h"
 
 /* XMen2.exe's own font record, from FUN_00596af0. */
 #define FONT_STRIDE     0x1c18u
@@ -84,8 +85,6 @@
 #define LINKED_FONT_LOADER 0x00596af0u
 #define LINKED_FONT_TIER   0x005f5fd0u
 
-void fn_XMen2_00596af0(CPU *C);      /* the recompiled bodies, kept alive */
-void fn_XMen2_005f5fd0(CPU *C);
 
 static unsigned long g_fonts, g_glyphs, g_zero;
 static unsigned long g_tier_asked, g_tier_forced;
@@ -182,7 +181,7 @@ static void x2_override_font_loader(CPU *C)
     uint32_t index = RD32(C->esp + 8u);
     float k = x2_ui_text_scale();
 
-    fn_XMen2_00596af0(C);
+    x86_guest_body(C, "XMen2.exe", 0x00596af0u);
     if (!table || !C->eax) return;                /* eax 0 == nothing loaded */
     if (k != 1.0f) {
         g_applied = k;
@@ -215,7 +214,7 @@ static void x2_override_font_loader(CPU *C)
  */
 static void x2_override_font_tier(CPU *C)
 {
-    fn_XMen2_005f5fd0(C);
+    x86_guest_body(C, "XMen2.exe", 0x005f5fd0u);
     g_tier_asked++;
     if (!C->eax) g_tier_forced++;
     C->eax = 1u;

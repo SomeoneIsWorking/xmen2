@@ -24,6 +24,7 @@
 #include "x86rt_native.h"
 #include <stdint.h>
 #include <string.h>
+#include "guest_body.h"
 #define EXE_PREFERRED           0x00400000u
 #define EXE_RVA(va)             ((uint32_t)(va) - EXE_PREFERRED)
 #define CURRENT_CONTEXT_RVA     EXE_RVA(0x00787730u)
@@ -66,10 +67,6 @@ typedef struct CutscenePlayerRuntime {
 
 static CutscenePlayerRuntime g_player;
 
-void fn_XMen2_00469130(CPU *cpu);
-void fn_XMen2_004a00d0(CPU *cpu);
-void fn_XMen2_004d7c10(CPU *cpu);
-void fn_XMen2_004d8700(CPU *cpu);
 
 static uint32_t current_context(void);
 
@@ -366,7 +363,7 @@ void x2_override_00469130(CPU *cpu)
         if (!g_player.active) begin_sequence(cpu->ecx, context);
         g_player.release_pending = 0;
     }
-    fn_XMen2_00469130(cpu);
+    x86_guest_body(cpu, "XMen2.exe", 0x00469130u);
     if (seconds >= 0.0f && g_player.active) {
         g_player.release_pending = 1;
         g_player.releases++;
@@ -378,7 +375,7 @@ void x2_override_00469130(CPU *cpu)
 
 void x2_override_004d8700(CPU *cpu)
 {
-    fn_XMen2_004d8700(cpu);
+    x86_guest_body(cpu, "XMen2.exe", 0x004d8700u);
     g_player.allocations++;
     if (cpu->eax && x2_cutscene_player_inherits_context(
             g_player.active, owns_context(current_context(), NULL),
@@ -397,7 +394,7 @@ void x2_override_004d7c10(CPU *cpu)
     vm = call.eax;
     if (vm && index < OWNED_CONTEXT_LIMIT)
         context = vm + 0x2f2f4u + index * 0x5c4u;
-    fn_XMen2_004d7c10(cpu);
+    x86_guest_body(cpu, "XMen2.exe", 0x004d7c10u);
     disown(context);
 }
 
@@ -406,7 +403,7 @@ void x2_override_004a00d0(CPU *cpu)
     uint32_t mask = 0;
     int down = 0;
 
-    fn_XMen2_004a00d0(cpu);
+    x86_guest_body(cpu, "XMen2.exe", 0x004a00d0u);
     retire_released_sequence();
     /* Publish the lock to the one owner of "does the player control a
        character": this override runs every input poll, cutscene or not, so

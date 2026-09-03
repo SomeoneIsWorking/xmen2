@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum {
     EXE_PREFERRED = 0x00400000u,
@@ -63,9 +64,6 @@ static int g_continue_command_armed;
 static int g_boot_load_pending;
 static X2ContinueTransaction g_transaction;
 
-void fn_XMen2_005c9260(CPU *C);
-void fn_XMen2_005f2b70(CPU *C);
-void fn_XMen2_004b1280(CPU *C);
 
 static void continue_load_completed(int succeeded);
 
@@ -253,7 +251,7 @@ void x2_override_005c9260(CPU *C)
     if (boot_continue &&
         !x2_boot_player_select_primary(C, PRIMARY_LOCAL_PLAYER))
         boot_continue = 0;
-    fn_XMen2_005c9260(C);
+    x86_guest_body(C, "XMen2.exe", 0x005c9260u);
     if (!exe_base()) return;
     has_save = catalog_for_show();
     apply_menu_plan(C, menu, has_save);
@@ -308,7 +306,7 @@ int x2_continue_boot_dispatch(struct CPU *C)
 void x2_override_005f2b70(CPU *C)
 {
     if (!g_continue_command_armed) {
-        fn_XMen2_005f2b70(C);
+        x86_guest_body(C, "XMen2.exe", 0x005f2b70u);
         return;
     }
     if (start_latest_load(C)) x2_boot_mode_runtime_continue_started();
@@ -326,7 +324,7 @@ void x2_override_004b1280(CPU *C)
     uint32_t manager = C->ecx;
     CPU call;
 
-    fn_XMen2_004b1280(C);
+    x86_guest_body(C, "XMen2.exe", 0x004b1280u);
     if (!x2_continue_transaction_take_success_ack(
             &g_transaction, RD32(manager + MANAGER_MODE),
             RD32(manager + MANAGER_STATE)))

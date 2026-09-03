@@ -32,7 +32,7 @@
 #include "gpu_draw.h"
 #include "win32_sdl.h"
 #include "x86rt_native.h"
-#include "probe_rec.h"      /* probe_page_readable */
+#include "guest_memory.h"   /* guest_memory_is_readable */
 #include "guest_memory.h"
 #include "x86rt.h"
 
@@ -1295,7 +1295,7 @@ static void vsc_walk(CPU *C, uint32_t *out, int *nout)
         /* Reuse the oracle recorder's page check rather than a second
            copy of it -- the last duplicate of this logic silently made
            every read fail (issue #80's capture). */
-        if (!probe_page_readable(sp & ~4095u)) break;
+        if (!guest_memory_is_readable(sp & ~4095u, 4096u)) break;
         w = RD32(sp);
         if (!x86_module_for(w)) continue;
         ep = x86_native_entry_containing(w, &nm);

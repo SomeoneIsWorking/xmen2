@@ -27,8 +27,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "guest_body.h"
 
-void fn_XMen2_00672130(CPU *C);   /* __report_gsfailure: raises the CRT abort */
 
 void x2_override_00672161(CPU *C)
 {
@@ -95,7 +95,7 @@ void x2_override_00672161(CPU *C)
     }
     /* Defer to __report_gsfailure, which raises the CRT security abort. It is
        a tail call in the original; keep the stack as-is and let it run. */
-    fn_XMen2_00672130(C);
+    x86_guest_body(C, "XMen2.exe", 0x00672130u);
 }
 
 /* X2_SECURITY_WATCH=1: arm the WRITE watch on FUN_0046b750's cookie slot the
@@ -106,7 +106,6 @@ void x2_override_00672161(CPU *C)
 extern volatile uint32_t x2_write_watch_addr;
 static int g_security_watch_armed;
 
-void fn_XMen2_0046b750(CPU *C);
 
 void x2_override_0046b750_watch(CPU *C)
 {
@@ -123,7 +122,7 @@ void x2_override_0046b750_watch(CPU *C)
         fprintf(stderr, "SECURITY: FUN_0046b750 entry esp 0x%08x, cookie slot "
                         "0x%08x.\n", entry_esp, cookie_addr);
         x86_stackcheck_arm(1);
-        fn_XMen2_0046b750(C);
+        x86_guest_body(C, "XMen2.exe", 0x0046b750u);
         x86_stackcheck_arm(0);
         /* The epilogue reads [ESP+0x20] against the value stored here. If the
            body did not return esp to where it started, those are different
@@ -140,7 +139,7 @@ void x2_override_0046b750_watch(CPU *C)
         x2_write_watch_addr = 0;
         return;
     }
-    fn_XMen2_0046b750(C);
+    x86_guest_body(C, "XMen2.exe", 0x0046b750u);
 }
 
 __attribute__((constructor))

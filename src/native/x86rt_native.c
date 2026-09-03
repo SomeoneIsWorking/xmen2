@@ -11,6 +11,7 @@
 #include "guest_memory.h"
 #include "threads.h"
 #include "guest_heap.h"
+#include "host_imports.h"
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
@@ -181,6 +182,14 @@ int x86_override_is_bound(const char *module, uint32_t linked_ep,
    rejection paths can be exercised by --override-selftest: a resolver that
    aborts on every failure cannot be shown to accept the right things and
    reject the wrong ones without a way to ask it. */
+uint32_t x86_module_base(const char *image)
+{
+    X86Module *m;
+    for (m = g_head; m; m = m->next)
+        if (!strcasecmp(m->name, image)) return *m->base;
+    return 0;
+}
+
 int x86_override_resolve_check(const char *module, uint32_t linked_ep,
                                uint32_t *mapped_out, char *why, size_t whyn)
 {
@@ -200,13 +209,11 @@ int x86_override_resolve_check(const char *module, uint32_t linked_ep,
         return 1;
     }
     mapped = *m->base + (linked_ep - m->preferred);
-    if (!find(m, mapped)) {
-        snprintf(why, whyn, "0x%08x is not the entry point of any recompiled "
-                            "body in %s -- an override on a mid-function "
-                            "address is never dispatched to",
-                 linked_ep, module);
-        return 1;
-    }
+    /* There is no translated corpus to check the address against any more, so
+       "is this a function entry point?" has no answer here. It is not a hole:
+       the engine begins interpreting at whatever address dispatch names, so a
+       mid-function override runs mid-function rather than not at all -- wrong
+       in a way that shows, instead of silently never firing. */
     *mapped_out = mapped;
     return 0;
 }
@@ -240,7 +247,6 @@ void x86_overrides_resolve(void)
     for (i = 0; i < g_noverride; i++) {
         char why[256];
         uint32_t mapped = 0;
-        x86_override_fn *slot;
         if (x86_override_resolve_check(g_override[i].module,
                                        g_override[i].linked_ep,
                                        &mapped, why, sizeof why) != 0) {
@@ -251,20 +257,6 @@ void x86_overrides_resolve(void)
             continue;
         }
         g_override[i].mapped_ep = mapped;
-        slot = override_slot_for(g_override[i].module,
-                                 g_override[i].linked_ep);
-        if (!slot) {
-            fprintf(stderr, "x86_overrides_resolve: %s 0x%08x resolved to a "
-                            "mapped body but the generated code registered no "
-                            "override slot for it. %d chunk(s) and %ld slot(s) "
-                            "are registered -- if that is 0, no generated "
-                            "chunk ran its constructor.\n",
-                    g_override[i].module, g_override[i].linked_ep,
-                    g_chunk_count, g_slot_count);
-            bad++;
-            continue;
-        }
-        *slot = g_override[i].fn;
     }
     if (bad) {
         fprintf(stderr, "x86_overrides_resolve: %d of %d override(s) could not "
@@ -274,9 +266,12 @@ void x86_overrides_resolve(void)
         abort();
     }
     g_overrides_resolved = 1;
-    printf("overrides: %d native override(s) bound into their function's own "
-           "slot, out of %ld slot(s) in %d generated chunk(s)\n",
-           g_noverride, g_slot_count, g_chunk_count);
+    /* Bound to an ADDRESS the dispatcher compares, not into a slot inside a
+       translated body. The slot mechanism went with the translator, and the
+       address is the honest key: it is what x86_dispatch_one is holding when
+       it has to decide whether native code or the engine answers. */
+    printf("overrides: %d native override(s) bound to a mapped address\n",
+           g_noverride);
 }
 
 static int thunk_call(uint32_t addr, CPU *C);
@@ -1093,36 +1088,41 @@ static inline void hotep_count(uint32_t ep, unsigned long long ns)
 static void *g_cb_ctx;
 
 /*
- * A thunk is created whether or not the import is actually implemented, because
- * the generated stubs are weak symbols and an implemented one cannot be told
- * from an unimplemented one by address.
+ * A guest-callable address for an import this host implements.
  *
- * That is safe only because of the cycle-break in x86_import_call below. An
- * IMPLEMENTED stub does the work and never looks at its slot. An UNIMPLEMENTED
- * one dispatches through its slot -- which now holds this thunk, which calls
- * the stub, which dispatches through the slot... The first version of this
- * recursed until the stack died, and the comment here claimed it would "report
- * by name and stop". It did not. Wanting a design to be safe is not the same as
- * it being safe, so the break is explicit and tested rather than argued.
+ * The answer comes from the host import registry (host_imports.h), which is a
+ * property of this binary. The generated per-module IAT listings that used to
+ * answer it are gone, and with them the weak-stub problem this function was
+ * built around: an entry in the registry IS an implementation.
+ *
+ * `sym` NULL means look up `ordinal` instead; WS2_32 is imported that way.
+ *
+ * The same import asked for twice gets the same address: GetProcAddress can be
+ * called in a loop, and minting a fresh thunk per call both exhausts the table
+ * and makes two pointers to one function compare unequal.
  */
+uint32_t x86_native_thunk_at(const char *mod, const char *sym, uint32_t ordinal)
+{
+    const char       *dll = NULL;
+    const HostImport *e = host_import_find(mod, sym, ordinal, &dll);
+    int i;
+    if (!e) return 0;
+    for (i = 0; i < g_nthunk; i++)
+        if (g_thunk[i].stub == e->stub && g_thunk[i].mod == dll)
+            return THUNK_BASE + (uint32_t)i * 16u;
+    if (g_nthunk == THUNK_MAX) return 0;
+    /* The registry's strings, not the caller's: `mod` and `sym` can point into
+       a mapped image's import directory, and a report reads them much later. */
+    g_thunk[g_nthunk].stub = e->stub;
+    g_thunk[g_nthunk].mod = dll;
+    g_thunk[g_nthunk].sym = e->sym;
+    g_nthunk++;
+    return THUNK_BASE + (uint32_t)(g_nthunk - 1) * 16u;
+}
+
 uint32_t x86_native_thunk(const char *mod, const char *sym)
 {
-    X86Module *m;
-    int i;
-    for (m = g_head; m; m = m->next) {
-        for (i = 0; i < m->nimports; i++) {
-            const X86Import *im = &m->imports[i];
-            if (strcasecmp(im->mod, mod) != 0 || strcmp(im->sym, sym) != 0)
-                continue;
-            if (g_nthunk == THUNK_MAX) return 0;
-            g_thunk[g_nthunk].stub = im->stub;
-            g_thunk[g_nthunk].mod = im->mod;
-            g_thunk[g_nthunk].sym = im->sym;
-            g_nthunk++;
-            return THUNK_BASE + (uint32_t)(g_nthunk - 1) * 16u;
-        }
-    }
-    return 0;
+    return sym ? x86_native_thunk_at(mod, sym, 0) : 0;
 }
 
 /*

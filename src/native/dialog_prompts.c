@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "guest_body.h"
 
 #define EXE_PREFERRED                    0x00400000u
 #define PC_HINT_LOCALIZATION_RETURN      0x005ec066u
@@ -50,8 +51,6 @@ static uint32_t mapped_address(const X86Module *module, uint32_t linked)
     return *module->base + (linked - module->preferred);
 }
 
-void fn_XMen2_00564b70(CPU *C);
-void fn_XMen2_00629bf0(CPU *C);
 
 static void return_dialog_asset_text(CPU *C, const X86Module *module)
 {
@@ -68,7 +67,7 @@ static void return_dialog_asset_text(CPU *C, const X86Module *module)
     WR32(C->esp, mapped_address(module, ASSET_TEXT_KEY));
     C->esp -= 4u;
     WR32(C->esp, return_address);
-    fn_XMen2_00564b70(C);
+    x86_guest_body(C, "XMen2.exe", 0x00564b70u);
     if (C->esp != outer_esp) {
         fprintf(stderr, "DIALOG-PROMPTS: asset text reader returned with "
                         "ESP 0x%08x, expected 0x%08x; refusing a corrupted "
@@ -86,7 +85,7 @@ void x2_override_00629bf0(CPU *C)
 
     if (!module) {
         g_other_lookups++;
-        fn_XMen2_00629bf0(C);
+        x86_guest_body(C, "XMen2.exe", 0x00629bf0u);
         return;
     }
     return_address = RD32(C->esp);
@@ -99,7 +98,7 @@ void x2_override_00629bf0(CPU *C)
                                        linked_return)) {
         if (linked_return == PC_HINT_LOCALIZATION_RETURN) g_pc_text++;
         else g_other_lookups++;
-        fn_XMen2_00629bf0(C);
+        x86_guest_body(C, "XMen2.exe", 0x00629bf0u);
         return;
     }
     return_dialog_asset_text(C, module);

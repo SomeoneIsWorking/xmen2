@@ -819,53 +819,18 @@ void crt_rtti_report(void)
  */
 /* ---- moved from win32_sdl.c: the CRT pieces the DLLs reach ------------- */
 
-const char *x86_native_name_at(uint32_t addr);
-void x86_diag_dump(void);
-/* Report a constructor target as its module and GUEST address: the modules are
-   relocated now, and Ghidra seeds have to be given the address the module was
-   LINKED for, not where it happens to be mapped. Printing the mapped address
-   produced seeds that pointed nowhere. */
-void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
-
 void imp_MSVCR71__initterm(CPU *C)
 {
-    /* Walk the function-pointer table and call each non-NULL entry through the
-       recompiled dispatcher -- these are the module's static constructors, and
-       skipping them would leave every global unconstructed.
-     *
-     * The pre-pass is the point. These tables are the ONLY reference to most
-     * of their targets: they are data pointers in .rdata, so static analysis
-     * never marked them as code and they have no recompiled body. Running the
-     * table straight through would stop at the first one, and each rebuild
-     * would reveal exactly one more. Listing every missing target first turns
-     * that into one seed list.
-     */
-    uint32_t p = A(0), end = A(1), n = 0, missing = 0;
-    for (p = A(0); p < end; p += 4u) {
-        uint32_t fn = RD32(p);
-        if (!fn) continue;
-        n++;
-        if (!x86_native_name_at(fn)) {
-            if (!missing)
-                fprintf(stderr, "\n*** _initterm: constructor targets with no "
-                                "recompiled body.\n    These are reachable only "
-                                "through this table, so static analysis never "
-                                "saw them as code.\n    Seed them and re-lift; "
-                                "the full list follows so this costs one pass, "
-                                "not one per rebuild.\n");
-            {
-                const char *mn = NULL; uint32_t g = fn;
-                x86_guest_addr_of(fn, &mn, &g);
-                fprintf(stderr, "    %-18s 0x%08x\n", mn ? mn : "(no module)", g);
-            }
-            missing++;
-        }
-    }
-    if (missing) {
-        fprintf(stderr, "*** %u of %u constructor targets are missing bodies\n",
-                missing, n);
-        abort();
-    }
+    /* Walk the function-pointer table and call each non-NULL entry -- these
+       are the module's static constructors, and skipping them would leave
+       every global unconstructed.
+
+       This used to refuse the whole table first, listing every target with no
+       statically recompiled body so they could be seeded and re-lifted. There
+       is no lifter and no seed list now: these targets are data pointers in
+       .rdata that static analysis never saw as code, which is exactly the case
+       the engine has no trouble with -- it decodes the bytes that are there. */
+    uint32_t p, end = A(1);
     for (p = A(0); p < end; p += 4u) {
         uint32_t fn = RD32(p);
         if (fn) x86_guest_call(C, fn);

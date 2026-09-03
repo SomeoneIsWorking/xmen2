@@ -22,7 +22,6 @@
 #include "x86rt_native.h"
 #include "x86_dispatch_report.h"
 #include "x86_engine.h"
-#include "x86_engine_take.h"
 #include "x86_tail_policy.h"
 
 #include <stdlib.h>
@@ -30,34 +29,12 @@
 static void x86_dispatch_one(CPU *C, uint32_t target)
 {
     /*
-     * The TAKE set is asked FIRST, and it is the only thing that can make the
-     * substrate give up a body it has.
-     *
-     * Without it the engine runs only what the corpus could not translate, and
-     * on this title the corpus translated everything the game reaches -- so a
-     * 60-frame run entered the engine zero times and measured nothing about
-     * the game. X2_ENGINE_TAKE names entry points to hand over anyway, which
-     * is what lets the same function be run both ways and compared
-     * (jit-common I004 step 3).
-     *
-     * It answers 0 for host code and 0 when nothing was requested, which is
-     * the default -- so this line is inert on an ordinary run rather than
-     * being a branch that has to be reasoned about.
+     * Host code first: an import thunk or a native override is a C function
+     * at a guest address, and there are no guest bytes there to interpret.
+     * Everything else is the guest's own code, and the engine is the only
+     * thing in this binary that can run it.
      */
-    if (x2_take_has(target, kX2TakeDispatch)
-        && x2_engine_call_taken(target, C))
-        return;
     if (x86_native_call_at(target, C)) return;
-    /*
-     * No body here -- which is exactly where a runtime engine plugs in
-     * (jit-common I004). It returns 0 when no engine is selected, and then the
-     * report below is still the right answer; nothing has been touched.
-     *
-     * It is asked AFTER x86_native_call_at rather than instead of it, so the
-     * statically recompiled corpus keeps running and the engine takes only
-     * what that corpus could not translate. That is what makes this
-     * incremental rather than a switch-over.
-     */
     if (x2_engine_call(target, C)) return;
     x86_report_missing_body(C, target);
     abort();

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -307,53 +306,6 @@ def publish_text(path: Path, content: str) -> bool:
     return True
 
 
-def load_probe_generator():
-    """Load the authoritative renderer without invoking its in-place writer."""
-    path = ROOT / "tools/gen_probes.py"
-    spec = importlib.util.spec_from_file_location("x2_bootstrap_gen_probes", path)
-    if spec is None or spec.loader is None:
-        refuse(f"cannot load probe generator {path}")
-    generator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(generator)
-    return generator
-
-
-def publish_probe_artifacts(generator=None) -> int:
-    """Render, content-check and atomically publish every probe artifact.
-
-    ``gen_probes.py`` remains the one authority for validation and rendering.
-    Bootstrap calls those pure seams and owns publication so an interrupted
-    write cannot turn a stale cache into apparently current build input.
-    """
-    generator = generator or load_probe_generator()
-    try:
-        manifest = generator.load_manifest()
-        probes = generator.build(manifest)
-    except generator.Refuse as error:
-        refuse(str(error))
-    manifest_hash = generator.manifest_hash(manifest)
-    outputs = [
-        (Path(generator.HDR_OUT), generator.emit_header(probes, manifest_hash)),
-        (Path(generator.WRAP_OUT), generator.emit_wraps(probes)),
-        (Path(generator.STUB_OUT), generator.emit_stubs(probes)),
-        (Path(generator.CMAKE_OUT), generator.emit_cmake(probes)),
-        *((Path(path), text) for path, text in generator.emit_isolates(probes)),
-    ]
-    changed = sum(publish_text(path, text) for path, text in outputs)
-
-    # Probe isolation has one writer. Remove a retired module's generated list
-    # only after every replacement artifact has been published successfully.
-    expected_isolates = {path.resolve() for path, _ in outputs
-                         if path.suffix == ".isolate"}
-    for path in Path(generator.RECOMP).glob("*.isolate"):
-        if path.resolve() not in expected_isolates:
-            path.unlink()
-            changed += 1
-    print(f"bootstrap: probe wiring OK ({len(probes)} probe(s), "
-          f"{len(outputs)} artifact(s), {changed} changed)")
-    return changed
-
-
 def publish_font_tier_ratio(game: Path) -> None:
     """Measure this install's own PC->HD font step into a generated header.
 
@@ -362,7 +314,7 @@ def publish_font_tier_ratio(game: Path) -> None:
     into the C -- each localisation ships its own.
     """
     run_tool([str(ROOT / "tools/font_tier_ratio.py"), str(game),
-              str(ROOT / "src/recomp/gen/font_tier_ratio.h")],
+              str(ROOT / "src/gen/font_tier_ratio.h")],
              "measuring the font tier step")
 
 
@@ -375,7 +327,7 @@ def publish_prompt_glyph_atlas() -> None:
     committed in the tree looking current.
     """
     run_tool([str(ROOT / "tools/render_prompt_glyphs.py"),
-              str(ROOT / "src/recomp/gen/prompt_glyph_atlas.h")],
+              str(ROOT / "src/gen/prompt_glyph_atlas.h")],
              "rasterising the prompt glyph atlas")
 
 
@@ -388,7 +340,6 @@ def provision(game: Path) -> None:
     """
     publish_font_tier_ratio(game)
     publish_prompt_glyph_atlas()
-    publish_probe_artifacts()
     print("bootstrap: native inputs ready")
 
 

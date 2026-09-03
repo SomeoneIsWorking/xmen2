@@ -4,7 +4,6 @@
 #include "dinput_pad.h"
 #include "guest_clock.h"
 #include "heartbeat.h"
-#include "oracle_trace.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -387,8 +386,6 @@ static void *heartbeat_thread(void *arg)
                emptiness reads as agreement. */
             {
                 char pl[192];
-                oracle_probe_line(pl, sizeof pl);
-                fprintf(stderr, "[HB]           %s\n", pl);
                 d3d8_vsconst_caller_line(pl, sizeof pl);
                 fprintf(stderr, "[HB]           %s\n", pl);
             }

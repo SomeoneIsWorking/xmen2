@@ -11,10 +11,10 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "guest_body.h"
 
 #define MAX_SITES 32
 
-void fn_XMen2_005972a0(CPU *C);
 
 static uint32_t g_sites[MAX_SITES];
 static unsigned long g_counts[MAX_SITES];
@@ -39,7 +39,7 @@ static void note(uint32_t ret)
 static void x2_probe_005972a0(CPU *C)
 {
     note(RD32(C->esp));
-    fn_XMen2_005972a0(C);
+    x86_guest_body(C, "XMen2.exe", 0x005972a0u);
 }
 
 void x2_texture_probe_report(void)

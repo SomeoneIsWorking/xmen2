@@ -12,6 +12,7 @@
 #include "conversation_player.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "guest_body.h"
 
 #define EXE_PREFERRED             0x00400000u
 #define EXE_RVA(va)               ((uint32_t)(va) - EXE_PREFERRED)
@@ -33,8 +34,6 @@ typedef struct CutsceneDialogueRuntime {
 
 static CutsceneDialogueRuntime g_dialogue;
 
-void fn_XMen2_00458700(CPU *cpu);
-void fn_XMen2_0045a170(CPU *cpu);
 
 static uint32_t exe_base(void)
 {
@@ -163,7 +162,7 @@ int cutscene_dialogue_payload_active(void)
 void x2_override_00458700(CPU *cpu)
 {
     if (!g_dialogue.depth) {
-        fn_XMen2_00458700(cpu);
+        x86_guest_body(cpu, "XMen2.exe", 0x00458700u);
         if ((uint8_t)cpu->eax) {
             g_dialogue.counters.ordinary_response_starts++;
         }
@@ -193,7 +192,7 @@ void x2_override_0045a170(CPU *cpu)
 
     manager = current_manager();
     before_playing = manager ? active_voice(manager, &before) : -1;
-    fn_XMen2_0045a170(cpu);
+    x86_guest_body(cpu, "XMen2.exe", 0x0045a170u);
     after_playing = manager ? active_voice(manager, &after) : -1;
     if (after_playing > 0 &&
         (before_playing <= 0 || before != after))

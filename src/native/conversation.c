@@ -49,6 +49,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "guest_body.h"
 /* ---- where the exe actually landed ------------------------------------- */
 
 #define EXE_PREFERRED   0x00400000u
@@ -365,7 +366,6 @@ static void note_name(char *dst, size_t cap, uint32_t s)
  * the launch's own bool in AL; the original keeps it in BL across the two
  * clearing calls, so those cannot be allowed to overwrite it.
  */
-void fn_XMen2_00455600(CPU *C);
 
 void x2_override_00455600(CPU *C)
 {
@@ -418,7 +418,6 @@ void x2_override_00455600(CPU *C)
  *
  *     void record::runScripts()      // scriptCommand, then scriptFile
  */
-void fn_XMen2_0045a100(CPU *C);
 
 void x2_override_0045a100(CPU *C)
 {
@@ -453,7 +452,6 @@ void x2_override_0045a100(CPU *C)
  * children. It is ported literally rather than as the constant, because the
  * constant is a consequence of the caller and would stop being true silently.
  */
-void fn_XMen2_004559e0(CPU *C);
 
 void x2_override_004559e0(CPU *C)
 {
@@ -478,7 +476,6 @@ void x2_override_004559e0(CPU *C)
  * -- FUN_0045cde0 sets the ending flag on it -- so the two ways of returning 0
  * are counted apart.
  */
-void fn_XMen2_0045b6d0(CPU *C);
 
 void x2_override_0045b6d0(CPU *C)
 {
@@ -537,7 +534,6 @@ void x2_override_0045b6d0(CPU *C)
  * declined -- the original skips applying the response in that case, so a
  * refusal is recorded here by name rather than looking like a missing call.
  */
-void fn_XMen2_0045d5d0(CPU *C);
 
 void x2_override_0045d5d0(CPU *C)
 {
@@ -590,7 +586,6 @@ void x2_override_0045d5d0(CPU *C)
 
 /* XMen2.exe 0x00458010 / 0x00458020: visible/speaking predicates.
  * Both return in AL only, leaving the rest of EAX as the original's SHR AL. */
-void fn_XMen2_00458010(CPU *C);
 
 void x2_override_00458010(CPU *C)
 {
@@ -601,7 +596,6 @@ void x2_override_00458010(CPU *C)
     C->esp += 4u;
 }
 
-void fn_XMen2_00458020(CPU *C);
 
 void x2_override_00458020(CPU *C)
 {
@@ -714,7 +708,6 @@ static long double call_float(CPU *C, uint32_t fn, uint32_t ecx,
     return K.st[K.top];
 }
 
-void fn_XMen2_0045d1a0(CPU *C);
 
 void x2_override_0045d1a0(CPU *C)
 {

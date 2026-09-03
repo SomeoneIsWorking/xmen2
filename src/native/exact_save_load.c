@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include "guest_body.h"
 
 enum {
     FN_SAVE_MANAGER = 0x000b2880u,
@@ -33,7 +34,6 @@ static uint32_t g_pending_exe;
 static X2ExactSaveLoadOwner g_owner;
 static X2ExactSaveLoadCompletion g_completion;
 
-void fn_XMen2_0055ff00(CPU *C);
 
 static uint32_t guest_call0(const CPU *source, uint32_t target)
 {
@@ -180,7 +180,7 @@ static int redirect_pending_load(CPU *cpu)
 static void x2_override_0055ff00(CPU *C)
 {
     if (!redirect_pending_load(C))
-        fn_XMen2_0055ff00(C);
+        x86_guest_body(C, "XMen2.exe", 0x0055ff00u);
 }
 
 __attribute__((constructor))
