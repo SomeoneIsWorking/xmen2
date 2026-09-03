@@ -2,6 +2,7 @@
 
 #include "guest_memory.h"
 #include "x86_engine_internal.h"
+#include "x86_engine_jit_diag.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -101,6 +102,20 @@ static int jit_intercept(const X86pCpu *cpu, void *user) {
   return 0;
 }
 
+/*
+ * Addresses the run loop below takes over from the JIT. jit_intercept checks
+ * these between blocks; this is the same set for the translator, so a block is
+ * never emitted THROUGH one (a native override entry or thunk reached by
+ * fall-through rather than by a call). Pure-EIP only -- the stack-relative
+ * return check in jit_intercept cannot be made at translation time, and does
+ * not need to be: a RET already ends a block.
+ */
+static int jit_boundary(uint32_t eip, void *user) {
+  (void)user;
+  return x86_is_thunk(eip) || eip == ENGINE_RETURN_ADDR ||
+         x86_native_body_at(eip) || x86_setjmp3_thunk(eip);
+}
+
 /* ---- selection and setup ---------------------------------------------- */
 
 static int map_return_page(char *reason, unsigned reason_len) {
@@ -144,6 +159,8 @@ int x2_engine_init(char *reason, unsigned reason_len) {
     if (!g_engine.jit)
       return 0;
     x86p_jit_engine_set_intercept(g_engine.jit, jit_intercept, NULL);
+    x86p_jit_engine_set_boundary(g_engine.jit, jit_boundary, NULL);
+    x86_engine_jit_diag_configure(g_engine.jit);
   }
   g_engine.ready = 1;
   fprintf(stderr,
@@ -450,6 +467,7 @@ void x2_engine_report(void) {
             (unsigned long long)js.cache_flushes,
             (size_t)(js.code_bytes_used / 1024),
             x86p_jit_engine_mechanism());
+    x86_engine_jit_diag_report(&js);
   }
   {
     unsigned long long look = x86p_decode_cache_lookups(&g_decode_cache);
