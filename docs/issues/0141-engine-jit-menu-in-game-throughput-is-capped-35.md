@@ -347,3 +347,28 @@ extending `jit.verify` to compare CPU state on fault/unsupported exits (it
 currently skips non-BlockEnd), (b) cross-block flag liveness at the dispatcher,
 (c) widen the translatable set so fewer blocks end early into the interpreter
 (24,423 of 448,457 insns still run via helper).
+
+## Progress (2026-09-04) -- widen the translatable set: MOVZX/MOVSX natively; x87 is the remaining bulk
+
+x86port `8ad6c9f` (pin bumped). Added a helper-routing histogram
+(`x86p_jit_helper_histogram_*`, keyed per insn op, printed in `[ENGINE]`
+report) to pick the next codegen lever from data.
+
+In-game finding: of the ~24k instructions still routed through the interpreter
+helper per boot, **x87 is ~84%** (20,701). The integer tail was small: imul 779,
+movzx 685, setcc 566, movsx 292, leave 155, cdq 120, div 45, idiv 17, mul 11.
+
+Landed the cheapest integer item: `emit_movx` emits MOVZX/MOVSX (`0F B6/B7/BE/BF`,
+register and memory sources) inline -- narrow load + shl/sar sign fill for the
+signed forms (new `x86p_emit_sar_r32_imm8` primitive). After this the helper
+histogram shows the integer tail gone; x87 is the sole bulk (8029/8029).
+
+Verified: `jit.verify` over 140,422,308 in-game block entries, 0 divergence;
+x86port 19/19 (generator cases 85-88 cover the 16-bit and memory MOVX forms),
+xmen2 130/130.
+
+Native x87 emission is the dominant remaining lever but is large and
+correctness-sensitive (control word, precision, the 8-deep register stack) --
+it belongs in its own issue, not an ad-hoc extension here. Levers (b) cross-block
+flag liveness and the fault-exit `jit.verify` extension for memory-operand ALU
+killers remain open.
