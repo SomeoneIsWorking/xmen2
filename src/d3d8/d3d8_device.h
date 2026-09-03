@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "d3d8_com.h"
+#include "d3d8_state.h"
 #include "d3d8_types.h"
 
 #ifdef __cplusplus
@@ -66,5 +67,21 @@ void d3d8_vsconst_caller_report(void);
 #ifdef __cplusplus
 }
 #endif
+
+/*
+ * The device's own state mirror.
+ *
+ * There is exactly one device, and the light methods next door record into
+ * this same mirror -- an accessor rather than a second copy of the state.
+ */
+D3D8State *d3d8_device_state(void);
+
+/*
+ * A guest address as a host pointer, or NULL with the offending METHOD named.
+ *
+ * The name matters: a NULL that only says "NULL pointer" cannot be traced
+ * back to the call that passed it.
+ */
+void *d3d8_guest_ptr(uint32_t a, const char *what);
 
 #endif /* D3D8_DEVICE_H */

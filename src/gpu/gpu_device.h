@@ -193,4 +193,7 @@ void gpu_frame_viewport(int x, int y, int w, int h, float minz, float maxz);
  */
 void gpu_device_report(void);
 
+/* Draws this frame has received so far (before any X2_DRAW_RANGE skip). */
+unsigned long gpu_frame_draws_so_far(void);
+
 #endif /* GPU_DEVICE_H */

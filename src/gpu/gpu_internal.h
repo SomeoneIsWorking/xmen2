@@ -76,8 +76,6 @@ void gpu_draw_shutdown(void);
 /* Flushes the opt-in texture-format capability diagnostic after gpu_device.c
    has established the SDL device. */
 void gpu_texture_flush_format_support_report(void);
-/* Draws this frame has received so far (before any X2_DRAW_RANGE skip). */
-unsigned long gpu_frame_draws_so_far(void);
 
 /*
  * The frame's HOST share so far (draw submission + uploads), for attributing a

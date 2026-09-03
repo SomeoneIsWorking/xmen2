@@ -22,8 +22,8 @@ class WindowCaptureWiringTest(unittest.TestCase):
         )
         positions = [body.index(operation) for operation in operations]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("g_headless ? g_swap : final_output", body)
-        self.assertIn("g_headless ? NULL : g_output", body)
+        self.assertIn("gpu_headless_active() ? g_swap : final_output", body)
+        self.assertIn("gpu_headless_active() ? NULL : g_output", body)
 
         capture = (ROOT / "src/gpu/gpu_capture.c").read_text()
         start = capture.index("int gpu_capture_submit_frame(")

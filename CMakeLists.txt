@@ -1450,6 +1450,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_stateblock.c
     src/d3d8/d3d8_d3d8.c
     src/d3d8/d3d8_device.c
+    src/d3d8/d3d8_device_lights.c
     src/d3d8/d3d8_live_resolution.c
     src/d3d8/d3d8_selector_probe.c
     src/d3d8/d3d8_selector_probe_json.c
@@ -1463,6 +1464,9 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_vertex_layout.c
     src/d3d8/d3d8_frame_material.c
     src/d3d8/d3d8_drawcall.c
+    src/d3d8/d3d8_lighting.c
+    src/d3d8/d3d8_light_dump.c
+    src/d3d8/d3d8_light_survey.c
     src/d3d8/d3d8_vertex_shader.c
     src/d3d8/d3d8_screen_space_test.c
     src/d3d8/d3d8_light_selftest.c
@@ -1473,6 +1477,7 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_device.c
     src/gpu/gpu_capture.c
     src/gpu/gpu_draw.c
+    src/gpu/gpu_pipeline.c
     src/gpu/gpu_texture_format.c
     src/gpu/gpu_draw_trace.c
     src/gpu/gpu_frame_timing.c
@@ -1490,7 +1495,9 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_frame_init_selftest.c
     src/gpu/gpu_upload.c
     src/gpu/gpu_upload_selftest.c
+    src/gpu/gpu_headless.c
     src/gpu/gpu_selftest.c
+    src/gpu/gpu_texture_selftest.c
     src/vulkan/igvk_slots_lifecycle.c
     src/vulkan/igvk_slots_frame.c
 )

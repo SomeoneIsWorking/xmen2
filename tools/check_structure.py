@@ -12,29 +12,29 @@ DEFAULT_LIMIT = 500
 # Existing monoliths are frozen at the measured size from 2026-08-20. They are
 # debt, not examples: extraction should lower these numbers, never raise them.
 LEGACY_LIMITS = {
-    "src/native/kernel32.c": 4010,
-    "src/native/x86rt_native.c": 2568,
-    "src/native/x2native.c": 2278,
-    "src/d3d8/d3d8_drawcall.c": 2273,
-    "src/d3d8/d3d8_device.c": 1934,
-    "src/native/crt.c": 1390,
-    "src/recomp/x86rt.h": 1499,
-    "src/gpu/gpu_draw.c": 1538,
-    "src/d3d8/d3d8_report.c": 1408,
-    "src/native/threads.c": 1175,
-    "src/gpu/gpu_device.c": 976,
-    "src/d3d8/d3d8_resource.c": 1004,
-    "src/native/dinput_pad.c": 1003,
-    "src/native/win32_sdl.c": 984,
-    "src/native/conversation.c": 979,
-    "src/native/dsound.c": 766,
-    "src/gpu/gpu_selftest.c": 646,
-    "src/native/input_probe.c": 619,
+    "src/native/kernel32.c": 3737,
+    "src/native/x86rt_native.c": 2148,
+    "src/native/x2native.c": 2152,
+    "src/d3d8/d3d8_drawcall.c": 1650,
+    "src/d3d8/d3d8_device.c": 1640,
+    "src/native/crt.c": 1353,
+    "src/recomp/x86rt.h": 1422,
+    "src/gpu/gpu_draw.c": 1250,
+    "src/d3d8/d3d8_report.c": 1395,
+    "src/native/threads.c": 1013,
+    "src/gpu/gpu_device.c": 810,
+    "src/d3d8/d3d8_resource.c": 924,
+    "src/native/dinput_pad.c": 619,
+    "src/native/win32_sdl.c": 930,
+    "src/native/conversation.c": 958,
+    "src/native/dsound.c": 763,
+    "src/gpu/gpu_selftest.c": 348,
+    "src/native/input_probe.c": 568,
     "src/native/dinput_device.c": 524,
-    "src/native/advapi32.c": 610,
+    "src/native/advapi32.c": 599,
     "src/d3d8/d3d8_com.c": 609,
-    "src/native/dinput8.c": 594,
-    "src/native/heartbeat.c": 509,
+    "src/native/dinput8.c": 516,
+    "src/native/heartbeat.c": 496,
 }
 
 SOURCE_SUFFIXES = {".c", ".h", ".cpp", ".hpp"}
@@ -64,8 +64,11 @@ def source_counts(root: Path) -> dict[str, int]:
 
 
 def selftest() -> int:
-    good = {"src/new.c": DEFAULT_LIMIT, "src/native/kernel32.c": 4010}
-    bad = {"src/new.c": DEFAULT_LIMIT + 1, "src/native/kernel32.c": 4011}
+    # Read the legacy limit rather than repeating it: a ratchet then moves
+    # both the rule and its selftest, instead of failing the selftest.
+    legacy = LEGACY_LIMITS["src/native/kernel32.c"]
+    good = {"src/new.c": DEFAULT_LIMIT, "src/native/kernel32.c": legacy}
+    bad = {"src/new.c": DEFAULT_LIMIT + 1, "src/native/kernel32.c": legacy + 1}
     if violations(good):
         print("check_structure selftest: valid source was rejected", file=sys.stderr)
         return 1
