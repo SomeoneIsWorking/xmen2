@@ -1,3 +1,15 @@
+/*
+ * Darwin's <ucontext.h> refuses to declare the (deprecated but still
+ * present) ucontext_t API unless _XOPEN_SOURCE is defined first; every other
+ * platform this file targets accepts the include unconditionally. Setting
+ * _XOPEN_SOURCE alone then hides the Darwin-only dladdr()/Dl_info extension
+ * this file also needs, so _DARWIN_C_SOURCE has to come back on top of it.
+ */
+#if defined(__APPLE__) && !defined(_XOPEN_SOURCE)
+#define _XOPEN_SOURCE 700
+#define _DARWIN_C_SOURCE
+#endif
+
 #include "x2_log.h"
 /*
  * Fatal-signal reporting, kept separate from x2native's process composition.
@@ -78,7 +90,11 @@ static uintptr_t fault_context_pc(const void *context) {
   const ucontext_t *uc = context;
   if (!uc)
     return 0;
-#if defined(__x86_64__) && defined(REG_RIP)
+#if defined(__APPLE__) && defined(__aarch64__)
+  return (uintptr_t)uc->uc_mcontext->__ss.__pc;
+#elif defined(__APPLE__) && defined(__x86_64__)
+  return (uintptr_t)uc->uc_mcontext->__ss.__rip;
+#elif defined(__x86_64__) && defined(REG_RIP)
   return (uintptr_t)uc->uc_mcontext.gregs[REG_RIP];
 #elif defined(__i386__) && defined(REG_EIP)
   return (uintptr_t)uc->uc_mcontext.gregs[REG_EIP];

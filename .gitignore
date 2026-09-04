@@ -1,5 +1,8 @@
 .env
 scratch/
+# default game install location (AGENTS.md: game assets are never committed)
+/game/
+*.zip
 android/.gradle/
 build/
 tools/raven-formats/
