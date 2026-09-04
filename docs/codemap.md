@@ -132,6 +132,8 @@ below name cross-directory seams and the entry points used to extend them.
 | Shared Alchemy foundations and intended engine boundary | Own existing title-neutral IGB/image/mesh/raster/Enbaya and input libraries plus XMLB/ARK tools; accept gameplay responsibility only through a consumer adapter and conformance evidence | external `shared/alchemy`; X-Men 2 currently provisions tools only and links no runtime library | `alchemy`, `alchemy_input`, optional `alchemy_input_sdl`; first product seam is the X-Men 2 guest `igControllerManager` adapter | [Shared input boundary](../../../shared/alchemy/docs/input.md) |
 | Xbox evidence | Own independently recovered controller and behavior facts consumed by the PC port; static Xbox execution has no product owner | `docs/info/`, `docs/RE/` | relevant claim or RE document | — |
 | Structural/style enforcement | Enforce cohesive source-size limits, Python lint, and first-party C/C++ formatting/linting without exemptions | `tools/check_structure.py`, `tools/lint.py`, `.clang-format`, `.clang-tidy` (target) | ctest structure/style checks | — |
+| Product and subsystem verification | Exercise shipping owners, native/JIT boundaries, launch/setup policy, and independent comparisons without linking test-only execution into gameplay | `tests/` | Focused tests named for the production owner; interpreter-backed diagnostics remain separately linked | `docs/strategy.md` |
+| Retired Xbox static-product surface | Preserve measured Xbox binary/behavior evidence while removing the offline translated product, seeds, generated ABI, and build wiring | `xbox/` | No new implementation; extract evidence into `docs/RE/` or `docs/info/`, then delete this surface after its facts are secured | `docs/strategy.md` |
 
 ## Source tree
 
@@ -158,6 +160,10 @@ src/  —  100,133 lines, 493 files
 
 TOTAL: 100,133 lines across 493 files in 1 root(s)
 ```
+
+Repository-level `tests/` owns focused verification. The existing `xbox/`
+tree is a static-path retirement target, not a second product or a source of
+new guest-code generation work.
 
 ## Where does X go?
 
