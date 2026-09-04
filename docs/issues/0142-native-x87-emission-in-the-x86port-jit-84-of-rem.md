@@ -113,6 +113,14 @@ question above is unresolved and is the next step.
 no `fldz`/`fucompi` and no exponent re-spill. The design note above was a
 misread; there is no interpreter win to take there.
 
+**Structure debt.** `jit_x64.c` is 2,158 lines -- past the 2,000-line
+extraction threshold. The x87 emission family (predicates + `emit_x87_load`
+/`emit_x87_arith`/`emit_x87_store_reg` + the `x87_*` helpers, ~250 lines)
+is a cohesive unit that should move to its own translation unit, which
+needs a small `jit_x64` internal header exposing `BlockCtx`,
+`emit_mem_prepare_w`, and the register constants. Do this before phase 3
+adds compares/FILD/FISTP/mem-store emission.
+
 **Gates.** jit.verify 248,040,303 in-game block entries agree, 0
 divergence (act0/tutorial, 600 frames, engine=jit). x86port 19/19
 (`test_jit_x64` widened with FSUB/FDIVR mem, FADD ST(0),ST(i), FDIVRP,
