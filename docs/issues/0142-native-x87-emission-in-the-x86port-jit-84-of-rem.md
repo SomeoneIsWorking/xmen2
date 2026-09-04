@@ -89,3 +89,33 @@ word makes the distinction observable.
 **`classify()` itself** is a cheap independent win for the
 interpreter+helper path: rewrite it to read the stored 80-bit exponent
 field instead of `fldz`/`fucompi` + re-spill. ~1% and near-zero risk.
+
+## Progress (2026-09-04) -- phase 2 landed: native FADD/FSUB/FMUL/FDIV + FST/FSTP ST(i)
+
+**`emit_x87_arith`** covers `FADD/FSUB/FMUL/FDIV` and their R and P
+variants in the three operand shapes `arith_operands` (x87_exec.c)
+recognises. It widens the source to 80 bits into a 16-byte stack slot
+(host `fld` from memory, `x86p_x87_get` from a stack register) and calls
+**`x86p_x87_arith` directly** -- the interpreter's own authority -- so the
+reverse flag, the ZE/IE/SF status bits, the divide-by-zero infinity and
+the result tag are correct by construction, not reimplemented in
+assembly. System V passes the `long double` src in memory, so the slot IS
+the outgoing argument. `do_pops` is inlined; an empty source register
+skips straight to stack cleanup, matching `arith_operands` returning 0.
+The FI forms (`x87_mem_int`) stay on the helper.
+
+**`emit_x87_store_reg`** covers `FST/FSTP ST(i)` -- both slots are 80-bit,
+no rounding, so it is just `get` ST(0) + `set` ST(i) + optional pop.
+FST/FSTP to *memory* stays on the helper: the `to_f32`/`to_f64` RC
+question above is unresolved and is the next step.
+
+**`classify()` was already cheap** -- it is `v == 0.0L` + `isnan/isinf`,
+no `fldz`/`fucompi` and no exponent re-spill. The design note above was a
+misread; there is no interpreter win to take there.
+
+**Gates.** jit.verify 248,040,303 in-game block entries agree, 0
+divergence (act0/tutorial, 600 frames, engine=jit). x86port 19/19
+(`test_jit_x64` widened with FSUB/FDIVR mem, FADD ST(0),ST(i), FDIVRP,
+FST ST(i), FSUBR ST(i),ST(0) differential cases). Helper x87 routing
+14,930 -> 8,499 translations/boot; the remainder is compares, FILD/FISTP,
+FST/FSTP-to-memory, FLDCW/FNSTSW.
