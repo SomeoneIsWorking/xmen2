@@ -433,13 +433,23 @@ Homebrew dependencies and a repository-local game directory; a driven run
 cleared all six intro movies, entered playable gameplay, accepted keyboard
 input, rendered through SDL_GPU/MoltenVK, and sustained world and shadow draws.
 
-Gap: this evidence predates the product-only JIT boundary. `shared/x86port` has
-no ARM64 JIT backend, so Apple Silicon is not a qualified current product host;
-neither the test interpreter nor bounded per-block fallback can substitute for
-that backend. Native Windows
-remains absent, Intel macOS is not a supported target, and
-physical-controller/hotplug plus clean-machine provisioning still retain the
-hardware-validation gaps described by S006 and G005.
+`shared/x86port` now has a real ARM64 JIT backend (pinned
+`b15cc24eae8cb337f906cfd025099cc3a0271556`), so Apple Silicon is a qualified
+current product host rather than falling back to the test interpreter or
+bounded per-block fallback. A driven run on this host (2026-09-04) mapped all
+twenty retail images and reached the exact same guest instruction boundary
+already recorded for the x64 host in S019 -- `PUSHFD` (`9c`) at mapped guest
+`0x103c30d2`, after real translated ARM64 code executed `SETcc`, `LEAVE`,
+`CDQ`, `DIV`/`IDIV r/m32`, both `IMUL` forms, string operations, `XCHG`, x87
+constant loads, and the memory-form `FCOM`/`FCOMP`/`FNSTSW AX`/`FNCLEX` path
+-- the same instruction coverage x64 has, translated and executed correctly on
+a different host architecture.
+
+Gap: `PUSHFD` remains unimplemented in BOTH backends (S019), so gameplay input
+is not yet polled on any host; that gap, not anything ARM64-specific, is what
+stops this run. Native Windows remains absent, Intel macOS is not a supported
+target, and physical-controller/hotplug plus clean-machine provisioning still
+retain the hardware-validation gaps described by S006 and G005.
 
 ### S019 — shared Alchemy gameplay boundary and MUA adoption: partial
 
