@@ -4,15 +4,18 @@
 functions with hand-written native code incrementally. Target is the PC build,
 not the Xbox build.**
 
-**Superseded 2026-09-03: this document used to decide for CODE GENERATION** —
-an offline lifter turning Ghidra-derived function boundaries into C, 116,500
-functions and 307 MB of generated source, regenerated at build time. That
-corpus, its generator and its inputs are deleted (27f0a7b), and the game now
-runs entirely on `shared/x86port`'s interpreter. What is ruled out is
-**generating guest code as source for the build to compile — that, and only
-that**. Every other way of executing the guest stays open, including a dynarec
-or a JIT, and choosing one is an optimisation decision taken on a measurement.
-See `shared/jit-common/docs/migration.md` and its I004.
+This document replaces the retired code-generation plan. The offline lifter
+turned Ghidra-derived function boundaries into 116,500 functions and roughly
+307 MB of generated source at build time. Commit `27f0a7b` deleted that corpus,
+its generator, generated dispatch tables, and the inputs whose only consumer
+was the generator.
+
+The replacement is not an engine choice: the gameplay product is native
+overrides plus `shared/x86port`'s on-demand JIT for every remaining guest path.
+An interpreter may exist only in a separately built test/diagnostic target. It
+must not be linked into, selectable by, or reachable as fallback from the
+gameplay target. See the canonical contract in
+`shared/jit-common/docs/migration.md` and issue I004 there.
 
 Measurements behind this are in `docs/info/claims/` with their falsifiers.
 
@@ -50,23 +53,18 @@ it as build input:
   could not see was a hole to seed and re-lift. `_initterm`'s constructor
   tables — function pointers in `.rdata` that static analysis never marks as
   code — produced an abort listing every target so it could be fed back as
-  seeds. An interpreter decodes the bytes that are actually there and the whole
-  category disappears.
+  seeds. A runtime JIT decodes the bytes actually reached and the whole category
+  disappears.
 - **Ghidra was in the loop.** A maintainer-only tool can never be a player
   prerequisite (global rule), so a static pipeline meant shipping derived
   artefacts and keeping them in step with the images they came from.
-- **It was fast enough without one.** Measured on this game, offscreen: the
-  interpreter runs `XMen2.exe`'s share at **10.9 ms/frame against a 16.67 ms
-  budget** (I004 §3), which is the same verdict psxport reached independently
-  (6.10 ms/frame, jit-common S011).
-
-**What this does not settle.** That measurement predates the whole game being
-interpreted — the Alchemy DLLs were still on the substrate at the time — and the
-5-frame runs were correctness, not performance. In 3D gameplay where all modules
-run through runtime execution, pure interpreter throughput led to multi-second
+Early interpreter timing was useful only while bootstrapping the execution
+boundary. It predates whole-program runtime execution, native override
+composition, and representative gameplay, so it is explicitly not product or
+performance evidence. In 3D gameplay pure interpretation led to multi-second
 frame times. The x86 basic block JIT in `shared/x86port` is integrated into
 `src/native/x86_engine.c` with intercept support for host thunks, native
-overrides, and setjmp frames, and is selected by default (`engine=jit`).
+overrides, and setjmp frames. It is the only permitted gameplay engine.
 
 Its first landing (`775712c`) rendered black and was never verified; issue #140
 fixed four causes (blocks translated through interception points, a JITted
@@ -76,8 +74,10 @@ an engine frame that goes NULL once boot nesting passes `ENGINE_FRAMES_MAX`,
 which silently ran the font, splash, prompt-glyph and native-FMV overrides as
 raw guest x86 and made the intro decode through the guest's own MMX kernel).
 It now reaches the rendered main menu and plays the intro FMV through native
-FFmpeg, at roughly the interpreter's wall-clock to the menu and much faster
-once warm.
+FFmpeg. Later in-game differential runs exercised hundreds of millions of JIT
+block entries with native overrides active. Those observations establish real
+execution, not the representative-gameplay, product-link, or host-backend gates
+listed below.
 
 ## Why the PC build, not the Xbox build
 
@@ -111,18 +111,19 @@ x87 is 41 mnemonics at 5.83%, SSE is 0.18%.
 **What this measured, and what it no longer decides.** It was collected to argue
 that static translation could reach enough of the binary; the *coverage* half of
 that argument (77.5% of exec bytes inside identified functions) is moot, because
-an interpreter does not need boundaries at all. The *mix* half still holds and
-still sizes work: it is the opcode surface `x86port` has to implement, and it is
-why 3DNow!'s 20 opcodes were the first module (they clear 90% of the corpus's
+runtime translation does not need precomputed boundaries. The *mix* half still
+holds and still sizes work: it is the opcode surface `x86port` has to implement,
+and it is why 3DNow!'s 20 opcodes were the first module (they clear 90% of the corpus's
 holes, I004 §1). Instruction-count coverage is not semantic coverage in either
 design: one mis-modelled flag or x87 precision case breaks execution regardless
 of histogram share.
 
 ## Shape of the work
 
-- **The engine** (`shared/x86port`, selected by `X2_ENGINE`): decodes and
-  executes the guest's own bytes, read from the player's images at run time.
-  Zydis for decode only; semantics are x86port's, under test there.
+- **The product engine** (`shared/x86port` JIT): decodes and dynamically
+  translates the guest's own bytes, read from the player's images at run time.
+  Zydis is decode-only; semantics and host-code emission belong to x86port.
+  There is no gameplay engine selector.
 - **The loader** (`src/native/pe_map.c`, `guest_modules.c`): maps each image,
   applies base relocations when it has to relocate, and binds the IAT.
 - **The host surface** (`src/native/host_imports*.c`, and the modules behind
@@ -131,28 +132,63 @@ of histogram share.
   export registry for what `LoadLibrary`/`GetProcAddress` resolve. A slot
   nothing can answer is poisoned and faults BY NAME rather than binding to
   something plausible.
-- **Overrides**: hand-written native C replacing guest functions one at a time,
-  registered at a module + linked entry point. `x86_guest_body()` runs the
-  original when an override wants to super-call it.
+- **Overrides**: hand-written native code replacing guest functions one at a
+  time, registered at a module + linked entry point. `x86_guest_body()` runs
+  the original through the JIT when an override wants to super-call it.
+- **Test oracle**: the interpreter is linked only into a separately built test
+  target used for focused differential diagnosis. It is absent from product
+  configuration, selection, fallback, and linkage.
+- **Shared Alchemy foundations (partial)**: `shared/alchemy` already owns
+  native format/render-data and input libraries plus XMLB/ARK tools used by
+  X-Men 2 tooling. No library, header, or call from it reaches `x2native` today;
+  current gameplay behavior remains retained guest code or title-local native
+  ownership. X-Men 2 must create and prove the first consumer seam.
 - **Harness**: the port diffed against the Wine oracle, plus the port's own
   control channel for driving a running build.
 
 ### Order
 
-There is no lifting order any more — every module is executed the same way from
-the first frame. What is ordered is the override work, and that is the D3D8 seam
-below.
+There is no lifting order any more — every module is executed through runtime
+translation from the first frame. Before further native-renderer work is
+treated as a landed product milestone, complete these architecture gates:
+
+1. Split the interpreter into a separately built test/diagnostic target and
+   remove it from `x2native`'s link closure, CVar/environment/CLI vocabulary,
+   and every fallback path.
+2. Add a product audit that proves the gameplay target contains the JIT and no
+   interpreter or static guest substrate, then exercise both a native override
+   and its scoped original-body JIT call.
+3. Publish the consumer-proven revision already present in the canonical
+   `shared/x86port` checkout, reconcile this project to that immutable remote
+   revision, and keep title-local CPU semantics out of this repository.
+4. Run a bounded representative interactive gameplay scenario with native
+   overrides active, nonzero JIT blocks, and independent CPU/memory/timing/
+   device evidence. Boot, menu, FMV, and unattended loops are checkpoints only.
+5. Qualify each declared host backend. x86-64 exists; Apple Silicon and Android
+   ARM64 require a real JIT backend and may not fall back to interpretation.
+6. Integrate `alchemy_input` first through a narrow guest
+   `igControllerManager` adapter, A/B-verified against the retained DirectInput
+   path as specified by `shared/alchemy/docs/input.md`. Extend further shared
+   engine behavior only after X-Men 2 shipping-path evidence proves the
+   contract title-neutral. Do not start MUA migration until every X-Men 2 goal
+   is verified; then migrate MUA without rewriting its gameplay.
+
+Native override work then continues at the D3D8 seam described below.
 
 ## What carries over
 
-- `tools/pe.py` — PE sections/imports/exports.
-- `tools/run_shim.sh` — the Wine oracle (C005), the differential reference.
-- `tools/build_shim.sh` + `tools/gen_trace.py` — drop a replacement DLL into the
-  running game under Wine and trace the boundary; the tracer gives ground-truth
-  call sequences from the original to diff this port against.
+- Runtime PE image identity, sections, imports, exports, and relocations remain
+  necessary loader and RE facts. They do not become a precomputed function map.
+- The unmodified retail PC build under Wine remains an independent behavioral
+  oracle (C005). It is not a generated or replacement-DLL product mode.
+- Boundary observations already recorded from the retail binary remain valid
+  evidence when their falsifiers still hold. No static generated product is
+  rebuilt or retained as an oracle.
 - `docs/RE/ark.md` — the ARK meta-object system (C008, C009). The guest's own
   code reproduces it automatically; overrides need it understood.
-- `xbox/` — the Xbox seeds and override map, real and kept, not the live front.
+- Xbox-derived controller and behavioral observations remain evidence. The
+  obsolete Xbox static build/run path is not a second product and is removed
+  after those facts are consolidated into their living authorities.
 
 ## Known limits carried forward
 
@@ -160,8 +196,18 @@ below.
   Only module-load sets and error logs are currently comparable.
 - The harness needs the Lutris prefix (`WINE_PREFIX` in `.env`) for DXVK's d3d8;
   this Wine build ships no builtin d3d8.
-- `tools/gen_trace.py`'s "never called" summary never runs, because the harness
-  SIGKILLs the game.
+- The product-link/selector audit, representative interactive gameplay case,
+  canonical x86port publication/pin reconciliation, and ARM64 backend
+  qualification are still open; see `docs/project-state.md` S001, S002, S010,
+  S014, and S018.
+
+## Forbidden retired paths
+
+Do not regenerate, compile, link, package, or run an offline-translated guest
+corpus for either the PC or Xbox build. Do not use a static dispatcher,
+generated function seeds, replacement guest-code DLL, or precompiled title
+substrate as a product or permanent oracle. Runtime JIT code generation is the
+shipping mechanism and is not part of this prohibition.
 
 ## Removing the D3D8 seam
 

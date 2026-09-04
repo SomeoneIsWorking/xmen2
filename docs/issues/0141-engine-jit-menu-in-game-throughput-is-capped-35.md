@@ -1,11 +1,11 @@
 ---
 id: 141
-title: engine=jit menu/in-game throughput is capped ~35 FPS by per-import guest<->host crossing cost
+title: Representative JIT performance is unqualified; QPC pacing spin and broad x86port codegen cost remain
 status: open
-symptom: engine=jit steady-states at ~30-35 FPS at the menu with the frame cap removed; X2_HOTEP wall-time split charges ~70% of the interval to host-import crossings, ~28% to JIT guest bodies; QueryPerformanceCounter is called ~20k times/frame (3.6M per 5s interval), the top import by a wide margin, with _stricmp ~340k, LeaveCriticalSection/WaitForMultipleObjects/ReleaseSemaphore ~100k, floor/_CIfmod ~50k per interval
+symptom: Later targeted unpaced native-override sessions reach roughly 60-69 FPS, superseding the original 30-35 FPS diagnostic, but no declared representative gameplay budget is qualified; the QueryPerformanceCounter pacing spin remains open and remaining broad CPU cost belongs to x86port JIT codegen
 tags: jit,x86port,performance,crossings,pc,native
 created: 2026-09-03
-updated: 2026-09-03
+updated: 2026-09-04
 ---
 
 ## Option 1 landed: inline intercept dispatch (2026-09-03)
@@ -36,7 +36,10 @@ separate x86port workstream. Per-interval present rate held steady (~12 FPS in
 that level, dispatch on or off); the rising *cumulative* frame-wall average is
 the fast attract-sequence frames being averaged out, not a regression.
 
-Options 2-4 below remain open and are now the next levers.
+Option 2 below remains open. Option 3 and several localized option-4 overrides
+landed later in this issue; broad CPU translation work now belongs to x86port
+and is tracked more narrowly by issue #142. None of these targeted unpaced
+measurements qualifies representative product performance.
 
 ## Where the in-game guest time goes (2026-09-03, `jit.profile`)
 
@@ -200,29 +203,28 @@ a spin that the interpreter self-rate-limits and the JIT does not
 (the same class as issue #57 / C207, a different spin site: the menu/frame
 pacing loop, not libCriMovie).
 
-## Options, roughly in leverage order
+## Options and disposition
 
-1. **x86port: inline intercept dispatch.** Add a consumer callback that
-   x86port invokes from *inside* the run loop at an interception point,
-   letting the consumer mutate `cpu` (regs/eip/esp) and continue the same
-   slice, instead of unwinding `x86p_jit_engine_run` per thunk. Turns N
-   thunk calls/slice from N run-function round trips into N direct calls.
-   Needs design + tests in the x86port submodule; keep the current
-   unwind path as the fallback for overrides/setjmp/return.
-2. **Collapse the QPC spin like C207 collapsed the libCriMovie spin.**
+1. **Landed — x86port inline intercept dispatch.** The consumer callback runs
+   from *inside* the run loop at an interception point, mutates `cpu`
+   (regs/eip/esp), and continues the same slice instead of unwinding
+   `x86p_jit_engine_run` per thunk. It turns N thunk calls/slice from N
+   run-function round trips into N direct calls while retaining the tested
+   unwind path for overrides, setjmp, and return.
+2. **Open — collapse the QPC spin like C207 collapsed the libCriMovie spin.**
    Identify the menu/pacing loop that polls QPC, prove its shape from the
    binary, and give it a bounded wait via a native override, A/B in the
    same binary. Biggest single-site win if the loop is as tight as the
    call count implies.
-3. **Cheaper leaf-thunk fast path in `x2_engine_call`.** `_ftol` already
-   has an inline path (90acdd0). The pure leaf thunks -- `_stricmp`,
-   `floor`, `_CIfmod`, `QueryPerformanceCounter` (its only side effect,
-   `winmm_timers_pump`, is callable inline) -- can be handled without the
-   `x86_dispatch` + full callout, but doing it per-symbol duplicates each
-   implementation; wants a shared "leaf handler" seam, not N `is_X_thunk`
-   helpers.
-4. **More native ownership** of the frame loop / crit sections so the hot
-   guest code between presents is native and never crosses.
+3. **Landed — cheaper leaf-thunk fast path in `x2_engine_call`.** Pure leaf
+   thunks such as `_ftol`, `_stricmp`, `QueryPerformanceCounter`, and the other
+   functions listed below run against x86port CPU state without the full
+   `x86_dispatch` callout. One shared leaf-handler seam owns the routing rather
+   than per-symbol `is_X_thunk` helpers.
+4. **Partially landed — more native ownership.** Selected evidenced hot bodies
+   below are now native overrides. Further replacements remain subsystem work,
+   not a substitute for representative product qualification or broad x86port
+   codegen improvements.
 
 Rendering is already cheap at the menu (host draw ~0.1 ms/frame,
 upload ~0.04 ms/frame); it is not the in-menu bottleneck. In-game (a real

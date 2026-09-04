@@ -35,17 +35,21 @@ with the user supplying their own copy.
 
 - The retail executable and every shipped engine module the game needs execute
   through the runtime translator without a build-time translation step.
-- **Performance is close to the static-recompilation baseline, not merely
-  playable.** An interpreter is not an acceptable substrate for this title
-  regardless of measured frame rate. The translator keeps guest registers in
-  host registers within a block, evaluates flags lazily and inlines the common
-  arithmetic rather than calling out per instruction, chains blocks directly
-  so a taken branch does not return to a dispatcher, and reuses translations
-  across runs through the persistent translation cache.
+- The gameplay product always uses a dynarec/JIT for non-native guest code. An
+  interpreter exists only in a separately built test/diagnostic target and is
+  absent from the gameplay link closure, selector, configuration, and fallback
+  paths. Product inspection proves that absence; observing zero fallbacks in
+  one run is insufficient.
+- Representative interactive gameplay meets a declared frame-time and
+  correctness budget on every released host architecture. Runtime translation
+  keeps guest state across blocks where valid, emits common instructions
+  natively, chains blocks, and may use a disposable runtime cache, but no
+  persistent cache is a fresh-install prerequisite.
 - Unsupported instructions, unresolved calls, and missing modules refuse by
   name instead of silently falling back or producing a smaller program.
 - Native replacements can take ownership one subsystem at a time while the
-  unreplaced program continues through the translated path.
+  unreplaced program continues through the JIT. An override can call the
+  original guest body through that same JIT without recursion.
 - The shipped executable contains no Wine dependency and no game-derived code;
   the guest binary is supplied by the user at run time.
 
@@ -166,8 +170,10 @@ directory.
 **Success conditions.**
 
 - `./run.sh` with no arguments enters one locked environment, validates the
-  supplied game, obtains pinned redistributable dependencies, reconstructs
-  generated inputs, builds, and launches the intended product.
+  supplied game, obtains pinned redistributable dependencies, prepares only
+  redistributable native assets, builds, and launches the intended product.
+- No build, install, provisioning, packaging, or release path emits guest code
+  as source, objects, dispatch tables, or a precompiled title substrate.
 - The player path requires no Ghidra, Wine, sibling repository, or system Python
   environment beyond the documented native prerequisites and `uv`.
 - Every documented supported platform and compiler receives the same product;
@@ -203,9 +209,18 @@ hack.
 - Each native override is grounded in binary or asset evidence, reproduces the
   complete call-site contract, retains a differential super path where
   applicable, and has a test at its shipping boundary.
-- Game-specific policy remains in this port while generally reusable Alchemy
-  readers, formats, controllers, and engine behavior have one shared authority
-  consumed by sibling ports.
+- Game-specific policy remains in this port. Existing `shared/alchemy`
+  foundations remain the one authority for their implemented
+  format/render-data and input contracts, but their presence is not mistaken
+  for gameplay integration. X-Men 2 links and exercises the first shared
+  runtime seam—the `alchemy_input` guest `igControllerManager` adapter—and A/B
+  proves its state, lifecycle, and callback behavior against the retained path.
+- Further generally reusable Alchemy behavior extends the shared owner only
+  after an X-Men 2 shipping-path contract proves it title-neutral.
+- X-Men 2 remains the sole active conformance title until every goal in this
+  document is verified. Only then is Marvel Ultimate Alliance migrated to the
+  proven shared engine boundary, preserving its existing gameplay source and
+  title-specific policy.
 - Host, game, and engine responsibilities live in cohesive modules with narrow
   interfaces and mechanically enforced structure limits.
 - Claims identify falsifiers, instruments demonstrate both positive and
@@ -214,12 +229,17 @@ hack.
 
 **Constraints.** Reverse engineering precedes replacement. Exact module
 identity, addresses, return values, stack effects, transforms, timing, and data
-ownership are part of the contract. Generated translation output is never the
-place for a hand-written fix.
+ownership are part of the contract. CPU decode, semantics, host emission, and
+cache policy have one authority in `shared/x86port`; title-specific behavior
+and overrides stay here. There is no generated translation output in the
+product architecture.
 
 **Non-goals.** Permanent renderer-layer pattern matching for behavior owned by
-the engine; duplicate engine implementations in individual game repositories;
-magic constants, asset edits, or test-only reimplementations that bypass the
-shipping path.
+the engine; claiming shared gameplay integration from repository, library, or
+tool presence without a product call path and conformance proof; parallel MUA
+engine work before X-Men 2 is complete;
+duplicate engine implementations in individual game repositories; magic
+constants, asset edits, or test-only reimplementations that bypass the shipping
+path.
 
-**Contributing state items.** S004, S011, S012, S013.
+**Contributing state items.** S004, S011, S012, S013, S019.

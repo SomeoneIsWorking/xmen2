@@ -45,14 +45,16 @@ falling back to a vendored copy.
 - `docs/info/claims/` — each claim carries the observation that would falsify it.
   `info.py claim check` detects rot mechanically (has the cited code changed?).
 - `docs/info/instruments/` — a tool that lied is recorded here. Several have.
-- `docs/RE/` — port-specific reverse-engineering write-ups (currently
-  `boot.md`). Shared Alchemy write-ups live in the `alchemy` repository under
-  `docs/` (`ark.md`, `enbaya_decode.md`, `conversations.md`); keep them there so
-  both games consume one authority.
-- `docs/prior-art.md` — **Dusklight**, a shipping TP port of the same shape and
-  CC0. Read it BEFORE designing any subsystem a mature port has already solved
-  (interpolation, UI, config, mods, input binding, saves). Cite what you take,
-  in the file that takes it.
+- `docs/RE/` — port-specific reverse-engineering write-ups. `shared/alchemy`
+  already owns partial native format/image/mesh/raster/Enbaya and input
+  foundations; this port provisions some of its XMLB/ARK tooling but does not
+  link or call a shared gameplay engine. Keep title evidence here until an
+  X-Men 2 shipping-path integration proves which contract is reusable.
+- `docs/prior-art.md` — provenance and historical context for code, assets, or
+  vocabulary already adapted from external projects, including CC0 Dusklight.
+  It is not an architecture authority or a design checklist. Preserve exact
+  attribution for material actually reused; derive current ownership from this
+  repository's codemap, contracts, and shipping-path evidence.
 
 ## Setup
 
@@ -76,15 +78,15 @@ The remaining mobile release gate is measured device performance; see
 `docs/android-release.md`.
 
 Transient run artifacts go to the gitignored `scratch/`, structured by type
-(`scratch/logs/`, `screenshots/`, `recomp/`, `run/`). Compiler outputs,
-generated assets, dependencies, and packages live under top-level `build/`.
-Never `/tmp`.
+(`scratch/logs/`, `screenshots/`, `raw/`, `run/`). Compiler outputs, generated
+redistributable assets, dependencies, and packages live under top-level
+`build/`. Never `/tmp`.
 
 ## Build and run
 
 **There is ONE native build directory: `build/native/`.** `./run.sh` creates
 and maintains it, and it is the tree every live harness runs
-(`tools/live_case.py`, `tools/native_discover.py`, `tools/x2ctl.py`'s target).
+(`tools/live_case.py` and `tools/x2ctl.py` among them).
 It holds the asset viewers, every unit test and `x2native` itself.
 
 A second tree configured by hand (`cmake -S . -B build`) used to exist and is
@@ -106,10 +108,19 @@ build/native/x2native --d3d8                   # the LIVE path: arms the host Di
 ```
 
 `run.sh` takes no arguments and delegates directly to the locked Python
-initializer. It reconstructs all twenty gitignored recompiler outputs from the
-committed encoding-free exports plus the user's exact PE images; Ghidra is a
-maintainer-only discovery tool. Diagnostics, provisioning-only checks and Wine
-controls remain separate tools rather than launcher commands.
+initializer. It validates the user's exact PE images, provisions pinned
+redistributable dependencies and native assets, builds, and launches the one
+native-overrides + x86port-JIT gameplay product. It must never invoke an
+offline guest translator or reconstruct a guest-code corpus. Ghidra is a
+maintainer-only analysis tool. Diagnostics, provisioning-only checks and the
+independent Wine control remain separate tools rather than launcher commands.
+
+The product has no execution-engine selector. The interpreter belongs only in
+a separately built x86port test/diagnostic target and must be absent from the
+gameplay target's link closure as well as its configuration, environment, and
+command-line surfaces. Until the implementation and link audit establish that
+boundary, treat it as open migration work recorded in `docs/project-state.md`,
+not as permission to expose `engine=interpreter` in a player build.
 
 Build a Linux AppImage from the verified native build with
 `uv run --frozen python tools/package_appimage.py`. The packager stages only
@@ -150,35 +161,22 @@ idle waits; `X2_UNPACED=1` removes the game's own frame cap; `X2_BOOT_MAP=<map>`
 starts in a level instead of through the menus while still running the retail
 `startFirstMission` party initializer.
 
-Configure `-DX2_NATIVE_TRACE=ON` to trace every recompiled body into the
-boundary ring. CMake *says* which modules it linked and which it skipped — a
-missing module is announced, never silently omitted.
+JIT diagnostics must report translated blocks, native hand-backs, refusals,
+and denominators while the product runs. Runtime reachability replaces the old
+static function-discovery loop; no tool may seed, emit, compile, or stage guest
+code for a product build.
 
-**Discovery loop** — static analysis misses constructor-table targets (referenced
-only by a data pointer). This feeds the runtime's missing-target report back into
-Ghidra as seeds and rebuilds until a round finds nothing:
+**Wine oracle.** The unmodified PC release under Wine remains an independent
+behavioral control. It may be instrumented to observe the retail boundary, but
+no generated or replacement guest-code DLL is a product mode or a retained
+static oracle. Do not regenerate, build, or run the retired static product.
 
-```sh
-tools/native_discover.py [max-rounds]
-```
-
-**Wine oracle / hybrid DLL path** (the original game with one recompiled DLL
-swapped in; still the reference for "does it render"):
-
-```sh
-tools/build_recomp.sh ALL libIGDisplay     # emit+runtime+dll+compile+stage
-tools/run_shim.sh recomp 30                # HEADLESS, Xvfb, screenshot — for measuring
-```
-
-The Wine paths are measurement tools, not alternate modes of `run.sh`. `stock`
-remains the control every rendering question is settled against.
-
-**Ask the control for DATA, not only pixels.** `tools/oracle_probe.py --pid <pid>`
-samples a live run's guest state from outside (`process_vm_readv`, no debugger,
-no perturbation) at the same fields the port reports about itself, so a
-port-vs-control comparison is a diff of two number streams instead of two
-screenshots. It refuses to guess which process to read and verifies the image
-before sampling. Bisecting frames by eye is the thing it replaces.
+**Ask the control for independent evidence, not only a similar-looking
+picture.** The retained stock-oracle path currently owns cached driven frames
+and proxy observations. A CPU, memory, timing, or device comparison is not
+available merely because an older probe once existed; add a bounded instrument
+with image identity, denominators, and both-answer controls before making that
+claim. Bisecting frames by eye is not representative conformance evidence.
 
 **Never run the control twice for the same question — go through the cache.**
 A driven `stock` run is five to nine minutes of Xvfb, Wine and a software
@@ -186,8 +184,8 @@ rasteriser, and it produces the same frames every time:
 
 ```sh
 X2_KEYS="195-300/12:Return,380-500/20:Return" X2_SAMPLES=6 \
-  python3 tools/oracle.py run stock 540      # runs on a miss, replays on a hit
-python3 tools/oracle.py list                 # what is already answered
+  uv run --frozen python tools/oracle.py run stock 540
+uv run --frozen python tools/oracle.py list
 ```
 
 The key covers the driving script, the duration, the sample count **and a
@@ -196,55 +194,60 @@ kept with its brightness already measured (`mean_luma`, `frac_lt16`,
 `frac_gt128`), so re-asking about the pixels costs nothing. A hit says it is a
 hit and how old it is; a cached frame must never read as a fresh observation.
 
-`WATCH=1 tools/build_recomp.sh …` adds the entry-point watch (`X2_WATCH=0x…`,
-writes to a file — the game is a GUI-subsystem process with no stderr) and the
-in-process crash reporter. Use those instead of gdb/winedbg, both of which
-produce nothing usable here (issue #1).
+`X2_WRITE_WATCH=<guest-address>` and the in-process crash reporter provide live
+runtime evidence without manufacturing a static product. Use those instead of
+gdb/winedbg, both of which produced nothing usable here (issue #1).
 
-**Xbox path** (`xbox/`, optional gitignored `vendor/xboxrecomp` checkout from
-the maintained `SomeoneIsWorking/xboxrecomp` fork pinned in
-`xbox/xboxrecomp.lock`): `tools/xbox_relift.py`,
-`tools/xbox_run.py`, `tools/xbox_discover.py`, `tools/get_xboxrecomp.py`.
-The PC product does not consume this path, and this repository has no patch
-queue for the optional Xbox toolkit.
+The Xbox material is a source of independently recovered behavioral facts such
+as controller defaults, not a second product. Do not extend, generate, build,
+or run its static-recompiler path. Preserve still-useful observations in the
+claims/RE authorities and remove obsolete Xbox product machinery when that
+evidence has been consolidated.
 
 ## Architecture
 
-Guest x86 → C, run inside a 64-bit ELF or Mach-O host:
+Guest x86-32 is read from the user's authenticated PE images and translated on
+demand into host instructions by `shared/x86port`'s JIT:
 
-- **`tools/ghidra_scripts/ExportFuncs.py`** (+ `SeedPointerTables.py`,
-  `MergeTruncated.py`, `SplitFunction.py`) — Ghidra does the genuinely hard part:
-  recursive-descent boundary discovery and code/data separation. Output is JSON
-  per module in `scratch/recomp/`.
-- **`tools/recomp.py`** — the translator, not an analyser. Subcommands:
-  `report` · `emit` (bodies) · `runtime` / `native` (dispatch table) · `dll`
-  (export shims + import thunks for the Wine path).
-- **`src/recomp/*.c`** — **generated, gitignored, NEVER hand-edited.** One C
-  function per guest function over a CPU-state struct. `src/recomp/x86rt.h` is
-  the hand-written runtime header (registers, lazy flags, dispatch).
-- **`src/native/`** — the host: `pe_map.c` maps and relocates the real PE images
-  and binds every IAT slot as a loader would; `x86rt_native.c` dispatches across
-  modules keyed on **mapped** address (every `libIG*.dll` is linked for
-  `0x10000000`, so linked addresses collide); `guest_heap.c` serves the guest a
-  32-bit-addressable arena; `kernel32.c` / `crt.c` / `win32_sdl.c` implement the
-  imports on POSIX/SDL3.
-- **The Alchemy engine layer is NOT in this repo.** The IGB asset readers, the
-  XMLB container, the ARK tooling and the `ig` controller abstraction belong to
-  the engine this game shares with Marvel Ultimate Alliance -- which is a 360,
-  big-endian title -- so they live in the `alchemy` repo, consumed rather than
-  vendored. Its viewers (`x2view`, `meshview`, `flyview`), `igb_dump` and its
-  three tests build from there. `tools/alchemy_path.py` is the ONE place this
-  port resolves that checkout, and it refuses rather than guessing when it is
-  missing. `src/app/` keeps only `x2run.c`, which is this port's own runner.
+- **`src/native/guest_modules.c` + `pe_map.c`** discover the required images at
+  runtime, map/relocate them, and bind their IAT slots. Product provisioning
+  supplies no precomputed function map or generated guest body.
+- **`shared/x86port`** owns x86 decode, semantics, host-code emission, and its
+  runtime block cache. This repository pins and consumes the canonical shared
+  implementation; title-specific CPU semantics do not belong here.
+- **`src/native/x86_engine*.c` + `x86_dispatch.c`** compose bounded JIT runs,
+  thread/call context, native hand-back predicates, import thunks, diagnostics,
+  and scoped calls to an override's original guest body.
+- **`src/native/`** owns title-specific native overrides and host services.
+  Overrides are keyed by module identity plus linked address because the
+  `libIG*.dll` images reuse linked bases. `guest_heap.c` provides the guest's
+  32-bit-addressable arena; the DLL-named owners implement the Win32/CRT/SDL
+  boundaries.
+- **Test-only interpretation** belongs in an independently linked x86port test
+  target. The gameplay binary neither links it nor selects it.
+- **The shared Alchemy engine is a partial foundation, not a current gameplay
+  dependency.** `shared/alchemy` already builds the `alchemy`, `alchemy_input`,
+  and optional `alchemy_input_sdl` libraries, and this port provisions its
+  XMLB/ARK tools. Today `x2native` links none of those libraries and includes or
+  calls no shared runtime API: retained engine behavior executes through the
+  JIT and native replacements remain in the title-owned codemap rows. X-Men 2
+  must establish the first gameplay integration and conformance proof; the
+  first candidate is the `alchemy_input` guest `igControllerManager` adapter
+  specified by `shared/alchemy/docs/input.md`. Do not start MUA engine migration
+  until every X-Men 2 project goal is verified; then migrate MUA to the proven
+  shared boundary without rewriting its gameplay.
 
-### Dusklight host ownership applied here
+### Project-owned host composition
 
-The host follows Dusklight's composition pattern, adapted to this port's C ABI
-and SDL_GPU renderer. `src/config/` owns persistent data and storage location;
+The host is governed by this repository's cohesive-owner boundaries and
+`docs/codemap.md`. `src/config/` owns persistent data and storage location;
 `src/presentation/` owns window-mode transitions; `src/input/` resolves player
 assignments and publishes them into guest binding sets; `src/ui/` owns only the
 RmlUi lifetime and documents. `win32_sdl.c` and `gpu_device.c` compose those
 owners at the SDL event and render boundaries; they do not absorb their policy.
+New behavior goes to the smallest existing owner, or establishes a narrow new
+owner and updates the codemap in the same change. External projects may provide
+attributed provenance, but never substitute for a local contract or regression.
 
 Save paths keep the same split: `shell32.c` owns the writable profile root used
 by config and registry storage, while `src/save/save_directory.{c,h}` owns the
@@ -255,9 +258,9 @@ configuration directory. It is also the persistence owner for the AppImage
 install selection; `X2_SAVE_DIR` remains an explicit portable/diagnostic
 override.
 
-The AppImage setup boundary follows Dusklight's composition pattern: SDL3
-dialog/file-picker mechanics live in `src/native/install_picker.cpp`, resource
-location lives in `src/ui/ui_resources.cpp`, and release staging lives in
+The AppImage setup boundary is locally owned: SDL3 dialog/file-picker mechanics
+live in `src/native/install_picker.cpp`, resource location lives in
+`src/ui/ui_resources.cpp`, and release staging lives in
 `tools/package_appimage.py` plus `packaging/`. `x2native.c` only composes the
 setup result into the existing asset mapping path.
 
@@ -330,40 +333,49 @@ and shadows are replaced by an opaque/dimmed fallback because the SDL_GPU
 backend renders those effects incorrectly. Keyboard mappings belong to four
 reusable profiles; players reference profiles, while controllers are assigned
 by persistent identity and always use the canonical Xbox/PS2 layout.
+This paragraph records source provenance only; the local UI/config/input owners
+and their tests define the current architecture.
 
 `tools/check_structure.py` is the normal mechanical boundary: new host source
 files are capped at 500 lines and existing larger files are frozen. Extract a
 cohesive owner and lower a legacy limit; never raise one to land a feature.
 
-## Rules this codebase enforces on itself
+## Required repository guardrails
 
-These are not style preferences — each one exists because its absence produced a
-logged defect.
+These are implementation and verification requirements, not optional style
+preferences. Any guardrail not yet wired into the normal verifier remains
+migration work; documentation does not make it verified.
 
-- **Lint the Python, do not reformat the C.** `ctest python_lint` runs ruff over
-  `tools/` and `tests/`; the rule selection in `ruff.toml` is defects, not
-  preferences, and says what is deliberately left out and why. Ruff is not a
-  build dependency, so `tools/lint.py` exits 77 (ctest SKIP) and names what did
-  not happen rather than passing quietly when it is absent. There is no
-  `.clang-format` on purpose: measured against the tree, the closest preset
-  rewrites 56% of the lines it touches, and what it changes is damage — it
-  flattens hand-laid-out tables like `DIK_MAP`, collapses aligned declarations
-  and re-breaks the wrapped diagnostic strings. A formatter that cannot express
-  the house style is not a tidying tool.
+- **Formatting and linting are release gates.** Python automation is checked by
+  Ruff. First-party C/C++ uses a tracked `.clang-format`, and `clang-tidy` runs
+  against the real compile commands; both non-mutating checks belong in the
+  normal verifier. Format touched sources and fix diagnostics at their cause.
+  Do not preserve the former formatter exemption, blanket-suppress findings, or
+  raise a structure limit merely to land a change.
 
-- **A translator that does not understand an instruction must fail loudly by
-  name.** Never a comment, a no-op, or best-effort code. Unhandled cases raise
-  `Unsupported`, the function is recorded untranslatable with the reason, and
-  `recomp.py report` ranks the reasons by how many functions each blocks. A
-  recompiler that quietly skips instructions produces a binary that runs and is
-  wrong.
-- **Every script refuses rather than producing something smaller that looks like
-  progress**: a missing JSON, a zero-function export, a missing eps file, an
-  export whose block layout disagrees with the shipped PE
-  (`tools/verify_export.py`, wired into the discovery loop after issue #12).
+- **The JIT refuses unsupported execution by exact cause.** A missing decoder,
+  instruction semantic, host backend, executable image, import, or native
+  hand-back is a named failure. There is no best-effort no-op, offline-emitted
+  substitute, interpreter fallback, or smaller product that looks like
+  progress.
+- **Product configuration cannot choose the execution architecture.** The
+  gameplay target always uses the x86port JIT. `lucent::cvar` owns layered
+  optional diagnostics and title tuning; it must not expose an interpreter,
+  static substrate, fallback, or required product component as a mutable CVar.
+  Test-oracle controls belong to a separately built test target.
+- **Use one project logger.** Route configurable diagnostics through Lucent's
+  logger, one call per site, without `if (debug) fprintf(...)` wrappers or new
+  ad-hoc print gates. Fatal boundary refusals may terminate directly, but a new
+  subsystem does not invent another logging policy.
+- **Keep execution ownership cohesive.** x86 decode, semantics, host emission,
+  and block-cache policy belong in `shared/x86port`; title identity, native
+  overrides, imports, and game policy belong here. The host entry point only
+  composes them. New source files stay below 500 lines; split an already mixed
+  or oversized owner before extending it, and never create a generic runtime,
+  manager, or override bucket.
 - **A negative result must carry its denominator and its blind spots.** "Found
-  nothing" and "never looked" must be distinguishable — see the shape of the
-  reports in `native_discover.py`.
+  nothing" and "never looked" must be distinguishable. A product-link audit,
+  backend probe, or gameplay trace that inspected zero candidates must refuse.
 - **An override must reproduce the original's RETURN VALUE, not just its stack
   effect.** Check the CALL SITE, not the decompiler's signature: Ghidra typed
   the DirectX check `void`, the caller does `TEST AL,AL` on it, and an override
@@ -397,9 +409,9 @@ logged defect.
   `gpu_prompt_glyphs.c` for prompt pixels), NOT in a
   central `overrides.c` (abolished 2026-08-16). An override declares itself
   where it lives, with `x86_register_override("<module>.dll", 0x…, fn)` beside
-  its implementation; the emitter scans `src/native/*.c` for those calls and
-  routes every call to a registered entry point through the dispatcher's
-  override slot. **The module name is not decoration**: every `libIG*.dll` is
+  its implementation; runtime dispatch routes calls to the registered entry
+  point and `x86_guest_body` scopes a call to the original through the JIT.
+  **The module name is not decoration**: every `libIG*.dll` is
   linked for 0x10000000, so a bare address matched whichever module happened to
   land there -- two overrides were dead and one could fire for the wrong module
   (C212). Same rule for everything else: a new subsystem gets its own file, and

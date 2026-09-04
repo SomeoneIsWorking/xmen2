@@ -1,16 +1,20 @@
-# Prior art: ports that already solved this
+# External provenance and historical references
 
-Consult these BEFORE designing a subsystem a mature port has had to solve.
-Cite what you take, in the source file that takes it.
+This document preserves attribution and historical context for external code,
+assets, vocabulary, and ideas already evaluated or adapted. It is not an
+architecture authority, a design checklist, or a source of current project
+requirements. Current ownership comes from `docs/codemap.md`; current behavior
+and gaps come from `docs/project-state.md`. Keep exact provenance for material
+actually reused.
 
 ## Dusklight — https://github.com/TwilitRealm/dusklight
 
 A shipping PC port of *Twilight Princess* on the `zeldaret/tp` decomp, with
-Borealis underneath. **CC0**, so ideas and code may both be taken freely. Same
-shape as this project, several years further along, and it moves daily — pull
-before consulting.
+Borealis underneath. It is CC0 and was the historical source for the specific
+adaptations recorded below. X-Men 2 does not inherit its architecture or future
+changes.
 
-Worth reading before you invent one of these:
+The following paths identify the historical source material that was evaluated:
 
 | Subsystem | Where |
 |---|---|
@@ -64,29 +68,27 @@ those boundaries.
 **Shadow-pass ownership, not shadow policy.** Dusklight's scene scheduler and
 draw-list code keep caster/receiver selection and light matrices on the game
 side, while the renderer owns the shadow target and restores render state
-before later groups. `docs/RE/shadows.md` adopts that boundary for any future
-native enhancement. Its Twilight Princess caster rules, light choice, matrix
-constants, and texture format are not X-Men evidence and are not copied.
+before later groups. `docs/RE/shadows.md` records X-Men 2's own evidenced
+boundary and cites this comparison. Twilight Princess caster rules, light
+choice, matrix constants, and texture format are not X-Men evidence and were
+not copied.
 
 ### What has NOT been taken, and why
 
-**Frame interpolation.** Their model is worth copying exactly when the time
-comes -- RECORD-AND-REPLACE rather than substitute-and-re-issue: the sim tick
-runs untouched, every final matrix is recorded keyed by its own address, the
-presentation frame lerps prev-to-cur into a replacement table, and draw-time
-sites consult a lookup. Guest state is never mutated, so it cannot leak. The
-camera is interpolated as a POSE, never as a matrix lerp.
-
-Not copied because there is no frame to interpolate: this port has never
-rendered one. Doing it now would be a design with nothing to test it against.
+**Frame interpolation.** No Dusklight interpolation code or policy was adapted.
+The evaluated model records final matrices without mutating simulation state,
+interpolates camera poses rather than matrices, and substitutes presentation
+values at draw time. This description records what was reviewed, not a current
+X-Men 2 design; any future implementation is derived and verified against this
+project's own renderer, timing contract, and codemap.
 
 ### The caveat that matters
 
 Their code is written against the TP decomp's types and a different graphics
-stack. Take the design decision and the failure mode it avoids. The RCSS was
-copied because it is portable CC0 presentation; the C++ runtime was adapted
-around this port's existing SDL_GPU device and C guest boundary rather than
-copied mechanically.
+stack. The RCSS was copied because it is portable CC0 presentation; the C++
+runtime was adapted around this port's existing SDL_GPU device and C guest
+boundary rather than copied mechanically. These statements record provenance,
+not ongoing architectural authority.
 
 ## D3D8 implementations — DXVK/d8vk and WineD3D
 
@@ -112,7 +114,7 @@ the pipeline. So these are REFERENCES for semantics — what D3D8 actually
 promises for a given state combination, which formats behave how, how
 fixed-function maps onto a programmable pipeline — and the code here is ours.
 
-Cite them in the file that learns from them, as with Dusklight.
+Record exact provenance in the file that adapts material from them.
 
 ### What using DXVK would NOT have saved
 

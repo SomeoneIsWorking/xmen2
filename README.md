@@ -1,18 +1,17 @@
 # X-Men Legends II — native PC port
 
 Turn X-Men Legends II: Rise of Apocalypse (2005, Activision / Raven / Vicarious
-Visions) into a **native, buildable codebase** by statically recompiling the PC
-build's x86 machine code to C and then replacing subsystems with hand-written
-native code. The current product runs without Wine: locally generated C executes
-the code while the host maps the user's PC PE images for their data, relocation
-layout and other non-code content.
+Visions) into a **native, buildable codebase** whose hand-written native
+subsystems cooperate with `shared/x86port`'s runtime x86-32 JIT. The host maps
+the user's own PC PE images, dynamically translates every non-native guest path
+on demand, and hands selected title/engine functions to native overrides.
 
-**Direction: static recompilation of the PC build to native C, then native
-overrides — see [`docs/strategy.md`](docs/strategy.md).** The whole binary is
-translated mechanically so the game runs early, then subsystems are replaced
-with hand-written C while the rest keeps working. The live native build links
-the exe and every shipped engine module; unsupported instructions and missing
-indirect targets refuse by name instead of silently falling back.
+**Direction: one native-overrides + dynarec/JIT gameplay product — see
+[`docs/strategy.md`](docs/strategy.md).** The 307 MB offline-generated guest C
+corpus and its generator were removed in commit `27f0a7b`; no build, install,
+provisioning, or release path may recreate them. An interpreter is permitted
+only in a separately built test/diagnostic target and must be absent from the
+gameplay target's link closure and selector surfaces.
 
 ## Screenshots
 
@@ -35,11 +34,12 @@ assets are distributed here.
 ## What is in this repository — and what is not
 
 **No game content is distributed here.** This repository contains the port's
-source, its RE notes, and encoding-free analysis metadata needed to recreate the
-native build. It ships no game executables, libraries, instruction bytes,
-textures, audio, or data files. Every build restores restricted bytes from a
-copy you already own, located through a gitignored `.env` (see `.env.example`).
-The install directory is treated as strictly read-only; nothing is written back.
+source, its RE notes, and encoding-free analysis metadata used to implement and
+verify the native host. It ships no game executables, libraries, instruction
+bytes, textures, audio, or data files. The runtime reads the required restricted
+inputs from a copy you already own, located through a gitignored `.env` (see
+`.env.example`) or selected through the packaged setup flow. The install
+directory is treated as strictly read-only; nothing is written back.
 
 **You need your own legally obtained copy** of the 2005 PC release to build or
 run anything. Without it the tools refuse rather than degrade: `--selftest`
@@ -48,18 +48,20 @@ exits 77 (SKIP) and says nothing was checked.
 X-Men Legends II: Rise of Apocalypse is © Activision, developed by Raven
 Software and Vicarious Visions. Marvel and X-Men are trademarks of Marvel
 Characters, Inc. This project is unaffiliated with, and unendorsed by, any of
-them. The generated C under `src/recomp/` is a mechanical translation of the
-shipped machine code — it is derived from the original binaries, is gitignored,
-and is produced on your machine from your copy. The MIT licence in
-[`LICENSE`](LICENSE) covers **this repository's own code only** and makes no
-claim over the game.
+them. The runtime reads guest instructions from the player's copy; the
+repository and release packages contain no generated guest-code corpus. The
+MIT licence in [`LICENSE`](LICENSE) covers **this repository's own code only**
+and makes no claim over the game.
 
 ## Setup and run from a fresh clone
 
-The native host supports Linux x86-64 and macOS on Apple Silicon. The arm64
+The host and packaging layers exist for Linux x86-64, Apple Silicon macOS, and
+Android ARM64. The current product JIT is implemented only on x86-64. The arm64
 Mach-O keeps the normal 4 GB `__PAGEZERO`; guest addresses are translated into
 a separate reserved 4 GB arena instead of weakening the executable's page-zero
-guard. Native Windows is not implemented.
+guard, but Apple Silicon and Android still require an ARM64 x86port JIT backend
+before they are gameplay products. They may not ship by falling back to the
+test interpreter. Native Windows is not implemented.
 
 Install `uv`, a C/C++ compiler (GCC or Clang), and the native development
 packages. On Fedora/RHEL-family systems:
@@ -93,11 +95,12 @@ or set `GAME_PC_DIR` in a gitignored `.env`. Run:
 ```
 
 That command has no modes or arguments. It enters the locked `uv` environment,
-validates the game revision, fetches three pinned source dependencies into the
-gitignored `vendor/shared/`, reconstructs generated C from committed metadata
-and the user's PE files, builds, and launches the native game. Ghidra,
-ImageMagick, a system Python environment, Wine, and sibling repository checkouts
-are not player prerequisites. Maintainer and diagnostic entry points live under
+validates the game revision, obtains the pinned redistributable dependencies,
+prepares only native redistributable assets, builds, and launches the JIT
+gameplay product. It does not analyze the executable or generate guest source,
+objects, dispatch tables, or a precompiled title substrate. Ghidra, ImageMagick,
+a system Python environment, Wine, and pre-existing sibling checkouts are not
+player prerequisites. Maintainer and diagnostic entry points live under
 `tools/`; they are deliberately not commands of `run.sh`. The `re-harness`
 checkout is maintainer-only and is not fetched by the player bootstrap.
 
@@ -124,21 +127,24 @@ uv run --frozen python tools/package_appimage.py \
 `linuxdeploy` and `appimagetool` must be available; the output is written to
 `build/release/X-Men-Legends-II-x86_64.AppImage`.
 
-The Android APK has the same no-terminal setup rule. Build it with
+The Android APK has the same no-terminal setup rule. Its setup/touch/package
+shell can be assembled for development with
 `uv run --frozen python tools/build_android.py` after selecting the Android SDK
 and NDK, a supported JDK, and the release signing inputs documented in
 [`docs/android-release.md`](docs/android-release.md). Its Browse screen uses SAF, stages a ZIP or install folder into
 app-private storage only after the complete PC install validates, and supplies
 the same Lucent user-data root used for saves/configuration. Touch controls
 publish through the existing virtual pad.
-Mobile performance evidence is tracked separately in
+The missing ARM64 JIT backend and mobile performance evidence are tracked in
+[`docs/project-state.md`](docs/project-state.md) and
 [`docs/android-release.md`](docs/android-release.md).
 
 ## Sources
 
 - **PC build** (`$GAME_PC_DIR`): `XMen2.exe` (2.61 MB) + 16 `libIG*.dll` + `cgD3D8.dll` /
-  `cg.dll` / `libMovie.dll` — **6.47 MB of x86 machine code total**. The gameplay is NOT in
-  the binaries: it is data-driven (`Data/*.XMLB` = compressed XML, `Data/*.engb` = Enbaya,
+  `cg.dll` / `libMovie.dll` — **6.47 MB of x86 machine code total**, consumed directly by
+  the runtime JIT rather than emitted into the build. Much of the gameplay is data-driven
+  (`Data/*.XMLB` = compressed XML, `Data/*.engb` = Enbaya,
   `Scripts/` Lua, `Conversations/`, `missions/`, `entities/`, `Maps/`).
 - **Xbox ISO** (`$XBOX_ISO`): `default.xbe` (5.7 MB) plus its packages — the
   ground truth for the Xbox release's controller defaults and controller UI.
@@ -147,6 +153,14 @@ Mobile performance evidence is tracked separately in
   The architectural Rosetta stone. XML2 ships Alchemy 3.2; 5.0 assets are version-
   incompatible but the engine architecture (igCore/igDisplay class model, IGB format,
   file-package system, DLL boundary) is directly analogous.
+
+Pinned `shared/alchemy` already provides partial native
+IGB/image/mesh/raster/Enbaya and input libraries plus XMLB/ARK tools consumed by
+X-Men 2's tooling. `x2native` currently links and calls none of its runtime
+libraries, so this is not yet a shared gameplay engine. X-Men 2's first product
+integration is the `alchemy_input` guest `igControllerManager` adapter and its
+retained-DirectInput A/B proof. MUA remains deferred until every X-Men 2 goal is
+verified, then migrates to the proven engine without a gameplay rewrite.
 
 The durable outcomes are in
 [`docs/project-goals.md`](docs/project-goals.md); factual capability coverage,
@@ -159,9 +173,9 @@ The port keeps the original game data and retail game logic as its baseline,
 while adding a native host and quality-of-life improvements that the 2005 PC
 release does not provide:
 
-- **Wine-free native execution** on Linux x86-64 and Apple Silicon macOS,
-  using SDL3 and a native host instead of Windows, Wine or the original
-  machine-code runtime.
+- **Wine-free native execution (partial)** through SDL3, native overrides, and
+  runtime x86 translation. Linux x86-64 has the current product JIT; Apple
+  Silicon and Android remain intended hosts but need an ARM64 x86port backend.
 - **Controller hot-plug and persistent assignment** through SDL3, including
   late attach/detach and player assignment without restarting the game.
 - **Xbox/PS2-style controller defaults and source-aware prompts**, with
@@ -207,10 +221,11 @@ The input-specific features are:
 
 ## Progress tracking
 
-Current status has two maintained owners: [`docs/codemap.md`](docs/codemap.md)
-says what exists and its honest coverage;
-[`docs/re-frontier.md`](docs/re-frontier.md) orders the remaining RE work and
-names shortcut debt. `python3 tools/re_frontier.py next` is the executable view.
+Current status is owned by [`docs/project-state.md`](docs/project-state.md).
+[`docs/codemap.md`](docs/codemap.md) maps responsibility and placement only;
+[`docs/re-frontier.md`](docs/re-frontier.md) orders binary-grounded RE work and
+names shortcut debt. `uv run --frozen python tools/re_frontier.py next` is the
+executable view.
 
 ## Reference materials (M1)
 
@@ -247,14 +262,14 @@ names shortcut debt. `python3 tools/re_frontier.py next` is the executable view.
 
 ## Current state
 
-**The game runs, natively, and plays.** One headless run goes all the way
-round: main menu → New Game → difficulty → the story cutscene → a level loaded,
-rendered and simulated → the party dies with nobody driving them → the death
-dialog → back to a fully rendered main menu. No Wine, no original D3D, and no
-original machine code — the native build has no hybrid fallback, so every
-instruction executed came from the translator. Drive a run and look at it
-with the automatically published control channel (`tools/x2ctl.py probe`) -- a play-through
-is an observation, never a gate.
+**The x86-64 JIT path runs real game code with native overrides active.** Prior
+headless observations reached main menu → New Game → difficulty → story
+cutscene → loaded and simulated level → death dialog → rendered main menu.
+Recent `jit.verify` sessions also compared hundreds of millions of in-game JIT
+block entries against the test interpreter without divergence. These are real
+execution and regression facts, but they are not the complete product gate: a
+bounded representative interactive gameplay scenario, an independent oracle
+comparison, and the product no-interpreter link/selector audit remain open.
 
 `./run.sh` is the supported default launcher: with no arguments it builds when
 needed and runs the current native SDL3 GPU game target. It records the exact
@@ -263,18 +278,21 @@ DirectInput states returned to the game under `scratch/recordings/`, and
 flags. Wine oracle/control workflows remain separate tools and cannot become an
 accidental launcher mode.
 
-What that does *not* mean. It is not playable in the sense that matters: a
-person cannot yet pick it up and play, because the frame rate is ~30 fps
-headless with the frame cap removed and nobody has driven a character with a
-controller through a level. Controller enumeration, polling and hotswap run
+What that does *not* mean. It is not yet release-qualified in the sense that
+matters. The consumer-proven JIT revision in the canonical `shared/x86port`
+checkout still has to be published and reconciled with this project's pin, the
+x86-64 gameplay product must prove
+the interpreter is absent rather than merely unused, and every declared host
+needs a real JIT backend. Apple Silicon and Android ARM64 cannot ship by falling
+back to interpretation. Controller enumeration, polling and hotswap run
 end-to-end under a synthetic pad; an equivalent physical-pad play-through has
 not been done. The
 renderer accepts every draw the engine issues and reads every render state the
 engine sets except fog and specular, which this title disables — but "nothing
 is refused" is a statement about coverage, not about the picture being right.
-See `docs/codemap.md` for the honest per-subsystem status and
-`docs/info/claims/` for what has been proven, each with the observation that
-would falsify it.
+See `docs/project-state.md` for the capability status, `docs/codemap.md` for
+subsystem ownership, and `docs/info/claims/` for what has been proven, each with
+the observation that would falsify it.
 
 Earlier facts established during RE (see the durable claims under `docs/info/`):
 - The game uses DirectInput 7 and 8. The native host serves both through one

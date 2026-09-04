@@ -19,16 +19,17 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S004 — native Alchemy 2D/UI rendering.** The prompt SVG slice is verified;
-the active work is to reverse-engineer and port the remaining semantic 2D/UI
-draw paths above D3D8.
+**S002 — native-overrides + x86port-JIT gameplay execution.** The offline
+generated corpus is gone; the active work is to close the product-only JIT
+boundary, canonical x86port publication/pin reconciliation, representative
+interactive gameplay conformance, and declared-host backend gaps.
 
 ## Capability inventory
 
 | ID | Capability or outcome | State | Factual dependency | Goals |
 |---|---|---|---|---|
-| S001 | Fresh-clone provisioning and the default native launcher | verified | — | G001, G005 |
-| S002 | Wine-free native execution of the recompiled PC game | partial | S001 | G001, G002 |
+| S001 | Fresh-clone provisioning and the default native launcher | partial | — | G001, G005 |
+| S002 | Native-overrides + x86port-JIT gameplay execution | partial | S001 | G001, G002 |
 | S003 | Faithful rendering of the reached game path | partial | S002 | G002 |
 | S004 | Native Alchemy 2D/UI rendering above the D3D8 seam | partial | S003, S012 | G002, G004, G006 |
 | S005 | Native audio mixing and SFD movie playback | verified | S002 | G002 |
@@ -39,30 +40,38 @@ draw paths above D3D8.
 | S010 | Measured frame and level-load performance | partial | S002, S016 | G003 |
 | S011 | Wine oracle and evidence-backed differential RE workflow | partial | — | G002, G006 |
 | S012 | A/B-toggleable native overrides and incremental engine replacement | partial | S002, S011 | G001, G006 |
-| S013 | Secondary native recompilation of the Xbox build | partial | S011 | G006 |
+| S013 | Xbox evidence consolidation and obsolete static-path removal | partial | S011 | G006 |
 | S014 | Apple Silicon macOS native host support | partial | S001 | G005 |
 | S015 | Transactional autosave and direct retail Continue restore | verified | S002 | G002 |
 | S016 | Live control, capture, input, and runtime diagnostic channel | verified | S002, S003 | G002, G006 |
 | S017 | Linux AppImage packaging and no-terminal install setup | partial | S001, S008 | G005 |
 | S018 | Android APK shell, touch controls, and measured mobile performance | partial | S002, S006, S010 | G005 |
+| S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
 ## State details and evidence
 
-### S001 — fresh-clone provisioning and launcher: verified
+### S001 — fresh-clone provisioning and launcher: partial
 
-Observed capability: on Linux x86-64 and Apple Silicon macOS, zero-argument
-`./run.sh` enters the locked `uv` environment, validates user-supplied game
-files, restores redistributable dependencies and generated recompilation inputs
-without Ghidra, builds all twenty modules, and launches the current native
-D3D8-backed product. The launcher recognizes a matching game directory placed
-at the repository root and resolves Homebrew packages through their keg paths.
+Observed subset: earlier Linux x86-64 and Apple Silicon macOS cold-path runs
+proved that zero-argument `./run.sh` enters the locked `uv` environment,
+validates user-supplied game files, restores redistributable dependencies and
+native assets without Ghidra, and launches the native D3D8-backed product. The
+current bootstrap no longer emits guest code; it pins `jit-common` and
+`x86port`, and runtime module discovery reads the user's PE images directly.
 
 Evidence: C182 records a cold-path run after the virtual environment, generated
 sources, native assets, shared dependencies, and build tree were moved aside;
-the launcher recreated them, presented frames, and passed its launcher and CTest
-controls. Issue #110 records the original cold-path dependency defects; issue
-#125 records and tests the boundary that maintainer-only `re-harness` is not a
-player bootstrap dependency.
+the launcher recreated the then-current inputs, presented frames, and passed
+its launcher and CTest controls. Issue #110 records the original cold-path
+dependency defects; issue #125 records and tests the boundary that
+maintainer-only `re-harness` is not a player bootstrap dependency.
+
+Gap: C182 predates removal of the generated guest corpus and therefore does not
+verify the current cold path. The canonical `shared/x86port` checkout contains
+the consumer-proven revision, but that revision is not yet published to its
+configured remote. A fresh clone cannot be called reproducible until it is
+published, this project's immutable pin is reconciled, and the no-generated JIT
+launcher path is rerun from cold.
 
 ### S017 — Linux AppImage packaging and no-terminal install setup: partial
 
@@ -167,41 +176,53 @@ menu-state overlay feedback, not full gameplay HUD relocation. Waydroid's
 roughly 700 ms frames are an emulator diagnostic only, not Android performance
 evidence.
 
-Gap: a publishable APK still requires a stable physical Android test device,
+Gap: the current x86port JIT has no ARM64 backend, so the Android gameplay
+product cannot yet satisfy S002 and must not ship by selecting the test
+interpreter. A publishable APK also requires a stable physical Android test device,
 full-gameplay HUD verification, the maintainer's long-lived keystore, and
 measured named-device performance. The required setup, touch-zone mapping, and
 device/thermal/frame-time evidence gate are specified in
 [`android-release.md`](android-release.md); desktop and Apple Silicon results do
 not count as Android performance evidence.
 
-### S002 — Wine-free native execution: partial
+### S002 — native-overrides + x86port-JIT gameplay execution: partial, current focus
 
-Observed subset: `x2native` maps and initializes the original PE images, runs
-their locally generated C bodies in a 64-bit native host, supplies the reached
-Win32/CRT/DirectInput/DirectSound/D3D8 boundaries, and has traversed menus,
-movies, level load, gameplay, death, and return-to-menu paths. Guest code with
-no generated body (the runtime-loaded DLLs, libCriMovie among them) runs through
-a fill-in x86-32 execution engine, `engine=interpreter` or the default
-`engine=jit` (x86port); both now reach the rendered main menu. The JIT default
-was black-screen-broken from its first landing (`775712c`) until issue #140:
-translated blocks ran through host interception points, a JITted thread never
-yielded the guest lock, the engine's call-frame stack was shared across
+Observed subset: commit `27f0a7b` removed the roughly 307 MB generated guest C
+corpus, its generator, generated dispatch tables, and the analysis inputs whose
+only consumer was that offline pipeline. `x2native` now maps and initializes the
+original PE images at runtime, executes every non-native path through
+`shared/x86port`'s x86-64 JIT, and supplies the reached
+Win32/CRT/DirectInput/DirectSound/D3D8 boundaries. Native overrides hand back to
+the shipping dispatcher by module plus address and can call their original
+guest bodies through the JIT. Observed JIT runs have traversed menus, movies,
+level load, gameplay, death, and return-to-menu paths. C288 and C290 record
+hundreds of millions of in-game JIT block entries agreeing with the test
+interpreter while native overrides were active.
+
+The JIT was black-screen-broken from its first landing (`775712c`) until issue
+#140: translated blocks ran through host interception points, a JITted thread
+never yielded the guest lock, the engine's call-frame stack was shared across
 threads, and `jit_intercept` gated the native-override hand-back on an engine
-frame that goes NULL once boot nesting passes `ENGINE_FRAMES_MAX` (which ran the
-font, splash, prompt-glyph and native-FMV overrides as raw guest x86). With all
-four fixed, `engine=jit` reaches the title screen at roughly the interpreter's
-wall-clock and plays the intro reel through native FFmpeg;
-`tests/test_jit_intercept.c` locks the override hand-back against the frame
-depth. The native BehavEd context/scheduler and title timed-event
+frame that goes NULL once boot nesting passes `ENGINE_FRAMES_MAX`. With all
+four fixed, the JIT reaches the title screen and plays the intro reel through
+native FFmpeg; `tests/test_jit_intercept.c` locks the override hand-back against
+the frame depth. The native BehavEd context/scheduler and title timed-event
 players complete the verified tutorial control-lock cutscene synchronously,
 silently, and without advancing guest frame/time (C274). Callback cleanup and
 module-aware override routing are checked by C178 and C209.
 
-Gap: coverage is not completion. Unreached imports remain fail-loud poison
-thunks; guest exception delivery, LAN networking, and optional COM/system
-facilities are absent; and no person has yet driven a physical controller
-through a representative level. The observed unattended loop is not a
-playability gate.
+Gap: the interpreter still has product-facing selection/configuration
+vocabulary and has not yet been isolated in a separately linked test target;
+the gameplay link/selector audit is therefore open. The consumer-proven
+x86port work in the canonical checkout still needs publication to its remote
+and reconciliation with this project's immutable pin. No bounded
+representative interactive gameplay case has yet combined native overrides,
+nonzero JIT execution, independent
+CPU/memory/timing/device comparison, and the declared frame-time budget.
+Finally, only the x86-64 backend is implemented; Apple Silicon and Android
+ARM64 require a real JIT backend and may not fall back to interpretation.
+Unreached imports remain fail-loud poison thunks; guest exception delivery,
+LAN networking, and optional COM/system facilities are absent.
 
 ### S003 — reached-path rendering: partial
 
@@ -223,7 +244,7 @@ off-screen render targets, and incomplete specular, spot-cone, and general fog
 behavior remain fail-loud or unverified. The D3D8 compatibility
 seam also remains beneath most engine rendering.
 
-### S004 — native Alchemy 2D/UI rendering: partial, current focus
+### S004 — native Alchemy 2D/UI rendering: partial
 
 Observed subset: native prompt SVGs now cross above D3D8. C271 and
 [`RE/text.md`](RE/text.md) establish that the port retains the executable's
@@ -245,8 +266,8 @@ above that reference; 800x600, 1280x720, and 3840x2160 cold-plus-warm live cases
 each pass 15/15 with row heights of 20.04, 24.04, and 72.14 pixels (C275).
 
 Gap: this verifies only the prompt SVG slice. Stock ASCII, panels, sprites,
-batching, and other display-list geometry still submit through the recompiled
-engine and D3D8 host. Each semantic owner must be reverse-engineered, ported,
+batching, and other display-list geometry still submit through the
+runtime-translated guest engine and D3D8 host. Each semantic owner must be reverse-engineered, ported,
 and measured to zero old D3D8 calls before that portion of the seam can be
 deleted.
 
@@ -343,18 +364,22 @@ measured load frame from 4,592 ms to roughly 500 ms, a 9.2x improvement (C210).
 The native movie rendezvous and upload paths also have bounded-wait and retained
 staging fixes with measured reductions (C207 and C233).
 
-Gap: no target frame-time or load-time budget defines "fast enough"; current
-headless performance remains roughly 30 fps with the game cap removed, the
-roughly 500 ms load hitch remains visible, and asset I/O has not been profiled.
-Under `engine=jit` the per-thunk unwind of `x86p_jit_engine_run` was the
-structural crossing cost (issue #141). x86port `d5d3b00` adds an inline
-between-blocks dispatch hook and xmen2 services import thunks / override bodies
-without unwinding the JIT slice (`x86_engine_dispatch.c`, CVar
-`jit.inline_dispatch`, default on). Measured in-game on an identical driven
-input path: host-import share of wall time fell from ~62% to ~18% and frames
-rendered per fixed wall-time window rose ~15%. The remaining gap is now JIT
-guest-body execution cost (x86port translator quality), plus the still-open
-`QueryPerformanceCounter` pacing spin (issue #141 option 2).
+Issue #141 identified per-thunk unwinding of `x86p_jit_engine_run` as a
+structural crossing cost. x86port `d5d3b00` added an inline between-blocks
+dispatch hook, and xmen2 now services import thunks and override bodies without
+unwinding the JIT slice (`x86_engine_dispatch.c`, CVar
+`jit.inline_dispatch`, default on). On the same driven in-game input path,
+host-import share of wall time fell from roughly 62% to 18% and frames rendered
+per fixed wall-time window rose roughly 15%. Later targeted unpaced sessions
+recorded roughly 60 fps after the native override work (C281-C283), superseding
+the earlier roughly 30 fps diagnostic measurement.
+
+Gap: no target frame-time or load-time budget defines "fast enough." The later
+unpaced results are targeted diagnostic cases, not bounded representative
+product evidence; the roughly 500 ms load hitch remains visible, asset I/O has
+not been profiled, and the `QueryPerformanceCounter` pacing spin remains open
+(issue #141 option 2). Remaining CPU cost belongs to x86port JIT translation
+quality rather than a title-local execution engine.
 
 ### S011 — oracle and differential RE workflow: partial
 
@@ -366,16 +391,17 @@ binary and runtime evidence. The oracle cache prevents repeated identical
 control runs.
 
 Gap: frame-level A/B is not deterministic across boot-movie timing, and broad
-lockstep differential coverage does not exist. Most generated functions are
-executed through real paths but not individually compared against the original;
-the x87 corpus in particular lacks constructed-object differential tests.
+lockstep differential coverage does not exist. Most guest functions execute
+through real paths but are not individually compared against the original;
+the x87 surface in particular lacks constructed-object differential tests.
 
 ### S012 — native overrides and engine replacement: partial
 
-Observed subset: module-qualified runtime overrides keep their recompiled
-bodies alive for super-calls and A/B checks, and direct and indirect calls route
-through the same override table (C209). Native owners now replace selected
-boot, input, save, media, UI, and prompt-rendering behavior. C270 measures the
+Observed subset: module-qualified runtime overrides retain access to their
+original guest bodies through JIT super-calls and A/B checks, and direct and
+indirect calls route through the same override table (C209). Native owners now
+replace selected boot, input, save, media, UI, and prompt-rendering behavior.
+C270 measures the
 current engine-to-D3D8 dialect, and S004 proves one semantic rendering slice can
 be moved above it without inventing a lowered-D3D classifier. The in-game
 cutscene player also ports the BehavEd timed-fiber and title timed-event pumps,
@@ -386,28 +412,32 @@ zero dialogue-presentation leaks, and every reached cutscene-owned DirectSound
 start suppressed (C274);
 [`RE/cutscene_player.md`](RE/cutscene_player.md) records the binary chain.
 
-Gap: most of the Alchemy renderer and game remain mechanically recompiled.
+Gap: most of the Alchemy renderer and game remain runtime-translated guest code.
 Stock 2D, scene traversal, materials, lighting, shadows, render targets, and
 their D3D8 call sites must be reverse-engineered and ported subsystem by
 subsystem; `src/d3d8/` remains required until its last evidenced caller moves.
 
-### S013 — secondary Xbox recompilation: partial
+### S013 — Xbox evidence consolidation and static-path removal: partial
 
-Observed subset: all 24,663 detected functions across eleven executable XBE
-sections lift to C and build; boundary, deferred-flag, ordinal-table, and
-runtime-discovery mechanisms have positive controls. The native Xbox build
-executes the game's main thread.
+Observed subset: the Xbox investigation established durable controller,
+ordinal-table, XBE-section, and runtime-boundary facts that remain useful to the
+PC port. Those observations are preserved in the claims and RE documentation;
+the Xbox executable is not the product conformance target. The retired static
+experiment lifted and built all 24,663 detected functions across eleven
+executable XBE sections, exercised positive controls for boundary,
+deferred-flag, ordinal-table, and runtime-discovery mechanisms, and reached the
+game's main thread. These are historical evidence facts, not authorization to
+retain that execution path.
 
-Where: `xbox/` plus the pinned external fork recorded in `xbox/xboxrecomp.lock`.
-
-Gap: the path still reaches unresolved indirect targets, its native CRT heap is
-explicit hack debt, kernel bodies remain unaudited, 239 deleted jumps in two
-functions remain diagnosed-but-unfixed, and nothing renders. This is a
-secondary evidence path, not the live PC product.
+Gap: the repository still contains an obsolete Xbox static-recompiler build and
+run path. It must not be generated, built, run, or presented as a second
+product. Consolidate every still-useful binary/behavioral fact into its living
+authority, then remove the static product machinery instead of retaining it as
+a compatibility or oracle path.
 
 ### S014 — Apple Silicon macOS native host: partial
 
-Observed subset: the default arm64 Mach-O keeps macOS's normal 4 GB
+Observed subset: the earlier arm64 Mach-O host kept macOS's normal 4 GB
 `__PAGEZERO` and translates logical 32-bit guest addresses through a separate
 4 GB arena. C272 and issues #10/#123 prove exact Win32 4 KiB mapping state over
 Apple Silicon's 16 KiB host protection granule. The normal launcher discovers
@@ -415,9 +445,31 @@ Homebrew dependencies and a repository-local game directory; a driven run
 cleared all six intro movies, entered playable gameplay, accepted keyboard
 input, rendered through SDL_GPU/MoltenVK, and sustained world and shadow draws.
 
-Gap: native Windows remains absent, Intel macOS is not a supported target, and
+Gap: this evidence predates the product-only JIT boundary. `shared/x86port` has
+no ARM64 JIT backend, so Apple Silicon is not a qualified current product host
+and cannot use the test interpreter as a shipping fallback. Native Windows
+remains absent, Intel macOS is not a supported target, and
 physical-controller/hotplug plus clean-machine provisioning still retain the
 hardware-validation gaps described by S006 and G005.
+
+### S019 — shared Alchemy gameplay boundary and MUA adoption: partial
+
+Observed subset: pinned `shared/alchemy` revision `f95e093` provides the native
+`alchemy` library for IGB/image/mesh/raster/Enbaya foundations,
+`alchemy_input`, and optional `alchemy_input_sdl`. X-Men 2 provisions that
+checkout and uses its XMLB/ARK tooling from maintainer and native-asset paths.
+The shared input tests exercise stable controller slots, startup enumeration,
+late attach, snapshot updates, shutdown, and rumble through the production SDL
+backend described in `shared/alchemy/docs/input.md`.
+
+Gap: `x2native` links none of the shared Alchemy libraries, and no shared
+runtime header or function is present in the gameplay call path. The first
+candidate is a narrow X-Men 2 guest `igControllerManager` adapter over
+`alchemy_input`, A/B-verified against the existing DirectInput path for button
+bits, pressure, axes, identity, lifecycle, and callbacks. That proof must keep
+title action meanings, joining, assignment, and prompt policy here. MUA remains
+deferred until every X-Men 2 project goal is verified; only then does MUA
+migrate to the proven shared engine while preserving its gameplay source.
 
 ### S015 — transactional autosave and Continue: verified
 
