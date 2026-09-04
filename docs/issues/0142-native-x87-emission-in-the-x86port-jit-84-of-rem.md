@@ -73,11 +73,16 @@ host` on the real unit (the `HOST_OP` pattern), elsewhere `fesetround`
 around the cast. `test_fst_rounds_by_the_control_word` proves it with
 hand-computed nearest-even / up / down / truncate anchors on a
 half-ulp value plus a routing sweep vs the host FPU. Register forms
-(FST/FSTP ST(i)) are native as of phase 2. Native FST/FSTP-**to-memory**
-is now unblocked but deferred: the interpreter checks ST(0) emptiness
-*before* touching memory, so a native path must get ST(0) before the
-bounds check to match on the (pathological) empty-ST(0) + OOB-address
-case -- an ordering wrinkle worth its own focused change.
+(FST/FSTP ST(i)) are native as of phase 2.
+
+Native FST/FSTP-**to-memory** landed 2026-09-04 (`emit_x87_store_mem`):
+`x86p_x87_get` into a stack slot, then -- only if ST(0) is not empty --
+`x86p_x87_to_f32/f64` for the RC-correct narrowing, then the scratch slot
+is released, THEN `emit_mem_prepare_w`, then the store and the pop. That
+order matches the interpreter: an empty ST(0) never reaches the bounds
+check, so it never faults on a bad address. The narrowed bits ride
+through the address path in R9 (which RAX/RDI/R10/R11 address-forming
+does not touch). New emit primitive `x86p_emit_store64`.
 
 **FADD/FSUB/FMUL/FDIV** (18k+, the `x86p_x87_arith` 11.3%): emit `fldt`
 both operands from `reg[phys]`, the host op, `fstpt` back, with the guest
