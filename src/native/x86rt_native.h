@@ -1,11 +1,6 @@
 /*
- * The shared part of the native runtime: one dispatcher over several
- * recompiled modules.
- *
- * The hosted DLL build only ever had one module in the process, so its runtime
- * could keep the function table, the image base and the dispatcher as
- * process-wide globals. A native build links every module into one binary, and
- * that assumption breaks in a way that would not announce itself: every
+ * The title-native runtime keeps one module inventory over the player's
+ * mapped images. Every
  * libIG*.dll in this game is linked for 0x10000000, so guest entry points
  * COLLIDE across modules. A table keyed on entry point would happily answer
  * libIGCore's 0x10002c00 with libIGDisplay's function.
@@ -17,16 +12,14 @@
 #ifndef X86RT_NATIVE_H
 #define X86RT_NATIVE_H
 
-#include "x86_tail_policy.h"
-
 #include <stddef.h>
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 typedef struct X86Module {
   const char *name;
-  /* POINTER TO where it actually got mapped -- the generated module owns the
+  /* POINTER TO where it actually got mapped -- the inventory owns the
      variable and the loader fills it in, so this is `*m->base`, never
      `m->base`. Reading the pointer as the base gives a host address that can
      look plausible; it cost two crashes in a shutdown diagnostic. */
@@ -36,24 +29,22 @@ typedef struct X86Module {
   struct X86Module *next;
 } X86Module;
 
-/* Called from each generated module's constructor. */
+/* Called once per mapped module during inventory initialization. */
 void x86_module_register(X86Module *m);
 
 /* Which module owns a mapped address, or NULL. */
 X86Module *x86_module_for(uint32_t addr);
 
-/* Where a module landed, by image file name, or 0 if it is not mapped. The
-   translated corpus used to publish a g_imgbase_<module> global per module;
-   with no generated code there is one lookup instead of twenty externs. */
+/* Where a module landed, by image file name, or 0 if it is not mapped. */
 uint32_t x86_module_base(const char *image);
 
-/* Run the recompiled body at a mapped address. Returns 0 if there is none --
-   the caller must say so rather than treating a miss as a no-op. */
-int x86_native_call_at(uint32_t addr, struct CPU *C);
+/* Run a title-native interception at a mapped address. Returns 0 if there is
+   none -- the caller must say so rather than treating a miss as a no-op. */
+int x86_native_call_at(uint32_t addr, struct X86pCpu *C);
 /* Whether x86_native_call_at would find something to run at `addr`, WITHOUT
    running it or touching any of its bookkeeping. The execution engine asks
-   this at every instruction: an import thunk, a native override and a
-   recompiled body are all HOST code it must hand back rather than interpret. */
+   this at every instruction: an import thunk or native override is HOST code
+   it must hand back to the title boundary. */
 int x86_native_body_at(uint32_t addr);
 #define THUNK_BASE 0x000C0000u
 #define THUNK_MAX 2048
@@ -97,7 +88,7 @@ uint32_t x86_native_entry_containing(uint32_t addr, const char **name_out);
 /* A guest-callable address for a native C function, so engine code can call
    back into the host -- ARK hooks and the slots of a native class's vtable.
    `owner`/`name` appear in ring lines and fault reports; both are required. */
-uint32_t x86_native_callback(void (*fn)(struct CPU *), const char *owner,
+uint32_t x86_native_callback(void (*fn)(struct X86pCpu *), const char *owner,
                              const char *name, void *ctx);
 
 /* Inside a callback: the `ctx` it was registered with. One C function can then
@@ -107,7 +98,7 @@ void *x86_callback_ctx(void);
 
 /* Host->guest call with an explicit stdcall/thiscall cleanup contract. The
    zero-argument/cdecl wrapper remains declared by x86rt.h. */
-void x86_guest_call_args(struct CPU *C, uint32_t target,
+void x86_guest_call_args(struct X86pCpu *C, uint32_t target,
                          uint32_t callee_pop_bytes);
 
 /*
@@ -121,7 +112,7 @@ void x86_guest_call_args(struct CPU *C, uint32_t target,
  * which modules LoadLibraryA may honestly hand back a handle for.
  */
 void x86_native_export(const char *mod, const char *sym,
-                       void (*fn)(struct CPU *));
+                       void (*fn)(struct X86pCpu *));
 uint32_t x86_native_export_addr(const char *mod, const char *sym);
 int x86_native_module_implemented(const char *mod);
 void x86_native_export_report(void);
@@ -148,12 +139,8 @@ int x86_triggers_report(void);
 /*
  * Register a NATIVE implementation of a guest entry point, declared in C where
  * the override belongs (src/native/startup.c, movie.c, reportbox.c, ...) --
- * no JSON, no generator. The dispatcher consults this table BEFORE the
- * recompiled body, so both direct calls (which recomp.py routes through the
- * dispatcher when the target is registered here) and vtable/callback dispatch
- * reach the native function. The recompiled body stays emitted and linked, so
- * an override that defers to the original just calls its fn_<module>_<ep>
- * symbol directly.
+ * The dispatcher consults this table before ordinary guest execution, so
+ * direct, vtable, and callback dispatch all reach the native function.
  *
  * `module` is the module that owns the entry point and `linked_ep` is the
  * address at that module's PREFERRED base -- the address the disassembly
@@ -162,13 +149,8 @@ int x86_triggers_report(void);
  * them, while the dispatcher works in mapped addresses. x86_overrides_resolve
  * turns each pair into the mapped address once the modules are in place.
  */
-/* x86_override_fn, X86OverrideSlot and x86_override_slots_register live in
-   x86rt.h -- the GENERATED code needs them and a generated chunk includes
-   only that header -- so this one includes it rather than redeclaring them
-   and letting the two drift. */
+/* x86_override_fn lives in x86rt.h so the ABI has one declaration. */
 #include "x86rt.h"
-long x86_override_slot_count(void);
-int x86_override_chunk_count(void);
 void x86_register_override(const char *module, uint32_t linked_ep,
                            x86_override_fn fn);
 int x86_override_is_bound(const char *module, uint32_t linked_ep,
@@ -178,8 +160,8 @@ int x86_override_is_bound(const char *module, uint32_t linked_ep,
  * Resolve every registration to a mapped address. Call once, after all modules
  * are mapped and before any guest code runs -- registration happens in
  * constructors, long before pe_map has placed anything. Aborts if a module is
- * missing or an entry point names no recompiled body, because an override that
- * does not resolve never fires and the run still looks healthy.
+ * missing or an entry point names no executable guest body, because an override
+ * that does not resolve never fires and the run still looks healthy.
  */
 void x86_overrides_resolve(void);
 
@@ -193,20 +175,6 @@ void x86_overrides_resolve(void);
  */
 int x86_override_resolve_check(const char *module, uint32_t linked_ep,
                                uint32_t *mapped_out, char *why, size_t whyn);
-
-/*
- * The reached set -- "was this body ever entered, how often, and in what
- * order" -- compiled into every native build and ARMED at runtime. Arming
- * late is honest but lossy, and the report says so; -DX2_NATIVE_REACHED=ON
- * arms before the first guest instruction for the cases that need it.
- */
-void x86_reached_arm(const char *why);
-int x86_reached_is_armed(void);
-/* Ask about one linked entry point: 1 if it was entered, with *count and *seq
-   filled in (seq is the 1-based order of first entry). 0 for never entered --
-   which is only meaningful when the set is armed, so callers must check. */
-int x86_reached_query(uint32_t linked_ep, const char *module,
-                      unsigned long *count, unsigned long *seq);
 
 /* Count of registered native overrides (0 is a measurement, not silence). */
 int x86_override_count(void);
@@ -243,7 +211,7 @@ extern volatile uint32_t x2_write_watch_addr;
 extern void x2_write_watch_fire(uint32_t a, uint32_t v);
 
 /* Bind an IAT slot to a callable address when the import is implemented
-   natively but is not another recompiled module: the guest sometimes takes an
+   natively but is not another guest module: the guest sometimes takes an
    import's address and calls through it, bypassing the named stub. Returns 0
    if there is no native implementation for that slot. */
 uint32_t x86_native_thunk(const char *mod, const char *sym);

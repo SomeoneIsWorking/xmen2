@@ -1,4 +1,5 @@
 #include "fmv_player.h"
+#include "../native/x2_log.h"
 #include "fmv_audio_decode.h"
 #include "fmv_decoder_drain.h"
 #include "fmv_policy.h"
@@ -450,11 +451,12 @@ unsigned long x2_fmv_decoded_audio_frames(const X2FmvPlayer *player) {
 void x2_fmv_report(const X2FmvPlayer *player) {
   if (!player)
     return;
-  printf("  native FMV: %lu video decoded / %lu displayed / %lu dropped, "
-         "%lu audio samples, %lu failure(s); timestamps %u fallback / "
-         "%u clamped\n",
-         player->decoded_video, player->displayed_video, player->dropped_video,
-         x2_fmv_audio_decode_samples(player->audio_decode),
-         player->decode_failures, player->timeline.timestamp_fallbacks,
-         player->timeline.timestamp_clamps);
+  x2_log_info("  native FMV: %lu video decoded / %lu displayed / %lu dropped, "
+              "%lu audio samples, %lu failure(s); timestamps %u fallback / "
+              "%u clamped\n",
+              player->decoded_video, player->displayed_video,
+              player->dropped_video,
+              x2_fmv_audio_decode_samples(player->audio_decode),
+              player->decode_failures, player->timeline.timestamp_fallbacks,
+              player->timeline.timestamp_clamps);
 }

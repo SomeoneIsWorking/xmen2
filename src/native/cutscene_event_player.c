@@ -194,10 +194,10 @@ static void remove_entry(const ValidatedEvents *events, uint32_t index) {
 static void call_guest(const CPU *source, uint32_t target, uint32_t self,
                        int has_argument, uint32_t argument) {
   CPU call = *source;
-  call.ecx = self;
+  call.reg[kX86pEcx] = self;
   if (has_argument) {
-    call.esp -= 4u;
-    WR32(call.esp, argument);
+    call.reg[kX86pEsp] -= 4u;
+    WR32(call.reg[kX86pEsp], argument);
   }
   x86_guest_call_args(&call, target, has_argument ? 4u : 0u);
 }
@@ -416,15 +416,16 @@ void x2_override_004b2b40(CPU *cpu) {
   CutsceneEventOwnershipWindow *destination = NULL;
   uint32_t owner, new_slot = 0;
   int owned = 0;
-  if (!cpu || !(causal_depth ? validate_events_with_inflight(
-                                   cpu->ecx, causal_inflight_slot, &before)
-                             : validate_events(cpu->ecx, &before))) {
+  if (!cpu ||
+      !(causal_depth ? validate_events_with_inflight(
+                           cpu->reg[kX86pEcx], causal_inflight_slot, &before)
+                     : validate_events(cpu->reg[kX86pEcx], &before))) {
     insertion_fault(watched_window);
     if (cpu)
-      cpu->esp += 12u; /* Refused RET 8, without guest mutation. */
+      cpu->reg[kX86pEsp] += 12u; /* Refused RET 8, without guest mutation. */
     return;
   }
-  owner = cpu->ecx;
+  owner = cpu->reg[kX86pEcx];
   atomic_store_explicit(&captured_owner, owner, memory_order_relaxed);
   if (watched_window && watched_owner) {
     destination = watched_window;
@@ -462,19 +463,21 @@ void x2_override_004b2b40(CPU *cpu) {
 void x2_override_004b2d70(CPU *cpu) {
   uint32_t base, now_bits;
   float now;
-  if (cpu && (base = exe_base()) && x86_peek32(cpu->esp + 4u, &now_bits)) {
+  if (cpu && (base = exe_base()) &&
+      x86_peek32(cpu->reg[kX86pEsp] + 4u, &now_bits)) {
     ValidatedEvents events;
     memcpy(&now, &now_bits, sizeof now);
-    if (validate_events(cpu->ecx, &events)) {
+    if (validate_events(cpu->reg[kX86pEcx], &events)) {
       CutsceneEventPlayerStep result;
-      atomic_store_explicit(&captured_owner, cpu->ecx, memory_order_relaxed);
+      atomic_store_explicit(&captured_owner, cpu->reg[kX86pEcx],
+                            memory_order_relaxed);
       do {
-        result = step_due(cpu, base, cpu->ecx, now);
+        result = step_due(cpu, base, cpu->reg[kX86pEcx], now);
       } while (result == CUTSCENE_EVENT_PLAYER_STEP_RAN);
     }
   }
   if (cpu)
-    cpu->esp += 8u; /* RET 4: return address plus float argument. */
+    cpu->reg[kX86pEsp] += 8u; /* RET 4: return address plus float argument. */
 }
 __attribute__((constructor)) static void
 x2_cutscene_event_player_register_override(void) {

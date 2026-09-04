@@ -13,12 +13,10 @@
  * its header says the Wine oracle is what settles it -- so GetDeviceCaps is
  * logged here in the same words the port logs its own, and the two diff.
  *
- * The opt-in shadow trace answers a third question before renderer work is
- * allowed to begin: which of Alchemy's planar, projective and self-shadow
- * passes the retail game actually reaches, and which D3D8 state/resource route
- * surrounds it. F9 bounds this to one selected frame; shadow_trace.c owns the
- * state machine and JSONL format so its positive and negative answers are unit
- * tested without Wine or the game.
+ * The opt-in shadow trace records the D3D8 state/resource route selected by
+ * the retail DetailedShadow setting. F9 bounds this to one selected frame;
+ * shadow_trace.c owns the state machine and JSONL format so its positive and
+ * negative answers are unit tested without Wine or the game.
  *
  * Everything else is forwarded untouched: exports other than Direct3DCreate8
  * are .def forwarders to d3d8_real.dll (built by build_stocklog.py via
@@ -42,21 +40,21 @@
  * GetDevice or GetTexture could bypass.
  */
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdarg.h>
+#include <windows.h>
 
 #include "shadow_setting.h"
 #include "shadow_trace.h"
 
-#define D3D8_SLOTS 16          /* IDirect3D8:        slots 0..15 */
-#define D3DDEV_SLOTS 97        /* IDirect3DDevice8:  slots 0..96 */
+#define D3D8_SLOTS 16   /* IDirect3D8:        slots 0..15 */
+#define D3DDEV_SLOTS 97 /* IDirect3DDevice8:  slots 0..96 */
 
 #define SLOT_CREATE_DEVICE 15
-#define SLOT_D3D8_GET_DEVICE_CAPS 13   /* IDirect3D8::GetDeviceCaps    */
-#define SLOT_DEV_GET_DEVICE_CAPS 7     /* IDirect3DDevice8::GetDeviceCaps */
+#define SLOT_D3D8_GET_DEVICE_CAPS 13 /* IDirect3D8::GetDeviceCaps    */
+#define SLOT_DEV_GET_DEVICE_CAPS 7   /* IDirect3DDevice8::GetDeviceCaps */
 #define SLOT_RESET 14
 #define SLOT_PRESENT 15
 #define SLOT_CREATE_TEXTURE 20
@@ -79,7 +77,7 @@
 #define SLOT_SET_STREAM_SOURCE 83
 #define SLOT_SET_INDICES 85
 #define SLOT_CREATE_VERTEX_SHADER 75
-#define SLOT_VB_LOCK 11               /* IDirect3DVertexBuffer8, 14 slots */
+#define SLOT_VB_LOCK 11 /* IDirect3DVertexBuffer8, 14 slots */
 #define SLOT_VB_UNLOCK 12
 #define D3DVB_SLOTS 14
 #define SLOT_SET_MATERIAL 42
@@ -102,24 +100,24 @@ extern const void *fwdvb_table[14];
 
 /* The wrapper IS the COM object the game sees: vtbl pointer first. */
 struct wrap {
-    const void **vtbl;       /* +0: our vtable (forwarders + logged slots) */
-    void *real;              /* +4: the real COM object                    */
-    const void **real_vtbl;  /* +8: real object's vtable (fwd.S reads this) */
+  const void **vtbl;      /* +0: our vtable (forwarders + logged slots) */
+  void *real;             /* +4: the real COM object                    */
+  const void **real_vtbl; /* +8: real object's vtable (fwd.S reads this) */
 };
 
 /* Layouts from the D3D8 SDK; sizes are load-bearing (the game built these). */
-typedef struct {                        /* 104 bytes, 26 dwords */
-    DWORD Type;
-    float Diffuse[4], Specular[4], Ambient[4];
-    float Position[3], Direction[3];
-    float Range, Falloff;
-    float Attenuation0, Attenuation1, Attenuation2;
-    float Theta, Phi;
+typedef struct { /* 104 bytes, 26 dwords */
+  DWORD Type;
+  float Diffuse[4], Specular[4], Ambient[4];
+  float Position[3], Direction[3];
+  float Range, Falloff;
+  float Attenuation0, Attenuation1, Attenuation2;
+  float Theta, Phi;
 } D3DLIGHT8;
 
 typedef struct {
-    float Diffuse[4], Ambient[4], Specular[4], Emissive[4];
-    float Power;
+  float Diffuse[4], Ambient[4], Specular[4], Emissive[4];
+  float Power;
 } D3DMATERIAL8;
 
 /*
@@ -134,7 +132,7 @@ typedef struct {
 typedef struct {
 #define F(name) DWORD name;
 #define G(name) float name;
-    D3D8_CAPS_FIELDS
+  D3D8_CAPS_FIELDS
 #undef F
 #undef G
 } D3DCAPS8;
@@ -152,11 +150,13 @@ static HMODULE g_realdll;
 static char g_realpath[MAX_PATH] = "";
 
 static void log_open(void) {
-    if (g_log) return;
-    /* Relative on purpose: run_shim cd's into the rundir, so the log lands
-       in scratch/run/stocklog/. */
-    g_log = fopen("d3d8_lightlog.txt", "a");
-    if (g_log) setvbuf(g_log, NULL, _IOLBF, 4096);  /* a crash keeps the tail */
+  if (g_log)
+    return;
+  /* Relative on purpose: run_shim cd's into the rundir, so the log lands
+     in scratch/run/stocklog/. */
+  g_log = fopen("d3d8_lightlog.txt", "a");
+  if (g_log)
+    setvbuf(g_log, NULL, _IOLBF, 4096); /* a crash keeps the tail */
 }
 
 /* Named plog, not logf: <math.h>'s logf is a GCC builtin and shadowing it is a
@@ -164,130 +164,104 @@ static void log_open(void) {
    diagnostic is a compile error rather than a garbage number in the log. */
 static void plog(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void plog(const char *fmt, ...) {
-    va_list ap;
-    if (!g_log) return;
-    va_start(ap, fmt);
-    vfprintf(g_log, fmt, ap);
-    va_end(ap);
-    fputc('\n', g_log);
+  va_list ap;
+  if (!g_log)
+    return;
+  va_start(ap, fmt);
+  vfprintf(g_log, fmt, ap);
+  va_end(ap);
+  fputc('\n', g_log);
 }
 
-/* probe_hook.c owns the generated entry-point counters. The shadow trace only
-   reads their cumulative values at frame boundaries, so it cannot perturb the
-   hooks or create a second authority for what counts as a call. */
-unsigned probe_hook_call_count(const char *name);
-int probe_hook_call_active(const char *name);
-
-static int custom_geometry_call_active(void)
-{
-    return probe_hook_call_active("FUN_006024f0");
+static void observe_default_targets(struct wrap *w) {
+  typedef HRESULT(WINAPI * get_surface_fn)(void *, void **);
+  typedef ULONG(WINAPI * release_fn)(void *);
+  void *default_target = NULL, *default_depth = NULL;
+  if (!g_shadow.enabled)
+    return;
+  HRESULT target_hr = ((get_surface_fn)w->real_vtbl[SLOT_GET_RENDER_TARGET])(
+      w->real, &default_target);
+  HRESULT depth_hr = ((get_surface_fn)w->real_vtbl[SLOT_GET_DEPTH_STENCIL])(
+      w->real, &default_depth);
+  shadow_trace_default_targets(
+      &g_shadow, (uintptr_t)(SUCCEEDED(target_hr) ? default_target : NULL),
+      (long)target_hr, (uintptr_t)(SUCCEEDED(depth_hr) ? default_depth : NULL),
+      (long)depth_hr);
+  if (SUCCEEDED(target_hr) && default_target)
+    ((release_fn)(*(void ***)default_target)[2])(default_target);
+  if (SUCCEEDED(depth_hr) && default_depth)
+    ((release_fn)(*(void ***)default_depth)[2])(default_depth);
 }
 
-static ShadowProbeCounts shadow_probe_counts(void)
-{
-    ShadowProbeCounts counts;
-    counts.planar = probe_hook_call_count(
-        "Gap::Sg::igPlanarShadowShader::shade");
-    counts.projective = probe_hook_call_count(
-        "Gap::Sg::igProjectiveShadowShader::shade");
-    counts.self_shadow = probe_hook_call_count(
-        "Gap::Sg::igCommonTraverseSelfShadowShader");
-    counts.title_manager = probe_hook_call_count("FUN_004b64e0");
-    counts.title_floor_decal = probe_hook_call_count("FUN_004b5700");
-    return counts;
+static int detailed_shadow_value(void) {
+  unsigned char *value = shadow_setting_address();
+  return value ? (int)*value : -1;
 }
 
-static void observe_default_targets(struct wrap *w)
-{
-    typedef HRESULT (WINAPI *get_surface_fn)(void *, void **);
-    typedef ULONG (WINAPI *release_fn)(void *);
-    void *default_target = NULL, *default_depth = NULL;
-    if (!g_shadow.enabled) return;
-    HRESULT target_hr = ((get_surface_fn)w->real_vtbl[SLOT_GET_RENDER_TARGET])
-        (w->real, &default_target);
-    HRESULT depth_hr = ((get_surface_fn)w->real_vtbl[SLOT_GET_DEPTH_STENCIL])
-        (w->real, &default_depth);
-    shadow_trace_default_targets(
-        &g_shadow,
-        (uintptr_t)(SUCCEEDED(target_hr) ? default_target : NULL),
-        (long)target_hr,
-        (uintptr_t)(SUCCEEDED(depth_hr) ? default_depth : NULL),
-        (long)depth_hr);
-    if (SUCCEEDED(target_hr) && default_target)
-        ((release_fn)(*(void ***)default_target)[2])(default_target);
-    if (SUCCEEDED(depth_hr) && default_depth)
-        ((release_fn)(*(void ***)default_depth)[2])(default_depth);
-}
+static void shadow_proxy_init(void) {
+  char expect_text[32], force_text[32], cap[32];
+  DWORD expect_size, force_size, expect_error, force_error, n;
+  char *end;
+  unsigned long max_events = 4096;
+  int expected, forced;
 
-static int detailed_shadow_value(void)
-{
-    unsigned char *value = shadow_setting_address();
-    return value ? (int)*value : -1;
-}
-
-static void shadow_proxy_init(void)
-{
-    char expect_text[32], force_text[32], cap[32];
-    DWORD expect_size, force_size, expect_error, force_error, n;
-    char *end;
-    unsigned long max_events = 4096;
-    int expected, forced;
-
-    if (g_shadow_initialized) return;
-    g_shadow_initialized = 1;
-    SetLastError(ERROR_SUCCESS);
-    expect_size = GetEnvironmentVariableA("X2_SHADOW_EXPECT", expect_text,
-                                          sizeof expect_text);
-    expect_error = GetLastError();
-    SetLastError(ERROR_SUCCESS);
-    force_size = GetEnvironmentVariableA("X2_SHADOW_FORCE", force_text,
-                                         sizeof force_text);
-    force_error = GetLastError();
-    if (!expect_size && expect_error == ERROR_ENVVAR_NOT_FOUND
-            && !force_size && force_error == ERROR_ENVVAR_NOT_FOUND)
-        return;
-    if (!expect_size || !force_size || expect_size >= sizeof expect_text
-            || force_size >= sizeof force_text
-            || !shadow_trace_parse_binary_control(expect_text, &expected)
-            || !shadow_trace_parse_binary_control(force_text, &forced)) {
-        plog("SHADOW TRACE REFUSED: X2_SHADOW_FORCE and X2_SHADOW_EXPECT "
-             "must both be present and each exactly 0 or 1");
-        return;
+  if (g_shadow_initialized)
+    return;
+  g_shadow_initialized = 1;
+  SetLastError(ERROR_SUCCESS);
+  expect_size = GetEnvironmentVariableA("X2_SHADOW_EXPECT", expect_text,
+                                        sizeof expect_text);
+  expect_error = GetLastError();
+  SetLastError(ERROR_SUCCESS);
+  force_size =
+      GetEnvironmentVariableA("X2_SHADOW_FORCE", force_text, sizeof force_text);
+  force_error = GetLastError();
+  if (!expect_size && expect_error == ERROR_ENVVAR_NOT_FOUND && !force_size &&
+      force_error == ERROR_ENVVAR_NOT_FOUND)
+    return;
+  if (!expect_size || !force_size || expect_size >= sizeof expect_text ||
+      force_size >= sizeof force_text ||
+      !shadow_trace_parse_binary_control(expect_text, &expected) ||
+      !shadow_trace_parse_binary_control(force_text, &forced)) {
+    plog("SHADOW TRACE REFUSED: X2_SHADOW_FORCE and X2_SHADOW_EXPECT "
+         "must both be present and each exactly 0 or 1");
+    return;
+  }
+  n = GetEnvironmentVariableA("X2_SHADOW_MAX_EVENTS", cap, sizeof cap);
+  if (n && n < sizeof cap) {
+    max_events = strtoul(cap, &end, 10);
+    if (*end || max_events < 1 || max_events > 100000) {
+      plog("SHADOW TRACE REFUSED: X2_SHADOW_MAX_EVENTS must be in "
+           "1..100000, not %s",
+           cap);
+      return;
     }
-    n = GetEnvironmentVariableA("X2_SHADOW_MAX_EVENTS", cap, sizeof cap);
-    if (n && n < sizeof cap) {
-        max_events = strtoul(cap, &end, 10);
-        if (*end || max_events < 1 || max_events > 100000) {
-            plog("SHADOW TRACE REFUSED: X2_SHADOW_MAX_EVENTS must be in "
-                 "1..100000, not %s", cap);
-            return;
-        }
-    }
-    if (!shadow_setting_address()) {
-        plog("SHADOW TRACE REFUSED: XMen2.exe+0x2198c3 does not contain "
-             "the DetailedShadow store anchor in this executable image; "
-             "setting value is UNKNOWN");
-        return;
-    }
-    if (!shadow_setting_install_query_override(forced)) {
-        plog("SHADOW TRACE REFUSED: the XMen2.exe RegQueryValueExA import "
-             "could not be validated and redirected; DetailedShadow was "
-             "not forced");
-        return;
-    }
-    g_shadow_log = fopen("d3d8_shadow_trace.jsonl", "w");
-    if (!g_shadow_log) {
-        plog("SHADOW TRACE ERROR: d3d8_shadow_trace.jsonl could not be opened; "
-             "NOTHING will be captured");
-        return;
-    }
-    setvbuf(g_shadow_log, NULL, _IOLBF, 4096);
-    g_shadow_forced = forced;
-    shadow_trace_init(&g_shadow, g_shadow_log, expected, (unsigned)max_events);
-    plog("SHADOW TRACE ready: the validated RegQueryValueExA import will "
-         "substitute DetailedShadow=%d (independent expected=%d), max %lu "
-         "event(s); F9 captures exactly the next frame", forced, expected,
-         max_events);
+  }
+  if (!shadow_setting_address()) {
+    plog("SHADOW TRACE REFUSED: XMen2.exe+0x2198c3 does not contain "
+         "the DetailedShadow store anchor in this executable image; "
+         "setting value is UNKNOWN");
+    return;
+  }
+  if (!shadow_setting_install_query_override(forced)) {
+    plog("SHADOW TRACE REFUSED: the XMen2.exe RegQueryValueExA import "
+         "could not be validated and redirected; DetailedShadow was "
+         "not forced");
+    return;
+  }
+  g_shadow_log = fopen("d3d8_shadow_trace.jsonl", "w");
+  if (!g_shadow_log) {
+    plog("SHADOW TRACE ERROR: d3d8_shadow_trace.jsonl could not be opened; "
+         "NOTHING will be captured");
+    return;
+  }
+  setvbuf(g_shadow_log, NULL, _IOLBF, 4096);
+  g_shadow_forced = forced;
+  shadow_trace_init(&g_shadow, g_shadow_log, expected, (unsigned)max_events);
+  plog("SHADOW TRACE ready: the validated RegQueryValueExA import will "
+       "substitute DetailedShadow=%d (independent expected=%d), max %lu "
+       "event(s); F9 captures exactly the next frame",
+       forced, expected, max_events);
 }
 
 /* -------------------------------------------------- real d3d8 resolution */
@@ -298,78 +272,81 @@ static void shadow_proxy_init(void)
    silently taken. Order: alongside the proxy (the rundir ships d3d8_real.dll),
    then syswow64, then whatever GetSystemDirectory says. */
 static const char *find_real_path(void) {
-    static char cand[MAX_PATH];
-    char dir[MAX_PATH];
-    DWORD n = GetModuleFileNameA(g_self, dir, MAX_PATH);
-    if (n && n < MAX_PATH) {
-        char *slash = strrchr(dir, '\\');
-        if (slash) {
-            *slash = 0;
-            _snprintf(cand, MAX_PATH, "%s\\d3d8_real.dll", dir);
-            if (GetFileAttributesA(cand) != INVALID_FILE_ATTRIBUTES)
-                return cand;
-        }
+  static char cand[MAX_PATH];
+  char dir[MAX_PATH];
+  DWORD n = GetModuleFileNameA(g_self, dir, MAX_PATH);
+  if (n && n < MAX_PATH) {
+    char *slash = strrchr(dir, '\\');
+    if (slash) {
+      *slash = 0;
+      _snprintf(cand, MAX_PATH, "%s\\d3d8_real.dll", dir);
+      if (GetFileAttributesA(cand) != INVALID_FILE_ATTRIBUTES)
+        return cand;
     }
-    if (GetWindowsDirectoryA(dir, MAX_PATH)) {
-        _snprintf(cand, MAX_PATH, "%s\\syswow64\\d3d8.dll", dir);
-        if (GetFileAttributesA(cand) != INVALID_FILE_ATTRIBUTES)
-            return cand;
-    }
-    if (GetSystemDirectoryA(dir, MAX_PATH)) {
-        _snprintf(cand, MAX_PATH, "%s\\d3d8.dll", dir);
-        if (GetFileAttributesA(cand) != INVALID_FILE_ATTRIBUTES)
-            return cand;
-    }
-    return NULL;
+  }
+  if (GetWindowsDirectoryA(dir, MAX_PATH)) {
+    _snprintf(cand, MAX_PATH, "%s\\syswow64\\d3d8.dll", dir);
+    if (GetFileAttributesA(cand) != INVALID_FILE_ATTRIBUTES)
+      return cand;
+  }
+  if (GetSystemDirectoryA(dir, MAX_PATH)) {
+    _snprintf(cand, MAX_PATH, "%s\\d3d8.dll", dir);
+    if (GetFileAttributesA(cand) != INVALID_FILE_ATTRIBUTES)
+      return cand;
+  }
+  return NULL;
 }
 
 typedef void *(WINAPI *Direct3DCreate8_t)(UINT);
 
 static Direct3DCreate8_t get_real_create8(void) {
-    if (g_realdll)
-        return (Direct3DCreate8_t)(void *)GetProcAddress(g_realdll, "Direct3DCreate8");
-    const char *path = find_real_path();
-    if (path) {
-        _snprintf(g_realpath, MAX_PATH, "%s", path);
-        g_realdll = LoadLibraryA(path);
-    }
-    if (!g_realdll) {
-        /* A silent NULL here looks EXACTLY like a game that renders nothing;
-           say it loudly. */
-        plog("PROXY ERROR t=%lu could not load the real d3d8.dll "
-             "(tried alongside-proxy, syswow64, system dir) -- "
-             "Direct3DCreate8 will return NULL", (unsigned long)GetTickCount());
-        return NULL;
-    }
-    Direct3DCreate8_t p =
-        (Direct3DCreate8_t)(void *)GetProcAddress(g_realdll, "Direct3DCreate8");
-    if (!p)
-        plog("PROXY ERROR t=%lu real d3d8 at %s has NO Direct3DCreate8 "
-             "export -- Direct3DCreate8 will return NULL",
-             (unsigned long)GetTickCount(), g_realpath);
-    return p;
+  if (g_realdll)
+    return (Direct3DCreate8_t)(void *)GetProcAddress(g_realdll,
+                                                     "Direct3DCreate8");
+  const char *path = find_real_path();
+  if (path) {
+    _snprintf(g_realpath, MAX_PATH, "%s", path);
+    g_realdll = LoadLibraryA(path);
+  }
+  if (!g_realdll) {
+    /* A silent NULL here looks EXACTLY like a game that renders nothing;
+       say it loudly. */
+    plog("PROXY ERROR t=%lu could not load the real d3d8.dll "
+         "(tried alongside-proxy, syswow64, system dir) -- "
+         "Direct3DCreate8 will return NULL",
+         (unsigned long)GetTickCount());
+    return NULL;
+  }
+  Direct3DCreate8_t p =
+      (Direct3DCreate8_t)(void *)GetProcAddress(g_realdll, "Direct3DCreate8");
+  if (!p)
+    plog("PROXY ERROR t=%lu real d3d8 at %s has NO Direct3DCreate8 "
+         "export -- Direct3DCreate8 will return NULL",
+         (unsigned long)GetTickCount(), g_realpath);
+  return p;
 }
 
 /* -------------------------------------------------------------- wrappers */
 
 static void *wrap_alloc(void *real, const void **fwd_table, int nslots,
                         const char *what) {
-    struct wrap *w = (struct wrap *)malloc(sizeof(struct wrap));
-    const void **vt = (const void **)malloc(nslots * sizeof(void *));
-    if (!w || !vt) {
-        /* Passing the real object through unwrapped keeps the game alive but
-           loses the log -- that must not be silent. */
-        plog("PROXY ERROR t=%lu out of memory wrapping %s -- passing the "
-             "REAL object through UNWRAPPED (no light logging from it)",
-             (unsigned long)GetTickCount(), what);
-        free(w); free(vt);
-        return real;
-    }
-    memcpy(vt, fwd_table, nslots * sizeof(void *));
-    w->vtbl = vt;
-    w->real = real;
-    w->real_vtbl = *(const void ***)real;
-    return w;
+  struct wrap *w = (struct wrap *)malloc(sizeof(struct wrap));
+  const void **vt = (const void **)malloc(nslots * sizeof(void *));
+  if (!w || !vt) {
+    /* Passing the real object through unwrapped keeps the game alive but
+       loses the log -- that must not be silent. */
+    plog("PROXY ERROR t=%lu out of memory wrapping %s -- passing the "
+         "REAL object through UNWRAPPED (no light logging from it)",
+         (unsigned long)GetTickCount(), what);
+    free(w);
+    free(vt);
+    return real;
+  }
+  memcpy(vt, fwd_table, nslots * sizeof(void *));
+  w->vtbl = vt;
+  w->real = real;
+  w->real_vtbl = *(const void ***)real;
+  return w;
 }
 
 /*
@@ -387,9 +364,9 @@ static void *wrap_alloc(void *real, const void **fwd_table, int nslots,
 static void caps_dump(const D3DCAPS8 *c, const char *who) {
 #define F(name) plog("CAPS %-28s = 0x%08lx", #name, (unsigned long)c->name);
 #define G(name) plog("CAPS %-28s = %.6f", #name, (double)c->name);
-    plog("CAPS BLOCK from %s -- %d field(s); compare with the port's",
-         who, D3D8_CAPS_FIELD_COUNT);
-    D3D8_CAPS_FIELDS
+  plog("CAPS BLOCK from %s -- %d field(s); compare with the port's", who,
+       D3D8_CAPS_FIELD_COUNT);
+  D3D8_CAPS_FIELDS
 #undef F
 #undef G
 }
@@ -397,32 +374,32 @@ static void caps_dump(const D3DCAPS8 *c, const char *who) {
 /* IDirect3D8::GetDeviceCaps (slot 13): (this, Adapter, DeviceType, pCaps) */
 static HRESULT WINAPI d3d_GetDeviceCaps(struct wrap *w, UINT adapter,
                                         UINT devtype, D3DCAPS8 *caps) {
-    typedef HRESULT (WINAPI *fn_t)(void *, UINT, UINT, D3DCAPS8 *);
-    static int told;
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_D3D8_GET_DEVICE_CAPS])
-        (w->real, adapter, devtype, caps);
-    if (FAILED(hr) || !caps)
-        plog("CAPS BLOCK from IDirect3D8::GetDeviceCaps(adapter=%u type=%u) "
-             "UNAVAILABLE -- hr=0x%08lx caps=%p", (unsigned)adapter,
-             (unsigned)devtype, (unsigned long)hr, (void *)caps);
-    else if (!told++)
-        caps_dump(caps, "IDirect3D8::GetDeviceCaps");
-    return hr;
+  typedef HRESULT(WINAPI * fn_t)(void *, UINT, UINT, D3DCAPS8 *);
+  static int told;
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_D3D8_GET_DEVICE_CAPS])(w->real, adapter,
+                                                               devtype, caps);
+  if (FAILED(hr) || !caps)
+    plog("CAPS BLOCK from IDirect3D8::GetDeviceCaps(adapter=%u type=%u) "
+         "UNAVAILABLE -- hr=0x%08lx caps=%p",
+         (unsigned)adapter, (unsigned)devtype, (unsigned long)hr, (void *)caps);
+  else if (!told++)
+    caps_dump(caps, "IDirect3D8::GetDeviceCaps");
+  return hr;
 }
 
 /* IDirect3DDevice8::GetDeviceCaps (slot 7): (this, pCaps) */
 static HRESULT WINAPI dev_GetDeviceCaps(struct wrap *w, D3DCAPS8 *caps) {
-    typedef HRESULT (WINAPI *fn_t)(void *, D3DCAPS8 *);
-    static int told;
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_DEV_GET_DEVICE_CAPS])(w->real, caps);
-    if (FAILED(hr) || !caps)
-        plog("CAPS BLOCK from IDirect3DDevice8::GetDeviceCaps UNAVAILABLE -- "
-             "hr=0x%08lx caps=%p", (unsigned long)hr, (void *)caps);
-    else if (!told++)
-        caps_dump(caps, "IDirect3DDevice8::GetDeviceCaps");
-    return hr;
+  typedef HRESULT(WINAPI * fn_t)(void *, D3DCAPS8 *);
+  static int told;
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_DEV_GET_DEVICE_CAPS])(w->real, caps);
+  if (FAILED(hr) || !caps)
+    plog("CAPS BLOCK from IDirect3DDevice8::GetDeviceCaps UNAVAILABLE -- "
+         "hr=0x%08lx caps=%p",
+         (unsigned long)hr, (void *)caps);
+  else if (!told++)
+    caps_dump(caps, "IDirect3DDevice8::GetDeviceCaps");
+  return hr;
 }
-
 
 /* ------------------------------------------------- the frame's GEOMETRY */
 
@@ -431,7 +408,7 @@ static HRESULT WINAPI dev_GetDeviceCaps(struct wrap *w, D3DCAPS8 *caps) {
  * format the port writes (X2_DRAW_OBJ).
  *
  * This is the only way to answer "is the head flat before anything of ours
- * touches it". The port's own dump shows what the RECOMPILED skinning code
+ * touches it". The port's own dump shows what the guest skinning code
  * produced; this shows what the SAME engine produces when its x86 runs on a
  * real CPU. A difference is a translator defect and not a renderer one, and
  * nothing short of the two files side by side can tell those apart.
@@ -447,15 +424,15 @@ static HRESULT WINAPI dev_GetDeviceCaps(struct wrap *w, D3DCAPS8 *caps) {
  */
 #define VK_F9_KEY 0x78
 
-struct vbwrap {                      /* the first three fields ARE struct wrap */
-    const void **vtbl;
-    void *real;
-    const void **real_vtbl;
-    DWORD  bytes;                    /* the buffer's length, from Create */
-    DWORD  fvf;
-    unsigned char *shadow;           /* our copy of what the engine last wrote */
-    void  *lock_ptr;                 /* what Lock handed back, while locked */
-    DWORD  lock_off, lock_size;
+struct vbwrap { /* the first three fields ARE struct wrap */
+  const void **vtbl;
+  void *real;
+  const void **real_vtbl;
+  DWORD bytes; /* the buffer's length, from Create */
+  DWORD fvf;
+  unsigned char *shadow; /* our copy of what the engine last wrote */
+  void *lock_ptr;        /* what Lock handed back, while locked */
+  DWORD lock_off, lock_size;
 };
 
 static FILE *g_obj;
@@ -468,180 +445,180 @@ static DWORD g_stream0_stride, g_fvf, g_base_vertex;
    d3d8_fvf_layout in src/d3d8/d3d8_drawcall.c -- position first, always at 0;
    XYZRHW is four floats. Returns 0 for a format with no position (a shader
    declaration), which must NOT be read from offset zero. */
-static int fvf_pos(DWORD fvf, DWORD *pos_off)
-{
-    DWORD p = fvf & 0x00Eu;
-    *pos_off = 0;
-    return p >= 0x002u && p <= 0x00Eu;
+static int fvf_pos(DWORD fvf, DWORD *pos_off) {
+  DWORD p = fvf & 0x00Eu;
+  *pos_off = 0;
+  return p >= 0x002u && p <= 0x00Eu;
 }
 
-static void obj_close(void)
-{
-    if (!g_obj) return;
-    plog("GEOMETRY %lu draw(s), %lu vertex(es) written", g_obj_draw,
-         g_obj_verts);
-    fclose(g_obj);
-    g_obj = NULL;
-    g_obj_frame_open = 0;
+static void obj_close(void) {
+  if (!g_obj)
+    return;
+  plog("GEOMETRY %lu draw(s), %lu vertex(es) written", g_obj_draw, g_obj_verts);
+  fclose(g_obj);
+  g_obj = NULL;
+  g_obj_frame_open = 0;
 }
 
-static void obj_open(void)
-{
-    if (g_obj) return;
-    g_obj = fopen("d3d8_frame.obj", "w");
-    g_obj_verts = 0;
-    g_obj_draw = 0;
-    if (!g_obj) {
-        plog("GEOMETRY ERROR could not open d3d8_frame.obj -- NOTHING was "
-             "written, which is not the same as an empty frame");
-        return;
-    }
-    g_obj_frame_open = 1;
-    plog("GEOMETRY armed -- every draw of this frame goes to d3d8_frame.obj");
+static void obj_open(void) {
+  if (g_obj)
+    return;
+  g_obj = fopen("d3d8_frame.obj", "w");
+  g_obj_verts = 0;
+  g_obj_draw = 0;
+  if (!g_obj) {
+    plog("GEOMETRY ERROR could not open d3d8_frame.obj -- NOTHING was "
+         "written, which is not the same as an empty frame");
+    return;
+  }
+  g_obj_frame_open = 1;
+  plog("GEOMETRY armed -- every draw of this frame goes to d3d8_frame.obj");
 }
 
 /* One draw's vertices, object space, as `o draw<n>_...` + `v x y z`. */
-static void obj_draw(DWORD prim_count, DWORD first_vertex, DWORD nverts)
-{
-    struct vbwrap *vb = g_stream0;
-    DWORD pos_off, stride, i;
-    if (!g_obj || !vb || !vb->shadow) return;
-    stride = g_stream0_stride;
-    if (!stride || !fvf_pos(g_fvf, &pos_off)) return;
-    g_obj_draw++;
-    fprintf(g_obj, "o draw%lu_fvf%05lx_stride%lu_prims%lu\n", g_obj_draw,
-            (unsigned long)g_fvf, (unsigned long)stride,
-            (unsigned long)prim_count);
-    for (i = 0; i < nverts; i++) {
-        DWORD v = first_vertex + i;
-        const float *p;
-        if ((v + 1) * stride > vb->bytes) break;   /* past the buffer: stop */
-        p = (const float *)(vb->shadow + (size_t)v * stride + pos_off);
-        fprintf(g_obj, "v %.4f %.4f %.4f\n", p[0], p[1], p[2]);
-        g_obj_verts++;
-    }
+static void obj_draw(DWORD prim_count, DWORD first_vertex, DWORD nverts) {
+  struct vbwrap *vb = g_stream0;
+  DWORD pos_off, stride, i;
+  if (!g_obj || !vb || !vb->shadow)
+    return;
+  stride = g_stream0_stride;
+  if (!stride || !fvf_pos(g_fvf, &pos_off))
+    return;
+  g_obj_draw++;
+  fprintf(g_obj, "o draw%lu_fvf%05lx_stride%lu_prims%lu\n", g_obj_draw,
+          (unsigned long)g_fvf, (unsigned long)stride,
+          (unsigned long)prim_count);
+  for (i = 0; i < nverts; i++) {
+    DWORD v = first_vertex + i;
+    const float *p;
+    if ((v + 1) * stride > vb->bytes)
+      break; /* past the buffer: stop */
+    p = (const float *)(vb->shadow + (size_t)v * stride + pos_off);
+    fprintf(g_obj, "v %.4f %.4f %.4f\n", p[0], p[1], p[2]);
+    g_obj_verts++;
+  }
 }
 
 /* IDirect3DVertexBuffer8::Lock (slot 11):
    (this, OffsetToLock, SizeToLock, ppbData, Flags) */
 static HRESULT WINAPI vb_Lock(struct vbwrap *w, DWORD off, DWORD size,
-                              BYTE **out, DWORD flags)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, BYTE **, DWORD);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_VB_LOCK])(w->real, off, size, out,
-                                                    flags);
-    w->lock_ptr = NULL;
-    if (SUCCEEDED(hr) && out && *out) {
-        w->lock_ptr = *out;
-        w->lock_off = off;
-        w->lock_size = size ? size : (w->bytes > off ? w->bytes - off : 0);
-    }
-    return hr;
+                              BYTE **out, DWORD flags) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, BYTE **, DWORD);
+  HRESULT hr =
+      ((fn_t)w->real_vtbl[SLOT_VB_LOCK])(w->real, off, size, out, flags);
+  w->lock_ptr = NULL;
+  if (SUCCEEDED(hr) && out && *out) {
+    w->lock_ptr = *out;
+    w->lock_off = off;
+    w->lock_size = size ? size : (w->bytes > off ? w->bytes - off : 0);
+  }
+  return hr;
 }
 
 /* IDirect3DVertexBuffer8::Unlock (slot 12): (this) -- snapshot before
    forwarding, because after Unlock the pointer is the driver's again. */
-static HRESULT WINAPI vb_Unlock(struct vbwrap *w)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *);
-    if (w->lock_ptr && w->bytes) {
-        if (!w->shadow) w->shadow = (unsigned char *)calloc(1, w->bytes);
-        if (w->shadow && w->lock_off + w->lock_size <= w->bytes)
-            memcpy(w->shadow + w->lock_off, w->lock_ptr, w->lock_size);
-    }
-    w->lock_ptr = NULL;
-    return ((fn_t)w->real_vtbl[SLOT_VB_UNLOCK])(w->real);
+static HRESULT WINAPI vb_Unlock(struct vbwrap *w) {
+  typedef HRESULT(WINAPI * fn_t)(void *);
+  if (w->lock_ptr && w->bytes) {
+    if (!w->shadow)
+      w->shadow = (unsigned char *)calloc(1, w->bytes);
+    if (w->shadow && w->lock_off + w->lock_size <= w->bytes)
+      memcpy(w->shadow + w->lock_off, w->lock_ptr, w->lock_size);
+  }
+  w->lock_ptr = NULL;
+  return ((fn_t)w->real_vtbl[SLOT_VB_UNLOCK])(w->real);
 }
 
-static void *wrap_vertexbuffer(void *real, DWORD bytes, DWORD fvf)
-{
-    struct vbwrap *w = (struct vbwrap *)calloc(1, sizeof *w);
-    const void **vt = (const void **)malloc(D3DVB_SLOTS * sizeof(void *));
-    if (!w || !vt) {
-        plog("GEOMETRY ERROR out of memory wrapping a vertex buffer -- it is "
-             "passed through UNWRAPPED and its vertices cannot be dumped");
-        free(w); free(vt);
-        return real;
-    }
-    memcpy(vt, fwdvb_table, D3DVB_SLOTS * sizeof(void *));
-    w->vtbl = vt;
-    w->real = real;
-    w->real_vtbl = *(const void ***)real;
-    w->bytes = bytes;
-    w->fvf = fvf;
-    w->vtbl[SLOT_VB_LOCK] = (const void *)vb_Lock;
-    w->vtbl[SLOT_VB_UNLOCK] = (const void *)vb_Unlock;
-    return w;
+static void *wrap_vertexbuffer(void *real, DWORD bytes, DWORD fvf) {
+  struct vbwrap *w = (struct vbwrap *)calloc(1, sizeof *w);
+  const void **vt = (const void **)malloc(D3DVB_SLOTS * sizeof(void *));
+  if (!w || !vt) {
+    plog("GEOMETRY ERROR out of memory wrapping a vertex buffer -- it is "
+         "passed through UNWRAPPED and its vertices cannot be dumped");
+    free(w);
+    free(vt);
+    return real;
+  }
+  memcpy(vt, fwdvb_table, D3DVB_SLOTS * sizeof(void *));
+  w->vtbl = vt;
+  w->real = real;
+  w->real_vtbl = *(const void ***)real;
+  w->bytes = bytes;
+  w->fvf = fvf;
+  w->vtbl[SLOT_VB_LOCK] = (const void *)vb_Lock;
+  w->vtbl[SLOT_VB_UNLOCK] = (const void *)vb_Unlock;
+  return w;
 }
 
 /* Hook the shared real texture vtable rather than wrapping texture objects.
    That preserves COM identity through QueryInterface, GetDevice and the
    device's GetTexture while still observing GetSurfaceLevel. */
-typedef HRESULT (WINAPI *texture_get_surface_level_fn)(void *, DWORD, void **);
+typedef HRESULT(WINAPI *texture_get_surface_level_fn)(void *, DWORD, void **);
 typedef struct {
-    void **vtable;
-    texture_get_surface_level_fn original;
+  void **vtable;
+  texture_get_surface_level_fn original;
 } TextureVtableHook;
 
 #define TEXTURE_VTABLE_HOOK_MAX 32
 static TextureVtableHook g_texture_hooks[TEXTURE_VTABLE_HOOK_MAX];
 static unsigned g_texture_hook_count;
 
-static TextureVtableHook *texture_hook_for_vtable(void **vtable)
-{
-    unsigned i;
-    for (i = 0; i < g_texture_hook_count; i++)
-        if (g_texture_hooks[i].vtable == vtable) return &g_texture_hooks[i];
-    return NULL;
+static TextureVtableHook *texture_hook_for_vtable(void **vtable) {
+  unsigned i;
+  for (i = 0; i < g_texture_hook_count; i++)
+    if (g_texture_hooks[i].vtable == vtable)
+      return &g_texture_hooks[i];
+  return NULL;
 }
 
 static HRESULT WINAPI observed_GetSurfaceLevel(void *texture, DWORD level,
-                                               void **out)
-{
-    void **vtable = *(void ***)texture;
-    TextureVtableHook *hook = texture_hook_for_vtable(vtable);
-    HRESULT hr;
-    if (!hook) return E_UNEXPECTED;
-    hr = hook->original(texture, level, out);
-    shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_GET_SURFACE_LEVEL,
-                          (uintptr_t)texture,
-                          (uintptr_t)((SUCCEEDED(hr) && out) ? *out : NULL),
-                          level, 0, 0, 0, 0, 0, (long)hr);
-    return hr;
+                                               void **out) {
+  void **vtable = *(void ***)texture;
+  TextureVtableHook *hook = texture_hook_for_vtable(vtable);
+  HRESULT hr;
+  if (!hook)
+    return E_UNEXPECTED;
+  hr = hook->original(texture, level, out);
+  shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_GET_SURFACE_LEVEL,
+                        (uintptr_t)texture,
+                        (uintptr_t)((SUCCEEDED(hr) && out) ? *out : NULL),
+                        level, 0, 0, 0, 0, 0, (long)hr);
+  return hr;
 }
 
-static void observe_texture_vtable(void *texture)
-{
-    void **vtable;
-    TextureVtableHook *hook;
-    DWORD old_protect, ignored;
-    if (!texture || !g_shadow.enabled) return;
-    vtable = *(void ***)texture;
-    if (texture_hook_for_vtable(vtable)) return;
-    if (g_texture_hook_count == TEXTURE_VTABLE_HOOK_MAX) {
-        plog("SHADOW TRACE REFUSED: more than %u texture vtables; "
-             "GetSurfaceLevel coverage is incomplete", TEXTURE_VTABLE_HOOK_MAX);
-        shadow_trace_texture_hook_failure(&g_shadow);
-        return;
-    }
-    if (!VirtualProtect(&vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL], sizeof(void *),
-                        PAGE_EXECUTE_READWRITE, &old_protect)) {
-        plog("SHADOW TRACE REFUSED: texture vtable is not patchable; "
-             "GetSurfaceLevel coverage is incomplete");
-        shadow_trace_texture_hook_failure(&g_shadow);
-        return;
-    }
-    hook = &g_texture_hooks[g_texture_hook_count++];
-    hook->vtable = vtable;
-    hook->original = (texture_get_surface_level_fn)
-        vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL];
-    vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL] =
-        (void *)observed_GetSurfaceLevel;
-    if (!VirtualProtect(&vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL], sizeof(void *),
-                        old_protect, &ignored)) {
-        plog("SHADOW TRACE REFUSED: texture vtable protection was not restored");
-        shadow_trace_texture_hook_failure(&g_shadow);
-    }
+static void observe_texture_vtable(void *texture) {
+  void **vtable;
+  TextureVtableHook *hook;
+  DWORD old_protect, ignored;
+  if (!texture || !g_shadow.enabled)
+    return;
+  vtable = *(void ***)texture;
+  if (texture_hook_for_vtable(vtable))
+    return;
+  if (g_texture_hook_count == TEXTURE_VTABLE_HOOK_MAX) {
+    plog("SHADOW TRACE REFUSED: more than %u texture vtables; "
+         "GetSurfaceLevel coverage is incomplete",
+         TEXTURE_VTABLE_HOOK_MAX);
+    shadow_trace_texture_hook_failure(&g_shadow);
+    return;
+  }
+  if (!VirtualProtect(&vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL], sizeof(void *),
+                      PAGE_EXECUTE_READWRITE, &old_protect)) {
+    plog("SHADOW TRACE REFUSED: texture vtable is not patchable; "
+         "GetSurfaceLevel coverage is incomplete");
+    shadow_trace_texture_hook_failure(&g_shadow);
+    return;
+  }
+  hook = &g_texture_hooks[g_texture_hook_count++];
+  hook->vtable = vtable;
+  hook->original =
+      (texture_get_surface_level_fn)vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL];
+  vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL] = (void *)observed_GetSurfaceLevel;
+  if (!VirtualProtect(&vtable[SLOT_TEXTURE_GET_SURFACE_LEVEL], sizeof(void *),
+                      old_protect, &ignored)) {
+    plog("SHADOW TRACE REFUSED: texture vtable protection was not restored");
+    shadow_trace_texture_hook_failure(&g_shadow);
+  }
 }
 
 /* IDirect3DDevice8::CreateTexture (slot 20). Usage is the discriminator:
@@ -649,107 +626,100 @@ static void observe_texture_vtable(void *texture)
    from standalone CreateRenderTarget, and the renderer must implement the one
    the original engine actually chooses. */
 static HRESULT WINAPI dev_CreateTexture(struct wrap *w, DWORD width,
-                                        DWORD height, DWORD levels,
-                                        DWORD usage, DWORD format, DWORD pool,
-                                        void **out)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD, DWORD,
-                                   DWORD, void **);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_TEXTURE])
-        (w->real, width, height, levels, usage, format, pool, out);
-    void *real = (SUCCEEDED(hr) && out) ? *out : NULL;
-    shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_CREATE_TEXTURE,
-                          (uintptr_t)real, 0, width, height, levels, usage,
-                          format, pool, (long)hr);
-    observe_texture_vtable(real);
-    return hr;
+                                        DWORD height, DWORD levels, DWORD usage,
+                                        DWORD format, DWORD pool, void **out) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD, DWORD, DWORD,
+                                 DWORD, void **);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_TEXTURE])(
+      w->real, width, height, levels, usage, format, pool, out);
+  void *real = (SUCCEEDED(hr) && out) ? *out : NULL;
+  shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_CREATE_TEXTURE,
+                        (uintptr_t)real, 0, width, height, levels, usage,
+                        format, pool, (long)hr);
+  observe_texture_vtable(real);
+  return hr;
 }
 
 static HRESULT WINAPI dev_CreateRenderTarget(struct wrap *w, DWORD width,
                                              DWORD height, DWORD format,
                                              DWORD multisample, BOOL lockable,
-                                             void **out)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD, BOOL,
-                                   void **);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_RENDER_TARGET])
-        (w->real, width, height, format, multisample, lockable, out);
-    shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_CREATE_RENDER_TARGET,
-                          (uintptr_t)((SUCCEEDED(hr) && out) ? *out : NULL), 0,
-                          width, height, format, multisample,
-                          lockable ? 1u : 0u, 0, (long)hr);
-    return hr;
+                                             void **out) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD, DWORD, BOOL,
+                                 void **);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_RENDER_TARGET])(
+      w->real, width, height, format, multisample, lockable, out);
+  shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_CREATE_RENDER_TARGET,
+                        (uintptr_t)((SUCCEEDED(hr) && out) ? *out : NULL), 0,
+                        width, height, format, multisample, lockable ? 1u : 0u,
+                        0, (long)hr);
+  return hr;
 }
 
-static HRESULT WINAPI dev_CreateDepthStencilSurface(struct wrap *w,
-                                                    DWORD width, DWORD height,
-                                                    DWORD format,
+static HRESULT WINAPI dev_CreateDepthStencilSurface(struct wrap *w, DWORD width,
+                                                    DWORD height, DWORD format,
                                                     DWORD multisample,
-                                                    void **out)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD, void **);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_DEPTH_STENCIL])
-        (w->real, width, height, format, multisample, out);
-    shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_CREATE_DEPTH_STENCIL,
-                          (uintptr_t)((SUCCEEDED(hr) && out) ? *out : NULL), 0,
-                          width, height, format, multisample, 0, 0, (long)hr);
-    return hr;
+                                                    void **out) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD, DWORD, void **);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_DEPTH_STENCIL])(
+      w->real, width, height, format, multisample, out);
+  shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_CREATE_DEPTH_STENCIL,
+                        (uintptr_t)((SUCCEEDED(hr) && out) ? *out : NULL), 0,
+                        width, height, format, multisample, 0, 0, (long)hr);
+  return hr;
 }
 
 static HRESULT WINAPI dev_CopyRects(struct wrap *w, void *source,
                                     const void *source_rects, DWORD count,
                                     void *destination,
-                                    const void *destination_points)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, void *, const void *, DWORD, void *,
-                                   const void *);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_COPY_RECTS])
-        (w->real, source, source_rects, count, destination, destination_points);
-    shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_COPY_RECTS,
-                          (uintptr_t)source, (uintptr_t)destination, count,
-                          source_rects ? 1u : 0u,
-                          destination_points ? 1u : 0u, 0, 0, 0, (long)hr);
-    return hr;
+                                    const void *destination_points) {
+  typedef HRESULT(WINAPI * fn_t)(void *, void *, const void *, DWORD, void *,
+                                 const void *);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_COPY_RECTS])(
+      w->real, source, source_rects, count, destination, destination_points);
+  shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_COPY_RECTS,
+                        (uintptr_t)source, (uintptr_t)destination, count,
+                        source_rects ? 1u : 0u, destination_points ? 1u : 0u, 0,
+                        0, 0, (long)hr);
+  return hr;
 }
 
 static HRESULT WINAPI dev_UpdateTexture(struct wrap *w, void *source,
-                                        void *destination)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, void *, void *);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_UPDATE_TEXTURE])
-        (w->real, source, destination);
-    shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_UPDATE_TEXTURE,
-                          (uintptr_t)source, (uintptr_t)destination,
-                          0, 0, 0, 0, 0, 0,
-                          (long)hr);
-    return hr;
+                                        void *destination) {
+  typedef HRESULT(WINAPI * fn_t)(void *, void *, void *);
+  HRESULT hr =
+      ((fn_t)w->real_vtbl[SLOT_UPDATE_TEXTURE])(w->real, source, destination);
+  shadow_trace_resource(&g_shadow, SHADOW_RESOURCE_UPDATE_TEXTURE,
+                        (uintptr_t)source, (uintptr_t)destination, 0, 0, 0, 0,
+                        0, 0, (long)hr);
+  return hr;
 }
 
 /* IDirect3DDevice8::CreateVertexBuffer (slot 23):
    (this, Length, Usage, FVF, Pool, ppVertexBuffer) */
 static HRESULT WINAPI dev_CreateVertexBuffer(struct wrap *w, DWORD len,
-                                             DWORD usage, DWORD fvf,
-                                             DWORD pool, void **out)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD, void **);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_VERTEX_BUFFER])
-        (w->real, len, usage, fvf, pool, out);
-    if (SUCCEEDED(hr) && out && *out)
-        *out = wrap_vertexbuffer(*out, len, fvf);
-    return hr;
+                                             DWORD usage, DWORD fvf, DWORD pool,
+                                             void **out) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD, DWORD, void **);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_VERTEX_BUFFER])(
+      w->real, len, usage, fvf, pool, out);
+  if (SUCCEEDED(hr) && out && *out)
+    *out = wrap_vertexbuffer(*out, len, fvf);
+  return hr;
 }
 
 /* IDirect3DDevice8::SetStreamSource (slot 83):
    (this, StreamNumber, pStreamData, Stride) */
 static HRESULT WINAPI dev_SetStreamSource(struct wrap *w, DWORD stream,
-                                          void *vb, DWORD stride)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, void *, DWORD);
-    struct vbwrap *ours = (struct vbwrap *)vb;
-    if (stream == 0) { g_stream0 = ours; g_stream0_stride = stride; }
-    /* The REAL buffer goes to the real device -- our wrapper is not one. */
-    return ((fn_t)w->real_vtbl[SLOT_SET_STREAM_SOURCE])
-        (w->real, stream, ours ? ours->real : NULL, stride);
+                                          void *vb, DWORD stride) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, void *, DWORD);
+  struct vbwrap *ours = (struct vbwrap *)vb;
+  if (stream == 0) {
+    g_stream0 = ours;
+    g_stream0_stride = stride;
+  }
+  /* The REAL buffer goes to the real device -- our wrapper is not one. */
+  return ((fn_t)w->real_vtbl[SLOT_SET_STREAM_SOURCE])(
+      w->real, stream, ours ? ours->real : NULL, stride);
 }
 
 /*
@@ -763,27 +733,32 @@ static HRESULT WINAPI dev_SetStreamSource(struct wrap *w, DWORD stream,
  * so it is kept rather than removed after the fact.
  */
 #define VS_SEEN_MAX 16
-static struct { DWORD handle; unsigned long n; } g_vs_seen[VS_SEEN_MAX];
+static struct {
+  DWORD handle;
+  unsigned long n;
+} g_vs_seen[VS_SEEN_MAX];
 static int g_vs_nseen;
 
-static HRESULT WINAPI dev_SetVertexShader(struct wrap *w, DWORD handle)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD);
-    int i;
-    g_fvf = handle;
-    for (i = 0; i < g_vs_nseen; i++)
-        if (g_vs_seen[i].handle == handle) { g_vs_seen[i].n++; goto done; }
-    if (g_vs_nseen < VS_SEEN_MAX) {
-        g_vs_seen[g_vs_nseen].handle = handle;
-        g_vs_seen[g_vs_nseen].n = 1;
-        g_vs_nseen++;
-        plog("SETVERTEXSHADER t=%lu handle=0x%08lx  %s",
-             (unsigned long)GetTickCount(), (unsigned long)handle,
-             (handle & 1u) ? "a SHADER HANDLE (D3DFVF_RESERVED0 set)"
-                           : "an FVF code");
+static HRESULT WINAPI dev_SetVertexShader(struct wrap *w, DWORD handle) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD);
+  int i;
+  g_fvf = handle;
+  for (i = 0; i < g_vs_nseen; i++)
+    if (g_vs_seen[i].handle == handle) {
+      g_vs_seen[i].n++;
+      goto done;
     }
+  if (g_vs_nseen < VS_SEEN_MAX) {
+    g_vs_seen[g_vs_nseen].handle = handle;
+    g_vs_seen[g_vs_nseen].n = 1;
+    g_vs_nseen++;
+    plog("SETVERTEXSHADER t=%lu handle=0x%08lx  %s",
+         (unsigned long)GetTickCount(), (unsigned long)handle,
+         (handle & 1u) ? "a SHADER HANDLE (D3DFVF_RESERVED0 set)"
+                       : "an FVF code");
+  }
 done:
-    return ((fn_t)w->real_vtbl[SLOT_SET_VERTEX_SHADER])(w->real, handle);
+  return ((fn_t)w->real_vtbl[SLOT_SET_VERTEX_SHADER])(w->real, handle);
 }
 
 /* IDirect3DDevice8::CreateVertexShader (slot 86):
@@ -791,18 +766,17 @@ done:
    runtime hands back, which is what SetVertexShader is later given. */
 static HRESULT WINAPI dev_CreateVertexShader(struct wrap *w, const DWORD *decl,
                                              const DWORD *func, DWORD *handle,
-                                             DWORD usage)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, const DWORD *, const DWORD *,
-                                   DWORD *, DWORD);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_VERTEX_SHADER])
-        (w->real, decl, func, handle, usage);
-    plog("CREATEVERTEXSHADER t=%lu hr=0x%08lx handle=0x%08lx usage=0x%lx "
-         "decl=%p func=%p", (unsigned long)GetTickCount(),
-         (unsigned long)hr,
-         (unsigned long)((SUCCEEDED(hr) && handle) ? *handle : 0),
-         (unsigned long)usage, (const void *)decl, (const void *)func);
-    return hr;
+                                             DWORD usage) {
+  typedef HRESULT(WINAPI * fn_t)(void *, const DWORD *, const DWORD *, DWORD *,
+                                 DWORD);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_VERTEX_SHADER])(
+      w->real, decl, func, handle, usage);
+  plog("CREATEVERTEXSHADER t=%lu hr=0x%08lx handle=0x%08lx usage=0x%lx "
+       "decl=%p func=%p",
+       (unsigned long)GetTickCount(), (unsigned long)hr,
+       (unsigned long)((SUCCEEDED(hr) && handle) ? *handle : 0),
+       (unsigned long)usage, (const void *)decl, (const void *)func);
+  return hr;
 }
 
 /*
@@ -814,9 +788,9 @@ static HRESULT WINAPI dev_CreateVertexShader(struct wrap *w, const DWORD *decl,
  * The captured shader reads `dp4 r3.x, v0, c[a0.x + 6]` with a0.x built from
  * a D3DCOLOR byte times c[0].w -- so these registers ARE the bone matrices
  * the engine's animation code computed. On this side that code ran as x86 on
- * a real CPU; in the port it ran as recompiled C. Comparing the two answers
- * that question directly, which is the only thing that can: the port's vertex
- * buffers hold the UNSKINNED bind pose and match the control already.
+ * a real CPU; in the port it runs through the guest engine. Comparing the two
+ * answers that question directly, which is the only thing that can: the port's
+ * vertex buffers hold the UNSKINNED bind pose and match the control already.
  *
  * Shadowed rather than logged per call -- the engine sets these for every one
  * of ~1800 skinned draws a frame, and a log of that is unreadable. The
@@ -826,318 +800,309 @@ static HRESULT WINAPI dev_CreateVertexShader(struct wrap *w, const DWORD *decl,
 static float g_vsconst[VSCONST_MAX][4];
 
 static HRESULT WINAPI dev_SetVertexShaderConstant(struct wrap *w, DWORD reg,
-                                                  const void *data, DWORD count)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, const void *, DWORD);
-    if (data && reg < VSCONST_MAX) {
-        DWORD n = count;
-        if (reg + n > VSCONST_MAX) n = VSCONST_MAX - reg;
-        memcpy(g_vsconst[reg], data, n * 4 * sizeof(float));
-    }
-    return ((fn_t)w->real_vtbl[SLOT_SET_VERTEX_SHADER_CONSTANT])
-        (w->real, reg, data, count);
+                                                  const void *data,
+                                                  DWORD count) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, const void *, DWORD);
+  if (data && reg < VSCONST_MAX) {
+    DWORD n = count;
+    if (reg + n > VSCONST_MAX)
+      n = VSCONST_MAX - reg;
+    memcpy(g_vsconst[reg], data, n * 4 * sizeof(float));
+  }
+  return ((fn_t)w->real_vtbl[SLOT_SET_VERTEX_SHADER_CONSTANT])(w->real, reg,
+                                                               data, count);
 }
 
 static void vsconst_write(void) {
-    FILE *f = fopen("d3d8_vsconst.txt", "w");
-    int i;
-    if (!f) {
-        plog("VSCONST ERROR could not open d3d8_vsconst.txt -- NOTHING was "
-             "written, which is not the same as an empty constant file");
-        return;
-    }
-    for (i = 0; i < VSCONST_MAX; i++)
-        fprintf(f, "c[%d] %.6f %.6f %.6f %.6f\n", i, g_vsconst[i][0],
-                g_vsconst[i][1], g_vsconst[i][2], g_vsconst[i][3]);
-    fclose(f);
-    plog("VSCONST %d register(s) written to d3d8_vsconst.txt", VSCONST_MAX);
+  FILE *f = fopen("d3d8_vsconst.txt", "w");
+  int i;
+  if (!f) {
+    plog("VSCONST ERROR could not open d3d8_vsconst.txt -- NOTHING was "
+         "written, which is not the same as an empty constant file");
+    return;
+  }
+  for (i = 0; i < VSCONST_MAX; i++)
+    fprintf(f, "c[%d] %.6f %.6f %.6f %.6f\n", i, g_vsconst[i][0],
+            g_vsconst[i][1], g_vsconst[i][2], g_vsconst[i][3]);
+  fclose(f);
+  plog("VSCONST %d register(s) written to d3d8_vsconst.txt", VSCONST_MAX);
 }
 
 /* IDirect3DDevice8::SetIndices (slot 85): (this, pIndexData, BaseVertexIndex).
    The base SHIFTS the vertex range a draw reads, so a dump that ignores it
    reads the wrong mesh out of a shared buffer -- silently, and plausibly. */
-static HRESULT WINAPI dev_SetIndices(struct wrap *w, void *ib, DWORD base)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, void *, DWORD);
-    g_base_vertex = base;
-    return ((fn_t)w->real_vtbl[SLOT_SET_INDICES])(w->real, ib, base);
+static HRESULT WINAPI dev_SetIndices(struct wrap *w, void *ib, DWORD base) {
+  typedef HRESULT(WINAPI * fn_t)(void *, void *, DWORD);
+  g_base_vertex = base;
+  return ((fn_t)w->real_vtbl[SLOT_SET_INDICES])(w->real, ib, base);
 }
 
 /* IDirect3DDevice8::DrawIndexedPrimitive (slot 71):
    (this, Type, MinIndex, NumVertices, StartIndex, PrimitiveCount) */
 static HRESULT WINAPI dev_DrawIndexedPrimitive(struct wrap *w, DWORD type,
                                                DWORD minidx, DWORD nverts,
-                                               DWORD start, DWORD prims)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD, DWORD);
-    shadow_trace_draw(&g_shadow, 1, type, prims,
-                      custom_geometry_call_active());
-    if (g_obj_frame_open) obj_draw(prims, g_base_vertex + minidx, nverts);
-    return ((fn_t)w->real_vtbl[SLOT_DRAW_INDEXED_PRIMITIVE])
-        (w->real, type, minidx, nverts, start, prims);
+                                               DWORD start, DWORD prims) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD, DWORD, DWORD);
+  shadow_trace_draw(&g_shadow, 1, type, prims);
+  if (g_obj_frame_open)
+    obj_draw(prims, g_base_vertex + minidx, nverts);
+  return ((fn_t)w->real_vtbl[SLOT_DRAW_INDEXED_PRIMITIVE])(
+      w->real, type, minidx, nverts, start, prims);
 }
 
 /* IDirect3DDevice8::DrawPrimitive (slot 70):
    (this, Type, StartVertex, PrimitiveCount) */
-static HRESULT WINAPI dev_DrawPrimitive(struct wrap *w, DWORD type,
-                                        DWORD start, DWORD prims)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD);
-    shadow_trace_draw(&g_shadow, 0, type, prims,
-                      custom_geometry_call_active());
-    if (g_obj_frame_open) {
-        DWORD n = 0;
-        switch (type) {
-        case 1: n = prims; break;                 /* POINTLIST     */
-        case 2: n = prims * 2; break;             /* LINELIST      */
-        case 3: n = prims + 1; break;             /* LINESTRIP     */
-        case 4: n = prims * 3; break;             /* TRIANGLELIST  */
-        case 5: case 6: n = prims + 2; break;     /* STRIP, FAN    */
-        default: n = 0; break;
-        }
-        if (n) obj_draw(prims, start, n);
+static HRESULT WINAPI dev_DrawPrimitive(struct wrap *w, DWORD type, DWORD start,
+                                        DWORD prims) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD);
+  shadow_trace_draw(&g_shadow, 0, type, prims);
+  if (g_obj_frame_open) {
+    DWORD n = 0;
+    switch (type) {
+    case 1:
+      n = prims;
+      break; /* POINTLIST     */
+    case 2:
+      n = prims * 2;
+      break; /* LINELIST      */
+    case 3:
+      n = prims + 1;
+      break; /* LINESTRIP     */
+    case 4:
+      n = prims * 3;
+      break; /* TRIANGLELIST  */
+    case 5:
+    case 6:
+      n = prims + 2;
+      break; /* STRIP, FAN    */
+    default:
+      n = 0;
+      break;
     }
-    return ((fn_t)w->real_vtbl[SLOT_DRAW_PRIMITIVE])(w->real, type, start,
-                                                     prims);
+    if (n)
+      obj_draw(prims, start, n);
+  }
+  return ((fn_t)w->real_vtbl[SLOT_DRAW_PRIMITIVE])(w->real, type, start, prims);
 }
 
 static HRESULT WINAPI dev_DrawPrimitiveUP(struct wrap *w, DWORD type,
                                           DWORD prims, const void *vertices,
-                                          DWORD stride)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, const void *, DWORD);
-    shadow_trace_draw(&g_shadow, 0, type, prims,
-                      custom_geometry_call_active());
-    return ((fn_t)w->real_vtbl[SLOT_DRAW_PRIMITIVE_UP])
-        (w->real, type, prims, vertices, stride);
+                                          DWORD stride) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, const void *, DWORD);
+  shadow_trace_draw(&g_shadow, 0, type, prims);
+  return ((fn_t)w->real_vtbl[SLOT_DRAW_PRIMITIVE_UP])(w->real, type, prims,
+                                                      vertices, stride);
 }
 
 static HRESULT WINAPI dev_DrawIndexedPrimitiveUP(
     struct wrap *w, DWORD type, DWORD min_index, DWORD vertex_count,
-    DWORD prims, const void *indices, DWORD index_format,
-    const void *vertices, DWORD stride)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD, DWORD,
-                                   const void *, DWORD, const void *, DWORD);
-    shadow_trace_draw(&g_shadow, 1, type, prims,
-                      custom_geometry_call_active());
-    return ((fn_t)w->real_vtbl[SLOT_DRAW_INDEXED_PRIMITIVE_UP])
-        (w->real, type, min_index, vertex_count, prims, indices, index_format,
-         vertices, stride);
+    DWORD prims, const void *indices, DWORD index_format, const void *vertices,
+    DWORD stride) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD, DWORD,
+                                 const void *, DWORD, const void *, DWORD);
+  shadow_trace_draw(&g_shadow, 1, type, prims);
+  return ((fn_t)w->real_vtbl[SLOT_DRAW_INDEXED_PRIMITIVE_UP])(
+      w->real, type, min_index, vertex_count, prims, indices, index_format,
+      vertices, stride);
 }
-
-/* The oracle probes (probe_hook.c): guest functions recorded on both sides. */
-void probe_hook_install(const char *logdir);
-void probe_hook_tick(void);
-void probe_hook_report_counts(void);
-void probe_hook_close(void);
-static unsigned g_probe_frames;
 
 /* IDirect3DDevice8::Present (slot 15) -- the frame boundary, and where F9 is
    polled. One press dumps exactly one frame. */
 static HRESULT WINAPI dev_Present(struct wrap *w, const void *a, const void *b,
-                                  HWND c, const void *d)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, const void *, const void *, HWND,
-                                   const void *);
-    int f9 = (GetAsyncKeyState(VK_F9_KEY) & 0x8000) != 0;
-    int detailed = -1;
-    unsigned forced_reads = 0;
-    if (g_shadow.enabled) {
-        detailed = detailed_shadow_value();
-        forced_reads = shadow_setting_forced_reads();
-    }
-    if (g_obj_frame_open) { obj_close(); vsconst_write(); }
-    else if (g_obj_armed) { g_obj_armed = 0; obj_open(); }
-    if (f9) g_obj_armed = 1;
-    /* The probe stream is flushed here, and its per-probe counts reprinted
-       every so often, because this process is always ended by a kill: a
-       report written only at DLL_PROCESS_DETACH would be missing exactly when
-       the capture matters. */
-    probe_hook_tick();
-    if ((++g_probe_frames % 600u) == 0u) probe_hook_report_counts();
-    if (g_shadow.enabled && !g_shadow_control_recorded && forced_reads) {
-        shadow_trace_control(&g_shadow, shadow_setting_original_value(),
-                             g_shadow_forced, detailed, forced_reads);
-        g_shadow_control_recorded = 1;
-        plog("SHADOW TRACE control: intercepted %u successful "
-             "DetailedShadow DWORD query(s), registry value=%d, "
-             "substituted=%d, live backing byte=%d", forced_reads,
-             shadow_setting_original_value(), g_shadow_forced, detailed);
-    }
-    if (g_shadow.enabled)
-        shadow_trace_present(&g_shadow, detailed, shadow_probe_counts(), f9);
-    return ((fn_t)w->real_vtbl[SLOT_PRESENT])(w->real, a, b, c, d);
+                                  HWND c, const void *d) {
+  typedef HRESULT(WINAPI * fn_t)(void *, const void *, const void *, HWND,
+                                 const void *);
+  int f9 = (GetAsyncKeyState(VK_F9_KEY) & 0x8000) != 0;
+  int detailed = -1;
+  unsigned forced_reads = 0;
+  if (g_shadow.enabled) {
+    detailed = detailed_shadow_value();
+    forced_reads = shadow_setting_forced_reads();
+  }
+  if (g_obj_frame_open) {
+    obj_close();
+    vsconst_write();
+  } else if (g_obj_armed) {
+    g_obj_armed = 0;
+    obj_open();
+  }
+  if (f9)
+    g_obj_armed = 1;
+  if (g_shadow.enabled && !g_shadow_control_recorded && forced_reads) {
+    shadow_trace_control(&g_shadow, shadow_setting_original_value(),
+                         g_shadow_forced, detailed, forced_reads);
+    g_shadow_control_recorded = 1;
+    plog("SHADOW TRACE control: intercepted %u successful "
+         "DetailedShadow DWORD query(s), registry value=%d, "
+         "substituted=%d, live backing byte=%d",
+         forced_reads, shadow_setting_original_value(), g_shadow_forced,
+         detailed);
+  }
+  if (g_shadow.enabled)
+    shadow_trace_present(&g_shadow, detailed, f9);
+  return ((fn_t)w->real_vtbl[SLOT_PRESENT])(w->real, a, b, c, d);
 }
 
-static HRESULT WINAPI dev_Reset(struct wrap *w, void *parameters)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, void *);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_RESET])(w->real, parameters);
-    if (SUCCEEDED(hr)) observe_default_targets(w);
-    return hr;
+static HRESULT WINAPI dev_Reset(struct wrap *w, void *parameters) {
+  typedef HRESULT(WINAPI * fn_t)(void *, void *);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_RESET])(w->real, parameters);
+  if (SUCCEEDED(hr))
+    observe_default_targets(w);
+  return hr;
 }
 
 /* IDirect3DDevice8::SetMaterial (slot 42): (this, const D3DMATERIAL8*) */
 static HRESULT WINAPI dev_SetMaterial(struct wrap *w, const D3DMATERIAL8 *m) {
-    typedef HRESULT (WINAPI *fn_t)(void *, const D3DMATERIAL8 *);
-    if (!m)
-        plog("SETMATERIAL t=%lu NULL-POINTER", (unsigned long)GetTickCount());
-    else
-        plog("SETMATERIAL t=%lu diffuse=%.4f,%.4f,%.4f,%.4f "
-             "ambient=%.4f,%.4f,%.4f,%.4f emissive=%.4f,%.4f,%.4f,%.4f "
-             "specular=%.4f,%.4f,%.4f,%.4f power=%.2f",
-             (unsigned long)GetTickCount(),
-             m->Diffuse[0], m->Diffuse[1], m->Diffuse[2], m->Diffuse[3],
-             m->Ambient[0], m->Ambient[1], m->Ambient[2], m->Ambient[3],
-             m->Emissive[0], m->Emissive[1], m->Emissive[2], m->Emissive[3],
-             m->Specular[0], m->Specular[1], m->Specular[2], m->Specular[3],
-             m->Power);
-    return ((fn_t)w->real_vtbl[SLOT_SET_MATERIAL])(w->real, m);
+  typedef HRESULT(WINAPI * fn_t)(void *, const D3DMATERIAL8 *);
+  if (!m)
+    plog("SETMATERIAL t=%lu NULL-POINTER", (unsigned long)GetTickCount());
+  else
+    plog("SETMATERIAL t=%lu diffuse=%.4f,%.4f,%.4f,%.4f "
+         "ambient=%.4f,%.4f,%.4f,%.4f emissive=%.4f,%.4f,%.4f,%.4f "
+         "specular=%.4f,%.4f,%.4f,%.4f power=%.2f",
+         (unsigned long)GetTickCount(), m->Diffuse[0], m->Diffuse[1],
+         m->Diffuse[2], m->Diffuse[3], m->Ambient[0], m->Ambient[1],
+         m->Ambient[2], m->Ambient[3], m->Emissive[0], m->Emissive[1],
+         m->Emissive[2], m->Emissive[3], m->Specular[0], m->Specular[1],
+         m->Specular[2], m->Specular[3], m->Power);
+  return ((fn_t)w->real_vtbl[SLOT_SET_MATERIAL])(w->real, m);
 }
 
-/* IDirect3DDevice8::SetLight (slot 44): (this, DWORD index, const D3DLIGHT8*) */
+/* IDirect3DDevice8::SetLight (slot 44): (this, DWORD index, const D3DLIGHT8*)
+ */
 static HRESULT WINAPI dev_SetLight(struct wrap *w, DWORD idx,
                                    const D3DLIGHT8 *L) {
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, const D3DLIGHT8 *);
-    if (!L)
-        plog("SETLIGHT t=%lu idx=%lu NULL-POINTER",
-             (unsigned long)GetTickCount(), (unsigned long)idx);
-    else
-        plog("SETLIGHT t=%lu idx=%lu type=%u "
-             "diffuse=%.4f,%.4f,%.4f,%.4f specular=%.4f,%.4f,%.4f,%.4f "
-             "ambient=%.4f,%.4f,%.4f,%.4f pos=%.2f,%.2f,%.2f "
-             "dir=%.3f,%.3f,%.3f range=%.2f falloff=%.2f "
-             "atten=%.6f,%.6f,%.8f theta=%.3f phi=%.3f",
-             (unsigned long)GetTickCount(), (unsigned long)idx,
-             (unsigned)L->Type,
-             L->Diffuse[0], L->Diffuse[1], L->Diffuse[2], L->Diffuse[3],
-             L->Specular[0], L->Specular[1], L->Specular[2], L->Specular[3],
-             L->Ambient[0], L->Ambient[1], L->Ambient[2], L->Ambient[3],
-             L->Position[0], L->Position[1], L->Position[2],
-             L->Direction[0], L->Direction[1], L->Direction[2],
-             L->Range, L->Falloff,
-             L->Attenuation0, L->Attenuation1, L->Attenuation2,
-             L->Theta, L->Phi);
-    return ((fn_t)w->real_vtbl[SLOT_SET_LIGHT])(w->real, idx, L);
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, const D3DLIGHT8 *);
+  if (!L)
+    plog("SETLIGHT t=%lu idx=%lu NULL-POINTER", (unsigned long)GetTickCount(),
+         (unsigned long)idx);
+  else
+    plog("SETLIGHT t=%lu idx=%lu type=%u "
+         "diffuse=%.4f,%.4f,%.4f,%.4f specular=%.4f,%.4f,%.4f,%.4f "
+         "ambient=%.4f,%.4f,%.4f,%.4f pos=%.2f,%.2f,%.2f "
+         "dir=%.3f,%.3f,%.3f range=%.2f falloff=%.2f "
+         "atten=%.6f,%.6f,%.8f theta=%.3f phi=%.3f",
+         (unsigned long)GetTickCount(), (unsigned long)idx, (unsigned)L->Type,
+         L->Diffuse[0], L->Diffuse[1], L->Diffuse[2], L->Diffuse[3],
+         L->Specular[0], L->Specular[1], L->Specular[2], L->Specular[3],
+         L->Ambient[0], L->Ambient[1], L->Ambient[2], L->Ambient[3],
+         L->Position[0], L->Position[1], L->Position[2], L->Direction[0],
+         L->Direction[1], L->Direction[2], L->Range, L->Falloff,
+         L->Attenuation0, L->Attenuation1, L->Attenuation2, L->Theta, L->Phi);
+  return ((fn_t)w->real_vtbl[SLOT_SET_LIGHT])(w->real, idx, L);
 }
 
 /* IDirect3DDevice8::LightEnable (slot 46): (this, DWORD index, BOOL on) */
 static HRESULT WINAPI dev_LightEnable(struct wrap *w, DWORD idx, BOOL on) {
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, BOOL);
-    plog("LIGHTENABLE t=%lu idx=%lu on=%d",
-         (unsigned long)GetTickCount(), (unsigned long)idx, (int)on);
-    return ((fn_t)w->real_vtbl[SLOT_LIGHT_ENABLE])(w->real, idx, on);
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, BOOL);
+  plog("LIGHTENABLE t=%lu idx=%lu on=%d", (unsigned long)GetTickCount(),
+       (unsigned long)idx, (int)on);
+  return ((fn_t)w->real_vtbl[SLOT_LIGHT_ENABLE])(w->real, idx, on);
 }
 
 static HRESULT WINAPI dev_SetRenderTarget(struct wrap *w, void *target,
-                                          void *depth_stencil)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, void *, void *);
-    shadow_trace_set_render_target(&g_shadow, (uintptr_t)target,
-                                   (uintptr_t)depth_stencil);
-    return ((fn_t)w->real_vtbl[SLOT_SET_RENDER_TARGET])
-        (w->real, target, depth_stencil);
+                                          void *depth_stencil) {
+  typedef HRESULT(WINAPI * fn_t)(void *, void *, void *);
+  shadow_trace_set_render_target(&g_shadow, (uintptr_t)target,
+                                 (uintptr_t)depth_stencil);
+  return ((fn_t)w->real_vtbl[SLOT_SET_RENDER_TARGET])(w->real, target,
+                                                      depth_stencil);
 }
 
 static HRESULT WINAPI dev_Clear(struct wrap *w, DWORD rect_count,
                                 const void *rects, DWORD flags, DWORD color,
-                                float depth, DWORD stencil)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, const void *, DWORD, DWORD,
-                                   float, DWORD);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CLEAR])
-        (w->real, rect_count, rects, flags, color, depth, stencil);
-    shadow_trace_clear(&g_shadow, rect_count, (const int32_t *)rects,
-                       flags, color, depth, stencil, (long)hr);
-    return hr;
+                                float depth, DWORD stencil) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, const void *, DWORD, DWORD,
+                                 float, DWORD);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CLEAR])(w->real, rect_count, rects,
+                                                flags, color, depth, stencil);
+  shadow_trace_clear(&g_shadow, rect_count, (const int32_t *)rects, flags,
+                     color, depth, stencil, (long)hr);
+  return hr;
 }
 
 static HRESULT WINAPI dev_SetTransform(struct wrap *w, DWORD which,
-                                       const float *matrix)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, const float *);
-    shadow_trace_set_transform(&g_shadow, which, matrix);
-    return ((fn_t)w->real_vtbl[SLOT_SET_TRANSFORM])(w->real, which, matrix);
+                                       const float *matrix) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, const float *);
+  shadow_trace_set_transform(&g_shadow, which, matrix);
+  return ((fn_t)w->real_vtbl[SLOT_SET_TRANSFORM])(w->real, which, matrix);
 }
 
-static HRESULT WINAPI dev_SetTexture(struct wrap *w, DWORD stage, void *texture)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, void *);
-    shadow_trace_set_texture(&g_shadow, stage, (uintptr_t)texture);
-    return ((fn_t)w->real_vtbl[SLOT_SET_TEXTURE])(w->real, stage, texture);
+static HRESULT WINAPI dev_SetTexture(struct wrap *w, DWORD stage,
+                                     void *texture) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, void *);
+  shadow_trace_set_texture(&g_shadow, stage, (uintptr_t)texture);
+  return ((fn_t)w->real_vtbl[SLOT_SET_TEXTURE])(w->real, stage, texture);
 }
 
 static HRESULT WINAPI dev_SetTextureStageState(struct wrap *w, DWORD stage,
-                                               DWORD which, DWORD value)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD, DWORD);
-    shadow_trace_set_stage_state(&g_shadow, stage, which, value);
-    return ((fn_t)w->real_vtbl[SLOT_SET_TEXTURE_STAGE_STATE])
-        (w->real, stage, which, value);
+                                               DWORD which, DWORD value) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD, DWORD);
+  shadow_trace_set_stage_state(&g_shadow, stage, which, value);
+  return ((fn_t)w->real_vtbl[SLOT_SET_TEXTURE_STAGE_STATE])(w->real, stage,
+                                                            which, value);
 }
 
-static HRESULT WINAPI dev_SetPixelShader(struct wrap *w, DWORD handle)
-{
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD);
-    shadow_trace_set_pixel_shader(&g_shadow, handle);
-    return ((fn_t)w->real_vtbl[SLOT_SET_PIXEL_SHADER])(w->real, handle);
+static HRESULT WINAPI dev_SetPixelShader(struct wrap *w, DWORD handle) {
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD);
+  shadow_trace_set_pixel_shader(&g_shadow, handle);
+  return ((fn_t)w->real_vtbl[SLOT_SET_PIXEL_SHADER])(w->real, handle);
 }
 
 /* IDirect3DDevice8::SetRenderState (slot 50): (this, DWORD state, DWORD val).
    Only LIGHTING and AMBIENT are logged -- Present-rate calls would flood. */
 static HRESULT WINAPI dev_SetRenderState(struct wrap *w, DWORD state,
                                          DWORD value) {
-    typedef HRESULT (WINAPI *fn_t)(void *, DWORD, DWORD);
-    shadow_trace_set_render_state(&g_shadow, state, value);
-    if (state == D3DRS_LIGHTING)
-        plog("SETRENDERSTATE t=%lu LIGHTING=%lu",
-             (unsigned long)GetTickCount(), (unsigned long)value);
-    else if (state == D3DRS_AMBIENT)
-        plog("SETRENDERSTATE t=%lu AMBIENT=%08lx",
-             (unsigned long)GetTickCount(), (unsigned long)value);
-    return ((fn_t)w->real_vtbl[SLOT_SET_RENDER_STATE])(w->real, state, value);
+  typedef HRESULT(WINAPI * fn_t)(void *, DWORD, DWORD);
+  shadow_trace_set_render_state(&g_shadow, state, value);
+  if (state == D3DRS_LIGHTING)
+    plog("SETRENDERSTATE t=%lu LIGHTING=%lu", (unsigned long)GetTickCount(),
+         (unsigned long)value);
+  else if (state == D3DRS_AMBIENT)
+    plog("SETRENDERSTATE t=%lu AMBIENT=%08lx", (unsigned long)GetTickCount(),
+         (unsigned long)value);
+  return ((fn_t)w->real_vtbl[SLOT_SET_RENDER_STATE])(w->real, state, value);
 }
 
 static void *wrap_device(void *real) {
-    void *p = wrap_alloc(real, fwddev_table, D3DDEV_SLOTS, "IDirect3DDevice8");
-    if (p == real) return p;
-    struct wrap *w = (struct wrap *)p;
-    w->vtbl[SLOT_DEV_GET_DEVICE_CAPS] = (const void *)dev_GetDeviceCaps;
-    w->vtbl[SLOT_RESET] = (const void *)dev_Reset;
-    w->vtbl[SLOT_PRESENT] = (const void *)dev_Present;
-    w->vtbl[SLOT_CREATE_TEXTURE] = (const void *)dev_CreateTexture;
-    w->vtbl[SLOT_CREATE_VERTEX_BUFFER] = (const void *)dev_CreateVertexBuffer;
-    w->vtbl[SLOT_CREATE_RENDER_TARGET] =
-        (const void *)dev_CreateRenderTarget;
-    w->vtbl[SLOT_CREATE_DEPTH_STENCIL] =
-        (const void *)dev_CreateDepthStencilSurface;
-    w->vtbl[SLOT_COPY_RECTS] = (const void *)dev_CopyRects;
-    w->vtbl[SLOT_UPDATE_TEXTURE] = (const void *)dev_UpdateTexture;
-    w->vtbl[SLOT_SET_RENDER_TARGET] = (const void *)dev_SetRenderTarget;
-    w->vtbl[SLOT_CLEAR] = (const void *)dev_Clear;
-    w->vtbl[SLOT_SET_TRANSFORM] = (const void *)dev_SetTransform;
-    w->vtbl[SLOT_SET_STREAM_SOURCE] = (const void *)dev_SetStreamSource;
-    w->vtbl[SLOT_SET_INDICES] = (const void *)dev_SetIndices;
-    w->vtbl[SLOT_SET_VERTEX_SHADER] = (const void *)dev_SetVertexShader;
-    w->vtbl[SLOT_SET_VERTEX_SHADER_CONSTANT] =
-        (const void *)dev_SetVertexShaderConstant;
-    w->vtbl[SLOT_CREATE_VERTEX_SHADER] = (const void *)dev_CreateVertexShader;
-    w->vtbl[SLOT_DRAW_PRIMITIVE] = (const void *)dev_DrawPrimitive;
-    w->vtbl[SLOT_DRAW_INDEXED_PRIMITIVE] = (const void *)dev_DrawIndexedPrimitive;
-    w->vtbl[SLOT_DRAW_PRIMITIVE_UP] = (const void *)dev_DrawPrimitiveUP;
-    w->vtbl[SLOT_DRAW_INDEXED_PRIMITIVE_UP] =
-        (const void *)dev_DrawIndexedPrimitiveUP;
-    w->vtbl[SLOT_SET_MATERIAL] = (const void *)dev_SetMaterial;
-    w->vtbl[SLOT_SET_LIGHT] = (const void *)dev_SetLight;
-    w->vtbl[SLOT_LIGHT_ENABLE] = (const void *)dev_LightEnable;
-    w->vtbl[SLOT_SET_RENDER_STATE] = (const void *)dev_SetRenderState;
-    w->vtbl[SLOT_SET_TEXTURE] = (const void *)dev_SetTexture;
-    w->vtbl[SLOT_SET_TEXTURE_STAGE_STATE] =
-        (const void *)dev_SetTextureStageState;
-    w->vtbl[SLOT_SET_PIXEL_SHADER] = (const void *)dev_SetPixelShader;
-    observe_default_targets(w);
-    return w;
+  void *p = wrap_alloc(real, fwddev_table, D3DDEV_SLOTS, "IDirect3DDevice8");
+  if (p == real)
+    return p;
+  struct wrap *w = (struct wrap *)p;
+  w->vtbl[SLOT_DEV_GET_DEVICE_CAPS] = (const void *)dev_GetDeviceCaps;
+  w->vtbl[SLOT_RESET] = (const void *)dev_Reset;
+  w->vtbl[SLOT_PRESENT] = (const void *)dev_Present;
+  w->vtbl[SLOT_CREATE_TEXTURE] = (const void *)dev_CreateTexture;
+  w->vtbl[SLOT_CREATE_VERTEX_BUFFER] = (const void *)dev_CreateVertexBuffer;
+  w->vtbl[SLOT_CREATE_RENDER_TARGET] = (const void *)dev_CreateRenderTarget;
+  w->vtbl[SLOT_CREATE_DEPTH_STENCIL] =
+      (const void *)dev_CreateDepthStencilSurface;
+  w->vtbl[SLOT_COPY_RECTS] = (const void *)dev_CopyRects;
+  w->vtbl[SLOT_UPDATE_TEXTURE] = (const void *)dev_UpdateTexture;
+  w->vtbl[SLOT_SET_RENDER_TARGET] = (const void *)dev_SetRenderTarget;
+  w->vtbl[SLOT_CLEAR] = (const void *)dev_Clear;
+  w->vtbl[SLOT_SET_TRANSFORM] = (const void *)dev_SetTransform;
+  w->vtbl[SLOT_SET_STREAM_SOURCE] = (const void *)dev_SetStreamSource;
+  w->vtbl[SLOT_SET_INDICES] = (const void *)dev_SetIndices;
+  w->vtbl[SLOT_SET_VERTEX_SHADER] = (const void *)dev_SetVertexShader;
+  w->vtbl[SLOT_SET_VERTEX_SHADER_CONSTANT] =
+      (const void *)dev_SetVertexShaderConstant;
+  w->vtbl[SLOT_CREATE_VERTEX_SHADER] = (const void *)dev_CreateVertexShader;
+  w->vtbl[SLOT_DRAW_PRIMITIVE] = (const void *)dev_DrawPrimitive;
+  w->vtbl[SLOT_DRAW_INDEXED_PRIMITIVE] = (const void *)dev_DrawIndexedPrimitive;
+  w->vtbl[SLOT_DRAW_PRIMITIVE_UP] = (const void *)dev_DrawPrimitiveUP;
+  w->vtbl[SLOT_DRAW_INDEXED_PRIMITIVE_UP] =
+      (const void *)dev_DrawIndexedPrimitiveUP;
+  w->vtbl[SLOT_SET_MATERIAL] = (const void *)dev_SetMaterial;
+  w->vtbl[SLOT_SET_LIGHT] = (const void *)dev_SetLight;
+  w->vtbl[SLOT_LIGHT_ENABLE] = (const void *)dev_LightEnable;
+  w->vtbl[SLOT_SET_RENDER_STATE] = (const void *)dev_SetRenderState;
+  w->vtbl[SLOT_SET_TEXTURE] = (const void *)dev_SetTexture;
+  w->vtbl[SLOT_SET_TEXTURE_STAGE_STATE] =
+      (const void *)dev_SetTextureStageState;
+  w->vtbl[SLOT_SET_PIXEL_SHADER] = (const void *)dev_SetPixelShader;
+  observe_default_targets(w);
+  return w;
 }
 
 /* IDirect3D8::CreateDevice (slot 15):
@@ -1146,25 +1111,26 @@ static void *wrap_device(void *real) {
 static HRESULT WINAPI d3d_CreateDevice(struct wrap *w, UINT adapter,
                                        UINT devtype, HWND hwnd, DWORD flags,
                                        void *pparams, void **out) {
-    typedef HRESULT (WINAPI *fn_t)(void *, UINT, UINT, HWND, DWORD, void *,
-                                   void **);
-    HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_DEVICE])
-        (w->real, adapter, devtype, hwnd, flags, pparams, out);
-    plog("CREATEDEVICE t=%lu adapter=%u type=%u ok=%p",
-         (unsigned long)GetTickCount(), (unsigned)adapter, (unsigned)devtype,
-         (FAILED(hr) || !out) ? NULL : *out);
-    if (SUCCEEDED(hr) && out && *out)
-        *out = wrap_device(*out);
-    return hr;
+  typedef HRESULT(WINAPI * fn_t)(void *, UINT, UINT, HWND, DWORD, void *,
+                                 void **);
+  HRESULT hr = ((fn_t)w->real_vtbl[SLOT_CREATE_DEVICE])(
+      w->real, adapter, devtype, hwnd, flags, pparams, out);
+  plog("CREATEDEVICE t=%lu adapter=%u type=%u ok=%p",
+       (unsigned long)GetTickCount(), (unsigned)adapter, (unsigned)devtype,
+       (FAILED(hr) || !out) ? NULL : *out);
+  if (SUCCEEDED(hr) && out && *out)
+    *out = wrap_device(*out);
+  return hr;
 }
 
 static void *wrap_d3d8(void *real) {
-    void *p = wrap_alloc(real, fwd8_table, D3D8_SLOTS, "IDirect3D8");
-    if (p == real) return p;
-    struct wrap *w = (struct wrap *)p;
-    w->vtbl[SLOT_CREATE_DEVICE] = (const void *)d3d_CreateDevice;
-    w->vtbl[SLOT_D3D8_GET_DEVICE_CAPS] = (const void *)d3d_GetDeviceCaps;
-    return w;
+  void *p = wrap_alloc(real, fwd8_table, D3D8_SLOTS, "IDirect3D8");
+  if (p == real)
+    return p;
+  struct wrap *w = (struct wrap *)p;
+  w->vtbl[SLOT_CREATE_DEVICE] = (const void *)d3d_CreateDevice;
+  w->vtbl[SLOT_D3D8_GET_DEVICE_CAPS] = (const void *)d3d_GetDeviceCaps;
+  return w;
 }
 
 /* ------------------------------------------------------------ the export */
@@ -1173,40 +1139,37 @@ static void *wrap_d3d8(void *real) {
    (build_stocklog.py regenerates it from the real DLL, forwarding the rest
    to d3d8_real). */
 void *WINAPI Direct3DCreate8(UINT sdkver) {
-    log_open();
-    /* By now the engine has loaded libIGMath, so the oracle probes can be
-       placed. Doing it at DLL_PROCESS_ATTACH would be too early: this DLL is
-       loaded as d3d8 before the engine's own modules, and every probe would
-       be skipped for "module not loaded". */
-    probe_hook_install(".");
-    shadow_proxy_init();
-    Direct3DCreate8_t real = get_real_create8();
-    if (!real) {
-        plog("DIRECT3DCREATE8 t=%lu sdk=%u ok=%p REAL-DLL-UNAVAILABLE",
-             (unsigned long)GetTickCount(), (unsigned)sdkver, (void *)0);
-        return NULL;
-    }
-    void *d3d = real(sdkver);
-    plog("DIRECT3DCREATE8 t=%lu sdk=%u ok=%p",
-         (unsigned long)GetTickCount(), (unsigned)sdkver, d3d);
-    if (d3d)
-        d3d = wrap_d3d8(d3d);
-    return d3d;
+  log_open();
+  shadow_proxy_init();
+  Direct3DCreate8_t real = get_real_create8();
+  if (!real) {
+    plog("DIRECT3DCREATE8 t=%lu sdk=%u ok=%p REAL-DLL-UNAVAILABLE",
+         (unsigned long)GetTickCount(), (unsigned)sdkver, (void *)0);
+    return NULL;
+  }
+  void *d3d = real(sdkver);
+  plog("DIRECT3DCREATE8 t=%lu sdk=%u ok=%p", (unsigned long)GetTickCount(),
+       (unsigned)sdkver, d3d);
+  if (d3d)
+    d3d = wrap_d3d8(d3d);
+  return d3d;
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinst, DWORD reason, void *reserved) {
-    (void)reserved;
-    if (reason == DLL_PROCESS_DETACH) {
-        shadow_trace_close(&g_shadow, shadow_probe_counts());
-        if (g_shadow_log) { fclose(g_shadow_log); g_shadow_log = NULL; }
-        probe_hook_close();
+  (void)reserved;
+  if (reason == DLL_PROCESS_DETACH) {
+    shadow_trace_close(&g_shadow);
+    if (g_shadow_log) {
+      fclose(g_shadow_log);
+      g_shadow_log = NULL;
     }
-    if (reason == DLL_PROCESS_ATTACH) {
-        g_self = hinst;
-        log_open();
-        const char *path = find_real_path();
-        plog("PROXY LOADED t=%lu real_d3d8=%s",
-             (unsigned long)GetTickCount(), path ? path : "NOT-FOUND-YET");
-    }
-    return TRUE;
+  }
+  if (reason == DLL_PROCESS_ATTACH) {
+    g_self = hinst;
+    log_open();
+    const char *path = find_real_path();
+    plog("PROXY LOADED t=%lu real_d3d8=%s", (unsigned long)GetTickCount(),
+         path ? path : "NOT-FOUND-YET");
+  }
+  return TRUE;
 }

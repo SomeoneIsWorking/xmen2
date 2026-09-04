@@ -25,10 +25,10 @@ enum {
 };
 
 void x2_override_005840a0(CPU *C) {
-  const uint32_t self = C->ecx;
-  const uint32_t pos_ptr = RD32(C->esp + 4u);
-  const uint32_t uv_ptr = RD32(C->esp + 8u);
-  const uint32_t col = RD32(C->esp + 12u);
+  const uint32_t self = C->reg[kX86pEcx];
+  const uint32_t pos_ptr = RD32(C->reg[kX86pEsp] + 4u);
+  const uint32_t uv_ptr = RD32(C->reg[kX86pEsp] + 8u);
+  const uint32_t col = RD32(C->reg[kX86pEsp] + 12u);
 
   VtxBuilderVerify v;
   vtx_builder_verify_begin(&v, self);
@@ -38,9 +38,9 @@ void x2_override_005840a0(CPU *C) {
   const uint32_t cap = RD32(self + SELF_CAP);
 
   if ((int32_t)(c14 + count + 1u) >= (int32_t)cap) {
-    C->eax = count;
+    C->reg[kX86pEax] = count;
     vtx_builder_verify_end(C, &v, self);
-    C->esp += 16u;
+    C->reg[kX86pEsp] += 16u;
     return;
   }
 
@@ -69,9 +69,9 @@ void x2_override_005840a0(CPU *C) {
     if (has_uv > 0) {
       const uint32_t stride_uv = RD32(self + SELF_STRIDE_UV);
       WR32(self + SELF_DST_UV, dst_uv + stride_uv);
-      C->eax = stride_uv;
+      C->reg[kX86pEax] = stride_uv;
     } else {
-      C->eax = (uint32_t)has_uv;
+      C->reg[kX86pEax] = (uint32_t)has_uv;
     }
   } else {
     /* Fast path: direct memory copies to guest addresses */
@@ -94,15 +94,15 @@ void x2_override_005840a0(CPU *C) {
     if (has_uv > 0) {
       const uint32_t stride_uv = RD32(self + SELF_STRIDE_UV);
       WR32(self + SELF_DST_UV, dst_uv + stride_uv);
-      C->eax = stride_uv;
+      C->reg[kX86pEax] = stride_uv;
     } else {
-      C->eax = (uint32_t)has_uv;
+      C->reg[kX86pEax] = (uint32_t)has_uv;
     }
   }
 
   vtx_builder_verify_end(C, &v, self);
 
-  C->esp += 16u; /* ret $0xc: pop return address and 3 dword args */
+  C->reg[kX86pEsp] += 16u; /* ret $0xc: pop return address and 3 dword args */
 }
 
 __attribute__((constructor)) static void vertex_builder_register(void) {

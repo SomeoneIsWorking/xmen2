@@ -12,7 +12,7 @@ The renderer's display initialisation SUCCEEDS: the engine opens the display thr
 
 ## Evidence
 
-The blocker was not the renderer at all -- it was USER32::GetDC returning NULL. igWin32Window::open (libIGDisplay 0x10005740) calls CreateWindowExA then GetDC and treats a NULL DC as fatal (CALL [0x100090d8]; TEST EBP,EBP; JZ -> return false), and that false latched the game's startup error byte and surfaced four hops later as 'Display failed!'. Confirmed at runtime with X2_ARGS: open(ecx=0x01e08f28, "X-Men Legends 2", 0x320, 0x258) returned eax=0, returning to 0x005faf4b which is exactly the TEST AL,AL identified statically.
+The blocker was not the renderer at all -- it was USER32::GetDC returning NULL. igWin32Window::open (libIGDisplay 0x10005740) calls CreateWindowExA then GetDC and treats a NULL DC as fatal (CALL [0x100090d8]; TEST EBP,EBP; JZ -> return false), and that false latched the game's startup error byte and surfaced four hops later as 'Display failed!'. A bounded runtime entry capture showed open(ecx=0x01e08f28, "X-Men Legends 2", 0x320, 0x258) returning eax=0 to 0x005faf4b, exactly the TEST AL,AL identified statically.
 
 GetDC now returns a token for the main window. That is safe because the ENTIRE GDI surface this game imports is one function -- GetDeviceCaps, measured across the module's imports -- and it does not look at the HDC at all.
 

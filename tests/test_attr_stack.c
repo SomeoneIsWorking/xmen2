@@ -1,5 +1,6 @@
 /*
- * Unit tests for igAttrStack::customReset and igAttrStackManager::reset native overrides.
+ * Unit tests for igAttrStack::customReset and igAttrStackManager::reset native
+ * overrides.
  */
 #include "attr_stack.h"
 #include "attr_stack_verify.h"
@@ -85,10 +86,10 @@ static void test_custom_reset(void) {
 
   CPU C;
   memset(&C, 0, sizeof C);
-  C.ecx = STACK1;
-  C.esp = 0x1000u;
+  C.reg[kX86pEcx] = STACK1;
+  C.reg[kX86pEsp] = 0x1000u;
   x2_override_10034d10(&C);
-  CHECK(C.esp == 0x1004u, "customReset did not pop return address");
+  CHECK(C.reg[kX86pEsp] == 0x1004u, "customReset did not pop return address");
 
   CHECK(RD32(STACK1 + 0x08u) == 0u, "f08 not 0");
   CHECK(RD32(STACK1 + 0x18u) == 0xffffffffu, "f18 not -1");
@@ -127,10 +128,10 @@ static void test_manager_reset(void) {
 
   CPU C;
   memset(&C, 0, sizeof C);
-  C.ecx = MGR;
-  C.esp = 0x2000u;
+  C.reg[kX86pEcx] = MGR;
+  C.reg[kX86pEsp] = 0x2000u;
   x2_override_10034d30(&C);
-  CHECK(C.esp == 0x2004u, "manager reset did not pop return address");
+  CHECK(C.reg[kX86pEsp] == 0x2004u, "manager reset did not pop return address");
 
   /* Check stack 1 */
   CHECK(RD32(STACK1 + 0x08u) == 0u, "stack 1 f08");

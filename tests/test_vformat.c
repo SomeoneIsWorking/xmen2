@@ -334,12 +334,12 @@ int main(void) {
  * fabricated answer.
  */
 #include <stdlib.h>
-struct CPU;
+struct X86pCpu;
 void x87_fault(const char *what) {
   fprintf(stderr, "test_vformat: x87_fault(%s) reached\n", what);
   abort();
 }
-void x86_guest_call(struct CPU *C, uint32_t t) {
+void x86_guest_call(struct X86pCpu *C, uint32_t t) {
   (void)C;
   (void)t;
   fprintf(stderr, "test_vformat: x86_guest_call reached\n");

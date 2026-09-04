@@ -80,9 +80,9 @@ static void update_flags(uint32_t self, uint32_t flags) {
 }
 
 void x2_override_10046ce0(CPU *C) {
-  const uint32_t self = C->ecx;
-  const uint32_t desc = RD32(C->esp + 4u);
-  const uint32_t flags = RD32(C->esp + 8u);
+  const uint32_t self = C->reg[kX86pEcx];
+  const uint32_t desc = RD32(C->reg[kX86pEsp] + 4u);
+  const uint32_t flags = RD32(C->reg[kX86pEsp] + 8u);
 
   VtxSwizzleVerify v;
   vtx_swizzle_verify_begin(&v, self, desc);
@@ -92,7 +92,8 @@ void x2_override_10046ce0(CPU *C) {
 
   vtx_swizzle_verify_end(C, &v, self, desc, flags);
 
-  C->esp += 12u; /* ret 8: pop the return address and the two dword args */
+  C->reg[kX86pEsp] +=
+      12u; /* ret 8: pop the return address and the two dword args */
 }
 
 __attribute__((constructor)) static void vertex_color_swizzle_register(void) {

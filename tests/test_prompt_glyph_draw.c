@@ -15,6 +15,7 @@
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_draw.h"
 #include "prompt_glyph_quads.h"
+#include "runtime_cvars.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -92,16 +93,16 @@ static void guest_body_005ee400(CPU *C) {
   if (g_emitter_calls < 1024u)
     for (i = 0; i < 4u; i++)
       g_emitted_rects[g_emitter_calls][i] =
-          bits_float(RD32(C->esp + (i + 1u) * 4u));
+          bits_float(RD32(C->reg[kX86pEsp] + (i + 1u) * 4u));
   g_emitter_calls++;
-  C->esp += 4u + 0x20u;
+  C->reg[kX86pEsp] += 4u + 0x20u;
 }
 
 /* A narrow model of the retail loop: one emitter call for each drawable
    wchar, with distinct non-zero rectangles. The production override, not a
    test copy, decides which of those calls is harvested and collapsed. */
 static void guest_body_005ee780(CPU *C) {
-  uint32_t s = RD32(C->esp + 4u);
+  uint32_t s = RD32(C->reg[kX86pEsp] + 4u);
   unsigned i;
   g_super_calls++;
   for (i = 0; i < 512u; i++) {
@@ -127,23 +128,23 @@ static void guest_body_005ee780(CPU *C) {
     WR32(stack + 24u, float_bits(0.2f));
     WR32(stack + 28u, float_bits(0.3f));
     WR32(stack + 32u, float_bits(0.4f));
-    emitter.esp = stack;
+    emitter.reg[kX86pEsp] = stack;
     /* Deliberately not the batch: colour must have been pre-read from
        FUN_005ee780 arg2+8 before this loop was armed. */
-    emitter.ecx = 0x12345678u;
+    emitter.reg[kX86pEcx] = 0x12345678u;
     x2_override_005ee400(&emitter);
-    if (emitter.esp != stack + 0x24u)
+    if (emitter.reg[kX86pEsp] != stack + 0x24u)
       fail("the retail emitter did not own its RET 0x20 stack effect");
   }
-  C->esp += 4u + 0x1cu;
+  C->reg[kX86pEsp] += 4u + 0x1cu;
 }
 
 /* Bind the argument the way the GUEST does, not the way the override happens
    to read it. FUN_005ee780 takes the wide string as its first STACK
    argument, so the test builds a real guest stack -- return address at ESP,
    string pointer at ESP+4. Handing it over in a register instead is what let
-   the override read C->edx for a whole investigation while every run it
-   measured reported a zero it could not have contradicted. */
+   the override read C->reg[kX86pEdx] for a whole investigation while every run
+   it measured reported a zero it could not have contradicted. */
 #define GUEST_STACK_TOP (GUEST_PAGE + 0xf00u)
 static uint32_t g_stack;
 
@@ -154,7 +155,7 @@ static void call_glyph_loop(CPU *cpu, uint32_t wide_string) {
   WR32(g_stack, 0xdeadbeefu); /* return address */
   WR32(g_stack + 4u, wide_string);
   WR32(g_stack + 8u, g_batch);
-  cpu->esp = g_stack;
+  cpu->reg[kX86pEsp] = g_stack;
   x2_override_005ee780(cpu);
 }
 
@@ -185,6 +186,7 @@ int main(void) {
      into the subsystem. Without it the override is inert by design and the
      whole test would pass while measuring nothing. */
   setenv("X2_PROMPT_GLYPHS", "1", 1);
+  x2_runtime_config_init(0, NULL);
 
   if (guest_memory_init() != 0 ||
       guest_memory_map_fixed(GUEST_PAGE, 0x1000, PROT_READ | PROT_WRITE) != 0) {
@@ -299,7 +301,7 @@ int main(void) {
     entry = g_stack - 32u;
     call_glyph_loop(&cpu, guest_wide(one, 1));
     quads = x2_prompt_quads(&count);
-    if (cpu.esp != entry + 32u)
+    if (cpu.reg[kX86pEsp] != entry + 32u)
       fail("the retail glyph loop did not own its RET 0x1c ABI");
     else
       ok("the retail glyph loop owns its RET 0x1c ABI");

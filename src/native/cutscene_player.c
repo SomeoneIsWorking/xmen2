@@ -176,14 +176,14 @@ static int call_action_mask(CPU *cpu, uint32_t *mask) {
     return 0;
   call = *cpu;
   x86_guest_call(&call, linked(FN_INPUT));
-  input = call.eax;
+  input = call.reg[kX86pEax];
   if (!input || !x86_peek32(input, &vtable) ||
       !x86_peek32(vtable + INPUT_ACTION_MASK_SLOT, &function) || !function)
     return 0;
   call = *cpu;
-  call.ecx = input;
+  call.reg[kX86pEcx] = input;
   x86_guest_call_args(&call, function, 0u);
-  *mask = call.eax;
+  *mask = call.reg[kX86pEax];
   return 1;
 }
 
@@ -344,13 +344,13 @@ static X2CutscenePlayerResult finish(CPU *cpu) {
 }
 
 void x2_override_00469130(CPU *cpu) {
-  uint32_t bits = RD32(cpu->esp + 4u);
+  uint32_t bits = RD32(cpu->reg[kX86pEsp] + 4u);
   float seconds = cutscene_control_clock_seconds(bits);
   uint32_t context = current_context();
 
   if (seconds < 0.0f && context) {
     if (!g_player.active)
-      begin_sequence(cpu->ecx, context);
+      begin_sequence(cpu->reg[kX86pEcx], context);
     g_player.release_pending = 0;
   }
   x86_guest_body(cpu, "XMen2.exe", 0x00469130u);
@@ -366,20 +366,21 @@ void x2_override_00469130(CPU *cpu) {
 void x2_override_004d8700(CPU *cpu) {
   x86_guest_body(cpu, "XMen2.exe", 0x004d8700u);
   g_player.allocations++;
-  if (cpu->eax && x2_cutscene_player_inherits_context(
-                      g_player.active, owns_context(current_context(), NULL),
-                      cutscene_event_player_executing_owned(),
-                      cutscene_dialogue_payload_active()))
-    own(cpu->eax);
+  if (cpu->reg[kX86pEax] &&
+      x2_cutscene_player_inherits_context(
+          g_player.active, owns_context(current_context(), NULL),
+          cutscene_event_player_executing_owned(),
+          cutscene_dialogue_payload_active()))
+    own(cpu->reg[kX86pEax]);
 }
 
 void x2_override_004d7c10(CPU *cpu) {
   uint32_t vm = 0, context = 0;
-  uint32_t index = RD32(cpu->esp + 4u);
+  uint32_t index = RD32(cpu->reg[kX86pEsp] + 4u);
   CPU call = *cpu;
 
   x86_guest_call(&call, linked(0x004d8770u));
-  vm = call.eax;
+  vm = call.reg[kX86pEax];
   if (vm && index < OWNED_CONTEXT_LIMIT)
     context = vm + 0x2f2f4u + index * 0x5c4u;
   x86_guest_body(cpu, "XMen2.exe", 0x004d7c10u);

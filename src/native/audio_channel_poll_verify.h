@@ -1,7 +1,7 @@
 #ifndef X2_AUDIO_CHANNEL_POLL_VERIFY_H
 #define X2_AUDIO_CHANNEL_POLL_VERIFY_H
 
-struct CPU;
+struct X86pCpu;
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,7 +12,7 @@ extern "C" {
    captures its guest-memory effects, rewinds, runs the native poll, and
    aborts on any divergence. Returns 1 when it ran (the caller must not also
    run the native poll), 0 when the gate is disabled. */
-int audio_channel_poll_verify(struct CPU *C);
+int audio_channel_poll_verify(struct X86pCpu *C);
 
 #ifdef __cplusplus
 }

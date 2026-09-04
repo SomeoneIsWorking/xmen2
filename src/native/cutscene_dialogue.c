@@ -57,14 +57,14 @@ static int stop_active_voice(CPU *cpu, uint32_t manager) {
 
   call = *cpu;
   x86_guest_call(&call, base + EXE_RVA(FN_AUDIO));
-  audio = call.eax;
+  audio = call.reg[kX86pEax];
   if (!audio || !x86_peek32(audio, &vtable) ||
       !x86_peek32(vtable + VT_STOP_SOUND, &stop) || !stop)
     return 0;
   call = *cpu;
-  call.esp -= 4u;
-  WR32(call.esp, handle);
-  call.ecx = audio;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], handle);
+  call.reg[kX86pEcx] = audio;
   x86_guest_call_args(&call, stop, 4u);
 
   WR8(manager + CV_ACCEPT_STATE, RD8(manager + CV_ACCEPT_STATE) & 0xfeu);
@@ -93,7 +93,7 @@ static uint32_t current_manager(void) {
 
 void cutscene_dialogue_skip_begin(void) { g_dialogue.depth++; }
 
-void cutscene_dialogue_skip_end(struct CPU *cpu) {
+void cutscene_dialogue_skip_end(struct X86pCpu *cpu) {
   uint32_t handle, manager;
   int playing;
 
@@ -110,7 +110,7 @@ void cutscene_dialogue_skip_end(struct CPU *cpu) {
   g_dialogue.depth--;
 }
 
-int cutscene_dialogue_advance(struct CPU *cpu) {
+int cutscene_dialogue_advance(struct X86pCpu *cpu) {
   ConversationPlayerSelection selection;
   CPU call;
 
@@ -120,9 +120,9 @@ int cutscene_dialogue_advance(struct CPU *cpu) {
   g_dialogue.counters.last_line_presenter = selection.line_presenter;
   g_dialogue.counters.last_manager = selection.manager;
   call = *cpu;
-  call.esp -= 4u;
-  WR32(call.esp, selection.selected);
-  call.ecx = selection.manager;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], selection.selected);
+  call.reg[kX86pEcx] = selection.manager;
   cutscene_dialogue_skip_begin();
   g_dialogue.payload_depth++;
   x86_guest_call_args(&call, selection.choose_response, 4u);
@@ -152,7 +152,7 @@ int cutscene_dialogue_payload_active(void) {
 void x2_override_00458700(CPU *cpu) {
   if (!g_dialogue.depth) {
     x86_guest_body(cpu, "XMen2.exe", 0x00458700u);
-    if ((uint8_t)cpu->eax) {
+    if ((uint8_t)cpu->reg[kX86pEax]) {
       g_dialogue.counters.ordinary_response_starts++;
     }
     return;
@@ -161,9 +161,9 @@ void x2_override_00458700(CPU *cpu) {
   /* The retail function's only unconditional state mutation precedes its
    * presentation work. Preserve it, then return AL=false so chooseResponse
    * immediately applies the response and its authored scripts. */
-  WR32(cpu->ecx + CV_CHOSEN_RESPONSE, 0u);
-  cpu->eax &= ~0xffu;
-  cpu->esp += 8u; /* RET 4 */
+  WR32(cpu->reg[kX86pEcx] + CV_CHOSEN_RESPONSE, 0u);
+  cpu->reg[kX86pEax] &= ~0xffu;
+  cpu->reg[kX86pEsp] += 8u; /* RET 4 */
   g_dialogue.counters.suppressed_response_starts++;
 }
 
@@ -173,7 +173,7 @@ void x2_override_0045a170(CPU *cpu) {
   int before_playing, after_playing;
 
   if (g_dialogue.depth) {
-    cpu->esp += 8u; /* RET 4 */
+    cpu->reg[kX86pEsp] += 8u; /* RET 4 */
     g_dialogue.counters.suppressed_line_starts++;
     return;
   }

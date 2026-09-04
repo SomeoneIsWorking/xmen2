@@ -1,4 +1,5 @@
 #include "d3d8_texture_stage.h"
+#include "../native/x2_log.h"
 #include "d3d8_com.h"
 #include "d3d8_drawcall.h"
 #include "d3d8_resource.h"
@@ -36,11 +37,10 @@ GpuTexture d3d8_texture_stage_resolve(unsigned stage, uint32_t guest) {
   if (guest && !gpu) {
     g_texture_unresolved++;
     if (!told[stage]++)
-      fprintf(stderr,
-              "d3d8: texture stage %u binds guest 0x%08x, but "
-              "it has no GPU texture; draws using it cannot "
-              "sample that stage. Reported once.\n",
-              stage, guest);
+      x2_log_error("d3d8: texture stage %u binds guest 0x%08x, but "
+                   "it has no GPU texture; draws using it cannot "
+                   "sample that stage. Reported once.\n",
+                   stage, guest);
   }
   return gpu;
 }
@@ -62,10 +62,9 @@ int d3d8_texture_arg(uint32_t value, const char *what) {
   default: {
     static int told;
     if (!told++)
-      fprintf(stderr,
-              "d3d8: %s = 0x%x is an unsupported combiner "
-              "argument (SPECULAR, TEMP, or a modifier).\n",
-              what, value);
+      x2_log_error("d3d8: %s = 0x%x is an unsupported combiner "
+                   "argument (SPECULAR, TEMP, or a modifier).\n",
+                   what, value);
     return -1;
   }
   }
@@ -91,21 +90,19 @@ int d3d8_texture_stage1_lower(const D3D8State *state, GpuTexture texture,
     alpha_op = state->stage[1][D3DTSS_ALPHAOP].value;
     if (op != D3DTOP_MODULATE || alpha_op != D3DTOP_MODULATE ||
         ((ttf & 0xffu) != 0u && (ttf & 0xffu) != 2u) || (ttf & ~0xffu) != 0u) {
-      fprintf(stderr,
-              "d3d8: stage 1 asks COLOROP %u, ALPHAOP %u, "
-              "TEXTURETRANSFORMFLAGS 0x%x; only the observed "
-              "MODULATE/MODULATE with disabled or COUNT2 "
-              "texture transform is implemented. "
-              "Draw refused.\n",
-              op, alpha_op, ttf);
+      x2_log_error("d3d8: stage 1 asks COLOROP %u, ALPHAOP %u, "
+                   "TEXTURETRANSFORMFLAGS 0x%x; only the observed "
+                   "MODULATE/MODULATE with disabled or COUNT2 "
+                   "texture transform is implemented. "
+                   "Draw refused.\n",
+                   op, alpha_op, ttf);
       return 0;
     }
     if ((tci & 0xffff0000u) != 0x00010000u) {
-      fprintf(stderr,
-              "d3d8: stage 1 needs a bound 2D texture and "
-              "CAMERASPACENORMAL coordinates (got texture %u, "
-              "TEXCOORDINDEX 0x%x). Draw refused.\n",
-              texture, tci);
+      x2_log_error("d3d8: stage 1 needs a bound 2D texture and "
+                   "CAMERASPACENORMAL coordinates (got texture %u, "
+                   "TEXCOORDINDEX 0x%x). Draw refused.\n",
+                   texture, tci);
       return 0;
     }
     draw->texture1 = texture;
@@ -147,17 +144,15 @@ int d3d8_texture_stage1_lower(const D3D8State *state, GpuTexture texture,
       memcpy(&draw->texture_lod_bias1, &bits, sizeof bits);
     }
     if (draw->texture_mip1 < 0 || draw->texture_mip1 > 2) {
-      fprintf(stderr,
-              "d3d8: stage 1 MIPFILTER %d is not NONE, POINT, "
-              "or LINEAR; draw refused.\n",
-              draw->texture_mip1);
+      x2_log_error("d3d8: stage 1 MIPFILTER %d is not NONE, POINT, "
+                   "or LINEAR; draw refused.\n",
+                   draw->texture_mip1);
       return 0;
     }
     if (draw->texture_min_filter1 < 1 || draw->texture_min_filter1 > 3) {
-      fprintf(stderr,
-              "d3d8: stage 1 MINFILTER %d is not POINT, LINEAR, "
-              "or ANISOTROPIC; draw refused.\n",
-              draw->texture_min_filter1);
+      x2_log_error("d3d8: stage 1 MINFILTER %d is not POINT, LINEAR, "
+                   "or ANISOTROPIC; draw refused.\n",
+                   draw->texture_min_filter1);
       return 0;
     }
   }
@@ -165,10 +160,9 @@ int d3d8_texture_stage1_lower(const D3D8State *state, GpuTexture texture,
   for (stage = 2; stage < D3D8_MAX_STAGES; stage++)
     if (state->stage[stage][D3DTSS_COLOROP].set &&
         state->stage[stage][D3DTSS_COLOROP].value != D3DTOP_DISABLE) {
-      fprintf(stderr,
-              "d3d8: texture stage %u is enabled; this host "
-              "implements stages 0 and 1. Draw refused.\n",
-              stage);
+      x2_log_error("d3d8: texture stage %u is enabled; this host "
+                   "implements stages 0 and 1. Draw refused.\n",
+                   stage);
       return 0;
     }
   return 1;

@@ -55,10 +55,10 @@ static uint32_t call0(CPU *cpu, uint32_t object, uint32_t slot, int *readable) {
       !x86_peek32(vtable + slot, &function) || !function)
     return 0;
   call = *cpu;
-  call.ecx = object;
+  call.reg[kX86pEcx] = object;
   x86_guest_call_args(&call, function, 0u);
   *readable = 1;
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static CutsceneSkipPublicationBank publication_at(uint32_t controller) {

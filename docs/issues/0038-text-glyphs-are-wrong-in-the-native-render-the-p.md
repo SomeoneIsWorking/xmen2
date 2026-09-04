@@ -34,7 +34,7 @@ how glyphs are drawn.
 
 ## How to look
 
-`tools/native_shot.sh` gives a picture per run. The state the text draws under
+`tools/native_shot.py` gives a picture per run. The state the text draws under
 is what `d3d8_state_report` prints at shutdown; the ignored-state list is the
 first thing to read, because a state the draw path drops is invisible in every
 other way.

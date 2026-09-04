@@ -20,7 +20,13 @@ In a 2000-frame in-game profiling run (`act0/tutorial/tutorial1`, `jit.profile=6
 - `x2_override_10034d10`: native override for `0x10034d10` popping `ret` (`C->esp += 4u`).
 - `x2_override_10034d30`: runs the attribute stack reset loop natively in host C, clears manager pointers, invokes `clearLightHandles` via `x86_guest_call_args`, and pops `ret` (`C->esp += 4u`).
 
-Controlled by runtime CVar `sg.attr_stack` (default true) for runtime A/B toggling without recompile. A differential verification harness in `src/native/attr_stack_verify.{c,h}` (gated on `sg.attr_stack_verify=1`) snapshots the initial state of all active attribute stacks and manager pointers, executes the native override, restores initial values, executes the guest body via `x86_guest_body`, and asserts bit-for-bit equivalence across all fields. Verified across 1,740 in-game frames with zero assertion divergences.
+Controlled by runtime CVar `sg.attr_stack` (default true) for runtime A/B
+toggling without rebuilding. A differential verification harness in
+`src/native/attr_stack_verify.{c,h}` (gated on `sg.attr_stack_verify=1`)
+snapshots the initial state of all active attribute stacks and manager pointers,
+executes the native override, restores initial values, executes the guest body
+via `x86_guest_body`, and asserts bit-for-bit equivalence across all fields.
+Verified across 1,740 in-game frames with zero assertion divergences.
 
 Unit tested in `tests/test_attr_stack.c` (test #76) covering all struct offsets, multi-stack loops, pointer resets, and stack balance (`C.esp`).
 

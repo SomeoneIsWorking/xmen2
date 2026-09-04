@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 /* Invoke the exact retail handler at the end of menus/intro_normal.py. */
-int x2_boot_menu_open(const struct CPU *source, uint32_t exe_base);
+int x2_boot_menu_open(const struct X86pCpu *source, uint32_t exe_base);
 
 #endif

@@ -6,6 +6,7 @@
  * its vertical mirror; centre/corner coverage cannot make that distinction.
  */
 #include "d3d8_screen_space_test.h"
+#include "../native/x2_log.h"
 
 #include <stdio.h>
 
@@ -15,24 +16,24 @@ int d3d8_screen_space_pixels_check(const uint32_t *pixels, int width,
   int fails = 0;
 
   if (!pixels || width < 55 || height < 55) {
-    printf("d3d8 draw selftest: FAILED -- XYZRHW orientation check needs "
-           "at least a 55x55 pixel target.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- XYZRHW orientation check needs "
+                "at least a 55x55 pixel target.\n");
     return 1;
   }
 
   centre = pixels[(height / 2) * width + width / 2];
   corner = pixels[width + 1];
   if (centre != 0xFFFF0000u) {
-    printf("d3d8 draw selftest: FAILED -- the centre is 0x%08x, not the "
-           "red triangle (0xffff0000).\n",
-           centre);
+    x2_log_info("d3d8 draw selftest: FAILED -- the centre is 0x%08x, not the "
+                "red triangle (0xffff0000).\n",
+                centre);
     fails++;
   }
   if (corner != 0xFF00FF00u) {
-    printf("d3d8 draw selftest: FAILED -- the corner is 0x%08x, not the "
-           "green clear (0xff00ff00); something filled the whole "
-           "target.\n",
-           corner);
+    x2_log_info("d3d8 draw selftest: FAILED -- the corner is 0x%08x, not the "
+                "green clear (0xff00ff00); something filled the whole "
+                "target.\n",
+                corner);
     fails++;
   }
 
@@ -43,9 +44,9 @@ int d3d8_screen_space_pixels_check(const uint32_t *pixels, int width,
   if (upper_left == 0xFF00FF00u && lower_left == 0xFFFF0000u)
     return fails;
 
-  printf("d3d8 draw selftest: FAILED -- XYZRHW Y orientation is mirrored: "
-         "upper-left 0x%08x (expected green), lower-left 0x%08x "
-         "(expected red).\n",
-         upper_left, lower_left);
+  x2_log_info("d3d8 draw selftest: FAILED -- XYZRHW Y orientation is mirrored: "
+              "upper-left 0x%08x (expected green), lower-left 0x%08x "
+              "(expected red).\n",
+              upper_left, lower_left);
   return fails + 1;
 }

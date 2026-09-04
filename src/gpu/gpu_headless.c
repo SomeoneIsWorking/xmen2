@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * Headless output: the frame renders into an off-screen texture and a harness
  * reads it back.
@@ -31,9 +32,10 @@ void gpu_device_headless(int on, uint32_t w, uint32_t h) {
     g_headless_size_explicit = 1;
   }
   if (on)
-    printf("gpu: HEADLESS -- frames render into an off-screen %ux%u target; "
-           "there is no window and nothing is presented to a screen.\n",
-           g_headless_w, g_headless_h);
+    x2_log_info(
+        "gpu: HEADLESS -- frames render into an off-screen %ux%u target; "
+        "there is no window and nothing is presented to a screen.\n",
+        g_headless_w, g_headless_h);
 }
 
 #ifdef X2_WITH_SDL
@@ -51,10 +53,9 @@ SDL_GPUTexture *gpu_headless_target(void) {
   ci.num_levels = 1;
   g_headless_tex = SDL_CreateGPUTexture(g_gpu, &ci);
   if (!g_headless_tex)
-    fprintf(stderr,
-            "gpu: the headless target (%ux%u) could not be made: "
-            "%s -- this run will draw NOTHING.\n",
-            g_headless_w, g_headless_h, SDL_GetError());
+    x2_log_error("gpu: the headless target (%ux%u) could not be made: "
+                 "%s -- this run will draw NOTHING.\n",
+                 g_headless_w, g_headless_h, SDL_GetError());
   return g_headless_tex;
 }
 #endif
@@ -131,7 +132,7 @@ int gpu_device_headless_read(void *bgra_out, uint32_t bytes, uint32_t *w_out,
   (void)bytes;
   (void)w_out;
   (void)h_out;
-  fprintf(stderr, "gpu: no SDL in this build, so there is nothing to read.\n");
+  x2_log_error("gpu: no SDL in this build, so there is nothing to read.\n");
   return 0;
 #else
   SDL_GPUTransferBufferCreateInfo tci;
@@ -145,19 +146,19 @@ int gpu_device_headless_read(void *bgra_out, uint32_t bytes, uint32_t *w_out,
   void *p;
 
   if (!g_headless || !g_headless_tex) {
-    fprintf(stderr, "gpu: this run is not headless (or no frame has been "
-                    "rendered), so there is no target to read.\n");
+    x2_log_error("gpu: this run is not headless (or no frame has been "
+                 "rendered), so there is no target to read.\n");
     return 0;
   }
   if (!g_headless_frames) {
-    fprintf(stderr, "gpu: the headless target exists but NO frame has been "
-                    "rendered into it -- reading it would photograph an "
-                    "uninitialised texture.\n");
+    x2_log_error("gpu: the headless target exists but NO frame has been "
+                 "rendered into it -- reading it would photograph an "
+                 "uninitialised texture.\n");
     return 0;
   }
   if (bytes < need) {
-    fprintf(stderr, "gpu: the readback needs %u bytes, was given %u.\n", need,
-            bytes);
+    x2_log_error("gpu: the readback needs %u bytes, was given %u.\n", need,
+                 bytes);
     return 0;
   }
   /* Whatever is in flight has to have executed before it can be read. */
@@ -178,7 +179,7 @@ int gpu_device_headless_read(void *bgra_out, uint32_t bytes, uint32_t *w_out,
   tci.size = need;
   tb = SDL_CreateGPUTransferBuffer(g_gpu, &tci);
   if (!tb) {
-    fprintf(stderr, "gpu: %s\n", SDL_GetError());
+    x2_log_error("gpu: %s\n", SDL_GetError());
     return 0;
   }
   cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
@@ -199,7 +200,7 @@ int gpu_device_headless_read(void *bgra_out, uint32_t bytes, uint32_t *w_out,
   }
   p = SDL_MapGPUTransferBuffer(g_gpu, tb, false);
   if (!p) {
-    fprintf(stderr, "gpu: mapping the readback failed: %s\n", SDL_GetError());
+    x2_log_error("gpu: mapping the readback failed: %s\n", SDL_GetError());
     SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
     return 0;
   }

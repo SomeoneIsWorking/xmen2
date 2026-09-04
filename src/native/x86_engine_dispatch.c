@@ -1,22 +1,34 @@
 #include "x86_engine_dispatch.h"
 
-#include "engine_leaf_thunks.h"
+#include "x2_log.h"
 #include "x86_engine_intercept.h"
-#include "x86_engine_internal.h"
+#include "x86_engine_private.h"
+#include "x86_guest_call_stack.h"
+#include "x86_import_fastpath.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
 #include "cpu.h"
-#include "x87.h"
 
 #include <stdint.h>
+#include <stdlib.h>
 
 /* ---- servicing an interception point ---------------------------------- */
 
-void x86_engine_run_host_at(struct X86pCpu *cpu, struct CPU *host) {
-  /* Fast path: pure leaf import thunks (_ftol, _stricmp, QPC, etc.) bypass the
-     substrate callout bridge and run directly on the x86port CPU state. */
-  if (__builtin_expect(engine_leaf_thunk_dispatch(cpu), 0)) {
+static const X86GuestCallFrame *require_call_frame(struct X86pCpu *cpu) {
+  const X86GuestCallFrame *frame = x86_guest_call_for_cpu(cpu);
+  if (frame)
+    return frame;
+  x2_log_error("engine: dispatch at 0x%08x has no matching canonical CPU "
+               "context\n",
+               cpu->eip);
+  abort();
+}
+
+void x86_engine_run_host_at(struct X86pCpu *cpu) {
+  (void)require_call_frame(cpu);
+  /* Eligible native imports run directly on the canonical x86port state. */
+  if (__builtin_expect(x86_import_fastpath_dispatch(cpu), 0)) {
     x2_engine_note_callout();
     return;
   }
@@ -29,65 +41,30 @@ void x86_engine_run_host_at(struct X86pCpu *cpu, struct CPU *host) {
    * and a stack argument for everything else.
    */
   const uint32_t ret = RD32(cpu->reg[kX86pEsp]);
-  x2_engine_callout_from_x86p(cpu, host);
   x2_engine_note_callout();
-  x86_dispatch(host, target);
-  x2_engine_callout_to_x86p(host, cpu);
+  x86_dispatch(cpu, target);
   /* The dispatched body emulated its own RET, so the guest ESP it returns
      with is already right. Only EIP is this loop's to restore. */
   cpu->eip = ret;
 }
 
-/* ---- the inline dispatch handler ------------------------------------- */
-
-#if defined(__GNUC__) || defined(__clang__)
-#define X2_TLS_INTERNAL                                                        \
-  __attribute__((visibility("hidden"), tls_model("initial-exec")))
-#else
-#define X2_TLS_INTERNAL
-#endif
-
-static X2_TLS_INTERNAL __thread EngineCallCtx *t_call_ctx;
-
-void x86_engine_call_ctx_push(EngineCallCtx *slot, struct CPU *host,
-                              uint32_t entry, uint32_t return_to,
-                              uint32_t entry_esp) {
-  slot->prev = t_call_ctx;
-  slot->host = host;
-  slot->entry = entry;
-  slot->return_to = return_to;
-  slot->entry_esp = entry_esp;
-  t_call_ctx = slot;
-}
-
-void x86_engine_call_ctx_pop(void) {
-  if (t_call_ctx)
-    t_call_ctx = t_call_ctx->prev;
-}
-
-void x86_engine_call_ctx_restore(EngineCallCtx *slot) { t_call_ctx = slot; }
-
 X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user) {
   (void)user;
-  const EngineCallCtx *ctx = t_call_ctx;
+  const X86GuestCallFrame *ctx = require_call_frame(cpu);
   const uint32_t eip = cpu->eip;
 
-  /* The cases that need the interpreter loop's own host frame back. */
-  if (ctx) {
-    if (eip == ctx->return_to && cpu->reg[kX86pEsp] >= ctx->entry_esp + 4u)
-      return kX86pDispatchUnwind;
-    if (eip != ctx->entry && x86_setjmp3_thunk(eip))
-      return kX86pDispatchUnwind;
-  } else if (x86_setjmp3_thunk(eip)) {
+  /* The cases that need the title call loop's own host frame back. */
+  if (eip == ctx->return_to && cpu->reg[kX86pEsp] >= ctx->entry_esp + 4u)
     return kX86pDispatchUnwind;
-  }
+  if (eip != ctx->entry && x86_setjmp3_thunk(eip))
+    return kX86pDispatchUnwind;
   if (eip == ENGINE_RETURN_ADDR)
     return kX86pDispatchUnwind;
 
-  if (!x86_engine_host_body_at(eip, ctx ? ctx->entry : 0u))
+  if (!x86_engine_host_body_at(eip, ctx->entry))
     return kX86pDispatchUnwind; /* the intercept predicate saw something this
                                    handler does not own -- hand it back */
 
-  x86_engine_run_host_at(cpu, ctx ? ctx->host : 0);
+  x86_engine_run_host_at(cpu);
   return kX86pDispatchContinue;
 }

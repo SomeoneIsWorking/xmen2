@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""pe — shared x86 translator toolchain, run from this port.
+"""Run x86port's shared PE32 inspector from this port.
 
-The tool lives in the `recomp-x86` repo: the x86-32 lifter serves this PC port
-and an original-Xbox one alike (OG Xbox is x86), so it is not this port's to
-own. It resolves the PORT from the working directory, which is why this shim
-only has to find it and hand over.
+PE image inspection is runtime provisioning and native-DLL interop support,
+not guest-code generation. x86port owns the reusable parser; this title keeps
+only the resolver shim.
 """
 import os
 import runpy
@@ -13,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from shared_dir import shared_dir
 
-_tool = os.path.join(shared_dir("recomp-x86", "tools/pe.py"), "tools", "pe.py")
+_tool = os.path.join(shared_dir("x86port", "tools/pe.py"), "tools", "pe.py")
 
 if __name__ == "__main__":
     sys.argv[0] = _tool

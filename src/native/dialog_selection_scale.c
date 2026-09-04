@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /*
  * High-resolution extension for retail selected-row transforms.
  *
@@ -42,22 +43,22 @@ static void write_stack_float(uint32_t address, float value) {
 }
 
 static void x2_dialog_selection_transform(CPU *C) {
-  uint32_t caller = RD32(C->esp);
+  uint32_t caller = RD32(C->reg[kX86pEsp]);
 
   g_calls++;
   d3d8_selector_probe_title_builder_enter(C);
   if (caller == SELECTION_CALLER) {
     uint32_t height = RD32(TITLE_OUTPUT_HEIGHT);
-    float supplied_y = stack_float(C->esp + 16u);
-    float supplied_z = stack_float(C->esp + 20u);
+    float supplied_y = stack_float(C->reg[kX86pEsp] + 16u);
+    float supplied_z = stack_float(C->reg[kX86pEsp] + 20u);
     float retail = x2_dialog_selection_retail_scale(height);
     float extended = x2_dialog_selection_scale(height);
 
     g_selected++;
     if (height && fabsf(supplied_y - retail) < 0.00001f &&
         fabsf(supplied_z - retail) < 0.00001f) {
-      write_stack_float(C->esp + 16u, extended);
-      write_stack_float(C->esp + 20u, extended);
+      write_stack_float(C->reg[kX86pEsp] + 16u, extended);
+      write_stack_float(C->reg[kX86pEsp] + 20u, extended);
       if (extended != supplied_y)
         g_corrected++;
     } else {
@@ -69,11 +70,12 @@ static void x2_dialog_selection_transform(CPU *C) {
 }
 
 void x2_dialog_selection_scale_report(void) {
-  fprintf(stderr,
-          "DIALOG SELECTION: %lu transform-builder call(s), %lu selected-row "
-          "call(s), %lu high-resolution correction(s), %lu input "
-          "mismatch(es) refused.\n",
-          g_calls, g_selected, g_corrected, g_refused);
+  lucent_log_error(
+      "x2",
+      "DIALOG SELECTION: %lu transform-builder call(s), %lu selected-row "
+      "call(s), %lu high-resolution correction(s), %lu input "
+      "mismatch(es) refused.\n",
+      g_calls, g_selected, g_corrected, g_refused);
 }
 
 __attribute__((constructor)) static void

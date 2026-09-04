@@ -3,7 +3,7 @@ id: 61
 title: Shutdown SIGSEGV in libIGCore userUnregister: a virtual call returns NULL and the caller dereferences it
 status: resolved
 symptom: The native --d3d8 run exits 3 instead of 0 after a clean X2_MAX_FRAMES stop. SIGSEGV at 0x4, addr2line names fn_libIGCore_100517b0 = Gap::Core::userUnregister. Vulkan also reports VkSurfaceKHR not destroyed at vkDestroyInstance, which is the same teardown cut short.
-tags: pc,native,recomp,shutdown,libIGCore,rc-exe
+tags: pc,native,jit,shutdown,libIGCore
 created: 2026-08-12
 updated: 2026-08-12
 ---
@@ -45,10 +45,9 @@ at the CALL SITE.
 
 ## Related
 
-Issues #20, #15, #14 are the same family (a NULL dereferenced during teardown
-or init) and are all resolved; none is this one. #14 is also a fault at 0x4,
-in igMemoryPool::trimAll, and its cause was ordering rather than a return
-value.
+Other resolved initialization and teardown failures also dereferenced NULL,
+but none had this cause. A separate fault at 0x4 in
+igMemoryPool::trimAll was caused by ordering rather than a return value.
 
 ### Note (2026-08-12)
 RE done: the singleton at 0x1015f438 is the igThreadManager, and vtable slot 0x54 is getCallingThread -- getThreadManager (0x10006a50) reads the same address, and igThread::getCallingThread (0x100068e0) is three instructions: load it, load its vtable, tail-jump through +0x54.
@@ -70,8 +69,8 @@ Two candidates, NEITHER measured yet, and they are distinguishable:
   (a) the list is already EMPTY (count <= 0 jumps straight to the NULL return),
       i.e. an ORDERING problem in teardown;
   (b) the list is non-empty but no entry's +0x40 matches pthread_self(), i.e.
-      an IDENTITY problem -- which this port makes plausible, since every guest
-      thread is now a coroutine on ONE host thread (issue #57), so
+      an IDENTITY problem -- which this port made plausible, since every guest
+      thread was then a coroutine on ONE host thread, so
       pthread_self() cannot distinguish them.
 
 Note that (b) cuts BOTH ways and is not obviously the culprit: sharing one host
@@ -98,7 +97,7 @@ same failure cannot be silent twice.
 It was also called from the SIGSEGV handler, because that is exactly the moment
 worth measuring. That was wrong and is reverted: it uses printf, and stdio in a
 signal handler deadlocks on a lock the interrupted code may hold -- the reason
-the SIGTERM report already writes with write(2) (issue #34). The observed
+the SIGTERM report already writes with write(2). The observed
 result was worse than a deadlock: the process took a SECOND SIGSEGV inside the
 handler and exited 139 with NO report at all, turning a fault that named its own
 function into a silent one. Getting this at a fault needs a write(2) formatter.
@@ -161,7 +160,7 @@ Three wrong turns got here, all in the diagnostic rather than in the defect,
 and each produced a confident wrong answer:
 
 1. X86Module::base is a POINTER TO the guest base. Reading (uintptr_t)m->base
-   gave the host address of the generated module's g_imgbase global, so the
+   gave the host address of the runtime module's g_imgbase global, so the
    report announced "libIGCore.dll is mapped at 0x563f50c5b1c8, above 4 GB" --
    true about the wrong quantity. Every other user in the codebase writes
    *m->base; the header now says so, with the cost noted.

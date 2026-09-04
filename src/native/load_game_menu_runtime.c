@@ -1,4 +1,5 @@
 #include "load_game_menu_runtime.h"
+#include "x2_log.h"
 
 #include "exact_save_load.h"
 #include "guest_heap.h"
@@ -276,21 +277,21 @@ static int poll_navigation_delta(const CPU *source, uint32_t ui, int *delta) {
   uint32_t sample;
   uint32_t target;
 
-  call.esp -= 4u;
-  sample = call.esp;
+  call.reg[kX86pEsp] -= 4u;
+  sample = call.reg[kX86pEsp];
   WR32(sample, ui & 0xfffc0000u);
   x86_guest_call_args(&call, g_exe + FN_INPUT_MANAGER, 0u);
-  input = call.eax;
+  input = call.reg[kX86pEax];
   if (!input)
     return 0;
   target = RD32(RD32(input) + 0x1f8u);
   if (!target)
     return 0;
-  call.esp -= 4u;
-  WR32(call.esp, 0u);
-  call.esp -= 4u;
-  WR32(call.esp, sample);
-  call.ecx = input;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], 0u);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], sample);
+  call.reg[kX86pEcx] = input;
   x86_guest_call_args(&call, target, 8u);
   *delta = (int)(int8_t)RD8(sample + 1u);
   return 1;
@@ -301,19 +302,19 @@ static void update_origin_and_play_focus_sound(const CPU *source, uint32_t ui) {
   uint32_t input;
   uint32_t target;
 
-  call.ecx = ui;
+  call.reg[kX86pEcx] = ui;
   x86_guest_call_args(&call, g_exe + FN_UPDATE_DIALOG_ORIGIN, 0u);
   call = *source;
   x86_guest_call_args(&call, g_exe + FN_INPUT_MANAGER, 0u);
-  input = call.eax;
+  input = call.reg[kX86pEax];
   if (!input)
     return;
   target = RD32(RD32(input) + 0xe8u);
   if (!target)
     return;
-  call.esp -= 4u;
-  WR32(call.esp, 0u);
-  call.ecx = input;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], 0u);
+  call.reg[kX86pEcx] = input;
   x86_guest_call_args(&call, target, 4u);
 }
 
@@ -322,31 +323,31 @@ static int script_integer_argument(const CPU *source, int *value) {
   uint32_t argument;
   uint32_t target;
 
-  call.ecx = RD32(source->esp + 4u);
-  call.esp -= 4u;
-  WR32(call.esp, 0u);
+  call.reg[kX86pEcx] = RD32(source->reg[kX86pEsp] + 4u);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], 0u);
   x86_guest_call_args(&call, g_exe + FN_SCRIPT_ARGUMENT, 4u);
-  argument = call.eax;
+  argument = call.reg[kX86pEax];
   if (!argument)
     return 0;
   target = RD32(RD32(argument) + 0x10u);
   if (!target)
     return 0;
-  call.ecx = argument;
+  call.reg[kX86pEcx] = argument;
   x86_guest_call_args(&call, target, 0u);
-  *value = (int)call.eax;
+  *value = (int)call.reg[kX86pEax];
   return 1;
 }
 
 static void x2_override_004b0d20(CPU *C) {
-  uint32_t manager = C->ecx;
+  uint32_t manager = C->reg[kX86pEcx];
 
   x86_guest_body(C, "XMen2.exe", 0x004b0d20u);
   activate_projection(C, manager);
 }
 
 static void x2_override_005e9d30(CPU *C) {
-  uint32_t ui = C->ecx;
+  uint32_t ui = C->reg[kX86pEcx];
   size_t resident_focus;
   int delta;
 
@@ -362,7 +363,7 @@ static void x2_override_005e9d30(CPU *C) {
     refresh_projection();
     update_origin_and_play_focus_sound(C, ui);
   }
-  C->esp += 4u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 static void x2_override_0049f010(CPU *C) {
@@ -383,11 +384,11 @@ static void x2_override_0049f010(CPU *C) {
     g_autosave_choices++;
     g_last_manager_selection = (int)(int8_t)RD8(g_manager + MANAGER_SELECTION);
   } else {
-    fprintf(stderr, "load-menu: exact autosave transaction refused; "
-                    "the retail manager state was not changed\n");
+    x2_log_error("load-menu: exact autosave transaction refused; "
+                 "the retail manager state was not changed\n");
   }
-  C->eax = 0u;
-  C->esp += 4u;
+  C->reg[kX86pEax] = 0u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 size_t x2_load_game_menu_runtime_report(char *out, size_t capacity) {

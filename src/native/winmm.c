@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * WINMM -- the four multimedia-timer entry points libCriMovie imports.
  *
@@ -5,12 +6,12 @@
  * point: timeBeginPeriod/timeEndPeriod ASK for a scheduling resolution, and
  * timeSetEvent/timeKillEvent RUN GUEST CODE on a timer thread. The first pair
  * has an honest answer on this host; the second would need a second thread
- * executing recompiled bodies, which this runtime does not have, and there is
+ * executing guest bodies, which this runtime does not have, and there is
  * no way to fake a callback that never fires.
  */
-#include "winmm.h"
 #include "guest_clock.h"
 #include "igvk_ark.h"
+#include "winmm.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -18,13 +19,13 @@
 #include <string.h>
 #include <time.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 #define TIMERR_NOERROR 0u
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 /*
@@ -43,10 +44,10 @@ static void ret_std(CPU *C, uint32_t eax, int nargs) {
 static void imp_WINMM_timeBeginPeriod_(CPU *C) {
   static int said;
   if (!said++)
-    printf("winmm: timeBeginPeriod(%u ms) -- granted. This host's timers "
-           "are nanosecond-resolution already, so there is nothing to "
-           "raise.\n",
-           A(0));
+    x2_log_info("winmm: timeBeginPeriod(%u ms) -- granted. This host's timers "
+                "are nanosecond-resolution already, so there is nothing to "
+                "raise.\n",
+                A(0));
   ret_std(C, TIMERR_NOERROR, 1);
 }
 
@@ -58,7 +59,7 @@ void imp_WINMM_timeEndPeriod(CPU *C) { imp_WINMM_timeEndPeriod_(C); }
 /* ---- the multimedia timers --------------------------------------------
  *
  * timeSetEvent(delay, resolution, proc, user, flags) runs a GUEST callback on
- * a timer thread. This runtime executes recompiled bodies on ONE thread and
+ * a timer thread. This runtime executes guest bodies on ONE thread and
  * the CPU state is a plain struct passed down by pointer, so a second thread
  * entering a body would race the register file itself. A real timer thread is
  * therefore not a five-line implementation -- it is a threading model, and it
@@ -107,11 +108,10 @@ void imp_WINMM_timeSetEvent(CPU *C) {
     /* TIME_CALLBACK_EVENT_SET/PULSE signal an EVENT rather than calling a
        function. Refused by name rather than treated as a function
        callback, which would call whatever the handle happens to be. */
-    fprintf(stderr,
-            "winmm: timeSetEvent with callback type 0x%x -- this "
-            "host implements the FUNCTION callback only; the event "
-            "forms would call a handle as if it were code.\n",
-            flags & TIME_CALLBACK_TYPE_MASK);
+    x2_log_error("winmm: timeSetEvent with callback type 0x%x -- this "
+                 "host implements the FUNCTION callback only; the event "
+                 "forms would call a handle as if it were code.\n",
+                 flags & TIME_CALLBACK_TYPE_MASK);
     ret_std(C, 0, 5);
     return;
   }
@@ -123,11 +123,10 @@ void imp_WINMM_timeSetEvent(CPU *C) {
     if (!g_timer[i].used)
       break;
   if (i == MAX_TIMERS) {
-    fprintf(stderr,
-            "winmm: all %d timer slots are live; timeSetEvent "
-            "fails, which is what Windows does when the system is "
-            "out of timers.\n",
-            MAX_TIMERS);
+    x2_log_error("winmm: all %d timer slots are live; timeSetEvent "
+                 "fails, which is what Windows does when the system is "
+                 "out of timers.\n",
+                 MAX_TIMERS);
     ret_std(C, 0, 5);
     return;
   }
@@ -141,12 +140,12 @@ void imp_WINMM_timeSetEvent(CPU *C) {
   {
     static int said;
     if (!said++)
-      printf("winmm: timeSetEvent(%u ms, %s) -- the callback runs on the "
-             "GUEST's thread from the next pump point (a clock read or a "
-             "sleep), not on a timer thread.\n"
-             "  So its resolution is the poll interval, not %u ms. See "
-             "issue #42; the lateness is reported at exit.\n",
-             delay, g_timer[i].periodic ? "periodic" : "one-shot", delay);
+      x2_log_info("winmm: timeSetEvent(%u ms, %s) -- the callback runs on the "
+                  "GUEST's thread from the next pump point (a clock read or a "
+                  "sleep), not on a timer thread.\n"
+                  "  So its resolution is the poll interval, not %u ms. See "
+                  "issue #42; the lateness is reported at exit.\n",
+                  delay, g_timer[i].periodic ? "periodic" : "one-shot", delay);
   }
   ret_std(C, (uint32_t)(i + 1), 5);
 }
@@ -259,20 +258,22 @@ void winmm_report(void) {
       ever++;
   }
   if (!g_pumps && !g_fires && !live) {
-    printf("  winmm: no multimedia timer was ever set.\n");
+    x2_log_info("  winmm: no multimedia timer was ever set.\n");
     return;
   }
-  printf("  winmm: %lu timer callback(s) run from %lu pump(s), %d timer(s) "
-         "still live\n",
-         g_fires, g_pumps, live);
+  x2_log_info(
+      "  winmm: %lu timer callback(s) run from %lu pump(s), %d timer(s) "
+      "still live\n",
+      g_fires, g_pumps, live);
   if (g_fires)
-    printf("         average lateness %lu ms -- these run at the POLL "
-           "interval, not at the interval the guest asked for (issue #42)\n",
-           g_late_ms_total / g_fires);
+    x2_log_info(
+        "         average lateness %lu ms -- these run at the POLL "
+        "interval, not at the interval the guest asked for (issue #42)\n",
+        g_late_ms_total / g_fires);
   for (i = 0; i < MAX_TIMERS; i++)
     if (g_timer[i].used && !g_timer[i].fired)
-      printf("         timer %d (%u ms) has NEVER fired -- the guest has "
-             "not reached a pump point since it was set, so whatever it "
-             "drives is not happening\n",
-             i + 1, g_timer[i].delay_ms);
+      x2_log_info("         timer %d (%u ms) has NEVER fired -- the guest has "
+                  "not reached a pump point since it was set, so whatever it "
+                  "drives is not happening\n",
+                  i + 1, g_timer[i].delay_ms);
 }

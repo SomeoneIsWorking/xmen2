@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * ADVAPI32 -- a real registry, small and persisted, not a refusal.
  *
@@ -44,7 +45,7 @@
 #include <string.h>
 #include <strings.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 #define ERROR_SUCCESS 0u
 #define ERROR_FILE_NOT_FOUND 2u
@@ -57,8 +58,8 @@
 #define REG_DWORD 4u
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 /* ---- the store ---------------------------------------------------------- */
@@ -142,11 +143,10 @@ static uint32_t key_open(const char *path) {
   cap = g_key_cap ? g_key_cap * 2 : KEYS_INITIAL;
   grown = (KeyRec *)realloc(g_key, (size_t)cap * sizeof *grown);
   if (!grown) {
-    fprintf(stderr,
-            "advapi32: out of memory growing the open-key table to "
-            "%d; RegOpenKey will now FAIL and the guest will treat "
-            "that as a missing setting.\n",
-            cap);
+    x2_log_error("advapi32: out of memory growing the open-key table to "
+                 "%d; RegOpenKey will now FAIL and the guest will treat "
+                 "that as a missing setting.\n",
+                 cap);
     return 0;
   }
   memset(grown + g_key_cap, 0, (size_t)(cap - g_key_cap) * sizeof *grown);
@@ -154,12 +154,11 @@ static uint32_t key_open(const char *path) {
   if (g_key_cap) {
     static int told;
     if (!told++)
-      fprintf(stderr,
-              "advapi32: more than %d registry keys are open at "
-              "once -- the guest is not calling RegCloseKey. The "
-              "table GROWS rather than failing (Windows has no "
-              "such limit); the leak is counted at exit.\n",
-              g_key_cap);
+      x2_log_error("advapi32: more than %d registry keys are open at "
+                   "once -- the guest is not calling RegCloseKey. The "
+                   "table GROWS rather than failing (Windows has no "
+                   "such limit); the leak is counted at exit.\n",
+                   g_key_cap);
   }
   g_key_cap = cap;
   return key_open(path);
@@ -204,10 +203,9 @@ void advapi32_store_save(void) {
     return;
   f = fopen(store_path(), "w");
   if (!f) {
-    fprintf(stderr,
-            "advapi32: cannot write \"%s\" -- everything the game "
-            "put in the registry this run is LOST at exit.\n",
-            store_path());
+    x2_log_error("advapi32: cannot write \"%s\" -- everything the game "
+                 "put in the registry this run is LOST at exit.\n",
+                 store_path());
     return;
   }
   fprintf(f, "# x2native registry. One value per line:\n"
@@ -259,11 +257,10 @@ void advapi32_store_load(void) {
       if (!g_val[i].used)
         break;
     if (i == MAX_VALUES) {
-      fprintf(stderr,
-              "advapi32: \"%s\" holds more than %d values; the "
-              "rest were NOT loaded and the game will not see "
-              "them.\n",
-              store_path(), MAX_VALUES);
+      x2_log_error("advapi32: \"%s\" holds more than %d values; the "
+                   "rest were NOT loaded and the game will not see "
+                   "them.\n",
+                   store_path(), MAX_VALUES);
       break;
     }
     memset(&g_val[i], 0, sizeof g_val[i]);
@@ -301,11 +298,10 @@ RegValue *advapi32_store_put(const char *path, const char *name) {
     if (!g_val[i].used)
       break;
   if (i == MAX_VALUES) {
-    fprintf(stderr,
-            "advapi32: the registry holds its maximum of %d values; "
-            "this write is REFUSED rather than replacing an "
-            "unrelated one.\n",
-            MAX_VALUES);
+    x2_log_error("advapi32: the registry holds its maximum of %d values; "
+                 "this write is REFUSED rather than replacing an "
+                 "unrelated one.\n",
+                 MAX_VALUES);
     return NULL;
   }
   memset(&g_val[i], 0, sizeof g_val[i]);
@@ -515,11 +511,10 @@ void imp_ADVAPI32_RegSetValueExA(CPU *C) {
   if (cb > MAX_DATA_) {
     /* Refused, not truncated: a truncated REG_BINARY blob reads back as a
        valid short one and the caller has no way to tell. */
-    fprintf(stderr,
-            "advapi32: RegSetValueExA(\"%s\\%s\") is %u bytes and "
-            "this store holds %d -- REFUSED rather than truncated, "
-            "because a short blob reads back as a valid one.\n",
-            path, name, cb, MAX_DATA_);
+    x2_log_error("advapi32: RegSetValueExA(\"%s\\%s\") is %u bytes and "
+                 "this store holds %d -- REFUSED rather than truncated, "
+                 "because a short blob reads back as a valid one.\n",
+                 path, name, cb, MAX_DATA_);
     ret_std(C, ERROR_ACCESS_DENIED, 6);
     return;
   }
@@ -697,14 +692,14 @@ void advapi32_report(void) {
       leaked++;
   advapi32_store_save();
   if (!g_reads && !g_writes) {
-    printf("  advapi32: the registry was never touched.\n");
+    x2_log_info("  advapi32: the registry was never touched.\n");
     return;
   }
-  printf("  advapi32: %lu read(s) (%lu found nothing), %lu write(s); %d "
-         "value(s) now stored in %s\n",
-         g_reads, g_misses, g_writes, n, store_path());
+  x2_log_info("  advapi32: %lu read(s) (%lu found nothing), %lu write(s); %d "
+              "value(s) now stored in %s\n",
+              g_reads, g_misses, g_writes, n, store_path());
   if (leaked)
-    printf("         %d key handle(s) were never closed -- the guest is "
-           "leaking them.\n",
-           leaked);
+    x2_log_info("         %d key handle(s) were never closed -- the guest is "
+                "leaking them.\n",
+                leaked);
 }

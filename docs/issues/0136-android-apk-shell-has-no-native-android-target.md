@@ -67,7 +67,7 @@ not a release candidate.
 
 A separate x86-64 trace APK compiles against the same Android prefix without
 changing the shipping Ninja tree. Its debug-only setup Intent accepts only the
-existing bounded `X2_ARGS` entry-point grammar and cap, never arbitrary process
+the bounded module-qualified entry-point grammar and cap, never arbitrary process
 environment settings. Before that trace could be installed, the retained 16 GiB
 API-35 AVD began dropping its ADB transport during Android boot. Its QCOW2 image
 and host capacity are present, but this device-runtime blocker is distinct from

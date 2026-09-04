@@ -29,12 +29,12 @@ renderer.
 ## Resolution
 
 Remove `re-harness` from the player `SHARED_REPOS` authority and add a launcher
-contract test that fixes the runtime set at exactly `alchemy`, `port-assets`,
-and `recomp-x86`. Maintainer shims continue to resolve `re-harness` through
+contract test that fixes the runtime set at exactly the shipping shared
+dependencies. Maintainer shims continue to resolve `re-harness` through
 `tools/shared_dir.py`; player bootstrap neither fetches nor validates it.
 
 ### Resolution (2026-08-27)
-bootstrap.py mistakenly put maintainer-only re-harness in the player SHARED_REPOS list. Removed it, fixed the runtime set at alchemy/port-assets/recomp-x86 in the launcher contract test, and proved real ./run.sh now validates/provisions all inputs and reaches tools/run.py despite the deliberately mismatched vendor re-harness checkout.
+bootstrap.py mistakenly put maintainer-only re-harness in the player SHARED_REPOS list. Removed it, fixed the launcher contract test around the shipping dependency set, and proved real ./run.sh now validates/provisions all inputs and reaches tools/run.py despite the deliberately mismatched vendor re-harness checkout.
 
 The normal CTest suite now applies the same boundary to `project_state`: it
 runs when `RE_HARNESS_DIR` provides the maintainer checkout and reports a

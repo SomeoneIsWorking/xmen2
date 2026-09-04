@@ -1,8 +1,8 @@
 #include "ui_resources.h"
 #include "../config/config_directory.h"
+#include "../config/environment.h"
 
 #include <cstdio>
-#include <cstdlib>
 
 #ifndef X2_UI_RESOURCE_DIR
 #define X2_UI_RESOURCE_DIR "."
@@ -17,7 +17,7 @@ extern "C" const char *x2_ui_resource_path(const char *name) {
   std::snprintf(path, sizeof path, "%s/ui/%s", directory, name ? name : "");
   return path;
 #else
-  const char *directory = std::getenv("X2_UI_RESOURCE_DIR");
+  const char *directory = x2_config_override_get(kX2ConfigUiResourceDir);
   if (!directory || !directory[0])
     directory = X2_UI_RESOURCE_DIR;
   std::snprintf(path, sizeof path, "%s/%s", directory, name ? name : "");

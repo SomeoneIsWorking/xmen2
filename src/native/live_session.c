@@ -1,7 +1,8 @@
+#include "x2_log.h"
 /* Stable, repo-local discovery record for the current interactive run. */
-#include "live_session.h"
 #include "directory_create.h"
 #include "json_string.h"
+#include "live_session.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -69,24 +70,24 @@ void live_session_stop(void) {
 
 int live_session_start(int control_port, const char *input_recording) {
   if (control_port <= 0) {
-    fprintf(stderr, "live session: no control port is open, so this run "
-                    "cannot be published as inspectable.\n");
+    x2_log_error("live session: no control port is open, so this run "
+                 "cannot be published as inspectable.\n");
     return 0;
   }
   g_port = control_port;
   snprintf(g_recording, sizeof g_recording, "%s",
            input_recording ? input_recording : "");
   if (!publish(1)) {
-    fprintf(stderr,
-            "live session: cannot publish %s: %s. The game is "
-            "running, but automatic discovery will not find it.\n",
-            live_session_record_path(), strerror(errno));
+    x2_log_error("live session: cannot publish %s: %s. The game is "
+                 "running, but automatic discovery will not find it.\n",
+                 live_session_record_path(), strerror(errno));
     return 0;
   }
   g_started = 1;
   atexit(live_session_stop);
-  printf("live session: tools/x2ctl.py probe now resolves this pid and port "
-         "through %s\n",
-         live_session_record_path());
+  x2_log_info(
+      "live session: tools/x2ctl.py probe now resolves this pid and port "
+      "through %s\n",
+      live_session_record_path());
   return 1;
 }

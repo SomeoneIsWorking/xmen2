@@ -1,10 +1,10 @@
 /*
  * A liveness heartbeat for a run that does not return.
  *
- * Every other instrument here speaks at the END of a run: the reached set, the
- * boundary ring, the allocator reports, the argument watch. That is fine for a
- * run that crashes or exits, and useless for one that keeps going -- which is
- * what the game does the moment it reaches its main loop. Issue #35 read
+ * Most diagnostics here speak at the END of a run: the boundary ring and the
+ * subsystem reports. That is fine for a run that crashes or exits, and useless
+ * for one that keeps going -- which is what the game does the moment it reaches
+ * its main loop. Issue #35 read
  * exactly like a hang for a whole session: the log stopped, and the only
  * evidence available afterwards was the ring, whose last entries happened to
  * be the frame timer. "Spinning on the clock" and "running frames" produce the

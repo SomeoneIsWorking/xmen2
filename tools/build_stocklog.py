@@ -6,8 +6,8 @@ only copied/replaced files are alchemy.ini, d3d8.dll, and d3d8_real.dll.
 
 Usage:
     tools/build_stocklog.py [rundir-name]       # default: stocklog
-    X2_KEYS="..." tools/run_shim.sh stocklog 540
-    X2_SHADOW_FORCE=0 X2_SHADOW_EXPECT=0 tools/run_shim.sh stocklog 540
+    X2_KEYS="..." tools/run_shim.py stocklog 540
+    X2_SHADOW_FORCE=0 X2_SHADOW_EXPECT=0 tools/run_shim.py stocklog 540
 """
 
 from __future__ import annotations
@@ -27,10 +27,8 @@ COMPILER = "i686-w64-mingw32-gcc"
 PROXY_SOURCES = (
     "tools/proxy_d3d8/proxy.c",
     "tools/proxy_d3d8/fwd.S",
-    "tools/proxy_d3d8/probe_hook.c",
     "tools/proxy_d3d8/shadow_setting.c",
     "tools/proxy_d3d8/shadow_trace.c",
-    "src/recomp/gen/probe_stubs.S",
 )
 OWNED_RUN_FILES = frozenset(
     {
@@ -70,9 +68,7 @@ def _read_env(path: Path) -> dict[str, str]:
         except ValueError as exc:
             raise BuildRefusal(f"{path}:{line_number}: {exc}") from exc
         if len(words) > 1:
-            raise BuildRefusal(
-                f"{path}:{line_number}: quote values containing whitespace"
-            )
+            raise BuildRefusal(f"{path}:{line_number}: quote values containing whitespace")
         values[key] = words[0] if words else ""
     return values
 
@@ -98,9 +94,7 @@ def validate_run_name(run_name: str) -> Path:
         or candidate.name in {"", ".", ".."}
         or len(candidate.parts) != 1
     ):
-        raise BuildRefusal(
-            f"run directory name {run_name!r} must be one name below scratch/run"
-        )
+        raise BuildRefusal(f"run directory name {run_name!r} must be one name below scratch/run")
     return candidate
 
 
@@ -126,7 +120,6 @@ def configured_paths(root: Path, run_name: str, env: Mapping[str, str]) -> dict[
         "build": build_dir,
         "definition": build_dir / "d3d8.def",
         "output": build_dir / "d3d8.dll",
-        "generated": root / "src/recomp/gen",
     }
 
 
@@ -208,7 +201,6 @@ def rewrite_proxy_definition(generated: str) -> tuple[str, int]:
 
 
 def compile_command(root: Path, output: Path, definition: Path) -> list[str]:
-    generated = root / "src/recomp/gen"
     return [
         COMPILER,
         "-shared",
@@ -218,7 +210,6 @@ def compile_command(root: Path, output: Path, definition: Path) -> list[str]:
         "-o",
         str(output),
         f"-I{root / 'src/oracle'}",
-        f"-I{generated}",
         *(str(root / source) for source in PROXY_SOURCES),
         str(definition),
         "-static-libgcc",
@@ -228,18 +219,14 @@ def compile_command(root: Path, output: Path, definition: Path) -> list[str]:
 def require_sources(root: Path) -> None:
     missing = [str(root / source) for source in PROXY_SOURCES if not (root / source).is_file()]
     if missing:
-        raise BuildRefusal(
-            "proxy source(s) missing; built NOTHING:\n  " + "\n  ".join(missing)
-        )
+        raise BuildRefusal("proxy source(s) missing; built NOTHING:\n  " + "\n  ".join(missing))
 
 
 def _replace_with_symlink(source: Path, destination: Path) -> None:
     if destination.is_symlink() or destination.is_file():
         destination.unlink()
     elif destination.exists():
-        raise BuildRefusal(
-            f"refusing to replace directory in staged run: {destination}"
-        )
+        raise BuildRefusal(f"refusing to replace directory in staged run: {destination}")
     destination.symlink_to(source)
 
 
@@ -300,7 +287,7 @@ def build(
         raise BuildRefusal(
             f"no 32-bit d3d8 at {real_d3d8}.\n"
             "  This prefix has no DXVK d3d8; the stock game cannot start without\n"
-            "  one (run_shim.sh forces d3d8=native). Built NOTHING."
+            "  one (run_shim.py forces d3d8=native). Built NOTHING."
         )
 
     real_exports = pe_output(root, "exports", real_d3d8)
@@ -328,33 +315,16 @@ def build(
         "Direct3DCreate8 implemented"
     )
 
-    try:
-        run_checked(
-            [sys.executable, str(root / "tools/gen_probes.py")],
-            quiet=True,
-            cwd=root,
-        )
-    except BuildRefusal as exc:
-        raise BuildRefusal("tools/gen_probes.py FAILED; built NOTHING") from exc
-    for generated_name in ("probe_table.h", "probe_stubs.S"):
-        generated_path = paths["generated"] / generated_name
-        if not generated_path.is_file():
-            raise BuildRefusal(f"{generated_path} was not generated; built NOTHING")
-
     require_sources(root)
     try:
-        run_checked(
-            compile_command(root, paths["output"], paths["definition"]), cwd=root
-        )
+        run_checked(compile_command(root, paths["output"], paths["definition"]), cwd=root)
     except BuildRefusal as exc:
         raise BuildRefusal("compile FAILED") from exc
 
     built_exports = pe_output(root, "exports", paths["output"])
     built_names = export_names(built_exports)
     if "Direct3DCreate8" not in built_names:
-        raise BuildRefusal(
-            f"the BUILT {paths['output']} does not export Direct3DCreate8."
-        )
+        raise BuildRefusal(f"the BUILT {paths['output']} does not export Direct3DCreate8.")
     real_count = len(export_names(real_exports))
     if len(built_names) < real_count:
         raise BuildRefusal(
@@ -366,7 +336,7 @@ def build(
     print(f"{TOOL_NAME}: staged {paths['run']}")
     print(f"  d3d8.dll      = the logging proxy ({paths['output'].stat().st_size} bytes)")
     print(f"  d3d8_real.dll = {real_d3d8}")
-    print(f"  run it:  X2_KEYS=... tools/run_shim.sh {run_name} 540")
+    print(f"  run it:  X2_KEYS=... tools/run_shim.py {run_name} 540")
     print(f"  read it: scratch/run/{run_name}/d3d8_lightlog.txt")
     print(
         "  shadow: set X2_SHADOW_FORCE=0|1 and X2_SHADOW_EXPECT=0|1, press "

@@ -1,4 +1,6 @@
 #include "save_trace_runtime.h"
+#include "../config/environment.h"
+#include "x2_log.h"
 
 #include "autosave_runtime.h"
 #include "load_game_menu_runtime.h"
@@ -25,7 +27,7 @@ static SaveTrace g_trace;
 static int g_trace_enabled;
 
 static uint32_t stack_arg(const CPU *C, unsigned index) {
-  return RD32(C->esp + 4u + index * 4u);
+  return RD32(C->reg[kX86pEsp] + 4u + index * 4u);
 }
 
 static void copy_guest_string(char *out, size_t capacity, uint32_t address) {
@@ -78,7 +80,7 @@ static void x2_trace_0055fcd0(CPU *C) {
 }
 
 static void x2_trace_004aed10(CPU *C) {
-  uint32_t manager = C->ecx;
+  uint32_t manager = C->reg[kX86pEcx];
 
   save_trace_load_manager(
       &g_trace,
@@ -107,7 +109,7 @@ static void x2_trace_0049f140(CPU *C) {
 }
 
 static void x2_trace_004aeb80(CPU *C) {
-  uint32_t manager = C->ecx;
+  uint32_t manager = C->reg[kX86pEcx];
   uint32_t before = RD32(manager + X2_MANAGER_MODE);
 
   mark_with_u32(SAVE_TRACE_SAVE_004AEB80, SAVE_TRACE_ANSWER_UNKNOWN,
@@ -117,7 +119,7 @@ static void x2_trace_004aeb80(CPU *C) {
 }
 
 static void x2_trace_004ae990(CPU *C) {
-  uint32_t manager = C->ecx;
+  uint32_t manager = C->reg[kX86pEcx];
   uint32_t before = RD32(manager + X2_MANAGER_MODE);
 
   x86_guest_body(C, "XMen2.exe", 0x004ae990u);
@@ -125,7 +127,7 @@ static void x2_trace_004ae990(CPU *C) {
 }
 
 static void x2_trace_004b15b0(CPU *C) {
-  uint32_t state = RD32(C->ecx + X2_MANAGER_STATE);
+  uint32_t state = RD32(C->reg[kX86pEcx] + X2_MANAGER_STATE);
 
   mark_with_u32(SAVE_TRACE_SAVE_004B15B0,
                 state == 27u ? SAVE_TRACE_ANSWER_YES : SAVE_TRACE_ANSWER_NO,
@@ -134,7 +136,7 @@ static void x2_trace_004b15b0(CPU *C) {
 }
 
 static void x2_trace_0046baf0(CPU *C) {
-  uint32_t caller = RD32(C->esp);
+  uint32_t caller = RD32(C->reg[kX86pEsp]);
 
   mark_with_u32(SAVE_TRACE_SAVE_004B1746,
                 caller == 0x004b174cu ? SAVE_TRACE_ANSWER_YES
@@ -144,7 +146,7 @@ static void x2_trace_0046baf0(CPU *C) {
 }
 
 static void x2_trace_0055fe70(CPU *C) {
-  uint32_t caller = RD32(C->esp);
+  uint32_t caller = RD32(C->reg[kX86pEsp]);
 
   mark_with_u32(SAVE_TRACE_SAVE_004B177A,
                 caller == 0x004b177du ? SAVE_TRACE_ANSWER_YES
@@ -175,7 +177,7 @@ static void x2_trace_004a6b50(CPU *C) {
 }
 
 static void x2_trace_005604f0(CPU *C) {
-  if (RD32(C->esp) == 0x004a6d01u)
+  if (RD32(C->reg[kX86pEsp]) == 0x004a6d01u)
     save_trace_mark(&g_trace, SAVE_TRACE_EXTRACTION_SAVE_COMMAND,
                     SAVE_TRACE_ANSWER_YES, "queued saveloadProcess(4)");
   x86_guest_body(C, "XMen2.exe", 0x005604f0u);
@@ -244,18 +246,18 @@ void x2_save_trace_runtime_print(void) {
     return;
   report = (char *)malloc(required);
   if (!report) {
-    fprintf(stderr, "save-trace: report allocation of %zu bytes failed\n",
-            required);
+    x2_log_error("save-trace: report allocation of %zu bytes failed\n",
+                 required);
     return;
   }
   if (save_trace_report(&g_trace, report, required, NULL) ==
       SAVE_TRACE_RECORDED)
-    fputs(report, stderr);
+    x2_log_error("%s", report);
   free(report);
 }
 
 __attribute__((constructor)) static void x2_save_trace_register(void) {
-  const char *enabled = getenv("X2_SAVE_TRACE");
+  const char *enabled = x2_config_override_get(kX2ConfigSaveTrace);
 
   g_trace_enabled = !(enabled && strcmp(enabled, "0") == 0);
   save_trace_init(&g_trace, g_trace_enabled);

@@ -1,10 +1,11 @@
+#include "../native/x2_log.h"
 /*
  * igVkVisualContext -- the slots that bring the renderer up and take it down.
  *
  * Slot numbers and each body's `RET N` come from
  *
- *   python3 tools/device_slots.py scratch/recomp/libIGGfx.json \
- *       scratch/recomp/libIGGfx.vtab.json --class igDx8VisualContext --list
+ *   python3 tools/device_slots.py scratch/analysis/libIGGfx.json \
+ *       scratch/analysis/libIGGfx.vtab.json --class igDx8VisualContext --list
  *
  * and the argument counts below are that RET divided by four. They are read
  * out of the binary, never guessed: a wrong count drifts the guest stack and
@@ -70,18 +71,19 @@ static void report_fields(uint32_t self) {
 
   if (told++)
     return;
-  printf("igVk: the constructed igVkVisualContext at 0x%08x --\n", self);
+  x2_log_info("igVk: the constructed igVkVisualContext at 0x%08x --\n", self);
   for (i = 0; i < sizeof f / sizeof f[0]; i++) {
     uint32_t v = RD32(self + f[i].off);
     if (!v)
       zero++;
-    printf("        +0x%03x  %08x  %s\n", f[i].off, v, f[i].what);
+    x2_log_info("        +0x%03x  %08x  %s\n", f[i].off, v, f[i].what);
   }
-  printf("      %d of %zu are zero. The two marked BY DESIGN are meant to "
-         "be;\n      any other zero is a construction step that did not "
-         "happen, and it will\n      fault somewhere that does not mention "
-         "construction.\n",
-         zero, sizeof f / sizeof f[0]);
+  x2_log_info(
+      "      %d of %zu are zero. The two marked BY DESIGN are meant to "
+      "be;\n      any other zero is a construction step that did not "
+      "happen, and it will\n      fault somewhere that does not mention "
+      "construction.\n",
+      zero, sizeof f / sizeof f[0]);
 }
 
 /* ---- slot 7: userInstantiate ------------------------------------------ */
@@ -147,10 +149,9 @@ static void vk_user_instantiate(CPU *C) {
       if (!RD32(self + blk[b].off)) {
         uint32_t m = guest_malloc(blk[b].size);
         if (!m) {
-          fprintf(stderr,
-                  "igVk: no guest memory for the parameter "
-                  "block at +0x%x\n",
-                  blk[b].off);
+          x2_log_error("igVk: no guest memory for the parameter "
+                       "block at +0x%x\n",
+                       blk[b].off);
           ark_ret(C, r, 1);
           return;
         }
@@ -206,15 +207,14 @@ static void vk_user_instantiate(CPU *C) {
       if (f)
         ark_call_this(f, self, NULL, 0);
       else
-        fprintf(stderr, "igVk: cannot map %s\n", init[n].name);
+        x2_log_error("igVk: cannot map %s\n", init[n].name);
     }
     if (!told++)
-      printf("igVk: ran %zu of the engine's construction helpers; "
-             "initDesktopDisplayFormat, initCg and the [this+0x534] and "
-             "[this+0x53c] virtual calls are still owed\n",
-             sizeof init / sizeof init[0]);
+      x2_log_info("igVk: ran %zu of the engine's construction helpers; "
+                  "initDesktopDisplayFormat, initCg and the [this+0x534] and "
+                  "[this+0x53c] virtual calls are still owed\n",
+                  sizeof init / sizeof init[0]);
     report_fields(self);
-    fflush(stdout);
   }
   /* +0x140/+0x144 are where igDxVisualContext keeps its IDirect3D8 and its
      device. Left 0: this host has no such objects, and the device-touching
@@ -279,9 +279,9 @@ static void vk_set_native_window_handle(CPU *C) {
   uint32_t r = igvk_super(C, DX_SET_NATIVE_WINDOW_HANDLE, 1);
   static int told;
   if (!told++)
-    printf("igVk: setNativeWindowHandle(0x%08x) -- the swapchain follows "
-           "the host's SDL window, not this handle\n",
-           IGVK_ARG(C, 0));
+    x2_log_info("igVk: setNativeWindowHandle(0x%08x) -- the swapchain follows "
+                "the host's SDL window, not this handle\n",
+                IGVK_ARG(C, 0));
   gpu_device_set_window_provider(win32_sdl_window);
   gpu_device_attach_window(win32_sdl_window());
   ark_ret(C, r, 1);
@@ -341,7 +341,7 @@ static void vk_open(CPU *C) {
   if (!gpu_device_ready()) {
     /* The one honest failure: no GPU device means the display genuinely
        did not come up, and saying OK would move the symptom elsewhere. */
-    fprintf(stderr, "igVk: open() refused -- there is no GPU device.\n");
+    x2_log_error("igVk: open() refused -- there is no GPU device.\n");
     igvk_ret_status(C, out, igvk_status_fail(), 1);
     return;
   }
@@ -370,9 +370,9 @@ static void vk_open(CPU *C) {
     if ((f = ark_lifted(IGVK_GFX, DX_OPEN_HELPER_A)))
       ark_call_this(f, self, NULL, 0);
     if (!told++)
-      printf("igVk: open() skips setupAll -- it pushes cached render "
-             "state into a D3D device, and there is none. That state "
-             "reaches the GPU when the state mirror exists.\n");
+      x2_log_info("igVk: open() skips setupAll -- it pushes cached render "
+                  "state into a D3D device, and there is none. That state "
+                  "reaches the GPU when the state mirror exists.\n");
   }
   ark_call_this(RD32(vt + 217u * 4u), self, &minus1, 1);
   {
@@ -381,10 +381,9 @@ static void vk_open(CPU *C) {
       WR32(g, self);
   }
   if (!told++)
-    printf("igVk: open() -- the host device already exists, so the "
-           "engine's createDevice is the one call skipped; the rest of "
-           "its body ran.\n");
-  fflush(stdout);
+    x2_log_info("igVk: open() -- the host device already exists, so the "
+                "engine's createDevice is the one call skipped; the rest of "
+                "its body ran.\n");
   igvk_ret_status(C, out, igvk_status_ok(), 1);
 }
 
@@ -413,10 +412,9 @@ static void vk_open(CPU *C) {
 static void vk_detect_driver_database_properties(CPU *C) {
   static int told;
   if (!told++)
-    printf("igVk: detectDriverDatabaseProperties -- no DirectX adapter to "
-           "identify, so no driver-quirk entry applies and the engine's "
-           "defaults stand.\n");
-  fflush(stdout);
+    x2_log_info("igVk: detectDriverDatabaseProperties -- no DirectX adapter to "
+                "identify, so no driver-quirk entry applies and the engine's "
+                "defaults stand.\n");
   ark_ret(C, 0, 1);
 }
 
@@ -445,11 +443,10 @@ static void vk_set_video_mode(CPU *C) {
   g_video_mode = desc ? RD8(desc) : 0;
   g_video_flags = desc ? RD32(desc + 0x14u) : 0;
   if (!told++)
-    printf("igVk: setVideoMode(mode=%u, flags=0x%x) accepted; the "
-           "swapchain follows the host window and is not resized to "
-           "match.\n",
-           g_video_mode, g_video_flags);
-  fflush(stdout); /* the run may abort in a later slot before a flush */
+    x2_log_info("igVk: setVideoMode(mode=%u, flags=0x%x) accepted; the "
+                "swapchain follows the host window and is not resized to "
+                "match.\n",
+                g_video_mode, g_video_flags);
   igvk_ret_status(C, out, igvk_status_ok(), 2);
 }
 

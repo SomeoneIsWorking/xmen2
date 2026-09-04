@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /*
  * X2_LIGHT_DUMP: the lighting INPUTS of the first n lit draws, printed.
  *
@@ -76,7 +78,7 @@ static long g_ld_want = -2, g_ld_done, g_ld_skip = -1, g_ld_skipped,
  */
 static long dump_requested(void) {
   if (g_ld_want == -2) {
-    const char *e = getenv("X2_LIGHT_DUMP");
+    const char *e = x2_config_override_get(kX2ConfigLightDump);
     g_ld_want = (e && *e) ? atol(e) : -1;
   }
   return g_ld_want;
@@ -127,7 +129,7 @@ void d3d8_light_dump(const GpuDraw *d) {
     static long minimum = -1;
     static int told;
     if (minimum < 0) {
-      const char *e = getenv("X2_LIGHT_DUMP_MIN");
+      const char *e = x2_config_override_get(kX2ConfigLightDumpMin);
       minimum = (e && *e) ? atol(e) : 100;
     }
     if ((long)gpu_frame_draws_so_far() < minimum)
@@ -136,12 +138,11 @@ void d3d8_light_dump(const GpuDraw *d) {
        every skipped draw as well, so with X2_LIGHT_DUMP_SKIP it printed
        the same line thousands of times. */
     if (!told++)
-      fprintf(stderr,
-              "d3d8: X2_LIGHT_DUMP -- only frames that have "
-              "already submitted %ld draw(s) are dumped (set "
-              "X2_LIGHT_DUMP_MIN to change). A menu frame submits far "
-              "fewer, so this is NOT the menu.\n",
-              minimum);
+      x2_log_error("d3d8: X2_LIGHT_DUMP -- only frames that have "
+                   "already submitted %ld draw(s) are dumped (set "
+                   "X2_LIGHT_DUMP_MIN to change). A menu frame submits far "
+                   "fewer, so this is NOT the menu.\n",
+                   minimum);
   }
   /*
    * X2_LIGHT_DUMP_SKIP=<n> -- ignore the first n qualifying draws.
@@ -161,22 +162,20 @@ void d3d8_light_dump(const GpuDraw *d) {
     return;
   {
     if (g_ld_skip < 0) {
-      const char *e = getenv("X2_LIGHT_DUMP_SKIP");
+      const char *e = x2_config_override_get(kX2ConfigLightDumpSkip);
       g_ld_skip = (e && *e) ? atol(e) : 0;
     }
     if (g_ld_skipped < g_ld_skip) {
       if (++g_ld_skipped == g_ld_skip)
-        fprintf(stderr,
-                "d3d8: X2_LIGHT_DUMP_SKIP -- %ld qualifying "
-                "draw(s) were skipped; what follows is LATER in the "
-                "level, not its first lit frames.\n",
-                g_ld_skip);
+        x2_log_error("d3d8: X2_LIGHT_DUMP_SKIP -- %ld qualifying "
+                     "draw(s) were skipped; what follows is LATER in the "
+                     "level, not its first lit frames.\n",
+                     g_ld_skip);
       return;
     }
   }
   g_ld_done++;
-  fprintf(
-      stderr,
+  x2_log_error(
       "d3d8 light dump %ld/%ld at presented frame %lu: %d light(s) enabled, "
       "ambient %.3f %.3f %.3f "
       "(D3DRS_AMBIENT raw 0x%08x), colorvertex %d, has_normal %d\n"
@@ -188,8 +187,7 @@ void d3d8_light_dump(const GpuDraw *d) {
       d->mat_diffuse[0], d->mat_diffuse[1], d->mat_diffuse[2],
       d->mat_ambient[0], d->mat_ambient[1], d->mat_ambient[2],
       d->mat_emissive[0], d->mat_emissive[1], d->mat_emissive[2]);
-  fprintf(
-      stderr,
+  x2_log_error(
       "    world row0 %.3f %.3f %.3f %.3f   row3(translation) %.1f %.1f %.1f\n"
       "    the same origin in CAMERA space (world*view): %.1f %.1f %.1f\n"
       "    draw: %u primitive(s), stride %u, texture %u, %s\n",
@@ -198,22 +196,22 @@ void d3d8_light_dump(const GpuDraw *d) {
       g_ld_viewpos[2], d->prim_count, d->vertex_stride, d->texture,
       d->programmable ? "VS" : "FVF");
   if (!d->nlights)
-    fprintf(stderr,
-            "    NO LIGHT IS ENABLED. With a zero emissive and a zero ambient "
-            "this draw can only come out BLACK, whatever its texture.\n");
+    x2_log_error(
+        "    NO LIGHT IS ENABLED. With a zero emissive and a zero ambient "
+        "this draw can only come out BLACK, whatever its texture.\n");
   for (i = 0; i < d->nlights; i++) {
     const GpuLight *L = &d->light[i];
     float dw[3], dv[3], distw, distv, attw, attv, den;
-    fprintf(stderr,
-            "    light %d (D3D index %d) type %d diffuse %.3f %.3f %.3f  "
-            "amb %.3f %.3f %.3f\n"
-            "            pos %.1f %.1f %.1f  dir %.2f %.2f %.2f  range %.1f  "
-            "atten %.4f %.6f %.8f\n",
-            i, i < 8 ? g_light_src[i] : -1, L->type, L->diffuse[0],
-            L->diffuse[1], L->diffuse[2], L->ambient[0], L->ambient[1],
-            L->ambient[2], L->position[0], L->position[1], L->position[2],
-            L->direction[0], L->direction[1], L->direction[2], L->range,
-            L->atten[0], L->atten[1], L->atten[2]);
+    x2_log_error(
+        "    light %d (D3D index %d) type %d diffuse %.3f %.3f %.3f  "
+        "amb %.3f %.3f %.3f\n"
+        "            pos %.1f %.1f %.1f  dir %.2f %.2f %.2f  range %.1f  "
+        "atten %.4f %.6f %.8f\n",
+        i, i < 8 ? g_light_src[i] : -1, L->type, L->diffuse[0], L->diffuse[1],
+        L->diffuse[2], L->ambient[0], L->ambient[1], L->ambient[2],
+        L->position[0], L->position[1], L->position[2], L->direction[0],
+        L->direction[1], L->direction[2], L->range, L->atten[0], L->atten[1],
+        L->atten[2]);
     /*
      * THE ARITHMETIC, both ways, because the numbers above cannot be read
      * by eye. A point light with no constant or linear term is entirely
@@ -237,13 +235,12 @@ void d3d8_light_dump(const GpuDraw *d) {
       attw = den > 0.0f ? 1.0f / den : 1.0f;
       den = L->atten[0] + L->atten[1] * distv + L->atten[2] * distv * distv;
       attv = den > 0.0f ? 1.0f / den : 1.0f;
-      fprintf(stderr,
-              "            from this draw's WORLD origin: %.0f units, "
-              "attenuation %.4f%s\n"
-              "            from its CAMERA origin:        %.0f units, "
-              "attenuation %.4f%s\n",
-              distw, attw, attw < 0.05f ? "   <- effectively BLACK" : "", distv,
-              attv, attv < 0.05f ? "   <- effectively BLACK" : "");
+      x2_log_error("            from this draw's WORLD origin: %.0f units, "
+                   "attenuation %.4f%s\n"
+                   "            from its CAMERA origin:        %.0f units, "
+                   "attenuation %.4f%s\n",
+                   distw, attw, attw < 0.05f ? "   <- effectively BLACK" : "",
+                   distv, attv, attv < 0.05f ? "   <- effectively BLACK" : "");
     }
   }
 }
@@ -266,11 +263,11 @@ void d3d8_light_dump_report(void) {
    * ran, and this line is what tells them apart.
    */
   if (dump_requested() > 0)
-    printf("        X2_LIGHT_DUMP: %ld draw(s) qualified (lit, past the "
-           "scene gate, in a busy frame); %ld skipped by "
-           "X2_LIGHT_DUMP_SKIP; %ld of the %ld asked for were printed%s\n",
-           g_ld_qualified, g_ld_skipped, g_ld_done, g_ld_want,
-           g_ld_done
-               ? "."
-               : " -- so this run's dump says NOTHING about the lighting.");
+    x2_log_info(
+        "        X2_LIGHT_DUMP: %ld draw(s) qualified (lit, past the "
+        "scene gate, in a busy frame); %ld skipped by "
+        "X2_LIGHT_DUMP_SKIP; %ld of the %ld asked for were printed%s\n",
+        g_ld_qualified, g_ld_skipped, g_ld_done, g_ld_want,
+        g_ld_done ? "."
+                  : " -- so this run's dump says NOTHING about the lighting.");
 }

@@ -27,6 +27,4 @@ This licence covers the original code in this repository only.
 It does not cover X-Men Legends II: Rise of Apocalypse or any part of it. That
 game is © Activision, developed by Raven Software and Vicarious Visions; Marvel
 and X-Men are trademarks of Marvel Characters, Inc. No game code, assets or
-data are distributed here. The C sources generated under src/recomp/ are a
-mechanical translation of the shipped binaries, are gitignored, and are
-produced locally from a copy you supply.
+data are distributed here.

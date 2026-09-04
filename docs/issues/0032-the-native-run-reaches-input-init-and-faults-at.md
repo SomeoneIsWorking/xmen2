@@ -106,7 +106,8 @@ Input is no longer disabled wholesale, and the game asks for devices by FIXED GU
 
 ## Where the run goes now
 
-Past input entirely, to `x86_call_unknown: 0x0057b02c has no identified function` -- an ordinary lift/discovery input, not an input defect.
+Past input entirely. The next historical refusal was at guest address
+0x0057b02c and was not an input defect.
 
 Joysticks are a SEPARATE path through DirectInput 7 (`src/native/dinput.c`): `igWin32ControllerManager::initializeControllers` enumerates class 4 with `createControllers` (0x100052a0), which reads `guidProduct` at `+0x14` of the `DIDEVICEINSTANCE` and then drives the same device interface. `igWin32Window::enumerateMouseAndKeyboard` (0x10005660) only sets a presence flag and returns DIENUM_STOP -- it never reads the instance.
 

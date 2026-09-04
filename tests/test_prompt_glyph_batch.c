@@ -85,7 +85,7 @@ static void guest_body_10034e60(CPU *C) {
   note('U');
   /* ECX is caller-saved. The wrapper must retain the visual-context key it
      received rather than asking the transformed CPU state after super. */
-  C->ecx = 0xeeeeeeeeu;
+  C->reg[kX86pEcx] = 0xeeeeeeeeu;
 }
 
 static void reset_case(unsigned count) {
@@ -116,7 +116,7 @@ int main(void) {
         "an empty draw does not snapshot, submit, or consume");
 
   reset_case(7);
-  cpu.ecx = 0x12345678u;
+  cpu.reg[kX86pEcx] = 0x12345678u;
   x2_prompt_glyph_batch_draw_nonindexed(&cpu);
   check(!strcmp(events, "UTGD"),
         "prompt art draws after finalization and before the stock batch");

@@ -1,16 +1,13 @@
+#include "x2_log.h"
 /*
  * The conversation state machine, ported.
  *
  * WHY THIS FILE EXISTS. Issue #63 -- the tutorial party is eliminated moments
  * after the opening conversation -- narrowed to one fact: the response that
  * carries `chosenscriptfile="act0/tutorial/tutorial1/conv_0020b_end"` never
- * launches its script, so the level's opening act never runs. Narrowing it
- * further by breakpointing recompiled bodies was answering "what did the
- * translated code do", which is a question about the translation, not about
- * the game. These functions are small, their fields are all named in the
- * conversation XMLB, and the port has to own them eventually anyway -- so they
- * are WRITTEN HERE, in C, and the recompiled bodies stay linked as `__real_`
- * beside them for diffing.
+ * launches its script, so the level's opening act never runs. The native
+ * overrides retain the ordinary JIT guest path for differential checks and
+ * own only the recovered conversation semantics described below.
  *
  * THE RECORD LAYOUT, read from the parser (XMen2.exe FUN_00458820), which
  * fills a response/line record from the XMLB attributes. Every string
@@ -40,9 +37,7 @@
  *      +0x239a0      the response id chosen this frame, 0 for none
  *      +0x239c0      a 32-bit eligibility bitmap over a record's children
  *
- * An override must reproduce the original's RETURN VALUE, not just its stack
- * effect (issue #54), so each function below states what it returns in what
- * register and pops exactly what the original's RET pops.
+ * Each override preserves the original return register and stack effect.
  */
 #include "guest_body.h"
 #include "x86rt.h"
@@ -66,8 +61,8 @@ static uint32_t exe_base(void) {
     }
   /* Never silently 0: every address below would then be an offset from the
      null page and the first read would fault with no explanation. */
-  fprintf(stderr, "conversation: XMen2.exe is not mapped, so no conversation "
-                  "address can be resolved. Refusing to guess.\n");
+  x2_log_error("conversation: XMen2.exe is not mapped, so no conversation "
+               "address can be resolved. Refusing to guess.\n");
   abort();
 }
 
@@ -156,7 +151,7 @@ static uint8_t last_flags;
  * different facts, and confusing them cost a session: the flag byte reaches
  * visible+speaking and never changes again, which reads as a live
  * conversation, while the per-frame update may have stopped calling at all.
- * The word at ESP on entry is the return address the emitted call site pushed
+ * The word at ESP on entry is the return address the guest CALL pushed
  * -- reading it is passive, the same read X2_EPCOUNT makes -- so each caller
  * can be counted separately and its LAST poll recorded. A caller that stops is
  * then visible as a gap, not inferred from a consequence.
@@ -194,12 +189,11 @@ static void note_flags(uint8_t f) {
     return;
   c_flag_changes++;
   if (c_flag_changes <= FLAG_LINES_MAX)
-    fprintf(stderr,
-            "conversation: flags 0x%02x -> 0x%02x  "
-            "[speaking=%d visible=%d ending=%d enabled=%d]  "
-            "(poll %lu)\n",
-            have_flags ? last_flags : 0u, f, !!(f & 0x1), !!(f & 0x2),
-            !!(f & 0x8), !!(f & 0x10), c_flag_polls);
+    x2_log_error("conversation: flags 0x%02x -> 0x%02x  "
+                 "[speaking=%d visible=%d ending=%d enabled=%d]  "
+                 "(poll %lu)\n",
+                 have_flags ? last_flags : 0u, f, !!(f & 0x1), !!(f & 0x2),
+                 !!(f & 0x8), !!(f & 0x10), c_flag_polls);
   else
     c_flag_unprinted++;
   have_flags = 1;
@@ -207,47 +201,51 @@ static void note_flags(uint8_t f) {
 }
 
 void conversation_report(void) {
-  printf("  conversation (ported: launchScript, nextLine, chooseResponse, "
-         "responseScripts, the two flag predicates):\n");
-  printf("        script launches: %lu asked, %lu had an empty name, "
-         "%lu reached the script manager%s%s\n",
-         c_launch_asked, c_launch_empty, c_launch_done,
-         last_launched[0] ? "; last was "
-                          : " -- none, so no conversation "
-                            "ever ran a script",
-         last_launched[0] ? last_launched : "");
-  printf("        nextLine: %lu call(s) -- %lu found a line, %lu found the "
-         "record childless, %lu found no ELIGIBLE child\n",
-         c_next_called, c_next_found, c_next_nochild, c_next_noneligible);
-  printf("        chooseResponse: %lu call(s) -- %lu applied, %lu refused by "
-         "the engine, %lu with the index past the offered count\n",
-         c_choose_called, c_choose_applied, c_choose_refused,
-         c_choose_outofrange);
-  printf("        responseScripts: %lu record(s) walked for scriptCommand "
-         "and scriptFile\n",
-         c_respscripts);
-  printf("        update: %lu call(s) -- %lu with the subsystem disabled, "
-         "%lu not visible, %lu applied a response, %lu ended it, %lu found "
-         "no current line\n",
-         c_upd_calls, c_upd_disabled, c_upd_invisible, c_upd_applied,
-         c_upd_ended, c_upd_nolines);
-  printf("        accept gate: %lu evaluation(s), %lu with the button down, "
-         "%lu of those inside the debounce, %lu advanced the conversation\n",
-         c_upd_gate_seen, c_upd_gate_pressed, c_upd_gate_debounced,
-         c_upd_advanced);
-  printf("        flags: %lu poll(s) of the visible predicate, %lu change(s)"
-         "%s; last value 0x%02x%s\n",
-         c_flag_polls, c_flag_changes,
-         c_flag_unprinted ? " (some past the print cap, counted here)" : "",
-         have_flags ? last_flags : 0u,
-         have_flags ? ""
-                    : " -- the predicate was NEVER asked, so this port "
-                      "did not run at all");
+  x2_log_info("  conversation (ported: launchScript, nextLine, chooseResponse, "
+              "responseScripts, the two flag predicates):\n");
+  x2_log_info("        script launches: %lu asked, %lu had an empty name, "
+              "%lu reached the script manager%s%s\n",
+              c_launch_asked, c_launch_empty, c_launch_done,
+              last_launched[0] ? "; last was "
+                               : " -- none, so no conversation "
+                                 "ever ran a script",
+              last_launched[0] ? last_launched : "");
+  x2_log_info(
+      "        nextLine: %lu call(s) -- %lu found a line, %lu found the "
+      "record childless, %lu found no ELIGIBLE child\n",
+      c_next_called, c_next_found, c_next_nochild, c_next_noneligible);
+  x2_log_info(
+      "        chooseResponse: %lu call(s) -- %lu applied, %lu refused by "
+      "the engine, %lu with the index past the offered count\n",
+      c_choose_called, c_choose_applied, c_choose_refused, c_choose_outofrange);
+  x2_log_info("        responseScripts: %lu record(s) walked for scriptCommand "
+              "and scriptFile\n",
+              c_respscripts);
+  x2_log_info(
+      "        update: %lu call(s) -- %lu with the subsystem disabled, "
+      "%lu not visible, %lu applied a response, %lu ended it, %lu found "
+      "no current line\n",
+      c_upd_calls, c_upd_disabled, c_upd_invisible, c_upd_applied, c_upd_ended,
+      c_upd_nolines);
+  x2_log_info(
+      "        accept gate: %lu evaluation(s), %lu with the button down, "
+      "%lu of those inside the debounce, %lu advanced the conversation\n",
+      c_upd_gate_seen, c_upd_gate_pressed, c_upd_gate_debounced,
+      c_upd_advanced);
+  x2_log_info(
+      "        flags: %lu poll(s) of the visible predicate, %lu change(s)"
+      "%s; last value 0x%02x%s\n",
+      c_flag_polls, c_flag_changes,
+      c_flag_unprinted ? " (some past the print cap, counted here)" : "",
+      have_flags ? last_flags : 0u,
+      have_flags ? ""
+                 : " -- the predicate was NEVER asked, so this port "
+                   "did not run at all");
   {
     int i;
     if (!g_naskers)
-      printf("        nobody asked whether the conversation is visible "
-             "in this run.\n");
+      x2_log_info("        nobody asked whether the conversation is visible "
+                  "in this run.\n");
     for (i = 0; i < g_naskers; i++) {
       const char *nm = x86_native_name_at(g_askers[i].ret);
       /* 0xDEADBEEF is the return address x86_guest_call pushes, so it
@@ -264,16 +262,17 @@ void conversation_report(void) {
          gap is the measurement and it is printed either way. */
       unsigned long gap = c_flag_polls - g_askers[i].last;
       int stopped = gap > c_flag_polls / 20u;
-      printf("        asked from 0x%08x%s%s: %lu time(s), last at poll "
-             "%lu of %lu (%lu poll(s) before the end)%s\n",
-             g_askers[i].ret, nm ? " -- " : "", nm ? nm : "", g_askers[i].n,
-             g_askers[i].last, c_flag_polls, gap,
-             stopped ? "  <- STOPPED, and the run went on without it" : "");
+      x2_log_info("        asked from 0x%08x%s%s: %lu time(s), last at poll "
+                  "%lu of %lu (%lu poll(s) before the end)%s\n",
+                  g_askers[i].ret, nm ? " -- " : "", nm ? nm : "",
+                  g_askers[i].n, g_askers[i].last, c_flag_polls, gap,
+                  stopped ? "  <- STOPPED, and the run went on without it"
+                          : "");
     }
     if (g_askers_lost)
-      printf("        ... and %d poll(s) from call sites past the "
-             "table.\n",
-             g_askers_lost);
+      x2_log_info("        ... and %d poll(s) from call sites past the "
+                  "table.\n",
+                  g_askers_lost);
   }
 }
 
@@ -287,12 +286,12 @@ static uint32_t thiscall(CPU *C, uint32_t fn, uint32_t ecx, int argc,
                          const uint32_t *argv) {
   CPU K = *C;
   int i;
-  K.esp -= (uint32_t)argc * 4u;
+  K.reg[kX86pEsp] -= (uint32_t)argc * 4u;
   for (i = 0; i < argc; i++)
-    WR32(K.esp + (uint32_t)i * 4u, argv[i]);
-  K.ecx = ecx;
+    WR32(K.reg[kX86pEsp] + (uint32_t)i * 4u, argv[i]);
+  K.reg[kX86pEcx] = ecx;
   x86_guest_call_args(&K, fn, (uint32_t)argc * 4u);
-  return K.eax;
+  return K.reg[kX86pEax];
 }
 static uint32_t call0(CPU *C, uint32_t fn, uint32_t ecx) {
   return thiscall(C, fn, ecx, 0, NULL);
@@ -317,7 +316,7 @@ static uint32_t conv_singleton(CPU *C) {
 static uint32_t script_manager(CPU *C) {
   CPU K = *C;
   x86_guest_call(&K, FN_SCRIPT_MANAGER);
-  return K.eax;
+  return K.reg[kX86pEax];
 }
 
 static uint32_t vslot(uint32_t obj, uint32_t off) {
@@ -333,11 +332,10 @@ static int name_is_empty(uint32_t s, const char *what) {
   if (!s) {
     static int said;
     if (!said++)
-      fprintf(stderr,
-              "conversation: a record's %s pointer is NULL, not "
-              "the empty string -- the parser never filled this "
-              "field. Treated as empty. Reported once.\n",
-              what);
+      x2_log_error("conversation: a record's %s pointer is NULL, not "
+                   "the empty string -- the parser never filled this "
+                   "field. Treated as empty. Reported once.\n",
+                   what);
     return 1;
   }
   return RD8(s) == 0;
@@ -370,9 +368,9 @@ static void note_name(char *dst, size_t cap, uint32_t s) {
  */
 
 void x2_override_00455600(CPU *C) {
-  uint32_t self = C->ecx;
-  uint32_t name = RD32(C->esp + 4u);
-  uint32_t flag = RD32(C->esp + 8u);
+  uint32_t self = C->reg[kX86pEcx];
+  uint32_t name = RD32(C->reg[kX86pEsp] + 4u);
+  uint32_t flag = RD32(C->reg[kX86pEsp] + 8u);
   uint32_t sm, actor, args[2];
   uint32_t ok;
 
@@ -411,8 +409,9 @@ void x2_override_00455600(CPU *C) {
   sm = script_manager(C);
   call0(C, vslot(sm, SM_CLEAR_B), sm);
 
-  C->eax = (C->eax & ~0xFFu) | (ok & 0xFFu); /* AL, as `MOV AL,BL` */
-  C->esp += 4u + 8u;                         /* RET 0x8 */
+  C->reg[kX86pEax] =
+      (C->reg[kX86pEax] & ~0xFFu) | (ok & 0xFFu); /* AL, as `MOV AL,BL` */
+  C->reg[kX86pEsp] += 4u + 8u;                    /* RET 0x8 */
 }
 
 /* ---------------------------------------------------------------------
@@ -422,7 +421,7 @@ void x2_override_00455600(CPU *C) {
  */
 
 void x2_override_0045a100(CPU *C) {
-  uint32_t rec = C->ecx;
+  uint32_t rec = C->reg[kX86pEcx];
   uint32_t s;
 
   c_respscripts++;
@@ -443,7 +442,7 @@ void x2_override_0045a100(CPU *C) {
     args[1] = 1u;
     thiscall(C, EXE(0x00055600u), self, 2, args);
   }
-  C->esp += 4u; /* RET */
+  C->reg[kX86pEsp] += 4u; /* RET */
 }
 
 /* ---------------------------------------------------------------------
@@ -457,14 +456,14 @@ void x2_override_0045a100(CPU *C) {
  */
 
 void x2_override_004559e0(CPU *C) {
-  uint32_t p = C->ecx;
+  uint32_t p = C->reg[kX86pEcx];
   int i;
   WR32(p, ~RD32(p));
   for (i = 6; i < 32; i++) {
     uint32_t w = p + (uint32_t)(i >> 5) * 4u;
     WR32(w, RD32(w) & ~(1u << (i & 31)));
   }
-  C->esp += 4u; /* RET */
+  C->reg[kX86pEsp] += 4u; /* RET */
 }
 
 /* ---------------------------------------------------------------------
@@ -480,7 +479,7 @@ void x2_override_004559e0(CPU *C) {
  */
 
 void x2_override_0045b6d0(CPU *C) {
-  uint32_t rec = C->ecx;
+  uint32_t rec = C->reg[kX86pEcx];
   uint32_t self, cond, kids, count;
   uint32_t i;
 
@@ -488,8 +487,8 @@ void x2_override_0045b6d0(CPU *C) {
   count = RD32(rec + RC_CHILD_COUNT);
   if (!count) {
     c_next_nochild++;
-    C->eax = 0;
-    C->esp += 4u;
+    C->reg[kX86pEax] = 0;
+    C->reg[kX86pEsp] += 4u;
     return;
   }
 
@@ -515,15 +514,15 @@ void x2_override_0045b6d0(CPU *C) {
   }
   if (i == count) {
     c_next_noneligible++;
-    C->eax = 0;
-    C->esp += 4u;
+    C->reg[kX86pEax] = 0;
+    C->reg[kX86pEsp] += 4u;
     return;
   }
 
   call0(C, EXE(0x0005a100u), rec); /* the record's own scripts */
   c_next_found++;
-  C->eax = RD32(kids + i * 4u);
-  C->esp += 4u; /* RET */
+  C->reg[kX86pEax] = RD32(kids + i * 4u);
+  C->reg[kX86pEsp] += 4u; /* RET */
 }
 
 /* ---------------------------------------------------------------------
@@ -539,8 +538,8 @@ void x2_override_0045b6d0(CPU *C) {
  */
 
 void x2_override_0045d5d0(CPU *C) {
-  uint32_t self = C->ecx;
-  int sel = (int)RD32(C->esp + 4u);
+  uint32_t self = C->reg[kX86pEcx];
+  int sel = (int)RD32(C->reg[kX86pEsp] + 4u);
   int count = (int)RD32(self + CV_RESP_COUNT);
   int slot, filled = 0;
 
@@ -552,7 +551,7 @@ void x2_override_0045d5d0(CPU *C) {
        behind on every out-of-range choice. */
     c_choose_outofrange++;
     call0(C, FN_AFTER_CHOICE, self);
-    C->esp += 4u + 4u; /* RET 0x4 */
+    C->reg[kX86pEsp] += 4u + 4u; /* RET 0x4 */
     return;
   }
 
@@ -583,24 +582,24 @@ void x2_override_0045d5d0(CPU *C) {
     filled++;
   }
   call0(C, FN_AFTER_CHOICE, self);
-  C->esp += 4u + 4u; /* RET 0x4 */
+  C->reg[kX86pEsp] += 4u + 4u; /* RET 0x4 */
 }
 
 /* XMen2.exe 0x00458010 / 0x00458020: visible/speaking predicates.
  * Both return in AL only, leaving the rest of EAX as the original's SHR AL. */
 
 void x2_override_00458010(CPU *C) {
-  uint8_t f = RD8(C->ecx + CV_FLAGS);
+  uint8_t f = RD8(C->reg[kX86pEcx] + CV_FLAGS);
   note_flags(f);
-  note_asker(RD32(C->esp));
-  C->eax = (C->eax & ~0xFFu) | (uint32_t)((f >> 1) & 1u);
-  C->esp += 4u;
+  note_asker(RD32(C->reg[kX86pEsp]));
+  C->reg[kX86pEax] = (C->reg[kX86pEax] & ~0xFFu) | (uint32_t)((f >> 1) & 1u);
+  C->reg[kX86pEsp] += 4u;
 }
 
 void x2_override_00458020(CPU *C) {
-  uint8_t f = RD8(C->ecx + CV_FLAGS);
-  C->eax = (C->eax & ~0xFFu) | (uint32_t)((f >> 2) & 1u);
-  C->esp += 4u;
+  uint8_t f = RD8(C->reg[kX86pEcx] + CV_FLAGS);
+  C->reg[kX86pEax] = (C->reg[kX86pEax] & ~0xFFu) | (uint32_t)((f >> 2) & 1u);
+  C->reg[kX86pEsp] += 4u;
 }
 
 /* ---------------------------------------------------------------------
@@ -671,11 +670,11 @@ static uint32_t cdecl_call(CPU *C, uint32_t fn, int argc,
                            const uint32_t *argv) {
   CPU K = *C;
   int i;
-  K.esp -= (uint32_t)argc * 4u;
+  K.reg[kX86pEsp] -= (uint32_t)argc * 4u;
   for (i = 0; i < argc; i++)
-    WR32(K.esp + (uint32_t)i * 4u, argv[i]);
+    WR32(K.reg[kX86pEsp] + (uint32_t)i * 4u, argv[i]);
   x86_guest_call(&K, fn);
-  return K.eax;
+  return K.reg[kX86pEax];
 }
 
 /* __ftol takes its measured argument on the x87 stack. */
@@ -688,7 +687,7 @@ static uint32_t call_ftol(CPU *C, long double v) {
      the whole point of modelling depth. */
   x87_push(&K, v);
   x86_guest_call(&K, FN_FTOL);
-  return K.eax;
+  return K.reg[kX86pEax];
 }
 
 /* A virtual whose result is a float in ST(0). The callee pushes onto the copy's
@@ -698,17 +697,17 @@ static long double call_float(CPU *C, uint32_t fn, uint32_t ecx, int argc,
                               const uint32_t *argv) {
   CPU K = *C;
   int i;
-  K.esp -= (uint32_t)argc * 4u;
+  K.reg[kX86pEsp] -= (uint32_t)argc * 4u;
   for (i = 0; i < argc; i++)
-    WR32(K.esp + (uint32_t)i * 4u, argv[i]);
-  K.ecx = ecx;
+    WR32(K.reg[kX86pEsp] + (uint32_t)i * 4u, argv[i]);
+  K.reg[kX86pEcx] = ecx;
   x86_guest_call_args(&K, fn, (uint32_t)argc * 4u);
-  return K.st[K.top];
+  return x87_require_st0(&K, "conversation guest call returned no x87 value");
 }
 
 void x2_override_0045d1a0(CPU *C) {
-  uint32_t self = C->ecx;
-  uint32_t entry_esp = C->esp;
+  uint32_t self = C->reg[kX86pEcx];
+  uint32_t entry_esp = C->reg[kX86pEsp];
   uint32_t scratch; /* this frame's guest locals */
   uint32_t a, line, slot, input, pads;
 
@@ -717,7 +716,7 @@ void x2_override_0045d1a0(CPU *C) {
   /* 0x0045d1a6: the whole subsystem's enable bit. */
   if (!(RD8(self + CV_UI_ENABLED) & 0x10u)) {
     c_upd_disabled++;
-    C->esp += 4u + 4u;
+    C->reg[kX86pEsp] += 4u + 4u;
     return;
   }
 
@@ -735,13 +734,13 @@ void x2_override_0045d1a0(CPU *C) {
      the ported predicate's caller record still sees this call site. */
   if (!(uint8_t)call0(C, vslot(self, 0x20u), self)) {
     c_upd_invisible++;
-    C->esp += 4u + 4u;
+    C->reg[kX86pEsp] += 4u + 4u;
     return;
   }
 
   /* Guest callees need guest-stack locals, never host pointers. */
-  C->esp -= 0x20u;
-  scratch = C->esp;
+  C->reg[kX86pEsp] -= 0x20u;
+  scratch = C->reg[kX86pEsp];
 
   {
     uint32_t arg = 1u;
@@ -758,7 +757,7 @@ void x2_override_0045d1a0(CPU *C) {
     /* 0x0045d21f: no slot -- the conversation is over. */
     c_upd_ended++;
     call0(C, FN_END_CONVERSATION, self);
-    C->esp = entry_esp + 4u + 4u;
+    C->reg[kX86pEsp] = entry_esp + 4u + 4u;
     return;
   }
 
@@ -775,14 +774,14 @@ void x2_override_0045d1a0(CPU *C) {
     c_upd_applied++;
     call1(C, FN_APPLY_RESPONSE, self, id);
     call0(C, FN_AFTER_CHOICE, self);
-    C->esp = entry_esp + 4u + 4u;
+    C->reg[kX86pEsp] = entry_esp + 4u + 4u;
     return;
   }
 
   if (RD8(self + CV_UI_ENABLED) & CVF_ENDING) {
     c_upd_ended++;
     call0(C, FN_END_CONVERSATION, self);
-    C->esp = entry_esp + 4u + 4u;
+    C->reg[kX86pEsp] = entry_esp + 4u + 4u;
     return;
   }
 
@@ -793,7 +792,7 @@ void x2_override_0045d1a0(CPU *C) {
     /* 0x0045d2d3: no current line -- hide, and do not draw. */
     c_upd_nolines++;
     call1(C, FN_SET_VISIBLE, self, 0);
-    C->esp = entry_esp + 4u + 4u;
+    C->reg[kX86pEsp] = entry_esp + 4u + 4u;
     return;
   }
 
@@ -952,7 +951,7 @@ void x2_override_0045d1a0(CPU *C) {
     }
   }
 
-  C->esp = entry_esp + 4u + 4u; /* RET 0x4 */
+  C->reg[kX86pEsp] = entry_esp + 4u + 4u; /* RET 0x4 */
 }
 
 __attribute__((constructor)) static void

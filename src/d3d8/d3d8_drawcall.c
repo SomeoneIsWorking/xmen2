@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /*
  * Turning the device's state into a draw.
  *
@@ -12,8 +14,8 @@
  * them; the rest are ignored, and the ignored list is printed at exit so that
  * anything drawn is read next to what was missing from it.
  */
-#include "d3d8_drawcall.h"
 #include "d3d8_device.h"
+#include "d3d8_drawcall.h"
 #include "d3d8_light_dump.h"
 #include "d3d8_lighting.h"
 #include "d3d8_render_states.h"
@@ -116,22 +118,23 @@ static void d3d8_untextured_report(void) {
     tot += g_untex[i].n;
   /* Printed even at zero, with its denominator: "no untextured draw wanted
      anything from its stage" and "this was never measured" must differ. */
-  printf("        untextured draws, by what their texture stage ASKED for "
-         "(%lu draw(s), %d distinct combination(s)%s):\n",
-         tot, g_untex_n, g_untex_dropped ? ", TABLE FULL -- more exist" : "");
+  x2_log_info("        untextured draws, by what their texture stage ASKED for "
+              "(%lu draw(s), %d distinct combination(s)%s):\n",
+              tot, g_untex_n,
+              g_untex_dropped ? ", TABLE FULL -- more exist" : "");
   if (!g_untex_n) {
-    printf("          none -- no draw reached this backend with no "
-           "texture bound.\n");
+    x2_log_info("          none -- no draw reached this backend with no "
+                "texture bound.\n");
     return;
   }
   for (i = 0; i < g_untex_n; i++)
-    printf("          COLOROP %2u  ARG1 %-7s ARG2 %-7s  x%lu%s\n",
-           g_untex[i].op, ta_name(g_untex[i].a1), ta_name(g_untex[i].a2),
-           g_untex[i].n,
-           (g_untex[i].op != 1u && (g_untex[i].a1 & 0xFu) != 0u)
-               ? "   <- NOT the vertex colour; this backend draws it as"
-                 " one"
-               : "");
+    x2_log_info("          COLOROP %2u  ARG1 %-7s ARG2 %-7s  x%lu%s\n",
+                g_untex[i].op, ta_name(g_untex[i].a1), ta_name(g_untex[i].a2),
+                g_untex[i].n,
+                (g_untex[i].op != 1u && (g_untex[i].a1 & 0xFu) != 0u)
+                    ? "   <- NOT the vertex colour; this backend draws it as"
+                      " one"
+                    : "");
 }
 
 /* ---- state translation ------------------------------------------------- */
@@ -215,13 +218,13 @@ static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out) {
   int ok;
 
   if (!tris) {
-    fprintf(stderr, "d3d8: a TRIANGLEFAN with 0 primitives.\n");
+    x2_log_error("d3d8: a TRIANGLEFAN with 0 primitives.\n");
     return 0;
   }
   if (req->index_buffer && !req->index_guest_bytes) {
-    fprintf(stderr, "d3d8: an indexed TRIANGLEFAN whose index buffer has "
-                    "no guest storage; the fan cannot be expanded and the "
-                    "draw is refused.\n");
+    x2_log_error("d3d8: an indexed TRIANGLEFAN whose index buffer has "
+                 "no guest storage; the fan cannot be expanded and the "
+                 "draw is refused.\n");
     return 0;
   }
   need = (tris * 3u) * (uint32_t)sizeof(uint32_t);
@@ -234,13 +237,13 @@ static int fan_expand(const D3D8DrawRequest *req, GpuDraw *out) {
     g_fan_ib = gpu_buffer_create(GPU_BUF_INDEX, g_fan_ib_bytes);
     if (!g_fan_ib) {
       g_fan_ib_bytes = 0;
-      fprintf(stderr, "d3d8: no index buffer for a %u triangle fan.\n", tris);
+      x2_log_error("d3d8: no index buffer for a %u triangle fan.\n", tris);
       return 0;
     }
   }
   idx = (uint32_t *)malloc(need);
   if (!idx) {
-    fprintf(stderr, "d3d8: out of memory expanding a %u triangle fan.\n", tris);
+    x2_log_error("d3d8: out of memory expanding a %u triangle fan.\n", tris);
     return 0;
   }
   if (req->index_buffer) {
@@ -357,12 +360,12 @@ static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride) {
        */
       g_rng_unverifiable++;
       if (g_rng_unverifiable <= 3)
-        fprintf(stderr,
-                "d3d8: an indexed draw's range cannot be "
-                "checked (index guest 0x%08x, %u byte(s), first index "
-                "%u, %u indices needed) -- REFUSED rather than "
-                "submitted unverified.\n",
-                req->index_guest_bytes, req->index_bytes, req->first_index, n);
+        x2_log_error("d3d8: an indexed draw's range cannot be "
+                     "checked (index guest 0x%08x, %u byte(s), first index "
+                     "%u, %u indices needed) -- REFUSED rather than "
+                     "submitted unverified.\n",
+                     req->index_guest_bytes, req->index_bytes, req->first_index,
+                     n);
       return 0;
     }
     if (req->index_is_32bit) {
@@ -392,14 +395,14 @@ static int draw_range_ok(const D3D8DrawRequest *req, uint32_t stride) {
     g_rng_worst_have = have;
   }
   if (g_rng_bad <= 4)
-    fprintf(stderr,
-            "d3d8: a draw would fetch vertex %u from a stream holding %u "
-            "(%u bytes at stride %u) -- REFUSED. primitive type %u, %u "
-            "primitive(s), base vertex %u, first index %u. Submitting it "
-            "reads outside the buffer, which is how the GPU is made to page "
-            "fault.\n",
-            need - 1u, have, req->vertex_bytes, stride, req->primitive_type,
-            req->primitive_count, req->base_vertex, req->first_index);
+    x2_log_error(
+        "d3d8: a draw would fetch vertex %u from a stream holding %u "
+        "(%u bytes at stride %u) -- REFUSED. primitive type %u, %u "
+        "primitive(s), base vertex %u, first index %u. Submitting it "
+        "reads outside the buffer, which is how the GPU is made to page "
+        "fault.\n",
+        need - 1u, have, req->vertex_bytes, stride, req->primitive_type,
+        req->primitive_count, req->base_vertex, req->first_index);
   return 0;
 }
 
@@ -471,8 +474,8 @@ void d3d8_frame_table_install_signal(void) {
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
   if (sigaction(SIGUSR1, &sa, NULL) != 0)
-    fprintf(stderr, "d3d8: SIGUSR1 could not be installed; the frame "
-                    "table can only be armed with F9.\n");
+    x2_log_error("d3d8: SIGUSR1 could not be installed; the frame "
+                 "table can only be armed with F9.\n");
 }
 
 void d3d8_frame_table_arm(void) {
@@ -484,13 +487,12 @@ void d3d8_frame_table_arm(void) {
   g_ft_probed = 0;
   g_ft_arms++;
   obj_open_if_wanted();
-  fprintf(stderr,
-          "[FRAME TABLE] armed (%lu) -- the NEXT frame that draws "
-          "anything is listed in full, gate and draw-count minimum "
-          "BYPASSED. Whoever pressed the key is looking at the frame they "
-          "mean, and a diagnostic that second-guesses them prints nothing "
-          "and says nothing about why.\n",
-          g_ft_arms);
+  x2_log_error("[FRAME TABLE] armed (%lu) -- the NEXT frame that draws "
+               "anything is listed in full, gate and draw-count minimum "
+               "BYPASSED. Whoever pressed the key is looking at the frame they "
+               "mean, and a diagnostic that second-guesses them prints nothing "
+               "and says nothing about why.\n",
+               g_ft_arms);
 }
 
 /*
@@ -519,21 +521,19 @@ static FILE *g_obj;
 static unsigned long g_obj_verts;
 
 static void obj_open_if_wanted(void) {
-  const char *path = getenv("X2_DRAW_OBJ");
+  const char *path = x2_config_override_get(kX2ConfigDrawObj);
   if (g_obj || !path || !*path)
     return;
   g_obj = fopen(path, "w");
   if (!g_obj) {
-    fprintf(stderr,
-            "d3d8: X2_DRAW_OBJ=%s could not be opened; the frame's "
-            "geometry is NOT being written.\n",
-            path);
+    x2_log_error("d3d8: X2_DRAW_OBJ=%s could not be opened; the frame's "
+                 "geometry is NOT being written.\n",
+                 path);
     return;
   }
-  fprintf(stderr,
-          "[FRAME TABLE] writing this frame's object-space vertices "
-          "to %s\n",
-          path);
+  x2_log_error("[FRAME TABLE] writing this frame's object-space vertices "
+               "to %s\n",
+               path);
 }
 
 static void obj_begin_draw(unsigned long n, uint32_t fvf, uint32_t stride,
@@ -555,11 +555,10 @@ static void obj_vertex(const float *p) {
 static void obj_finish(void) {
   if (!g_obj)
     return;
-  fprintf(stderr,
-          "[FRAME TABLE] %lu vertex(es) written. A file with 0 in it "
-          "means no draw of this frame had host-readable vertices, "
-          "not that the meshes were empty.\n",
-          g_obj_verts);
+  x2_log_error("[FRAME TABLE] %lu vertex(es) written. A file with 0 in it "
+               "means no draw of this frame had host-readable vertices, "
+               "not that the meshes were empty.\n",
+               g_obj_verts);
   fclose(g_obj);
   g_obj = NULL;
   g_obj_verts = 0;
@@ -571,7 +570,7 @@ static void obj_finish(void) {
  * The characters render the same wrong shape whether they go through the
  * fixed-function path or the vertex shader, and the two share almost nothing
  * in this backend. What they DO share is the data the engine computed for
- * them in recompiled x86: the matrix palette. A recompiler defect in the
+ * them in guest execution: the matrix palette. A CPU-semantics defect in the
  * animation maths would look exactly like this, and would be invisible to
  * every comparison run so far -- objcmp reads the vertex buffer, which holds
  * the UNSKINNED bind-pose mesh in the shader path, and it matched.
@@ -597,29 +596,28 @@ static void obj_finish(void) {
  *
  * The probe below judges the palette on its own; this is for judging it
  * against the CONTROL, which is the only thing that can settle whether the
- * engine's recompiled animation maths computes the same matrices as the same
+ * engine's guest animation maths computes the same matrices as the same
  * engine on a real CPU. Same registers, same order, same %.6f on both sides,
  * so the comparison is arithmetic and not transcription.
  */
 static void constants_dump(const float c[][4], int used) {
-  const char *path = getenv("X2_VSCONST");
+  const char *path = x2_config_override_get(kX2ConfigVsConstants);
   FILE *f;
   int i;
   if (!path || !*path)
     return;
   f = fopen(path, "w");
   if (!f) {
-    fprintf(stderr,
-            "d3d8: X2_VSCONST=%s could not be opened; the constant "
-            "file was NOT written.\n",
-            path);
+    x2_log_error("d3d8: X2_VSCONST=%s could not be opened; the constant "
+                 "file was NOT written.\n",
+                 path);
     return;
   }
   for (i = 0; i < used; i++)
     fprintf(f, "c[%d] %.6f %.6f %.6f %.6f\n", i, c[i][0], c[i][1], c[i][2],
             c[i][3]);
   fclose(f);
-  fprintf(stderr, "[VS CONSTANTS] %d register(s) written to %s\n", used, path);
+  x2_log_error("[VS CONSTANTS] %d register(s) written to %s\n", used, path);
 }
 
 static int constants_probe(const float c[][4], int first, int used) {
@@ -639,9 +637,10 @@ static int constants_probe(const float c[][4], int first, int used) {
         nonzero = 1;
     }
 
-  fprintf(stderr, "[VS CONSTANTS] c[%d..%d]: %lu NaN, %lu infinite, %s\n",
-          first, used - 1, nan, inf,
-          nonzero ? "not all zero" : "ENTIRELY ZERO -- nothing was uploaded");
+  x2_log_error("[VS CONSTANTS] c[%d..%d]: %lu NaN, %lu infinite, %s\n", first,
+               used - 1, nan, inf,
+               nonzero ? "not all zero"
+                       : "ENTIRELY ZERO -- nothing was uploaded");
 
   for (layout = 3; layout <= 4; layout++) {
     int bones = (used - first) / layout, rigid = 0, ident = 0, b;
@@ -681,11 +680,10 @@ static int constants_probe(const float c[][4], int first, int used) {
     }
     if (rigid > g_probe_rigid)
       g_probe_rigid = rigid;
-    fprintf(stderr,
-            "[VS CONSTANTS]   read as %d register(s) per bone: "
-            "%d of %d are rigid transforms, %d are the IDENTITY; "
-            "bone 0 det %.4f row0 |%.4f|\n",
-            layout, rigid, bones, ident, worst_det, worst_row);
+    x2_log_error("[VS CONSTANTS]   read as %d register(s) per bone: "
+                 "%d of %d are rigid transforms, %d are the IDENTITY; "
+                 "bone 0 det %.4f row0 |%.4f|\n",
+                 layout, rigid, bones, ident, worst_det, worst_row);
   }
   /* The first three bones in full, so a wrong LAYOUT or a wrong BASE is
      visible as numbers rather than inferred from a score -- the previous
@@ -694,11 +692,10 @@ static int constants_probe(const float c[][4], int first, int used) {
   {
     int k;
     for (k = 0; k < 9 && first + k < used; k++)
-      fprintf(stderr,
-              "[VS CONSTANTS]   c[%3d] %10.4f %10.4f %10.4f "
-              "%10.4f%s\n",
-              first + k, c[first + k][0], c[first + k][1], c[first + k][2],
-              c[first + k][3], (k % 3 == 0) ? "   <- bone row 0" : "");
+      x2_log_error("[VS CONSTANTS]   c[%3d] %10.4f %10.4f %10.4f "
+                   "%10.4f%s\n",
+                   first + k, c[first + k][0], c[first + k][1], c[first + k][2],
+                   c[first + k][3], (k % 3 == 0) ? "   <- bone row 0" : "");
   }
   return g_probe_rigid;
 }
@@ -716,7 +713,7 @@ int d3d8_constants_probe_selftest(void) {
   int i, good, bad, fails = 0;
   const double ang = 0.7;
 
-  printf(
+  x2_log_info(
       "\n=== d3d8 bone-matrix probe: a rigid palette and a corrupt one ===\n");
 
   /* Rotations about Z with a translation -- rigid, det +1, unit rows. */
@@ -741,23 +738,23 @@ int d3d8_constants_probe_selftest(void) {
   bad = constants_probe(c, 0, D3D8_MAX_VS_CONSTANTS);
 
   if (good <= 0) {
-    printf("d3d8 bone-matrix probe: FAILED -- a RIGID palette scored %d "
-           "rigid bones. The probe cannot recognise a correct matrix, so "
-           "any negative it reports means nothing.\n",
-           good);
+    x2_log_info("d3d8 bone-matrix probe: FAILED -- a RIGID palette scored %d "
+                "rigid bones. The probe cannot recognise a correct matrix, so "
+                "any negative it reports means nothing.\n",
+                good);
     fails++;
   }
   if (bad >= good) {
-    printf("d3d8 bone-matrix probe: FAILED -- a corrupt palette scored %d "
-           "against the rigid palette's %d. The probe does not "
-           "discriminate.\n",
-           bad, good);
+    x2_log_info("d3d8 bone-matrix probe: FAILED -- a corrupt palette scored %d "
+                "against the rigid palette's %d. The probe does not "
+                "discriminate.\n",
+                bad, good);
     fails++;
   }
   if (!fails)
-    printf("d3d8 bone-matrix probe: PASSED -- rigid palette %d rigid "
-           "bone(s), corrupt palette %d.\n",
-           good, bad);
+    x2_log_info("d3d8 bone-matrix probe: PASSED -- rigid palette %d rigid "
+                "bone(s), corrupt palette %d.\n",
+                good, bad);
   return fails;
 }
 
@@ -831,7 +828,7 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
   const uint8_t *vb;
 
   if (g_ft_on < 0) {
-    const char *e = getenv("X2_FRAME_TABLE");
+    const char *e = x2_config_override_get(kX2ConfigFrameTable);
     g_ft_on = (e && *e) ? atoi(e) : 0;
   }
   if (g_ft_signal) {
@@ -848,24 +845,22 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
     if (!g_ft_manual && !k32_file_gate_open())
       return;
     if (minimum < 0) {
-      const char *e = getenv("X2_LIGHT_DUMP_MIN");
+      const char *e = x2_config_override_get(kX2ConfigLightDumpMin);
       minimum = (e && *e) ? atol(e) : 100;
     }
     if (!g_ft_frame) {
       if (!g_ft_manual && (long)gpu_frame_draws_so_far() < minimum)
         return;
       g_ft_frame = gpu_frames_presented();
-      fprintf(stderr,
-              "[FRAME TABLE] presented frame %lu -- every draw "
-              "of THIS frame, with the screen rectangle its vertices "
-              "cover, in pixels of an 800x600 target.\n",
-              g_ft_frame);
+      x2_log_error("[FRAME TABLE] presented frame %lu -- every draw "
+                   "of THIS frame, with the screen rectangle its vertices "
+                   "cover, in pixels of an 800x600 target.\n",
+                   g_ft_frame);
     } else if (gpu_frames_presented() != g_ft_frame) {
       g_ft_done = 1;
-      fprintf(stderr,
-              "[FRAME TABLE] end of frame %lu -- %lu draw(s) "
-              "listed.\n",
-              g_ft_frame, g_ft_draw);
+      x2_log_error("[FRAME TABLE] end of frame %lu -- %lu draw(s) "
+                   "listed.\n",
+                   g_ft_frame, g_ft_draw);
       obj_finish();
       return;
     }
@@ -876,10 +871,9 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                 (double)out->world[2] * out->world[2]);
 
   if (!stride || pos_offset < 0 || !req->vertex_guest_bytes) {
-    fprintf(stderr,
-            "  draw %-4lu NO host-readable vertices (guest 0x%08x "
-            "stride %u) -- position unknown\n",
-            g_ft_draw, req->vertex_guest_bytes, stride);
+    x2_log_error("  draw %-4lu NO host-readable vertices (guest 0x%08x "
+                 "stride %u) -- position unknown\n",
+                 g_ft_draw, req->vertex_guest_bytes, stride);
     return;
   }
   vb = guest_memory_const_pointer(req->vertex_guest_bytes);
@@ -1092,10 +1086,9 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
       maxz = z;
   }
   if (!used) {
-    fprintf(stderr,
-            "  draw %-4lu %5u prim  stride %-3u tex %-3u  "
-            "ALL %u vertices behind the camera or out of range\n",
-            g_ft_draw, out->prim_count, stride, out->texture, n);
+    x2_log_error("  draw %-4lu %5u prim  stride %-3u tex %-3u  "
+                 "ALL %u vertices behind the camera or out of range\n",
+                 g_ft_draw, out->prim_count, stride, out->texture, n);
     return;
   }
   {
@@ -1145,27 +1138,26 @@ static void frame_table_note(const D3D8DrawRequest *req, const GpuDraw *out,
                nsum / ncount, ncount, 100.0 * nzero / ncount);
   }
   /* NDC (-1..1, y down in this pipeline) to pixels. */
-  fprintf(stderr,
-          "  draw %-4lu %5u prim  stride %-3u tex %-3u  fvf 0x%05x  lit %d "
-          "texgen %d  screen x %5.0f..%-5.0f y %5.0f..%-5.0f  z %.3f..%.3f  "
-          "object extent %.1f x %.1f x %.1f  %s%s%s%s\n",
-          g_ft_draw, out->prim_count, stride, out->texture, fvf, out->lighting,
-          (int)out->texgen, (minx * 0.5f + 0.5f) * 800.0f,
-          (maxx * 0.5f + 0.5f) * 800.0f, (miny * 0.5f + 0.5f) * 600.0f,
-          (maxy * 0.5f + 0.5f) * 600.0f, minz, maxz, omax[0] - omin[0],
-          omax[1] - omin[1], omax[2] - omin[2], nphrase,
-          (omax[0] - omin[0] < 0.01f || omax[1] - omin[1] < 0.01f ||
-           omax[2] - omin[2] < 0.01f)
-              ? "  <- FLAT in one axis"
-              : "",
-          behind ? "  (some behind the camera)" : "",
-          nearw ? "  (some on the near plane)" : "");
+  x2_log_error(
+      "  draw %-4lu %5u prim  stride %-3u tex %-3u  fvf 0x%05x  lit %d "
+      "texgen %d  screen x %5.0f..%-5.0f y %5.0f..%-5.0f  z %.3f..%.3f  "
+      "object extent %.1f x %.1f x %.1f  %s%s%s%s\n",
+      g_ft_draw, out->prim_count, stride, out->texture, fvf, out->lighting,
+      (int)out->texgen, (minx * 0.5f + 0.5f) * 800.0f,
+      (maxx * 0.5f + 0.5f) * 800.0f, (miny * 0.5f + 0.5f) * 600.0f,
+      (maxy * 0.5f + 0.5f) * 600.0f, minz, maxz, omax[0] - omin[0],
+      omax[1] - omin[1], omax[2] - omin[2], nphrase,
+      (omax[0] - omin[0] < 0.01f || omax[1] - omin[1] < 0.01f ||
+       omax[2] - omin[2] < 0.01f)
+          ? "  <- FLAT in one axis"
+          : "",
+      behind ? "  (some behind the camera)" : "",
+      nearw ? "  (some on the near plane)" : "");
   if (out->uv_offset >= 0)
-    fprintf(stderr,
-            "           uv %.3f..%.3f x %.3f..%.3f, "
-            "stage0 transform 0x%x mip %d\n",
-            uvmin[0], uvmax[0], uvmin[1], uvmax[1], out->texture_transform,
-            out->texture_mip);
+    x2_log_error("           uv %.3f..%.3f x %.3f..%.3f, "
+                 "stage0 transform 0x%x mip %d\n",
+                 uvmin[0], uvmax[0], uvmin[1], uvmax[1], out->texture_transform,
+                 out->texture_mip);
 }
 
 /*
@@ -1186,7 +1178,7 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
   memset(out, 0, sizeof *out);
 
   if (!req->vertex_buffer) {
-    fprintf(stderr, "d3d8: a draw with no stream source bound.\n");
+    x2_log_error("d3d8: a draw with no stream source bound.\n");
     return 0;
   }
   /*
@@ -1198,7 +1190,7 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
   if (!programmable)
     d3d8_fvf_note(fvf);
   if (!programmable && !d3d8_fvf_layout(fvf, &vl)) {
-    fprintf(stderr, "d3d8: FVF 0x%08x has no position.\n", fvf);
+    x2_log_error("d3d8: FVF 0x%08x has no position.\n", fvf);
     g_refused_fvf++;
     return 0;
   }
@@ -1209,11 +1201,10 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
   if (!out->prim && req->primitive_type != D3DPT_TRIANGLEFAN) {
     static int told;
     if (!told++)
-      fprintf(stderr,
-              "d3d8: primitive type %u (a strip of lines, or "
-              "points) is not implemented; the draw is refused. "
-              "Reported once.\n",
-              req->primitive_type);
+      x2_log_error("d3d8: primitive type %u (a strip of lines, or "
+                   "points) is not implemented; the draw is refused. "
+                   "Reported once.\n",
+                   req->primitive_type);
     g_refused_prim++;
     return 0;
   }
@@ -1257,19 +1248,17 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
     }
     uint32_t count, bytes;
     if (!req->vertex_guest_bytes || !req->vertex_bytes || !req->stride) {
-      fprintf(stderr,
-              "d3d8: programmable draw has no host-visible "
-              "stream-0 bytes (guest=0x%08x bytes=%u stride=%u).\n",
-              req->vertex_guest_bytes, req->vertex_bytes, req->stride);
+      x2_log_error("d3d8: programmable draw has no host-visible "
+                   "stream-0 bytes (guest=0x%08x bytes=%u stride=%u).\n",
+                   req->vertex_guest_bytes, req->vertex_bytes, req->stride);
       g_refused_fvf++;
       return 0;
     }
     count = req->vertex_bytes / req->stride;
     if (!count || count > UINT32_MAX / sizeof *vertices) {
-      fprintf(stderr,
-              "d3d8: programmable draw derives %u vertices "
-              "from %u bytes at stride %u.\n",
-              count, req->vertex_bytes, req->stride);
+      x2_log_error("d3d8: programmable draw derives %u vertices "
+                   "from %u bytes at stride %u.\n",
+                   count, req->vertex_bytes, req->stride);
       g_refused_fvf++;
       return 0;
     }
@@ -1328,10 +1317,10 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
     d3d8_fill_lighting(s, out);
     if (out->diffuse_source > 2 || out->ambient_source > 2 ||
         out->emissive_source > 2) {
-      fprintf(stderr,
-              "d3d8: material color source %u/%u/%u is not "
-              "MATERIAL, COLOR1, or COLOR2; draw refused.\n",
-              out->diffuse_source, out->ambient_source, out->emissive_source);
+      x2_log_error("d3d8: material color source %u/%u/%u is not "
+                   "MATERIAL, COLOR1, or COLOR2; draw refused.\n",
+                   out->diffuse_source, out->ambient_source,
+                   out->emissive_source);
       return 0;
     }
   }
@@ -1428,12 +1417,11 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
         g_texop_other++;
         static int told;
         if (!told++)
-          fprintf(stderr,
-                  "d3d8: texture stage operation %u is not one "
-                  "this shader implements; the stage is treated "
-                  "as MODULATE. Reported once, and it is a "
-                  "KNOWN WRONG colour, not a refusal.\n",
-                  op);
+          x2_log_error("d3d8: texture stage operation %u is not one "
+                       "this shader implements; the stage is treated "
+                       "as MODULATE. Reported once, and it is a "
+                       "KNOWN WRONG colour, not a refusal.\n",
+                       op);
         out->texop = GPU_TEXOP_MODULATE;
       }
     }
@@ -1475,11 +1463,10 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
       uint32_t count = ttf & 0xffu;
       const float *matrix;
       if (count > 4u || (ttf & ~0x1ffu) != 0u) {
-        fprintf(stderr,
-                "d3d8: stage 0 asks "
-                "TEXTURETRANSFORMFLAGS 0x%x; COUNT1..4 and "
-                "PROJECTED are implemented. Draw refused.\n",
-                ttf);
+        x2_log_error("d3d8: stage 0 asks "
+                     "TEXTURETRANSFORMFLAGS 0x%x; COUNT1..4 and "
+                     "PROJECTED are implemented. Draw refused.\n",
+                     ttf);
         return 0;
       }
       out->texture_transform = ttf;
@@ -1574,20 +1561,20 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
         uint32_t ttf = s->stage[0][D3DTSS_TEXTURETRANSFORMFLAGS].set
                            ? s->stage[0][D3DTSS_TEXTURETRANSFORMFLAGS].value
                            : 0;
-        fprintf(stderr,
-                "d3d8: the first CUBE-textured draw: FVF 0x%08x, "
-                "COLOROP %u, TEXCOORDINDEX 0x%08x (generator %s), "
-                "TEXTURETRANSFORMFLAGS 0x%x.\n"
-                "  A cube is addressed by a direction; that field says "
-                "where this one comes from. Reported once.\n",
-                fvf, op, tci,
-                (tci & 0xFFFF0000u) == 0x00010000u   ? "camera-space NORMAL"
-                : (tci & 0xFFFF0000u) == 0x00020000u ? "camera-space POSITION"
-                : (tci & 0xFFFF0000u) == 0x00030000u
-                    ? "camera-space "
-                      "REFLECTION VECTOR"
-                    : "none -- the vertex's own texture coordinates",
-                ttf);
+        x2_log_error("d3d8: the first CUBE-textured draw: FVF 0x%08x, "
+                     "COLOROP %u, TEXCOORDINDEX 0x%08x (generator %s), "
+                     "TEXTURETRANSFORMFLAGS 0x%x.\n"
+                     "  A cube is addressed by a direction; that field says "
+                     "where this one comes from. Reported once.\n",
+                     fvf, op, tci,
+                     (tci & 0xFFFF0000u) == 0x00010000u ? "camera-space NORMAL"
+                     : (tci & 0xFFFF0000u) == 0x00020000u
+                         ? "camera-space POSITION"
+                     : (tci & 0xFFFF0000u) == 0x00030000u
+                         ? "camera-space "
+                           "REFLECTION VECTOR"
+                         : "none -- the vertex's own texture coordinates",
+                     ttf);
       }
     }
     /* D3DTADDRESS_CLAMP is 3; D3DTEXF_POINT is 1. */
@@ -1608,17 +1595,15 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
       memcpy(&out->texture_lod_bias, &bits, sizeof bits);
     }
     if (out->texture_mip < 0 || out->texture_mip > 2) {
-      fprintf(stderr,
-              "d3d8: stage 0 MIPFILTER %d is not NONE, POINT, "
-              "or LINEAR; draw refused.\n",
-              out->texture_mip);
+      x2_log_error("d3d8: stage 0 MIPFILTER %d is not NONE, POINT, "
+                   "or LINEAR; draw refused.\n",
+                   out->texture_mip);
       return 0;
     }
     if (out->texture_min_filter < 1 || out->texture_min_filter > 3) {
-      fprintf(stderr,
-              "d3d8: stage 0 MINFILTER %d is not POINT, LINEAR, "
-              "or ANISOTROPIC; draw refused.\n",
-              out->texture_min_filter);
+      x2_log_error("d3d8: stage 0 MINFILTER %d is not POINT, LINEAR, "
+                   "or ANISOTROPIC; draw refused.\n",
+                   out->texture_min_filter);
       return 0;
     }
   }
@@ -1632,10 +1617,9 @@ int d3d8_build_draw_impl(const D3D8State *s, const D3D8DrawRequest *req,
   out->src_blend = blend_of(srcb);
   out->dst_blend = blend_of(dstb);
   if (out->blend_enable && (!out->src_blend || !out->dst_blend)) {
-    fprintf(stderr,
-            "d3d8: blend factors %u/%u are not ones this backend "
-            "has; refusing the draw.\n",
-            srcb, dstb);
+    x2_log_error("d3d8: blend factors %u/%u are not ones this backend "
+                 "has; refusing the draw.\n",
+                 srcb, dstb);
     return 0;
   }
 
@@ -1780,36 +1764,39 @@ void d3d8_drawcall_report(void) {
   /* ALWAYS, including the all-clear: "0 of 290002 draws read outside their
      stream" is a measurement, and a line that only appears when something is
      wrong cannot be told apart from a check that never ran. */
-  printf("        vertex range: %lu draw(s) checked, %lu read OUTSIDE their "
-         "stream and were refused, %lu could not be checked (no host-"
-         "readable indices, or indices past the end of their own buffer)\n",
-         g_rng_checked, g_rng_bad, g_rng_unverifiable);
+  x2_log_info(
+      "        vertex range: %lu draw(s) checked, %lu read OUTSIDE their "
+      "stream and were refused, %lu could not be checked (no host-"
+      "readable indices, or indices past the end of their own buffer)\n",
+      g_rng_checked, g_rng_bad, g_rng_unverifiable);
   if (g_rng_bad)
-    printf("          worst: needed vertex %u from a stream of %u\n",
-           g_rng_worst_need - 1u, g_rng_worst_have);
+    x2_log_info("          worst: needed vertex %u from a stream of %u\n",
+                g_rng_worst_need - 1u, g_rng_worst_have);
 
   if (g_refused_prim)
-    printf("        %lu draw(s) refused for an unimplemented primitive "
-           "type\n",
-           g_refused_prim);
+    x2_log_info("        %lu draw(s) refused for an unimplemented primitive "
+                "type\n",
+                g_refused_prim);
   if (g_fans_expanded)
-    printf("        %lu TRIANGLEFAN(s) expanded into %lu triangle(s) -- "
-           "Vulkan has no fan primitive, so each becomes an index list\n",
-           g_fans_expanded, g_fan_tris);
+    x2_log_info("        %lu TRIANGLEFAN(s) expanded into %lu triangle(s) -- "
+                "Vulkan has no fan primitive, so each becomes an index list\n",
+                g_fans_expanded, g_fan_tris);
   if (g_refused_fvf)
-    printf("        %lu draw(s) refused for a vertex format this host "
-           "cannot express (a real vertex shader, or no position)\n",
-           g_refused_fvf);
-  printf("        %lu draw(s) enabled a texture stage beyond stage 0 (up to "
-         "%d extra); stage 1 is lowered, and any enabled stage 2+ is "
-         "REFUSED rather than omitted\n",
-         g_multistage_draws, g_multistage_max);
-  printf("        texture stage: %lu modulate, %lu select-texture, %lu "
-         "select-arg2, %lu add (environment map), %lu other-op-as-modulate, "
-         "%lu UNTEXTURED (%lu with no texture bound, %lu with the stage "
-         "disabled)\n",
-         g_texop_modulate, g_texop_select, g_texop_select2, g_texop_add,
-         g_texop_other, g_texop_none_notex + g_texop_none_disabled,
-         g_texop_none_notex, g_texop_none_disabled);
+    x2_log_info("        %lu draw(s) refused for a vertex format this host "
+                "cannot express (a real vertex shader, or no position)\n",
+                g_refused_fvf);
+  x2_log_info(
+      "        %lu draw(s) enabled a texture stage beyond stage 0 (up to "
+      "%d extra); stage 1 is lowered, and any enabled stage 2+ is "
+      "REFUSED rather than omitted\n",
+      g_multistage_draws, g_multistage_max);
+  x2_log_info(
+      "        texture stage: %lu modulate, %lu select-texture, %lu "
+      "select-arg2, %lu add (environment map), %lu other-op-as-modulate, "
+      "%lu UNTEXTURED (%lu with no texture bound, %lu with the stage "
+      "disabled)\n",
+      g_texop_modulate, g_texop_select, g_texop_select2, g_texop_add,
+      g_texop_other, g_texop_none_notex + g_texop_none_disabled,
+      g_texop_none_notex, g_texop_none_disabled);
   d3d8_untextured_report();
 }

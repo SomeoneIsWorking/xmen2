@@ -59,7 +59,7 @@ and leaves speaking/visible clear. `nextLine` is never called again.
 
 ## The cause, from a region recording of both calls
 
-`recomp.py emit --record 0x0045c460-0x0045c946` over two passes -- pass 1 the
+A two-pass instruction trace over `0x0045c460-0x0045c946` -- pass 1 the
 conversation that works, pass 2 the one that does not -- diverges at ONE
 instruction, step 83 of 608/110:
 

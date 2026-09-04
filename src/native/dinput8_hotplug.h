@@ -8,7 +8,7 @@
    table after a save payload deserializes identities this session cannot
    have. See dinput8.c for the IDirectInput8 object it belongs to. */
 
-struct CPU;
+struct X86pCpu;
 
 /* Remembered from the game's first IDirectInput8::EnumDevices(GAMECTRL):
    the callback to invoke, its pvRef (the input manager), and which function
@@ -24,7 +24,7 @@ void dinput8_hotplug_enumerated(unsigned long long generation, int connected,
 
 /* Called once a frame from the first input call; re-admits the inventory
    when its generation changed or the table stopped matching the live pads. */
-void dinput8_hotplug_pump(struct CPU *cpu);
+void dinput8_hotplug_pump(struct X86pCpu *cpu);
 
 /* How many admissions have run (shutdown report denominator). */
 unsigned long dinput8_hotplug_admissions(void);

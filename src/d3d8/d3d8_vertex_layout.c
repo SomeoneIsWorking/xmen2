@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 #include "d3d8_drawcall.h"
 
 #include <stdio.h>
@@ -134,14 +135,14 @@ void d3d8_fvf_report(void) {
     if ((g_seen[i].fvf & D3DFVF_POSITION_MASK) > D3DFVF_XYZRHW)
       blended += g_seen[i].n;
   }
-  printf("        vertex formats: %lu fixed-function draw(s), %d distinct "
-         "FVF(s)%s; %lu of them carry BLEND WEIGHTS\n",
-         total, g_seen_n, g_dropped ? " (TABLE FULL -- more exist)" : "",
-         blended);
+  x2_log_info("        vertex formats: %lu fixed-function draw(s), %d distinct "
+              "FVF(s)%s; %lu of them carry BLEND WEIGHTS\n",
+              total, g_seen_n, g_dropped ? " (TABLE FULL -- more exist)" : "",
+              blended);
   for (i = 0; i < g_seen_n; i++)
-    printf("          0x%08x  %-26s x%lu\n", g_seen[i].fvf,
-           position_name(g_seen[i].fvf), g_seen[i].n);
+    x2_log_info("          0x%08x  %-26s x%lu\n", g_seen[i].fvf,
+                position_name(g_seen[i].fvf), g_seen[i].n);
   if (!g_seen_n)
-    printf("          none -- no fixed-function draw reached this "
-           "backend, so this says NOTHING about the vertex formats.\n");
+    x2_log_info("          none -- no fixed-function draw reached this "
+                "backend, so this says NOTHING about the vertex formats.\n");
 }

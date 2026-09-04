@@ -1,4 +1,5 @@
 #include "touch_runtime.h"
+#include "../native/x2_log.h"
 
 extern "C" {
 #include "../native/guest_clock.h"
@@ -90,12 +91,11 @@ void publish_button(const x2::input::ActionEvent &event) {
     return;
   if (release) {
     if (!dinput_pad_virtual_release(button))
-      std::fprintf(stderr, "touch: could not release virtual button %s\n",
-                   button);
+      x2_log_error("touch: could not release virtual button %s\n", button);
   } else if (!dinput_pad_virtual_set(button, event.value, -1.0, reason,
                                      sizeof reason)) {
-    std::fprintf(stderr, "touch: could not press virtual button %s: %s\n",
-                 button, reason);
+    x2_log_error("touch: could not press virtual button %s: %s\n", button,
+                 reason);
   }
 }
 
@@ -114,11 +114,10 @@ void publish_axis(std::span<const x2::input::ActionEvent> events,
   char reason[256];
   if (released) {
     if (!dinput_pad_virtual_release(name))
-      std::fprintf(stderr, "touch: could not release virtual axis %s\n", name);
+      x2_log_error("touch: could not release virtual axis %s\n", name);
   } else if (!dinput_pad_virtual_set(name, *value, 0.0, reason,
                                      sizeof reason)) {
-    std::fprintf(stderr, "touch: could not move virtual axis %s: %s\n", name,
-                 reason);
+    x2_log_error("touch: could not move virtual axis %s: %s\n", name, reason);
   }
 }
 
@@ -147,8 +146,7 @@ void claim_player_one() {
     return; /* Not opened yet; try again on the next contact. */
   attempted = true;
   if (!x2_transient_controller_assign(slot, 0))
-    std::fprintf(stderr,
-                 "touch: could not assign the touch pad (slot %d) "
+    x2_log_error("touch: could not assign the touch pad (slot %d) "
                  "to player 1; touch will not reach gameplay\n",
                  slot);
 }

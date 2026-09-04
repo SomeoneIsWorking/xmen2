@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * Publishes the port's output size into the game's own registry at boot.
  * See display_mode_seed.h for the boundary and its provenance; this file
@@ -89,18 +90,16 @@ void x2_display_mode_seed_boot(void) {
      initialization may install its own 800x600 default afterwards;
      display_mode_runtime.c reconciles that exact settings-load boundary. */
   if (current) {
-    fprintf(stderr,
-            "DISPLAY SEED: %s video %ux%u against retail "
-            "Display\\Resolution; the runtime settings-load "
-            "bridge will verify the parsed value.\n",
-            acted ? "published" : "no change needed for", settings->width,
-            settings->height);
+    x2_log_error("DISPLAY SEED: %s video %ux%u against retail "
+                 "Display\\Resolution; the runtime settings-load "
+                 "bridge will verify the parsed value.\n",
+                 acted ? "published" : "no change needed for", settings->width,
+                 settings->height);
   } else {
-    fprintf(stderr,
-            "DISPLAY SEED: REFUSED video %ux%u; retail "
-            "Display\\Resolution does not contain the configured "
-            "mode.\n",
-            settings->width, settings->height);
+    x2_log_error("DISPLAY SEED: REFUSED video %ux%u; retail "
+                 "Display\\Resolution does not contain the configured "
+                 "mode.\n",
+                 settings->width, settings->height);
   }
 }
 

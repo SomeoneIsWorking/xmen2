@@ -7,29 +7,11 @@ the user's own PC PE images, dynamically translates every non-native guest path
 on demand, and hands selected title/engine functions to native overrides.
 
 **Direction: one native-overrides + dynarec/JIT gameplay product — see
-[`docs/strategy.md`](docs/strategy.md).** The 307 MB offline-generated guest C
-corpus and its generator were removed in commit `27f0a7b`; no build, install,
-provisioning, or release path may recreate them. An interpreter is permitted
-only in a separately built test/diagnostic target and must be absent from the
-gameplay target's link closure and selector surfaces.
-
-## Screenshots
-
-These are fresh captures from the native build at 1280×720. They are
-documentation captures made from the user's own game files; no game files or
-assets are distributed here.
-
-![Native main menu](docs/screenshots/main-menu-1280x720.png)
-
-*Native main menu with the original menu presentation rendered by the port.*
-
-![Native gameplay with controller prompts](docs/screenshots/controller-gameplay-1280x720.png)
-
-*In-game party, HUD, map and controller-oriented prompt glyphs.*
-
-![Native controller conversation prompt](docs/screenshots/controller-conversation-1280x720.png)
-
-*The same retail dialogue path showing the port's SVG controller prompt treatment.*
+[`docs/strategy.md`](docs/strategy.md).** Explicit interpreter mode is confined
+to a separately built test/diagnostic target. The product may enter a bounded,
+counted interpreter fallback only when JIT compilation fails or is unsupported,
+or when executing emitted code would be unsafe; those intervals cannot support
+gameplay or performance conformance claims.
 
 ## What is in this repository — and what is not
 
@@ -49,8 +31,8 @@ X-Men Legends II: Rise of Apocalypse is © Activision, developed by Raven
 Software and Vicarious Visions. Marvel and X-Men are trademarks of Marvel
 Characters, Inc. This project is unaffiliated with, and unendorsed by, any of
 them. The runtime reads guest instructions from the player's copy; the
-repository and release packages contain no generated guest-code corpus. The
-MIT licence in [`LICENSE`](LICENSE) covers **this repository's own code only**
+repository and release packages contain no game-derived code. The MIT licence
+in [`LICENSE`](LICENSE) covers **this repository's own code only**
 and makes no claim over the game.
 
 ## Setup and run from a fresh clone
@@ -60,8 +42,9 @@ Android ARM64. The current product JIT is implemented only on x86-64. The arm64
 Mach-O keeps the normal 4 GB `__PAGEZERO`; guest addresses are translated into
 a separate reserved 4 GB arena instead of weakening the executable's page-zero
 guard, but Apple Silicon and Android still require an ARM64 x86port JIT backend
-before they are gameplay products. They may not ship by falling back to the
-test interpreter. Native Windows is not implemented.
+before they are gameplay products. Neither the test interpreter nor bounded
+per-block fallback can substitute for that backend. Native Windows is not
+implemented.
 
 Install `uv`, a C/C++ compiler (GCC or Clang), and the native development
 packages. On Fedora/RHEL-family systems:
@@ -98,11 +81,31 @@ That command has no modes or arguments. It enters the locked `uv` environment,
 validates the game revision, obtains the pinned redistributable dependencies,
 prepares only native redistributable assets, builds, and launches the JIT
 gameplay product. It does not analyze the executable or generate guest source,
-objects, dispatch tables, or a precompiled title substrate. Ghidra, ImageMagick,
+objects, dispatch tables, or any derived guest-code artifact. Ghidra, ImageMagick,
 a system Python environment, Wine, and pre-existing sibling checkouts are not
 player prerequisites. Maintainer and diagnostic entry points live under
 `tools/`; they are deliberately not commands of `run.sh`. The `re-harness`
 checkout is maintainer-only and is not fetched by the player bootstrap.
+
+## Asset-free continuous verification
+
+GitHub Actions runs only repository-owned policy checks and native components
+that do not need the game. It never receives a game install, an oracle prefix,
+or a generated substitute for player-derived data. The workflow and its support
+matrix are checked by `uv run --frozen python tools/ci.py policy --target
+<target>`; action revisions are exact commits and Python/CMake/Ninja versions
+come from the locked environment.
+
+| Target | CI evidence | Gameplay product status |
+|---|---|---|
+| Linux x86-64 | policy + native/JIT component build and tests | JIT available; CI makes no asset-backed gameplay claim |
+| Apple Silicon macOS | policy + platform-neutral native component build and tests | Unsupported: the ARM64 x86port JIT backend does not exist yet |
+| Windows x86-64 | policy only | Unsupported: the native Windows host is not implemented |
+| Android ARM64 | policy only | Unsupported: the ARM64 x86port JIT backend is absent and the current native target needs a player-derived font calibration header |
+
+The Android job deliberately does not compile an APK around a placeholder font
+ratio, and the macOS job does not use the test interpreter as a substitute JIT.
+Local asset-backed verification remains the release authority.
 
 ## Linux AppImage release
 
@@ -154,13 +157,14 @@ The missing ARM64 JIT backend and mobile performance evidence are tracked in
   incompatible but the engine architecture (igCore/igDisplay class model, IGB format,
   file-package system, DLL boundary) is directly analogous.
 
-Pinned `shared/alchemy` already provides partial native
-IGB/image/mesh/raster/Enbaya and input libraries plus XMLB/ARK tools consumed by
-X-Men 2's tooling. `x2native` currently links and calls none of its runtime
-libraries, so this is not yet a shared gameplay engine. X-Men 2's first product
-integration is the `alchemy_input` guest `igControllerManager` adapter and its
-retained-DirectInput A/B proof. MUA remains deferred until every X-Men 2 goal is
-verified, then migrates to the proven engine without a gameplay rewrite.
+`shared/alchemy` provides partial native IGB/image/mesh/raster/Enbaya and input
+libraries plus XMLB/ARK tools. `x2native` now links its neutral
+`alchemy::input` target and publishes the same latched controller sample through
+a title-owned `igControllerManager` adapter while retaining DirectInput as an
+A/B oracle. This establishes the dependency and conformance seam; real-game
+callback/hotplug evidence is still required before the retained concrete path
+can be removed. MUA remains deferred until every X-Men 2 goal is verified, then
+migrates to the proven engine without a gameplay rewrite.
 
 The durable outcomes are in
 [`docs/project-goals.md`](docs/project-goals.md); factual capability coverage,
@@ -211,7 +215,7 @@ The input-specific features are:
 
 ## Verification
 
-- **Oracle**: the original PC build under Wine. `tools/run_shim.sh <rundir>` runs it
+- **Oracle**: the original PC build under Wine. `tools/run_shim.py <rundir>` runs it
   headless on Xvfb and captures a frame; `scratch/run/stock` is the unmodified
   reference and `scratch/run/proxy` swaps in our DLL. Both are symlink farms — the
   real game install is never modified.
@@ -234,7 +238,7 @@ executable view.
   - `include/` — **full engine header suite** (igCore/igDisplay/igSg/igGfx/...). Verified:
     `igController::BUTTONS`, `igControllerManager::initializeControllers` match the XML2
     `libIGDisplay.dll` binary exactly → Alchemy 3.2 class API ≡ 5.0 headers.
-  - `DirectX9/lib/` — precompiled Alchemy 5.0 engine DLLs (reference behavior).
+  - `DirectX9/lib/` — prebuilt Alchemy 5.0 engine DLLs (reference behavior).
   - `sources/` — app source only (insight/viewer/libMovie/animationProducer), NOT the
     engine core source.
   - `bin/` — tools: `igen.exe`, `igbTypes.exe`, `sgOptimizer.exe`, `lua.exe`, `eventTracker.exe`.
@@ -256,7 +260,7 @@ executable view.
   Nothing uses `/tmp`.
 - RE scripts in `tools/`; Ghidra project in `build/ghidra/`.
 - `tools/pe.py` reads PE32 exports/imports/sections and generates proxy `.def`
-  files; `tools/run_shim.sh` runs the game headless for A/B comparison.
+  files; `tools/run_shim.py` runs the game headless for A/B comparison.
 - No copyrighted game assets committed to git; they stay in the game dirs referenced
   by `.env`.
 
@@ -265,11 +269,11 @@ executable view.
 **The x86-64 JIT path runs real game code with native overrides active.** Prior
 headless observations reached main menu → New Game → difficulty → story
 cutscene → loaded and simulated level → death dialog → rendered main menu.
-Recent `jit.verify` sessions also compared hundreds of millions of in-game JIT
-block entries against the test interpreter without divergence. These are real
-execution and regression facts, but they are not the complete product gate: a
-bounded representative interactive gameplay scenario, an independent oracle
-comparison, and the product no-interpreter link/selector audit remain open.
+Earlier test-only differential sessions compared hundreds of millions of
+in-game JIT block entries without divergence. These are real execution and
+regression facts, but they are not the complete product gate: a bounded
+representative interactive gameplay scenario, an independent oracle
+comparison, and the product execution-boundary audit remain open.
 
 `./run.sh` is the supported default launcher: with no arguments it builds when
 needed and runs the current native SDL3 GPU game target. It records the exact
@@ -281,10 +285,10 @@ accidental launcher mode.
 What that does *not* mean. It is not yet release-qualified in the sense that
 matters. The consumer-proven JIT revision in the canonical `shared/x86port`
 checkout still has to be published and reconciled with this project's pin, the
-x86-64 gameplay product must prove
-the interpreter is absent rather than merely unused, and every declared host
-needs a real JIT backend. Apple Silicon and Android ARM64 cannot ship by falling
-back to interpretation. Controller enumeration, polling and hotswap run
+x86-64 gameplay product must prove that explicit interpreter selection is
+absent and any bounded fallback is counted and reported, and every declared
+host needs a real JIT backend. Apple Silicon and Android ARM64 cannot use
+interpretation as a substitute backend. Controller enumeration, polling and hotswap run
 end-to-end under a synthetic pad; an equivalent physical-pad play-through has
 not been done. The
 renderer accepts every draw the engine issues and reads every render state the

@@ -6,18 +6,15 @@ the default it offers is not invented here:
 
 > **Xbox defaults** = the mapping the game's own XBOX PORT shipped with.
 
-That is a fact to be READ OUT OF THE XBOX BUILD, not designed. The Xbox release
-is in this repository's sources already (`$XBOX_ISO`, `xbox/`), it is the same
-game by the same developers, and its button assignments are the ones a player
-who knows this game on a console expects. Anything we invent instead is a guess
-competing with a shipped answer.
+That mapping was recovered from the shipped Xbox release and is preserved in
+the project's claims and focused tests. The release itself and the retired
+experimental implementation are not project source.
 
 ## What has to be found, before any of it is written
 
-- **Where the Xbox port stores its default pad mapping.** `default.xbe` is
-  lifted by the same recompiler (`xbox/`, `tools/xbox_relift.py`), so the table
-  can be located the same way every other structure in this project has been:
-  find the code that reads it, not a plausible-looking blob.
+- **Where the Xbox port stores its default pad mapping.** This was recovered
+  from `default.xbe` by tracing the code that reads it, rather than selecting a
+  plausible-looking blob.
 - **The ACTION set it maps to.** The PC build's `x2_button` enum
   (`src/display/ig_controller.h`) is the engine's controller button numbering,
   not the game's actions. The Xbox table maps ITS buttons to game actions, so
@@ -33,8 +30,7 @@ competing with a shipped answer.
   is read from the real build and matches on real data. A hand-typed mapping
   that "looks like an Xbox pad" is exactly the faked step
   `docs/../re_frontier.py` exists to prevent.
-- No Xbox asset or table is committed. It is read from `$XBOX_ISO` at build or
-  run time like every other piece of game content here.
+- No Xbox asset or table is committed or required by the product.
 
 ## Recovered PC binding engine
 

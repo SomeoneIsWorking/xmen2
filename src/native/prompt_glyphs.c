@@ -1,17 +1,17 @@
 #include "prompt_glyphs.h"
-
 #include "pad_glyph_codes.h"
 
 #include <stdlib.h>
 #include <string.h>
+
+#include <lucent/cvar_c.h>
 
 static uint8_t g_unavailable[X2_PROMPT_GLYPH_LAST - X2_PROMPT_GLYPH_FIRST + 1u];
 
 int x2_prompt_glyphs_enabled(void) {
   static int enabled = -1;
   if (enabled < 0) {
-    const char *value = getenv("X2_PROMPT_GLYPHS");
-    enabled = !value || strcmp(value, "0") != 0;
+    enabled = lucent_cvar_flag("prompt_glyphs", 1) != 0;
   }
   return enabled;
 }

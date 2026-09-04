@@ -1,4 +1,5 @@
 /* Prove the initial colour load policy with pixels, not a return value. */
+#include "../native/x2_log.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
 
@@ -11,8 +12,8 @@
 
 int gpu_frame_init_selftest(void) {
 #ifndef X2_WITH_SDL
-  printf("gpu frame-init selftest: SKIPPED -- built without SDL. This is "
-         "not a pass.\n");
+  x2_log_info("gpu frame-init selftest: SKIPPED -- built without SDL. This is "
+              "not a pass.\n");
   return 77;
 #else
   struct {
@@ -27,14 +28,15 @@ int gpu_frame_init_selftest(void) {
   uint32_t centre, edge_a, edge_b;
   int fails = 0;
 
-  printf("\n=== gpu frame-init selftest: untouched pixels start black ===\n");
+  x2_log_info(
+      "\n=== gpu frame-init selftest: untouched pixels start black ===\n");
   if (!gpu_device_create()) {
-    printf("gpu frame-init selftest: FAILED -- no GPU device.\n");
+    x2_log_info("gpu frame-init selftest: FAILED -- no GPU device.\n");
     return 1;
   }
   vb = gpu_buffer_create(GPU_BUF_VERTEX, sizeof tri);
   if (!vb || !gpu_buffer_upload(vb, 0, tri, sizeof tri)) {
-    printf("gpu frame-init selftest: FAILED -- no vertex buffer.\n");
+    x2_log_info("gpu frame-init selftest: FAILED -- no vertex buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -45,8 +47,8 @@ int gpu_frame_init_selftest(void) {
      allowed to leak blue or tile memory into its untouched edges. */
   if (!gpu_offscreen_begin(TEST_W, TEST_H, 0.0f, 0.0f, 1.0f, 1.0f) ||
       !gpu_offscreen_next_no_clear()) {
-    printf("gpu frame-init selftest: FAILED -- could not start the two "
-           "off-screen frames.\n");
+    x2_log_info("gpu frame-init selftest: FAILED -- could not start the two "
+                "off-screen frames.\n");
     gpu_offscreen_end();
     gpu_device_destroy();
     return 1;
@@ -65,8 +67,8 @@ int gpu_frame_init_selftest(void) {
   d.cull = GPU_CULL_NONE;
   d.depth_func = GPU_CMP_ALWAYS;
   if (!gpu_draw(&d) || !gpu_offscreen_read(img, sizeof img)) {
-    printf("gpu frame-init selftest: FAILED -- partial draw/readback did "
-           "not complete.\n");
+    x2_log_info("gpu frame-init selftest: FAILED -- partial draw/readback did "
+                "not complete.\n");
     gpu_offscreen_end();
     gpu_device_destroy();
     return 1;
@@ -77,23 +79,24 @@ int gpu_frame_init_selftest(void) {
   edge_a = img[1 * TEST_W + 1];
   edge_b = img[62 * TEST_W + 62];
   if (centre != 0xFFFF0000u) {
-    printf("gpu frame-init selftest: FAILED -- partial draw is 0x%08x, "
-           "expected red.\n",
-           centre);
+    x2_log_info("gpu frame-init selftest: FAILED -- partial draw is 0x%08x, "
+                "expected red.\n",
+                centre);
     fails++;
   }
   if (edge_a != 0xFF000000u || edge_b != 0xFF000000u) {
-    printf("gpu frame-init selftest: FAILED -- untouched edges are "
-           "0x%08x and 0x%08x, expected opaque black.\n",
-           edge_a, edge_b);
+    x2_log_info("gpu frame-init selftest: FAILED -- untouched edges are "
+                "0x%08x and 0x%08x, expected opaque black.\n",
+                edge_a, edge_b);
     fails++;
   }
 
   gpu_device_destroy();
-  printf("gpu frame-init selftest: %s\n",
-         fails ? "FAILED"
-               : "PASSED -- a sparse frame draws its content and initializes "
-                 "both untouched edges to black");
+  x2_log_info(
+      "gpu frame-init selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- a sparse frame draws its content and initializes "
+              "both untouched edges to black");
   return fails ? 1 : 0;
 #endif
 }

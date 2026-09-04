@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-import json
 import os
 from pathlib import Path
 import re
@@ -34,7 +33,8 @@ class SharedRepo:
 
 SHARED_REPOS = (
     SharedRepo("alchemy", "https://github.com/SomeoneIsWorking/alchemy.git",
-               "f95e0931c6ea97f14f02188df641d8ddd9cea227", "src/igb.h"),
+               "b04e6657cac3156318506f4145a85e66b1ebc8e6",
+               "include/alchemy/input/controller.hpp"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
                "42a1648ab0414418893b0ebd6eec69fe5b6a97d4", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
@@ -48,11 +48,11 @@ SHARED_REPOS = (
     # because x86port CONSUMES it and refuses to configure without it. Both are
     # this port's inputs, so both are this port's pins.
     SharedRepo("jit-common", "https://github.com/SomeoneIsWorking/jit-common.git",
-               "e4300c8a1d538d9fa7a42505d7fa85f6c294cdbb",
+               "75ce92882aba7d80a39822604ab3a294f9c8944e",
                "src/jitcommon/block_cache.h"),
     SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
-               "76e750f29ad42276f3d5d9c01396b682e84058cd",
-               "src/x86port/engine.h"),
+               "ca52e377040d83534f9cd9f5a976526078fa2343",
+               "src/x86port/jit_engine.h"),
 )
 
 GAME_MODULE_SHA256 = {

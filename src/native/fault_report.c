@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * Fatal-signal reporting, kept separate from x2native's process composition.
  *
@@ -10,7 +11,6 @@
 #include "fault_report.h"
 
 #include "guest_memory.h"
-#include "x86_reached.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -94,16 +94,16 @@ static void fault_host_pc_report(const void *context) {
   Dl_info info;
 
   if (!pc) {
-    fprintf(stderr, "[HOST PC] unavailable for this CPU/context\n");
+    x2_log_error("[HOST PC] unavailable for this CPU/context\n");
     return;
   }
   if (dladdr((const void *)pc, &info) && info.dli_fbase && info.dli_fname) {
-    fprintf(stderr, "[HOST PC] addr2line -fCe %s 0x%llx\n", info.dli_fname,
-            (unsigned long long)(pc - (uintptr_t)info.dli_fbase));
+    x2_log_error("[HOST PC] addr2line -fCe %s 0x%llx\n", info.dli_fname,
+                 (unsigned long long)(pc - (uintptr_t)info.dli_fbase));
     return;
   }
-  fprintf(stderr, "[HOST PC] 0x%llx (dladdr could not resolve its image)\n",
-          (unsigned long long)pc);
+  x2_log_error("[HOST PC] 0x%llx (dladdr could not resolve its image)\n",
+               (unsigned long long)pc);
 }
 
 /*
@@ -123,59 +123,56 @@ void fault_report(int sig, siginfo_t *si, void *uc) {
   if (!guest_memory_host_address(si->si_addr, &a))
     a = (uint32_t)(uintptr_t)si->si_addr;
   if (sig != SIGSEGV) {
-    fprintf(stderr, "\n*** %s at %p -- %s\n", fault_name(sig), si->si_addr,
-            fault_meaning(sig, si->si_code));
+    x2_log_error("\n*** %s at %p -- %s\n", fault_name(sig), si->si_addr,
+                 fault_meaning(sig, si->si_code));
     if (sig == SIGILL || sig == SIGTRAP)
-      fprintf(stderr,
-              "    For a recompiled body this usually means control reached "
-              "something that is not code:\n"
-              "    a jump through a stale or wrong function pointer, or a "
-              "guest RET onto a corrupted stack.\n"
-              "    The guest registers and the ring below say where the run "
-              "was; si_addr is the host address it tried to execute.\n");
+      x2_log_error(
+          "    For a guest body this usually means control reached "
+          "something that is not code:\n"
+          "    a jump through a stale or wrong function pointer, or a "
+          "guest RET onto a corrupted stack.\n"
+          "    The guest registers and the ring below say where the run "
+          "was; si_addr is the host address it tried to execute.\n");
     goto where;
   }
   sym = x86_thunk_name(a, &mod);
   if (sym) {
-    fprintf(stderr,
-            "\n*** the synthetic address 0x%08x was ACCESSED, not "
-            "called: %s!%s\n"
-            "    That range is deliberately unmapped, so any read, "
-            "write or jump into it faults here.\n"
-            "    Either the guest wants this symbol's VALUE (an "
-            "import that is data, not a function -- see\n"
-            "    x86_native_data_export), or a call reached it by a "
-            "path that bypasses the dispatcher.\n",
-            a, mod, sym);
+    x2_log_error("\n*** the synthetic address 0x%08x was ACCESSED, not "
+                 "called: %s!%s\n"
+                 "    That range is deliberately unmapped, so any read, "
+                 "write or jump into it faults here.\n"
+                 "    Either the guest wants this symbol's VALUE (an "
+                 "import that is data, not a function -- see\n"
+                 "    x86_native_data_export), or a call reached it by a "
+                 "path that bypasses the dispatcher.\n",
+                 a, mod, sym);
     goto where;
   }
   sym = x86_poison_name(a, &mod);
   if (sym) {
-    fprintf(stderr,
-            "\n*** unbound import used: %s!%s\n"
-            "    The guest read or called import slot 0x%08x, which "
-            "nothing could resolve.\n"
-            "    That module is either not linked into this binary "
-            "or does not export that symbol.\n",
-            mod, sym, a);
+    x2_log_error("\n*** unbound import used: %s!%s\n"
+                 "    The guest read or called import slot 0x%08x, which "
+                 "nothing could resolve.\n"
+                 "    That module is either not linked into this binary "
+                 "or does not export that symbol.\n",
+                 mod, sym, a);
     _exit(3);
   }
-  fprintf(stderr, "\n*** SIGSEGV at %p (not an import slot) -- %s\n",
-          si->si_addr, fault_meaning(sig, si->si_code));
+  x2_log_error("\n*** SIGSEGV at %p (not an import slot) -- %s\n", si->si_addr,
+               fault_meaning(sig, si->si_code));
 where:
   fault_host_pc_report(uc);
 #if defined(__ANDROID__)
-  fprintf(stderr, "[HOST STACK] unavailable on Android (no execinfo API)\n");
+  x2_log_error("[HOST STACK] unavailable on Android (no execinfo API)\n");
 #else
   {
     void *frames[32];
     int count = backtrace(frames, (int)(sizeof frames / sizeof frames[0]));
-    fprintf(stderr, "[HOST STACK] %d frame(s):\n", count);
+    x2_log_error("[HOST STACK] %d frame(s):\n", count);
     backtrace_symbols_fd(frames, count, STDERR_FILENO);
   }
 #endif
   x86_regs_dump();
   x86_diag_dump();
-  x86_reached_report();
   _exit(3);
 }

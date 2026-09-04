@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * Pipeline and sampler caches for the fixed-function draw path.
  *
@@ -51,7 +52,7 @@ static SDL_GPUShader *load_shader(const void *code, size_t len,
   ci.num_uniform_buffers = nuniforms;
   s = SDL_CreateGPUShader(g_gpu, &ci);
   if (!s)
-    fprintf(stderr, "gpu: SDL_CreateGPUShader failed: %s\n", SDL_GetError());
+    x2_log_error("gpu: SDL_CreateGPUShader failed: %s\n", SDL_GetError());
   return s;
 }
 
@@ -155,7 +156,7 @@ SDL_GPUGraphicsPipeline *gpu_pipeline_for(const PipeKey *k) {
     if (memcmp(&g_pipes[i].key, k, sizeof *k) == 0)
       return g_pipes[i].pipe;
   if (g_npipes == MAX_PIPES) {
-    fprintf(stderr, "gpu: more than %d distinct pipeline states.\n", MAX_PIPES);
+    x2_log_error("gpu: more than %d distinct pipeline states.\n", MAX_PIPES);
     return NULL;
   }
   if (!shaders_ready())
@@ -268,8 +269,8 @@ SDL_GPUGraphicsPipeline *gpu_pipeline_for(const PipeKey *k) {
   g_pipes[g_npipes].key = *k;
   g_pipes[g_npipes].pipe = SDL_CreateGPUGraphicsPipeline(g_gpu, &ci);
   if (!g_pipes[g_npipes].pipe) {
-    fprintf(stderr, "gpu: SDL_CreateGPUGraphicsPipeline failed: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: SDL_CreateGPUGraphicsPipeline failed: %s\n",
+                 SDL_GetError());
     return NULL;
   }
   g_pipes_built++;
@@ -291,8 +292,7 @@ SDL_GPUSampler *gpu_sampler_for(int clamp, int mag_point, int min_filter,
         g_sampler[i].max_anisotropy == max_anisotropy)
       return g_sampler[i].sampler;
   if (g_nsamplers == MAX_SAMPLERS) {
-    fprintf(stderr, "gpu: more than %d distinct sampler states.\n",
-            MAX_SAMPLERS);
+    x2_log_error("gpu: more than %d distinct sampler states.\n", MAX_SAMPLERS);
     return NULL;
   }
   memset(&ci, 0, sizeof ci);
@@ -319,7 +319,7 @@ SDL_GPUSampler *gpu_sampler_for(int clamp, int mag_point, int min_filter,
   g_sampler[g_nsamplers].max_anisotropy = max_anisotropy;
   g_sampler[g_nsamplers].sampler = SDL_CreateGPUSampler(g_gpu, &ci);
   if (!g_sampler[g_nsamplers].sampler) {
-    fprintf(stderr, "gpu: SDL_CreateGPUSampler failed: %s\n", SDL_GetError());
+    x2_log_error("gpu: SDL_CreateGPUSampler failed: %s\n", SDL_GetError());
     return NULL;
   }
   return g_sampler[g_nsamplers++].sampler;

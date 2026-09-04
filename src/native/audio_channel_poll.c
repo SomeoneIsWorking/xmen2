@@ -97,14 +97,15 @@ void x2_override_00594500(CPU *C) {
   }
 
   if (audio_channel_poll_verify(C)) {
-    C->eax = 0u;
-    C->esp += 4u;
+    C->reg[kX86pEax] = 0u;
+    C->reg[kX86pEsp] += 4u;
     return;
   }
 
   audio_channel_poll_run();
-  C->eax = 0u;
-  C->esp += 4u; /* __cdecl, no args: consume only the return address */
+  C->reg[kX86pEax] = 0u;
+  C->reg[kX86pEsp] +=
+      4u; /* __cdecl, no args: consume only the return address */
 }
 
 __attribute__((constructor)) static void register_audio_channel_poll(void) {

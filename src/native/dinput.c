@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * DirectInput 7, as much of it as this game asks for.
  *
@@ -37,13 +38,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
 
 /* COM is __stdcall: the callee pops `this` plus nargs arguments. */
 static void ret_com(CPU *C, uint32_t hr, int nargs) {
-  C->eax = hr;
-  C->esp += 4u + (uint32_t)(nargs + 1) * 4u;
+  C->reg[kX86pEax] = hr;
+  C->reg[kX86pEsp] += 4u + (uint32_t)(nargs + 1) * 4u;
 }
 
 #define S_OK 0x00000000u
@@ -93,8 +94,8 @@ static void m_QueryInterface(CPU *C) {
 static void m_AddRef(CPU *C) {
   uint32_t n = RD32(THIS + 4u) + 1u;
   WR32(THIS + 4u, n);
-  C->eax = n;
-  C->esp += 4u + 4u;
+  C->reg[kX86pEax] = n;
+  C->reg[kX86pEsp] += 4u + 4u;
 }
 
 static void m_Release(CPU *C) {
@@ -106,8 +107,8 @@ static void m_Release(CPU *C) {
      hold it. Freeing on the first Release would hand the second a dangling
      vtable pointer, and the fault would land in whichever of them polled
      first, looking like an input bug. */
-  C->eax = n;
-  C->esp += 4u + 4u;
+  C->reg[kX86pEax] = n;
+  C->reg[kX86pEsp] += 4u + 4u;
 }
 
 /* DIDEVTYPE_*, the DirectInput 7 numbering (dwVersion 0x700). */
@@ -173,17 +174,16 @@ static void enum_seen(uint32_t devtype, uint32_t flags, uint32_t cb,
   g_nenum++;
   {
     const char *nm = x86_native_name_at(cb);
-    fprintf(stderr,
-            "DINPUT: EnumDevices(devType=%u %s, flags=0x%x) offered %d "
-            "device(s) to the callback at 0x%08x (%s).\n",
-            devtype, devtype_name(devtype), flags, reported, cb,
-            nm ? nm : "in no body this host can name");
+    x2_log_error("DINPUT: EnumDevices(devType=%u %s, flags=0x%x) offered %d "
+                 "device(s) to the callback at 0x%08x (%s).\n",
+                 devtype, devtype_name(devtype), flags, reported, cb,
+                 nm ? nm : "in no body this host can name");
     if (!reported)
-      fprintf(stderr, "  NONE matched that device class. This host "
-                      "serves the system keyboard and mouse only, so a "
-                      "request for joysticks finds nothing -- and that "
-                      "is a missing subsystem, not an empty machine. "
-                      "See issue #32.\n");
+      x2_log_error("  NONE matched that device class. This host "
+                   "serves the system keyboard and mouse only, so a "
+                   "request for joysticks finds nothing -- and that "
+                   "is a missing subsystem, not an empty machine. "
+                   "See issue #32.\n");
   }
 }
 
@@ -266,12 +266,12 @@ static void m_EnumDevices(CPU *C) {
     if (!(inst = devinst_for(KINDS[i])))
       continue;
     K = *C;
-    K.esp -= 8u;
-    WR32(K.esp + 0u, inst);
-    WR32(K.esp + 4u, pvref);
+    K.reg[kX86pEsp] -= 8u;
+    WR32(K.reg[kX86pEsp] + 0u, inst);
+    WR32(K.reg[kX86pEsp] + 4u, pvref);
     x86_guest_call_args(&K, cb, 8u);
     reported++;
-    if (K.eax == 0u)
+    if (K.reg[kX86pEax] == 0u)
       break; /* DIENUM_STOP */
   }
   enum_seen(devtype, flags, cb, reported);
@@ -304,11 +304,10 @@ static void create_device(CPU *C, uint32_t guid, uint32_t out, uint32_t outer,
   }
   if (!(kind = dinput_guid_kind(guid))) {
     const unsigned char *b = guest_memory_const_pointer(guid);
-    fprintf(stderr,
-            "DINPUT: %s for {%02X%02X%02X%02X-...} -- not the "
-            "system keyboard or mouse, and this host enumerates "
-            "nothing else, so there is no device to open.\n",
-            what, b[3], b[2], b[1], b[0]);
+    x2_log_error("DINPUT: %s for {%02X%02X%02X%02X-...} -- not the "
+                 "system keyboard or mouse, and this host enumerates "
+                 "nothing else, so there is no device to open.\n",
+                 what, b[3], b[2], b[1], b[0]);
     ret_com(C, DIERR_DEVICENOTREG, nargs);
     return;
   }
@@ -324,11 +323,11 @@ static void create_device(CPU *C, uint32_t guid, uint32_t out, uint32_t outer,
        was created and never read, so both ends are said. */
     static int told[3];
     if (!told[kind]++)
-      fprintf(stderr,
-              "DINPUT: %s handed the engine the system %s at "
-              "0x%08x -- the DirectInput 7 path now serves the "
-              "same devices as the DirectInput 8 one.\n",
-              what, kind == DINPUT_DEV_KEYBOARD ? "keyboard" : "mouse", obj);
+      x2_log_error("DINPUT: %s handed the engine the system %s at "
+                   "0x%08x -- the DirectInput 7 path now serves the "
+                   "same devices as the DirectInput 8 one.\n",
+                   what, kind == DINPUT_DEV_KEYBOARD ? "keyboard" : "mouse",
+                   obj);
   }
   WR32(out, obj);
   ret_com(C, S_OK, nargs);
@@ -347,17 +346,18 @@ static void m_CreateDeviceEx(CPU *C) {
 void dinput_report(void) {
   int i;
   if (!g_nenum) {
-    printf("  dinput: EnumDevices was never called, so no device list was "
-           "even asked for.\n");
+    x2_log_info("  dinput: EnumDevices was never called, so no device list was "
+                "even asked for.\n");
     return;
   }
-  printf("  dinput: %d distinct EnumDevices call(s):\n", g_nenum);
+  x2_log_info("  dinput: %d distinct EnumDevices call(s):\n", g_nenum);
   for (i = 0; i < g_nenum; i++) {
     const char *nm = x86_native_name_at(g_enum[i].cb);
-    printf("        devType %u %-9s flags 0x%-4x  x%-5lu  offered %d  "
-           "callback 0x%08x %s\n",
-           g_enum[i].devtype, devtype_name(g_enum[i].devtype), g_enum[i].flags,
-           g_enum[i].n, g_enum[i].reported, g_enum[i].cb, nm ? nm : "");
+    x2_log_info("        devType %u %-9s flags 0x%-4x  x%-5lu  offered %d  "
+                "callback 0x%08x %s\n",
+                g_enum[i].devtype, devtype_name(g_enum[i].devtype),
+                g_enum[i].flags, g_enum[i].n, g_enum[i].reported, g_enum[i].cb,
+                nm ? nm : "");
   }
 }
 
@@ -389,15 +389,13 @@ static void m_RunControlPanel(CPU *C) {
  */
 static void m_unimplemented(CPU *C) {
   const char *nm = (const char *)x86_callback_ctx();
-  fprintf(stderr,
-          "\n*** DINPUT: IDirectInput7::%s was called, and is not "
-          "implemented.\n"
-          "    EnumDevices reports no devices, so nothing should have a "
-          "device to ask about --\n"
-          "    reaching this means that assumption is wrong. "
-          "See src/native/dinput.c.\n",
-          nm ? nm : "(unknown slot)");
-  fflush(stderr);
+  x2_log_error("\n*** DINPUT: IDirectInput7::%s was called, and is not "
+               "implemented.\n"
+               "    EnumDevices reports no devices, so nothing should have a "
+               "device to ask about --\n"
+               "    reaching this means that assumption is wrong. "
+               "See src/native/dinput.c.\n",
+               nm ? nm : "(unknown slot)");
   x86_diag_dump();
   abort();
   (void)C;
@@ -418,8 +416,8 @@ static void build(void) {
   g_vtable = guest_malloc(VT_COUNT * 4u);
   g_object = guest_malloc(8u);
   if (!g_vtable || !g_object) {
-    fprintf(stderr, "DINPUT: no guest memory for the IDirectInput7 "
-                    "object\n");
+    x2_log_error("DINPUT: no guest memory for the IDirectInput7 "
+                 "object\n");
     abort();
   }
   for (k = 0; k < VT_COUNT; k++)
@@ -438,19 +436,18 @@ void imp_DINPUT_DirectInputCreateEx(CPU *C) {
   if (outer) { /* aggregation is not supported */
     if (ppv)
       WR32(ppv, 0);
-    C->eax = DIERR_INVALIDPARAM;
-    C->esp += 4u + 5u * 4u;
+    C->reg[kX86pEax] = DIERR_INVALIDPARAM;
+    C->reg[kX86pEsp] += 4u + 5u * 4u;
     return;
   }
   build();
   if (!told++)
-    fprintf(stderr,
-            "DINPUT: DirectInputCreateEx(version=0x%x) -> a native "
-            "IDirectInput7 at 0x%08x (SDL-backed input pending)\n",
-            version, g_object);
+    x2_log_error("DINPUT: DirectInputCreateEx(version=0x%x) -> a native "
+                 "IDirectInput7 at 0x%08x (SDL-backed input pending)\n",
+                 version, g_object);
   if (ppv)
     WR32(ppv, g_object);
   WR32(g_object + 4u, RD32(g_object + 4u) + 1u);
-  C->eax = S_OK;
-  C->esp += 4u + 5u * 4u;
+  C->reg[kX86pEax] = S_OK;
+  C->reg[kX86pEsp] += 4u + 5u * 4u;
 }

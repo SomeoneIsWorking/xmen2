@@ -12,7 +12,12 @@ No Xbox call site reads controller physical index 8 or 9 (Black/White) through a
 
 ## Evidence
 
-tools/xbe_query.py vslot 0x10 --imm 8 --imm 9 --histogram over vendor/xboxrecomp/tools/disasm/output/asm/text.asm; the 6 hits are sub_001E0780, sub_001E1D40, sub_001F13B0, sub_001F2680, each preceded by call sub_0005B200 whose vtable (0x00494B34) slot +0x10 is sub_0005AD30, a set/clear-bit on a 15-entry mask at +0xc -- not a float read.
+A bounded Xbox XBE instruction scan examined 884 vtable-slot `+0x10` call
+sites and printed the literal/register/no-nearby-push denominator. The six
+literal 8/9 hits are in sub_001E0780, sub_001E1D40, sub_001F13B0, and
+sub_001F2680. Each is preceded by sub_0005B200, whose vtable at 0x00494B34 has
+sub_0005AD30 in slot `+0x10`; that body sets or clears a bit in a 15-entry mask
+at `+0xc`, rather than reading a controller axis.
 
 ## What would falsify it
 

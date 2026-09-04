@@ -64,8 +64,8 @@ static void test_add_vertex_with_uv(void) {
 
   CPU c;
   memset(&c, 0, sizeof c);
-  c.ecx = SELF;
-  c.esp = STACK;
+  c.reg[kX86pEcx] = SELF;
+  c.reg[kX86pEsp] = STACK;
   WR32(STACK + 0u, 0xcafef00du); /* retaddr */
   WR32(STACK + 4u, POS_SRC);
   WR32(STACK + 8u, UV_SRC);
@@ -73,8 +73,9 @@ static void test_add_vertex_with_uv(void) {
 
   x2_override_005840a0(&c);
 
-  if (c.esp != STACK + 16u) {
-    fprintf(stderr, "esp = %08x, want %08x (ret 0xc)\n", c.esp, STACK + 16u);
+  if (c.reg[kX86pEsp] != STACK + 16u) {
+    fprintf(stderr, "esp = %08x, want %08x (ret 0xc)\n", c.reg[kX86pEsp],
+            STACK + 16u);
     failures++;
   }
   if (RD32(SELF + 0x20u) != 1u) {
@@ -117,8 +118,8 @@ static void test_add_vertex_no_uv(void) {
 
   CPU c;
   memset(&c, 0, sizeof c);
-  c.ecx = SELF;
-  c.esp = STACK;
+  c.reg[kX86pEcx] = SELF;
+  c.reg[kX86pEsp] = STACK;
   WR32(STACK + 0u, 0xcafef00du);
   WR32(STACK + 4u, POS_SRC);
   WR32(STACK + 8u, UV_SRC);
@@ -145,8 +146,8 @@ static void test_capacity_limit(void) {
 
   CPU c;
   memset(&c, 0, sizeof c);
-  c.ecx = SELF;
-  c.esp = STACK;
+  c.reg[kX86pEcx] = SELF;
+  c.reg[kX86pEsp] = STACK;
   WR32(STACK + 0u, 0xcafef00du);
   WR32(STACK + 4u, POS_SRC);
   WR32(STACK + 8u, UV_SRC);
@@ -154,7 +155,7 @@ static void test_capacity_limit(void) {
 
   x2_override_005840a0(&c);
 
-  if (c.esp != STACK + 16u) {
+  if (c.reg[kX86pEsp] != STACK + 16u) {
     fprintf(stderr, "esp not cleaned on cap limit\n");
     failures++;
   }

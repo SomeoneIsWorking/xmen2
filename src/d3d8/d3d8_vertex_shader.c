@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * D3D8 vertex-shader handle ownership.
  *
@@ -32,10 +33,9 @@ static int scan_declaration(const uint32_t *p, uint16_t *count) {
       return 1;
     }
   }
-  fprintf(stderr,
-          "d3d8: CreateVertexShader scanned %u declaration token(s) "
-          "but found no D3DVSD_END; refusing an unterminated stream.\n",
-          VS_DECL_MAX_DWORDS);
+  x2_log_error("d3d8: CreateVertexShader scanned %u declaration token(s) "
+               "but found no D3DVSD_END; refusing an unterminated stream.\n",
+               VS_DECL_MAX_DWORDS);
   return 0;
 }
 
@@ -46,10 +46,9 @@ static int scan_function(const uint32_t *p, uint16_t *count) {
     return 1;
   } /* declaration-only shaders are legal */
   if (p[0] != 0xfffe0101u) {
-    fprintf(stderr,
-            "d3d8: CreateVertexShader function begins 0x%08x, not "
-            "the VS 1.1 version token 0xfffe0101.\n",
-            p[0]);
+    x2_log_error("d3d8: CreateVertexShader function begins 0x%08x, not "
+                 "the VS 1.1 version token 0xfffe0101.\n",
+                 p[0]);
     return 0;
   }
   for (i = 1; i < VS_CODE_MAX_DWORDS; ++i) {
@@ -58,10 +57,9 @@ static int scan_function(const uint32_t *p, uint16_t *count) {
       return 1;
     }
   }
-  fprintf(stderr,
-          "d3d8: CreateVertexShader scanned %u bytecode dword(s) but "
-          "found no D3DSIO_END; refusing an unterminated program.\n",
-          VS_CODE_MAX_DWORDS);
+  x2_log_error("d3d8: CreateVertexShader scanned %u bytecode dword(s) but "
+               "found no D3DSIO_END; refusing an unterminated program.\n",
+               VS_CODE_MAX_DWORDS);
   return 0;
 }
 
@@ -77,10 +75,9 @@ uint32_t d3d8_vs_create(const uint32_t *declaration, const uint32_t *function,
   for (i = 0; i < VS_MAX && g_shader[i].used; ++i) {
   }
   if (i == VS_MAX) {
-    fprintf(stderr,
-            "d3d8: CreateVertexShader found all %u shader slots "
-            "live; refusing instead of losing an existing shader.\n",
-            VS_MAX);
+    x2_log_error("d3d8: CreateVertexShader found all %u shader slots "
+                 "live; refusing instead of losing an existing shader.\n",
+                 VS_MAX);
     g_refused++;
     return 0;
   }
@@ -97,9 +94,9 @@ uint32_t d3d8_vs_create(const uint32_t *declaration, const uint32_t *function,
     memcpy(g_shader[i].function, function, nf * sizeof *function);
   h = make_handle(i, g_shader[i].generation);
   g_created++;
-  printf("d3d8: CreateVertexShader -> 0x%08x (%u declaration token(s), "
-         "%u bytecode dword(s), usage 0x%x)\n",
-         h, nd, nf, usage);
+  x2_log_info("d3d8: CreateVertexShader -> 0x%08x (%u declaration token(s), "
+              "%u bytecode dword(s), usage 0x%x)\n",
+              h, nd, nf, usage);
   /*
    * The tokens themselves, in full.
    *
@@ -115,14 +112,13 @@ uint32_t d3d8_vs_create(const uint32_t *declaration, const uint32_t *function,
    */
   {
     unsigned k;
-    printf("      declaration:");
+    x2_log_info("      declaration:");
     for (k = 0; k < nd; k++)
-      printf(" %08x", declaration[k]);
-    printf("\n      bytecode:");
+      x2_log_info(" %08x", declaration[k]);
+    x2_log_info("\n      bytecode:");
     for (k = 0; k < nf; k++)
-      printf(" %08x", function[k]);
-    printf("\n");
-    fflush(stdout);
+      x2_log_info(" %08x", function[k]);
+    x2_log_info("\n");
   }
   return h;
 }
@@ -132,10 +128,9 @@ D3D8VertexShader *d3d8_vs_get(uint32_t handle, const char *operation) {
   unsigned slot;
   uint16_t generation;
   if (handle <= 0xf0000000u) {
-    fprintf(stderr,
-            "d3d8: %s received 0x%08x, an FVF value rather than a "
-            "created vertex-shader handle.\n",
-            operation, handle);
+    x2_log_error("d3d8: %s received 0x%08x, an FVF value rather than a "
+                 "created vertex-shader handle.\n",
+                 operation, handle);
     g_refused++;
     return NULL;
   }
@@ -144,10 +139,9 @@ D3D8VertexShader *d3d8_vs_get(uint32_t handle, const char *operation) {
   generation = (uint16_t)(raw >> 8);
   if (slot >= VS_MAX || !g_shader[slot].used ||
       g_shader[slot].generation != generation) {
-    fprintf(stderr,
-            "d3d8: %s received 0x%08x, which names no live vertex "
-            "shader (slot %u, generation %u).\n",
-            operation, handle, slot, generation);
+    x2_log_error("d3d8: %s received 0x%08x, which names no live vertex "
+                 "shader (slot %u, generation %u).\n",
+                 operation, handle, slot, generation);
     g_refused++;
     return NULL;
   }
@@ -188,13 +182,14 @@ void d3d8_vs_report(void) {
   for (i = 0; i < VS_MAX; ++i)
     if (g_shader[i].used)
       live++;
-  printf("  d3d8: %lu vertex shader(s) created, %lu deleted, %u still live; "
-         "%lu shader-lifecycle call(s) refused\n"
-         "        VS 1.1 executor ran %lu draw(s), %lu vertex invocation(s)\n",
-         g_created, g_deleted, live, g_refused, executions, vertices);
+  x2_log_info(
+      "  d3d8: %lu vertex shader(s) created, %lu deleted, %u still live; "
+      "%lu shader-lifecycle call(s) refused\n"
+      "        VS 1.1 executor ran %lu draw(s), %lu vertex invocation(s)\n",
+      g_created, g_deleted, live, g_refused, executions, vertices);
   if (g_created && !executions)
-    printf("        NO created shader was executed -- this run proves the "
-           "lifecycle only, not programmable drawing.\n");
+    x2_log_info("        NO created shader was executed -- this run proves the "
+                "lifecycle only, not programmable drawing.\n");
   /* What the engine actually BOUND. "0 created" alone cannot tell an engine
      that wanted no shader from one that asked and was turned away. */
   d3d8_vertex_shader_binding_report();

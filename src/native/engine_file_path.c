@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * The PC build asks libIGCore to populate igFile's search path from the
  * Windows registry during engine initialisation.  The native host has a
@@ -51,11 +52,9 @@ static int entry_point(const X86Module *module, uint32_t linked,
       module->preferred != IGCORE_PREFERRED_BASE)
     return fail(why, whyn, "libIGCore is not mapped at a valid base");
   target = *module->base + (linked - module->preferred);
-  /* The test is that the address is code THIS image actually contains: the
-     engine reads the bytes there, so an entry point outside the mapping (a
-     different build of libIGCore, say) must be refused here rather than
-     decoded as whatever happens to follow. It used to ask whether a static
-     body had been recompiled for it, and there are none any more. */
+  /* The address must belong to readable bytes in this exact image. A value
+     measured against a different libIGCore build is refused before x86port
+     can decode unrelated memory. */
   if (linked < module->preferred ||
       linked - module->preferred >= module->size ||
       !guest_memory_is_readable(target, 1u))
@@ -84,14 +83,14 @@ static int apply_search_path(const CPU *source, char *why, int whyn) {
   memcpy(guest_memory_pointer(path), g_install_drive, sizeof g_install_drive);
 
   call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, path); /* cdecl const char * path */
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], path); /* cdecl const char * path */
   x86_guest_call_args(&call, set_path, 0u);
   guest_free(path); /* setSearchPath retained its own copy */
 
   call = *source;
   x86_guest_call_args(&call, get_path, 0u);
-  returned = call.eax;
+  returned = call.reg[kX86pEax];
   if (!returned ||
       !guest_memory_is_readable(returned, sizeof g_install_drive) ||
       memcmp(guest_memory_const_pointer(returned), g_install_drive,
@@ -118,10 +117,10 @@ static void x2_override_set_search_path_from_registry(CPU *C) {
 
   x86_guest_body(C, "libIGCore.dll", 0x10031540u);
   if (!apply_search_path(C, why, (int)sizeof why)) {
-    fprintf(stderr, "ENGINE FILES: cannot configure search path: %s\n", why);
+    x2_log_error("ENGINE FILES: cannot configure search path: %s\n", why);
     abort();
   }
-  fprintf(stderr, "ENGINE FILES: %s\n", why);
+  x2_log_error("ENGINE FILES: %s\n", why);
 }
 
 __attribute__((constructor)) static void

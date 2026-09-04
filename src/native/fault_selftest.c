@@ -5,6 +5,7 @@
  * x2native.c beside the install path it serves.
  */
 #include "fault_report.h"
+#include "x2_log.h"
 
 #include <signal.h>
 #include <stdio.h>
@@ -68,15 +69,15 @@ int x2_fault_selftest(void) {
     ssize_t n;
 
     if (pipe(fd) != 0) {
-      printf("x2native --fault-selftest: pipe() failed; NOTHING was "
-             "checked.\n");
+      x2_log_info("x2native --fault-selftest: pipe() failed; NOTHING was "
+                  "checked.\n");
       return 1;
     }
     fflush(NULL);
     pid = fork();
     if (pid < 0) {
-      printf("x2native --fault-selftest: fork() failed; NOTHING was "
-             "checked.\n");
+      x2_log_info("x2native --fault-selftest: fork() failed; NOTHING was "
+                  "checked.\n");
       return 1;
     }
     if (pid == 0) {
@@ -107,12 +108,12 @@ int x2_fault_selftest(void) {
     if (control) {
       int quiet = (strstr(buf, "***") == NULL);
       int clean = WIFEXITED(status) && WEXITSTATUS(status) == 0;
-      printf("  control: handlers installed, no fault  -- %s "
-             "(%zu byte(s) on stderr, exit %d)\n",
-             quiet && clean ? "silent, as it must be"
-                            : "FAILED: it reported a fault that did not "
-                              "happen",
-             got, WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+      x2_log_info("  control: handlers installed, no fault  -- %s "
+                  "(%zu byte(s) on stderr, exit %d)\n",
+                  quiet && clean ? "silent, as it must be"
+                                 : "FAILED: it reported a fault that did not "
+                                   "happen",
+                  got, WIFEXITED(status) ? WEXITSTATUS(status) : -1);
       if (!quiet || !clean)
         fails++;
       continue;
@@ -121,18 +122,20 @@ int x2_fault_selftest(void) {
       int named = strstr(buf, want) != NULL;
       int host_pc = strstr(buf, "[HOST PC]") != NULL;
       int reported = WIFEXITED(status) && WEXITSTATUS(status) == 3;
-      printf("  %-8s via %-32s -- %s (exit %d, %zu byte(s) reported)\n", want,
-             cases[i].what,
-             named && host_pc && reported ? "reported by name with host PC"
-                                          : "FAILED: no report reached stderr",
-             WIFEXITED(status) ? WEXITSTATUS(status) : -WTERMSIG(status), got);
+      x2_log_info(
+          "  %-8s via %-32s -- %s (exit %d, %zu byte(s) reported)\n", want,
+          cases[i].what,
+          named && host_pc && reported ? "reported by name with host PC"
+                                       : "FAILED: no report reached stderr",
+          WIFEXITED(status) ? WEXITSTATUS(status) : -WTERMSIG(status), got);
       if (!named || !host_pc || !reported)
         fails++;
     }
   }
-  printf("x2native --fault-selftest: %s -- %d failure(s). Before this, only "
-         "SIGSEGV was handled and every other fatal signal killed the run "
-         "with nothing printed.\n",
-         fails ? "FAILED" : "PASSED", fails);
+  x2_log_info(
+      "x2native --fault-selftest: %s -- %d failure(s). Before this, only "
+      "SIGSEGV was handled and every other fatal signal killed the run "
+      "with nothing printed.\n",
+      fails ? "FAILED" : "PASSED", fails);
   return fails ? 1 : 0;
 }

@@ -63,9 +63,9 @@ of every `/input` report, every slot including the empty ones.
 What CLOSED it is not established. The table-invariant check
 (`dinput8_check_controller_table`, which re-runs the game's own enumeration)
 is present in the run and fires, and it was present when this issue was
-written too. The likeliest explanation is issue #118 -- the negative was
-recorded against a `scratch/build-native` binary that predated the check --
-but that is a hypothesis, not a measurement, and it is recorded as one. What
+written too. The likeliest explanation is that the negative was recorded
+against a stale binary that predated the check, but that is a hypothesis, not
+a measurement. What
 is measured is the present state and a case that will catch a regression.
 
 ## Falsifier (met)

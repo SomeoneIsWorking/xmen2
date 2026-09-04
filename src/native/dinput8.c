@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * DirectInput 8, as the EXE reaches it: not through an import, but by name at
  * run time.
@@ -34,12 +35,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
 
 static void ret_com(CPU *C, uint32_t hr, int nargs) {
-  C->eax = hr;
-  C->esp += 4u + (uint32_t)(nargs + 1) * 4u;
+  C->reg[kX86pEax] = hr;
+  C->reg[kX86pEsp] += 4u + (uint32_t)(nargs + 1) * 4u;
 }
 
 #define S_OK 0x00000000u
@@ -120,8 +121,8 @@ static void m_QueryInterface(CPU *C) {
 static void m_AddRef(CPU *C) {
   uint32_t n = RD32(THIS + 4u) + 1u;
   WR32(THIS + 4u, n);
-  C->eax = n;
-  C->esp += 4u + 4u;
+  C->reg[kX86pEax] = n;
+  C->reg[kX86pEsp] += 4u + 4u;
 }
 
 static void m_Release(CPU *C) {
@@ -132,8 +133,8 @@ static void m_Release(CPU *C) {
   /* Not freed at zero, for the reason dinput.c gives: the object is
      process-wide, more than one caller holds it, and handing the second a
      dangling vtable pointer would fault somewhere that looks like input. */
-  C->eax = n;
-  C->esp += 4u + 4u;
+  C->reg[kX86pEax] = n;
+  C->reg[kX86pEsp] += 4u + 4u;
 }
 
 /*
@@ -184,23 +185,21 @@ static void enum_seen(uint32_t cls, uint32_t flags, uint32_t cb, int reported) {
   {
     const char *nm = x86_native_name_at(cb);
     if (reported > 0)
-      fprintf(stderr,
-              "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
-              "offered %d device(s) to the callback at 0x%08x "
-              "(%s).\n",
-              cls, devclass_name(cls), flags, reported, cb,
-              nm ? nm : "in no body this host can name");
+      x2_log_error("DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
+                   "offered %d device(s) to the callback at 0x%08x "
+                   "(%s).\n",
+                   cls, devclass_name(cls), flags, reported, cb,
+                   nm ? nm : "in no body this host can name");
     else
-      fprintf(stderr,
-              "DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
-              "found NO device to offer.\n"
-              "  The protocol works -- the callback at 0x%08x "
-              "(%s) would run once per device -- so this is an "
-              "empty device list, not a missing one. For a "
-              "gamepad class, plug one in; see "
-              "src/native/dinput_pad.c.\n",
-              cls, devclass_name(cls), flags, cb,
-              nm ? nm : "in no body this host can name");
+      x2_log_error("DINPUT8: EnumDevices(class=%u %s, flags=0x%x) "
+                   "found NO device to offer.\n"
+                   "  The protocol works -- the callback at 0x%08x "
+                   "(%s) would run once per device -- so this is an "
+                   "empty device list, not a missing one. For a "
+                   "gamepad class, plug one in; see "
+                   "src/native/dinput_pad.c.\n",
+                   cls, devclass_name(cls), flags, cb,
+                   nm ? nm : "in no body this host can name");
   }
 }
 
@@ -315,7 +314,7 @@ static void m_EnumDevices(CPU *C) {
      * rules.
      */
     const char *nm = NULL;
-    uint32_t here = x86_native_entry_containing(RD32(C->esp), &nm);
+    uint32_t here = x86_native_entry_containing(RD32(C->reg[kX86pEsp]), &nm);
     dinput8_controller_slots_set_manager(pvref);
     dinput8_hotplug_note_game_enumeration(cb, pvref, here, nm);
   }
@@ -330,12 +329,12 @@ static void m_EnumDevices(CPU *C) {
       if (!inst)
         continue;
       K = *C;
-      K.esp -= 8u;
-      WR32(K.esp + 0u, inst);
-      WR32(K.esp + 4u, pvref);
+      K.reg[kX86pEsp] -= 8u;
+      WR32(K.reg[kX86pEsp] + 0u, inst);
+      WR32(K.reg[kX86pEsp] + 4u, pvref);
       x86_guest_call_args(&K, cb, 8u);
       reported++;
-      if (K.eax == 0u)
+      if (K.reg[kX86pEax] == 0u)
         break; /* DIENUM_STOP */
     }
   }
@@ -382,11 +381,10 @@ static void m_CreateDevice(CPU *C) {
      */
     char t[64];
     guid_text(guid, t, sizeof t);
-    fprintf(stderr,
-            "DINPUT8: CreateDevice(%s) -- not the system keyboard "
-            "or mouse, and no enumerated device can match it "
-            "because EnumDevices reports none.\n",
-            t);
+    x2_log_error("DINPUT8: CreateDevice(%s) -- not the system keyboard "
+                 "or mouse, and no enumerated device can match it "
+                 "because EnumDevices reports none.\n",
+                 t);
     ret_com(C, DIERR_DEVICENOTREG, 3);
     return;
   }
@@ -428,16 +426,14 @@ static void m_Initialize(CPU *C) {
 
 static void m_unimplemented(CPU *C) {
   const char *nm = (const char *)x86_callback_ctx();
-  fprintf(stderr,
-          "\n*** DINPUT8: IDirectInput8::%s was called, and is not "
-          "implemented.\n"
-          "    EnumDevices reports no devices, so nothing should have a "
-          "device to ask about --\n"
-          "    reaching this means the game wants one anyway, and THAT is "
-          "the work item.\n"
-          "    See src/native/dinput8.c and issue #32.\n",
-          nm ? nm : "(unknown slot)");
-  fflush(stderr);
+  x2_log_error("\n*** DINPUT8: IDirectInput8::%s was called, and is not "
+               "implemented.\n"
+               "    EnumDevices reports no devices, so nothing should have a "
+               "device to ask about --\n"
+               "    reaching this means the game wants one anyway, and THAT is "
+               "the work item.\n"
+               "    See src/native/dinput8.c and issue #32.\n",
+               nm ? nm : "(unknown slot)");
   x86_diag_dump();
   abort();
   (void)C;
@@ -466,8 +462,8 @@ static void build(void) {
   g_vtable = guest_malloc(VT_COUNT * 4u);
   g_object = guest_malloc(8u);
   if (!g_vtable || !g_object) {
-    fprintf(stderr, "DINPUT8: no guest memory for the IDirectInput8 "
-                    "object\n");
+    x2_log_error("DINPUT8: no guest memory for the IDirectInput8 "
+                 "object\n");
     abort();
   }
   for (k = 0; k < VT_COUNT; k++)
@@ -491,22 +487,21 @@ void imp_DINPUT8_DirectInput8Create(CPU *C) {
   if (outer) { /* aggregation is not supported */
     if (ppv)
       WR32(ppv, 0);
-    C->eax = DIERR_INVALIDPARAM;
-    C->esp += 4u + 5u * 4u;
+    C->reg[kX86pEax] = DIERR_INVALIDPARAM;
+    C->reg[kX86pEsp] += 4u + 5u * 4u;
     return;
   }
   build();
   if (!g_creates++)
-    fprintf(stderr,
-            "DINPUT8: DirectInput8Create(version=0x%x) -> a native "
-            "IDirectInput8 at 0x%08x. Input is no longer disabled "
-            "wholesale; connected gamepads are enumerated.\n",
-            version, g_object);
+    x2_log_error("DINPUT8: DirectInput8Create(version=0x%x) -> a native "
+                 "IDirectInput8 at 0x%08x. Input is no longer disabled "
+                 "wholesale; connected gamepads are enumerated.\n",
+                 version, g_object);
   if (ppv)
     WR32(ppv, g_object);
   WR32(g_object + 4u, RD32(g_object + 4u) + 1u);
-  C->eax = S_OK;
-  C->esp += 4u + 5u * 4u;
+  C->reg[kX86pEax] = S_OK;
+  C->reg[kX86pEsp] += 4u + 5u * 4u;
 }
 
 void dinput8_install(void) {
@@ -517,23 +512,24 @@ void dinput8_install(void) {
 void dinput8_report(void) {
   int i;
   if (!g_creates) {
-    printf("  dinput8: DirectInput8Create was never called.\n");
+    x2_log_info("  dinput8: DirectInput8Create was never called.\n");
     return;
   }
-  printf("  dinput8: %lu DirectInput8Create call(s)", g_creates);
+  x2_log_info("  dinput8: %lu DirectInput8Create call(s)", g_creates);
   if (!g_nenum) {
-    printf(", and EnumDevices was never reached.\n");
+    x2_log_info(", and EnumDevices was never reached.\n");
     return;
   }
-  printf("; %d distinct EnumDevices signature(s); %lu controller inventory "
-         "generation admission(s):\n",
-         g_nenum, dinput8_hotplug_admissions());
+  x2_log_info(
+      "; %d distinct EnumDevices signature(s); %lu controller inventory "
+      "generation admission(s):\n",
+      g_nenum, dinput8_hotplug_admissions());
   for (i = 0; i < g_nenum; i++) {
     const char *nm = x86_native_name_at(g_enum[i].cb);
-    printf("        class %u %-9s flags 0x%-4x  x%-5lu  offered "
-           "%lu total (first %d, last %d)  callback 0x%08x %s\n",
-           g_enum[i].cls, devclass_name(g_enum[i].cls), g_enum[i].flags,
-           g_enum[i].n, g_enum[i].total_reported, g_enum[i].first_reported,
-           g_enum[i].last_reported, g_enum[i].cb, nm ? nm : "");
+    x2_log_info("        class %u %-9s flags 0x%-4x  x%-5lu  offered "
+                "%lu total (first %d, last %d)  callback 0x%08x %s\n",
+                g_enum[i].cls, devclass_name(g_enum[i].cls), g_enum[i].flags,
+                g_enum[i].n, g_enum[i].total_reported, g_enum[i].first_reported,
+                g_enum[i].last_reported, g_enum[i].cb, nm ? nm : "");
   }
 }

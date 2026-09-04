@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * igVkVisualContext -- the class itself: registration, the vtable, and the
  * substitution. The slots live in igvk_slots_*.c; see igvk_context.h for the
@@ -8,8 +9,8 @@
  * vtables. They are not guesses, and ark_lifted() maps them through the
  * module's real load base.
  */
-#include "igvk_context.h"
 #include "gpu_device.h"
+#include "igvk_context.h"
 #include "igvk_device_slots.h"
 
 #include "x86rt_native.h"
@@ -17,7 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* From tools/ark_classes.py over scratch/recomp/libIGGfx.json:
+/* From tools/ark_classes.py over scratch/analysis/libIGGfx.json:
      igVisualContext   abstract, size 0x140, meta slot 0x10188ba0,
                        arkRegisterInternal 0x1000b440, getClassMeta 0x1004afc0
    The last two are exactly the pair igDxVisualContext passes as ITS parent
@@ -108,21 +109,19 @@ uint32_t igvk_super(CPU *C, uint32_t linked_va, int nargs) {
   int i;
 
   if (nargs > (int)(sizeof args / sizeof args[0])) {
-    fprintf(stderr,
-            "igVk: igvk_super(0x%08x) with %d arguments, more than "
-            "it can forward. Refusing rather than truncating.\n",
-            linked_va, nargs);
+    x2_log_error("igVk: igvk_super(0x%08x) with %d arguments, more than "
+                 "it can forward. Refusing rather than truncating.\n",
+                 linked_va, nargs);
     return 0;
   }
   if (!fn) {
     /* Not survivable: the slot's whole implementation was "let the engine
        do it", and the engine's body is not there. Anything returned here
        would be an invention. */
-    fprintf(stderr,
-            "igVk: cannot map the engine body at linked 0x%08x -- "
-            "%s is not loaded. The slot that super-called it has "
-            "no answer to give.\n",
-            linked_va, IGVK_GFX);
+    x2_log_error("igVk: cannot map the engine body at linked 0x%08x -- "
+                 "%s is not loaded. The slot that super-called it has "
+                 "no answer to give.\n",
+                 linked_va, IGVK_GFX);
     return 0;
   }
   for (i = 0; i < nargs; i++)
@@ -165,7 +164,7 @@ static int build_vtable(void) {
   int inherited = 0, still_pure = 0, k, n;
 
   if (!src || !pure) {
-    fprintf(stderr, "igVk: cannot map igDx8VisualContext's vtable\n");
+    x2_log_error("igVk: cannot map igDx8VisualContext's vtable\n");
     return 0;
   }
   /*
@@ -192,9 +191,9 @@ static int build_vtable(void) {
      dispatching into DirectX code. */
   for (n = 0; n < IGVK_DEVICE_SLOT_COUNT; n++)
     WR32(g_vk.vtable + (uint32_t)IGVK_DEVICE_SLOTS[n] * 4u, 0);
-  printf("  vtable seeded from igDx8VisualContext 0x%08x: %d inherited, "
-         "%d device-touching slots removed, %d still pure\n",
-         src, inherited, IGVK_DEVICE_SLOT_COUNT, still_pure);
+  x2_log_info("  vtable seeded from igDx8VisualContext 0x%08x: %d inherited, "
+              "%d device-touching slots removed, %d still pure\n",
+              src, inherited, IGVK_DEVICE_SLOT_COUNT, still_pure);
 
   /* Ours regardless of what the base had: the meta must be OUR class's. */
   igvk_slot(20, vk_get_class_meta, "getClassMeta");
@@ -229,11 +228,11 @@ static int rebind_chain(void) {
   for (n = 0; n < sizeof chain / sizeof chain[0]; n++) {
     uint32_t ms = ark_lifted(IGVK_GFX, chain[n].slot);
     if (!ms || !RD32(ms)) {
-      printf("  %-20s not registered yet -- NOT rebound\n", chain[n].name);
+      x2_log_info("  %-20s not registered yet -- NOT rebound\n", chain[n].name);
       continue;
     }
     if (ark_bind_implementation(ms, &g_vk)) {
-      printf("  %-20s -> igVkVisualContext\n", chain[n].name);
+      x2_log_info("  %-20s -> igVkVisualContext\n", chain[n].name);
       bound++;
     }
   }
@@ -250,8 +249,8 @@ int igvk_context_install(void) {
 
   meta_slot = ark_lifted(IGVK_GFX, IGVISUALCONTEXT_META_SLOT);
   if (!meta_slot) {
-    fprintf(stderr, "igVk: %s is not loaded; nothing was substituted.\n",
-            IGVK_GFX);
+    x2_log_error("igVk: %s is not loaded; nothing was substituted.\n",
+                 IGVK_GFX);
     return 1; /* waiting cannot fix this */
   }
   /*
@@ -274,28 +273,27 @@ int igvk_context_install(void) {
     return 0;
 
   g_done = 1;
-  printf("\n=== igVkVisualContext: substituting the renderer ===\n");
-  printf("  igVisualContext meta            0x%08x\n", meta);
-  fflush(stdout);
+  x2_log_info("\n=== igVkVisualContext: substituting the renderer ===\n");
+  x2_log_info("  igVisualContext meta            0x%08x\n", meta);
 
   if (!build_vtable())
     return 1;
 
   if (!ark_register_class(&g_vk)) {
-    fprintf(stderr, "igVk: registration failed; NOTHING was substituted.\n");
+    x2_log_error("igVk: registration failed; NOTHING was substituted.\n");
     return 1;
   }
   if (!rebind_chain()) {
-    fprintf(stderr, "igVk: nothing was rebound; the engine will build its "
-                    "DirectX context as before.\n");
+    x2_log_error("igVk: nothing was rebound; the engine will build its "
+                 "DirectX context as before.\n");
     return 1;
   }
-  printf("  igVisualContext now resolves to igVkVisualContext.\n"
-         "  From here the engine dispatches into this host, and every slot "
-         "it needs that is\n"
-         "  unimplemented reports its INDEX -- that list IS the renderer's "
-         "work queue.\n\n");
-  fflush(stdout);
+  x2_log_info(
+      "  igVisualContext now resolves to igVkVisualContext.\n"
+      "  From here the engine dispatches into this host, and every slot "
+      "it needs that is\n"
+      "  unimplemented reports its INDEX -- that list IS the renderer's "
+      "work queue.\n\n");
   return 0;
 }
 
@@ -318,14 +316,14 @@ int igvk_context_arm(void) {
                  "?createInstance@igMetaObject@Core@Gap@@QBEPAVigObject@23@"
                  "PAVigMemoryPool@23@@Z");
   if (!ci) {
-    fprintf(stderr, "igVk: libIGCore does not export createInstance; "
-                    "cannot arm the substitution.\n");
+    x2_log_error("igVk: libIGCore does not export createInstance; "
+                 "cannot arm the substitution.\n");
     return 1;
   }
   x86_at_first_call(ci, install_trampoline,
                     "the engine's first createInstance -- when pools and ARK "
                     "are up, which is when igVisualContext may be rebound");
-  printf("igVk: substitution armed on igMetaObject::createInstance 0x%08x\n",
-         ci);
+  x2_log_info(
+      "igVk: substitution armed on igMetaObject::createInstance 0x%08x\n", ci);
   return 0;
 }

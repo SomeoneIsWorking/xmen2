@@ -130,11 +130,12 @@ static void test_branches(void) {
 
   CPU C;
   memset(&C, 0, sizeof C);
-  C.esp = 0x70000000u;
+  C.reg[kX86pEsp] = 0x70000000u;
   x2_override_00594500(&C);
 
-  CHECK(C.esp == 0x70000004u, "override did not pop the return address");
-  CHECK(C.eax == 0u, "override eax not 0");
+  CHECK(C.reg[kX86pEsp] == 0x70000004u,
+        "override did not pop the return address");
+  CHECK(C.reg[kX86pEax] == 0u, "override eax not 0");
   CHECK(RD32(COUNTER) == 1u, "poll counter not bumped once");
 
   CHECK(RD8(chan(0) + CH_STATE) == 0u, "state-0 channel touched");

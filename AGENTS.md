@@ -12,12 +12,10 @@ A native port of **X-Men Legends II: Rise of Apocalypse** (2005 PC build). The
 x86-32 machine code of `XMen2.exe` + the `libIG*.dll` Alchemy engine DLLs is
 executed at runtime by `shared/x86port`'s engine, read from the player's own
 images, so the game runs from the start; then subsystems are replaced with
-hand-written native code while the rest keeps working. Nothing is statically
-recompiled to C -- that corpus and its generator were deleted 2026-09-02.
+hand-written native code while the rest keeps working.
 `docs/project-goals.md` owns the durable outcomes, `docs/project-state.md` owns
 factual capability coverage, and `docs/strategy.md` states why the guest is run
-at runtime and why the PC build (the Xbox path in `xbox/` is real, kept, but not
-the live front).
+at runtime and why the PC build is the conformance target.
 
 ## Start here, before touching anything
 
@@ -47,11 +45,11 @@ falling back to a vendored copy.
 - `docs/info/instruments/` — a tool that lied is recorded here. Several have.
 - `docs/RE/` — port-specific reverse-engineering write-ups. `shared/alchemy`
   already owns partial native format/image/mesh/raster/Enbaya and input
-  foundations; this port provisions some of its XMLB/ARK tooling but does not
-  link or call a shared gameplay engine. Keep title evidence here until an
-  X-Men 2 shipping-path integration proves which contract is reusable.
+  foundations; this port links the neutral input owner through a title-local
+  conformance adapter and provisions XMLB/ARK tooling. Keep title evidence and
+  exact guest bindings here.
 - `docs/prior-art.md` — provenance and historical context for code, assets, or
-  vocabulary already adapted from external projects, including CC0 Dusklight.
+  vocabulary already adapted from external projects.
   It is not an architecture authority or a design checklist. Preserve exact
   attribution for material actually reused; derive current ownership from this
   repository's codemap, contracts, and shipping-path evidence.
@@ -110,17 +108,17 @@ build/native/x2native --d3d8                   # the LIVE path: arms the host Di
 `run.sh` takes no arguments and delegates directly to the locked Python
 initializer. It validates the user's exact PE images, provisions pinned
 redistributable dependencies and native assets, builds, and launches the one
-native-overrides + x86port-JIT gameplay product. It must never invoke an
-offline guest translator or reconstruct a guest-code corpus. Ghidra is a
-maintainer-only analysis tool. Diagnostics, provisioning-only checks and the
+native-overrides + x86port-JIT gameplay product. Ghidra is a maintainer-only
+analysis tool. Diagnostics, provisioning-only checks and the
 independent Wine control remain separate tools rather than launcher commands.
 
-The product has no execution-engine selector. The interpreter belongs only in
-a separately built x86port test/diagnostic target and must be absent from the
-gameplay target's link closure as well as its configuration, environment, and
-command-line surfaces. Until the implementation and link audit establish that
-boundary, treat it as open migration work recorded in `docs/project-state.md`,
-not as permission to expose `engine=interpreter` in a player build.
+The product has no execution-engine selector: dynarec is the default. A bounded
+internal interpreter fallback may run only after failed or unsupported JIT
+compilation, or when executing emitted code would be unsafe. Every fallback is
+counted and reported, and a fallback-backed run cannot establish gameplay or
+performance conformance. Explicit interpreter mode remains confined to a
+separately built diagnostic target; never expose `engine=interpreter` in a
+player build.
 
 Build a Linux AppImage from the verified native build with
 `uv run --frozen python tools/package_appimage.py`. The packager stages only
@@ -162,14 +160,10 @@ starts in a level instead of through the menus while still running the retail
 `startFirstMission` party initializer.
 
 JIT diagnostics must report translated blocks, native hand-backs, refusals,
-and denominators while the product runs. Runtime reachability replaces the old
-static function-discovery loop; no tool may seed, emit, compile, or stage guest
-code for a product build.
+and denominators while the product runs.
 
 **Wine oracle.** The unmodified PC release under Wine remains an independent
-behavioral control. It may be instrumented to observe the retail boundary, but
-no generated or replacement guest-code DLL is a product mode or a retained
-static oracle. Do not regenerate, build, or run the retired static product.
+behavioral control and may be instrumented to observe the retail boundary.
 
 **Ask the control for independent evidence, not only a similar-looking
 picture.** The retained stock-oracle path currently owns cached driven frames
@@ -198,11 +192,8 @@ hit and how old it is; a cached frame must never read as a fresh observation.
 runtime evidence without manufacturing a static product. Use those instead of
 gdb/winedbg, both of which produced nothing usable here (issue #1).
 
-The Xbox material is a source of independently recovered behavioral facts such
-as controller defaults, not a second product. Do not extend, generate, build,
-or run its static-recompiler path. Preserve still-useful observations in the
-claims/RE authorities and remove obsolete Xbox product machinery when that
-evidence has been consolidated.
+Xbox-derived controller observations remain evidence for the PC target; Xbox is
+not a second product or an implementation surface.
 
 ## Architecture
 
@@ -210,8 +201,7 @@ Guest x86-32 is read from the user's authenticated PE images and translated on
 demand into host instructions by `shared/x86port`'s JIT:
 
 - **`src/native/guest_modules.c` + `pe_map.c`** discover the required images at
-  runtime, map/relocate them, and bind their IAT slots. Product provisioning
-  supplies no precomputed function map or generated guest body.
+  runtime, map/relocate them, and bind their IAT slots.
 - **`shared/x86port`** owns x86 decode, semantics, host-code emission, and its
   runtime block cache. This repository pins and consumes the canonical shared
   implementation; title-specific CPU semantics do not belong here.
@@ -225,15 +215,13 @@ demand into host instructions by `shared/x86port`'s JIT:
   boundaries.
 - **Test-only interpretation** belongs in an independently linked x86port test
   target. The gameplay binary neither links it nor selects it.
-- **The shared Alchemy engine is a partial foundation, not a current gameplay
-  dependency.** `shared/alchemy` already builds the `alchemy`, `alchemy_input`,
-  and optional `alchemy_input_sdl` libraries, and this port provisions its
-  XMLB/ARK tools. Today `x2native` links none of those libraries and includes or
-  calls no shared runtime API: retained engine behavior executes through the
-  JIT and native replacements remain in the title-owned codemap rows. X-Men 2
-  must establish the first gameplay integration and conformance proof; the
-  first candidate is the `alchemy_input` guest `igControllerManager` adapter
-  specified by `shared/alchemy/docs/input.md`. Do not start MUA engine migration
+- **The shared Alchemy engine is a partial gameplay dependency.**
+  `shared/alchemy` builds neutral `alchemy` and `alchemy::input` targets plus an
+  optional SDL transport. `x2native` links the neutral input owner beside
+  x86port and feeds it through the title-owned `igControllerManager`
+  conformance adapter specified by `shared/alchemy/docs/input.md`; exact guest
+  bindings remain here. Retain DirectInput until real-game lifecycle, callback,
+  and state A/B evidence passes. Do not start MUA engine migration
   until every X-Men 2 project goal is verified; then migrate MUA to the proven
   shared boundary without rewriting its gameplay.
 
@@ -326,13 +314,12 @@ claim the title's monster-spawner `shadow` or power-effect `no_shadow` metadata
 is authored caster policy; that future seam belongs at Alchemy scene traversal.
 
 The shipped settings UI uses the exact pinned RmlUi revision and maintained
-SDL3/SDL_GPU backends named in `CMakeLists.txt`. Its document vocabulary and
-RCSS are adapted from Dusklight's CC0 `res/rml/window.rcss` at commit
-`0fc05028ccfe809c569b1b84c0bb87f382b0bf34`. Dusklight's compositor-only blur
-and shadows are replaced by an opaque/dimmed fallback because the SDL_GPU
-backend renders those effects incorrectly. Keyboard mappings belong to four
-reusable profiles; players reference profiles, while controllers are assigned
-by persistent identity and always use the canonical Xbox/PS2 layout.
+SDL3/SDL_GPU backends named in `CMakeLists.txt`. Exact stylesheet provenance is
+recorded in `docs/prior-art.md` and the adapted asset itself. The UI uses an
+opaque window and dimmed backdrop because the SDL_GPU backend renders its
+compositor-only blur and shadow effects incorrectly. Keyboard mappings belong
+to four reusable profiles; players reference profiles, while controllers are
+assigned by persistent identity and always use the canonical Xbox/PS2 layout.
 This paragraph records source provenance only; the local UI/config/input owners
 and their tests define the current architecture.
 
@@ -353,15 +340,16 @@ migration work; documentation does not make it verified.
   Do not preserve the former formatter exemption, blanket-suppress findings, or
   raise a structure limit merely to land a change.
 
-- **The JIT refuses unsupported execution by exact cause.** A missing decoder,
+- **The execution engine names every unsupported path.** A missing decoder,
   instruction semantic, host backend, executable image, import, or native
-  hand-back is a named failure. There is no best-effort no-op, offline-emitted
-  substitute, interpreter fallback, or smaller product that looks like
-  progress.
+  hand-back is a named failure. A bounded interpreter fallback is legal only
+  for failed/unsupported JIT compilation or unsafe emitted execution, and its
+  counters make the fallback visible. There is no best-effort no-op or smaller
+  product that looks like progress.
 - **Product configuration cannot choose the execution architecture.** The
   gameplay target always uses the x86port JIT. `lucent::cvar` owns layered
   optional diagnostics and title tuning; it must not expose an interpreter,
-  static substrate, fallback, or required product component as a mutable CVar.
+  backend/fallback selector, or required product component as a mutable CVar.
   Test-oracle controls belong to a separately built test target.
 - **Use one project logger.** Route configurable diagnostics through Lucent's
   logger, one call per site, without `if (debug) fprintf(...)` wrappers or new

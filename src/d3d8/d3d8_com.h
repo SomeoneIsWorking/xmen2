@@ -26,7 +26,7 @@
 
 #include "d3d8_abi.h"
 
-struct CPU;
+struct X86pCpu;
 
 typedef enum {
 #define D3D8_ENUM(name) D3D8_IF_##name,
@@ -46,7 +46,7 @@ typedef struct D3D8Object D3D8Object;
  * implementation that returns without calling d3d8_ret is caught by name
  * rather than silently shifting the guest stack.
  */
-typedef void (*D3D8MethodFn)(D3D8Object *self, struct CPU *C);
+typedef void (*D3D8MethodFn)(D3D8Object *self, struct X86pCpu *C);
 
 /*
  * Install an interface's implementations.
@@ -122,11 +122,11 @@ void d3d8_object_report(void);
 /* ---- inside a method --------------------------------------------------- */
 
 /* Argument i, counting from 0 AFTER the this-pointer. */
-uint32_t d3d8_arg(struct CPU *C, int i);
-float d3d8_argf(struct CPU *C, int i);
+uint32_t d3d8_arg(struct X86pCpu *C, int i);
+float d3d8_argf(struct X86pCpu *C, int i);
 
 /* Finish, returning `hr` in EAX and popping this + the declared arguments. */
-void d3d8_ret(struct CPU *C, uint32_t hr);
+void d3d8_ret(struct X86pCpu *C, uint32_t hr);
 
 /* The interface and method currently executing, for diagnostics. */
 const char *d3d8_current_method(void);

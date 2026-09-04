@@ -1,4 +1,4 @@
-# RE Frontier — the ordered RE dependency chain toward a faithful BL2
+# RE Frontier — the ordered RE dependency chain toward faithful X-Men 2 execution
 
 Tracked by `tools/re_frontier.py` (consult it FIRST; update it in the SAME commit
 that changes a step). This is the fine-grained companion to `docs/codemap.md`:
@@ -18,8 +18,11 @@ the result doesn't match the real target, it is `re-partial` with the
 faithfulness gap named. The user observes the running system; that observation
 overrides any internal trace.
 
-**Fail fast & loud:** a failure must surface loudly, never silently fall back —
-unless the fallback IS intended behavior of the real target being reproduced.
+**Fail fast & loud:** a failure must surface loudly. The CPU runtime may use
+only its explicit, counted bounded fallback for failed or unsupported JIT
+compilation or unsafe execution; fallback-backed intervals cannot establish
+gameplay or performance evidence. Other silent fallbacks remain forbidden
+unless the fallback is intended behavior of the real target being reproduced.
 
 Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ⛔ hack (debt, must remove) · ⬜ todo · ➖ skip-by-design · ⏸ blocked (computed).
@@ -52,7 +55,7 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: ark
 - evidence:
 - where: tools/ghidra_scripts/DumpVtab.py
-- gap: Superseded by the recomp direction: recompiled code reproduces the original vtables byte-for-byte, so their layout no longer has to be reverse-engineered. Re-open only if a hand-written OVERRIDE needs to construct an Alchemy object itself.
+- gap: Retained guest construction preserves the original vtables. Re-open only if a native override must construct an Alchemy object itself.
 - notes:
 
 ### constructderived — igObject::constructDerived -- how libIGCore finishes an object
@@ -60,12 +63,12 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 - deps: ark
 - evidence:
 - where:
-- gap: Superseded by recomp; only needed if an override constructs objects itself.
+- gap: Retained guest construction owns this path; it is needed only when a native override constructs objects itself.
 - notes:
 
 ### cutscene-player — Port the in-game cutscene player above conversations
 - status: re-partial
-- deps: rc-overrides
+- deps: native-overrides
 - evidence: XMen2.exe 004d9640/004d8b30 BehavEd scheduler/context player; 004b2b40 insertion and 004b2d70 timed-event player; 00458700 response-voice, 0045a170 line-voice, and 004a7130 BehavEd sound presenters; C247/C263/C274; test_behaved_context; test_behaved_player_heap; test_cutscene_event_player; test_cutscene_dialogue; test_cutscene_script_audio; visible 11/11 and camera-only 10/10 live gates with zero dialogue leaks and both authored sound commands silent
 - where: src/native/cutscene_player.c; src/native/behaved_context.c; src/native/behaved_player.c; src/native/cutscene_event_player.c; src/native/cutscene_dialogue.c; src/native/cutscene_script_audio.c; docs/RE/cutscene_player.md
 - gap: The tutorial control-lock epoch is verified end to end. Other maps may compose additional local players or branching payloads and must refuse until their binary ownership is recovered; no global world update or clock advance is an allowed fallback.
@@ -73,17 +76,17 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 
 ## input
 
-### ctrlmgr — Native igControllerManager / igWin32ControllerManager
-- status: skip-by-design
-- deps: vtable
+### ctrlmgr — Shared Alchemy controller adapter
+- status: in-progress
+- deps: native-overrides
 - evidence:
 - where:
-- gap: Superseded: under recomp+overrides the controller manager is replaced as an override on recompiled functions, not as a hand-built class registered with libIGCore.
+- gap: Qualify the shared Alchemy snapshot against the retained DirectInput publication through the title adapter before changing ownership.
 - notes:
 
 ### sdl-input — The game's input system, on SDL3
 - status: re-partial
-- deps: rc-overrides
+- deps: native-overrides
 - evidence: DirectInput 7/8 are implemented over SDL3 and driven end to end. Issue #82 fixed background button delivery; C215 publishes bindings into the master, working and menu banks the game actually evaluates; C222/C224 prove full-scale triggers and RT+A power casting; C227 proves the RB health-item row. Keyboard and synthetic-pad input reach gameplay through the shipping x2ctl.py probe.
 - where: `src/native/dinput*.c`, `src/input/player_input.c`, `tools/x2ctl.py`
 - gap: The synthetic pad verifies enumeration, axes, buttons, triggers, action publication, hotswap source switching and gameplay input. No physical controller has been attached on this machine, so real-device hotplug, stable identity and reconnect behavior still require hardware validation; do not promote this step to re-verified from synthetic evidence alone.
@@ -102,8 +105,8 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### oracle — Original PC build runs headless as an oracle, frames capturable
 - status: re-verified
 - deps:
-- evidence: C005; tools/run_shim.sh stock -> Beenox splash frame, 1713 colours
-- where: tools/run_shim.sh
+- evidence: C005; tools/run_shim.py stock -> Beenox splash frame, 1713 colours
+- where: tools/run_shim.py
 - gap:
 - notes:
 
@@ -118,189 +121,34 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 ### abi — mingw code receives real MSVC __thiscall calls from the game
 - status: re-verified
 - deps: dll-swap
-- evidence: C006; 22 asm thunks, 9 calls traced in boot order, game reached the intro cinematic
-- where: tools/gen_trace.py
+- evidence: A proxy boundary run received nine retail `__thiscall` calls in boot order and reached the intro cinematic; the current proxy build is Python-driven.
+- where: tools/build_shim.py; tools/proxy_d3d8/
 - gap:
 - notes:
 
-## recomp
+## runtime
 
-### rc-decode — x86-32 decoder covering the mnemonics that actually occur
-- status: re-verified
+### runtime-jit — Product guest execution through shared x86port
+- status: in-progress
 - deps: abi
-- evidence: C019; 521/521 functions, 8754/8754 instructions, 0 blockers
-- where:
-- gap: x87 is written but ENTIRELY UNVERIFIED (C021): 0 of 8 x87 functions are differentially verified, and random-object fuzzing cannot reach them -- the original overflows its own stack on a garbage vtable. Needs constructed valid objects. 156 of 521 functions verified overall.
-- notes:
+- evidence: `tools/runtime_boundary.py --source` and `--binary build/native/x2native` prove that the gameplay source and linked product use `x86port_runtime` and expose no interpreter selector or verification mode. A real bounded run against x86port `ca52e377040d83534f9cd9f5a976526078fa2343` maps all twenty retail images, passes the six-instruction shipping selftest, enters guest startup, reaches 356 tracked title/host crossings, executes the shared memory-form `FCOMP m64` emitter at mapped guest `0x103c05ec`, `FNSTSW AX` at `0x103c05ef`, and `FNCLEX` at `0x103b9fed`, then refuses `PUSHFD` (`9c`) at `0x103c30d2`.
+- where: src/native/x86_engine.c; src/native/x86_dispatch.c; shared/x86port
+- gap: Implement and differentially verify the reached `PUSHFD` flag-stack emitter in shared/x86port, then continue the bounded product run until representative gameplay. If shared/x86port gains the permitted bounded fallback, the product audit must prove that only failed/unsupported compilation or unsafe execution can enter it, every interval is counted, and no fallback-backed interval is used as gameplay or performance evidence.
+- notes: Native imports and overrides hand back through the title dispatcher; all other guest addresses enter the runtime JIT.
 
-### rc-lift — Emit C per function from Ghidra-identified boundaries
+### native-overrides — Incremental native subsystem ownership
 - status: re-partial
-- deps: rc-decode
-- evidence: C179; tools/ghidra_export.sh lift_step_guard selftest covers silent/Jython-failed/large-output steps plus matching, mismatched and unknown source provenance; current libIGSg stamp matches the installed PE and verify_export reports 5 agreeing sections, 4714 functions, 0 truncated
-- where: tools/ghidra_export.sh, tools/verify_export.py, tools/recomp.py emit, src/recomp/
-- gap: Real per-function lift is live across the exe and all game modules. Remaining decoder gap is the untaken 3DNow path plus AAA/DAA/BOUND/XLAT/ENTER inside two regions Ghidra decoded from embedded data; those stay fail-loud rather than translating noise. The standing rc-hybrid fallback path remains separate debt.
-- notes:
-
-### rc-imports — Host implementations of the imported Win32/D3D8/DInput/CRT surface
-- status: re-verified
-- deps: rc-lift
-- evidence: C014/C176; the native run binds imports across every recompiled module, resolves run-time-loaded DInput8 and DirectSound exports by name, and reaches gameplay with 0 unresolved-call stops. DirectSound evidence: XMen2.exe FUN_00594290/FUN_00594590/FUN_00594e50/FUN_00596050 plus a frame-2900 run with 270 secondary buffers, 18 duplicates and 1,249,706 nonzero mixed samples.
-- where:
-- gap: The reached Win32/D3D8/DInput/DirectSound/CRT surface is native and fail-loud. Unreached imports remain poison thunks by design until a real route demands them; SEH delivery, LAN sockets, and several optional COM/system facilities are still absent and named in the codemap.
-- notes:
-
-### rc-first-dll — Recompiled libIGDisplay.dll runs in the real game
-- status: re-partial
-- deps: rc-imports
-- evidence: C080; C020; ALL 521 translatable functions recompiled and the game renders (scratch/screenshots/all.png, 2307 colours, zero fault blocks)
-- where:
-- gap: The blocker was NOT which functions to recompile -- it was the entry path (C080): the runtime kept its own state below the guest stack pointer, so the guest and every host callee overwrote it, and any recompiled function that ran a host call died. With a private runtime stack the FULL translatable set runs. What is left is coverage and faithfulness, not survival: 150 of the 748 exported names are still forwarded (514 shims cover the other 598), and the recompiled bodies that DO run are few (17 entries over 9 entry points in a 30s intro run) -- so most of them remain unexercised rather than verified.
-- notes:
-
-### rc-overrides — Native overrides replacing recompiled functions, A/B toggleable
-- status: re-partial
-- deps: rc-first-dll
-- evidence: xbox/overrides.json; vendor/xboxrecomp/tools/recomp (--isolate); xbox/src/recomp/gen/recomp_overrides.cmake; scratch/logs/xbox_run_iso.log isolation self-test
-- where:
-- gap: The MECHANISM is now sound rather than lucky (issue #4, I015): xbox/overrides.json is the single source of truth, recomp --isolate gives every overridden function its own translation unit so -Wl,--wrap always binds, the lift generates the wrap flags from the same file and exits non-zero if an override was not isolated, and CMake refuses to build without the generated list. Proven on both classes -- the wrapper that measurably never fired now fires, and it is kept as the standing regression test. What is still missing is coverage: only 3 real overrides exist (the heap trio) plus 3 observers. The faithfulness work has not started.
-- notes:
-
-### rc-exe — Recompiled XMen2.exe
-- status: re-partial
-- deps: rc-first-dll
-- evidence: C023; 11,061 of 11,106 functions translate and compile
-- where:
-- gap: Compiles but has never executed: no entry shim, no host layer for its 989 imports, no differential test.
-- notes:
-
-### rc-defect-listscan — OPEN: recompiled igTObjectList find/removeAllByValue fault where the original does not
-- status: re-verified
-- deps: rc-decode
-- evidence: C074; C075; issue #5; scratch/logs/xbox_run_cf.log (0 implausible memcpy, run continues past the old blocker)
-- where:
-- gap:
-- notes: CLOSED 2026-08-05. Root cause was not this list at all: the recompiler never set the carry flag, so MSVC's sbb-sign strcmp idiom always answered greater and the name-table binary search could not find keys that were present (C075, issue #5). With CF materialised the ~4GB tail-shift memcpy is gone from the boot -- 0 implausible copies where there was reliably 1 -- and the run proceeds past it into new code. The list remove and its caller were faithful all along (C074).
-
-### rc-modules — Recompiler generalises across modules
-- status: re-partial
-- deps: rc-decode
-- evidence: C023; libIGDisplay/libIGAudio/libIGCollision 100%, XMen2.exe 99.6%, all compiling
-- where:
-- gap: Translation only. 12 of 16 DLLs not yet imported; nothing outside libIGDisplay is differentially verified or executed.
-- notes:
-
-### rc-exe-run — Recompiled XMen2.exe runs through renderer startup and the Activision intro
-- status: re-partial
-- deps: rc-exe
-- evidence: C027; C180; C181; issue #68
-- where:
-- gap: The Wine-hosted x2run reaches ResetSwapChain, display-mode setup, Cg loading, renderer state setup and the Activision intro with stock-matching presentation parameters. It is not verified through the whole game loop; the next work on this track is the existing driven end-to-end discriminator. Native gameplay-loop evidence belongs to rc-native and d3d8-host, not to this Wine-hybrid step.
-- notes: The former title saying this step stopped at the first untranslated indirect target was stale; that discovery frontier has moved past startup.
-
-### rc-hybrid — Hybrid fallback: untranslated targets run original machine code
-- status: hack
-- deps: rc-exe-run
-- evidence: C077; issue #8; scratch/logs/xbox_run_bounds.log (0 ABI violations, 0 empty-stub calls, the NULL indirect call gone)
-- where:
-- gap: NO LONGER the blocker, and the register file is clean: 94088 checked calls all restore ebx/esi/edi/ebp, and none of the 168 empty stubs is called (C077, issue #8). Still DEBT only in that the fallback path exists. The PC native --d3d8 run is now past every translator and discovery stop: rotates (ROL/ROR/RCL/RCR) are translated and checked against the host CPU's own instructions (tests/test_rotate.c, 5377 checks -- RCR is on the path of any guest that divides a long long, via MSVC's __allrem), and XMen2.exe's indirect-call targets are bulk-seeded from data pointers (tools/seed_data_ptrs.py), so the discovery loop converges in ONE round instead of grinding out one function per round. A 240-second run presents 3769 frames and 380289 draws with no stop of any kind -- it ended on the timeout, not on a defect.
-- notes:
-
-### rc-defect-present — CLOSED: current recompiled code fills D3DPRESENT_PARAMETERS identically to stock
-- status: re-verified
-- deps: rc-exe-run
-- evidence: C180
-- where:
-- gap:
-- notes: CLOSED 2026-08-14. Fresh current x2run and stock Wine runs each emitted exactly one ResetSwapChain block; all fields matched: 800x600, R5G6B5, D16, fullscreen, swap effect 1. C032 was real historical evidence but is falsified for the current translator; C033/C034 were unproven hypotheses. tools/build_x2run.sh now makes the discriminator reproducible.
-
-### rc-native — The PC recomp produces an artefact that runs WITHOUT Wine
-- status: re-partial
-- deps: rc-exe-run
-- evidence: C081/C156/C178/C209; x2native's battery checks stdcall/cdecl callback cleanup, a deliberate zero-cleanup mutation aborts, and the native D3D8 route has completed menu, movies, level load, gameplay, death dialog and return to menu with zero refused draws.
-- where: src/native/, tools/recomp.py native, CMakeLists.txt target x2native
-- gap: The native x86-64 ELF and arm64 Mach-O now map and initialise the recompiled exe and game modules, supply the reached Win32, DirectInput, DirectSound and D3D8 host surfaces, and run the game loop. Apple Silicon uses a translated 4 GB guest arena under the normal Mach-O `__PAGEZERO` (issue #10 closed). Remaining work is coverage and faithfulness: unreached imports remain fail-loud poison thunks; guest exception delivery, LAN sockets and optional COM/system facilities are still absent.
-- notes: x2native composes the generated recompiled bodies with src/native, src/d3d8 and src/gpu. The former note claiming the native CMake build was unrelated to the recomp was retired as stale.
-
-### rc-modinit — Native module initialisation: nothing runs DllMain or the CRT per module
-- status: re-verified
-- deps: rc-native
-- evidence: x2native output: both modules run their PE entry point (DllMainCRTStartup) and DllMain returns TRUE; libIGCore's 51 static constructors execute
-- where: src/native/x2native.c (modules_init), src/native/win32_sdl.c (_initterm, __dllonexit), tools/ghidra_export.sh --seed
-- gap: DONE. Modules initialise in dependency order read from their import tables, on the guest stack, with FS:[0] backed by a real TIB word for the SEH prologues. Two things were needed: the 51 static-constructor targets are referenced ONLY by a data pointer in .rdata, so Ghidra never marked them as code -- _initterm now enumerates every missing target in one pass and ghidra_export.sh --seed feeds them back (5818 -> 5918 functions); and MSVCRT __dllonexit is implemented for real rather than stubbed, because a stub returning func looks identical while dropping every registration. NOT covered: exception DELIVERY. The SEH chain is kept well-formed but nothing walks it, so a guest exception would go nowhere.
-- notes: Evidence: gdb backtrace on x2native shows the transfer working and the fault landing inside libIGCore's own body, not in the dispatch path.
-
-## xbox
-
-### xb-lift — Xbox XBE lifts to C and builds a native Linux executable
-- status: re-verified
-- deps:
-- evidence: C035/C036/C038/C049; 24,663/24,663 functions across all ELEVEN executable sections, 0 failures
-- where: xbox/, the pinned `SomeoneIsWorking/xboxrecomp` checkout in `vendor/xboxrecomp`,
-  recorded in `xbox/xboxrecomp.lock`
-- gap: 239 jumps still deleted in 2 functions of the newly-covered sections (sub_0048447E in XGRPH, sub_0040C4E0) -- reported loudly by the translator, not yet diagnosed.
-- notes:
-
-### xb-run — Recompiled Xbox build executes the game's main thread
-- status: re-partial
-- deps: xb-lift
-- evidence: C048/C049/C054/C057/C058/C060/C061/C070/C071/C072; the registry NULL that stood here is gone -- it was a symptom of our own NtAllocateVirtualMemory ignoring a placed base (C070), and of an esp-relative indirect-call target read four bytes low (C072)
-- where:
-- gap: Still nothing renders. The run now reaches the runtime-discovery loop's territory again: unresolved indirect calls into functions the static detector cannot see. C062's "initialisation order" diagnosis was FALSIFIED -- do not re-derive it.
-- notes:
-
-### xb-discovery — Runtime discovery loop for statically-invisible functions
-- status: re-verified
-- deps: xb-lift
-- evidence: C040/C041/C054; 1311 seeds -- 23 observed at runtime, 1288 harvested from vtables in one pass
-- where: tools/xbox_relift.py, tools/xbox_discover.py, tools/xbox_vtable_seeds.py, xbox/seeds.json
-- gap:
-- notes:
-
-### xb-kernel — Xbox kernel bridge: ordinals bound to the right functions
-- status: re-partial
-- deps: xb-run
-- evidence: C042/C043; validate_ordinals.py now covers the bridge dispatch and stdcall arg-size tables and reports OK
-- where:
-- gap: Names validated across five tables (C043/C044). Bodies still unaudited. Volume geometry corrected to FATX 16 KB clusters (C046); ExQueryNonVolatileSetting (24) still has no bridge.
-- notes:
-
-### xb-bounds — OPEN: function boundaries under-sized, so 6288 function tails are empty stubs
-- status: re-verified
-- deps: xb-lift
-- evidence: C048; stub count 7998 -> 348, 0 jumps deleted, title stops rebooting
-- where:
-- gap:
-- notes:
-
-### xb-flags — Branch conditions evaluate the flags that were actually set
-- status: re-verified
-- deps: xb-lift
-- evidence: C050; 216 deferred cmp/jcc pairs read a reassigned operand; snapshotting takes it to 0 and removes a live-vtable corruption in the D3D static initialiser
-- where:
-- gap:
-- notes:
-
-### xb-d3d — NV2A GPU emulation wired into the VEH
-- status: re-partial
-- deps: xb-run
-- evidence: C053/C055; NV2A initialised and the VEH implemented on sigaction -- the GPU path exists end to end for the first time
-- where:
-- gap: Not one GPU register fault has been decoded: the title dies in the CRT heap before its first draw. Whether the decoder handles this title's access patterns is untested; main.c counts and prints any it cannot decode.
-- notes:
-
-### xb-nheap — DEBT: native CRT heap override bypassing the recompiled MSVC heap
-- status: hack
-- deps: xb-run
-- evidence: C057
-- where:
-- gap: Bypasses C056 rather than fixing it. The recompiled RtlAllocateHeap/RtlFreeHeap are still linked and run under XBOX_NATIVE_HEAP=0, so the defect stays reproducible. RtlSizeHeap is not overridden. The --wrap bypass recorded here on 2026-08-05 is FIXED (issue #4): recomp --isolate now emits each overridden function into its own translation unit, so all 11 RtlAllocateHeap call sites reach the override, not 9 of 11.
-- notes:
+- deps: runtime-jit
+- evidence: C156/C178/C209; module-qualified overrides, native host services, and scoped original-body calls have reached menu, movies, gameplay, death, and return-to-menu paths.
+- where: src/native/
+- gap: Representative product conformance and remaining subsystem-by-subsystem ownership are incomplete.
+- notes: Overrides may call original guest behavior through the same JIT without recursion.
 
 ## graphics
 
 ### vk-substitute — Vulkan renderer substituted into the engine through ARK
 - status: re-verified
-- deps: rc-native
+- deps: native-overrides
 - evidence: C115/C117/C118/C120/C121. igVkVisualContext is a HOST-defined class registered with ARK as a real subclass of igDx8VisualContext, so libIGCore constructs it with the engine's own Dx constructor chain and stamps our vtable. Running --vk, the engine NEVER calls Direct3DCreate8 (C118) and the engine's own code creates a real Vulkan device via SDL_CreateGPUDevice (C120, backend reported as "vulkan"). The vtable is seeded from igDx8VisualContext -- 334 slots inherited -- with the 98 device-touching ones generated by tools/device_slots.py (I036) overridden. This step is the SUBSTITUTION MECHANISM only, verified on real runs; it does not claim anything is drawn.
 - where: src/vulkan/
 - gap:
@@ -316,21 +164,11 @@ Statuses: ✅ re-verified · 🟡 re-partial (honest gap) · 🔬 in-progress ·
 
 ### d3d8-host — Host Direct3D 8: the engine's own DirectX code runs, answered at the Direct3DCreate8 import
 - status: re-partial
-- deps: rc-native
+- deps: native-overrides
 - evidence: C129/I039 establish the import/ABI cut; C156 closes the menu-to-gameplay-to-menu loop with zero refused draws; C170 verifies the title's required fixed-function combiner behavior; C173 verifies the observed VS 1.1 skinning path; issue #62 verifies model-space and XYZRHW culling by pixels.
 - where: src/d3d8/, tools/d3d8_abi_check.py
 - gap: The live D3D8 route renders the game loop with zero refused draws on the measured path. Cube sampling and title-used texture-coordinate generation are implemented. The earlier 0-of-298037 stage-beyond-zero result was route-local: Dead Zone water falsified C154 and now exercises its evidenced MODULATE/MODULATE stage 1, camera-normal texgen, COUNT2 transform, animated stage-0 transforms and mip chain. The observed SELECTARG1, SELECTARG2, MODULATE and ADD combiners, material color sources, conditional normal normalization, and VS 1.1 skinning run. Honest remaining gaps stay fail-loud: nonzero pixel shaders, unobserved combiner or VS-token forms, engine off-screen render targets, and incomplete fixed-function specular and spot-cone semantics. Fog was disabled in the measured black-gameplay route, not proved generally irrelevant.
 - notes: This is the live renderer path and supersedes vk-frame's ARK substitution. The engine installs the host device itself after Direct3DCreate8; src/gpu is the shared backend. C177 verifies swapchain teardown ordering.
-
-## rc-native
-
-### crt-setjmp — setjmp/longjmp across recompiled frames
-- status: re-verified
-- deps: rc-native
-- evidence: REAL MECHANISM, not a stopgap. tools/recomp.py detects the one-instruction JMP-through-IAT thunk that forwards to _setjmp3 and emits, at every DIRECT CALL to it, an inline host setjmp in the CALLING body -- which is the only frame a host longjmp may resume into. x86_setjmp_buf snapshots the guest register file against the guest's own jmp_buf pointer; x86_setjmp_done finishes the call either way, restoring the snapshot (ESP included) when a longjmp arrives. 31 inline setjmps emitted across XMen2, libIGGfx and libIGLua. VERIFIED ON A REAL RUN, not by inspection: 'crt: longjmp RESUMED into a generated body (rc=1, guest esp restored to 0x700ff598)' -- and the run continues past it, where before it stopped there. The thunk-detection step was the part that was initially missing and it failed SILENTLY: MSVC routes the call through a thunk, so the emitter never saw a call to the import and emitted 0 inline setjmps while reporting success.
-- where: src/native/crt.c
-- gap: The import stub form remains for a call that reaches _setjmp3 indirectly rather than through generated code. It records the buffer as UNRESUMABLE and longjmp refuses by name if one ever arrives there, so the case cannot pass silently -- but it is not implemented. Also unhandled: host-side state owned by frames the longjmp destroys (the ark scratch-stack pointer, for one) is not unwound.
-- notes:
 
 ## renderer
 

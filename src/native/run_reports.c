@@ -13,6 +13,7 @@
  * a name per ring entry against 16k functions took minutes, long enough that
  * the timeout killed the process during its own clean shutdown.
  */
+#include "alchemy_controller_bridge.h"
 #include "boot_blackout.h"
 #include "dialog_selection_scale.h"
 #include "gpu_prompt_glyphs.h"
@@ -26,8 +27,8 @@
 #include "threads.h"
 #include "touch_hud_runtime.h"
 #include "ui_transform.h"
+#include "x2_log.h"
 #include "x86_engine.h"
-#include "x86_reached.h"
 #include "x86rt_native.h"
 
 #include <stdio.h>
@@ -43,11 +44,6 @@ void x2_interrupt_reports(int killed) {
   extern void dinput_pad_report(void), pad_glyphs_report(void);
   extern void dialog_prompts_report(void);
   extern void x2_ui_text_scale_report(void);
-  /* The reached set is collected on EVERY run that armed it, so its report
-     belongs here too: x86_diag_dump runs only on the abort paths, and a
-     clean X2_MAX_FRAMES stop used to throw the collection away. The ring
-     stays kill-only -- resolving a name per entry took minutes. */
-  x86_reached_report();
   x2_texture_probe_report();
   x2_prompt_draw_report();
   x2_prompt_glyph_metrics_report();
@@ -58,7 +54,7 @@ void x2_interrupt_reports(int killed) {
   {
     char blackout[256];
     x2_boot_blackout_report(blackout, sizeof blackout);
-    printf("        %s", blackout);
+    x2_log_info("        %s", blackout);
   }
   x2_engine_report();
   d3d8_host_report();
@@ -79,6 +75,7 @@ void x2_interrupt_reports(int killed) {
   x2_touch_hud_report();
   dinput_device_report();
   dinput_pad_report();
+  x2_alchemy_controller_report();
   input_record_report();
   live_session_stop();
   pad_glyphs_report();
@@ -118,11 +115,9 @@ void x2_interrupt_reports(int killed) {
     d3d8_vsconst_caller_report();
   }
   x86_epcount_report();
-  fflush(stdout);
   if (killed)
     x86_diag_dump();
   else
-    printf("  (the boundary ring is not dumped: this run stopped because "
-           "it reached X2_MAX_FRAMES, so there is no spin to locate.)\n");
-  fflush(stdout);
+    x2_log_info("  (the boundary ring is not dumped: this run stopped because "
+                "it reached X2_MAX_FRAMES, so there is no spin to locate.)\n");
 }

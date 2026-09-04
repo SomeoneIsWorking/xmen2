@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * GDI32 -- the little of it this game touches.
  *
@@ -34,11 +35,11 @@
 #include <SDL3/SDL.h>
 #endif
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 /* wingdi.h indices, only the ones a display query plausibly asks for. */
@@ -106,12 +107,12 @@ void imp_GDI32_GetDeviceCaps(CPU *C) {
 
   measured = desktop(&w, &h, &bpp, &hz);
   if (!told++) {
-    fprintf(stderr,
-            "GDI32: GetDeviceCaps answering from %s: %dx%d, %d bpp, %d Hz\n",
-            measured ? "SDL's real desktop mode"
-                     : "BUILT-IN DEFAULTS -- SDL could not report a display "
-                       "mode, so these are assumed, not measured",
-            w, h, bpp, hz);
+    x2_log_error(
+        "GDI32: GetDeviceCaps answering from %s: %dx%d, %d bpp, %d Hz\n",
+        measured ? "SDL's real desktop mode"
+                 : "BUILT-IN DEFAULTS -- SDL could not report a display "
+                   "mode, so these are assumed, not measured",
+        w, h, bpp, hz);
   }
 
   switch (index) {
@@ -175,12 +176,12 @@ void imp_GDI32_GetDeviceCaps(CPU *C) {
      * on it -- which is how a wrong mode list would look like a driver
      * quirk. Naming the index is what makes the next one a two-line fix.
      */
-    fprintf(stderr,
-            "GDI32: GetDeviceCaps(index=%u) is not implemented. Returning 0, "
-            "which for this index may be indistinguishable from a real "
-            "answer -- if the display behaves oddly, start here "
-            "(src/native/gdi32.c).\n",
-            index);
+    x2_log_error(
+        "GDI32: GetDeviceCaps(index=%u) is not implemented. Returning 0, "
+        "which for this index may be indistinguishable from a real "
+        "answer -- if the display behaves oddly, start here "
+        "(src/native/gdi32.c).\n",
+        index);
     ret_std(C, 0, 2);
     return;
   }
@@ -231,11 +232,10 @@ void imp_GDI32_CreateCompatibleDC(CPU *C) {
     if (!g_dc[i].used)
       break;
   if (i == MAX_DC) {
-    fprintf(stderr,
-            "GDI32: all %d memory DCs are live; CreateCompatibleDC "
-            "fails, which is what Windows does when the system is "
-            "out of them.\n",
-            MAX_DC);
+    x2_log_error("GDI32: all %d memory DCs are live; CreateCompatibleDC "
+                 "fails, which is what Windows does when the system is "
+                 "out of them.\n",
+                 MAX_DC);
     ret_std(C, 0, 1);
     return;
   }
@@ -278,11 +278,10 @@ void imp_GDI32_CreateDIBSection(CPU *C) {
        live in the section, not in memory this host allocates. Refused by
        name rather than quietly given private memory the caller's mapping
        would not see. */
-    fprintf(stderr,
-            "GDI32: CreateDIBSection with a SECTION handle "
-            "(0x%08x), which this host does not implement -- the "
-            "pixels would have to live in that mapping.\n",
-            hsection);
+    x2_log_error("GDI32: CreateDIBSection with a SECTION handle "
+                 "(0x%08x), which this host does not implement -- the "
+                 "pixels would have to live in that mapping.\n",
+                 hsection);
     WR32(ppv, 0);
     ret_std(C, 0, 6);
     return;
@@ -292,22 +291,20 @@ void imp_GDI32_CreateDIBSection(CPU *C) {
   bpp = RD16(pbmi + 14u);
   compression = RD32(pbmi + 16u);
   if (compression != 0u) { /* BI_RGB only */
-    fprintf(stderr,
-            "GDI32: CreateDIBSection with compression %u; only "
-            "BI_RGB (0) is implemented, and guessing at a "
-            "compressed layout would hand back pixels in the wrong "
-            "format.\n",
-            compression);
+    x2_log_error("GDI32: CreateDIBSection with compression %u; only "
+                 "BI_RGB (0) is implemented, and guessing at a "
+                 "compressed layout would hand back pixels in the wrong "
+                 "format.\n",
+                 compression);
     WR32(ppv, 0);
     ret_std(C, 0, 6);
     return;
   }
   if (w <= 0 || h == 0 ||
       (bpp != 8u && bpp != 16u && bpp != 24u && bpp != 32u)) {
-    fprintf(stderr,
-            "GDI32: CreateDIBSection(%d x %d, %u bpp) -- refusing a "
-            "shape this host cannot lay out.\n",
-            w, h, bpp);
+    x2_log_error("GDI32: CreateDIBSection(%d x %d, %u bpp) -- refusing a "
+                 "shape this host cannot lay out.\n",
+                 w, h, bpp);
     WR32(ppv, 0);
     ret_std(C, 0, 6);
     return;
@@ -320,7 +317,7 @@ void imp_GDI32_CreateDIBSection(CPU *C) {
     if (!g_bmp[i].used)
       break;
   if (i == MAX_BMP) {
-    fprintf(stderr, "GDI32: all %d DIB sections are live.\n", MAX_BMP);
+    x2_log_error("GDI32: all %d DIB sections are live.\n", MAX_BMP);
     WR32(ppv, 0);
     ret_std(C, 0, 6);
     return;
@@ -329,8 +326,7 @@ void imp_GDI32_CreateDIBSection(CPU *C) {
      stores, so it has to be an address the guest can hold in 32 bits. */
   g_bmp[i].bits = guest_malloc(bytes);
   if (!g_bmp[i].bits) {
-    fprintf(stderr, "GDI32: no guest memory for a %u-byte DIB section\n",
-            bytes);
+    x2_log_error("GDI32: no guest memory for a %u-byte DIB section\n", bytes);
     WR32(ppv, 0);
     ret_std(C, 0, 6);
     return;
@@ -399,11 +395,11 @@ void imp_GDI32_SetTextColor(CPU *C) {
  */
 void imp_GDI32_ExtTextOutA(CPU *C) {
   if (!g_text_ignored++)
-    fprintf(stderr, "GDI32: ExtTextOutA is IGNORED -- this host has no font "
-                    "rasteriser, so whatever bitmap the engine is drawing "
-                    "glyphs into stays blank.\n"
-                    "  The call succeeds so the engine carries on; the "
-                    "total is in the shutdown report.\n");
+    x2_log_error("GDI32: ExtTextOutA is IGNORED -- this host has no font "
+                 "rasteriser, so whatever bitmap the engine is drawing "
+                 "glyphs into stays blank.\n"
+                 "  The call succeeds so the engine carries on; the "
+                 "total is in the shutdown report.\n");
   ret_std(C, 1, 8);
 }
 
@@ -416,14 +412,16 @@ void gdi32_report(void) {
     if (g_bmp[i].used)
       bmps++;
   if (!g_dcs && !g_bmps && !g_text_ignored) {
-    printf("  gdi32: no memory DC or DIB section was ever created.\n");
+    x2_log_info("  gdi32: no memory DC or DIB section was ever created.\n");
     return;
   }
-  printf("  gdi32: %lu memory DC(s) and %lu DIB section(s) created; %d and %d "
-         "still live\n",
-         g_dcs, g_bmps, dcs, bmps);
+  x2_log_info(
+      "  gdi32: %lu memory DC(s) and %lu DIB section(s) created; %d and %d "
+      "still live\n",
+      g_dcs, g_bmps, dcs, bmps);
   if (g_text_ignored)
-    printf("         %lu ExtTextOutA call(s) IGNORED -- no font rasteriser, "
-           "so whatever they were drawing into is blank\n",
-           g_text_ignored);
+    x2_log_info(
+        "         %lu ExtTextOutA call(s) IGNORED -- no font rasteriser, "
+        "so whatever they were drawing into is blank\n",
+        g_text_ignored);
 }

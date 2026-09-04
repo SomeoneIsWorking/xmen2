@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /*
  * `audio.adpcm_verify` -- the differential gate for the native ADPCM overrides
  * in audio_adpcm.c.
@@ -59,11 +60,12 @@ void audio_adpcm_verify_or_abort(const CPU *C, uint32_t ep, uint32_t out,
       bad = 1;
 
   if (bad) {
-    fprintf(stderr,
-            "audio.adpcm_verify: native decode of XMen2.exe 0x%08x disagrees "
-            "with the guest body (%u output byte(s), %d channel(s)). The "
-            "native ADPCM decoder is wrong; not continuing.\n",
-            ep, out_bytes, channels);
+    lucent_log_error(
+        "x2",
+        "audio.adpcm_verify: native decode of XMen2.exe 0x%08x disagrees "
+        "with the guest body (%u output byte(s), %d channel(s)). The "
+        "native ADPCM decoder is wrong; not continuing.\n",
+        ep, out_bytes, channels);
     abort();
   }
   free(mine);

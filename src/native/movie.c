@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /* libCriMovie guest ABI bridge. Decode, timing, and audio streaming belong to
  * src/media and src/audio; this file only translates the evidenced codec
  * methods and igMovieInfo layout into those narrow host interfaces. Every
@@ -18,6 +19,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <lucent/cvar_c.h>
 
 #define INFO_PATH 0x14u
 #define INFO_WIDTH 0x20u
@@ -40,19 +43,18 @@ static int native_fmv_enabled(void) {
   static int enabled = -1;
   static int announced;
   if (enabled < 0) {
-    const char *value = getenv("X2_NATIVE_FMV");
-    enabled = !value || strcmp(value, "0") != 0;
+    enabled = lucent_cvar_flag("native_fmv", 1) != 0;
   }
   if (!announced++)
-    printf("movie: %s SFD playback; set X2_NATIVE_FMV=0 for the retained "
-           "guest CriMovie bodies.\n",
-           enabled ? "native FFmpeg" : "guest");
+    x2_log_info("movie: %s SFD playback; set X2_NATIVE_FMV=0 for the retained "
+                "guest CriMovie bodies.\n",
+                enabled ? "native FFmpeg" : "guest");
   return enabled;
 }
 
 static void movie_return(CPU *C, uint32_t value, int arguments) {
-  C->eax = value;
-  C->esp += 4u + (uint32_t)arguments * 4u;
+  C->reg[kX86pEax] = value;
+  C->reg[kX86pEsp] += 4u + (uint32_t)arguments * 4u;
 }
 
 static int queue_movie_audio(void *userdata, const float *samples,
@@ -87,7 +89,7 @@ void x2_movie_report(void) {
 }
 
 static void x2_movie_load(CPU *C) {
-  uint32_t info = RD32(C->esp + 4u);
+  uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t path_address = info ? RD32(info + INFO_PATH) : 0;
   const char *guest_path = guest_memory_const_pointer(path_address);
   const char *host_path;
@@ -113,14 +115,14 @@ static void x2_movie_load(CPU *C) {
   player = x2_fmv_open(host_path, &sink, error, sizeof(error));
   k32_open_note(guest_path, player != NULL, replaced, host_path);
   if (!player) {
-    fprintf(stderr, "movie: native SFD load failed for '%s': %s\n", guest_path,
-            error[0] ? error : "unknown decoder error");
+    x2_log_error("movie: native SFD load failed for '%s': %s\n", guest_path,
+                 error[0] ? error : "unknown decoder error");
     movie_return(C, 0, 1);
     return;
   }
   dsound_movie_audio_begin();
   if (!movie_audio_open(x2_fmv_sample_rate(player))) {
-    fprintf(stderr, "movie: cannot allocate the SFD audio queue\n");
+    x2_log_error("movie: cannot allocate the SFD audio queue\n");
     x2_fmv_close(player);
     movie_return(C, 0, 1);
     return;
@@ -128,8 +130,8 @@ static void x2_movie_load(CPU *C) {
   x2_fmv_probe_begin(guest_path);
   first_frame = x2_fmv_update(player, 0.0);
   if (first_frame < 0 || !x2_fmv_decoded_frames(player)) {
-    fprintf(stderr, "movie: SFD '%s' produced no decodable video frame\n",
-            guest_path);
+    x2_log_error("movie: SFD '%s' produced no decodable video frame\n",
+                 guest_path);
     x2_fmv_close(player);
     movie_audio_close();
     x2_fmv_probe_end();
@@ -141,14 +143,14 @@ static void x2_movie_load(CPU *C) {
   g_native_movie.needs_copy = 1;
   WR32(info + INFO_WIDTH, (uint32_t)x2_fmv_width(player));
   WR32(info + INFO_HEIGHT, (uint32_t)x2_fmv_height(player));
-  printf("movie: loaded native MPEG-1/ADX SFD '%s' at %dx%d, %d Hz\n",
-         guest_path, x2_fmv_width(player), x2_fmv_height(player),
-         x2_fmv_sample_rate(player));
+  x2_log_info("movie: loaded native MPEG-1/ADX SFD '%s' at %dx%d, %d Hz\n",
+              guest_path, x2_fmv_width(player), x2_fmv_height(player),
+              x2_fmv_sample_rate(player));
   movie_return(C, 1, 1);
 }
 
 static void x2_movie_unload(CPU *C) {
-  uint32_t info = RD32(C->esp + 4u);
+  uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10001fa0u);
     return;
@@ -162,7 +164,7 @@ static void x2_movie_unload(CPU *C) {
 }
 
 static void x2_movie_play(CPU *C) {
-  uint32_t info = RD32(C->esp + 4u);
+  uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   X2FmvPlayer *player;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10002040u);
@@ -180,8 +182,8 @@ static void x2_movie_play(CPU *C) {
 }
 
 static void x2_movie_pause(CPU *C) {
-  uint32_t info = RD32(C->esp + 4u);
-  uint32_t state = RD32(C->esp + 8u);
+  uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
+  uint32_t state = RD32(C->reg[kX86pEsp] + 8u);
   X2FmvPlayer *player;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x100020c0u);
@@ -199,7 +201,7 @@ static void x2_movie_pause(CPU *C) {
 }
 
 static void x2_movie_check_state(CPU *C) {
-  uint32_t info = RD32(C->esp + 4u);
+  uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   X2FmvPlayer *player;
   X2FmvState state;
   if (!native_fmv_enabled()) {
@@ -220,7 +222,7 @@ static void x2_movie_check_state(CPU *C) {
 }
 
 static void x2_movie_next_frame(CPU *C) {
-  uint32_t info = RD32(C->esp + 4u);
+  uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   X2FmvPlayer *player;
   uint32_t image, data, bytes;
   size_t pitch;
@@ -247,10 +249,9 @@ static void x2_movie_next_frame(CPU *C) {
       pitch = 0;
     if (!data || !pitch ||
         !x2_fmv_copy_bgra(player, guest_memory_pointer(data), bytes, pitch)) {
-      fprintf(stderr,
-              "movie: igImage storage is invalid for the %dx%d "
-              "native SFD frame (data=0x%08x bytes=%u)\n",
-              x2_fmv_width(player), x2_fmv_height(player), data, bytes);
+      x2_log_error("movie: igImage storage is invalid for the %dx%d "
+                   "native SFD frame (data=0x%08x bytes=%u)\n",
+                   x2_fmv_width(player), x2_fmv_height(player), data, bytes);
       g_native_movie.failed = 1;
       WR32(info + INFO_STATE, 3u);
       changed = -1;
@@ -300,7 +301,8 @@ static void x2_movie_next_frame(CPU *C) {
  */
 
 #define LCR_FLAG 0x572b0u /* 1 = "park now"; the decoder zeroes it        */
-#define LCR_SPIN_PRIO 0x57294u /* the priority the spin raises the decoder to  \
+#define LCR_SPIN_PRIO                                                          \
+  0x57294u                     /* the priority the spin raises the decoder to  \
                                 */
 #define LCR_REST_PRIO 0x572a8u /* the priority restored before returning */
 #define LCR_DECODER 0x14a1fcu  /* the decoder thread's own handle  */
@@ -316,7 +318,7 @@ void x2_override_10002520(CPU *C) {
   int deferred;
 
   if (mode < 0) {
-    const char *e = getenv("X2_SPIN");
+    const char *e = lucent_cvar_text("spin");
     mode = (e && *e && *e != '0' && !strcmp(e, "spin")) ? 1 : 0;
   }
   if (mode) { /* the CONTROL: run as shipped */
@@ -330,18 +332,19 @@ void x2_override_10002520(CPU *C) {
       break;
     }
   if (!base) {
-    fprintf(stderr, "override: libCriMovie 0x10002520 cannot find the "
-                    "module; deferring the spin to the original body.\n");
+    x2_log_error("override: libCriMovie 0x10002520 cannot find the "
+                 "module; deferring the spin to the original body.\n");
     x86_guest_body(C, "libCriMovie.dll", 0x10002520u);
     return;
   }
 
   if (!said++)
-    printf("override: libCriMovie 0x10002520, the decoder rendezvous spin, "
-           "is WAITED FOR rather than spun (issue #57).\n"
-           "  Set X2_SPIN=spin to run the original 3,000,000-iteration "
-           "resume loop instead -- the control this treatment is judged "
-           "against.\n");
+    x2_log_info(
+        "override: libCriMovie 0x10002520, the decoder rendezvous spin, "
+        "is WAITED FOR rather than spun (issue #57).\n"
+        "  Set X2_SPIN=spin to run the original 3,000,000-iteration "
+        "resume loop instead -- the control this treatment is judged "
+        "against.\n");
 
   WR32(base + LCR_FLAG, 1u); /* arm, as 0x1000252f */
   guest_thread_priority_set(
@@ -354,21 +357,21 @@ void x2_override_10002520(CPU *C) {
 
   deferred = (RD32(base + LCR_FLAG) == 1u);
   if (deferred) {
-    fprintf(stderr,
-            "override: libCriMovie 0x10002520: the decoder did not "
-            "clear the flag within %lu ms of being resumed. "
-            "DEFERRING to the original spin, which is the faithful "
-            "behaviour the override exists to avoid -- logged so "
-            "the fallback is never silent.\n",
-            waits);
+    x2_log_error("override: libCriMovie 0x10002520: the decoder did not "
+                 "clear the flag within %lu ms of being resumed. "
+                 "DEFERRING to the original spin, which is the faithful "
+                 "behaviour the override exists to avoid -- logged so "
+                 "the fallback is never silent.\n",
+                 waits);
     x86_guest_body(C, "libCriMovie.dll",
                    0x10002520u); /* spins as today; sets EAX */
     return;
   }
 
   guest_thread_priority_set((int32_t)RD32(base + LCR_REST_PRIO)); /* restore */
-  C->eax = 1u;  /* the port's SetThreadPriority returns 1; same as the body */
-  C->esp += 4u; /* RET: the body pops only its own return address */
+  C->reg[kX86pEax] =
+      1u; /* the port's SetThreadPriority returns 1; same as the body */
+  C->reg[kX86pEsp] += 4u; /* RET: the body pops only its own return address */
 }
 
 __attribute__((constructor)) static void x2_movie_register_overrides(void) {

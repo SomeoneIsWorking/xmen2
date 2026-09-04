@@ -12,7 +12,13 @@ The Vulkan backend's real obligation is 98 methods, not 209, if it inherits igDx
 
 ## Evidence
 
-Transitive scan over scratch/recomp/libIGGfx.json using the vtable recovered by tools/ark_vtables.py (I034); instruction-count distribution taken from the same bodies. Confirmed against the running engine: with a vtable seeded from igVisualContext, 125 slots inherited and 209 owed exactly as C114 predicted, and the engine's first two demands were slot 254 (igDxVisualContext::setVideoMode, RET 0x8, returns the OK status singleton) and slot 44 (createRenderDestination, 109 instructions).
+A transitive scan over the authenticated libIGGfx instruction stream used the
+vtable recovered by `tools/ark_vtables.py`; the instruction-count distribution
+came from the same retail bodies. A running-engine check with a vtable seeded
+from `igVisualContext` inherited 125 slots and owed 209 as C114 predicts. Its
+first two demands were slot 254 (`igDxVisualContext::setVideoMode`, `RET 0x8`,
+returning the OK status singleton) and slot 44 (`createRenderDestination`, 109
+instructions).
 
 ## What would falsify it
 

@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * IDirect3D8 -- the object Direct3DCreate8 returns, and the game's entry into
  * DirectX. Sixteen methods, of which the engine uses the adapter queries, the
@@ -79,9 +80,9 @@ static void resolve_published_mode(void) {
       g_published_mode.present = 1;
       g_published_mode.w = w;
       g_published_mode.h = h;
-      printf("d3d8: adapter enumerates the published %ux%u as mode "
-             "%d\n",
-             w, h, NBASE_MODES);
+      x2_log_info("d3d8: adapter enumerates the published %ux%u as mode "
+                  "%d\n",
+                  w, h, NBASE_MODES);
     }
   }
 }
@@ -136,8 +137,7 @@ static void current_desktop(uint32_t *w, uint32_t *h) {
 
 static void *guest_ptr(uint32_t a, const char *what) {
   if (!a) {
-    fprintf(stderr, "d3d8: %s was given a NULL %s\n", d3d8_current_method(),
-            what);
+    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
     return NULL;
   }
   return guest_memory_pointer(a);
@@ -166,9 +166,9 @@ static void d3d8_QueryInterface(D3D8Object *self, CPU *C) {
    * is worth seeing: it means something wants an interface this host has not
    * been asked for before.
    */
-  fprintf(stderr, "d3d8: IDirect3D8::QueryInterface -- refusing an interface "
-                  "this host does not implement (E_NOINTERFACE). If the "
-                  "engine needed it, the next fault will say so.\n");
+  x2_log_error("d3d8: IDirect3D8::QueryInterface -- refusing an interface "
+               "this host does not implement (E_NOINTERFACE). If the "
+               "engine needed it, the next fault will say so.\n");
   if (ppv)
     WR32(ppv, 0);
   d3d8_ret(C, E_NOINTERFACE);
@@ -411,14 +411,13 @@ int d3d8_host_enabled(void) { return g_enabled; }
 /*
  * d3d8.dll!Direct3DCreate8(UINT SDKVersion) -- __stdcall, one argument.
  *
- * A STRONG definition of the symbol the generated dispatch table declares
- * weak, so linking this file is what arms it. Until d3d8_host_enable() has
- * been called it does exactly what the weak default did, which is what keeps
- * a build with this linked comparable to one without.
+ * This registry implementation is present whenever the D3D8 owner is linked.
+ * d3d8_host_enable() controls whether it serves the product or refuses the
+ * call, which keeps the retained DirectInput/D3D8 A/B explicit.
  */
 void imp_d3d8_Direct3DCreate8(CPU *C);
 void imp_d3d8_Direct3DCreate8(CPU *C) {
-  uint32_t sdk = RD32(C->esp + 4u);
+  uint32_t sdk = RD32(C->reg[kX86pEsp] + 4u);
 
   if (!g_enabled) {
     /* Exactly what the weak default reaches: there is no d3d8.dll to
@@ -427,18 +426,17 @@ void imp_d3d8_Direct3DCreate8(CPU *C) {
        It says which FLAG arms it, because the message without that reads
        as "this port has no renderer" and cost a session a rebuild and a
        bisection before the answer turned out to be a missing --d3d8. */
-    fprintf(stderr, "d3d8: the host Direct3D 8 is LINKED but not ARMED. "
-                    "This run asked for --run; the renderer is armed by "
-                    "--d3d8 (see ./run.sh, which passes it).\n");
+    x2_log_error("d3d8: the host Direct3D 8 is LINKED but not ARMED. "
+                 "This run asked for --run; the renderer is armed by "
+                 "--d3d8 (see ./run.sh, which passes it).\n");
     x86_missing_import("d3d8.dll", "Direct3DCreate8");
     return;
   }
   if (sdk != D3D_SDK_VERSION_D3D8)
-    fprintf(stderr,
-            "d3d8: Direct3DCreate8(SDKVersion=%u); this host "
-            "implements %d. Answering anyway -- the version only "
-            "selects which d3d8.dll a real system would bind.\n",
-            sdk, D3D_SDK_VERSION_D3D8);
+    x2_log_error("d3d8: Direct3DCreate8(SDKVersion=%u); this host "
+                 "implements %d. Answering anyway -- the version only "
+                 "selects which d3d8.dll a real system would bind.\n",
+                 sdk, D3D_SDK_VERSION_D3D8);
 
   if (!g_d3d8_obj) {
     d3d8_caps_limits_default(&g_d3d8.limits);
@@ -448,16 +446,15 @@ void imp_d3d8_Direct3DCreate8(CPU *C) {
     d3d8_surface_install();
     d3d8_resource_install();
     g_d3d8_obj = d3d8_object_new(D3D8_IF_IDirect3D8, &g_d3d8);
-    printf("d3d8: Direct3DCreate8 -> IDirect3D8 at 0x%08x\n",
-           d3d8_object_guest(g_d3d8_obj));
-    fflush(stdout);
+    x2_log_info("d3d8: Direct3DCreate8 -> IDirect3D8 at 0x%08x\n",
+                d3d8_object_guest(g_d3d8_obj));
   } else {
     /* Direct3DCreate8 hands out a NEW reference each time, exactly as the
        real one does; the engine will Release each. */
     d3d8_object_addref(g_d3d8_obj);
   }
-  C->eax = d3d8_object_guest(g_d3d8_obj);
-  C->esp += 4u + 4u; /* __stdcall, one argument */
+  C->reg[kX86pEax] = d3d8_object_guest(g_d3d8_obj);
+  C->reg[kX86pEsp] += 4u + 4u; /* __stdcall, one argument */
 }
 
 /*

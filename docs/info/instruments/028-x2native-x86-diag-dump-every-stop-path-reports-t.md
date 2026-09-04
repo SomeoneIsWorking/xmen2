@@ -11,8 +11,13 @@ x2native x86_diag_dump: every stop path reports the same set
 
 ## Validated by
 
-Found by observing the instrument go silent: a run that stopped on a missing body (x86_dispatch -> abort) printed a ring and nothing else, because the reached-set and argument-watch reports were registered with atexit and abort() does not run atexit handlers. So the instruments were quiet on exactly the failures worth reporting. Consolidated into one x86_diag_dump() -- peek, reached, args, ring -- called from every abort path and from the SIGSEGV handler. VALIDATED: the same run that previously printed zero [REACHED] lines now prints the selftest (all five directions correct), the denominator (1398 pairs) and the per-address verdicts.
+`x86_diag_dump()` directly aggregates the current engine location, configured
+guest-memory peeks, multimedia-timer report, and boundary ring before every
+abort path and from the SIGSEGV handler; it does not depend on `atexit()`.
+Validated by the bounded native battery: the fail-loud PUSHFD stop named the
+active guest-call frame and printed the final 96 of 356 title/host crossings.
 
 ## Known failure modes
 
-(none recorded yet)
+It deliberately does not print clean-exit subsystem reports; those are owned by
+`x2_interrupt_reports`, so an interrupted run does not duplicate counters.

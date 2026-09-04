@@ -35,13 +35,13 @@ static void call_clear_light_handles(CPU *C, uint32_t self) {
   if (__builtin_expect(!s_clear_light_handles_mapped, 0)) {
     char why[128];
     if (x86_override_resolve_check("libIGSg.dll", 0x10035950u,
-                                   &s_clear_light_handles_mapped,
-                                   why, sizeof why) != 0) {
+                                   &s_clear_light_handles_mapped, why,
+                                   sizeof why) != 0) {
       return;
     }
   }
   CPU call_cpu = *C;
-  call_cpu.ecx = self;
+  call_cpu.reg[kX86pEcx] = self;
   x86_guest_call_args(&call_cpu, s_clear_light_handles_mapped, 0u);
 }
 
@@ -60,8 +60,8 @@ void x2_override_10034d10(CPU *C) {
     x86_guest_body(C, "libIGSg.dll", 0x10034d10u);
     return;
   }
-  attr_stack_custom_reset(C->ecx);
-  C->esp += 4u;
+  attr_stack_custom_reset(C->reg[kX86pEcx]);
+  C->reg[kX86pEsp] += 4u;
 }
 
 void x2_override_10034d30(CPU *C) {
@@ -69,7 +69,7 @@ void x2_override_10034d30(CPU *C) {
     x86_guest_body(C, "libIGSg.dll", 0x10034d30u);
     return;
   }
-  const uint32_t self = C->ecx;
+  const uint32_t self = C->reg[kX86pEcx];
   AttrStackVerify v;
   attr_stack_verify_begin(&v, self);
 
@@ -101,7 +101,7 @@ void x2_override_10034d30(CPU *C) {
     WR32(p40 + 0x14u, 0);
 
   attr_stack_verify_end(C, &v, self);
-  C->esp += 4u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 __attribute__((constructor)) static void register_attr_stack_overrides(void) {

@@ -10,8 +10,8 @@ updated: 2026-08-07
 
 ## Where the run gets to
 
-Everything through issue #36: scene traversal completes and the engine reaches
-state-block capture. This is not a defect -- it is a named, unimplemented D3D8
+Scene traversal completes and the engine reaches state-block capture. This is
+not a defect -- it is a named, unimplemented D3D8
 entry point, which is what the host layer is built to say.
 
     slot 57, offset 0xe4, arguments as pushed: [0]=0x00000001 [1]=0x00a0a0a0

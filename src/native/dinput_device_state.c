@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /* Polling policy for the DirectInput device snapshots returned to the game. */
 #include "dinput_device_internal.h"
 #include "guest_memory.h"
@@ -18,7 +19,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define A(i) RD32(cpu->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(cpu->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 #define S_OK 0x00000000u
 #define DIERR_INVALIDPARAM 0x80070057u
@@ -85,11 +86,10 @@ void dinput_device_get_state(CPU *cpu, DInputDevice *device) {
     return;
   }
   if (bytes != device->data_size) {
-    fprintf(stderr,
-            "DINPUT8: GetDeviceState on the %s asked for %u bytes "
-            "but its data format declared %u. Refusing rather than "
-            "writing a state whose fields land somewhere else.\n",
-            kind_name(device->kind), bytes, device->data_size);
+    x2_log_error("DINPUT8: GetDeviceState on the %s asked for %u bytes "
+                 "but its data format declared %u. Refusing rather than "
+                 "writing a state whose fields land somewhere else.\n",
+                 kind_name(device->kind), bytes, device->data_size);
     ret_get_state(cpu, DIERR_INVALIDPARAM);
     return;
   }

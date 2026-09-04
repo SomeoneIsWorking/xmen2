@@ -1,4 +1,6 @@
 #include "gpu_draw_trace.h"
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -190,6 +192,20 @@ static void print_draw(FILE *dst, const GpuDraw *d, unsigned long index) {
           d->mvp[12], d->mvp[13], d->mvp[14], d->mvp[15]);
 }
 
+static void log_draw(const GpuDraw *draw, unsigned long index) {
+  char *text = NULL;
+  size_t size = 0;
+  FILE *capture = capture_open(&text, &size);
+  if (!capture) {
+    x2_log_error("gpu: could not format draw %lu", index);
+    return;
+  }
+  print_draw(capture, draw, index);
+  capture_close(capture, &text, &size);
+  x2_log_error("%s", text ? text : "");
+  free(text);
+}
+
 int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
   static long range_first = -2, range_last;
   static int texture_filter_init;
@@ -198,7 +214,7 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
   FILE *destination;
 
   if (g_frame_dump.want == -2) {
-    const char *value = getenv("X2_FRAME_DUMP");
+    const char *value = x2_config_override_get(kX2ConfigFrameDump);
     g_frame_dump.want = -1;
     if (value && *value) {
       if (!strncmp(value, "busy", 4)) {
@@ -222,41 +238,37 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
                     &g_frame_dump.capture_size);
       g_frame_dump.capture = NULL;
       if (g_frame_dump.seek_vs && g_frame_dump.this_has_vs) {
-        fprintf(stderr,
-                "gpu: X2_FRAME_DUMP=vs -- frame %lu contained "
-                "a programmable draw and drew %lu times total. Every "
-                "draw of it follows.\n",
-                g_frame_dump.seen_frame, g_frame_dump.this_draws);
-        fputs(g_frame_dump.capture_text ? g_frame_dump.capture_text : "",
-              stderr);
+        x2_log_error("gpu: X2_FRAME_DUMP=vs -- frame %lu contained "
+                     "a programmable draw and drew %lu times total. Every "
+                     "draw of it follows.\n",
+                     g_frame_dump.seen_frame, g_frame_dump.this_draws);
+        x2_log_error("%s", g_frame_dump.capture_text ? g_frame_dump.capture_text
+                                                     : "");
         g_frame_dump.seek_vs = 0;
         g_frame_dump.want = -1;
       } else if (g_frame_dump.seek_vs) {
         g_frame_dump.want = -4;
       } else if (g_frame_dump.this_draws >= g_frame_dump.busy_min) {
-        fprintf(stderr,
-                "gpu: X2_FRAME_DUMP=busy -- frame %lu drew %lu "
-                "times itself (at least %lu asked for). Every draw of "
-                "it follows.\n",
-                g_frame_dump.seen_frame, g_frame_dump.this_draws,
-                g_frame_dump.busy_min);
-        fputs(g_frame_dump.capture_text ? g_frame_dump.capture_text : "",
-              stderr);
+        x2_log_error("gpu: X2_FRAME_DUMP=busy -- frame %lu drew %lu "
+                     "times itself (at least %lu asked for). Every draw of "
+                     "it follows.\n",
+                     g_frame_dump.seen_frame, g_frame_dump.this_draws,
+                     g_frame_dump.busy_min);
+        x2_log_error("%s", g_frame_dump.capture_text ? g_frame_dump.capture_text
+                                                     : "");
         if (g_frame_dump.dumped > 400)
-          fprintf(stderr,
-                  "  ... capped at 400 draws; frame %lu had "
-                  "%lu.\n",
-                  g_frame_dump.seen_frame, g_frame_dump.this_draws);
+          x2_log_error("  ... capped at 400 draws; frame %lu had "
+                       "%lu.\n",
+                       g_frame_dump.seen_frame, g_frame_dump.this_draws);
       } else {
         g_frame_dump.rejected++;
-        fprintf(stderr,
-                "gpu: X2_FRAME_DUMP=busy -- frame %lu is "
-                "DISCARDED: its predecessor drew %lu times but it drew "
-                "only %lu, under the %lu asked for. Looking for another "
-                "(%lu discarded so far).\n",
-                g_frame_dump.seen_frame, g_frame_dump.prev_draws,
-                g_frame_dump.this_draws, g_frame_dump.busy_min,
-                g_frame_dump.rejected);
+        x2_log_error("gpu: X2_FRAME_DUMP=busy -- frame %lu is "
+                     "DISCARDED: its predecessor drew %lu times but it drew "
+                     "only %lu, under the %lu asked for. Looking for another "
+                     "(%lu discarded so far).\n",
+                     g_frame_dump.seen_frame, g_frame_dump.prev_draws,
+                     g_frame_dump.this_draws, g_frame_dump.busy_min,
+                     g_frame_dump.rejected);
         g_frame_dump.want = -3;
       }
       free(g_frame_dump.capture_text);
@@ -278,33 +290,34 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
     g_frame_dump.capture =
         capture_open(&g_frame_dump.capture_text, &g_frame_dump.capture_size);
     if (!g_frame_dump.capture)
-      fprintf(stderr,
-              "gpu: X2_FRAME_DUMP=busy -- cannot hold frame %ld "
-              "back (memory capture failed); its draws go straight out "
-              "and may belong to a light frame.\n",
-              g_frame_dump.want);
+      x2_log_error("gpu: X2_FRAME_DUMP=busy -- cannot hold frame %ld "
+                   "back (memory capture failed); its draws go straight out "
+                   "and may belong to a light frame.\n",
+                   g_frame_dump.want);
   } else if (g_frame_dump.want == -4) {
     g_frame_dump.want = (long)now;
     g_frame_dump.capture =
         capture_open(&g_frame_dump.capture_text, &g_frame_dump.capture_size);
   }
-  destination = g_frame_dump.capture ? g_frame_dump.capture : stderr;
+  destination = g_frame_dump.capture;
   if (g_frame_dump.want >= 0 && (long)now == g_frame_dump.want) {
     if (!g_frame_dump.dumped++ && !g_frame_dump.capture)
-      fprintf(stderr,
-              "gpu: X2_FRAME_DUMP -- every draw of frame %ld "
-              "follows.\n",
-              g_frame_dump.want);
+      x2_log_error("gpu: X2_FRAME_DUMP -- every draw of frame %ld "
+                   "follows.\n",
+                   g_frame_dump.want);
     g_frame_dump.dumped_frame = now;
-    if (g_frame_dump.dumped <= 400)
-      print_draw(destination, d, g_frame_dump.dumped);
-    else if (g_frame_dump.dumped == 401 && !g_frame_dump.capture)
-      fprintf(stderr, "  ... capped at 400 draws; frame %lu had more.\n",
-              g_frame_dump.dumped_frame);
+    if (g_frame_dump.dumped <= 400) {
+      if (destination)
+        print_draw(destination, d, g_frame_dump.dumped);
+      else
+        log_draw(d, g_frame_dump.dumped);
+    } else if (g_frame_dump.dumped == 401 && !g_frame_dump.capture)
+      x2_log_error("  ... capped at 400 draws; frame %lu had more.\n",
+                   g_frame_dump.dumped_frame);
   }
 
   if (range_first == -2) {
-    const char *value = getenv("X2_DRAW_RANGE");
+    const char *value = x2_config_override_get(kX2ConfigDrawRange);
     range_first = -1;
     if (value && *value) {
       const char *separator = strchr(value, ':');
@@ -312,11 +325,10 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
       range_last = separator ? atol(separator + 1) : range_first;
       if (range_last < range_first)
         range_last = range_first;
-      fprintf(stderr,
-              "gpu: X2_DRAW_RANGE -- ONLY draws %ld..%ld of "
-              "each frame are submitted. Every other draw is SKIPPED, "
-              "not refused. This picture is NOT a whole frame.\n",
-              range_first, range_last);
+      x2_log_error("gpu: X2_DRAW_RANGE -- ONLY draws %ld..%ld of "
+                   "each frame are submitted. Every other draw is SKIPPED, "
+                   "not refused. This picture is NOT a whole frame.\n",
+                   range_first, range_last);
     }
   }
   if (range_first >= 0 &&
@@ -325,7 +337,7 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
     return 0;
   }
   if (!texture_filter_init) {
-    const char *value = getenv("X2_DRAW_TEXTURES");
+    const char *value = x2_config_override_get(kX2ConfigDrawTextures);
     texture_filter_init = 1;
     if (value && *value) {
       char copy[256], *part, *save;
@@ -335,11 +347,10 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
            texture_filter_n < sizeof texture_filter / sizeof texture_filter[0];
            part = strtok_r(NULL, ",", &save))
         texture_filter[texture_filter_n++] = (uint32_t)strtoul(part, NULL, 0);
-      fprintf(stderr,
-              "gpu: X2_DRAW_TEXTURES -- ONLY draws using one "
-              "of %u named texture handle(s) are submitted. "
-              "This picture is NOT a whole frame.\n",
-              texture_filter_n);
+      x2_log_error("gpu: X2_DRAW_TEXTURES -- ONLY draws using one "
+                   "of %u named texture handle(s) are submitted. "
+                   "This picture is NOT a whole frame.\n",
+                   texture_filter_n);
     }
   }
   if (texture_filter_n) {
@@ -360,8 +371,9 @@ int gpu_draw_trace_consider(const GpuDraw *d, unsigned long now) {
 
 void gpu_draw_trace_report(void) {
   if (g_range_skipped)
-    printf("        X2_DRAW_RANGE WAS SET: %lu further draw(s) were SKIPPED "
-           "(not refused). EVERY PICTURE FROM THIS RUN IS A SLICE OF A "
-           "FRAME, not the frame.\n",
-           g_range_skipped);
+    x2_log_info(
+        "        X2_DRAW_RANGE WAS SET: %lu further draw(s) were SKIPPED "
+        "(not refused). EVERY PICTURE FROM THIS RUN IS A SLICE OF A "
+        "FRAME, not the frame.\n",
+        g_range_skipped);
 }

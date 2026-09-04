@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /* Logical D3D colour/depth targets -> physical SDL presentation. */
 #include "gpu_present.h"
 
@@ -38,15 +39,14 @@ int gpu_present_resize_targets(SDL_GPUDevice *device, uint32_t width,
   int replace_scene, replace_depth;
 
   if (!device) {
-    fprintf(stderr, "gpu present: refusing to resize without a GPU "
-                    "device.\n");
+    x2_log_error("gpu present: refusing to resize without a GPU "
+                 "device.\n");
     return 0;
   }
   if (!width || !height) {
-    fprintf(stderr,
-            "gpu present: refusing a zero-sized logical D3D "
-            "backbuffer (%ux%u).\n",
-            width, height);
+    x2_log_error("gpu present: refusing a zero-sized logical D3D "
+                 "backbuffer (%ux%u).\n",
+                 width, height);
     return 0;
   }
   replace_scene =
@@ -63,11 +63,10 @@ int gpu_present_resize_targets(SDL_GPUDevice *device, uint32_t width,
         SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER);
   }
   if (replace_scene && !scene_replacement) {
-    fprintf(stderr,
-            "gpu present: could not create a replacement logical "
-            "%ux%u D3D backbuffer: %s. Keeping the existing "
-            "%ux%u scene.\n",
-            width, height, SDL_GetError(), g_scene_width, g_scene_height);
+    x2_log_error("gpu present: could not create a replacement logical "
+                 "%ux%u D3D backbuffer: %s. Keeping the existing "
+                 "%ux%u scene.\n",
+                 width, height, SDL_GetError(), g_scene_width, g_scene_height);
     return 0;
   }
   if (replace_depth)
@@ -76,11 +75,10 @@ int gpu_present_resize_targets(SDL_GPUDevice *device, uint32_t width,
   if (replace_depth && !depth_replacement) {
     if (scene_replacement)
       SDL_ReleaseGPUTexture(device, scene_replacement);
-    fprintf(stderr,
-            "gpu present: could not create a replacement logical "
-            "%ux%u depth target: %s. Keeping the existing colour "
-            "and depth targets.\n",
-            width, height, SDL_GetError());
+    x2_log_error("gpu present: could not create a replacement logical "
+                 "%ux%u depth target: %s. Keeping the existing colour "
+                 "and depth targets.\n",
+                 width, height, SDL_GetError());
     return 0;
   }
 
@@ -99,9 +97,9 @@ int gpu_present_resize_targets(SDL_GPUDevice *device, uint32_t width,
     g_depth_height = height;
     g_depth_format = depth_format;
   }
-  printf("gpu present: logical D3D backbuffer is %ux%u; the window is "
-         "a separate aspect-fitted output.\n",
-         width, height);
+  x2_log_info("gpu present: logical D3D backbuffer is %ux%u; the window is "
+              "a separate aspect-fitted output.\n",
+              width, height);
   return 1;
 }
 
@@ -135,10 +133,9 @@ SDL_GPUTexture *gpu_present_depth_target(SDL_GPUDevice *device, uint32_t width,
   replacement = make_target(device, width, height, depth_format,
                             SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
   if (!replacement) {
-    fprintf(stderr,
-            "gpu: the %ux%u depth target could not be made: %s -- "
-            "keeping the existing depth target.\n",
-            width, height, SDL_GetError());
+    x2_log_error("gpu: the %ux%u depth target could not be made: %s -- "
+                 "keeping the existing depth target.\n",
+                 width, height, SDL_GetError());
     return NULL;
   }
   if (g_depth)
@@ -159,11 +156,10 @@ int gpu_present_composite(SDL_GPUCommandBuffer *command_buffer,
   if (!command_buffer || !output || !g_scene ||
       !x2_aspect_fit(output_width, output_height, g_scene_width, g_scene_height,
                      &destination)) {
-    fprintf(stderr,
-            "gpu present: refusing to composite logical %ux%u "
-            "into output %ux%u; a texture or valid size is "
-            "missing.\n",
-            g_scene_width, g_scene_height, output_width, output_height);
+    x2_log_error("gpu present: refusing to composite logical %ux%u "
+                 "into output %ux%u; a texture or valid size is "
+                 "missing.\n",
+                 g_scene_width, g_scene_height, output_width, output_height);
     return 0;
   }
 

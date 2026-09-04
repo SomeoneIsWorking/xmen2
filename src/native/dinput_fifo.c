@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * LIVE key injection for a run being driven by hand.
  *
@@ -63,7 +65,7 @@ static void fifo_open_if_due(double now) {
   if (now < g_fifo_next_try)
     return;
   g_fifo_next_try = now + 1.0;
-  path = getenv("X2_INPUT_FIFO");
+  path = x2_config_override_get(kX2ConfigInputFifo);
   if (!path || !*path) {
     g_fifo_fd = -1;
     return;
@@ -74,10 +76,9 @@ static void fifo_open_if_due(double now) {
     g_fifo_fd = -2; /* try again in a second */
     return;
   }
-  fprintf(stderr,
-          "DINPUT8: X2_INPUT_FIFO=%s is OPEN -- write a key name "
-          "per line to press it.\n",
-          path);
+  x2_log_error("DINPUT8: X2_INPUT_FIFO=%s is OPEN -- write a key name "
+               "per line to press it.\n",
+               path);
 }
 
 /*
@@ -103,7 +104,7 @@ int dinput_inject_press(const char *name, double now, double hold,
              "\"%s\" has no DirectInput mapping (SDL knows no such key "
              "name, or it has no DIK code). NOT pressed.",
              name);
-    fprintf(stderr, "DINPUT8: %s [%s]\n", why, via);
+    x2_log_error("DINPUT8: %s [%s]\n", why, via);
     return 0;
   }
   for (i = 0; i < FIFO_MAX_KEYS; i++)
@@ -136,7 +137,7 @@ int dinput_inject_press(const char *name, double now, double hold,
 static void fifo_press(const char *name, double now) {
   char why[160];
   if (!dinput_inject_press(name, now, 0.0, "fifo", why, (int)sizeof why))
-    fprintf(stderr, "DINPUT8: X2_INPUT_FIFO: %s\n", why);
+    x2_log_error("DINPUT8: X2_INPUT_FIFO: %s\n", why);
 }
 
 static void fifo_drain(double now) {
@@ -173,17 +174,15 @@ void dinput_fifo_apply(CPU *cpu, uint32_t out, uint32_t size, double now) {
   for (i = 0; i < FIFO_MAX_KEYS; i++) {
     int down = now < g_fifo[i].until;
     if (down && !g_fifo[i].down)
-      fprintf(stderr,
-              "DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
-              "t=%.2fs, frame %lu  [%s]\n",
-              g_fifo[i].name, g_fifo[i].dik, now, gpu_frames_presented(),
-              g_fifo[i].via ? g_fifo[i].via : "fifo");
+      x2_log_error("DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
+                   "t=%.2fs, frame %lu  [%s]\n",
+                   g_fifo[i].name, g_fifo[i].dik, now, gpu_frames_presented(),
+                   g_fifo[i].via ? g_fifo[i].via : "fifo");
     else if (!down && g_fifo[i].down)
-      fprintf(stderr,
-              "DINPUT8: released \"%s\" at t=%.2fs, frame %lu  "
-              "[%s]\n",
-              g_fifo[i].name, now, gpu_frames_presented(),
-              g_fifo[i].via ? g_fifo[i].via : "fifo");
+      x2_log_error("DINPUT8: released \"%s\" at t=%.2fs, frame %lu  "
+                   "[%s]\n",
+                   g_fifo[i].name, now, gpu_frames_presented(),
+                   g_fifo[i].via ? g_fifo[i].via : "fifo");
     if (down && (uint32_t)g_fifo[i].dik < size)
       *((unsigned char *)guest_memory_pointer(out) + g_fifo[i].dik) = 0x80;
     g_fifo[i].down = down;

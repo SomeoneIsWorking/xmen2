@@ -61,17 +61,18 @@ int options_menu_stubs_override_is(const char *name, uint32_t ep) {
 
 static void guest_body_005f4900(CPU *C) {
   original_calls++;
-  C->eax = 0x12345678u;
-  C->ecx = 0x23456789u;
-  C->edx = 0x3456789au;
-  C->esp += 4u;
+  C->reg[kX86pEax] = 0x12345678u;
+  C->reg[kX86pEcx] = 0x23456789u;
+  C->reg[kX86pEdx] = 0x3456789au;
+  C->reg[kX86pEsp] += 4u;
 }
 
 X86Module *x86_modules(void) { return &module; }
 
 uint32_t x86_native_callback(x86_override_fn fn, const char *owner,
                              const char *name, void *ctx) {
-  if (strcmp(owner, "options_menu") || strcmp(name, "port_settings") || ctx) {
+  if (strcmp(owner, "options_menu") != 0 ||
+      strcmp(name, "port_settings") != 0 || ctx) {
     fprintf(stderr, "options menu stub: callback identity changed\n");
     abort();
   }
@@ -84,19 +85,19 @@ void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes) {
     if (callee_pop_bytes)
       abort();
     singleton_calls++;
-    C->eax = manager;
+    C->reg[kX86pEax] = manager;
     return;
   }
   if (target == REGISTER_TARGET) {
-    const char *name = guest_memory_const_pointer(RD32(C->esp));
+    const char *name = guest_memory_const_pointer(RD32(C->reg[kX86pEsp]));
     if (callee_pop_bytes != 8u)
       abort();
     registration_calls++;
     registered_method = target;
-    registered_callback = RD32(C->esp + 4u);
+    registered_callback = RD32(C->reg[kX86pEsp] + 4u);
     snprintf(registered_name, sizeof registered_name, "%s", name);
-    C->esp += 8u;
-    C->eax = 1u;
+    C->reg[kX86pEsp] += 8u;
+    C->reg[kX86pEax] = 1u;
     return;
   }
   fprintf(stderr, "options menu stub: unexpected guest target 0x%08x\n",

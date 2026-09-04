@@ -3,7 +3,7 @@ id: C083
 kind: claim
 status: holds
 created: 2026-08-05
-tags: pc,recomp,native,heap,pointers
+tags: pc,jit,native,heap,pointers
 ---
 
 ## Claim
@@ -16,4 +16,6 @@ Measured: host malloc returned 0x55b49f308020 during libIGCore's DllMain. A gues
 
 ## What would falsify it
 
-if the game's own allocators (igMemoryPool and friends, all recompiled) turn out to serve every allocation once engine init runs, this heap only ever backs CRT-level allocation and its size and speed assumptions should be re-measured rather than inherited
+if the game's own allocators (`igMemoryPool` and friends) serve every allocation
+once engine initialization runs, this heap only backs CRT-level allocation and
+its size and speed assumptions should be re-measured rather than inherited

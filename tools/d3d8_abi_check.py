@@ -31,6 +31,7 @@ answer worth anything.
 Exit codes: 0 all checks that could run agreed; 1 a disagreement; 2 nothing
 could be checked at all.
 """
+
 import argparse
 import json
 import os
@@ -39,7 +40,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ABI_H = os.path.join(ROOT, "src", "d3d8", "d3d8_abi.h")
-GFX_JSON = os.path.join(ROOT, "scratch", "recomp", "libIGGfx.json")
+GFX_JSON = os.path.join(ROOT, "scratch", "analysis", "libIGGfx.json")
 
 # Where a real PC d3d8.h may live.  $D3D8_HEADER overrides.  None of these is
 # committed or required; the point of the list is that "no header" is reported
@@ -59,33 +60,33 @@ D3D8_FIELD = 0x140
 
 # ---------------------------------------------------------------- the table
 
+
 def parse_abi(path):
     """{interface: [(slot, name, args)]} from the X-macro tables."""
     text = open(path).read()
+
     # Resolve the two prefix macros by textual substitution, the same way the
     # preprocessor will: a checker reading a different table from the compiler
     # would be worse than no checker.
     def body(name):
-        m = re.search(r"#define\s+%s\(X\)(.*?)(?=\n#define|\n#endif)" % name,
-                      text, re.S)
+        m = re.search(r"#define\s+%s\(X\)(.*?)(?=\n#define|\n#endif)" % name, text, re.S)
         return m.group(1) if m else ""
 
     resolved = {}
-    ifaces = re.findall(r"#define\s+D3D8_IFACE_(\w+)\(X\)(.*?)(?=\n#define|\n#endif)",
-                        text, re.S)
+    ifaces = re.findall(r"#define\s+D3D8_IFACE_(\w+)\(X\)(.*?)(?=\n#define|\n#endif)", text, re.S)
     for name, blob in ifaces:
         for macro in ("D3D8_BASETEXTURE_PREFIX", "D3D8_RESOURCE_PREFIX"):
             while macro + "(X)" in blob:
                 blob = blob.replace(macro + "(X)", body(macro))
         entries = []
-        for slot, meth, args in re.findall(r"X\(\s*(\d+)\s*,\s*(\w+)\s*,\s*(\d+)\s*\)",
-                                           blob):
+        for slot, meth, args in re.findall(r"X\(\s*(\d+)\s*,\s*(\w+)\s*,\s*(\d+)\s*\)", blob):
             entries.append((int(slot), meth, int(args)))
         resolved[name] = entries
     return resolved
 
 
 # ------------------------------------------------------- a real d3d8.h
+
 
 def find_header():
     env = os.environ.get("D3D8_HEADER")
@@ -101,15 +102,15 @@ def parse_header(path):
     src = open(path, errors="replace").read()
     out = {}
     for name, _parent, blob in re.findall(
-            r"DECLARE_INTERFACE_IID_\((\w+),(\w+),.*?\n(.*?)\n\};", src, re.S):
+        r"DECLARE_INTERFACE_IID_\((\w+),(\w+),.*?\n(.*?)\n\};", src, re.S
+    ):
         blob = blob.replace("\n", " ")
         methods = []
         for part in re.split(r"(?=STDMETHOD)", blob):
             part = part.strip()
             if not part.startswith("STDMETHOD"):
                 continue
-            m = re.match(r"STDMETHOD(?:_\(\s*[^,]+?\s*,\s*(\w+)\s*\)|\(\s*(\w+)\s*\))",
-                         part)
+            m = re.match(r"STDMETHOD(?:_\(\s*[^,]+?\s*,\s*(\w+)\s*\)|\(\s*(\w+)\s*\))", part)
             if not m:
                 continue
             meth = m.group(1) or m.group(2)
@@ -139,8 +140,10 @@ def check_header(abi, perturb=None):
         print("  Looked in $D3D8_HEADER and:")
         for p in HEADER_CANDIDATES:
             print("    %s" % p)
-        print("  NOTHING was verified against a header. The game cross-check "
-              "below is independent of this\n  and still stands on its own.")
+        print(
+            "  NOTHING was verified against a header. The game cross-check "
+            "below is independent of this\n  and still stands on its own."
+        )
         return None
 
     hdr = parse_header(path)
@@ -153,8 +156,10 @@ def check_header(abi, perturb=None):
             continue
         theirs = hdr[iface]
         if len(theirs) != len(entries):
-            print("  %-26s DISAGREES on method COUNT: table %d, header %d"
-                  % (iface, len(entries), len(theirs)))
+            print(
+                "  %-26s DISAGREES on method COUNT: table %d, header %d"
+                % (iface, len(entries), len(theirs))
+            )
             disagreed += 1
             continue
         for (s, n, a), (_hs, hn, ha) in zip(entries, theirs, strict=True):
@@ -163,17 +168,22 @@ def check_header(abi, perturb=None):
             if perturb and perturb[0] == iface and perturb[1] == s:
                 mine = (n, a + 1)
             if mine[0] != hn or mine[1] != ha:
-                print("  %-26s slot %-3d table %s(%d args) vs header %s(%d args)"
-                      % (iface, s, mine[0], mine[1], hn, ha))
+                print(
+                    "  %-26s slot %-3d table %s(%d args) vs header %s(%d args)"
+                    % (iface, s, mine[0], mine[1], hn, ha)
+                )
                 disagreed += 1
-    print("  %d method(s) compared across %d interface(s); %d disagreement(s)."
-          % (checked, len(abi) - len(missing), disagreed))
+    print(
+        "  %d method(s) compared across %d interface(s); %d disagreement(s)."
+        % (checked, len(abi) - len(missing), disagreed)
+    )
     if missing:
-        print("  NOT compared (the header does not declare them): %s"
-              % ", ".join(missing))
-    print("  Blind spot: this compares NAMES and ARGUMENT COUNTS. A method "
-          "whose arguments are the\n  same count but different types would "
-          "pass here and still be wrong at the call site.")
+        print("  NOT compared (the header does not declare them): %s" % ", ".join(missing))
+    print(
+        "  Blind spot: this compares NAMES and ARGUMENT COUNTS. A method "
+        "whose arguments are the\n  same count but different types would "
+        "pass here and still be wrong at the call site."
+    )
     return disagreed
 
 
@@ -189,10 +199,11 @@ RE_WRITES = re.compile(r"^(?:MOV|LEA|XOR|ADD|SUB|AND|OR|POP|MOVZX|MOVSX|IMUL) (%
 
 def scan_game(abi, perturb=None):
     if not os.path.exists(GFX_JSON):
-        print("GAME CROSS-CHECK: REFUSED -- %s does not exist, so NO call "
-              "site was examined." % GFX_JSON)
-        print("  Run tools/ghidra_export.sh libIGGfx first. This is not a "
-              "pass.")
+        print(
+            "GAME CROSS-CHECK: REFUSED -- %s does not exist, so NO call "
+            "site was examined." % GFX_JSON
+        )
+        print("  Run tools/ghidra_export.sh libIGGfx first. This is not a pass.")
         return None
 
     doc = json.load(open(GFX_JSON))
@@ -211,7 +222,7 @@ def scan_game(abi, perturb=None):
         # a vtable loaded FROM one of those.  Reset conservatively: any write to
         # a register clears its provenance.
         is_device, is_vtable = set(), set()
-        origin = {}          # register -> index where its provenance was set
+        origin = {}  # register -> index where its provenance was set
         for idx, i in enumerate(ins):
             t = i["t"]
 
@@ -254,9 +265,10 @@ def scan_game(abi, perturb=None):
                     continue
                 declared = device_methods.get(slot)
                 if declared is None:
-                    problems.append("0x%08x calls device slot %d (offset 0x%x), "
-                                    "which is past the 97 the table declares"
-                                    % (i["a"], slot, off))
+                    problems.append(
+                        "0x%08x calls device slot %d (offset 0x%x), "
+                        "which is past the 97 the table declares" % (i["a"], slot, off)
+                    )
                     disagreed += 1
                     continue
                 name, args = declared
@@ -278,7 +290,8 @@ def scan_game(abi, perturb=None):
                     inconclusive.append(
                         "0x%08x %s: %d push(es) seen, %d argument(s) declared "
                         "-- over-count, so a register save or outer staging"
-                        % (i["a"], name, pushes, args))
+                        % (i["a"], name, pushes, args)
+                    )
                 else:
                     # UNDER-count is the sound signal: a call site physically
                     # cannot push fewer dwords than the callee pops, so this
@@ -288,8 +301,8 @@ def scan_game(abi, perturb=None):
                     problems.append(
                         "0x%08x %s: %d push(es) = %d argument(s) + this, but "
                         "the table declares %d. A call site cannot push fewer "
-                        "than the callee pops."
-                        % (i["a"], name, pushes, seen, args))
+                        "than the callee pops." % (i["a"], name, pushes, seen, args)
+                    )
                     disagreed += 1
                 continue
 
@@ -304,18 +317,25 @@ def scan_game(abi, perturb=None):
                 is_vtable.clear()
 
     print("GAME CROSS-CHECK against libIGGfx's own call sites")
-    print("  %d call site(s) provably on the device (register loaded from "
-          "[this+0x%x], vtable from it)." % (device_sites, DEVICE_FIELD))
-    print("  %d of those had a readable push sequence and were compared."
-          % checked)
-    print("  %d indirect vtable call(s) were NOT attributable to the device "
-          "and were left alone." % unattributable)
+    print(
+        "  %d call site(s) provably on the device (register loaded from "
+        "[this+0x%x], vtable from it)." % (device_sites, DEVICE_FIELD)
+    )
+    print("  %d of those had a readable push sequence and were compared." % checked)
+    print(
+        "  %d indirect vtable call(s) were NOT attributable to the device "
+        "and were left alone." % unattributable
+    )
     if checked:
         exact = sorted(n for n, v in per_method.items() if v[0])
-        print("  %d method(s) CONFIRMED exactly by at least one call site: %s"
-              % (len(exact), ", ".join(exact)))
-    print("  %d site(s) over-counted (inconclusive, see below); %d site(s) "
-          "UNDER-counted (a real disagreement)." % (len(inconclusive), disagreed))
+        print(
+            "  %d method(s) CONFIRMED exactly by at least one call site: %s"
+            % (len(exact), ", ".join(exact))
+        )
+    print(
+        "  %d site(s) over-counted (inconclusive, see below); %d site(s) "
+        "UNDER-counted (a real disagreement)." % (len(inconclusive), disagreed)
+    )
     for p in problems[:20]:
         print("    !! %s" % p)
     if len(problems) > 20:
@@ -324,12 +344,14 @@ def scan_game(abi, perturb=None):
         print("    ?  %s" % p)
     if len(inconclusive) > 6:
         print("    ?  ... and %d more" % (len(inconclusive) - 6))
-    print("  Blind spots, stated: arguments staged with MOV into stack slots "
-          "rather than PUSH are counted\n  as unattributable, not as zero; a "
-          "method the engine never calls is not checked at all; a method\n  "
-          "called with the right COUNT of wrong arguments passes here; and an "
-          "over-count proves nothing\n  in either direction, which is why "
-          "only under-counts fail this check.")
+    print(
+        "  Blind spots, stated: arguments staged with MOV into stack slots "
+        "rather than PUSH are counted\n  as unattributable, not as zero; a "
+        "method the engine never calls is not checked at all; a method\n  "
+        "called with the right COUNT of wrong arguments passes here; and an "
+        "over-count proves nothing\n  in either direction, which is why "
+        "only under-counts fail this check."
+    )
     return disagreed
 
 
@@ -364,10 +386,33 @@ def count_pushes(ins, call_idx, floor):
             break
         if "ESP" in t or "[ESP" in t:
             return n, False
-        if t.startswith(("MOV", "LEA", "XOR", "TEST", "CMP", "ADD", "SUB",
-                         "AND", "OR", "INC", "DEC", "SHL", "SHR", "NOP",
-                         "MOVZX", "MOVSX", "FLD", "FSTP", "IMUL", "NEG",
-                         "SETZ", "SETNZ", "CDQ")):
+        if t.startswith(
+            (
+                "MOV",
+                "LEA",
+                "XOR",
+                "TEST",
+                "CMP",
+                "ADD",
+                "SUB",
+                "AND",
+                "OR",
+                "INC",
+                "DEC",
+                "SHL",
+                "SHR",
+                "NOP",
+                "MOVZX",
+                "MOVSX",
+                "FLD",
+                "FSTP",
+                "IMUL",
+                "NEG",
+                "SETZ",
+                "SETNZ",
+                "CDQ",
+            )
+        ):
             k -= 1
             continue
         break
@@ -392,6 +437,7 @@ def count_pushes(ins, call_idx, floor):
 
 # ------------------------------------------------------------- self-test
 
+
 def selftest(abi):
     """Prove both checks can produce the OTHER answer.
 
@@ -399,7 +445,7 @@ def selftest(abi):
     to be able to print anything else.  This shifts one entry of the table by a
     single argument and requires each check to notice."""
     print("=== SELF-TEST: the checks must FAIL on a table that is wrong ===\n")
-    perturb = ("IDirect3DDevice8", 50)      # SetRenderState, the busiest method
+    perturb = ("IDirect3DDevice8", 50)  # SetRenderState, the busiest method
     fails = 0
 
     h = check_header(abi, perturb=perturb)
@@ -425,20 +471,26 @@ def selftest(abi):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--selftest", action="store_true",
-                    help="prove the checks can fail, by perturbing the table")
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument(
+        "--selftest", action="store_true", help="prove the checks can fail, by perturbing the table"
+    )
     args = ap.parse_args()
 
     abi = parse_abi(ABI_H)
     if not abi:
-        print("REFUSED: no interface tables were parsed out of %s. Nothing "
-              "was checked." % ABI_H)
+        print("REFUSED: no interface tables were parsed out of %s. Nothing was checked." % ABI_H)
         return 2
-    print("Parsed %d interface(s) from %s: %s\n"
-          % (len(abi), os.path.relpath(ABI_H, ROOT),
-             ", ".join("%s(%d)" % (k, len(v)) for k, v in sorted(abi.items()))))
+    print(
+        "Parsed %d interface(s) from %s: %s\n"
+        % (
+            len(abi),
+            os.path.relpath(ABI_H, ROOT),
+            ", ".join("%s(%d)" % (k, len(v)) for k, v in sorted(abi.items())),
+        )
+    )
 
     if args.selftest:
         return 1 if selftest(abi) else 0
@@ -447,14 +499,18 @@ def main():
     print()
     g = scan_game(abi)
     if h is None and g is None:
-        print("\nNOTHING could be checked: no header and no libIGGfx export. "
-              "This is not a pass.")
+        print("\nNOTHING could be checked: no header and no libIGGfx export. This is not a pass.")
         return 2
     total = (h or 0) + (g or 0)
-    print("\n%s" % ("AGREED -- no disagreement in any check that could run."
-                    if total == 0 else
-                    "DISAGREEMENT: %d. The table and the evidence do not "
-                    "match; do not dispatch through it." % total))
+    print(
+        "\n%s"
+        % (
+            "AGREED -- no disagreement in any check that could run."
+            if total == 0
+            else "DISAGREEMENT: %d. The table and the evidence do not "
+            "match; do not dispatch through it." % total
+        )
+    )
     return 1 if total else 0
 
 

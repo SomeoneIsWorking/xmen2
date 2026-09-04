@@ -1,6 +1,8 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /* Scripted keyboard input for deterministic, headless game runs. */
-#include "dinput_script.h"
 #include "dinput_device.h"
+#include "dinput_script.h"
 #include "guest_clock.h"
 #include "guest_memory.h"
 
@@ -45,16 +47,16 @@ static double g_script_t0;
 static double script_now(void) { return guest_clock_now_s(); }
 
 static void script_parse(void) {
-  const char *value = getenv("X2_INPUT_SCRIPT");
+  const char *value = x2_config_override_get(kX2ConfigInputScript);
   const char *p;
 
   g_script_parsed = 1;
   if (!value || !*value)
     return;
 #ifndef X2_WITH_SDL
-  fprintf(stderr, "DINPUT8: X2_INPUT_SCRIPT is set but this build has no "
-                  "SDL, so no key name can be resolved and NOTHING will be "
-                  "injected.\n");
+  x2_log_error("DINPUT8: X2_INPUT_SCRIPT is set but this build has no "
+               "SDL, so no key name can be resolved and NOTHING will be "
+               "injected.\n");
   return;
 #else
   for (p = value; *p;) {
@@ -75,12 +77,11 @@ static void script_parse(void) {
         (consumed = 0, sscanf(p, "%lf-%lf/%lf:%23[^ ,\t]%n", &at, &to, &step,
                               name, &consumed)) == 4) {
       if (step <= 0.0 || to < at) {
-        fprintf(stderr,
-                "DINPUT8: X2_INPUT_SCRIPT has the repeat "
-                "\"%s\", whose window is empty (from %g to %g "
-                "every %g). Refusing rather than scheduling a "
-                "press that never happens.\n",
-                p, at, to, step);
+        x2_log_error("DINPUT8: X2_INPUT_SCRIPT has the repeat "
+                     "\"%s\", whose window is empty (from %g to %g "
+                     "every %g). Refusing rather than scheduling a "
+                     "press that never happens.\n",
+                     p, at, to, step);
         return;
       }
       repeats = (int)((to - at) / step) + 1;
@@ -88,38 +89,34 @@ static void script_parse(void) {
                    3 &&
                (consumed = 0,
                 sscanf(p, "%lf:%23[^ ,\t]%n", &at, name, &consumed)) != 2) {
-      fprintf(stderr,
-              "DINPUT8: X2_INPUT_SCRIPT could not be read at "
-              "\"%s\" -- expected <time>[+<hold>]:<key> or a "
-              "repeat window. NOTHING after it was scheduled.\n",
-              p);
+      x2_log_error("DINPUT8: X2_INPUT_SCRIPT could not be read at "
+                   "\"%s\" -- expected <time>[+<hold>]:<key> or a "
+                   "repeat window. NOTHING after it was scheduled.\n",
+                   p);
       return;
     }
     p += consumed;
     if (g_nscript + repeats > SCRIPT_MAX) {
-      fprintf(stderr,
-              "DINPUT8: X2_INPUT_SCRIPT needs %d more event(s) "
-              "for \"%s\" and only %d of %d slot(s) are left. "
-              "Refusing rather than cutting off the tail.\n",
-              repeats, name, SCRIPT_MAX - g_nscript, SCRIPT_MAX);
+      x2_log_error("DINPUT8: X2_INPUT_SCRIPT needs %d more event(s) "
+                   "for \"%s\" and only %d of %d slot(s) are left. "
+                   "Refusing rather than cutting off the tail.\n",
+                   repeats, name, SCRIPT_MAX - g_nscript, SCRIPT_MAX);
       return;
     }
     scancode = (int)SDL_GetScancodeFromName(name);
     if (scancode == SDL_SCANCODE_UNKNOWN) {
-      fprintf(stderr,
-              "DINPUT8: X2_INPUT_SCRIPT names the key \"%s\", "
-              "which SDL does not know. Refusing.\n",
-              name);
+      x2_log_error("DINPUT8: X2_INPUT_SCRIPT names the key \"%s\", "
+                   "which SDL does not know. Refusing.\n",
+                   name);
       return;
     }
     {
       unsigned char dik = dinput_system_dik(scancode);
       if (!dik) {
-        fprintf(stderr,
-                "DINPUT8: \"%s\" has no DirectInput DIK "
-                "mapping, so the game could never see it. "
-                "Refusing.\n",
-                name);
+        x2_log_error("DINPUT8: \"%s\" has no DirectInput DIK "
+                     "mapping, so the game could never see it. "
+                     "Refusing.\n",
+                     name);
         return;
       }
       for (r = 0; r < repeats; r++) {
@@ -132,18 +129,16 @@ static void script_parse(void) {
         snprintf(key->name, sizeof key->name, "%s", name);
       }
       if (repeats > 1)
-        fprintf(stderr,
-                "DINPUT8: X2_INPUT_SCRIPT -- \"%s\" repeats "
-                "%d time(s), every %g %s from %g to %g.\n",
-                name, repeats, step, by_frame ? "frame(s)" : "second(s)", at,
-                at + (double)(repeats - 1) * step);
+        x2_log_error("DINPUT8: X2_INPUT_SCRIPT -- \"%s\" repeats "
+                     "%d time(s), every %g %s from %g to %g.\n",
+                     name, repeats, step, by_frame ? "frame(s)" : "second(s)",
+                     at, at + (double)(repeats - 1) * step);
     }
   }
   if (g_nscript)
-    fprintf(stderr,
-            "DINPUT8: X2_INPUT_SCRIPT -- %d scripted key press(es) "
-            "will be INJECTED; each is reported as it fires.\n",
-            g_nscript);
+    x2_log_error("DINPUT8: X2_INPUT_SCRIPT -- %d scripted key press(es) "
+                 "will be INJECTED; each is reported as it fires.\n",
+                 g_nscript);
 #endif
 }
 
@@ -152,8 +147,8 @@ void dinput_script_start(void) {
   if (!g_script_parsed)
     script_parse();
   if (g_nscript)
-    fprintf(stderr, "DINPUT8: the script's clock starts NOW; its times are "
-                    "seconds from here.\n");
+    x2_log_error("DINPUT8: the script's clock starts NOW; its times are "
+                 "seconds from here.\n");
 }
 
 void dinput_script_apply(CPU *cpu, uint32_t out, uint32_t size) {
@@ -176,13 +171,12 @@ void dinput_script_apply(CPU *cpu, uint32_t out, uint32_t size) {
     if (down && (uint32_t)key->dik < size)
       *((unsigned char *)guest_memory_pointer(out) + key->dik) = 0x80;
     if (down && !key->down)
-      fprintf(stderr,
-              "DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
-              "t=%.2fs, frame %lu\n",
-              key->name, key->dik, now, gpu_frames_presented());
+      x2_log_error("DINPUT8: INJECTING \"%s\" (DIK 0x%02x) at "
+                   "t=%.2fs, frame %lu\n",
+                   key->name, key->dik, now, gpu_frames_presented());
     else if (!down && key->down && !key->said++)
-      fprintf(stderr, "DINPUT8: released \"%s\" at t=%.2fs, frame %lu\n",
-              key->name, now, gpu_frames_presented());
+      x2_log_error("DINPUT8: released \"%s\" at t=%.2fs, frame %lu\n",
+                   key->name, now, gpu_frames_presented());
     key->down = down;
   }
 }

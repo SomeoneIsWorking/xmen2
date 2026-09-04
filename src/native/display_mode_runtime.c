@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * Reconcile the port's configured output mode at the retail settings-load
  * boundary. A fresh profile takes XMen2.exe 0x00619770's default branch and
@@ -51,9 +52,8 @@ enum {
 
 static void refuse(const char *reason, const char *expected,
                    const char *actual) {
-  fprintf(stderr, "DISPLAY RUNTIME: REFUSED: %s; expected '%s', got '%s'.\n",
-          reason, expected ? expected : "?", actual ? actual : "?");
-  fflush(stderr);
+  x2_log_error("DISPLAY RUNTIME: REFUSED: %s; expected '%s', got '%s'.\n",
+               reason, expected ? expected : "?", actual ? actual : "?");
   abort();
 }
 
@@ -147,19 +147,19 @@ int x2_display_mode_runtime_apply(uint32_t width, uint32_t height, char *why,
 
 static uint32_t build_registry_context(const CPU *source, uint32_t exe) {
   CPU call = *source;
-  uint32_t context = call.esp - REGISTRY_CONTEXT_BYTES;
+  uint32_t context = call.reg[kX86pEsp] - REGISTRY_CONTEXT_BYTES;
   uint32_t product = RD8(exe + RVA_DEMO_FLAG) ? exe + RVA_DEMO_PRODUCT_NAME
                                               : exe + RVA_PRODUCT_NAME;
 
   memset(guest_memory_pointer(context), 0, REGISTRY_CONTEXT_BYTES);
-  call.esp = context;
-  call.esp -= 4u;
-  WR32(call.esp, product);
-  call.esp -= 4u;
-  WR32(call.esp, exe + RVA_PUBLISHER_NAME);
-  call.ecx = context;
+  call.reg[kX86pEsp] = context;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], product);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], exe + RVA_PUBLISHER_NAME);
+  call.reg[kX86pEcx] = context;
   x86_guest_call_args(&call, exe + RVA_BUILD_REGISTRY_CONTEXT, 8u);
-  if (call.eax != context)
+  if (call.reg[kX86pEax] != context)
     refuse("retail registry context constructor returned another object", NULL,
            NULL);
   return context;
@@ -173,16 +173,16 @@ static void reread_resolution(const CPU *source, uint32_t exe,
 
   /* Keep the reader's 0x314-byte local frame below the context, matching
      the original loader where the context lives in its caller's frame. */
-  call.esp = context;
-  call.esp -= 4u;
-  WR32(call.esp, RESOLUTION_CAPACITY);
-  call.esp -= 4u;
-  WR32(call.esp, exe + RVA_RESOLUTION_OUTPUT);
-  call.esp -= 4u;
-  WR32(call.esp, exe + RVA_RESOLUTION_DEFAULT);
-  call.esp -= 4u;
-  WR32(call.esp, exe + RVA_RESOLUTION_PATH);
-  call.ecx = context;
+  call.reg[kX86pEsp] = context;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], RESOLUTION_CAPACITY);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], exe + RVA_RESOLUTION_OUTPUT);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], exe + RVA_RESOLUTION_DEFAULT);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], exe + RVA_RESOLUTION_PATH);
+  call.reg[kX86pEcx] = context;
   x86_guest_call_args(&call, exe + RVA_READ_STRING, 16u);
 
   actual = guest_memory_const_pointer(exe + RVA_RESOLUTION_OUTPUT);
@@ -214,10 +214,9 @@ static void x2_override_display_settings_load(CPU *C) {
   if (!exe)
     refuse("XMen2.exe mapping is unavailable", expected, NULL);
   reread_resolution(C, exe, expected);
-  fprintf(stderr,
-          "DISPLAY RUNTIME: retail settings resolved configured "
-          "mode %s after first-run/default initialization.\n",
-          expected);
+  x2_log_error("DISPLAY RUNTIME: retail settings resolved configured "
+               "mode %s after first-run/default initialization.\n",
+               expected);
 }
 
 __attribute__((constructor)) static void

@@ -1,69 +1,43 @@
 /*
- * x86_engine.h -- running guest code the recompiler never translated.
+ * x86_engine.h -- X-Men 2's product boundary to x86port's runtime JIT.
  *
- * THE SEAM. `x86_native_call_at` answers "is there a body at this address",
- * and `x86_dispatch_one` currently aborts when the answer is no. That miss is
- * already a named, reached condition (jit-common I004, entry condition 2), and
- * it is exactly where a runtime engine plugs in: the statically recompiled
- * corpus keeps running, and this takes only what it could not translate.
+ * There is one gameplay executor. Consumer interception hooks in x86port's JIT
+ * allow host import thunks, native overrides, setjmp frames, and return
+ * sentinels to be intercepted at basic block boundaries before dispatch.
  *
- * RUNTIME EXECUTION ENGINES. `x86port` provides both the reference
- * interpreter (the semantics authority) and an x86-64 basic-block JIT engine.
- * When the x86-64 JIT backend is available, it is the shipping default so
- * gameplay runs at native speed; the interpreter remains selectable via
- * X2_ENGINE=interpreter. Consumer interception hooks in x86port's JIT allow
- * host import thunks, native overrides, setjmp frames, and return sentinels
- * to be intercepted at basic block boundaries before dispatch.
- *
- * THE BOUNDARY THIS IS ONLY CORRECT AT. x2_engine_call bridges two different
- * machine models, and it is exact only at a Win32 FUNCTION CALL boundary:
- *
- *   - The substrate's CPU has no AF and no DF. At a call boundary neither is
- *     live: the ABI requires DF clear on entry and exit, and nothing a C
- *     compiler emits reads AF across a call (only the BCD instructions use it,
- *     and they use it within one instruction).
- *   - The substrate's CPU has no EIP, because its bodies are C functions. The
- *     engine needs one, which is what the return trampoline below is for.
- *   - The x87 stack is empty at a call boundary, except for a float return
- *     value in ST(0). Both directions are checked rather than assumed.
- *
- * Every one of those is asserted at the boundary, not documented and hoped
- * for: a violated one is reported with the guest address that violated it.
+ * Native imports and overrides mutate the same canonical X86pCpu that the JIT
+ * executes. There is no title-local register/flag/x87 model and therefore no
+ * state conversion at a hand-back.
  */
 #ifndef X2_X86_ENGINE_H
 #define X2_X86_ENGINE_H
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 /*
- * Resolve the engine for this run and build it. Reads X2_ENGINE; the default
- * is the substrate, so a build that has this linked behaves exactly as before
- * until someone asks for something else.
- *
- * Returns 1 when the port may proceed. Returns 0, having written `reason`,
- * when a requested engine cannot be provided -- never a silent fallback.
+ * Build the required runtime JIT. Returns 0, having written `reason`, when
+ * this host cannot provide it. No selector or fallback exists.
  */
 int x2_engine_init(char *reason, unsigned reason_len);
 
-/* Whether an engine other than the substrate is selected. */
+/* Whether the required runtime JIT is ready. */
 int x2_engine_active(void);
 
-/* The selected engine's name, for reports. Never null. */
+/* The product executor's fixed name, for reports. Never null. */
 const char *x2_engine_name(void);
 
 /*
- * Execute the guest function at `addr` with the substrate's CPU, returning
+ * Execute the guest function at `addr` with the canonical CPU context,
  * when it returns.
  *
- * Returns 1 when the function ran to completion. Returns 0 when no engine is
- * selected -- the caller's existing "no body here" report is then the right
- * answer and nothing has been touched. Anything else ABORTS with the guest
+ * Returns 1 when the function ran to completion. Returns 0 when the required
+ * runtime JIT is not ready. Anything else ABORTS with the guest
  * address, the instruction, and why: a call this cannot finish leaves the
  * guest stack in a state nothing downstream can reason about.
  */
-int x2_engine_call(uint32_t addr, struct CPU *C);
+int x2_engine_call(uint32_t addr, struct X86pCpu *C);
 
 /*
  * The program's own entry point, named before it is entered.
@@ -96,8 +70,8 @@ int x2_engine_selftest(void);
 /*
  * Where the engine is, RIGHT NOW. Printed on every stop path, because a host
  * backtrace stops at x2_engine_call and names no guest function below it.
- * Silent when no engine is selected; says so when one is and nothing is on its
- * stack, which is a different fact from "the engine is not here".
+ * Silent before initialization; says when the ready JIT has no guest call on
+ * its stack, which is a different fact from "the engine is not here".
  */
 void x2_engine_where(void);
 

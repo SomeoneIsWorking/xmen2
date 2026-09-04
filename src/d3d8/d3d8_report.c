@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * What the layer says about itself at shutdown, and what it proves about
  * itself on demand.
@@ -29,20 +30,6 @@
 
 #include <stdio.h>
 #include <string.h>
-
-void d3d8_host_report(void) {
-  if (!d3d8_host_enabled()) {
-    printf("\nd3d8: the host Direct3D 8 was NOT enabled this run, so "
-           "nothing here was exercised.\n");
-    return;
-  }
-  printf("\n=== host Direct3D 8 ===\n");
-  d3d8_device_report();
-  d3d8_setlight_report();
-  d3d8_permissive_report();
-  fflush(stdout);
-}
-
 /*
  * The caps block's own check.
  *
@@ -63,30 +50,27 @@ static int caps_selftest(void) {
   d3d8_caps_fill(&c, 0, D3DDEVTYPE_HAL, &hw);
 
   if (sizeof c != 212) {
-    fprintf(stderr,
-            "  FAIL: D3DCAPS8 is %d bytes; the game allocates "
-            "212\n",
-            (int)sizeof c);
+    x2_log_error("  FAIL: D3DCAPS8 is %d bytes; the game allocates "
+                 "212\n",
+                 (int)sizeof c);
     fails++;
   }
   /* DeviceType is dword 0 and MaxTextureWidth is dword 22; reading them
      positionally is what catches a field inserted in the wrong place. */
   if (raw[0] != D3DDEVTYPE_HAL) {
-    fprintf(stderr, "  FAIL: dword 0 is 0x%08x, not the device type\n", raw[0]);
+    x2_log_error("  FAIL: dword 0 is 0x%08x, not the device type\n", raw[0]);
     fails++;
   }
   if (raw[22] != hw.max_texture_dim) {
-    fprintf(stderr,
-            "  FAIL: dword 22 is 0x%08x, not MaxTextureWidth "
-            "(%u)\n",
-            raw[22], hw.max_texture_dim);
+    x2_log_error("  FAIL: dword 22 is 0x%08x, not MaxTextureWidth "
+                 "(%u)\n",
+                 raw[22], hw.max_texture_dim);
     fails++;
   }
   if (raw[49] != 0xFFFE0101u) {
-    fprintf(stderr,
-            "  FAIL: dword 49 is 0x%08x, not VertexShaderVersion "
-            "1.1\n",
-            raw[49]);
+    x2_log_error("  FAIL: dword 49 is 0x%08x, not VertexShaderVersion "
+                 "1.1\n",
+                 raw[49]);
     fails++;
   }
   /* Nothing may be left as the 0xAA fill: a field the filler forgot is a
@@ -98,14 +82,13 @@ static int caps_selftest(void) {
       if (raw[i] == 0xAAAAAAAAu)
         untouched++;
     if (untouched) {
-      fprintf(stderr,
-              "  FAIL: %d caps dword(s) were never written by "
-              "d3d8_caps_fill\n",
-              untouched);
+      x2_log_error("  FAIL: %d caps dword(s) were never written by "
+                   "d3d8_caps_fill\n",
+                   untouched);
       fails++;
     }
   }
-  printf("d3d8: caps self-test %s\n", fails ? "FAILED" : "passed");
+  x2_log_info("d3d8: caps self-test %s\n", fails ? "FAILED" : "passed");
   return fails;
 }
 
@@ -133,13 +116,13 @@ static uint32_t call_method(D3D8Object *o, int slot, const uint32_t *args,
   if (!stack)
     stack = guest_malloc(4096) + 2048;
   cpu_reset(&C);
-  C.esp = stack - (uint32_t)(nargs + 2) * 4u;
-  WR32(C.esp, 0xD3D80000u);               /* return address */
-  WR32(C.esp + 4u, d3d8_object_guest(o)); /* this */
+  C.reg[kX86pEsp] = stack - (uint32_t)(nargs + 2) * 4u;
+  WR32(C.reg[kX86pEsp], 0xD3D80000u);               /* return address */
+  WR32(C.reg[kX86pEsp] + 4u, d3d8_object_guest(o)); /* this */
   for (i = 0; i < nargs; i++)
-    WR32(C.esp + 8u + (uint32_t)i * 4u, args[i]);
+    WR32(C.reg[kX86pEsp] + 8u + (uint32_t)i * 4u, args[i]);
   x86_dispatch(&C, RD32(vt + (uint32_t)slot * 4u));
-  return C.eax;
+  return C.reg[kX86pEax];
 }
 
 #define TW 64
@@ -167,15 +150,15 @@ static int d3d8_draw_selftest(void) {
   uint32_t args[3], locked = 0;
   int fails = 0;
 
-  printf("\n=== d3d8 draw selftest: through the COM vtables ===\n");
+  x2_log_info("\n=== d3d8 draw selftest: through the COM vtables ===\n");
   if (!gpu_device_create()) {
-    printf("d3d8 draw selftest: FAILED -- no GPU device.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- no GPU device.\n");
     return 1;
   }
   d3d8_resource_install();
   vb = d3d8_vertexbuffer_new(sizeof tri, 0, 0x0044u /* XYZRHW|DIFFUSE */, 0);
   if (!vb) {
-    printf("d3d8 draw selftest: FAILED -- no vertex buffer.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- no vertex buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -189,7 +172,7 @@ static int d3d8_draw_selftest(void) {
   call_method(vb, 11, args, 4);
   locked = RD32(args[2]);
   if (!locked) {
-    printf("d3d8 draw selftest: FAILED -- Lock returned no pointer.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- Lock returned no pointer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -216,31 +199,31 @@ static int d3d8_draw_selftest(void) {
   req.primitive_type = 4; /* D3DPT_TRIANGLELIST */
   req.primitive_count = 1;
   if (!d3d8_build_draw(&st, &req, &gd)) {
-    printf("d3d8 draw selftest: FAILED -- the draw could not be built "
-           "from the device state.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- the draw could not be built "
+                "from the device state.\n");
     gpu_device_destroy();
     return 1;
   }
   if (!gd.pretransformed || gd.color_offset != 16 || gd.pos_offset != 0) {
-    printf("d3d8 draw selftest: FAILED -- FVF 0x0044 decoded to "
-           "pos=%d colour=%d pretransformed=%d; expected 0, 16, 1.\n",
-           gd.pos_offset, gd.color_offset, gd.pretransformed);
+    x2_log_info("d3d8 draw selftest: FAILED -- FVF 0x0044 decoded to "
+                "pos=%d colour=%d pretransformed=%d; expected 0, 16, 1.\n",
+                gd.pos_offset, gd.color_offset, gd.pretransformed);
     fails++;
   }
   if (!gpu_offscreen_begin(TW, TH, 0.0f, 1.0f, 0.0f, 1.0f)) {
-    printf("d3d8 draw selftest: FAILED -- no off-screen target.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- no off-screen target.\n");
     gpu_device_destroy();
     return 1;
   }
   if (!gpu_draw(&gd)) {
-    printf("d3d8 draw selftest: FAILED -- the draw was refused.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- the draw was refused.\n");
     gpu_offscreen_end();
     gpu_device_destroy();
     return 1;
   }
   if (!gpu_offscreen_read(img, sizeof img)) {
-    printf("d3d8 draw selftest: FAILED -- nothing could be read back, so "
-           "nothing about the pixels is known.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- nothing could be read back, so "
+                "nothing about the pixels is known.\n");
     gpu_offscreen_end();
     gpu_device_destroy();
     return 1;
@@ -262,8 +245,8 @@ static int d3d8_draw_selftest(void) {
     locked = RD32(args[2]);
   }
   if (!locked) {
-    printf("d3d8 draw selftest: FAILED -- model-space cull control could "
-           "not be populated.\n");
+    x2_log_info("d3d8 draw selftest: FAILED -- model-space cull control could "
+                "not be populated.\n");
     fails++;
   } else {
     memcpy(guest_memory_pointer(locked), model_tri, sizeof model_tri);
@@ -282,22 +265,23 @@ static int d3d8_draw_selftest(void) {
     if (!gpu_offscreen_begin(TW, TH, 0.0f, 1.0f, 0.0f, 1.0f) ||
         !d3d8_build_draw(&st, &req, &gd) || !gpu_draw(&gd) ||
         !gpu_offscreen_read(img, sizeof img)) {
-      printf("d3d8 draw selftest: FAILED -- model-space D3DCULL_CW "
-             "control did not execute.\n");
+      x2_log_info("d3d8 draw selftest: FAILED -- model-space D3DCULL_CW "
+                  "control did not execute.\n");
       fails++;
     } else if (img[(TH / 2) * TW + TW / 2] != 0xFFFF0000u) {
-      printf("d3d8 draw selftest: FAILED -- model-space D3DCULL_CW "
-             "removed the front face (centre 0x%08x).\n",
-             img[(TH / 2) * TW + TW / 2]);
+      x2_log_info("d3d8 draw selftest: FAILED -- model-space D3DCULL_CW "
+                  "removed the front face (centre 0x%08x).\n",
+                  img[(TH / 2) * TW + TW / 2]);
       fails++;
     }
     gpu_offscreen_end();
   }
   gpu_device_destroy();
-  printf("d3d8 draw selftest: %s\n",
-         fails ? "FAILED"
-               : "PASSED -- a vertex buffer locked and filled through the COM "
-                 "vtables was rasterised");
+  x2_log_info(
+      "d3d8 draw selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- a vertex buffer locked and filled through the COM "
+              "vtables was rasterised");
   return fails;
 }
 
@@ -336,16 +320,17 @@ static int depth_selftest(void) {
   uint32_t args[3], locked, centre;
   int fails = 0, i;
 
-  printf("\n=== d3d8 depth selftest: the far draw must NOT win ===\n");
+  x2_log_info("\n=== d3d8 depth selftest: the far draw must NOT win ===\n");
   if (!gpu_device_create()) {
-    printf("d3d8 depth selftest: FAILED -- no GPU device, so NOTHING about "
-           "the depth test was checked.\n");
+    x2_log_info(
+        "d3d8 depth selftest: FAILED -- no GPU device, so NOTHING about "
+        "the depth test was checked.\n");
     return 1;
   }
   d3d8_resource_install();
   vb = d3d8_vertexbuffer_new(sizeof quad, 0, 0x0044u, 0);
   if (!vb) {
-    printf("d3d8 depth selftest: FAILED -- no vertex buffer.\n");
+    x2_log_info("d3d8 depth selftest: FAILED -- no vertex buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -375,7 +360,7 @@ static int depth_selftest(void) {
   call_method(vb, 11, args, 4);
   locked = RD32(args[2]);
   if (!locked) {
-    printf("d3d8 depth selftest: FAILED -- Lock returned no pointer.\n");
+    x2_log_info("d3d8 depth selftest: FAILED -- Lock returned no pointer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -395,7 +380,7 @@ static int depth_selftest(void) {
   d3d8_state_set_render(&st, 22, 1);
 
   if (!gpu_offscreen_begin(TW, TH, 0.0f, 1.0f, 0.0f, 1.0f)) {
-    printf("d3d8 depth selftest: FAILED -- no off-screen target.\n");
+    x2_log_info("d3d8 depth selftest: FAILED -- no off-screen target.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -408,22 +393,22 @@ static int depth_selftest(void) {
     req.primitive_count = 2;
     req.first_vertex = (uint32_t)(i * 6);
     if (!d3d8_build_draw(&st, &req, &gd) || !gpu_draw(&gd)) {
-      printf("d3d8 depth selftest: FAILED -- pass %d was refused, so "
-             "the comparison never happened.\n",
-             i);
+      x2_log_info("d3d8 depth selftest: FAILED -- pass %d was refused, so "
+                  "the comparison never happened.\n",
+                  i);
       gpu_offscreen_end();
       gpu_device_destroy();
       return fails + 1;
     }
     if (!gd.depth_test || !gd.depth_write) {
-      printf("d3d8 depth selftest: FAILED -- the state said ZENABLE and "
-             "ZWRITEENABLE and the draw came out with test=%d write=%d.\n",
-             gd.depth_test, gd.depth_write);
+      x2_log_info("d3d8 depth selftest: FAILED -- the state said ZENABLE and "
+                  "ZWRITEENABLE and the draw came out with test=%d write=%d.\n",
+                  gd.depth_test, gd.depth_write);
       fails++;
     }
   }
   if (!gpu_offscreen_read(img, sizeof img)) {
-    printf("d3d8 depth selftest: FAILED -- nothing could be read back.\n");
+    x2_log_info("d3d8 depth selftest: FAILED -- nothing could be read back.\n");
     gpu_offscreen_end();
     gpu_device_destroy();
     return fails + 1;
@@ -432,23 +417,23 @@ static int depth_selftest(void) {
 
   centre = img[(TH / 2) * TW + TW / 2];
   if (centre == 0xFF0000FFu) {
-    printf("d3d8 depth selftest: FAILED -- the centre is BLUE, so the far "
-           "quad drawn second covered the near one. There is no working "
-           "depth test, and every scene will paint back to front by "
-           "submission order.\n");
+    x2_log_info("d3d8 depth selftest: FAILED -- the centre is BLUE, so the far "
+                "quad drawn second covered the near one. There is no working "
+                "depth test, and every scene will paint back to front by "
+                "submission order.\n");
     fails++;
   } else if (centre != 0xFFFF0000u) {
-    printf("d3d8 depth selftest: FAILED -- the centre is 0x%08x, neither "
-           "the near red quad (0xffff0000) nor the far blue one.\n",
-           centre);
+    x2_log_info("d3d8 depth selftest: FAILED -- the centre is 0x%08x, neither "
+                "the near red quad (0xffff0000) nor the far blue one.\n",
+                centre);
     fails++;
   }
 
   gpu_device_destroy();
-  printf("d3d8 depth selftest: %s\n",
-         fails
-             ? "FAILED"
-             : "PASSED -- a far quad drawn AFTER a near one does not cover it");
+  x2_log_info(
+      "d3d8 depth selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- a far quad drawn AFTER a near one does not cover it");
   return fails;
 }
 
@@ -468,8 +453,8 @@ static int multistage_counter_selftest(void) {
   unsigned long before, after;
   int most_before, most_after, fails = 0;
 
-  printf("\n=== d3d8 multi-stage counter selftest: it must be able to "
-         "count ===\n");
+  x2_log_info("\n=== d3d8 multi-stage counter selftest: it must be able to "
+              "count ===\n");
   d3d8_state_reset(&st);
   st.vertex_shader = 0x0044u;
   st.stream[0].guest_ptr = 0; /* refused before the count? */
@@ -489,13 +474,13 @@ static int multistage_counter_selftest(void) {
   d3d8_drawcall_multistage(&after, &most_after);
 
   if (after != before + 1 || most_after < 1) {
-    printf("d3d8 multi-stage counter selftest: FAILED -- a draw with "
-           "stage 1 enabled moved the count from %lu to %lu (max extra "
-           "%d). The zero this reports on the game would mean nothing.\n",
-           before, after, most_after);
+    x2_log_info("d3d8 multi-stage counter selftest: FAILED -- a draw with "
+                "stage 1 enabled moved the count from %lu to %lu (max extra "
+                "%d). The zero this reports on the game would mean nothing.\n",
+                before, after, most_after);
     fails++;
   }
-  printf(
+  x2_log_info(
       "d3d8 multi-stage counter selftest: %s\n",
       fails ? "FAILED"
             : "PASSED -- the counter moves when a draw enables stage 1, so its "
@@ -539,17 +524,17 @@ static int fan_selftest(void) {
   static const int PX[4] = {4, TW - 5, 4, TW - 5};
   static const int PY[4] = {4, 4, TH - 5, TH - 5};
 
-  printf("\n=== d3d8 TRIANGLEFAN selftest: all four corners, not just one "
-         "triangle's worth ===\n");
+  x2_log_info("\n=== d3d8 TRIANGLEFAN selftest: all four corners, not just one "
+              "triangle's worth ===\n");
   if (!gpu_device_create()) {
-    printf("d3d8 fan selftest: FAILED -- no GPU device, so NOTHING about "
-           "the fan expansion was checked.\n");
+    x2_log_info("d3d8 fan selftest: FAILED -- no GPU device, so NOTHING about "
+                "the fan expansion was checked.\n");
     return 1;
   }
   d3d8_resource_install();
   vb = d3d8_vertexbuffer_new(sizeof fan, 0, 0x0044u, 0);
   if (!vb) {
-    printf("d3d8 fan selftest: FAILED -- no vertex buffer.\n");
+    x2_log_info("d3d8 fan selftest: FAILED -- no vertex buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -567,7 +552,7 @@ static int fan_selftest(void) {
   call_method(vb, 11, args, 4);
   locked = RD32(args[2]);
   if (!locked) {
-    printf("d3d8 fan selftest: FAILED -- Lock returned no pointer.\n");
+    x2_log_info("d3d8 fan selftest: FAILED -- Lock returned no pointer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -583,7 +568,7 @@ static int fan_selftest(void) {
   for (i = 0; i < 2; i++) { /* 0: fan, 1: the control */
     int k, covered = 0;
     if (!gpu_offscreen_begin(TW, TH, 0.0f, 0.0f, 1.0f, 1.0f)) {
-      printf("d3d8 fan selftest: FAILED -- no off-screen target.\n");
+      x2_log_info("d3d8 fan selftest: FAILED -- no off-screen target.\n");
       gpu_device_destroy();
       return fails + 1;
     }
@@ -594,22 +579,22 @@ static int fan_selftest(void) {
     req.primitive_type = i ? 4u : 6u; /* TRIANGLELIST : TRIANGLEFAN */
     req.primitive_count = i ? 2u : 4u;
     if (!d3d8_build_draw(&st, &req, &gd) || !gpu_draw(&gd)) {
-      printf("d3d8 fan selftest: FAILED -- the %s draw was refused, so "
-             "nothing was compared.\n",
-             i ? "control" : "fan");
+      x2_log_info("d3d8 fan selftest: FAILED -- the %s draw was refused, so "
+                  "nothing was compared.\n",
+                  i ? "control" : "fan");
       gpu_offscreen_end();
       gpu_device_destroy();
       return fails + 1;
     }
     if (!i && gd.prim != GPU_PRIM_TRIANGLELIST) {
-      printf("d3d8 fan selftest: FAILED -- the fan did not come out as "
-             "a triangle list (prim %d).\n",
-             (int)gd.prim);
+      x2_log_info("d3d8 fan selftest: FAILED -- the fan did not come out as "
+                  "a triangle list (prim %d).\n",
+                  (int)gd.prim);
       fails++;
     }
     if (!gpu_offscreen_read(img, sizeof img)) {
-      printf("d3d8 fan selftest: FAILED -- nothing could be read "
-             "back.\n");
+      x2_log_info("d3d8 fan selftest: FAILED -- nothing could be read "
+                  "back.\n");
       gpu_offscreen_end();
       gpu_device_destroy();
       return fails + 1;
@@ -619,31 +604,31 @@ static int fan_selftest(void) {
       if (img[PY[k] * TW + PX[k]] == 0xFFFF0000u)
         covered++;
     if (!i && covered != 4) {
-      printf("d3d8 fan selftest: FAILED -- %d of 4 corners are red. A "
-             "fan of four triangles covers the whole target; a partial "
-             "expansion covers a wedge of it, which reads as a "
-             "modelling bug rather than a missing primitive.\n",
-             covered);
+      x2_log_info("d3d8 fan selftest: FAILED -- %d of 4 corners are red. A "
+                  "fan of four triangles covers the whole target; a partial "
+                  "expansion covers a wedge of it, which reads as a "
+                  "modelling bug rather than a missing primitive.\n",
+                  covered);
       for (k = 0; k < 4; k++)
-        printf("    corner (%d,%d) = 0x%08x\n", PX[k], PY[k],
-               img[PY[k] * TW + PX[k]]);
+        x2_log_info("    corner (%d,%d) = 0x%08x\n", PX[k], PY[k],
+                    img[PY[k] * TW + PX[k]]);
       fails++;
     }
     if (i && covered == 4) {
-      printf("d3d8 fan selftest: FAILED -- the CONTROL (the same six "
-             "vertices as a triangle list) also covers all four "
-             "corners, so covering them proves nothing about the fan "
-             "expansion.\n");
+      x2_log_info("d3d8 fan selftest: FAILED -- the CONTROL (the same six "
+                  "vertices as a triangle list) also covers all four "
+                  "corners, so covering them proves nothing about the fan "
+                  "expansion.\n");
       fails++;
     }
   }
 
   gpu_device_destroy();
-  printf("d3d8 fan selftest: %s\n",
-         fails
-             ? "FAILED"
-             : "PASSED -- a four-triangle fan covers all four corners and the "
-               "same vertices as a list do not");
+  x2_log_info(
+      "d3d8 fan selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- a four-triangle fan covers all four corners and the "
+              "same vertices as a list do not");
   return fails;
 }
 
@@ -675,16 +660,16 @@ static int lighting_selftest(void) {
   uint32_t args[3], locked, centre[2];
   int fails = 0, pass, i;
 
-  printf("\n=== d3d8 lighting selftest: N.L, both ways ===\n");
+  x2_log_info("\n=== d3d8 lighting selftest: N.L, both ways ===\n");
   if (!gpu_device_create()) {
-    printf("d3d8 lighting selftest: FAILED -- no GPU device, so NOTHING "
-           "about lighting was checked.\n");
+    x2_log_info("d3d8 lighting selftest: FAILED -- no GPU device, so NOTHING "
+                "about lighting was checked.\n");
     return 1;
   }
   d3d8_resource_install();
   vb = d3d8_vertexbuffer_new(sizeof quad, 0, 0x0012u /* XYZ|NORMAL */, 0);
   if (!vb) {
-    printf("d3d8 lighting selftest: FAILED -- no vertex buffer.\n");
+    x2_log_info("d3d8 lighting selftest: FAILED -- no vertex buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -727,7 +712,7 @@ static int lighting_selftest(void) {
     call_method(vb, 11, args, 4);
     locked = RD32(args[2]);
     if (!locked) {
-      printf("d3d8 lighting selftest: FAILED -- Lock returned nothing.\n");
+      x2_log_info("d3d8 lighting selftest: FAILED -- Lock returned nothing.\n");
       gpu_device_destroy();
       return fails + 1;
     }
@@ -741,23 +726,23 @@ static int lighting_selftest(void) {
     req.primitive_type = 4;
     req.primitive_count = 2;
     if (!d3d8_build_draw(&st, &req, &gd)) {
-      printf("d3d8 lighting selftest: FAILED -- the draw could not be "
-             "built.\n");
+      x2_log_info("d3d8 lighting selftest: FAILED -- the draw could not be "
+                  "built.\n");
       gpu_device_destroy();
       return fails + 1;
     }
     if (pass == 0) {
       if (gd.normal_offset != 12) {
-        printf("d3d8 lighting selftest: FAILED -- XYZ|NORMAL decoded "
-               "the normal at %d, not 12.\n",
-               gd.normal_offset);
+        x2_log_info("d3d8 lighting selftest: FAILED -- XYZ|NORMAL decoded "
+                    "the normal at %d, not 12.\n",
+                    gd.normal_offset);
         fails++;
       }
       if (!gd.lighting || gd.nlights != 1) {
-        printf("d3d8 lighting selftest: FAILED -- the state said "
-               "LIGHTING with one light enabled and the draw came out "
-               "lighting=%d nlights=%d.\n",
-               gd.lighting, gd.nlights);
+        x2_log_info("d3d8 lighting selftest: FAILED -- the state said "
+                    "LIGHTING with one light enabled and the draw came out "
+                    "lighting=%d nlights=%d.\n",
+                    gd.lighting, gd.nlights);
         fails++;
       }
     }
@@ -765,9 +750,9 @@ static int lighting_selftest(void) {
        unlit black the second pass expects. */
     if (!gpu_offscreen_begin(TW, TH, 0.0f, 0.0f, 1.0f, 1.0f) ||
         !gpu_draw(&gd) || !gpu_offscreen_read(img, sizeof img)) {
-      printf("d3d8 lighting selftest: FAILED -- pass %d did not "
-             "rasterise.\n",
-             pass);
+      x2_log_info("d3d8 lighting selftest: FAILED -- pass %d did not "
+                  "rasterise.\n",
+                  pass);
       gpu_offscreen_end();
       gpu_device_destroy();
       return fails + 1;
@@ -777,27 +762,28 @@ static int lighting_selftest(void) {
   }
 
   if (centre[0] != 0xFFFF0000u) {
-    printf("d3d8 lighting selftest: FAILED -- a quad facing a white "
-           "directional light with a red diffuse material came back "
-           "0x%08x, not 0xffff0000.\n",
-           centre[0]);
+    x2_log_info("d3d8 lighting selftest: FAILED -- a quad facing a white "
+                "directional light with a red diffuse material came back "
+                "0x%08x, not 0xffff0000.\n",
+                centre[0]);
     fails++;
   }
   if (centre[1] != 0xFF000000u) {
-    printf("d3d8 lighting selftest: FAILED -- the SAME quad with its "
-           "normal reversed came back 0x%08x, not black. %s\n",
-           centre[1],
-           centre[1] == 0xFF0000FFu
-               ? "That is the clear colour: nothing was drawn at all."
-               : "N.L is not being applied.");
+    x2_log_info("d3d8 lighting selftest: FAILED -- the SAME quad with its "
+                "normal reversed came back 0x%08x, not black. %s\n",
+                centre[1],
+                centre[1] == 0xFF0000FFu
+                    ? "That is the clear colour: nothing was drawn at all."
+                    : "N.L is not being applied.");
     fails++;
   }
 
   gpu_device_destroy();
-  printf("d3d8 lighting selftest: %s\n",
-         fails ? "FAILED"
-               : "PASSED -- lit toward the light, black away from it, from the "
-                 "same vertices");
+  x2_log_info(
+      "d3d8 lighting selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- lit toward the light, black away from it, from the "
+              "same vertices");
   return fails;
 }
 
@@ -822,11 +808,12 @@ static int pixel_shader_selftest(void) {
   uint32_t args[1], out, hr;
   int fails = 0;
 
-  printf("\n=== d3d8 pixel-shader selftest: through the device vtable ===\n");
+  x2_log_info(
+      "\n=== d3d8 pixel-shader selftest: through the device vtable ===\n");
   d3d8_device_install();
   dev = d3d8_object_new(D3D8_IF_IDirect3DDevice8, NULL);
   if (!dev) {
-    printf("d3d8 ps selftest: FAILED -- no device object.\n");
+    x2_log_info("d3d8 ps selftest: FAILED -- no device object.\n");
     return 1;
   }
   out = guest_malloc(4);
@@ -834,10 +821,10 @@ static int pixel_shader_selftest(void) {
   args[0] = 0;
   hr = call_method(dev, 88, args, 1); /* SetPixelShader(0) */
   if (hr != D3D_OK) {
-    printf("d3d8 ps selftest: FAILED -- SetPixelShader(0) returned "
-           "0x%08x, not D3D_OK. Handle 0 IS the fixed-function "
-           "pipeline.\n",
-           hr);
+    x2_log_info("d3d8 ps selftest: FAILED -- SetPixelShader(0) returned "
+                "0x%08x, not D3D_OK. Handle 0 IS the fixed-function "
+                "pipeline.\n",
+                hr);
     fails++;
   }
 
@@ -845,20 +832,20 @@ static int pixel_shader_selftest(void) {
   args[0] = out;
   hr = call_method(dev, 89, args, 1); /* GetPixelShader */
   if (hr != D3D_OK || RD32(out) != 0) {
-    printf("d3d8 ps selftest: FAILED -- GetPixelShader returned 0x%08x "
-           "and wrote 0x%08x; expected D3D_OK and 0.\n",
-           hr, RD32(out));
+    x2_log_info("d3d8 ps selftest: FAILED -- GetPixelShader returned 0x%08x "
+                "and wrote 0x%08x; expected D3D_OK and 0.\n",
+                hr, RD32(out));
     fails++;
   }
 
   args[0] = 0xDEADBEEFu;
   hr = call_method(dev, 88, args, 1); /* a handle nobody made */
   if (hr != D3DERR_INVALIDCALL) {
-    printf("d3d8 ps selftest: FAILED -- SetPixelShader(0xdeadbeef) "
-           "returned 0x%08x. A handle this host never created must be "
-           "REFUSED, or the fixed-function path would draw in place of a "
-           "shader nobody would see was missing.\n",
-           hr);
+    x2_log_info("d3d8 ps selftest: FAILED -- SetPixelShader(0xdeadbeef) "
+                "returned 0x%08x. A handle this host never created must be "
+                "REFUSED, or the fixed-function path would draw in place of a "
+                "shader nobody would see was missing.\n",
+                hr);
     fails++;
   }
 
@@ -866,26 +853,26 @@ static int pixel_shader_selftest(void) {
   args[0] = out;
   call_method(dev, 89, args, 1);
   if (RD32(out) != 0) {
-    printf("d3d8 ps selftest: FAILED -- the refused handle 0x%08x was "
-           "recorded anyway.\n",
-           RD32(out));
+    x2_log_info("d3d8 ps selftest: FAILED -- the refused handle 0x%08x was "
+                "recorded anyway.\n",
+                RD32(out));
     fails++;
   }
 
   args[0] = 0;
   hr = call_method(dev, 89, args, 1); /* GetPixelShader(NULL) */
   if (hr != D3DERR_INVALIDCALL) {
-    printf("d3d8 ps selftest: FAILED -- GetPixelShader(NULL) returned "
-           "0x%08x, not D3DERR_INVALIDCALL.\n",
-           hr);
+    x2_log_info("d3d8 ps selftest: FAILED -- GetPixelShader(NULL) returned "
+                "0x%08x, not D3DERR_INVALIDCALL.\n",
+                hr);
     fails++;
   }
 
-  printf("d3d8 ps selftest: %s\n",
-         fails
-             ? "FAILED"
-             : "PASSED -- handle 0 selects the fixed-function pipeline, and a "
-               "handle this host never created is refused");
+  x2_log_info(
+      "d3d8 ps selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- handle 0 selects the fixed-function pipeline, and a "
+              "handle this host never created is refused");
   return fails;
 }
 
@@ -921,7 +908,7 @@ static int gamma_selftest(void) {
   uint32_t args[2], ramp, back;
   int fails = 0, i;
 
-  printf("\n=== d3d8 gamma selftest: through the device vtable ===\n");
+  x2_log_info("\n=== d3d8 gamma selftest: through the device vtable ===\n");
   d3d8_device_install();
   dev = d3d8_object_new(D3D8_IF_IDirect3DDevice8, NULL);
   ramp = guest_malloc(3 * 256 * 2);
@@ -932,9 +919,9 @@ static int gamma_selftest(void) {
   args[1] = ramp;
   call_method(dev, 18, args, 2); /* SetGammaRamp */
   if (d3d8_device_gamma_curved()) {
-    printf("d3d8 gamma selftest: FAILED -- an IDENTITY ramp was reported "
-           "as curved, so the warning fires on every run and means "
-           "nothing.\n");
+    x2_log_info("d3d8 gamma selftest: FAILED -- an IDENTITY ramp was reported "
+                "as curved, so the warning fires on every run and means "
+                "nothing.\n");
     fails++;
   }
 
@@ -943,9 +930,10 @@ static int gamma_selftest(void) {
   call_method(dev, 19, args, 1); /* GetGammaRamp */
   for (i = 0; i < 3 * 256; i++)
     if (RD16(back + (uint32_t)i * 2u) != RD16(ramp + (uint32_t)i * 2u)) {
-      printf("d3d8 gamma selftest: FAILED -- entry %d came back as "
-             "0x%04x, not 0x%04x.\n",
-             i, RD16(back + (uint32_t)i * 2u), RD16(ramp + (uint32_t)i * 2u));
+      x2_log_info("d3d8 gamma selftest: FAILED -- entry %d came back as "
+                  "0x%04x, not 0x%04x.\n",
+                  i, RD16(back + (uint32_t)i * 2u),
+                  RD16(ramp + (uint32_t)i * 2u));
       fails++;
       break;
     }
@@ -955,16 +943,16 @@ static int gamma_selftest(void) {
   args[1] = ramp;
   call_method(dev, 18, args, 2);
   if (!d3d8_device_gamma_curved()) {
-    printf("d3d8 gamma selftest: FAILED -- a ramp with a bent entry was "
-           "called identity. Then a game that darkens the screen through "
-           "gamma would do it silently and nothing would say so.\n");
+    x2_log_info("d3d8 gamma selftest: FAILED -- a ramp with a bent entry was "
+                "called identity. Then a game that darkens the screen through "
+                "gamma would do it silently and nothing would say so.\n");
     fails++;
   }
 
   args[0] = 0;
   args[1] = 0;
   call_method(dev, 18, args, 2); /* a NULL ramp */
-  printf(
+  x2_log_info(
       "d3d8 gamma selftest: %s\n",
       fails ? "FAILED"
             : "PASSED -- the ramp round-trips, and identity is told apart from "
@@ -993,7 +981,8 @@ static int getdirect3d_selftest(void) {
   uint32_t args[1], out, hr, before;
   int fails = 0;
 
-  printf("\n=== d3d8 GetDirect3D selftest: through the device vtable ===\n");
+  x2_log_info(
+      "\n=== d3d8 GetDirect3D selftest: through the device vtable ===\n");
   d3d8_device_install();
   dev = d3d8_object_new(D3D8_IF_IDirect3DDevice8, NULL);
   out = guest_malloc(4);
@@ -1004,10 +993,10 @@ static int getdirect3d_selftest(void) {
   hr = call_method(dev, 6, args, 1);
   if (d3d8_the_direct3d8() == 0) {
     if (hr != D3DERR_INVALIDCALL || RD32(out) != 0) {
-      printf("d3d8 GetDirect3D selftest: FAILED -- with no IDirect3D8 in "
-             "existence it returned 0x%08x and wrote 0x%08x; expected "
-             "INVALIDCALL and a NULL out-pointer.\n",
-             hr, RD32(out));
+      x2_log_info("d3d8 GetDirect3D selftest: FAILED -- with no IDirect3D8 in "
+                  "existence it returned 0x%08x and wrote 0x%08x; expected "
+                  "INVALIDCALL and a NULL out-pointer.\n",
+                  hr, RD32(out));
       fails++;
     }
   }
@@ -1020,20 +1009,21 @@ static int getdirect3d_selftest(void) {
   args[0] = out;
   hr = call_method(dev, 6, args, 1);
   if (hr != D3D_OK || RD32(out) != d3d8_the_direct3d8()) {
-    printf("d3d8 GetDirect3D selftest: FAILED -- returned 0x%08x and wrote "
-           "0x%08x; expected D3D_OK and the IDirect3D8 at 0x%08x.\n",
-           hr, RD32(out), d3d8_the_direct3d8());
+    x2_log_info(
+        "d3d8 GetDirect3D selftest: FAILED -- returned 0x%08x and wrote "
+        "0x%08x; expected D3D_OK and the IDirect3D8 at 0x%08x.\n",
+        hr, RD32(out), d3d8_the_direct3d8());
     fails++;
   }
   if (d3d8_the_direct3d8_refs() <= before) {
-    printf("d3d8 GetDirect3D selftest: FAILED -- the reference count did "
-           "not rise (%u then %u). The engine will Release what it was "
-           "given, and an unbalanced count makes teardown fail with "
-           "nothing to explain it.\n",
-           before, d3d8_the_direct3d8_refs());
+    x2_log_info("d3d8 GetDirect3D selftest: FAILED -- the reference count did "
+                "not rise (%u then %u). The engine will Release what it was "
+                "given, and an unbalanced count makes teardown fail with "
+                "nothing to explain it.\n",
+                before, d3d8_the_direct3d8_refs());
     fails++;
   }
-  printf(
+  x2_log_info(
       "d3d8 GetDirect3D selftest: %s\n",
       fails ? "FAILED"
             : "PASSED -- the IDirect3D8 is handed back with a reference of its "
@@ -1069,17 +1059,18 @@ static int texture_level_selftest(void) {
   unsigned long uploads;
   int fails = 0;
 
-  printf("\n=== d3d8 texture-level selftest: through the texture vtable ===\n");
+  x2_log_info(
+      "\n=== d3d8 texture-level selftest: through the texture vtable ===\n");
   if (!gpu_device_create()) {
-    printf("d3d8 texlevel selftest: FAILED -- no GPU device, so NOTHING "
-           "about GetSurfaceLevel was checked.\n");
+    x2_log_info("d3d8 texlevel selftest: FAILED -- no GPU device, so NOTHING "
+                "about GetSurfaceLevel was checked.\n");
     return 1;
   }
   d3d8_resource_install();
   d3d8_surface_install();
   tex = d3d8_texture_new(64, 32, 3, 0, D3DFMT_A8R8G8B8, 0);
   if (!tex) {
-    printf("d3d8 texlevel selftest: FAILED -- no texture.\n");
+    x2_log_info("d3d8 texlevel selftest: FAILED -- no texture.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -1096,26 +1087,27 @@ static int texture_level_selftest(void) {
   hr = call_method(tex, 15, args, 2);
   g0 = RD32(out);
   if (hr != D3D_OK || !g0 || !d3d8_object_from_guest(g0)) {
-    printf("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel(0) returned "
-           "0x%08x and wrote 0x%08x, which is not a COM object of this "
-           "host's.\n",
-           hr, g0);
+    x2_log_info("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel(0) returned "
+                "0x%08x and wrote 0x%08x, which is not a COM object of this "
+                "host's.\n",
+                hr, g0);
     gpu_device_destroy();
     return fails + 1;
   }
   s0 = d3d8_object_from_guest(g0);
   if (d3d8_object_iface(s0) != D3D8_IF_IDirect3DSurface8) {
-    printf("d3d8 texlevel selftest: FAILED -- what came back is a %s, not "
-           "an IDirect3DSurface8.\n",
-           d3d8_iface_name(d3d8_object_iface(s0)));
+    x2_log_info("d3d8 texlevel selftest: FAILED -- what came back is a %s, not "
+                "an IDirect3DSurface8.\n",
+                d3d8_iface_name(d3d8_object_iface(s0)));
     fails++;
   }
   if ((uint32_t)d3d8_object_refs(tex) <= before) {
-    printf("d3d8 texlevel selftest: FAILED -- the texture's reference count "
-           "did not rise (%u then %u). The engine Releases the surface it "
-           "was given, and an unbalanced count destroys the texture early "
-           "or never.\n",
-           before, (uint32_t)d3d8_object_refs(tex));
+    x2_log_info(
+        "d3d8 texlevel selftest: FAILED -- the texture's reference count "
+        "did not rise (%u then %u). The engine Releases the surface it "
+        "was given, and an unbalanced count destroys the texture early "
+        "or never.\n",
+        before, (uint32_t)d3d8_object_refs(tex));
     fails++;
   }
 
@@ -1125,10 +1117,11 @@ static int texture_level_selftest(void) {
   call_method(tex, 15, args, 2);
   g0b = RD32(out);
   if (g0b != g0) {
-    printf("d3d8 texlevel selftest: FAILED -- asking for level 0 twice gave "
-           "0x%08x then 0x%08x. D3D8's level surfaces are persistent "
-           "children, and code that compares them would see two.\n",
-           g0, g0b);
+    x2_log_info(
+        "d3d8 texlevel selftest: FAILED -- asking for level 0 twice gave "
+        "0x%08x then 0x%08x. D3D8's level surfaces are persistent "
+        "children, and code that compares them would see two.\n",
+        g0, g0b);
     fails++;
   }
   /* and Releasing it gives the texture's count back. */
@@ -1139,9 +1132,10 @@ static int texture_level_selftest(void) {
   call_method(tex, 15, args, 2);
   g1 = RD32(out);
   if (!g1 || g1 == g0) {
-    printf("d3d8 texlevel selftest: FAILED -- level 1 came back as 0x%08x, "
-           "the same object as level 0.\n",
-           g1);
+    x2_log_info(
+        "d3d8 texlevel selftest: FAILED -- level 1 came back as 0x%08x, "
+        "the same object as level 0.\n",
+        g1);
     gpu_device_destroy();
     return fails + 1;
   }
@@ -1153,19 +1147,20 @@ static int texture_level_selftest(void) {
   args[1] = out;
   hr = call_method(tex, 15, args, 2);
   if (hr != D3DERR_INVALIDCALL || RD32(out) != 0) {
-    printf("d3d8 texlevel selftest: FAILED -- level 3 of a 3-level texture "
-           "returned 0x%08x and wrote 0x%08x; expected INVALIDCALL and a "
-           "NULL out-pointer.\n",
-           hr, RD32(out));
+    x2_log_info(
+        "d3d8 texlevel selftest: FAILED -- level 3 of a 3-level texture "
+        "returned 0x%08x and wrote 0x%08x; expected INVALIDCALL and a "
+        "NULL out-pointer.\n",
+        hr, RD32(out));
     fails++;
   }
   args[0] = 0;
   args[1] = 0;
   hr = call_method(tex, 15, args, 2);
   if (hr != D3DERR_INVALIDCALL) {
-    printf("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel with a NULL "
-           "out-pointer returned 0x%08x.\n",
-           hr);
+    x2_log_info("d3d8 texlevel selftest: FAILED -- GetSurfaceLevel with a NULL "
+                "out-pointer returned 0x%08x.\n",
+                hr);
     fails++;
   }
 
@@ -1174,21 +1169,22 @@ static int texture_level_selftest(void) {
   args[0] = desc;
   call_method(s1, 8, args, 1);
   if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 16u) {
-    printf("d3d8 texlevel selftest: FAILED -- level 1 of a 64x32 texture "
-           "describes itself as %ux%u, not 32x16.\n",
-           RD32(desc + 24u), RD32(desc + 28u));
+    x2_log_info("d3d8 texlevel selftest: FAILED -- level 1 of a 64x32 texture "
+                "describes itself as %ux%u, not 32x16.\n",
+                RD32(desc + 24u), RD32(desc + 28u));
     fails++;
   }
   if (RD32(desc + 16u) != 32u * 16u * 4u) {
-    printf("d3d8 texlevel selftest: FAILED -- level 1 says it is %u bytes, "
-           "not %u.\n",
-           RD32(desc + 16u), 32u * 16u * 4u);
+    x2_log_info(
+        "d3d8 texlevel selftest: FAILED -- level 1 says it is %u bytes, "
+        "not %u.\n",
+        RD32(desc + 16u), 32u * 16u * 4u);
     fails++;
   }
   if (RD32(desc + 0u) != (uint32_t)D3DFMT_A8R8G8B8) {
-    printf("d3d8 texlevel selftest: FAILED -- level 1 reports format %u, "
-           "not the texture's.\n",
-           RD32(desc + 0u));
+    x2_log_info("d3d8 texlevel selftest: FAILED -- level 1 reports format %u, "
+                "not the texture's.\n",
+                RD32(desc + 0u));
     fails++;
   }
 
@@ -1201,9 +1197,9 @@ static int texture_level_selftest(void) {
   args[1] = 0;
   call_method(s1, 9, args, 2);
   if (RD32(lr) != 32u * 4u) {
-    printf("d3d8 texlevel selftest: FAILED -- level 1 locked with a pitch "
-           "of %u; 32 pixels of BGRA8 is %u.\n",
-           RD32(lr), 32u * 4u);
+    x2_log_info("d3d8 texlevel selftest: FAILED -- level 1 locked with a pitch "
+                "of %u; 32 pixels of BGRA8 is %u.\n",
+                RD32(lr), 32u * 4u);
     fails++;
   }
   {
@@ -1218,11 +1214,11 @@ static int texture_level_selftest(void) {
     texptr = RD32(lr + 4u);
     call_method(tex, 17, targs, 1); /* texture UnlockRect(1) */
     if (!surfptr || surfptr != texptr) {
-      printf("d3d8 texlevel selftest: FAILED -- the level 1 surface locks "
-             "at 0x%08x and the texture's own level 1 at 0x%08x. The "
-             "surface has storage of its own, so everything the engine "
-             "writes through it is lost.\n",
-             surfptr, texptr);
+      x2_log_info("d3d8 texlevel selftest: FAILED -- the level 1 surface locks "
+                  "at 0x%08x and the texture's own level 1 at 0x%08x. The "
+                  "surface has storage of its own, so everything the engine "
+                  "writes through it is lost.\n",
+                  surfptr, texptr);
       fails++;
     }
     if (surfptr) {
@@ -1235,22 +1231,24 @@ static int texture_level_selftest(void) {
   uploads = d3d8_texture_uploads(tex);
   call_method(s1, 10, NULL, 0); /* surface UnlockRect */
   if (d3d8_texture_uploads(tex) != uploads + 1u) {
-    printf("d3d8 texlevel selftest: FAILED -- unlocking the level 1 surface "
-           "uploaded nothing (%lu uploads before and after). The engine "
-           "fills textures through these surfaces, so the texture would "
-           "stay empty.\n",
-           uploads);
+    x2_log_info(
+        "d3d8 texlevel selftest: FAILED -- unlocking the level 1 surface "
+        "uploaded nothing (%lu uploads before and after). The engine "
+        "fills textures through these surfaces, so the texture would "
+        "stay empty.\n",
+        uploads);
     fails++;
   } else if (d3d8_texture_last_upload_level(tex) != 1u) {
-    printf("d3d8 texlevel selftest: FAILED -- unlocking the level 1 surface "
-           "uploaded level %u instead.\n",
-           d3d8_texture_last_upload_level(tex));
+    x2_log_info(
+        "d3d8 texlevel selftest: FAILED -- unlocking the level 1 surface "
+        "uploaded level %u instead.\n",
+        d3d8_texture_last_upload_level(tex));
     fails++;
   }
 
   (void)s0;
   gpu_device_destroy();
-  printf(
+  x2_log_info(
       "d3d8 texlevel selftest: %s\n",
       fails ? "FAILED"
             : "PASSED -- a level surface is a VIEW on the texture's own bytes, "
@@ -1277,10 +1275,10 @@ static int cube_selftest(void) {
   unsigned long uploads;
   int fails = 0;
 
-  printf("\n=== d3d8 cube selftest: six faces, through the vtable ===\n");
+  x2_log_info("\n=== d3d8 cube selftest: six faces, through the vtable ===\n");
   if (!gpu_device_create()) {
-    printf("d3d8 cube selftest: FAILED -- no GPU device, so NOTHING about "
-           "cube textures was checked.\n");
+    x2_log_info("d3d8 cube selftest: FAILED -- no GPU device, so NOTHING about "
+                "cube textures was checked.\n");
     return 1;
   }
   d3d8_resource_install();
@@ -1288,7 +1286,8 @@ static int cube_selftest(void) {
   /* 64x64, 3 levels, BGRA8: one face's chain is 64*64*4 + 32*32*4 + 16*16*4. */
   cube = d3d8_cubetexture_new(64, 3, 0, D3DFMT_A8R8G8B8, 0);
   if (!cube) {
-    printf("d3d8 cube selftest: FAILED -- CreateCubeTexture made nothing.\n");
+    x2_log_info(
+        "d3d8 cube selftest: FAILED -- CreateCubeTexture made nothing.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -1299,8 +1298,8 @@ static int cube_selftest(void) {
   lr = guest_malloc(8);
 
   if (d3d8_object_iface(cube) != D3D8_IF_IDirect3DCubeTexture8) {
-    printf("d3d8 cube selftest: FAILED -- what came back is a %s.\n",
-           d3d8_iface_name(d3d8_object_iface(cube)));
+    x2_log_info("d3d8 cube selftest: FAILED -- what came back is a %s.\n",
+                d3d8_iface_name(d3d8_object_iface(cube)));
     fails++;
   }
 
@@ -1308,9 +1307,9 @@ static int cube_selftest(void) {
      switches on it to decide how to bind. */
   hr = call_method(cube, 10, NULL, 0);
   if (hr != 5u) {
-    printf("d3d8 cube selftest: FAILED -- GetType returned %u, not 5 "
-           "(D3DRTYPE_CUBETEXTURE).\n",
-           hr);
+    x2_log_info("d3d8 cube selftest: FAILED -- GetType returned %u, not 5 "
+                "(D3DRTYPE_CUBETEXTURE).\n",
+                hr);
     fails++;
   }
 
@@ -1320,9 +1319,9 @@ static int cube_selftest(void) {
   args[1] = desc;
   call_method(cube, 14, args, 2);
   if (RD32(desc + 24u) != 32u || RD32(desc + 28u) != 32u) {
-    printf("d3d8 cube selftest: FAILED -- level 1 of a 64-cube describes "
-           "itself as %ux%u, not 32x32.\n",
-           RD32(desc + 24u), RD32(desc + 28u));
+    x2_log_info("d3d8 cube selftest: FAILED -- level 1 of a 64-cube describes "
+                "itself as %ux%u, not 32x32.\n",
+                RD32(desc + 24u), RD32(desc + 28u));
     fails++;
   }
 
@@ -1341,15 +1340,15 @@ static int cube_selftest(void) {
     hr = call_method(cube, 16, a5, 5);
     p_f4l1 = RD32(lr + 4u);
     if (hr != D3D_OK || !p_f4l1) {
-      printf("d3d8 cube selftest: FAILED -- LockRect(face 4, level 1) "
-             "returned 0x%08x and pointer 0x%08x.\n",
-             hr, p_f4l1);
+      x2_log_info("d3d8 cube selftest: FAILED -- LockRect(face 4, level 1) "
+                  "returned 0x%08x and pointer 0x%08x.\n",
+                  hr, p_f4l1);
       fails++;
     }
     if (RD32(lr) != 32u * 4u) {
-      printf("d3d8 cube selftest: FAILED -- face 4 level 1 locked with a "
-             "pitch of %u; 32 pixels of BGRA8 is %u.\n",
-             RD32(lr), 32u * 4u);
+      x2_log_info("d3d8 cube selftest: FAILED -- face 4 level 1 locked with a "
+                  "pitch of %u; 32 pixels of BGRA8 is %u.\n",
+                  RD32(lr), 32u * 4u);
       fails++;
     }
     {
@@ -1372,11 +1371,11 @@ static int cube_selftest(void) {
     }
   }
   if (p_f0l1 && p_f4l1 && p_f4l1 - p_f0l1 != 4u * face_chain) {
-    printf("d3d8 cube selftest: FAILED -- face 0 level 1 is at 0x%08x and "
-           "face 4 level 1 at 0x%08x, %d bytes apart; four face chains is "
-           "%u. The faces overlap or are mis-spaced, so writing one face "
-           "corrupts another.\n",
-           p_f0l1, p_f4l1, (int)(p_f4l1 - p_f0l1), 4u * face_chain);
+    x2_log_info("d3d8 cube selftest: FAILED -- face 0 level 1 is at 0x%08x and "
+                "face 4 level 1 at 0x%08x, %d bytes apart; four face chains is "
+                "%u. The faces overlap or are mis-spaced, so writing one face "
+                "corrupts another.\n",
+                p_f0l1, p_f4l1, (int)(p_f4l1 - p_f0l1), 4u * face_chain);
     fails++;
   }
 
@@ -1390,9 +1389,9 @@ static int cube_selftest(void) {
     a5[4] = 0;
     hr = call_method(cube, 16, a5, 5);
     if (hr != D3DERR_INVALIDCALL) {
-      printf("d3d8 cube selftest: FAILED -- LockRect on face 6 of a cube "
-             "returned 0x%08x, not INVALIDCALL.\n",
-             hr);
+      x2_log_info("d3d8 cube selftest: FAILED -- LockRect on face 6 of a cube "
+                  "returned 0x%08x, not INVALIDCALL.\n",
+                  hr);
       fails++;
     }
   }
@@ -1406,9 +1405,10 @@ static int cube_selftest(void) {
   hr = call_method(cube, 15, args, 3);
   g = RD32(out);
   if (hr != D3D_OK || !g || !d3d8_object_from_guest(g)) {
-    printf("d3d8 cube selftest: FAILED -- GetCubeMapSurface(4, 1) returned "
-           "0x%08x and wrote 0x%08x.\n",
-           hr, g);
+    x2_log_info(
+        "d3d8 cube selftest: FAILED -- GetCubeMapSurface(4, 1) returned "
+        "0x%08x and wrote 0x%08x.\n",
+        hr, g);
     gpu_device_destroy();
     return fails + 1;
   }
@@ -1423,11 +1423,12 @@ static int cube_selftest(void) {
   }
   p_surf = RD32(lr + 4u);
   if (p_surf != p_f4l1) {
-    printf("d3d8 cube selftest: FAILED -- the face 4 level 1 surface locks "
-           "at 0x%08x and the cube's own face 4 level 1 at 0x%08x. The "
-           "surface has storage of its own, so everything the engine "
-           "writes through it is lost.\n",
-           p_surf, p_f4l1);
+    x2_log_info(
+        "d3d8 cube selftest: FAILED -- the face 4 level 1 surface locks "
+        "at 0x%08x and the cube's own face 4 level 1 at 0x%08x. The "
+        "surface has storage of its own, so everything the engine "
+        "writes through it is lost.\n",
+        p_surf, p_f4l1);
     fails++;
   }
   /*
@@ -1450,17 +1451,17 @@ static int cube_selftest(void) {
     hr = call_method(s, 9, a2, 2);
     want = p_f4l1 + 4u * 32u * 4u + 8u * 4u;
     if (hr != D3D_OK || RD32(lr + 4u) != want) {
-      printf("d3d8 cube selftest: FAILED -- locking (8,4)-(16,12) of a "
-             "32x32 BGRA8 face returned 0x%08x at 0x%08x; the first "
-             "pixel inside that rectangle is at 0x%08x.\n",
-             hr, RD32(lr + 4u), want);
+      x2_log_info("d3d8 cube selftest: FAILED -- locking (8,4)-(16,12) of a "
+                  "32x32 BGRA8 face returned 0x%08x at 0x%08x; the first "
+                  "pixel inside that rectangle is at 0x%08x.\n",
+                  hr, RD32(lr + 4u), want);
       fails++;
     }
     if (RD32(lr) != 32u * 4u) {
-      printf("d3d8 cube selftest: FAILED -- a sub-rectangle lock changed "
-             "the pitch to %u; the rows are still the surface's rows, so "
-             "it is %u.\n",
-             RD32(lr), 32u * 4u);
+      x2_log_info("d3d8 cube selftest: FAILED -- a sub-rectangle lock changed "
+                  "the pitch to %u; the rows are still the surface's rows, so "
+                  "it is %u.\n",
+                  RD32(lr), 32u * 4u);
       fails++;
     }
     /* Outside the surface must be refused, not clamped. */
@@ -1470,9 +1471,9 @@ static int cube_selftest(void) {
     WR32(rc + 12u, 8);
     hr = call_method(s, 9, a2, 2);
     if (hr != D3DERR_INVALIDCALL) {
-      printf("d3d8 cube selftest: FAILED -- locking (0,0)-(64,8) of a "
-             "32x32 face returned 0x%08x, not INVALIDCALL.\n",
-             hr);
+      x2_log_info("d3d8 cube selftest: FAILED -- locking (0,0)-(64,8) of a "
+                  "32x32 face returned 0x%08x, not INVALIDCALL.\n",
+                  hr);
       fails++;
     }
   }
@@ -1480,19 +1481,19 @@ static int cube_selftest(void) {
   uploads = d3d8_texture_uploads(cube);
   call_method(s, 10, NULL, 0); /* surface UnlockRect */
   if (d3d8_texture_uploads(cube) != uploads + 1u) {
-    printf("d3d8 cube selftest: FAILED -- unlocking the face 4 level 1 "
-           "surface uploaded nothing (%lu uploads before and after).\n",
-           uploads);
+    x2_log_info("d3d8 cube selftest: FAILED -- unlocking the face 4 level 1 "
+                "surface uploaded nothing (%lu uploads before and after).\n",
+                uploads);
     fails++;
   } else if (d3d8_texture_last_upload_level(cube) != 1u) {
-    printf("d3d8 cube selftest: FAILED -- unlocking the face 4 level 1 "
-           "surface uploaded level %u instead.\n",
-           d3d8_texture_last_upload_level(cube));
+    x2_log_info("d3d8 cube selftest: FAILED -- unlocking the face 4 level 1 "
+                "surface uploaded level %u instead.\n",
+                d3d8_texture_last_upload_level(cube));
     fails++;
   }
 
   gpu_device_destroy();
-  printf(
+  x2_log_info(
       "d3d8 cube selftest: %s\n",
       fails ? "FAILED"
             : "PASSED -- six faces with separate storage, each addressable "
@@ -1523,8 +1524,7 @@ int d3d8_host_selftest(void) {
   fails += fan_selftest();
   fails += multistage_counter_selftest();
   fails += lighting_selftest();
-  printf("d3d8: SELF-TEST %s -- %d failure(s)\n", fails ? "FAILED" : "PASSED",
-         fails);
-  fflush(stdout);
+  x2_log_info("d3d8: SELF-TEST %s -- %d failure(s)\n",
+              fails ? "FAILED" : "PASSED", fails);
   return fails;
 }

@@ -1,4 +1,5 @@
 #include "settings_store.h"
+#include "../native/x2_log.h"
 
 #include "shell32.h"
 
@@ -18,25 +19,24 @@ void x2_settings_store_init(void) {
   x2_settings_defaults(&g_settings);
   dir = x2_save_dir();
   if (!dir || !dir[0]) {
-    fprintf(stderr, "SETTINGS: save directory is unavailable; defaults "
-                    "are active but changes cannot be persisted.\n");
+    x2_log_error("SETTINGS: save directory is unavailable; defaults "
+                 "are active but changes cannot be persisted.\n");
     return;
   }
   if (snprintf(g_path, sizeof g_path, "%s/x2native.conf", dir) >=
       (int)sizeof g_path) {
     g_path[0] = 0;
-    fprintf(stderr, "SETTINGS: save directory path is too long; defaults "
-                    "are active but changes cannot be persisted.\n");
+    x2_log_error("SETTINGS: save directory path is too long; defaults "
+                 "are active but changes cannot be persisted.\n");
     return;
   }
   if (!x2_settings_load(&g_settings, g_path, why, (int)sizeof why)) {
-    fprintf(stderr,
-            "SETTINGS: %s. The invalid file was NOT partly "
-            "applied; complete defaults are active.\n",
-            why);
+    x2_log_error("SETTINGS: %s. The invalid file was NOT partly "
+                 "applied; complete defaults are active.\n",
+                 why);
     x2_settings_defaults(&g_settings);
   } else {
-    fprintf(stderr, "SETTINGS: %s (%s).\n", why, g_path);
+    x2_log_error("SETTINGS: %s (%s).\n", why, g_path);
   }
 }
 

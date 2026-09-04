@@ -8,6 +8,7 @@
 #include "save_catalog.h"
 #include "save_directory.h"
 #include "save_trace_runtime.h"
+#include "x2_log.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -103,7 +104,7 @@ static int prepare_strings(void) {
 static uint32_t guest_call0(const CPU *source, uint32_t target) {
   CPU call = *source;
   x86_guest_call_args(&call, target, 0u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static uint32_t intern_command(const CPU *source) {
@@ -113,45 +114,45 @@ static uint32_t intern_command(const CPU *source) {
   pool = guest_call0(source, g_exe + FN_INTERN_POOL);
   if (!pool)
     return 0;
-  call.esp -= 4u;
-  WR32(call.esp, 2u);
-  call.esp -= 4u;
-  WR32(call.esp, (uint32_t)strlen("loadgame") + 1u);
-  call.esp -= 4u;
-  WR32(call.esp, g_exe + LOADGAME_COMMAND);
-  call.ecx = pool;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], 2u);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], (uint32_t)strlen("loadgame") + 1u);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_exe + LOADGAME_COMMAND);
+  call.reg[kX86pEcx] = pool;
   x86_guest_call_args(&call, g_exe + FN_INTERN, 12u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static uint32_t find_item(const CPU *source, uint32_t menu, unsigned row) {
   CPU call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, g_exe + LABEL_RVA[row]);
-  call.ecx = menu;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_exe + LABEL_RVA[row]);
+  call.reg[kX86pEcx] = menu;
   x86_guest_call_args(&call, g_exe + FN_FIND_ITEM, 4u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static void set_visible(const CPU *source, uint32_t menu, unsigned row,
                         int visible) {
   CPU call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, visible != 0);
-  call.esp -= 4u;
-  WR32(call.esp, g_exe + LABEL_RVA[row]);
-  call.ecx = menu;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], visible != 0);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_exe + LABEL_RVA[row]);
+  call.reg[kX86pEcx] = menu;
   x86_guest_call_args(&call, g_exe + FN_SET_VISIBLE, 8u);
 }
 
 static uint32_t localized(const CPU *source, uint32_t text) {
   CPU call = *source;
   uint32_t result;
-  call.esp -= 4u;
-  WR32(call.esp, text);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], text);
   x86_guest_call_args(&call, g_exe + FN_LOCALIZE, 0u);
-  result = call.eax;
-  call.esp += 4u;
+  result = call.reg[kX86pEax];
+  call.reg[kX86pEsp] += 4u;
   return result ? result : text;
 }
 
@@ -159,14 +160,14 @@ static void set_text(const CPU *source, uint32_t menu, unsigned row,
                      X2MainMenuText text) {
   CPU call = *source;
   uint32_t display = localized(source, g_text[text]);
-  call.esp -= 4u;
-  WR32(call.esp, display);
-  call.esp -= 4u;
-  WR32(call.esp, g_exe + LABEL_RVA[row]);
-  call.esp -= 4u;
-  WR32(call.esp, menu);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], display);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_exe + LABEL_RVA[row]);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], menu);
   x86_guest_call_args(&call, g_exe + FN_SET_TEXT, 0u);
-  call.esp += 12u;
+  call.reg[kX86pEsp] += 12u;
 }
 
 static int catalog_for_show(void) {
@@ -190,8 +191,8 @@ static int catalog_for_show(void) {
   g_latest_leaf[0] = 0;
   g_latest_ready = 0;
   if (result < 0)
-    fprintf(stderr, "continue: retail save directory is unavailable; "
-                    "showing the no-save menu\n");
+    x2_log_error("continue: retail save directory is unavailable; "
+                 "showing the no-save menu\n");
   return 0;
 }
 
@@ -202,8 +203,8 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
 
   g_continue_command_armed = 0;
   if (!prepare_strings()) {
-    fprintf(stderr, "continue: guest string allocation failed; preserving "
-                    "the shipped main menu\n");
+    x2_log_error("continue: guest string allocation failed; preserving "
+                 "the shipped main menu\n");
     return;
   }
   if (!g_continue_command)
@@ -239,7 +240,7 @@ static void apply_menu_plan(const CPU *source, uint32_t menu, int has_save) {
 }
 
 void x2_override_005c9260(CPU *C) {
-  uint32_t menu = C->ecx;
+  uint32_t menu = C->reg[kX86pEcx];
   int has_save;
   int boot_continue = x2_boot_mode_runtime_continue_leaf() != NULL;
 
@@ -263,14 +264,14 @@ void x2_override_005c9260(CPU *C) {
     /* A real menu selection leaves through CMenuMain::Hide before its
        command runs. That derived owner calls CMenu::Hide, which restores
        the player saved by Show, then performs the main-menu cleanup. */
-    call.ecx = menu;
+    call.reg[kX86pEcx] = menu;
     x86_guest_call_args(&call, g_exe + FN_MAIN_MENU_HIDE, 0u);
     g_boot_load_pending = 1;
     call = *C;
-    call.esp -= 4u;
-    WR32(call.esp, 0u);
+    call.reg[kX86pEsp] -= 4u;
+    WR32(call.reg[kX86pEsp], 0u);
     x86_guest_call_args(&call, g_exe + FN_CONTINUE_CALLBACK, 0u);
-    call.esp += 4u;
+    call.reg[kX86pEsp] += 4u;
   }
 }
 
@@ -297,7 +298,7 @@ static int start_latest_load(const CPU *source) {
    current player), which is the piece the first direct attempt lacked.
    Returns 0 unchanged when anything refuses -- the caller falls back to the
    retail menu path. */
-int x2_continue_boot_dispatch(struct CPU *C) {
+int x2_continue_boot_dispatch(struct X86pCpu *C) {
   if (!exe_base())
     return 0;
   if (!catalog_for_show())
@@ -316,8 +317,8 @@ void x2_override_005f2b70(CPU *C) {
   }
   if (start_latest_load(C))
     x2_boot_mode_runtime_continue_started();
-  C->eax = 0u;
-  C->esp += 4u;
+  C->reg[kX86pEax] = 0u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 static void continue_load_completed(int succeeded) {
@@ -325,7 +326,7 @@ static void continue_load_completed(int succeeded) {
 }
 
 void x2_override_004b1280(CPU *C) {
-  uint32_t manager = C->ecx;
+  uint32_t manager = C->reg[kX86pEcx];
   CPU call;
 
   x86_guest_body(C, "XMen2.exe", 0x004b1280u);

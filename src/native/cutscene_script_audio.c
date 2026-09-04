@@ -22,13 +22,13 @@ void x2_override_004a7130(CPU *cpu) {
     return;
   /* The explicit parameter is the command's argument list.  Retail
    * 004d8b30 publishes the executing BehavEd context at 00787730. */
-  (void)RD32(cpu->esp + 4u);
+  (void)RD32(cpu->reg[kX86pEsp] + 4u);
   if (cutscene_player_silences_current_context(&context)) {
     atomic_store_explicit(&g_last_context, context, memory_order_relaxed);
     /* The retail command's audio presentation is its only side effect and
      * it unconditionally returns zero with a caller-clean plain RET. */
-    cpu->eax = 0u;
-    cpu->esp += 4u;
+    cpu->reg[kX86pEax] = 0u;
+    cpu->reg[kX86pEsp] += 4u;
     atomic_fetch_add_explicit(&g_silent_commands, 1u, memory_order_relaxed);
     return;
   }

@@ -12,7 +12,12 @@ The on-screen control prompt is BUILT AT RUN TIME from the DirectInput object na
 
 ## Evidence
 
-Disassembly of FUN_00619e30/FUN_006281f0/FUN_006294b0/FUN_00629210 from scratch/recomp/XMen2.json; the literal [%s] at 0x6a4e64 is the only such format in the exe and has exactly one xref, 0x619f74. A scan of all 13,382 files / 2368.5 MB of the PC install for [Enter] (ASCII and UTF-16), Enter] and ENTER] returns 0 hits, and no binary contains the bare word Enter/Escape/Backspace.
+Disassembly of the authenticated XMen2.exe bodies at
+FUN_00619e30/FUN_006281f0/FUN_006294b0/FUN_00629210 shows the formatting
+chain. The literal `[%s]` at 0x6a4e64 is the only such format in the executable
+and has one xref, 0x619f74. A scan of all 13,382 files / 2,368.5 MB in the PC
+install finds no `[Enter]` spelling in ASCII or UTF-16 and no binary containing
+the bare words Enter, Escape, or Backspace.
 
 ## What would falsify it
 

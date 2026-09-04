@@ -1,6 +1,7 @@
+#include "../native/x2_log.h"
 /* Exact, change-only recording of the DirectInput state delivered to XMen2. */
-#include "input_record.h"
 #include "directory_create.h"
+#include "input_record.h"
 #include "json_string.h"
 
 #include <errno.h>
@@ -82,10 +83,9 @@ int input_record_start(const char *path) {
     return 1;
   if (!path[0]) {
     if (!x2_directory_create(g_directory)) {
-      fprintf(stderr,
-              "input record: cannot create %s: %s. REFUSING to "
-              "call this run recorded.\n",
-              g_directory, strerror(errno));
+      x2_log_error("input record: cannot create %s: %s. REFUSING to "
+                   "call this run recorded.\n",
+                   g_directory, strerror(errno));
       return 0;
     }
     now = time(NULL);
@@ -99,10 +99,9 @@ int input_record_start(const char *path) {
   }
   g_file = fopen(g_path, "w");
   if (!g_file) {
-    fprintf(stderr,
-            "input record: cannot open %s: %s. REFUSING to call "
-            "this run recorded.\n",
-            g_path, strerror(errno));
+    x2_log_error("input record: cannot open %s: %s. REFUSING to call "
+                 "this run recorded.\n",
+                 g_path, strerror(errno));
     g_path[0] = '\0';
     return 0;
   }
@@ -112,8 +111,8 @@ int input_record_start(const char *path) {
           "\"source\":\"DirectInput state returned to XMen2\"}\n",
           (long)getpid());
   fflush(g_file);
-  printf("input record: exact game-facing input is being written to %s\n",
-         g_path);
+  x2_log_info("input record: exact game-facing input is being written to %s\n",
+              g_path);
   atexit(input_record_report);
   return 1;
 }
@@ -188,14 +187,14 @@ void input_record_report(void) {
   if (g_reported++)
     return;
   if (!g_file) {
-    fprintf(stderr, "  input record: disabled; this run has no replayable "
-                    "input history.\n");
+    x2_log_error("  input record: disabled; this run has no replayable "
+                 "input history.\n");
     return;
   }
   fprintf(g_file, "{\"type\":\"end\",\"events\":%lu}\n", g_events);
   fflush(g_file);
   fclose(g_file);
   g_file = NULL;
-  fprintf(stderr, "  input record: %lu changed state(s) in %s\n", g_events,
-          g_path);
+  x2_log_error("  input record: %lu changed state(s) in %s\n", g_events,
+               g_path);
 }

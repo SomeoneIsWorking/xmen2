@@ -176,13 +176,13 @@ static void remove_heap_entry(const ValidatedHeap *heap, uint32_t index) {
 static uint32_t call_guest(const CPU *source, uint32_t target, uint32_t self,
                            int has_argument, uint32_t argument) {
   CPU call = *source;
-  call.ecx = self;
+  call.reg[kX86pEcx] = self;
   if (has_argument) {
-    call.esp -= 4u;
-    WR32(call.esp, argument);
+    call.reg[kX86pEsp] -= 4u;
+    WR32(call.reg[kX86pEsp], argument);
   }
   x86_guest_call_args(&call, target, has_argument ? 4u : 0u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static uint32_t manager(const CPU *cpu, uint32_t base) {
@@ -286,20 +286,20 @@ void x2_override_004d9640(CPU *cpu) {
   uint32_t now_bits = 0;
   float now;
 
-  if (cpu && base && x86_peek32(cpu->esp + 4u, &now_bits)) {
+  if (cpu && base && x86_peek32(cpu->reg[kX86pEsp] + 4u, &now_bits)) {
     BehavedPlayerStep result;
     memcpy(&now, &now_bits, sizeof now);
     do {
-      result = step_due(cpu, base, cpu->ecx, now);
+      result = step_due(cpu, base, cpu->reg[kX86pEcx], now);
     } while (result == BEHAVED_PLAYER_STEP_RAN ||
              result == BEHAVED_PLAYER_STEP_COMPLETED);
   }
   if (cpu)
-    cpu->esp += 8u; /* RET 4: return address plus float argument. */
+    cpu->reg[kX86pEsp] += 8u; /* RET 4: return address plus float argument. */
 }
 
 __attribute__((constructor)) static void
 x2_behaved_player_register_override(void) {
-  /* The generated fn_XMen2_004d9640 remains linked for differential A/B. */
+  /* The retail body remains callable through the JIT for differential A/B. */
   x86_register_override("XMen2.exe", FN_SCHEDULER_PUMP, x2_override_004d9640);
 }

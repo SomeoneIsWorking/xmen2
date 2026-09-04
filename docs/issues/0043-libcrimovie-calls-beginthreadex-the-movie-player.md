@@ -87,7 +87,7 @@ exercised.
 Per-thread state beyond the register file:
 
 * **`g_fsbase` is `__thread`, and each thread gets its own TIB page.** FS:[0]
-  is the SEH chain head and every recompiled prologue writes it; sharing it
+  is the SEH chain head and every guest prologue writes it; sharing it
   would have two threads overwriting each other's exception chain.
 * **The TLS slots are `__thread`.** Per-thread is the entire meaning of the
   API -- sharing them is not an approximation, it is the opposite.

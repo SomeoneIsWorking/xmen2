@@ -1,4 +1,5 @@
 #include "player_input.h"
+#include "../native/x2_log.h"
 
 #include "dinput8_controller_slots.h"
 #include "dinput_pad.h"
@@ -216,13 +217,12 @@ void x2_player_input_sync(CPU *cpu) {
   memcpy(g_last_keyboard, keyboard, sizeof keyboard);
   g_have_last = 1;
   sync_participation(cpu, settings, keyboard);
-  fprintf(stderr,
-          "PLAYER-INPUT: published resolved ownership for four "
-          "players (host pads %d,%d,%d,%d; guest slots "
-          "%d,%d,%d,%d); each physical pad is claimed by at most "
-          "one player.\n",
-          pad[0], pad[1], pad[2], pad[3], controller_slot[0],
-          controller_slot[1], controller_slot[2], controller_slot[3]);
+  x2_log_error("PLAYER-INPUT: published resolved ownership for four "
+               "players (host pads %d,%d,%d,%d; guest slots "
+               "%d,%d,%d,%d); each physical pad is claimed by at most "
+               "one player.\n",
+               pad[0], pad[1], pad[2], pad[3], controller_slot[0],
+               controller_slot[1], controller_slot[2], controller_slot[3]);
 }
 
 int x2_player_input_uses_gamepad(unsigned player) {

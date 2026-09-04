@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * Native prompt glyph drawing, independent of the guest D3D8 objects.
  *
@@ -50,8 +51,8 @@ static int ensure_resources(void) {
       gpu_texture_destroy(g_atlas);
     g_vertices = 0;
     g_atlas = 0;
-    fprintf(stderr, "prompt GPU: atlas or vertex-buffer creation failed; "
-                    "native prompt batches will be refused.\n");
+    x2_log_error("prompt GPU: atlas or vertex-buffer creation failed; "
+                 "native prompt batches will be refused.\n");
     return 0;
   }
   return 1;
@@ -144,18 +145,18 @@ void gpu_prompt_glyphs_shutdown(void) {
 }
 
 void gpu_prompt_glyphs_report(void) {
-  printf("  Prompt GPU: %lu text-boundary call(s), %lu glyph quad(s) "
-         "submitted, "
-         "%lu refused; resources ready at %lu frame begin(s)\n",
-         g_render_calls, g_drawn, g_refused, g_frames_ready);
+  x2_log_info("  Prompt GPU: %lu text-boundary call(s), %lu glyph quad(s) "
+              "submitted, "
+              "%lu refused; resources ready at %lu frame begin(s)\n",
+              g_render_calls, g_drawn, g_refused, g_frames_ready);
   if (!g_render_calls)
-    printf("        ZERO text-boundary calls -- the engine override "
-           "never ran; this says nothing about atlas pixels.\n");
+    x2_log_info("        ZERO text-boundary calls -- the engine override "
+                "never ran; this says nothing about atlas pixels.\n");
 }
 
 int gpu_prompt_glyphs_selftest(void) {
 #ifndef X2_WITH_SDL
-  printf("prompt GPU selftest: SKIPPED -- built without SDL.\n");
+  x2_log_info("prompt GPU selftest: SKIPPED -- built without SDL.\n");
   return 77;
 #else
   static uint32_t pixels[96u * 64u];
@@ -174,7 +175,7 @@ int gpu_prompt_glyphs_selftest(void) {
   unsigned full_red = 0, half_red = 0;
   int failed = 0;
 
-  printf(
+  x2_log_info(
       "\n=== prompt GPU selftest: RGBA atlas, V orientation and alpha ===\n");
   full.u0 = cell->u0;
   full.v0 = cell->v0;
@@ -186,8 +187,8 @@ int gpu_prompt_glyphs_selftest(void) {
   half.color = 0x80ffffffu;
   write_quad(check, &full);
   if (check[0].v != 1.0f - cell->v1 || check[2].v != 1.0f - cell->v0) {
-    printf("prompt GPU selftest: FAILED -- bottom-origin atlas UVs were "
-           "not flipped at the native sampler boundary.\n");
+    x2_log_info("prompt GPU selftest: FAILED -- bottom-origin atlas UVs were "
+                "not flipped at the native sampler boundary.\n");
     return 1;
   }
   if (!gpu_device_create())
@@ -197,8 +198,8 @@ int gpu_prompt_glyphs_selftest(void) {
       !gpu_offscreen_begin(96, 64, 0.0f, 0.0f, 1.0f, 1.0f) ||
       !gpu_prompt_glyphs_render(pixel_mvp) ||
       !gpu_offscreen_read(pixels, sizeof pixels)) {
-    printf("prompt GPU selftest: FAILED -- the production atlas draw "
-           "could not be read back.\n");
+    x2_log_info("prompt GPU selftest: FAILED -- the production atlas draw "
+                "could not be read back.\n");
     gpu_offscreen_end();
     gpu_device_destroy();
     return 1;
@@ -216,21 +217,21 @@ int gpu_prompt_glyphs_selftest(void) {
       half_red = red;
   }
   if (pixels[0] != 0xff0000ffu || changed < 100u) {
-    printf("prompt GPU selftest: FAILED -- transparent atlas pixels did "
-           "not preserve the blue background (%u pixels changed).\n",
-           changed);
+    x2_log_info("prompt GPU selftest: FAILED -- transparent atlas pixels did "
+                "not preserve the blue background (%u pixels changed).\n",
+                changed);
     failed = 1;
   }
   if (full_red < 180u || half_red < 60u || full_red <= half_red + 30u) {
-    printf("prompt GPU selftest: FAILED -- RGBA red/alpha did not survive "
-           "the production path (full R=%u, half R=%u).\n",
-           full_red, half_red);
+    x2_log_info("prompt GPU selftest: FAILED -- RGBA red/alpha did not survive "
+                "the production path (full R=%u, half R=%u).\n",
+                full_red, half_red);
     failed = 1;
   }
   gpu_device_destroy();
-  printf("prompt GPU selftest: %s -- %u non-background pixels; full R=%u, "
-         "half R=%u.\n",
-         failed ? "FAILED" : "PASS", changed, full_red, half_red);
+  x2_log_info("prompt GPU selftest: %s -- %u non-background pixels; full R=%u, "
+              "half R=%u.\n",
+              failed ? "FAILED" : "PASS", changed, full_red, half_red);
   return failed;
 #endif
 }

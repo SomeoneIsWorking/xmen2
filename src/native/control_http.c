@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * The control channel's transport: an HTTP/1.1 reply, and a loopback listener
  * that hands each accepted connection to one handler.
@@ -91,10 +92,9 @@ int control_http_listen(int port, ControlHttpHandler handler) {
   g_handler = handler;
   lfd = socket(AF_INET, SOCK_STREAM, 0);
   if (lfd < 0) {
-    fprintf(stderr,
-            "control: socket() failed: %s. REFUSING to run without "
-            "the control channel that was asked for.\n",
-            strerror(errno));
+    x2_log_error("control: socket() failed: %s. REFUSING to run without "
+                 "the control channel that was asked for.\n",
+                 strerror(errno));
     return 0;
   }
   setsockopt(lfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on);
@@ -103,12 +103,11 @@ int control_http_listen(int port, ControlHttpHandler handler) {
   a.sin_addr.s_addr = htonl(INADDR_LOOPBACK); /* loopback ONLY */
   a.sin_port = htons((unsigned short)port);
   if (bind(lfd, (struct sockaddr *)&a, sizeof a) < 0 || listen(lfd, 8) < 0) {
-    fprintf(stderr,
-            "control: cannot listen on 127.0.0.1:%d: %s.\n"
-            "REFUSING rather than running deaf -- a run that "
-            "silently failed to bind ignores every command while "
-            "looking healthy.\n",
-            port, strerror(errno));
+    x2_log_error("control: cannot listen on 127.0.0.1:%d: %s.\n"
+                 "REFUSING rather than running deaf -- a run that "
+                 "silently failed to bind ignores every command while "
+                 "looking healthy.\n",
+                 port, strerror(errno));
     return 0;
   }
   pthread_create(&th, NULL, server_thread, (void *)(intptr_t)lfd);

@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /* AppImage first-run installation chooser.
  *
  * The portable release cannot ask a player to export GAME_PC_DIR: an AppImage
@@ -5,10 +7,10 @@
  * setup prompt and the native file dialog; the selected directory is kept
  * with the port's user configuration, never beside the read-only game. ZIP
  * extraction is shared with other ports through Lucent. */
-#include "install_picker.h"
 #include "../config/config_directory.h"
 #include "android_bridge.h"
 #include "install_archive.h"
+#include "install_picker.h"
 #include "install_validation.h"
 
 #include <SDL3/SDL.h>
@@ -103,8 +105,8 @@ static void remember_directory(const char *directory) {
     return;
   file = fopen(path, "w");
   if (!file) {
-    fprintf(stderr, "install picker: could not remember installation: %s\n",
-            strerror(errno));
+    x2_log_error("install picker: could not remember installation: %s\n",
+                 strerror(errno));
     return;
   }
   fprintf(file, "%s\n", directory);
@@ -144,8 +146,7 @@ static int prompt(SDL_Window *window) {
   SDL_MessageBoxData shown = message;
   shown.window = window;
   if (!SDL_ShowMessageBox(&shown, &button)) {
-    fprintf(stderr, "install picker: setup prompt failed: %s\n",
-            SDL_GetError());
+    x2_log_error("install picker: setup prompt failed: %s\n", SDL_GetError());
     return 0;
   }
   return button == 1;
@@ -308,15 +309,14 @@ extern "C" int x2_install_picker_choose(const char **directory) {
   }
   const char *source = x2_android_install_source();
   if (!source) {
-    fprintf(
-        stderr,
+    x2_log_error(
         "install picker: Android setup has not supplied an install source.\n");
     return -1;
   }
   if (!directory_from_selection(source, candidate, sizeof candidate, reason,
                                 sizeof reason)) {
-    fprintf(stderr, "install picker: Android install source rejected: %s\n",
-            reason);
+    x2_log_error("install picker: Android install source rejected: %s\n",
+                 reason);
     return -1;
   }
   copy_string(g_directory, sizeof g_directory, candidate);
@@ -325,14 +325,13 @@ extern "C" int x2_install_picker_choose(const char **directory) {
   return 0;
 #else
   if (!SDL_Init(SDL_INIT_VIDEO)) {
-    fprintf(stderr, "install picker: SDL video initialization failed: %s\n",
-            SDL_GetError());
+    x2_log_error("install picker: SDL video initialization failed: %s\n",
+                 SDL_GetError());
     return -1;
   }
   window = SDL_CreateWindow("X-Men Legends II", 640, 240, SDL_WINDOW_HIDDEN);
   if (!window) {
-    fprintf(stderr, "install picker: setup window failed: %s\n",
-            SDL_GetError());
+    x2_log_error("install picker: setup window failed: %s\n", SDL_GetError());
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
     return -1;
   }
@@ -351,8 +350,8 @@ extern "C" int x2_install_picker_choose(const char **directory) {
     {
       int result = choose_file(window);
       if (result < 0) {
-        fprintf(stderr, "install picker: file dialog failed: %s\n",
-                SDL_GetError());
+        x2_log_error("install picker: file dialog failed: %s\n",
+                     SDL_GetError());
         SDL_DestroyWindow(window);
         SDL_QuitSubSystem(SDL_INIT_VIDEO);
         return -1;
@@ -384,17 +383,17 @@ extern "C" int x2_install_picker_choose(const char **directory) {
 
 extern "C" int x2_install_picker_resolve_env(int appimage_product,
                                              int have_install_dir) {
-  const char *current = getenv("GAME_PC_DIR");
+  const char *current = x2_config_override_get(kX2ConfigGamePcDir);
   if (!appimage_product || have_install_dir || (current && current[0]))
     return 0;
   const char *picked = nullptr;
   if (x2_install_picker_choose(&picked) != 0 || !picked) {
-    fprintf(stderr, "x2native: no PC installation was selected; exiting.\n");
+    x2_log_error("x2native: no PC installation was selected; exiting.\n");
     return 1;
   }
-  if (setenv("GAME_PC_DIR", picked, 1) != 0) {
-    fprintf(stderr, "x2native: could not set the selected installation: %s\n",
-            strerror(errno));
+  if (x2_config_override_set(kX2ConfigGamePcDir, picked, 1) != 0) {
+    x2_log_error("x2native: could not set the selected installation: %s\n",
+                 strerror(errno));
     return 2;
   }
   return 0;

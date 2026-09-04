@@ -12,7 +12,7 @@ directional, and the characters lit by them come out black.
 What no instrument here can answer is whether the CONTROL's engine computes the
 same values for the same scene. If it does, the port's lights are faithful and
 the darkness has another cause; if it does not, the divergence is upstream in
-the recompiled engine, and this stops being a rendering question.
+the guest engine path, and this stops being a rendering question.
 
 Wine runs XMen2.exe in an ordinary process on this host, and same-user
 process_vm_readv is permitted, so the control's own light records can simply be
@@ -60,6 +60,7 @@ asserting it.
     tools/light_probe.py --discover x2native --repeat 5 --interval 2
     tools/light_probe.py --selftest
 """
+
 import argparse
 import ctypes
 import ctypes.util
@@ -82,7 +83,8 @@ class Reader(object):
 
         class IOVec(ctypes.Structure):
             _fields_: ClassVar[list[tuple[str, object]]] = [
-                ("base", ctypes.c_void_p), ("len", ctypes.c_size_t)
+                ("base", ctypes.c_void_p),
+                ("len", ctypes.c_size_t),
             ]
 
         self.IOVec = IOVec
@@ -93,8 +95,7 @@ class Reader(object):
         buf = (ctypes.c_char * n)()
         local = self.IOVec(ctypes.cast(buf, ctypes.c_void_p), n)
         remote = self.IOVec(ctypes.c_void_p(addr), n)
-        got = self._readv(self.pid, ctypes.byref(local), 1,
-                          ctypes.byref(remote), 1, 0)
+        got = self._readv(self.pid, ctypes.byref(local), 1, ctypes.byref(remote), 1, 0)
         if got != n:
             self.fails += 1
             return None
@@ -151,13 +152,22 @@ def match_light(b, off):
     # phenomenon under study -- and it let every zero-filled page match instead.
     # A real black light still carries a range and an attenuation; a cleared
     # one carries nothing, and the range check above is what separates them.
-    if max(diffuse[:3]) == 0.0 and max(ambient[:3]) == 0.0 \
-            and max(specular[:3]) == 0.0 and max(atten) == 0.0:
+    if (
+        max(diffuse[:3]) == 0.0
+        and max(ambient[:3]) == 0.0
+        and max(specular[:3]) == 0.0
+        and max(atten) == 0.0
+    ):
         return "all channels zero"
     return {
-        "type": w, "diffuse": diffuse[:3], "ambient": ambient[:3],
-        "specular": specular[:3], "position": pos, "direction": direction,
-        "range": rng, "atten": atten,
+        "type": w,
+        "diffuse": diffuse[:3],
+        "ambient": ambient[:3],
+        "specular": specular[:3],
+        "position": pos,
+        "direction": direction,
+        "range": rng,
+        "atten": atten,
     }
 
 
@@ -223,57 +233,93 @@ def scan(pid, want_all=False, chunk=1 << 20, cap=(3 << 30)):
                 if isinstance(m, str):
                     rejected[m] = rejected.get(m, 0) + 1
                     continue
-                key = (m["type"],
-                       tuple(round(c, 4) for c in m["diffuse"]),
-                       tuple(round(c, 4) for c in m["ambient"]),
-                       round(m["range"], 2),
-                       tuple(round(a, 8) for a in m["atten"]))
-                e = found.setdefault(key, {"n": 0, "addr": addr + off,
-                                           "light": m})
+                key = (
+                    m["type"],
+                    tuple(round(c, 4) for c in m["diffuse"]),
+                    tuple(round(c, 4) for c in m["ambient"]),
+                    round(m["range"], 2),
+                    tuple(round(a, 8) for a in m["atten"]),
+                )
+                e = found.setdefault(key, {"n": 0, "addr": addr + off, "light": m})
                 e["n"] += 1
             addr += n
-    return {"found": found, "rejected": rejected, "scanned": scanned,
-            "skipped": skipped, "read_fails": rd.fails, "total": total,
-            "skipped_regions": skipped_regions, "regions": len(regs)}
+    return {
+        "found": found,
+        "rejected": rejected,
+        "scanned": scanned,
+        "skipped": skipped,
+        "read_fails": rd.fails,
+        "total": total,
+        "skipped_regions": skipped_regions,
+        "regions": len(regs),
+    }
 
 
 def report(res, label):
     print("== %s ==" % label)
     cov = (100.0 * res["scanned"] / res["total"]) if res["total"] else 0.0
-    print("   scanned %.1f MiB of %.1f MiB mapped (%.1f%% COVERAGE, %d "
-          "regions), skipped %.1f MiB, %d read failure(s)"
-          % (res["scanned"] / 1048576.0, res["total"] / 1048576.0, cov,
-             res["regions"], res["skipped"] / 1048576.0, res["read_fails"]))
+    print(
+        "   scanned %.1f MiB of %.1f MiB mapped (%.1f%% COVERAGE, %d "
+        "regions), skipped %.1f MiB, %d read failure(s)"
+        % (
+            res["scanned"] / 1048576.0,
+            res["total"] / 1048576.0,
+            cov,
+            res["regions"],
+            res["skipped"] / 1048576.0,
+            res["read_fails"],
+        )
+    )
     if cov < 90.0:
-        print("   COVERAGE IS PARTIAL -- anything not found may simply be in "
-              "the %.1f MiB not looked at." % (res["skipped"] / 1048576.0))
+        print(
+            "   COVERAGE IS PARTIAL -- anything not found may simply be in "
+            "the %.1f MiB not looked at." % (res["skipped"] / 1048576.0)
+        )
     for lo, hi, path in res["skipped_regions"][:5]:
-        print("     skipped 0x%x..0x%x (%.0f MiB) %s"
-              % (lo, hi, (hi - lo) / 1048576.0, path or "anon"))
+        print(
+            "     skipped 0x%x..0x%x (%.0f MiB) %s"
+            % (lo, hi, (hi - lo) / 1048576.0, path or "anon")
+        )
     rej = res["rejected"]
-    print("   candidates rejected: " +
-          (", ".join("%s %d" % (k, v) for k, v in
-                     sorted(rej.items(), key=lambda kv: -kv[1])) or "none"))
+    print(
+        "   candidates rejected: "
+        + (
+            ", ".join("%s %d" % (k, v) for k, v in sorted(rej.items(), key=lambda kv: -kv[1]))
+            or "none"
+        )
+    )
     found = res["found"]
     if not found:
-        print("   NO D3DLIGHT8-shaped record was found. With %.1f MiB actually "
-              "scanned this is a measurement; with 0 MiB it would mean the "
-              "scan never ran." % (res["scanned"] / 1048576.0))
+        print(
+            "   NO D3DLIGHT8-shaped record was found. With %.1f MiB actually "
+            "scanned this is a measurement; with 0 MiB it would mean the "
+            "scan never ran." % (res["scanned"] / 1048576.0)
+        )
         return
     black = sum(1 for k in found if max(k[1]) == 0.0)
-    print("   %d distinct light record(s); %d of them have a BLACK diffuse"
-          % (len(found), black))
+    print("   %d distinct light record(s); %d of them have a BLACK diffuse" % (len(found), black))
     for key in sorted(found, key=lambda k: -max(k[1])):
         e = found[key]
         m = e["light"]
-        print("     type %d  diffuse %.4f %.4f %.4f  ambient %.4f %.4f %.4f  "
-              "range %.3f  atten %.4f %.6f %.8f  x%d  @0x%x"
-              % (m["type"], m["diffuse"][0], m["diffuse"][1], m["diffuse"][2],
-                 m["ambient"][0], m["ambient"][1], m["ambient"][2],
-                 m["range"], m["atten"][0], m["atten"][1], m["atten"][2],
-                 e["n"], e["addr"]))
-
-
+        print(
+            "     type %d  diffuse %.4f %.4f %.4f  ambient %.4f %.4f %.4f  "
+            "range %.3f  atten %.4f %.6f %.8f  x%d  @0x%x"
+            % (
+                m["type"],
+                m["diffuse"][0],
+                m["diffuse"][1],
+                m["diffuse"][2],
+                m["ambient"][0],
+                m["ambient"][1],
+                m["ambient"][2],
+                m["range"],
+                m["atten"][0],
+                m["atten"][1],
+                m["atten"][2],
+                e["n"],
+                e["addr"],
+            )
+        )
 
 
 # ---- the light ARRAY, which is what a single record could never be ---------
@@ -330,14 +376,18 @@ def find_arrays(pid, want_all=False, min_run=4, chunk=(1 << 20)):
                     run.append(mk)
                     k += RECORD_STRIDE
                 if len(run) >= min_run:
-                    runs.append({"addr": addr + off, "n": len(run),
-                                 "lights": run})
+                    runs.append({"addr": addr + off, "n": len(run), "lights": run})
                     off = k
                 else:
                     off += 4
             addr += chunk
-    return {"runs": runs, "scanned": scanned, "skipped": skipped,
-            "total": total, "read_fails": rd.fails}
+    return {
+        "runs": runs,
+        "scanned": scanned,
+        "skipped": skipped,
+        "total": total,
+        "read_fails": rd.fails,
+    }
 
 
 MAX_PLAUSIBLE_RUNS = 64
@@ -354,33 +404,40 @@ def report_arrays(res, label, expect=None):
     """
     runs = res["runs"]
     if expect is not None:
-        hit = any(r["addr"] + i * RECORD_STRIDE == expect
-                  for r in runs for i in range(r["n"]))
+        hit = any(r["addr"] + i * RECORD_STRIDE == expect for r in runs for i in range(r["n"]))
         if not hit:
-            print("light_probe: the address the port reported (0x%x) is NOT in "
-                  "any run this scan found (%d run(s) over %.1f MiB). The "
-                  "signature does not find the record it is KNOWN to have to "
-                  "find, so nothing else it says is evidence. REFUSING."
-                  % (expect, len(runs), res["scanned"] / 1048576.0),
-                  file=sys.stderr)
+            print(
+                "light_probe: the address the port reported (0x%x) is NOT in "
+                "any run this scan found (%d run(s) over %.1f MiB). The "
+                "signature does not find the record it is KNOWN to have to "
+                "find, so nothing else it says is evidence. REFUSING."
+                % (expect, len(runs), res["scanned"] / 1048576.0),
+                file=sys.stderr,
+            )
             raise SystemExit(3)
     if len(runs) > MAX_PLAUSIBLE_RUNS:
-        print("light_probe: %d runs of light records is not a plausible count "
-              "for one process -- the pattern is matching something other than "
-              "lights (cleared memory, most likely). REFUSING rather than "
-              "printing a wall of it." % len(runs), file=sys.stderr)
+        print(
+            "light_probe: %d runs of light records is not a plausible count "
+            "for one process -- the pattern is matching something other than "
+            "lights (cleared memory, most likely). REFUSING rather than "
+            "printing a wall of it." % len(runs),
+            file=sys.stderr,
+        )
         raise SystemExit(3)
     print("== %s ==" % label)
     cov = (100.0 * res["scanned"] / res["total"]) if res["total"] else 0.0
-    print("   scanned %.1f MiB of %.1f MiB (%.1f%% coverage), %d read failure(s)"
-          % (res["scanned"] / 1048576.0, res["total"] / 1048576.0, cov,
-             res["read_fails"]))
+    print(
+        "   scanned %.1f MiB of %.1f MiB (%.1f%% coverage), %d read failure(s)"
+        % (res["scanned"] / 1048576.0, res["total"] / 1048576.0, cov, res["read_fails"])
+    )
     runs = res["runs"]
     if not runs:
-        print("   NO run of %d+ light records at a %d-byte stride was found. "
-              "With %.1f MiB scanned that is a measurement; the engine either "
-              "holds its lights elsewhere in this build, or holds fewer than "
-              "%d." % (4, RECORD_STRIDE, res["scanned"] / 1048576.0, 4))
+        print(
+            "   NO run of %d+ light records at a %d-byte stride was found. "
+            "With %.1f MiB scanned that is a measurement; the engine either "
+            "holds its lights elsewhere in this build, or holds fewer than "
+            "%d." % (4, RECORD_STRIDE, res["scanned"] / 1048576.0, 4)
+        )
         return
     print("   %d run(s) of light records found" % len(runs))
     for r in sorted(runs, key=lambda r: -r["n"])[:6]:
@@ -391,12 +448,24 @@ def report_arrays(res, label, expect=None):
                     hit = "   <- CONTAINS the address the port reported"
         print("     %d record(s) at 0x%x%s" % (r["n"], r["addr"], hit))
         for i, m in enumerate(r["lights"]):
-            print("       [%d] type %d  diffuse %.4f %.4f %.4f  ambient "
-                  "%.4f %.4f %.4f  range %.1f  atten %.4f %.6f %.8f"
-                  % (i, m["type"], m["diffuse"][0], m["diffuse"][1],
-                     m["diffuse"][2], m["ambient"][0], m["ambient"][1],
-                     m["ambient"][2], m["range"], m["atten"][0], m["atten"][1],
-                     m["atten"][2]))
+            print(
+                "       [%d] type %d  diffuse %.4f %.4f %.4f  ambient "
+                "%.4f %.4f %.4f  range %.1f  atten %.4f %.6f %.8f"
+                % (
+                    i,
+                    m["type"],
+                    m["diffuse"][0],
+                    m["diffuse"][1],
+                    m["diffuse"][2],
+                    m["ambient"][0],
+                    m["ambient"][1],
+                    m["ambient"][2],
+                    m["range"],
+                    m["atten"][0],
+                    m["atten"][1],
+                    m["atten"][2],
+                )
+            )
 
 
 def selftest():
@@ -406,26 +475,44 @@ def selftest():
     # 1. A record that MUST match: a white point light, laid out by hand.
     good = struct.pack("<I", 1) + struct.pack(
         "<25f",
-        0.84, 0.84, 1.0, 1.0,            # diffuse
-        0.0, 0.0, 0.0, 0.0,              # specular
-        0.1, 0.1, 0.1, 1.0,              # ambient
-        100.0, 200.0, 300.0,             # position
-        0.0, 0.0, 0.0,                   # direction
-        5000.0,                          # range
-        0.0,                             # falloff
-        1.0, 0.0, 0.0000378,             # attenuation
-        0.0, 0.0)                        # theta, phi
+        0.84,
+        0.84,
+        1.0,
+        1.0,  # diffuse
+        0.0,
+        0.0,
+        0.0,
+        0.0,  # specular
+        0.1,
+        0.1,
+        0.1,
+        1.0,  # ambient
+        100.0,
+        200.0,
+        300.0,  # position
+        0.0,
+        0.0,
+        0.0,  # direction
+        5000.0,  # range
+        0.0,  # falloff
+        1.0,
+        0.0,
+        0.0000378,  # attenuation
+        0.0,
+        0.0,
+    )  # theta, phi
     m = match_light(good, 0)
     if isinstance(m, str):
-        print("SELFTEST FAIL: a hand-built white point light was rejected "
-              "(%s) -- the matcher cannot see the thing it exists to find" % m)
+        print(
+            "SELFTEST FAIL: a hand-built white point light was rejected "
+            "(%s) -- the matcher cannot see the thing it exists to find" % m
+        )
         ok = False
     elif abs(m["diffuse"][0] - 0.84) > 1e-6:
         print("SELFTEST FAIL: matched but read diffuse %r" % (m["diffuse"],))
         ok = False
     else:
-        print("SELFTEST ok: the positive control matches, diffuse %.2f %.2f "
-              "%.2f" % m["diffuse"])
+        print("SELFTEST ok: the positive control matches, diffuse %.2f %.2f %.2f" % m["diffuse"])
 
     # 2. A record that must NOT match: same bytes with an impossible type.
     bad = struct.pack("<I", 7) + good[4:]
@@ -448,19 +535,38 @@ def selftest():
     #     it would answer "no black lights here" by construction.
     black = struct.pack("<I", 1) + struct.pack(
         "<25f",
-        0.0, 0.0, 0.0, 1.0,              # diffuse: black, on purpose
-        0.0, 0.0, 0.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
-        10.0, 20.0, 30.0,
-        0.0, 0.0, 0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,  # diffuse: black, on purpose
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        10.0,
+        20.0,
+        30.0,
+        0.0,
+        0.0,
+        0.0,
         5000.0,
         0.0,
-        0.0, 0.0, 0.0000378,             # a real attenuation
-        0.0, 0.0)
+        0.0,
+        0.0,
+        0.0000378,  # a real attenuation
+        0.0,
+        0.0,
+    )
     if isinstance(match_light(black, 0), str):
-        print("SELFTEST FAIL: a BLACK point light with a real range and "
-              "attenuation was rejected (%s) -- the filter removes the very "
-              "thing being measured" % match_light(black, 0))
+        print(
+            "SELFTEST FAIL: a BLACK point light with a real range and "
+            "attenuation was rejected (%s) -- the filter removes the very "
+            "thing being measured" % match_light(black, 0)
+        )
         ok = False
     else:
         print("SELFTEST ok: a black light with a real range still matches")
@@ -478,8 +584,11 @@ def selftest():
     #    random memory satisfy the pattern? This is the number that decides
     #    whether a hit in a live process means anything.
     noise = os.urandom(1 << 20)
-    hits = sum(1 for off in range(0, len(noise) - LIGHT_BYTES, 4)
-               if not isinstance(match_light(noise, off), str))
+    hits = sum(
+        1
+        for off in range(0, len(noise) - LIGHT_BYTES, 4)
+        if not isinstance(match_light(noise, off), str)
+    )
     per_mib = hits
     print("SELFTEST: %d false positive(s) in 1 MiB of random bytes" % per_mib)
     if per_mib > 50:
@@ -489,8 +598,11 @@ def selftest():
     # 5. A buffer of zeros must produce nothing -- a cleared record is not a
     #    light, and this is the shape most of a process's memory has.
     zeros = bytes(1 << 16)
-    zh = sum(1 for off in range(0, len(zeros) - LIGHT_BYTES, 4)
-             if not isinstance(match_light(zeros, off), str))
+    zh = sum(
+        1
+        for off in range(0, len(zeros) - LIGHT_BYTES, 4)
+        if not isinstance(match_light(zeros, off), str)
+    )
     if zh:
         print("SELFTEST FAIL: %d zero-filled records matched" % zh)
         ok = False
@@ -514,8 +626,11 @@ def discover(substr):
         if substr in cmd and "light_probe" not in cmd:
             hits.append((int(pid), cmd.strip()))
     if len(hits) != 1:
-        print("light_probe: --discover %r matched %d process(es); it will not "
-              "guess." % (substr, len(hits)), file=sys.stderr)
+        print(
+            "light_probe: --discover %r matched %d process(es); it will not "
+            "guess." % (substr, len(hits)),
+            file=sys.stderr,
+        )
         for pid, cmd in hits:
             print("    %d  %s" % (pid, cmd[:110]), file=sys.stderr)
         sys.exit(2)
@@ -524,22 +639,31 @@ def discover(substr):
 
 def main():
     ap = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--pid", type=int)
     ap.add_argument("--discover", metavar="SUBSTR")
     ap.add_argument("--selftest", action="store_true")
-    ap.add_argument("--all-regions", action="store_true",
-                    help="scan /dev mappings too (slow)")
-    ap.add_argument("--cap-gib", type=float, default=3.0,
-                    help="skip single regions larger than this; skipped "
-                         "regions are always listed")
-    ap.add_argument("--arrays", action="store_true",
-                    help="find RUNS of light records at the 140-byte stride "
-                         "(the signature that a single record cannot give)")
+    ap.add_argument("--all-regions", action="store_true", help="scan /dev mappings too (slow)")
+    ap.add_argument(
+        "--cap-gib",
+        type=float,
+        default=3.0,
+        help="skip single regions larger than this; skipped regions are always listed",
+    )
+    ap.add_argument(
+        "--arrays",
+        action="store_true",
+        help="find RUNS of light records at the 140-byte stride "
+        "(the signature that a single record cannot give)",
+    )
     ap.add_argument("--min-run", type=int, default=4)
-    ap.add_argument("--expect", type=lambda v: int(v, 0), default=None,
-                    help="an address the port reported, as a positive control")
+    ap.add_argument(
+        "--expect",
+        type=lambda v: int(v, 0),
+        default=None,
+        help="an address the port reported, as a positive control",
+    )
     ap.add_argument("--repeat", type=int, default=1)
     ap.add_argument("--interval", type=float, default=2.0)
     ap.add_argument("--label", default="")
@@ -553,16 +677,18 @@ def main():
     if not os.path.isdir("/proc/%d" % pid):
         sys.exit("light_probe: no process %d" % pid)
     import time
+
     for i in range(a.repeat):
         if a.arrays:
             res = find_arrays(pid, a.all_regions, a.min_run)
-            report_arrays(res, "%s pid %d, sample %d of %d"
-                          % (a.label or "process", pid, i + 1, a.repeat),
-                          a.expect)
+            report_arrays(
+                res,
+                "%s pid %d, sample %d of %d" % (a.label or "process", pid, i + 1, a.repeat),
+                a.expect,
+            )
         else:
             res = scan(pid, a.all_regions, cap=int(a.cap_gib * (1 << 30)))
-            report(res, "%s pid %d, sample %d of %d"
-                   % (a.label or "process", pid, i + 1, a.repeat))
+            report(res, "%s pid %d, sample %d of %d" % (a.label or "process", pid, i + 1, a.repeat))
         if i + 1 < a.repeat:
             time.sleep(a.interval)
     return 0

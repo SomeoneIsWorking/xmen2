@@ -14,6 +14,7 @@
  * rectangles, and it says so when the harvest is empty.
  */
 #include "prompt_glyph_quads.h"
+#include "x2_log.h"
 
 #include <stdio.h>
 
@@ -59,14 +60,14 @@ const struct X2PromptQuad *x2_prompt_quads(unsigned *count) {
 }
 
 void x2_prompt_quads_report(void) {
-  printf("  Prompt quads: %lu harvested over %lu frame(s) that had any"
-         "; %lu dropped past the %u cap\n",
-         g_total, g_frames, g_overflow, X2_PROMPT_QUADS_MAX);
+  x2_log_info("  Prompt quads: %lu harvested over %lu frame(s) that had any"
+              "; %lu dropped past the %u cap\n",
+              g_total, g_frames, g_overflow, X2_PROMPT_QUADS_MAX);
   if (!g_total)
-    printf("        NONE harvested -- either no label was drawn or the "
-           "emitter interception never fired; the port has nothing to "
-           "draw either way.\n");
+    x2_log_info("        NONE harvested -- either no label was drawn or the "
+                "emitter interception never fired; the port has nothing to "
+                "draw either way.\n");
   if (g_overflow)
-    printf("        the preflight capacity contract was violated; native "
-           "interception refuses to continue after this condition.\n");
+    x2_log_info("        the preflight capacity contract was violated; native "
+                "interception refuses to continue after this condition.\n");
 }

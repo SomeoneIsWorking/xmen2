@@ -1,7 +1,7 @@
 #ifndef X2_CUTSCENE_DIALOGUE_H
 #define X2_CUTSCENE_DIALOGUE_H
 
-struct CPU;
+struct X86pCpu;
 
 typedef struct CutsceneDialogueSnapshot {
   unsigned long advances;
@@ -19,8 +19,8 @@ typedef struct CutsceneDialogueSnapshot {
 /* Consume one deterministic conversation payload without presenting its
  * dialogue. The retail response transition still owns scripts and cleanup. */
 void cutscene_dialogue_skip_begin(void);
-void cutscene_dialogue_skip_end(struct CPU *cpu);
-int cutscene_dialogue_advance(struct CPU *cpu);
+void cutscene_dialogue_skip_end(struct X86pCpu *cpu);
+int cutscene_dialogue_advance(struct X86pCpu *cpu);
 int cutscene_dialogue_payload_active(void);
 void cutscene_dialogue_snapshot(CutsceneDialogueSnapshot *out);
 

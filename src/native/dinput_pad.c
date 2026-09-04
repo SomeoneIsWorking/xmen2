@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * The gamepad inventory: SDL3 on one side, DirectInput's idea of a joystick on
  * the other. See dinput_pad.h for why this is its own file.
@@ -29,6 +30,7 @@
  * d-pad on POV 0, and ten buttons in the 360's order.
  */
 #include "dinput_pad.h"
+#include "dinput_pad_identity.h"
 #include "dinput_pad_virtual.h"
 #include "guest_clock.h"
 
@@ -58,35 +60,6 @@ static Pad g_pad[DINPUT_PAD_MAX];
 static int g_scanned;
 static unsigned long g_opens, g_closes;
 static uint64_t g_generation;
-
-int dinput_pad_type_uses_xbox_glyphs(int type) {
-#ifdef X2_WITH_SDL
-  return type == SDL_GAMEPAD_TYPE_XBOX360 || type == SDL_GAMEPAD_TYPE_XBOXONE;
-#else
-  (void)type;
-  return 0;
-#endif
-}
-
-/*
- * The DirectInput product GUID for a USB device: {PIDVID-0000-0000-0000-
- * 504944564944}, whose first dword is (product << 16) | vendor and whose tail
- * is the ASCII "PIDVID". Windows builds it exactly this way, so a game that
- * recognises a pad by its product GUID -- which is how a 2005 title tells an
- * Xbox pad from a generic one -- sees what it would see on Windows.
- */
-static void product_guid(unsigned char g[16], uint16_t vid, uint16_t pid) {
-  static const unsigned char TAIL[10] = {0x00, 0x00, 0x00, 0x00, 'P',
-                                         'I',  'D',  'V',  'I',  'D'};
-  g[0] = (unsigned char)(vid & 0xff);
-  g[1] = (unsigned char)(vid >> 8);
-  g[2] = (unsigned char)(pid & 0xff);
-  g[3] = (unsigned char)(pid >> 8);
-  memcpy(g + 4, TAIL, 10);
-  g[14] = 0x00;
-  g[15] = 0x00;
-}
-
 #ifdef X2_WITH_SDL
 
 static int slot_of_id(SDL_JoystickID id) {
@@ -189,18 +162,16 @@ static void pad_open(SDL_JoystickID id) {
     if (!g_pad[i].used)
       break;
   if (i == DINPUT_PAD_MAX) {
-    fprintf(stderr,
-            "DINPUT-PAD: a %d-th pad appeared and there is no slot "
-            "for it. The game supports four players; the limit here "
-            "is DINPUT_PAD_MAX in dinput_pad.h.\n",
-            DINPUT_PAD_MAX + 1);
+    x2_log_error("DINPUT-PAD: a %d-th pad appeared and there is no slot "
+                 "for it. The game supports four players; the limit here "
+                 "is DINPUT_PAD_MAX in dinput_pad.h.\n",
+                 DINPUT_PAD_MAX + 1);
     return;
   }
   if (!(gp = SDL_OpenGamepad(id))) {
-    fprintf(stderr,
-            "DINPUT-PAD: SDL_OpenGamepad(%u) failed (%s); this pad "
-            "is NOT enumerated rather than enumerated and dead.\n",
-            (unsigned)id, SDL_GetError());
+    x2_log_error("DINPUT-PAD: SDL_OpenGamepad(%u) failed (%s); this pad "
+                 "is NOT enumerated rather than enumerated and dead.\n",
+                 (unsigned)id, SDL_GetError());
     return;
   }
   p = &g_pad[i];
@@ -209,8 +180,8 @@ static void pad_open(SDL_JoystickID id) {
   p->gp = gp;
   p->id = id;
   gu = SDL_GetJoystickGUIDForID(id);
-  product_guid(p->prod, SDL_GetGamepadVendorForID(id),
-               SDL_GetGamepadProductForID(id));
+  dinput_pad_make_product_guid(p->prod, SDL_GetGamepadVendorForID(id),
+                               SDL_GetGamepadProductForID(id));
   nm = SDL_GetGamepadNameForID(id);
   snprintf(p->name, sizeof p->name, "%s", nm ? nm : "Gamepad");
   make_identities(p, gp, id, &gu, (unsigned)i);
@@ -220,12 +191,11 @@ static void pad_open(SDL_JoystickID id) {
       dinput_pad_type_uses_xbox_glyphs((int)SDL_GetGamepadType(gp));
   g_opens++;
   g_generation++;
-  fprintf(stderr,
-          "DINPUT-PAD: pad %d connected -- \"%s\" (vendor 0x%04x "
-          "product 0x%04x). Presented to the game as an Xbox 360 "
-          "DirectInput pad: 6 axes, 10 buttons, 1 POV.\n",
-          i, p->name, SDL_GetGamepadVendorForID(id),
-          SDL_GetGamepadProductForID(id));
+  x2_log_error("DINPUT-PAD: pad %d connected -- \"%s\" (vendor 0x%04x "
+               "product 0x%04x). Presented to the game as an Xbox 360 "
+               "DirectInput pad: 6 axes, 10 buttons, 1 POV.\n",
+               i, p->name, SDL_GetGamepadVendorForID(id),
+               SDL_GetGamepadProductForID(id));
 }
 
 static void pad_close(SDL_JoystickID id) {
@@ -233,8 +203,8 @@ static void pad_close(SDL_JoystickID id) {
   if (i < 0)
     return;
   SDL_CloseGamepad(g_pad[i].gp);
-  fprintf(stderr, "DINPUT-PAD: pad %d disconnected -- \"%s\".\n", i,
-          g_pad[i].name);
+  x2_log_error("DINPUT-PAD: pad %d disconnected -- \"%s\".\n", i,
+               g_pad[i].name);
   memset(&g_pad[i], 0, sizeof g_pad[i]);
   g_closes++;
   g_generation++;
@@ -272,12 +242,11 @@ void dinput_pad_refresh(void) {
          from a machine with no pad plugged in. */
       static int told;
       if (!told++)
-        fprintf(stderr,
-                "DINPUT-PAD: SDL_INIT_GAMEPAD failed (%s). NO "
-                "pad can be enumerated in this run -- that is "
-                "the subsystem missing, not an empty USB "
-                "port.\n",
-                SDL_GetError());
+        x2_log_error("DINPUT-PAD: SDL_INIT_GAMEPAD failed (%s). NO "
+                     "pad can be enumerated in this run -- that is "
+                     "the subsystem missing, not an empty USB "
+                     "port.\n",
+                     SDL_GetError());
       return;
     }
   }
@@ -374,6 +343,16 @@ int dinput_pad_for_joystick_id(unsigned int joystick_id) {
 #endif
 }
 
+uint32_t dinput_pad_device_id(int pad) {
+#ifdef X2_WITH_SDL
+  Pad *p = pad_at(pad);
+  return p ? (uint32_t)p->id : 0;
+#else
+  (void)pad;
+  return 0;
+#endif
+}
+
 int dinput_pad_button_count(int pad) {
   Pad *p = pad_at(pad);
   return p ? p->buttons : 0;
@@ -454,6 +433,24 @@ int dinput_pad_button(int pad, int button) {
   (void)pad;
   (void)button;
   return 0;
+#endif
+}
+
+float dinput_pad_trigger_pressure(int pad, int trigger) {
+#ifdef X2_WITH_SDL
+  Pad *p = pad_at(pad);
+  int raw;
+  SDL_GamepadAxis axis;
+  if (!p || (trigger != 0 && trigger != 1))
+    return 0.0f;
+  axis = trigger == 0 ? SDL_GAMEPAD_AXIS_LEFT_TRIGGER
+                      : SDL_GAMEPAD_AXIS_RIGHT_TRIGGER;
+  raw = SDL_GetGamepadAxis(p->gp, axis);
+  return raw > 0 ? (float)raw / 32767.0f : 0.0f;
+#else
+  (void)pad;
+  (void)trigger;
+  return 0.0f;
 #endif
 }
 
@@ -588,35 +585,35 @@ uint32_t dinput_pad_pov(int pad) {
 }
 
 void dinput_pad_poll_report(void) {
-  fprintf(stderr,
-          "  pad: the game read a button %lu time(s); %lu of those came back "
-          "DOWN. Axes read %lu time(s), %lu off centre. SDL state refreshed "
-          "%lu time(s).\n",
-          g_btn_reads, g_btn_down, g_axis_reads, g_axis_offcentre, g_pad_pumps);
+  x2_log_error(
+      "  pad: the game read a button %lu time(s); %lu of those came back "
+      "DOWN. Axes read %lu time(s), %lu off centre. SDL state refreshed "
+      "%lu time(s).\n",
+      g_btn_reads, g_btn_down, g_axis_reads, g_axis_offcentre, g_pad_pumps);
   if (g_btn_reads && !g_pad_pumps)
-    fprintf(stderr,
-            "       The game polled but SDL's pad state was NEVER refreshed, "
-            "so every read returned whatever SDL last latched -- which is "
-            "nothing. This is the defect dinput_pad_refresh_state exists to "
-            "fix; it is not being called.\n");
+    x2_log_error(
+        "       The game polled but SDL's pad state was NEVER refreshed, "
+        "so every read returned whatever SDL last latched -- which is "
+        "nothing. This is the defect dinput_pad_refresh_state exists to "
+        "fix; it is not being called.\n");
   if (!g_btn_reads)
-    fprintf(stderr,
-            "       ZERO reads: the game is not polling the pad at all, so no "
-            "press could reach it whatever the hardware does.\n");
+    x2_log_error(
+        "       ZERO reads: the game is not polling the pad at all, so no "
+        "press could reach it whatever the hardware does.\n");
   else if (!g_btn_down)
-    fprintf(stderr,
-            "       Reads happen but NONE was ever down: either nothing "
-            "pressed anything, or the press is not reaching SDL's gamepad "
-            "state (a virtual pad needs SDL_SetJoystickVirtual*; a real one "
-            "needs its events pumped).\n");
+    x2_log_error(
+        "       Reads happen but NONE was ever down: either nothing "
+        "pressed anything, or the press is not reaching SDL's gamepad "
+        "state (a virtual pad needs SDL_SetJoystickVirtual*; a real one "
+        "needs its events pumped).\n");
   {
     unsigned long presses, axis_sets, clears;
     dinput_pad_virtual_counts(&presses, &axis_sets, &clears);
-    fprintf(stderr,
-            "       %lu synthetic press(es) and %lu axis set(s) were "
-            "requested over the control channel; %lu press(es) were released "
-            "by the expiry tick.\n",
-            presses, axis_sets, clears);
+    x2_log_error(
+        "       %lu synthetic press(es) and %lu axis set(s) were "
+        "requested over the control channel; %lu press(es) were released "
+        "by the expiry tick.\n",
+        presses, axis_sets, clears);
   }
 }
 
@@ -632,20 +629,21 @@ void dinput_pad_report(void) {
      "this host cannot see pads" are different facts and the second one is a
      defect. */
   if (!n) {
-    printf("  gamepads: NONE connected%s\n",
-           g_opens ? " now (some were, earlier in this run)"
-                   : " and none ever was -- either nothing is plugged in, "
-                     "or SDL's gamepad subsystem never came up (that is "
-                     "reported by name when it happens)");
+    x2_log_info("  gamepads: NONE connected%s\n",
+                g_opens ? " now (some were, earlier in this run)"
+                        : " and none ever was -- either nothing is plugged in, "
+                          "or SDL's gamepad subsystem never came up (that is "
+                          "reported by name when it happens)");
     return;
   }
-  printf("  gamepads: %d connected (%lu connect(s), %lu disconnect(s) this "
-         "run)\n",
-         n, g_opens, g_closes);
+  x2_log_info(
+      "  gamepads: %d connected (%lu connect(s), %lu disconnect(s) this "
+      "run)\n",
+      n, g_opens, g_closes);
   for (i = 0; i < DINPUT_PAD_MAX; i++)
     if (g_pad[i].used)
-      printf("         pad %d  \"%s\"  %d button(s), presented as an "
-             "Xbox 360 DirectInput pad; prompts: %s\n",
-             i, g_pad[i].name, g_pad[i].buttons,
-             g_pad[i].xbox_glyphs ? "Xbox glyphs" : "game text");
+      x2_log_info("         pad %d  \"%s\"  %d button(s), presented as an "
+                  "Xbox 360 DirectInput pad; prompts: %s\n",
+                  i, g_pad[i].name, g_pad[i].buttons,
+                  g_pad[i].xbox_glyphs ? "Xbox glyphs" : "game text");
 }

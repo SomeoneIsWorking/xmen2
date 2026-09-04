@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 typedef enum ConversationPlayerState {
   CONVERSATION_PLAYER_INACTIVE,
@@ -23,8 +23,8 @@ typedef struct ConversationPlayerSelection {
 /* Conversation is a payload of an authored scene, not its player.  These
  * functions expose the retail manager's current yield and deterministic
  * chooseResponse transition to the cutscene-owned dialogue gate. */
-ConversationPlayerState conversation_player_state(struct CPU *cpu);
-int conversation_player_selection(struct CPU *cpu,
+ConversationPlayerState conversation_player_state(struct X86pCpu *cpu);
+int conversation_player_selection(struct X86pCpu *cpu,
                                   ConversationPlayerSelection *out);
 
 #endif

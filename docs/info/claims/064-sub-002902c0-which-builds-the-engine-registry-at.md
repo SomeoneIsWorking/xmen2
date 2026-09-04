@@ -4,7 +4,6 @@ kind: claim
 status: holds
 created: 2026-08-05
 tags: xbox
-depends: xbox/src/recomp/gen
 ---
 
 ## Claim

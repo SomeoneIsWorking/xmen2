@@ -16,7 +16,19 @@ Zero-argument run.sh and x2native launch the current native SDL3 GPU plus D3D8 g
 
 ## Evidence
 
-`tests/test_x2native_options.c` exercises the executable's zero-argument product policy. `tests/test_launcher.py` requires the shell shim to reject arguments, requires the bootstrap to exec the locked interpreter with only `tools/run.py`, and verifies automatic discovery when `XMen2.exe` is in the repository root or one immediate child directory. It also proves that multiple unnamed installs refuse instead of selecting one arbitrarily, and that Homebrew's `vulkan.pc` satisfies the loader check even when the locked uv Python's `ctypes.util.find_library()` cannot see Homebrew dylibs. For the cold-path observation, `.venv`, `vendor/shared`, `scratch/recomp`, generated `src/recomp/*.c`, the prompt asset pack and `scratch/build-native` were all moved aside. `X2_MAX_FRAMES=10 ./run.sh` then recreated every input without Ghidra, configured Clang 22.1.8 and the uv Python 3.14.7 interpreter, linked all twenty modules, armed host D3D8, entered XMen2.exe, presented 18 frames, and exited at the cap. The full CTest suite passed 100/101 with the media decoder test explicitly skipped for its missing optional fixture.
+`tests/test_x2native_options.c` exercises the executable's zero-argument
+product policy. `tests/test_launcher.py` requires the shell shim to reject
+arguments, requires the bootstrap to exec the locked Python interpreter with
+only `tools/run.py`, and verifies automatic discovery when `XMen2.exe` is in
+the repository root or one immediate child directory. It also proves that
+multiple unnamed installs refuse instead of selecting one arbitrarily, and
+that Homebrew's `vulkan.pc` satisfies the loader check even when the locked uv
+Python's `ctypes.util.find_library()` cannot see Homebrew dylibs. A cold-path
+observation moved aside `.venv`, shared dependencies, native assets, and the
+build tree. `X2_MAX_FRAMES=10 ./run.sh` then recreated the portable inputs
+without Ghidra, configured Clang 22.1.8 and uv Python 3.14.7, mapped all twenty
+retail modules, armed host D3D8, entered XMen2.exe, presented 18 frames, and
+exited at the cap.
 
 ## What would falsify it
 
@@ -24,7 +36,9 @@ A no-argument cold launcher run that needs Ghidra or a sibling checkout, cannot 
 
 ## Re-confirmed 2026-08-24
 
-Cold X2_MAX_FRAMES=10 ./run.sh recreated uv/shared/generated/build inputs, linked 20 modules with Clang, presented 18 frames, and exited; launcher and full 101-test CTest gate passed.
+Cold `X2_MAX_FRAMES=10 ./run.sh` recreated its locked environment, shared
+dependencies, native assets, and build tree, mapped 20 modules, presented 18
+frames, and exited; the launcher and full 101-test CTest gate passed.
 
 ## Re-confirmed 2026-08-26
 

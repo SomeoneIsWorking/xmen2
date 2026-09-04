@@ -115,9 +115,7 @@ d3d8.dll @19
             (game / "XMen2.exe").write_bytes(b"fixture executable")
             (game / "Data").mkdir()
             (game / "d3d8.dll").write_bytes(b"install must remain unchanged")
-            (game / "alchemy.ini").write_text(
-                "multiSampleType = 4\notherSetting = 1\n"
-            )
+            (game / "alchemy.ini").write_text("multiSampleType = 4\notherSetting = 1\n")
             real = root / "real.dll"
             proxy = root / "proxy.dll"
             real.write_bytes(b"real")
@@ -132,9 +130,7 @@ d3d8.dll @19
             self.assertTrue((run / "Data").is_symlink())
             self.assertEqual((run / "d3d8_real.dll").read_bytes(), b"real")
             self.assertEqual((run / "d3d8.dll").read_bytes(), b"proxy")
-            self.assertEqual(
-                (game / "d3d8.dll").read_bytes(), b"install must remain unchanged"
-            )
+            self.assertEqual((game / "d3d8.dll").read_bytes(), b"install must remain unchanged")
             self.assertIn("multiSampleType = 0", (run / "alchemy.ini").read_text())
             self.assertFalse((run / "d3d8_shadow_trace.jsonl").exists())
 

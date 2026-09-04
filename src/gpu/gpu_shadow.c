@@ -1,4 +1,5 @@
 #include "gpu_shadow.h"
+#include "../native/x2_log.h"
 
 #include "gpu_internal.h"
 #include "shadow_policy.h"
@@ -132,7 +133,7 @@ static int resources_ready(void) {
     return 1;
   g_format = choose_format();
   if (g_format == SDL_GPU_TEXTUREFORMAT_INVALID) {
-    fprintf(stderr, "gpu shadow: no sampleable depth-target format.\n");
+    x2_log_error("gpu shadow: no sampleable depth-target format.\n");
     g_resource_failures++;
     return 0;
   }
@@ -145,8 +146,8 @@ static int resources_ready(void) {
         load_shader(shadow_depth_frag_spv, sizeof shadow_depth_frag_spv,
                     SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
   if (!g_vertex_shader || !g_fragment_shader) {
-    fprintf(stderr, "gpu shadow: depth shaders could not be created: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu shadow: depth shaders could not be created: %s\n",
+                 SDL_GetError());
     g_resource_failures++;
     return 0;
   }
@@ -162,8 +163,8 @@ static int resources_ready(void) {
     texture_info.num_levels = 1;
     g_texture = SDL_CreateGPUTexture(g_gpu, &texture_info);
     if (!g_texture) {
-      fprintf(stderr, "gpu shadow: %ux%u depth target failed: %s\n",
-              g_resolution, g_resolution, SDL_GetError());
+      x2_log_error("gpu shadow: %ux%u depth target failed: %s\n", g_resolution,
+                   g_resolution, SDL_GetError());
       g_resource_failures++;
       return 0;
     }
@@ -182,14 +183,14 @@ static int resources_ready(void) {
     created = 1;
   }
   if (!g_sampler) {
-    fprintf(stderr, "gpu shadow: sampler failed: %s\n", SDL_GetError());
+    x2_log_error("gpu shadow: sampler failed: %s\n", SDL_GetError());
     g_resource_failures++;
     return 0;
   }
   if (created)
-    printf("gpu shadow: enabled, %ux%u sampleable depth map; solid world "
-           "packet policy, first title directional light.\n",
-           g_resolution, g_resolution);
+    x2_log_info("gpu shadow: enabled, %ux%u sampleable depth map; solid world "
+                "packet policy, first title directional light.\n",
+                g_resolution, g_resolution);
   return 1;
 }
 
@@ -210,7 +211,7 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const GpuDraw *draw) {
     if (memcmp(&g_pipelines[i].key, &key, sizeof key) == 0)
       return g_pipelines[i].pipeline;
   if (g_pipeline_count == sizeof g_pipelines / sizeof g_pipelines[0]) {
-    fprintf(stderr, "gpu shadow: depth pipeline cache is full.\n");
+    x2_log_error("gpu shadow: depth pipeline cache is full.\n");
     return NULL;
   }
   memset(&info, 0, sizeof info);
@@ -257,7 +258,7 @@ static SDL_GPUGraphicsPipeline *pipeline_for(const GpuDraw *draw) {
   g_pipelines[g_pipeline_count].pipeline =
       SDL_CreateGPUGraphicsPipeline(g_gpu, &info);
   if (!g_pipelines[g_pipeline_count].pipeline) {
-    fprintf(stderr, "gpu shadow: depth pipeline failed: %s\n", SDL_GetError());
+    x2_log_error("gpu shadow: depth pipeline failed: %s\n", SDL_GetError());
     return NULL;
   }
   return g_pipelines[g_pipeline_count++].pipeline;
@@ -272,7 +273,7 @@ void gpu_shadow_frame_begin(void) {
     return;
   g_shadow_command = SDL_AcquireGPUCommandBuffer(g_gpu);
   if (!g_shadow_command) {
-    fprintf(stderr, "gpu shadow: command buffer failed: %s\n", SDL_GetError());
+    x2_log_error("gpu shadow: command buffer failed: %s\n", SDL_GetError());
     g_resource_failures++;
   }
 }
@@ -359,7 +360,7 @@ void gpu_shadow_frame_submit(void) {
     SDL_EndGPURenderPass(g_shadow_pass);
     g_shadow_pass = NULL;
     if (!SDL_SubmitGPUCommandBuffer(g_shadow_command)) {
-      fprintf(stderr, "gpu shadow: submission failed: %s\n", SDL_GetError());
+      x2_log_error("gpu shadow: submission failed: %s\n", SDL_GetError());
       g_resource_failures++;
     } else
       g_frames_submitted++;
@@ -389,14 +390,14 @@ SDL_GPUTexture *gpu_shadow_texture(void) { return g_texture; }
 SDL_GPUSampler *gpu_shadow_sampler(void) { return g_sampler; }
 
 void gpu_shadow_report(void) {
-  printf("  gpu shadow: %s, %ux%u; %lu/%lu frames selected a title "
-         "directional light, %lu submitted; %lu caster (%lu programmable) "
-         "and %lu receiver (%lu programmable) draw(s), %lu resource/pass "
-         "failure(s)\n",
-         g_enabled ? "enabled" : "disabled", g_resolution, g_resolution,
-         g_frames_with_light, g_frames, g_frames_submitted, g_casters,
-         g_programmable_casters, g_receivers, g_programmable_receivers,
-         g_resource_failures);
+  x2_log_info("  gpu shadow: %s, %ux%u; %lu/%lu frames selected a title "
+              "directional light, %lu submitted; %lu caster (%lu programmable) "
+              "and %lu receiver (%lu programmable) draw(s), %lu resource/pass "
+              "failure(s)\n",
+              g_enabled ? "enabled" : "disabled", g_resolution, g_resolution,
+              g_frames_with_light, g_frames, g_frames_submitted, g_casters,
+              g_programmable_casters, g_receivers, g_programmable_receivers,
+              g_resource_failures);
 }
 
 void gpu_shadow_shutdown(void) {

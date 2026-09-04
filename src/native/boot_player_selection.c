@@ -1,4 +1,5 @@
 #include "boot_player_selection.h"
+#include "x2_log.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -36,27 +37,25 @@ int x2_boot_player_select_primary(CPU *source, unsigned primary_player) {
 
   call = *source;
   x86_guest_call_args(&call, base + PAD_MANAGER_RVA, 0u);
-  manager = call.eax;
+  manager = call.reg[kX86pEax];
   if (!manager ||
       !x86_peek32(RD32(manager) + PAD_SET_CURRENT_PLAYER, &setter) || !setter)
     return 0;
 
   call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, primary_player);
-  call.ecx = manager;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], primary_player);
+  call.reg[kX86pEcx] = manager;
   x86_guest_call_args(&call, setter, 4u);
   if (RD32(manager + PAD_CURRENT_PLAYER) != primary_player) {
-    fprintf(stderr,
-            "BOOT PLAYER: CPadManager rejected primary local "
-            "player %u.\n",
-            primary_player + 1u);
+    x2_log_error("BOOT PLAYER: CPadManager rejected primary local "
+                 "player %u.\n",
+                 primary_player + 1u);
     return 0;
   }
-  fprintf(stderr,
-          "BOOT PLAYER: title/menu presentation was bypassed; "
-          "CPadManager selected primary local player %u through "
-          "its retail setter.\n",
-          primary_player + 1u);
+  x2_log_error("BOOT PLAYER: title/menu presentation was bypassed; "
+               "CPadManager selected primary local player %u through "
+               "its retail setter.\n",
+               primary_player + 1u);
   return 1;
 }

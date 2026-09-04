@@ -2,6 +2,7 @@
 #include "pad_glyph_codes.h"
 #include "pad_glyphs.h"
 #include "prompt_glyphs.h"
+#include "runtime_cvars.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -46,20 +47,21 @@ int dinput_pad_uses_xbox_glyphs(int pad) { return pad == 1; }
 int x2_player_input_pad_is_active_source(int pad) { return pad == active_pad; }
 static void guest_body_006281f0(CPU *c) {
   real_calls++;
-  c->eax = 0x12345678u;
-  c->esp += 12u;
+  c->reg[kX86pEax] = 0x12345678u;
+  c->reg[kX86pEsp] += 12u;
 }
 /* FUN_006294b0(row, slot, *kind, *code) -- the label's binding reader. The
    stub answers with a keyboard binding, so a super-call is visible as "the
    keyboard won" and the override's answer is visible as the pad. */
 static void guest_body_006294b0(CPU *c) {
-  uint32_t out_kind = RD32(c->esp + 0xcu), out_code = RD32(c->esp + 0x10u);
+  uint32_t out_kind = RD32(c->reg[kX86pEsp] + 0xcu),
+           out_code = RD32(c->reg[kX86pEsp] + 0x10u);
   reader_calls++;
   if (out_kind)
     WR32(out_kind, 1u); /* keyboard */
   if (out_code)
     WR32(out_code, 0x1cu); /* DIK Return */
-  c->esp += 4u + 0x10u;
+  c->reg[kX86pEsp] += 4u + 0x10u;
 }
 int x86_peek(uint32_t addr, void *out, size_t n) {
   if (addr < mapped_base || (uint64_t)addr + n > (uint64_t)mapped_base + SIZE)
@@ -87,8 +89,8 @@ static void guest_body_00619e30(CPU *c) {
     WR8(out + 1u + i, (uint8_t)ch);
   WR8(out + 1u + i, (uint8_t)']');
   WR8(out + 2u + i, 0);
-  c->eax = out;
-  c->esp += 4u; /* cdecl: the caller cleans its arg */
+  c->reg[kX86pEax] = out;
+  c->reg[kX86pEsp] += 4u; /* cdecl: the caller cleans its arg */
 }
 /* FUN_004bd720 -- the token resolver prompt_labels.c probes for its consumer
    census. This test drives the label builder directly and never goes through
@@ -121,9 +123,9 @@ static const char *label_after(const char *name) {
   g_label_name = p;
   WR32(stack, 0xfeedfaceu);
   WR32(stack + 4u, 7u); /* the action id; the stub ignores it */
-  c.esp = stack;
+  c.reg[kX86pEsp] = stack;
   x2_override_00619e30(&c);
-  return guest_memory_const_pointer(c.eax);
+  return guest_memory_const_pointer(c.reg[kX86pEax]);
 }
 
 /* Write a binding straight into the guest table, using the ABI
@@ -147,10 +149,10 @@ static int reader_says(uint32_t row, uint32_t *kind, uint32_t *code,
   WR32(stack + 8u, 2u); /* slot 2, the label's first choice */
   WR32(stack + 0xcu, mapped_base + 0x3000u);
   WR32(stack + 0x10u, mapped_base + 0x3004u);
-  c.esp = stack;
-  c.ecx = g_object; /* __thiscall: the binding object */
+  c.reg[kX86pEsp] = stack;
+  c.reg[kX86pEcx] = g_object; /* __thiscall: the binding object */
   x2_override_006294b0(&c);
-  if (c.esp != stack + 0x14u)
+  if (c.reg[kX86pEsp] != stack + 0x14u)
     return 0;
   if ((reader_calls - before != 0) != (want_super != 0))
     return 0;
@@ -167,22 +169,23 @@ static int check_call(uint32_t kind, uint32_t code, uint32_t want,
   stack[0] = 0xfeedfaceu;
   stack[1] = kind;
   stack[2] = code;
-  c.esp = mapped_base + 0x1000u;
+  c.reg[kX86pEsp] = mapped_base + 0x1000u;
   x2_override_006281f0(&c);
-  if (c.esp != mapped_base + 0x100cu || real_calls - before != want_real)
+  if (c.reg[kX86pEsp] != mapped_base + 0x100cu ||
+      real_calls - before != want_real)
     return 0;
   if (want_real)
-    return c.eax == 0x12345678u;
-  return c.eax == mapped_base + BUFFER_RVA && RD8(c.eax) == want &&
-         RD8(c.eax + 1u) == 0;
+    return c.reg[kX86pEax] == 0x12345678u;
+  return c.reg[kX86pEax] == mapped_base + BUFFER_RVA &&
+         RD8(c.reg[kX86pEax]) == want && RD8(c.reg[kX86pEax] + 1u) == 0;
 }
 
 int main(int argc, char **argv) {
   int ok;
   (void)argc;
-  mapped_base = 0x10000000u;
   if (guest_memory_init() != 0 ||
-      guest_memory_map_fixed(mapped_base, SIZE, PROT_READ | PROT_WRITE) != 0) {
+      guest_memory_map_any(0x10000000u, 0x70000000u, 0x01000000u, SIZE,
+                           PROT_READ | PROT_WRITE, &mapped_base) != 0) {
     perror("test_pad_glyphs guest map");
     return 1;
   }
@@ -192,12 +195,14 @@ int main(int argc, char **argv) {
   if (argc == 2 && strcmp(argv[1], "--disabled") == 0) {
     setenv("X2_PROMPT_GLYPHS", "0", 1);
     unsetenv("X2_PAD_GLYPHS");
+    x2_runtime_config_init(0, NULL);
     ok = check_call(3, 0x15, 0, 1);
     printf("pad glyph disabled gate: %s\n", ok ? "ok" : "FAIL");
     return ok ? 0 : 1;
   }
 
   setenv("X2_PROMPT_GLYPHS", "1", 1);
+  x2_runtime_config_init(0, NULL);
   ok = check_call(3, 0x15, 0x80, 0) && /* A */
        check_call(3, 5, 0x86, 0) &&    /* Z+ = LT */
        check_call(3, 6, 0x87, 0) &&    /* Z- = RT */

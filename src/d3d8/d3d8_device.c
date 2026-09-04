@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * IDirect3DDevice8 on the host GPU.
  *
@@ -14,9 +15,9 @@
  * engine's code makes those decisions unmodified. That is the entire argument
  * for cutting at this boundary (see d3d8_host.h).
  */
-#include "d3d8_device.h"
 #include "d3d8_caps.h"
 #include "d3d8_com.h"
+#include "d3d8_device.h"
 #include "d3d8_drawcall.h"
 #include "d3d8_host.h"
 #include "d3d8_lightlog.h"
@@ -76,8 +77,8 @@ void d3d8_device_trace_texture_factor(int enabled) {
 }
 
 static void trace_texture_factor_write(CPU *C, uint32_t value) {
-  const uint32_t caller = RD32(C->esp);
-  const uint32_t context_field = C->esi + 0x4c8u;
+  const uint32_t caller = RD32(C->reg[kX86pEsp]);
+  const uint32_t context_field = C->reg[kX86pEsi] + 0x4c8u;
   const void *context_field_host = guest_memory_const_pointer(context_field);
   const int changed =
       g_texture_factor_trace_count == 0 || value != g_texture_factor_trace_last;
@@ -85,17 +86,15 @@ static void trace_texture_factor_write(CPU *C, uint32_t value) {
   if (!g_texture_factor_trace)
     return;
   if (g_texture_factor_trace_count < TEXTURE_FACTOR_TRACE_LIMIT)
-    fprintf(stderr,
-            "d3d8: TFACTOR write %lu value 0x%08x caller 0x%08x "
-            "context 0x%08x field 0x%08x host %p%s\n",
-            g_texture_factor_trace_count + 1, value, caller, C->esi,
-            context_field, context_field_host,
-            changed ? " (value changed)" : "");
+    x2_log_error("d3d8: TFACTOR write %lu value 0x%08x caller 0x%08x "
+                 "context 0x%08x field 0x%08x host %p%s\n",
+                 g_texture_factor_trace_count + 1, value, caller,
+                 C->reg[kX86pEsi], context_field, context_field_host,
+                 changed ? " (value changed)" : "");
   else if (g_texture_factor_trace_count == TEXTURE_FACTOR_TRACE_LIMIT)
-    fprintf(stderr,
-            "d3d8: TFACTOR trace capped after %u writes; draw "
-            "dump remains armed.\n",
-            TEXTURE_FACTOR_TRACE_LIMIT);
+    x2_log_error("d3d8: TFACTOR trace capped after %u writes; draw "
+                 "dump remains armed.\n",
+                 TEXTURE_FACTOR_TRACE_LIMIT);
   g_texture_factor_trace_last = value;
   g_texture_factor_trace_count++;
 }
@@ -124,8 +123,7 @@ static void up_vertices_destroy(void);
 
 void *d3d8_guest_ptr(uint32_t a, const char *what) {
   if (!a) {
-    fprintf(stderr, "d3d8: %s was given a NULL %s\n", d3d8_current_method(),
-            what);
+    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
     return NULL;
   }
   return guest_memory_pointer(a);
@@ -173,8 +171,9 @@ static void dev_AddRef(D3D8Object *self, CPU *C) {
 
 static void device_destroyed(D3D8Object *o) {
   (void)o;
-  printf("d3d8: the engine released the device; tearing down the GPU device "
-         "with it.\n");
+  x2_log_info(
+      "d3d8: the engine released the device; tearing down the GPU device "
+      "with it.\n");
   up_vertices_destroy();
   d3d8_vs_reset();
   d3d8_live_resolution_unbind();
@@ -278,8 +277,8 @@ static void dev_GetDirect3D(D3D8Object *self, CPU *C) {
     return;
   }
   if (!d3d8_the_direct3d8_addref()) {
-    fprintf(stderr, "d3d8: GetDirect3D, but no IDirect3D8 exists in this "
-                    "process -- this device was not made by one.\n");
+    x2_log_error("d3d8: GetDirect3D, but no IDirect3D8 exists in this "
+                 "process -- this device was not made by one.\n");
     WR32(out, 0);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
@@ -344,10 +343,9 @@ static void dev_GetBackBuffer(D3D8Object *self, CPU *C) {
      backend is not. One back buffer, so any other index is the engine
      asking for something that does not exist. */
   if (type != 0 || index != 0) {
-    fprintf(stderr,
-            "d3d8: GetBackBuffer(index=%u, type=%u) -- this device "
-            "presents one mono back buffer.\n",
-            index, type);
+    x2_log_error("d3d8: GetBackBuffer(index=%u, type=%u) -- this device "
+                 "presents one mono back buffer.\n",
+                 index, type);
     WR32(out, 0);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
@@ -369,9 +367,9 @@ static void dev_GetDepthStencilSurface(D3D8Object *self, CPU *C) {
        create. Real D3D8 answers D3DERR_NOTFOUND here and the engine has a
        path for it; inventing one would be a depth buffer nothing renders
        into. */
-    fprintf(stderr, "d3d8: GetDepthStencilSurface, but CreateDevice was "
-                    "called with EnableAutoDepthStencil false, so there is "
-                    "none.\n");
+    x2_log_error("d3d8: GetDepthStencilSurface, but CreateDevice was "
+                 "called with EnableAutoDepthStencil false, so there is "
+                 "none.\n");
     WR32(out, 0);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
@@ -400,10 +398,9 @@ static void dev_SetRenderTarget(D3D8Object *self, CPU *C) {
 
   (void)self;
   if (rt && !rt_obj) {
-    fprintf(stderr,
-            "d3d8: SetRenderTarget was given 0x%08x, which is not "
-            "a surface this host made.\n",
-            rt);
+    x2_log_error("d3d8: SetRenderTarget was given 0x%08x, which is not "
+                 "a surface this host made.\n",
+                 rt);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -804,10 +801,9 @@ static void dev_SetTexture(D3D8Object *self, CPU *C) {
     return;
   }
   if (tex && !d3d8_object_from_guest(tex)) {
-    fprintf(stderr,
-            "d3d8: SetTexture(%u, 0x%08x) -- that is not a texture "
-            "this host made.\n",
-            stage, tex);
+    x2_log_error("d3d8: SetTexture(%u, 0x%08x) -- that is not a texture "
+                 "this host made.\n",
+                 stage, tex);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -824,10 +820,9 @@ static void dev_SetStreamSource(D3D8Object *self, CPU *C) {
     return;
   }
   if (buf && !d3d8_object_from_guest(buf)) {
-    fprintf(stderr,
-            "d3d8: SetStreamSource was given 0x%08x, which is not "
-            "a buffer this host made.\n",
-            buf);
+    x2_log_error("d3d8: SetStreamSource was given 0x%08x, which is not "
+                 "a buffer this host made.\n",
+                 buf);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -840,10 +835,9 @@ static void dev_SetIndices(D3D8Object *self, CPU *C) {
   uint32_t buf = d3d8_arg(C, 0), base = d3d8_arg(C, 1);
   (void)self;
   if (buf && !d3d8_object_from_guest(buf)) {
-    fprintf(stderr,
-            "d3d8: SetIndices was given 0x%08x, which is not a "
-            "buffer this host made.\n",
-            buf);
+    x2_log_error("d3d8: SetIndices was given 0x%08x, which is not a "
+                 "buffer this host made.\n",
+                 buf);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -914,23 +908,24 @@ void d3d8_vertex_shader_binding_line(char *buf, size_t n) {
 
 void d3d8_vertex_shader_binding_report(void) {
   int i;
-  printf("  d3d8 SetVertexShader: %d distinct value(s)", g_vs_nseen);
+  x2_log_info("  d3d8 SetVertexShader: %d distinct value(s)", g_vs_nseen);
   if (g_vs_seen_dropped)
-    printf(", and %lu call(s) with further values this table could not "
-           "hold",
-           g_vs_seen_dropped);
-  printf("\n");
+    x2_log_info(", and %lu call(s) with further values this table could not "
+                "hold",
+                g_vs_seen_dropped);
+  x2_log_info("\n");
   if (!g_vs_nseen) {
-    printf("        the engine NEVER bound a vertex format or a shader. "
-           "Every draw used whatever was current at device creation.\n");
+    x2_log_info("        the engine NEVER bound a vertex format or a shader. "
+                "Every draw used whatever was current at device creation.\n");
     return;
   }
   for (i = 0; i < g_vs_nseen; i++) {
     uint32_t h = g_vs_seen[i].handle;
     /* D3D8's own rule, not a threshold: bit 0 is D3DFVF_RESERVED0 and an
        FVF may never set it, so a handle with it set is a SHADER. */
-    printf("        0x%08x  x%-8lu  %s\n", h, g_vs_seen[i].n,
-           (h & 1u) ? "a SHADER HANDLE (D3DFVF_RESERVED0 set)" : "an FVF code");
+    x2_log_info("        0x%08x  x%-8lu  %s\n", h, g_vs_seen[i].n,
+                (h & 1u) ? "a SHADER HANDLE (D3DFVF_RESERVED0 set)"
+                         : "an FVF code");
   }
 }
 
@@ -1028,7 +1023,8 @@ static unsigned long g_vsc_calls, g_vsc_overflow;
 static void vsc_walk(CPU *C, uint32_t *out, int *nout) {
   uint32_t sp;
   int n = 0;
-  for (sp = C->esp + 4u; sp < C->esp + 4u + 512u && n < VSC_DEPTH; sp += 4u) {
+  for (sp = C->reg[kX86pEsp] + 4u;
+       sp < C->reg[kX86pEsp] + 4u + 512u && n < VSC_DEPTH; sp += 4u) {
     const char *nm = NULL;
     uint32_t w, ep;
     /* Reuse the oracle recorder's page check rather than a second
@@ -1082,41 +1078,40 @@ int d3d8_vsconst_caller_line(char *buf, int n) {
 
 void d3d8_vsconst_caller_report(void) {
   int i;
-  fprintf(stderr,
-          "SetVertexShaderConstant: %lu call(s) from %d distinct "
-          "call site(s) (census holds %d):\n",
-          g_vsc_calls, g_nvsc, VSC_SITES);
+  x2_log_error("SetVertexShaderConstant: %lu call(s) from %d distinct "
+               "call site(s) (census holds %d):\n",
+               g_vsc_calls, g_nvsc, VSC_SITES);
   if (!g_nvsc)
-    fprintf(stderr, "  NONE. Either no shader constant was ever set, or "
-                    "the census never ran -- not that the callers are "
-                    "unknown.\n");
+    x2_log_error("  NONE. Either no shader constant was ever set, or "
+                 "the census never ran -- not that the callers are "
+                 "unknown.\n");
   for (i = 0; i < g_nvsc; i++) {
     const char *nm = NULL;
     uint32_t ep = x86_native_entry_containing(g_vsc[i].ret, &nm);
     X86Module *m = x86_module_for(g_vsc[i].ret);
     int k;
-    fprintf(stderr, "  ret 0x%08x  %10lu call(s)  c[%u..%u]  %s%s+0x%x  %s\n",
-            g_vsc[i].ret, g_vsc[i].n, g_vsc[i].lo, g_vsc[i].hi,
-            m ? m->name : "?", m ? "!" : "", m ? (unsigned)(ep - *m->base) : 0u,
-            nm ? nm : "(unnamed)");
+    x2_log_error("  ret 0x%08x  %10lu call(s)  c[%u..%u]  %s%s+0x%x  %s\n",
+                 g_vsc[i].ret, g_vsc[i].n, g_vsc[i].lo, g_vsc[i].hi,
+                 m ? m->name : "?", m ? "!" : "",
+                 m ? (unsigned)(ep - *m->base) : 0u, nm ? nm : "(unnamed)");
     if (!g_vsc[i].nup)
-      fprintf(stderr, "      (no caller above it was identified on the "
-                      "stack -- not that there is none)\n");
+      x2_log_error("      (no caller above it was identified on the "
+                   "stack -- not that there is none)\n");
     for (k = 0; k < g_vsc[i].nup; k++) {
       const char *un = NULL;
       X86Module *um = x86_module_for(g_vsc[i].up[k]);
       x86_native_entry_containing(g_vsc[i].up[k], &un);
-      fprintf(stderr, "      above [%d] %s+0x%x  %s\n", k, um ? um->name : "?",
-              um ? (unsigned)(g_vsc[i].up[k] - *um->base) : 0u,
-              un ? un : "(unnamed)");
+      x2_log_error("      above [%d] %s+0x%x  %s\n", k, um ? um->name : "?",
+                   um ? (unsigned)(g_vsc[i].up[k] - *um->base) : 0u,
+                   un ? un : "(unnamed)");
     }
-    fprintf(stderr, "      ^ a STACK SCAN, not an unwind: a stale return "
-                    "address in a dead frame reads the same as a live "
-                    "one. Leads to confirm, not a call chain.\n");
+    x2_log_error("      ^ a STACK SCAN, not an unwind: a stale return "
+                 "address in a dead frame reads the same as a live "
+                 "one. Leads to confirm, not a call chain.\n");
   }
   if (g_vsc_overflow)
-    fprintf(stderr, "  and %lu call(s) from sites past the census.\n",
-            g_vsc_overflow);
+    x2_log_error("  and %lu call(s) from sites past the census.\n",
+                 g_vsc_overflow);
 }
 
 static void dev_SetVertexShaderConstant(D3D8Object *self, CPU *C) {
@@ -1129,9 +1124,9 @@ static void dev_SetVertexShaderConstant(D3D8Object *self, CPU *C) {
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
-  /* RD32(C->esp) is the guest return address: this method has not popped
-     anything yet, so it is the word the CALL pushed. */
-  vsc_note(RD32(C->esp), first, count);
+  /* RD32(C->reg[kX86pEsp]) is the guest return address: this method has not
+     popped anything yet, so it is the word the CALL pushed. */
+  vsc_note(RD32(C->reg[kX86pEsp]), first, count);
   if (g_nvsc && !g_vsc[g_nvsc - 1].nup)
     vsc_walk(C, g_vsc[g_nvsc - 1].up, &g_vsc[g_nvsc - 1].nup);
   memcpy(g_dev.state.vertex_shader_constant[first], data,
@@ -1212,14 +1207,14 @@ static void dev_SetPixelShader(D3D8Object *self, CPU *C) {
   uint32_t handle = d3d8_arg(C, 0);
   (void)self;
   if (handle) {
-    fprintf(stderr,
-            "d3d8: SetPixelShader(0x%08x) -- this host has never created a "
-            "pixel shader, so that handle cannot be one of its.\n"
-            "  There is no ps.1.x translator here; CreatePixelShader "
-            "reports itself by name and is the work item.\n"
-            "  Refusing rather than binding nothing, which would draw the "
-            "fixed-function result in a shader's place.\n",
-            handle);
+    x2_log_error(
+        "d3d8: SetPixelShader(0x%08x) -- this host has never created a "
+        "pixel shader, so that handle cannot be one of its.\n"
+        "  There is no ps.1.x translator here; CreatePixelShader "
+        "reports itself by name and is the work item.\n"
+        "  Refusing rather than binding nothing, which would draw the "
+        "fixed-function result in a shader's place.\n",
+        handle);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -1266,14 +1261,13 @@ static void dev_SetGammaRamp(D3D8Object *self, CPU *C) {
   g_dev.gamma_set = 1;
   g_dev.gamma_curved = !ramp_is_identity(ramp);
   if (g_dev.gamma_curved && !g_dev.gamma_warned++)
-    fprintf(stderr,
-            "d3d8: SetGammaRamp was given a CURVED ramp, and this backend "
-            "cannot programme one.\n"
-            "  It presents through a Vulkan swapchain; there is no "
-            "hardware ramp to set, and applying it belongs in the "
-            "presentation pass.\n"
-            "  The ramp is recorded and readable, but the picture will be "
-            "brighter or darker than the game intends until it is.\n");
+    x2_log_error("d3d8: SetGammaRamp was given a CURVED ramp, and this backend "
+                 "cannot programme one.\n"
+                 "  It presents through a Vulkan swapchain; there is no "
+                 "hardware ramp to set, and applying it belongs in the "
+                 "presentation pass.\n"
+                 "  The ramp is recorded and readable, but the picture will be "
+                 "brighter or darker than the game intends until it is.\n");
   d3d8_ret(C, 0);
 }
 
@@ -1342,7 +1336,7 @@ static int fill_request(D3D8DrawRequest *req, uint32_t prim, uint32_t count,
   memset(req, 0, sizeof *req);
   req->texture_guest = g_dev.state.texture[0];
   if (!vb && require_vb) {
-    fprintf(stderr, "d3d8: a draw with no vertex buffer on stream 0.\n");
+    x2_log_error("d3d8: a draw with no vertex buffer on stream 0.\n");
     return 0;
   }
   if (vb) {
@@ -1398,8 +1392,8 @@ static void dev_DrawIndexedPrimitive(D3D8Object *self, CPU *C) {
     return;
   }
   if (!req.index_buffer) {
-    fprintf(stderr, "d3d8: DrawIndexedPrimitive with no index buffer "
-                    "bound.\n");
+    x2_log_error("d3d8: DrawIndexedPrimitive with no index buffer "
+                 "bound.\n");
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -1452,17 +1446,15 @@ static int primitive_vertices(uint32_t prim, uint32_t count, uint32_t *out) {
     n = (uint64_t)count + 2u;
     break;
   default:
-    fprintf(stderr,
-            "d3d8: DrawPrimitiveUP primitive type %u is outside "
-            "D3D8's 1..6 range.\n",
-            prim);
+    x2_log_error("d3d8: DrawPrimitiveUP primitive type %u is outside "
+                 "D3D8's 1..6 range.\n",
+                 prim);
     return 0;
   }
   if (n > UINT32_MAX) {
-    fprintf(stderr,
-            "d3d8: DrawPrimitiveUP vertex count overflow for %u "
-            "primitive(s) of type %u.\n",
-            count, prim);
+    x2_log_error("d3d8: DrawPrimitiveUP vertex count overflow for %u "
+                 "primitive(s) of type %u.\n",
+                 count, prim);
     return 0;
   }
   *out = (uint32_t)n;
@@ -1624,8 +1616,8 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
                                uint32_t focus_window, uint32_t behaviour,
                                const D3DPRESENT_PARAMETERS *pp) {
   if (g_dev_obj) {
-    fprintf(stderr, "d3d8: CreateDevice called a second time. This host "
-                    "keeps one device; the first is still alive.\n");
+    x2_log_error("d3d8: CreateDevice called a second time. This host "
+                 "keeps one device; the first is still alive.\n");
     return NULL;
   }
   memset(&g_dev, 0, sizeof g_dev);
@@ -1637,16 +1629,17 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
   d3d8_caps_limits_default(&g_dev.limits);
   d3d8_state_reset(&g_dev.state);
 
-  printf("d3d8: CreateDevice adapter=%u %s %ux%u fmt=%u backbuffers=%u "
-         "depth=%s(%u) hwnd=0x%08x\n",
-         adapter, (behaviour & 0x40u) ? "software-vertex" : "hardware-vertex",
-         pp->BackBufferWidth, pp->BackBufferHeight, pp->BackBufferFormat,
-         pp->BackBufferCount, pp->EnableAutoDepthStencil ? "auto" : "none",
-         pp->AutoDepthStencilFormat, pp->hDeviceWindow);
+  x2_log_info("d3d8: CreateDevice adapter=%u %s %ux%u fmt=%u backbuffers=%u "
+              "depth=%s(%u) hwnd=0x%08x\n",
+              adapter,
+              (behaviour & 0x40u) ? "software-vertex" : "hardware-vertex",
+              pp->BackBufferWidth, pp->BackBufferHeight, pp->BackBufferFormat,
+              pp->BackBufferCount, pp->EnableAutoDepthStencil ? "auto" : "none",
+              pp->AutoDepthStencilFormat, pp->hDeviceWindow);
 
   if (!gpu_device_create() || !gpu_device_set_backbuffer_size(
                                   pp->BackBufferWidth, pp->BackBufferHeight)) {
-    fprintf(stderr, "d3d8: host GPU device/backbuffer creation failed.\n");
+    x2_log_error("d3d8: host GPU device/backbuffer creation failed.\n");
     return NULL;
   }
   /* The engine's HWND is meaningless here; the host owns one SDL window and
@@ -1654,8 +1647,8 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
      code path, as the --vk backend's setNativeWindowHandle. */
   gpu_device_set_window_provider(win32_sdl_window);
   if (!gpu_device_attach_window(win32_sdl_window()))
-    fprintf(stderr, "d3d8: no host window to present into yet; the "
-                    "swapchain will be claimed when one exists.\n");
+    x2_log_error("d3d8: no host window to present into yet; the "
+                 "swapchain will be claimed when one exists.\n");
 
   /*
    * The render destinations exist for the life of the device, because that
@@ -1668,7 +1661,7 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
       D3D8_SURF_BACKBUFFER, pp->BackBufferWidth, pp->BackBufferHeight,
       pp->BackBufferFormat, 1u /* RENDERTARGET */, 0u /* D3DPOOL_DEFAULT */);
   if (!g_backbuffer) {
-    fprintf(stderr, "d3d8: the back buffer surface could not be made.\n");
+    x2_log_error("d3d8: the back buffer surface could not be made.\n");
     return NULL;
   }
   g_render_target = g_backbuffer;
@@ -1677,8 +1670,8 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
                                pp->BackBufferHeight, pp->AutoDepthStencilFormat,
                                2u /* DEPTHSTENCIL */, 0u);
     if (!g_depth) {
-      fprintf(stderr, "d3d8: the automatic depth/stencil surface could "
-                      "not be made.\n");
+      x2_log_error("d3d8: the automatic depth/stencil surface could "
+                   "not be made.\n");
       return NULL;
     }
     g_render_depth = g_depth;
@@ -1690,8 +1683,8 @@ D3D8Object *d3d8_device_create(uint32_t adapter, uint32_t devtype,
 
   g_dev_obj = d3d8_object_new(D3D8_IF_IDirect3DDevice8, &g_dev);
   d3d8_object_set_destructor(g_dev_obj, device_destroyed);
-  printf("d3d8: IDirect3DDevice8 at 0x%08x\n", d3d8_object_guest(g_dev_obj));
-  fflush(stdout);
+  x2_log_info("d3d8: IDirect3DDevice8 at 0x%08x\n",
+              d3d8_object_guest(g_dev_obj));
   return g_dev_obj;
 }
 
@@ -1711,13 +1704,13 @@ void d3d8_device_report(void) {
   unsigned long unresolved;
 
   if (!g_dev_obj) {
-    printf("  d3d8: no device was ever created -- the engine did not get "
-           "as far as CreateDevice.\n");
+    x2_log_info("  d3d8: no device was ever created -- the engine did not get "
+                "as far as CreateDevice.\n");
     return;
   }
-  printf("  d3d8: %lu scene(s) begun, %lu clear(s), %lu draw(s), %lu "
-         "present(s)\n",
-         g_dev.scenes, g_dev.clears, g_dev.draws, g_dev.presents);
+  x2_log_info("  d3d8: %lu scene(s) begun, %lu clear(s), %lu draw(s), %lu "
+              "present(s)\n",
+              g_dev.scenes, g_dev.clears, g_dev.draws, g_dev.presents);
   /*
    * Printed at ZERO too, because zero is the interesting value.
    *
@@ -1728,10 +1721,11 @@ void d3d8_device_report(void) {
    * it as 0 of N is what makes the first half readable.
    */
   d3d8_texture_stage_unresolved(&unresolved);
-  printf("        %lu draw(s) had a texture BOUND that this host could not "
-         "resolve (of %lu draws) -- those are untextured with nothing to "
-         "show for it\n",
-         unresolved, g_dev.draws);
+  x2_log_info(
+      "        %lu draw(s) had a texture BOUND that this host could not "
+      "resolve (of %lu draws) -- those are untextured with nothing to "
+      "show for it\n",
+      unresolved, g_dev.draws);
   d3d8_state_report(&g_dev.state);
   d3d8_sb_report();
   d3d8_vs_report();

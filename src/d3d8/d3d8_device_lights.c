@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /*
  * SetMaterial, SetLight and LightEnable, with the evidence for what the engine
  * asked of each.
@@ -48,17 +50,16 @@ void d3d8_dev_SetMaterial(D3D8Object *self, CPU *C) {
   {
     static long want = -2, done;
     if (want == -2) {
-      const char *e = getenv("X2_MATERIAL_DUMP");
+      const char *e = x2_config_override_get(kX2ConfigMaterialDump);
       want = (e && *e) ? atol(e) : -1;
     }
     if (want > 0 && done < want) {
       done++;
-      fprintf(stderr,
-              "d3d8 SetMaterial %ld/%ld: diffuse %.3f %.3f %.3f "
-              "%.3f  ambient %.3f %.3f %.3f  emissive %.3f %.3f %.3f  "
-              "power %.2f\n",
-              done, want, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[12],
-              m[13], m[14], m[16]);
+      x2_log_error("d3d8 SetMaterial %ld/%ld: diffuse %.3f %.3f %.3f "
+                   "%.3f  ambient %.3f %.3f %.3f  emissive %.3f %.3f %.3f  "
+                   "power %.2f\n",
+                   done, want, m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[12],
+                   m[13], m[14], m[16]);
     }
   }
   d3d8_lightlog("SETMATERIAL t=%lu diffuse=%.4f,%.4f,%.4f,%.4f "
@@ -94,11 +95,10 @@ static void light_index_refused(const char *what, uint32_t idx) {
     g_light_idx_max_seen = idx;
   if (told < 8) {
     told++;
-    fprintf(stderr,
-            "d3d8: %s(%u) -- this device holds %d light(s) and the "
-            "engine asked for index %u. REFUSED; that light will "
-            "not reach any draw.\n",
-            what, idx, D3D8_MAX_LIGHTS, idx);
+    x2_log_error("d3d8: %s(%u) -- this device holds %d light(s) and the "
+                 "engine asked for index %u. REFUSED; that light will "
+                 "not reach any draw.\n",
+                 what, idx, D3D8_MAX_LIGHTS, idx);
   }
 }
 
@@ -161,19 +161,18 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
   {
     static long want = -2, done;
     if (want == -2) {
-      const char *e = getenv("X2_LIGHT_RAW");
+      const char *e = x2_config_override_get(kX2ConfigLightRaw);
       want = (e && *e) ? atol(e) : -1;
     }
     if (want > 0 && done < want) {
       int k;
       done++;
-      fprintf(stderr,
-              "d3d8 SetLight[%u] raw %ld/%ld: type=%u then floats:", idx, done,
-              want, ((const uint32_t *)l)[0]);
+      x2_log_error("d3d8 SetLight[%u] raw %ld/%ld: type=%u then floats:", idx,
+                   done, want, ((const uint32_t *)l)[0]);
       for (k = 1; k < 26; k++)
-        fprintf(stderr, "%s[%d]%.4g", (k % 8 == 1) ? "\n    " : " ", k,
-                (double)l[k]);
-      fprintf(stderr, "\n");
+        x2_log_error("%s[%d]%.4g", (k % 8 == 1) ? "\n    " : " ", k,
+                     (double)l[k]);
+      x2_log_error("\n");
     }
   }
   /*
@@ -183,7 +182,7 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
    * real quadratic attenuation and a diffuse of exactly zero, which is not
    * something a level author places -- so the colour is lost UPSTREAM of
    * here and the question is which engine function hands it over. The word
-   * at ESP is the guest return address (every emitted call site pushes one),
+   * at ESP is the guest return address (every guest CALL pushes one),
    * so grouping by it names the caller.
    *
    * Kept as a histogram rather than a line per call: this is called several
@@ -192,7 +191,7 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
    * counter never ran" cannot look the same.
    */
   {
-    uint32_t ra = RD32(C->esp);
+    uint32_t ra = RD32(C->reg[kX86pEsp]);
     int black = l[1] == 0.0f && l[2] == 0.0f && l[3] == 0.0f;
     int i;
     g_setlight_calls++;
@@ -268,15 +267,15 @@ void d3d8_dev_SetLight(D3D8Object *self, CPU *C) {
   {
     static int addr_on = -1, told;
     if (addr_on < 0) {
-      const char *e = getenv("X2_LIGHT_ADDR");
+      const char *e = x2_config_override_get(kX2ConfigLightAddress);
       addr_on = (e && *e) ? atoi(e) : 0;
     }
     if (addr_on && told < 24) {
       told++;
-      fprintf(stderr,
-              "[LIGHT ADDR] index %u at guest 0x%08x, type %u, "
-              "diffuse %.4f %.4f %.4f\n",
-              idx, d3d8_arg(C, 1), ((const uint32_t *)l)[0], l[1], l[2], l[3]);
+      x2_log_error("[LIGHT ADDR] index %u at guest 0x%08x, type %u, "
+                   "diffuse %.4f %.4f %.4f\n",
+                   idx, d3d8_arg(C, 1), ((const uint32_t *)l)[0], l[1], l[2],
+                   l[3]);
     }
   }
   memcpy(d3d8_device_state()->light[idx], l,
@@ -307,55 +306,59 @@ int d3d8_last_setlight_diffuse(unsigned idx, float out[3]) {
 
 void d3d8_setlight_report(void) {
   int i;
-  printf("  d3d8 SetLight: %lu call(s), %lu of them with a BLACK diffuse, "
-         "from %d distinct call site(s)%s\n",
-         g_setlight_calls, g_setlight_black, g_nsetlight_site,
-         g_setlight_over ? " (the site table is FULL -- some are not listed)"
-                         : "");
+  x2_log_info("  d3d8 SetLight: %lu call(s), %lu of them with a BLACK diffuse, "
+              "from %d distinct call site(s)%s\n",
+              g_setlight_calls, g_setlight_black, g_nsetlight_site,
+              g_setlight_over
+                  ? " (the site table is FULL -- some are not listed)"
+                  : "");
   /* AT ZERO and with its denominator: a line that appears only when
      something is wrong cannot be told from a check that never ran. */
-  printf("         %lu of %lu SetLight/LightEnable call(s) named an index "
-         "this device cannot hold (capacity %d, highest asked for %lu)\n",
-         g_light_idx_refused, g_setlight_calls + g_lightenable_calls,
-         D3D8_MAX_LIGHTS, g_light_idx_refused ? g_light_idx_max_seen : 0UL);
+  x2_log_info("         %lu of %lu SetLight/LightEnable call(s) named an index "
+              "this device cannot hold (capacity %d, highest asked for %lu)\n",
+              g_light_idx_refused, g_setlight_calls + g_lightenable_calls,
+              D3D8_MAX_LIGHTS,
+              g_light_idx_refused ? g_light_idx_max_seen : 0UL);
   if (!g_setlight_calls) {
-    printf("         SetLight was never called, so this run says nothing "
-           "about where light colour comes from.\n");
+    x2_log_info("         SetLight was never called, so this run says nothing "
+                "about where light colour comes from.\n");
     return;
   }
-  printf("         the engine transforms a light POSITION by the top of its "
-         "own matrix stack before handing it over (libIGGfx 0x1003d5e0) and "
-         "keeps the untransformed vector beside it:\n"
-         "         %lu call(s) arrived TRANSFORMED, %lu arrived with the two "
-         "equal (the transform was a no-op), %lu had no readable record "
-         "tail.\n",
-         g_light_transformed, g_light_untransformed, g_light_tail_unreadable);
+  x2_log_info(
+      "         the engine transforms a light POSITION by the top of its "
+      "own matrix stack before handing it over (libIGGfx 0x1003d5e0) and "
+      "keeps the untransformed vector beside it:\n"
+      "         %lu call(s) arrived TRANSFORMED, %lu arrived with the two "
+      "equal (the transform was a no-op), %lu had no readable record "
+      "tail.\n",
+      g_light_transformed, g_light_untransformed, g_light_tail_unreadable);
   for (i = 0; i < (int)D3D8_MAX_LIGHTS; i++) {
     if (!g_light_slot[i].calls)
       continue;
-    printf("         light[%d] %lu call(s), %lu black; LAST was type %u "
-           "diffuse %.3f %.3f %.3f%s\n",
-           i, g_light_slot[i].calls, g_light_slot[i].black,
-           g_light_slot[i].last_type, g_light_slot[i].last[0],
-           g_light_slot[i].last[1], g_light_slot[i].last[2],
-           (g_light_slot[i].last[0] == 0.0f &&
-            g_light_slot[i].last[1] == 0.0f && g_light_slot[i].last[2] == 0.0f)
-               ? "   <- BLACK"
-               : "");
+    x2_log_info("         light[%d] %lu call(s), %lu black; LAST was type %u "
+                "diffuse %.3f %.3f %.3f%s\n",
+                i, g_light_slot[i].calls, g_light_slot[i].black,
+                g_light_slot[i].last_type, g_light_slot[i].last[0],
+                g_light_slot[i].last[1], g_light_slot[i].last[2],
+                (g_light_slot[i].last[0] == 0.0f &&
+                 g_light_slot[i].last[1] == 0.0f &&
+                 g_light_slot[i].last[2] == 0.0f)
+                    ? "   <- BLACK"
+                    : "");
   }
   for (i = 0; i < g_nsetlight_site; i++) {
     uint32_t ra = g_setlight_site[i].ra;
     const char *nm = x86_native_name_at(ra);
     X86Module *rm = x86_module_for(ra);
-    printf("         0x%08x  %lu call(s), %lu black", ra,
-           g_setlight_site[i].calls, g_setlight_site[i].black);
+    x2_log_info("         0x%08x  %lu call(s), %lu black", ra,
+                g_setlight_site[i].calls, g_setlight_site[i].black);
     if (nm)
-      printf("  -- %s\n", nm);
+      x2_log_info("  -- %s\n", nm);
     else if (rm)
-      printf("  -- inside %s at guest 0x%08x, not at a named body\n", rm->name,
-             rm->preferred + (ra - *rm->base));
+      x2_log_info("  -- inside %s at guest 0x%08x, not at a named body\n",
+                  rm->name, rm->preferred + (ra - *rm->base));
     else
-      printf("  -- in NO module; the return address is not trustworthy\n");
+      x2_log_info("  -- in NO module; the return address is not trustworthy\n");
   }
 }
 

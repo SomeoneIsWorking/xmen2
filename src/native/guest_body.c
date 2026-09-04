@@ -1,4 +1,5 @@
 #include "guest_body.h"
+#include <lucent/log_c.h>
 
 #include "x86_engine.h"
 #include "x86rt_native.h"
@@ -20,21 +21,23 @@ void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep) {
 
   if (x86_override_resolve_check(module, linked_ep, &mapped, why, sizeof why) !=
       0) {
-    fprintf(stderr,
-            "x86_guest_body: %s 0x%08x could not be resolved: %s\n"
-            "    A native override asked for the guest's own body and\n"
-            "    there is no address to run it at. Continuing would skip\n"
-            "    the function entirely.\n",
-            module, linked_ep, why);
+    lucent_log_error(
+        "x2",
+        "x86_guest_body: %s 0x%08x could not be resolved: %s\n"
+        "    A native override asked for the guest's own body and\n"
+        "    there is no address to run it at. Continuing would skip\n"
+        "    the function entirely.\n",
+        module, linked_ep, why);
     abort();
   }
   if (!x2_engine_call(mapped, C)) {
-    fprintf(stderr,
-            "x86_guest_body: the execution engine declined %s 0x%08x "
-            "(mapped 0x%08x).\n"
-            "    It is the only thing that can run guest bytes in this "
-            "build, so there is no second answer to fall back on.\n",
-            module, linked_ep, mapped);
+    lucent_log_error(
+        "x2",
+        "x86_guest_body: the execution engine declined %s 0x%08x "
+        "(mapped 0x%08x).\n"
+        "    It is the only thing that can run guest bytes in this "
+        "build, so there is no second answer to fall back on.\n",
+        module, linked_ep, mapped);
     abort();
   }
 }

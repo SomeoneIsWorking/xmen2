@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +35,8 @@ typedef struct {
 } AttrStackVerify;
 
 void attr_stack_verify_begin(AttrStackVerify *v, uint32_t self);
-void attr_stack_verify_end(const struct CPU *C, AttrStackVerify *v, uint32_t self);
+void attr_stack_verify_end(const struct X86pCpu *C, AttrStackVerify *v,
+                           uint32_t self);
 
 #ifdef __cplusplus
 }

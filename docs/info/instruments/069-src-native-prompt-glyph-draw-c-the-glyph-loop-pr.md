@@ -35,7 +35,7 @@ words (9d28, 01f2, 08e2) and the legal screen's 0x00bd. Corroborated
 independently by the token-resolver census in prompt_labels.c: 1142 consumed
 at 0x005ef757 equals 1142 strings detected.
 
-LESSON FOR ANY DETECTOR ON A RECOMPILED BODY: read the argument out of the
+LESSON FOR ANY DETECTOR ON A GUEST BODY: read the argument out of the
 retail prologue, never from a register a comment claims. Wide text is common
 enough in nearby registers that a wrong pointer decodes as plausible strings
 and reads like a working instrument.

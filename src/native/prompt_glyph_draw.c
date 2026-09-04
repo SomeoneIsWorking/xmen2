@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /* Prompt glyph harvest at the retail text renderer.
  *
  * The game's font assets stay untouched. FUN_005ee780 performs the retail
@@ -104,7 +105,7 @@ int x2_string_has_prompt_glyph(uint32_t s_guest, unsigned max) {
 static void log_example(uint32_t where) {
   char buf[MAX_WALK + 1];
   unsigned i;
-  fprintf(stderr, "PROMPT DRAW: string at guest 0x%08x wchars:", where);
+  x2_log_error("PROMPT DRAW: string at guest 0x%08x wchars:", where);
   for (i = 0; i < MAX_WALK; i++) {
     uint16_t c = RD16(where + (uint32_t)i * 2u);
     if (!c)
@@ -112,10 +113,10 @@ static void log_example(uint32_t where) {
     buf[i] = (c >= 0x20 && c < 0x7f) ? (char)c
              : prompt_codepoint(c)   ? '#'
                                      : '?';
-    fprintf(stderr, " %04x", c);
+    x2_log_error(" %04x", c);
   }
   buf[i] = 0;
-  fprintf(stderr, "  = \"%s\"\n", buf);
+  x2_log_error("  = \"%s\"\n", buf);
 }
 
 /* The wide string is FUN_005ee780's FIRST STACK ARGUMENT, not EDX.
@@ -126,16 +127,18 @@ static void log_example(uint32_t where) {
  * and 0x3c - 0x40 lands exactly on entry_esp+4. The entry prologue reads the
  * same slot as `[ESP+0x30]` before the pushes, which agrees.
  *
- * This detector previously read C->edx, on the strength of a "__fastcall
- * (ECX=owner, EDX=&wide buf)" note. EDX is not an input at all: 0x005ee797
- * overwrites it from `[EDI+0x8]` before it is ever read. Whatever the caller
- * happened to leave in EDX often pointed at real wide text -- which is why
- * the wrong pointer still decoded as "Cyclops" and the legal screen and read
- * like a working instrument -- but it was never the string being drawn. Every
- * zero this file reported before that fix was measured against the wrong
+ * This detector previously read C->reg[kX86pEdx], on the strength of a
+ * "__fastcall (ECX=owner, EDX=&wide buf)" note. EDX is not an input at all:
+ * 0x005ee797 overwrites it from `[EDI+0x8]` before it is ever read. Whatever
+ * the caller happened to leave in EDX often pointed at real wide text -- which
+ * is why the wrong pointer still decoded as "Cyclops" and the legal screen and
+ * read like a working instrument -- but it was never the string being drawn.
+ * Every zero this file reported before that fix was measured against the wrong
  * memory (C267 is retracted on those grounds).
  */
-static uint32_t glyph_loop_string(const CPU *C) { return RD32(C->esp + 4u); }
+static uint32_t glyph_loop_string(const CPU *C) {
+  return RD32(C->reg[kX86pEsp] + 4u);
+}
 
 /* Which wchar the emitter is on.
  *
@@ -195,7 +198,7 @@ void x2_override_005ee400(CPU *C) {
       float ex0, ey0, ex1, ey1;
       unsigned i;
       for (i = 0; i < 8u; i++)
-        a[i] = RD32(C->esp + (uint32_t)(i + 1u) * 4u);
+        a[i] = RD32(C->reg[kX86pEsp] + (uint32_t)(i + 1u) * 4u);
       memcpy(&ex0, &a[0], 4);
       memcpy(&ey0, &a[1], 4);
       memcpy(&ex1, &a[2], 4);
@@ -216,16 +219,16 @@ void x2_override_005ee400(CPU *C) {
       q.y1 = ey1;
       q.color = g_cursor_color;
       if (!x2_prompt_quads_add(&q)) {
-        fprintf(stderr, "PROMPT DRAW: reserved queue capacity was "
-                        "lost inside one synchronous retail string; "
-                        "atomic interception cannot continue.\n");
+        x2_log_error("PROMPT DRAW: reserved queue capacity was "
+                     "lost inside one synchronous retail string; "
+                     "atomic interception cannot continue.\n");
         abort();
       }
       g_intercepted++;
       /* Keep the call but give the retail atlas zero area. The stock
          function owns both vertex submission and its RET 0x20 ABI. */
-      WR32(C->esp + 12u, a[0]);
-      WR32(C->esp + 16u, a[1]);
+      WR32(C->reg[kX86pEsp] + 12u, a[0]);
+      WR32(C->reg[kX86pEsp] + 16u, a[1]);
     }
   }
   x86_guest_body(C, "XMen2.exe", 0x005ee400u);
@@ -303,7 +306,7 @@ void x2_override_005ee780(CPU *C) {
   if (x2_prompt_glyphs_enabled() && s &&
       x2_string_has_prompt_glyph(s, MAX_WALK)) {
     struct PromptStringPlan plan = plan_string(s);
-    uint32_t batch = RD32(C->esp + 8u);
+    uint32_t batch = RD32(C->reg[kX86pEsp] + 8u);
     uint32_t color;
 
     /* This decision is string-atomic. Once the retail loop starts, an
@@ -339,12 +342,11 @@ void x2_override_005ee780(CPU *C) {
     g_cursor_string = 0;
     if (g_emitted_seen - g_emitted_seen_before != plan.emitted) {
       g_desync++;
-      fprintf(stderr,
-              "PROMPT DRAW: quad/wchar DESYNC -- predicted %u "
-              "quad(s) for this string, the emitter produced "
-              "%lu. The cursor model is wrong, so an "
-              "interception may have hit the wrong glyph.\n",
-              plan.emitted, g_emitted_seen - g_emitted_seen_before);
+      x2_log_error("PROMPT DRAW: quad/wchar DESYNC -- predicted %u "
+                   "quad(s) for this string, the emitter produced "
+                   "%lu. The cursor model is wrong, so an "
+                   "interception may have hit the wrong glyph.\n",
+                   plan.emitted, g_emitted_seen - g_emitted_seen_before);
     }
     return;
   }
@@ -358,45 +360,43 @@ __attribute__((constructor)) static void x2_prompt_draw_register(void) {
 }
 
 void x2_prompt_draw_report(void) {
-  fprintf(stderr,
-          "PROMPT DRAW: %lu string(s) reached the glyph loop, %lu "
-          "carried prompt codepoint(s) (0x%02x..0x%02x), %lu "
-          "codepoint(s) total, %lu carried some other non-ASCII "
-          "wchar; %lu super-call(s)\n",
-          g_strings, g_with_prompts, X2_PROMPT_GLYPH_FIRST,
-          X2_PROMPT_GLYPH_LAST, g_prompt_codepoints, g_with_non_ascii,
-          g_super_called);
-  fprintf(stderr,
-          "PROMPT DRAW: %lu quad(s) intercepted for the port out of "
-          "%lu the emitter produced for our strings (%lu predicted); "
-          "%lu desync(s); %lu whole string(s) kept stock because a "
-          "codepoint was not private, %lu because the engine batch color "
-          "was unreadable, %lu because "
-          "the frame queue lacked capacity\n",
-          g_intercepted, g_emitted_seen, g_predicted, g_desync,
-          g_unavailable_refused, g_color_refused, g_queue_refused);
+  x2_log_error("PROMPT DRAW: %lu string(s) reached the glyph loop, %lu "
+               "carried prompt codepoint(s) (0x%02x..0x%02x), %lu "
+               "codepoint(s) total, %lu carried some other non-ASCII "
+               "wchar; %lu super-call(s)\n",
+               g_strings, g_with_prompts, X2_PROMPT_GLYPH_FIRST,
+               X2_PROMPT_GLYPH_LAST, g_prompt_codepoints, g_with_non_ascii,
+               g_super_called);
+  x2_log_error("PROMPT DRAW: %lu quad(s) intercepted for the port out of "
+               "%lu the emitter produced for our strings (%lu predicted); "
+               "%lu desync(s); %lu whole string(s) kept stock because a "
+               "codepoint was not private, %lu because the engine batch color "
+               "was unreadable, %lu because "
+               "the frame queue lacked capacity\n",
+               g_intercepted, g_emitted_seen, g_predicted, g_desync,
+               g_unavailable_refused, g_color_refused, g_queue_refused);
   if (g_desync)
-    fprintf(stderr, "PROMPT DRAW: the quad/wchar cursor DESYNCED -- the "
-                    "harvested rectangles are not trustworthy.\n");
-  fprintf(stderr, "PROMPT DRAW: %u distinct string(s) dumped%s\n", g_distinct,
-          g_distinct_dropped ? " (SLOTS FULL -- later distinct strings "
-                               "went undumped, so this list is not the "
-                               "whole set)"
-                             : "");
+    x2_log_error("PROMPT DRAW: the quad/wchar cursor DESYNCED -- the "
+                 "harvested rectangles are not trustworthy.\n");
+  x2_log_error("PROMPT DRAW: %u distinct string(s) dumped%s\n", g_distinct,
+               g_distinct_dropped ? " (SLOTS FULL -- later distinct strings "
+                                    "went undumped, so this list is not the "
+                                    "whole set)"
+                                  : "");
   if (!g_strings)
-    fprintf(stderr, "PROMPT DRAW: ZERO strings seen -- either nothing "
-                    "drew text in this run or the override never armed.\n");
+    x2_log_error("PROMPT DRAW: ZERO strings seen -- either nothing "
+                 "drew text in this run or the override never armed.\n");
   else if (!x2_prompt_glyphs_enabled())
-    fprintf(stderr, "PROMPT DRAW: native prompt glyphs were DISABLED for this "
-                    "run (X2_PROMPT_GLYPHS=0), so no string could "
-                    "have carried a prompt codepoint. This is not "
-                    "evidence about the draw path.\n");
+    x2_log_error("PROMPT DRAW: native prompt glyphs were DISABLED for this "
+                 "run (X2_PROMPT_GLYPHS=0), so no string could "
+                 "have carried a prompt codepoint. This is not "
+                 "evidence about the draw path.\n");
   else if (!g_with_prompts)
-    fprintf(stderr, "PROMPT DRAW: native prompt glyphs were enabled and "
-                    "text drew, yet "
-                    "no prompt codepoint reached the glyph loop. Compare "
-                    "against the composed-label count in the prompt-label "
-                    "report: labels composed but never arriving here means "
-                    "they were not drawn in this run OR they reach the "
-                    "screen by some other path.\n");
+    x2_log_error("PROMPT DRAW: native prompt glyphs were enabled and "
+                 "text drew, yet "
+                 "no prompt codepoint reached the glyph loop. Compare "
+                 "against the composed-label count in the prompt-label "
+                 "report: labels composed but never arriving here means "
+                 "they were not drawn in this run OR they reach the "
+                 "screen by some other path.\n");
 }

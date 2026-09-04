@@ -11,7 +11,8 @@ int x2_autosave_header_from_payload(
   size_t offset;
 
   if (!payload || !header || payload_size < sizeof PREFIX + 2u ||
-      payload[0] != '\n' || memcmp(payload + 1u, PREFIX, sizeof PREFIX - 1u))
+      payload[0] != '\n' ||
+      memcmp(payload + 1u, PREFIX, sizeof PREFIX - 1u) != 0)
     return 0;
   offset = sizeof PREFIX;
   description = payload + offset;

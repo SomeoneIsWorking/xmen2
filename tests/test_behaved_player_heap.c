@@ -100,24 +100,25 @@ uint32_t behaved_context_run(CPU *cpu, uint32_t context_address) {
 void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
   if (target == FN_MANAGER) {
     note('M');
-    cpu->eax = manager_address;
+    cpu->reg[kX86pEax] = manager_address;
   } else if (target == FN_CONTEXT_CLEANUP) {
     note('C');
   } else if (target == FN_POOL_RELEASE) {
-    CHECK(cpu->ecx == manager_address + CONTEXT_POOL,
+    CHECK(cpu->reg[kX86pEcx] == manager_address + CONTEXT_POOL,
           "context release did not use the retail pool owner");
-    CHECK(RD32(cpu->esp) < 30u,
+    CHECK(RD32(cpu->reg[kX86pEsp]) < 30u,
           "context release received an invalid fiber index");
     note('F');
   } else if (target == FN_SLOT_RELEASE) {
-    CHECK(cpu->ecx == manager_address + SCHEDULER_OFFSET,
+    CHECK(cpu->reg[kX86pEcx] == manager_address + SCHEDULER_OFFSET,
           "scheduler release did not use the scheduler owner");
-    CHECK(RD32(cpu->esp) < 30u, "scheduler release received an invalid slot");
+    CHECK(RD32(cpu->reg[kX86pEsp]) < 30u,
+          "scheduler release received an invalid slot");
     note('S');
   } else {
     fail("player called an unexpected guest function");
   }
-  cpu->esp += callee_pop_bytes;
+  cpu->reg[kX86pEsp] += callee_pop_bytes;
 }
 
 void x86_register_override(const char *name, uint32_t ep,
@@ -155,7 +156,7 @@ static void set_heap(const float *deadlines, const uint32_t *slots,
 static CPU fresh_cpu(void) {
   CPU cpu;
   memset(&cpu, 0, sizeof cpu);
-  cpu.esp = STACK;
+  cpu.reg[kX86pEsp] = STACK;
   return cpu;
 }
 
@@ -278,21 +279,22 @@ static void test_strict_ordinary_deadline(void) {
   CPU cpu = fresh_cpu();
 
   set_heap(deadlines, slots, 2u);
-  cpu.ecx = scheduler();
-  WR32(cpu.esp, 0xabcdef01u);
-  WR32(cpu.esp + 4u, float_bits(5.0f));
+  cpu.reg[kX86pEcx] = scheduler();
+  WR32(cpu.reg[kX86pEsp], 0xabcdef01u);
+  WR32(cpu.reg[kX86pEsp] + 4u, float_bits(5.0f));
   calls[0] = '\0';
   call_count = 0;
   registered.fn(&cpu);
   CHECK(RD32(scheduler() + HEAP_COUNT) == 2u,
         "ordinary pump treated deadline == now as due");
   CHECK(call_count == 0u, "ordinary equality invoked a guest context");
-  CHECK(cpu.esp == STACK + 8u, "ordinary override did not reproduce RET 4");
+  CHECK(cpu.reg[kX86pEsp] == STACK + 8u,
+        "ordinary override did not reproduce RET 4");
 
   cpu = fresh_cpu();
-  cpu.ecx = scheduler();
-  WR32(cpu.esp, 0xabcdef02u);
-  WR32(cpu.esp + 4u, float_bits(6.0f));
+  cpu.reg[kX86pEcx] = scheduler();
+  WR32(cpu.reg[kX86pEsp], 0xabcdef02u);
+  WR32(cpu.reg[kX86pEsp] + 4u, float_bits(6.0f));
   calls[0] = '\0';
   call_count = 0;
   registered.fn(&cpu);

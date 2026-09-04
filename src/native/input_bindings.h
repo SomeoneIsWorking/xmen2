@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 /*
  * XMen2.exe's controller binding table.
@@ -71,15 +71,15 @@ int input_bindings_read(uint32_t object, uint32_t row, uint32_t slot,
  * running game. Returns how many sets took the write, of INPUT_BINDING_SETS.
  */
 #define INPUT_BINDING_SETS 3u
-unsigned input_bindings_write_player(struct CPU *cpu, uint32_t player,
+unsigned input_bindings_write_player(struct X86pCpu *cpu, uint32_t player,
                                      uint32_t row, uint32_t slot, uint32_t kind,
                                      uint32_t code);
-void input_bindings_write(struct CPU *cpu, uint32_t object, uint32_t row,
+void input_bindings_write(struct X86pCpu *cpu, uint32_t object, uint32_t row,
                           uint32_t slot, uint32_t kind, uint32_t code);
 
 /* The action-id -> binding-row map, FUN_00619c40's jump table. -1 for an
    action the game binds to no row. Actions run 0..INPUT_ACTION_MAX-1. */
 #define INPUT_ACTION_MAX 0x34u
-int input_binding_row_of_action(struct CPU *cpu, uint32_t action);
+int input_binding_row_of_action(struct X86pCpu *cpu, uint32_t action);
 
 #endif

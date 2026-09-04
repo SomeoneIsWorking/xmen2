@@ -1,9 +1,10 @@
 /*
  * RmlUi/SDL_GPU lifetime and host event bridge. The settings document and its
- * interaction live in settings_document.cpp, matching Dusklight's separation
- * between UI runtime and individual documents.
+ * interaction live in settings_document.cpp so document behavior stays
+ * separate from renderer and platform lifetime.
  */
 #include "rmlui_ui.h"
+#include "../config/environment.h"
 
 #include <RmlUi/Core.h>
 #include <RmlUi_Platform_SDL.h>
@@ -11,16 +12,16 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
-#include <cstdio>
-#include <cstdlib>
 #include <memory>
 
 #include "aspect_fit.h"
+#include "environment.h"
 #include "settings_document.hpp"
 #include "settings_overlay_state.h"
 #include "touch_document.hpp"
 #include "touch_runtime.h"
 #include "ui_resources.h"
+#include "x2_log.h"
 
 namespace {
 
@@ -62,9 +63,8 @@ bool gamepad_navigation(const SDL_Event &event) {
   int modifiers = 0;
   switch (event.gbutton.button) {
   /* RmlUi has browser-style focus traversal but no default spatial focus
-     navigation. Dusklight owns that translation explicitly too. Map the
-     four directions onto forward/backward traversal so every control in
-     this document remains reachable with a pad. */
+     navigation. Map the four directions onto forward/backward traversal so
+     every control in this document remains reachable with a pad. */
   case SDL_GAMEPAD_BUTTON_DPAD_UP:
   case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
     key = Rml::Input::KI_TAB;
@@ -117,7 +117,7 @@ void discard_partial_initialization() {
 bool initialize_failed(const char *step) {
   static bool reported;
   if (!reported)
-    std::fprintf(stderr, "RMLUI: overlay unavailable, %s failed.\n", step);
+    x2_log_error("RMLUI: overlay unavailable, %s failed.\n", step);
   reported = true;
   return false;
 }
@@ -138,10 +138,10 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
   }
   const char *regular = x2_ui_resource_path("LatoLatin-Regular.ttf");
   if (!Rml::LoadFontFace(regular))
-    std::fprintf(stderr, "RMLUI: could not load font %s\n", regular);
+    x2_log_error("RMLUI: could not load font %s\n", regular);
   const char *bold = x2_ui_resource_path("LatoLatin-Bold.ttf");
   if (!Rml::LoadFontFace(bold))
-    std::fprintf(stderr, "RMLUI: could not load font %s\n", bold);
+    x2_log_error("RMLUI: could not load font %s\n", bold);
   context =
       Rml::CreateContext("x2-settings", Rml::Vector2i((int)width, (int)height));
   if (!context) {
@@ -158,7 +158,7 @@ bool initialize(SDL_GPUDevice *device, SDL_Window *window, unsigned width,
     return initialize_failed("loading the touch overlay document");
   }
   initialized = true;
-  std::fprintf(stderr, "RMLUI: Port Settings overlay initialized.\n");
+  x2_log_info("RMLUI: Port Settings overlay initialized.\n");
   return true;
 }
 
@@ -177,8 +177,8 @@ extern "C" int x2_ui_handle_event(SDL_Event *event) {
                                      event->type == SDL_EVENT_KEY_DOWN,
                                      event->key.repeat != 0)) {
     if (event->type == SDL_EVENT_KEY_DOWN) {
-      std::fprintf(stderr, "RMLUI: F2 %s the Port Settings overlay.\n",
-                   x2_settings_overlay_visible() ? "showed" : "hid");
+      x2_log_info("RMLUI: F2 %s the Port Settings overlay.\n",
+                  x2_settings_overlay_visible() ? "showed" : "hid");
       if (!x2_settings_overlay_visible() &&
           x2::ui::settings_document_capturing())
         x2::ui::settings_document_cancel_capture();
@@ -217,12 +217,12 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
                              uint32_t height, SDL_Window *window) {
   static bool environment_checked;
   if (!environment_checked) {
-    const char *open = std::getenv("X2_SETTINGS_OPEN");
+    const char *open = x2_config_override_get(kX2ConfigSettingsOpen);
     environment_checked = true;
     if (open && open[0] && open[0] != '0') {
       x2_settings_overlay_show();
-      std::fprintf(stderr, "RMLUI: X2_SETTINGS_OPEN requested the "
-                           "settings overlay at startup.\n");
+      x2_log_info("RMLUI: X2_SETTINGS_OPEN requested the settings overlay at "
+                  "startup.\n");
     }
   }
   const bool settings_visible = x2_settings_overlay_visible();

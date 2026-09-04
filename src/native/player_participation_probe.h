@@ -3,9 +3,9 @@
 
 #include <stddef.h>
 
-struct CPU;
+struct X86pCpu;
 
-size_t x2_player_participation_probe_report(struct CPU *cpu, char *out,
+size_t x2_player_participation_probe_report(struct X86pCpu *cpu, char *out,
                                             size_t size);
 
 #endif

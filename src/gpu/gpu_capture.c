@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /* Final-frame capture for live control and headless diagnostics. */
 #include "gpu_capture.h"
 #include "gpu_capture_internal.h"
@@ -354,49 +356,51 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
   if (!checked) {
     const char *value;
     checked = 1;
-    path = getenv("X2_SHOT");
+    path = x2_config_override_get(kX2ConfigShot);
     if (path && !*path)
       path = NULL;
-    if ((value = getenv("X2_SHOT_EVERY")) && *value)
+    if ((value = x2_config_override_get(kX2ConfigShotEvery)) && *value)
       every = atoi(value);
     if (every < 1)
       every = 1;
-    if ((value = getenv("X2_SHOT_MIN_DRAWS")) && *value)
+    if ((value = x2_config_override_get(kX2ConfigShotMinDraws)) && *value)
       min_draws = strtoul(value, NULL, 10);
-    if ((value = getenv("X2_SHOT_VS")) && *value && *value != '0')
+    if ((value = x2_config_override_get(kX2ConfigShotVertexShader)) && *value &&
+        *value != '0')
       require_vs = 1;
-    if ((value = getenv("X2_SHOT_KEEP")) && *value) {
+    if ((value = x2_config_override_get(kX2ConfigShotKeep)) && *value) {
       keep = atol(value);
       if (keep < 1)
         keep = 1;
     }
     if (path)
-      printf("gpu: X2_SHOT -- the headless target is written to %s every "
-             "%d frame(s), overwriting.\n",
-             path, every);
-    if (path && getenv("X2_SHOT_AFTER_FILE") && *getenv("X2_SHOT_AFTER_FILE"))
-      printf("gpu: X2_SHOT_AFTER_FILE=%s -- NOTHING is photographed "
-             "until the game opens a file whose name contains that. If "
-             "it never does, no file is written and this run "
-             "photographed NOTHING.\n",
-             getenv("X2_SHOT_AFTER_FILE"));
+      x2_log_info("gpu: X2_SHOT -- the headless target is written to %s every "
+                  "%d frame(s), overwriting.\n",
+                  path, every);
+    if (path && x2_config_override_get(kX2ConfigShotAfterFile) &&
+        *x2_config_override_get(kX2ConfigShotAfterFile))
+      x2_log_info("gpu: X2_SHOT_AFTER_FILE=%s -- NOTHING is photographed "
+                  "until the game opens a file whose name contains that. If "
+                  "it never does, no file is written and this run "
+                  "photographed NOTHING.\n",
+                  x2_config_override_get(kX2ConfigShotAfterFile));
     if (path && min_draws)
-      printf("gpu: X2_SHOT_MIN_DRAWS=%lu -- only frames with at least "
-             "that many draws are photographed. If none ever is, NO "
-             "file is written and this run photographed NOTHING.\n",
-             min_draws);
+      x2_log_info("gpu: X2_SHOT_MIN_DRAWS=%lu -- only frames with at least "
+                  "that many draws are photographed. If none ever is, NO "
+                  "file is written and this run photographed NOTHING.\n",
+                  min_draws);
     if (path && require_vs)
-      printf("gpu: X2_SHOT_VS=1 -- only frames that received a "
-             "programmable draw are photographed. If none ever is, "
-             "NO file is written.\n");
+      x2_log_info("gpu: X2_SHOT_VS=1 -- only frames that received a "
+                  "programmable draw are photographed. If none ever is, "
+                  "NO file is written.\n");
   }
   if (path && !headless) {
     static int said;
     if (!said++)
-      printf("gpu: X2_SHOT=%s is set but this run has a REAL WINDOW. The "
-             "capture reads back the headless target, which does not "
-             "exist here, so NOTHING will be written. Add --no-window.\n",
-             path);
+      x2_log_info("gpu: X2_SHOT=%s is set but this run has a REAL WINDOW. The "
+                  "capture reads back the headless target, which does not "
+                  "exist here, so NOTHING will be written. Add --no-window.\n",
+                  path);
     return;
   }
   if (!path || !headless || (frame % (unsigned long)every))
@@ -413,8 +417,8 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
   if (min_draws)
     busy_written++;
   if (width > UINT32_MAX / 4u || height > UINT32_MAX / (width * 4u)) {
-    fprintf(stderr, "gpu: X2_SHOT refuses overflowing target %ux%u.\n", width,
-            height);
+    x2_log_error("gpu: X2_SHOT refuses overflowing target %ux%u.\n", width,
+                 height);
     path = NULL;
     return;
   }
@@ -431,9 +435,9 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
   if (keep > 0 && kept >= keep) {
     static int said;
     if (!said++)
-      printf("gpu: X2_SHOT_KEEP -- %ld frame(s) kept as %s.000..%s.%03ld; "
-             "everything after this point is NOT photographed.\n",
-             kept, path, path, kept - 1);
+      x2_log_info("gpu: X2_SHOT_KEEP -- %ld frame(s) kept as %s.000..%s.%03ld; "
+                  "everything after this point is NOT photographed.\n",
+                  kept, path, path, kept - 1);
     return;
   }
   if (keep > 0) {
@@ -443,24 +447,24 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
     file = fopen(path, "wb");
   }
   if (!file) {
-    fprintf(stderr, "gpu: X2_SHOT could not open %s\n",
-            keep > 0 ? numbered : path);
+    x2_log_error("gpu: X2_SHOT could not open %s\n",
+                 keep > 0 ? numbered : path);
     path = NULL;
     return;
   }
   if (keep > 0 && !kept)
-    printf("gpu: X2_SHOT_KEEP=%ld -- keeping the first %ld qualifying "
-           "frame(s) as %s.000 onward rather than overwriting one file.\n",
-           keep, keep, path);
+    x2_log_info("gpu: X2_SHOT_KEEP=%ld -- keeping the first %ld qualifying "
+                "frame(s) as %s.000 onward rather than overwriting one file.\n",
+                keep, keep, path);
   if (keep > 0)
-    printf("gpu: X2_SHOT_KEEP -- %s.%03ld is presented frame %lu "
-           "(%lu draws).\n",
-           path, kept, frame, gpu_frame_draws_so_far());
+    x2_log_info("gpu: X2_SHOT_KEEP -- %s.%03ld is presented frame %lu "
+                "(%lu draws).\n",
+                path, kept, frame, gpu_frame_draws_so_far());
   kept++;
   if (min_draws && busy_written == 1)
-    printf("gpu: X2_SHOT_MIN_DRAWS -- first frame with at least %lu draws "
-           "photographed (frame %lu, %lu draws).\n",
-           min_draws, frame, gpu_frame_draws_so_far());
+    x2_log_info("gpu: X2_SHOT_MIN_DRAWS -- first frame with at least %lu draws "
+                "photographed (frame %lu, %lu draws).\n",
+                min_draws, frame, gpu_frame_draws_so_far());
   fprintf(file, "P6\n%u %u\n255\n", read_width, read_height);
   for (i = 0; i < read_width * read_height; i++) {
     fputc(buf[i * 4 + 2], file);

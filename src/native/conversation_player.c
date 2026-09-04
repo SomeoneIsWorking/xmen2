@@ -53,7 +53,7 @@ static int peek8(uint32_t address, uint8_t *out) {
   return 1;
 }
 
-ConversationPlayerState conversation_player_state(struct CPU *cpu) {
+ConversationPlayerState conversation_player_state(struct X86pCpu *cpu) {
   uint32_t self, count, id;
   uint8_t flags;
   unsigned responses = 0, i;
@@ -78,7 +78,7 @@ ConversationPlayerState conversation_player_state(struct CPU *cpu) {
   return CONVERSATION_PLAYER_WAITING;
 }
 
-int conversation_player_selection(struct CPU *cpu,
+int conversation_player_selection(struct X86pCpu *cpu,
                                   ConversationPlayerSelection *out) {
   CPU call;
   uint32_t base;
@@ -96,11 +96,11 @@ int conversation_player_selection(struct CPU *cpu,
   out->line_presenter = 0u;
   base = exe_base();
   call = *cpu;
-  call.esp -= 4u;
-  WR32(call.esp, RD32(self + CV_CUR_LINE));
-  call.ecx = self;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], RD32(self + CV_CUR_LINE));
+  call.reg[kX86pEcx] = self;
   x86_guest_call_args(&call, base + EXE_RVA(FN_LINE_BY_ID), 4u);
-  if (call.eax && x86_peek32(call.eax, &vtable))
+  if (call.reg[kX86pEax] && x86_peek32(call.reg[kX86pEax], &vtable))
     (void)x86_peek32(vtable, &out->line_presenter);
   return 1;
 }

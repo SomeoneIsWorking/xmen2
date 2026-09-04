@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * Layout metrics for the port's own prompt codepoints.
  *
@@ -131,17 +132,16 @@ void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale) {
   }
   if (occupied) {
     g_records_occupied++;
-    fprintf(stderr,
-            "PROMPT METRICS: %u of the port's codepoints already "
-            "draw in this font -- left alone and globally "
-            "unavailable to native prompt labels.\n",
-            occupied);
+    x2_log_error("PROMPT METRICS: %u of the port's codepoints already "
+                 "draw in this font -- left alone and globally "
+                 "unavailable to native prompt labels.\n",
+                 occupied);
   }
   if (!font_baseline(font_record, &baseline)) {
     g_records_without_baseline++;
-    fprintf(stderr, "PROMPT METRICS: font has no non-zero baseline among "
-                    "its drawing glyphs -- publishing nothing rather "
-                    "than placing prompt art against a guessed line.\n");
+    x2_log_error("PROMPT METRICS: font has no non-zero baseline among "
+                 "its drawing glyphs -- publishing nothing rather "
+                 "than placing prompt art against a guessed line.\n");
     return;
   }
   for (code = X2_PROMPT_GLYPH_FIRST; code <= X2_PROMPT_GLYPH_LAST; code++) {
@@ -161,21 +161,20 @@ void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale) {
   }
   g_cells_published += published;
   if (g_records == 1)
-    fprintf(stderr,
-            "PROMPT METRICS: published %u cell(s) at scale %.3f "
-            "and the font's modal baseline %d into the first font "
-            "record (metrics only, no UVs).\n",
-            published, (double)scale, baseline);
+    x2_log_error("PROMPT METRICS: published %u cell(s) at scale %.3f "
+                 "and the font's modal baseline %d into the first font "
+                 "record (metrics only, no UVs).\n",
+                 published, (double)scale, baseline);
 }
 
 void x2_prompt_glyph_metrics_report(void) {
-  printf("  Prompt metrics: %lu cell(s) published over %lu font record(s)"
-         "; %lu had no evidenced baseline, %lu had a codepoint of ours "
-         "already drawing\n",
-         g_cells_published, g_records, g_records_without_baseline,
-         g_records_occupied);
+  x2_log_info("  Prompt metrics: %lu cell(s) published over %lu font record(s)"
+              "; %lu had no evidenced baseline, %lu had a codepoint of ours "
+              "already drawing\n",
+              g_cells_published, g_records, g_records_without_baseline,
+              g_records_occupied);
   if (!g_records)
-    printf("        no font record was ever offered, so the port's "
-           "codepoints have NO metrics and every label will pile up in "
-           "one column.\n");
+    x2_log_info("        no font record was ever offered, so the port's "
+                "codepoints have NO metrics and every label will pile up in "
+                "one column.\n");
 }

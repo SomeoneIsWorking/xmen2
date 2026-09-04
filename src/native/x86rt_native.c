@@ -1,9 +1,10 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
- * The shared native runtime: dispatch across every linked recompiled module.
+ * The title's native runtime: dispatch across every mapped guest module.
  * See x86rt_native.h for why dispatch keys on the mapped address rather than
  * the guest entry point.
  */
-#include "x86rt_native.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "host_imports.h"
@@ -12,8 +13,8 @@
 #include "x86_dispatch_report.h"
 #include "x86_engine.h"
 #include "x86_hotep.h"
-#include "x86_reached.h"
 #include "x86rt.h"
+#include "x86rt_native.h"
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -38,8 +39,8 @@ static X86Module *g_head;
 
 /* Native overrides: (module, linked entry point) -> C implementation.
    Registered from the subsystem files by x86_register_override; the dispatcher
-   checks this table BEFORE the recompiled body (x86_native_call_at). Declared
-   in the .c where the override belongs, never generated.
+   checks this table before ordinary guest execution. Declarations live in
+   the source file that owns the override.
 
    The key is a module NAME plus the entry point at that module's PREFERRED
    base, never a bare address. Every libIG*.dll is linked for 0x10000000, so a
@@ -91,8 +92,8 @@ static void owned_insert(uint32_t addr) {
       return;
     i = (i + 1u) & (OWNED_SLOTS - 1u);
     if (++n == OWNED_SLOTS) {
-      fprintf(stderr, "x86rt: owned-address set full at %d, addr 0x%08x\n",
-              OWNED_SLOTS, addr);
+      x2_log_error("x86rt: owned-address set full at %d, addr 0x%08x\n",
+                   OWNED_SLOTS, addr);
       abort();
     }
   }
@@ -112,106 +113,34 @@ static int owned_has(uint32_t addr) {
   }
 }
 
-/* ---- per-function override slots ----------------------------------------
- *
- * The generated code carries one slot per function and a checked entry that
- * reads it; each chunk registers its own (linked ep -> slot address) table
- * from a constructor. Binding an override is therefore a POINTER WRITE at
- * resolve time, and the emitted C is identical whether or not anything is
- * overridden.
- *
- * That is the whole point. The emitter used to regex-scan src/native for
- * x86_register_override calls and route only the addresses it recognised, so
- * (a) every override change re-emitted the module and (b) a registration the
- * regex could not read -- a named constant instead of a hex literal -- was
- * silently not routed, leaving an override that registers, resolves, and
- * never fires.
- */
-typedef struct ChunkSlots {
-  const char *module;
-  const uint32_t *base; /* the chunk's module base variable */
-  const X86OverrideSlot *slots;
-  int n;
-  struct ChunkSlots *next;
-} ChunkSlots;
-
-static ChunkSlots *g_chunks;
-static int g_chunk_count;
-static long g_slot_count;
-
-void x86_override_slots_register(const char *module, const uint32_t *base,
-                                 const X86OverrideSlot *slots, int n) {
-  ChunkSlots *c = (ChunkSlots *)calloc(1, sizeof *c);
-  if (!c) {
-    fprintf(stderr,
-            "x86_override_slots_register: out of memory "
-            "registering %d slot(s) for %s\n",
-            n, module);
-    abort();
-  }
-  c->module = module;
-  c->base = base;
-  c->slots = slots;
-  c->n = n;
-  c->next = g_chunks;
-  g_chunks = c;
-  g_chunk_count++;
-  g_slot_count += n;
-}
-
-/* The slot for one (module, linked ep), or NULL. Linear over chunks and
-   binary-searchable within one would be faster, but this runs once per
-   override at startup -- tens of lookups, not millions. */
-static x86_override_fn *override_slot_for(const char *module, uint32_t ep) {
-  ChunkSlots *c;
-  for (c = g_chunks; c; c = c->next) {
-    int i;
-    if (!c->module || strcmp(c->module, module))
-      continue;
-    for (i = 0; i < c->n; i++)
-      if (c->slots[i].linked_ep == ep)
-        return c->slots[i].slot;
-  }
-  return NULL;
-}
-
-/* Denominators, so "the override did not fire" can be told from "no generated
-   code registered any slots at all" -- which is what a build that linked the
-   runtime without the generated chunks looks like. */
-long x86_override_slot_count(void) { return g_slot_count; }
-int x86_override_chunk_count(void) { return g_chunk_count; }
-
 void x86_register_override(const char *module, uint32_t linked_ep,
                            x86_override_fn fn) {
   int i;
   if (!module || !*module) {
-    fprintf(stderr,
-            "x86_register_override: 0x%08x registered with no "
-            "module name. An override is only meaningful against "
-            "the module that owns the entry point.\n",
-            linked_ep);
+    x2_log_error("x86_register_override: 0x%08x registered with no "
+                 "module name. An override is only meaningful against "
+                 "the module that owns the entry point.\n",
+                 linked_ep);
     abort();
   }
   for (i = 0; i < g_noverride; i++) {
     if (g_override[i].linked_ep == linked_ep &&
         !strcmp(g_override[i].module, module)) {
-      fprintf(stderr,
-              "x86_register_override: %s 0x%08x registered "
-              "TWICE; the new function replaces the old. An "
-              "override declared in two files is a defect -- "
-              "naming it here.\n",
-              module, linked_ep);
+      x2_log_error("x86_register_override: %s 0x%08x registered "
+                   "TWICE; the new function replaces the old. An "
+                   "override declared in two files is a defect -- "
+                   "naming it here.\n",
+                   module, linked_ep);
       g_override[i].fn = fn;
       return;
     }
   }
   if (g_noverride >= X2_MAX_OVERRIDES) {
-    fprintf(stderr,
-            "x86_register_override: the table holds %d and is "
-            "full; %s 0x%08x is NOT registered. Raise "
-            "X2_MAX_OVERRIDES rather than letting an override "
-            "silently not fire.\n",
-            X2_MAX_OVERRIDES, module, linked_ep);
+    x2_log_error("x86_register_override: the table holds %d and is "
+                 "full; %s 0x%08x is NOT registered. Raise "
+                 "X2_MAX_OVERRIDES rather than letting an override "
+                 "silently not fire.\n",
+                 X2_MAX_OVERRIDES, module, linked_ep);
     abort();
   }
   g_override[g_noverride].module = module;
@@ -228,11 +157,10 @@ void x86_register_override(const char *module, uint32_t linked_ep,
     uint32_t mapped = 0;
     if (x86_override_resolve_check(module, linked_ep, &mapped, why,
                                    sizeof why) != 0) {
-      fprintf(stderr,
-              "x86_register_override: %s 0x%08x is registered "
-              "after the resolve pass and cannot be resolved "
-              "now: %s\n",
-              module, linked_ep, why);
+      x2_log_error("x86_register_override: %s 0x%08x is registered "
+                   "after the resolve pass and cannot be resolved "
+                   "now: %s\n",
+                   module, linked_ep, why);
       abort();
     }
     g_override[g_noverride - 1].mapped_ep = mapped;
@@ -288,11 +216,9 @@ int x86_override_resolve_check(const char *module, uint32_t linked_ep,
     return 1;
   }
   mapped = *m->base + (linked_ep - m->preferred);
-  /* There is no translated corpus to check the address against any more, so
-     "is this a function entry point?" has no answer here. It is not a hole:
-     the engine begins interpreting at whatever address dispatch names, so a
-     mid-function override runs mid-function rather than not at all -- wrong
-     in a way that shows, instead of silently never firing. */
+  /* Runtime decoding accepts any valid instruction boundary. The registered
+     address is therefore mapped exactly; an invalid or mid-instruction entry
+     fails in x86port instead of being guessed at registration time. */
   *mapped_out = mapped;
   return 0;
 }
@@ -304,9 +230,9 @@ int x86_override_resolve_check(const char *module, uint32_t linked_ep,
 
    Every failure here is fatal by design. An override that does not resolve is
    invisible at runtime -- the game runs, the native code simply never executes
-   and the recompiled body answers instead -- which is indistinguishable from a
-   working build until something downstream is wrong for reasons that look
-   unrelated. */
+   and ordinary guest execution answers instead -- which is indistinguishable
+   from a working build until something downstream is wrong for reasons that
+   look unrelated. */
 /*
  * The mapped entry point of a resolved override, by index, or 0.
  *
@@ -328,10 +254,9 @@ void x86_overrides_resolve(void) {
     if (x86_override_resolve_check(g_override[i].module,
                                    g_override[i].linked_ep, &mapped, why,
                                    sizeof why) != 0) {
-      fprintf(stderr,
-              "x86_overrides_resolve: override for %s 0x%08x "
-              "could not be resolved: %s\n",
-              g_override[i].module, g_override[i].linked_ep, why);
+      x2_log_error("x86_overrides_resolve: override for %s 0x%08x "
+                   "could not be resolved: %s\n",
+                   g_override[i].module, g_override[i].linked_ep, why);
       bad++;
       continue;
     }
@@ -339,20 +264,18 @@ void x86_overrides_resolve(void) {
     owned_insert(mapped);
   }
   if (bad) {
-    fprintf(stderr,
-            "x86_overrides_resolve: %d of %d override(s) could not "
-            "be resolved. Refusing to run: a silently absent "
-            "override looks exactly like a working build.\n",
-            bad, g_noverride);
+    x2_log_error("x86_overrides_resolve: %d of %d override(s) could not "
+                 "be resolved. Refusing to run: a silently absent "
+                 "override looks exactly like a working build.\n",
+                 bad, g_noverride);
     abort();
   }
   g_overrides_resolved = 1;
-  /* Bound to an ADDRESS the dispatcher compares, not into a slot inside a
-     translated body. The slot mechanism went with the translator, and the
-     address is the honest key: it is what x86_dispatch_one is holding when
-     it has to decide whether native code or the engine answers. */
-  printf("overrides: %d native override(s) bound to a mapped address\n",
-         g_noverride);
+  /* Bound to the mapped guest address the dispatcher compares. It is the
+     honest key: x86_dispatch_one holds it while deciding whether a registered
+     native override or the JIT answers. */
+  x2_log_info("overrides: %d native override(s) bound to a mapped address\n",
+              g_noverride);
 }
 
 static int thunk_call(uint32_t addr, CPU *C);
@@ -421,13 +344,13 @@ void x2_write_watch_fire(uint32_t a, uint32_t v) {
   /* g_sample_ep is the last DISPATCHED body, which is the writer only when
      the writer was reached through the dispatcher. Reached by a direct C
      call it names an ANCESTOR -- narrowing, not naming, and it says so. */
-  fprintf(stderr,
-          "[WWATCH] write #%lu to 0x%08x = 0x%08x (process cookie "
-          "0x%08x); last dispatched body 0x%08x %s%s%s%s\n",
-          g_ww_hits, a, v, RD32(0x006f38f8), g_sample_ep, nm ? "" : "in ",
-          nm ? nm : (m ? m->name : "???"), (nm || !m) ? "" : " +offset",
-          v == 0 ? "   <-- ZERO"
-                 : (v == RD32(0x006f38f8) ? "   <-- /GS cookie stored" : ""));
+  x2_log_error("[WWATCH] write #%lu to 0x%08x = 0x%08x (process cookie "
+               "0x%08x); last dispatched body 0x%08x %s%s%s%s\n",
+               g_ww_hits, a, v, RD32(0x006f38f8), g_sample_ep, nm ? "" : "in ",
+               nm ? nm : (m ? m->name : "???"), (nm || !m) ? "" : " +offset",
+               v == 0
+                   ? "   <-- ZERO"
+                   : (v == RD32(0x006f38f8) ? "   <-- /GS cookie stored" : ""));
 }
 
 /* How many writes the watch saw, so a run can report a real denominator --
@@ -445,27 +368,23 @@ void x86_write_watch_arm(const char *arg) {
     g_ww_value = (uint32_t)strtoul(colon + 1, NULL, 0);
   }
   if (!x2_write_watch_addr) {
-    fprintf(stderr,
-            "X2_WRITE_WATCH=%s parsed to address 0; the watch is "
-            "NOT armed and nothing will be reported.\n",
-            arg);
+    x2_log_error("X2_WRITE_WATCH=%s parsed to address 0; the watch is "
+                 "NOT armed and nothing will be reported.\n",
+                 arg);
     return;
   }
   if (g_ww_filter)
-    fprintf(stderr,
-            "X2_WRITE_WATCH=0x%08x:0x%08x: every guest write of "
-            "that value to that address is reported, all of them.\n",
-            x2_write_watch_addr, g_ww_value);
+    x2_log_error("X2_WRITE_WATCH=0x%08x:0x%08x: every guest write of "
+                 "that value to that address is reported, all of them.\n",
+                 x2_write_watch_addr, g_ww_value);
   else
-    fprintf(stderr,
-            "X2_WRITE_WATCH=0x%08x: the first %d guest write(s) to "
-            "this address are reported, plus every /GS cookie store "
-            "and every write of ZERO.\n",
-            x2_write_watch_addr, WW_REPORT_FIRST);
+    x2_log_error("X2_WRITE_WATCH=0x%08x: the first %d guest write(s) to "
+                 "this address are reported, plus every /GS cookie store "
+                 "and every write of ZERO.\n",
+                 x2_write_watch_addr, WW_REPORT_FIRST);
 }
 static void ring_note(const char *what, uint32_t addr, uint32_t base,
                       uint32_t in, uint32_t out, uint32_t ret);
-static unsigned long g_return_to_calls;
 extern const CPU *g_cpu_current;
 
 /* Cumulative EXCLUSIVE ns inside host import stubs and inside guest bodies
@@ -517,8 +436,8 @@ static inline unsigned long long span_pop(void) {
   return excl;
 }
 
-/* Not used by the shared runtime itself, but the emitted bodies of a
-   single-module build still reference the plain symbol. */
+/* The main executable's mapped base and bounds, retained for title-owned
+   address helpers and diagnostics. Modules otherwise own their own bases. */
 uint32_t g_imgbase = 0x10000000U;
 uint32_t g_image_lo, g_image_hi;
 
@@ -536,11 +455,10 @@ X86Module *x86_module_for(uint32_t addr) {
     /* size 0 means the host never mapped this module. Saying so beats
        returning NULL, which reads as "that address is host memory". */
     if (b && !m->size) {
-      fprintf(stderr,
-              "x86_module_for: %s has a base but no size -- the "
-              "host mapped it and did not record how big it is, "
-              "so every lookup into it will miss\n",
-              m->name);
+      x2_log_error("x86_module_for: %s has a base but no size -- the "
+                   "host mapped it and did not record how big it is, "
+                   "so every lookup into it will miss\n",
+                   m->name);
       abort();
     }
     if (b && addr >= b && addr - b < m->size)
@@ -575,8 +493,7 @@ static int g_ntrig;
 
 void x86_at_first_call(uint32_t addr, int (*fn)(void), const char *why) {
   if (g_ntrig == MAX_TRIG) {
-    fprintf(stderr, "x86_at_first_call: no room for a trigger on 0x%08x\n",
-            addr);
+    x2_log_error("x86_at_first_call: no room for a trigger on 0x%08x\n", addr);
     abort();
   }
   g_trig[g_ntrig].addr = addr;
@@ -593,11 +510,10 @@ int x86_triggers_report(void) {
   int i, unfired = 0;
   for (i = 0; i < g_ntrig; i++)
     if (!g_trig[i].fired) {
-      fprintf(stderr,
-              "trigger NEVER FIRED: 0x%08x (%s) -- the guest "
-              "never called that address, so the host code "
-              "waiting on it did not run.\n",
-              g_trig[i].addr, g_trig[i].why);
+      x2_log_error("trigger NEVER FIRED: 0x%08x (%s) -- the guest "
+                   "never called that address, so the host code "
+                   "waiting on it did not run.\n",
+                   g_trig[i].addr, g_trig[i].why);
       unfired++;
     }
   return unfired;
@@ -632,7 +548,7 @@ static struct {
   int nwords, lost;
   uint32_t word[EPCOUNT_WORDS];
   /* Distinct RETURN ADDRESSES: which code calls this. The word at ESP on
-   * entry is the return address every emitted call site pushes, so reading
+   * entry is the return address every guest CALL pushes, so reading
    * it is as passive as reading an argument -- and it is what turns "35
    * launches" into "launched from here". */
   int nrets, retlost;
@@ -642,7 +558,7 @@ static int g_epc_n = -1;
 static unsigned long g_epc_dispatches;
 
 static void epcount_init(void) {
-  const char *e = getenv("X2_EPCOUNT");
+  const char *e = x2_config_override_get(kX2ConfigEpCount);
   char buf[256], *p, *save;
   g_epc_n = 0;
   if (!e || !*e)
@@ -651,12 +567,11 @@ static void epcount_init(void) {
   for (p = strtok_r(buf, ",", &save); p && g_epc_n < EPCOUNT_MAX;
        p = strtok_r(NULL, ",", &save))
     g_epc[g_epc_n++].ep = (uint32_t)strtoul(p, NULL, 0);
-  fprintf(stderr,
-          "[EPC] counting entries to %d entry point(s) at the "
-          "dispatcher. A body with a DIRECT caller is a plain C call "
-          "and is invisible here; these are counted only when "
-          "dispatched.\n",
-          g_epc_n);
+  x2_log_error("[EPC] counting entries to %d entry point(s) at the "
+               "dispatcher. A body with a DIRECT caller is a plain C call "
+               "and is invisible here; these are counted only when "
+               "dispatched.\n",
+               g_epc_n);
 }
 
 void x86_epcount_report(void) {
@@ -665,12 +580,11 @@ void x86_epcount_report(void) {
     epcount_init();
   if (!g_epc_n)
     return;
-  fprintf(stderr, "[EPC] %lu dispatched call(s) in this run:\n",
-          g_epc_dispatches);
+  x2_log_error("[EPC] %lu dispatched call(s) in this run:\n", g_epc_dispatches);
   for (i = 0; i < g_epc_n; i++) {
     int k, shown = 0;
-    fprintf(stderr, "[EPC]   0x%08x  %lu entr%s\n", g_epc[i].ep, g_epc[i].n,
-            g_epc[i].n == 1 ? "y" : "ies");
+    x2_log_error("[EPC]   0x%08x  %lu entr%s\n", g_epc[i].ep, g_epc[i].n,
+                 g_epc[i].n == 1 ? "y" : "ies");
     if (!g_epc[i].n)
       continue;
     /* Decoded HERE, with the guest stopped, not on the dispatch path. */
@@ -678,27 +592,26 @@ void x86_epcount_report(void) {
       char buf[64];
       if (!args_string_at(g_epc[i].word[k], buf, sizeof buf))
         continue;
-      fprintf(stderr, "[EPC]       0x%08x -> \"%s\"\n", g_epc[i].word[k], buf);
+      x2_log_error("[EPC]       0x%08x -> \"%s\"\n", g_epc[i].word[k], buf);
       shown++;
     }
-    fprintf(stderr,
-            "[EPC]       %d of %d distinct argument word(s) "
-            "decoded as text%s\n",
-            shown, g_epc[i].nwords,
-            g_epc[i].lost ? " (and some were dropped: the table is full)" : "");
+    x2_log_error("[EPC]       %d of %d distinct argument word(s) "
+                 "decoded as text%s\n",
+                 shown, g_epc[i].nwords,
+                 g_epc[i].lost ? " (and some were dropped: the table is full)"
+                               : "");
     for (k = 0; k < g_epc[i].nrets; k++) {
       const char *nm = x86_native_name_at(g_epc[i].ret[k]);
       X86Module *rm = x86_module_for(g_epc[i].ret[k]);
-      fprintf(stderr, "[EPC]       called from 0x%08x%s%s%s\n", g_epc[i].ret[k],
-              nm ? " -- " : (rm ? " -- in " : ""),
-              nm ? nm : (rm ? rm->name : ""),
-              (!nm && rm) ? ", not at a named body" : "");
+      x2_log_error("[EPC]       called from 0x%08x%s%s%s\n", g_epc[i].ret[k],
+                   nm ? " -- " : (rm ? " -- in " : ""),
+                   nm ? nm : (rm ? rm->name : ""),
+                   (!nm && rm) ? ", not at a named body" : "");
     }
     if (g_epc[i].retlost)
-      fprintf(stderr,
-              "[EPC]       ... and %d more distinct call site(s) "
-              "past the table.\n",
-              g_epc[i].retlost);
+      x2_log_error("[EPC]       ... and %d more distinct call site(s) "
+                   "past the table.\n",
+                   g_epc[i].retlost);
   }
 }
 
@@ -722,30 +635,27 @@ void x86_epcount_report(void) {
  */
 void x86_stackcheck_arm(int on) {
   if (on && !g_sc_out) {
-    const char *path = getenv("X2_STACKCHECK");
+    const char *path = x2_config_override_get(kX2ConfigStackCheck);
     if (!path || !*path)
       return; /* not asked for */
     g_sc_out = fopen(path, "w");
     if (!g_sc_out) {
-      fprintf(stderr,
-              "X2_STACKCHECK=%s could not be opened for "
-              "writing; NOTHING will be recorded.\n",
-              path);
+      x2_log_error("X2_STACKCHECK=%s could not be opened for "
+                   "writing; NOTHING will be recorded.\n",
+                   path);
       return;
     }
-    fprintf(stderr,
-            "X2_STACKCHECK=%s: recording the esp delta of every "
-            "dispatched call while armed.\n",
-            path);
+    x2_log_error("X2_STACKCHECK=%s: recording the esp delta of every "
+                 "dispatched call while armed.\n",
+                 path);
   }
   g_sc_armed = on;
   if (!on && g_sc_out) {
     fflush(g_sc_out);
-    fprintf(stderr,
-            "X2_STACKCHECK: %lu dispatched call(s) recorded. A "
-            "count of 0 means the armed window contained no "
-            "dispatched call, NOT that every delta was right.\n",
-            g_sc_records);
+    x2_log_error("X2_STACKCHECK: %lu dispatched call(s) recorded. A "
+                 "count of 0 means the armed window contained no "
+                 "dispatched call, NOT that every delta was right.\n",
+                 g_sc_records);
   }
 }
 
@@ -761,118 +671,6 @@ static void stackcheck_note(X86Module *m, uint32_t ep, uint32_t in,
   fprintf(g_sc_out, "%s %08x %08x %08x\n", m->name,
           m->preferred + (ep - *m->base), in, out);
 }
-
-#ifdef X2_DCHECK
-/*
- * The direct-call stack check's report. Built only when X2_DCHECK is defined.
- *
- * It names the CALL SITE, not the callee, because the site is what a
- * disassembly listing can be opened at -- and the first site to report is the
- * one to read. Reports every violation up to a cap and then says how many more
- * it saw, so a flood is visibly a flood rather than a truncated list that
- * looks like the whole answer.
- */
-static unsigned long g_dchk_calls, g_dchk_bad, g_dchk_unchecked;
-
-/*
- * The cap is PER CALL SITE, not per run. One site inside msdia80's unwinder
- * repeated its violation thousands of times and ate a global cap of 20 before
- * any other module could report once -- the report then read as "only msdia80
- * is out of balance", which was the cap talking, not the game. Capping the
- * boring case means capping each site, so a site not seen before is always
- * heard.
- */
-#define DCHK_SITES 512
-#define DCHK_PER_SITE 3
-static struct {
-  uint32_t site;
-  unsigned long n;
-} g_dchk_site[DCHK_SITES];
-static int g_dchk_nsites, g_dchk_sites_lost;
-
-static int dchk_should_report(uint32_t site) {
-  int i;
-  for (i = 0; i < g_dchk_nsites; i++)
-    if (g_dchk_site[i].site == site)
-      return ++g_dchk_site[i].n <= DCHK_PER_SITE;
-  if (g_dchk_nsites == DCHK_SITES) {
-    g_dchk_sites_lost++;
-    return 0;
-  }
-  g_dchk_site[g_dchk_nsites].site = site;
-  g_dchk_site[g_dchk_nsites].n = 1;
-  g_dchk_nsites++;
-  return 1;
-}
-
-/* X2_DCHECK_RANGE=<lo>-<hi>: log EVERY direct call whose site is in that
-   guest range, balanced or not, with the esp on both sides. Finding a drift
-   that no single call causes means watching esp walk through one function and
-   seeing which step it is wrong at -- a list of violations cannot show that,
-   because there is no violation to list. */
-static uint32_t g_dchk_lo, g_dchk_hi;
-static int g_dchk_range_read;
-
-void x86_dcall_check(uint32_t site, uint32_t esp_before, uint32_t esp_after,
-                     int imm) {
-  uint32_t want;
-  g_dchk_calls++;
-  if (!g_dchk_range_read) {
-    const char *e = getenv("X2_DCHECK_RANGE");
-    g_dchk_range_read = 1;
-    if (e && *e) {
-      char *dash = NULL;
-      g_dchk_lo = (uint32_t)strtoul(e, &dash, 0);
-      if (dash && *dash == '-')
-        g_dchk_hi = (uint32_t)strtoul(dash + 1, NULL, 0);
-      fprintf(stderr,
-              "[DCHK] logging every direct call in "
-              "0x%08x-0x%08x, balanced or not.\n",
-              g_dchk_lo, g_dchk_hi);
-    }
-  }
-  if (g_dchk_hi && site >= g_dchk_lo && site < g_dchk_hi)
-    fprintf(stderr,
-            "[DSITE] 0x%08x esp %08x -> %08x (%+d, callee pops "
-            "%d)\n",
-            site, esp_before, esp_after, (int)(esp_after - esp_before), imm);
-  if (imm < 0) {
-    g_dchk_unchecked++;
-    return;
-  }
-  want = esp_before + (uint32_t)imm;
-  if (esp_after == want)
-    return;
-  g_dchk_bad++;
-  if (dchk_should_report(site)) {
-    const char *nm = x86_native_name_at(site);
-    X86Module *m = x86_module_for(site);
-    fprintf(stderr,
-            "[DCHK] call site 0x%08x%s%s returned esp 0x%08x, "
-            "expected 0x%08x (%+d) -- the callee's RET pops %d\n",
-            site, nm ? " in " : (m ? " in " : " "),
-            nm ? nm : (m ? m->name : "???"), esp_after, want,
-            (int)(esp_after - want), imm);
-  }
-}
-
-void x86_dcall_report(void) {
-  fprintf(stderr,
-          "[DCHK] %lu direct call(s) checked, %lu out of balance, "
-          "%lu not checkable (callee ends in a tail call or its RETs "
-          "disagree). A zero here is a measurement only because the "
-          "denominator is beside it.\n",
-          g_dchk_calls - g_dchk_unchecked, g_dchk_bad, g_dchk_unchecked);
-  fprintf(stderr,
-          "[DCHK] %d distinct offending call site(s)%s; each was "
-          "reported at most %d time(s).\n",
-          g_dchk_nsites,
-          g_dchk_sites_lost ? " (and the site table filled -- some are "
-                              "counted but unnamed)"
-                            : "",
-          DCHK_PER_SITE);
-}
-#endif
 
 int x86_native_call_at(uint32_t addr, CPU *C) {
   X86Module *m;
@@ -898,7 +696,7 @@ int x86_native_call_at(uint32_t addr, CPU *C) {
   }
   if (thunk_call(addr, C))
     return 1;
-  /* A native override shadows the recompiled body. Checked BEFORE the module
+  /* A native override shadows ordinary guest execution. Checked before module
      lookup so the override path skips the find() scan and the epcount/ring
      machinery -- the frame-cap override runs every frame, and routing it
      through the full dispatch bookkeeping would be the cost of a diagnostic
@@ -906,16 +704,15 @@ int x86_native_call_at(uint32_t addr, CPU *C) {
   {
     int i;
     if (g_noverride && !g_overrides_resolved) {
-      fprintf(stderr,
-              "x86_native_call_at: guest code is running before "
-              "x86_overrides_resolve(); %d override(s) would be "
-              "silently skipped.\n",
-              g_noverride);
+      x2_log_error("x86_native_call_at: guest code is running before "
+                   "x86_overrides_resolve(); %d override(s) would be "
+                   "silently skipped.\n",
+                   g_noverride);
       abort();
     }
     for (i = 0; i < g_noverride; i++)
       if (g_override[i].mapped_ep == addr) {
-        uint32_t in = C->esp;
+        uint32_t in = C->reg[kX86pEsp];
         g_override[i].fn(C);
         /* Overrides are checked TOO. A hand-written override has to
            emulate the guest RET itself -- pop the return address and
@@ -927,7 +724,7 @@ int x86_native_call_at(uint32_t addr, CPU *C) {
         {
           X86Module *om = x86_module_for(addr);
           if (om)
-            stackcheck_note(om, addr, in, C->esp);
+            stackcheck_note(om, addr, in, C->reg[kX86pEsp]);
         }
         return 1;
       }
@@ -952,23 +749,24 @@ void x86_regs_dump(void) {
   X86Module *m;
   const char *name;
   if (!C) {
-    fprintf(stderr, "[REGS] no CPU has crossed the host boundary yet, so "
-                    "there is no register file to show.\n");
+    x2_log_error("[REGS] no CPU has crossed the host boundary yet, so "
+                 "there is no register file to show.\n");
     return;
   }
-  fprintf(stderr,
-          "[REGS] eax %08x  ecx %08x  edx %08x  ebx %08x\n"
-          "[REGS] esp %08x  ebp %08x  esi %08x  edi %08x\n",
-          C->eax, C->ecx, C->edx, C->ebx, C->esp, C->ebp, C->esi, C->edi);
+  x2_log_error("[REGS] eax %08x  ecx %08x  edx %08x  ebx %08x\n"
+               "[REGS] esp %08x  ebp %08x  esi %08x  edi %08x\n",
+               C->reg[kX86pEax], C->reg[kX86pEcx], C->reg[kX86pEdx],
+               C->reg[kX86pEbx], C->reg[kX86pEsp], C->reg[kX86pEbp],
+               C->reg[kX86pEsi], C->reg[kX86pEdi]);
   m = x86_module_for(g_sample_ep);
   name = x86_native_name_at(g_sample_ep);
-  fprintf(stderr, "[REGS] current dispatched body 0x%08x%s%s%s%s\n",
-          g_sample_ep, m && m->name ? " in " : "", m && m->name ? m->name : "",
-          name ? ": " : "", name ? name : "");
-  fprintf(stderr, "[REGS] (the register file of the last body to cross the "
-                  "boundary; guest-to-guest calls share it, so these are "
-                  "live -- but a body that saved a register to its own C "
-                  "locals is not reflected here)\n");
+  x2_log_error("[REGS] current dispatched body 0x%08x%s%s%s%s\n", g_sample_ep,
+               m && m->name ? " in " : "", m && m->name ? m->name : "",
+               name ? ": " : "", name ? name : "");
+  x2_log_error("[REGS] (the register file of the last body to cross the "
+               "boundary; guest-to-guest calls share it, so these are "
+               "live -- but a body that saved a register to its own C "
+               "locals is not reflected here)\n");
 }
 
 /*
@@ -1013,11 +811,9 @@ const char *x86_native_name_at(uint32_t addr) {
 
 /* ---- native import thunks ---------------------------------------------
  *
- * Some imports are implemented natively but are not another recompiled module,
- * so binding cannot point their IAT slot at a guest body. Most of the time
- * that is harmless -- the emitted code calls the NAMED stub and never reads
- * the slot -- but the exe's CRT startup takes GetModuleHandleA's address from
- * the IAT and calls through it, which reaches no stub at all.
+ * Some imports are implemented natively but are not another guest module,
+ * so binding cannot point their IAT slot at a guest body. Their IAT entries
+ * receive synthetic guest addresses owned by the host-import dispatcher.
  *
  * So each such slot gets a synthetic address in a range this dispatcher owns,
  * and a call to one runs the stub. The range is deliberately NOT mapped: it is
@@ -1064,9 +860,7 @@ static void *g_cb_ctx;
  * A guest-callable address for an import this host implements.
  *
  * The answer comes from the host import registry (host_imports.h), which is a
- * property of this binary. The generated per-module IAT listings that used to
- * answer it are gone, and with them the weak-stub problem this function was
- * built around: an entry in the registry IS an implementation.
+ * property of this binary: an entry in the registry is an implementation.
  *
  * `sym` NULL means look up `ordinal` instead; WS2_32 is imported that way.
  *
@@ -1119,18 +913,16 @@ uint32_t x86_native_thunk(const char *mod, const char *sym) {
 uint32_t x86_native_callback(void (*fn)(CPU *), const char *owner,
                              const char *name, void *ctx) {
   if (!fn || !owner || !name) {
-    fprintf(stderr,
-            "x86_native_callback: refusing to register an "
-            "unnamed or NULL callback (fn=%p owner=%s name=%s)\n",
-            (void *)fn, owner ? owner : "(null)", name ? name : "(null)");
+    x2_log_error("x86_native_callback: refusing to register an "
+                 "unnamed or NULL callback (fn=%p owner=%s name=%s)\n",
+                 (void *)fn, owner ? owner : "(null)", name ? name : "(null)");
     abort();
   }
   if (g_nthunk == THUNK_MAX) {
-    fprintf(stderr,
-            "x86_native_callback: the %d-entry synthetic address "
-            "table is full; %s::%s cannot be given a guest "
-            "address. Raise THUNK_MAX.\n",
-            THUNK_MAX, owner, name);
+    x2_log_error("x86_native_callback: the %d-entry synthetic address "
+                 "table is full; %s::%s cannot be given a guest "
+                 "address. Raise THUNK_MAX.\n",
+                 THUNK_MAX, owner, name);
     abort();
   }
   g_thunk[g_nthunk].stub = fn;
@@ -1168,10 +960,9 @@ static int g_nnexport;
 
 void x86_native_export(const char *mod, const char *sym, void (*fn)(CPU *)) {
   if (g_nnexport == NATIVE_EXPORT_MAX) {
-    fprintf(stderr,
-            "x86_native_export: the %d-entry table is full; "
-            "%s!%s cannot be published.\n",
-            NATIVE_EXPORT_MAX, mod, sym);
+    x2_log_error("x86_native_export: the %d-entry table is full; "
+                 "%s!%s cannot be published.\n",
+                 NATIVE_EXPORT_MAX, mod, sym);
     abort();
   }
   g_nexport[g_nnexport].mod = mod;
@@ -1204,14 +995,15 @@ int x86_native_module_implemented(const char *mod) {
 void x86_native_export_report(void) {
   int i;
   if (!g_nnexport) {
-    printf("  native exports: none registered -- no module is offered to "
-           "LoadLibraryA beyond the ones this host maps.\n");
+    x2_log_info("  native exports: none registered -- no module is offered to "
+                "LoadLibraryA beyond the ones this host maps.\n");
     return;
   }
-  printf("  native exports (resolvable by LoadLibraryA + GetProcAddress):\n");
+  x2_log_info(
+      "  native exports (resolvable by LoadLibraryA + GetProcAddress):\n");
   for (i = 0; i < g_nnexport; i++)
-    printf("        %-14s %-24s 0x%08x\n", g_nexport[i].mod, g_nexport[i].sym,
-           g_nexport[i].addr);
+    x2_log_info("        %-14s %-24s 0x%08x\n", g_nexport[i].mod,
+                g_nexport[i].sym, g_nexport[i].addr);
 }
 
 /* Which import a thunk address belongs to, for diagnostics. A thunk that is
@@ -1235,7 +1027,7 @@ static int thunk_call(uint32_t addr, CPU *C) {
   i = (addr - THUNK_BASE) / 16u;
   if ((int)i >= g_nthunk || !g_thunk[i].stub)
     return 0;
-  in = C->esp;
+  in = C->reg[kX86pEsp];
   g_thunk_hits[i]++;
   g_sample_ep = addr;
   {
@@ -1248,7 +1040,7 @@ static int thunk_call(uint32_t addr, CPU *C) {
       g_host_import_ns += span_pop();
     g_cb_ctx = save;
   }
-  ring_note(g_thunk[i].sym, addr, 0, in, C->esp, 0);
+  ring_note(g_thunk[i].sym, addr, 0, in, C->reg[kX86pEsp], 0);
   /* Imports are recorded TOO. A hand-written stub has to pop its own
      arguments the way the __stdcall function it replaces does, and getting
      that wrong shifts the guest stack by a word -- the exact failure the
@@ -1257,7 +1049,7 @@ static int thunk_call(uint32_t addr, CPU *C) {
   if (g_sc_armed && g_sc_out) {
     g_sc_records++;
     fprintf(g_sc_out, "IMPORT:%s %08x %08x %08x\n",
-            g_thunk[i].sym ? g_thunk[i].sym : "?", addr, in, C->esp);
+            g_thunk[i].sym ? g_thunk[i].sym : "?", addr, in, C->reg[kX86pEsp]);
   }
   return 1;
 }
@@ -1268,9 +1060,9 @@ static int thunk_call(uint32_t addr, CPU *C) {
  * The lookup half of x86_native_call_at, without the running half and without
  * any of its side effects -- no trigger arming, no entry-point counting, no
  * stack-check bookkeeping. The runtime execution engine needs to ask the
- * question at every instruction it executes: guest code it is interpreting can
- * CALL an import thunk, a native override, or a statically recompiled body,
- * and each of those is HOST code that the interpreter must not walk into.
+ * question at every instruction it executes: guest code can CALL an import
+ * thunk or a native override, and both are HOST code that the JIT must not
+ * decode as guest instructions.
  *
  * Kept beside x86_native_call_at deliberately, and in the same order, because
  * a disagreement between the two would be silent: the engine would either walk
@@ -1287,9 +1079,8 @@ int x86_native_body_at(uint32_t addr) {
 
 /* ---- the boundary ring -------------------------------------------------
  *
- * The hosted build has one of these (src/x86watch.c) and the native build
- * needed its own for the same reason: a snapshot at the failure says where
- * execution ended up, not how it got there.
+ * A snapshot at the failure says where execution ended up, not how it got
+ * there, so the runtime owns one ring shared by its dispatcher and reports.
  *
  * It records ESP on both sides of every crossing, because the failure this was
  * built for is an ESP imbalance -- a hand-written import that pops the wrong
@@ -1299,8 +1090,8 @@ int x86_native_body_at(uint32_t addr) {
  */
 #define RING 96
 /* `base` distinguishes the two address spaces this ring records. Host-side
-   crossings note a MAPPED address (base 0); the per-body trace hook is called
-   from generated code, which only knows its own LINKED entry point, so it also
+   crossings note a MAPPED address (base 0); the per-body trace hook receives
+   its own LINKED entry point, so it also
    notes the module's runtime base. Without that the dump decoded a linked ep as
    a mapped one and confidently attributed libIGCore functions to libIGUtils --
    an instrument reporting the wrong module is worse than one reporting none. */
@@ -1314,8 +1105,8 @@ static struct {
    * Without it the ring can show a two-body loop and say nothing about who
    * is running it, because the loop itself never crosses a boundary: issue
    * #35 sat on "something calls the frame timer forever" for a session
-   * because the only thing the ring named was the timer. It is the one word
-   * the generated prologue already has (`_retaddr`), so it costs a store.
+   * because the only thing the ring named was the timer. The guest-call
+   * boundary already has this return word, so recording it costs one store.
    */
   uint32_t ret;
   unsigned repeat;
@@ -1357,10 +1148,9 @@ unsigned int x86_thunk_crossings_sorted(unsigned long *snapshot,
   unsigned int n = 0;
   int i;
   if (snapshot_cap < (unsigned int)g_nthunk) { /* see the header */
-    fprintf(stderr,
-            "[HB] thunk probe: the snapshot holds %u entries, the "
-            "table now has %d\n",
-            snapshot_cap, g_nthunk);
+    x2_log_error("[HB] thunk probe: the snapshot holds %u entries, the "
+                 "table now has %d\n",
+                 snapshot_cap, g_nthunk);
     return 0;
   }
   for (i = 0; i < g_nthunk; i++) {
@@ -1453,11 +1243,12 @@ static void *profiler_thread(void *arg) {
 void x86_profiler_report(void) {
   int i, j;
   unsigned long shown = 0;
-  printf("\n[PROF] %lu sample(s) of the running guest body", g_profile_total);
+  x2_log_info("\n[PROF] %lu sample(s) of the running guest body",
+              g_profile_total);
   if (g_profile_dropped)
-    printf(" (%lu dropped past the %d-entry histogram)", g_profile_dropped,
-           PROFILE_MAX);
-  printf(", by entry point:\n");
+    x2_log_info(" (%lu dropped past the %d-entry histogram)", g_profile_dropped,
+                PROFILE_MAX);
+  x2_log_info(", by entry point:\n");
   /* Top PROFILE_TOP by count, insertion-sorted like the hotep reader. */
   {
     uint32_t e[PROFILE_TOP];
@@ -1477,17 +1268,18 @@ void x86_profiler_report(void) {
       const char *nm = x86_native_name_at(e[i]);
       X86Module *m = x86_module_for(e[i]);
       shown += c[i];
-      printf("  %5.1f%% %lu  %s0x%08x (%s%s)\n",
-             100.0 * (double)c[i] / (g_profile_total ? g_profile_total : 1),
-             c[i], nm ? "" : "unresolved ", e[i],
-             nm ? nm : (m ? m->name : "???"), (nm || !m) ? "" : " +offset");
+      x2_log_info(
+          "  %5.1f%% %lu  %s0x%08x (%s%s)\n",
+          100.0 * (double)c[i] / (g_profile_total ? g_profile_total : 1), c[i],
+          nm ? "" : "unresolved ", e[i], nm ? nm : (m ? m->name : "???"),
+          (nm || !m) ? "" : " +offset");
     }
   }
   if (shown < g_profile_total)
-    printf("  ... the other %lu sample(s) spread over %d more entry "
-           "point(s)\n",
-           g_profile_total - shown,
-           g_profile_n > PROFILE_TOP ? g_profile_n - PROFILE_TOP : 0);
+    x2_log_info("  ... the other %lu sample(s) spread over %d more entry "
+                "point(s)\n",
+                g_profile_total - shown,
+                g_profile_n > PROFILE_TOP ? g_profile_n - PROFILE_TOP : 0);
 }
 
 void x86_profiler_start(const char *arg) {
@@ -1498,23 +1290,21 @@ void x86_profiler_start(const char *arg) {
     return;
   period_ms = strtol(arg, &end, 10);
   if (period_ms <= 0 || (end && *end)) {
-    fprintf(stderr,
-            "X2_PROFILE=%s is not a positive period in ms; the "
-            "sampler did not start.\n",
-            arg ? arg : "");
+    x2_log_error("X2_PROFILE=%s is not a positive period in ms; the "
+                 "sampler did not start.\n",
+                 arg ? arg : "");
     return;
   }
   if (pthread_create(&th, NULL, profiler_thread, (void *)(intptr_t)period_ms) !=
       0) {
-    fprintf(stderr, "X2_PROFILE: could not start the sampler thread; "
-                    "nothing will be sampled.\n");
+    x2_log_error("X2_PROFILE: could not start the sampler thread; "
+                 "nothing will be sampled.\n");
     return;
   }
   pthread_detach(th);
-  fprintf(stderr,
-          "X2_PROFILE=%ldms: sampling the running guest body every "
-          "%ld ms; the histogram prints at the end of the run.\n",
-          period_ms, period_ms);
+  x2_log_error("X2_PROFILE=%ldms: sampling the running guest body every "
+               "%ld ms; the histogram prints at the end of the run.\n",
+               period_ms, period_ms);
 }
 
 /*
@@ -1524,15 +1314,15 @@ void x86_profiler_start(const char *arg) {
  *
  * The split answers the load-window question in one line: "500k crossings per
  * frame" says the boundary is busy but not who paid for the 250ms. If the
- * host-import share is small, the cost is inside the recompiled guest bodies
- * (a translation/algorithm issue); if it is large, the cost is in the stubs
+ * host-import share is small, the cost is inside JIT-compiled guest blocks (a
+ * translation/algorithm issue); if it is large, the cost is in the stubs
  * this host wrote (ReadFile, the heap, threads) and is ours to fix directly.
  */
 /*
- * The exclusive-time span around ONE dispatched guest body, published because
- * the engine owns that dispatch now: with no statically recompiled corpus the
- * only bodies x86_native_call_at runs are native overrides, so a probe hooked
- * there alone counted almost nothing while reporting itself armed.
+ * The exclusive-time span around ONE dispatched guest body. Ordinary guest
+ * execution is owned by the JIT; x86_native_call_at runs only host imports and
+ * native overrides, so a probe hooked there alone counts almost nothing while
+ * reporting itself armed.
  *
  * A longjmp out of a nested call leaves the span depth high, which skews the
  * split for that interval; it does not lose the counters, and the probe is
@@ -1561,23 +1351,9 @@ void x86_probe_time_delta(unsigned long long *host_import_ns,
   pguest = g_guest_body_ns;
 }
 
-/*
- * The preemption point's budget and its action -- see X86_ENTER_FN in x86rt.h
- * for why it lives in every body rather than at the dispatch boundary.
- *
- * The initial value is the default quantum. X2_QUANTUM=0 makes
- * guest_quantum_size() enormous, so the next re-arm effectively switches this
- * off, which is exactly what the control is meant to do.
- */
-unsigned long x86_preempt_budget = 20000;
-void x86_preempt_now(void) {
-  x86_preempt_budget = guest_quantum_size();
-  guest_quantum();
-}
-
 const char *x86_crossings_what(void) {
   return "host-boundary crossings only: a guest-to-guest call inside "
-         "the interpreter crosses nothing and is invisible here";
+         "a compiled block crosses nothing and is invisible here";
 }
 
 static void ring_note(const char *what, uint32_t addr, uint32_t base,
@@ -1679,8 +1455,8 @@ static int args_string_at(uint32_t a, char *out, size_t cap) {
 /* ---- guest-memory peek ------------------------------------------------
  *
  * "What was actually in that slot when it died?" -- the question every
- * cross-module data bug reduces to, and one the ring and the reached set
- * cannot answer because both record control flow, not state.
+ * cross-module data bug reduces to, and one the boundary ring cannot answer
+ * because it records control flow, not state.
  *
  *   X2_PEEK=libIGCore+0x15f3fc:1,0x0067f708:4
  *
@@ -1745,7 +1521,7 @@ static void peek_string(uint32_t addr, unsigned max) {
     unsigned char c;
     if (!peek_read(addr + i, &c, 1)) {
       if (i == 0) {
-        fprintf(stderr, "UNREADABLE (not mapped)\n");
+        x2_log_error("UNREADABLE (not mapped)\n");
         return;
       }
       break;
@@ -1756,9 +1532,9 @@ static void peek_string(uint32_t addr, unsigned max) {
   }
   s[i] = 0;
   if (!i)
-    fprintf(stderr, "\"\" (empty: first byte is NUL)\n");
+    x2_log_error("\"\" (empty: first byte is NUL)\n");
   else
-    fprintf(stderr, "\"%s\"%s\n", s, i == max ? " (truncated)" : "");
+    x2_log_error("\"%s\"%s\n", s, i == max ? " (truncated)" : "");
 }
 
 /*
@@ -1782,7 +1558,7 @@ static void peek_string(uint32_t addr, unsigned max) {
  * crash and the report would be lost.
  */
 void x86_peek_report(void) {
-  const char *spec = getenv("X2_PEEK");
+  const char *spec = x2_config_override_get(kX2ConfigPeek);
   /* 2 KB: a whole-object sweep is ~64 items and 512 bytes silently TRUNCATED
      the spec, so the tail of the sweep was simply not read. */
   char buf[2048], *p, *save;
@@ -1793,7 +1569,7 @@ void x86_peek_report(void) {
        spec every time would bury the values it exists to show */
     static int banner;
     if (!banner) {
-      fprintf(stderr, "[PEEK] X2_PEEK=%s\n", spec);
+      x2_log_error("[PEEK] X2_PEEK=%s\n", spec);
       banner = 1;
     }
   }
@@ -1827,11 +1603,10 @@ void x86_peek_report(void) {
       else {
         size = (unsigned)strtoul(h, NULL, 0);
         if (size != 1 && size != 2 && size != 4) {
-          fprintf(stderr,
-                  "[PEEK]   %s: '%s' is not a size (1,2,4), a "
-                  "string (s/sN/*s) or a dword run (dN) -- "
-                  "NOT read\n",
-                  item, how);
+          x2_log_error("[PEEK]   %s: '%s' is not a size (1,2,4), a "
+                       "string (s/sN/*s) or a dword run (dN) -- "
+                       "NOT read\n",
+                       item, how);
           continue;
         }
       }
@@ -1848,28 +1623,26 @@ void x86_peek_report(void) {
           break;
         }
       if (!resolved) {
-        fprintf(stderr,
-                "[PEEK]   %s+%s: NO module of that name is "
-                "registered -- nothing was read\n",
-                item, plus + 1);
+        x2_log_error("[PEEK]   %s+%s: NO module of that name is "
+                     "registered -- nothing was read\n",
+                     item, plus + 1);
         continue;
       }
-      fprintf(stderr, "[PEEK]   %s+%s -> mapped 0x%08x: ", item, plus + 1,
-              addr);
+      x2_log_error("[PEEK]   %s+%s -> mapped 0x%08x: ", item, plus + 1, addr);
     } else {
       addr = (uint32_t)strtoul(item, NULL, 0);
-      fprintf(stderr, "[PEEK]   0x%08x: ", addr);
+      x2_log_error("[PEEK]   0x%08x: ", addr);
     }
     if (deref) {
       if (!peek_read(addr, val, 4)) {
-        fprintf(stderr, "UNREADABLE (not mapped)\n");
+        x2_log_error("UNREADABLE (not mapped)\n");
         continue;
       }
       addr = (uint32_t)(val[0] | val[1] << 8 | val[2] << 16 |
                         (unsigned)val[3] << 24);
-      fprintf(stderr, "-> 0x%08x ", addr);
+      x2_log_error("-> 0x%08x ", addr);
       if (!addr) {
-        fprintf(stderr, "(NULL, so no string to read)\n");
+        x2_log_error("(NULL, so no string to read)\n");
         continue;
       }
     }
@@ -1879,20 +1652,19 @@ void x86_peek_report(void) {
     }
     for (i = 0; i < count; i++) {
       if (!peek_read(addr + i * size, val, size)) {
-        fprintf(stderr, "%sUNREADABLE (not mapped)", i ? " " : "");
+        x2_log_error("%sUNREADABLE (not mapped)", i ? " " : "");
         break;
       }
       if (size == 1)
-        fprintf(stderr, "%s0x%02x", i ? " " : "", val[0]);
+        x2_log_error("%s0x%02x", i ? " " : "", val[0]);
       else if (size == 2)
-        fprintf(stderr, "%s0x%04x", i ? " " : "",
-                (unsigned)(val[0] | val[1] << 8));
+        x2_log_error("%s0x%04x", i ? " " : "",
+                     (unsigned)(val[0] | val[1] << 8));
       else
-        fprintf(stderr, "%s0x%08x", i ? " " : "",
-                (unsigned)(val[0] | val[1] << 8 | val[2] << 16 |
-                           (unsigned)val[3] << 24));
+        x2_log_error("%s0x%08x", i ? " " : "",
+                     (unsigned)(val[0] | val[1] << 8 | val[2] << 16 |
+                                (unsigned)val[3] << 24));
     }
-    fputc('\n', stderr);
   }
 }
 
@@ -1900,24 +1672,20 @@ void x86_peek_report(void) {
  * Everything the process knows, at any stop.
  *
  * The abort paths called only x86_ring_dump(), and abort() does not run atexit
- * handlers -- so the reached set and the argument watch were silent on exactly
- * the failures worth reporting. An instrument that goes quiet when the run
- * fails is not an instrument.
+ * handlers. Stop diagnostics are therefore invoked directly before abort;
+ * an instrument that goes quiet when the run fails is not an instrument.
  */
 
 void x86_ring_dump(void) {
   unsigned long n = g_ring_n < RING ? g_ring_n : RING, i;
   if (!g_ring_n) {
-    fprintf(stderr, "[TRACE] the boundary ring is EMPTY: nothing crossed "
-                    "between guest and host before this point.\n");
+    x2_log_error("[TRACE] the boundary ring is EMPTY: nothing crossed "
+                 "between guest and host before this point.\n");
     return;
   }
-  fprintf(stderr,
-          "[TRACE] last %lu of %lu crossings (esp in -> out; a delta "
-          "that is not 4+4N for a stdcall import is the bug).\n"
-          "[TRACE] x86_return_to fired %lu time(s) -- a correct "
-          "translation should almost never need it:\n",
-          n, g_ring_n, g_return_to_calls);
+  x2_log_error("[TRACE] last %lu of %lu crossings (esp in -> out; a delta "
+               "that is not 4+4N for a stdcall import is the bug):\n",
+               n, g_ring_n);
   for (i = g_ring_n - n; i < g_ring_n; i++) {
     unsigned k = i % RING;
     uint32_t a = g_ring[k].addr;
@@ -1943,15 +1711,15 @@ void x86_ring_dump(void) {
       guest = m ? m->preferred + (a - *m->base) : a;
       nm = x86_native_name_at(a);
     }
-    fprintf(stderr, "[TRACE]   %-22s esp %08x -> %08x  (%+d)  ", g_ring[k].what,
-            g_ring[k].esp_in, g_ring[k].esp_out,
-            (int)(g_ring[k].esp_out - g_ring[k].esp_in));
+    x2_log_error("[TRACE]   %-22s esp %08x -> %08x  (%+d)  ", g_ring[k].what,
+                 g_ring[k].esp_in, g_ring[k].esp_out,
+                 (int)(g_ring[k].esp_out - g_ring[k].esp_in));
     if (m)
-      fprintf(stderr, "%s!0x%08x %s", m->name, guest, nm ? nm : "(unnamed)");
+      x2_log_error("%s!0x%08x %s", m->name, guest, nm ? nm : "(unnamed)");
     else if (b)
-      fprintf(stderr, "0x%08x (linked ep; no module has base 0x%08x)", a, b);
+      x2_log_error("0x%08x (linked ep; no module has base 0x%08x)", a, b);
     else
-      fprintf(stderr, "0x%08x (no registered module)", a);
+      x2_log_error("0x%08x (no registered module)", a);
     if (g_ring[k].ret) {
       /* The caller, by return address. Its enclosing function is not
          resolved here: only entry points are named, and a return address
@@ -1959,13 +1727,12 @@ void x86_ring_dump(void) {
          disassembly listing is indexed by, so it is what gets printed. */
       uint32_t r = g_ring[k].ret;
       X86Module *rm = x86_module_for(r);
-      fprintf(stderr, "  <- 0x%08x", rm ? rm->preferred + (r - *rm->base) : r);
+      x2_log_error("  <- 0x%08x", rm ? rm->preferred + (r - *rm->base) : r);
       if (rm)
-        fprintf(stderr, " in %s", rm->name);
+        x2_log_error(" in %s", rm->name);
     }
     if (g_ring[k].repeat)
-      fprintf(stderr, "  x%u identical", g_ring[k].repeat + 1);
-    fputc('\n', stderr);
+      x2_log_error("  x%u identical", g_ring[k].repeat + 1);
   }
 }
 
@@ -1974,15 +1741,15 @@ void x86_ring_dump(void) {
  * Each of these names what is missing and stops. None of them may return a
  * plausible value: the native build has no original image mapped alongside it
  * and no Windows loader resolved anything, so there is nothing honest to fall
- * back TO. A recompilation that quietly ran something else would not be one.
+ * back TO. Quietly running something else would make the result dishonest.
  */
 /*
  * An address may be a poisoned import slot rather than code. The host owns
  * that table, so it supplies this; the weak default keeps the runtime usable
- * on its own. Without it, a poisoned slot reached by DISPATCH (a `call [iat]`
- * the recompiler turned into an indirect call rather than a named stub) is
- * reported as "no registered module", which reads as a linking problem rather
- * than as the unimplemented import it is -- measured, on the exe's first run.
+ * on its own. Without it, a poisoned slot reached by an indirect `call [iat]`
+ * is reported as "no registered module", which reads as a linking problem
+ * rather than as the unimplemented import it is -- measured, on the exe's first
+ * run.
  */
 __attribute__((weak)) const char *x86_poison_name(uint32_t addr,
                                                   const char **mod) {
@@ -1991,110 +1758,15 @@ __attribute__((weak)) const char *x86_poison_name(uint32_t addr,
   return NULL;
 }
 
-/*
- * How often this fires is itself a measurement.
- *
- * A correct translation should reach it almost never: it means a function's
- * RET popped something OTHER than the value that was on the stack when it was
- * entered, i.e. the guest deliberately rewrote its own return address. If it
- * is firing in a loop, the interesting question is not where control went but
- * why the epilogue disagreed with the prologue.
- */
-unsigned long x86_return_to_count(void) { return g_return_to_calls; }
-
-void x86_return_to(CPU *C, uint32_t target, uint32_t fn_ep, uint32_t expected) {
-  const char *nm;
-  g_return_to_calls++;
-  ring_note("RET-to", target, 0, C->esp, C->esp, 0);
-  if (x86_native_call_at(target, C))
-    return;
-  nm = x86_native_name_at(fn_ep);
-  /*
-   * A RET whose popped value is INSIDE a mapped module is an ordinary
-   * return, not corruption.
-   *
-   * This used to abort, and it was wrong for every TAIL-CALLED body. A
-   * function reached by a tail JMP is entered with whatever the jumping
-   * function left at [esp] -- not its own return address -- so `_rt !=
-   * _retaddr` is true by construction, and the value popped is the
-   * legitimate return address of the function that jumped. Returning is
-   * correct: the emitted tail call is `call; return;`, so the host call
-   * chain mirrors the guest one and the guest ESP is already right.
-   *
-   * XMen2.exe 0x005fac10 tail-jumps into 0x005fafc1, whose RET pops
-   * 0x005fb2bc -- a perfectly good return address, mid-function as every
-   * return address is. Aborting on it killed a run that was fine, and sent
-   * two sessions into re-splitting and re-merging the containing function
-   * (issue #27).
-   *
-   * A value in NO module is still fatal: that is real corruption, and it is
-   * the case this check was built for.
-   */
-  if (x86_module_for(target)) {
-    static int said;
-    if (!said++)
-      fprintf(stderr,
-              "x86_return_to: 0x%08x (in %s) was popped by the RET in "
-              "0x%08x (%s), which\n"
-              "  had 0x%08x at [esp] on entry. That is what a TAIL CALL "
-              "looks like -- the body was jumped\n"
-              "  into, so its entry [esp] is not its own return address "
-              "-- and returning is correct.\n"
-              "  Reported once; the total is in the RET-to counter "
-              "above.\n",
-              target, x86_module_for(target)->name, fn_ep, nm ? nm : "?",
-              expected);
-    return;
-  }
-  fprintf(stderr,
-          "x86_return_to: 0x%08x is not a function entry, and is in "
-          "NO mapped module -- a RET popped something that cannot be "
-          "a return address.\n"
-          "  The RET is in 0x%08x (%s), which was ENTERED with "
-          "0x%08x on the stack and left with 0x%08x there.\n"
-          "  So that function's epilogue does not match its "
-          "prologue: its detected boundaries are wrong, or an\n"
-          "  instruction in it was mistranslated.\n",
-          target, fn_ep, nm ? nm : "?", expected, target);
-  x86_report_where(target);
-  x86_diag_dump();
-  abort();
-}
-
-void x86_call_unknown(CPU *C, uint32_t target) {
-  X86Module *m;
-  (void)C;
-  fprintf(stderr, "x86_call_unknown: 0x%08x has no identified function\n",
-          target);
-  x86_report_where(target);
-  /* Report it in the SAME shape as a missing dispatch target and a missing
-     constructor target, because tools/native_discover.py parses that shape
-     and is otherwise blind to this one -- a direct call to an address Ghidra
-     did not identify is the same kind of gap and the same kind of seed, and
-     the loop having three reporters and understanding two of them is how a
-     stop reads as "nothing more to discover" when it is not. */
-  m = x86_module_for(target);
-  if (m) {
-    fprintf(stderr, "\n*** direct call to an address with no identified "
-                    "function.\n");
-    fprintf(stderr, "    %-18s 0x%08x\n", m->name,
-            m->preferred + (target - *m->base));
-    fprintf(stderr, "*** 1 of 1 call target is missing a body\n");
-  }
-  x86_diag_dump();
-  abort();
-}
-
 void x86_missing_import(const char *mod, const char *sym) {
-  fprintf(stderr,
-          "x86_missing_import: %s!%s is not implemented natively.\n"
-          "  This is the native import surface -- the work that "
-          "replaces Wine.\n",
-          mod, sym);
+  x2_log_error("x86_missing_import: %s!%s is not implemented natively.\n"
+               "  This is the native import surface -- the work that "
+               "replaces Wine.\n",
+               mod, sym);
   /*
    * WHO asked for it. The import's name says what is missing; it does not say
    * which subsystem wanted it, and that is what decides whether the answer is
-   * an implementation or a different design. Every emitted call site pushes
+   * an implementation or a different design. Every guest CALL pushes
    * its return address before the stub runs, so the word at ESP names the
    * caller -- and it is checked against the module list rather than trusted,
    * because a wrong stack makes the return address wrong too.
@@ -2103,26 +1775,24 @@ void x86_missing_import(const char *mod, const char *sym) {
    * boundary ring, on a ring the OTHER guest threads were also writing to.
    */
   if (g_cpu_current) {
-    uint32_t ra = RD32(g_cpu_current->esp);
+    uint32_t ra = RD32(g_cpu_current->reg[kX86pEsp]);
     const char *nm = x86_native_name_at(ra);
     X86Module *rm = x86_module_for(ra);
     if (nm)
-      fprintf(stderr, "  asked for by 0x%08x -- %s\n", ra, nm);
+      x2_log_error("  asked for by 0x%08x -- %s\n", ra, nm);
     else if (rm)
-      fprintf(stderr,
-              "  asked for by 0x%08x, inside %s (guest 0x%08x) "
-              "but not at a body this host can name\n",
-              ra, rm->name, rm->preferred + (ra - *rm->base));
+      x2_log_error("  asked for by 0x%08x, inside %s (guest 0x%08x) "
+                   "but not at a body this host can name\n",
+                   ra, rm->name, rm->preferred + (ra - *rm->base));
     else
-      fprintf(stderr,
-              "  the word at the guest ESP is 0x%08x, which is in "
-              "no module -- so the caller cannot be named and the "
-              "STACK is suspect too\n",
-              ra);
+      x2_log_error("  the word at the guest ESP is 0x%08x, which is in "
+                   "no module -- so the caller cannot be named and the "
+                   "STACK is suspect too\n",
+                   ra);
   } else {
-    fprintf(stderr, "  no guest CPU is current, so the caller cannot be "
-                    "named -- this was reached from host code, not from a "
-                    "recompiled body\n");
+    x2_log_error("  no guest CPU is current, so the caller cannot be "
+                 "named -- this was reached from host code, not from a "
+                 "guest body\n");
   }
   x86_diag_dump();
   abort();
@@ -2142,96 +1812,68 @@ void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest) {
 void x87_fault(const char *what) {
   /*
    * A modelled-x87 fault used to print four words and abort, which says
-   * WHICH invariant broke and nothing about where. The stack depth is a
-   * property of a translated body -- an FSTP the translator emitted without
-   * its matching push, or a body entered at the wrong place -- so the ring,
+   * WHICH invariant broke and nothing about where. The stack depth belongs to
+   * the canonical CPU state -- an x87 operation without its matching push, or
+   * a body entered at the wrong place -- so the ring,
    * which names the last bodies entered and who called them, is exactly the
    * evidence needed and it was being thrown away.
    */
-  fprintf(stderr,
-          "x87_fault: %s\n"
-          "  This is the MODELLED x87 stack, so it is a translation "
-          "defect, not a guest bug: some body pushed or popped a "
-          "different number of times than the original.\n",
-          what);
+  x2_log_error("x87_fault: %s\n"
+               "  This is the MODELLED x87 stack, so it is a translation "
+               "defect, not a guest bug: some body pushed or popped a "
+               "different number of times than the original.\n",
+               what);
   /*
    * The CALLER, by host return address.
    *
    * The ring names the last bodies ENTERED, which is the neighbourhood; it
-   * cannot name the instruction, and "somewhere in a 672-instruction float
-   * routine" is not a place. x87_pop is inlined into the generated body, so
-   * this return address is inside that body, and addr2line turns it into the
-   * emitted line -- whose comment carries the guest address of the exact
-   * instruction. The binary is PIE, so the load base has to come off first
-   * or addr2line silently answers "??".
+   * cannot name the instruction, and "somewhere in a large float routine" is
+   * not a place. This host return address can identify a native override or
+   * runtime helper; the boundary ring supplies the corresponding guest
+   * neighbourhood. The binary is PIE, so the load base has to come off first.
    */
   {
     unsigned long ra = (unsigned long)__builtin_return_address(0);
     Dl_info di;
     if (dladdr((void *)ra, &di) && di.dli_fbase)
-      fprintf(stderr,
-              "  the body that did it:  addr2line -fCe "
-              "<this binary> 0x%lx\n",
-              ra - (unsigned long)di.dli_fbase);
+      x2_log_error("  the body that did it:  addr2line -fCe "
+                   "<this binary> 0x%lx\n",
+                   ra - (unsigned long)di.dli_fbase);
     else
-      fprintf(stderr,
-              "  (dladdr could not give the load base, so the "
-              "return address 0x%lx cannot be turned into a file "
-              "offset here)\n",
-              ra);
+      x2_log_error("  (dladdr could not give the load base, so the "
+                   "return address 0x%lx cannot be turned into a file "
+                   "offset here)\n",
+                   ra);
   }
   x86_diag_dump();
   abort();
 }
 
-/*
- * Call an import through its IAT slot.
- *
- * The slot is bound at startup by the host, the way a loader would bind it, so
- * a call into another recompiled module lands on that module's body at its
- * mapped address. The module and symbol are carried along only for the failure
- * case: an unbound slot holds a poison address, and reporting "libIGCore.dll!
- * ?createInstance@..." is worth far more than reporting 0x00090120.
- */
-void x86_import_call(CPU *C, uint32_t slot_va, const char *mod,
-                     const char *sym) {
-  uint32_t target = *(volatile uint32_t *)x86_guest_pointer(slot_va);
-  uint32_t esp_in = C->esp;
-  /* The cycle break. Reaching here means the generated stub is running,
-     which only happens when nothing implements this import natively -- so a
-     slot pointing back at the thunk that calls this very stub is not a
-     target, it is the loop. Report it instead of taking it. */
-  if (x86_is_thunk(target))
-    x86_missing_import(mod, sym);
-  if (x86_native_call_at(target, C)) {
-    ring_note(sym, slot_va, 0, esp_in, C->esp, 0);
-    return;
-  }
-  fprintf(stderr,
-          "x86_import_call: %s!%s\n"
-          "  slot 0x%08x holds 0x%08x, which is not a recompiled "
-          "body.\n",
-          mod, sym, slot_va, target);
-  x86_missing_import(mod, sym);
+long double x87_require_st0(const CPU *C, const char *what) {
+  long double value = 0.0L;
+  if (!x86p_x87_get(&C->x87, 0, &value))
+    x87_fault(what);
+  return value;
 }
 
 /*
  * Call a guest function FROM host code.
  *
- * A recompiled body is entered with its return address already on the guest
- * stack -- every emitted call site pushes one -- and its RET pops it. Host
+ * A guest body is entered with its return address already on the guest stack
+ * -- every guest CALL pushes one -- and its RET pops it. Host
  * code that dispatches without pushing one therefore leaks 4 bytes of guest
  * stack per call, upward, and the damage is silent until ESP walks off the
- * top: measured as a SIGSEGV 64 bytes above the stack top after 51 static
- * constructors, which reads as stack corruption rather than a missing push.
+ * top: measured as a SIGSEGV 64 bytes above the stack top after 51 guest
+ * constructor calls, which reads as stack corruption rather than a missing
+ * push.
  *
  * So the convention lives here once instead of at each call site.
  */
 void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes) {
-  uint32_t before = C->esp;
+  uint32_t before = C->reg[kX86pEsp];
   uint32_t expected = before + callee_pop_bytes;
-  C->esp -= 4;
-  *(volatile uint32_t *)x86_guest_pointer(C->esp) =
+  C->reg[kX86pEsp] -= 4;
+  *(volatile uint32_t *)x86_guest_pointer(C->reg[kX86pEsp]) =
       0xDEADBEEFu; /* popped by RET */
   x86_dispatch(C, target);
   /*
@@ -2243,25 +1885,23 @@ void x86_guest_call_args(CPU *C, uint32_t target, uint32_t callee_pop_bytes) {
    * is no safe value to repair it to because either the declaration or the
    * callee is wrong.
    */
-  if (C->esp != expected) {
+  if (C->reg[kX86pEsp] != expected) {
     const char *nm = x86_native_name_at(target);
     unsigned long ra = (unsigned long)__builtin_return_address(0);
     Dl_info di;
-    fprintf(stderr,
-            "x86_guest_call: 0x%08x (%s) violated its stack "
-            "contract: ESP %08x -> %08x, expected %08x after "
-            "popping %u argument byte(s).\n",
-            target, nm ? nm : "?", before, C->esp, expected, callee_pop_bytes);
+    x2_log_error("x86_guest_call: 0x%08x (%s) violated its stack "
+                 "contract: ESP %08x -> %08x, expected %08x after "
+                 "popping %u argument byte(s).\n",
+                 target, nm ? nm : "?", before, C->reg[kX86pEsp], expected,
+                 callee_pop_bytes);
     if (dladdr((void *)ra, &di) && di.dli_fbase)
-      fprintf(stderr,
-              "  host caller: addr2line -fCe <this binary> "
-              "0x%lx\n",
-              ra - (unsigned long)di.dli_fbase);
+      x2_log_error("  host caller: addr2line -fCe <this binary> "
+                   "0x%lx\n",
+                   ra - (unsigned long)di.dli_fbase);
     else
-      fprintf(stderr,
-              "  host caller could not be resolved (return "
-              "address 0x%lx).\n",
-              ra);
+      x2_log_error("  host caller could not be resolved (return "
+                   "address 0x%lx).\n",
+                   ra);
     x86_diag_dump();
     abort();
   }

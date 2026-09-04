@@ -7,88 +7,16 @@ requirements. Current ownership comes from `docs/codemap.md`; current behavior
 and gaps come from `docs/project-state.md`. Keep exact provenance for material
 actually reused.
 
-## Dusklight — https://github.com/TwilitRealm/dusklight
+## Settings-window stylesheet attribution
 
-A shipping PC port of *Twilight Princess* on the `zeldaret/tp` decomp, with
-Borealis underneath. It is CC0 and was the historical source for the specific
-adaptations recorded below. X-Men 2 does not inherit its architecture or future
-changes.
-
-The following paths identify the historical source material that was evaluated:
-
-| Subsystem | Where |
-|---|---|
-| Frame interpolation | `src/dusk/frame_interpolation.{h,cpp}` |
-| Game-facing UI (RmlUi) | `src/dusk/ui/` |
-| Developer overlays (ImGui) | `src/dusk/imgui/` |
-| Config and settings | `src/dusk/config.{cpp,hpp}`, `settings.{cpp,h}` |
-| Mod loading, texture replacement | `src/dusk/mod_loader.hpp`, `texture_replacements.*` |
-| Input binding | `src/dusk/action_bindings.{cpp,h}` |
-| Save handling, autosave | `src/dusk/autosave.{cpp,h}` |
-
-### What has been taken so far
-
-**File layout, in `src/vulkan/`** (cited in `igvk_context.h`). `src/dusk/` is
-one small `.cpp`/`.h` pair per concern with a narrow header each --
-`presentation.hpp` is seven lines, `gfx.hpp` is ten -- and nothing accretes
-into a `renderer.cpp`. Applied here that split the renderer into the host GPU
-device (which knows nothing about the guest), the ARK class, and one file per
-group of engine slots. It replaced a single `igvk_visualcontext.c` that was
-about to grow 98 slot implementations.
-
-**The shipped UI stack and ownership split.** RmlUi is now the player-facing
-settings layer; developer diagnostics remain separate. The dependency is pinned
-to `f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc` with an archive hash, and uses
-RmlUi's maintained SDL3 platform and SDL_GPU renderer backends. As in
-Dusklight, runtime lifetime and individual document behavior are separate
-modules, and the SDL/window entry points only compose them.
-
-**The settings-window vocabulary and RCSS.** `assets/ui/settings.rcss` adapts
-Dusklight's CC0 `res/rml/window.rcss` at commit
-`0fc05028ccfe809c569b1b84c0bb87f382b0bf34`: `window`, `tab-bar`, `tab`,
-`content`, two scrollable `pane`s, `select-button`, `key`, `value`, and the
-dark/gold focus treatment. Its compositor blur and shadow effects are not
-portable to RmlUi's SDL_GPU backend; leaving them in produced misplaced
-surfaces, so this port uses an opaque window and dimmed backdrop instead.
-
-**Input ownership, with different policy.** Dusklight's separation between
-action bindings and device selection is retained. Here keyboard actions belong
-to four reusable profiles so two players can share one keyboard with distinct
-layouts. Controller actions are intentionally not profiles: a physical pad is
-assigned to one player and uses the measured canonical Xbox/PS2 defaults.
-
-**Autosave ownership, with title-specific gates.** Dusklight's small dedicated
-autosave owner and asynchronous request -> write -> completion state machine
-are retained in `src/save/autosave_policy.{c,h}`. Its Twilight Princess player,
-stage and memory-card exclusions are not copied. X-Men's policy exposes the
-retail save-manager idle state, map `nosave` bit and stable-transition decision
-explicitly, and no guest save dispatch is allowed until the live trace proves
-those boundaries.
-
-**Shadow-pass ownership, not shadow policy.** Dusklight's scene scheduler and
-draw-list code keep caster/receiver selection and light matrices on the game
-side, while the renderer owns the shadow target and restores render state
-before later groups. `docs/RE/shadows.md` records X-Men 2's own evidenced
-boundary and cites this comparison. Twilight Princess caster rules, light
-choice, matrix constants, and texture format are not X-Men evidence and were
-not copied.
-
-### What has NOT been taken, and why
-
-**Frame interpolation.** No Dusklight interpolation code or policy was adapted.
-The evaluated model records final matrices without mutating simulation state,
-interpolates camera poses rather than matrices, and substitutes presentation
-values at draw time. This description records what was reviewed, not a current
-X-Men 2 design; any future implementation is derived and verified against this
-project's own renderer, timing contract, and codemap.
-
-### The caveat that matters
-
-Their code is written against the TP decomp's types and a different graphics
-stack. The RCSS was copied because it is portable CC0 presentation; the C++
-runtime was adapted around this port's existing SDL_GPU device and C guest
-boundary rather than copied mechanically. These statements record provenance,
-not ongoing architectural authority.
+`assets/ui/settings.rcss` adapts CC0 stylesheet material from
+[Dusklight](https://github.com/TwilitRealm/dusklight), specifically
+`res/rml/window.rcss` at commit
+`0fc05028ccfe809c569b1b84c0bb87f382b0bf34`. The adapted material is the
+`window`, `tab-bar`, `tab`, `content`, scrollable `pane`, `select-button`,
+`key`, and `value` vocabulary plus the dark/gold focus treatment. This
+attribution applies only to that stylesheet material; this project defines its
+own architecture, behavior, and ownership boundaries.
 
 ## D3D8 implementations — DXVK/d8vk and WineD3D
 
@@ -119,7 +47,7 @@ Record exact provenance in the file that adapts material from them.
 ### What using DXVK would NOT have saved
 
 Worth recording, because it is the part that looks like a shortcut and is not.
-DXVK's objects are 64-bit host C++ objects; recompiled guest code cannot call
+DXVK's objects are 64-bit host C++ objects; x86-32 guest code cannot call
 one. The boundary in `d3d8_com.c` -- 32-bit `__stdcall` vtables in
 guest-addressable memory, synthetic callback addresses, this-pointer
 resolution, who-pops-what -- would have been needed either way, and it is what

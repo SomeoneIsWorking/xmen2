@@ -8,7 +8,7 @@
 #include "d3d8_drawcall.h"
 #include "d3d8_state.h"
 
-struct CPU;
+struct X86pCpu;
 
 enum { D3D8_SELECTOR_MULTIPLY_CHAIN_MAX = 8 };
 
@@ -117,8 +117,8 @@ void d3d8_selector_probe_result(const D3D8SelectorProbeTicket *ticket,
                                 int accepted);
 
 /* Optional title-transform provenance bracket. The production owner of the
-   transform builder calls this around its retained recompiled body. */
-void d3d8_selector_probe_title_builder_enter(struct CPU *cpu);
+   transform builder calls this around its retained guest body. */
+void d3d8_selector_probe_title_builder_enter(struct X86pCpu *cpu);
 void d3d8_selector_probe_title_builder_leave(void);
 
 #endif /* D3D8_SELECTOR_PROBE_H */

@@ -1,6 +1,7 @@
+#include <lucent/log_c.h>
 /*
- * `gfx.vtx_builder_verify` -- differential gate for CDxImmediateBuilder::addVertex
- * (XMen2.exe!0x005840a0) against the guest body.
+ * `gfx.vtx_builder_verify` -- differential gate for
+ * CDxImmediateBuilder::addVertex (XMen2.exe!0x005840a0) against the guest body.
  */
 #include "vertex_builder.h"
 
@@ -62,7 +63,7 @@ void vtx_builder_verify_end(const CPU *C, VtxBuilderVerify *v, uint32_t self) {
     return;
 
   /* Save native outputs */
-  const uint32_t nat_eax = C->eax;
+  const uint32_t nat_eax = C->reg[kX86pEax];
   const uint32_t nat_count = RD32(self + SELF_COUNT);
   const uint32_t nat_dst_pos = RD32(self + SELF_DST_POS);
   const uint32_t nat_dst_col = RD32(self + SELF_DST_COL);
@@ -106,7 +107,7 @@ void vtx_builder_verify_end(const CPU *C, VtxBuilderVerify *v, uint32_t self) {
 
   /* Compare results */
   int bad = 0;
-  if (guest.eax != nat_eax)
+  if (guest.reg[kX86pEax] != nat_eax)
     bad = 1;
   if (RD32(self + SELF_COUNT) != nat_count)
     bad = 1;
@@ -134,10 +135,11 @@ void vtx_builder_verify_end(const CPU *C, VtxBuilderVerify *v, uint32_t self) {
   }
 
   if (bad) {
-    fprintf(stderr,
-            "gfx.vtx_builder_verify: native addVertex (XMen2.exe!0x005840a0) "
-            "disagrees with guest body (self 0x%08x). Aborting.\n",
-            self);
+    lucent_log_error(
+        "x2",
+        "gfx.vtx_builder_verify: native addVertex (XMen2.exe!0x005840a0) "
+        "disagrees with guest body (self 0x%08x). Aborting.\n",
+        self);
     abort();
   }
 }

@@ -12,7 +12,12 @@ The Vulkan backend's substitution surface is 10 abstract ARK classes in libIGGfx
 
 ## Evidence
 
-tools/ark_classes.py (I033) over scratch/recomp/libIGGfx.json: 100 call sites -> 100 classes, 0 argument lists unrecovered, isAbstract vs retrieveVTablePointer==NULL disagreements 0, 29 _Meta+0x3c stores of which 23 resolve to a registered class and 6 are stores of NULL by concrete classes clearing their own slot. Substitution semantics are C008/docs/RE/ark.md, verified by decompiling igMetaObject::createInstance at libIGCore 0x10044380, which follows +0x3c in a loop.
+`tools/ark_classes.py` over the authenticated libIGGfx image reports 100 call
+sites and 100 classes, with zero unrecovered argument lists and zero
+`isAbstract`/`retrieveVTablePointer == NULL` disagreements. Of 29
+`_Meta+0x3c` stores, 23 resolve to registered classes and six are concrete
+classes clearing their own slot. C008 and `docs/RE/ark.md` own the substitution
+semantics; libIGCore 0x10044380 follows `+0x3c` in a loop.
 
 ## What would falsify it
 

@@ -14,13 +14,13 @@
 
 /* Argument `i` of a __cdecl call, with ESP still pointing at the return
    address the caller pushed. */
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 /* Return from a __cdecl stub: set EAX and pop the return address. The callee
    pops nothing else, which is what __cdecl means. */
 static inline void ret_c(CPU *C, uint32_t eax) {
-  C->eax = eax;
-  C->esp += 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u;
 }
 
 /* Stop, naming the import and why it cannot be served. There is no plausible

@@ -1,10 +1,13 @@
 #include "guest_clock.h"
+#include <lucent/log_c.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
-static int g_unbounded = -1; /* -1 = not yet read from the env */
+#include <lucent/cvar_c.h>
+
+static int g_unbounded = -1; /* -1 = not yet read from runtime configuration */
 static double g_skew;        /* guest time - real time, seconds */
 
 /* What the skip bought, and what it could not. Reported even at zero: a run
@@ -43,8 +46,7 @@ uint64_t guest_clock_ns(void) { return (uint64_t)(guest_clock_now_s() * 1e9); }
 
 int guest_clock_unbounded(void) {
   if (g_unbounded < 0) {
-    const char *e = getenv("X2_UNBOUNDED");
-    g_unbounded = (e && *e && *e != '0') ? 1 : 0;
+    g_unbounded = lucent_cvar_flag("unbounded", 0) != 0;
   }
   return g_unbounded;
 }
@@ -81,16 +83,17 @@ void guest_clock_report(void) {
   double real = g_start_real ? real_now_s() - g_start_real : 0.0;
 
   if (!guest_clock_unbounded()) {
-    fprintf(stderr,
-            "  clock: wall-clock paced (unbounded mode OFF). The scheduler "
-            "went idle %lu time(s) and slept through each one for real. "
-            "--unbounded (or X2_UNBOUNDED=1) skips those waits.\n",
-            g_idle_calls);
+    lucent_log_error(
+        "x2",
+        "  clock: wall-clock paced (unbounded mode OFF). The scheduler "
+        "went idle %lu time(s) and slept through each one for real. "
+        "--unbounded (or X2_UNBOUNDED=1) skips those waits.\n",
+        g_idle_calls);
     return;
   }
 
-  fprintf(
-      stderr,
+  lucent_log_error(
+      "x2",
       "  clock: UNBOUNDED. %lu of %lu idle wait(s) skipped, %.1fs of guest "
       "time not spent (largest single skip %.3fs); %lu wait(s) had already "
       "expired so there was nothing to skip.\n"

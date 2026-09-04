@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /* TEMPORARY diagnostic: who calls the font table's getTexture?
  *
  * The glyph drawer reaches the atlas through the font table's vtable slot
@@ -32,38 +34,36 @@ static void note(uint32_t ret) {
     g_sites[g_n_sites] = ret;
     g_counts[g_n_sites] = 1;
     g_n_sites++;
-    fprintf(stderr,
-            "TEXTURE PROBE: new caller site 0x%08x (%u distinct "
-            "site(s) so far)\n",
-            ret, g_n_sites);
+    x2_log_error("TEXTURE PROBE: new caller site 0x%08x (%u distinct "
+                 "site(s) so far)\n",
+                 ret, g_n_sites);
   }
 }
 
 static void x2_probe_005972a0(CPU *C) {
-  note(RD32(C->esp));
+  note(RD32(C->reg[kX86pEsp]));
   x86_guest_body(C, "XMen2.exe", 0x005972a0u);
 }
 
 void x2_texture_probe_report(void) {
   unsigned i;
-  if (!getenv("X2_TEXTURE_PROBE"))
+  if (!x2_config_override_get(kX2ConfigTextureProbe))
     return;
-  fprintf(stderr,
-          "TEXTURE PROBE: %lu getTexture call(s), %u distinct "
-          "return-site(s)",
-          g_calls, g_n_sites);
+  x2_log_error("TEXTURE PROBE: %lu getTexture call(s), %u distinct "
+               "return-site(s)",
+               g_calls, g_n_sites);
   if (g_n_sites == MAX_SITES)
-    fprintf(stderr, " (TABLE FULL -- later sites went unrecorded)");
-  fprintf(stderr, "\n");
+    x2_log_error(" (TABLE FULL -- later sites went unrecorded)");
+  x2_log_error("\n");
   for (i = 0; i < g_n_sites; i++)
-    fprintf(stderr, "TEXTURE PROBE:   return to 0x%08x  x%lu\n", g_sites[i],
-            g_counts[i]);
+    x2_log_error("TEXTURE PROBE:   return to 0x%08x  x%lu\n", g_sites[i],
+                 g_counts[i]);
 }
 
 __attribute__((constructor)) static void x2_texture_probe_register(void) {
-  if (!getenv("X2_TEXTURE_PROBE"))
+  if (!x2_config_override_get(kX2ConfigTextureProbe))
     return;
-  fprintf(stderr, "TEXTURE PROBE: armed (X2_TEXTURE_PROBE); overriding "
-                  "XMen2.exe getTexture 0x005972a0\n");
+  x2_log_error("TEXTURE PROBE: armed (X2_TEXTURE_PROBE); overriding "
+               "XMen2.exe getTexture 0x005972a0\n");
   x86_register_override("XMen2.exe", 0x005972a0, x2_probe_005972a0);
 }

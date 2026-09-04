@@ -9,7 +9,9 @@ depends: src/native/threads.c#guest_quantum, src/native/threads.c#guest_cond_wai
 
 ## Claim
 
-Guest threads are pthreads serialized by one mutex and parked with condition variables; the preemption point remains in every recompiled body (`X86_ENTER_FN`) rather than only at the dispatch boundary
+Guest threads are pthreads serialized by one mutex and parked with condition
+variables; JIT execution yields at bounded guest-quantum boundaries so another
+runnable guest thread can acquire the turn.
 
 ## Evidence
 

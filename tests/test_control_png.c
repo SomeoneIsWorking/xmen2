@@ -63,7 +63,7 @@ int main(void) {
     fprintf(stderr, "FAIL: encoding %dx%d produced nothing.\n", W, H);
     return 1;
   }
-  if (len < 8 || memcmp(png, "\x89PNG\r\n\x1a\n", 8)) {
+  if (len < 8 || memcmp(png, "\x89PNG\r\n\x1a\n", 8) != 0) {
     fprintf(stderr, "FAIL: no PNG signature in %zu bytes.\n", len);
     return 1;
   }

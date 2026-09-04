@@ -101,39 +101,39 @@ void x86_register_override(const char *name, uint32_t ep,
 
 static void guest_body_00458700(CPU *cpu) {
   ++original_presentations;
-  cpu->eax = (cpu->eax & ~0xffu) | 1u;
-  cpu->esp += 8u;
+  cpu->reg[kX86pEax] = (cpu->reg[kX86pEax] & ~0xffu) | 1u;
+  cpu->reg[kX86pEsp] += 8u;
 }
 
 static void guest_body_0045a170(CPU *cpu) {
   ++original_presentations;
   WR32(MANAGER + CV_SOUND_HANDLE, 0x00000099u);
-  cpu->esp += 8u;
+  cpu->reg[kX86pEsp] += 8u;
 }
 
 static void invoke_line_audio(CPU *parent) {
   CPU call = *parent;
 
-  call.esp = STACK - 0x20u;
-  WR32(call.esp, 0xc001c0deu);
-  WR32(call.esp + 4u, STACK - 0x40u);
-  call.ecx = 0x0042u;
+  call.reg[kX86pEsp] = STACK - 0x20u;
+  WR32(call.reg[kX86pEsp], 0xc001c0deu);
+  WR32(call.reg[kX86pEsp] + 4u, STACK - 0x40u);
+  call.reg[kX86pEcx] = 0x0042u;
   line_audio_override(&call);
-  CHECK(call.esp == STACK - 0x18u,
+  CHECK(call.reg[kX86pEsp] == STACK - 0x18u,
         "line-audio override did not reproduce RET 4");
 }
 
 static void invoke_begin_response(CPU *parent) {
   CPU call = *parent;
 
-  call.esp = STACK - 0x20u;
-  WR32(call.esp, 0xc001c0deu);
-  WR32(call.esp + 4u, 0x0020u);
-  call.ecx = MANAGER;
+  call.reg[kX86pEsp] = STACK - 0x20u;
+  WR32(call.reg[kX86pEsp], 0xc001c0deu);
+  WR32(call.reg[kX86pEsp] + 4u, 0x0020u);
+  call.reg[kX86pEcx] = MANAGER;
   begin_response_override(&call);
-  CHECK(call.esp == STACK - 0x18u,
+  CHECK(call.reg[kX86pEsp] == STACK - 0x18u,
         "beginResponse override did not reproduce RET 4");
-  if (!(uint8_t)call.eax)
+  if (!(uint8_t)call.reg[kX86pEax])
     ++response_applications;
 }
 
@@ -141,19 +141,20 @@ void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
   if (target == FN_AUDIO) {
     CHECK(callee_pop_bytes == 0u,
           "audio getter received a callee-pop argument");
-    cpu->eax = AUDIO;
+    cpu->reg[kX86pEax] = AUDIO;
   } else if (target == FN_STOP_SOUND) {
-    CHECK(cpu->ecx == AUDIO && callee_pop_bytes == 4u,
+    CHECK(cpu->reg[kX86pEcx] == AUDIO && callee_pop_bytes == 4u,
           "voice stop used the wrong receiver or ABI");
-    stopped_handle = RD32(cpu->esp);
+    stopped_handle = RD32(cpu->reg[kX86pEsp]);
     ++voice_stops;
-    cpu->esp += callee_pop_bytes;
+    cpu->reg[kX86pEsp] += callee_pop_bytes;
   } else if (target == FN_CHOOSE_RESPONSE) {
-    CHECK(cpu->ecx == MANAGER && RD32(cpu->esp) == 0u && callee_pop_bytes == 4u,
+    CHECK(cpu->reg[kX86pEcx] == MANAGER && RD32(cpu->reg[kX86pEsp]) == 0u &&
+              callee_pop_bytes == 4u,
           "cutscene dialogue chose the wrong response or ABI");
     invoke_begin_response(cpu);
     invoke_line_audio(cpu);
-    cpu->esp += callee_pop_bytes;
+    cpu->reg[kX86pEsp] += callee_pop_bytes;
   } else {
     fail("cutscene dialogue called an unexpected guest function");
   }
@@ -167,7 +168,7 @@ static CPU fresh_cpu(void) {
   CPU cpu;
 
   memset(&cpu, 0, sizeof cpu);
-  cpu.esp = STACK;
+  cpu.reg[kX86pEsp] = STACK;
   return cpu;
 }
 
@@ -189,16 +190,16 @@ static void test_ordinary_presentation_positive_control(void) {
   CPU cpu = fresh_cpu();
 
   cutscene_dialogue_snapshot(&before);
-  cpu.esp -= 8u;
-  WR32(cpu.esp, 0xc001c0deu);
-  WR32(cpu.esp + 4u, 0x0020u);
-  cpu.ecx = MANAGER;
+  cpu.reg[kX86pEsp] -= 8u;
+  WR32(cpu.reg[kX86pEsp], 0xc001c0deu);
+  WR32(cpu.reg[kX86pEsp] + 4u, 0x0020u);
+  cpu.reg[kX86pEcx] = MANAGER;
   begin_response_override(&cpu);
   cpu = fresh_cpu();
-  cpu.esp -= 8u;
-  WR32(cpu.esp, 0xc001c0deu);
-  WR32(cpu.esp + 4u, STACK - 0x40u);
-  cpu.ecx = 0x0042u;
+  cpu.reg[kX86pEsp] -= 8u;
+  WR32(cpu.reg[kX86pEsp], 0xc001c0deu);
+  WR32(cpu.reg[kX86pEsp] + 4u, STACK - 0x40u);
+  cpu.reg[kX86pEcx] = 0x0042u;
   line_audio_override(&cpu);
   cutscene_dialogue_snapshot(&after);
 

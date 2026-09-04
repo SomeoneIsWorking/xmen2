@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * Does a HOST class actually register with ARK, and will libIGCore construct
  * it? This answers C008's falsifier -- "nothing has yet been CONSTRUCTED this
@@ -47,7 +48,7 @@ static void probe_slot0(CPU *C) {
   g_ctor_ran++;
   /* MSVC's scalar-deleting destructor is __thiscall taking one stack
      argument (the deleting flag) and returning `this`. */
-  ark_ret(C, C->ecx, 1);
+  ark_ret(C, C->reg[kX86pEcx], 1);
 }
 
 /*
@@ -127,14 +128,14 @@ int igvk_ark_probe_arm(void) {
       CORE, "?createInstance@igMetaObject@Core@Gap@@QBEPAVigObject@23@"
             "PAVigMemoryPool@23@@Z");
   if (!ci) {
-    fprintf(stderr, "probe: libIGCore does not export createInstance; "
-                    "cannot arm\n");
+    x2_log_error("probe: libIGCore does not export createInstance; "
+                 "cannot arm\n");
     return 1;
   }
   x86_at_first_call(ci, probe_trigger,
                     "the engine's first createInstance -- proof that pools "
                     "and ARK are up, which is when a host class may register");
-  printf("probe: armed on igMetaObject::createInstance 0x%08x\n", ci);
+  x2_log_info("probe: armed on igMetaObject::createInstance 0x%08x\n", ci);
   return 0;
 }
 
@@ -144,9 +145,8 @@ int igvk_ark_probe(void) {
   uint32_t meta, obj, vptr;
   int fails = 0;
 
-  printf(
+  x2_log_info(
       "\n=== ARK host-class probe (C008: is the mechanism EXERCISED?) ===\n");
-  fflush(stdout); /* an abort inside the guest must not swallow the report */
 
   g_probe.vtable = igvk_vtable_new(g_probe.name, PROBE_SLOTS);
   igvk_vtable_set(g_probe.vtable, 0, probe_slot0, g_probe.name, "slot0",
@@ -169,12 +169,12 @@ int igvk_ark_probe(void) {
                                  NULL);
 
   if (!ark_register_class(&g_probe)) {
-    printf("  FAIL  registration did not complete\n");
+    x2_log_info("  FAIL  registration did not complete\n");
     return 1;
   }
 
   meta = RD32(g_probe.meta_slot);
-  printf("  ok    meta object allocated            0x%08x\n", meta);
+  x2_log_info("  ok    meta object allocated            0x%08x\n", meta);
 
   /* +0x48 is the instance size libIGCore recorded, +0x1a the isAbstract
      byte (docs/RE/ark.md). Reading them back checks that our eleven
@@ -184,47 +184,48 @@ int igvk_ark_probe(void) {
     uint32_t sz = RD32(meta + 0x48u);
     uint8_t ab = RD8(meta + 0x1au);
     if (sz != g_probe.instance_size) {
-      printf("  FAIL  meta+0x48 instance size       0x%08x, want 0x%x\n", sz,
-             g_probe.instance_size);
+      x2_log_info("  FAIL  meta+0x48 instance size       0x%08x, want 0x%x\n",
+                  sz, g_probe.instance_size);
       fails++;
     } else {
-      printf("  ok    meta+0x48 instance size       0x%x\n", sz);
+      x2_log_info("  ok    meta+0x48 instance size       0x%x\n", sz);
     }
     if (ab != 0) {
-      printf("  FAIL  meta+0x1a isAbstract          %u, want 0 "
-             "(createInstance refuses an abstract meta)\n",
-             ab);
+      x2_log_info("  FAIL  meta+0x1a isAbstract          %u, want 0 "
+                  "(createInstance refuses an abstract meta)\n",
+                  ab);
       fails++;
     } else {
-      printf("  ok    meta+0x1a isAbstract          0\n");
+      x2_log_info("  ok    meta+0x1a isAbstract          0\n");
     }
   }
 
   obj = ark_create_instance(meta, 0);
   if (!obj) {
-    printf("  FAIL  createInstance returned NULL -- libIGCore declined to "
-           "construct the class\n");
+    x2_log_info("  FAIL  createInstance returned NULL -- libIGCore declined to "
+                "construct the class\n");
     return fails + 1;
   }
-  printf("  ok    createInstance returned         0x%08x\n", obj);
+  x2_log_info("  ok    createInstance returned         0x%08x\n", obj);
 
   vptr = RD32(obj);
   if (vptr != g_probe.vtable) {
-    printf("  FAIL  object vptr 0x%08x, want our vtable 0x%08x\n"
-           "        libIGCore built something, but not with our vtable, so "
-           "dispatch would not reach this host at all.\n",
-           vptr, g_probe.vtable);
+    x2_log_info(
+        "  FAIL  object vptr 0x%08x, want our vtable 0x%08x\n"
+        "        libIGCore built something, but not with our vtable, so "
+        "dispatch would not reach this host at all.\n",
+        vptr, g_probe.vtable);
     fails++;
   } else {
-    printf("  ok    object vptr == our vtable      0x%08x\n", vptr);
+    x2_log_info("  ok    object vptr == our vtable      0x%08x\n", vptr);
   }
-  printf("  info  host vtable slots dispatched during construction: %d\n",
-         g_ctor_ran);
+  x2_log_info("  info  host vtable slots dispatched during construction: %d\n",
+              g_ctor_ran);
 
-  printf("  %s\n",
-         fails ? "PROBE FAILED"
-               : "PROBE PASSED -- libIGCore constructs a host-defined class");
-  fflush(stdout);
+  x2_log_info(
+      "  %s\n",
+      fails ? "PROBE FAILED"
+            : "PROBE PASSED -- libIGCore constructs a host-defined class");
   return fails;
 }
 

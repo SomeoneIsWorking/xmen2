@@ -52,8 +52,8 @@ int main(void) {
   options_menu_stubs_set_manager(manager);
 
   memset(&C, 0, sizeof C);
-  C.esp = stack + 0xff0u;
-  WR32(C.esp, 0xabcdef01u);
+  C.reg[kX86pEsp] = stack + 0xff0u;
+  WR32(C.reg[kX86pEsp], 0xabcdef01u);
   x2_override_005f4900(&C);
 
   failures += check(options_menu_stubs_override_is("XMen2.exe", 0x005f4900u),
@@ -74,15 +74,16 @@ int main(void) {
                     "the registry received the wrong native callback");
   failures += check(options_menu_stubs_method() == REGISTER_TARGET,
                     "registration bypassed the retail vtable method");
-  failures += check(C.esp == stack + 0xff4u,
+  failures += check(C.reg[kX86pEsp] == stack + 0xff4u,
                     "the registrar did not preserve the retail RET result");
-  failures += check(C.eax == 0x12345678u && C.ecx == 0x23456789u &&
-                        C.edx == 0x3456789au,
-                    "native registration changed the retail result registers");
+  failures +=
+      check(C.reg[kX86pEax] == 0x12345678u && C.reg[kX86pEcx] == 0x23456789u &&
+                C.reg[kX86pEdx] == 0x3456789au,
+            "native registration changed the retail result registers");
 
   memset(&C, 0, sizeof C);
-  C.esp = stack + 0xfd0u;
-  WR32(C.esp, 0xabcdef03u);
+  C.reg[kX86pEsp] = stack + 0xfd0u;
+  WR32(C.reg[kX86pEsp], 0xabcdef03u);
   x2_override_005f4900(&C);
   failures += check(options_menu_stubs_original_calls() == 2,
                     "a repeated retail registrar call was not super-called");
@@ -92,15 +93,15 @@ int main(void) {
 
   x2_settings_overlay_hide();
   memset(&C, 0, sizeof C);
-  C.eax = 0x76543210u;
-  C.esp = stack + 0xfe0u;
-  WR32(C.esp, 0xabcdef02u);
+  C.reg[kX86pEax] = 0x76543210u;
+  C.reg[kX86pEsp] = stack + 0xfe0u;
+  WR32(C.reg[kX86pEsp], 0xabcdef02u);
   options_menu_stubs_callback_function()(&C);
   failures += check(x2_settings_overlay_visible(),
                     "the `port_settings` callback did not show its UI");
-  failures += check(C.esp == stack + 0xfe4u,
+  failures += check(C.reg[kX86pEsp] == stack + 0xfe4u,
                     "the `port_settings` callback did not reproduce RET");
-  failures += check(C.eax == 0x76543210u,
+  failures += check(C.reg[kX86pEax] == 0x76543210u,
                     "the void port callback invented a return value");
   x2_settings_overlay_hide();
   failures += check(!x2_settings_overlay_visible(),

@@ -2,11 +2,9 @@
  * Run the guest's own body for a function this port also implements natively.
  *
  * Every native override needs a way to say "not this time -- do what the game
- * did". That used to be a direct call to the translated body's C symbol, which
- * only worked because the whole corpus was linked in. With guest code executed
- * from the player's own images there is no symbol to call: the body is a range
- * of guest bytes at an address that depends on where the module landed, so the
- * call is made by (module, linked entry point) and resolved at run time.
+ * did". Guest code lives in the player's mapped image, so the call is named by
+ * module and linked entry point, resolved after relocation, and executed by
+ * x86port's ordinary runtime path.
  *
  * It goes STRAIGHT to the execution engine rather than through the dispatcher,
  * because the dispatcher would find the override registered at that address and

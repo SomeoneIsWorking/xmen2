@@ -1,4 +1,5 @@
 #include "win32_events.h"
+#include "x2_log.h"
 
 #include "win32_mouse.h"
 #include "win32_pointer.h"
@@ -14,7 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 static SDL_Window *g_window;
 static uint32_t g_hwnd;
@@ -28,8 +29,8 @@ static int g_cursor_hidden;
 static X2Win32Mouse g_mouse;
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 static void set_cursor_visible(int visible) {
@@ -37,8 +38,8 @@ static void set_cursor_visible(int visible) {
 
   if (applied)
     return;
-  fprintf(stderr, "win32 events: SDL could not %s the OS cursor: %s\n",
-          visible ? "show" : "hide", SDL_GetError());
+  x2_log_error("win32 events: SDL could not %s the OS cursor: %s\n",
+               visible ? "show" : "hide", SDL_GetError());
   abort();
 }
 
@@ -146,10 +147,9 @@ static void post_message_or_abort(const X2Win32Message *message,
                                   const char *kind) {
   if (x2_win32_message_post(&g_mouse, message))
     return;
-  fprintf(stderr,
-          "win32 events: ordered queue filled while posting %s; "
-          "refusing to discard input\n",
-          kind);
+  x2_log_error("win32 events: ordered queue filled while posting %s; "
+               "refusing to discard input\n",
+               kind);
   abort();
 }
 
@@ -172,8 +172,8 @@ static void pump_sdl(void) {
     if (event.type == SDL_EVENT_QUIT ||
         event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
       if (!x2_win32_message_post_quit(&g_mouse)) {
-        fprintf(stderr, "win32 events: ordered queue filled while "
-                        "posting WM_QUIT\n");
+        x2_log_error("win32 events: ordered queue filled while "
+                     "posting WM_QUIT\n");
         abort();
       }
       continue;
@@ -214,10 +214,9 @@ static void pump_sdl(void) {
     } else if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
       static int told;
       if (!told++)
-        fprintf(stderr,
-                "win32 events: event loop receives keys "
-                "(first 0x%08x); F9 arms the frame table\n",
-                (unsigned)event.key.key);
+        x2_log_error("win32 events: event loop receives keys "
+                     "(first 0x%08x); F9 arms the frame table\n",
+                     (unsigned)event.key.key);
       if (event.key.key == SDLK_F9)
         d3d8_frame_table_arm();
     }
@@ -265,11 +264,11 @@ void imp_USER32_DispatchMessageA(CPU *C) {
     return;
   }
   call = *C;
-  call.esp -= 16u;
-  WR32(call.esp + 0u, RD32(p + 0u));
-  WR32(call.esp + 4u, RD32(p + 4u));
-  WR32(call.esp + 8u, RD32(p + 8u));
-  WR32(call.esp + 12u, RD32(p + 12u));
+  call.reg[kX86pEsp] -= 16u;
+  WR32(call.reg[kX86pEsp] + 0u, RD32(p + 0u));
+  WR32(call.reg[kX86pEsp] + 4u, RD32(p + 4u));
+  WR32(call.reg[kX86pEsp] + 8u, RD32(p + 8u));
+  WR32(call.reg[kX86pEsp] + 12u, RD32(p + 12u));
   x86_guest_call_args(&call, g_wndproc, 16u);
-  ret_std(C, call.eax, 1);
+  ret_std(C, call.reg[kX86pEax], 1);
 }

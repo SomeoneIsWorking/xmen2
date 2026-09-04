@@ -3,7 +3,7 @@ id: C106
 kind: claim
 status: holds
 created: 2026-08-06
-tags: pc,recomp,native,host,registry
+tags: pc,jit,native,host,registry
 ---
 
 ## Claim

@@ -1,4 +1,5 @@
 #include "guest_modules.h"
+#include "x2_log.h"
 
 #include "install_requirements.h"
 #include "x86rt_native.h"
@@ -23,11 +24,10 @@ int guest_modules_register(void) {
   for (i = 0; i < X2_INSTALL_REQUIRED_IMAGE_COUNT; i++) {
     const char *name = x2_install_required_images[i];
     if (!name || !*name) {
-      fprintf(stderr,
-              "guest_modules: entry %u of the required-image "
-              "list is empty, so the inventory would be short by "
-              "one module and nothing would say which\n",
-              i);
+      x2_log_error("guest_modules: entry %u of the required-image "
+                   "list is empty, so the inventory would be short by "
+                   "one module and nothing would say which\n",
+                   i);
       return 1;
     }
     g_module[i].name = name;

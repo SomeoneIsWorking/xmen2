@@ -1,4 +1,5 @@
 #include "player_participation.h"
+#include "x2_log.h"
 
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -24,24 +25,24 @@ static uint32_t exe_base(void) {
 static uint32_t guest_call0(const CPU *source, uint32_t target) {
   CPU call = *source;
   x86_guest_call_args(&call, target, 0u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static uint32_t thiscall_player(const CPU *source, uint32_t object,
                                 uint32_t slot, unsigned player) {
   CPU call = *source;
   uint32_t vtable = RD32(object);
-  call.esp -= 4u;
-  WR32(call.esp, player);
-  call.ecx = object;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], player);
+  call.reg[kX86pEcx] = object;
   x86_guest_call_args(&call, RD32(vtable + slot), 4u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static void thiscall0(const CPU *source, uint32_t object, uint32_t slot) {
   CPU call = *source;
   uint32_t vtable = RD32(object);
-  call.ecx = object;
+  call.reg[kX86pEcx] = object;
   x86_guest_call_args(&call, RD32(vtable + slot), 0u);
 }
 
@@ -67,10 +68,9 @@ static void apply_to_manager(CPU *cpu, uint32_t manager, uint8_t join_players,
   }
   if (changed) {
     thiscall0(cpu, manager, PARTICIPATION_RECONCILE);
-    fprintf(stderr,
-            "PLAYER-PARTICIPATION: retail reconcile; join=0x%02x "
-            "leave=0x%02x.\n",
-            join_players, leave_players);
+    x2_log_error("PLAYER-PARTICIPATION: retail reconcile; join=0x%02x "
+                 "leave=0x%02x.\n",
+                 join_players, leave_players);
   }
 }
 

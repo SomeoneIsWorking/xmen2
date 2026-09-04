@@ -4,7 +4,7 @@ The oracle cache -- a stock Wine run is answered from disk the second time.
 
 ## Why this exists
 
-`tools/run_shim.sh stock 300` takes five minutes, spins up Xvfb, a Wine prefix
+`tools/run_shim.py stock 300` takes five minutes, spins up Xvfb, a Wine prefix
 and a software Vulkan rasteriser, and produces the SAME frames every time for
 the same driving script. In one session the identical control run -- reach the
 opening red chamber, photograph it, measure its brightness -- was executed five
@@ -53,8 +53,7 @@ CACHE = os.path.join(ROOT, "scratch", "oracle")
 
 # The environment variables that change what a run PRODUCES. Anything not here
 # is either irrelevant (log paths) or would make every entry unique.
-RUN_ENV = ("X2_KEYS", "X2_SAMPLES", "X2_RES", "RUN_ARGS", "X2_EXE",
-           "X2_D3D", "X2_MUTE")
+RUN_ENV = ("X2_KEYS", "X2_SAMPLES", "X2_RES", "RUN_ARGS", "X2_EXE", "X2_D3D", "X2_MUTE")
 
 
 def fingerprint_rundir(rundir):
@@ -62,13 +61,14 @@ def fingerprint_rundir(rundir):
 
     Top-level entries only, with size and symlink target. The farm points at an
     unchanging install; what DOES change between runs is the handful of real
-    files staged into it (the recompiled DLL), and those are top-level. A
+    files staged into it (the instrumented DLL), and those are top-level. A
     missing directory is an ERROR, never an empty fingerprint -- an empty
     fingerprint would make every miss look like a hit on the same key.
     """
     if not os.path.isdir(rundir):
-        raise SystemExit("oracle: run directory %s does not exist -- "
-                         "fingerprinted NOTHING" % rundir)
+        raise SystemExit(
+            "oracle: run directory %s does not exist -- fingerprinted NOTHING" % rundir
+        )
     parts = []
     for name in sorted(os.listdir(rundir)):
         p = os.path.join(rundir, name)
@@ -81,15 +81,17 @@ def fingerprint_rundir(rundir):
             except OSError as e:
                 parts.append("%s ?%s" % (name, e.errno))
     if not parts:
-        raise SystemExit("oracle: run directory %s is EMPTY -- refusing to key "
-                         "a cache entry on nothing" % rundir)
+        raise SystemExit(
+            "oracle: run directory %s is EMPTY -- refusing to key a cache entry on nothing" % rundir
+        )
     return parts
 
 
 def make_key(name, secs, env, fp):
-    blob = json.dumps({"name": name, "secs": secs,
-                       "env": {k: env.get(k, "") for k in RUN_ENV},
-                       "rundir": fp}, sort_keys=True)
+    blob = json.dumps(
+        {"name": name, "secs": secs, "env": {k: env.get(k, "") for k in RUN_ENV}, "rundir": fp},
+        sort_keys=True,
+    )
     return hashlib.sha256(blob.encode()).hexdigest()[:16], blob
 
 
@@ -102,7 +104,10 @@ def measure(png):
     """
     try:
         out = subprocess.run(
-            ["python3", "-c", r"""
+            [
+                "python3",
+                "-c",
+                r"""
 import sys
 from PIL import Image
 im = Image.open(sys.argv[1]).convert("L")
@@ -111,12 +116,22 @@ n = len(px)
 print("%f %f %f %d" % (sum(px)/n,
                        sum(1 for p in px if p < 16)/n,
                        sum(1 for p in px if p > 128)/n, n))
-""", png], capture_output=True, text=True, timeout=120)
+""",
+                png,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
         if out.returncode != 0:
             return None
         mean, lo, hi, n = out.stdout.split()
-        return {"mean_luma": float(mean), "frac_lt16": float(lo),
-                "frac_gt128": float(hi), "pixels": int(n)}
+        return {
+            "mean_luma": float(mean),
+            "frac_lt16": float(lo),
+            "frac_gt128": float(hi),
+            "pixels": int(n),
+        }
     except Exception:
         return None
 
@@ -130,14 +145,19 @@ def store(key, blob, name, secs, env, shots, log, seconds_taken):
     for src in shots:
         dst = os.path.join(d, "shots", os.path.basename(src))
         shutil.copyfile(src, dst)
-        kept.append({"file": os.path.relpath(dst, ROOT),
-                     "metrics": measure(dst)})
+        kept.append({"file": os.path.relpath(dst, ROOT), "metrics": measure(dst)})
     if log and os.path.exists(log):
         shutil.copyfile(log, os.path.join(d, "run.log"))
-    man = {"key": key, "name": name, "secs": secs,
-           "env": {k: env.get(k, "") for k in RUN_ENV},
-           "recorded_at": int(time.time()), "took_seconds": round(seconds_taken, 1),
-           "shots": kept, "keyed_on": json.loads(blob)}
+    man = {
+        "key": key,
+        "name": name,
+        "secs": secs,
+        "env": {k: env.get(k, "") for k in RUN_ENV},
+        "recorded_at": int(time.time()),
+        "took_seconds": round(seconds_taken, 1),
+        "shots": kept,
+        "keyed_on": json.loads(blob),
+    }
     with open(os.path.join(d, "manifest.json"), "w") as f:
         json.dump(man, f, indent=2)
     return man
@@ -145,9 +165,14 @@ def store(key, blob, name, secs, env, shots, log, seconds_taken):
 
 def describe(man, cached):
     age = int(time.time()) - man["recorded_at"]
-    src = ("CACHE HIT -- served from disk, recorded %s ago (%s s of Wine "
-           "saved)" % (human(age), man["took_seconds"])) if cached else \
-          "FRESH RUN -- recorded just now in %s s" % man["took_seconds"]
+    src = (
+        (
+            "CACHE HIT -- served from disk, recorded %s ago (%s s of Wine "
+            "saved)" % (human(age), man["took_seconds"])
+        )
+        if cached
+        else "FRESH RUN -- recorded just now in %s s" % man["took_seconds"]
+    )
     print("oracle: %s" % src)
     print("oracle: key %s  rundir %s  %s s" % (man["key"], man["name"], man["secs"]))
     for k in RUN_ENV:
@@ -155,16 +180,16 @@ def describe(man, cached):
         if v:
             print("oracle:   %s=%s" % (k, v))
     if not man["shots"]:
-        print("oracle: NO captures stored -- this entry proves nothing about "
-              "what was on screen")
+        print("oracle: NO captures stored -- this entry proves nothing about what was on screen")
     for s in man["shots"]:
         m = s["metrics"]
         if m is None:
             print("oracle:   %s  UNREADABLE -- not a measurement" % s["file"])
         else:
-            print("oracle:   %s  mean %.1f  frac<16 %.3f  frac>128 %.3f  (%d px)"
-                  % (s["file"], m["mean_luma"], m["frac_lt16"],
-                     m["frac_gt128"], m["pixels"]))
+            print(
+                "oracle:   %s  mean %.1f  frac<16 %.3f  frac>128 %.3f  (%d px)"
+                % (s["file"], m["mean_luma"], m["frac_lt16"], m["frac_gt128"], m["pixels"])
+            )
 
 
 def human(sec):
@@ -197,16 +222,17 @@ def cmd_run(argv):
     if force and os.path.exists(man_path):
         print("oracle: --force given, discarding the entry for key %s" % key)
     else:
-        print("oracle: CACHE MISS for key %s -- running Wine, expect about "
-              "%s s" % (key, secs))
+        print("oracle: CACHE MISS for key %s -- running Wine, expect about %s s" % (key, secs))
 
-    runner = env.get("X2_ORACLE_RUNNER") or os.path.join(ROOT, "tools", "run_shim.sh")
+    runner = env.get("X2_ORACLE_RUNNER") or os.path.join(ROOT, "tools", "run_shim.py")
     t0 = time.time()
     r = subprocess.run([runner, name, secs], cwd=ROOT)
     took = time.time() - t0
     if r.returncode != 0:
-        raise SystemExit("oracle: the run FAILED (exit %d) -- nothing cached, "
-                         "and no measurement exists" % r.returncode)
+        raise SystemExit(
+            "oracle: the run FAILED (exit %d) -- nothing cached, "
+            "and no measurement exists" % r.returncode
+        )
 
     # run_shim writes one file per sample as `<name>.png.<i>` and copies its
     # pick to `<name>.png`. EVERY sample is kept: the pick is chosen by colour
@@ -215,12 +241,17 @@ def cmd_run(argv):
     # the pick, and the pick was the menu when the question was about a room
     # four samples later.
     shots_dir = os.path.join(ROOT, "scratch", "screenshots")
-    shots = sorted(os.path.join(shots_dir, f) for f in os.listdir(shots_dir)
-                   if f == name + ".png" or f.startswith(name + ".png."))
+    shots = sorted(
+        os.path.join(shots_dir, f)
+        for f in os.listdir(shots_dir)
+        if f == name + ".png" or f.startswith(name + ".png.")
+    )
     shots = [s for s in shots if os.path.getmtime(s) >= t0 - 1]
     if not shots:
-        print("oracle: the run produced NO capture newer than its own start -- "
-              "caching an entry with no image, which proves nothing")
+        print(
+            "oracle: the run produced NO capture newer than its own start -- "
+            "caching an entry with no image, which proves nothing"
+        )
     log = os.path.join(ROOT, "scratch", "logs", name + ".log")
     man = store(key, blob, name, secs, env, shots, log, took)
     describe(man, False)
@@ -243,9 +274,17 @@ def cmd_list(argv):
     ents.sort(key=lambda m: -m["recorded_at"])
     print("oracle: %d cached run%s" % (len(ents), "" if len(ents) == 1 else "s"))
     for m in ents:
-        print("  %s  %-10s %5ss  %s ago  %d shot(s)  keys=%s"
-              % (m["key"], m["name"], m["secs"], human(int(time.time()) - m["recorded_at"]),
-                 len(m["shots"]), m["env"].get("X2_KEYS", "(none)") or "(none)"))
+        print(
+            "  %s  %-10s %5ss  %s ago  %d shot(s)  keys=%s"
+            % (
+                m["key"],
+                m["name"],
+                m["secs"],
+                human(int(time.time()) - m["recorded_at"]),
+                len(m["shots"]),
+                m["env"].get("X2_KEYS", "(none)") or "(none)",
+            )
+        )
     return 0
 
 
@@ -254,8 +293,7 @@ def cmd_show(argv):
         raise SystemExit("usage: oracle.py show <key>")
     p = os.path.join(CACHE, argv[0], "manifest.json")
     if not os.path.exists(p):
-        raise SystemExit("oracle: no entry %s -- `oracle.py list` shows what "
-                         "there is" % argv[0])
+        raise SystemExit("oracle: no entry %s -- `oracle.py list` shows what there is" % argv[0])
     with open(p) as f:
         describe(json.load(f), True)
     return 0
@@ -266,6 +304,7 @@ def _selftest():
     Wine so this needs no game install -- what is under test is the KEYING, not
     the game."""
     import tempfile
+
     fails = []
     tmp = tempfile.mkdtemp(prefix="oracle-selftest-")
     global CACHE
@@ -279,8 +318,10 @@ def _selftest():
     os.makedirs(shots_dir, exist_ok=True)
     runner = os.path.join(tmp, "stub.sh")
     with open(runner, "w") as f:
-        f.write("#!/bin/sh\ntouch %s/$1.png %s/$1.png.1 %s/$1.png.2\n"
-                "echo stub ran >&2\n" % (shots_dir, shots_dir, shots_dir))
+        f.write(
+            "#!/bin/sh\ntouch %s/$1.png %s/$1.png.1 %s/$1.png.2\n"
+            "echo stub ran >&2\n" % (shots_dir, shots_dir, shots_dir)
+        )
     os.chmod(runner, 0o755)
 
     calls = []
@@ -294,6 +335,7 @@ def _selftest():
         os.environ.update(env)
         import io
         import contextlib
+
         buf = io.StringIO()
         try:
             with contextlib.redirect_stdout(buf):
@@ -310,24 +352,29 @@ def _selftest():
     # EVERY sample, not just run_shim's own pick -- the pick is the most
     # colourful frame of the run, which is rarely the frame under question.
     if a.count("shots/") != 3:
-        fails.append("kept %d captures of the 3 the run produced -- samples "
-                     "other than run_shim's pick are being dropped"
-                     % a.count("shots/"))
+        fails.append(
+            "kept %d captures of the 3 the run produced -- samples "
+            "other than run_shim's pick are being dropped" % a.count("shots/")
+        )
     b = run_once()
     if "CACHE HIT" not in b:
         fails.append("an identical second run did not HIT the cache")
 
     c = run_once({"X2_KEYS": "10:Return"})
     if "CACHE MISS" not in c:
-        fails.append("changing X2_KEYS did not miss -- the cache would serve a "
-                     "frame from a different driving script")
+        fails.append(
+            "changing X2_KEYS did not miss -- the cache would serve a "
+            "frame from a different driving script"
+        )
 
     with open(os.path.join(rundir, "XMen2.exe"), "w") as f:
         f.write("stub v2 -- rebuilt, different size")
     d = run_once()
     if "CACHE MISS" not in d:
-        fails.append("rebuilding the run directory did not miss -- the cache "
-                     "would serve a frame from the OLD binary")
+        fails.append(
+            "rebuilding the run directory did not miss -- the cache "
+            "would serve a frame from the OLD binary"
+        )
 
     e = run_once({"X2_SAMPLES": "9"})
     if "CACHE MISS" not in e:
@@ -353,10 +400,13 @@ def main(argv):
         return _selftest()
     if len(argv) < 2:
         print(__doc__)
-        print("usage: oracle.py run <rundir> [secs] [--force]\n"
-              "       oracle.py list\n"
-              "       oracle.py show <key>\n"
-              "       oracle.py --selftest", file=sys.stderr)
+        print(
+            "usage: oracle.py run <rundir> [secs] [--force]\n"
+            "       oracle.py list\n"
+            "       oracle.py show <key>\n"
+            "       oracle.py --selftest",
+            file=sys.stderr,
+        )
         return 2
     return {"run": cmd_run, "list": cmd_list, "show": cmd_show}[argv[1]](argv[2:])
 

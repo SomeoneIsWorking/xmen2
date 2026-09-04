@@ -12,7 +12,7 @@ The native (Wine-free) build RENDERS the game: x2native --d3d8 --run reaches a s
 
 ## Evidence
 
-scratch/screenshots/native.png, captured by tools/native_shot.sh on Xvfb at 800x600: the panel with its gradient fill, bevelled border, bottom tabs and cursor, 1574 distinct colours, black 53.4% (the area outside the window). The heartbeat over the same run: 600 presents per 10s, 4 clears and ~18 draws per frame, and gpu draws == the engine's draw count with 0 refused, so every draw the engine asked for was rasterised. The run ended by the timeout, not by a fault.
+scratch/screenshots/native.png, captured by tools/native_shot.py on Xvfb at 800x600: the panel with its gradient fill, bevelled border, bottom tabs and cursor, 1574 distinct colours, black 53.4% (the area outside the window). The heartbeat over the same run: 600 presents per 10s, 4 clears and ~18 draws per frame, and gpu draws == the engine's draw count with 0 refused, so every draw the engine asked for was rasterised. The run ended by the timeout, not by a fault.
 
 ## What would falsify it
 

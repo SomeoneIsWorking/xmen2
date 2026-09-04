@@ -99,7 +99,7 @@ static uint32_t false_result(void) {
 }
 
 static void check_arguments(CPU *cpu, uint32_t expected_count, uint32_t first) {
-  uint32_t list = RD32(cpu->esp);
+  uint32_t list = RD32(cpu->reg[kX86pEsp]);
 
   check(RD32(list + 0x1cu) == expected_count,
         "handler received the wrong BehavEd argument count");
@@ -108,56 +108,58 @@ static void check_arguments(CPU *cpu, uint32_t expected_count, uint32_t first) {
 }
 
 static void clobber_callee_frame(CPU *cpu) {
-  memset(guest_memory_pointer(cpu->esp - 0x40u), 0xcc, 0x40u);
+  memset(guest_memory_pointer(cpu->reg[kX86pEsp] - 0x40u), 0xcc, 0x40u);
 }
 
 void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
   if (target == FN_MANAGER) {
-    cpu->eax = MANAGER;
+    cpu->reg[kX86pEax] = MANAGER;
   } else if (target == FN_TREE_FIND) {
-    check(cpu->ecx == SCRIPT + 4u,
+    check(cpu->reg[kX86pEcx] == SCRIPT + 4u,
           "return-name lookup used the wrong script map");
-    check(RD32(RD32(cpu->esp)) == NAME,
+    check(RD32(RD32(cpu->reg[kX86pEsp])) == NAME,
           "return-name lookup lost the authored name");
-    cpu->eax = 2u;
+    cpu->reg[kX86pEax] = 2u;
   } else if (target == FN_VALUE_FIND) {
-    check(cpu->ecx == CONTEXT + 8u, "context value lookup used the wrong map");
-    cpu->eax = RD32(RD32(cpu->esp)) == 0x33u ? 1u : INVALID_INDEX;
+    check(cpu->reg[kX86pEcx] == CONTEXT + 8u,
+          "context value lookup used the wrong map");
+    cpu->reg[kX86pEax] =
+        RD32(RD32(cpu->reg[kX86pEsp])) == 0x33u ? 1u : INVALID_INDEX;
   } else if (target == FN_VALUE_RELEASE) {
-    check(cpu->ecx == MANAGER + VALUE_POOL,
+    check(cpu->reg[kX86pEcx] == MANAGER + VALUE_POOL,
           "result release used the wrong pool owner");
-    check(RD32(cpu->esp) == VALUE_TRUE_INDEX ||
-              RD32(cpu->esp) == VALUE_FALSE_INDEX,
+    check(RD32(cpu->reg[kX86pEsp]) == VALUE_TRUE_INDEX ||
+              RD32(cpu->reg[kX86pEsp]) == VALUE_FALSE_INDEX,
           "result release used the wrong value index");
     releases++;
   } else if (target == HANDLER_TRUE) {
-    uint32_t list = RD32(cpu->esp);
+    uint32_t list = RD32(cpu->reg[kX86pEsp]);
     clobber_callee_frame(cpu);
     check_arguments(cpu, RD32(list + 0x1cu), RD32(list));
     handler_true_calls++;
-    cpu->eax = true_result();
+    cpu->reg[kX86pEax] = true_result();
   } else if (target == HANDLER_FALSE) {
     clobber_callee_frame(cpu);
     check_arguments(cpu, 0u, 0u);
     handler_false_calls++;
-    cpu->eax = false_result();
+    cpu->reg[kX86pEax] = false_result();
   } else if (target == HANDLER_FORBIDDEN) {
     check(0, "conditional edge executed the non-authored branch");
-    cpu->eax = true_result();
+    cpu->reg[kX86pEax] = true_result();
   } else if (target == METHOD_BOOL_TRUE) {
-    cpu->eax = 1u;
+    cpu->reg[kX86pEax] = 1u;
   } else if (target == METHOD_BOOL_FALSE) {
-    cpu->eax = 0u;
+    cpu->reg[kX86pEax] = 0u;
   } else if (target == METHOD_ASSIGN) {
-    check(cpu->ecx == DESTINATION,
+    check(cpu->reg[kX86pEcx] == DESTINATION,
           "result assignment used the wrong destination");
-    check(RD32(cpu->esp) == true_result(),
+    check(RD32(cpu->reg[kX86pEsp]) == true_result(),
           "result assignment lost the handler result");
     assignments++;
   } else {
     check(0, "native interpreter called an unexpected guest target");
   }
-  cpu->esp += callee_pop_bytes;
+  cpu->reg[kX86pEsp] += callee_pop_bytes;
 }
 
 void x86_register_override(const char *name, uint32_t entry,
@@ -183,7 +185,7 @@ static CPU fresh_cpu(void) {
   CPU cpu;
 
   memset(&cpu, 0, sizeof cpu);
-  cpu.esp = STACK;
+  cpu.reg[kX86pEsp] = STACK;
   return cpu;
 }
 
@@ -262,10 +264,10 @@ int main(void) {
   WR32(CONTEXT, 0u);
   WR32(SCRIPT, 0u);
   cpu = fresh_cpu();
-  cpu.ecx = CONTEXT;
-  WR32(cpu.esp, 0xdeadbeefu);
+  cpu.reg[kX86pEcx] = CONTEXT;
+  WR32(cpu.reg[kX86pEsp], 0xdeadbeefu);
   registered(&cpu);
-  check(cpu.eax == 1u && cpu.esp == STACK + 4u,
+  check(cpu.reg[kX86pEax] == 1u && cpu.reg[kX86pEsp] == STACK + 4u,
         "004d8b30 override did not reproduce its thiscall RET ABI");
 
   printf("BehavEd context player: %s -- native graph execution, argument "

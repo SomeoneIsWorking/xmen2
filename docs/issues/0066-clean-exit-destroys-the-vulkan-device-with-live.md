@@ -30,7 +30,7 @@ This is the same ordering already used by the isolated GPU self-test.
 
 Before the fix, the full-route log contained at least ten live-semaphore VUIDs,
 one live-surface VUID, and attached Wayland proxies. After it,
-`tools/smoke_loop.sh` passed the complete 4,135-frame route. An explicit scan
+The scripted smoke scenario passed the complete 4,135-frame route. An explicit scan
 of all 1,424 log lines / 139,087 bytes found:
 
     VUID-vkDestroyDevice-device-05137: 0

@@ -1,4 +1,5 @@
 #include "win32_pointer.h"
+#include "x2_log.h"
 
 #include "../input/touch_runtime.h"
 #include "settings_store.h"
@@ -25,20 +26,19 @@ static void mouse_geometry(MouseGeometry *geometry) {
   int window_x, window_y, window_width, window_height;
 
   if (!g_window) {
-    fprintf(
-        stderr,
+    x2_log_error(
         "win32 pointer: cursor coordinates require an attached guest window\n");
     abort();
   }
   if (!SDL_GetWindowPosition(g_window, &window_x, &window_y) ||
       !SDL_GetWindowSize(g_window, &window_width, &window_height)) {
-    fprintf(stderr, "win32 pointer: cannot read guest window geometry: %s\n",
-            SDL_GetError());
+    x2_log_error("win32 pointer: cannot read guest window geometry: %s\n",
+                 SDL_GetError());
     abort();
   }
   if (window_width <= 0 || window_height <= 0) {
-    fprintf(stderr, "win32 pointer: guest window has invalid size %dx%d\n",
-            window_width, window_height);
+    x2_log_error("win32 pointer: guest window has invalid size %dx%d\n",
+                 window_width, window_height);
     abort();
   }
   geometry->window_x = window_x;
@@ -54,10 +54,10 @@ static int32_t coordinate_add(int32_t coordinate, int64_t offset,
   int64_t result = (int64_t)coordinate + offset;
 
   if (result < INT32_MIN || result > INT32_MAX) {
-    fprintf(stderr,
-            "win32 pointer: %s cursor coordinate is outside the guest 32-bit "
-            "range\n",
-            axis);
+    x2_log_error(
+        "win32 pointer: %s cursor coordinate is outside the guest 32-bit "
+        "range\n",
+        axis);
     abort();
   }
   return (int32_t)result;
@@ -95,8 +95,7 @@ static void map_point(float host_x, float host_y, int32_t *client_x,
   if (!x2_win32_mouse_map_point(x, y, geometry.window_width,
                                 geometry.window_height, geometry.game_width,
                                 geometry.game_height, client_x, client_y)) {
-    fprintf(
-        stderr,
+    x2_log_error(
         "win32 pointer: cannot map (%d,%d) from window %ux%u to game %ux%u\n",
         x, y, geometry.window_width, geometry.window_height,
         geometry.game_width, geometry.game_height);
@@ -122,8 +121,8 @@ int x2_win32_pointer_get_cursor_pos(int32_t *x, int32_t *y) {
                          "vertical"),
           geometry.window_width, geometry.window_height, geometry.game_width,
           geometry.game_height, &client_x, &client_y)) {
-    fprintf(stderr,
-            "win32 pointer: cannot map physical cursor to game coordinates\n");
+    x2_log_error(
+        "win32 pointer: cannot map physical cursor to game coordinates\n");
     abort();
   }
   *x = coordinate_add(client_x, geometry.window_x, "horizontal");
@@ -141,8 +140,8 @@ int x2_win32_pointer_set_cursor_pos(int32_t x, int32_t y) {
           coordinate_add(y, -(int64_t)geometry.window_y, "vertical"),
           geometry.window_width, geometry.window_height, geometry.game_width,
           geometry.game_height, &host_x, &host_y)) {
-    fprintf(stderr,
-            "win32 pointer: cannot map game cursor to window coordinates\n");
+    x2_log_error(
+        "win32 pointer: cannot map game cursor to window coordinates\n");
     abort();
   }
   host_x = coordinate_add(host_x, geometry.window_x, "horizontal");
@@ -176,10 +175,10 @@ static uint32_t buttons(SDL_MouseButtonFlags state) {
 static void require_queued(int queued, const char *kind) {
   if (queued)
     return;
-  fprintf(stderr,
-          "win32 pointer: ordered queue filled while posting %s; refusing to "
-          "discard it\n",
-          kind);
+  x2_log_error(
+      "win32 pointer: ordered queue filled while posting %s; refusing to "
+      "discard it\n",
+      kind);
   abort();
 }
 

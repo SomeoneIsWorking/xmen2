@@ -88,11 +88,11 @@ static void decode_stereo(uint32_t out, uint32_t in, int32_t frames,
 /* ---- overrides ------------------------------------------------------- */
 
 void x2_override_00616770(CPU *C) {
-  const uint32_t out = RD32(C->esp + 4u);
-  const uint32_t in = RD32(C->esp + 8u);
-  const int32_t count = (int32_t)RD32(C->esp + 12u);
-  const uint32_t pp = RD32(C->esp + 16u);
-  const uint32_t ip = RD32(C->esp + 20u);
+  const uint32_t out = RD32(C->reg[kX86pEsp] + 4u);
+  const uint32_t in = RD32(C->reg[kX86pEsp] + 8u);
+  const int32_t count = (int32_t)RD32(C->reg[kX86pEsp] + 12u);
+  const uint32_t pp = RD32(C->reg[kX86pEsp] + 16u);
+  const uint32_t ip = RD32(C->reg[kX86pEsp] + 20u);
   const int32_t pred0 = (int32_t)RD32(pp);
   const int32_t idx0 = (int32_t)RD32(ip);
 
@@ -101,21 +101,21 @@ void x2_override_00616770(CPU *C) {
   decode_mono(out, in, count, &predictor, &step_index);
   WR32(pp, (uint32_t)predictor);
   WR32(ip, (uint32_t)step_index);
-  C->eax = (uint32_t)count;
+  C->reg[kX86pEax] = (uint32_t)count;
 
   audio_adpcm_verify_or_abort(C, 0x00616770u, out,
                               count > 0 ? (uint32_t)count * 2u : 0u, pp, ip,
                               &pred0, &idx0, &predictor, &step_index, 1);
 
-  C->esp += 4u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 void x2_override_00616880(CPU *C) {
-  const uint32_t out = RD32(C->esp + 4u);
-  const uint32_t in = RD32(C->esp + 8u);
-  const int32_t frames = (int32_t)RD32(C->esp + 12u);
-  const uint32_t pp = RD32(C->esp + 16u);
-  const uint32_t ip = RD32(C->esp + 20u);
+  const uint32_t out = RD32(C->reg[kX86pEsp] + 4u);
+  const uint32_t in = RD32(C->reg[kX86pEsp] + 8u);
+  const int32_t frames = (int32_t)RD32(C->reg[kX86pEsp] + 12u);
+  const uint32_t pp = RD32(C->reg[kX86pEsp] + 16u);
+  const uint32_t ip = RD32(C->reg[kX86pEsp] + 20u);
   const int32_t pred0[2] = {(int32_t)RD32(pp), (int32_t)RD32(pp + 4u)};
   const int32_t idx0[2] = {(int32_t)RD32(ip), (int32_t)RD32(ip + 4u)};
 
@@ -126,13 +126,13 @@ void x2_override_00616880(CPU *C) {
   WR32(pp + 4u, (uint32_t)predictor[1]);
   WR32(ip, (uint32_t)step_index[0]);
   WR32(ip + 4u, (uint32_t)step_index[1]);
-  C->eax = out + (frames > 0 ? (uint32_t)frames * 4u : 0u);
+  C->reg[kX86pEax] = out + (frames > 0 ? (uint32_t)frames * 4u : 0u);
 
   audio_adpcm_verify_or_abort(C, 0x00616880u, out,
                               frames > 0 ? (uint32_t)frames * 4u : 0u, pp, ip,
                               pred0, idx0, predictor, step_index, 2);
 
-  C->esp += 4u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 __attribute__((constructor)) static void audio_adpcm_register_overrides(void) {

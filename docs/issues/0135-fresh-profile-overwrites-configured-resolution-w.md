@@ -25,7 +25,7 @@ The host publishes before guest code, but a fresh registry has no `Settings\Disp
 ## Proper fix
 
 `display_mode_runtime` wraps the verified retail settings-load boundary at
-XMen2.exe `0x00619770` and calls the retained recompiled body first. This keeps
+XMen2.exe `0x00619770` and calls the retained retail body through the JIT first. This keeps
 every first-run default and the Version 7 transition retail-owned. The bridge
 then republishes the configured mode, constructs the exact 0x78-byte retail
 registry-path context through `0x00616a70`, and invokes the retail

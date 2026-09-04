@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /* Input actions for the synthetic pad are separate from its lifecycle and
  * device-discovery code. Touch controls and the HTTP test channel use this
  * owner to publish and release virtual state. */
@@ -66,10 +67,9 @@ void virtual_expire(void) {
       g_vbtn_until[i] = 0.0;
       g_vbtn_clears++;
       if (g_vbtn_clears <= 4)
-        fprintf(stderr,
-                "DINPUT-PAD: releasing button %d, %.3fs past "
-                "its deadline (clear #%lu)\n",
-                i, held, g_vbtn_clears);
+        x2_log_error("DINPUT-PAD: releasing button %d, %.3fs past "
+                     "its deadline (clear #%lu)\n",
+                     i, held, g_vbtn_clears);
       SDL_SetJoystickVirtualButton(g_virt_js, i, false);
     }
   for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++)

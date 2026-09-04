@@ -1,4 +1,5 @@
 /* The upload-staging lifetime contract, exercised on the real SDL GPU path. */
+#include "../native/x2_log.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
 
@@ -13,16 +14,16 @@ int gpu_upload_reuse_selftest(void) {
   GpuBuffer buffer;
   int ok;
 
-  printf("\n=== gpu upload selftest: one resource retains its staging "
-         "allocation ===\n");
+  x2_log_info("\n=== gpu upload selftest: one resource retains its staging "
+              "allocation ===\n");
   if (!gpu_device_create()) {
-    printf("gpu upload selftest: FAILED -- no GPU device.\n");
+    x2_log_info("gpu upload selftest: FAILED -- no GPU device.\n");
     return 1;
   }
   memset(data, 0x5a, sizeof data);
   buffer = gpu_buffer_create(GPU_BUF_VERTEX, sizeof data);
   if (!buffer) {
-    printf("gpu upload selftest: FAILED -- no buffer.\n");
+    x2_log_info("gpu upload selftest: FAILED -- no buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -37,14 +38,14 @@ int gpu_upload_reuse_selftest(void) {
 
   if (!ok || creates_after - creates_before != 1 ||
       uploads_after - uploads_before != 2) {
-    printf("gpu upload selftest: FAILED -- two uploads made %llu "
-           "transfer allocation(s) and %lu successful upload(s); "
-           "expected one retained allocation and two uploads.\n",
-           creates_after - creates_before, uploads_after - uploads_before);
+    x2_log_info("gpu upload selftest: FAILED -- two uploads made %llu "
+                "transfer allocation(s) and %lu successful upload(s); "
+                "expected one retained allocation and two uploads.\n",
+                creates_after - creates_before, uploads_after - uploads_before);
     return 1;
   }
-  printf("gpu upload selftest: PASSED -- two uploads reused one retained "
-         "transfer allocation.\n");
+  x2_log_info("gpu upload selftest: PASSED -- two uploads reused one retained "
+              "transfer allocation.\n");
   return 0;
 }
 
@@ -73,10 +74,10 @@ int gpu_upload_order_selftest(void) {
   GpuDraw draw;
   int ok;
 
-  printf("\n=== gpu upload-order selftest: draw, discard, draw retains "
-         "both buffer generations ===\n");
+  x2_log_info("\n=== gpu upload-order selftest: draw, discard, draw retains "
+              "both buffer generations ===\n");
   if (!gpu_device_create()) {
-    printf("gpu upload-order selftest: FAILED -- no GPU device.\n");
+    x2_log_info("gpu upload-order selftest: FAILED -- no GPU device.\n");
     return 1;
   }
   buffer = gpu_buffer_create(GPU_BUF_VERTEX, sizeof first);
@@ -105,13 +106,14 @@ int gpu_upload_order_selftest(void) {
 
   if (!ok || pixels[32u * 64u + 16u] != 0xFFFF0000u ||
       pixels[32u * 64u + 48u] != 0xFF00FF00u) {
-    printf("gpu upload-order selftest: FAILED -- left pixel 0x%08x, "
-           "right pixel 0x%08x; expected the first red draw and second "
-           "green draw to coexist.\n",
-           pixels[32u * 64u + 16u], pixels[32u * 64u + 48u]);
+    x2_log_info("gpu upload-order selftest: FAILED -- left pixel 0x%08x, "
+                "right pixel 0x%08x; expected the first red draw and second "
+                "green draw to coexist.\n",
+                pixels[32u * 64u + 16u], pixels[32u * 64u + 48u]);
     return 1;
   }
-  printf("gpu upload-order selftest: PASSED -- the first red draw retained "
-         "its buffer generation and the second used the green rewrite.\n");
+  x2_log_info(
+      "gpu upload-order selftest: PASSED -- the first red draw retained "
+      "its buffer generation and the second used the green rewrite.\n");
   return 0;
 }

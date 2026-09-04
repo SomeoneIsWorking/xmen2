@@ -14,7 +14,13 @@ The retail intro script's exact menu transition is the no-argument BehavEd mainM
 
 ## Evidence
 
-Ghidra FindStringRefs on mainMenuExit decompiled FUN_0049fb20 as: get console singleton, invoke vtable +0x18 with the executable string mainmenuexit, XOR EAX,EAX, plain RET. scratch/recomp/XMen2.json independently lists the same 20-byte body and RET with no stack-pop immediate. `x2_boot_menu_open` calls this exact handler with zero callback argument bytes; `startup.c` uses it only for the exact intro_normal console command, retaining retail main-menu initialization.
+Ghidra `FindStringRefs` on `mainMenuExit` decompiled FUN_0049fb20 as: get the
+console singleton, invoke vtable `+0x18` with the executable string
+`mainmenuexit`, `XOR EAX,EAX`, plain `RET`. An independent decode of the
+authenticated XMen2.exe bytes shows the same 20-byte body and `RET` with no
+stack-pop immediate. `x2_boot_menu_open` calls this exact handler with zero
+callback argument bytes; `startup.c` uses it only for the exact `intro_normal`
+console command, retaining retail main-menu initialization.
 
 ## What would falsify it
 

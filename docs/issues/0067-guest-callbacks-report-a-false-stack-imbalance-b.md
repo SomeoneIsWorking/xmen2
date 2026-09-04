@@ -44,7 +44,7 @@ The shipping `--selftest` executes a synthetic `RET 8` callback, proves that it
 received both arguments, and requires the caller's exact final ESP. A deliberate
 zero-byte contract mutation aborts with the expected/actual ESP diagnostic.
 
-`tools/smoke_loop.sh` then completed the 4,200-frame route: all six scripted
+The scripted smoke scenario then completed the 4,200-frame route: all six scripted
 inputs fired (last at frame 4,135), no draw was refused, and the final frame had
 more than 3,000 distinct colours. Its 1,460-line log contains zero old imbalance
 warnings and zero stack-contract violations; the corrected conversation update

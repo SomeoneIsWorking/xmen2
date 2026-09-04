@@ -3,7 +3,7 @@ id: 77
 title: Historical black characters in the Cyclops dialogue diverged at skinning shader selection
 status: investigating
 symptom: characters render black or very dark in gameplay while the environment looks correct; Cyclops dark with head reading as collapsed
-tags: rendering,lighting,d3d8,engine,recomp
+tags: rendering,lighting,d3d8,engine,jit
 created: 2026-08-15
 updated: 2026-08-24
 ---

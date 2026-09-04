@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Translate the 32-bit address visible to the recompiled program into a host
+/* Translate the 32-bit address visible to the guest program into a host
    pointer.  On hosts that can map the low 4 GB this base remains zero. */
 extern uintptr_t g_guest_memory_base;
 

@@ -1,4 +1,5 @@
 #include "android_bridge.h"
+#include "../config/environment.h"
 #include "d3d8_device.h"
 #include "d3d8_drawcall.h"
 #include "gpu_draw.h"
@@ -64,12 +65,12 @@ bool is_module_character(char character) {
  * values give two useful heartbeats quickly without becoming player policy. */
 bool configure_performance_trace(jboolean enabled) {
   if (enabled != JNI_TRUE) {
-    ::unsetenv("X2_HOTEP");
-    ::unsetenv("X2_HEARTBEAT");
+    x2_config_override_unset(kX2ConfigHotEp);
+    x2_config_override_unset(kX2ConfigHeartbeat);
     return true;
   }
-  return ::setenv("X2_HOTEP", "4096", 1) == 0 &&
-         ::setenv("X2_HEARTBEAT", "2", 1) == 0;
+  return x2_config_override_set(kX2ConfigHotEp, "4096", 1) == 0 &&
+         x2_config_override_set(kX2ConfigHeartbeat, "2", 1) == 0;
 }
 
 /* The first sufficiently busy frame captures the complete D3D8 state that
@@ -110,15 +111,16 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
   if (!read_string(environment, source, install_source, sizeof install_source))
     return JNI_FALSE;
   if (trace_files == JNI_TRUE) {
-    if (::setenv("X2_FILES", "1", 1) != 0)
+    if (x2_config_override_set(kX2ConfigFiles, "1", 1) != 0)
       return JNI_FALSE;
   } else {
-    ::unsetenv("X2_FILES");
+    x2_config_override_unset(kX2ConfigFiles);
   }
   /* The existing guest input path already knows how to create and map the
    * SDL virtual pad. Android supplies touch actions to that same pad, so
    * there is one binding path instead of a second mobile-only input stack. */
-  return ::setenv("X2_VIRTUAL_PAD", "1", 1) == 0 ? JNI_TRUE : JNI_FALSE;
+  return x2_config_override_set(kX2ConfigVirtualPad, "1", 1) == 0 ? JNI_TRUE
+                                                                  : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /* Diagnostic ownership for the brightness of bytes submitted as textures. */
 #include "d3d8_texture_luma.h"
 #include "d3d8_types.h"
@@ -108,22 +110,24 @@ void d3d8_texture_luma_report(void) {
     if (g_luma[index].luma < 8.0)
       dark++;
   }
-  printf("        texture brightness: %d texture(s) measured%s, %lu upload(s) "
-         "in a format this cannot read, mean luma %.1f; %d of them are "
-         "effectively BLACK (mean luma < 8 of 255)\n",
-         g_luma_count, g_luma_dropped ? " (TABLE FULL -- more exist)" : "",
-         g_luma_unreadable, g_luma_count ? total / g_luma_count : 0.0, dark);
+  x2_log_info(
+      "        texture brightness: %d texture(s) measured%s, %lu upload(s) "
+      "in a format this cannot read, mean luma %.1f; %d of them are "
+      "effectively BLACK (mean luma < 8 of 255)\n",
+      g_luma_count, g_luma_dropped ? " (TABLE FULL -- more exist)" : "",
+      g_luma_unreadable, g_luma_count ? total / g_luma_count : 0.0, dark);
   if (!g_luma_count) {
-    printf("          none measured -- either no texture was uploaded, or "
-           "every one used a format this check cannot read. It says "
-           "NOTHING about the textures.\n");
+    x2_log_info("          none measured -- either no texture was uploaded, or "
+                "every one used a format this check cannot read. It says "
+                "NOTHING about the textures.\n");
     return;
   }
-  if (getenv("X2_TEXTURE_LUMA_ALL")) {
+  if (x2_config_override_get(kX2ConfigTextureLumaAll)) {
     for (index = 0; index < g_luma_count; ++index)
-      printf("          handle %-4u %4ux%-4u fmt %-3u  mean luma %6.2f\n",
-             g_luma[index].handle, g_luma[index].width, g_luma[index].height,
-             g_luma[index].format, g_luma[index].luma);
+      x2_log_info("          handle %-4u %4ux%-4u fmt %-3u  mean luma %6.2f\n",
+                  g_luma[index].handle, g_luma[index].width,
+                  g_luma[index].height, g_luma[index].format,
+                  g_luma[index].luma);
     return;
   }
   for (rank = 0; rank < 10 && rank < g_luma_count; ++rank) {
@@ -136,10 +140,11 @@ void d3d8_texture_luma_report(void) {
     }
     if (darkest < 0)
       break;
-    printf("          handle %-4u %4ux%-4u fmt %-3u  mean luma %6.2f%s\n",
-           g_luma[darkest].handle, g_luma[darkest].width,
-           g_luma[darkest].height, g_luma[darkest].format, g_luma[darkest].luma,
-           g_luma[darkest].luma < 8.0 ? "   <- BLACK" : "");
+    x2_log_info("          handle %-4u %4ux%-4u fmt %-3u  mean luma %6.2f%s\n",
+                g_luma[darkest].handle, g_luma[darkest].width,
+                g_luma[darkest].height, g_luma[darkest].format,
+                g_luma[darkest].luma,
+                g_luma[darkest].luma < 8.0 ? "   <- BLACK" : "");
     g_luma[darkest].width = 0;
   }
 }

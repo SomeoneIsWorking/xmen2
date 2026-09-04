@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * A heap the guest can hold a pointer to.
  *
@@ -9,7 +10,7 @@
  *
  * Deliberately a plain first-fit allocator with coalescing, not a fast one.
  * The game's own allocators sit on top of this (igMemoryPool and friends are
- * recompiled game code); what reaches here is CRT-level allocation, which is
+ * guest game code); what reaches here is CRT-level allocation, which is
  * comparatively rare. Correctness and a loud failure matter more than speed,
  * and when it stops mattering the interface is small enough to replace.
  *
@@ -49,10 +50,9 @@ int guest_heap_init(uint32_t base, uint32_t size) {
   if (size < 0x10000u)
     return -1;
   if (guest_memory_map_fixed(base, size, PROT_READ | PROT_WRITE) != 0) {
-    fprintf(stderr,
-            "guest_heap: could not place a %u-byte arena at "
-            "0x%08x; guest allocations have nowhere to live\n",
-            size, base);
+    x2_log_error("guest_heap: could not place a %u-byte arena at "
+                 "0x%08x; guest allocations have nowhere to live\n",
+                 size, base);
     return -1;
   }
   g_base = base;
@@ -63,10 +63,10 @@ int guest_heap_init(uint32_t base, uint32_t size) {
 }
 
 static void die(const char *what, uint32_t a) {
-  fprintf(stderr, "guest_heap: %s (guest pointer 0x%08x)\n", what, a);
-  /* Report before stopping: abort() skips atexit, and without this the
-     reached set and the ring are silent on exactly the failures worth
-     reading. Same fix as the kernel32 and runtime stop paths. */
+  x2_log_error("guest_heap: %s (guest pointer 0x%08x)\n", what, a);
+  /* Report before stopping: abort() skips atexit, and without this the stop
+     diagnostics are silent on exactly the failures worth reading. Same fix as
+     the kernel32 and runtime stop paths. */
   x86_diag_dump();
   abort();
 }
@@ -133,26 +133,25 @@ uint32_t guest_malloc(uint32_t n) {
   {
     static int said;
     if (!said++)
-      fprintf(stderr,
-              "\n*** the guest heap is EXHAUSTED: %u bytes requested, "
-              "and the arena is %u bytes at 0x%08x.\n"
-              "    %lu allocation(s) live, high-water %u bytes. The "
-              "guest gets NULL from malloc, which is honest -- but a "
-              "game\n    that asks for more than it was given usually "
-              "means the arena is too small, not that the game is "
-              "wrong.\n"
-              "    Reported once; every later failure is silent.\n",
-              n, g_size, g_base, g_live, g_highwater);
-    fflush(stderr);
+      x2_log_error("\n*** the guest heap is EXHAUSTED: %u bytes requested, "
+                   "and the arena is %u bytes at 0x%08x.\n"
+                   "    %lu allocation(s) live, high-water %u bytes. The "
+                   "guest gets NULL from malloc, which is honest -- but a "
+                   "game\n    that asks for more than it was given usually "
+                   "means the arena is too small, not that the game is "
+                   "wrong.\n"
+                   "    Reported once; every later failure is silent.\n",
+                   n, g_size, g_base, g_live, g_highwater);
   }
   return 0;
 }
 
 void guest_heap_report(void) {
-  printf("  guest heap: %u of %u bytes in use, high-water %u (%.0f%% of the "
-         "arena), %lu live allocation(s)\n",
-         g_used, g_size, g_highwater,
-         g_size ? 100.0 * (double)g_highwater / (double)g_size : 0.0, g_live);
+  x2_log_info(
+      "  guest heap: %u of %u bytes in use, high-water %u (%.0f%% of the "
+      "arena), %lu live allocation(s)\n",
+      g_used, g_size, g_highwater,
+      g_size ? 100.0 * (double)g_highwater / (double)g_size : 0.0, g_live);
 }
 
 void guest_free(uint32_t p) {

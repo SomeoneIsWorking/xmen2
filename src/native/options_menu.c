@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /* Port Settings command registration.
  *
  * XMen2.exe 0x005f4900 registers the retail menu-command table. Its authored
@@ -46,12 +47,11 @@ static uint32_t exe_base(void) {
 void x2_port_settings_command(CPU *C) {
   x2_settings_overlay_show();
   /* BehavEd menu commands are void/no-argument callbacks ending in RET. */
-  C->esp += 4u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 static void refuse_registration(const char *reason) {
-  fprintf(stderr, "options menu: cannot register `port_settings`: %s\n",
-          reason);
+  x2_log_error("options menu: cannot register `port_settings`: %s\n", reason);
   abort();
 }
 
@@ -74,20 +74,20 @@ static void register_port_settings(const CPU *source) {
   memcpy(guest_memory_pointer(name), command, sizeof command);
 
   x86_guest_call_args(&call, base + COMMAND_REGISTRY_RVA, 0u);
-  manager = call.eax;
+  manager = call.reg[kX86pEax];
   if (!manager)
     refuse_registration("the retail command registry is absent");
   method = RD32(RD32(manager) + REGISTER_COMMAND_VSLOT);
   if (!method)
     refuse_registration("the retail register-command method is absent");
-  call.esp -= 4u;
-  WR32(call.esp, g_port_settings_callback);
-  call.esp -= 4u;
-  WR32(call.esp, name);
-  call.ecx = manager;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_port_settings_callback);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], name);
+  call.reg[kX86pEcx] = manager;
   x86_guest_call_args(&call, method, 8u);
   guest_free(name);
-  if (!(call.eax & 0xffu))
+  if (!(call.reg[kX86pEax] & 0xffu))
     refuse_registration("the retail registry rejected the new command");
   g_port_settings_registered = 1;
 }

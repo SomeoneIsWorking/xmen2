@@ -106,12 +106,12 @@ void input_bindings_write(CPU *cpu, uint32_t object, uint32_t row,
   if (!cpu || !base || !object)
     return;
   call = *cpu;
-  call.ecx = object;
-  call.esp -= 16u;
-  WR32(call.esp + 0u, row);
-  WR32(call.esp + 4u, slot);
-  WR32(call.esp + 8u, kind);
-  WR32(call.esp + 12u, code);
+  call.reg[kX86pEcx] = object;
+  call.reg[kX86pEsp] -= 16u;
+  WR32(call.reg[kX86pEsp] + 0u, row);
+  WR32(call.reg[kX86pEsp] + 4u, slot);
+  WR32(call.reg[kX86pEsp] + 8u, kind);
+  WR32(call.reg[kX86pEsp] + 12u, code);
   x86_guest_call_args(&call, base + SET_BINDING_RVA, 16u);
 }
 
@@ -152,8 +152,8 @@ int input_binding_row_of_action(CPU *cpu, uint32_t action) {
   call = *cpu;
   /* FUN_00619c40 ends in a plain RET: it is cdecl, so it pops nothing and
      the caller cleans. The CPU copy is discarded, which IS that cleanup. */
-  call.esp -= 4u;
-  WR32(call.esp, action);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], action);
   x86_guest_call_args(&call, base + ROW_OF_ACTION_RVA, 0u);
-  return (int32_t)call.eax;
+  return (int32_t)call.reg[kX86pEax];
 }

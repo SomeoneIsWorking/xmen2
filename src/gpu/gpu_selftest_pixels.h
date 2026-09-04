@@ -13,8 +13,10 @@
  * A failing check PRINTS what it got against what it wanted, so a failure
  * names the wrong colour instead of only saying that a test failed.
  */
+#include "../native/x2_log.h"
+
+#include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #define OFF_W 64
 #define OFF_H 64
@@ -25,9 +27,10 @@ static inline int px_is(const uint32_t *img, int x, int y, uint32_t bgra,
   uint32_t got = img[(size_t)y * OFF_W + x];
   if (got == bgra)
     return 1;
-  printf("gpu selftest: FAILED -- pixel (%d,%d) is 0x%08x, expected 0x%08x "
-         "(%s)\n",
-         x, y, got, bgra, what);
+  x2_log_error(
+      "gpu selftest: FAILED -- pixel (%d,%d) is 0x%08x, expected 0x%08x "
+      "(%s)\n",
+      x, y, got, bgra, what);
   return 0;
 }
 #endif

@@ -1,8 +1,10 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * The Win32 surface libIGDisplay actually calls, implemented on SDL3 and libc.
  *
  * This is the part that replaces Wine. It is deliberately NOT a Win32
- * emulation layer: it implements the 43 functions the recompiled bodies really
+ * emulation layer: it implements the 43 functions the guest bodies really
  * reach (measured with `nm -u`, not guessed from the import table -- the table
  * lists more), and every function outside that set stays an aborting stub that
  * names itself.
@@ -15,17 +17,18 @@
  *
  * ---- the calling convention ----
  *
- * A recompiled body calls an import like this:
+ * A guest body calls an import like this:
  *
- *     C->esp -= 4; WR32(C->esp, <fake return address>);
+ *     C->reg[kX86pEsp] -= 4; WR32(C->reg[kX86pEsp], <fake return address>);
  *     imp_USER32_ShowWindow(C);
  *
- * so on entry C->esp points at that fake return address and argument i is at
- * C->esp + 4 + 4i. On exit the runtime has to leave C->esp where the real
- * callee would have: Win32 is __stdcall, so the callee pops its arguments;
- * the CRT is __cdecl, so it does not. Getting that wrong shifts the guest
- * stack by a word and the damage appears much later, so the two cases are
- * separate functions with the count spelled out at every call site.
+ * so on entry C->reg[kX86pEsp] points at that fake return address and argument
+ * i is at C->reg[kX86pEsp] + 4 + 4i. On exit the runtime has to leave
+ * C->reg[kX86pEsp] where the real callee would have: Win32 is __stdcall, so the
+ * callee pops its arguments; the CRT is __cdecl, so it does not. Getting that
+ * wrong shifts the guest stack by a word and the damage appears much later, so
+ * the two cases are separate functions with the count spelled out at every call
+ * site.
  */
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -45,26 +48,25 @@
 
 /* ---- guest ABI helpers ------------------------------------------------- */
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 /* __stdcall: the callee pops `nargs` dwords as well as the return address. */
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 /* __cdecl: the caller cleans up, so only the return address goes. */
 static void ret_cdecl(CPU *C, uint32_t eax) {
-  C->eax = eax;
-  C->esp += 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u;
 }
 
 static void unimplemented(const char *what) {
-  fprintf(stderr,
-          "win32_sdl: %s is reached but not implemented.\n"
-          "  Not returning a plausible value: that would move the "
-          "failure somewhere unrelated.\n",
-          what);
+  x2_log_error("win32_sdl: %s is reached but not implemented.\n"
+               "  Not returning a plausible value: that would move the "
+               "failure somewhere unrelated.\n",
+               what);
   abort();
 }
 
@@ -107,8 +109,8 @@ static void desktop_size(int *w, int *h) {
      say so rather than inventing 1920x1080 and letting the game lay out
      against a resolution that does not exist. */
   if (!m) {
-    fprintf(stderr, "win32_sdl: no display -- SDL cannot report a desktop "
-                    "size, and this layer will not invent one\n");
+    x2_log_error("win32_sdl: no display -- SDL cannot report a desktop "
+                 "size, and this layer will not invent one\n");
     abort();
   }
   *w = m->w;
@@ -195,10 +197,9 @@ static int gwl_index(int32_t idx) {
 void imp_USER32_GetWindowLongA(CPU *C) {
   int i = gwl_index((int32_t)A(1));
   if (i < 0) {
-    fprintf(stderr,
-            "win32_sdl: GetWindowLongA index %d is not one this "
-            "host tracks -- returning 0, which may be wrong\n",
-            (int)(int32_t)A(1));
+    x2_log_error("win32_sdl: GetWindowLongA index %d is not one this "
+                 "host tracks -- returning 0, which may be wrong\n",
+                 (int)(int32_t)A(1));
     ret_std(C, 0, 2);
     return;
   }
@@ -288,10 +289,9 @@ void imp_USER32_GetDC(CPU *C) {
     ret_std(C, HDC_MAIN_TOK, 1);
     return;
   }
-  fprintf(stderr,
-          "win32_sdl: GetDC for an HWND this layer does not know "
-          "(0x%08x) -- returning NULL, as Win32 does\n",
-          h);
+  x2_log_error("win32_sdl: GetDC for an HWND this layer does not know "
+               "(0x%08x) -- returning NULL, as Win32 does\n",
+               h);
   ret_std(C, 0, 1);
 }
 
@@ -325,10 +325,9 @@ void imp_USER32_GetSystemMetrics(CPU *C) {
     v = 0;
     break; /* SM_CXSIZEFRAME / SM_CYSIZEFRAME */
   default:
-    fprintf(stderr,
-            "win32_sdl: GetSystemMetrics(%u) is not one this host "
-            "answers -- returning 0, which may be wrong\n",
-            idx);
+    x2_log_error("win32_sdl: GetSystemMetrics(%u) is not one this host "
+                 "answers -- returning 0, which may be wrong\n",
+                 idx);
     v = 0;
   }
   ret_std(C, v, 1);
@@ -403,15 +402,14 @@ int win32_sdl_dialog(const char *title, const char *text,
   const char *why = NULL;
 
   if (n < 1 || n > (int)(sizeof btn / sizeof btn[0])) {
-    fprintf(stderr,
-            "win32_sdl: a dialog with %d buttons is not something "
-            "this layer can show; refusing rather than dropping "
-            "some\n",
-            n);
+    x2_log_error("win32_sdl: a dialog with %d buttons is not something "
+                 "this layer can show; refusing rather than dropping "
+                 "some\n",
+                 n);
     abort();
   }
-  fprintf(stderr, "\n*** %s\n%s\n", title ? title : "(no title)",
-          text ? text : "(no text)");
+  x2_log_error("\n*** %s\n%s\n", title ? title : "(no title)",
+               text ? text : "(no text)");
 
   if (g_hide_windows)
     why = "this run is --no-window";
@@ -422,10 +420,9 @@ int win32_sdl_dialog(const char *title, const char *text,
     for (i = 0; i < n; i++)
       if (ids[i] == fallback)
         lbl = labels[i];
-    fprintf(stderr,
-            "    NOT SHOWN: %s. Answering \"%s\" -- nobody chose "
-            "that, this host did.\n",
-            why, lbl);
+    x2_log_error("    NOT SHOWN: %s. Answering \"%s\" -- nobody chose "
+                 "that, this host did.\n",
+                 why, lbl);
     return fallback;
   }
 
@@ -447,14 +444,13 @@ int win32_sdl_dialog(const char *title, const char *text,
   x2_win32_events_modal(1);
   if (!SDL_ShowMessageBox(&box, &chosen)) {
     x2_win32_events_modal(0);
-    fprintf(stderr,
-            "    SDL could not show it (%s). Answering the "
-            "fallback (%d) rather than blocking.\n",
-            SDL_GetError(), fallback);
+    x2_log_error("    SDL could not show it (%s). Answering the "
+                 "fallback (%d) rather than blocking.\n",
+                 SDL_GetError(), fallback);
     return fallback;
   }
   x2_win32_events_modal(0);
-  fprintf(stderr, "    -> answered %d\n", chosen);
+  x2_log_error("    -> answered %d\n", chosen);
   return chosen;
 }
 
@@ -468,17 +464,16 @@ void imp_USER32_MessageBoxA(CPU *C) {
    * caller it does not say which check concluded it, and that is the whole
    * question -- "Display failed!" (issue #22) named a symptom nobody could
    * attribute to a function. The return address is on the guest stack
-   * because every emitted call site pushes one, so it costs nothing.
+   * because every guest CALL pushes one, so it costs nothing.
    */
   {
-    uint32_t ra = RD32(C->esp);
+    uint32_t ra = RD32(C->reg[kX86pEsp]);
     const char *nm = x86_native_name_at(ra);
-    fprintf(stderr,
-            "    raised from 0x%08x%s%s -- that is the function "
-            "that decided it, and\n"
-            "    what it tested is the thing to look at, not the "
-            "message.\n",
-            ra, nm ? " " : "", nm ? nm : "");
+    x2_log_error("    raised from 0x%08x%s%s -- that is the function "
+                 "that decided it, and\n"
+                 "    what it tested is the thing to look at, not the "
+                 "message.\n",
+                 ra, nm ? " " : "", nm ? nm : "");
   }
   /*
    * The button set, from MB_* in uType's low nibble. Only the styles the
@@ -520,12 +515,11 @@ void imp_USER32_MessageBoxA(CPU *C) {
       fallback = 2;
       break;
     default:
-      fprintf(stderr,
-              "win32_sdl: MessageBoxA button style 0x%x is not "
-              "implemented -- the caller branches on which "
-              "button, so answering one it did not offer would "
-              "be a decision this host invented\n",
-              type & 0xFu);
+      x2_log_error("win32_sdl: MessageBoxA button style 0x%x is not "
+                   "implemented -- the caller branches on which "
+                   "button, so answering one it did not offer would "
+                   "be a decision this host invented\n",
+                   type & 0xFu);
       abort();
     }
     ret_std(C,
@@ -568,8 +562,8 @@ void imp_USER32_CreateWindowExA(CPU *C) {
   SDL_WindowFlags window_flags;
   char why[256];
   if (g_win_live) {
-    fprintf(stderr, "win32_sdl: a second window was requested; this layer "
-                    "backs the guest's HWNDs with exactly one\n");
+    x2_log_error("win32_sdl: a second window was requested; this layer "
+                 "backs the guest's HWNDs with exactly one\n");
     abort();
   }
   w = (int32_t)settings->width;
@@ -590,7 +584,7 @@ void imp_USER32_CreateWindowExA(CPU *C) {
   g_win = SDL_CreateWindow(name ? guest_memory_const_pointer(name) : "x2native",
                            w, h, window_flags);
   if (!g_win) {
-    fprintf(stderr, "win32_sdl: SDL_CreateWindow failed: %s\n", SDL_GetError());
+    x2_log_error("win32_sdl: SDL_CreateWindow failed: %s\n", SDL_GetError());
     ret_std(C, 0, 12);
     return;
   }
@@ -600,10 +594,9 @@ void imp_USER32_CreateWindowExA(CPU *C) {
   x2_win32_events_window(g_win, HWND_MAIN_TOK, g_hide_windows);
   if (!g_hide_windows &&
       !x2_window_settings_apply(g_win, settings, why, (int)sizeof why))
-    fprintf(stderr,
-            "SETTINGS: could not apply requested presentation "
-            "mode (%s). The existing window remains active.\n",
-            why);
+    x2_log_error("SETTINGS: could not apply requested presentation "
+                 "mode (%s). The existing window remains active.\n",
+                 why);
   /*
    * WHICH display the window went to, said out loud.
    *
@@ -613,13 +606,15 @@ void imp_USER32_CreateWindowExA(CPU *C) {
    * back black. That black image reads as "the renderer draws nothing". One
    * line here is the difference between that and the truth.
    */
-  printf("win32_sdl: %swindow %dx%d (%s) on SDL video driver \"%s\"%s%s\n",
-         g_hide_windows ? "HIDDEN " : "", w, h,
-         x2_window_mode_name(settings->window_mode),
-         SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "(none)",
-         getenv("DISPLAY") ? "  DISPLAY=" : "",
-         getenv("DISPLAY") ? getenv("DISPLAY") : "");
-  fflush(stdout);
+  x2_log_info("win32_sdl: %swindow %dx%d (%s) on SDL video driver \"%s\"%s%s\n",
+              g_hide_windows ? "HIDDEN " : "", w, h,
+              x2_window_mode_name(settings->window_mode),
+              SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver()
+                                          : "(none)",
+              x2_config_override_get(kX2ConfigDisplay) ? "  DISPLAY=" : "",
+              x2_config_override_get(kX2ConfigDisplay)
+                  ? x2_config_override_get(kX2ConfigDisplay)
+                  : "");
   ret_std(C, HWND_MAIN_TOK, 12);
 }
 
@@ -655,8 +650,8 @@ void imp_USER32_ShowWindow(CPU *C) {
      the window was created hidden. */
   hidden = A(1) == 0u || g_hide_windows;
   if (!(hidden ? SDL_HideWindow(g_win) : SDL_ShowWindow(g_win))) {
-    fprintf(stderr, "win32_sdl: SDL could not %s the guest window: %s\n",
-            hidden ? "hide" : "show", SDL_GetError());
+    x2_log_error("win32_sdl: SDL could not %s the guest window: %s\n",
+                 hidden ? "hide" : "show", SDL_GetError());
     abort();
   }
   x2_win32_events_hide_window(hidden);
@@ -1012,11 +1007,10 @@ void imp_USER32_MapVirtualKeyA(CPU *C) {
       static uint32_t said = 0xFFFFFFFFu;
       if (said != type) {
         said = type;
-        fprintf(stderr,
-                "win32_sdl: MapVirtualKeyA map type %u is not "
-                "implemented; answering 0, which the caller "
-                "will read as 'no mapping'.\n",
-                type);
+        x2_log_error("win32_sdl: MapVirtualKeyA map type %u is not "
+                     "implemented; answering 0, which the caller "
+                     "will read as 'no mapping'.\n",
+                     type);
       }
     }
     ret_std(C, 0, 2);

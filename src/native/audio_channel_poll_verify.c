@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /*
  * `audio.channel_poll_verify` -- differential gate for the audio channel poll
  * native override (XMen2.exe!0x00594500) against the retail guest body.
@@ -16,8 +17,8 @@
  * between the two runs would diverge; that race is accepted for a verify-only
  * mode, as it is for the other override verifiers.
  */
-#include "audio_channel_poll_verify.h"
 #include "audio_channel_poll.h"
+#include "audio_channel_poll_verify.h"
 
 #include "guest_body.h"
 #include "x86rt.h"
@@ -80,10 +81,11 @@ static void restore(const PollSnapshot *s) {
 static void compare(const PollSnapshot *g, const PollSnapshot *n) {
   for (int i = 0; i < V_CHAN_COUNT; ++i) {
     if (g->state[i] != n->state[i] || g->obj[i] != n->obj[i]) {
-      fprintf(stderr,
-              "audio.channel_poll_verify: channel %d diverged -- guest "
-              "state=%u obj=0x%08x, native state=%u obj=0x%08x\n",
-              i, g->state[i], g->obj[i], n->state[i], n->obj[i]);
+      lucent_log_error(
+          "x2",
+          "audio.channel_poll_verify: channel %d diverged -- guest "
+          "state=%u obj=0x%08x, native state=%u obj=0x%08x\n",
+          i, g->state[i], g->obj[i], n->state[i], n->obj[i]);
       assert(0 && "audio channel poll override diverged from guest body");
     }
   }
@@ -95,7 +97,7 @@ static void compare(const PollSnapshot *g, const PollSnapshot *n) {
 
 static unsigned long g_verify_runs;
 
-int audio_channel_poll_verify(struct CPU *C) {
+int audio_channel_poll_verify(struct X86pCpu *C) {
   if (!verify_enabled())
     return 0;
 
@@ -123,10 +125,11 @@ int audio_channel_poll_verify(struct CPU *C) {
     int active = 0;
     for (int i = 0; i < V_CHAN_COUNT; ++i)
       active += s0.state[i] == 2u;
-    fprintf(stderr,
-            "audio.channel_poll_verify: run %lu, %d channel(s) awaiting "
-            "completion, native poll matches the guest body\n",
-            g_verify_runs, active);
+    lucent_log_error(
+        "x2",
+        "audio.channel_poll_verify: run %lu, %d channel(s) awaiting "
+        "completion, native poll matches the guest body\n",
+        g_verify_runs, active);
   }
   return 1;
 }

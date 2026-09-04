@@ -1,4 +1,5 @@
 /* Pixel proof for stage-0 animation and the observed second texture stage. */
+#include "../native/x2_log.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
 
@@ -9,7 +10,7 @@
 
 int gpu_multistage_selftest(void) {
 #ifndef X2_WITH_SDL
-  printf("gpu multistage selftest: SKIPPED -- built without SDL.\n");
+  x2_log_info("gpu multistage selftest: SKIPPED -- built without SDL.\n");
   return 77;
 #else
   struct Vertex {
@@ -37,7 +38,8 @@ int gpu_multistage_selftest(void) {
   uint32_t got;
   int fails = 0;
 
-  puts("\n=== gpu multistage selftest: camera-normal COUNT2 stage 1 ===");
+  x2_log_info(
+      "%s", "\n=== gpu multistage selftest: camera-normal COUNT2 stage 1 ===");
   if (!gpu_device_create())
     return 1;
   vertices = gpu_buffer_create(GPU_BUF_VERTEX, sizeof quad);
@@ -47,7 +49,8 @@ int gpu_multistage_selftest(void) {
       !gpu_buffer_upload(vertices, 0, quad, sizeof quad) ||
       !gpu_texture_upload(base, 0, base_pixels, sizeof base_pixels) ||
       !gpu_texture_upload(detail, 0, stage1, sizeof stage1)) {
-    puts("gpu multistage selftest: FAILED -- resources did not upload");
+    x2_log_info("%s",
+                "gpu multistage selftest: FAILED -- resources did not upload");
     gpu_device_destroy();
     return 1;
   }
@@ -93,7 +96,8 @@ int gpu_multistage_selftest(void) {
 
   if (!gpu_offscreen_begin(TEST_SIZE, TEST_SIZE, 0, 0, 1, 1) ||
       !gpu_draw(&draw) || !gpu_offscreen_read(pixels, sizeof pixels)) {
-    puts("gpu multistage selftest: FAILED -- draw/readback did not run");
+    x2_log_info("%s",
+                "gpu multistage selftest: FAILED -- draw/readback did not run");
     gpu_offscreen_end();
     gpu_device_destroy();
     return 1;
@@ -101,10 +105,10 @@ int gpu_multistage_selftest(void) {
   gpu_offscreen_end();
   got = pixels[(TEST_SIZE / 2) * TEST_SIZE + TEST_SIZE / 2];
   if (got != 0xff00ff00u) {
-    printf("gpu multistage selftest: FAILED -- centre is 0x%08x, expected "
-           "green; red means stage 0's transform was ignored, while "
-           "black means stage 1's camera-normal transform was ignored.\n",
-           got);
+    x2_log_info("gpu multistage selftest: FAILED -- centre is 0x%08x, expected "
+                "green; red means stage 0's transform was ignored, while "
+                "black means stage 1's camera-normal transform was ignored.\n",
+                got);
     fails++;
   }
 
@@ -129,7 +133,9 @@ int gpu_multistage_selftest(void) {
     }
     mipped = gpu_texture_create(16, 16, GPU_FMT_BGRA8, 5);
     if (!mipped || !gpu_buffer_upload(vertices, 0, mip_quad, sizeof mip_quad)) {
-      puts("gpu multistage selftest: FAILED -- mip resources did not upload");
+      x2_log_info(
+          "%s",
+          "gpu multistage selftest: FAILED -- mip resources did not upload");
       fails++;
     } else {
       offset = 0;
@@ -163,7 +169,9 @@ int gpu_multistage_selftest(void) {
       if (!gpu_offscreen_begin(TEST_SIZE, TEST_SIZE, 0, 0, 1, 1) ||
           !gpu_draw(&draw) ||
           !gpu_offscreen_read(no_mip_pixels, sizeof no_mip_pixels)) {
-        puts("gpu multistage selftest: FAILED -- no-mip control did not run");
+        x2_log_info(
+            "%s",
+            "gpu multistage selftest: FAILED -- no-mip control did not run");
         fails++;
       }
       gpu_offscreen_end();
@@ -172,7 +180,8 @@ int gpu_multistage_selftest(void) {
       if (!gpu_offscreen_begin(TEST_SIZE, TEST_SIZE, 0, 0, 1, 1) ||
           !gpu_draw(&draw) ||
           !gpu_offscreen_read(mip_pixels, sizeof mip_pixels)) {
-        puts("gpu multistage selftest: FAILED -- mip draw did not run");
+        x2_log_info("%s",
+                    "gpu multistage selftest: FAILED -- mip draw did not run");
         fails++;
       }
       gpu_offscreen_end();
@@ -181,20 +190,20 @@ int gpu_multistage_selftest(void) {
               0xffff0000u ||
           mip_pixels[(TEST_SIZE / 2) * TEST_SIZE + TEST_SIZE / 2] !=
               0xff00ff00u) {
-        printf("gpu multistage selftest: FAILED -- mip control/mipped "
-               "centres are 0x%08x/0x%08x, expected red/green.\n",
-               no_mip_pixels[(TEST_SIZE / 2) * TEST_SIZE + TEST_SIZE / 2],
-               mip_pixels[(TEST_SIZE / 2) * TEST_SIZE + TEST_SIZE / 2]);
+        x2_log_info("gpu multistage selftest: FAILED -- mip control/mipped "
+                    "centres are 0x%08x/0x%08x, expected red/green.\n",
+                    no_mip_pixels[(TEST_SIZE / 2) * TEST_SIZE + TEST_SIZE / 2],
+                    mip_pixels[(TEST_SIZE / 2) * TEST_SIZE + TEST_SIZE / 2]);
         fails++;
       }
     }
   }
   gpu_device_destroy();
-  printf("gpu multistage selftest: %s\n",
-         fails
-             ? "FAILED"
-             : "PASSED -- both texture stages use transformed coordinates and "
-               "minification reaches the resident mip chain");
+  x2_log_info(
+      "gpu multistage selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- both texture stages use transformed coordinates and "
+              "minification reaches the resident mip chain");
   return fails;
 #endif
 }

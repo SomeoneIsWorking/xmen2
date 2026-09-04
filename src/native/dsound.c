@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * DirectSound 8 boundary used by XMen2.exe.
  *
@@ -28,30 +29,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
 #endif
-
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
-
 #define DS_OK 0x00000000u
 #define DSERR_INVALIDPARAM 0x8878000au
 #define DSERR_OUTOFMEMORY 0x8007000eu
 #define DSERR_INVALIDCALL 0x88780032u
-
 #define DSBCAPS_PRIMARYBUFFER 0x00000001u
 #define DSBPLAY_LOOPING 0x00000001u
 #define DSBSTATUS_PLAYING 0x00000001u
 #define DSBSTATUS_LOOPING 0x00000004u
-
 typedef struct SampleData {
   uint32_t guest_data;
   uint32_t bytes;
   unsigned refs;
 } SampleData;
-
 typedef struct DSBuffer {
   int used, primary;
   uint32_t guest;
@@ -165,8 +160,8 @@ static const char *const BVT_NAME[BVT_COUNT] = {"QueryInterface",
 static double now_s(void) { return guest_clock_now_s(); }
 
 static void ret_std(CPU *C, uint32_t value, int nargs) {
-  C->eax = value;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = value;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 static void ret_com(CPU *C, uint32_t value, int nargs) {
@@ -184,10 +179,9 @@ static DSBuffer *buffer_of(uint32_t guest) {
 static DSBuffer *this_buffer(CPU *C) {
   DSBuffer *b = buffer_of(THIS);
   if (!b) {
-    fprintf(stderr,
-            "DSOUND: IDirectSoundBuffer method on unknown object "
-            "0x%08x\n",
-            THIS);
+    x2_log_error("DSOUND: IDirectSoundBuffer method on unknown object "
+                 "0x%08x\n",
+                 THIS);
     abort();
   }
   return b;
@@ -342,13 +336,12 @@ static void open_audio(void) {
    * schedule and hears nothing.
    */
   if (win32_sdl_windows_hidden()) {
-    fprintf(stderr,
-            "DSOUND: --no-window, so no host playback device is "
-            "opened -- using the timed SILENT device. Play cursors "
-            "still advance at %d Hz, so audio-gated logic (cutscene "
-            "advance, stream-complete waits) runs exactly as it "
-            "does with sound.\n",
-            g_primary_rate);
+    x2_log_error("DSOUND: --no-window, so no host playback device is "
+                 "opened -- using the timed SILENT device. Play cursors "
+                 "still advance at %d Hz, so audio-gated logic (cutscene "
+                 "advance, stream-complete waits) runs exactly as it "
+                 "does with sound.\n",
+                 g_primary_rate);
     g_audio_silent = 1;
     g_silent_time = now_s();
     return;
@@ -357,10 +350,9 @@ static void open_audio(void) {
   {
     SDL_AudioSpec spec;
     if (!SDL_WasInit(SDL_INIT_AUDIO) && !SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-      fprintf(stderr,
-              "DSOUND: SDL audio init failed: %s -- using a "
-              "timed SILENT device; cursors still advance.\n",
-              SDL_GetError());
+      x2_log_error("DSOUND: SDL audio init failed: %s -- using a "
+                   "timed SILENT device; cursors still advance.\n",
+                   SDL_GetError());
       g_audio_silent = 1;
       g_silent_time = now_s();
       return;
@@ -372,10 +364,9 @@ static void open_audio(void) {
     g_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
                                          &spec, audio_more, NULL);
     if (!g_stream || !SDL_ResumeAudioStreamDevice(g_stream)) {
-      fprintf(stderr,
-              "DSOUND: no host playback stream: %s -- using a "
-              "timed SILENT device; cursors still advance.\n",
-              SDL_GetError());
+      x2_log_error("DSOUND: no host playback stream: %s -- using a "
+                   "timed SILENT device; cursors still advance.\n",
+                   SDL_GetError());
       if (g_stream)
         SDL_DestroyAudioStream(g_stream);
       g_stream = NULL;
@@ -383,14 +374,13 @@ static void open_audio(void) {
       g_silent_time = now_s();
       return;
     }
-    fprintf(stderr,
-            "DSOUND: SDL3 playback opened at %d Hz, stereo F32; "
-            "the game supplies PCM through DirectSound buffers.\n",
-            g_primary_rate);
+    x2_log_error("DSOUND: SDL3 playback opened at %d Hz, stereo F32; "
+                 "the game supplies PCM through DirectSound buffers.\n",
+                 g_primary_rate);
   }
 #else
-  fprintf(stderr, "DSOUND: built without SDL audio -- using a timed SILENT "
-                  "device; cursors still advance.\n");
+  x2_log_error("DSOUND: built without SDL audio -- using a timed SILENT "
+               "device; cursors still advance.\n");
   g_audio_silent = 1;
   g_silent_time = now_s();
 #endif
@@ -421,11 +411,10 @@ static int read_waveformat(uint32_t p, DSBuffer *b) {
   if (b->format_tag != 1 || (b->channels != 1 && b->channels != 2) ||
       (b->bits != 8 && b->bits != 16) || !b->sample_rate ||
       b->block_align != b->channels * b->bits / 8u) {
-    fprintf(stderr,
-            "DSOUND: unsupported WAVEFORMATEX tag=%u channels=%u "
-            "rate=%u bits=%u align=%u\n",
-            b->format_tag, b->channels, b->sample_rate, b->bits,
-            b->block_align);
+    x2_log_error("DSOUND: unsupported WAVEFORMATEX tag=%u channels=%u "
+                 "rate=%u bits=%u align=%u\n",
+                 b->format_tag, b->channels, b->sample_rate, b->bits,
+                 b->block_align);
     return 0;
   }
   b->frequency = b->sample_rate;
@@ -486,10 +475,9 @@ static DSBuffer *alloc_buffer(void) {
 
 static void b_unimplemented(CPU *C) {
   const char *name = (const char *)x86_callback_ctx();
-  fprintf(stderr,
-          "DSOUND: IDirectSoundBuffer::%s is not implemented; "
-          "refusing instead of returning plausible silence\n",
-          name ? name : "(unknown)");
+  x2_log_error("DSOUND: IDirectSoundBuffer::%s is not implemented; "
+               "refusing instead of returning plausible silence\n",
+               name ? name : "(unknown)");
   (void)C;
   abort();
 }
@@ -527,12 +515,11 @@ unsigned dsound_buffer_release_guest(uint32_t guest) {
   WR32(b->guest + 4u, n);
   if (!n) {
     if (g_buffer_releases < 8)
-      fprintf(stderr,
-              "DSOUND: secondary object 0x%08x released to zero%s\n",
-              b->guest,
-              b->data && b->data->refs > 1
-                  ? " (shared PCM remains through a duplicate)"
-                  : "");
+      x2_log_error("DSOUND: secondary object 0x%08x released to zero%s\n",
+                   b->guest,
+                   b->data && b->data->refs > 1
+                       ? " (shared PCM remains through a duplicate)"
+                       : "");
     g_buffer_releases++;
     if (b->data && --b->data->refs == 0) {
       if (b->data->guest_data)
@@ -761,10 +748,9 @@ static void b_Restore(CPU *C) {
 
 static void ds_unimplemented(CPU *C) {
   const char *name = (const char *)x86_callback_ctx();
-  fprintf(stderr,
-          "DSOUND: IDirectSound::%s is not implemented; refusing "
-          "instead of disabling sound quietly\n",
-          name ? name : "(unknown)");
+  x2_log_error("DSOUND: IDirectSound::%s is not implemented; refusing "
+               "instead of disabling sound quietly\n",
+               name ? name : "(unknown)");
   (void)C;
   abort();
 }
@@ -811,10 +797,9 @@ static void ds_CreateSoundBuffer(CPU *C) {
   b->primary = (flags & DSBCAPS_PRIMARYBUFFER) != 0;
   if (!b->primary) {
     if (!bytes || !read_waveformat(fmt, b)) {
-      fprintf(stderr,
-              "DSOUND: CreateSoundBuffer REFUSED desc=0x%08x "
-              "flags=0x%x bytes=%u format=0x%08x\n",
-              desc, flags, bytes, fmt);
+      x2_log_error("DSOUND: CreateSoundBuffer REFUSED desc=0x%08x "
+                   "flags=0x%x bytes=%u format=0x%08x\n",
+                   desc, flags, bytes, fmt);
       b->used = 0;
       audio_unlock();
       WR32(out, 0);
@@ -837,11 +822,10 @@ static void ds_CreateSoundBuffer(CPU *C) {
            bytes);
     g_secondary_created++;
     if (g_secondary_created <= 12)
-      fprintf(stderr,
-              "DSOUND: secondary %lu -> object 0x%08x, out "
-              "0x%08x, %u bytes of %u Hz %u-bit %s PCM\n",
-              g_secondary_created, b->guest, out, bytes, b->sample_rate,
-              b->bits, b->channels == 1 ? "mono" : "stereo");
+      x2_log_error("DSOUND: secondary %lu -> object 0x%08x, out "
+                   "0x%08x, %u bytes of %u Hz %u-bit %s PCM\n",
+                   g_secondary_created, b->guest, out, bytes, b->sample_rate,
+                   b->bits, b->channels == 1 ? "mono" : "stereo");
   }
   WR32(out, b->guest);
   audio_unlock();
@@ -903,10 +887,9 @@ static void ds_DuplicateSoundBuffer(CPU *C) {
   audio_unlock();
   g_duplicates++;
   if (g_duplicates <= 12)
-    fprintf(stderr,
-            "DSOUND: duplicate %lu of 0x%08x -> 0x%08x, out "
-            "0x%08x (shared PCM, independent cursor)\n",
-            g_duplicates, src->guest, b->guest, A(2));
+    x2_log_error("DSOUND: duplicate %lu of 0x%08x -> 0x%08x, out "
+                 "0x%08x (shared PCM, independent cursor)\n",
+                 g_duplicates, src->guest, b->guest, A(2));
   ret_com(C, DS_OK, 2);
 }
 
@@ -930,11 +913,27 @@ static void build_vtables(void) {
       ds_CreateSoundBuffer,   ds_GetCaps,   ds_DuplicateSoundBuffer,
       ds_SetCooperativeLevel, ds_Compact,   ds_GetSpeakerConfig,
       ds_SetSpeakerConfig,    ds_Initialize};
-  static void (*const b_impl[BVT_COUNT])(CPU *) = {
-      b_QueryInterface, b_AddRef, b_Release, b_GetCaps, b_GetCurrentPosition,
-      b_GetFormat, b_GetVolume, b_GetPan, b_GetFrequency, b_GetStatus,
-      b_unimplemented, b_Lock, b_Play, b_SetCurrentPosition, b_SetFormat,
-      b_SetVolume, b_SetPan, b_SetFrequency, b_Stop, b_Unlock, b_Restore};
+  static void (*const b_impl[BVT_COUNT])(CPU *) = {b_QueryInterface,
+                                                   b_AddRef,
+                                                   b_Release,
+                                                   b_GetCaps,
+                                                   b_GetCurrentPosition,
+                                                   b_GetFormat,
+                                                   b_GetVolume,
+                                                   b_GetPan,
+                                                   b_GetFrequency,
+                                                   b_GetStatus,
+                                                   b_unimplemented,
+                                                   b_Lock,
+                                                   b_Play,
+                                                   b_SetCurrentPosition,
+                                                   b_SetFormat,
+                                                   b_SetVolume,
+                                                   b_SetPan,
+                                                   b_SetFrequency,
+                                                   b_Stop,
+                                                   b_Unlock,
+                                                   b_Restore};
   int i;
   if (g_ds_vtable)
     return;
@@ -943,7 +942,7 @@ static void build_vtables(void) {
   g_ds.guest = guest_malloc(8u);
   g_ds.refs = 1;
   if (!g_ds_vtable || !g_buf_vtable || !g_ds.guest) {
-    fprintf(stderr, "DSOUND: no guest memory for COM objects\n");
+    x2_log_error("DSOUND: no guest memory for COM objects\n");
     abort();
   }
   for (i = 0; i < DSVT_COUNT; i++)
@@ -973,10 +972,9 @@ static void imp_DSOUND_DirectSoundCreate(CPU *C) {
   WR32(g_ds.guest + 4, g_ds.refs);
   WR32(out, g_ds.guest);
   if (g_creates == 1)
-    fprintf(stderr,
-            "DSOUND: DirectSoundCreate -> native IDirectSound at 0x%08x; "
-            "XMen2.exe FUN_00594290 owns this load path.\n",
-            g_ds.guest);
+    x2_log_error("DSOUND: DirectSoundCreate -> native IDirectSound at 0x%08x; "
+                 "XMen2.exe FUN_00594290 owns this load path.\n",
+                 g_ds.guest);
   ret_std(C, DS_OK, 3);
 }
 
@@ -996,14 +994,15 @@ void dsound_report(void) {
       if (g_buf[i].playing)
         playing++;
     }
-  printf("  dsound: %lu DirectSoundCreate, %lu secondary buffer(s), %lu "
-         "duplicate(s); %d live / %d playing, %lu Play, %lu Lock\n",
-         g_creates, g_secondary_created, g_duplicates, live, playing,
-         g_buffer_plays, g_buffer_locks);
-  printf("          mixer: %lu callback(s), %lu frame(s), %lu nonzero "
-         "sample(s), peak %.4f, %lu silent-clock advance(s)%s\n",
-         g_mix_callbacks, g_mix_frames, g_mix_nonzero, g_mix_peak,
-         g_silent_advances, g_audio_silent ? " -- NO HOST AUDIO DEVICE" : "");
+  x2_log_info("  dsound: %lu DirectSoundCreate, %lu secondary buffer(s), %lu "
+              "duplicate(s); %d live / %d playing, %lu Play, %lu Lock\n",
+              g_creates, g_secondary_created, g_duplicates, live, playing,
+              g_buffer_plays, g_buffer_locks);
+  x2_log_info("          mixer: %lu callback(s), %lu frame(s), %lu nonzero "
+              "sample(s), peak %.4f, %lu silent-clock advance(s)%s\n",
+              g_mix_callbacks, g_mix_frames, g_mix_nonzero, g_mix_peak,
+              g_silent_advances,
+              g_audio_silent ? " -- NO HOST AUDIO DEVICE" : "");
   movie_audio_report();
 }
 
@@ -1020,7 +1019,7 @@ int dsound_selftest(void) {
   d.bytes = sizeof pcm;
   d.refs = 2;
   if (!d.guest_data) {
-    printf("DSOUND mixer selftest: FAILED -- no guest PCM allocation\n");
+    x2_log_info("DSOUND mixer selftest: FAILED -- no guest PCM allocation\n");
     return 1;
   }
   memcpy(guest_memory_pointer(d.guest_data), pcm, sizeof pcm);
@@ -1065,9 +1064,10 @@ int dsound_selftest(void) {
   free(g_buf);
   g_buf = NULL;
   g_nbuf = g_capbuf = 0;
-  printf("DSOUND mixer selftest: %s -- shared PCM voices have independent "
-         "cursors, mute and one-shot stop semantics; the registry grows past "
-         "256 objects\n",
-         fails ? "FAILED" : "PASSED");
+  x2_log_info(
+      "DSOUND mixer selftest: %s -- shared PCM voices have independent "
+      "cursors, mute and one-shot stop semantics; the registry grows past "
+      "256 objects\n",
+      fails ? "FAILED" : "PASSED");
   return fails;
 }

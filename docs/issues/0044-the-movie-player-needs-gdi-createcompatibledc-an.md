@@ -45,4 +45,6 @@ Implemented in src/native/gdi32.c: memory DCs, CreateDIBSection with GUEST-ADDRE
 
 What the note above got WRONG: these imports are not the movie blitting frames. The DC+DIB set is libIGGfx building a FONT TEXTURE with Windows glyph rendering, and the run walks straight past it -- the game already draws its title screen and UI with its own text. So the "worth deciding first" question (implement GDI for a logo movie, or decline the movie) never had to be answered: the imports were on the ENGINE path, not the movie path.
 
-The run now stops further on, at USER32!DrawTextA, and that is NOT this issue -- it is the Alchemy report box complaining that cg.dll would not load. See issue #45.
+The run then stopped further on, at USER32!DrawTextA, in the Alchemy report box
+complaining that cg.dll would not load. That later stop was independent of this
+GDI boundary.

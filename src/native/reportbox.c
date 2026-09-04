@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * Native overrides that belong to the ERROR-REPORTING UI.
  *
@@ -5,9 +6,8 @@
  * rather than implemented as a USER32 dialog manager, because the question
  * the engine is asking is "what did it want to tell the player, and what did
  * the player answer" -- not "can this host draw a Win32 dialog". Registered
- * below against the module that owns the entry point; the recompiled body
- * stays emitted and linked as fn_libIGCore_10069c70, so the two stay
- * diffable.
+ * below against the module that owns the entry point; the retail guest body
+ * remains callable through the JIT, so the two stay diffable.
  */
 #include "guest_memory.h"
 #include "pe_map.h"
@@ -54,20 +54,20 @@ void x2_override_10069c70(CPU *C) {
   static const char *const labels[] = {"Exit", "Debug", "Ignore",
                                        "Ignore, don't tell me again"};
   static const int ids[] = {3, 4, 5, 6};
-  const char *text = guest_memory_const_pointer(RD32(C->esp + 4u));
+  const char *text = guest_memory_const_pointer(RD32(C->reg[kX86pEsp] + 4u));
   static int said;
   int answer;
 
   if (!said++)
-    fprintf(stderr, "override: the Alchemy report box is drawn by SDL, not "
-                    "by USER32's dialog manager (issue #47).\n"
-                    "  Same title, same buttons, same return codes; the "
-                    "checkbox is a fourth button.\n");
+    x2_log_error("override: the Alchemy report box is drawn by SDL, not "
+                 "by USER32's dialog manager (issue #47).\n"
+                 "  Same title, same buttons, same return codes; the "
+                 "checkbox is a fourth button.\n");
   answer = win32_sdl_dialog("Alchemy Report Handler",
                             text ? text : "(the report box was given no text)",
                             labels, ids, 4, 5);
-  C->eax = (uint32_t)answer;
-  C->esp += 8u; /* RET 0x4: the return address and one arg */
+  C->reg[kX86pEax] = (uint32_t)answer;
+  C->reg[kX86pEsp] += 8u; /* RET 0x4: the return address and one arg */
 }
 
 /*
@@ -97,39 +97,41 @@ int report_box_selftest(void) {
   int fails = 0;
 
   if (pe_map_anon_low(SELFTEST_PAGE, 0x1000u) != 0) {
-    printf("x2native --dialog-selftest: could not map a page at 0x%08x for "
-           "the guest frame -- NOTHING was checked.\n",
-           SELFTEST_PAGE);
+    x2_log_info(
+        "x2native --dialog-selftest: could not map a page at 0x%08x for "
+        "the guest frame -- NOTHING was checked.\n",
+        SELFTEST_PAGE);
     return 1;
   }
   memcpy(guest_memory_pointer(textp), text, sizeof text);
   memset(&C, 0, sizeof C);
   WR32(esp, 0xDEADBEEFu); /* the return address */
   WR32(esp + 4u, textp);  /* the one argument */
-  C.esp = esp;
+  C.reg[kX86pEsp] = esp;
 
-  printf("x2native --dialog-selftest: the Alchemy report box, with no "
-         "screen to show it on.\n");
+  x2_log_info("x2native --dialog-selftest: the Alchemy report box, with no "
+              "screen to show it on.\n");
   x2_override_10069c70(&C);
 
-  if (C.eax != 5u) {
-    printf("  FAIL: answered %u; a run with no screen must answer 5 "
-           "(Ignore), the only code that neither exits nor asks for a "
-           "debugger\n",
-           C.eax);
+  if (C.reg[kX86pEax] != 5u) {
+    x2_log_info("  FAIL: answered %u; a run with no screen must answer 5 "
+                "(Ignore), the only code that neither exits nor asks for a "
+                "debugger\n",
+                C.reg[kX86pEax]);
     fails++;
   }
-  if (C.esp != esp + 8u) {
-    printf("  FAIL: esp moved by %d, not 8. The original ends in RET 0x4, "
-           "so it pops its return address AND its argument; anything else "
-           "shifts the guest stack by a word and the damage appears "
-           "somewhere else entirely\n",
-           (int)(C.esp - esp));
+  if (C.reg[kX86pEsp] != esp + 8u) {
+    x2_log_info("  FAIL: esp moved by %d, not 8. The original ends in RET 0x4, "
+                "so it pops its return address AND its argument; anything else "
+                "shifts the guest stack by a word and the damage appears "
+                "somewhere else entirely\n",
+                (int)(C.reg[kX86pEsp] - esp));
     fails++;
   }
-  printf("x2native --dialog-selftest: %s (%d failure(s)). The message text "
-         "is on stderr above -- if it is not, the box swallowed it.\n",
-         fails ? "FAILED" : "PASSED", fails);
+  x2_log_info(
+      "x2native --dialog-selftest: %s (%d failure(s)). The message text "
+      "is on stderr above -- if it is not, the box swallowed it.\n",
+      fails ? "FAILED" : "PASSED", fails);
   return fails;
 }
 

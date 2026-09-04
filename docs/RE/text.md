@@ -1,9 +1,9 @@
 # The exe's own text pipeline: fonts, measurement, and the glyph drawer
 
-Established 2026-08-26 by static reading of the recompiled bodies, the PE's
+Established 2026-08-26 by reading the authenticated PE instruction bodies, the PE's
 `.rdata` vtables, a Ghidra headless decompile of the cluster, and one live
-400-frame tutorial run with the reached set armed over `0x596000-0x5a0000`
-(`scratch/logs/reached-text-err2.log`) plus an `X2_TEXTURE_PROBE` run
+400-frame tutorial address-entry trace over `0x596000-0x5a0000` plus an
+`X2_TEXTURE_PROBE` run
 (`scratch/logs/probe-err.log`). Everything below is measured against the
 retail `XMen2.exe` at its linked addresses.
 
@@ -112,7 +112,7 @@ pixels and submits them before the stock ASCII in the same semantic text draw:
    submits a `GpuDraw` from the queued rectangles. The pixels come from the
    shared `port-assets` SVG sets rasterised at build time into the generated,
    port-owned atlas (`tools/render_prompt_glyphs.py` ->
-   `src/recomp/gen/prompt_glyph_atlas.h`). No shipped font contributes pixels
+   `src/gen/prompt_glyph_atlas.h`). No shipped font contributes pixels
    to it.
 
 ## Stage one ran: the labels DO arrive (C268, after C267 was falsified)
@@ -173,7 +173,7 @@ validated the classifier against an argument binding it had assumed. It now
 builds a real guest stack (return address at ESP, string pointer at ESP+4)
 and calls the override the way the engine does, so a wrong binding fails.
 
-**The rule this earns:** on a recompiled body, read the argument out of the
+**The rule this earns:** at a guest/native boundary, read the argument out of the
 retail prologue, never from a register a comment claims. Wide text is common
 enough in neighbouring registers that a wrong pointer produces plausible
 strings rather than obvious garbage.
@@ -337,7 +337,7 @@ lowered D3D8 draw.
 
 Prompt SVGs prove one native 2D/UI slice, not the whole 2D renderer. Stock
 ASCII, panels, sprites, batching, render-state policy and the other libIGGfx UI
-draws still use the recompiled engine and D3D8 host. The broader work is to
+draws still use the runtime-translated engine and D3D8 host. The broader work is to
 move those semantic 2D owners across the same native boundary, verify their
 output, and delete each D3D8 path only when its final caller is gone. See
 `../strategy.md`, "Removing the D3D8 seam".

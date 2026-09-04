@@ -90,13 +90,13 @@ void d3d8_selector_probe_title_builder_enter(CPU *C) {
 
   if (!d3d8_selector_probe_enabled())
     return;
-  g_title_builder.caller = RD32(C->esp);
-  g_title_builder.object = C->ecx;
-  g_title_builder.translation = RD32(C->esp + 4u);
-  g_title_builder.rotation = RD32(C->esp + 8u);
-  scale_bits[0] = RD32(C->esp + 12u);
-  scale_bits[1] = RD32(C->esp + 16u);
-  scale_bits[2] = RD32(C->esp + 20u);
+  g_title_builder.caller = RD32(C->reg[kX86pEsp]);
+  g_title_builder.object = C->reg[kX86pEcx];
+  g_title_builder.translation = RD32(C->reg[kX86pEsp] + 4u);
+  g_title_builder.rotation = RD32(C->reg[kX86pEsp] + 8u);
+  scale_bits[0] = RD32(C->reg[kX86pEsp] + 12u);
+  scale_bits[1] = RD32(C->reg[kX86pEsp] + 16u);
+  scale_bits[2] = RD32(C->reg[kX86pEsp] + 20u);
   memcpy(g_title_builder.scale, scale_bits, sizeof scale_bits);
   g_title_builder.active = 1;
 }
@@ -111,9 +111,9 @@ static void selector_probe_transform_set_matrix(CPU *C) {
                                MATRIX_SET_HISTORY_CAPACITY];
 
   memset(record, 0, sizeof *record);
-  record->destination = C->ecx + 0x20u;
-  record->caller = RD32(C->esp);
-  record->source = RD32(C->esp + 4u);
+  record->destination = C->reg[kX86pEcx] + 0x20u;
+  record->caller = RD32(C->reg[kX86pEsp]);
+  record->source = RD32(C->reg[kX86pEsp] + 4u);
   record->title_builder_found = g_title_builder.active;
   if (g_title_builder.active) {
     record->title_builder_caller = g_title_builder.caller;
@@ -131,9 +131,9 @@ static void selector_probe_matrix_copy(CPU *C) {
   MatrixCopyRecord *record =
       &g_matrix_copy_history[g_matrix_copy_count % MATRIX_SET_HISTORY_CAPACITY];
 
-  record->destination = RD32(C->esp + 4u);
-  record->caller = RD32(C->esp);
-  record->source = RD32(C->esp + 8u);
+  record->destination = RD32(C->reg[kX86pEsp] + 4u);
+  record->caller = RD32(C->reg[kX86pEsp]);
+  record->source = RD32(C->reg[kX86pEsp] + 8u);
   record->source_readable =
       guest_memory_is_readable(record->source, sizeof record->source_value);
   if (record->source_readable)
@@ -150,10 +150,10 @@ static void selector_probe_matrix_multiply(CPU *C) {
       &g_matrix_multiply_history[g_matrix_multiply_count %
                                  MATRIX_SET_HISTORY_CAPACITY];
 
-  record->output = C->ecx;
-  record->caller = RD32(C->esp);
-  record->left = RD32(C->esp + 4u);
-  record->right = RD32(C->esp + 8u);
+  record->output = C->reg[kX86pEcx];
+  record->caller = RD32(C->reg[kX86pEsp]);
+  record->left = RD32(C->reg[kX86pEsp] + 4u);
+  record->right = RD32(C->reg[kX86pEsp] + 8u);
   record->inputs_readable =
       guest_memory_is_readable(record->left, sizeof record->left_value) &&
       guest_memory_is_readable(record->right, sizeof record->right_value);
@@ -174,9 +174,9 @@ static void selector_probe_attr_set_matrix(CPU *C) {
   MatrixSetRecord *record =
       &g_matrix_set_history[g_matrix_set_count % MATRIX_SET_HISTORY_CAPACITY];
 
-  record->attr = C->ecx;
-  record->caller = RD32(C->esp);
-  record->source = RD32(C->esp + 4u);
+  record->attr = C->reg[kX86pEcx];
+  record->caller = RD32(C->reg[kX86pEsp]);
+  record->source = RD32(C->reg[kX86pEsp] + 4u);
   g_matrix_set_count++;
   x86_guest_body(C, "libIGAttrs.dll", 0x10003dd0u);
 }
@@ -320,9 +320,9 @@ static void find_matrix_multiply(uint32_t matrix_guest) {
 }
 
 static void selector_probe_set_matrix(CPU *C) {
-  uint32_t source = RD32(C->esp);
-  uint32_t which = RD32(C->esp + 4u);
-  uint32_t matrix_guest = RD32(C->esp + 8u);
+  uint32_t source = RD32(C->reg[kX86pEsp]);
+  uint32_t which = RD32(C->reg[kX86pEsp] + 4u);
+  uint32_t matrix_guest = RD32(C->reg[kX86pEsp] + 8u);
   x86_guest_body(C, "libIGGfx.dll", 0x1003e9e0u);
   if (which == 1u) {
     g_world_matrix_source = source;

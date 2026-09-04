@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * SHELL32 -- the one call the game makes, and the writable directory behind it.
  *
@@ -21,9 +23,9 @@
  * DRIVE instead, and win_path knows that one letter maps to the save directory
  * rather than to the install. See x2_save_dir() and win_path().
  */
-#include "shell32.h"
 #include "../config/config_directory.h"
 #include "guest_memory.h"
+#include "shell32.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -34,11 +36,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 /* CSIDL values, and the flag bits that ride on top of them. */
@@ -76,7 +78,7 @@ const char *x2_save_dir(void) {
   if (g_ready)
     return g_dir;
   g_ready = 1;
-  env = getenv("X2_SAVE_DIR");
+  env = x2_config_override_get(kX2ConfigSaveDir);
   default_dir = x2_config_directory();
   if (env && *env) {
     snprintf(g_dir, sizeof g_dir, "%s", env);
@@ -93,12 +95,12 @@ const char *x2_save_dir(void) {
     /* Said once, loudly: everything downstream will fail to open files in
        a directory that is not there, and none of those failures would
        mention this one. */
-    fprintf(stderr,
-            "shell32: could not create the save directory \"%s\" "
-            "(%s). Set X2_SAVE_DIR to a writable directory and "
-            "retry. The game will report that it cannot save, and "
-            "it will be right.\n",
-            g_dir, g_dir[0] ? strerror(errno) : "no user config directory");
+    x2_log_error("shell32: could not create the save directory \"%s\" "
+                 "(%s). Set X2_SAVE_DIR to a writable directory and "
+                 "retry. The game will report that it cannot save, and "
+                 "it will be right.\n",
+                 g_dir,
+                 g_dir[0] ? strerror(errno) : "no user config directory");
     g_dir[0] = 0;
   }
   return g_dir;
@@ -130,15 +132,14 @@ static void imp_SHELL32_SHGetFolderPathA(CPU *C) {
      * the Windows directory and got a save folder would write into it, and
      * the damage would look like anything but this.
      */
-    fprintf(stderr,
-            "shell32: SHGetFolderPathA(CSIDL 0x%x) -- this host "
-            "only answers the per-user data folders (5 PERSONAL, "
-            "0x1a APPDATA, 0x1c LOCAL_APPDATA, 0x23 "
-            "COMMON_APPDATA).\n"
-            "  Anything else means something specific and would be "
-            "written to, so it gets E_FAIL rather than a "
-            "plausible directory.\n",
-            folder);
+    x2_log_error("shell32: SHGetFolderPathA(CSIDL 0x%x) -- this host "
+                 "only answers the per-user data folders (5 PERSONAL, "
+                 "0x1a APPDATA, 0x1c LOCAL_APPDATA, 0x23 "
+                 "COMMON_APPDATA).\n"
+                 "  Anything else means something specific and would be "
+                 "written to, so it gets E_FAIL rather than a "
+                 "plausible directory.\n",
+                 folder);
     WR8(out, 0);
     ret_std(C, E_FAIL_HR, 5);
     return;
@@ -163,15 +164,15 @@ void shell32_install(void) {
 
 void shell32_report(void) {
   if (!g_ready) {
-    printf("  shell32: SHGetFolderPathA was never called, so no save "
-           "directory was ever asked for.\n");
+    x2_log_info("  shell32: SHGetFolderPathA was never called, so no save "
+                "directory was ever asked for.\n");
     return;
   }
   if (!g_dir[0]) {
-    printf("  shell32: the save directory could NOT be created; the game "
-           "was told it has nowhere to save.\n");
+    x2_log_info("  shell32: the save directory could NOT be created; the game "
+                "was told it has nowhere to save.\n");
     return;
   }
-  printf("  shell32: saves go to \"%s\", which the guest sees as %c:\\\n",
-         g_dir, X2_SAVE_DRIVE);
+  x2_log_info("  shell32: saves go to \"%s\", which the guest sees as %c:\\\n",
+              g_dir, X2_SAVE_DRIVE);
 }

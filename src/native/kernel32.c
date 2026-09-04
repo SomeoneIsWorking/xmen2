@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * KERNEL32 -- the 39 entry points XMen2.exe imports, on POSIX.
  *
@@ -43,20 +45,21 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+
+#include <lucent/cvar_c.h>
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define ACS(i) ((const char *)guest_memory_const_pointer(A(i)))
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 static void k32_unimpl(const char *sym, const char *why) {
-  fprintf(stderr, "kernel32: %s is reached but not implemented.\n  %s\n", sym,
-          why);
+  x2_log_error("kernel32: %s is reached but not implemented.\n  %s\n", sym,
+               why);
   /* Report before stopping: abort() does not run atexit handlers, so without
-     this the reached set and the argument watch stay silent on exactly the
-     stop the reader is looking at. */
+     this the stop diagnostics stay silent at the point the reader needs. */
   x86_diag_dump();
   abort();
 }
@@ -127,21 +130,20 @@ static uint32_t h_alloc(int kind) {
       g_h[i].fd = -1;
       return (uint32_t)(i + 1);
     }
-  fprintf(stderr, "kernel32: more than %d handles open at once\n", MAX_HANDLES);
+  x2_log_error("kernel32: more than %d handles open at once\n", MAX_HANDLES);
   abort();
 }
 
 static Handle *h_get(uint32_t h, int kind) {
   if (h == 0 || h > MAX_HANDLES || !g_h[h - 1].kind) {
-    fprintf(stderr, "kernel32: handle %u is not open\n", h);
+    x2_log_error("kernel32: handle %u is not open\n", h);
     x86_diag_dump();
     abort();
   }
   if (kind && g_h[h - 1].kind != kind) {
-    fprintf(stderr,
-            "kernel32: handle %u is the wrong kind (%d, wanted %d)"
-            "\n",
-            h, g_h[h - 1].kind, kind);
+    x2_log_error("kernel32: handle %u is the wrong kind (%d, wanted %d)"
+                 "\n",
+                 h, g_h[h - 1].kind, kind);
     abort();
   }
   return &g_h[h - 1];
@@ -199,23 +201,24 @@ int kernel32_thread_alias_selftest(void) {
   g_h[alias - 1] = g_h[original - 1];
   if (k32_thread_record(original) != rec || k32_thread_record(alias) != rec ||
       !guest_thread_is_thread(alias) || guest_thread_resume(alias) < 0) {
-    printf("kernel32 thread-alias selftest: FAILED -- duplicated handle "
-           "%u did not control the same thread as %u.\n",
-           alias, original);
+    x2_log_info("kernel32 thread-alias selftest: FAILED -- duplicated handle "
+                "%u did not control the same thread as %u.\n",
+                alias, original);
     fails++;
   }
   guest_thread_handle_closed(alias);
   g_h[alias - 1].kind = 0;
   if (!guest_thread_is_thread(original)) {
-    printf("kernel32 thread-alias selftest: FAILED -- closing one alias "
-           "detached the still-open original.\n");
+    x2_log_info("kernel32 thread-alias selftest: FAILED -- closing one alias "
+                "detached the still-open original.\n");
     fails++;
   }
   guest_thread_handle_closed(original);
   g_h[original - 1].kind = 0;
-  printf("kernel32 thread-alias selftest: %s -- two numeric handles %s "
-         "one guest thread object\n",
-         fails ? "FAILED" : "PASSED", fails ? "did not preserve" : "preserved");
+  x2_log_info("kernel32 thread-alias selftest: %s -- two numeric handles %s "
+              "one guest thread object\n",
+              fails ? "FAILED" : "PASSED",
+              fails ? "did not preserve" : "preserved");
   return fails;
 }
 
@@ -319,7 +322,7 @@ void imp_KERNEL32_IsProcessorFeaturePresent(CPU *C) {
   /* 0 = FP error, 1 = 80387, 2 = compare-exchange, 3 = MMX, 6 = SSE,
      10 = SSE2. This build runs on the host CPU, so the truthful answer for
      the ones the game asks about is yes -- and saying no to SSE would send
-     it down a path the recompiler has LESS coverage of, not more. */
+     it down a guest path unsupported by the product's target baseline. */
   uint32_t f = A(0);
   ret_std(C, (f <= 10u) ? 1u : 0u, 1);
 }
@@ -383,22 +386,21 @@ void imp_KERNEL32_GetStartupInfoA(CPU *C) {
 void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
 
 void imp_KERNEL32_ExitProcess(CPU *C) {
-  uint32_t code = A(0), from = RD32(C->esp);
+  uint32_t code = A(0), from = RD32(C->reg[kX86pEsp]);
   const char *mod = NULL;
   uint32_t guest = from;
   x86_guest_addr_of(from, &mod, &guest);
-  fprintf(stderr,
-          "\nkernel32: the guest called ExitProcess(%u) from "
-          "0x%08x (%s 0x%08x). It is QUITTING on purpose -- this is "
-          "not a crash.\n",
-          code, from, mod ? mod : "unmapped", guest);
-  if (getenv("X2_EXIT_RING")) {
-    fprintf(stderr, "  X2_EXIT_RING is set: the boundary ring follows, so "
-                    "what led to the decision can be read.\n");
+  x2_log_error("\nkernel32: the guest called ExitProcess(%u) from "
+               "0x%08x (%s 0x%08x). It is QUITTING on purpose -- this is "
+               "not a crash.\n",
+               code, from, mod ? mod : "unmapped", guest);
+  if (x2_config_override_get(kX2ConfigExitRing)) {
+    x2_log_error("  X2_EXIT_RING is set: the boundary ring follows, so "
+                 "what led to the decision can be read.\n");
     x86_diag_dump();
   } else {
-    fprintf(stderr, "  Set X2_EXIT_RING=1 to dump the boundary ring here "
-                    "and see what led to it.\n");
+    x2_log_error("  Set X2_EXIT_RING=1 to dump the boundary ring here "
+                 "and see what led to it.\n");
   }
   exit((int)code);
 }
@@ -483,12 +485,11 @@ void imp_KERNEL32_DeleteCriticalSection(CPU *C) {
   if (RD32(A(0) + CS_OWNER) != 0) {
     g_cs_delete_held++;
     if (cs_name_once(A(0)))
-      fprintf(stderr,
-              "kernel32: DeleteCriticalSection at 0x%08x while "
-              "guest thread %u still owns it (%u deep). Windows "
-              "does not stop this either -- and it is what makes "
-              "that owner's next Leave find no owner.\n",
-              A(0), RD32(A(0) + CS_OWNER), RD32(A(0) + CS_RECURSION));
+      x2_log_error("kernel32: DeleteCriticalSection at 0x%08x while "
+                   "guest thread %u still owns it (%u deep). Windows "
+                   "does not stop this either -- and it is what makes "
+                   "that owner's next Leave find no owner.\n",
+                   A(0), RD32(A(0) + CS_OWNER), RD32(A(0) + CS_RECURSION));
   }
   /* Deleted means unowned: whatever the guest does next, this must not carry
      the old owner into the section's next life. libCriMovie initialises this
@@ -531,13 +532,12 @@ void imp_KERNEL32_EnterCriticalSection(CPU *C) {
       guest_cond_wait_ms(1000);
       if (!warned && k32_now_s() - t0 > 30.0) {
         warned = 1;
-        fprintf(stderr,
-                "kernel32: guest thread %u has waited 30s to enter the "
-                "critical section at 0x%08x, owned by guest thread %u "
-                "with a recursion count of %u. That owner is not "
-                "running, or is blocked on something this thread "
-                "holds.\n",
-                tid, p, RD32(p + CS_OWNER), RD32(p + CS_RECURSION));
+        x2_log_error("kernel32: guest thread %u has waited 30s to enter the "
+                     "critical section at 0x%08x, owned by guest thread %u "
+                     "with a recursion count of %u. That owner is not "
+                     "running, or is blocked on something this thread "
+                     "holds.\n",
+                     tid, p, RD32(p + CS_OWNER), RD32(p + CS_RECURSION));
       }
     }
     WR32(p + CS_LOCKCOUNT, RD32(p + CS_LOCKCOUNT) - 1u);
@@ -577,26 +577,24 @@ void imp_KERNEL32_LeaveCriticalSection(CPU *C) {
   if (owner == 0) {
     g_cs_orphan_leave++;
     if (cs_name_once(p))
-      fprintf(stderr,
-              "kernel32: LeaveCriticalSection at 0x%08x, which "
-              "nobody owns -- guest thread %u is leaving a "
-              "section that was Deleted or re-Initialized under "
-              "it. Counted, not fatal; Windows does not fault "
-              "here either. Reported once per section.\n",
-              p, tid);
+      x2_log_error("kernel32: LeaveCriticalSection at 0x%08x, which "
+                   "nobody owns -- guest thread %u is leaving a "
+                   "section that was Deleted or re-Initialized under "
+                   "it. Counted, not fatal; Windows does not fault "
+                   "here either. Reported once per section.\n",
+                   p, tid);
     ret_std(C, 0, 1);
     return;
   }
   if (owner != tid) {
     g_cs_foreign_leave++;
     if (cs_name_once(p))
-      fprintf(stderr,
-              "kernel32: guest thread %u left the critical "
-              "section at 0x%08x, which guest thread %u owns. "
-              "The owner keeps it -- releasing it here would let "
-              "two threads inside at once. Reported once per "
-              "section.\n",
-              tid, p, owner);
+      x2_log_error("kernel32: guest thread %u left the critical "
+                   "section at 0x%08x, which guest thread %u owns. "
+                   "The owner keeps it -- releasing it here would let "
+                   "two threads inside at once. Reported once per "
+                   "section.\n",
+                   tid, p, owner);
     ret_std(C, 0, 1);
     return;
   }
@@ -617,20 +615,21 @@ void imp_KERNEL32_LeaveCriticalSection(CPU *C) {
    and "critical sections are not implemented" were the same line for the whole
    life of the counter version, and they are not the same fact. */
 void k32_critsec_report(void) {
-  printf("  critical sections: %lu enter(s), %lu of which had to WAIT for "
-         "another guest thread%s\n",
-         g_cs_enters, g_cs_contended,
-         g_cs_contended ? ""
-                        : " -- none did, so nothing in this run "
-                          "actually overlapped inside one");
+  x2_log_info("  critical sections: %lu enter(s), %lu of which had to WAIT for "
+              "another guest thread%s\n",
+              g_cs_enters, g_cs_contended,
+              g_cs_contended ? ""
+                             : " -- none did, so nothing in this run "
+                               "actually overlapped inside one");
   /* At zero as well: "no orphaned Leave happened" and "nothing checks" are
      different facts, and only one of them is evidence. */
-  printf("         %lu Leave(s) found no owner, %lu named another thread's "
-         "section, %lu Delete(s) hit one still held%s\n",
-         g_cs_orphan_leave, g_cs_foreign_leave, g_cs_delete_held,
-         (g_cs_orphan_leave || g_cs_foreign_leave || g_cs_delete_held)
-             ? " -- see the named sections above"
-             : " -- every pair balanced");
+  x2_log_info(
+      "         %lu Leave(s) found no owner, %lu named another thread's "
+      "section, %lu Delete(s) hit one still held%s\n",
+      g_cs_orphan_leave, g_cs_foreign_leave, g_cs_delete_held,
+      (g_cs_orphan_leave || g_cs_foreign_leave || g_cs_delete_held)
+          ? " -- see the named sections above"
+          : " -- every pair balanced");
 }
 
 /* ---- files ------------------------------------------------------------- */
@@ -674,10 +673,9 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
     /* Refused rather than guessed: the dispositions differ in whether they
        CREATE and whether they TRUNCATE, and picking wrong either loses a
        file or invents one. */
-    fprintf(stderr,
-            "kernel32: CreateFileA with disposition %u, which is "
-            "not one of the five Win32 defines. Refusing.\n",
-            disp);
+    x2_log_error("kernel32: CreateFileA with disposition %u, which is "
+                 "not one of the five Win32 defines. Refusing.\n",
+                 disp);
     g_last_error = 87u; /* ERROR_INVALID_PARAMETER */
     ret_std(C, INVALID_HANDLE, 7);
     return;
@@ -697,11 +695,10 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
      */
     static int told;
     if (told++ < 12)
-      fprintf(stderr,
-              "kernel32: CreateFileA(\"%s\", disposition %u) "
-              "FAILED -- \"%s\": %s%s\n",
-              ACS(0) ? ACS(0) : "(null)", disp, path, strerror(errno),
-              told == 12 ? "  (further ones are silent)" : "");
+      x2_log_error("kernel32: CreateFileA(\"%s\", disposition %u) "
+                   "FAILED -- \"%s\": %s%s\n",
+                   ACS(0) ? ACS(0) : "(null)", disp, path, strerror(errno),
+                   told == 12 ? "  (further ones are silent)" : "");
     g_failed_opens++;
     g_last_error = ERROR_FILE_NOT_FOUND;
     ret_std(C, INVALID_HANDLE, 7);
@@ -809,7 +806,7 @@ void imp_KERNEL32_CreateEventA(CPU *C) {
   hh->count = A(2) ? 1 : 0;
   /* [ESP] is the caller's return address: the one thing that distinguishes
      one unnamed event from another. */
-  hh->created_by = RD32(C->esp);
+  hh->created_by = RD32(C->reg[kX86pEsp]);
   sync_name(hh, A(3));
   ret_std(C, h, 4);
 }
@@ -884,12 +881,11 @@ void imp_KERNEL32_PulseEvent(CPU *C) {
     }
     guest_cond_broadcast();
   } else if (hh->n_pulse_lost++, g_pulse_lost++, ++lost == 1) {
-    fprintf(stderr,
-            "kernel32: PulseEvent on \"%s\" with NOBODY waiting -- "
-            "the pulse is lost, which is what Windows does too. "
-            "Reported once; if a handshake stalls, this is where "
-            "the missing wakeup went.\n",
-            hh->name);
+    x2_log_error("kernel32: PulseEvent on \"%s\" with NOBODY waiting -- "
+                 "the pulse is lost, which is what Windows does too. "
+                 "Reported once; if a handshake stalls, this is where "
+                 "the missing wakeup went.\n",
+                 hh->name);
   }
   ret_std(C, 1, 1);
 }
@@ -912,10 +908,9 @@ void imp_KERNEL32_ReleaseMutex(CPU *C) {
   Handle *hh = h_get(A(0), H_MUTEX);
   uint32_t me = guest_current_tid();
   if (hh->count <= 0 || hh->owner_tid != me) {
-    fprintf(stderr,
-            "kernel32: ReleaseMutex on \"%s\" by guest thread %u, "
-            "which does not hold it (owner %u, depth %d)\n",
-            hh->name, me, hh->owner_tid, hh->count);
+    x2_log_error("kernel32: ReleaseMutex on \"%s\" by guest thread %u, "
+                 "which does not hold it (owner %u, depth %d)\n",
+                 hh->name, me, hh->owner_tid, hh->count);
     g_last_error = 288u; /* ERROR_NOT_OWNER */
     ret_std(C, 0, 1);
     return;
@@ -1063,31 +1058,30 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C) {
         continue;
     }
     {
-      fprintf(stderr,
-              "kernel32: WaitForSingleObject(INFINITE) on %s "
-              "\"%s\" has waited 30 seconds and nothing has "
-              "signalled it.\n"
-              "  Reporting rather than hanging: either the guest "
-              "thread that would signal it is not running, or "
-              "this host never signals that object.\n",
-              sync_kind_name(hh->kind), hh->name);
+      x2_log_error("kernel32: WaitForSingleObject(INFINITE) on %s "
+                   "\"%s\" has waited 30 seconds and nothing has "
+                   "signalled it.\n"
+                   "  Reporting rather than hanging: either the guest "
+                   "thread that would signal it is not running, or "
+                   "this host never signals that object.\n",
+                   sync_kind_name(hh->kind), hh->name);
       /*
        * WHICH object, and its whole history. Issue #57 asks exactly
        * this and could not answer it: "an unnamed event" describes
        * every unnamed event in the process. The creator's return
        * address is what tells two of them apart.
        */
-      fprintf(stderr,
-              "  handle 0x%08x, created by guest 0x%08x, %s-reset\n"
-              "  signalled %lu time(s) by SetEvent; pulsed %lu time(s), "
-              "of which %lu found NO waiter and were LOST\n"
-              "  waited on %lu time(s); %d thread(s) waiting on it now\n",
-              A(0), hh->created_by, hh->manual ? "manual" : "auto", hh->n_set,
-              hh->n_pulse_sent, hh->n_pulse_lost, hh->n_wait, hh->waiters);
+      x2_log_error("  handle 0x%08x, created by guest 0x%08x, %s-reset\n"
+                   "  signalled %lu time(s) by SetEvent; pulsed %lu time(s), "
+                   "of which %lu found NO waiter and were LOST\n"
+                   "  waited on %lu time(s); %d thread(s) waiting on it now\n",
+                   A(0), hh->created_by, hh->manual ? "manual" : "auto",
+                   hh->n_set, hh->n_pulse_sent, hh->n_pulse_lost, hh->n_wait,
+                   hh->waiters);
       if (!hh->n_set && !hh->n_pulse_sent)
-        fprintf(stderr, "  it has NEVER been signalled or pulsed, so "
-                        "nothing was lost -- whatever should signal it "
-                        "has not run at all.\n");
+        x2_log_error("  it has NEVER been signalled or pulsed, so "
+                     "nothing was lost -- whatever should signal it "
+                     "has not run at all.\n");
       /* And what every other guest thread is doing, which is the other
          half of a rendezvous. */
       guest_thread_state_report();
@@ -1200,22 +1194,19 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
        aborts because issue #57 needed the ring at that instant; this one
        names the set and lets the run go on. */
     warned = 1;
-    fprintf(stderr,
-            "kernel32: WaitForMultipleObjects(INFINITE, waitAll=%u) "
-            "on %u object(s) has waited 30 seconds. Each of them:\n",
-            all, n);
+    x2_log_error("kernel32: WaitForMultipleObjects(INFINITE, waitAll=%u) "
+                 "on %u object(s) has waited 30 seconds. Each of them:\n",
+                 all, n);
     for (i = 0; i < n; i++) {
       Handle *hh = h_get(RD32(arr + i * 4u), 0);
-      fprintf(stderr,
-              "  [%u] handle 0x%08x %s \"%s\" count %d, created "
-              "by guest 0x%08x, set %lu pulsed %lu (%lu lost), "
-              "waited on %lu\n",
-              i, RD32(arr + i * 4u), sync_kind_name(hh->kind), hh->name,
-              hh->count, hh->created_by, hh->n_set, hh->n_pulse_sent,
-              hh->n_pulse_lost, hh->n_wait);
+      x2_log_error("  [%u] handle 0x%08x %s \"%s\" count %d, created "
+                   "by guest 0x%08x, set %lu pulsed %lu (%lu lost), "
+                   "waited on %lu\n",
+                   i, RD32(arr + i * 4u), sync_kind_name(hh->kind), hh->name,
+                   hh->count, hh->created_by, hh->n_set, hh->n_pulse_sent,
+                   hh->n_pulse_lost, hh->n_wait);
     }
     guest_thread_state_report();
-    fflush(stderr);
   }
 }
 
@@ -1262,11 +1253,10 @@ static unsigned char g_tls_used[MAX_TLS];
 
 void k32_tls_switch(int slot) {
   if (slot < 0 || slot >= K32_TLS_SLOTS) {
-    fprintf(stderr,
-            "kernel32: k32_tls_switch(%d) is outside the %d TLS "
-            "slot(s) this host has. The thread would share another "
-            "thread's TLS, so it is refused rather than aliased.\n",
-            slot, K32_TLS_SLOTS);
+    x2_log_error("kernel32: k32_tls_switch(%d) is outside the %d TLS "
+                 "slot(s) this host has. The thread would share another "
+                 "thread's TLS, so it is refused rather than aliased.\n",
+                 slot, K32_TLS_SLOTS);
     abort();
   }
   g_tls = g_tls_store[slot];
@@ -1319,12 +1309,11 @@ void imp_KERNEL32_ResumeThread(CPU *C) {
     if (!seen && ntold < 8)
       told[ntold++] = A(0);
     if (!seen)
-      fprintf(stderr,
-              "kernel32: ResumeThread(0x%x) -- that handle names "
-              "no guest thread. Said once for this handle; a "
-              "spin loop would otherwise print it millions of "
-              "times. The total is in the thread report.\n",
-              A(0));
+      x2_log_error("kernel32: ResumeThread(0x%x) -- that handle names "
+                   "no guest thread. Said once for this handle; a "
+                   "spin loop would otherwise print it millions of "
+                   "times. The total is in the thread report.\n",
+                   A(0));
     g_last_error = 6u; /* ERROR_INVALID_HANDLE */
     ret_std(C, 0xFFFFFFFFu, 1);
     return;
@@ -1348,12 +1337,11 @@ void imp_KERNEL32_ResumeThread(CPU *C) {
 void imp_KERNEL32_SuspendThread(CPU *C) {
   int was;
   if (!guest_thread_is_thread(A(0))) {
-    fprintf(stderr,
-            "kernel32: SuspendThread(0x%x) -- that handle names no "
-            "guest thread. If it is the MAIN thread, this host has "
-            "no way to suspend it (it is the process) and will not "
-            "pretend to have done so.\n",
-            A(0));
+    x2_log_error("kernel32: SuspendThread(0x%x) -- that handle names no "
+                 "guest thread. If it is the MAIN thread, this host has "
+                 "no way to suspend it (it is the process) and will not "
+                 "pretend to have done so.\n",
+                 A(0));
     g_last_error = 6u; /* ERROR_INVALID_HANDLE */
     ret_std(C, 0xFFFFFFFFu, 1);
     return;
@@ -1411,11 +1399,10 @@ void imp_KERNEL32_GetFullPathNameA(CPU *C) {
   else
     snprintf(full, sizeof full, "C:\\%s", in);
   if (strstr(full, "..") || strstr(full, "\\.\\"))
-    fprintf(stderr,
-            "kernel32: GetFullPathNameA(\"%s\") -- this host does "
-            "not collapse . or .., so the answer keeps them. A "
-            "wrong collapse would name a DIFFERENT valid file.\n",
-            in);
+    x2_log_error("kernel32: GetFullPathNameA(\"%s\") -- this host does "
+                 "not collapse . or .., so the answer keeps them. A "
+                 "wrong collapse would name a DIFFERENT valid file.\n",
+                 in);
   n = strlen(full);
   /* Win32: the return is the length WITHOUT the NUL when it fits, and the
      length WITH it when the buffer is too small. Getting that backwards
@@ -1453,10 +1440,9 @@ void imp_KERNEL32_TlsAlloc(CPU *C) {
 void imp_KERNEL32_TlsFree(CPU *C) {
   uint32_t i = A(0);
   if (i >= MAX_TLS || !g_tls_used[i]) {
-    fprintf(stderr,
-            "kernel32: TlsFree(%u) on an index that was never "
-            "allocated\n",
-            i);
+    x2_log_error("kernel32: TlsFree(%u) on an index that was never "
+                 "allocated\n",
+                 i);
     g_last_error = 87u;
     ret_std(C, 0, 1);
     return;
@@ -1470,7 +1456,7 @@ uint32_t k32_tls_get_value(uint32_t index) {
     g_last_error = 0;
     return g_tls[index];
   }
-  fprintf(stderr, "kernel32: TlsGetValue(%u) on an unallocated index\n", index);
+  x2_log_error("kernel32: TlsGetValue(%u) on an unallocated index\n", index);
   g_last_error = 87u;
   return 0;
 }
@@ -1482,7 +1468,7 @@ void imp_KERNEL32_TlsGetValue(CPU *C) {
 void imp_KERNEL32_TlsSetValue(CPU *C) {
   uint32_t i = A(0);
   if (i >= MAX_TLS || !g_tls_used[i]) {
-    fprintf(stderr, "kernel32: TlsSetValue(%u) on an unallocated index\n", i);
+    x2_log_error("kernel32: TlsSetValue(%u) on an unallocated index\n", i);
     g_last_error = 87u;
     ret_std(C, 0, 2);
     return;
@@ -1535,7 +1521,7 @@ void imp_KERNEL32_GetCurrentThread(CPU *C) { ret_std(C, 0xFFFFFFFEu, 0); }
 
 void imp_KERNEL32_OutputDebugStringA(CPU *C) {
   const char *s2 = ACS(0);
-  fprintf(stderr, "[guest] %s", s2 ? s2 : "(null)");
+  x2_log_error("[guest] %s", s2 ? s2 : "(null)");
   ret_std(C, 0, 1);
 }
 
@@ -1572,8 +1558,8 @@ void imp_KERNEL32_DuplicateHandle(CPU *C) {
   if (sh->kind == H_FILE && sh->fd >= 0) {
     dh->fd = dup(sh->fd);
     if (dh->fd < 0) {
-      fprintf(stderr, "kernel32: DuplicateHandle could not dup fd %d: %s\n",
-              sh->fd, strerror(errno));
+      x2_log_error("kernel32: DuplicateHandle could not dup fd %d: %s\n",
+                   sh->fd, strerror(errno));
       dh->kind = 0;
       g_last_error = 8u;
       ret_std(C, 0, 7);
@@ -1583,10 +1569,9 @@ void imp_KERNEL32_DuplicateHandle(CPU *C) {
     /* A directory stream and a mapping cannot be shared by copying the
        struct -- both would close the same resource. Refuse rather than
        hand back a handle that breaks on the second close. */
-    fprintf(stderr,
-            "kernel32: DuplicateHandle on a %s handle is not "
-            "implemented; copying the struct would double-close\n",
-            sh->kind == H_FIND ? "find" : "file-mapping");
+    x2_log_error("kernel32: DuplicateHandle on a %s handle is not "
+                 "implemented; copying the struct would double-close\n",
+                 sh->kind == H_FIND ? "find" : "file-mapping");
     dh->kind = 0;
     abort();
   }
@@ -1679,7 +1664,7 @@ void imp_KERNEL32_GetModuleFileNameA(CPU *C) {
      Win32 returns a path with backslashes and the game may parse it, so the
      shape is preserved even though the file lives on a POSIX filesystem. */
   uint32_t h = A(0), buf = A(1), size = A(2);
-  const char *dir = getenv("GAME_PC_DIR");
+  const char *dir = x2_config_override_get(kX2ConfigGamePcDir);
   const char *name = NULL;
   char path[1024];
   uint32_t n, i;
@@ -1694,10 +1679,9 @@ void imp_KERNEL32_GetModuleFileNameA(CPU *C) {
       }
   }
   if (!name) {
-    fprintf(stderr,
-            "kernel32: GetModuleFileNameA(0x%08x) -- no mapped "
-            "module has that base, so there is no name to give\n",
-            h);
+    x2_log_error("kernel32: GetModuleFileNameA(0x%08x) -- no mapped "
+                 "module has that base, so there is no name to give\n",
+                 h);
     g_last_error = 6u; /* ERROR_INVALID_HANDLE */
     ret_std(C, 0, 3);
     return;
@@ -1849,7 +1833,7 @@ void imp_KERNEL32_GetDiskFreeSpaceExA(CPU *C) {
 /*
  * LoadLibraryA / GetProcAddress, answered from the module table.
  *
- * Every module this host knows is already mapped and recompiled, and a Win32
+ * Every module this host knows is already mapped, and a Win32
  * HMODULE *is* the image base -- so for one of ours the honest answer already
  * exists and no loading is required. For anything else there is nothing to
  * return: a fake handle would make GetProcAddress hand back fake functions,
@@ -2024,15 +2008,14 @@ void imp_KERNEL32_GetModuleHandleA(CPU *C) {
     if (i == nsaid && nsaid < 8) {
       snprintf(said[nsaid], sizeof said[0], "%s", nm ? nm : "");
       nsaid++;
-      fprintf(stderr,
-              "kernel32: GetModuleHandleA(\"%s\") -> NULL. That "
-              "module is not in this address space.\n"
-              "  This is Win32's own answer for a module that is "
-              "not loaded, and callers check for it -- a handle "
-              "here would\n"
-              "  make GetProcAddress invent functions from a "
-              "module that does not exist.\n",
-              nm ? nm : "(null)");
+      x2_log_error("kernel32: GetModuleHandleA(\"%s\") -> NULL. That "
+                   "module is not in this address space.\n"
+                   "  This is Win32's own answer for a module that is "
+                   "not loaded, and callers check for it -- a handle "
+                   "here would\n"
+                   "  make GetProcAddress invent functions from a "
+                   "module that does not exist.\n",
+                   nm ? nm : "(null)");
     }
   }
   ret_std(C, b, 1);
@@ -2070,23 +2053,21 @@ void imp_KERNEL32_LoadLibraryA(CPU *C) {
    * Said loudly every time rather than once, because a missing module is not
    * a normal condition and the consequence is specific to which one it was.
    */
-  fprintf(stderr,
-          "kernel32: LoadLibraryA(\"%s\") -> NULL. That module is "
-          "not one of the recompiled ones this host has mapped, so "
-          "it genuinely cannot be loaded.\n"
-          "  This is Win32's own failure answer and callers must "
-          "check it; a fake HANDLE is what would be dishonest, "
-          "because GetProcAddress would then invent functions.\n"
-          "  Whatever this module provides is NOT AVAILABLE to the "
-          "game from here on.\n"
-          "  Mapped modules are:",
-          nm ? nm : "(null)");
+  x2_log_error("kernel32: LoadLibraryA(\"%s\") -> NULL. That module is "
+               "not one of the guest modules this host has mapped, so "
+               "it genuinely cannot be loaded.\n"
+               "  This is Win32's own failure answer and callers must "
+               "check it; a fake HANDLE is what would be dishonest, "
+               "because GetProcAddress would then invent functions.\n"
+               "  Whatever this module provides is NOT AVAILABLE to the "
+               "game from here on.\n"
+               "  Mapped modules are:",
+               nm ? nm : "(null)");
   {
     X86Module *m;
     for (m = x86_modules(); m; m = m->next)
-      fprintf(stderr, " %s", m->name);
+      x2_log_error(" %s", m->name);
   }
-  fputc('\n', stderr);
   ret_std(C, 0, 1);
 }
 
@@ -2096,10 +2077,9 @@ void imp_KERNEL32_GetProcAddress(CPU *C) {
   const char *sym = guest_memory_const_pointer(namep);
   const char *sm = sysmod_name(mod);
   if (namep && namep < 0x10000u) {
-    fprintf(stderr,
-            "kernel32: GetProcAddress by ORDINAL (#%u) is not "
-            "implemented; this layer resolves by name only\n",
-            namep);
+    x2_log_error("kernel32: GetProcAddress by ORDINAL (#%u) is not "
+                 "implemented; this layer resolves by name only\n",
+                 namep);
     abort();
   }
   if (sm) {
@@ -2121,10 +2101,9 @@ void imp_KERNEL32_GetProcAddress(CPU *C) {
       ret_std(C, t, 2);
       return;
     }
-    fprintf(stderr,
-            "kernel32: GetProcAddress(%s, \"%s\") -- this host does "
-            "not implement that entry point, so NULL\n",
-            sm, sym ? sym : "(null)");
+    x2_log_error("kernel32: GetProcAddress(%s, \"%s\") -- this host does "
+                 "not implement that entry point, so NULL\n",
+                 sm, sym ? sym : "(null)");
     g_last_error = 127u;
     ret_std(C, 0, 2);
     return;
@@ -2136,8 +2115,8 @@ void imp_KERNEL32_GetProcAddress(CPU *C) {
   }
   /* A miss is not fatal in Win32 -- callers probe for optional entry points
      -- so report it and return NULL with the error Win32 would set. */
-  fprintf(stderr, "kernel32: GetProcAddress(0x%08x, \"%s\") -> not exported\n",
-          mod, sym ? sym : "(null)");
+  x2_log_error("kernel32: GetProcAddress(0x%08x, \"%s\") -> not exported\n",
+               mod, sym ? sym : "(null)");
   g_last_error = 127u; /* ERROR_PROC_NOT_FOUND */
   ret_std(C, 0, 2);
 }
@@ -2193,11 +2172,10 @@ void imp_KERNEL32_CreateFileMappingA(CPU *C) {
     /* A mapping larger than 4 GB cannot be addressed by the guest at all,
        so there is no honest answer -- and silently truncating the size
        would map a prefix and read garbage past it. */
-    fprintf(stderr,
-            "kernel32: CreateFileMappingA asked for a %u:%u byte "
-            "mapping. A 32-bit guest cannot address that; "
-            "refusing.\n",
-            size_hi, size_lo);
+    x2_log_error("kernel32: CreateFileMappingA asked for a %u:%u byte "
+                 "mapping. A 32-bit guest cannot address that; "
+                 "refusing.\n",
+                 size_hi, size_lo);
     g_last_error = 8; /* NOT_ENOUGH_MEMORY */
     ret_std(C, 0, 6);
     return;
@@ -2232,20 +2210,18 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
   int i;
 
   if (off_hi) {
-    fprintf(stderr,
-            "kernel32: MapViewOfFile at offset %u:%u -- beyond "
-            "what a 32-bit guest can address.\n",
-            off_hi, off_lo);
+    x2_log_error("kernel32: MapViewOfFile at offset %u:%u -- beyond "
+                 "what a 32-bit guest can address.\n",
+                 off_hi, off_lo);
     g_last_error = 8;
     ret_std(C, 0, 5);
     return;
   }
   len = (len + (size_t)page - 1) & ~((size_t)page - 1);
   if ((uint64_t)g_view_cursor + len > VIEW_ARENA_END) {
-    fprintf(stderr,
-            "kernel32: no room for a %zu byte view: the file-view "
-            "arena 0x%08x..0x%08x is full at 0x%08x.\n",
-            len, VIEW_ARENA_BASE, VIEW_ARENA_END, g_view_cursor);
+    x2_log_error("kernel32: no room for a %zu byte view: the file-view "
+                 "arena 0x%08x..0x%08x is full at 0x%08x.\n",
+                 len, VIEW_ARENA_BASE, VIEW_ARENA_END, g_view_cursor);
     g_last_error = 8;
     ret_std(C, 0, 5);
     return;
@@ -2254,10 +2230,9 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
     uint32_t mapped_address;
     if (guest_memory_map_any(g_view_cursor, VIEW_ARENA_END, 0x10000u, len,
                              PROT_READ | PROT_WRITE, &mapped_address) != 0) {
-      fprintf(stderr,
-              "kernel32: MapViewOfFile could not place a %zu byte "
-              "view at 0x%08x: %s\n",
-              len, g_view_cursor, strerror(errno));
+      x2_log_error("kernel32: MapViewOfFile could not place a %zu byte "
+                   "view at 0x%08x: %s\n",
+                   len, g_view_cursor, strerror(errno));
       g_last_error = 8;
       ret_std(C, 0, 5);
       return;
@@ -2293,10 +2268,9 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
       break;
     }
   if (i == MAX_VIEWS)
-    fprintf(stderr,
-            "kernel32: more than %d views mapped at once; this one "
-            "cannot be unmapped later.\n",
-            MAX_VIEWS);
+    x2_log_error("kernel32: more than %d views mapped at once; this one "
+                 "cannot be unmapped later.\n",
+                 MAX_VIEWS);
 
   ret_std(C, g_view_cursor + delta, 5);
   g_view_cursor += (uint32_t)len;
@@ -2317,10 +2291,9 @@ void imp_KERNEL32_UnmapViewOfFile(CPU *C) {
      deliberate for now: reusing a range means a stale guest pointer lands in
      a DIFFERENT file's contents, which reads as corrupt data rather than as
      a use-after-unmap. */
-  fprintf(stderr,
-          "kernel32: UnmapViewOfFile(0x%08x) is not the base of any "
-          "view this host mapped.\n",
-          addr);
+  x2_log_error("kernel32: UnmapViewOfFile(0x%08x) is not the base of any "
+               "view this host mapped.\n",
+               addr);
   ret_std(C, 0, 1);
 }
 
@@ -2431,10 +2404,9 @@ static int fd_fill(uint32_t data, const char *dirpath, const char *name) {
     /* Truncating would hand back a name that opens nothing. Skipping it
        and saying so is the only answer that cannot be mistaken for a file
        that is there. */
-    fprintf(stderr,
-            "kernel32: FindFirstFile skipped \"%s\" -- %zu bytes "
-            "does not fit MAX_PATH-1 in WIN32_FIND_DATAA.\n",
-            name, n);
+    x2_log_error("kernel32: FindFirstFile skipped \"%s\" -- %zu bytes "
+                 "does not fit MAX_PATH-1 in WIN32_FIND_DATAA.\n",
+                 name, n);
     return 0;
   }
   memcpy(guest_memory_pointer(data + FD_FILENAME), name, n + 1);
@@ -2492,11 +2464,10 @@ void imp_KERNEL32_FindFirstFileA(CPU *C) {
   snprintf(hh->dirpath, sizeof hh->dirpath, "%s", dirpath);
   hh->dir = opendir(hh->dirpath);
   if (!hh->dir) {
-    fprintf(stderr,
-            "kernel32: FindFirstFileA(\"%s\") -- \"%s\" is not a "
-            "directory this host can open (%s). Returning "
-            "ERROR_FILE_NOT_FOUND, which is what Windows would.\n",
-            spec, hh->dirpath, strerror(errno));
+    x2_log_error("kernel32: FindFirstFileA(\"%s\") -- \"%s\" is not a "
+                 "directory this host can open (%s). Returning "
+                 "ERROR_FILE_NOT_FOUND, which is what Windows would.\n",
+                 spec, hh->dirpath, strerror(errno));
     hh->kind = 0;
     g_last_error = ERROR_FILE_NOT_FOUND;
     ret_std(C, INVALID_HANDLE, 2);
@@ -2579,13 +2550,12 @@ void imp_KERNEL32_MultiByteToWideChar(CPU *C) {
    * is the failure that looks like success.
    */
   if (cp != 0u && cp != 1u && cp != 1252u) {
-    fprintf(stderr,
-            "kernel32: MultiByteToWideChar code page %u is not "
-            "implemented -- this host is single-code-page (1252). "
-            "UTF-8 in particular is refused rather than widened "
-            "byte-by-byte, which would silently produce a "
-            "different string.\n",
-            cp);
+    x2_log_error("kernel32: MultiByteToWideChar code page %u is not "
+                 "implemented -- this host is single-code-page (1252). "
+                 "UTF-8 in particular is refused rather than widened "
+                 "byte-by-byte, which would silently produce a "
+                 "different string.\n",
+                 cp);
     abort();
   }
   n = srclen < 0 ? (int)strlen((const char *)s) + 1 : srclen;
@@ -2662,10 +2632,11 @@ void imp_KERNEL32_WideCharToMultiByte(CPU *C) {
 
 void kernel32_narrowing_report(void) {
   if (g_narrow_lost)
-    printf("  kernel32: %lu character(s) had no Windows-1252 byte and were "
-           "narrowed to a substitute -- those strings are NOT what the "
-           "guest produced.\n",
-           g_narrow_lost);
+    x2_log_info(
+        "  kernel32: %lu character(s) had no Windows-1252 byte and were "
+        "narrowed to a substitute -- those strings are NOT what the "
+        "guest produced.\n",
+        g_narrow_lost);
 }
 
 /* ---- the Win32 heap ----------------------------------------------------
@@ -2695,11 +2666,10 @@ static uint32_t heap_check(uint32_t h) {
     return h;
   if (h > PRIVATE_HEAP_TOK && h <= PRIVATE_HEAP_TOK + (uint32_t)g_heaps)
     return h;
-  fprintf(stderr,
-          "kernel32: heap handle 0x%08x names no heap -- it is "
-          "neither the process heap nor one of the %d created by "
-          "HeapCreate.\n",
-          h, g_heaps);
+  x2_log_error("kernel32: heap handle 0x%08x names no heap -- it is "
+               "neither the process heap nor one of the %d created by "
+               "HeapCreate.\n",
+               h, g_heaps);
   abort();
 }
 
@@ -2747,8 +2717,7 @@ static uint64_t phys_bytes(void) {
      finish initialising. A constant would have made that untestable. */
   static uint64_t v;
   if (!v) {
-    const char *e = getenv("X2_PHYS_MB");
-    unsigned mb = e && *e ? (unsigned)strtoul(e, NULL, 10) : 512u;
+    unsigned mb = (unsigned)lucent_cvar_number("phys_mb", 512);
     if (mb < 64u)
       mb = 64u;
     v = (uint64_t)mb * 1048576ULL;
@@ -2763,7 +2732,7 @@ static uint64_t phys_bytes(void) {
 static int verbose(void) {
   static int v = -1;
   if (v < 0) {
-    const char *e = getenv("X2_VERBOSE");
+    const char *e = x2_config_override_get(kX2ConfigVerbose);
     v = e && *e == '1';
   }
   return v;
@@ -2899,8 +2868,8 @@ static uint32_t guest_reserved_next(uint32_t addr) {
 void imp_KERNEL32_VirtualAlloc(CPU *C) {
   uint32_t addr = A(0), size = A(1), type = A(2), p;
   if (verbose())
-    fprintf(stderr, "[mem] VirtualAlloc(0x%08x, %u = %.1f MB, type 0x%x)\n",
-            addr, size, size / 1048576.0, type);
+    x2_log_error("[mem] VirtualAlloc(0x%08x, %u = %.1f MB, type 0x%x)\n", addr,
+                 size, size / 1048576.0, type);
   if (addr) {
     /* A fixed address is directly implementable here in a way it is not in
        an emulator: guest addresses ARE host addresses, so the request can
@@ -2922,26 +2891,23 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
          * the memory Win32 just told it it had. Issue #41.
          */
         if (guest_memory_protect(base, len, PROT_READ | PROT_WRITE) != 0)
-          fprintf(stderr,
-                  "kernel32: VirtualAlloc could not restore "
-                  "access to 0x%08x+%u: %s\n",
-                  base, len, strerror(errno));
+          x2_log_error("kernel32: VirtualAlloc could not restore "
+                       "access to 0x%08x+%u: %s\n",
+                       base, len, strerror(errno));
         decommit_clear(base, len);
         ret_std(C, addr, 4);
         return;
       }
       if (errno == EEXIST)
-        fprintf(stderr,
-                "kernel32: VirtualAlloc(0x%08x, %u) collides "
-                "with memory the guest never reserved -- that "
-                "is the runtime's, and granting it would hand "
-                "the game our own heap or a mapped module\n",
-                base, size);
+        x2_log_error("kernel32: VirtualAlloc(0x%08x, %u) collides "
+                     "with memory the guest never reserved -- that "
+                     "is the runtime's, and granting it would hand "
+                     "the game our own heap or a mapped module\n",
+                     base, size);
       else
-        fprintf(stderr,
-                "kernel32: VirtualAlloc could not place %u "
-                "bytes at 0x%08x: %s\n",
-                size, base, strerror(errno));
+        x2_log_error("kernel32: VirtualAlloc could not place %u "
+                     "bytes at 0x%08x: %s\n",
+                     size, base, strerror(errno));
       g_last_error = 8u; /* ERROR_NOT_ENOUGH_MEMORY */
       ret_std(C, 0, 4);
       return;
@@ -2964,11 +2930,10 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
          answer to "is there more?" -- and it is what makes such a loop
          terminate. */
       if (verbose())
-        fprintf(stderr,
-                "[mem] refusing: %.0f MB reserved already, and "
-                "GlobalMemoryStatus reports %.0f MB of "
-                "physical memory\n",
-                g_reserved_bytes / 1048576.0, X2_PHYS_BYTES / 1048576.0);
+        x2_log_error("[mem] refusing: %.0f MB reserved already, and "
+                     "GlobalMemoryStatus reports %.0f MB of "
+                     "physical memory\n",
+                     g_reserved_bytes / 1048576.0, X2_PHYS_BYTES / 1048576.0);
       guest_memory_release(base, len);
       g_last_error = 8u; /* ERROR_NOT_ENOUGH_MEMORY */
       ret_std(C, 0, 4);
@@ -3022,28 +2987,25 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
           /* Untracked: a later MEM_COMMIT over it would be refused
              as "memory the guest never reserved". Said rather than
              left to surface as that unrelated-looking message. */
-          fprintf(stderr,
-                  "kernel32: the reservation table is full "
-                  "(%d); 0x%08x+%u is mapped but NOT tracked, "
-                  "so committing it later will be refused.\n",
-                  MAX_RESERVED, base, len);
+          x2_log_error("kernel32: the reservation table is full "
+                       "(%d); 0x%08x+%u is mapped but NOT tracked, "
+                       "so committing it later will be refused.\n",
+                       MAX_RESERVED, base, len);
         }
         if (verbose())
-          fprintf(stderr,
-                  "[mem] reserved 0x%08x+%u (PROT_NONE; it "
-                  "faults until committed)\n",
-                  base, len);
+          x2_log_error("[mem] reserved 0x%08x+%u (PROT_NONE; it "
+                       "faults until committed)\n",
+                       base, len);
         ret_std(C, base, 4);
         return;
       }
       next += 0x100000u; /* step past whatever is there */
     }
-    fprintf(stderr,
-            "kernel32: VirtualAlloc could not RESERVE %u bytes "
-            "anywhere in 0x%08x-0x%08x after 64 attempts. That "
-            "window is the only 32-bit space not already holding a "
-            "module or the runtime arena.\n",
-            len, RES_LO, RES_HI);
+    x2_log_error("kernel32: VirtualAlloc could not RESERVE %u bytes "
+                 "anywhere in 0x%08x-0x%08x after 64 attempts. That "
+                 "window is the only 32-bit space not already holding a "
+                 "module or the runtime arena.\n",
+                 len, RES_LO, RES_HI);
     g_last_error = 8u; /* ERROR_NOT_ENOUGH_MEMORY */
     ret_std(C, 0, 4);
     return;
@@ -3071,8 +3033,8 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
   const uint32_t MEM_DECOMMIT = 0x4000u, MEM_RELEASE = 0x8000u;
   int i;
   if (verbose())
-    fprintf(stderr, "[mem] VirtualFree(0x%08x, %u, type 0x%x)\n", addr, size,
-            type);
+    x2_log_error("[mem] VirtualFree(0x%08x, %u, type 0x%x)\n", addr, size,
+                 type);
   if (!addr) {
     /* Win32 fails this too, but quietly: freeing NULL is an ordinary no-op
        in cleanup code and does not deserve a report that reads like a
@@ -3085,11 +3047,10 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
     /* Win32 requires dwSize == 0 and releases the WHOLE reservation, so
        the size comes from the table rather than from the caller. */
     if (size != 0) {
-      fprintf(stderr,
-              "kernel32: VirtualFree(MEM_RELEASE) with size %u; "
-              "Win32 requires 0 and releases the whole "
-              "reservation\n",
-              size);
+      x2_log_error("kernel32: VirtualFree(MEM_RELEASE) with size %u; "
+                   "Win32 requires 0 and releases the whole "
+                   "reservation\n",
+                   size);
       g_last_error = 87u;
       ret_std(C, 0, 3);
       return;
@@ -3102,11 +3063,10 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
         ret_std(C, 1, 3);
         return;
       }
-    fprintf(stderr,
-            "kernel32: VirtualFree(MEM_RELEASE) of 0x%08x, which "
-            "this host never reserved -- refusing rather than "
-            "unmapping something it does not own\n",
-            addr);
+    x2_log_error("kernel32: VirtualFree(MEM_RELEASE) of 0x%08x, which "
+                 "this host never reserved -- refusing rather than "
+                 "unmapping something it does not own\n",
+                 addr);
     g_last_error = 487u; /* ERROR_INVALID_ADDRESS */
     ret_std(C, 0, 3);
     return;
@@ -3118,19 +3078,17 @@ void imp_KERNEL32_VirtualFree(CPU *C) {
     uint32_t base = addr & ~0xFFFu;
     uint32_t len = ((addr - base) + size + 0xFFFu) & ~0xFFFu;
     if (len && guest_memory_protect(base, len, PROT_NONE) != 0)
-      fprintf(stderr,
-              "kernel32: VirtualFree(MEM_DECOMMIT) could not "
-              "protect 0x%08x+%u: %s\n",
-              base, len, strerror(errno));
+      x2_log_error("kernel32: VirtualFree(MEM_DECOMMIT) could not "
+                   "protect 0x%08x+%u: %s\n",
+                   base, len, strerror(errno));
     else if (len)
       decommit_note(base, len);
     ret_std(C, 1, 3);
     return;
   }
-  fprintf(stderr,
-          "kernel32: VirtualFree(0x%08x) with type 0x%x, which is "
-          "neither MEM_DECOMMIT nor MEM_RELEASE\n",
-          addr, type);
+  x2_log_error("kernel32: VirtualFree(0x%08x) with type 0x%x, which is "
+               "neither MEM_DECOMMIT nor MEM_RELEASE\n",
+               addr, type);
   g_last_error = 87u;
   ret_std(C, 0, 3);
 }
@@ -3232,11 +3190,10 @@ void imp_KERNEL32_VirtualQuery(CPU *C) {
     }
   }
   if (verbose())
-    fprintf(stderr,
-            "[mem] VirtualQuery(0x%08x) -> base 0x%08x size %u "
-            "(%.1f MB) state %s\n",
-            addr, base, size, size / 1048576.0,
-            state == 0x10000u ? "FREE" : "COMMIT");
+    x2_log_error("[mem] VirtualQuery(0x%08x) -> base 0x%08x size %u "
+                 "(%.1f MB) state %s\n",
+                 addr, base, size, size / 1048576.0,
+                 state == 0x10000u ? "FREE" : "COMMIT");
   memset(guest_memory_pointer(buf), 0, 28);
   WR32(buf + 0u, base);        /* BaseAddress */
   WR32(buf + 4u, base);        /* AllocationBase */
@@ -3254,7 +3211,7 @@ void imp_KERNEL32_VirtualQuery(CPU *C) {
  * Every module before cg.dll linked the MSVC runtime DYNAMICALLY, so its C
  * library came from MSVCR71.dll and crt.c answers it. cg.dll and cgD3D8.dll --
  * the NVIDIA Cg runtime the engine loads for shading (issue #45) -- link the
- * CRT STATICALLY, so that library is inside them, recompiled with everything
+ * CRT STATICALLY, so that library is inside them with everything
  * else, and it asks Win32 directly for what a C runtime needs: a heap, the
  * standard handles, the environment, the locale and the code pages.
  *
@@ -3321,31 +3278,45 @@ void imp_KERNEL32_GetCommandLineA(CPU *C) {
   ret_std(C, p, 0);
 }
 
-/*
- * GetEnvironmentStrings: NUL-separated NAME=VALUE, terminated by an empty
- * string. The host's own environment, copied -- the guest is running in this
- * process and inherits it, which is the truthful answer and also the useful
- * one (it is how X2_* reaches anything inside the guest).
- */
+typedef struct EnvironmentBlockBuilder {
+  char *narrow;
+  uint16_t *wide;
+  size_t total;
+} EnvironmentBlockBuilder;
+
+static void measure_environment_entry(const char *entry, void *user) {
+  EnvironmentBlockBuilder *builder = user;
+  builder->total += strlen(entry) + 1u;
+}
+
+static void copy_environment_entry(const char *entry, void *user) {
+  EnvironmentBlockBuilder *builder = user;
+  if (builder->narrow) {
+    const size_t length = strlen(entry) + 1u;
+    memcpy(builder->narrow, entry, length);
+    builder->narrow += length;
+    return;
+  }
+  while (*entry)
+    *builder->wide++ = (uint16_t)(unsigned char)*entry++;
+  *builder->wide++ = 0;
+}
+
+/* GetEnvironmentStrings: NUL-separated NAME=VALUE, terminated by an empty
+ * string. Guest-visible environment enumeration is isolated behind the CRT
+ * compatibility boundary rather than exposing process globals here. */
 static uint32_t env_block(void) {
-  extern char **environ;
   static uint32_t p;
-  size_t total = 1;
-  int i;
-  char *w;
+  EnvironmentBlockBuilder builder = {.total = 1u};
   if (p)
     return p;
-  for (i = 0; environ[i]; i++)
-    total += strlen(environ[i]) + 1;
-  p = guest_malloc((uint32_t)total);
+  x2_guest_environment_visit(measure_environment_entry, &builder);
+  p = guest_malloc((uint32_t)builder.total);
   if (!p)
     return 0;
-  w = guest_memory_pointer(p);
-  for (i = 0; environ[i]; i++) {
-    strcpy(w, environ[i]);
-    w += strlen(w) + 1;
-  }
-  *w = 0;
+  builder.narrow = guest_memory_pointer(p);
+  x2_guest_environment_visit(copy_environment_entry, &builder);
+  *builder.narrow = 0;
   return p;
 }
 
@@ -3358,24 +3329,15 @@ void imp_KERNEL32_GetEnvironmentStrings(CPU *C) { ret_std(C, env_block(), 0); }
  * UTF-16, from the same source.
  */
 void imp_KERNEL32_GetEnvironmentStringsW(CPU *C) {
-  extern char **environ;
   static uint32_t p;
   if (!p) {
-    size_t total = 1;
-    int i;
-    uint16_t *w;
-    for (i = 0; environ[i]; i++)
-      total += strlen(environ[i]) + 1;
-    p = guest_malloc((uint32_t)total * 2u);
+    EnvironmentBlockBuilder builder = {.total = 1u};
+    x2_guest_environment_visit(measure_environment_entry, &builder);
+    p = guest_malloc((uint32_t)builder.total * 2u);
     if (p) {
-      w = guest_memory_pointer(p);
-      for (i = 0; environ[i]; i++) {
-        const char *s = environ[i];
-        while (*s)
-          *w++ = (uint16_t)(unsigned char)*s++;
-        *w++ = 0;
-      }
-      *w = 0;
+      builder.wide = guest_memory_pointer(p);
+      x2_guest_environment_visit(copy_environment_entry, &builder);
+      *builder.wide = 0;
     }
   }
   ret_std(C, p, 0);
@@ -3389,15 +3351,14 @@ void imp_KERNEL32_FreeEnvironmentStringsW(CPU *C) { ret_std(C, 1, 1); }
 
 void imp_KERNEL32_SetEnvironmentVariableA(CPU *C) {
   const char *name = ACS(0), *val = A(1) ? ACS(1) : NULL;
-  int rc = val ? setenv(name, val, 1) : unsetenv(name);
+  int rc = x2_guest_environment_set(name, val);
   /* The cached blocks above are now stale, and saying so beats silently
-     handing out an environment that disagrees with getenv(). */
+     handing out an environment that disagrees with the guest CRT view. */
   if (rc == 0)
-    fprintf(stderr,
-            "kernel32: SetEnvironmentVariableA(\"%s\") changed the "
-            "host environment; any environment BLOCK already handed "
-            "to the guest still holds the old value.\n",
-            name);
+    x2_log_error("kernel32: SetEnvironmentVariableA(\"%s\") changed the "
+                 "host environment; any environment BLOCK already handed "
+                 "to the guest still holds the old value.\n",
+                 name);
   ret_std(C, rc == 0 ? 1u : 0u, 2);
 }
 
@@ -3428,11 +3389,10 @@ void imp_KERNEL32_GetStdHandle(CPU *C) {
     fd = 2;
     break;
   default:
-    fprintf(stderr,
-            "kernel32: GetStdHandle(0x%08x) is not one of the three "
-            "standard handles; returning INVALID_HANDLE_VALUE "
-            "rather than inventing one.\n",
-            which);
+    x2_log_error("kernel32: GetStdHandle(0x%08x) is not one of the three "
+                 "standard handles; returning INVALID_HANDLE_VALUE "
+                 "rather than inventing one.\n",
+                 which);
     ret_std(C, INVALID_HANDLE, 1);
     return;
   }
@@ -3449,10 +3409,10 @@ void imp_KERNEL32_GetStdHandle(CPU *C) {
 void imp_KERNEL32_SetStdHandle(CPU *C) {
   static int said;
   if (!said++)
-    fprintf(stderr, "kernel32: SetStdHandle is accepted but NOT honoured -- "
-                    "redirecting it would rebind this process's own stdout, "
-                    "not just the guest's. Guest output keeps going to the "
-                    "real streams.\n");
+    x2_log_error("kernel32: SetStdHandle is accepted but NOT honoured -- "
+                 "redirecting it would rebind this process's own stdout, "
+                 "not just the guest's. Guest output keeps going to the "
+                 "real streams.\n");
   ret_std(C, 1, 2);
 }
 
@@ -3527,10 +3487,10 @@ void imp_KERNEL32_HeapDestroy(CPU *C) {
      a heap mid-run and expects the memory back would grow. */
   static int said;
   if (!said++)
-    fprintf(stderr, "kernel32: HeapDestroy frees the HANDLE, not the "
-                    "blocks -- the guest arena has no per-heap bookkeeping "
-                    "to walk. Whatever was allocated from it stays "
-                    "allocated.\n");
+    x2_log_error("kernel32: HeapDestroy frees the HANDLE, not the "
+                 "blocks -- the guest arena has no per-heap bookkeeping "
+                 "to walk. Whatever was allocated from it stays "
+                 "allocated.\n");
   ret_std(C, 1, 1);
 }
 
@@ -3632,13 +3592,12 @@ static void locale_info(CPU *C, int wide) {
   if (!v) {
     static int said;
     if (!said++)
-      fprintf(stderr,
-              "kernel32: GetLocaleInfo LCTYPE 0x%x is not "
-              "answered -- inventing a locale field is how a "
-              "wrong decimal separator ends up in the game's own "
-              "output. Reported once; each unknown type returns "
-              "0.\n",
-              lctype);
+      x2_log_error("kernel32: GetLocaleInfo LCTYPE 0x%x is not "
+                   "answered -- inventing a locale field is how a "
+                   "wrong decimal separator ends up in the game's own "
+                   "output. Reported once; each unknown type returns "
+                   "0.\n",
+                   lctype);
     g_last_error = 87u; /* ERROR_INVALID_PARAMETER */
     ret_std(C, 0, 4);
     return;
@@ -3678,10 +3637,11 @@ void imp_KERNEL32_EnumSystemLocalesA(CPU *C) {
   uint32_t proc = A(0), s = guest_strdup("00000409");
   static int said;
   if (!said++)
-    printf("kernel32: EnumSystemLocalesA enumerates exactly ONE locale "
-           "(00000409, en-US) -- this host is single-locale by "
-           "construction, and the callback at 0x%08x is real guest code.\n",
-           proc);
+    x2_log_info(
+        "kernel32: EnumSystemLocalesA enumerates exactly ONE locale "
+        "(00000409, en-US) -- this host is single-locale by "
+        "construction, and the callback at 0x%08x is real guest code.\n",
+        proc);
   if (proc && s) {
     uint32_t a = s;
     ark_call_stdcall(proc, &a, 1);
@@ -3777,10 +3737,10 @@ static void lcmap(CPU *C, int wide) {
   int nsrc = (int32_t)A(3), i;
 
   if (flags & LCMAP_SORTKEY) {
-    fprintf(stderr, "kernel32: LCMapString with LCMAP_SORTKEY is NOT "
-                    "implemented -- a sort key's whole contract is its "
-                    "byte order, and an invented one sorts wrongly instead "
-                    "of failing. Returning 0.\n");
+    x2_log_error("kernel32: LCMapString with LCMAP_SORTKEY is NOT "
+                 "implemented -- a sort key's whole contract is its "
+                 "byte order, and an invented one sorts wrongly instead "
+                 "of failing. Returning 0.\n");
     g_last_error = 87u;
     ret_std(C, 0, 6);
     return;
@@ -3876,11 +3836,10 @@ static void string_type(CPU *C, int wide, int base, int nargs) {
   int n = (int32_t)A(base + 2), i;
   uint16_t *d = guest_memory_pointer(out);
   if (info != CT_CTYPE1) {
-    fprintf(stderr,
-            "kernel32: GetStringType info 0x%x is not CT_CTYPE1; "
-            "only the character-class table is implemented, so "
-            "this returns 0 rather than a made-up one.\n",
-            info);
+    x2_log_error("kernel32: GetStringType info 0x%x is not CT_CTYPE1; "
+                 "only the character-class table is implemented, so "
+                 "this returns 0 rather than a made-up one.\n",
+                 info);
     g_last_error = 87u;
     ret_std(C, 0, nargs);
     return;
@@ -3969,10 +3928,10 @@ void imp_KERNEL32_IsBadCodePtr(CPU *C) {
 void imp_KERNEL32_IsBadWritePtr(CPU *C) {
   static int said;
   if (!said++)
-    fprintf(stderr, "kernel32: IsBadWritePtr is answered by the READ probe "
-                    "-- testing writability by writing would corrupt the "
-                    "buffer being checked. Every guest mapping this host "
-                    "makes is read-write, so the answers coincide here.\n");
+    x2_log_error("kernel32: IsBadWritePtr is answered by the READ probe "
+                 "-- testing writability by writing would corrupt the "
+                 "buffer being checked. Every guest mapping this host "
+                 "makes is read-write, so the answers coincide here.\n");
   ret_std(C, mem_accessible(A(0), A(1)) ? 0u : 1u, 2);
 }
 
@@ -3983,45 +3942,42 @@ void imp_KERNEL32_IsBadWritePtr(CPU *C) {
  * later and somewhere else. They stop, by name, with what was asked.
  */
 void imp_KERNEL32_RtlUnwind(CPU *C) {
-  fprintf(stderr,
-          "kernel32: RtlUnwind(target 0x%08x, code 0x%08x) -- SEH "
-          "unwinding is NOT implemented. The CRT is unwinding out of "
-          "an exception, and returning from here would resume in a "
-          "frame it has already discarded.\n"
-          "  This is a real exception in guest code, not a missing "
-          "stub: find what threw.\n",
-          A(0), A(1));
+  x2_log_error("kernel32: RtlUnwind(target 0x%08x, code 0x%08x) -- SEH "
+               "unwinding is NOT implemented. The CRT is unwinding out of "
+               "an exception, and returning from here would resume in a "
+               "frame it has already discarded.\n"
+               "  This is a real exception in guest code, not a missing "
+               "stub: find what threw.\n",
+               A(0), A(1));
   x86_diag_dump();
   abort();
 }
 
 void imp_KERNEL32_RaiseException(CPU *C) {
-  fprintf(stderr,
-          "kernel32: RaiseException(code 0x%08x, flags 0x%08x) -- "
-          "guest code is RAISING an exception and this host has no "
-          "SEH dispatcher to deliver it to.\n"
-          "  Code 0xE06D7363 is a C++ throw; 0x80000003 is a "
-          "breakpoint. Either way the guest decided something is "
-          "wrong before this layer was involved.\n",
-          A(0), A(1));
+  x2_log_error("kernel32: RaiseException(code 0x%08x, flags 0x%08x) -- "
+               "guest code is RAISING an exception and this host has no "
+               "SEH dispatcher to deliver it to.\n"
+               "  Code 0xE06D7363 is a C++ throw; 0x80000003 is a "
+               "breakpoint. Either way the guest decided something is "
+               "wrong before this layer was involved.\n",
+               A(0), A(1));
   x86_diag_dump();
   abort();
 }
 
 void imp_KERNEL32_DebugBreak(CPU *C) {
   (void)C;
-  fprintf(stderr, "kernel32: DebugBreak -- guest code asked for a debugger. "
-                  "There is none, and continuing past a deliberate break "
-                  "would run code that expects to have been inspected.\n");
+  x2_log_error("kernel32: DebugBreak -- guest code asked for a debugger. "
+               "There is none, and continuing past a deliberate break "
+               "would run code that expects to have been inspected.\n");
   x86_diag_dump();
   abort();
 }
 
 void imp_KERNEL32_TerminateProcess(CPU *C) {
-  fprintf(stderr,
-          "kernel32: TerminateProcess(exit code %u) -- guest code is "
-          "killing the process.\n",
-          A(1));
+  x2_log_error("kernel32: TerminateProcess(exit code %u) -- guest code is "
+               "killing the process.\n",
+               A(1));
   exit((int)A(1));
 }
 
@@ -4037,11 +3993,10 @@ void imp_KERNEL32_SetUnhandledExceptionFilter(CPU *C) {
   static int said;
   g_ueh_filter = A(0);
   if (!said++)
-    fprintf(stderr,
-            "kernel32: SetUnhandledExceptionFilter(0x%08x) is "
-            "recorded but will never be CALLED -- this host has no "
-            "SEH dispatcher. A crash reports through x2native's own "
-            "handler instead.\n",
-            A(0));
+    x2_log_error("kernel32: SetUnhandledExceptionFilter(0x%08x) is "
+                 "recorded but will never be CALLED -- this host has no "
+                 "SEH dispatcher. A crash reports through x2native's own "
+                 "handler instead.\n",
+                 A(0));
   ret_std(C, prev, 1);
 }

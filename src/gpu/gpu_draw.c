@@ -1,6 +1,7 @@
+#include "../native/x2_log.h"
 /* See gpu_draw.h. */
-#include "gpu_draw.h"
 #include "gpu_device.h"
+#include "gpu_draw.h"
 #include "gpu_draw_trace.h"
 #include "gpu_internal.h"
 #include "gpu_pipeline.h"
@@ -18,8 +19,7 @@
    returning a handle that cannot be used -- a build with no graphics must not
    be able to look like one that draws nothing. */
 static int no_sdl(const char *what) {
-  fprintf(stderr, "gpu: %s -- this build has no SDL, so there is no GPU.\n",
-          what);
+  x2_log_error("gpu: %s -- this build has no SDL, so there is no GPU.\n", what);
   return 0;
 }
 GpuBuffer gpu_buffer_create(GpuBufferKind k, uint32_t n) {
@@ -130,8 +130,8 @@ static int g_diagnostic_disable_depth;
 void gpu_draw_diagnostic_disable_depth(int enabled) {
   g_diagnostic_disable_depth = enabled != 0;
   if (g_diagnostic_disable_depth)
-    fprintf(stderr, "gpu: DEBUG depth comparison is disabled. This run "
-                    "cannot establish correct occlusion.\n");
+    x2_log_error("gpu: DEBUG depth comparison is disabled. This run "
+                 "cannot establish correct occlusion.\n");
 }
 
 /* How many draws this frame has RECEIVED -- counted before X2_DRAW_RANGE skips
@@ -172,19 +172,19 @@ static int g_nres;
 static Res *res_get(uint32_t h, int want_texture, const char *what) {
   Res *r;
   if (!h || h > (uint32_t)g_nres) {
-    fprintf(stderr, "gpu: %s given handle %u, which was never created.\n", what,
-            h);
+    x2_log_error("gpu: %s given handle %u, which was never created.\n", what,
+                 h);
     return NULL;
   }
   r = &g_res[h - 1];
   if (!r->live) {
-    fprintf(stderr, "gpu: %s given handle %u, which has been destroyed.\n",
-            what, h);
+    x2_log_error("gpu: %s given handle %u, which has been destroyed.\n", what,
+                 h);
     return NULL;
   }
   if (want_texture != (r->tex != NULL)) {
-    fprintf(stderr, "gpu: %s given handle %u, which is a %s.\n", what, h,
-            r->tex ? "texture" : "buffer");
+    x2_log_error("gpu: %s given handle %u, which is a %s.\n", what, h,
+                 r->tex ? "texture" : "buffer");
     return NULL;
   }
   return r;
@@ -198,7 +198,7 @@ static uint32_t res_alloc(void) {
       return (uint32_t)i + 1;
     }
   if (g_nres == MAX_RES) {
-    fprintf(stderr, "gpu: more than %d live resources.\n", MAX_RES);
+    x2_log_error("gpu: more than %d live resources.\n", MAX_RES);
     return 0;
   }
   memset(&g_res[g_nres], 0, sizeof g_res[0]);
@@ -211,13 +211,13 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
   Res *r;
 
   if (!g_gpu) {
-    fprintf(stderr, "gpu: no device; no buffer.\n");
+    x2_log_error("gpu: no device; no buffer.\n");
     return 0;
   }
   if (!bytes) {
-    fprintf(stderr, "gpu: a zero-byte buffer was asked for. Refusing: the "
-                    "guest's size calculation is wrong, and a zero buffer "
-                    "would fail at the draw instead.\n");
+    x2_log_error("gpu: a zero-byte buffer was asked for. Refusing: the "
+                 "guest's size calculation is wrong, and a zero buffer "
+                 "would fail at the draw instead.\n");
     return 0;
   }
   if (!(h = res_alloc()))
@@ -230,8 +230,8 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
   ci.size = bytes;
   r->buf = SDL_CreateGPUBuffer(g_gpu, &ci);
   if (!r->buf) {
-    fprintf(stderr, "gpu: SDL_CreateGPUBuffer(%u) failed: %s\n", bytes,
-            SDL_GetError());
+    x2_log_error("gpu: SDL_CreateGPUBuffer(%u) failed: %s\n", bytes,
+                 SDL_GetError());
     return 0;
   }
   r->bytes = bytes;
@@ -245,7 +245,7 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
  * (draw submission, transfer-buffer upload), and how many uploads ran.
  *
  * Deliberately wall time of the HOST's share of the frame only. The guest is
- * recompiled C running on the same thread, so a frame's wall time is guest
+ * guest execution running on the same thread, so a frame's wall time is guest
  * crossings plus these paths plus the submit at gpu_frame_end, and the guest
  * share is what is LEFT over -- which is how these three numbers can say where
  * a slow frame actually went instead of asserting it. The reader (heartbeat)
@@ -334,10 +334,9 @@ int gpu_buffer_upload(GpuBuffer b, uint32_t offset, const void *data,
     /* Not clamped. An out-of-range upload means the guest's idea of the
        buffer's size differs from ours, and writing the part that fits
        would leave the rest of the geometry as whatever was there. */
-    fprintf(stderr,
-            "gpu: upload of %u bytes at %u is outside a %u byte "
-            "buffer. Refusing.\n",
-            bytes, offset, r->bytes);
+    x2_log_error("gpu: upload of %u bytes at %u is outside a %u byte "
+                 "buffer. Refusing.\n",
+                 bytes, offset, r->bytes);
     return 0;
   }
   return upload_bytes(r, offset, data, bytes);
@@ -408,9 +407,9 @@ void gpu_texture_request_format_support_report(void) {
                                      SDL_GPU_TEXTUREUSAGE_SAMPLER)
             ? 1
             : 0;
-    fprintf(stderr, "gpu: texture format %s (%d) 2D sampler: %s\n",
-            gpu_format_name(formats[i]), (int)format,
-            supported ? "supported" : "UNSUPPORTED");
+    x2_log_error("gpu: texture format %s (%d) 2D sampler: %s\n",
+                 gpu_format_name(formats[i]), (int)format,
+                 supported ? "supported" : "UNSUPPORTED");
   }
 }
 
@@ -446,25 +445,23 @@ static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
   Res *r;
 
   if (!g_gpu) {
-    fprintf(stderr, "gpu: no device; no texture.\n");
+    x2_log_error("gpu: no device; no texture.\n");
     return 0;
   }
   if (sf == SDL_GPU_TEXTUREFORMAT_INVALID) {
-    fprintf(stderr,
-            "gpu: texture format %d is not one this backend "
-            "has.\n",
-            (int)fmt);
+    x2_log_error("gpu: texture format %d is not one this backend "
+                 "has.\n",
+                 (int)fmt);
     return 0;
   }
   if (!w || !h) {
-    fprintf(stderr, "gpu: a %ux%u texture was asked for.\n", w, h);
+    x2_log_error("gpu: a %ux%u texture was asked for.\n", w, h);
     return 0;
   }
   if (faces == 6 && w != h) {
-    fprintf(stderr,
-            "gpu: a %ux%u cube texture was asked for; cube faces "
-            "are square.\n",
-            w, h);
+    x2_log_error("gpu: a %ux%u cube texture was asked for; cube faces "
+                 "are square.\n",
+                 w, h);
     return 0;
   }
   if (!(handle = res_alloc()))
@@ -481,10 +478,9 @@ static GpuTexture texture_create(uint32_t w, uint32_t h, GpuFormat fmt,
   ci.num_levels = levels ? levels : 1;
   r->tex = SDL_CreateGPUTexture(g_gpu, &ci);
   if (!r->tex) {
-    fprintf(stderr,
-            "gpu: SDL_CreateGPUTexture(%ux%u, %u face(s)) failed: "
-            "%s\n",
-            w, h, faces, SDL_GetError());
+    x2_log_error("gpu: SDL_CreateGPUTexture(%ux%u, %u face(s)) failed: "
+                 "%s\n",
+                 w, h, faces, SDL_GetError());
     return 0;
   }
   r->w = w;
@@ -531,13 +527,13 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   if (!r)
     return 0;
   if (level >= r->levels) {
-    fprintf(stderr, "gpu: upload to level %u of a %u-level texture.\n", level,
-            r->levels);
+    x2_log_error("gpu: upload to level %u of a %u-level texture.\n", level,
+                 r->levels);
     return 0;
   }
   if (face >= r->faces) {
-    fprintf(stderr, "gpu: upload to face %u of a texture with %u face(s).\n",
-            face, r->faces);
+    x2_log_error("gpu: upload to face %u of a texture with %u face(s).\n", face,
+                 r->faces);
     return 0;
   }
   lw = r->w >> level;
@@ -550,10 +546,9 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     uint32_t source_bytes = lw * lh * 3u;
     upload_bytes = lw * lh * 4u;
     if (bytes != source_bytes) {
-      fprintf(stderr,
-              "gpu: BGR8 upload is %u byte(s), expected %u for "
-              "%ux%u.\n",
-              bytes, source_bytes, lw, lh);
+      x2_log_error("gpu: BGR8 upload is %u byte(s), expected %u for "
+                   "%ux%u.\n",
+                   bytes, source_bytes, lw, lh);
       return 0;
     }
     expanded = malloc(upload_bytes);
@@ -725,7 +720,7 @@ static uint32_t index_count(GpuPrimitive p, uint32_t prims) {
 }
 
 static int refuse(const char *why) {
-  fprintf(stderr, "gpu: draw REFUSED -- %s\n", why);
+  x2_log_error("gpu: draw REFUSED -- %s\n", why);
   g_refused++;
   return 0;
 }
@@ -797,13 +792,12 @@ int gpu_draw(const GpuDraw *d) {
        * and is exactly what this refusal exists to prevent.
        */
       if (!tres->cube_refused) {
-        fprintf(stderr,
-                "gpu: a CUBE texture (handle %u, %ux%u) was "
-                "bound with NO texture-coordinate generator, so there "
-                "is no direction to sample it with and the draw is "
-                "refused. (Cube sampling itself is implemented -- see "
-                "GpuTexGen; this is a draw that did not ask for it.)\n",
-                d->texture, tres->w, tres->h);
+        x2_log_error("gpu: a CUBE texture (handle %u, %ux%u) was "
+                     "bound with NO texture-coordinate generator, so there "
+                     "is no direction to sample it with and the draw is "
+                     "refused. (Cube sampling itself is implemented -- see "
+                     "GpuTexGen; this is a draw that did not ask for it.)\n",
+                     d->texture, tres->w, tres->h);
         tres->cube_refused = 1;
       }
       g_refused++;
@@ -913,9 +907,9 @@ int gpu_draw(const GpuDraw *d) {
     return refuse("a blend factor this backend does not have");
   if (depth_test && gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID &&
       !g_depth_ignored++)
-    fprintf(stderr, "gpu: the depth test is requested and this device has "
-                    "no depth format, so it is IGNORED. Everything draws "
-                    "in submission order. Reported once.\n");
+    x2_log_error("gpu: the depth test is requested and this device has "
+                 "no depth format, so it is IGNORED. Everything draws "
+                 "in submission order. Reported once.\n");
 
   if (!gpu_draw_trace_consider(d, gpu_frames_presented()))
     return 1;
@@ -1073,19 +1067,18 @@ int gpu_draw(const GpuDraw *d) {
     if (need > ires->bytes) {
       static unsigned long told;
       if (told++ < 4)
-        fprintf(stderr,
-                "gpu: draw REFUSED -- the index range runs off the end "
-                "of the bound index buffer.\n"
-                "  %u index/indices of %u byte(s) from index %u needs "
-                "%llu byte(s); the buffer is %u.\n"
-                "  gpu handle %u.\n"
-                "  primitive %d, %u primitive(s), base vertex %d. "
-                "Either the engine bound the wrong buffer or this "
-                "layer sized it wrong.%s\n",
-                n, isz, d->first_index, (unsigned long long)need, ires->bytes,
-                (unsigned)d->indices, d->prim, d->prim_count,
-                (int)d->base_vertex,
-                told == 4 ? " (further ones are counted only)" : "");
+        x2_log_error("gpu: draw REFUSED -- the index range runs off the end "
+                     "of the bound index buffer.\n"
+                     "  %u index/indices of %u byte(s) from index %u needs "
+                     "%llu byte(s); the buffer is %u.\n"
+                     "  gpu handle %u.\n"
+                     "  primitive %d, %u primitive(s), base vertex %d. "
+                     "Either the engine bound the wrong buffer or this "
+                     "layer sized it wrong.%s\n",
+                     n, isz, d->first_index, (unsigned long long)need,
+                     ires->bytes, (unsigned)d->indices, d->prim, d->prim_count,
+                     (int)d->base_vertex,
+                     told == 4 ? " (further ones are counted only)" : "");
       g_refused++;
       g_refused_index_range++;
       return 0;
@@ -1143,29 +1136,31 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
 }
 
 void gpu_draw_report(void) {
-  printf("  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
-         "(%d still cached; the device teardown empties the cache, so these "
-         "differ whenever the engine released the device first)\n",
-         g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
+  x2_log_info(
+      "  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
+      "(%d still cached; the device teardown empties the cache, so these "
+      "differ whenever the engine released the device first)\n",
+      g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
   if (g_draws)
-    printf("        draw submission took %.3f s; uploads took %.3f s "
-           "total (%.3f alloc+copy, %.3f acquire+submit) across %lu "
-           "uploads using %lu transfer-buffer alloc(s), %lu command "
-           "buffers submitted\n",
-           (double)g_draw_ns * 1e-9, (double)g_upload_ns * 1e-9,
-           (double)g_upload_alloc_ns * 1e-9, (double)g_upload_submit_ns * 1e-9,
-           g_uploads, (unsigned long)g_transfer_creates, g_submits);
+    x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
+                "total (%.3f alloc+copy, %.3f acquire+submit) across %lu "
+                "uploads using %lu transfer-buffer alloc(s), %lu command "
+                "buffers submitted\n",
+                (double)g_draw_ns * 1e-9, (double)g_upload_ns * 1e-9,
+                (double)g_upload_alloc_ns * 1e-9,
+                (double)g_upload_submit_ns * 1e-9, g_uploads,
+                (unsigned long)g_transfer_creates, g_submits);
   if (!g_draws)
-    printf("        NOTHING was drawn. Either no draw call reached this "
-           "backend, or every one was refused above.\n");
+    x2_log_info("        NOTHING was drawn. Either no draw call reached this "
+                "backend, or every one was refused above.\n");
   if (g_refused_index_range)
-    printf("        %lu of those ran off the end of their index buffer -- "
-           "see issue #38; each said which numbers did not fit.\n",
-           g_refused_index_range);
+    x2_log_info("        %lu of those ran off the end of their index buffer -- "
+                "see issue #38; each said which numbers did not fit.\n",
+                g_refused_index_range);
   if (g_depth_ignored)
-    printf("        %lu draw(s) asked for a depth test there is no target "
-           "for; they drew in submission order.\n",
-           g_depth_ignored);
+    x2_log_info("        %lu draw(s) asked for a depth test there is no target "
+                "for; they drew in submission order.\n",
+                g_depth_ignored);
   gpu_draw_trace_report();
   gpu_shadow_report();
 }
@@ -1180,7 +1175,7 @@ int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
   SDL_GPUTextureCreateInfo ci;
 
   if (!g_gpu) {
-    fprintf(stderr, "gpu: no device.\n");
+    x2_log_error("gpu: no device.\n");
     return 0;
   }
   gpu_offscreen_end();
@@ -1195,15 +1190,15 @@ int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
   ci.num_levels = 1;
   g_off_tex = SDL_CreateGPUTexture(g_gpu, &ci);
   if (!g_off_tex) {
-    fprintf(stderr, "gpu: the off-screen target could not be made: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: the off-screen target could not be made: %s\n",
+                 SDL_GetError());
     return 0;
   }
   g_off_w = w;
   g_off_h = h;
   g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
   if (!g_cmd) {
-    fprintf(stderr, "gpu: no command buffer: %s\n", SDL_GetError());
+    x2_log_error("gpu: no command buffer: %s\n", SDL_GetError());
     return 0;
   }
   gpu_set_offscreen_target(g_off_tex, w, h);
@@ -1214,7 +1209,7 @@ int gpu_offscreen_begin(uint32_t w, uint32_t h, float r, float g, float b,
 
 int gpu_offscreen_next_no_clear(void) {
   if (!g_gpu || !g_off_tex) {
-    fprintf(stderr, "gpu: no off-screen target to continue.\n");
+    x2_log_error("gpu: no off-screen target to continue.\n");
     return 0;
   }
   /* Execute even a clear-only first frame before replacing its command
@@ -1233,10 +1228,9 @@ int gpu_offscreen_next_no_clear(void) {
 
   g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
   if (!g_cmd) {
-    fprintf(stderr,
-            "gpu: no command buffer for the next off-screen "
-            "frame: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: no command buffer for the next off-screen "
+                 "frame: %s\n",
+                 SDL_GetError());
     return 0;
   }
   gpu_set_offscreen_target(g_off_tex, g_off_w, g_off_h);
@@ -1259,12 +1253,12 @@ int gpu_offscreen_read(void *out, uint32_t bytes) {
   void *p;
 
   if (!g_off_tex) {
-    fprintf(stderr, "gpu: no off-screen target.\n");
+    x2_log_error("gpu: no off-screen target.\n");
     return 0;
   }
   if (bytes < need) {
-    fprintf(stderr, "gpu: the readback needs %u bytes, was given %u.\n", need,
-            bytes);
+    x2_log_error("gpu: the readback needs %u bytes, was given %u.\n", need,
+                 bytes);
     return 0;
   }
   /* The draws have to have executed before they can be read back. */
@@ -1287,7 +1281,7 @@ int gpu_offscreen_read(void *out, uint32_t bytes) {
   tci.size = need;
   tb = SDL_CreateGPUTransferBuffer(g_gpu, &tci);
   if (!tb) {
-    fprintf(stderr, "gpu: %s\n", SDL_GetError());
+    x2_log_error("gpu: %s\n", SDL_GetError());
     return 0;
   }
 
@@ -1309,7 +1303,7 @@ int gpu_offscreen_read(void *out, uint32_t bytes) {
   }
   p = SDL_MapGPUTransferBuffer(g_gpu, tb, false);
   if (!p) {
-    fprintf(stderr, "gpu: mapping the readback failed: %s\n", SDL_GetError());
+    x2_log_error("gpu: mapping the readback failed: %s\n", SDL_GetError());
     SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
     return 0;
   }

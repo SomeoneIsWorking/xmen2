@@ -3,7 +3,7 @@ id: 22
 title: Native --vk run: the game's own 'Display failed!' dialog -- the renderer does not report itself as initialised
 status: resolved
 symptom: MessageBox [Display failed!] 'Unable to initialise graphic display. Resolution and FSAA have been reverted to default.' on the --vk run, after igVkVisualContext constructs, creates a real Vulkan device and accepts setVideoMode. Followed by a SIGSEGV in Gap::Core::igArenaMemoryPool::consolidate during the teardown that follows.
-tags: pc,recomp,native,graphics,vulkan,rc-exe
+tags: pc,native,graphics,vulkan,pe
 created: 2026-08-06
 updated: 2026-08-06
 ---
@@ -13,8 +13,7 @@ updated: 2026-08-06
 This is the FIRST renderer-side failure reached on its own merits. Everything
 before it is now working: the ARK substitution installs, the engine's own
 constructor chain runs, a real Vulkan device is created, the construction
-helpers run and `setVideoMode` is accepted. The recompiler defect that used to
-stop the run earlier is fixed (C124).
+helpers run and `setVideoMode` is accepted.
 
 `0 frame(s) presented` — the frame path is never driven, because the engine
 concludes the display did not come up and unwinds instead.
@@ -47,8 +46,7 @@ calls through `this+0x534` and `this+0x53c` that the engine's own
 ## The secondary fault
 
 The SIGSEGV in `igArenaMemoryPool::consolidate` happens during the unwind
-AFTER the dialog, and it is issue #15's function recurring. It is downstream
-of the failure, not its cause — fix the display path first and re-check
+AFTER the dialog. It is downstream of the failure, not its cause — fix the display path first and re-check
 whether this still reproduces.
 
 ### Note (2026-08-06)
@@ -98,12 +96,12 @@ HOP 4, and it changes the method: 0x006f3a2d is an ERROR LATCH, not a specific c
 
 One of those is FUN_00617480 -- the DirectX 9.0c presence check this port already RETIRES via a native override (issue #18). So the latch is the game's generic 'something in startup failed' byte, and reading further up the static call graph cannot say which of the nine fired.
 
-**So stop grepping and watch the byte.** What is needed is a write-watch on 0x006f3a2d that reports the FIRST writer with its address, the same shape as the existing entry-point watch (X2_WATCH). Two of the nine are inside FUN_005fac10, the display-init function itself, which makes them the likely candidates -- but 'likely' is exactly what an instrument is for, and guessing between two branches of a 477-instruction function is how the earlier detours in issue #21 started.
+**So stop grepping and watch the byte.** What is needed is a write-watch on 0x006f3a2d that reports the FIRST writer with its address, the same shape as the existing entry-point watch (X2_WATCH). Two of the nine are inside FUN_005fac10, the display-init function itself, which makes them the likely candidates -- but 'likely' is exactly what an instrument is for, and guessing between two branches of a 477-instruction function already caused avoidable detours.
 
 Everything up to here is settled: the dialog's caller, its two gating globals, the single function that sets 0x00a09f94, and the byte that function tests. Only the identity of the writer is open, and it is a one-instrument question rather than an analysis one.
 
 ### Note (2026-08-06)
-HOP 5 — THE WRITER IS NAMED, by instrument rather than by reading. Built with -DX2_NATIVE_TRACE=ON (which is what compiles in the X2_ARGS entry watch) and watched all eight candidate functions at once:
+HOP 5 — THE WRITER IS NAMED by a bounded native entry trace over all eight candidate functions:
 
     [ARGS] watching 8 entry point(s)
     [ARGS] -> 0x00403420 FUN_00403420   ...  (ret to 00672779)
@@ -116,9 +114,10 @@ HOP 5 — THE WRITER IS NAMED, by instrument rather than by reading. Built with 
 
 Note the negative is as informative as the positive: FUN_00617480 (the retired DirectX check) did NOT run, so the override is not implicated, and neither did the other five.
 
-**REMAINING QUESTION, now narrow**: which of FUN_005fac10's two stores fired — 0x005faf4f or 0x005fb194 — and what did it test. Both are inside one named function whose body is now complete and correct, so this is a read of two branch conditions, not a search. Watch it with X2_ARGS or read the guards directly.
+**REMAINING QUESTION, now narrow**: which of FUN_005fac10's two stores fired — 0x005faf4f or 0x005fb194 — and what did it test. Both are inside one named function whose body is now complete and correct, so this is a read of two branch conditions, not a search. Read the guards directly.
 
-**Build note**: scratch/build-native is currently configured with X2_NATIVE_TRACE=ON so the watch exists. Reconfigure without it for a normal run; the generated bodies are otherwise identical between the two.
+**Build note**: this observation used `X2_NATIVE_TRACE=ON` so the write watch
+was present. That diagnostic is not a player configuration.
 
 ### Note (2026-08-06)
 HOP 6 — THE GATE IS ONE VIRTUAL CALL. Of FUN_005fac10's two stores, the reachable one is at 0x005faf4f and its guard is:
@@ -182,7 +181,11 @@ There is **no 'igVk: swapchain claimed on window ...' line**. That call only pri
 
 That is fully consistent with igWin32Window::open returning false, and it puts the failure UPSTREAM of the renderer: the game never got as far as asking for a window.
 
-**So the question is now: what does igWin32Window::open do before CreateWindowExA, and which part of it fails?** It is in libIGDisplay, it is recompiled, and the boundary trace already shows it being entered -- so put X2_ARGS on it (needs the X2_NATIVE_TRACE build, which scratch/build-native currently is) and read its body. This is one function, entered, with a false return: the narrowest possible target.
+**So the question is now: what does igWin32Window::open do before
+CreateWindowExA, and which part of it fails?** It is in libIGDisplay, and the
+boundary trace already shows it being entered. Observe it with the bounded
+argument diagnostic and read its authenticated retail body. This is one
+function, entered, with a false return: the narrowest possible target.
 
 Still true, and worth repeating because it has held through eight hops: NO renderer slot we owe has ever been dispatched. Implementing slots cannot move this.
 

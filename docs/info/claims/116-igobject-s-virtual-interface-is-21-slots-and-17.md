@@ -12,7 +12,14 @@ igObject's virtual interface is 21 slots and 17 of them are DO-NOTHING stubs, so
 
 ## Evidence
 
-tools/ark_classes.py extended to read the DEFINING module (libIGCore calls igArkRegister directly rather than through an IAT slot): 169 classes recovered, 0 argument lists unrecovered, isAbstract vs retrieveVTablePointer==NULL disagreements 0. tools/ark_vtables.py then recovered 130 vtable addresses; igErrorHandler was chosen because its instance size 0x8 makes it igObject plus no fields. Slot addresses and the full instruction body of each folded function printed directly from scratch/recomp/libIGCore.json.
+`tools/ark_classes.py` reads the defining module because libIGCore calls
+`igArkRegister` directly rather than through an IAT slot: 169 classes were
+recovered, with zero unrecovered argument lists and zero
+`isAbstract`/`retrieveVTablePointer == NULL` disagreements.
+`tools/ark_vtables.py` recovered 130 vtable addresses from the authenticated
+libIGCore image. `igErrorHandler` was selected because its 0x8-byte instance is
+`igObject` plus no fields; the folded function bodies were checked in the
+retail instruction stream.
 
 ## What would falsify it
 

@@ -4,7 +4,6 @@ kind: claim
 status: holds
 created: 2026-08-05
 tags: xbox
-depends: xbox/xboxrecomp.lock
 ---
 
 ## Claim
@@ -13,7 +12,12 @@ X-Men Legends II validates the cluster size of \Device\Harddisk0\partition1 at b
 
 ## Evidence
 
-sub_002264C1 computes MEM32(ebp-28) * MEM32(ebp-24) -- the SectorsPerAllocationUnit and BytesPerSector fields of the 0x18-byte FileFsSizeInformation buffer it just requested -- and returns 0xC000014F unless the product equals its 0x4000 argument. Setting SectorsPerAllocationUnit to 32 makes the run proceed past that check to IoCreateSymbolicLink, a call it never previously reached.
+The Xbox executable's `sub_002264C1` computes `MEM32(ebp-28) *
+MEM32(ebp-24)` -- the `SectorsPerAllocationUnit` and `BytesPerSector` fields of
+the 0x18-byte `FileFsSizeInformation` buffer it just requested -- and returns
+0xC000014F unless the product equals its 0x4000 argument. Supplying
+`SectorsPerAllocationUnit = 32` makes execution proceed to
+`IoCreateSymbolicLink`, a call not reached with the 4 KiB geometry.
 
 ## What would falsify it
 

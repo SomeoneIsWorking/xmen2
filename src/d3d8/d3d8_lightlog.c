@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /*
  * X2_LIGHTLOG=<path> writes the same light-state stream as the forwarding
  * D3D8 DLL used by the stock Wine control. A byte-comparable format turns
@@ -29,19 +31,18 @@ static int lightlog_on(void) {
   if (g_tried)
     return g_log != NULL;
   g_tried = 1;
-  path = getenv("X2_LIGHTLOG");
+  path = x2_config_override_get(kX2ConfigLightLog);
   if (!path || !*path)
     return 0;
   g_log = fopen(path, "w");
   if (!g_log) {
-    fprintf(stderr,
-            "d3d8: X2_LIGHTLOG=%s could NOT be opened -- no light "
-            "log will be written by this run.\n",
-            path);
+    x2_log_error("d3d8: X2_LIGHTLOG=%s could NOT be opened -- no light "
+                 "log will be written by this run.\n",
+                 path);
     return 0;
   }
   setvbuf(g_log, NULL, _IOLBF, 8192); /* a kill keeps the tail */
-  fprintf(stderr, "d3d8: X2_LIGHTLOG is writing %s\n", path);
+  x2_log_error("d3d8: X2_LIGHTLOG is writing %s\n", path);
   return 1;
 }
 

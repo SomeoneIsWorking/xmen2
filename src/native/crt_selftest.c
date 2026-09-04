@@ -1,6 +1,7 @@
 /* Shipping-path checks for the native CRT import surface. */
 #include "crt_selftest.h"
 #include "guest_body.h"
+#include "x2_log.h"
 
 #include "guest_heap.h"
 #include "x86rt.h"
@@ -8,10 +9,10 @@
 
 #include <stdio.h>
 
-/* XMen2.exe's generated thunk for MSVCR71.dll!??_V@YAXPAX@Z. Calling the
- * guest address makes the generated dispatch table and its exact canonical
- * import identifier part of the test; calling crt.c directly would not catch
- * a misspelled implementation symbol. */
+/* XMen2.exe's retail IAT thunk for MSVCR71.dll!??_V@YAXPAX@Z. Calling the
+ * guest address makes runtime import binding and its exact canonical import
+ * identifier part of the test; calling crt.c directly would not catch a
+ * misspelled implementation symbol. */
 #define XMEN2_OPERATOR_DELETE_ARRAY_THUNK 0x00672538u
 
 void imp_MSVCRT_malloc(CPU *C);
@@ -22,13 +23,13 @@ static uint32_t call_import(void (*fn)(CPU *), CPU *C, uint32_t stack_top,
                             uint32_t argument, int skip_body) {
   uint32_t esp0;
   cpu_reset(C);
-  C->esp = stack_top - 8u;
-  WR32(C->esp, 0xDEADBEEFu);
-  WR32(C->esp + 4u, argument);
-  esp0 = C->esp;
+  C->reg[kX86pEsp] = stack_top - 8u;
+  WR32(C->reg[kX86pEsp], 0xDEADBEEFu);
+  WR32(C->reg[kX86pEsp] + 4u, argument);
+  esp0 = C->reg[kX86pEsp];
   if (!skip_body)
     fn(C);
-  return C->esp - esp0;
+  return C->reg[kX86pEsp] - esp0;
 }
 
 static void check_malloc_free(uint32_t stack_top, int skip_body,
@@ -38,7 +39,7 @@ static void check_malloc_free(uint32_t stack_top, int skip_body,
   uint32_t pointer;
 
   delta = call_import(imp_MSVCRT_malloc, &C, stack_top, 64u, skip_body);
-  pointer = C.eax;
+  pointer = C.reg[kX86pEax];
   check("malloc(64) != 0", pointer != 0u, 1u);
   check("malloc cdecl esp delta", delta, 4u);
   if (pointer) {
@@ -61,17 +62,17 @@ static void check_delete_array(uint32_t stack_top, int skip_body,
   guest_heap_stats(&baseline_used, &ignored_free, &ignored_blocks);
   pointer = guest_malloc(64u);
   cpu_reset(&C);
-  C.esp = stack_top - 8u;
-  WR32(C.esp, 0xDEADBEEFu);
-  WR32(C.esp + 4u, pointer);
-  esp0 = C.esp;
+  C.reg[kX86pEsp] = stack_top - 8u;
+  WR32(C.reg[kX86pEsp], 0xDEADBEEFu);
+  WR32(C.reg[kX86pEsp] + 4u, pointer);
+  esp0 = C.reg[kX86pEsp];
 
   if (!skip_body) {
     char why[256];
     body_found = x86_guest_body_try(
         &C, "XMen2.exe", XMEN2_OPERATOR_DELETE_ARRAY_THUNK, why, sizeof why);
     if (!body_found)
-      printf("    (%s)\n", why);
+      x2_log_info("    (%s)\n", why);
   }
   guest_heap_stats(&after_used, &ignored_free, &ignored_blocks);
 
@@ -81,7 +82,7 @@ static void check_delete_array(uint32_t stack_top, int skip_body,
         1u);
   check("delete[] frees its guest allocation",
         (uint32_t)guest_heap_addr_is_live(pointer), 0u);
-  check("delete[] cdecl esp delta", C.esp - esp0, 4u);
+  check("delete[] cdecl esp delta", C.reg[kX86pEsp] - esp0, 4u);
   check("delete[] restores heap usage", after_used, baseline_used);
 
   if (guest_heap_addr_is_live(pointer))
@@ -104,7 +105,7 @@ static void check_msvcrt_delete_array_alias(uint32_t stack_top, int skip_body,
 
 void crt_selftest_run(uint32_t stack_top, int skip_body,
                       CrtSelftestCheck check) {
-  printf("  native CRT import ABI and operator delete[] route\n");
+  x2_log_info("  native CRT import ABI and operator delete[] route\n");
   check_malloc_free(stack_top, skip_body, check);
   check_delete_array(stack_top, skip_body, check);
   check_msvcrt_delete_array_alias(stack_top, skip_body, check);

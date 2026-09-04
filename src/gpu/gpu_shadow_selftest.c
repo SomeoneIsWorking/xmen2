@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_shadow.h"
@@ -72,8 +73,9 @@ static unsigned rgb_sum(uint32_t pixel) {
 
 int gpu_shadow_selftest(void) {
 #ifndef X2_WITH_SDL
-  printf("gpu shadow selftest: SKIPPED -- built without SDL. This is not a "
-         "pass.\n");
+  x2_log_info(
+      "gpu shadow selftest: SKIPPED -- built without SDL. This is not a "
+      "pass.\n");
   return 77;
 #else
   static const ShadowTestVertex caster_vertices[6] = {
@@ -100,7 +102,7 @@ int gpu_shadow_selftest(void) {
   unsigned darker = 0, caster_dependent = 0, unchanged = 0;
   int result = 1;
 
-  printf("\n=== gpu shadow selftest: sampled light-depth occlusion ===\n");
+  x2_log_info("\n=== gpu shadow selftest: sampled light-depth occlusion ===\n");
   if (!gpu_device_create())
     return 1;
   caster_buffer = gpu_buffer_create(GPU_BUF_VERTEX, sizeof caster_vertices);
@@ -130,16 +132,17 @@ int gpu_shadow_selftest(void) {
       unchanged++;
   }
   if (darker < 20 || caster_dependent < 20 || unchanged < 1000) {
-    printf("gpu shadow selftest: FAILED -- %u pixels darkened with the "
-           "pass, %u depended on the caster, %u stayed unchanged. The "
-           "test requires all three answers.\n",
-           darker, caster_dependent, unchanged);
+    x2_log_info("gpu shadow selftest: FAILED -- %u pixels darkened with the "
+                "pass, %u depended on the caster, %u stayed unchanged. The "
+                "test requires all three answers.\n",
+                darker, caster_dependent, unchanged);
     goto done;
   }
-  printf("gpu shadow selftest: PASSED -- %u pixels darkened only when the "
-         "shadow pass was sampled; %u vanished when the caster was removed; "
-         "%u control pixels stayed unchanged.\n",
-         darker, caster_dependent, unchanged);
+  x2_log_info(
+      "gpu shadow selftest: PASSED -- %u pixels darkened only when the "
+      "shadow pass was sampled; %u vanished when the caster was removed; "
+      "%u control pixels stayed unchanged.\n",
+      darker, caster_dependent, unchanged);
   result = 0;
 
 done:

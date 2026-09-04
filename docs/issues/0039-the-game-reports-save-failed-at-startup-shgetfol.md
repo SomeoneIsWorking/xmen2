@@ -87,9 +87,8 @@ One line: `errno == EEXIST` now becomes ERROR_ALREADY_EXISTS (and ENOENT
 becomes ERROR_PATH_NOT_FOUND). `DeleteFileA` got the same treatment.
 
 **The dialog is gone** -- `scratch/screenshots/after.png` is the title screen
-with its full legal paragraph and no panel over it -- and the game runs on into
-code it had never reached, where it stops on an x87 stack underflow in
-libIGGfx. That is issue #40.
+with its full legal paragraph and no panel over it. The later libIGGfx x87 stop
+was independent of this file-error mapping defect.
 
 ## What found it
 
@@ -107,7 +106,7 @@ its dialog. So the failure it is reporting is not the one that was fixed.
 A dead end worth recording, and it stayed a dead end: the exe contains the string `EMSG_SAVE_FAILED_DEVNUM`
 at 0x0069ad04, selected by `FUN_0055e9b0`, which is a plain
 error-code-to-message-id switch. **That function is never called in a run** (an
-argument watch on it reports zero calls), so it is the wrong anchor -- the
+entry trace on it reports zero calls), so it is the wrong anchor -- the
 displayed text is "Save failed!" with no device number, so the id being looked
 up is a different one, and it most likely comes from the localised string table
 in `igct.bnx` rather than from the exe.

@@ -61,10 +61,10 @@ static int setup_precedence(void) {
   if (mkdir(path, 0700) != 0)
     return 0;
   snprintf(path, sizeof path, "%s/cwd/.env", test_dir);
-  if (!write_text(path, "X2_ENV_FILE_PROBE=wrong-cwd\n"))
+  if (!write_text(path, "X2_VERBOSE=wrong-cwd\n"))
     return 0;
   snprintf(path, sizeof path, "%s/project/.env", test_dir);
-  if (!write_text(path, "X2_ENV_FILE_PROBE=from-executable\n"))
+  if (!write_text(path, "X2_VERBOSE=from-executable\n"))
     return 0;
   snprintf(path, sizeof path, "%s/project/bin/x2native", test_dir);
   if (!write_text(path, ""))
@@ -85,27 +85,33 @@ int main(int argc, char **argv) {
   if (mkdir(test_dir, 0700) != 0)
     return 2;
   atexit(cleanup);
-  unsetenv("X2_ENV_FILE_PROBE");
+  unsetenv("X2_VERBOSE");
 
   if (!strcmp(argv[1], "load")) {
-    if (!setup_simple("X2_ENV_FILE_PROBE='path with spaces'\n"))
+    if (!setup_simple("X2_VERBOSE='path with spaces'\n"))
       return 2;
     rc = x2_load_project_env(NULL);
-    got = getenv("X2_ENV_FILE_PROBE");
-    if (rc != 1 || !got || strcmp(got, "path with spaces"))
+    got = getenv("X2_VERBOSE");
+    if (rc != 1 || !got || strcmp(got, "path with spaces") != 0)
       return 1;
   } else if (!strcmp(argv[1], "preserve")) {
-    if (!setup_simple("X2_ENV_FILE_PROBE=from-file\n"))
+    if (!setup_simple("X2_VERBOSE=from-file\n"))
       return 2;
-    setenv("X2_ENV_FILE_PROBE", "from-launcher", 1);
+    setenv("X2_VERBOSE", "from-launcher", 1);
     rc = x2_load_project_env(NULL);
-    got = getenv("X2_ENV_FILE_PROBE");
-    if (rc != 1 || !got || strcmp(got, "from-launcher"))
+    got = getenv("X2_VERBOSE");
+    if (rc != 1 || !got || strcmp(got, "from-launcher") != 0)
       return 1;
   } else if (!strcmp(argv[1], "malformed")) {
     if (!setup_simple("this is not an assignment\n"))
       return 2;
     if (x2_load_project_env(NULL) != -1)
+      return 1;
+  } else if (!strcmp(argv[1], "unknown-key")) {
+    if (!setup_simple("X2_NOT_A_REGISTERED_SETTING=unsafe\n"))
+      return 2;
+    if (x2_load_project_env(NULL) != 1 ||
+        getenv("X2_NOT_A_REGISTERED_SETTING") != NULL)
       return 1;
   } else if (!strcmp(argv[1], "executable-precedence")) {
     if (!setup_precedence())
@@ -113,8 +119,8 @@ int main(int argc, char **argv) {
     snprintf(executable, sizeof executable, "%s/%s/project/bin/x2native",
              start_dir, test_dir);
     rc = x2_load_project_env(executable);
-    got = getenv("X2_ENV_FILE_PROBE");
-    if (rc != 1 || !got || strcmp(got, "from-executable"))
+    got = getenv("X2_VERBOSE");
+    if (rc != 1 || !got || strcmp(got, "from-executable") != 0)
       return 1;
   } else
     return 2;

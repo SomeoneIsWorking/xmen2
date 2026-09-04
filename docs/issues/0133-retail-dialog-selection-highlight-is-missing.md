@@ -46,7 +46,7 @@ dead ends; none is evidence about the selected row.
 
 ## Resolution
 
-`src/native/dialog_selection_scale.c` retains the recompiled title transform
+`src/native/dialog_selection_scale.c` retains the runtime-translated title transform
 builder and changes Y/Z only for the exact selected-row return address, only
 when both supplied values match the recovered retail formula. The pure policy
 preserves that formula through the shared 800x600 retail UI reference and holds

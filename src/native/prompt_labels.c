@@ -12,6 +12,7 @@
  * prompt immediately and consumes four codepoints for the whole keyboard.
  */
 #include "prompt_labels.h"
+#include "x2_log.h"
 
 #include "guest_heap.h"
 #include "pad_glyph_codes.h"
@@ -73,12 +74,12 @@ static void note_resolver(uint32_t ret) {
 }
 
 void x2_probe_004bd720(CPU *C) {
-  uint32_t ret = RD32(C->esp);
+  uint32_t ret = RD32(C->reg[kX86pEsp]);
   g_resolver_calls++;
   x86_guest_body(C, "XMen2.exe", 0x004bd720u);
   /* The resolver returns the display string in EAX. Ours is the one guest
      buffer prompt_label_rewrite publishes. */
-  if (g_styled_label && C->eax == g_styled_label) {
+  if (g_styled_label && C->reg[kX86pEax] == g_styled_label) {
     g_resolver_ours++;
     note_resolver(ret);
   }
@@ -165,9 +166,9 @@ void x2_override_00619e30(CPU *C) {
   enum PromptLabelStyle style;
 
   /* Before the super-call: the retail body pops its own return address. */
-  note_caller(RD32(C->esp));
+  note_caller(RD32(C->reg[kX86pEsp]));
   x86_guest_body(C, "XMen2.exe", 0x00619e30u);
-  out = C->eax;
+  out = C->reg[kX86pEax];
   if (!out || !x2_prompt_glyphs_enabled()) {
     g_unchanged++;
     return;
@@ -195,7 +196,7 @@ void x2_override_00619e30(CPU *C) {
   length = strlen((const char *)styled) + 1u;
   for (size_t i = 0; i < length; i++)
     WR8(g_styled_label + (uint32_t)i, styled[i]);
-  C->eax = g_styled_label;
+  C->reg[kX86pEax] = g_styled_label;
   if (style == PROMPT_LABEL_PAD_GLYPH)
     g_pad_labels++;
   else
@@ -213,34 +214,37 @@ void prompt_labels_report(void) {
   unsigned i;
   if (done++)
     return;
-  printf("  Prompt labels: %lu keycap, %lu pad, %lu unchanged; %lu guest "
-         "buffer allocation failure(s)\n",
-         g_keycap_labels, g_pad_labels, g_unchanged, g_buffer_failures);
+  x2_log_info("  Prompt labels: %lu keycap, %lu pad, %lu unchanged; %lu guest "
+              "buffer allocation failure(s)\n",
+              g_keycap_labels, g_pad_labels, g_unchanged, g_buffer_failures);
   if (!g_n_sites) {
-    printf("        asked for by NOBODY in this run -- 0 call(s) "
-           "reached FUN_00619e30, so nothing here is evidence about "
-           "where a label goes.\n");
+    x2_log_info("        asked for by NOBODY in this run -- 0 call(s) "
+                "reached FUN_00619e30, so nothing here is evidence about "
+                "where a label goes.\n");
     return;
   }
-  printf("        asked for from %u distinct call site(s)%s:\n", g_n_sites,
-         g_site_overflow ? " (TABLE FULL -- later sites went unrecorded)" : "");
+  x2_log_info("        asked for from %u distinct call site(s)%s:\n", g_n_sites,
+              g_site_overflow ? " (TABLE FULL -- later sites went unrecorded)"
+                              : "");
   for (i = 0; i < g_n_sites; i++)
-    printf("           return to 0x%08x  x%lu\n", g_sites[i], g_site_counts[i]);
+    x2_log_info("           return to 0x%08x  x%lu\n", g_sites[i],
+                g_site_counts[i]);
   if (g_site_overflow)
-    printf("           %lu call(s) from sites past the table\n",
-           g_site_overflow);
-  printf("        token resolver FUN_004bd720: %lu call(s), %lu of which "
-         "handed OUR buffer back to the caller\n",
-         g_resolver_calls, g_resolver_ours);
+    x2_log_info("           %lu call(s) from sites past the table\n",
+                g_site_overflow);
+  x2_log_info("        token resolver FUN_004bd720: %lu call(s), %lu of which "
+              "handed OUR buffer back to the caller\n",
+              g_resolver_calls, g_resolver_ours);
   if (!g_resolver_calls)
-    printf("           the resolver was never entered, so this run says "
-           "NOTHING about where a resolved label goes.\n");
+    x2_log_info("           the resolver was never entered, so this run says "
+                "NOTHING about where a resolved label goes.\n");
   else if (!g_resolver_ours)
-    printf("           the resolver ran but never returned our buffer -- "
-           "the label we compose is not what it hands out.\n");
+    x2_log_info("           the resolver ran but never returned our buffer -- "
+                "the label we compose is not what it hands out.\n");
   for (i = 0; i < g_n_resolver_sites; i++)
-    printf("           consumed at 0x%08x  x%lu\n", g_resolver_sites[i],
-           g_resolver_counts[i]);
+    x2_log_info("           consumed at 0x%08x  x%lu\n", g_resolver_sites[i],
+                g_resolver_counts[i]);
   if (g_resolver_overflow)
-    printf("           %lu consumer(s) past the table\n", g_resolver_overflow);
+    x2_log_info("           %lu consumer(s) past the table\n",
+                g_resolver_overflow);
 }

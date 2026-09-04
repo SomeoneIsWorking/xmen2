@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * Guest threads, serialized by one process-wide mutex.
  *
@@ -22,27 +23,26 @@
  * flag and SPINS up to 3,000,000 times calling ResumeThread until the decoder
  * clears it. BOTH sides spin and neither blocks. Two hand-off designs were
  * measured and both made it worse. What schedules two spinners is preemption
- * neither side has to cooperate with: guest_quantum(), fired from X86_ENTER_FN
- * in EVERY recompiled body every N of them. Not from the dispatch boundary --
- * that only sees dispatched calls, and this decoder spins on direct
- * guest-to-guest calls that never reach it (measured; see x86rt.h).
+ * neither side has to cooperate with: x86port executes bounded JIT slices and
+ * guest_quantum() yields the lock between them. A host-boundary-only yield is
+ * insufficient because this decoder spins on direct guest-to-guest calls.
  *
  * PER-THREAD STATE that is not the register file. The register file is a plain
  * struct on the C stack, so it comes free with the pthread's own stack. The
  * rest is naturally thread-local:
- *   - FS/GS base. FS:[0] is the SEH chain head and every recompiled prologue
+ *   - FS/GS base. FS:[0] is the SEH chain head and every guest prologue
  *     writes it; sharing it would have two threads' exception chains
  *     overwriting each other. Each thread gets its own TIB page.
  *   - The TLS slots. TlsGetValue/TlsSetValue are per-thread BY DEFINITION;
  *     kernel32 keeps one array per slot and this file selects it on lock entry.
  *   - The guest stack, out of the guest arena, and the HOST stack the
- *     recompiled C runs on.
+ *     guest execution runs on.
  */
-#include "threads.h"
 #include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "pe_map.h"
+#include "threads.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -55,6 +55,8 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <lucent/cvar_c.h>
 
 /* kernel32 owns the handle table and the TLS arrays; these are the hooks. */
 uint32_t k32_handle_for_thread(void *rec);
@@ -286,29 +288,17 @@ void guest_quantum_configure(unsigned long crossings) { g_quantum = crossings; }
  * the mechanism is off, or "it stopped happening" is not evidence.
  */
 void guest_quantum_from_env(void) {
-  const char *e = getenv("X2_QUANTUM");
-  char *end;
-  unsigned long v;
-  if (!e || !*e)
-    return;
-  v = strtoul(e, &end, 0);
-  if (*end) {
-    fprintf(stderr,
-            "threads: X2_QUANTUM=%s is not a number; the default "
-            "of %lu crossings is unchanged.\n",
-            e, g_quantum);
-    return;
-  }
+  const unsigned long v = (unsigned long)lucent_cvar_number("quantum", 20000);
   if (!v) {
     g_quantum = 0u - 1ul; /* effectively never */
-    printf("threads: X2_QUANTUM=0 -- preemption DISABLED. Two guest "
-           "threads that both spin cannot take turns; this is the control "
-           "for issue #57, not a configuration to run in.\n");
+    x2_log_info("threads: X2_QUANTUM=0 -- preemption DISABLED. Two guest "
+                "threads that both spin cannot take turns; this is the control "
+                "for issue #57, not a configuration to run in.\n");
     return;
   }
   g_quantum = v;
-  printf("threads: preemption quantum set to %lu boundary crossing(s).\n",
-         g_quantum);
+  x2_log_info("threads: preemption quantum set to %lu boundary crossing(s).\n",
+              g_quantum);
 }
 
 unsigned long guest_quantum_size(void) { return g_quantum; }
@@ -422,15 +412,15 @@ void guest_thread_state_report(void) {
     if (!g->used || g->finished)
       continue;
     live++;
-    fprintf(stderr, "[HB]           %s%u start 0x%08x: %s for %.1fs%s\n",
-            g->is_main ? "MAIN tid " : "tid ", g->tid, g->start,
-            TS_NAME[g->state < 0 || g->state > TS_DONE ? 0 : g->state],
-            t - g->state_since, g == g_self ? "  <- running" : "");
+    x2_log_error("[HB]           %s%u start 0x%08x: %s for %.1fs%s\n",
+                 g->is_main ? "MAIN tid " : "tid ", g->tid, g->start,
+                 TS_NAME[g->state < 0 || g->state > TS_DONE ? 0 : g->state],
+                 t - g->state_since, g == g_self ? "  <- running" : "");
   }
   if (!live)
-    fprintf(stderr, "[HB]           no live guest thread at all, not even "
-                    "the main one -- which cannot happen while this line "
-                    "is being printed, so the table is wrong\n");
+    x2_log_error("[HB]           no live guest thread at all, not even "
+                 "the main one -- which cannot happen while this line "
+                 "is being printed, so the table is wrong\n");
 }
 
 /* ---- creating and ending threads ---------------------------------------- */
@@ -469,10 +459,10 @@ static void *thread_main(void *argument) {
    * showed up when the game finally started a thread that USES its
    * argument -- the ones that ignore it had been working all along.
    */
-  C.esp = t->stack_base + t->stack_bytes - 16u;
-  WR32(C.esp, t->arg);
+  C.reg[kX86pEsp] = t->stack_base + t->stack_bytes - 16u;
+  WR32(C.reg[kX86pEsp], t->arg);
   x86_guest_call_args(&C, t->start, 4u);
-  t->exit_code = C.eax;
+  t->exit_code = C.reg[kX86pEax];
 
   t->finished = 1;
   t->state = TS_DONE;
@@ -504,11 +494,10 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
       break;
     }
   if (!t) {
-    fprintf(stderr,
-            "threads: all %d guest thread slots are live. This is "
-            "a fixed table, not a leak report -- raise MAX_THREADS "
-            "in src/native/threads.c.\n",
-            MAX_THREADS);
+    x2_log_error("threads: all %d guest thread slots are live. This is "
+                 "a fixed table, not a leak report -- raise MAX_THREADS "
+                 "in src/native/threads.c.\n",
+                 MAX_THREADS);
     return 0;
   }
   memset(t, 0, sizeof *t);
@@ -518,11 +507,10 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
   t->stack_base = guest_malloc(t->stack_bytes);
   t->tib = guest_malloc(TIB_BYTES);
   if (!t->stack_base || !t->tib) {
-    fprintf(stderr,
-            "threads: no guest memory for a %u-byte stack and a "
-            "TIB; the thread is NOT created and the caller is told "
-            "so.\n",
-            t->stack_bytes);
+    x2_log_error("threads: no guest memory for a %u-byte stack and a "
+                 "TIB; the thread is NOT created and the caller is told "
+                 "so.\n",
+                 t->stack_bytes);
     if (t->stack_base)
       guest_free(t->stack_base);
     if (t->tib)
@@ -551,10 +539,9 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
   result = pthread_create(&t->thread, &attr, thread_main, t);
   pthread_attr_destroy(&attr);
   if (result != 0) {
-    fprintf(stderr,
-            "threads: pthread_create failed (%s); the guest is "
-            "told the thread could not be created.\n",
-            strerror(result));
+    x2_log_error("threads: pthread_create failed (%s); the guest is "
+                 "told the thread could not be created.\n",
+                 strerror(result));
     t->used = 0;
     guest_free(t->stack_base);
     guest_free(t->tib);
@@ -570,11 +557,11 @@ uint32_t guest_thread_create_ex(uint32_t start, uint32_t arg,
   if (tid_out)
     *tid_out = t->tid;
   if (g_created == 1)
-    printf("threads: the first GUEST THREAD exists (start 0x%08x, "
-           "%u-byte guest stack, 8 MB host stack). Guest pthreads are "
-           "serialized by one mutex and wait on condition variables -- "
-           "see src/native/threads.c.\n",
-           start, t->stack_bytes);
+    x2_log_info("threads: the first GUEST THREAD exists (start 0x%08x, "
+                "%u-byte guest stack, 8 MB host stack). Guest pthreads are "
+                "serialized by one mutex and wait on condition variables -- "
+                "see src/native/threads.c.\n",
+                start, t->stack_bytes);
   return t->handle;
 }
 
@@ -697,11 +684,10 @@ int guest_thread_suspend(uint32_t handle) {
      between a control operation and a rendezvous, and a run that stalls
      afterwards is read completely differently depending on which it was. */
   if (g_suspends == 1)
-    printf("threads: the first SuspendThread -- tid %u %s.\n", t->tid,
-           t == g_self ? "suspended ITSELF and is now waiting to be "
-                         "resumed"
-                       : "was suspended by another thread");
-  fflush(stdout);
+    x2_log_info("threads: the first SuspendThread -- tid %u %s.\n", t->tid,
+                t == g_self ? "suspended ITSELF and is now waiting to be "
+                              "resumed"
+                            : "was suspended by another thread");
   if (t == g_self)
     guest_suspend_point();
   return previous;
@@ -721,21 +707,19 @@ int guest_thread_resume(uint32_t handle) {
   g_resumes++;
   t->n_resume++;
   if (!was && ++g_resume_noop == 100000ul)
-    fprintf(stderr,
-            "threads: ResumeThread has been called %lu times on tid %u "
-            "(start 0x%08x), which was NOT suspended on any of them -- so "
-            "every one was a no-op.\n"
-            "  Something is spinning on it while waiting for something "
-            "else. Reported once, at the hundred-thousandth.\n",
-            g_resume_noop, t->tid, t->start);
+    x2_log_error("threads: ResumeThread has been called %lu times on tid %u "
+                 "(start 0x%08x), which was NOT suspended on any of them -- so "
+                 "every one was a no-op.\n"
+                 "  Something is spinning on it while waiting for something "
+                 "else. Reported once, at the hundred-thousandth.\n",
+                 g_resume_noop, t->tid, t->start);
   if (g_resumes == 1) {
-    printf("threads: the first ResumeThread -- tid %u, previous suspend "
-           "count %d%s.\n",
-           t->tid, was,
-           was > 1    ? " (one nested suspend remains)"
-           : was == 1 ? " (now runnable)"
-                      : " (already runnable; no change)");
-    fflush(stdout);
+    x2_log_info("threads: the first ResumeThread -- tid %u, previous suspend "
+                "count %d%s.\n",
+                t->tid, was,
+                was > 1    ? " (one nested suspend remains)"
+                : was == 1 ? " (now runnable)"
+                           : " (already runnable; no change)");
   }
   if (was == 1)
     guest_cond_broadcast();
@@ -760,9 +744,9 @@ int guest_thread_resume(uint32_t handle) {
 void guest_thread_exit(uint32_t code) {
   GuestThread *t = g_self;
   if (!t || t->is_main) {
-    fprintf(stderr, "threads: _endthreadex on the MAIN thread, which Win32 "
-                    "does not allow and this host cannot honour -- the main "
-                    "thread is the process.\n");
+    x2_log_error("threads: _endthreadex on the MAIN thread, which Win32 "
+                 "does not allow and this host cannot honour -- the main "
+                 "thread is the process.\n");
     return;
   }
   t->exit_code = code;
@@ -781,23 +765,25 @@ void guest_thread_report(void) {
     if (g_thread[i].used && !g_thread[i].finished)
       live++;
   if (!g_created) {
-    printf("  threads: no guest thread was ever created; everything ran on "
-           "the main thread.\n");
+    x2_log_info(
+        "  threads: no guest thread was ever created; everything ran on "
+        "the main thread.\n");
   } else {
-    printf("  threads: %lu created, %lu exited, %lu reaped (handle closed, "
-           "stacks freed), %d still running; %lu suspend(s), %lu resume(s)\n",
-           g_created, g_exited, g_reaped, live, g_suspends, g_resumes);
+    x2_log_info(
+        "  threads: %lu created, %lu exited, %lu reaped (handle closed, "
+        "stacks freed), %d still running; %lu suspend(s), %lu resume(s)\n",
+        g_created, g_exited, g_reaped, live, g_suspends, g_resumes);
     if (g_resume_noop)
-      printf("         %lu resume(s) were of a thread that was NOT "
-             "suspended -- Win32 no-ops those, and a loop doing them is "
-             "waiting for something else.\n",
-             g_resume_noop);
+      x2_log_info("         %lu resume(s) were of a thread that was NOT "
+                  "suspended -- Win32 no-ops those, and a loop doing them is "
+                  "waiting for something else.\n",
+                  g_resume_noop);
     if (g_resume_unknown || g_suspend_unknown)
-      printf("         %lu resume(s) and %lu suspend(s) named NO live "
-             "thread -- a handle whose thread had already been reaped. A "
-             "loop doing that is waiting for something that cannot "
-             "happen.\n",
-             g_resume_unknown, g_suspend_unknown);
+      x2_log_info("         %lu resume(s) and %lu suspend(s) named NO live "
+                  "thread -- a handle whose thread had already been reaped. A "
+                  "loop doing that is waiting for something that cannot "
+                  "happen.\n",
+                  g_resume_unknown, g_suspend_unknown);
     for (i = 0; i < MAX_THREADS; i++) {
       GuestThread *t = &g_thread[i];
       /* Reaped slots are printed too, until they are reused: their
@@ -806,22 +792,21 @@ void guest_thread_report(void) {
          invisible. */
       if (!t->used && !t->tid)
         continue;
-      printf("         tid %u  start 0x%08x  %lu suspend(s) %lu "
-             "resume(s) %lu turn(s)%s%s\n",
-             t->tid, t->start, t->n_suspend, t->n_resume, t->n_ran,
-             !t->used      ? "  REAPED"
-             : t->finished ? "  EXITED"
-                           : "",
-             t->suspended ? "  SUSPENDED NOW -- if the run stalled, this "
-                            "is a thread waiting for a ResumeThread that "
-                            "never came"
-                          : "");
+      x2_log_info("         tid %u  start 0x%08x  %lu suspend(s) %lu "
+                  "resume(s) %lu turn(s)%s%s\n",
+                  t->tid, t->start, t->n_suspend, t->n_resume, t->n_ran,
+                  !t->used      ? "  REAPED"
+                  : t->finished ? "  EXITED"
+                                : "",
+                  t->suspended ? "  SUSPENDED NOW -- if the run stalled, this "
+                                 "is a thread waiting for a ResumeThread that "
+                                 "never came"
+                               : "");
     }
   }
   /* Flushed, because this now runs from the abort paths too and an unflushed
      stdout buffer is discarded by abort() -- the report was written, and
      vanished, on exactly the stall it exists to explain. */
-  fflush(stdout);
   /*
    * Printed even when they are ZERO, with their denominators. "0
    * preemptions" and "preemption is not compiled in" are different facts and
@@ -829,7 +814,7 @@ void guest_thread_report(void) {
    * apart -- and zero here is itself the answer to "why did two spinning
    * threads not take turns".
    */
-  printf(
+  x2_log_info(
       "         %lu condition/mutex hand-off(s), %lu of them preemptions at a "
       "quantum of %lu boundary crossing(s)%s\n",
       g_switches, g_quanta, g_quantum,
@@ -837,6 +822,6 @@ void guest_thread_report(void) {
                : " -- NO preemption happened: either no second guest "
                  "thread was ever runnable, or the quantum is larger "
                  "than this run");
-  printf("         the guest mutex was contended %lu time(s)\n", g_contended);
-  fflush(stdout);
+  x2_log_info("         the guest mutex was contended %lu time(s)\n",
+              g_contended);
 }

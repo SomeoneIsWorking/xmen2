@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /*
  * ole32 -- COM, of which this game uses almost none.
  *
@@ -29,11 +30,11 @@
 
 #include <stdio.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 #define S_OK 0x00000000u
@@ -61,17 +62,18 @@ void imp_ole32_CoCreateInstance(CPU *C) {
     g_told = 1;
     if (rclsid) {
       const unsigned char *g = guest_memory_const_pointer(rclsid);
-      fprintf(stderr,
-              "ole32: CoCreateInstance for CLSID "
-              "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%"
-              "02X%02X}\n"
-              "  There is no COM registry here and nothing implements it, so "
-              "this returns REGDB_E_CLASSNOTREG -- which is true.\n"
-              "  The caller checks the HRESULT and skips the feature; "
-              "returning S_OK with an invented interface pointer would make "
-              "it call through a vtable that does not exist.\n",
-              g[3], g[2], g[1], g[0], g[5], g[4], g[7], g[6], g[8], g[9], g[10],
-              g[11], g[12], g[13], g[14], g[15]);
+      lucent_log_error(
+          "x2",
+          "ole32: CoCreateInstance for CLSID "
+          "{%02X%02X%02X%02X-%02X%02X-%02X%02X-%02X%02X-%02X%02X%02X%02X%"
+          "02X%02X}\n"
+          "  There is no COM registry here and nothing implements it, so "
+          "this returns REGDB_E_CLASSNOTREG -- which is true.\n"
+          "  The caller checks the HRESULT and skips the feature; "
+          "returning S_OK with an invented interface pointer would make "
+          "it call through a vtable that does not exist.\n",
+          g[3], g[2], g[1], g[0], g[5], g[4], g[7], g[6], g[8], g[9], g[10],
+          g[11], g[12], g[13], g[14], g[15]);
     }
   }
   /* COM requires *ppv be NULLed on failure, and a caller that checks the

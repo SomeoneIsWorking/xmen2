@@ -13,40 +13,30 @@ source progressively takes ownership subsystem by subsystem. No Wine, no
 build-time translation of the guest binary, and no shipped copy of
 game-derived code.
 
-**Why it matters.** This replaces static recompilation, and the reason is
-structural rather than stylistic. A static recompiler must decide before
-running anything which bytes are code, which is undecidable in general — so
-everything not statically discoverable has to be hand-seeded: computed calls,
-jump tables, virtual dispatch, overlays, anything reached only through a
-pointer. This port measured that cost directly: 8,234 instructions its
-translator could not translate, and ~460,000 distinct entry points its level
-build dispatches through. Every seed is a hand-maintained claim that can go
-stale, and a missing one is not a build error but a wrong branch at run time.
-Translating at run time deletes that problem by construction — code is
-whatever the program branches to, discovered exactly, when it is reached.
-
-It also changes what can be shipped. Static recompilation puts game-derived
-code in the build output, which is why these projects are built locally and
-never in CI. A runtime translator keeps the shipped binary free of game code,
-so Windows/macOS/Linux/Android builds can be produced and released normally
-with the user supplying their own copy.
+**Why it matters.** Runtime translation follows the retail program's actual
+control flow, including computed calls, jump tables, virtual dispatch, and
+other pointer-reached code. It also keeps released Windows, macOS, Linux, and
+Android binaries free of game code: the player supplies an authenticated copy
+whose instructions are translated only while the game runs.
 
 **Success conditions.**
 
 - The retail executable and every shipped engine module the game needs execute
   through the runtime translator without a build-time translation step.
-- The gameplay product always uses a dynarec/JIT for non-native guest code. An
-  interpreter exists only in a separately built test/diagnostic target and is
-  absent from the gameplay link closure, selector, configuration, and fallback
-  paths. Product inspection proves that absence; observing zero fallbacks in
-  one run is insufficient.
+- The gameplay product always selects the dynarec/JIT for non-native guest code.
+  Explicit interpreter mode exists only in a separately built test/diagnostic
+  target. A bounded internal interpreter fallback is allowed only after failed
+  or unsupported JIT compilation, or when executing emitted code would be
+  unsafe; every entry is counted and reported, and fallback-backed intervals
+  cannot establish gameplay or performance conformance.
 - Representative interactive gameplay meets a declared frame-time and
   correctness budget on every released host architecture. Runtime translation
   keeps guest state across blocks where valid, emits common instructions
   natively, chains blocks, and may use a disposable runtime cache, but no
   persistent cache is a fresh-install prerequisite.
-- Unsupported instructions, unresolved calls, and missing modules refuse by
-  name instead of silently falling back or producing a smaller program.
+- Unsupported instructions may take the named, instrumented bounded fallback
+  above. Unresolved calls and missing modules refuse by name instead of
+  silently producing a smaller program.
 - Native replacements can take ownership one subsystem at a time while the
   unreplaced program continues through the JIT. An override can call the
   original guest body through that same JIT without recursion.
@@ -59,7 +49,7 @@ matching copy. The translator is `shared/x86port`, built on `shared/jit-common`;
 this project owns title knowledge, not CPU or JIT mechanics.
 
 **Non-goals.** Rewriting the whole game before it can run; changing this port's
-base to the Xbox release; shipping an interpreter as the production substrate;
+base to the Xbox release; using interpretation for gameplay execution;
 returning to build-time translation of the guest binary.
 
 **Contributing state items.** S001, S002, S012.
@@ -173,7 +163,7 @@ directory.
   supplied game, obtains pinned redistributable dependencies, prepares only
   redistributable native assets, builds, and launches the intended product.
 - No build, install, provisioning, packaging, or release path emits guest code
-  as source, objects, dispatch tables, or a precompiled title substrate.
+  as source, objects, dispatch tables, or any derived guest-code artifact.
 - The player path requires no Ghidra, Wine, sibling repository, or system Python
   environment beyond the documented native prerequisites and `uv`.
 - Every documented supported platform and compiler receives the same product;
@@ -242,4 +232,4 @@ duplicate engine implementations in individual game repositories; magic
 constants, asset edits, or test-only reimplementations that bypass the shipping
 path.
 
-**Contributing state items.** S004, S011, S012, S013, S019.
+**Contributing state items.** S004, S011, S012, S019.

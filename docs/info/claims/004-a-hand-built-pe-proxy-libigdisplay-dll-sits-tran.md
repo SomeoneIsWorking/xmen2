@@ -12,7 +12,7 @@ A hand-built PE proxy libIGDisplay.dll sits transparently in the real game's loa
 
 ## Evidence
 
-tools/run_shim.sh stock vs proxy, 60s each, Wine + DXVK/lavapipe on Xvfb. Game-process module sets: 53 vs 54, sole delta libIGDisplay_orig.dll. Unique-error diff between the two logs is empty. Both frames show the boot movie sequence (Beenox / Vicarious Visions Alchemy splash).
+tools/run_shim.py stock vs proxy, 60s each, Wine + DXVK/lavapipe on Xvfb. Game-process module sets: 53 vs 54, sole delta libIGDisplay_orig.dll. Unique-error diff between the two logs is empty. Both frames show the boot movie sequence (Beenox / Vicarious Visions Alchemy splash).
 
 ## What would falsify it
 

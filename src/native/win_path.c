@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /* Guest Windows path resolution, replacement packs, and file-open evidence.
  * Every native file consumer goes through this owner so CRT, KERNEL32, and
  * media decode cannot disagree on drive mapping or case folding. */
@@ -26,15 +28,15 @@ static unsigned long g_opens_total, g_opens_failed, g_replaced;
 static int files_traced(void) {
   static int on = -1;
   if (on < 0) {
-    const char *value = getenv("X2_FILES");
+    const char *value = x2_config_override_get(kX2ConfigFiles);
     on = value && *value && *value != '0';
     if (on)
-      fprintf(stderr,
-              "[FILE] tracing file operations (X2_FILES). What this DOES "
-              "show: every CreateFile-family call with its answer, and the "
-              "FIRST open of each distinct name from any path including the "
-              "CRT's fopen. What it does NOT show: repeat opens of a name "
-              "already listed. Totals are in the shutdown report.\n");
+      x2_log_error(
+          "[FILE] tracing file operations (X2_FILES). What this DOES "
+          "show: every CreateFile-family call with its answer, and the "
+          "FIRST open of each distinct name from any path including the "
+          "CRT's fopen. What it does NOT show: repeat opens of a name "
+          "already listed. Totals are in the shutdown report.\n");
   }
   return on;
 }
@@ -43,9 +45,9 @@ void k32_file_trace(const char *operation, const char *guest_path,
                     const char *host_path, const char *outcome) {
   if (!files_traced())
     return;
-  fprintf(stderr, "[FILE] %-18s \"%s\"\n         -> \"%s\"  %s\n", operation,
-          guest_path ? guest_path : "(null)", host_path ? host_path : "(null)",
-          outcome);
+  x2_log_error("[FILE] %-18s \"%s\"\n         -> \"%s\"  %s\n", operation,
+               guest_path ? guest_path : "(null)",
+               host_path ? host_path : "(null)", outcome);
 }
 
 /* `known_root` is an already validated host directory, not guest input.  It
@@ -99,19 +101,18 @@ static int resolve_case_insensitive(char *path, const char *known_root) {
         separator ? (size_t)(separator - component) : strlen(component);
     if (!component_size) {
       if (files_traced())
-        fprintf(stderr,
-                "[FILE] path resolver refused an empty component in \"%s\"\n",
-                path);
+        x2_log_error(
+            "[FILE] path resolver refused an empty component in \"%s\"\n",
+            path);
       return 0;
     }
     directory = opendir(resolved[0] ? resolved : ".");
     if (!directory) {
       if (files_traced())
-        fprintf(stderr,
-                "[FILE] path resolver cannot open \"%s\" while resolving "
-                "\"%.*s\": %s\n",
-                resolved[0] ? resolved : ".", (int)component_size, component,
-                strerror(errno));
+        x2_log_error("[FILE] path resolver cannot open \"%s\" while resolving "
+                     "\"%.*s\": %s\n",
+                     resolved[0] ? resolved : ".", (int)component_size,
+                     component, strerror(errno));
       return 0;
     }
     for (entry = readdir(directory); entry; entry = readdir(directory))
@@ -125,16 +126,17 @@ static int resolve_case_insensitive(char *path, const char *known_root) {
     closedir(directory);
     if (!found) {
       if (files_traced())
-        fprintf(stderr, "[FILE] path resolver found no \"%.*s\" under \"%s\"\n",
-                (int)component_size, component, resolved[0] ? resolved : ".");
+        x2_log_error("[FILE] path resolver found no \"%.*s\" under \"%s\"\n",
+                     (int)component_size, component,
+                     resolved[0] ? resolved : ".");
       return 0;
     }
     if (used && resolved[used - 1] != '/') {
       if (used + 1 >= sizeof resolved) {
         if (files_traced())
-          fprintf(stderr,
-                  "[FILE] path resolver exceeded %u bytes resolving \"%s\"\n",
-                  (unsigned)sizeof resolved, path);
+          x2_log_error(
+              "[FILE] path resolver exceeded %u bytes resolving \"%s\"\n",
+              (unsigned)sizeof resolved, path);
         return 0;
       }
       resolved[used++] = '/';
@@ -142,9 +144,9 @@ static int resolve_case_insensitive(char *path, const char *known_root) {
     }
     if (used + component_size >= sizeof resolved) {
       if (files_traced())
-        fprintf(stderr,
-                "[FILE] path resolver exceeded %u bytes resolving \"%s\"\n",
-                (unsigned)sizeof resolved, path);
+        x2_log_error(
+            "[FILE] path resolver exceeded %u bytes resolving \"%s\"\n",
+            (unsigned)sizeof resolved, path);
       return 0;
     }
     memcpy(resolved + used, matched, component_size);
@@ -158,15 +160,14 @@ static int resolve_case_insensitive(char *path, const char *known_root) {
   if (access(path, F_OK) == 0)
     return 1;
   if (files_traced())
-    fprintf(stderr,
-            "[FILE] path resolver reached \"%s\" but access failed: %s\n", path,
-            strerror(errno));
+    x2_log_error("[FILE] path resolver reached \"%s\" but access failed: %s\n",
+                 path, strerror(errno));
   return 0;
 }
 
 const char *win_path(const char *input) {
   static char path[WIN_PATH_MAX];
-  const char *game = getenv("GAME_PC_DIR");
+  const char *game = x2_config_override_get(kX2ConfigGamePcDir);
   const char *tail = input;
   const char *root = game;
   size_t index;
@@ -216,7 +217,7 @@ static int contains_case_insensitive(const char *haystack, const char *needle) {
 }
 
 int k32_file_gate_open(void) {
-  const char *wanted = getenv("X2_SHOT_AFTER_FILE");
+  const char *wanted = x2_config_override_get(kX2ConfigShotAfterFile);
   return !wanted || !*wanted || g_file_gate_hit;
 }
 
@@ -229,13 +230,12 @@ static void note_asset(const char *guest_path, int succeeded,
   if (!guest_path)
     return;
   if (!g_file_gate_hit) {
-    const char *wanted = getenv("X2_SHOT_AFTER_FILE");
+    const char *wanted = x2_config_override_get(kX2ConfigShotAfterFile);
     if (wanted && *wanted && contains_case_insensitive(guest_path, wanted)) {
       g_file_gate_hit = 1;
-      fprintf(stderr,
-              "[FILE] X2_SHOT_AFTER_FILE=\"%s\" matched "
-              "\"%s\" -- the scene gate is now OPEN.\n",
-              wanted, guest_path);
+      x2_log_error("[FILE] X2_SHOT_AFTER_FILE=\"%s\" matched "
+                   "\"%s\" -- the scene gate is now OPEN.\n",
+                   wanted, guest_path);
     }
   }
   for (index = 0; index < g_nasset; ++index)
@@ -247,37 +247,38 @@ static void note_asset(const char *guest_path, int succeeded,
   }
   snprintf(g_asset[g_nasset++], sizeof(g_asset[0]), "%s", guest_path);
   if (files_traced())
-    fprintf(stderr,
-            "[FILE] first open of \"%s\"\n"
-            "       -> \"%s\"%s\n",
-            guest_path, host_path ? host_path : "(null)",
-            succeeded ? "" : "  -- NOT FOUND");
+    x2_log_error("[FILE] first open of \"%s\"\n"
+                 "       -> \"%s\"%s\n",
+                 guest_path, host_path ? host_path : "(null)",
+                 succeeded ? "" : "  -- NOT FOUND");
 }
 
 void k32_asset_report(void) {
   int index;
-  printf("  files: %lu open call(s) over %d distinct name(s)%s; %lu failed\n",
-         g_opens_total, g_nasset,
-         g_asset_over ? " (the name table is FULL -- some are not listed)" : "",
-         g_opens_failed);
-  if (getenv("X2_ASSETS"))
-    printf("         X2_ASSETS=%s -- %lu name(s) were replaced from it%s\n",
-           getenv("X2_ASSETS"), g_replaced,
-           g_replaced ? ""
-                      : ". NONE: nothing the game opened had a "
-                        "counterpart there, so this run drew the "
-                        "shipped assets");
+  x2_log_info(
+      "  files: %lu open call(s) over %d distinct name(s)%s; %lu failed\n",
+      g_opens_total, g_nasset,
+      g_asset_over ? " (the name table is FULL -- some are not listed)" : "",
+      g_opens_failed);
+  if (x2_config_override_get(kX2ConfigAssets))
+    x2_log_info(
+        "         X2_ASSETS=%s -- %lu name(s) were replaced from it%s\n",
+        x2_config_override_get(kX2ConfigAssets), g_replaced,
+        g_replaced ? ""
+                   : ". NONE: nothing the game opened had a "
+                     "counterpart there, so this run drew the "
+                     "shipped assets");
   if (!files_traced()) {
-    printf("         set X2_FILES=1 to list them as they are opened.\n");
+    x2_log_info("         set X2_FILES=1 to list them as they are opened.\n");
     return;
   }
   for (index = 0; index < g_nasset; ++index)
-    printf("         %s\n", g_asset[index]);
+    x2_log_info("         %s\n", g_asset[index]);
 }
 
 static const char *asset_replacement(const char *guest_path) {
   static char path[1024];
-  const char *root = getenv("X2_ASSETS");
+  const char *root = x2_config_override_get(kX2ConfigAssets);
   char relative[512];
   size_t index;
   struct stat status;
@@ -330,7 +331,7 @@ void k32_open_note(const char *guest_path, int succeeded, int replaced,
       snprintf(reported[reported_count++], sizeof(reported[0]), "%s",
                guest_path);
     g_replaced++;
-    fprintf(stderr, "assets: REPLACED \"%s\" with %s (X2_ASSETS)\n", guest_path,
-            host_path);
+    x2_log_error("assets: REPLACED \"%s\" with %s (X2_ASSETS)\n", guest_path,
+                 host_path);
   }
 }

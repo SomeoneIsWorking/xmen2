@@ -24,7 +24,8 @@ controller-authored version.
 `FUN_00629bf0` to its one call from `0x005ec061`. When a controller is connected,
 it asks the already-loaded dialog parser for its own `text` field, using the
 same parser getter as the ordinary retail branch. With no controller it retains
-the PC override. Other localization calls always retain the recompiled body.
+the PC override. Other localization calls always retain the retail body through
+the JIT.
 The decision is made for each popup, so controller attach/detach cannot leave a
 cached device-specific string behind.
 

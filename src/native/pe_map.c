@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * Map a PE32 image into the guest's 32-bit address space.
  *
@@ -8,8 +9,8 @@
  * whether those are identity-mapped (Linux) or translated through a high 4 GB
  * arena (arm64 macOS, whose Mach-O __PAGEZERO occupies the low 4 GB).
  */
-#include "pe_map.h"
 #include "guest_memory.h"
+#include "pe_map.h"
 #include "platform_mman.h"
 
 #include <strings.h> /* strcasecmp */
@@ -55,36 +56,35 @@ int pe_map(const char *path, PeImage *out) {
   memset(out, 0, sizeof *out);
   fd = open(path, O_RDONLY);
   if (fd < 0) {
-    fprintf(stderr, "pe_map: cannot open %s: %s\n", path, strerror(errno));
+    x2_log_error("pe_map: cannot open %s: %s\n", path, strerror(errno));
     return -1;
   }
   if (fstat(fd, &st) < 0 || st.st_size < 0x40) {
-    fprintf(stderr, "pe_map: %s is not a file with a DOS header\n", path);
+    x2_log_error("pe_map: %s is not a file with a DOS header\n", path);
     close(fd);
     return -1;
   }
   f = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
   close(fd);
   if (f == MAP_FAILED) {
-    fprintf(stderr, "pe_map: cannot map %s: %s\n", path, strerror(errno));
+    x2_log_error("pe_map: cannot map %s: %s\n", path, strerror(errno));
     return -1;
   }
   if (f[0] != 'M' || f[1] != 'Z') {
-    fprintf(stderr, "pe_map: %s has no MZ signature\n", path);
+    x2_log_error("pe_map: %s has no MZ signature\n", path);
     goto fail;
   }
   pe = RD32_(f, 0x3C);
   if (pe + 0x78 > (uint32_t)st.st_size || memcmp(f + pe, "PE\0\0", 4) != 0) {
-    fprintf(stderr, "pe_map: %s has no PE header at 0x%x\n", path, pe);
+    x2_log_error("pe_map: %s has no PE header at 0x%x\n", path, pe);
     goto fail;
   }
   nsec = RD16(f, pe + 6);
   opt = pe + 24;
   if (RD16(f, opt) != 0x10B) {
-    fprintf(stderr,
-            "pe_map: %s is not PE32 (optional magic 0x%x); this "
-            "recompiler targets 32-bit images only\n",
-            path, RD16(f, opt));
+    x2_log_error("pe_map: %s is not PE32 (optional magic 0x%x); this "
+                 "runtime targets 32-bit images only\n",
+                 path, RD16(f, opt));
     goto fail;
   }
   base = RD32_(f, opt + 28);
@@ -103,12 +103,11 @@ int pe_map(const char *path, PeImage *out) {
        so the new base is returned and the caller prints it. */
     if (guest_memory_map_any(0x20000000u, 0xF0000000u, 0x01000000u, imgsize,
                              PROT_READ | PROT_WRITE, &base) != 0) {
-      fprintf(stderr,
-              "pe_map: %s wants 0x%08x, which is taken, and no "
-              "free span of %u bytes was found below 4 GB. Guest "
-              "pointers are 32-bit, so there is nowhere else to "
-              "put it.\n",
-              path, base, imgsize);
+      x2_log_error("pe_map: %s wants 0x%08x, which is taken, and no "
+                   "free span of %u bytes was found below 4 GB. Guest "
+                   "pointers are 32-bit, so there is nowhere else to "
+                   "put it.\n",
+                   path, base, imgsize);
       goto fail;
     }
   }
@@ -119,7 +118,7 @@ int pe_map(const char *path, PeImage *out) {
     uint32_t raw = RD32_(f, s + 20), rsz = RD32_(f, s + 16);
     uint32_t n = rsz < vsz ? rsz : vsz;
     if (raw + n > (uint32_t)st.st_size) {
-      fprintf(stderr, "pe_map: section %d of %s runs past the file\n", i, path);
+      x2_log_error("pe_map: section %d of %s runs past the file\n", i, path);
       guest_memory_release(base, imgsize);
       goto fail;
     }
@@ -131,7 +130,7 @@ int pe_map(const char *path, PeImage *out) {
   /* Apply base relocations if the image did not land where it was linked.
    *
    * This was missing, and it is the kind of missing that does not announce
-   * itself: the recompiled CODE resolves absolute references against
+   * itself: guest code resolves absolute references against
    * G_IMGBASE, so code works at any base -- but the image's own DATA holds
    * pointers baked in at link time (vtables, string tables, jump tables).
    * Relocating without fixing those leaves every one of them pointing at the
@@ -141,20 +140,18 @@ int pe_map(const char *path, PeImage *out) {
     uint32_t rel, relsz, n = 0;
     rel = data_dir_at(f, DIR_BASERELOC, &relsz);
     if (!rel || !relsz) {
-      fprintf(stderr,
-              "pe_map: %s had to move from 0x%08x to 0x%08x and "
-              "has NO relocation directory. Its data pointers "
-              "cannot be fixed, so it would run against the "
-              "wrong addresses.\n",
-              path, (uint32_t)prefbase, base);
+      x2_log_error("pe_map: %s had to move from 0x%08x to 0x%08x and "
+                   "has NO relocation directory. Its data pointers "
+                   "cannot be fixed, so it would run against the "
+                   "wrong addresses.\n",
+                   path, (uint32_t)prefbase, base);
       guest_memory_release(base, imgsize);
       goto fail;
     }
     n = pe_apply_relocs(base, rel, relsz, base - (uint32_t)prefbase);
-    fprintf(stderr,
-            "pe_map: %s relocated 0x%08x -> 0x%08x, %u fixups "
-            "applied\n",
-            path, (uint32_t)prefbase, base, n);
+    x2_log_error("pe_map: %s relocated 0x%08x -> 0x%08x, %u fixups "
+                 "applied\n",
+                 path, (uint32_t)prefbase, base, n);
   }
   munmap(f, (size_t)st.st_size);
   out->base = base;
@@ -179,8 +176,7 @@ void pe_unmap(PeImage *img) {
    report unrecognisable. */
 int pe_map_anon_low(uint32_t want, uint32_t size) {
   if (guest_memory_map_fixed(want, size, PROT_READ | PROT_WRITE) != 0) {
-    fprintf(stderr, "pe_map_anon_low: wanted 0x%08x, %s\n", want,
-            strerror(errno));
+    x2_log_error("pe_map_anon_low: wanted 0x%08x, %s\n", want, strerror(errno));
     return -1;
   }
   return 0;
@@ -191,7 +187,7 @@ int pe_map_anon_low(uint32_t want, uint32_t size) {
  * The hosted build never needed these: the Windows loader resolved libIGCore's
  * exports into libIGDisplay's IAT before any game code ran. Natively nobody
  * does, and the consequence is not a link error -- it is silence. 40 of
- * libIGDisplay's IAT slots are READ AS DATA in 113 places in the emitted code
+ * libIGDisplay's IAT slots are READ AS DATA in 113 retail instruction sites
  * (they are data exports: ArkCore, kSuccess, the memory-pool adaptor). In a
  * file image those slots still hold hint/name RVAs, so every one of those
  * reads would return a small integer that looks like a pointer.
@@ -229,11 +225,10 @@ static uint32_t pe_apply_relocs(uint32_t base, uint32_t rel, uint32_t relsz,
       if (type == 0)
         continue; /* ABSOLUTE: padding */
       if (type != 3) {
-        fprintf(stderr,
-                "pe_map: relocation type %u at rva 0x%x is not "
-                "HIGHLOW; a 32-bit image should not contain "
-                "one, so this is not safe to skip\n",
-                type, where);
+        x2_log_error("pe_map: relocation type %u at rva 0x%x is not "
+                     "HIGHLOW; a 32-bit image should not contain "
+                     "one, so this is not safe to skip\n",
+                     type, where);
         abort();
       }
       *(volatile uint32_t *)guest_memory_pointer(base + where) += delta;

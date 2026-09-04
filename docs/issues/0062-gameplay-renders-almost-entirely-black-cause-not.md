@@ -47,13 +47,13 @@ against the stock Wine path, which has not been run for this scene.
 
 Do not start changing light or material maths on the strength of a screenshot
 that looks gloomy. Get the control first: the same scripted route under
-./run.sh wine or tools/run_shim.sh, photographed at the same point, and compare.
+the stock Wine oracle runner, photographed at the same point, and compare.
 If the control is equally dark there is nothing here.
 
 ### Note (2026-08-12)
 ## The stock control now exists, and the tooling to get it
 
-tools/run_shim.sh gained X2_KEYS="<seconds>:<key>,..." -- scripted input for the
+tools/run_shim.py gained X2_KEYS="<seconds>:<key>,..." -- scripted input for the
 WINE path, in wall-clock seconds, delivered with xdotool. Until now the stock
 control could only photograph whatever the intro reached on its own, which made
 it useless for anything past the menu, and "settle it against stock" is this
@@ -223,7 +223,7 @@ and compare those two frames. If the native version of THAT room is lit by one
 ### Note (2026-08-12)
 ## The control is now REPEATABLE, and the like-for-like is still not achieved
 
-tools/run_shim.sh X2_KEYS gained a repeat window: "<from>-<to>/<step>:<key>"
+tools/run_shim.py X2_KEYS gained a repeat window: "<from>-<to>/<step>:<key>"
 fires a key every <step> seconds across a range. Exact instants proved too
 brittle -- the six intro movies take a different wall-clock time every run, and
 THREE control runs were lost to it: one where the press landed before the menu

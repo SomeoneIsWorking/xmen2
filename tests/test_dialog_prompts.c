@@ -41,17 +41,17 @@ int x2_player_input_uses_gamepad(unsigned player) {
 
 static void guest_body_00629bf0(CPU *C) {
   super_calls++;
-  C->eax = 0x11112222u;
-  C->esp += 4u;
+  C->reg[kX86pEax] = 0x11112222u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 static void guest_body_00564b70(CPU *C) {
   asset_calls++;
-  CHECK(C->ecx == expected_outer_esp + 0x1cu);
-  CHECK(RD32(C->esp + 4u) == mapped_base + (TEXT_KEY - EXE_BASE));
-  CHECK(RD32(C->esp + 8u) == mapped_base + (EMPTY_TEXT - EXE_BASE));
-  C->eax = 0x33334444u;
-  C->esp += 12u; /* RET 8 */
+  CHECK(C->reg[kX86pEcx] == expected_outer_esp + 0x1cu);
+  CHECK(RD32(C->reg[kX86pEsp] + 4u) == mapped_base + (TEXT_KEY - EXE_BASE));
+  CHECK(RD32(C->reg[kX86pEsp] + 8u) == mapped_base + (EMPTY_TEXT - EXE_BASE));
+  C->reg[kX86pEax] = 0x33334444u;
+  C->reg[kX86pEsp] += 12u; /* RET 8 */
 }
 
 void x2_override_00629bf0(CPU *C);
@@ -72,21 +72,21 @@ static void run_lookup(int pads, uint32_t linked_return, uint32_t want_eax,
   expected_outer_esp = stack;
   WR32(stack, mapped(linked_return));
   WR32(stack + 4u, mapped_base + 0x3000u);
-  C.esp = stack;
+  C.reg[kX86pEsp] = stack;
   x2_override_00629bf0(&C);
-  CHECK(C.esp == stack + 4u);
-  CHECK(C.eax == want_eax);
+  CHECK(C.reg[kX86pEsp] == stack + 4u);
+  CHECK(C.reg[kX86pEax] == want_eax);
   CHECK(super_calls - before_super == want_super);
   CHECK(asset_calls - before_asset == want_asset);
 }
 
 int main(void) {
   int result;
-  mapped_base = 0x10000000u;
   result = guest_memory_init();
   CHECK(result == 0);
   result =
-      guest_memory_map_fixed(mapped_base, IMAGE_SIZE, PROT_READ | PROT_WRITE);
+      guest_memory_map_any(0x10000000u, 0x70000000u, 0x01000000u, IMAGE_SIZE,
+                           PROT_READ | PROT_WRITE, &mapped_base);
   CHECK(result == 0);
 
   CHECK(native_stubs_registered("XMen2.exe", 0x00629bf0u));

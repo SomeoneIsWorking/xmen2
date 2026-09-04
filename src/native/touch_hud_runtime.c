@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /* The retail CHud, and the one thing this port takes from it.
  *
  * `FUN_005a43d0` is CHud's single draw path, and the retail game reaches it
@@ -60,13 +61,14 @@ void x2_touch_hud_report(void) {
   /* Reported at zero too: no gameplay HUD frame at all is a fact about the
      run -- it means the overlay could never have appeared -- and it is not
      the same as the run never having built this instrument. */
-  fprintf(stderr,
-          "TOUCH HUD: %lu gameplay HUD frame(s) published to the control "
-          "gate; the retail HUD is drawn as authored (see the header for "
-          "why it is not relocated). Last gate answer: %s.\n",
-          g_root_calls,
-          x2_gameplay_control_name(
-              (int)x2_gameplay_control_state(guest_clock_now_s())));
+  lucent_log_error(
+      "x2",
+      "TOUCH HUD: %lu gameplay HUD frame(s) published to the control "
+      "gate; the retail HUD is drawn as authored (see the header for "
+      "why it is not relocated). Last gate answer: %s.\n",
+      g_root_calls,
+      x2_gameplay_control_name(
+          (int)x2_gameplay_control_state(guest_clock_now_s())));
 }
 
 __attribute__((constructor)) static void x2_touch_hud_register(void) {

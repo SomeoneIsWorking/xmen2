@@ -1,8 +1,10 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * Native overrides for the /GS stack-cookie mechanism (MSVC buffer-overrun
  * protection), which is where an intermittent load crash surfaces.
  *
- * The recompiled exe ends ~1001 /GS functions with a direct call to
+ * The retail exe ends ~1001 /GS functions with a direct call to
  * __security_check_cookie (0x00672161): the epilogue loads its stored local
  * cookie into ECX and calls it; it compares ECX against the process cookie at
  * 0x006f38f8 and, on a mismatch, tail-jumps to __report_gsfailure (0x00672130)
@@ -19,7 +21,7 @@
  * path changes.
  */
 
-/* The process-wide cookie, as the recompiled check reads it. */
+/* The process-wide cookie, as the guest check reads it. */
 #define X2_COOKIE_VA 0x006f38f8u
 
 #include "x86rt.h"
@@ -31,9 +33,9 @@
 
 void x2_override_00672161(CPU *C) {
   uint32_t cookie = RD32(X2_COOKIE_VA);
-  if (C->ecx == cookie) {
+  if (C->reg[kX86pEcx] == cookie) {
     /* The frame is intact; return as the body's RET does. */
-    C->esp += 4u;
+    C->reg[kX86pEsp] += 4u;
     return;
   }
   {
@@ -41,19 +43,20 @@ void x2_override_00672161(CPU *C) {
        its own epilogue check. The cookie compare reads ECX, which the
        caller loaded from its stored local -- so a mismatch means that
        caller's frame was overrun. */
-    uint32_t ra = RD32(C->esp);
+    uint32_t ra = RD32(C->reg[kX86pEsp]);
     const char *nm = x86_native_name_at(ra);
     X86Module *m = x86_module_for(ra);
-    fprintf(stderr,
-            "SECURITY: __security_check_cookie MISMATCH in the /GS epilogue "
-            "of caller 0x%08x%s%s%s (stored cookie 0x%08x != process "
-            "0x%08x). A function wrote past its own stack frame.\n",
-            ra, nm ? " " : " (", nm ? nm : (m ? m->name : "???"),
-            nm ? "" : (m ? " +offset)" : ")"), C->ecx, cookie);
+    x2_log_error(
+        "SECURITY: __security_check_cookie MISMATCH in the /GS epilogue "
+        "of caller 0x%08x%s%s%s (stored cookie 0x%08x != process "
+        "0x%08x). A function wrote past its own stack frame.\n",
+        ra, nm ? " " : " (", nm ? nm : (m ? m->name : "???"),
+        nm ? "" : (m ? " +offset)" : ")"), C->reg[kX86pEcx], cookie);
     /* For FUN_0046b750 (caller 0x0046badd) the cookie sits at entry_esp-4;
        report the current guest stack so the exact slot can be computed for
        a follow-up memory watch. */
-    fprintf(stderr, "  guest esp=0x%08x ebp=0x%08x\n", C->esp, C->ebp);
+    x2_log_error("  guest esp=0x%08x ebp=0x%08x\n", C->reg[kX86pEsp],
+                 C->reg[kX86pEbp]);
     /* Reconstruct the guest call chain by walking return addresses on the
        stack (each looks like a code address in a mapped module). This
        names every function alive at the moment the cookie was checked --
@@ -63,16 +66,16 @@ void x2_override_00672161(CPU *C) {
          addresses) collecting words that look like mapped code. The
          cookie check's ESP is near the top of the live frame; the
          return addresses that name the call chain are below it. */
-      uint32_t sp = C->esp;
+      uint32_t sp = C->reg[kX86pEsp];
       int depth;
       for (depth = 0; depth < 64 && sp > 0x700f0000u; sp -= 4) {
         uint32_t w = RD32(sp);
         const char *nm = x86_native_name_at(w);
         X86Module *mm = x86_module_for(w);
         if (nm || mm) {
-          fprintf(stderr, "  [sp 0x%08x] 0x%08x %s%s%s\n", sp, w,
-                  nm ? "" : "in ", nm ? nm : (mm ? mm->name : "???"),
-                  (nm || !mm) ? "" : " +offset");
+          x2_log_error("  [sp 0x%08x] 0x%08x %s%s%s\n", sp, w, nm ? "" : "in ",
+                       nm ? nm : (mm ? mm->name : "???"),
+                       (nm || !mm) ? "" : " +offset");
           depth++;
         }
       }
@@ -83,8 +86,8 @@ void x2_override_00672161(CPU *C) {
     {
       uint32_t a;
       for (a = 0x700ffd80; a <= 0x700fff40; a += 16) {
-        fprintf(stderr, "  [0x%08x] %08x %08x %08x %08x\n", a, RD32(a),
-                RD32(a + 4), RD32(a + 8), RD32(a + 0xc));
+        x2_log_error("  [0x%08x] %08x %08x %08x %08x\n", a, RD32(a),
+                     RD32(a + 4), RD32(a + 8), RD32(a + 0xc));
       }
     }
   }
@@ -104,18 +107,17 @@ static int g_security_watch_armed;
 void x2_override_0046b750_watch(CPU *C) {
   static int want = -1;
   if (want < 0) {
-    const char *e = getenv("X2_SECURITY_WATCH");
+    const char *e = x2_config_override_get(kX2ConfigSecurityWatch);
     want = (e && *e && *e != '0') ? 1 : 0;
   }
   if (want) {
-    uint32_t cookie_addr = C->esp - 4u; /* the /GS cookie slot */
-    uint32_t entry_esp = C->esp;
+    uint32_t cookie_addr = C->reg[kX86pEsp] - 4u; /* the /GS cookie slot */
+    uint32_t entry_esp = C->reg[kX86pEsp];
     x2_write_watch_addr = cookie_addr;
     g_security_watch_armed = 1;
-    fprintf(stderr,
-            "SECURITY: FUN_0046b750 entry esp 0x%08x, cookie slot "
-            "0x%08x.\n",
-            entry_esp, cookie_addr);
+    x2_log_error("SECURITY: FUN_0046b750 entry esp 0x%08x, cookie slot "
+                 "0x%08x.\n",
+                 entry_esp, cookie_addr);
     x86_stackcheck_arm(1);
     x86_guest_body(C, "XMen2.exe", 0x0046b750u);
     x86_stackcheck_arm(0);
@@ -123,13 +125,13 @@ void x2_override_0046b750_watch(CPU *C) {
        body did not return esp to where it started, those are different
        slots and the /GS check compares the wrong word -- which reads as a
        buffer overrun and is not one. Say so, with both numbers. */
-    if (C->esp != entry_esp + 4u)
-      fprintf(stderr,
-              "SECURITY: FUN_0046b750 returned esp 0x%08x, "
-              "expected 0x%08x -- the body is %d byte(s) out of "
-              "balance, so its /GS epilogue reads a slot that "
-              "is NOT the cookie it stored.\n",
-              C->esp, entry_esp + 4u, (int)(C->esp - (entry_esp + 4u)));
+    if (C->reg[kX86pEsp] != entry_esp + 4u)
+      x2_log_error("SECURITY: FUN_0046b750 returned esp 0x%08x, "
+                   "expected 0x%08x -- the body is %d byte(s) out of "
+                   "balance, so its /GS epilogue reads a slot that "
+                   "is NOT the cookie it stored.\n",
+                   C->reg[kX86pEsp], entry_esp + 4u,
+                   (int)(C->reg[kX86pEsp] - (entry_esp + 4u)));
     g_security_watch_armed = 0;
     x2_write_watch_addr = 0;
     return;

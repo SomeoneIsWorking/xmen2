@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * The VS 1.1 executor: the guest's own shader program, run on the host CPU.
  *
@@ -56,10 +57,9 @@ static int decode_inputs(const D3D8VertexShader *s, Input input[17]) {
     if (kind == 1) {
       stream = t & 0xfu;
       if (stream != 0) {
-        fprintf(stderr,
-                "d3d8: vertex declaration selects stream %u; "
-                "the VS executor currently has only stream 0.\n",
-                stream);
+        x2_log_error("d3d8: vertex declaration selects stream %u; "
+                     "the VS executor currently has only stream 0.\n",
+                     stream);
         return 0;
       }
     } else if (kind == 2) {
@@ -69,10 +69,9 @@ static int decode_inputs(const D3D8VertexShader *s, Input input[17]) {
         unsigned reg = t & 0x1fu, type = (t >> 16) & 0xfu;
         unsigned n = data_size(type);
         if (reg >= 17 || !n) {
-          fprintf(stderr,
-                  "d3d8: vertex declaration REG %u type %u "
-                  "cannot be represented.\n",
-                  reg, type);
+          x2_log_error("d3d8: vertex declaration REG %u type %u "
+                       "cannot be represented.\n",
+                       reg, type);
           return 0;
         }
         input[reg].present = 1;
@@ -81,17 +80,15 @@ static int decode_inputs(const D3D8VertexShader *s, Input input[17]) {
         offset[stream] += n;
       }
     } else if (kind != 0) {
-      fprintf(stderr,
-              "d3d8: vertex declaration token 0x%08x has "
-              "unsupported token type %u.\n",
-              t, kind);
+      x2_log_error("d3d8: vertex declaration token 0x%08x has "
+                   "unsupported token type %u.\n",
+                   t, kind);
       return 0;
     }
   }
-  fprintf(stderr,
-          "d3d8: scanned %u declaration token(s), but no END was "
-          "reachable in the copied stream.\n",
-          s->declaration_dwords);
+  x2_log_error("d3d8: scanned %u declaration token(s), but no END was "
+               "reachable in the copied stream.\n",
+               s->declaration_dwords);
   return 0;
 }
 
@@ -151,10 +148,9 @@ static Vec source(uint32_t t, Vec temp[12], Vec in[17], Vec c[VS_CONSTANTS],
   else if (type == 6 && n < 8)
     raw = out[5 + n];
   else {
-    fprintf(stderr,
-            "d3d8: VS 1.1 source register type %u number %u is "
-            "unsupported.\n",
-            type, n);
+    x2_log_error("d3d8: VS 1.1 source register type %u number %u is "
+                 "unsupported.\n",
+                 type, n);
     *ok = 0;
     return raw;
   }
@@ -164,8 +160,8 @@ static Vec source(uint32_t t, Vec temp[12], Vec in[17], Vec c[VS_CONSTANTS],
     for (i = 0; i < 4; ++i)
       v.x[i] = -v.x[i];
   else if ((t >> 24) & 0xfu) {
-    fprintf(stderr, "d3d8: VS 1.1 source modifier %u is unsupported.\n",
-            (t >> 24) & 0xfu);
+    x2_log_error("d3d8: VS 1.1 source modifier %u is unsupported.\n",
+                 (t >> 24) & 0xfu);
     *ok = 0;
   }
   return v;
@@ -184,10 +180,9 @@ static Vec *destination(uint32_t t, Vec temp[12], Vec *addr, Vec out[12],
     return &out[3 + n];
   if (type == 6 && n < 8)
     return &out[5 + n];
-  fprintf(stderr,
-          "d3d8: VS 1.1 destination register type %u number %u is "
-          "unsupported.\n",
-          type, n);
+  x2_log_error("d3d8: VS 1.1 destination register type %u number %u is "
+               "unsupported.\n",
+               type, n);
   *ok = 0;
   return &temp[0];
 }
@@ -251,10 +246,9 @@ static int execute_one(const D3D8VertexShader *s, Vec input[17],
       break;
     }
     default:
-      fprintf(stderr,
-              "d3d8: VS 1.1 opcode %u at dword %u is not "
-              "implemented; the draw is refused.\n",
-              op, pc - 2);
+      x2_log_error("d3d8: VS 1.1 opcode %u at dword %u is not "
+                   "implemented; the draw is refused.\n",
+                   op, pc - 2);
       return 0;
     }
     if (!ok)
@@ -283,10 +277,9 @@ int d3d8_vs_execute(uint32_t handle, const float constants[VS_CONSTANTS][4],
     return 0;
   if (first > UINT32_MAX - count ||
       (uint64_t)(first + count) * stride > vertex_bytes) {
-    fprintf(stderr,
-            "d3d8: vertex shader draw asks for vertices %u..%u at "
-            "stride %u from a %u-byte source.\n",
-            first, first + count, stride, vertex_bytes);
+    x2_log_error("d3d8: vertex shader draw asks for vertices %u..%u at "
+                 "stride %u from a %u-byte source.\n",
+                 first, first + count, stride, vertex_bytes);
     return 0;
   }
   memcpy(c, constants, sizeof c);
@@ -297,10 +290,9 @@ int d3d8_vs_execute(uint32_t handle, const float constants[VS_CONSTANTS][4],
       if (decl[i].present) {
         unsigned n = data_size(decl[i].type);
         if ((unsigned)decl[i].offset + n > stride) {
-          fprintf(stderr,
-                  "d3d8: declaration input v%u ends at byte %u, "
-                  "past stride %u.\n",
-                  i, decl[i].offset + n, stride);
+          x2_log_error("d3d8: declaration input v%u ends at byte %u, "
+                       "past stride %u.\n",
+                       i, decl[i].offset + n, stride);
           return 0;
         }
         in[i] = load_input(p + decl[i].offset, decl[i].type);
@@ -348,10 +340,11 @@ int d3d8_vs_selftest(void) {
       fabsf(out.position[1] - 6) > 0.0001f ||
       fabsf(out.position[2] - 12) > 0.0001f ||
       fabsf(out.position[3] - 5) > 0.0001f ||
-      memcmp(out.diffuse, vertex.colour, sizeof vertex.colour)) {
-    printf("d3d8 VS selftest: FAILED -- relative DP4 output was "
-           "[%g %g %g %g], expected [2 6 12 5].\n",
-           out.position[0], out.position[1], out.position[2], out.position[3]);
+      memcmp(out.diffuse, vertex.colour, sizeof vertex.colour) != 0) {
+    x2_log_info("d3d8 VS selftest: FAILED -- relative DP4 output was "
+                "[%g %g %g %g], expected [2 6 12 5].\n",
+                out.position[0], out.position[1], out.position[2],
+                out.position[3]);
     fails++;
   }
   if (h)
@@ -360,14 +353,14 @@ int d3d8_vs_selftest(void) {
   bad = d3d8_vs_create(decl, bad_code, 0);
   if (!bad || d3d8_vs_execute(bad, c, &vertex, sizeof vertex, sizeof vertex, 0,
                               1, &out)) {
-    printf("d3d8 VS selftest: FAILED -- unsupported opcode 0x1234 was not "
-           "refused by the shipping executor.\n");
+    x2_log_info("d3d8 VS selftest: FAILED -- unsupported opcode 0x1234 was not "
+                "refused by the shipping executor.\n");
     fails++;
   }
   if (bad)
     d3d8_vs_delete(bad);
-  printf("d3d8 VS selftest: %s -- positive relative-addressed program and "
-         "negative unsupported-opcode program both exercised\n",
-         fails ? "FAILED" : "PASSED");
+  x2_log_info("d3d8 VS selftest: %s -- positive relative-addressed program and "
+              "negative unsupported-opcode program both exercised\n",
+              fails ? "FAILED" : "PASSED");
   return fails;
 }

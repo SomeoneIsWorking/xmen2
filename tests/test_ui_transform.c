@@ -52,14 +52,14 @@ static void guest_body_1003ec10(CPU *C) {
 
   /* The wrapper must have invalidated the selector before it enters the
      original body, even when the previous set was complete. */
-  pre_super_publish = x2_ui_transform_current(C->ecx, ignored);
+  pre_super_publish = x2_ui_transform_current(C->reg[kX86pEcx], ignored);
 
   WR32(OUTPUT_REF, OUTPUT_MATRIX);
   for (i = 0; i < 16; i++)
     *(float *)guest_memory_pointer(OUTPUT_MATRIX + i * sizeof(float)) =
         i % 5u == 0 ? super_diagonal : 0.0f;
   if (mutate_super_context)
-    C->ecx = 0xeeeeeeeeu;
+    C->reg[kX86pEcx] = 0xeeeeeeeeu;
 }
 
 static void capture(CPU *cpu, uint32_t context, uint32_t selector,
@@ -68,8 +68,8 @@ static void capture(CPU *cpu, uint32_t context, uint32_t selector,
   WR32(GUEST_STACK, 0xfeedfaceu);
   WR32(GUEST_STACK + 4u, selector);
   WR32(GUEST_STACK + 8u, OUTPUT_REF);
-  cpu->esp = GUEST_STACK;
-  cpu->ecx = context;
+  cpu->reg[kX86pEsp] = GUEST_STACK;
+  cpu->reg[kX86pEcx] = context;
   super_diagonal = diagonal;
   pre_super_publish = -1;
   x2_ui_transform_compute_matrix(cpu);

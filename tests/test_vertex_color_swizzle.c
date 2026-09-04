@@ -62,8 +62,8 @@ static void run_override(uint32_t type, uint32_t start, uint32_t count,
                          uint32_t flags) {
   CPU c;
   memset(&c, 0, sizeof c);
-  c.ecx = SELF;
-  c.esp = STACK;
+  c.reg[kX86pEcx] = SELF;
+  c.reg[kX86pEsp] = STACK;
   WR32(STACK + 0u, 0xcafef00du); /* return address */
   WR32(STACK + 4u, DESC);
   WR32(STACK + 8u, flags);
@@ -81,8 +81,8 @@ static void run_override(uint32_t type, uint32_t start, uint32_t count,
 
   x2_override_10046ce0(&c);
 
-  if (c.esp != STACK + 12u) {
-    fprintf(stderr, "esp left at %08x, want %08x (ret 8)\n", c.esp,
+  if (c.reg[kX86pEsp] != STACK + 12u) {
+    fprintf(stderr, "esp left at %08x, want %08x (ret 8)\n", c.reg[kX86pEsp],
             STACK + 12u);
     failures++;
   }

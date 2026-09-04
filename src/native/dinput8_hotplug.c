@@ -1,6 +1,8 @@
+#include "x2_log.h"
 /* Hotswap and controller-table invariant ownership. See dinput8_hotplug.h. */
 #include "dinput8_hotplug.h"
 
+#include "alchemy_controller_bridge.h"
 #include "controller_hotplug.h"
 #include "dinput8_controller_slots.h"
 #include "dinput_pad.h"
@@ -37,12 +39,13 @@ void dinput8_check_controller_table(void);
  * process-lifetime cache bounded by the simultaneous eight-pad limit starts
  * re-enumerating every frame after eight reconnects.
  */
-void dinput8_hotplug_pump(struct CPU *cpu) {
+void dinput8_hotplug_pump(struct X86pCpu *cpu) {
   CPU *C = cpu;
   uint64_t generation;
   if (!C)
     return;
   dinput_pad_refresh();
+  x2_alchemy_controller_sync_inventory();
   x2_player_input_sync(C);
   dinput8_check_controller_table();
   generation = dinput_pad_generation();
@@ -51,37 +54,35 @@ void dinput8_hotplug_pump(struct CPU *cpu) {
   if (!g_pad_ref) {
     static int told_ref;
     if (!told_ref++)
-      fprintf(stderr, "DINPUT8: a re-admission is pending but the "
-                      "game never enumerated controllers, so there is "
-                      "no routine to call.\n");
+      x2_log_error("DINPUT8: a re-admission is pending but the "
+                   "game never enumerated controllers, so there is "
+                   "no routine to call.\n");
     return;
   }
 
   if (!g_pad_enum) {
     static int told;
     if (!told++)
-      fprintf(stderr,
-              "DINPUT8: a pad appeared, and this host never "
-              "identified the game's enumeration routine, so "
-              "generation %llu cannot be synchronized.\n",
-              (unsigned long long)generation);
+      x2_log_error("DINPUT8: a pad appeared, and this host never "
+                   "identified the game's enumeration routine, so "
+                   "generation %llu cannot be synchronized.\n",
+                   (unsigned long long)generation);
     return;
   }
-  fprintf(stderr,
-          "DINPUT8: HOTSWAP -- controller inventory generation %llu "
-          "now has %d connected pad(s). Calling the game's own "
-          "enumeration routine at 0x%08x so disconnects and arrivals "
-          "are applied by the game's rules.\n",
-          (unsigned long long)generation, dinput_pad_count(), g_pad_enum);
+  x2_log_error("DINPUT8: HOTSWAP -- controller inventory generation %llu "
+               "now has %d connected pad(s). Calling the game's own "
+               "enumeration routine at 0x%08x so disconnects and arrivals "
+               "are applied by the game's rules.\n",
+               (unsigned long long)generation, dinput_pad_count(), g_pad_enum);
   x2_controller_hotplug_admitted(&g_hotplug);
   {
     /* __thiscall FUN_00628e20(BOOL bRecordNew): ECX = the input manager,
        one stack argument. TRUE is what admits a controller the game has
        not seen before -- the same value startup passes. */
     CPU K = *C;
-    K.ecx = g_pad_ref;
-    K.esp -= 4u;
-    WR32(K.esp, 1u);
+    K.reg[kX86pEcx] = g_pad_ref;
+    K.reg[kX86pEsp] -= 4u;
+    WR32(K.reg[kX86pEsp], 1u);
     x86_guest_call_args(&K, g_pad_enum, 4u);
   }
 }
@@ -124,13 +125,12 @@ void dinput8_check_controller_table(void) {
   if (was_broken)
     return;
   was_broken = 1;
-  fprintf(stderr,
-          "DINPUT8: the game's controller table names NO live pad "
-          "while %d pad(s) are connected -- a restored save's "
-          "device table replaced the live inventory. Re-running "
-          "the game's enumeration so it re-admits them by its own "
-          "rules.\n",
-          dinput_pad_count());
+  x2_log_error("DINPUT8: the game's controller table names NO live pad "
+               "while %d pad(s) are connected -- a restored save's "
+               "device table replaced the live inventory. Re-running "
+               "the game's enumeration so it re-admits them by its own "
+               "rules.\n",
+               dinput_pad_count());
   x2_controller_hotplug_invalidate(&g_hotplug);
 }
 

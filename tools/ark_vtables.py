@@ -4,8 +4,9 @@
 The tool lives in the `alchemy` repo: the IGB/ARK layer belongs to the engine
 X-Men Legends II shares with Marvel Ultimate Alliance, so it is not this port's
 to own. This shim only has to find it and hand over; the DATA it reads stays
-here (`scratch/recomp/*.ark.json`).
+here (`scratch/analysis/*.ark.json`).
 """
+
 import os
 import runpy
 import sys

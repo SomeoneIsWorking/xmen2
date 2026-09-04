@@ -13,12 +13,11 @@ updated: 2026-09-04
 x86port `d5d3b00` adds `x86p_jit_engine_set_dispatch` -- a between-blocks hook
 called *after* the intercept predicate fires. It either services the hand-back
 and returns `kX86pDispatchContinue` (the run stays inside `x86p_jit_engine_run`)
-or returns `kX86pDispatchUnwind` for the cases that need the interpreter loop's
-host frame back (a return to the interpreted call's caller, a setjmp3 thunk, the
-engine return trampoline, an address this handler does not own). xmen2 side:
-`src/native/x86_engine_dispatch.c` (`x86_engine_jit_dispatch` + the per-thread
-`EngineCallCtx` stack), gated by the layered CVar `jit.inline_dispatch`
-(default on; `--set jit.inline_dispatch=0` is the A/B).
+or returns `kX86pDispatchUnwind` for paths that must return control to the
+title-owned guest-call boundary (setjmp recovery, native overrides, return, or
+an address this handler does not own). The xmen2 side owns the inline handler
+and its per-thread guest-call stack, gated by the layered CVar
+`jit.inline_dispatch` (default on; `--set jit.inline_dispatch=0` is the A/B).
 
 Measured, driven interactively into a real in-game level (not a script),
 identical timed input path, matched wall-time windows:
@@ -54,7 +53,7 @@ and prints the top 40 at shutdown. Driven in-game, ~115 s, `X2_UNPACED=1`:
  3-5. 0x2e034d10/44/52  igAttrStack::customReset    2.7% (3 blocks, identical counts)
  8-11. 0x0067217c..0x006721ef  XMen2.exe            2.8% (one tight loop)
 19-34. 0x006167a1..0x006169dd  XMen2.exe           ~7%   (~16 blocks, ~4.67M each)
-35-36. 0x0055b610/59  frame limiter (issue #35)     0.8% (inflated by UNPACED)
+35-36. 0x0055b610/59  frame limiter                 0.8% (inflated by UNPACED)
 38,40. igWin32LongTimer::getTimeOfDay / igLongTimer::getTimeAsLong  0.6%
 ```
 
@@ -97,10 +96,10 @@ cost (the Android target) more than uncapped FPS.
   2026-09-03.** MSVC's control-word-independent float->int64 helper
   (`fld st(0); fistp qword; fild; fsubp; add 0x7fffffff/adc`), a pure-x87 leaf
   whose body the JIT ran one instruction at a time through the interpreter
-  helper on every conversion. `src/native/crt_static_overrides.c` registers a
+  helper on every conversion. `src/native/crt_in_image_overrides.c` registers a
   native override on `XMen2.exe!0x0067217c` that reuses `x87_crt_ftol` (the
   imported-`_ftol` implementation -- identical observable contract: pop ST(0),
-  truncate toward zero, int64 in EDX:EAX, `__cdecl`). `crt_static_overrides`
+  truncate toward zero, int64 in EDX:EAX, `__cdecl`). `crt_in_image_overrides`
   test covers the semantics + registration; a driven in-game session confirms
   the `0x006721xx` blocks leave the execution profile entirely (top block
   count 1.24e9 -> 1.10e9 in a matched window) and gameplay renders correctly.
@@ -117,7 +116,7 @@ cost (the Android target) more than uncapped FPS.
  3-4. 0x00594524/78  XMen2.exe                      2.5%
  5-7. 0x2e034d10/44/52  igAttrStack::customReset    3.3%
  8-9. 0x006276f6/750  XMen2.exe                     1.6%
-10-11,18-20. 0x0055b4xx/0x0055b6xx  frame limiter   1.5%  (inflated by UNPACED, issue #35)
+10-11,18-20. 0x0055b4xx/0x0055b6xx  frame limiter   1.5%  (inflated by UNPACED)
 12-17. igWin32LongTimer::getTimeOfDay / igLongTimer::getTimeAsLong  1.5%
 25-40. igMemoryPool::getMemoryPoolByIndex / igArenaMemoryPool::isActive / ::contains  ~3%
 ```
@@ -193,14 +192,13 @@ guest execution + crossings, and the crossing half of that is the lever.
 
 ## Root cause
 
-Every guest->host import call makes `x86p_jit_engine_run` return
-`kX86pRunIntercept`, unwinds the JIT slice, and `x2_engine_call` does the
-callout (`x2_engine_callout_from/to_x86p` + `x86_dispatch` +
-`x86_native_call_at` -> `thunk_call`) before re-entering
-`x86p_jit_engine_run`. At ~20k QPC calls/frame that round trip dominates.
+Every guest->host import call made `x86p_jit_engine_run` return
+`kX86pRunIntercept`, unwound the JIT slice, routed the import through the
+title's ordinary host-call boundary, and then re-entered
+`x86p_jit_engine_run`. At ~20k QPC calls/frame that round trip dominated.
 QPC is called that often because the game frame-limits / polls the clock in
-a spin that the interpreter self-rate-limits and the JIT does not
-(the same class as issue #57 / C207, a different spin site: the menu/frame
+a spin that the diagnostic interpreter self-rate-limits and the JIT does not
+(the same class as C207, a different spin site: the menu/frame
 pacing loop, not libCriMovie).
 
 ## Options and disposition
@@ -216,11 +214,10 @@ pacing loop, not libCriMovie).
    binary, and give it a bounded wait via a native override, A/B in the
    same binary. Biggest single-site win if the loop is as tight as the
    call count implies.
-3. **Landed — cheaper leaf-thunk fast path in `x2_engine_call`.** Pure leaf
-   thunks such as `_ftol`, `_stricmp`, `QueryPerformanceCounter`, and the other
-   functions listed below run against x86port CPU state without the full
-   `x86_dispatch` callout. One shared leaf-handler seam owns the routing rather
-   than per-symbol `is_X_thunk` helpers.
+3. **Landed — cheaper x86 import fast path.** Eligible imports such as `_ftol`,
+   `_stricmp`, `QueryPerformanceCounter`, and the other functions listed below
+   run against x86port CPU state without the full ordinary host-import routing.
+   One shared fast-path seam owns the routing rather than per-symbol helpers.
 4. **Partially landed — more native ownership.** Selected evidenced hot bodies
    below are now native overrides. Further replacements remain subsystem work,
    not a substitute for representative product qualification or broad x86port
@@ -233,14 +230,14 @@ draw/skinning cost up but the crossing cost scales with it.
 
 ## Progress (2026-09-02)
 
-- **Option 3 implemented**: `src/native/engine_leaf_thunks.{c,h}` creates a unified
-  leaf thunk dispatch table indexed directly by `(eip - THUNK_BASE) >> 4`.
-  Pure leaf thunks execute directly against the `X86pCpu` struct, bypassing
-  `x2_engine_callout_from_x86p`, `x86_dispatch`, and `x2_engine_callout_to_x86p`.
+- **Option 3 implemented**: `src/native/x86_import_fastpath.{c,h}` creates a
+  unified import dispatch table indexed directly by `(eip - THUNK_BASE) >> 4`.
+  Eligible imports execute directly against the canonical `X86pCpu` state,
+  bypassing the ordinary host-import routing path.
   Covered functions: `_ftol`, `_stricmp`, `_strcmpi`, `QueryPerformanceCounter`,
   `QueryPerformanceFrequency`, `toupper`, `tolower`, `strstr`, and `TlsGetValue`.
-  Controlled by runtime CVar `engine.leaf_thunks` (default enabled).
-  Unit tested in `tests/test_engine_leaf_thunks.c`.
+  Controlled by runtime CVar `engine.import_fastpath` (default enabled).
+  Unit tested in `tests/test_x86_import_fastpath.c`.
   In a 2000-frame in-game run (`act0/tutorial/tutorial1`), average frame wall time
   improved from 16.89 ms to 14.57 ms (-13.7% overall frame time), with average
   present framerate rising from ~59.2 FPS to ~68.6 FPS.
@@ -315,7 +312,7 @@ are:
   on `XMen2.exe` here.
 - **`igWin32LongTimer::getTimeOfDay` / `igLongTimer::getTimeAsLong`
   (`0x2f068fd0` and neighbours, ~0.6% each).** The QPC-derived clock path;
-  related to the leaf-thunk QPC fast path already landed.
+  related to the QPC import fast path already landed.
 
 GPU is confirmed *not* an in-game bottleneck in this benchmark: host draw
 ~0.18 ms/frame and host upload ~0.31 ms/frame (transfer staging is already

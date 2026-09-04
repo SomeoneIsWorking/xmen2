@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /*
  * SDL keyboard and mouse state at the DirectInput boundary.
  *
@@ -143,14 +144,15 @@ unsigned long dinput_system_blind_reads(void) { return g_blind_reads; }
 static void say_blind(const char *what) {
   if (g_blind_reads++)
     return;
-  fprintf(stderr,
-          "DINPUT8: the %s state was read with no SDL video subsystem up, so "
-          "it reads as NOTHING PRESSED.\n"
-          "  That is indistinguishable from a working device nobody is "
-          "touching, which is why it is said here rather than left as a "
-          "block of zeros.\n"
-          "  Reported once; the total is in the exit report.\n",
-          what);
+  lucent_log_error(
+      "x2",
+      "DINPUT8: the %s state was read with no SDL video subsystem up, so "
+      "it reads as NOTHING PRESSED.\n"
+      "  That is indistinguishable from a working device nobody is "
+      "touching, which is why it is said here rather than left as a "
+      "block of zeros.\n"
+      "  Reported once; the total is in the exit report.\n",
+      what);
 }
 
 unsigned char dinput_system_dik(int scancode) {

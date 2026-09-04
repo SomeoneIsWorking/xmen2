@@ -12,7 +12,14 @@ Xbox prompt bytes are delivered through the game's original physical-input name 
 
 ## Evidence
 
-FUN_00619e30 -> FUN_006281f0 was decompiled and its devkind/code tables read from XMen2.exe. tests/test_pad_glyphs.c calls the exact __wrap_fn_XMen2_006281f0 shipping body: A, Z+/LT, Z-/RT and POV return generated guest font bytes with RET 8 balance; a non-Xbox slot, LS without authored art, and a child process with the pack disabled all reach __real_fn. test_dinput_pad proves SDL Xbox360/One positive and PS5/standard negative. A real zero-argument launcher run reports a content-hash cache hit and replacement of both X2F_med_PC font files.
+`FUN_00619e30 -> FUN_006281f0` was decompiled and its device-kind/code tables
+were read from XMen2.exe. `tests/test_pad_glyphs.c` calls the shipping native
+override at 0x006281f0: A, Z+/LT, Z-/RT, and POV return the authored font
+codepoints with `RET 8` balance; a non-Xbox slot, LS without authored art, and
+a disabled pack call the original retail body through `x86_guest_body`.
+`test_dinput_pad` proves SDL Xbox360/One positive and PS5/standard negative. A
+real zero-argument launcher run reports a content-hash cache hit and replacement
+of both X2F_med_PC font files.
 
 ## What would falsify it
 

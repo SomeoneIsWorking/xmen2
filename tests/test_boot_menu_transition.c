@@ -26,9 +26,9 @@ void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t pop) {
 int main(void) {
   CPU source;
   memset(&source, 0, sizeof source);
-  source.eax = 0x12345678u;
-  source.ecx = 0x23456789u;
-  source.esp = 0x00102000u;
+  source.reg[kX86pEax] = 0x12345678u;
+  source.reg[kX86pEcx] = 0x23456789u;
+  source.reg[kX86pEsp] = 0x00102000u;
 
   CHECK(!x2_boot_menu_open(NULL, 0x08000000u));
   CHECK(!x2_boot_menu_open(&source, 0));
@@ -39,8 +39,9 @@ int main(void) {
      callback, the retail handler takes its direct reset/load-menu branch. */
   CHECK(captured_target == 0x0809fb00u);
   CHECK(captured_pop == 0u);
-  CHECK(captured.eax == source.eax && captured.ecx == source.ecx &&
-        captured.esp == source.esp);
+  CHECK(captured.reg[kX86pEax] == source.reg[kX86pEax] &&
+        captured.reg[kX86pEcx] == source.reg[kX86pEcx] &&
+        captured.reg[kX86pEsp] == source.reg[kX86pEsp]);
 
   printf("boot_menu_transition: %d checks passed\n", checks);
   return 0;

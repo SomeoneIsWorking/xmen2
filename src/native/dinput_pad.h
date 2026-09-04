@@ -18,6 +18,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define DINPUT_PAD_MAX 8
 
 /*
@@ -72,6 +76,10 @@ int dinput_pad_for_guid(const unsigned char guid[16]);
    slot to reason about player assignment. */
 int dinput_pad_for_joystick_id(unsigned int joystick_id);
 
+/* The transport's live identity used by shared engine adapters. Zero means no
+   connected device and is never a valid identity. */
+uint32_t dinput_pad_device_id(int pad);
+
 /*
  * Live state. Axes come back in DirectInput's own signed range as the GAME
  * asked for it -- XMen2.exe sets every axis to [-1000, 1000] through
@@ -82,6 +90,9 @@ int dinput_pad_for_joystick_id(unsigned int joystick_id);
 int32_t dinput_pad_axis(int pad, int axis, int32_t lo, int32_t hi);
 int dinput_pad_button(int pad, int button); /* 0 or 1 */
 int dinput_pad_button_count(int pad);
+/* Independent trigger pressure survives beside DirectInput's intentionally
+   combined Z axis so a native Alchemy controller keeps the richer state. */
+float dinput_pad_trigger_pressure(int pad, int trigger);
 
 /* Prompt-family selection follows the connected device, not the DirectInput
    layout we present to the 2005 game. SDL classifies Xbox 360/One mappings;
@@ -136,5 +147,9 @@ void dinput_pad_poll_report(void);
    equivalent; the pad path did not, so every button read came back
    released. */
 void dinput_pad_refresh_state(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* DINPUT_PAD_H */

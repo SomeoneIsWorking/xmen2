@@ -26,8 +26,8 @@ static inline int dinput_device_pad(const DInputDevice *device) {
 }
 
 static inline void dinput_device_return(CPU *cpu, uint32_t result, int nargs) {
-  cpu->eax = result;
-  cpu->esp += 4u + (uint32_t)(nargs + 1) * 4u;
+  cpu->reg[kX86pEax] = result;
+  cpu->reg[kX86pEsp] += 4u + (uint32_t)(nargs + 1) * 4u;
 }
 
 void dinput_device_get_state(CPU *cpu, DInputDevice *device);

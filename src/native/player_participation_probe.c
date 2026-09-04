@@ -40,29 +40,29 @@ static uint32_t exe_base(void) {
 static uint32_t guest_call0(const CPU *source, uint32_t target) {
   CPU call = *source;
   x86_guest_call_args(&call, target, 0u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static int active(const CPU *source, uint32_t manager, unsigned player) {
   CPU call = *source;
   uint32_t vtable = RD32(manager);
-  call.esp -= 4u;
-  WR32(call.esp, player);
-  call.ecx = manager;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], player);
+  call.reg[kX86pEcx] = manager;
   x86_guest_call_args(&call, RD32(vtable + PARTICIPATION_ACTIVE), 4u);
-  return (uint8_t)call.eax != 0;
+  return (uint8_t)call.reg[kX86pEax] != 0;
 }
 
 static uint32_t thiscall(const CPU *source, uint32_t function, uint32_t object,
                          int has_argument, uint32_t argument) {
   CPU call = *source;
   if (has_argument) {
-    call.esp -= 4u;
-    WR32(call.esp, argument);
+    call.reg[kX86pEsp] -= 4u;
+    WR32(call.reg[kX86pEsp], argument);
   }
-  call.ecx = object;
+  call.reg[kX86pEcx] = object;
   x86_guest_call_args(&call, function, has_argument ? 4u : 0u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static void report_pad_players(CPU *cpu, uint32_t base, char *out, size_t size,

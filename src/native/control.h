@@ -37,14 +37,14 @@ int control_start(int port);
    one moment per frame when the guest is between operations, so a command that
    has to ASK the game something (rather than only set a host-side flag) can
    call into it safely. */
-struct CPU;
-void control_pump(struct CPU *cpu, double now);
+struct X86pCpu;
+void control_pump(struct X86pCpu *cpu, double now);
 
 /* Into the shutdown report, at zero and with its denominator. */
 void control_report(void);
 
 /* The HTTP wire helpers, shared with the endpoints that live beside their
- * instruments (the reached endpoint is x86_reached.c's, not this file's). */
+ * instruments. */
 void control_reply_text(int fd, int code, const char *status, const char *fmt,
                         ...);
 void control_reply_json(int fd, int code, const char *status, const char *body,

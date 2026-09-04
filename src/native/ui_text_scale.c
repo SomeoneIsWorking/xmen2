@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * UI text size, owned by the port instead of by the font asset.
  *
@@ -66,6 +67,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <lucent/cvar_c.h>
+
 /* XMen2.exe's own font record, from FUN_00596af0. */
 #define FONT_STRIDE 0x1c18u
 #define FONT_POINTSIZE 0x04u /* short, FONT_TABLE pointsize */
@@ -91,7 +94,7 @@ static float g_applied = -1.0f;
 
 float x2_ui_text_scale(void) {
   const X2Settings *settings = x2_settings_store();
-  const char *forced = getenv("X2_TEXT_SCALE");
+  const char *forced = lucent_cvar_text("text_scale");
   float configured = settings->text_scale;
   float scale;
 
@@ -112,7 +115,7 @@ float x2_ui_text_scale(void) {
 }
 
 static const char *scale_source(void) {
-  if (getenv("X2_TEXT_SCALE"))
+  if (lucent_cvar_text("text_scale")[0])
     return "X2_TEXT_SCALE";
   if (x2_settings_store()->text_scale > 0.0f)
     return "ui.text_scale";
@@ -160,15 +163,14 @@ static void scale_font_record(uint32_t font, float k) {
      on screen moved. */
   if (!drawn) {
     g_zero++;
-    fprintf(stderr, "UI TEXT: a font loaded with 0 drawing glyph(s) -- "
-                    "scaling it changes nothing.\n");
+    x2_log_error("UI TEXT: a font loaded with 0 drawing glyph(s) -- "
+                 "scaling it changes nothing.\n");
   }
   if (g_fonts == 1)
-    fprintf(stderr,
-            "UI TEXT: scaling every font the game loads by %.3f "
-            "(%s, output %ux%u); first font %u drawing glyph(s).\n",
-            k, scale_source(), x2_settings_store()->width,
-            x2_settings_store()->height, drawn);
+    x2_log_error("UI TEXT: scaling every font the game loads by %.3f "
+                 "(%s, output %ux%u); first font %u drawing glyph(s).\n",
+                 k, scale_source(), x2_settings_store()->width,
+                 x2_settings_store()->height, drawn);
 }
 
 /*
@@ -177,13 +179,13 @@ static void scale_font_record(uint32_t font, float k) {
  * exist before it can be scaled, and a load that failed must stay failed.
  */
 static void x2_override_font_loader(CPU *C) {
-  uint32_t table = C->ecx;
-  uint32_t name = RD32(C->esp + 4u);
-  uint32_t index = RD32(C->esp + 8u);
+  uint32_t table = C->reg[kX86pEcx];
+  uint32_t name = RD32(C->reg[kX86pEsp] + 4u);
+  uint32_t index = RD32(C->reg[kX86pEsp] + 8u);
   float k = x2_ui_text_scale();
 
   x86_guest_body(C, "XMen2.exe", 0x00596af0u);
-  if (!table || !C->eax)
+  if (!table || !C->reg[kX86pEax])
     return; /* eax 0 == nothing loaded */
   if (k != 1.0f) {
     g_applied = k;
@@ -217,24 +219,22 @@ static void x2_override_font_loader(CPU *C) {
 static void x2_override_font_tier(CPU *C) {
   x86_guest_body(C, "XMen2.exe", 0x005f5fd0u);
   g_tier_asked++;
-  if (!C->eax)
+  if (!C->reg[kX86pEax])
     g_tier_forced++;
-  C->eax = 1u;
+  C->reg[kX86pEax] = 1u;
 }
 
 void x2_ui_text_scale_report(void) {
   /* Every denominator: "0 fonts scaled" has three different causes -- the
      scale was 1, the loader never ran, or it ran and every font was empty
      -- and they must not print the same line. */
-  fprintf(stderr,
-          "UI TEXT: scale %.3f (%s); %lu font(s) scaled, %lu drawing "
-          "glyph(s), %lu font(s) that had none.\n",
-          g_applied < 0.0f ? x2_ui_text_scale() : g_applied, scale_source(),
-          g_fonts, g_glyphs, g_zero);
-  fprintf(stderr,
-          "UI TEXT: the HD font set was asked for %lu time(s); the "
-          "retail answer would have been the PC set %lu time(s).\n",
-          g_tier_asked, g_tier_forced);
+  x2_log_error("UI TEXT: scale %.3f (%s); %lu font(s) scaled, %lu drawing "
+               "glyph(s), %lu font(s) that had none.\n",
+               g_applied < 0.0f ? x2_ui_text_scale() : g_applied,
+               scale_source(), g_fonts, g_glyphs, g_zero);
+  x2_log_error("UI TEXT: the HD font set was asked for %lu time(s); the "
+               "retail answer would have been the PC set %lu time(s).\n",
+               g_tier_asked, g_tier_forced);
 }
 
 __attribute__((constructor)) static void

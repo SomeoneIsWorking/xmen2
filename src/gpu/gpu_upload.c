@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /* See gpu_upload.h. */
 #include "gpu_upload.h"
 
@@ -16,10 +17,9 @@ SDL_GPUTransferBuffer *gpu_upload_stage(SDL_GPUDevice *device,
   if (created)
     *created = 0;
   if (!device || !staging || !data || !bytes || bytes > capacity) {
-    fprintf(stderr,
-            "gpu: invalid upload staging request: %u byte(s) "
-            "into a %u-byte allocation.\n",
-            bytes, capacity);
+    x2_log_error("gpu: invalid upload staging request: %u byte(s) "
+                 "into a %u-byte allocation.\n",
+                 bytes, capacity);
     return NULL;
   }
   if (!staging->buffer) {
@@ -28,8 +28,8 @@ SDL_GPUTransferBuffer *gpu_upload_stage(SDL_GPUDevice *device,
     ci.size = capacity;
     staging->buffer = SDL_CreateGPUTransferBuffer(device, &ci);
     if (!staging->buffer) {
-      fprintf(stderr, "gpu: transfer buffer (%u bytes) failed: %s\n", capacity,
-              SDL_GetError());
+      x2_log_error("gpu: transfer buffer (%u bytes) failed: %s\n", capacity,
+                   SDL_GetError());
       return NULL;
     }
     staging->capacity = capacity;
@@ -37,11 +37,10 @@ SDL_GPUTransferBuffer *gpu_upload_stage(SDL_GPUDevice *device,
       *created = 1;
   }
   if (capacity > staging->capacity || bytes > staging->capacity) {
-    fprintf(stderr,
-            "gpu: retained upload staging is %u bytes but the "
-            "resource now requires %u bytes. Refusing a resource "
-            "whose size changed after creation.\n",
-            staging->capacity, capacity);
+    x2_log_error("gpu: retained upload staging is %u bytes but the "
+                 "resource now requires %u bytes. Refusing a resource "
+                 "whose size changed after creation.\n",
+                 staging->capacity, capacity);
     return NULL;
   }
 
@@ -52,8 +51,8 @@ SDL_GPUTransferBuffer *gpu_upload_stage(SDL_GPUDevice *device,
    */
   mapped = SDL_MapGPUTransferBuffer(device, staging->buffer, true);
   if (!mapped) {
-    fprintf(stderr, "gpu: mapping the transfer buffer failed: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: mapping the transfer buffer failed: %s\n",
+                 SDL_GetError());
     return NULL;
   }
   memcpy(mapped, data, bytes);

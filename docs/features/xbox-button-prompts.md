@@ -171,9 +171,8 @@ replacement reaches the renderer, proven by a substituted font changing drawn
 glyphs. What is missing is the **source art**, and finding it is an RE question
 about the XBOX build, not about this host:
 
-1. Where does the Xbox build's UI get a button prompt from? `default.xbe` is
-   already lifted by this repo's own Xbox path (`xbox/`, `tools/xbox_relift.py`),
-   so its UI code can be read the way `XMen2.exe`'s controller code was.
+1. Where does the Xbox build's UI get a button prompt from? This remains a
+   binary-evidence question, not a product execution path.
 2. Is a prompt a TEXTURE at all, or a character drawn from a font whose atlas
    is shared and whose *metrics* differ? The `.xmlb` metrics files were NOT
    compared -- only the textures were -- and that is the cheapest next check,
@@ -194,12 +193,9 @@ suffix names which build ships it, not different art. There is nothing in it to
 take.
 
 **Feature 3 as written in `README.md` cannot be built, and this is a disproof
-rather than a difficulty.** The next work is to find how the Xbox build draws a
-button prompt at all -- most cheaply by reading its UI code, since this repo
-already lifts `default.xbe` (`xbox/`, `tools/xbox_relift.py`) -- or to accept
-that the prompts are drawn from art that is not in `assetsfb.wad` and extract
-the rest of the ISO. Either way it starts from the Xbox build, not from this
-host, and not from a font that turned out to be a copy of the PC one.
+rather than a difficulty.** The remaining evidence had to come from the Xbox
+binary or assets, not from this host and not from a font that turned out to be
+a copy of the PC one.
 
 
 ## FOUND: the real source is X2F_med_XBOX / X2F_thin_XBOX
@@ -502,7 +498,7 @@ renderer by making `GREENLAND` render as `G`). The delivery was:
    order, not the font's order.
 4. The hook fires only for the gamepad slot named by `devkind 3..0xc` when SDL
    classifies its connected device as Xbox 360/One. Keyboard, PlayStation,
-   generic controllers and unknown codes super-call the retained recompiled
+   generic controllers and unknown codes call the retained runtime-translated
    body. LS/RS use the authored shared `port-assets` glyphs and the same
    manifest/runtime mapping as every other supported physical code.
 
@@ -551,7 +547,7 @@ shared localization lookup to that exact call and, for the player's active
 assigned controller source,
 asks the already-loaded dialog parser for its own controller-authored `text`.
 Keyboard keeps the PC override and unrelated localization calls retain the
-recompiled body.
+retail body through the JIT.
 
 A windowless run advanced the retail conversations, walked to the switching
 terminal and naturally triggered `switching_hint`. The popup contained d-pad

@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * A census of every script XMen2.exe launches, by name.
  *
@@ -43,7 +45,7 @@ static int g_live = -1;
 
 static int live(void) {
   if (g_live < 0) {
-    const char *e = getenv("X2_SCRIPTS");
+    const char *e = x2_config_override_get(kX2ConfigScripts);
     g_live = e && *e && *e != '0';
   }
   return g_live;
@@ -87,12 +89,12 @@ static void record(const char *name, int ok) {
 
 void x2_override_004a1320(CPU *C) {
   char name[NAME_MAX_LEN];
-  uint32_t caller = RD32(C->esp);
+  uint32_t caller = RD32(C->reg[kX86pEsp]);
   int ok;
 
-  copy_guest_string(name, sizeof name, RD32(C->esp + 4u));
+  copy_guest_string(name, sizeof name, RD32(C->reg[kX86pEsp] + 4u));
   x86_guest_body(C, "XMen2.exe", 0x004a1320u);
-  ok = (int)(C->eax & 0xFFu);
+  ok = (int)(C->reg[kX86pEax] & 0xFFu);
 
   g_launches++;
   if (!ok)
@@ -103,8 +105,9 @@ void x2_override_004a1320(CPU *C) {
   if (ok)
     entity_spawn_probe_after_script_launch(C, name);
   if (live())
-    fprintf(stderr, "SCRIPT: %-6s \"%s\" at frame %lu, caller 0x%08x\n",
-            ok ? "launch" : "FAILED", name, gpu_frames_presented(), caller);
+    x2_log_error("SCRIPT: %-6s \"%s\" at frame %lu, caller 0x%08x\n",
+                 ok ? "launch" : "FAILED", name, gpu_frames_presented(),
+                 caller);
 }
 
 /*
@@ -169,13 +172,12 @@ void x2_override_004a5660(CPU *C) {
   if (after != before)
     g_startconv_took++;
   if (live())
-    fprintf(stderr,
-            "SCRIPT: startConversation at frame %lu -- "
-            "conversation flags 0x%02x -> 0x%02x%s\n",
-            gpu_frames_presented(), before, after,
-            after == before ? "  (NO CHANGE: the command ran and the "
-                              "conversation did not start)"
-                            : "");
+    x2_log_error("SCRIPT: startConversation at frame %lu -- "
+                 "conversation flags 0x%02x -> 0x%02x%s\n",
+                 gpu_frames_presented(), before, after,
+                 after == before ? "  (NO CHANGE: the command ran and the "
+                                   "conversation did not start)"
+                                 : "");
 }
 
 /*
@@ -192,8 +194,8 @@ void x2_override_004a5660(CPU *C) {
 void x2_override_0049f8c0(CPU *C) {
   g_lockcontrols++;
   if (live())
-    fprintf(stderr, "SCRIPT: lockControls at frame %lu (call #%lu)\n",
-            gpu_frames_presented(), g_lockcontrols);
+    x2_log_error("SCRIPT: lockControls at frame %lu (call #%lu)\n",
+                 gpu_frames_presented(), g_lockcontrols);
   x86_guest_body(C, "XMen2.exe", 0x0049f8c0u);
 }
 
@@ -204,11 +206,11 @@ void x2_override_0049f8c0(CPU *C) {
 
 void x2_trace_0048a7d0(CPU *C) {
   if (live())
-    fprintf(stderr,
-            "SCRIPT: spawner callback 0048a7d0 caller 0x%08x, self "
-            "0x%08x, args 0x%08x/0x%08x at frame %lu\n",
-            RD32(C->esp), C->ecx, RD32(C->esp + 4u), RD32(C->esp + 8u),
-            gpu_frames_presented());
+    x2_log_error("SCRIPT: spawner callback 0048a7d0 caller 0x%08x, self "
+                 "0x%08x, args 0x%08x/0x%08x at frame %lu\n",
+                 RD32(C->reg[kX86pEsp]), C->reg[kX86pEcx],
+                 RD32(C->reg[kX86pEsp] + 4u), RD32(C->reg[kX86pEsp] + 8u),
+                 gpu_frames_presented());
   x86_guest_body(C, "XMen2.exe", 0x0048a7d0u);
 }
 
@@ -258,10 +260,9 @@ static void seen_bitmap(uint32_t out[5]) {
 void x2_override_00455af0(CPU *C) {
   g_reset++;
   if (live())
-    fprintf(stderr,
-            "SCRIPT: conversation reset (vt+0x04) #%lu at "
-            "frame %lu\n",
-            g_reset, gpu_frames_presented());
+    x2_log_error("SCRIPT: conversation reset (vt+0x04) #%lu at "
+                 "frame %lu\n",
+                 g_reset, gpu_frames_presented());
   x86_guest_body(C, "XMen2.exe", 0x00455af0u);
 }
 
@@ -272,7 +273,7 @@ void x2_override_0045c950(CPU *C) {
   uint32_t line_before = 0, line_after = 0;
   uint32_t seen_before[5], seen_after[5];
 
-  copy_guest_string(name, sizeof name, RD32(C->esp + 4u));
+  copy_guest_string(name, sizeof name, RD32(C->reg[kX86pEsp] + 4u));
   before = conversation_flags();
   conversation_field(0x4bcu, &line_before);
   seen_bitmap(seen_before);
@@ -280,7 +281,7 @@ void x2_override_0045c950(CPU *C) {
   after = conversation_flags();
   conversation_field(0x4bcu, &line_after);
   seen_bitmap(seen_after);
-  ok = (int)(C->eax & 0xFFu);
+  ok = (int)(C->reg[kX86pEax] & 0xFFu);
   g_convstart++;
   if (ok)
     g_convstart_ok++;
@@ -289,18 +290,16 @@ void x2_override_0045c950(CPU *C) {
      by its own return value and done nothing, and only both readings
      together say so. */
   if (live())
-    fprintf(stderr,
-            "SCRIPT: conversation start \"%s\" -> %s at frame %lu "
-            "(flags 0x%02x -> 0x%02x, line 0x%08x -> 0x%08x)\n",
-            name, ok ? "STARTED" : "REFUSED", gpu_frames_presented(), before,
-            after, line_before, line_after);
+    x2_log_error("SCRIPT: conversation start \"%s\" -> %s at frame %lu "
+                 "(flags 0x%02x -> 0x%02x, line 0x%08x -> 0x%08x)\n",
+                 name, ok ? "STARTED" : "REFUSED", gpu_frames_presented(),
+                 before, after, line_before, line_after);
   if (live())
-    fprintf(stderr,
-            "        seen bitmap %08x %08x %08x %08x %08x -> "
-            "%08x %08x %08x %08x %08x\n",
-            seen_before[0], seen_before[1], seen_before[2], seen_before[3],
-            seen_before[4], seen_after[0], seen_after[1], seen_after[2],
-            seen_after[3], seen_after[4]);
+    x2_log_error("        seen bitmap %08x %08x %08x %08x %08x -> "
+                 "%08x %08x %08x %08x %08x\n",
+                 seen_before[0], seen_before[1], seen_before[2], seen_before[3],
+                 seen_before[4], seen_after[0], seen_after[1], seen_after[2],
+                 seen_after[3], seen_after[4]);
 }
 
 __attribute__((constructor)) static void
@@ -317,33 +316,38 @@ void script_trace_report(void) {
   int i;
 
   if (!g_launches) {
-    printf("  scripts: NO script was launched in this run.\n"
-           "           The override is compiled in and registered, so this "
-           "is the game not asking, not the trace not looking.\n");
+    x2_log_info(
+        "  scripts: NO script was launched in this run.\n"
+        "           The override is compiled in and registered, so this "
+        "is the game not asking, not the trace not looking.\n");
     return;
   }
-  printf("  scripts: %lu launch(es) over %d distinct name(s), %lu of which "
-         "failed to launch; last was \"%s\" from 0x%08x\n",
-         g_launches, g_nnames, g_failures, g_last, g_last_caller);
+  x2_log_info(
+      "  scripts: %lu launch(es) over %d distinct name(s), %lu of which "
+      "failed to launch; last was \"%s\" from 0x%08x\n",
+      g_launches, g_nnames, g_failures, g_last, g_last_caller);
   for (i = 0; i < g_nnames; i++)
-    printf("           %-52s %lu launch(es)%s, first at frame %lu\n",
-           g_names[i].name, g_names[i].launches,
-           g_names[i].failures ? " WITH FAILURES" : "", g_names[i].first_frame);
+    x2_log_info("           %-52s %lu launch(es)%s, first at frame %lu\n",
+                g_names[i].name, g_names[i].launches,
+                g_names[i].failures ? " WITH FAILURES" : "",
+                g_names[i].first_frame);
   if (g_overflow)
-    printf("           ... and %lu launch(es) of names past the %d-name "
-           "table, NOT listed above\n",
-           g_overflow, NAMES_MAX);
-  printf("           startConversation: %lu call(s), %lu of which changed "
-         "the conversation manager's flags\n",
-         g_startconv, g_startconv_took);
-  printf("           conversation start: %lu request(s), %lu started, "
-         "%lu refused; the seen-line bitmap was reset %lu time(s)\n",
-         g_convstart, g_convstart_ok, g_convstart - g_convstart_ok, g_reset);
-  printf("           lockControls: %lu call(s) -- this is the CONTROL: the "
-         "level locks controls at entry, so 0 here means the command "
-         "addresses are wrong, not that the game never asked\n",
-         g_lockcontrols);
+    x2_log_info("           ... and %lu launch(es) of names past the %d-name "
+                "table, NOT listed above\n",
+                g_overflow, NAMES_MAX);
+  x2_log_info("           startConversation: %lu call(s), %lu of which changed "
+              "the conversation manager's flags\n",
+              g_startconv, g_startconv_took);
+  x2_log_info("           conversation start: %lu request(s), %lu started, "
+              "%lu refused; the seen-line bitmap was reset %lu time(s)\n",
+              g_convstart, g_convstart_ok, g_convstart - g_convstart_ok,
+              g_reset);
+  x2_log_info(
+      "           lockControls: %lu call(s) -- this is the CONTROL: the "
+      "level locks controls at entry, so 0 here means the command "
+      "addresses are wrong, not that the game never asked\n",
+      g_lockcontrols);
   if (!live())
-    printf("           set X2_SCRIPTS=1 to see each launch as it "
-           "happens\n");
+    x2_log_info("           set X2_SCRIPTS=1 to see each launch as it "
+                "happens\n");
 }

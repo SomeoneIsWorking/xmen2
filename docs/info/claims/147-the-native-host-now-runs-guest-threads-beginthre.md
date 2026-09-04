@@ -16,4 +16,6 @@ libCriMovie's movie init calls _beginthreadex with CREATE_SUSPENDED and then Res
 
 ## What would falsify it
 
-a run in which two guest threads execute recompiled bodies at the same time (the lock is not doing its job), or one where guest_thread_report says the lock was never contended while claiming the threading is exercised
+a run in which two guest threads execute translated guest code at the same time
+(the lock is not doing its job), or one where `guest_thread_report` says the
+lock was never contended while claiming the threading is exercised

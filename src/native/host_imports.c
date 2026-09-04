@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * The registry behind host_imports.h. See that header for why it exists.
  */
@@ -20,25 +21,22 @@ static unsigned g_nsurface;
 void host_imports_register(const char *dll, const HostImport *tab, size_t n) {
   unsigned i;
   if (!dll || !tab || !n) {
-    fprintf(stderr,
-            "host_imports_register: refusing an empty surface "
-            "(dll=%s tab=%p n=%zu)\n",
-            dll ? dll : "(null)", (const void *)tab, n);
+    x2_log_error("host_imports_register: refusing an empty surface "
+                 "(dll=%s tab=%p n=%zu)\n",
+                 dll ? dll : "(null)", (const void *)tab, n);
     abort();
   }
   for (i = 0; i < g_nsurface; i++)
     if (strcasecmp(g_surface[i].dll, dll) == 0) {
-      fprintf(stderr,
-              "host_imports_register: %s is already published; "
-              "one DLL has one table.\n",
-              dll);
+      x2_log_error("host_imports_register: %s is already published; "
+                   "one DLL has one table.\n",
+                   dll);
       abort();
     }
   if (g_nsurface == SURFACE_MAX) {
-    fprintf(stderr,
-            "host_imports_register: the %d-surface table is full; "
-            "%s cannot be published. Raise SURFACE_MAX.\n",
-            SURFACE_MAX, dll);
+    x2_log_error("host_imports_register: the %d-surface table is full; "
+                 "%s cannot be published. Raise SURFACE_MAX.\n",
+                 SURFACE_MAX, dll);
     abort();
   }
   g_surface[g_nsurface].dll = dll;

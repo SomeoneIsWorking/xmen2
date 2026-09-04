@@ -1,4 +1,5 @@
 #include "movie_audio.h"
+#include "../native/x2_log.h"
 
 #include <math.h>
 #include <pthread.h>
@@ -192,9 +193,10 @@ int movie_audio_active(void) {
 
 void movie_audio_report(void) {
   pthread_mutex_lock(&g_movie_audio_lock);
-  printf("          movie audio: %lu open(s), %llu frame(s) queued, "
-         "%lu underrun output frame(s)%s\n",
-         g_movie_audio.opens, g_movie_audio.queued_total,
-         g_movie_audio.underruns, g_movie_audio.active ? " -- ACTIVE" : "");
+  x2_log_info("          movie audio: %lu open(s), %llu frame(s) queued, "
+              "%lu underrun output frame(s)%s\n",
+              g_movie_audio.opens, g_movie_audio.queued_total,
+              g_movie_audio.underruns,
+              g_movie_audio.active ? " -- ACTIVE" : "");
   pthread_mutex_unlock(&g_movie_audio_lock);
 }

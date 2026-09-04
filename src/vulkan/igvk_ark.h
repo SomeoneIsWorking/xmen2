@@ -18,7 +18,7 @@
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 /* ---- talking to the guest --------------------------------------------- */
 
@@ -59,7 +59,7 @@ uint32_t ark_guest_str(const char *s);
 /*
  * Return from a native callback the guest CALLED.
  *
- * Every emitted call site pushes a return address, and a real function's RET
+ * Every guest CALL pushes a return address, and a real function's RET
  * pops it. A native stub reached through a synthetic address must do the same
  * or the guest stack drifts UPWARD by four bytes per call -- and the damage
  * does not surface at the callback. It surfaced, the first time this was got
@@ -72,7 +72,7 @@ uint32_t ark_guest_str(const char *s);
  * pops) and for a no-argument __thiscall, N for __stdcall/__thiscall with N
  * stack arguments.
  */
-void ark_ret(struct CPU *C, uint32_t eax, int stack_args);
+void ark_ret(struct X86pCpu *C, uint32_t eax, int stack_args);
 
 /* ---- describing a host class ------------------------------------------ */
 
@@ -111,7 +111,7 @@ typedef struct ArkClass {
  * needed to go and implement it. See igvk_vtable_fill_unimplemented.
  */
 uint32_t igvk_vtable_new(const char *owner, int nslots);
-void igvk_vtable_set(uint32_t vtable, int slot, void (*fn)(struct CPU *),
+void igvk_vtable_set(uint32_t vtable, int slot, void (*fn)(struct X86pCpu *),
                      const char *owner, const char *name, void *ctx);
 /*
  * Point every still-unset slot at the reporter.

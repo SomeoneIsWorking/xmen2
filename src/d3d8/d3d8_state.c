@@ -1,6 +1,7 @@
+#include "../native/x2_log.h"
 /* See d3d8_state.h. */
-#include "d3d8_state.h"
 #include "d3d8_drawcall.h"
+#include "d3d8_state.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,11 +14,10 @@ void d3d8_state_reset(D3D8State *s) {
 static int range(uint32_t v, uint32_t n, const char *what) {
   if (v < n)
     return 1;
-  fprintf(stderr,
-          "d3d8: %s %u is outside the %u this device keeps. "
-          "Refusing rather than wrapping -- a wrapped index would "
-          "overwrite an unrelated state and draw wrong later.\n",
-          what, v, n);
+  x2_log_error("d3d8: %s %u is outside the %u this device keeps. "
+               "Refusing rather than wrapping -- a wrapped index would "
+               "overwrite an unrelated state and draw wrong later.\n",
+               what, v, n);
   return 0;
 }
 
@@ -155,15 +155,16 @@ void d3d8_state_report(const D3D8State *s) {
   for (i = 0; i < D3D8_MAX_LIGHTS; i++)
     nlight += s->light_set[i] != 0;
 
-  printf("  d3d8 state the engine set: %d render state(s), %d texture stage "
-         "state(s),\n"
-         "        %d transform(s), %d light(s), material %s, viewport %s\n",
-         nrender, nstage, ntransform, nlight,
-         s->material_set ? "set" : "never set",
-         s->viewport_set ? "set" : "never set");
+  x2_log_info(
+      "  d3d8 state the engine set: %d render state(s), %d texture stage "
+      "state(s),\n"
+      "        %d transform(s), %d light(s), material %s, viewport %s\n",
+      nrender, nstage, ntransform, nlight,
+      s->material_set ? "set" : "never set",
+      s->viewport_set ? "set" : "never set");
   if (!nrender)
-    printf("        NOTHING was set. Either the engine never reached its "
-           "state setup, or the setters are not wired to this mirror.\n");
+    x2_log_info("        NOTHING was set. Either the engine never reached its "
+                "state setup, or the setters are not wired to this mirror.\n");
   /*
    * The states this backend does NOT implement, with their last value.
    *
@@ -185,14 +186,14 @@ void d3d8_state_report(const D3D8State *s) {
         continue;
       unread++;
       if (!any++)
-        printf("        set, and NOT read by this backend -- each is "
-               "missing from the picture:\n");
-      printf("          %-24s = %u (0x%08x)\n", d3d8_render_state_name(j),
-             s->render[j].value, s->render[j].value);
+        x2_log_info("        set, and NOT read by this backend -- each is "
+                    "missing from the picture:\n");
+      x2_log_info("          %-24s = %u (0x%08x)\n", d3d8_render_state_name(j),
+                  s->render[j].value, s->render[j].value);
     }
-    printf("        %d of the %d render state(s) the engine set are read "
-           "by the draw path; %d are not.\n",
-           nrender - unread, nrender, unread);
+    x2_log_info("        %d of the %d render state(s) the engine set are read "
+                "by the draw path; %d are not.\n",
+                nrender - unread, nrender, unread);
   }
   /*
    * The transforms, the same way.
@@ -212,15 +213,15 @@ void d3d8_state_report(const D3D8State *s) {
       if (j == 2 || j == 3 || j == 256)
         continue; /* VIEW/PROJ/WORLD */
       if (!unread++)
-        printf("        transform(s) the engine set that the draw path "
-               "does NOT read:\n");
+        x2_log_info("        transform(s) the engine set that the draw path "
+                    "does NOT read:\n");
       if (j > 256)
-        printf("          D3DTS_WORLDMATRIX(%d)\n", j - 256);
+        x2_log_info("          D3DTS_WORLDMATRIX(%d)\n", j - 256);
       else
-        printf("          D3DTS #%d\n", j);
+        x2_log_info("          D3DTS #%d\n", j);
     }
-    printf("        %d of the %d transform(s) the engine set are read "
-           "(WORLD, VIEW, PROJECTION); %d are not.\n",
-           ntransform - unread, ntransform, unread);
+    x2_log_info("        %d of the %d transform(s) the engine set are read "
+                "(WORLD, VIEW, PROJECTION); %d are not.\n",
+                ntransform - unread, ntransform, unread);
   }
 }

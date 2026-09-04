@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /* Command-line policy for the native executable. */
 #include "x2native_options.h"
 
@@ -53,21 +54,21 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
     else if (strncmp(argv[i], "--set=", 6) == 0)
       ;
     else if (argv[i][0] == '-') {
-      fprintf(stderr,
-              "x2native: unknown option '%s'. Refusing rather "
-              "than treating it as the install directory.\n"
-              "  Known: --no-window --appimage --unbounded --control[=port] "
-              "--record-input[=path] --run "
-              "--selftest "
-              "--ark-probe "
-              "--vk --vk-selftest --vk-permissive\n"
-              "         --d3d8 --d3d8-selftest "
-              "--d3d8-permissive --dialog-selftest\n"
-              "         --fault-selftest "
-              "--override-selftest\n"
-              "         --set NAME=VALUE (repeatable runtime CVar override, "
-              "e.g. --set engine=interpreter)\n",
-              argv[i]);
+      lucent_log_error(
+          "x2",
+          "x2native: unknown option '%s'. Refusing rather "
+          "than treating it as the install directory.\n"
+          "  Known: --no-window --appimage --unbounded --control[=port] "
+          "--record-input[=path] --run "
+          "--selftest "
+          "--ark-probe "
+          "--vk --vk-selftest --vk-permissive\n"
+          "         --d3d8 --d3d8-selftest "
+          "--d3d8-permissive --dialog-selftest\n"
+          "         --fault-selftest "
+          "--override-selftest\n"
+          "         --set NAME=VALUE (repeatable runtime CVar override)\n",
+          argv[i]);
       return 2;
     } else {
       o->install_dir = argv[i];

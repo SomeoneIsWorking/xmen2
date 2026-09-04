@@ -29,8 +29,8 @@ therefore still allowed line audio to start.
 `src/native/cutscene_dialogue.c` now owns this cutscene-player policy. It stops
 the current retail handle and scopes both exact presenters across the entire
 synchronous player invocation. Ordinary playback retains and super-calls both
-generated bodies; skip preserves response/script application without starting
-either kind of voice. The remaining tutorial audio is two BehavEd `sound`
+retail guest bodies through the JIT; skip preserves response/script application
+without starting either kind of voice. The remaining tutorial audio is two BehavEd `sound`
 commands; `cutscene_script_audio` suppresses their exact `004a7130` handler only
 when `004d8b30` publishes an owned current context. DirectSound remains
 unchanged, so unrelated ambient/gameplay playback is outside cutscene policy.

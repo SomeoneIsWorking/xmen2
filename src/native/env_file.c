@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -24,15 +26,14 @@ static char *trim(char *s) {
 static int load_file(const char *path) {
   FILE *f = fopen(path, "r");
   char line[8192];
-  unsigned long lineno = 0, loaded = 0, preserved = 0;
+  unsigned long lineno = 0, loaded = 0, preserved = 0, ignored = 0;
 
   if (!f) {
     if (errno == ENOENT)
       return 0;
-    fprintf(stderr,
-            "x2native: cannot read %s (%s); refusing to run with "
-            "an unknown environment\n",
-            path, strerror(errno));
+    x2_log_error("x2native: cannot read %s (%s); refusing to run with "
+                 "an unknown environment\n",
+                 path, strerror(errno));
     return -1;
   }
   while (fgets(line, sizeof line, f)) {
@@ -40,10 +41,9 @@ static int load_file(const char *path) {
     int quote = 0;
     lineno++;
     if (!strchr(line, '\n') && !feof(f)) {
-      fprintf(stderr,
-              "x2native: %s:%lu exceeds %zu bytes; refusing a "
-              "partially parsed .env\n",
-              path, lineno, sizeof line - 1);
+      x2_log_error("x2native: %s:%lu exceeds %zu bytes; refusing a "
+                   "partially parsed .env\n",
+                   path, lineno, sizeof line - 1);
       fclose(f);
       return -1;
     }
@@ -54,10 +54,9 @@ static int load_file(const char *path) {
       key = trim(key + 6);
     eq = strchr(key, '=');
     if (!eq) {
-      fprintf(stderr,
-              "x2native: %s:%lu has no '='; refusing malformed "
-              ".env input\n",
-              path, lineno);
+      x2_log_error("x2native: %s:%lu has no '='; refusing malformed "
+                   ".env input\n",
+                   path, lineno);
       fclose(f);
       return -1;
     }
@@ -74,10 +73,9 @@ static int load_file(const char *path) {
       quote = *value++;
       end = strrchr(value, quote);
       if (!end || *trim(end + 1)) {
-        fprintf(stderr,
-                "x2native: %s:%lu has an unterminated or "
-                "trailed quoted value\n",
-                path, lineno);
+        x2_log_error("x2native: %s:%lu has an unterminated or "
+                     "trailed quoted value\n",
+                     path, lineno);
         fclose(f);
         return -1;
       }
@@ -91,11 +89,19 @@ static int load_file(const char *path) {
       }
       value = trim(value);
     }
-    if (getenv(key))
+    X2ConfigOverride variable;
+    if (!x2_config_override_from_name(key, &variable)) {
+      x2_log_info("x2native: %s:%lu ignored unregistered configuration '%s'; "
+                  "it was not added to the process environment",
+                  path, lineno, key);
+      ignored++;
+      continue;
+    }
+    if (x2_config_override_get(variable))
       preserved++;
-    else if (setenv(key, value, 0) != 0) {
-      fprintf(stderr, "x2native: cannot set %s from %s (%s)\n", key, path,
-              strerror(errno));
+    else if (x2_config_override_set(variable, value, 0) != 0) {
+      x2_log_error("x2native: cannot set %s from %s (%s)\n", key, path,
+                   strerror(errno));
       fclose(f);
       return -1;
     } else
@@ -103,24 +109,22 @@ static int load_file(const char *path) {
     continue;
 
   bad_key:
-    fprintf(stderr,
-            "x2native: %s:%lu has an invalid variable name; "
-            "refusing malformed .env input\n",
-            path, lineno);
+    x2_log_error("x2native: %s:%lu has an invalid variable name; "
+                 "refusing malformed .env input\n",
+                 path, lineno);
     fclose(f);
     return -1;
   }
   if (ferror(f)) {
-    fprintf(stderr, "x2native: failed while reading %s (%s)\n", path,
-            strerror(errno));
+    x2_log_error("x2native: failed while reading %s (%s)\n", path,
+                 strerror(errno));
     fclose(f);
     return -1;
   }
   fclose(f);
-  fprintf(stderr,
-          "x2native: loaded %lu variable(s) from %s; preserved %lu "
-          "already supplied by the launcher.\n",
-          loaded, path, preserved);
+  x2_log_info("x2native: loaded %lu registered variable(s) from %s; preserved "
+              "%lu launcher value(s), ignored %lu unregistered key(s)",
+              loaded, path, preserved, ignored);
   return 1;
 }
 
@@ -129,10 +133,9 @@ static int try_ancestors(char *dir) {
     char path[PATH_MAX], *slash;
     int rc;
     if (snprintf(path, sizeof path, "%s/.env", dir) >= (int)sizeof path) {
-      fprintf(stderr,
-              "x2native: cannot inspect an overlong .env path "
-              "below %s; refusing an ambiguous project environment\n",
-              dir);
+      x2_log_error("x2native: cannot inspect an overlong .env path "
+                   "below %s; refusing an ambiguous project environment\n",
+                   dir);
       return -1;
     }
     rc = load_file(path);
@@ -167,10 +170,9 @@ int x2_load_project_env(const char *argv0) {
     }
   }
   if (!getcwd(cwd, sizeof cwd)) {
-    fprintf(stderr,
-            "x2native: cannot resolve the working directory (%s); "
-            "no project .env was found from the executable\n",
-            strerror(errno));
+    x2_log_error("x2native: cannot resolve the working directory (%s); "
+                 "no project .env was found from the executable\n",
+                 strerror(errno));
     return -1;
   }
   return try_ancestors(cwd);

@@ -12,7 +12,7 @@ Native-to-guest callback cleanup is an explicit fatal contract, and the full gam
 
 ## Evidence
 
-src/native/x86rt_native.c x86_guest_call_args; src/native/x2native.c runtime-module RET 8 probe; deliberate zero-byte mutation abort; tools/smoke_loop.sh passed 4200 frames with 0 contract violations in 1460 log lines (issue #67)
+src/native/x86rt_native.c x86_guest_call_args; src/native/x2native.c runtime-module RET 8 probe; deliberate zero-byte mutation abort; the scripted smoke scenario passed 4200 frames with 0 contract violations in 1460 log lines (issue #67)
 
 ## What would falsify it
 

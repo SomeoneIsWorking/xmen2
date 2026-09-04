@@ -1,8 +1,10 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /* See heartbeat.h. */
-#include "heartbeat.h"
 #include "control.h"
 #include "dinput_pad.h"
 #include "guest_clock.h"
+#include "heartbeat.h"
 #include "threads.h"
 
 #include "d3d8_device.h"
@@ -93,14 +95,13 @@ static void *heartbeat_thread(void *arg) {
       x2_report_now = 2;
     if (x2_report_now) {
       int killed = (x2_report_now == 1);
-      fprintf(stderr,
-              killed ? "\n[HB] interrupted -- the shutdown reports follow, "
-                       "taken while the guest is STILL RUNNING, so every count "
-                       "is a snapshot rather than a final total.\n"
-                     : "\n[HB] the frame limit was reached -- the shutdown "
-                       "reports follow. The guest is still running, so every "
-                       "count is a snapshot rather than a final total.\n");
-      fflush(stderr);
+      x2_log_error(
+          killed ? "\n[HB] interrupted -- the shutdown reports follow, "
+                   "taken while the guest is STILL RUNNING, so every count "
+                   "is a snapshot rather than a final total.\n"
+                 : "\n[HB] the frame limit was reached -- the shutdown "
+                   "reports follow. The guest is still running, so every "
+                   "count is a snapshot rather than a final total.\n");
       x2_interrupt_reports(killed);
       _exit(killed ? 4 : 0);
     }
@@ -122,10 +123,9 @@ static void *heartbeat_thread(void *arg) {
       int live;
       winmm_counts(&fire, &pump, &live);
       if (fire || pump || live)
-        fprintf(stderr,
-                "[HB]           winmm %lu fire(s) (+%lu), "
-                "%lu pump(s) (+%lu), %d timer(s) live\n",
-                fire, fire - p_fire, pump, pump - p_pump, live);
+        x2_log_error("[HB]           winmm %lu fire(s) (+%lu), "
+                     "%lu pump(s) (+%lu), %d timer(s) live\n",
+                     fire, fire - p_fire, pump, pump - p_pump, live);
       p_fire = fire;
       p_pump = pump;
     }
@@ -144,10 +144,9 @@ static void *heartbeat_thread(void *arg) {
       extern void kernel32_pulse_counts(unsigned long *, unsigned long *);
       kernel32_pulse_counts(&ps, &pl);
       if (ps)
-        fprintf(stderr,
-                "[HB]           PulseEvent %lu sent (+%lu), "
-                "%lu LOST with no waiter (+%lu)\n",
-                ps, ps - p_ps, pl, pl - p_pl);
+        x2_log_error("[HB]           PulseEvent %lu sent (+%lu), "
+                     "%lu LOST with no waiter (+%lu)\n",
+                     ps, ps - p_ps, pl, pl - p_pl);
       p_ps = ps;
       p_pl = pl;
     }
@@ -157,10 +156,9 @@ static void *heartbeat_thread(void *arg) {
     {
       static unsigned long p_q;
       unsigned long q = guest_quantum_count();
-      fprintf(stderr,
-              "[HB]           %lu preemption(s) (+%lu) at a "
-              "quantum of %lu crossing(s)\n",
-              q, q - p_q, guest_quantum_size());
+      x2_log_error("[HB]           %lu preemption(s) (+%lu) at a "
+                   "quantum of %lu crossing(s)\n",
+                   q, q - p_q, guest_quantum_size());
       p_q = q;
     }
 
@@ -181,15 +179,15 @@ static void *heartbeat_thread(void *arg) {
         snap_cap = x86_thunk_capacity();
         snap = calloc(snap_cap, sizeof *snap);
         if (!snap) {
-          fprintf(stderr, "[HB] thunk probe: calloc failed, "
-                          "disabling the import probe\n");
+          x2_log_error("[HB] thunk probe: calloc failed, "
+                       "disabling the import probe\n");
           goto thunk_probe_disabled;
         }
       }
       n = x86_thunk_crossings_sorted(snap, snap_cap, mods, syms, hits, 5);
       for (i = 0; i < n; i++)
-        fprintf(stderr, "[HB]           import %s!%s: %lu call(s)\n",
-                mods[i] ? mods[i] : "?", syms[i] ? syms[i] : "?", hits[i]);
+        x2_log_error("[HB]           import %s!%s: %lu call(s)\n",
+                     mods[i] ? mods[i] : "?", syms[i] ? syms[i] : "?", hits[i]);
     thunk_probe_disabled:;
     }
     {
@@ -205,17 +203,16 @@ static void *heartbeat_thread(void *arg) {
         uint32_t ep = eps[i];
         const char *nm = x86_native_name_at(ep);
         X86Module *m = x86_module_for(ep);
-        fprintf(stderr,
-                "[HB]           HOT body %s0x%08x (%s%s): "
-                "%.1f ms in %lu dispatch(es)\n",
-                nm ? "" : "unresolved ", ep, nm ? nm : (m ? m->name : "???"),
-                nm || !m ? "" : " +offset", (double)nss[i] * 1e-6, hns[i]);
+        x2_log_error("[HB]           HOT body %s0x%08x (%s%s): "
+                     "%.1f ms in %lu dispatch(es)\n",
+                     nm ? "" : "unresolved ", ep,
+                     nm ? nm : (m ? m->name : "???"),
+                     nm || !m ? "" : " +offset", (double)nss[i] * 1e-6, hns[i]);
       }
       if (n && x86_hotep_collisions())
-        fprintf(stderr,
-                "[HB]           HOTEP: %u hash collision(s) -- "
-                "new keys refused, probe may miss the top\n",
-                x86_hotep_collisions());
+        x2_log_error("[HB]           HOTEP: %u hash collision(s) -- "
+                     "new keys refused, probe may miss the top\n",
+                     x86_hotep_collisions());
       {
         /* WHERE the interval's wall time went: host import stubs vs
            guest bodies. This is the number the crossing count cannot
@@ -230,16 +227,15 @@ static void *heartbeat_thread(void *arg) {
         x86_probe_time_delta(&hn, &gn);
         total = hn + gn;
         if (!total)
-          fprintf(stderr, "[HB]           wall-time split: probe "
-                          "unarmed (X2_HOTEP) -- set it to attribute "
-                          "where frame time goes\n");
+          x2_log_error("[HB]           wall-time split: probe "
+                       "unarmed (X2_HOTEP) -- set it to attribute "
+                       "where frame time goes\n");
         else
-          fprintf(stderr,
-                  "[HB]           wall-time split this interval: "
-                  "host imports %.1f ms (%.0f%%), guest bodies "
-                  "%.1f ms (%.0f%%)\n",
-                  (double)hn * 1e-6, 100.0 * (double)hn / total,
-                  (double)gn * 1e-6, 100.0 * (double)gn / total);
+          x2_log_error("[HB]           wall-time split this interval: "
+                       "host imports %.1f ms (%.0f%%), guest bodies "
+                       "%.1f ms (%.0f%%)\n",
+                       (double)hn * 1e-6, 100.0 * (double)hn / total,
+                       (double)gn * 1e-6, 100.0 * (double)gn / total);
       }
     }
     if (first) {
@@ -251,54 +247,49 @@ static void *heartbeat_thread(void *arg) {
       p_draws = draws;
       p_gpu = gpu_draws;
       p_ref = gpu_refused;
-      fprintf(stderr,
-              "[HB] %6.1fs  the first line is a baseline; the "
-              "deltas below are per %.1fs.\n",
-              t, g_period);
-      fprintf(stderr, "[HB] %6.1fs  crossings %lu (%s)%s\n", t, cross,
-              x86_crossings_what(),
-              have_dev ? "" : "  -- no D3D8 device exists yet");
+      x2_log_error("[HB] %6.1fs  the first line is a baseline; the "
+                   "deltas below are per %.1fs.\n",
+                   t, g_period);
+      x2_log_error("[HB] %6.1fs  crossings %lu (%s)%s\n", t, cross,
+                   x86_crossings_what(),
+                   have_dev ? "" : "  -- no D3D8 device exists yet");
       continue;
     }
 
     if (cross == p_cross) {
       /* The one case that IS a hang, and it has to be said in words: a
          guest that executed nothing is not slow, it is stopped. */
-      fprintf(stderr,
-              "[HB] %6.1fs  the guest executed NOTHING in the "
-              "last %.1fs (crossings unchanged at %lu) -- it is "
-              "blocked inside host code or stopped, not "
-              "looping.\n",
-              t, g_period, cross);
+      x2_log_error("[HB] %6.1fs  the guest executed NOTHING in the "
+                   "last %.1fs (crossings unchanged at %lu) -- it is "
+                   "blocked inside host code or stopped, not "
+                   "looping.\n",
+                   t, g_period, cross);
       continue;
     }
 
-    fprintf(stderr, "[HB] %6.1fs  crossings %lu (+%lu)", t, cross,
-            cross - p_cross);
+    x2_log_error("[HB] %6.1fs  crossings %lu (+%lu)", t, cross,
+                 cross - p_cross);
     if (!have_dev) {
-      fprintf(stderr, "  -- no D3D8 device exists, so there are no frame "
-                      "counters to show yet.\n");
+      x2_log_error("  -- no D3D8 device exists, so there are no frame "
+                   "counters to show yet.\n");
     } else {
-      fprintf(stderr,
-              "  scenes %lu (+%lu)  clears %lu (+%lu)  "
-              "draws %lu (+%lu)  presents %lu (+%lu)\n",
-              scenes, scenes - p_scenes, clears, clears - p_clears, draws,
-              draws - p_draws, presents, presents - p_presents);
+      x2_log_error("  scenes %lu (+%lu)  clears %lu (+%lu)  "
+                   "draws %lu (+%lu)  presents %lu (+%lu)\n",
+                   scenes, scenes - p_scenes, clears, clears - p_clears, draws,
+                   draws - p_draws, presents, presents - p_presents);
       /* Each zero delta gets its own sentence. A row of numbers with a
          0 in it reads as noise; "no frame was presented" reads as the
          finding it is. */
       if (presents == p_presents)
-        fprintf(stderr,
-                "[HB]           ... and NO frame was presented "
-                "in that time (still %lu) -- the guest is "
-                "running, but not reaching Present.\n",
-                presents);
+        x2_log_error("[HB]           ... and NO frame was presented "
+                     "in that time (still %lu) -- the guest is "
+                     "running, but not reaching Present.\n",
+                     presents);
       if (draws == p_draws)
-        fprintf(stderr,
-                "[HB]           ... and NOTHING was drawn in "
-                "that time (still %lu) -- whatever frames ran "
-                "submitted no geometry.\n",
-                draws);
+        x2_log_error("[HB]           ... and NOTHING was drawn in "
+                     "that time (still %lu) -- whatever frames ran "
+                     "submitted no geometry.\n",
+                     draws);
       /* The engine's draw count and the GPU's are different claims: the
          first is what was asked for, the second what was rasterised. A
          black screen with both rising is a shading problem; a black
@@ -314,12 +305,11 @@ static void *heartbeat_thread(void *arg) {
            wanted a second stage" is a real finding about this route and
            is worth as much as a large number; a line that appears only
            when non-zero cannot be told from a check nobody ran. */
-        fprintf(stderr,
-                "[HB]           %lu of %lu draw(s) (+%lu) "
-                "wanted a texture stage beyond 0 (up to %d "
-                "extra); stage 1 is implemented and stage 2+ "
-                "is refused\n",
-                ms, draws, ms - p_ms, most);
+        x2_log_error("[HB]           %lu of %lu draw(s) (+%lu) "
+                     "wanted a texture stage beyond 0 (up to %d "
+                     "extra); stage 1 is implemented and stage 2+ "
+                     "is refused\n",
+                     ms, draws, ms - p_ms, most);
         p_ms = ms;
       }
       {
@@ -331,24 +321,23 @@ static void *heartbeat_thread(void *arg) {
         /* Printed at zero as well: the shader ASSUMES the default
            arguments, and "no draw disagreed" is the measurement that
            licenses the assumption. */
-        fprintf(stderr,
-                "[HB]           combiner args: %lu default, "
-                "%lu other%s\n",
-                dflt, other, other ? "" : " -- the shader's assumption holds");
+        x2_log_error("[HB]           combiner args: %lu default, "
+                     "%lu other%s\n",
+                     dflt, other,
+                     other ? "" : " -- the shader's assumption holds");
         if (other)
-          fprintf(stderr,
-                  "[HB]             first non-default: "
-                  "COLORARG1 %u COLORARG2 %u ALPHAARG1 %u "
-                  "ALPHAARG2 %u\n",
-                  f[0], f[1], f[2], f[3]);
+          x2_log_error("[HB]             first non-default: "
+                       "COLORARG1 %u COLORARG2 %u ALPHAARG1 %u "
+                       "ALPHAARG2 %u\n",
+                       f[0], f[1], f[2], f[3]);
       }
-      fprintf(stderr,
-              "[HB]           gpu draws %lu (+%lu)  refused %lu "
-              "(+%lu)%s\n",
-              gpu_draws, gpu_draws - p_gpu, gpu_refused, gpu_refused - p_ref,
-              gpu_draws == p_gpu && draws != p_draws
-                  ? "  -- the engine asked and the BACKEND drew none"
-                  : "");
+      x2_log_error("[HB]           gpu draws %lu (+%lu)  refused %lu "
+                   "(+%lu)%s\n",
+                   gpu_draws, gpu_draws - p_gpu, gpu_refused,
+                   gpu_refused - p_ref,
+                   gpu_draws == p_gpu && draws != p_draws
+                       ? "  -- the engine asked and the BACKEND drew none"
+                       : "");
       /*
        * Frame-phase profiling, live.
        *
@@ -367,20 +356,19 @@ static void *heartbeat_thread(void *arg) {
         unsigned long up, sb, intervals;
         gpu_device_perf(&fns, &fmin, &fmax, &esub, &intervals, &hist);
         gpu_draw_perf(&dns, &uns, &una, &unsb, &tc, &up, &sb);
-        fprintf(stderr,
-                "[HB]           perf: frame wall avg %.1f ms "
-                "min %.1f max %.1f (of %lu intervals) -- host "
-                "draw %.2f ms/frame, host upload %.2f "
-                "ms/frame (alloc %.2f + submit %.2f), %lu "
-                "uploads and %lu transfer-buffer alloc(s)\n",
-                fns && intervals ? (double)fns * 1e-6 / (double)intervals : 0.0,
-                fmin ? (double)fmin * 1e-6 : 0.0, (double)fmax * 1e-6,
-                intervals,
-                intervals ? (double)dns * 1e-6 / (double)intervals : 0.0,
-                intervals ? (double)uns * 1e-6 / (double)intervals : 0.0,
-                intervals ? (double)una * 1e-6 / (double)intervals : 0.0,
-                intervals ? (double)unsb * 1e-6 / (double)intervals : 0.0,
-                (unsigned long)up, (unsigned long)tc);
+        x2_log_error(
+            "[HB]           perf: frame wall avg %.1f ms "
+            "min %.1f max %.1f (of %lu intervals) -- host "
+            "draw %.2f ms/frame, host upload %.2f "
+            "ms/frame (alloc %.2f + submit %.2f), %lu "
+            "uploads and %lu transfer-buffer alloc(s)\n",
+            fns && intervals ? (double)fns * 1e-6 / (double)intervals : 0.0,
+            fmin ? (double)fmin * 1e-6 : 0.0, (double)fmax * 1e-6, intervals,
+            intervals ? (double)dns * 1e-6 / (double)intervals : 0.0,
+            intervals ? (double)uns * 1e-6 / (double)intervals : 0.0,
+            intervals ? (double)una * 1e-6 / (double)intervals : 0.0,
+            intervals ? (double)unsb * 1e-6 / (double)intervals : 0.0,
+            (unsigned long)up, (unsigned long)tc);
         (void)esub;
         (void)sb;
         (void)hist;
@@ -395,7 +383,7 @@ static void *heartbeat_thread(void *arg) {
       {
         char vsl[256];
         d3d8_vertex_shader_binding_line(vsl, sizeof vsl);
-        fprintf(stderr, "[HB]           %s\n", vsl);
+        x2_log_error("[HB]           %s\n", vsl);
       }
       /* The oracle probes. Live, and printed whether armed or not: a
          capture that recorded nothing must be visible DURING the run,
@@ -404,25 +392,23 @@ static void *heartbeat_thread(void *arg) {
       {
         char pl[192];
         d3d8_vsconst_caller_line(pl, sizeof pl);
-        fprintf(stderr, "[HB]           %s\n", pl);
+        x2_log_error("[HB]           %s\n", pl);
       }
       {
         static unsigned long p_unl, p_byt, p_rel, p_gen;
         unsigned long lk, dis, noov, unl, byt, rel, gen;
         d3d8_buffer_lock_counts(&lk, &dis, &noov, &unl, &byt, &rel, &gen);
-        fprintf(stderr,
-                "[HB]           buffer locks %lu (%lu DISCARD, "
-                "%lu NOOVERWRITE); %lu unlock(s) (+%lu) moved "
-                "%lu MB (+%lu MB); %lu (+%lu) relocked in one "
-                "frame\n",
-                lk, dis, noov, unl, unl - p_unl, byt >> 20, (byt - p_byt) >> 20,
-                rel, rel - p_rel);
-        fprintf(stderr,
-                "[HB]           of those unlocks, %lu (+%lu) "
-                "needed a NEW BUFFER GENERATION after an "
-                "earlier draw -- SDL_GPU cycling preserves "
-                "both\n",
-                gen, gen - p_gen);
+        x2_log_error("[HB]           buffer locks %lu (%lu DISCARD, "
+                     "%lu NOOVERWRITE); %lu unlock(s) (+%lu) moved "
+                     "%lu MB (+%lu MB); %lu (+%lu) relocked in one "
+                     "frame\n",
+                     lk, dis, noov, unl, unl - p_unl, byt >> 20,
+                     (byt - p_byt) >> 20, rel, rel - p_rel);
+        x2_log_error("[HB]           of those unlocks, %lu (+%lu) "
+                     "needed a NEW BUFFER GENERATION after an "
+                     "earlier draw -- SDL_GPU cycling preserves "
+                     "both\n",
+                     gen, gen - p_gen);
         p_unl = unl;
         p_byt = byt;
         p_rel = rel;
@@ -446,12 +432,11 @@ static void *heartbeat_thread(void *arg) {
     if (have_dev && presents == p_presents && cross != p_cross) {
       if (++stalled == 2 && !dumped) {
         dumped = 1;
-        fprintf(stderr,
-                "[HB] the guest is EXECUTING but has presented "
-                "nothing for %.1fs. Dumping the boundary ring "
-                "as a snapshot -- the guest is still running, "
-                "so a line may be torn. Reported once.\n",
-                2 * g_period);
+        x2_log_error("[HB] the guest is EXECUTING but has presented "
+                     "nothing for %.1fs. Dumping the boundary ring "
+                     "as a snapshot -- the guest is still running, "
+                     "so a line may be torn. Reported once.\n",
+                     2 * g_period);
         x86_ring_dump();
       }
     } else {
@@ -483,7 +468,7 @@ static void *heartbeat_thread(void *arg) {
 }
 
 void heartbeat_start(void) {
-  const char *e = getenv("X2_HEARTBEAT");
+  const char *e = x2_config_override_get(kX2ConfigHeartbeat);
   pthread_t th;
   int rc;
 
@@ -501,29 +486,26 @@ void heartbeat_start(void) {
    */
   if (g_period <= 0.0) {
     g_silent = 1;
-    fprintf(stderr,
-            "[HB] the liveness line is off (X2_HEARTBEAT=%s). The "
-            "thread still runs, because the END-OF-RUN report is "
-            "printed from it; a run that stops producing output "
-            "will say nothing about whether it is alive.\n",
-            e ? e : "0");
+    x2_log_error("[HB] the liveness line is off (X2_HEARTBEAT=%s). The "
+                 "thread still runs, because the END-OF-RUN report is "
+                 "printed from it; a run that stops producing output "
+                 "will say nothing about whether it is alive.\n",
+                 e ? e : "0");
     g_period = 5.0; /* it still has to wake to notice a signal */
   }
   g_t0 = now_s();
   g_running = 1;
   rc = pthread_create(&th, NULL, heartbeat_thread, NULL);
   if (rc != 0) {
-    fprintf(stderr,
-            "[HB] could not start the heartbeat thread (%s) -- "
-            "this run has NO liveness reporting.\n",
-            strerror(rc));
+    x2_log_error("[HB] could not start the heartbeat thread (%s) -- "
+                 "this run has NO liveness reporting.\n",
+                 strerror(rc));
     g_running = 0;
     return;
   }
   pthread_detach(th);
-  fprintf(stderr,
-          "[HB] a liveness line every %.1fs, counting guest %s and "
-          "the D3D8 frame counters (X2_HEARTBEAT=<seconds>, 0 to "
-          "disable).\n",
-          g_period, x86_crossings_what());
+  x2_log_error("[HB] a liveness line every %.1fs, counting guest %s and "
+               "the D3D8 frame counters (X2_HEARTBEAT=<seconds>, 0 to "
+               "disable).\n",
+               g_period, x86_crossings_what());
 }

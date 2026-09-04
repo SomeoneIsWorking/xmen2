@@ -13,14 +13,14 @@ extern "C" {
  * Runtime/engine knobs are not player settings: this file is separate from
  * x2native.conf (owned by settings_store.c).
  *
- * CVars, with their layers (low to high: compiled default < that file <
- * environment X2_* < --set):
- *   engine      string  ""       -- ""(build default) | substrate | interpreter | jit
- *   jit.cache   bool    true     -- off re-translates every block
- *   jit.verify  bool    false    -- per-block shadow-interpreter compare
+ * Layers, from low to high, are compiled default, that file, enumerated X2_*
+ * environment overrides, then --set. Registered values cover JIT diagnostics,
+ * native-override A/B checks, and runtime/player knobs that previously read
+ * process environment directly. C owners read through <lucent/cvar_c.h>.
  *
- * C code reads an effective value through <lucent/cvar_c.h>
- * (lucent_cvar_text("engine"), lucent_cvar_flag("jit.cache", 1), ...). */
+ * The gameplay product has one execution engine: x86port's runtime JIT.
+ * Engine selection and explicit interpreter controls are intentionally absent
+ * from this configuration surface. */
 void x2_runtime_config_init(int argc, char **argv);
 
 #ifdef __cplusplus

@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /* See gpu_frame_submit.h. */
 #include "gpu_frame_submit.h"
 
@@ -12,7 +13,7 @@ int gpu_frame_submit(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command,
   if (!wait_for_completion) {
     if (SDL_SubmitGPUCommandBuffer(command))
       return 1;
-    fprintf(stderr, "gpu: frame submission failed: %s\n", SDL_GetError());
+    x2_log_error("gpu: frame submission failed: %s\n", SDL_GetError());
     return 0;
   }
 
@@ -26,15 +27,14 @@ int gpu_frame_submit(SDL_GPUDevice *device, SDL_GPUCommandBuffer *command,
    */
   fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command);
   if (!fence) {
-    fprintf(stderr,
-            "gpu: windowless frame submission did not return a "
-            "fence: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: windowless frame submission did not return a "
+                 "fence: %s\n",
+                 SDL_GetError());
     return 0;
   }
   if (!SDL_WaitForGPUFences(device, true, &fence, 1)) {
-    fprintf(stderr, "gpu: waiting for a windowless frame failed: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: waiting for a windowless frame failed: %s\n",
+                 SDL_GetError());
     SDL_ReleaseGPUFence(device, fence);
     return 0;
   }

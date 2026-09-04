@@ -131,7 +131,7 @@ void attr_stack_verify_end(const CPU *C, AttrStackVerify *v, uint32_t self) {
 
   /* Re-run guest body */
   CPU guest = *C;
-  guest.ecx = self;
+  guest.reg[kX86pEcx] = self;
   x86_guest_body(&guest, "libIGSg.dll", 0x10034d30u);
 
   /* Compare each stack */

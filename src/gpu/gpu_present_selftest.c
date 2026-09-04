@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /* Pixel-level proof of the logical-backbuffer presentation contract. */
 #include "gpu_capture.h"
 #include "gpu_capture_internal.h"
@@ -17,8 +18,7 @@ static int submit_and_wait(SDL_GPUCommandBuffer *command_buffer) {
 
   fence = SDL_SubmitGPUCommandBufferAndAcquireFence(command_buffer);
   if (!fence) {
-    fprintf(stderr, "gpu present selftest: submit failed: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu present selftest: submit failed: %s\n", SDL_GetError());
     return 0;
   }
   SDL_WaitForGPUFences(g_gpu, true, &fence, 1);
@@ -209,9 +209,10 @@ int gpu_present_selftest(void) {
   char why[192];
   int wide_ok, tall_ok, bound_ok;
 
-  printf("\n=== gpu present selftest: logical scene aspect-fit pixels ===\n");
+  x2_log_info(
+      "\n=== gpu present selftest: logical scene aspect-fit pixels ===\n");
   if (!gpu_device_create()) {
-    printf("gpu present selftest: FAILED -- no GPU device.\n");
+    x2_log_info("gpu present selftest: FAILED -- no GPU device.\n");
     return 1;
   }
   wide_ok = composite_case(4, 2, wide, output, capture) &&
@@ -237,14 +238,14 @@ int gpu_present_selftest(void) {
              strstr(why, "bound") != NULL;
   gpu_capture_discard();
   if (!wide_ok || !tall_ok || !bound_ok) {
-    printf("gpu present selftest: FAILED -- wide=%d tall=%d bound=%d; "
-           "expected identical retained/output pixels, black bars, four "
-           "corner colours and an explicit oversized refusal.\n",
-           wide_ok, tall_ok, bound_ok);
+    x2_log_info("gpu present selftest: FAILED -- wide=%d tall=%d bound=%d; "
+                "expected identical retained/output pixels, black bars, four "
+                "corner colours and an explicit oversized refusal.\n",
+                wide_ok, tall_ok, bound_ok);
   } else {
-    printf("gpu present selftest: PASSED -- wide and tall scenes used "
-           "the production compositor and retained capture, with black "
-           "bars, preserved corner colours and a bounded allocation.\n");
+    x2_log_info("gpu present selftest: PASSED -- wide and tall scenes used "
+                "the production compositor and retained capture, with black "
+                "bars, preserved corner colours and a bounded allocation.\n");
   }
   gpu_device_destroy();
   return wide_ok && tall_ok && bound_ok ? 0 : 1;

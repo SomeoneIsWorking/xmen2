@@ -3,8 +3,8 @@ id: C232
 kind: claim
 status: holds
 created: 2026-08-21
-tags: recomp,x87,clang
-depends: src/recomp/x87host.c#x87_host_end, tests/test_x87host.c
+tags: x87,clang,abi
+depends: src/runtime/x86_abi/x87host.c#x87_host_end, tests/test_x87host.c
 ---
 
 ## Claim

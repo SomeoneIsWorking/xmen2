@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * The guest owns a 32-bit address space; several hosts will not lend it.
  *
@@ -125,14 +126,14 @@ int guest_memory_init(void) {
   void *arena = mmap(NULL, (size_t)GUEST_SPACE_SIZE, PROT_NONE,
                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
   if (arena == MAP_FAILED) {
-    fprintf(stderr, "guest_memory: cannot reserve the 4 GB guest arena: %s\n",
-            strerror(errno));
+    x2_log_error("guest_memory: cannot reserve the 4 GB guest arena: %s\n",
+                 strerror(errno));
     return -1;
   }
   g_guest_memory_base = (uintptr_t)arena;
-  fprintf(stderr, "guest_memory: reserved guest arena 0x%llx..0x%llx\n",
-          (unsigned long long)g_guest_memory_base,
-          (unsigned long long)(g_guest_memory_base + GUEST_SPACE_SIZE));
+  x2_log_error("guest_memory: reserved guest arena 0x%llx..0x%llx\n",
+               (unsigned long long)g_guest_memory_base,
+               (unsigned long long)(g_guest_memory_base + GUEST_SPACE_SIZE));
 #else
   g_guest_memory_base = 0;
 #endif

@@ -12,7 +12,7 @@ static int seen_count;
 
 void x86_dispatch(CPU *C, uint32_t target) {
   seen[seen_count++] = target;
-  C->esp += 4u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 int main(void) {
@@ -32,7 +32,7 @@ int main(void) {
   mem[4] = 0;
   mem[5] = 0x11111111u;
   mem[6] = 0x22222222u;
-  C.esp = memory + 64u * 4u;
+  C.reg[kX86pEsp] = memory + 64u * 4u;
   mem[65] = memory + 4u * 4u;
   mem[66] = memory + 7u * 4u;
 
@@ -44,7 +44,7 @@ int main(void) {
             seen_count, seen[0], seen[1]);
     return 1;
   }
-  if (C.esp != memory + 64u * 4u) {
+  if (C.reg[kX86pEsp] != memory + 64u * 4u) {
     fprintf(stderr, "_initterm changed caller esp\n");
     return 1;
   }

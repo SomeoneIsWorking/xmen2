@@ -1,7 +1,8 @@
 #include "control.h"
-#include "control_http.h"
+#include "../config/environment.h"
 #include "control_command_bridge.h"
-#include "x86_reached.h"
+#include "control_http.h"
+#include "x2_log.h"
 
 #include "autosave_runtime.h"
 #include "control_performance_route.h"
@@ -426,8 +427,6 @@ static void serve(int fd) {
     control_save_route(fd);
   else if (!strcmp(path, "/performance/reset"))
     control_performance_reset_route(fd);
-  else if (!strcmp(path, "/reached"))
-    x86_reached_route(fd, query ? query : "");
   else
     control_reply_text(
         fd, 404, "Not Found",
@@ -452,7 +451,7 @@ static void serve(int fd) {
 int control_start(int port) {
 
   if (!port) {
-    const char *e = getenv("X2_CONTROL");
+    const char *e = x2_config_override_get(kX2ConfigControl);
     port = (e && *e) ? atoi(e) : 0;
   }
   if (!port)
@@ -462,26 +461,25 @@ int control_start(int port) {
     exit(2);
   g_port = port;
   gpu_capture_set_frame_observer(control_frame_pump);
-  printf("control: http://127.0.0.1:%d  -- /status /key?name=X /pad "
-         "/screenshot /input /save /performance/reset\n"
-         "control: loopback only; guest commands use its input poll and "
-         "screenshots use the render boundary, never the server thread.\n",
-         port);
-  fflush(stdout);
+  x2_log_info("control: http://127.0.0.1:%d  -- /status /key?name=X /pad "
+              "/screenshot /input /save /performance/reset\n"
+              "control: loopback only; guest commands use its input poll and "
+              "screenshots use the render boundary, never the server thread.\n",
+              port);
   return port;
 }
 
 void control_report(void) {
   if (!g_port) {
-    fprintf(stderr, "  control: not started (no --control / X2_CONTROL), "
-                    "so this run took no live commands.\n");
+    x2_log_error("  control: not started (no --control / X2_CONTROL), "
+                 "so this run took no live commands.\n");
     return;
   }
-  fprintf(stderr,
-          "  control: port %d served %lu request(s) -- %lu key(s) pressed, %lu "
-          "refused by name or slot, %lu screenshot(s),\n"
-          "           %lu synthetic pad input(s) set and %lu refused, %lu "
-          "input probe(s), %lu save probe(s).\n",
-          g_port, g_requests, g_keys_pressed, g_keys_refused, g_shots, g_pad_ok,
-          g_pad_refused, g_probes, g_save_probes);
+  x2_log_error(
+      "  control: port %d served %lu request(s) -- %lu key(s) pressed, %lu "
+      "refused by name or slot, %lu screenshot(s),\n"
+      "           %lu synthetic pad input(s) set and %lu refused, %lu "
+      "input probe(s), %lu save probe(s).\n",
+      g_port, g_requests, g_keys_pressed, g_keys_refused, g_shots, g_pad_ok,
+      g_pad_refused, g_probes, g_save_probes);
 }

@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /*
  * The host GPU device and the frame, on SDL3's GPU API (Vulkan on Linux).
  *
@@ -19,10 +21,10 @@
  * reported rather than dropped, because dropping it would show up as
  * smearing between frames and be attributed to anything but this.
  */
-#include "gpu_device.h"
 #include "boot_blackout.h"
 #include "gpu_capture.h"
 #include "gpu_capture_internal.h"
+#include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_frame_timing.h"
 #include "gpu_frame_timing_report.h"
@@ -80,7 +82,7 @@ static unsigned long g_frames_presented, g_frames_no_swapchain,
  * The frame-phase profiler's device side.
  *
  * Frame WALL time measured present-to-present at gpu_frame_end. The guest is
- * recompiled C on the same thread, so one interval to the next is the whole
+ * guest execution on the same thread, so one interval to the next is the whole
  * cost of a frame -- guest crossings plus the draw/upload paths timed in
  * gpu_draw.c plus this submit -- and subtracting the two known parts from the
  * interval is what the guest share is left over as. The histogram is the
@@ -95,7 +97,7 @@ static unsigned long long g_frame_end_submits;
 
 int gpu_device_create(void) {
 #ifndef X2_WITH_SDL
-  fprintf(stderr, "gpu: built without SDL; no GPU device can be made.\n");
+  x2_log_error("gpu: built without SDL; no GPU device can be made.\n");
   return 0;
 #else
   X2Settings *settings = x2_settings_store();
@@ -104,7 +106,7 @@ int gpu_device_create(void) {
   if (g_gpu)
     return 1;
   if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_Init(SDL_INIT_VIDEO))
-    fprintf(stderr, "gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
+    x2_log_error("gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
 
   /*
    * The Vulkan VALIDATION LAYER, and whether it is loaded, said out loud.
@@ -122,26 +124,23 @@ int gpu_device_create(void) {
    * on, it was that no line of output distinguished the two builds.
    */
   {
-    const char *e = getenv("X2_GPU_DEBUG");
+    const char *e = x2_config_override_get(kX2ConfigGpuDebug);
     int debug = e && *e && *e != '0';
-    printf("gpu: Vulkan validation is %s (X2_GPU_DEBUG=%s). It inspects "
-           "EVERY draw; a timing measured with it on is not a timing of "
-           "this renderer.\n",
-           debug ? "ON" : "off", e && *e ? e : "unset");
-    fflush(stdout);
+    x2_log_info("gpu: Vulkan validation is %s (X2_GPU_DEBUG=%s). It inspects "
+                "EVERY draw; a timing measured with it on is not a timing of "
+                "this renderer.\n",
+                debug ? "ON" : "off", e && *e ? e : "unset");
     g_gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, debug, NULL);
   }
   if (!g_gpu) {
-    fprintf(stderr,
-            "gpu: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"
-            "  No GPU device means nothing can be drawn. Reported here "
-            "rather than later as a blank frame.\n",
-            SDL_GetError());
+    x2_log_error("gpu: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"
+                 "  No GPU device means nothing can be drawn. Reported here "
+                 "rather than later as a blank frame.\n",
+                 SDL_GetError());
     return 0;
   }
-  printf("gpu: GPU device created -- backend \"%s\"\n",
-         SDL_GetGPUDeviceDriver(g_gpu));
-  fflush(stdout);
+  x2_log_info("gpu: GPU device created -- backend \"%s\"\n",
+              SDL_GetGPUDeviceDriver(g_gpu));
   gpu_texture_flush_format_support_report();
 
   /* Attach immediately if a window already exists -- under x2native the
@@ -246,16 +245,14 @@ int gpu_device_attach_window(struct SDL_Window *w) {
   if (!win)
     return 0;
   if (!SDL_ClaimWindowForGPUDevice(g_gpu, win)) {
-    fprintf(stderr,
-            "gpu: SDL_ClaimWindowForGPUDevice failed: %s\n"
-            "  There is a window and a device but no swapchain "
-            "between them, so nothing can reach the screen.\n",
-            SDL_GetError());
+    x2_log_error("gpu: SDL_ClaimWindowForGPUDevice failed: %s\n"
+                 "  There is a window and a device but no swapchain "
+                 "between them, so nothing can reach the screen.\n",
+                 SDL_GetError());
     return 0;
   }
   g_win = win;
-  printf("gpu: swapchain claimed on window %p\n", (void *)win);
-  fflush(stdout);
+  x2_log_info("gpu: swapchain claimed on window %p\n", (void *)win);
   return 1;
 #endif
 }
@@ -310,12 +307,11 @@ static void apply_viewport(void) {
   if (w < 1 || h < 1) {
     static int told;
     if (!told++)
-      fprintf(stderr,
-              "gpu: the requested viewport %dx%d at (%d,%d) "
-              "does not intersect the %ux%u target; leaving the "
-              "previous one.\n",
-              g_viewport.w, g_viewport.h, g_viewport.x, g_viewport.y, g_swap_w,
-              g_swap_h);
+      x2_log_error("gpu: the requested viewport %dx%d at (%d,%d) "
+                   "does not intersect the %ux%u target; leaving the "
+                   "previous one.\n",
+                   g_viewport.w, g_viewport.h, g_viewport.x, g_viewport.y,
+                   g_swap_w, g_swap_h);
     return;
   }
   vp.x = (float)x;
@@ -417,9 +413,9 @@ SDL_GPUTextureFormat gpu_depth_format(void) {
   {
     static int told;
     if (!told++)
-      fprintf(stderr, "gpu: this device supports NONE of the five depth "
-                      "formats asked for, so there is no depth buffer "
-                      "and everything draws in submission order.\n");
+      x2_log_error("gpu: this device supports NONE of the five depth "
+                   "formats asked for, so there is no depth buffer "
+                   "and everything draws in submission order.\n");
   }
   return SDL_GPU_TEXTUREFORMAT_INVALID;
 }
@@ -507,7 +503,7 @@ static void pass_begin(int reopen) {
 
   g_pass = SDL_BeginGPURenderPass(g_cmd, &ct, 1, depth ? &dt : NULL);
   if (!g_pass) {
-    fprintf(stderr, "gpu: SDL_BeginGPURenderPass failed: %s\n", SDL_GetError());
+    x2_log_error("gpu: SDL_BeginGPURenderPass failed: %s\n", SDL_GetError());
     return;
   }
   apply_viewport();
@@ -536,8 +532,8 @@ int gpu_frame_begin(void) {
       gpu_frame_end();
     g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
     if (!g_cmd) {
-      fprintf(stderr, "gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
-              SDL_GetError());
+      x2_log_error("gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
+                   SDL_GetError());
       return 0;
     }
     gpu_set_offscreen_target(t, gpu_headless_width(), gpu_headless_height());
@@ -553,27 +549,27 @@ int gpu_frame_begin(void) {
     if (!g_window_provider || !gpu_device_attach_window(g_window_provider())) {
       g_frames_no_window++;
       if (!told_no_window++)
-        printf("gpu: frames are being driven with no window to "
-               "present to (--no-window, or the guest made none). "
-               "The frame loop runs; nothing reaches a screen.\n");
+        x2_log_info("gpu: frames are being driven with no window to "
+                    "present to (--no-window, or the guest made none). "
+                    "The frame loop runs; nothing reaches a screen.\n");
       return 0;
     }
   }
   if (g_cmd) {
-    fprintf(stderr, "gpu: beginDraw while a frame is already open -- the "
-                    "previous one was never ended. Ending it.\n");
+    x2_log_error("gpu: beginDraw while a frame is already open -- the "
+                 "previous one was never ended. Ending it.\n");
     gpu_frame_end();
   }
   g_cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
   if (!g_cmd) {
-    fprintf(stderr, "gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: SDL_AcquireGPUCommandBuffer failed: %s\n",
+                 SDL_GetError());
     return 0;
   }
   if (!SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_output,
                                              &g_output_w, &g_output_h)) {
-    fprintf(stderr, "gpu: acquiring the swapchain texture failed: %s\n",
-            SDL_GetError());
+    x2_log_error("gpu: acquiring the swapchain texture failed: %s\n",
+                 SDL_GetError());
     SDL_CancelGPUCommandBuffer(g_cmd);
     g_cmd = NULL;
     return 0;
@@ -679,13 +675,12 @@ void gpu_frame_end(void) {
   {
     static long limit = -2;
     if (limit == -2) {
-      const char *e = getenv("X2_MAX_FRAMES");
+      const char *e = x2_config_override_get(kX2ConfigMaxFrames);
       limit = (e && *e) ? strtol(e, NULL, 0) : -1;
       if (limit > 0)
-        fprintf(stderr,
-                "gpu: X2_MAX_FRAMES=%ld -- the run will stop "
-                "cleanly after that many presented frames.\n",
-                limit);
+        x2_log_error("gpu: X2_MAX_FRAMES=%ld -- the run will stop "
+                     "cleanly after that many presented frames.\n",
+                     limit);
     }
     /*
      * Said ONCE. The limit is a level, not an edge -- every frame after it
@@ -698,10 +693,9 @@ void gpu_frame_end(void) {
      * requested is the stopping path's business to report, not this one's.
      */
     if (limit > 0 && (long)g_frames_presented >= limit && !g_frame_limit_hit) {
-      fprintf(stderr,
-              "\ngpu: X2_MAX_FRAMES reached (%lu presented). "
-              "Stopping; the reports follow.\n",
-              g_frames_presented);
+      x2_log_error("\ngpu: X2_MAX_FRAMES reached (%lu presented). "
+                   "Stopping; the reports follow.\n",
+                   g_frames_presented);
       g_frame_limit_hit = 1;
     }
   }
@@ -763,12 +757,12 @@ void gpu_frame_bind_target(unsigned index) {
     return; /* the back buffer: what we have */
   if (told_index != index) {
     told_index = index;
-    fprintf(stderr,
-            "gpu: the engine bound render destination %u, which is an "
-            "OFF-SCREEN target this backend does not have -- there is only "
-            "the swapchain. Drawing that follows goes to the back buffer "
-            "instead of where the engine intends.\n",
-            index);
+    x2_log_error(
+        "gpu: the engine bound render destination %u, which is an "
+        "OFF-SCREEN target this backend does not have -- there is only "
+        "the swapchain. Drawing that follows goes to the back buffer "
+        "instead of where the engine intends.\n",
+        index);
   }
 #endif
 }
@@ -800,33 +794,33 @@ void gpu_device_report(void) {
   const unsigned long *hist;
   if (!g_gpu && !g_frames_no_window)
     return;
-  printf("gpu: %lu frame(s) presented, %lu skipped for no swapchain "
-         "texture, %lu with no window, %lu clear(s) that arrived mid-frame "
-         "and reopened the pass\n",
-         g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
-         g_late_clears);
-  fflush(stdout);
+  x2_log_info(
+      "gpu: %lu frame(s) presented, %lu skipped for no swapchain "
+      "texture, %lu with no window, %lu clear(s) that arrived mid-frame "
+      "and reopened the pass\n",
+      g_frames_presented, g_frames_no_swapchain, g_frames_no_window,
+      g_late_clears);
   gpu_frame_timing_perf(&frame_ns, &frame_ns_min, &frame_ns_max, &intervals,
                         &hist);
   if (frame_ns && intervals) {
     double avg_ms = (double)frame_ns * 1e-6 / (double)intervals;
     unsigned i;
-    printf("  perf: frame wall avg %.2f ms, min %.2f ms, max %.2f ms, "
-           "%llu submit(s) at frame end; ms histogram:\n",
-           avg_ms, (double)frame_ns_min * 1e-6, (double)frame_ns_max * 1e-6,
-           (unsigned long long)g_frame_end_submits);
-    printf("        ");
+    x2_log_info("  perf: frame wall avg %.2f ms, min %.2f ms, max %.2f ms, "
+                "%llu submit(s) at frame end; ms histogram:\n",
+                avg_ms, (double)frame_ns_min * 1e-6,
+                (double)frame_ns_max * 1e-6,
+                (unsigned long long)g_frame_end_submits);
+    x2_log_info("        ");
     for (i = 0; i < GPU_FRAME_HISTOGRAM_BUCKETS; i++) {
       static const char *LBL[] = {
           "<1",    "1-2",   "2-4",   "4-6",    "6-10",    "10-16", "16-25",
           "25-40", "40-60", "60-80", "80-120", "120-200", ">=200",
       };
       if (i)
-        printf(" ");
-      printf("%s=%lu", LBL[i], hist[i]);
+        x2_log_info(" ");
+      x2_log_info("%s=%lu", LBL[i], hist[i]);
     }
-    printf("\n");
-    fflush(stdout);
+    x2_log_info("\n");
   }
 #endif
 }

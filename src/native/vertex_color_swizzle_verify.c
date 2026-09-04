@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /*
  * `gfx.vtx_swizzle_verify` -- the differential gate for the native vertex
  * colour-swap override in vertex_color_swizzle.c.
@@ -109,8 +110,8 @@ void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
   WR8(self + SELF_DIRTY, v->s60);
   WR8(self + SELF_LOCK, v->s68);
 
-  /* Run the guest's own body from the same start state. C->esp still points at
-     the return address with the two args above it. */
+  /* Run the guest's own body from the same start state. C->reg[kX86pEsp] still
+     points at the return address with the two args above it. */
   CPU guest = *C;
   x86_guest_body(&guest, "libIGGfx.dll", 0x10046ce0u);
 
@@ -121,12 +122,13 @@ void vtx_swizzle_verify_end(const CPU *C, VtxSwizzleVerify *v, uint32_t self,
       bad = 1;
 
   if (bad) {
-    fprintf(stderr,
-            "gfx.vtx_swizzle_verify: native swap of libIGGfx.dll!0x10046ce0 "
-            "disagrees with the guest body (self 0x%08x, desc 0x%08x, "
-            "flags 0x%x, %u byte(s)). The native swizzle is wrong; not "
-            "continuing.\n",
-            self, desc, flags, v->len);
+    lucent_log_error(
+        "x2",
+        "gfx.vtx_swizzle_verify: native swap of libIGGfx.dll!0x10046ce0 "
+        "disagrees with the guest body (self 0x%08x, desc 0x%08x, "
+        "flags 0x%x, %u byte(s)). The native swizzle is wrong; not "
+        "continuing.\n",
+        self, desc, flags, v->len);
     abort();
   }
 

@@ -1,8 +1,7 @@
 /*
- * The shipped settings document. Following Dusklight's document split, this
- * owns RML construction and interaction only; the RmlUi/SDL_GPU lifetime is
- * in rmlui_ui.cpp, persistence is in config/, presentation policy is in
- * presentation/, and publication into the guest is in input/.
+ * The shipped settings document owns RML construction and interaction only.
+ * rmlui_ui.cpp owns RmlUi/SDL_GPU lifetime, config/ owns persistence,
+ * presentation/ owns presentation policy, and input/ owns guest publication.
  */
 #include "settings_document.hpp"
 #include "controller_assignment_rows.hpp"
@@ -27,6 +26,7 @@ extern "C" {
 #include "settings_store.h"
 #include "transient_controller_assignment.h"
 #include "window_settings.h"
+#include "x2_log.h"
 }
 
 namespace x2::ui {
@@ -293,8 +293,7 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
       *settings = before;
       if (!x2_window_settings_apply(host_window, &before, rollback_why,
                                     sizeof rollback_why))
-        std::fprintf(stderr, "RMLUI: display rollback also failed: %s\n",
-                     rollback_why);
+        x2_log_error("RMLUI: display rollback also failed: %s\n", rollback_why);
       set_status(why);
     } else {
       std::string status = save_settings();

@@ -1,3 +1,4 @@
+#include <lucent/log_c.h>
 /*
  * igVkVisualContext -- the frame: the scene boundary, the clear, the viewport.
  *
@@ -132,12 +133,12 @@ static void vk_end_draw(CPU *C) {
   if (RD8(self + F_PROFILING)) {
     static int told;
     if (!told++)
-      fprintf(stderr,
-              "igVk: the engine has frame profiling ON (this+0x3c), and "
-              "this backend does NOT reproduce endDraw's timing branch "
-              "-- calling the timer at this+0x38 needs an FPU return "
-              "path the guest-call helper does not have. Frame times "
-              "the engine reports will be wrong, not merely absent.\n");
+      lucent_log_error(
+          "x2", "igVk: the engine has frame profiling ON (this+0x3c), and "
+                "this backend does NOT reproduce endDraw's timing branch "
+                "-- calling the timer at this+0x38 needs an FPU return "
+                "path the guest-call helper does not have. Frame times "
+                "the engine reports will be wrong, not merely absent.\n");
   }
   if (lo_va) {
     /* 64-bit counter, little-endian pair, exactly as ADD/ADC does it. */

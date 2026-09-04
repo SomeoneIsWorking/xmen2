@@ -61,10 +61,10 @@ Three separate wrong diagnoses, each of which looked well-evidenced:
   threading model's own stated caveat, which fitted perfectly and was wrong.
 * "PulseEvent loses a wakeup" -- plausible, and disproved by its own report:
   the "nobody was waiting" line never fired.
-* "FUN_10002a70 never returns" -- from the argument watch printing an entry
+* "FUN_10002a70 never returns" -- from an entry trace printing an entry
   with no matching exit. It DID return: these functions end in a TAIL CALL, so
   the exit is attributed to the callee. Silence from the watch was read as
-  "still inside", and that is now a recorded failure mode of I027.
+  "still inside"; a tail call invalidates that inference.
 
 What settled it was `gdb -p` on the stuck process: two threads parked at
 `thread_main`'s CREATE_SUSPENDED wait, the main thread in `WaitForSingleObject`

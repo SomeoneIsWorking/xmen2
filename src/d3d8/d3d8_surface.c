@@ -1,6 +1,7 @@
+#include "../native/x2_log.h"
 /* See d3d8_surface.h. */
-#include "d3d8_surface.h"
 #include "d3d8_resource.h"
+#include "d3d8_surface.h"
 #include "d3d8_types.h"
 
 #include "guest_heap.h"
@@ -49,8 +50,7 @@ uint32_t d3d8_format_bpp(uint32_t format) {
 
 static void *guest_ptr(uint32_t a, const char *what) {
   if (!a) {
-    fprintf(stderr, "d3d8: %s was given a NULL %s\n", d3d8_current_method(),
-            what);
+    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
     return NULL;
   }
   return guest_memory_pointer(a);
@@ -66,7 +66,7 @@ D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
   uint32_t bpp = d3d8_format_bpp(format);
 
   if (!s) {
-    fprintf(stderr, "d3d8: out of memory\n");
+    x2_log_error("d3d8: out of memory\n");
     abort();
   }
   s->kind = kind;
@@ -81,11 +81,10 @@ D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
 
   if (kind == D3D8_SURF_SYSTEM) {
     if (!bpp) {
-      fprintf(stderr,
-              "d3d8: a system surface was asked for in format "
-              "%u, whose pixel size this host does not know. "
-              "Refusing rather than guessing a stride.\n",
-              format);
+      x2_log_error("d3d8: a system surface was asked for in format "
+                   "%u, whose pixel size this host does not know. "
+                   "Refusing rather than guessing a stride.\n",
+                   format);
       free(s);
       return NULL;
     }
@@ -96,7 +95,7 @@ D3D8Object *d3d8_surface_new(D3D8SurfaceKind kind, uint32_t w, uint32_t h,
      */
     s->guest_pixels = guest_malloc(s->pitch * h);
     if (!s->guest_pixels) {
-      fprintf(stderr, "d3d8: no guest memory for a %ux%u surface\n", w, h);
+      x2_log_error("d3d8: no guest memory for a %ux%u surface\n", w, h);
       free(s);
       return NULL;
     }
@@ -116,17 +115,16 @@ D3D8Object *d3d8_surface_new_texlevel(D3D8Object *owner, uint32_t level,
   D3D8Object *o;
 
   if (!owner || !guest_pixels || !pitch || !size) {
-    fprintf(stderr,
-            "d3d8: a texture level surface was asked for with no "
-            "owner (%p), no storage (0x%08x), or no size "
-            "(pitch %u, %u bytes). Refusing rather than making a "
-            "surface whose Lock hands back nothing.\n",
-            (void *)owner, guest_pixels, pitch, size);
+    x2_log_error("d3d8: a texture level surface was asked for with no "
+                 "owner (%p), no storage (0x%08x), or no size "
+                 "(pitch %u, %u bytes). Refusing rather than making a "
+                 "surface whose Lock hands back nothing.\n",
+                 (void *)owner, guest_pixels, pitch, size);
     return NULL;
   }
   s = (D3D8Surface *)calloc(1, sizeof *s);
   if (!s) {
-    fprintf(stderr, "d3d8: out of memory\n");
+    x2_log_error("d3d8: out of memory\n");
     abort();
   }
   s->kind = D3D8_SURF_TEXLEVEL;
@@ -187,9 +185,9 @@ static void surf_GetDevice(D3D8Object *self, CPU *C) {
   /* Same reasoning as IDirect3DDevice8::GetDirect3D: handing the device back
      needs an AddRef the caller will balance with a Release, and getting that
      pairing wrong makes teardown fail somewhere unrelated. */
-  fprintf(stderr, "d3d8: IDirect3DSurface8::GetDevice is not implemented -- "
-                  "handing the device back needs a reference this surface "
-                  "cannot yet balance.\n");
+  x2_log_error("d3d8: IDirect3DSurface8::GetDevice is not implemented -- "
+               "handing the device back needs a reference this surface "
+               "cannot yet balance.\n");
   if (out)
     WR32(out, 0);
   d3d8_ret(C, D3DERR_INVALIDCALL);
@@ -223,11 +221,10 @@ static void surf_LockRect(D3D8Object *self, CPU *C) {
     return;
   }
   if (s->kind == D3D8_SURF_TEXLEVEL && !s->guest_pixels) {
-    fprintf(stderr,
-            "d3d8: LockRect on level %u of a texture that has "
-            "already been destroyed. Its staging block is gone, so "
-            "there is nothing to hand back.\n",
-            s->level);
+    x2_log_error("d3d8: LockRect on level %u of a texture that has "
+                 "already been destroyed. Its staging block is gone, so "
+                 "there is nothing to hand back.\n",
+                 s->level);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -239,12 +236,11 @@ static void surf_LockRect(D3D8Object *self, CPU *C) {
      * or read pixels that were never rendered. Real D3D8 refuses an
      * unlockable surface the same way, so the engine has a path for it.
      */
-    fprintf(stderr,
-            "d3d8: LockRect on the %s. This backend does not read "
-            "back from the GPU, so there is no buffer to hand over "
-            "-- refusing, as real D3D8 does for an unlockable "
-            "surface.\n",
-            KIND[s->kind]);
+    x2_log_error("d3d8: LockRect on the %s. This backend does not read "
+                 "back from the GPU, so there is no buffer to hand over "
+                 "-- refusing, as real D3D8 does for an unlockable "
+                 "surface.\n",
+                 KIND[s->kind]);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -268,10 +264,9 @@ static void surf_LockRect(D3D8Object *self, CPU *C) {
 
     if (right <= left || bottom <= top || right > s->width ||
         bottom > s->height) {
-      fprintf(stderr,
-              "d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
-              "%ux%u surface, which is empty or outside it.\n",
-              left, top, right, bottom, s->width, s->height);
+      x2_log_error("d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
+                   "%ux%u surface, which is empty or outside it.\n",
+                   left, top, right, bottom, s->width, s->height);
       d3d8_ret(C, D3DERR_INVALIDCALL);
       return;
     }
@@ -288,12 +283,11 @@ static void surf_LockRect(D3D8Object *self, CPU *C) {
       uint32_t blocks_per_row = (s->width + 3u) / 4u;
       uint32_t block_bytes = blocks_per_row ? s->pitch / blocks_per_row : 0;
       if ((left & 3u) || (top & 3u) || !block_bytes) {
-        fprintf(stderr,
-                "d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
-                "block-compressed surface; the origin must be "
-                "on a 4x4 block boundary and this one is not "
-                "(block size %u bytes).\n",
-                left, top, right, bottom, block_bytes);
+        x2_log_error("d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
+                     "block-compressed surface; the origin must be "
+                     "on a 4x4 block boundary and this one is not "
+                     "(block size %u bytes).\n",
+                     left, top, right, bottom, block_bytes);
         d3d8_ret(C, D3DERR_INVALIDCALL);
         return;
       }
@@ -307,7 +301,7 @@ static void surf_LockRect(D3D8Object *self, CPU *C) {
 static void surf_UnlockRect(D3D8Object *self, CPU *C) {
   D3D8Surface *s = d3d8_surface_of(self);
   if (!s->locked)
-    fprintf(stderr, "d3d8: UnlockRect on a surface that was not locked\n");
+    x2_log_error("d3d8: UnlockRect on a surface that was not locked\n");
   s->locked = 0;
   /* A texture level is the only surface whose bytes have somewhere to go.
      The unlock is the only moment the guest's writes are known to be
@@ -340,12 +334,12 @@ void d3d8_surface_report(void) {
   for (i = 0; i < NKIND; i++)
     any += g_count[i];
   if (!any) {
-    printf("  d3d8: no surface was ever created.\n");
+    x2_log_info("  d3d8: no surface was ever created.\n");
     return;
   }
-  printf("  d3d8 surfaces:");
+  x2_log_info("  d3d8 surfaces:");
   for (i = 0; i < NKIND; i++)
     if (g_count[i])
-      printf("  %d %s", g_count[i], KIND[i]);
-  printf("\n");
+      x2_log_info("  %d %s", g_count[i], KIND[i]);
+  x2_log_info("\n");
 }

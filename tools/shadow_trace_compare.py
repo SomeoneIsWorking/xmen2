@@ -4,11 +4,11 @@
 Each run uses independent X2_SHADOW_FORCE and X2_SHADOW_EXPECT inputs. The
 proxy validates the executable's RegQueryValueExA import and substitutes only
 the successful DetailedShadow DWORD query, then records the original, forced,
-observed and expected values. F9 arms exactly the next D3D8 frame. This tool refuses
-swapped settings, incomplete captures, event overflow, and an enabled capture
-that reached no known shadow-emission entry point. DetailedShadow may select a
-quality tier, so its off answer may legitimately reach the title floor-decal
-emitter too; the matched call counts make that answer explicit.
+observed and expected values. F9 arms exactly the next D3D8 frame. This tool
+refuses swapped settings, incomplete captures, event overflow, and captures
+that reached no draw. It compares only behavior observable at the D3D8
+boundary; title-internal guest-function probes are deliberately not required
+tooling.
 """
 
 import argparse
@@ -54,19 +54,12 @@ def validate_summary(summary: dict, source: object) -> dict:
 
 def validate_control(control: dict, summary: dict, source: object) -> None:
     if control.get("seam") != "RegQueryValueExA:DetailedShadow":
-        raise Refuse(
-            f"{source} used unrecognized control seam "
-            f"{control.get('seam')!r}"
-        )
+        raise Refuse(f"{source} used unrecognized control seam {control.get('seam')!r}")
     if not isinstance(control.get("forced_reads"), int) or control["forced_reads"] < 1:
-        raise Refuse(
-            f"{source} did not intercept a successful DetailedShadow DWORD "
-            "query"
-        )
+        raise Refuse(f"{source} did not intercept a successful DetailedShadow DWORD query")
     if control.get("forced") != control.get("observed"):
         raise Refuse(
-            f"{source} forced {control.get('forced')!r}, but read back "
-            f"{control.get('observed')!r}"
+            f"{source} forced {control.get('forced')!r}, but read back {control.get('observed')!r}"
         )
     if control.get("observed") != summary.get("detailed_shadow"):
         raise Refuse(
@@ -112,18 +105,11 @@ def read_summary(path: pathlib.Path) -> dict:
 
 def compare(off: dict, on: dict) -> str:
     if off.get("detailed_shadow") != 0:
-        raise Refuse(
-            "the off capture did not observe DetailedShadow=0 in XMen2.exe"
-        )
+        raise Refuse("the off capture did not observe DetailedShadow=0 in XMen2.exe")
     if on.get("detailed_shadow") != 1:
-        raise Refuse(
-            "the on capture did not observe DetailedShadow=1 in XMen2.exe"
-        )
-    if on.get("path") in (None, "none"):
-        raise Refuse(
-            "the on capture reached no engine or title shadow-emission entry point; "
-            "this frame cannot identify the retail shadow path"
-        )
+        raise Refuse("the on capture did not observe DetailedShadow=1 in XMen2.exe")
+    if int(off.get("draws", 0)) < 1 or int(on.get("draws", 0)) < 1:
+        raise Refuse("one compared frame reached no D3D8 draw")
 
     route_parts = []
     for scope in ("frame_resources", "total_resources"):
@@ -136,21 +122,11 @@ def compare(off: dict, on: dict) -> str:
             if before != after:
                 changes.append(f"{key} {before}->{after}")
         label = "frame" if scope == "frame_resources" else "capture-total"
-        route_parts.append(
-            f"{label} "
-            + (", ".join(changes) if changes else "no count change")
-        )
+        route_parts.append(f"{label} " + (", ".join(changes) if changes else "no count change"))
     routes = "; ".join(route_parts)
-    off_title = off.get("title_shadow_calls", {})
-    on_title = on.get("title_shadow_calls", {})
     return (
-        f"DetailedShadow control: off path={off.get('path')}; "
-        f"on path={on['path']}; "
-        "title calls: "
-        f"manager {int(off_title.get('manager', 0))}->"
-        f"{int(on_title.get('manager', 0))}, "
-        f"floor_decal {int(off_title.get('floor_decal', 0))}->"
-        f"{int(on_title.get('floor_decal', 0))}; "
+        "DetailedShadow control: "
+        f"draws {int(off.get('draws', 0))}->{int(on.get('draws', 0))}; "
         f"resource route: {routes}"
     )
 
@@ -158,17 +134,15 @@ def compare(off: dict, on: dict) -> str:
 def selftest() -> None:
     off = {
         "detailed_shadow": 0,
-        "path": "planar",
+        "draws": 3,
         "dropped_events": 0,
-        "title_shadow_calls": {"manager": 1, "floor_decal": 0},
         "frame_resources": {key: 0 for key in RESOURCE_KEYS},
         "total_resources": {key: 0 for key in RESOURCE_KEYS},
     }
     on = {
         "detailed_shadow": 1,
-        "path": "projective+self",
+        "draws": 5,
         "dropped_events": 0,
-        "title_shadow_calls": {"manager": 1, "floor_decal": 2},
         "frame_resources": {
             **{key: 0 for key in RESOURCE_KEYS},
             "create_texture": 1,
@@ -180,15 +154,13 @@ def selftest() -> None:
         },
     }
     result = compare(off, on)
-    assert "off path=planar" in result
-    assert "on path=projective+self" in result
+    assert "draws 3->5" in result
     assert "create_texture 0->1" in result
-    assert "floor_decal 0->2" in result
 
     for broken, needle in (
         (({**off, "detailed_shadow": 1}, on), "off capture"),
         ((off, {**on, "detailed_shadow": 0}), "on capture"),
-        ((off, {**on, "path": "none"}), "no engine or title"),
+        ((off, {**on, "draws": 0}), "no D3D8 draw"),
     ):
         try:
             compare(*broken)
@@ -203,14 +175,46 @@ def selftest() -> None:
     else:
         raise AssertionError("expected texture-hook coverage refusal")
     for control, needle in (
-        ({"seam": "RegQueryValueExA:DetailedShadow", "forced_reads": 1,
-          "forced": 0, "observed": 1, "expected": 1}, "read back"),
-        ({"seam": "RegQueryValueExA:DetailedShadow", "forced_reads": 1,
-          "forced": 1, "observed": 1, "expected": 0}, "independently expected"),
-        ({"seam": "RegQueryValueExA:DetailedShadow", "forced_reads": 0,
-          "forced": 1, "observed": 1, "expected": 1}, "did not intercept"),
-        ({"seam": "XMen2.exe+0x668d40", "forced_reads": 1,
-          "forced": 1, "observed": 1, "expected": 1}, "unrecognized"),
+        (
+            {
+                "seam": "RegQueryValueExA:DetailedShadow",
+                "forced_reads": 1,
+                "forced": 0,
+                "observed": 1,
+                "expected": 1,
+            },
+            "read back",
+        ),
+        (
+            {
+                "seam": "RegQueryValueExA:DetailedShadow",
+                "forced_reads": 1,
+                "forced": 1,
+                "observed": 1,
+                "expected": 0,
+            },
+            "independently expected",
+        ),
+        (
+            {
+                "seam": "RegQueryValueExA:DetailedShadow",
+                "forced_reads": 0,
+                "forced": 1,
+                "observed": 1,
+                "expected": 1,
+            },
+            "did not intercept",
+        ),
+        (
+            {
+                "seam": "XMen2.exe+0x668d40",
+                "forced_reads": 1,
+                "forced": 1,
+                "observed": 1,
+                "expected": 1,
+            },
+            "unrecognized",
+        ),
     ):
         try:
             validate_control(control, on, "fixture")
@@ -218,8 +222,7 @@ def selftest() -> None:
             assert needle in str(exc)
         else:
             raise AssertionError(f"expected control refusal containing {needle!r}")
-    print("shadow_trace_compare: engine/title shadow answers and eight "
-          "refusals proved")
+    print("shadow_trace_compare: D3D8 boundary delta and eight refusals proved")
 
 
 def main() -> int:

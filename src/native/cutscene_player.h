@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 typedef struct CutscenePlayerSnapshot {
   uint32_t sequence;
@@ -36,7 +36,7 @@ typedef struct CutscenePlayerSnapshot {
 } CutscenePlayerSnapshot;
 
 /* Read-only publication for the live input probe. */
-void cutscene_player_snapshot(struct CPU *cpu, CutscenePlayerSnapshot *out);
+void cutscene_player_snapshot(struct X86pCpu *cpu, CutscenePlayerSnapshot *out);
 
 /* Publishes the current BehavEd context and returns true only while that
  * context is owned by the synchronous player. Used by exact presenters. */

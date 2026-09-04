@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /*
  * Fixed-function lighting: D3D8's per-vertex lighting model, and the evidence
  * for what the engine asked of it.
@@ -109,11 +110,10 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
       continue;
     if (out->nlights == GPU_MAX_LIGHTS) {
       if (!told_toomany++)
-        fprintf(stderr,
-                "d3d8: more than %d lights are enabled at "
-                "once; the rest are DROPPED and the scene is "
-                "darker than the engine asked for.\n",
-                GPU_MAX_LIGHTS);
+        x2_log_error("d3d8: more than %d lights are enabled at "
+                     "once; the rest are DROPPED and the scene is "
+                     "darker than the engine asked for.\n",
+                     GPU_MAX_LIGHTS);
       break;
     }
     if (out->nlights < 8)
@@ -153,21 +153,20 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
         if (drawblack && !wroteblack) {
           g_lc_lost++;
           if (g_lc_lost <= 3)
-            fprintf(stderr,
-                    "d3d8: light %u reaches a draw BLACK, "
-                    "but the last SetLight for that index wrote "
-                    "%.3f %.3f %.3f. The colour is lost between "
-                    "the two.\n",
-                    i, wrote[0], wrote[1], wrote[2]);
+            x2_log_error("d3d8: light %u reaches a draw BLACK, "
+                         "but the last SetLight for that index wrote "
+                         "%.3f %.3f %.3f. The colour is lost between "
+                         "the two.\n",
+                         i, wrote[0], wrote[1], wrote[2]);
         }
       } else {
         g_lc_neverset++;
       }
     }
     if (g->type == 2 && !told_spot++)
-      fprintf(stderr, "d3d8: a SPOT light is enabled; this stage has no "
-                      "cone, so it is lit as a point light -- brighter "
-                      "outside the cone than the engine asked for.\n");
+      x2_log_error("d3d8: a SPOT light is enabled; this stage has no "
+                   "cone, so it is lit as a point light -- brighter "
+                   "outside the cone than the engine asked for.\n");
   }
   {
     float wv[16];
@@ -179,11 +178,12 @@ void d3d8_fill_lighting(const D3D8State *s, GpuDraw *out) {
 }
 
 static void light_table_report(void) {
-  printf("        light table vs SetLight: %lu enabled-light read(s) "
-         "compared, %lu differ from what SetLight last wrote, %lu arrive "
-         "BLACK at a draw although SetLight wrote a colour, %lu were never "
-         "set at all\n",
-         g_lc_checked, g_lc_differ, g_lc_lost, g_lc_neverset);
+  x2_log_info(
+      "        light table vs SetLight: %lu enabled-light read(s) "
+      "compared, %lu differ from what SetLight last wrote, %lu arrive "
+      "BLACK at a draw although SetLight wrote a colour, %lu were never "
+      "set at all\n",
+      g_lc_checked, g_lc_differ, g_lc_lost, g_lc_neverset);
 }
 
 /*

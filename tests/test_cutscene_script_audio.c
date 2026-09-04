@@ -39,13 +39,13 @@ int cutscene_player_silences_current_context(uint32_t *context) {
 
 static void guest_body_004a7130(CPU *cpu) {
   super_calls++;
-  cpu->eax = 0xabcdef00u;
-  cpu->esp += 4u;
+  cpu->reg[kX86pEax] = 0xabcdef00u;
+  cpu->reg[kX86pEsp] += 4u;
 }
 
 void x86_register_override(const char *module, uint32_t entry,
                            x86_override_fn function) {
-  if (strcmp(module, "XMen2.exe") || entry != SOUND_HANDLER)
+  if (strcmp(module, "XMen2.exe") != 0 || entry != SOUND_HANDLER)
     failures++;
   registered = function;
 }
@@ -54,9 +54,9 @@ static CPU call_with(uint32_t argument_list) {
   CPU cpu;
 
   memset(&cpu, 0, sizeof cpu);
-  cpu.esp = STACK;
-  WR32(cpu.esp, 0xdeadbeefu);
-  WR32(cpu.esp + 4u, argument_list);
+  cpu.reg[kX86pEsp] = STACK;
+  WR32(cpu.reg[kX86pEsp], 0xdeadbeefu);
+  WR32(cpu.reg[kX86pEsp] + 4u, argument_list);
   registered(&cpu);
   return cpu;
 }
@@ -75,17 +75,18 @@ int main(void) {
     failures++;
   current_context = OWNED_CONTEXT;
   cpu = call_with(ARGUMENT_LIST);
-  failures +=
-      super_calls != 1u || cpu.eax != 0xabcdef00u || cpu.esp != STACK + 4u;
+  failures += super_calls != 1u || cpu.reg[kX86pEax] != 0xabcdef00u ||
+              cpu.reg[kX86pEsp] != STACK + 4u;
 
   silent = 1u;
   current_context = FOREIGN_CONTEXT;
   cpu = call_with(ARGUMENT_LIST);
-  failures +=
-      super_calls != 2u || cpu.eax != 0xabcdef00u || cpu.esp != STACK + 4u;
+  failures += super_calls != 2u || cpu.reg[kX86pEax] != 0xabcdef00u ||
+              cpu.reg[kX86pEsp] != STACK + 4u;
   current_context = OWNED_CONTEXT;
   cpu = call_with(ARGUMENT_LIST);
-  failures += super_calls != 2u || cpu.eax != 0u || cpu.esp != STACK + 4u;
+  failures += super_calls != 2u || cpu.reg[kX86pEax] != 0u ||
+              cpu.reg[kX86pEsp] != STACK + 4u;
 
   cutscene_script_audio_snapshot(&snapshot);
   failures += snapshot.ordinary_commands != 2u ||

@@ -82,16 +82,16 @@ static int serialize_snapshot(const CPU *source) {
   WR8(g_snapshot + SNAPSHOT_HEADER_FLAG_B, 0u);
 
   x86_guest_call_args(&call, g_exe + FN_GAME_OWNER, 0u);
-  owner = call.eax;
+  owner = call.reg[kX86pEax];
   if (!owner || !RD32(owner))
     return 0;
   target = RD32(RD32(owner) + SERIALIZER_VSLOT);
   if (!target)
     return 0;
   call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, g_snapshot);
-  call.ecx = owner;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_snapshot);
+  call.reg[kX86pEcx] = owner;
   x86_guest_call_args(&call, target, 4u);
   return 1;
 }
@@ -180,11 +180,11 @@ size_t x2_autosave_runtime_report(char *out, size_t capacity) {
 }
 
 static void x2_autosave_override_00484ce0(CPU *C) {
-  uint32_t map = C->ecx;
+  uint32_t map = C->reg[kX86pEcx];
   int succeeded;
 
   x86_guest_body(C, "XMen2.exe", 0x00484ce0u);
-  succeeded = (C->eax & 0xffu) != 0u;
+  succeeded = (C->reg[kX86pEax] & 0xffu) != 0u;
   x2_save_trace_map_return(map, succeeded);
   x2_autosave_runtime_map_return(succeeded);
   /* The boot's own destination load completes here: this is the signal the

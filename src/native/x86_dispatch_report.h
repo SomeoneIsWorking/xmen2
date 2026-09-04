@@ -12,7 +12,7 @@
 
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 /*
  * Say everything knowable about a dispatch to `target` that found no body:
@@ -30,6 +30,6 @@ struct CPU;
  */
 void x86_report_where(uint32_t addr);
 
-void x86_report_missing_body(struct CPU *C, uint32_t target);
+void x86_report_missing_body(struct X86pCpu *C, uint32_t target);
 
 #endif

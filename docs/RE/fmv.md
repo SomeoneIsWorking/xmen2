@@ -68,9 +68,10 @@ packet, receiving `AVERROR_EOF`, and emptying the optional converter tail are
 three distinct states. Output backpressure may end one update without declaring
 the decoder drained; the next update resumes receive before finish is allowed.
 
-`src/native/movie.c` is only the guest ABI bridge. The six replaced bodies stay
-emitted and linked. `X2_NATIVE_FMV=0` calls them directly for A/B comparison;
-`X2_SPIN=spin` independently selects the retained decoder rendezvous loop.
+`src/native/movie.c` is only the guest ABI bridge. The six replaced functions
+remain in the retail image and execute through the JIT when selected for A/B
+comparison; `X2_SPIN=spin` independently selects the retained decoder
+rendezvous loop.
 
 `src/media/fmv_probe.c` is the opt-in production-path verifier. When
 `X2_FMV_PROBE` matches a movie path, it retains the selected decoded BGRA frame

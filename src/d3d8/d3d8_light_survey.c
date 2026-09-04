@@ -1,3 +1,6 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
+#include <lucent/log_c.h>
 /*
  * X2_LIGHT_SURVEY: which draws of a frame are lit, and by what.
  *
@@ -105,7 +108,7 @@ void d3d8_light_survey(const GpuDraw *d) {
   int black, only_atten, i;
 
   if (g_sv_on < 0) {
-    const char *e = getenv("X2_LIGHT_SURVEY");
+    const char *e = x2_config_override_get(kX2ConfigLightSurvey);
     g_sv_on = (e && *e) ? atoi(e) : 0;
   }
   if (!g_sv_on)
@@ -137,7 +140,7 @@ void d3d8_light_survey(const GpuDraw *d) {
       return;
     }
     if (minimum < 0) {
-      const char *e = getenv("X2_LIGHT_DUMP_MIN");
+      const char *e = x2_config_override_get(kX2ConfigLightDumpMin);
       minimum = (e && *e) ? atol(e) : 100;
     }
     if (!g_sv_started) {
@@ -147,12 +150,13 @@ void d3d8_light_survey(const GpuDraw *d) {
       }
       g_sv_started = 1;
       g_sv_start_frame = gpu_frames_presented();
-      fprintf(stderr,
-              "[SURVEY] gameplay reached at presented frame "
-              "%lu (a frame submitted %ld draws); EVERY draw from here "
-              "on is classified. %lu draw(s) before this point were "
-              "not.\n",
-              g_sv_start_frame, minimum, g_sv_ungated);
+      lucent_log_error(
+          "x2",
+          "[SURVEY] gameplay reached at presented frame "
+          "%lu (a frame submitted %ld draws); EVERY draw from here "
+          "on is classified. %lu draw(s) before this point were "
+          "not.\n",
+          g_sv_start_frame, minimum, g_sv_ungated);
     }
   }
   if (g_sv_last_frame != gpu_frames_presented()) {
@@ -172,18 +176,19 @@ void d3d8_light_survey(const GpuDraw *d) {
     {
       static long every = -1;
       if (every < 0) {
-        const char *e = getenv("X2_LIGHT_SURVEY_EVERY");
+        const char *e = x2_config_override_get(kX2ConfigLightSurveyEvery);
         every = (e && *e) ? atol(e) : 120;
         if (every < 1)
           every = 1;
       }
       if (g_sv_frames == 1 || g_sv_frames % (unsigned long)every == 0)
-        fprintf(stderr,
-                "[SURVEY] frame %lu: of %lu lit draw(s) so far, %lu are "
-                "bounded BLACK (%lu of those by distance alone); %lu "
-                "unlit; %lu with no light enabled\n",
-                gpu_frames_presented(), g_sv_lit, g_sv_black,
-                g_sv_black_noatten, g_sv_unlit, g_sv_nolights);
+        lucent_log_error(
+            "x2",
+            "[SURVEY] frame %lu: of %lu lit draw(s) so far, %lu are "
+            "bounded BLACK (%lu of those by distance alone); %lu "
+            "unlit; %lu with no light enabled\n",
+            gpu_frames_presented(), g_sv_lit, g_sv_black, g_sv_black_noatten,
+            g_sv_unlit, g_sv_nolights);
     }
   }
   g_sv_seen++;
@@ -234,38 +239,38 @@ void d3d8_light_survey_report(void) {
   int i;
   if (g_sv_on <= 0)
     return;
-  printf("        X2_LIGHT_SURVEY: %lu draw(s) over %lu gameplay frame(s) "
-         "-- EVERY draw submitted from presented frame %lu on; %lu unlit, "
-         "%lu lit\n",
-         g_sv_seen, g_sv_frames, g_sv_start_frame, g_sv_unlit, g_sv_lit);
+  x2_log_info("        X2_LIGHT_SURVEY: %lu draw(s) over %lu gameplay frame(s) "
+              "-- EVERY draw submitted from presented frame %lu on; %lu unlit, "
+              "%lu lit\n",
+              g_sv_seen, g_sv_frames, g_sv_start_frame, g_sv_unlit, g_sv_lit);
   if (!g_sv_seen) {
-    printf("          NO DRAW WAS EVER SURVEYED -- gameplay was never "
-           "reached (%lu draw(s) went by before the level-open gate or "
-           "before any frame submitted enough draws). This says NOTHING "
-           "about the lighting.\n",
-           g_sv_ungated);
+    x2_log_info("          NO DRAW WAS EVER SURVEYED -- gameplay was never "
+                "reached (%lu draw(s) went by before the level-open gate or "
+                "before any frame submitted enough draws). This says NOTHING "
+                "about the lighting.\n",
+                g_sv_ungated);
     return;
   }
-  printf("          %lu draw(s) before gameplay started are not in this "
-         "count\n",
-         g_sv_ungated);
-  printf("          of the %lu lit: %lu cannot come out brighter than black "
-         "even with N.L=1, %lu of those ONLY because of distance "
-         "attenuation (they would light at atten=1), %lu have no light "
-         "enabled at all, %lu take their diffuse from the vertex\n",
-         g_sv_lit, g_sv_black, g_sv_black_noatten, g_sv_nolights,
-         g_sv_vertexcol);
+  x2_log_info("          %lu draw(s) before gameplay started are not in this "
+              "count\n",
+              g_sv_ungated);
+  x2_log_info(
+      "          of the %lu lit: %lu cannot come out brighter than black "
+      "even with N.L=1, %lu of those ONLY because of distance "
+      "attenuation (they would light at atten=1), %lu have no light "
+      "enabled at all, %lu take their diffuse from the vertex\n",
+      g_sv_lit, g_sv_black, g_sv_black_noatten, g_sv_nolights, g_sv_vertexcol);
   if (!g_sv_black)
-    printf("          NOT ONE lit draw is bounded black: whatever is dark "
-           "on screen is not this stage's lighting arithmetic.\n");
+    x2_log_info("          NOT ONE lit draw is bounded black: whatever is dark "
+                "on screen is not this stage's lighting arithmetic.\n");
   for (i = 0; i < g_sv_nsig; i++)
-    printf("          black x%lu: stride %u, texgen %u, %s, %u light(s)%s\n",
-           g_sv_sig[i].count, g_sv_sig[i].stride, g_sv_sig[i].texgen,
-           g_sv_sig[i].textured ? "textured" : "NO texture",
-           g_sv_sig[i].nlights,
-           g_sv_sig[i].black_only_atten ? " -- distance alone" : "");
+    x2_log_info(
+        "          black x%lu: stride %u, texgen %u, %s, %u light(s)%s\n",
+        g_sv_sig[i].count, g_sv_sig[i].stride, g_sv_sig[i].texgen,
+        g_sv_sig[i].textured ? "textured" : "NO texture", g_sv_sig[i].nlights,
+        g_sv_sig[i].black_only_atten ? " -- distance alone" : "");
   if (g_sv_sig_lost)
-    printf("          %lu black draw(s) had a %dth distinct signature and "
-           "are counted above but not described.\n",
-           g_sv_sig_lost, SURVEY_SIGS + 1);
+    x2_log_info("          %lu black draw(s) had a %dth distinct signature and "
+                "are counted above but not described.\n",
+                g_sv_sig_lost, SURVEY_SIGS + 1);
 }

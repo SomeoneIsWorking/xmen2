@@ -3,7 +3,7 @@ id: 78
 title: The D3D8 device held 16 lights; the engine uses 51, so 63% of every SetLight was refused in silence
 status: resolved
 symptom: characters render black in gameplay while the level, HUD and menus are correct
-tags: rendering,lighting,d3d8,engine,recomp
+tags: rendering,lighting,d3d8,engine,jit
 created: 2026-08-15
 updated: 2026-08-24
 ---

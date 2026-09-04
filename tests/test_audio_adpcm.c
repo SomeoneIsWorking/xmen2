@@ -97,7 +97,7 @@ static void call_override(void (*fn)(CPU *), uint32_t out, uint32_t in,
                           int32_t count, uint32_t state) {
   CPU c;
   memset(&c, 0, sizeof c);
-  c.esp = STACK;
+  c.reg[kX86pEsp] = STACK;
   WR32(STACK + 0u, 0xdeadbeefu); /* return address */
   WR32(STACK + 4u, out);
   WR32(STACK + 8u, in);
@@ -105,11 +105,11 @@ static void call_override(void (*fn)(CPU *), uint32_t out, uint32_t in,
   WR32(STACK + 16u, state);      /* predictor pointer */
   WR32(STACK + 20u, state + 8u); /* step-index pointer */
   fn(&c);
-  if (c.esp != STACK + 4u) {
+  if (c.reg[kX86pEsp] != STACK + 4u) {
     fprintf(stderr,
             "override left esp at %08x, want %08x (cdecl pops the "
             "return address only)\n",
-            c.esp, STACK + 4u);
+            c.reg[kX86pEsp], STACK + 4u);
     failures++;
   }
 }

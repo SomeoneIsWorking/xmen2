@@ -9,8 +9,8 @@
  */
 #include "d3d8_com.h"
 
-void d3d8_dev_SetMaterial(D3D8Object *self, struct CPU *C);
-void d3d8_dev_SetLight(D3D8Object *self, struct CPU *C);
-void d3d8_dev_LightEnable(D3D8Object *self, struct CPU *C);
+void d3d8_dev_SetMaterial(D3D8Object *self, struct X86pCpu *C);
+void d3d8_dev_SetLight(D3D8Object *self, struct X86pCpu *C);
+void d3d8_dev_LightEnable(D3D8Object *self, struct X86pCpu *C);
 
 #endif /* D3D8_DEVICE_LIGHTS_H */

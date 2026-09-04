@@ -35,7 +35,7 @@ an owned context, independent of its deadline, while preserving foreign heap
 pairs.
 
 `src/native/behaved_context.c` is the native port of `004d8b30`, not a wrapper
-around its recompiled body. It owns the command-graph loop: current-context
+around its runtime-translated retail body. It owns the command-graph loop: current-context
 publication/restoration, variable substitution for the seven-slot retail
 argument list, handler dispatch, named-result assignment, conditional edges,
 suspension, and pooled-result release. Both the ordinary scheduler and the
@@ -118,7 +118,7 @@ handle and scopes both exact presenters across the whole player invocation.
 Within that scope `00458700` preserves its unconditional chosen-response write
 but reports false so the authored response and scripts apply immediately;
 `0045a170` returns before line presentation. Outside the scope both overrides
-super-call their retained generated bodies.
+super-call their retained retail guest bodies through the JIT.
 
 The tutorial's remaining non-dialogue audio is exactly two authored
 `sound("PLAY_SOUND", "char/night_m/p4_power", "", "")` commands. Retail

@@ -195,9 +195,9 @@ int x86_peek32(uint32_t address, uint32_t *out) {
 
 void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
   if (target == FN_CALLBACK_EXECUTE) {
-    uint32_t distance = cpu->ecx - OWNER;
+    uint32_t distance = cpu->reg[kX86pEcx] - OWNER;
     uint32_t slot = distance / CALLBACK_STRIDE;
-    CHECK(cpu->ecx >= OWNER && distance % CALLBACK_STRIDE == 0u &&
+    CHECK(cpu->reg[kX86pEcx] >= OWNER && distance % CALLBACK_STRIDE == 0u &&
               slot < CUTSCENE_EVENT_PLAYER_CAPACITY,
           "callback executor received an invalid record");
     callback_was_owned = cutscene_event_player_executing_owned();
@@ -207,15 +207,15 @@ void x86_guest_call_args(CPU *cpu, uint32_t target, uint32_t callee_pop_bytes) {
       cascade_from = -1;
     }
   } else if (target == FN_SLOT_FREE) {
-    uint32_t slot = RD32(cpu->esp);
-    CHECK(cpu->ecx == OWNER && slot < CUTSCENE_EVENT_PLAYER_CAPACITY,
+    uint32_t slot = RD32(cpu->reg[kX86pEsp]);
+    CHECK(cpu->reg[kX86pEcx] == OWNER && slot < CUTSCENE_EVENT_PLAYER_CAPACITY,
           "slot free received the wrong owner or slot");
     release_slot(slot);
     note('F');
   } else {
     fail("event player called an unexpected guest function");
   }
-  cpu->esp += callee_pop_bytes;
+  cpu->reg[kX86pEsp] += callee_pop_bytes;
 }
 
 void x86_register_override(const char *module, uint32_t ep,
@@ -244,13 +244,13 @@ static void guest_body_004b2b40(CPU *cpu) {
   if (super_mode >= 2)
     CHECK(queue_event(super_slot + 1u, super_deadline + 1.0f),
           "corrupt insertion super-call could not queue second event");
-  cpu->esp += 12u;
+  cpu->reg[kX86pEsp] += 12u;
 }
 
 static CPU fresh_cpu(void) {
   CPU cpu;
   memset(&cpu, 0, sizeof cpu);
-  cpu.esp = STACK;
+  cpu.reg[kX86pEsp] = STACK;
   return cpu;
 }
 
@@ -265,21 +265,23 @@ static void invoke_insert(uint32_t slot, float deadline) {
   x86_override_fn insertion = registered_fn(FN_EVENT_INSERT);
   super_slot = slot;
   super_deadline = deadline;
-  WR32(cpu.esp, 0xabc10000u + slot);
-  WR32(cpu.esp + 4u, 0x11111111u);
-  WR32(cpu.esp + 8u, float_bits(deadline));
-  cpu.ecx = OWNER;
+  WR32(cpu.reg[kX86pEsp], 0xabc10000u + slot);
+  WR32(cpu.reg[kX86pEsp] + 4u, 0x11111111u);
+  WR32(cpu.reg[kX86pEsp] + 8u, float_bits(deadline));
+  cpu.reg[kX86pEcx] = OWNER;
   insertion(&cpu);
-  CHECK(cpu.esp == STACK + 12u, "insertion override did not reproduce RET 8");
+  CHECK(cpu.reg[kX86pEsp] == STACK + 12u,
+        "insertion override did not reproduce RET 8");
 }
 
 static void capture_owner(void) {
   CPU cpu = fresh_cpu();
-  cpu.ecx = OWNER;
-  WR32(cpu.esp, 0xabcdef01u);
-  WR32(cpu.esp + 4u, float_bits(-1000.0f));
+  cpu.reg[kX86pEcx] = OWNER;
+  WR32(cpu.reg[kX86pEsp], 0xabcdef01u);
+  WR32(cpu.reg[kX86pEsp] + 4u, float_bits(-1000.0f));
   registered_fn(FN_EVENT_PUMP)(&cpu);
-  CHECK(cpu.esp == STACK + 8u, "ordinary override did not reproduce RET 4");
+  CHECK(cpu.reg[kX86pEsp] == STACK + 8u,
+        "ordinary override did not reproduce RET 4");
   CHECK(cutscene_event_player_captured_owner() == OWNER,
         "ordinary pump did not capture its validated owner");
 }
@@ -317,9 +319,9 @@ static void test_strict_ordinary_pump(void) {
 
   set_heap(deadlines, slots, 2u);
   cpu = fresh_cpu();
-  cpu.ecx = OWNER;
-  WR32(cpu.esp, 0xabcdef02u);
-  WR32(cpu.esp + 4u, float_bits(5.0f));
+  cpu.reg[kX86pEcx] = OWNER;
+  WR32(cpu.reg[kX86pEsp], 0xabcdef02u);
+  WR32(cpu.reg[kX86pEsp] + 4u, float_bits(5.0f));
   registered_fn(FN_EVENT_PUMP)(&cpu);
   CHECK(RD32(OWNER + HEAP_COUNT) == 1u,
         "ordinary pump did not consume exactly the strictly due event");
@@ -334,9 +336,9 @@ static void test_strict_ordinary_pump(void) {
   cascade_to = 8u;
   cascade_deadline = 8.0f;
   cpu = fresh_cpu();
-  cpu.ecx = OWNER;
-  WR32(cpu.esp, 0xabcdef02u);
-  WR32(cpu.esp + 4u, float_bits(5.0f));
+  cpu.reg[kX86pEcx] = OWNER;
+  WR32(cpu.reg[kX86pEsp], 0xabcdef02u);
+  WR32(cpu.reg[kX86pEsp] + 4u, float_bits(5.0f));
   registered_fn(FN_EVENT_PUMP)(&cpu);
   CHECK(
       RD32(OWNER + HEAP_COUNT) == 2u,
@@ -549,9 +551,9 @@ static void test_capacity_and_corruption_refusal(void) {
         "oversized-heap refusal mutated guest state");
   {
     CPU cpu = fresh_cpu();
-    cpu.ecx = OWNER;
-    WR32(cpu.esp, 0xabcdef03u);
-    WR32(cpu.esp + 4u, float_bits(1000.0f));
+    cpu.reg[kX86pEcx] = OWNER;
+    WR32(cpu.reg[kX86pEsp], 0xabcdef03u);
+    WR32(cpu.reg[kX86pEsp] + 4u, float_bits(1000.0f));
     calls[0] = '\0';
     call_count = 0;
     registered_fn(FN_EVENT_PUMP)(&cpu);

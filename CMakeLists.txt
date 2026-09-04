@@ -29,6 +29,30 @@ FetchContent_Declare(lucent
     GIT_TAG 30ef243
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
+
+# Unit executables compile shipping subsystem sources directly, so they must
+# use the same config/logger owners as the product rather than gaining test
+# replacements. This directory default is cleared before external shared
+# projects are added below.
+add_library(x2_runtime_services STATIC
+    src/config/environment.c
+    src/native/x2_log.c)
+set_target_properties(x2_runtime_services PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(x2_runtime_services PUBLIC src/config src/native)
+target_link_libraries(x2_runtime_services PUBLIC lucent::lucent)
+link_libraries(x2_runtime_services)
+
+add_library(x2_runtime_config STATIC
+    src/config/config_directory.c
+    src/config/runtime_cvars.cpp)
+set_target_properties(x2_runtime_config PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(x2_runtime_config PUBLIC src/config)
+target_link_libraries(x2_runtime_config PUBLIC x2_runtime_services
+                                               lucent::lucent)
+
+add_executable(test_x2_log tests/test_x2_log.cpp)
+target_link_libraries(test_x2_log PRIVATE x2_runtime_services)
+add_test(NAME x2_log COMMAND test_x2_log)
 set(X2_LUCENT_ANDROID_JAVA_DIR
     "${lucent_SOURCE_DIR}/platforms/android/java")
 
@@ -243,12 +267,12 @@ add_test(NAME movie_audio COMMAND test_movie_audio)
 
 add_executable(test_cutscene_script_audio tests/test_cutscene_script_audio.c
                src/native/cutscene_script_audio.c src/native/guest_memory.c)
-target_include_directories(test_cutscene_script_audio PRIVATE src/native src/recomp)
+target_include_directories(test_cutscene_script_audio PRIVATE src/native src/runtime/x86_abi)
 add_test(NAME cutscene_script_audio COMMAND test_cutscene_script_audio)
 
 add_executable(test_behaved_context tests/test_behaved_context.c
                src/native/behaved_context.c src/native/guest_memory.c)
-target_include_directories(test_behaved_context PRIVATE src/native src/recomp)
+target_include_directories(test_behaved_context PRIVATE src/native src/runtime/x86_abi)
 add_test(NAME behaved_context COMMAND test_behaved_context)
 
 add_executable(test_movie_image_layout tests/test_movie_image_layout.c
@@ -317,20 +341,20 @@ add_test(NAME boot_mode_runtime COMMAND test_boot_mode_runtime)
 
 add_executable(test_boot_menu_transition tests/test_boot_menu_transition.c
                src/native/boot_menu_transition.c)
-target_include_directories(test_boot_menu_transition PRIVATE src/native src/recomp)
+target_include_directories(test_boot_menu_transition PRIVATE src/native src/runtime/x86_abi)
 add_test(NAME boot_menu_transition COMMAND test_boot_menu_transition)
 
-add_executable(test_engine_frames tests/test_engine_frames.c
-               src/native/x86_engine_frames.c)
-target_include_directories(test_engine_frames PRIVATE src/native)
-target_link_libraries(test_engine_frames PRIVATE Threads::Threads)
-add_test(NAME engine_frames COMMAND test_engine_frames)
+add_executable(test_x86_guest_call_stack tests/test_x86_guest_call_stack.c
+               src/native/x86_guest_call_stack.c)
+target_include_directories(test_x86_guest_call_stack PRIVATE src/native)
+target_link_libraries(test_x86_guest_call_stack PRIVATE Threads::Threads)
+add_test(NAME x86_guest_call_stack COMMAND test_x86_guest_call_stack)
 
 add_executable(test_jit_intercept tests/test_jit_intercept.c
                src/native/x86_engine_intercept.c
-               src/native/x86_engine_frames.c)
-target_include_directories(test_jit_intercept PRIVATE src/native src/recomp)
-target_link_libraries(test_jit_intercept PRIVATE x86port)
+               src/native/x86_guest_call_stack.c)
+target_include_directories(test_jit_intercept PRIVATE src/native src/runtime/x86_abi)
+target_link_libraries(test_jit_intercept PRIVATE x86port_runtime)
 add_test(NAME jit_intercept COMMAND test_jit_intercept)
 
 add_executable(test_joystick_neutral tests/test_joystick_neutral.c
@@ -424,7 +448,7 @@ add_executable(test_player_input tests/test_player_input.c
                src/config/boot_mode.c
                src/native/input_binding_sets.c
                src/native/xbox_defaults.c)
-target_include_directories(test_player_input PRIVATE src/recomp src/native
+target_include_directories(test_player_input PRIVATE src/runtime/x86_abi src/native
                                                    src/config src/input)
 add_test(NAME player_input COMMAND test_player_input)
 
@@ -484,7 +508,7 @@ set_tests_properties(input_record PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DI
 
 add_executable(test_dinput_system tests/test_dinput_system.c
                src/native/dinput_system.c tests/native_stubs.c)
-target_include_directories(test_dinput_system PRIVATE src/recomp src/native)
+target_include_directories(test_dinput_system PRIVATE src/runtime/x86_abi src/native)
 target_compile_definitions(test_dinput_system PRIVATE X2_WITH_SDL)
 target_link_libraries(test_dinput_system PRIVATE ${X2_SDL})
 add_test(NAME dinput_system COMMAND test_dinput_system)
@@ -506,7 +530,7 @@ add_executable(test_cutscene_dialogue
                src/native/cutscene_dialogue.c
                src/native/guest_memory.c)
 target_include_directories(test_cutscene_dialogue PRIVATE
-                           src/native src/recomp)
+                           src/native src/runtime/x86_abi)
 target_compile_definitions(test_cutscene_dialogue PRIVATE X86_NATIVE)
 target_link_libraries(test_cutscene_dialogue PRIVATE pthread)
 add_test(NAME cutscene_dialogue COMMAND test_cutscene_dialogue)
@@ -515,7 +539,7 @@ add_executable(test_behaved_player_heap
                tests/test_behaved_player_heap.c
                src/native/behaved_player.c src/native/guest_memory.c)
 target_include_directories(test_behaved_player_heap PRIVATE
-                           src/native src/recomp)
+                           src/native src/runtime/x86_abi)
 target_compile_definitions(test_behaved_player_heap PRIVATE X86_NATIVE)
 target_link_libraries(test_behaved_player_heap PRIVATE pthread)
 add_test(NAME behaved_player_heap COMMAND test_behaved_player_heap)
@@ -524,7 +548,7 @@ add_executable(test_cutscene_event_player
                tests/test_cutscene_event_player.c
                src/native/cutscene_event_player.c src/native/guest_memory.c)
 target_include_directories(test_cutscene_event_player PRIVATE
-                           src/native src/recomp)
+                           src/native src/runtime/x86_abi)
 target_compile_definitions(test_cutscene_event_player PRIVATE X86_NATIVE)
 target_link_libraries(test_cutscene_event_player PRIVATE pthread)
 add_test(NAME cutscene_event_player COMMAND test_cutscene_event_player)
@@ -598,12 +622,22 @@ add_custom_target(x2_prompt_glyph_atlas
 # nothing in the guest runtime -- it is SDL on one side and plain values on the
 # other -- so it links straight into a test binary.
 add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c
+               src/native/dinput_pad_identity.c
         src/native/dinput_pad_virtual.c src/native/dinput_pad_virtual_actions.c
         src/native/guest_clock.c)
 target_include_directories(test_dinput_pad PRIVATE src/native)
 target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
 target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
 add_test(NAME dinput_pad COMMAND test_dinput_pad)
+
+add_executable(test_directinput_controller_sample
+    tests/test_directinput_controller_sample.c
+    src/input/directinput_controller_sample.c)
+target_include_directories(test_directinput_controller_sample
+    PRIVATE src/input src/native)
+target_compile_options(test_directinput_controller_sample PRIVATE -UNDEBUG)
+add_test(NAME directinput_controller_sample
+         COMMAND test_directinput_controller_sample)
 
 add_executable(test_pad_glyphs tests/test_pad_glyphs.c
                src/native/pad_glyphs.c src/native/prompt_glyphs.c
@@ -612,10 +646,10 @@ add_executable(test_pad_glyphs tests/test_pad_glyphs.c
                src/native/guest_memory.c
                tests/native_stubs.c)
 add_dependencies(test_pad_glyphs x2_pad_glyph_header)
-target_include_directories(test_pad_glyphs PRIVATE src/recomp src/native
+target_include_directories(test_pad_glyphs PRIVATE src/runtime/x86_abi src/native
                                                   src/input ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_pad_glyphs PRIVATE _GNU_SOURCE X86_NATIVE)
-target_link_libraries(test_pad_glyphs PRIVATE pthread)
+target_link_libraries(test_pad_glyphs PRIVATE pthread x2_runtime_config)
 add_test(NAME pad_glyphs COMMAND test_pad_glyphs)
 add_test(NAME pad_glyphs_disabled COMMAND test_pad_glyphs --disabled)
 
@@ -631,10 +665,10 @@ add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
 add_dependencies(test_prompt_glyph_draw x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_glyph_draw
-                           PRIVATE src/recomp src/native src/gen
+                           PRIVATE src/runtime/x86_abi src/native src/gen
                                    ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_prompt_glyph_draw PRIVATE _GNU_SOURCE X86_NATIVE)
-target_link_libraries(test_prompt_glyph_draw PRIVATE m pthread)
+target_link_libraries(test_prompt_glyph_draw PRIVATE m pthread x2_runtime_config)
 add_test(NAME prompt_glyph_draw COMMAND test_prompt_glyph_draw)
 
 add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
@@ -645,7 +679,7 @@ add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
 add_dependencies(test_prompt_glyph_metrics x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
 target_include_directories(test_prompt_glyph_metrics
-                           PRIVATE src/recomp src/native src/gen
+                           PRIVATE src/runtime/x86_abi src/native src/gen
                                    ${CMAKE_BINARY_DIR})
 target_compile_definitions(test_prompt_glyph_metrics PRIVATE _GNU_SOURCE
                                                            X86_NATIVE)
@@ -655,14 +689,14 @@ add_test(NAME prompt_glyph_metrics COMMAND test_prompt_glyph_metrics)
 add_executable(test_prompt_glyph_batch tests/test_prompt_glyph_batch.c
                src/native/prompt_glyph_batch.c tests/native_stubs.c)
 target_include_directories(test_prompt_glyph_batch
-                           PRIVATE src/recomp src/native src/gpu)
+                           PRIVATE src/runtime/x86_abi src/native src/gpu)
 add_test(NAME prompt_glyph_batch COMMAND test_prompt_glyph_batch)
 
 add_executable(test_ui_transform tests/test_ui_transform.c
                src/native/ui_transform.c src/gpu/gpu_matrix.c
                src/native/guest_memory.c tests/native_stubs.c)
 target_include_directories(test_ui_transform
-                           PRIVATE src/recomp src/native src/gpu)
+                           PRIVATE src/runtime/x86_abi src/native src/gpu)
 target_compile_definitions(test_ui_transform PRIVATE X86_NATIVE)
 target_link_libraries(test_ui_transform PRIVATE pthread)
 add_test(NAME ui_transform COMMAND test_ui_transform)
@@ -670,7 +704,7 @@ add_test(NAME ui_transform COMMAND test_ui_transform)
 add_executable(test_dialog_prompts tests/test_dialog_prompts.c
                src/native/dialog_prompts.c src/native/guest_memory.c
                tests/native_stubs.c)
-target_include_directories(test_dialog_prompts PRIVATE src/recomp src/native
+target_include_directories(test_dialog_prompts PRIVATE src/runtime/x86_abi src/native
                                                        src/input)
 target_compile_definitions(test_dialog_prompts PRIVATE _GNU_SOURCE X86_NATIVE)
 target_link_libraries(test_dialog_prompts PRIVATE pthread)
@@ -682,64 +716,56 @@ target_include_directories(test_xbox_defaults PRIVATE src/native)
 add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
 
 
-# Known-answer tests for the ADC/SBB flag model (tests/test_flags.c). Header-
-# only, so it needs no recompiled output and runs in the ordinary test suite --
-# the defect it covers was invisible for as long as nothing tested the runtime
-# in isolation.
-add_executable(test_flags tests/test_flags.c)
-target_include_directories(test_flags PRIVATE src/recomp)
-add_test(NAME flags COMMAND test_flags)
-
 # The guest printf format walker. It builds crt.c against a stub runtime, so it
-# needs no recompiled output and runs in the ordinary suite.
+# needs no guest runtime and runs in the ordinary suite.
 add_executable(test_vformat tests/test_vformat.c src/native/crt.c
-               src/native/crt_write_watch.c src/recomp/x87crt.c
+               src/native/crt_write_watch.c src/runtime/x86_abi/x87crt.c
             tests/native_stubs.c
                src/native/guest_heap.c src/native/guest_memory.c)
-target_include_directories(test_vformat PRIVATE src/recomp src/native)
+target_include_directories(test_vformat PRIVATE src/runtime/x86_abi src/native)
 target_compile_definitions(test_vformat PRIVATE _GNU_SOURCE X86_NATIVE)
 target_link_libraries(test_vformat PRIVATE m pthread)
 add_test(NAME vformat COMMAND test_vformat)
 
-add_executable(test_x87crt tests/test_x87crt.c src/recomp/x87crt.c)
+add_executable(test_x87crt tests/test_x87crt.c src/runtime/x86_abi/x87crt.c)
 
-add_executable(test_crt_static_overrides tests/test_crt_static_overrides.c
-               src/native/crt_static_overrides.c src/recomp/x87crt.c
+add_executable(test_crt_in_image_overrides tests/test_crt_in_image_overrides.c
+               src/native/crt_in_image_overrides.c src/runtime/x86_abi/x87crt.c
                tests/native_stubs.c)
-target_include_directories(test_crt_static_overrides PRIVATE src/native src/recomp)
-target_link_libraries(test_crt_static_overrides PRIVATE m)
-add_test(NAME crt_static_overrides COMMAND test_crt_static_overrides)
+target_include_directories(test_crt_in_image_overrides PRIVATE src/native src/runtime/x86_abi)
+target_link_libraries(test_crt_in_image_overrides PRIVATE m)
+add_test(NAME crt_in_image_overrides COMMAND test_crt_in_image_overrides)
 
 add_executable(test_audio_adpcm tests/test_audio_adpcm.c
                src/native/audio_adpcm.c src/native/guest_memory.c
                tests/native_stubs.c)
-target_include_directories(test_audio_adpcm PRIVATE src/native src/recomp)
+target_include_directories(test_audio_adpcm PRIVATE src/native src/runtime/x86_abi)
 add_test(NAME audio_adpcm COMMAND test_audio_adpcm)
 
 add_executable(test_vertex_color_swizzle tests/test_vertex_color_swizzle.c
                src/native/vertex_color_swizzle.c src/native/guest_memory.c
                tests/native_stubs.c)
-target_include_directories(test_vertex_color_swizzle PRIVATE src/native src/recomp)
+target_include_directories(test_vertex_color_swizzle PRIVATE src/native src/runtime/x86_abi)
 add_test(NAME vertex_color_swizzle COMMAND test_vertex_color_swizzle)
 
 add_executable(test_vertex_builder tests/test_vertex_builder.c
                src/native/vertex_builder.c src/native/guest_memory.c
                tests/native_stubs.c)
-target_include_directories(test_vertex_builder PRIVATE src/native src/recomp)
+target_include_directories(test_vertex_builder PRIVATE src/native src/runtime/x86_abi)
 add_test(NAME vertex_builder COMMAND test_vertex_builder)
 
-add_executable(test_engine_leaf_thunks tests/test_engine_leaf_thunks.c
-               src/native/engine_leaf_thunks.c src/native/guest_memory.c
+add_executable(test_x86_import_fastpath tests/test_x86_import_fastpath.c
+               src/native/x86_import_fastpath.c src/native/guest_memory.c
                tests/native_stubs.c)
-target_include_directories(test_engine_leaf_thunks PRIVATE src/native src/recomp)
-target_compile_definitions(test_engine_leaf_thunks PRIVATE TEST_SUITE=1)
-target_link_libraries(test_engine_leaf_thunks PRIVATE x86port lucent::lucent)
-add_test(NAME engine_leaf_thunks COMMAND test_engine_leaf_thunks)
+target_include_directories(test_x86_import_fastpath PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_x86_import_fastpath PRIVATE TEST_SUITE=1)
+target_link_libraries(test_x86_import_fastpath PRIVATE x86port_runtime lucent::lucent)
+add_test(NAME x86_import_fastpath COMMAND test_x86_import_fastpath)
 
 add_executable(test_attr_stack tests/test_attr_stack.c
                src/native/attr_stack.c src/native/guest_memory.c
                tests/native_stubs.c)
-target_include_directories(test_attr_stack PRIVATE src/native src/recomp)
+target_include_directories(test_attr_stack PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1)
 target_link_libraries(test_attr_stack PRIVATE lucent::lucent)
 add_test(NAME attr_stack COMMAND test_attr_stack)
@@ -747,12 +773,12 @@ add_test(NAME attr_stack COMMAND test_attr_stack)
 add_executable(test_audio_channel_poll tests/test_audio_channel_poll.c
                src/native/audio_channel_poll.c src/native/guest_memory.c
                tests/native_stubs.c)
-target_include_directories(test_audio_channel_poll PRIVATE src/native src/recomp)
+target_include_directories(test_audio_channel_poll PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_audio_channel_poll PRIVATE TEST_SUITE=1)
 target_link_libraries(test_audio_channel_poll PRIVATE lucent::lucent)
 add_test(NAME audio_channel_poll COMMAND test_audio_channel_poll)
 
-target_include_directories(test_x87crt PRIVATE src/recomp)
+target_include_directories(test_x87crt PRIVATE src/runtime/x86_abi)
 target_link_libraries(test_x87crt PRIVATE m)
 add_test(NAME x87crt COMMAND test_x87crt)
 
@@ -761,84 +787,29 @@ add_test(NAME x87crt COMMAND test_x87crt)
 # stack; its translated calls use the model in x86rt.h and are covered by the
 # architecture-independent x87 tests above.
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|i.86)$")
-    add_executable(test_x87host tests/test_x87host.c src/recomp/x87host.c)
-    target_include_directories(test_x87host PRIVATE src/recomp)
+    add_executable(test_x87host tests/test_x87host.c src/runtime/x86_abi/x87host.c)
+    target_include_directories(test_x87host PRIVATE src/runtime/x86_abi)
     target_link_libraries(test_x87host PRIVATE m)
     add_test(NAME x87host COMMAND test_x87host)
 endif()
 
 add_executable(test_x86callbacks
-    tests/test_x86callbacks.c src/recomp/x86callbacks.c
+    tests/test_x86callbacks.c src/runtime/x86_abi/x86callbacks.c
     src/native/guest_memory.c tests/native_stubs.c)
-target_include_directories(test_x86callbacks PRIVATE src/recomp src/native)
+target_include_directories(test_x86callbacks PRIVATE src/runtime/x86_abi src/native)
 target_compile_definitions(test_x86callbacks PRIVATE X86_NATIVE)
 target_link_libraries(test_x86callbacks PRIVATE pthread)
 add_test(NAME x86callbacks COMMAND test_x86callbacks)
-
-# A tail at the current dispatch frame may iterate through the dispatch loop;
-# one reached through a direct generated call must finish inline before that
-# caller resumes. Reversing those two cases left a guest return address on ESP
-# and surfaced later as issue #81's false /GS buffer-overrun report.
-add_executable(test_x86_tail_policy
-    tests/test_x86_tail_policy.c src/native/x86_tail_policy.c)
-target_include_directories(test_x86_tail_policy PRIVATE src/native)
-add_test(NAME x86_tail_policy COMMAND test_x86_tail_policy)
-
-add_executable(test_x86watch_memory
-    tests/test_x86watch_memory.c src/x86watch_memory.c)
-target_include_directories(test_x86watch_memory PRIVATE src)
-add_test(NAME x86watch_memory COMMAND test_x86watch_memory)
-
-add_executable(test_x86watch_trace
-    tests/test_x86watch_trace.c src/x86watch_trace.c)
-target_include_directories(test_x86watch_trace PRIVATE src)
-add_test(NAME x86watch_trace COMMAND test_x86watch_trace)
-
-add_executable(test_x86watch_stack
-    tests/test_x86watch_stack.c src/x86watch_stack.c)
-target_include_directories(test_x86watch_stack PRIVATE src)
-add_test(NAME x86watch_stack COMMAND test_x86watch_stack)
-
-# These three tests are x86 hardware oracles: each compares the model against
-# instructions executed by the host CPU. They remain valuable on Intel, but
-# cannot be compiled on AArch64 (whose translated models use portable C/NEON).
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|i.86)$")
-# The MMX lane model, against the host CPU's own SSE2 (tests/test_mmx.c).
-# libCriMovie's video decoder is 1106 MMX instructions and a wrong lane
-# produces a picture -- just not the right one -- so the oracle is silicon
-# rather than a second reading of the manual. Header-only, like test_flags.
-add_executable(test_mmx tests/test_mmx.c)
-target_include_directories(test_mmx PRIVATE src/recomp)
-add_test(NAME mmx COMMAND test_mmx)
-
-# The rotate model, against the host CPU's own ROL/ROR/RCL/RCR
-# (tests/test_rotate.c). RCL and RCR rotate through the carry -- a quantity one
-# bit wider than the operand -- which is not a shift pair, and MSVC's 64-bit
-# division helpers use RCR, so any guest that divides a long long reaches it.
-add_executable(test_rotate tests/test_rotate.c)
-target_include_directories(test_rotate PRIVATE src/recomp)
-add_test(NAME rotate COMMAND test_rotate)
-
-# The SSE model, against the host CPU's own SSE (tests/test_sse.c). The
-# engine's matrix and skinning maths is SSE -- libIGMath's
-# alignedMatrixMultiplySSE is on the path any animated character takes -- and
-# the parts that go wrong quietly are the lane semantics, not the arithmetic:
-# which lanes a scalar op preserves, which operand SHUFPS takes each half
-# from, and that MINPS is `dst < src ? dst : src` and not fminf().
-add_executable(test_sse tests/test_sse.c)
-target_include_directories(test_sse PRIVATE src/recomp)
-target_link_libraries(test_sse PRIVATE m)
-add_test(NAME sse COMMAND test_sse)
-endif()
 
 # The native executable, not only run.sh, loads the project .env. These tests
 # link the exact shipping parser and prove both precedence directions plus its
 # refusal of malformed input and executable-project precedence.
 add_executable(test_env_file tests/test_env_file.c src/native/env_file.c)
-target_include_directories(test_env_file PRIVATE src/native)
+target_include_directories(test_env_file PRIVATE src/native src/config)
 add_test(NAME env_file_load COMMAND test_env_file load)
 add_test(NAME env_file_preserve COMMAND test_env_file preserve)
 add_test(NAME env_file_malformed COMMAND test_env_file malformed)
+add_test(NAME env_file_unknown_key COMMAND test_env_file unknown-key)
 add_test(NAME env_file_executable_precedence
     COMMAND test_env_file executable-precedence)
 
@@ -852,7 +823,7 @@ add_executable(test_options_menu
     src/native/guest_heap.c src/native/guest_memory.c
     src/ui/settings_overlay_state.c
     tests/options_menu_stubs.c)
-target_include_directories(test_options_menu PRIVATE src/recomp src/native src/ui)
+target_include_directories(test_options_menu PRIVATE src/runtime/x86_abi src/native src/ui)
 target_compile_definitions(test_options_menu PRIVATE X86_NATIVE)
 target_link_libraries(test_options_menu PRIVATE pthread)
 add_test(NAME options_menu COMMAND test_options_menu)
@@ -907,27 +878,21 @@ add_test(NAME shadow_trace_compare COMMAND ${Python3_EXECUTABLE}
 add_test(NAME build_stocklog COMMAND ${Python3_EXECUTABLE} -m unittest
          tests.test_build_stocklog)
 set_tests_properties(build_stocklog PROPERTIES
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
-
-
-# The guest stack-effect check (tools/stackcheck.py over an X2_STACKCHECK
-# record). A guest call must return with esp raised by 4 plus the callee's RET
-# immediate; nothing checked that before, and a single dword of drift inside a
-# call tree surfaces as memory corruption somewhere unrelated -- FUN_0046b750's
-# /GS epilogue read a slot four bytes below the cookie it had stored and
-# reported a buffer overrun that never happened. The selftest is what makes the
-# tool's usual answer ("every checked call is balanced", over a million calls)
-# worth anything: it shows the checker flagging a 4-byte drift and excluding a
-# tail-calling body, neither of which a normal run exercises.
-add_test(NAME stackcheck COMMAND ${Python3_EXECUTABLE}
-         ${CMAKE_SOURCE_DIR}/tools/stackcheck.py --selftest)
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME build_shim COMMAND ${Python3_EXECUTABLE} -m unittest
+         tests.test_build_shim)
+set_tests_properties(build_shim PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME run_shim COMMAND ${Python3_EXECUTABLE} -m unittest
+         tests.test_run_shim)
+set_tests_properties(run_shim PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 
 
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
 # own call sites. Runs the checker's SELF-TEST, not the check: the check needs
-# scratch/recomp/libIGGfx.json, which is generated and gitignored, while the
+# scratch/analysis/libIGGfx.json, which is diagnostic input and gitignored, while the
 # self-test proves the checks can fail and is meaningful with or without it.
 add_test(NAME d3d8_abi
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
@@ -1053,6 +1018,25 @@ set_tests_properties(port_tool_migrations PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                      ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}")
 
+add_test(NAME runtime_boundary_source
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/runtime_boundary.py --source)
+set_tests_properties(runtime_boundary_source PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME source_policy
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/verify_source_policy.py)
+set_tests_properties(source_policy PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME source_policy_selftest
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/verify_source_policy.py --selftest)
+set_tests_properties(source_policy_selftest PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+add_test(NAME clang_tidy
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/clang_tidy.py
+                 --build-dir ${CMAKE_BINARY_DIR} --jobs 2)
+set_tests_properties(clang_tidy PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_test(NAME x2ctl COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_x2ctl.py)
 set_tests_properties(x2ctl PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
@@ -1091,43 +1075,10 @@ endforeach()
 
 
 # ---------------------------------------------------------------------------
-# x2native -- recompiled game code as a NATIVE binary (rc-native)
-#
-# The first artefact that is not hosted by Wine. It needs the generated
-# recompiler output, which is gitignored, so the target only exists once
-# `tools/recomp.py emit` and `tools/recomp.py native` have been run:
-#
-#   ${Python3_EXECUTABLE} tools/recomp.py emit   scratch/recomp/libIGDisplay.json \
-#                                  src/recomp/libIGDisplay.c
-#   ${Python3_EXECUTABLE} tools/recomp.py native scratch/recomp/libIGDisplay.json \
-#                                  src/recomp/libIGDisplay_native.c
-#
-# Configured without them, CMake SAYS so rather than quietly omitting the
-# target -- a missing native build that looks like a clean configure is how
-# "the native path does not build" turns into "there is no native path".
-# ---------------------------------------------------------------------------
-# Each recompiled module contributes two generated files and is optional: a
-# module that has not been exported yet simply is not linked, and x2native says
-# which ones it has at run time rather than pretending to a full set.
-#
-# cg and cgD3D8 are the NVIDIA Cg runtime shipped in the install, not Alchemy
-# modules -- libIGGfx loads them by name and the engine's library loader
-# reports a MODAL WARNING when it cannot (issue #45). They recompile like any
-# other guest module; what makes them different is that they link the MSVC CRT
-# STATICALLY, so their imports are the CRT's own startup surface (heap, std
-# handles, locale, code pages) rather than MSVCR71.
-#
-# msdia80 is Microsoft's Debug Interface Access DLL, shipped beside the game and
-# loaded by the engine's directory sweep. It reads PDB symbols, and the engine
-# uses it to symbolicate the stack trace it puts in an error box -- the path
-# this port keeps landing on.
-#
-# Stated as measured, because the two do not agree: NOTHING in the shipped
-# modules references it by name (no "msdia" string, no DIA CLSID, in any of the
-# 18 DLLs or the exe), so the call path is not visible statically. It is
-# recompiled rather than merely mapped so that whatever reaches it RUNS instead
-# of stopping. It lifts like any other guest module -- 4824 functions, 100% of
-# instructions, and only KERNEL32 imports, since its CRT is static.
+# x2native -- native host services plus runtime-translated guest code.
+# The required images remain user-supplied data. No source generator, emitted
+# guest corpus, static dispatcher, or execution-engine selector participates in
+# this target.
 set(X2_MODULES libIGDisplay libIGCore libIGSg libIGMath libIGAttrs
                libIGGfx libIGUtils libIGGui libIGLua libIGOpt
                libMovie libCriMovie libIGAudio libIGCollision
@@ -1166,8 +1117,8 @@ list(JOIN X2_INSTALL_REQUIRED_CONTENT "\",\n    \""
      X2_INSTALL_REQUIRED_CONTENT_LITERAL)
 configure_file(src/native/install_requirements.h.in
                ${CMAKE_BINARY_DIR}/install_requirements.h @ONLY)
-# Dusklight's exact RmlUi revision, including its maintained SDL3/SDL_GPU
-# backend. Pin both the commit and archive digest: a UI dependency update
+# Pin the exact RmlUi revision and its maintained SDL3/SDL_GPU backend. Pin
+# both the commit and archive digest: a UI dependency update
 # is a reviewed source change, never whatever GitHub serves that day.
 include(FetchContent)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
@@ -1304,8 +1255,9 @@ set(X2_NATIVE_SOURCES
     src/native/install_archive.cpp
     src/native/install_validation.cpp
     src/native/android_bridge.cpp
-    src/config/config_directory.c
-    src/config/runtime_cvars.cpp
+    src/input/alchemy_controller_bridge.cpp
+    src/input/directinput_controller_sample.c
+    src/input/ig_controller_manager_adapter.cpp
     src/config/directory_create.c
     src/config/settings.c
     src/config/input_assignments.c
@@ -1335,11 +1287,10 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine_selftest.c
     src/native/x86_dispatch.c
     src/native/x86_diag_dump.c
-    src/native/x86_engine_bridge.c
-    src/native/x86_engine_frames.c
+    src/native/x86_guest_call_stack.c
     src/native/x86_engine_intercept.c
     src/native/x86_engine_dispatch.c
-    src/native/engine_leaf_thunks.c
+    src/native/x86_import_fastpath.c
     src/native/attr_stack.c
     src/native/attr_stack_verify.c
     src/native/x86_engine_jit_diag.c
@@ -1390,10 +1341,11 @@ set(X2_NATIVE_SOURCES
     src/native/win32_events.c
     src/native/guest_heap.c
     src/native/crt.c
+    src/native/crt_aliases.c
     src/native/crt_setjmp.c
     src/native/crt_write_watch.c
     src/native/crt_selftest.c
-    src/native/crt_static_overrides.c
+    src/native/crt_in_image_overrides.c
     src/native/audio_adpcm.c
     src/native/audio_adpcm_verify.c
     src/native/vertex_color_swizzle.c
@@ -1402,7 +1354,7 @@ set(X2_NATIVE_SOURCES
     src/native/vertex_builder_verify.c
     src/native/audio_channel_poll.c
     src/native/audio_channel_poll_verify.c
-    src/recomp/x87crt.c
+    src/runtime/x86_abi/x87crt.c
     src/native/kernel32.c
     src/native/win_path.c
     src/native/advapi32.c
@@ -1422,6 +1374,7 @@ set(X2_NATIVE_SOURCES
     src/native/dinput_script.c
     src/native/dinput_joystick.c
     src/native/dinput_pad.c
+    src/native/dinput_pad_identity.c
     src/native/dinput_pad_virtual.c
     src/native/dinput_pad_virtual_actions.c
     src/native/dialog_prompts.c
@@ -1471,13 +1424,10 @@ set(X2_NATIVE_SOURCES
     src/native/json_string.c
     src/native/live_session.c
     src/native/ws2_32.c
-    src/native/advapi32.c
     src/native/shell32.c
     src/native/winmm.c
     src/native/threads.c
     src/native/threads_engine_report.c
-    src/native/x86_tail_policy.c
-    src/native/x86_reached.c
     src/native/x86_hotep.c
     src/native/run_reports.c
     src/native/x86rt_native.c
@@ -1519,6 +1469,7 @@ set(X2_NATIVE_SOURCES
     src/d3d8/d3d8_vs_execute.cpp
     src/d3d8/d3d8_screen_space_test.c
     src/d3d8/d3d8_light_selftest.c
+    src/d3d8/d3d8_host_report.c
     src/d3d8/d3d8_report.c
     src/vulkan/igvk_ark.c
     src/vulkan/igvk_probe.c
@@ -1545,6 +1496,7 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_upload.c
     src/gpu/gpu_upload_selftest.c
     src/gpu/gpu_headless.c
+    src/gpu/gpu_device_selftest.c
     src/gpu/gpu_selftest.c
     src/gpu/gpu_texture_selftest.c
     src/vulkan/igvk_slots_lifecycle.c
@@ -1556,7 +1508,7 @@ else()
     add_executable(x2native ${X2_NATIVE_SOURCES})
 endif()
 # -----------------------------------------------------------------
-# The runtime execution engine (jit-common S040/S047).
+# The product-only runtime execution engine.
 #
 # CONSUMED, never vendored: `shared/x86port` owns x86-32 semantics for
 # every title over it, and a copy in this tree that silently won is the
@@ -1564,15 +1516,13 @@ endif()
 # tools/shared_dir.py every other shared repo goes through, so there is one
 # answer to "where is it" and one refusal naming every path tried.
 #
-# x86port itself consumes jit-common, and finds it beside its own checkout
-# -- which is where bootstrap.py provisions it. The path is passed
-# EXPLICITLY anyway rather than left to that adjacency, so a maintainer
-# pointing X86PORT_DIR at a working tree does not silently pick up a
-# different jit-common than the pin.
+# x86port consumes the shared code-cache library beside its checkout. Pass
+# that path explicitly so an alternate x86port checkout cannot silently bind
+# a different revision.
 execute_process(
     COMMAND ${Python3_EXECUTABLE} -c
             "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
-            "${CMAKE_SOURCE_DIR}/tools" x86port src/x86port/engine.h
+            "${CMAKE_SOURCE_DIR}/tools" x86port src/x86port/jit_engine.h
     OUTPUT_VARIABLE X2_X86PORT_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_VARIABLE X2_X86PORT_WHY RESULT_VARIABLE X2_X86PORT_RC)
 execute_process(
@@ -1590,6 +1540,30 @@ if(X2_X86PORT_RC OR X2_JITCOMMON_RC)
         "${X2_X86PORT_WHY}${X2_JITCOMMON_WHY}"
         "Run ./run.sh to provision it, or set SHARED_DIR to a checkout root.")
 endif()
+
+# The neutral Alchemy layer has no CPU-runtime dependency. X-Men 2 consumes
+# only the SDL-free controller owner here; exact guest layout and DirectInput
+# conformance remain in this title's src/input adapter.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} -c
+            "import sys; sys.path.insert(0, sys.argv[1]); import shared_dir; print(shared_dir.shared_dir(sys.argv[2], sys.argv[3]))"
+            "${CMAKE_SOURCE_DIR}/tools" alchemy include/alchemy/input/controller.hpp
+    OUTPUT_VARIABLE X2_ALCHEMY_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_VARIABLE X2_ALCHEMY_WHY RESULT_VARIABLE X2_ALCHEMY_RC)
+if(X2_ALCHEMY_RC)
+    message(FATAL_ERROR
+        "x2native: the shared Alchemy runtime could not be resolved.\n"
+        "${X2_ALCHEMY_WHY}"
+        "Run ./run.sh to provision it, or set SHARED_DIR to a checkout root.")
+endif()
+set_property(DIRECTORY PROPERTY LINK_LIBRARIES "")
+add_subdirectory("${X2_ALCHEMY_DIR}" "${CMAKE_BINARY_DIR}/alchemy"
+                 EXCLUDE_FROM_ALL)
+if(NOT TARGET alchemy::input)
+    message(FATAL_ERROR
+        "x2native: shared/alchemy does not provide alchemy::input; update the "
+        "single pinned Alchemy checkout rather than adding a title-local copy.")
+endif()
 set(X86PORT_JITCOMMON_DIR "${X2_JITCOMMON_DIR}" CACHE PATH
     "jit-common checkout x86port builds against" FORCE)
 # x2native links as a PIE (and on Android as a shared object), so every
@@ -1601,23 +1575,46 @@ set(X86PORT_JITCOMMON_DIR "${X2_JITCOMMON_DIR}" CACHE PATH
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 add_subdirectory("${X2_X86PORT_DIR}" "${CMAKE_BINARY_DIR}/x86port"
                  EXCLUDE_FROM_ALL)
+if(NOT TARGET x86port_runtime)
+    message(FATAL_ERROR
+        "x2native: shared/x86port does not provide the required "
+        "product x86port_runtime target. The retired static product "
+        "has been removed and is not a fallback; update shared/x86port.")
+endif()
+
+# Tests compile title-native call adapters directly. Any target that includes
+# the title x86 ABI also consumes the canonical x86port CPU type and must link
+# the same product runtime rather than growing a test-local state model.
+get_property(_x2_local_targets DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+foreach(_x2_target IN LISTS _x2_local_targets)
+    get_target_property(_x2_target_includes "${_x2_target}" INCLUDE_DIRECTORIES)
+    if(_x2_target_includes MATCHES "src/runtime/x86_abi")
+        target_link_libraries("${_x2_target}" PRIVATE x86port_runtime)
+    endif()
+endforeach()
+
+add_executable(test_alchemy_controller_adapter
+    tests/test_alchemy_controller_adapter.cpp
+    src/input/ig_controller_manager_adapter.cpp)
+target_include_directories(test_alchemy_controller_adapter PRIVATE src/input)
+target_link_libraries(test_alchemy_controller_adapter PRIVATE alchemy::input)
+target_compile_options(test_alchemy_controller_adapter PRIVATE -UNDEBUG)
+add_test(NAME alchemy_controller_adapter COMMAND test_alchemy_controller_adapter)
 
 add_dependencies(x2native x2_shaders x2_pad_glyph_header
                  x2_prompt_glyph_atlas)
-target_include_directories(x2native PRIVATE src/recomp src/native src/vulkan
+target_include_directories(x2native PRIVATE src/runtime/x86_abi src/native src/vulkan
                                             src/config src/presentation src/ui
                                             src/input src/save src/audio
                                             src/media src/gpu src/d3d8 src/gen
                                             ${CMAKE_BINARY_DIR})
 target_link_libraries(x2native PRIVATE x2_rmlui_ui lucent::lucent lucent::zip)
-target_link_libraries(x2native PRIVATE x86port)
+target_link_libraries(x2native PRIVATE x86port_runtime)
+target_link_libraries(x2native PRIVATE alchemy::input)
 
-# Native overrides are declared in C where they belong: x86_register_override
-# in the subsystem files, and recomp.py routes every call (direct or
-# indirect) to a registered entry point through the dispatcher's override
-# slot, which x86_native_call_at consults before the recompiled body. No
-# generated wiring, no --wrap, no --isolate; the C is the single source of
-# truth.
+# Native overrides are declared in C where they belong. Every direct or
+# indirect guest call reaches the runtime dispatcher's override slot; no
+# generated wiring, wrappers, or isolated guest source bodies exist.
 
 
 target_compile_definitions(x2native PRIVATE X2_WITH_SDL _GNU_SOURCE)
@@ -1633,7 +1630,7 @@ endif()
 # -pthread: the heartbeat (src/native/heartbeat.c) runs on its own thread
 # so that a guest stuck anywhere still gets a liveness line.
 target_link_libraries(x2native PRIVATE ${X2_SDL} ${X2_FFMPEG_TARGET}
-                                       m Threads::Threads)
+                                       x2_runtime_config m Threads::Threads)
 if(ANDROID)
     set_target_properties(x2native PROPERTIES OUTPUT_NAME main)
     get_filename_component(_x2_android_ndk_version "${CMAKE_ANDROID_NDK}" NAME)
@@ -1661,25 +1658,13 @@ endif()
 # time, which is how this test first "failed" against an empty path. x2native
 # reads it itself at run time and exits 77 (ctest SKIP) if it is unset,
 # saying so -- a skip that announces itself, not a silent pass.
-# -DX2_NATIVE_O0=<file> compiles ONE generated chunk at -O0, so addr2line
-# names the exact guest instruction in it. At -O2 the line attribution
-# inside a 200k-line translated body is approximate, and reading a fault as
-# being at the wrong instruction is worse than admitting it is unknown --
-# a nearby line looks like an answer. Whole-build -O0 is not an option:
-# 2M lines of translated code, so this is per-chunk and opt-in.
-if(X2_NATIVE_O0)
-    if(NOT EXISTS ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0})
-        message(FATAL_ERROR "X2_NATIVE_O0: no such generated chunk: "
-                            "src/recomp/${X2_NATIVE_O0}")
-    endif()
-    message(STATUS "x2native: ${X2_NATIVE_O0} at -O0 for exact fault lines")
-    set_source_files_properties(
-        ${CMAKE_SOURCE_DIR}/src/recomp/${X2_NATIVE_O0}
-        PROPERTIES COMPILE_OPTIONS "-O0")
-endif()
 add_test(NAME native_battery
          COMMAND x2native --no-window --selftest)
 set_tests_properties(native_battery PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME runtime_boundary_binary
+         COMMAND ${Python3_EXECUTABLE}
+                 ${CMAKE_SOURCE_DIR}/tools/runtime_boundary.py
+                 --binary $<TARGET_FILE:x2native>)
 # The renderer's HOST half, driven with no engine and no game install.
 # It needs neither, which is the point: the game has never reached a
 # frame, so without this nothing would ever have run that code.

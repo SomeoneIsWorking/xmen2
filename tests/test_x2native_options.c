@@ -16,8 +16,8 @@ int main(void) {
   char *bringup[] = {"x2native", "--run"};
   char *appimage[] = {"x2native", "--appimage"};
   char *diagnostic[] = {"x2native", "--selftest"};
-  char *set_pair[] = {"x2native", "--set", "engine=interpreter", "--no-window"};
-  char *set_joined[] = {"x2native", "--set=engine=jit"};
+  char *set_pair[] = {"x2native", "--set", "jit.cache=false", "--no-window"};
+  char *set_joined[] = {"x2native", "--set=jit.profile=1024"};
   char *unknown[] = {"x2native", "--nonsense"};
   int fails = 0;
 
@@ -50,11 +50,12 @@ int main(void) {
   /* --set NAME=VALUE (and --set=NAME=VALUE) is consumed later by
      x2_runtime_config_init; the option parser must accept it and its value
      without mistaking either for the install directory. */
-  fails += check(x2native_options_parse(4, set_pair, &o) == 0 && !o.install_dir &&
-                     o.run && o.d3d8 && !o.window,
+  fails += check(x2native_options_parse(4, set_pair, &o) == 0 &&
+                     !o.install_dir && o.run && o.d3d8 && !o.window,
                  "--set NAME=VALUE was rejected or ate the --no-window flag");
-  fails += check(x2native_options_parse(2, set_joined, &o) == 0 && !o.install_dir,
-                 "--set=NAME=VALUE was rejected");
+  fails +=
+      check(x2native_options_parse(2, set_joined, &o) == 0 && !o.install_dir,
+            "--set=NAME=VALUE was rejected");
   fails += check(x2native_options_parse(2, unknown, &o) == 2,
                  "unknown option is no longer refused");
   printf("x2native options: %d of 14 checks passed\n", 14 - fails);

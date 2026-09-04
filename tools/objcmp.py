@@ -8,7 +8,7 @@ draw's declared vertex range in OBJECT space -- before any matrix of ours.
 
 That is what makes this decisive. The vertices in these files are what the
 ENGINE's own skinning produced. If a mesh is already flat here in the port and
-round in the control, the recompiled x86 computed it wrong and the renderer is
+round in the control, the guest execution path computed it wrong and the renderer is
 innocent; if both are round, the flattening happens downstream in the
 transform. Nothing else this project can measure separates those two.
 
@@ -152,48 +152,63 @@ def report(port_path, stock_path, tol):
     port, stock = load(port_path), load(stock_path)
     matched, differing, only_port, only_stock = compare(port, stock, tol)
 
-    print(f"port  {port_path}: {len(port)} draw(s), "
-          f"{sum(len(v) for _, _, v in port)} vertices")
-    print(f"stock {stock_path}: {len(stock)} draw(s), "
-          f"{sum(len(v) for _, _, v in stock)} vertices")
-    print(f"matched by signature (fvf, stride, prims): {len(matched)}; "
-          f"only in port: {len(only_port)}; only in stock: {len(only_stock)}")
-    print(f"of the matched, {len(differing)} differ by more than "
-          f"{tol:.4%} of the mesh's own size, {len(matched) - len(differing)} "
-          f"agree.")
+    print(f"port  {port_path}: {len(port)} draw(s), {sum(len(v) for _, _, v in port)} vertices")
+    print(f"stock {stock_path}: {len(stock)} draw(s), {sum(len(v) for _, _, v in stock)} vertices")
+    print(
+        f"matched by signature (fvf, stride, prims): {len(matched)}; "
+        f"only in port: {len(only_port)}; only in stock: {len(only_stock)}"
+    )
+    print(
+        f"of the matched, {len(differing)} differ by more than "
+        f"{tol:.4%} of the mesh's own size, {len(matched) - len(differing)} "
+        f"agree."
+    )
     if matched and not differing:
-        print("  -- every matched mesh is the SAME shape on both sides. The "
-              "engine's skinning is not what warps them; look downstream, at "
-              "the transform or the pipeline.")
+        print(
+            "  -- every matched mesh is the SAME shape on both sides. The "
+            "engine's skinning is not what warps them; look downstream, at "
+            "the transform or the pipeline."
+        )
     if not matched:
-        print("  -- NOTHING matched. The two dumps have no draw signature in "
-              "common, so this comparison says nothing at all about the "
-              "geometry; it says the two frames were not the same scene.")
+        print(
+            "  -- NOTHING matched. The two dumps have no draw signature in "
+            "common, so this comparison says nothing at all about the "
+            "geometry; it says the two frames were not the same scene."
+        )
 
-    for name, sname, verts, sverts, rms, rel in sorted(
-            differing, key=lambda r: -(r[5] or 9e9))[:20]:
+    for name, sname, verts, sverts, rms, rel in sorted(differing, key=lambda r: -(r[5] or 9e9))[
+        :20
+    ]:
         pe, se = extents(verts), extents(sverts)
         print(f"\n  {name}  vs  {sname}")
         if rms is None:
-            print(f"    vertex COUNT differs: port {len(verts)}, "
-                  f"stock {len(sverts)} -- not the same mesh")
+            print(
+                f"    vertex COUNT differs: port {len(verts)}, "
+                f"stock {len(sverts)} -- not the same mesh"
+            )
             continue
         print(f"    rms {rms:.4f} ({rel:.3%} of size) over {len(verts)} vertices")
-        print(f"    port  extent {pe[0]:9.3f} x {pe[1]:9.3f} x {pe[2]:9.3f}"
-              f"   flatness {flatness(verts):.4f}")
-        print(f"    stock extent {se[0]:9.3f} x {se[1]:9.3f} x {se[2]:9.3f}"
-              f"   flatness {flatness(sverts):.4f}")
+        print(
+            f"    port  extent {pe[0]:9.3f} x {pe[1]:9.3f} x {pe[2]:9.3f}"
+            f"   flatness {flatness(verts):.4f}"
+        )
+        print(
+            f"    stock extent {se[0]:9.3f} x {se[1]:9.3f} x {se[2]:9.3f}"
+            f"   flatness {flatness(sverts):.4f}"
+        )
         if flatness(sverts) > 0.05 and flatness(verts) < 0.05:
-            print("    ^^ ROUND in the control and FLAT in the port: this mesh "
-                  "is collapsed before any matrix of ours touches it.")
+            print(
+                "    ^^ ROUND in the control and FLAT in the port: this mesh "
+                "is collapsed before any matrix of ours touches it."
+            )
     return 0 if not differing else 1
 
 
 # ------------------------------------------------------------------ render
 
+
 def png(path, w, h, rgb):
-    raw = b"".join(b"\0" + bytes(rgb[y * w * 3:(y + 1) * w * 3])
-                  for y in range(h))
+    raw = b"".join(b"\0" + bytes(rgb[y * w * 3 : (y + 1) * w * 3]) for y in range(h))
     comp = zlib.compress(raw, 9)
 
     def chunk(tag, data):
@@ -213,7 +228,7 @@ def render(path, pairs, cell=260):
     w, h = cell * 3, cell * rows
     buf = bytearray(w * h * 3)
     for i in range(0, len(buf), 3):
-        buf[i:i + 3] = b"\x12\x12\x16"
+        buf[i : i + 3] = b"\x12\x12\x16"
 
     for r, (_label, verts, colour) in enumerate(pairs):
         if not verts:
@@ -228,14 +243,17 @@ def render(path, pairs, cell=260):
                 px, py = int(ox + x), int(oy + y)
                 if ox <= px < ox + cell and oy <= py < oy + cell:
                     o = (py * w + px) * 3
-                    buf[o:o + 3] = colour
+                    buf[o : o + 3] = colour
     png(path, w, h, buf)
-    print(f"objcmp: wrote {path} -- rows are "
-          + ", ".join(name for name, _, _ in pairs)
-          + "; columns are the XY, XZ and ZY views.")
+    print(
+        f"objcmp: wrote {path} -- rows are "
+        + ", ".join(name for name, _, _ in pairs)
+        + "; columns are the XY, XZ and ZY views."
+    )
 
 
 # ---------------------------------------------------------------- selftest
+
 
 def selftest():
     import os
@@ -282,26 +300,25 @@ def selftest():
             ok = False
             print("FAIL flatness does not separate the plane from the cube")
         else:
-            print(f"pass  flatness separates them: flat {flatness(flat):.3f} "
-                  f"vs round {flatness(cube):.3f}")
+            print(
+                f"pass  flatness separates them: flat {flatness(flat):.3f} "
+                f"vs round {flatness(cube):.3f}"
+            )
 
     # 3. a signature present on one side only must NOT be silently matched.
     e = write("e.obj", [("draw1_fvf00042_stride16_prims2", cube)])
     m, diff, op, os_ = compare(load(e), load(b), 0.001)
     if m or len(op) != 1 or len(os_) != 1:
         ok = False
-        print(f"FAIL unmatched: matched={len(m)} port-only={len(op)} "
-              f"stock-only={len(os_)}")
+        print(f"FAIL unmatched: matched={len(m)} port-only={len(op)} stock-only={len(os_)}")
     else:
         print("pass  a draw with no counterpart is reported, not matched")
 
     # 4. an empty or absent corpus must REFUSE, not return "no differences".
     empty = os.path.join(d, "empty.obj")
     open(empty, "w").close()
-    for path, what in ((empty, "an empty file"),
-                       (os.path.join(d, "nope.obj"), "a missing file")):
-        r = subprocess.run([sys.executable, __file__, path, b],
-                           capture_output=True, text=True)
+    for path, what in ((empty, "an empty file"), (os.path.join(d, "nope.obj"), "a missing file")):
+        r = subprocess.run([sys.executable, __file__, path, b], capture_output=True, text=True)
         if r.returncode == 0:
             ok = False
             print(f"FAIL {what} was accepted (exit 0)")
@@ -313,12 +330,14 @@ def selftest():
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("port", nargs="?", help="the port's X2_DRAW_OBJ file")
     ap.add_argument("stock", nargs="?", help="the proxy's d3d8_frame.obj")
-    ap.add_argument("--tol", type=float, default=0.002,
-                    help="relative rms below which two meshes are the same")
+    ap.add_argument(
+        "--tol", type=float, default=0.002, help="relative rms below which two meshes are the same"
+    )
     ap.add_argument("--render", metavar="PNG")
     ap.add_argument("--group", help="substring of the draw group to render")
     ap.add_argument("--selftest", action="store_true")
@@ -333,9 +352,9 @@ def main():
 
     if a.render:
         port, stock = load(a.port), load(a.stock)
+
         def pick(gs):
-            return [(n, v) for n, _, v in gs
-                    if not a.group or a.group in n]
+            return [(n, v) for n, _, v in gs if not a.group or a.group in n]
 
         pp, ss = pick(port), pick(stock)
         if not pp and not ss:

@@ -12,7 +12,7 @@ The 'SAVE FAILED!' dialog was a MISSING ERROR CODE, not a missing feature: Creat
 
 ## Evidence
 
-X2_FILES=1 traced the sequence: GetFileAttributes on the Save dir (a directory), FindFirstFile saveslot*.save (matched nothing, expected on a first run), then CreateDirectory of each level returning 'File exists'. Every open in the run SUCCEEDED and settings.dat was written, so the failure could not be a file failure. After mapping EEXIST to ERROR_ALREADY_EXISTS the dialog is GONE: scratch/screenshots/after.png is the title screen with its full legal paragraph and no panel. The game then runs on into code it had never reached and stops on an x87 stack underflow in libIGGfx (issue #40).
+X2_FILES=1 traced the sequence: GetFileAttributes on the Save dir (a directory), FindFirstFile saveslot*.save (matched nothing, expected on a first run), then CreateDirectory of each level returning 'File exists'. Every open in the run SUCCEEDED and settings.dat was written, so the failure could not be a file failure. After mapping EEXIST to ERROR_ALREADY_EXISTS the dialog is GONE: scratch/screenshots/after.png is the title screen with its full legal paragraph and no panel. The later libIGGfx x87 stop was independent of this file-error mapping defect.
 
 ## What would falsify it
 

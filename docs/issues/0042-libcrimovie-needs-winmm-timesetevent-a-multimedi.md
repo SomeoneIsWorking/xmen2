@@ -18,7 +18,7 @@ the guarantee the caller asked for is one it already has).
 
 ## Why it is not a small stub
 
-This runtime executes recompiled bodies on ONE thread and the CPU state is a
+This runtime executes guest bodies on ONE thread and the CPU state is a
 plain struct passed down by pointer. A second thread entering a body is a data
 race on the register file itself, so "start a thread and call the callback" is
 not a five-line implementation -- it is a threading model.

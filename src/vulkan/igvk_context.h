@@ -1,25 +1,10 @@
 /*
  * igVkVisualContext -- what a slot module needs in order to be one.
  *
- * ## Where the file layout comes from
- *
- * The split across gpu_device / igvk_context / igvk_slots_* is taken from
- * DUSKLIGHT (https://github.com/TwilitRealm/dusklight, CC0), a shipping PC
- * port of Twilight Princess built on the zeldaret/tp decomp -- the same
- * architecture as this one, several years further along. Its src/dusk/ is one
- * small .cpp/.h pair per concern with a narrow header each: presentation.hpp
- * is seven lines, gfx.hpp is ten. Nothing accretes into a renderer.cpp.
- *
- * What was taken is that discipline, not code -- theirs is written against the
- * TP decomp's types and an entirely different graphics stack. Applied here it
- * says: the host GPU device is one concern and knows nothing about the guest;
- * the ARK class is another; each group of engine slots is another. The
- * alternative, and what this replaced, was a single igvk_visualcontext.c about
- * to grow 98 slot implementations.
- *
- * Their frame-interpolation design (record-and-replace, guest state never
- * mutated) is the other thing worth reading before this backend grows one, and
- * it is deliberately NOT copied yet: there is no frame to interpolate.
+ * The host GPU device knows nothing about guest objects; the ARK class owns
+ * class construction; and each igvk_slots_* module owns one cohesive group of
+ * engine slots. This boundary prevents device lifetime, guest ABI handling,
+ * and slot behavior from accumulating in one renderer module.
  *
  * ## The shape of the backend, and why it is this shape
  *
@@ -68,8 +53,8 @@
 /* ---- what a slot stub sees ------------------------------------------- */
 
 /* `this`, and the i-th stack argument (0-based, after the return address). */
-#define IGVK_SELF(C) ((C)->ecx)
-#define IGVK_ARG(C, i) RD32((C)->esp + 4u + (uint32_t)(i) * 4u)
+#define IGVK_SELF(C) ((C)->reg[kX86pEcx])
+#define IGVK_ARG(C, i) RD32((C)->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 /* The i-th stack argument reinterpreted as a float. The engine passes floats
    on the stack as their bit patterns; punning through a union rather than a

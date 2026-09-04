@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * A deterministic, opt-in Scourge Critter rendering reproduction.
  *
@@ -61,8 +63,8 @@ static uint32_t copy_to_guest(const char *text) {
 
 static void x2_spawn_probe_entity(CPU *C) {
   x86_guest_body(C, "XMen2.exe", 0x004612e0u);
-  if (g_waiting && C->eax)
-    g_spawned_entity = C->eax;
+  if (g_waiting && C->reg[kX86pEax])
+    g_spawned_entity = C->reg[kX86pEax];
 }
 
 static void x2_spawn_probe_handler(CPU *C) {
@@ -71,12 +73,10 @@ static void x2_spawn_probe_handler(CPU *C) {
     return;
 
   g_spawn_handlers++;
-  fprintf(stderr,
-          "SPAWN PROBE: retail spawn handler #%lu; factory result "
-          "0x%08x%s\n",
-          g_spawn_handlers, g_spawned_entity,
-          g_spawned_entity ? " -- CREATED" : " -- creation failed");
-  fflush(stderr);
+  x2_log_error("SPAWN PROBE: retail spawn handler #%lu; factory result "
+               "0x%08x%s\n",
+               g_spawn_handlers, g_spawned_entity,
+               g_spawned_entity ? " -- CREATED" : " -- creation failed");
   if (!g_spawned_entity)
     return;
 
@@ -91,7 +91,7 @@ void entity_spawn_probe_after_script_launch(CPU *source, const char *script) {
   const char *value;
 
   if (g_mode < 0) {
-    value = getenv("X2_SPAWN_CRITTER");
+    value = x2_config_override_get(kX2ConfigSpawnCritter);
     g_mode = value && *value && strcmp(value, "0") != 0;
   }
   if (!g_mode || g_submitted || strcmp(script, DEADZONE_ENTRY) != 0)
@@ -101,26 +101,23 @@ void entity_spawn_probe_after_script_launch(CPU *source, const char *script) {
   base = mapped_exe_base();
   g_command_guest = copy_to_guest(g_command);
   if (!base || !g_command_guest) {
-    fprintf(stderr, "SPAWN PROBE: REFUSED -- could not prepare the retail "
-                    "console command in guest memory\n");
-    fflush(stderr);
+    x2_log_error("SPAWN PROBE: REFUSED -- could not prepare the retail "
+                 "console command in guest memory\n");
     if (g_command_guest)
       guest_free(g_command_guest);
     g_command_guest = 0;
     return;
   }
 
-  fprintf(stderr,
-          "SPAWN PROBE: Dead Zone entry launched; dispatching the "
-          "retail command: %s\n",
-          g_command);
-  fflush(stderr);
+  x2_log_error("SPAWN PROBE: Dead Zone entry launched; dispatching the "
+               "retail command: %s\n",
+               g_command);
   g_waiting = 1;
   g_spawned_entity = 0;
   call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, g_command_guest);
-  call.ecx = base + CONSOLE_MANAGER_RVA;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_command_guest);
+  call.reg[kX86pEcx] = base + CONSOLE_MANAGER_RVA;
   x86_guest_call_args(&call, base + CONSOLE_EXEC_RVA, 4u);
 }
 

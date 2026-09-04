@@ -1,6 +1,7 @@
 #include "install_archive.h"
 #include "../config/config_directory.h"
 #include "install_validation.h"
+#include "x2_log.h"
 
 #include <cstdio>
 #include <cstring>
@@ -100,8 +101,7 @@ bool accept_preparation(const std::filesystem::path &preparing,
     std::error_code cleanup_error;
     std::filesystem::remove_all(previous, cleanup_error);
     if (cleanup_error)
-      std::fprintf(stderr,
-                   "install picker: accepted ZIP but could not remove "
+      x2_log_error("install picker: accepted ZIP but could not remove "
                    "its previous extraction: %s\n",
                    cleanup_error.message().c_str());
   }

@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /* Xbox prompt delivery at the game's own physical-input naming boundary.
  *
  * XMen2.exe FUN_00619e30 selects an action binding and asks FUN_006281f0 to
@@ -13,7 +15,7 @@
  *
  * This port replaces only those names for a live Xbox-family SDL device and
  * only when native prompt rendering is active. Every other case super-calls
- * the original recompiled body, keeping keyboard, PlayStation, generic-pad,
+ * the original guest path, keeping keyboard, PlayStation, generic-pad,
  * stick-click and unknown-code names faithful.
  *
  * WHICH BINDING THE LABEL DESCRIBES is the other half, and without it the
@@ -69,7 +71,7 @@ static unsigned long g_rows_asked, g_rows_padded, g_rows_no_pad;
 static int probe_char(void) {
   static int c = -1;
   if (c < 0) {
-    const char *e = getenv("X2_PAD_GLYPH_PROBE");
+    const char *e = x2_config_override_get(kX2ConfigPadGlyphProbe);
     /* "0xNN" forces a raw byte -- use it to put an ASYMMETRIC glyph on
        every prompt (LB and RB carry an L and an R), which is the only way
        to tell a mirrored atlas cell from an upright one. A bare character
@@ -79,12 +81,11 @@ static int probe_char(void) {
     else
       c = (e && *e) ? (unsigned char)*e : 0;
     if (c)
-      fprintf(stderr,
-              "PAD-GLYPHS: X2_PAD_GLYPH_PROBE -- every pad "
-              "prompt will draw byte 0x%02x ('%c') instead of "
-              "its glyph. This is a diagnostic; unset it to see "
-              "the real art.\n",
-              c, c >= 0x20 && c < 0x7f ? c : '.');
+      x2_log_error("PAD-GLYPHS: X2_PAD_GLYPH_PROBE -- every pad "
+                   "prompt will draw byte 0x%02x ('%c') instead of "
+                   "its glyph. This is a diagnostic; unset it to see "
+                   "the real art.\n",
+                   c, c >= 0x20 && c < 0x7f ? c : '.');
   }
   return c;
 }
@@ -135,8 +136,8 @@ static int host_pad_for_kind(uint32_t kind) {
 }
 
 void x2_override_006281f0(CPU *C) {
-  uint32_t kind = RD32(C->esp + 4u);
-  uint32_t code = RD32(C->esp + 8u);
+  uint32_t kind = RD32(C->reg[kX86pEsp] + 4u);
+  uint32_t code = RD32(C->reg[kX86pEsp] + 8u);
   uint8_t glyph;
   uint32_t out;
   int host_pad;
@@ -158,8 +159,8 @@ void x2_override_006281f0(CPU *C) {
     glyph = (uint8_t)probe_char();
   WR8(out, glyph);
   WR8(out + 1u, 0);
-  C->eax = out;
-  C->esp += 12u; /* RET 8: return address + the two stack arguments */
+  C->reg[kX86pEax] = out;
+  C->reg[kX86pEsp] += 12u; /* RET 8: return address + the two stack arguments */
   g_mapped++;
 }
 
@@ -191,10 +192,10 @@ static int row_pad_binding(uint32_t object, uint32_t row, uint32_t *kind,
 }
 
 void x2_override_006294b0(CPU *C) {
-  uint32_t object = C->ecx;
-  uint32_t row = RD32(C->esp + 4u);
-  uint32_t out_kind = RD32(C->esp + 0xcu);
-  uint32_t out_code = RD32(C->esp + 0x10u);
+  uint32_t object = C->reg[kX86pEcx];
+  uint32_t row = RD32(C->reg[kX86pEsp] + 4u);
+  uint32_t out_kind = RD32(C->reg[kX86pEsp] + 0xcu);
+  uint32_t out_code = RD32(C->reg[kX86pEsp] + 0x10u);
   uint32_t kind, code;
 
   g_rows_asked++;
@@ -208,7 +209,7 @@ void x2_override_006294b0(CPU *C) {
     WR32(out_kind, kind);
   if (out_code)
     WR32(out_code, code);
-  C->esp += 4u + 0x10u; /* RET 0x10 */
+  C->reg[kX86pEsp] += 4u + 0x10u; /* RET 0x10 */
   g_rows_padded++;
 }
 
@@ -223,16 +224,16 @@ void pad_glyphs_report(void) {
   static int done;
   if (done++)
     return;
-  printf("  Xbox prompt names: %lu glyph(s), %lu original name(s); native "
-         "prompt rendering %s\n",
-         g_mapped, g_deferred,
-         x2_prompt_glyphs_enabled() ? "enabled" : "disabled");
+  x2_log_info("  Xbox prompt names: %lu glyph(s), %lu original name(s); native "
+              "prompt rendering %s\n",
+              g_mapped, g_deferred,
+              x2_prompt_glyphs_enabled() ? "enabled" : "disabled");
   /* With the denominator, because "0 glyphs" means one thing when the label
      was never built at all and another when it was built 900 times and every
      row named the keyboard. */
-  printf("  Xbox prompt rows: %lu label read(s) -- %lu answered with the "
-         "row's pad binding, %lu had none and used the game's own slot "
-         "order\n",
-         g_rows_asked, g_rows_padded, g_rows_no_pad);
+  x2_log_info("  Xbox prompt rows: %lu label read(s) -- %lu answered with the "
+              "row's pad binding, %lu had none and used the game's own slot "
+              "order\n",
+              g_rows_asked, g_rows_padded, g_rows_no_pad);
   prompt_labels_report();
 }

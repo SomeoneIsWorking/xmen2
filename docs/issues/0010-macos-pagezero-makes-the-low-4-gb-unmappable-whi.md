@@ -3,7 +3,7 @@ id: 10
 title: macOS __PAGEZERO makes the low 4 GB unmappable, which is exactly where the guest image has to go
 status: resolved
 symptom: On macOS, pe_map's MAP_FIXED_NOREPLACE at 0x10000000 (or 0x400000 for XMen2.exe) fails, so x2native reports that the kernel would not place the image at its preferred base and refuses to run
-tags: pc,recomp,native,macos,portability,rc-native
+tags: pc,jit,native,macos,portability
 created: 2026-08-05
 updated: 2026-08-26
 ---
@@ -44,7 +44,7 @@ with it.
 ## The collision
 
 The original `src/native/pe_map.c` mapped the PE at its preferred host address,
-because recompiled bodies dereferenced guest addresses directly (`RD32(a)` was
+because guest/native helpers dereferenced guest addresses directly (`RD32(a)` was
 `*(uint32_t *)a`). Those bases are 0x00400000 for XMen2.exe and 0x10000000 for
 the DLLs -- all inside the low 4 GB.
 
@@ -59,7 +59,7 @@ for emulators that need low addresses", which understated our position. An
 emulator is stuck with identity mapping because it cannot change how the guest
 addresses memory. We generate the accessors, so we can.
 
-`RD32(a)` is `*(uint32_t *)a` only because the PC recomp began as a DLL swap,
+`RD32(a)` is `*(uint32_t *)a` only because the original PC host began as a DLL swap,
 where the guest and host really were one address space and a guest pointer WAS
 a host pointer. In a native build nothing forces that. A base-offset form --
 `*(uint32_t *)(g_mem + a)` -- removes the low-4-GB requirement completely, on

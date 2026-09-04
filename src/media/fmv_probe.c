@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /* Exact row-chain evidence from decoded frame to guest image to D3D8 upload. */
 #include "fmv_probe.h"
 
@@ -51,16 +53,17 @@ static int readable_rows(size_t bytes, size_t pitch) {
 }
 
 void x2_fmv_probe_begin(const char *guest_path) {
-  const char *filter = getenv("X2_FMV_PROBE");
+  const char *filter = x2_config_override_get(kX2ConfigFmvProbe);
   free(g_probe.expected);
   memset(&g_probe, 0, sizeof(g_probe));
   if (!filter || !*filter || !guest_path || !strstr(guest_path, filter))
     return;
   g_probe.stats.active = 1;
   snprintf(g_probe.movie, sizeof(g_probe.movie), "%s", guest_path);
-  printf("movie probe: tracing decoded -> padded igImage -> D3D8 upload rows "
-         "for '%s'\n",
-         guest_path);
+  x2_log_info(
+      "movie probe: tracing decoded -> padded igImage -> D3D8 upload rows "
+      "for '%s'\n",
+      guest_path);
 }
 
 void x2_fmv_probe_decoded(const uint8_t *pixels, int width, int height,
@@ -136,13 +139,14 @@ void x2_fmv_probe_get_stats(X2FmvProbeStats *stats) {
 
 void x2_fmv_probe_report(void) {
   if (g_probe.stats.active) {
-    printf("movie probe: '%s': %lu decoded, %lu padded check(s) / %lu "
-           "mismatched row(s), %lu upload candidate(s) / %lu exact / "
-           "%lu mismatched row(s), %lu complete frame chain(s)\n",
-           g_probe.movie, g_probe.stats.decoded_frames,
-           g_probe.stats.padded_checks, g_probe.stats.padded_mismatch_rows,
-           g_probe.stats.upload_candidates, g_probe.stats.upload_matches,
-           g_probe.stats.upload_mismatch_rows, g_probe.stats.complete_frames);
+    x2_log_info("movie probe: '%s': %lu decoded, %lu padded check(s) / %lu "
+                "mismatched row(s), %lu upload candidate(s) / %lu exact / "
+                "%lu mismatched row(s), %lu complete frame chain(s)\n",
+                g_probe.movie, g_probe.stats.decoded_frames,
+                g_probe.stats.padded_checks, g_probe.stats.padded_mismatch_rows,
+                g_probe.stats.upload_candidates, g_probe.stats.upload_matches,
+                g_probe.stats.upload_mismatch_rows,
+                g_probe.stats.complete_frames);
   }
 }
 

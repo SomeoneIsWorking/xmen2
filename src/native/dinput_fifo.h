@@ -10,9 +10,9 @@
  * every keyboard poll, whether or not the FIFO is configured -- with it unset
  * this is one getenv and a return.
  */
-struct CPU;
+struct X86pCpu;
 
-void dinput_fifo_apply(struct CPU *cpu, uint32_t out, uint32_t size,
+void dinput_fifo_apply(struct X86pCpu *cpu, uint32_t out, uint32_t size,
                        double now);
 
 /*

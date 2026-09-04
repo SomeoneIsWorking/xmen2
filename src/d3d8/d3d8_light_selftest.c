@@ -1,4 +1,5 @@
 #include "d3d8_light_selftest.h"
+#include "../native/x2_log.h"
 
 #include "d3d8_device.h"
 #include "d3d8_types.h"
@@ -34,12 +35,12 @@ int d3d8_light_selftest(D3D8SelftestCall call) {
   uint32_t result;
   int fails = 0;
 
-  printf("\n=== d3d8 light-slot selftest: stock index 51 through the "
-         "device vtable ===\n");
+  x2_log_info("\n=== d3d8 light-slot selftest: stock index 51 through the "
+              "device vtable ===\n");
   d3d8_device_install();
   device = d3d8_object_new(D3D8_IF_IDirect3DDevice8, NULL);
   if (!device) {
-    printf("d3d8 light-slot selftest: FAILED -- no device object.\n");
+    x2_log_info("d3d8 light-slot selftest: FAILED -- no device object.\n");
     return 1;
   }
 
@@ -48,8 +49,8 @@ int d3d8_light_selftest(D3D8SelftestCall call) {
      that tail addressable instead of manufacturing an unrelated warning. */
   light_address = guest_malloc((26u + 3u) * sizeof(uint32_t));
   if (!light_address) {
-    printf("d3d8 light-slot selftest: FAILED -- guest light allocation "
-           "failed.\n");
+    x2_log_info("d3d8 light-slot selftest: FAILED -- guest light allocation "
+                "failed.\n");
     return 1;
   }
   light = guest_memory_pointer(light_address);
@@ -69,9 +70,9 @@ int d3d8_light_selftest(D3D8SelftestCall call) {
       !d3d8_last_setlight_diffuse(CONTROL_LIGHT_INDEX, retained) ||
       retained[0] != light[1] || retained[1] != light[2] ||
       retained[2] != light[3]) {
-    printf("d3d8 light-slot selftest: FAILED -- SetLight(51) returned "
-           "0x%08x or did not retain diffuse %.2f %.2f %.2f.\n",
-           result, light[1], light[2], light[3]);
+    x2_log_info("d3d8 light-slot selftest: FAILED -- SetLight(51) returned "
+                "0x%08x or did not retain diffuse %.2f %.2f %.2f.\n",
+                result, light[1], light[2], light[3]);
     fails++;
   }
 
@@ -79,16 +80,16 @@ int d3d8_light_selftest(D3D8SelftestCall call) {
   args[1] = 1;
   result = call(device, 46, args, 2); /* LightEnable */
   if (result != D3D_OK) {
-    printf("d3d8 light-slot selftest: FAILED -- LightEnable(51, TRUE) "
-           "returned 0x%08x, not D3D_OK.\n",
-           result);
+    x2_log_info("d3d8 light-slot selftest: FAILED -- LightEnable(51, TRUE) "
+                "returned 0x%08x, not D3D_OK.\n",
+                result);
     fails++;
   }
 
-  printf("d3d8 light-slot selftest: %s\n",
-         fails
-             ? "FAILED"
-             : "PASSED -- SetLight and LightEnable accepted stock slot 51 and "
-               "the draw-time witness retained its colour");
+  x2_log_info(
+      "d3d8 light-slot selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- SetLight and LightEnable accepted stock slot 51 and "
+              "the draw-time witness retained its colour");
   return fails;
 }

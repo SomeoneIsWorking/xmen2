@@ -1,4 +1,5 @@
 #include "exact_save_load.h"
+#include "x2_log.h"
 
 #include "guest_heap.h"
 #include "guest_memory.h"
@@ -37,7 +38,7 @@ static X2ExactSaveLoadCompletion g_completion;
 static uint32_t guest_call0(const CPU *source, uint32_t target) {
   CPU call = *source;
   x86_guest_call_args(&call, target, 0u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static int prepare_leaf(const char *leaf) {
@@ -65,24 +66,24 @@ static int read_prepared_header(const CPU *source, uint32_t exe,
     return 0;
   memset(guest_memory_pointer(metadata), 0, METADATA_STRIDE);
   call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, metadata);
-  call.esp -= 4u;
-  WR32(call.esp, g_leaf_guest);
-  call.esp -= 4u;
-  WR32(call.esp, SAVE_DEVICE_PC);
-  call.ecx = storage;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], metadata);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], g_leaf_guest);
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], SAVE_DEVICE_PC);
+  call.reg[kX86pEcx] = storage;
   x86_guest_call_args(&call, exe + FN_READ_HEADER, 12u);
-  return (call.eax & 0xffu) != 0u;
+  return (call.reg[kX86pEax] & 0xffu) != 0u;
 }
 
 static void set_manager_mode(const CPU *source, uint32_t exe, uint32_t manager,
                              uint32_t mode) {
   CPU call = *source;
 
-  call.esp -= 4u;
-  WR32(call.esp, mode);
-  call.ecx = manager;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], mode);
+  call.reg[kX86pEcx] = manager;
   x86_guest_call_args(&call, exe + FN_SET_MODE, 4u);
 }
 
@@ -138,21 +139,20 @@ int x2_exact_save_load_start(const CPU *source, uint32_t exe, const char *leaf,
     return 0;
   }
   call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, SAVE_DEVICE_PC);
-  call.ecx = manager;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], SAVE_DEVICE_PC);
+  call.reg[kX86pEcx] = manager;
   x86_guest_call_args(&call, exe + FN_SET_DEVICE, 4u);
   call = *source;
-  call.esp -= 4u;
-  WR32(call.esp, staging_slot);
-  call.ecx = manager;
+  call.reg[kX86pEsp] -= 4u;
+  WR32(call.reg[kX86pEsp], staging_slot);
+  call.reg[kX86pEcx] = manager;
   x86_guest_call_args(&call, exe + FN_CHOOSE_FILE, 4u);
   if (RD32(manager + MANAGER_MODE) != SAVE_MODE_LOAD ||
       RD32(manager + MANAGER_STATE) != 0x1cu) {
-    fprintf(stderr,
-            "exact-save-load: retail manager refused mode3/state1c "
-            "dispatch (mode=%u state=%u)\n",
-            RD32(manager + MANAGER_MODE), RD32(manager + MANAGER_STATE));
+    x2_log_error("exact-save-load: retail manager refused mode3/state1c "
+                 "dispatch (mode=%u state=%u)\n",
+                 RD32(manager + MANAGER_MODE), RD32(manager + MANAGER_STATE));
     if (entered_load_mode)
       set_manager_mode(source, exe, manager, SAVE_MODE_IDLE);
     memcpy(guest_memory_pointer(entry), previous_metadata,
@@ -176,9 +176,9 @@ static int redirect_pending_load(CPU *cpu) {
   g_pending_exe = 0u;
   g_owner = X2_EXACT_SAVE_LOAD_NONE;
   g_completion = NULL;
-  WR32(cpu->esp + 8u, g_leaf_guest);
+  WR32(cpu->reg[kX86pEsp] + 8u, g_leaf_guest);
   x86_dispatch(cpu, exe + FN_READ_LEAF);
-  succeeded = (cpu->eax & 0xffu) != 0u;
+  succeeded = (cpu->reg[kX86pEax] & 0xffu) != 0u;
   if (completion)
     completion(succeeded);
   return 1;

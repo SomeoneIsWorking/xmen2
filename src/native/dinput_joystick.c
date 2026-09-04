@@ -1,8 +1,11 @@
+#include "x2_log.h"
 /* DirectInput joystick state layout and object enumeration. */
 #include "dinput_joystick.h"
 #include "guest_memory.h"
 
+#include "alchemy_controller_bridge.h"
 #include "dinput_pad.h"
+#include "directinput_controller_sample.h"
 #include "guest_heap.h"
 #include "joystick_neutral.h"
 #include "x86rt_native.h"
@@ -12,7 +15,7 @@
 
 void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
                            uint32_t size) {
-  int button, count;
+  X2DirectInputControllerSample sample;
 
   /* Latch SDL's current view ONCE, before reading the sixteen values below
      out of it. Without this every one of them reports what SDL happened to
@@ -20,24 +23,18 @@ void dinput_joystick_state(int pad, int32_t lo, int32_t hi, uint32_t out,
   dinput_pad_refresh_state();
 
   if (!x2_joystick_write_neutral(guest_memory_pointer(out), size, lo, hi)) {
-    fprintf(stderr,
-            "DINPUT8: a %u-byte joystick state is smaller than the "
-            "176 bytes DIJOYSTATE2 needs for axes, POVs and "
-            "buttons. Nothing is written.\n",
-            size);
+    x2_log_error("DINPUT8: a %u-byte joystick state is smaller than the "
+                 "176 bytes DIJOYSTATE2 needs for axes, POVs and "
+                 "buttons. Nothing is written.\n",
+                 size);
     return;
   }
-  WR32(out + 0u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_X, lo, hi));
-  WR32(out + 4u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_Y, lo, hi));
-  WR32(out + 8u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_Z, lo, hi));
-  WR32(out + 12u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_RX, lo, hi));
-  WR32(out + 16u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_RY, lo, hi));
-  WR32(out + 20u, (uint32_t)dinput_pad_axis(pad, DINPUT_PAD_AXIS_RZ, lo, hi));
-  WR32(out + 32u, dinput_pad_pov(pad));
-  count = dinput_pad_button_count(pad);
-  for (button = 0; button < count && 48u + (uint32_t)button < size; button++)
-    if (dinput_pad_button(pad, button))
-      *((unsigned char *)guest_memory_pointer(out) + 48 + button) = 0x80;
+  if (!x2_directinput_controller_capture(pad, lo, hi, &sample)) {
+    return;
+  }
+  x2_directinput_controller_write(
+      &sample, (unsigned char *)guest_memory_pointer(out), size);
+  x2_alchemy_controller_observe(pad, &sample, lo, hi);
 }
 
 static void object_guid(unsigned char guid[16], unsigned char low) {
@@ -71,11 +68,11 @@ static void enum_object(CPU *cpu, uint32_t callback, uint32_t context,
   WR32(buffer + 0x1cu, 0); /* no DIDOI_FFACTUATOR: force feedback absent */
   snprintf(guest_memory_pointer(buffer + 0x20u), 260, "%s", name);
   call = *cpu;
-  call.esp -= 8u;
-  WR32(call.esp, buffer);
-  WR32(call.esp + 4u, context);
+  call.reg[kX86pEsp] -= 8u;
+  WR32(call.reg[kX86pEsp], buffer);
+  WR32(call.reg[kX86pEsp] + 4u, context);
   x86_guest_call_args(&call, callback, 8u);
-  if (call.eax == 0u)
+  if (call.reg[kX86pEax] == 0u)
     *stop = 1;
 }
 

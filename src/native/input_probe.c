@@ -129,12 +129,12 @@ static uint32_t thiscall(CPU *cpu, uint32_t fn, uint32_t ecx, int argc,
                          const uint32_t *argv) {
   CPU call = *cpu;
   int i;
-  call.esp -= (uint32_t)argc * 4u;
+  call.reg[kX86pEsp] -= (uint32_t)argc * 4u;
   for (i = 0; i < argc; i++)
-    WR32(call.esp + (uint32_t)i * 4u, argv[i]);
-  call.ecx = ecx;
+    WR32(call.reg[kX86pEsp] + (uint32_t)i * 4u, argv[i]);
+  call.reg[kX86pEcx] = ecx;
   x86_guest_call_args(&call, fn, (uint32_t)argc * 4u);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 /*
@@ -427,14 +427,14 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
             "value a binding on that code resolves to:\n",
             PAD_CODE_MAX);
         for (c = 1u; c <= PAD_CODE_MAX; c++) {
-          long double v;
           CPU call = *cpu;
-          call.esp -= 8u;
-          WR32(call.esp + 0u, 0u);
-          WR32(call.esp + 4u, c);
-          call.ecx = wrapper;
+          call.reg[kX86pEsp] -= 8u;
+          WR32(call.reg[kX86pEsp] + 0u, 0u);
+          WR32(call.reg[kX86pEsp] + 4u, c);
+          call.reg[kX86pEcx] = wrapper;
           x86_guest_call_args(&call, base + DI_PAD_VALUE_RVA, 8u);
-          v = call.st[call.top];
+          long double v = x87_require_st0(
+              &call, "input probe guest call returned no x87 value");
           if (v == 0.0L)
             continue;
           put(out, n, &at, "    0x%02x %-14s %+.3f\n", c, pad_code_name(c),
@@ -503,11 +503,11 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
         if (!x86_peek32(slot, &handle))
           continue;
         live++;
-        call.esp -= 4u;
-        WR32(call.esp, handle);
-        call.ecx = call.esp;
+        call.reg[kX86pEsp] -= 4u;
+        WR32(call.reg[kX86pEsp], handle);
+        call.reg[kX86pEcx] = call.reg[kX86pEsp];
         x86_guest_call_args(&call, base + RESOLVE_HANDLE_RVA, 0u);
-        actor = call.eax;
+        actor = call.reg[kX86pEax];
         if (actor)
           resolved++;
         put(out, n, &at, "  %-8s handle 0x%08x -> actor 0x%08x%s\n",

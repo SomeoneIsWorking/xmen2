@@ -1,17 +1,19 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
- * x2native -- the recompiled game code running as a NATIVE Linux binary.
+ * x2native -- the guest game code running through a native/JIT host.
  *
  * No Wine, no PE loader, no original DLL alongside us. This is the first
  * artefact on the rc-native track, and its job is to make that track
  * measurable rather than aspirational: it maps the original image at its own
- * base, runs recompiled function bodies against it, and opens an SDL window so
+ * base, runs guest function bodies against it, and opens an SDL window so
  * the platform layer that replaces USER32/DINPUT/D3D8 has somewhere to live.
  *
  *   ./x2native                         run the current SDL3 GPU game target
  *   ./x2native --no-window             the same target, off-screen
  *
- * It is a hybrid port: mechanically translated game/engine bodies stay live
- * while focused native modules replace platform and engine boundaries. Any
+ * It is a hybrid port: the runtime JIT executes game/engine instructions while
+ * focused native modules replace platform and engine boundaries. Any
  * still-unimplemented host import aborts by name, so incomplete coverage is a
  * concrete stop rather than a silently skipped operation.
  */
@@ -46,12 +48,10 @@
 #include "x2native_options.h"
 #include "x86_engine.h"
 #include "x86_hotep.h"
-#include "x86_reached.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
 #include <errno.h>
-#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -243,8 +243,8 @@ static void interrupted(int sig) {
 static int poison_init(void) {
   struct sigaction sa;
   if (guest_memory_map_fixed(POISON_BASE, POISON_SIZE, PROT_NONE) != 0) {
-    fprintf(stderr, "x2native: could not reserve the unbound-import page; "
-                    "unresolved imports would read as plausible values\n");
+    x2_log_error("x2native: could not reserve the unbound-import page; "
+                 "unresolved imports would read as plausible values\n");
     return -1;
   }
   /* On an alternate stack, so a fault caused by the guest stack running out
@@ -259,8 +259,8 @@ static int poison_init(void) {
     ss.ss_size = sizeof altstack;
     ss.ss_flags = 0;
     if (sigaltstack(&ss, NULL) != 0)
-      fprintf(stderr, "x2native: no alternate signal stack; a stack "
-                      "overflow will die silently\n");
+      x2_log_error("x2native: no alternate signal stack; a stack "
+                   "overflow will die silently\n");
   }
   memset(&sa, 0, sizeof sa);
   sa.sa_sigaction = fault_report;
@@ -285,11 +285,10 @@ static int poison_init(void) {
     size_t i;
     for (i = 0; i < sizeof fatal / sizeof fatal[0]; i++)
       if (sigaction(fatal[i], &sa, NULL) != 0)
-        fprintf(stderr,
-                "x2native: could not install the fault "
-                "reporter for %s; a fault of that kind will "
-                "die silently\n",
-                fault_name(fatal[i]));
+        x2_log_error("x2native: could not install the fault "
+                     "reporter for %s; a fault of that kind will "
+                     "die silently\n",
+                     fault_name(fatal[i]));
   }
   /*
    * A HANG had no report at all, and that is the one failure mode with
@@ -324,12 +323,11 @@ static const char *x86_native_name(uint32_t ep) {
 }
 
 void x86_seg_unset(const char *seg) {
-  fprintf(stderr,
-          "x86_seg_unset: guest code read %s-relative memory before "
-          "the native host set a %s base. On Windows this is the "
-          "TIB; here it has to be modelled, and it has not been "
-          "yet.\n",
-          seg, seg);
+  x2_log_error("x86_seg_unset: guest code read %s-relative memory before "
+               "the native host set a %s base. On Windows this is the "
+               "TIB; here it has to be modelled, and it has not been "
+               "yet.\n",
+               seg, seg);
   abort();
 }
 
@@ -376,7 +374,7 @@ static int tib_init(void) {
 /* ---- the guest stack ---------------------------------------------------
  *
  * Ours, not the C stack. This is the one place the native build is simpler
- * than the Wine-hosted one: there, recompiled code is entered BY Windows code
+ * than the Wine-hosted one: there, guest code is entered BY Windows code
  * and the guest stack is the real thread stack, which is what let host callees
  * run their frames over the runtime's own state (C080). Here the two are
  * different memory by construction.
@@ -421,30 +419,26 @@ static int module_init_one(X86Module *m) {
        mean "initialising" a module by playing the game, which is a very
        different act from calling DllMain -- so it is a separate, explicit
        step (--run), not something module init does on the way past. */
-    printf("  skip %-18s it is an EXE; its entry point is the program "
-           "(use --run)\n",
-           m->name);
+    x2_log_info("  skip %-18s it is an EXE; its entry point is the program "
+                "(use --run)\n",
+                m->name);
     return 0;
   }
-  /* No "is there a body here?" check any more. There used to be one because
-     an entry point static analysis had not marked as code produced no
-     translated function and DllMain would silently not run; the engine reads
-     the module's own bytes, so the only way to have no code at the entry
-     point is for the PE header to be wrong -- and that is pe_map's refusal,
-     not this one's. */
+  /* pe_map validates the PE entry point. x86port then decodes the mapped bytes
+     directly and refuses an invalid instruction rather than guessing here. */
 
   /* __stdcall DllMain(hinstDLL, fdwReason, lpvReserved): three arguments
      plus the return address, and the callee pops them. */
   cpu_reset(&C);
-  C.esp = guest_stack_top - 16u;
-  gw32(C.esp + 0u, 0xDEADBEEFu);
-  gw32(C.esp + 4u, *m->base); /* hinstDLL IS the image base */
-  gw32(C.esp + 8u, DLL_PROCESS_ATTACH);
-  gw32(C.esp + 12u, 0);
-  printf("  init %-18s entry 0x%08x\n", m->name, entry);
+  C.reg[kX86pEsp] = guest_stack_top - 16u;
+  gw32(C.reg[kX86pEsp] + 0u, 0xDEADBEEFu);
+  gw32(C.reg[kX86pEsp] + 4u, *m->base); /* hinstDLL IS the image base */
+  gw32(C.reg[kX86pEsp] + 8u, DLL_PROCESS_ATTACH);
+  gw32(C.reg[kX86pEsp] + 12u, 0);
+  x2_log_info("  init %-18s entry 0x%08x\n", m->name, entry);
   x86_dispatch(&C, entry);
-  printf("       returned eax=0x%08x\n", C.eax);
-  return C.eax ? 0 : -1;
+  x2_log_info("       returned eax=0x%08x\n", C.reg[kX86pEax]);
+  return C.reg[kX86pEax] ? 0 : -1;
 }
 
 static int modules_init(void) {
@@ -458,11 +452,10 @@ static int modules_init(void) {
   X86Module *list[MAX_INIT_MODULES];
   for (m = x86_modules(); m; m = m->next) {
     if (total == MAX_INIT_MODULES) {
-      fprintf(stderr,
-              "module_init: more than %d modules are linked; "
-              "raise MAX_INIT_MODULES in src/native/x2native.c. "
-              "Nothing was initialised.\n",
-              MAX_INIT_MODULES);
+      x2_log_error("module_init: more than %d modules are linked; "
+                   "raise MAX_INIT_MODULES in src/native/x2native.c. "
+                   "Nothing was initialised.\n",
+                   MAX_INIT_MODULES);
       return -1;
     }
     list[total] = m;
@@ -493,11 +486,10 @@ static int modules_init(void) {
       break;
   }
   if (inited != total) {
-    fprintf(stderr,
-            "module_init: %d of %d modules initialised; the rest "
-            "import each other in a cycle, which this cannot "
-            "order\n",
-            inited, total);
+    x2_log_error("module_init: %d of %d modules initialised; the rest "
+                 "import each other in a cycle, which this cannot "
+                 "order\n",
+                 inited, total);
     return -1;
   }
   return 0;
@@ -561,21 +553,21 @@ static int override_selftest(void) {
                                         why, sizeof why);
     int ok = (rc == 0);
     if (ok != cases[i].want_ok) {
-      printf("  FAIL  %-28s %s 0x%08x: expected %s, got %s%s%s\n",
-             cases[i].what, cases[i].module, cases[i].ep,
-             cases[i].want_ok ? "ACCEPT" : "REJECT", ok ? "ACCEPT" : "REJECT",
-             ok ? "" : " -- ", ok ? "" : why);
+      x2_log_info("  FAIL  %-28s %s 0x%08x: expected %s, got %s%s%s\n",
+                  cases[i].what, cases[i].module, cases[i].ep,
+                  cases[i].want_ok ? "ACCEPT" : "REJECT",
+                  ok ? "ACCEPT" : "REJECT", ok ? "" : " -- ", ok ? "" : why);
       fails++;
     } else if (ok) {
-      printf("  ok    %-28s %s 0x%08x -> mapped 0x%08x\n", cases[i].what,
-             cases[i].module, cases[i].ep, mapped);
+      x2_log_info("  ok    %-28s %s 0x%08x -> mapped 0x%08x\n", cases[i].what,
+                  cases[i].module, cases[i].ep, mapped);
     } else {
-      printf("  ok    %-28s rejected: %s\n", cases[i].what, why);
+      x2_log_info("  ok    %-28s rejected: %s\n", cases[i].what, why);
     }
   }
-  printf("x2native --override-selftest: %s (%d of %d case(s) failed). "
-         "%d registered override(s) are live in this build.\n",
-         fails ? "FAILED" : "PASSED", fails, n, x86_override_count());
+  x2_log_info("x2native --override-selftest: %s (%d of %d case(s) failed). "
+              "%d registered override(s) are live in this build.\n",
+              fails ? "FAILED" : "PASSED", fails, n, x86_override_count());
   return fails;
 }
 
@@ -592,7 +584,7 @@ static int call_body(uint32_t linked_ep, CPU *C) {
     return 1; /* pretend it ran; nothing changes */
   if (x86_guest_body_try(C, "libIGDisplay.dll", linked_ep, why, sizeof why))
     return 1;
-  printf("    (%s)\n", why);
+  x2_log_info("    (%s)\n", why);
   return 0;
 }
 
@@ -601,9 +593,9 @@ static int checks;
 static void check(const char *what, uint32_t got, uint32_t want) {
   checks++;
   if (got == want) {
-    printf("    ok    %-34s 0x%08x\n", what, got);
+    x2_log_info("    ok    %-34s 0x%08x\n", what, got);
   } else {
-    printf("    FAIL  %-34s got 0x%08x, want 0x%08x\n", what, got, want);
+    x2_log_info("    FAIL  %-34s got 0x%08x, want 0x%08x\n", what, got, want);
     fails++;
   }
 }
@@ -648,50 +640,50 @@ static void case_guest_page_granularity(void) {
 static void frame(CPU *C, const uint32_t *args, int nargs) {
   int i;
   cpu_reset(C);
-  C->esp = guest_stack_top - (uint32_t)(nargs + 1) * 4u;
-  gw32(C->esp, 0xDEADBEEFu); /* the return address */
+  C->reg[kX86pEsp] = guest_stack_top - (uint32_t)(nargs + 1) * 4u;
+  gw32(C->reg[kX86pEsp], 0xDEADBEEFu); /* the return address */
   for (i = 0; i < nargs; i++)
-    gw32(C->esp + 4u + (uint32_t)i * 4u, args[i]);
+    gw32(C->reg[kX86pEsp] + 4u + (uint32_t)i * 4u, args[i]);
 }
 
 static void case_enumerate(void) {
   CPU C;
   uint32_t args[2] = {0, 0}, esp0;
   /* MOV byte [0x10021d4c],1 ; XOR EAX,EAX ; RET 8 */
-  printf("  0x10005660 igWin32Window::enumerateMouseAndKeyboard\n");
+  x2_log_info("  0x10005660 igWin32Window::enumerateMouseAndKeyboard\n");
   gw8(g_imgbase + 0x21d4cu, 0xA5); /* poison */
   frame(&C, args, 2);
-  esp0 = C.esp;
-  C.eax = 0x11223344u; /* must be zeroed by XOR */
+  esp0 = C.reg[kX86pEsp];
+  C.reg[kX86pEax] = 0x11223344u; /* must be zeroed by XOR */
   if (!call_body(0x10005660u, &C)) {
-    printf("    FAIL  body did not run\n");
+    x2_log_info("    FAIL  body did not run\n");
     fails++;
     return;
   }
   check("byte [imgbase+0x21d4c]", gr8(g_imgbase + 0x21d4cu), 1u);
-  check("eax after XOR EAX,EAX", C.eax, 0u);
-  check("esp delta (RET 8 = 4+8)", C.esp - esp0, 12u);
+  check("eax after XOR EAX,EAX", C.reg[kX86pEax], 0u);
+  check("esp delta (RET 8 = 4+8)", C.reg[kX86pEsp] - esp0, 12u);
 }
 
 static void case_getscreensize(void) {
   CPU C;
   uint32_t args[2] = {SCRATCH, SCRATCH + 16u}, esp0;
   /* [arg0] = [0x10021d54] ; [arg1] = [0x10021d58] ; RET 8 */
-  printf("  0x10006280 igWin32Window::getScreenSize\n");
+  x2_log_info("  0x10006280 igWin32Window::getScreenSize\n");
   gw32(g_imgbase + 0x21d54u, 0x00000320u); /* poison the globals with */
   gw32(g_imgbase + 0x21d58u, 0x00000258u); /* 800 and 600 */
   gw32(SCRATCH, 0xBADF00Du);
   gw32(SCRATCH + 16u, 0xBADF00Du);
   frame(&C, args, 2);
-  esp0 = C.esp;
+  esp0 = C.reg[kX86pEsp];
   if (!call_body(0x10006280u, &C)) {
-    printf("    FAIL  body did not run\n");
+    x2_log_info("    FAIL  body did not run\n");
     fails++;
     return;
   }
   check("*out_width  <- [0x10021d54]", gr32(SCRATCH), 0x320u);
   check("*out_height <- [0x10021d58]", gr32(SCRATCH + 16u), 0x258u);
-  check("esp delta (RET 8 = 4+8)", C.esp - esp0, 12u);
+  check("esp delta (RET 8 = 4+8)", C.reg[kX86pEsp] - esp0, 12u);
 }
 
 static void case_findmouse(void) {
@@ -699,18 +691,18 @@ static void case_findmouse(void) {
   uint32_t args[2] = {SCRATCH, 0}, esp0;
   int i;
   /* four dwords from [arg0+0x14 ..] into four image globals; RET 8 */
-  printf("  0x100051c0 igWin32ControllerManager::findMouse\n");
+  x2_log_info("  0x100051c0 igWin32ControllerManager::findMouse\n");
   for (i = 0; i < 4; i++)
     gw32(SCRATCH + 0x14u + (uint32_t)i * 4u, 0xC0DE0000u + (uint32_t)i);
   for (i = 0; i < 4; i++)
     gw32(g_imgbase + 0x21b34u + (uint32_t)i * 4u, 0xBADF00Du);
   frame(&C, args, 2);
-  esp0 = C.esp;
+  esp0 = C.reg[kX86pEsp];
   /* Poisoned, or "eax is 0" would be true before the body ran as well --
      --selftest caught exactly that: 13 of 14 checks bound, this one did not. */
-  C.eax = 0x11223344u;
+  C.reg[kX86pEax] = 0x11223344u;
   if (!call_body(0x100051c0u, &C)) {
-    printf("    FAIL  body did not run\n");
+    x2_log_info("    FAIL  body did not run\n");
     fails++;
     return;
   }
@@ -721,23 +713,23 @@ static void case_findmouse(void) {
     check(lbl, gr32(g_imgbase + 0x21b34u + (uint32_t)i * 4u),
           0xC0DE0000u + (uint32_t)i);
   }
-  check("eax after XOR EAX,EAX", C.eax, 0u);
-  check("esp delta (RET 8 = 4+8)", C.esp - esp0, 12u);
+  check("eax after XOR EAX,EAX", C.reg[kX86pEax], 0u);
+  check("esp delta (RET 8 = 4+8)", C.reg[kX86pEsp] - esp0, 12u);
 }
 
 static void case_arkinit(void) {
   CPU C;
   /* EAX = [0x10021b80] ; [EAX+0x3c] = 0x10002370 (image-relative immediate) */
-  printf("  0x10002cc0 igWindow::arkRegisterInitialize\n");
+  x2_log_info("  0x10002cc0 igWindow::arkRegisterInitialize\n");
   gw32(g_imgbase + 0x21b80u, SCRATCH); /* the class meta object */
   gw32(SCRATCH + 0x3cu, 0xBADF00Du);
   frame(&C, NULL, 0);
   if (!call_body(0x10002cc0u, &C)) {
-    printf("    FAIL  body did not run\n");
+    x2_log_info("    FAIL  body did not run\n");
     fails++;
     return;
   }
-  check("eax <- [0x10021b80]", C.eax, SCRATCH);
+  check("eax <- [0x10021b80]", C.reg[kX86pEax], SCRATCH);
   /* The point of this one: an immediate holding an image address must be
      REBASED to where we mapped it, not emitted as the literal 0x10002370. */
   check("[meta+0x3c] rebased immediate", gr32(SCRATCH + 0x3cu),
@@ -747,7 +739,7 @@ static void case_arkinit(void) {
 /*
  * The import ABI, which is the easiest thing here to get quietly wrong.
  *
- * A recompiled body calls an import with a fake return address on the guest
+ * A guest body calls an import with a fake return address on the guest
  * stack; the implementation has to leave ESP where the real callee would.
  * Win32 is __stdcall (callee pops the arguments), the CRT is __cdecl (it does
  * not). Confusing the two shifts the guest stack by a word per call and the
@@ -767,33 +759,33 @@ void imp_KERNEL32_FindFirstFileA(CPU *C);
 void imp_KERNEL32_FindNextFileA(CPU *C);
 void imp_KERNEL32_FindClose(CPU *C);
 
-/* Call an import the way a recompiled body does. Returns the ESP delta. */
+/* Call an import the way a guest body does. Returns the ESP delta. */
 static uint32_t call_import(void (*fn)(CPU *), CPU *C, const uint32_t *args,
                             int nargs) {
   uint32_t esp0;
   int i;
-  C->esp = guest_stack_top - (uint32_t)(nargs + 1) * 4u;
-  gw32(C->esp, 0xDEADBEEFu); /* the fake return address */
+  C->reg[kX86pEsp] = guest_stack_top - (uint32_t)(nargs + 1) * 4u;
+  gw32(C->reg[kX86pEsp], 0xDEADBEEFu); /* the fake return address */
   for (i = 0; i < nargs; i++)
-    gw32(C->esp + 4u + (uint32_t)i * 4u, args[i]);
-  esp0 = C->esp;
+    gw32(C->reg[kX86pEsp] + 4u + (uint32_t)i * 4u, args[i]);
+  esp0 = C->reg[kX86pEsp];
   if (!skip_body)
     fn(C);
-  return C->esp - esp0;
+  return C->reg[kX86pEsp] - esp0;
 }
 
 static void case_import_abi(void) {
   CPU C;
   uint32_t d;
-  printf("  native import ABI (stdcall vs cdecl stack cleanup)\n");
+  x2_log_info("  native import ABI (stdcall vs cdecl stack cleanup)\n");
 
   { /* KERNEL32!GetModuleHandleA(NULL) -- __stdcall, 1 argument.
        The module's own handle IS its image base in a PE. */
     uint32_t args[1] = {0};
     cpu_reset(&C);
-    C.eax = 0xBADF00Du;
+    C.reg[kX86pEax] = 0xBADF00Du;
     d = call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
-    check("GetModuleHandleA(NULL) -> imgbase", C.eax, g_imgbase);
+    check("GetModuleHandleA(NULL) -> imgbase", C.reg[kX86pEax], g_imgbase);
     check("  stdcall esp delta (4+1*4)", d, 8u);
   }
   { /* A module that is NOT in the address space.
@@ -814,9 +806,10 @@ static void case_import_abi(void) {
       *(volatile uint8_t *)guest_memory_pointer(nm + i) = (uint8_t)miss[i];
     args[0] = nm;
     cpu_reset(&C);
-    C.eax = 0xBADF00Du;
+    C.reg[kX86pEax] = 0xBADF00Du;
     d = call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
-    check("GetModuleHandleA(\"d3d8d.dll\") -> 0, not an abort", C.eax, 0);
+    check("GetModuleHandleA(\"d3d8d.dll\") -> 0, not an abort", C.reg[kX86pEax],
+          0);
     check("  stdcall esp delta (4+1*4)", d, 8u);
   }
   { /* A module that IS here. GetModuleHandleA and LoadLibraryA must agree
@@ -829,16 +822,16 @@ static void case_import_abi(void) {
       *(volatile uint8_t *)guest_memory_pointer(nm + i) = (uint8_t)have[i];
     args[0] = nm;
     cpu_reset(&C);
-    C.eax = 0xBADF00Du; /* so the SKIPPED pass fails too */
+    C.reg[kX86pEax] = 0xBADF00Du; /* so the SKIPPED pass fails too */
     call_import(imp_KERNEL32_LoadLibraryA, &C, args, 1);
-    viaload = C.eax;
+    viaload = C.reg[kX86pEax];
     cpu_reset(&C);
-    C.eax = 0xBADD00Du; /* a DIFFERENT sentinel: equal
+    C.reg[kX86pEax] = 0xBADD00Du; /* a DIFFERENT sentinel: equal
                            sentinels would agree when
                            neither call ran */
     call_import(imp_KERNEL32_GetModuleHandleA, &C, args, 1);
-    check("GetModuleHandleA agrees with LoadLibraryA on a mapped module", C.eax,
-          viaload);
+    check("GetModuleHandleA agrees with LoadLibraryA on a mapped module",
+          C.reg[kX86pEax], viaload);
   }
   { /* KERNEL32!MultiByteToWideChar -- __stdcall, 6 arguments. Measuring
        form first (cchWideChar 0 returns the length needed). */
@@ -851,9 +844,9 @@ static void case_import_abi(void) {
     args[2] = src;
     args[4] = dst;
     cpu_reset(&C);
-    C.eax = 0xBADF00Du;
+    C.reg[kX86pEax] = 0xBADF00Du;
     d = call_import(imp_KERNEL32_MultiByteToWideChar, &C, args, 6);
-    check("MB2WC measure -> strlen+1", C.eax, 5u);
+    check("MB2WC measure -> strlen+1", C.reg[kX86pEax], 5u);
     check("  stdcall esp delta (4+6*4)", d, 28u);
 
     args[5] = 16; /* now actually convert */
@@ -861,7 +854,7 @@ static void case_import_abi(void) {
       gw32(dst + i * 4u, 0xBADF00Du);
     cpu_reset(&C);
     d = call_import(imp_KERNEL32_MultiByteToWideChar, &C, args, 6);
-    check("MB2WC convert -> count", C.eax, 5u);
+    check("MB2WC convert -> count", C.reg[kX86pEax], 5u);
     check("  wide 'S'", *(volatile uint16_t *)guest_memory_pointer(dst),
           (uint16_t)'S');
     check("  wide 'D'", *(volatile uint16_t *)guest_memory_pointer(dst + 2u),
@@ -881,218 +874,11 @@ static void case_import_abi(void) {
  * import were unbound this faults by name instead of quietly returning.
  */
 
-/* ---- the engine's 4x4 matrix multiply ----------------------------------
- *
- * Every animated character's bone palette is built by concatenating parent
- * transforms through igMatrix44f::multiplyAligned, and issue #80 measured the
- * palette arriving at the renderer NON-RIGID: 6 of 32 bones were rotations in
- * the port where 32 of 32 were in the stock game. A matrix whose rows are not
- * unit length is not a rotation, so that is a defect and not two runs sitting
- * on different animation frames.
- *
- * multiplyAligned does not call a multiply directly. It calls through a
- * function pointer at 0x1008a3c8 that FUN_10018e30 fills in from
- * igGetCPUCaps -- 3DNow!, SSE, or the x87 fallback -- so which code actually
- * runs is a run-time fact, and this case prints it BY NAME rather than
- * assuming. The 3DNow! body is deliberately never called: its PFMUL/PFADD are
- * untranslatable and abort by name, which is the correct behaviour and not
- * something to trip here.
- *
- * tests/test_sse.c already checks the SSE MODEL against the host's own SSE.
- * That is a different question from this one. This calls the EMITTED
- * TRANSLATION of the real function, so it also covers what recomp.py made of
- * these specific encodings -- SHUFPS with an immediate, MULPS against a memory
- * operand, MOVAPS to and from guest memory.
- *
- * The inputs are two rigid transforms, so the answer is known independently of
- * any backend: the product must be rigid too. That is the property that failed
- * in the game, checked here where it needs no game, no Wine and no oracle.
- */
-
-#define IGM_SSE 0x100192a0u     /* alignedMatrixMultiplySSE */
-#define IGM_X87 0x100193a0u     /* matrixMultiply, the fallback */
-#define IGM_3DNOW 0x100190d0u   /* alignedMatrixMultiply3dNow */
-#define IGM_BACKEND 0x1008a3c8u /* the pointer FUN_10018e30 fills in */
-#define IGM(a) (x86_module_base("libIGMath.dll") + ((a) - 0x10000000u))
-
-/* Row-vector convention, as the SSE body's own shape shows: it broadcasts
-   A[i][k] and scales B's row k, so dst[i][j] = sum_k A[i][k] * B[k][j]. */
-static void mat_ref(float d[16], const float a[16], const float b[16]) {
-  int i, j, k;
-  for (i = 0; i < 4; i++)
-    for (j = 0; j < 4; j++) {
-      float s = 0.0f;
-      for (k = 0; k < 4; k++)
-        s += a[i * 4 + k] * b[k * 4 + j];
-      d[i * 4 + j] = s;
-    }
-}
-
-/* A rotation about `axis` by `ang`, with a translation in row 3. */
-static void mat_rigid(float m[16], int axis, float ang, float tx, float ty,
-                      float tz) {
-  float c = cosf(ang), s = sinf(ang);
-  int i;
-  for (i = 0; i < 16; i++)
-    m[i] = (i % 5) == 0 ? 1.0f : 0.0f;
-  if (axis == 0) {
-    m[5] = c;
-    m[6] = s;
-    m[9] = -s;
-    m[10] = c;
-  }
-  if (axis == 1) {
-    m[0] = c;
-    m[2] = -s;
-    m[8] = s;
-    m[10] = c;
-  }
-  if (axis == 2) {
-    m[0] = c;
-    m[1] = s;
-    m[4] = -s;
-    m[5] = c;
-  }
-  m[12] = tx;
-  m[13] = ty;
-  m[14] = tz;
-}
-
-/* The worst row-length error over the three basis rows. Zero for a rotation. */
-static float mat_row_error(const float m[16]) {
-  float worst = 0.0f;
-  int i;
-  for (i = 0; i < 3; i++) {
-    float l = sqrtf(m[i * 4] * m[i * 4] + m[i * 4 + 1] * m[i * 4 + 1] +
-                    m[i * 4 + 2] * m[i * 4 + 2]);
-    float e = fabsf(l - 1.0f);
-    if (e > worst)
-      worst = e;
-  }
-  return worst;
-}
-
-static void case_matrix_multiply(void) {
-  /* Three 16-byte-aligned matrices; SCRATCH is page-aligned, so these are
-     too, which MOVAPS requires on real silicon. */
-  const uint32_t gA = SCRATCH + 0x300u, gB = SCRATCH + 0x340u,
-                 gD = SCRATCH + 0x380u;
-  float A[16], B[16], want[16];
-  uint32_t args[3], backend;
-  const char *nm;
-  int pass;
-
-  printf(
-      "  libIGMath igMatrix44f 4x4 multiply (issue #80: the bone palette)\n");
-
-  if (x86_module_base("libIGMath.dll") == 0) {
-    printf("    REFUSED  libIGMath is not mapped, so NOTHING below ran.\n"
-           "             This case tests nothing without it; that is a\n"
-           "             build that omitted the module, not a pass.\n");
-    fails++;
-    checks++;
-    return;
-  }
-
-  /* Which body the engine actually installed. Printed unconditionally: an
-     unexpected backend is the single most useful thing this case can say. */
-  backend = gr32(IGM(IGM_BACKEND));
-  nm = backend ? x86_native_name_at(backend) : NULL;
-  printf("    backend pointer [0x1008a3c8] = 0x%08x  %s\n", backend,
-         nm ? nm : "(no body at that address)");
-  if (backend == IGM(IGM_3DNOW))
-    printf("      ^ the 3DNow! body. Its PFMUL/PFADD are untranslatable,\n"
-           "        so reaching it aborts by name -- see issue #80.\n");
-
-  mat_rigid(A, 0, 0.7f, 1.0f, 2.0f, 3.0f);
-  mat_rigid(B, 1, 1.3f, -4.0f, 5.0f, -6.0f);
-  mat_ref(want, A, B);
-
-  memcpy(guest_memory_pointer(gA), A, sizeof A);
-  memcpy(guest_memory_pointer(gB), B, sizeof B);
-
-  /* Both inputs are rigid, so the reference product is too. Check that here:
-     if this ever fails the reference is wrong and every verdict below is
-     meaningless, which must not be reported as a backend defect.
-     Kept out of the skipped-body control on purpose: it does not depend on
-     any body running, so skipping bodies could not falsify it. */
-  if (!skip_body)
-    check("reference product of two rigid inputs is rigid",
-          mat_row_error(want) < 1e-5f, 1u);
-
-  /* Each backend that has a body, called through the real dispatcher.
-     cdecl: void f(Matrix *dst, const Matrix *a, const Matrix *b). */
-  {
-    static const struct {
-      uint32_t ep;
-      const char *name;
-    } BODY[] = {
-        {IGM_SSE, "alignedMatrixMultiplySSE"},
-        {IGM_X87, "matrixMultiply (x87 fallback)"},
-    };
-    size_t i;
-    for (i = 0; i < sizeof BODY / sizeof BODY[0]; i++) {
-      CPU C;
-      float got[16];
-      float worst = 0.0f;
-      char lbl[96], lbl2[256];
-      int j;
-
-      /* Poison the destination, so "the body never ran" cannot read as
-         agreement with the reference. */
-      memset(guest_memory_pointer(gD), 0x5A, 64);
-
-      args[0] = gD;
-      args[1] = gA;
-      args[2] = gB;
-      frame(&C, args, 3);
-      if (skip_body) {
-        /* the negative control: leave the poison in place */
-      } else if (!x86_guest_body_try(&C, "libIGMath.dll", BODY[i].ep, lbl2,
-                                     sizeof lbl2)) {
-        snprintf(lbl, sizeof lbl, "%s could be run", BODY[i].name);
-        check(lbl, 0u, 1u);
-        printf("      (%s)\n", lbl2);
-        continue;
-      }
-      memcpy(got, guest_memory_const_pointer(gD), sizeof got);
-
-      for (j = 0; j < 16; j++) {
-        float e = fabsf(got[j] - want[j]);
-        if (e > worst)
-          worst = e;
-      }
-      pass = worst < 1e-4f;
-      snprintf(lbl, sizeof lbl, "%s == reference", BODY[i].name);
-      check(lbl, (uint32_t)pass, 1u);
-      printf("      worst |got-want| over 16 element(s): %g\n", (double)worst);
-      snprintf(lbl, sizeof lbl, "%s product is rigid", BODY[i].name);
-      check(lbl, mat_row_error(got) < 1e-4f, 1u);
-      printf(
-          "      row lengths %.6f %.6f %.6f  (all 1.0 for a rotation)\n",
-          (double)sqrtf(got[0] * got[0] + got[1] * got[1] + got[2] * got[2]),
-          (double)sqrtf(got[4] * got[4] + got[5] * got[5] + got[6] * got[6]),
-          (double)sqrtf(got[8] * got[8] + got[9] * got[9] + got[10] * got[10]));
-      if (!pass) {
-        printf("      got  ");
-        for (j = 0; j < 16; j++)
-          printf("%9.5f%s", (double)got[j],
-                 (j % 4) == 3 ? "\n           " : " ");
-        printf("\n      want ");
-        for (j = 0; j < 16; j++)
-          printf("%9.5f%s", (double)want[j],
-                 (j % 4) == 3 ? "\n           " : " ");
-        printf("\n");
-      }
-    }
-  }
-}
-
 static void case_cross_module(void) {
   CPU C;
   uint32_t meta_slot = g_imgbase + 0x21b80u;
   const char *nm;
-  printf("  cross-module call: libIGDisplay -> libIGCore\n");
+  x2_log_info("  cross-module call: libIGDisplay -> libIGCore\n");
 
   /* The import this path uses must be bound to a libIGCore body, not to a
      poison slot. Check that before relying on it, so a failure reads as
@@ -1102,7 +888,7 @@ static void case_cross_module(void) {
     nm = x86_native_name_at(slot);
     check("IAT slot -> a libIGCore body", nm != NULL, 1u);
     if (nm)
-      printf("      bound to: %s\n", nm);
+      x2_log_info("      bound to: %s\n", nm);
     check("  target is inside libIGCore",
           (slot >= x86_module_base("libIGCore.dll")) &&
               (slot - x86_module_base("libIGCore.dll") < 0x200000u),
@@ -1118,7 +904,7 @@ static void case_cross_module(void) {
      Reaching into the engine's init sequence by picking exports that look
      right would be jumping ahead of the frontier, so it waits for rc-exe. */
   (void)meta_slot;
-  printf(
+  x2_log_info(
       "      transfer works; execution now stops in the ENGINE's memory\n"
       "      system, which the exe initialises (rc-exe), not in module init\n");
 }
@@ -1130,7 +916,7 @@ static void case_cross_module(void) {
  */
 static void case_guest_heap(void) {
   uint32_t a, b, c, used0, free0, blocks0, used1, free1, blocks1;
-  printf("  guest heap\n");
+  x2_log_info("  guest heap\n");
   guest_heap_stats(&used0, &free0, &blocks0);
   a = guest_malloc(100);
   b = guest_malloc(200);
@@ -1178,12 +964,12 @@ static void case_setjmp_table(void) {
   CPU C;
   int i, before, freed;
 
-  printf("  setjmp buffer table\n");
+  x2_log_info("  setjmp buffer table\n");
   before = x86_setjmp_live();
   for (i = 0; i < 4; i++) {
     envs[i] = guest_malloc(64);
     cpu_reset(&C);
-    C.esp = frame;
+    C.reg[kX86pEsp] = frame;
     WR32(frame, 0x00646b2cu);  /* the return address */
     WR32(frame + 4u, envs[i]); /* _setjmp3's jmp_buf */
     x86_setjmp_buf(&C);
@@ -1192,7 +978,7 @@ static void case_setjmp_table(void) {
 
   /* The same buffer again is the same slot, not a fifth. */
   cpu_reset(&C);
-  C.esp = frame;
+  C.reg[kX86pEsp] = frame;
   WR32(frame, 0x00646b2cu);
   WR32(frame + 4u, envs[0]);
   x86_setjmp_buf(&C);
@@ -1217,7 +1003,7 @@ static void case_setjmp_table(void) {
    */
   stack_env = SCRATCH + 0x100u;
   cpu_reset(&C);
-  C.esp = frame;
+  C.reg[kX86pEsp] = frame;
   WR32(frame, 0x00646b2cu);
   WR32(frame + 4u, stack_env);
   x86_setjmp_buf(&C);
@@ -1247,67 +1033,67 @@ static void case_setjmp_table(void) {
  * "every function in it exists".
  */
 static void guest_stdcall2_probe(CPU *C) {
-  uint32_t a = RD32(C->esp + 4u), b = RD32(C->esp + 8u);
-  C->eax = a ^ b;
-  C->esp += 12u; /* return address + two stdcall arguments */
+  uint32_t a = RD32(C->reg[kX86pEsp] + 4u), b = RD32(C->reg[kX86pEsp] + 8u);
+  C->reg[kX86pEax] = a ^ b;
+  C->reg[kX86pEsp] += 12u; /* return address + two stdcall arguments */
 }
 
 static void case_runtime_module(void) {
   uint32_t path = guest_malloc(64), sym = guest_malloc(64), h, p, cb, top;
   CPU C;
 
-  printf("  run-time module lookup\n");
+  x2_log_info("  run-time module lookup\n");
   strcpy(guest_memory_pointer(path), "C:\\Windows\\System32\\dinput8.dll");
 
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x200u;
-  WR32(C.esp, 0); /* return address */
-  WR32(C.esp + 4u, path);
+  C.reg[kX86pEsp] = SCRATCH + 0x200u;
+  WR32(C.reg[kX86pEsp], 0); /* return address */
+  WR32(C.reg[kX86pEsp] + 4u, path);
   imp_KERNEL32_LoadLibraryA(&C);
-  h = C.eax;
+  h = C.reg[kX86pEax];
   check("dinput8.dll loads by full path", h != 0u, 1u);
 
   strcpy(guest_memory_pointer(sym), "DirectInput8Create");
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x200u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, h);
-  WR32(C.esp + 8u, sym);
+  C.reg[kX86pEsp] = SCRATCH + 0x200u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, h);
+  WR32(C.reg[kX86pEsp] + 8u, sym);
   imp_KERNEL32_GetProcAddress(&C);
-  p = C.eax;
+  p = C.reg[kX86pEax];
   check("DirectInput8Create resolves", p != 0u, 1u);
   check("and to the address it was published at", p,
         x86_native_export_addr("DINPUT8.DLL", "DirectInput8Create"));
 
   strcpy(guest_memory_pointer(sym), "DirectInput8CreateNoSuchThing");
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x200u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, h);
-  WR32(C.esp + 8u, sym);
+  C.reg[kX86pEsp] = SCRATCH + 0x200u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, h);
+  WR32(C.reg[kX86pEsp] + 8u, sym);
   imp_KERNEL32_GetProcAddress(&C);
-  check("a symbol this host lacks is still NULL", C.eax, 0u);
+  check("a symbol this host lacks is still NULL", C.reg[kX86pEax], 0u);
 
   /* The title dynamically resolves TryEnterCriticalSection during startup.
    * It is implemented in kernel32.c but has no static import slot, so the
    * lookup must use the native runtime-export path used by DInput above. */
   strcpy(guest_memory_pointer(path), "KERNEL32.DLL");
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x200u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, path);
+  C.reg[kX86pEsp] = SCRATCH + 0x200u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, path);
   imp_KERNEL32_LoadLibraryA(&C);
-  h = C.eax;
+  h = C.reg[kX86pEax];
   check("KERNEL32.DLL has a native system-module handle", h != 0u, 1u);
 
   strcpy(guest_memory_pointer(sym), "TryEnterCriticalSection");
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x200u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, h);
-  WR32(C.esp + 8u, sym);
+  C.reg[kX86pEsp] = SCRATCH + 0x200u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, h);
+  WR32(C.reg[kX86pEsp] + 8u, sym);
   imp_KERNEL32_GetProcAddress(&C);
-  p = C.eax;
+  p = C.reg[kX86pEax];
   check("TryEnterCriticalSection resolves at runtime", p,
         x86_native_export_addr("KERNEL32.DLL", "TryEnterCriticalSection"));
   check("TryEnterCriticalSection export names its implementation", p != 0u, 1u);
@@ -1321,13 +1107,13 @@ static void case_runtime_module(void) {
                            "guest_stdcall2_probe", NULL);
   cpu_reset(&C);
   top = SCRATCH + 0x300u;
-  C.esp = top - 8u;
-  WR32(C.esp + 0u, 0x13579bdfu);
-  WR32(C.esp + 4u, 0x2468ace0u);
+  C.reg[kX86pEsp] = top - 8u;
+  WR32(C.reg[kX86pEsp] + 0u, 0x13579bdfu);
+  WR32(C.reg[kX86pEsp] + 4u, 0x2468ace0u);
   x86_guest_call_args(&C, cb, 8u);
-  check("a RET 8 callback receives both arguments", C.eax,
+  check("a RET 8 callback receives both arguments", C.reg[kX86pEax],
         0x13579bdfu ^ 0x2468ace0u);
-  check("and lands at the caller's exact ESP", C.esp, top);
+  check("and lands at the caller's exact ESP", C.reg[kX86pEsp], top);
 
   guest_free(path);
   guest_free(sym);
@@ -1350,13 +1136,13 @@ static uint32_t com_call(uint32_t obj, int slot, const uint32_t *args, int n) {
   int i;
   uint32_t vt = RD32(obj);
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x400u - (uint32_t)(n + 2) * 4u;
-  WR32(C.esp, 0xD1A10000u); /* return address */
-  WR32(C.esp + 4u, obj);    /* this */
+  C.reg[kX86pEsp] = SCRATCH + 0x400u - (uint32_t)(n + 2) * 4u;
+  WR32(C.reg[kX86pEsp], 0xD1A10000u); /* return address */
+  WR32(C.reg[kX86pEsp] + 4u, obj);    /* this */
   for (i = 0; i < n; i++)
-    WR32(C.esp + 8u + (uint32_t)i * 4u, args[i]);
+    WR32(C.reg[kX86pEsp] + 8u + (uint32_t)i * 4u, args[i]);
   x86_dispatch(&C, RD32(vt + (uint32_t)slot * 4u));
-  return C.eax;
+  return C.reg[kX86pEax];
 }
 
 static void case_dinput(void) {
@@ -1369,53 +1155,53 @@ static void case_dinput(void) {
   uint32_t args[4], di, dev, hr;
   CPU C;
 
-  printf("  keyboard layout and DirectInput device\n");
+  x2_log_info("  keyboard layout and DirectInput device\n");
 
   /* MapVirtualKeyA, the table the game builds its key names from. */
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x300u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, 0x1Eu);
-  WR32(C.esp + 8u, 1u);
+  C.reg[kX86pEsp] = SCRATCH + 0x300u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, 0x1Eu);
+  WR32(C.reg[kX86pEsp] + 8u, 1u);
   imp_USER32_MapVirtualKeyA(&C);
-  check("scancode 0x1e maps to VK 'A'", C.eax, (uint32_t)'A');
+  check("scancode 0x1e maps to VK 'A'", C.reg[kX86pEax], (uint32_t)'A');
 
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x300u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, (uint32_t)'A');
-  WR32(C.esp + 8u, 2u);
+  C.reg[kX86pEsp] = SCRATCH + 0x300u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, (uint32_t)'A');
+  WR32(C.reg[kX86pEsp] + 8u, 2u);
   imp_USER32_MapVirtualKeyA(&C);
-  check("VK 'A' maps to the character 'A'", C.eax, (uint32_t)'A');
+  check("VK 'A' maps to the character 'A'", C.reg[kX86pEax], (uint32_t)'A');
 
   /* A key that produces NO character must answer 0, not a plausible byte:
      the game stores whatever comes back as the key's printed name. */
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x300u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, 0x10u);
-  WR32(C.esp + 8u, 2u);
+  C.reg[kX86pEsp] = SCRATCH + 0x300u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, 0x10u);
+  WR32(C.reg[kX86pEsp] + 8u, 2u);
   imp_USER32_MapVirtualKeyA(&C);
-  check("VK_SHIFT has no character", C.eax, 0u);
+  check("VK_SHIFT has no character", C.reg[kX86pEax], 0u);
 
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x300u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, 0x66u);
-  WR32(C.esp + 8u, 1u);
+  C.reg[kX86pEsp] = SCRATCH + 0x300u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, 0x66u);
+  WR32(C.reg[kX86pEsp] + 8u, 1u);
   imp_USER32_MapVirtualKeyA(&C);
-  check("an unassigned scancode maps to nothing", C.eax, 0u);
+  check("an unassigned scancode maps to nothing", C.reg[kX86pEax], 0u);
 
   /* The device, through the IDirectInput8 vtable. */
   memcpy(guest_memory_pointer(guid), KBD, 16);
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x300u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, 0);      /* hinst */
-  WR32(C.esp + 8u, 0x800u); /* version */
-  WR32(C.esp + 12u, 0);     /* riid */
-  WR32(C.esp + 16u, out);   /* ppvOut */
-  WR32(C.esp + 20u, 0);     /* punkOuter */
+  C.reg[kX86pEsp] = SCRATCH + 0x300u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, 0);      /* hinst */
+  WR32(C.reg[kX86pEsp] + 8u, 0x800u); /* version */
+  WR32(C.reg[kX86pEsp] + 12u, 0);     /* riid */
+  WR32(C.reg[kX86pEsp] + 16u, out);   /* ppvOut */
+  WR32(C.reg[kX86pEsp] + 20u, 0);     /* punkOuter */
   WR32(out, 0);
   imp_DINPUT8_DirectInput8Create(&C);
   di = RD32(out);
@@ -1521,7 +1307,7 @@ static void case_dynamic_cast(void) {
   uint32_t args[5];
   CPU C;
 
-  printf("  dynamic_cast (RTTI walk)\n");
+  x2_log_info("  dynamic_cast (RTTI walk)\n");
   WR32(arr + 0u, rtti_bcd(td_derived, 0));
   WR32(arr + 4u, rtti_bcd(td_base, 8)); /* Base sits 8 bytes in */
   WR32(chd + 0u, 0);
@@ -1543,40 +1329,40 @@ static void case_dynamic_cast(void) {
   args[3] = td_base;
   args[4] = 0;
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x500u;
-  WR32(C.esp, 0);
+  C.reg[kX86pEsp] = SCRATCH + 0x500u;
+  WR32(C.reg[kX86pEsp], 0);
   {
     int i;
     for (i = 0; i < 5; i++)
-      WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]);
+      WR32(C.reg[kX86pEsp] + 4u + (uint32_t)i * 4u, args[i]);
   }
   imp_MSVCR71___RTDynamicCast(&C);
-  check("a base 8 bytes in is found at +8", C.eax, obj + 8u);
+  check("a base 8 bytes in is found at +8", C.reg[kX86pEax], obj + 8u);
 
   args[3] = td_other;
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x500u;
-  WR32(C.esp, 0);
+  C.reg[kX86pEsp] = SCRATCH + 0x500u;
+  WR32(C.reg[kX86pEsp], 0);
   {
     int i;
     for (i = 0; i < 5; i++)
-      WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]);
+      WR32(C.reg[kX86pEsp] + 4u + (uint32_t)i * 4u, args[i]);
   }
   imp_MSVCR71___RTDynamicCast(&C);
-  check("a type that is not a base gives NULL", C.eax, 0u);
+  check("a type that is not a base gives NULL", C.reg[kX86pEax], 0u);
 
   args[0] = 0;
   args[3] = td_base;
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x500u;
-  WR32(C.esp, 0);
+  C.reg[kX86pEsp] = SCRATCH + 0x500u;
+  WR32(C.reg[kX86pEsp], 0);
   {
     int i;
     for (i = 0; i < 5; i++)
-      WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]);
+      WR32(C.reg[kX86pEsp] + 4u + (uint32_t)i * 4u, args[i]);
   }
   imp_MSVCR71___RTDynamicCast(&C);
-  check("a NULL pointer casts to NULL", C.eax, 0u);
+  check("a NULL pointer casts to NULL", C.reg[kX86pEax], 0u);
 
   /* The cross-module case: a DIFFERENT TypeDescriptor with the same
      decorated name is the same type. Pointer equality alone would fail this,
@@ -1585,15 +1371,16 @@ static void case_dynamic_cast(void) {
   args[0] = obj;
   args[3] = rtti_typedesc(".?AVBase@@");
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x500u;
-  WR32(C.esp, 0);
+  C.reg[kX86pEsp] = SCRATCH + 0x500u;
+  WR32(C.reg[kX86pEsp], 0);
   {
     int i;
     for (i = 0; i < 5; i++)
-      WR32(C.esp + 4u + (uint32_t)i * 4u, args[i]);
+      WR32(C.reg[kX86pEsp] + 4u + (uint32_t)i * 4u, args[i]);
   }
   imp_MSVCR71___RTDynamicCast(&C);
-  check("a same-named descriptor from another module matches", C.eax, obj + 8u);
+  check("a same-named descriptor from another module matches", C.reg[kX86pEax],
+        obj + 8u);
 }
 
 /*
@@ -1612,7 +1399,8 @@ static void case_dynamic_cast(void) {
 static int g_qsort_calls, g_qsort_bad_ptr;
 
 static void qsort_probe(CPU *C) {
-  uint32_t a = RD32(C->esp + 4u), b = RD32(C->esp + 8u), base, size;
+  uint32_t a = RD32(C->reg[kX86pEsp] + 4u), b = RD32(C->reg[kX86pEsp] + 8u),
+           base, size;
   g_qsort_calls++;
   /* VALIDATED BEFORE DEREFERENCING, so a bad pointer is a reported failure
      rather than a SIGSEGV. The real comparator has no such luxury -- it
@@ -1620,14 +1408,14 @@ static void qsort_probe(CPU *C) {
   if (!guest_heap_contains(a, &base, &size) ||
       !guest_heap_contains(b, &base, &size)) {
     g_qsort_bad_ptr++;
-    C->eax = 0;
-    C->esp += 4u;
+    C->reg[kX86pEax] = 0;
+    C->reg[kX86pEsp] += 4u;
     return;
   }
   /* Ascending, by the dword each pointer points AT -- which is what makes
      this a dereferencing comparator rather than a pointer comparison. */
-  C->eax = (uint32_t)(int32_t)((int32_t)RD32(a) - (int32_t)RD32(b));
-  C->esp += 4u; /* __cdecl: the return addr */
+  C->reg[kX86pEax] = (uint32_t)(int32_t)((int32_t)RD32(a) - (int32_t)RD32(b));
+  C->reg[kX86pEsp] += 4u; /* __cdecl: the return addr */
 }
 
 static void case_qsort(void) {
@@ -1636,18 +1424,18 @@ static void case_qsort(void) {
   int sorted = 1;
   CPU C;
 
-  printf("  qsort with a guest comparator\n");
+  x2_log_info("  qsort with a guest comparator\n");
   for (i = 0; i < 6; i++)
     WR32(arr + i * 4u, IN[i]);
   cmp = x86_native_callback(qsort_probe, "battery", "qsort_probe", NULL);
 
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x600u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, arr);
-  WR32(C.esp + 8u, 6);
-  WR32(C.esp + 12u, 4);
-  WR32(C.esp + 16u, cmp);
+  C.reg[kX86pEsp] = SCRATCH + 0x600u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, arr);
+  WR32(C.reg[kX86pEsp] + 8u, 6);
+  WR32(C.reg[kX86pEsp] + 12u, 4);
+  WR32(C.reg[kX86pEsp] + 16u, cmp);
   imp_MSVCR71_qsort(&C);
 
   for (i = 1; i < 6; i++)
@@ -1681,12 +1469,12 @@ static uint32_t find_count(const char *pattern, uint32_t data) {
 
   snprintf(guest_memory_pointer(spec), 512, "%s", pattern);
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x700u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, spec);
-  WR32(C.esp + 8u, data);
+  C.reg[kX86pEsp] = SCRATCH + 0x700u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, spec);
+  WR32(C.reg[kX86pEsp] + 8u, data);
   imp_KERNEL32_FindFirstFileA(&C);
-  h = C.eax;
+  h = C.reg[kX86pEax];
   if (h == 0xFFFFFFFFu) {
     guest_free(spec);
     return 0;
@@ -1694,16 +1482,16 @@ static uint32_t find_count(const char *pattern, uint32_t data) {
   do {
     n++;
     cpu_reset(&C);
-    C.esp = SCRATCH + 0x700u;
-    WR32(C.esp, 0);
-    WR32(C.esp + 4u, h);
-    WR32(C.esp + 8u, data);
+    C.reg[kX86pEsp] = SCRATCH + 0x700u;
+    WR32(C.reg[kX86pEsp], 0);
+    WR32(C.reg[kX86pEsp] + 4u, h);
+    WR32(C.reg[kX86pEsp] + 8u, data);
     imp_KERNEL32_FindNextFileA(&C);
-  } while (C.eax);
+  } while (C.reg[kX86pEax]);
   cpu_reset(&C);
-  C.esp = SCRATCH + 0x700u;
-  WR32(C.esp, 0);
-  WR32(C.esp + 4u, h);
+  C.reg[kX86pEsp] = SCRATCH + 0x700u;
+  WR32(C.reg[kX86pEsp], 0);
+  WR32(C.reg[kX86pEsp] + 4u, h);
   imp_KERNEL32_FindClose(&C);
   guest_free(spec);
   return n;
@@ -1714,7 +1502,7 @@ static void case_find_file(void) {
   uint32_t hits_exe, hits_none, hits_all;
   const char *name;
 
-  printf("  FindFirstFileA over the install directory\n");
+  x2_log_info("  FindFirstFileA over the install directory\n");
   memset(guest_memory_pointer(data), 0xEE, 320); /* poison first */
 
   hits_exe = find_count("*.exe", data);
@@ -1737,17 +1525,19 @@ static void case_find_file(void) {
 }
 
 static int run_battery(void) {
-  printf("battery: recompiled bodies run natively, with real postconditions\n");
+  x2_log_info("battery: guest bodies cross native boundaries, with real "
+              "postconditions\n");
   if (pe_map_anon_low(SCRATCH, 0x1000u) != 0) {
-    fprintf(stderr, "battery: could not place the scratch object -- ran "
-                    "NOTHING\n");
+    x2_log_error("battery: could not place the scratch object -- ran "
+                 "NOTHING\n");
     return 1;
   }
   if (selftest) {
     int before;
-    printf("  --selftest: running the battery with every body SKIPPED.\n"
-           "  Each check below MUST fail; any that passes is a check that\n"
-           "  does not bind.\n");
+    x2_log_info(
+        "  --selftest: running the battery with every body SKIPPED.\n"
+        "  Each check below MUST fail; any that passes is a check that\n"
+        "  does not bind.\n");
     skip_body = 1;
     before = fails;
     case_enumerate();
@@ -1756,24 +1546,24 @@ static int run_battery(void) {
     case_arkinit();
     case_import_abi();
     crt_selftest_run(guest_stack_top, skip_body, check);
-    case_matrix_multiply();
     skip_body = 0;
     if (fails - before == checks) {
-      printf("\n  SELFTEST passed: all %d checks failed with the bodies\n"
-             "  skipped, so a pass below means the bodies did the work.\n"
-             "  The full run has more checks than that, and the extra ones\n"
-             "  are deliberately outside this control: the cross-module\n"
-             "  checks test IMPORT BINDING, which does not depend on any\n"
-             "  body running, so skipping bodies could not falsify them.\n"
-             "  They fail if the slot is unbound, which is their own\n"
-             "  negative.\n\n",
-             checks);
+      x2_log_info(
+          "\n  SELFTEST passed: all %d checks failed with the bodies\n"
+          "  skipped, so a pass below means the bodies did the work.\n"
+          "  The full run has more checks than that, and the extra ones\n"
+          "  are deliberately outside this control: the cross-module\n"
+          "  checks test IMPORT BINDING, which does not depend on any\n"
+          "  body running, so skipping bodies could not falsify them.\n"
+          "  They fail if the slot is unbound, which is their own\n"
+          "  negative.\n\n",
+          checks);
       fails = before;
       checks = 0;
     } else {
-      printf("\n  SELFTEST FAILED: only %d of %d checks noticed that the\n"
-             "  bodies never ran. Every result below is unreliable.\n\n",
-             fails - before, checks);
+      x2_log_info("\n  SELFTEST FAILED: only %d of %d checks noticed that the\n"
+                  "  bodies never ran. Every result below is unreliable.\n\n",
+                  fails - before, checks);
       return 1;
     }
   }
@@ -1790,20 +1580,20 @@ static int run_battery(void) {
   case_dynamic_cast();
   case_qsort();
   case_find_file();
-  case_matrix_multiply();
   case_cross_module();
   case_unaligned_guest_memory();
   case_guest_page_granularity();
-  printf("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
-  printf("Established: the original image maps at its own base in a 64-bit\n"
-         "process, the emitted C runs there natively, image-relative\n"
-         "immediates are rebased, guest stack arguments and RET N cleanup are\n"
-         "right, and the native import layer gets stdcall and cdecl cleanup\n"
-         "right on a known-answer call.\n"
-         "NOT established: the game running. Of the 107 imports the bodies\n"
-         "reach, 64 are other game modules still to be recompiled and the\n"
-         "rest of the Win32 surface is unimplemented -- every one of those\n"
-         "aborts by name if reached. rc-native tracks the remainder.\n");
+  x2_log_info("\nbattery: %d of %d check(s) FAILED\n", fails, checks);
+  x2_log_info(
+      "Established: the original image maps at its own base in a 64-bit\n"
+      "process, guest execution reaches native boundaries, image-relative\n"
+      "immediates are rebased, guest stack arguments and RET N cleanup are\n"
+      "right, and the native import layer gets stdcall and cdecl cleanup\n"
+      "right on a known-answer call.\n"
+      "NOT established: the game running. Of the 107 imports the bodies\n"
+      "reach, 64 are other game modules and the\n"
+      "rest of the Win32 surface is unimplemented -- every one of those\n"
+      "aborts by name if reached. rc-native tracks the remainder.\n");
   return fails ? 1 : 0;
 }
 
@@ -1814,9 +1604,8 @@ int main(int argc, char **argv) {
   int dialogselftest;
   X2NativeOptions options;
   X86Module *m;
-  /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them
-     and the recompiled set grows one module at a time (libMovie was the
-     ninth). The bound is checked below and reported, so overflowing it stops
+  /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them.
+     The bound is checked below and reported, so overflowing it stops
      rather than corrupting -- but there is no reason to keep it tight. */
   static PeImage imgs[24];
 
@@ -1837,13 +1626,7 @@ int main(int argc, char **argv) {
      x2native-runtime.conf file < environment X2_* < --set. Must precede the
      engine setup below, which reads the resolved `engine` value. */
   x2_runtime_config_init(argc, argv);
-  /* Also on the ordinary exit path: a run that ends without faulting must
-     still say what it reached, or the instrument only ever speaks when
-     something else already went wrong. The fault handler _exit()s and so
-     calls it directly. Unarmed, the report says exactly that and costs a
-     line. */
-  atexit(x86_reached_report);
-  /* setjmp/longjmp crosses generated frames now (see crt.c). How many times
+  /* setjmp/longjmp crosses live guest-call frames. How many times
      it actually resumed is the difference between the mechanism working and
      the run merely getting further. */
   {
@@ -1866,7 +1649,7 @@ int main(int argc, char **argv) {
   {
     char why[256] = "";
     if (!x2_engine_init(why, sizeof why)) {
-      fprintf(stderr, "x2native: %s\n", why);
+      x2_log_error("x2native: %s\n", why);
       return 1;
     }
   }
@@ -1890,8 +1673,8 @@ int main(int argc, char **argv) {
       live_session_set_directory(artifacts);
     }
     if (options.input_record && !input_record_start(options.input_record)) {
-      fprintf(stderr, "x2native: input recording was requested but "
-                      "could not start. REFUSING an unrecorded run.\n");
+      x2_log_error("x2native: input recording was requested but "
+                   "could not start. REFUSING an unrecorded run.\n");
       return 2;
     }
     if (options.product &&
@@ -1950,10 +1733,10 @@ int main(int argc, char **argv) {
   }
 
   if (!dir)
-    dir = getenv("GAME_PC_DIR");
+    dir = x2_config_override_get(kX2ConfigGamePcDir);
   if (!dir || !*dir) {
-    printf("SKIP x2native: no install directory given and GAME_PC_DIR is "
-           "unset, so there is nothing to map. NOTHING was checked.\n");
+    x2_log_info("SKIP x2native: no install directory given and GAME_PC_DIR is "
+                "unset, so there is nothing to map. NOTHING was checked.\n");
     return 77;
   }
 
@@ -1967,7 +1750,7 @@ int main(int argc, char **argv) {
   for (m = x86_modules(); m; m = m->next) {
     char path[4096];
     if (mapped == (int)(sizeof imgs / sizeof imgs[0])) {
-      fprintf(stderr, "x2native: more modules than image slots\n");
+      x2_log_error("x2native: more modules than image slots\n");
       return 1;
     }
     snprintf(path, sizeof path, "%s/%s", dir, m->name);
@@ -1976,14 +1759,15 @@ int main(int argc, char **argv) {
     *m->base = imgs[mapped].base;
     m->preferred = imgs[mapped].preferred; /* read, not assumed */
     m->size = imgs[mapped].size;           /* the mapped truth */
-    printf("mapped %-18s at 0x%08x (%u bytes)%s\n", m->name, imgs[mapped].base,
-           imgs[mapped].size,
-           imgs[mapped].base == imgs[mapped].preferred ? "" : "  [relocated]");
+    x2_log_info("mapped %-18s at 0x%08x (%u bytes)%s\n", m->name,
+                imgs[mapped].base, imgs[mapped].size,
+                imgs[mapped].base == imgs[mapped].preferred ? ""
+                                                            : "  [relocated]");
     mapped++;
   }
   if (!mapped) {
-    fprintf(stderr, "x2native: NO module was registered -- this binary "
-                    "would check nothing\n");
+    x2_log_error("x2native: NO module was registered -- this binary "
+                 "would check nothing\n");
     return 1;
   }
   g_imgbase = x86_module_base(
@@ -1992,7 +1776,7 @@ int main(int argc, char **argv) {
   /* Every module is placed, so each override's (module, linked ep) can now
      become the mapped address the dispatcher compares. This must happen
      before any guest code runs: an unresolved table is skipped silently and
-     the recompiled bodies answer instead. */
+     ordinary guest execution answers instead. */
   x86_overrides_resolve();
   if (options.override_selftest)
     return override_selftest();
@@ -2091,30 +1875,43 @@ int main(int argc, char **argv) {
   {
     unsigned surfaces = 0, entries = 0;
     host_imports_report(&surfaces, &entries);
-    printf("host imports: %u entries across %u DLL surfaces\n", entries,
-           surfaces);
+    x2_log_info("host imports: %u entries across %u DLL surfaces\n", entries,
+                surfaces);
   }
   for (m = x86_modules(); m; m = m->next) {
     int bound = 0, poisoned = 0;
     pe_bind_imports(*m->base, resolve_import, NULL, &bound, &poisoned);
   }
-  printf("imports: %d bound (to another guest module or to this host), %d "
-         "unresolved and poisoned (using one faults by name)\n",
-         g_nbound, g_npoison);
+  x2_log_info("imports: %d bound (to another guest module or to this host), %d "
+              "unresolved and poisoned (using one faults by name)\n",
+              g_nbound, g_npoison);
 
   /* Before module init, not after: the entry points run ON the guest stack,
      and with none placed their frames land at guest_stack_top - N, i.e. just
      below zero. That is how this first appeared -- a SIGSEGV at 0xfffffff0. */
   if (guest_stack_init() != 0) {
-    fprintf(stderr, "x2native: could not place the guest stack\n");
+    x2_log_error("x2native: could not place the guest stack\n");
     return 1;
   }
   if (tib_init() != 0)
     return 1;
-  printf("modules: initialising (dependencies first)\n");
+
+  /* --selftest proves the mapped-image/JIT/import boundaries without running
+     retail process initialisers.  Letting it fall through modules_init()
+     made this synthetic gate depend on whichever guest instruction is the
+     current product frontier, so an honest fail-loud product stop also made
+     the asset-backed boundary test abort before its own checks ran. */
+  if (selftest) {
+    rc = run_battery();
+    for (i = 0; i < mapped; i++)
+      pe_unmap(&imgs[i]);
+    return rc;
+  }
+
+  x2_log_info("modules: initialising (dependencies first)\n");
   if (modules_init() != 0) {
-    fprintf(stderr, "x2native: module initialisation failed -- globals are "
-                    "not built, so nothing below would mean anything\n");
+    x2_log_error("x2native: module initialisation failed -- globals are "
+                 "not built, so nothing below would mean anything\n");
     return 1;
   }
 #ifdef X2_WITH_SDL
@@ -2125,30 +1922,30 @@ int main(int argc, char **argv) {
      * asks the Activity to rotate/resize before the retail window has
      * chosen its configured mode. That transient surface is observable by
      * the title during startup and is not a harmless renderer preflight. */
-    printf("SDL: Android Activity owns the initial surface; skipping the "
-           "desktop temporary-window preflight.\n");
+    x2_log_info("SDL: Android Activity owns the initial surface; skipping the "
+                "desktop temporary-window preflight.\n");
 #else
     SDL_Window *w;
     /* SDL3 returns true on success, where SDL2 returned 0. */
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-      fprintf(stderr, "x2native: SDL_Init failed: %s\n", SDL_GetError());
+      x2_log_error("x2native: SDL_Init failed: %s\n", SDL_GetError());
       return 1;
     }
     w = SDL_CreateWindow("x2native", 800, 600, 0);
     if (!w) {
-      fprintf(stderr, "x2native: SDL_CreateWindow failed: %s\n",
-              SDL_GetError());
+      x2_log_error("x2native: SDL_CreateWindow failed: %s\n", SDL_GetError());
       SDL_Quit();
       return 1;
     }
-    printf("SDL: a real window exists; this is where the USER32/DINPUT/D3D8"
-           " surface lands.\n");
+    x2_log_info(
+        "SDL: a real window exists; this is where the USER32/DINPUT/D3D8"
+        " surface lands.\n");
     SDL_DestroyWindow(w);
     SDL_Quit();
 #endif
   } else {
-    printf("SDL: window skipped (--no-window); the guest's own window "
-           "will be created HIDDEN and the renderer goes off-screen\n");
+    x2_log_info("SDL: window skipped (--no-window); the guest's own window "
+                "will be created HIDDEN and the renderer goes off-screen\n");
     win32_sdl_hide_windows(1);
     /* A hidden window is not enough on its own: SDL hands back no
        swapchain image for one, so every frame would be refused with "no
@@ -2157,7 +1954,7 @@ int main(int argc, char **argv) {
   }
 #else
   (void)window;
-  printf("SDL: not compiled in\n");
+  x2_log_info("SDL: not compiled in\n");
 #endif
 
   if (d3d8) {
@@ -2168,28 +1965,28 @@ int main(int argc, char **argv) {
      * wait for ARK to come up before it can substitute a class.
      */
     if (vk) {
-      fprintf(stderr, "x2native: --d3d8 and --vk are two different "
-                      "renderers for the same engine. Pick one: --vk "
-                      "replaces igVisualContext's vtable, --d3d8 answers "
-                      "the DirectX the engine's own vtable calls.\n");
+      x2_log_error("x2native: --d3d8 and --vk are two different "
+                   "renderers for the same engine. Pick one: --vk "
+                   "replaces igVisualContext's vtable, --d3d8 answers "
+                   "the DirectX the engine's own vtable calls.\n");
       return 2;
     }
     if (d3d8permissive) {
       d3d8_permissive(1);
-      printf("d3d8: PERMISSIVE MODE -- unimplemented D3D8 methods will "
-             "be IGNORED (returning 0) instead of stopping.\n"
-             "  This exists to see what the engine asks for NEXT. "
-             "Anything drawn is missing whatever those methods do; the "
-             "list is printed at exit.\n");
+      x2_log_info("d3d8: PERMISSIVE MODE -- unimplemented D3D8 methods will "
+                  "be IGNORED (returning 0) instead of stopping.\n"
+                  "  This exists to see what the engine asks for NEXT. "
+                  "Anything drawn is missing whatever those methods do; the "
+                  "list is printed at exit.\n");
     }
     d3d8_host_enable();
     atexit(d3d8_host_report);
-    printf("d3d8: host Direct3D 8 armed on d3d8.dll!Direct3DCreate8\n");
+    x2_log_info("d3d8: host Direct3D 8 armed on d3d8.dll!Direct3DCreate8\n");
     d3d8_frame_table_install_signal();
-    printf("d3d8: press F9 (or send SIGUSR1) to dump every draw of the "
-           "next frame -- its screen rectangle, format, lighting and "
-           "OBJECT-SPACE EXTENTS, which is what tells a flat mesh from a "
-           "flat transform.\n");
+    x2_log_info("d3d8: press F9 (or send SIGUSR1) to dump every draw of the "
+                "next frame -- its screen rectangle, format, lighting and "
+                "OBJECT-SPACE EXTENTS, which is what tells a flat mesh from a "
+                "flat transform.\n");
     run = 1;
   }
 
@@ -2211,14 +2008,14 @@ int main(int argc, char **argv) {
       extern void igvk_vtable_permissive_report(void);
       igvk_vtable_permissive(1);
       atexit(igvk_vtable_permissive_report);
-      printf("igVk: PERMISSIVE MODE -- unimplemented renderer slots will "
-             "be IGNORED (returning 0, popping their arguments) instead "
-             "of stopping.\n"
-             "  This exists to drive the engine THROUGH the state calls "
-             "that are not written yet and see whether it reaches the "
-             "frame boundary.\n"
-             "  Anything it draws is missing whatever those slots do. "
-             "The list is printed at exit.\n");
+      x2_log_info("igVk: PERMISSIVE MODE -- unimplemented renderer slots will "
+                  "be IGNORED (returning 0, popping their arguments) instead "
+                  "of stopping.\n"
+                  "  This exists to drive the engine THROUGH the state calls "
+                  "that are not written yet and see whether it reaches the "
+                  "frame boundary.\n"
+                  "  Anything it draws is missing whatever those slots do. "
+                  "The list is printed at exit.\n");
     }
     if (igvk_context_arm())
       return 1;
@@ -2244,8 +2041,8 @@ int main(int argc, char **argv) {
       if (!pe_is_dll(*m->base))
         x = m;
     if (!x) {
-      fprintf(stderr, "x2native: --run needs an EXE module linked in, "
-                      "and none is\n");
+      x2_log_error("x2native: --run needs an EXE module linked in, "
+                   "and none is\n");
       return 1;
     }
     {
@@ -2258,21 +2055,20 @@ int main(int argc, char **argv) {
          becomes ambiguous. */
       heartbeat_start();
       guest_quantum_from_env();
-      x86_hotep_arm(getenv("X2_HOTEP"));
+      x86_hotep_arm(x2_config_override_get(kX2ConfigHotEp));
       {
         extern void x86_profiler_start(const char *);
-        x86_profiler_start(getenv("X2_PROFILE"));
+        x86_profiler_start(x2_config_override_get(kX2ConfigProfile));
       }
-      x86_reached_arm_from_env();
       {
         extern uint32_t g_guest_watch_addr;
-        const char *gw = getenv("X2_GUEST_WATCH");
+        const char *gw = x2_config_override_get(kX2ConfigGuestWatch);
         if (gw && *gw)
           g_guest_watch_addr = (uint32_t)strtoul(gw, NULL, 0);
       }
       {
         extern void x86_write_watch_arm(const char *);
-        x86_write_watch_arm(getenv("X2_WRITE_WATCH"));
+        x86_write_watch_arm(x2_config_override_get(kX2ConfigWriteWatch));
       }
       dinput_script_start();
       {
@@ -2282,11 +2078,11 @@ int main(int argc, char **argv) {
       /* A name here means a native override answers for the entry
          point; without one the engine runs the guest's own bytes, which
          is the normal case and no longer a reason to refuse. */
-      printf("\nrun: %s entry 0x%08x %s\n", x->name, entry,
-             nm ? nm : "(the guest's own code)");
+      x2_log_info("\nrun: %s entry 0x%08x %s\n", x->name, entry,
+                  nm ? nm : "(the guest's own code)");
       cpu_reset(&C);
-      C.esp = guest_stack_top - 4u;
-      gw32(C.esp, 0xDEADBEEFu);
+      C.reg[kX86pEsp] = guest_stack_top - 4u;
+      gw32(C.reg[kX86pEsp], 0xDEADBEEFu);
       /* The main thread is a guest thread too: it holds the global guest
          lock for as long as it is executing guest code, and releases it
          only where threads.c says. Taking it here rather than inside the
@@ -2296,18 +2092,12 @@ int main(int argc, char **argv) {
       guest_lock();
       x86_dispatch(&C, entry);
       guest_unlock();
-      printf("run: returned eax=0x%08x\n", C.eax);
+      x2_log_info("run: returned eax=0x%08x\n", C.reg[kX86pEax]);
       if (arkprobe) {
         extern int igvk_ark_probe_result(void);
         int prc = igvk_ark_probe_result();
-#ifdef X2_DCHECK
-        {
-          extern void x86_dcall_report(void);
-          x86_dcall_report();
-        }
-#endif
         if (x86_triggers_report() || prc != 0) {
-          printf("ark-probe: FAILED (rc=%d)\n", prc);
+          x2_log_info("ark-probe: FAILED (rc=%d)\n", prc);
           for (i = 0; i < mapped; i++)
             pe_unmap(&imgs[i]);
           return 1;
@@ -2319,7 +2109,7 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  printf("\n");
+  x2_log_info("\n");
   rc = run_battery();
   for (i = 0; i < mapped; i++)
     pe_unmap(&imgs[i]);

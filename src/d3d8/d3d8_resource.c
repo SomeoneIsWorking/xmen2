@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 /*
  * IDirect3DTexture8, IDirect3DVertexBuffer8 and IDirect3DIndexBuffer8.
  *
@@ -13,8 +15,8 @@
  * live below 4 GB in the guest's address space, and SDL_GPU does not offer
  * that.
  */
-#include "d3d8_resource.h"
 #include "d3d8_com.h"
+#include "d3d8_resource.h"
 #include "d3d8_surface.h"
 #include "d3d8_texture_luma.h"
 #include "d3d8_types.h"
@@ -122,8 +124,7 @@ static uint32_t g_lock_other_bits;
 
 static void *guest_ptr(uint32_t a, const char *what) {
   if (!a) {
-    fprintf(stderr, "d3d8: %s was given a NULL %s\n", d3d8_current_method(),
-            what);
+    x2_log_error("d3d8: %s was given a NULL %s\n", d3d8_current_method(), what);
     return NULL;
   }
   return guest_memory_pointer(a);
@@ -267,15 +268,14 @@ static D3D8Object *texture_new(uint32_t w, uint32_t h, uint32_t levels,
   const char *who = (faces == 6) ? "CreateCubeTexture" : "CreateTexture";
 
   if (!gf) {
-    fprintf(stderr,
-            "d3d8: %s in format %u (0x%08x), which this "
-            "backend does not have. Refusing rather than "
-            "substituting one that samples differently.\n",
-            who, format, format);
+    x2_log_error("d3d8: %s in format %u (0x%08x), which this "
+                 "backend does not have. Refusing rather than "
+                 "substituting one that samples differently.\n",
+                 who, format, format);
     return NULL;
   }
   if (!w || !h) {
-    fprintf(stderr, "d3d8: %s was asked for a %ux%u texture.\n", who, w, h);
+    x2_log_error("d3d8: %s was asked for a %ux%u texture.\n", who, w, h);
     return NULL;
   }
   if (!levels) {
@@ -287,7 +287,7 @@ static D3D8Object *texture_new(uint32_t w, uint32_t h, uint32_t levels,
   for (i = 0; i < levels; i++) {
     uint32_t b = level_bytes(format, lw ? lw : 1, lh ? lh : 1);
     if (!b) {
-      fprintf(stderr, "d3d8: cannot size level %u\n", i);
+      x2_log_error("d3d8: cannot size level %u\n", i);
       return NULL;
     }
     total += b;
@@ -317,10 +317,9 @@ static D3D8Object *texture_new(uint32_t w, uint32_t h, uint32_t levels,
   r->guest_size = total;
   r->guest_bytes = guest_malloc(total);
   if (!r->guest_bytes) {
-    fprintf(stderr,
-            "d3d8: no guest memory for a %ux%u texture's staging "
-            "copy (%u face(s), %u bytes)\n",
-            w, h, faces, total);
+    x2_log_error("d3d8: no guest memory for a %ux%u texture's staging "
+                 "copy (%u face(s), %u bytes)\n",
+                 w, h, faces, total);
     gpu_texture_destroy(r->gtex);
     free(r);
     return NULL;
@@ -328,10 +327,9 @@ static D3D8Object *texture_new(uint32_t w, uint32_t h, uint32_t levels,
   r->level_surface =
       (D3D8Object **)calloc(levels * faces, sizeof *r->level_surface);
   if (!r->level_surface) {
-    fprintf(stderr,
-            "d3d8: out of memory for a texture's %u level "
-            "surface slot(s)\n",
-            levels * faces);
+    x2_log_error("d3d8: out of memory for a texture's %u level "
+                 "surface slot(s)\n",
+                 levels * faces);
     guest_free(r->guest_bytes);
     gpu_texture_destroy(r->gtex);
     free(r);
@@ -365,7 +363,7 @@ static D3D8Object *buffer_new(D3D8IfaceId iface, uint32_t bytes, uint32_t fvf,
       (iface == D3D8_IF_IDirect3DIndexBuffer8) ? GPU_BUF_INDEX : GPU_BUF_VERTEX;
 
   if (!bytes) {
-    fprintf(stderr, "d3d8: a zero-length buffer was asked for.\n");
+    x2_log_error("d3d8: a zero-length buffer was asked for.\n");
     return NULL;
   }
   r = (Resource *)calloc(1, sizeof *r);
@@ -384,7 +382,7 @@ static D3D8Object *buffer_new(D3D8IfaceId iface, uint32_t bytes, uint32_t fvf,
   r->guest_size = bytes;
   r->guest_bytes = guest_malloc(bytes);
   if (!r->guest_bytes) {
-    fprintf(stderr, "d3d8: no guest memory for a %u byte buffer\n", bytes);
+    x2_log_error("d3d8: no guest memory for a %u byte buffer\n", bytes);
     gpu_buffer_destroy(r->gbuf);
     free(r);
     return NULL;
@@ -573,22 +571,20 @@ static void lock_sub(D3D8Object *self, CPU *C, uint32_t face, uint32_t level,
     uint32_t bpp = d3d8_format_bpp(r->format);
 
     if (right <= left || bottom <= top || right > lw || bottom > lh) {
-      fprintf(stderr,
-              "d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
-              "%ux%u texture level, which is empty or outside "
-              "it.\n",
-              left, top, right, bottom, lw, lh);
+      x2_log_error("d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
+                   "%ux%u texture level, which is empty or outside "
+                   "it.\n",
+                   left, top, right, bottom, lw, lh);
       d3d8_ret(C, D3DERR_INVALIDCALL);
       return;
     }
     if (bpp) {
       lr[1] += top * lr[0] + left * bpp;
     } else if ((left & 3u) || (top & 3u)) {
-      fprintf(stderr,
-              "d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
-              "block-compressed level; the origin must be on a "
-              "4x4 block boundary.\n",
-              left, top, right, bottom);
+      x2_log_error("d3d8: LockRect asked for (%u,%u)-(%u,%u) of a "
+                   "block-compressed level; the origin must be on a "
+                   "4x4 block boundary.\n",
+                   left, top, right, bottom);
       d3d8_ret(C, D3DERR_INVALIDCALL);
       return;
     } else {
@@ -625,18 +621,16 @@ static void get_surface_sub(D3D8Object *self, CPU *C, uint32_t face,
   uint32_t sub, lw, lh;
 
   if (!out) {
-    fprintf(stderr,
-            "d3d8: the surface for face %u level %u was asked for "
-            "with nowhere to put it.\n",
-            face, level);
+    x2_log_error("d3d8: the surface for face %u level %u was asked for "
+                 "with nowhere to put it.\n",
+                 face, level);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
   if (level >= r->levels || face >= r->faces) {
-    fprintf(stderr,
-            "d3d8: face %u level %u of a texture with %u face(s) "
-            "and %u level(s).\n",
-            face, level, r->faces, r->levels);
+    x2_log_error("d3d8: face %u level %u of a texture with %u face(s) "
+                 "and %u level(s).\n",
+                 face, level, r->faces, r->levels);
     WR32(out, 0);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
@@ -670,11 +664,10 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub) {
   uint32_t lw, lh;
 
   if (sub >= sub_count(r)) {
-    fprintf(stderr,
-            "d3d8: an unlock of texture sub-resource %u, which has "
-            "only %u (%u face(s) x %u level(s)). Nothing was "
-            "uploaded.\n",
-            sub, sub_count(r), r->faces, r->levels);
+    x2_log_error("d3d8: an unlock of texture sub-resource %u, which has "
+                 "only %u (%u face(s) x %u level(s)). Nothing was "
+                 "uploaded.\n",
+                 sub, sub_count(r), r->faces, r->levels);
     return;
   }
   sub_dims(r, sub, &lw, &lh);
@@ -684,21 +677,19 @@ void d3d8_texture_level_unlocked(D3D8Object *tex, uint32_t sub) {
      finished, so it is where the upload happens. */
   if (!gpu_texture_upload_face(r->gtex, sub / r->levels, sub % r->levels, bytes,
                                byte_count)) {
-    fprintf(stderr,
-            "d3d8: the backend REFUSED the upload of texture face "
-            "%u level %u (%ux%u). That level will sample as "
-            "whatever it held before.\n",
-            sub / r->levels, sub % r->levels, lw, lh);
+    x2_log_error("d3d8: the backend REFUSED the upload of texture face "
+                 "%u level %u (%ux%u). That level will sample as "
+                 "whatever it held before.\n",
+                 sub / r->levels, sub % r->levels, lw, lh);
     return;
   }
   {
-    const char *want = getenv("X2_TEXTURE_LEVELS");
+    const char *want = x2_config_override_get(kX2ConfigTextureLevels);
     if (want && (*want == '*' || strtoul(want, NULL, 0) == r->gtex))
-      fprintf(stderr,
-              "d3d8: texture %u uploaded face %u level %u of %u "
-              "(%ux%u, %u bytes)\n",
-              r->gtex, sub / r->levels, sub % r->levels, r->levels, lw, lh,
-              level_bytes(r->format, lw, lh));
+      x2_log_error("d3d8: texture %u uploaded face %u level %u of %u "
+                   "(%ux%u, %u bytes)\n",
+                   r->gtex, sub / r->levels, sub % r->levels, r->levels, lw, lh,
+                   level_bytes(r->format, lw, lh));
   }
   d3d8_texture_provenance_uploaded(&r->provenance, sub / r->levels,
                                    sub % r->levels, bytes, byte_count);
@@ -723,15 +714,14 @@ static void unlock_sub(D3D8Object *self, CPU *C, uint32_t face,
   Resource *r = res_of(self);
 
   if (!r->locked) {
-    fprintf(stderr, "d3d8: UnlockRect on a texture that was not locked\n");
+    x2_log_error("d3d8: UnlockRect on a texture that was not locked\n");
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
   if (level >= r->levels || face >= r->faces) {
-    fprintf(stderr,
-            "d3d8: UnlockRect of face %u level %u on a texture "
-            "with %u face(s) and %u level(s).\n",
-            face, level, r->faces, r->levels);
+    x2_log_error("d3d8: UnlockRect of face %u level %u on a texture "
+                 "with %u face(s) and %u level(s).\n",
+                 face, level, r->faces, r->levels);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -852,8 +842,8 @@ static void buf_Lock(D3D8Object *self, CPU *C) {
   if (!size)
     size = r->bytes - offset; /* 0 means "to the end" */
   if ((uint64_t)offset + size > r->bytes) {
-    fprintf(stderr, "d3d8: Lock(%u, %u) is outside a %u byte buffer.\n", offset,
-            size, r->bytes);
+    x2_log_error("d3d8: Lock(%u, %u) is outside a %u byte buffer.\n", offset,
+                 size, r->bytes);
     WR32(out, 0);
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
@@ -920,7 +910,7 @@ void d3d8_resource_note_drawn(D3D8Object *o) {
 static void buf_Unlock(D3D8Object *self, CPU *C) {
   Resource *r = res_of(self);
   if (!r->locked) {
-    fprintf(stderr, "d3d8: Unlock on a buffer that was not locked\n");
+    x2_log_error("d3d8: Unlock on a buffer that was not locked\n");
     d3d8_ret(C, D3DERR_INVALIDCALL);
     return;
   }
@@ -938,14 +928,13 @@ static void buf_Unlock(D3D8Object *self, CPU *C) {
     static int told;
     g_generations_after_draw++;
     if (!told++)
-      fprintf(stderr,
-              "d3d8: a buffer this frame's draws ALREADY READ is "
-              "being rewritten (%u bytes) before the frame is submitted. "
-              "gpu_buffer_upload is cycling its SDL_GPU backing storage, "
-              "so earlier draws retain their bytes and later draws use "
-              "this generation. Reported once; the total is in the "
-              "heartbeat.\n",
-              r->bytes);
+      x2_log_error("d3d8: a buffer this frame's draws ALREADY READ is "
+                   "being rewritten (%u bytes) before the frame is submitted. "
+                   "gpu_buffer_upload is cycling its SDL_GPU backing storage, "
+                   "so earlier draws retain their bytes and later draws use "
+                   "this generation. Reported once; the total is in the "
+                   "heartbeat.\n",
+                   r->bytes);
   }
   r->unlocked_in_frame = gpu_frames_presented();
   r->ever_unlocked = 1;
@@ -1043,8 +1032,9 @@ void d3d8_resource_attach_destructor(D3D8Object *o) {
 }
 
 void d3d8_resource_report(void) {
-  printf("  d3d8 resources: %lu texture(s), %lu cube texture(s), %lu vertex "
-         "buffer(s), %lu index buffer(s)\n",
-         g_textures, g_cubetextures, g_vbuffers, g_ibuffers);
+  x2_log_info(
+      "  d3d8 resources: %lu texture(s), %lu cube texture(s), %lu vertex "
+      "buffer(s), %lu index buffer(s)\n",
+      g_textures, g_cubetextures, g_vbuffers, g_ibuffers);
   d3d8_texture_luma_report();
 }

@@ -1,4 +1,6 @@
 #include "d3d8_selector_probe.h"
+#include "../config/environment.h"
+#include "../native/x2_log.h"
 #include "d3d8_selector_probe_json.h"
 
 #include <inttypes.h>
@@ -54,7 +56,7 @@ static int g_probe_enabled = -1;
 
 int d3d8_selector_probe_enabled(void) {
   if (g_probe_enabled < 0) {
-    const char *path = getenv("X2_SELECTOR_PROBE");
+    const char *path = x2_config_override_get(kX2ConfigSelectorProbe);
     g_probe_enabled = path && *path;
   }
   return g_probe_enabled;
@@ -250,10 +252,10 @@ static FILE *probe_output(void) {
   if (g_probe.initialized)
     return g_probe.output;
   g_probe.initialized = 1;
-  path = getenv("X2_SELECTOR_PROBE");
+  path = x2_config_override_get(kX2ConfigSelectorProbe);
   if (!path || !*path)
     return NULL;
-  target = getenv("X2_SELECTOR_TEXTURE");
+  target = x2_config_override_get(kX2ConfigSelectorTexture);
   primitive_text =
       target && !strncmp(target, "untextured:", 11) ? target + 11 : NULL;
   g_probe.target_untextured =
@@ -263,19 +265,18 @@ static FILE *probe_output(void) {
   if (!g_probe.target_untextured &&
       !d3d8_selector_texture_target_parse(target, &g_probe.target_width,
                                           &g_probe.target_height)) {
-    fprintf(stderr, "selector probe: X2_SELECTOR_PROBE is armed, but "
-                    "X2_SELECTOR_TEXTURE must be an exact positive WxH "
-                    "dimension such as 128x32 or untextured:N, where N "
-                    "is an exact primitive count; refusing to guess a "
-                    "draw class.\n");
+    x2_log_error("selector probe: X2_SELECTOR_PROBE is armed, but "
+                 "X2_SELECTOR_TEXTURE must be an exact positive WxH "
+                 "dimension such as 128x32 or untextured:N, where N "
+                 "is an exact primitive count; refusing to guess a "
+                 "draw class.\n");
     return NULL;
   }
   g_probe.output = fopen(path, "w");
   if (!g_probe.output) {
-    fprintf(stderr,
-            "selector probe: cannot open X2_SELECTOR_PROBE '%s'; "
-            "no evidence will be recorded.\n",
-            path);
+    x2_log_error("selector probe: cannot open X2_SELECTOR_PROBE '%s'; "
+                 "no evidence will be recorded.\n",
+                 path);
     return NULL;
   }
   setvbuf(g_probe.output, NULL, _IOLBF, 0);

@@ -11,22 +11,25 @@ void x87_fault(const char *what) {
 
 int main(void) {
   CPU C;
-  memset(&C, 0, sizeof C);
-  C.top = 0;
+  cpu_reset(&C);
 
   x87_host_begin(&C);
   x87_host_end(&C);
-  if (C.depth != 0) {
-    fprintf(stderr, "empty host x87 stack produced %d value(s)\n", C.depth);
+  if (x86p_x87_depth(&C.x87) != 0) {
+    fprintf(stderr, "empty host x87 stack produced %d value(s)\n",
+            x86p_x87_depth(&C.x87));
     return 1;
   }
 
   x87_host_begin(&C);
   __asm__ __volatile__("fld1");
   x87_host_end(&C);
-  if (C.depth != 1 || fabsl(X87_ST(&C, 0) - 1.0L) > 1e-12L) {
-    fprintf(stderr, "ST0 return was not captured: depth=%d value=%Lf\n",
-            C.depth, C.depth ? X87_ST(&C, 0) : 0.0L);
+  long double result = 0.0L;
+  const int depth = x86p_x87_depth(&C.x87);
+  if (depth != 1 || !x86p_x87_get(&C.x87, 0, &result) ||
+      fabsl(result - 1.0L) > 1e-12L) {
+    fprintf(stderr, "ST0 return was not captured: depth=%d value=%Lf\n", depth,
+            depth ? result : 0.0L);
     return 1;
   }
   return 0;

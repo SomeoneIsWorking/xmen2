@@ -10,6 +10,7 @@
  * argument that silently falls back to the diffuse colour, and a BC1 texture
  * that decodes to black.
  */
+#include "../native/x2_log.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_selftest_pixels.h"
@@ -36,8 +37,8 @@
  */
 int gpu_cube_texgen_selftest(void) {
 #ifndef X2_WITH_SDL
-  printf("gpu cube texgen selftest: SKIPPED -- built without SDL. This is "
-         "not a pass.\n");
+  x2_log_info("gpu cube texgen selftest: SKIPPED -- built without SDL. This is "
+              "not a pass.\n");
   return 77;
 #else
   struct Vtx {
@@ -64,30 +65,30 @@ int gpu_cube_texgen_selftest(void) {
   uint32_t got[2];
   int fails = 0, i, k;
 
-  printf("\n=== gpu cube texgen selftest: the direction must follow the "
-         "normal ===\n");
+  x2_log_info("\n=== gpu cube texgen selftest: the direction must follow the "
+              "normal ===\n");
   if (!gpu_device_create()) {
-    printf("gpu cube texgen selftest: FAILED -- no GPU device, so NOTHING "
-           "about cube sampling was checked.\n");
+    x2_log_info("gpu cube texgen selftest: FAILED -- no GPU device, so NOTHING "
+                "about cube sampling was checked.\n");
     return 1;
   }
   cube = gpu_texture_create_cube(1, GPU_FMT_BGRA8, 1);
   if (!cube) {
-    printf("gpu cube texgen selftest: FAILED -- no cube texture.\n");
+    x2_log_info("gpu cube texgen selftest: FAILED -- no cube texture.\n");
     gpu_device_destroy();
     return 1;
   }
   for (i = 0; i < 6; i++)
     if (!gpu_texture_upload_face(cube, (uint32_t)i, 0, &FACE[i], 4)) {
-      printf("gpu cube texgen selftest: FAILED -- face %d would not "
-             "upload.\n",
-             i);
+      x2_log_info("gpu cube texgen selftest: FAILED -- face %d would not "
+                  "upload.\n",
+                  i);
       gpu_device_destroy();
       return 1;
     }
   vb = gpu_buffer_create(GPU_BUF_VERTEX, sizeof quad);
   if (!vb) {
-    printf("gpu cube texgen selftest: FAILED -- no vertex buffer.\n");
+    x2_log_info("gpu cube texgen selftest: FAILED -- no vertex buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -107,7 +108,7 @@ int gpu_cube_texgen_selftest(void) {
       quad[k].nz = NRM[i][2];
     }
     if (!gpu_buffer_upload(vb, 0, quad, sizeof quad)) {
-      printf("gpu cube texgen selftest: FAILED -- upload.\n");
+      x2_log_info("gpu cube texgen selftest: FAILED -- upload.\n");
       gpu_device_destroy();
       return 1;
     }
@@ -130,9 +131,9 @@ int gpu_cube_texgen_selftest(void) {
 
     if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 0.0f, 1.0f) ||
         !gpu_draw(&d) || !gpu_offscreen_read(img, sizeof img)) {
-      printf("gpu cube texgen selftest: FAILED -- draw %d did not "
-             "happen, so nothing was compared.\n",
-             i);
+      x2_log_info("gpu cube texgen selftest: FAILED -- draw %d did not "
+                  "happen, so nothing was compared.\n",
+                  i);
       gpu_offscreen_end();
       gpu_device_destroy();
       return 1;
@@ -140,20 +141,20 @@ int gpu_cube_texgen_selftest(void) {
     gpu_offscreen_end();
     got[i] = img[(OFF_H / 2) * OFF_W + OFF_W / 2];
     if (got[i] != WANT[i]) {
-      printf("gpu cube texgen selftest: FAILED -- a normal of "
-             "(%g,%g,%g) sampled 0x%08x; the face pointing that way is "
-             "0x%08x.\n",
-             NRM[i][0], NRM[i][1], NRM[i][2], got[i], WANT[i]);
+      x2_log_info("gpu cube texgen selftest: FAILED -- a normal of "
+                  "(%g,%g,%g) sampled 0x%08x; the face pointing that way is "
+                  "0x%08x.\n",
+                  NRM[i][0], NRM[i][1], NRM[i][2], got[i], WANT[i]);
       fails++;
     }
   }
   if (got[0] == got[1]) {
-    printf("gpu cube texgen selftest: FAILED -- both normals sampled the "
-           "same texel (0x%08x). The direction does not follow the "
-           "normal, so a constant direction, face 0, or the position's "
-           "bytes read as a coordinate would all pass the checks "
-           "above.\n",
-           got[0]);
+    x2_log_info("gpu cube texgen selftest: FAILED -- both normals sampled the "
+                "same texel (0x%08x). The direction does not follow the "
+                "normal, so a constant direction, face 0, or the position's "
+                "bytes read as a coordinate would all pass the checks "
+                "above.\n",
+                got[0]);
     fails++;
   }
 
@@ -162,19 +163,20 @@ int gpu_cube_texgen_selftest(void) {
   d.texgen = GPU_TEXGEN_NONE;
   if (gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 0.0f, 1.0f)) {
     if (gpu_draw(&d)) {
-      printf("gpu cube texgen selftest: FAILED -- a cube with NO "
-             "texture-coordinate generator was DRAWN. There is no "
-             "direction to sample it with; it must be refused.\n");
+      x2_log_info("gpu cube texgen selftest: FAILED -- a cube with NO "
+                  "texture-coordinate generator was DRAWN. There is no "
+                  "direction to sample it with; it must be refused.\n");
       fails++;
     }
     gpu_offscreen_end();
   }
 
   gpu_device_destroy();
-  printf("gpu cube texgen selftest: %s\n",
-         fails ? "FAILED"
-               : "PASSED -- two normals sample two different faces, and a cube "
-                 "with no generator is refused");
+  x2_log_info(
+      "gpu cube texgen selftest: %s\n",
+      fails ? "FAILED"
+            : "PASSED -- two normals sample two different faces, and a cube "
+              "with no generator is refused");
   return fails ? 1 : 0;
 #endif
 }
@@ -196,8 +198,9 @@ int gpu_cube_texgen_selftest(void) {
  */
 int gpu_tfactor_selftest(void) {
 #ifndef X2_WITH_SDL
-  printf("gpu tfactor selftest: SKIPPED -- built without SDL. This is not a "
-         "pass.\n");
+  x2_log_info(
+      "gpu tfactor selftest: SKIPPED -- built without SDL. This is not a "
+      "pass.\n");
   return 77;
 #else
   struct Vtx {
@@ -212,11 +215,11 @@ int gpu_tfactor_selftest(void) {
   uint32_t with_factor, with_default;
   int fails = 0, k;
 
-  printf("\n=== gpu tfactor selftest: the factor must reach the "
-         "combiner ===\n");
+  x2_log_info("\n=== gpu tfactor selftest: the factor must reach the "
+              "combiner ===\n");
   if (!gpu_device_create()) {
-    printf("gpu tfactor selftest: FAILED -- no GPU device, so NOTHING "
-           "about the texture factor was checked.\n");
+    x2_log_info("gpu tfactor selftest: FAILED -- no GPU device, so NOTHING "
+                "about the texture factor was checked.\n");
     return 1;
   }
   {
@@ -234,7 +237,7 @@ int gpu_tfactor_selftest(void) {
   }
   vb = gpu_buffer_create(GPU_BUF_VERTEX, sizeof quad);
   if (!vb || !gpu_buffer_upload(vb, 0, quad, sizeof quad)) {
-    printf("gpu tfactor selftest: FAILED -- no vertex buffer.\n");
+    x2_log_info("gpu tfactor selftest: FAILED -- no vertex buffer.\n");
     gpu_device_destroy();
     return 1;
   }
@@ -245,7 +248,7 @@ int gpu_tfactor_selftest(void) {
     static const uint32_t px = 0xFFFFFFFFu;
     white = gpu_texture_create(1, 1, GPU_FMT_BGRA8, 1);
     if (!white || !gpu_texture_upload(white, 0, &px, sizeof px)) {
-      printf("gpu tfactor selftest: FAILED -- no white texture.\n");
+      x2_log_info("gpu tfactor selftest: FAILED -- no white texture.\n");
       gpu_device_destroy();
       return 1;
     }
@@ -277,7 +280,8 @@ int gpu_tfactor_selftest(void) {
     d.color_arg2 = k ? GPU_TA_DEFAULT : GPU_TA_TFACTOR;
     if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f) ||
         !gpu_draw(&d) || !gpu_offscreen_read(img, sizeof img)) {
-      printf("gpu tfactor selftest: FAILED -- draw %d did not happen.\n", k);
+      x2_log_info("gpu tfactor selftest: FAILED -- draw %d did not happen.\n",
+                  k);
       gpu_offscreen_end();
       gpu_device_destroy();
       return 1;
@@ -291,26 +295,27 @@ int gpu_tfactor_selftest(void) {
 
   /* Green modulated by a factor with no green in it is BLACK. */
   if (with_factor != 0xFF000000u) {
-    printf("gpu tfactor selftest: FAILED -- green modulated by a red "
-           "texture factor came back 0x%08x, not black. The factor is not "
-           "reaching the combiner.\n",
-           with_factor);
+    x2_log_info("gpu tfactor selftest: FAILED -- green modulated by a red "
+                "texture factor came back 0x%08x, not black. The factor is not "
+                "reaching the combiner.\n",
+                with_factor);
     fails++;
   }
   if (with_factor == with_default) {
-    printf("gpu tfactor selftest: FAILED -- naming the texture factor and "
-           "leaving the arguments at their defaults give the SAME pixel "
-           "(0x%08x), so this test cannot tell the two apart and the "
-           "check above proves nothing.\n",
-           with_factor);
+    x2_log_info("gpu tfactor selftest: FAILED -- naming the texture factor and "
+                "leaving the arguments at their defaults give the SAME pixel "
+                "(0x%08x), so this test cannot tell the two apart and the "
+                "check above proves nothing.\n",
+                with_factor);
     fails++;
   }
 
   gpu_device_destroy();
-  printf("gpu tfactor selftest: %s\n",
-         fails ? "FAILED"
-               : "PASSED -- the texture factor reaches the combiner, and it "
-                 "differs from the default arguments");
+  x2_log_info("gpu tfactor selftest: %s\n",
+              fails
+                  ? "FAILED"
+                  : "PASSED -- the texture factor reaches the combiner, and it "
+                    "differs from the default arguments");
   return fails ? 1 : 0;
 #endif
 }
@@ -322,8 +327,8 @@ int gpu_tfactor_selftest(void) {
  */
 int gpu_bc1_texture_selftest(void) {
 #ifndef X2_WITH_SDL
-  printf("gpu BC1 texture selftest: SKIPPED -- built without SDL. This is "
-         "not a pass.\n");
+  x2_log_info("gpu BC1 texture selftest: SKIPPED -- built without SDL. This is "
+              "not a pass.\n");
   return 77;
 #else
   struct Vertex {
@@ -341,10 +346,10 @@ int gpu_bc1_texture_selftest(void) {
   GpuDraw draw;
   uint32_t centre;
 
-  printf("\n=== gpu BC1 texture selftest: compressed texel through the "
-         "shipping shader ===\n");
+  x2_log_info("\n=== gpu BC1 texture selftest: compressed texel through the "
+              "shipping shader ===\n");
   if (!gpu_device_create()) {
-    printf("gpu BC1 texture selftest: FAILED -- no GPU device.\n");
+    x2_log_info("gpu BC1 texture selftest: FAILED -- no GPU device.\n");
     return 1;
   }
   vertices = gpu_buffer_create(GPU_BUF_VERTEX, sizeof quad);
@@ -352,8 +357,8 @@ int gpu_bc1_texture_selftest(void) {
   if (!vertices || !texture ||
       !gpu_buffer_upload(vertices, 0, quad, sizeof quad) ||
       !gpu_texture_upload(texture, 0, red_block, sizeof red_block)) {
-    printf("gpu BC1 texture selftest: FAILED -- could not create and "
-           "upload the DXT1 control block.\n");
+    x2_log_info("gpu BC1 texture selftest: FAILED -- could not create and "
+                "upload the DXT1 control block.\n");
     if (texture)
       gpu_texture_destroy(texture);
     if (vertices)
@@ -378,8 +383,8 @@ int gpu_bc1_texture_selftest(void) {
   draw.depth_func = GPU_CMP_ALWAYS;
   if (!gpu_offscreen_begin(OFF_W, OFF_H, 0.0f, 0.0f, 1.0f, 1.0f) ||
       !gpu_draw(&draw) || !gpu_offscreen_read(image, sizeof image)) {
-    printf("gpu BC1 texture selftest: FAILED -- draw/readback did not "
-           "complete.\n");
+    x2_log_info("gpu BC1 texture selftest: FAILED -- draw/readback did not "
+                "complete.\n");
     gpu_offscreen_end();
     gpu_texture_destroy(texture);
     gpu_buffer_destroy(vertices);
@@ -392,14 +397,14 @@ int gpu_bc1_texture_selftest(void) {
   gpu_buffer_destroy(vertices);
   gpu_device_destroy();
   if (centre != 0xFFFF0000u) {
-    printf("gpu BC1 texture selftest: FAILED -- centre is 0x%08x, "
-           "expected opaque red. The device advertised BC1 but the "
-           "shipping texture path did not produce its texel.\n",
-           centre);
+    x2_log_info("gpu BC1 texture selftest: FAILED -- centre is 0x%08x, "
+                "expected opaque red. The device advertised BC1 but the "
+                "shipping texture path did not produce its texel.\n",
+                centre);
     return 1;
   }
-  printf("gpu BC1 texture selftest: PASSED -- uploaded DXT1 sampled as "
-         "opaque red.\n");
+  x2_log_info("gpu BC1 texture selftest: PASSED -- uploaded DXT1 sampled as "
+              "opaque red.\n");
   return 0;
 #endif
 }

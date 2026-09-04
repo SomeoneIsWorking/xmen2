@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * The hot-guest-body probe: which guest entry points a slow window is spent
  * in, by wall time.
@@ -15,7 +16,7 @@
  * Per-guest-entry-point call counts, for naming the HOT GUEST BODY behind a
  * slow window -- the level-build frames dispatch ~460k guest-to-guest calls
  * each (4x a normal frame's 110k), and the imports are not it, so the cost is
- * inside a recompiled body the ring cannot see.
+ * inside a guest body the ring cannot see.
  *
  * Armed by X2_HOTEP=<n> where n is the number of entry points to track: a
  * direct-mapped hash on the ENTRY POINT (key 0 = empty), so the dispatch path
@@ -41,8 +42,8 @@ void x86_hotep_arm(const char *arg) {
   g_hotep_cap = want > HOTEP_MAX ? HOTEP_MAX : (unsigned)want;
   g_hotep_collisions = 0;
   if (g_hotep_cap)
-    fprintf(stderr, "[HOTEP] armed for the top %u guest entry points.\n",
-            g_hotep_cap);
+    x2_log_error("[HOTEP] armed for the top %u guest entry points.\n",
+                 g_hotep_cap);
 }
 
 void x86_hotep_count(uint32_t ep, unsigned long long ns) {

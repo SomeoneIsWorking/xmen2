@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /* BehavEd command-graph interpreter, ported from XMen2.exe 004d8b30. */
 #include "behaved_context.h"
 
@@ -44,22 +45,22 @@ static uint32_t guest_call(const CPU *source, uint32_t target, uint32_t self,
   CPU call = *source;
 
   while (count) {
-    call.esp -= 4u;
-    WR32(call.esp, arguments[--count]);
+    call.reg[kX86pEsp] -= 4u;
+    WR32(call.reg[kX86pEsp], arguments[--count]);
   }
-  call.ecx = self;
+  call.reg[kX86pEcx] = self;
   x86_guest_call_args(&call, target, callee_pop_bytes);
-  return call.eax;
+  return call.reg[kX86pEax];
 }
 
 static uint32_t find_value(const CPU *cpu, uint32_t base, uint32_t owner,
                            uint32_t key, uint32_t root) {
   CPU frame = *cpu;
-  uint32_t pair = cpu->esp - 0x20u;
+  uint32_t pair = cpu->reg[kX86pEsp] - 0x20u;
   const uint32_t arguments[] = {pair, root};
 
   WR32(pair, key);
-  frame.esp = cpu->esp - 0x60u;
+  frame.reg[kX86pEsp] = cpu->reg[kX86pEsp] - 0x60u;
   return guest_call(&frame, linked(base, FN_VALUE_FIND), owner, arguments, 2u,
                     8u);
 }
@@ -89,16 +90,15 @@ static uint32_t resolve_argument(const CPU *cpu, uint32_t base,
 static uint32_t call_handler(CPU *cpu, uint32_t base, uint32_t context,
                              uint32_t node) {
   CPU frame = *cpu;
-  uint32_t list = cpu->esp - 0x40u;
+  uint32_t list = cpu->reg[kX86pEsp] - 0x40u;
   uint32_t count = RD32(node + 0x24u);
   uint32_t arguments[] = {list};
   uint32_t index;
 
   if (count > ARGUMENT_CAPACITY) {
-    fprintf(stderr,
-            "BEHAVED: node 0x%08x has %u arguments; retail "
-            "004d8b30 provides storage for at most %u\n",
-            node, count, ARGUMENT_CAPACITY);
+    x2_log_error("BEHAVED: node 0x%08x has %u arguments; retail "
+                 "004d8b30 provides storage for at most %u\n",
+                 node, count, ARGUMENT_CAPACITY);
     x86_diag_dump();
     abort();
   }
@@ -106,19 +106,19 @@ static uint32_t call_handler(CPU *cpu, uint32_t base, uint32_t context,
     WR32(list + index * 4u,
          resolve_argument(cpu, base, context, RD32(node + 8u + index * 4u)));
   WR32(list + 0x1cu, count);
-  frame.esp = cpu->esp - 0x80u;
+  frame.reg[kX86pEsp] = cpu->reg[kX86pEsp] - 0x80u;
   return guest_call(&frame, RD32(node + 0x28u), 0u, arguments, 1u, 0u);
 }
 
 static uint32_t find_script_value(const CPU *cpu, uint32_t base,
                                   uint32_t script, uint32_t node) {
   CPU frame = *cpu;
-  uint32_t pair = cpu->esp - 0x28u;
+  uint32_t pair = cpu->reg[kX86pEsp] - 0x28u;
   const uint32_t arguments[] = {pair, RD32(script + 8u)};
 
   WR32(pair, RD32(node));
   WR32(pair + 4u, RD32(node + 4u));
-  frame.esp = cpu->esp - 0x68u;
+  frame.reg[kX86pEsp] = cpu->reg[kX86pEsp] - 0x68u;
   return guest_call(&frame, linked(base, FN_TREE_FIND), script + 4u, arguments,
                     2u, 8u);
 }
@@ -219,8 +219,8 @@ uint32_t behaved_context_run(CPU *cpu, uint32_t context) {
 void x2_override_004d8b30(CPU *cpu) {
   if (!cpu)
     return;
-  cpu->eax = behaved_context_run(cpu, cpu->ecx);
-  cpu->esp += 4u;
+  cpu->reg[kX86pEax] = behaved_context_run(cpu, cpu->reg[kX86pEcx]);
+  cpu->reg[kX86pEsp] += 4u;
 }
 
 __attribute__((constructor)) static void

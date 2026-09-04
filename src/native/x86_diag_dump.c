@@ -10,7 +10,6 @@
  * ring is last because it is the longest.
  */
 #include "x86_engine.h"
-#include "x86_reached.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -34,6 +33,5 @@ void x86_diag_dump(void) {
   }
   x2_engine_where();
   x86_peek_report();
-  x86_reached_report();
   x86_ring_dump();
 }

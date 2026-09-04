@@ -3,11 +3,8 @@
  *
  * The guest's IAT is bound at load time by name: for each (DLL, symbol) slot
  * the binder asks "does this host implement that?" and, when it does, points
- * the slot at a synthetic address that calls the C function. Until the static
- * corpus was deleted, the answer came from generated per-module tables that
- * listed every slot of every image. Nothing generates those any more, and the
- * question does not need them: what a host implements is a property of the
- * host, not of the player's images.
+ * the slot at a synthetic address that calls the C function. What the host
+ * implements is a property of the host, not of the player's images.
  *
  * So each implemented DLL surface publishes ONE table, in one file, from one
  * macro list -- the same list that declares the stubs, so a symbol that is
@@ -22,7 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-struct CPU;
+struct X86pCpu;
 
 typedef struct HostImport {
   /* The name the binder matches, for a by-name entry. For a by-ordinal one
@@ -31,7 +28,7 @@ typedef struct HostImport {
      entry ordinal. */
   const char *sym;
   uint32_t ordinal;
-  void (*stub)(struct CPU *);
+  void (*stub)(struct X86pCpu *);
 } HostImport;
 
 /* Publish one DLL's surface. `dll` and `tab` must outlive the process. */

@@ -3,7 +3,7 @@ id: 18
 title: The game's DirectX 9.0c presence check fails, as it truthfully should
 status: resolved
 symptom: MessageBox 'DirectX not found -- DirectX 9.0c or higher is not installed on this computer' from XMen2.exe FUN_00617480, after the native run clears the CRT, registry and COM surfaces
-tags: pc,recomp,native,graphics,rc-exe
+tags: pc,native,graphics,pe
 created: 2026-08-06
 updated: 2026-08-24
 ---
@@ -81,22 +81,6 @@ Everything else goes through COM vtables on the objects those return. So the
 D3D8-level boundary is two entry points plus the methods the game actually
 calls -- much narrower than "implement D3D8" sounds.
 
-**The vendored translator is a real asset, but not a drop-in.**
-`vendor/xboxrecomp/src/d3d` is 6741 lines with a POSIX/OpenGL backend
-(`d3d8_gl.c`) and genuine COM objects. Its vtable, however, is the **Xbox** D3D8
-layout:
-
-    vendored (Xbox):  ... Release, GetDirect3D, GetDeviceCaps, ...
-    PC D3D8:          ... Release, TestCooperativeLevel, GetAvailableTextureMem,
-                          ResourceManagerDiscardBytes, GetDirect3D, ...
-
-and it omits the cursor and additional-swap-chain methods. Slot N is a different
-method in each, so libIGGfx calling through a PC vtable would land on the wrong
-function. The bodies -- state translation, combiners, shaders, the GL backend --
-are reusable; the interface layer has to be rebuilt to the PC layout.
-
-That is the trade to weigh, and it is now measured rather than guessed.
-
 ### Settled from the game's side
 
 `igDxVisualContext::userInstantiate` (libIGGfx 0x1002c210) calls
@@ -108,11 +92,6 @@ PC D3D8's `IDirect3D8` slot 0x34 is `GetDeviceCaps(Adapter, DeviceType, pCaps)`
 -- three arguments. So the game does use the PC layout, confirmed from the
 caller rather than recalled.
 
-And the vendored `IDirect3D8Vtbl` has **four** entries in total
-(QueryInterface, AddRef, Release, CreateDevice), so it is sixteen bytes long and
-offset 0x34 lies off the end of it. It is not a reordering of PC D3D8 -- it is a
-minimal subset of whatever the Xbox recomp needed.
-
 ### How big the work is
 
 The `igDx*` wrapper classes make **648 indirect calls at 73 distinct vtable
@@ -120,9 +99,8 @@ offsets** (<= 0x18c), across 219 functions. Those offsets span the whole COM
 family -- device, texture, surface, vertex and index buffers -- so 73 is the
 total method surface, not 73 device methods.
 
-That is a bounded piece of work of roughly the scale of a small dxvk-d3d8, with
-the vendored state translation, combiners, shaders and GL backend reusable
-underneath a new PC-shaped interface layer.
+That is a bounded PC D3D8 interface surface rather than an open-ended DirectX
+API estimate.
 
 ### Resolution (2026-08-24)
 The original DirectX 9.0c COM-version probe was a Windows installation precondition, not a capability test for this port. The native path now supplies a real host D3D8 device at Direct3DCreate8, so startup retires FUN_00617480 instead of writing DXChecked or fabricating a COM object; the override returns AL=1 exactly as the original success path requires. Issue #54 and C158/C209 record the return-value fix and end-to-end route.

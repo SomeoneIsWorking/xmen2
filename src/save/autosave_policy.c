@@ -1,8 +1,8 @@
 #include "autosave_policy.h"
 
-/* Dusklight's CC0 src/dusk/autosave.cpp supplied the asynchronous
-   request -> write -> completion ownership shape. X-Men's verified checkpoint
-   is narrower: successful retail map load, cancelled by main-menu Show. */
+/* The title policy owns an asynchronous request -> write -> completion state
+   machine. Its verified checkpoint is a successful retail map load, cancelled
+   by main-menu Show. */
 
 void x2_autosave_policy_init(X2AutosavePolicy *policy) {
   if (policy)

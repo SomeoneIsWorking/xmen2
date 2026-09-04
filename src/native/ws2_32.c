@@ -1,3 +1,5 @@
+#include "x2_log.h"
+#include <lucent/log_c.h>
 /*
  * WS2_32: the answer is "this host has no network", said the way Win32 says it.
  *
@@ -36,11 +38,11 @@
 
 #include <stdio.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 static void ret_std(CPU *C, uint32_t eax, int nargs) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)nargs * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
 }
 
 #define WSASYSNOTREADY 10091u
@@ -60,16 +62,17 @@ void imp_WS2_32__115(CPU *C) {
   uint32_t want = A(0), data = A(1);
 
   if (!g_startups++)
-    fprintf(stderr,
-            "ws2_32: WSAStartup(version %u.%u) -> WSASYSNOTREADY. This host "
-            "implements NO networking, so the honest Win32 answer is that the "
-            "network subsystem is not ready.\n"
-            "  LAN MULTIPLAYER IS UNAVAILABLE in this port. The game takes its "
-            "own no-network path from here; the other 24 WS2_32 imports it "
-            "carries are never reached.\n"
-            "  Reported once. See src/native/ws2_32.c for what implementing "
-            "them would take.\n",
-            want & 0xffu, (want >> 8) & 0xffu);
+    lucent_log_error(
+        "x2",
+        "ws2_32: WSAStartup(version %u.%u) -> WSASYSNOTREADY. This host "
+        "implements NO networking, so the honest Win32 answer is that the "
+        "network subsystem is not ready.\n"
+        "  LAN MULTIPLAYER IS UNAVAILABLE in this port. The game takes its "
+        "own no-network path from here; the other 24 WS2_32 imports it "
+        "carries are never reached.\n"
+        "  Reported once. See src/native/ws2_32.c for what implementing "
+        "them would take.\n",
+        want & 0xffu, (want >> 8) & 0xffu);
   if (data) {
     int i;
     WR32(data + 0u, 0); /* wVersion / wHighVersion */
@@ -94,11 +97,12 @@ void ws2_report(void) {
   /* At zero as well: "the game never asked for networking" and "networking
      is not implemented" are different facts about a run. */
   if (!g_startups) {
-    printf("  ws2_32: the game never called WSAStartup, so it never tried "
-           "to use the network in this run.\n");
+    x2_log_info("  ws2_32: the game never called WSAStartup, so it never tried "
+                "to use the network in this run.\n");
     return;
   }
-  printf("  ws2_32: %lu WSAStartup call(s), all answered WSASYSNOTREADY "
-         "(%lu WSACleanup). LAN multiplayer is unavailable in this port.\n",
-         g_startups, g_cleanups);
+  x2_log_info(
+      "  ws2_32: %lu WSAStartup call(s), all answered WSASYSNOTREADY "
+      "(%lu WSACleanup). LAN multiplayer is unavailable in this port.\n",
+      g_startups, g_cleanups);
 }

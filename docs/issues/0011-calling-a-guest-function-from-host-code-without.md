@@ -3,7 +3,7 @@ id: 11
 title: Calling a guest function from host code without pushing a return address walks ESP upward, silently
 status: resolved
 symptom: SIGSEGV reading just ABOVE the top of the guest stack after many host-initiated guest calls; looks like stack corruption rather than a missing push
-tags: pc,recomp,native,abi,guest-stack
+tags: pc,jit,native,abi,guest-stack
 created: 2026-08-05
 updated: 2026-08-05
 ---
@@ -16,8 +16,8 @@ corruption; the cause was arithmetic.
 
 ## Cause
 
-Every recompiled body is entered with its return address already on the guest
-stack (each emitted call site pushes one) and its RET pops it. `_initterm`
+Every guest body is entered with its return address already on the guest stack,
+and its RET pops it. `_initterm`
 dispatched each constructor with a bare `x86_dispatch`, pushing nothing, so
 each of the 51 constructors popped 4 bytes nobody had pushed. ESP climbed 4
 bytes per call until it left the mapped stack.

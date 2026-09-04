@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * Host-side publication over the ADVAPI32 store: the same values, encoding
  * and durability as a guest RegSetValueExA write, for callers that are not
@@ -40,10 +41,9 @@ int advapi32_host_set_string(const char *path, const char *name,
     return 0;
   n = strlen(value);
   if (n >= MAX_DATA_) {
-    fprintf(stderr,
-            "advapi32: host publication of \"%s|%s\" is %d bytes "
-            "and this store holds %d -- REFUSED.\n",
-            path, name, (int)n, MAX_DATA_);
+    x2_log_error("advapi32: host publication of \"%s|%s\" is %d bytes "
+                 "and this store holds %d -- REFUSED.\n",
+                 path, name, (int)n, MAX_DATA_);
     return 0;
   }
   v = advapi32_store_put(path, name);

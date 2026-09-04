@@ -10,11 +10,8 @@ Resolution order for `shared/<name>`: `$<NAME>_DIR`, then `$SHARED_DIR/<name>`,
 then the project-local provisioned checkout under `vendor/shared/`. If none
 exists this REFUSES and names every path it tried.
 
-There is deliberately NO fallback to a sibling clone outside the port. There
-was one, and it scattered the workspace: bootstrap provisions and pins
-`vendor/shared/recomp-x86`, while `tools/ghidra_scripts` symlinked into a
-sibling clone of the same repo at a different revision. Two checkouts, one
-pinned and one not, both live.
+There is deliberately NO fallback to a sibling clone outside the port: a
+consumer must resolve one explicit checkout and refuse when it is absent.
 """
 
 import os

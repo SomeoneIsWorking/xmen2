@@ -1,3 +1,4 @@
+#include "x2_log.h"
 /*
  * IDirectInputDevice8 for the system keyboard and mouse, backed by SDL3.
  *
@@ -44,7 +45,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 #define THIS A(0)
 
 static void ret_com(CPU *C, uint32_t hr, int nargs) {
@@ -161,12 +162,11 @@ static void m_EnumObjects(CPU *C) {
     return;
   }
   if (d->kind != DINPUT_DEV_JOYSTICK) {
-    fprintf(stderr,
-            "DINPUT8: EnumObjects on the %s, which this host does "
-            "not describe object by object. Nothing is offered, "
-            "and that is reported rather than passed off as an "
-            "empty device.\n",
-            kind_name(d->kind));
+    x2_log_error("DINPUT8: EnumObjects on the %s, which this host does "
+                 "not describe object by object. Nothing is offered, "
+                 "and that is reported rather than passed off as an "
+                 "empty device.\n",
+                 kind_name(d->kind));
     ret_com(C, S_OK, 3);
     return;
   }
@@ -185,8 +185,8 @@ static void m_QueryInterface(CPU *C) {
 static void m_AddRef(CPU *C) {
   Device *d = dev_of(THIS);
   uint32_t n = d ? ++d->refs : 1u;
-  C->eax = n;
-  C->esp += 4u + 4u;
+  C->reg[kX86pEax] = n;
+  C->reg[kX86pEsp] += 4u + 4u;
 }
 
 static void m_Release(CPU *C) {
@@ -197,8 +197,8 @@ static void m_Release(CPU *C) {
   /* Not destroyed at zero: the two system devices live for the process and
      more than one caller holds each. Freeing would hand a survivor a
      dangling vtable, and the fault would look like an input bug. */
-  C->eax = n;
-  C->esp += 4u + 4u;
+  C->reg[kX86pEax] = n;
+  C->reg[kX86pEsp] += 4u + 4u;
 }
 
 static void m_SetDataFormat(CPU *C) {
@@ -212,18 +212,16 @@ static void m_SetDataFormat(CPU *C) {
   }
   d->data_size = RD32(df + 12u);
   if (!d->data_size) {
-    fprintf(stderr,
-            "DINPUT8: SetDataFormat on the %s declared a zero-byte "
-            "state. Refusing: GetDeviceState would then fill "
-            "nothing and the game would read its own stack.\n",
-            kind_name(d->kind));
+    x2_log_error("DINPUT8: SetDataFormat on the %s declared a zero-byte "
+                 "state. Refusing: GetDeviceState would then fill "
+                 "nothing and the game would read its own stack.\n",
+                 kind_name(d->kind));
     ret_com(C, DIERR_INVALIDPARAM, 1);
     return;
   }
-  fprintf(stderr,
-          "DINPUT8: the %s data format is %u byte(s) over %u "
-          "object(s).\n",
-          kind_name(d->kind), d->data_size, RD32(df + 16u));
+  x2_log_error("DINPUT8: the %s data format is %u byte(s) over %u "
+               "object(s).\n",
+               kind_name(d->kind), d->data_size, RD32(df + 16u));
   ret_com(C, S_OK, 1);
 }
 
@@ -238,11 +236,10 @@ static void m_SetCooperativeLevel(CPU *C) {
   if (d)
     d->coop = flags;
   if (flags & 0x1u)
-    fprintf(stderr,
-            "DINPUT8: SetCooperativeLevel asked for EXCLUSIVE "
-            "access to the %s (flags 0x%x); this host cannot take "
-            "the device from the desktop, so it stays shared.\n",
-            d ? kind_name(d->kind) : "device", flags);
+    x2_log_error("DINPUT8: SetCooperativeLevel asked for EXCLUSIVE "
+                 "access to the %s (flags 0x%x); this host cannot take "
+                 "the device from the desktop, so it stays shared.\n",
+                 d ? kind_name(d->kind) : "device", flags);
   ret_com(C, S_OK, 2);
 }
 
@@ -270,8 +267,8 @@ static void m_Acquire(CPU *C) {
     /* Real DirectInput refuses this, and so must we: the size the state
        will be written at is not known yet. */
     d->n_acquire_fail++;
-    fprintf(stderr, "DINPUT8: Acquire on the %s before SetDataFormat.\n",
-            kind_name(d->kind));
+    x2_log_error("DINPUT8: Acquire on the %s before SetDataFormat.\n",
+                 kind_name(d->kind));
     ret_com(C, DIERR_INVALIDPARAM, 0);
     return;
   }
@@ -299,13 +296,12 @@ static void m_GetDeviceData(CPU *C) {
   uint32_t inout = A(3);
   static unsigned long told;
   if (!told++)
-    fprintf(stderr,
-            "DINPUT8: GetDeviceData (buffered input) on the %s -- "
-            "no buffer was ever configured, so this reports ZERO "
-            "events, every time. If the game relies on buffered "
-            "keys rather than GetDeviceState, that is the next "
-            "work item.\n",
-            d ? kind_name(d->kind) : "device");
+    x2_log_error("DINPUT8: GetDeviceData (buffered input) on the %s -- "
+                 "no buffer was ever configured, so this reports ZERO "
+                 "events, every time. If the game relies on buffered "
+                 "keys rather than GetDeviceState, that is the next "
+                 "work item.\n",
+                 d ? kind_name(d->kind) : "device");
   if (inout)
     WR32(inout, 0);
   ret_com(C, S_OK, 5);
@@ -369,20 +365,18 @@ static void m_SetProperty(CPU *C) {
     int32_t lo = (int32_t)RD32(ph + 16u), hi = (int32_t)RD32(ph + 20u);
     if (hi > lo) {
       if (!d->range_set || d->axis_lo != lo || d->axis_hi != hi)
-        fprintf(stderr,
-                "DINPUT8: gamepad %d axis range set to "
-                "[%d, %d] by the game; every axis it reads is "
-                "scaled into that.\n",
-                pad_of(d), lo, hi);
+        x2_log_error("DINPUT8: gamepad %d axis range set to "
+                     "[%d, %d] by the game; every axis it reads is "
+                     "scaled into that.\n",
+                     pad_of(d), lo, hi);
       d->axis_lo = lo;
       d->axis_hi = hi;
       d->range_set = 1;
     } else {
-      fprintf(stderr,
-              "DINPUT8: SetProperty(DIPROP_RANGE) with lMin %d "
-              "not below lMax %d. Refused rather than stored: an "
-              "inverted range makes every axis read backwards.\n",
-              lo, hi);
+      x2_log_error("DINPUT8: SetProperty(DIPROP_RANGE) with lMin %d "
+                   "not below lMax %d. Refused rather than stored: an "
+                   "inverted range makes every axis read backwards.\n",
+                   lo, hi);
       ret_com(C, DIERR_INVALIDPARAM, 2);
       return;
     }
@@ -390,12 +384,11 @@ static void m_SetProperty(CPU *C) {
     return;
   }
   if (prop < 0x10000u && !told++)
-    fprintf(stderr,
-            "DINPUT8: SetProperty(#%u) is accepted and has NO "
-            "effect here. Buffer size (#1) and axis mode (#2) would "
-            "change what GetDeviceData and GetDeviceState must "
-            "return; see src/native/dinput_device.c.\n",
-            prop);
+    x2_log_error("DINPUT8: SetProperty(#%u) is accepted and has NO "
+                 "effect here. Buffer size (#1) and axis mode (#2) would "
+                 "change what GetDeviceData and GetDeviceState must "
+                 "return; see src/native/dinput_device.c.\n",
+                 prop);
   ret_com(C, S_OK, 2);
 }
 
@@ -440,14 +433,12 @@ static void m_Poll(CPU *C) {
 
 static void m_unimplemented(CPU *C) {
   const char *nm = (const char *)x86_callback_ctx();
-  fprintf(stderr,
-          "\n*** DINPUT8: IDirectInputDevice8::%s was called, and is not "
-          "implemented.\n"
-          "    The keyboard and mouse are served; this is the method the "
-          "game wants NEXT, and that name IS the work item.\n"
-          "    See src/native/dinput_device.c and issue #32.\n",
-          nm ? nm : "(unknown slot)");
-  fflush(stderr);
+  x2_log_error("\n*** DINPUT8: IDirectInputDevice8::%s was called, and is not "
+               "implemented.\n"
+               "    The keyboard and mouse are served; this is the method the "
+               "game wants NEXT, and that name IS the work item.\n"
+               "    See src/native/dinput_device.c and issue #32.\n",
+               nm ? nm : "(unknown slot)");
   x86_diag_dump();
   abort();
   (void)C;
@@ -495,7 +486,7 @@ static void build_vtable(void) {
     return;
   g_vtable = guest_malloc(VT_COUNT * 4u);
   if (!g_vtable) {
-    fprintf(stderr, "DINPUT8: no guest memory for the device vtable\n");
+    x2_log_error("DINPUT8: no guest memory for the device vtable\n");
     abort();
   }
   for (k = 0; k < VT_COUNT; k++)
@@ -547,14 +538,14 @@ static uint32_t device_alloc(DInputDeviceKind kind,
   build_vtable();
   obj = guest_malloc(8u);
   if (!obj) {
-    fprintf(stderr, "DINPUT8: no guest memory for a device\n");
+    x2_log_error("DINPUT8: no guest memory for a device\n");
     return 0;
   }
   WR32(obj + 0u, g_vtable);
   WR32(obj + 4u, 0);
   d = dinput_device_registry_append();
   if (!d) {
-    fprintf(stderr, "DINPUT8: no host memory for another device\n");
+    x2_log_error("DINPUT8: no host memory for another device\n");
     return 0;
   }
   memset(d, 0, sizeof *d);
@@ -568,18 +559,17 @@ static uint32_t device_alloc(DInputDeviceKind kind,
     int pad;
     x2_controller_instance_bind(&d->controller, pad_guid);
     pad = pad_of(d);
-    fprintf(stderr,
-            "DINPUT8: a native gamepad device at 0x%08x for pad %d "
-            "(\"%s\")\n",
-            obj, pad, dinput_pad_name(pad) ? dinput_pad_name(pad) : "?");
+    x2_log_error("DINPUT8: a native gamepad device at 0x%08x for pad %d "
+                 "(\"%s\")\n",
+                 obj, pad, dinput_pad_name(pad) ? dinput_pad_name(pad) : "?");
     return obj;
   }
-  fprintf(stderr, "DINPUT8: a native %s device at 0x%08x%s\n", kind_name(kind),
-          obj,
-          dinput_system_available()
-              ? " (SDL-backed)"
-              : " -- with no SDL video subsystem up, so it will "
-                "report nothing pressed");
+  x2_log_error("DINPUT8: a native %s device at 0x%08x%s\n", kind_name(kind),
+               obj,
+               dinput_system_available()
+                   ? " (SDL-backed)"
+                   : " -- with no SDL video subsystem up, so it will "
+                     "report nothing pressed");
   return obj;
 }
 
@@ -589,23 +579,24 @@ void dinput_device_report(void) {
   if (done++)
     return;
   if (!dinput_device_registry_count()) {
-    printf("  dinput devices: none was ever created.\n");
+    x2_log_info("  dinput devices: none was ever created.\n");
     return;
   }
-  printf("  dinput devices:\n");
+  x2_log_info("  dinput devices:\n");
   for (i = 0; i < (int)dinput_device_registry_count(); i++) {
     Device *device = dinput_device_registry_at((size_t)i);
-    printf("        %-9s %u byte state, %s, %lu state read(s), %lu Poll(s),"
-           " %lu Acquire(s)%s\n",
-           kind_name(device->kind), device->data_size,
-           device->acquired ? "acquired" : "NOT acquired", device->polls,
-           device->n_poll, device->n_acquire,
-           (!device->polls && !device->n_poll && !device->n_acquire)
-               ? "  -- the game never touched this device after creating it"
-               : "");
+    x2_log_info(
+        "        %-9s %u byte state, %s, %lu state read(s), %lu Poll(s),"
+        " %lu Acquire(s)%s\n",
+        kind_name(device->kind), device->data_size,
+        device->acquired ? "acquired" : "NOT acquired", device->polls,
+        device->n_poll, device->n_acquire,
+        (!device->polls && !device->n_poll && !device->n_acquire)
+            ? "  -- the game never touched this device after creating it"
+            : "");
   }
   if (dinput_system_blind_reads())
-    printf("        %lu of those read a device with no SDL video "
-           "subsystem up, and reported nothing pressed.\n",
-           dinput_system_blind_reads());
+    x2_log_info("        %lu of those read a device with no SDL video "
+                "subsystem up, and reported nothing pressed.\n",
+                dinput_system_blind_reads());
 }

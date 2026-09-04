@@ -1,4 +1,5 @@
 #include "boot_blackout.h"
+#include "../native/x2_log.h"
 
 #include "guest_clock.h"
 
@@ -24,12 +25,11 @@ void x2_boot_blackout_arm(const char *mode_name) {
   g_blackout.ended[0] = 0;
   snprintf(g_blackout.mode, sizeof g_blackout.mode, "%s",
            mode_name ? mode_name : "?");
-  printf("boot blackout: armed for the %s boot -- branding and loading "
-         "screens present black until the destination map is up (self "
-         "expires at %.0fs or %lu frames).\n",
-         g_blackout.mode, BLACKOUT_TIMEOUT_S,
-         (unsigned long)BLACKOUT_MAX_FRAMES);
-  fflush(stdout);
+  x2_log_info("boot blackout: armed for the %s boot -- branding and loading "
+              "screens present black until the destination map is up (self "
+              "expires at %.0fs or %lu frames).\n",
+              g_blackout.mode, BLACKOUT_TIMEOUT_S,
+              (unsigned long)BLACKOUT_MAX_FRAMES);
 }
 
 void x2_boot_blackout_disarm(const char *why) {
@@ -38,9 +38,8 @@ void x2_boot_blackout_disarm(const char *why) {
   g_blackout.armed = 0;
   snprintf(g_blackout.ended, sizeof g_blackout.ended, "%s",
            why ? why : "disarmed");
-  printf("boot blackout: lifted after %lu frame(s) -- %s.\n",
-         g_blackout.frames_blacked, g_blackout.ended);
-  fflush(stdout);
+  x2_log_info("boot blackout: lifted after %lu frame(s) -- %s.\n",
+              g_blackout.frames_blacked, g_blackout.ended);
 }
 
 int x2_boot_blackout_active(void) {

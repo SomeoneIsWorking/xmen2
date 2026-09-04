@@ -9,6 +9,7 @@
  * (x,0,y) text plane without reconstructing intent from D3D state.
  */
 #include "ui_transform.h"
+#include "x2_log.h"
 
 #include "gpu_matrix.h"
 #include "x86rt.h"
@@ -58,9 +59,9 @@ static void select_context(uint32_t context) {
 }
 
 void x2_ui_transform_compute_matrix(CPU *C) {
-  uint32_t context = C->ecx;
-  uint32_t which = RD32(C->esp + 4u);
-  uint32_t output_ref = RD32(C->esp + 8u);
+  uint32_t context = C->reg[kX86pEcx];
+  uint32_t which = RD32(C->reg[kX86pEsp] + 4u);
+  uint32_t output_ref = RD32(C->reg[kX86pEsp] + 8u);
   uint32_t output;
   float matrix[16];
   unsigned bit = selector_bit(which);
@@ -114,15 +115,15 @@ int x2_ui_transform_current(uint32_t context, float mvp[16]) {
 }
 
 void x2_ui_transform_report(void) {
-  printf("  Engine UI transform: %lu computeMatrix_Dx call(s), %lu "
-         "visual-context cache selection(s), %lu "
-         "world/view/projection capture(s), %lu "
-         "unreadable; %lu complete MVP snapshot(s) published and %lu "
-         "cross-context request(s) refused\n",
-         g_calls, g_context_selections, g_captured, g_unreadable, g_published,
-         g_context_refused);
+  x2_log_info("  Engine UI transform: %lu computeMatrix_Dx call(s), %lu "
+              "visual-context cache selection(s), %lu "
+              "world/view/projection capture(s), %lu "
+              "unreadable; %lu complete MVP snapshot(s) published and %lu "
+              "cross-context request(s) refused\n",
+              g_calls, g_context_selections, g_captured, g_unreadable,
+              g_published, g_context_refused);
   if (g_valid != 7u)
-    printf("        incomplete matrix set (projection=%d world=%d view=%d)"
-           " -- native text-plane placement is refused\n",
-           !!(g_valid & 1u), !!(g_valid & 2u), !!(g_valid & 4u));
+    x2_log_info("        incomplete matrix set (projection=%d world=%d view=%d)"
+                " -- native text-plane placement is refused\n",
+                !!(g_valid & 1u), !!(g_valid & 2u), !!(g_valid & 4u));
 }

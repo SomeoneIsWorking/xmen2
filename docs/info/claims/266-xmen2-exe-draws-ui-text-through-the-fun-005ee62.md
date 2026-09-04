@@ -16,7 +16,7 @@ wide string; for every wchar < 256 reads the glyph record at
 submits it through `FUN_005ee400`, advances the pen by the record's advance).
 Measurement goes through font-table vtable `+0x38` = `FUN_00597c90`, which
 accumulates `word[glyph*0x1c+4]` per narrow byte. No other code path reads
-glyph records: a reached-set sweep of `0x596000-0x5a0000` over a 400-frame
+glyph records: an address-entry trace over `0x596000-0x5a0000` during a 400-frame
 tutorial run shows exactly these cluster functions hot (getRecord x3211,
 getTexture x4931, measurer x645, tokenizer x212).
 
@@ -27,7 +27,7 @@ calls, eight distinct return sites, the two hot ones (`0x005ee63d`,
 `0x005ee663`, x1207 each) inside `FUN_005ee780`. Ghidra decompile
 (`scratch/re-ghidra/decomp-drawer.c`) shows the char loop, the
 `wchar*0x1c + [obj+0x18]` record lookup, the UV float reads with v-flip, and
-the `FUN_005ee400` submission. Reached set: `scratch/logs/reached-text-err2.log`.
+the `FUN_005ee400` submission. The retained aggregate counts are recorded above.
 Full write-up: `docs/RE/text.md`.
 
 ## What would falsify it

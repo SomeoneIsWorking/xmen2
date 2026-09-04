@@ -20,7 +20,6 @@ static int file_contains(const char *path, const char *needle) {
 
 static int ordinary_answer(void) {
   const char *path = "scratch/test-shadow-trace-off.jsonl";
-  ShadowProbeCounts zero = {0};
   ShadowTrace trace;
   FILE *file = fopen(path, "w");
   if (!file)
@@ -28,12 +27,12 @@ static int ordinary_answer(void) {
   shadow_trace_init(&trace, file, 0, 64);
   shadow_trace_control(&trace, 1, 0, 0, 1);
   shadow_trace_default_targets(&trace, 0x1111, 0, 0x2222, 0);
-  shadow_trace_present(&trace, 0, zero, 1);
-  shadow_trace_draw(&trace, 0, 4, 2, 0);
-  shadow_trace_present(&trace, 0, zero, 0);
-  shadow_trace_close(&trace, zero);
+  shadow_trace_present(&trace, 0, 1);
+  shadow_trace_draw(&trace, 0, 4, 2);
+  shadow_trace_present(&trace, 0, 0);
+  shadow_trace_close(&trace);
   fclose(file);
-  return file_contains(path, "\"detailed_shadow\":0,\"path\":\"none\"") &&
+  return file_contains(path, "\"detailed_shadow\":0,\"draws\":1") &&
          file_contains(path, "\"draws\":1") &&
          file_contains(path, "\"color_write_mask\":15") &&
          file_contains(path, "\"stencil_mask\":4294967295") &&
@@ -45,40 +44,8 @@ static int ordinary_answer(void) {
                              "\"forced_reads\":1");
 }
 
-static int single_shadow_answer(const char *path, ShadowProbeCounts calls,
-                                const char *answer) {
-  ShadowProbeCounts zero = {0};
-  ShadowTrace trace;
-  FILE *file = fopen(path, "w");
-  if (!file)
-    return 0;
-  shadow_trace_init(&trace, file, 1, 16);
-  shadow_trace_present(&trace, 1, zero, 1);
-  shadow_trace_present(&trace, 1, calls, 0);
-  shadow_trace_close(&trace, calls);
-  fclose(file);
-  return file_contains(path, answer);
-}
-
-static int individual_shadow_answers(void) {
-  return single_shadow_answer("scratch/test-shadow-trace-planar.jsonl",
-                              (ShadowProbeCounts){1, 0, 0},
-                              "\"path\":\"planar\"") &&
-         single_shadow_answer("scratch/test-shadow-trace-projective.jsonl",
-                              (ShadowProbeCounts){0, 1, 0},
-                              "\"path\":\"projective\"") &&
-         single_shadow_answer("scratch/test-shadow-trace-self.jsonl",
-                              (ShadowProbeCounts){0, 0, 1},
-                              "\"path\":\"self\"") &&
-         single_shadow_answer("scratch/test-shadow-trace-title.jsonl",
-                              (ShadowProbeCounts){0, 0, 0, 1, 2},
-                              "\"path\":\"title-floor-decal\"");
-}
-
 static int shadow_answers_and_routes(void) {
   const char *path = "scratch/test-shadow-trace-on.jsonl";
-  ShadowProbeCounts begin = {5, 7, 11, 13, 17};
-  ShadowProbeCounts end = {6, 9, 14, 14, 19};
   ShadowTrace trace;
   float matrix[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0.5f, 0.25f, 0, 1};
   int32_t clear_rect[4] = {3, 5, 101, 203};
@@ -86,7 +53,7 @@ static int shadow_answers_and_routes(void) {
   if (!file)
     return 0;
   shadow_trace_init(&trace, file, 1, 64);
-  shadow_trace_present(&trace, 1, begin, 1);
+  shadow_trace_present(&trace, 1, 1);
   shadow_trace_resource(&trace, SHADOW_RESOURCE_CREATE_TEXTURE, 0x1000, 0, 256,
                         256, 1, 1, 21, 0, 0);
   shadow_trace_resource(&trace, SHADOW_RESOURCE_GET_SURFACE_LEVEL, 0x1000,
@@ -99,16 +66,11 @@ static int shadow_answers_and_routes(void) {
   shadow_trace_set_render_state(&trace, 168, 0);
   shadow_trace_set_pixel_shader(&trace, 3);
   shadow_trace_clear(&trace, 1, clear_rect, 7, 0x80402010u, 0.75f, 9, 0);
-  shadow_trace_draw(&trace, 1, 4, 12, 1);
-  shadow_trace_present(&trace, 1, end, 0);
-  shadow_trace_close(&trace, end);
+  shadow_trace_draw(&trace, 1, 4, 12);
+  shadow_trace_present(&trace, 1, 0);
+  shadow_trace_close(&trace);
   fclose(file);
-  return file_contains(
-             path, "\"path\":\"planar+projective+self+title-floor-decal\"") &&
-         file_contains(path, "\"title_shadow_calls\":{\"manager\":1,"
-                             "\"floor_decal\":2}") &&
-         file_contains(path, "\"custom_geometry_draws\":1") &&
-         file_contains(path, "\"custom_geometry_active\":1") &&
+  return file_contains(path, "\"detailed_shadow\":1,\"draws\":1") &&
          file_contains(path, "\"create_texture\":1") &&
          file_contains(path, "\"get_surface_level\":1") &&
          file_contains(path, "\"event\":\"set_transform\"") &&
@@ -120,21 +82,20 @@ static int shadow_answers_and_routes(void) {
 
 static int refusals_and_bound(void) {
   const char *path = "scratch/test-shadow-trace-refusal.jsonl";
-  ShadowProbeCounts zero = {0};
   ShadowTrace trace;
   FILE *file = fopen(path, "w");
   if (!file)
     return 0;
   shadow_trace_init(&trace, file, 1, 1);
-  shadow_trace_present(&trace, 0, zero, 1);
-  shadow_trace_present(&trace, 0, zero, 0);
-  shadow_trace_present(&trace, 1, zero, 1);
+  shadow_trace_present(&trace, 0, 1);
+  shadow_trace_present(&trace, 0, 0);
+  shadow_trace_present(&trace, 1, 1);
   shadow_trace_set_render_state(&trace, 47, 1);
   shadow_trace_set_render_state(&trace, 52, 1);
   shadow_trace_texture_hook_failure(&trace);
-  shadow_trace_draw(&trace, 0, 4, 1, 0);
-  shadow_trace_present(&trace, 1, zero, 0);
-  shadow_trace_close(&trace, zero);
+  shadow_trace_draw(&trace, 0, 4, 1);
+  shadow_trace_present(&trace, 1, 0);
+  shadow_trace_close(&trace);
   fclose(file);
   return file_contains(path, "\"reason\":\"detailed_shadow_mismatch\"") &&
          file_contains(path, "\"events\":1,\"dropped_events\":31") &&
@@ -169,11 +130,7 @@ int main(void) {
     return 1;
   }
   if (!shadow_answers_and_routes()) {
-    fprintf(stderr, "shadow trace: shadow paths/resources were not recorded\n");
-    return 1;
-  }
-  if (!individual_shadow_answers()) {
-    fprintf(stderr, "shadow trace: an individual shadow answer was lost\n");
+    fprintf(stderr, "shadow trace: shadow resources/state were not recorded\n");
     return 1;
   }
   if (!refusals_and_bound()) {
@@ -188,7 +145,7 @@ int main(void) {
     fprintf(stderr, "shadow trace: wrong executable anchor was accepted\n");
     return 1;
   }
-  puts("shadow trace: engine/title floor-shadow paths, resource route, "
-       "control/build refusals and event bound proved");
+  puts("shadow trace: D3D8 resource/state route, control/build refusals and "
+       "event bound proved");
   return 0;
 }

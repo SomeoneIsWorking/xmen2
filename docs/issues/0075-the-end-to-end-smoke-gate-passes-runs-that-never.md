@@ -2,7 +2,7 @@
 id: 75
 title: The end-to-end smoke gate passes runs that never left the main menu
 status: resolved
-symptom: tools/smoke_loop.sh reports PASSED, with all six scripted presses fired, no refused draw and a bright final frame -- for a run that answered the difficulty dialog a few frames late, backed out to the main menu, and sat in the menus for its whole 4200 frames.
+symptom: The old scripted smoke scenario reports PASSED, with all six scripted presses fired, no refused draw and a bright final frame -- for a run that answered the difficulty dialog a few frames late, backed out to the main menu, and sat in the menus for its whole 4200 frames.
 tags: pc,native,tooling,instruments,gate
 created: 2026-08-14
 updated: 2026-08-14
@@ -34,6 +34,6 @@ in the menus for good, and the later Escapes then back out to the main menu.
 
 ## Proof it can fail
 
-tools/smoke_loop.sh --selftest gains 'a run that never loaded a level': the
+The scenario selftest gains 'a run that never loaded a level': the
 known-good log with the gate line REMOVED must fail. 14 of 14 cases pass,
 including that one.

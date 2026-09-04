@@ -1,3 +1,5 @@
+#include "../config/environment.h"
+#include "x2_log.h"
 /*
  * MSVCR71 -- the C runtime XMen2.exe imports, on libc.
  *
@@ -19,7 +21,7 @@
  *     the guest stack, so it needs a small format walker rather than a
  *     forward to libc.
  *
- * Conventions, all measured against the emitted call sites:
+ * Conventions, all measured against the retail guest call sites:
  *   - the C runtime is __cdecl: the CALLER pops, so ESP moves by 4 (the
  *     return address) and nothing else.
  *   - a double is TWO stack dwords, and a double RESULT comes back in ST(0)
@@ -67,10 +69,9 @@ static void crt_watch_dst(uint32_t dst, uint32_t n, const char *sym) {
   if (dst <= w && w < dst + n) {
     extern volatile uint32_t g_sample_ep;
     const char *nm = x86_native_name_at(g_sample_ep);
-    fprintf(stderr,
-            "[GWATCH] %s writes [0x%08x,0x%08x) covering watched "
-            "0x%08x; running body was 0x%08x %s\n",
-            sym, dst, dst + n, w, g_sample_ep, nm ? nm : "(?)");
+    x2_log_error("[GWATCH] %s writes [0x%08x,0x%08x) covering watched "
+                 "0x%08x; running body was 0x%08x %s\n",
+                 sym, dst, dst + n, w, g_sample_ep, nm ? nm : "(?)");
     g_guest_watch_addr = 0;
   }
 }
@@ -89,12 +90,12 @@ static double argd(CPU *C, int i) {
    condition, so it stops. */
 static void ret_d(CPU *C, double v) {
   x87_crt_push(C, (long double)v);
-  C->esp += 4u;
+  C->reg[kX86pEsp] += 4u;
 }
 
 void crt_unimpl(const char *sym, const char *why) {
-  fprintf(stderr, "crt: MSVCR71!%s is not implemented natively.\n  %s\n", sym,
-          why);
+  x2_log_error("crt: MSVCR71!%s is not implemented natively.\n  %s\n", sym,
+               why);
   abort();
 }
 
@@ -115,29 +116,26 @@ void imp_MSVCR71_malloc(CPU *C) {
   if (n >= 0x40000000u) {
     static int said;
     if (!said++) {
-      uint32_t ra = RD32(C->esp);
+      uint32_t ra = RD32(C->reg[kX86pEsp]);
       const char *nm = x86_native_name_at(ra);
-      fprintf(stderr,
-              "\n*** malloc(%u = 0x%08x) -- that is not a size, it looks "
-              "like an ADDRESS.\n"
-              "    Asked for by guest 0x%08x (%s).\n"
-              "    A pointer arriving where a size belongs means an "
-              "argument was shifted or a field was read at the wrong\n"
-              "    offset. The allocation fails, and the guest will take "
-              "its own out-of-memory path from here.\n",
-              n, n, ra, nm ? nm : "in no body this host can name");
+      x2_log_error("\n*** malloc(%u = 0x%08x) -- that is not a size, it looks "
+                   "like an ADDRESS.\n"
+                   "    Asked for by guest 0x%08x (%s).\n"
+                   "    A pointer arriving where a size belongs means an "
+                   "argument was shifted or a field was read at the wrong\n"
+                   "    offset. The allocation fails, and the guest will take "
+                   "its own out-of-memory path from here.\n",
+                   n, n, ra, nm ? nm : "in no body this host can name");
       {
         /* The guest stack as it actually is at the failing call, so
            the layout is read rather than reconstructed from a ring
            that may be showing a different invocation. */
         int k;
-        fprintf(stderr, "    guest stack at esp=0x%08x:", C->esp);
+        x2_log_error("    guest stack at esp=0x%08x:", C->reg[kX86pEsp]);
         for (k = 0; k < 10; k++)
-          fprintf(stderr, "%s +%02d 0x%08x", (k % 4) ? "" : "\n     ", k * 4,
-                  RD32(C->esp + (uint32_t)k * 4u));
-        fputc('\n', stderr);
+          x2_log_error("%s +%02d 0x%08x", (k % 4) ? "" : "\n     ", k * 4,
+                       RD32(C->reg[kX86pEsp] + (uint32_t)k * 4u));
       }
-      fflush(stderr);
     }
   }
   ret_c(C, guest_malloc(n));
@@ -361,7 +359,7 @@ uint32_t crt_iob_base(void) {
   if (!g_iob) {
     g_iob = guest_malloc(IOB_N * IOB_SIZEOF_FILE);
     if (!g_iob) {
-      fprintf(stderr, "crt: could not allocate _iob on the guest heap\n");
+      x2_log_error("crt: could not allocate _iob on the guest heap\n");
       abort();
     }
     memset(guest_memory_pointer(g_iob), 0, IOB_N * IOB_SIZEOF_FILE);
@@ -378,10 +376,9 @@ static FILE *fh(uint32_t h) {
     return i == 0 ? stdin : i == 1 ? stdout : stderr;
   }
   if (h == 0 || h > MAX_FILES || !g_files[h - 1]) {
-    fprintf(stderr,
-            "crt: file handle %u is not open, and it is not a "
-            "pointer into _iob either\n",
-            h);
+    x2_log_error("crt: file handle %u is not open, and it is not a "
+                 "pointer into _iob either\n",
+                 h);
     abort();
   }
   return g_files[h - 1];
@@ -410,7 +407,7 @@ void imp_MSVCR71_fopen(CPU *C) {
     ret_c(C, g_files[i] ? (uint32_t)(i + 1) : 0u);
     return;
   }
-  fprintf(stderr, "crt: more than %d files open at once\n", MAX_FILES);
+  x2_log_error("crt: more than %d files open at once\n", MAX_FILES);
   abort();
 }
 
@@ -457,7 +454,8 @@ void imp_MSVCR71_fgets(CPU *C) {
 }
 void imp_MSVCR71_fprintf(CPU *C) {
   char buf[4096];
-  int n = guest_vformat(buf, sizeof buf, ACS(1), C->esp + 4u + 2u * 4u);
+  int n =
+      guest_vformat(buf, sizeof buf, ACS(1), C->reg[kX86pEsp] + 4u + 2u * 4u);
   if (n >= 0)
     fputs(buf, fh(A(0)));
   ret_c(C, (uint32_t)n);
@@ -477,8 +475,8 @@ void imp_MSVCR71__controlfp(CPU *C) {
      through it. Reporting the modelled value keeps the two consistent
      instead of answering from the host FPU, which the guest never uses. */
   uint32_t newv = A(0), mask = A(1);
-  C->fcw = (C->fcw & ~mask) | (newv & mask);
-  ret_c(C, C->fcw);
+  C->x87.control = (uint16_t)((C->x87.control & ~mask) | (newv & mask));
+  ret_c(C, C->x87.control);
 }
 
 void imp_MSVCR71___set_app_type(CPU *C) { ret_c(C, 0); } /* console/GUI hint */
@@ -498,20 +496,19 @@ void x86_guest_addr_of(uint32_t addr, const char **mod, uint32_t *guest);
 void x86_diag_dump(void);
 
 static void crt_exit_from(CPU *C, uint32_t code, const char *what) {
-  uint32_t from = RD32(C->esp);
+  uint32_t from = RD32(C->reg[kX86pEsp]);
   const char *mod = NULL;
   uint32_t guest = from;
   x86_guest_addr_of(from, &mod, &guest);
-  fprintf(stderr,
-          "\nmsvcr71: the guest called %s(%u) from 0x%08x (%s "
-          "0x%08x). It is QUITTING on purpose -- this is not a "
-          "crash.\n",
-          what, code, from, mod ? mod : "unmapped", guest);
-  if (getenv("X2_EXIT_RING"))
+  x2_log_error("\nmsvcr71: the guest called %s(%u) from 0x%08x (%s "
+               "0x%08x). It is QUITTING on purpose -- this is not a "
+               "crash.\n",
+               what, code, from, mod ? mod : "unmapped", guest);
+  if (x2_config_override_get(kX2ConfigExitRing))
     x86_diag_dump();
   else
-    fprintf(stderr, "  Set X2_EXIT_RING=1 to dump the boundary ring here "
-                    "and see what led to it.\n");
+    x2_log_error("  Set X2_EXIT_RING=1 to dump the boundary ring here "
+                 "and see what led to it.\n");
   exit((int)code);
 }
 void imp_MSVCR71__exit(CPU *C) { crt_exit_from(C, A(0), "_exit"); }
@@ -520,25 +517,24 @@ void imp_MSVCR71__c_exit(CPU *C) { ret_c(C, 0); }
 void imp_MSVCR71__cexit(CPU *C) { ret_c(C, 0); }
 
 void imp_MSVCR71__amsg_exit(CPU *C) {
-  fprintf(stderr,
-          "crt: the guest CRT called _amsg_exit(%u) -- a fatal "
-          "runtime error inside the recompiled program\n",
-          A(0));
+  x2_log_error("crt: the guest CRT called _amsg_exit(%u) -- a fatal "
+               "runtime error inside the guest program\n",
+               A(0));
   exit(3);
 }
 
 void imp_MSVCR71__purecall(CPU *C) {
-  fprintf(stderr, "crt: pure virtual function called -- an object was used "
-                  "before its constructor ran, or after its destructor\n");
+  x2_log_error("crt: pure virtual function called -- an object was used "
+               "before its constructor ran, or after its destructor\n");
   abort();
 }
 
 void imp_MSVCR71_qsort(CPU *C) {
   /*
    * The comparator is GUEST code, so this cannot forward to libc qsort: the
-   * callback has to go back through the recompiler. An insertion sort keeps
-   * the reentrancy trivial; these tables are small and it can be replaced
-   * when a measurement says it matters.
+   * callback has to go back through the guest execution engine. An insertion
+   * sort keeps the reentrancy trivial; these tables are small and it can be
+   * replaced when a measurement says it matters.
    *
    * THE HELD-OUT ELEMENT MUST LIVE IN GUEST MEMORY. It was a host malloc,
    * and the comparator is handed its ADDRESS and dereferences it -- so on a
@@ -553,12 +549,11 @@ void imp_MSVCR71_qsort(CPU *C) {
   uint32_t base = A(0), n = A(1), sz = A(2), cmp = A(3), i, j;
   uint32_t tmp = guest_malloc(sz);
   if (!tmp) {
-    fprintf(stderr,
-            "crt: qsort could not get %u bytes of GUEST memory for "
-            "the element it holds out; the comparator has to be "
-            "able to dereference it, so there is nothing to fall "
-            "back to.\n",
-            sz);
+    x2_log_error("crt: qsort could not get %u bytes of GUEST memory for "
+                 "the element it holds out; the comparator has to be "
+                 "able to dereference it, so there is nothing to fall "
+                 "back to.\n",
+                 sz);
     ret_c(C, 0);
     return;
   }
@@ -567,11 +562,11 @@ void imp_MSVCR71_qsort(CPU *C) {
     for (j = i; j > 0; j--) {
       uint32_t prev = base + (j - 1) * sz;
       CPU K = *C;
-      K.esp -= 8u;
-      WR32(K.esp + 0u, prev);
-      WR32(K.esp + 4u, tmp);
+      K.reg[kX86pEsp] -= 8u;
+      WR32(K.reg[kX86pEsp] + 0u, prev);
+      WR32(K.reg[kX86pEsp] + 4u, tmp);
       x86_guest_call(&K, cmp);
-      if ((int32_t)K.eax <= 0)
+      if ((int32_t)K.reg[kX86pEax] <= 0)
         break;
       memmove(guest_memory_pointer(base + j * sz), guest_memory_pointer(prev),
               sz);
@@ -741,11 +736,10 @@ int guest_vformat(char *out, size_t cap, const char *fmt, uint32_t va) {
     default:
       /* Refuse: see the header comment. The conversion is named so the
          next one can be added deliberately. */
-      fprintf(stderr,
-              "crt: format walker met %%%c, which it does not "
-              "implement -- refusing rather than inventing "
-              "output for it\n",
-              *p ? *p : '?');
+      x2_log_error("crt: format walker met %%%c, which it does not "
+                   "implement -- refusing rather than inventing "
+                   "output for it\n",
+                   *p ? *p : '?');
       crt_unimpl("_vsnprintf", "unimplemented printf conversion");
       return -1;
     }
@@ -873,12 +867,11 @@ void imp_MSVCR71___RTDynamicCast(CPU *C) {
   vftable = RD32(inptr + (uint32_t)vfdelta);
   col = RD32(vftable - 4u);
   if (!col) {
-    fprintf(stderr,
-            "crt: __RTDynamicCast on an object at 0x%08x whose "
-            "vftable 0x%08x has no complete-object locator. That "
-            "is not an RTTI-bearing object, and there is no answer "
-            "to give.\n",
-            inptr, vftable);
+    x2_log_error("crt: __RTDynamicCast on an object at 0x%08x whose "
+                 "vftable 0x%08x has no complete-object locator. That "
+                 "is not an RTTI-bearing object, and there is no answer "
+                 "to give.\n",
+                 inptr, vftable);
     abort();
   }
   /* The complete object: this pointer, minus where this subobject sits. */
@@ -906,12 +899,11 @@ void imp_MSVCR71___RTDynamicCast(CPU *C) {
    */
   if (is_ref) {
     const char *nm = target ? guest_memory_const_pointer(target + 8u) : "?";
-    fprintf(stderr,
-            "crt: __RTDynamicCast failed on a REFERENCE cast to "
-            "%s, which must throw std::bad_cast -- and this build "
-            "has no unwinder to throw through. Returning NULL "
-            "would be dereferenced by the caller.\n",
-            nm);
+    x2_log_error("crt: __RTDynamicCast failed on a REFERENCE cast to "
+                 "%s, which must throw std::bad_cast -- and this build "
+                 "has no unwinder to throw through. Returning NULL "
+                 "would be dereferenced by the caller.\n",
+                 nm);
     abort();
   }
   g_dyncast_null++;
@@ -920,17 +912,17 @@ void imp_MSVCR71___RTDynamicCast(CPU *C) {
 
 void crt_rtti_report(void) {
   if (g_dyncast_ok || g_dyncast_null)
-    printf("  crt: %lu dynamic_cast(s) matched a base, %lu answered NULL\n",
-           g_dyncast_ok, g_dyncast_null);
+    x2_log_info(
+        "  crt: %lu dynamic_cast(s) matched a base, %lu answered NULL\n",
+        g_dyncast_ok, g_dyncast_null);
 }
 
 /* ---- shared with the DLLs' MSVCRT --------------------------------------
  *
  * The exe imports MSVCR71.dll and the DLLs import MSVCRT.dll. Same functions,
- * different spelling of the containing module, and the recompiler names an
- * import stub after both. Aliasing rather than reimplementing: two copies of
- * _initterm would be two things to keep in step, and the one that drifts is
- * the one nobody is looking at.
+ * different spelling of the containing module. Aliasing rather than
+ * reimplementing: two copies of _initterm would be two things to keep in step,
+ * and the one that drifts is the one nobody is looking at.
  */
 /* ---- moved from win32_sdl.c: the CRT pieces the DLLs reach ------------- */
 
@@ -939,11 +931,9 @@ void imp_MSVCR71__initterm(CPU *C) {
      are the module's static constructors, and skipping them would leave
      every global unconstructed.
 
-     This used to refuse the whole table first, listing every target with no
-     statically recompiled body so they could be seeded and re-lifted. There
-     is no lifter and no seed list now: these targets are data pointers in
-     .rdata that static analysis never saw as code, which is exactly the case
-     the engine has no trouble with -- it decodes the bytes that are there. */
+     These targets are data pointers in .rdata rather than direct calls. The
+     runtime engine decodes the bytes at each target when it is reached, so
+     constructor discovery needs no separate product corpus or seed list. */
   uint32_t p, end = A(1);
   for (p = A(0); p < end; p += 4u) {
     uint32_t fn = RD32(p);
@@ -1026,11 +1016,10 @@ void imp_MSVCR71___security_error_handler(CPU *C) {
   extern const char *x86_native_name_at(uint32_t);
   extern void x86_diag_dump(void);
   const char *nm = x86_native_name_at(g_sample_ep);
-  fprintf(stderr,
-          "crt: the guest's stack-check handler fired -- a buffer "
-          "overrun was detected inside recompiled code\n"
-          "  last dispatched body: 0x%08x %s%s\n",
-          g_sample_ep, nm ? "" : "(unresolved)", nm ? nm : "");
+  x2_log_error("crt: the guest's stack-check handler fired -- a buffer "
+               "overrun was detected inside guest code\n"
+               "  last dispatched body: 0x%08x %s%s\n",
+               g_sample_ep, nm ? "" : "(unresolved)", nm ? nm : "");
   x86_diag_dump();
   abort();
 }
@@ -1092,7 +1081,7 @@ void imp_MSVCR71__CIasin(CPU *C) { x87_crt_ciasin(C); }
 
 void imp_MSVCR71_abort(CPU *C) {
   (void)C;
-  fprintf(stderr, "crt: the recompiled program called abort()\n");
+  x2_log_error("crt: the guest program called abort()\n");
   abort();
 }
 
@@ -1113,7 +1102,7 @@ void imp_MSVCR71_getenv(CPU *C) {
   /* The host environment, copied into guest memory so the pointer fits. The
      copies are never freed, which is correct: getenv's result is meant to
      stay valid for the life of the program. */
-  const char *v = getenv(ACS(0));
+  const char *v = x2_guest_environment_get(ACS(0));
   uint32_t p;
   if (!v) {
     ret_c(C, 0);
@@ -1143,12 +1132,12 @@ void imp_MSVCR71_setlocale(CPU *C) {
  * ---- one implementation, two module names ------------------------------
  *
  * The DLLs import MSVCRT.dll and the exe imports MSVCR71.dll. Same runtime,
- * two spellings, and the recompiler names a stub after each. Aliasing rather
+ * two spellings. Aliasing rather
  * than reimplementing: two copies of anything here would be two things to keep
  * in step, and the one that drifts is the one nobody is looking at.
  *
  * Only functions that are actually implemented above appear here. An MSVCRT
- * import with no entry keeps its generated stub and stops by name, which is
+ * import with no entry stops by name, which is
  * the behaviour that has been finding these one honest step at a time.
  */
 
@@ -1226,7 +1215,7 @@ void imp_MSVCR71__vsnprintf(CPU *C) {
 void imp_MSVCR71__snprintf(CPU *C) {
   /* (buf, count, fmt, ...) -- the variadic args start at slot 3 */
   uint32_t buf = A(0), count = A(1);
-  int n = guest_vformat(AS(0), count, ACS(2), C->esp + 4u + 3u * 4u);
+  int n = guest_vformat(AS(0), count, ACS(2), C->reg[kX86pEsp] + 4u + 3u * 4u);
   ret_c(C, (uint32_t)msvc_trunc(n, buf, count));
 }
 
@@ -1238,15 +1227,17 @@ void imp_MSVCR71_vsprintf(CPU *C) {
 }
 
 void imp_MSVCR71_sprintf(CPU *C) {
-  int n = guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1), C->esp + 4u + 2u * 4u);
+  int n = guest_vformat(AS(0), 0x7FFFFFFFu, ACS(1),
+                        C->reg[kX86pEsp] + 4u + 2u * 4u);
   ret_c(C, (uint32_t)n);
 }
 
 void imp_MSVCR71_printf(CPU *C) {
   char buf[4096];
-  int n = guest_vformat(buf, sizeof buf, ACS(0), C->esp + 4u + 1u * 4u);
+  int n =
+      guest_vformat(buf, sizeof buf, ACS(0), C->reg[kX86pEsp] + 4u + 1u * 4u);
   if (n >= 0)
-    fputs(buf, stdout);
+    x2_log_info("%s", buf);
   ret_c(C, (uint32_t)n);
 }
 
@@ -1254,7 +1245,7 @@ void imp_MSVCR71_vprintf(CPU *C) {
   char buf[4096];
   int n = guest_vformat(buf, sizeof buf, ACS(0), A(1));
   if (n >= 0)
-    fputs(buf, stdout);
+    x2_log_info("%s", buf);
   ret_c(C, (uint32_t)n);
 }
 
@@ -1429,11 +1420,10 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va) {
           depth_ok = 1;
         }
         if (!depth_ok) {
-          fprintf(stderr,
-                  "crt: scanf walker met an unterminated "
-                  "%%[ scanset in format \"%s\" -- "
-                  "refusing\n",
-                  fmt);
+          x2_log_error("crt: scanf walker met an unterminated "
+                       "%%[ scanset in format \"%s\" -- "
+                       "refusing\n",
+                       fmt);
           crt_unimpl("sscanf", "unterminated scanset");
           return -1;
         }
@@ -1465,11 +1455,10 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va) {
         break;
       }
       default:
-        fprintf(stderr,
-                "crt: scanf walker met %%%c in format \"%s\", "
-                "which it does not implement -- refusing rather "
-                "than reporting a match it did not make\n",
-                *p ? *p : '?', fmt);
+        x2_log_error("crt: scanf walker met %%%c in format \"%s\", "
+                     "which it does not implement -- refusing rather "
+                     "than reporting a match it did not make\n",
+                     *p ? *p : '?', fmt);
         crt_unimpl("sscanf", "unimplemented scanf conversion");
         return -1;
       }
@@ -1480,7 +1469,8 @@ int guest_vsscanf(const char *in, const char *fmt, uint32_t va) {
 }
 
 void imp_MSVCR71_sscanf(CPU *C) {
-  ret_c(C, (uint32_t)guest_vsscanf(ACS(0), ACS(1), C->esp + 4u + 2u * 4u));
+  ret_c(C, (uint32_t)guest_vsscanf(ACS(0), ACS(1),
+                                   C->reg[kX86pEsp] + 4u + 2u * 4u));
 }
 
 void imp_MSVCR71_fscanf(CPU *C) {
@@ -1493,43 +1483,6 @@ void imp_MSVCR71_fscanf(CPU *C) {
     ret_c(C, 0xFFFFFFFFu);
     return;
   }
-  ret_c(C, (uint32_t)guest_vsscanf(line, ACS(1), C->esp + 4u + 2u * 4u));
+  ret_c(C,
+        (uint32_t)guest_vsscanf(line, ACS(1), C->reg[kX86pEsp] + 4u + 2u * 4u));
 }
-
-#define CRT_ALIAS(n)                                                           \
-  void imp_MSVCRT_##n(CPU *C) { imp_MSVCR71_##n(C); }
-
-CRT_ALIAS(malloc)
-CRT_ALIAS(calloc) CRT_ALIAS(realloc) CRT_ALIAS(memcpy) CRT_ALIAS(
-    memset) CRT_ALIAS(memmove) CRT_ALIAS(strlen) CRT_ALIAS(strcpy)
-    CRT_ALIAS(strcat) CRT_ALIAS(strcmp) CRT_ALIAS(strchr) CRT_ALIAS(
-        strrchr) CRT_ALIAS(strstr) CRT_ALIAS(strtok) CRT_ALIAS(strncat)
-        CRT_ALIAS(strncpy) CRT_ALIAS(strncmp) CRT_ALIAS(_strdup) CRT_ALIAS(
-            _stricmp) CRT_ALIAS(_strnicmp) CRT_ALIAS(_strlwr) CRT_ALIAS(_strupr)
-            CRT_ALIAS(_itoa) CRT_ALIAS(isalnum) CRT_ALIAS(isalpha) CRT_ALIAS(
-                isdigit) CRT_ALIAS(isspace) CRT_ALIAS(tolower) CRT_ALIAS(atoi)
-                CRT_ALIAS(atof) CRT_ALIAS(strtod) CRT_ALIAS(ceil) CRT_ALIAS(
-                    floor) CRT_ALIAS(fabs) CRT_ALIAS(atan2) CRT_ALIAS(exp)
-                    CRT_ALIAS(log) CRT_ALIAS(pow) CRT_ALIAS(sqrt) CRT_ALIAS(
-                        _finite) CRT_ALIAS(_CIpow) CRT_ALIAS(_CIfmod)
-                        CRT_ALIAS(_CIacos) CRT_ALIAS(_CIasin) CRT_ALIAS(rand)
-                            CRT_ALIAS(srand) CRT_ALIAS(qsort) CRT_ALIAS(fopen)
-                                CRT_ALIAS(fclose) CRT_ALIAS(fread)
-                                    CRT_ALIAS(fseek) CRT_ALIAS(ftell)
-                                        CRT_ALIAS(exit) CRT_ALIAS(_exit)
-                                            CRT_ALIAS(_purecall)
-                                                CRT_ALIAS(abort)
-                                                    CRT_ALIAS(_errno)
-                                                        CRT_ALIAS(getenv)
-    /* the varargs family, on the format walker */
-    CRT_ALIAS(printf) CRT_ALIAS(vprintf) CRT_ALIAS(sprintf) CRT_ALIAS(vsprintf)
-        CRT_ALIAS(_snprintf) CRT_ALIAS(_vsnprintf) CRT_ALIAS(fflush)
-            CRT_ALIAS(fputc) CRT_ALIAS(fputs) CRT_ALIAS(fgetc) CRT_ALIAS(fgets)
-                CRT_ALIAS(ungetc) CRT_ALIAS(fwrite) CRT_ALIAS(fprintf)
-                    CRT_ALIAS(vfprintf)
-    /* C++ operator new / delete / delete[] */
-    CRT_ALIAS(__2_YAPAXI_Z) CRT_ALIAS(__3_YAXPAX_Z) CRT_ALIAS(___V_YAXPAX_Z)
-        CRT_ALIAS(sscanf) CRT_ALIAS(fscanf) CRT_ALIAS(setlocale)
-            CRT_ALIAS(_onexit) CRT_ALIAS(free) CRT_ALIAS(_ftol)
-                CRT_ALIAS(_initterm) CRT_ALIAS(_beginthreadex)
-                    CRT_ALIAS(_endthreadex) CRT_ALIAS(__dllonexit)

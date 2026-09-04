@@ -1,3 +1,4 @@
+#include "../native/x2_log.h"
 /* See igvk_ark.h. The mechanism this speaks is docs/RE/ark.md (C008/C009). */
 #include "igvk_ark.h"
 
@@ -11,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define A(i) RD32(C->esp + 4u + (uint32_t)(i) * 4u)
+#define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 
 /* ---- talking to the guest --------------------------------------------- */
 
@@ -45,12 +46,11 @@ uint32_t ark_lifted(const char *module, uint32_t linked_va) {
 uint32_t ark_export_req(const char *module, const char *mangled) {
   uint32_t a = ark_export(module, mangled);
   if (!a) {
-    fprintf(stderr,
-            "ark: %s does not export\n    %s\n"
-            "  Registration cannot proceed on a NULL function pointer: "
-            "libIGCore would store it and call it much later, and the "
-            "crash would name neither this symbol nor this file.\n",
-            module, mangled);
+    x2_log_error("ark: %s does not export\n    %s\n"
+                 "  Registration cannot proceed on a NULL function pointer: "
+                 "libIGCore would store it and call it much later, and the "
+                 "crash would name neither this symbol nor this file.\n",
+                 module, mangled);
     abort();
   }
   return a;
@@ -73,8 +73,8 @@ static void ensure_stack(void) {
     uint32_t n = 256u * 1024u;
     uint32_t p = guest_malloc(n);
     if (!p) {
-      fprintf(stderr, "ark: cannot allocate a guest stack for "
-                      "host-to-guest calls\n");
+      x2_log_error("ark: cannot allocate a guest stack for "
+                   "host-to-guest calls\n");
       abort();
     }
     g_call_sp = p + n - 64u;
@@ -117,12 +117,12 @@ uint32_t ark_call_cdecl(uint32_t target, const uint32_t *args, int n) {
   uint32_t saved;
   int i;
   cpu_reset(&C);
-  C.esp = ark_enter(&saved, n);
+  C.reg[kX86pEsp] = ark_enter(&saved, n);
   for (i = 0; i < n; i++)
-    WR32(C.esp + (uint32_t)i * 4u, args[i]);
+    WR32(C.reg[kX86pEsp] + (uint32_t)i * 4u, args[i]);
   x86_guest_call(&C, target);
   g_call_sp = saved;
-  return C.eax;
+  return C.reg[kX86pEax];
 }
 
 uint32_t ark_call_stdcall(uint32_t target, const uint32_t *args, int n) {
@@ -130,12 +130,12 @@ uint32_t ark_call_stdcall(uint32_t target, const uint32_t *args, int n) {
   uint32_t saved;
   int i;
   cpu_reset(&C);
-  C.esp = ark_enter(&saved, n);
+  C.reg[kX86pEsp] = ark_enter(&saved, n);
   for (i = 0; i < n; i++)
-    WR32(C.esp + (uint32_t)i * 4u, args[i]);
+    WR32(C.reg[kX86pEsp] + (uint32_t)i * 4u, args[i]);
   x86_guest_call_args(&C, target, (uint32_t)n * 4u);
   g_call_sp = saved;
-  return C.eax;
+  return C.reg[kX86pEax];
 }
 
 uint32_t ark_call_this(uint32_t target, uint32_t self, const uint32_t *args,
@@ -144,19 +144,19 @@ uint32_t ark_call_this(uint32_t target, uint32_t self, const uint32_t *args,
   uint32_t saved;
   int i;
   cpu_reset(&C);
-  C.ecx = self;
-  C.esp = ark_enter(&saved, n);
+  C.reg[kX86pEcx] = self;
+  C.reg[kX86pEsp] = ark_enter(&saved, n);
   for (i = 0; i < n; i++)
-    WR32(C.esp + (uint32_t)i * 4u, args[i]);
+    WR32(C.reg[kX86pEsp] + (uint32_t)i * 4u, args[i]);
   x86_guest_call_args(&C, target, (uint32_t)n * 4u);
   g_call_sp = saved;
-  return C.eax;
+  return C.reg[kX86pEax];
 }
 
 uint32_t ark_guest_str(const char *s) {
   uint32_t n = (uint32_t)strlen(s) + 1u, p = guest_malloc(n);
   if (!p) {
-    fprintf(stderr, "ark: no guest memory for the string \"%s\"\n", s);
+    x2_log_error("ark: no guest memory for the string \"%s\"\n", s);
     abort();
   }
   memcpy(guest_memory_pointer(p), s, n);
@@ -164,8 +164,8 @@ uint32_t ark_guest_str(const char *s) {
 }
 
 void ark_ret(CPU *C, uint32_t eax, int stack_args) {
-  C->eax = eax;
-  C->esp += 4u + (uint32_t)stack_args * 4u;
+  C->reg[kX86pEax] = eax;
+  C->reg[kX86pEsp] += 4u + (uint32_t)stack_args * 4u;
 }
 
 /* ---- vtables ----------------------------------------------------------- */
@@ -212,26 +212,23 @@ static void unimplemented(CPU *C) {
 
   if (g_permissive && u && u->nargs >= 0) {
     if (!u->hits++)
-      fprintf(stderr,
-              "igVk: PERMISSIVE -- slot %d (%s) ignored, "
-              "returning 0 and popping %d argument(s).\n",
-              u->slot, u->owner, u->nargs);
+      x2_log_error("igVk: PERMISSIVE -- slot %d (%s) ignored, "
+                   "returning 0 and popping %d argument(s).\n",
+                   u->slot, u->owner, u->nargs);
     ark_ret(C, 0, u->nargs);
     return;
   }
   if (g_permissive && u)
-    fprintf(stderr,
-            "\n*** slot %d cannot be ignored even in permissive "
-            "mode: its argument count is unknown, and guessing it "
-            "would shift the guest stack.\n",
-            u->slot);
-  fprintf(stderr,
-          "\n*** %s: the engine dispatched vtable SLOT %d, which this host "
-          "class does not implement.\n"
-          "    Implement it, or -- if it should be inherited -- copy the "
-          "parent vtable's entry for that slot.\n",
-          u ? u->owner : "(a native ARK class)", u ? u->slot : -1);
-  fflush(stderr);
+    x2_log_error("\n*** slot %d cannot be ignored even in permissive "
+                 "mode: its argument count is unknown, and guessing it "
+                 "would shift the guest stack.\n",
+                 u->slot);
+  x2_log_error(
+      "\n*** %s: the engine dispatched vtable SLOT %d, which this host "
+      "class does not implement.\n"
+      "    Implement it, or -- if it should be inherited -- copy the "
+      "parent vtable's entry for that slot.\n",
+      u ? u->owner : "(a native ARK class)", u ? u->slot : -1);
   x86_diag_dump();
   abort();
   (void)C;
@@ -240,13 +237,13 @@ static void unimplemented(CPU *C) {
 uint32_t igvk_vtable_new(const char *owner, int nslots) {
   uint32_t va;
   if (g_nvt == MAX_VT) {
-    fprintf(stderr, "ark: more than %d native vtables\n", MAX_VT);
+    x2_log_error("ark: more than %d native vtables\n", MAX_VT);
     abort();
   }
   va = guest_malloc((uint32_t)nslots * 4u);
   if (!va) {
-    fprintf(stderr, "ark: no guest memory for a %d-slot vtable (%s)\n", nslots,
-            owner);
+    x2_log_error("ark: no guest memory for a %d-slot vtable (%s)\n", nslots,
+                 owner);
     abort();
   }
   memset(guest_memory_pointer(va), 0, (size_t)nslots * 4u);
@@ -267,22 +264,22 @@ void igvk_vtable_permissive_report(void) {
   unsigned long total = 0;
   if (!g_permissive || !g_recs)
     return;
-  printf("\nigVk: PERMISSIVE MODE ignored these slots -- the frame below was "
-         "produced WITHOUT them:\n");
+  x2_log_info(
+      "\nigVk: PERMISSIVE MODE ignored these slots -- the frame below was "
+      "produced WITHOUT them:\n");
   for (k = 0; k < g_nrecs; k++)
     if (g_recs[k].hits) {
-      printf("        slot %3d  x%lu\n", g_recs[k].slot, g_recs[k].hits);
+      x2_log_info("        slot %3d  x%lu\n", g_recs[k].slot, g_recs[k].hits);
       ignored++;
       total += g_recs[k].hits;
     }
   if (!ignored)
-    printf("        (none -- every slot the engine asked for was "
-           "implemented)\n");
+    x2_log_info("        (none -- every slot the engine asked for was "
+                "implemented)\n");
   else
-    printf("      %d distinct slot(s), %lu call(s). Anything drawn is "
-           "missing whatever these do.\n",
-           ignored, total);
-  fflush(stdout);
+    x2_log_info("      %d distinct slot(s), %lu call(s). Anything drawn is "
+                "missing whatever these do.\n",
+                ignored, total);
 }
 
 void igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
@@ -290,7 +287,7 @@ void igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
   Unimpl *recs = (Unimpl *)calloc((size_t)nslots, sizeof *recs);
   int k, n = 0;
   if (!recs) {
-    fprintf(stderr, "ark: out of memory\n");
+    x2_log_error("ark: out of memory\n");
     abort();
   }
   g_recs = recs;
@@ -305,10 +302,9 @@ void igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
                                &recs[k]));
       n++;
     }
-  printf("  %s: %d of %d vtable slots implemented, %d left reporting by "
-         "index\n",
-         owner, nslots - n, nslots, n);
-  fflush(stdout);
+  x2_log_info("  %s: %d of %d vtable slots implemented, %d left reporting by "
+              "index\n",
+              owner, nslots - n, nslots, n);
 }
 
 /* ---- registration ------------------------------------------------------ */
@@ -336,9 +332,9 @@ void igvk_vtable_fill_unimplemented(uint32_t vtable, const char *owner,
 static ArkClass *hook_self(void) {
   ArkClass *c = (ArkClass *)x86_callback_ctx();
   if (!c) {
-    fprintf(stderr, "ark: an ARK hook ran with no class context. The "
-                    "callback was registered without one, so there is no "
-                    "way to know which class the engine is asking about.\n");
+    x2_log_error("ark: an ARK hook ran with no class context. The "
+                 "callback was registered without one, so there is no "
+                 "way to know which class the engine is asking about.\n");
     abort();
   }
   return c;
@@ -375,11 +371,10 @@ int ark_register_class(ArkClass *c) {
   uint32_t name_va;
 
   if (g_registering) {
-    fprintf(stderr,
-            "ark: %s cannot be registered while %s is mid-"
-            "registration -- the hooks libIGCore calls back carry "
-            "no class identity, so this must be sequential.\n",
-            c->name, g_registering->name);
+    x2_log_error("ark: %s cannot be registered while %s is mid-"
+                 "registration -- the hooks libIGCore calls back carry "
+                 "no class identity, so this must be sequential.\n",
+                 c->name, g_registering->name);
     abort();
   }
 
@@ -403,12 +398,12 @@ int ark_register_class(ArkClass *c) {
     args[2] = ark_lifted(c->base_module, c->base_register_internal_va);
     args[3] = ark_lifted(c->base_module, c->base_get_class_meta_va);
     if (!args[2] || !args[3]) {
-      fprintf(stderr,
-              "ark: cannot map %s's parent hooks (linked 0x%08x / "
-              "0x%08x) -- is the module loaded?\n  Registration on a "
-              "NULL parent would be accepted here and fail much later "
-              "inside libIGCore.\n",
-              c->name, c->base_register_internal_va, c->base_get_class_meta_va);
+      x2_log_error("ark: cannot map %s's parent hooks (linked 0x%08x / "
+                   "0x%08x) -- is the module loaded?\n  Registration on a "
+                   "NULL parent would be accepted here and fail much later "
+                   "inside libIGCore.\n",
+                   c->name, c->base_register_internal_va,
+                   c->base_get_class_meta_va);
       return 0;
     }
   }
@@ -429,23 +424,22 @@ int ark_register_class(ArkClass *c) {
 
   meta = RD32(c->meta_slot);
   if (!meta) {
-    fprintf(stderr,
-            "ark: igArkRegister returned without filling in %s's meta "
-            "slot.\n  The class is NOT registered. Nothing downstream of "
-            "this may be treated as working.\n",
-            c->name);
+    x2_log_error("ark: igArkRegister returned without filling in %s's meta "
+                 "slot.\n  The class is NOT registered. Nothing downstream of "
+                 "this may be treated as working.\n",
+                 c->name);
     return 0;
   }
-  printf("  ark: registered %-22s meta=0x%08x size=0x%-4x %s\n", c->name, meta,
-         c->instance_size, c->is_abstract ? "(abstract)" : "");
+  x2_log_info("  ark: registered %-22s meta=0x%08x size=0x%-4x %s\n", c->name,
+              meta, c->instance_size, c->is_abstract ? "(abstract)" : "");
   return 1;
 }
 
 int ark_bind_implementation(uint32_t abstract_meta_slot, ArkClass *c) {
   uint32_t am = RD32(abstract_meta_slot), ours = RD32(c->meta_slot);
   if (!am || !ours) {
-    fprintf(stderr, "ark: cannot bind -- abstract meta %s, our meta %s\n",
-            am ? "ok" : "NULL", ours ? "ok" : "NULL");
+    x2_log_error("ark: cannot bind -- abstract meta %s, our meta %s\n",
+                 am ? "ok" : "NULL", ours ? "ok" : "NULL");
     return 0;
   }
   /*
@@ -455,7 +449,7 @@ int ark_bind_implementation(uint32_t abstract_meta_slot, ArkClass *c) {
    */
   WR32(am + 0x3Cu, x86_native_callback(hook_get_class_meta_safe, c->name,
                                        "getClassMetaSafe(bound)", c));
-  printf("  ark: abstract meta 0x%08x now resolves to %s\n", am, c->name);
+  x2_log_info("  ark: abstract meta 0x%08x now resolves to %s\n", am, c->name);
   return 1;
 }
 

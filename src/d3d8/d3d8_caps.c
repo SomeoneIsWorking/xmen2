@@ -27,6 +27,7 @@
  * game means this block, not the renderer, is what is wrong.
  */
 #include "d3d8_caps.h"
+#include "../native/x2_log.h"
 #include "d3d8_caps_fields.h"
 #include "d3d8_state.h"
 
@@ -296,11 +297,12 @@ void d3d8_caps_fill(D3DCAPS8 *c, uint32_t adapter, uint32_t devtype,
  * never runs.
  */
 void d3d8_caps_dump(const D3DCAPS8 *c, const char *who) {
-#define F(name) printf("CAPS %-28s = 0x%08x\n", #name, (unsigned)c->name);
-#define G(name) printf("CAPS %-28s = %.6f\n", #name, (double)c->name);
-  printf("CAPS BLOCK from %s -- %d field(s); compare with the stock game's "
-         "(tools/build_stocklog.py)\n",
-         who, D3D8_CAPS_FIELD_COUNT);
+#define F(name) x2_log_info("CAPS %-28s = 0x%08x\n", #name, (unsigned)c->name);
+#define G(name) x2_log_info("CAPS %-28s = %.6f\n", #name, (double)c->name);
+  x2_log_info(
+      "CAPS BLOCK from %s -- %d field(s); compare with the stock game's "
+      "(tools/build_stocklog.py)\n",
+      who, D3D8_CAPS_FIELD_COUNT);
   D3D8_CAPS_FIELDS
 #undef F
 #undef G
