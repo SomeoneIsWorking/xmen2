@@ -268,11 +268,13 @@ add_test(NAME movie_audio COMMAND test_movie_audio)
 add_executable(test_cutscene_script_audio tests/test_cutscene_script_audio.c
                src/native/cutscene_script_audio.c src/native/guest_memory.c)
 target_include_directories(test_cutscene_script_audio PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_cutscene_script_audio PRIVATE X86_NATIVE)
 add_test(NAME cutscene_script_audio COMMAND test_cutscene_script_audio)
 
 add_executable(test_behaved_context tests/test_behaved_context.c
                src/native/behaved_context.c src/native/guest_memory.c)
 target_include_directories(test_behaved_context PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_behaved_context PRIVATE X86_NATIVE)
 add_test(NAME behaved_context COMMAND test_behaved_context)
 
 add_executable(test_movie_image_layout tests/test_movie_image_layout.c
@@ -740,25 +742,28 @@ add_executable(test_audio_adpcm tests/test_audio_adpcm.c
                src/native/audio_adpcm.c src/native/guest_memory.c
                tests/native_stubs.c)
 target_include_directories(test_audio_adpcm PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_audio_adpcm PRIVATE X86_NATIVE)
 add_test(NAME audio_adpcm COMMAND test_audio_adpcm)
 
 add_executable(test_vertex_color_swizzle tests/test_vertex_color_swizzle.c
                src/native/vertex_color_swizzle.c src/native/guest_memory.c
                tests/native_stubs.c)
 target_include_directories(test_vertex_color_swizzle PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_vertex_color_swizzle PRIVATE X86_NATIVE)
 add_test(NAME vertex_color_swizzle COMMAND test_vertex_color_swizzle)
 
 add_executable(test_vertex_builder tests/test_vertex_builder.c
                src/native/vertex_builder.c src/native/guest_memory.c
                tests/native_stubs.c)
 target_include_directories(test_vertex_builder PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_vertex_builder PRIVATE X86_NATIVE)
 add_test(NAME vertex_builder COMMAND test_vertex_builder)
 
 add_executable(test_x86_import_fastpath tests/test_x86_import_fastpath.c
                src/native/x86_import_fastpath.c src/native/guest_memory.c
                tests/native_stubs.c)
 target_include_directories(test_x86_import_fastpath PRIVATE src/native src/runtime/x86_abi)
-target_compile_definitions(test_x86_import_fastpath PRIVATE TEST_SUITE=1)
+target_compile_definitions(test_x86_import_fastpath PRIVATE TEST_SUITE=1 X86_NATIVE)
 target_link_libraries(test_x86_import_fastpath PRIVATE x86port_runtime lucent::lucent)
 add_test(NAME x86_import_fastpath COMMAND test_x86_import_fastpath)
 
@@ -766,7 +771,7 @@ add_executable(test_attr_stack tests/test_attr_stack.c
                src/native/attr_stack.c src/native/guest_memory.c
                tests/native_stubs.c)
 target_include_directories(test_attr_stack PRIVATE src/native src/runtime/x86_abi)
-target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1)
+target_compile_definitions(test_attr_stack PRIVATE TEST_SUITE=1 X86_NATIVE)
 target_link_libraries(test_attr_stack PRIVATE lucent::lucent)
 add_test(NAME attr_stack COMMAND test_attr_stack)
 
@@ -774,7 +779,7 @@ add_executable(test_audio_channel_poll tests/test_audio_channel_poll.c
                src/native/audio_channel_poll.c src/native/guest_memory.c
                tests/native_stubs.c)
 target_include_directories(test_audio_channel_poll PRIVATE src/native src/runtime/x86_abi)
-target_compile_definitions(test_audio_channel_poll PRIVATE TEST_SUITE=1)
+target_compile_definitions(test_audio_channel_poll PRIVATE TEST_SUITE=1 X86_NATIVE)
 target_link_libraries(test_audio_channel_poll PRIVATE lucent::lucent)
 add_test(NAME audio_channel_poll COMMAND test_audio_channel_poll)
 

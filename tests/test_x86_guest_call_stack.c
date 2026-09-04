@@ -59,7 +59,50 @@ static void single_thread_contract(void) {
   CHECK(x86_guest_call_depth() == 0);
 }
 
-static pthread_barrier_t barrier;
+/*
+ * A minimal reusable two-party rendezvous, standing in for pthread_barrier_t:
+ * Darwin's libc never implemented that POSIX-optional API, so this test
+ * cannot rely on it existing. Generation-counted so repeated wait() calls on
+ * the same barrier (as below) each block for a fresh rendezvous rather than
+ * falling straight through on the count left over from the previous one.
+ */
+typedef struct {
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+  unsigned parties;
+  unsigned waiting;
+  unsigned generation;
+} TestBarrier;
+
+static void test_barrier_init(TestBarrier *b, unsigned parties) {
+  pthread_mutex_init(&b->mutex, NULL);
+  pthread_cond_init(&b->cond, NULL);
+  b->parties = parties;
+  b->waiting = 0;
+  b->generation = 0;
+}
+
+static void test_barrier_wait(TestBarrier *b) {
+  pthread_mutex_lock(&b->mutex);
+  unsigned gen = b->generation;
+  if (++b->waiting == b->parties) {
+    b->generation++;
+    b->waiting = 0;
+    pthread_cond_broadcast(&b->cond);
+  } else {
+    while (gen == b->generation) {
+      pthread_cond_wait(&b->cond, &b->mutex);
+    }
+  }
+  pthread_mutex_unlock(&b->mutex);
+}
+
+static void test_barrier_destroy(TestBarrier *b) {
+  pthread_mutex_destroy(&b->mutex);
+  pthread_cond_destroy(&b->cond);
+}
+
+static TestBarrier barrier;
 
 static void *other_thread(void *arg) {
   X86GuestCallFrame first, second;
@@ -67,9 +110,8 @@ static void *other_thread(void *arg) {
   CHECK(x86_guest_call_depth() == 0); /* not the main thread's frames */
   x86_guest_call_push(&first, NULL, 0xBBBB0000u, 0xBBBB1111u, 0xB000u);
   x86_guest_call_push(&second, NULL, 0xBBBB2222u, 0xBBBB3333u, 0xB100u);
-  pthread_barrier_wait(&barrier); /* main pushes its own frames here */
-  pthread_barrier_wait(
-      &barrier); /* main has checked; verify we are untouched */
+  test_barrier_wait(&barrier); /* main pushes its own frames here */
+  test_barrier_wait(&barrier); /* main has checked; verify we are untouched */
   CHECK(x86_guest_call_depth() == 2);
   CHECK(x86_guest_call_top()->entry == 0xBBBB2222u);
   CHECK(x86_guest_call_top()->return_to == 0xBBBB3333u);
@@ -81,20 +123,20 @@ static void *other_thread(void *arg) {
 static void two_threads_are_independent(void) {
   pthread_t t;
   X86GuestCallFrame frame;
-  pthread_barrier_init(&barrier, NULL, 2);
+  test_barrier_init(&barrier, 2);
   CHECK(pthread_create(&t, NULL, other_thread, NULL) == 0);
 
-  pthread_barrier_wait(&barrier); /* other has pushed 2 */
+  test_barrier_wait(&barrier); /* other has pushed 2 */
   CHECK(x86_guest_call_depth() == 0);
   x86_guest_call_push(&frame, NULL, 0xAAAA0000u, 0xAAAA1111u, 0xA000u);
   CHECK(x86_guest_call_depth() == 1);
   CHECK(x86_guest_call_top()->entry == 0xAAAA0000u);
-  pthread_barrier_wait(&barrier); /* let other verify and unwind */
+  test_barrier_wait(&barrier); /* let other verify and unwind */
 
   pthread_join(t, NULL);
   x86_guest_call_pop(&frame);
   CHECK(x86_guest_call_depth() == 0);
-  pthread_barrier_destroy(&barrier);
+  test_barrier_destroy(&barrier);
 
   /* deepest is the cross-thread high-water. */
   CHECK(x86_guest_call_deepest() >= 2);
