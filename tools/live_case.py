@@ -32,6 +32,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+try:
+    from tools import process_status
+except ImportError:
+    import process_status
+
 ROOT = Path(__file__).resolve().parents[1]
 BINARY = ROOT / "build" / "native" / "x2native"
 SELECTED = {"path": BINARY}
@@ -46,14 +51,7 @@ def refuse(message: str) -> None:
     raise SystemExit("live_case: %s" % message)
 
 
-def pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
+pid_alive = process_status.pid_is_alive
 
 
 class Case:

@@ -80,6 +80,7 @@ class CiFailure(RuntimeError):
 
 POLICY_TESTS = (
     "tests/test_ci.py",
+    "tests/test_process_status.py",
     "tests/test_android_qualify.py",
     "tests/test_android_release.py",
     "tests/test_port_tool_migrations.py",

@@ -36,12 +36,16 @@ decided by tests that do not need the game to be playing.
 import argparse
 from collections import deque
 import json
-import os
 from pathlib import Path
 import sys
 import time
 import urllib.error
 import urllib.request
+
+try:
+    from tools import process_status
+except ImportError:
+    import process_status
 
 DEFAULT_PORT = 8420
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,12 +68,7 @@ def read_live_session(path=LIVE_SESSION_PATH):
     return session
 
 
-def pid_is_alive(pid):
-    try:
-        os.kill(int(pid), 0)
-    except (OSError, TypeError, ValueError):
-        return False
-    return True
+pid_is_alive = process_status.pid_is_alive
 
 
 def resolve_port(explicit, session=None):
