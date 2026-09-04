@@ -65,14 +65,19 @@ entries agree, 0 divergence. Measured: -1.0% `x87_execute`, -1.0%
 
 ## Phase 2+ design notes (for the next session)
 
-**FST/FSTP** (21k, 23% of x87): the trap is that `x86p_x87_to_f32` does a
+**FST/FSTP** (21k, 23% of x87): ~~the trap is that `x86p_x87_to_f32` does a
 C `(float)v` cast, which rounds to nearest **ignoring the guest control
-word**. Host `fstp dword` honours the CW's RC field. To match the
-interpreter exactly a native FST must force round-to-nearest (`fldcw` a
-nearest CW, restore after) OR the interpreter's `to_f32`/`to_f64` should
-first be fixed to honour RC and the native path made to match. Decide
-which is the authority before emitting. Register forms (FST/FSTP ST(i))
-have no rounding -- do those first, they are just get + set + pop.
+word**.~~ RESOLVED 2026-09-04: `x86p_x87_to_f32`/`to_f64` now round by the
+guest CW's RC field -- on x86 they run `fldt`/`fldcw guest`/`fstps`/`fldcw
+host` on the real unit (the `HOST_OP` pattern), elsewhere `fesetround`
+around the cast. `test_fst_rounds_by_the_control_word` proves it with
+hand-computed nearest-even / up / down / truncate anchors on a
+half-ulp value plus a routing sweep vs the host FPU. Register forms
+(FST/FSTP ST(i)) are native as of phase 2. Native FST/FSTP-**to-memory**
+is now unblocked but deferred: the interpreter checks ST(0) emptiness
+*before* touching memory, so a native path must get ST(0) before the
+bounds check to match on the (pathological) empty-ST(0) + OOB-address
+case -- an ordering wrinkle worth its own focused change.
 
 **FADD/FSUB/FMUL/FDIV** (18k+, the `x86p_x87_arith` 11.3%): emit `fldt`
 both operands from `reg[phys]`, the host op, `fstpt` back, with the guest
