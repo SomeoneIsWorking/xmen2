@@ -221,8 +221,10 @@ twenty retail PE images, passes the shipping JIT selftest, executes the shared
 Gap: x86port does not yet provide the permitted bounded fallback. If it is
 added, the product boundary must prove that only failed/unsupported compilation
 or unsafe execution can enter it and that every fallback interval is counted.
-The reached `PUSHFD` semantics must first be implemented in shared x86port; a
-title workaround is not acceptable. No bounded
+The reached `PUSHFD` semantics are now implemented in shared x86port (both
+backends, pinned `c18172a57bdc2ec962f588d7f64aa50290ceeae7`; see S014 for the
+driven-run evidence on the ARM64 host); this pin has not yet had a fresh driven
+run on the x64 host to confirm the same boundary clears there. No bounded
 representative interactive gameplay case has yet combined native overrides,
 nonzero JIT execution, independent
 CPU/memory/timing/device comparison, and the declared frame-time budget.
@@ -434,22 +436,27 @@ cleared all six intro movies, entered playable gameplay, accepted keyboard
 input, rendered through SDL_GPU/MoltenVK, and sustained world and shadow draws.
 
 `shared/x86port` now has a real ARM64 JIT backend (pinned
-`b15cc24eae8cb337f906cfd025099cc3a0271556`), so Apple Silicon is a qualified
+`c18172a57bdc2ec962f588d7f64aa50290ceeae7`), so Apple Silicon is a qualified
 current product host rather than falling back to the test interpreter or
-bounded per-block fallback. A driven run on this host (2026-09-04) mapped all
-twenty retail images and reached the exact same guest instruction boundary
-already recorded for the x64 host in S019 -- `PUSHFD` (`9c`) at mapped guest
-`0x103c30d2`, after real translated ARM64 code executed `SETcc`, `LEAVE`,
-`CDQ`, `DIV`/`IDIV r/m32`, both `IMUL` forms, string operations, `XCHG`, x87
-constant loads, and the memory-form `FCOM`/`FCOMP`/`FNSTSW AX`/`FNCLEX` path
--- the same instruction coverage x64 has, translated and executed correctly on
-a different host architecture.
+bounded per-block fallback. Both backends now emit `PUSHFD`/`POPFD` (the whole
+lazily-tracked EFLAGS word materialized/restored through the same helpers the
+interpreter oracle already used), closing the gap that previously stopped
+every run at `0x103c30d2`. A driven run on this host (2026-09-05) mapped all
+twenty retail images, passed the shipping selftest, and let `msdia80.dll`'s
+init entry point run to completion (including the `PUSHFD` it previously
+refused on) before stopping fail-loud on a new, later boundary while
+initializing `cg.dll`: `SHR dword ptr [0x200f3880], 16` (`c1 2d 80 38 0f 20
+10`) at mapped guest `0x200681b4` -- a memory-destination ALU form the JIT does
+not yet translate (`can_emit`'s ALU case only allows the register-destination
+shape).
 
-Gap: `PUSHFD` remains unimplemented in BOTH backends (S019), so gameplay input
-is not yet polled on any host; that gap, not anything ARM64-specific, is what
-stops this run. Native Windows remains absent, Intel macOS is not a supported
-target, and physical-controller/hotplug plus clean-machine provisioning still
-retain the hardware-validation gaps described by S006 and G005.
+Gap: the `SHR r/m32, imm8` memory-destination form (and likely its sibling ALU
+memory-destination forms) remains unimplemented in both backends, so gameplay
+input is still not polled on any host; that gap, not anything ARM64-specific,
+is what stops this run now. Native Windows remains absent, Intel macOS is not
+a supported target, and physical-controller/hotplug plus clean-machine
+provisioning still retain the hardware-validation gaps described by S006 and
+G005.
 
 ### S019 — shared Alchemy gameplay boundary and MUA adoption: partial
 
@@ -464,10 +471,11 @@ transport remains independent and tested in the shared repository.
 
 Gap: after the shared emitter batch advanced the real product path through
 `SETcc`, `LEAVE`, `CDQ`, `DIV`/`IDIV r/m32`, both two- and three-operand
-`IMUL`, string operations, `XCHG`, x87 constant loads, and memory-form
-`FCOM`/`FCOMP`, `FNSTSW AX`, and `FNCLEX`, the current run stops fail-loud on
-`PUSHFD` (`9c`) at mapped guest `0x103c30d2`, before gameplay input is polled.
-Nonzero shipping-path A/B counts, physical hotplug, and the recovered guest
+`IMUL`, string operations, `XCHG`, x87 constant loads, memory-form
+`FCOM`/`FCOMP`, `FNSTSW AX`, `FNCLEX`, and now `PUSHFD`/`POPFD` (S014), the
+current run stops fail-loud on the memory-destination `SHR r/m32, imm8` form
+at mapped guest `0x200681b4`, before gameplay input is polled. Nonzero
+shipping-path A/B counts, physical hotplug, and the recovered guest
 callback sink remain unverified. Retain
 DirectInput until those checks agree. Title action meanings, joining,
 assignment, and prompt policy stay here. MUA remains deferred until every X-Men
