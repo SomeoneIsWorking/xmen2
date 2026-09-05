@@ -222,7 +222,7 @@ Gap: x86port does not yet provide the permitted bounded fallback. If it is
 added, the product boundary must prove that only failed/unsupported compilation
 or unsafe execution can enter it and that every fallback interval is counted.
 The reached startup and scene instructions are now implemented in shared
-x86port (both backends, pinned `76e76ce6f66bc0ba341ad018cd0124180820ea3e`; see S014 for the
+x86port (both backends, pinned `f84d2a832abc11fe9990274e15e423477caa3e46`; see S014 for the
 driven-run evidence on the ARM64 host); this pin has not yet had a fresh driven
 run on the x64 host to confirm the same boundary clears there. No bounded
 representative interactive gameplay case has yet combined native overrides,
@@ -381,6 +381,13 @@ host-import share of wall time fell from roughly 62% to 18% and frames rendered
 per fixed wall-time window rose roughly 15%. Later targeted unpaced sessions
 recorded roughly 60 fps after the native override work (C281-C283), superseding
 the earlier roughly 30 fps diagnostic measurement.
+
+Issue #143 adds checked bulk copies for forward, disjoint REP MOVS in the
+pinned shared engine. A 100,000-copy 4 KB microbenchmark fell from 9,482.1 to
+104.0 ns/copy; 11,247 copy-state checks pass on ARM64 and Rosetta x64. A fresh
+tutorial window measured 17.78 ms median over 2,265 frame intervals with zero
+JIT refusals in the live run. This measures a faster copy operation and
+continued gameplay operation, not a proven whole-game FPS increase.
 
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative

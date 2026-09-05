@@ -75,7 +75,7 @@ been merged into this local work.
 
 ## Published integration
 
-The game is published on `main`. It pins x86port `76e76ce6f66bc0ba341ad018cd0124180820ea3e` and
+The game is published on `main`. It pins x86port `f84d2a832abc11fe9990274e15e423477caa3e46` and
 jit-common `908feba`; the full jit-common pin is in `bootstrap.py`. Shared
 commits are published on `codex/mac-jit-startup` so the exact dependency pins
 can be fetched by a clean clone. Fedora's shared-engine main remains separate
@@ -98,3 +98,28 @@ reset gameplay timing window reported 16.93 ms median and 19.09 ms 95th
 percentile over 1,815 intervals. The scene, sampling and render pacing limit
 that observation; it is not evidence that gameplay sped up by the leaf ratio.
 The broader binary64 precision limitations remain unchanged.
+
+
+The next profile identified repeated string-copy work. x86port now uses a
+bulk copy for forward REP MOVS when both complete spans are mapped and
+disjoint, with no write observer installed. All other cases retain the exact
+per-element progress, fault, and observer behavior. The 100,000-operation
+4 KB MOVSD benchmark measured 9,482.1 -> 104.0 ns/copy. There are 11,247 passing
+copy-state/admission checks and 4,204 passing JIT startup cases on ARM64 and
+Rosetta x64; eighteen startup cases specifically execute REP MOVS through
+emitted code. Existing shared-suite baseline failures remain documented there.
+
+A fresh tutorial observation reached 7,000 frames. Its last live heartbeat
+reported 2,431,451,277 block entries, 94,305 translated blocks, 86,826,712 native
+hand-backs and zero refusals of 94,305 translation attempts, with no product
+fallback. A reset 2,265-interval window measured 17.75 ms average, 17.78 ms
+median and 19.59 ms 95th percentile. This establishes continued operation,
+not an FPS improvement over the previous scene. Local captures and profiles
+are under `scratch/logs/optimize-copy-*` and
+`scratch/screenshots/optimize-copy-after.png`. The title graph again passed
+131 tests with its fixture-dependent FMV test skipped; the shipping selftest
+passed all 92 checks. Touched shared sources pass formatting and clang-tidy.
+
+The remote check also found jit-common main `03ac795`, which merges the Mac
+code-publication work with native-host support and records Linux validation.
+That newer integration has not been substituted for this game's tested pin.
