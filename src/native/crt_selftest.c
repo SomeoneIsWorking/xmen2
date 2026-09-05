@@ -4,6 +4,7 @@
 #include "x2_log.h"
 
 #include "guest_heap.h"
+#include "x86_engine_private.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -106,6 +107,10 @@ static void check_msvcrt_delete_array_alias(uint32_t stack_top, int skip_body,
 void crt_selftest_run(uint32_t stack_top, int skip_body,
                       CrtSelftestCheck check) {
   x2_log_info("  native CRT import ABI and operator delete[] route\n");
+  uint32_t jump_program = guest_malloc(256);
+  check("older setjmp continuation survives a later setjmp",
+        !skip_body && x2_engine_jump_selftest(jump_program, stack_top), 1u);
+  guest_free(jump_program);
   check_malloc_free(stack_top, skip_body, check);
   check_delete_array(stack_top, skip_body, check);
   check_msvcrt_delete_array_alias(stack_top, skip_body, check);

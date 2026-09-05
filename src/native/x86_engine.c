@@ -20,6 +20,7 @@
 #include <lucent/log_c.h>
 
 #include <setjmp.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -120,6 +121,33 @@ const char *x2_engine_name(void) { return "jit"; }
 
 /* ---- the run loop ------------------------------------------------------ */
 
+/* The heartbeat requests a snapshot; only the guest-lock owner reads JIT
+ * state. A pending request is reported by the heartbeat if no boundary runs. */
+static atomic_int g_live_requested = 1;
+int x2_engine_request_live_report(void) {
+  return atomic_exchange_explicit(&g_live_requested, 1, memory_order_relaxed);
+}
+static void report_live_if_requested(void) {
+  if (!atomic_load_explicit(&g_live_requested, memory_order_relaxed) ||
+      !atomic_exchange_explicit(&g_live_requested, 0, memory_order_relaxed))
+    return;
+  X86pJitEngineStats js = {0};
+  if (g_engine.jit)
+    x86p_jit_engine_stats(g_engine.jit, &js);
+  lucent_log_info(
+      "engine",
+      "[HB] JIT: %llu blocks entered, %llu translated (%llu instructions); "
+      "%lu native hand-backs; %llu refusals of %llu translation attempts; "
+      "%llu cache flushes, %llu bytes code; product fallback unavailable",
+      (unsigned long long)js.blocks_entered,
+      (unsigned long long)js.blocks_translated,
+      (unsigned long long)js.guest_insns_translated, g_engine.callouts,
+      (unsigned long long)js.translate_refusals,
+      (unsigned long long)(js.blocks_translated + js.translate_refusals),
+      (unsigned long long)js.cache_flushes,
+      (unsigned long long)js.code_bytes_used);
+}
+
 static const char *named(uint32_t addr) {
   const char *n = x86_native_name_at(addr);
   return n ? n : "unnamed";
@@ -184,6 +212,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
   x86_guest_call_push(&call_frame, cpu, addr, return_to, entry_esp);
 
   for (;;) {
+    report_live_if_requested();
     /*
      * GUEST setjmp, taken in the engine's own frame.
      *
@@ -203,10 +232,8 @@ int x2_engine_call(uint32_t addr, CPU *C) {
      * still live".
      */
     if (cpu->eip != entry && x86_setjmp3_thunk(cpu->eip)) {
-      /* volatile: written before the setjmp and read after it, across a
-         longjmp that makes every other local in this frame
-         indeterminate. */
-      volatile uint32_t resume = RD32(cpu->reg[kX86pEsp]);
+      /* The jump-buffer owner restores its saved continuation. A local
+       * in this loop is reused by later setjmps, even when volatile. */
       int rc;
       g_engine.setjmps++;
       rc = setjmp(*x86_setjmp_buf(C));
@@ -224,7 +251,6 @@ int x2_engine_call(uint32_t addr, CPU *C) {
                           "0x%08x); reported once, total in shutdown report",
                           C->reg[kX86pEsp]);
       }
-      cpu->eip = resume;
       continue;
     }
     /*

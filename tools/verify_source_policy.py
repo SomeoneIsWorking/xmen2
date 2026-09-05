@@ -9,6 +9,7 @@ import tempfile
 
 from x2_source_policy import (
     CONFIG_OWNER,
+    first_party_text,
     retired_path_violations,
     shipping_sources,
     source_violations,
@@ -68,12 +69,20 @@ add_library(x2_rmlui_ui STATIC
     ):
         print("verify_source_policy selftest: negative fixture escaped")
         return 1
-    with tempfile.TemporaryDirectory() as directory:
+    scratch = Path(__file__).resolve().parents[1] / "scratch/run"
+    scratch.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=scratch) as directory:
         root = Path(directory)
         retired_path = root / "src/x86watch.c"
         retired_path.parent.mkdir(parents=True)
         retired_path.touch()
         retired = retired_path_violations(root)
+        install = root / "game/Docs/License.txt"
+        install.parent.mkdir(parents=True)
+        install.write_bytes(b"retail license: \xff")
+        if set(first_party_text(root)) != {"src/x86watch.c"}:
+            print("verify_source_policy selftest: asset tree entered source policy")
+            return 1
     if not any(item.location == "src/x86watch.c" for item in retired):
         print("verify_source_policy selftest: retired x86watch path escaped")
         return 1

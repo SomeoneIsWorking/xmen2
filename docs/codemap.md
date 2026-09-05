@@ -100,7 +100,7 @@ below name cross-directory seams and the entry points used to extend them.
 | Dispatch loop | Route host imports/native overrides first and every remaining guest address to the product JIT; a miss is a named abort | `src/native/x86_dispatch.c` | `x86_dispatch` | — |
 | Dispatch failure reporting | Explain a dispatch that found no body: unbound import, owning module, who dispatched there, and the diagnostic dump | `src/native/x86_dispatch_report.c` | `x86_report_missing_body`, `x86_report_where` | — |
 | Guest address space | Translate 32-bit guest addresses through the host arena, retain exact Win32 4 KiB page state, and coalesce host protection at the platform page granule | `src/native/guest_memory.c`, `src/native/guest_memory.h`, `src/native/platform_mman.h` | `guest_memory_init`, `guest_memory_pointer`, `guest_memory_map_fixed` | — |
-| Guest services | Implement KERNEL32, CRT, registry, paths, COM, GDI, WinMM, sockets, heap, threads, timing, and DirectSound on the host | `src/native/kernel32.c`, `src/native/crt.c`, `src/native/advapi32.c`, `src/native/win_path.c`, `src/native/dsound.c` | import registration in each owner | — |
+| Guest services | Implement KERNEL32, CRT, registry, paths, COM, GDI, WinMM, sockets, heap, threads, timing, and DirectSound on the host | `src/native/kernel32.c`, `src/native/kernel32_wait.c`, `src/native/kernel32_handles.h`, `src/native/crt.c`, `src/native/advapi32.c`, `src/native/win_path.c`, `src/native/dsound.c` | import registration in each owner | — |
 | In-image CRT helper overrides | Native stand-ins for MSVC CRT routines linked inside XMen2.exe (not imports), so the JIT avoids their repeated guest bodies -- currently `_ftol2` at `0x0067217c`, sharing `x87_crt_ftol` | `src/native/crt_in_image_overrides.{c,h}` | `x2_crt_ftol2`, `crt_in_image_overrides_register` | [issue #141](issues/0141-engine-jit-menu-in-game-throughput-is-capped-35.md) |
 | Native IMA ADPCM decode | Native overrides for XMen2.exe's statically-linked IMA ADPCM decoders (`0x00616770` mono, `0x00616880` stereo), replacing a ~7%-of-guest-time per-nibble interpreted loop; `audio.adpcm_verify` re-runs the guest body and aborts on any mismatch | `src/native/audio_adpcm.{c,h}`, `src/native/audio_adpcm_verify.c` | `ima_adpcm_step`, `x2_override_00616770`, `x2_override_00616880`, `audio_adpcm_verify_or_abort` | [issue #141](issues/0141-engine-jit-menu-in-game-throughput-is-capped-35.md) |
 | Native vertex colour swap | Native override for libIGGfx.dll's `igDxVertexArray1_1::` range colour-channel swap (`0x10046ce0`), replacing a ~4.4%-of-guest-time per-vertex BGRA<->RGBA loop; `gfx.vtx_swizzle_verify` re-runs the guest body and aborts on any mismatch | `src/native/vertex_color_swizzle.{c,h}`, `src/native/vertex_color_swizzle_verify.c` | `vtx_color_swizzle_word`, `x2_override_10046ce0`, `vtx_swizzle_verify_begin`/`_end` | [issue #141](issues/0141-engine-jit-menu-in-game-throughput-is-capped-35.md) |
@@ -208,3 +208,13 @@ Repository-level `tests/` owns focused verification.
   offline product code generator.
 - **An Xbox-derived behavioral fact** → the relevant claim/RE authority. There
   is no Xbox static product owner.
+
+Win32 handle storage remains in `kernel32.c`; `kernel32_handles.h` is its private
+shared representation. `kernel32_wait.c` owns consuming signaled objects,
+thread-completion waits, timer pumping and guest-clock deadlines. CRT jump
+checkpoints remain in `crt_setjmp.c`, with the synthetic nested-checkpoint
+regression in `x86_engine_jump_selftest.c` composed by `crt_selftest.c`.
+
+The heartbeat requests JIT telemetry atomically; `x86_engine.c` samples it
+under the guest lock at a dispatch boundary. A still-pending request is visible
+rather than reading mutable code-cache state from the heartbeat thread.

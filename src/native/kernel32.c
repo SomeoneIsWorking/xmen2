@@ -24,6 +24,7 @@
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "igvk_ark.h"
+#include "kernel32_handles.h"
 #include "pe_map.h"
 #include "platform_mman.h"
 #include "shell32.h"
@@ -66,59 +67,6 @@ static void k32_unimpl(const char *sym, const char *why) {
 
 /* ---- handles ----------------------------------------------------------- */
 
-#define MAX_HANDLES 256
-#define H_FILE 1
-#define H_FIND 2
-#define H_MAP 3
-#define H_SEM 4
-#define H_EVENT 5
-#define H_MUTEX 6
-#define H_THREAD 7
-
-typedef struct {
-  int kind;
-  int fd;
-  DIR *dir;
-  char pattern[256];
-  char dirpath[1024];
-  void *map;
-  size_t maplen;
-  /* How many guest threads are blocked on this object right now, and how
-     many times it has been PULSED. Both exist for PulseEvent, which needs
-     them exactly: a pulse with no waiter is LOST on Windows, and a pulse on
-     a manual-reset event releases every thread waiting AT THAT INSTANT and
-     no later one -- which is a generation number, not a flag. A waiter
-     records the count it entered on and is released when it changes. */
-  int waiters;
-  unsigned long pulses;
-  /*
-   * The history of this object, for the watchdog.
-   *
-   * Issue #57 stalls in WaitForSingleObject(INFINITE) on an unnamed event,
-   * and the report named its KIND and its (empty) name -- which is every
-   * unnamed event in the process. The issue's own next-measurement is
-   * "which event is it, who created it, has it ever been signalled". These
-   * are that, recorded as they happen because the answer is needed at a
-   * moment when nothing can be asked any more.
-   */
-  uint32_t created_by; /* guest return address of its creator */
-  unsigned long n_set, n_pulse_sent, n_pulse_lost, n_wait;
-  /* Synchronisation objects. */
-  int32_t count; /* semaphore count, or event signalled, or mutex depth */
-  /* WHICH guest thread holds this mutex. A Win32 mutex excludes across
-     threads and is recursive only for its owner, so a depth alone cannot
-     express it: the old code took an unheld mutex unconditionally with the
-     comment "this thread is the only one", which stopped being true the day
-     the game created 23. */
-  uint32_t owner_tid;
-  int32_t maxcount; /* semaphore ceiling */
-  int manual;       /* event: manual-reset rather than auto-reset */
-  /* All duplicated H_THREAD handles point at the SAME GuestThread object.
-     The numeric handle is an alias, not the thread's identity. */
-  void *thread_rec;
-  char name[128];
-} Handle;
-
 static Handle g_h[MAX_HANDLES];
 
 static uint32_t h_alloc(int kind) {
@@ -134,7 +82,7 @@ static uint32_t h_alloc(int kind) {
   abort();
 }
 
-static Handle *h_get(uint32_t h, int kind) {
+Handle *k32_handle_get(uint32_t h, int kind) {
   if (h == 0 || h > MAX_HANDLES || !g_h[h - 1].kind) {
     x2_log_error("kernel32: handle %u is not open\n", h);
     x86_diag_dump();
@@ -225,6 +173,7 @@ int kernel32_thread_alias_selftest(void) {
 /* ---- error reporting --------------------------------------------------- */
 
 static uint32_t g_last_error;
+void k32_set_last_error(uint32_t error) { g_last_error = error; }
 
 /* Counted so the report can say how many were never shown. */
 static unsigned long g_failed_opens;
@@ -713,7 +662,7 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
 }
 
 void imp_KERNEL32_ReadFile(CPU *C) {
-  Handle *hh = h_get(A(0), H_FILE);
+  Handle *hh = k32_handle_get(A(0), H_FILE);
   ssize_t n = read(hh->fd, guest_memory_pointer(A(1)), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
@@ -721,7 +670,7 @@ void imp_KERNEL32_ReadFile(CPU *C) {
 }
 
 void imp_KERNEL32_WriteFile(CPU *C) {
-  Handle *hh = h_get(A(0), H_FILE);
+  Handle *hh = k32_handle_get(A(0), H_FILE);
   ssize_t n = write(hh->fd, guest_memory_const_pointer(A(1)), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
@@ -729,7 +678,7 @@ void imp_KERNEL32_WriteFile(CPU *C) {
 }
 
 void imp_KERNEL32_GetFileSize(CPU *C) {
-  Handle *hh = h_get(A(0), H_FILE);
+  Handle *hh = k32_handle_get(A(0), H_FILE);
   struct stat st;
   if (fstat(hh->fd, &st) != 0) {
     ret_std(C, 0xFFFFFFFFu, 2);
@@ -741,7 +690,7 @@ void imp_KERNEL32_GetFileSize(CPU *C) {
 }
 
 void imp_KERNEL32_SetEndOfFile(CPU *C) {
-  Handle *hh = h_get(A(0), H_FILE);
+  Handle *hh = k32_handle_get(A(0), H_FILE);
   off_t at = lseek(hh->fd, 0, SEEK_CUR);
   ret_std(C, ftruncate(hh->fd, at) == 0 ? 1u : 0u, 1);
 }
@@ -783,7 +732,7 @@ void imp_KERNEL32_CreateSemaphoreA(CPU *C) {
 
 void imp_KERNEL32_ReleaseSemaphore(CPU *C) {
   /* (handle, lReleaseCount, lpPreviousCount) */
-  Handle *hh = h_get(A(0), H_SEM);
+  Handle *hh = k32_handle_get(A(0), H_SEM);
   int32_t prev = hh->count;
   if (A(1) == 0 || (int64_t)hh->count + (int32_t)A(1) > hh->maxcount) {
     g_last_error = 87u; /* ERROR_INVALID_PARAMETER */
@@ -812,7 +761,7 @@ void imp_KERNEL32_CreateEventA(CPU *C) {
 }
 
 void imp_KERNEL32_SetEvent(CPU *C) {
-  Handle *hh = h_get(A(0), H_EVENT);
+  Handle *hh = k32_handle_get(A(0), H_EVENT);
   hh->n_set++;
   hh->count = 1;
   if (hh->waiters > 0)
@@ -862,7 +811,7 @@ void kernel32_pulse_counts(unsigned long *sent, unsigned long *lost) {
 }
 
 void imp_KERNEL32_PulseEvent(CPU *C) {
-  Handle *hh = h_get(A(0), H_EVENT);
+  Handle *hh = k32_handle_get(A(0), H_EVENT);
   static unsigned long lost;
   g_pulse_sent++;
   hh->n_pulse_sent++;
@@ -891,7 +840,7 @@ void imp_KERNEL32_PulseEvent(CPU *C) {
 }
 
 void imp_KERNEL32_ResetEvent(CPU *C) {
-  h_get(A(0), H_EVENT)->count = 0;
+  k32_handle_get(A(0), H_EVENT)->count = 0;
   ret_std(C, 1, 1);
 }
 
@@ -905,7 +854,7 @@ void imp_KERNEL32_CreateMutexA(CPU *C) {
 }
 
 void imp_KERNEL32_ReleaseMutex(CPU *C) {
-  Handle *hh = h_get(A(0), H_MUTEX);
+  Handle *hh = k32_handle_get(A(0), H_MUTEX);
   uint32_t me = guest_current_tid();
   if (hh->count <= 0 || hh->owner_tid != me) {
     x2_log_error("kernel32: ReleaseMutex on \"%s\" by guest thread %u, "
@@ -921,293 +870,6 @@ void imp_KERNEL32_ReleaseMutex(CPU *C) {
       guest_cond_broadcast();
   }
   ret_std(C, 1, 1);
-}
-
-/* Try to take one object. Returns 1 if it was signalled (and consumes it). */
-static int sync_try_take(Handle *hh) {
-  switch (hh->kind) {
-  case H_SEM:
-    if (hh->count > 0) {
-      hh->count--;
-      return 1;
-    }
-    return 0;
-  case H_EVENT:
-    if (hh->count) {
-      if (!hh->manual)
-        hh->count = 0;
-      return 1;
-    }
-    return 0;
-  case H_MUTEX:
-    /* Recursive for the owner, exclusive to everyone else. */
-    {
-      uint32_t me = guest_current_tid();
-      if (hh->count <= 0) {
-        hh->owner_tid = me;
-        hh->count = 1;
-        return 1;
-      }
-      if (hh->owner_tid == me) {
-        hh->count++;
-        return 1;
-      }
-      return 0;
-    }
-  default:
-    return 0;
-  }
-}
-
-static const char *sync_kind_name(int k) {
-  return k == H_SEM     ? "semaphore"
-         : k == H_EVENT ? "event"
-         : k == H_MUTEX ? "mutex"
-                        : "non-waitable object";
-}
-
-void imp_KERNEL32_WaitForSingleObject(CPU *C) {
-  Handle *hh = h_get(A(0), 0);
-  uint32_t ms = A(1);
-  unsigned long pulse0;
-  struct timespec t0;
-
-  if (sync_try_take(hh)) {
-    ret_std(C, WAIT_OBJECT_0, 2);
-    return;
-  }
-  if (ms == 0) {
-    ret_std(C, WAIT_TIMEOUT, 2);
-    return;
-  }
-  /*
-   * A REAL wait now that guest threads exist.
-   *
-   * It used to abort here, and correctly: with nothing else running, no
-   * signal could ever arrive and both plausible answers were lies -- success
-   * hands the game a lock it does not hold, timeout claims a wait happened.
-   * What changed is that something else CAN run, and the wait releases the
-   * guest lock so it can (src/native/threads.c).
-   *
-   * Bounded even for an INFINITE wait, because "nothing will ever signal
-   * this" is still possible -- one guest thread deadlocking against another
-   * has to be reported, not hung on.
-   */
-  hh->waiters++;
-  hh->n_wait++;
-  pulse0 = hh->pulses;
-  /*
-   * The deadline is measured on the CLOCK, not counted in loop turns.
-   *
-   * It used to be `if (++spins == 30)`, which was 30 seconds only while each
-   * turn slept a flat second. Once the sleep became "until the next timer is
-   * due" a turn could be under a millisecond, and the watchdog would abort a
-   * perfectly healthy wait in a few dozen of them -- a diagnostic that fires
-   * on the thing it exists to rule out.
-   */
-  clock_gettime(CLOCK_MONOTONIC, &t0);
-  for (;;) {
-    /*
-     * Sleep until the next TIMER is due, not for a flat second.
-     *
-     * This thread is the one that will pump that timer (see below), so the
-     * wait's granularity IS the timer's resolution: a flat 1000 ms slice
-     * made every movie frame cost a second, and the guest sat blocked at
-     * 1.3 frames per second while looking perfectly healthy.
-     */
-    guest_cond_wait_ms(winmm_next_due_ms(ms == 0xFFFFFFFFu ? 1000u : ms));
-    /*
-     * A PUMP POINT, and the one the movie player needs (issue #49).
-     *
-     * The multimedia timers have no thread of their own, so they run when
-     * the guest next reaches a place it is not executing -- a clock read
-     * or a sleep. A thread blocked HERE reaches neither, so a wait for
-     * something a timer callback would produce waited forever: libCriMovie
-     * sets a 1 ms timer, its decoder parks itself, and the main thread
-     * waits on an event nothing can now signal. Every ingredient existed
-     * and the fire never happened.
-     *
-     * The callback runs on THIS thread, inside the wait. Windows runs it
-     * on a timer thread; that difference is the same one Sleep already
-     * carries and is stated in winmm.c, not a new one introduced here.
-     */
-    winmm_timers_pump();
-    if (sync_try_take(hh)) {
-      hh->waiters--;
-      ret_std(C, WAIT_OBJECT_0, 2);
-      return;
-    }
-    /* Released by a PULSE: the object is not signalled and must not be
-       taken -- being let go IS the whole event. Only a thread that was
-       already waiting when the pulse happened sees the change, which is
-       exactly who Win32 releases. */
-    if (hh->pulses != pulse0) {
-      hh->waiters--;
-      ret_std(C, WAIT_OBJECT_0, 2);
-      return;
-    }
-    if (ms != 0xFFFFFFFFu) {
-      hh->waiters--;
-      ret_std(C, WAIT_TIMEOUT, 2);
-      return;
-    }
-    {
-      struct timespec now;
-      clock_gettime(CLOCK_MONOTONIC, &now);
-      if (now.tv_sec - t0.tv_sec < 30)
-        continue;
-    }
-    {
-      x2_log_error("kernel32: WaitForSingleObject(INFINITE) on %s "
-                   "\"%s\" has waited 30 seconds and nothing has "
-                   "signalled it.\n"
-                   "  Reporting rather than hanging: either the guest "
-                   "thread that would signal it is not running, or "
-                   "this host never signals that object.\n",
-                   sync_kind_name(hh->kind), hh->name);
-      /*
-       * WHICH object, and its whole history. Issue #57 asks exactly
-       * this and could not answer it: "an unnamed event" describes
-       * every unnamed event in the process. The creator's return
-       * address is what tells two of them apart.
-       */
-      x2_log_error("  handle 0x%08x, created by guest 0x%08x, %s-reset\n"
-                   "  signalled %lu time(s) by SetEvent; pulsed %lu time(s), "
-                   "of which %lu found NO waiter and were LOST\n"
-                   "  waited on %lu time(s); %d thread(s) waiting on it now\n",
-                   A(0), hh->created_by, hh->manual ? "manual" : "auto",
-                   hh->n_set, hh->n_pulse_sent, hh->n_pulse_lost, hh->n_wait,
-                   hh->waiters);
-      if (!hh->n_set && !hh->n_pulse_sent)
-        x2_log_error("  it has NEVER been signalled or pulsed, so "
-                     "nothing was lost -- whatever should signal it "
-                     "has not run at all.\n");
-      /* And what every other guest thread is doing, which is the other
-         half of a rendezvous. */
-      guest_thread_state_report();
-      x86_diag_dump();
-      abort();
-    }
-  }
-}
-
-/* Take the whole set, or none of it. Split out because the "is it ready"
-   question and the "take it" action must agree exactly -- a partial take
-   leaves the set half-consumed and nothing can put it back. */
-static int wfmo_try_all(uint32_t arr, uint32_t n) {
-  uint32_t i;
-  for (i = 0; i < n; i++) {
-    Handle *hh = h_get(RD32(arr + i * 4u), 0);
-    if (hh->kind == H_MUTEX) {
-      /* Takeable if free or already ours; sync_try_take says so without
-         consuming anything, because a mutex take is idempotent for the
-         owner and reversible by the release below. */
-      uint32_t me = guest_current_tid();
-      if (hh->count > 0 && hh->owner_tid != me)
-        return 0;
-      continue;
-    }
-    if (hh->count <= 0)
-      return 0;
-  }
-  for (i = 0; i < n; i++)
-    sync_try_take(h_get(RD32(arr + i * 4u), 0));
-  return 1;
-}
-
-void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
-  /* (nCount, lpHandles, bWaitAll, dwMilliseconds) */
-  uint32_t n = A(0), arr = A(1), all = A(2), ms = A(3), i;
-  struct timespec t0;
-  int warned = 0;
-
-  if (n == 0 || n > MAX_HANDLES) {
-    g_last_error = 87u;
-    ret_std(C, WAIT_FAILED, 4);
-    return;
-  }
-  if (!all) {
-    for (i = 0; i < n; i++) {
-      Handle *hh = h_get(RD32(arr + i * 4u), 0);
-      if (sync_try_take(hh)) {
-        ret_std(C, WAIT_OBJECT_0 + i, 4);
-        return;
-      }
-    }
-  } else if (wfmo_try_all(arr, n)) {
-    ret_std(C, WAIT_OBJECT_0, 4);
-    return;
-  }
-  if (ms == 0) {
-    ret_std(C, WAIT_TIMEOUT, 4);
-    return;
-  }
-
-  /*
-   * A REAL wait, for the same reason WaitForSingleObject above got one: it
-   * used to abort here because nothing else could run, and now something
-   * can. The shape is deliberately the SAME as the single-object wait --
-   * park, pump the multimedia timers on the way round (a thread blocked here
-   * reaches no other pump point), re-test, and bound even an INFINITE wait
-   * so a deadlock is reported rather than hung on.
-   */
-  for (i = 0; i < n; i++)
-    h_get(RD32(arr + i * 4u), 0)->waiters++;
-  clock_gettime(CLOCK_MONOTONIC, &t0);
-  for (;;) {
-    guest_cond_wait_ms(winmm_next_due_ms(ms == 0xFFFFFFFFu ? 1000u : ms));
-    winmm_timers_pump();
-    if (all) {
-      if (wfmo_try_all(arr, n)) {
-        for (i = 0; i < n; i++)
-          h_get(RD32(arr + i * 4u), 0)->waiters--;
-        ret_std(C, WAIT_OBJECT_0, 4);
-        return;
-      }
-    } else {
-      for (i = 0; i < n; i++) {
-        if (sync_try_take(h_get(RD32(arr + i * 4u), 0))) {
-          uint32_t k;
-          for (k = 0; k < n; k++)
-            h_get(RD32(arr + k * 4u), 0)->waiters--;
-          ret_std(C, WAIT_OBJECT_0 + i, 4);
-          return;
-        }
-      }
-    }
-    if (ms != 0xFFFFFFFFu) {
-      for (i = 0; i < n; i++)
-        h_get(RD32(arr + i * 4u), 0)->waiters--;
-      ret_std(C, WAIT_TIMEOUT, 4);
-      return;
-    }
-    {
-      struct timespec now;
-      clock_gettime(CLOCK_MONOTONIC, &now);
-      if (warned || now.tv_sec - t0.tv_sec < 30)
-        continue;
-    }
-    /* Reported, ONCE, with every object in the set and its history -- and
-       then the wait continues. An INFINITE WaitForMultipleObjects that is
-       genuinely slow is not the same thing as one that will never finish,
-       and aborting cannot tell them apart. The single-object watchdog
-       aborts because issue #57 needed the ring at that instant; this one
-       names the set and lets the run go on. */
-    warned = 1;
-    x2_log_error("kernel32: WaitForMultipleObjects(INFINITE, waitAll=%u) "
-                 "on %u object(s) has waited 30 seconds. Each of them:\n",
-                 all, n);
-    for (i = 0; i < n; i++) {
-      Handle *hh = h_get(RD32(arr + i * 4u), 0);
-      x2_log_error("  [%u] handle 0x%08x %s \"%s\" count %d, created "
-                   "by guest 0x%08x, set %lu pulsed %lu (%lu lost), "
-                   "waited on %lu\n",
-                   i, RD32(arr + i * 4u), sync_kind_name(hh->kind), hh->name,
-                   hh->count, hh->created_by, hh->n_set, hh->n_pulse_sent,
-                   hh->n_pulse_lost, hh->n_wait);
-    }
-    guest_thread_state_report();
-  }
 }
 
 /* ---- thread-local storage ---------------------------------------------- */
@@ -1551,7 +1213,7 @@ void imp_KERNEL32_DuplicateHandle(CPU *C) {
     ret_std(C, 1, 7);
     return;
   }
-  sh = h_get(src, 0);
+  sh = k32_handle_get(src, 0);
   uint32_t nh = h_alloc(sh->kind);
   Handle *dh = &g_h[nh - 1];
   *dh = *sh;
@@ -1588,7 +1250,7 @@ void imp_KERNEL32_DuplicateHandle(CPU *C) {
 }
 
 void imp_KERNEL32_CloseHandle(CPU *C) {
-  Handle *hh = h_get(A(0), 0);
+  Handle *hh = k32_handle_get(A(0), 0);
   if (hh->kind == H_FILE && hh->fd >= 0)
     close(hh->fd);
   if (hh->kind == H_FIND && hh->dir)
@@ -2162,7 +1824,7 @@ static struct {
 } g_views[MAX_VIEWS];
 
 void imp_KERNEL32_CreateFileMappingA(CPU *C) {
-  Handle *hf = h_get(A(0), H_FILE);
+  Handle *hf = k32_handle_get(A(0), H_FILE);
   uint32_t size_hi = A(3), size_lo = A(4);
   struct stat st;
   uint32_t h;
@@ -2201,7 +1863,7 @@ void imp_KERNEL32_CreateFileMappingA(CPU *C) {
 }
 
 void imp_KERNEL32_MapViewOfFile(CPU *C) {
-  Handle *hm = h_get(A(0), H_MAP);
+  Handle *hm = k32_handle_get(A(0), H_MAP);
   uint32_t off_hi = A(2), off_lo = A(3), want = A(4);
   long page = sysconf(_SC_PAGESIZE);
   uint32_t aligned = off_lo & ~(uint32_t)(page - 1);
@@ -2487,7 +2149,7 @@ void imp_KERNEL32_FindFirstFileA(CPU *C) {
 }
 
 void imp_KERNEL32_FindNextFileA(CPU *C) {
-  Handle *hh = h_get(A(0), H_FIND);
+  Handle *hh = k32_handle_get(A(0), H_FIND);
   uint32_t data = A(1);
   if (!data || !find_next(hh, data)) {
     g_last_error = ERROR_NO_MORE_FILES;
@@ -2498,7 +2160,7 @@ void imp_KERNEL32_FindNextFileA(CPU *C) {
 }
 
 void imp_KERNEL32_FindClose(CPU *C) {
-  Handle *hh = h_get(A(0), H_FIND);
+  Handle *hh = k32_handle_get(A(0), H_FIND);
   if (hh->dir)
     closedir(hh->dir);
   hh->dir = NULL;
@@ -3398,7 +3060,7 @@ void imp_KERNEL32_GetStdHandle(CPU *C) {
   }
   if (!g_std[fd]) {
     g_std[fd] = h_alloc(H_FILE);
-    h_get(g_std[fd], H_FILE)->fd = fd;
+    k32_handle_get(g_std[fd], H_FILE)->fd = fd;
   }
   ret_std(C, g_std[fd], 1);
 }
@@ -3420,7 +3082,7 @@ void imp_KERNEL32_SetStdHandle(CPU *C) {
    the CRT to decide whether a stream is line-buffered; answered from the real
    fd, so a redirected run and a terminal run differ as they should. */
 void imp_KERNEL32_GetFileType(CPU *C) {
-  Handle *hh = h_get(A(0), H_FILE);
+  Handle *hh = k32_handle_get(A(0), H_FILE);
   struct stat st;
   uint32_t t = 0;
   if (fstat(hh->fd, &st) == 0) {
@@ -3440,7 +3102,7 @@ void imp_KERNEL32_GetFileType(CPU *C) {
 void imp_KERNEL32_SetHandleCount(CPU *C) { ret_std(C, A(0), 1); }
 
 void imp_KERNEL32_FlushFileBuffers(CPU *C) {
-  Handle *hh = h_get(A(0), H_FILE);
+  Handle *hh = k32_handle_get(A(0), H_FILE);
   ret_std(C, fsync(hh->fd) == 0 ? 1u : 0u, 1);
 }
 
@@ -3448,7 +3110,7 @@ void imp_KERNEL32_FlushFileBuffers(CPU *C) {
    64-bit when phi is given, and the two halves must come from ONE lseek --
    computing them separately is how a large-file seek lands somewhere else. */
 void imp_KERNEL32_SetFilePointer(CPU *C) {
-  Handle *hh = h_get(A(0), H_FILE);
+  Handle *hh = k32_handle_get(A(0), H_FILE);
   uint32_t phi = A(2), method = A(3);
   int64_t off = (int32_t)A(1);
   off_t r;

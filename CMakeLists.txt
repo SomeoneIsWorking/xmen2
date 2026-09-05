@@ -731,6 +731,13 @@ add_test(NAME vformat COMMAND test_vformat)
 
 add_executable(test_x87crt tests/test_x87crt.c src/runtime/x86_abi/x87crt.c)
 
+add_executable(test_kernel32_wait tests/test_kernel32_wait.c
+               src/native/kernel32_wait.c tests/native_stubs.c)
+target_include_directories(test_kernel32_wait PRIVATE src/native src/runtime/x86_abi)
+target_compile_definitions(test_kernel32_wait PRIVATE X86_NATIVE)
+target_link_libraries(test_kernel32_wait PRIVATE lucent::lucent)
+add_test(NAME kernel32_wait COMMAND test_kernel32_wait)
+
 add_executable(test_crt_in_image_overrides tests/test_crt_in_image_overrides.c
                src/native/crt_in_image_overrides.c src/runtime/x86_abi/x87crt.c
                tests/native_stubs.c)
@@ -1290,6 +1297,7 @@ set(X2_NATIVE_SOURCES
     src/native/host_imports.c
     src/native/guest_body.c
     src/native/x86_engine_selftest.c
+    src/native/x86_engine_jump_selftest.c
     src/native/x86_dispatch.c
     src/native/x86_diag_dump.c
     src/native/x86_guest_call_stack.c
@@ -1361,6 +1369,7 @@ set(X2_NATIVE_SOURCES
     src/native/audio_channel_poll_verify.c
     src/runtime/x86_abi/x87crt.c
     src/native/kernel32.c
+    src/native/kernel32_wait.c
     src/native/win_path.c
     src/native/advapi32.c
     src/native/advapi32_host_store.c

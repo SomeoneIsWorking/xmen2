@@ -12,6 +12,7 @@
 #include "d3d8_vertex_shader.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
+#include "x86_engine.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -59,11 +60,8 @@ int heartbeat_running(void) { return g_running; }
  * loop alive" to the loop reaching Present -- so a run stuck BEFORE the
  * present would go silent, which is the case it exists for. A thread of its
  * own reports the same line whether the guest is running, spinning or blocked.
- *
- * It only READS counters (unsigned long loads that the guest thread only ever
- * increments), so there is no lock: a torn read would mis-state one delta on
- * one line, and taking a lock the guest thread holds would let a diagnostic
- * stall the run it is measuring. That trade is stated rather than assumed.
+ * Legacy counters are approximate unlocked snapshots. The JIT snapshot is
+ * requested atomically and produced by the guest-lock owner at its boundary.
  */
 static void *heartbeat_thread(void *arg) {
   unsigned long p_cross = 0, p_scenes = 0, p_presents = 0, p_clears = 0,
@@ -87,8 +85,6 @@ static void *heartbeat_thread(void *arg) {
         ;
       slept += 0.25;
     }
-    /* A clean stop on the frame counter takes the same path a SIGTERM
-       does, so nothing new has to be trusted. */
     /* 2 = a clean stop on the frame counter, 1 = a signal. Both take this
        path; only the second wants the ring. */
     if (!x2_report_now && gpu_frame_limit_reached())
@@ -110,6 +106,9 @@ static void *heartbeat_thread(void *arg) {
     if (g_silent)
       continue;
 
+    if (x2_engine_request_live_report())
+      x2_log_info("[HB] JIT snapshot pending: no guest boundary since the "
+                  "previous request");
     t = now_s() - g_t0;
     cross = x86_crossings();
     have_dev = d3d8_device_counts(&scenes, &presents, &clears, &draws);

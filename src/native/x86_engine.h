@@ -76,5 +76,7 @@ int x2_engine_selftest(void);
 void x2_engine_where(void);
 
 void x2_engine_report(void);
+/* Thread-safe request; nonzero means the previous request is still pending. */
+int x2_engine_request_live_report(void);
 
 #endif

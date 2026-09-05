@@ -62,4 +62,6 @@ void x2_engine_enter_service(void);
    report; kept in x86_engine.c with the rest of g_engine. */
 void x2_engine_note_callout(void);
 
+int x2_engine_jump_selftest(unsigned int page, unsigned int stack);
+
 #endif

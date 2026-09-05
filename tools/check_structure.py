@@ -19,7 +19,7 @@ DEFAULT_LIMIT = 500
 # would have failed 26 files that nobody touched. Each entry records what it
 # was, so the ratchet is still auditable.
 LEGACY_LIMITS = {
-    "src/native/kernel32.c": 4054,            # was 3737
+    "src/native/kernel32.c": 3664,            # waits extracted into kernel32_wait.c
     "src/native/x86rt_native.c": 2275,        # was 2148
     "src/native/x2native.c": 2329,            # was 2152
     "src/d3d8/d3d8_drawcall.c": 1815,         # was 1650
@@ -41,7 +41,7 @@ LEGACY_LIMITS = {
     "src/native/advapi32.c": 710,             # was 599
     "src/d3d8/d3d8_com.c": 620,               # was 609
     "src/native/dinput8.c": 539,              # was 516
-    "src/native/heartbeat.c": 529,            # was 496
+    "src/native/heartbeat.c": 511,            # JIT snapshot policy stays in x86_engine.c
 }
 
 

@@ -239,6 +239,7 @@ jmp_buf *x86_setjmp_buf(CPU *C) {
 }
 
 void x86_setjmp_done(CPU *C, int rc) {
+  uint32_t resume;
   if (rc) {
     /*
      * Arrived by longjmp. The register file is restored from the snapshot
@@ -256,6 +257,7 @@ void x86_setjmp_done(CPU *C, int rc) {
                    rc);
       abort();
     }
+    resume = g_jmp[g_jmp_active].caller;
     *C = g_jmp[g_jmp_active].regs;
     g_jmp_active = -1;
     /*
@@ -270,6 +272,9 @@ void x86_setjmp_done(CPU *C, int rc) {
                    "once; the total is printed at exit.\n",
                    rc, C->reg[kX86pEsp]);
   }
+  if (!rc)
+    resume = RD32(C->reg[kX86pEsp]);
+  C->eip = resume;
   C->reg[kX86pEax] = (uint32_t)rc;
   C->reg[kX86pEsp] += 4u; /* __cdecl: the return address */
 }

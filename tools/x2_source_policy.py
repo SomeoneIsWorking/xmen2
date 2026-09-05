@@ -29,7 +29,7 @@ RETIRED_STATIC_PATHS = (
     "src/recomp/gen/probe_stubs.S",
 )
 
-IGNORED_TREES = {".git", ".venv", "build", "scratch", "vendor"}
+IGNORED_TREES = {".git", ".venv", "build", "scratch", "vendor", "game"}
 TEXT_SUFFIXES = {
     ".c",
     ".cc",

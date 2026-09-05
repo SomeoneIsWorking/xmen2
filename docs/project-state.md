@@ -221,8 +221,8 @@ twenty retail PE images, passes the shipping JIT selftest, executes the shared
 Gap: x86port does not yet provide the permitted bounded fallback. If it is
 added, the product boundary must prove that only failed/unsupported compilation
 or unsafe execution can enter it and that every fallback interval is counted.
-The reached `PUSHFD` semantics are now implemented in shared x86port (both
-backends, pinned `c18172a57bdc2ec962f588d7f64aa50290ceeae7`; see S014 for the
+The reached startup and scene instructions are now implemented in shared
+x86port (both backends, pinned `cbbb01343a5fa653f4ccb6bc6da4ef294cab10d8`; see S014 for the
 driven-run evidence on the ARM64 host); this pin has not yet had a fresh driven
 run on the x64 host to confirm the same boundary clears there. No bounded
 representative interactive gameplay case has yet combined native overrides,
@@ -435,28 +435,24 @@ Homebrew dependencies and a repository-local game directory; a driven run
 cleared all six intro movies, entered playable gameplay, accepted keyboard
 input, rendered through SDL_GPU/MoltenVK, and sustained world and shadow draws.
 
-`shared/x86port` now has a real ARM64 JIT backend (pinned
-`c18172a57bdc2ec962f588d7f64aa50290ceeae7`), so Apple Silicon is a qualified
-current product host rather than falling back to the test interpreter or
-bounded per-block fallback. Both backends now emit `PUSHFD`/`POPFD` (the whole
-lazily-tracked EFLAGS word materialized/restored through the same helpers the
-interpreter oracle already used), closing the gap that previously stopped
-every run at `0x103c30d2`. A driven run on this host (2026-09-05) mapped all
-twenty retail images, passed the shipping selftest, and let `msdia80.dll`'s
-init entry point run to completion (including the `PUSHFD` it previously
-refused on) before stopping fail-loud on a new, later boundary while
-initializing `cg.dll`: `SHR dword ptr [0x200f3880], 16` (`c1 2d 80 38 0f 20
-10`) at mapped guest `0x200681b4` -- a memory-destination ALU form the JIT does
-not yet translate (`can_emit`'s ALU case only allows the register-destination
-shape).
+The current local JIT build maps all 20 authenticated PC images, clears the
+intro movies, presents the main menu and loads the tutorial through the retail
+party initializer. Range-based executable-code publication removes quadratic
+startup flushing; completed-thread signaling and real finite wait deadlines
+remove the post-movie frame stalls. The menu and opening tutorial scene sustain
+about 16.7 ms median frame intervals during menu/opening dialogue. A later
+20,000-frame driven tutorial run completed dialogue and accepted hero movement,
+entering 4,511,598,335 JIT blocks with zero refusals; a reset gameplay window
+measured 21.24 ms median and 25.12 ms 95th percentile over 1,073 intervals. The shipping selftest reports zero
+of 92 failures. Issue [#143](issues/0143-arm64-jit-startup-and-movie-thread-stalls.md)
+records the samples, denominators and blind spots.
 
-Gap: the `SHR r/m32, imm8` memory-destination form (and likely its sibling ALU
-memory-destination forms) remains unimplemented in both backends, so gameplay
-input is still not polled on any host; that gap, not anything ARM64-specific,
-is what stops this run now. Native Windows remains absent, Intel macOS is not
-a supported target, and physical-controller/hotplug plus clean-machine
-provisioning still retain the hardware-validation gaps described by S006 and
-G005.
+Gap: representative interactive gameplay and independent stock CPU/memory/
+timing conformance are still incomplete. ARM64 x87 storage remains binary64;
+the software transcendental path has tolerance-based tests, not exact x87
+exception/precision conformance. Native Windows and physical controller/hotplug
+plus clean-machine provisioning retain their separate validation gaps. Fedora's
+independent migration/CI changes have not been merged into these local changes.
 
 ### S019 — shared Alchemy gameplay boundary and MUA adoption: partial
 
@@ -469,14 +465,10 @@ DirectInput. Its production comparison detects seeded disagreement, and link,
 unit, structure, and execution-boundary binary gates pass. The optional shared SDL
 transport remains independent and tested in the shared repository.
 
-Gap: after the shared emitter batch advanced the real product path through
-`SETcc`, `LEAVE`, `CDQ`, `DIV`/`IDIV r/m32`, both two- and three-operand
-`IMUL`, string operations, `XCHG`, x87 constant loads, memory-form
-`FCOM`/`FCOMP`, `FNSTSW AX`, `FNCLEX`, and now `PUSHFD`/`POPFD` (S014), the
-current run stops fail-loud on the memory-destination `SHR r/m32, imm8` form
-at mapped guest `0x200681b4`, before gameplay input is polled. Nonzero
-shipping-path A/B counts, physical hotplug, and the recovered guest
-callback sink remain unverified. Retain
+Gap: the current ARM64 JIT passes the former startup instruction refusals and
+reaches the tutorial with retained DirectInput. Nonzero shipping-path A/B
+counts, physical hotplug, and the recovered guest callback sink remain
+unverified. Retain
 DirectInput until those checks agree. Title action meanings, joining,
 assignment, and prompt policy stay here. MUA remains deferred until every X-Men
 2 project goal is verified; only then does MUA migrate to the proven shared
