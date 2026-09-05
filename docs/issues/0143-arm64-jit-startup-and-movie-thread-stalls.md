@@ -76,9 +76,9 @@ shared-runtime integration and are not fresh tests of that combined tree.
 ## Published integration
 
 The exact Mac snapshot is integrated into shared `main`: x86port
-`96f7665b7d6673fb9037776f6d5e369556f18b67` and jit-common
+`4c23c0b86e09ba6ac47fd57c418f080c1ff6ed76` and jit-common
 `03ac795cbc39843e795cb8091fb96bff2b1c9017`, both pinned in `bootstrap.py`.
-The merge preserves the Mac startup/store optimizations and the independent
+The merge preserves the Mac startup/store/copy optimizations and the independent
 Fedora/Windows ABI and CI contracts. Apple ARM64 keeps the user-approved
 binary64 execution behavior while precision metadata still reports its
 limitation; full x87 precision is not a prerequisite for this integration.
@@ -100,3 +100,34 @@ reset gameplay timing window reported 16.93 ms median and 19.09 ms 95th
 percentile over 1,815 intervals. The scene, sampling and render pacing limit
 that observation; it is not evidence that gameplay sped up by the leaf ratio.
 The broader binary64 precision limitations remain unchanged.
+
+
+The next profile identified repeated string-copy work. x86port now uses a
+bulk copy for forward REP MOVS when both complete spans are mapped and
+disjoint, with no write observer installed. All other cases retain the exact
+per-element progress, fault, and observer behavior. The 100,000-operation
+4 KB MOVSD benchmark measured 9,482.1 -> 104.0 ns/copy. There are 11,247 passing
+copy-state/admission checks and 4,204 passing JIT startup cases on ARM64 and
+Rosetta x64; eighteen startup cases specifically execute REP MOVS through
+emitted code. Existing shared-suite baseline failures remain documented there.
+
+A fresh tutorial observation reached 7,000 frames. Its last live heartbeat
+reported 2,431,451,277 block entries, 94,305 translated blocks, 86,826,712 native
+hand-backs and zero refusals of 94,305 translation attempts, with no product
+fallback. A reset 2,265-interval window measured 17.75 ms average, 17.78 ms
+median and 19.59 ms 95th percentile. This establishes continued operation,
+not an FPS improvement over the previous scene. Local captures and profiles
+are under `scratch/logs/optimize-copy-*` and
+`scratch/screenshots/optimize-copy-after.png`. The title graph again passed
+131 tests with its fixture-dependent FMV test skipped; the shipping selftest
+passed all 92 checks. Touched shared sources pass formatting and clang-tidy.
+
+The combined integration now pins jit-common main `03ac795`, which merges
+the Mac code-publication work with native-host support. The Linux Clang build
+passed 132 of 133 CTests after incorporating the copy optimization, including
+all 92 shipping native-battery checks and the canonical state validator;
+only the unconfigured FMV fixture skipped. A silent, virtual-display
+`./run.sh` run at the final pins ended at its
+120-frame limit with 165,521,193 JIT block entries, 73,174 translated blocks,
+351,768 translated instructions and zero refusals. This establishes the
+default launcher and startup boundary, not Linux gameplay or performance.
