@@ -222,7 +222,7 @@ Gap: x86port does not yet provide the permitted bounded fallback. If it is
 added, the product boundary must prove that only failed/unsupported compilation
 or unsafe execution can enter it and that every fallback interval is counted.
 The reached startup and scene instructions are now implemented in shared
-x86port (both backends, pinned `cbbb01343a5fa653f4ccb6bc6da4ef294cab10d8`; see S014 for the
+x86port (both backends, pinned `76e76ce6f66bc0ba341ad018cd0124180820ea3e`; see S014 for the
 driven-run evidence on the ARM64 host); this pin has not yet had a fresh driven
 run on the x64 host to confirm the same boundary clears there. No bounded
 representative interactive gameplay case has yet combined native overrides,
@@ -435,7 +435,7 @@ Homebrew dependencies and a repository-local game directory; a driven run
 cleared all six intro movies, entered playable gameplay, accepted keyboard
 input, rendered through SDL_GPU/MoltenVK, and sustained world and shadow draws.
 
-The current local JIT build maps all 20 authenticated PC images, clears the
+The published JIT build maps all 20 authenticated PC images, clears the
 intro movies, presents the main menu and loads the tutorial through the retail
 party initializer. Range-based executable-code publication removes quadratic
 startup flushing; completed-thread signaling and real finite wait deadlines
@@ -443,7 +443,10 @@ remove the post-movie frame stalls. The menu and opening tutorial scene sustain
 about 16.7 ms median frame intervals during menu/opening dialogue. A later
 20,000-frame driven tutorial run completed dialogue and accepted hero movement,
 entering 4,511,598,335 JIT blocks with zero refusals; a reset gameplay window
-measured 21.24 ms median and 25.12 ms 95th percentile over 1,073 intervals. The shipping selftest reports zero
+measured 21.24 ms median and 25.12 ms 95th percentile over 1,073 intervals. The follow-up floating-point store optimization preserves all sixteen
+host/guest rounding-mode pairs and removes redundant host rounding transitions
+(341 checks on ARM64 and x64); a new gameplay window measured 16.93 ms median
+over 1,815 intervals. The shipping selftest reports zero
 of 92 failures. Issue [#143](issues/0143-arm64-jit-startup-and-movie-thread-stalls.md)
 records the samples, denominators and blind spots.
 

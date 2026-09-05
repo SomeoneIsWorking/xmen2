@@ -73,11 +73,28 @@ attachments. Full gameplay performance, physical controller behavior, and
 stock conformance remain open. Fedora's independent JIT/CI changes have not
 been merged into this local work.
 
-## Local integration
+## Published integration
 
-The title pins local x86port `cbbb01343a5fa653f4ccb6bc6da4ef294cab10d8` and jit-common
-`908febaa671e65d3cb47ce36a88d4ee4434ed6b1` on `codex/mac-jit-startup`. These commits
-are available in this workspace and have not been pushed; consolidation must
-publish the selected shared commits and set the resulting pins before a remote
-clean clone can reproduce this revision. This is a local integration branch,
-not a portable release claim.
+The game is published on `main`. It pins x86port `76e76ce6f66bc0ba341ad018cd0124180820ea3e` and
+jit-common `908feba`; the full jit-common pin is in `bootstrap.py`. Shared
+commits are published on `codex/mac-jit-startup` so the exact dependency pins
+can be fetched by a clean clone. Fedora's shared-engine main remains separate
+pending consolidation of its stricter ARM64 precision admission policy.
+
+## Follow-up profiling and optimization
+
+A five-second playable tutorial sample collected 3,691 main-thread samples;
+370 top-of-stack samples were in `fesetround`. The portable x87 store path now
+avoids changing the host rounding mode when it already matches the guest, and
+copies binary64 values directly on hosts whose long double is binary64. No
+rounding mode is cached across host calls or guest contexts. All sixteen
+host/guest rounding pairs are covered by 341 new checks, passing on ARM64 and
+Rosetta x64. Existing x87 and JIT startup tests also pass.
+
+A ten-million-operation leaf benchmark measured f32 stores at 14.63 -> 5.56
+ns and f64 at 12.41 -> 3.89 ns. In the subsequent live sample, `fesetround` no
+longer appeared among top-of-stack functions with five or more samples. A
+reset gameplay timing window reported 16.93 ms median and 19.09 ms 95th
+percentile over 1,815 intervals. The scene, sampling and render pacing limit
+that observation; it is not evidence that gameplay sped up by the leaf ratio.
+The broader binary64 precision limitations remain unchanged.
