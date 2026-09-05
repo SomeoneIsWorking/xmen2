@@ -76,7 +76,7 @@ shared-runtime integration and are not fresh tests of that combined tree.
 ## Published integration
 
 The exact Mac snapshot is integrated into shared `main`: x86port
-`4c23c0b86e09ba6ac47fd57c418f080c1ff6ed76` and jit-common
+`742fd0469508c7cdda1e93522592a61dbc147fda` and jit-common
 `03ac795cbc39843e795cb8091fb96bff2b1c9017`, both pinned in `bootstrap.py`.
 The merge preserves the Mac startup/store/copy optimizations and the independent
 Fedora/Windows ABI and CI contracts. Apple ARM64 keeps the user-approved
@@ -127,7 +127,15 @@ the Mac code-publication work with native-host support. The Linux Clang build
 passed 132 of 133 CTests after incorporating the copy optimization, including
 all 92 shipping native-battery checks and the canonical state validator;
 only the unconfigured FMV fixture skipped. A silent, virtual-display
-`./run.sh` run at the final pins ended at its
+`./run.sh` run at x86port `4c23c0b` ended at its
 120-frame limit with 165,521,193 JIT block entries, 73,174 translated blocks,
 351,768 translated instructions and zero refusals. This establishes the
 default launcher and startup boundary, not Linux gameplay or performance.
+
+The subsequent x86port `742fd04` pin changes tests only: four x86-hardware
+oracles explicitly skip on hosts without that hardware, while supported-host
+comparison failures and ARM64 JIT tests remain required. Its Linux gate passed
+35 tests, including four compiled unavailable-branch fixtures. The preceding
+hosted ARM64 build and all runtime tests passed; its four oracle classification
+failures prompted this correction. Native ARM64 hosted confirmation of the
+correction remains pending, without changing the validated product sources.

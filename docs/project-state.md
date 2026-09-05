@@ -211,7 +211,8 @@ silently, and without advancing guest frame/time (C274). Callback cleanup and
 module-aware override routing are checked by C178 and C209.
 
 The combined Clang/Ninja build links the published x86port revision
-`4c23c0b86e09ba6ac47fd57c418f080c1ff6ed76`; source and linked-binary checks
+`4c23c0b86e09ba6ac47fd57c418f080c1ff6ed76` (the pinned successor `742fd04`
+changes only hardware-oracle tests and their classification); source and linked-binary checks
 prove that `x2native` requires `x86port_runtime` and exposes no explicit CPU
 interpreter selector or verification mode. The earlier Linux startup refusal
 at `PUSHFD` (`9c`, guest `0x103c30d2`) is covered by the shared runtime's new
