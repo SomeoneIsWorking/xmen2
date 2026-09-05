@@ -190,7 +190,7 @@ not count as Android performance evidence.
 
 Observed subset: `x2native` maps and initializes the original PE images at
 runtime, executes every non-native path through
-`shared/x86port`'s x86-64 JIT, and supplies the reached
+`shared/x86port`'s x86-64 or ARM64 JIT, and supplies the reached
 Win32/CRT/DirectInput/DirectSound/D3D8 boundaries. Native overrides hand back to
 the shipping dispatcher by module plus address and can call their original
 guest bodies through the JIT. Observed JIT runs have traversed menus, movies,
@@ -210,27 +210,27 @@ players complete the verified tutorial control-lock cutscene synchronously,
 silently, and without advancing guest frame/time (C274). Callback cleanup and
 module-aware override routing are checked by C178 and C209.
 
-The current Clang/Ninja build links the published x86port revision
-`ca52e377040d83534f9cd9f5a976526078fa2343`; source and linked-binary checks
+The combined Clang/Ninja build links the published x86port revision
+`96f7665b7d6673fb9037776f6d5e369556f18b67`; source and linked-binary checks
 prove that `x2native` requires `x86port_runtime` and exposes no explicit CPU
-interpreter selector or verification mode. A bounded product run maps all
-twenty retail PE images, passes the shipping JIT selftest, executes the shared
-`FCOMP m64`, `FNSTSW AX`, and `FNCLEX` implementations, then refuses `PUSHFD`
-(`9c`) at guest `0x103c30d2` after 356 tracked title/host crossings.
+interpreter selector or verification mode. The earlier Linux startup refusal
+at `PUSHFD` (`9c`, guest `0x103c30d2`) is covered by the shared runtime's new
+startup instruction tests; the incoming Mac gameplay observations below are
+separate from Linux validation of the combined tree.
 
 Gap: x86port does not yet provide the permitted bounded fallback. If it is
 added, the product boundary must prove that only failed/unsupported compilation
 or unsafe execution can enter it and that every fallback interval is counted.
 The reached startup and scene instructions are now implemented in shared
-x86port (both backends, pinned `76e76ce6f66bc0ba341ad018cd0124180820ea3e`; see S014 for the
+x86port (both backends; see S014 for the
 driven-run evidence on the ARM64 host); this pin has not yet had a fresh driven
 run on the x64 host to confirm the same boundary clears there. No bounded
 representative interactive gameplay case has yet combined native overrides,
 nonzero JIT execution, independent
 CPU/memory/timing/device comparison, and the declared frame-time budget.
-Finally, only the x86-64 backend is implemented; Apple Silicon and Android
-ARM64 require a real JIT backend. Bounded fallback cannot stand in for a
-missing architecture backend.
+Apple Silicon now uses the real ARM64 JIT. Android still needs independent
+host integration, packaging and runtime qualification; the Mac result does
+not establish Android support.
 Unreached imports remain fail-loud poison thunks; guest exception delivery,
 LAN networking, and optional COM/system facilities are absent.
 
@@ -454,8 +454,12 @@ Gap: representative interactive gameplay and independent stock CPU/memory/
 timing conformance are still incomplete. ARM64 x87 storage remains binary64;
 the software transcendental path has tolerance-based tests, not exact x87
 exception/precision conformance. Native Windows and physical controller/hotplug
-plus clean-machine provisioning retain their separate validation gaps. Fedora's
-independent migration/CI changes have not been merged into these local changes.
+plus clean-machine provisioning retain their separate validation gaps. The
+combined dependency pins retain Fedora/Windows migration and CI contracts
+alongside the published Mac startup and store-performance changes. The user
+explicitly approved preserving playable Mac binary64 behavior; full x87
+precision is not an integration prerequisite. No interpreter path or selector
+was introduced to accommodate that limitation.
 
 ### S019 — shared Alchemy gameplay boundary and MUA adoption: partial
 

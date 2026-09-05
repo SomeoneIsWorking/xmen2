@@ -70,16 +70,18 @@ instrument change.
 Local raw observations are retained under `scratch/logs/repair-*` and
 `scratch/screenshots/repair-*`; they are gitignored and are not portable evidence
 attachments. Full gameplay performance, physical controller behavior, and
-stock conformance remain open. Fedora's independent JIT/CI changes have not
-been merged into this local work.
+stock conformance remain open. These Mac observations precede the combined
+shared-runtime integration and are not fresh tests of that combined tree.
 
 ## Published integration
 
-The game is published on `main`. It pins x86port `76e76ce6f66bc0ba341ad018cd0124180820ea3e` and
-jit-common `908feba`; the full jit-common pin is in `bootstrap.py`. Shared
-commits are published on `codex/mac-jit-startup` so the exact dependency pins
-can be fetched by a clean clone. Fedora's shared-engine main remains separate
-pending consolidation of its stricter ARM64 precision admission policy.
+The exact Mac snapshot is integrated into shared `main`: x86port
+`96f7665b7d6673fb9037776f6d5e369556f18b67` and jit-common
+`03ac795cbc39843e795cb8091fb96bff2b1c9017`, both pinned in `bootstrap.py`.
+The merge preserves the Mac startup/store optimizations and the independent
+Fedora/Windows ABI and CI contracts. Apple ARM64 keeps the user-approved
+binary64 execution behavior while precision metadata still reports its
+limitation; full x87 precision is not a prerequisite for this integration.
 
 ## Follow-up profiling and optimization
 
