@@ -225,9 +225,6 @@ add_executable(test_gameplay_control tests/test_gameplay_control.c
                src/input/gameplay_control.c)
 add_test(NAME gameplay_control COMMAND test_gameplay_control)
 
-add_executable(test_font_tier tests/test_font_tier.c src/native/font_tier.c)
-add_test(NAME font_tier COMMAND test_font_tier)
-
 add_executable(test_macos_bundle tests/test_macos_bundle.c
                src/native/macos_bundle.c src/config/environment.c)
 target_include_directories(test_macos_bundle PRIVATE src/native)
@@ -975,9 +972,7 @@ add_test(NAME pad_glyph_manifest
 
 # The atlas header bootstrap.py publishes at every provision: this proves
 # every published codepoint is actually inked -- an all-blank atlas is exactly
-# the uniform output an unvalidated rasteriser produces. The font tier step is
-# no longer a published header; its arithmetic is gated by test_font_tier and
-# its measurement happens at run time through the engine's own loader.
+# the uniform output an unvalidated rasteriser produces.
 add_test(NAME prompt_glyph_atlas
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py --selftest
@@ -1452,7 +1447,6 @@ set(X2_NATIVE_SOURCES
     src/native/touch_hud_runtime.c
     src/native/hud_draw_runtime.c
     src/native/hud_portrait_position.c
-    src/native/font_tier.c
     src/native/hud_portrait_position_runtime.c
     src/presentation/hud_layout.c
     src/native/xbox_defaults.c
