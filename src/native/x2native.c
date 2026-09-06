@@ -38,6 +38,7 @@
 #include "host_imports.h"
 #include "input_record.h"
 #include "install_picker.h"
+#include "macos_bundle.h"
 #include "live_session.h"
 #include "pe_map.h"
 #include "platform_mman.h"
@@ -1603,6 +1604,7 @@ int main(int argc, char **argv) {
   int vkselftest, vkpermissive, d3d8, d3d8selftest, d3d8permissive;
   int dialogselftest;
   X2NativeOptions options;
+  int packaged_bundle = 0;
   X86Module *m;
   /* Room for every shipped libIG*.dll plus the exe: the game has 16 of them.
      The bound is checked below and reported, so overflowing it stops
@@ -1613,8 +1615,16 @@ int main(int argc, char **argv) {
      until this runs every fatal message the port prints is invisible and a
      deliberate exit looks like an unexplained crash. */
   x2_android_log_stdio();
+  /* Before the options are read, because a double-clicked .app supplies no
+     options at all: the bundle is the argument. It publishes its own
+     resources and Vulkan driver, and being in one IS the packaged product
+     launch shape that --appimage names on Linux. */
+  if (x2_macos_bundle_init(argv[0]))
+    packaged_bundle = 1;
   if ((rc = x2native_options_parse(argc, argv, &options)) != 0)
     return rc;
+  if (packaged_bundle)
+    options.appimage = 1;
   /* Direct developer invocation may load the project's gitignored .env.
      Packaged --appimage setup (also used by Android) categorically may not:
      its Browse flow and persisted OS user-data selection are the sole player

@@ -75,6 +75,8 @@ typedef enum X2ConfigOverride {
   kX2ConfigVerbose,
   kX2ConfigVirtualPad,
   kX2ConfigVirtualPadId,
+  kX2ConfigVulkanDriverFiles,
+  kX2ConfigVulkanIcdFilenames,
   kX2ConfigVsConstants,
   kX2ConfigWatch,
   kX2ConfigWatchLog,

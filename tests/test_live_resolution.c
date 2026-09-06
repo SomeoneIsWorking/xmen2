@@ -8,7 +8,7 @@ struct SDL_Window {
   int token;
 };
 
-enum { STEP_D3D = 1, STEP_TITLE, STEP_WINDOW, STEP_SAVE };
+enum { STEP_D3D = 1, STEP_TITLE, STEP_WINDOW, STEP_SAVE, STEP_TEXT };
 
 static int checks;
 static int steps[16];
@@ -76,6 +76,16 @@ int x2_window_settings_apply(struct SDL_Window *window,
   return 1;
 }
 
+/* The text scale is derived from the output height, so a resolution the
+   player accepted has to re-derive it: fonts already in memory are not
+   reloaded, and without this call they keep the size the BOOT resolution
+   asked for. It belongs after the save, on the success path only -- a rolled
+   back change must leave the text where it was. */
+int x2_ui_text_scale_reapply(void) {
+  steps[step_count++] = STEP_TEXT;
+  return 1;
+}
+
 int x2_settings_store_save(char *why, int whyn) {
   steps[step_count++] = STEP_SAVE;
   save_calls++;
@@ -128,8 +138,9 @@ int main(void) {
   reset_calls();
   settings = changed(&before);
   CHECK(x2_live_resolution_apply(&window, &settings, &before, why, sizeof why));
-  CHECK(step_count == 4 && steps[0] == STEP_D3D && steps[1] == STEP_TITLE &&
-        steps[2] == STEP_WINDOW && steps[3] == STEP_SAVE);
+  CHECK(step_count == 5 && steps[0] == STEP_D3D && steps[1] == STEP_TITLE &&
+        steps[2] == STEP_WINDOW && steps[3] == STEP_SAVE &&
+        steps[4] == STEP_TEXT);
   CHECK(title_width[0] == 1920 && title_height[0] == 1080);
   CHECK(settings.width == 1920 && settings.height == 1080);
 

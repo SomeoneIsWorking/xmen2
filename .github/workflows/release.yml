@@ -97,23 +97,26 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Install native build dependencies
-        run: brew install ffmpeg freetype pkg-config sdl3 sdl3_image shaderc ninja
+        # molten-vk and vulkan-loader are not build inputs: SDL_GPU is driven
+        # from SPIR-V, so the shipped app carries its own Vulkan driver.
+        run: brew install ffmpeg freetype pkg-config sdl3 sdl3_image shaderc ninja molten-vk vulkan-loader
       - name: Select the pinned Apple Clang toolchain
         run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
       - run: uv sync --frozen
       - name: Build the native release binary
         run: CC=clang CXX=clang++ uv run --frozen python tools/ci.py release-binary --target macos-arm64
-      - name: Stage macOS release archive
+      - name: Package the self-contained .app
+        run: uv run --frozen python tools/package_macos.py
+      - name: Zip the bundle
+        # ditto, not the upload action's own zip: only ditto preserves the
+        # symlinks and the ad-hoc signature a .app needs to launch.
         run: |
-          mkdir -p build/release/X-Men-Legends-II-macos-arm64
-          cp build/native/x2native build/release/X-Men-Legends-II-macos-arm64/
-          cp -r build/native/ui build/release/X-Men-Legends-II-macos-arm64/
-          cp README.md LICENSE build/release/X-Men-Legends-II-macos-arm64/
-          tar -czf build/release/X-Men-Legends-II-macos-arm64.tar.gz -C build/release X-Men-Legends-II-macos-arm64
+          cd build/release
+          ditto -c -k --sequesterRsrc --keepParent "X-Men Legends II.app" X-Men-Legends-II-macos-arm64.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: macos-package
-          path: build/release/X-Men-Legends-II-macos-arm64.tar.gz
+          path: build/release/X-Men-Legends-II-macos-arm64.zip
 
   build-android:
     name: Android (arm64-v8a)
@@ -170,7 +173,7 @@ jobs:
         run: |
           mkdir -p release_assets
           find dist -type f -name "*.AppImage" -exec cp {} release_assets/ \;
-          find dist -type f -name "*.tar.gz" -exec cp {} release_assets/ \;
+          find dist -type f -name "*.zip" -exec cp {} release_assets/ \;
           find dist -type f -name "*.apk" -exec cp {} release_assets/ \;
           cd release_assets
           sha256sum * > SHA256SUMS.txt
@@ -198,9 +201,9 @@ jobs:
           - **Linux x86-64 AppImage**: `X-Men-Legends-II-x86_64.AppImage`
             - Desktop no-terminal setup flow with Browse dialog.
             - Automatically verifies legal PC install and stores path in OS user config.
-          - **macOS Apple Silicon (ARM64)**: `X-Men-Legends-II-macos-arm64.tar.gz`
-            - Native arm64 executable with RmlUi assets. NOT self-contained: it links Homebrew SDL3, SDL3_image, FreeType and FFmpeg, and its renderer needs a Vulkan loader with MoltenVK. Install them first:
-              `brew install sdl3 sdl3_image ffmpeg freetype molten-vk vulkan-loader`
+          - **macOS Apple Silicon (ARM64)**: `X-Men-Legends-II-macos-arm64.zip`
+            - A self-contained `X-Men Legends II.app`: it carries SDL3, SDL3_image, FreeType, FFmpeg and its own Vulkan loader with MoltenVK, so nothing has to be installed first. Unzip it, move it to Applications and open it; the first launch asks for your PC installation with a Browse dialog and accepts a folder, its `XMen2.exe`, or a ZIP of either.
+            - It is ad-hoc signed rather than notarised, so the first open needs right-click -> Open (or Open Anyway in System Settings -> Privacy & Security).
           - **Android ARM64 (arm64-v8a)**: `X-Men-Legends-II-arm64-v8a-debug.apk`
             - Debug-signed APK with Storage Access Framework (SAF) setup and touch controls. Debug signing means it is a test build, not a store or update-key release, and its device performance is not yet measured.
           - **Checksums**: `SHA256SUMS.txt`

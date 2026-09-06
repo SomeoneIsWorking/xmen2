@@ -71,6 +71,11 @@ static const char *const k_override_names[kX2ConfigOverrideCount] = {
     [kX2ConfigVerbose] = "X2_VERBOSE",
     [kX2ConfigVirtualPad] = "X2_VIRTUAL_PAD",
     [kX2ConfigVirtualPadId] = "X2_VIRTUAL_PAD_ID",
+    /* Not the port's own names: the Vulkan loader reads these, and the
+       macOS bundle sets them so a packaged app finds its own MoltenVK
+       instead of whatever the machine happens to have. */
+    [kX2ConfigVulkanDriverFiles] = "VK_DRIVER_FILES",
+    [kX2ConfigVulkanIcdFilenames] = "VK_ICD_FILENAMES",
     [kX2ConfigVsConstants] = "X2_VSCONST",
     [kX2ConfigWatch] = "X2_WATCH",
     [kX2ConfigWatchLog] = "X2_WATCH_LOG",

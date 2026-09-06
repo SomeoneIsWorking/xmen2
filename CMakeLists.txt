@@ -228,6 +228,12 @@ add_test(NAME gameplay_control COMMAND test_gameplay_control)
 add_executable(test_font_tier tests/test_font_tier.c src/native/font_tier.c)
 add_test(NAME font_tier COMMAND test_font_tier)
 
+add_executable(test_macos_bundle tests/test_macos_bundle.c
+               src/native/macos_bundle.c src/config/environment.c)
+target_include_directories(test_macos_bundle PRIVATE src/native)
+target_link_libraries(test_macos_bundle PRIVATE ${X2_SDL})
+add_test(NAME macos_bundle COMMAND test_macos_bundle)
+
 add_executable(test_touch_source tests/test_touch_source.c
                src/input/touch_source.c)
 target_link_libraries(test_touch_source PRIVATE ${X2_SDL})
@@ -1463,6 +1469,7 @@ set(X2_NATIVE_SOURCES
     src/native/control_http.c
     src/native/control_save_route.c
     src/native/control_ui_route.c
+    src/native/macos_bundle.c
     src/native/control_performance_route.c
     src/native/control_status_route.c
     src/native/control_png.c
