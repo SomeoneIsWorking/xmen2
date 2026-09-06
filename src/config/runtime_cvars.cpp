@@ -14,6 +14,8 @@ namespace {
 
 /* off: x86port re-translates every block instead of caching -- the
  * self-modifying-code / stale-block discriminator. */
+lucent::cvar::Var<bool> g_hud_verify{"hud.verify", false};
+lucent::cvar::Var<bool> g_hud_trace{"hud.trace", false};
 lucent::cvar::Var<bool> g_jit_cache{"jit.cache", true};
 
 /* on: an interception point that lands on host code this dispatcher owns (an
@@ -107,6 +109,8 @@ void apply_set_token(const char *token) {
 
 void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::set_prefix("X2_");
+  lucent::cvar::register_var(g_hud_verify);
+  lucent::cvar::register_var(g_hud_trace);
   lucent::cvar::register_var(g_jit_cache);
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);

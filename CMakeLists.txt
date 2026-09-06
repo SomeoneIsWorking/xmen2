@@ -216,6 +216,11 @@ target_include_directories(test_touch_controls PRIVATE src/input)
 target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
 add_test(NAME touch_controls COMMAND test_touch_controls)
 
+add_executable(test_hud_portrait_position tests/test_hud_portrait_position.c
+               src/native/hud_portrait_position.c)
+target_include_directories(test_hud_portrait_position PRIVATE src/native)
+add_test(NAME hud_portrait_position COMMAND test_hud_portrait_position)
+
 add_executable(test_gameplay_control tests/test_gameplay_control.c
                src/input/gameplay_control.c)
 add_test(NAME gameplay_control COMMAND test_gameplay_control)
@@ -223,6 +228,14 @@ add_test(NAME gameplay_control COMMAND test_gameplay_control)
 add_executable(test_touch_layout tests/test_touch_layout.c
                src/presentation/touch_layout.c)
 add_test(NAME touch_layout COMMAND test_touch_layout)
+
+add_executable(test_hud_layout tests/test_hud_layout.c
+               src/presentation/hud_layout.c
+               src/presentation/touch_layout.c
+               src/config/hud_settings.c)
+target_include_directories(test_hud_layout PRIVATE src/presentation src/config)
+target_link_libraries(test_hud_layout PRIVATE m)
+add_test(NAME hud_layout COMMAND test_hud_layout)
 
 add_executable(test_gpu_frame_timing tests/test_gpu_frame_timing.c
                src/gpu/gpu_frame_timing.c)
@@ -307,7 +320,7 @@ add_test(NAME project_state
 set_tests_properties(project_state PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
                      SKIP_RETURN_CODE 77)
-add_executable(test_settings tests/test_settings.c src/config/settings.c
+add_executable(test_settings tests/test_settings.c src/config/settings.c src/config/hud_settings.c
                src/config/input_assignments.c
                src/config/boot_mode.c)
 target_include_directories(test_settings PRIVATE src/config)
@@ -446,7 +459,7 @@ add_test(NAME shadow_policy COMMAND test_shadow_policy)
 
 add_executable(test_player_input tests/test_player_input.c
                src/input/player_input.c src/input/player_participation_policy.c
-               src/config/settings.c src/config/input_assignments.c
+               src/config/settings.c src/config/hud_settings.c src/config/input_assignments.c
                src/config/boot_mode.c
                src/native/input_binding_sets.c
                src/native/xbox_defaults.c)
@@ -484,7 +497,7 @@ add_executable(test_transient_controller_assignment
                tests/test_transient_controller_assignment.c
                src/input/transient_controller_assignment.c
                src/input/controller_instance.c
-               src/config/settings.c src/config/input_assignments.c
+               src/config/settings.c src/config/hud_settings.c src/config/input_assignments.c
                src/config/boot_mode.c)
 target_include_directories(test_transient_controller_assignment PRIVATE
                            src/input src/native src/config)
@@ -900,6 +913,11 @@ add_test(NAME run_shim COMMAND ${Python3_EXECUTABLE} -m unittest
 set_tests_properties(run_shim PROPERTIES
                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+add_test(NAME hud_geometry COMMAND ${Python3_EXECUTABLE} -m unittest
+         tests.test_hud_geometry)
+set_tests_properties(hud_geometry PROPERTIES
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 
 
 # The host D3D8 interface tables, against a real d3d8.h and against the game's
@@ -1208,6 +1226,7 @@ add_library(x2_rmlui_ui STATIC
     src/ui/rmlui_ui.cpp
     src/ui/ui_resources.cpp
     src/ui/settings_document.cpp
+    src/ui/hud_settings_document.cpp
     src/ui/touch_document.cpp
     src/ui/settings_overlay_state.c)
 add_dependencies(x2_rmlui_ui x2_touch_icons)
@@ -1271,7 +1290,7 @@ set(X2_NATIVE_SOURCES
     src/input/directinput_controller_sample.c
     src/input/ig_controller_manager_adapter.cpp
     src/config/directory_create.c
-    src/config/settings.c
+    src/config/settings.c src/config/hud_settings.c
     src/config/input_assignments.c
     src/config/settings_store.c
     src/config/boot_mode.c
@@ -1416,6 +1435,10 @@ set(X2_NATIVE_SOURCES
     src/presentation/touch_layout.c
     src/input/gameplay_control.c
     src/native/touch_hud_runtime.c
+    src/native/hud_draw_runtime.c
+    src/native/hud_portrait_position.c
+    src/native/hud_portrait_position_runtime.c
+    src/presentation/hud_layout.c
     src/native/xbox_defaults.c
     src/native/dsound.c
     src/audio/movie_audio.c

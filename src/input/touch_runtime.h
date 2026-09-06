@@ -25,10 +25,16 @@ typedef struct X2TouchPointer {
   uint32_t time_ms;
 } X2TouchPointer;
 
-int x2_touch_runtime_event(const union SDL_Event *event,
-                           X2TouchPointer *pointer);
+int x2_touch_runtime_event(const union SDL_Event *event);
 void x2_touch_runtime_lifecycle_event(const union SDL_Event *event);
 void x2_touch_runtime_cancel(void);
+/* Copies the HUD's output-pixel portrait bounds. Null or mask zero clears
+ * them. Visibility/layout changes release captured portrait pointers. */
+void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
+                                  unsigned visible_mask);
+/* The window event owner drains all portrait transitions in FIFO order,
+ * including cancellation when no SDL event is pending. */
+int x2_touch_runtime_take_pointer(X2TouchPointer *pointer);
 
 typedef struct X2TouchVisual {
   uint32_t id;

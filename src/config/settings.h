@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "boot_mode.h"
+#include "hud_settings.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,6 +44,7 @@ typedef struct {
   float text_scale;
   X2BootMode boot_mode;
   uint8_t touch_controls;
+  X2HudSettings hud;
   /* Device-assignment grid: each row has one owner or is unassigned. P1 may
      own one row of each kind for hotswap. P2-P4 own one device total. */
   int8_t keyboard_player[X2_SETTINGS_KEYBOARD_PROFILES];

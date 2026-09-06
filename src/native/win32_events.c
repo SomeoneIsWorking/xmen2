@@ -164,11 +164,17 @@ static void post_activation(int active, uint64_t timestamp) {
   post_message_or_abort(&message, "WM_ACTIVATE");
 }
 
+static void drain_touch_pointer(void) {
+  X2TouchPointer pointer;
+  while (x2_touch_runtime_take_pointer(&pointer))
+    x2_win32_pointer_translate_touch(&pointer, &g_mouse, g_hwnd);
+}
+
 static void pump_sdl(void) {
   SDL_Event event;
 
+  drain_touch_pointer();
   while (SDL_PollEvent(&event)) {
-    X2TouchPointer touch_pointer;
     if (event.type == SDL_EVENT_QUIT ||
         event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
       if (!x2_win32_message_post_quit(&g_mouse)) {
@@ -195,14 +201,20 @@ static void pump_sdl(void) {
                                   0);
     }
     x2_touch_runtime_lifecycle_event(&event);
+    drain_touch_pointer();
 
     if (x2_ui_handle_event(&event)) {
+      if (x2_ui_captures_input()) {
+        x2_touch_runtime_cancel();
+        drain_touch_pointer();
+      }
       x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());
       apply_cursor_policy();
       continue;
     }
-    if (x2_touch_runtime_event(&event, &touch_pointer)) {
-      x2_win32_pointer_translate_touch(&touch_pointer, &g_mouse, g_hwnd);
+    int touch_handled = x2_touch_runtime_event(&event);
+    drain_touch_pointer();
+    if (touch_handled) {
       continue;
     }
     x2_win32_mouse_overlay(&g_mouse, x2_ui_captures_input());

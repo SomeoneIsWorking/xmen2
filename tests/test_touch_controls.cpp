@@ -6,6 +6,7 @@ extern "C" {
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -16,6 +17,102 @@ bool has_value(const std::vector<x2::input::ActionEvent> &events,
                      [action, minimum](const auto &event) {
                        return event.action == action && event.value >= minimum;
                      });
+}
+
+bool portrait_regions() {
+  using lucent::touch::Phase;
+  using x2::input::TouchAction;
+  x2::input::TouchControls controls;
+  controls.set_viewport({1000, 600, {20, 10, 20, 10}});
+  const auto has_portrait = [&controls] {
+    const auto zones = controls.zones();
+    return std::any_of(zones.begin(), zones.end(), [](const auto &zone) {
+      return zone.action >= TouchAction::SelectHero1;
+    });
+  };
+  if (has_portrait()) {
+    std::cerr << "portraits were inferred without a drawn rectangle\n";
+    return false;
+  }
+  const auto base_zone_count = controls.zones().size();
+  std::array<X2Rect, 4> rectangles{{{100, 100, 150, 170},
+                                    {200, 100, 230, 180},
+                                    {500, 150, 550, 200},
+                                    {650, 100, 730, 180}}};
+  controls.set_portraits(rectangles, 5);
+  const auto hero3 = std::find_if(
+      controls.zones().begin(), controls.zones().end(),
+      [](const auto &zone) { return zone.action == TouchAction::SelectHero3; });
+  if (hero3 == controls.zones().end() || hero3->zone.left != 500 ||
+      hero3->zone.bottom != 200 ||
+      controls.zones().size() != base_zone_count + 2) {
+    std::cerr
+        << "portrait regions did not preserve explicit bounds and visibility\n";
+    return false;
+  }
+  const std::array portrait{
+      lucent::touch::Contact{1, {125, 135}, Phase::began}};
+  if (!has_value(controls.route(portrait), TouchAction::SelectHero1, 1)) {
+    std::cerr << "published portrait rectangle did not route hero selection\n";
+    return false;
+  }
+  if (!controls.set_portraits(rectangles, 5).empty()) {
+    std::cerr << "unchanged HUD canceled an active portrait\n";
+    return false;
+  }
+  const auto moved = controls.route(
+      std::array{lucent::touch::Contact{1, {990, 590}, Phase::moved}});
+  if (moved.size() != 1 || moved.front().position.x != 125 ||
+      moved.front().position.y != 135) {
+    std::cerr << "portrait drag left the retail selection center\n";
+    return false;
+  }
+  const auto attack = std::find_if(
+      controls.zones().begin(), controls.zones().end(),
+      [](const auto &zone) { return zone.action == TouchAction::LightAttack; });
+  const lucent::touch::Point attack_point{
+      (attack->zone.left + attack->zone.right) / 2,
+      (attack->zone.top + attack->zone.bottom) / 2};
+  controls.route(
+      std::array{lucent::touch::Contact{2, attack_point, Phase::began}});
+  rectangles[0].right += 10;
+  const auto changed = controls.set_portraits(rectangles, 5);
+  if (changed.size() != 1 ||
+      changed.front().action != TouchAction::SelectHero1 ||
+      changed.front().phase != Phase::canceled || changed.front().value != 0 ||
+      !has_value(controls.route(std::array{
+                     lucent::touch::Contact{2, attack_point, Phase::moved}}),
+                 TouchAction::LightAttack, 1)) {
+    std::cerr
+        << "changed portrait failed to cancel independently of held attack\n";
+    return false;
+  }
+  controls.route(portrait);
+  auto invalid = rectangles;
+  invalid[0].right = std::numeric_limits<float>::infinity();
+  const auto rejected = controls.set_portraits(invalid, 5);
+  if (rejected.size() != 1 || rejected.front().phase != Phase::canceled ||
+      has_portrait()) {
+    std::cerr << "invalid portrait input retained stale regions or captures\n";
+    return false;
+  }
+  for (unsigned variant = 0; variant < 4; ++variant) {
+    controls.set_portraits(rectangles, 5);
+    if (variant == 0)
+      controls.set_portraits({}, 5);
+    else if (variant == 1)
+      controls.set_portraits(rectangles, 0);
+    else if (variant == 2)
+      controls.set_portraits(rectangles, 16);
+    else
+      controls.set_viewport({600, 1000, {10, 20, 10, 20}});
+    if (has_portrait()) {
+      std::cerr << "absent or outdated HUD regions remained touchable: "
+                << variant << '\n';
+      return false;
+    }
+  }
+  return true;
 }
 
 } // namespace
@@ -119,12 +216,12 @@ int main() {
     return 1;
   }
 
-  /* The first portrait cell, in the quarter of the party slot the HUD
-     draws hero 1 into -- so the zone and the drawn face cannot disagree. */
-  const X2Rect faces = slots[kX2SlotPortraits];
-  const lucent::touch::Point portrait_point{
-      faces.left + (faces.right - faces.left) * 0.125F,
-      (faces.top + faces.bottom) * 0.5F};
+  /* The HUD producer publishes exact output-pixel bounds; the input owner
+     neither divides a slot into quarters nor assumes all four are visible. */
+  const std::array<X2Rect, 4> portrait_rectangles{
+      {{710, 30, 758, 80}, {}, {}, {}}};
+  controls.set_portraits(portrait_rectangles, 1);
+  const lucent::touch::Point portrait_point{734, 55};
   const std::vector<lucent::touch::Contact> portrait = {
       {5, portrait_point, lucent::touch::Phase::began}};
   const auto portrait_events = controls.route(portrait);
@@ -181,6 +278,8 @@ int main() {
     std::cerr << "viewport change did not release the old layout\n";
     return 1;
   }
+  if (!portrait_regions())
+    return 1;
   std::cout
       << "touch controls: layout, action mapping, and cancellation passed\n";
   return 0;

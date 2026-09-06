@@ -16,6 +16,7 @@ extern "C" {
 
 #include <algorithm>
 #include <cstdio>
+#include <deque>
 #include <map>
 #include <set>
 #include <span>
@@ -33,6 +34,8 @@ struct ContactState {
 x2::input::TouchControls controls;
 std::map<SDL_FingerID, ContactState> contacts;
 std::set<std::uint32_t> active_zones;
+x2::input::PortraitPointer portrait_pointer;
+std::deque<X2TouchPointer> pending_pointers;
 SDL_Window *window;
 /* The one viewport both the control zones and the HUD relocation lay out
    from. Set with the window, so neither owner computes its own. */
@@ -72,14 +75,6 @@ const char *button_name(x2::input::TouchAction action) {
   default:
     return nullptr;
   }
-}
-
-bool is_portrait_action(x2::input::TouchAction action) {
-  using x2::input::TouchAction;
-  return action == TouchAction::SelectHero1 ||
-         action == TouchAction::SelectHero2 ||
-         action == TouchAction::SelectHero3 ||
-         action == TouchAction::SelectHero4;
 }
 
 void publish_button(const x2::input::ActionEvent &event) {
@@ -153,7 +148,19 @@ void claim_player_one() {
 
 void publish(const std::vector<x2::input::ActionEvent> &events) {
   using x2::input::TouchAction;
+  if (events.empty())
+    return;
   claim_player_one();
+  for (const auto &event : portrait_pointer.route(events)) {
+    const bool release = event.phase == lucent::touch::Phase::ended ||
+                         event.phase == lucent::touch::Phase::canceled;
+    pending_pointers.push_back({1, event.position.x, event.position.y,
+                                release ? 0
+                                : event.phase == lucent::touch::Phase::began
+                                    ? 1
+                                    : -1,
+                                static_cast<uint32_t>(SDL_GetTicks())});
+  }
   for (const auto &event : events) {
     if (event.phase == lucent::touch::Phase::ended ||
         event.phase == lucent::touch::Phase::canceled)
@@ -176,6 +183,7 @@ void publish(const std::vector<x2::input::ActionEvent> &events) {
 void x2_touch_runtime_window(SDL_Window *new_window) {
   publish(controls.cancel());
   contacts.clear();
+  publish(controls.set_portraits({}, 0));
   window = new_window;
   if (!window)
     return;
@@ -209,12 +217,10 @@ int x2_touch_runtime_viewport(X2LayoutViewport *out) {
   return 1;
 }
 
-int x2_touch_runtime_event(const SDL_Event *event, X2TouchPointer *pointer) {
-  if (pointer)
-    *pointer = {};
+int x2_touch_runtime_event(const SDL_Event *event) {
   if (!window || !event)
     return 0;
-  if (!x2_settings_store()->touch_controls) {
+  if (!x2_touch_runtime_overlay_visible()) {
     if (!contacts.empty())
       x2_touch_runtime_cancel();
     return 0;
@@ -249,26 +255,6 @@ int x2_touch_runtime_event(const SDL_Event *event, X2TouchPointer *pointer) {
            id == finger.fingerID ? phase : lucent::touch::Phase::moved});
   const auto actions = controls.route(active);
   publish(actions);
-  if (pointer) {
-    const auto selected = std::find_if(
-        actions.begin(), actions.end(), [&finger](const auto &action) {
-          return action.contact_id ==
-                     static_cast<std::int64_t>(finger.fingerID) &&
-                 is_portrait_action(action.action);
-        });
-    if (selected != actions.end()) {
-      pointer->valid = 1;
-      pointer->x = selected->position.x;
-      pointer->y = selected->position.y;
-      pointer->button_change =
-          selected->phase == lucent::touch::Phase::began ? 1
-          : selected->phase == lucent::touch::Phase::ended ||
-                  selected->phase == lucent::touch::Phase::canceled
-              ? 0
-              : -1;
-      pointer->time_ms = static_cast<uint32_t>(finger.timestamp / 1000000u);
-    }
-  }
   if (!contact.active)
     contacts.erase(finger.fingerID);
   return 1;
@@ -290,8 +276,27 @@ void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
 
 void x2_touch_runtime_cancel(void) {
   publish(controls.cancel());
+  publish(controls.set_portraits({}, 0));
   contacts.clear();
   active_zones.clear();
+}
+
+void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
+                                  unsigned visible_mask) {
+  if (!portraits || !x2_touch_runtime_overlay_visible())
+    publish(controls.set_portraits({}, 0));
+  else
+    publish(controls.set_portraits(std::span{portraits, 4}, visible_mask));
+}
+
+int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {
+  if (!x2_touch_runtime_overlay_visible() && !contacts.empty())
+    x2_touch_runtime_cancel();
+  if (!pointer || pending_pointers.empty())
+    return 0;
+  *pointer = pending_pointers.front();
+  pending_pointers.pop_front();
+  return 1;
 }
 
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {

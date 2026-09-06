@@ -1,7 +1,7 @@
 ---
 id: 139
 title: Touch layout conflicts with retail HUD and lacks direct hero selection
-status: investigating
+status: resolved
 symptom: Android touch overlay crowds gameplay with a second camera stick and controller glyph grid; retail HP/energy, potion, and portrait HUD stays in bottom-left and portraits cannot be tapped to select heroes
 tags: android,touch,hud,input,ui
 state_items: S018
@@ -163,3 +163,37 @@ HUD draws exactly as authored. `touch_layout.c` still owns the three HUD
 slots -- where the elements are MEANT to go is decided and tested; what is
 missing is per-element placement, which needs the scene-graph structure under
 CHud element by element.
+
+## Resolution 2026-09-05 -- scene-graph placement and direct portrait selection
+
+The scene-graph structure under CHud is recovered and documented in
+`docs/RE/hud.md`:
+
+1. **Composition and draw entries.** `005a62c0` invokes `005a43d0` (party
+   selector/cross), `005a3320` (vitals panel), `005a5170` (inventory/potions),
+   and `005a1ab0` (portrait presenter) under their retail conditions.
+2. **Scoped submission transformation.** `src/native/hud_draw_runtime.c`
+   intercepts those four entries and activates a scoped affine transform
+   (`x2_hud_fit` in `src/presentation/hud_layout.c`). During an active scope,
+   2D sprite submissions (`0059a140`), 2D text submissions (`005f11b0`), and
+   3D scene node matrices (`00570970`) are scaled and translated into their
+   layout slot without fracturing element hierarchies or modifying assets.
+3. **Mobile HUD layout.** Vitals (HP/MP) are placed top-left; potions (health
+   and energy packs, scene Z extent [162, 202]) sit directly below vitals in
+   top-left; and the four character portraits are arranged in a horizontal row
+   in top-right. The console D-pad selector cross (`m_playercross`) is moved
+   offscreen in mobile layout because hero selection routes directly through
+   portrait tapping and its directional beams point away from the horizontal
+   portrait row.
+4. **Portrait position getter and hit selection.** `005a1650` is natively
+   implemented in `src/native/hud_portrait_position.c` and verified against
+   the guest body under `hud.verify`. `capture_portrait` positions each face
+   into its slot and writes the transformed scene center to `PORTRAIT_CENTERS`
+   (`0x00a0a0cc + slot*12`). Touch contacts in the published portrait regions
+   are routed by `src/input/touch_controls.cpp` to Win32 mouse clicks, which
+   hit the retail click handler (`005f9eb0`) and perform direct hero selection.
+5. **Configuration and geometry verification.** `src/config/hud_settings.{c,h}`
+   and `src/ui/hud_settings_document.{cpp,hpp}` provide layout selection (Auto,
+   Retail, Mobile), scale percentages for vitals, potions, and portraits, and
+   safe edge insets. `tools/hud_geometry.py` diffs root boxes against
+   `src/presentation/hud_geometry.h` across 117 retail assets. 136 tests pass.

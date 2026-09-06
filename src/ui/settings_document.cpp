@@ -5,6 +5,7 @@
  */
 #include "settings_document.hpp"
 #include "controller_assignment_rows.hpp"
+#include "hud_settings_document.hpp"
 #include "ui_resources.h"
 
 #include <RmlUi/Core.h>
@@ -127,12 +128,11 @@ void rebuild() {
         << "<select-button id='shadow-resolution'><key>Shadow "
            "quality</key><value>"
         << settings->shadow_resolution << "</value></select-button>"
-        << "<p id='status' class='status'></p><spacer></spacer></pane>"
-        << "<pane><div class='section-heading'>Presentation</div>"
-           "<div class='help'>Windowed uses the selected client size. "
+        << "<div class='help'>Windowed uses the selected client size. "
            "Borderless uses the desktop mode. Exclusive fullscreen "
            "switches the display to the selected resolution.</div>"
-           "<spacer></spacer></pane>";
+        << "<p id='status' class='status'></p><spacer></spacer></pane>"
+        << hud_settings_document_rml(settings->hud);
   } else {
     visible_controllers = controller_assignment_rows(*settings);
     rml << "<pane><div class='section-heading'>Device assignments</div>"
@@ -195,6 +195,7 @@ void rebuild() {
     wire("dynamic-shadows", "keydown");
     wire("shadow-resolution", "click");
     wire("shadow-resolution", "keydown");
+    hud_settings_document_wire(*document, listener);
   } else {
     wire("touch-controls", "click");
     wire("touch-controls", "keydown");
@@ -271,6 +272,16 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
                          settings->shadow_resolution);
     rebuild();
     set_status(saved ? "Saved" : why);
+  } else if (id.rfind("hud-", 0) == 0) {
+    X2Settings *settings = x2_settings_store();
+    X2HudSettings before = settings->hud;
+    if (!hud_settings_document_change(settings->hud, id))
+      return;
+    std::string status = save_settings();
+    if (status != "Saved")
+      settings->hud = before;
+    rebuild();
+    set_status(status);
   } else if (id == "resolution") {
     X2Settings *settings = x2_settings_store();
     X2Settings before = *settings;

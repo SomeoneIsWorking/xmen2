@@ -233,3 +233,41 @@ constants, asset edits, or test-only reimplementations that bypass the shipping
 path.
 
 **Contributing state items.** S004, S011, S012, S019.
+
+## G007 — Adaptable gameplay UI and mobile presentation
+
+**Outcome.** The gameplay HUD (vitals, inventory/potions, character portraits,
+and party selector) can be cleanly relocated, scaled, and presented for mobile
+touch play—vitals and potions top-left, portraits top-right—while preserving
+retained scene-graph contracts, direct touch/mouse hero selection, and faithful
+desktop presentation.
+
+**Why it matters.** On mobile devices, the retail bottom-left HUD collides with
+the virtual movement stick and prevents direct portrait selection. Native
+ownership of gameplay HUD presentation enables safe-area adaptation and
+touch-first mobile ergonomics without modifying copyrighted game assets or
+rewriting the game.
+
+**Success conditions.**
+
+- The game's authored HUD elements (vitals panel, potion icons, character
+  portraits) cleanly relocate to mobile-ergonomic corners (vitals and potions
+  top-left, portraits top-right) when mobile HUD mode is active.
+- Direct hero selection by tapping character portraits routes through the
+  proven retail pointer selection contract at their relocated centers.
+- The mobile layout respects screen safe areas/cutouts and provides configurable
+  scaling (vitals, potions, portraits) and edge insets in port settings.
+- Desktop and non-touch play preserves the faithful retail HUD placement as
+  authored.
+- Native HUD transformation preserves 2D sprite, 3D scene matrix, and text submit
+  contracts without desync, memory corruption, or visual artifacts.
+
+**Constraints.** No game assets are modified or redistributed. HUD relocation
+operates through evidenced native overrides and affine transforms on the
+runtime scene hierarchy, not pixel blitting or hardcoded reflection hacks.
+
+**Non-goals.** Redesigning the authored visual art; removing the retail HUD on
+desktop; replacing retail menus with mobile menus.
+
+**Contributing state items.** S004, S008, S018.
+

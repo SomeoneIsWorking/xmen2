@@ -44,6 +44,7 @@ void x2_settings_defaults(X2Settings *settings) {
   settings->text_scale = 0.0f; /* auto */
   settings->boot_mode = X2_BOOT_NORMAL;
   settings->touch_controls = 1;
+  x2_hud_settings_defaults(&settings->hud);
   for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
     settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
   for (i = 0; i < X2_SETTINGS_CONTROLLER_ASSIGNMENTS; i++)
@@ -148,6 +149,8 @@ static int parse_line(ParseState *state, char *line) {
   *eq = 0;
   key = trim(line);
   value = trim(eq + 1);
+  if (strncmp(key, "ui.hud.", 7) == 0)
+    return x2_hud_settings_parse(&settings->hud, key + 7, value);
   if (strcmp(key, "video.width") == 0)
     return number(value, X2_MIN_WIDTH, X2_MAX_WIDTH, &settings->width);
   if (strcmp(key, "video.height") == 0)
@@ -244,6 +247,8 @@ static int parse_line(ParseState *state, char *line) {
 
 static int settings_valid(const X2Settings *settings) {
   unsigned i, j;
+  if (!x2_hud_settings_valid(&settings->hud))
+    return 0;
   if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE ||
       settings->touch_controls > 1)
     return 0;
@@ -372,7 +377,8 @@ int x2_settings_load(X2Settings *settings, const char *path, char *why,
   fclose(file);
   if (!migrate_legacy(&parsed) || !settings_valid(&parsed.settings)) {
     if (why)
-      snprintf(why, (size_t)whyn, "%s has conflicting device assignments",
+      snprintf(why, (size_t)whyn,
+               "%s has invalid settings or conflicting device assignments",
                path);
     return 0;
   }
@@ -388,7 +394,8 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
   unsigned slot, profile, row;
 
   if (!settings || !settings_valid(settings)) {
-    reason(why, whyn, "settings contain conflicting device assignments");
+    reason(why, whyn,
+           "settings contain invalid values or conflicting device assignments");
     return 0;
   }
   if (snprintf(pending, sizeof pending, "%s.new", path) >=
@@ -410,6 +417,11 @@ int x2_settings_save(const X2Settings *settings, const char *path, char *why,
   fprintf(file, "video.dynamic_shadows=%u\nvideo.shadow_resolution=%u\n",
           settings->dynamic_shadows, settings->shadow_resolution);
   fprintf(file, "ui.text_scale=%g\n", (double)settings->text_scale);
+  if (!x2_hud_settings_write(&settings->hud, file)) {
+    reason(why, whyn, "cannot write HUD settings");
+    fclose(file);
+    return 0;
+  }
   fprintf(file, "boot.mode=%s\n", x2_boot_mode_name(settings->boot_mode));
   fprintf(file, "input.touch_controls=%u\n", settings->touch_controls);
   fprintf(file, "input.assignment_version=2\n");

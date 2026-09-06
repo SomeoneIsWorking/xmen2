@@ -1,6 +1,9 @@
 #ifndef X2_TOUCH_CONTROLS_H
 #define X2_TOUCH_CONTROLS_H
 
+#include "../presentation/touch_layout.h"
+
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -65,6 +68,18 @@ std::optional<float> touch_axis_value(std::span<const ActionEvent> events,
                                       TouchAction negative,
                                       TouchAction positive);
 
+// Retail has one mouse button: the first portrait finger owns that pointer
+// until released or canceled. Other held fingers never take over implicitly;
+// they must lift and begin again. Every selected transition is returned in
+// order.
+class PortraitPointer {
+public:
+  std::vector<ActionEvent> route(std::span<const ActionEvent> events);
+
+private:
+  std::optional<std::int64_t> contact_;
+};
+
 // Title-specific virtual controls. Layout and action vocabulary live here;
 // platform event acquisition, rendering feedback, and guest input publication
 // remain outside this owner.
@@ -81,6 +96,10 @@ public:
   // caller must publish those events before applying the new layout so a
   // rotation cannot leave an action pressed in the guest.
   std::vector<ActionEvent> set_viewport(Viewport viewport);
+  // Actual output-pixel bounds published by the native HUD. Empty or invalid
+  // regions remove portrait captures; changing them leaves other controls held.
+  std::vector<ActionEvent> set_portraits(std::span<const X2Rect> portraits,
+                                         unsigned visible_mask);
   std::vector<ActionEvent>
   route(std::span<const lucent::touch::Contact> contacts);
   std::vector<ActionEvent> cancel();
@@ -92,8 +111,11 @@ private:
   translate(std::span<const lucent::touch::Event> events) const;
 
   Viewport viewport_;
+  std::array<X2Rect, 4> portraits_{};
+  unsigned portraits_visible_ = 0;
   std::vector<ZoneVisual> zones_;
   lucent::touch::Router router_;
+  lucent::touch::Router portrait_router_;
 };
 
 } // namespace x2::input

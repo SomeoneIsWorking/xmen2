@@ -31,11 +31,11 @@ declared-host backend gaps.
 | S001 | Fresh-clone provisioning and the default native launcher | partial | — | G001, G005 |
 | S002 | Native-overrides + x86port-JIT gameplay execution | partial | S001 | G001, G002 |
 | S003 | Faithful rendering of the reached game path | partial | S002 | G002 |
-| S004 | Native Alchemy 2D/UI rendering above the D3D8 seam | partial | S003, S012 | G002, G004, G006 |
+| S004 | Native Alchemy 2D/UI rendering above the D3D8 seam | partial | S003, S012 | G002, G004, G006, G007 |
 | S005 | Native audio mixing and SFD movie playback | verified | S002 | G002 |
 | S006 | SDL3 keyboard/controller/mouse input, assignment, and hotswap | partial | S002 | G002, G004 |
 | S007 | Xbox-derived controller defaults and source-sensitive prompts | partial | S006 | G002, G004 |
-| S008 | Port-owned RmlUi settings and input-binding surface | partial | S003, S006 | G002, G004 |
+| S008 | Port-owned RmlUi settings and input-binding surface | partial | S003, S006 | G002, G004, G007 |
 | S009 | Direct development boot into an initialized game | partial | S002 | G002, G004 |
 | S010 | Measured frame and level-load performance | partial | S002, S016 | G003 |
 | S011 | Wine oracle and evidence-backed differential RE workflow | partial | — | G002, G006 |
@@ -44,7 +44,7 @@ declared-host backend gaps.
 | S015 | Transactional autosave and direct retail Continue restore | verified | S002 | G002 |
 | S016 | Live control, capture, input, and runtime diagnostic channel | verified | S002, S003 | G002, G006 |
 | S017 | Linux AppImage packaging and no-terminal install setup | partial | S001, S008 | G005 |
-| S018 | Android APK shell, touch controls, and measured mobile performance | partial | S002, S006, S010 | G005 |
+| S018 | Android APK shell, touch controls, and measured mobile performance | partial | S002, S006, S010 | G005, G007 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
 ## State details and evidence
@@ -276,11 +276,29 @@ the exact retail formula through 800x600 and holds its retail-relative share
 above that reference; 800x600, 1280x720, and 3840x2160 cold-plus-warm live cases
 each pass 15/15 with row heights of 20.04, 24.04, and 72.14 pixels (C275).
 
-Gap: this verifies only the prompt SVG slice. Stock ASCII, panels, sprites,
-batching, and other display-list geometry still submit through the
-runtime-translated guest engine and D3D8 host. Each semantic owner must be reverse-engineered, ported,
-and measured to zero old D3D8 calls before that portion of the seam can be
-deleted.
+Native CHud presentation adapters intercept party draw (`0x005a43d0`),
+vitals draw (`0x005a3320`), inventory draw (`0x005a5170`), and portrait draw
+(`0x005a1ab0`). Within these scoped boundaries, 2D sprite submissions
+(`0x0059a140`), 2D text submissions (`0x005f11b0`), and 3D scene node
+matrices (`0x00570970`) are transformed into the mobile viewport layout
+(`src/presentation/hud_layout.c`), relocating vitals and potions to the top-left
+and character portraits to the top-right while moving the D-pad cross offscreen.
+Single-player portrait positioning is natively owned by
+`src/native/hud_portrait_position.c` (reproducing `0x005a1650`), verified against
+the guest body under `hud.verify`. Output-pixel portrait bounds are published
+to touch controls (`set_portraits`), and direct portrait tapping routes through
+Win32 mouse translation to the transformed `PORTRAIT_CENTERS` (`0x00a0a0cc`),
+selecting the tapped hero through the retail click handler (`0x005f9eb0`).
+Port settings provide layout selection (Auto, Retail, Mobile), scale percentages
+for vitals, potions, and portraits, and safe edge inset configuration. Asset root
+boxes are diffed by code against `src/presentation/hud_geometry.h` across 117
+retail PC assets via `tools/hud_geometry.py`.
+
+Gap: this verifies the prompt SVG slice and the native CHud presentation
+adapters. Stock ASCII, panels, non-HUD sprites, and other display-list geometry
+still submit through the runtime-translated guest engine and D3D8 host. Each
+semantic owner must be reverse-engineered, ported, and measured to zero old D3D8
+calls before that portion of the seam can be deleted.
 
 ### S005 — native audio and SFD movies: verified
 
