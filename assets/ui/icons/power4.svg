@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Power 4: Supernova Xtreme cosmic burst -->
+  <circle cx="32" cy="32" r="24" fill="#8B5CF6" fill-opacity="0.3" stroke="#C084FC" stroke-width="2" stroke-dasharray="4 3"/>
+  <!-- Central supernova star -->
+  <path d="M32 6 L35 23 L48 16 L39 28 L54 32 L39 36 L48 48 L35 41 L32 58 L29 41 L16 48 L25 36 L10 32 L25 28 L16 16 L29 23 Z"
+        fill="#A855F7" stroke="#F3E8FF" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Central energy core -->
+  <circle cx="32" cy="32" r="7" fill="#FFFFFF"/>
+  <!-- Badge "X" -->
+  <rect x="42" y="38" width="16" height="18" rx="4" fill="#6D28D9" stroke="#E9D5FF" stroke-width="1.5"/>
+  <text x="50" y="52" font-family="sans-serif" font-size="13" font-weight="bold" fill="#FFFFFF" text-anchor="middle">X</text>
+</svg>

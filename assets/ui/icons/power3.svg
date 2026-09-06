@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Power 3: Defensive energy shield / boost -->
+  <path d="M32 10 C44 10 48 16 48 26 C48 40 32 52 32 52 C32 52 16 40 16 26 C16 16 20 10 32 10 Z"
+        fill="#10B981" stroke="#A7F3D0" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Cross in shield -->
+  <path d="M32 20 L32 38 M23 29 L41 29" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+  <!-- Badge "3" -->
+  <rect x="42" y="38" width="16" height="18" rx="4" fill="#047857" stroke="#A7F3D0" stroke-width="1.5"/>
+  <text x="50" y="52" font-family="sans-serif" font-size="13" font-weight="bold" fill="#FFFFFF" text-anchor="middle">3</text>
+</svg>

@@ -1208,6 +1208,12 @@ configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
+file(GLOB X2_TOUCH_ACTION_ICONS "${CMAKE_SOURCE_DIR}/assets/ui/icons/*.svg")
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ui/icons")
+foreach(icon ${X2_TOUCH_ACTION_ICONS})
+  get_filename_component(icon_name ${icon} NAME)
+  configure_file(${icon} "${CMAKE_BINARY_DIR}/ui/icons/${icon_name}" COPYONLY)
+endforeach()
 set(X2_TOUCH_ICON_STAMP "${CMAKE_BINARY_DIR}/ui/touch/.touch-icons.stamp")
 add_custom_command(
     OUTPUT "${X2_TOUCH_ICON_STAMP}"

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Power 2: Fiery impact blast -->
+  <path d="M32 10 L37 22 L49 18 L43 29 L54 34 L42 39 L47 50 L35 44 L31 54 L27 43 L16 48 L21 37 L10 32 L22 28 L17 17 L28 22 Z"
+        fill="#F59E0B" stroke="#FDE68A" stroke-width="1.5" stroke-linejoin="round"/>
+  <circle cx="32" cy="32" r="8" fill="#EF4444"/>
+  <!-- Badge "2" -->
+  <rect x="42" y="38" width="16" height="18" rx="4" fill="#B45309" stroke="#FDE68A" stroke-width="1.5"/>
+  <text x="50" y="52" font-family="sans-serif" font-size="13" font-weight="bold" fill="#FFFFFF" text-anchor="middle">2</text>
+</svg>
