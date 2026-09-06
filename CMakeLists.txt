@@ -225,6 +225,9 @@ add_executable(test_gameplay_control tests/test_gameplay_control.c
                src/input/gameplay_control.c)
 add_test(NAME gameplay_control COMMAND test_gameplay_control)
 
+add_executable(test_font_tier tests/test_font_tier.c src/native/font_tier.c)
+add_test(NAME font_tier COMMAND test_font_tier)
+
 add_executable(test_touch_source tests/test_touch_source.c
                src/input/touch_source.c)
 target_link_libraries(test_touch_source PRIVATE ${X2_SDL})
@@ -964,17 +967,11 @@ add_test(NAME pad_glyph_manifest
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/pad_glyph_manifest.py --selftest)
 
-# The two headers bootstrap.py publishes at every provision. Both carry a
-# selftest and neither was gated: the ratio one covers the refusals that keep a
-# missing font from silently becoming 1.0, and the atlas one proves every
-# published codepoint is actually inked -- an all-blank atlas is exactly the
-# uniform output an unvalidated rasteriser produces.
-add_test(NAME font_tier_ratio
-         COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
-                 ${CMAKE_SOURCE_DIR}/tools/font_tier_ratio.py --selftest)
-set_tests_properties(font_tier_ratio PROPERTIES
-                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-
+# The atlas header bootstrap.py publishes at every provision: this proves
+# every published codepoint is actually inked -- an all-blank atlas is exactly
+# the uniform output an unvalidated rasteriser produces. The font tier step is
+# no longer a published header; its arithmetic is gated by test_font_tier and
+# its measurement happens at run time through the engine's own loader.
 add_test(NAME prompt_glyph_atlas
          COMMAND ${CMAKE_COMMAND} -E env ${Python3_EXECUTABLE}
                  ${CMAKE_SOURCE_DIR}/tools/render_prompt_glyphs.py --selftest
@@ -1449,6 +1446,7 @@ set(X2_NATIVE_SOURCES
     src/native/touch_hud_runtime.c
     src/native/hud_draw_runtime.c
     src/native/hud_portrait_position.c
+    src/native/font_tier.c
     src/native/hud_portrait_position_runtime.c
     src/presentation/hud_layout.c
     src/native/xbox_defaults.c

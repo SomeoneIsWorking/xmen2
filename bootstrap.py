@@ -318,18 +318,6 @@ def publish_text(path: Path, content: str) -> bool:
     return True
 
 
-def publish_font_tier_ratio(game: Path) -> None:
-    """Measure this install's own PC->HD font step into a generated header.
-
-    The port's AUTO text scale divides that step back out, so the number has
-    to come from the fonts the player has rather than from a constant typed
-    into the C -- each localisation ships its own.
-    """
-    run_tool([str(ROOT / "tools/font_tier_ratio.py"), str(game),
-              str(ROOT / "src/gen/font_tier_ratio.h")],
-             "measuring the font tier step")
-
-
 def publish_prompt_glyph_atlas() -> None:
     """Rasterise the shared prompt SVGs into the port's own atlas header.
 
@@ -350,7 +338,6 @@ def provision(game: Path) -> None:
     read out of the player's images at run time and executed by the engine, so
     the only things published here are derived assets.
     """
-    publish_font_tier_ratio(game)
     publish_prompt_glyph_atlas()
     print("bootstrap: native inputs ready")
 

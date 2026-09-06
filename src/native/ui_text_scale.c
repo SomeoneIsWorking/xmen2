@@ -7,9 +7,9 @@
  * Glyph metrics are PIXELS, and they do not depend on the output resolution.
  * The game's one concession to bigger screens is a two-tier asset switch
  * (FUN_005980f0 loads `ui/fonts/fonts_pc.xmlb` at or below 800x600 and
- * `fonts_HD.xmlb` above it), and that tier step is a single fixed factor --
- * 1.36x, measured over 52 glyphs of this install's own fonts by
- * tools/font_tier_ratio.py. Panel art, by contrast, is laid out in a space
+ * `fonts_HD.xmlb` above it), and that tier step is a single fixed factor,
+ * about 1.36x, measured at run time over 52 glyphs of this install's own
+ * fonts -- see measure_tier_step below. Panel art, by contrast, is laid out in a space
  * that scales with the frame. So above 800x600 the text's share of the screen
  * falls off as 1/height: on the main menu "NEW GAME" has a cap height of 7px
  * at 800x600, 11px at 1024x768 and still 11px at 1536x864 -- 1.17% of the
@@ -54,7 +54,8 @@
  */
 #include "ui_text_scale.h"
 
-#include "font_tier_ratio.h" /* GENERATED, see tools/font_tier_ratio.py */
+#include "font_tier.h"
+#include "guest_heap.h"
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyphs.h"
 #include "retail_ui_design.h"
@@ -66,6 +67,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <lucent/cvar_c.h>
 
@@ -91,6 +93,112 @@
 static unsigned long g_fonts, g_glyphs, g_zero;
 static unsigned long g_tier_asked, g_tier_forced;
 static float g_applied = -1.0f;
+/* 0 = not measured yet, negative = measured and refused. */
+static float g_tier_step;
+static unsigned g_tier_glyphs;
+static int g_measuring;
+
+/* The sample: 'A'-'Z' then 'a'-'z', the same glyphs on both sides. */
+static unsigned sample_codepoint(unsigned i) {
+  return i < 26u ? 0x41u + i : 0x61u + (i - 26u);
+}
+
+/*
+ * Load one tier into a scratch record through the engine's own loader.
+ *
+ * This is the retail XMLB parser, so the heights read back are the ones the
+ * game itself would lay text out with -- the port owns no font format code
+ * and cannot disagree with the engine about what the asset says. The record
+ * is the port's own guest allocation, so no entry of the game's font table is
+ * touched; `index` 0 makes the loader write at the base it is handed.
+ */
+static int load_tier(CPU *C, uint32_t record, uint32_t name, int16_t *heights,
+                     unsigned count) {
+  const uint32_t saved_esp = C->reg[kX86pEsp];
+  const uint32_t saved_ecx = C->reg[kX86pEcx];
+  const uint32_t saved_eax = C->reg[kX86pEax];
+  unsigned i;
+  int loaded;
+
+  for (i = 0; i < FONT_STRIDE / 4u; i++)
+    WR32(record + i * 4u, 0u);
+  C->reg[kX86pEsp] -= 4u;
+  WR32(C->reg[kX86pEsp], 0u); /* index */
+  C->reg[kX86pEsp] -= 4u;
+  WR32(C->reg[kX86pEsp], name);
+  C->reg[kX86pEcx] = record;
+  g_measuring = 1;
+  x86_guest_call_args(C, LINKED_FONT_LOADER, 8u);
+  g_measuring = 0;
+  loaded = C->reg[kX86pEax] != 0u;
+  C->reg[kX86pEsp] = saved_esp;
+  C->reg[kX86pEcx] = saved_ecx;
+  C->reg[kX86pEax] = saved_eax;
+  if (!loaded)
+    return 0;
+  for (i = 0; i < count; i++) {
+    const uint32_t glyph =
+        record + GLYPH_FIRST + sample_codepoint(i) * GLYPH_STRIDE;
+    heights[i] = (int16_t)RD16(glyph + GL_HEIGHT);
+  }
+  return 1;
+}
+
+static uint32_t publish_name(const char *text) {
+  const uint32_t length = (uint32_t)strlen(text) + 1u;
+  const uint32_t at = guest_malloc(length);
+  uint32_t i;
+
+  if (!at)
+    return 0u;
+  for (i = 0; i < length; i++)
+    WR8(at + i, (uint8_t)text[i]);
+  return at;
+}
+
+/*
+ * Measure the step, once, the first time a font loads.
+ *
+ * A refusal is remembered as a refusal: substituting 1.0 for a step that
+ * could not be measured would silently turn AUTO into "hold nothing" at every
+ * resolution, and it would look exactly like a working scale.
+ */
+static float measure_tier_step(CPU *C) {
+  int16_t pc[X2_FONT_TIER_SAMPLES];
+  int16_t hd[X2_FONT_TIER_SAMPLES];
+  uint32_t record, pc_name, hd_name;
+  unsigned samples = 0;
+  float step = 0.0f;
+
+  if (g_tier_step != 0.0f)
+    return g_tier_step;
+  record = guest_malloc(FONT_STRIDE);
+  pc_name = publish_name("x2f_med_pc");
+  hd_name = publish_name("x2f_med_hd");
+  if (record && pc_name && hd_name &&
+      load_tier(C, record, pc_name, pc, X2_FONT_TIER_SAMPLES) &&
+      load_tier(C, record, hd_name, hd, X2_FONT_TIER_SAMPLES))
+    step = x2_font_tier_ratio(pc, hd, X2_FONT_TIER_SAMPLES, &samples);
+  if (record)
+    guest_free(record);
+  if (pc_name)
+    guest_free(pc_name);
+  if (hd_name)
+    guest_free(hd_name);
+  g_tier_glyphs = samples;
+  g_tier_step = step > 0.0f ? step : -1.0f;
+  if (step > 0.0f)
+    x2_log_error("UI TEXT: the HD font tier is %.4f x the PC tier, measured "
+                 "over %u glyph(s) of this install's own fonts.\n",
+                 (double)step, samples);
+  else
+    x2_log_error("UI TEXT: the font tier step could NOT be measured (%u "
+                 "sample glyph(s) drawn in both tiers); AUTO text scale is "
+                 "unavailable and the scale stays 1.0. Set ui.text_scale to "
+                 "choose one.\n",
+                 samples);
+  return g_tier_step;
+}
 
 float x2_ui_text_scale(void) {
   const X2Settings *settings = x2_settings_store();
@@ -109,8 +217,10 @@ float x2_ui_text_scale(void) {
      means scaling the HD metrics DOWN to what the PC tier would have been.
      No clamp at 1.0: a clamp there would silently make 640x480 bigger than
      the game draws it. */
+  if (g_tier_step <= 0.0f)
+    return 1.0f; /* unmeasured or refused; measure_tier_step said which */
   scale = (float)settings->height / (float)X2_RETAIL_UI_DESIGN_HEIGHT /
-          x2_font_tier_ratio();
+          g_tier_step;
   return scale;
 }
 
@@ -182,7 +292,17 @@ static void x2_override_font_loader(CPU *C) {
   uint32_t table = C->reg[kX86pEcx];
   uint32_t name = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t index = RD32(C->reg[kX86pEsp] + 8u);
-  float k = x2_ui_text_scale();
+  float k;
+
+  if (g_measuring) {
+    /* The port's own tier load, from measure_tier_step. It reads metrics and
+       must not be scaled: scaling the thing being measured measures the
+       scale. */
+    x86_guest_body(C, "XMen2.exe", 0x00596af0u);
+    return;
+  }
+  measure_tier_step(C);
+  k = x2_ui_text_scale();
 
   x86_guest_body(C, "XMen2.exe", 0x00596af0u);
   if (!table || !C->reg[kX86pEax])
@@ -235,6 +355,13 @@ void x2_ui_text_scale_report(void) {
   x2_log_error("UI TEXT: the HD font set was asked for %lu time(s); the "
                "retail answer would have been the PC set %lu time(s).\n",
                g_tier_asked, g_tier_forced);
+  if (g_tier_step > 0.0f)
+    x2_log_error("UI TEXT: tier step %.4f over %u measured glyph(s).\n",
+                 (double)g_tier_step, g_tier_glyphs);
+  else
+    x2_log_error("UI TEXT: the tier step was %s.\n",
+                 g_tier_step == 0.0f ? "never measured -- no font loaded"
+                                     : "refused as unmeasurable");
 }
 
 __attribute__((constructor)) static void
