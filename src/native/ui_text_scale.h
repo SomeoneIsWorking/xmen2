@@ -7,6 +7,12 @@
    the measurement this rests on. */
 float x2_ui_text_scale(void);
 
+/* Re-derive every font already in memory at the current output resolution,
+   returning how many were rewritten. A live resolution change does not reload
+   fonts, so without this the text keeps the size the BOOT resolution asked
+   for. Nothing to do (and 0 returned) when the scale has not moved. */
+int x2_ui_text_scale_reapply(void);
+
 /* One line at shutdown: how many glyphs were scaled and how many were not.
    A run where the override never fired must not read like a run where it
    fired and changed nothing. */

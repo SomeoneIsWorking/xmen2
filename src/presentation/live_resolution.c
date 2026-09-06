@@ -2,6 +2,7 @@
 
 #include "d3d8_live_resolution.h"
 #include "display_mode_runtime.h"
+#include "../native/ui_text_scale.h"
 #include "settings_store.h"
 #include "window_settings.h"
 
@@ -100,6 +101,9 @@ int x2_live_resolution_apply(struct SDL_Window *window, X2Settings *settings,
     rollback(window, settings, before, failure, why, whyn);
     return 0;
   }
+  /* Fonts already in memory are not reloaded by a resolution change, so the
+     text would otherwise keep the size the boot resolution asked for. */
+  x2_ui_text_scale_reapply();
   if (why && whyn > 0)
     snprintf(why, (size_t)whyn, "Saved; game renders at %ux%u now",
              settings->width, settings->height);

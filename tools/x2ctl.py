@@ -12,6 +12,8 @@ then talk to it while it runs:
     tools/x2ctl.py status                 # frames, guest time, frame timing
     tools/x2ctl.py key Return             # press a key (--hold SECONDS)
     tools/x2ctl.py key Escape Escape Up   # several, in order
+    tools/x2ctl.py uikey F2               # the PORT's own UI, not the game
+    tools/x2ctl.py uiclick 279,97         # ... and its pointer
     tools/x2ctl.py pad a start             # synthetic pad buttons
     tools/x2ctl.py pad leftx=-1            # ... and axes
     tools/x2ctl.py assignment 2 --pad 0    # session-only pad -> Player 2
@@ -155,6 +157,51 @@ def cmd_key(args):
             time.sleep(args.gap)
     # A refused press is a failure of the command, not a hiccup to swallow:
     # the caller pressed a key and it did not happen.
+    return 1 if bad else 0
+
+
+def cmd_uikey(args):
+    """Press a key at the PORT's own UI layer, not the game's keyboard.
+
+    `key` injects into the game's DirectInput poll, so it can never reach the
+    port's own hotkeys: F2 opens Port Settings from an SDL key event, and a
+    DirectInput F2 goes to a game that has no binding for it. Use this for the
+    overlay -- opening it, moving through it, activating a row.
+    """
+    bad = 0
+    for name in args.names:
+        code, _, body = call(args.port, "/ui/key?name=%s" % name)
+        text = body.decode(errors="replace").strip()
+        print(("  " if code == 200 else "  REFUSED(%d) " % code) + text)
+        if code != 200:
+            bad += 1
+        elif args.gap:
+            time.sleep(args.gap)
+    return 1 if bad else 0
+
+
+def cmd_uiclick(args):
+    """Click at the PORT's own UI layer, in the coordinates of a screenshot.
+
+    Port Settings has no tab-index on anything, so its tabs and rows cannot be
+    reached with `uikey` alone; this is how the overlay is driven.
+    """
+    bad = 0
+    for point in args.points:
+        try:
+            x, y = point.split(",", 1)
+        except ValueError:
+            print("  REFUSED %r: give a point as X,Y" % point)
+            bad += 1
+            continue
+        code, _, body = call(args.port, "/ui/click?x=%s&y=%s" % (x.strip(),
+                                                                y.strip()))
+        text = body.decode(errors="replace").strip()
+        print(("  " if code == 200 else "  REFUSED(%d) " % code) + text)
+        if code != 200:
+            bad += 1
+        elif args.gap:
+            time.sleep(args.gap)
     return 1 if bad else 0
 
 
@@ -356,6 +403,19 @@ def main():
     k.add_argument("--gap", type=float, default=0.4,
                    help="seconds between presses")
     k.set_defaults(fn=cmd_key)
+
+    u = sub.add_parser("uikey", help="press a key at the port's own UI "
+                                     "(F2 opens Port Settings)")
+    u.add_argument("names", nargs="+")
+    u.add_argument("--gap", type=float, default=0.4,
+                   help="seconds between presses")
+    u.set_defaults(fn=cmd_uikey)
+
+    c = sub.add_parser("uiclick", help="click the port's own UI at X,Y")
+    c.add_argument("points", nargs="+", metavar="X,Y")
+    c.add_argument("--gap", type=float, default=0.4,
+                   help="seconds between clicks")
+    c.set_defaults(fn=cmd_uiclick)
 
     d = sub.add_parser("pad", help="press a synthetic pad button, or move an "
                                    "axis with NAME=VALUE (leftx=-1)")

@@ -98,6 +98,36 @@ static float g_tier_step;
 static unsigned g_tier_glyphs;
 static int g_measuring;
 
+/*
+ * Every font record the loader filled, holding the metrics IT wrote.
+ *
+ * The AUTO scale is derived from the output height, and the output height
+ * changes while the game runs: Port Settings applies a resolution live. A
+ * record scaled once at boot therefore keeps the boot size for the rest of the
+ * run -- start at 4K, switch to 800x600, and the text stays 4K-sized.
+ *
+ * The re-apply below re-derives every metric from what the loader wrote rather
+ * than multiplying the already-scaled record by the ratio between two scales.
+ * Each metric is a 16-bit pixel count, so a ratio pass would compound its own
+ * rounding at every switch; from the origin, each scale is exact whatever came
+ * before it.
+ */
+#define TRACKED_FONTS 64u
+#define HEADER_METRICS 4u  /* pointsize, height, ascender, descender */
+#define GLYPH_METRICS 4u   /* width, height, advance, offset */
+
+typedef struct {
+  uint32_t at;
+  int16_t header[HEADER_METRICS];
+  int16_t glyph[GLYPH_COUNT][GLYPH_METRICS];
+  int32_t baseline[GLYPH_COUNT];
+} FontOriginal;
+
+static FontOriginal g_tracked[TRACKED_FONTS];
+static FontOriginal g_overflow;
+static unsigned g_tracked_count;
+static unsigned long g_untracked;
+
 /* The sample: 'A'-'Z' then 'a'-'z', the same glyphs on both sides. */
 static unsigned sample_codepoint(unsigned i) {
   return i < 26u ? 0x41u + i : 0x61u + (i - 26u);
@@ -232,40 +262,74 @@ static const char *scale_source(void) {
   return "auto, holding the 800x600 share";
 }
 
-/* Scale one 16-bit metric, keeping 0 at 0: a zero width is a glyph the font
-   does not draw, and rounding it up would give every unused codepoint a
-   one-pixel box. */
-static void scale_i16(uint32_t at, float k) {
-  int16_t v = (int16_t)RD16(at);
-  if (!v)
-    return;
-  WR16(at, (uint16_t)(int16_t)lrintf((float)v * k));
+/* Scale one metric, keeping 0 at 0: a zero width is a glyph the font does not
+   draw, and rounding it up would give every unused codepoint a one-pixel box. */
+static int16_t scaled_i16(int16_t v, float k) {
+  return v ? (int16_t)lrintf((float)v * k) : (int16_t)0;
 }
 
-static void scale_i32(uint32_t at, float k) {
-  int32_t v = (int32_t)RD32(at);
-  if (!v)
-    return;
-  WR32(at, (uint32_t)(int32_t)lrintf((float)v * k));
+static int32_t scaled_i32(int32_t v, float k) {
+  return v ? (int32_t)lrintf((float)v * k) : 0;
 }
 
-static void scale_font_record(uint32_t font, float k) {
+/*
+ * Remember one freshly-loaded record's own metrics.
+ *
+ * A repeat of an address is a reload of that table slot, so the snapshot is
+ * replaced: the record on the other side of a reload is a different font, and
+ * a stale origin would rescale it into the previous font's proportions.
+ */
+static FontOriginal *track_font(uint32_t font) {
+  FontOriginal *slot = NULL;
+  unsigned i;
+
+  for (i = 0; i < g_tracked_count && !slot; i++)
+    if (g_tracked[i].at == font)
+      slot = &g_tracked[i];
+  if (!slot && g_tracked_count < TRACKED_FONTS)
+    slot = &g_tracked[g_tracked_count++];
+  if (!slot) {
+    /* Still scaled correctly for the resolution it loaded at; it just cannot
+       follow a later change, and the report says how many are in that state. */
+    g_untracked++;
+    slot = &g_overflow;
+  }
+  slot->at = font;
+  for (i = 0; i < HEADER_METRICS; i++)
+    slot->header[i] = (int16_t)RD16(font + FONT_POINTSIZE + i * 2u);
+  for (i = 0; i < GLYPH_COUNT; i++) {
+    const uint32_t g = font + GLYPH_FIRST + i * GLYPH_STRIDE;
+    unsigned f;
+    for (f = 0; f < GLYPH_METRICS; f++)
+      slot->glyph[i][f] = (int16_t)RD16(g + f * 2u);
+    slot->baseline[i] = (int32_t)RD32(g + GL_BASELINE);
+  }
+  return slot;
+}
+
+/* Write one record at `k`, always from the loader's own values.
+   The UVs at +0x0c..+0x1b are never touched. */
+static unsigned write_font_record(const FontOriginal *slot, float k) {
   unsigned i, drawn = 0;
 
-  scale_i16(font + FONT_POINTSIZE, k);
-  scale_i16(font + FONT_HEIGHT, k);
-  scale_i16(font + FONT_ASCENDER, k);
-  scale_i16(font + FONT_DESCENDER, k);
+  for (i = 0; i < HEADER_METRICS; i++)
+    WR16(slot->at + FONT_POINTSIZE + i * 2u,
+         (uint16_t)scaled_i16(slot->header[i], k));
   for (i = 0; i < GLYPH_COUNT; i++) {
-    uint32_t g = font + GLYPH_FIRST + i * GLYPH_STRIDE;
-    if (RD16(g + GL_WIDTH) || RD16(g + GL_HEIGHT))
+    const uint32_t g = slot->at + GLYPH_FIRST + i * GLYPH_STRIDE;
+    unsigned f;
+    if (slot->glyph[i][0] || slot->glyph[i][1])
       drawn++;
-    scale_i16(g + GL_WIDTH, k);
-    scale_i16(g + GL_HEIGHT, k);
-    scale_i16(g + GL_ADVANCE, k);
-    scale_i16(g + GL_OFFSET, k);
-    scale_i32(g + GL_BASELINE, k);
+    for (f = 0; f < GLYPH_METRICS; f++)
+      WR16(g + f * 2u, (uint16_t)scaled_i16(slot->glyph[i][f], k));
+    WR32(g + GL_BASELINE, (uint32_t)scaled_i32(slot->baseline[i], k));
   }
+  return drawn;
+}
+
+static void scale_font_record(const FontOriginal *slot, float k) {
+  const unsigned drawn = write_font_record(slot, k);
+
   g_fonts++;
   g_glyphs += drawn;
   /* A font that loaded with nothing drawable gets its own line: the silent
@@ -284,6 +348,35 @@ static void scale_font_record(uint32_t font, float k) {
 }
 
 /*
+ * Re-derive every loaded font at the current output height.
+ *
+ * Called after a live resolution change has been accepted. Fonts already in
+ * memory are not reloaded by that change, so without this the text keeps the
+ * size the boot resolution asked for.
+ */
+int x2_ui_text_scale_reapply(void) {
+  const float k = x2_ui_text_scale();
+  unsigned i;
+
+  if (!g_tracked_count || (g_applied >= 0.0f && k == g_applied))
+    return 0;
+  for (i = 0; i < g_tracked_count; i++) {
+    write_font_record(&g_tracked[i], k);
+    /* The port's own codepoints are written into the same record and were
+       just overwritten from the origin, so they are republished here at the
+       same scale and in the same order as at load. */
+    if (x2_prompt_glyphs_enabled())
+      x2_prompt_glyph_publish_metrics(g_tracked[i].at, k);
+  }
+  x2_log_error("UI TEXT: output is %ux%u now; %u loaded font(s) re-derived "
+               "from %.3f to %.3f (%s).\n",
+               x2_settings_store()->width, x2_settings_store()->height,
+               g_tracked_count, (double)g_applied, (double)k, scale_source());
+  g_applied = k;
+  return (int)g_tracked_count;
+}
+
+/*
  * FUN_00596af0(this = font table, const char *name, int index) fills
  * table[index] from ui/fonts/<name>.xmlb. Super-call first: the record has to
  * exist before it can be scaled, and a load that failed must stay failed.
@@ -292,6 +385,7 @@ static void x2_override_font_loader(CPU *C) {
   uint32_t table = C->reg[kX86pEcx];
   uint32_t name = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t index = RD32(C->reg[kX86pEsp] + 8u);
+  const FontOriginal *slot;
   float k;
 
   if (g_measuring) {
@@ -307,17 +401,19 @@ static void x2_override_font_loader(CPU *C) {
   x86_guest_body(C, "XMen2.exe", 0x00596af0u);
   if (!table || !C->reg[kX86pEax])
     return; /* eax 0 == nothing loaded */
-  if (k != 1.0f) {
-    g_applied = k;
-    scale_font_record(table + index * FONT_STRIDE, k);
-  }
+  /* Snapshot even at scale 1.0: a resolution change later in the run has to
+     be able to derive this record's metrics, and by then the loader's own
+     values are the only correct origin. */
+  slot = track_font(table + index * FONT_STRIDE);
+  g_applied = k;
+  if (k != 1.0f)
+    scale_font_record(slot, k);
   /* The port's own codepoints get their metrics here too, at the same
      scale and the same moment -- AFTER the scaler, so they are published
      already-scaled rather than scaled twice. Unconditional on k, since the
      port's glyphs need metrics even when the text scale is 1.0. */
   if (x2_prompt_glyphs_enabled())
-    x2_prompt_glyph_publish_metrics(table + index * FONT_STRIDE,
-                                    k != 1.0f ? k : 1.0f);
+    x2_prompt_glyph_publish_metrics(slot->at, k != 1.0f ? k : 1.0f);
 }
 
 /*
@@ -355,6 +451,11 @@ void x2_ui_text_scale_report(void) {
   x2_log_error("UI TEXT: the HD font set was asked for %lu time(s); the "
                "retail answer would have been the PC set %lu time(s).\n",
                g_tier_asked, g_tier_forced);
+  if (g_untracked)
+    x2_log_error("UI TEXT: %lu font(s) loaded past the %u the port can "
+                 "re-derive; those keep the size of the resolution they "
+                 "loaded at.\n",
+                 g_untracked, TRACKED_FONTS);
   if (g_tier_step > 0.0f)
     x2_log_error("UI TEXT: tier step %.4f over %u measured glyph(s).\n",
                  (double)g_tier_step, g_tier_glyphs);

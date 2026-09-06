@@ -8,6 +8,7 @@
 #include "control_performance_route.h"
 #include "control_query.h"
 #include "control_save_route.h"
+#include "control_ui_route.h"
 #include "control_screenshot.h"
 #include "control_status.h"
 #include "control_status_route.h"
@@ -415,6 +416,10 @@ static void serve(int fd) {
                          g_shots);
   else if (!strcmp(path, "/key"))
     route_key(fd, query ? query : "");
+  else if (!strcmp(path, "/ui/key"))
+    control_ui_key_route(fd, query ? query : "");
+  else if (!strcmp(path, "/ui/click"))
+    control_ui_click_route(fd, query ? query : "");
   else if (!strcmp(path, "/pad"))
     route_pad(fd, query ? query : "");
   else if (!strcmp(path, "/assignment"))
@@ -433,6 +438,8 @@ static void serve(int fd) {
         "no such endpoint: %s\n"
         "  GET /status       frames, guest time, frame timing\n"
         "  GET /key?name=X   press a key (&hold=<seconds>)\n"
+        "  GET /ui/key?name=F2  press a key at the PORT's own UI\n"
+        "  GET /ui/click?x=X&y=Y  click at the PORT's own UI\n"
         "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"
         "  GET /pad?axis=leftx&value=-1   move an axis\n"
         "  GET /assignment?player=P&pad=N session-only ownership\n"

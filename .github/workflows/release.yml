@@ -49,15 +49,21 @@ jobs:
             clang-20 glslc libavcodec-dev libavformat-dev libavutil-dev \
             libfreetype-dev libgl-dev libglu1-mesa-dev libopengl-dev \
             libsdl3-dev libsdl3-image-dev libswresample-dev libswscale-dev \
-            pkg-config patchelf ninja-build file curl
+            pkg-config ninja-build file curl
       - run: uv sync --frozen
       - name: Download AppImage packaging tools
+        # Ubuntu's own patchelf is 0.18.0, which corrupts DT_INIT when it
+        # rewrites current ELFs; the packager refuses anything below 0.19.
         run: |
           mkdir -p tools/bin
           curl -sL "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" -o tools/bin/linuxdeploy
           chmod +x tools/bin/linuxdeploy
           curl -sL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -o tools/bin/appimagetool
           chmod +x tools/bin/appimagetool
+          curl -sL "https://github.com/NixOS/patchelf/releases/download/0.19.1/patchelf-0.19.1-x86_64.tar.gz" -o tools/bin/patchelf.tar.gz
+          tar -xzf tools/bin/patchelf.tar.gz -C tools/bin --strip-components=2 ./bin/patchelf
+          chmod +x tools/bin/patchelf
+          tools/bin/patchelf --version
       - name: Build the native release binary
         run: CC=clang-20 CXX=clang++-20 uv run --frozen python tools/ci.py release-binary --target linux-x86_64
       - name: Package AppImage
@@ -66,7 +72,7 @@ jobs:
           uv run --frozen python tools/package_appimage.py \
             --linuxdeploy tools/bin/linuxdeploy \
             --appimagetool tools/bin/appimagetool \
-            --patchelf $(which patchelf) \
+            --patchelf tools/bin/patchelf \
             --output build/release/X-Men-Legends-II-x86_64.AppImage
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

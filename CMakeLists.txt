@@ -1462,6 +1462,7 @@ set(X2_NATIVE_SOURCES
     src/native/control.c
     src/native/control_http.c
     src/native/control_save_route.c
+    src/native/control_ui_route.c
     src/native/control_performance_route.c
     src/native/control_status_route.c
     src/native/control_png.c
