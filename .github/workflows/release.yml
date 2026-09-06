@@ -197,28 +197,29 @@ jobs:
         run: |
           TAG="${{ steps.tag.outputs.val }}"
           echo "Publishing release for tag: $TAG"
+          sed -e 's/^[ \t]*//' << 'EOF' > release_notes.md
+          # X-Men Legends II Native Port Release
+
+          Cross-platform native port of *X-Men Legends II: Rise of Apocalypse* (2005 PC release) using native subsystems and x86port runtime JIT.
+
+          ### Release Assets:
+          - **Linux x86-64 AppImage**: `X-Men-Legends-II-x86_64.AppImage`
+            - Desktop no-terminal setup flow with Browse dialog.
+            - Automatically verifies legal PC install and stores path in OS user config.
+          - **macOS Apple Silicon (ARM64)**: `X-Men-Legends-II-macos-arm64.tar.gz`
+            - Native arm64 executable with RmlUi assets.
+          - **Android ARM64 (arm64-v8a)**: `X-Men-Legends-II-arm64-v8a-debug.apk`
+            - Android APK shell with Storage Access Framework (SAF) setup and touch controls overlay.
+          - **Checksums**: `SHA256SUMS.txt`
+
+          ### Platform Notes:
+          - **Windows**: The 2005 retail PC release (`XMen2.exe`) runs natively on Windows. The native port targets non-Windows POSIX environments (Linux, macOS, Android) to eliminate the requirement for Windows / Wine emulation.
+          - **No Copyrighted Assets**: These packages contain no game content, audio, textures, or retail code. Supply your own legally obtained PC installation of *X-Men Legends II* (folder or ZIP containing `XMen2.exe` and its original DLLs).
+          EOF
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release_assets/* --clobber
           else
             gh release create "$TAG" release_assets/* \
               --title "X-Men Legends II native port $TAG" \
-              --notes-file - <<'EOF'
-# X-Men Legends II Native Port Release
-
-Cross-platform native port of *X-Men Legends II: Rise of Apocalypse* (2005 PC release) using native subsystems and x86port runtime JIT.
-
-### Release Assets:
-- **Linux x86-64 AppImage**: `X-Men-Legends-II-x86_64.AppImage`
-  - Desktop no-terminal setup flow with Browse dialog.
-  - Automatically verifies legal PC install and stores path in OS user config.
-- **macOS Apple Silicon (ARM64)**: `X-Men-Legends-II-macos-arm64.tar.gz`
-  - Native arm64 executable with RmlUi assets.
-- **Android ARM64 (arm64-v8a)**: `X-Men-Legends-II-arm64-v8a-debug.apk`
-  - Android APK shell with Storage Access Framework (SAF) setup and touch controls overlay.
-- **Checksums**: `SHA256SUMS.txt`
-
-### Platform Notes:
-- **Windows**: The 2005 retail PC release (`XMen2.exe`) runs natively on Windows. The native port targets non-Windows POSIX environments (Linux, macOS, Android) to eliminate the requirement for Windows / Wine emulation.
-- **No Copyrighted Assets**: These packages contain no game content, audio, textures, or retail code. Supply your own legally obtained PC installation of *X-Men Legends II* (folder or ZIP containing `XMen2.exe` and its original DLLs).
-EOF
+              --notes-file release_notes.md
           fi
