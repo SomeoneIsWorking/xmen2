@@ -86,6 +86,15 @@ public final class XMen2SetupActivity extends Activity {
         super.onResume();
         String saved = getPreferences(MODE_PRIVATE).getString(SOURCE_PATH, null);
         if (saved != null && acceptStoredSource(new File(saved))) return;
+        /* This runs again the moment the Android file picker closes, while the
+           copy the player just started is still running. Offering the Browse
+           buttons here is what makes the screen look idle mid-import: the next
+           tap is refused with "A game-file import is already active", which
+           reads as a stuck app rather than as the copy it actually is. */
+        if (importer.active()) {
+            showImporting();
+            return;
+        }
         showChoices();
     }
 
@@ -133,6 +142,14 @@ public final class XMen2SetupActivity extends Activity {
         choices.addView(zip, new LinearLayout.LayoutParams(-2, -2));
 
         setContentView(layout);
+    }
+
+    /* A whole PC install is gigabytes over SAF, so this state can last
+       minutes. It says what is happening and takes the buttons away, because
+       the only thing a second tap can do is be refused. */
+    private void showImporting() {
+        status.setText("Copying the game files into this app\u2019s private storage. This can take several minutes for a full install \u2014 leave this screen open.");
+        choices.setVisibility(View.GONE);
     }
 
     private void showChoices() {
@@ -191,8 +208,14 @@ public final class XMen2SetupActivity extends Activity {
 
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
-        if (!importer.handleActivityResult(request, result, data))
+        if (!importer.handleActivityResult(request, result, data)) {
             super.onActivityResult(request, result, data);
+            return;
+        }
+        /* The copy runs off the UI thread, so this returns immediately and
+           the screen has to say what is now happening. */
+        if (importer.active())
+            showImporting();
     }
 
     // --- Handoff ---
