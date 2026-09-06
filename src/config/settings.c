@@ -33,6 +33,17 @@ int x2_window_mode_parse(const char *text, X2WindowMode *mode) {
   return 0;
 }
 
+const char *x2_touch_controls_label(unsigned mode) {
+  switch (mode) {
+  case X2_TOUCH_CONTROLS_OFF:
+    return "Off";
+  case X2_TOUCH_CONTROLS_ALWAYS:
+    return "Always";
+  default:
+    return "Automatic";
+  }
+}
+
 void x2_settings_defaults(X2Settings *settings) {
   unsigned i;
   memset(settings, 0, sizeof *settings);
@@ -43,7 +54,7 @@ void x2_settings_defaults(X2Settings *settings) {
   settings->shadow_resolution = 1024;
   settings->text_scale = 0.0f; /* auto */
   settings->boot_mode = X2_BOOT_NORMAL;
-  settings->touch_controls = 1;
+  settings->touch_controls = X2_TOUCH_CONTROLS_AUTO;
   x2_hud_settings_defaults(&settings->hud);
   for (i = 0; i < X2_SETTINGS_KEYBOARD_PROFILES; i++)
     settings->keyboard_player[i] = X2_SETTINGS_UNASSIGNED;
@@ -189,10 +200,10 @@ static int parse_line(ParseState *state, char *line) {
   if (strcmp(key, "boot.mode") == 0)
     return x2_boot_mode_parse(value, &settings->boot_mode);
   if (strcmp(key, "input.touch_controls") == 0) {
-    unsigned enabled;
-    if (!number(value, 0, 1, &enabled))
+    unsigned mode;
+    if (!number(value, X2_TOUCH_CONTROLS_OFF, X2_TOUCH_CONTROLS_ALWAYS, &mode))
       return 0;
-    settings->touch_controls = (uint8_t)enabled;
+    settings->touch_controls = (uint8_t)mode;
     return 1;
   }
   if (strcmp(key, "input.assignment_version") == 0) {
@@ -250,7 +261,7 @@ static int settings_valid(const X2Settings *settings) {
   if (!x2_hud_settings_valid(&settings->hud))
     return 0;
   if ((unsigned)settings->boot_mode > X2_BOOT_CONTINUE ||
-      settings->touch_controls > 1)
+      settings->touch_controls > X2_TOUCH_CONTROLS_ALWAYS)
     return 0;
   if (settings->dynamic_shadows > 1 || (settings->shadow_resolution != 512 &&
                                         settings->shadow_resolution != 1024 &&

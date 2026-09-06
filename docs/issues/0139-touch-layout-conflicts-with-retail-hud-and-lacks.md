@@ -6,7 +6,7 @@ symptom: Android touch overlay crowds gameplay with a second camera stick and co
 tags: android,touch,hud,input,ui
 state_items: S018
 created: 2026-08-31
-updated: 2026-09-02
+updated: 2026-09-06
 ---
 
 ## Root cause
@@ -197,3 +197,32 @@ The scene-graph structure under CHud is recovered and documented in
    Retail, Mobile), scale percentages for vitals, potions, and portraits, and
    safe edge insets. `tools/hud_geometry.py` diffs root boxes against
    `src/presentation/hud_geometry.h` across 117 retail assets. 136 tests pass.
+
+## 2026-09-06 -- the overlay and the mobile HUD follow the device in use
+
+Both were still decided by the saved setting alone, so a desktop run drew the
+thumbstick, the action cluster and the mobile HUD placement over a game being
+played with a keyboard, and an Android player holding a controller got the
+same overlay they were not touching. Platform is not the answer either: the
+same build is played both ways on both platforms.
+
+`src/input/touch_source.{c,h}` now classifies each host event, and it is the
+only thing that decides. Touch becomes the active source at the first contact
+and stops being it at the next key, real-mouse, or deliberate pad input. Two
+events deliberately do NOT count: SDL's synthetic touch-as-mouse reports
+(`SDL_TOUCH_MOUSEID`), which are the same finger seen twice, and a pad axis
+inside half deflection, which is a resting or drifting stick. A device merely
+being connected says nothing.
+
+`x2_touch_runtime_active()` is the one answer both consumers ask --
+`x2_touch_runtime_overlay_visible()` for the drawn controls (with a window and
+gameplay control on top of it) and `hud_draw_runtime.c` for the mobile HUD
+placement. They are one feature, so a HUD that relocates while no pad is drawn
+would be the HUD making room for nothing.
+
+`input.touch_controls` is now Off / Automatic / Always rather than a flag, with
+Automatic the default on every platform; existing files keep their meaning (0
+stays Off, 1 becomes Automatic). Always keeps the layout reachable on a desktop
+with no touchscreen, which is the only place it can be iterated on.
+`tests/test_touch_source.c` covers both answers and the two events that must
+not flip it; `tests/test_settings.c` covers the tri-state and its labels.

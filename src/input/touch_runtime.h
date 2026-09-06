@@ -58,6 +58,29 @@ typedef struct X2TouchVisual {
 int x2_touch_runtime_viewport(X2LayoutViewport *out);
 
 size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
+
+/* IS TOUCH THE INPUT THE PLAYER IS USING RIGHT NOW?
+ *
+ * One answer, two consumers: the on-screen pad and the mobile HUD placement.
+ * They are one feature -- the HUD moves to leave room for the thumbstick and
+ * the buttons -- so a HUD that relocates while no pad is drawn is the HUD
+ * making room for nothing, and the two deciding separately is the
+ * two-sources-of-truth bug the viewport comment above already names.
+ *
+ * The platform is not the answer. An Android player on a controller wants
+ * neither, and a desktop player on a touchscreen wants both. So the answer is
+ * observed: it becomes yes at the first contact and no again at the next
+ * keyboard, mouse or controller event, with the setting able to force either
+ * end (X2_TOUCH_CONTROLS_OFF/ALWAYS).
+ *
+ * The overlay additionally requires a window and gameplay control; the HUD
+ * placement asks this one, because it is laid out before the frame that would
+ * report that control. */
+int x2_touch_runtime_active(void);
+/* Records which kind of device produced an event. Every host event goes past
+ * here, including the ones touch never handles -- that is how a key press
+ * puts the on-screen pad away. */
+void x2_touch_runtime_note_source(const union SDL_Event *event);
 int x2_touch_runtime_overlay_visible(void);
 
 #ifdef __cplusplus

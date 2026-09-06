@@ -28,6 +28,14 @@ typedef struct {
   int8_t player;
 } X2ControllerAssignment;
 
+typedef enum {
+  X2_TOUCH_CONTROLS_OFF = 0,
+  X2_TOUCH_CONTROLS_AUTO = 1,
+  X2_TOUCH_CONTROLS_ALWAYS = 2
+} X2TouchControls;
+
+const char *x2_touch_controls_label(unsigned mode);
+
 typedef struct {
   uint16_t keyboard[X2_SETTINGS_ROWS];
   uint8_t keyboard_set[X2_SETTINGS_ROWS];
@@ -43,6 +51,13 @@ typedef struct {
      share of the screen the text has at 800x600. See ui_text_scale.c. */
   float text_scale;
   X2BootMode boot_mode;
+  /* Whether the on-screen touch pad and the mobile HUD placement it comes
+     with are allowed on screen. AUTO is the default everywhere: neither the
+     host platform nor a saved preference knows whether the player has a
+     finger or a controller on the game right now, and only one of those two
+     wants a thumbstick drawn over the HUD. ALWAYS is the desktop iteration
+     path -- a layout nobody can look at without a phone gets shipped wrong.
+     Persisted numerically, so an existing file's 0/1 keeps its meaning. */
   uint8_t touch_controls;
   X2HudSettings hud;
   /* Device-assignment grid: each row has one owner or is unassigned. P1 may

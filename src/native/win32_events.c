@@ -200,6 +200,10 @@ static void pump_sdl(void) {
       x2_win32_mouse_window_state(&g_mouse, g_hidden, g_mouse.window_focused,
                                   0);
     }
+    /* Before the overlay's own gate and before the UI can consume the
+       event: which device the player is using is a fact about every event,
+       and the answer decides whether the overlay is drawn at all. */
+    x2_touch_runtime_note_source(&event);
     x2_touch_runtime_lifecycle_event(&event);
     drain_touch_pointer();
 

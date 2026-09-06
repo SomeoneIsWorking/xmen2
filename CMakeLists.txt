@@ -225,6 +225,11 @@ add_executable(test_gameplay_control tests/test_gameplay_control.c
                src/input/gameplay_control.c)
 add_test(NAME gameplay_control COMMAND test_gameplay_control)
 
+add_executable(test_touch_source tests/test_touch_source.c
+               src/input/touch_source.c)
+target_link_libraries(test_touch_source PRIVATE ${X2_SDL})
+add_test(NAME touch_source COMMAND test_touch_source)
+
 add_executable(test_touch_layout tests/test_touch_layout.c
                src/presentation/touch_layout.c)
 add_test(NAME touch_layout COMMAND test_touch_layout)
@@ -1438,6 +1443,7 @@ set(X2_NATIVE_SOURCES
     src/native/input_probe.c
     src/input/touch_controls.cpp
     src/input/touch_runtime.cpp
+    src/input/touch_source.c
     src/presentation/touch_layout.c
     src/input/gameplay_control.c
     src/native/touch_hud_runtime.c

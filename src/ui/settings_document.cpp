@@ -137,9 +137,12 @@ void rebuild() {
     visible_controllers = controller_assignment_rows(*settings);
     rml << "<pane><div class='section-heading'>Device assignments</div>"
            "<select-button id='touch-controls'><key>Touch controls</key><value>"
-        << (settings->touch_controls ? "On" : "Off")
+        << x2_touch_controls_label(settings->touch_controls)
         << "</value></select-button>"
-           "<div class='help'>Player 1 may use keyboard and controller "
+           "<div class='help'>Automatic shows the on-screen pad and the "
+           "mobile HUD placement while the player is using touch, and puts "
+           "both away at the next key, mouse or controller input. "
+           "Player 1 may use keyboard and controller "
            "together. Players 2–4 use one device each and press Start to "
            "join. Session-only rows are not saved and temporarily "
            "override the saved device until cleared.</div>"
@@ -364,7 +367,9 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
   } else if (id == "touch-controls") {
     X2Settings *settings = x2_settings_store();
     X2Settings before = *settings;
-    settings->touch_controls ^= 1u;
+    settings->touch_controls =
+        (uint8_t)((settings->touch_controls + 1u) %
+                  (X2_TOUCH_CONTROLS_ALWAYS + 1u));
     std::string status = save_settings();
     if (status != "Saved")
       *settings = before;

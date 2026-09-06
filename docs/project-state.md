@@ -119,10 +119,13 @@ family, so a loader-only selection cannot become the retained install.
 The touch feedback layer
 shows authored action labels rather than misleading internal controller names,
 publishes signed axes once per contact update, holds buttons until finger
-release, cancels on focus/rotation/lifecycle loss, and has a persistent hide
-setting. Camera movement is an invisible relative swipe, portrait taps use the
+release, cancels on focus/rotation/lifecycle loss, and has a persistent
+Off/Automatic/Always setting. Camera movement is an invisible relative swipe, portrait taps use the
 retail click handler, and scoped CHud overrides relocate the party cross and
-health/energy panels only while Android touch mode is active. An NDK 28
+health/energy panels only while touch is the input the player is actually
+using -- observed per event in `src/input/touch_source.c`, one answer shared by
+the drawn controls and the HUD placement, on every platform rather than by
+platform. An NDK 28
 ARM64 build linked the combined `libmain.so`; the Activity now dispatches to its
 exported `main`, Android launcher-icon resources compile with build-tools 36,
 and release assembly refuses missing long-lived signing inputs instead of

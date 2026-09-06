@@ -10,6 +10,7 @@ extern "C" {
 #include "../config/settings_store.h"
 #include "../native/dinput_pad_virtual.h"
 #include "touch_controls.h"
+#include "touch_source.h"
 #include "transient_controller_assignment.h"
 
 #include <SDL3/SDL.h>
@@ -326,12 +327,26 @@ size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {
   return visible_count;
 }
 
+void x2_touch_runtime_note_source(const SDL_Event *event) {
+  const bool was_touch = x2_touch_source_is_touch() != 0;
+  x2_touch_source_note(event);
+  if (was_touch && !x2_touch_source_is_touch()) {
+    /* Whatever was under a finger is not held any more: the zones that were
+       down would otherwise stay down with the overlay gone. */
+    x2_touch_runtime_cancel();
+  }
+}
+
+int x2_touch_runtime_active(void) {
+  /* The setting can force either end on every platform. ALWAYS is what makes
+     the layout reachable on a desktop with no touchscreen -- a layout nobody
+     can see until it is on a phone is a layout that gets shipped wrong. */
+  const unsigned mode = x2_settings_store()->touch_controls;
+  return mode == X2_TOUCH_CONTROLS_ALWAYS ||
+         (mode == X2_TOUCH_CONTROLS_AUTO && x2_touch_source_is_touch());
+}
+
 int x2_touch_runtime_overlay_visible(void) {
-  /* The setting decides, on every platform. It used to be compiled out
-     except on Android, which made the touch layout unreachable on the one
-     host where it can be iterated on and looked at -- and a layout nobody
-     can see until it is on a phone is a layout that gets shipped wrong.
-     Desktop defaults are the player's to set; see settings.c. */
-  return window != nullptr && x2_settings_store()->touch_controls != 0 &&
+  return window != nullptr && x2_touch_runtime_active() &&
          x2_gameplay_control_active(guest_clock_now_s());
 }

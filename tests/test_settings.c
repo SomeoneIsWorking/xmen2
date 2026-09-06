@@ -73,7 +73,12 @@ int main(void) {
   CHECK(saved.width == 1280 && saved.height == 720);
   CHECK(saved.window_mode == X2_WINDOW_WINDOWED);
   CHECK(saved.dynamic_shadows == 1 && saved.shadow_resolution == 1024);
-  CHECK(saved.touch_controls == 1);
+  CHECK(saved.touch_controls == X2_TOUCH_CONTROLS_AUTO);
+  CHECK(strcmp(x2_touch_controls_label(saved.touch_controls), "Automatic") ==
+        0);
+  CHECK(strcmp(x2_touch_controls_label(X2_TOUCH_CONTROLS_OFF), "Off") == 0);
+  CHECK(strcmp(x2_touch_controls_label(X2_TOUCH_CONTROLS_ALWAYS), "Always") ==
+        0);
   CHECK(saved.hud.layout == X2_HUD_LAYOUT_AUTO);
   CHECK(saved.hud.vitals_scale_percent == 100);
   CHECK(saved.hud.potions_scale_percent == 100);
@@ -92,7 +97,7 @@ int main(void) {
   saved.window_mode = X2_WINDOW_BORDERLESS;
   saved.dynamic_shadows = 0;
   saved.shadow_resolution = 2048;
-  saved.touch_controls = 0;
+  saved.touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
   saved.boot_mode = X2_BOOT_CONTINUE;
   CHECK(x2_settings_assign_keyboard(&saved, 2, 0));
   CHECK(x2_settings_player_keyboard(&saved, 0) == 2);

@@ -81,7 +81,7 @@ static int prepare(void) {
   g_viewport.safe_bottom =
       fmaxf(g_viewport.safe_bottom,
             g_viewport.height - (float)(frame.y + frame.height));
-  return x2_hud_layout_mobile(&settings->hud, settings->touch_controls) &&
+  return x2_hud_layout_mobile(&settings->hud, x2_touch_runtime_active()) &&
          x2_hud_layout_build(g_viewport, &settings->hud, &g_layout);
 }
 
