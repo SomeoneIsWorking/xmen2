@@ -26,7 +26,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 30ef243
+    GIT_TAG 2ce823f
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 

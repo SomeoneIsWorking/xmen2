@@ -33,9 +33,46 @@ def translation_units(database: Path) -> tuple[Path, ...]:
     return tuple(sorted(units))
 
 
-def inspect(unit: Path, build_dir: Path, executable: str) -> tuple[Path, int, str]:
+def find_clang_tidy() -> str | None:
+    """clang-tidy as installed, including kegs that are not on PATH.
+
+    Homebrew does not link its llvm formula into /opt/homebrew/bin, because
+    doing so would shadow Apple's toolchain. Only looking at PATH therefore
+    reports "clang-tidy is required" on a machine that has it installed, and
+    the check silently stops running on every such developer's machine.
+    """
+    found = shutil.which("clang-tidy")
+    if found:
+        return found
+    for keg in ("/opt/homebrew/opt/llvm/bin", "/usr/local/opt/llvm/bin"):
+        candidate = Path(keg) / "clang-tidy"
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def sysroot_arguments() -> list[str]:
+    """Where the C++ standard headers live, for a non-Apple clang-tidy.
+
+    A Homebrew clang-tidy has no built-in idea of the macOS SDK, so every unit
+    that includes <string> fails to find it and the whole check reports errors
+    that have nothing to do with the code. Apple's own clang-tidy needs none of
+    this, and passing it costs nothing.
+    """
+    if sys.platform != "darwin":
+        return []
     result = subprocess.run(
-        [executable, "-p", str(build_dir), "--quiet", str(unit)],
+        ["xcrun", "--show-sdk-path"], text=True, capture_output=True, check=False)
+    sdk = result.stdout.strip()
+    if result.returncode or not sdk:
+        return []
+    return ["--extra-arg=-isysroot", f"--extra-arg={sdk}"]
+
+
+def inspect(unit: Path, build_dir: Path, executable: str,
+            extra: list[str]) -> tuple[Path, int, str]:
+    result = subprocess.run(
+        [executable, "-p", str(build_dir), "--quiet", *extra, str(unit)],
         cwd=ROOT,
         text=True,
         capture_output=True,
@@ -55,7 +92,7 @@ def main() -> int:
     args = parse_args()
     build_dir = args.build_dir.resolve()
     database = build_dir / "compile_commands.json"
-    executable = shutil.which("clang-tidy")
+    executable = find_clang_tidy()
     if executable is None:
         print("clang_tidy: clang-tidy is required", file=sys.stderr)
         return 2
@@ -67,7 +104,10 @@ def main() -> int:
         print(f"clang_tidy: compile database has no first-party units: {database}")
         return 2
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as executor:
-        results = list(executor.map(lambda unit: inspect(unit, build_dir, executable), units))
+        extra = sysroot_arguments()
+        results = list(
+            executor.map(lambda unit: inspect(unit, build_dir, executable, extra),
+                         units))
     failures = [(unit, output) for unit, code, output in results if code]
     if failures:
         print(f"clang_tidy: FAILED ({len(failures)} of {len(units)} translation units)")

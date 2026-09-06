@@ -48,6 +48,9 @@ public final class XMen2SetupActivity extends Activity {
     private TextView status;
     private LinearLayout choices;
     private LucentDocumentImport importer;
+    private long importedEntries;
+    private long importedBytes;
+    private String importingName;
     private boolean traceFiles;
     private boolean tracePerformance;
     private boolean traceDrawDump;
@@ -68,6 +71,18 @@ public final class XMen2SetupActivity extends Activity {
                 this, new LucentDocumentImport.Limits(MAXIMUM_ENTRIES,
                                                        MAXIMUM_IMPORT_BYTES,
                                                        64 * 1024));
+        /* Lucent owns the copy and reports what it has done; the wording is
+           this screen's. A late update can arrive just after the import
+           finished, because its post was already in flight -- so it is only
+           drawn while the import still owns the screen. */
+        importer.setProgressListener((entries, bytes, currentName) -> {
+            importedEntries = entries;
+            importedBytes = bytes;
+            importingName = currentName;
+            if (importer.active() && status != null) {
+                status.setText(importingText());
+            }
+        });
         importer.cleanStaleImports();
         buildLayout();
         try {
@@ -148,8 +163,41 @@ public final class XMen2SetupActivity extends Activity {
        minutes. It says what is happening and takes the buttons away, because
        the only thing a second tap can do is be refused. */
     private void showImporting() {
-        status.setText("Copying the game files into this app\u2019s private storage. This can take several minutes for a full install \u2014 leave this screen open.");
+        status.setText(importingText());
         choices.setVisibility(View.GONE);
+    }
+
+    /* There is no total to count towards: Android enumerates a picked folder
+       as it is walked, so how much is left is unknown until it has been read.
+       What CAN be said honestly is how much has arrived and what it is on,
+       and a number that keeps moving is the difference between waiting and
+       wondering whether it died. */
+    private String importingText() {
+        StringBuilder text = new StringBuilder(
+                "Copying the game files into this app\u2019s private storage.");
+        if (importedEntries > 0) {
+            text.append("\n\n").append(importedEntries).append(
+                    importedEntries == 1 ? " file, " : " files, ")
+                .append(formatBytes(importedBytes));
+            if (importingName != null && !importingName.isEmpty()) {
+                text.append("\n").append(importingName);
+            }
+        }
+        text.append("\n\nA full install takes several minutes \u2014 leave this screen open.");
+        return text.toString();
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024L) {
+            return bytes + " B";
+        }
+        if (bytes < 1024L * 1024L) {
+            return String.format(Locale.US, "%.0f KB", bytes / 1024.0);
+        }
+        if (bytes < 1024L * 1024L * 1024L) {
+            return String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
+        }
+        return String.format(Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
     }
 
     private void showChoices() {
@@ -179,13 +227,21 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private void openFolderPicker() {
+        resetProgress();
         choices.setVisibility(View.GONE);
         importer.pickTree(FOLDER_REQUEST, importCallback());
     }
 
     private void openZipPicker() {
+        resetProgress();
         choices.setVisibility(View.GONE);
         importer.pickDocument(ZIP_REQUEST, importCallback());
+    }
+
+    private void resetProgress() {
+        importedEntries = 0;
+        importedBytes = 0;
+        importingName = null;
     }
 
     /** Drives the native product through an app-private debug source, never the release picker. */

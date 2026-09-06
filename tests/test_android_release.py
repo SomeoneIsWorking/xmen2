@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed checks for the Android entry point and signing contract."""
 
+import re
 from pathlib import Path
 import tempfile
 
@@ -151,7 +152,15 @@ def main() -> int:
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
     assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
                 "InstallLocation.java").exists()
-    assert "30ef243" in cmake
+    # Lucent is pinned to an exact revision, never a branch: the Android Java
+    # sources are taken straight out of the fetched checkout, so a moving tag
+    # would change what the APK ships without any change here. The revision
+    # itself is free to move; only the shape of the pin is fixed.
+    pin = re.search(r"FetchContent_Declare\(lucent.*?GIT_TAG\s+(\S+)", cmake,
+                    re.S)
+    assert pin, "CMakeLists.txt no longer declares a lucent GIT_TAG"
+    assert re.fullmatch(r"[0-9a-f]{7,40}", pin.group(1)), (
+        f"lucent must be pinned to a revision, not {pin.group(1)!r}")
     assert "x2.lucentJavaDir" in cmake
     assert "lucentJavaDir" in gradle
     # The product target always opens the control channel, and socket() needs
