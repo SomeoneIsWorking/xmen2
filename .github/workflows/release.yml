@@ -1,0 +1,224 @@
+name: Release packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.4)'
+        required: false
+        default: 'v0.1.4'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.10.12"
+  PYTHON_VERSION: "3.13"
+  UV_FROZEN: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  build-appimage:
+    name: Linux AppImage (x86-64)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            clang-20 glslc libavcodec-dev libavformat-dev libavutil-dev \
+            libfreetype-dev libgl-dev libglu1-mesa-dev libopengl-dev \
+            libsdl3-dev libsdl3-image-dev libswresample-dev libswscale-dev \
+            pkg-config patchelf ninja-build file curl
+      - run: uv sync --frozen
+      - name: Ensure shared repositories
+        run: uv run --frozen python -c "import bootstrap; bootstrap.ensure_shared()"
+      - name: Download AppImage packaging tools
+        run: |
+          mkdir -p tools/bin
+          curl -sL "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" -o tools/bin/linuxdeploy
+          chmod +x tools/bin/linuxdeploy
+          curl -sL "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" -o tools/bin/appimagetool
+          chmod +x tools/bin/appimagetool
+      - name: Configure and build native release binary
+        run: |
+          CC=clang-20 CXX=clang++-20 cmake -S . -B build/native -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPython3_EXECUTABLE=$(which python) \
+            -DSHARED_DIR=$(pwd)/vendor/shared
+          cmake --build build/native --target x2native -j$(nproc)
+      - name: Package AppImage
+        run: |
+          mkdir -p build/release
+          uv run --frozen python tools/package_appimage.py \
+            --linuxdeploy tools/bin/linuxdeploy \
+            --appimagetool tools/bin/appimagetool \
+            --patchelf $(which patchelf) \
+            --output build/release/X-Men-Legends-II-x86_64.AppImage
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: linux-appimage
+          path: build/release/X-Men-Legends-II-x86_64.AppImage
+
+  build-macos:
+    name: macOS Apple Silicon (arm64)
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install native build dependencies
+        run: brew install ffmpeg freetype pkg-config sdl3 sdl3_image shaderc ninja
+      - name: Select the pinned Apple Clang toolchain
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+      - run: uv sync --frozen
+      - name: Ensure shared repositories
+        run: uv run --frozen python -c "import bootstrap; bootstrap.ensure_shared()"
+      - name: Configure and build native release binary
+        run: |
+          CC=clang CXX=clang++ cmake -S . -B build/macos -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPython3_EXECUTABLE=$(which python) \
+            -DSHARED_DIR=$(pwd)/vendor/shared
+          cmake --build build/macos --target x2native -j$(sysctl -n hw.ncpu)
+      - name: Stage macOS release archive
+        run: |
+          mkdir -p build/release/X-Men-Legends-II-macos-arm64
+          cp build/macos/x2native build/release/X-Men-Legends-II-macos-arm64/
+          cp -r build/macos/ui build/release/X-Men-Legends-II-macos-arm64/
+          cp README.md LICENSE build/release/X-Men-Legends-II-macos-arm64/
+          tar -czvf build/release/X-Men-Legends-II-macos-arm64.tar.gz -C build/release X-Men-Legends-II-macos-arm64
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: macos-package
+          path: build/release/X-Men-Legends-II-macos-arm64.tar.gz
+
+  build-android:
+    name: Android (arm64-v8a)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ninja-build openjdk-21-jdk
+      - run: uv sync --frozen
+      - name: Ensure shared repositories
+        run: uv run --frozen python -c "import bootstrap; bootstrap.ensure_shared()"
+      - name: Set up NDK and build Android APK
+        run: |
+          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+          export ANDROID_NDK_VERSION=$(ls "$ANDROID_HOME/ndk" | tail -n 1)
+          echo "Using NDK: $ANDROID_NDK_VERSION"
+          uv run --frozen python tools/build_android.py --abi arm64-v8a --debug
+          mkdir -p build/release
+          cp android/app/build/outputs/apk/debug/*arm64-v8a-debug.apk build/release/X-Men-Legends-II-arm64-v8a-debug.apk
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-apk
+          path: build/release/X-Men-Legends-II-arm64-v8a-debug.apk
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build-appimage, build-macos, build-android]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Download all artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          path: dist
+      - name: Prepare release files and checksums
+        run: |
+          mkdir -p release_assets
+          find dist -type f -name "*.AppImage" -exec cp {} release_assets/ \;
+          find dist -type f -name "*.tar.gz" -exec cp {} release_assets/ \;
+          find dist -type f -name "*.apk" -exec cp {} release_assets/ \;
+          cd release_assets
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Determine tag name
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "val=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "val=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.val }}"
+          echo "Publishing release for tag: $TAG"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release_assets/* --clobber
+          else
+            gh release create "$TAG" release_assets/* \
+              --title "X-Men Legends II native port $TAG" \
+              --notes-file - <<'EOF'
+# X-Men Legends II Native Port Release
+
+Cross-platform native port of *X-Men Legends II: Rise of Apocalypse* (2005 PC release) using native subsystems and x86port runtime JIT.
+
+### Release Assets:
+- **Linux x86-64 AppImage**: `X-Men-Legends-II-x86_64.AppImage`
+  - Desktop no-terminal setup flow with Browse dialog.
+  - Automatically verifies legal PC install and stores path in OS user config.
+- **macOS Apple Silicon (ARM64)**: `X-Men-Legends-II-macos-arm64.tar.gz`
+  - Native arm64 executable with RmlUi assets.
+- **Android ARM64 (arm64-v8a)**: `X-Men-Legends-II-arm64-v8a-debug.apk`
+  - Android APK shell with Storage Access Framework (SAF) setup and touch controls overlay.
+- **Checksums**: `SHA256SUMS.txt`
+
+### Platform Notes:
+- **Windows**: The 2005 retail PC release (`XMen2.exe`) runs natively on Windows. The native port targets non-Windows POSIX environments (Linux, macOS, Android) to eliminate the requirement for Windows / Wine emulation.
+- **No Copyrighted Assets**: These packages contain no game content, audio, textures, or retail code. Supply your own legally obtained PC installation of *X-Men Legends II* (folder or ZIP containing `XMen2.exe` and its original DLLs).
+EOF
+          fi
