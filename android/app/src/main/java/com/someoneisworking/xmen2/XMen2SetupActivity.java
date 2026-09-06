@@ -2,12 +2,14 @@ package com.someoneisworking.xmen2;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -46,6 +48,7 @@ public final class XMen2SetupActivity extends Activity {
                                                         String archiveDestination);
 
     private TextView status;
+    private ProgressBar progressBar;
     private LinearLayout choices;
     private LucentDocumentImport importer;
     private long importedEntries;
@@ -81,10 +84,18 @@ public final class XMen2SetupActivity extends Activity {
             importingName = currentName;
             if (importer.active() && status != null) {
                 status.setText(importingText());
+                GameImportService.update(this, entries, bytes, currentName);
             }
         });
         importer.cleanStaleImports();
         buildLayout();
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                    new String[] { android.Manifest.permission.POST_NOTIFICATIONS }, 0x5848);
+            }
+        }
         try {
             copyAssetTree("ui", new File(getFilesDir(), "ui"));
         } catch (IOException error) {
@@ -115,7 +126,10 @@ public final class XMen2SetupActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (isFinishing()) importer.cancel();
+        if (isFinishing()) {
+            importer.cancel();
+            GameImportService.stop(this);
+        }
         super.onDestroy();
     }
 
@@ -141,6 +155,13 @@ public final class XMen2SetupActivity extends Activity {
         textParams.setMargins(0, padding / 2, 0, padding / 2);
         layout.addView(status, textParams);
 
+        progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progressBar.setIndeterminate(true);
+        progressBar.setVisibility(View.GONE);
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(-1, -2);
+        progressParams.setMargins(padding, 0, padding, padding / 2);
+        layout.addView(progressBar, progressParams);
+
         choices = new LinearLayout(this);
         choices.setOrientation(LinearLayout.HORIZONTAL);
         choices.setGravity(Gravity.CENTER);
@@ -165,6 +186,10 @@ public final class XMen2SetupActivity extends Activity {
     private void showImporting() {
         status.setText(importingText());
         choices.setVisibility(View.GONE);
+        if (progressBar != null) {
+            progressBar.setVisibility(View.VISIBLE);
+        }
+        GameImportService.update(this, importedEntries, importedBytes, importingName);
     }
 
     /* There is no total to count towards: Android enumerates a picked folder
@@ -183,7 +208,7 @@ public final class XMen2SetupActivity extends Activity {
                 text.append("\n").append(importingName);
             }
         }
-        text.append("\n\nA full install takes several minutes \u2014 leave this screen open.");
+        text.append("\n\nA full install takes several minutes \u2014 progress is also shown in your notifications.");
         return text.toString();
     }
 
@@ -203,6 +228,10 @@ public final class XMen2SetupActivity extends Activity {
     private void showChoices() {
         status.setText("Browse to the folder containing XMen2.exe, or choose a ZIP of your legally obtained PC install. Android needs the whole install folder so it can validate and copy the required game files.\n\nThe game files are copied once into this app’s private storage and kept there for future launches.");
         choices.setVisibility(View.VISIBLE);
+        if (progressBar != null) {
+            progressBar.setVisibility(View.GONE);
+        }
+        GameImportService.stop(this);
     }
 
     // --- Pickers ---
@@ -306,8 +335,10 @@ public final class XMen2SetupActivity extends Activity {
             }
             getPreferences(MODE_PRIVATE).edit()
                     .putString(SOURCE_PATH, source.getAbsolutePath()).apply();
+            GameImportService.stop(this);
             startGame();
         } catch (IOException error) {
+            GameImportService.stop(this);
             showError("Could not retain the selected game files: " + error.getMessage());
         }
     }
@@ -381,8 +412,10 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private void showError(String message) {
+        GameImportService.stop(this);
         if (status != null) status.setText(message);
         if (choices != null) choices.setVisibility(View.VISIBLE);
+        if (progressBar != null) progressBar.setVisibility(View.GONE);
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
     }
 }
