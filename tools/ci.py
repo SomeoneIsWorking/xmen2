@@ -95,6 +95,62 @@ def native_components(target: ci_support.TargetSupport) -> None:
     print(f"ci: {target.key}: passed {scope} component checks without game assets")
 
 
+def release_binary(target: ci_support.TargetSupport) -> None:
+    """Build the shipping binary for a release package, without game assets.
+
+    The workflow used to spell this configure out itself and pass whichever
+    `python` was on PATH. That is the interpreter trap issue #118 records: the
+    prompt-atlas step runs Python at configure time and needs the locked
+    environment's Pillow, so a bare `which python` fails the configure with
+    ModuleNotFoundError. Here the interpreter is this process -- the workflow
+    already enters `uv run --frozen` to call it -- and the shared checkout
+    comes from the same bootstrap the launcher uses.
+    """
+    ci_support.require_runner(target)
+    if not target.native_components:
+        raise ci_support.CiFailure(
+            f"ci: {target.key}: {target.explanation}; there is no release binary to build"
+        )
+    environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment.setdefault("CC", "clang")
+    environment.setdefault("CXX", "clang++")
+    ensure_shared(environment)
+    build = ROOT / "build" / "native"
+    ci_support.run_checked(
+        (
+            "cmake",
+            "-S",
+            str(ROOT),
+            "-B",
+            str(build),
+            "-G",
+            "Ninja",
+            "-DCMAKE_BUILD_TYPE=Release",
+            f"-DPython3_EXECUTABLE={sys.executable}",
+        ),
+        ROOT,
+        environment,
+    )
+    ci_support.run_checked(
+        (
+            "cmake",
+            "--build",
+            str(build),
+            "--target",
+            "x2native",
+            "--parallel",
+            str(os.cpu_count() or 2),
+        ),
+        ROOT,
+        environment,
+    )
+    binary = build / "x2native"
+    if not binary.is_file():
+        raise ci_support.CiFailure(f"ci: {target.key}: the build produced no {binary}")
+    print(f"ci: {target.key}: built {binary} without game assets")
+
+
 def selftest() -> None:
     clean = f"""
 env:
@@ -156,7 +212,7 @@ jobs:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("policy", "native-components"):
+    for name in ("policy", "native-components", "release-binary"):
         command = commands.add_parser(name)
         command.add_argument("--target", required=True, choices=tuple(ci_support.TARGETS))
     commands.add_parser("selftest")
@@ -172,6 +228,8 @@ def main() -> int:
         target = target_named(args.target)
         if args.command == "policy":
             policy(target)
+        elif args.command == "release-binary":
+            release_binary(target)
         else:
             native_components(target)
     except ci_support.CiFailure as error:
