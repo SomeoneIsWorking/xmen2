@@ -615,7 +615,7 @@ already portable; the machine-code emission and execution layer is not, which is
 the blocker restated.
 
 W1 has moved a long way without becoming unblocked. `shared/x86port` (pinned
-here at `6ee313b`) now owns a third JIT backend, and Emscripten selects it —
+here at `e1522b2`) now owns a third JIT backend, and Emscripten selects it —
 asked about before the processor is looked at, because Emscripten reports its
 processor as `x86`, which is how it got the x86-64 emitter in the first place.
 A host with no backend still refuses by name, so the

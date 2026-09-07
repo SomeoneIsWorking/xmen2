@@ -111,7 +111,7 @@ not closed. This is what it was, and why only one of the two ways out survives:
   externally-visible `x86p_jit_*` interface, chosen once at configure time.
 
 **Status: a third backend now exists, and Emscripten selects it.** Upstream
-`shared/x86port` (pinned at `6ee313b`) has, in order:
+`shared/x86port` (pinned at `e1522b2`) has, in order:
 
 - **The encoder.** `emit_wasm.{h,c}` writes the WebAssembly binary format, and
   its oracle is a real engine rather than a disassembler: `test_emit_wasm`

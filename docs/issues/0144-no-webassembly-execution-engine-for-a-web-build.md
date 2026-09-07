@@ -74,7 +74,7 @@ wasm build must route guest x87 through the software float path.
 ## What has landed since
 
 All three parts named above are done, upstream in `shared/x86port` (pinned here
-at `6ee313b`):
+at `e1522b2`):
 
 - **The silent misclassification is gone.** The backend selection names an
   unsupported host and refuses, instead of treating every non-ARM64 processor as
