@@ -325,6 +325,13 @@ add_test(NAME structure
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_structure.py)
 add_test(NAME structure_selftest
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_structure.py --selftest)
+# Touch play is a device feature on every platform, never a package's. This
+# refuses a platform branch in a touch owner, and refuses a pass that inspected
+# nothing. See docs/touch-play.md.
+add_test(NAME touch_portable
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_touch_portable.py)
+add_test(NAME touch_portable_selftest
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_touch_portable.py --selftest)
 add_test(NAME project_state
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/project_state.py
                  --root ${CMAKE_SOURCE_DIR})

@@ -13,8 +13,9 @@ struct SDL_Window;
 extern "C" {
 #endif
 
-/* SDL/Android contact acquisition and publication into the existing virtual
- * DirectInput pad. Title layout remains owned by TouchControls. */
+/* SDL contact acquisition and publication into the existing virtual DirectInput
+ * pad, on every platform: a desktop touchscreen and a phone reach this the same
+ * way. Title layout remains owned by TouchControls. */
 void x2_touch_runtime_window(struct SDL_Window *window);
 
 typedef struct X2TouchPointer {
@@ -67,11 +68,11 @@ size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
  * making room for nothing, and the two deciding separately is the
  * two-sources-of-truth bug the viewport comment above already names.
  *
- * The platform is not the answer. An Android player on a controller wants
- * neither, and a desktop player on a touchscreen wants both. So the answer is
- * observed: it becomes yes at the first contact and no again at the next
- * keyboard, mouse or controller event, with the setting able to force either
- * end (X2_TOUCH_CONTROLS_OFF/ALWAYS).
+ * The platform is not the answer. A phone player on a controller wants
+ * neither, and a desktop or tablet player on a touchscreen wants both. So the
+ * answer is observed: it becomes yes at the first contact and no again at the
+ * next keyboard, mouse or controller event, with the setting able to force
+ * either end (X2_TOUCH_CONTROLS_OFF/ALWAYS).
  *
  * The overlay additionally requires a window and gameplay control; the HUD
  * placement asks this one, because it is laid out before the frame that would

@@ -130,14 +130,21 @@ uv run --frozen python tools/package_appimage.py \
 `linuxdeploy` and `appimagetool` must be available; the output is written to
 `build/release/X-Men-Legends-II-x86_64.AppImage`.
 
-The Android APK has the same no-terminal setup rule. Its setup/touch/package
-shell can be assembled for development with
+The Android APK has the same no-terminal setup rule. Its setup/package shell can
+be assembled for development with
 `uv run --frozen python tools/build_android.py` after selecting the Android SDK
 and NDK, a supported JDK, and the release signing inputs documented in
 [`docs/android-release.md`](docs/android-release.md). Its Browse screen uses SAF, stages a ZIP or install folder into
 app-private storage only after the complete PC install validates, and supplies
-the same Lucent user-data root used for saves/configuration. Touch controls
-publish through the existing virtual pad.
+the same Lucent user-data root used for saves/configuration.
+
+**Touch controls are not part of that package.** They ship in every build, on
+every platform, and turn themselves on for whoever is touching a screen — a
+Windows or Linux tablet and a 2-in-1 get the on-screen pad and the mobile HUD
+placement exactly as a phone does, while an Android player holding a controller
+gets neither. The Input setting (`input.touch_controls`) forces either end
+anywhere, so the layout can be looked at on a desktop with no touchscreen. See
+[`docs/touch-play.md`](docs/touch-play.md).
 The missing ARM64 JIT backend and mobile performance evidence are tracked in
 [`docs/project-state.md`](docs/project-state.md) and
 [`docs/android-release.md`](docs/android-release.md).

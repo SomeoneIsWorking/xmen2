@@ -70,10 +70,19 @@ under the OS user configuration directory. The AppImage contains no game
 files. The Android APK has a separate setup Activity: it uses SAF to stage a
 ZIP or an install folder into app-private storage, validates the loader and
 title content sentinels, then starts SDL only after the native bridge has
-supplied Lucent's Android user-data root. Its touch
-events feed the same virtual DirectInput pad as every other controller path.
+supplied Lucent's Android user-data root.
 The remaining mobile release gate is measured device performance; see
 `docs/android-release.md`.
+
+**Touch play is not an Android feature.** The on-screen pad and the mobile HUD
+placement are decided by the device the player is touching RIGHT NOW, never by
+the platform the binary was built for: an Android player holding a controller
+wants neither, and a desktop player on a touchscreen wants both. The answer is
+observed from the host event stream (`src/input/touch_source.c`) and forced at
+either end by one setting (`input.touch_controls`: OFF / AUTO / ALWAYS), on
+every platform. Touch events feed the same virtual DirectInput pad as every
+other controller path. Nothing about the feature may be compiled out, gated on
+`__ANDROID__`, or documented as belonging to a package.
 
 Transient run artifacts go to the gitignored `scratch/`, structured by type
 (`scratch/logs/`, `screenshots/`, `raw/`, `run/`). Compiler outputs, generated
@@ -256,10 +265,14 @@ The Android setup boundary follows the same pattern: `android/` owns Activity
 lifecycle, SAF URI permissions, and app-private staging;
 `src/native/android_bridge.cpp` only transfers the absolute storage/source
 contract; `install_picker.cpp` owns title validation and shared Lucent ZIP
-extraction. The Android touch boundary keeps the title's safe-area-aware action
-vocabulary and virtual layout in `src/input/touch_controls.cpp`; platform
-SDL/Activity event acquisition, visual feedback, and guest input publication
-remain outside that owner. `lucent::touch::Router` owns contact capture,
+extraction.
+
+The touch boundary is platform-neutral and owned here, not by any package. It
+keeps the title's safe-area-aware action vocabulary and virtual layout in
+`src/input/touch_controls.cpp`; platform SDL/Activity event acquisition, visual
+feedback, and guest input publication remain outside that owner.
+`src/input/touch_source.c` owns the which-device-is-in-use classification and is
+exercised without a window, a pad or a running game. `lucent::touch::Router` owns contact capture,
 multi-touch, and cancellation. `src/presentation/touch_hud_layout.c` owns the
 pure edge-relocation policy and `src/native/touch_hud_runtime.c` scopes it
 around the retained CHud bodies; portrait taps re-enter the existing retail

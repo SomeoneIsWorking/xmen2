@@ -81,40 +81,14 @@ certificate. This proves assembly, not release identity or device fitness.
 
 ## Touch controls
 
-The title owns the safe-area-aware layout and action vocabulary in
-`src/input/touch_controls.cpp`, while `src/input/touch_runtime.cpp` converts
-SDL contacts to the existing virtual DirectInput pad through
-`lucent::touch::Router`. Lucent owns capture, multi-touch, and cancellation,
-not the title's action vocabulary. A contact stays with its zone after leaving
-the zone until it ends or is canceled. The runtime derives safe-area insets
-from SDL and publishes releases on cancellation, rotation, or lifecycle loss.
+Touch play is NOT an Android feature and is not owned here — see
+[Touch play](touch-play.md) for the device classification, the zone/action
+vocabulary, the safe-area layout, and its tests. It is built and shipped on
+every platform; the APK merely consumes it.
 
-The landscape layout uses these zones and the existing Xbox-derived action
-rows. Internal retail storage names are not player-facing labels: the touch
-document uses the action meanings proven by `binding_rows.c` and
-`xbox_defaults.c`.
-
-| Zone | Action mapping |
-|---|---|
-| Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight` |
-| Bottom-right action cluster | Light attack, heavy attack, use, jump, mutant powers, energy pack, health pack |
-| Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
-| Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
-| Menu buttons | `Pause`, `Stats` |
-| Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
-| Retail health/energy HUD, top-left | The retained CHud draw path, relocated only while touch mode is active |
-
-The layout must leave an inset for cutouts/navigation bars, support at least
-the left stick plus two face/shoulder contacts simultaneously, expose a
-reconfigure/hide-controls setting, and make touch feedback visible without
-changing the input action delivered to the guest. The mapping is derived from
-[`xbox_defaults.c`](../src/native/xbox_defaults.c), not invented per screen.
-The shipped feedback document mirrors only authored touch controls with text
-labels, rather than showing controller glyphs whose internal action names are
-misleading. Gesture and portrait hit regions remain invisible, captured zones
-highlight, and the persistent Input setting can hide the controls. Held
-contacts persist until finger-up/cancel rather than expiring on a test-channel
-timeout.
+What is Android's own is the acquisition edge: the Activity delivers SDL finger
+events like any other host, and the packaged build must not regress the safe
+area on devices with cutouts or gesture navigation bars.
 
 ## Performance gate
 

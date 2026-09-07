@@ -44,7 +44,8 @@ declared-host backend gaps.
 | S015 | Transactional autosave and direct retail Continue restore | verified | S002 | G002 |
 | S016 | Live control, capture, input, and runtime diagnostic channel | verified | S002, S003 | G002, G006 |
 | S017 | Linux AppImage packaging and no-terminal install setup | partial | S001, S008 | G005 |
-| S018 | Android APK shell, touch controls, and measured mobile performance | partial | S002, S006, S010 | G005, G007 |
+| S018 | Android APK shell and measured mobile performance | partial | S002, S006, S010, S020 | G005, G007 |
+| S020 | Platform-neutral touch play on any touchscreen | partial | S002, S006 | G005, G007 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
 ## State details and evidence
@@ -107,25 +108,14 @@ desktop in this state record. The Android shell now has a native target and
 setup/touch implementation, but the APK still lacks installed-device and
 performance evidence.
 
-### S018 — Android APK shell, touch controls, and measured mobile performance: partial
+### S018 — Android APK shell and measured mobile performance: partial
 
-The title-specific safe-area-aware touch action owner exists in
-`src/input/touch_controls.cpp`, with SDL contact acquisition in
-`src/input/touch_runtime.cpp`, Android setup/SAF staging in `android/`, and a
-real ARM64 shared native target/Gradle assembly path. Android selection uses the
-same generated validator before Lucent promotes staged files: it requires every
-loader PE image and title-owned content sentinels spanning each boot-time asset
-family, so a loader-only selection cannot become the retained install.
-The touch feedback layer
-shows authored action labels rather than misleading internal controller names,
-publishes signed axes once per contact update, holds buttons until finger
-release, cancels on focus/rotation/lifecycle loss, and has a persistent
-Off/Automatic/Always setting. Camera movement is an invisible relative swipe, portrait taps use the
-retail click handler, and scoped CHud overrides relocate the party cross and
-health/energy panels only while touch is the input the player is actually
-using -- observed per event in `src/input/touch_source.c`, one answer shared by
-the drawn controls and the HUD placement, on every platform rather than by
-platform. An NDK 28
+Android setup/SAF staging in `android/` has a real ARM64 shared native
+target/Gradle assembly path. Android selection uses the same generated validator
+before Lucent promotes staged files: it requires every loader PE image and
+title-owned content sentinels spanning each boot-time asset family, so a
+loader-only selection cannot become the retained install. Touch play itself is
+S020, not this capability. An NDK 28
 ARM64 build linked the combined `libmain.so`; the Activity now dispatches to its
 exported `main`, Android launcher-icon resources compile with build-tools 36,
 and release assembly refuses missing long-lived signing inputs instead of
@@ -541,3 +531,31 @@ Evidence: `tools/x2ctl.py`, `src/native/live_session.c`, and
 completes during a presenting run with no input polls, and issue #115 records
 the render-boundary root cause. The controls include deliberately differing
 input/frame cases rather than only uniform output.
+
+### S020 — platform-neutral touch play on any touchscreen: partial
+
+Observed capability: the on-screen pad and the mobile HUD placement are decided
+by the device the player is touching, never by the platform the binary was
+built for. `src/input/touch_source.c` classifies each host event into touch /
+not-touch — ignoring SDL's `SDL_TOUCH_MOUSEID` synthetic pointer, treating a
+resting stick below half of SDL's signed range as no answer, and ignoring every
+other device kind rather than counting it as not-touch — and
+`x2_touch_runtime_active()` publishes one answer that both the drawn controls
+and the HUD relocation read. `input.touch_controls` forces OFF or ALWAYS on
+every platform. The title's safe-area-aware action vocabulary, zone routing,
+multi-touch capture, cancellation on focus/rotation/lifecycle loss, invisible
+relative camera swipe, and retail-click portrait selection are all in the
+platform-neutral owners named in `docs/touch-play.md`; nothing is compiled out
+anywhere and no source under `src/input/` or `src/presentation/` tests
+`__ANDROID__`.
+
+Evidence: `touch_source`, `touch_controls`, `touch_layout` and
+`touch_hud_layout` run in the ordinary host suite on every platform, with no
+device and no window. The CMake sources list builds all four touch owners
+unconditionally into `x2native`, outside the `if(ANDROID)` branches.
+
+Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
+been recorded, so "played by touch on a desktop" is not yet a claim this
+repository can make — only "the path is platform-neutral by construction and
+unit-verified". Measured phone evidence remains S018's gate. The web target
+(S021) will be the third consumer of this capability.
