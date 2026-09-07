@@ -94,8 +94,27 @@ run: tools/ci.py policy --target macos-arm64
 run: tools/ci.py native-components --target macos-arm64
 run: tools/ci.py policy --target windows-x86_64
 run: tools/ci.py policy --target android-arm64
+run: tools/ci.py policy --target web-wasm
+run: tools/ci.py wasm-portability --target web-wasm
 """
     assert ci_support.workflow_violations(fixture) == []
+
+
+def test_web_policy_without_its_measurement_is_refused():
+    """A web job that skipped the measurement would go green meaning nothing."""
+    fixture = "run: tools/ci.py policy --target web-wasm\n"
+    assert (
+        "workflow runs the web policy without the wasm portability measurement, "
+        "so its result would carry no denominator" in ci_support.workflow_violations(fixture)
+    )
+
+
+def test_web_target_never_claims_a_buildable_product():
+    fixture = "run: tools/ci.py native-components --target web-wasm\n"
+    assert (
+        "workflow pretends the unsupported web product builds"
+        in ci_support.workflow_violations(fixture)
+    )
 
 
 def test_repository_workflow_passes_production_policy():

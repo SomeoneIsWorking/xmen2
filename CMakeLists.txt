@@ -332,6 +332,13 @@ add_test(NAME touch_portable
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_touch_portable.py)
 add_test(NAME touch_portable_selftest
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/check_touch_portable.py --selftest)
+# What of the engine compiles to wasm32, with denominators. It SKIPs (77) with
+# no Emscripten toolchain rather than reporting a pass it did not measure; CI
+# passes --require-emsdk so absence is a failure there. See docs/web-release.md.
+add_test(NAME wasm_portability
+         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/wasm_portability.py)
+set_tests_properties(wasm_portability PROPERTIES SKIP_RETURN_CODE 77
+                     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 add_test(NAME project_state
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/project_state.py
                  --root ${CMAKE_SOURCE_DIR})

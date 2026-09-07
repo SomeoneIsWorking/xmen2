@@ -102,6 +102,7 @@ come from the locked environment.
 | Apple Silicon macOS | policy + platform-neutral native component build and tests | Unsupported: the ARM64 x86port JIT backend does not exist yet |
 | Windows x86-64 | policy only | Unsupported: the native Windows host is not implemented |
 | Android ARM64 | policy only | Unsupported: the ARM64 x86port JIT backend is absent and the current native target needs a player-derived font calibration header |
+| Web (WASM + PWA) | policy + measured wasm32 portability with denominators | Unsupported: no WebAssembly JIT backend exists, so an Emscripten build would link the x86-64 emitter and die on its first translated block, and SDL_GPU has no web backend (docs/web-release.md, W1 and W2) |
 
 The Android job deliberately does not compile an APK around a placeholder font
 ratio, and the macOS job does not use the test interpreter as a substitute JIT.

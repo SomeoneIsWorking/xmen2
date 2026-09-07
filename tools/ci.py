@@ -95,6 +95,38 @@ def native_components(target: ci_support.TargetSupport) -> None:
     print(f"ci: {target.key}: passed {scope} component checks without game assets")
 
 
+def wasm_portability(target: ci_support.TargetSupport) -> None:
+    """Measure what of the engine compiles to wasm32, with denominators.
+
+    The web target is blocked (docs/project-state.md S021), so this deliberately
+    does NOT build a product and must never be read as one working. It records
+    which translation units are already portable and names the ones that are
+    not, so the two blockers stay visible and a regression in the portable half
+    is caught while the blockers are still open.
+    """
+    ci_support.require_runner(target)
+    if target.gameplay_jit or target.native_components:
+        raise ci_support.CiFailure(
+            f"{target.key} claims a buildable product; this command exists "
+            f"only for a target that has none"
+        )
+    environment = os.environ.copy()
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    ensure_shared(environment)
+    ci_support.run_checked(
+        (
+            sys.executable,
+            str(ROOT / "tools" / "wasm_portability.py"),
+            # In CI a missing toolchain is the failure, not a skip: a job that
+            # measured nothing must not go green.
+            "--require-emsdk",
+        ),
+        ROOT,
+        environment,
+    )
+    print(f"ci: {target.key}: measured wasm32 portability; {target.explanation}")
+
+
 def release_binary(target: ci_support.TargetSupport) -> None:
     """Build the shipping binary for a release package, without game assets.
 
@@ -212,7 +244,7 @@ jobs:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("policy", "native-components", "release-binary"):
+    for name in ("policy", "native-components", "release-binary", "wasm-portability"):
         command = commands.add_parser(name)
         command.add_argument("--target", required=True, choices=tuple(ci_support.TARGETS))
     commands.add_parser("selftest")
@@ -230,6 +262,8 @@ def main() -> int:
             policy(target)
         elif args.command == "release-binary":
             release_binary(target)
+        elif args.command == "wasm-portability":
+            wasm_portability(target)
         else:
             native_components(target)
     except ci_support.CiFailure as error:

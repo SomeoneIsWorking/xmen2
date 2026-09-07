@@ -17,6 +17,7 @@ env:
   PYTHON_VERSION: "3.13"
   UV_FROZEN: "1"
   PYTHONDONTWRITEBYTECODE: "1"
+  EMSDK_VERSION: "4.0.16"
 
 jobs:
   linux-x86_64:
@@ -109,3 +110,37 @@ jobs:
           cache-dependency-glob: uv.lock
       - run: uv sync --frozen
       - run: uv run --frozen python tools/ci.py policy --target android-arm64
+
+  web-wasm-portability:
+    name: Web WASM portability (no web product exists)
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # emsdk is installed from its own repository at a pinned SDK version
+      # rather than through a third-party action, so no unreviewed action gains
+      # access to the job.
+      - name: Install the pinned Emscripten SDK
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git build/deps/emsdk
+          build/deps/emsdk/emsdk install "${EMSDK_VERSION}"
+          build/deps/emsdk/emsdk activate "${EMSDK_VERSION}"
+      - run: sudo apt-get update && sudo apt-get install --no-install-recommends ninja-build
+      - run: uv sync --frozen
+      - run: uv run --frozen python tools/ci.py policy --target web-wasm
+      # This measures which translation units are already portable and names
+      # the ones that are not. It is NOT a web build: docs/project-state.md
+      # S021 is blocked, and a green job here means the measurement matched its
+      # pin, never that the game runs in a browser.
+      - run: uv run --frozen python tools/ci.py wasm-portability --target web-wasm

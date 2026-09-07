@@ -46,6 +46,7 @@ declared-host backend gaps.
 | S017 | Linux AppImage packaging and no-terminal install setup | partial | S001, S008 | G005 |
 | S018 | Android APK shell and measured mobile performance | partial | S002, S006, S010, S020 | G005, G007 |
 | S020 | Platform-neutral touch play on any touchscreen | partial | S002, S006 | G005, G007 |
+| S021 | Web (WASM + PWA) product with browser-side install | blocked | S001, S020, W1, W2, W3 | G005 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
 ## State details and evidence
@@ -559,3 +560,59 @@ been recorded, so "played by touch on a desktop" is not yet a claim this
 repository can make — only "the path is platform-neutral by construction and
 unit-verified". Measured phone evidence remains S018's gate. The web target
 (S021) will be the third consumer of this capability.
+
+### S021 — web (WASM + PWA) product with browser-side install: blocked
+
+Observed capability: none. Nothing has been built for or run on the web. This
+row exists so the target has a state of record rather than an aspiration, and
+so a future green CI tick cannot be misread as progress it did not make.
+
+Blockers: W1 (no WebAssembly execution engine), W2 (no web renderer backend),
+W3 (guest threads and browser main-thread blocking). Each was verified by
+reading the code that would need them; `docs/web-release.md` holds the detail
+and the falsifying observation for each:
+
+- **W1, no execution engine.** `shared/x86port` selects one of exactly two JIT
+  backends by host architecture. Emscripten matches neither and links the
+  x86-64 emitter, which writes x86-64 bytes into a buffer and calls them —
+  something WebAssembly cannot do. The build would succeed and the product
+  would die on its first translated block. A `jit_wasm`/`emit_wasm` backend is
+  the only route: the interpreter is refused for a player build by the
+  execution-architecture guardrail, and would not be playable regardless.
+- **W2, no renderer backend.** `src/gpu/gpu_device.c` requests an SDL_GPU device
+  with SPIRV shaders only; SDL_GPU's backends are Vulkan/Metal/D3D12 and the
+  pinned revision has no WebGPU backend. Device creation fails outright.
+- **W3, threads.** Guest threads are real pthreads (`src/native/threads.c`), so
+  a wasm build needs `SharedArrayBuffer`, cross-origin isolation headers served
+  by the PWA's own origin, and the guest loop proxied off the browser main
+  thread, which cannot block.
+
+Not blocked, and therefore the part that can proceed: the browser setup flow
+(W4) reuses `install_validation`'s existing requirement set, and guest memory
+already supports a host that refuses the low 4 GB one-to-one
+(`X2_GUEST_ARENA_RESERVED`), which is what a wasm32 linear memory is. Its
+remaining unknown is `apply_host_protection`: WebAssembly has no page
+protection, and a silent no-op reporting success is not an acceptable answer.
+
+A fourth constraint was found only by running the toolchain rather than reading
+the code: **W5**, WebAssembly has no floating-point environment — no
+rounding-mode control, no exception flags — so `x86port/x87.c`'s
+`#pragma FENV_ACCESS` is refused outright and a wasm build must route the guest
+x87 through the software float path instead of host FP. That path itself
+compiles clean.
+
+Evidence and denominators, measured with Emscripten 4.0.16 against the real
+CMake projects: `x86port_runtime` 33 of 34 translation units compile to wasm32,
+`jitcommon` 1 of 2, Zydis 18 of 18, Zycore 13 of 13 (with `ZYAN_NO_LIBC`), the
+Bochs software x87/SSE math 233 of 233, and 8 of 8 platform-neutral port owners.
+The two that fail are the two that matter, each as a compiler error rather than
+an opinion: `code_memory.cpp` ("llvm.clear_cache is not supported on wasm",
+W1) and `x87.c` (W5). So the guest's decode, semantics and software math are
+already portable; the machine-code emission and execution layer is not, which is
+the blocker restated.
+
+Still zero wasm builds of the product, zero runs, and no browser has opened
+anything. `tools/wasm_portability.py` re-measures this in the ordinary suite
+and in CI, refuses a pass that measured nothing, and fails if a third file
+becomes unportable or if one of the two starts compiling without the progress
+being recorded.

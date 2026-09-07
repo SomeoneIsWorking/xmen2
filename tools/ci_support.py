@@ -71,6 +71,19 @@ TARGETS: Mapping[str, TargetSupport] = {
             "target needs a player-derived font calibration header"
         ),
     ),
+    "web-wasm": TargetSupport(
+        key="web-wasm",
+        system="Linux",
+        machine="x86_64",
+        verification="policy + measured wasm32 portability with denominators",
+        gameplay_jit=False,
+        native_components=False,
+        explanation=(
+            "no WebAssembly JIT backend exists, so an Emscripten build would "
+            "link the x86-64 emitter and die on its first translated block, "
+            "and SDL_GPU has no web backend (docs/web-release.md, W1 and W2)"
+        ),
+    ),
 }
 
 
@@ -230,6 +243,8 @@ def policy_commands(root: Path) -> tuple[tuple[str, ...], ...]:
         (python, str(root / "tools/runtime_boundary.py"), "--source"),
         (python, str(root / "tools/check_structure.py")),
         (python, str(root / "tools/check_structure.py"), "--selftest"),
+        (python, str(root / "tools/check_touch_portable.py")),
+        (python, str(root / "tools/check_touch_portable.py"), "--selftest"),
         (python, "-m", "ruff", "check", "tools", "tests"),
         (python, "-m", "pytest", "-q", *POLICY_TESTS),
     )
@@ -271,6 +286,17 @@ def workflow_violations(text: str) -> list[str]:
         failures.append("workflow pretends the unsupported Windows host builds")
     if "tools/ci.py native-components --target android-arm64" in text:
         failures.append("workflow pretends the unsupported Android product builds")
+    if "tools/ci.py native-components --target web-wasm" in text:
+        failures.append("workflow pretends the unsupported web product builds")
+    # The web job's whole value is the measurement. A job that silently skipped
+    # it would leave a green tick meaning nothing.
+    if "tools/ci.py policy --target web-wasm" in text and (
+        "tools/ci.py wasm-portability --target web-wasm" not in text
+    ):
+        failures.append(
+            "workflow runs the web policy without the wasm portability "
+            "measurement, so its result would carry no denominator"
+        )
     return failures
 
 
@@ -304,6 +330,7 @@ def markdown_support_rows() -> tuple[str, ...]:
         "macos-arm64": "Apple Silicon macOS",
         "windows-x86_64": "Windows x86-64",
         "android-arm64": "Android ARM64",
+        "web-wasm": "Web (WASM + PWA)",
     }
     rows = []
     for key, target in TARGETS.items():
