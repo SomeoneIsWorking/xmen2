@@ -43,7 +43,10 @@ KNOWN_UNPORTABLE = {
     "code_memory.cpp": (
         "llvm.clear_cache is not supported on wasm. This is the JIT's "
         "executable code region: WebAssembly has no instruction cache to "
-        "flush because it has no way to execute a byte buffer at all. Gate W1."
+        "flush because it has no way to execute a byte buffer at all. The "
+        "WebAssembly backend needs no code region -- it produces a module -- "
+        "so what this marks is the dispatcher, which still routes every "
+        "translation through the region and has to fork before it. Gate W1."
     ),
     "x87.c": (
         "'#pragma FENV_ACCESS' is not supported on this target. WebAssembly "
@@ -144,13 +147,12 @@ def measure_engine(
             # so its process/memory/terminal/thread sources refuse to compile.
             # The decoder needs none of them.
             "-DZYAN_NO_LIBC=ON",
-            # x86port now REFUSES a host it has no JIT backend for, rather than
-            # silently linking the x86-64 emitter as it used to. That refusal is
-            # correct and is gate W1 restated at configure time. This flag is
-            # the named exception for exactly this measurement, and x86port
-            # warns on every configure that the library it produces cannot
-            # execute a guest instruction. Nothing a person runs may set it.
-            "-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON",
+            # x86port used to have NO backend for this host, so this
+            # measurement had to pass -DX86P_MEASURE_UNRUNNABLE_BACKEND=ON to
+            # get a library that compiled but could not execute a guest
+            # instruction. It now selects a real WebAssembly backend for
+            # Emscripten, so the escape hatch is gone from here: the objects
+            # counted below include the backend that will actually run.
         ],
         environment,
     )

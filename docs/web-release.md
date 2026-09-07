@@ -25,19 +25,31 @@ CI as the `web-wasm` job:
 
 | Component | Compiles to wasm32 |
 |---|---|
-| `x86port_runtime` — x86 decode, semantics, x87, SIMD, host emission | 34 of 35 translation units |
+| `x86port_runtime` — x86 decode, semantics, x87, SIMD, host emission | 38 of 39 translation units |
 | `jitcommon` — shared code region and block cache | 1 of 2 |
 | Zydis, the pinned decoder | 18 of 18 |
 | Zycore, its support layer | 13 of 13 (needs `ZYAN_NO_LIBC`) |
 | Bochs software x87/SSE math | 233 of 233 |
 | Platform-neutral port owners (touch layout, HUD layout, settings, boot mode, save directory, gameplay control) | 8 of 8 |
 
+Those 38 now include the whole WebAssembly backend — the encoder, the module
+builder, guest-state access, the lowering, module lifetime and the adapter, ten
+files — compiled by Emscripten's clang under `-Wall -Wextra -Werror` with no
+warnings, and no x86-64 emitter object anywhere in the build. That is the first
+time any of it has been through a real wasm32 compiler, and it is what makes
+`jit_wasm.c`'s `_Static_assert(sizeof(void *) == 4)` a checked fact rather than
+an assumption.
+
 So the guest's decode, semantics and software math are already portable, and
 the two that are not are exactly the two that matter — each of them a compile
 error rather than an opinion:
 
 - `jitcommon/code_memory.cpp`: *"llvm.clear_cache is not supported on wasm"*.
-  That is the JIT's executable code region. Gate W1, stated by the compiler.
+  That is the JIT's executable code region, and it stays unportable on purpose:
+  the WebAssembly backend produces a module rather than a byte buffer, so it
+  needs no code region at all. What this compile error now marks is W1 item 2 —
+  the dispatcher still routes every translation through that region, and the
+  wasm path has to fork before it.
 - `x86port/x87.c`: *"'#pragma FENV_ACCESS' is not supported on this target"*.
   Gate W5 below, which the plan did not have before it was measured.
 
@@ -74,17 +86,17 @@ Each gate names its evidence and what would falsify it. A gate is not "hard
 work remaining" — it is a thing that does not exist, where the build currently
 succeeds while producing something that cannot run.
 
-### W1 — There is no execution engine for WebAssembly. *(blocking, upstream)*
+### W1 — Nothing instantiates or enters a translated block. *(blocking, upstream)*
 
-`shared/x86port` has exactly two JIT backends and picks between them by host
-architecture (`vendor/shared/x86port/CMakeLists.txt`, the
-`CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$"` branch): `jit_arm64.c` or
-`jit_x64.c`. Emscripten reports neither, so it falls into the `else()` and
-links the **x86-64** backend, which emits x86-64 machine code into a buffer and
-jumps to it. WebAssembly cannot execute a byte buffer. The build would succeed
-and the product would be dead on the first translated block.
+`shared/x86port` used to have exactly two JIT backends and pick between them by
+host architecture: `jit_arm64.c` or `jit_x64.c`. Emscripten reported neither, so
+it fell into the `else()` and linked the **x86-64** backend, which emits x86-64
+machine code into a buffer and jumps to it. WebAssembly cannot execute a byte
+buffer, so the build succeeded and the product was dead on the first translated
+block.
 
-This is the whole gate. The two ways out and why only one survives:
+That is no longer the shape of the gate — see the status below — but the gate is
+not closed. This is what it was, and why only one of the two ways out survives:
 
 - *Run the interpreter instead.* Refused. AGENTS.md: the gameplay target always
   uses the JIT, product configuration cannot choose the execution architecture,
@@ -98,36 +110,76 @@ This is the whole gate. The two ways out and why only one survives:
   fits the existing contract — the backend modules already implement one
   externally-visible `x86p_jit_*` interface, chosen once at configure time.
 
-**The encoder half of that is now done and upstream.** `emit_wasm.{h,c}` writes
-the WebAssembly binary format, and its oracle is a real engine rather than a
-disassembler: `test_emit_wasm` builds twelve modules and node validates each
-against the specification and runs it, 12 of 12. `shared/x86port` also no longer
-guesses: the backend selection used to treat every non-ARM64 host as x86-64, so
-an Emscripten configure quietly linked an emitter this host cannot run. It now
-refuses by name, and this port's measurement passes
-`-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON` to keep measuring, told on every
-configure that the library it gets cannot execute a guest instruction.
+**Status: a third backend now exists, and Emscripten selects it.** Upstream
+`shared/x86port` (pinned at `5e6d1e9`) has, in order:
 
-What remains for W1 is the lowering — `jit_wasm.c`, guest block to module — plus
-module lifetime: an instantiated module is permanent, so per-block modules leak
-without bound and block-cache eviction becomes a memory-correctness requirement
-rather than a tuning knob. `shared/x86port`'s `docs/migration.md` Gate 8 owns
-the ordered work.
+- **The encoder.** `emit_wasm.{h,c}` writes the WebAssembly binary format, and
+  its oracle is a real engine rather than a disassembler: `test_emit_wasm`
+  builds twelve modules and node validates each against the specification and
+  runs it, 12 of 12.
+- **The lowering.** `jit_wasm_lower.c` and five per-family units turn a guest
+  block into a module: MOV/MOVZX/MOVSX/LEA/XCHG/SETcc/PUSH/POP/LEAVE/CDQ/CWDE/
+  CLD/STD, the inline ALU shapes (ADD, SUB, CMP, OR, AND, TEST, XOR, NOT), the
+  helper-backed ones (ADC, SBB, NEG, INC, DEC, every shift and rotate) and the
+  branches (JMP, Jcc, JECXZ, CALL, RET). `test_jit_wasm` translates 38 blocks,
+  hands each to node, and compares the whole `X86pCpu` and all of guest memory
+  against the interpreter — 38 of 38 blocks reached the engine, 1,097 checks, 0
+  divergences. Twelve of thirteen deliberate mutations to the backend were
+  caught by that corpus; the thirteenth is recorded as unobservable at the site,
+  not quietly dropped.
+- **Module lifetime.** `jit_wasm_arena.c` owns published modules against a host
+  interface, caps them at 1,024, and *refuses by name* past the cap rather than
+  evicting — because the block cache holds entry addresses the arena handed out
+  and does not consult it before entering one. 32 checks through a stub engine.
+- **Backend selection.** Emscripten is now asked about *before* the processor is
+  looked at, because Emscripten reports its processor as `x86` — which is how it
+  got the x86-64 emitter in the first place. A host with no backend still
+  refuses by name.
 
-Two browser constraints shape that backend and must be settled before it is
-written, not after:
+And it compiles: the wasm32 measurement above builds all ten of those files with
+Emscripten's own clang, warnings-as-errors, clean.
 
-1. Synchronous `new WebAssembly.Module(bytes)` is limited to small modules on
-   the main thread. Off the main thread it is unrestricted — which is the same
-   place W3 already puts the game loop. Compiling on a worker is therefore not
-   an extra cost; it is the design.
-2. Every instantiated module is permanent. A per-block module for a long
-   session is an unbounded leak of module objects, so block-cache eviction
-   becomes a memory-correctness requirement rather than a tuning knob, and
-   blocks want batching into larger modules.
+What remains for W1, and none of it is small:
 
-Falsified by: a `jit_wasm` backend that translates and runs x86port's own JIT
-test suite under node, with its refusal counters reported.
+1. **Nothing instantiates a module.** `X86pWasmHost` is an interface with no
+   implementation; the only thing that has ever implemented it is a test stub.
+   The real one is JavaScript glue plus an `EM_JS`/`emscripten_run_script`
+   boundary, and Emscripten function pointers are indirect-table indices, which
+   is the mechanism a resolved export has to come back as.
+2. **The dispatcher has no publication edge.** `jit_engine.c` translates into a
+   code region and enters it; the wasm path produces a module and an export
+   name instead, and that fork does not exist yet.
+3. **The instruction set is a first slice.** No string operations, no
+   multiply/divide, no SIMD, no x87, no `LOOP`, no double shifts — each of which
+   the x64 backend has and the guest uses.
+4. **Compile off the main thread**, per the constraint below, which ties W1 to
+   W3.
+5. **Eviction is deliberately absent**, so a long session hits the cap and gets
+   a named refusal. Closing that means the block cache telling the arena when it
+   discards a block — a change on the cache side, not here.
+
+`shared/x86port`'s `docs/migration.md` Gate 8 owns the ordered work.
+
+Two browser constraints shaped that backend. One is answered in its structure;
+the other is still open and belongs to the glue that does not exist:
+
+1. **Open.** Synchronous `new WebAssembly.Module(bytes)` is limited to small
+   modules on the main thread. Off the main thread it is unrestricted — which is
+   the same place W3 already puts the game loop. Compiling on a worker is
+   therefore not an extra cost; it is the design, and nothing yet implements it.
+2. **Answered in the design, not yet exercised.** Every instantiated module is
+   permanent, so per-block modules are an unbounded leak. That is why the module
+   builder takes its function count up front and can carry several blocks in one
+   module, and why the arena counts what is live, caps it, and refuses by name
+   instead of evicting behind the cache's back. What is *not* done: the block
+   cache never tells the arena that a block was discarded, and nothing batches
+   blocks yet — so today one block is one module, and a long session would reach
+   the cap and be refused.
+
+Falsified by: an Emscripten build of this port that reports a nonzero count of
+translated blocks executed in the browser, with its refusal counters reported.
+The backend's own test suite already runs under node, so that half is evidence
+already in hand and no longer the thing being asked for.
 
 ### W2 — There is no renderer backend for the web. *(blocking, upstream)*
 

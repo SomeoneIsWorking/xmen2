@@ -567,17 +567,20 @@ Observed capability: none. Nothing has been built for or run on the web. This
 row exists so the target has a state of record rather than an aspiration, and
 so a future green CI tick cannot be misread as progress it did not make.
 
-Blockers: W1 (no WebAssembly execution engine), W2 (no web renderer backend),
-W3 (guest threads and browser main-thread blocking). Each was verified by
-reading the code that would need them; `docs/web-release.md` holds the detail
-and the falsifying observation for each:
+Blockers: W1 (nothing instantiates or enters a translated block), W2 (no web
+renderer backend), W3 (guest threads and browser main-thread blocking). Each was
+verified by reading the code that would need them; `docs/web-release.md` holds
+the detail and the falsifying observation for each:
 
-- **W1, no execution engine.** `shared/x86port` selects one of exactly two JIT
-  backends by host architecture. Emscripten matches neither and links the
-  x86-64 emitter, which writes x86-64 bytes into a buffer and calls them —
-  something WebAssembly cannot do. The build would succeed and the product
-  would die on its first translated block. A `jit_wasm`/`emit_wasm` backend is
-  the only route: the interpreter is refused for a player build by the
+- **W1, nothing instantiates or enters a translated block.** `shared/x86port`
+  used to select one of exactly two JIT backends by host architecture;
+  Emscripten matched neither and linked the x86-64 emitter, which writes x86-64
+  bytes into a buffer and calls them — something WebAssembly cannot do. A third
+  backend now exists and Emscripten selects it (see below), so that particular
+  failure is gone. What is still missing is everything between a produced module
+  and a running one: no implementation of the host interface that instantiates a
+  module, no publication edge in the dispatcher, and only a first slice of the
+  instruction set. The interpreter remains refused for a player build by the
   execution-architecture guardrail, and would not be playable regardless.
 - **W2, no renderer backend.** `src/gpu/gpu_device.c` requests an SDL_GPU device
   with SPIRV shaders only; SDL_GPU's backends are Vulkan/Metal/D3D12 and the
@@ -602,7 +605,7 @@ x87 through the software float path instead of host FP. That path itself
 compiles clean.
 
 Evidence and denominators, measured with Emscripten 4.0.16 against the real
-CMake projects: `x86port_runtime` 34 of 35 translation units compile to wasm32,
+CMake projects: `x86port_runtime` 38 of 39 translation units compile to wasm32,
 `jitcommon` 1 of 2, Zydis 18 of 18, Zycore 13 of 13 (with `ZYAN_NO_LIBC`), the
 Bochs software x87/SSE math 233 of 233, and 8 of 8 platform-neutral port owners.
 The two that fail are the two that matter, each as a compiler error rather than
@@ -611,18 +614,46 @@ W1) and `x87.c` (W5). So the guest's decode, semantics and software math are
 already portable; the machine-code emission and execution layer is not, which is
 the blocker restated.
 
-W1 has moved, without becoming unblocked. `shared/x86port` now owns
-`emit_wasm.{h,c}`, which writes the WebAssembly binary format and is verified by
-a real engine validating and running twelve emitted modules; and its backend
-selection now REFUSES a host it has no JIT backend for instead of silently
-linking the x86-64 emitter, so this port's measurement passes an explicitly
-named `-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON` and is warned each configure that
-the library cannot execute guest code. The lowering half — `jit_wasm.c`, guest
-block to module, and module lifetime as a memory-correctness requirement — does
-not exist.
+W1 has moved a long way without becoming unblocked. `shared/x86port` (pinned
+here at `5e6d1e9`) now owns a third JIT backend, and Emscripten selects it —
+asked about before the processor is looked at, because Emscripten reports its
+processor as `x86`, which is how it got the x86-64 emitter in the first place.
+A host with no backend still refuses by name, so the
+`-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON` this port's measurement used to pass is
+gone from `tools/wasm_portability.py`. What that backend has:
+
+- `emit_wasm.{h,c}` writes the WebAssembly binary format, verified by a real
+  engine validating and running twelve emitted modules, 12 of 12.
+- `jit_wasm_lower.c` and five per-family units lower a guest block to a module
+  for a named instruction subset — moves, LEA, XCHG, SETcc, PUSH/POP/LEAVE,
+  CDQ/CWDE, CLD/STD, the inline ALU shapes, the helper-backed ALU shapes (ADC,
+  SBB, NEG, INC, DEC, shifts, rotates) and the branches. `test_jit_wasm`
+  translates 38 blocks, runs each in node, and compares the entire `X86pCpu`
+  and all of guest memory against the interpreter: 38 of 38 blocks reached the
+  engine, 1,097 checks, 0 divergences. Twelve of thirteen deliberate mutations
+  were caught; the thirteenth is recorded as unobservable at the site.
+- `jit_wasm_arena.c` owns module lifetime against a host interface, caps live
+  modules at 1,024, and refuses by name past the cap rather than evicting —
+  because the block cache holds entry addresses the arena handed out and does
+  not consult it before entering one. 32 checks through a stub engine.
+- All ten of those files compile to wasm32 under Emscripten's clang with
+  `-Wall -Wextra -Werror` and no warnings, which is the first time any of them
+  has been through a real wasm32 compiler. No x86-64 emitter object appears in
+  that build.
+
+What W1 still needs, and none of it is small: an implementation of
+`X86pWasmHost` (only a test stub has ever implemented it) with the JavaScript
+glue to instantiate a module and hand back an indirect-table index; a
+publication edge in `jit_engine.c`, which today routes every translation through
+the executable code region the wasm path must fork before; the rest of the
+instruction set (no string operations, multiply/divide, SIMD, x87, `LOOP` or
+double shifts); compilation off the main thread, which ties W1 to W3; and
+eviction, which is absent on purpose and needs the block cache to tell the arena
+when it discards a block.
 
 Still zero wasm builds of the product, zero runs, and no browser has opened
-anything. `tools/wasm_portability.py` re-measures this in the ordinary suite
+anything. The evidence above is a compile and an engine-verified test suite, not
+a game. `tools/wasm_portability.py` re-measures this in the ordinary suite
 and in CI, refuses a pass that measured nothing, and fails if a third file
 becomes unportable or if one of the two starts compiling without the progress
 being recorded.
