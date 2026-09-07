@@ -2,7 +2,7 @@
 id: 144
 title: No WebAssembly execution engine for a web build
 status: open
-symptom: an Emscripten build links the x86-64 JIT backend and would die on its first translated block
+symptom: nothing lowers a guest block to WebAssembly; the encoder exists, the backend does not
 tags: web,wasm,jit,x86port,blocker
 created: 2026-09-07
 updated: 2026-09-07
@@ -67,6 +67,32 @@ which wasm refuses because it has no floating-point environment at all, so a
 wasm build must route guest x87 through the software float path.
 
 `tools/wasm_portability.py` keeps this measured rather than remembered.
+
+## What has landed since
+
+Two of the three parts named above are done, upstream in `shared/x86port`
+(pinned here at `34d2d95`):
+
+- **The silent misclassification is gone.** The backend selection now names an
+  unsupported host and refuses, instead of treating every non-ARM64 processor as
+  x86-64. This port's portability measurement passes an explicitly named
+  `-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON` and is warned on every configure that
+  the resulting library cannot execute a guest instruction.
+- **`emit_wasm.{h,c}` writes the WebAssembly binary format**, with the same
+  sticky-overflow discipline as the other two encoders plus counted size slots
+  and counted control regions, because an unbalanced body or an unclosed size is
+  a module an engine rejects wholesale rather than a subtly wrong instruction.
+  Its oracle is a real engine: twelve modules validated and ran under node,
+  covering arithmetic, five-byte constants, sign/zero-extending memory access,
+  structured control, direct and indirect calls, 64-bit widening, and a trap.
+  Both halves were confirmed to fire by mutation.
+
+**Still open, and still the blocker:** `jit_wasm.c` — the lowering from a guest
+basic block to a module — does not exist, so no guest instruction has executed
+on a WebAssembly host. Module lifetime belongs to that work rather than after
+it: an instantiated module is permanent, so per-block modules leak without
+bound and block-cache eviction becomes a memory-correctness requirement.
+`shared/x86port`'s `docs/migration.md` Gate 8 holds the ordered remainder.
 
 Verification when it lands: `jit_wasm` translates and runs x86port's own JIT
 suite under node, reporting translated blocks, hand-backs and refusals with

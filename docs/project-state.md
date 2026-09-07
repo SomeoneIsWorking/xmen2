@@ -602,7 +602,7 @@ x87 through the software float path instead of host FP. That path itself
 compiles clean.
 
 Evidence and denominators, measured with Emscripten 4.0.16 against the real
-CMake projects: `x86port_runtime` 33 of 34 translation units compile to wasm32,
+CMake projects: `x86port_runtime` 34 of 35 translation units compile to wasm32,
 `jitcommon` 1 of 2, Zydis 18 of 18, Zycore 13 of 13 (with `ZYAN_NO_LIBC`), the
 Bochs software x87/SSE math 233 of 233, and 8 of 8 platform-neutral port owners.
 The two that fail are the two that matter, each as a compiler error rather than
@@ -610,6 +610,16 @@ an opinion: `code_memory.cpp` ("llvm.clear_cache is not supported on wasm",
 W1) and `x87.c` (W5). So the guest's decode, semantics and software math are
 already portable; the machine-code emission and execution layer is not, which is
 the blocker restated.
+
+W1 has moved, without becoming unblocked. `shared/x86port` now owns
+`emit_wasm.{h,c}`, which writes the WebAssembly binary format and is verified by
+a real engine validating and running twelve emitted modules; and its backend
+selection now REFUSES a host it has no JIT backend for instead of silently
+linking the x86-64 emitter, so this port's measurement passes an explicitly
+named `-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON` and is warned each configure that
+the library cannot execute guest code. The lowering half — `jit_wasm.c`, guest
+block to module, and module lifetime as a memory-correctness requirement — does
+not exist.
 
 Still zero wasm builds of the product, zero runs, and no browser has opened
 anything. `tools/wasm_portability.py` re-measures this in the ordinary suite

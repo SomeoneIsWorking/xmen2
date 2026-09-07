@@ -144,6 +144,13 @@ def measure_engine(
             # so its process/memory/terminal/thread sources refuse to compile.
             # The decoder needs none of them.
             "-DZYAN_NO_LIBC=ON",
+            # x86port now REFUSES a host it has no JIT backend for, rather than
+            # silently linking the x86-64 emitter as it used to. That refusal is
+            # correct and is gate W1 restated at configure time. This flag is
+            # the named exception for exactly this measurement, and x86port
+            # warns on every configure that the library it produces cannot
+            # execute a guest instruction. Nothing a person runs may set it.
+            "-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON",
         ],
         environment,
     )

@@ -25,7 +25,7 @@ CI as the `web-wasm` job:
 
 | Component | Compiles to wasm32 |
 |---|---|
-| `x86port_runtime` — x86 decode, semantics, x87, SIMD, host emission | 33 of 34 translation units |
+| `x86port_runtime` — x86 decode, semantics, x87, SIMD, host emission | 34 of 35 translation units |
 | `jitcommon` — shared code region and block cache | 1 of 2 |
 | Zydis, the pinned decoder | 18 of 18 |
 | Zycore, its support layer | 13 of 13 (needs `ZYAN_NO_LIBC`) |
@@ -97,6 +97,22 @@ This is the whole gate. The two ways out and why only one survives:
   and instantiate it. This is the proven design for x86 in a browser, and it
   fits the existing contract — the backend modules already implement one
   externally-visible `x86p_jit_*` interface, chosen once at configure time.
+
+**The encoder half of that is now done and upstream.** `emit_wasm.{h,c}` writes
+the WebAssembly binary format, and its oracle is a real engine rather than a
+disassembler: `test_emit_wasm` builds twelve modules and node validates each
+against the specification and runs it, 12 of 12. `shared/x86port` also no longer
+guesses: the backend selection used to treat every non-ARM64 host as x86-64, so
+an Emscripten configure quietly linked an emitter this host cannot run. It now
+refuses by name, and this port's measurement passes
+`-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON` to keep measuring, told on every
+configure that the library it gets cannot execute a guest instruction.
+
+What remains for W1 is the lowering — `jit_wasm.c`, guest block to module — plus
+module lifetime: an instantiated module is permanent, so per-block modules leak
+without bound and block-cache eviction becomes a memory-correctness requirement
+rather than a tuning knob. `shared/x86port`'s `docs/migration.md` Gate 8 owns
+the ordered work.
 
 Two browser constraints shape that backend and must be settled before it is
 written, not after:
