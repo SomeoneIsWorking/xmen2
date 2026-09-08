@@ -105,9 +105,9 @@ This digest is published in the public
 [`v0.1.3` AppImage release](https://github.com/SomeoneIsWorking/xmen2/releases/tag/v0.1.3).
 
 Gap: the interactive Browse flow has not been exercised on a clean Linux
-desktop in this state record. The Android shell now has a native target and
-setup/touch implementation, but the APK still lacks installed-device and
-performance evidence.
+desktop in this state record. The Android shell now has a native target,
+setup/touch implementation, and ARM64 Cuttlefish install/menu evidence, but
+the APK still lacks physical-device and performance evidence.
 
 ### S018 — Android APK shell and measured mobile performance: partial
 
@@ -177,8 +177,10 @@ tree promoted successfully, and the game reached 36,518 translated blocks with
 zero JIT refusals and no Android fatal signal. The title now handles the
 missing MPEG-PS metadata with a bounded byte-zero replay and explicit MPEG
 parser; the host and exact ARM64 standalone `i102.sfd` tests both decode 312
-video and 458,656 audio frames. The packaged first-movie-to-menu run,
-pause/resume recreation, and named-device performance gate remain open. The
+video and 458,656 audio frames. The packaged run now reaches the retail main
+menu after the first-movie startup latency on ARM64 Cuttlefish; pause/resume
+recreation, interactive gameplay, and the named-device performance gate remain
+open. The
 implementation boundary and its falsifier are recorded in
 [`0145`](issues/0145-android-arm64-first-movie-probe-stalls.md).
 
