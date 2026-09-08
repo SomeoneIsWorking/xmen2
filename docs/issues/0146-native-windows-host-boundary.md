@@ -33,11 +33,14 @@ independently built and verified. The falsifier is a Windows runner producing a
 signed or explicitly portable ZIP whose native binary passes the same runtime
 boundary and package checks.
 
-The first title-side boundary is now isolated in
-`src/native/platform_mman.h`: guest-memory mapping, protection changes, page
-size discovery, and release all go through one interface. Its Windows branch
-uses `VirtualAlloc`, `VirtualProtect`, and `VirtualFree`; the Linux path keeps
-the existing `mmap` contract. The focused guest-memory suite passes all seven
-mapping/protection cases after the change. This is a portability step, not a
-Windows build claim: PE file mapping, threads, sockets, signals, diagnostics,
-and the Windows dependency/toolchain job remain open.
+The first title-side boundaries are now isolated in
+`src/native/platform_mman.h` and `src/native/platform_file_map.{c,h}`:
+guest-memory mapping, protection changes, page-size discovery, release, and
+read-only PE file mapping all have one platform owner. Their Windows branches
+use `VirtualAlloc`/`VirtualProtect`/`VirtualFree` and
+`CreateFile`/`MapViewOfFile`; the Linux paths keep the existing POSIX
+contracts. The focused guest-memory suite passes all seven mapping/protection
+cases, the file-map regression passes, and the PE loader now consumes the
+shared map. This is a portability step, not a Windows build claim: threads,
+sockets, signals, diagnostics, CMake dependency links, and the Windows
+dependency/toolchain job remain open.

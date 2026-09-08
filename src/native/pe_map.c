@@ -11,17 +11,15 @@
  */
 #include "guest_memory.h"
 #include "pe_map.h"
+#include "platform_file_map.h"
 #include "platform_mman.h"
 
 #include <strings.h> /* strcasecmp */
 
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 #define RD16(p, o) ((uint16_t)((p)[(o)] | ((p)[(o) + 1] << 8)))
 #define RD32_(p, o)                                                            \
@@ -49,25 +47,19 @@ int pe_map_at(const char *path, uint32_t want, PeImage *out) {
 
 int pe_map(const char *path, PeImage *out) {
   unsigned char *f;
-  struct stat st;
-  int fd, i;
+  X2FileMap file_map;
+  int i;
   uint32_t pe, nsec, opt, base, imgsize, hdrsize, prefbase;
 
   memset(out, 0, sizeof *out);
-  fd = open(path, O_RDONLY);
-  if (fd < 0) {
+  if (x2_file_map_readonly(path, &file_map) != 0) {
     x2_log_error("pe_map: cannot open %s: %s\n", path, strerror(errno));
     return -1;
   }
-  if (fstat(fd, &st) < 0 || st.st_size < 0x40) {
+  f = (unsigned char *)file_map.address;
+  if (file_map.size < 0x40) {
     x2_log_error("pe_map: %s is not a file with a DOS header\n", path);
-    close(fd);
-    return -1;
-  }
-  f = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-  close(fd);
-  if (f == MAP_FAILED) {
-    x2_log_error("pe_map: cannot map %s: %s\n", path, strerror(errno));
+    x2_file_unmap(&file_map);
     return -1;
   }
   if (f[0] != 'M' || f[1] != 'Z') {
@@ -75,7 +67,7 @@ int pe_map(const char *path, PeImage *out) {
     goto fail;
   }
   pe = RD32_(f, 0x3C);
-  if (pe + 0x78 > (uint32_t)st.st_size || memcmp(f + pe, "PE\0\0", 4) != 0) {
+  if (pe + 0x78 > (uint32_t)file_map.size || memcmp(f + pe, "PE\0\0", 4) != 0) {
     x2_log_error("pe_map: %s has no PE header at 0x%x\n", path, pe);
     goto fail;
   }
@@ -117,7 +109,7 @@ int pe_map(const char *path, PeImage *out) {
     uint32_t va = RD32_(f, s + 12), vsz = RD32_(f, s + 8);
     uint32_t raw = RD32_(f, s + 20), rsz = RD32_(f, s + 16);
     uint32_t n = rsz < vsz ? rsz : vsz;
-    if (raw + n > (uint32_t)st.st_size) {
+    if (raw + n > (uint32_t)file_map.size) {
       x2_log_error("pe_map: section %d of %s runs past the file\n", i, path);
       guest_memory_release(base, imgsize);
       goto fail;
@@ -153,14 +145,14 @@ int pe_map(const char *path, PeImage *out) {
                  "applied\n",
                  path, (uint32_t)prefbase, base, n);
   }
-  munmap(f, (size_t)st.st_size);
+  x2_file_unmap(&file_map);
   out->base = base;
   out->preferred = (uint32_t)prefbase;
   out->size = imgsize;
   out->nsections = (int)nsec;
   return 0;
 fail:
-  munmap(f, (size_t)st.st_size);
+  x2_file_unmap(&file_map);
   return -1;
 }
 

@@ -315,6 +315,11 @@ target_compile_definitions(test_win_path PRIVATE
     X2_TEST_WIN_PATH_ROOT="${CMAKE_BINARY_DIR}/test-win-path")
 add_test(NAME win_path COMMAND test_win_path)
 
+add_executable(test_platform_file_map tests/test_platform_file_map.c
+               src/native/platform_file_map.c)
+target_include_directories(test_platform_file_map PRIVATE src/native)
+add_test(NAME platform_file_map COMMAND test_platform_file_map)
+
 add_executable(test_fmv_decode tests/test_fmv_decode.c
                src/media/fmv_player.c src/media/fmv_audio_decode.c
                src/media/fmv_decoder_drain.c src/media/fmv_policy.c
@@ -1409,6 +1414,7 @@ set(X2_NATIVE_SOURCES
     src/native/load_game_menu_runtime.c
     src/native/save_trace_runtime.c
     src/native/pe_map.c
+    src/native/platform_file_map.c
     src/native/win32_sdl.c
     src/native/win32_mouse.c
     src/native/win32_pointer.c
