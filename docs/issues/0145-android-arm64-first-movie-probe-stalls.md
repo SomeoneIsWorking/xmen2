@@ -54,6 +54,12 @@ no selection or interrupted-copy notification trace was recorded. This proves
 the picker route is reachable, not that SAF import completion or recreation is
 verified.
 
+The installed Google API30 ARM64 AVD cannot provide a second host-side
+emulator: Android Emulator 37.1.11 refuses its `arm64` system image on this
+x86-64 host (`Avd's CPU Architecture 'arm64' is not supported by the QEMU2
+emulator`). Cuttlefish is therefore the available ARM64 emulator here; the
+headless API35 image is x86-64 and cannot substitute for ARM64 evidence.
+
 ## Remaining falsifier
 
 The remaining falsifier is the packaged APK: it must open the first SFD,
