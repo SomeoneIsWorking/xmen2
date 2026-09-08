@@ -174,11 +174,12 @@ evidence.
 The complete import path was also exercised on the ARM64 Cuttlefish device:
 the foreground notification reported live bounded-copy progress, the staged
 tree promoted successfully, and the game reached 36,518 translated blocks with
-zero JIT refusals and no Android fatal signal. The first-movie run remains
-open: the captured earlier stack stalled in FFmpeg's MPEG-PS stream probe, so
-the title now bounds that probe; an ARM64 standalone decode still needs the
-missing MPEG sequence metadata before it can pass. The remaining first-frame
-gate is recorded in
+zero JIT refusals and no Android fatal signal. The title now handles the
+missing MPEG-PS metadata with a bounded byte-zero replay and explicit MPEG
+parser; the host and exact ARM64 standalone `i102.sfd` tests both decode 312
+video and 458,656 audio frames. The packaged first-movie-to-menu run,
+pause/resume recreation, and named-device performance gate remain open. The
+implementation boundary and its falsifier are recorded in
 [`0145`](issues/0145-android-arm64-first-movie-probe-stalls.md).
 
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android

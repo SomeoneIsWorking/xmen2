@@ -167,11 +167,26 @@ void x2_fmv_audio_decode_close(X2FmvAudioDecode *decode) {
 
 int x2_fmv_audio_decode_send_packet(X2FmvAudioDecode *decode,
                                     const AVPacket *packet) {
-  int result = avcodec_send_packet(decode->codec, packet);
+  AVPacket aligned = *packet;
+  const AVPacket *input = packet;
+  int result;
+  int block_align = decode->codec->block_align;
+  /* The MPEG-PS demuxer can end an Android packet on an ADX block boundary
+     that is shorter than one complete stereo block. Never pass that tail to
+     FFmpeg: it is not a decodable frame and would fail the whole movie. */
+  if (block_align <= 0 && decode->codec->codec_id == AV_CODEC_ID_ADPCM_ADX)
+    block_align = 18 * decode->codec->ch_layout.nb_channels;
+  if (block_align > 0 && aligned.size % block_align != 0) {
+    aligned.size -= aligned.size % block_align;
+    if (aligned.size == 0)
+      return 0;
+    input = &aligned;
+  }
+  result = avcodec_send_packet(decode->codec, input);
   if (result == AVERROR(EAGAIN)) {
     result = receive_all(decode);
     if (result >= 0)
-      result = avcodec_send_packet(decode->codec, packet);
+      result = avcodec_send_packet(decode->codec, input);
   }
   if (result < 0 && result != AVERROR_EOF)
     return result;

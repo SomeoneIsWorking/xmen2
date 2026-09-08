@@ -4,6 +4,7 @@
 #include "fmv_decoder_drain.h"
 #include "fmv_policy.h"
 #include "fmv_probe.h"
+#include "fmv_sfd.h"
 #include "fmv_timing.h"
 
 #include <libavcodec/avcodec.h>
@@ -15,20 +16,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #define VIDEO_QUEUE_CAPACITY 16
 #define AUDIO_HORIZON_SECONDS 0.75
 #define VIDEO_HORIZON_SECONDS 0.20
-
-/* X-Men's SFD files are MPEG program streams without a program-stream map.
-   The first audio/video PES ids are stable across the shipped movie set; the
-   demuxer otherwise leaves the video codec as a probe request and the
-   portable ARM64 decoder can spend minutes decoding packets just to discover
-   metadata it already owns from the title format. */
-#define X2_SFD_AUDIO_STREAM_ID 0x1c0
-#define X2_SFD_VIDEO_STREAM_ID 0x1e0
-#define X2_SFD_PROBE_BYTES (1024 * 1024)
-#define X2_SFD_PROBE_TIME_US (2 * AV_TIME_BASE)
 
 typedef struct {
   uint8_t *bgra;
@@ -38,6 +28,7 @@ typedef struct {
 struct X2FmvPlayer {
   AVFormatContext *format;
   AVCodecContext *video_codec;
+  X2FmvSfd sfd;
   X2FmvAudioDecode *audio_decode;
   struct SwsContext *scaler;
   AVFrame *frame;
@@ -72,7 +63,6 @@ static void error_text(char *out, size_t size, const char *operation,
   av_strerror(code, detail, sizeof(detail));
   snprintf(out, size, "%s: %s", operation, detail);
 }
-
 static AVCodecContext *open_codec(AVFormatContext *format, int stream,
                                   char *error, size_t error_size) {
   AVCodecContext *context;
@@ -91,6 +81,10 @@ static AVCodecContext *open_codec(AVFormatContext *format, int stream,
   }
   result =
       avcodec_parameters_to_context(context, format->streams[stream]->codecpar);
+  /* ADX arrives as raw MPEG-PS chunks on Android; let the decoder accept each
+     complete block after fmv_audio_decode trims an incomplete tail. */
+  if (format->streams[stream]->codecpar->codec_id == AV_CODEC_ID_ADPCM_ADX)
+    context->flags2 |= AV_CODEC_FLAG2_CHUNKS;
   if (result >= 0)
     result = avcodec_open2(context, codec, NULL);
   if (result < 0) {
@@ -99,26 +93,6 @@ static AVCodecContext *open_codec(AVFormatContext *format, int stream,
   }
   return context;
 }
-
-static void configure_sfd_probe(AVFormatContext *format) {
-  unsigned i;
-  if (!format || !format->iformat || strcmp(format->iformat->name, "mpeg") != 0)
-    return;
-  format->probesize = X2_SFD_PROBE_BYTES;
-  format->max_analyze_duration = X2_SFD_PROBE_TIME_US;
-  for (i = 0; i < format->nb_streams; ++i) {
-    AVCodecParameters *parameters = format->streams[i]->codecpar;
-    if (format->streams[i]->id == X2_SFD_VIDEO_STREAM_ID &&
-        parameters->codec_type == AVMEDIA_TYPE_VIDEO &&
-        parameters->codec_id == AV_CODEC_ID_NONE)
-      parameters->codec_id = AV_CODEC_ID_MPEG1VIDEO;
-    else if (format->streams[i]->id == X2_SFD_AUDIO_STREAM_ID &&
-             parameters->codec_type == AVMEDIA_TYPE_AUDIO &&
-             parameters->codec_id == AV_CODEC_ID_NONE)
-      parameters->codec_id = AV_CODEC_ID_ADPCM_ADX;
-  }
-}
-
 static void free_video_queue(X2FmvPlayer *player) {
   int i;
   for (i = 0; i < VIDEO_QUEUE_CAPACITY; ++i) {
@@ -128,7 +102,6 @@ static void free_video_queue(X2FmvPlayer *player) {
   player->video_head = 0;
   player->video_count = 0;
 }
-
 static int queue_video_frame(X2FmvPlayer *player, const AVFrame *frame) {
   AVStream *stream = player->format->streams[player->video_stream];
   VideoFrame *slot;
@@ -157,7 +130,6 @@ static int queue_video_frame(X2FmvPlayer *player, const AVFrame *frame) {
   player->decoded_video++;
   return 1;
 }
-
 static X2FmvDrainResult receive_video_step(void *userdata) {
   X2FmvPlayer *player = (X2FmvPlayer *)userdata;
   int result;
@@ -180,7 +152,6 @@ static X2FmvDrainResult receive_video_step(void *userdata) {
   }
   return X2_FMV_DRAIN_PROGRESS;
 }
-
 static int receive_video(X2FmvPlayer *player) {
   int received = 0;
   for (;;) {
@@ -195,7 +166,6 @@ static int receive_video(X2FmvPlayer *player) {
   }
   return received;
 }
-
 static int send_video_packet(X2FmvPlayer *player, const AVPacket *packet) {
   int result = avcodec_send_packet(player->video_codec, packet);
   if (result == AVERROR(EAGAIN)) {
@@ -207,6 +177,10 @@ static int send_video_packet(X2FmvPlayer *player, const AVPacket *packet) {
     return result;
   result = receive_video(player);
   return result < 0 ? result : 0;
+}
+
+static int send_video_payload(void *userdata, const AVPacket *packet) {
+  return send_video_packet((X2FmvPlayer *)userdata, packet);
 }
 
 static X2FmvFlushResult send_decoder_flush(X2FmvPlayer *player,
@@ -247,6 +221,23 @@ static int pump(X2FmvPlayer *player, double playback_seconds) {
         queued_video_horizon(player) >=
             playback_seconds + VIDEO_HORIZON_SECONDS)
       break;
+    if (player->sfd.bootstrap_audio) {
+      result = x2_fmv_audio_decode_send_packet(player->audio_decode,
+                                               player->sfd.bootstrap_audio);
+      av_packet_free(&player->sfd.bootstrap_audio);
+      if (result < 0)
+        return result;
+      continue;
+    }
+    if (player->sfd.bootstrap_video) {
+      result = x2_fmv_sfd_send_video(&player->sfd, player->video_codec,
+                                     player->sfd.bootstrap_video,
+                                     send_video_payload, player);
+      av_packet_free(&player->sfd.bootstrap_video);
+      if (result < 0)
+        return result;
+      continue;
+    }
     result = av_read_frame(player->format, player->packet);
     if (result == AVERROR_EOF) {
       player->eof = 1;
@@ -255,7 +246,9 @@ static int pump(X2FmvPlayer *player, double playback_seconds) {
     if (result < 0)
       return result;
     if (player->packet->stream_index == player->video_stream)
-      result = send_video_packet(player, player->packet);
+      result =
+          x2_fmv_sfd_send_video(&player->sfd, player->video_codec,
+                                player->packet, send_video_payload, player);
     else if (player->packet->stream_index == player->audio_stream)
       result =
           x2_fmv_audio_decode_send_packet(player->audio_decode, player->packet);
@@ -266,6 +259,10 @@ static int pump(X2FmvPlayer *player, double playback_seconds) {
       return result;
   }
   if (player->eof) {
+    result = x2_fmv_sfd_flush_video(&player->sfd, player->video_codec,
+                                    send_video_payload, player);
+    if (result < 0)
+      return result;
     int video_result =
         x2_fmv_decoder_drain(&player->video_drain, &g_video_drain_ops, player);
     int audio_result = x2_fmv_decoder_drain(&player->audio_drain,
@@ -301,8 +298,10 @@ X2FmvPlayer *x2_fmv_open(const char *path, const X2FmvAudioSink *sink,
     player->sink = *sink;
   result = avformat_open_input(&player->format, path, NULL, NULL);
   if (result >= 0) {
-    configure_sfd_probe(player->format);
+    x2_fmv_sfd_configure_probe(player->format);
     result = avformat_find_stream_info(player->format, NULL);
+    if (result >= 0)
+      x2_fmv_sfd_prepare(player->format, &player->sfd);
   }
   if (result < 0) {
     error_text(error, error_size, "cannot open SFD", result);
@@ -338,6 +337,13 @@ X2FmvPlayer *x2_fmv_open(const char *path, const X2FmvAudioSink *sink,
   }
   player->video_codec =
       open_codec(player->format, player->video_stream, error, error_size);
+  if (player->sfd.manual && player->video_codec) {
+    player->sfd.video_parser = av_parser_init(AV_CODEC_ID_MPEG1VIDEO);
+    if (!player->sfd.video_parser) {
+      snprintf(error, error_size, "cannot allocate MPEG-1 packet parser");
+      avcodec_free_context(&player->video_codec);
+    }
+  }
   audio_codec =
       open_codec(player->format, player->audio_stream, error, error_size);
   if (!player->video_codec || !audio_codec) {
@@ -389,6 +395,7 @@ void x2_fmv_close(X2FmvPlayer *player) {
   free_video_queue(player);
   av_free(player->current_bgra);
   av_packet_free(&player->packet);
+  x2_fmv_sfd_close(&player->sfd);
   av_frame_free(&player->frame);
   x2_fmv_audio_decode_close(player->audio_decode);
   sws_freeContext(player->scaler);

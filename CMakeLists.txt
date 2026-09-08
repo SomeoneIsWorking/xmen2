@@ -318,7 +318,7 @@ add_test(NAME win_path COMMAND test_win_path)
 add_executable(test_fmv_decode tests/test_fmv_decode.c
                src/media/fmv_player.c src/media/fmv_audio_decode.c
                src/media/fmv_decoder_drain.c src/media/fmv_policy.c
-               src/media/fmv_probe.c src/media/fmv_timing.c)
+               src/media/fmv_probe.c src/media/fmv_sfd.c src/media/fmv_timing.c)
 target_include_directories(test_fmv_decode PRIVATE src/media)
     target_link_libraries(test_fmv_decode PRIVATE ${X2_FFMPEG_TARGET} m)
 add_test(NAME fmv_decode COMMAND test_fmv_decode)
@@ -1490,6 +1490,7 @@ set(X2_NATIVE_SOURCES
     src/media/fmv_player.c
     src/media/fmv_policy.c
     src/media/fmv_probe.c
+    src/media/fmv_sfd.c
     src/media/fmv_timing.c
     src/native/guest_clock.c
     src/native/control.c

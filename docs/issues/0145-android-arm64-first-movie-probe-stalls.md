@@ -19,20 +19,25 @@ streams are MPEG-1 video and ADX audio.
 
 The title FMV owner bounds MPEG-PS probing to one MiB and two seconds before
 stream discovery, and labels the title's stable `0x1e0`/`0x1c0` stream ids when
-the demuxer has already created them. The host FMV decode test still decodes
-the user-provided SFD and preserves the tight/padded row checks. An ARM64
-standalone decode probe now returns promptly instead of spending the boot
-interval in `avformat_find_stream_info`, but the stream remains unclassified
-on that path; the correction is therefore a bounded refusal, not a complete
-Android movie fix. Increasing the probe to 8 MiB and ten seconds does not
-solve the boundary: the same ARM64 probe remains busy beyond the 30-second
-test window, so a larger budget is not an acceptable fix.
+the demuxer has already created them. When the video probe still lacks codec
+metadata, `fmv_sfd.c` replays the stream from byte zero, captures the MPEG
+sequence dimensions, retains the first audio/video packets, and feeds raw
+MPEG chunks through an explicit parser. The audio owner trims only an
+incomplete trailing ADX block before sending a packet to FFmpeg. This keeps
+the bounded refusal fast while preserving the packet boundaries needed by the
+portable ARM64 decoder.
+
+The host test and the exact Android ARM64 standalone test now both decode the
+captured `i102.sfd`: 640x480, 312 video frames, 458,656 audio frames, and
+changed/distinct decoded frames on both targets. Increasing the probe to 8 MiB
+and ten seconds does not solve the boundary; a larger budget is not an
+acceptable fix.
 
 ## Remaining falsifier
 
-An Android APK run must open the first SFD, report MPEG-1/ADX rather than an
-unsupported stream, display a movie frame, and continue to the menu. The next
-implementation must preserve packet boundaries while supplying the missing
-MPEG sequence metadata, then pass the ARM64 decode test on the same captured
-SFD. Until that run is captured, Android gameplay and performance remain
-partial. Do not skip the movie or claim a boot fix from JIT counters alone.
+The remaining falsifier is the packaged APK: it must open the first SFD,
+display a movie frame, continue to the menu, and survive pause/resume and
+recreation while the import notification remains truthful. Until that
+device run and the named-device performance collection are captured, Android
+gameplay and release performance remain partial. Do not skip the movie or
+claim a boot fix from JIT counters alone.
