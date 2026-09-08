@@ -32,3 +32,12 @@ Linux AppImage, macOS `.app`, Android arm64-v8a, and Pages artifacts are
 independently built and verified. The falsifier is a Windows runner producing a
 signed or explicitly portable ZIP whose native binary passes the same runtime
 boundary and package checks.
+
+The first title-side boundary is now isolated in
+`src/native/platform_mman.h`: guest-memory mapping, protection changes, page
+size discovery, and release all go through one interface. Its Windows branch
+uses `VirtualAlloc`, `VirtualProtect`, and `VirtualFree`; the Linux path keeps
+the existing `mmap` contract. The focused guest-memory suite passes all seven
+mapping/protection cases after the change. This is a portability step, not a
+Windows build claim: PE file mapping, threads, sockets, signals, diagnostics,
+and the Windows dependency/toolchain job remain open.

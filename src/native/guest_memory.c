@@ -108,8 +108,8 @@ static int apply_host_protection(uint32_t first, uint32_t count) {
     for (i = 0; i < pages_per_host; i++)
       if (g_pages[group + i] & PAGE_MAPPED)
         protection |= g_pages[group + i] & ~PAGE_MAPPED;
-    if (mprotect(host_pointer(group * GUEST_PAGE_SIZE), g_host_page_size,
-                 protection) != 0)
+    if (x2_protect(host_pointer(group * GUEST_PAGE_SIZE), g_host_page_size,
+                   protection) != 0)
       return -1;
   }
   return 0;
@@ -120,7 +120,7 @@ int guest_memory_init(void) {
   if (g_ready)
     return 0;
 #if GUEST_ARENA_RESERVED
-  long host_page_size = sysconf(_SC_PAGESIZE);
+  long host_page_size = x2_page_size();
   if (host_page_size < GUEST_PAGE_SIZE ||
       (unsigned long)host_page_size > UINT32_MAX ||
       ((unsigned long)host_page_size & ((unsigned long)host_page_size - 1u))) {
@@ -131,9 +131,8 @@ int guest_memory_init(void) {
     return -1;
   }
   g_host_page_size = (uint32_t)host_page_size;
-  void *arena = mmap(NULL, (size_t)GUEST_SPACE_SIZE, PROT_NONE,
-                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
-  if (arena == MAP_FAILED) {
+  void *arena = x2_map_anonymous(NULL, (size_t)GUEST_SPACE_SIZE, PROT_NONE);
+  if (arena == X2_MAP_FAILED) {
     x2_log_error("guest_memory: cannot reserve the 4 GB guest arena: %s\n",
                  strerror(errno));
     return -1;
@@ -186,12 +185,10 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
     return -1;
   }
 #else
-  host = mmap(host, (size_t)count * GUEST_PAGE_SIZE, protection,
-              MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE | MAP_NORESERVE,
-              -1, 0);
-  if (host == MAP_FAILED || (uintptr_t)host != start) {
-    if (host != MAP_FAILED)
-      munmap(host, (size_t)count * GUEST_PAGE_SIZE);
+  host = x2_map_anonymous(host, (size_t)count * GUEST_PAGE_SIZE, protection);
+  if (host == X2_MAP_FAILED || (uintptr_t)host != start) {
+    if (host != X2_MAP_FAILED && host != NULL)
+      (void)x2_unmap(host, (size_t)count * GUEST_PAGE_SIZE);
     pthread_mutex_unlock(&g_pages_lock);
     errno = EEXIST;
     return -1;
@@ -236,8 +233,8 @@ int guest_memory_protect(uint32_t address, size_t size, int protection) {
   pthread_mutex_unlock(&g_pages_lock);
   return result;
 #else
-  result = mprotect(host_pointer(first * GUEST_PAGE_SIZE),
-                    (size_t)count * GUEST_PAGE_SIZE, protection);
+  result = x2_protect(host_pointer(first * GUEST_PAGE_SIZE),
+                      (size_t)count * GUEST_PAGE_SIZE, protection);
   if (result != 0)
     return result;
   pthread_mutex_lock(&g_pages_lock);
@@ -264,7 +261,7 @@ int guest_memory_release(uint32_t address, size_t size) {
     return -1;
   }
 #else
-  if (munmap(host, (size_t)count * GUEST_PAGE_SIZE) != 0) {
+  if (x2_unmap(host, (size_t)count * GUEST_PAGE_SIZE) != 0) {
     pthread_mutex_unlock(&g_pages_lock);
     return -1;
   }
