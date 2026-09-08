@@ -25,8 +25,10 @@ void gpu_shadow_record(const GpuDraw *draw, struct SDL_GPUBuffer *vertices,
                        struct SDL_GPUSampler *sampler, uint32_t index_count);
 void gpu_shadow_frame_submit(void);
 int gpu_shadow_sample(const GpuDraw *draw, GpuShadowSample *sample);
-struct SDL_GPUTexture *gpu_shadow_texture(void);
-struct SDL_GPUSampler *gpu_shadow_sampler(void);
+#ifdef X2_WITH_SDL
+#include <SDL3/SDL.h>
+SDL_GPUTextureSamplerBinding gpu_shadow_binding(int enabled);
+#endif
 void gpu_shadow_report(void);
 void gpu_shadow_shutdown(void);
 

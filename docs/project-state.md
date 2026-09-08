@@ -46,7 +46,7 @@ declared-host backend gaps.
 | S017 | Linux AppImage packaging and no-terminal install setup | partial | S001, S008 | G005 |
 | S018 | Android APK shell and measured mobile performance | partial | S002, S006, S010, S020 | G005, G007 |
 | S020 | Platform-neutral touch play on any touchscreen | partial | S002, S006 | G005, G007 |
-| S021 | Web (WASM + PWA) product with browser-side install | blocked | S001, S020, W1, W2, W3 | G005 |
+| S021 | Web (WASM + PWA) product with browser-side install | partial | S001, S020, W1, W2, W3 | G005 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
 ## State details and evidence
@@ -567,99 +567,52 @@ repository can make — only "the path is platform-neutral by construction and
 unit-verified". Measured phone evidence remains S018's gate. The web target
 (S021) will be the third consumer of this capability.
 
-### S021 — web (WASM + PWA) product with browser-side install: blocked
+### S021 — web (WASM + PWA) product with browser-side install: partial
 
-Observed capability: none. Nothing has been built for or run on the web. This
-row exists so the target has a state of record rather than an aspiration, and
-so a future green CI tick cannot be misread as progress it did not make.
+The complete browser artifact loads and rejects a malformed ZIP through its
+native installer. It has not reached game execution or shipped a Pages release.
+The title CMake path compiles and links its native owners for Emscripten 4.0.16.
+`tools/build_web.py` consumes the shared `web-port` dependency prefix and stages
+an explicit asset-only release under `build/release/web`.
 
-Blockers: W1 (nothing instantiates or enters a translated block), W2 (no web
-renderer backend), W3 (guest threads and browser main-thread blocking). Each was
-verified by reading the code that would need them; `docs/web-release.md` holds
-the detail and the falsifying observation for each:
+- **W1, runtime execution: shared boundary verified, title integration partial.**
+  Pinned x86port `cd4590fadcbfde9fb54d52423179bdb71df13e9c` and jit-common
+  `4c58336f5d187d556755c20c983b5dc168f8f9b1` instantiate emitted modules, publish
+  indirect-table entries, dispatch guest blocks and reclaim cache entries.
+  The pinned suite passed 41 native tests and eight actual Emscripten/Node tests
+  in each of standalone and application-pthread configurations. Integer-tail,
+  x87, SIMD and sparse permission coverage are now shared integration inputs.
+  No title gameplay is established.
+- **W2, rendering: shared boundary verified, title integration partial.** The
+  maintained SDL WebGPU fork creates a device on a worker, renders, reads pixels
+  back and presents a blue SDL canvas in an isolated browser. Shared shader
+  conversion preserves separate texture/sampler slots and raw depth sampling.
+  The title's WGSL shader selection and RmlUi backend compile into the browser
+  artifact; no rendered X-Men frame is established.
+- **W3, threading and memory: partial.** The product proxies its entry point to
+  an Emscripten pthread and transfers its canvas to that worker. Guest sparse
+  mappings preserve the 32-bit guest address space without a contiguous 4 GiB
+  heap reservation. The current main-thread isolation service worker was observed
+  working on a local host without isolation headers, including a reload after the
+  HTTP server was stopped. The browser package links and stages an asset-free
+  release; its malformed ZIP path reaches the native bounded reader and refuses
+  the input. Complete-install import and gameplay remain unqualified.
+- **W4, local install and persistence: partial.** Lucent's worker OPFS mount and
+  bounded streaming staging passed actual browser read/write, duplicate-input,
+  concurrent-import and failure-cleanup checks. The page requests persistent
+  storage and reports when the browser refuses it. The title entry delegates ZIP
+  parsing, complete-install validation and accepted-install publication to the
+  same native owners as desktop/Android. Its real game import, save persistence
+  and installed/offline gameplay still need browser observation.
+- **W5, floating point: shared software boundary verified.** The pinned runtime
+  uses software x87 on WASM instead of unsupported host rounding controls; its
+  software suite passed 3,140 checks, while the x87 lowering suite adds 4,518
+  translated checks. SIMD, integer-tail and sparse suites are likewise shared
+  runtime evidence rather than title gameplay evidence.
 
-- **W1, nothing instantiates or enters a translated block.** `shared/x86port`
-  used to select one of exactly two JIT backends by host architecture;
-  Emscripten matched neither and linked the x86-64 emitter, which writes x86-64
-  bytes into a buffer and calls them — something WebAssembly cannot do. A third
-  backend now exists and Emscripten selects it (see below), so that particular
-  failure is gone. What is still missing is everything between a produced module
-  and a running one: no implementation of the host interface that instantiates a
-  module, no publication edge in the dispatcher, and only a first slice of the
-  instruction set. The interpreter remains refused for a player build by the
-  execution-architecture guardrail, and would not be playable regardless.
-- **W2, no renderer backend.** `src/gpu/gpu_device.c` requests an SDL_GPU device
-  with SPIRV shaders only; SDL_GPU's backends are Vulkan/Metal/D3D12 and the
-  pinned revision has no WebGPU backend. Device creation fails outright.
-- **W3, threads.** Guest threads are real pthreads (`src/native/threads.c`), so
-  a wasm build needs `SharedArrayBuffer`, cross-origin isolation headers served
-  by the PWA's own origin, and the guest loop proxied off the browser main
-  thread, which cannot block.
-
-Not blocked, and therefore the part that can proceed: the browser setup flow
-(W4) reuses `install_validation`'s existing requirement set, and guest memory
-already supports a host that refuses the low 4 GB one-to-one
-(`X2_GUEST_ARENA_RESERVED`), which is what a wasm32 linear memory is. Its
-remaining unknown is `apply_host_protection`: WebAssembly has no page
-protection, and a silent no-op reporting success is not an acceptable answer.
-
-A fourth constraint was found only by running the toolchain rather than reading
-the code: **W5**, WebAssembly has no floating-point environment — no
-rounding-mode control, no exception flags — so `x86port/x87.c`'s
-`#pragma FENV_ACCESS` is refused outright and a wasm build must route the guest
-x87 through the software float path instead of host FP. That path itself
-compiles clean.
-
-Evidence and denominators, measured with Emscripten 4.0.16 against the real
-CMake projects: `x86port_runtime` 38 of 39 translation units compile to wasm32,
-`jitcommon` 1 of 2, Zydis 18 of 18, Zycore 13 of 13 (with `ZYAN_NO_LIBC`), the
-Bochs software x87/SSE math 233 of 233, and 8 of 8 platform-neutral port owners.
-The two that fail are the two that matter, each as a compiler error rather than
-an opinion: `code_memory.cpp` ("llvm.clear_cache is not supported on wasm",
-W1) and `x87.c` (W5). So the guest's decode, semantics and software math are
-already portable; the machine-code emission and execution layer is not, which is
-the blocker restated.
-
-W1 has moved a long way without becoming unblocked. `shared/x86port` (pinned
-here at `e1522b2`) now owns a third JIT backend, and Emscripten selects it —
-asked about before the processor is looked at, because Emscripten reports its
-processor as `x86`, which is how it got the x86-64 emitter in the first place.
-A host with no backend still refuses by name, so the
-`-DX86P_MEASURE_UNRUNNABLE_BACKEND=ON` this port's measurement used to pass is
-gone from `tools/wasm_portability.py`. What that backend has:
-
-- `emit_wasm.{h,c}` writes the WebAssembly binary format, verified by a real
-  engine validating and running twelve emitted modules, 12 of 12.
-- `jit_wasm_lower.c` and five per-family units lower a guest block to a module
-  for a named instruction subset — moves, LEA, XCHG, SETcc, PUSH/POP/LEAVE,
-  CDQ/CWDE, CLD/STD, the inline ALU shapes, the helper-backed ALU shapes (ADC,
-  SBB, NEG, INC, DEC, shifts, rotates) and the branches. `test_jit_wasm`
-  translates 38 blocks, runs each in node, and compares the entire `X86pCpu`
-  and all of guest memory against the interpreter: 38 of 38 blocks reached the
-  engine, 1,097 checks, 0 divergences. Twelve of thirteen deliberate mutations
-  were caught; the thirteenth is recorded as unobservable at the site.
-- `jit_wasm_arena.c` owns module lifetime against a host interface, caps live
-  modules at 1,024, and refuses by name past the cap rather than evicting —
-  because the block cache holds entry addresses the arena handed out and does
-  not consult it before entering one. 32 checks through a stub engine.
-- All ten of those files compile to wasm32 under Emscripten's clang with
-  `-Wall -Wextra -Werror` and no warnings, which is the first time any of them
-  has been through a real wasm32 compiler. No x86-64 emitter object appears in
-  that build.
-
-What W1 still needs, and none of it is small: an implementation of
-`X86pWasmHost` (only a test stub has ever implemented it) with the JavaScript
-glue to instantiate a module and hand back an indirect-table index; a
-publication edge in `jit_engine.c`, which today routes every translation through
-the executable code region the wasm path must fork before; the rest of the
-instruction set (no string operations, multiply/divide, SIMD, x87, `LOOP` or
-double shifts); compilation off the main thread, which ties W1 to W3; and
-eviction, which is absent on purpose and needs the block cache to tell the arena
-when it discards a block.
-
-Still zero wasm builds of the product, zero runs, and no browser has opened
-anything. The evidence above is a compile and an engine-verified test suite, not
-a game. `tools/wasm_portability.py` re-measures this in the ordinary suite
-and in CI, refuses a pass that measured nothing, and fails if a third file
-becomes unportable or if one of the two starts compiling without the progress
-being recorded.
+Build/link progress and shared synthetic tests are not browser gameplay or
+performance evidence. The acceptance contracts and current build entry point are
+in [web-release.md](web-release.md). A deployed artifact, imported real game,
+nonzero JIT execution, explicit fallback denominators, representative interaction,
+and offline save/relaunch evidence remain required before this capability is
+verified.

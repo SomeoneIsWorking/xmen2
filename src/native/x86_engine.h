@@ -25,6 +25,9 @@ int x2_engine_init(char *reason, unsigned reason_len);
 /* Whether the required runtime JIT is ready. */
 int x2_engine_active(void);
 
+/* Mapping owner calls before replacing or revoking guest backing. */
+void x2_engine_invalidate_memory(uint32_t address, uint32_t size);
+
 /* The product executor's fixed name, for reports. Never null. */
 const char *x2_engine_name(void);
 

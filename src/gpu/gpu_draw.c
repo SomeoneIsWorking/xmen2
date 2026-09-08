@@ -1042,8 +1042,7 @@ int gpu_draw(const GpuDraw *d) {
     tsb2[1].sampler = smp;
     tsb2[2].texture = tres1->tex;
     tsb2[2].sampler = smp1;
-    tsb2[3].texture = shadow.enabled ? gpu_shadow_texture() : tres->tex;
-    tsb2[3].sampler = shadow.enabled ? gpu_shadow_sampler() : smp;
+    tsb2[3] = gpu_shadow_binding(shadow.enabled);
     SDL_BindGPUFragmentSamplers(g_pass, 0, tsb2, 4);
   }
   (void)tsb;

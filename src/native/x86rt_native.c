@@ -24,16 +24,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
-#if defined(__ANDROID__)
-#include <sys/syscall.h>
-#endif
-#if defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/mach_vm.h>
-#endif
 
 static X86Module *g_head;
 
@@ -1470,45 +1462,6 @@ static int args_string_at(uint32_t a, char *out, size_t cap) {
  * crash and the report would be lost -- so an unreadable address has to come
  * back as an error value, not as a signal.
  */
-/* One safe read; 0 on failure. Never dereferences -- see x86_peek_report. */
-static int process_read(uint32_t addr, void *dst, size_t n) {
-  const void *source = guest_memory_const_pointer(addr);
-#if defined(__APPLE__)
-  mach_vm_size_t copied = 0;
-  kern_return_t result = mach_vm_read_overwrite(
-      mach_task_self(), (mach_vm_address_t)(uintptr_t)source, (mach_vm_size_t)n,
-      (mach_vm_address_t)(uintptr_t)dst, &copied);
-  return result == KERN_SUCCESS && copied == (mach_vm_size_t)n;
-#else
-  struct iovec loc, rem;
-  loc.iov_base = dst;
-  loc.iov_len = n;
-  rem.iov_base = (void *)source;
-  rem.iov_len = n;
-#if defined(__ANDROID__)
-  /* Bionic exposes the libc wrapper only from API 23, but the checked Linux
-   * syscall exists at the API-21 64-bit floor. Keep the signal-handler-safe
-   * read contract instead of replacing it with a faulting dereference. */
-  return syscall(SYS_process_vm_readv, getpid(), &loc, 1, &rem, 1, 0) ==
-         (ssize_t)n;
-#else
-  return process_vm_readv(getpid(), &loc, 1, &rem, 1, 0) == (ssize_t)n;
-#endif
-#endif
-}
-
-int x86_peek(uint32_t addr, void *dst, size_t n) {
-  return process_read(addr, dst, n);
-}
-
-int x86_peek32(uint32_t addr, uint32_t *out) {
-  return x86_peek(addr, out, sizeof *out);
-}
-
-static int peek_read(uint32_t addr, void *dst, size_t n) {
-  return process_read(addr, dst, n);
-}
-
 /* Print up to `max` bytes at addr as a C string. Says why it printed nothing
    rather than printing an empty pair of quotes, which reads as "the string is
    empty" when it usually means the address was wrong. */
@@ -1519,7 +1472,7 @@ static void peek_string(uint32_t addr, unsigned max) {
     max = sizeof s - 1;
   for (i = 0; i < max; i++) {
     unsigned char c;
-    if (!peek_read(addr + i, &c, 1)) {
+    if (!x86_peek(addr + i, &c, 1)) {
       if (i == 0) {
         x2_log_error("UNREADABLE (not mapped)\n");
         return;
@@ -1634,7 +1587,7 @@ void x86_peek_report(void) {
       x2_log_error("[PEEK]   0x%08x: ", addr);
     }
     if (deref) {
-      if (!peek_read(addr, val, 4)) {
+      if (!x86_peek(addr, val, 4)) {
         x2_log_error("UNREADABLE (not mapped)\n");
         continue;
       }
@@ -1651,7 +1604,7 @@ void x86_peek_report(void) {
       continue;
     }
     for (i = 0; i < count; i++) {
-      if (!peek_read(addr + i * size, val, size)) {
+      if (!x86_peek(addr + i * size, val, size)) {
         x2_log_error("%sUNREADABLE (not mapped)", i ? " " : "");
         break;
       }

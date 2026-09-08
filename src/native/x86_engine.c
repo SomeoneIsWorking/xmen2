@@ -9,6 +9,7 @@
 #include "x86_hotep.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
+#include "x2_log.h"
 
 #include "cpu.h"
 #include "jit_engine.h"
@@ -90,9 +91,13 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   }
   if (!map_return_page(reason, reason_len))
     return 0;
+#if defined(__EMSCRIPTEN__)
+  g_engine.mem = *guest_memory_model();
+#else
   g_engine.mem.host = (uint8_t *)g_guest_memory_base;
   g_engine.mem.lo = 0;
   g_engine.mem.size = ENGINE_MEM_SIZE;
+#endif
   g_engine.jit = x86p_jit_engine_create(&g_engine.mem, 64u << 20, 65536u,
                                         reason, reason_len);
   if (!g_engine.jit)
@@ -110,9 +115,27 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   lucent_log_info(
       "engine",
       "runtime JIT ready; guest arena %s, return trampoline at 0x%08x",
+#if defined(__EMSCRIPTEN__)
+      "sparse browser allocations",
+#else
       g_guest_memory_base ? "relocated" : "at the host's own addresses",
+#endif
       ENGINE_RETURN_ADDR);
   return 1;
+}
+
+void x2_engine_invalidate_memory(uint32_t address, uint32_t size) {
+  if (!g_engine.jit || !size)
+    return;
+  uint64_t end = (uint64_t)address + size;
+  if (end > UINT32_MAX) {
+    char reason[160];
+    if (!x86p_jit_engine_invalidate_all(g_engine.jit, reason, sizeof reason)) {
+      x2_log_error("engine: failed to invalidate guest mapping: %s\n", reason);
+      abort();
+    }
+  } else
+    x86p_jit_engine_invalidate(g_engine.jit, address, (uint32_t)end);
 }
 
 int x2_engine_active(void) { return g_engine.ready; }

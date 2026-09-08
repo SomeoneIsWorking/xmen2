@@ -1,0 +1,16 @@
+:root { color-scheme: dark; font: 17px/1.6 system-ui, sans-serif; background: #11141c; color: #e9eaf0; }
+body { margin: 0; }
+main { max-width: 660px; margin: 9vh auto; padding: 24px; }
+h1 { font-size: clamp(2rem, 7vw, 3.5rem); line-height: 1.1; letter-spacing: -.04em; }
+.eyebrow { color: #e3ba55; text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; }
+.actions { display: flex; gap: 12px; flex-wrap: wrap; margin: 28px 0; }
+button, .button { border: 1px solid #797a86; background: #292e40; color: inherit; padding: 12px 18px; border-radius: 6px; cursor: pointer; font: inherit; }
+button:disabled, .button:has(input:disabled) { opacity: .45; cursor: wait; }
+button:focus-visible, .button:focus-within { outline: 3px solid #e3ba55; outline-offset: 3px; }
+input[type=file] { width: 1px; height: 1px; position: absolute; opacity: 0; }
+progress { width: 100%; }
+#storage-note { color: #bbbcc5; font-size: .85rem; }
+#status[data-failed=true] { color: #ffaba1; }
+canvas { display: none; width: 100vw; height: 100vh; object-fit: contain; background: black; }
+body.playing main { display: none; }
+body.playing canvas { display: block; }

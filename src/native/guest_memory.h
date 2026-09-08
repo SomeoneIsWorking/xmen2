@@ -8,6 +8,19 @@
    pointer.  On hosts that can map the low 4 GB this base remains zero. */
 extern uintptr_t g_guest_memory_base;
 
+#if defined(__EMSCRIPTEN__) || defined(X2_GUEST_MEMORY_SPARSE)
+#ifndef X2_GUEST_MEMORY_SPARSE
+#define X2_GUEST_MEMORY_SPARSE 1
+#endif
+struct X86pMem;
+const struct X86pMem *guest_memory_model(void);
+void *guest_memory_pointer(uint32_t address);
+const void *guest_memory_const_pointer(uint32_t address);
+uint32_t guest_memory_address(const void *pointer);
+int guest_memory_try_read(uint32_t address, void *destination, size_t size);
+void guest_memory_read(uint32_t address, void *destination, size_t size);
+void guest_memory_write(uint32_t address, const void *source, size_t size);
+#else
 static inline void *guest_memory_pointer(uint32_t address) {
   return address ? (void *)(g_guest_memory_base + (uintptr_t)address) : NULL;
 }
@@ -20,6 +33,8 @@ static inline const void *guest_memory_const_pointer(uint32_t address) {
 static inline uint32_t guest_memory_address(const void *pointer) {
   return (uint32_t)((uintptr_t)pointer - g_guest_memory_base);
 }
+
+#endif
 
 int guest_memory_host_address(const void *pointer, uint32_t *address);
 

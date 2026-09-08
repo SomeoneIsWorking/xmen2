@@ -12,16 +12,17 @@
 #ifdef X2_WITH_SDL
 #include "gpu_draw.h"
 #include "gpu_internal.h"
+#include "gpu_shader_data.h"
 
 #include <stdio.h>
 #include <string.h>
 
 /* Compiled from the vertex and fragment files in src/gpu/shaders at build time.
-   The declaration lives here so the generated file is nothing but SPIR-V. */
-static const unsigned int d3d8_fixed_vert_spv[] =
+   The host format determines whether the generated data is SPIR-V or WGSL. */
+static const GpuShaderWord d3d8_fixed_vert_code[] =
 #include "shaders/d3d8_fixed_vert.inc"
     ;
-static const unsigned int d3d8_fixed_frag_spv[] =
+static const GpuShaderWord d3d8_fixed_frag_code[] =
 #include "shaders/d3d8_fixed_frag.inc"
     ;
 
@@ -46,7 +47,7 @@ static SDL_GPUShader *load_shader(const void *code, size_t len,
   ci.code = (const Uint8 *)code;
   ci.code_size = len;
   ci.entrypoint = "main";
-  ci.format = SDL_GPU_SHADERFORMAT_SPIRV;
+  ci.format = X2_GPU_SHADER_FORMAT;
   ci.stage = stage;
   ci.num_samplers = nsamplers;
   ci.num_uniform_buffers = nuniforms;
@@ -59,9 +60,11 @@ static SDL_GPUShader *load_shader(const void *code, size_t len,
 static int shaders_ready(void) {
   if (g_vs && g_fs)
     return 1;
-  g_vs = load_shader(d3d8_fixed_vert_spv, sizeof d3d8_fixed_vert_spv,
+  g_vs = load_shader(d3d8_fixed_vert_code,
+                     X2_GPU_SHADER_SIZE(d3d8_fixed_vert_code),
                      SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
-  g_fs = load_shader(d3d8_fixed_frag_spv, sizeof d3d8_fixed_frag_spv,
+  g_fs = load_shader(d3d8_fixed_frag_code,
+                     X2_GPU_SHADER_SIZE(d3d8_fixed_frag_code),
                      /* TWO samplers: the 2D stage and the cube one. The
                         count here must match what the SPIR-V declares --
                         the pipeline layout is built from this number, and a

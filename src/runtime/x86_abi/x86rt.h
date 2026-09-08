@@ -16,7 +16,12 @@
 
 #include "cpu.h"
 
-#ifdef X86_NATIVE
+#if defined(__EMSCRIPTEN__) || defined(X2_GUEST_MEMORY_SPARSE)
+#include "guest_memory.h"
+static inline void *x86_guest_pointer(uint32_t address) {
+  return guest_memory_pointer(address);
+}
+#elif defined(X86_NATIVE)
 extern uintptr_t g_guest_memory_base;
 static inline void *x86_guest_pointer(uint32_t address) {
   return (void *)(g_guest_memory_base + (uintptr_t)address);
@@ -27,63 +32,82 @@ static inline void *x86_guest_pointer(uint32_t address) {
 }
 #endif
 
+/* One access seam keeps native overrides and translated sparse operands on
+ * the same checked spans, while desktop/Android retain direct unaligned loads.
+ */
+static inline void x86_guest_read(uint32_t address, void *out, size_t size) {
+#if defined(X2_GUEST_MEMORY_SPARSE)
+  guest_memory_read(address, out, size);
+#else
+  memcpy(out, x86_guest_pointer(address), size);
+#endif
+}
+static inline void x86_guest_write(uint32_t address, const void *data,
+                                   size_t size) {
+#if defined(X2_GUEST_MEMORY_SPARSE)
+  guest_memory_write(address, data, size);
+#else
+  memcpy(x86_guest_pointer(address), data, size);
+#endif
+}
+
 /* x86 permits unaligned integer and floating-point memory operands. memcpy is
    the C spelling that preserves that contract without promising alignment to
    an AArch64 compiler. These inline to ordinary unaligned loads/stores. */
 static inline uint8_t x86_load8(uint32_t address) {
   uint8_t value;
-  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  x86_guest_read(address, &value, sizeof value);
   return value;
 }
 static inline uint16_t x86_load16(uint32_t address) {
   uint16_t value;
-  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  x86_guest_read(address, &value, sizeof value);
   return value;
 }
 static inline uint32_t x86_load32(uint32_t address) {
   uint32_t value;
-  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  x86_guest_read(address, &value, sizeof value);
   return value;
 }
 static inline uint64_t x86_load64(uint32_t address) {
   uint64_t value;
-  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  x86_guest_read(address, &value, sizeof value);
   return value;
 }
 static inline float x86_loadf32(uint32_t address) {
   float value;
-  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  x86_guest_read(address, &value, sizeof value);
   return value;
 }
 static inline double x86_loadf64(uint32_t address) {
   double value;
-  memcpy(&value, x86_guest_pointer(address), sizeof value);
+  x86_guest_read(address, &value, sizeof value);
   return value;
 }
 extern volatile uint32_t x2_write_watch_addr;
 extern void x2_write_watch_fire(uint32_t address, uint32_t value);
 static inline void x86_store8_raw(uint32_t address, uint8_t value) {
-  memcpy(x86_guest_pointer(address), &value, sizeof value);
+  x86_guest_write(address, &value, sizeof value);
 }
 static inline void x86_store16_raw(uint32_t address, uint16_t value) {
-  memcpy(x86_guest_pointer(address), &value, sizeof value);
+  x86_guest_write(address, &value, sizeof value);
 }
 static inline void x86_store32_raw(uint32_t address, uint32_t value) {
-  memcpy(x86_guest_pointer(address), &value, sizeof value);
+  x86_guest_write(address, &value, sizeof value);
 }
 static inline void x86_store64_raw(uint32_t address, uint64_t value) {
   if (x2_write_watch_addr == address)
     x2_write_watch_fire(address, (uint32_t)value);
   else if (x2_write_watch_addr == address + 4u)
     x2_write_watch_fire(address + 4u, (uint32_t)(value >> 32u));
-  memcpy(x86_guest_pointer(address), &value, sizeof value);
+  x86_guest_write(address, &value, sizeof value);
 }
 static inline void x86_storef32(uint32_t address, float value) {
   uint32_t bits;
   memcpy(&bits, &value, sizeof bits);
   if (x2_write_watch_addr == address)
     x2_write_watch_fire(address, bits);
-  memcpy(x86_guest_pointer(address), &value, sizeof value);
+  x86_guest_write(address, &value, sizeof value);
 }
 static inline void x86_storef64(uint32_t address, double value) {
   uint64_t bits;
@@ -92,7 +116,7 @@ static inline void x86_storef64(uint32_t address, double value) {
     x2_write_watch_fire(address, (uint32_t)bits);
   else if (x2_write_watch_addr == address + 4u)
     x2_write_watch_fire(address + 4u, (uint32_t)(bits >> 32u));
-  memcpy(x86_guest_pointer(address), &value, sizeof value);
+  x86_guest_write(address, &value, sizeof value);
 }
 /*
  * Native imports and overrides use the x86port CPU type directly. `CPU` is

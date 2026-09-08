@@ -1668,9 +1668,16 @@ int main(int argc, char **argv) {
   if (options.unbounded)
     guest_clock_set_unbounded(1);
   {
+#if defined(__EMSCRIPTEN__)
+    /* Browser input and inspection live at the page boundary. The desktop
+       loopback HTTP channel cannot bind inside a worker and must not turn a
+       valid browser launch into a startup refusal. */
+    const int control_port = 0;
+#else
     int control_port = control_start(options.control);
     if (options.product && !control_port)
       control_port = control_start(8420);
+#endif
     /* A package does not own its working directory -- on Android it is not
        even writable -- so its recordings belong with its other user data
        rather than in a scratch/ path relative to wherever it was started. */
@@ -1687,9 +1694,13 @@ int main(int argc, char **argv) {
                    "could not start. REFUSING an unrecorded run.\n");
       return 2;
     }
+#if !defined(__EMSCRIPTEN__)
     if (options.product &&
         !live_session_start(control_port, input_record_path()))
       return 2;
+#else
+    (void)control_port;
+#endif
   }
   selftest = options.selftest;
   run = options.run;

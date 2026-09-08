@@ -1,7 +1,9 @@
 #include "gpu_shadow.h"
 #include "../native/x2_log.h"
 
+#include "gpu_depth_binding.h"
 #include "gpu_internal.h"
+#include "gpu_shader_data.h"
 #include "shadow_policy.h"
 
 #include <stdio.h>
@@ -30,8 +32,6 @@ int gpu_shadow_sample(const GpuDraw *draw, GpuShadowSample *sample) {
   memset(sample, 0, sizeof *sample);
   return 0;
 }
-struct SDL_GPUTexture *gpu_shadow_texture(void) { return NULL; }
-struct SDL_GPUSampler *gpu_shadow_sampler(void) { return NULL; }
 void gpu_shadow_report(void) {}
 void gpu_shadow_shutdown(void) {}
 #else
@@ -42,10 +42,10 @@ static const uint32_t DEFAULT_RESOLUTION = 1024;
 static const float SAMPLE_DEPTH_BIAS = 0.0015f;
 static const float SHADOW_DARKNESS = 0.55f;
 
-static const unsigned int shadow_depth_vert_spv[] =
+static const GpuShaderWord shadow_depth_vert_code[] =
 #include "shaders/shadow_depth_vert.inc"
     ;
-static const unsigned int shadow_depth_frag_spv[] =
+static const GpuShaderWord shadow_depth_frag_code[] =
 #include "shaders/shadow_depth_frag.inc"
     ;
 
@@ -90,22 +90,6 @@ void gpu_shadow_configure(int enabled, uint32_t resolution) {
   g_resolution = valid_resolution(resolution) ? resolution : DEFAULT_RESOLUTION;
 }
 
-static SDL_GPUTextureFormat choose_format(void) {
-  static const SDL_GPUTextureFormat formats[] = {
-      SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-      SDL_GPU_TEXTUREFORMAT_D16_UNORM,
-      SDL_GPU_TEXTUREFORMAT_D24_UNORM,
-  };
-  const SDL_GPUTextureUsageFlags usage =
-      SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER;
-  unsigned i;
-  for (i = 0; i < sizeof formats / sizeof formats[0]; i++)
-    if (SDL_GPUTextureSupportsFormat(g_gpu, formats[i], SDL_GPU_TEXTURETYPE_2D,
-                                     usage))
-      return formats[i];
-  return SDL_GPU_TEXTUREFORMAT_INVALID;
-}
-
 static SDL_GPUShader *load_shader(const void *code, size_t size,
                                   SDL_GPUShaderStage stage, unsigned samplers,
                                   unsigned uniforms) {
@@ -114,7 +98,7 @@ static SDL_GPUShader *load_shader(const void *code, size_t size,
   info.code = (const Uint8 *)code;
   info.code_size = size;
   info.entrypoint = "main";
-  info.format = SDL_GPU_SHADERFORMAT_SPIRV;
+  info.format = X2_GPU_SHADER_FORMAT;
   info.stage = stage;
   info.num_samplers = samplers;
   info.num_uniform_buffers = uniforms;
@@ -131,20 +115,20 @@ static int resources_ready(void) {
   }
   if (g_texture && g_sampler && g_vertex_shader && g_fragment_shader)
     return 1;
-  g_format = choose_format();
+  g_format = gpu_sampleable_depth_format(g_gpu);
   if (g_format == SDL_GPU_TEXTUREFORMAT_INVALID) {
     x2_log_error("gpu shadow: no sampleable depth-target format.\n");
     g_resource_failures++;
     return 0;
   }
   if (!g_vertex_shader)
-    g_vertex_shader =
-        load_shader(shadow_depth_vert_spv, sizeof shadow_depth_vert_spv,
-                    SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
+    g_vertex_shader = load_shader(shadow_depth_vert_code,
+                                  X2_GPU_SHADER_SIZE(shadow_depth_vert_code),
+                                  SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
   if (!g_fragment_shader)
-    g_fragment_shader =
-        load_shader(shadow_depth_frag_spv, sizeof shadow_depth_frag_spv,
-                    SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
+    g_fragment_shader = load_shader(shadow_depth_frag_code,
+                                    X2_GPU_SHADER_SIZE(shadow_depth_frag_code),
+                                    SDL_GPU_SHADERSTAGE_FRAGMENT, 1, 1);
   if (!g_vertex_shader || !g_fragment_shader) {
     x2_log_error("gpu shadow: depth shaders could not be created: %s\n",
                  SDL_GetError());
@@ -386,8 +370,12 @@ int gpu_shadow_sample(const GpuDraw *draw, GpuShadowSample *sample) {
   return 1;
 }
 
-SDL_GPUTexture *gpu_shadow_texture(void) { return g_texture; }
-SDL_GPUSampler *gpu_shadow_sampler(void) { return g_sampler; }
+SDL_GPUTextureSamplerBinding gpu_shadow_binding(int enabled) {
+  if (enabled) {
+    return (SDL_GPUTextureSamplerBinding){g_texture, g_sampler};
+  }
+  return gpu_depth_binding_get();
+}
 
 void gpu_shadow_report(void) {
   x2_log_info("  gpu shadow: %s, %ux%u; %lu/%lu frames selected a title "

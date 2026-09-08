@@ -24,9 +24,10 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # archive extraction rather than carrying a second ZIP implementation here.
 include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
+set(LUCENT_BUILD_WEB ${EMSCRIPTEN})
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 3d9b3d07f92524a457156bcbdc48eb8204d7720f
+    GIT_TAG 881b3ab713b83f229005dac53cf0a94f7982824d
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
@@ -68,7 +69,9 @@ find_package(Threads REQUIRED)
 # metadata can describe x86 desktop libraries while CMake is targeting ARM64;
 # accepting it creates a build that configures successfully and cannot link or
 # run on a phone.
-if(ANDROID)
+if(EMSCRIPTEN)
+    include(cmake/WebDependencies.cmake)
+elseif(ANDROID)
     if(NOT X2_ANDROID_PORT_PREFIX)
         message(FATAL_ERROR
             "x2native: Android requires the shared android-port native prefix. "
@@ -470,6 +473,20 @@ target_compile_definitions(test_gpu_present_resize PRIVATE
     SDL_ReleaseGPUTexture=x2_test_release_gpu_texture)
 target_link_libraries(test_gpu_present_resize PRIVATE ${X2_SDL})
 add_test(NAME gpu_present_resize COMMAND test_gpu_present_resize)
+
+add_executable(test_gpu_depth_binding tests/test_gpu_depth_binding.c
+               src/gpu/gpu_depth_binding.c)
+target_include_directories(test_gpu_depth_binding PRIVATE src/gpu)
+target_compile_definitions(test_gpu_depth_binding PRIVATE X2_WITH_SDL=1)
+foreach(_gpu_call GPUTextureSupportsFormat CreateGPUTexture CreateGPUSampler
+                  AcquireGPUCommandBuffer BeginGPURenderPass EndGPURenderPass
+                  SubmitGPUCommandBuffer CancelGPUCommandBuffer ReleaseGPUTexture
+                  ReleaseGPUSampler)
+    target_compile_definitions(test_gpu_depth_binding PRIVATE
+        SDL_${_gpu_call}=x2_test_${_gpu_call})
+endforeach()
+target_link_libraries(test_gpu_depth_binding PRIVATE ${X2_SDL})
+add_test(NAME gpu_depth_binding COMMAND test_gpu_depth_binding)
 
 add_test(NAME selector_probe_tool
          COMMAND ${Python3_EXECUTABLE} -m unittest tests.test_selector_probe)
@@ -1196,8 +1213,10 @@ if(DEFINED CMAKE_FIND_PACKAGE_PREFER_CONFIG)
 endif()
 set(CMAKE_FIND_PACKAGE_PREFER_CONFIG TRUE)
 FetchContent_Declare(rmlui
-    URL https://github.com/mikke89/RmlUi/archive/f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc.tar.gz
-    URL_HASH SHA256=42b830abc2509a8c07cf02ba3313505de3a4642725654f489402022d8fefdd79
+    # Maintained fork adds SDL_GPU WGSL resources; native formats retain the
+    # upstream f9b8c9e2935d5df2c7dff2c190d3968e99b0c3dc contract.
+    URL https://github.com/SomeoneIsWorking/RmlUi/archive/b313924185871a1d4f2fddbdedc1b63ef3e07cf7.tar.gz
+    URL_HASH SHA256=6dc1de88578fe237dce4c34791ed58f995d47b2e78d1c5b7416cb50f007feac3
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(rmlui)
 if(_x2_had_find_package_preference)
@@ -1208,7 +1227,7 @@ else()
 endif()
 unset(_x2_previous_find_package_preference)
 unset(_x2_had_find_package_preference)
-if(NOT ANDROID)
+if(NOT ANDROID AND NOT EMSCRIPTEN)
     find_package(SDL3_image REQUIRED)
     set(X2_SDL_IMAGE SDL3_image::SDL3_image)
 endif()
@@ -1291,45 +1310,19 @@ set_target_properties(x2_rmlui_ui PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
                                         PRIVATE lucent::lucent)
 
-# ---- shaders -------------------------------------------------------
-#
-# SDL_GPU takes SPIR-V, so the fixed-function shaders are compiled at build
-# time and embedded as C arrays. glslc is REQUIRED rather than optional: a
-# build that silently had no shaders would link, run, and draw nothing --
-# which is the single hardest rendering failure to attribute.
-find_program(X2_GLSLC NAMES glslc)
-if(NOT X2_GLSLC)
-    message(FATAL_ERROR
-        "x2native: no glslc found, so the renderer's "
-        "shaders cannot be built. Install shaderc/glslang. Refusing rather "
-        "than building a binary that would run and draw nothing.")
-endif()
-set(X2_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
-file(MAKE_DIRECTORY ${X2_SHADER_DIR})
-set(X2_SHADER_HEADERS "")
-foreach(shader d3d8_fixed shadow_depth)
-  foreach(st vert frag)
-    set(_src ${CMAKE_SOURCE_DIR}/src/gpu/shaders/${shader}.${st})
-    set(_out ${X2_SHADER_DIR}/${shader}_${st}.inc)
-    # glslc -mfmt=c emits exactly a braced initialiser, so the .inc is
-    # #included as one rather than assembled by echo and cat -- which is
-    # shell redirection inside a custom command, and it silently produced a
-    # malformed header for one of the two stages.
-    add_custom_command(
-        OUTPUT ${_out}
-        COMMAND ${X2_GLSLC} -fshader-stage=${st} ${_src} -mfmt=c -o ${_out}
-        DEPENDS ${_src}
-        COMMENT "x2native: compiling ${shader}.${st} to SPIR-V")
-    list(APPEND X2_SHADER_HEADERS ${_out})
-  endforeach()
-endforeach()
-add_custom_target(x2_shaders DEPENDS ${X2_SHADER_HEADERS})
+include(cmake/Shaders.cmake)
 
+if(EMSCRIPTEN)
+    set(X2_GUEST_MEMORY_SOURCE src/native/guest_memory_sparse.c)
+else()
+    set(X2_GUEST_MEMORY_SOURCE src/native/guest_memory.c)
+endif()
 set(X2_NATIVE_SOURCES
     src/native/x2native.c
     src/native/fault_report.c
     src/native/engine_file_path.c
-    src/native/guest_memory.c
+    ${X2_GUEST_MEMORY_SOURCE}
+    src/native/guest_memory_probe.c
     src/native/x2native_options.c
     src/native/install_picker.cpp
     src/native/install_archive.cpp
@@ -1572,6 +1565,7 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_frame_timing.c
     src/gpu/gpu_frame_timing_report.c
     src/gpu/gpu_shadow.c
+    src/gpu/gpu_depth_binding.c
     src/gpu/gpu_shadow_selftest.c
     src/gpu/shadow_policy.c
     src/gpu/gpu_frame_submit.c
@@ -1671,6 +1665,15 @@ if(NOT TARGET x86port_runtime)
         "has been removed and is not a fallback; update shared/x86port.")
 endif()
 
+add_executable(test_guest_memory_sparse tests/test_guest_memory_sparse.c
+    src/native/guest_memory_sparse.c src/native/guest_memory_probe.c)
+target_include_directories(test_guest_memory_sparse PRIVATE
+    src/native src/runtime/x86_abi)
+target_compile_definitions(test_guest_memory_sparse PRIVATE
+    X2_GUEST_MEMORY_SPARSE=1 X86_NATIVE=1)
+target_link_libraries(test_guest_memory_sparse PRIVATE x86port_runtime)
+add_test(NAME guest_memory_sparse COMMAND test_guest_memory_sparse)
+
 # Tests compile title-native call adapters directly. Any target that includes
 # the title x86 ABI also consumes the canonical x86port CPU type and must link
 # the same product runtime rather than growing a test-local state model.
@@ -1712,7 +1715,7 @@ target_compile_definitions(x2native PRIVATE X86_NATIVE)
 # XMen2.exe wants to be. A non-PIE host takes the guest's preferred base
 # and forces it to relocate for no reason.
 set_target_properties(x2native PROPERTIES POSITION_INDEPENDENT_CODE ON)
-if(NOT APPLE AND NOT ANDROID)
+if(NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     target_link_options(x2native PRIVATE -pie)
 endif()
 # libm: the exe's x87 translations use atan2l/fmodl and friends.
@@ -1720,6 +1723,9 @@ endif()
 # so that a guest stuck anywhere still gets a liveness line.
 target_link_libraries(x2native PRIVATE ${X2_SDL} ${X2_FFMPEG_TARGET}
                                        x2_runtime_config m Threads::Threads)
+if(EMSCRIPTEN)
+    include(cmake/WebTarget.cmake)
+endif()
 if(ANDROID)
     set_target_properties(x2native PROPERTIES OUTPUT_NAME main)
     get_filename_component(_x2_android_ndk_version "${CMAKE_ANDROID_NDK}" NAME)

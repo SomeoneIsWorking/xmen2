@@ -20,12 +20,11 @@ DEFAULT_LIMIT = 500
 # was, so the ratchet is still auditable.
 LEGACY_LIMITS = {
     "src/native/kernel32.c": 3664,            # waits extracted into kernel32_wait.c
-    "src/native/x86rt_native.c": 2275,        # was 2148
+    "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
     "src/native/x2native.c": 2329,            # was 2152
     "src/d3d8/d3d8_drawcall.c": 1815,         # was 1650
     "src/d3d8/d3d8_device.c": 1744,           # was 1640
     "src/native/crt.c": 1535,                 # was 1353
-    "src/runtime/x86_abi/x86rt.h": 1535,      # was 1422
     "src/gpu/gpu_draw.c": 1369,               # was 1250
     "src/d3d8/d3d8_report.c": 1530,           # was 1395
     "src/native/threads.c": 842,              # was 1070; igThreadManager report -> threads_engine_report.c

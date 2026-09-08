@@ -24,6 +24,7 @@
 #include "boot_blackout.h"
 #include "gpu_capture.h"
 #include "gpu_capture_internal.h"
+#include "gpu_depth_binding.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_frame_timing.h"
@@ -32,6 +33,7 @@
 #include "gpu_internal.h"
 #include "gpu_present.h"
 #include "gpu_prompt_glyphs.h"
+#include "gpu_shader_data.h"
 #include "gpu_shadow.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
@@ -108,35 +110,28 @@ int gpu_device_create(void) {
   if (!SDL_WasInit(SDL_INIT_VIDEO) && !SDL_Init(SDL_INIT_VIDEO))
     x2_log_error("gpu: SDL_Init(VIDEO) failed: %s\n", SDL_GetError());
 
-  /*
-   * The Vulkan VALIDATION LAYER, and whether it is loaded, said out loud.
-   *
-   * This was hardcoded true. SDL's debug_mode loads
-   * libVkLayer_khronos_validation.so, which inspects every draw, every bind
-   * and every upload -- and this backend submits half a million draws in a
-   * driven run. A backtrace of a live run showed the layer's own queue
-   * thread in the process, so the tax was being paid and nothing said so:
-   * "the native version is laggy" was measured against a build with a
-   * per-draw validator in it.
-   *
-   * Off by default, on with X2_GPU_DEBUG=1, and ANNOUNCED either way --
-   * because the thing that made this expensive to find was not that it was
-   * on, it was that no line of output distinguished the two builds.
-   */
+  /* Debug mode enables backend validation, which inspects every draw,
+     bind and upload. Keep it optional and report it with timing evidence. */
   {
     const char *e = x2_config_override_get(kX2ConfigGpuDebug);
     int debug = e && *e && *e != '0';
-    x2_log_info("gpu: Vulkan validation is %s (X2_GPU_DEBUG=%s). It inspects "
+    x2_log_info("gpu: GPU validation is %s (X2_GPU_DEBUG=%s). It inspects "
                 "EVERY draw; a timing measured with it on is not a timing of "
                 "this renderer.\n",
                 debug ? "ON" : "off", e && *e ? e : "unset");
-    g_gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV, debug, NULL);
+    g_gpu = SDL_CreateGPUDevice(X2_GPU_SHADER_FORMAT, debug, NULL);
   }
   if (!g_gpu) {
-    x2_log_error("gpu: SDL_CreateGPUDevice(SPIRV) FAILED: %s\n"
+    x2_log_error("gpu: SDL_CreateGPUDevice FAILED: %s\n"
                  "  No GPU device means nothing can be drawn. Reported here "
                  "rather than later as a blank frame.\n",
                  SDL_GetError());
+    return 0;
+  }
+  if (!gpu_depth_binding_create(g_gpu)) {
+    x2_log_error("gpu: neutral depth binding failed: %s\n", SDL_GetError());
+    SDL_DestroyGPUDevice(g_gpu);
+    g_gpu = NULL;
     return 0;
   }
   x2_log_info("gpu: GPU device created -- backend \"%s\"\n",
@@ -165,6 +160,7 @@ void gpu_device_destroy(void) {
   gpu_draw_shutdown();
   gpu_capture_shutdown();
   gpu_present_shutdown(g_gpu);
+  gpu_depth_binding_destroy(g_gpu);
 #endif
 #ifdef X2_WITH_SDL
   if (!g_gpu)

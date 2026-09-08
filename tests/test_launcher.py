@@ -63,7 +63,7 @@ class LauncherContract(unittest.TestCase):
 
     def test_player_bootstrap_excludes_maintainer_only_re_harness(self):
         self.assertEqual({repo.name for repo in bootstrap.SHARED_REPOS},
-                         {"alchemy", "android-port", "port-assets",
+                         {"alchemy", "android-port", "web-port", "port-assets",
                           "jit-common", "x86port"})
 
     def test_bootstrap_finds_repository_local_game(self):
