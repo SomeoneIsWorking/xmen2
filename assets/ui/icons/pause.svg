@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <!-- Pause: Two vertical rounded bars -->
-  <rect x="20" y="16" width="8" height="32" rx="3" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1.5"/>
-  <rect x="36" y="16" width="8" height="32" rx="3" fill="#E2E8F0" stroke="#94A3B8" stroke-width="1.5"/>
-</svg>

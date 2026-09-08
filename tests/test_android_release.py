@@ -4,6 +4,7 @@
 import re
 from pathlib import Path
 import tempfile
+from unittest.mock import Mock, patch
 
 from tools import build_android
 
@@ -14,18 +15,17 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     raw = ROOT / "scratch/raw"
     raw.mkdir(parents=True, exist_ok=True)
-    assert build_android.parse_java_major('openjdk version "25.0.4" 2026-08-18') == 25
-    assert build_android.parse_java_major('openjdk version "26.0.2" 2026-07-21') == 26
-    assert build_android.parse_java_major('java version "1.8.0_412"') == 8
-    assert build_android.parse_java_major('java version "1"') is None
-    assert build_android.parse_java_major("unrecognized runtime") is None
-    assert build_android.parse_javac_major("javac 26.0.2") == 26
-    assert build_android.parse_javac_major("unrecognized compiler") is None
+    shared = Mock()
+    shared.select_java_home.return_value = Path("fixture-jdk")
+    with patch.object(build_android, "shared_android", return_value=shared):
+        assert build_android.java_home() == Path("fixture-jdk")
+    shared.select_java_home.assert_called_once_with(minimum=17, maximum=26)
     assert build_android.DEFAULT_ANDROID_API == 21
     assert build_android.native_jobs({}) == 2
     assert build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": "6"}) == 6
     assert build_android.native_prefix(Path("build"), 33, "x86_64") == (
-        Path("build/deps/android/android-33/x86_64"))
+        Path("build/deps/android/android-33/x86_64")
+    )
     for invalid in ("0", "-1", "many"):
         try:
             build_android.native_jobs({"X2_ANDROID_NATIVE_JOBS": invalid})
@@ -39,7 +39,8 @@ def main() -> int:
         build = root / "android-x86_64"
         build.mkdir(parents=True)
         (build / "CMakeCache.txt").write_text(
-            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n", encoding="utf-8")
+            "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n", encoding="utf-8"
+        )
         stale = build / "stale"
         stale.write_text("generated", encoding="utf-8")
         build_android.prepare_native_build_directory(build, root)
@@ -47,8 +48,7 @@ def main() -> int:
         assert not stale.exists()
         assert build_android.cached_generator(build) is None
 
-        (build / "CMakeCache.txt").write_text(
-            "CMAKE_GENERATOR:INTERNAL=Ninja\n", encoding="utf-8")
+        (build / "CMakeCache.txt").write_text("CMAKE_GENERATOR:INTERNAL=Ninja\n", encoding="utf-8")
         retained = build / "retained"
         retained.write_text("generated", encoding="utf-8")
         build_android.prepare_native_build_directory(build, root)
@@ -73,12 +73,14 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="android-release-test-", dir=raw) as directory:
         key = Path(directory) / "release.jks"
         key.write_bytes(b"fixture")
-        signing = build_android.release_signing({
-            "X2_ANDROID_KEYSTORE": str(key),
-            "X2_ANDROID_KEY_ALIAS": "xmen2",
-            "X2_ANDROID_STORE_PASSWORD": "store-fixture",
-            "X2_ANDROID_KEY_PASSWORD": "key-fixture",
-        })
+        signing = build_android.release_signing(
+            {
+                "X2_ANDROID_KEYSTORE": str(key),
+                "X2_ANDROID_KEY_ALIAS": "xmen2",
+                "X2_ANDROID_STORE_PASSWORD": "store-fixture",
+                "X2_ANDROID_KEY_PASSWORD": "key-fixture",
+            }
+        )
         assert signing["X2_ANDROID_KEYSTORE"] == str(key.resolve())
 
     # The publish gate is what refuses an unsigned release. Gradle configures
@@ -110,16 +112,18 @@ def main() -> int:
         assert build_android.debug_apk(fake_root, "arm64-v8a") == debug
         assert not (fake_root / "build/release").exists()
 
-    activity = (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
-                "XMen2GameActivity.java").read_text(encoding="utf-8")
-    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(
-        encoding="utf-8")
+    activity = (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2GameActivity.java"
+    ).read_text(encoding="utf-8")
+    manifest = (ROOT / "android/app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
     gradle = (ROOT / "android/app/build.gradle").read_text(encoding="utf-8")
     root_gradle = (ROOT / "android/build.gradle").read_text(encoding="utf-8")
     wrapper = (ROOT / "android/gradle/wrapper/gradle-wrapper.properties").read_text(
-        encoding="utf-8")
-    setup = (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
-             "XMen2SetupActivity.java").read_text(encoding="utf-8")
+        encoding="utf-8"
+    )
+    setup = (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2SetupActivity.java"
+    ).read_text(encoding="utf-8")
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     # The setup uses Android's scoped picker: Lucent owns persisted SAF grants,
     # bounded app-private staging, cancellation, and promotion after title
@@ -140,7 +144,7 @@ def main() -> int:
     # follows the code rather than the file it used to live in.
     fault_report = (ROOT / "src/native/fault_report.c").read_text(encoding="utf-8")
     assert "buildConfig = true" in gradle
-    assert "#if !defined(__ANDROID__)\n#include <execinfo.h>" in fault_report
+    assert "#elif !defined(__ANDROID__)\n#include <execinfo.h>" in fault_report
     assert "[HOST STACK] unavailable on Android" in fault_report
     assert "::dup2(pipe_descriptors[1], STDOUT_FILENO)" in bridge
     assert "::dup2(pipe_descriptors[1], STDERR_FILENO)" in bridge
@@ -150,25 +154,29 @@ def main() -> int:
     assert "funopen(&g_capture" in draw_trace
     assert "capture_close(g_frame_dump.capture" in draw_trace
     assert "MANAGE_EXTERNAL_STORAGE" not in manifest
-    assert not (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
-                "InstallLocation.java").exists()
+    assert not (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/InstallLocation.java"
+    ).exists()
     # Lucent is pinned to an exact revision, never a branch: the Android Java
     # sources are taken straight out of the fetched checkout, so a moving tag
     # would change what the APK ships without any change here. The revision
     # itself is free to move; only the shape of the pin is fixed.
-    pin = re.search(r"FetchContent_Declare\(lucent.*?GIT_TAG\s+(\S+)", cmake,
-                    re.S)
+    pin = re.search(r"FetchContent_Declare\(lucent.*?GIT_TAG\s+(\S+)", cmake, re.S)
     assert pin, "CMakeLists.txt no longer declares a lucent GIT_TAG"
     assert re.fullmatch(r"[0-9a-f]{7,40}", pin.group(1)), (
-        f"lucent must be pinned to a revision, not {pin.group(1)!r}")
+        f"lucent must be pinned to a revision, not {pin.group(1)!r}"
+    )
     assert "x2.lucentJavaDir" in cmake
     assert "lucentJavaDir" in gradle
     # The product target always opens the control channel, and socket() needs
     # this permission's inet group; without it control_start() exit(2)s before
     # the game runs, which presented as an unexplained crash on device.
     assert "android.permission.INTERNET" in manifest
-    for unsafe in ("getExternalStorageDirectory", "/storage",
-                   "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION"):
+    for unsafe in (
+        "getExternalStorageDirectory",
+        "/storage",
+        "ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION",
+    ):
         assert unsafe not in setup, f"{unsafe} would bypass the scoped picker"
 
     # The common Android prefix owns FFmpeg's source/archive mechanics as well
@@ -189,8 +197,9 @@ def main() -> int:
     assert "WindowInsetsController" not in activity
     assert 'setText("Browse for XMen2.exe")' in setup
     assert "folder containing XMen2.exe" in setup
-    debug_install = (ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/"
-                     "XMen2DebugInstall.java").read_text(encoding="utf-8")
+    debug_install = (
+        ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2DebugInstall.java"
+    ).read_text(encoding="utf-8")
     assert "BuildConfig.DEBUG" in debug_install
     assert "getFilesDir" in debug_install
     assert "debug.private_install" in debug_install

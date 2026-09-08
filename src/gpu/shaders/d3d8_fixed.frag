@@ -73,7 +73,10 @@ float shadow_visibility()
         for (int x = -1; x <= 1; x++) {
             vec2 offset = vec2(float(x) * fs.shadow_texel_x,
                                float(y) * fs.shadow_texel_y);
-            float depth = texture(shadow_map, uv + offset).r;
+            /* The shadow target has one mip and identical min/mag filtering.
+             * Explicit LOD preserves that sample when the per-pixel shadow
+             * bounds branch makes implicit derivatives unavailable. */
+            float depth = textureLod(shadow_map, uv + offset, 0.0).r;
             blocked += ndc.z - fs.shadow_bias > depth ? 1.0 : 0.0;
         }
     return 1.0 - fs.shadow_darkness * blocked / 9.0;

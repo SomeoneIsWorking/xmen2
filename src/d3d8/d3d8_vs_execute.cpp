@@ -17,7 +17,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include <lucent/log.h>
+#include <lucent/log_c.h>
 
 #define VS_CONSTANTS D3D8_MAX_VS_CONSTANTS
 
@@ -131,10 +131,11 @@ static Vec source(uint32_t t, Vec temp[12], Vec in[17], Vec c[VS_CONSTANTS],
     if (t & 0x00002000u)
       idx += (int)floorf(addr->x[0] + 0.5f);
     if (idx < 0 || idx >= VS_CONSTANTS) {
-      lucent::warn("d3d8",
-                   "VS 1.1 indexed constant c[{}] is outside the {}-register "
-                   "file; draw refused",
-                   idx, VS_CONSTANTS);
+      lucent_log_warn(
+          "d3d8",
+          "VS 1.1 indexed constant c[%d] is outside the %d-register "
+          "file; draw refused",
+          idx, VS_CONSTANTS);
       *ok = 0;
       return raw;
     }

@@ -144,8 +144,14 @@ every platform, and turn themselves on for whoever is touching a screen — a
 Windows or Linux tablet and a 2-in-1 get the on-screen pad and the mobile HUD
 placement exactly as a phone does, while an Android player holding a controller
 gets neither. The Input setting (`input.touch_controls`) forces either end
-anywhere, so the layout can be looked at on a desktop with no touchscreen. See
+anywhere, so the layout can be looked at on a desktop with no touchscreen.
+Movement uses the left thumb; Jump, Attack, Smash, and Use form the right-hand
+diamond. Hold Powers above the left stick to select an ability with the right
+thumb. Bold outlined SVG icons and short labels remain readable over the scene.
+See
 [`docs/touch-play.md`](docs/touch-play.md).
+
+![Touch controls during gameplay, captured with the native Vulkan renderer](docs/screenshots/touch-controls.png)
 The missing ARM64 JIT backend and mobile performance evidence are tracked in
 [`docs/project-state.md`](docs/project-state.md) and
 [`docs/android-release.md`](docs/android-release.md).

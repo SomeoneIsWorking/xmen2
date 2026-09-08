@@ -26,7 +26,7 @@ include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 2ce823f
+    GIT_TAG 3d9b3d07f92524a457156bcbdc48eb8204d7720f
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
@@ -769,6 +769,17 @@ add_test(NAME vformat COMMAND test_vformat)
 
 add_executable(test_x87crt tests/test_x87crt.c src/runtime/x86_abi/x87crt.c)
 
+add_library(guest_memory_test_impl OBJECT src/native/guest_memory.c)
+target_compile_definitions(guest_memory_test_impl PRIVATE X2_GUEST_ARENA_RESERVED=1
+    sysconf=x2_test_sysconf mmap=x2_test_mmap mprotect=x2_test_mprotect)
+add_executable(test_guest_memory tests/test_guest_memory.c
+    $<TARGET_OBJECTS:guest_memory_test_impl>)
+target_include_directories(test_guest_memory PRIVATE src/native)
+target_link_libraries(test_guest_memory PRIVATE pthread)
+foreach(_granule IN ITEMS 4096 16384 -1 0 2048 12288)
+    add_test(NAME guest_memory_${_granule} COMMAND test_guest_memory ${_granule})
+endforeach()
+
 add_executable(test_kernel32_wait tests/test_kernel32_wait.c
                src/native/kernel32_wait.c tests/native_stubs.c)
 target_include_directories(test_kernel32_wait PRIVATE src/native src/runtime/x86_abi)
@@ -1225,7 +1236,22 @@ configure_file("${CMAKE_SOURCE_DIR}/assets/ui/settings.rcss"
                "${CMAKE_BINARY_DIR}/ui/settings.rcss" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/assets/ui/touch_controls.rcss"
                "${CMAKE_BINARY_DIR}/ui/touch_controls.rcss" COPYONLY)
-file(GLOB X2_TOUCH_ACTION_ICONS "${CMAKE_SOURCE_DIR}/assets/ui/icons/*.svg")
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/tools/touch_icons.py"
+    RESULT_VARIABLE X2_TOUCH_ACTION_RESULT
+    OUTPUT_VARIABLE X2_TOUCH_ACTION_SOURCES
+    ERROR_VARIABLE X2_TOUCH_ACTION_ERROR
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+if(NOT X2_TOUCH_ACTION_RESULT EQUAL 0 OR X2_TOUCH_ACTION_SOURCES STREQUAL "")
+  message(FATAL_ERROR "Cannot resolve shared touch icons: ${X2_TOUCH_ACTION_ERROR}")
+endif()
+string(REPLACE "\r\n" "\n" X2_TOUCH_ACTION_SOURCES "${X2_TOUCH_ACTION_SOURCES}")
+string(REPLACE "\n" ";" X2_TOUCH_ACTION_ICONS "${X2_TOUCH_ACTION_SOURCES}")
+list(GET X2_TOUCH_ACTION_ICONS 0 X2_TOUCH_ACTION_FIRST)
+get_filename_component(X2_TOUCH_ACTION_DIR "${X2_TOUCH_ACTION_FIRST}" DIRECTORY)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_SOURCE_DIR}/tools/touch_icons.py"
+             "${X2_TOUCH_ACTION_DIR}/set.json")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ui/icons")
 foreach(icon ${X2_TOUCH_ACTION_ICONS})
   get_filename_component(icon_name ${icon} NAME)

@@ -282,16 +282,25 @@ static int directory_from_selection(const char *selection, char *directory,
   return 1;
 }
 
+extern "C" int x2_install_picker_resolve_selection(
+    const char *selection, const char *archive_destination, char *directory,
+    unsigned capacity, char *reason, unsigned reason_capacity) {
+  if (!directory || capacity < 2 || !reason || reason_capacity < 2)
+    return 0;
+  directory[0] = 0;
+  reason[0] = 0;
+  return directory_from_selection(selection, directory, capacity, reason,
+                                  reason_capacity, archive_destination);
+}
+
 extern "C" int
 x2_install_picker_prepare_selection(const char *selection,
                                     const char *archive_destination,
                                     char *reason, unsigned reason_capacity) {
   char directory[X2_INSTALL_PATH_SIZE];
-  if (!reason || reason_capacity < 2)
-    return 0;
-  reason[0] = 0;
-  return directory_from_selection(selection, directory, sizeof directory,
-                                  reason, reason_capacity, archive_destination);
+  return x2_install_picker_resolve_selection(selection, archive_destination,
+                                             directory, sizeof directory,
+                                             reason, reason_capacity);
 }
 
 extern "C" int x2_install_picker_choose(const char **directory) {

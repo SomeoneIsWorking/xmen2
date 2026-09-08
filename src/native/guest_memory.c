@@ -24,11 +24,6 @@
    as the guest page size made a MEM_DECOMMIT of one Windows page revoke access
    to three still-committed neighbours. */
 #define GUEST_PAGE_SIZE 0x1000u
-#if defined(__APPLE__) && defined(__aarch64__)
-#define HOST_PAGE_SIZE 0x4000u
-#else
-#define HOST_PAGE_SIZE GUEST_PAGE_SIZE
-#endif
 #define GUEST_PAGE_COUNT (GUEST_SPACE_SIZE / GUEST_PAGE_SIZE)
 #define PAGE_MAPPED 0x80u
 
@@ -41,9 +36,8 @@
  *
  * Such a host must also never munmap inside the arena -- it drops protection
  * instead, so that nothing else can claim the hole it would leave. This is a
- * separate question from HOST_PAGE_SIZE above: Apple's 16 KiB granule needs
- * the grouping in apply_host_protection, while a 4 KiB Android page makes the
- * same code a one-page no-op.
+ * separate question from the host page size: both Apple and Android can use
+ * a 16 KiB granule, while a 4 KiB host needs no protection grouping.
  */
 /* X2_GUEST_ARENA_RESERVED forces the answer either way. It exists for the
  * sanitizers: AddressSanitizer's own shadow lives at low addresses and
@@ -63,6 +57,9 @@ uintptr_t g_guest_memory_base;
 static unsigned char g_pages[GUEST_PAGE_COUNT];
 static pthread_mutex_t g_pages_lock = PTHREAD_MUTEX_INITIALIZER;
 static int g_ready;
+#if GUEST_ARENA_RESERVED
+static uint32_t g_host_page_size;
+#endif
 
 static void *host_pointer(uint32_t address) {
   return (void *)(g_guest_memory_base + (uintptr_t)address);
@@ -91,9 +88,9 @@ static int span(uint32_t address, size_t size, uint32_t *first,
 /*
  * Apply the logical 4 KiB page table to the host's VM granule.
  *
- * On macOS that granule is 16 KiB and the grouping below is load-bearing; on a
- * 4 KiB host such as Android it collapses to one page per group and the loop
- * is an ordinary mprotect.
+ * The host reports its granule at initialization. On a 16 KiB host the
+ * grouping below is load-bearing; on a 4 KiB host it collapses to one guest
+ * page per group.
  *
  * A granule must remain accessible while ANY Windows page in it is accessible.
  * The per-4-KiB table remains authoritative for VirtualQuery and validation;
@@ -101,7 +98,7 @@ static int span(uint32_t address, size_t size, uint32_t *first,
  * hardware can express.  Call with g_pages_lock held.
  */
 static int apply_host_protection(uint32_t first, uint32_t count) {
-  const uint32_t pages_per_host = HOST_PAGE_SIZE / GUEST_PAGE_SIZE;
+  const uint32_t pages_per_host = g_host_page_size / GUEST_PAGE_SIZE;
   uint32_t group = first & ~(pages_per_host - 1u);
   uint32_t end = (first + count + pages_per_host - 1u) & ~(pages_per_host - 1u);
 
@@ -111,7 +108,7 @@ static int apply_host_protection(uint32_t first, uint32_t count) {
     for (i = 0; i < pages_per_host; i++)
       if (g_pages[group + i] & PAGE_MAPPED)
         protection |= g_pages[group + i] & ~PAGE_MAPPED;
-    if (mprotect(host_pointer(group * GUEST_PAGE_SIZE), HOST_PAGE_SIZE,
+    if (mprotect(host_pointer(group * GUEST_PAGE_SIZE), g_host_page_size,
                  protection) != 0)
       return -1;
   }
@@ -123,6 +120,17 @@ int guest_memory_init(void) {
   if (g_ready)
     return 0;
 #if GUEST_ARENA_RESERVED
+  long host_page_size = sysconf(_SC_PAGESIZE);
+  if (host_page_size < GUEST_PAGE_SIZE ||
+      (unsigned long)host_page_size > UINT32_MAX ||
+      ((unsigned long)host_page_size & ((unsigned long)host_page_size - 1u))) {
+    x2_log_error("guest_memory: unsupported host page size %ld; expected a "
+                 "power-of-two multiple of the 4096-byte guest page\n",
+                 host_page_size);
+    errno = EINVAL;
+    return -1;
+  }
+  g_host_page_size = (uint32_t)host_page_size;
   void *arena = mmap(NULL, (size_t)GUEST_SPACE_SIZE, PROT_NONE,
                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
   if (arena == MAP_FAILED) {

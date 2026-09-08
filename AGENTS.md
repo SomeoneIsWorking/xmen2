@@ -276,7 +276,9 @@ exercised without a window, a pad or a running game. `lucent::touch::Router` own
 multi-touch, and cancellation. `src/presentation/touch_hud_layout.c` owns the
 pure edge-relocation policy and `src/native/touch_hud_runtime.c` scopes it
 around the retained CHud bodies; portrait taps re-enter the existing retail
-mouse handler.
+mouse handler. `touch_document.cpp` owns action labels and pressed feedback;
+`tools/touch_icons.py` resolves its SVG resources from the shared port-assets
+touch-control set for build-time staging, with no title-owned art copy.
 
 Boot selection follows the same boundary: `src/config/boot_mode.{c,h}` owns the
 persistent vocabulary, `src/native/boot_mode_policy.{c,h}` owns the pure

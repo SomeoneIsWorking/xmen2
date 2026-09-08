@@ -51,6 +51,7 @@ public final class XMen2SetupActivity extends Activity {
     private ProgressBar progressBar;
     private LinearLayout choices;
     private LucentDocumentImport importer;
+    private GameImportNotification importNotification;
     private long importedEntries;
     private long importedBytes;
     private String importingName;
@@ -70,6 +71,7 @@ public final class XMen2SetupActivity extends Activity {
             Log.i("XMen2", "debug setup: performance=" + tracePerformance
                     + " drawDump=" + traceDrawDump);
         }
+        importNotification = new GameImportNotification(this);
         importer = new LucentDocumentImport(
                 this, new LucentDocumentImport.Limits(MAXIMUM_ENTRIES,
                                                        MAXIMUM_IMPORT_BYTES,
@@ -84,7 +86,7 @@ public final class XMen2SetupActivity extends Activity {
             importingName = currentName;
             if (importer.active() && status != null) {
                 status.setText(importingText());
-                GameImportService.update(this, entries, bytes, currentName);
+                importNotification.update(importingText());
             }
         });
         importer.cleanStaleImports();
@@ -128,7 +130,7 @@ public final class XMen2SetupActivity extends Activity {
     protected void onDestroy() {
         if (isFinishing()) {
             importer.cancel();
-            GameImportService.stop(this);
+            importNotification.stop();
         }
         super.onDestroy();
     }
@@ -189,7 +191,7 @@ public final class XMen2SetupActivity extends Activity {
         if (progressBar != null) {
             progressBar.setVisibility(View.VISIBLE);
         }
-        GameImportService.update(this, importedEntries, importedBytes, importingName);
+        importNotification.start(importingText());
     }
 
     /* There is no total to count towards: Android enumerates a picked folder
@@ -231,7 +233,7 @@ public final class XMen2SetupActivity extends Activity {
         if (progressBar != null) {
             progressBar.setVisibility(View.GONE);
         }
-        GameImportService.stop(this);
+        importNotification.stop();
     }
 
     // --- Pickers ---
@@ -335,10 +337,10 @@ public final class XMen2SetupActivity extends Activity {
             }
             getPreferences(MODE_PRIVATE).edit()
                     .putString(SOURCE_PATH, source.getAbsolutePath()).apply();
-            GameImportService.stop(this);
+            importNotification.stop();
             startGame();
         } catch (IOException error) {
-            GameImportService.stop(this);
+            importNotification.stop();
             showError("Could not retain the selected game files: " + error.getMessage());
         }
     }
@@ -412,7 +414,7 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private void showError(String message) {
-        GameImportService.stop(this);
+        importNotification.stop();
         if (status != null) status.setText(message);
         if (choices != null) choices.setVisibility(View.VISIBLE);
         if (progressBar != null) progressBar.setVisibility(View.GONE);

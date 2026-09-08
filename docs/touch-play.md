@@ -57,21 +57,35 @@ document uses the action meanings proven by `binding_rows.c` and
 | Zone | Action mapping |
 |---|---|
 | Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight` |
-| Bottom-right action cluster | Light attack, heavy attack, use, jump, mutant powers, energy pack, health pack |
+| Bottom-right action diamond | Attack below, Smash outside, Use above, Jump inside; while Powers is held these are the four retained ability actions |
+| Above the left stick | Hold Powers with the left thumb and choose an ability with the right |
 | Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
 | Physical D-pad | Next hero, previous hero, decrease aggression, increase aggression; these retail bindings remain valid |
-| Menu buttons | `Pause`, `Stats` |
+| Top button beside vitals | `Pause` |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
 | Retail health/energy HUD, top-left | The retained CHud draw path, relocated only while touch mode is active |
+
+The movement stick is smaller than the original overlay to leave more of the
+playfield visible. Jump is on the opposite hand from movement, so a player can
+move and jump with two thumbs. The Powers modifier is on the left for the same
+reason: all four ability choices remain accessible to the right thumb while it
+is held. Controls remain anchored to safe edges on wide screens; one shared fit
+factor keeps the groups separate on narrow and portrait screens. The compact
+pause button stays between the vitals reservation and the centerline, leaving
+the retail center status/notification icons visible.
 
 The layout must leave an inset for cutouts/navigation bars, support at least the
 left stick plus two face/shoulder contacts simultaneously, expose a
 reconfigure/hide-controls setting, and make touch feedback visible without
 changing the input action delivered to the guest. The mapping is derived from
 [`xbox_defaults.c`](../src/native/xbox_defaults.c), not invented per screen. The
-shipped feedback document mirrors only authored touch controls with text labels,
-rather than showing controller glyphs whose internal action names are
-misleading. Gesture and portrait hit regions remain invisible, captured zones
+shipped feedback document mirrors authored touch controls with short action labels
+and bold outlined SVG silhouettes from `shared/port-assets/sets/touch-controls`.
+`tools/touch_icons.py` resolves that manifest for build-time staging; the port
+does not carry another SVG copy. Ability icons and labels change while Powers is
+held; redundant tiny corner badges are absent. Button accent colors supplement
+the distinct silhouettes, and active controls get a bright border and filled
+background. Gesture and portrait hit regions remain invisible, captured zones
 highlight, and the persistent Input setting can hide the controls. Held contacts
 persist until finger-up/cancel rather than expiring on a test-channel timeout.
 
@@ -90,14 +104,26 @@ already chose keeps player one.
 | Check | What it pins |
 |---|---|
 | `ctest -R touch_source` | The device classification, including the `SDL_TOUCH_MOUSEID` synthetic pointer and the resting-stick threshold |
-| `ctest -R touch_controls` | Action vocabulary, zone routing, portrait pointer arbitration, cancellation on layout change |
-| `ctest -R touch_layout` | Safe-area-aware zone placement |
+| `ctest -R touch_controls` | Action vocabulary, independent four-ability modifier chords, zone routing, portrait pointer arbitration, cancellation on layout change |
+| `ctest -R touch_layout` | Safe-area-aware placement across nine phone/tablet/desktop shapes, opposite-thumb reach, nonoverlapping HUD/control bounds, and at least 48 output-pixel action targets in those cases |
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
 | `ctest -R touch_portable` | That no touch owner branches on the platform it was built for, and that it inspected every owner rather than passing on an empty list (`tools/check_touch_portable.py`) |
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
+
+### Native presentation observation, 2026-09-08
+
+The [actual RmlUi/game capture](screenshots/touch-controls.png) shows the shared
+SVGs in the shipping Vulkan renderer at 1280×720, with an isolated profile forcing
+`input.touch_controls=2`, Xvfb, and SDL dummy audio. The tutorial cutscene ended
+through the normal Escape cancellation route (one request, one completion,
+controls released); the overlay then appeared during character control. Pause
+leaves the retail center notifications clear, and the vitals, potions, and party
+portraits remain visible. The live JIT report counted 383,048,017 block entries,
+94,546 translations, and zero refusals in 94,546 attempts. This is native UI
+presentation evidence, not Android touchscreen or performance qualification.
 
 ## Not established
 

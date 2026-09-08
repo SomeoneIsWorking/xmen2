@@ -72,13 +72,23 @@ int main(void) {
     fprintf(stderr, "complete install folder was refused: %s\n", reason);
     return 1;
   }
+  if (!x2_install_picker_resolve_selection(
+          root, "", directory, sizeof directory, reason, sizeof reason) ||
+      strcmp(directory, root) != 0) {
+    fprintf(stderr,
+            "platform selection did not return its validated directory\n");
+    return 1;
+  }
 
   snprintf(path, sizeof path, "%s/%s", root, x2_install_required_content[0]);
   if (remove(path) != 0) {
     perror("remove required content fixture");
     return 1;
   }
-  if (x2_install_picker_prepare_selection(root, "", reason, sizeof reason)) {
+  if (x2_install_picker_prepare_selection(root, "", reason, sizeof reason) ||
+      x2_install_picker_resolve_selection(root, "", directory, sizeof directory,
+                                          reason, sizeof reason) ||
+      directory[0]) {
     fprintf(stderr, "loader-only install was accepted\n");
     return 1;
   }

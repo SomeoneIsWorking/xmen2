@@ -28,7 +28,7 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".GameImportService"
+            android:name="io.github.someoneisworking.lucent.LucentImportService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
     </application>

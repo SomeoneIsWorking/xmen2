@@ -36,9 +36,9 @@ SHARED_REPOS = (
                "b04e6657cac3156318506f4145a85e66b1ebc8e6",
                "include/alchemy/input/controller.hpp"),
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
-               "42a1648ab0414418893b0ebd6eec69fe5b6a97d4", "sets"),
+               "b48abae76227a2f1fe17cc7d9abd60cc85d45e09", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
-               "2dc4bcb12483aeae183387e8b46ec5b76a381de2", "tools/android_port.py"),
+               "cc6c75c889c6b638cd540129cdc825c33960c3d6", "tools/android_port.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact
     # revision, never a branch: a fresh clone that resolved to whatever `main`
     # happened to be would make two machines run different engines while
@@ -48,10 +48,10 @@ SHARED_REPOS = (
     # because x86port CONSUMES it and refuses to configure without it. Both are
     # this port's inputs, so both are this port's pins.
     SharedRepo("jit-common", "https://github.com/SomeoneIsWorking/jit-common.git",
-               "03ac795cbc39843e795cb8091fb96bff2b1c9017",
+               "4c58336f5d187d556755c20c983b5dc168f8f9b1",
                "src/jitcommon/block_cache.h"),
     SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
-               "e1522b2f77c030b928b76ffef5fbc5a832eb1e24",
+               "75da9c6457c30fd21eae03b5eaf0f6ff3de42b11",
                "src/x86port/jit_engine.h"),
 )
 

@@ -54,6 +54,23 @@ menu, proving the contact-to-title-input route. This is debug-private-source
 runtime evidence, not a replacement for the production SAF import proof or a
 performance result.
 
+## Native boot on larger host pages
+
+The Android guest-memory owner incorrectly assumed a 4 KiB host page. Its
+4 KiB-by-4 KiB `mprotect` loop fails with `EINVAL` on the second guest page
+of a multi-page allocation when the kernel uses 16 KiB pages. Initialization
+now queries and validates the host granule while preserving the Win32 4 KiB
+logical page table and unioning permissions within each host page.
+
+The production-boundary regression runs both 4 KiB and 16 KiB syscall
+contracts, including a boot trampoline, multi-page image, individual guest
+page protection/release, overlap refusal, and preservation of neighboring
+pages. Four invalid granule cases refuse before allocating host memory. All
+six focused CTests pass; the original owner fails the 16 KiB alignment
+contract. This proves the conditional larger-page defect, not the cause of
+the user's reported ARM64 crash: the device's page size and crash trace are
+still needed to connect that observation to this failure.
+
 ## What was tried / dead ends
 
 The title-specific touch action/layout owner, shared-SVG feedback document,

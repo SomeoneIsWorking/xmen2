@@ -27,6 +27,18 @@ contains only the extracted game tree; rejected imports discard their bounded
 staging instead. No filesystem path is inferred from a SAF URI
 and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
 
+`GameImportNotification` owns only the title's notification content and setup
+link. Lucent owns foreground service start, notification updates, and teardown.
+Displaying import progress again on Activity resume does not start another
+service; completion, rejection, cancellation, and Activity destruction stop the
+existing service through `Context.stopService`, so a late stop cannot create a
+background service during the import-to-game handoff. Foreground promotion
+failures propagate instead of being hidden by a plain notification. Lucent's
+`lucent_android_import_lifetime` test exercises idle teardown, repeated progress,
+import-to-game teardown, late callbacks, cancellation before service creation,
+and a refused start. This is lifecycle evidence, not confirmation that the
+reported ARM64 boot crash has the same cause.
+
 This deliberately makes the first import a one-time copy. It supports cloud
 and removable-storage providers correctly, avoids broad device access, and
 means later launches never depend on a provider or a working directory. The
@@ -64,7 +76,9 @@ project pins Gradle 9.4.1, the first maintained patch line that officially runs
 on Java 26, together with its compatible Android Gradle Plugin 9.2.1 and the
 Gradle distribution checksum. Select an installed compatible JDK with
 `JAVA_HOME`; the build does not require an older JDK when the pinned toolchain
-supports the current one. The generated native contract is
+supports the current one. The shared Android owner selects the paired JDK,
+checks that `libmain.so` exports its callable SDL entry, and inspects the
+assembled APK for the complete SDL/NDK runtime before publication. The generated native contract is
 `build/android-arm64-v8a/x2-android.properties`.
 Release assembly also requires the long-lived update key through
 `X2_ANDROID_KEYSTORE`, `X2_ANDROID_KEY_ALIAS`, `X2_ANDROID_STORE_PASSWORD`, and

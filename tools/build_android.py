@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
+from functools import cache
 from collections.abc import Mapping
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
+from types import ModuleType
 
 try:
     from .shared_dir import shared_dir
@@ -17,7 +20,6 @@ except ImportError:
     from shared_dir import shared_dir
 
 
-GRADLE_VERSION = "9.4.1"
 GRADLE_JAVA_MIN = 17
 GRADLE_JAVA_MAX = 26
 DEFAULT_NATIVE_JOBS = 2
@@ -36,8 +38,8 @@ def parse_args() -> argparse.Namespace:
         "--debug",
         action="store_true",
         help="Assemble a debug-signed APK for local device testing. The "
-             "artifact stays in Gradle's build output and is never published "
-             "to build/release; it is not a release candidate.",
+        "artifact stays in Gradle's build output and is never published "
+        "to build/release; it is not a release candidate.",
     )
     return parser.parse_args()
 
@@ -71,55 +73,20 @@ def native_prefix(build_root: Path, api: int, abi: str) -> Path:
     return build_root / "deps/android" / f"android-{api}" / abi
 
 
-def parse_java_major(version_output: str) -> int | None:
-    first = version_output.splitlines()[0] if version_output.splitlines() else ""
-    try:
-        version = first.split('version "', 1)[1].split('"', 1)[0]
-        components = version.split(".")
-        return int(components[1] if components[0] == "1" else components[0])
-    except (IndexError, ValueError):
-        return None
-
-
-def parse_javac_major(version_output: str) -> int | None:
-    first = version_output.splitlines()[0] if version_output.splitlines() else ""
-    try:
-        return int(first.split("javac ", 1)[1].split(".", 1)[0])
-    except (IndexError, ValueError):
-        return None
+@cache
+def shared_android() -> ModuleType:
+    tool = android_port_tool()
+    spec = importlib.util.spec_from_file_location("x2_shared_android", tool)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Cannot load the shared Android build owner: {tool}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def java_home() -> Path:
-    candidates: list[Path] = []
-    configured = os.environ.get("JAVA_HOME")
-    if configured:
-        candidates.append(Path(configured))
-    java = shutil.which("java")
-    if java:
-        candidates.append(Path(java).resolve().parent.parent)
-    candidates.extend(Path("/usr/lib/jvm").glob("*/bin/java"))
-    seen: set[Path] = set()
-    for candidate in candidates:
-        home = candidate if candidate.name != "java" else candidate.parent.parent
-        home = home.resolve()
-        if (home in seen or not (home / "bin/java").is_file()
-                or not (home / "bin/javac").is_file()):
-            continue
-        seen.add(home)
-        java = subprocess.run([str(home / "bin/java"), "-version"],
-                              capture_output=True, text=True)
-        javac = subprocess.run([str(home / "bin/javac"), "-version"],
-                               capture_output=True, text=True)
-        java_major = parse_java_major(java.stderr + java.stdout)
-        javac_major = parse_javac_major(javac.stderr + javac.stdout)
-        if (java_major == javac_major and java_major is not None
-                and GRADLE_JAVA_MIN <= java_major <= GRADLE_JAVA_MAX):
-            return home
-    raise SystemExit(
-        f"Gradle {GRADLE_VERSION} needs a coherent JDK from {GRADLE_JAVA_MIN} "
-        f"through {GRADLE_JAVA_MAX}, but no home with matching java and javac "
-        "versions was found. Select one with JAVA_HOME."
-    )
+    return shared_android().select_java_home(minimum=GRADLE_JAVA_MIN, maximum=GRADLE_JAVA_MAX)
 
 
 def release_signing(environment: Mapping[str, str] = os.environ) -> dict[str, str]:
@@ -133,8 +100,9 @@ def release_signing(environment: Mapping[str, str] = os.environ) -> dict[str, st
     missing = [name for name, value in values.items() if not value]
     if missing:
         raise SystemExit(
-            "Android release signing is incomplete; set " + ", ".join(missing) +
-            ". Refusing to produce an unsigned release APK."
+            "Android release signing is incomplete; set "
+            + ", ".join(missing)
+            + ". Refusing to produce an unsigned release APK."
         )
     keystore = Path(values["X2_ANDROID_KEYSTORE"]).expanduser()
     if not keystore.is_file():
@@ -144,13 +112,7 @@ def release_signing(environment: Mapping[str, str] = os.environ) -> dict[str, st
 
 
 def native_jobs(environment: Mapping[str, str] = os.environ) -> int:
-    """Return a memory-safe parallelism level for translated Android code.
-
-    A translated X-Men module can consume more than a gigabyte while Clang
-    optimizes it.  Building one job per logical CPU turns a 16 GB workstation
-    into a swap storm, so Android builds default to two jobs.  Builders with
-    measured headroom can deliberately raise the cap.
-    """
+    """Bound parallel compiler memory use; measured hosts may opt into more jobs."""
     configured = environment.get("X2_ANDROID_NATIVE_JOBS")
     if configured is None:
         return DEFAULT_NATIVE_JOBS
@@ -179,21 +141,19 @@ def prepare_native_build_directory(build: Path, build_root: Path) -> None:
 
     Makefiles conservatively make every object depend on their regenerated
     flags.make. Consequently an otherwise harmless CMake reconfigure rebuilds
-    the whole translated game. Ninja compares the real compiler command instead.
+    every native object. Ninja compares the real compiler command instead.
     A generator cannot be changed in place, so this removes only the resolved,
     generated Android tree beneath the project's build root.
     """
     resolved_build = build.resolve()
     resolved_root = build_root.resolve()
     if resolved_build.parent != resolved_root:
-        raise SystemExit(
-            f"Refusing Android build migration outside direct build/ child: {build}")
+        raise SystemExit(f"Refusing Android build migration outside direct build/ child: {build}")
     generator = cached_generator(resolved_build)
     if generator is None or generator == NATIVE_GENERATOR:
         resolved_build.mkdir(parents=True, exist_ok=True)
         return
-    print(f"android: replacing {generator} build tree with {NATIVE_GENERATOR}: "
-          f"{resolved_build}")
+    print(f"android: replacing {generator} build tree with {NATIVE_GENERATOR}: {resolved_build}")
     shutil.rmtree(resolved_build)
     resolved_build.mkdir(parents=True, exist_ok=True)
 
@@ -223,16 +183,15 @@ def debug_apk(root: Path, abi: str) -> Path:
 
 def publish_apk(root: Path, abi: str) -> Path:
     outputs = root / "android/app/build/outputs/apk/release"
-    candidates = [path for path in outputs.glob("*-release.apk")
-                  if "unsigned" not in path.name]
+    candidates = [path for path in outputs.glob("*-release.apk") if "unsigned" not in path.name]
     if len(candidates) != 1:
         found = ", ".join(path.name for path in sorted(outputs.glob("*.apk")))
         raise SystemExit(
             f"Expected exactly one signed release APK in {outputs}; found: {found or 'none'}"
         )
+    shared_android().inspect_apk_runtime(candidates[0], abi)
     signer = apksigner_path()
-    run([str(signer), "verify", "--verbose", "--print-certs",
-         str(candidates[0])], cwd=root)
+    run([str(signer), "verify", "--verbose", "--print-certs", str(candidates[0])], cwd=root)
     release = root / "build/release"
     release.mkdir(parents=True, exist_ok=True)
     destination = release / f"X-Men-Legends-II-{abi}.apk"
@@ -296,6 +255,7 @@ def main() -> int:
         cwd=root,
     )
     run(["cmake", "--build", str(build), "--target", "x2native", f"-j{native_jobs()}"], cwd=root)
+    shared_android().verify_native_entry(build / "libmain.so", ndk)
     if not args.no_assemble:
         assert gradle_java is not None
         gradle_environment = os.environ.copy()
@@ -319,7 +279,9 @@ def main() -> int:
             check=True,
         )
         if args.debug:
-            print(f"android: debug APK left in {debug_apk(root, args.abi)} (not a release)")
+            apk = debug_apk(root, args.abi)
+            shared_android().inspect_apk_runtime(apk, args.abi)
+            print(f"android: debug APK left in {apk} (not a release)")
         else:
             publish_apk(root, args.abi)
     return 0

@@ -11,6 +11,68 @@ extern "C" {
 
 namespace {
 
+bool power_chords() {
+  using lucent::touch::Contact;
+  using lucent::touch::Phase;
+  using x2::input::TouchAction;
+  x2::input::TouchControls controls;
+  controls.set_viewport({844, 390, {32, 0, 20, 12}});
+  const auto point = [&controls](TouchAction action) {
+    const auto zones = controls.zones();
+    const auto found =
+        std::find_if(zones.begin(), zones.end(), [action](const auto &zone) {
+          return zone.action == action;
+        });
+    if (found == zones.end())
+      return std::optional<lucent::touch::Point>{};
+    return std::optional{
+        lucent::touch::Point{(found->zone.left + found->zone.right) / 2,
+                             (found->zone.top + found->zone.bottom) / 2}};
+  };
+  const auto modifier = point(TouchAction::Powers);
+  if (!modifier) {
+    std::cerr << "ability modifier has no touch zone\n";
+    return false;
+  }
+  controls.route(std::array{Contact{1, *modifier, Phase::began}});
+  for (const auto action : {TouchAction::LightAttack, TouchAction::HeavyAttack,
+                            TouchAction::Use, TouchAction::Jump}) {
+    const auto button = point(action);
+    if (!button) {
+      std::cerr << "ability action has no touch zone\n";
+      return false;
+    }
+    const auto events =
+        controls.route(std::array{Contact{1, *modifier, Phase::moved},
+                                  Contact{2, *button, Phase::began}});
+    const auto active = [&events](TouchAction expected) {
+      return std::any_of(
+          events.begin(), events.end(), [expected](const auto &event) {
+            return event.action == expected && event.value == 1.0F;
+          });
+    };
+    if (!active(TouchAction::Powers) || !active(action) || events.size() != 2) {
+      std::cerr << "opposite-thumb ability chord lost its held modifier\n";
+      return false;
+    }
+    const auto released =
+        controls.route(std::array{Contact{2, *button, Phase::ended}});
+    if (released.size() != 1 || released.front().action != action ||
+        released.front().value != 0) {
+      std::cerr << "ability release also released the held modifier\n";
+      return false;
+    }
+  }
+  const auto canceled = controls.cancel();
+  if (canceled.size() != 1 || canceled.front().action != TouchAction::Powers ||
+      canceled.front().value != 0) {
+    std::cerr
+        << "modifier did not remain held through four ability selections\n";
+    return false;
+  }
+  return true;
+}
+
 bool has_value(const std::vector<x2::input::ActionEvent> &events,
                x2::input::TouchAction action, float minimum) {
   return std::any_of(events.begin(), events.end(),
@@ -190,7 +252,7 @@ int main() {
     return 1;
   }
 
-  /* Jump belongs to the movement thumb, above the stick. */
+  /* Jump must route independently while the movement thumb remains held. */
   const std::vector<lucent::touch::Contact> jump_button = {
       {7, centre(kX2SlotJump), lucent::touch::Phase::began}};
   const auto jump_events = controls.route(jump_button);
@@ -278,7 +340,7 @@ int main() {
     std::cerr << "viewport change did not release the old layout\n";
     return 1;
   }
-  if (!portrait_regions())
+  if (!portrait_regions() || !power_chords())
     return 1;
   std::cout
       << "touch controls: layout, action mapping, and cancellation passed\n";

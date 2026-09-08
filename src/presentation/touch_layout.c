@@ -16,10 +16,10 @@
  * a tall phone and a wide tablet; positions are insets from the safe edges for
  * the same reason.
  */
-static const float kStickDiameter = 0.42F; /* of the short edge */
-static const float kButtonDiameter = 0.17F;
-static const float kButtonGap = 0.035F;
-static const float kEdgeInset = 0.045F;
+static const float kStickDiameter = 0.34F; /* of the short edge */
+static const float kButtonDiameter = 0.18F;
+static const float kButtonGap = 0.025F;
+static const float kEdgeInset = 0.06F;
 static const float kHudVitalsWidth = 0.30F;  /* of the WIDTH */
 static const float kHudVitalsHeight = 0.14F; /* of the HEIGHT */
 static const float kHudPotionsHeight = 0.10F;
@@ -141,34 +141,34 @@ int x2_layout_build(X2LayoutViewport v, X2Rect *out) {
     /* --- Actions, bottom right ---------------------------------------- */
     /*
      * A diamond in the arrangement a right thumb reaches: the attacks on the
-     * outer and lower positions where it rests, Use above them, Powers
-     * inboard. Placed by the cluster's CENTRE with each button at an offset,
-     * so the whole group moves as one. The centre is inset by the full
-     * `extent`, not by one button -- reserving one button put Heavy past the
-     * right safe edge and Light past the bottom one on every viewport.
+     * outer and lower positions where it rests, Use above them, Jump
+     * inboard so movement and jumping use opposite thumbs. Placed by the
+     * cluster's CENTRE with each button at an offset, so the whole group moves
+     * as one. The centre is inset by the full `extent`, not by one button --
+     * reserving one button put Heavy past the right safe edge and Light past
+     * the bottom one on every viewport.
      */
     cluster_x = right - s_inset - s_extent;
     cluster_y = bottom - s_inset - s_extent;
     out[kX2SlotLightAttack] = centred(cluster_x, cluster_y + s_reach, s_button);
     out[kX2SlotHeavyAttack] = centred(cluster_x + s_reach, cluster_y, s_button);
     out[kX2SlotUse] = centred(cluster_x, cluster_y - s_reach, s_button);
-    out[kX2SlotPowers] = centred(cluster_x - s_reach, cluster_y, s_button);
+    out[kX2SlotJump] = centred(cluster_x - s_reach, cluster_y, s_button);
 
-    /* --- Jump, above the movement thumb -------------------------------
-     * Jump is a MOVEMENT verb, so it belongs to the left thumb, not to the
-     * combat diamond. Sitting directly above the stick it is reachable
-     * without leaving the stick, and it cannot collide with the diamond
-     * because the two clusters are at opposite ends of the band. */
-    out[kX2SlotJump] =
+    /* The held Powers modifier sits above the movement stick. Ability
+     * selection then uses the opposite thumb's four face actions; placing
+     * the modifier in that same diamond made two-thumb chords unreachable.
+     * Jump remains usable while moving because it is now on the right. */
+    out[kX2SlotPowers] =
         centred(out[kX2SlotStick].left + s_stick * 0.5F,
                 out[kX2SlotStick].top - gap * fit - s_button * 0.5F, s_button);
 
-    /* --- Pause, top centre --------------------------------------------
-     * Between the two HUD corners, which is the one part of the top edge the
-     * retail HUD does not claim. A touch player with no controller has no
-     * other way to reach the menus at all. */
-    out[kX2SlotPause] = centred((left + right) * 0.5F,
-                                top + s_inset + s_button * 0.5F, s_button);
+    /* Pause uses the top gap between the vitals reservation and the
+     * centerline. The retail HUD publishes status/notification icons on the
+     * centerline; centering Pause there covered those icons in gameplay. */
+    out[kX2SlotPause] =
+        centred((out[kX2SlotVitals].right + (left + right) * 0.5F) * 0.5F,
+                top + s_inset + s_button * 0.375F, s_button * 0.75F);
   }
 
   return 1;

@@ -554,6 +554,12 @@ Evidence: `touch_source`, `touch_controls`, `touch_layout` and
 `touch_hud_layout` run in the ordinary host suite on every platform, with no
 device and no window. The CMake sources list builds all four touch owners
 unconditionally into `x2native`, outside the `if(ANDROID)` branches.
+The revised two-thumb layout and shared action SVGs were also inspected in
+the actual 1280x720 RmlUi/Vulkan game presentation;
+`docs/screenshots/touch-controls.png` records that rendering. Jump uses the
+right action group, the held Powers modifier uses the left, and Pause leaves
+the retail center notification icons unobscured. This verifies presentation,
+not physical touchscreen ergonomics or Android performance.
 
 Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this

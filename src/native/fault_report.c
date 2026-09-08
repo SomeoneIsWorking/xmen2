@@ -26,14 +26,18 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
-#if !defined(__ANDROID__)
+#if defined(__EMSCRIPTEN__)
+#include <emscripten/emscripten.h>
+#elif !defined(__ANDROID__)
 #include <execinfo.h>
 #endif
 #include <dlfcn.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
+#if !defined(__EMSCRIPTEN__)
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 
 static const char *fault_meaning(int sig, int code) {
@@ -86,6 +90,7 @@ const char *fault_name(int sig) {
   }
 }
 
+#if !defined(__EMSCRIPTEN__)
 static uintptr_t fault_context_pc(const void *context) {
   const ucontext_t *uc = context;
   if (!uc)
@@ -104,8 +109,16 @@ static uintptr_t fault_context_pc(const void *context) {
   return 0;
 #endif
 }
+#endif
 
 static void fault_host_pc_report(const void *context) {
+#if defined(__EMSCRIPTEN__)
+  char stack[4096];
+  (void)context;
+  emscripten_get_callstack(EM_LOG_C_STACK | EM_LOG_JS_STACK, stack,
+                           sizeof stack);
+  x2_log_error("[HOST WASM STACK] %s\n", stack);
+#else
   uintptr_t pc = fault_context_pc(context);
   Dl_info info;
 
@@ -120,6 +133,7 @@ static void fault_host_pc_report(const void *context) {
   }
   x2_log_error("[HOST PC] 0x%llx (dladdr could not resolve its image)\n",
                (unsigned long long)pc);
+#endif
 }
 
 /*
@@ -180,7 +194,7 @@ where:
   fault_host_pc_report(uc);
 #if defined(__ANDROID__)
   x2_log_error("[HOST STACK] unavailable on Android (no execinfo API)\n");
-#else
+#elif !defined(__EMSCRIPTEN__)
   {
     void *frames[32];
     int count = backtrace(frames, (int)(sizeof frames / sizeof frames[0]));

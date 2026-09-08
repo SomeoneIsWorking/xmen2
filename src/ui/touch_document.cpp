@@ -103,22 +103,6 @@ const char *action_title(int action, bool powers_active) {
   }
 }
 
-const char *ability_badge_text(int action) {
-  using x2::input::TouchAction;
-  switch (static_cast<TouchAction>(action)) {
-  case TouchAction::LightAttack:
-    return "P1";
-  case TouchAction::HeavyAttack:
-    return "P2";
-  case TouchAction::Use:
-    return "P3";
-  case TouchAction::Jump:
-    return "P4";
-  default:
-    return "";
-  }
-}
-
 const char *zone_action_class(int action) {
   using x2::input::TouchAction;
   switch (static_cast<TouchAction>(action)) {
@@ -139,22 +123,6 @@ const char *zone_action_class(int action) {
   }
 }
 
-const char *badge_css_class(int action) {
-  using x2::input::TouchAction;
-  switch (static_cast<TouchAction>(action)) {
-  case TouchAction::LightAttack:
-    return "p1";
-  case TouchAction::HeavyAttack:
-    return "p2";
-  case TouchAction::Use:
-    return "p3";
-  case TouchAction::Jump:
-    return "p4";
-  default:
-    return "";
-  }
-}
-
 std::string resource(const std::string &relative) {
   return x2_ui_resource_path(relative.c_str());
 }
@@ -170,11 +138,6 @@ void rebuild() {
     if (visual.stick) {
       rml << "<div class='touch-stick-knob'></div>";
     } else {
-      const char *b_label = ability_badge_text(visual.action);
-      if (b_label[0]) {
-        rml << "<span id='badge-" << visual.id << "' class='touch-badge "
-            << badge_css_class(visual.action) << "'>" << b_label << "</span>";
-      }
       const char *icon = icon_relative_path(visual.action, last_powers_mode);
       if (icon[0]) {
         rml << "<img id='icon-" << visual.id << "' class='touch-icon' src='"

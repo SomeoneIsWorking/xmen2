@@ -35,6 +35,8 @@ static const struct {
   float safe_right;
   float safe_bottom;
 } kViewports[] = {
+    {"phone logical 844x390", 844.0f, 390.0f, 32, 0, 20, 12},
+    {"compact logical 640x360", 640.0f, 360.0f, 0, 0, 0, 12},
     {"phone 2400x1080", 2400.0f, 1080.0f, 0, 0, 0, 0},
     {"phone with cutout", 2400.0f, 1080.0f, 120.0f, 0, 48.0f, 24.0f},
     {"tablet 2560x1600", 2560.0f, 1600.0f, 0, 0, 0, 0},
@@ -97,10 +99,10 @@ int main(void) {
     CHECK(name, slots[kX2SlotStick].bottom > viewport.height * 0.5f);
     {
       /* The combat diamond, named one by one rather than swept over a range:
-         a range walks whatever slots are added between its ends, and Jump --
-         a LEFT-thumb control -- was added between them. */
+         a range would also include the left-thumb modifier when slots change.
+       */
       const int cluster[] = {(int)kX2SlotLightAttack, (int)kX2SlotHeavyAttack,
-                             (int)kX2SlotUse, (int)kX2SlotPowers};
+                             (int)kX2SlotUse, (int)kX2SlotJump};
       for (i = 0; i < (int)(sizeof cluster / sizeof cluster[0]); i++) {
         const int slot = cluster[i];
         CHECK(x2_layout_slot_name(slot),
@@ -109,16 +111,27 @@ int main(void) {
               slots[slot].bottom > viewport.height * 0.5f);
       }
     }
-    /* Jump belongs to the movement thumb: left half, above the stick. */
-    CHECK(name, slots[kX2SlotJump].left < viewport.width * 0.5f);
-    CHECK(name, slots[kX2SlotJump].bottom <= slots[kX2SlotStick].top);
-    /* Pause sits on the top edge between the two HUD corners. */
+    /* The held modifier uses the opposite thumb from the four abilities. */
+    CHECK(name, slots[kX2SlotPowers].left < viewport.width * 0.5f);
+    CHECK(name, slots[kX2SlotPowers].bottom <= slots[kX2SlotStick].top);
+    /* Pause leaves the retail status/notification centerline clear. */
     CHECK(name, slots[kX2SlotPause].top < viewport.height * 0.5f);
+    CHECK(name,
+          slots[kX2SlotPause].right <
+              (viewport.safe_left + viewport.width - viewport.safe_right) *
+                  0.5f);
     CHECK(name, slots[kX2SlotPause].left > slots[kX2SlotVitals].right ||
                     slots[kX2SlotPause].top > slots[kX2SlotVitals].bottom);
     /* The stick and the action cluster must not be reachable by one hand
        only because they are close: they belong to opposite thumbs. */
-    CHECK(name, slots[kX2SlotStick].right < slots[kX2SlotPowers].left);
+    CHECK(name, slots[kX2SlotStick].right < slots[kX2SlotJump].left);
+    /* A resting left thumb can move while the right thumb jumps. Powers
+       uses the left hand, leaving all four ability choices on the right. */
+    CHECK(name, slots[kX2SlotPowers].right < slots[kX2SlotJump].left);
+    CHECK(name, slots[kX2SlotJump].right <= slots[kX2SlotLightAttack].left);
+    for (i = (int)kX2SlotLightAttack; i <= (int)kX2SlotPowers; ++i)
+      CHECK("face/modifier target at least 48 output pixels on tested devices",
+            slots[i].right - slots[i].left >= 48.0f);
   }
 
   /* Refusals. A viewport with no usable area has no layout, and saying so is

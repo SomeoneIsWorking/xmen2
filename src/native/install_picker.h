@@ -28,6 +28,13 @@ int x2_install_picker_prepare_selection(const char *selection,
                                         const char *archive_destination,
                                         char *reason, unsigned reason_capacity);
 
+/* Resolve the same validated selection for a platform whose first-run UI is
+ * outside SDL. The caller publishes the returned directory only on success. */
+int x2_install_picker_resolve_selection(const char *selection,
+                                        const char *archive_destination,
+                                        char *directory, unsigned capacity,
+                                        char *reason, unsigned reason_capacity);
+
 #ifdef __cplusplus
 }
 #endif

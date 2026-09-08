@@ -17,24 +17,24 @@ body {
     flex-flow: column;
     align-items: center;
     justify-content: center;
-    border: 2dp rgba(220, 238, 255, 38%);
+    border: 2dp rgba(220, 238, 255, 72%);
     border-radius: 512dp;
-    background-color: rgba(15, 23, 42, 48%);
-    opacity: 0.76;
+    background-color: rgba(10, 18, 29, 72%);
+    opacity: 1;
 }
 
 .touch-zone.stick {
-    border: 2.5dp rgba(186, 230, 253, 35%);
+    border: 2dp rgba(186, 230, 253, 55%);
     border-radius: 512dp;
-    background-color: rgba(15, 23, 42, 26%);
+    background-color: rgba(10, 18, 29, 32%);
 }
 
 .touch-stick-knob {
-    width: 44%;
-    height: 44%;
-    border: 2.5dp rgba(224, 242, 254, 80%);
+    width: 38%;
+    height: 38%;
+    border: 2dp rgba(224, 242, 254, 90%);
     border-radius: 512dp;
-    background-color: rgba(56, 189, 248, 35%);
+    background-color: rgba(56, 189, 248, 45%);
 }
 
 .touch-zone.active {
@@ -45,48 +45,48 @@ body {
 
 /* Ability accent colors */
 .touch-zone.zone-light {
-    border-color: rgba(56, 189, 248, 55%);
+    border-color: rgba(56, 189, 248, 85%);
 }
 .touch-zone.zone-light.active,
 .powers-active .touch-zone.zone-light {
     border-color: #38BDF8;
     background-color: rgba(2, 132, 199, 55%);
-    opacity: 0.95;
+    opacity: 1;
 }
 
 .touch-zone.zone-heavy {
-    border-color: rgba(245, 158, 11, 55%);
+    border-color: rgba(245, 158, 11, 85%);
 }
 .touch-zone.zone-heavy.active,
 .powers-active .touch-zone.zone-heavy {
     border-color: #F59E0B;
     background-color: rgba(180, 83, 9, 55%);
-    opacity: 0.95;
+    opacity: 1;
 }
 
 .touch-zone.zone-use {
-    border-color: rgba(34, 197, 94, 55%);
+    border-color: rgba(34, 197, 94, 85%);
 }
 .touch-zone.zone-use.active,
 .powers-active .touch-zone.zone-use {
     border-color: #22C55E;
     background-color: rgba(21, 128, 61, 55%);
-    opacity: 0.95;
+    opacity: 1;
 }
 
 .touch-zone.zone-jump {
-    border-color: rgba(168, 85, 247, 55%);
+    border-color: rgba(168, 85, 247, 85%);
 }
 .touch-zone.zone-jump.active,
 .powers-active .touch-zone.zone-jump {
     border-color: #A855F7;
     background-color: rgba(126, 34, 206, 55%);
-    opacity: 0.95;
+    opacity: 1;
 }
 
 .touch-zone.zone-powers {
-    border-color: rgba(244, 63, 94, 60%);
-    background-color: rgba(225, 29, 72, 35%);
+    border-color: rgba(244, 63, 94, 85%);
+    background-color: rgba(74, 16, 34, 72%);
 }
 .touch-zone.zone-powers.active,
 .powers-active .touch-zone.zone-powers {
@@ -101,8 +101,8 @@ body {
 }
 
 .touch-icon {
-    width: 44%;
-    height: 44%;
+    width: 55%;
+    height: 55%;
     display: block;
     margin: 0 auto;
     pointer-events: none;
@@ -110,47 +110,24 @@ body {
 
 .touch-label {
     color: rgba(244, 249, 255, 96%);
-    font-size: 11dp;
+    font-size: 10dp;
     font-weight: bold;
     text-align: center;
     margin-top: 2dp;
     text-transform: uppercase;
-    letter-spacing: 0.5dp;
+    letter-spacing: 0.2dp;
 }
 
-.touch-badge {
-    position: absolute;
-    top: 4dp;
-    right: 8dp;
-    font-size: 9dp;
-    font-weight: bold;
-    padding: 1dp 4dp;
-    border-radius: 5dp;
-    color: #FFFFFF;
-    background-color: rgba(15, 23, 42, 80%);
-    border: 1dp rgba(255, 255, 255, 35%);
+
+.touch-zone.zone-light {
+    border-width: 3dp;
 }
 
-.touch-badge.p1 {
-    color: #BAE6FD;
-    border-color: #38BDF8;
-    background-color: rgba(2, 132, 199, 65%);
+.touch-zone.stick.active .touch-stick-knob {
+    background-color: rgba(125, 232, 255, 85%);
+    border-color: #FFFFFF;
 }
 
-.touch-badge.p2 {
-    color: #FEF3C7;
-    border-color: #F59E0B;
-    background-color: rgba(180, 83, 9, 65%);
-}
-
-.touch-badge.p3 {
-    color: #D1FAE5;
-    border-color: #10B981;
-    background-color: rgba(4, 120, 87, 65%);
-}
-
-.touch-badge.p4 {
-    color: #F3E8FF;
-    border-color: #A855F7;
-    background-color: rgba(109, 40, 217, 65%);
+.touch-zone.zone-pause .touch-label {
+    display: none;
 }
