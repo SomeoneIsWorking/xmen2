@@ -33,12 +33,14 @@ changed/distinct decoded frames on both targets. Increasing the probe to 8 MiB
 and ten seconds does not solve the boundary; a larger budget is not an
 acceptable fix.
 
-The current packaged ARM64 Cuttlefish run now reaches the title splash image
-after importing the complete install and remains alive with JIT execution and
-no Android fatal signal. It has only two presents after roughly two minutes;
-the heartbeat then reports the guest blocked inside the JIT/host boundary while
-the screen returns to black. The first movie has therefore crossed the decoder
-boundary, but the run still does not reach the menu.
+The current packaged ARM64 Cuttlefish run reaches the title splash image after
+importing the complete install and remains alive with JIT execution and no
+Android fatal signal. Around two minutes it has only two presents and the
+heartbeat reports a long wait inside the JIT/host boundary, which can make the
+screen appear black. A continued run later reached 164 presents and displayed
+the X-Men logo, with 89,509 translated blocks and zero JIT refusals. This is
+extreme emulator startup latency rather than a confirmed permanent stall, but
+the first movie still has not been shown to continue to the menu.
 
 ## Remaining falsifier
 
