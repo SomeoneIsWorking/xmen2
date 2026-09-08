@@ -33,7 +33,7 @@ def test_support_matrix_distinguishes_product_and_policy_targets():
 
 def test_unsupported_targets_cannot_acquire_a_fake_native_plan():
     for name in ("windows-x86_64", "android-arm64"):
-        with pytest.raises(RuntimeError, match="policy only"):
+        with pytest.raises(RuntimeError, match="policy"):
             ci_support.native_targets(ci_support.TARGETS[name])
 
 

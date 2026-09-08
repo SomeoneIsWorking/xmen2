@@ -63,12 +63,13 @@ TARGETS: Mapping[str, TargetSupport] = {
         key="android-arm64",
         system="Linux",
         machine="x86_64",
-        verification="policy only",
+        verification="policy + arm64 APK assembly",
         gameplay_jit=False,
         native_components=False,
         explanation=(
-            "the ARM64 x86port JIT backend is absent and the current native "
-            "target needs a player-derived font calibration header"
+            "the asset-free native target needs a player-derived font "
+            "calibration header; the release workflow assembles the APK "
+            "with the pinned Android profile"
         ),
     ),
     "web-wasm": TargetSupport(
@@ -332,12 +333,19 @@ def markdown_support_rows() -> tuple[str, ...]:
         "android-arm64": "Android ARM64",
         "web-wasm": "Web (WASM + PWA)",
     }
+    # CI tiering is deliberately separate from product capability.  Android
+    # and Apple Silicon have a real ARM64 backend, but their asset-free jobs
+    # cannot claim title gameplay or device qualification.  Deriving the
+    # README row from ``gameplay_jit`` used to relabel both products as
+    # unsupported after the backend landed.
+    product_status = {
+        "linux-x86_64": "JIT available; CI makes no asset-backed gameplay claim",
+        "macos-arm64": "ARM64 JIT present; host/runtime and real-title qualification pending",
+        "windows-x86_64": "Unsupported: the native Windows host is not implemented",
+        "android-arm64": "ARM64 JIT present; emulator boot/gameplay and device qualification pending",
+        "web-wasm": "Browser package build/deployment is in progress; real-title browser execution remains a separate qualification gate (docs/web-release.md)",
+    }
     rows = []
     for key, target in TARGETS.items():
-        status = (
-            "JIT available; CI makes no asset-backed gameplay claim"
-            if target.gameplay_jit
-            else f"Unsupported: {target.explanation}"
-        )
-        rows.append(f"| {labels[key]} | {target.verification} | {status} |")
+        rows.append(f"| {labels[key]} | {target.verification} | {product_status[key]} |")
     return tuple(rows)
