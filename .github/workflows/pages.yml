@@ -80,10 +80,19 @@ jobs:
         with:
           version: 4.0.16
           actions-cache-folder: emsdk-cache
-      - name: Install browser shader tools
+      - name: Install GLSL compiler
         run: |
           sudo apt-get update
-          sudo apt-get install --no-install-recommends -y glslc spirv-tools
+          sudo apt-get install --no-install-recommends -y glslc
+      - name: Build pinned SPIR-V tools
+        run: |
+          git clone --filter=blob:none https://github.com/KhronosGroup/SPIRV-Tools.git vendor/spirv-tools
+          git -C vendor/spirv-tools checkout --detach 685919f35dfbb8c2b50bf61412349a48d9fc6a37
+          git -C vendor/spirv-tools submodule update --init --recursive
+          cmake -S vendor/spirv-tools -B build/spirv-tools -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF
+          cmake --build build/spirv-tools --target spirv-as spirv-dis spirv-opt spirv-val --parallel 2
+          echo "$GITHUB_WORKSPACE/build/spirv-tools" >> "$GITHUB_PATH"
       - name: Build asset-free browser package
         run: uv run --frozen python tools/build_web.py --emsdk "$EMSDK" --jobs 2
       - name: Upload Pages artifact
