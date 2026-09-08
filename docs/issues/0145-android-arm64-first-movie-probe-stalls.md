@@ -24,7 +24,9 @@ the user-provided SFD and preserves the tight/padded row checks. An ARM64
 standalone decode probe now returns promptly instead of spending the boot
 interval in `avformat_find_stream_info`, but the stream remains unclassified
 on that path; the correction is therefore a bounded refusal, not a complete
-Android movie fix.
+Android movie fix. Increasing the probe to 8 MiB and ten seconds does not
+solve the boundary: the same ARM64 probe remains busy beyond the 30-second
+test window, so a larger budget is not an acceptable fix.
 
 ## Remaining falsifier
 
