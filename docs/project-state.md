@@ -582,9 +582,13 @@ unit-verified". Measured phone evidence remains S018's gate. The web target
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
 The complete browser artifact loads and rejects a malformed ZIP through its
-native installer. The pinned Pages workflow deployed the asset-free artifact at
-`https://someoneisworking.github.io/xmen2/`, but it has not reached game
-execution in a browser.
+native installer. The pinned Pages workflow succeeded at run `34211859497` and
+deployed the asset-free artifact at
+`https://someoneisworking.github.io/xmen2/`. WebLua verified the deployed setup
+page with `crossOriginIsolated=true`, a WASM runtime, a canvas, no console
+errors, and no failed network requests. The headless browser exposed
+`navigator.gpu` but returned no adapter, so game execution and WebGPU rendering
+remain unqualified in this environment.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.
 `tools/build_web.py` consumes the shared `web-port` dependency prefix and stages
 an explicit asset-only release under `build/release/web`.
