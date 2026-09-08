@@ -112,7 +112,7 @@ jobs:
       - run: uv run --frozen python tools/ci.py policy --target android-arm64
 
   web-wasm-portability:
-    name: Web WASM portability (no web product exists)
+    name: Web WASM shared-runtime census
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
@@ -139,8 +139,6 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install --no-install-recommends ninja-build
       - run: uv sync --frozen
       - run: uv run --frozen python tools/ci.py policy --target web-wasm
-      # This measures which translation units are already portable and names
-      # the ones that are not. It is NOT a web build: docs/project-state.md
-      # S021 is blocked, and a green job here means the measurement matched its
-      # pin, never that the game runs in a browser.
+      # This measures the shared runtime. Browser install, rendering, and
+      # gameplay remain the title-specific S021 release gates.
       - run: uv run --frozen python tools/ci.py wasm-portability --target web-wasm

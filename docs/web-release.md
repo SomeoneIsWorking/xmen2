@@ -132,7 +132,7 @@ while running, together with rendering, audio, input, save and memory evidence.
 Do not convert an input script into a gameplay gate or call a loading-only page
 a shipped game. Hosted CI and release artifacts contain no copyrighted assets.
 
-The old `tools/wasm_portability.py` compiler census is not a browser product gate.
-It must be updated to the completed runtime boundaries as their pins land;
-stale expected compiler failures cannot remain a substitute for building and
-exercising the actual shipping artifact.
+`tools/wasm_portability.py` is the shared-runtime census, not a browser product
+gate. It records compiled translation-unit denominators for the pinned
+WebAssembly backend; title install, rendering, gameplay, and lifecycle evidence
+come from the packaged Pages artifact and a real browser run.

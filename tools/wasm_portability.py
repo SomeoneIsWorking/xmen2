@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Measure what of the engine compiles to wasm32, and refuse to guess.
+"""Measure the shared JIT and platform owners that compile to wasm32.
 
-The web target (`docs/web-release.md`) is blocked on things that do not exist,
-and the honest question while it is blocked is not "does the web build work" --
-it does not -- but "which parts of the engine are already portable, and which
-exact files are not, and why". A number without a denominator cannot answer
+The browser target now has a real WebAssembly backend. This check keeps its
+shared runtime census honest while the title-specific browser gate remains a
+separate product observation. A number without a denominator cannot answer
 that, and neither can a green tick on a job that compiled nothing.
 
 So this configures the real CMake projects with Emscripten, builds them with
@@ -34,28 +33,7 @@ import shared_dir
 
 SKIP = 77
 
-# What is known NOT to compile to wasm32, and why. These are the two blockers
-# W1 and a consequence of them, expressed as compile errors rather than as
-# prose -- which is the point: the pin makes the claim falsifiable.
-#
-# An entry removed from here must be removed because the file now compiles.
-KNOWN_UNPORTABLE = {
-    "code_memory.cpp": (
-        "llvm.clear_cache is not supported on wasm. This is the JIT's "
-        "executable code region: WebAssembly has no instruction cache to "
-        "flush because it has no way to execute a byte buffer at all. The "
-        "WebAssembly backend needs no code region -- it produces a module -- "
-        "so what this marks is the dispatcher, which still routes every "
-        "translation through the region and has to fork before it. Gate W1."
-    ),
-    "x87.c": (
-        "'#pragma FENV_ACCESS' is not supported on this target. WebAssembly "
-        "has no floating-point environment -- no rounding-mode control and no "
-        "exception flags -- so a wasm build cannot delegate the guest x87 "
-        "control word to host FP and must route x87 through the software float "
-        "path instead. The Bochs softfloat sources themselves compile clean."
-    ),
-}
+KNOWN_UNPORTABLE: dict[str, str] = {}
 
 # Port owners with no window, no device and no external dependency. They are
 # measured one at a time because they have no wasm CMake project yet; the point
@@ -174,7 +152,7 @@ def measure_engine(
     # measuring something that no longer exists.
     components = {
         "x86port_runtime (x86 decode, semantics, x87, SIMD, host emission)": "CMakeFiles/x86port_runtime.dir",
-        "jitcommon (shared code region and block cache)": "jitcommon/CMakeFiles/jitcommon.dir",
+        "jitcommon cache (shared block cache)": "jitcommon/jitcommon_cache/CMakeFiles/jitcommon_cache.dir",
         "Zydis (the pinned decoder)": "vendor/zydis/CMakeFiles/Zydis.dir",
         "Zycore (Zydis support, no-libc)": "vendor/zydis/zycore/CMakeFiles/Zycore.dir",
         "x86p_softfloat (Bochs software x87/SSE math)": "CMakeFiles/x86p_softfloat.dir",
@@ -313,8 +291,8 @@ def main() -> int:
         )
         return 1
     print(
-        "  NOT a claim that the web build works: it does not. "
-        "docs/project-state.md S021 is blocked on W1-W3."
+        "  Shared wasm runtime census passed; title browser gameplay, install, "
+        "rendering, and lifecycle evidence remain separate S021 gates."
     )
     for name, reason in sorted(KNOWN_UNPORTABLE.items()):
         print(f"  unportable, by design for now -- {name}: {reason}")

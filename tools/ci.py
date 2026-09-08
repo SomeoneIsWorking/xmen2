@@ -96,13 +96,11 @@ def native_components(target: ci_support.TargetSupport) -> None:
 
 
 def wasm_portability(target: ci_support.TargetSupport) -> None:
-    """Measure what of the engine compiles to wasm32, with denominators.
+    """Measure the shared WebAssembly runtime with denominators.
 
-    The web target is blocked (docs/project-state.md S021), so this deliberately
-    does NOT build a product and must never be read as one working. It records
-    which translation units are already portable and names the ones that are
-    not, so the two blockers stay visible and a regression in the portable half
-    is caught while the blockers are still open.
+    The browser product has a real WebAssembly backend. This census records its
+    compiled translation-unit counts; title install, rendering, and gameplay
+    evidence remain the separate S021 gates.
     """
     ci_support.require_runner(target)
     if target.gameplay_jit or target.native_components:

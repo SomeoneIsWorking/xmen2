@@ -48,7 +48,7 @@ TARGETS: Mapping[str, TargetSupport] = {
         verification="policy + platform-neutral native component build and tests",
         gameplay_jit=False,
         native_components=True,
-        explanation="the ARM64 x86port JIT backend does not exist yet",
+        explanation="the asset-free job cannot execute the Apple host runtime",
     ),
     "windows-x86_64": TargetSupport(
         key="windows-x86_64",
@@ -80,9 +80,9 @@ TARGETS: Mapping[str, TargetSupport] = {
         gameplay_jit=False,
         native_components=False,
         explanation=(
-            "no WebAssembly JIT backend exists, so an Emscripten build would "
-            "link the x86-64 emitter and die on its first translated block, "
-            "and SDL_GPU has no web backend (docs/web-release.md, W1 and W2)"
+            "the shared WebAssembly runtime is measurable, but title browser "
+            "install, rendering, and gameplay qualification remain separate "
+            "gates (docs/web-release.md)"
         ),
     ),
 }
