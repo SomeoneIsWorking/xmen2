@@ -80,6 +80,10 @@ jobs:
         with:
           version: 4.0.16
           actions-cache-folder: emsdk-cache
+      - name: Install browser shader tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y glslc spirv-tools
       - name: Build asset-free browser package
         run: uv run --frozen python tools/build_web.py --emsdk "$EMSDK" --jobs 2
       - name: Upload Pages artifact
