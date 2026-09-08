@@ -1,10 +1,10 @@
 #include "win_path.h"
 
+#include "platform_posix.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #ifndef X2_TEST_WIN_PATH_ROOT
 #define X2_TEST_WIN_PATH_ROOT "scratch/test-win-path"
