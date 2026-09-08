@@ -50,3 +50,12 @@ owner for case-insensitive comparisons, mapping to `_stricmp`/`_strnicmp` on
 Windows and the existing POSIX functions elsewhere. This removes the direct
 `strings.h` header blocker without changing comparison semantics; the native
 Linux target still compiles and links after the change.
+
+Synchronization and timing now have the same boundary in
+`src/native/platform_threads.h`. Windows uses SRW locks, condition variables,
+`CreateThread`, high-resolution clocks, `Sleep`, and `SwitchToThread`, while
+POSIX builds retain `pthread`/`clock_gettime`/`nanosleep`. The native target,
+guest-memory tests, and guest-call-stack thread test pass on Linux; a Clang
+Windows-target syntax pass accepts the new Windows branch with Zig's SDK
+headers. This still does not prove a linked Windows executable because the
+remaining POSIX file, socket, signal, and CMake dependency owners are open.

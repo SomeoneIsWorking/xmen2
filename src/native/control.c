@@ -8,10 +8,10 @@
 #include "control_performance_route.h"
 #include "control_query.h"
 #include "control_save_route.h"
-#include "control_ui_route.h"
 #include "control_screenshot.h"
 #include "control_status.h"
 #include "control_status_route.h"
+#include "control_ui_route.h"
 #include "dinput_fifo.h"
 #include "dinput_pad.h"
 #include "gpu_capture.h"
@@ -23,8 +23,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_threads.h"
 #include <errno.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

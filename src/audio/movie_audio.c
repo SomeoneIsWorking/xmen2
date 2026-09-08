@@ -1,8 +1,8 @@
 #include "movie_audio.h"
 #include "../native/x2_log.h"
 
+#include "platform_threads.h"
 #include <math.h>
-#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

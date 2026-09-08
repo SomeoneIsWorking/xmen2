@@ -7,8 +7,8 @@
 #include "x2_log.h"
 #include "x86_engine.h"
 
+#include "platform_threads.h"
 #include <errno.h>
-#include <pthread.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 

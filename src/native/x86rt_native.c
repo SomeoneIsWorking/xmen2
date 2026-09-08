@@ -10,6 +10,7 @@
 #include "host_imports.h"
 #include "pe_map.h"
 #include "platform_strings.h"
+#include "platform_threads.h"
 #include "threads.h"
 #include "x86_dispatch_report.h"
 #include "x86_engine.h"
@@ -19,7 +20,6 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>

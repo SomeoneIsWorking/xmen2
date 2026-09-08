@@ -46,8 +46,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_threads.h"
 #include <errno.h>
-#include <pthread.h>
 #include <sched.h>
 #include <stdatomic.h>
 #include <stdio.h>

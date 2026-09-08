@@ -13,10 +13,10 @@
  */
 #include "control_http.h"
 
+#include "platform_threads.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
-#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>

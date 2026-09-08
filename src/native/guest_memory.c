@@ -12,8 +12,8 @@
 #include "guest_memory.h"
 #include "platform_mman.h"
 
+#include "platform_threads.h"
 #include <errno.h>
-#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>

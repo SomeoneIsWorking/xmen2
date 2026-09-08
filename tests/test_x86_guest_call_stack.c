@@ -6,8 +6,8 @@
  */
 #include "x86_guest_call_stack.h"
 
+#include "platform_threads.h"
 #include <assert.h>
-#include <pthread.h>
 #include <stdio.h>
 
 static int checks;
