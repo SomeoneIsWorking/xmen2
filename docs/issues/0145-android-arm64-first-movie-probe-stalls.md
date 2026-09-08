@@ -38,15 +38,19 @@ importing the complete install and remains alive with JIT execution and no
 Android fatal signal. Around two minutes it has only two presents and the
 heartbeat reports a long wait inside the JIT/host boundary, which can make the
 screen appear black. A continued run later reached 164 presents and displayed
-the X-Men logo, with 89,509 translated blocks and zero JIT refusals. This is
-extreme emulator startup latency rather than a confirmed permanent stall, but
-the first movie still has not been shown to continue to the menu.
+the X-Men logo, with 89,509 translated blocks and zero JIT refusals. After the
+same process remained alive for 996 presents, the ARM64 Cuttlefish screenshot
+showed the retail main menu and the status endpoint reported a Vulkan renderer
+at 1280x720. This is extreme emulator startup latency rather than a permanent
+boot stall. A control-channel key request still timed out because the guest did
+not poll the keyboard within five seconds, so interactive menu selection is not
+yet evidence.
 
 ## Remaining falsifier
 
 The remaining falsifier is the packaged APK: it must open the first SFD,
-display a movie frame, continue to the menu, and survive pause/resume and
-recreation while the import notification remains truthful. Until that
-device run and the named-device performance collection are captured, Android
-gameplay and release performance remain partial. Do not skip the movie or
-claim a boot fix from JIT counters alone.
+display a movie frame, accept an input into a representative interactive scene,
+and survive pause/resume and recreation while the import notification remains
+truthful. Until that device run and the named-device performance collection are
+captured, Android gameplay and release performance remain partial. Do not skip
+the movie or claim a boot fix from JIT counters alone.
