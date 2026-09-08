@@ -23,13 +23,13 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_posix.h"
 #include "platform_threads.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <unistd.h>
 
 /*
  * ONE command in flight at a time, handed across a mutex.

@@ -13,6 +13,7 @@
  */
 #include "control_http.h"
 
+#include "platform_posix.h"
 #include "platform_threads.h"
 #include <arpa/inet.h>
 #include <errno.h>
@@ -21,7 +22,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <unistd.h>
 
 static void send_all(int fd, const void *p, size_t n) {
   const char *b = (const char *)p;

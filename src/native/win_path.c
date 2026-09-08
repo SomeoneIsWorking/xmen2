@@ -8,6 +8,7 @@
 #include "save_trace_runtime.h"
 #include "shell32.h"
 
+#include "platform_posix.h"
 #include "platform_strings.h"
 #include <ctype.h>
 #include <dirent.h>
@@ -17,7 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #define ASSET_MAX 1024
 #define WIN_PATH_MAX 1024

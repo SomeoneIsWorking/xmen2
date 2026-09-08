@@ -9,6 +9,7 @@
 #include "guest_memory.h"
 #include "host_imports.h"
 #include "pe_map.h"
+#include "platform_posix.h"
 #include "platform_strings.h"
 #include "platform_threads.h"
 #include "threads.h"
@@ -25,7 +26,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include <unistd.h>
 
 static X86Module *g_head;
 

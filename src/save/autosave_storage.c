@@ -2,13 +2,13 @@
 
 #include "autosave_storage.h"
 
+#include "platform_posix.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 static int write_complete(int fd, const void *data, size_t size) {
   const unsigned char *bytes = data;

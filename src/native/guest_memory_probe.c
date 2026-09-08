@@ -6,8 +6,8 @@
 #include "x86rt_native.h"
 
 #if !defined(X2_GUEST_MEMORY_SPARSE)
+#include "platform_posix.h"
 #include <sys/uio.h>
-#include <unistd.h>
 #if defined(__ANDROID__)
 #include <sys/syscall.h>
 #endif

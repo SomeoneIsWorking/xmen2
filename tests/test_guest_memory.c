@@ -1,11 +1,11 @@
 #include "guest_memory.h"
 
+#include "platform_posix.h"
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
-#include <unistd.h>
 
 /* Only guest_memory.c is compiled with these syscall names redirected. The
  * production page table and protection grouping execute unchanged against

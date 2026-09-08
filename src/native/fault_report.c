@@ -38,7 +38,7 @@
 #if !defined(__EMSCRIPTEN__)
 #include <ucontext.h>
 #endif
-#include <unistd.h>
+#include "platform_posix.h"
 
 static const char *fault_meaning(int sig, int code) {
   switch (sig) {

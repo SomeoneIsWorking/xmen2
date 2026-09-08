@@ -1,12 +1,12 @@
 #include "boot_mode_runtime.h"
 #include "save_directory.h"
 
+#include "platform_posix.h"
 #include <assert.h>
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 static int checks;
 #define CHECK(c)                                                               \

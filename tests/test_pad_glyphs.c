@@ -6,11 +6,11 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_posix.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <unistd.h>
 
 #define SIZE 0x00700000u
 #define BUFFER_RVA 0x0066aec8u

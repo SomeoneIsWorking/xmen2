@@ -12,11 +12,11 @@
 #include "guest_memory.h"
 #include "platform_mman.h"
 
+#include "platform_posix.h"
 #include "platform_threads.h"
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
 
 #define GUEST_SPACE_SIZE (UINT64_C(1) << 32)
 /* Win32 page state is always 4 KiB, including on a host whose VM protection

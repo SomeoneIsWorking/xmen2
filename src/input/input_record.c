@@ -4,13 +4,13 @@
 #include "input_record.h"
 #include "json_string.h"
 
+#include "platform_posix.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
 
 #define KEYBOARD_BYTES 256u
 #define GAMEPAD_BYTES 272u

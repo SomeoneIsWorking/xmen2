@@ -6,6 +6,7 @@
 
 #include "save_catalog.h"
 
+#include "platform_posix.h"
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
@@ -16,7 +17,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include <unistd.h>
 
 static char test_dir[] = "scratch/save-catalog-test-XXXXXX";
 static int checks;

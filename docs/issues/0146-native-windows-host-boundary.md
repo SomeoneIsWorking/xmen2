@@ -59,3 +59,11 @@ guest-memory tests, and guest-call-stack thread test pass on Linux; a Clang
 Windows-target syntax pass accepts the new Windows branch with Zig's SDK
 headers. This still does not prove a linked Windows executable because the
 remaining POSIX file, socket, signal, and CMake dependency owners are open.
+
+The remaining direct `unistd.h` includes in title/test sources now route
+through `platform_posix.h`, which maps the required CRT operations on Windows
+(`_read`, `_write`, `_close`, `_mkdir`, `_fullpath`, `_pipe`, and related file
+offset calls) while retaining the POSIX names on Linux. The full native Linux
+build and 149-test CTest run pass, with only the documented data/tool skips;
+this further narrows the Windows work to real host semantics rather than
+header portability.

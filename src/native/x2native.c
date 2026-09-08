@@ -52,6 +52,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_posix.h"
 #include "platform_strings.h"
 #include <errno.h>
 #include <signal.h>
@@ -59,7 +60,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
-#include <unistd.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>

@@ -1,11 +1,11 @@
 #include "install_picker.h"
 #include "install_requirements.h"
 
+#include "platform_posix.h"
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 static int create_file(const char *path) {
   FILE *file = fopen(path, "wb");

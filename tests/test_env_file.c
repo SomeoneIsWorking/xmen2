@@ -1,13 +1,13 @@
 #define _GNU_SOURCE
 #include "env_file.h"
 
+#include "platform_posix.h"
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 static char start_dir[PATH_MAX];
 static char test_dir[64];

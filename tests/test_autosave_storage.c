@@ -7,6 +7,7 @@
 #include "autosave_storage.h"
 #include "save_directory.h"
 
+#include "platform_posix.h"
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -14,7 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 static int checks;
 static int failures;

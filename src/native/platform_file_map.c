@@ -44,11 +44,11 @@ void x2_file_unmap(X2FileMap *mapping) {
 
 #else
 
+#include "platform_posix.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 int x2_file_map_readonly(const char *path, X2FileMap *out) {
   struct stat stat_info;

@@ -7,11 +7,11 @@
 #include "fault_report.h"
 #include "x2_log.h"
 
+#include "platform_posix.h"
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/wait.h>
-#include <unistd.h>
 
 static void genuine_illegal_instruction(void) {
 #if defined(__aarch64__)

@@ -5,8 +5,8 @@
 #include "input_record.h"
 #include "json_string.h"
 
+#include "platform_posix.h"
 #include <stdio.h>
-#include <unistd.h>
 
 size_t control_status_format(char *body, size_t capacity,
                              unsigned long requests, unsigned long keys_pressed,

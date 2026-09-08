@@ -16,11 +16,11 @@
 #include "gpu_device.h"
 #include "x86rt.h"
 
+#include "platform_posix.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>
