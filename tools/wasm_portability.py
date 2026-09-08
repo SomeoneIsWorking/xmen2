@@ -152,7 +152,7 @@ def measure_engine(
     # measuring something that no longer exists.
     components = {
         "x86port_runtime (x86 decode, semantics, x87, SIMD, host emission)": "CMakeFiles/x86port_runtime.dir",
-        "jitcommon cache (shared block cache)": "jitcommon/jitcommon_cache/CMakeFiles/jitcommon_cache.dir",
+        "jitcommon cache (shared block cache)": "jitcommon/CMakeFiles/jitcommon_cache.dir",
         "Zydis (the pinned decoder)": "vendor/zydis/CMakeFiles/Zydis.dir",
         "Zycore (Zydis support, no-libc)": "vendor/zydis/zycore/CMakeFiles/Zycore.dir",
         "x86p_softfloat (Bochs software x87/SSE math)": "CMakeFiles/x86p_softfloat.dir",
