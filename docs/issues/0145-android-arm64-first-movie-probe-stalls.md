@@ -20,11 +20,17 @@ streams are MPEG-1 video and ADX audio.
 The title FMV owner bounds MPEG-PS probing to one MiB and two seconds before
 stream discovery, and labels the title's stable `0x1e0`/`0x1c0` stream ids when
 the demuxer has already created them. The host FMV decode test still decodes
-the user-provided SFD and preserves the tight/padded row checks.
+the user-provided SFD and preserves the tight/padded row checks. An ARM64
+standalone decode probe now returns promptly instead of spending the boot
+interval in `avformat_find_stream_info`, but the stream remains unclassified
+on that path; the correction is therefore a bounded refusal, not a complete
+Android movie fix.
 
 ## Remaining falsifier
 
 An Android APK run must open the first SFD, report MPEG-1/ADX rather than an
-unsupported stream, display a movie frame, and continue to the menu. Until
-that run is captured, Android gameplay and performance remain partial. Do not
-skip the movie or claim a boot fix from JIT counters alone.
+unsupported stream, display a movie frame, and continue to the menu. The next
+implementation must preserve packet boundaries while supplying the missing
+MPEG sequence metadata, then pass the ARM64 decode test on the same captured
+SFD. Until that run is captured, Android gameplay and performance remain
+partial. Do not skip the movie or claim a boot fix from JIT counters alone.

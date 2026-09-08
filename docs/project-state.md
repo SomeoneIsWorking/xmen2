@@ -176,7 +176,9 @@ the foreground notification reported live bounded-copy progress, the staged
 tree promoted successfully, and the game reached 36,518 translated blocks with
 zero JIT refusals and no Android fatal signal. The first-movie run remains
 open: the captured earlier stack stalled in FFmpeg's MPEG-PS stream probe, so
-the title now bounds that probe and records the remaining first-frame gate in
+the title now bounds that probe; an ARM64 standalone decode still needs the
+missing MPEG sequence metadata before it can pass. The remaining first-frame
+gate is recorded in
 [`0145`](issues/0145-android-arm64-first-movie-probe-stalls.md).
 
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
