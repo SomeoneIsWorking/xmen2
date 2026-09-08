@@ -20,6 +20,16 @@
 #define AUDIO_HORIZON_SECONDS 0.75
 #define VIDEO_HORIZON_SECONDS 0.20
 
+/* X-Men's SFD files are MPEG program streams without a program-stream map.
+   The first audio/video PES ids are stable across the shipped movie set; the
+   demuxer otherwise leaves the video codec as a probe request and the
+   portable ARM64 decoder can spend minutes decoding packets just to discover
+   metadata it already owns from the title format. */
+#define X2_SFD_AUDIO_STREAM_ID 0x1c0
+#define X2_SFD_VIDEO_STREAM_ID 0x1e0
+#define X2_SFD_PROBE_BYTES (1024 * 1024)
+#define X2_SFD_PROBE_TIME_US (2 * AV_TIME_BASE)
+
 typedef struct {
   uint8_t *bgra;
   double timestamp;
@@ -88,6 +98,25 @@ static AVCodecContext *open_codec(AVFormatContext *format, int stream,
     avcodec_free_context(&context);
   }
   return context;
+}
+
+static void configure_sfd_probe(AVFormatContext *format) {
+  unsigned i;
+  if (!format || !format->iformat || strcmp(format->iformat->name, "mpeg") != 0)
+    return;
+  format->probesize = X2_SFD_PROBE_BYTES;
+  format->max_analyze_duration = X2_SFD_PROBE_TIME_US;
+  for (i = 0; i < format->nb_streams; ++i) {
+    AVCodecParameters *parameters = format->streams[i]->codecpar;
+    if (format->streams[i]->id == X2_SFD_VIDEO_STREAM_ID &&
+        parameters->codec_type == AVMEDIA_TYPE_VIDEO &&
+        parameters->codec_id == AV_CODEC_ID_NONE)
+      parameters->codec_id = AV_CODEC_ID_MPEG1VIDEO;
+    else if (format->streams[i]->id == X2_SFD_AUDIO_STREAM_ID &&
+             parameters->codec_type == AVMEDIA_TYPE_AUDIO &&
+             parameters->codec_id == AV_CODEC_ID_NONE)
+      parameters->codec_id = AV_CODEC_ID_ADPCM_ADX;
+  }
 }
 
 static void free_video_queue(X2FmvPlayer *player) {
@@ -271,8 +300,10 @@ X2FmvPlayer *x2_fmv_open(const char *path, const X2FmvAudioSink *sink,
   if (sink)
     player->sink = *sink;
   result = avformat_open_input(&player->format, path, NULL, NULL);
-  if (result >= 0)
+  if (result >= 0) {
+    configure_sfd_probe(player->format);
     result = avformat_find_stream_info(player->format, NULL);
+  }
   if (result < 0) {
     error_text(error, error_size, "cannot open SFD", result);
     x2_fmv_close(player);
