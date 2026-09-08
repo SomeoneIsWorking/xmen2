@@ -27,10 +27,12 @@ contains only the extracted game tree; rejected imports discard their bounded
 staging instead. No filesystem path is inferred from a SAF URI
 and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
 
-`GameImportNotification` owns only the title's notification content and setup
-link. Lucent owns foreground service start, notification updates, and teardown.
+The setup supplies notification wording and destination to `LucentImportProgress`;
+Lucent owns the persistent progress bar, foreground service, updates and teardown.
+The pending external picker identity is saved with Activity state and restored
+with a callback belonging to the new Activity before Android delivers its result.
 Displaying import progress again on Activity resume does not start another
-service; completion, rejection, cancellation, and Activity destruction stop the
+service; completion, rejection, cancellation, and finishing the Activity stop the
 existing service through `Context.stopService`, so a late stop cannot create a
 background service during the import-to-game handoff. Foreground promotion
 failures propagate instead of being hidden by a plain notification. Lucent's

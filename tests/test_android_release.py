@@ -130,6 +130,9 @@ def main() -> int:
     # validation. No port code may reconstruct a provider filesystem path or
     # request broad all-files access.
     assert "LucentDocumentImport" in setup
+    assert "savePickerState()" in setup
+    assert "restorePickerState(" in setup
+    assert "LucentImportProgress" in setup
     assert "discardValidatedDocument" in setup
     assert "discardRejectedImport" in setup
     assert setup.count("discardRejectedImport(result)") == 2
@@ -148,7 +151,7 @@ def main() -> int:
     assert "[HOST STACK] unavailable on Android" in fault_report
     assert "::dup2(pipe_descriptors[1], STDOUT_FILENO)" in bridge
     assert "::dup2(pipe_descriptors[1], STDERR_FILENO)" in bridge
-    runtime = (ROOT / "src/native/x86rt_native.c").read_text(encoding="utf-8")
+    runtime = (ROOT / "src/native/guest_memory_probe.c").read_text(encoding="utf-8")
     assert "syscall(SYS_process_vm_readv" in runtime
     draw_trace = (ROOT / "src/gpu/gpu_draw_trace.c").read_text(encoding="utf-8")
     assert "funopen(&g_capture" in draw_trace
