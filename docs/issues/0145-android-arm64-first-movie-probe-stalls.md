@@ -46,6 +46,14 @@ boot stall. A control-channel key request still timed out because the guest did
 not poll the keyboard within five seconds, so interactive menu selection is not
 yet evidence.
 
+A fresh setup launch on the same ARM64 Cuttlefish instance requested Android's
+notification permission and opened the real DocumentsUI `OPEN_DOCUMENT` picker;
+the picker restored its previous `Download/xmen2-emulator-test` location. The
+host became unresponsive to subsequent ADB input while the picker was open, so
+no selection or interrupted-copy notification trace was recorded. This proves
+the picker route is reachable, not that SAF import completion or recreation is
+verified.
+
 ## Remaining falsifier
 
 The remaining falsifier is the packaged APK: it must open the first SFD,
