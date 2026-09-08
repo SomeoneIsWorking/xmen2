@@ -19,10 +19,9 @@ States: `verified` means the stated outcome was observed with durable evidence;
 
 ## Current focus
 
-**S002 — native-overrides + x86port-JIT gameplay execution.** The active work
-is to close the product-only JIT boundary, canonical x86port publication/pin
-reconciliation, representative interactive gameplay conformance, and
-declared-host backend gaps.
+**S022 — native Windows host package and CI release.** The active work is to
+close the title's Windows VM, file, synchronization, and remaining host
+boundaries before adding a real Windows build and release artifact.
 
 ## Capability inventory
 
@@ -643,9 +642,12 @@ verified.
 ### S022 — native Windows host package and CI release: missing
 
 The current Windows job is a policy check that records the unsupported native
-host; the release workflow intentionally emits no Windows artifact. The native
-runtime still has POSIX-only executable-memory, file, thread, socket, signal,
-and diagnostic owners, so a Windows ZIP would not be a runnable release.
-Issue [#146](issues/0146-native-windows-host-boundary.md) records the required
-host-boundary port and its falsifier. Until that work lands, the Windows
-comparison baseline remains the retail executable rather than a port package.
+host; the release workflow intentionally emits no Windows artifact. The title
+now has portable VM, PE file-map, case-insensitive string, and synchronization
+boundaries, each with focused Linux regression coverage and a Windows-target
+syntax check where the SDK headers are available. The native runtime still
+has POSIX-only directory, socket, signal, diagnostic, and dependency-link
+owners, so a Windows ZIP would not be a runnable release. Issue
+[#146](issues/0146-native-windows-host-boundary.md) records the remaining
+host work and its falsifier. Until that work lands, the Windows comparison
+baseline remains the retail executable rather than a port package.
