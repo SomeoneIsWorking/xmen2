@@ -38,13 +38,13 @@ and makes no claim over the game.
 ## Setup and run from a fresh clone
 
 The host and packaging layers exist for Linux x86-64, Apple Silicon macOS, and
-Android ARM64. The current product JIT is implemented only on x86-64. The arm64
+Android ARM64. The x86port ARM64 JIT backend is now present and selected for
+both Apple Silicon and Android; the remaining work on those targets is
+host/ABI, executable-memory, and real-title gameplay qualification. The arm64
 Mach-O keeps the normal 4 GB `__PAGEZERO`; guest addresses are translated into
 a separate reserved 4 GB arena instead of weakening the executable's page-zero
-guard, but Apple Silicon and Android still require an ARM64 x86port JIT backend
-before they are gameplay products. Neither the test interpreter nor bounded
-per-block fallback can substitute for that backend. Native Windows is not
-implemented.
+guard. Neither the test interpreter nor bounded per-block fallback can
+substitute for a missing product backend. Native Windows is not implemented.
 
 Install `uv`, a C/C++ compiler (GCC or Clang), and the native development
 packages. On Fedora/RHEL-family systems:
@@ -99,10 +99,10 @@ come from the locked environment.
 | Target | CI evidence | Gameplay product status |
 |---|---|---|
 | Linux x86-64 | policy + native/JIT component build and tests | JIT available; CI makes no asset-backed gameplay claim |
-| Apple Silicon macOS | policy + platform-neutral native component build and tests | Unsupported: the ARM64 x86port JIT backend does not exist yet |
+| Apple Silicon macOS | policy + platform-neutral native component build and tests | ARM64 JIT present; host/runtime and real-title qualification pending |
 | Windows x86-64 | policy only | Unsupported: the native Windows host is not implemented |
-| Android ARM64 | policy only | Unsupported: the ARM64 x86port JIT backend is absent and the current native target needs a player-derived font calibration header |
-| Web (WASM + PWA) | policy + measured wasm32 portability with denominators | Unsupported: no WebAssembly JIT backend exists, so an Emscripten build would link the x86-64 emitter and die on its first translated block, and SDL_GPU has no web backend (docs/web-release.md, W1 and W2) |
+| Android ARM64 | policy + arm64 APK assembly | ARM64 JIT present; emulator boot/gameplay and device qualification pending |
+| Web (WASM + PWA) | policy + measured wasm32 portability with denominators | Browser package build/deployment is in progress; real-title browser execution remains a separate qualification gate (docs/web-release.md) |
 
 The Android job deliberately does not compile an APK around a placeholder font
 ratio, and the macOS job does not use the test interpreter as a substitute JIT.

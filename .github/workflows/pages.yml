@@ -93,7 +93,7 @@ jobs:
           cmake -S vendor/spirv-tools -B build/spirv-tools -G Ninja \
             -DCMAKE_BUILD_TYPE=Release -DSPIRV_SKIP_TESTS=ON -DSPIRV_WERROR=OFF
           cmake --build build/spirv-tools --target spirv-as spirv-dis spirv-opt spirv-val --parallel 2
-          echo "$GITHUB_WORKSPACE/build/spirv-tools" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/build/spirv-tools/tools" >> "$GITHUB_PATH"
       - name: Build asset-free browser package
         run: uv run --frozen python tools/build_web.py --emsdk "$EMSDK" --jobs 2
       - name: Upload Pages artifact
