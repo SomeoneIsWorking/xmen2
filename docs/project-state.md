@@ -171,9 +171,10 @@ menu-state overlay feedback, not full gameplay HUD relocation. Waydroid's
 roughly 700 ms frames are an emulator diagnostic only, not Android performance
 evidence.
 
-Gap: the current x86port JIT has no ARM64 backend, so the Android gameplay
-product cannot yet satisfy S002. Neither the test interpreter nor bounded
-per-block fallback can substitute for that backend. A publishable APK also requires a stable physical Android test device,
+Gap: x86port now has an ARM64 emitter and runtime backend, but Android
+executable-memory, ABI, instruction-cache, and representative gameplay
+qualification are still incomplete; neither the test interpreter nor bounded
+per-block fallback can substitute for that host evidence. A publishable APK also requires a stable physical Android test device,
 full-gameplay HUD verification, the maintainer's long-lived keystore, and
 measured named-device performance. The required setup, touch-zone mapping, and
 device/thermal/frame-time evidence gate are specified in
