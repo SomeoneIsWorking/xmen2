@@ -1,10 +1,14 @@
 # Embed the fixed-function shader sources in the format required by the host.
-find_program(X2_GLSLC NAMES glslc REQUIRED)
+# Browser builds use web-port's WGSL converter and do not need the native
+# glslc compiler; native builds keep the explicit compiler requirement.
 if(EMSCRIPTEN)
     set(_x2_shader_converter "${X2_WEB_PORT_SOURCE}/tools/shaders.py")
     if(NOT EXISTS "${_x2_shader_converter}")
         message(FATAL_ERROR "Browser shader conversion requires shared/web-port; use tools/build_web.py")
     endif()
+endif()
+if(NOT EMSCRIPTEN)
+    find_program(X2_GLSLC NAMES glslc REQUIRED)
 endif()
 set(X2_SHADER_DIR ${CMAKE_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${X2_SHADER_DIR})
