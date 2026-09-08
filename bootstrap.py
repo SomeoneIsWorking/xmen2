@@ -40,7 +40,7 @@ SHARED_REPOS = (
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
                "9126444ee0c2da8108726d6f6d5287f0304a1a27", "tools/android_port.py"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",
-               "7e48da3722372f57cc259bb2da5dbaf3764a8d0a", "tools/web_port.py"),
+               "a66e52df035f1221d09f7e892a7822b628ab8a98", "tools/web_port.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact
     # revision, never a branch: a fresh clone that resolved to whatever `main`
     # happened to be would make two machines run different engines while

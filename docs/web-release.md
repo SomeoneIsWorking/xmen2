@@ -72,7 +72,10 @@ SDL WebGPU's synchronous native waits over asynchronous browser operations.
 Both the JIT and OPFS native calls run off the browser main thread. The
 application unmounts OPFS on its worker after returning from setup or native
 main, releasing browser-backed file handles before SDK runtime destruction.
-Stored files remain available on the next mount.
+Stored files remain available on the next mount. Emscripten 4.0.16 still joins
+the OPFS backend worker from its global destructor on the browser main thread;
+assertions expose this remaining SDK lifecycle warning. Unmount fixes file-handle
+teardown but does not establish fully nonblocking runtime shutdown.
 
 Wasm memory is shared and may grow up to 4 GiB. The initial capacity is 64 MiB;
 the measured title static data plus main stack already requires about 31 MiB.

@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: SomeoneIsWorking/web-port
-          ref: 7e48da3722372f57cc259bb2da5dbaf3764a8d0a
+          ref: a66e52df035f1221d09f7e892a7822b628ab8a98
           path: vendor/shared/web-port
           fetch-depth: 1
       - name: Checkout shared runtime dependencies
@@ -51,6 +51,7 @@ jobs:
           ref: b04e6657cac3156318506f4145a85e66b1ebc8e6
           path: vendor/shared/alchemy
           fetch-depth: 1
+          submodules: recursive
       - name: Checkout shared assets
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:

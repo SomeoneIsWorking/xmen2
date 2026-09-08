@@ -596,7 +596,9 @@ an explicit asset-only release under `build/release/web`.
   working on a local host without isolation headers, including a reload after the
   HTTP server was stopped. The browser package links and stages an asset-free
   release; its malformed ZIP path reaches the native bounded reader and refuses
-  the input. Complete-install import and gameplay remain unqualified.
+  the input. SDK shutdown still joins the OPFS backend worker on the browser
+  main thread; unmount removes the file-handle teardown but not that backend
+  lifecycle gap. Complete-install import and gameplay remain unqualified.
 - **W4, local install and persistence: partial.** Lucent's worker OPFS mount and
   bounded streaming staging passed actual browser read/write, duplicate-input,
   concurrent-import and failure-cleanup checks. The page requests persistent
