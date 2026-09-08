@@ -3,7 +3,7 @@
 #include "control.h"
 #include "control_status.h"
 
-void control_status_route(int fd, unsigned long requests,
+void control_status_route(x2_socket_t fd, unsigned long requests,
                           unsigned long keys_pressed,
                           unsigned long keys_refused,
                           unsigned long screenshots) {

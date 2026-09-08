@@ -23,6 +23,7 @@
 #ifndef X2_CONTROL_H
 #define X2_CONTROL_H
 
+#include "platform_socket.h"
 #include <stddef.h>
 
 /* Start the server. Port from the argument, else X2_CONTROL, else off.
@@ -45,9 +46,9 @@ void control_report(void);
 
 /* The HTTP wire helpers, shared with the endpoints that live beside their
  * instruments. */
-void control_reply_text(int fd, int code, const char *status, const char *fmt,
-                        ...);
-void control_reply_json(int fd, int code, const char *status, const char *body,
-                        size_t size);
+void control_reply_text(x2_socket_t socket, int code, const char *status,
+                        const char *fmt, ...);
+void control_reply_json(x2_socket_t socket, int code, const char *status,
+                        const char *body, size_t size);
 
 #endif

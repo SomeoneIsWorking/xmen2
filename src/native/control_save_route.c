@@ -3,7 +3,7 @@
 #include "control.h"
 #include "control_command_bridge.h"
 
-void control_save_route(int fd) {
+void control_save_route(x2_socket_t fd) {
   char reason[192];
   const char *report;
   size_t report_size;

@@ -33,7 +33,7 @@
  * the same queue the window's own presses do: the overlay consumes what it
  * owns, and anything it does not consume reaches the game as a real press.
  */
-void control_ui_key_route(int fd, const char *query) {
+void control_ui_key_route(x2_socket_t fd, const char *query) {
   char name[32] = "";
   SDL_Keycode key;
   SDL_Event event;
@@ -87,7 +87,7 @@ void control_ui_key_route(int fd, const char *query) {
  * move between the tabs or the rows. Driving it from outside the process
  * therefore needs the pointer as well as the keyboard.
  */
-void control_ui_click_route(int fd, const char *query) {
+void control_ui_click_route(x2_socket_t fd, const char *query) {
   char xs[16] = "", ys[16] = "";
   SDL_Event event;
   Uint64 now;

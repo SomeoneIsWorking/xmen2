@@ -23,9 +23,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
-#include "platform_posix.h"
 #include "platform_threads.h"
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -242,7 +240,7 @@ int control_command_performance_reset(char *reason, size_t reason_capacity) {
 
 /* -------------------------------------------------------------- serving --- */
 
-static void route_key(int fd, const char *query) {
+static void route_key(x2_socket_t fd, const char *query) {
   char name[32] = "", hold[16] = "";
 
   if (!control_query_arg(query, "name", name, sizeof name) || !name[0]) {
@@ -276,7 +274,7 @@ static void route_key(int fd, const char *query) {
                      gpu_frames_presented());
 }
 
-static void route_pad(int fd, const char *query) {
+static void route_pad(x2_socket_t fd, const char *query) {
   char what[32] = "", hold[16] = "", value[16] = "";
 
   if (!control_query_arg(query, "button", what, sizeof what) &&
@@ -313,7 +311,7 @@ static void route_pad(int fd, const char *query) {
                      gpu_frames_presented(), g_cmd_why);
 }
 
-static void route_assignment(int fd, const char *query) {
+static void route_assignment(x2_socket_t fd, const char *query) {
   char player[8] = "", pad[8] = "", clear[8] = "";
   int player_number, pad_number;
   if (!control_query_arg(query, "player", player, sizeof player) ||
@@ -347,7 +345,7 @@ static void route_assignment(int fd, const char *query) {
                      g_cmd_why);
 }
 
-static void route_shot(int fd) {
+static void route_shot(x2_socket_t fd) {
   const unsigned char *png;
   size_t png_bytes;
 
@@ -367,7 +365,7 @@ static void route_shot(int fd) {
   control_reply_bytes(fd, 200, "OK", "image/png", png, png_bytes);
 }
 
-static void route_input(int fd, const char *query) {
+static void route_input(x2_socket_t fd, const char *query) {
   char which[16] = "";
   g_cmd_controller = control_query_arg(query, "controller", which, sizeof which)
                          ? (unsigned)atoi(which)
@@ -389,9 +387,9 @@ static void route_input(int fd, const char *query) {
                       g_probe_len);
 }
 
-static void serve(int fd) {
+static void serve(x2_socket_t fd) {
   char req[1024], *path, *query, *sp;
-  ssize_t n = read(fd, req, sizeof req - 1);
+  x2_socket_ssize_t n = x2_socket_recv(fd, req, sizeof req - 1);
 
   if (n <= 0)
     return;

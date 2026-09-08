@@ -3,7 +3,7 @@
 #include "control.h"
 #include "control_command_bridge.h"
 
-void control_performance_reset_route(int fd) {
+void control_performance_reset_route(x2_socket_t fd) {
   char reason[192];
   const int result = control_command_performance_reset(reason, sizeof reason);
   if (result < 0) {

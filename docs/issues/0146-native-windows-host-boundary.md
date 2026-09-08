@@ -67,3 +67,13 @@ offset calls) while retaining the POSIX names on Linux. The full native Linux
 build and 149-test CTest run pass, with only the documented data/tool skips;
 this further narrows the Windows work to real host semantics rather than
 header portability.
+
+The live control channel now has the same narrow socket owner in
+`src/native/platform_socket.h`. It centralizes Winsock startup, descriptor
+width, accept/send/receive/close, loopback bind/listen, and interrupt handling;
+route owners no longer expose POSIX `int` descriptors. The Linux control,
+screenshot, and `x2ctl` tests pass after this boundary change. A Windows
+package is still not claimed: the socket header needs to be compiled and
+linked as part of the remaining native host port, alongside signals,
+diagnostics, directory/stat operations, `dlopen`, and the CMake dependency
+selection.
