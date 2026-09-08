@@ -132,9 +132,11 @@ as a release. The user reported that the Android setup and game path runs on a
 device. An API 35 x86-64 emulator installed the debug APK, and its install-folder
 and ZIP controls each opened Android's DocumentsUI picker. The former
 loader-image-only DocumentsUI fixture exposed an install-validation defect: it
-could reach SDL without gameplay content. The revised validator now refuses
-that retained incomplete source and keeps `XMen2SetupActivity` resumed after
-the rebuilt APK is installed. Canonical private-path containment prevents
+could reach SDL without gameplay content. The validator now also rejects an
+empty or non-PE32 `XMen2.exe` before promotion, so malformed retained data stays
+in `XMen2SetupActivity` instead of launching SDL and failing inside `pe_map`;
+the focused picker/archive tests and rebuilt ARM64 APK cover that boundary.
+Canonical private-path containment prevents
 Android's `/data/data` and `/data/user/0` aliases from rejecting a valid
 selection. This proves the packaged first-run shell and its incomplete-install
 refusal, not importing a complete install or gameplay. The revised touch/HUD layout still

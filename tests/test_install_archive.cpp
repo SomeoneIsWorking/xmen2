@@ -90,6 +90,27 @@ std::string read_file(const std::filesystem::path &path) {
                      std::istreambuf_iterator<char>());
 }
 
+std::string valid_executable(std::string_view marker) {
+  std::string image(512, '\0');
+  image[0] = 'M';
+  image[1] = 'Z';
+  image[0x3c] = static_cast<char>(0x80);
+  image[0x80] = 'P';
+  image[0x81] = 'E';
+  image[0x84] = 'L';
+  image[0x85] = 1;
+  image[0x94] = static_cast<char>(0xe0);
+  image[0x98] = static_cast<char>(0x0b);
+  image[0x99] = 1;
+  image.append(marker);
+  return image;
+}
+
+bool contains_marker(const std::filesystem::path &path,
+                     std::string_view marker) {
+  return read_file(path).find(marker) != std::string::npos;
+}
+
 std::vector<std::pair<std::string, std::string>>
 complete_install(std::string_view directory,
                  std::string_view executable_contents) {
@@ -121,12 +142,12 @@ int main() {
 
   char executable[4096];
   char reason[512];
-  auto old_install = complete_install("Old/Sub", "old");
+  auto old_install = complete_install("Old/Sub", valid_executable("old"));
   old_install.emplace_back("Old/stale.txt", "stale");
   write_archive(archive, old_install);
   if (!x2_install_archive_prepare(archive.string().c_str(), executable,
                                   sizeof executable, reason, sizeof reason) ||
-      read_file(executable) != "old") {
+      !contains_marker(executable, "old")) {
     std::cerr << "initial archive preparation failed: " << reason << "\n";
     return 1;
   }
@@ -139,10 +160,10 @@ int main() {
     return 1;
   }
 
-  write_archive(archive, complete_install("New/Deep", "new"));
+  write_archive(archive, complete_install("New/Deep", valid_executable("new")));
   if (!x2_install_archive_prepare(archive.string().c_str(), executable,
                                   sizeof executable, reason, sizeof reason) ||
-      read_file(executable) != "new" ||
+      !contains_marker(executable, "new") ||
       std::filesystem::exists(accepted_root / "Old/stale.txt")) {
     std::cerr << "replacement did not atomically discard stale files: "
               << reason << "\n";
@@ -159,7 +180,7 @@ int main() {
       !std::filesystem::path(executable)
            .string()
            .starts_with(staged_destination.string()) ||
-      read_file(executable) != "new") {
+      !contains_marker(executable, "new")) {
     std::cerr << "private staged extraction failed: " << reason << "\n";
     return 1;
   }
@@ -167,7 +188,7 @@ int main() {
   write_archive(archive, {{"Broken/XMen2.exe", "invalid"}});
   if (x2_install_archive_prepare(archive.string().c_str(), executable,
                                  sizeof executable, reason, sizeof reason) ||
-      read_file(replacement) != "new" ||
+      !contains_marker(replacement, "new") ||
       std::filesystem::exists(accepted_root.string() + ".preparing")) {
     std::cerr << "invalid replacement damaged the accepted install: " << reason
               << "\n";

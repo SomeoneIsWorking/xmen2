@@ -54,6 +54,17 @@ no selection or interrupted-copy notification trace was recorded. This proves
 the picker route is reachable, not that SAF import completion or recreation is
 verified.
 
+The same retained test data then exposed a separate installer boundary defect:
+the staged `XMen2.exe` was zero bytes, but filename and content-sentinel checks
+accepted it. The game Activity launched, `pe_map` rejected the image for having
+no DOS header, and SDL returned to the launcher. Install validation now checks
+the DOS signature, PE signature, x86 machine type, and PE32 optional-header
+magic before promotion. The focused picker/archive tests cover both a valid
+minimal PE32 fixture and the rejected empty executable; the rebuilt ARM64 APK
+kept the invalid retained selection in `XMen2SetupActivity` instead of
+launching the runtime. This closes the import-induced boot failure for malformed
+executables, but it does not substitute for a real game-image run.
+
 The installed Google API30 ARM64 AVD cannot provide a second host-side
 emulator: Android Emulator 37.1.11 refuses its `arm64` system image on this
 x86-64 host (`Avd's CPU Architecture 'arm64' is not supported by the QEMU2

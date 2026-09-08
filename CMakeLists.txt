@@ -197,7 +197,7 @@ add_test(NAME config_directory COMMAND test_config_directory)
 
 add_executable(test_install_picker tests/test_install_picker.c
                src/native/install_picker.cpp src/native/install_archive.cpp
-               src/native/install_validation.cpp
+               src/native/install_validation.cpp src/native/pe_header.c
                src/config/config_directory.c)
 target_include_directories(test_install_picker PRIVATE src/native src/config
                            ${CMAKE_BINARY_DIR})
@@ -206,6 +206,7 @@ add_test(NAME install_picker COMMAND test_install_picker)
 
 add_executable(test_install_archive tests/test_install_archive.cpp
                src/native/install_archive.cpp src/native/install_validation.cpp
+               src/native/pe_header.c
                src/config/config_directory.c)
 target_include_directories(test_install_archive PRIVATE src/native src/config
                             ${CMAKE_BINARY_DIR})
@@ -1332,6 +1333,7 @@ set(X2_NATIVE_SOURCES
     src/native/install_picker.cpp
     src/native/install_archive.cpp
     src/native/install_validation.cpp
+    src/native/pe_header.c
     src/native/android_bridge.cpp
     src/input/alchemy_controller_bridge.cpp
     src/input/directinput_controller_sample.c

@@ -7,6 +7,26 @@
 #include <string.h>
 #include <sys/stat.h>
 
+static int create_executable(const char *path) {
+  unsigned char image[512] = {0};
+  FILE *file = fopen(path, "wb");
+  if (!file)
+    return 0;
+  image[0] = 'M';
+  image[1] = 'Z';
+  image[0x3c] = 0x80;
+  image[0x80] = 'P';
+  image[0x81] = 'E';
+  image[0x84] = 0x4c;
+  image[0x85] = 1;
+  image[0x94] = 0xe0;
+  image[0x98] = 0x0b;
+  image[0x99] = 1;
+  const int ok = fwrite(image, 1, sizeof image, file) == sizeof image;
+  fclose(file);
+  return ok;
+}
+
 static int create_file(const char *path) {
   FILE *file = fopen(path, "wb");
   if (!file)
@@ -62,6 +82,10 @@ int main(void) {
   }
 
   snprintf(path, sizeof path, "%s/XMen2.exe", root);
+  if (!create_executable(path)) {
+    perror("create install executable fixture");
+    return 1;
+  }
   if (!x2_install_picker_directory_from_executable(path, directory,
                                                    sizeof directory) ||
       strcmp(directory, root) != 0) {
@@ -77,6 +101,17 @@ int main(void) {
       strcmp(directory, root) != 0) {
     fprintf(stderr,
             "platform selection did not return its validated directory\n");
+    return 1;
+  }
+
+  snprintf(path, sizeof path, "%s/XMen2.exe", root);
+  if (!create_file(path) ||
+      x2_install_picker_prepare_selection(root, "", reason, sizeof reason)) {
+    fprintf(stderr, "invalid executable header was accepted\n");
+    return 1;
+  }
+  if (!create_executable(path)) {
+    perror("restore install executable fixture");
     return 1;
   }
 

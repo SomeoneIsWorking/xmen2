@@ -1,6 +1,7 @@
 #include "install_validation.h"
 
 #include "install_requirements.h"
+#include "pe_header.h"
 
 #include "platform_strings.h"
 #include <cstdio>
@@ -102,6 +103,9 @@ extern "C" int x2_install_validate_executable(const char *executable,
   if (strcasecmp(image.filename().string().c_str(), "XMen2.exe") != 0)
     return set_reason(reason, reason_capacity, "That file is not XMen2.exe.",
                       "");
+  char header_reason[160];
+  if (!x2_pe32_validate_file(executable, header_reason, sizeof header_reason))
+    return set_reason(reason, reason_capacity, "%s", header_reason);
 
   const std::filesystem::path directory = image.parent_path();
   for (unsigned i = 0; i < X2_INSTALL_REQUIRED_IMAGE_COUNT; ++i) {
