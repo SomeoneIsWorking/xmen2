@@ -14,6 +14,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import io.github.someoneisworking.lucent.LucentDocumentImport;
+import io.github.someoneisworking.lucent.LucentImportProgress;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -26,6 +27,7 @@ import java.util.Locale;
 public final class XMen2SetupActivity extends Activity {
     private static final int FOLDER_REQUEST = 0x5846;
     private static final int ZIP_REQUEST = 0x5847;
+    private static final String PICKER_STATE = "lucent-picker";
     private static final String SOURCE_PATH = "source-path";
     private static final String TRACE_FILES = "com.someoneisworking.xmen2.trace.files";
     private static final String TRACE_PERFORMANCE =
@@ -51,7 +53,7 @@ public final class XMen2SetupActivity extends Activity {
     private ProgressBar progressBar;
     private LinearLayout choices;
     private LucentDocumentImport importer;
-    private GameImportNotification importNotification;
+    private LucentImportProgress importNotification;
     private long importedEntries;
     private long importedBytes;
     private String importingName;
@@ -71,7 +73,8 @@ public final class XMen2SetupActivity extends Activity {
             Log.i("XMen2", "debug setup: performance=" + tracePerformance
                     + " drawDump=" + traceDrawDump);
         }
-        importNotification = new GameImportNotification(this);
+        importNotification = new LucentImportProgress(this, 0x5849, "xmen2_game_import",
+                "Game File Installation", "Installing X-Men Legends II", XMen2SetupActivity.class);
         importer = new LucentDocumentImport(
                 this, new LucentDocumentImport.Limits(MAXIMUM_ENTRIES,
                                                        MAXIMUM_IMPORT_BYTES,
@@ -89,6 +92,7 @@ public final class XMen2SetupActivity extends Activity {
                 importNotification.update(importingText());
             }
         });
+        importer.restorePickerState(state == null ? null : state.getBundle(PICKER_STATE), importCallback());
         importer.cleanStaleImports();
         buildLayout();
         if (Build.VERSION.SDK_INT >= 33) {
@@ -124,6 +128,12 @@ public final class XMen2SetupActivity extends Activity {
             return;
         }
         showChoices();
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putBundle(PICKER_STATE, importer.savePickerState());
     }
 
     @Override
