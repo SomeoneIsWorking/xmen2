@@ -47,6 +47,7 @@ declared-host backend gaps.
 | S018 | Android APK shell and measured mobile performance | partial | S002, S006, S010, S020 | G005, G007 |
 | S020 | Platform-neutral touch play on any touchscreen | partial | S002, S006 | G005, G007 |
 | S021 | Web (WASM + PWA) product with browser-side install | partial | S001, S020, W1, W2, W3 | G005 |
+| S022 | Native Windows host package and CI release | missing | S001, S002 | G005 |
 | S019 | Proven shared Alchemy gameplay boundary and deferred MUA adoption | partial | S004, S006, S012 | G006 |
 
 ## State details and evidence
@@ -638,3 +639,13 @@ in [web-release.md](web-release.md). A deployed artifact, imported real game,
 nonzero JIT execution, explicit fallback denominators, representative interaction,
 and offline save/relaunch evidence remain required before this capability is
 verified.
+
+### S022 — native Windows host package and CI release: missing
+
+The current Windows job is a policy check that records the unsupported native
+host; the release workflow intentionally emits no Windows artifact. The native
+runtime still has POSIX-only executable-memory, file, thread, socket, signal,
+and diagnostic owners, so a Windows ZIP would not be a runnable release.
+Issue [#146](issues/0146-native-windows-host-boundary.md) records the required
+host-boundary port and its falsifier. Until that work lands, the Windows
+comparison baseline remains the retail executable rather than a port package.
