@@ -44,3 +44,9 @@ cases, the file-map regression passes, and the PE loader now consumes the
 shared map. This is a portability step, not a Windows build claim: threads,
 sockets, signals, diagnostics, CMake dependency links, and the Windows
 dependency/toolchain job remain open.
+
+The native sources also now consume one `platform_strings.h` compatibility
+owner for case-insensitive comparisons, mapping to `_stricmp`/`_strnicmp` on
+Windows and the existing POSIX functions elsewhere. This removes the direct
+`strings.h` header blocker without changing comparison semantics; the native
+Linux target still compiles and links after the change.

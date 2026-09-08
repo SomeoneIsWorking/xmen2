@@ -15,13 +15,13 @@
 
 #include <SDL3/SDL.h>
 
+#include "platform_strings.h"
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <string>
-#include <strings.h>
 #include <sys/stat.h>
 
 #include <lucent/zip.h>

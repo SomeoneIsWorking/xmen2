@@ -8,6 +8,7 @@
 #include "save_trace_runtime.h"
 #include "shell32.h"
 
+#include "platform_strings.h"
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -15,7 +16,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 

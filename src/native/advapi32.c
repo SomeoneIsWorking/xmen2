@@ -39,11 +39,11 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_strings.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #define A(i) RD32(C->reg[kX86pEsp] + 4u + (uint32_t)(i) * 4u)
 

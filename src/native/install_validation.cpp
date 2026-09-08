@@ -2,11 +2,11 @@
 
 #include "install_requirements.h"
 
+#include "platform_strings.h"
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <string>
-#include <strings.h>
 
 namespace {
 

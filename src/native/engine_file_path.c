@@ -12,10 +12,10 @@
 #include "x86rt_native.h"
 
 #include "guest_body.h"
+#include "platform_strings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 enum {
   IGCORE_PREFERRED_BASE = 0x10000000u,

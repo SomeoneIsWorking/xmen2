@@ -15,10 +15,10 @@
 #include "cpu.h"
 #include "x87.h"
 
+#include "platform_strings.h"
 #include <ctype.h>
 #include <stdint.h>
 #include <string.h>
-#include <strings.h>
 #include <time.h>
 
 #include <lucent/cvar_c.h>

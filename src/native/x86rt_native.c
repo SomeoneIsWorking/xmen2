@@ -9,6 +9,7 @@
 #include "guest_memory.h"
 #include "host_imports.h"
 #include "pe_map.h"
+#include "platform_strings.h"
 #include "threads.h"
 #include "x86_dispatch_report.h"
 #include "x86_engine.h"
@@ -23,7 +24,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <time.h>
 #include <unistd.h>
 

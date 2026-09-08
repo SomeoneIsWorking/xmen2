@@ -34,6 +34,7 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_strings.h"
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -41,7 +42,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>

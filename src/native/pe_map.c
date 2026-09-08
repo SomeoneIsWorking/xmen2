@@ -14,7 +14,7 @@
 #include "platform_file_map.h"
 #include "platform_mman.h"
 
-#include <strings.h> /* strcasecmp */
+#include "platform_strings.h"
 
 #include <errno.h>
 #include <stdio.h>

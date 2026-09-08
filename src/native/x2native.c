@@ -38,8 +38,8 @@
 #include "host_imports.h"
 #include "input_record.h"
 #include "install_picker.h"
-#include "macos_bundle.h"
 #include "live_session.h"
+#include "macos_bundle.h"
 #include "pe_map.h"
 #include "platform_mman.h"
 #include "runtime_cvars.h"
@@ -52,12 +52,12 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_strings.h"
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
