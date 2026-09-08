@@ -74,7 +74,10 @@ Native prefixes are isolated by Android API and ABI under
 `build/deps/android/android-<api>/<abi>/`; a compatibility build cannot
 replace the release build's libraries with a lower API floor. Set
 `ANDROID_HOME`, `ANDROID_NDK_VERSION`, and a JDK from 17 through 26 first. The
-project pins Gradle 9.4.1, the first maintained patch line that officially runs
+shared prefix contract records that FFmpeg archives are position-independent;
+changing that contract invalidates an older prefix instead of allowing a stale
+non-PIC static archive to reach the `libmain.so` linker. The project pins
+Gradle 9.4.1, the first maintained patch line that officially runs
 on Java 26, together with its compatible Android Gradle Plugin 9.2.1 and the
 Gradle distribution checksum. Select an installed compatible JDK with
 `JAVA_HOME`; the build does not require an older JDK when the pinned toolchain
