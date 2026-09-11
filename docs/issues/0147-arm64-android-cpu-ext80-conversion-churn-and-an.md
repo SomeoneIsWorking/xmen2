@@ -124,3 +124,60 @@ split above is the one to trust.
    and the PLT was a fraction of that. The change is kept for the 1.07 MB and
    6,564 exported symbols it removes from the shipped library, not for speed,
    and it should not be cited as a performance win.
+
+5. **Every Jcc and SETcc called `x86p_cond` (fixed, x86port `ec7d284`).** The
+   backend evaluated each condition by calling the shared authority, which
+   re-derives the predicate from the lazy-flag record the host had just
+   computed. `jit_arm64_cond.c` now lowers it onto AArch64's own NZCV for the
+   Add, Sub, Logic, Inc and Dec kinds at width 4 -- one `cmp`/`cmn` and a
+   `cset`. `x86p_cond` remains the authority and still serves PF, narrower
+   widths, and the Inc/Dec conditions that read CF or OF.
+
+   How often it fires had to be measured on the title's own code, because the
+   generated differential almost never places a width-4 ALU immediately before
+   a branch and reported only 32 of 249 (12.8%). The engine publishes both
+   counts, and the running game on this device reports:
+
+   **14,145 of 18,497 conditions (76.5%) lowered inline**, over 65,319
+   translated blocks and 312,934 guest instructions.
+
+   Correctness is the interpreter differential on AArch64 under
+   `qemu-aarch64`: 25,155 checks, 0 failures, 1,423 programs, 823 of the blocks
+   ending in a translated branch.
+
+   No frame-time claim is attached. A 120-second `simpleperf` profile of the
+   running game afterwards puts `x86p_cond` at 117 of 7,451 `libmain.so`
+   samples (1.6%) against `x86p_jit_engine_run`'s 684 -- but that scene is an
+   FMV, not the title screen the PLT A/B used, so it is not a before/after
+   comparison and is not offered as one.
+
+6. **The next two costs this profile names, both larger than what was just
+   fixed.** Same 120-second FMV profile, `libmain.so` samples:
+
+   | symbol | samples | % of libmain.so |
+   | --- | ---: | ---: |
+   | `x86p_jit_engine_run` | 684 | 9.25% |
+   | `yuv2rgb_c_32` | 636 | 8.52% |
+   | `x86_engine_jit_intercept` | 366 | 4.98% |
+   | `x86_guest_call_top` | 331 | 4.50% |
+   | `x86p_x87_arith` | 302 | 4.10% |
+   | `__letf2` | 296 | 4.00% |
+   | `ff_simple_idct_put_int16_8bit` | 261 | 3.52% |
+   | `x86p_flag_cf` | 237 | 3.21% |
+   | `x86p_cond` | 117 | 1.59% |
+
+   - **FFmpeg is running its scalar C paths.** `yuv2rgb_c_32`,
+     `ff_simple_idct_*` and `idctRowCondDC_int16_8bit` are the portable
+     implementations: the shared Android owner configures FFmpeg with
+     `--disable-asm` on arm64 (`android-port` `1161a40`) because FFmpeg
+     7.1.1's AArch64 transform assembly does `adrp`+`add` against the global
+     `ff_tx_tab_*` tables, which a PIE shared object cannot relocate. That
+     workaround disables ALL NEON, not just the transform, and together those
+     three symbols are 13.7% of `libmain.so`. The narrower fix is to build
+     FFmpeg with `-fvisibility=hidden` so those tables stop being preemptible
+     and the assembly's relocation becomes legal; nothing outside `libmain.so`
+     needs FFmpeg's symbols. That belongs in `shared/android-port` and affects
+     every Android port consuming the prefix.
+   - **`x86p_flag_cf` is twice `x86p_cond`.** Carry-in derivation is still a
+     call per ADC/SBB/RCL/RCR; the same NZCV argument that retired most
+     condition helper calls applies to it and has not been made yet.
