@@ -66,6 +66,7 @@ typedef enum X2ConfigOverride {
   kX2ConfigSpin,
   kX2ConfigStackCheck,
   kX2ConfigTextureLevels,
+  kX2ConfigTextureLuma,
   kX2ConfigTextureLumaAll,
   kX2ConfigTextureProbe,
   kX2ConfigTextScale,

@@ -62,6 +62,7 @@ static const char *const k_override_names[kX2ConfigOverrideCount] = {
     [kX2ConfigSpin] = "X2_SPIN",
     [kX2ConfigStackCheck] = "X2_STACKCHECK",
     [kX2ConfigTextureLevels] = "X2_TEXTURE_LEVELS",
+    [kX2ConfigTextureLuma] = "X2_TEXTURE_LUMA",
     [kX2ConfigTextureLumaAll] = "X2_TEXTURE_LUMA_ALL",
     [kX2ConfigTextureProbe] = "X2_TEXTURE_PROBE",
     [kX2ConfigTextScale] = "X2_TEXT_SCALE",

@@ -278,8 +278,8 @@ target_include_directories(test_fmv_decoder_drain PRIVATE src/media)
 add_test(NAME fmv_decoder_drain COMMAND test_fmv_decoder_drain)
 
 add_executable(test_d3d8_texture_luma tests/test_d3d8_texture_luma.c
-               src/d3d8/d3d8_texture_luma.c)
-target_include_directories(test_d3d8_texture_luma PRIVATE src/d3d8)
+               src/d3d8/d3d8_texture_luma.c src/config/environment.c)
+target_include_directories(test_d3d8_texture_luma PRIVATE src/d3d8 src/config)
 add_test(NAME d3d8_texture_luma COMMAND test_d3d8_texture_luma)
 
 add_executable(test_gpu_texture_format tests/test_gpu_texture_format.c

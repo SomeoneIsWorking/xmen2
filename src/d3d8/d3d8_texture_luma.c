@@ -31,6 +31,13 @@ static double bgra_luma(const uint8_t *pixel) {
   return 0.299 * pixel[2] + 0.587 * pixel[1] + 0.114 * pixel[0];
 }
 
+/* Measuring costs a full pass over every level-0 upload -- a megabyte of
+ * floating-point work per movie frame -- so the collector is armed explicitly
+ * and the report says so when it was not. */
+static int armed(void) {
+  return x2_config_override_get(kX2ConfigTextureLuma) != NULL;
+}
+
 void d3d8_texture_luma_note(uint32_t handle, uint32_t format, uint32_t width,
                             uint32_t height, const uint8_t *pixels,
                             uint32_t bytes) {
@@ -38,7 +45,7 @@ void d3d8_texture_luma_note(uint32_t handle, uint32_t format, uint32_t width,
   uint32_t samples = 0;
   uint32_t offset;
   int index;
-  if (!width || !height || !pixels || !bytes)
+  if (!armed() || !width || !height || !pixels || !bytes)
     return;
   switch (format) {
   case D3DFMT_R8G8B8:
@@ -109,6 +116,12 @@ void d3d8_texture_luma_report(void) {
     total += g_luma[index].luma;
     if (g_luma[index].luma < 8.0)
       dark++;
+  }
+  if (!armed()) {
+    x2_log_info("        texture brightness: NOT MEASURED -- the collector is "
+                "off. It scans every level-0 upload, so it is armed with "
+                "X2_TEXTURE_LUMA=1. This says NOTHING about the textures.\n");
+    return;
   }
   x2_log_info(
       "        texture brightness: %d texture(s) measured%s, %lu upload(s) "

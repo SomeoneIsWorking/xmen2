@@ -186,6 +186,23 @@ open. The
 implementation boundary and its falsifier are recorded in
 [`0145`](issues/0145-android-arm64-first-movie-probe-stalls.md).
 
+A 2026-09-11 run of the rebuilt debug APK on that same ARM64 Cuttlefish device
+reached the title screen through Vulkan at 1280x720, presented 209 frames, and
+executed 108.5M JIT block entries across 79,315 translated blocks with zero
+translation refusals; the loopback control channel's `Return` was accepted by
+the guest at frame 203. That device cannot produce Android performance
+evidence: `simpleperf` attributes 35.7% of samples to `[anon:swiftshader_jit]`
+and 17.5% to the guest `vulkan.pastel.so`, and the guest CPU itself runs under
+QEMU TCG, so its 815 ms p50 frame time measures the emulator. Two
+host-independent CPU costs found during that run were fixed with tests rather
+than timings -- x86port's x87 binary128<->ext80 conversion churn (exact bit
+reassembly, 28,372 checks) and an ungated per-upload texture-luma scan (now
+armed by `X2_TEXTURE_LUMA` and reported as NOT MEASURED when off). Two further
+levers remain unimplemented: emulated TLS at the API 21 floor and PLT
+indirection in `libmain.so`. See
+[`0147`](issues/0147-arm64-android-cpu-ext80-conversion-churn-and-an.md).
+The named-device performance gate stays unmet.
+
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
 executable-memory, ABI, instruction-cache, and representative gameplay
 qualification are still incomplete; neither the test interpreter nor bounded
