@@ -8,6 +8,7 @@
 #include "gpu_shadow.h"
 #include "gpu_texture_format.h"
 #include "gpu_upload.h"
+#include "gpu_upload_batch.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -254,11 +255,12 @@ GpuBuffer gpu_buffer_create(GpuBufferKind kind, uint32_t bytes) {
 static unsigned long long g_draw_ns, g_upload_ns;
 static unsigned long long g_upload_alloc_ns; /* reserve+Map+memcpy+Unmap */
 static unsigned long long
-    g_upload_submit_ns; /* Acquire+CopyPass+Submit+Release */
+    g_upload_record_ns; /* recording the copy into the frame's batch */
 static unsigned long g_uploads;
 static unsigned long long
-    g_transfer_creates;         /* how often the upload path allocated */
-static unsigned long g_submits; /* SDL_SubmitGPUCommandBuffer calls */
+    g_transfer_creates; /* how often the upload path allocated */
+/* Copy command buffers, owned by gpu_upload_batch and read back here so the
+   report can say whether the frame's uploads actually shared one. */
 
 /*
  * Upload through the destination resource's retained transfer buffer.
@@ -270,7 +272,6 @@ static unsigned long g_submits; /* SDL_SubmitGPUCommandBuffer calls */
 static int upload_bytes(Res *r, uint32_t offset, const void *data,
                         uint32_t bytes) {
   SDL_GPUTransferBuffer *tb;
-  SDL_GPUCommandBuffer *cmd;
   SDL_GPUCopyPass *cp;
   SDL_GPUTransferBufferLocation src;
   SDL_GPUBufferRegion dr;
@@ -284,8 +285,9 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
   t1 = gpu_perf_now_ns();
   g_upload_alloc_ns += t1 - t0;
 
-  cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-  cp = SDL_BeginGPUCopyPass(cmd);
+  cp = gpu_upload_batch_pass(g_gpu);
+  if (!cp)
+    return 0;
   memset(&src, 0, sizeof src);
   memset(&dr, 0, sizeof dr);
   src.transfer_buffer = tb;
@@ -305,17 +307,9 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
    * uploads the full resource or draws only the uploaded prefix.
    */
   SDL_UploadToGPUBuffer(cp, &src, &dr, true);
-  SDL_EndGPUCopyPass(cp);
-  /* Not fenced. SDL_GPU executes submitted command buffers in order and
-     tracks the resources they touch, so a draw submitted after this copy
-     sees it. A fence here was tried while chasing a draw that turned out to
-     be blue-on-blue, and it changed nothing -- so it is not carried as a
-     precaution nobody can justify. */
-  SDL_SubmitGPUCommandBuffer(cmd);
-  g_submits++;
   {
     unsigned long long now = gpu_perf_now_ns();
-    g_upload_submit_ns += now - t1;
+    g_upload_record_ns += now - t1;
     g_frame_upload_ns += now - t0;
     g_upload_ns += now - t0;
   }
@@ -512,7 +506,6 @@ int gpu_texture_is_cube(GpuTexture t) {
 int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
                             const void *data, uint32_t bytes) {
   SDL_GPUTransferBuffer *tb;
-  SDL_GPUCommandBuffer *cmd;
   SDL_GPUCopyPass *cp;
   SDL_GPUTextureTransferInfo src;
   SDL_GPUTextureRegion dr;
@@ -568,8 +561,9 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   t1 = gpu_perf_now_ns();
   g_upload_alloc_ns += t1 - t0;
 
-  cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-  cp = SDL_BeginGPUCopyPass(cmd);
+  cp = gpu_upload_batch_pass(g_gpu);
+  if (!cp)
+    return 0;
   memset(&src, 0, sizeof src);
   memset(&dr, 0, sizeof dr);
   src.transfer_buffer = tb;
@@ -580,12 +574,9 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   dr.h = lh;
   dr.d = 1;
   SDL_UploadToGPUTexture(cp, &src, &dr, false);
-  SDL_EndGPUCopyPass(cp);
-  SDL_SubmitGPUCommandBuffer(cmd);
-  g_submits++;
   {
     unsigned long long now = gpu_perf_now_ns();
-    g_upload_submit_ns += now - t1;
+    g_upload_record_ns += now - t1;
     g_frame_upload_ns += now - t0;
     g_upload_ns += now - t0;
   }
@@ -1122,19 +1113,20 @@ void gpu_draw_counts(unsigned long *submitted, unsigned long *refused) {
  */
 void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
                    unsigned long long *upload_alloc_ns,
-                   unsigned long long *upload_submit_ns,
+                   unsigned long long *upload_record_ns,
                    unsigned long long *transfer_creates, unsigned long *uploads,
                    unsigned long *submits) {
   *draw_ns = g_draw_ns;
   *upload_ns = g_upload_ns;
   *upload_alloc_ns = g_upload_alloc_ns;
-  *upload_submit_ns = g_upload_submit_ns;
+  *upload_record_ns = g_upload_record_ns;
   *transfer_creates = g_transfer_creates;
   *uploads = g_uploads;
-  *submits = g_submits;
+  *submits = gpu_upload_batch_submits();
 }
 
 void gpu_draw_report(void) {
+  const unsigned long batches = gpu_upload_batch_submits();
   x2_log_info(
       "  gpu: %lu draw(s) submitted, %lu refused, %lu pipeline(s) built "
       "(%d still cached; the device teardown empties the cache, so these "
@@ -1142,13 +1134,13 @@ void gpu_draw_report(void) {
       g_draws, g_refused, gpu_pipelines_built(), gpu_pipelines_cached());
   if (g_draws)
     x2_log_info("        draw submission took %.3f s; uploads took %.3f s "
-                "total (%.3f alloc+copy, %.3f acquire+submit) across %lu "
-                "uploads using %lu transfer-buffer alloc(s), %lu command "
-                "buffers submitted\n",
+                "total (%.3f alloc+copy, %.3f record) across %lu "
+                "uploads using %lu transfer-buffer alloc(s), batched into "
+                "%lu command buffer(s)\n",
                 (double)g_draw_ns * 1e-9, (double)g_upload_ns * 1e-9,
                 (double)g_upload_alloc_ns * 1e-9,
-                (double)g_upload_submit_ns * 1e-9, g_uploads,
-                (unsigned long)g_transfer_creates, g_submits);
+                (double)g_upload_record_ns * 1e-9, g_uploads,
+                (unsigned long)g_transfer_creates, batches);
   if (!g_draws)
     x2_log_info("        NOTHING was drawn. Either no draw call reached this "
                 "backend, or every one was refused above.\n");
@@ -1215,6 +1207,7 @@ int gpu_offscreen_next_no_clear(void) {
      buffer. Queue submission order then makes it the known previous image
      for the frame that follows. */
   gpu_pass_begin();
+  gpu_upload_batch_flush(g_gpu);
   gpu_shadow_frame_submit();
   if (g_pass) {
     SDL_EndGPURenderPass(g_pass);
@@ -1261,6 +1254,7 @@ int gpu_offscreen_read(void *out, uint32_t bytes) {
     return 0;
   }
   /* The draws have to have executed before they can be read back. */
+  gpu_upload_batch_flush(g_gpu);
   gpu_shadow_frame_submit();
   if (g_pass) {
     SDL_EndGPURenderPass(g_pass);
@@ -1313,6 +1307,7 @@ int gpu_offscreen_read(void *out, uint32_t bytes) {
 }
 
 void gpu_offscreen_end(void) {
+  gpu_upload_batch_flush(g_gpu);
   gpu_shadow_frame_submit();
   if (g_pass) {
     SDL_EndGPURenderPass(g_pass);

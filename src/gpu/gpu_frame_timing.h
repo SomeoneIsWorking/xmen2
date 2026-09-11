@@ -17,6 +17,12 @@ void gpu_frame_timing_note(unsigned long long now_ns, unsigned long frame);
 void gpu_frame_timing_reset(void);
 
 /* The heartbeat's view of the same numbers. */
+/* One gpu_frame_begin swapchain acquisition and how long it blocked. A frame
+   limited by the GPU or the compositor waits here, not in draw or upload. */
+void gpu_frame_timing_note_swapchain_wait(unsigned long long wait_ns);
+void gpu_frame_timing_swapchain_wait(unsigned long long *wait_ns,
+                                     unsigned long *waits);
+
 void gpu_frame_timing_perf(unsigned long long *frame_ns,
                            unsigned long long *frame_ns_min,
                            unsigned long long *frame_ns_max,

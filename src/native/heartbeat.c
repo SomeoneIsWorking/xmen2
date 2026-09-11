@@ -12,6 +12,7 @@
 #include "d3d8_vertex_shader.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
+#include "gpu_frame_timing_report.h"
 #include "x86_engine.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
@@ -337,41 +338,7 @@ static void *heartbeat_thread(void *arg) {
                    gpu_draws == p_gpu && draws != p_draws
                        ? "  -- the engine asked and the BACKEND drew none"
                        : "");
-      /*
-       * Frame-phase profiling, live.
-       *
-       * Two reads, one line: the DEVICE's present-to-present wall time
-       * and the DRAW side's host share (gpu_draw + uploads). The line
-       * the frame is paced to 60 fps at reads zero draw time and the
-       * wall time is the vsync wait; an UNPACED gameplay run reads the
-       * frame cost and the host's share of it, which is where a hotspot
-       * has to show up before anything gets "fixed". Printed at zero as
-       * a baseline like everything else here, not only once non-zero.
-       */
-      {
-        unsigned long long fns, fmin, fmax, esub;
-        const unsigned long *hist;
-        unsigned long long dns, uns, una, unsb, tc;
-        unsigned long up, sb, intervals;
-        gpu_device_perf(&fns, &fmin, &fmax, &esub, &intervals, &hist);
-        gpu_draw_perf(&dns, &uns, &una, &unsb, &tc, &up, &sb);
-        x2_log_error(
-            "[HB]           perf: frame wall avg %.1f ms "
-            "min %.1f max %.1f (of %lu intervals) -- host "
-            "draw %.2f ms/frame, host upload %.2f "
-            "ms/frame (alloc %.2f + submit %.2f), %lu "
-            "uploads and %lu transfer-buffer alloc(s)\n",
-            fns && intervals ? (double)fns * 1e-6 / (double)intervals : 0.0,
-            fmin ? (double)fmin * 1e-6 : 0.0, (double)fmax * 1e-6, intervals,
-            intervals ? (double)dns * 1e-6 / (double)intervals : 0.0,
-            intervals ? (double)uns * 1e-6 / (double)intervals : 0.0,
-            intervals ? (double)una * 1e-6 / (double)intervals : 0.0,
-            intervals ? (double)unsb * 1e-6 / (double)intervals : 0.0,
-            (unsigned long)up, (unsigned long)tc);
-        (void)esub;
-        (void)sb;
-        (void)hist;
-      }
+      gpu_frame_timing_report_interval();
       /*
        * Dynamic buffers, live, including the write-after-draw case that
        * requires SDL_GPU to cycle to a new backing generation. The

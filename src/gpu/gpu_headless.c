@@ -10,6 +10,7 @@
  * part of the contract rather than a diagnostic.
  */
 #include "gpu_headless.h"
+#include "gpu_upload_batch.h"
 
 #include "gpu_device.h"
 #include "gpu_internal.h"
@@ -162,6 +163,7 @@ int gpu_device_headless_read(void *bgra_out, uint32_t bytes, uint32_t *w_out,
     return 0;
   }
   /* Whatever is in flight has to have executed before it can be read. */
+  gpu_upload_batch_flush(g_gpu);
   if (g_pass) {
     SDL_EndGPURenderPass(g_pass);
     g_pass = NULL;

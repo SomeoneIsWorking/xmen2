@@ -430,6 +430,8 @@ static void serve(x2_socket_t fd) {
     control_save_route(fd);
   else if (!strcmp(path, "/performance/reset"))
     control_performance_reset_route(fd);
+  else if (!strcmp(path, "/performance/probe"))
+    control_performance_probe_route(fd, query ? query : "");
   else
     control_reply_text(
         fd, 404, "Not Found",
@@ -446,6 +448,8 @@ static void serve(x2_socket_t fd) {
         "and which actions read down\n"
         "  GET /save         bounded retail save/load trace\n"
         "  GET /performance/reset  start a fresh frame-time window\n"
+        "  GET /performance/probe?n=4096  arm the hot-guest-entry-point "
+        "probe (n=0 disarms)\n"
         "  GET /reached      has the game ever entered that "
         "function? (self-documents)\n",
         path);

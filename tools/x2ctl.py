@@ -337,6 +337,22 @@ def cmd_recording(args):
     return 0
 
 
+def cmd_perf(args):
+    """Reset the frame-time window, and arm or disarm the guest-body probe."""
+    if args.entry_points is not None:
+        code, _, body = call(args.port,
+                             "/performance/probe?n=%d" % args.entry_points)
+        print(body.decode(errors="replace").strip())
+        if code != 200:
+            return 1
+    if args.reset:
+        code, _, body = call(args.port, "/performance/reset", timeout=30.0)
+        print(body.decode(errors="replace").strip())
+        if code != 200:
+            return 1
+    return 0
+
+
 def cmd_probe(args):
     """Capture one inspectable bundle from the currently published run."""
     session = args.live_session
@@ -458,6 +474,16 @@ def main():
                                             "changes from the published run")
     rec.add_argument("--events", type=int, default=20)
     rec.set_defaults(fn=cmd_recording)
+
+    perf = sub.add_parser("perf", help="start a fresh frame-time window and "
+                                       "arm the hot-guest-entry-point probe "
+                                       "whose split the heartbeat prints")
+    perf.add_argument("--entry-points", type=int, default=None,
+                      help="arm the probe for this many guest entry points; "
+                           "0 disarms it")
+    perf.add_argument("--reset", action="store_true",
+                      help="also start a fresh frame-time window")
+    perf.set_defaults(fn=cmd_perf)
 
     probe = sub.add_parser("probe", help="inspect the published live game: "
                                            "status, guest input, save trace, "

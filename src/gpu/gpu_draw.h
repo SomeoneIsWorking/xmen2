@@ -361,7 +361,7 @@ void gpu_draw_counts(unsigned long *submitted, unsigned long *refused);
  */
 void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
                    unsigned long long *upload_alloc_ns,
-                   unsigned long long *upload_submit_ns,
+                   unsigned long long *upload_record_ns,
                    unsigned long long *transfer_creates, unsigned long *uploads,
                    unsigned long *submits);
 

@@ -89,6 +89,29 @@ void gpu_frame_timing_note(unsigned long long now_ns, unsigned long frame) {
   g_last_frame_end_ns = now_ns;
 }
 
+/*
+ * Time gpu_frame_begin spent blocked acquiring a swapchain image.
+ *
+ * This is the frame's back-pressure: with every image in flight the call
+ * waits, so a frame the GPU or the compositor -- not the host -- is limiting
+ * spends its time HERE rather than in draw or upload. Without it a slow frame
+ * that is not host-bound shows up only as unattributed wall time, which is
+ * indistinguishable from a hotspot nobody has instrumented yet.
+ */
+static unsigned long long g_swapchain_wait_ns;
+static unsigned long g_swapchain_waits;
+
+void gpu_frame_timing_note_swapchain_wait(unsigned long long wait_ns) {
+  g_swapchain_wait_ns += wait_ns;
+  g_swapchain_waits++;
+}
+
+void gpu_frame_timing_swapchain_wait(unsigned long long *wait_ns,
+                                     unsigned long *waits) {
+  *wait_ns = g_swapchain_wait_ns;
+  *waits = g_swapchain_waits;
+}
+
 void gpu_frame_timing_perf(unsigned long long *frame_ns,
                            unsigned long long *frame_ns_min,
                            unsigned long long *frame_ns_max,

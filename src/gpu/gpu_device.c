@@ -35,6 +35,7 @@
 #include "gpu_prompt_glyphs.h"
 #include "gpu_shader_data.h"
 #include "gpu_shadow.h"
+#include "gpu_upload_batch.h"
 #include "rmlui_ui.h"
 #include "settings_store.h"
 #include <stdio.h>
@@ -517,6 +518,7 @@ int gpu_frame_begin(void) {
   return 0;
 #else
   static int told_no_window;
+  bool acquired;
 
   if (!g_gpu)
     return 0;
@@ -562,8 +564,13 @@ int gpu_frame_begin(void) {
                  SDL_GetError());
     return 0;
   }
-  if (!SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_output,
-                                             &g_output_w, &g_output_h)) {
+  {
+    unsigned long long t0 = gpu_perf_now_ns();
+    acquired = SDL_WaitAndAcquireGPUSwapchainTexture(g_cmd, g_win, &g_output,
+                                                     &g_output_w, &g_output_h);
+    gpu_frame_timing_note_swapchain_wait(gpu_perf_now_ns() - t0);
+  }
+  if (!acquired) {
     x2_log_error("gpu: acquiring the swapchain texture failed: %s\n",
                  SDL_GetError());
     SDL_CancelGPUCommandBuffer(g_cmd);
@@ -604,6 +611,9 @@ void gpu_frame_end(void) {
   SDL_GPUTexture *final_output;
   if (!g_cmd)
     return;
+  /* Every copy this frame recorded must be submitted before the command
+     buffers whose draws read it. See gpu_upload_batch.h. */
+  gpu_upload_batch_flush(g_gpu);
   gpu_shadow_frame_submit();
   gpu_frame_timing_note(gpu_perf_now_ns(), g_frames_presented);
   /*

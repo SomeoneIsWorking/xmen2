@@ -213,6 +213,23 @@ open. See
 [`0147`](issues/0147-arm64-android-cpu-ext80-conversion-churn-and-an.md).
 The named-device performance gate stays unmet.
 
+First physical-device profile, Huawei BKY-W09 (arm64, Vulkan, 1280x720,
+2026-09-11): gameplay ran at 88.2 ms/frame. Attribution came from the
+heartbeat's frame-phase line plus two instruments added for it -- the swapchain
+acquisition wait (`gpu_frame_timing_note_swapchain_wait`) and a control-channel
+route that arms the hot-guest-entry-point probe on a released build
+(`GET /performance/probe?n=`). The swapchain wait was 2.9 ms/frame, so the frame
+is host-bound, not GPU- or compositor-bound. Host uploads were 25.4 ms/frame of
+which 22.9 ms was submission: each of ~34 uploads per frame recorded its own
+command buffer and submitted it, against only ~550 KB of actual data. Batching
+the frame's copies into one command buffer (`src/gpu/gpu_upload_batch.c`) cut
+host upload to 1.6 ms/frame, host draw to 8.6 ms/frame and the swapchain wait to
+1.5 ms/frame, and the frame to 81.2 ms. The GPU layer is now ~10 ms of that
+frame; the remaining ~70 ms is the D3D8 import boundary and guest execution --
+the probe attributes 71% of crossing time to host imports, against ~1,490
+`SetVertexShaderConstant` and ~1,200 `SetTextureStageState` calls per frame.
+That boundary is the next target and the gate remains unmet.
+
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
 executable-memory, ABI, instruction-cache, and representative gameplay
 qualification are still incomplete; neither the test interpreter nor bounded
