@@ -222,3 +222,24 @@ split above is the one to trust.
    The next cost this names is `x86p_mem_write_bytes` plus `x86p_mem_write` and
    `x86p_string_execute`: a REP MOVS-heavy asset phase going through the
    byte-at-a-time memory path.
+
+8. **A forward REP STOS now fills its span in one call** (x86port `6c277f4`).
+   61% of `x86p_mem_write_bytes`'s samples arrived through
+   `step_once` <- `x86p_string_execute` <- `jit_string`: a guest memset paying
+   an accessibility check and a four-byte `memcpy` per element, while the
+   guest memcpy beside it had had a bulk path since `x86p_mem_copy_disjoint`.
+   `x86p_mem_fill` carries the identical admission rule, and every refusal
+   keeps element-wise execution so a partial fault still leaves ECX and EDI
+   exactly where the guest would see them.
+
+   On the device the new symbol is reached -- `x86p_mem_fill` is 1.38% of all
+   samples, 65% of them under `x86p_string_execute` -- and `step_once` is down
+   to 0.13% with `x86p_mem_write_bytes` out of the ranked list entirely. As
+   with every step here the profile is a different phase of boot, so that is
+   evidence the path fires in the shipping build rather than a before/after
+   share.
+
+   What the same profile now names, with the memory path gone: the intercept
+   predicate itself at 18.14% behind `x86p_jit_engine_run`'s 33.14%, and
+   `x86p_cond` back at 10.97% -- the 23.5% of conditions the ARM64 inline
+   lowering still refuses.
