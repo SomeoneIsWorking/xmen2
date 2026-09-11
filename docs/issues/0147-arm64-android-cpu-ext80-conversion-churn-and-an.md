@@ -243,3 +243,29 @@ split above is the one to trust.
    predicate itself at 18.14% behind `x86p_jit_engine_run`'s 33.14%, and
    `x86p_cond` back at 10.97% -- the 23.5% of conditions the ARM64 inline
    lowering still refuses.
+
+9. **Condition lowering now covers byte and word widths, and a branch reads the
+   host condition directly** (x86port `5396aa2`, `28a7635`). The lowering was
+   width-4 only, which is why `x86p_cond` came back at 10.97% once the memory
+   path was fixed. Left-aligning the flag operands (`lsl` by 32 - 8w) makes the
+   32-bit NZCV exactly the narrow operation's, and the shift also discards the
+   bits above the width that flags.c masks on read rather than on store. A Jcc
+   then feeds that condition straight into the `csel` that picks its successor
+   instead of materialising 0/1 with a `cset` and testing it again.
+
+   On the device the running title went from **76.5% of its conditions lowered
+   inline to 98.2%** (15,777 of 16,059), `x86p_cond` to 0.51% of `libmain.so`
+   samples, and the `csel` build reports 4,062 of 4,096 (99.2%) over its first
+   ten seconds. 25,155 differential checks against the interpreter oracle under
+   `qemu-aarch64`, zero failures.
+
+   **What is left is the dispatch loop itself.** In the same profile
+   `x86p_jit_engine_run` is 37.06% and `x86_engine_jit_intercept` 16.68% --
+   over half the port library's samples spent leaving a block, consulting the
+   intercept, hashing the next EIP and re-entering, with the emitted code
+   itself accounted separately under the unknown DSO. No block is chained to
+   its successor: every exit returns to the C run loop. Chaining is admissible
+   for a static successor the boundary predicate already cleared at translation
+   time, plus an inline compare against the run's `return_to` -- the intercept's
+   only dynamic condition. That is the next structural win and it is
+   substantially larger than anything above it here.
