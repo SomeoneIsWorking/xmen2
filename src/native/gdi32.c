@@ -23,6 +23,7 @@
  * comes out blank, and that is a knowable fact rather than a mystery about
  * missing text.
  */
+#include "../presentation/display_geometry.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "x86rt.h"
@@ -77,18 +78,16 @@ static int desktop(int *w, int *h, int *bpp, int *hz) {
   *hz = 60;
 #ifdef X2_WITH_SDL
   {
+    unsigned pw = 0, ph = 0;
     SDL_DisplayID d = SDL_GetPrimaryDisplay();
     const SDL_DisplayMode *m = d ? SDL_GetDesktopDisplayMode(d) : NULL;
-    if (m) {
+    /* HORZRES/VERTRES mean pixels; x2_display_pixel_size owns that
+       conversion. Colour depth and refresh come from the same mode but have
+       no such subtlety, so they stay here. */
+    if (m && x2_display_pixel_size(&pw, &ph)) {
       const SDL_PixelFormatDetails *pf = SDL_GetPixelFormatDetails(m->format);
-      /* PIXELS: SDL reports a HiDPI desktop in scaled points (this 4K
-         screen says 1536x864 at pixel_density 2.5), and a 2005 title
-         asking GetDeviceCaps for HORZRES means pixels. See the same
-         conversion, and what a logical answer cost, in
-         src/d3d8/d3d8_d3d8.c current_desktop(). */
-      float density = m->pixel_density > 0.0f ? m->pixel_density : 1.0f;
-      *w = (int)((float)m->w * density + 0.5f);
-      *h = (int)((float)m->h * density + 0.5f);
+      *w = (int)pw;
+      *h = (int)ph;
       if (pf && pf->bits_per_pixel)
         *bpp = pf->bits_per_pixel;
       if (m->refresh_rate > 0.0f)

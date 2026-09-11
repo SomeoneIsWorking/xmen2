@@ -7,6 +7,7 @@
  * This file owns the import override too: it is the one place the guest can
  * enter, so it is the one place the host has to be armed.
  */
+#include "../presentation/display_geometry.h"
 #include "d3d8_caps.h"
 #include "d3d8_com.h"
 #include "d3d8_device.h"
@@ -21,10 +22,6 @@
 
 #include <stdio.h>
 #include <string.h>
-
-#ifdef X2_WITH_SDL
-#include <SDL3/SDL.h>
-#endif
 
 /* ---- the adapter ------------------------------------------------------- */
 
@@ -106,31 +103,12 @@ static int nmodes(void) {
  * stands.
  */
 static void current_desktop(uint32_t *w, uint32_t *h) {
-#ifdef X2_WITH_SDL
-  if (SDL_WasInit(SDL_INIT_VIDEO)) {
-    const SDL_DisplayMode *m =
-        SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
-    if (m && m->w > 0 && m->h > 0) {
-      /*
-       * PIXELS, not logical points. SDL_DisplayMode's w/h are in the
-       * desktop's own coordinate space, which on a HiDPI display is the
-       * SCALED size: this 4K screen reports 1536x864 with
-       * pixel_density 2.5. Handing the guest 1536x864 made the engine's
-       * own legality pass refuse every mode above it -- 1920x1080 on a
-       * 3840x2160 monitor came back as "too big for the desktop" and
-       * the engine silently built an 800x600 device instead, which is
-       * indistinguishable from the port failing to ask for the mode at
-       * all. The guest is a 2005 D3D8 title with no notion of display
-       * scaling, so the only number that means anything to it is the
-       * pixel count.
-       */
-      float density = m->pixel_density > 0.0f ? m->pixel_density : 1.0f;
-      *w = (uint32_t)((float)m->w * density + 0.5f);
-      *h = (uint32_t)((float)m->h * density + 0.5f);
-      return;
-    }
+  unsigned pw = 0, ph = 0;
+  if (x2_display_pixel_size(&pw, &ph)) {
+    *w = pw;
+    *h = ph;
+    return;
   }
-#endif
   *w = 1280u;
   *h = 1024u;
 }

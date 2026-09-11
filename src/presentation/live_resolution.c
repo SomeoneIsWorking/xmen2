@@ -1,26 +1,30 @@
 #include "live_resolution.h"
 
-#include "d3d8_live_resolution.h"
-#include "display_mode_runtime.h"
 #include "../native/ui_text_scale.h"
+#include "d3d8_live_resolution.h"
+#include "display_geometry.h"
+#include "display_mode_runtime.h"
+#include "resolution_ladder.h"
 #include "settings_store.h"
 #include "window_settings.h"
 
 #include <stdio.h>
 
 void x2_live_resolution_select_next(X2Settings *settings) {
-  static const uint16_t resolution[][2] = {
-      {1280, 720}, {1600, 900}, {1920, 1080}, {2560, 1440}, {3840, 2160}};
-  unsigned next = 0;
+  unsigned display_w = 0, display_h = 0;
+  unsigned height;
 
   if (!settings)
     return;
-  for (unsigned i = 0; i < sizeof resolution / sizeof resolution[0]; i++)
-    if (settings->width == resolution[i][0] &&
-        settings->height == resolution[i][1])
-      next = (i + 1) % (sizeof resolution / sizeof resolution[0]);
-  settings->width = resolution[next][0];
-  settings->height = resolution[next][1];
+  /* An unavailable display is not a failure here: the ladder assumes 16:9,
+     which is what the game shipped with and what the stored default already
+     is. Refusing to change resolution because SDL has no display would strand
+     the setting. */
+  x2_display_pixel_size(&display_w, &display_h);
+  height = x2_resolution_next_height(settings->height, display_h);
+  settings->width =
+      (uint16_t)x2_resolution_width_for(height, display_w, display_h);
+  settings->height = (uint16_t)height;
 }
 
 static void report_rollback(char *why, int whyn, const char *failure,

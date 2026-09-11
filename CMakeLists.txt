@@ -473,7 +473,8 @@ set_tests_properties(selector_probe_schema PROPERTIES
                      DEPENDS selector_probe_writer)
 
 add_executable(test_live_resolution tests/test_live_resolution.c
-               src/presentation/live_resolution.c)
+               src/presentation/live_resolution.c
+               src/presentation/resolution_ladder.c)
 target_include_directories(test_live_resolution PRIVATE
                            src/presentation src/config src/d3d8 src/native)
 add_test(NAME live_resolution COMMAND test_live_resolution)
@@ -1318,7 +1319,9 @@ add_library(x2_rmlui_ui STATIC
     src/ui/rmlui_ui.cpp
     src/ui/ui_resources.cpp
     src/ui/settings_document.cpp
+    src/ui/display_settings_document.cpp
     src/ui/hud_settings_document.cpp
+    src/ui/rml_text.cpp
     src/ui/touch_document.cpp
     src/ui/settings_overlay_state.c)
 add_dependencies(x2_rmlui_ui x2_touch_icons)
@@ -1399,6 +1402,8 @@ set(X2_NATIVE_SOURCES
     src/presentation/window_settings.c
     src/presentation/display_mode_seed.c
     src/presentation/live_resolution.c
+    src/presentation/resolution_ladder.c
+    src/presentation/display_geometry.c
     src/native/display_mode_runtime.c
     src/native/ui_text_scale.c
     src/native/dialog_selection_scale.c

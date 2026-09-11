@@ -75,7 +75,7 @@ below name cross-directory seams and the entry points used to extend them.
 | Media decode | SFD demux, video decode, ADX decode, timing, drain, and probe policy | `src/media/` | `fmv_player.c`, `fmv_sfd.c` | [FMV](RE/fmv.md) |
 | Native host and bridges | PE/runtime composition, POSIX Win32 services, title and engine overrides, live control, boot, input publication, and diagnostics; `engine_file_path.c` bridges the retail registry-backed file search to virtual `C:\`; fatal signals report a symbolizable host PC before the guest-state ring | `src/native/` | `x2native.c`, `engine_file_path.c`, `fault_report.c`, `x86rt_native.c` | [Boot](RE/boot.md) |
 | Generated native assets | Hold the build-generated redistributable prompt atlas; never guest instructions, translated bodies, or anything derived from the player's install | `src/gen/` | `prompt_glyph_atlas.h` | [Text and prompts](RE/text.md) |
-| Presentation policy | Window settings, transactional live logical-resolution changes including retained title display state, aspect fit, display-mode publication, and boot blackout | `src/presentation/`, `src/native/display_mode_runtime.{c,h}` | `x2_live_resolution_apply`, `x2_display_mode_runtime_apply`, `x2_override_display_settings_load` | — |
+| Presentation policy | Window settings, transactional live logical-resolution changes including retained title display state, the height-preset resolution ladder whose width follows the display's aspect ratio, the one display-size-in-pixels query, aspect fit, display-mode publication, and boot blackout | `src/presentation/`, `src/native/display_mode_runtime.{c,h}` | `x2_live_resolution_apply`, `x2_resolution_next_height`, `x2_resolution_width_for`, `x2_display_pixel_size`, `x2_display_mode_runtime_apply`, `x2_override_display_settings_load` | — |
 | Retail dialog selected-row scale | Own the shared 800x600 retail UI reference and extend the title's evidenced selected-row transform formula above that reference at its exact call site | `src/presentation/retail_ui_design.h`, `src/native/dialog_selection_scale_policy.{c,h}`, `src/native/dialog_selection_scale.{c,h}` | `x2_dialog_selection_scale`, `x2_dialog_selection_transform` | [Issue #133](issues/0133-retail-dialog-selection-highlight-is-missing.md) |
 | Guest ABI support | Hand-written CPU/ABI compatibility helpers shared by title-native call boundaries | `src/runtime/x86_abi/` | narrow helper named for the ABI contract | — |
 | Save model | Retail save directory, catalog, Continue policy, autosave policy/format/storage, Load Game logical-window policy, and trace model | `src/save/` | `save_directory.c`, `save_catalog.c`, `load_game_menu_policy.c` | [Boot](RE/boot.md) |
@@ -149,22 +149,24 @@ CPU translation semantics belong only in `shared/x86port`. This tree was produce
 `codemap.py tree src --depth 1 --min-lines 1`.
 
 ```text
-src/  —  100,132 lines, 495 files
-├─ audio/  220 lines  2 files  [.c .h]
-├─ config/  1,024 lines  14 files  [.h .c .cpp]
-├─ d3d8/  13,851 lines  56 files  [.h .c .cpp]
-├─ gen/  23,011 lines  2 files  [.h]
-├─ gpu/  7,759 lines  43 files  [.c .h]
-├─ input/  2,013 lines  26 files  [.h .c .cpp]
-├─ media/  1,111 lines  13 files  [.h .c]
-├─ native/  43,137 lines  274 files  [.c .h .cpp]
-├─ presentation/  847 lines  13 files  [.h .c]
-├─ runtime/  1,720 lines  7 files  [.h .c]
-├─ save/  1,142 lines  17 files  [.h .c]
-├─ ui/  1,154 lines  12 files  [.cpp .hpp .h .c]
-├─ vulkan/  2,206 lines  8 files  [.c .h]
+src/  —  100,986 lines, 536 files
+├─ audio/  222 lines  2 files  [.c .h]
+├─ config/  1,475 lines  18 files  [.h .c .cpp]
+├─ d3d8/  13,803 lines  57 files  [.h .c .cpp]
+├─ gen/  22,995 lines  1 files  [.h]
+├─ gpu/  7,854 lines  47 files  [.c .h]
+├─ input/  2,707 lines  32 files  [.h .c .cpp .hpp]
+├─ media/  1,369 lines  15 files  [.h .c]
+├─ native/  44,190 lines  297 files  [.c .h .cpp]
+├─ presentation/  1,139 lines  20 files  [.h .c]
+├─ runtime/  423 lines  7 files  [.h .c]
+│  ├─ x86_abi/  423 lines  7 files
+├─ save/  1,163 lines  17 files  [.h .c]
+├─ ui/  1,386 lines  14 files  [.cpp .hpp .h .c]
+├─ vulkan/  2,182 lines  8 files  [.c .h]
+├─ web/  78 lines  1 files  [.cpp]
 
-TOTAL: 100,132 lines across 495 files in 1 root(s)
+TOTAL: 100,986 lines across 536 files in 1 root(s)
 ```
 
 Repository-level `tests/` owns focused verification.
@@ -189,7 +191,9 @@ Repository-level `tests/` owns focused verification.
   capture remains in its native bridge and D3D8 matrix lowering remains in
   `src/d3d8/`.
 - **A setting or stored assignment** → `src/config/`; window-mode and live
-  logical-resolution application belong in `src/presentation/`; D3D8/GPU
+  logical-resolution application belong in `src/presentation/`, where the
+  resolution ladder is pure policy in `resolution_ladder.c` and the display's
+  own pixel size is measured once in `display_geometry.c`; D3D8/GPU
   target mutation stays behind their presentation seams; the binary-grounded
   guest settings-load bridge belongs in `src/native/display_mode_runtime.c`;
   UI editing belongs in `src/ui/`.

@@ -398,7 +398,13 @@ selection now transactionally replaces the active logical D3D colour/depth
 targets, updates the D3D8 backbuffer/depth descriptions and viewport, applies
 the title's retained display dimensions/aspect/pixel scales and window
 geometry, and persists only after all live presentation owners accept the
-change; focused tests prove success and each rollback path. The visible
+change; focused tests prove success and each rollback path. The resolution
+control is a height preset -- 720p, 1080p, 1440p, 2160p -- whose width is
+derived from the primary display's measured pixel aspect ratio rather than
+picked from a fixed 16:9 table, so a 16:10 or 21:9 panel gets a mode that fills
+it; presets taller than the display are not offered, and 720p always is. One
+owner now answers "display size in pixels" for the ladder, GetDeviceCaps and
+the D3D8 legality pass. The visible
 800x600 -> 1280x720 case passed 8/8 and directly matched the live menu geometry
 against a cold native-widescreen launch, preventing a 4:3 view from being
 stretched across the 16:9 target.

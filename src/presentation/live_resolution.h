@@ -5,7 +5,11 @@
 
 struct SDL_Window;
 
-/* Advance the configured resolution through the shipped Port Settings list. */
+/*
+ * Advance the configured resolution to the next height preset -- 720p, 1080p,
+ * 1440p, 2160p -- and derive its width from the display's aspect ratio. See
+ * resolution_ladder.h for the policy and display_geometry.h for the query.
+ */
 void x2_live_resolution_select_next(X2Settings *settings);
 
 /*

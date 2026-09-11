@@ -5,7 +5,9 @@
  */
 #include "settings_document.hpp"
 #include "controller_assignment_rows.hpp"
+#include "display_settings_document.hpp"
 #include "hud_settings_document.hpp"
+#include "rml_text.hpp"
 #include "ui_resources.h"
 
 #include <RmlUi/Core.h>
@@ -47,24 +49,6 @@ public:
   void ProcessEvent(Rml::Event &event) override;
 };
 SettingsListener listener;
-
-std::string escape_rml(const std::string &text) {
-  std::string out;
-  out.reserve(text.size());
-  for (char c : text) {
-    if (c == '&')
-      out += "&amp;";
-    else if (c == '<')
-      out += "&lt;";
-    else if (c == '>')
-      out += "&gt;";
-    else if (c == '\"')
-      out += "&quot;";
-    else
-      out += c;
-  }
-  return out;
-}
 
 const char *keyboard_code_name(unsigned code) {
   if (code > 0xffu)
@@ -114,25 +98,7 @@ void rebuild() {
            "Continue loads the newest save; if none exists it opens the "
            "main menu instead.</div><spacer></spacer></pane>";
   } else if (active_tab == 1) {
-    rml << "<pane><div class='section-heading'>Display</div>";
-    rml << "<select-button id='resolution'><key>Resolution</key><value>"
-        << settings->width << "x" << settings->height
-        << "</value></select-button>"
-        << "<select-button id='window-mode'><key>Window mode</key><value>"
-        << escape_rml(x2_window_mode_name(settings->window_mode))
-        << "</value></select-button>"
-        << "<select-button id='dynamic-shadows'><key>Dynamic "
-           "shadows</key><value>"
-        << (settings->dynamic_shadows ? "On" : "Off")
-        << "</value></select-button>"
-        << "<select-button id='shadow-resolution'><key>Shadow "
-           "quality</key><value>"
-        << settings->shadow_resolution << "</value></select-button>"
-        << "<div class='help'>Windowed uses the selected client size. "
-           "Borderless uses the desktop mode. Exclusive fullscreen "
-           "switches the display to the selected resolution.</div>"
-        << "<p id='status' class='status'></p><spacer></spacer></pane>"
-        << hud_settings_document_rml(settings->hud);
+    rml << display_settings_document_rml(*settings);
   } else {
     visible_controllers = controller_assignment_rows(*settings);
     rml << "<pane><div class='section-heading'>Device assignments</div>"
@@ -190,15 +156,7 @@ void rebuild() {
     wire("boot-mode", "click");
     wire("boot-mode", "keydown");
   } else if (active_tab == 1) {
-    wire("resolution", "click");
-    wire("resolution", "keydown");
-    wire("window-mode", "click");
-    wire("window-mode", "keydown");
-    wire("dynamic-shadows", "click");
-    wire("dynamic-shadows", "keydown");
-    wire("shadow-resolution", "click");
-    wire("shadow-resolution", "keydown");
-    hud_settings_document_wire(*document, listener);
+    display_settings_document_wire(*document, listener);
   } else {
     wire("touch-controls", "click");
     wire("touch-controls", "keydown");
@@ -367,9 +325,8 @@ void SettingsListener::ProcessEvent(Rml::Event &event) {
   } else if (id == "touch-controls") {
     X2Settings *settings = x2_settings_store();
     X2Settings before = *settings;
-    settings->touch_controls =
-        (uint8_t)((settings->touch_controls + 1u) %
-                  (X2_TOUCH_CONTROLS_ALWAYS + 1u));
+    settings->touch_controls = (uint8_t)((settings->touch_controls + 1u) %
+                                         (X2_TOUCH_CONTROLS_ALWAYS + 1u));
     std::string status = save_settings();
     if (status != "Saved")
       *settings = before;
