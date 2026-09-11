@@ -181,3 +181,44 @@ split above is the one to trust.
    - **`x86p_flag_cf` is twice `x86p_cond`.** Carry-in derivation is still a
      call per ADC/SBB/RCL/RCR; the same NZCV argument that retired most
      condition helper calls applies to it and has not been made yet.
+
+7. **Both of those leads are now closed, and the emulated-TLS one with them.**
+
+   - *FFmpeg scalar paths.* `shared/android-port` builds the prefix with
+     `-fvisibility=hidden` instead of `--disable-asm`; the tables stop being
+     preemptible, the `adrp`+`add` relocation becomes legal, and 205 NEON
+     symbols appear in `libmain.so`. `ff_yuv420p_to_bgra_neon` (11.83%)
+     replaced `yuv2rgb_c_32` (8.52%) and the scalar IDCT symbols are gone.
+   - *Carry-in derivation.* It was not the ADC/SBB case at all: `x86p_flag_cf`
+     reads `carry_in` only for the Inc and Dec lazy-flag kinds, so for a binary
+     ALU -- which records Add, Sub or Logic -- both the derivation and the
+     `FLAG_CARRY_IN` store were dead. `flags.h` now owns that rule as
+     `x86p_flags_carry_in_is_live` and both backends gate on it (x86port
+     `b7f215e`). Carry-in helper calls over the AArch64 differential corpus
+     fell from 789 to 268 across 1,423 blocks; on the device `x86p_flag_cf`
+     went from 5.07% to 1.53% of `libmain.so` samples.
+   - *`x86_guest_call_top`.* At 13.44% it was the second cost in the profile
+     taken after the FFmpeg fix. The cause was not the function: an Android
+     shared object below API 29 has EMULATED thread-locals, so reading the
+     per-thread call-frame head is a call through a pthread key, and
+     `x86_engine_jit_intercept` does it once per block boundary.
+     `tls_model("initial-exec")` is already requested and emulated TLS ignores
+     it. The fix is at the boundary that needs the value:
+     `x86p_jit_engine_run` now takes the caller's per-run state and hands it to
+     the intercept and dispatch callbacks (x86port `09573fa`), so the title
+     passes the frame it just pushed. Living on the run's own stack it is
+     per-thread by construction, unlike the registered user pointer one engine
+     shares between guest threads. `x86_guest_call_for_cpu` is deleted; the
+     CPU-ownership check moved to where the frame is consumed.
+
+   After it, `x86_guest_call_top` has ZERO samples in a 20-second profile
+   (22,460 samples, 5,381 in `libmain.so`) and `x86_engine_jit_intercept` is
+   3.12%, down from 11.78%. The two profiles are different phases of boot --
+   this one is dominated by `x86p_mem_write_bytes` at 27.58% -- so the shares
+   are not a like-for-like before/after; the symbol's disappearance is the
+   claim, and its only remaining callers are the cold fault reporter and
+   `x2_engine_where`.
+
+   The next cost this names is `x86p_mem_write_bytes` plus `x86p_mem_write` and
+   `x86p_string_execute`: a REP MOVS-heavy asset phase going through the
+   byte-at-a-time memory path.

@@ -17,13 +17,16 @@
 #include "jit_engine.h"
 
 struct X86pCpu;
+struct X86GuestCallFrame;
 
 /*
  * Run the host code at `cpu->eip` -- an import or a resolved native override
  * body -- against the canonical CPU, then set `cpu->eip` to the guest return
- * address. Shared by the title call loop and the JIT dispatch handler.
+ * address. Shared by the title call loop and the JIT dispatch handler, both of
+ * which already hold the guest call frame this CPU is executing inside.
  */
-void x86_engine_run_host_at(struct X86pCpu *cpu);
+void x86_engine_run_host_at(struct X86pCpu *cpu,
+                            const struct X86GuestCallFrame *frame);
 
 /*
  * x86port's between-blocks dispatch hook (x86p_jit_engine_set_dispatch): the
@@ -33,6 +36,6 @@ void x86_engine_run_host_at(struct X86pCpu *cpu);
  * live host frame (a return to the translated call's caller, a
  * setjmp3 thunk, the engine return trampoline).
  */
-X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user);
+X86pJitDispatchResult x86_engine_jit_dispatch(struct X86pCpu *cpu, void *user, void *run_user);
 
 #endif /* X2_X86_ENGINE_DISPATCH_H */

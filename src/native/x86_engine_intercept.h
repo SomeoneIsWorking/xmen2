@@ -44,7 +44,7 @@ int x86_engine_host_body_at(uint32_t eip, uint32_t entry);
  * refinement when a frame is on record; the address check itself is
  * unconditional.
  */
-int x86_engine_jit_intercept(const struct X86pCpu *cpu, void *user);
+int x86_engine_jit_intercept(const struct X86pCpu *cpu, void *user, void *run_user);
 
 /*
  * x86port's translation-time boundary hook: the pure-EIP subset, plus the

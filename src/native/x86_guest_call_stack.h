@@ -30,8 +30,6 @@ void x86_guest_call_pop(X86GuestCallFrame *frame);
 void x86_guest_call_restore(X86GuestCallFrame *frame);
 
 const X86GuestCallFrame *x86_guest_call_top(void);
-/* Returns the current frame only when it owns this canonical CPU instance. */
-const X86GuestCallFrame *x86_guest_call_for_cpu(const struct X86pCpu *cpu);
 unsigned long x86_guest_call_depth(void);
 unsigned long x86_guest_call_deepest(void);
 void x86_guest_call_reset_deepest(void);

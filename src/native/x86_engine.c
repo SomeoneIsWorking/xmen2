@@ -313,7 +313,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
      * while looking like it worked.
      */
     if (x86_engine_host_body_at(cpu->eip, entry)) {
-      x86_engine_run_host_at(cpu);
+      x86_engine_run_host_at(cpu, &call_frame);
       continue;
     }
     char why[192];
@@ -326,7 +326,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
     if (slice > 200000ULL)
       slice = 200000ULL;
     X86pJitRunStatus st =
-        x86p_jit_engine_run(g_engine.jit, cpu, slice, why, sizeof why);
+        x86p_jit_engine_run(g_engine.jit, cpu, &call_frame, slice, why, sizeof why);
     if (st != kX86pRunIntercept && st != kX86pRunBudget)
       refuse(entry, cpu->eip, why[0] ? why : x86p_jit_run_status_name(st));
     guest_quantum();

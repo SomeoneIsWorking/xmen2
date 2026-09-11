@@ -36,10 +36,6 @@ void x86_guest_call_restore(X86GuestCallFrame *frame) { t_top = frame; }
 
 const X86GuestCallFrame *x86_guest_call_top(void) { return t_top; }
 
-const X86GuestCallFrame *x86_guest_call_for_cpu(const struct X86pCpu *cpu) {
-  return t_top && t_top->cpu == cpu ? t_top : NULL;
-}
-
 unsigned long x86_guest_call_depth(void) { return t_top ? t_top->depth : 0u; }
 
 unsigned long x86_guest_call_deepest(void) { return g_deepest; }

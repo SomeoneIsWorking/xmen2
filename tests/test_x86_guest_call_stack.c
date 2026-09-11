@@ -20,14 +20,13 @@ static int checks;
 static void single_thread_contract(void) {
   X86GuestCallFrame first, second, third;
   struct X86pCpu *first_cpu = (struct X86pCpu *)(uintptr_t)0x100u;
-  struct X86pCpu *other_cpu = (struct X86pCpu *)(uintptr_t)0x200u;
   CHECK(x86_guest_call_depth() == 0);
   CHECK(x86_guest_call_top() == NULL);
-  CHECK(x86_guest_call_for_cpu(first_cpu) == NULL); /* no-frame rejection */
 
+  /* Whether a frame belongs to the CPU being dispatched is checked where the
+     frame is consumed (x86_engine_dispatch.c), not here: the run's frame now
+     arrives as x86port's per-run pointer rather than being looked up. */
   x86_guest_call_push(&first, first_cpu, 0x1000u, 0xDEADBEEFu, 0x200000u);
-  CHECK(x86_guest_call_for_cpu(other_cpu) == NULL); /* CPU mismatch rejection */
-  CHECK(x86_guest_call_for_cpu(first_cpu) == &first);
   x86_guest_call_push(&second, first_cpu, 0x2000u, 0x1005u, 0x1ff000u);
   CHECK(x86_guest_call_depth() == 2);
   CHECK(x86_guest_call_top()->entry == 0x2000u);
