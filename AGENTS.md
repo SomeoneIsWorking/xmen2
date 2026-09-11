@@ -145,6 +145,20 @@ sources. The Gradle project consumes the generated
 `x2-android.properties` contract and stages only native code, UI resources,
 and SDL's Java shell, never game files.
 
+**A published APK is signed in CI, never locally.** The long-lived key exists
+only as repository secrets (`X2_ANDROID_KEYSTORE_BASE64`,
+`X2_ANDROID_KEY_ALIAS`, `X2_ANDROID_STORE_PASSWORD`, `X2_ANDROID_KEY_PASSWORD`)
+and GitHub will not hand it back, so no checkout can produce a publishable
+artifact: locally `build_android.py` assembles debug builds for a device you
+control, and the release workflow owns publication. Android identifies an
+application by package name AND signing certificate, so a release signed with a
+different key is refused on update as "package conflicts with an existing
+package" and the player must uninstall -- destroying the imported game
+installation. That is what a per-runner debug keystore did to every release up
+to v0.2.0. `publish_apk` therefore refuses any APK whose certificate does not
+match `android/published-release.json`, which records the public fingerprint.
+If that key is ever lost, no future build can update an installed copy.
+
 **Drive a run instead of scripting it.** The default product opens an HTTP
 channel on loopback, records the exact post-merge DirectInput states returned to
 the game, and publishes its PID, port and recording in `scratch/run/live.json`.
