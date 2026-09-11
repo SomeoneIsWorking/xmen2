@@ -8,8 +8,10 @@ import importlib.util
 from functools import cache
 from collections.abc import Mapping
 import os
+import re
 from pathlib import Path
 import shutil
+import json
 import subprocess
 import sys
 from types import ModuleType
@@ -181,6 +183,99 @@ def debug_apk(root: Path, abi: str) -> Path:
     return candidates[0]
 
 
+def apk_version_code(apk: Path) -> int:
+    """The versionCode the built APK actually declares."""
+    aapt2 = apksigner_path().parent / "aapt2"
+    if not aapt2.is_file():
+        raise SystemExit(f"Android aapt2 is missing beside apksigner: {aapt2}")
+    badging = subprocess.run(
+        [str(aapt2), "dump", "badging", str(apk)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    match = re.search(r"versionCode='(\d+)'", badging)
+    if not match:
+        raise SystemExit(f"aapt2 reported no versionCode for {apk.name}")
+    return int(match.group(1))
+
+
+def signer_digest(apk: Path) -> str:
+    """The SHA-256 of the certificate an APK is signed with."""
+    signer = apksigner_path()
+    output = subprocess.run(
+        [str(signer), "verify", "--print-certs", str(apk)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    digests = [
+        line.split(":", 1)[1].strip().lower()
+        for line in output.splitlines()
+        if "certificate SHA-256 digest" in line
+    ]
+    if len(digests) != 1:
+        raise SystemExit(
+            f"Expected exactly one signer certificate in {apk.name}; "
+            f"apksigner reported {len(digests)}. An APK with no stable single "
+            "signer cannot update an installed copy."
+        )
+    return digests[0]
+
+
+def published_record(root: Path) -> Path:
+    return root / "android/published-release.json"
+
+
+def require_publishable(root: Path, apk: Path, version_code: int) -> str:
+    """
+    Refuse an APK that an already-installed copy cannot accept as an update.
+
+    Android identifies an application by package name AND signing certificate.
+    A package signed with a different key is a DIFFERENT application that
+    happens to share a name, so the installer refuses it -- "App not installed
+    as package conflicts with an existing package" -- and the only route
+    forward it offers is uninstalling, which deletes app-private storage. For
+    this port that is the player's entire imported game installation, gigabytes
+    of it, and they have to import it again.
+
+    That is exactly what shipping v0.1.7 and v0.2.0 under two different
+    machine-local debug keys did. The signing identity of a published APK is
+    therefore a promise to everyone who installed the last one, and this is the
+    gate that keeps it. The recorded digest is a public certificate
+    fingerprint, not a secret; the private key never appears here.
+    """
+    digest = signer_digest(apk)
+    record = published_record(root)
+    if not record.is_file():
+        raise SystemExit(
+            f"No published signing identity is recorded in {record}.\n"
+            f"This APK is signed with SHA-256 {digest}.\n"
+            "Record it deliberately, with the long-lived maintainer key, before "
+            "the first publication -- every later release must match it, and a "
+            "key that is lost or regenerated can never update an installed copy "
+            "again."
+        )
+    expected = json.loads(record.read_text())["signer_sha256"].lower()
+    if expected != digest:
+        raise SystemExit(
+            "Refusing to publish: this APK's signing certificate does not match "
+            "the published one.\n"
+            f"  published: {expected}\n"
+            f"  this APK:  {digest}\n"
+            "Everyone who installed the last release would have to uninstall -- "
+            "losing their imported game installation -- to accept this one. Sign "
+            "with the long-lived maintainer key."
+        )
+    if version_code < 1:
+        raise SystemExit(
+            f"Refusing to publish: versionCode {version_code} is not a real "
+            "version. Two releases that claim one version cannot be told apart "
+            "on a device. Set X2_ANDROID_VERSION_CODE."
+        )
+    return digest
+
+
 def publish_apk(root: Path, abi: str) -> Path:
     outputs = root / "android/app/build/outputs/apk/release"
     candidates = [path for path in outputs.glob("*-release.apk") if "unsigned" not in path.name]
@@ -192,11 +287,14 @@ def publish_apk(root: Path, abi: str) -> Path:
     shared_android().inspect_apk_runtime(candidates[0], abi)
     signer = apksigner_path()
     run([str(signer), "verify", "--verbose", "--print-certs", str(candidates[0])], cwd=root)
+    version_code = apk_version_code(candidates[0])
+    digest = require_publishable(root, candidates[0], version_code)
     release = root / "build/release"
     release.mkdir(parents=True, exist_ok=True)
     destination = release / f"X-Men-Legends-II-{abi}.apk"
     shutil.copy2(candidates[0], destination)
     print(f"android: created signed release {destination} ({destination.stat().st_size} bytes)")
+    print(f"android: signer {digest}, versionCode {version_code}")
     return destination
 
 

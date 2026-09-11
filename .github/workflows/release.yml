@@ -142,18 +142,45 @@ jobs:
       - run: uv sync --frozen
       - name: Ensure shared repositories
         run: uv run --frozen python -c "import bootstrap; bootstrap.ensure_shared()"
+      # The APK is signed with the project's long-lived key, never with the
+      # runner's auto-generated debug keystore. A debug key is regenerated per
+      # machine, so every CI release used to carry a DIFFERENT signing identity:
+      # Android then refused each update as "package conflicts with an existing
+      # package", and the only way forward was uninstalling -- which deletes the
+      # player's imported game installation, gigabytes they then had to import
+      # again. build_android.py additionally refuses to publish an APK whose
+      # signer does not match android/published-release.json.
+      - name: Restore Android signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.X2_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "X2_ANDROID_KEYSTORE_BASE64 is not configured; refusing to" \
+                 "build an Android release that cannot update an installed copy." >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/signing/release.keystore"
       - name: Set up NDK and build Android APK
+        env:
+          X2_ANDROID_KEY_ALIAS: ${{ secrets.X2_ANDROID_KEY_ALIAS }}
+          X2_ANDROID_STORE_PASSWORD: ${{ secrets.X2_ANDROID_STORE_PASSWORD }}
+          X2_ANDROID_KEY_PASSWORD: ${{ secrets.X2_ANDROID_KEY_PASSWORD }}
         run: |
           export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
           export ANDROID_NDK_VERSION=$(ls "$ANDROID_HOME/ndk" | tail -n 1)
+          export X2_ANDROID_KEYSTORE="$RUNNER_TEMP/signing/release.keystore"
+          export X2_ANDROID_VERSION_CODE="${{ github.run_number }}"
+          export X2_ANDROID_VERSION_NAME="${GITHUB_REF_NAME#v}"
           echo "Using NDK: $ANDROID_NDK_VERSION"
-          uv run --frozen python tools/build_android.py --abi arm64-v8a --debug
-          mkdir -p build/release
-          cp android/app/build/outputs/apk/debug/*arm64-v8a-debug.apk build/release/X-Men-Legends-II-arm64-v8a-debug.apk
+          uv run --frozen python tools/build_android.py --abi arm64-v8a
+      - name: Remove the signing key from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP/signing/release.keystore"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: android-apk
-          path: build/release/X-Men-Legends-II-arm64-v8a-debug.apk
+          path: build/release/X-Men-Legends-II-arm64-v8a.apk
 
   publish:
     name: Publish GitHub Release
@@ -204,8 +231,8 @@ jobs:
           - **macOS Apple Silicon (ARM64)**: `X-Men-Legends-II-macos-arm64.zip`
             - A self-contained `X-Men Legends II.app`: it carries SDL3, SDL3_image, FreeType, FFmpeg and its own Vulkan loader with MoltenVK, so nothing has to be installed first. Unzip it, move it to Applications and open it; the first launch asks for your PC installation with a Browse dialog and accepts a folder, its `XMen2.exe`, or a ZIP of either.
             - It is ad-hoc signed rather than notarised, so the first open needs right-click -> Open (or Open Anyway in System Settings -> Privacy & Security).
-          - **Android ARM64 (arm64-v8a)**: `X-Men-Legends-II-arm64-v8a-debug.apk`
-            - Debug-signed APK with Storage Access Framework (SAF) setup and touch controls. Debug signing means it is a test build, not a store or update-key release, and its device performance is not yet measured.
+          - **Android ARM64 (arm64-v8a)**: `X-Men-Legends-II-arm64-v8a.apk`
+            - Storage Access Framework setup and touch controls. Signed with the project's long-lived key, so it installs over any earlier release of the same lineage and keeps your imported game installation. Device performance is not yet measured.
           - **Checksums**: `SHA256SUMS.txt`
 
           ### Platform Notes:

@@ -7,11 +7,17 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- hasFragileUserData: the imported game installation lives in
+         app-private storage and is gigabytes the player copied in by hand, so
+         an uninstall must OFFER to keep it rather than silently destroying it
+         (API 29+). It is the safety net, not the fix: a published APK signed
+         with a stable key updates in place and never reaches this path. -->
     <application
         android:icon="@drawable/xmen2_port_icon"
         android:label="X-Men Legends II"
         android:theme="@style/AppTheme"
         android:allowBackup="false"
+        android:hasFragileUserData="true"
         android:supportsRtl="true">
         <activity
             android:name=".XMen2GameActivity"
