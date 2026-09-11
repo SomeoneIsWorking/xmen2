@@ -66,6 +66,25 @@ int main(void) {
     return 77;
   }
 
+  /* Everything below reads an inventory it expects to own: the negative wants
+     zero pads, and afterwards the attached virtual pad has to be the only one
+     and therefore index 0. A gamepad plugged into the developer's machine
+     makes all of that false, so say which pads are in the way and skip --
+     rather than abort on the first assertion and look like a regression in
+     the code under test, which is what this did before. */
+  dinput_pad_refresh();
+  if (dinput_pad_count() != 0) {
+    int n = dinput_pad_count(), i;
+    printf("SKIP dinput_pad: %d physical pad(s) attached, so the zero-pad "
+           "negative cannot be established:\n",
+           n);
+    for (i = 0; i < n; i++) {
+      const char *name = dinput_pad_name(i);
+      printf("  pad %d: %s\n", i, name ? name : "(unnamed)");
+    }
+    return 77;
+  }
+
   test_no_pad();
   generation = dinput_pad_generation();
 

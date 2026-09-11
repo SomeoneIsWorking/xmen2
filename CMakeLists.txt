@@ -706,6 +706,10 @@ target_include_directories(test_dinput_pad PRIVATE src/native)
 target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
 target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
 add_test(NAME dinput_pad COMMAND test_dinput_pad)
+# The test already returns 77 when SDL cannot give it a gamepad subsystem, a
+# virtual joystick, or an empty inventory. Without this it reported those as
+# failures, which is the opposite of what a skip is for.
+set_tests_properties(dinput_pad PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(test_directinput_controller_sample
     tests/test_directinput_controller_sample.c
