@@ -1,7 +1,7 @@
 /* Private handle-table contract shared by KERNEL32 services and waits. */
 #ifndef X2_KERNEL32_HANDLES_H
 #define X2_KERNEL32_HANDLES_H
-#include <dirent.h>
+#include "platform_dirent.h"
 #include <stddef.h>
 #include <stdint.h>
 #define MAX_HANDLES 256

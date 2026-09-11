@@ -77,3 +77,11 @@ package is still not claimed: the socket header needs to be compiled and
 linked as part of the remaining native host port, alongside signals,
 diagnostics, directory/stat operations, `dlopen`, and the CMake dependency
 selection.
+
+Directory enumeration now has one portable owner in
+`src/native/platform_dirent.h`. It maps `DIR`, `struct dirent`, `opendir`,
+`readdir`, `closedir`, and `rewinddir` across POSIX and Windows
+(`FindFirstFileA`/`FindNextFileA`), routing `kernel32`, `win_path`, and
+`save_catalog` away from raw `<dirent.h>`. The unused `<sys/wait.h>` include
+in `x2native.c` has also been removed. The complete native test suite
+(149 tests) continues to pass cleanly with all checks green.

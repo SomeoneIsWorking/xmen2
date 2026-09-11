@@ -34,10 +34,10 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include "platform_dirent.h"
 #include "platform_posix.h"
 #include "platform_strings.h"
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>

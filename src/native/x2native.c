@@ -59,7 +59,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>

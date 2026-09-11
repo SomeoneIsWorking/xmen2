@@ -8,10 +8,10 @@
 #include "save_trace_runtime.h"
 #include "shell32.h"
 
+#include "platform_dirent.h"
 #include "platform_posix.h"
 #include "platform_strings.h"
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>

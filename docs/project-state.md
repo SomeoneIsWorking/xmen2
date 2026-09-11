@@ -634,7 +634,7 @@ an explicit asset-only release under `build/release/web`.
   translated checks. SIMD, integer-tail and sparse suites are likewise shared
   runtime evidence rather than title gameplay evidence.
 
-Build/link progress and shared synthetic tests are not browser gameplay or
+Gap: build/link progress and shared synthetic tests are not browser gameplay or
 performance evidence. The acceptance contracts and current build entry point are
 in [web-release.md](web-release.md). A deployed artifact, imported real game,
 nonzero JIT execution, explicit fallback denominators, representative interaction,
@@ -642,6 +642,9 @@ and offline save/relaunch evidence remain required before this capability is
 verified.
 
 ### S022 — native Windows host package and CI release: missing
+
+Missing capability: a runnable native Windows host binary, release package, and
+MSVC/Clang-cl CI build.
 
 The current Windows job is a policy check that records the unsupported native
 host; the release workflow intentionally emits no Windows artifact. The title

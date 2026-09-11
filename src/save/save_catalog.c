@@ -6,11 +6,13 @@
 
 #include "save_catalog.h"
 
-#include <dirent.h>
+#include "platform_dirent.h"
+#include "platform_posix.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 
@@ -24,7 +26,10 @@ static int is_save_leaf(const char *leaf) {
 }
 
 static int mtime_ns(const struct stat *st, int64_t *out) {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+  int64_t seconds = (int64_t)st->st_mtime;
+  int64_t nanoseconds = 0;
+#elif defined(__APPLE__)
   int64_t seconds = (int64_t)st->st_mtimespec.tv_sec;
   int64_t nanoseconds = (int64_t)st->st_mtimespec.tv_nsec;
 #else
@@ -71,20 +76,35 @@ int x2_save_catalog_latest(const char *directory, X2SaveCandidate *out) {
   dir = opendir(directory);
   if (!dir)
     return errno == ENOENT ? 0 : -1;
+#if !defined(_WIN32)
   directory_fd = dirfd(dir);
   if (directory_fd < 0) {
     closedir(dir);
     return -1;
   }
+#else
+  (void)directory_fd;
+#endif
 
   errno = 0;
   while ((entry = readdir(dir)) != NULL) {
     if (!is_save_leaf(entry->d_name))
       continue;
+#if defined(_WIN32)
+    char filepath[MAX_PATH];
+    int written =
+        snprintf(filepath, sizeof filepath, "%s/%s", directory, entry->d_name);
+    if (written <= 0 || (size_t)written >= sizeof filepath ||
+        stat(filepath, &st) != 0) {
+      result = -1;
+      break;
+    }
+#else
     if (fstatat(directory_fd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) != 0) {
       result = -1;
       break;
     }
+#endif
     if (!S_ISREG(st.st_mode))
       continue;
     if (!mtime_ns(&st, &candidate.mtime_ns)) {
