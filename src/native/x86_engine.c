@@ -1,6 +1,7 @@
 #include "x86_engine.h"
 
 #include "guest_memory.h"
+#include "x2_log.h"
 #include "x86_engine_dispatch.h"
 #include "x86_engine_intercept.h"
 #include "x86_engine_jit_diag.h"
@@ -9,7 +10,6 @@
 #include "x86_hotep.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
-#include "x2_log.h"
 
 #include "cpu.h"
 #include "jit_engine.h"
@@ -161,14 +161,17 @@ static void report_live_if_requested(void) {
       "engine",
       "[HB] JIT: %llu blocks entered, %llu translated (%llu instructions); "
       "%lu native hand-backs; %llu refusals of %llu translation attempts; "
-      "%llu cache flushes, %llu bytes code; product fallback unavailable",
+      "%llu cache flushes, %llu bytes code; %llu of %llu condition(s) "
+      "lowered inline; product fallback unavailable",
       (unsigned long long)js.blocks_entered,
       (unsigned long long)js.blocks_translated,
       (unsigned long long)js.guest_insns_translated, g_engine.callouts,
       (unsigned long long)js.translate_refusals,
       (unsigned long long)(js.blocks_translated + js.translate_refusals),
       (unsigned long long)js.cache_flushes,
-      (unsigned long long)js.code_bytes_used);
+      (unsigned long long)js.code_bytes_used,
+      (unsigned long long)js.conds_inline,
+      (unsigned long long)js.conds_translated);
 }
 
 static const char *named(uint32_t addr) {
@@ -406,6 +409,23 @@ void x2_engine_report(void) {
         (unsigned long long)js.translate_refusals,
         (unsigned long long)js.cache_flushes,
         (size_t)(js.code_bytes_used / 1024), x86p_jit_engine_mechanism());
+    /* How much of the translated code reads its Jcc/SETcc conditions off the
+       host's own flags. Reported with the total, because a backend that lowers
+       none is correct and merely pays a call per condition -- a bare inline
+       count could not be told from a run that translated no branches. */
+    if (js.conds_translated == 0u)
+      lucent_log_info("engine",
+                      "JIT conditions: none translated, so this run says "
+                      "nothing about condition lowering");
+    else
+      lucent_log_info(
+          "engine",
+          "JIT conditions: %llu of %llu lowered inline (%.1f%%), %llu call "
+          "the shared evaluator",
+          (unsigned long long)js.conds_inline,
+          (unsigned long long)js.conds_translated,
+          100.0 * (double)js.conds_inline / (double)js.conds_translated,
+          (unsigned long long)(js.conds_translated - js.conds_inline));
     {
       const X86pJitProfile *prof = x86p_jit_engine_profile(g_engine.jit);
       if (prof && x86p_jit_profile_distinct(prof) > 0u) {

@@ -26,3 +26,6 @@ vendor/
 # It defaults into the OS user config directory, but keep the old root-level
 # name ignored so a stale binary cannot re-commit it.
 x2registry.txt
+
+# Agent harness task scratch, written into whatever directory a session runs in.
+.pi/
