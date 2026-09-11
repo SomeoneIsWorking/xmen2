@@ -22,13 +22,36 @@ refusals and no fallback. A `Return` press through the loopback control channel
 was accepted by the guest at frame 203. Screenshots:
 `scratch/android/arm64-run.png`, `scratch/android/arm64-after-input.png`.
 
-## What the device cannot tell us
+## What the device cannot tell us, measured rather than assumed
 
-`simpleperf` over the running process: 35.7% of samples are in
-`[anon:swiftshader_jit]` and a further 17.5% in `vulkan.pastel.so` -- the
-emulator's software rasteriser -- while the guest CPU itself is QEMU TCG.
-Frame times (p50 815 ms) are an emulator artefact. This device answers
-correctness questions only; the named-device performance gate in S018 stands.
+A 120-second `simpleperf` record at the steady-state title screen, 67,098
+samples, attributed by thread:
+
+| thread | samples | share | what it is |
+| --- | ---: | ---: | --- |
+| `Thread<00..03>` | 57,161 | 85.2% | SwiftShader's four rasteriser workers |
+| `SDLThread` | 4,837 | 7.2% | the port: guest execution and the frame loop |
+| `AAudio_1`, `SDLAudioP15` | 4,587 | 6.8% | audio mixing and output |
+| activity thread | 379 | 0.6% | Android lifecycle |
+
+Inside `SDLThread` the split is 2,766 samples (57.2%) in SwiftShader code
+called synchronously on the frame loop, 424 (8.8%) in x86port's translated
+guest code in `/memfd:jitcommon-code`, and the remainder in named
+`libmain.so`/libc symbols.
+
+So across the whole process the port's translated guest code is **0.63% of
+samples** and the emulator's software rasteriser is roughly **89%**. Cuttlefish
+has no GPU, so Vulkan is SwiftShader on the same CPUs as the guest. This is the
+quantitative reason the device cannot rank port-side optimisations: the port is
+not the bottleneck on it, and an optimisation that removed *all* of
+`libmain.so`'s named cost would move under 2% of the frame. The named-device
+performance gate in S018 stands.
+
+An earlier, narrower reading of this profile (35.7% `[anon:swiftshader_jit]`,
+17.5% `vulkan.pastel.so`) undercounted the rasteriser: it filtered by shared
+object, and SwiftShader's JIT-compiled rasteriser code lands in small unnamed
+anonymous mappings that the DSO view reports as `unknown`. The thread-level
+split above is the one to trust.
 
 ## Findings that are host-independent
 
@@ -50,18 +73,54 @@ correctness questions only; the named-device performance gate in S018 stands.
    NOT MEASURED when it was not armed, instead of printing an empty table.
    `test_d3d8_texture_luma` now covers the disarmed case as well.
 
-3. **Emulated TLS at the API 21 floor (open).** `__emutls_get_address` was
-   2.4% of all samples and `x86_guest_call_top` a further 1.6%: bionic has ELF
-   TLS only from API 29, so `__thread` in `libmain.so` compiles to a function
-   call with a pthread key lookup. The two hot users are the per-thread guest
-   call stack (`x86_guest_call_stack.c`) and `g_fsbase`/`g_gsbase`. Either
-   thread the call-stack top through the engine's existing per-call state, or
-   raise the API floor -- which is a product decision about device coverage,
-   not a free win.
+3. **Emulated TLS at the API 21 floor (open, now quantified).** bionic has
+   ELF TLS only from API 29, so `__thread` in `libmain.so` compiles to an
+   `__emutls_get_address` call with a pthread-key lookup. In the profile above
+   it is 66 samples of `SDLThread` -- 1.4% of the port's own thread, and the
+   largest named symbol in it after the JIT dispatch loop
+   (`x86p_jit_engine_run`, 225) and `syscall` (116). `libmain.so` has only 33
+   such call sites over 8 TLS variables, all at transition boundaries rather
+   than inside emitted code: `g_fsbase`/`g_gsbase` are copied into
+   `cpu->fs_base` once per native-to-guest entry, not per FS-relative access.
+   The cost is concentrated in the per-thread guest call stack
+   (`x86_guest_call_stack.c`: `x86_guest_call_top` is a further 44 samples) and
+   the `guest_thread_*` bookkeeping, where push/pop/top each repeat the lookup.
+   The root-cause fix is to thread the call-stack top through the engine's
+   existing per-call state so one lookup serves a whole guest call, which works
+   at any API floor. Raising the floor to 29 would also remove it but is a
+   product decision about device coverage, not a free win.
 
-4. **PLT indirection (open, unquantified).** `@plt` was 12% of `libmain.so`
-   samples during boot and 1.6% overall later. `libmain.so` exports its
-   internal helpers, so intra-library calls bind through the PLT.
-   `-fvisibility=hidden` plus `-Wl,-Bsymbolic-functions` would make them
-   direct; it needs measuring on a host where the measurement means something,
-   not on this device.
+4. **PLT indirection (done, and it is not a performance lever).** `libmain.so`
+   exported every internal helper, so intra-library calls bound through the
+   PLT. The Android build now compiles with hidden visibility and links with
+   `-Wl,-Bsymbolic-functions`; `main` keeps explicit default visibility for
+   SDLActivity's `dlsym`, and JNI entries keep theirs through `JNIEXPORT`.
+
+   Static effect on the arm64-v8a library:
+
+   | | before | after |
+   | --- | ---: | ---: |
+   | `JUMP_SLOT` relocations | 5,290 | 576 |
+   | ...resolving to its own definitions | 4,709 | 0 |
+   | exported dynamic symbols | 9,518 | 2,954 |
+   | total relocations | 20,331 | 14,833 |
+   | stripped library bytes | 8,509,264 | 7,435,520 |
+
+   28,680 `bl ...@plt` call sites became direct branches, including most of the
+   runtime's own (`x86p_*` 371 -> 49, `jit*` 164 -> 26).
+
+   Runtime effect: none that can be measured. Both stripped libraries were run
+   on the same device, same install, same title-screen scene, for a 300-second
+   window each, reporting host QEMU CPU-seconds per presented frame -- under
+   TCG that is a work measure, not a phone frame time:
+
+   | | frames | host CPU s/frame | p50 |
+   | --- | ---: | ---: | ---: |
+   | hidden visibility | 254 | 4.2257 | 1169.7 ms |
+   | default visibility | 253 | 4.2339 | 1172.6 ms |
+
+   A 0.19% difference, inside run-to-run noise. That is consistent with the
+   profile: all of `libmain.so`'s named code is 876 of 67,098 samples (1.3%),
+   and the PLT was a fraction of that. The change is kept for the 1.07 MB and
+   6,564 exported symbols it removes from the shipped library, not for speed,
+   and it should not be cited as a performance win.

@@ -198,8 +198,18 @@ host-independent CPU costs found during that run were fixed with tests rather
 than timings -- x86port's x87 binary128<->ext80 conversion churn (exact bit
 reassembly, 28,372 checks) and an ungated per-upload texture-luma scan (now
 armed by `X2_TEXTURE_LUMA` and reported as NOT MEASURED when off). Two further
-levers remain unimplemented: emulated TLS at the API 21 floor and PLT
-indirection in `libmain.so`. See
+lever was implemented and measured: `libmain.so` now builds with hidden
+visibility and `-Wl,-Bsymbolic-functions`, which removes all 4,709
+self-resolving PLT slots (5,290 -> 576 JUMP_SLOT), 6,564 exported dynamic
+symbols and 1.07 MB from the stripped library -- and changes frame cost by
+0.19%, inside noise, so it is kept for size and load, never cited as a speed
+win. A 120-second thread-attributed profile explains why and bounds what this
+device can show at all: SwiftShader's four rasteriser workers are 85.2% of
+samples, the port's own thread 7.2%, audio 6.8%, and x86port's translated guest
+code 0.63% of the whole process. The one remaining port-side lever it does
+expose is emulated TLS at the API 21 floor -- `__emutls_get_address` is 1.4% of
+the port's thread, concentrated in the per-thread guest call stack -- which is
+open. See
 [`0147`](issues/0147-arm64-android-cpu-ext80-conversion-churn-and-an.md).
 The named-device performance gate stays unmet.
 

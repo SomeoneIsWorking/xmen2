@@ -1597,6 +1597,15 @@ static int run_battery(void) {
   return fails ? 1 : 0;
 }
 
+/* Android hides every other symbol in libmain.so (see the visibility preset
+ * in CMakeLists.txt), which is what removes ~4,700 self-resolving PLT slots
+ * from the hot call paths. SDLActivity reaches the product by dlsym'ing this
+ * one name out of the library, so it is the one symbol that must stay
+ * visible; shared/android-port's verify_native_entry refuses a build where it
+ * is not. */
+#if defined(__ANDROID__) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((visibility("default")))
+#endif
 int main(int argc, char **argv) {
   const char *dir;
   int window, i, rc, mapped = 0, run, arkprobe, vk;

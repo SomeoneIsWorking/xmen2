@@ -72,6 +72,20 @@ find_package(Threads REQUIRED)
 if(EMSCRIPTEN)
     include(cmake/WebDependencies.cmake)
 elseif(ANDROID)
+    # Android ships the whole port as one shared object, so every cross-module
+    # call inside it -- including the JIT's dispatch and helper routing --
+    # defaults to going out through a PLT stub and back. Measured on the
+    # arm64-v8a build: 5,290 JUMP_SLOT relocations, 4,709 of which resolve to a
+    # function defined in this same library, and 8,893 exported dynamic
+    # symbols for the linker to bind at startup. Hiding by default turns those
+    # into direct branches; -Bsymbolic-functions binds whatever still needs a
+    # dynamic symbol to the local definition. The entry point that Android
+    # actually looks up keeps explicit default visibility (src/native/
+    # x2native.c), JNI entries keep theirs through JNIEXPORT, and
+    # verify_native_entry refuses a library that stops exporting `main`.
+    set(CMAKE_C_VISIBILITY_PRESET hidden)
+    set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+    set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
     if(NOT X2_ANDROID_PORT_PREFIX)
         message(FATAL_ERROR
             "x2native: Android requires the shared android-port native prefix. "
@@ -1737,6 +1751,7 @@ if(EMSCRIPTEN)
 endif()
 if(ANDROID)
     set_target_properties(x2native PROPERTIES OUTPUT_NAME main)
+    target_link_options(x2native PRIVATE "-Wl,-Bsymbolic-functions")
     get_filename_component(_x2_android_ndk_version "${CMAKE_ANDROID_NDK}" NAME)
     if(NOT _x2_android_ndk_version)
         message(FATAL_ERROR "x2native: Android toolchain did not expose its NDK version")
