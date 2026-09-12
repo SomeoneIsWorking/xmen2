@@ -41,7 +41,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: SomeoneIsWorking/android-port
-          ref: c3e7807f9827aeb5aa4ed8cd368c97cf4df2f20d
+          ref: 3585be1bb615a8b693131000ea71376b77458c37
           path: vendor/shared/android-port
           fetch-depth: 1
           submodules: recursive

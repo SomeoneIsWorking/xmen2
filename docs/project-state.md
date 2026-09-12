@@ -130,7 +130,10 @@ completed all 50 AGP tasks under a one-day local verification key, and
 `apksigner` verified its v3 signature; that artifact was deliberately not staged
 as a release. The current setup is ZIP-only. The shared `android-port` Java
 framework owns Activity/SAF staging, determinate byte progress, and resumable
-staging under the package OBB directory; Lucent remains the shared ZIP
+staging under the package OBB directory. A resumed copy now verifies its staged
+prefix against the reopened SAF source before appending; changed or truncated
+sources are refused and their partial stage discarded. The shared Java contracts
+pass, and the ARM64 debug APK assembles with this framework revision. Lucent remains the shared ZIP
 extraction helper. Reinstall startup checks that retained package installation
 before showing the picker when Android retained app data. OBB is app-specific:
 an ordinary uninstall removes it, so reliable import-free uninstall/reinstall
