@@ -173,6 +173,13 @@ menu-state overlay feedback, not full gameplay HUD relocation. Waydroid's
 roughly 700 ms frames are an emulator diagnostic only, not Android performance
 evidence.
 
+The debug APK now accepts a bounded
+`com.someoneisworking.xmen2.debug.boot_map` intent extra and passes it through
+the existing `startFirstMission` transition; `act1/deadzone/deadzone1` is the
+documented combat profiling map. This maintainer path has been assembled for
+ARM64, but a complete-install combat run with this exact build still needs
+device evidence.
+
 The complete import path was also exercised on the ARM64 Cuttlefish device:
 the foreground notification reported live bounded-copy progress, the staged
 tree promoted successfully, and the game reached 36,518 translated blocks with
@@ -626,6 +633,12 @@ the actual 1280x720 RmlUi/Vulkan game presentation;
 right action group, the held Powers modifier uses the left, and Pause leaves
 the retail center notification icons unobscured. This verifies presentation,
 not physical touchscreen ergonomics or Android performance.
+
+SDL touch-to-mouse synthesis is disabled before event sources are created, so
+an overlay action cannot also enter the retail world-click handler; the
+portrait-selection path remains an explicit native pointer publication. The
+native build and touch regression suite cover this boundary; installed-APK
+finger input verification remains open.
 
 Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this
