@@ -40,6 +40,16 @@ landed later in this issue; broad CPU translation work now belongs to x86port
 and is tracked more narrowly by issue #142. None of these targeted unpaced
 measurements qualifies representative product performance.
 
+## Import timing probe (2026-09-12)
+
+The heartbeat now has an opt-in per-thunk probe that counts every ordinary and
+fast-path import call and records exclusive host time when `X2_HOTEP` is armed.
+It ranks deltas by time when timing is available and falls back to call counts
+with an explicit label otherwise. The reader owns its fixed-capacity snapshot,
+so a growing thunk table cannot overrun a heartbeat allocation. This is a
+measurement seam for the next paced Android run; it does not itself claim an
+optimization or replace the open QPC/frame-limiter work.
+
 ## Where the in-game guest time goes (2026-09-03, `jit.profile`)
 
 x86port `787aa3f` adds an execution-weighted block-entry histogram

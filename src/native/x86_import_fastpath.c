@@ -9,6 +9,8 @@
 
 #include "guest_memory.h"
 #include "winmm.h"
+#include "x86_hotep.h"
+#include "x86_thunk_probe.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -16,6 +18,7 @@
 #include "x87.h"
 
 #include "platform_strings.h"
+#include "platform_threads.h"
 #include <ctype.h>
 #include <stdint.h>
 #include <string.h>
@@ -201,7 +204,16 @@ int x86_import_fastpath_dispatch(struct X86pCpu *cpu) {
     const uint32_t idx = (eip - THUNK_BASE) >> 4;
     if (__builtin_expect(idx < THUNK_MAX && s_import_handlers[idx] != NULL,
                          1)) {
-      x86_thunk_record_hit(idx);
+      /* This path bypasses the dispatcher that times a crossing, so it
+         times its own -- otherwise a fastpath import would rank at zero
+         against the imports the dispatcher does time. */
+      if (x86_hotep_armed()) {
+        const unsigned long long t0 = x86_thunk_probe_clock_ns();
+        const int handled = s_import_handlers[idx](cpu);
+        x86_thunk_probe_note(idx, x86_thunk_probe_clock_ns() - t0);
+        return handled;
+      }
+      x86_thunk_probe_note(idx, 0);
       return s_import_handlers[idx](cpu);
     }
   }

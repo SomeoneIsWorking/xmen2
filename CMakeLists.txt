@@ -1543,6 +1543,7 @@ set(X2_NATIVE_SOURCES
     src/native/threads.c
     src/native/threads_engine_report.c
     src/native/x86_hotep.c
+    src/native/x86_thunk_probe.c
     src/native/run_reports.c
     src/native/x86rt_native.c
     src/native/env_file.c

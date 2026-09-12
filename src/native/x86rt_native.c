@@ -16,6 +16,7 @@
 #include "x86_dispatch_report.h"
 #include "x86_engine.h"
 #include "x86_hotep.h"
+#include "x86_thunk_probe.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 #include <dlfcn.h>
@@ -824,24 +825,6 @@ static struct {
 } g_thunk[THUNK_MAX];
 static int g_nthunk;
 
-/*
- * RAW per-thunk call counts, immune to the boundary ring's repeat-collapse.
- *
- * The ring collapses consecutive identical crossings into one entry (with a
- * count), which is right for showing history and WRONG for measuring: a hot
- * import called in a loop reads as a handful of ring entries, so "how many
- * host calls does a build frame make and to which import" needs a counter
- * that increments on EVERY call. g_ring_n under-counts exactly the tight
- * loops a load hotspot is. This grows one 8-byte word per thunk, no smoothing;
- * the read side is the per-interval probe in x86_thunk_crossings_sorted.
- */
-static unsigned long g_thunk_hits[THUNK_MAX];
-
-void x86_thunk_record_hit(uint32_t idx) {
-  if (idx < THUNK_MAX)
-    g_thunk_hits[idx]++;
-}
-
 /* The context of the callback currently executing, for x86_callback_ctx. A
    native class's hooks are shared C functions -- what distinguishes one
    class's getClassMetaSafe from another's is the synthetic address the guest
@@ -1020,17 +1003,20 @@ static int thunk_call(uint32_t addr, CPU *C) {
   if ((int)i >= g_nthunk || !g_thunk[i].stub)
     return 0;
   in = C->reg[kX86pEsp];
-  g_thunk_hits[i]++;
   g_sample_ep = addr;
   {
     void *save = g_cb_ctx;
+    unsigned long long excl = 0;
     g_cb_ctx = g_thunk[i].ctx;
     if (x86_hotep_armed())
       span_push();
     g_thunk[i].stub(C);
-    if (x86_hotep_armed())
-      g_host_import_ns += span_pop();
+    if (x86_hotep_armed()) {
+      excl = span_pop();
+      g_host_import_ns += excl;
+    }
     g_cb_ctx = save;
+    x86_thunk_probe_note(i, excl);
   }
   ring_note(g_thunk[i].sym, addr, 0, in, C->reg[kX86pEsp], 0);
   /* Imports are recorded TOO. A hand-written stub has to pop its own
@@ -1120,54 +1106,6 @@ static unsigned long g_ring_n;
 unsigned long x86_crossings(void) { return g_ring_n; }
 unsigned int x86_thunk_count(void) { return (unsigned int)g_nthunk; }
 unsigned int x86_thunk_capacity(void) { return (unsigned int)THUNK_MAX; }
-
-/*
- * Per-interval import probe: the N most-called host imports between two reads.
- *
- * The heartbeat asks for this every period. The caller keeps a snapshot of the
- * cumulative counts and subtracts -- same torn-read trade as every counter the
- * heartbeat reads -- and gets back which imports the guest called the most in
- * the interval. THAT is the load-window question: the ring said the build
- * frames cross the boundary 400k+ times/frame and nothing else, and this names
- * the import behind it instead of guessing.
- *
- * Returns the number of imports written, sorted by delta, descending.
- */
-unsigned int x86_thunk_crossings_sorted(unsigned long *snapshot,
-                                        unsigned int snapshot_cap,
-                                        const char **mod, const char **sym,
-                                        unsigned long *hits, unsigned int cap) {
-  unsigned int n = 0;
-  int i;
-  if (snapshot_cap < (unsigned int)g_nthunk) { /* see the header */
-    x2_log_error("[HB] thunk probe: the snapshot holds %u entries, the "
-                 "table now has %d\n",
-                 snapshot_cap, g_nthunk);
-    return 0;
-  }
-  for (i = 0; i < g_nthunk; i++) {
-    unsigned long d = g_thunk_hits[i] - snapshot[i];
-    int j;
-    if (!d)
-      continue;
-    if (n == cap && d <= hits[cap - 1])
-      continue; /* no room this round */
-    if (n == cap)
-      n--; /* drop the tail */
-    for (j = (int)n - 1; j >= 0 && d > hits[j]; j--) {
-      mod[j + 1] = mod[j];
-      sym[j + 1] = sym[j];
-      hits[j + 1] = hits[j];
-    }
-    mod[j + 1] = g_thunk[i].mod;
-    sym[j + 1] = g_thunk[i].sym;
-    hits[j + 1] = d;
-    n++;
-  }
-  for (i = 0; i < g_nthunk; i++)
-    snapshot[i] = g_thunk_hits[i];
-  return n;
-}
 
 /* ---- the sampling profiler ----------------------------------------------
  *

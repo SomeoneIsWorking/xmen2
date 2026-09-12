@@ -32,10 +32,16 @@ static uint32_t s_hit_count = 0;
 
 void winmm_timers_pump(void) {}
 
-void x86_thunk_record_hit(uint32_t idx) {
+void x86_thunk_probe_note(uint32_t idx, unsigned long long ns) {
   (void)idx;
+  (void)ns;
   s_hit_count++;
 }
+
+unsigned long long x86_thunk_probe_clock_ns(void) { return 0; }
+
+/* Unarmed, so the dispatch path takes its untimed branch. */
+int x86_hotep_armed(void) { return 0; }
 
 uint32_t k32_tls_get_value(uint32_t index) { return 0x77000000u | index; }
 

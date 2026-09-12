@@ -218,7 +218,6 @@ uint32_t x86_native_thunk(const char *mod, const char *sym);
 /* The same, for a slot imported BY ORDINAL: pass sym NULL and the ordinal. */
 uint32_t x86_native_thunk_at(const char *mod, const char *sym,
                              uint32_t ordinal);
-void x86_thunk_record_hit(uint32_t idx);
 
 /* Dump guest memory named by X2_PEEK (see the definition for the format).
    Safe from a signal handler: reads via process_vm_readv, so an unmapped
@@ -254,28 +253,9 @@ void x86_diag_dump(void);
 unsigned long x86_crossings(void);
 const char *x86_crossings_what(void);
 
-/*
- * The raw per-import call probe: the most-called host imports in an interval,
- * descending. The caller allocates `snapshot` with x86_thunk_capacity()
- * entries, zero-filled once, and keeps it across calls: each call fills
- * `mod/sym/hits` with the top `cap` imports by DELTA since the previous call
- * and updates `snapshot`, so the heartbeat can name the imports behind a slow
- * window.
- *
- * CAPACITY, NOT COUNT. The table grows while the game runs -- every
- * GetProcAddress and every native callback claims a slot -- and the probe runs
- * on the heartbeat thread, so a snapshot sized by the count at first use is
- * already too small by the next interval. It was, and the write past its end
- * corrupted glibc's heap into an abort with nothing pointing back here. The
- * capacity is fixed for the life of the process, so one allocation is enough;
- * `snapshot_cap` is passed back so the probe refuses rather than assumes it.
- */
+/* How many thunk slots the table has claimed so far. Which imports an
+   interval spent its calls and its time in is x86_thunk_probe.h's question. */
 unsigned int x86_thunk_count(void);
-unsigned int x86_thunk_capacity(void);
-unsigned int x86_thunk_crossings_sorted(unsigned long *snapshot,
-                                        unsigned int snapshot_cap,
-                                        const char **mod, const char **sym,
-                                        unsigned long *hits, unsigned int cap);
 
 /* The hot-guest-body probe has its own owner: see x86_hotep.h. Whoever runs a
    guest body brackets it with these when the probe is armed, so the exclusive

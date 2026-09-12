@@ -15,6 +15,7 @@
 #include "gpu_frame_timing_report.h"
 #include "x86_engine.h"
 #include "x86_hotep.h"
+#include "x86_thunk_probe.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -163,32 +164,33 @@ static void *heartbeat_thread(void *arg) {
     }
 
     {
-      /* The raw per-import probe, read over the same interval as the
-         crossings delta: WHICH host imports did that interval hammer.
-         The ring collapses tight loops, so it could not say; these
-         counters count every call and name the import. Fresh snapshot
-         once, then per-interval deltas. */
-      static unsigned long *snap;
-      static const char *mods[5], *syms[5];
-      static unsigned long hits[5];
+      /* WHICH host imports did this interval spend itself in. The ring
+         collapses tight loops, so it could not say; this counts every call
+         and, when the time probe is armed, times it too. */
+      static X86ThunkProbe *probe;
+      static int refused;
+      const char *mods[5], *syms[5];
+      unsigned long calls[5];
+      unsigned long long ns[5];
       unsigned int i, n;
-      /* The table's CAPACITY, not its current count: it grows while
-         the game runs and this thread is not the one growing it. */
-      static unsigned int snap_cap;
-      if (!snap) {
-        snap_cap = x86_thunk_capacity();
-        snap = calloc(snap_cap, sizeof *snap);
-        if (!snap) {
-          x2_log_error("[HB] thunk probe: calloc failed, "
-                       "disabling the import probe\n");
-          goto thunk_probe_disabled;
+      int by_time = 0;
+      if (!probe && !refused) {
+        probe = x86_thunk_probe_create();
+        if (!probe) {
+          refused = 1;
+          x2_log_error("[HB] import probe: allocation failed, disabled\n");
         }
       }
-      n = x86_thunk_crossings_sorted(snap, snap_cap, mods, syms, hits, 5);
+      n = probe ? x86_thunk_probe_top(probe, mods, syms, calls, ns, 5, &by_time)
+                : 0;
+      if (n)
+        x2_log_error("[HB]           top imports by %s:\n",
+                     by_time ? "TIME"
+                             : "CALLS -- arm X2_HOTEP to rank by time");
       for (i = 0; i < n; i++)
-        x2_log_error("[HB]           import %s!%s: %lu call(s)\n",
-                     mods[i] ? mods[i] : "?", syms[i] ? syms[i] : "?", hits[i]);
-    thunk_probe_disabled:;
+        x2_log_error("[HB]             %s!%s: %.1f ms in %lu call(s)\n",
+                     mods[i] ? mods[i] : "?", syms[i] ? syms[i] : "?",
+                     (double)ns[i] * 1e-6, calls[i]);
     }
     {
       /* The hot guest bodies, decoded from raw dispatch counts. Armed by
