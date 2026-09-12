@@ -53,7 +53,7 @@ bool read_string(JNIEnv *environment, jstring value, char *destination,
   return copied;
 }
 
-bool is_module_character(char character) {
+bool is_map_character(char character) {
   return (character >= 'a' && character <= 'z') ||
          (character >= 'A' && character <= 'Z') ||
          (character >= '0' && character <= '9') || character == '.' ||
@@ -66,7 +66,7 @@ bool valid_boot_map(const char *value) {
     return false;
   for (const char *cursor = value; *cursor; ++cursor) {
     const char character = *cursor;
-    if (!is_module_character(character) && character != '/')
+    if (!is_map_character(character) && character != '/')
       return false;
   }
   return true;
