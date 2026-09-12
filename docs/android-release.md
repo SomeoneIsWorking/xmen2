@@ -11,7 +11,7 @@ The APK has no terminal and opens `XMen2SetupActivity` before starting
 `XMen2GameActivity`. It offers a native Android Browse action for a ZIP of the PC install
 (`ACTION_OPEN_DOCUMENT`). ZIP input keeps thousands of tiny files in one
 sequential transfer, and the shared `android-port` framework owns the persisted read grant,
-bounded background copy into persistent package storage, cancellation, and
+bounded background copy into package storage, cancellation, and
 resumable recovery.
 For a selected direct archive, the native title bridge maps the staged file instead of duplicating
 it in native heap; X-Men's title policy bounds the known 2.37 GiB PC install
@@ -43,10 +43,16 @@ import-to-game teardown, late callbacks, cancellation before service creation,
 and a refused start. This is lifecycle evidence, not confirmation that the
 reported ARM64 boot crash has the same cause.
 
-The imported ZIP and validated `game/` tree live under Android's package OBB
-storage, so reinstalling the APK can discover and reuse them without copying
-again. An interrupted ZIP copy retains its staging marker and resumes from the
-last complete byte when the same document is selected again. It supports cloud
+The validated `game/` tree lives under Android's package OBB storage and is
+reused across launches and in-place updates signed with the same certificate.
+Android removes OBB storage on uninstall unless the user chooses to retain app
+data where the platform offers that option; OBB alone cannot preserve this
+install through an ordinary uninstall/reinstall. A separate shared-storage SAF
+design remains necessary to guarantee that outcome. Android documents this
+deletion in the [`getObbDir()` API](https://developer.android.com/reference/android/content/Context#getObbDir()).
+An interrupted ZIP copy
+retains its staging marker and resumes from the last complete byte when the
+same document is selected again. It supports cloud
 and removable-storage providers correctly, avoids broad device access, and
 means later launches never depend on a provider or a working directory. The
 setup persists a canonical private source path, so Android's equivalent

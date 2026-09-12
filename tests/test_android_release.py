@@ -217,7 +217,7 @@ def main() -> int:
     assert "extends AndroidActivity" in activity
     assert "WindowInsetsController" not in activity
     assert 'setText("Choose ZIP")' in setup
-    assert "persistent package storage" in setup
+    assert "reused on future launches and app updates" in setup
     assert "importStorageRoot" in setup
     assert "importTotalBytes" in setup
     debug_install = (

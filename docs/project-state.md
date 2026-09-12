@@ -132,8 +132,10 @@ as a release. The current setup is ZIP-only. The shared `android-port` Java
 framework owns Activity/SAF staging, determinate byte progress, and resumable
 staging under the package OBB directory; Lucent remains the shared ZIP
 extraction helper. Reinstall startup checks that retained package installation
-before showing the picker. The user reported that the Android setup and game
-path runs on a device. An API 35 x86-64 emulator installed the debug APK, and
+before showing the picker when Android retained app data. OBB is app-specific:
+an ordinary uninstall removes it, so reliable import-free uninstall/reinstall
+still needs a shared-storage SAF design. The user reported that the Android
+setup and game path runs on a device. An API 35 x86-64 emulator installed the debug APK, and
 its ZIP control opened Android's DocumentsUI picker.
 
 A loader-image-only DocumentsUI fixture exposed an install-validation defect:

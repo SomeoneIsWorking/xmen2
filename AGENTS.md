@@ -36,7 +36,7 @@ shows a setup prompt with Browse, validates the selected `XMen2.exe` or a ZIP
 containing exactly one copy at any depth, and remembers the resulting install
 under the OS user configuration directory. The AppImage contains no game
 files. The Android APK has a separate setup Activity: it uses SAF to stage a
-ZIP into persistent OBB package storage, validates the loader and
+ZIP into package OBB storage, validates the loader and
 title content sentinels, then starts SDL only after the native bridge has
 supplied the shared Android framework's user-data root.
 The remaining mobile release gate is measured device performance; see
@@ -206,7 +206,7 @@ live in `src/native/install_picker.cpp`, resource location lives in
 setup result into the existing asset mapping path.
 
 The Android setup boundary follows the same pattern: `android/` owns Activity
-lifecycle, SAF URI permissions, and persistent OBB staging;
+lifecycle, SAF URI permissions, and OBB staging;
 `src/native/android_bridge.cpp` only transfers the absolute storage/source
 contract; `install_picker.cpp` owns title validation while Lucent owns the shared safe ZIP
 extraction helper.

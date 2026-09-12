@@ -236,7 +236,7 @@ public final class XMen2SetupActivity extends Activity {
 
     private String importingText() {
         StringBuilder text = new StringBuilder(
-                "Copying the ZIP into persistent package storage.");
+                "Copying the ZIP into game storage.");
         if (importedEntries > 0) {
             text.append("\n\n").append(importedEntries).append(
                     importedEntries == 1 ? " file, " : " files, ")
@@ -250,7 +250,7 @@ public final class XMen2SetupActivity extends Activity {
                 text.append("\n").append(importingName);
             }
         }
-        text.append("\n\nThe ZIP is retained in package storage so an interrupted install can resume.");
+        text.append("\n\nAn interrupted copy can resume when you choose the same ZIP again.");
         return text.toString();
     }
 
@@ -268,7 +268,7 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private void showChoices() {
-        status.setText("Choose a ZIP of your legally obtained PC install. ZIP import is faster for installations with many small files. The archive is kept in persistent package storage for future launches and resumable retries.");
+        status.setText("Choose a ZIP of your legally obtained PC install. ZIP import is faster for installations with many small files. The installed game is reused on future launches and app updates. Android can remove it if you uninstall the app.");
         choices.setVisibility(View.VISIBLE);
         if (progressBar != null) {
             progressBar.setVisibility(View.GONE);
@@ -412,8 +412,8 @@ public final class XMen2SetupActivity extends Activity {
             File candidate = source.getCanonicalFile();
             File persistentRoot = new File(importStorageRoot(), INSTALL_DIRECTORY).getCanonicalFile();
             if (candidate.toPath().startsWith(persistentRoot.toPath())) return candidate;
-            // Migrate an install created by the pre-OBB APK on upgrade; new imports always use
-            // persistentRoot, and this compatibility path disappears when that old install is gone.
+            // Keep accepting a pre-OBB install after an in-place update. New imports use
+            // persistentRoot, and this path becomes unused when the old install is gone.
             File previousRoot = new File(getFilesDir(), INSTALL_DIRECTORY).getCanonicalFile();
             return candidate.toPath().startsWith(previousRoot.toPath()) ? candidate : null;
         } catch (IOException error) {
