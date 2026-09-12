@@ -5,8 +5,8 @@ desktop and Android packages. Players select their own complete PC-install ZIP;
 files stream into origin-private storage and never leave the device. Only the
 port executable, shaders, UI and other redistributable resources enter a release.
 [Project state S021](project-state.md#s021--web-wasm--pwa-product-with-browser-side-install-partial)
-owns current capability status. No title browser gameplay or deployment is yet
-verified.
+owns current capability status. The asset-free Pages deployment is verified; title
+gameplay with imported game files remains unqualified.
 
 ## Build and packaging owners
 
