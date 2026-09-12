@@ -1,10 +1,6 @@
 # AGENTS.md
 
-Guidance for any coding agent working in this repository. It is deliberately
-agent-agnostic: there is ONE such document, and `CLAUDE.md` is a pointer to it.
-Two copies drifted apart within a fortnight once, which is the same failure the
-shared-tooling split exists to end -- each was improved wherever it happened to
-be read, and neither improvement reached the other.
+This is the project-specific authority; `CLAUDE.md` points here.
 
 ## What this is
 
@@ -19,48 +15,20 @@ at runtime and why the PC build is the conformance target.
 
 ## Start here, before touching anything
 
-The project-information entry point queries every in-repo authority. Consult it
-at the START of a task; update the owning authority in the SAME commit that
-changes a subsystem.
-
 ```sh
 uv run --frozen python tools/info.py brief <words>
 ```
 
-The registry commands under `tools/` are SHIMS. Their implementations live in
-the `re-harness` repo, shared with
-every port in the tree (nine forked copies of `info.py` had drifted into seven
-versions); the DATA they read stays here. `tools/shared_dir.py` is the one place
-a shared repo is located, and it refuses naming every path it tried rather than
-falling back to a vendored copy.
-
-- `docs/project-goals.md` — epic outcomes, constraints and non-goals.
-- `docs/project-state.md` — verified/partial/blocked/missing capability coverage
-  and the one current focus.
-- `docs/codemap.md` — subsystem ownership and placement only.
-- `docs/issues/` — atomic tasks, bugs, blockers, findings and dead ends.
-- `docs/re-frontier.md` — the ordered binary/asset-grounded RE dependency chain.
-- `docs/info/claims/` — each claim carries the observation that would falsify it.
-  `info.py claim check` detects rot mechanically (has the cited code changed?).
-- `docs/info/instruments/` — a tool that lied is recorded here. Several have.
-- `docs/RE/` — port-specific reverse-engineering write-ups. `shared/alchemy`
-  already owns partial native format/image/mesh/raster/Enbaya and input
-  foundations; this port links the neutral input owner through a title-local
-  conformance adapter and provisions XMLB/ARK tooling. Keep title evidence and
-  exact guest bindings here.
-- `docs/prior-art.md` — provenance and historical context for code, assets, or
-  vocabulary already adapted from external projects.
-  It is not an architecture authority or a design checklist. Preserve exact
-  attribution for material actually reused; derive current ownership from this
-  repository's codemap, contracts, and shipping-path evidence.
+`docs/project-goals.md`, `docs/project-state.md`, `docs/codemap.md`,
+`docs/issues/`, and `docs/re-frontier.md` hold the corresponding project
+authorities. Keep title evidence and exact guest bindings in `docs/RE/`;
+`docs/prior-art.md` records attribution for material actually reused.
 
 ## Setup
 
 For the default product, put the matching PC install at `./game/` or set
 `GAME_PC_DIR` in `.env` (gitignored), then use `./run.sh`. `XBOX_ISO` and
-`WINE_PREFIX` are needed only by their purpose-specific RE/oracle tools. No
-machine-specific path may ever appear in a tracked file. Game assets are never
-committed or modified.
+`WINE_PREFIX` are needed only by their purpose-specific RE/oracle tools.
 
 The Linux AppImage is a desktop-first path: it does not require a terminal or
 `GAME_PC_DIR`. Its first launch passes `--appimage` to the native runner, which
@@ -84,24 +52,11 @@ every platform. Touch events feed the same virtual DirectInput pad as every
 other controller path. Nothing about the feature may be compiled out, gated on
 `__ANDROID__`, or documented as belonging to a package.
 
-Transient run artifacts go to the gitignored `scratch/`, structured by type
-(`scratch/logs/`, `screenshots/`, `raw/`, `run/`). Compiler outputs, generated
-redistributable assets, dependencies, and packages live under top-level
-`build/`. Never `/tmp`.
-
 ## Build and run
 
-**There is ONE native build directory: `build/native/`.** `./run.sh` creates
-and maintains it, and it is the tree every live harness runs
-(`tools/live_case.py` and `tools/x2ctl.py` among them).
-It holds the asset viewers, every unit test and `x2native` itself.
-
-A second tree configured by hand (`cmake -S . -B build`) used to exist and is
-DELETED. It emitted a target of the same name that no harness ever ran, so
-building it produced a binary that looked current and was not — a full live
-PASS report once described an hour-old binary (issue #118) — and its bare
-configure picked up the system interpreter instead of the locked `.venv`, so
-`pad_font` failed on a missing Pillow. Do not recreate it.
+`build/native/` is the one native build tree. `./run.sh` maintains it, and
+the live harnesses (`tools/live_case.py`, `tools/x2ctl.py`) use its binary.
+Do not configure a second native tree by hand.
 
 ```sh
 ./run.sh                         # provision, build and launch the one default product
@@ -114,20 +69,8 @@ build/native/x2native --no-window --run        # module init + the exe's CRT sta
 build/native/x2native --d3d8                   # the LIVE path: arms the host Direct3D 8, and implies --run
 ```
 
-`run.sh` takes no arguments and delegates directly to the locked Python
-initializer. It validates the user's exact PE images, provisions pinned
-redistributable dependencies and native assets, builds, and launches the one
-native-overrides + x86port-JIT gameplay product. Ghidra is a maintainer-only
-analysis tool. Diagnostics, provisioning-only checks and the
-independent Wine control remain separate tools rather than launcher commands.
-
-The product has no execution-engine selector: dynarec is the default. A bounded
-internal interpreter fallback may run only after failed or unsupported JIT
-compilation, or when executing emitted code would be unsafe. Every fallback is
-counted and reported, and a fallback-backed run cannot establish gameplay or
-performance conformance. Explicit interpreter mode remains confined to a
-separately built diagnostic target; never expose `engine=interpreter` in a
-player build.
+`run.sh` launches the native-overrides + x86port-JIT gameplay product. The
+Wine control and maintainer diagnostics remain separate tools.
 
 Build a Linux AppImage from the verified native build with
 `uv run --frozen python tools/package_appimage.py`. The packager stages only
@@ -145,19 +88,12 @@ sources. The Gradle project consumes the generated
 `x2-android.properties` contract and stages only native code, UI resources,
 and SDL's Java shell, never game files.
 
-**A published APK is signed in CI, never locally.** The long-lived key exists
-only as repository secrets (`X2_ANDROID_KEYSTORE_BASE64`,
+**Published APKs use the existing CI signing identity.** The key is stored as
+repository secrets (`X2_ANDROID_KEYSTORE_BASE64`,
 `X2_ANDROID_KEY_ALIAS`, `X2_ANDROID_STORE_PASSWORD`, `X2_ANDROID_KEY_PASSWORD`)
-and GitHub will not hand it back, so no checkout can produce a publishable
-artifact: locally `build_android.py` assembles debug builds for a device you
-control, and the release workflow owns publication. Android identifies an
-application by package name AND signing certificate, so a release signed with a
-different key is refused on update as "package conflicts with an existing
-package" and the player must uninstall -- destroying the imported game
-installation. That is what a per-runner debug keystore did to every release up
-to v0.2.0. `publish_apk` therefore refuses any APK whose certificate does not
-match `android/published-release.json`, which records the public fingerprint.
-If that key is ever lost, no future build can update an installed copy.
+and the release workflow owns publication. Local `build_android.py` builds are
+debug builds. `publish_apk` refuses a certificate that differs from
+`android/published-release.json`, preserving update compatibility.
 
 **Drive a run instead of scripting it.** The default product opens an HTTP
 channel on loopback, records the exact post-merge DirectInput states returned to
@@ -195,9 +131,7 @@ available merely because an older probe once existed; add a bounded instrument
 with image identity, denominators, and both-answer controls before making that
 claim. Bisecting frames by eye is not representative conformance evidence.
 
-**Never run the control twice for the same question — go through the cache.**
-A driven `stock` run is five to nine minutes of Xvfb, Wine and a software
-rasteriser, and it produces the same frames every time:
+**Reuse the stock-oracle cache for identical driven captures:**
 
 ```sh
 X2_KEYS="195-300/12:Return,380-500/20:Return" X2_SAMPLES=6 \
@@ -205,15 +139,11 @@ X2_KEYS="195-300/12:Return,380-500/20:Return" X2_SAMPLES=6 \
 uv run --frozen python tools/oracle.py list
 ```
 
-The key covers the driving script, the duration, the sample count **and a
-fingerprint of the run directory**, so a rebuilt DLL misses. Every capture is
-kept with its brightness already measured (`mean_luma`, `frac_lt16`,
-`frac_gt128`), so re-asking about the pixels costs nothing. A hit says it is a
-hit and how old it is; a cached frame must never read as a fresh observation.
+The key covers the driving script, duration, sample count, and run-directory
+fingerprint; report a cache hit as cached evidence, never a fresh observation.
 
 `X2_WRITE_WATCH=<guest-address>` and the in-process crash reporter provide live
-runtime evidence without manufacturing a static product. Use those instead of
-gdb/winedbg, both of which produced nothing usable here (issue #1).
+runtime evidence.
 
 Xbox-derived controller observations remain evidence for the PC target; Xbox is
 not a second product or an implementation surface.
@@ -358,92 +288,21 @@ cohesive owner and lower a legacy limit; never raise one to land a feature.
 
 ## Required repository guardrails
 
-These are implementation and verification requirements, not optional style
-preferences. Any guardrail not yet wired into the normal verifier remains
-migration work; documentation does not make it verified.
-
-- **Formatting and linting are release gates.** Python automation is checked by
-  Ruff. First-party C/C++ uses a tracked `.clang-format`, and `clang-tidy` runs
-  against the real compile commands; both non-mutating checks belong in the
-  normal verifier. Format touched sources and fix diagnostics at their cause.
-  Do not preserve the former formatter exemption, blanket-suppress findings, or
-  raise a structure limit merely to land a change.
-
-- **The execution engine names every unsupported path.** A missing decoder,
-  instruction semantic, host backend, executable image, import, or native
-  hand-back is a named failure. A bounded interpreter fallback is legal only
-  for failed/unsupported JIT compilation or unsafe emitted execution, and its
-  counters make the fallback visible. There is no best-effort no-op or smaller
-  product that looks like progress.
 - **Product configuration cannot choose the execution architecture.** The
   gameplay target always uses the x86port JIT. `lucent::cvar` owns layered
   optional diagnostics and title tuning; it must not expose an interpreter,
   backend/fallback selector, or required product component as a mutable CVar.
   Test-oracle controls belong to a separately built test target.
-- **Use one project logger.** Route configurable diagnostics through Lucent's
-  logger, one call per site, without `if (debug) fprintf(...)` wrappers or new
-  ad-hoc print gates. Fatal boundary refusals may terminate directly, but a new
-  subsystem does not invent another logging policy.
-- **Keep execution ownership cohesive.** x86 decode, semantics, host emission,
-  and block-cache policy belong in `shared/x86port`; title identity, native
-  overrides, imports, and game policy belong here. The host entry point only
-  composes them. New source files stay below 500 lines; split an already mixed
-  or oversized owner before extending it, and never create a generic runtime,
-  manager, or override bucket.
-- **A negative result must carry its denominator and its blind spots.** "Found
-  nothing" and "never looked" must be distinguishable. A product-link audit,
-  backend probe, or gameplay trace that inspected zero candidates must refuse.
 - **An override must reproduce the original's RETURN VALUE, not just its stack
-  effect.** Check the CALL SITE, not the decompiler's signature: Ghidra typed
-  the DirectX check `void`, the caller does `TEST AL,AL` on it, and an override
-  that left EAX alone made the game branch on leftover register contents --
-  a silent `exit(0)` before the first frame, intermittent, and sensitive to
-  anything that changed what ran before it (issue #54, C158).
+  effect.** Check the call site, not only the decompiler's signature: the
+  DirectX check was typed `void`, but its caller tests `AL` (issue #54, C158).
 - **A counter that only prints at shutdown cannot measure this program.**
-  Nothing here stops on its own: every run ends in a timeout, and the shutdown
-  report is written from a signal handler that can be cut short. Three counters
-  in one session were unreadable for exactly that reason. Put a live number in
-  the HEARTBEAT, and print it AT ZERO with its denominator -- "0 of 352,340" is
-  a measurement, a line that appears only when something is wrong is
-  indistinguishable from a check that never ran.
-- **Diagnostics prove they fire.** `--selftest` / `*_SELFTEST=1` paths exist for
-  the watch, the crash reporter, the indirect-call checks; they are wired into
-  the test suite. An instrument caught lying is recorded in `docs/info/instruments/`
-  and every result depending on it is re-checked.
-- **`⛔ hack` in `re_frontier.py` is debt, never a resting state**, and
-  `re-verified` means the output matches the real game on real data — an internal
-  trace ("the call site was reached") is a mechanism check, not faithfulness.
-- **Never `pkill -f` a shared binary name** — several agents and the user run the
-  same binaries. Kill by PID through the `safe-kill` skill.
-- **Code lives where it belongs in a game, not in a bucket.** The hand-written
-  host code is organized by subsystem ownership, mirroring where the code would
-  live in a native game: a native override's implementation goes in the file
-  named for its game-code subsystem (`startup.c` for boot/run-control,
-  `movie.c` for the media decoder, `reportbox.c` for the error dialog,
-  `conversation.c` for the conversation manager, the `dinput_*`/`pad_glyphs.c`/
-  `xbox_defaults.c` files for input, `prompt_labels.c` for prompt composition,
-  `prompt_glyph_batch.c` for the Alchemy text-batch seam, and
-  `gpu_prompt_glyphs.c` for prompt pixels), NOT in a
-  central `overrides.c` (abolished 2026-08-16). An override declares itself
-  where it lives, with `x86_register_override("<module>.dll", 0x…, fn)` beside
-  its implementation; runtime dispatch routes calls to the registered entry
-  point and `x86_guest_body` scopes a call to the original through the JIT.
-  **The module name is not decoration**: every `libIG*.dll` is
-  linked for 0x10000000, so a bare address matched whichever module happened to
-  land there -- two overrides were dead and one could fire for the wrong module
-  (C212). Same rule for everything else: a new subsystem gets its own file, and
-  adding to an existing one means finding the file that owns it first.
-- **An agent must be able to DRIVE a run, not just launch it.** `--control`
-  opens a loopback HTTP channel (`tools/x2ctl.py`) that presses keys, reads
-  where the game is and captures the frame WHILE it runs. Reach for it instead
-  of writing another fixed input script.
-- **A play-through is an OBSERVATION, never a gate.** Input scripts are
-  scheduled by frame and fire whether or not the game reached the state they
-  were written for, so a drifted run spends every press in the menus, draws a
-  plausible picture and "passes". Gate on unit tests, runtime invariants and
-  counters with denominators. Before reading the ABSENCE of a symptom as a fix,
-  prove the run reached the code at all -- and prefer `X2_BOOT_MAP` over
-  driving the menus.
+  Runs end by timeout, so report live values in the heartbeat, including zero
+  and a denominator; the signal-handler shutdown report is not reliable.
+- **Overrides are registered beside their subsystem implementation** with
+  `x86_register_override("<module>.dll", 0x…, fn)`; `x86_guest_body` scopes a
+  call to the original through the JIT. Module identity is required because
+  `libIG*.dll` images reuse linked base `0x10000000` (C212).
 - **Automated and agent-driven runs are silent and fast by default.** Use the
   timed silent device for `--no-window`, or SDL's dummy audio backend when a
   real window is required for presentation/capture verification. Pass
@@ -452,8 +311,5 @@ migration work; documentation does not make it verified.
   needs a window. Where silence would change behaviour -- the game advances
   cutscenes off DirectSound play cursors -- preserve advancing play cursors;
   do not merely disable audio (`dsound.c`).
-- **One clock the guest can see** (`guest_clock.c`). Five files had private
-  `now_s()` copies reading CLOCK_MONOTONIC; the guest gates real logic on
-  elapsed time, so two of them disagreeing is a timing bug wearing a gameplay
-  bug's clothes. `--unbounded` skips the scheduler's idle waits -- only
-  intervals in which no thread was runnable, never scaled time.
+- **One clock the guest can see** (`guest_clock.c`). `--unbounded` skips only
+  scheduler idle waits; it never scales guest time.
