@@ -189,6 +189,11 @@ def main() -> int:
     # the game runs, which presented as an unexplained crash on device.
     assert "android.permission.INTERNET" in manifest
     assert 'SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")' in native_main
+    assert "debug.boot_map" in activity
+    assert "XMen2GameActivity.BOOT_MAP" in setup
+    assert "act1/deadzone/deadzone1" in (
+        ROOT / "docs/android-release.md"
+    ).read_text(encoding="utf-8")
     for unsafe in (
         "getExternalStorageDirectory",
         "/storage",
