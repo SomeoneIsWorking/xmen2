@@ -27,7 +27,7 @@ set(LUCENT_BUILD_ZIP ON)
 set(LUCENT_BUILD_WEB ${EMSCRIPTEN})
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG fd10ac6de191e5570394d164931faeccff69f814
+    GIT_TAG 6e29bee1db3fa89bd6840f7f110310a5eb4feaf2
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
