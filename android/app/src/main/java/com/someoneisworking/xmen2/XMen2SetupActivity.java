@@ -102,10 +102,6 @@ public final class XMen2SetupActivity extends Activity {
         importer.restorePickerState(state == null ? null : state.getBundle(PICKER_STATE), importCallback());
         importer.cleanStaleImports();
         buildLayout();
-        if (invalidBootMap) {
-            showError("The debug boot map contains an unsafe or invalid map name.");
-            return;
-        }
         if (Build.VERSION.SDK_INT >= 33) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -127,6 +123,10 @@ public final class XMen2SetupActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        if (invalidBootMap) {
+            showError("The debug boot map contains an unsafe or invalid map name.");
+            return;
+        }
         String saved = getPreferences(MODE_PRIVATE).getString(SOURCE_PATH, null);
         if (saved != null && acceptStoredSource(new File(saved))) return;
         /* This runs again the moment the Android file picker closes, while the
