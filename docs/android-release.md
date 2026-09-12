@@ -8,40 +8,45 @@ tiers.
 ## Setup and game-file access
 
 The APK has no terminal and opens `XMen2SetupActivity` before starting
-`XMen2GameActivity`. It offers native Android Browse actions for the install
-folder containing `XMen2.exe` (`ACTION_OPEN_DOCUMENT_TREE`) or a ZIP
-(`ACTION_OPEN_DOCUMENT`). `LucentDocumentImport` owns the persisted read grant,
-bounded background copy into app-private staging, cancellation, and recovery.
-For a selected direct archive, Lucent maps the staged file instead of duplicating
+`XMen2GameActivity`. It offers a native Android Browse action for a ZIP of the PC install
+(`ACTION_OPEN_DOCUMENT`). ZIP input keeps thousands of tiny files in one
+sequential transfer, and the shared `android-port` framework owns the persisted read grant,
+bounded background copy into persistent package storage, cancellation, and
+resumable recovery.
+For a selected direct archive, the native title bridge maps the staged file instead of duplicating
 it in native heap; X-Men's title policy bounds the known 2.37 GiB PC install
 to 4 GiB compressed/expanded, 256 MiB per entry, and 20,000 entries.
 The title validates exactly one `XMen2.exe`, every original DLL the native
 runner maps beside it, and title-owned content sentinels spanning every
-boot-time asset family before Lucent promotes the staged selection to the
-persistent private `game/` leaf; for a ZIP, Lucent validates and extracts the
-complete archive into that same transaction before promotion. The prior valid
+boot-time asset family before the Android framework promotes the staged selection to the
+persistent private `game/` leaf; for a ZIP, Lucent's shared safe ZIP helper validates and extracts
+the complete archive into that same transaction before promotion. The prior valid
 selection remains usable until the replacement has passed this complete
 validation and private promotion. After a ZIP extraction passes title validation,
-Lucent discards the staged ZIP before promotion so the retained private install
+the Android framework discards the staged ZIP before promotion so the retained private install
 contains only the extracted game tree; rejected imports discard their bounded
 staging instead. No filesystem path is inferred from a SAF URI
 and the APK does not request `MANAGE_EXTERNAL_STORAGE`.
 
-The setup supplies notification wording and destination to `LucentImportProgress`;
-Lucent owns the persistent progress bar, foreground service, updates and teardown.
+The setup supplies notification wording and destination to `AndroidImportProgress`;
+the Android framework owns the persistent determinate progress bar when the ZIP size is known,
+foreground service, updates and teardown.
 The pending external picker identity is saved with Activity state and restored
 with a callback belonging to the new Activity before Android delivers its result.
 Displaying import progress again on Activity resume does not start another
 service; completion, rejection, cancellation, and finishing the Activity stop the
 existing service through `Context.stopService`, so a late stop cannot create a
 background service during the import-to-game handoff. Foreground promotion
-failures propagate instead of being hidden by a plain notification. Lucent's
-`lucent_android_import_lifetime` test exercises idle teardown, repeated progress,
+failures propagate instead of being hidden by a plain notification. The Android framework's
+`android_import_lifetime` test exercises idle teardown, repeated progress,
 import-to-game teardown, late callbacks, cancellation before service creation,
 and a refused start. This is lifecycle evidence, not confirmation that the
 reported ARM64 boot crash has the same cause.
 
-This deliberately makes the first import a one-time copy. It supports cloud
+The imported ZIP and validated `game/` tree live under Android's package OBB
+storage, so reinstalling the APK can discover and reuse them without copying
+again. An interrupted ZIP copy retains its staging marker and resumes from the
+last complete byte when the same document is selected again. It supports cloud
 and removable-storage providers correctly, avoids broad device access, and
 means later launches never depend on a provider or a working directory. The
 setup persists a canonical private source path, so Android's equivalent
@@ -68,8 +73,8 @@ uv run --frozen python tools/build_android.py
 The script invokes the pinned shared `android-port` native-prefix build (SDL,
 SDL_image, FreeType, fmt, FFmpeg, and NDK C++ runtime), configures CMake for
 `arm64-v8a` at Android API 21, builds `libmain.so`, and assembles the release
-APK. API 21 is the common floor for 64-bit Android ABIs and covers Lucent's
-SAF import path; newer Android calls stay behind runtime guards in Lucent.
+APK. API 21 is the common floor for 64-bit Android ABIs and covers the Android framework's
+SAF import path; newer Android calls stay behind runtime guards in the Android framework.
 Native prefixes are isolated by Android API and ABI under
 `build/deps/android/android-<api>/<abi>/`; a compatibility build cannot
 replace the release build's libraries with a lower API floor. Set

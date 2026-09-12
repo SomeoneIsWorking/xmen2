@@ -82,7 +82,7 @@ The repository now has a game-file-free AppImage staging path, portable UI
 resource lookup, and an SDL3 first-run prompt that validates and remembers the
 user's `XMen2.exe` directory in the OS configuration directory. It also accepts
 a ZIP containing exactly one `XMen2.exe` at any nested path and extracts it
-under that same user-data root through Lucent's shared safe ZIP implementation.
+under that same user-data root through the shared safe ZIP implementation.
 The same generated validator derives the native runner's complete original-PC
 image set from CMake's `X2_MODULES` and rejects an EXE, selected folder, or ZIP
 that lacks any required sibling image before replacing the prior selection.
@@ -113,7 +113,7 @@ the APK still lacks physical-device and performance evidence.
 
 Android setup/SAF staging in `android/` has a real ARM64 shared native
 target/Gradle assembly path. Android selection uses the same generated validator
-before Lucent promotes staged files: it requires every loader PE image and
+before shared Android staging promotes files: it requires every loader PE image and
 title-owned content sentinels spanning each boot-time asset family, so a
 loader-only selection cannot become the retained install. Touch play itself is
 S020, not this capability. An NDK 28
@@ -128,11 +128,16 @@ officially support this host's complete Java 26 JDK; the obsolete JDK 24 ceiling
 is gone and the build rejects mismatched `java`/`javac` homes. A release assembly
 completed all 50 AGP tasks under a one-day local verification key, and
 `apksigner` verified its v3 signature; that artifact was deliberately not staged
-as a release. The user reported that the Android setup and game path runs on a
-device. An API 35 x86-64 emulator installed the debug APK, and its install-folder
-and ZIP controls each opened Android's DocumentsUI picker. The former
-loader-image-only DocumentsUI fixture exposed an install-validation defect: it
-could reach SDL without gameplay content. The validator now also rejects an
+as a release. The current setup is ZIP-only. The shared `android-port` Java
+framework owns Activity/SAF staging, determinate byte progress, and resumable
+staging under the package OBB directory; Lucent remains the shared ZIP
+extraction helper. Reinstall startup checks that retained package installation
+before showing the picker. The user reported that the Android setup and game
+path runs on a device. An API 35 x86-64 emulator installed the debug APK, and
+its ZIP control opened Android's DocumentsUI picker.
+
+A loader-image-only DocumentsUI fixture exposed an install-validation defect:
+it could reach SDL without gameplay content. The validator now also rejects an
 empty or non-PE32 `XMen2.exe` before promotion, so malformed retained data stays
 in `XMen2SetupActivity` instead of launching SDL and failing inside `pe_map`;
 the focused picker/archive tests and rebuilt ARM64 APK cover that boundary.
@@ -159,10 +164,9 @@ begins below that validated install root because the Android app cannot
 enumerate `/data`; its trace resolves the guest request to the real
 `Sounds/badaudio.wav`. A current Android 13 Waydroid image therefore runs the
 API-21 debug APK from a deliberate debug-only complete app-private source,
-maps the PC images, and reaches the retail difficulty menu. Its ordinary folder
-and ZIP selections still receive persisted read grants (the tree grant has the
-required prefix scope), but this image's external-storage `MediaProvider` copy
-path fails its AppOps package check after accepting the grant. The earlier
+maps the PC images, and reaches the retail difficulty menu. Its ZIP selection still receives a persisted read grant, but this image's
+external-storage `MediaProvider` copy path fails its AppOps package check after
+accepting the grant. The earlier
 API-35 emulator import remains the complete production-setup proof.
 
 The Android RmlUi overlay originally disabled its font engine despite the shared

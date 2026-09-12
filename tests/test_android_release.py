@@ -138,18 +138,17 @@ def main() -> int:
     ).read_text(encoding="utf-8")
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
     native_main = (ROOT / "src/native/x2native.c").read_text(encoding="utf-8")
-    # The setup uses Android's scoped picker: Lucent owns persisted SAF grants,
-    # bounded app-private staging, cancellation, and promotion after title
-    # validation. No port code may reconstruct a provider filesystem path or
+    # The setup uses Android's scoped picker: shared android-port owns persisted SAF grants,
+    # bounded OBB staging, cancellation, and promotion after title validation.
+    # No port code may reconstruct a provider filesystem path or
     # request broad all-files access.
-    assert "LucentDocumentImport" in setup
+    assert "AndroidDocumentImport" in setup
     assert "savePickerState()" in setup
     assert "restorePickerState(" in setup
-    assert "LucentImportProgress" in setup
+    assert "AndroidImportProgress" in setup
     assert "discardValidatedDocument" in setup
     assert "discardRejectedImport" in setup
     assert setup.count("discardRejectedImport(result)") == 2
-    assert "pickTree" in setup
     assert "pickDocument" in setup
     assert "promoteValidated" in setup
     assert "nativeValidateInstall" in setup
@@ -173,17 +172,17 @@ def main() -> int:
     assert not (
         ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/InstallLocation.java"
     ).exists()
-    # Lucent is pinned to an exact revision, never a branch: the Android Java
-    # sources are taken straight out of the fetched checkout, so a moving tag
-    # would change what the APK ships without any change here. The revision
-    # itself is free to move; only the shape of the pin is fixed.
+    # Lucent is pinned to an exact revision, never a branch. Its revision
+    # controls native helpers only; Android Java is staged from the pinned
+    # shared framework prefix. The revision itself is free to move; only the
+    # shape of the pin is fixed.
     pin = re.search(r"FetchContent_Declare\(lucent.*?GIT_TAG\s+(\S+)", cmake, re.S)
     assert pin, "CMakeLists.txt no longer declares a lucent GIT_TAG"
     assert re.fullmatch(r"[0-9a-f]{7,40}", pin.group(1)), (
         f"lucent must be pinned to a revision, not {pin.group(1)!r}"
     )
-    assert "x2.lucentJavaDir" in cmake
-    assert "lucentJavaDir" in gradle
+    assert "x2.androidFrameworkJavaDir" in cmake
+    assert "androidFrameworkJavaDir" in gradle
     # The product target always opens the control channel, and socket() needs
     # this permission's inet group; without it control_start() exit(2)s before
     # the game runs, which presented as an unexplained crash on device.
@@ -215,10 +214,12 @@ def main() -> int:
     assert "build_android_deps.py" not in cmake
     assert "X2_ANDROID_PORT_PREFIX" in cmake
     assert not (ROOT / "tools/build_android_deps.py").exists()
-    assert "extends LucentActivity" in activity
+    assert "extends AndroidActivity" in activity
     assert "WindowInsetsController" not in activity
-    assert 'setText("Browse for XMen2.exe")' in setup
-    assert "folder containing XMen2.exe" in setup
+    assert 'setText("Choose ZIP")' in setup
+    assert "persistent package storage" in setup
+    assert "importStorageRoot" in setup
+    assert "importTotalBytes" in setup
     debug_install = (
         ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2DebugInstall.java"
     ).read_text(encoding="utf-8")

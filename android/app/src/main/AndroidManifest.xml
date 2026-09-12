@@ -34,7 +34,7 @@
             </intent-filter>
         </activity>
         <service
-            android:name="io.github.someoneisworking.lucent.LucentImportService"
+            android:name="io.github.someoneisworking.android.AndroidImportService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
     </application>

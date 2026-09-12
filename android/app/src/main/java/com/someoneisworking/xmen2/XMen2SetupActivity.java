@@ -13,8 +13,8 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import io.github.someoneisworking.lucent.LucentDocumentImport;
-import io.github.someoneisworking.lucent.LucentImportProgress;
+import io.github.someoneisworking.android.AndroidDocumentImport;
+import io.github.someoneisworking.android.AndroidImportProgress;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -25,7 +25,6 @@ import java.util.Locale;
 
 /** Android-owned first-run setup. Native code retains title validation. */
 public final class XMen2SetupActivity extends Activity {
-    private static final int FOLDER_REQUEST = 0x5846;
     private static final int ZIP_REQUEST = 0x5847;
     private static final String PICKER_STATE = "lucent-picker";
     private static final String SOURCE_PATH = "source-path";
@@ -53,10 +52,11 @@ public final class XMen2SetupActivity extends Activity {
     private TextView status;
     private ProgressBar progressBar;
     private LinearLayout choices;
-    private LucentDocumentImport importer;
-    private LucentImportProgress importNotification;
+    private AndroidDocumentImport importer;
+    private AndroidImportProgress importNotification;
     private long importedEntries;
     private long importedBytes;
+    private long importTotalBytes;
     private String importingName;
     private boolean traceFiles;
     private boolean tracePerformance;
@@ -80,23 +80,24 @@ public final class XMen2SetupActivity extends Activity {
             Log.i("XMen2", "debug setup: performance=" + tracePerformance
                     + " drawDump=" + traceDrawDump + " bootMap=" + bootMap);
         }
-        importNotification = new LucentImportProgress(this, 0x5849, "xmen2_game_import",
+        importNotification = new AndroidImportProgress(this, 0x5849, "xmen2_game_import",
                 "Game File Installation", "Installing X-Men Legends II", XMen2SetupActivity.class);
-        importer = new LucentDocumentImport(
-                this, new LucentDocumentImport.Limits(MAXIMUM_ENTRIES,
-                                                       MAXIMUM_IMPORT_BYTES,
-                                                       64 * 1024));
-        /* Lucent owns the copy and reports what it has done; the wording is
+        importer = new AndroidDocumentImport(
+                this, importStorageRoot(),
+                new AndroidDocumentImport.Limits(MAXIMUM_ENTRIES,
+                                                MAXIMUM_IMPORT_BYTES,
+                                                256 * 1024));
+        /* The shared Android framework owns the copy and reports what it has done; the wording is
            this screen's. A late update can arrive just after the import
            finished, because its post was already in flight -- so it is only
            drawn while the import still owns the screen. */
-        importer.setProgressListener((entries, bytes, currentName) -> {
+        importer.setProgressListener((entries, bytes, totalBytes, currentName) -> {
             importedEntries = entries;
             importedBytes = bytes;
+            importTotalBytes = totalBytes;
             importingName = currentName;
             if (importer.active() && status != null) {
-                status.setText(importingText());
-                importNotification.update(importingText());
+                updateProgressPresentation();
             }
         });
         importer.restorePickerState(state == null ? null : state.getBundle(PICKER_STATE), importCallback());
@@ -129,6 +130,12 @@ public final class XMen2SetupActivity extends Activity {
         }
         String saved = getPreferences(MODE_PRIVATE).getString(SOURCE_PATH, null);
         if (saved != null && acceptStoredSource(new File(saved))) return;
+        File persistent = new File(importStorageRoot(), INSTALL_DIRECTORY);
+        if (acceptStoredSource(persistent)) {
+            getPreferences(MODE_PRIVATE).edit()
+                    .putString(SOURCE_PATH, persistent.getAbsolutePath()).apply();
+            return;
+        }
         /* This runs again the moment the Android file picker closes, while the
            copy the player just started is still running. Offering the Browse
            buttons here is what makes the screen look idle mid-import: the next
@@ -190,11 +197,6 @@ public final class XMen2SetupActivity extends Activity {
         choices.setGravity(Gravity.CENTER);
         layout.addView(choices, new LinearLayout.LayoutParams(-1, -2));
 
-        Button executable = new Button(this);
-        executable.setText("Browse for XMen2.exe");
-        executable.setOnClickListener(view -> openFolderPicker());
-        choices.addView(executable, new LinearLayout.LayoutParams(-2, -2));
-
         Button zip = new Button(this);
         zip.setText("Choose ZIP");
         zip.setOnClickListener(view -> openZipPicker());
@@ -212,26 +214,43 @@ public final class XMen2SetupActivity extends Activity {
         if (progressBar != null) {
             progressBar.setVisibility(View.VISIBLE);
         }
-        importNotification.start(importingText());
+        importNotification.start(importingText(), importedBytes, importTotalBytes);
+        updateProgressPresentation();
     }
 
-    /* There is no total to count towards: Android enumerates a picked folder
-       as it is walked, so how much is left is unknown until it has been read.
-       What CAN be said honestly is how much has arrived and what it is on,
-       and a number that keeps moving is the difference between waiting and
-       wondering whether it died. */
+    private void updateProgressPresentation() {
+        String text = importingText();
+        status.setText(text);
+        if (progressBar != null) {
+            if (importTotalBytes > 0) {
+                progressBar.setIndeterminate(false);
+                progressBar.setMax(1000);
+                progressBar.setProgress((int) Math.min(1000,
+                        Math.max(0, importedBytes * 1000.0 / importTotalBytes)));
+            } else {
+                progressBar.setIndeterminate(true);
+            }
+        }
+        importNotification.update(text, importedBytes, importTotalBytes);
+    }
+
     private String importingText() {
         StringBuilder text = new StringBuilder(
-                "Copying the game files into this app\u2019s private storage.");
+                "Copying the ZIP into persistent package storage.");
         if (importedEntries > 0) {
             text.append("\n\n").append(importedEntries).append(
                     importedEntries == 1 ? " file, " : " files, ")
                 .append(formatBytes(importedBytes));
+            if (importTotalBytes > 0) {
+                text.append(" of ").append(formatBytes(importTotalBytes));
+                text.append(" (").append(String.format(Locale.US, "%.1f%%",
+                        importedBytes * 100.0 / importTotalBytes)).append(")");
+            }
             if (importingName != null && !importingName.isEmpty()) {
                 text.append("\n").append(importingName);
             }
         }
-        text.append("\n\nA full install takes several minutes \u2014 progress is also shown in your notifications.");
+        text.append("\n\nThe ZIP is retained in package storage so an interrupted install can resume.");
         return text.toString();
     }
 
@@ -249,7 +268,7 @@ public final class XMen2SetupActivity extends Activity {
     }
 
     private void showChoices() {
-        status.setText("Browse to the folder containing XMen2.exe, or choose a ZIP of your legally obtained PC install. Android needs the whole install folder so it can validate and copy the required game files.\n\nThe game files are copied once into this app’s private storage and kept there for future launches.");
+        status.setText("Choose a ZIP of your legally obtained PC install. ZIP import is faster for installations with many small files. The archive is kept in persistent package storage for future launches and resumable retries.");
         choices.setVisibility(View.VISIBLE);
         if (progressBar != null) {
             progressBar.setVisibility(View.GONE);
@@ -259,10 +278,10 @@ public final class XMen2SetupActivity extends Activity {
 
     // --- Pickers ---
 
-    private LucentDocumentImport.Callback importCallback() {
-        return new LucentDocumentImport.Callback() {
+    private AndroidDocumentImport.Callback importCallback() {
+        return new AndroidDocumentImport.Callback() {
             @Override
-            public void onImported(LucentDocumentImport.Result result) {
+            public void onImported(AndroidDocumentImport.Result result) {
                 acceptImported(result);
             }
 
@@ -278,12 +297,6 @@ public final class XMen2SetupActivity extends Activity {
         };
     }
 
-    private void openFolderPicker() {
-        resetProgress();
-        choices.setVisibility(View.GONE);
-        importer.pickTree(FOLDER_REQUEST, importCallback());
-    }
-
     private void openZipPicker() {
         resetProgress();
         choices.setVisibility(View.GONE);
@@ -293,6 +306,7 @@ public final class XMen2SetupActivity extends Activity {
     private void resetProgress() {
         importedEntries = 0;
         importedBytes = 0;
+        importTotalBytes = 0;
         importingName = null;
     }
 
@@ -328,14 +342,14 @@ public final class XMen2SetupActivity extends Activity {
 
     // --- Handoff ---
 
-    private File sourceFor(LucentDocumentImport.Result result, File root) {
+    private File sourceFor(AndroidDocumentImport.Result result, File root) {
         return result.isTree ? root : new File(root, ".x2-prepared");
     }
 
     /** Retains only a complete, title-validated selection. */
-    private void acceptImported(LucentDocumentImport.Result result) {
+    private void acceptImported(AndroidDocumentImport.Result result) {
         if (!result.isTree && !result.documentName.toLowerCase(Locale.ROOT).endsWith(".zip")) {
-            showError("That is not a ZIP archive. Choose a ZIP, or use \"Browse for XMen2.exe\"."
+            showError("That is not a ZIP archive. Choose a ZIP from your PC install."
                     + discardRejectedImport(result));
             return;
         }
@@ -366,7 +380,7 @@ public final class XMen2SetupActivity extends Activity {
         }
     }
 
-    private String discardRejectedImport(LucentDocumentImport.Result result) {
+    private String discardRejectedImport(AndroidDocumentImport.Result result) {
         try {
             importer.discard(result);
             return "";
@@ -386,12 +400,22 @@ public final class XMen2SetupActivity extends Activity {
         return true;
     }
 
+    private File importStorageRoot() {
+        File obb = getObbDir();
+        if (obb != null && (obb.isDirectory() || obb.mkdirs())) return obb;
+        return getFilesDir();
+    }
+
     /** Resolves Android's equivalent data-directory aliases before enforcing containment. */
     private File privateInstallSource(File source) {
         try {
-            File root = new File(getFilesDir(), INSTALL_DIRECTORY).getCanonicalFile();
             File candidate = source.getCanonicalFile();
-            return candidate.toPath().startsWith(root.toPath()) ? candidate : null;
+            File persistentRoot = new File(importStorageRoot(), INSTALL_DIRECTORY).getCanonicalFile();
+            if (candidate.toPath().startsWith(persistentRoot.toPath())) return candidate;
+            // Migrate an install created by the pre-OBB APK on upgrade; new imports always use
+            // persistentRoot, and this compatibility path disappears when that old install is gone.
+            File previousRoot = new File(getFilesDir(), INSTALL_DIRECTORY).getCanonicalFile();
+            return candidate.toPath().startsWith(previousRoot.toPath()) ? candidate : null;
         } catch (IOException error) {
             return null;
         }

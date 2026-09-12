@@ -1958,7 +1958,7 @@ int main(int argc, char **argv) {
 #ifdef X2_WITH_SDL
   if (window) {
 #if defined(__ANDROID__)
-    /* LucentActivity already owns Android's SDL lifecycle and surface.
+    /* The shared AndroidActivity owns Android's SDL lifecycle and surface.
      * A temporary 800x600 window is useful on desktop only: on Android it
      * asks the Activity to rotate/resize before the retail window has
      * chosen its configured mode. That transient surface is observable by

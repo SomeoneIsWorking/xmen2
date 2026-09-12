@@ -27,7 +27,7 @@ set(LUCENT_BUILD_ZIP ON)
 set(LUCENT_BUILD_WEB ${EMSCRIPTEN})
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 4c72484ff1e0176fe1dedf2803afae3831703afe
+    GIT_TAG c3d0d71
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
@@ -54,8 +54,6 @@ target_link_libraries(x2_runtime_config PUBLIC x2_runtime_services
 add_executable(test_x2_log tests/test_x2_log.cpp)
 target_link_libraries(test_x2_log PRIVATE x2_runtime_services)
 add_test(NAME x2_log COMMAND test_x2_log)
-set(X2_LUCENT_ANDROID_JAVA_DIR
-    "${lucent_SOURCE_DIR}/platforms/android/java")
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -141,6 +139,11 @@ elseif(ANDROID)
     set(X2_SDL SDL3::SDL3-shared)
     set(X2_SDL_ANDROID_JAVA_DIR
         "${X2_ANDROID_PORT_PREFIX}/share/android-port/sdl3-java")
+    set(X2_ANDROID_FRAMEWORK_JAVA_DIR
+        "${X2_ANDROID_PORT_PREFIX}/share/android-port/framework-java")
+    if(NOT IS_DIRECTORY "${X2_ANDROID_FRAMEWORK_JAVA_DIR}")
+        message(FATAL_ERROR "x2native: shared android-port prefix omitted Android framework Java sources")
+    endif()
     set(X2_ANDROID_CXX_LIBRARY
         "${X2_ANDROID_PORT_PREFIX}/share/android-port/cxx/${ANDROID_ABI}/libc++_shared.so")
     if(NOT EXISTS "${X2_ANDROID_CXX_LIBRARY}")
@@ -1778,7 +1781,7 @@ if(ANDROID)
         "x2.androidPlatform=${ANDROID_PLATFORM}\n"
         "x2.ndkVersion=${_x2_android_ndk_version}\n"
         "x2.sdlJavaDir=${X2_SDL_ANDROID_JAVA_DIR}\n"
-        "x2.lucentJavaDir=${X2_LUCENT_ANDROID_JAVA_DIR}\n"
+        "x2.androidFrameworkJavaDir=${X2_ANDROID_FRAMEWORK_JAVA_DIR}\n"
         "x2.uiDir=${CMAKE_BINARY_DIR}/ui\n")
     string(JOIN "" _x2_android_properties ${_x2_android_properties})
     file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/x2-android.properties"

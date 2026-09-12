@@ -1,9 +1,9 @@
 package com.someoneisworking.xmen2;
 
-import io.github.someoneisworking.lucent.LucentActivity;
+import io.github.someoneisworking.android.AndroidActivity;
 
 /** SDL's lifecycle owner. Install acquisition never starts this Activity early. */
-public final class XMen2GameActivity extends LucentActivity {
+public final class XMen2GameActivity extends AndroidActivity {
     static final String GPU_SELFTEST = "com.someoneisworking.xmen2.debug.gpu_selftest";
     /** Debug-only map request consumed before the native runner starts. */
     static final String BOOT_MAP = "com.someoneisworking.xmen2.debug.boot_map";
