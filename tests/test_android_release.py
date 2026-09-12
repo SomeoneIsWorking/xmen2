@@ -190,9 +190,9 @@ def main() -> int:
     assert 'SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")' in native_main
     assert "debug.boot_map" in activity
     assert "XMen2GameActivity.BOOT_MAP" in setup
-    assert "act1/deadzone/deadzone1" in (
-        ROOT / "docs/android-release.md"
-    ).read_text(encoding="utf-8")
+    assert "act1/deadzone/deadzone1" in (ROOT / "docs/android-release.md").read_text(
+        encoding="utf-8"
+    )
     for unsafe in (
         "getExternalStorageDirectory",
         "/storage",
@@ -209,6 +209,14 @@ def main() -> int:
     build_android.shared_dir = lambda name, marker: str(android_port)
     try:
         assert build_android.android_port_tool() == android_port / "tools/android_port.py"
+        with patch.object(
+            build_android.bootstrap, "validate_checkout", side_effect=SystemExit("wrong revision")
+        ):
+            try:
+                build_android.android_port_tool()
+                raise AssertionError("Android build accepted a mismatched shared framework")
+            except SystemExit as error:
+                assert "wrong revision" in str(error)
     finally:
         build_android.shared_dir = original_shared_dir
     assert "build_android_deps.py" not in cmake

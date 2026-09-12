@@ -26,7 +26,7 @@ import java.util.Locale;
 /** Android-owned first-run setup. Native code retains title validation. */
 public final class XMen2SetupActivity extends Activity {
     private static final int ZIP_REQUEST = 0x5847;
-    private static final String PICKER_STATE = "lucent-picker";
+    private static final String PICKER_STATE = "xmen2-picker";
     private static final String SOURCE_PATH = "source-path";
     private static final String TRACE_FILES = "com.someoneisworking.xmen2.trace.files";
     private static final String TRACE_PERFORMANCE =

@@ -205,11 +205,13 @@ live in `src/native/install_picker.cpp`, resource location lives in
 `tools/package_appimage.py` plus `packaging/`. `x2native.c` only composes the
 setup result into the existing asset mapping path.
 
-The Android setup boundary follows the same pattern: `android/` owns Activity
-lifecycle, SAF URI permissions, and OBB staging;
-`src/native/android_bridge.cpp` only transfers the absolute storage/source
-contract; `install_picker.cpp` owns title validation while Lucent owns the shared safe ZIP
-extraction helper.
+The Android setup boundary follows the same pattern: `shared/android-port`
+owns Activity lifecycle, SAF URI permissions, resumable import, notifications,
+raw contact capture, and app-private staging. `android/` owns the X-Men setup UI,
+package identity, and publication after title validation;
+`src/native/android_bridge.cpp` transfers the absolute storage/source contract.
+`install_picker.cpp` owns title validation, using Lucent's platform-neutral safe
+ZIP extraction helper.
 
 The touch boundary is platform-neutral and owned here, not by any package. It
 keeps the title's safe-area-aware action vocabulary and virtual layout in

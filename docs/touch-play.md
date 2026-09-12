@@ -44,10 +44,11 @@ room for nothing.
 The title owns the safe-area-aware layout and action vocabulary in
 `src/input/touch_controls.cpp`, while `src/input/touch_runtime.cpp` converts SDL
 contacts to the existing virtual DirectInput pad through `lucent::touch::Router`.
-Lucent owns capture, multi-touch, and cancellation, not the title's action
-vocabulary. A contact stays with its zone after leaving the zone until it ends
-or is canceled. The runtime derives safe-area insets from SDL and publishes
-releases on cancellation, rotation, or lifecycle loss.
+The Android framework owns raw Activity contact capture and lifecycle cancellation;
+Lucent's platform-neutral router owns action-zone capture and multi-touch routing,
+not the title's action vocabulary. A contact stays with its zone after leaving
+the zone until it ends or is canceled. The runtime derives safe-area insets from
+SDL and publishes releases on cancellation, rotation, or lifecycle loss.
 
 The landscape layout uses these zones and the existing Xbox-derived action
 rows. Internal retail storage names are not player-facing labels: the touch

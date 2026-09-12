@@ -16,6 +16,9 @@ import subprocess
 import sys
 from types import ModuleType
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import bootstrap
+
 try:
     from .shared_dir import shared_dir
 except ImportError:
@@ -67,6 +70,9 @@ def run(command: list[str], *, cwd: Path) -> None:
 
 def android_port_tool() -> Path:
     root = Path(shared_dir("android-port", "tools/android_port.py"))
+    # The Android build may be run without the launcher; still enforce its pin.
+    required = next(repo for repo in bootstrap.SHARED_REPOS if repo.name == "android-port")
+    bootstrap.validate_checkout(required, root)
     return root / "tools" / "android_port.py"
 
 
