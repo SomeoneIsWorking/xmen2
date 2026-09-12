@@ -30,9 +30,10 @@ After a successful link the builder passes an explicit resource map to
 `shared/web-port/tools/package.py`, producing `build/release/web`. The packager
 refuses unexpected files in that directory and never discovers game inputs by
 walking a build tree. Lucent supplies the browser storage and isolation runtime;
-its generated service worker caches only the resource map. GitHub Pages hosts
-that directory, including `.nojekyll`, with no game ZIP, executable, save or
-translation cache uploaded.
+its generated service worker caches only the resource map. The source workflow
+uploads that directory as an asset-free CI artifact. The `pages` repository
+imports it under `public/xmen2/` and owns the GitHub Pages deployment, including
+`.nojekyll`, with no game ZIP, executable, save or translation cache uploaded.
 
 ## Runtime contracts
 

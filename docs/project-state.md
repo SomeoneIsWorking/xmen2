@@ -654,9 +654,10 @@ unit-verified". Measured phone evidence remains S018's gate. The web target
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
 The complete browser artifact loads and rejects a malformed ZIP through its
-native installer. The pinned Pages workflow succeeded at run `34685619084` (commit
-`77fa095`) and deployed the asset-free artifact at
-`https://someoneisworking.github.io/xmen2/`. WebLua verified the deployed setup
+native installer. Source run `34688683213` built the asset-free package at
+`af6ccad`; central `pages` run `34689838606` deployed it at
+`https://someoneisworking.github.io/xmen2/`. The old project Pages site is
+disabled, and the live `publication.json` names the source run. WebLua verified the central setup
 page with `crossOriginIsolated=true`, a WASM runtime, a canvas, no console
 errors, and no failed network requests. The headless browser exposed
 `navigator.gpu` but returned no adapter, so game execution and WebGPU rendering
