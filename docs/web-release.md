@@ -38,7 +38,7 @@ translation cache uploaded.
 
 ### W1 — Execute emitted guest blocks
 
-Pinned x86port `cd4590fadcbfde9fb54d52423179bdb71df13e9c` provides the real
+Pinned x86port `2607945babec9ec667b5eef6b54232b704860cb7` provides the real
 WebAssembly module host, indirect-table publication, dispatcher, imports,
 cache release, sparse permissions, integer-tail, x87 and SIMD lowering. Eight
 synthetic suites passed in standalone and application-worker Emscripten

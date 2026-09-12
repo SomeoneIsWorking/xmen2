@@ -648,7 +648,7 @@ The title CMake path compiles and links its native owners for Emscripten 4.0.16.
 an explicit asset-only release under `build/release/web`.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
-  Pinned x86port `cd4590fadcbfde9fb54d52423179bdb71df13e9c` and jit-common
+  Pinned x86port `2607945babec9ec667b5eef6b54232b704860cb7` and jit-common
   `4c58336f5d187d556755c20c983b5dc168f8f9b1` instantiate emitted modules, publish
   indirect-table entries, dispatch guest blocks and reclaim cache entries.
   The pinned suite passed 41 native tests and eight actual Emscripten/Node tests
