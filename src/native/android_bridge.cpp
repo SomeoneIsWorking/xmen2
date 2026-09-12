@@ -60,6 +60,18 @@ bool is_module_character(char character) {
          character == '_' || character == '-';
 }
 
+bool valid_boot_map(const char *value) {
+  if (!value || !value[0] || std::strlen(value) > 128 || value[0] == '/' ||
+      std::strstr(value, ".."))
+    return false;
+  for (const char *cursor = value; *cursor; ++cursor) {
+    const char character = *cursor;
+    if (!is_module_character(character) && character != '/')
+      return false;
+  }
+  return true;
+}
+
 /* This is intentionally a fixed diagnostic switch rather than an Activity
  * supplied environment map. The profiler is x86-runtime-specific and the
  * values give two useful heartbeats quickly without becoming player policy. */
@@ -98,13 +110,18 @@ bool configure_draw_dump(jboolean enabled) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
     JNIEnv *environment, jclass, jstring data_directory, jstring source,
-    jboolean trace_files, jboolean trace_performance,
-    jboolean trace_draw_dump) {
+    jboolean trace_files, jboolean trace_performance, jboolean trace_draw_dump,
+    jstring boot_map) {
   char source_path[sizeof install_source];
+  char requested_boot_map[129];
   if (!read_string(environment, data_directory, source_path,
                    sizeof source_path) ||
       !configure_performance_trace(trace_performance) ||
       !configure_draw_dump(trace_draw_dump))
+    return JNI_FALSE;
+  if (!read_string(environment, boot_map, requested_boot_map,
+                   sizeof requested_boot_map) ||
+      (requested_boot_map[0] && !valid_boot_map(requested_boot_map)))
     return JNI_FALSE;
   if (!lucent_platform_set_user_data_directory(source_path))
     return JNI_FALSE;
@@ -115,6 +132,12 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
       return JNI_FALSE;
   } else {
     x2_config_override_unset(kX2ConfigFiles);
+  }
+  if (requested_boot_map[0]) {
+    if (x2_config_override_set(kX2ConfigBootMap, requested_boot_map, 1) != 0)
+      return JNI_FALSE;
+  } else {
+    x2_config_override_unset(kX2ConfigBootMap);
   }
   /* The existing guest input path already knows how to create and map the
    * SDL virtual pad. Android supplies touch actions to that same pad, so

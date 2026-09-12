@@ -45,7 +45,8 @@ public final class XMen2SetupActivity extends Activity {
                                                          String installSource,
                                                          boolean traceFiles,
                                                          boolean tracePerformance,
-                                                         boolean traceDrawDump);
+                                                         boolean traceDrawDump,
+                                                         String bootMap);
     private static native boolean nativeValidateInstall(String installSource,
                                                         String archiveDestination);
 
@@ -61,6 +62,8 @@ public final class XMen2SetupActivity extends Activity {
     private boolean tracePerformance;
     private boolean traceDrawDump;
     private boolean gpuSelftest;
+    private String bootMap;
+    private boolean invalidBootMap;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -70,8 +73,12 @@ public final class XMen2SetupActivity extends Activity {
             tracePerformance = getIntent().getBooleanExtra(TRACE_PERFORMANCE, false);
             traceDrawDump = getIntent().getBooleanExtra(TRACE_DRAW_DUMP, false);
             gpuSelftest = getIntent().getBooleanExtra(XMen2GameActivity.GPU_SELFTEST, false);
+            String requestedBootMap = getIntent().getStringExtra(XMen2GameActivity.BOOT_MAP);
+            bootMap = validatedBootMap(requestedBootMap);
+            invalidBootMap = requestedBootMap != null && !requestedBootMap.isEmpty()
+                    && bootMap == null;
             Log.i("XMen2", "debug setup: performance=" + tracePerformance
-                    + " drawDump=" + traceDrawDump);
+                    + " drawDump=" + traceDrawDump + " bootMap=" + bootMap);
         }
         importNotification = new LucentImportProgress(this, 0x5849, "xmen2_game_import",
                 "Game File Installation", "Installing X-Men Legends II", XMen2SetupActivity.class);
@@ -95,6 +102,10 @@ public final class XMen2SetupActivity extends Activity {
         importer.restorePickerState(state == null ? null : state.getBundle(PICKER_STATE), importCallback());
         importer.cleanStaleImports();
         buildLayout();
+        if (invalidBootMap) {
+            showError("The debug boot map contains an unsafe or invalid map name.");
+            return;
+        }
         if (Build.VERSION.SDK_INT >= 33) {
             if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                     != android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -388,7 +399,23 @@ public final class XMen2SetupActivity extends Activity {
 
     private boolean configureNative(File source) {
         return nativeConfigureStorage(getFilesDir().getAbsolutePath(), source.getAbsolutePath(),
-                                      traceFiles, tracePerformance, traceDrawDump);
+                                      traceFiles, tracePerformance, traceDrawDump, bootMap);
+    }
+
+    /** Accept map names, never paths or shell-like values, from debug launchers only. */
+    private static String validatedBootMap(String requested) {
+        if (requested == null || requested.isEmpty() || requested.length() > 128
+                || requested.startsWith("/") || requested.contains("..")) {
+            return null;
+        }
+        for (int index = 0; index < requested.length(); index++) {
+            char value = requested.charAt(index);
+            if (!(Character.isLetterOrDigit(value) || value == '/' || value == '_'
+                    || value == '-' || value == '.')) {
+                return null;
+            }
+        }
+        return requested;
     }
 
     private void startGame() {

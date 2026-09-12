@@ -98,6 +98,25 @@ artifact stays in Gradle's build output and is never staged or published. On
 `apksigner` verified the resulting v3 signature under the one-day local test
 certificate. This proves assembly, not release identity or device fitness.
 
+## Direct gameplay boot for profiling
+
+The desktop and Android maintainer paths share the title's complete
+`X2_BOOT_MAP` transition: it calls the retail `startFirstMission` party
+initializer and then loads the requested level, so it does not fast-forward a
+running world or fabricate a party. For a debug APK, pass the map as an intent
+extra. The documented combat map is `act1/deadzone/deadzone1`:
+
+```sh
+adb -s <serial> shell am start -n \
+  com.someoneisworking.xmen2/.XMen2SetupActivity \
+  --es com.someoneisworking.xmen2.debug.boot_map act1/deadzone/deadzone1
+```
+
+This extra is accepted only by debug builds and is bounded to a relative map
+name. Release builds ignore it. Use the loopback control endpoint after the
+level appears to reset timing and collect frame-time percentiles during actual
+combat; a boot screenshot or menu run is not gameplay performance evidence.
+
 ## Touch controls
 
 Touch play is NOT an Android feature and is not owned here — see

@@ -137,6 +137,7 @@ def main() -> int:
         ROOT / "android/app/src/main/java/com/someoneisworking/xmen2/XMen2SetupActivity.java"
     ).read_text(encoding="utf-8")
     cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
+    native_main = (ROOT / "src/native/x2native.c").read_text(encoding="utf-8")
     # The setup uses Android's scoped picker: Lucent owns persisted SAF grants,
     # bounded app-private staging, cancellation, and promotion after title
     # validation. No port code may reconstruct a provider filesystem path or
@@ -187,6 +188,7 @@ def main() -> int:
     # this permission's inet group; without it control_start() exit(2)s before
     # the game runs, which presented as an unexplained crash on device.
     assert "android.permission.INTERNET" in manifest
+    assert 'SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0")' in native_main
     for unsafe in (
         "getExternalStorageDirectory",
         "/storage",

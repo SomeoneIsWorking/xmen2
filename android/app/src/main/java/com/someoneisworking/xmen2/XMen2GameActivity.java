@@ -5,6 +5,8 @@ import io.github.someoneisworking.lucent.LucentActivity;
 /** SDL's lifecycle owner. Install acquisition never starts this Activity early. */
 public final class XMen2GameActivity extends LucentActivity {
     static final String GPU_SELFTEST = "com.someoneisworking.xmen2.debug.gpu_selftest";
+    /** Debug-only map request consumed before the native runner starts. */
+    static final String BOOT_MAP = "com.someoneisworking.xmen2.debug.boot_map";
 
     @Override
     protected String[] getLibraries() {
