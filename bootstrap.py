@@ -38,7 +38,7 @@ SHARED_REPOS = (
     SharedRepo("port-assets", "https://github.com/SomeoneIsWorking/port-assets.git",
                "b48abae76227a2f1fe17cc7d9abd60cc85d45e09", "sets"),
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
-               "6735dc557b2ae56d735ce8140867b8375567d9e6", "tools/android_port.py"),
+               "c3e7807", "tools/android_port.py"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",
                "14b2f87a5e69e3c9995ebdc3c821d96982963002", "tools/web_port.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact
