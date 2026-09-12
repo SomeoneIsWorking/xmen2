@@ -180,6 +180,11 @@ documented combat profiling map. This maintainer path has been assembled for
 ARM64, but a complete-install combat run with this exact build still needs
 device evidence.
 
+The current debug APK (`0.2.4`, `arm64-v8a`) was installed on the disposable
+ARM64 Cuttlefish target and an unsafe `../unsafe` extra stayed in setup with the
+visible refusal; no game files were present after the intentional uninstall,
+so the valid combat-map handoff remains unexecuted there.
+
 The complete import path was also exercised on the ARM64 Cuttlefish device:
 the foreground notification reported live bounded-copy progress, the staged
 tree promoted successfully, and the game reached 36,518 translated blocks with
