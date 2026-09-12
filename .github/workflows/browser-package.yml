@@ -1,4 +1,4 @@
-name: Browser release
+name: Browser package
 
 on:
   workflow_dispatch:
@@ -7,11 +7,9 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: browser-package
   cancel-in-progress: true
 
 jobs:
@@ -96,22 +94,10 @@ jobs:
           echo "$GITHUB_WORKSPACE/build/spirv-tools/tools" >> "$GITHUB_PATH"
       - name: Build asset-free browser package
         run: uv run --frozen python tools/build_web.py --emsdk "$EMSDK" --jobs 2
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+      - name: Upload asset-free WASM package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
+          name: xmen2-wasm-web
           path: build/release/web
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy Pages artifact
-        id: deployment
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+          if-no-files-found: error
+          include-hidden-files: true
