@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fail-closed checks for the Android entry point and signing contract."""
 
+import json
 import re
 from pathlib import Path
 import tempfile
@@ -82,6 +83,17 @@ def main() -> int:
             }
         )
         assert signing["X2_ANDROID_KEYSTORE"] == str(key.resolve())
+
+    # Verbose apksigner output has a colon in the signer label as well as
+    # before the digest. The publish gate must compare only the digest.
+    fingerprint = json.loads((ROOT / "android/published-release.json").read_text())["signer_sha256"]
+    signer_output = f"V3.0 Signer: certificate SHA-256 digest: {fingerprint}\n"
+    with (
+        patch.object(build_android, "apksigner_path", return_value=Path("apksigner")),
+        patch.object(build_android.subprocess, "run", return_value=Mock(stdout=signer_output)),
+    ):
+        assert build_android.signer_digest(Path("signed.apk")) == fingerprint
+        assert build_android.require_publishable(ROOT, Path("signed.apk"), 1) == fingerprint
 
     # The publish gate is what refuses an unsigned release. Gradle configures
     # without release keys so a debug device build is possible, so this refusal

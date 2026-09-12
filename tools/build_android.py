@@ -210,7 +210,7 @@ def signer_digest(apk: Path) -> str:
         text=True,
     ).stdout
     digests = [
-        line.split(":", 1)[1].strip().lower()
+        line.rsplit(":", 1)[1].strip().lower()
         for line in output.splitlines()
         if "certificate SHA-256 digest" in line
     ]
