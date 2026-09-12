@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: SomeoneIsWorking/x86port
-          ref: cd4590fadcbfde9fb54d52423179bdb71df13e9c
+          ref: 2607945babec9ec667b5eef6b54232b704860cb7
           path: vendor/shared/x86port
           fetch-depth: 1
           submodules: recursive
