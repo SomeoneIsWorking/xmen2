@@ -662,15 +662,20 @@ unit-verified". Measured phone evidence remains S018's gate. The web target
 
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
-The complete browser artifact loads and rejects a malformed ZIP through its
-native installer. Source run `34688683213` built the asset-free package at
-`af6ccad`; central `pages` run `34689838606` deployed it at
-`https://someoneisworking.github.io/xmen2/`. The old project Pages site is
-disabled, and the live `publication.json` names the source run. WebLua verified the central setup
-page with `crossOriginIsolated=true`, a WASM runtime, a canvas, no console
-errors, and no failed network requests. The headless browser exposed
-`navigator.gpu` but returned no adapter, so game execution and WebGPU rendering
-remain unqualified in this environment.
+The browser artifact loads and rejects a malformed ZIP through its native
+installer. Source run `34694009495` built the asset-free package at `612d850`;
+the central Pages route at `https://someoneisworking.github.io/xmen2/` serves
+releases with `publication.json` source provenance. WebLua verified the central
+setup page with `crossOriginIsolated=true`, a WASM runtime, a canvas, and no
+failed network requests. Its opt-in GPU mode now obtains a WebGPU adapter.
+One complete 1.61 GiB ZIP copied into browser-private storage with determinate
+progress, then remained in native checking/unpacking for over 13 minutes before
+that Chrome process closed. No installed game or frame was observed. The old
+Lucent extraction path decompressed each entry in a validation prepass and again
+while writing a transactional staging tree; pinned Lucent `6e29bee` removes
+the redundant prepass. Browser timing and gameplay with that revision remain
+unqualified. A malformed-ZIP run emitted Emscripten's main-thread blocking
+warning, so a clean browser console is not yet established for this path.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.
 `tools/build_web.py` consumes the shared `web-port` dependency prefix and stages
 an explicit asset-only release under `build/release/web`.
