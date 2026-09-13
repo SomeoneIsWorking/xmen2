@@ -104,9 +104,22 @@ archive.addEventListener("change", async () => {
   }
 });
 
+/* The capability gate is the only thing a player on an unsupported browser ever
+ * sees, so it must name the capability that is actually missing. */
+function missingBrowserFeatures() {
+  const missing = [];
+  if (!navigator.gpu) missing.push("WebGPU");
+  if (!globalThis.OffscreenCanvas) missing.push("OffscreenCanvas");
+  return missing;
+}
+
 async function prepare() {
-    if (!navigator.gpu || !globalThis.OffscreenCanvas) {
-      throw new Error("This game requires a browser with WebGPU and OffscreenCanvas support.");
+    const missing = missingBrowserFeatures();
+    if (missing.length > 0) {
+      throw new Error(
+        `This browser does not provide ${missing.join(" or ")}. The port renders ` +
+        "through WebGPU in a worker, so it cannot start without it."
+      );
     }
     const {root, persistent} = await persistentStorage();
     storageRoot = root;
