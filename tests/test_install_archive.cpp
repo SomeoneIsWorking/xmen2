@@ -185,6 +185,40 @@ int main() {
     return 1;
   }
 
+  const std::filesystem::path unpublished = root / "opfs-install";
+  struct Progress {
+    uint64_t done = 0;
+    uint64_t total = 0;
+    unsigned calls = 0;
+  } progress;
+  const auto on_progress = [](uint64_t done, uint64_t total, void *context) {
+    auto &sample = *static_cast<Progress *>(context);
+    sample.done = done;
+    sample.total = total;
+    sample.calls++;
+  };
+  if (!x2_install_archive_extract_unpublished(
+          archive.string().c_str(), unpublished.string().c_str(), executable,
+          sizeof executable, reason, sizeof reason, on_progress, &progress) ||
+      !std::filesystem::path(executable)
+           .string()
+           .starts_with(unpublished.string()) ||
+      !contains_marker(executable, "new") ||
+      std::filesystem::exists(unpublished.string() + ".lucent-stage") ||
+      progress.calls == 0 || progress.total == 0 ||
+      progress.done != progress.total) {
+    std::cerr << "unpublished extraction failed: " << reason << "\n";
+    return 1;
+  }
+  if (x2_install_archive_extract_unpublished(
+          archive.string().c_str(), unpublished.string().c_str(), executable,
+          sizeof executable, reason, sizeof reason, nullptr, nullptr) ||
+      !contains_marker(unpublished / "New/Deep/XMen2.exe", "new")) {
+    std::cerr << "unpublished extraction replaced an existing tree: " << reason
+              << "\n";
+    return 1;
+  }
+
   write_archive(archive, {{"Broken/XMen2.exe", "invalid"}});
   if (x2_install_archive_prepare(archive.string().c_str(), executable,
                                  sizeof executable, reason, sizeof reason) ||
@@ -196,7 +230,8 @@ int main() {
   }
 
   std::filesystem::remove_all(root);
-  std::cout << "install_archive: replacement is atomic and invalid ZIP "
-               "preserves the accepted install\n";
+  std::cout
+      << "install_archive: atomic replacement and unpublished OPFS "
+         "extraction passed; invalid ZIP preserves the accepted install\n";
   return 0;
 }

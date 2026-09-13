@@ -11,6 +11,11 @@ string(JSON _x2_web_threads GET "${_x2_web_contract}" pthread)
 if(NOT _x2_web_threads)
     message(FATAL_ERROR "x2native: browser dependencies must support pthreads")
 endif()
+# CMake caches package locations independently of CMAKE_PREFIX_PATH. A build
+# tree reused after the web-port prefix changes must resolve this exact prefix.
+unset(SDL3_DIR CACHE)
+unset(SDL3_image_DIR CACHE)
+unset(Freetype_DIR CACHE)
 find_package(SDL3 CONFIG REQUIRED PATHS "${X2_WEB_PORT_PREFIX}/lib/cmake/SDL3"
              NO_DEFAULT_PATH NO_CMAKE_FIND_ROOT_PATH)
 find_package(SDL3_image CONFIG REQUIRED

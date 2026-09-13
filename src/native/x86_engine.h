@@ -42,6 +42,9 @@ const char *x2_engine_name(void);
  */
 int x2_engine_call(uint32_t addr, struct X86pCpu *C);
 
+/* Release a finished guest pthread's worker-local WASM translations. */
+void x2_engine_detach_thread(void);
+
 /*
  * The program's own entry point, named before it is entered.
  *

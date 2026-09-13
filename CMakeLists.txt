@@ -24,10 +24,9 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # archive extraction rather than carrying a second ZIP implementation here.
 include(FetchContent)
 set(LUCENT_BUILD_ZIP ON)
-set(LUCENT_BUILD_WEB ${EMSCRIPTEN})
 FetchContent_Declare(lucent
     GIT_REPOSITORY https://github.com/SomeoneIsWorking/lucent.git
-    GIT_TAG 6e29bee1db3fa89bd6840f7f110310a5eb4feaf2
+    GIT_TAG f592a5c9797e1181622e2cff9916d8c4d49a2b71
     GIT_SHALLOW FALSE)
 FetchContent_MakeAvailable(lucent)
 
@@ -804,6 +803,7 @@ add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
 # The guest printf format walker. It builds crt.c against a stub runtime, so it
 # needs no guest runtime and runs in the ordinary suite.
 add_executable(test_vformat tests/test_vformat.c src/native/crt.c
+               src/native/guest_file_io.c
                src/native/crt_write_watch.c src/runtime/x86_abi/x87crt.c
             tests/native_stubs.c
                src/native/guest_heap.c src/native/guest_memory.c)
@@ -1372,6 +1372,7 @@ set(X2_NATIVE_SOURCES
     src/native/boot_menu_transition.c
     src/native/boot_splash_policy.c
     src/native/x86_engine.c
+    src/native/x86_engine_jit_pool.c
     src/native/guest_modules.c
     src/native/host_imports_advapi32.c
     src/native/host_imports_all.c
@@ -1448,6 +1449,7 @@ set(X2_NATIVE_SOURCES
     src/native/win32_pointer.c
     src/native/win32_events.c
     src/native/guest_heap.c
+    src/native/guest_file_io.c
     src/native/crt.c
     src/native/crt_aliases.c
     src/native/crt_setjmp.c
@@ -1703,7 +1705,8 @@ if(NOT TARGET x86port_runtime)
 endif()
 
 add_executable(test_guest_memory_sparse tests/test_guest_memory_sparse.c
-    src/native/guest_memory_sparse.c src/native/guest_memory_probe.c)
+    src/native/guest_memory_sparse.c src/native/guest_memory_probe.c
+    src/native/guest_file_io.c)
 target_include_directories(test_guest_memory_sparse PRIVATE
     src/native src/runtime/x86_abi)
 target_compile_definitions(test_guest_memory_sparse PRIVATE

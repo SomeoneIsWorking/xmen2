@@ -72,8 +72,7 @@ def main() -> int:
             cwd=root, env=environment, check=True,
         )
         package = [sys.executable, str(owner / "tools/package.py"),
-                   "--destination", str(root / "build/release/web"),
-                   "--lucent", (build / "web-runtime-path.txt").read_text().strip()]
+                   "--destination", str(root / "build/release/web")]
         for name in ("x2native.js", "x2native.wasm", "x2native.data"):
             package.extend(["--file", f"{name}={build / name}"])
         for name in ("index.html", "app.mjs", "style.css", "manifest.webmanifest"):

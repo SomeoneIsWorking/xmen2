@@ -40,7 +40,7 @@ SHARED_REPOS = (
     SharedRepo("android-port", "https://github.com/SomeoneIsWorking/android-port.git",
                "ba3c758d5aaeef0c79f1f4a19a6ce113f02760cf", "tools/android_port.py"),
     SharedRepo("web-port", "https://github.com/SomeoneIsWorking/web-port.git",
-               "14b2f87a5e69e3c9995ebdc3c821d96982963002", "tools/web_port.py"),
+               "e40df6db5b180c87e9919fe912bd7656abb9b7be", "tools/web_port.py"),
     # The runtime execution engine (jit-common S040/S047). Pinned to an exact
     # revision, never a branch: a fresh clone that resolved to whatever `main`
     # happened to be would make two machines run different engines while
@@ -53,7 +53,7 @@ SHARED_REPOS = (
                "4c58336f5d187d556755c20c983b5dc168f8f9b1",
                "src/jitcommon/block_cache.h"),
     SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
-               "2607945babec9ec667b5eef6b54232b704860cb7",
+               "5f9bb3daf6fee6fbeab9212260e0f433a39d5b1e",
                "src/x86port/jit_engine.h"),
 )
 

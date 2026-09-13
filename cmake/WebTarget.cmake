@@ -1,9 +1,13 @@
 # The browser main thread owns events. All guest execution, blocking native
 # calls and synchronous per-block WebAssembly compilation run on a pthread.
-target_sources(x2native PRIVATE src/web/web_main.cpp)
+target_sources(x2native PRIVATE src/web/web_main.cpp src/web/browser_log.cpp)
 set_source_files_properties(src/native/x2native.c PROPERTIES
     COMPILE_DEFINITIONS main=x2native_main)
-target_link_libraries(x2native PRIVATE lucent::web)
+if(NOT X2_WEB_PORT_SOURCE)
+    message(FATAL_ERROR "x2native: web build requires shared/web-port source")
+endif()
+include("${X2_WEB_PORT_SOURCE}/cmake/WebRuntime.cmake")
+target_link_libraries(x2native PRIVATE web_port::runtime)
 target_link_options(x2native PRIVATE
     -pthread -sPROXY_TO_PTHREAD=1 -sPTHREAD_POOL_SIZE=16 -sASYNCIFY=1
     -sOFFSCREENCANVAS_SUPPORT=1 "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
@@ -18,5 +22,3 @@ target_link_options(x2native PRIVATE
     --emit-symbol-map
     "--preload-file=${CMAKE_BINARY_DIR}/ui@/ui")
 set_target_properties(x2native PROPERTIES SUFFIX ".js")
-file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/web-runtime-path.txt"
-    CONTENT "${lucent_SOURCE_DIR}")

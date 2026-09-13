@@ -33,6 +33,30 @@ bool copy_path(const std::filesystem::path &source, char *destination,
   return true;
 }
 
+bool validate_prepared_executable(const std::filesystem::path &prepared,
+                                  const std::filesystem::path &preparing,
+                                  const std::filesystem::path &destination,
+                                  char *executable,
+                                  unsigned executable_capacity, char *reason,
+                                  unsigned reason_capacity) {
+  if (!x2_install_validate_executable(prepared.string().c_str(), reason,
+                                      reason_capacity))
+    return false;
+  const std::filesystem::path relative = prepared.lexically_relative(preparing);
+  if (relative.empty() || relative.is_absolute() ||
+      relative.begin() == relative.end() || *relative.begin() == "..") {
+    std::snprintf(reason, reason_capacity,
+                  "That ZIP produced an invalid executable path.");
+    return false;
+  }
+  if (!copy_path(destination / relative, executable, executable_capacity)) {
+    std::snprintf(reason, reason_capacity,
+                  "The extracted executable path is too long.");
+    return false;
+  }
+  return true;
+}
+
 bool clean_tree(const std::filesystem::path &path, std::string &error) {
   std::error_code status;
   std::filesystem::remove_all(path, status);
@@ -143,8 +167,9 @@ x2_install_archive_prepare_to(const char *archive, const char *destination_text,
                   error.c_str());
     return 0;
   }
-  if (!x2_install_validate_executable(prepared_executable.string().c_str(),
-                                      reason, reason_capacity)) {
+  if (!validate_prepared_executable(prepared_executable, preparing, destination,
+                                    executable, executable_capacity, reason,
+                                    reason_capacity)) {
     std::string cleanup_error;
     clean_tree(preparing, cleanup_error);
     if (!cleanup_error.empty()) {
@@ -155,25 +180,51 @@ x2_install_archive_prepare_to(const char *archive, const char *destination_text,
     }
     return 0;
   }
-
-  const std::filesystem::path relative =
-      prepared_executable.lexically_relative(preparing);
-  if (relative.empty() || relative.is_absolute() ||
-      relative.begin() == relative.end() || *relative.begin() == "..") {
-    clean_tree(preparing, error);
-    std::snprintf(reason, reason_capacity,
-                  "That ZIP produced an invalid executable path.");
-    return 0;
-  }
-  if (!copy_path(destination / relative, executable, executable_capacity)) {
-    clean_tree(preparing, error);
-    std::snprintf(reason, reason_capacity,
-                  "The extracted executable path is too long.");
-    return 0;
-  }
   if (!accept_preparation(preparing, destination, previous, error)) {
     executable[0] = 0;
     std::snprintf(reason, reason_capacity, "%s", error.c_str());
+    return 0;
+  }
+  return 1;
+}
+
+extern "C" int x2_install_archive_extract_unpublished(
+    const char *archive, const char *destination_text, char *executable,
+    unsigned executable_capacity, char *reason, unsigned reason_capacity,
+    x2_install_archive_progress progress, void *progress_context) {
+  if (!archive || !*archive || !destination_text || !*destination_text ||
+      !executable || executable_capacity < 2 || !reason || reason_capacity < 2)
+    return 0;
+  executable[0] = 0;
+  reason[0] = 0;
+
+  const std::filesystem::path destination(destination_text);
+  std::filesystem::path prepared_executable;
+  std::string error;
+  lucent::zip::ProgressCallback on_progress;
+  if (progress)
+    on_progress = [progress, progress_context](std::uint64_t done,
+                                               std::uint64_t total) {
+      progress(done, total, progress_context);
+    };
+  if (!lucent::zip::extract_install_unpublished(
+          archive, destination, "XMen2.exe", prepared_executable, error,
+          x2_install_archive_limits, on_progress)) {
+    std::snprintf(reason, reason_capacity, "That ZIP could not be used: %s",
+                  error.c_str());
+    return 0;
+  }
+  if (!validate_prepared_executable(
+          prepared_executable, destination, destination, executable,
+          executable_capacity, reason, reason_capacity)) {
+    std::string cleanup_error;
+    clean_tree(destination, cleanup_error);
+    if (!cleanup_error.empty()) {
+      const size_t used = std::strlen(reason);
+      std::snprintf(reason + used,
+                    reason_capacity > used ? reason_capacity - used : 0, "; %s",
+                    cleanup_error.c_str());
+    }
     return 0;
   }
   return 1;

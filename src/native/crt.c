@@ -33,6 +33,7 @@
  */
 #include "crt_internal.h"
 #include "crt_write_watch.h"
+#include "guest_file_io.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "threads.h"
@@ -419,7 +420,7 @@ void imp_MSVCR71_fclose(CPU *C) {
 }
 
 void imp_MSVCR71_fread(CPU *C) {
-  ret_c(C, (uint32_t)fread(AP(0), A(1), A(2), fh(A(3))));
+  ret_c(C, (uint32_t)x2_guest_fread(A(0), A(1), A(2), fh(A(3))));
 }
 
 void imp_MSVCR71_fseek(CPU *C) {
@@ -446,7 +447,7 @@ void imp_MSVCR71_ungetc(CPU *C) {
   ret_c(C, (uint32_t)ungetc((int)A(0), fh(A(1))));
 }
 void imp_MSVCR71_fwrite(CPU *C) {
-  ret_c(C, (uint32_t)fwrite(AP(0), A(1), A(2), fh(A(3))));
+  ret_c(C, (uint32_t)x2_guest_fwrite(A(0), A(1), A(2), fh(A(3))));
 }
 void imp_MSVCR71_fgets(CPU *C) {
   char *r = fgets(AS(0), (int)A(1), fh(A(2)));

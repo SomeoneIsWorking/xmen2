@@ -5,8 +5,9 @@ desktop and Android packages. Players select their own complete PC-install ZIP;
 files stream into origin-private storage and never leave the device. Only the
 port executable, shaders, UI and other redistributable resources enter a release.
 [Project state S021](project-state.md#s021--web-wasm--pwa-product-with-browser-side-install-partial)
-owns current capability status. The asset-free Pages deployment is verified; title
-gameplay with imported game files remains unqualified.
+owns current capability status. The central Pages route still serves an earlier
+asset-free preview; the current browser build has not been deployed because
+responsive, visible gameplay has not passed.
 
 ## Build and packaging owners
 
@@ -29,7 +30,7 @@ uses the shared deterministic WGSL converter for browser shaders.
 After a successful link the builder passes an explicit resource map to
 `shared/web-port/tools/package.py`, producing `build/release/web`. The packager
 refuses unexpected files in that directory and never discovers game inputs by
-walking a build tree. Lucent supplies the browser storage and isolation runtime;
+walking a build tree. `shared/web-port` supplies browser storage and isolation;
 its generated service worker caches only the resource map. The source workflow
 uploads that directory as an asset-free CI artifact. The `pages` repository
 imports it under `public/xmen2/` and owns the GitHub Pages deployment, including
@@ -39,11 +40,12 @@ imports it under `public/xmen2/` and owns the GitHub Pages deployment, including
 
 ### W1 — Execute emitted guest blocks
 
-Pinned x86port `2607945babec9ec667b5eef6b54232b704860cb7` provides the real
+Pinned x86port `5f9bb3daf6fee6fbeab9212260e0f433a39d5b1e` provides the real
 WebAssembly module host, indirect-table publication, dispatcher, imports,
 cache release, sparse permissions, integer-tail, x87 and SIMD lowering. Eight
 synthetic suites passed in standalone and application-worker Emscripten
-configurations, in addition to 41 native tests. The title consumes this
+configurations, in addition to 43 native tests. The threaded Emscripten
+matrix passed 45 checks with six declared host-only skips. The title consumes this
 reviewed immutable revision and maps browser guest allocations through the
 same permission-aware owner.
 
@@ -85,7 +87,7 @@ sparse backend maps disjoint guest ranges through x86port, preserving permission
 partial decommit, exact-span reads and invalidation instead of reporting no-op
 page protection as success.
 
-GitHub Pages cannot set response headers itself. Lucent's service worker adds
+GitHub Pages cannot set response headers itself. The shared web-port service worker adds
 COOP/COEP to the exact cached application resources. The first navigation
 registers it and reloads once; a persistent inability to isolate produces an
 explicit refusal. A real browser test on a server without those headers reached
@@ -94,28 +96,45 @@ browser-support claim follows until the complete title works under this policy.
 
 The browser entry point uses page keyboard and touch events rather than the
 desktop loopback HTTP inspector; a browser worker cannot bind that socket.
-The asset-free package has first-run ZIP refusal and storage/isolation checks,
-while complete-install import and gameplay remain unqualified until a player
-supplies the original files locally.
+The asset-free package has first-run ZIP refusal and storage/isolation checks.
+A complete PC install was imported and reopened from private storage locally;
+responsive gameplay remains unqualified.
 
 ### W4 — Local install, storage and offline use
 
-`web/app.mjs` owns the title page, file chooser and lifetime lock; Lucent owns
+`web/app.mjs` owns the title page, file chooser and lifetime lock; shared web-port owns
 bounded Blob-to-OPFS staging. The application lock prevents another tab from
 replacing an installation while native workers use it. A fresh page releases
 only its known abandoned staging leaf before accepting another file.
 
-`src/web/web_main.cpp` mounts OPFS and delegates to the native install picker,
-archive transaction and exact title validator. The previous valid installation
-survives a failed replacement. Lucent's ZIP owner must use bounded reads and
-streaming decompression: mmap or copying a multi-gigabyte archive into wasm
-linear memory is not an acceptable implementation.
+`src/web/web_main.cpp` mounts OPFS through web-port and delegates ZIP safety to Lucent and
+complete-install validation to the title. WasmFS OPFS cannot rename a directory,
+so the browser extracts into a fresh unpublished install directory and writes
+an `install.ready` file only after validation. Saved play requires that marker;
+an interrupted extraction is removed on the next setup visit. Lucent's ZIP
+owner uses bounded reads and streaming decompression: mmap or copying a
+multi-gigabyte archive into wasm linear memory is not acceptable.
+
+The browser's measured storage quota is too small to hold the full ZIP plus two
+expanded installations. Replacing an existing install therefore discards the old
+one after the new ZIP has copied successfully, before extraction. A failed
+replacement requires importing again. This is an explicit limitation of the
+current browser route, not evidence that replacement preserves a prior install.
 
 Persistence grants are requested and their refusal is visible. OPFS availability
 is not a guarantee against eviction. Acceptance includes a real complete-install
-import, invalid/corrupt input refusal, preservation of an existing install,
-progress during import, saves/settings across reload, and offline relaunch of the
+import, invalid/corrupt input refusal, explicit replacement behavior, progress
+during import, saves/settings across reload, and offline relaunch of the
 installed app. Merely caching the launcher is not offline game evidence.
+
+After a saved install is present, **Start Dead Zone gameplay test** requests
+`act1/deadzone/deadzone1` through the title's existing `X2_BOOT_MAP` runtime
+owner. It runs the retail `startFirstMission` party initializer before loading
+the map. This is a diagnostic boot route for measuring interactive gameplay;
+the ordinary **Play saved installation** route still follows the retail intro.
+The browser reached the retail boot hook for the Dead Zone test map and emitted
+scene draws, but the canvas remained black and frame times were unplayable.
+Neither route is release-qualified.
 
 ### W5 — Floating-point semantics
 

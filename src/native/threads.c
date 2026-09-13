@@ -43,6 +43,7 @@
 #include "guest_memory.h"
 #include "pe_map.h"
 #include "threads.h"
+#include "x86_engine.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -463,6 +464,7 @@ static void *thread_main(void *argument) {
   WR32(C.reg[kX86pEsp], t->arg);
   x86_guest_call_args(&C, t->start, 4u);
   t->exit_code = C.reg[kX86pEax];
+  x2_engine_detach_thread();
 
   t->finished = 1;
   t->state = TS_DONE;

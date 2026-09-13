@@ -1,14 +1,50 @@
 #include "../config/environment.h"
+#include "../native/install_archive.h"
 #include "../native/install_picker.h"
+#include "browser_log.hpp"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 
 #include <emscripten/emscripten.h>
 #include <lucent/platform_c.h>
-#include <lucent/web.h>
+#include <web_port/storage.h>
 
 extern "C" int x2native_main(int argc, char **argv);
+
+namespace {
+constexpr char ready_path[] = "/opfs/install.ready";
+constexpr char ready_temporary[] = "/opfs/install.ready.tmp";
+constexpr char ready_token[] = "x2-install-ready-v1\n";
+
+bool install_ready() {
+  FILE *file = std::fopen(ready_path, "rb");
+  if (!file) {
+    return false;
+  }
+  char token[sizeof(ready_token)]{};
+  const bool ready =
+      std::fread(token, 1, sizeof(ready_token) - 1, file) ==
+          sizeof(ready_token) - 1 &&
+      std::memcmp(token, ready_token, sizeof(ready_token) - 1) == 0 &&
+      std::fgetc(file) == EOF && !std::ferror(file);
+  return std::fclose(file) == 0 && ready;
+}
+
+bool mark_install_ready() {
+  FILE *file = std::fopen(ready_temporary, "wb");
+  if (!file) {
+    return false;
+  }
+  const bool written = std::fwrite(ready_token, 1, sizeof(ready_token) - 1,
+                                   file) == sizeof(ready_token) - 1;
+  if (std::fclose(file) != 0 || !written) {
+    return false;
+  }
+  return std::rename(ready_temporary, ready_path) == 0;
+}
+} // namespace
 
 static void report_setup(const char *message, int failed) {
   MAIN_THREAD_EM_ASM(
@@ -19,9 +55,22 @@ static void report_setup(const char *message, int failed) {
       message, failed);
 }
 
+static void report_unpack_progress(std::uint64_t done, std::uint64_t total,
+                                   void *) {
+  const int percent = total ? static_cast<int>(done * 100 / total) : 0;
+  MAIN_THREAD_EM_ASM(
+      {
+        if (Module['onUnpackProgress'])
+          Module['onUnpackProgress']($0);
+      },
+      percent);
+}
+
 static int run_application(int argc, char **argv) {
   const bool importing = argc == 2 && std::strcmp(argv[1], "--import") == 0;
-  if (argc > 1 && !importing) {
+  const bool gameplay_test =
+      argc == 2 && std::strcmp(argv[1], "--test-deadzone") == 0;
+  if (argc > 1 && !importing && !gameplay_test) {
     report_setup("Unrecognized browser launch request.", 1);
     return 1;
   }
@@ -29,13 +78,34 @@ static int run_application(int argc, char **argv) {
                          : "Checking your saved installation...",
                0);
   char directory[4096];
-  char reason[1024];
+  char reason[1024]{};
   const char *selection =
       importing ? "/opfs/incoming/input.zip" : "/opfs/install";
-  if (!x2_install_picker_resolve_selection(selection, "/opfs/install",
-                                           directory, sizeof(directory), reason,
-                                           sizeof(reason))) {
+  char executable[4096];
+  const bool selected =
+      importing
+          ? x2_install_archive_extract_unpublished(
+                selection, "/opfs/install", executable, sizeof(executable),
+                reason, sizeof(reason), report_unpack_progress, nullptr) &&
+                x2_install_picker_directory_from_executable(
+                    executable, directory, sizeof(directory))
+          : install_ready() && x2_install_picker_resolve_selection(
+                                   selection, nullptr, directory,
+                                   sizeof(directory), reason, sizeof(reason));
+  if (!selected) {
+    if (!reason[0]) {
+      std::snprintf(
+          reason, sizeof(reason), "%s",
+          importing ? "That ZIP did not produce a usable installation."
+                    : "The saved installation is incomplete or unavailable.");
+    }
     report_setup(reason, 1);
+    return 1;
+  }
+  if (importing && !mark_install_ready()) {
+    report_setup("The game files passed validation, but their completion "
+                 "marker could not be saved.",
+                 1);
     return 1;
   }
   if (importing && std::remove(selection) != 0) {
@@ -43,10 +113,16 @@ static int run_application(int argc, char **argv) {
         "Game files are ready, but the imported ZIP could not be removed.", 1);
     return 1;
   }
-  if (!x2_config_override_set(kX2ConfigGamePcDir, directory, 1) ||
-      !x2_config_override_set(kX2ConfigUiResourceDir, "/ui", 1)) {
+  if (x2_config_override_set(kX2ConfigGamePcDir, directory, 1) != 0 ||
+      x2_config_override_set(kX2ConfigUiResourceDir, "/ui", 1) != 0) {
     report_setup(
         "The validated installation could not be published to the game.", 1);
+    return 1;
+  }
+  if (gameplay_test &&
+      x2_config_override_set(kX2ConfigBootMap, "act1/deadzone/deadzone1", 1) !=
+          0) {
+    report_setup("The gameplay test map could not be selected.", 1);
     return 1;
   }
   report_setup("Starting X-Men Legends II...", 0);
@@ -61,16 +137,18 @@ static int run_application(int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
-  if (!lucent_web_mount_storage("/opfs")) {
+  x2::web::install_browser_log_sink();
+  if (!web_port_mount_storage("/opfs")) {
     report_setup("The browser could not open private game storage.", 1);
     return 1;
   }
   int result = 1;
-  if (lucent_platform_set_user_data_directory("/opfs/user"))
+  if (lucent_platform_set_user_data_directory("/opfs/user")) {
     result = run_application(argc, argv);
-  else
+  } else {
     report_setup("The browser could not select private game storage.", 1);
-  if (!lucent_web_unmount_storage("/opfs")) {
+  }
+  if (!web_port_unmount_storage("/opfs")) {
     report_setup("Private game storage could not be closed safely.", 1);
     result = 1;
   }

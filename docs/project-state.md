@@ -111,8 +111,9 @@ the APK still lacks physical-device and performance evidence.
 
 ### S018 — Android APK shell and measured mobile performance: partial
 
-Android setup/SAF staging in `android/` has a real ARM64 shared native
-target/Gradle assembly path. Android selection uses the same generated validator
+The shared `android-port` framework owns Android Activity/SAF staging and has a
+real ARM64 native target/Gradle assembly path. `android/` owns X-Men's setup UI
+and publication after title validation. Android selection uses the same generated validator
 before shared Android staging promotes files: it requires every loader PE image and
 title-owned content sentinels spanning each boot-time asset family, so a
 loader-only selection cannot become the retained install. Touch play itself is
@@ -668,32 +669,45 @@ the central Pages route at `https://someoneisworking.github.io/xmen2/` serves
 releases with `publication.json` source provenance. WebLua verified the central
 setup page with `crossOriginIsolated=true`, a WASM runtime, a canvas, and no
 failed network requests. Its opt-in GPU mode now obtains a WebGPU adapter.
-One complete 1.61 GiB ZIP copied into browser-private storage with determinate
-progress, then remained in native checking/unpacking for over 13 minutes before
-that Chrome process closed. No installed game or frame was observed. The old
-Lucent extraction path decompressed each entry in a validation prepass and again
-while writing a transactional staging tree; pinned Lucent `6e29bee` removes
-the redundant prepass. Browser timing and gameplay with that revision remain
-unqualified. A malformed-ZIP run emitted Emscripten's main-thread blocking
-warning, so a clean browser console is not yet established for this path.
+WebLua `f031b16` keeps its isolated Chrome profile on disk-backed storage.
+Pinned Lucent `f592a5c` buffers ordinary ZIP central directories and extracts
+into an unpublished tree with expanded-byte progress, avoiding the duplicate
+decompression pass. A complete 1.61 GiB, 13,382-entry PC-install ZIP copied
+into browser-private storage, extracted to 100%, passed the title validator,
+and published `/opfs/install.ready`. A fresh page reopened that saved install
+without importing again. The game then loaded the actual PE images and executed
+guest blocks through the WASM JIT. A previous font-loader failure came from
+passing one host pointer to `fread` across separately allocated guest pages;
+title-owned `guest_file_io` now copies through the guest-memory model. The
+maintained SDL WebGPU fork now releases cancelled command buffers instead of
+asserting. A later Dead Zone test reached the retail `startFirstMission` boot
+hook and emitted 78 frames over roughly four minutes, but the canvas remained
+black and frame times stayed unplayable. The 2,048-module trial raised renderer
+memory above 1 GiB; the pinned runtime retained its 1,024-module cap.
+An invalid-ZIP run also emitted Emscripten's main-thread blocking warning, so
+a clean browser console remains unproven.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.
 `tools/build_web.py` consumes the shared `web-port` dependency prefix and stages
 an explicit asset-only release under `build/release/web`.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
-  Pinned x86port `2607945babec9ec667b5eef6b54232b704860cb7` and jit-common
+  Pinned x86port `5f9bb3daf6fee6fbeab9212260e0f433a39d5b1e` and jit-common
   `4c58336f5d187d556755c20c983b5dc168f8f9b1` instantiate emitted modules, publish
   indirect-table entries, dispatch guest blocks and reclaim cache entries.
-  The pinned suite passed 41 native tests and eight actual Emscripten/Node tests
-  in each of standalone and application-pthread configurations. Integer-tail,
-  x87, SIMD and sparse permission coverage are now shared integration inputs.
-  No title gameplay is established.
+  The pinned suite passed 43 native tests and 45 Emscripten/Node tests (six
+  host-only oracles reported skipped). Its WASM module owner now reclaims one
+  selected cached translation instead of flushing every 1,024 modules; a
+  two-worker test verifies worker-local JIT instances. The WebAssembly host
+  now binds its 45 imports once per worker. The real title reached
+  over a million JIT translations with zero refusals or fallback, but no
+  interactive gameplay is established.
 - **W2, rendering: shared boundary verified, title integration partial.** The
   maintained SDL WebGPU fork creates a device on a worker, renders, reads pixels
   back and presents a blue SDL canvas in an isolated browser. Shared shader
   conversion preserves separate texture/sampler slots and raw depth sampling.
   The title's WGSL shader selection and RmlUi backend compile into the browser
-  artifact; no rendered X-Men frame is established.
+  artifact. The Dead Zone test presented frames but captured black, so visual
+  correctness and gameplay rendering are not established.
 - **W3, threading and memory: partial.** The product proxies its entry point to
   an Emscripten pthread and transfers its canvas to that worker. Guest sparse
   mappings preserve the 32-bit guest address space without a contiguous 4 GiB
@@ -701,16 +715,20 @@ an explicit asset-only release under `build/release/web`.
   working on a local host without isolation headers, including a reload after the
   HTTP server was stopped. The browser package links and stages an asset-free
   release; its malformed ZIP path reaches the native bounded reader and refuses
-  the input. SDK shutdown still joins the OPFS backend worker on the browser
+  the input. Title guest threads now use worker-local JIT instances and apply
+  foreign-worker mapping invalidations before resuming translation. The live
+  browser run reached three created guest threads without repeating the former
+  worker-local module-map exception. SDK shutdown still joins the OPFS backend worker on the browser
   main thread; unmount removes the file-handle teardown but not that backend
-  lifecycle gap. Complete-install import and gameplay remain unqualified.
-- **W4, local install and persistence: partial.** Lucent's worker OPFS mount and
+  lifecycle gap. Gameplay remains unqualified.
+- **W4, local install and persistence: partial.** The shared web-port worker OPFS mount and
   bounded streaming staging passed actual browser read/write, duplicate-input,
   concurrent-import and failure-cleanup checks. The page requests persistent
   storage and reports when the browser refuses it. The title entry delegates ZIP
-  parsing, complete-install validation and accepted-install publication to the
-  same native owners as desktop/Android. Its real game import, save persistence
-  and installed/offline gameplay still need browser observation.
+  parsing and complete-install validation to the same native owners as desktop/Android;
+  the browser writes an OPFS ready marker because directory rename is unsupported.
+  A full real-game import, validation, ready marker, and reload without
+  reimporting were observed. Save persistence and offline gameplay remain open.
 - **W5, floating point: shared software boundary verified.** The pinned runtime
   uses software x87 on WASM instead of unsupported host rounding controls; its
   software suite passed 3,140 checks, while the x87 lowering suite adds 4,518
@@ -719,8 +737,7 @@ an explicit asset-only release under `build/release/web`.
 
 Gap: build/link progress and shared synthetic tests are not browser gameplay or
 performance evidence. The acceptance contracts and current build entry point are
-in [web-release.md](web-release.md). A deployed artifact, imported real game,
-nonzero JIT execution, explicit fallback denominators, representative interaction,
+in [web-release.md](web-release.md). A deployed artifact, explicit fallback denominators, representative interaction,
 and offline save/relaunch evidence remain required before this capability is
 verified.
 

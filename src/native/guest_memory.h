@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 /* Translate the 32-bit address visible to the guest program into a host
    pointer.  On hosts that can map the low 4 GB this base remains zero. */
@@ -32,6 +33,16 @@ static inline const void *guest_memory_const_pointer(uint32_t address) {
 
 static inline uint32_t guest_memory_address(const void *pointer) {
   return (uint32_t)((uintptr_t)pointer - g_guest_memory_base);
+}
+
+static inline void guest_memory_read(uint32_t address, void *destination,
+                                     size_t size) {
+  memcpy(destination, guest_memory_const_pointer(address), size);
+}
+
+static inline void guest_memory_write(uint32_t address, const void *source,
+                                      size_t size) {
+  memcpy(guest_memory_pointer(address), source, size);
 }
 
 #endif

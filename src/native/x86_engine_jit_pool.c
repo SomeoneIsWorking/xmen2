@@ -1,0 +1,283 @@
+#include "x86_engine_jit_pool.h"
+
+#include "x86_engine_dispatch.h"
+#include "x86_engine_intercept.h"
+#include "x86_engine_jit_diag.h"
+
+#include <lucent/cvar_c.h>
+
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct X86EngineJitNode {
+  X86pJitEngine *jit;
+#if defined(__EMSCRIPTEN__)
+  pthread_t owner;
+  X86pJitEngineStats published_stats;
+  int pending;
+  int pending_all;
+  uint32_t pending_lo;
+  uint32_t pending_hi;
+#endif
+  struct X86EngineJitNode *next;
+} X86EngineJitNode;
+
+struct X86EngineJitPool {
+  const X86pMem *mem;
+  X86EngineJitNode *primary;
+  X86EngineJitNode *live;
+  X86pJitEngineStats retired;
+#if defined(__EMSCRIPTEN__)
+  pthread_mutex_t mutex;
+#endif
+};
+
+#if defined(__EMSCRIPTEN__)
+/* Each browser worker owns its own JS module registry and indirect table.
+ * The 8 MiB limit bounds each guest thread's staged modules independently. */
+enum { kCodeBytes = 8u << 20, kCacheBlocks = 8192u };
+static _Thread_local X86EngineJitNode *current_node;
+#else
+enum { kCodeBytes = 64u << 20, kCacheBlocks = 65536u };
+#endif
+
+static void pool_lock(X86EngineJitPool *pool) {
+#if defined(__EMSCRIPTEN__)
+  pthread_mutex_lock(&pool->mutex);
+#else
+  (void)pool;
+#endif
+}
+
+static void pool_unlock(X86EngineJitPool *pool) {
+#if defined(__EMSCRIPTEN__)
+  pthread_mutex_unlock(&pool->mutex);
+#else
+  (void)pool;
+#endif
+}
+
+static X86EngineJitNode *create_node(const X86pMem *mem, char *reason,
+                                     unsigned reason_len) {
+  X86EngineJitNode *node = calloc(1u, sizeof *node);
+  if (!node) {
+    snprintf(reason, reason_len, "out of memory creating a JIT thread record");
+    return NULL;
+  }
+  node->jit =
+      x86p_jit_engine_create(mem, kCodeBytes, kCacheBlocks, reason, reason_len);
+  if (!node->jit) {
+    free(node);
+    return NULL;
+  }
+  x86p_jit_engine_set_intercept(node->jit, x86_engine_jit_intercept, NULL);
+  if (lucent_cvar_flag("jit.inline_dispatch", 1)) {
+    x86p_jit_engine_set_dispatch(node->jit, x86_engine_jit_dispatch, NULL);
+  }
+  x86p_jit_engine_set_boundary(node->jit, x86_engine_jit_boundary, NULL);
+  if (!x86_engine_jit_diag_configure(node->jit, reason, reason_len)) {
+    x86p_jit_engine_destroy(node->jit);
+    free(node);
+    return NULL;
+  }
+#if defined(__EMSCRIPTEN__)
+  node->owner = pthread_self();
+  x86p_jit_engine_stats(node->jit, &node->published_stats);
+  current_node = node;
+#endif
+  return node;
+}
+
+X86EngineJitPool *x86_engine_jit_pool_create(const X86pMem *mem, char *reason,
+                                             unsigned reason_len) {
+  X86EngineJitPool *pool = calloc(1u, sizeof *pool);
+  if (!pool) {
+    snprintf(reason, reason_len, "out of memory creating the JIT pool");
+    return NULL;
+  }
+  pool->mem = mem;
+#if defined(__EMSCRIPTEN__)
+  if (pthread_mutex_init(&pool->mutex, NULL) != 0) {
+    snprintf(reason, reason_len, "could not initialize the JIT pool lock");
+    free(pool);
+    return NULL;
+  }
+#endif
+  pool->primary = create_node(mem, reason, reason_len);
+  if (!pool->primary) {
+#if defined(__EMSCRIPTEN__)
+    pthread_mutex_destroy(&pool->mutex);
+#endif
+    free(pool);
+    return NULL;
+  }
+  pool->live = pool->primary;
+  return pool;
+}
+
+X86pJitEngine *x86_engine_jit_pool_current(X86EngineJitPool *pool, char *reason,
+                                           unsigned reason_len) {
+#if defined(__EMSCRIPTEN__)
+  X86EngineJitNode *node;
+  if (current_node) {
+    int pending;
+    int pending_all;
+    uint32_t pending_lo;
+    uint32_t pending_hi;
+    pool_lock(pool);
+    pending = current_node->pending;
+    pending_all = current_node->pending_all;
+    pending_lo = current_node->pending_lo;
+    pending_hi = current_node->pending_hi;
+    current_node->pending = 0;
+    current_node->pending_all = 0;
+    pool_unlock(pool);
+    if (pending) {
+      if (pending_all) {
+        if (!x86p_jit_engine_invalidate_all(current_node->jit, reason,
+                                            reason_len)) {
+          return NULL;
+        }
+      } else {
+        x86p_jit_engine_invalidate(current_node->jit, pending_lo, pending_hi);
+      }
+    }
+    return current_node->jit;
+  }
+  node = create_node(pool->mem, reason, reason_len);
+  if (!node) {
+    return NULL;
+  }
+  pool_lock(pool);
+  node->next = pool->live;
+  pool->live = node;
+  pool_unlock(pool);
+  return node->jit;
+#else
+  (void)reason;
+  (void)reason_len;
+  return pool->primary->jit;
+#endif
+}
+
+void x86_engine_jit_pool_publish_stats(X86EngineJitPool *pool,
+                                       X86pJitEngine *jit) {
+#if defined(__EMSCRIPTEN__)
+  X86pJitEngineStats stats;
+  if (!pool || !current_node || current_node->jit != jit) {
+    abort();
+  }
+  x86p_jit_engine_stats(jit, &stats);
+  pool_lock(pool);
+  current_node->published_stats = stats;
+  pool_unlock(pool);
+#else
+  (void)pool;
+  (void)jit;
+#endif
+}
+
+static void add_stats(X86pJitEngineStats *sum, const X86pJitEngineStats *item) {
+  sum->blocks_entered += item->blocks_entered;
+  sum->blocks_translated += item->blocks_translated;
+  sum->guest_insns_translated += item->guest_insns_translated;
+  sum->conds_translated += item->conds_translated;
+  sum->conds_inline += item->conds_inline;
+  sum->translate_refusals += item->translate_refusals;
+  sum->cache_flushes += item->cache_flushes;
+  sum->code_bytes_used += item->code_bytes_used;
+}
+
+void x86_engine_jit_pool_detach_current(X86EngineJitPool *pool) {
+#if defined(__EMSCRIPTEN__)
+  X86EngineJitNode **cursor;
+  X86pJitEngineStats stats;
+  if (!pool || !current_node || current_node == pool->primary) {
+    return;
+  }
+  x86p_jit_engine_stats(current_node->jit, &stats);
+  pool_lock(pool);
+  for (cursor = &pool->live; *cursor != NULL; cursor = &(*cursor)->next) {
+    if (*cursor == current_node) {
+      X86EngineJitNode *node = *cursor;
+      *cursor = node->next;
+      stats.code_bytes_used = 0u;
+      add_stats(&pool->retired, &stats);
+      pool_unlock(pool);
+      x86p_jit_engine_destroy(node->jit);
+      free(node);
+      current_node = NULL;
+      return;
+    }
+  }
+  pool_unlock(pool);
+  abort(); /* A thread-owned JIT escaped the pool's live list. */
+#else
+  (void)pool;
+#endif
+}
+
+int x86_engine_jit_pool_invalidate(X86EngineJitPool *pool, uint32_t address,
+                                   uint32_t size, char *reason,
+                                   unsigned reason_len) {
+  X86EngineJitNode *node;
+  uint64_t end = (uint64_t)address + size;
+  pool_lock(pool);
+  for (node = pool->live; node != NULL; node = node->next) {
+#if defined(__EMSCRIPTEN__)
+    if (!pthread_equal(node->owner, pthread_self())) {
+      if (end > UINT32_MAX) {
+        node->pending_all = 1;
+      } else if (!node->pending) {
+        node->pending_lo = address;
+        node->pending_hi = (uint32_t)end;
+      } else {
+        if (address < node->pending_lo) {
+          node->pending_lo = address;
+        }
+        if (end > node->pending_hi) {
+          node->pending_hi = (uint32_t)end;
+        }
+      }
+      node->pending = 1;
+      continue;
+    }
+#endif
+    if (end > UINT32_MAX) {
+      if (!x86p_jit_engine_invalidate_all(node->jit, reason, reason_len)) {
+        pool_unlock(pool);
+        return 0;
+      }
+    } else {
+      x86p_jit_engine_invalidate(node->jit, address, (uint32_t)end);
+    }
+#if defined(__EMSCRIPTEN__)
+    x86p_jit_engine_stats(node->jit, &node->published_stats);
+#endif
+  }
+  pool_unlock(pool);
+  return 1;
+}
+
+void x86_engine_jit_pool_stats(const X86EngineJitPool *pool,
+                               X86pJitEngineStats *out) {
+  const X86EngineJitNode *node;
+  pool_lock((X86EngineJitPool *)pool);
+  *out = pool->retired;
+  for (node = pool->live; node != NULL; node = node->next) {
+    X86pJitEngineStats current;
+#if defined(__EMSCRIPTEN__)
+    current = node->published_stats;
+#else
+    x86p_jit_engine_stats(node->jit, &current);
+#endif
+    add_stats(out, &current);
+  }
+  pool_unlock((X86EngineJitPool *)pool);
+}
+
+const X86pJitEngine *x86_engine_jit_pool_primary(const X86EngineJitPool *pool) {
+  return pool->primary->jit;
+}

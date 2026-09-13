@@ -4,7 +4,7 @@
 #include "x2_log.h"
 #include "x86_engine_dispatch.h"
 #include "x86_engine_intercept.h"
-#include "x86_engine_jit_diag.h"
+#include "x86_engine_jit_pool.h"
 #include "x86_engine_private.h"
 #include "x86_guest_call_stack.h"
 #include "x86_hotep.h"
@@ -17,7 +17,6 @@
 #include "threads.h"
 #include "x87.h"
 
-#include <lucent/cvar_c.h>
 #include <lucent/log_c.h>
 
 #include <setjmp.h>
@@ -47,7 +46,7 @@ extern __thread uint32_t g_fsbase, g_gsbase;
 
 static struct {
   X86pMem mem;
-  X86pJitEngine *jit;
+  X86EngineJitPool *jit;
   int ready;
   int in_service; /* the selftest has passed; what runs now is the game */
   unsigned long calls;
@@ -98,19 +97,9 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   g_engine.mem.lo = 0;
   g_engine.mem.size = ENGINE_MEM_SIZE;
 #endif
-  g_engine.jit = x86p_jit_engine_create(&g_engine.mem, 64u << 20, 65536u,
-                                        reason, reason_len);
+  g_engine.jit = x86_engine_jit_pool_create(&g_engine.mem, reason, reason_len);
   if (!g_engine.jit)
     return 0;
-  x86p_jit_engine_set_intercept(g_engine.jit, x86_engine_jit_intercept, NULL);
-  if (lucent_cvar_flag("jit.inline_dispatch", 1))
-    x86p_jit_engine_set_dispatch(g_engine.jit, x86_engine_jit_dispatch, NULL);
-  x86p_jit_engine_set_boundary(g_engine.jit, x86_engine_jit_boundary, NULL);
-  if (!x86_engine_jit_diag_configure(g_engine.jit, reason, reason_len)) {
-    x86p_jit_engine_destroy(g_engine.jit);
-    g_engine.jit = NULL;
-    return 0;
-  }
   g_engine.ready = 1;
   lucent_log_info(
       "engine",
@@ -127,15 +116,17 @@ int x2_engine_init(char *reason, unsigned reason_len) {
 void x2_engine_invalidate_memory(uint32_t address, uint32_t size) {
   if (!g_engine.jit || !size)
     return;
-  uint64_t end = (uint64_t)address + size;
-  if (end > UINT32_MAX) {
-    char reason[160];
-    if (!x86p_jit_engine_invalidate_all(g_engine.jit, reason, sizeof reason)) {
-      x2_log_error("engine: failed to invalidate guest mapping: %s\n", reason);
-      abort();
-    }
-  } else
-    x86p_jit_engine_invalidate(g_engine.jit, address, (uint32_t)end);
+  char reason[160] = {0};
+  if (!x86_engine_jit_pool_invalidate(g_engine.jit, address, size, reason,
+                                      sizeof reason)) {
+    x2_log_error("engine: failed to invalidate guest mapping: %s\n", reason);
+    abort();
+  }
+}
+
+void x2_engine_detach_thread(void) {
+  if (g_engine.jit)
+    x86_engine_jit_pool_detach_current(g_engine.jit);
 }
 
 int x2_engine_active(void) { return g_engine.ready; }
@@ -156,7 +147,7 @@ static void report_live_if_requested(void) {
     return;
   X86pJitEngineStats js = {0};
   if (g_engine.jit)
-    x86p_jit_engine_stats(g_engine.jit, &js);
+    x86_engine_jit_pool_stats(g_engine.jit, &js);
   lucent_log_info(
       "engine",
       "[HB] JIT: %llu blocks entered, %llu translated (%llu instructions); "
@@ -179,9 +170,28 @@ static const char *named(uint32_t addr) {
   return n ? n : "unnamed";
 }
 
-static void refuse(uint32_t entry, uint32_t eip, const char *what) {
+static void refuse(uint32_t entry, const CPU *cpu, const char *what) {
+  uint32_t stack[16] = {0};
+  int stack_readable =
+      guest_memory_is_readable(cpu->reg[kX86pEsp], sizeof stack);
+  if (stack_readable)
+    guest_memory_read(cpu->reg[kX86pEsp], stack, sizeof stack);
   lucent_log_error("engine", "%s; entry point 0x%08x (%s), at 0x%08x (%s)",
-                   what, entry, named(entry), eip, named(eip));
+                   what, entry, named(entry), cpu->eip, named(cpu->eip));
+  lucent_log_error("engine",
+                   "guest registers: eax=%08x ecx=%08x edx=%08x ebx=%08x "
+                   "esp=%08x ebp=%08x esi=%08x edi=%08x",
+                   cpu->reg[kX86pEax], cpu->reg[kX86pEcx], cpu->reg[kX86pEdx],
+                   cpu->reg[kX86pEbx], cpu->reg[kX86pEsp], cpu->reg[kX86pEbp],
+                   cpu->reg[kX86pEsi], cpu->reg[kX86pEdi]);
+  lucent_log_error("engine",
+                   "guest stack at %08x (readable=%d), 16 words: "
+                   "%08x %08x %08x %08x %08x %08x %08x %08x "
+                   "%08x %08x %08x %08x %08x %08x %08x %08x",
+                   cpu->reg[kX86pEsp], stack_readable, stack[0], stack[1],
+                   stack[2], stack[3], stack[4], stack[5], stack[6], stack[7],
+                   stack[8], stack[9], stack[10], stack[11], stack[12],
+                   stack[13], stack[14], stack[15]);
   x86_diag_dump();
   abort();
 }
@@ -235,6 +245,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
   return_to = RD32(entry_esp);
   cpu->eip = addr;
   X86GuestCallFrame call_frame;
+  X86pJitEngine *jit;
   x86_guest_call_push(&call_frame, cpu, addr, return_to, entry_esp);
 
   for (;;) {
@@ -318,6 +329,9 @@ int x2_engine_call(uint32_t addr, CPU *C) {
     }
     char why[192];
     why[0] = '\0';
+    jit = x86_engine_jit_pool_current(g_engine.jit, why, sizeof why);
+    if (!jit)
+      refuse(entry, cpu, why);
     /* Slice the JIT and offer the guest lock up between slices, so a thread
        stuck in a libCriMovie playback loop cannot hold the one guest lock
        forever and starve the decoder's feeders (issue #57). No-op with no lock
@@ -326,12 +340,13 @@ int x2_engine_call(uint32_t addr, CPU *C) {
     if (slice > 200000ULL)
       slice = 200000ULL;
     X86pJitRunStatus st =
-        x86p_jit_engine_run(g_engine.jit, cpu, &call_frame, slice, why, sizeof why);
+        x86p_jit_engine_run(jit, cpu, &call_frame, slice, why, sizeof why);
+    x86_engine_jit_pool_publish_stats(g_engine.jit, jit);
     if (st != kX86pRunIntercept && st != kX86pRunBudget)
-      refuse(entry, cpu->eip, why[0] ? why : x86p_jit_run_status_name(st));
+      refuse(entry, cpu, why[0] ? why : x86p_jit_run_status_name(st));
     guest_quantum();
     if (++steps > ENGINE_STEP_CAP && entry != g_engine.program_entry)
-      refuse(entry, cpu->eip,
+      refuse(entry, cpu,
              "the call has not returned within the step cap -- it is "
              "not finishing");
   }
@@ -398,7 +413,7 @@ void x2_engine_report(void) {
                   g_engine.setjmps, g_engine.longjmps);
   if (g_engine.jit) {
     X86pJitEngineStats js;
-    x86p_jit_engine_stats(g_engine.jit, &js);
+    x86_engine_jit_pool_stats(g_engine.jit, &js);
     lucent_log_info(
         "engine",
         "JIT: %llu block(s) entered (%llu translated, %llu instructions), "
@@ -427,7 +442,8 @@ void x2_engine_report(void) {
           100.0 * (double)js.conds_inline / (double)js.conds_translated,
           (unsigned long long)(js.conds_translated - js.conds_inline));
     {
-      const X86pJitProfile *prof = x86p_jit_engine_profile(g_engine.jit);
+      const X86pJitProfile *prof =
+          x86p_jit_engine_profile(x86_engine_jit_pool_primary(g_engine.jit));
       if (prof && x86p_jit_profile_distinct(prof) > 0u) {
         X86pJitProfileEntry top[40];
         uint32_t n = x86p_jit_profile_top(prof, top, 40u), i;

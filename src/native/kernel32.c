@@ -21,6 +21,7 @@
  * resolution is a correctness requirement and not a convenience.
  */
 #include "guest_clock.h"
+#include "guest_file_io.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "igvk_ark.h"
@@ -663,7 +664,7 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
 
 void imp_KERNEL32_ReadFile(CPU *C) {
   Handle *hh = k32_handle_get(A(0), H_FILE);
-  ssize_t n = read(hh->fd, guest_memory_pointer(A(1)), A(2));
+  ssize_t n = x2_guest_read_fd(hh->fd, A(1), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
   ret_std(C, n < 0 ? 0u : 1u, 5);
@@ -671,7 +672,7 @@ void imp_KERNEL32_ReadFile(CPU *C) {
 
 void imp_KERNEL32_WriteFile(CPU *C) {
   Handle *hh = k32_handle_get(A(0), H_FILE);
-  ssize_t n = write(hh->fd, guest_memory_const_pointer(A(1)), A(2));
+  ssize_t n = x2_guest_write_fd(hh->fd, A(1), A(2));
   if (A(3))
     WR32(A(3), n < 0 ? 0u : (uint32_t)n);
   ret_std(C, n < 0 ? 0u : 1u, 5);
@@ -696,17 +697,8 @@ void imp_KERNEL32_SetEndOfFile(CPU *C) {
 }
 
 /* ---- synchronisation objects -------------------------------------------
- *
- * Semaphores, events and mutexes, on the same terms as the critical sections
- * above: the STATE is modelled exactly, and nothing blocks, because nothing in
- * this process creates a guest thread yet. That is the honest position -- a
- * wait that cannot be satisfied has no other thread that could ever satisfy
- * it, so pretending it succeeded would hand the guest a lock it does not hold
- * and the damage would surface somewhere unrelated.
- *
- * So a wait that would block says so and stops. When threads exist these
- * become real POSIX primitives and the refusal goes away; until then it is the
- * difference between "not implemented yet" and "quietly wrong".
+ * Guest threads wait on the scheduler's condition variable. Semaphore, event,
+ * and mutex state below decides which waiter can resume after a signal.
  */
 #define WAIT_OBJECT_0 0x00000000u
 #define WAIT_TIMEOUT 0x00000102u

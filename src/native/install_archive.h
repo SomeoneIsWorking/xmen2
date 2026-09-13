@@ -1,6 +1,8 @@
 #ifndef X2_INSTALL_ARCHIVE_H
 #define X2_INSTALL_ARCHIVE_H
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +21,17 @@ int x2_install_archive_prepare_to(const char *archive, const char *destination,
                                   char *executable,
                                   unsigned executable_capacity, char *reason,
                                   unsigned reason_capacity);
+
+/* Browser OPFS cannot rename directories. Extract into a fresh, unpublished
+ * directory; the web owner marks it ready only after title validation passes.
+ */
+typedef void (*x2_install_archive_progress)(uint64_t expanded_bytes,
+                                            uint64_t total_expanded_bytes,
+                                            void *context);
+int x2_install_archive_extract_unpublished(
+    const char *archive, const char *destination, char *executable,
+    unsigned executable_capacity, char *reason, unsigned reason_capacity,
+    x2_install_archive_progress progress, void *progress_context);
 
 #ifdef __cplusplus
 }
