@@ -95,9 +95,17 @@ archive.addEventListener("change", async () => {
     // work with no known duration, so show it as indeterminate rather than
     // leaving a stale 100% claim on screen.
     progress.removeAttribute("value");
-    await removeIfPresent(storageRoot, "install.ready");
-    await removeIfPresent(storageRoot, "install.ready.tmp");
-    await removeIfPresent(storageRoot, "install", true);
+    // `install` is this build's own leaf. The `install.preparing*` leaves belong
+    // to the retired atomic extraction, which renamed a staging directory into
+    // place and could leave whole trees behind when that rename failed on OPFS.
+    // They are dead bytes now, and dead bytes can exhaust the storage quota the
+    // new import needs.
+    for (const leaf of [
+      "install", "install.ready", "install.ready.tmp",
+      "install.preparing", "install.preparing.lucent-stage", "install.preparing.previous", "install.previous"
+    ]) {
+      await removeIfPresent(storageRoot, leaf, true);
+    }
     launch(true);
   } catch (error) {
     report(error.message, true);
