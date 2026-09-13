@@ -720,7 +720,15 @@ an explicit asset-only release under `build/release/web`.
   browser run reached three created guest threads without repeating the former
   worker-local module-map exception. SDK shutdown still joins the OPFS backend worker on the browser
   main thread; unmount removes the file-handle teardown but not that backend
-  lifecycle gap. Gameplay remains unqualified.
+  lifecycle gap. The browser run does not reach gameplay: it aborts. Two runs of
+  the deployed build ended by themselves with `Aborted(native code called
+  abort())` after 75 s, having entered 37.4M blocks (501,717 translated, 0
+  refusals), presented a single frame and then stalled with the guest running and
+  not reaching Present. The user-visible `Assertion failed: false &&
+  "emscripten_proxy_async failed"` is a DOM callback dispatched to a thread
+  whose mailbox has closed: every SDL callback this build registers is
+  registered on behalf of a worker and stores that pthread as its target (issue
+  #148). Gameplay remains unqualified.
 - **W4, local install and persistence: partial.** The shared web-port worker OPFS mount and
   bounded streaming staging passed actual browser read/write, duplicate-input,
   concurrent-import and failure-cleanup checks. The page requests persistent
