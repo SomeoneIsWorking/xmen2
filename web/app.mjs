@@ -19,6 +19,17 @@ async function removeIfPresent(root, name, recursive = false) {
   }
 }
 
+function formatBytes(bytes) {
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${unit > 0 && value < 10 ? value.toFixed(2) : Math.round(value)} ${units[unit]}`;
+}
+
 function report(message, failed = false) {
   status.textContent = message;
   status.dataset.failed = String(failed);
@@ -41,9 +52,12 @@ function launch(importing, gameplayTest = false) {
     canvas,
     arguments: importing ? ["--import"] : gameplayTest ? ["--test-deadzone"] : [],
     onSetupStatus: report,
-    onUnpackProgress(percent) {
+    onUnpackProgress(percent, done, total) {
+      progress.max = 100;
       progress.value = percent;
-      report(`Unpacking your game files… ${percent}%`);
+      report(total > 0
+        ? `Checking and unpacking your game files… ${percent}% (${formatBytes(done)} of ${formatBytes(total)})`
+        : `Checking and unpacking your game files… ${percent}%`);
     },
     onGameReady() {
       document.body.classList.add("playing");
@@ -77,6 +91,10 @@ archive.addEventListener("change", async () => {
       progress({bytes, total}) { progress.max = total; progress.value = bytes; }
     });
     report("Preparing the new installation…");
+    // The previous bar measured copied bytes; deleting the old install is real
+    // work with no known duration, so show it as indeterminate rather than
+    // leaving a stale 100% claim on screen.
+    progress.removeAttribute("value");
     await removeIfPresent(storageRoot, "install.ready");
     await removeIfPresent(storageRoot, "install.ready.tmp");
     await removeIfPresent(storageRoot, "install", true);

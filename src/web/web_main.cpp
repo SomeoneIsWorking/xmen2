@@ -58,12 +58,14 @@ static void report_setup(const char *message, int failed) {
 static void report_unpack_progress(std::uint64_t done, std::uint64_t total,
                                    void *) {
   const int percent = total ? static_cast<int>(done * 100 / total) : 0;
+  /* Hand the page the same expanded-byte counts the extractor reported, so the
+   * bar shows the work actually done and not only a derived percentage. */
   MAIN_THREAD_EM_ASM(
       {
         if (Module['onUnpackProgress'])
-          Module['onUnpackProgress']($0);
+          Module['onUnpackProgress']($0, $1, $2);
       },
-      percent);
+      percent, static_cast<double>(done), static_cast<double>(total));
 }
 
 static int run_application(int argc, char **argv) {
