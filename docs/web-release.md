@@ -31,7 +31,10 @@ After a successful link the builder passes an explicit resource map to
 `shared/web-port/tools/package.py`, producing `build/release/web`. The packager
 refuses unexpected files in that directory and never discovers game inputs by
 walking a build tree. `shared/web-port` supplies browser storage and isolation;
-its generated service worker caches only the resource map. The source workflow
+its generated service worker caches only the resource map, refuses any body
+that does not match the release hash, and activates without waiting for open
+clients, so a shipped fix reaches a returning page instead of a stale cache. The
+source workflow
 uploads that directory as an asset-free CI artifact. The `pages` repository
 imports it under `public/xmen2/` and owns the GitHub Pages deployment, including
 `.nojekyll`, with no game ZIP, executable, save or translation cache uploaded.
@@ -111,7 +114,11 @@ only its known abandoned staging leaf before accepting another file.
 complete-install validation to the title. WasmFS OPFS cannot rename a directory,
 so the browser extracts into a fresh unpublished install directory and writes
 an `install.ready` file only after validation. Saved play requires that marker;
-an interrupted extraction is removed on the next setup visit. Lucent's ZIP
+an interrupted extraction is removed on the next setup visit. Leaves
+written by the retired atomic extraction (`install.preparing*`,
+`install.previous`) are cleared before importing: they held whole trees when the
+staging rename failed on OPFS, and dead bytes compete for the quota the new
+install needs. Lucent's ZIP
 owner uses bounded reads and streaming decompression: mmap or copying a
 multi-gigabyte archive into wasm linear memory is not acceptable.
 
