@@ -710,9 +710,9 @@ an explicit asset-only release under `build/release/web`.
   exit, so the fall-through proceeds in the same body -- which raised the real
   title from 5.4 to 9.7 instructions per translated block. On the identical
   300 s driven browser route at equal wall duration, frames presented went
-  245 to 405 and 367 (two runs of the new engine against one of the old),
-  average frame wall 1063.1 to 666.6 and 681.7 ms -- within 2% of each other,
-  so about -35% -- and executed guest instructions 11.87M to 20.97M. No
+  245 to 405 and 402 (two runs of the new engine against one of the old),
+  average frame wall 1063.1 to 666.6 and 671.5 ms -- within 1% of each other,
+  so about -37% -- and executed guest instructions 11.87M to 20.97M. No
   refusals and no aborts on any arm. The
   real title has executed tens of millions of guest instructions with zero
   refusals or fallback, but no interactive gameplay is established and

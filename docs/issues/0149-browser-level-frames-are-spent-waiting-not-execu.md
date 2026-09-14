@@ -172,3 +172,6 @@ FIXED (the wasm translation floor), and measured in the real title. A block now 
 
 ### Note (2026-09-14)
 SECOND SAMPLE of the fixed engine confirms the timing, so the end-to-end figure is not one lucky run: frame wall avg 666.6 ms (405 presented, 300 s route) and 681.7 ms (367 presented, same 300 s route), i.e. within 2% of each other, against the branch-ending baseline's 1063.1 ms (245 presented). So the change is -35% +- 1% on average frame time and +50-65% frames presented, measured twice on the new engine and once on the old. The exact counter agrees: instructions per translated block 5.4 -> 9.7.
+
+### Note (2026-09-14)
+CORRECTED FIGURES: the second run of the new engine went on past the point I first read it, so its final numbers are frame wall avg 671.5 ms over 402 presented frames and 20.67M executed instructions with 0 refusals -- not the 681.7 ms / 367 frames intermediate I quoted earlier. Final pair for the two new-engine runs is therefore 666.6 and 671.5 ms (within 1%, not 2%) against the old engine's 1063.1 ms, i.e. about -37%.
