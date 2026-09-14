@@ -39,6 +39,23 @@ function report(message, failed = false) {
   }
 }
 
+/*
+ * What this page asks the port to do. The product's own argument is decided
+ * here and is never replaced by a URL.
+ *
+ * The browser has no command line and no environment, so a repeated `?arg=`
+ * is the only way a maintainer can ask the runtime for a diagnostic while it
+ * runs in the browser: `?arg=--set&arg=jit.profile=24` reaches the same
+ * option parser the native launcher uses, and nothing about the page has to
+ * grow a second vocabulary for it.
+ */
+function launchArguments(importing, gameplayTest) {
+  const product = importing
+    ? ["--import"]
+    : gameplayTest ? ["--test-deadzone"] : [];
+  return product.concat(new URLSearchParams(location.search).getAll("arg"));
+}
+
 function launch(importing, gameplayTest = false) {
   if (launched) throw new Error("The game has already started in this page.");
   launched = true;
@@ -50,7 +67,7 @@ function launch(importing, gameplayTest = false) {
   }
   globalThis.Module = {
     canvas,
-    arguments: importing ? ["--import"] : gameplayTest ? ["--test-deadzone"] : [],
+    arguments: launchArguments(importing, gameplayTest),
     onSetupStatus: report,
     onUnpackProgress(percent, done, total) {
       progress.max = 100;

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 #include <emscripten/emscripten.h>
 #include <lucent/platform_c.h>
@@ -69,13 +70,14 @@ static void report_unpack_progress(std::uint64_t done, std::uint64_t total,
 }
 
 static int run_application(int argc, char **argv) {
+  /* `--import` and `--test-deadzone` are this entry point's own requests:
+   * they pick the install route and are consumed here. Everything else the
+   * page passed is the runtime's, and goes on to the native option parser.
+   * Without that forwarding the page is a launcher with a command line that
+   * nothing reads, which is how `--set hotep=4096` reached no one. */
   const bool importing = argc == 2 && std::strcmp(argv[1], "--import") == 0;
   const bool gameplay_test =
       argc == 2 && std::strcmp(argv[1], "--test-deadzone") == 0;
-  if (argc > 1 && !importing && !gameplay_test) {
-    report_setup("Unrecognized browser launch request.", 1);
-    return 1;
-  }
   report_setup(importing ? "Checking and unpacking your game files..."
                          : "Checking your saved installation...",
                0);
@@ -134,8 +136,16 @@ static int run_application(int argc, char **argv) {
   });
   char program[] = "x2native";
   char packaged[] = "--appimage";
-  char *native_args[] = {program, packaged, directory, nullptr};
-  return x2native_main(3, native_args);
+  std::vector<char *> native_args{program, packaged, directory};
+  for (int i = 1; i < argc; i++) {
+    if (std::strcmp(argv[i], "--import") != 0 &&
+        std::strcmp(argv[i], "--test-deadzone") != 0) {
+      native_args.push_back(argv[i]);
+    }
+  }
+  native_args.push_back(nullptr);
+  return x2native_main(static_cast<int>(native_args.size()) - 1,
+                       native_args.data());
 }
 
 int main(int argc, char **argv) {

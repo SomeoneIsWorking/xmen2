@@ -52,6 +52,8 @@
 #include "x86rt.h"
 #include "x86rt_native.h"
 
+#include <lucent/cvar_c.h>
+
 #include "platform_posix.h"
 #include "platform_strings.h"
 #include <errno.h>
@@ -2096,7 +2098,14 @@ int main(int argc, char **argv) {
          becomes ambiguous. */
       heartbeat_start();
       guest_quantum_from_env();
-      x86_hotep_arm(x2_config_override_get(kX2ConfigHotEp));
+      {
+        /* The probe is a registered knob, so a host with no environment
+           (the browser) arms it with --set hotep=N, exactly as a released
+           APK is profiled by its bridge setting X2_HOTEP. */
+        char hotep[16];
+        snprintf(hotep, sizeof hotep, "%ld", lucent_cvar_number("hotep", 0));
+        x86_hotep_arm(hotep);
+      }
       {
         extern void x86_profiler_start(const char *);
         x86_profiler_start(x2_config_override_get(kX2ConfigProfile));

@@ -76,6 +76,14 @@ lucent::cvar::Var<bool> g_x86_import_fastpath{"engine.import_fastpath", true};
  * "where does in-game guest time go" now that the crossing cost is gone. */
 lucent::cvar::Var<long> g_jit_profile{"jit.profile", 0};
 
+/* >0: arm the hot-entry-point probe for that many entry points; the heartbeat
+ * then prints how the frame's wall time splits between host imports and guest
+ * bodies. A diagnostic, and a registered knob rather than a raw environment
+ * read so that a platform with no environment reaches it the same way every
+ * other knob is reached: --set hotep=4096 in the browser, or X2_HOTEP=4096 on
+ * a host that has one. */
+lucent::cvar::Var<long> g_hotep{"hotep", 0};
+
 /* on: compare shared Alchemy input snapshots with the retained DirectInput
  * publication while the first shared-engine adapter is being qualified. */
 lucent::cvar::Var<bool> g_alchemy_input_verify{"alchemy.input.verify", true};
@@ -114,6 +122,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_cache);
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
+  lucent::cvar::register_var(g_hotep);
   lucent::cvar::register_var(g_x86_import_fastpath);
   lucent::cvar::register_var(g_alchemy_input_verify);
   lucent::cvar::register_var(g_audio_adpcm_verify);

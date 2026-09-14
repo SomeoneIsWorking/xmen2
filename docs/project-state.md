@@ -720,15 +720,24 @@ an explicit asset-only release under `build/release/web`.
   browser run reached three created guest threads without repeating the former
   worker-local module-map exception. SDK shutdown still joins the OPFS backend worker on the browser
   main thread; unmount removes the file-handle teardown but not that backend
-  lifecycle gap. The browser run does not reach gameplay: it aborts. Two runs of
-  the deployed build ended by themselves with `Aborted(native code called
-  abort())` after 75 s, having entered 37.4M blocks (501,717 translated, 0
-  refusals), presented a single frame and then stalled with the guest running and
-  not reaching Present. The user-visible `Assertion failed: false &&
-  "emscripten_proxy_async failed"` is a DOM callback dispatched to a thread
-  whose mailbox has closed: every SDL callback this build registers is
-  registered on behalf of a worker and stores that pthread as its target (issue
-  #148). Gameplay remains unqualified.
+  lifecycle gap. A clean 150 s run of this build on a real 2.37 GiB install
+  boots the retail Dead Zone boot hook, loads the world and presents 59 frames
+  without aborting: 113.3M guest blocks entered (1,144,722 translated, 0
+  refusals, 0 cache flushes), 516 draws in 56 scenes, `frame wall avg 2125.7 ms
+  min 237.5` of 55 intervals, `host draw 0.39 ms/frame`. The frame is not
+  executing slowly, it is waiting: with the hot-entry-point probe armed from the
+  page the split reads `host imports 5184.5 ms (100%), guest bodies 4.8 ms (0%)`
+  and the ranked imports are `WaitForSingleObject` (3377.9 ms in 19 calls) and
+  `SuspendThread` (1806.4 ms in 5 calls) -- 178 and 361 ms per call (issue
+  #149). Two earlier runs of the deployed build ended by themselves with
+  `Aborted(native code called abort())` after 75 s, having entered 37.4M blocks,
+  presented a single frame and stalled with the guest running and not reaching
+  Present. The user-visible `Assertion failed: false && "emscripten_proxy_async
+  failed"` is a DOM callback dispatched to a thread whose mailbox has closed
+  (issue #148). A stop now reports why: the port installs x86port's diagnostic
+  sink, whose default writes to a worker's standard error that never reaches the
+  page, and the page's console is written in blocks rather than one proxied
+  round trip per line. Interactive gameplay remains unqualified.
 - **W4, local install and persistence: partial.** The shared web-port worker OPFS mount and
   bounded streaming staging passed actual browser read/write, duplicate-input,
   concurrent-import and failure-cleanup checks. The page requests persistent

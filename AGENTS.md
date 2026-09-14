@@ -118,6 +118,10 @@ idle waits; `X2_UNPACED=1` removes the game's own frame cap; `X2_BOOT_MAP=<map>`
 starts in a level instead of through the menus while still running the retail
 `startFirstMission` party initializer.
 
+The browser build has no environment and cannot bind that socket, so its
+command line is the page's repeated `?arg=` query: `?arg=--set&arg=hotep=4096`
+reaches the same option parser these flags do.
+
 JIT diagnostics must report translated blocks, native hand-backs, refusals,
 and denominators while the product runs.
 

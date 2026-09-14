@@ -103,6 +103,16 @@ The asset-free package has first-run ZIP refusal and storage/isolation checks.
 A complete PC install was imported and reopened from private storage locally;
 responsive gameplay remains unqualified.
 
+A stop in the browser used to arrive as "native code called abort()" and
+nothing else. x86port reports through one process-wide sink whose default
+writes to standard error, and a worker's standard error never reaches the page,
+so every fatal library diagnostic was silent there. The port installs its own
+sink (`src/native/x86_engine_diagnostic.c`): the component and the text arrive
+in the page's console and the guest state is dumped before the library aborts.
+The page's console is written in blocks rather than one proxied round trip per
+line, and the sink states its own cost, because the log competes with the guest
+for the same pthread.
+
 ### W4 — Local install, storage and offline use
 
 `web/app.mjs` owns the title page, file chooser and lifetime lock; shared web-port owns
@@ -149,6 +159,19 @@ WebAssembly has no host floating-point environment matching x87. The shared
 software x87 path supplies rounding and exception semantics; the pinned software
 suite passed 3,140 checks. Emitting an x87 guest block through WASM is a separate
 W1 contract and must be tested through actual published modules.
+
+### The page's command line
+
+A browser page has no environment and no argv, so `web/app.mjs` builds the
+runtime's arguments: a repeated `?arg=` becomes one argument, so
+`?arg=--set&arg=hotep=4096` arms the hot-entry-point probe in a packaged build.
+The web entry point forwards everything it does not consume itself (`--import`,
+`--test-deadzone`) to the native option parser, which refuses an unknown flag by
+name rather than ignoring it. The port's diagnostics are therefore reachable in
+the browser as they are on a phone (through the Android bridge setting
+`X2_HOTEP`) and on a desktop (`--set`). Before that forwarding existed the page
+was a launcher whose command line nothing read, and "where does this frame's
+time go" had no answer in the browser at all.
 
 ## Release verification
 
