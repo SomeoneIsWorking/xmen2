@@ -1,11 +1,11 @@
 ---
 id: 149
 title: Browser level frames are spent waiting, not executing: WaitForSingleObject and SuspendThread cost 178-361 ms per call
-status: investigating
+status: resolved
 symptom: browser level run presents 10-59 frames in 150 s; wall-time split attributes 100% of measured time to KERNEL32 waits, not guest bodies
 tags: web,browser,wasm,threads,synchronization,performance
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 ## Symptom
@@ -175,3 +175,12 @@ SECOND SAMPLE of the fixed engine confirms the timing, so the end-to-end figure 
 
 ### Note (2026-09-14)
 CORRECTED FIGURES: the second run of the new engine went on past the point I first read it, so its final numbers are frame wall avg 671.5 ms over 402 presented frames and 20.67M executed instructions with 0 refusals -- not the 681.7 ms / 367 frames intermediate I quoted earlier. Final pair for the two new-engine runs is therefore 666.6 and 671.5 ms (within 1%, not 2%) against the old engine's 1063.1 ms, i.e. about -37%.
+
+### Resolution (2026-09-15)
+Phase B (WAIT-bound) root-caused and FIXED (title-owned). The park in guest_cond_wait_ms (src/native/threads.c) was bounded, but the hand-off that returns the lock to it was not: guest_quantum() and Sleep(0) did `guest_unlock(); sched_yield(); guest_lock()`, and under Emscripten sched_yield() is NOT a yield (musl routes it to _emscripten_yield, a no-op for a worker), while guest_lock()'s pthread_mutex_trylock fast path let the releasing worker re-win the lock within microseconds of every one of the ~7k/s quantum releases. Woken waiters therefore advanced only when the holder genuinely parked, which is the 178 ms/call WaitForSingleObject and 361 ms/call SuspendThread that made the menu/movie phase unplayable. On native the same code is fine because sched_yield() really deschedules.
+
+Fix: src/native/threads_yield.c turns the voluntary release into a PROMISE, not a race -- guest_yield_turn() unlocks, then will not re-take the lock until guest_yield_turn_taken() reports that some OTHER thread newly acquired it (every hand-off point now calls it: guest_lock, both condition re-acquisitions, the SuspendThread self-park), bounded by a 10 ms turn so a vanished waiter can never strand a yielder. scheduler_has_waiter() is exported as the shared "is anyone else able to run" test. guest_yield_note_park() records whether each timed park ended on its deadline or a signal so the remaining overage cannot be misattributed.
+
+MEASURED, real browser run of the packaged build on the 300 s Dead Zone route (scratch/web/iter-plainfix.log): winmm now fires at 60/s (was 1-5/s), the heartbeat `wait sleeps` line reads `worst oversleep 118 ms` (was seconds), `hand-offs waited` advances with the run and `longest 15 ms`, and the run advances scenes/draws/presents steadily (396 scenes / 395 presents) with no abort. Native control (scratch/web/native-control.log) confirms preemption is unaffected: 53k preemptions, worst oversleep 57 ms, hand-off longest 83 ms; 153/153 ctest green.
+
+What this does NOT close and where it now lives: the residual `frame wall avg ~686 ms` is the boot/asset-load phase plus the 2.7x-per-instruction wasm body (present-counters rise monotonically, host draw 0.30 ms/frame -- not a convoy), and the browser canvas still captures black (see S021/W2). The wait convoy named in this issue's title is gone.

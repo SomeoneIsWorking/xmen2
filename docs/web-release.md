@@ -79,8 +79,15 @@ and touch UI, audio and input through the same owners as desktop.
 The browser main thread owns DOM and events. Emscripten proxies the native entry
 to a pthread, transfers `#canvas` with OffscreenCanvas, and enables Asyncify for
 SDL WebGPU's synchronous native waits over asynchronous browser operations.
-Both the JIT and OPFS native calls run off the browser main thread. The
-application unmounts OPFS on its worker after returning from setup or native
+Both the JIT and OPFS native calls run off the browser main thread. Guest
+threads are serialized by the one guest mutex, and under Emscripten a voluntary
+release cannot rely on `sched_yield()` to deliver a turn (it is a worker no-op,
+and the releasing thread re-wins the lock's trylock): `src/native/threads_yield.c`
+makes the quantum yield and `Sleep(0)` a bounded promise that another guest
+thread takes the lock before the yielder re-takes it. Without it woken waits
+advanced only when the holder parked, which measured 178-361 ms per
+`WaitForSingleObject` and stalled the menu/movie phase (issue #149).
+The application unmounts OPFS on its worker after returning from setup or native
 main, releasing browser-backed file handles before SDK runtime destruction.
 Stored files remain available on the next mount. Emscripten 4.0.16 still joins
 the OPFS backend worker from its global destructor on the browser main thread;
@@ -169,9 +176,14 @@ W1 contract and must be tested through actual published modules.
 A browser page has no environment and no argv, so `web/app.mjs` builds the
 runtime's arguments: a repeated `?arg=` becomes one argument, so
 `?arg=--set&arg=hotep=4096` arms the hot-entry-point probe in a packaged build.
-The web entry point forwards everything it does not consume itself (`--import`,
-`--test-deadzone`) to the native option parser, which refuses an unknown flag by
-name rather than ignoring it. The port's diagnostics are therefore reachable in
+The web entry point consumes only its own route requests (`--import`,
+`--test-deadzone`, classified by `src/web/web_request.cpp`) and forwards
+everything else to the native option parser, which refuses an unknown flag by
+name rather than ignoring it. The classifier scans the whole line, not just
+`argv[1]`, because the page appends its `?arg=` diagnostics after the route
+request: a prior `argc == 2` test dropped `--test-deadzone` under any appended
+diagnostic and booted the retail intro instead of the requested map (issue
+#151). The port's diagnostics are therefore reachable in
 the browser as they are on a phone (through the Android bridge setting
 `X2_HOTEP`) and on a desktop (`--set`). Before that forwarding existed the page
 was a launcher whose command line nothing read, and "where does this frame's

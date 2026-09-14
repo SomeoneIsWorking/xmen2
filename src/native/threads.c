@@ -43,6 +43,7 @@
 #include "guest_memory.h"
 #include "pe_map.h"
 #include "threads.h"
+#include "threads_yield.h"
 #include "x86_engine.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -50,7 +51,6 @@
 #include "platform_posix.h"
 #include "platform_threads.h"
 #include <errno.h>
-#include <sched.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -202,7 +202,7 @@ static unsigned long g_resume_unknown, g_suspend_unknown, g_resume_noop;
 static uint32_t g_next_tid = 1000;
 
 static void guest_suspend_point(void);
-static int scheduler_has_waiter(void) {
+int scheduler_has_waiter(void) {
   int i;
   if (g_waiters)
     return 1;
@@ -246,6 +246,8 @@ void guest_lock(void) {
     pthread_mutex_lock(&g_lock);
     g_waiters--;
   }
+  /* This thread now holds the guest lock: keep the hand-off promise. */
+  guest_yield_turn_taken();
   k32_tls_switch(g_self->slot);
   guest_suspend_point();
   g_self->n_ran++;
@@ -276,9 +278,7 @@ void guest_quantum(void) {
     return;
   g_quanta++;
   g_switches++;
-  guest_unlock();
-  sched_yield();
-  guest_lock();
+  guest_yield_turn();
 }
 
 void guest_quantum_configure(unsigned long crossings) { g_quantum = crossings; }
@@ -346,6 +346,7 @@ void guest_cond_wait_ms(uint32_t ms) {
     pthread_cond_wait(&g_cond, &g_lock);
   } else {
     struct timespec ts;
+    int rc;
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += (time_t)(ms / 1000u);
     ts.tv_nsec += (long)(ms % 1000u) * 1000000L;
@@ -353,9 +354,13 @@ void guest_cond_wait_ms(uint32_t ms) {
       ts.tv_sec++;
       ts.tv_nsec -= 1000000000L;
     }
-    pthread_cond_timedwait(&g_cond, &g_lock, &ts);
+    rc = pthread_cond_timedwait(&g_cond, &g_lock, &ts);
+    guest_yield_note_park(rc == ETIMEDOUT);
   }
   g_cond_waiters--;
+  /* The wait re-acquired the lock inside pthread_cond_timedwait; that is a
+     fresh turn, and the hand-off promise has to hear about it. */
+  guest_yield_turn_taken();
   k32_tls_switch(t->slot);
   state_set(TS_RUNNING);
   guest_suspend_point();
@@ -385,9 +390,7 @@ void guest_sleep_ms(uint32_t ms) {
     if (g_self->depth != 1 || !scheduler_has_waiter())
       return;
     g_switches++;
-    guest_unlock();
-    sched_yield();
-    guest_lock();
+    guest_yield_turn();
     return;
   }
   guest_cond_wait_ms(ms);
@@ -438,6 +441,7 @@ static void *thread_main(void *argument) {
     g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
     g_cond_waiters--;
+    guest_yield_turn_taken(); /* the wait re-acquired the lock */
   }
   state_set(TS_RUNNING);
   /* Its own TIB, so this thread's SEH chain is its own. The sentinel is
@@ -664,6 +668,7 @@ static void guest_suspend_point(void) {
     g_cond_waiters++;
     pthread_cond_wait(&g_cond, &g_lock);
     g_cond_waiters--;
+    guest_yield_turn_taken(); /* the wait re-acquired the lock */
   }
   k32_tls_switch(t->slot);
   state_set(TS_RUNNING);

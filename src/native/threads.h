@@ -56,6 +56,14 @@ void guest_blocking_begin(void);
 void guest_blocking_end(void);
 
 /*
+ * Is any OTHER guest thread able to use the lock right now -- waiting on it,
+ * parked in a cond wait, suspended-but-runnable, or created and never run?
+ * The hand-off in threads_yield.c and the quantum in threads.c both ask it
+ * before giving up a turn; the answer is a snapshot, never a promise.
+ */
+int scheduler_has_waiter(void);
+
+/*
  * Wait: park this guest thread and let the scheduler run another. Returns when
  * something broadcasts or the deadline passes. ms of 0xFFFFFFFF is INFINITE.
  */

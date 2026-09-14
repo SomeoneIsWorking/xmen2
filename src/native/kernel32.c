@@ -21,6 +21,7 @@
  * resolution is a correctness requirement and not a convenience.
  */
 #include "guest_clock.h"
+#include "guest_command_line.h"
 #include "guest_file_io.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
@@ -2903,32 +2904,12 @@ static uint32_t guest_strdup(const char *s) {
 }
 
 void imp_KERNEL32_GetCommandLineA(CPU *C) {
-  /* The REAL command line, read from /proc/self/cmdline, not an invented
-     one: a CRT that parses this builds the argv the guest sees, and a
-     fabricated line would make the guest disagree with the process it is
-     actually running in. The NULs between arguments become spaces, which is
-     the Win32 form. */
+  /* The GAME's command line, not this process's. Handing the guest the host
+     line put the port's own options on the game's command line; see
+     guest_command_line.c for the measurement that showed what that costs. */
   static uint32_t p;
-  if (!p) {
-    char buf[4096];
-    ssize_t n = 0;
-    int fd = open("/proc/self/cmdline", O_RDONLY);
-    if (fd >= 0) {
-      n = read(fd, buf, sizeof buf - 1);
-      close(fd);
-    }
-    if (n <= 0) {
-      snprintf(buf, sizeof buf, "x2native");
-      n = 8;
-    } else {
-      ssize_t i;
-      for (i = 0; i < n - 1; i++)
-        if (!buf[i])
-          buf[i] = ' ';
-    }
-    buf[n] = 0;
-    p = guest_strdup(buf);
-  }
+  if (!p)
+    p = guest_strdup(guest_command_line());
   ret_std(C, p, 0);
 }
 

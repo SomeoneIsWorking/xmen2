@@ -2,6 +2,7 @@
 #include "../native/install_archive.h"
 #include "../native/install_picker.h"
 #include "browser_log.hpp"
+#include "web_request.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -70,14 +71,19 @@ static void report_unpack_progress(std::uint64_t done, std::uint64_t total,
 }
 
 static int run_application(int argc, char **argv) {
-  /* `--import` and `--test-deadzone` are this entry point's own requests:
-   * they pick the install route and are consumed here. Everything else the
-   * page passed is the runtime's, and goes on to the native option parser.
-   * Without that forwarding the page is a launcher with a command line that
-   * nothing reads, which is how `--set hotep=4096` reached no one. */
-  const bool importing = argc == 2 && std::strcmp(argv[1], "--import") == 0;
-  const bool gameplay_test =
-      argc == 2 && std::strcmp(argv[1], "--test-deadzone") == 0;
+  /* The routing rule and the flag names live in web_request.cpp, where the
+   * `?arg=`-append behaviour that produced issue #151 is unit-tested. */
+  const x2::web::launch_request request =
+      x2::web::classify_launch_request(argc, argv);
+  if (request == x2::web::launch_request::conflict) {
+    report_setup(
+        "The page asked for a ZIP import and the gameplay test together; "
+        "they select different routes.",
+        1);
+    return 1;
+  }
+  const bool importing = request == x2::web::launch_request::import_archive;
+  const bool gameplay_test = request == x2::web::launch_request::gameplay_test;
   report_setup(importing ? "Checking and unpacking your game files..."
                          : "Checking your saved installation...",
                0);
@@ -138,8 +144,7 @@ static int run_application(int argc, char **argv) {
   char packaged[] = "--appimage";
   std::vector<char *> native_args{program, packaged, directory};
   for (int i = 1; i < argc; i++) {
-    if (std::strcmp(argv[i], "--import") != 0 &&
-        std::strcmp(argv[i], "--test-deadzone") != 0) {
+    if (!x2::web::is_entry_request(argv[i])) {
       native_args.push_back(argv[i]);
     }
   }

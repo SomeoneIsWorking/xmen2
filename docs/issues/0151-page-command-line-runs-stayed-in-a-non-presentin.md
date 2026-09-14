@@ -1,11 +1,11 @@
 ---
 id: 151
 title: Page command-line runs stayed in a non-presenting phase while plain runs did not
-status: investigating
+status: resolved
 symptom: two browser runs launched with ?arg= presented only 8 frames in 300 s at 614M blocks entered, where two plain runs on the same route reached 405 and 367 frames
 tags: web,harness,browser,measurement
 created: 2026-09-14
-updated: 2026-09-14
+updated: 2026-09-15
 ---
 
 OBSERVED, mechanism NOT isolated. On the same 300 s driven route (#test-play), two runs whose page URL carried the documented command line (?arg=--set&arg=quantum=N) plateaued at 8 presented frames with 614,615,480 JIT blocks entered, while two runs without args reached 405 and 367 frames. The heartbeat kept reprinting the identical 'frame wall avg ... (of 8 intervals)' line, i.e. no further presentations.
@@ -24,3 +24,10 @@ QUANTITATIVE CONFIRMATION of the spin, from the runs' own JIT counters. The two 
 
 ### Note (2026-09-14)
 FINAL numbers, superseding the intermediates I first quoted (twice now I have read these runs before they finished; final values only from here). Both arg-carrying runs entered about 13 BILLION blocks for 8 presented frames -- 12,870,115,939 (quantum=4000) and 13,576,199,591 (quantum=20000), i.e. 1.61 and 1.70 billion blocks per presented frame, agreeing within 5% of each other -- against 124,528,135 and 123,836,578 blocks for the two plain runs, which presented 405 and 402 frames (about 0.31 million blocks per frame). So the args path spins ~5,000x more blocks per frame than the plain route, and the spin is insensitive to the quantum, which strengthens the falsification in issue #150. A static screen cannot execute 13 billion guest blocks; this is a real spin in whatever boot flow the page command line selects.
+
+### Resolution (2026-09-15)
+ROOT CAUSE ISOLATED and FIXED, and it was the boot-flow hypothesis, not a title regression. `run_application` in src/web/web_main.cpp classified the entry's own route requests with `argc == 2 && strcmp(argv[1], ... == 0`. The page builds its argument vector as `["--test-deadzone", <every ?arg=>]`, so ANY `?arg=` diagnostic appended pushed argc past 2 and silently dropped the gameplay-test request: the run then booted the retail intro (company logo / movie), whose boot-phase work never presents a Dead Zone frame. That is exactly the observed plateau at the SAME guest counters every time (scenes 9, presents 10, draws 119) with ~13 billion blocks entered -- a deterministic retail-intro path, not a race, which is why it was insensitive to the quantum value (issue #150's falsification).
+
+Fix: the routing rule moved to src/web/web_request.cpp (classify_launch_request / is_entry_request) -- it scans ALL of argv for the two request tokens, rejects the import+test conflict, and keeps one name for each flag so the forwarding filter cannot consume one spelling and forward another. web_main.cpp now calls it.
+
+DISCRIMINATOR (the both-answers control the issue asked for): the EXACT command line that plateaued -- `?arg=--set&arg=quantum=20000` on the #test-play route -- now, on the fixed packaged build, prints `X2_BOOT_MAP: ... act1/deadzone/deadzone1` and advances 202->397 scenes and 265->397 presents with no abort (scratch/web/iter-argfix2.log), matching the plain run on the same build (scratch/web/iter-plainfix.log). Two native tests in tests/test_web_request.cpp fix the falsifier: the `["--test-deadzone","--set","quantum=20000"]` line and a `--test-deadzone` after other args both classify as gameplay_test; the old argc==2 rule would have returned none. guest_command_line.c (the separate desktop-boundary fix that stops handing the guest the host's own argv) stands on its own; the earlier note in this issue blaming those leaked tokens for the browser plateau was WRONG and is corrected in that file.

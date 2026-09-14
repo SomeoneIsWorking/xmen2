@@ -1,6 +1,7 @@
 # The browser main thread owns events. All guest execution, blocking native
 # calls and synchronous per-block WebAssembly compilation run on a pthread.
-target_sources(x2native PRIVATE src/web/web_main.cpp src/web/browser_log.cpp)
+target_sources(x2native PRIVATE src/web/web_main.cpp src/web/browser_log.cpp
+                   src/web/web_request.cpp)
 set_source_files_properties(src/native/x2native.c PROPERTIES
     COMPILE_DEFINITIONS main=x2native_main)
 if(NOT X2_WEB_PORT_SOURCE)

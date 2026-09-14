@@ -4,6 +4,9 @@
 /* Generated from CMake's X2_MODULES and X2_INSTALL_REQUIRED_CONTENT lists.
  * The loader and packaged setup agree on both the original PC images and the
  * content sentinels that make a selected install launchable. */
+/* The game's own executable within that list. */
+#define X2_INSTALL_MAIN_IMAGE "@X2_INSTALL_MAIN_IMAGE@"
+
 static const char *const x2_install_required_images[] = {
     "@X2_INSTALL_REQUIRED_IMAGES_LITERAL@"
 };

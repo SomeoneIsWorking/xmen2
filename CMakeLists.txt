@@ -229,6 +229,12 @@ target_include_directories(test_install_archive PRIVATE src/native src/config
 target_link_libraries(test_install_archive PRIVATE lucent::lucent lucent::zip)
 add_test(NAME install_archive COMMAND test_install_archive)
 
+# The web entry point's launch routing, unit-tested natively: the shared
+# owner is pure argv, so the falsifier needs no browser (issue #151).
+add_executable(test_web_request tests/test_web_request.cpp src/web/web_request.cpp)
+target_include_directories(test_web_request PRIVATE src/web)
+add_test(NAME web_request COMMAND test_web_request)
+
 add_executable(test_touch_controls tests/test_touch_controls.cpp
                src/input/touch_controls.cpp
                src/presentation/touch_layout.c)
@@ -839,6 +845,16 @@ target_compile_definitions(test_kernel32_wait PRIVATE X86_NATIVE)
 target_link_libraries(test_kernel32_wait PRIVATE lucent::lucent)
 add_test(NAME kernel32_wait COMMAND test_kernel32_wait)
 
+# The guest's command line, run twice: plain, and with the exact tokens that
+# leaked onto the game's line in the browser. Both must yield the same line.
+add_executable(test_guest_command_line tests/test_guest_command_line.c
+               src/native/guest_command_line.c)
+target_include_directories(test_guest_command_line PRIVATE src/native ${CMAKE_BINARY_DIR})
+target_link_libraries(test_guest_command_line PRIVATE lucent::lucent)
+add_test(NAME guest_command_line COMMAND test_guest_command_line)
+add_test(NAME guest_command_line_ignores_host_argv COMMAND test_guest_command_line
+         --appimage /some/install --set quantum=20000 --unbounded)
+
 add_executable(test_crt_in_image_overrides tests/test_crt_in_image_overrides.c
                src/native/crt_in_image_overrides.c src/runtime/x86_abi/x87crt.c
                tests/native_stubs.c)
@@ -1198,6 +1214,10 @@ set(X2_INSTALL_REQUIRED_IMAGES "")
 foreach(m ${X2_MODULES})
     if(m STREQUAL "XMen2")
         list(APPEND X2_INSTALL_REQUIRED_IMAGES "${m}.exe")
+        # The same rule that says which module is the game's executable also
+        # names it, so the guest's own command line has one authority rather
+        # than a second hardcoded "XMen2.exe" that could drift from this list.
+        set(X2_INSTALL_MAIN_IMAGE "${m}.exe")
     else()
         list(APPEND X2_INSTALL_REQUIRED_IMAGES "${m}.dll")
     endif()
@@ -1381,6 +1401,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine.c
     src/native/x86_engine_diagnostic.c
     src/native/x86_engine_jit_pool.c
+    src/native/guest_command_line.c
     src/native/guest_modules.c
     src/native/host_imports_advapi32.c
     src/native/host_imports_all.c
@@ -1555,6 +1576,7 @@ set(X2_NATIVE_SOURCES
     src/native/winmm.c
     src/native/threads.c
     src/native/threads_engine_report.c
+    src/native/threads_yield.c
     src/native/x86_hotep.c
     src/native/x86_thunk_probe.c
     src/native/run_reports.c

@@ -689,6 +689,15 @@ a clean browser console remains unproven.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.
 `tools/build_web.py` consumes the shared `web-port` dependency prefix and stages
 an explicit asset-only release under `build/release/web`.
+Two mechanisms recorded here have since been root-caused and fixed: the
+wait-bound stall that spent 178-361 ms per `WaitForSingleObject`/`SuspendThread`
+was the guest-lock hand-off starving woken waiters under Emscripten (issue
+#149, fixed in `src/native/threads_yield.c`), and the args-run plateau at the
+retail intro was the web entry point's `argc == 2` route test dropping the
+gameplay-test request (issue #151, fixed in `src/web/web_request.cpp`). A
+packaged browser run of either route now advances scenes/draws/presents
+monotonically with no abort; the browser canvas still captures black and
+interactive play is still unqualified.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
   Pinned x86port `75b2cec8e5d310fc723f34eb4f86278f2dfc97ab` and jit-common
@@ -740,20 +749,23 @@ an explicit asset-only release under `build/release/web`.
   boots the retail Dead Zone boot hook, loads the world and presents 59 frames
   without aborting: 113.3M guest blocks entered (1,144,722 translated, 0
   refusals, 0 cache flushes), 516 draws in 56 scenes, `frame wall avg 2125.7 ms
-  min 237.5` of 55 intervals, `host draw 0.39 ms/frame`. The frame is not
-  executing slowly, it is waiting: with the hot-entry-point probe armed from the
-  page the split reads `host imports 5184.5 ms (100%), guest bodies 4.8 ms (0%)`
-  and the ranked imports are `WaitForSingleObject` (3377.9 ms in 19 calls) and
-  `SuspendThread` (1806.4 ms in 5 calls) -- 178 and 361 ms per call (issue
-  #149). Two earlier runs of the deployed build ended by themselves with
-  `Aborted(native code called abort())` after 75 s, having entered 37.4M blocks,
-  presented a single frame and stalled with the guest running and not reaching
-  Present. The user-visible `Assertion failed: false && "emscripten_proxy_async
-  failed"` is a DOM callback dispatched to a thread whose mailbox has closed
-  (issue #148). A stop now reports why: the port installs x86port's diagnostic
-  sink, whose default writes to a worker's standard error that never reaches the
-  page, and the page's console is written in blocks rather than one proxied
-  round trip per line. Interactive gameplay remains unqualified.
+  min 237.5` of 55 intervals, `host draw 0.39 ms/frame`. The wait convoy that
+  run's hot-entry-point probe exposed -- `WaitForSingleObject` 178 ms/call and
+  `SuspendThread` 361 ms/call while guest bodies cost 4.8 ms -- was the
+  guest-lock hand-off re-winning its own `sched_yield()` on an Emscripten
+  worker (issue #149); with the `threads_yield.c` promise in the packaged
+  build the same route fires winmm at 60/s, reports `worst oversleep 118 ms`
+  and hand-offs waiting at most 15 ms, and advances to 396 scenes / 395
+  presents with no abort. The heartbeat now prints how each park ended
+  (`parks N signalled, M timed out`) so a future overage cannot be
+  misattributed. Earlier browser runs that ended by themselves with
+  `Aborted(native code called abort())` after 75 s, having entered 37.4M blocks
+  and presented a single frame, were a DOM callback dispatched to a thread whose
+  mailbox has closed (issue #148). A stop now reports why: the port installs
+  x86port's diagnostic sink, whose default writes to a worker's standard error
+  that never reaches the page, and the page's console is written in blocks
+  rather than one proxied round trip per line. Interactive gameplay remains
+  unqualified.
 - **W4, local install and persistence: partial.** The shared web-port worker OPFS mount and
   bounded streaming staging passed actual browser read/write, duplicate-input,
   concurrent-import and failure-cleanup checks. The page requests persistent
