@@ -113,13 +113,29 @@ Pacing is excluded: `--unbounded` with `unpaced=1` is worse, not better.
 
 ## Next
 
-One probe decides the execution cost: time a translated block's entry path in
-isolation, native against wasm. The prime suspect is per-entry JS bridging --
-`jit_wasm_host.c` hands each translated block out through `addFunction(fn,'ii')`,
-so if dispatch reaches it through Emscripten's `dynCall` the block crosses
-wasm->JS->wasm on every entry, which is exactly the magnitude measured here.
-`X86P_WASM_MAX_BODIES 64` already exists for batching modules ("what the block
-cache will want") and the shipping path does not use it.
+One probe decides the execution cost: measure a translated block's entry and
+body cost in isolation, wasm against native. What that probe does NOT need to
+look at, because it is already checked and wrong:
+
+* **Per-entry JS bridging.** `x86p_jit_enter` casts the published entry to a
+  function pointer and calls it (`src/x86port/jit_wasm.c`), and on wasm32 that
+  index-into-the-table value compiles to a plain `call_indirect`. No JS runs per
+  entry.
+* **Optimization level.** The web tree configures `CMAKE_BUILD_TYPE=Release`
+  (`-O3 -DNDEBUG`, checked in `build/web/CMakeCache.txt`), and the link has no
+  `-sSAFE_HEAP`/`-sASSERTIONS=2`. `cmake/WebTarget.cmake` does carry
+  `-sASYNCIFY=1` and `-pthread` with `ALLOW_MEMORY_GROWTH`, which are worth
+  measuring but are a small multiple, not 21x.
+* **Translation cost.** 379,506 translations in 45 s is 8.4k/s, and one
+  instantiate measured 3.2-4.7 us.
+* **Block size.** Both sides average 5.1 guest instructions per translated
+  block (browser 379,506/1,930,219; native 850,639/4,307,070), so the browser is
+  not dispatching smaller units.
+
+So the cost is inside executing the emitted body or the engine's dispatch around
+it, and `shared/x86port` owns both -- its Node/Emscripten test harness can time
+them without a browser and against the native build. The number to reproduce is
+1.3 us per block entry against 65 ns.
 
 Both phases matter for playability; Phase A dominates loading, Phase B dominates
 the menus.
