@@ -139,3 +139,6 @@ them without a browser and against the native build. The number to reproduce is
 
 Both phases matter for playability; Phase A dominates loading, Phase B dominates
 the menus.
+
+### Note (2026-09-14)
+The owner-side probe needed to explain the 21-27x has no working measurement either. x86port's tools/jit_bench.c, built for Emscripten and run under node, reports `jit 0.000 s` at 0.03 ns/insn and '10127.50x faster than the interpreter' (x86port d2136ac). Both are impossible: the JIT loop discards x86p_jit_enter's exit status, so a block that refuses immediately is timed as the fastest possible execution; the native-C column's only sink is an unreachable 0xDEADBEEF branch a wasm build can drop; and no engine's result is compared with any other's. It is now a distrusted instrument in x86port's ledger with the fix named (fail on any exit other than kX86pJitExitBlockEnd, sink every engine's result, require the engines to agree). So the next step is not a profile but repairing that bench: until it verifies its own work, no wasm-vs-native number may be quoted, and the only trustworthy measurement remains this issue's negative one -- 0.74M guest block entries/s in the browser against 15.5-21.3M natively for the same counters.
