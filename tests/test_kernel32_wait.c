@@ -55,7 +55,11 @@ static CPU arguments(unsigned many, uint32_t milliseconds) {
   return c;
 }
 int main(void) {
+  unsigned long before_sleeps = 0;
   g_guest_memory_base = (uintptr_t)memory;
+  /* The negative answer first: a fresh process with no wait behind it reports
+     zero rather than a default that would look like evidence. */
+  kernel32_wait_counts(&before_sleeps, NULL, NULL, NULL);
   for (unsigned many = 0; many < 3; many++) {
     memset(handles, 0, sizeof handles);
     handles[0].kind = handles[1].kind = H_THREAD;
@@ -84,6 +88,21 @@ int main(void) {
     }
   }
   expect(last_error == 0, "valid waits preserve last error");
+  /* The counters the heartbeat prints, exercised through the shipping waits:
+     nine blocking waits ran, each asking for a deadline and sleeping some of
+     it, so a zero here means the line reports nothing rather than "no
+     waiting". The asked total is a lower bound (every call asked for at
+     least the remaining deadline). */
+  {
+    unsigned long sleeps = 0, oversleep = 0;
+    unsigned long long asked = 0, slept = 0;
+    kernel32_wait_counts(&sleeps, &asked, &slept, &oversleep);
+    expect(before_sleeps == 0, "nothing is counted before a wait happens");
+    expect(sleeps > 0, "the waits' sleeps are counted");
+    expect(asked > 0, "the deadlines the waits asked for are counted");
+    expect(slept > 0 && slept <= asked,
+           "the sleep each wait got is recorded, and never exceeds what it asked");
+  }
   printf("%u wait checks, %u failures\n", checks, failures);
   return failures ? 1 : 0;
 }

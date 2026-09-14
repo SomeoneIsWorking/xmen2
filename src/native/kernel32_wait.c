@@ -26,6 +26,42 @@ static uint32_t wait_remaining_ms(double start, uint32_t ms) {
   uint32_t whole = (uint32_t)remaining;
   return whole + (remaining > whole);
 }
+
+/*
+ * What the blocking waits asked the scheduler for, and what they got.
+ *
+ * A sleep that comes back long is the difference between "the guest is slow"
+ * and "the guest is late", and the guest's multimedia timers have no thread of
+ * their own -- the waiting thread fires the callback that ends the wait (see
+ * winmm.c) -- so this is also the guest timer's real resolution. Reported in
+ * the heartbeat, with a denominator, because a run ends by timeout and a
+ * number that only prints at shutdown cannot measure this program.
+ */
+static unsigned long g_wait_sleeps;
+static unsigned long long g_wait_asked_ms, g_wait_slept_ms;
+static unsigned long g_wait_worst_oversleep_ms;
+
+static void wait_note(uint32_t asked_ms, uint32_t slept_ms) {
+  g_wait_sleeps++;
+  g_wait_asked_ms += asked_ms;
+  g_wait_slept_ms += slept_ms;
+  if (slept_ms > asked_ms && slept_ms - asked_ms > g_wait_worst_oversleep_ms)
+    g_wait_worst_oversleep_ms = slept_ms - asked_ms;
+}
+
+void kernel32_wait_counts(unsigned long *sleeps, unsigned long long *asked_ms,
+                          unsigned long long *slept_ms,
+                          unsigned long *worst_oversleep_ms) {
+  if (sleeps)
+    *sleeps = g_wait_sleeps;
+  if (asked_ms)
+    *asked_ms = g_wait_asked_ms;
+  if (slept_ms)
+    *slept_ms = g_wait_slept_ms;
+  if (worst_oversleep_ms)
+    *worst_oversleep_ms = g_wait_worst_oversleep_ms;
+}
+
 /* Try to take one object. Returns 1 if it was signalled (and consumes it). */
 static int sync_try_take(Handle *hh) {
   switch (hh->kind) {
@@ -120,7 +156,13 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C) {
      * made every movie frame cost a second, and the guest sat blocked at
      * 1.3 frames per second while looking perfectly healthy.
      */
-    guest_cond_wait_ms(winmm_next_due_ms(wait_remaining_ms(t0, ms)));
+    {
+      uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
+      double slept_at = guest_clock_now_s();
+      guest_cond_wait_ms(asked);
+      wait_note(asked,
+                (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
+    }
     /*
      * A PUMP POINT, and the one the movie player needs (issue #49).
      *
@@ -258,7 +300,13 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
     k32_handle_get(RD32(arr + i * 4u), 0)->waiters++;
   t0 = guest_clock_now_s();
   for (;;) {
-    guest_cond_wait_ms(winmm_next_due_ms(wait_remaining_ms(t0, ms)));
+    {
+      uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
+      double slept_at = guest_clock_now_s();
+      guest_cond_wait_ms(asked);
+      wait_note(asked,
+                (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
+    }
     winmm_timers_pump();
     if (all) {
       if (wfmo_try_all(arr, n)) {

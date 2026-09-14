@@ -5,6 +5,7 @@
 #include "dinput_pad.h"
 #include "guest_clock.h"
 #include "heartbeat.h"
+#include "kernel32_handles.h"
 #include "threads.h"
 
 #include "d3d8_device.h"
@@ -129,6 +130,24 @@ static void *heartbeat_thread(void *arg) {
                      fire, fire - p_fire, pump, pump - p_pump, live);
       p_fire = fire;
       p_pump = pump;
+    }
+    { /* The waits, next to the timers they pump: "the sleep asked for 16 ms
+         and returned after 178" and "the game ran at 2 fps" are the same
+         statement, and only these two numbers can tell them apart. */
+      static unsigned long p_waits;
+      static unsigned long long p_asked, p_slept;
+      unsigned long waits, oversleep;
+      unsigned long long asked, slept;
+      kernel32_wait_counts(&waits, &asked, &slept, &oversleep);
+      if (waits)
+        x2_log_error("[HB]           wait sleeps %lu (+%lu), asked %llu ms "
+                     "(+%llu), slept %llu ms (+%llu), worst oversleep "
+                     "%lu ms\n",
+                     waits, waits - p_waits, asked, asked - p_asked, slept,
+                     slept - p_slept, oversleep);
+      p_waits = waits;
+      p_asked = asked;
+      p_slept = slept;
     }
     {
       /*
