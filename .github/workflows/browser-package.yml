@@ -21,54 +21,13 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 1
-      - name: Checkout shared browser dependencies
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: SomeoneIsWorking/web-port
-          ref: 149d51189416a606c5aaffa38fa9dc8eadad3eea
-          path: vendor/shared/web-port
-          fetch-depth: 1
-          submodules: recursive
-      - name: Checkout shared runtime dependencies
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: SomeoneIsWorking/x86port
-          ref: 5f9bb3daf6fee6fbeab9212260e0f433a39d5b1e
-          path: vendor/shared/x86port
-          fetch-depth: 1
-          submodules: recursive
-      - name: Checkout shared Android build dependency
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: SomeoneIsWorking/android-port
-          ref: ba3c758d5aaeef0c79f1f4a19a6ce113f02760cf
-          path: vendor/shared/android-port
-          fetch-depth: 1
-          submodules: recursive
-      - name: Checkout shared cache dependency
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: SomeoneIsWorking/jit-common
-          ref: 4c58336f5d187d556755c20c983b5dc168f8f9b1
-          path: vendor/shared/jit-common
-          fetch-depth: 1
-          submodules: recursive
-      - name: Checkout shared Alchemy dependency
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: SomeoneIsWorking/alchemy
-          ref: b04e6657cac3156318506f4145a85e66b1ebc8e6
-          path: vendor/shared/alchemy
-          fetch-depth: 1
-          submodules: recursive
-      - name: Checkout shared assets
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          repository: SomeoneIsWorking/port-assets
-          ref: b48abae76227a2f1fe17cc7d9abd60cc85d45e09
-          path: vendor/shared/port-assets
-          fetch-depth: 1
-          submodules: recursive
+      # The shared dependencies are NOT checked out here. Their revisions are
+      # owned by bootstrap.SHARED_REPOS and materialised by tools/provision.py,
+      # which refuses a checkout that is not at the pinned revision. Hardcoding
+      # them as checkout refs here made a second source of truth for the same
+      # pins, and it drifted: this job was checking out an older x86port than
+      # the port requires, so provision refused it and the build failed. The
+      # other workflows never had these steps and provision the same way.
       - name: Install uv
         uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081
         with:
