@@ -5,9 +5,13 @@ desktop and Android packages. Players select their own complete PC-install ZIP;
 files stream into origin-private storage and never leave the device. Only the
 port executable, shaders, UI and other redistributable resources enter a release.
 [Project state S021](project-state.md#s021--web-wasm--pwa-product-with-browser-side-install-partial)
-owns current capability status. The central Pages route still serves an earlier
-asset-free preview; the current browser build has not been deployed because
-responsive, visible gameplay has not passed.
+owns current capability status. The central Pages route serves the build from
+xmen2 run 34852326627 at commit 011326b, published into `~/repo/pages` as
+`2f4d21f` and verified live: `publication.json` at the route names that commit
+and run, and the served `x2native.wasm` (sha256 `5f229cf5...`) and `app.mjs`
+(sha256 `c9dfb81b...`) are byte-identical to the reviewed artifact. It remains a
+preview: responsive, visible gameplay has not passed, and the deployable
+capability is still `partial`.
 
 ## Build and packaging owners
 
