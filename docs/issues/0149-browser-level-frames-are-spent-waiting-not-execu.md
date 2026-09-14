@@ -67,3 +67,6 @@ Find what those waits wait for, and whether the browser arm of the wake-up
 on, `SuspendThread`'s self-park in `threads.c`) arrives late or never. This is
 the same class as issue #140, which the desktop path fixed with a winmm pump
 point and per-thread call stacks.
+
+### Note (2026-09-14)
+Eliminated: the port's own pacing. The same route with pacing off (?arg=--unbounded&arg=--set&arg=unpaced=1) is WORSE, not better: 10 presents in 150 s, perf: frame wall avg 9428.9 ms min 471.9 max 63337.0 (of 8 intervals), winmm 62 fire(s) (+5) with 292877 pump(s) (+5). So the frame is not waiting on the port's frame limiter. What remains is the wait/pump cycle itself: the guest's winmm timer callbacks are pumped from inside guest wait calls (src/native/winmm.c has no host timer thread), the timer fires 1-5 times/s instead of 60, the main thread is inside a host import for 99% of the interval (WaitForSingleObject 178 ms/call, SuspendThread 361 ms/call), and the guest executes almost nothing (crossings +147 in a 5 s interval). Next instrument: report the wait loop's live state in the heartbeat -- what timeout it computed, which object it is waiting on, and whether the guest lock is held while it does -- since the current numbers cannot say which of those is late.
