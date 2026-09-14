@@ -206,6 +206,8 @@ jobs:
       - run: uv run --frozen python tools/ci.py native-components --target macos-arm64
       - run: uv run --frozen python tools/ci.py policy --target windows-x86_64
       - run: uv run --frozen python tools/ci.py policy --target android-arm64
+      - run: uv run --frozen python tools/ci.py policy --target web-wasm
+      - run: uv run --frozen python tools/ci.py wasm-portability --target web-wasm
 """
     if ci_support.workflow_violations(clean):
         raise RuntimeError("ci selftest rejected the clean workflow fixture")
