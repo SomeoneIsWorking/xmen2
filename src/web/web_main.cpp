@@ -150,6 +150,10 @@ int main(int argc, char **argv) {
   } else {
     report_setup("The browser could not select private game storage.", 1);
   }
+  /* The sink was holding lines back to keep the page's console off the game
+     thread's critical path; this is the last moment before the runtime goes
+     away and nothing else can hand them over. */
+  x2::web::flush_browser_log();
   if (!web_port_unmount_storage("/opfs")) {
     report_setup("Private game storage could not be closed safely.", 1);
     result = 1;

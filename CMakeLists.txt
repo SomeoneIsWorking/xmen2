@@ -422,6 +422,13 @@ target_include_directories(test_jit_intercept PRIVATE src/native src/runtime/x86
 target_link_libraries(test_jit_intercept PRIVATE x86port_runtime)
 add_test(NAME jit_intercept COMMAND test_jit_intercept)
 
+add_executable(test_x86_engine_diagnostic tests/test_x86_engine_diagnostic.cpp
+               src/native/x86_engine_diagnostic.c)
+target_include_directories(test_x86_engine_diagnostic PRIVATE src/native
+                       src/runtime/x86_abi)
+target_link_libraries(test_x86_engine_diagnostic PRIVATE x86port_runtime)
+add_test(NAME x86_engine_diagnostic COMMAND test_x86_engine_diagnostic)
+
 add_executable(test_joystick_neutral tests/test_joystick_neutral.c
                src/input/joystick_neutral.c)
 target_include_directories(test_joystick_neutral PRIVATE src/input)
@@ -1372,6 +1379,7 @@ set(X2_NATIVE_SOURCES
     src/native/boot_menu_transition.c
     src/native/boot_splash_policy.c
     src/native/x86_engine.c
+    src/native/x86_engine_diagnostic.c
     src/native/x86_engine_jit_pool.c
     src/native/guest_modules.c
     src/native/host_imports_advapi32.c

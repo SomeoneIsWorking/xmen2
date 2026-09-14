@@ -4,6 +4,7 @@
 #include "x2_log.h"
 #include "x86_engine_dispatch.h"
 #include "x86_engine_intercept.h"
+#include "x86_engine_diagnostic.h"
 #include "x86_engine_jit_pool.h"
 #include "x86_engine_private.h"
 #include "x86_guest_call_stack.h"
@@ -82,6 +83,7 @@ static int map_return_page(char *reason, unsigned reason_len) {
 }
 
 int x2_engine_init(char *reason, unsigned reason_len) {
+  x86_engine_diagnostic_install();
   if (!x86p_jit_available()) {
     snprintf(reason, reason_len,
              "the product requires x86port guest execution on this host; no "
