@@ -691,16 +691,31 @@ The title CMake path compiles and links its native owners for Emscripten 4.0.16.
 an explicit asset-only release under `build/release/web`.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
-  Pinned x86port `5f9bb3daf6fee6fbeab9212260e0f433a39d5b1e` and jit-common
+  Pinned x86port `75b2cec8e5d310fc723f34eb4f86278f2dfc97ab` and jit-common
   `4c58336f5d187d556755c20c983b5dc168f8f9b1` instantiate emitted modules, publish
   indirect-table entries, dispatch guest blocks and reclaim cache entries.
-  The pinned suite passed 43 native tests and 45 Emscripten/Node tests (six
-  host-only oracles reported skipped). Its WASM module owner now reclaims one
-  selected cached translation instead of flushing every 1,024 modules; a
-  two-worker test verifies worker-local JIT instances. The WebAssembly host
-  now binds its 45 imports once per worker. The real title reached
-  over a million JIT translations with zero refusals or fallback, but no
-  interactive gameplay is established.
+  The pinned suite passed 43 native tests (including the lowering oracle, 1097
+  checks with 38 of 38 lowered blocks executed in a real WebAssembly engine and
+  matching the interpreter field for field) and 44 Emscripten/Node tests with
+  `test_jit_wasm` reported skipped for want of an oracle in those trees. Its
+  WASM module owner now reclaims one selected cached translation instead of
+  flushing every 1,024 modules; a two-worker test verifies worker-local JIT
+  instances. The WebAssembly host now binds its 45 imports once per worker.
+
+  Translation on the wasm host has a per-block floor, measured at ~26 us per
+  block against ~2.2 us per instruction, so real code at ~5 instructions per
+  block spent about 70% of every translation on the floor (native has none:
+  1.8 us per instruction at both 4 and 64). Pinned x86port `75b2cec` makes a
+  block continue past a conditional -- the taken path already carries its own
+  exit, so the fall-through proceeds in the same body -- which raised the real
+  title from 5.4 to 9.7 instructions per translated block. In one identical
+  300 s driven browser route at equal wall duration, frames presented went
+  245 to 405, average frame wall 1063.1 to 666.6 ms, executed guest
+  instructions 11.87M to 20.97M, with zero refusals and zero aborts on both
+  arms; the counter is exact, the end-to-end timing is one run per arm. The
+  real title has executed tens of millions of guest instructions with zero
+  refusals or fallback, but no interactive gameplay is established and
+  667 ms/frame is not playable.
 - **W2, rendering: shared boundary verified, title integration partial.** The
   maintained SDL WebGPU fork creates a device on a worker, renders, reads pixels
   back and presents a blue SDL canvas in an isolated browser. Shared shader
