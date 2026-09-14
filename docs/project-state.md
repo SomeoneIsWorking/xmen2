@@ -708,11 +708,12 @@ an explicit asset-only release under `build/release/web`.
   1.8 us per instruction at both 4 and 64). Pinned x86port `75b2cec` makes a
   block continue past a conditional -- the taken path already carries its own
   exit, so the fall-through proceeds in the same body -- which raised the real
-  title from 5.4 to 9.7 instructions per translated block. In one identical
+  title from 5.4 to 9.7 instructions per translated block. On the identical
   300 s driven browser route at equal wall duration, frames presented went
-  245 to 405, average frame wall 1063.1 to 666.6 ms, executed guest
-  instructions 11.87M to 20.97M, with zero refusals and zero aborts on both
-  arms; the counter is exact, the end-to-end timing is one run per arm. The
+  245 to 405 and 367 (two runs of the new engine against one of the old),
+  average frame wall 1063.1 to 666.6 and 681.7 ms -- within 2% of each other,
+  so about -35% -- and executed guest instructions 11.87M to 20.97M. No
+  refusals and no aborts on any arm. The
   real title has executed tens of millions of guest instructions with zero
   refusals or fallback, but no interactive gameplay is established and
   667 ms/frame is not playable.
