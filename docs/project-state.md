@@ -696,8 +696,11 @@ was the guest-lock hand-off starving woken waiters under Emscripten (issue
 retail intro was the web entry point's `argc == 2` route test dropping the
 gameplay-test request (issue #151, fixed in `src/web/web_request.cpp`). A
 packaged browser run of either route now advances scenes/draws/presents
-monotonically with no abort; the browser canvas still captures black and
-interactive play is still unqualified.
+monotonically with no abort. The remaining "black canvas" is now proven by a
+trusted in-engine instrument to be a real browser-only composite defect (the
+WebGPU blit/fence path in the SDL fork), recorded and localized in issue #152,
+not a screenshot artifact or a game-to-GPU draw failure; interactive visible
+play remains unqualified until that fork fix lands.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
   Pinned x86port `75b2cec8e5d310fc723f34eb4f86278f2dfc97ab` and jit-common
@@ -726,13 +729,23 @@ interactive play is still unqualified.
   real title has executed tens of millions of guest instructions with zero
   refusals or fallback, but no interactive gameplay is established and
   667 ms/frame is not playable.
-- **W2, rendering: shared boundary verified, title integration partial.** The
-  maintained SDL WebGPU fork creates a device on a worker, renders, reads pixels
-  back and presents a blue SDL canvas in an isolated browser. Shared shader
-  conversion preserves separate texture/sampler slots and raw depth sampling.
-  The title's WGSL shader selection and RmlUi backend compile into the browser
-  artifact. The Dead Zone test presented frames but captured black, so visual
-  correctness and gameplay rendering are not established.
+- **W2, rendering: shared boundary verified, title integration partial; browser
+  composites to black (issue #152).** The maintained SDL WebGPU fork creates a
+  device on a worker, renders, reads pixels back and presents a blue SDL canvas
+  in an isolated browser. Shared shader conversion preserves separate
+  texture/sampler slots and raw depth sampling. The title's WGSL shader
+  selection and RmlUi backend compile into the browser artifact. A new trusted
+  in-engine instrument (`present_luma`, reading back BOTH the logical D3D scene
+  and the composed frame, unit-tested to show both answers) now shows the
+  browser's black is real, not a page-screenshot artifact: the scene holds
+  content (`max 191, 0.1% nonblack`) but the aspect-fit composite yields
+  `max 0, 0.0%` even at 1:1 sizes, while the same instrument on a real native
+  window reads `scene 34.2 / composed 34.2` non-black, and `--vk-selftest`
+  PASSES on native but HANGS at its first composite fence in the browser. The
+  defect is localized to the SDL-WebGPU fork's composite/blit-fence path, not
+  the game-to-GPU draw path, the wait convoy (#149), or an instrument lie.
+  Visual correctness and gameplay rendering are therefore not established, and
+  the fix is a cross-repo browser-only investigation recorded in issue #152.
 - **W3, threading and memory: partial.** The product proxies its entry point to
   an Emscripten pthread and transfers its canvas to that worker. Guest sparse
   mappings preserve the 32-bit guest address space without a contiguous 4 GiB

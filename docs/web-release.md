@@ -74,6 +74,17 @@ to WGSL. Texture/sampler slots and depth-image declarations must match the SDL
 backend's resource contract. Acceptance requires a real X-Men frame, settings
 and touch UI, audio and input through the same owners as desktop.
 
+The `present_luma` instrument (`src/gpu/gpu_present_luma.c`, armed
+`--set present_luma=N` or `X2_PRESENT_LUMA`) reads back BOTH the logical D3D
+scene and the composed windowed frame, so a run can be told to photograph what
+actually reaches the screen instead of trusting a page screenshot of a
+worker-owned OffscreenCanvas. Measured with it (issue #152): the browser is
+genuinely black, and the black is in the composite step -- the scene holds
+content (`max 191`) while the aspect-fit composite yields exactly `0` at 1:1
+sizes, and `--vk-selftest` hangs at its first composite fence on WebGPU though
+it passes on native. This localizes the W2 gap to the SDL-WebGPU fork's
+blit/fence path, not the game-to-GPU draw path.
+
 ### W3 — Worker execution, canvas and guest memory
 
 The browser main thread owns DOM and events. Emscripten proxies the native entry

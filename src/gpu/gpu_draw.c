@@ -5,6 +5,7 @@
 #include "gpu_draw_trace.h"
 #include "gpu_internal.h"
 #include "gpu_pipeline.h"
+#include "gpu_readback.h"
 #include "gpu_shadow.h"
 #include "gpu_texture_format.h"
 #include "gpu_upload.h"
@@ -1234,15 +1235,8 @@ int gpu_offscreen_next_no_clear(void) {
 }
 
 int gpu_offscreen_read(void *out, uint32_t bytes) {
-  SDL_GPUTransferBufferCreateInfo tci;
-  SDL_GPUTransferBuffer *tb;
-  SDL_GPUCommandBuffer *cmd;
-  SDL_GPUCopyPass *cp;
-  SDL_GPUTextureRegion src;
-  SDL_GPUTextureTransferInfo dst;
-  SDL_GPUFence *fence;
   uint32_t need = g_off_w * g_off_h * 4u;
-  void *p;
+  SDL_GPUFence *fence;
 
   if (!g_off_tex) {
     x2_log_error("gpu: no off-screen target.\n");
@@ -1268,42 +1262,8 @@ int gpu_offscreen_read(void *out, uint32_t bytes) {
       SDL_ReleaseGPUFence(g_gpu, fence);
     }
   }
-
-  memset(&tci, 0, sizeof tci);
-  tci.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-  tci.size = need;
-  tb = SDL_CreateGPUTransferBuffer(g_gpu, &tci);
-  if (!tb) {
-    x2_log_error("gpu: %s\n", SDL_GetError());
-    return 0;
-  }
-
-  cmd = SDL_AcquireGPUCommandBuffer(g_gpu);
-  cp = SDL_BeginGPUCopyPass(cmd);
-  memset(&src, 0, sizeof src);
-  memset(&dst, 0, sizeof dst);
-  src.texture = g_off_tex;
-  src.w = g_off_w;
-  src.h = g_off_h;
-  src.d = 1;
-  dst.transfer_buffer = tb;
-  SDL_DownloadFromGPUTexture(cp, &src, &dst);
-  SDL_EndGPUCopyPass(cp);
-  fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
-  if (fence) {
-    SDL_WaitForGPUFences(g_gpu, true, &fence, 1);
-    SDL_ReleaseGPUFence(g_gpu, fence);
-  }
-  p = SDL_MapGPUTransferBuffer(g_gpu, tb, false);
-  if (!p) {
-    x2_log_error("gpu: mapping the readback failed: %s\n", SDL_GetError());
-    SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
-    return 0;
-  }
-  memcpy(out, p, need);
-  SDL_UnmapGPUTransferBuffer(g_gpu, tb);
-  SDL_ReleaseGPUTransferBuffer(g_gpu, tb);
-  return 1;
+  return gpu_readback_texture_rgba(g_gpu, g_off_tex, g_off_w, g_off_h, out,
+                                   bytes);
 }
 
 void gpu_offscreen_end(void) {

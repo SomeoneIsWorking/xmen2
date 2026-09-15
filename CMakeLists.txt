@@ -279,6 +279,12 @@ add_executable(test_gpu_frame_timing tests/test_gpu_frame_timing.c
 target_include_directories(test_gpu_frame_timing PRIVATE src/gpu)
 add_test(NAME gpu_frame_timing COMMAND test_gpu_frame_timing)
 
+add_executable(test_present_luma tests/test_present_luma.c
+               src/gpu/gpu_present_luma.c src/native/x2_log.c)
+target_include_directories(test_present_luma PRIVATE src/gpu)
+target_link_libraries(test_present_luma PRIVATE lucent::lucent)
+add_test(NAME present_luma COMMAND test_present_luma)
+
 add_executable(test_fmv_policy tests/test_fmv_policy.c
                src/media/fmv_policy.c)
 target_include_directories(test_fmv_policy PRIVATE src/media)
@@ -1626,6 +1632,8 @@ set(X2_NATIVE_SOURCES
     src/vulkan/igvk_context.c
     src/gpu/gpu_device.c
     src/gpu/gpu_capture.c
+    src/gpu/gpu_present_luma.c
+    src/gpu/gpu_readback.c
     src/gpu/gpu_draw.c
     src/gpu/gpu_pipeline.c
     src/gpu/gpu_texture_format.c

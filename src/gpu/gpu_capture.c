@@ -8,6 +8,7 @@
 #include "gpu_draw.h"
 #include "gpu_frame_submit.h"
 #include "gpu_internal.h"
+#include "gpu_present_luma.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -394,16 +395,26 @@ void gpu_capture_frame(int headless, unsigned long frame, uint32_t width,
                   "programmable draw are photographed. If none ever is, "
                   "NO file is written.\n");
   }
-  if (path && !headless) {
-    static int said;
-    if (!said++)
-      x2_log_info("gpu: X2_SHOT=%s is set but this run has a REAL WINDOW. The "
-                  "capture reads back the headless target, which does not "
-                  "exist here, so NOTHING will be written. Add --no-window.\n",
-                  path);
+  if (!headless) {
+    /* The windowed present path photographs itself here: a run that presents
+       without a window never reaches this, and the probe says so once when
+       armed. See gpu_present_luma.h for why only this path answers "does the
+       screen show anything". */
+#ifdef X2_WITH_SDL
+    x2_present_luma_frame(g_gpu, gpu_frame_draws_so_far());
+#endif
+    if (path) {
+      static int said;
+      if (!said++)
+        x2_log_info("gpu: X2_SHOT=%s is set but this run has a REAL WINDOW. "
+                    "The capture reads back the headless target, which does "
+                    "not exist here, so NOTHING will be written. Add "
+                    "--no-window.\n",
+                    path);
+    }
     return;
   }
-  if (!path || !headless || (frame % (unsigned long)every))
+  if (!path || (frame % (unsigned long)every))
     return;
   {
     extern int k32_file_gate_open(void);

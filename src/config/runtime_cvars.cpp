@@ -84,6 +84,15 @@ lucent::cvar::Var<long> g_jit_profile{"jit.profile", 0};
  * a host that has one. */
 lucent::cvar::Var<long> g_hotep{"hotep", 0};
 
+/* >0: every N windowed presents, photograph the frame that reaches the REAL
+ * WINDOW through the shipping capture owner and report its mean/max luma and
+ * non-black fraction. The one instrument that separates "the browser presents
+ * black" from "a page screenshot cannot see a worker-owned canvas" -- headless
+ * X2_SHOT refuses windowed runs, so this is the windowed counterpart
+ * (docs/web-release.md). A diagnostic; --set present_luma=N in the browser,
+ * or X2_PRESENT_LUMA=N on a host that has an environment. */
+lucent::cvar::Var<long> g_present_luma{"present_luma", 0};
+
 /* on: compare shared Alchemy input snapshots with the retained DirectInput
  * publication while the first shared-engine adapter is being qualified. */
 lucent::cvar::Var<bool> g_alchemy_input_verify{"alchemy.input.verify", true};
@@ -123,6 +132,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
   lucent::cvar::register_var(g_hotep);
+  lucent::cvar::register_var(g_present_luma);
   lucent::cvar::register_var(g_x86_import_fastpath);
   lucent::cvar::register_var(g_alchemy_input_verify);
   lucent::cvar::register_var(g_audio_adpcm_verify);
