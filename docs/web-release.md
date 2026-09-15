@@ -78,12 +78,13 @@ The `present_luma` instrument (`src/gpu/gpu_present_luma.c`, armed
 `--set present_luma=N` or `X2_PRESENT_LUMA`) reads back BOTH the logical D3D
 scene and the composed windowed frame, so a run can be told to photograph what
 actually reaches the screen instead of trusting a page screenshot of a
-worker-owned OffscreenCanvas. Measured with it (issue #152): the browser is
-genuinely black, and the black is in the composite step -- the scene holds
-content (`max 191`) while the aspect-fit composite yields exactly `0` at 1:1
-sizes, and `--vk-selftest` hangs at its first composite fence on WebGPU though
-it passes on native. This localizes the W2 gap to the SDL-WebGPU fork's
-blit/fence path, not the game-to-GPU draw path.
+worker-owned OffscreenCanvas. Measured with it (issue #152): the browser's
+composed capture reports exactly `0` while its scene holds content, and
+`--vk-selftest` never returns from its first composite fence though the
+identical battery passes on a real native window. The failing stage is
+localized to the WebGPU browser boundary but NOT yet attributed between the
+aspect-fit composite and the capture-owner download -- the fix needs a
+browser-only fork trace naming the stage, per issue #152.
 
 ### W3 — Worker execution, canvas and guest memory
 

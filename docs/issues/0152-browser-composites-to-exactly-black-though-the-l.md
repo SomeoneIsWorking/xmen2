@@ -48,3 +48,8 @@ browser-side trace or the fork's own test suite -- not this title's native
 gates -- is the discriminator. Until then a WASM run is functionally playable
 through JIT + input + audio but shows nothing, so browser rendering stays
 `partial` and gameplay is unqualified.
+
+### Note (2026-09-15)
+PRECISION (do not overclaim): the two in-engine readback paths are different code. `scene` uses the new `gpu_readback_texture_rgba`; `composed` uses the capture owner's `gpu_capture_frame_record/complete`. On native BOTH are exercised by `--vk-selftest` (which PASSES, asserting exact corner colours through the capture path), so the capture download is correct there. The browser disagreement (composed 0 vs scene max-191) therefore has two candidate causes that this run cannot yet separate: (a) the WebGPU composite genuinely black-outs the aspect-fit blit, or (b) the capture-owner download mis-lays-out / returns zero ONLY on the WebGPU browser backend, while my separate scene-readback happens to work. The page screenshot is not a clean third instrument here (it can capture before the canvas paints, and the fork's blue-canvas test proves the canvas itself CAN show colour).
+
+What IS established: browser rendering is unqualified and native is fully verified non-black; the wait convoy (#149) and arg misrouting (#151) are fixed and are NOT this black. What must come next, in a browser-only fork trace (shared SDL-WebGPU fork), is a single instrument that photographs the actual swapchain the window shows -- not two different CPU readbacks -- so the black is attributed to a named stage (composite blit vs capture download vs present) before any fix is written. A fix must not be guessed between (a) and (b).
