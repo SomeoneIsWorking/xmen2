@@ -1,5 +1,6 @@
 #include "browser_log.hpp"
 
+#include <SDL3/SDL_timer.h>
 #include <emscripten/em_asm.h>
 #include <lucent/log.h>
 
@@ -135,6 +136,22 @@ void install_browser_log_sink() {
   lucent::set_sink([](lucent::Level level, std::string_view line) {
     console_sink().write(level, line);
   });
+  /* The batch otherwise flushes only at kLinesPerBlock/kBytesPerBlock, on an
+     ERROR line, or when main() returns and calls flush_browser_log() once
+     at the very end. A run that both logs fewer info lines than the batch
+     threshold AND never returns from main() -- a hang, or one that outlives
+     the page -- has its whole tail (a selftest's PASSED/FAILED result, or
+     the reason a boot stalled) withheld from the console indefinitely,
+     indistinguishable from silence. Diagnosing issue #152 spent real time
+     on exactly that confusion. A bounded periodic flush, independent of
+     main()'s own progress, caps how stale the console can ever be. */
+  SDL_AddTimer(
+      250,
+      [](void *, SDL_TimerID, Uint32 interval) -> Uint32 {
+        flush_browser_log();
+        return interval;
+      },
+      nullptr);
 }
 
 void flush_browser_log() { console_sink().flush(); }
