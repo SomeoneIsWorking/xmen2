@@ -1658,6 +1658,7 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_headless.c
     src/gpu/gpu_device_selftest.c
     src/gpu/gpu_selftest.c
+    src/gpu/gpu_lit_mvp_selftest.c
     src/gpu/gpu_texture_selftest.c
     src/vulkan/igvk_slots_lifecycle.c
     src/vulkan/igvk_slots_frame.c

@@ -1,6 +1,7 @@
 /* Asset-free proof of the host frame lifecycle, isolated from draw tests. */
 #include "../native/x2_log.h"
 #include "gpu_device.h"
+#include "gpu_selftests.h"
 
 #ifdef X2_WITH_SDL
 #include <SDL3/SDL.h>

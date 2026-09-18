@@ -34,7 +34,7 @@ LEGACY_LIMITS = {
     "src/native/win32_sdl.c": 1025,           # was 930
     "src/native/conversation.c": 968,         # was 958
     "src/native/dsound.c": 1073,              # was 763
-    "src/gpu/gpu_selftest.c": 354,            # was 348
+    "src/gpu/gpu_selftest.c": 223,            # was 354; lit/mvp -> gpu_lit_mvp_selftest.c
     "src/native/input_probe.c": 606,          # was 568
     "src/native/dinput_device.c": 611,        # was 524
     "src/native/advapi32.c": 710,             # was 599

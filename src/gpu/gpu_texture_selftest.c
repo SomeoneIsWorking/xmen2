@@ -14,6 +14,7 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_selftest_pixels.h"
+#include "gpu_selftests.h"
 
 #include <stdio.h>
 #include <string.h>

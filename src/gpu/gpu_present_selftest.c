@@ -1,5 +1,7 @@
-#include "../native/x2_log.h"
 /* Pixel-level proof of the logical-backbuffer presentation contract. */
+#include "gpu_selftests.h"
+
+#include "../native/x2_log.h"
 #include "gpu_capture.h"
 #include "gpu_capture_internal.h"
 #include "gpu_device.h"

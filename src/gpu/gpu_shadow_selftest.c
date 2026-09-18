@@ -1,6 +1,7 @@
 #include "../native/x2_log.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
+#include "gpu_selftests.h"
 #include "gpu_shadow.h"
 
 #include <stdio.h>
