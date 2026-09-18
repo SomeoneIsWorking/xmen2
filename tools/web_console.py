@@ -136,9 +136,18 @@ def main() -> int:
         deadline = time.monotonic() + args.seconds
         count = 0
         try:
+            closed = ""
             while time.monotonic() < deadline:
                 cdp.events.clear()
-                cdp.drain(min(2.0, deadline - time.monotonic()))
+                try:
+                    cdp.drain(min(2.0, deadline - time.monotonic()))
+                except CdpError as failure:
+                    # A page that navigates or a worker that exits closes the
+                    # socket. Recording ENDS there and says so: a traceback
+                    # would throw away the lines already collected, which are
+                    # usually the ones worth having.
+                    closed = f"; recording ended early: {failure}"
+                    deadline = 0.0
                 for event in cdp.events:
                     if event.get("method") not in _CONSOLE_EVENTS:
                         continue
@@ -160,7 +169,8 @@ def main() -> int:
                 handle.close()
         print(
             f"web_console: {count} console line(s) from {len(sessions)} target(s)"
-            + (f"; full log in {args.out}" if args.out else ""),
+            + (f"; full log in {args.out}" if args.out else "")
+            + closed,
             file=sys.stderr,
         )
         return 0

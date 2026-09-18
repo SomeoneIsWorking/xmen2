@@ -79,6 +79,12 @@ _EVERY_CATEGORY: tuple[str, ...] = (
     "other",
 )
 
+# A thread parked in the pthread pool is not the program. Excluding these two
+# is what separates the worker holding the guest from the fifteen waiting for
+# it -- the sample COUNT does not, because V8 samples every target at the same
+# rate and an idle worker produces just as many.
+_NOT_WORKING: tuple[str, ...] = ("idle / waiting", "thread wait (spinning)")
+
 
 def categorize(name: str, url: str) -> str:
     for label, patterns in _BY_NAME:
@@ -140,9 +146,13 @@ def pick_sessions(client: Cdp, want: str | None) -> list[tuple[str, dict]]:
     """Every session to profile.
 
     The port runs a pool of workers and does not say which one holds the guest,
-    so the default is ALL of them: a per-worker sample count is itself the
-    answer to "which thread is the program", and profiling one guess can only
-    produce a confident measurement of an idle thread.
+    so the default is ALL of them: profiling one guess can only produce a
+    confident measurement of an idle thread.
+
+    The sample COUNT does not identify the busy one -- measured, 16 workers at
+    ~57k samples each, because V8 samples an idle target exactly as often. What
+    identifies it is samples that are not idle or parked, which is how
+    summarize() ranks them.
     """
     sessions = _attached_sessions(client)
     seen: set[str] = set()
@@ -262,45 +272,31 @@ def _self_samples(profile: dict) -> collections.Counter:
     )
 
 
-def summarize(profiles: list[tuple[dict, dict]], top: int, symbols: dict[int, str]) -> None:
+def tally(profile: dict, symbols: dict[int, str]) -> tuple[collections.Counter, collections.Counter, int]:
+    """Self samples of one profile, by resolved name and by category."""
     by_name: collections.Counter = collections.Counter()
     by_category: collections.Counter = collections.Counter()
-    per_worker: list[tuple[int, str]] = []
-    total = 0
-    window = 0.0
-    for profile, target in profiles:
-        nodes = {node["id"]: node for node in profile.get("nodes", [])}
-        samples = _self_samples(profile)
-        count = sum(samples.values())
-        total += count
-        window = max(window, (profile.get("endTime", 0) - profile.get("startTime", 0)) / 1e6)
-        per_worker.append((count, target["targetId"][:8]))
-        for node_id, hits in samples.items():
-            node = nodes.get(node_id)
-            if node is None:
-                by_name["<unknown node>"] += hits
-                by_category["other"] += hits
-                continue
-            frame = node["callFrame"]
-            url = frame.get("url", "")
-            name = resolve(frame.get("functionName") or "(anonymous)", url, symbols)
-            by_name[f"{name}  [{url.rsplit('/', 1)[-1]}]"] += hits
-            by_category[categorize(name, url)] += hits
+    nodes = {node["id"]: node for node in profile.get("nodes", [])}
+    samples = _self_samples(profile)
+    for node_id, hits in samples.items():
+        node = nodes.get(node_id)
+        if node is None:
+            by_name["<unknown node>"] += hits
+            by_category["other"] += hits
+            continue
+        frame = node["callFrame"]
+        url = frame.get("url", "")
+        name = resolve(frame.get("functionName") or "(anonymous)", url, symbols)
+        by_name[f"{name}  [{url.rsplit('/', 1)[-1]}]"] += hits
+        by_category[categorize(name, url)] += hits
+    return by_name, by_category, sum(samples.values())
 
-    busy = sum(1 for count, _ in per_worker if count)
-    print(
-        f"\n{len(profiles)} target(s) profiled over {window:.2f} s; {busy} collected any sample. "
-        f"Total samples {total} (the denominator for every share below)."
-    )
-    for count, label in sorted(per_worker, reverse=True):
-        print(f"  worker {label}: {count} sample(s)")
-    if total == 0:
-        print(
-            "ZERO samples across every target -- no JavaScript or WebAssembly ran "
-            "in this window at all, which is a fact about the run, not a tool failure"
-        )
-        return
 
+def working_samples(by_category: collections.Counter) -> int:
+    return sum(hits for label, hits in by_category.items() if label not in _NOT_WORKING)
+
+
+def _print_shares(by_category: collections.Counter, by_name: collections.Counter, total: int, top: int) -> None:
     # Every category is printed whether or not it collected anything, so a zero
     # reads as "looked, found none" and not as "never looked".
     print("\nself time by category:")
@@ -310,10 +306,62 @@ def summarize(profiles: list[tuple[dict, dict]], top: int, symbols: dict[int, st
     unclassified = set(by_category) - set(_EVERY_CATEGORY)
     if unclassified:
         raise AssertionError(f"categorize() produced labels the summary does not print: {sorted(unclassified)}")
-
     print(f"\ntop {top} by self time:")
     for name, count in by_name.most_common(top):
         print(f"  {100.0 * count / total:6.2f}%  {count:8d}  {name}")
+
+
+def summarize(profiles: list[tuple[dict, dict]], top: int, symbols: dict[int, str]) -> None:
+    by_name: collections.Counter = collections.Counter()
+    by_category: collections.Counter = collections.Counter()
+    per_worker: list[tuple[int, int, str, collections.Counter, collections.Counter]] = []
+    total = 0
+    window = 0.0
+    for profile, target in profiles:
+        names, categories, count = tally(profile, symbols)
+        total += count
+        window = max(window, (profile.get("endTime", 0) - profile.get("startTime", 0)) / 1e6)
+        per_worker.append((working_samples(categories), count, target["targetId"][:8], names, categories))
+        by_name.update(names)
+        by_category.update(categories)
+
+    busy = sum(1 for _, count, _, _, _ in per_worker if count)
+    print(
+        f"\n{len(profiles)} target(s) profiled over {window:.2f} s; {busy} collected any sample. "
+        f"Total samples {total} (the denominator for every share below)."
+    )
+    # Ranked by samples that are NOT idle or parked, because that -- and not
+    # the sample count -- is what identifies the thread doing the work.
+    for working, count, label, _, _ in sorted(per_worker, reverse=True):
+        print(f"  worker {label}: {count} sample(s), {working} working")
+    if total == 0:
+        print(
+            "ZERO samples across every target -- no JavaScript or WebAssembly ran "
+            "in this window at all, which is a fact about the run, not a tool failure"
+        )
+        return
+
+    print("\nEVERY TARGET TOGETHER")
+    _print_shares(by_category, by_name, total, top)
+
+    # The aggregate above is dominated by however many workers happen to be
+    # parked, so its percentages say more about the pool size than about the
+    # program. The busiest target's own breakdown is the one with a meaningful
+    # denominator, and it is printed whether or not it found anything.
+    working, count, label, names, categories = max(per_worker)
+    print(
+        f"\nBUSIEST TARGET {label}: {working} working sample(s) of its {count} "
+        f"({100.0 * working / count if count else 0.0:.1f}% of its wall time). "
+        "Shares below are against ITS OWN samples, so its idle time is visible "
+        "rather than hidden in the pool's."
+    )
+    if not working:
+        print(
+            "  NOTHING was working on any target in this window. That is a fact "
+            "about the run -- every thread was parked or idle -- not a tool failure."
+        )
+        return
+    _print_shares(categories, names, count, top)
 
 
 def main(argv: list[str]) -> int:

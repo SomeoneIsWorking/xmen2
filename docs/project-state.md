@@ -728,8 +728,18 @@ imports 16% / guest bodies 84%**. What bounds the browser now is guest
 execution alone: about 2.2 presents per second, with host draw at 3.9 ms and
 host upload at 0.47 ms per frame, 283 million block entries over 300 s against
 347,371 translated blocks, and `0 of 276,933 condition(s) lowered inline` on the
-WASM backend. Block-entry overhead and inline condition lowering are the next
-frontier; the renderer and the filesystem are no longer the cost.
+WASM backend. A profile of the guest worker alone — 98.6% of it working — says
+what that execution is actually spending itself on, and it is not the guest's
+code: **`x86p_sparse_span_access` is 38.61% of that worker and guest memory
+access totals about 62%, against 5.29% in translated guest blocks** (issue
+#157). In the browser `X86pMem` uses x86port's sparse mode, so every guest load
+and store is a host import call that binary-searches a sorted mapping array,
+and a checked access does it twice. The desktop has none of this: it reserves
+one 4 GiB arena and a guest address is a host address plus a constant. The
+named fix is a flat guest window in the WASM linear memory with a page-permission
+table, so an access becomes two memory loads instead of two calls and two
+searches; the footprint fits, at 1.88 GiB against a configured 4 GiB maximum.
+That is the next frontier; the renderer and the filesystem are no longer the cost.
 `tools/web_console.py` is the instrument that made this measurable — it records
 every console line over CDP, where WebLua's own buffer held 50 and none of them
 the heartbeat.
