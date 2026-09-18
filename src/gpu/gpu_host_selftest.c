@@ -3,6 +3,7 @@
 int gpu_device_selftest(void);
 int gpu_present_selftest(void);
 int gpu_draw_selftest(void);
+int gpu_lit_mvp_selftest(void);
 int gpu_frame_init_selftest(void);
 int gpu_midframe_clear_selftest(void);
 int gpu_cube_texgen_selftest(void);
@@ -64,5 +65,11 @@ int gpu_host_selftest(void) {
     return result;
 
   /* Presenting a frame and drawing into one are different claims. */
-  return gpu_draw_selftest();
+  result = gpu_draw_selftest();
+  if (result)
+    return result;
+
+  /* Issue #152: the D3DFVF_XYZ + lighting branch, which the test above never
+     reaches (it uses D3DFVF_XYZRHW). */
+  return gpu_lit_mvp_selftest();
 }

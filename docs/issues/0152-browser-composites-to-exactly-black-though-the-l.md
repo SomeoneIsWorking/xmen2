@@ -10,9 +10,19 @@ updated: 2026-09-18
 
 Affected state: S021 (web WASM product), contract W2.
 
-ROOT CAUSE OF "black canvas" LOCALIZED, and it is browser-only, in the
-composite/present fence path -- NOT the game->GPU draw path, not the wait
-convoy (#149), and not a page-screenshot artifact.
+SUPERSEDED (2026-09-18): the composite/present fence path named below is now
+proven correct three independent ways (see the 2026-09-18 updates). The
+defect is browser-only and is now localized to the actual fixed-function DRAW
+path (`src/gpu/gpu_draw.c` + `src/gpu/shaders/d3d8_fixed.vert`/`.frag`), which
+fills `g_scene` in the first place -- not compositing, not the wait convoy
+(#149), not a page-screenshot artifact, and (per the final 2026-09-18 update)
+not simply "hasn't loaded yet" either. See the bottom of this document for the
+current state and next step.
+
+ORIGINAL LOCALIZATION (superseded, kept for history): "ROOT CAUSE OF 'black
+canvas' LOCALIZED, and it is browser-only, in the composite/present fence
+path -- NOT the game->GPU draw path, not the wait convoy (#149), and not a
+page-screenshot artifact."
 
 Evidence, all from the new trusted in-engine instrument (`present_luma`, which
 reads back the presented frame AND the logical D3D scene it composites, and was
@@ -140,3 +150,25 @@ Went looking for existing coverage of that path and found none: `grep` for `gpu_
 `d3d8_fixed.vert`'s `VertexState` uniform block (`layout(set = 1, binding = 0)`, read in full this session) is a strong candidate for exactly this kind of browser-only failure: it interleaves bare `mat4`/`vec4` members with many lone `uint` scalars (`pretransformed`, `has_diffuse`, `lighting`, `nlights`, then later `has_normal`, `color_vertex`, `has_specular`, ..., padded by hand with `material_source_pad0/1/2`, `texture_transform_pad0/1/2`, `stage1_pad`) -- std140-style manual padding, sized for Vulkan/GLSL's layout rules. If the pinned SDL fork's SPIRV-to-WGSL cross-compilation for the WebGPU backend does not reproduce that exact packing (WGSL's own uniform-buffer layout rules are similar to std140 but not identical in every corner, and a hand-maintained fork backend is exactly where a packing bug would hide), every field read after the first packing mismatch -- including the `mvp` matrix used for every non-pretransformed draw -- would read garbage, which would transform ordinary scene geometry to degenerate or off-screen clip coordinates. That produces precisely what is observed: draws that report success (`refused 0`) and consume real GPU time, but leave `g_scene` empty except stray fragments (matching the one `max 191` outlier pixel seen in every browser sample). This is a hypothesis, not yet confirmed -- it has not been checked against the actual WGSL the fork's SPIRV-Cross step emits for this exact shader.
 
 **Not yet done, and the concrete next step:** build a `gpu_draw`-level selftest (not a compositing one) that submits one real triangle through `gpu_draw_submit` with a populated `VertexState` -- a non-identity `mvp`, `lighting` on with a known light, at least one non-zero pad field -- and reads back `g_scene` directly, run on both the native Vulkan/Metal backend and in-browser on WebGPU. A mismatch confirms the uniform-layout theory and localizes the fix to the fork's WGSL cross-compilation step; a match rules it out and the next candidate becomes the WGSL fragment shader (`d3d8_fixed.frag`, not yet read this session) or the vertex/index buffer upload path under `PROXY_TO_PTHREAD`. Either way, this selftest is the missing piece: no existing check would have caught this class of bug on any backend, and none will until one exists.
+
+### Update (2026-09-18, decisive): draws grew complex (texture stage 1, non-default combiners, real vertex-shader constants) and the scene reading STILL never moved -- "still loading" is dead, and a targeted self-test (`gpu_lit_mvp_selftest`) is now written, wired, and PASSES NATIVELY, confirming it is a valid discriminator
+
+The long-running Dead Zone observation from the previous update (port 7986, `WEBLUA_DIR=scratch/weblua-local`, `present_luma=50`) was left running and checked again after 1262 wall-seconds (~21 minutes), 130,178 real draws, 1601 real presents:
+
+```
+[HB] 1050 of 130178 draw(s) (+9) wanted a texture stage beyond 0 (up to 1 extra); stage 1 is implemented and stage 2+ is refused
+[HB] combiner args: 127748 default, 2430 other
+[HB]   first non-default: COLORARG1 2 COLORARG2 3 ALPHAARG1 2 ALPHAARG2 3
+[HB] gpu draws 130178 (+834)  refused 0 (+0)
+[HB] 10 distinct SetVertexShader value(s), 1 of them SHADER handles: ...
+[HB] SetVertexShaderConstant: 4800 call(s) from 1 distinct site(s)
+[LUMA] present 1601: composed mean 0.0 max 0 nonblack 0.0% | scene read mean 0.1 max 191 nonblack 0.1% (frame 1280x720, scene 1280x720, 278 draw(s) so far)
+```
+
+This directly answers the question the previous update left open. Every marker of "the level has actually loaded and is drawing real, varied geometry" is now present and was ABSENT in every earlier sample in this issue: draws-per-scene climbed from 2-9 to 278; texture stage 1 -- unused in every earlier sample (`0 of N`) -- is now used by 1050 draws; combiner args are no longer 100% default (2430 non-default, with a real ARG1/ARG2 combination logged); and 4800 real `SetVertexShaderConstant` calls have been made (this only happens for `d.programmable` VS 1.1 draws, or via the fixed-function path's per-draw MVP/lighting constants -- either way, real transform data is being uploaded). Despite all of that, the `scene` reading is BYTE-IDENTICAL to every sample taken since the very first one in this issue: `mean 0.1 max 191 nonblack 0.1%`, unchanged across a session that ran from a handful of draws up through 130,178 of them. This rules out the previous update's "maybe it just hasn't drawn a real frame yet" theory outright -- the draws are demonstrably real, varied, and numerous, and the visible result has not moved by a single reported digit.
+
+Separately, built the self-test the previous update called for: `gpu_lit_mvp_selftest()` (new, `src/gpu/gpu_selftest.c`, wired into the `--vk-selftest` battery via `src/gpu/gpu_host_selftest.c`). It draws one triangle through the D3DFVF_XYZ + lighting branch of `d3d8_fixed.vert` -- the branch every earlier self-test skipped by using D3DFVF_XYZRHW -- with an identity MVP/world (so the check does not also depend on getting a non-trivial matrix's row/column-major convention right) and material emissive colour as the only lit contribution (`mat_emissive = (0.2, 0.4, 0.8)`, zero lights, zero ambient), reading back the centre pixel and comparing against the expected `~(51, 102, 204)` within a +/-3 tolerance. Built and run natively (`./build/native/x2native --vk-selftest`): **PASSED** -- `an MVP-transformed, lit triangle read back its material's emissive colour`, alongside every existing self-test, confirming the test itself is a valid, correctly-designed discriminator before trusting its browser answer either way.
+
+**Not yet obtained: the browser answer for this new self-test.** A rebuilt WASM artifact (`build/web` -> `build/release/web`, served on port 8142) was launched under WebLua with `?arg=--vk-selftest`, but it produced zero console output over several minutes and `text` showed the page never left the install-picker screen. Reading `web/app.mjs` explains why: `?arg=...` values are appended to the product's OWN argument list only inside `launch()`, which only runs when `#play` or `#test-play` is clicked -- there is no auto-start from a bare URL argument, and this session's WebLua instance used a fresh, unprimed profile with no saved installation for `#play` to launch and no `--vk-selftest`-specific button. The previous session's passing in-browser `--vk-selftest` run must have gone through a primed profile and an explicit click this session did not reproduce. This is a real, fixable gap in the diagnostic route (not evidence about the game itself) -- the fresh WebLua instance was stopped rather than left stuck. **Next step, concrete:** relaunch against the primed `scratch/weblua-local` profile (or a copy of it, to avoid concurrent-OPFS contention with the still-useful long observation session) with `?arg=--vk-selftest`, click `#play` (not `#test-play`, which would also prepend `--test-deadzone`), and read the console for `gpu lit/mvp draw selftest: PASSED`/`FAILED`. A FAILED result would confirm the uniform-buffer-layout hypothesis directly; a PASSED result rules out that specific hypothesis (though not the broader "real draw path" localization, which the port-7986 evidence above already establishes independently of this self-test).
+
+**Where this leaves issue #152 relative to the framerate problem:** they are DISTINCT. The framerate problem (~666-671 ms/frame measured elsewhere) is a performance defect: guest execution and host draw submission are slow, but they complete and, per every counter available, submit real, increasingly complex geometry successfully (`refused 0` throughout). Issue #152 is a correctness defect: whatever that geometry contains, it does not appear in the read-back `scene` texture. A game that draws correctly-but-slowly would show gradually-changing luma readings as more of the level appears frame by frame; this session's 130,178-draw, 21-minute observation shows exactly the opposite -- rapidly increasing draw complexity with a completely static, near-black visual result. Fixing the framerate alone would not fix this on the evidence gathered so far.

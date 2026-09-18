@@ -751,21 +751,35 @@ remains unqualified until that fork fix lands.
   38.3, nonblack 54.9%`) after only 2 draws, while the browser's own `scene`
   readback stays flat (`mean 0.1, nonblack 0.1%`, one stray bright pixel) across
   3212 real draws over 295 wall-seconds (`refused 0`) on the identical route --
-  a >1500x gap no loading-speed explanation covers. Leading candidate: the
-  fixed-function vertex shader's `VertexState` uniform block
+  a >1500x gap no loading-speed explanation covers. **Confirmed distinct from
+  the framerate problem, not subsumed by it (2026-09-18):** the same
+  long-running session, checked again after 1262s / 130,178 real draws / 1601
+  presents, shows draws-per-scene climb from 2-9 to 278, texture stage 1 go
+  from unused to 1050 draws, combiner args go from 100% default to 2430
+  non-default, and 4800 real `SetVertexShaderConstant` calls -- every marker of
+  real, varied, loaded gameplay geometry -- while `scene read mean 0.1 max 191
+  nonblack 0.1%` stayed byte-identical to the very first sample. Slow-but-
+  correct drawing would show the reading changing as more loads; it has not
+  moved once across two orders of magnitude of draw-count growth. Leading
+  candidate: the fixed-function vertex shader's `VertexState` uniform block
   (`src/gpu/shaders/d3d8_fixed.vert`) hand-pads many bare `uint` scalars between
   `mat4`/`vec4` members for Vulkan/GLSL std140 layout; if the fork's WGSL
   cross-compilation does not reproduce that exact packing, the `mvp` matrix (and
   every field after the first mismatch) reads garbage, degenerating ordinary
-  scene geometry off-screen -- consistent with draws that report success but
-  leave `g_scene` empty. Not yet confirmed: no existing selftest
-  (`gpu_selftest.c`, `gpu_multistage_selftest.c`, `gpu_present_selftest.c`,
-  `gpu_texture_selftest.c`, `gpu_upload_selftest.c`, `gpu_shadow_selftest.c`)
-  exercises `gpu_draw_submit`/`d3d8_fixed.vert`/`.frag` at all, on any backend --
-  this is the missing coverage and the concrete next step (a `gpu_draw`-level
-  selftest with a populated `VertexState`, checked on both native and browser).
-  The game-to-GPU draw path, the wait convoy (#149) and arg routing (#151)
-  remain excluded as unrelated.
+  scene geometry off-screen. Existing self-tests only ever exercised
+  D3DFVF_XYZRHW (the pretransformed branch, `vs.pretransformed`), never
+  D3DFVF_XYZ + lighting (`vs.mvp`, `vs.world`, the material/light fields) --
+  a real, narrower coverage gap. A new `gpu_lit_mvp_selftest()`
+  (`src/gpu/gpu_selftest.c`, wired into the `--vk-selftest` battery) draws
+  through exactly that branch with an identity MVP/world and a known material
+  emissive colour: it PASSES natively, confirming it is a valid discriminator,
+  but its in-browser result is not yet obtained -- the WebLua diagnostic route
+  needs a primed install profile and an explicit `#play` click before
+  `?arg=--vk-selftest` reaches the module (`web/app.mjs` only starts the
+  runtime from a button handler, never from the URL alone), which the
+  gameplay-observation instance above did not have configured. The game-to-GPU
+  draw path, the wait convoy (#149) and arg routing (#151) remain excluded as
+  unrelated.
 - **W3, threading and memory: partial.** The product proxies its entry point to
   an Emscripten pthread and transfers its canvas to that worker. Guest sparse
   mappings preserve the 32-bit guest address space without a contiguous 4 GiB
