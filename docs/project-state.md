@@ -766,7 +766,15 @@ falls from about 6,000 blocks per second eleven minutes in to a few hundred.
 What bounds the browser now is translation itself: `WebAssembly.Module` /
 `Instance` construction at about 33% of the guest worker and invalidation at
 about 17%. Browser playability remains unproven and the frame rate is still
-short of playable.
+short of playable. The route a player actually takes is worse than the gameplay
+test: **the packaged product started from its saved installation reaches the
+retail "Loading..." prompt and wedges there** (issue #158), with three guest
+threads created by the intro, one of them SUSPENDED, 99% of every interval in
+host imports, and five of sixteen workers unable to answer the profiler at all
+because they are blocked rather than spinning. That is not the guest-memory
+window: `tools/live_case.py cutscene-skip` boots the retail flow, loads a map
+and runs a cutscene 11/11 on both the ordinary desktop binary and on
+`build/native-window/x2native` built with `-DX2_GUEST_ARENA_WINDOW=1`.
 `tools/web_console.py` is the instrument that made this measurable — it records
 every console line over CDP, where WebLua's own buffer held 50 and none of them
 the heartbeat.

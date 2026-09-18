@@ -152,6 +152,7 @@ given present count:
 | 200 | 206 s | 106 s |
 | 400 | 311 s | 151 s |
 | 800 | 456 s | 241 s |
+| 1200 | 632 s | 316 s |
 
 The fastest frame in the run went from 160.0 ms to 16.8 ms. Steady-state
 translation also fell: the sparse run was still translating about 6,000 blocks
