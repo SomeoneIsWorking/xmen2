@@ -698,10 +698,21 @@ the same page command line: **steady-state translations fell from 5,106/s to
 0/s, live module bytes rose from 1.6 MB to 11.2 MB, and guest block entries
 rose from 124,447/s to 4,308,000/s** -- which also retires #149's reading that
 the browser JIT "executes 21-27x slower than native", taken when the browser
-measured 0.74M blocks/s. Frame progress did **not** follow: the re-measured run
-held at 10 presents while executing 4.3M blocks/s, with the interval attributed
-to `KERNEL32.dll!WaitForSingleObject`. Browser playability therefore remains
-unproven, and what now bounds it is a wait, not translation.
+measured 0.74M blocks/s. Frame progress did **not** follow that fix: the
+re-measured run held at 10 presents while executing 4.3M blocks/s. What held it
+was every WebGPU wait in the SDL fork polling `wgpuInstanceWaitAny` with a zero
+timeout — the one form of that call which never reaches JavaScript, so the
+future it waited on could not settle during the call and the wait could only
+end by luck (issue #154). SDL `89951aff5`, pinned through web-port `4407360`,
+creates the instance with `TimedWaitAny` and gives the waits a real timeout, so
+they unwind through Asyncify and resume with an answer. Re-measured on the same
+route: **presents went from a wedge at 10 to 252 in under three minutes, draws
+from frozen at 121 to 44,746, and `emscripten_futex_wait` left the profile
+entirely**. `--vk-selftest`, which had hung for 17 hours after logging
+"swapchain claimed on window", now runs the battery to a verdict. Browser
+playability remains unproven: frame wall time is ~600 ms (about 1.4 fps) with
+host draw at 2.8 ms and host upload at 0.3 ms, so what bounds it now is guest
+execution, not the renderer and no longer a wait.
 An invalid-ZIP run also emitted Emscripten's main-thread blocking warning, so
 a clean browser console remains unproven.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.
@@ -718,7 +729,12 @@ monotonically with no abort. The remaining "black canvas" is now proven by a
 trusted in-engine instrument to be a real browser-only defect at the WebGPU
 present boundary (not a screenshot artifact or a game-to-GPU draw failure),
 localized but not yet stage-attributed in issue #152; interactive visible play
-remains unqualified until that fork fix lands.
+remains unqualified until that fork fix lands. With the battery no longer
+hanging, the browser reaches a self-test that had never run there and fails it:
+`gpu multistage selftest: FAILED -- mip control/mipped centres are
+0xff00ff00/0xff00ff00, expected red/green`. Both centres come back green where
+one must be red, so the mip control sample is wrong under WebGPU. That is the
+first stage-level discriminator #152 has had.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
   Pinned x86port `75b2cec8e5d310fc723f34eb4f86278f2dfc97ab` and jit-common
