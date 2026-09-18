@@ -54,16 +54,22 @@ struct X86EngineJitPool {
  * is ~1.4 KB, so 8,192 blocks need ~12 MB and 32 MB leaves the cap where it
  * is meant to be.
  *
- * That cap is still below the working set. MEASURED on the Dead Zone route
- * with the heartbeat's eviction counters: 15,770 blocks translated and 15,770
- * dropped in the same five seconds, zero cache flushes, and 13.6 MB of the
- * 32 MB budget in use -- so the block cap binds and the arena turns over
- * completely several times a second (issue #161). Both sizes are settings
- * rather than constants so the working set can be found by running past it,
- * which is what has to happen before either default moves: a doubled cap that
- * makes this map stop evicting is a number chosen to hide the measurement.
+ * Both were still far below the working set, and both bound. MEASURED on the
+ * Dead Zone route by running with the caps set past any plausible requirement
+ * (`jit.blocks=131072`, `jit.code_mb=512`) until translation stopped: the
+ * route needs **61,200 blocks and 98 MB**, and reaches it in about 75 seconds.
+ * At 8,192 blocks the arena held an eighth of that and translated 654,779
+ * blocks over 452 seconds to keep it, evicting one for almost every one it
+ * made (issue #161).
+ *
+ * So these are that measurement plus a margin: 65,536 blocks covers 61,200 by
+ * about 7%, and 128 MB covers 65,536 blocks at the measured 1.6 KB mean by
+ * about 20%. They move together deliberately -- either alone silently becomes
+ * the binding limit. ONE route has been measured; a map with a larger working
+ * set will evict again, and the heartbeat's eviction counters say so by name
+ * rather than leaving it to be inferred from a frame rate.
  */
-enum { kCodeBytesDefault = 32u << 20, kCacheBlocksDefault = 8192u };
+enum { kCodeBytesDefault = 128u << 20, kCacheBlocksDefault = 65536u };
 static _Thread_local X86EngineJitNode *current_node;
 #else
 enum { kCodeBytesDefault = 64u << 20, kCacheBlocksDefault = 65536u };

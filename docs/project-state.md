@@ -765,13 +765,25 @@ fastest frame falls from 160.0 ms to 16.8 ms, and steady-state translation
 falls from about 6,000 blocks per second eleven minutes in to a few hundred.
 What bounds the browser now is translation itself: `WebAssembly.Module` /
 `Instance` construction at about 33% of the guest worker and invalidation at
-about 17% — and the heartbeat's new invalidation counters say why. **Every
-block the browser translates is evicted in the same five seconds** (measured:
-+15,770 translated and +15,770 dropped in one interval), because the JIT's
-8,192-block code arena is smaller than the game's working set, so it drops a
-block to make room for each one it translates. Only 500 of 106,000 of those
-drops came from this port telling the engine that guest memory changed; the
-rest is the engine reclaiming its own arena (issue #161). Browser playability remains unproven and the frame rate is still
+about 17% — but that profile was taken while the map was LOADING, and the
+heartbeat's new invalidation counters found both the cause and the correction.
+The JIT's 8,192-block code arena was smaller than the game's working set, so it
+evicted a block for almost every one it translated: 654,779 blocks translated
+over 452 seconds to hold 8,192, only 500 of those drops asked for by this port
+and the rest the engine reclaiming its own arena (issue #161). Running with the
+caps set past any plausible requirement measured the real working set at
+**61,200 blocks and 98 MB**, reached in 75 seconds, with zero evictions — so
+the browser's defaults are now that measurement plus a margin, 65,536 blocks
+and 128 MB. It is worth about **10% more frames**, not the doubling the loading
+profile implied, plus a much faster load; at steady state the old arena was
+translating about 1,000 blocks a second, not 3,000.
+
+**It also moved the bottleneck rather than removing it.** With translation
+quiescent the busy worker reports `x86port JIT translation` and
+`wasm compile/instantiate` at 0.00% each, the game's own translated code at
+12%, and **x87 emulation at about 47%** — WebAssembly has no 80-bit float, so
+x86port carries an extended-precision softfloat, and that is now the largest
+single cost in the browser (issue #162). Browser playability remains unproven and the frame rate is still
 short of playable. The route a player actually takes is worse than the gameplay
 test: **the packaged product started from its saved installation reaches the
 retail "Loading..." prompt and wedges there** (issue #158), with three guest
