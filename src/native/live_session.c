@@ -1,6 +1,7 @@
 #include "x2_log.h"
 /* Stable, repo-local discovery record for the current interactive run. */
 #include "directory_create.h"
+#include "host_dir_cache.h"
 #include "json_string.h"
 #include "live_session.h"
 
@@ -58,8 +59,12 @@ static int publish(int running) {
   } else
     fputs("null", file);
   fputs("\n}\n", file);
-  if (fclose(file) != 0 || rename(next, path) != 0)
+  if (fclose(file) != 0 || rename(next, path) != 0) {
+    host_dir_forget_for(next);
     return 0;
+  }
+  host_dir_forget_for(next);
+  host_dir_forget_for(path);
   return 1;
 }
 

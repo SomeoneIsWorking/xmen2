@@ -710,9 +710,29 @@ route: **presents went from a wedge at 10 to 252 in under three minutes, draws
 from frozen at 121 to 44,746, and `emscripten_futex_wait` left the profile
 entirely**. `--vk-selftest`, which had hung for 17 hours after logging
 "swapchain claimed on window", now runs the battery to a verdict. Browser
-playability remains unproven: frame wall time is ~600 ms (about 1.4 fps) with
-host draw at 2.8 ms and host upload at 0.3 ms, so what bounds it now is guest
-execution, not the renderer and no longer a wait.
+playability remains unproven, but two more costs have since been removed from
+the route. The first was the port's own stall diagnostic: `x86_ring_dump` bound
+its loop to the live crossing counter, which the guest keeps incrementing from
+its own worker in the browser, so one call never returned and streamed about
+6,000 blocking console posts a second on the thread that had to reach `Present`
+— the stall it reported became permanent because it reported it (issue #155).
+The second was path resolution: every guest open enumerated every directory on
+its path, once per component, and in WASMFS each enumeration is a cross-thread
+round trip, so one `fopen` cost 23.3 ms (issue #156). `src/native/host_dir_cache.c`
+keeps one listing per directory with an explicit invalidation contract on every
+creating, removing and renaming site. Re-measured on the same route with the
+same page command line: **console output fell from 117,318 lines in 20 s to
+9,551 in 300 s, `fopen` from 513.4 ms in 22 calls to 58.1 ms in 56 calls, and
+the wall-time split inverted from host imports 52% / guest bodies 48% to host
+imports 16% / guest bodies 84%**. What bounds the browser now is guest
+execution alone: about 2.2 presents per second, with host draw at 3.9 ms and
+host upload at 0.47 ms per frame, 283 million block entries over 300 s against
+347,371 translated blocks, and `0 of 276,933 condition(s) lowered inline` on the
+WASM backend. Block-entry overhead and inline condition lowering are the next
+frontier; the renderer and the filesystem are no longer the cost.
+`tools/web_console.py` is the instrument that made this measurable — it records
+every console line over CDP, where WebLua's own buffer held 50 and none of them
+the heartbeat.
 An invalid-ZIP run also emitted Emscripten's main-thread blocking warning, so
 a clean browser console remains unproven.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.

@@ -25,6 +25,7 @@
 #include "guest_file_io.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "host_dir_cache.h"
 #include "igvk_ark.h"
 #include "kernel32_handles.h"
 #include "pe_map.h"
@@ -632,6 +633,8 @@ void imp_KERNEL32_CreateFileA(CPU *C) {
     return;
   }
   fd = open(path, flags, 0644);
+  if (flags & O_CREAT)
+    host_dir_forget_for(path);
   k32_open_note(guest_name, fd >= 0, repl, path);
   if (fd < 0) {
     /*
@@ -1280,6 +1283,7 @@ void imp_KERNEL32_GetFileAttributesA(CPU *C) {
 void imp_KERNEL32_DeleteFileA(CPU *C) {
   const char *g = ACS(0), *p = win_path(g);
   int ok = unlink(p) == 0;
+  host_dir_forget_for(p);
   if (!ok)
     g_last_error = errno == ENOENT ? ERROR_FILE_NOT_FOUND : ERROR_ACCESS_DENIED;
   k32_file_trace("DeleteFile", g, p, ok ? "deleted" : strerror(errno));
@@ -1289,6 +1293,7 @@ void imp_KERNEL32_DeleteFileA(CPU *C) {
 void imp_KERNEL32_CreateDirectoryA(CPU *C) {
   const char *g = ACS(0), *p = win_path(g);
   int ok = mkdir(p, 0777) == 0;
+  host_dir_forget_for(p);
   if (!ok) {
     /*
      * The LAST ERROR is the whole answer here, not the return value.
@@ -1309,7 +1314,10 @@ void imp_KERNEL32_CreateDirectoryA(CPU *C) {
   ret_std(C, (uint32_t)ok, 2);
 }
 void imp_KERNEL32_RemoveDirectoryA(CPU *C) {
-  ret_std(C, rmdir(win_path(ACS(0))) == 0, 1);
+  const char *path = win_path(ACS(0));
+  int ok = rmdir(path) == 0;
+  host_dir_forget_for(path);
+  ret_std(C, (uint32_t)ok, 1);
 }
 
 void imp_KERNEL32_GetModuleFileNameA(CPU *C) {

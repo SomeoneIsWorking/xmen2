@@ -1568,16 +1568,29 @@ void x86_peek_report(void) {
  */
 
 void x86_ring_dump(void) {
-  unsigned long n = g_ring_n < RING ? g_ring_n : RING, i;
-  if (!g_ring_n) {
+  /*
+   * The END of the ring is read ONCE, into a local.
+   *
+   * The guest keeps crossing while this prints -- that is the point of a
+   * snapshot taken during a run -- so a loop whose bound re-read g_ring_n
+   * never reached it. On the desktop the guest shares this thread and cannot
+   * append, which hid it; in the browser the guest runs on its own worker and
+   * one call became an endless stream. Measured before this line existed:
+   * 117,318 console lines in 20 seconds, ~6,000 a second, every one of them a
+   * cross-thread post that the run waits behind -- a diagnostic that cost more
+   * than the defect it was printed to explain.
+   */
+  const unsigned long total = g_ring_n;
+  unsigned long n = total < RING ? total : RING, i;
+  if (!total) {
     x2_log_error("[TRACE] the boundary ring is EMPTY: nothing crossed "
                  "between guest and host before this point.\n");
     return;
   }
   x2_log_error("[TRACE] last %lu of %lu crossings (esp in -> out; a delta "
                "that is not 4+4N for a stdcall import is the bug):\n",
-               n, g_ring_n);
-  for (i = g_ring_n - n; i < g_ring_n; i++) {
+               n, total);
+  for (i = total - n; i < total; i++) {
     unsigned k = i % RING;
     uint32_t a = g_ring[k].addr;
     /* The ring records the MAPPED address, but every module here is linked

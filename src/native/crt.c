@@ -36,6 +36,7 @@
 #include "guest_file_io.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
+#include "host_dir_cache.h"
 #include "threads.h"
 #include "win_path.h"
 #include "x86rt.h"
@@ -404,6 +405,8 @@ void imp_MSVCR71_fopen(CPU *C) {
     int repl = k32_open_replaced(guest, wr);
     const char *host = k32_open_path(guest, wr);
     g_files[i] = fopen(host, mode);
+    if (wr)
+      host_dir_forget_for(host);
     k32_open_note(guest, g_files[i] != NULL, repl, host);
     ret_c(C, g_files[i] ? (uint32_t)(i + 1) : 0u);
     return;
@@ -430,7 +433,10 @@ void imp_MSVCR71_fseek(CPU *C) {
 void imp_MSVCR71_ftell(CPU *C) { ret_c(C, (uint32_t)ftell(fh(A(0)))); }
 
 void imp_MSVCR71__mkdir(CPU *C) {
-  ret_c(C, (uint32_t)mkdir(win_path(ACS(0)), 0777));
+  const char *path = win_path(ACS(0));
+  int rc = mkdir(path, 0777);
+  host_dir_forget_for(path);
+  ret_c(C, (uint32_t)rc);
 }
 
 /* ---- the rest of stdio -------------------------------------------------- */

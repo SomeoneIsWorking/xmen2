@@ -1,5 +1,6 @@
 #include "win_path.h"
 
+#include "host_dir_cache.h"
 #include "platform_posix.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,6 +64,40 @@ int main(void) {
   snprintf(expected, sizeof(expected), "%s/saves/slot.dat", root);
   snprintf(actual, sizeof(actual), "%s", win_path("S:\\slot.dat"));
   failures += strcmp(actual, expected) != 0;
+  /*
+   * The directory cache, in the only two states that matter.
+   *
+   * Repeating a resolve must not enumerate again -- that is the entire point
+   * of the cache, and a timing cannot tell a cache that works from one that
+   * re-lists every time. And a name created behind its back must be invisible
+   * UNTIL the creator forgets the directory, because that is what makes the
+   * invalidation contract in host_dir_cache.h a requirement on callers rather
+   * than a comment.
+   */
+  {
+    unsigned long enumerated_before = 0, enumerated_after = 0;
+    unsigned long hits_before = 0, hits_after = 0;
+    int repeat;
+    host_dir_cache_stats(&enumerated_before, &hits_before, NULL);
+    for (repeat = 0; repeat < 5; ++repeat)
+      win_path("C:\\data\\foo.sfd");
+    host_dir_cache_stats(&enumerated_after, &hits_after, NULL);
+    failures += enumerated_after != enumerated_before;
+    failures += hits_after <= hits_before;
+
+    make_file(X2_TEST_WIN_PATH_ROOT "/Data/Bar.SFD");
+    snprintf(actual, sizeof(actual), "%s", win_path("C:\\data\\bar.sfd"));
+    /* Unresolved, so the guest's own spelling survives. Checked by spelling
+       rather than by access(), which a case-insensitive host would satisfy
+       for the wrong reason. */
+    failures += strstr(actual, "/Data/Bar.SFD") != NULL;
+    host_dir_forget_for(X2_TEST_WIN_PATH_ROOT "/Data/Bar.SFD");
+    snprintf(actual, sizeof(actual), "%s", win_path("C:\\data\\bar.sfd"));
+    failures += access(actual, F_OK) != 0;
+    failures += strstr(actual, "/Data/Bar.SFD") == NULL;
+    unlink(X2_TEST_WIN_PATH_ROOT "/Data/Bar.SFD");
+    host_dir_clear();
+  }
   unlink(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");
   unlink(X2_TEST_WIN_PATH_ROOT "/pack/movies/cine01.sfd");
   rmdir(X2_TEST_WIN_PATH_ROOT "/Data");
@@ -71,7 +106,8 @@ int main(void) {
   rmdir(X2_TEST_WIN_PATH_ROOT "/saves");
   rmdir(X2_TEST_WIN_PATH_ROOT);
   printf("Win32 path owner: %s -- case folding, replacement, save drive, "
-         "open evidence, and scene gate share one production module\n",
+         "open evidence, scene gate, and the directory cache with its "
+         "invalidation share one production module\n",
          failures ? "FAILED" : "PASSED");
   return failures != 0;
 }

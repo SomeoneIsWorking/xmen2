@@ -1,4 +1,5 @@
 #include "../config/environment.h"
+#include "host_dir_cache.h"
 #include "x2_log.h"
 /*
  * SHELL32 -- the one call the game makes, and the writable directory behind it.
@@ -67,9 +68,14 @@ static int make_directories(const char *path) {
     *slash = 0;
     if (mkdir(copy, 0777) != 0 && errno != EEXIST)
       return 0;
+    host_dir_forget_for(copy);
     *slash = '/';
   }
-  return mkdir(copy, 0777) == 0 || errno == EEXIST;
+  {
+    int made = mkdir(copy, 0777) == 0;
+    host_dir_forget_for(copy);
+    return made || errno == EEXIST;
+  }
 }
 
 const char *x2_save_dir(void) {

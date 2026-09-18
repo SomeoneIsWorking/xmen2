@@ -338,7 +338,8 @@ add_executable(test_movie_image_layout tests/test_movie_image_layout.c
 target_include_directories(test_movie_image_layout PRIVATE src/native)
 add_test(NAME movie_image_layout COMMAND test_movie_image_layout)
 
-add_executable(test_win_path tests/test_win_path.c src/native/win_path.c)
+add_executable(test_win_path tests/test_win_path.c src/native/win_path.c
+    src/native/host_dir_cache.c)
 target_include_directories(test_win_path PRIVATE src/native src/save)
 target_compile_definitions(test_win_path PRIVATE
     X2_TEST_WIN_PATH_ROOT="${CMAKE_BINARY_DIR}/test-win-path")
@@ -822,6 +823,7 @@ add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
 # The guest printf format walker. It builds crt.c against a stub runtime, so it
 # needs no guest runtime and runs in the ordinary suite.
 add_executable(test_vformat tests/test_vformat.c src/native/crt.c
+               src/native/host_dir_cache.c
                src/native/guest_file_io.c
                src/native/crt_write_watch.c src/runtime/x86_abi/x87crt.c
             tests/native_stubs.c
@@ -1503,6 +1505,7 @@ set(X2_NATIVE_SOURCES
     src/native/kernel32.c
     src/native/kernel32_wait.c
     src/native/win_path.c
+    src/native/host_dir_cache.c
     src/native/advapi32.c
     src/native/advapi32_host_store.c
     src/native/fault_selftest.c

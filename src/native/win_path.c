@@ -5,6 +5,7 @@
  * media decode cannot disagree on drive mapping or case folding. */
 #include "win_path.h"
 
+#include "host_dir_cache.h"
 #include "save_trace_runtime.h"
 #include "shell32.h"
 
@@ -57,8 +58,6 @@ void k32_file_trace(const char *operation, const char *guest_path,
 static int resolve_case_insensitive(char *path, const char *known_root) {
   char resolved[WIN_PATH_MAX];
   char *component, *separator;
-  DIR *directory;
-  struct dirent *entry;
   size_t used;
   size_t root_size = 0;
 
@@ -107,24 +106,17 @@ static int resolve_case_insensitive(char *path, const char *known_root) {
             path);
       return 0;
     }
-    directory = opendir(resolved[0] ? resolved : ".");
-    if (!directory) {
-      if (files_traced())
-        x2_log_error("[FILE] path resolver cannot open \"%s\" while resolving "
-                     "\"%.*s\": %s\n",
-                     resolved[0] ? resolved : ".", (int)component_size,
-                     component, strerror(errno));
-      return 0;
+    {
+      /* Through the cache rather than opendir/readdir here: in the browser
+         each enumeration is a cross-thread round trip, and this loop ran one
+         per component of every path the game opened. */
+      const char *entry = host_dir_lookup(resolved[0] ? resolved : ".",
+                                          component, component_size);
+      if (entry) {
+        snprintf(matched, sizeof matched, "%s", entry);
+        found = 1;
+      }
     }
-    for (entry = readdir(directory); entry; entry = readdir(directory))
-      if (strlen(entry->d_name) == component_size &&
-          strncasecmp(entry->d_name, component, component_size) == 0)
-        break;
-    if (entry) {
-      snprintf(matched, sizeof matched, "%s", entry->d_name);
-      found = 1;
-    }
-    closedir(directory);
     if (!found) {
       if (files_traced())
         x2_log_error("[FILE] path resolver found no \"%.*s\" under \"%s\"\n",
@@ -256,11 +248,20 @@ static void note_asset(const char *guest_path, int succeeded,
 
 void k32_asset_report(void) {
   int index;
+  unsigned long enumerated = 0, hits = 0, misses = 0;
   x2_log_info(
       "  files: %lu open call(s) over %d distinct name(s)%s; %lu failed\n",
       g_opens_total, g_nasset,
       g_asset_over ? " (the name table is FULL -- some are not listed)" : "",
       g_opens_failed);
+  host_dir_cache_stats(&enumerated, &hits, &misses);
+  /* `enumerated` is the number that costs: in the browser each one is a
+     filesystem round trip the caller blocks on. It climbing alongside `hits`
+     means the cache is being invalidated faster than it is being used, which
+     no timing would tell apart from the cache simply not helping. */
+  x2_log_info("         path components resolved from %lu cached directory "
+              "listing(s): %lu from memory, %lu had to enumerate\n",
+              enumerated, hits, misses);
   if (x2_config_override_get(kX2ConfigAssets))
     x2_log_info(
         "         X2_ASSETS=%s -- %lu name(s) were replaced from it%s\n",
