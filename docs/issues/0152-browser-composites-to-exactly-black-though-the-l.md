@@ -5,7 +5,7 @@ status: investigating
 symptom: browser run presents pure black (composed max 0) while the logical D3D scene it composites has content (max 191); --vk-selftest never prints a result in the browser though it passes on native
 tags: web,browser,wasm,gpu,present,webgpu,sdl,readback
 created: 2026-09-15
-updated: 2026-09-17
+updated: 2026-09-18
 ---
 
 Affected state: S021 (web WASM product), contract W2.
@@ -63,3 +63,23 @@ Fixed in `src/web/browser_log.cpp` with a bounded periodic flush independent of 
 What this settles: the composite blit, retained-capture download, and multi-submission fence-wait sequence (the exact code `gpu_present_composite`/`gpu_capture_frame_record` use) are all correct on the browser's WebGPU backend. Candidate (a) from the note above -- "the WebGPU composite genuinely black-outs the aspect-fit blit" -- is refuted for the synthetic selftest case.
 
 What remains OPEN: the original gameplay symptom (`present_luma` reporting `composed mean 0.0 max 0` on the Dead Zone route while `scene mean 0.1 max 191`) has not been re-run since this logging fix landed. The selftest exercises an offscreen synthetic composite, not the real windowed swapchain claim/acquire/present cycle under actual gameplay load; it does not by itself prove the real run is non-black. Candidate (b) (a capture-owner download defect specific to that different code path/context) is also not yet ruled back in or out for the real gameplay case. Next step: re-run the Dead Zone `present_luma` probe now that console output cannot be silently withheld, and either close this issue or narrow it to a `present_luma`-specific stage.
+
+### Update (2026-09-18): black canvas CONFIRMED to still reproduce in real gameplay; boot blackout ruled out; a third independent instrument rules out candidate (b)
+
+Re-ran the Dead Zone route (`--test-deadzone`, `--set present_luma=20`) in-browser via WebLua now that the logging fix means console output is no longer withheld. The black canvas is real and reproduces exactly as before:
+
+```
+[LUMA] present 21: composed mean 0.0 max 0 nonblack 0.0% | scene read mean 0.1 max 191 nonblack 0.1% (frame 1280x720, scene 1280x720, 5 draw(s) so far)
+[LUMA] present 91: composed mean 0.0 max 0 nonblack 0.0% | scene read mean 0.0 max 73 nonblack 0.0% (frame 1280x720, scene 1280x720, 9 draw(s) so far)
+```
+
+Presents are NOT stuck -- crossings/blocks-translated/presents all climb steadily in the periodic `[HB]` heartbeat (e.g. presents 60->64 over a 5s window at ~226s wall time), so this is not a frozen boot; the game genuinely runs and genuinely presents frame after frame, all of them black on screen.
+
+Two things this session ruled out, mechanically rather than by inspection:
+
+* **Boot blackout is not armed.** `x2_boot_blackout_arm()` only fires from `boot_to_host_mode()` in `src/native/startup.c`, gated on `x2_settings_store()->boot_mode != X2_BOOT_NORMAL` -- and the default is `X2_BOOT_NORMAL`, so for a plain `--test-deadzone` run (which uses `X2_BOOT_MAP`, a different code path) it never arms. Confirmed empirically: grepping the full console capture for "blackout" found zero lines, including no "boot blackout: armed" line. Ruled out as a candidate for this run's black frames, not merely deemed unlikely.
+* **Candidate (b) from the 2026-09-15 note ("the capture-owner download mis-lays-out / returns zero ONLY on the WebGPU browser backend") is refuted by a THIRD, independent instrument.** Sampled the live `<canvas>` element directly from the page -- `createImageBitmap(canvas)` into an `OffscreenCanvas`, then `getImageData` -- which reads back through the browser's own compositor, entirely outside any of this title's SDL/GPU capture code. Result: `{w:1280, h:720, mean:0, max:0, nonblackPct:0}`. The pixels the browser is actually compositing to the screen are black, not merely what one CPU readback path reports. A companion screenshot is saved at `scratch/web/gameplay-black-2026-09-18.png`.
+
+So the defect is a genuine composite-content bug, not a stale/broken readback and not a presentation policy withholding frames deliberately. Traced one more layer: `gpu_frame_end()` in `src/gpu/gpu_device.c` only routes the composite through the retained capture texture (`gpu_capture_frame_target`) on the specific frame `present_luma` has requested via `gpu_capture_request()` (`presents % every == 0`); every other frame's `final_output` is the real acquired swapchain texture (`g_output`) directly, and `gpu_present_composite()` blits `g_scene` straight into it. Both paths -- composite into the swapchain texture on an ordinary frame, and composite into the retained offscreen `g_capture_texture` on a `present_luma`-requested frame -- are confirmed black (the canvas sample above was NOT necessarily taken on a capture-requested frame, so the ordinary swapchain-direct path is implicated too, not just the capture path). `gpu_present_composite()` itself is character-for-character the same function `--vk-selftest` exercises and passes; `x2_aspect_fit(1280,720,1280,720,...)` is a 1:1 non-degenerate mapping (ruled out via the log's own `frame 1280x720, scene 1280x720` line, matching the 2026-09-15 note's reasoning).
+
+What's different between the passing selftest and the failing real loop: the selftest's `g_scene` is written and fenced in one isolated, one-shot offscreen sequence before a *separate* composite submission reads it; the real loop draws into `g_scene` and composites out of it *within the same continuously-reused command buffer*, frame after frame, across an acquired swapchain image whose lifecycle (`SDL_WaitAndAcquireGPUSwapchainTexture` each frame) the selftest's second phase touches only once and never composites through. Next step (still cross-repo, still browser-only, per the original ask): trace whether `SDL_BlitGPUTexture` is actually being encoded and executed on the WebGPU backend across a *sustained* multi-frame loop with real swapchain acquisition each frame -- not a single offscreen shot -- since that sustained/swapchain-cycling case is the one variable the passing selftest does not cover. A fix must not be guessed without first showing whether the blit command is missing from the encoded command buffer, silently failing during encoding, or executing against the wrong bound texture on that specific WebGPU code path.

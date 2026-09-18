@@ -738,14 +738,30 @@ remains unqualified until that fork fix lands.
   (`present_luma`, reading back BOTH the logical D3D scene and the composed
   windowed frame, unit-tested to show both answers) proves browser rendering is
   unqualified rather than merely "captured black": on a real native window it
-  reads `scene 34.2 / composed 34.2` non-black and `--vk-selftest` PASSES,
-  while the browser reports composed `max 0` with the scene holding content
-  (`max 191`) and `--vk-selftest` never returns from its first composite fence.
-  The game-to-GPU draw path, the wait convoy (#149) and arg routing (#151) are
-  excluded. The exact failing stage is NOT yet separated: the two numbers come
-  from two different CPU readback paths, so it is either the aspect-fit
-  composite or the capture-owner download breaking only on WebGPU, and the fix
-  is a browser-only fork investigation recorded in issue #152.
+  reads `scene 34.2 / composed 34.2` non-black and `--vk-selftest` PASSES.
+  `--vk-selftest`'s apparent browser hang was corrected 2026-09-17: it was a
+  console-log-batching artifact (fixed in `src/web/browser_log.cpp`), not a
+  WebGPU defect -- the selftest genuinely PASSES in-browser on the pinned SDL
+  WebGPU backend, proving the composite/capture/fence mechanism correct for a
+  synthetic offscreen case. The real Dead Zone gameplay symptom was re-verified
+  2026-09-18 and still reproduces: `composed max 0` while `scene` holds content
+  (`max 191`, `max 73` across two runs), confirmed by a THIRD independent
+  instrument (sampling the live `<canvas>` via `createImageBitmap`+
+  `getImageData`, outside any of this title's own GPU-capture code: `mean 0 max
+  0`). Boot presentation blackout was checked and ruled out (never arms for a
+  `--test-deadzone`/`X2_BOOT_MAP` boot; zero "blackout" log lines). The
+  game-to-GPU draw path, the wait convoy (#149) and arg routing (#151) remain
+  excluded. What's newly separated: the composite-into-retained-offscreen-texture
+  path (used on `present_luma`-requested frames, the same shape the passing
+  selftest exercises) and the composite-straight-into-the-acquired-swapchain
+  path (used every other frame) are BOTH black in real gameplay, so the defect
+  is not specific to one destination texture kind. The remaining, narrowed
+  difference from the passing selftest is sustained multi-frame execution
+  against a repeatedly-reused command buffer and a swapchain image reacquired
+  every frame, which the offscreen one-shot selftest does not exercise. The fix
+  is still a browser-only fork investigation (trace whether `SDL_BlitGPUTexture`
+  is encoded/executed correctly across that sustained loop), recorded in issue
+  #152.
 - **W3, threading and memory: partial.** The product proxies its entry point to
   an Emscripten pthread and transfers its canvas to that worker. Guest sparse
   mappings preserve the 32-bit guest address space without a contiguous 4 GiB
