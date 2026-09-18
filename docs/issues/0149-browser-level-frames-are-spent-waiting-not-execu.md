@@ -38,9 +38,18 @@ draw 0.39 ms/frame`, `JIT: 113258811 blocks entered, 1144722 translated
 
 * `requestAnimationFrame` in the same headless browser runs at 60.7 fps, so the
   page is not presentation-throttled.
-* One wasm module per translated block is not the cost: `new WebAssembly.Module`
-  plus `new WebAssembly.Instance` measured 3.2 us (empty), 4.2-4.7 us (154 B to
-  4 KB), so 1.14M translations is about 5 s of a 140 s run.
+* ~~One wasm module per translated block is not the cost~~ — **RETRACTED
+  2026-09-19, see #153.** The exclusion was measured on a route with 1.14M
+  translations and with modules that were not shaped like real ones. Both
+  halves were wrong for the route that mattered. The per-module figure (3.2 us
+  empty, 4.2-4.7 us for 154 B to 4 KB) left out the shared memory and the
+  twelve function imports a translated block actually links, which raise it to
+  13.7 us; and the Dead Zone route retranslated at **7,244 blocks per second**,
+  not 8k over 140 s, because the storage held a fixed 1,024 modules whatever
+  cache the engine was given. A CPU profile of the busy worker put 42.7% of its
+  samples in `new WebAssembly.Module`/`Instance` and the host glue. Translation
+  was the largest single cost in the browser, and this bullet is why nobody
+  looked at it for four days.
 * Import-call volume is small in a level interval (top by CALLS:
   `ReleaseSemaphore` 2689, `TlsGetValue` 2688, `WaitForMultipleObjects` 2688,
   `strstr` 1461), so this is not call volume.

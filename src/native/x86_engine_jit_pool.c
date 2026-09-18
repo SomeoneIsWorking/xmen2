@@ -35,9 +35,26 @@ struct X86EngineJitPool {
 };
 
 #if defined(__EMSCRIPTEN__)
-/* Each browser worker owns its own JS module registry and indirect table.
- * The 8 MiB limit bounds each guest thread's staged modules independently. */
-enum { kCodeBytes = 8u << 20, kCacheBlocks = 8192u };
+/*
+ * Each browser worker owns its own JS module registry and indirect table, so
+ * both numbers bound ONE guest thread.
+ *
+ * kCacheBlocks now sizes the live translated code as well as the cache that
+ * names it: x86port used to hold a fixed 1,024 WebAssembly modules whatever
+ * cache it was given, so 7 of every 8 entries here could never hold anything
+ * and every translation past the thousandth evicted a block the game was
+ * still running. MEASURED on the Dead Zone route before the fix: 7,244
+ * retranslations per second, with 42.7% of the busy worker's samples inside
+ * `new WebAssembly.Module`/`Instance` plus the host glue and another 9.8% in
+ * the invalidation those evictions drive.
+ *
+ * kCodeBytes is a BUDGET, not an allocation: it bounds the bytes of live
+ * module held at once and must stay clear of the block cap times the mean
+ * block, or bytes silently become the binding limit again. The measured mean
+ * is ~1.4 KB, so 8,192 blocks need ~12 MB and 32 MB leaves the cap where it
+ * is meant to be.
+ */
+enum { kCodeBytes = 32u << 20, kCacheBlocks = 8192u };
 static _Thread_local X86EngineJitNode *current_node;
 #else
 enum { kCodeBytes = 64u << 20, kCacheBlocks = 65536u };

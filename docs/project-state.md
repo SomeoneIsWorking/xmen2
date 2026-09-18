@@ -682,8 +682,26 @@ title-owned `guest_file_io` now copies through the guest-memory model. The
 maintained SDL WebGPU fork now releases cancelled command buffers instead of
 asserting. A later Dead Zone test reached the retail `startFirstMission` boot
 hook and emitted 78 frames over roughly four minutes, but the canvas remained
-black and frame times stayed unplayable. The 2,048-module trial raised renderer
-memory above 1 GiB; the pinned runtime retained its 1,024-module cap.
+black and frame times stayed unplayable. A 2,048-module trial was read as
+raising renderer memory above 1 GiB and the pinned runtime kept its
+1,024-module cap; **that reading was wrong, and the cap was the browser's
+single largest CPU cost** (issue #153). Measured in Chrome 128, a live module
+shaped like a real translated block -- 1,569 bytes, a shared memory and twelve
+function imports -- costs 3.2 KB and 13.7 us, so 8,192 of them is 26 MB, not a
+gigabyte. The cap was fixed inside x86port while the engine was being asked for
+an 8,192-block cache, so seven eighths of that cache could never hold anything
+and the Dead Zone route retranslated 7,244 blocks per second forever; a CPU
+profile put 42.7% of the busy worker in `new WebAssembly.Module`/`Instance` and
+9.8% more in the invalidation those evictions drive. x86port `059244c` makes
+the cap the cache size the caller asked for. Re-measured on the same route with
+the same page command line: **steady-state translations fell from 5,106/s to
+0/s, live module bytes rose from 1.6 MB to 11.2 MB, and guest block entries
+rose from 124,447/s to 4,308,000/s** -- which also retires #149's reading that
+the browser JIT "executes 21-27x slower than native", taken when the browser
+measured 0.74M blocks/s. Frame progress did **not** follow: the re-measured run
+held at 10 presents while executing 4.3M blocks/s, with the interval attributed
+to `KERNEL32.dll!WaitForSingleObject`. Browser playability therefore remains
+unproven, and what now bounds it is a wait, not translation.
 An invalid-ZIP run also emitted Emscripten's main-thread blocking warning, so
 a clean browser console remains unproven.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.
