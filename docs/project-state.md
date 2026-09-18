@@ -765,7 +765,13 @@ fastest frame falls from 160.0 ms to 16.8 ms, and steady-state translation
 falls from about 6,000 blocks per second eleven minutes in to a few hundred.
 What bounds the browser now is translation itself: `WebAssembly.Module` /
 `Instance` construction at about 33% of the guest worker and invalidation at
-about 17%. Browser playability remains unproven and the frame rate is still
+about 17% — and the heartbeat's new invalidation counters say why. **Every
+block the browser translates is evicted in the same five seconds** (measured:
++15,770 translated and +15,770 dropped in one interval), because the JIT's
+8,192-block code arena is smaller than the game's working set, so it drops a
+block to make room for each one it translates. Only 500 of 106,000 of those
+drops came from this port telling the engine that guest memory changed; the
+rest is the engine reclaiming its own arena (issue #161). Browser playability remains unproven and the frame rate is still
 short of playable. The route a player actually takes is worse than the gameplay
 test: **the packaged product started from its saved installation reaches the
 retail "Loading..." prompt and wedges there** (issue #158), with three guest
@@ -777,7 +783,16 @@ and runs a cutscene 11/11 on both the ordinary desktop binary and on
 `build/native-window/x2native` built with `-DX2_GUEST_ARENA_WINDOW=1`.
 `tools/web_console.py` is the instrument that made this measurable — it records
 every console line over CDP, where WebLua's own buffer held 50 and none of them
-the heartbeat.
+the heartbeat. The heartbeat now also reports invalidation in both halves — the
+calls x86port received, the guest bytes they named, the cached blocks they
+actually dropped, and which of guest memory's three operations asked — so the
+residual translation churn can be attributed rather than guessed at. Separately,
+that window is 2.5 GB of **committed** memory before the first frame, and a
+loaded host refuses it by name and the product will not start (issue #159); the
+region sizes in `guest_layout.h` are collision-avoiding ceilings, not measured
+requirements. A browser with no GPU does worse than refuse: the display-failure
+path reaches for `document` from a guest worker, kills it, and wedges the run
+(issue #160).
 An invalid-ZIP run also emitted Emscripten's main-thread blocking warning, so
 a clean browser console remains unproven.
 The title CMake path compiles and links its native owners for Emscripten 4.0.16.
