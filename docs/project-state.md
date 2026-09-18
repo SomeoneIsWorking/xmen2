@@ -739,7 +739,34 @@ one 4 GiB arena and a guest address is a host address plus a constant. The
 named fix is a flat guest window in the WASM linear memory with a page-permission
 table, so an access becomes two memory loads instead of two calls and two
 searches; the footprint fits, at 1.88 GiB against a configured 4 GiB maximum.
-That is the next frontier; the renderer and the filesystem are no longer the cost.
+**That fix is built and measured.** x86port `035e2f7` gives `X86pMem` an
+optional byte-per-page permission table for the contiguous mode and emits the
+check inline — a bounds compare, one `i32.load8_u` of the permission byte (two
+when the access straddles a page), the base add, and a direct wasm load — with
+the sparse mode and the desktop path untouched; `test_memory_perms` (23 checks)
+and `test_wasm_perms` (9, every one through `x86p_jit_engine_run`, so the
+emitted guard is what answers) fail when the guard or its second page load is
+deleted. `src/native/guest_memory.c` is now the single owner for every host and
+`guest_memory_sparse.c` is gone: on a host with no VM it holds one `calloc`ed
+window over the packed layout in the new `src/native/guest_layout.h` — one
+authority for the image, the relocated modules, the guest reservations, the
+runtime heap and the file-view arena, which had been chosen separately and
+overlapped, the module scan running through both the reservation and view
+arenas — and projects the Win32 page table it already kept into the permission
+bytes x86port reads. `tests/test_guest_memory_window.c` proves that owner on the
+desktop with `X2_GUEST_ARENA_WINDOW=1` (43 checks, including that a released and
+remapped page reads zero rather than what the previous mapping left, and that a
+decommit and a recommit each reach the execution owner). Re-measured on the Dead
+Zone route with the same page command line: **`x86p_sparse_span_access` is absent
+from the guest-worker profile entirely, and guest memory access is about 5% of
+that worker against 62%**; the route reaches 50 presents at 41 s rather than
+111 s, 200 at 106 s rather than 206 s and 800 at 241 s rather than 456 s, its
+fastest frame falls from 160.0 ms to 16.8 ms, and steady-state translation
+falls from about 6,000 blocks per second eleven minutes in to a few hundred.
+What bounds the browser now is translation itself: `WebAssembly.Module` /
+`Instance` construction at about 33% of the guest worker and invalidation at
+about 17%. Browser playability remains unproven and the frame rate is still
+short of playable.
 `tools/web_console.py` is the instrument that made this measurable — it records
 every console line over CDP, where WebLua's own buffer held 50 and none of them
 the heartbeat.
@@ -767,8 +794,8 @@ one must be red, so the mip control sample is wrong under WebGPU. That is the
 first stage-level discriminator #152 has had.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
-  Pinned x86port `75b2cec8e5d310fc723f34eb4f86278f2dfc97ab` and jit-common
-  `4c58336f5d187d556755c20c983b5dc168f8f9b1` instantiate emitted modules, publish
+  Pinned x86port `035e2f7f72938699299685a269394f0aed791e83` and jit-common
+  `329d066cf0de17d47bae74a47880e4170c2ef39b` instantiate emitted modules, publish
   indirect-table entries, dispatch guest blocks and reclaim cache entries.
   The pinned suite passed 43 native tests (including the lowering oracle, 1097
   checks with 38 of 38 lowered blocks executed in a real WebAssembly engine and

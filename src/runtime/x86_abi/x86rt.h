@@ -16,7 +16,7 @@
 
 #include "cpu.h"
 
-#if defined(__EMSCRIPTEN__) || defined(X2_GUEST_MEMORY_SPARSE)
+#if defined(__EMSCRIPTEN__)
 #include "guest_memory.h"
 static inline void *x86_guest_pointer(uint32_t address) {
   return guest_memory_pointer(address);
@@ -32,23 +32,17 @@ static inline void *x86_guest_pointer(uint32_t address) {
 }
 #endif
 
-/* One access seam keeps native overrides and translated sparse operands on
- * the same checked spans, while desktop/Android retain direct unaligned loads.
- */
+/* One access seam for native overrides on every host. Every target now reaches
+ * guest memory the same way -- a base plus the guest address -- so the two
+ * spellings this used to select between had become the same one. Permissions
+ * are the host VM's business, or on a host without one the page table the
+ * memory owner keeps and generated code reads; they were never this seam's. */
 static inline void x86_guest_read(uint32_t address, void *out, size_t size) {
-#if defined(X2_GUEST_MEMORY_SPARSE)
-  guest_memory_read(address, out, size);
-#else
   memcpy(out, x86_guest_pointer(address), size);
-#endif
 }
 static inline void x86_guest_write(uint32_t address, const void *data,
                                    size_t size) {
-#if defined(X2_GUEST_MEMORY_SPARSE)
-  guest_memory_write(address, data, size);
-#else
   memcpy(x86_guest_pointer(address), data, size);
-#endif
 }
 
 /* x86 permits unaligned integer and floating-point memory operands. memcpy is

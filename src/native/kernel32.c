@@ -24,6 +24,7 @@
 #include "guest_command_line.h"
 #include "guest_file_io.h"
 #include "guest_heap.h"
+#include "guest_layout.h"
 #include "guest_memory.h"
 #include "host_dir_cache.h"
 #include "igvk_ark.h"
@@ -1813,10 +1814,6 @@ void imp_KERNEL32_CreateFileW(CPU *C) {
  * rounded DOWN and the difference added back to the returned pointer -- which
  * is what the guest would get from Windows for the same call.
  */
-#define VIEW_ARENA_BASE 0x98000000u /* above the 512 MB guest heap */
-#define VIEW_ARENA_END 0xF0000000u
-
-static uint32_t g_view_cursor = VIEW_ARENA_BASE;
 
 #define MAX_VIEWS 64
 static struct {
@@ -1870,6 +1867,7 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
   uint32_t aligned = off_lo & ~(uint32_t)(page - 1);
   uint32_t delta = off_lo - aligned;
   size_t len = (want ? (size_t)want : hm->maplen - (size_t)off_lo) + delta;
+  uint32_t view = 0;
   int i;
 
   if (off_hi) {
@@ -1881,29 +1879,26 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
     return;
   }
   len = (len + (size_t)page - 1) & ~((size_t)page - 1);
-  if ((uint64_t)g_view_cursor + len > VIEW_ARENA_END) {
-    x2_log_error("kernel32: no room for a %zu byte view: the file-view "
-                 "arena 0x%08x..0x%08x is full at 0x%08x.\n",
-                 len, VIEW_ARENA_BASE, VIEW_ARENA_END, g_view_cursor);
-    g_last_error = 8;
-    ret_std(C, 0, 5);
-    return;
-  }
   {
+    /* Scanned from the base every time, not walked with a cursor: a cursor
+       never came back down, so unmapping a view returned nothing and the arena
+       was consumed by the total of every view a run had ever made rather than
+       by the ones live at once. */
     uint32_t mapped_address;
-    if (guest_memory_map_any(g_view_cursor, VIEW_ARENA_END, 0x10000u, len,
-                             PROT_READ | PROT_WRITE, &mapped_address) != 0) {
-      x2_log_error("kernel32: MapViewOfFile could not place a %zu byte "
-                   "view at 0x%08x: %s\n",
-                   len, g_view_cursor, strerror(errno));
+    if (guest_memory_map_any(GUEST_VIEW_ARENA_BASE, GUEST_VIEW_ARENA_END,
+                             0x10000u, len, PROT_READ | PROT_WRITE,
+                             &mapped_address) != 0) {
+      x2_log_error("kernel32: no room for a %zu byte view: the file-view "
+                   "arena 0x%08x..0x%08x has no free span that size.\n",
+                   len, GUEST_VIEW_ARENA_BASE, GUEST_VIEW_ARENA_END);
       g_last_error = 8;
       ret_std(C, 0, 5);
       return;
     }
-    g_view_cursor = mapped_address;
+    view = mapped_address;
   }
   {
-    unsigned char *destination = guest_memory_pointer(g_view_cursor);
+    unsigned char *destination = guest_memory_pointer(view);
     size_t remaining = len;
     off_t file_offset = (off_t)aligned;
     while (remaining) {
@@ -1918,7 +1913,7 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
         break;
       if (errno == EINTR)
         continue;
-      guest_memory_release(g_view_cursor, len);
+      guest_memory_release(view, len);
       g_last_error = ERROR_FILE_NOT_FOUND;
       ret_std(C, 0, 5);
       return;
@@ -1926,7 +1921,7 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
   }
   for (i = 0; i < MAX_VIEWS; i++)
     if (!g_views[i].addr) {
-      g_views[i].addr = g_view_cursor;
+      g_views[i].addr = view;
       g_views[i].len = len;
       break;
     }
@@ -1935,8 +1930,7 @@ void imp_KERNEL32_MapViewOfFile(CPU *C) {
                  "cannot be unmapped later.\n",
                  MAX_VIEWS);
 
-  ret_std(C, g_view_cursor + delta, 5);
-  g_view_cursor += (uint32_t)len;
+  ret_std(C, view + delta, 5);
 }
 
 void imp_KERNEL32_UnmapViewOfFile(CPU *C) {
@@ -2617,8 +2611,8 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
      *
      * It has to land in the low 4 GB, because the guest stores the
      * pointer, and it must not collide with the mapped modules
-     * (0x00400000 and 0x20000000+) or the runtime's own arena
-     * (X2_RUNTIME_BASE and up). The window between them is reserved for
+     * (GUEST_IMAGE_BASE and GUEST_MODULE_LO+) or the runtime's own
+     * arena (GUEST_RUNTIME_BASE and up). The window between them is for
      * this, walked with MAP_FIXED_NOREPLACE so a collision is refused by
      * the kernel rather than found later by the guest.
      *
@@ -2627,8 +2621,8 @@ void imp_KERNEL32_VirtualAlloc(CPU *C) {
      * reserve and commit invisible, which is exactly the bug the old abort
      * was there to avoid.
      */
-    const uint32_t RES_LO = 0x30000000u, RES_HI = 0x6F000000u;
-    static uint32_t next = 0x30000000u;
+    const uint32_t RES_LO = GUEST_RESERVE_LO, RES_HI = GUEST_RESERVE_HI;
+    static uint32_t next = GUEST_RESERVE_LO;
     uint32_t len = (size + 0xFFFu) & ~0xFFFu;
     int tries;
     if (!len) {

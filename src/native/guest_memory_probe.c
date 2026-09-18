@@ -1,11 +1,12 @@
 /* Checked diagnostic reads return refusal instead of recursively faulting.
- * Browser probes share the sparse owner; native hosts retain the process VM
- * reader that can safely inspect an unmapped guest pointer in a fault report.
+ * The browser has no VM to ask, so it consults the page table the guest memory
+ * owner keeps; native hosts retain the process VM reader that can safely
+ * inspect an unmapped guest pointer in a fault report.
  */
 #include "guest_memory.h"
 #include "x86rt_native.h"
 
-#if !defined(X2_GUEST_MEMORY_SPARSE)
+#if !GUEST_ARENA_WINDOW
 #include "platform_posix.h"
 #include <sys/uio.h>
 #if defined(__ANDROID__)
@@ -18,7 +19,7 @@
 #endif
 
 static int process_read(uint32_t addr, void *dst, size_t n) {
-#if defined(X2_GUEST_MEMORY_SPARSE)
+#if GUEST_ARENA_WINDOW
   return guest_memory_try_read(addr, dst, n);
 #else
   const void *source = guest_memory_const_pointer(addr);

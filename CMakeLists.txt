@@ -1377,16 +1377,11 @@ target_link_libraries(x2_rmlui_ui PUBLIC x2_rmlui_backend
 
 include(cmake/Shaders.cmake)
 
-if(EMSCRIPTEN)
-    set(X2_GUEST_MEMORY_SOURCE src/native/guest_memory_sparse.c)
-else()
-    set(X2_GUEST_MEMORY_SOURCE src/native/guest_memory.c)
-endif()
 set(X2_NATIVE_SOURCES
     src/native/x2native.c
     src/native/fault_report.c
     src/native/engine_file_path.c
-    ${X2_GUEST_MEMORY_SOURCE}
+    src/native/guest_memory.c
     src/native/guest_memory_probe.c
     src/native/x2native_options.c
     src/native/install_picker.cpp
@@ -1746,15 +1741,15 @@ if(NOT TARGET x86port_runtime)
         "has been removed and is not a fallback; update shared/x86port.")
 endif()
 
-add_executable(test_guest_memory_sparse tests/test_guest_memory_sparse.c
-    src/native/guest_memory_sparse.c src/native/guest_memory_probe.c
+add_executable(test_guest_memory_window tests/test_guest_memory_window.c
+    src/native/guest_memory.c src/native/guest_memory_probe.c
     src/native/guest_file_io.c)
-target_include_directories(test_guest_memory_sparse PRIVATE
+target_include_directories(test_guest_memory_window PRIVATE
     src/native src/runtime/x86_abi)
-target_compile_definitions(test_guest_memory_sparse PRIVATE
-    X2_GUEST_MEMORY_SPARSE=1 X86_NATIVE=1)
-target_link_libraries(test_guest_memory_sparse PRIVATE x86port_runtime)
-add_test(NAME guest_memory_sparse COMMAND test_guest_memory_sparse)
+target_compile_definitions(test_guest_memory_window PRIVATE
+    X2_GUEST_ARENA_WINDOW=1 X86_NATIVE=1)
+target_link_libraries(test_guest_memory_window PRIVATE x86port_runtime)
+add_test(NAME guest_memory_window COMMAND test_guest_memory_window)
 
 # Tests compile title-native call adapters directly. Any target that includes
 # the title x86 ABI also consumes the canonical x86port CPU type and must link

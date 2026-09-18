@@ -1,7 +1,7 @@
 # 0157 — every guest memory access in the browser is a host call and a binary search
 
 - **State items:** S021
-- **Status:** measured and localized; the fix is an architecture change, not yet made
+- **Status:** fixed and re-measured; the cost this issue names is gone from the profile
 - **Follows:** #155 and #156, which removed the costs that were hiding this one
 
 ## What the profile says
@@ -109,6 +109,53 @@ and the design above is premature.
 It was taken. The worker is 98.6% working and `x86p_sparse_span_access` is
 38.61% of it — confirmed, and the table above is now that direct measurement
 rather than the inference.
+
+## What was built, and what it measures now
+
+x86port `be53c7f` gave `X86pMem` an optional `perms` byte-per-page table and a
+`page_shift` for the contiguous mode, and the WASM backend emits the check
+inline: a bounds compare, one `i32.load8_u` of the permission byte (two when
+the access straddles a page), then the base add and a direct wasm load. The
+sparse mode and the desktop path are untouched. `035e2f7` then fixed a defect
+that landed with it: the span stopped at every page boundary, which is right
+for the walkers that loop but refused every `x86p_mem_resolve` longer than a
+page, so the bulk copy and fill behind REP MOVS/STOS silently fell back to
+element-at-a-time work on exactly the mappings that have a table.
+
+`src/native/guest_memory.c` is now the one owner for every host.
+`guest_memory_sparse.c` is gone. On a host with no VM it `calloc`s a window
+covering the packed layout in the new `src/native/guest_layout.h` — one
+authority for where the image, the relocated modules, the guest reservations,
+the runtime heap and the file-view arena live, packed so the window is 2.5 GiB
+rather than 4 — and projects the same Win32 page table it already kept into
+the permission bytes x86port reads. `guest_layout.h` exists because those
+regions had been chosen separately in the files that place things and two of
+them overlapped: the module scan ran to `0xF0000000` straight through the
+reservation arena at `0x30000000` and the view arena at `0x98000000`.
+
+**Re-measured on the Dead Zone route, same page command line, guest worker
+profile: `x86p_sparse_span_access` is absent from the profile entirely.** What
+is left of guest memory access is `x86p_mem_read_bytes` 2.37%,
+`x86p_mem_accessible` 1.43%, `x86p_mem_write_bytes` 0.86% and `x86p_mem_read`
+0.41% — about **5% of the guest worker against the 62% this issue opened
+with**. The new top costs are translation itself: `WebAssembly.Module` /
+`Instance` construction at about 33% and invalidation (`jc_block_invalidate_range`,
+`x86p_jit_storage_invalidate`) at about 17%.
+
+Frame progress on the same route, by the age at which each build reached a
+given present count:
+
+| presents | sparse | window |
+|---|---|---|
+| 50 | 111 s | 41 s |
+| 100 | 151 s | 61 s |
+| 200 | 206 s | 106 s |
+| 400 | 311 s | 151 s |
+| 800 | 456 s | 241 s |
+
+The fastest frame in the run went from 160.0 ms to 16.8 ms. Steady-state
+translation also fell: the sparse run was still translating about 6,000 blocks
+per second eleven minutes in, where the window run settles to a few hundred.
 
 `tools/web_profile.py` gained the per-target breakdown in the same session,
 because its own docstring had claimed "a per-worker sample count is itself the

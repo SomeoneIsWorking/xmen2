@@ -9,6 +9,7 @@
  * whether those are identity-mapped (Linux) or translated through a high 4 GB
  * arena (arm64 macOS, whose Mach-O __PAGEZERO occupies the low 4 GB).
  */
+#include "guest_layout.h"
 #include "guest_memory.h"
 #include "pe_map.h"
 #include "platform_file_map.h"
@@ -93,7 +94,8 @@ int pe_map(const char *path, PeImage *out) {
        Relocation is fine because absolute references resolve against the
        module's OWN base; what would not be fine is relocating silently,
        so the new base is returned and the caller prints it. */
-    if (guest_memory_map_any(0x20000000u, 0xF0000000u, 0x01000000u, imgsize,
+    if (guest_memory_map_any(GUEST_MODULE_LO, GUEST_MODULE_HI, 0x01000000u,
+                             imgsize,
                              PROT_READ | PROT_WRITE, &base) != 0) {
       x2_log_error("pe_map: %s wants 0x%08x, which is taken, and no "
                    "free span of %u bytes was found below 4 GB. Guest "

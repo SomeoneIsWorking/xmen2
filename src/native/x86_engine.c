@@ -1,6 +1,7 @@
 #include "x86_engine.h"
 
 #include "guest_memory.h"
+#include "platform_mman.h"
 #include "x2_log.h"
 #include "x86_engine_dispatch.h"
 #include "x86_engine_intercept.h"
@@ -26,13 +27,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-
-/*
- * The guest arena, as x86port sees it.
- * guest_memory reserves the 32-bit space at one host base and maps pages
- * into it; bounds checking is the host's, taking SIGSEGV on unmapped pages.
- */
-#define ENGINE_MEM_SIZE 0xFFFFFFFFu
 
 /*
  * Step cap for one call. The PROGRAM's entry point is exempt: main does not
@@ -92,13 +86,19 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   }
   if (!map_return_page(reason, reason_len))
     return 0;
-#if defined(__EMSCRIPTEN__)
-  g_engine.mem = *guest_memory_model();
-#else
-  g_engine.mem.host = (uint8_t *)g_guest_memory_base;
-  g_engine.mem.lo = 0;
-  g_engine.mem.size = ENGINE_MEM_SIZE;
-#endif
+  guest_memory_set_remap_observer(x2_engine_invalidate_memory);
+  {
+    /* The page table the memory owner keeps is handed to x86port as-is, so the
+       two spellings of "readable" and "writable" have to be the same bits. */
+    const GuestMemoryWindow window = guest_memory_window();
+    _Static_assert(PROT_READ == kX86pMemRead && PROT_WRITE == kX86pMemWrite,
+                   "guest_memory's page permissions are x86port's");
+    g_engine.mem.host = window.host;
+    g_engine.mem.lo = 0;
+    g_engine.mem.size = window.size;
+    g_engine.mem.perms = window.perms;
+    g_engine.mem.page_shift = window.page_shift;
+  }
   g_engine.jit = x86_engine_jit_pool_create(&g_engine.mem, reason, reason_len);
   if (!g_engine.jit)
     return 0;
@@ -106,11 +106,9 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   lucent_log_info(
       "engine",
       "runtime JIT ready; guest arena %s, return trampoline at 0x%08x",
-#if defined(__EMSCRIPTEN__)
-      "sparse browser allocations",
-#else
-      g_guest_memory_base ? "relocated" : "at the host's own addresses",
-#endif
+      g_engine.mem.perms ? "a window with its own page permissions"
+      : g_guest_memory_base ? "relocated"
+                            : "at the host's own addresses",
       ENGINE_RETURN_ADDR);
   return 1;
 }

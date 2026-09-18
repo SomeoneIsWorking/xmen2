@@ -32,6 +32,7 @@
 #include "guest_body.h"
 #include "guest_clock.h"
 #include "guest_heap.h"
+#include "guest_layout.h"
 #include "guest_memory.h"
 #include "guest_modules.h"
 #include "heartbeat.h"
@@ -382,8 +383,6 @@ static int tib_init(void) {
  * different memory by construction.
  */
 #define GUEST_STACK 0x00100000u
-/* The runtime's own memory lives above everything the guest asks for. */
-#define X2_RUNTIME_BASE 0x70000000u
 static uint32_t guest_stack_top;
 
 static int guest_stack_init(void) {
@@ -393,9 +392,9 @@ static int guest_stack_init(void) {
      upward from just above its image reserving arenas; anything of ours in
      that path collides with it. Measured: with the stack at 0x30000000 the
      guest's arena walk ran straight into it. */
-  if (pe_map_anon_low(X2_RUNTIME_BASE, GUEST_STACK) != 0)
+  if (pe_map_anon_low(GUEST_RUNTIME_BASE, GUEST_STACK) != 0)
     return -1;
-  guest_stack_top = X2_RUNTIME_BASE + GUEST_STACK - 64u;
+  guest_stack_top = GUEST_RUNTIME_BASE + GUEST_STACK - 64u;
   return 0;
 }
 
@@ -509,7 +508,7 @@ static int modules_init(void) {
  * the thing this binary exists to establish.
  */
 #define SCRATCH                                                                \
-  (X2_RUNTIME_BASE + 0x00200000u) /* a guest-addressable scratch object */
+  (GUEST_RUNTIME_BASE + 0x00200000u) /* a guest-addressable scratch object */
 
 static int fails;
 /*
@@ -1770,7 +1769,7 @@ int main(int argc, char **argv) {
    * the run is started.
    */
   if (d3d8selftest) {
-    if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x20000000u) != 0)
+    if (guest_heap_init(GUEST_HEAP_BASE, GUEST_HEAP_SIZE) != 0)
       return 1;
     return d3d8_host_selftest();
   }
@@ -1848,7 +1847,7 @@ int main(int argc, char **argv) {
    * The arena is reserved, not committed, so the size costs address space
    * rather than RAM.
    */
-  if (guest_heap_init(X2_RUNTIME_BASE + 0x01000000u, 0x20000000u) != 0)
+  if (guest_heap_init(GUEST_HEAP_BASE, GUEST_HEAP_SIZE) != 0)
     return 1;
   atexit(guest_heap_report);
   {
