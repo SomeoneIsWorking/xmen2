@@ -15,7 +15,7 @@
 #include "gpu_device.h"
 #include "gpu_draw.h"
 #include "gpu_frame_timing_report.h"
-#include "x86_engine.h"
+#include "x86_engine_report.h"
 #include "x86_hotep.h"
 #include "x86_thunk_probe.h"
 #include "x86rt.h"
@@ -110,7 +110,7 @@ static void *heartbeat_thread(void *arg) {
     if (g_silent)
       continue;
 
-    if (x2_engine_request_live_report())
+    if (x86_engine_report_request())
       x2_log_info("[HB] JIT snapshot pending: no guest boundary since the "
                   "previous request");
     t = now_s() - g_t0;

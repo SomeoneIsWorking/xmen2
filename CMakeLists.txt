@@ -1404,6 +1404,7 @@ set(X2_NATIVE_SOURCES
     src/native/x86_engine.c
     src/native/x86_engine_diagnostic.c
     src/native/x86_engine_jit_pool.c
+    src/native/x86_engine_report.c
     src/native/guest_command_line.c
     src/native/guest_modules.c
     src/native/host_imports_advapi32.c

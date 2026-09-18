@@ -234,6 +234,33 @@ int main(void) {
         "map-any preserves the requested guest range and alignment");
   check(guest_memory_release(address, 4096) == 0, "release map-any allocation");
   check(invalidations >= 10, "every remap told the execution owner");
+
+  /*
+   * And the notifications are attributed. The observer alone says translated
+   * code was thrown away; without a per-cause count there is no way to tell a
+   * guest that rewrites its own pages from this owner notifying about a
+   * protection change it did not need to report. The run above did all three
+   * operations, so all three must be non-zero -- a cause left at zero here
+   * would mean it is never counted, not that it never happened.
+   */
+  {
+    const GuestMemoryRemapCounts counts = guest_memory_remap_counts();
+    uint64_t total = 0;
+    int cause;
+    for (cause = 0; cause < kGuestRemapCauseCount; cause++) {
+      total += counts.calls[cause];
+      check(counts.calls[cause] > 0,
+            guest_memory_remap_cause_name((GuestMemoryRemapCause)cause));
+      check(counts.pages[cause] >= counts.calls[cause],
+            "and each of its calls covered at least a page");
+    }
+    check(total == invalidations,
+          "the causes account for every notification, with none unattributed");
+    printf("  remaps by cause: map %llu, protect %llu, release %llu\n",
+           (unsigned long long)counts.calls[kGuestRemapMap],
+           (unsigned long long)counts.calls[kGuestRemapProtect],
+           (unsigned long long)counts.calls[kGuestRemapRelease]);
+  }
   printf("guest window memory: %u checks, %u failures, %u invalidations\n",
          checks, failures, invalidations);
   return failures ? 1 : 0;

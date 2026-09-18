@@ -196,17 +196,6 @@ void x86_engine_jit_pool_publish_stats(X86EngineJitPool *pool,
 #endif
 }
 
-static void add_stats(X86pJitEngineStats *sum, const X86pJitEngineStats *item) {
-  sum->blocks_entered += item->blocks_entered;
-  sum->blocks_translated += item->blocks_translated;
-  sum->guest_insns_translated += item->guest_insns_translated;
-  sum->conds_translated += item->conds_translated;
-  sum->conds_inline += item->conds_inline;
-  sum->translate_refusals += item->translate_refusals;
-  sum->cache_flushes += item->cache_flushes;
-  sum->code_bytes_used += item->code_bytes_used;
-}
-
 void x86_engine_jit_pool_detach_current(X86EngineJitPool *pool) {
 #if defined(__EMSCRIPTEN__)
   X86EngineJitNode **cursor;
@@ -221,7 +210,7 @@ void x86_engine_jit_pool_detach_current(X86EngineJitPool *pool) {
       X86EngineJitNode *node = *cursor;
       *cursor = node->next;
       stats.code_bytes_used = 0u;
-      add_stats(&pool->retired, &stats);
+      x86p_jit_engine_stats_add(&pool->retired, &stats);
       pool_unlock(pool);
       x86p_jit_engine_destroy(node->jit);
       free(node);
@@ -290,7 +279,7 @@ void x86_engine_jit_pool_stats(const X86EngineJitPool *pool,
 #else
     x86p_jit_engine_stats(node->jit, &current);
 #endif
-    add_stats(out, &current);
+    x86p_jit_engine_stats_add(out, &current);
   }
   pool_unlock((X86EngineJitPool *)pool);
 }

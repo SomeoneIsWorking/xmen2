@@ -3,11 +3,12 @@
 #include "guest_memory.h"
 #include "platform_mman.h"
 #include "x2_log.h"
+#include "x86_engine_diagnostic.h"
 #include "x86_engine_dispatch.h"
 #include "x86_engine_intercept.h"
-#include "x86_engine_diagnostic.h"
 #include "x86_engine_jit_pool.h"
 #include "x86_engine_private.h"
+#include "x86_engine_report.h"
 #include "x86_guest_call_stack.h"
 #include "x86_hotep.h"
 #include "x86rt.h"
@@ -106,7 +107,7 @@ int x2_engine_init(char *reason, unsigned reason_len) {
   lucent_log_info(
       "engine",
       "runtime JIT ready; guest arena %s, return trampoline at 0x%08x",
-      g_engine.mem.perms ? "a window with its own page permissions"
+      g_engine.mem.perms    ? "a window with its own page permissions"
       : g_guest_memory_base ? "relocated"
                             : "at the host's own addresses",
       ENGINE_RETURN_ADDR);
@@ -134,36 +135,6 @@ int x2_engine_active(void) { return g_engine.ready; }
 const char *x2_engine_name(void) { return "jit"; }
 
 /* ---- the run loop ------------------------------------------------------ */
-
-/* The heartbeat requests a snapshot; only the guest-lock owner reads JIT
- * state. A pending request is reported by the heartbeat if no boundary runs. */
-static atomic_int g_live_requested = 1;
-int x2_engine_request_live_report(void) {
-  return atomic_exchange_explicit(&g_live_requested, 1, memory_order_relaxed);
-}
-static void report_live_if_requested(void) {
-  if (!atomic_load_explicit(&g_live_requested, memory_order_relaxed) ||
-      !atomic_exchange_explicit(&g_live_requested, 0, memory_order_relaxed))
-    return;
-  X86pJitEngineStats js = {0};
-  if (g_engine.jit)
-    x86_engine_jit_pool_stats(g_engine.jit, &js);
-  lucent_log_info(
-      "engine",
-      "[HB] JIT: %llu blocks entered, %llu translated (%llu instructions); "
-      "%lu native hand-backs; %llu refusals of %llu translation attempts; "
-      "%llu cache flushes, %llu bytes code; %llu of %llu condition(s) "
-      "lowered inline; product fallback unavailable",
-      (unsigned long long)js.blocks_entered,
-      (unsigned long long)js.blocks_translated,
-      (unsigned long long)js.guest_insns_translated, g_engine.callouts,
-      (unsigned long long)js.translate_refusals,
-      (unsigned long long)(js.blocks_translated + js.translate_refusals),
-      (unsigned long long)js.cache_flushes,
-      (unsigned long long)js.code_bytes_used,
-      (unsigned long long)js.conds_inline,
-      (unsigned long long)js.conds_translated);
-}
 
 static const char *named(uint32_t addr) {
   const char *n = x86_native_name_at(addr);
@@ -249,7 +220,7 @@ int x2_engine_call(uint32_t addr, CPU *C) {
   x86_guest_call_push(&call_frame, cpu, addr, return_to, entry_esp);
 
   for (;;) {
-    report_live_if_requested();
+    x86_engine_report_live_if_requested(g_engine.jit, g_engine.callouts);
     /*
      * GUEST setjmp, taken in the engine's own frame.
      *

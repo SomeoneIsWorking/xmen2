@@ -24,6 +24,7 @@
 #include "platform_posix.h"
 #include "platform_threads.h"
 #include <errno.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -101,10 +102,43 @@ void guest_memory_set_remap_observer(GuestMemoryRemapObserver observer) {
   g_remapped = observer;
 }
 
-static void notify_remap(uint32_t address, uint32_t size) {
+static atomic_ullong g_remap_calls[kGuestRemapCauseCount];
+static atomic_ullong g_remap_pages[kGuestRemapCauseCount];
+
+static void notify_remap(GuestMemoryRemapCause cause, uint32_t address,
+                         uint32_t size) {
+  atomic_fetch_add_explicit(&g_remap_calls[cause], 1u, memory_order_relaxed);
+  atomic_fetch_add_explicit(&g_remap_pages[cause], size / GUEST_PAGE_SIZE,
+                            memory_order_relaxed);
   if (g_remapped) {
     g_remapped(address, size);
   }
+}
+
+GuestMemoryRemapCounts guest_memory_remap_counts(void) {
+  GuestMemoryRemapCounts out;
+  int i;
+  for (i = 0; i < kGuestRemapCauseCount; i++) {
+    out.calls[i] =
+        atomic_load_explicit(&g_remap_calls[i], memory_order_relaxed);
+    out.pages[i] =
+        atomic_load_explicit(&g_remap_pages[i], memory_order_relaxed);
+  }
+  return out;
+}
+
+const char *guest_memory_remap_cause_name(GuestMemoryRemapCause cause) {
+  switch (cause) {
+  case kGuestRemapMap:
+    return "map";
+  case kGuestRemapProtect:
+    return "protect";
+  case kGuestRemapRelease:
+    return "release";
+  case kGuestRemapCauseCount:
+    break;
+  }
+  return "unknown";
 }
 
 static void *host_pointer(uint32_t address) {
@@ -297,7 +331,7 @@ int guest_memory_map_fixed(uint32_t address, size_t size, int protection) {
   }
   start = (uint64_t)first * GUEST_PAGE_SIZE;
   host = host_pointer((uint32_t)start);
-  notify_remap((uint32_t)start, count * GUEST_PAGE_SIZE);
+  notify_remap(kGuestRemapMap, (uint32_t)start, count * GUEST_PAGE_SIZE);
 #if GUEST_ARENA_OWNED
   memset(g_pages + first, PAGE_MAPPED | (unsigned char)protection, count);
   if (apply_host_protection(first, count) != 0) {
@@ -355,7 +389,8 @@ int guest_memory_protect(uint32_t address, size_t size, int protection) {
    * would keep running them. Issue #157 -- dropping this left the guest
    * spinning in code that had already been thrown away.
    */
-  notify_remap(first * GUEST_PAGE_SIZE, count * GUEST_PAGE_SIZE);
+  notify_remap(kGuestRemapProtect, first * GUEST_PAGE_SIZE,
+               count * GUEST_PAGE_SIZE);
 #if GUEST_ARENA_OWNED
   pthread_mutex_lock(&g_pages_lock);
   for (i = 0; i < count; i++)
@@ -384,7 +419,8 @@ int guest_memory_release(uint32_t address, size_t size) {
   if (span(address, size, &first, &count) != 0)
     return -1;
   host = host_pointer(first * GUEST_PAGE_SIZE);
-  notify_remap(first * GUEST_PAGE_SIZE, count * GUEST_PAGE_SIZE);
+  notify_remap(kGuestRemapRelease, first * GUEST_PAGE_SIZE,
+               count * GUEST_PAGE_SIZE);
   pthread_mutex_lock(&g_pages_lock);
 #if GUEST_ARENA_OWNED
   for (i = 0; i < count; i++)

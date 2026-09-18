@@ -42,6 +42,29 @@ typedef void (*GuestMemoryRemapObserver)(uint32_t address, uint32_t size);
 void guest_memory_set_remap_observer(GuestMemoryRemapObserver observer);
 
 /*
+ * Why a notification was sent, and how many of each have been. The execution
+ * owner's own counters say how much translated code an invalidation threw
+ * away; these say which of this owner's three operations asked for it, which
+ * is the half needed to decide whether a notification was worth sending. A
+ * cause that never fires reads as zero rather than as absent, so "the guest
+ * never did this" and "nobody counted it" stay apart.
+ */
+typedef enum GuestMemoryRemapCause {
+  kGuestRemapMap,
+  kGuestRemapProtect,
+  kGuestRemapRelease,
+  kGuestRemapCauseCount
+} GuestMemoryRemapCause;
+
+typedef struct GuestMemoryRemapCounts {
+  uint64_t calls[kGuestRemapCauseCount];
+  uint64_t pages[kGuestRemapCauseCount];
+} GuestMemoryRemapCounts;
+
+GuestMemoryRemapCounts guest_memory_remap_counts(void);
+const char *guest_memory_remap_cause_name(GuestMemoryRemapCause cause);
+
+/*
  * Whether the guest space is a window inside this program's own memory rather
  * than host address space with its own protection. The browser has no VM to
  * ask; X2_GUEST_ARENA_WINDOW forces the answer so the same owner can be run,
