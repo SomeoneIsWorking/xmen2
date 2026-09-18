@@ -76,6 +76,16 @@ lucent::cvar::Var<bool> g_x86_import_fastpath{"engine.import_fastpath", true};
  * "where does in-game guest time go" now that the crossing cost is gone. */
 lucent::cvar::Var<long> g_jit_profile{"jit.profile", 0};
 
+/* The JIT code arena's two independent limits, in blocks and in megabytes.
+ * Either can be the one that binds, and which one it is decides what to fix,
+ * so they are two knobs rather than one. 0 or negative keeps the built-in
+ * default for the host. They exist because the game's working set of
+ * translated blocks has never been measured: the browser evicts a block for
+ * almost every block it translates (issue #161), and finding the size that
+ * stops it needs runs past it rather than a rebuild per guess. */
+lucent::cvar::Var<long> g_jit_blocks{"jit.blocks", 0};
+lucent::cvar::Var<long> g_jit_code_mb{"jit.code_mb", 0};
+
 /* >0: arm the hot-entry-point probe for that many entry points; the heartbeat
  * then prints how the frame's wall time splits between host imports and guest
  * bodies. A diagnostic, and a registered knob rather than a raw environment
@@ -131,6 +141,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_cache);
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
+  lucent::cvar::register_var(g_jit_blocks);
+  lucent::cvar::register_var(g_jit_code_mb);
   lucent::cvar::register_var(g_hotep);
   lucent::cvar::register_var(g_present_luma);
   lucent::cvar::register_var(g_x86_import_fastpath);

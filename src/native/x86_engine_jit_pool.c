@@ -53,12 +53,41 @@ struct X86EngineJitPool {
  * block, or bytes silently become the binding limit again. The measured mean
  * is ~1.4 KB, so 8,192 blocks need ~12 MB and 32 MB leaves the cap where it
  * is meant to be.
+ *
+ * That cap is still below the working set. MEASURED on the Dead Zone route
+ * with the heartbeat's eviction counters: 15,770 blocks translated and 15,770
+ * dropped in the same five seconds, zero cache flushes, and 13.6 MB of the
+ * 32 MB budget in use -- so the block cap binds and the arena turns over
+ * completely several times a second (issue #161). Both sizes are settings
+ * rather than constants so the working set can be found by running past it,
+ * which is what has to happen before either default moves: a doubled cap that
+ * makes this map stop evicting is a number chosen to hide the measurement.
  */
-enum { kCodeBytes = 32u << 20, kCacheBlocks = 8192u };
+enum { kCodeBytesDefault = 32u << 20, kCacheBlocksDefault = 8192u };
 static _Thread_local X86EngineJitNode *current_node;
 #else
-enum { kCodeBytes = 64u << 20, kCacheBlocks = 65536u };
+enum { kCodeBytesDefault = 64u << 20, kCacheBlocksDefault = 65536u };
 #endif
+
+/*
+ * The code arena's two limits, as settings.
+ *
+ * Both are read once per engine, at creation, and a value that is not a
+ * positive number is the default rather than a silent zero -- an arena of zero
+ * blocks refuses every translation, which would present as the JIT being
+ * absent rather than as a setting being wrong. The pair is deliberately not
+ * one knob: blocks and bytes bind independently and knowing WHICH one stopped
+ * a run is the whole point of being able to move them.
+ */
+static size_t jit_cache_blocks(void) {
+  const long blocks = lucent_cvar_number("jit.blocks", 0);
+  return blocks > 0 ? (size_t)blocks : (size_t)kCacheBlocksDefault;
+}
+
+static size_t jit_code_bytes(void) {
+  const long megabytes = lucent_cvar_number("jit.code_mb", 0);
+  return megabytes > 0 ? (size_t)megabytes << 20 : (size_t)kCodeBytesDefault;
+}
 
 static void pool_lock(X86EngineJitPool *pool) {
 #if defined(__EMSCRIPTEN__)
@@ -83,8 +112,8 @@ static X86EngineJitNode *create_node(const X86pMem *mem, char *reason,
     snprintf(reason, reason_len, "out of memory creating a JIT thread record");
     return NULL;
   }
-  node->jit =
-      x86p_jit_engine_create(mem, kCodeBytes, kCacheBlocks, reason, reason_len);
+  node->jit = x86p_jit_engine_create(mem, jit_code_bytes(), jit_cache_blocks(),
+                                     reason, reason_len);
   if (!node->jit) {
     free(node);
     return NULL;
