@@ -58,10 +58,20 @@ static void report_invalidation(const X86pJitEngineStats *js) {
                   (unsigned long long)js->invalidation_bytes,
                   (unsigned long long)js->invalidation_blocks_dropped,
                   by_cause);
+  /*
+   * The zero has to read as an answer, not as a missing sentence. "Evicted 0
+   * times, the arena is too small by exactly that much" is the phrasing a
+   * count-and-suffix line produces and it says the opposite of what zero
+   * means, so the two cases are worded apart.
+   */
   lucent_log_info("engine",
-                  "[HB] the engine evicted: %llu time(s) dropping %llu "
-                  "block(s) of %llu translated -- the code arena is too small "
-                  "for the working set by exactly that much",
+                  js->evictions
+                      ? "[HB] the engine evicted: %llu time(s) dropping %llu "
+                        "block(s) of %llu translated -- the code arena is too "
+                        "small for the working set by exactly that much"
+                      : "[HB] the engine evicted: %llu time(s), %llu block(s), "
+                        "of %llu translated -- the code arena holds the whole "
+                        "working set reached so far",
                   (unsigned long long)js->evictions,
                   (unsigned long long)js->eviction_blocks_dropped,
                   (unsigned long long)js->blocks_translated);
