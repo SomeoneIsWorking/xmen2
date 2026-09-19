@@ -4,10 +4,12 @@
 - **Status:** measured and attributed, and both escapes are now closed by
   count. The guest runs at PC=extended on 100% of operations, and computing in
   f64 instead changes 14.57% of results, so x86port must keep producing 80-bit
-  answers. What remains is making the 80-bit path cheaper: the storage change
-  landed in x86port ab29b41, and cut `x86p_x87_arith` from 15.16% of the
-  browser's guest worker to 8.6%. The next item is x87 memory operands, now
-  about a fifth of the worker on their own.
+  answers. What remains is making the 80-bit path cheaper. Two changes have
+  landed: the storage change (x86port `ab29b41`), which cut `x86p_x87_arith`
+  from 15.16% of the browser's guest worker to 8.6%, and the inline operand
+  load (x86port `98cc6ab`), which removed `x86p_x87_read_value_raw` and
+  `x86p_mem_read_bytes` from the profile entirely. The next item is the x87
+  store path, the last one still passing an address.
 - **Follows:** #157 and #161, each of which removed the cost that was hiding
   this one
 
@@ -356,6 +358,69 @@ it is the next move.
 `jit_x87_predicates.c` naming host-independent f80 storage as the proper fix is
 now satisfied -- the storage IS ext80. Lifting that refusal needs its own
 admission tests and is a separate change.
+
+## The inline load landed, and the walk is gone from the read path
+
+x86port `98cc6ab`. FLD/FILD, the memory arithmetic forms and FCOM/FICOM now
+emit `x86p_wasm_state_guard` -- the same inline bounds check, two page
+permission bytes and early return every integer load gets -- and then the load
+itself, and hand the helper a value rather than an address. Width 8 crosses as
+a low/high i32 pair because every import in that module is i32-only.
+`x86p_x87_reg_from_operand_bits` is the conversion table both routes share, so
+`x86p_x87_read_value_raw` still answers for the interpreter without a second
+copy of the width rules.
+
+Two 20-second windows, same route, agreeing to within a tenth of a point on
+every frame (`x86p_x87_arith_raw` 10.66/10.61, `reg_from_operand_bits`
+8.12/8.05, `wasm_x87_store` 5.23/5.24):
+
+| frame | before | after |
+|---|---|---|
+| `x86p_x87_read_value_raw` | 10.1% | **absent** |
+| `x86p_mem_read_bytes` | 6.2% | **absent** |
+| `backing_span` | 3.9% | 1.18% |
+| `x86p_x87_reg_from_operand_bits` | — | 8.1% |
+| `x86p_wasm_x87_load_bits` | — | 2.0% |
+| `x86p_wasm_x87_arith_mem_bits` | 1.32% (`arith_mem`) | 1.7% |
+
+**Read the new 8.1% carefully: it is not new work.** `reg_from_operand_bits`
+inlines `x86p_x87_reg_from_f32_bits`/`_f64_bits`, which on this host are
+softfloat `f32_to_extF80`/`f64_to_extF80`. That conversion was always there,
+inside `read_value_raw`; it is now the frame that carries it. What actually
+disappeared is the fetch around it -- the helper call, the permission walk, and
+`x86p_mem_read_bytes`, which no longer has a reader on this path at all and
+survives in the profile only as `x86p_mem_write_bytes` for stores. Counting
+only what left: about 6.2 points of `mem_read_bytes` and 2.7 of `backing_span`.
+
+Shares are of a smaller total afterwards, so a frame doing the same work reads
+higher: `x86p_x87_arith_raw` at 10.66% against 8.6% before is that, not a
+regression. This is the third time the partition has moved in this issue and
+the caveat has not changed.
+
+**The frame counter, for once, moved further than its own noise -- and it is
+still one run against one run.** Presents per five seconds across this run:
+41, 42, 45, 46, 44, 44, 36, 46, 32, 37, 44, 45, 45 -- 6.4 to 9.2 presents/s,
+mostly above 8.4. The run recorded in #163 went 6.75, 6.73, 6.35, 6.76, 5.49.
+The distributions barely touch, which is more than the ~20% floor this route
+has shown before, but nothing here re-ran the old build, so it is an
+observation and not a measurement.
+
+The run stayed dynarec-clean throughout: 61,212 blocks translated, **0
+refusals**, 0 evictions, product fallback unavailable.
+
+## What is next after that
+
+`x86p_wasm_x87_store` (5.24%) and `x86p_mem_write_bytes` (3.36%) are now the
+only x87 memory route still passing an address, and they are the largest
+remaining one. The same fix does not transfer directly: a store needs two
+results, the status and the bytes, and every import returns one i32. The
+removable part is the walk -- `mem_write_bytes` plus most of what is left of
+`backing_span`, around 4.4 points -- while the conversion inside
+`wasm_x87_store` stays wherever it runs.
+
+Above that sit `x86p_x87_arith_raw` at 10.6% (the arithmetic itself, already
+through the storage change) and `x86p_jit_engine_run` at 8.3% (dispatch), and
+neither has an obvious structural move left.
 
 ## What would falsify the attribution
 
