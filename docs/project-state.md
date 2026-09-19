@@ -1297,6 +1297,19 @@ cleared, the draw dump above named the real cause.
   translated checks. SIMD, integer-tail and sparse suites are likewise shared
   runtime evidence rather than title gameplay evidence.
 
+**The retail boot's wedge is the title refusing, not the port hanging.** The
+`#play` route -- the one a player takes -- reaches "Loading..." and stops, with
+one guest block, a two-byte `JMP $` at `0x00403210`, taking 83.6% of every
+block entered. That block is the tail of the title's own fatal handler, which
+prints "Allocation failure: Reason = ..." through
+`libIGCore.dll!igOutput::toStandardOut` and then hangs on purpose; it is called
+from `libIGCore.dll!igMemoryPool::allocationFailure` (issue #158). So the
+browser's guest allocator runs out and the game stops itself. The reason code
+and the failed size are still unknown, because this port never prints the
+title's own standard output -- a diagnostic gap of its own. This supersedes the
+earlier localizations of that wedge to thread suspension and to the guest
+memory window, both of which were wrong.
+
 Gap: build/link progress and shared synthetic tests are not browser gameplay or
 performance evidence. The acceptance contracts and current build entry point are
 in [web-release.md](web-release.md). A deployed artifact, explicit fallback denominators, representative interaction,

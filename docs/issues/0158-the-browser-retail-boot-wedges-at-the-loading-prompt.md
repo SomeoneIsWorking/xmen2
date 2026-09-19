@@ -2,7 +2,7 @@
 id: 158
 title: the browser's retail boot wedges at the "Loading..." prompt
 status: investigating
-symptom: the retail #play route never leaves Loading...; the main thread spins on a JMP $ the title contains at guest 0x403210
+symptom: the retail #play route never leaves Loading...; the guest allocator fails and the title's own fatal handler hangs on a JMP $ at 0x403210
 state_items: S021
 tags: web,browser,wasm,boot,threads,wedge
 created: 2026-09-19
@@ -12,12 +12,13 @@ updated: 2026-09-19
 # 0158 — the browser's retail boot wedges at the "Loading..." prompt
 
 - **State items:** S021
-- **Status:** the wedged thread is located exactly -- it is spinning on a
-  `JMP $` the title itself contains, at guest `0x403210` -- and its last host
-  crossing is now known to be `Present`, which is not a noreturn. So what sent
-  it there is one of the two conditional branches in that tail, or a `call edi`
-  into guest code. This supersedes the earlier localization to thread
-  suspension; see "Where the wedged thread actually is".
+- **Status:** cause found. The spin at `0x403210` is the tail of the title's
+  own fatal allocation-failure handler, called from
+  `libIGCore.dll!igMemoryPool::allocationFailure`. The guest allocator failed
+  and the title hung on purpose. What is not yet known is the reason code and
+  the size, because the port never prints the title's own message. This
+  supersedes the localization to thread suspension and the `Present` reading
+  below.
 - **Not** #157: the same source passes the same route on the desktop, and the
   browser's Dead Zone route runs to 1,200 presents on the same build.
 
@@ -140,16 +141,79 @@ null pointer at `[esp+0x18]` or the reference count that did not reach zero --
 or the `call edi` fall-through with EDI pointing at guest code rather than an
 import.
 
+### The cause: the guest reports an allocation failure and hangs on purpose
+
+Answered 2026-09-19 with `--set jit.watch`, in two runs.
+
+**Which branch.** Watching `0x00403210` (`scratch/web/wasmgoal/watch158`):
+
+```
+jit.watch: entry 1 to guest 0x00403210 (unnamed)
+jit.watch:   came from block 0x004031e7 (unnamed)
+jit.watch:   eax=0467200c ecx=04672008 edx=0c00004c ebx=0c00004c
+jit.watch:   esp=700ff560 ebp=0c00004c esi=0c00004c edi=2f045ff0
+jit.watch:   this thread last crossed into Present (thunk 0x000c19a0), 0.002s ago
+```
+
+`ECX` is `EAX - 4`, which is exactly what `4031f1: mov ecx,eax` followed by
+`4031f8: add eax,0x4` produces, so the run went *through* the release body:
+the `je` at `4031f3` was not taken, and the `jne` at `403206` was. The
+reference count is a bitfield (`test edx,0x7fffff`) and it stood at
+`0x0c00004c` after the decrement, so it did not reach zero and the call at
+`403208` was skipped into the guard.
+
+**Which function.** The disassembly above is the tail of the function entered
+at `0x00402cf0`, whose body is a message: it loads
+`libIGCore.dll!igOutput::toStandardOut` from the IAT at `0x0067f720` and
+prints
+
+```
+\nAllocation failure:\n
+    Reason          = %s\n      (or = %d for an out-of-range code)
+```
+
+selecting the reason from the five-entry table at `0x006d4ba0`:
+`kAllocationFailureUnknown`, `kAllocationFailureMaxSizeExceeded`,
+`kAllocationFailurePoolExhausted`,
+`kAllocationFailureSystemMemoryExhausted`,
+`kAllocationFailureMemoryOperationInhibited`. It ends in `JMP $` by design:
+this is the engine's fatal handler and it is meant to stop there.
+
+**Who calls it.** Watching `0x00402cf0`
+(`scratch/web/wasmgoal/watchfatal`):
+
+```
+jit.watch: entry 1 to guest 0x00402cf0 (unnamed)
+jit.watch:   came from block 0x2f03ab30
+             (?allocationFailure@igMemoryPool@Core@Gap@@MAE_NIW4igAllocationFailureReason@23@@Z)
+jit.watch:   this thread last crossed into WaitForMultipleObjects, 0.002s ago
+```
+
+**So the browser boot is not wedged by a port defect in threads, suspension,
+rendering or the guest memory window. The guest allocator failed, the title
+reported it, and the title hung, exactly as it was written to.** The run then
+produces the two `d3d8: LockRect on the back buffer ... refusing` lines at
+17:19:16.651 and .655 -- *after* `allocationFailure` at .632, so they are a
+consequence and not the cause.
+
+This makes #158 a memory-size issue and links it to #159, which measured the
+browser committing 2.5 GB before it can draw: the same run has both a large
+flat guest window and a pool that will not grow.
+
 ### What to do next with it
 
-`--set jit.watch=4207120 --set jit.watchn=6` (0x403210) reports the first
-entries to the block: the block just left, the register file on arrival, and
-that thread's last crossing. `EAX` decides between the two branches -- it is
-the pointer tested at `4031eb`, so zero means the `je` was taken and non-zero
-means the `jne` was, with `ESI` then holding the decremented count. A previous
-block of `0x004031f5` or `0x00403208` distinguishes the fall-through.
+1. **Name the reason and the size.** `igMemoryPool::allocationFailure` takes
+   the failed size and the reason code; both are on the guest stack at its
+   entry and neither is in any log, because the title's own message goes
+   through `igOutput::toStandardOut` and **this port never prints it** -- no
+   untagged guest output appears anywhere in the run. The game is saying
+   exactly what went wrong and the port is throwing it away. That is a
+   diagnostic defect of its own and it is the cheapest next step.
+2. Then size the pool. `kAllocationFailurePoolExhausted` and
+   `kAllocationFailureSystemMemoryExhausted` point at different owners.
 
 ## What it is not
+
 
 - **Not the guest memory window (#157).** `tools/live_case.py cutscene-skip`
   boots through the retail flow, loads a map and runs a cutscene: 11/11 on the
