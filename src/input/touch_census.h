@@ -50,7 +50,19 @@ typedef struct X2TouchCensus {
   unsigned long player_one_held_by_transient; /* a pad chosen this run */
   unsigned long player_one_held_by_setting;   /* a stored reservation */
   unsigned long player_one_no_slot;           /* the pad is not open yet */
-  unsigned long cancellations;
+  /*
+   * Why a held zone was let go, counted apart.
+   *
+   * These were one number reported as "a lost window, rotation or layout
+   * change" -- three causes the counter had never observed, and none of them
+   * the one that was actually firing. The overlay's own pad was flipping the
+   * input source away from touch, so every press cancelled itself a
+   * millisecond after it was made.
+   */
+  unsigned long cancelled_overlay_hidden;
+  unsigned long cancelled_window_gone;
+  unsigned long cancelled_source_changed;
+  unsigned long cancelled_window_changed;
 } X2TouchCensus;
 
 /* The live counts, for the runtime to add to. One set of numbers is reported

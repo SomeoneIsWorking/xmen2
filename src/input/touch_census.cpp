@@ -74,10 +74,16 @@ void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
       x2_touch_source_is_touch() ? "touch" : "not touch",
       x2_gameplay_control_name(
           (int)x2_gameplay_control_state(guest_clock_now_s())));
-  lucent_log_info("touch",
-                  "%s%lu zone action(s) routed; %lu cancellation(s) for a lost "
-                  "window, rotation or layout change",
-                  prefix, g_census.zone_presses, g_census.cancellations);
+  lucent_log_info(
+      "touch",
+      "%s%lu zone action(s) routed; held zones let go %lu time(s): %lu with "
+      "the overlay hidden, %lu with the window gone, %lu because the input "
+      "source stopped being touch, %lu on a window or layout change",
+      prefix, g_census.zone_presses,
+      g_census.cancelled_overlay_hidden + g_census.cancelled_window_gone +
+          g_census.cancelled_source_changed + g_census.cancelled_window_changed,
+      g_census.cancelled_overlay_hidden, g_census.cancelled_window_gone,
+      g_census.cancelled_source_changed, g_census.cancelled_window_changed);
   /*
    * The far end. A press the pad refused never reached the guest, and a pad
    * no player was assigned to is one the guest never polls -- the two ways

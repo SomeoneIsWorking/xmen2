@@ -533,8 +533,11 @@ int main() {
         "the census recorded the player-one claim exactly once",
         std::to_string(census.player_one_claimed) + " claim(s), " +
             std::to_string(census.player_one_refused) + " refusal(s)");
-  check(census.cancellations > 0, "the census recorded the focus-loss cancel",
-        std::to_string(census.cancellations) + " cancellation(s)");
+  check(census.cancelled_window_gone > 0,
+        "the census recorded the focus-loss cancel under that cause",
+        std::to_string(census.cancelled_window_gone) + " for a lost window, " +
+            std::to_string(census.cancelled_source_changed) +
+            " for a changed source");
 
   /* A contact that arrives while the overlay is hidden must be counted as
      dropped, not lost silently -- that is the case the report exists to tell

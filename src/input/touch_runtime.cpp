@@ -288,7 +288,7 @@ int x2_touch_runtime_event(const SDL_Event *event) {
     if (is_finger)
       census.ignored_overlay_hidden++;
     if (!contacts.empty())
-      x2_touch_runtime_cancel();
+      x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
     return 0;
   }
   if (!is_finger)
@@ -330,7 +330,7 @@ void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
   if (event->type == SDL_EVENT_WINDOW_FOCUS_LOST ||
       event->type == SDL_EVENT_WINDOW_HIDDEN ||
       event->type == SDL_EVENT_WINDOW_MINIMIZED) {
-    x2_touch_runtime_cancel();
+    x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_WINDOW_GONE);
   } else if (event->type == SDL_EVENT_WINDOW_RESIZED ||
              event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
              event->type == SDL_EVENT_WINDOW_SAFE_AREA_CHANGED) {
@@ -339,7 +339,24 @@ void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
 }
 
 void x2_touch_runtime_cancel(void) {
-  census.cancellations++;
+  x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_WINDOW_CHANGED);
+}
+
+void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
+  switch (cause) {
+  case X2_TOUCH_CANCEL_OVERLAY_HIDDEN:
+    census.cancelled_overlay_hidden++;
+    break;
+  case X2_TOUCH_CANCEL_WINDOW_GONE:
+    census.cancelled_window_gone++;
+    break;
+  case X2_TOUCH_CANCEL_SOURCE_CHANGED:
+    census.cancelled_source_changed++;
+    break;
+  case X2_TOUCH_CANCEL_WINDOW_CHANGED:
+    census.cancelled_window_changed++;
+    break;
+  }
   publish(controls.cancel());
   publish(controls.set_portraits({}, 0));
   contacts.clear();
@@ -356,7 +373,7 @@ void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
 
 int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {
   if (!x2_touch_runtime_overlay_visible() && !contacts.empty())
-    x2_touch_runtime_cancel();
+    x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
   if (!pointer || pending_pointers.empty())
     return 0;
   *pointer = pending_pointers.front();
@@ -397,7 +414,7 @@ void x2_touch_runtime_note_source(const SDL_Event *event) {
   if (was_touch && !x2_touch_source_is_touch()) {
     /* Whatever was under a finger is not held any more: the zones that were
        down would otherwise stay down with the overlay gone. */
-    x2_touch_runtime_cancel();
+    x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_SOURCE_CHANGED);
   }
 }
 

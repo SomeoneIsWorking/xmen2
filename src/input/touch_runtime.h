@@ -28,7 +28,17 @@ typedef struct X2TouchPointer {
 
 int x2_touch_runtime_event(const union SDL_Event *event);
 void x2_touch_runtime_lifecycle_event(const union SDL_Event *event);
+/* Why a held zone is being let go. Counted apart, because one number
+   reported as three causes it had never observed is what hid the real one. */
+typedef enum {
+  X2_TOUCH_CANCEL_OVERLAY_HIDDEN,
+  X2_TOUCH_CANCEL_WINDOW_GONE,
+  X2_TOUCH_CANCEL_SOURCE_CHANGED,
+  X2_TOUCH_CANCEL_WINDOW_CHANGED
+} X2TouchCancelCause;
+
 void x2_touch_runtime_cancel(void);
+void x2_touch_runtime_cancel_because(X2TouchCancelCause cause);
 /* Copies the HUD's output-pixel portrait bounds. Null or mask zero clears
  * them. Visibility/layout changes release captured portrait pointers. */
 void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
