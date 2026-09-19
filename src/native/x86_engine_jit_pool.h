@@ -6,6 +6,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct X86EngineJitPool X86EngineJitPool;
 
 /* Guest execution and mapping changes are serialized by threads.c's guest lock.
@@ -23,5 +27,9 @@ int x86_engine_jit_pool_invalidate(X86EngineJitPool *pool, uint32_t address,
 void x86_engine_jit_pool_stats(const X86EngineJitPool *pool,
                                X86pJitEngineStats *out);
 const X86pJitEngine *x86_engine_jit_pool_primary(const X86EngineJitPool *pool);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

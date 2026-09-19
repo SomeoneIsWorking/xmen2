@@ -1,8 +1,10 @@
 #include "x86_engine_report.h"
 
 #include "guest_memory.h"
+#include "x86rt_native.h"
 
 #include "jit_engine.h"
+#include "jit_profile.h"
 
 #include <lucent/log_c.h>
 
@@ -77,6 +79,48 @@ static void report_invalidation(const X86pJitEngineStats *js) {
                   (unsigned long long)js->blocks_translated);
 }
 
+void x86_engine_report_hot_blocks(const X86EngineJitPool *jit,
+                                  const char *tag) {
+  x86_engine_report_hot_blocks_from(
+      jit ? x86p_jit_engine_profile(x86_engine_jit_pool_primary(jit)) : NULL,
+      tag);
+}
+
+void x86_engine_report_hot_blocks_from(const X86pJitProfile *profile,
+                                       const char *tag) {
+  X86pJitProfileEntry top[40];
+  uint64_t total;
+  uint32_t count;
+  uint32_t i;
+  if (!profile) {
+    return;
+  }
+  total = x86p_jit_profile_total_hits(profile);
+  if (x86p_jit_profile_distinct(profile) == 0u || total == 0u) {
+    lucent_log_info("engine",
+                    "%sJIT hot blocks: the histogram is armed and has recorded "
+                    "no block entry at all, so nothing here has executed "
+                    "translated code",
+                    tag);
+    return;
+  }
+  count = x86p_jit_profile_top(profile, top, 40u);
+  lucent_log_info(
+      "engine",
+      "%sJIT hot blocks: %u distinct, %llu entries total, %llu "
+      "key(s) dropped (table full; tail under-counted), top %u "
+      "follows",
+      tag, x86p_jit_profile_distinct(profile), (unsigned long long)total,
+      (unsigned long long)x86p_jit_profile_dropped_keys(profile), count);
+  for (i = 0; i < count; i++) {
+    const char *name = x86_native_name_at(top[i].guest_eip);
+    lucent_log_info("engine", "%s%2u. 0x%08x %-40s %10llu %5.1f%%", tag, i + 1u,
+                    top[i].guest_eip, name ? name : "unnamed",
+                    (unsigned long long)top[i].entries,
+                    100.0 * (double)top[i].entries / (double)total);
+  }
+}
+
 void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
                                          unsigned long callouts) {
   X86pJitEngineStats js = {0};
@@ -103,4 +147,5 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.conds_inline,
       (unsigned long long)js.conds_translated);
   report_invalidation(&js);
+  x86_engine_report_hot_blocks(jit, "[HB] ");
 }

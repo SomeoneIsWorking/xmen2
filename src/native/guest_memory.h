@@ -7,6 +7,10 @@
 
 #include "guest_layout.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Translate the 32-bit address visible to the guest program into a host
    pointer.  On hosts that can map the low 4 GB this base remains zero. */
 extern uintptr_t g_guest_memory_base;
@@ -131,5 +135,9 @@ int guest_memory_map_any(uint32_t first, uint32_t last, size_t alignment,
 int guest_memory_protect(uint32_t address, size_t size, int protection);
 int guest_memory_release(uint32_t address, size_t size);
 int guest_memory_is_readable(uint32_t address, size_t size);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

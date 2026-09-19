@@ -15,6 +15,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct X86pCpu;
 
 typedef struct X86Module {
@@ -273,5 +277,9 @@ X86Module *x86_modules(void);
 
 /* X2_EPCOUNT: how often a dispatched body is entered. Reports at zero. */
 void x86_epcount_report(void);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif /* X86RT_NATIVE_H */

@@ -442,6 +442,13 @@ target_include_directories(test_x86_engine_diagnostic PRIVATE src/native
 target_link_libraries(test_x86_engine_diagnostic PRIVATE x86port_runtime)
 add_test(NAME x86_engine_diagnostic COMMAND test_x86_engine_diagnostic)
 
+add_executable(test_engine_hot_blocks tests/test_engine_hot_blocks.cpp
+               src/native/x86_engine_report.c)
+target_include_directories(test_engine_hot_blocks PRIVATE src/native
+                       src/runtime/x86_abi)
+target_link_libraries(test_engine_hot_blocks PRIVATE x86port_runtime)
+add_test(NAME engine_hot_blocks COMMAND test_engine_hot_blocks)
+
 add_executable(test_joystick_neutral tests/test_joystick_neutral.c
                src/input/joystick_neutral.c)
 target_include_directories(test_joystick_neutral PRIVATE src/input)

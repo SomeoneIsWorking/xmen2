@@ -412,27 +412,7 @@ void x2_engine_report(void) {
           (unsigned long long)js.conds_translated,
           100.0 * (double)js.conds_inline / (double)js.conds_translated,
           (unsigned long long)(js.conds_translated - js.conds_inline));
-    {
-      const X86pJitProfile *prof =
-          x86p_jit_engine_profile(x86_engine_jit_pool_primary(g_engine.jit));
-      if (prof && x86p_jit_profile_distinct(prof) > 0u) {
-        X86pJitProfileEntry top[40];
-        uint32_t n = x86p_jit_profile_top(prof, top, 40u), i;
-        uint64_t total = x86p_jit_profile_total_hits(prof);
-        lucent_log_info(
-            "engine",
-            "JIT hot blocks: %u distinct, %llu entries total, %llu key(s) "
-            "dropped (table full; tail under-counted), top %u follows",
-            x86p_jit_profile_distinct(prof), (unsigned long long)total,
-            (unsigned long long)x86p_jit_profile_dropped_keys(prof), n);
-        for (i = 0; i < n; i++)
-          lucent_log_info("engine", "%2u. 0x%08x %-40s %10llu %5.1f%%", i + 1u,
-                          top[i].guest_eip, named(top[i].guest_eip),
-                          (unsigned long long)top[i].entries,
-                          total ? 100.0 * (double)top[i].entries / (double)total
-                                : 0.0);
-      }
-    }
+    x86_engine_report_hot_blocks(g_engine.jit, "");
   }
 }
 
