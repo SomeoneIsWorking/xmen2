@@ -959,14 +959,40 @@ was the guest-lock hand-off starving woken waiters under Emscripten (issue
 retail intro was the web entry point's `argc == 2` route test dropping the
 gameplay-test request (issue #151, fixed in `src/web/web_request.cpp`). A
 packaged browser run of either route now advances scenes/draws/presents
-monotonically with no abort. The remaining "black canvas" is now proven by a
-trusted in-engine instrument to be a real browser-only defect at the WebGPU
-present boundary (not a screenshot artifact or a game-to-GPU draw failure),
-localized but not yet stage-attributed in issue #152; interactive visible play
-remains unqualified. **Every renderer self-test this project has now passes
-identically on both hosts: `gpu selftests: 14 of 14 passed, 0 skipped, 0
-failed` natively and in the browser.** Getting that reading required two
-changes. The battery returned at its first failure, so the browser's
+monotonically with no abort. **The black canvas is fixed (issue #152, closed
+2026-09-19): the browser renders the game.** Its cause was in the pinned SDL
+fork's WebGPU backend, not in this port. WebGPU makes a strip topology's index
+format a property of the pipeline and validates it against the bound index
+buffer on every indexed draw; the backend created every pipeline with
+`IndexFormat::Undefined`, so the game's first indexed triangle strip failed
+validation and **invalidated the entire command buffer**, discarding every
+other draw in that frame. That is the exact shape of every reading in #152:
+draws submitted, `refused 0`, real GPU time spent, nothing on screen. A strip
+pipeline is now created once per index size and the draw picks the matching
+variant (`SomeoneIsWorking/SDL` `78419c3f0`, pinned through `shared/web-port`
+`faee8c5`). Measured on the Dead Zone route in the browser at that pin, with
+`present_luma=50`:
+
+```
+before: composed mean 0.0  max 0   nonblack 0.0%  | scene mean 0.1  max 191 nonblack 0.1%
+after:  composed mean 33.4 max 255 nonblack 80.2% | scene mean 33.4 max 255 nonblack 80.2%
+```
+
+with zero uncaptured WebGPU errors in a five-minute run, and `composed ==
+scene` as it always was natively. Interactive visible play is now limited by
+frame rate (about 14 presents/s on that run), not by the picture.
+
+What made the defect findable was access, not a new instrument: the port now
+takes `--env NAME=VALUE`, routing a diagnostic override through the same
+configuration owner and whitelist as the environment, so the browser -- which
+has no environment -- can arm one. `X2_FRAME_DUMP=busy:100` then answered on
+the first dumped frame. An unknown or malformed name is refused, because a
+diagnostic that quietly fails to arm looks exactly like one that found nothing.
+
+Two earlier hypotheses were refuted on the way, and the checks that refuted
+them stay in the battery: **every renderer self-test now passes identically on
+both hosts, `gpu selftests: 15 of 15 passed, 0 skipped, 0 failed`.** Getting
+the first such reading required two changes. The battery returned at its first failure, so the browser's
 `gpu multistage selftest: FAILED` hid the four checks below it -- including the
 two draw-path checks #152 was built to ask -- and their silence read as a pass;
 it now runs every check and ends with that denominator. With them running, the
@@ -980,12 +1006,17 @@ backends pass `max_lod` straight through; only this one reinterpreted it.
 Fixed in `SomeoneIsWorking/SDL` `bc00fae6a`, pinned through `shared/web-port`
 `7b66fea`.
 
-That fix did not move the black canvas: a 7-minute Dead Zone run at the new pin
-reached 4,758 presents and 1.32M draws with `refused 0` and reported
-`scene read mean 0.1 max 191 nonblack 0.1%` at every sample, byte-identical to
-every earlier reading in #152. So the defect survives a renderer whose every
-synthetic check now passes on both hosts, and the next instrument has to be a
-content read on the real frame path rather than another offscreen self-test.
+That fix did not move the black canvas on its own, and the check that followed
+it removed the renderer from suspicion entirely. Every pixel check the battery
+had drove `gpu_offscreen_begin`, into a texture it made itself, so none of them
+touched the scene texture the game's own probe reads. `gpu_frame_draw_selftest`
+drives `gpu_frame_begin`/clear/draw/`gpu_frame_end` the way the engine does and
+reads that texture; it discriminates (suppress the draw and the centre comes
+back the clear colour) and it passes on both hosts. Finding out that it needs a
+window was worth keeping: **headless `gpu_frame_begin` draws straight into the
+headless target and never touches the scene texture**, so a headless run is a
+structurally different frame path from the shipping one. With the renderer
+cleared, the draw dump above named the real cause.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
   Pinned x86port `035e2f7f72938699299685a269394f0aed791e83` and jit-common
@@ -1014,8 +1045,12 @@ content read on the real frame path rather than another offscreen self-test.
   real title has executed tens of millions of guest instructions with zero
   refusals or fallback, but no interactive gameplay is established and
   667 ms/frame is not playable.
-- **W2, rendering: shared boundary verified; browser draws produce no visible
-  content (issue #152, retargeted 2026-09-18).** The maintained SDL WebGPU fork
+- **W2, rendering: verified in the browser; the picture is correct and the
+  frame rate is not (issue #152 closed 2026-09-19).** The defect below was an
+  indexed-strip pipeline validation failure in the SDL fork's WebGPU backend
+  that invalidated whole command buffers; the paragraph above records the fix
+  and its measurement. The investigation it describes is kept because its
+  refutations remain true. The maintained SDL WebGPU fork
   creates a device on a worker, renders, reads pixels back and presents a blue
   SDL canvas in an isolated browser; `--vk-selftest` genuinely PASSES in-browser
   (its apparent hang was a console-log-batching artifact, fixed in

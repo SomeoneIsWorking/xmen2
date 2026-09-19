@@ -963,7 +963,8 @@ add_test(NAME env_file_executable_precedence
     COMMAND test_env_file executable-precedence)
 
 add_executable(test_x2native_options
-    tests/test_x2native_options.c src/native/x2native_options.c)
+    tests/test_x2native_options.c src/native/x2native_options.c
+    src/config/environment.c)
 target_include_directories(test_x2native_options PRIVATE src/native)
 add_test(NAME x2native_options COMMAND test_x2native_options)
 

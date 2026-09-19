@@ -284,3 +284,63 @@ the browser has no environment, and no argument routes an `X2_*` override into
 it, so that instrument cannot currently be armed on the one host that needs it.
 Giving the port a portable way to set those overrides is the first step of the
 next session's work on this issue.
+
+### RESOLVED (2026-09-19): indexed triangle-strip draws failed WebGPU validation and invalidated the whole command buffer
+
+The instrument that answered it was the one the previous update named, and the
+missing piece was access rather than capability: the port now takes
+`--env NAME=VALUE`, which routes a diagnostic override through the same
+configuration owner and the same whitelist as the environment, so a host that
+has no environment -- the browser -- can arm one. An unknown or malformed name
+is refused rather than ignored, because a diagnostic that quietly fails to arm
+looks exactly like one that found nothing.
+
+Armed with `?arg=--env&arg=X2_FRAME_DUMP=busy:100`, the first dumped frame
+answered on its first line:
+
+```
+gpu: X2_FRAME_DUMP=busy -- frame 45 drew 137 times itself. Every draw of it follows.
+  draw    1 tristrip      x410   tex 252  modulate ...
+ERROR: WebGPU uncaptured error!
+[RenderPipeline (unlabeled)] has a strip primitive topology (PrimitiveTopology::TriangleStrip)
+but a strip index format of IndexFormat::Undefined, which prevents it for being used for
+indexed draw calls.
+ - While encoding [RenderPassEncoder (unlabeled)].DrawIndexed(412, 1, 0, 0, 0).
+ERROR: WebGPU uncaptured error!
+[Invalid CommandBuffer] is invalid.
+ - While calling [Queue].Submit([[Invalid CommandBuffer]])
+```
+
+WebGPU makes a strip topology's index format a property of the *pipeline* and
+validates it against the bound index buffer on every indexed draw; Vulkan and
+D3D12 have no such rule. The fork's backend created every pipeline with
+`IndexFormat::Undefined`, so the game's very first indexed triangle strip
+failed validation -- **and took the entire command buffer with it**. Every
+other draw in that frame was discarded along with it. That is the exact shape
+of every reading in this issue: draws submitted, `refused 0`, real GPU time
+consumed, nothing on screen, and a self-test battery that could not see it
+because no self-test drew an indexed strip.
+
+The fix creates a strip pipeline twice, once per index size, and picks the
+variant matching the bound index buffer at draw time. Non-strip topologies are
+untouched. `SomeoneIsWorking/SDL` `78419c3f0`, pinned through
+`shared/web-port` `faee8c5`.
+
+Measured on the Dead Zone route in the browser, at the pin, with
+`present_luma=50`:
+
+```
+before: composed mean 0.0  max 0   nonblack 0.0%  | scene read mean 0.1  max 191 nonblack 0.1%
+after:  composed mean 33.4 max 255 nonblack 80.2% | scene read mean 33.4 max 255 nonblack 80.2%
+```
+
+and zero uncaptured WebGPU errors in a five-minute run, where the same run
+before the fix produced one per indexed strip draw. `composed == scene` now, as
+it always has been natively. **The browser renders the game.**
+
+Closed. What it does not fix is the frame rate: the same run presents at about
+14 per second, which is issue #162's and #166's territory, not this one's. The
+three earlier hypotheses this issue spent its effort on -- the composite, the
+capture mechanism, and the `VertexState` uniform packing -- were all refuted
+before this, and the two self-tests written along the way (`gpu_lit_mvp` and
+`gpu_frame_draw`) stay in the battery as the coverage that was missing.

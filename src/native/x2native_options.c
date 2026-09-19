@@ -2,9 +2,55 @@
 /* Command-line policy for the native executable. */
 #include "x2native_options.h"
 
+#include "../config/environment.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/*
+ * `--env NAME=VALUE`: set one of the diagnostic overrides the configuration
+ * owner knows, from the command line.
+ *
+ * Those overrides are read from the process environment, which the browser
+ * does not have -- so every one of them, including the draw trace that issue
+ * #152 needs, was unreachable on the one host whose behaviour differs. This
+ * routes through the same owner and the same whitelist: an unknown name is
+ * refused by name rather than silently ignored, because a diagnostic that
+ * quietly does not arm is worse than one that is missing.
+ */
+static int apply_env_override(const char *assignment) {
+  X2ConfigOverride variable;
+  char name[64];
+  const char *equals = assignment ? strchr(assignment, '=') : NULL;
+  size_t length;
+  if (!equals || equals == assignment) {
+    lucent_log_error("x2", "x2native: --env wants NAME=VALUE, got '%s'.\n",
+                     assignment ? assignment : "(nothing)");
+    return 0;
+  }
+  length = (size_t)(equals - assignment);
+  if (length >= sizeof name) {
+    lucent_log_error("x2", "x2native: --env name is too long: '%s'.\n",
+                     assignment);
+    return 0;
+  }
+  memcpy(name, assignment, length);
+  name[length] = 0;
+  if (!x2_config_override_from_name(name, &variable)) {
+    lucent_log_error("x2",
+                     "x2native: --env '%s' is not one of the overrides this "
+                     "port knows, so nothing would have been armed.\n",
+                     name);
+    return 0;
+  }
+  if (x2_config_override_set(variable, equals + 1, 1) != 0) {
+    lucent_log_error("x2", "x2native: --env '%s' could not be set.\n", name);
+    return 0;
+  }
+  lucent_log_info("x2", "x2native: --env %s=%s\n", name, equals + 1);
+  return 1;
+}
 
 int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
   int i;
@@ -49,7 +95,14 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
     /* Runtime CVar overrides are consumed by x2_runtime_config_init, which
        re-scans argv. Recognise the token (and its value form) here so the
        unknown-option guard below does not reject it. */
-    else if (strcmp(argv[i], "--set") == 0)
+    else if (strcmp(argv[i], "--env") == 0) {
+      if (i + 1 >= argc || !apply_env_override(argv[i + 1]))
+        return 2;
+      i++;
+    } else if (strncmp(argv[i], "--env=", 6) == 0) {
+      if (!apply_env_override(argv[i] + 6))
+        return 2;
+    } else if (strcmp(argv[i], "--set") == 0)
       i++;
     else if (strncmp(argv[i], "--set=", 6) == 0)
       ;
@@ -67,7 +120,8 @@ int x2native_options_parse(int argc, char **argv, X2NativeOptions *o) {
           "--d3d8-permissive --dialog-selftest\n"
           "         --fault-selftest "
           "--override-selftest\n"
-          "         --set NAME=VALUE (repeatable runtime CVar override)\n",
+          "         --set NAME=VALUE (repeatable runtime CVar override)\n"
+          "         --env NAME=VALUE (repeatable diagnostic override)\n",
           argv[i]);
       return 2;
     } else {

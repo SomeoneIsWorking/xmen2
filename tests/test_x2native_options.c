@@ -1,6 +1,9 @@
 #include "x2native_options.h"
 
+#include "../src/config/environment.h"
+
 #include <stdio.h>
+#include <string.h>
 
 static int check(int condition, const char *message) {
   if (condition)
@@ -18,7 +21,12 @@ int main(void) {
   char *diagnostic[] = {"x2native", "--selftest"};
   char *set_pair[] = {"x2native", "--set", "jit.cache=false", "--no-window"};
   char *set_joined[] = {"x2native", "--set=jit.profile=1024"};
+  char *env_pair[] = {"x2native", "--env", "X2_FRAME_DUMP=busy:100"};
+  char *env_joined[] = {"x2native", "--env=X2_HEARTBEAT=2"};
+  char *env_unknown[] = {"x2native", "--env", "X2_NOT_A_KNOWN_NAME=1"};
+  char *env_malformed[] = {"x2native", "--env", "X2_FRAME_DUMP"};
   char *unknown[] = {"x2native", "--nonsense"};
+  const char *armed;
   int fails = 0;
 
   fails += check(x2native_options_parse(1, plain, &o) == 0,
@@ -58,6 +66,25 @@ int main(void) {
             "--set=NAME=VALUE was rejected");
   fails += check(x2native_options_parse(2, unknown, &o) == 2,
                  "unknown option is no longer refused");
-  printf("x2native options: %d of 14 checks passed\n", 14 - fails);
+  /* --env NAME=VALUE reaches the configuration owner, which is the only way
+     a host with no environment -- the browser -- can arm a diagnostic. An
+     unknown or malformed name must be refused rather than silently dropped:
+     a diagnostic that does not arm looks exactly like one that found
+     nothing. */
+  fails += check(x2native_options_parse(3, env_pair, &o) == 0 && !o.install_dir,
+                 "--env NAME=VALUE was rejected");
+  armed = x2_config_override_get(kX2ConfigFrameDump);
+  fails += check(armed && !strcmp(armed, "busy:100"),
+                 "--env NAME=VALUE did not reach the configuration owner");
+  fails += check(x2native_options_parse(2, env_joined, &o) == 0,
+                 "--env=NAME=VALUE was rejected");
+  armed = x2_config_override_get(kX2ConfigHeartbeat);
+  fails += check(armed && !strcmp(armed, "2"),
+                 "--env=NAME=VALUE did not reach the configuration owner");
+  fails += check(x2native_options_parse(3, env_unknown, &o) == 2,
+                 "--env accepted a name outside the override whitelist");
+  fails += check(x2native_options_parse(3, env_malformed, &o) == 2,
+                 "--env accepted an assignment with no value");
+  printf("x2native options: %d of 20 checks passed\n", 20 - fails);
   return fails ? 1 : 0;
 }
