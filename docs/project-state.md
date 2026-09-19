@@ -1073,9 +1073,29 @@ away mid-capture and block entries and presents/s both fell 47% in the same
 windows — so the census is a roadmap and not just accounting. It is also not
 enough on its own: zeroing every row above leaves the route short of playable.
 
-Browser playability remains unproven and the frame rate is still short of
-playable. The route a player actually takes used to be worse than the gameplay
-test, and **that is fixed**: the packaged product started from its saved
+**The retail route now reaches gameplay in a browser**, which it had never
+done. Driven in Zen (Firefox 156) over Marionette with a real key press through
+`WebDriver:PerformActions`, the packaged product boots from its saved
+installation, renders the main menu, takes the selection and loads a level that
+then renders continuously with its HUD -- 2,063 presents over 265 s, no abort.
+What had ended that run with "native code called abort()" was x86port's room
+check counting the wrong resource: a translation is filed in a BLOCK RECORD and
+records are published through engine MODULES, compaction gathers up to
+thirty-two records into one module, and `x86p_jit_storage_room()` compared the
+MODULE count with the RECORD capacity. With 65,536 records the module count tops
+out near 2,000, so the check answered "room" while every record was taken,
+`evict_for_room()` evicted nothing, and the refusal that followed became
+`kX86pRunOutOfCode` and an abort (issue #177). x86port `e2c4ca9` counts the
+records, raising the count where a record is actually made live rather than
+where a free slot is found; `tests/test_jit_storage_wasm.c` fills every record
+against the shipping storage and reports `OutOfSlots` where the old comparison
+reported `Room`. The heartbeat now shows that path working: evictions
+attributed `252 the module slots, 133 the live-module ceiling`, where the record
+limit had never asked before. **The frame rate on that route is still far short
+of playable: 124.5 ms a frame, of which 49.3 ms is the swapchain wait.**
+
+The frame rate is still short of playable. The route a player actually takes
+used to be worse than the gameplay test, and **that is fixed**: the packaged product started from its saved
 installation now boots through the legal screen, the six intro FMVs and the
 main-menu load and renders the menu continuously. It had wedged instead, first
 at the retail "Loading..." prompt and later one phase further on, with 99% of

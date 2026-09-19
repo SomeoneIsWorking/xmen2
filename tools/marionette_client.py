@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import socket
-from typing import Any
+from typing import Any, ClassVar
 
 
 class MarionetteError(RuntimeError):
@@ -71,6 +71,43 @@ class Marionette:
         return self.command(
             "WebDriver:ExecuteAsyncScript",
             {"script": body, "args": list(args), "newSandbox": False},
+        )
+
+    #: The WebDriver key names this client needs, by their spec code points.
+    KEYS: ClassVar[dict[str, str]] = {
+        "Enter": "\ue007",
+        "Escape": "\ue00c",
+        "Space": " ",
+        "Up": "\ue013",
+        "Down": "\ue015",
+        "Left": "\ue012",
+        "Right": "\ue014",
+    }
+
+    def press(self, key: str, hold_ms: int = 120) -> None:
+        """One key down/up through the browser's own input pipeline.
+
+        Not a synthesized DOM event from page script: a game listening through
+        SDL wants the events the browser itself dispatches, and a script-made
+        event is distinguishable and can be ignored. ``key`` is a name from
+        :data:`KEYS` or a literal character.
+        """
+        value = self.KEYS.get(key, key)
+        self.command(
+            "WebDriver:PerformActions",
+            {
+                "actions": [
+                    {
+                        "type": "key",
+                        "id": "keyboard",
+                        "actions": [
+                            {"type": "keyDown", "value": value},
+                            {"type": "pause", "duration": hold_ms},
+                            {"type": "keyUp", "value": value},
+                        ],
+                    }
+                ]
+            },
         )
 
     def screenshot(self) -> str:
