@@ -83,6 +83,16 @@ lucent::cvar::Var<long> g_jit_profile{"jit.profile", 0};
  * a strictly bigger question than the static exit counts. Prints at shutdown.
  */
 lucent::cvar::Var<long> g_jit_chain{"jit.chain", 0};
+
+/* >0: the guest address whose first few entries report how the run reached
+ * them -- the block just left, the register file on arrival, and what this
+ * thread last crossed into. `jit.watchn` bounds the reports and defaults to 4,
+ * because the address this exists for (issue #158's `JMP $` at 0x00403210) is
+ * entered about twenty million times a second and reporting every entry would
+ * be the stall. A diagnostic; the profile says which block is hot, this says
+ * how the run got there. */
+lucent::cvar::Var<long> g_jit_watch{"jit.watch", 0};
+lucent::cvar::Var<long> g_jit_watch_reports{"jit.watchn", 4};
 lucent::cvar::Var<bool> g_x87_census{"x87.census", false};
 
 /* The JIT code arena's two independent limits, in blocks and in megabytes.
@@ -151,6 +161,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
   lucent::cvar::register_var(g_jit_chain);
+  lucent::cvar::register_var(g_jit_watch);
+  lucent::cvar::register_var(g_jit_watch_reports);
   lucent::cvar::register_var(g_x87_census);
   lucent::cvar::register_var(g_jit_blocks);
   lucent::cvar::register_var(g_jit_code_mb);

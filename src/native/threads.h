@@ -50,6 +50,14 @@ int32_t guest_thread_priority_get(void);
 void guest_thread_state_report(void);
 
 /*
+ * What the CALLING thread last crossed the host boundary into, and how long
+ * ago. 0 when it has never crossed, leaving the outputs alone -- which is a
+ * real answer for a thread that has only ever run compiled guest code.
+ */
+int guest_thread_last_crossing(const char **what, uint32_t *guest_addr,
+                               double *seconds_ago);
+
+/*
  * Mark a blocking HOST call and release guest ownership while it runs.
  */
 void guest_blocking_begin(void);

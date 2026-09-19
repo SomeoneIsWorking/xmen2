@@ -132,3 +132,21 @@ void guest_thread_report(void) {
   x2_log_info("         the guest mutex was contended %lu time(s)\n",
               n.contended);
 }
+
+int guest_thread_last_crossing(const char **what, uint32_t *guest_addr,
+                               double *seconds_ago) {
+  const GuestThread *self = guest_thread_self_record();
+  if (!self || !self->last_cross) {
+    return 0;
+  }
+  if (what) {
+    *what = self->last_cross;
+  }
+  if (guest_addr) {
+    *guest_addr = self->last_cross_addr;
+  }
+  if (seconds_ago) {
+    *seconds_ago = guest_clock_now_s() - self->last_cross_at;
+  }
+  return 1;
+}
