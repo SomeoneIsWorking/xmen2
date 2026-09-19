@@ -4,12 +4,15 @@
 - **Status:** measured and attributed, and both escapes are now closed by
   count. The guest runs at PC=extended on 100% of operations, and computing in
   f64 instead changes 14.57% of results, so x86port must keep producing 80-bit
-  answers. What remains is making the 80-bit path cheaper. Two changes have
+  answers. What remains is making the 80-bit path cheaper. Four changes have
   landed: the storage change (x86port `ab29b41`), which cut `x86p_x87_arith`
-  from 15.16% of the browser's guest worker to 8.6%, and the inline operand
-  load (x86port `98cc6ab`), which removed `x86p_x87_read_value_raw` and
-  `x86p_mem_read_bytes` from the profile entirely. The next item is the x87
-  store path, the last one still passing an address.
+  from 15.16% of the browser's guest worker to 8.6%; the inline operand load
+  (x86port `98cc6ab`), which removed `x86p_x87_read_value_raw` and
+  `x86p_mem_read_bytes` from the profile entirely; the exact widening (x86port
+  `70e6536`), which took `x86p_x87_reg_from_operand_bits` from 4.95% to 2.90%;
+  and the pop fusion (x86port `30ad283`), which removed `x86p_x87_pop`'s 1.89%
+  by ending the second import crossing per popping instruction. What remains is
+  `x86p_x87_arith_raw` at 14.57% and the operand plumbing beneath it.
 - **Follows:** #157 and #161, each of which removed the cost that was hiding
   this one
 
@@ -542,3 +545,63 @@ entries per five-second window fell from 18.4M to 9.8M, and presents/s fell from
 11.0 to 5.8 in the same windows -- 47% against 47%. Frames on this route track
 the guest worker one for one, so the category table above is a roadmap and not
 just an accounting of where time sits.
+
+## The pop crossed the boundary a second time, and no longer does
+
+x86port `30ad283`. An x87 instruction that retires a stack slot used to cost
+two import crossings: the helper did the operation and returned a verdict, the
+emitted block tested it, and on success it called `x87_pop` back across the
+boundary, once per slot. `FSTP` is the commonest x87 form on this frame, so
+most x87 stores were paying it.
+
+The helper already knows whether it completed, so it takes the pop count and
+retires the slots itself, on its success path only. Seven helpers gained the
+parameter. `arith_mem_bits` reaches eight in doing so, which is the import
+ABI's hard arity cap -- `write_types` declares an i32 return for one through
+eight parameters -- so there is no room left at that helper and a ninth
+argument would need the ABI widened first. That is a fact about the next change
+here, not a problem with this one.
+
+### What the profile says
+
+Guest worker, Dead Zone route, 25s, 96,169 samples:
+
+| frame | before | after |
+|---|---|---|
+| `x86p_x87_pop` | 1.89% | **absent** |
+| `x86p_wasm_x87_store_at` | 3.10% | 3.51% |
+| `x86p_wasm_x87_load_bits` | 2.69% | 2.73% |
+| `x86p_wasm_x87_arith_mem_bits` | 2.09% | 2.02% |
+| `x86p_x87_reg_from_operand_bits` | 2.90% | 2.62% |
+| `x86p_x87_operand_bytes_from_reg` | 3.99% | 4.30% |
+
+The helpers that absorbed the work grew by about 0.4 points between them, which
+is the pop's actual arithmetic; the rest of the 1.89% was the crossing. The two
+columns come from runs at different host loads, so treat the individual rows as
+having a few tenths of slack -- the disappearance does not.
+
+**The absence is a measured zero and not a resolution failure.** `x86p_x87_pop`
+is still in the module at symbol index 5472, because the compare-integer site
+still calls it and that pop is not conditional on a helper's verdict, and the
+profile's symbol map resolves it. A listing 200 frames deep does not contain it.
+The tool can name this function and does not.
+
+### What is next in this issue
+
+The ranking inside x87 is now `x86p_x87_arith_raw` at 14.57%, then the operand
+plumbing: `operand_bytes_from_reg` 4.30%, `store_at` 3.51%, `load_bits` 2.73%,
+`reg_from_operand_bits` 2.62%, `arith_mem_bits` 2.02%, `arith_reg` 1.53%. The
+softfloat's own internals -- `subMagsExtF80` 2.04%, `roundPackToExtF80` 1.27%,
+`addMagsExtF80` 1.15% -- sit under `arith_raw` and are the floor that the
+PC=extended measurement above says cannot be traded away for f64.
+
+### The frame rate, with the caveat it always carries
+
+11.552 +/- 0.011 per second, 1042 presents over 90.2s, plateau band 11.40 -
+11.80, at load average 5.0. The previous build read 11.384 +/- 0.014 at load
+average 4.5 and its band topped out at 11.60.
+
+That is +1.5%, which is the right size and the right direction, and it is still
+not proof on its own: a shared host moves this route by more than 1.5% between
+runs, which is exactly why the disappearance of `x86p_x87_pop` from the profile
+is the evidence and the frame rate is the corroboration.

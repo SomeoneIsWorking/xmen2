@@ -186,6 +186,10 @@ def list_targets(client: Cdp) -> int:
     if not sessions:
         print("the browser attached NO targets at all")
         return 1
+    # Two hex ids per row and no header cost a measurement: the session id was
+    # read as the target id, --target refused sixteen times in a row, and the
+    # loop around it reported sixteen blank results rather than one mistake.
+    print(f"{'type':16s} {'session':32s}  {'--target':32s} url")
     for session, target in sessions:
         print(f"{target['type']:16s} {session}  {target['targetId']} {target.get('url', '')}")
     return 0
