@@ -1,3 +1,14 @@
+---
+id: 157
+title: every guest memory access in the browser is a host call and a binary search
+status: resolved
+symptom: 84% of attributable guest-worker time was in memory access: a cross-module call plus a region binary search per access
+state_items: S021
+tags: web,browser,wasm,memory,x86port,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0157 — every guest memory access in the browser is a host call and a binary search
 
 - **State items:** S021

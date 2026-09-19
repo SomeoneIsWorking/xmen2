@@ -1,3 +1,14 @@
+---
+id: 172
+title: the Android run wedges in guest code before any touch can be pumped
+status: open
+symptom: on the API 35 emulator the run reaches D3D8 device creation and then spins in one compiled block, 98.4% re-entry; SDL is pumped only from PeekMessageA/GetMessageA so no touch can arrive
+state_items: S020
+tags: android,emulator,wedge,threads,touch,jit
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0172 — the Android run wedges in guest code before any touch can be pumped
 
 State items: S020 (platform-neutral touch play)

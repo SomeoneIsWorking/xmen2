@@ -1,3 +1,14 @@
+---
+id: 164
+title: the browser build kept every call between translation units
+status: resolved
+symptom: the web build did not enable LTO, so the x87 helper chain stayed as one cross-TU call per link
+state_items: S021
+tags: web,browser,wasm,build,lto,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0164 — the browser build kept every call between translation units
 
 - **State items:** S021

@@ -1,3 +1,14 @@
+---
+id: 171
+title: the browser's only gameplay route is the one map whose HUD never draws
+status: resolved
+symptom: the browser could not show an on-screen control at all, so touch could not be exercised there
+state_items: S020,S021
+tags: web,browser,touch,input,hud
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0171 — the browser's only gameplay route is the one map whose HUD never draws
 
 State items: S020 (platform-neutral touch play), S021 (web product)

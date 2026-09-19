@@ -1,3 +1,14 @@
+---
+id: 166
+title: every block the browser enters costs two indirect calls and a hash
+status: open
+symptom: dispatch is second only to x87 in the guest worker: two indirect calls and a hash table lookup per block entry
+state_items: S021
+tags: web,browser,wasm,jit,dispatch,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0166 — every block the browser enters costs two indirect calls and a hash
 
 - **State items:** S021

@@ -1,3 +1,14 @@
+---
+id: 154
+title: every WebGPU wait in the browser polled a future that could not resolve
+status: resolved
+symptom: SDL's WebGPU backend waited by polling; fence waits, swapchain acquire and device-destroy drain never advanced
+state_items: S021
+tags: web,browser,wasm,gpu,webgpu,sdl,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0154 — every WebGPU wait in the browser polled a future that could not resolve
 
 - **State items:** S021

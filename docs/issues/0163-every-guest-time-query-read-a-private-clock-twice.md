@@ -1,3 +1,14 @@
+---
+id: 163
+title: every guest time query read a private clock, twice
+status: resolved
+symptom: time queries bypassed guest_clock and read the host clock directly, twice per query
+state_items: S021
+tags: web,browser,wasm,timing,guest-clock
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0163 — every guest time query read a private clock, twice
 
 - **State items:** S021

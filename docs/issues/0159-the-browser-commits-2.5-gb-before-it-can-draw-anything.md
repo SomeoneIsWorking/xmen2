@@ -1,3 +1,14 @@
+---
+id: 159
+title: the browser commits 2.5 GB of real memory before it can draw anything
+status: open
+symptom: the flat guest window commits the whole 2.5 GB up front, so the product refuses to start where the host will not hand it over
+state_items: S021
+tags: web,browser,wasm,memory,startup
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0159 — the browser commits 2.5 GB of real memory before it can draw anything
 
 - **State items:** S021

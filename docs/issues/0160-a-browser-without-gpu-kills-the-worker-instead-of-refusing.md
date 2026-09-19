@@ -1,3 +1,14 @@
+---
+id: 160
+title: a browser with no GPU kills the guest worker instead of refusing
+status: investigating
+symptom: in a Chrome started without GPU support the guest boots, initialises D3D8, and the worker is killed rather than refused with a message
+state_items: S021
+tags: web,browser,wasm,gpu,refusal
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0160 — a browser with no GPU kills the guest worker instead of refusing
 
 - **State items:** S021

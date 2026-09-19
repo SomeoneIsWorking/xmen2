@@ -1,3 +1,14 @@
+---
+id: 158
+title: the browser's retail boot wedges at the "Loading..." prompt
+status: investigating
+symptom: the retail #play route never leaves Loading...; the main thread spins on a JMP $ the title contains at guest 0x403210
+state_items: S021
+tags: web,browser,wasm,boot,threads,wedge
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0158 — the browser's retail boot wedges at the "Loading..." prompt
 
 - **State items:** S021

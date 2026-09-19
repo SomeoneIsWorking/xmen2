@@ -1,3 +1,14 @@
+---
+id: 174
+title: a touch press never reaches the guest in a browser
+status: resolved
+symptom: the overlay's own virtual pad read as a player plugging in a controller, which flipped the input source away from touch and cancelled every press
+state_items: S020,S021
+tags: web,browser,touch,input,pad,dinput
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0174 — a touch press never reaches the guest in a browser
 
 State items: S020 (platform-neutral touch play), S021 (web product)

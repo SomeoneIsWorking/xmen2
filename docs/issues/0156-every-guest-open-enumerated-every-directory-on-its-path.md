@@ -1,3 +1,14 @@
+---
+id: 156
+title: every guest open enumerated every directory on its path
+status: resolved
+symptom: case-insensitive path resolution did one opendir plus a full readdir per component per open, remembering nothing
+state_items: S021
+tags: web,browser,wasm,filesystem,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0156 — every guest open enumerated every directory on its path
 
 - **State items:** S021

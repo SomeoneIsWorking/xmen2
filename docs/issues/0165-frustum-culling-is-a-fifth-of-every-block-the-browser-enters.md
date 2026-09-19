@@ -1,3 +1,14 @@
+---
+id: 165
+title: frustum culling is a fifth of every block the browser enters
+status: open
+symptom: the hot-block histogram attributes a fifth of block entries to the engine's frustum cull; no native override is written
+state_items: S021
+tags: web,browser,wasm,jit,override,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0165 — frustum culling is a fifth of every block the browser enters
 
 - **State items:** S021

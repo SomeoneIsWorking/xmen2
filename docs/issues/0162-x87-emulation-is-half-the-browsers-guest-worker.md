@@ -1,3 +1,14 @@
+---
+id: 162
+title: x87 emulation is half the browser's guest worker
+status: investigating
+symptom: the guest runs at PC=extended on 100% of operations and f64 changes 14.57% of results, so the 80-bit path must stay and must get cheaper
+state_items: S021
+tags: web,browser,wasm,x87,x86port,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0162 — x87 emulation is half the browser's guest worker
 
 - **State items:** S021

@@ -1,3 +1,14 @@
+---
+id: 173
+title: the host cannot name a guest function, so controller hotswap is dead
+status: open
+symptom: XMen2.exe's export directory is RVA 0 size 0, so x86_native_entry_containing cannot name the game's re-enumeration routine
+state_items: S020,S006
+tags: input,pad,hotswap,pe,symbols
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0173 — the host cannot name a guest function, so controller hotswap is dead
 
 State items: S020 (platform-neutral touch play), S006 (input and controllers)

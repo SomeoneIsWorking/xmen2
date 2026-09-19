@@ -1,3 +1,14 @@
+---
+id: 169
+title: the import the browser crosses into most is not the one that costs
+status: open
+symptom: ranking imports by call count aims optimization at the wrong one; the most-crossed import is 6.5% of import time
+state_items: S021
+tags: web,browser,wasm,imports,measurement,instrument
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0169 — the import the browser crosses into most is not the one that costs
 
 - **State items:** S021

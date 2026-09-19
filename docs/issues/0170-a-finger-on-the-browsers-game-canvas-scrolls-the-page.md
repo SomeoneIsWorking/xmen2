@@ -1,3 +1,14 @@
+---
+id: 170
+title: a finger on the browser's game canvas scrolls the page
+status: resolved
+symptom: touch on the canvas was handled by the page, so a contact scrolled instead of reaching the overlay
+state_items: S020,S021
+tags: web,browser,touch,input,canvas
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0170 — a finger on the browser's game canvas scrolls the page
 
 State items: S020 (platform-neutral touch play), S021 (web product)

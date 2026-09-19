@@ -1,3 +1,14 @@
+---
+id: 167
+title: the browser emulates SSE lane by lane in C, on a target that has SIMD
+status: investigating
+symptom: 317,883,827 SSE arithmetic operations all run at round-to-nearest with FTZ and DAZ clear and four opcodes cover every one; the WASM SIMD lowering is not written
+state_items: S021
+tags: web,browser,wasm,simd,sse,x86port,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0167 — the browser emulates SSE lane by lane in C, on a target that has SIMD
 
 - **State items:** S021

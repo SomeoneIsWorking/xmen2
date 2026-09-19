@@ -1,3 +1,14 @@
+---
+id: 168
+title: every condition in the browser was a call across the module boundary
+status: investigating
+symptom: every Jcc and SETcc called x86p_cond through the import table; inlined for most kinds, Add/Inc/Dec still on the helper
+state_items: S021
+tags: web,browser,wasm,jit,codegen,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0168 — every condition in the browser was a call across the module boundary
 
 - **State items:** S021

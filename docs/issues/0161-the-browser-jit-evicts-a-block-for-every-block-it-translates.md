@@ -1,3 +1,14 @@
+---
+id: 161
+title: the browser JIT evicts a block for almost every block it translates
+status: open
+symptom: the code arena is too small for the working set, so translation and eviction run at nearly the same rate
+state_items: S021
+tags: web,browser,wasm,jit,x86port,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0161 — the browser JIT evicts a block for almost every block it translates
 
 - **State items:** S021

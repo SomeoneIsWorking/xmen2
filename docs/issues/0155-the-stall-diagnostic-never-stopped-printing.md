@@ -1,3 +1,14 @@
+---
+id: 155
+title: the stall diagnostic never stopped printing, so it caused the stall
+status: resolved
+symptom: x86_ring_dump bounded its loop with the live counter, so it printed forever and the print was the stall
+state_items: S021
+tags: web,browser,wasm,diagnostic,instrument,performance
+created: 2026-09-19
+updated: 2026-09-19
+---
+
 # 0155 — the stall diagnostic never stopped printing, so it caused the stall
 
 - **State items:** S021
