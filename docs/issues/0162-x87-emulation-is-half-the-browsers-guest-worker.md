@@ -747,3 +747,58 @@ it another 5.2% (`subMagsExtF80` 2.27%, `roundPackToExtF80` 1.70%,
 `addMagsExtF80` 1.25%), with `arith_mem_bits` 2.44% and `arith_reg` 1.82% of
 argument plumbing around them. That is the arithmetic itself rather than the
 moving of values, and it is the part this issue has not touched.
+
+## The obvious idea for the arithmetic itself, tried and measured: it loses
+
+The section above leaves `x86p_x87_arith_raw` at 16.71% of the guest worker
+with the softfloat under it at another 5.2%, and names that as the part this
+issue has not touched. The obvious attack is to stop emulating the operations
+the host could perform: the guest computes with a 64-bit significand and
+binary64 has 53, but an operation whose TRUE result binary64 holds exactly has
+the same answer in both, bit for bit, because a result that needs no rounding
+is rounded identically by every format wide enough to hold it and by every
+rounding mode.
+
+That was built (x86port `230694f`, `c5e6c95`) and reverted (`1747281`). It is
+recorded here because the reasoning is attractive enough that it will be had
+again.
+
+**The rule was right.** It required 64-bit precision control, operands that are
+normals or zeros binary64 holds exactly, and a normal non-zero result -- zero
+refused because the sign of an exact zero difference belongs to the rounding
+mode -- and it PROVED exactness rather than assuming it: Knuth's two-sum error
+for addition, significand bit counts for multiplication, a multiply-back for
+division. Checked against both full-precision authorities, the host's own x87
+unit and the Bochs softfloat under Emscripten: 16,129 accepted operations,
+**0 divergences**, on both.
+
+**It was faster than what it replaced, where it applied.** Under node, 15.0 ns
+per accepted operation against the softfloat's 27.1 ns -- 1.81x.
+
+**It still lost the frame rate.** A refused operand pays the rule and then the
+softfloat anyway, at +13.7%, which puts break-even at about 21% acceptance:
+
+| build | presents/s | machine load |
+|---|---|---|
+| with the fast path | 13.64 | 6.2 |
+| without it | **13.83** | 7.4 |
+
+The baseline carried the higher load of the two and still won. The profile
+agreed -- `x86p_x87_arith_raw` read 26.60% of the guest worker with the fast
+path against 16.80% without -- but a profile could not have decided this on its
+own: the softfloat's own frames left the profile in both readings, which is
+equally consistent with "the fast path takes every operation and costs more"
+and with "the softfloat was inlined into its caller and the shares moved". The
+frame rate is what separated them.
+
+**So the acceptance rate on this route is below 21%**, which is the finding
+worth keeping: this title's x87 population is mostly NOT exact in binary64. A
+game's floats arriving from memory as binary32 does not make its arithmetic
+binary32-shaped -- one division, one transcendental or one sum across a wide
+exponent range puts a full 64-bit significand into a register, and every
+operation downstream of it is refused.
+
+What this does NOT rule out: a register file that keeps values in binary64
+while they stay exact, which would remove the per-operation conversion rather
+than the arithmetic. That idea inherits the same acceptance question and must
+measure it FIRST -- the number above says the answer is probably no.
