@@ -172,3 +172,70 @@ Separately, built the self-test the previous update called for: `gpu_lit_mvp_sel
 **Not yet obtained: the browser answer for this new self-test.** A rebuilt WASM artifact (`build/web` -> `build/release/web`, served on port 8142) was launched under WebLua with `?arg=--vk-selftest`, but it produced zero console output over several minutes and `text` showed the page never left the install-picker screen. Reading `web/app.mjs` explains why: `?arg=...` values are appended to the product's OWN argument list only inside `launch()`, which only runs when `#play` or `#test-play` is clicked -- there is no auto-start from a bare URL argument, and this session's WebLua instance used a fresh, unprimed profile with no saved installation for `#play` to launch and no `--vk-selftest`-specific button. The previous session's passing in-browser `--vk-selftest` run must have gone through a primed profile and an explicit click this session did not reproduce. This is a real, fixable gap in the diagnostic route (not evidence about the game itself) -- the fresh WebLua instance was stopped rather than left stuck. **Next step, concrete:** relaunch against the primed `scratch/weblua-local` profile (or a copy of it, to avoid concurrent-OPFS contention with the still-useful long observation session) with `?arg=--vk-selftest`, click `#play` (not `#test-play`, which would also prepend `--test-deadzone`), and read the console for `gpu lit/mvp draw selftest: PASSED`/`FAILED`. A FAILED result would confirm the uniform-buffer-layout hypothesis directly; a PASSED result rules out that specific hypothesis (though not the broader "real draw path" localization, which the port-7986 evidence above already establishes independently of this self-test).
 
 **Where this leaves issue #152 relative to the framerate problem:** they are DISTINCT. The framerate problem (~666-671 ms/frame measured elsewhere) is a performance defect: guest execution and host draw submission are slow, but they complete and, per every counter available, submit real, increasingly complex geometry successfully (`refused 0` throughout). Issue #152 is a correctness defect: whatever that geometry contains, it does not appear in the read-back `scene` texture. A game that draws correctly-but-slowly would show gradually-changing luma readings as more of the level appears frame by frame; this session's 130,178-draw, 21-minute observation shows exactly the opposite -- rapidly increasing draw complexity with a completely static, near-black visual result. Fixing the framerate alone would not fix this on the evidence gathered so far.
+
+### Update (2026-09-19): the uniform-layout hypothesis is REFUTED in the browser, and the one browser-only renderer defect the battery could see is fixed
+
+The previous update's concrete next step -- get the browser's answer for
+`gpu_lit_mvp_selftest` -- could not be obtained as the battery stood, and the
+reason is itself a defect worth recording: `gpu_host_selftest()` returned at
+the first failing check. The browser's `gpu multistage selftest: FAILED` sat
+four entries above the two draw-path checks this issue was built to ask, so
+neither of them ran, and their silence was indistinguishable from a pass. The
+battery now runs **every** check, names each failure and skip, and ends with
+`gpu selftests: N of M passed, S skipped, F failed` -- a denominator, so a run
+that proved nothing cannot read as a renderer that works.
+
+With that, the browser answer arrived on the first attempt
+(`?arg=--vk-selftest`, `#test-play`, `tools/web_console.py` recording):
+
+```
+gpu lit/mvp draw selftest: PASSED -- an MVP-transformed, lit triangle read back its material's emissive colour
+gpu selftests: 13 of 14 passed, 0 skipped, 1 failed.
+```
+
+**The `VertexState` uniform-buffer packing hypothesis is dead.** The browser
+draws the D3DFVF_XYZ + lighting branch through `d3d8_fixed.vert`, with a
+populated `VertexState`, and reads back the right pixel. Whatever empties
+`g_scene`, it is not the SPIRV-to-WGSL layout of that block.
+
+The single failure was the mip half of `gpu_multistage_selftest`, and it is a
+real browser-only defect with a root cause in the pinned SDL fork, not in this
+port. `WEBGPU_CreateSampler` read `max_lod == 0` as "no clamp" and substituted
+`32.0`:
+
+```c
+desc.lodMaxClamp = createInfo->max_lod == 0 ? 32.0f : createInfo->max_lod;
+```
+
+`gpu_pipeline.c` sets `max_lod = mip ? 1000.0f : 0.0f` precisely because a zero
+means level 0 only -- which is what the Vulkan and D3D12 backends do with it,
+passing it straight through. Only this backend reinterpreted it, so every
+sampler this port created with mipmapping off sampled the whole chain anyway.
+The test's 16x16 texture has red levels 0..3 and a green 1x1 level 4, drawn
+minified: the control draw came back green where it must be red, which is
+exactly that. The reinterpretation existed to cover the backend's own blit
+samplers, which leave `max_lod` at zero while wanting the chain; they now ask
+for it explicitly with `max_lod = 1000`, as the D3D12 backend's blit sampler
+does. Fixed in `SomeoneIsWorking/SDL` `bc00fae6a`, pinned through
+`shared/web-port` `7b66fea`. The browser battery at that pin:
+
+```
+gpu multistage selftest: PASSED -- both texture stages use transformed coordinates and minification reaches the resident mip chain
+gpu selftests: 14 of 14 passed, 0 skipped, 0 failed.
+```
+
+Native is 14 of 14 as well, before and after, so the fix did not trade one
+host for another.
+
+**What this does and does not say about this issue.** It does not close it: no
+gameplay run has been taken since the fix, and the black `g_scene` reading has
+not been re-measured. It does remove the last renderer difference between the
+two hosts that any check in this project can see -- every self-test this port
+has now passes identically on Vulkan and on WebGPU. A wrong mip level is also
+a plausible contributor to near-black textured geometry rather than obviously
+unrelated to it, since the game's textures do carry chains. **The concrete next
+step is the cheap one: re-run the Dead Zone route in the browser at this pin
+with `present_luma` on and read whether `scene` finally moves.** If it does,
+this issue is the sampler bug and closes; if it does not, the defect is
+downstream of every check that exists, and the next instrument has to be a
+same-command-buffer content read rather than another self-test.

@@ -963,12 +963,29 @@ monotonically with no abort. The remaining "black canvas" is now proven by a
 trusted in-engine instrument to be a real browser-only defect at the WebGPU
 present boundary (not a screenshot artifact or a game-to-GPU draw failure),
 localized but not yet stage-attributed in issue #152; interactive visible play
-remains unqualified until that fork fix lands. With the battery no longer
-hanging, the browser reaches a self-test that had never run there and fails it:
-`gpu multistage selftest: FAILED -- mip control/mipped centres are
-0xff00ff00/0xff00ff00, expected red/green`. Both centres come back green where
-one must be red, so the mip control sample is wrong under WebGPU. That is the
-first stage-level discriminator #152 has had.
+remains unqualified. **Every renderer self-test this project has now passes
+identically on both hosts: `gpu selftests: 14 of 14 passed, 0 skipped, 0
+failed` natively and in the browser.** Getting that reading required two
+changes. The battery returned at its first failure, so the browser's
+`gpu multistage selftest: FAILED` hid the four checks below it -- including the
+two draw-path checks #152 was built to ask -- and their silence read as a pass;
+it now runs every check and ends with that denominator. With them running, the
+browser answered the open question: `gpu lit/mvp draw selftest: PASSED`, which
+**refutes** #152's `VertexState` uniform-buffer-packing hypothesis. The one
+real browser-only defect the battery could see was the mip control sample, and
+its cause was in the pinned SDL fork: `WEBGPU_CreateSampler` read a sampler's
+`max_lod == 0` as "no clamp" and substituted 32.0, so every sampler this port
+created with mipmapping off sampled the whole chain. The Vulkan and D3D12
+backends pass `max_lod` straight through; only this one reinterpreted it.
+Fixed in `SomeoneIsWorking/SDL` `bc00fae6a`, pinned through `shared/web-port`
+`7b66fea`.
+
+That fix did not move the black canvas: a 7-minute Dead Zone run at the new pin
+reached 4,758 presents and 1.32M draws with `refused 0` and reported
+`scene read mean 0.1 max 191 nonblack 0.1%` at every sample, byte-identical to
+every earlier reading in #152. So the defect survives a renderer whose every
+synthetic check now passes on both hosts, and the next instrument has to be a
+content read on the real frame path rather than another offscreen self-test.
 
 - **W1, runtime execution: shared boundary verified, title integration partial.**
   Pinned x86port `035e2f7f72938699299685a269394f0aed791e83` and jit-common

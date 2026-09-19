@@ -29,6 +29,7 @@
 #include "env_file.h"
 #include "fault_report.h"
 #include "gpu_device.h"
+#include "gpu_selftests.h"
 #include "guest_body.h"
 #include "guest_clock.h"
 #include "guest_heap.h"
@@ -1755,10 +1756,8 @@ int main(int argc, char **argv) {
   /* The fault reporter, proved by faulting -- no install, no engine. */
   if (options.fault_selftest)
     return x2_fault_selftest();
-  if (vkselftest) {
-    extern int gpu_host_selftest(void);
+  if (vkselftest)
     return gpu_host_selftest();
-  }
   /*
    * Same reasoning for the host D3D8: its ABI tables, its vtable dispatch
    * and its caps block are host-side facts that need no game to check.
