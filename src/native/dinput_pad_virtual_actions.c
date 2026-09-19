@@ -123,6 +123,7 @@ int dinput_pad_virtual_release(const char *what) {
 void virtual_expire(void) {
 #ifdef X2_WITH_SDL
   double now = guest_clock_now_s();
+  int changed = 0;
   int i;
   if (!g_virt_js)
     return;
@@ -137,6 +138,7 @@ void virtual_expire(void) {
         g_vbtn_release_pending[i] = 0;
         g_vbtn_until[i] = 0.0;
         SDL_SetJoystickVirtualButton(g_virt_js, i, false);
+        changed = 1;
       }
     for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++)
       if (g_vaxis_release_pending[i] &&
@@ -146,6 +148,7 @@ void virtual_expire(void) {
         g_vaxis_until[i] = 0.0;
         g_vaxis_value[i] = rest;
         SDL_SetJoystickVirtualAxis(g_virt_js, i, rest);
+        changed = 1;
       }
   }
   for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
@@ -159,6 +162,7 @@ void virtual_expire(void) {
                      "its deadline (clear #%lu)\n",
                      i, held, g_vbtn_clears);
       SDL_SetJoystickVirtualButton(g_virt_js, i, false);
+      changed = 1;
     }
   for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++)
     if (g_vaxis_until[i] != 0.0 && now >= g_vaxis_until[i]) {
@@ -167,6 +171,15 @@ void virtual_expire(void) {
       g_vaxis_release_pending[i] = 0;
       g_vaxis_value[i] = rest;
       SDL_SetJoystickVirtualAxis(g_virt_js, i, rest);
+      changed = 1;
     }
+  /* Setting a virtual button or axis only records what the device SHOULD
+     report; nothing reads differently until SDL latches it. Every other
+     release path pumps these two -- this one did not, so a deferred release
+     stayed down until some unrelated call happened to latch it. */
+  if (changed) {
+    SDL_UpdateJoysticks();
+    SDL_UpdateGamepads();
+  }
 #endif
 }

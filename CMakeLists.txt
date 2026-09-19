@@ -264,6 +264,7 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/native/dinput_pad_virtual.c
                src/native/dinput_pad_virtual_actions.c
                src/native/dinput_pad_virtual_device.c
+               src/native/dinput_pad_virtual_reader.c
                src/native/guest_clock.c
                src/native/x2_log.c
                src/config/settings.c
@@ -775,7 +776,7 @@ add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c
                src/native/dinput_pad_sample.c
                src/native/dinput_pad_report.c
         src/native/dinput_pad_virtual.c src/native/dinput_pad_virtual_actions.c
-        src/native/dinput_pad_virtual_device.c src/native/guest_clock.c)
+        src/native/dinput_pad_virtual_device.c src/native/dinput_pad_virtual_reader.c src/native/guest_clock.c)
 target_include_directories(test_dinput_pad PRIVATE src/native)
 target_compile_definitions(test_dinput_pad PRIVATE X2_WITH_SDL)
 target_link_libraries(test_dinput_pad PRIVATE ${X2_SDL})
@@ -1591,6 +1592,7 @@ set(X2_NATIVE_SOURCES
     src/native/dinput_pad_virtual.c
     src/native/dinput_pad_virtual_actions.c
     src/native/dinput_pad_virtual_device.c
+    src/native/dinput_pad_virtual_reader.c
     src/native/dialog_prompts.c
     src/native/pad_glyphs.c
     src/native/prompt_glyphs.c

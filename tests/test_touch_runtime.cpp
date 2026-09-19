@@ -393,7 +393,14 @@ int main() {
   check(guest_buttons(slot) == (1 << kDirectInputButtonY),
         "a probe reading the pad does not count as the guest having read it",
         "buttons bitmap " + std::to_string(guest_buttons(slot)));
+  /* The reader-side view has to be able to say both things: a browser run
+     where it never speaks would be indistinguishable from one where it never
+     looked. */
+  check(dinput_pad_virtual_report_reader_view() == kDirectInputButtonY,
+        "the reader view finds the held button", "while it is held");
   dinput_pad_virtual_tick(0);
+  check(dinput_pad_virtual_report_reader_view() == -1,
+        "and finds nothing once it is let go", "after the release");
 
   /* The stick is the control a scroll steals first in a browser and the one a
      player uses constantly, so it gets the same treatment as a button. */

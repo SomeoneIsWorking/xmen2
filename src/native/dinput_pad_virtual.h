@@ -49,6 +49,11 @@ int dinput_pad_virtual_release_now(const char *what);
    press was too short to see" and "the deferral never engaged" cannot look
    alike. */
 unsigned long dinput_pad_virtual_deferred_releases(void);
+/* Report, once, what the thread that READS the pad sees while a press is
+   held -- and, once, that no press was ever held when it looked. Returns the
+   button it found held or awaiting a reader, or -1 when nothing was, so a
+   test can show it both answers. */
+int dinput_pad_virtual_report_reader_view(void);
 
 /* The persistent identity the synthetic pad reports, when the pad with this
    live joystick id is the synthetic one and an override was given; NULL

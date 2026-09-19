@@ -2,6 +2,7 @@
 
 #include "dinput_pad_internal.h"
 #include "dinput_pad_report.h"
+#include "dinput_pad_virtual.h"
 
 #include <stdint.h>
 
@@ -83,6 +84,7 @@ void dinput_pad_refresh_state(void) {
 #ifdef X2_WITH_SDL
   g_pad_pumps++;
   SDL_UpdateGamepads();
+  (void)dinput_pad_virtual_report_reader_view();
 #endif
 }
 
