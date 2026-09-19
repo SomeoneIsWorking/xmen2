@@ -1626,8 +1626,24 @@ void x86_ring_dump(void) {
       x2_log_error("%s!0x%08x %s", m->name, guest, nm ? nm : "(unnamed)");
     else if (b)
       x2_log_error("0x%08x (linked ep; no module has base 0x%08x)", a, b);
-    else
-      x2_log_error("0x%08x (no registered module)", a);
+    else {
+      /*
+       * An address in the host-import thunk range is not a missing module: it
+       * is the synthetic address of the import ITSELF, which is what an import
+       * crossing records. Said plainly because it was not: a run investigating
+       * an Android wedge (issue #172) read "0x000c1060 (no registered module)"
+       * as an unidentified CALLER in copied or corrupted code, and spent the
+       * next step trying to resolve a caller that was never there.
+       */
+      const char *tmod = NULL;
+      const char *tsym = x86_thunk_name(a, &tmod);
+      if (tsym)
+        x2_log_error("0x%08x (the host import thunk for %s!%s -- not a "
+                     "caller)",
+                     a, tmod ? tmod : "?", tsym);
+      else
+        x2_log_error("0x%08x (no registered module)", a);
+    }
     if (g_ring[k].ret) {
       /* The caller, by return address. Its enclosing function is not
          resolved here: only entry points are named, and a return address

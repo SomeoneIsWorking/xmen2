@@ -64,9 +64,24 @@ one repeating shape:
 0x000c1060 (no registered module)
 ```
 
-Three `memmove` calls per iteration from `0x000c1060`, which is in no mapped
-module: XMen2.exe is at 0x00400000 and every DLL at 0x10000000 or above. That
-caller is the next thing to identify.
+**That address is not a caller, and this reading was wrong.** `0x000c1060` is
+in the host-import thunk range: `THUNK_BASE` is `0x000C0000` and each thunk is
+16 bytes (`src/native/x86rt_native.h:53`), so `0x000c1060` is thunk index 262 --
+the synthetic address of `memmove` **itself**, which is what an import crossing
+records. The ring's address field for an import crossing is the import, not
+the code that called it.
+
+The dump said "(no registered module)", which is true and useless, and it is
+what sent the previous step looking for a caller in copied or corrupted code.
+It now names the thunk instead:
+
+```
+0x000c1060 (the host import thunk for <module>!memmove -- not a caller)
+```
+
+So the tail says only that the spinning code calls `memmove` three times per
+iteration. The caller is still unidentified, and the ring cannot identify it:
+`ret` is recorded as 0 on the import path.
 
 ## Not reproduced elsewhere
 
@@ -76,7 +91,12 @@ makes reliable is unknown; no desktop run has shown it.
 
 ## Next
 
-1. Resolve `0x000c1060` — generated thunk, copied code, or a corrupted return.
+1. ~~Resolve `0x000c1060`~~ — done: it is `memmove`'s own import thunk, not a
+   caller. What is still missing is the guest code that calls it, which the
+   ring cannot give because it records no return address for an import
+   crossing. `--set jit.watch=<addr>` (issue #158) reports the block just left
+   and the register file for a named guest address, which is the tool for this
+   once the spinning block's address is known from `jit.profile`.
 2. Establish which guest thread is spinning and what it is waiting for. The
    interval's top imports before the freeze were `WaitForMultipleObjects`
    (9857 calls) and `ReleaseSemaphore` (9858), so a worker handshake is the
