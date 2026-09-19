@@ -97,14 +97,33 @@ void x2_touch_census_report(const char *tag, int has_window) {
                   prefix, g_census.buttons_published, g_census.buttons_refused,
                   g_census.axes_published, g_census.axes_refused);
   if (g_census.player_one_claimed == 0 && g_census.player_one_refused == 0) {
-    lucent_log_info("touch",
-                    "%splayer one already had a controller, so the touch pad "
-                    "was not claimed for it%s",
-                    prefix,
-                    g_census.buttons_published || g_census.axes_published
-                        ? " -- if nothing moved, that controller is what the "
-                          "guest is reading"
-                        : "");
+    /* Say which of the three it was, by the count that was actually taken. */
+    if (g_census.player_one_held_by_transient) {
+      lucent_log_info("touch",
+                      "%sa controller chosen in this run already holds player "
+                      "one (%lu time(s) asked), so the touch pad was not "
+                      "claimed for it -- if nothing moves, THAT controller is "
+                      "what the guest is reading",
+                      prefix, g_census.player_one_held_by_transient);
+    } else if (g_census.player_one_held_by_setting) {
+      lucent_log_info("touch",
+                      "%sa stored controller reservation holds player one (%lu "
+                      "time(s) asked), so the touch pad was not claimed for it "
+                      "-- clear it in the settings to play by touch",
+                      prefix, g_census.player_one_held_by_setting);
+    } else if (g_census.player_one_no_slot) {
+      lucent_log_info("touch",
+                      "%sthe touch pad had no inventory slot when player one "
+                      "was asked for (%lu time(s)), so nothing was claimed and "
+                      "touch cannot reach gameplay",
+                      prefix, g_census.player_one_no_slot);
+    } else {
+      lucent_log_info("touch",
+                      "%splayer one was never asked for -- no contact reached "
+                      "the publish path, so this says nothing about who owns "
+                      "the player",
+                      prefix);
+    }
   } else {
     lucent_log_info("touch", "%sthe touch pad was %s for player one", prefix,
                     g_census.player_one_claimed

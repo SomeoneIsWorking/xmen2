@@ -35,8 +35,21 @@ typedef struct X2TouchCensus {
      is live and every press below is going nowhere. */
   unsigned long pad_attached;
   unsigned long pad_attach_refused;
+  /*
+   * WHY player one did or did not end up on the touch pad.
+   *
+   * These were one "claimed or refused" pair, and the report said "player one
+   * already had a controller" whenever both were zero. That is three distinct
+   * situations wearing one sentence: nothing was ever routed, a controller
+   * really did own player one, or there was no pad slot to assign. A reader
+   * chasing "touch does nothing" was sent to look for a controller that in
+   * two of the three cases did not exist.
+   */
   unsigned long player_one_claimed;
   unsigned long player_one_refused;
+  unsigned long player_one_held_by_transient; /* a pad chosen this run */
+  unsigned long player_one_held_by_setting;   /* a stored reservation */
+  unsigned long player_one_no_slot;           /* the pad is not open yet */
   unsigned long cancellations;
 } X2TouchCensus;
 

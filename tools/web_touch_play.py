@@ -71,7 +71,15 @@ class Census:
         r"\[touch\] (?:\[HB\] )?published to the pad: (\d+) button change\(s\) "
         r"\((\d+) refused\), (\d+) axis change\(s\) \((\d+) refused\)"
     )
-    PLAYER_ONE = re.compile(r"\[touch\] (?:\[HB\] )?(the touch pad was \w+|player one already had)")
+    PLAYER_ONE = re.compile(
+        r"\[touch\] (?:\[HB\] )?(?:"
+        r"the touch pad was (?P<outcome>claimed|REFUSED)"
+        r"|(?P<transient>a controller chosen in this run already holds)"
+        r"|(?P<setting>a stored controller reservation holds)"
+        r"|(?P<noslot>the touch pad had no inventory slot)"
+        r"|(?P<never>player one was never asked for)"
+        r")"
+    )
 
     def __init__(self) -> None:
         self.beats = 0
@@ -115,7 +123,16 @@ class Census:
             return
         match = self.PLAYER_ONE.search(line)
         if match:
-            self.player_one = match.group(1)
+            if match.group("outcome"):
+                self.player_one = match.group("outcome").lower()
+            elif match.group("transient"):
+                self.player_one = "held-by-transient"
+            elif match.group("setting"):
+                self.player_one = "held-by-setting"
+            elif match.group("noslot"):
+                self.player_one = "no-slot"
+            else:
+                self.player_one = "never-asked"
 
 
 def pump(cdp: Cdp, census: Census, seconds: float) -> None:
@@ -316,10 +333,10 @@ def main() -> int:
     print(f"\nVERDICT: a touch on a drawn control reaches the pad in this browser "
           f"-- {contacts} contact(s), {zones} zone action(s), {buttons} button "
           f"change(s) and {axes} axis change(s) published.")
-    if census.player_one and census.player_one.startswith("player one already"):
-        print("  NOTE: player one already had a controller, so the touch pad was "
-              "not claimed for it. Published presses can still be going to a pad "
-              "the guest is not reading.")
+    if census.player_one != "claimed":
+        print(f"  NOTE: the touch pad was not claimed for player one "
+              f"({census.player_one}). Published presses can still be going to "
+              "a pad the guest is not reading.")
         return 1
     return 0
 

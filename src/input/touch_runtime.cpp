@@ -182,12 +182,19 @@ void claim_player_one() {
   static bool attempted = false;
   if (attempted)
     return;
-  if (x2_transient_controller_has_assignment(0) ||
-      x2_settings_player_controller(x2_settings_store(), 0))
+  if (x2_transient_controller_has_assignment(0)) {
+    census.player_one_held_by_transient++;
     return;
+  }
+  if (x2_settings_player_controller(x2_settings_store(), 0)) {
+    census.player_one_held_by_setting++;
+    return;
+  }
   const int slot = dinput_pad_virtual_slot();
-  if (slot < 0)
+  if (slot < 0) {
+    census.player_one_no_slot++;
     return; /* Not opened yet; try again on the next contact. */
+  }
   attempted = true;
   if (x2_transient_controller_assign(slot, 0)) {
     census.player_one_claimed++;

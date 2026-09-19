@@ -31,8 +31,9 @@ EVERYTHING_DROPPED = (
     "window, rotation or layout change",
     "log     [touch] [HB] published to the pad: 0 button change(s) (0 refused), "
     "0 axis change(s) (0 refused)",
-    "log     [touch] [HB] player one already had a controller, so the touch pad "
-    "was not claimed for it",
+    "log     [touch] [HB] a controller chosen in this run already holds player "
+    "one (3 time(s) asked), so the touch pad was not claimed for it -- if "
+    "nothing moves, THAT controller is what the guest is reading",
 )
 
 NOTHING_TOUCHED = (
@@ -70,7 +71,7 @@ class CensusReaderTest(unittest.TestCase):
         self.assertEqual(census.zones, 9)
         self.assertEqual((census.buttons, census.buttons_refused), (14, 0))
         self.assertEqual((census.axes, census.axes_refused), (4, 0))
-        self.assertEqual(census.player_one, "the touch pad was claimed")
+        self.assertEqual(census.player_one, "claimed")
 
     def test_a_run_whose_contacts_were_all_dropped(self):
         census = read(EVERYTHING_DROPPED)
@@ -79,7 +80,7 @@ class CensusReaderTest(unittest.TestCase):
         self.assertEqual(census.gate, "never-seen")
         self.assertEqual(census.zones, 0)
         self.assertEqual(census.buttons, 0)
-        self.assertEqual(census.player_one, "player one already had")
+        self.assertEqual(census.player_one, "held-by-transient")
 
     def test_the_two_runs_are_told_apart_by_the_gate_and_the_pad(self):
         """The whole point: both saw 32 contacts. Only the gate, the zone
@@ -118,6 +119,56 @@ class CensusReaderTest(unittest.TestCase):
         self.assertEqual(census.beats, 0)
         self.assertIsNone(census.contacts)
         self.assertIsNone(census.gate)
+
+
+PLAYER_ONE_LINES = {
+    "claimed": "log     [touch] [HB] the touch pad was claimed for player one",
+    "refused": "log     [touch] [HB] the touch pad was REFUSED -- touch cannot "
+               "reach gameplay in this run",
+    "held-by-transient":
+        "log     [touch] [HB] a controller chosen in this run already holds "
+        "player one (3 time(s) asked), so the touch pad was not claimed for it",
+    "held-by-setting":
+        "log     [touch] [HB] a stored controller reservation holds player one "
+        "(2 time(s) asked), so the touch pad was not claimed for it -- clear it "
+        "in the settings to play by touch",
+    "no-slot":
+        "log     [touch] [HB] the touch pad had no inventory slot when player "
+        "one was asked for (5 time(s)), so nothing was claimed and touch cannot "
+        "reach gameplay",
+    "never-asked":
+        "log     [touch] [HB] player one was never asked for -- no contact "
+        "reached the publish path, so this says nothing about who owns the "
+        "player",
+}
+
+
+class PlayerOneOutcomeTest(unittest.TestCase):
+    """Each way player one can end up, told apart.
+
+    These were one sentence -- "player one already had a controller" -- printed
+    whenever no claim and no refusal had been counted, which is also what a run
+    that never asked and a run with no pad slot look like. A reader chasing
+    "touch does nothing" was sent to look for a controller that in two of those
+    three cases did not exist.
+    """
+
+    def test_every_outcome_reads_back_as_itself(self):
+        for want, line in PLAYER_ONE_LINES.items():
+            with self.subTest(outcome=want):
+                self.assertEqual(read([line]).player_one, want)
+
+    def test_the_outcomes_are_all_distinct(self):
+        got = {read([line]).player_one for line in PLAYER_ONE_LINES.values()}
+        self.assertEqual(len(got), len(PLAYER_ONE_LINES))
+
+    def test_a_line_about_some_other_player_one_is_not_an_outcome(self):
+        """The falsifier: the words alone must not be enough."""
+        census = read([
+            "log     [engine] [HB] player one was never asked for",
+            "log     [touch] the touch pad was inspected for player one",
+        ])
+        self.assertIsNone(census.player_one)
 
 
 class ShippingCensusTest(unittest.TestCase):
@@ -169,6 +220,9 @@ class ShippingCensusTest(unittest.TestCase):
         self.assertGreater(census.zones, 0)
         self.assertGreater(census.buttons, 0)
         self.assertEqual(census.gate, "active")
+        # Pinned to the real wording, not just "something was read": the C
+        # test drives a run in which touch does claim player one.
+        self.assertEqual(census.player_one, "claimed")
 
     def test_the_reader_parses_the_census_branch_that_saw_nothing(self):
         """The first block the C test prints, before it has touched anything.
