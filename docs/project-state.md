@@ -1074,12 +1074,33 @@ windows — so the census is a roadmap and not just accounting. It is also not
 enough on its own: zeroing every row above leaves the route short of playable.
 
 Browser playability remains unproven and the frame rate is still short of
-playable. The route a player actually takes is worse than the gameplay
-test: **the packaged product started from its saved installation reaches the
-retail "Loading..." prompt and wedges there** (issue #158), with three guest
-threads created by the intro, one of them SUSPENDED, 99% of every interval in
-host imports, and five of sixteen workers unable to answer the profiler at all
-because they are blocked rather than spinning. That is not the guest-memory
+playable. The route a player actually takes used to be worse than the gameplay
+test, and **that is fixed**: the packaged product started from its saved
+installation now boots through the legal screen, the six intro FMVs and the
+main-menu load and renders the menu continuously. It had wedged instead, first
+at the retail "Loading..." prompt and later one phase further on, with 99% of
+every interval inside `KERNEL32!Sleep` (issue #158). The cause was this port's
+scheduler, not the title: `scheduler_has_waiter()` counted any thread parked in
+a condition wait as a thread the guest lock could be handed to, and the
+hand-off promise in `threads_yield.c` then waits until somebody else has taken
+a turn. XMen2.exe's gamepad-enumeration loop sleeps 83.3 ms an iteration
+through `igPthreadThread::internalSleep`, and a thread sleeping out a deadline
+cannot take a turn, so every quantum yield waited out that deadline and the
+whole product advanced at the sleeper's 12 Hz. `src/native/threads_ready.c` now
+owns the rule: a condition waiter is a candidate when a broadcast has reached
+it or its deadline has passed, never merely because it is parked, and the
+broadcast path issue #149 depends on is preserved by marking waiters ready when
+they are signalled (`tests/test_threads_ready.c`, 15 checks). Measured on the
+same Zen retail route: **0 presents in six minutes became 2,969 at a sustained
+50 per 5 s, draws per 5 s went from about 40 to about 12,000, and the longest
+lock hand-off fell from 398 ms to 2 ms.** Two instruments were needed to get
+there and both stay: `KERNEL32!Sleep` was not counted anywhere, so the
+heartbeat's wait line read "+0" through a stall that was almost entirely
+Sleep -- it now lives in `kernel32_wait.c` with the other blocking waits and
+feeds the same counters -- and a bounded census beside them names the guest
+call sites that called it. The gameplay test route is unaffected by the fix
+(it runs one guest thread, so it never parked) and still measures about 9.8
+presents/s at 117 ms a frame, of which 22 ms is the swapchain wait. That is not the guest-memory
 window: `tools/live_case.py cutscene-skip` boots the retail flow, loads a map
 and runs a cutscene 11/11 on both the ordinary desktop binary and on
 `build/native-window/x2native` built with `-DX2_GUEST_ARENA_WINDOW=1`.

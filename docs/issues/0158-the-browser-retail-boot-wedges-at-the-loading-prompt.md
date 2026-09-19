@@ -1,25 +1,26 @@
 ---
 id: 158
 title: the browser's retail boot wedges at the "Loading..." prompt
-status: investigating
+status: resolved
 symptom: the retail #play route never leaves Loading...; the guest asks a memory pool for -2 bytes, the pool refuses, and the title's own fatal handler hangs on a JMP $ at 0x403210
 state_items: S021
 tags: web,browser,wasm,boot,threads,wedge
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-20
 ---
 
 # 0158 — the browser's retail boot wedges at the "Loading..." prompt
 
 - **State items:** S021
-- **Status:** cause found, one step from the defect. The spin at `0x403210`
-  is the tail of the title's own fatal allocation-failure handler, called from
-  `libIGCore.dll!igMemoryPool::allocationFailure` with **request size
-  `0xFFFFFFFE` (-2) and reason `kAllocationFailureMaxSizeExceeded`**. The
-  browser is not out of memory: something computes a negative size. What
-  computes it is the open question. This supersedes the localizations to
-  thread suspension, to the guest memory window, and the `Present` reading
-  below.
+- **Status:** RESOLVED. The retail `#play` route now boots through the legal
+  screen, the six intro FMVs and the main-menu load and renders the menu
+  continuously: 2,969 presents at a sustained 50 per 5 s where the same route
+  had presented nothing for six minutes. The defect was in this port's
+  scheduler, not in the title and not in any allocation: see "What it actually
+  was" below. The `-2` allocation-failure localization recorded here is
+  **retired** — a watch on `igMemoryPool::allocationFailure` never fired on a
+  later run of the same route, and the wedge had by then moved a phase further
+  on, to the main menu.
 - **Not** #157: the same source passes the same route on the desktop, and the
   browser's Dead Zone route runs to 1,200 presents on the same build.
 
@@ -308,3 +309,45 @@ here as unknown rather than assumed either way.
 
 If a run with the intro's guest threads never created but the retail route
 otherwise intact still wedges, the suspicion of `SuspendThread` is wrong.
+
+## What it actually was
+
+`KERNEL32!Sleep` was not counted anywhere in this port, so the heartbeat's wait
+line read "+0" through a stall whose HOTEP split was 4,948 ms of every 5,000 ms
+inside that exact call. Sleep now lives in `src/native/kernel32_wait.c` with the
+other blocking waits and feeds the same counters, and a bounded census beside
+them names the guest call sites that called it. That census found one site:
+`libIGCore+0x6431d`, which is `igPthreadThread::internalSleep`, asking for
+83.3 ms a call, twelve times a second. Following it back through the export and
+import tables reaches `XMen2.exe` at `0x618e33`, the gamepad-enumeration loop
+that re-reads `Controls\Gamepads\GamepadName%d` and sleeps 83.3 ms between
+passes.
+
+That sleeper was the wedge, through this port rather than through the title.
+`scheduler_has_waiter()` counted any thread in a condition wait as a thread the
+guest lock could be handed to, and the hand-off promise in `threads_yield.c`
+(added for #149) then waits until somebody else has taken a turn. A thread
+parked on an 83.3 ms deadline cannot take one, so every quantum yield waited
+out that deadline and the whole product advanced at the sleeper's 12 Hz. It is
+also why the browser's frame rate was terrible wherever the title ran a second
+thread.
+
+`src/native/threads_ready.c` now owns the rule, as a pure function of the
+thread record and the clock: a condition waiter is a candidate when a broadcast
+has already reached it or its deadline has passed, never merely because it is
+parked. `guest_cond_broadcast` marks parked waiters ready, which is what keeps
+#149's promise meaningful for the threads it was written for.
+`tests/test_threads_ready.c` holds the rule to its negatives — a sleeper with
+time left and an unsignalled untimed wait are both NOT ready.
+
+Measured on the same Zen route, retail `#play`:
+
+```
+before: 0 presents in 6 min, ~40 draws / 5 s, longest hand-off 398 ms
+after:  2,969 presents, 50 per 5 s sustained, ~12,000 draws / 5 s,
+        longest hand-off 2 ms
+```
+
+Still open, and not this issue: the menu renders but the game never polls the
+pad in the browser ("the game read a button 0 time(s)"), and the frame rate is
+about 10 presents/s.
