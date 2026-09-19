@@ -24,7 +24,7 @@ LEGACY_LIMITS = {
     "src/native/x2native.c": 2329,            # was 2152
     "src/d3d8/d3d8_drawcall.c": 1815,         # was 1650
     "src/d3d8/d3d8_device.c": 1744,           # was 1640
-    "src/native/crt.c": 1535,                 # was 1353
+    "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c
     "src/gpu/gpu_draw.c": 1369,               # was 1250
     "src/d3d8/d3d8_report.c": 1530,           # was 1395
     "src/native/threads.c": 719,              # was 1070, then 842; the reports -> thread_report.c

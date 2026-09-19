@@ -875,6 +875,8 @@ add_test(NAME xbox_defaults COMMAND test_xbox_defaults)
 # The guest printf format walker. It builds crt.c against a stub runtime, so it
 # needs no guest runtime and runs in the ordinary suite.
 add_executable(test_vformat tests/test_vformat.c src/native/crt.c
+               src/native/crt_console.c
+               src/native/crt_stdio.c
                src/native/host_dir_cache.c
                src/native/guest_file_io.c
                src/native/crt_write_watch.c src/runtime/x86_abi/x87crt.c
@@ -1551,6 +1553,8 @@ set(X2_NATIVE_SOURCES
     src/native/win32_events.c
     src/native/guest_heap.c
     src/native/guest_file_io.c
+    src/native/crt_console.c
+    src/native/crt_stdio.c
     src/native/crt.c
     src/native/crt_aliases.c
     src/native/crt_setjmp.c
