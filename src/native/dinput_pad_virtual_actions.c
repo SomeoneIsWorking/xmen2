@@ -29,14 +29,12 @@
  */
 static int release_button(int i, int wait_for_a_reader) {
 #ifdef X2_WITH_SDL
-  X2PadPollCounts counts;
-  dinput_pad_poll_counts(&counts);
   /* Only a button that is actually down is owed a look. A release for one
      nobody pressed used to take this branch too, which both left a deadline
      armed for a press that never happened and inflated the deferral count the
      beat reports -- 4 waited releases from 2 presses. */
   if (wait_for_a_reader && SDL_GetJoystickButton(g_virt_js, i) &&
-      counts.button_reads == g_vbtn_reads_at_set[i]) {
+      dinput_pad_button_read_count(i) == g_vbtn_reads_at_set[i]) {
     g_vbtn_release_pending[i] = 1;
     g_vbtn_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
     g_vpad_releases_deferred++;
@@ -92,10 +90,8 @@ int dinput_pad_virtual_release(const char *what) {
   for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++) {
     if (!strcmp(what, g_vaxis_name[i])) {
       const short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
-      X2PadPollCounts counts;
-      dinput_pad_poll_counts(&counts);
       if (g_vaxis_value[i] != rest &&
-          counts.axis_reads == g_vaxis_reads_at_set[i]) {
+          dinput_pad_axis_read_count(i) == g_vaxis_reads_at_set[i]) {
         /* Same rule as a button, including its guard: a stick the game never
            sampled was never moved, and a stick already at rest is owed
            nothing. */
@@ -132,11 +128,9 @@ void virtual_expire(void) {
   {
     /* A deferred release lands as soon as the game has looked, which is what
        it was waiting for; the deadline below is only its ceiling. */
-    X2PadPollCounts counts;
-    dinput_pad_poll_counts(&counts);
     for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
       if (g_vbtn_release_pending[i] &&
-          counts.button_reads != g_vbtn_reads_at_set[i]) {
+          dinput_pad_button_read_count(i) != g_vbtn_reads_at_set[i]) {
         g_vbtn_release_pending[i] = 0;
         g_vbtn_until[i] = 0.0;
         SDL_SetJoystickVirtualButton(g_virt_js, i, false);
@@ -144,7 +138,7 @@ void virtual_expire(void) {
       }
     for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++)
       if (g_vaxis_release_pending[i] &&
-          counts.axis_reads != g_vaxis_reads_at_set[i]) {
+          dinput_pad_axis_read_count(i) != g_vaxis_reads_at_set[i]) {
         const short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
         g_vaxis_release_pending[i] = 0;
         g_vaxis_until[i] = 0.0;

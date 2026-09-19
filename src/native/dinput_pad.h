@@ -99,6 +99,10 @@ int dinput_pad_button(int pad, int button); /* 0 or 1 */
  * it was dropped a millisecond after it was made. Measured in a browser run:
  * 167,890 reads, not one of them DOWN, with the press still held.
  */
+/* How many times the game has read THIS button or THIS axis. A press waiting
+   to be seen waits for its own reader, not for any read of any value. */
+unsigned long dinput_pad_button_read_count(int button);
+unsigned long dinput_pad_axis_read_count(int axis);
 int dinput_pad_button_uncounted(int pad, int button);
 int32_t dinput_pad_axis_uncounted(int pad, int axis, int32_t lo, int32_t hi);
 int dinput_pad_button_count(int pad);

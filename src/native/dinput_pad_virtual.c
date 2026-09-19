@@ -244,9 +244,7 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
          historical short-press default. */
       g_vbtn_until[i] = hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30);
       {
-        X2PadPollCounts counts;
-        dinput_pad_poll_counts(&counts);
-        g_vbtn_reads_at_set[i] = counts.button_reads;
+        g_vbtn_reads_at_set[i] = dinput_pad_button_read_count(i);
         g_vbtn_release_pending[i] = 0;
       }
       g_vpad_presses++;
@@ -344,9 +342,7 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
       g_vaxis_value[i] = raw;
       g_vaxis_until[i] = hold > 0.0 ? now + hold : 0.0;
       {
-        X2PadPollCounts counts;
-        dinput_pad_poll_counts(&counts);
-        g_vaxis_reads_at_set[i] = counts.axis_reads;
+        g_vaxis_reads_at_set[i] = dinput_pad_axis_read_count(i);
         g_vaxis_release_pending[i] = 0;
       }
       g_vpad_axis_sets++;

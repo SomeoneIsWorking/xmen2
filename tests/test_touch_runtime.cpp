@@ -162,6 +162,7 @@ constexpr int32_t kAxisHi = 32767;
    publishes. */
 constexpr uint32_t kButtonsOffset = 48;
 constexpr int kDirectInputButtonY = 3;
+constexpr int kDirectInputButtonA = 0;
 
 int guest_buttons(int slot) {
   SDL_UpdateJoysticks();
@@ -204,6 +205,10 @@ int guest_button_byte(int slot, int button) {
 
 void sample_as_the_guest_does() {
   X2DirectInputControllerSample sample;
+  /* dinput_joystick_state latches SDL once and reads the whole state out of
+     that latch; a sampler that skipped the latch would be waiting on a
+     counter the real guest moves and this test never does. */
+  dinput_pad_refresh_state();
   x2_directinput_controller_capture(dinput_pad_virtual_slot(), kAxisLo, kAxisHi,
                                     &sample);
 }
@@ -401,6 +406,18 @@ int main() {
   dinput_pad_virtual_tick(0);
   check(dinput_pad_virtual_report_reader_view() == -1,
         "and finds nothing once it is let go", "after the release");
+
+  /* And another button's reader does not count as this one's. The game reads
+     all ten buttons out of one latch, so a total moves nine times over for
+     values nobody asked about; keyed on a total, this press was released on
+     the read of a button the player never touched. */
+  send_finger(SDL_EVENT_FINGER_DOWN, 13, jump_x, jump_y, width, height);
+  (void)dinput_pad_button(slot, kDirectInputButtonA);
+  send_finger(SDL_EVENT_FINGER_UP, 13, jump_x, jump_y, width, height);
+  check(guest_buttons(slot) == (1 << kDirectInputButtonY),
+        "a read of a different button is not this button's reader",
+        "buttons bitmap " + std::to_string(guest_buttons(slot)));
+  dinput_pad_virtual_tick(0);
 
   /* The stick is the control a scroll steals first in a browser and the one a
      player uses constantly, so it gets the same treatment as a button. */

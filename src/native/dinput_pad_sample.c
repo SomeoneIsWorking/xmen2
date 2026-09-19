@@ -6,6 +6,9 @@
 
 #include <stdint.h>
 
+/* The six DirectInput axes this pad presents; see dinput_pad.h. */
+#define X2_DIRECTINPUT_SAMPLE_AXES 6
+
 static int read_button(int pad, int button, int counted);
 static int32_t read_axis(int pad, int axis, int32_t lo, int32_t hi,
                          int counted);
@@ -51,6 +54,12 @@ static unsigned long g_btn_unreadable;
    above because they are different defects: no pad there, versus a pad SDL
    never gave us a handle for. Both return the same false. */
 static unsigned long g_btn_no_pad;
+/* Per BUTTON and per AXIS, because "the game read a button" is not "the game
+   read THIS button": one poll reads all ten buttons and six axes out of a
+   single latch, so a total moves fifteen times over for values nobody asked
+   about. A press waiting to be seen has to wait for its own reader. */
+static unsigned long g_btn_reads_by_index[10];
+static unsigned long g_axis_reads_by_index[X2_DIRECTINPUT_SAMPLE_AXES];
 
 /*
  * Refresh SDL's view of the pads, ONCE per device poll.
@@ -88,8 +97,25 @@ void dinput_pad_refresh_state(void) {
 #endif
 }
 
+unsigned long dinput_pad_button_read_count(int button) {
+  if (button < 0 || button >= 10) {
+    return 0;
+  }
+  return g_btn_reads_by_index[button];
+}
+
+unsigned long dinput_pad_axis_read_count(int axis) {
+  if (axis < 0 || axis >= X2_DIRECTINPUT_SAMPLE_AXES) {
+    return 0;
+  }
+  return g_axis_reads_by_index[axis];
+}
+
 int dinput_pad_button(int pad, int button) {
   g_btn_reads++;
+  if (button >= 0 && button < 10) {
+    g_btn_reads_by_index[button]++;
+  }
   return read_button(pad, button, 1);
 }
 
@@ -149,6 +175,9 @@ float dinput_pad_trigger_pressure(int pad, int trigger) {
 
 int32_t dinput_pad_axis(int pad, int axis, int32_t lo, int32_t hi) {
   g_axis_reads++;
+  if (axis >= 0 && axis < X2_DIRECTINPUT_SAMPLE_AXES) {
+    g_axis_reads_by_index[axis]++;
+  }
   return read_axis(pad, axis, lo, hi, 1);
 }
 
