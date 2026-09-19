@@ -23,5 +23,8 @@ extern short g_vaxis_value[X2_VIRTUAL_AXIS_COUNT];
 int axis_is_trigger(int axis);
 short trigger_raw(double value);
 void virtual_expire(void);
+/* Build and open the synthetic SDL device. Idempotent only in the sense that
+   its callers check g_virt_id first; it does not check for itself. */
+void virtual_attach(void);
 
 #endif /* X2_DINPUT_PAD_VIRTUAL_INTERNAL_H */

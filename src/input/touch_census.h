@@ -30,6 +30,11 @@ typedef struct X2TouchCensus {
   unsigned long buttons_refused;
   unsigned long axes_published;
   unsigned long axes_refused;
+  /* Whether the overlay has a pad to publish through at all. Zero of both
+     means touch has never had anything to say; a refusal means the overlay
+     is live and every press below is going nowhere. */
+  unsigned long pad_attached;
+  unsigned long pad_attach_refused;
   unsigned long player_one_claimed;
   unsigned long player_one_refused;
   unsigned long cancellations;

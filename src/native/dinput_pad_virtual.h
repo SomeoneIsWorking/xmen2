@@ -14,6 +14,25 @@ extern "C" {
    hardware behaviour. */
 
 void dinput_pad_virtual_from_env(void);
+
+/*
+ * Attach the synthetic pad because TOUCH needs one, and say so.
+ *
+ * The on-screen controls publish through this pad -- that is what
+ * dinput_pad_virtual_set/release are for -- so a run with the overlay live
+ * and no pad attached routes every press into nothing. Measured in a browser
+ * run: 48 contacts, 72 zone actions, 0 published, 36 refused with "this run
+ * has no synthetic pad to press". The overlay drew, the zones lit up, and the
+ * guest could not see any of it.
+ *
+ * It was only ever attached by X2_VIRTUAL_PAD (a diagnostic) or by the
+ * Android bridge doing it by hand, which is why every other platform's touch
+ * support was dead. The touch owner attaches its own pad instead.
+ *
+ * Returns nonzero when a pad is available afterwards. Idempotent: a run that
+ * already has one, however it arrived, keeps it.
+ */
+int dinput_pad_virtual_attach_for_touch(void);
 void dinput_pad_virtual_tick(unsigned long frame);
 /* Button hold: 0 selects the default timed press, negative persists until
    dinput_pad_virtual_release. Axis hold 0 persists until changed/released. */

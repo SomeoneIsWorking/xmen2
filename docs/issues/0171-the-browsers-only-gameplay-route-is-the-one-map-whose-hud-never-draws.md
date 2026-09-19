@@ -1,8 +1,8 @@
 # 0171 — the browser's only gameplay route is the one map whose HUD never draws
 
 State items: S020 (platform-neutral touch play), S021 (web product)
-Status: cause established and measured; the route now accepts another map and
-the browser touch evidence is being taken through it.
+Status: resolved. Both causes are fixed and the browser now publishes touch
+to the pad — measured through the product's own census.
 
 ## Symptom
 
@@ -67,3 +67,63 @@ Why the Dead Zone map draws no party HUD is a separate question about that
 map's content. It is a diagnostic map reached by a diagnostic boot; nothing
 says it must present a party. It is recorded here because it silently made an
 entire platform's touch support unmeasurable, not because the map is wrong.
+
+## What the route then found — the touch chain had no pad
+
+With the tutorial map reachable, the browser sweep finally landed on drawn
+controls, and the product's own census reported the real defect:
+
+```
+  mode AUTO, source touch, gate active
+  contact events 0 -> 48  (+48)
+  zone actions   0 -> 72  (+72)
+  pad buttons    0 -> 0  (+0)
+  pad axes       0 -> 0  (+0)
+  refused by the pad: 4 button(s), 32 axis change(s)
+touch: could not move virtual axis leftx: this run has no synthetic pad to
+       press (X2_VIRTUAL_PAD is unset, or the pad attached but could not be
+       opened).
+```
+
+The on-screen controls publish through the synthetic SDL pad — that is what
+`dinput_pad_virtual_set/release` are for — and **nothing attached that pad
+except the `X2_VIRTUAL_PAD` diagnostic and the Android bridge doing it by
+hand** (`src/native/android_bridge.cpp`). Setting it there was the only reason
+Android's touch worked; on every other platform the overlay drew, the zones
+lit up, and each press was refused.
+
+The touch owner now attaches its own pad
+(`dinput_pad_virtual_attach_for_touch`, called from `touch_runtime.cpp`'s
+publish path), the Android special case is gone, and the census reports the
+pad's absence by name instead of leaving a row of refusals with no cause.
+
+`tests/test_touch_runtime.cpp` no longer attaches a pad for itself: it checks
+that none exists before the first contact and that one exists after, so it
+proves the product supplies the pad rather than proving the chain works given
+one. Removing the `ensure_pad()` call fails it; verified.
+
+
+## Verified
+
+`tools/web_touch_play.py`, same sweep, against the package built with both
+fixes, tutorial map, 390x844 emulated touch device:
+
+```
+  mode AUTO, source touch, gate active
+  contact events 0 -> 48  (+48)
+  zone actions   0 -> 62  (+62)
+  pad buttons    0 -> 4  (+4)
+  pad axes       0 -> 32  (+32)
+  refused by the pad: 0 button(s), 0 axis change(s)
+  dropped before routing, cumulative: 0 of 48
+  player one: the touch pad was claimed
+```
+
+A touch on a drawn control reaches the pad in a browser, and the pad is
+player one's, which is what makes the guest poll it. The page kept every
+gesture (scrollY 0) — issue #170's fix holding under a real sweep.
+
+What this does not show is the character moving on screen. The census sees as
+far as the pad; `tests/test_touch_runtime.cpp` reads the presses back off a
+real SDL gamepad, so the link past the pad is covered there rather than here.
+A visual confirmation on a device remains part of S020's gap.

@@ -148,6 +148,36 @@ void publish_axis(std::span<const x2::input::ActionEvent> events,
  * A controller the player already chose keeps player one, so plugging a real
  * pad in still wins; this only fills the vacancy.
  */
+/*
+ * The pad the overlay publishes through.
+ *
+ * dinput_pad_virtual_set/release are the only way a touch press reaches the
+ * guest, and for most of this port's life nothing attached that pad except
+ * the X2_VIRTUAL_PAD diagnostic and the Android bridge doing it by hand. So
+ * touch was dead on every other platform: the overlay drew, the zones lit up,
+ * and each press was refused with "this run has no synthetic pad to press".
+ * The touch owner attaches its own.
+ *
+ * Attempted once. A failure is not retried on every contact -- it would say
+ * the same thing sixty times a second -- but it is counted, so the census
+ * reports a live overlay with nowhere to publish rather than a tidy row of
+ * refusals with no cause.
+ */
+void ensure_pad() {
+  static bool attempted = false;
+  if (attempted) {
+    return;
+  }
+  attempted = true;
+  if (dinput_pad_virtual_attach_for_touch()) {
+    census.pad_attached++;
+    return;
+  }
+  census.pad_attach_refused++;
+  x2_log_error("touch: no synthetic gamepad could be attached, so the "
+               "on-screen controls cannot reach gameplay in this run\n");
+}
+
 void claim_player_one() {
   static bool attempted = false;
   if (attempted)
@@ -173,6 +203,7 @@ void publish(const std::vector<x2::input::ActionEvent> &events) {
   using x2::input::TouchAction;
   if (events.empty())
     return;
+  ensure_pad();
   claim_player_one();
   for (const auto &event : portrait_pointer.route(events)) {
     const bool release = event.phase == lucent::touch::Phase::ended ||

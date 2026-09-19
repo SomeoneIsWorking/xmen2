@@ -139,11 +139,11 @@ Java_com_someoneisworking_xmen2_XMen2SetupActivity_nativeConfigureStorage(
   } else {
     x2_config_override_unset(kX2ConfigBootMap);
   }
-  /* The existing guest input path already knows how to create and map the
-   * SDL virtual pad. Android supplies touch actions to that same pad, so
-   * there is one binding path instead of a second mobile-only input stack. */
-  return x2_config_override_set(kX2ConfigVirtualPad, "1", 1) == 0 ? JNI_TRUE
-                                                                  : JNI_FALSE;
+  /* The synthetic pad touch publishes through is attached by the touch owner
+   * itself (src/input/touch_runtime.cpp), on every platform. Setting
+   * X2_VIRTUAL_PAD here was the only reason Android's touch worked and no
+   * other platform's did. */
+  return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

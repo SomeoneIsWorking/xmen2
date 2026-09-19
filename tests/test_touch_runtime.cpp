@@ -162,24 +162,23 @@ int main() {
     return 77;
   }
 
-  /* The pad attaches through the shipping cvar path, not by calling SDL
-     directly, so this exercises the same attach the product performs. */
+  /*
+   * NOTHING attaches a pad here on purpose.
+   *
+   * This test used to set the X2_VIRTUAL_PAD cvar and attach the synthetic
+   * pad itself, which meant it proved the touch chain works GIVEN a pad --
+   * and the product did not give it one. A browser run with the overlay live
+   * refused all 36 of its publications with "this run has no synthetic pad to
+   * press". So the pad must come from the shipping touch path or not at all.
+   */
   lucent::cvar::Var<std::string> virtual_pad{"virtual_pad", ""};
   lucent::cvar::Var<std::string> virtual_pad_id{"virtual_pad_id", ""};
   lucent::cvar::register_var(virtual_pad);
   lucent::cvar::register_var(virtual_pad_id);
-  lucent::cvar::set_arg("virtual_pad", "1");
-  dinput_pad_virtual_from_env();
-  if (dinput_pad_virtual_slot() < 0) {
-    std::fprintf(stderr, "SKIP: the synthetic pad did not attach here\n");
-    return 77;
-  }
-  SDL_Gamepad *pad = open_the_synthetic_pad();
-  if (!pad) {
-    std::fprintf(stderr,
-                 "SKIP: the synthetic pad has no gamepad mapping here\n");
-    return 77;
-  }
+  check(dinput_pad_virtual_slot() < 0,
+        "no synthetic pad exists before touch asks for one",
+        "nothing has attached one");
+  SDL_Gamepad *pad = nullptr;
 
   x2_settings_store_init();
   x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
@@ -218,9 +217,21 @@ int main() {
   const float empty_x = static_cast<float>(width) * 0.5F;
   const float empty_y = static_cast<float>(height) * 0.5F;
   send_finger(SDL_EVENT_FINGER_DOWN, 900, empty_x, empty_y, width, height);
+  send_finger(SDL_EVENT_FINGER_UP, 900, empty_x, empty_y, width, height);
+
+  /* The first contact routed through the shipping path is what attaches the
+     pad. If the product does not attach one, nothing below can pass -- which
+     is the point: this is the failure a real browser run had. */
+  check(dinput_pad_virtual_slot() >= 0, "touch attached its own synthetic pad",
+        "slot " + std::to_string(dinput_pad_virtual_slot()));
+  pad = open_the_synthetic_pad();
+  if (!pad) {
+    std::fprintf(stderr,
+                 "SKIP: the synthetic pad has no gamepad mapping here\n");
+    return 77;
+  }
   check(!button_down(pad, "y"), "a contact outside every zone presses nothing",
         "centre of the screen");
-  send_finger(SDL_EVENT_FINGER_UP, 900, empty_x, empty_y, width, height);
 
   const float jump_x = (jump->left + jump->right) * 0.5F;
   const float jump_y = (jump->top + jump->bottom) * 0.5F;

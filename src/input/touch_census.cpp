@@ -79,6 +79,18 @@ void x2_touch_census_report(const char *tag, int has_window) {
    * no player was assigned to is one the guest never polls -- the two ways
    * this feature has actually failed on a device.
    */
+  if (g_census.pad_attach_refused) {
+    lucent_log_info("touch",
+                    "%sTHERE IS NO PAD: the overlay asked for a synthetic "
+                    "gamepad %lu time(s) and did not get one, so every press "
+                    "below reached nothing",
+                    prefix, g_census.pad_attach_refused);
+  } else if (g_census.pad_attached == 0) {
+    lucent_log_info("touch",
+                    "%sthe overlay has not asked for a pad yet -- nothing has "
+                    "been routed to one",
+                    prefix);
+  }
   lucent_log_info("touch",
                   "%spublished to the pad: %lu button change(s) (%lu refused), "
                   "%lu axis change(s) (%lu refused)",
