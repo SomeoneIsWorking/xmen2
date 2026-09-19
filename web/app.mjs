@@ -153,11 +153,19 @@ async function prepare() {
         "through WebGPU in a worker, so it cannot start without it."
       );
     }
-    const {root, persistent} = await persistentStorage();
+    const {root, persistent, granted} = await persistentStorage();
     storageRoot = root;
-    document.querySelector("#storage-note").textContent = persistent
-      ? "Game files and saves are kept in persistent storage on this device."
-      : "The browser has not granted persistent storage. It may clear game files and saves under storage pressure.";
+    // The grant is a permission question the browser may answer late or never,
+    // so say what is true now and improve the note if the answer arrives. The
+    // page must never wait on it: the player is here to choose a game file.
+    const note = document.querySelector("#storage-note");
+    const describeStorage = state => {
+      note.textContent = state
+        ? "Game files and saves are kept in persistent storage on this device."
+        : "The browser has not granted persistent storage. It may clear game files and saves under storage pressure.";
+    };
+    describeStorage(persistent);
+    granted.then(state => { if (state) describeStorage(true); });
     // A prior closed page can leave its input file; release only this owned
     // staging leaf while holding the same cross-tab lock used by FileStager.
     await navigator.locks.request("lucent-import:incoming", {ifAvailable: true}, async lock => {

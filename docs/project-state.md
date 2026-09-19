@@ -795,6 +795,22 @@ per-cause counts will say.
 
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
+Every browser measurement this port had made was headless Chrome, and the first
+Firefox-family report was a black screen: Zen 1.22.2b (Firefox 156) with WebGPU
+enabled never opened the setup page at all. Reproduced headless over Marionette
+(`tools/marionette_client.py`) and measured in the page: `getDirectory()` and
+`persisted()` answer at once, and `navigator.storage.persist()` never settles,
+because it is a permission request Firefox holds until a player answers a prompt
+they are never shown. `persistentStorage()` awaited it, so the application stood
+still on its first status line with every button disabled (issue #175). Fixed in
+`shared/web-port` c1bff1c, pinned here: the module reports `persisted()` and
+hands the pending request back so the note can improve later. Verified in
+headless Zen against the rendered release served WITHOUT isolation headers, the
+Pages condition, so the service worker supplies them: `crossOriginIsolated=true`
+and the page reaches "Choose your game ZIP or play the installation saved on
+this device." on three consecutive loads. Firefox-family GAMEPLAY remains
+unverified.
+
 The browser artifact loads and rejects a malformed ZIP through its native
 installer. Source run `35441451781` built the asset-free package at `a6e2c78`;
 the central Pages route at `https://someoneisworking.github.io/xmen2/` serves
