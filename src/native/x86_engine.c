@@ -416,6 +416,31 @@ void x2_engine_report(void) {
           (unsigned long long)js.conds_unknown_kind,
           (unsigned long long)(js.conds_translated - js.conds_inline -
                                js.conds_unknown_kind));
+    /* The same shape of negative, for the same reason: only the WebAssembly
+       backend fills these, and a row of zeros would read as a run whose blocks
+       had nowhere to go rather than as a backend that does not count. */
+    if (js.exits == 0u)
+      lucent_log_info("engine",
+                      "JIT exits: none counted, so this build's backend does "
+                      "not report where its blocks go");
+    else
+      lucent_log_info(
+          "engine",
+          "JIT exits: %llu from %llu block(s) (%.2f each); %llu have a "
+          "successor the translator already knows (%.1f%%), of which %llu are "
+          "backward -- a guest loop paying a dispatch per iteration (%.1f%%) "
+          "-- and %llu name the block's own entry (%.1f%%)",
+          (unsigned long long)js.exits,
+          (unsigned long long)js.blocks_translated,
+          js.blocks_translated
+              ? (double)js.exits / (double)js.blocks_translated
+              : 0.0,
+          (unsigned long long)js.exits_static,
+          100.0 * (double)js.exits_static / (double)js.exits,
+          (unsigned long long)js.exits_backward,
+          100.0 * (double)js.exits_backward / (double)js.exits,
+          (unsigned long long)js.exits_self,
+          100.0 * (double)js.exits_self / (double)js.exits);
     x86_engine_report_hot_blocks(g_engine.jit, "");
   }
 }

@@ -154,6 +154,42 @@ Nothing is decided by this alone. What it rules out is the cheap objection:
 chaining is not chasing a handful of exits, and more than a fifth of them are
 loop backedges paying their dispatch on every iteration.
 
+## The dynamic half, measured — and it rules the cheapest fix OUT
+
+Every figure above is summed at translation, so a loop that runs a million times
+weighs the same as one that never runs. Useless for sizing a fix whose whole
+value is in iterations. x86port `4c1c5c8` adds the counter that is not:
+`blocks_reentered`, the times the block entered was **the one just left** —
+exactly the dispatches a backend lowering a self-exit as a WebAssembly `loop`
+would remove.
+
+Over the Dead Zone route, 61,331 blocks translated, stable across four
+heartbeats and confirmed windowed:
+
+| | |
+|---|---|
+| block entries | 454,767,532 |
+| of those, re-entering the block just left | 23,248,130 |
+| **share** | **5.1%** |
+
+Dispatch is 13.11% of the guest worker, so **a self-loop lowering is worth about
+0.7% of it**. That is not the lever, and the point of measuring was to find that
+out before building it. The static census could not have said so: it reported
+1.0% of exits naming a block's own entry and no way to weight them by how often
+they run.
+
+What the number does NOT rule out is general chaining to a known successor,
+which is 67.2% of exits on this route. Sizing that needs the successor actually
+taken, not just the successor known — a strictly bigger measurement than the
+two-entry history this counter keeps, and it is not done.
+
+**A caution this counter earned immediately.** Its first reading was 84.3%, on a
+run started with "Play saved installation" rather than the gameplay test. That
+is the retail boot, which wedges (#158), and the number was the wedge: one block
+of `JMP $` re-entering itself twenty million times a second. The counter was
+right and the run was not gameplay. Any per-entry figure here must state which
+route produced it.
+
 ## The numbers, refreshed after #162's pop fusion
 
 Guest worker, Dead Zone route, 25s, 96,169 samples:

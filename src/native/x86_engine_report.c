@@ -133,12 +133,18 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
   }
   lucent_log_info(
       "engine",
-      "[HB] JIT: %llu blocks entered, %llu translated (%llu instructions); "
+      "[HB] JIT: %llu blocks entered (%llu re-entered the block just left, "
+      "%.1f%%), %llu translated (%llu instructions); "
       "%lu native hand-backs; %llu refusals of %llu translation attempts; "
       "%llu cache flushes, %llu bytes code; %llu of %llu condition(s) "
       "lowered inline (%llu unrecorded predecessor, %llu underivable kind); "
-      "product fallback unavailable",
+      "%llu exit(s), %llu with a known successor, %llu backward, %llu to the "
+      "block's own entry; product fallback unavailable",
       (unsigned long long)js.blocks_entered,
+      (unsigned long long)js.blocks_reentered,
+      js.blocks_entered
+          ? 100.0 * (double)js.blocks_reentered / (double)js.blocks_entered
+          : 0.0,
       (unsigned long long)js.blocks_translated,
       (unsigned long long)js.guest_insns_translated, callouts,
       (unsigned long long)js.translate_refusals,
@@ -149,7 +155,10 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.conds_translated,
       (unsigned long long)js.conds_unknown_kind,
       (unsigned long long)(js.conds_translated - js.conds_inline -
-                           js.conds_unknown_kind));
+                           js.conds_unknown_kind),
+      (unsigned long long)js.exits, (unsigned long long)js.exits_static,
+      (unsigned long long)js.exits_backward,
+      (unsigned long long)js.exits_self);
   report_invalidation(&js);
   x86_engine_report_hot_blocks(jit, "[HB] ");
 }
