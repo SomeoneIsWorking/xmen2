@@ -97,7 +97,45 @@ def report(text: str, interval: float, window: int) -> int:
               file=sys.stderr)
         return 1
     print(f"plateau ({window} consecutive) {band[0]:.2f} - {band[1]:.2f} per second")
+    print(steady(found, band, interval))
     return 0
+
+
+def steady(found: list[tuple[float, int, int]], band: tuple[float, float],
+           interval: float) -> str:
+    """The rate across every heartbeat inside the plateau band, counted once.
+
+    A per-heartbeat rate cannot resolve a small change. Over a five-second
+    window one more frame is a whole step -- 57 to 58 presents is 1.75% -- so a
+    build that genuinely freed two percent of the guest worker lands inside the
+    SAME band as the build before it, and the plateau reads "unchanged" for a
+    change that happened. Counting presents once across the whole plateau turns
+    that step into the uncertainty of a single frame over minutes.
+
+    Reported with that uncertainty rather than more decimal places than the
+    measurement has, and with the span, so a short plateau cannot be read as a
+    precise one.
+    """
+    runs: list[list[tuple[float, int, int]]] = [[]]
+    for sample in found:
+        if band[0] - 1e-9 <= sample[2] / interval <= band[1] + 1e-9:
+            runs[-1].append(sample)
+        elif runs[-1]:
+            runs.append([])
+    inside = max(runs, key=len)
+    if len(inside) < 2:
+        return ("steady rate: the plateau is a single heartbeat, which is a "
+                "reading and not a rate -- record for longer")
+    first, last = inside[0], inside[-1]
+    span = last[0] - first[0]
+    if span <= 0.0:
+        return ("steady rate: the plateau is a single heartbeat, which is a "
+                "reading and not a rate -- record for longer")
+    frames = last[1] - first[1]
+    rate = frames / span
+    return (f"steady rate: {rate:.3f} +/- {1.0 / span:.3f} per second "
+            f"({frames} presents over {span:.1f}s, {len(inside)} heartbeats; "
+            f"the tolerance is one frame across the span)")
 
 
 def record(profile: str, seconds: float, out: Path) -> str:

@@ -116,3 +116,46 @@ The narrower falsifier is the base address. Everything above depends on
 `libIGSg.dll` being at `0x2e000000` in that run, which was fixed from a single
 matching export RVA. If another run maps it elsewhere and the same RVAs do not
 come back hot, the mapping was coincidence.
+
+## The falsifier this file asked for, answered -- and it holds
+
+Twelve consecutive five-second windows, differenced with the new
+`tools/web_hotblocks.py`:
+
+| range | what | median share of block entries |
+|---|---|---|
+| `libIGSg 0x047470-0x04861e` | frustum culling | **21.25%** (min 20.81, max 21.72) |
+| `libIGSg 0x063400-0x0635ff` | `igTraversal::dispatch` and neighbours | 5.25% |
+| `libIGMath 0x022e00-0x022eff` | SSE matrix-palette skinning | 6.83% |
+| `libIGGfx 0x04a180-0x04a1ff` | — | 3.71% |
+
+Stronger than a second map would have been, as it happens. Across those twelve
+windows the machine took about half the worker away, so total entries per window
+fell from 18.5M to 9.8M -- and the culling share did not move by one point. It
+is a fixed proportion of the traversal, not an artefact of where the camera was
+standing. The headline figure is 21.25% and not the 22.5% written above, which
+came from a single differenced pair.
+
+Split by call-tree part: `0x047470` alone is 7.79%, `0x047570` 3.89%,
+`0x0478e0` 2.83%, `0x0484c0` 6.75%.
+
+## Why this is nonetheless NOT the next thing to do
+
+Block entries are not time, and this file's title is about entries.
+
+A census of the guest worker's *samples* puts all translated guest code at 21.9%
+and dispatch at 12.4%, against 39.1% for x87 emulation (issue #162). Twenty-one
+percent of block entries is therefore something on the order of seven percent of
+the worker, plus whatever x87 the subtree drives -- `0x047470` computes its box
+extents with `fld`/`fsub`/`fstp`, so some of the 39% is its. Call it under a
+tenth, against an RE unit that has to recover four private helpers and a
+call-out contract for a virtual call, an import and two child callbacks.
+
+**The ranking in this file was built on the wrong denominator.** Entries are the
+right unit for finding a cluster and the wrong one for sizing the work to remove
+it. x87 is 39% of the worker and title-neutral; it goes first.
+
+What would make this file's work worth starting again: an attribution of x87 and
+dispatch time to the guest blocks that caused it, from the profile's call tree
+rather than from self time. If the culling subtree's inclusive cost turns out to
+be a fifth of the worker rather than a fifteenth, this ranking flips back.

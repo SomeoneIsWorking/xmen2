@@ -486,3 +486,59 @@ the `deadzone-render` case on the DESKTOP build. The guest's control word is
 the guest's own and does not depend on the host, but if a browser-side count
 ever shows PC=53 traffic that the desktop case never reaches, the table above
 is this route's answer and not the game's.
+
+## The widening is out of the softfloat, and the attribution now has a denominator
+
+`x86port 70e6536`. FLD m32 and FLD m64 cannot round -- every binary32 and
+binary64 value has an ext80 with the same number in it -- yet both were calling
+the general softfloat conversion, which exists to make the rounding decision
+this direction does not have. `x87_ext80_widen` owns the reassembly now.
+
+| frame | before | after |
+|---|---|---|
+| `x86p_x87_reg_from_operand_bits` | 4.95% | **2.90%** |
+
+The residue is the width dispatch and the integer operand path, with the
+widening itself inlined into it.
+
+That is the first change measured against a proper denominator rather than a
+top-N list. Categorising the guest worker's samples by owner, over a 25-second
+window of the Dead Zone route:
+
+| category | share of the guest worker |
+|---|---|
+| x87 emulation | **39.1%** |
+| all translated guest code | 21.9% |
+| dispatch (`jit_engine_run` + `intercept`) | 12.4% |
+| flags and ALU helpers | 4.5% |
+| SSE/SIMD helpers | 4.2% |
+
+x87 is not merely the biggest frame in a list; it is more than every translated
+guest instruction in the game put together. Nothing else on this route is worth
+starting while that is true.
+
+## The frame rate did not move, and that is not a contradiction
+
+11.441 +/- 0.022 before, 11.384 +/- 0.014 after. Both runs' plateaus are the
+same 11.40 - 11.60 band, and the two numbers were taken at load average 11.5
+and 4.5 on a shared machine, which moves the rate by far more than two percent.
+
+**A two percent change is below what this host can resolve in presents/s**, and
+saying so is the point: a five-second window quantises the rate at one frame,
+which on this route is 1.75%, so a real two-percent win lands inside the band it
+started in. `tools/web_presents.py` now also reports a steady rate counted once
+across the whole plateau, with the tolerance of a single frame over the span,
+which is what makes a number like 11.384 +/- 0.014 sayable at all. The profile
+is the instrument for a change this size; presents/s is the instrument for a
+change like `8b18aab`'s eighteen percent.
+
+## The route is guest-CPU-bound, and that was worth proving
+
+The flat 11.4 raised the obvious worry: if something else caps the frame rate,
+every CPU saving is invisible and the whole plan is wrong. It does not.
+
+In one run the machine took about half the worker away mid-capture. Guest block
+entries per five-second window fell from 18.4M to 9.8M, and presents/s fell from
+11.0 to 5.8 in the same windows -- 47% against 47%. Frames on this route track
+the guest worker one for one, so the category table above is a roadmap and not
+just an accounting of where time sits.
