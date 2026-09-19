@@ -464,10 +464,12 @@ cost is arithmetic and dispatch:
   `softfloat_subMagsExtF80`, `softfloat_roundPackToExtF80`,
   `softfloat_addMagsExtF80`, `softfloat_normRoundPackToExtF80`) -- about 17% of
   the worker for ext80 arithmetic.
-- `x86p_jit_engine_run` 8.5% (dispatch). The heartbeat says **0 of 35,996
-  conditions lowered inline**: `jit_wasm_lower.c` sets `out->cond_inline = 0`,
-  so every conditional branch in every translated block calls `x86p_cond`
-  through an import. That is a structural move the other backends already made.
+- `x86p_jit_engine_run` 8.5% (dispatch). Every conditional branch in every
+  translated block called `x86p_cond` through an import. **Fixed — see #168**,
+  which derives 96.2% of them inline in the running product. The reading that
+  sent this bullet looking at a zeroed counter was itself wrong: the heartbeat
+  said "0 of 35,996 lowered inline" because the page was running the *previous*
+  build out of a service-worker cache, and #168 records that trap.
 - `x86p_x87_reg_from_operand_bits` 8.4% and `x86p_x87_operand_bytes_from_reg`
   2.0% are the f32/f64 <-> ext80 conversions. They are the price of holding
   guest state in the guest's own format on a host with no 80-bit register, and
