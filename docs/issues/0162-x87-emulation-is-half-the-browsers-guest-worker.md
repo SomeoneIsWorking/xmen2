@@ -5,7 +5,9 @@
   count. The guest runs at PC=extended on 100% of operations, and computing in
   f64 instead changes 14.57% of results, so x86port must keep producing 80-bit
   answers. What remains is making the 80-bit path cheaper: the storage change
-  is measured at 1.62x on the arithmetic path, ~1.15x overall.
+  landed in x86port ab29b41, and cut `x86p_x87_arith` from 15.16% of the
+  browser's guest worker to 8.6%. The next item is x87 memory operands, now
+  about a fifth of the worker on their own.
 - **Follows:** #157 and #161, each of which removed the cost that was hiding
   this one
 
@@ -299,6 +301,61 @@ native `+ - * /` on binary128 followed by a re-round -- a different algorithm,
 not arm A with a layer removed. It reported the conversion at 12% and the
 register file at 44%, i.e. "the storage is not the problem". Using the function
 arm A actually calls on this host, `x86p_x87_software_arith`, reverses that.
+
+## Cause 1 is landed, and here is what it moved
+
+x86port `ab29b41`. `X86pX87Reg` is the register file's storage: `long double`
+where that type IS the x87 format, and the two architectural fields where it is
+not. The raw entry points are the implementation and every `long double` entry
+point is a wrapper over them, so one stack discipline, one tag classifier and
+one arithmetic path survive. `jit_wasm_x87.c` -- the per-instruction helpers --
+now stays in the storage type from guest memory to guest memory.
+
+In the browser, two 20-second windows of the same route, which agree closely
+enough to trust (`read_value` 10.17/9.95, `arith` 8.62/8.58):
+
+| frame | before | after |
+|---|---|---|
+| `x86p_x87_arith` | 15.16% | **8.6%** |
+| `x86p_x87_software_narrow` | 3.46% | 2.1% |
+| `x86p_x87_push` | 1.44% | below the top 30 |
+| `f128_to_extF80` | 0.77% | **absent** |
+| `x86p_wasm_x87_store` | 5.02% | 4.6% |
+| `x86p_x87_read_value` | 10.95% | 10.1% |
+
+The three frames the change targets each fell by a third to a half, and the
+binary128-to-ext80 conversion left the profile entirely. In isolation
+`bench_x87_arith` puts the arithmetic path at **1.44-1.47x**.
+
+**What this table is NOT is a total, and the reason matters.** The partition
+changed: `x86p_mem_read_bytes` (6.2%) and `x86p_mem_write_bytes` (3.0%) now
+appear as named frames where they had been folded into their callers, so
+summing "x87 frames" across the two builds compares different partitions --
+the same trap recorded in #163. x87 is roughly 38-40% of the worker after,
+against ~47% before, and that comparison carries this caveat rather than being
+clean.
+
+**And it is not a frame rate.** This route's presents/s has a within-run spread
+three times larger than the effect being looked for, which is why every frame
+figure in this issue was retired. Nothing here claims one.
+
+## What is next, and the profile now names it plainly
+
+The single largest frame is no longer arithmetic. It is
+`x86p_x87_read_value_raw` at ~10%, and with `x86p_mem_read_bytes` at 6.2% and
+`backing_span` at ~3.9% behind it, **roughly a fifth of the guest worker is
+spent fetching x87 memory operands** -- typically four bytes at a time, through
+a helper call, a permission walk and a conversion.
+
+WebAssembly has `f32.load`. The backend could emit the load inline and hand the
+helper the bits, leaving the walk only for addresses the contiguous mapping
+does not cover. That is a larger structural win than the one just landed, and
+it is the next move.
+
+`x87_load_is_emittable` also still refuses `FLD m80`, and the comment in
+`jit_x87_predicates.c` naming host-independent f80 storage as the proper fix is
+now satisfied -- the storage IS ext80. Lifting that refusal needs its own
+admission tests and is a separate change.
 
 ## What would falsify the attribution
 
