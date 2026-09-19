@@ -27,6 +27,9 @@
  * rotation, the controls being turned off. Nothing is owed to a reader there:
  * the press is being taken back, not completed.
  */
+/* Releases that went through without waiting for a reader. */
+static unsigned long g_vbtn_straight_through;
+
 static int release_button(int i, int wait_for_a_reader) {
 #ifdef X2_WITH_SDL
   /* Only a button that is actually down is owed a look. A release for one
@@ -45,6 +48,19 @@ static int release_button(int i, int wait_for_a_reader) {
                    g_vbtn_reads_at_set[i]);
     }
     return 1;
+  }
+  /* The negative of the hold above, and the more interesting of the two: a
+     release that does not wait has to say which of its three conditions
+     refused, or "the press was never held" is indistinguishable from "the
+     press was held and the game read it". */
+  g_vbtn_straight_through++;
+  if (g_vbtn_straight_through <= 2) {
+    x2_log_error("DINPUT-PAD: releasing button %d (\"%s\") straight away -- "
+                 "taken back %d, SDL reports it down %d, read %lu time(s) "
+                 "against %lu at the press.\n",
+                 i, g_vbtn_name[i], !wait_for_a_reader,
+                 (int)SDL_GetJoystickButton(g_virt_js, i),
+                 dinput_pad_button_read_count(i), g_vbtn_reads_at_set[i]);
   }
   if (!SDL_SetJoystickVirtualButton(g_virt_js, i, false))
     return 0;
