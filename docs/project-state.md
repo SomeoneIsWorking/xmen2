@@ -832,8 +832,18 @@ plateau — at load average 4.27, which is enough of a difference on its own tha
 the two are not comparable. It is recorded because it is the current reading,
 not as a gain.
 
+**The guest worker is not all of the frame.** Arming the heartbeat's time probe
+on the same route (`--set hotep=64`) attributes 779 ms of host import stubs and
+949 ms of dispatched native bodies per 5 s interval; translated blocks running
+inside `x86p_jit_engine_run` are in neither span, and are most of the rest. Of
+the import half, **`DrawIndexedPrimitive` is 46%** — 362 ms per interval, 6.8 ms
+of a 94 ms frame, agreeing with the renderer's own "host draw 6.59 ms/frame".
+The import the run crosses into most, `_ftol` at 73.6% of all crossings, is
+6.5% of import time: #169 records why the count ranking is not the time ranking
+and what is unexplained about the draw path.
+
 The guest worker's own census, 25 s and 96,169 samples, is what the remaining
-work is ranked on:
+work inside that worker is ranked on:
 
 | cluster | share | issue |
 |---|---|---|
@@ -848,6 +858,15 @@ Of that last row, the 0.91% that was `x86p_cond` is largely gone: x86port
 The remaining 3.8% are the Add, Inc, Dec and explicit-EFLAGS kinds, which the
 census in the heartbeat counts separately so the next derivation can be ranked
 rather than guessed.
+
+Of the dispatch row, the cheapest fix is now **ruled out by measurement rather
+than by argument**. x86port `4c1c5c8` counts, per block ENTRY, the times the
+block entered was the one just left — exactly what lowering a self-exit as a
+WebAssembly `loop` would remove. Over this route it is **23,248,130 of
+454,767,532 entries, 5.1%**, so that change is worth about 0.7% of the worker
+and is not the lever (#166). General chaining to a known successor is 67.2% of
+exits and remains open; sizing it needs the successor actually taken, which is
+not measured.
 
 x87 has come from 47% to about 33% across four landed x86port changes, the last
 two being the exact ext80 widening (`70e6536`) and the pop fusion (`30ad283`).
