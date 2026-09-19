@@ -767,7 +767,16 @@ one, and they meet at `dinput_pad_handle`, which distinguishes an empty slot
 from a device SDL gave no handle for — two different defects that used to
 return the same "not pressed" silently.
 
-Gap: the browser fix is unit-proven and not yet measured in a browser run.
+Gap: in a browser the press still never reaches the guest. Three browser runs
+after the fixes above: the overlay reports the gamepad DOWN at the moment it
+publishes, the release is deferred rather than taken, every guest read reaches
+a real device with a real handle (the new empty-slot counter stays at zero) --
+and 0 of 39,850 reads come back DOWN. A reader-side view was added to the
+thread that does the reading; in its first form it printed nothing at all,
+which was its own defect, not evidence, and it now reports on the first
+refresh after each press whatever it finds. The two halves of the transport
+disagree across threads, and naming which one loses the press is the next
+measurement.
 
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
