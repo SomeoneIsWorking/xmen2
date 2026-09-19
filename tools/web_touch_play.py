@@ -130,7 +130,32 @@ def pump(cdp: Cdp, census: Census, seconds: float) -> None:
             census.feed(line)
 
 
-def wait_for_gameplay(cdp: Cdp, census: Census, deadline: float) -> bool:
+def press(page: Cdp, key: str, code: str, windows_key: int) -> None:
+    """One key down/up at the page, the way a keyboard reaches the canvas."""
+    for kind in ("rawKeyDown", "keyUp"):
+        page.call(
+            "Input.dispatchKeyEvent",
+            {"type": kind, "key": key, "code": code,
+             "windowsVirtualKeyCode": windows_key,
+             "nativeVirtualKeyCode": windows_key},
+        )
+
+
+def skip_a_cutscene(page: Cdp) -> None:
+    """Ask the port to skip an authored conversation or cutscene.
+
+    The tutorial map opens on a scripted conversation, and its HUD -- which is
+    the gate this tool waits on -- does not draw until that conversation ends.
+    Escape and Start are the port's own cancellation route for one. This is
+    the same thing a player does, not a fast-forward: the port owns what the
+    skip transitions to.
+    """
+    press(page, "Escape", "Escape", 27)
+    press(page, "Enter", "Enter", 13)
+
+
+def wait_for_gameplay(cdp: Cdp, census: Census, deadline: float,
+                      page: Cdp | None = None) -> bool:
     """Until the product's own gate says controls belong on screen.
 
     Tapping before this is a measurement of nothing: the overlay is correctly
@@ -141,6 +166,9 @@ def wait_for_gameplay(cdp: Cdp, census: Census, deadline: float) -> bool:
         pump(cdp, census, 5.0)
         if census.gate == "active":
             return True
+        if page is not None and census.gate in (None, "never-seen", "hud-stale",
+                                                "cutscene-locked"):
+            skip_a_cutscene(page)
         print(f"  gate {census.gate or 'not yet reported'} "
               f"after {census.beats} beat(s); waiting")
     return False
@@ -202,6 +230,10 @@ def main() -> int:
         help="seconds to wait for the product's gate to reach gameplay",
     )
     parser.add_argument(
+        "--no-skip", action="store_true",
+        help="do not send Escape/Enter while waiting; measure the route as it is",
+    )
+    parser.add_argument(
         "--settle", type=float, default=16.0,
         help="seconds to wait after the sweep so at least one heartbeat prints",
     )
@@ -228,7 +260,10 @@ def main() -> int:
           f"({rect['x']:.0f}, {rect['y']:.0f})")
 
     print("waiting for the product's gate to reach gameplay")
-    reached = wait_for_gameplay(console, census, time.monotonic() + args.gameplay_timeout)
+    reached = wait_for_gameplay(
+        console, census, time.monotonic() + args.gameplay_timeout,
+        page=None if args.no_skip else cdp,
+    )
     if not reached:
         print(f"REFUSED: the gate never reached 'active' -- it was last "
               f"{census.gate or 'never reported'} after {census.beats} beat(s). "

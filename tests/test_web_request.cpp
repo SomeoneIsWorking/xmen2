@@ -10,6 +10,7 @@
 #include "web_request.hpp"
 
 #include <cstdio>
+#include <cstring>
 
 namespace {
 
@@ -20,6 +21,17 @@ void check(const char *what, x2::web::launch_request got,
   if (got != want) {
     std::printf("FAIL: %s classified as %d, expected %d\n", what,
                 static_cast<int>(got), static_cast<int>(want));
+    ++failures;
+  }
+}
+
+void checkMap(const char *what, const char *const *args, int argc,
+              const char *want) {
+  const char *got = x2::web::gameplay_test_map(
+      argc, const_cast<char **>(const_cast<char *const *>(args)));
+  if (got == nullptr || std::strcmp(got, want) != 0) {
+    std::printf("FAIL: %s gave \"%s\", expected \"%s\"\n", what,
+                got ? got : "(null)", want);
     ++failures;
   }
 }
@@ -69,10 +81,45 @@ int main() {
 
   if (!x2::web::is_entry_request("--import") ||
       !x2::web::is_entry_request("--test-deadzone") ||
+      !x2::web::is_entry_request("--test-map=act0/tutorial/tutorial1") ||
       x2::web::is_entry_request("--set") ||
       x2::web::is_entry_request("quantum=20000")) {
     std::printf("FAIL: the forwarding filter names the wrong tokens\n");
     ++failures;
+  }
+
+  /*
+   * The gameplay test's map. The default is the Dead Zone one, and it is
+   * checked BOTH ways round: a reader that always returned the default would
+   * pass every "is it Dead Zone" case and silently ignore the override, which
+   * is exactly the bug that made the browser unable to reach a map whose HUD
+   * draws.
+   */
+  {
+    const char *plain[] = {"x2native", "--test-deadzone"};
+    const char *chosen[] = {"x2native", "--test-map=act0/tutorial/tutorial1"};
+    const char *late[] = {"x2native", "--set", "quantum=4000",
+                          "--test-map=act0/tutorial/tutorial1"};
+    const char *empty[] = {"x2native", "--test-map="};
+    const char *twice[] = {"x2native", "--test-map=one", "--test-map=two"};
+    const char *none[] = {"x2native"};
+    check("an explicit map selects the gameplay test", classify(chosen, 2),
+          x2::web::launch_request::gameplay_test);
+    check("an explicit map after a diagnostic still selects it",
+          classify(late, 4), x2::web::launch_request::gameplay_test);
+    const char *both[] = {"x2native", "--import",
+                          "--test-map=act0/tutorial/tutorial1"};
+    check("an explicit map conflicts with an import", classify(both, 3),
+          x2::web::launch_request::conflict);
+    checkMap("the default is the Dead Zone map", plain, 2,
+             x2::web::deadzone_map);
+    checkMap("an explicit map is used", chosen, 2, "act0/tutorial/tutorial1");
+    checkMap("an explicit map after a diagnostic is used", late, 4,
+             "act0/tutorial/tutorial1");
+    checkMap("an empty map falls back to the default", empty, 2,
+             x2::web::deadzone_map);
+    checkMap("the last map wins", twice, 3, "two");
+    checkMap("no request still names a map", none, 1, x2::web::deadzone_map);
   }
 
   if (failures == 0) {

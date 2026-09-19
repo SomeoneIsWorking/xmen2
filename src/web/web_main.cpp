@@ -130,8 +130,8 @@ static int run_application(int argc, char **argv) {
     return 1;
   }
   if (gameplay_test &&
-      x2_config_override_set(kX2ConfigBootMap, "act1/deadzone/deadzone1", 1) !=
-          0) {
+      x2_config_override_set(kX2ConfigBootMap,
+                             x2::web::gameplay_test_map(argc, argv), 1) != 0) {
     report_setup("The gameplay test map could not be selected.", 1);
     return 1;
   }
