@@ -177,3 +177,42 @@ becomes one instruction with no branch.
   that it can be left out.
 - The census itself is **temporary and has been removed**; it is not in the
   shipping runtime. The numbers above are its whole output.
+
+## The lowering is built, and it is in the browser product
+
+x86port `ff275c5` gives `emit_wasm` its `v128` type and `0xFD` prefix and
+emits ADDPS, SUBPS, MULPS, DIVPS, ANDPS, ANDNPS, ORPS, XORPS and SHUFPS with
+an xmm destination and an xmm or 16-byte memory source on the contiguous
+mapping. The whole instruction becomes two loads, one operation and one store,
+against the four i32 loads, eight arguments across the module boundary,
+lane-at-a-time C loop and four i32 stores it replaces. MINPS and MAXPS are
+deliberately left on the helper: `f32x4.min`/`max` differ from x86 on NaN and
+signed zero, and nothing on the measured route runs either, so they are not
+added untested. No MXCSR guard is emitted and that is a decision rather than
+an omission -- the helper being replaced reads nothing from MXCSR either, so
+the two are the same function, which is what the differential proves.
+
+There is no `v128` local group. Both operands stay on the stack between their
+loads and the store that consumes them, so declaring one would have put a
+zeroed 16-byte slot in every block body -- including the overwhelming majority
+with no SSE in them, entered hundreds of millions of times -- and would have
+made every translated block require the SIMD feature from the engine rather
+than only the blocks that use it.
+
+Proved by differential against the separately linked oracle in a real engine:
+1,278 cases, 18,567 checks, 0 failures, 392 of 1,270 SIMD instructions taking
+the emitted path, both denominators asserted. Made to fail first: flipping
+ANDNPS's operand order gives 27 failures and swapping the shuffle's two halves
+gives 32.
+
+**In the browser product**, on the Dead Zone route: `100 of 164 SIMD
+instruction(s) emitted as host SIMD`. The denominator is small because it is
+translation SITES, not executions -- the census above counted 317,883,827
+operations from that same handful of sites. The port's heartbeat and shutdown
+report now carry that pair, so a build that lowered nothing can be told from a
+route with no SSE in it.
+
+No frame-rate result is claimed for this change on its own. The run that
+carried it read 12.707 +/- 0.010 presents/s at load average 5.0, which is not
+comparable with the 11.552 and 11.840 readings this issue's neighbours record
+at other host loads.

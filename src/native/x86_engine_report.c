@@ -140,6 +140,8 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       "lowered inline (%llu unrecorded predecessor, %llu underivable kind); "
       "%llu exit(s), %llu with a known successor, %llu backward, %llu to the "
       "block's own entry; %llu of %llu x87 load(s) widened in the block; "
+      "%llu of %llu SIMD instruction(s) emitted as host SIMD; "
+      "%llu of %llu x87 store(s) narrowed in the block; "
       "product fallback unavailable",
       (unsigned long long)js.blocks_entered,
       (unsigned long long)js.blocks_reentered,
@@ -160,7 +162,131 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.exits, (unsigned long long)js.exits_static,
       (unsigned long long)js.exits_backward, (unsigned long long)js.exits_self,
       (unsigned long long)js.x87_loads_inline,
-      (unsigned long long)js.x87_loads_translated);
+      (unsigned long long)js.x87_loads_translated,
+      (unsigned long long)js.simd_inline,
+      (unsigned long long)js.simd_translated,
+      (unsigned long long)js.x87_stores_inline,
+      (unsigned long long)js.x87_stores_translated);
   report_invalidation(&js);
   x86_engine_report_hot_blocks(jit, "[HB] ");
+}
+
+/*
+ * Everything the counters say once the run is over.
+ *
+ * It lives here rather than in the engine for the reason the live heartbeat
+ * does: the engine runs guest code, and deciding what a pile of counters has
+ * to SAY -- which denominator each share needs, and what a zero in it means --
+ * is a different job, with a different reason to change.
+ */
+void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
+  X86pJitEngineStats js;
+  if (!jit) {
+    return;
+  }
+  x86_engine_jit_pool_stats(jit, &js);
+  lucent_log_info(
+      "engine",
+      "JIT: %llu block(s) entered (%llu translated, %llu instructions), "
+      "%llu refusal(s), %llu flush(es), %zu KiB code (%s)",
+      (unsigned long long)js.blocks_entered,
+      (unsigned long long)js.blocks_translated,
+      (unsigned long long)js.guest_insns_translated,
+      (unsigned long long)js.translate_refusals,
+      (unsigned long long)js.cache_flushes, (size_t)(js.code_bytes_used / 1024),
+      x86p_jit_engine_mechanism());
+  /* How much of the translated code reads its Jcc/SETcc conditions off the
+     host's own flags. Reported with the total, because a backend that lowers
+     none is correct and merely pays a call per condition -- a bare inline
+     count could not be told from a run that translated no branches. */
+  if (js.conds_translated == 0u)
+    lucent_log_info("engine",
+                    "JIT conditions: none translated, so this run says "
+                    "nothing about condition lowering");
+  else
+    lucent_log_info(
+        "engine",
+        "JIT conditions: %llu of %llu lowered inline (%.1f%%), %llu call "
+        "the shared evaluator (%llu of those had no recorded predecessor, "
+        "%llu had one no derivation covers)",
+        (unsigned long long)js.conds_inline,
+        (unsigned long long)js.conds_translated,
+        100.0 * (double)js.conds_inline / (double)js.conds_translated,
+        (unsigned long long)(js.conds_translated - js.conds_inline),
+        (unsigned long long)js.conds_unknown_kind,
+        (unsigned long long)(js.conds_translated - js.conds_inline -
+                             js.conds_unknown_kind));
+  /* The same shape of negative, for the same reason: only the WebAssembly
+     backend fills these, and a row of zeros would read as a run whose blocks
+     had nowhere to go rather than as a backend that does not count. */
+  if (js.exits == 0u)
+    lucent_log_info("engine",
+                    "JIT exits: none counted, so this build's backend does "
+                    "not report where its blocks go");
+  else
+    lucent_log_info(
+        "engine",
+        "JIT exits: %llu from %llu block(s) (%.2f each); %llu have a "
+        "successor the translator already knows (%.1f%%), of which %llu are "
+        "backward -- a guest loop paying a dispatch per iteration (%.1f%%) "
+        "-- and %llu name the block's own entry (%.1f%%)",
+        (unsigned long long)js.exits, (unsigned long long)js.blocks_translated,
+        js.blocks_translated ? (double)js.exits / (double)js.blocks_translated
+                             : 0.0,
+        (unsigned long long)js.exits_static,
+        100.0 * (double)js.exits_static / (double)js.exits,
+        (unsigned long long)js.exits_backward,
+        100.0 * (double)js.exits_backward / (double)js.exits,
+        (unsigned long long)js.exits_self,
+        100.0 * (double)js.exits_self / (double)js.exits);
+  /* FLD m32/m64, and how much of it the emitted code widens itself instead
+     of crossing out of its module. Same negative as the two above: a zero
+     inline count on a nonzero total is a backend that declined, and a zero
+     total is a corpus with no float loads in it. */
+  if (js.x87_loads_translated == 0u)
+    lucent_log_info("engine",
+                    "JIT x87 loads: none translated, so this run says "
+                    "nothing about the inline widening");
+  else
+    lucent_log_info(
+        "engine",
+        "JIT x87 loads: %llu of %llu widened in the block (%.1f%%), %llu "
+        "call out of the module",
+        (unsigned long long)js.x87_loads_inline,
+        (unsigned long long)js.x87_loads_translated,
+        100.0 * (double)js.x87_loads_inline / (double)js.x87_loads_translated,
+        (unsigned long long)(js.x87_loads_translated - js.x87_loads_inline));
+  /* FST m32/m64, and how much of it the emitted code narrows itself. The
+     share here is a property of the VALUES the run stored as well as of the
+     code, because the inline arm rounds and declines what it cannot. */
+  if (js.x87_stores_translated == 0u)
+    lucent_log_info("engine",
+                    "JIT x87 stores: none translated, so this run says "
+                    "nothing about the inline narrowing");
+  else
+    lucent_log_info(
+        "engine",
+        "JIT x87 stores: %llu of %llu narrowed in the block (%.1f%%), %llu "
+        "call out of the module",
+        (unsigned long long)js.x87_stores_inline,
+        (unsigned long long)js.x87_stores_translated,
+        100.0 * (double)js.x87_stores_inline / (double)js.x87_stores_translated,
+        (unsigned long long)(js.x87_stores_translated - js.x87_stores_inline));
+  /* The packed SSE forms, and how much of it the emitted code performs with
+     the host's own 128-bit SIMD instead of a lane-at-a-time C helper across
+     the module boundary. Same negative as the rows above. */
+  if (js.simd_translated == 0u)
+    lucent_log_info("engine",
+                    "JIT SIMD: none translated, so this run says nothing "
+                    "about the host-SIMD lowering");
+  else
+    lucent_log_info(
+        "engine",
+        "JIT SIMD: %llu of %llu emitted as host SIMD (%.1f%%), %llu call "
+        "out of the module",
+        (unsigned long long)js.simd_inline,
+        (unsigned long long)js.simd_translated,
+        100.0 * (double)js.simd_inline / (double)js.simd_translated,
+        (unsigned long long)(js.simd_translated - js.simd_inline));
+  x86_engine_report_hot_blocks(jit, "");
 }

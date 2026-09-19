@@ -34,6 +34,15 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
                                          unsigned long callouts);
 
 /*
+ * Everything the counters say at shutdown: what the run executed, what it
+ * translated, and the share of each lowering the backend performed inline.
+ *
+ * A null pool prints nothing rather than a row of zeros, because a run with no
+ * JIT and a JIT that did nothing are different answers.
+ */
+void x86_engine_report_jit_totals(const X86EngineJitPool *jit);
+
+/*
  * The hottest translated blocks, when `jit.profile` armed the histogram.
  *
  * Printed by the heartbeat as well as at shutdown, and that is the whole

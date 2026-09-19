@@ -692,3 +692,58 @@ the same shape the load side just had: `store_at` calls
 it performs is not the load's shift-and-rebias -- it rounds, and consults the
 control word to do it -- so the inline arm there is a smaller subset of cases
 than this one, and worth sizing before it is written.
+
+## The store side is emitted too, and the operand plumbing is gone
+
+The section above sized it and said the inline arm there would be a smaller
+subset than the load's. It is: a store ROUNDS, so only round-to-nearest-even
+on a normal ext80 value whose result is a normal in the target can be done
+with integer operations. x86port `cc924a1` emits exactly that, and everything
+else -- a zero, a subnormal either side, an infinity, a NaN, an unnormal, an
+integer or 80-bit destination, a non-nearest RC, the sparse mapping, an
+address the guard refuses, and a rounding carry out of the significand --
+reaches the helper that answered before.
+
+The acceptance rule is its own module, `x87_ext80_narrow.h`, because it now
+has two implementations: a C fast path in `x86p_x87_reg_to_f32_bits` /
+`_to_f64_bits`, which every host gets and not only the browser, and the
+emitted WebAssembly. A carry is refused on BOTH sides even though C could
+finish it cheaply, because one rule implemented twice is only safe while the
+two rules are the same one.
+
+### What the profile says
+
+Guest worker, Dead Zone route, 25 s, 86,765 working samples of 89,154 (97.3%
+of its wall time). The two frames this change is about are **absent from the
+profile entirely**:
+
+| frame | before | after |
+|---|---|---|
+| `x86p_x87_operand_bytes_from_reg` | 4.28% | **not in the profile** |
+| `x86p_wasm_x87_store_at` | 3.60% | **not in the profile** |
+
+The work moved rather than vanishing, and the profile shows that the same way
+the load side did: `translated guest block` is 28.30% here against 21.9%
+before. Every other x87 row's share rose without its cost changing, which is
+what happens to a share when the denominator loses about eight points --
+`x86p_x87_arith_raw` reads 16.71% against 14.90%, and 14.90/0.92 is 16.2.
+
+In the product, `3,906 of 3,932 x87 store(s) narrowed in the block` -- 99.3%
+of the sites this route translates. The 26 that decline are the integer and
+80-bit forms.
+
+### No frame figure, again, and this time the host says why
+
+The run carrying this read a plateau of 13.042 +/- 0.025 presents/s, at load
+average 35.67 with its own profiler and other agents' builds on the machine,
+against 12.707 +/- 0.010 at load average 5.0 for the build before it. Those
+two numbers are not comparable in either direction and neither is offered as
+a result. The profile is.
+
+### What is next in this issue
+
+`x86p_x87_arith_raw` is now 16.71% of the guest worker and the softfloat under
+it another 5.2% (`subMagsExtF80` 2.27%, `roundPackToExtF80` 1.70%,
+`addMagsExtF80` 1.25%), with `arith_mem_bits` 2.44% and `arith_reg` 1.82% of
+argument plumbing around them. That is the arithmetic itself rather than the
+moving of values, and it is the part this issue has not touched.

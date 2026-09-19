@@ -842,15 +842,21 @@ The import the run crosses into most, `_ftol` at 73.6% of all crossings, is
 6.5% of import time: #169 records why the count ranking is not the time ranking
 and what is unexplained about the draw path.
 
-The guest worker's own census, 25 s and 96,169 samples, is what the remaining
-work inside that worker is ranked on:
+The guest worker's own census, 25.6 s and 86,765 working samples of that
+worker's 89,154, is what the remaining work inside that worker is ranked on:
 
 | cluster | share | issue |
 |---|---|---|
-| x87 emulation | ≈30% | #162 |
-| dispatch (`x86p_jit_engine_run` + the intercept) | 13.11% | #166 |
-| SSE through a scalar C helper | 3.23% | #167 |
-| flags and ALU helpers | ≈4.3% | — |
+| x87 emulation | 29.8% | #162 |
+| dispatch (`x86p_jit_engine_run` + the intercept) | 13.96% | #166 |
+| flags and ALU helpers | 4.5% | — |
+| SSE through a scalar C helper | not in the profile | #167 |
+
+The SSE row is closed and the x87 row has been re-shaped rather than shrunk.
+Both are described below, with the translated guest block itself now 28.30% of
+that worker where it was 21.9% — the code the route is supposed to be running
+has gone from a fifth of the worker to more than a quarter of it, because two
+families of helper crossings were removed from around it.
 
 Of that last row, the 0.91% that was `x86p_cond` is largely gone: x86port
 `f94ad4a` derives a condition inline from the kind that wrote the flags, and
@@ -866,44 +872,58 @@ WebAssembly `loop` would remove. Over this route it is **23,248,130 of
 454,767,532 entries, 5.1%**, so that change is worth about 0.7% of the worker
 and is not the lever (#166). General chaining to a known successor is 67.2% of
 exits and remains open; sizing it needs the successor actually taken, which is
-not measured.
+not measured. At 13.96% this is now the largest cluster after x87.
 
-Of the SSE row, **the gate that had to be answered before writing anything is
-answered, and it passed**. A temporary census in `x86p_wasm_simd_arithmetic`
-counted the guest's MXCSR per operation rather than per `LDMXCSR`, and printed
-all sixteen buckets including the empty ones. Over **317,883,827 SSE arithmetic
-operations** on this route the control word is round-to-nearest with
-flush-to-zero and denormals-are-zero clear on **100.00%** of them, which is the
-one mode WebAssembly's `f32x4` arithmetic produces — the opposite of the answer
-the same question gave for x87 in #162, where rounding control moved on 1.65% of
-operations and killed that plan. Four opcodes account for every one of those
-operations, summing to the denominator exactly: `MULPS` 37.91%, `ADDPS` 37.40%,
-`SHUFPS` 20.91%, `XORPS` 3.78% (`ORPS` ran three times; nothing else ran at
-all). Each maps to one host instruction, `SHUFPS` to `i8x16.shuffle` with the
-lane indices baked from its decode-time immediate. The reading is trusted
-because the same helper was driven with all sixteen control words and landed in
-all sixteen buckets, and because the report's designed negative fired on its own
-before the route reached gameplay. The lowering itself is **not written**:
-`emit_wasm` still has no `v128` type and no `0xFD` opcode. The census was
-removed once it had answered (x86port `7bbabbb` then `b52acfb`); #167 holds the
-tables.
+**The SSE row is closed: the lowering is written, landed and in the product.**
+The gate that had to be answered before writing anything passed first. A
+temporary census in `x86p_wasm_simd_arithmetic` counted the guest's MXCSR per
+operation rather than per `LDMXCSR`, and printed all sixteen buckets including
+the empty ones. Over **317,883,827 SSE arithmetic operations** on this route the
+control word is round-to-nearest with flush-to-zero and denormals-are-zero clear
+on **100.00%** of them, which is the one mode WebAssembly's `f32x4` arithmetic
+produces — the opposite of the answer the same question gave for x87 in #162,
+where rounding control moved on 1.65% of operations and killed that plan. Four
+opcodes account for every one of those operations, summing to the denominator
+exactly: `MULPS` 37.91%, `ADDPS` 37.40%, `SHUFPS` 20.91%, `XORPS` 3.78%
+(`ORPS` ran three times; nothing else ran at all). Each maps to one host
+instruction, `SHUFPS` to `i8x16.shuffle` with the lane indices baked from its
+decode-time immediate. `emit_wasm` now has the `v128` type and the `0xFD`
+prefix, and the product reports `100 of 164 SIMD instruction(s) emitted as host
+SIMD` with the remaining 64 naming the forms that still cross out of the module.
+The scalar helper no longer appears anywhere in the guest worker's profile.
+#167 holds the tables and the evidence.
 
-x87 has come from 47% to about 30% across five landed x86port changes, the last
-three being the exact ext80 widening (`70e6536`), the pop fusion (`30ad283`)
-and the inline widening (`0ddf304`). The last of those emits the ordinary case
-of FLD m32/m64 into the translated block instead of calling out of its module
-for it: the two frames that owned the load, `x86p_wasm_x87_load_bits` and
-`x86p_x87_reg_from_operand_bits`, fell from 5.35% of the guest worker to 2.52%
-together, and 3,161 of the 3,396 memory x87 load sites this route translates
-(93.1%) take the emitted form — the rest are FILD, which is a different
-conversion. The frame rate was measured on both builds and is not reportable:
-the host was at load average 18.8 with another agent's compiles on it, which
-moves this route by far more than the effect. #162 records both.
+x87 has come from 47% to 29.8% across seven landed x86port changes. Three of
+them removed the *moving* of float values across the module boundary: the exact
+ext80 widening (`70e6536`), the pop fusion (`30ad283`), the inline FLD m32/m64
+widening (`0ddf304`) and now the inline FST m32/m64 narrowing (`cc924a1`). The
+widening dropped `x86p_wasm_x87_load_bits` and `x86p_x87_reg_from_operand_bits`
+from 5.35% of the guest worker to 2.52% together, with 3,161 of the 3,396 memory
+x87 load sites (93.1%) taking the emitted form — the rest are FILD, a different
+conversion. The narrowing is the mirror in placement but not in arithmetic,
+because a store rounds: one shared acceptance rule
+(`x87_ext80_narrow.h`) states exactly which ext80 values the ordinary
+round-to-nearest-even path may narrow itself, and the C fast path and the
+emitted WebAssembly are held to it by a differential test in a real engine.
+Its two frames, `x86p_x87_operand_bytes_from_reg` at 4.28% and
+`x86p_wasm_x87_store_at` at 3.60%, are **not in the profile at all** after it,
+and the product reports **3,906 of 3,932 x87 store(s) narrowed in the block**
+(99.3% of the sites this route translates).
+
+What is left in the x87 row is the arithmetic itself, not the moving of values:
+`x86p_x87_arith_raw` is 16.71% of the guest worker and the Bochs-derived
+softfloat under it another 5.2%, which together are two thirds of the cluster.
+That is the part #162 has not touched, and it is now the single largest frame
+in the run.
+
+No frame-rate gain is claimed for either change. The store build measured
+13.042 ± 0.025 presents/s at host load average 35.67 against 12.707 ± 0.010 at
+load average 5.0; the host moves this route by far more than either effect, so
+the profile shares above are the evidence and presents/s is not.
 Frames track that worker one for one — proved when the host took half of it
 away mid-capture and block entries and presents/s both fell 47% in the same
 windows — so the census is a roadmap and not just accounting. It is also not
-enough on its own: zeroing every row above leaves the route short of playable,
-and the translated guest code underneath them is 21.9%.
+enough on its own: zeroing every row above leaves the route short of playable.
 
 Browser playability remains unproven and the frame rate is still short of
 playable. The route a player actually takes is worse than the gameplay
