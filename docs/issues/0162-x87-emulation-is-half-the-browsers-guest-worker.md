@@ -408,19 +408,71 @@ observation and not a measurement.
 The run stayed dynarec-clean throughout: 61,212 blocks translated, **0
 refusals**, 0 evictions, product fallback unavailable.
 
+## The store went inline too, and now no x87 memory route walks the mapping
+
+x86port `fe196cd` did for the store what `98cc6ab` did for the read, and it
+needed one thing the read did not. A read may fault before it does anything; a
+store may not. FIST of a value that does not fit records an invalid operation in
+the x87 status word, and the interpreter records it whether or not the address
+turns out to be writable, so an early return out of the block would lose the
+flag. The verdict therefore travels as a VALUE: `x86p_wasm_state_check` emits
+the same bounds and permission proof the guard emits and pushes 1 or 0 instead
+of returning, and `x86p_wasm_x87_store_at` converts first and consults it
+second.
+
+Two 20-second windows of the same Dead Zone route, taken back to back, against
+the build the browser actually fetched (9,655,882 bytes served, matching
+`build/release/web/x2native.wasm`, symbol map containing `x86p_wasm_x87_store_at`):
+
+| frame | before | after (window 1 / window 2) |
+|---|---|---|
+| `x86p_wasm_x87_store` | 5.24% | **absent** |
+| `x86p_mem_write_bytes` | 3.36% | **absent** |
+| `backing_span` | 1.18% | **absent** |
+| `x86p_wasm_x87_store_at` | — | 3.61% / 3.67% |
+| `x86p_x87_operand_bytes_from_reg` | — | 2.01% / 2.02% |
+
+The absence is checked by name and not by reading off a top-N list: no symbol
+containing `x86p_mem` appears anywhere in a 400-deep listing of either window.
+The same listing still resolves `x86p_x87_reg_from_operand_bits` and every other
+wasm frame, so it is capable of printing the other answer.
+
+**Again, read the two new frames as one.** 3.6 + 2.0 = 5.6 points where 5.24 +
+3.36 = 8.6 stood, and `operand_bytes_from_reg` is the conversion that was
+already inside `wasm_x87_store` -- extracted so the sparse and contiguous
+routes share it, which is also why it now has a frame of its own. What left is
+the walk: `mem_write_bytes` entirely, and the last of `backing_span`, which no
+longer has any caller on this route at all.
+
+Presents per five seconds, before the profiler was attached: 48, 47, 49, 49 --
+9.4 to 9.8 presents/s, against 6.4 to 9.2 on the read-inline build and 5.5 to
+6.8 in #163. Under the profiler it fell to 43, which is the sampler. The same
+caveat as every earlier entry: nothing re-ran the older builds side by side, so
+this is an observation of a trend and not a controlled measurement. The run
+stayed dynarec-clean: 61,239 blocks translated, 0 refusals, 0 evictions, 0
+flushes, product fallback unavailable.
+
 ## What is next after that
 
-`x86p_wasm_x87_store` (5.24%) and `x86p_mem_write_bytes` (3.36%) are now the
-only x87 memory route still passing an address, and they are the largest
-remaining one. The same fix does not transfer directly: a store needs two
-results, the status and the bytes, and every import returns one i32. The
-removable part is the walk -- `mem_write_bytes` plus most of what is left of
-`backing_span`, around 4.4 points -- while the conversion inside
-`wasm_x87_store` stays wherever it runs.
+No x87 memory route resolves an address at runtime any more, so the remaining
+cost is arithmetic and dispatch:
 
-Above that sit `x86p_x87_arith_raw` at 10.6% (the arithmetic itself, already
-through the storage change) and `x86p_jit_engine_run` at 8.3% (dispatch), and
-neither has an obvious structural move left.
+- `x86p_x87_arith_raw` 10.6% plus its softfloat leaves (`extF80_add`,
+  `softfloat_subMagsExtF80`, `softfloat_roundPackToExtF80`,
+  `softfloat_addMagsExtF80`, `softfloat_normRoundPackToExtF80`) -- about 17% of
+  the worker for ext80 arithmetic.
+- `x86p_jit_engine_run` 8.5% (dispatch). The heartbeat says **0 of 35,996
+  conditions lowered inline**: `jit_wasm_lower.c` sets `out->cond_inline = 0`,
+  so every conditional branch in every translated block calls `x86p_cond`
+  through an import. That is a structural move the other backends already made.
+- `x86p_x87_reg_from_operand_bits` 8.4% and `x86p_x87_operand_bytes_from_reg`
+  2.0% are the f32/f64 <-> ext80 conversions. They are the price of holding
+  guest state in the guest's own format on a host with no 80-bit register, and
+  `6c500ea` measured what computing in f64 instead would cost: one result in
+  seven.
+- `x86p_x87_pop` 1.9% is still a separate import call per FSTP. Folding the pop
+  into the load, store, arithmetic and compare helpers removes a crossing per
+  instruction for the commonest x87 form in this route.
 
 ## What would falsify the attribution
 
