@@ -20,30 +20,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from cdp_client import Cdp, targets
-
-
-def page_socket(port: int) -> Cdp:
-    for _ in range(40):
-        for target in targets(port):
-            if target.get("type") == "page" and "webSocketDebuggerUrl" in target:
-                return Cdp(target["webSocketDebuggerUrl"])
-        time.sleep(0.5)
-    raise SystemExit(f"no page target on CDP port {port}")
-
-
-def evaluate(cdp: Cdp, expression: str):
-    result = cdp.call(
-        "Runtime.evaluate",
-        {"expression": expression, "returnByValue": True, "awaitPromise": True},
-    )
-    if "exceptionDetails" in result:
-        raise SystemExit(f"page refused the probe: {result['exceptionDetails']}")
-    return result["result"].get("value")
-
-
-def touch(cdp: Cdp, kind: str, points: list[dict]) -> None:
-    cdp.call("Input.dispatchTouchEvent", {"type": kind, "touchPoints": points})
+from cdp_client import evaluate, page_socket, touch
 
 
 def main() -> int:

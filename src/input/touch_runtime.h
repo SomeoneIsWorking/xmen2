@@ -79,9 +79,13 @@ size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
  * report that control. */
 int x2_touch_runtime_active(void);
 
-/* This run's account of the feature, for the every-ending roll-call. The
-   counts and their text are owned by touch_census.h. */
-void x2_touch_runtime_report(void);
+/* This run's account of the feature, for the every-ending roll-call and for
+   the periodic heartbeat -- `tag` says which, in the style of the engine's
+   "[HB] ". The counts and their text are owned by touch_census.h.
+
+   A browser run never ends, so the roll-call alone would leave the web
+   product with no account of touch at all. */
+void x2_touch_runtime_report(const char *tag);
 
 /* Records which kind of device produced an event. Every host event goes past
  * here, including the ones touch never handles -- that is how a key press

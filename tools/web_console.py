@@ -25,74 +25,12 @@ cannot tell them apart.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 import time
 
 from cdp_client import Cdp, CdpError, browser_endpoint, devtools_port
-
-# The console methods a logger can reach. `Log.entryAdded` carries the rest --
-# browser-generated warnings and, importantly, anything written to stderr by a
-# native library rather than through console.*.
-_CONSOLE_EVENTS = ("Runtime.consoleAPICalled", "Log.entryAdded")
-
-
-def _argument_text(argument: dict) -> str:
-    if "value" in argument:
-        value = argument["value"]
-        return value if isinstance(value, str) else json.dumps(value)
-    return argument.get("description") or argument.get("unserializableValue") or ""
-
-
-def _line(event: dict) -> str | None:
-    """One printable line, or None if this event carries no console text."""
-    method = event.get("method")
-    params = event.get("params") or {}
-    if method == "Runtime.consoleAPICalled":
-        text = " ".join(_argument_text(a) for a in params.get("args") or [])
-        level = params.get("type", "log")
-    elif method == "Log.entryAdded":
-        entry = params.get("entry") or {}
-        text = entry.get("text", "")
-        level = entry.get("level", "log")
-    else:
-        return None
-    if not text:
-        return None
-    return f"{level:<7} {text}"
-
-
-def _attach(cdp: Cdp) -> dict[str, str]:
-    """Auto-attach to the page and every worker; return sessionId -> target url.
-
-    Flattened sessions mean one socket carries every target's events, so a
-    worker that starts DURING the run is picked up as it appears rather than
-    only if it existed when this tool started.
-    """
-    sessions: dict[str, str] = {}
-    cdp.call("Target.setDiscoverTargets", {"discover": True})
-    cdp.call(
-        "Target.setAutoAttach",
-        {"autoAttach": True, "waitForDebuggerOnStart": False, "flatten": True},
-    )
-    # The attach events arrive as ordinary events on the same socket.
-    cdp.drain(2.0)
-    for event in cdp.events:
-        if event.get("method") == "Target.attachedToTarget":
-            info = event["params"]["targetInfo"]
-            sessions[event["params"]["sessionId"]] = info.get("url", info.get("type", "?"))
-    for session in sessions:
-        for domain in ("Runtime", "Log"):
-            try:
-                cdp.call(f"{domain}.enable", session=session, timeout=10.0)
-            except CdpError:
-                # A target can die between attach and enable; that is not a
-                # reason to abandon the other sessions, and it is reported in
-                # the summary by that session simply producing no lines.
-                pass
-    return sessions
-
+from cdp_console import CONSOLE_EVENTS, attach_all_targets, console_line
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -119,7 +57,7 @@ def main() -> int:
     port = devtools_port(args.profile)
     cdp = Cdp(browser_endpoint(port), timeout=5.0)
     try:
-        sessions = _attach(cdp)
+        sessions = attach_all_targets(cdp)
         if not sessions:
             print(
                 f"web_console: attached to 0 targets on port {port}. "
@@ -149,9 +87,9 @@ def main() -> int:
                     closed = f"; recording ended early: {failure}"
                     deadline = 0.0
                 for event in cdp.events:
-                    if event.get("method") not in _CONSOLE_EVENTS:
+                    if event.get("method") not in CONSOLE_EVENTS:
                         continue
-                    line = _line(event)
+                    line = console_line(event)
                     if line is None:
                         continue
                     count += 1

@@ -402,6 +402,6 @@ int x2_touch_runtime_overlay_visible(void) {
          x2_gameplay_control_active(guest_clock_now_s());
 }
 
-void x2_touch_runtime_report(void) {
-  x2_touch_census_report(window != nullptr);
+void x2_touch_runtime_report(const char *tag) {
+  x2_touch_census_report(tag, window != nullptr);
 }

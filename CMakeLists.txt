@@ -1166,6 +1166,15 @@ add_test(NAME launcher
          COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/test_launcher.py)
 set_tests_properties(launcher PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
+# The browser touch driver reads the product's own touch census out of the
+# console, so its reader is checked against the text the product prints --
+# test_touch_runtime's own report -- and not only against fixtures.
+add_test(NAME web_touch_play
+         COMMAND ${Python3_EXECUTABLE} -m unittest tests.test_web_touch_play)
+set_tests_properties(web_touch_play PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    ENVIRONMENT "X2_TEST_TOUCH_RUNTIME_BINARY=$<TARGET_FILE:test_touch_runtime>")
+
 
 # The 42 binding-row storage keys and display labels in
 # src/input/binding_rows.c are read out of XMen2.exe and igct.bnx; this diffs
@@ -1648,6 +1657,7 @@ set(X2_NATIVE_SOURCES
     src/native/script_trace.c
     src/native/entity_spawn_probe.c
     src/native/heartbeat.c
+    src/native/heartbeat_reports.c
     src/d3d8/d3d8_com.c
     src/d3d8/d3d8_caps.c
     src/d3d8/d3d8_state.c

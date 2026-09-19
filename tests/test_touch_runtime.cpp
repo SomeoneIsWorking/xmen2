@@ -185,6 +185,13 @@ int main() {
   x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
   x2_touch_runtime_window(window);
 
+  /* The census's OTHER branch, printed before anything has been touched.
+     It is the one a phone or a browser tab sits in for the whole of the logo
+     and the loading route, and it is printed here so the reader that parses
+     it -- tests/test_web_touch_play.py -- is checked against the real text
+     rather than a fixture that can drift from this file. */
+  x2_touch_runtime_report("");
+
   /* NEGATIVE FIRST. Without it an overlay that is always visible, and a test
      that only ever looked after the heartbeat, would agree with each other. */
   check(!x2_touch_runtime_overlay_visible(),
@@ -355,7 +362,7 @@ int main() {
 
   /* Runs it for real: a report that throws or prints nothing is not an
      instrument, and nothing else in the suite calls it. */
-  x2_touch_runtime_report();
+  x2_touch_runtime_report("");
 
   std::printf("touch runtime: %d check(s), %d failure(s)\n", g_checks,
               g_failures);

@@ -253,3 +253,37 @@ class Cdp:
 
     def close(self) -> None:
         self._socket.close()
+
+
+def page_socket(port: int, attempts: int = 40) -> Cdp:
+    """The first page target on a browser, waiting for it to appear.
+
+    Refuses by naming the port rather than returning None: a caller that
+    quietly skipped its work would report a run in which nothing was driven
+    as a run in which nothing went wrong.
+    """
+    import time
+
+    for _ in range(attempts):
+        for target in targets(port):
+            if target.get("type") == "page" and "webSocketDebuggerUrl" in target:
+                return Cdp(target["webSocketDebuggerUrl"])
+        time.sleep(0.5)
+    raise CdpError(f"no page target on CDP port {port}")
+
+
+def evaluate(cdp: Cdp, expression: str, timeout: float | None = None):
+    """One expression in the page, by value. A thrown exception is fatal."""
+    result = cdp.call(
+        "Runtime.evaluate",
+        {"expression": expression, "returnByValue": True, "awaitPromise": True},
+        timeout=timeout,
+    )
+    if "exceptionDetails" in result:
+        raise CdpError(f"page refused the expression: {result['exceptionDetails']}")
+    return result["result"].get("value")
+
+
+def touch(cdp: Cdp, kind: str, points: list[dict]) -> None:
+    """One touch event. `kind` is touchStart, touchMove, touchEnd or touchCancel."""
+    cdp.call("Input.dispatchTouchEvent", {"type": kind, "touchPoints": points})

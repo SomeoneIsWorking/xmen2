@@ -44,8 +44,14 @@ void x2_touch_census_read(X2TouchCensus *out);
 
 /* `has_window` is the only fact the runtime holds privately; the control
    mode, the source verdict and the gameplay gate are read from their own
-   owners so this cannot report a second opinion about them. */
-void x2_touch_census_report(int has_window);
+   owners so this cannot report a second opinion about them. `tag` prefixes
+   each line, so the live heartbeat and the shutdown roll-call are told apart.
+
+   The heartbeat calls this from its own thread while the counts are being
+   added to, which can tear a single number across a line. That is a
+   diagnostic's risk and not a correctness one: the alternative is a lock on
+   the input path for the benefit of a printout. */
+void x2_touch_census_report(const char *tag, int has_window);
 
 #ifdef __cplusplus
 }
