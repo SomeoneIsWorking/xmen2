@@ -868,6 +868,26 @@ and is not the lever (#166). General chaining to a known successor is 67.2% of
 exits and remains open; sizing it needs the successor actually taken, which is
 not measured.
 
+Of the SSE row, **the gate that had to be answered before writing anything is
+answered, and it passed**. A temporary census in `x86p_wasm_simd_arithmetic`
+counted the guest's MXCSR per operation rather than per `LDMXCSR`, and printed
+all sixteen buckets including the empty ones. Over **317,883,827 SSE arithmetic
+operations** on this route the control word is round-to-nearest with
+flush-to-zero and denormals-are-zero clear on **100.00%** of them, which is the
+one mode WebAssembly's `f32x4` arithmetic produces — the opposite of the answer
+the same question gave for x87 in #162, where rounding control moved on 1.65% of
+operations and killed that plan. Four opcodes account for every one of those
+operations, summing to the denominator exactly: `MULPS` 37.91%, `ADDPS` 37.40%,
+`SHUFPS` 20.91%, `XORPS` 3.78% (`ORPS` ran three times; nothing else ran at
+all). Each maps to one host instruction, `SHUFPS` to `i8x16.shuffle` with the
+lane indices baked from its decode-time immediate. The reading is trusted
+because the same helper was driven with all sixteen control words and landed in
+all sixteen buckets, and because the report's designed negative fired on its own
+before the route reached gameplay. The lowering itself is **not written**:
+`emit_wasm` still has no `v128` type and no `0xFD` opcode. The census was
+removed once it had answered (x86port `7bbabbb` then `b52acfb`); #167 holds the
+tables.
+
 x87 has come from 47% to about 30% across five landed x86port changes, the last
 three being the exact ext80 widening (`70e6536`), the pop fusion (`30ad283`)
 and the inline widening (`0ddf304`). The last of those emits the ordinary case
