@@ -407,11 +407,15 @@ void x2_engine_report(void) {
       lucent_log_info(
           "engine",
           "JIT conditions: %llu of %llu lowered inline (%.1f%%), %llu call "
-          "the shared evaluator",
+          "the shared evaluator (%llu of those had no recorded predecessor, "
+          "%llu had one no derivation covers)",
           (unsigned long long)js.conds_inline,
           (unsigned long long)js.conds_translated,
           100.0 * (double)js.conds_inline / (double)js.conds_translated,
-          (unsigned long long)(js.conds_translated - js.conds_inline));
+          (unsigned long long)(js.conds_translated - js.conds_inline),
+          (unsigned long long)js.conds_unknown_kind,
+          (unsigned long long)(js.conds_translated - js.conds_inline -
+                               js.conds_unknown_kind));
     x86_engine_report_hot_blocks(g_engine.jit, "");
   }
 }

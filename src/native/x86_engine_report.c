@@ -136,7 +136,8 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       "[HB] JIT: %llu blocks entered, %llu translated (%llu instructions); "
       "%lu native hand-backs; %llu refusals of %llu translation attempts; "
       "%llu cache flushes, %llu bytes code; %llu of %llu condition(s) "
-      "lowered inline; product fallback unavailable",
+      "lowered inline (%llu unrecorded predecessor, %llu underivable kind); "
+      "product fallback unavailable",
       (unsigned long long)js.blocks_entered,
       (unsigned long long)js.blocks_translated,
       (unsigned long long)js.guest_insns_translated, callouts,
@@ -145,7 +146,10 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.cache_flushes,
       (unsigned long long)js.code_bytes_used,
       (unsigned long long)js.conds_inline,
-      (unsigned long long)js.conds_translated);
+      (unsigned long long)js.conds_translated,
+      (unsigned long long)js.conds_unknown_kind,
+      (unsigned long long)(js.conds_translated - js.conds_inline -
+                           js.conds_unknown_kind));
   report_invalidation(&js);
   x86_engine_report_hot_blocks(jit, "[HB] ");
 }

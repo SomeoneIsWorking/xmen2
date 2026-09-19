@@ -827,6 +827,10 @@ rate. The correctness half is why it stays.
 second**, measured over 1042 presents in a 90.2 s plateau at load average 5.0;
 `tools/web_presents.py` reports that steady rate because a per-heartbeat one
 quantises at 1.75% on this route and cannot resolve the changes now being made.
+A later run on the inline-condition build read **11.840 +/- 0.040** over a 25 s
+plateau — at load average 4.27, which is enough of a difference on its own that
+the two are not comparable. It is recorded because it is the current reading,
+not as a gain.
 
 The guest worker's own census, 25 s and 96,169 samples, is what the remaining
 work is ranked on:
@@ -837,6 +841,13 @@ work is ranked on:
 | dispatch (`x86p_jit_engine_run` + the intercept) | 13.11% | #166 |
 | SSE through a scalar C helper | 3.23% | #167 |
 | flags and ALU helpers | ≈4.3% | — |
+
+Of that last row, the 0.91% that was `x86p_cond` is largely gone: x86port
+`f94ad4a` derives a condition inline from the kind that wrote the flags, and
+**96.2% of the conditions this route translates now take that path** (#168).
+The remaining 3.8% are the Add, Inc, Dec and explicit-EFLAGS kinds, which the
+census in the heartbeat counts separately so the next derivation can be ranked
+rather than guessed.
 
 x87 has come from 47% to about 33% across four landed x86port changes, the last
 two being the exact ext80 widening (`70e6536`) and the pop fusion (`30ad283`).
