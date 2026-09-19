@@ -1,7 +1,8 @@
 # 0163 — every guest time query read a private clock, twice
 
 - **State items:** S021
-- **Status:** fixed; browser effect not yet re-measured
+- **Status:** fixed and re-measured; the performance half is worth about 0.3%
+  of the guest worker, the correctness half is the reason it stays
 - **Found by:** the #162 profile, where `_emscripten_get_now` was 4.19% of the
   guest worker and `_clock_time_get` a further 0.68%
 
@@ -69,10 +70,42 @@ moved the counter by 110 ns".
 `test_x86_import_fastpath` now links the real `guest_clock.c` rather than
 stubbing it, so the fast path's QPC answers through the shipping owner.
 
-## What is not yet known
+## The browser effect, measured — and it is small
 
-The browser effect. The profile share this came from was measured before the
-fix and the fix has not yet been re-measured on the route, so no frame number
-is claimed here. If `_emscripten_get_now` does not fall, the second reading
-was not the cost and the remaining share belongs to the guest's call rate,
-not to the pump.
+`_emscripten_get_now` went from **4.19% to 3.88%** of the guest worker on the
+same route. It fell, so the second reading was real, but it fell by about a
+fourteenth of itself rather than by half.
+
+**So the pump's reading was a small minority of the clock cost, and the answer
+to "why is the clock 4% of the worker" is the guest's own call rate.** The
+check this issue set itself — "if `_emscripten_get_now` does not fall, the
+second reading was not the cost" — came back almost that way, and the honest
+reading is that this change is worth a fraction of a percent of frames.
+
+That does not retire the fix, because the reason to make it was never the
+0.3%: three call sites were bypassing the clock owner and would have handed
+the guest a QueryPerformanceCounter that disagreed with itself under
+`--unbounded`. The performance argument was the one that found the defect, not
+the one that justifies it.
+
+What is still open is the remaining 3.88%. A guest calling QPC often enough to
+spend 4% of a frame on it is a fact about the guest's loop, not about this
+port, and the next question is whether that loop is a wait the port could
+satisfy without a round trip to JavaScript — not whether the reading can be
+made cheaper.
+
+## What would falsify the attribution above
+
+Profile shares moved between builds partly because inlining changed: the
+memory-owner fix made `x86p_mem_read_bytes` and `x86p_mem_write_bytes` show up
+as named frames where they had been folded into their callers, so summing
+"memory path" frames across builds compares different partitions.
+
+Frame rate does not have that problem and has a worse one. This run's
+presents/s by age went 6.75, 6.73, 6.35, 6.76, **5.49** — a spread inside one
+run three times larger than the difference between the builds being compared,
+on a change the profile puts at 0.3%. It is recorded in #162 because it
+retires the frame figures quoted there too: **one wall-clock-paced run of this
+route cannot resolve a change of this size**, and this issue's own "worth a
+fraction of a percent of frames" is a statement about the profile, not
+something the frame counter showed.

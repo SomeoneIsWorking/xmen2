@@ -171,9 +171,31 @@ also shows something the single figure hides and which is worth more than the
 mean: the baseline wanders between 5.73 and 6.59 while the fixed run sits
 between 6.53 and 6.77, so it settles sooner and varies less.
 
-The profile shares are the stronger evidence here. A 6.7% frame change is
-within sight of run-to-run noise; two named functions each falling by about a
-fifth of themselves is not.
+**And a third run settles which of those two numbers to believe.** The same
+route on the same build plus the unrelated clock fix of #163, which the
+profile says is worth about 0.3% of the worker:
+
+| age | baseline | one walk | one walk + clock |
+|---|---|---|---|
+| 120-180 s | 5.73 | 6.53 | 6.75 |
+| 180-240 s | 6.37 | 6.77 | 6.73 |
+| 240-300 s | 6.21 | 6.77 | 6.35 |
+| 300-400 s | 6.59 | 6.67 | 6.76 |
+| 400-620 s | 6.46 | 6.70 | **5.49** |
+| mean | 6.27 | 6.69 | 6.42 |
+
+A build that cannot be slower than the one before it measures slower, and the
+spread **inside** that one run — 5.49 to 6.76 — is three times the 0.42
+difference between the means being compared.
+
+**So presents/s on one run of this route cannot resolve a change of this
+size.** The 6.7% above is not established, and neither is any other
+single-run frame figure in this issue. What remains solid is the profile: the
+two functions the change names each fell by about a fifth of themselves, and
+that is not a property a noisy run produces.
+
+Any future frame claim on this route needs repeated runs with the spread
+reported, or a measurement that is not wall-clock paced at all.
 
 ## Cause 1 is not a small change, and here is its size
 

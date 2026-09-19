@@ -774,8 +774,9 @@ and the rest the engine reclaiming its own arena (issue #161). Running with the
 caps set past any plausible requirement measured the real working set at
 **61,200 blocks and 98 MB**, reached in 75 seconds, with zero evictions — so
 the browser's defaults are now that measurement plus a margin, 65,536 blocks
-and 128 MB. It is worth about **10% more frames**, not the doubling the loading
-profile implied, plus a much faster load; at steady state the old arena was
+and 128 MB. It was read as worth about **10% more frames**, not the doubling
+the loading profile implied — a figure since retired by the noise result
+below, though the much faster load it also buys is not in doubt; at steady state the old arena was
 translating about 1,000 blocks a second, not 3,000.
 
 **It also moved the bottleneck rather than removing it.** With translation
@@ -798,8 +799,14 @@ permission structure twice, once to prove the whole range accessible and again
 to copy it, where a span covering the whole range is itself the proof. x86port
 `2ab56b4` gives the memory owner that fast path, so `x86p_x87_read_value` fell
 from 13.59% of the guest worker to 10.95% and `backing_span` from 5.66% to
-3.50%, worth **about 6.7% more frames** over matched windows (6.27/s to
-6.69/s) and a run that settles sooner and varies less. The other is that the
+3.50%. **No frame figure is claimed for it**, and the reason is a result in its
+own right: a third run of the same route, on that build plus an unrelated
+change the profile puts at 0.3%, went 6.75, 6.73, 6.35, 6.76 and 5.49
+presents/s across its five age windows — a spread inside one run three times
+larger than the difference between the builds being compared. One
+wall-clock-paced run of this route cannot resolve a change of this size, which
+retires the earlier "10% more frames" and "6.7% more frames" readings alike;
+profile shares are what this evidence supports. The other is that the
 x87 register file holds binary128 while arithmetic is ext80, so every operation
 widens both operands, computes, narrows and reclassifies; fixing it means
 changing x86port's numeric type across about 170 uses in 23 files and all three
@@ -812,7 +819,9 @@ applies; QPC also pumped the multimedia timers, which read the clock a second
 time (issue #163). All three now take one reading from the owner and pass that
 instant to the pump; `tests/test_guest_clock.c` fails on a skew-blind clock
 with "the five-second skip moved the counter by 110 ns". Its browser effect is
-not yet re-measured.
+measured and small: `_emscripten_get_now` 4.19% to 3.88%, so the pump's second
+reading was a minority of the clock cost and the rest is the guest's own call
+rate. The correctness half is why it stays.
 
 **None of this is the frame rate.** The route presents about 6.7 frames a
 second. x87 is 47% of the busy worker, so removing every cent of it is a

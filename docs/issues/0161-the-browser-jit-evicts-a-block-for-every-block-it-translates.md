@@ -105,7 +105,13 @@ Presents, same route, both arenas, by age:
 | ~910 | ~205 s | 195 s |
 
 About **10% more frames**, not the doubling that "half the guest worker is
-translation and invalidation" suggested. That figure came from a profile taken
+translation and invalidation" suggested.
+
+**Later correction: that 10% is not established either.** Both numbers above
+come from single wall-clock-paced runs, and #162 subsequently measured the
+spread inside one such run at 5.49 to 6.76 presents/s — three times the
+difference these comparisons are drawing. What survives is the load time,
+which is a much larger effect, and the eviction counters, which are exact. That figure came from a profile taken
 during loading. At steady state translation is around 1,000 blocks a second,
 which is a few percent of the worker, and 10% is what removing it returns.
 
