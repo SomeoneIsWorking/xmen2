@@ -38,13 +38,18 @@ int dinput_pad_virtual_report_reader_view(void) {
     }
   }
   if (held < 0) {
-    if (!g_said_never && g_refreshes == 20000) {
+    /* Only meaningful once something has actually been pressed, and it must
+       fire on the first refresh past the threshold rather than on an exact
+       count a shorter run would step over without ever reaching. */
+    if (!g_said_never && g_vpad_presses > 0 && g_refreshes >= 2000) {
       g_said_never = 1;
       x2_log_error(
-          "DINPUT-PAD: reader view -- %lu refresh(es) on thread %llu and NOT "
-          "ONCE was a synthetic button down or awaiting a reader at one. The "
-          "press is gone before the reading thread ever looks.\n",
-          g_refreshes, (unsigned long long)SDL_GetCurrentThreadID());
+          "DINPUT-PAD: reader view -- %lu refresh(es) on thread %llu, %lu "
+          "press(es) published, and NOT ONCE was a synthetic button down or "
+          "awaiting a reader at one. The press is gone before the reading "
+          "thread ever looks.\n",
+          g_refreshes, (unsigned long long)SDL_GetCurrentThreadID(),
+          g_vpad_presses);
     }
     return -1;
   }
