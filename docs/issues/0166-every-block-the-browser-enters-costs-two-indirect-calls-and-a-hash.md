@@ -108,6 +108,38 @@ answer.
 so the translator would have to start recording one. That is the first piece of
 this work and it is measurement, not chaining.
 
+## The static half of that answer, measured
+
+The dynamic half still wants the engine. The static half did not: x86port
+`b1b2ea8` classifies every block's terminator in `tools/jit_coverage`, and
+`tools/jit_corpus.py` builds the corpus from the player's own executable.
+
+Over all 16,451 recovered functions, lowered by the WebAssembly backend:
+
+| where the block goes | blocks | share |
+|---|---|---|
+| relative branch — successor known | 61,063 | 53.9% |
+| ran out of room — next address known | 1,490 | 1.3% |
+| **static successor** | **62,553** | **55.2%** |
+| RET | 18,589 | 16.4% |
+| indirect JMP/CALL | 31,120 | 27.5% |
+| far or other | 1,010 | 0.9% |
+
+**Each block counts once**, so a hot loop and a function that never runs weigh
+the same. That is the number's limit and it cuts in the optimistic direction
+for chaining: hot code is loops, loops end in relative conditional branches, and
+the 27.5% indirect is inflated by the import thunks and virtual dispatch that a
+static walk counts once each and the run enters rarely. So 55.2% is a floor for
+what chaining could reach, not an estimate of it.
+
+The same tool over the same bytes with the x64 backend reports 70.2% static,
+because that backend's blocks are shorter and there are more of them — which is
+the instrument responding to a real difference rather than printing a constant,
+and is why it can be believed here.
+
+Nothing is decided by this alone. What it rules out is the cheap objection:
+chaining is not chasing a handful of exits.
+
 ## The numbers, refreshed after #162's pop fusion
 
 Guest worker, Dead Zone route, 25s, 96,169 samples:
