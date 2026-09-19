@@ -32,6 +32,12 @@ static uint32_t s_hit_count = 0;
 
 void winmm_timers_pump(void) {}
 
+/* The pump the fast path now calls, with the instant it has already read.
+   Stubbed because the multimedia timers are not what this file is about; the
+   clock it reads is NOT stubbed -- guest_clock.c is linked in, so QPC here
+   answers with the same owner the product uses. */
+void winmm_timers_pump_at(double now_s) { (void)now_s; }
+
 void x86_thunk_probe_note(uint32_t idx, unsigned long long ns) {
   (void)idx;
   (void)ns;

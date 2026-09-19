@@ -217,20 +217,17 @@ void imp_KERNEL32_GetSystemTimeAsFileTime(CPU *C) {
 }
 
 void imp_KERNEL32_GetTickCount(CPU *C) {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  ret_std(C, (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000), 0);
+  ret_std(C, (uint32_t)(guest_clock_ns() / 1000000ULL), 0);
 }
 
 void imp_KERNEL32_QueryPerformanceCounter(CPU *C) {
-  struct timespec ts;
-  /* A pump point. The multimedia timers have no thread of their own (see
-     winmm.c), so they run when the guest next asks the time -- which any
-     loop waiting for one does constantly. */
-  winmm_timers_pump();
-  uint64_t v;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  v = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+  /* ONE reading of the guest clock, used for both answers. This is also a
+     pump point: the multimedia timers have no thread of their own (see
+     winmm.c), so they run when the guest next asks the time -- which any loop
+     waiting for one does constantly, which is exactly why it must not cost
+     two clock reads. */
+  const uint64_t v = guest_clock_ns();
+  winmm_timers_pump_at((double)v / 1e9);
   WR32(A(0), (uint32_t)v);
   WR32(A(0) + 4u, (uint32_t)(v >> 32));
   ret_std(C, 1, 1);

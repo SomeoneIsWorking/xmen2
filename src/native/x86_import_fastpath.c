@@ -7,6 +7,7 @@
  */
 #include "x86_import_fastpath.h"
 
+#include "guest_clock.h"
 #include "guest_memory.h"
 #include "winmm.h"
 #include "x86_hotep.h"
@@ -22,7 +23,6 @@
 #include <ctype.h>
 #include <stdint.h>
 #include <string.h>
-#include <time.h>
 
 #include <lucent/cvar_c.h>
 
@@ -68,10 +68,14 @@ static int import_stricmp(struct X86pCpu *cpu) {
 }
 
 static int import_qpc(struct X86pCpu *cpu) {
-  winmm_timers_pump();
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  const uint64_t v = (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+  /* The guest's clock, not a private reading of CLOCK_MONOTONIC. This path
+     answers the same import as imp_KERNEL32_QueryPerformanceCounter and must
+     give the same answer: a raw clock here would ignore the idle skew that
+     guest_clock owns, so the fast path and the slow path would disagree by
+     however much an unbounded run had skipped. One reading serves the answer
+     and the pump. */
+  const uint64_t v = guest_clock_ns();
+  winmm_timers_pump_at((double)v / 1e9);
   const uint32_t esp = cpu->reg[kX86pEsp];
   const uint32_t ret = RD32(esp);
   const uint32_t out_addr = RD32(esp + 4u);

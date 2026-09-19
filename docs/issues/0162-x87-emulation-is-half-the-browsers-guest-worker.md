@@ -138,6 +138,65 @@ decision:
 
 Neither is a fidelity trade: both produce bit-identical results.
 
+## Cause 2 is fixed
+
+x86port `2ab56b4` gives the memory owner a whole-range fast path: a span
+covering all n bytes is itself the proof that the range is accessible, so
+`x86p_mem_read_bytes` and `x86p_mem_write_bytes` walk once instead of twice
+when the range does not straddle anything. It landed first inside
+`x86p_x87_read_value`, which was the wrong layer — the policy belongs to the
+memory owner, where SIMD, the string operations and the instruction fetch get
+it too.
+
+In the profile, `x86p_x87_read_value` fell from 13.59% of the guest worker to
+10.95% and `backing_span` from 5.66% to 3.50%.
+
+In frames it is worth **about 6.7%**, measured over matched age windows of the
+same route:
+
+| age | baseline | one walk |
+|---|---|---|
+| 120-180 s | 5.73/s | 6.53/s |
+| 180-240 s | 6.37/s | 6.77/s |
+| 240-300 s | 6.21/s | 6.77/s |
+| 300-400 s | 6.59/s | 6.67/s |
+| 400-620 s | 6.46/s | 6.70/s |
+| **mean** | **6.27/s** | **6.69/s** |
+
+**The x86port commit message says 19%, and that is wrong.** It was written from
+the first two windows available at the time, 60-120 s and 120-180 s, which are
+where the baseline is slowest — the same mistake in shape as quoting #161's
+loading interval as a steady state, made again one issue later. The full curve
+also shows something the single figure hides and which is worth more than the
+mean: the baseline wanders between 5.73 and 6.59 while the fixed run sits
+between 6.53 and 6.77, so it settles sooner and varies less.
+
+The profile shares are the stronger evidence here. A 6.7% frame change is
+within sight of run-to-run noise; two named functions each falling by about a
+fifth of themselves is not.
+
+## Cause 1 is not a small change, and here is its size
+
+The register file would have to hold `floatx80` — the guest's own format, two
+scalars — instead of `long double`. On this host `long double` is binary128,
+which WebAssembly has no register for, so every pass, return and copy of one
+is memory traffic: `x86p_x87_arith` takes one by value, `x86p_x87_get` writes
+one out, `x86p_x87_software_arith` takes two and returns one, and
+`x86p_x87_set` copies one in and then re-examines it in `classify`.
+
+`long double` appears about 170 times across 23 files in x86port, including
+all three JIT backends (`jit_x64_x87.c`, `jit_arm64_x87.c`, `jit_wasm_x87.c`),
+and the desktop path depends on it being the host's real 80-bit type. So this
+is core surgery on the shared repository's numeric type, not an afternoon. The
+shape that would contain it is an internal value type that is `floatx80` on
+binary128 hosts and `long double` where the host FPU is real, with the public
+API converting only at its edges — but that is a design to write down and
+review, not to start from a profile.
+
+The two exact converters are already cheap bit shuffles
+(`x86p_x87_f128_to_ext80_exact` is a handful of shifts and masks), so what
+this would remove is the value traffic around them, not the conversions.
+
 ## What would falsify the attribution
 
 The profile is one 15-second window of one route with translation quiescent. If

@@ -783,7 +783,41 @@ quiescent the busy worker reports `x86port JIT translation` and
 `wasm compile/instantiate` at 0.00% each, the game's own translated code at
 12%, and **x87 emulation at about 47%** — WebAssembly has no 80-bit float, so
 x86port carries an extended-precision softfloat, and that is now the largest
-single cost in the browser (issue #162). Browser playability remains unproven and the frame rate is still
+single cost in the browser (issue #162). The obvious fix for that — Win32 sets
+x87 precision control to 53 bits, so stop computing 80-bit results the guest
+has not asked for — is **dead, and was killed before any code was written**:
+counted over 100,000,000 arithmetic operations of the `deadzone-render` case,
+the guest asks for extended precision on 100.0% of them. The count is trusted
+because the rounding field moved while the precision field did not (1.65% of
+operations run at round-toward-zero, which is the guest's own `FLDCW` reaching
+`f->control`), so a constant default being echoed back is excluded. What the
+47% is actually spent on is moving values, not computing them: ext80 arithmetic
+proper is 4.9% of the worker and the plumbing around it about 40%. Two causes,
+both bit-identical to fix. One is now fixed: every bulk guest access walked the
+permission structure twice, once to prove the whole range accessible and again
+to copy it, where a span covering the whole range is itself the proof. x86port
+`2ab56b4` gives the memory owner that fast path, so `x86p_x87_read_value` fell
+from 13.59% of the guest worker to 10.95% and `backing_span` from 5.66% to
+3.50%, worth **about 6.7% more frames** over matched windows (6.27/s to
+6.69/s) and a run that settles sooner and varies less. The other is that the
+x87 register file holds binary128 while arithmetic is ext80, so every operation
+widens both operands, computes, narrows and reclassifies; fixing it means
+changing x86port's numeric type across about 170 uses in 23 files and all three
+JIT backends, which is recorded in #162 rather than started from a profile.
+Separately, `guest_clock_ns()` — which `guest_clock.h` names as the one source
+of guest-visible time — **had no callers at all**, while QueryPerformanceCounter
+on both the import and the JIT fast path, and GetTickCount, each read
+CLOCK_MONOTONIC privately and so ignored the idle skew an unbounded run
+applies; QPC also pumped the multimedia timers, which read the clock a second
+time (issue #163). All three now take one reading from the owner and pass that
+instant to the pump; `tests/test_guest_clock.c` fails on a skew-blind clock
+with "the five-second skip moved the counter by 110 ns". Its browser effect is
+not yet re-measured.
+
+**None of this is the frame rate.** The route presents about 6.7 frames a
+second. x87 is 47% of the busy worker, so removing every cent of it is a
+ceiling of 1.9x, to roughly 13/s — the largest single item available and not
+enough on its own. Browser playability remains unproven and the frame rate is still
 short of playable. The route a player actually takes is worse than the gameplay
 test: **the packaged product started from its saved installation reaches the
 retail "Loading..." prompt and wedges there** (issue #158), with three guest

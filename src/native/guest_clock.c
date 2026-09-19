@@ -17,11 +17,13 @@ static unsigned long g_skips, g_idle_calls, g_refused_backwards;
 static double g_skipped_s, g_largest_skip;
 static double g_start_real;
 
-static double real_now_s(void) {
+static uint64_t real_now_ns(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+  return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
+
+static double real_now_s(void) { return (double)real_now_ns() / 1e9; }
 
 double guest_clock_now_s(void) {
   if (g_start_real == 0.0)
@@ -42,7 +44,23 @@ double guest_clock_elapsed_s(void) {
   return now - g_start_real;
 }
 
-uint64_t guest_clock_ns(void) { return (uint64_t)(guest_clock_now_s() * 1e9); }
+/*
+ * Nanoseconds, from the same clock and the same skew as the seconds view.
+ *
+ * Computed in integers rather than by scaling guest_clock_now_s, which is one
+ * multiply and one divide less per call on a path the guest hits constantly.
+ * Precision is NOT the reason: the double holds seconds since boot, around
+ * 1e5, where a 53-bit significand resolves far below a nanosecond. That was
+ * this comment's first claim and it was wrong -- the test written to prove it
+ * passed against both forms, which is how it was caught.
+ */
+uint64_t guest_clock_ns(void) {
+  const double skew = g_skew;
+  const uint64_t real = real_now_ns();
+  /* The skew only ever moves forward (see guest_clock_skip_idle_to), so this
+     addition cannot go backwards; the guard is for the state, not the sum. */
+  return skew > 0.0 ? real + (uint64_t)(skew * 1e9) : real;
+}
 
 int guest_clock_unbounded(void) {
   if (g_unbounded < 0) {

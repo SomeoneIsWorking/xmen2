@@ -853,6 +853,11 @@ target_compile_definitions(test_kernel32_wait PRIVATE X86_NATIVE)
 target_link_libraries(test_kernel32_wait PRIVATE lucent::lucent)
 add_test(NAME kernel32_wait COMMAND test_kernel32_wait)
 
+add_executable(test_guest_clock tests/test_guest_clock.c src/native/guest_clock.c)
+target_include_directories(test_guest_clock PRIVATE src/native)
+target_link_libraries(test_guest_clock PRIVATE lucent::lucent)
+add_test(NAME guest_clock COMMAND test_guest_clock)
+
 # The guest's command line, run twice: plain, and with the exact tokens that
 # leaked onto the game's line in the browser. Both must yield the same line.
 add_executable(test_guest_command_line tests/test_guest_command_line.c
@@ -893,7 +898,7 @@ add_test(NAME vertex_builder COMMAND test_vertex_builder)
 
 add_executable(test_x86_import_fastpath tests/test_x86_import_fastpath.c
                src/native/x86_import_fastpath.c src/native/guest_memory.c
-               tests/native_stubs.c)
+               src/native/guest_clock.c tests/native_stubs.c)
 target_include_directories(test_x86_import_fastpath PRIVATE src/native src/runtime/x86_abi)
 target_compile_definitions(test_x86_import_fastpath PRIVATE TEST_SUITE=1 X86_NATIVE)
 target_link_libraries(test_x86_import_fastpath PRIVATE x86port_runtime lucent::lucent)

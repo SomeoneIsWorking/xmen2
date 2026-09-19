@@ -192,20 +192,28 @@ uint32_t winmm_next_due_ms(uint32_t cap) {
   }
 }
 
+/* For a caller with no instant of its own: read the guest clock, then pump. */
+void winmm_timers_pump(void) { winmm_timers_pump_at(now_s()); }
+
 /*
- * Run whatever is due, on the caller's thread.
+ * Run whatever is due, on the caller's thread, at an instant the caller
+ * supplies.
  *
  * Re-entrancy is guarded rather than assumed: the callback is guest code, and
  * guest code asks the time -- which is one of the places this is called from.
+ *
+ * The instant is a parameter because the busiest caller is
+ * QueryPerformanceCounter, which has just read the guest clock to answer the
+ * guest. Reading it again here made every QPC two clock reads, and in the
+ * browser a clock read is a call out of WebAssembly into JavaScript:
+ * `_emscripten_get_now` was 4.19% of the guest worker.
  */
-void winmm_timers_pump(void) {
-  double t;
+void winmm_timers_pump_at(double t) {
   int i;
 
   if (g_pumping)
     return;
   g_pumps++;
-  t = now_s();
   for (i = 0; i < MAX_TIMERS; i++) {
     if (!g_timer[i].used || t < g_timer[i].due)
       continue;
