@@ -25,6 +25,10 @@ extern "C" {
    not counted as not-touch: a controller being plugged in is not the player
    picking it up. */
 void x2_touch_source_note(const union SDL_Event *event);
+/* Tell this owner which SDL joystick id belongs to the port's own on-screen
+   pad, so its events are not read as a controller the player plugged in. 0
+   means there is no such pad. */
+void x2_touch_source_set_own_pad(unsigned int joystick_id);
 int x2_touch_source_is_touch(void);
 /* Tests and a re-entered window own no history. */
 void x2_touch_source_reset(void);

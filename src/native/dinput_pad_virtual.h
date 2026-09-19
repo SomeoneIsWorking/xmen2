@@ -64,6 +64,10 @@ const char *dinput_pad_virtual_identity_override(unsigned int joystick_id);
    attached or not yet opened. Touch publishes through this pad, so the touch
    layer needs its slot to claim a player for it. */
 int dinput_pad_virtual_slot(void);
+/* The SDL joystick id of the synthetic pad, or 0 when there is none. Events
+   carrying it were produced by this port, not by a controller a player
+   plugged in. */
+unsigned int dinput_pad_virtual_joystick_id(void);
 
 /* Denominators for the shutdown report. */
 void dinput_pad_virtual_counts(unsigned long *presses, unsigned long *axis_sets,

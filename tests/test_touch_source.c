@@ -45,12 +45,14 @@ int main(void) {
   event.type = SDL_EVENT_MOUSE_MOTION;
   event.motion.which = SDL_TOUCH_MOUSEID;
   x2_touch_source_note(&event);
-  check(x2_touch_source_is_touch(), "synthetic touch-mouse motion is not a mouse");
+  check(x2_touch_source_is_touch(),
+        "synthetic touch-mouse motion is not a mouse");
   SDL_zero(event);
   event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
   event.button.which = SDL_TOUCH_MOUSEID;
   x2_touch_source_note(&event);
-  check(x2_touch_source_is_touch(), "synthetic touch-mouse button is not a mouse");
+  check(x2_touch_source_is_touch(),
+        "synthetic touch-mouse button is not a mouse");
 
   /* A stick at rest, and one barely off centre, are not the player. */
   SDL_zero(event);
@@ -95,6 +97,41 @@ int main(void) {
   event.motion.which = 1;
   x2_touch_source_note(&event);
   check(!x2_touch_source_is_touch(), "a real mouse puts the pad away");
+
+  /*
+   * The port's OWN pad is the same finger.
+   *
+   * The on-screen controls publish through an SDL virtual joystick, and SDL
+   * announces every button it sets as an ordinary gamepad event. Read as a
+   * controller arriving, that put the overlay away and cancelled the press
+   * that produced it: in a browser the press was taken back a millisecond
+   * after it was made.
+   */
+  x2_touch_source_reset();
+  x2_touch_source_set_own_pad(6);
+  note(finger(SDL_EVENT_FINGER_DOWN));
+  SDL_zero(event);
+  event.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+  event.gbutton.which = 6;
+  x2_touch_source_note(&event);
+  check(x2_touch_source_is_touch(), "our own pad's button is still touch");
+  SDL_zero(event);
+  event.type = SDL_EVENT_JOYSTICK_BUTTON_DOWN;
+  event.jbutton.which = 6;
+  x2_touch_source_note(&event);
+  check(x2_touch_source_is_touch(), "and so is its joystick button");
+  SDL_zero(event);
+  event.type = SDL_EVENT_GAMEPAD_AXIS_MOTION;
+  event.gaxis.which = 6;
+  event.gaxis.value = -30000;
+  x2_touch_source_note(&event);
+  check(x2_touch_source_is_touch(), "and its stick, however far it moves");
+  SDL_zero(event);
+  event.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+  event.gbutton.which = 7;
+  x2_touch_source_note(&event);
+  check(!x2_touch_source_is_touch(),
+        "a DIFFERENT pad is a player and still puts the overlay away");
 
   x2_touch_source_reset();
   check(!x2_touch_source_is_touch(), "reset clears the history");

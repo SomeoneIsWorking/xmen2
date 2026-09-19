@@ -1,5 +1,7 @@
 #include "touch_pad.h"
 
+#include "touch_source.h"
+
 #include "touch_census.h"
 
 #include "../config/settings.h"
@@ -94,6 +96,10 @@ void ensure() {
   }
   attempted = true;
   if (dinput_pad_virtual_attach_for_touch()) {
+    /* Everything SDL then announces about that pad is this port talking to
+       itself; the source owner has to know that before it reads the first
+       button event as a controller the player plugged in. */
+    x2_touch_source_set_own_pad(dinput_pad_virtual_joystick_id());
     x2_touch_census()->pad_attached++;
     return;
   }
