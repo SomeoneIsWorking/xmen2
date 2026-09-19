@@ -20,6 +20,10 @@
  * appeared only when they were non-empty could not tell them from a report
  * that never ran.
  */
+/* Deep enough to cross a few guest frames, small enough that the report stays
+   readable at the handful of entries the watch reports. */
+#define X2_WATCH_STACK_WORDS 64u
+
 static void watch_report(void *user, uint32_t addr, uint32_t previous,
                          int have_previous, X86pCpu *cpu) {
   const char *what = NULL;
@@ -44,6 +48,44 @@ static void watch_report(void *user, uint32_t addr, uint32_t previous,
   lucent_log_error("engine", "jit.watch:   esp=%08x ebp=%08x esi=%08x edi=%08x",
                    cpu->reg[kX86pEsp], cpu->reg[kX86pEbp], cpu->reg[kX86pEsi],
                    cpu->reg[kX86pEdi]);
+  {
+    /*
+     * The return addresses on the stack above ESP, as module + linked
+     * address.
+     *
+     * The immediate frame names the caller; it does not name who called THAT,
+     * and a wedge usually wants the chain. There is no frame pointer to walk
+     * here -- issue #158's run reached its fatal handler with EBP holding a
+     * data value -- so this scans and prints every word that lands inside a
+     * mapped image. Some of those are data that happens to look like code,
+     * which is why they are printed as candidates and counted, rather than
+     * presented as a backtrace. Said either way: a scan that finds nothing
+     * says so.
+     */
+    const uint32_t *stack =
+        (const uint32_t *)guest_memory_const_pointer(cpu->reg[kX86pEsp]);
+    unsigned found = 0;
+    unsigned i;
+    if (stack) {
+      for (i = 0; i < X2_WATCH_STACK_WORDS; i++) {
+        X86Module *m = x86_module_for(stack[i]);
+        if (!m) {
+          continue;
+        }
+        found++;
+        lucent_log_error(
+            "engine", "jit.watch:   [esp+%02x] %08x -> %s + 0x%08x", i * 4u,
+            stack[i], m->name, m->preferred + (stack[i] - *m->base));
+      }
+    }
+    lucent_log_error("engine",
+                     "jit.watch:   %u of %u stack word(s) land in a mapped "
+                     "image%s",
+                     found, (unsigned)X2_WATCH_STACK_WORDS,
+                     found ? ""
+                           : " -- none, so this frame has no caller on "
+                             "the stack this report can see");
+  }
   {
     /*
      * The words at ESP. A __stdcall or __thiscall callee's arguments are
