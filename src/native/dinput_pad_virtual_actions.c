@@ -38,6 +38,12 @@ static int release_button(int i, int wait_for_a_reader) {
     g_vbtn_release_pending[i] = 1;
     g_vbtn_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
     g_vpad_releases_deferred++;
+    if (g_vpad_releases_deferred <= 2) {
+      x2_log_error("DINPUT-PAD: holding button %d (\"%s\") for its reader; "
+                   "it has been read %lu time(s), %lu at the press.\n",
+                   i, g_vbtn_name[i], dinput_pad_button_read_count(i),
+                   g_vbtn_reads_at_set[i]);
+    }
     return 1;
   }
   if (!SDL_SetJoystickVirtualButton(g_virt_js, i, false))
@@ -118,6 +124,9 @@ int dinput_pad_virtual_release(const char *what) {
 
 /* Release whatever has been held long enough. Called once a frame beside the
  * attach/detach schedule, so a press lasts real frames rather than one poll. */
+/* How many deferred releases have landed because their reader finally came. */
+static unsigned long g_vbtn_landed;
+
 void virtual_expire(void) {
 #ifdef X2_WITH_SDL
   double now = guest_clock_now_s();
@@ -135,6 +144,15 @@ void virtual_expire(void) {
         g_vbtn_until[i] = 0.0;
         SDL_SetJoystickVirtualButton(g_virt_js, i, false);
         changed = 1;
+        g_vbtn_landed++;
+        if (g_vbtn_landed <= 2) {
+          x2_log_error("DINPUT-PAD: letting button %d (\"%s\") go -- it has "
+                       "now been read %lu time(s), %lu at the press, and SDL "
+                       "reported it %d.\n",
+                       i, g_vbtn_name[i], dinput_pad_button_read_count(i),
+                       g_vbtn_reads_at_set[i],
+                       (int)SDL_GetJoystickButton(g_virt_js, i));
+        }
       }
     for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++)
       if (g_vaxis_release_pending[i] &&
