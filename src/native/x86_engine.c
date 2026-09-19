@@ -432,15 +432,31 @@ void x2_engine_report(void) {
           "-- and %llu name the block's own entry (%.1f%%)",
           (unsigned long long)js.exits,
           (unsigned long long)js.blocks_translated,
-          js.blocks_translated
-              ? (double)js.exits / (double)js.blocks_translated
-              : 0.0,
+          js.blocks_translated ? (double)js.exits / (double)js.blocks_translated
+                               : 0.0,
           (unsigned long long)js.exits_static,
           100.0 * (double)js.exits_static / (double)js.exits,
           (unsigned long long)js.exits_backward,
           100.0 * (double)js.exits_backward / (double)js.exits,
           (unsigned long long)js.exits_self,
           100.0 * (double)js.exits_self / (double)js.exits);
+    /* FLD m32/m64, and how much of it the emitted code widens itself instead
+       of crossing out of its module. Same negative as the two above: a zero
+       inline count on a nonzero total is a backend that declined, and a zero
+       total is a corpus with no float loads in it. */
+    if (js.x87_loads_translated == 0u)
+      lucent_log_info("engine",
+                      "JIT x87 loads: none translated, so this run says "
+                      "nothing about the inline widening");
+    else
+      lucent_log_info(
+          "engine",
+          "JIT x87 loads: %llu of %llu widened in the block (%.1f%%), %llu "
+          "call out of the module",
+          (unsigned long long)js.x87_loads_inline,
+          (unsigned long long)js.x87_loads_translated,
+          100.0 * (double)js.x87_loads_inline / (double)js.x87_loads_translated,
+          (unsigned long long)(js.x87_loads_translated - js.x87_loads_inline));
     x86_engine_report_hot_blocks(g_engine.jit, "");
   }
 }

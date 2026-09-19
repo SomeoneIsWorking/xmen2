@@ -4,15 +4,18 @@
 - **Status:** measured and attributed, and both escapes are now closed by
   count. The guest runs at PC=extended on 100% of operations, and computing in
   f64 instead changes 14.57% of results, so x86port must keep producing 80-bit
-  answers. What remains is making the 80-bit path cheaper. Four changes have
+  answers. What remains is making the 80-bit path cheaper. Five changes have
   landed: the storage change (x86port `ab29b41`), which cut `x86p_x87_arith`
   from 15.16% of the browser's guest worker to 8.6%; the inline operand load
   (x86port `98cc6ab`), which removed `x86p_x87_read_value_raw` and
   `x86p_mem_read_bytes` from the profile entirely; the exact widening (x86port
   `70e6536`), which took `x86p_x87_reg_from_operand_bits` from 4.95% to 2.90%;
-  and the pop fusion (x86port `30ad283`), which removed `x86p_x87_pop`'s 1.89%
-  by ending the second import crossing per popping instruction. What remains is
-  `x86p_x87_arith_raw` at 14.57% and the operand plumbing beneath it.
+  the pop fusion (x86port `30ad283`), which removed `x86p_x87_pop`'s 1.89%
+  by ending the second import crossing per popping instruction; and the inline
+  widening (x86port `0ddf304`), which took the load path from 5.35% of the
+  guest worker to 2.52% by stopping a float load leaving its module at all.
+  What remains is `x86p_x87_arith_raw` at 14.90% and the operand plumbing
+  beneath it, of which the store side is now the larger half.
 - **Follows:** #157 and #161, each of which removed the cost that was hiding
   this one
 
@@ -607,3 +610,85 @@ That is +1.5%, which is the right size and the right direction, and it is still
 not proof on its own: a shared host moves this route by more than 1.5% between
 runs, which is exactly why the disappearance of `x86p_x87_pop` from the profile
 is the evidence and the frame rate is the corroboration.
+
+## The load no longer leaves the module, and that is 2.83 points
+
+x86port `0ddf304`. `x86p_x87_reg_from_operand_bits` had already been taken out
+of the softfloat and reduced to shifts (`70e6536`), and it was still 2.62% of
+the guest worker with `x86p_wasm_x87_load_bits` at 2.73% in front of it. The
+remaining cost was not arithmetic. A translated block is its own WebAssembly
+module, so reaching that helper is a cross-module call, and the guest makes one
+per FLD.
+
+The ordinary case is now emitted into the block. Three integer tests decide it
+-- the stored exponent is neither zero nor all ones, and the destination
+register is empty -- and a mask, an OR, a shift, a rebias and three stores do
+it. Everything the tests reject goes to the helper unchanged: subnormals,
+zeroes, infinities, NaNs, integer operands, and a push onto a full stack, which
+sets three status bits and stores nothing.
+
+### What the profile says
+
+Guest worker, Dead Zone route, 25s, 85,786 working samples of 88,387 (97.1% of
+its wall time). The before column is the pop-fusion table above.
+
+| frame | before | after |
+|---|---|---|
+| `x86p_wasm_x87_load_bits` | 2.73% | **0.65%** |
+| `x86p_x87_reg_from_operand_bits` | 2.62% | **1.87%** |
+| the two together | 5.35% | **2.52%** |
+
+**2.83 points of the guest worker.** The two columns come from runs at
+different host loads and the rest of this issue's tables carry a few tenths of
+slack for that; a 2.08-point fall in one row is an order of magnitude outside
+it.
+
+Neither row goes to zero and neither should. What is left in
+`reg_from_operand_bits` is FILD -- an integer operand is a different conversion
+and still crosses -- plus the cold float cases; what is left in `load_bits` is
+those same crossings. The guest's own ratio says how much was reachable: of the
+3,396 memory x87 load sites this route translated, 3,161 took the emitted form
+and 235 did not, which is the FILD forms and 93.1%.
+
+The work moved rather than vanishing, and the profile shows that too: the
+`translated guest block` category is 24.48% here against 12.22% in the table at
+the top of this issue. That is what inlining looks like from the outside.
+
+### The frame rate is not the instrument for this and was not usable today
+
+Presents/s was measured on both builds and the numbers are not reportable. A
+baseline run plateaued at 11.40 - 12.00 (steady 11.600 +/- 0.040) and two runs
+of the new build read 12.00 - 12.20 (steady 12.033 +/- 0.033) and 8.80 - 12.00
+(steady 11.155 +/- 0.040). The host was at load average 18.8 with eight
+concurrent `clang++` processes and a VM belonging to other work, which moves
+this route by far more than the effect being looked for. The section above on
+the pop fusion already states the general form of this: a change of this size is
+below what presents/s can resolve on a shared machine, and the profile is the
+instrument. Nothing here claims a frame-rate result.
+
+### How the two implementations are held together
+
+There are now two implementations of the same widening, one in C and one
+emitted, and that is the cost of this change. `x86p_ext80_source` publishes the
+six numbers that say where a binary32 or binary64 operand's fields are, and both
+read it; splitting an operand into sign, exponent and fraction is written once
+in C as well. `tests/test_wasm_x87.c` runs the emitted form against the
+interpreter over fourteen operand values chosen to separate the arms -- both
+ends of the normal range, both zeros, three subnormals, both infinities, a quiet
+and a signalling NaN -- at four stack depths including the full one, on the
+contiguous and the sparse mapping. A rebias wrong by one fails 65 of its checks;
+that was run, not reasoned about. The suite also asserts both denominators: 289
+x87 loads lowered, 250 inlined, so neither "nothing was inlined" nor "the
+declined forms were never lowered here" can pass.
+
+### What is next in this issue
+
+The ranking inside x87 is now `x86p_x87_arith_raw` at 14.90%, then
+`operand_bytes_from_reg` 4.28%, `store_at` 3.60%, `arith_mem_bits` 2.25%,
+`reg_from_operand_bits` 1.87%, `arith_reg` 1.59%, `copy` 0.71%, `load_bits`
+0.65%. The store side is now the larger half of the operand plumbing and has
+the same shape the load side just had: `store_at` calls
+`operand_bytes_from_reg` across the module boundary on every FST. The narrowing
+it performs is not the load's shift-and-rebias -- it rounds, and consults the
+control word to do it -- so the inline arm there is a smaller subset of cases
+than this one, and worth sizing before it is written.

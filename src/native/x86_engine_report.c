@@ -139,7 +139,8 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       "%llu cache flushes, %llu bytes code; %llu of %llu condition(s) "
       "lowered inline (%llu unrecorded predecessor, %llu underivable kind); "
       "%llu exit(s), %llu with a known successor, %llu backward, %llu to the "
-      "block's own entry; product fallback unavailable",
+      "block's own entry; %llu of %llu x87 load(s) widened in the block; "
+      "product fallback unavailable",
       (unsigned long long)js.blocks_entered,
       (unsigned long long)js.blocks_reentered,
       js.blocks_entered
@@ -157,8 +158,9 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)(js.conds_translated - js.conds_inline -
                            js.conds_unknown_kind),
       (unsigned long long)js.exits, (unsigned long long)js.exits_static,
-      (unsigned long long)js.exits_backward,
-      (unsigned long long)js.exits_self);
+      (unsigned long long)js.exits_backward, (unsigned long long)js.exits_self,
+      (unsigned long long)js.x87_loads_inline,
+      (unsigned long long)js.x87_loads_translated);
   report_invalidation(&js);
   x86_engine_report_hot_blocks(jit, "[HB] ");
 }

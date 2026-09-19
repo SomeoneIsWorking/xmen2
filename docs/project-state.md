@@ -847,7 +847,7 @@ work inside that worker is ranked on:
 
 | cluster | share | issue |
 |---|---|---|
-| x87 emulation | ≈33% | #162 |
+| x87 emulation | ≈30% | #162 |
 | dispatch (`x86p_jit_engine_run` + the intercept) | 13.11% | #166 |
 | SSE through a scalar C helper | 3.23% | #167 |
 | flags and ALU helpers | ≈4.3% | — |
@@ -868,8 +868,17 @@ and is not the lever (#166). General chaining to a known successor is 67.2% of
 exits and remains open; sizing it needs the successor actually taken, which is
 not measured.
 
-x87 has come from 47% to about 33% across four landed x86port changes, the last
-two being the exact ext80 widening (`70e6536`) and the pop fusion (`30ad283`).
+x87 has come from 47% to about 30% across five landed x86port changes, the last
+three being the exact ext80 widening (`70e6536`), the pop fusion (`30ad283`)
+and the inline widening (`0ddf304`). The last of those emits the ordinary case
+of FLD m32/m64 into the translated block instead of calling out of its module
+for it: the two frames that owned the load, `x86p_wasm_x87_load_bits` and
+`x86p_x87_reg_from_operand_bits`, fell from 5.35% of the guest worker to 2.52%
+together, and 3,161 of the 3,396 memory x87 load sites this route translates
+(93.1%) take the emitted form — the rest are FILD, which is a different
+conversion. The frame rate was measured on both builds and is not reportable:
+the host was at load average 18.8 with another agent's compiles on it, which
+moves this route by far more than the effect. #162 records both.
 Frames track that worker one for one — proved when the host took half of it
 away mid-capture and block entries and presents/s both fell 47% in the same
 windows — so the census is a roadmap and not just accounting. It is also not
