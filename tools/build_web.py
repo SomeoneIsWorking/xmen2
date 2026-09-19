@@ -55,6 +55,11 @@ def main() -> int:
     command = [
         str(emcmake), "cmake", "-S", str(root), "-B", str(build), "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release", f"-DPython3_EXECUTABLE={sys.executable}",
+        # The guest's x87 arithmetic is a four-deep chain of one-line functions
+        # in four translation units -- arith_raw, software_arith_raw,
+        # extF80_add, addMagsExtF80, roundPackToExtF80 -- and the call between
+        # each of them survives -O3 because it crosses a TU boundary.
+        "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DCMAKE_C_FLAGS=-pthread",
         "-DCMAKE_CXX_FLAGS=-pthread",
