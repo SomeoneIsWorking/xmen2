@@ -2,7 +2,7 @@
 id: 158
 title: the browser's retail boot wedges at the "Loading..." prompt
 status: investigating
-symptom: the retail #play route never leaves Loading...; the guest allocator fails and the title's own fatal handler hangs on a JMP $ at 0x403210
+symptom: the retail #play route never leaves Loading...; the guest asks a memory pool for -2 bytes, the pool refuses, and the title's own fatal handler hangs on a JMP $ at 0x403210
 state_items: S021
 tags: web,browser,wasm,boot,threads,wedge
 created: 2026-09-19
@@ -12,12 +12,13 @@ updated: 2026-09-19
 # 0158 — the browser's retail boot wedges at the "Loading..." prompt
 
 - **State items:** S021
-- **Status:** cause found. The spin at `0x403210` is the tail of the title's
-  own fatal allocation-failure handler, called from
-  `libIGCore.dll!igMemoryPool::allocationFailure`. The guest allocator failed
-  and the title hung on purpose. What is not yet known is the reason code and
-  the size, because the port never prints the title's own message. This
-  supersedes the localization to thread suspension and the `Present` reading
+- **Status:** cause found, one step from the defect. The spin at `0x403210`
+  is the tail of the title's own fatal allocation-failure handler, called from
+  `libIGCore.dll!igMemoryPool::allocationFailure` with **request size
+  `0xFFFFFFFE` (-2) and reason `kAllocationFailureMaxSizeExceeded`**. The
+  browser is not out of memory: something computes a negative size. What
+  computes it is the open question. This supersedes the localizations to
+  thread suspension, to the guest memory window, and the `Present` reading
   below.
 - **Not** #157: the same source passes the same route on the desktop, and the
   browser's Dead Zone route runs to 1,200 presents on the same build.
@@ -200,9 +201,75 @@ This makes #158 a memory-size issue and links it to #159, which measured the
 browser committing 2.5 GB before it can draw: the same run has both a large
 flat guest window and a pool that will not grow.
 
+### The request is for MINUS TWO BYTES
+
+Answered 2026-09-19 (`scratch/web/wasmgoal/reason3`), by reporting the guest
+stack at the fatal handler's entry:
+
+```
+jit.watch: entry 1 to guest 0x00402cf0 (unnamed)
+jit.watch:   came from block 0x2f03ab30
+             (?allocationFailure@igMemoryPool@Core@Gap@@MAE_NIW4igAllocationFailureReason@23@@Z)
+jit.watch:   [esp+00..1c] 2f03ab46 00a9a310 fffffffe 00000001 ...
+```
+
+The handler's own body labels those words. It prints `Pool name`, `Pool
+index`, `Request size`, `Pool size` and `Allocated` from the strings at
+`0x0068035c`, `0x00680340`, `0x00680324`, `0x00680308` and `0x006802ec`,
+reading the pool from `[esp+0x2c]` at `402d53` and the request size from
+`[esp+0x38]` at `402d7f`. Against the entry frame those are argument one and
+argument two:
+
+| word | value | meaning |
+|---|---|---|
+| `[esp+0]` | `2f03ab46` | return into `allocationFailure` |
+| `[esp+4]` | `00a9a310` | the pool (`ECX` holds it too) |
+| `[esp+8]` | `fffffffe` | **Request size, printed with `%d`: -2** |
+| `[esp+c]` | `00000001` | reason 1 of five: `kAllocationFailureMaxSizeExceeded` |
+
+So the browser is **not** out of memory. The guest computes an allocation
+size of -2, the pool refuses it as larger than its maximum -- which for an
+unsigned 4,294,967,294 it is -- and the title hangs. `0xFFFFFFFE` also sat in
+`EDX`, `ESI` and `EBP` at the `JMP $`, so the value is being carried around,
+not produced once at the call.
+
+### Who asks for it
+
+The same watch scans 64 words above ESP and names every one inside a mapped
+image (`scratch/web/wasmgoal/who158`). Twelve of the sixty-four land in
+`libIGCore.dll`, and resolved against its exports they are one chain:
+
+```
+igMetaObject::createInstanceRef(igMemoryPool*)        +0x0c
+  igMetaObject::createInstance(igMemoryPool*)         +0x6a
+    igObject::constructDerived(igMetaObject*)         +0x54
+      igObject::construct()                           +0x2d
+        igObjectRefMetaField::construct(igObject*)    +0x39
+          igMetaObject::createInstance(igMemoryPool*) +0x5c
+            igArenaMemoryPool::malloc(unsigned int)   +0x17
+              igArenaMemoryPool::memoryOperation(...) +0xb04
+                igArenaMemoryPool::igArena_malloc(unsigned int) +0x5c
+                  igMemoryPool::allocationFailure(-2, MaxSizeExceeded)
+```
+
+So the size is **an object's size, taken from its meta-object** while
+constructing an object-reference field of another object. Nothing in that
+chain reads a file or measures anything at runtime: the size comes from the
+metadata the title registered for that type. A meta-object whose size reads
+as -2 is one that was never filled in, or one whose field was read from the
+wrong place.
+
+The remaining question is which type, and why only here: the same source runs
+this route on the desktop.
+
 ### What to do next with it
 
-1. **Name the reason and the size.** `igMemoryPool::allocationFailure` takes
+1. ~~**Name the reason and the size.**~~ Done above; and the route through the
+   title's own message is **dead**: the port now logs the guest's stdout
+   (`crt_console.c`) and the title still prints nothing, because Alchemy's
+   `igOutput::toStandardOut` is inert in this retail build. The arguments had
+   to be read off the stack.
+2. Original note, kept because the diagnostic gap it names was real: `igMemoryPool::allocationFailure` takes
    the failed size and the reason code; both are on the guest stack at its
    entry and neither is in any log, because the title's own message goes
    through `igOutput::toStandardOut` and **this port never prints it** -- no
