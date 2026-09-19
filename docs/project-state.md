@@ -666,13 +666,41 @@ gestures for the application, and the same probe over the same route reports
 also sized with `100dvh` rather than `100vh`, which had put the stick and the
 action cluster under the mobile address bar.
 
+The overlay now attaches its own pad. The on-screen controls publish through
+the synthetic SDL pad, and nothing attached that pad except the
+`X2_VIRTUAL_PAD` diagnostic and the Android bridge setting it by hand — which
+was the only reason Android's touch worked and no other platform's did. A
+browser run with the overlay live reported 48 contacts, 72 zone actions, **0
+published and 36 refused** with "this run has no synthetic pad to press". The
+touch runtime attaches the pad on its first publish, the Android special case
+is gone, and `tests/test_touch_runtime.cpp` no longer attaches one for itself,
+so it proves the product supplies it rather than proving the chain works given
+one (issue #171).
+
+A touch on a drawn control reaches the pad in a browser. Measured through the
+product's own touch census on the tutorial map at 390x844: 48 contacts, 0
+dropped, 62 zone actions, 4 button changes and 32 axis changes published, 0
+refused, and the pad claimed for player one — which is what makes the guest
+poll it. The census is reported on the periodic heartbeat as well as at an
+ending, because a browser tab never exits and so never reaches the end-of-run
+roll-call; without it the web product had no account of touch at all.
+
+Reaching that evidence also required the browser to be able to load a map
+whose HUD draws. `#test-play` hard-coded `act1/deadzone/deadzone1`, which
+draws no retail party HUD (0 visible party draws against the tutorial map's 19
+on the same route, on both the native and the browser products), and the
+overlay is gated on that HUD, so no browser run could ever show a control.
+`--test-map=<path>` makes the route selectable; the default is unchanged
+(issue #171).
+
 Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this
 repository can make — only "the path is platform-neutral by construction and
-unit-verified". Measured phone evidence remains S018's gate. On the web target
-(S021) a contact now reaches the application, but no run has yet shown a touch
-on a drawn control moving the game, and the browser safe area is still the whole
-canvas: `SDL_GetWindowSafeArea` falls back to the window because SDL's
+unit-verified". Measured phone evidence remains S018's gate. No run has yet
+shown the character visibly moving under a touch: the census sees as far as
+the pad, and the link past it is covered by `test_touch_runtime` reading the
+presses back off a real SDL gamepad, not by an observed game. The browser safe
+area is still the whole canvas: `SDL_GetWindowSafeArea` falls back to the window because SDL's
 Emscripten backend never set the insets, so a control against the edge can sit
 under a notch or the home indicator. SDL fork `70f8057` addresses it and is
 deliberately not pinned, because no browser available here can emulate a
