@@ -13,10 +13,12 @@ struct X86pCpu;
 /* Remembered from the game's first IDirectInput8::EnumDevices(GAMECTRL):
    the callback to invoke, its pvRef (the input manager), and which function
    the call came from -- the re-enumeration routine itself. */
+/* The game called EnumDevices(GAMECTRL) from `return_address`; identify the
+   routine it returns into, because that is what a later arrival has to be
+   admitted through. Reports when it cannot, naming the address it had. */
 void dinput8_hotplug_note_game_enumeration(unsigned int callback,
                                            unsigned int manager_ref,
-                                           unsigned int routine,
-                                           const char *routine_name);
+                                           unsigned int return_address);
 
 /* The guest's EnumDevices ran: the inventory generation it reported. */
 void dinput8_hotplug_enumerated(unsigned long long generation, int connected,

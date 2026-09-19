@@ -12,6 +12,7 @@ extern "C" {
 #include "../native/dinput_pad_virtual.h"
 #include "touch_census.h"
 #include "touch_controls.h"
+#include "touch_pad.h"
 #include "touch_source.h"
 #include "transient_controller_assignment.h"
 
@@ -136,97 +137,12 @@ void publish_axis(std::span<const x2::input::ActionEvent> events,
   }
 }
 
-/*
- * Claim player one for the pad that touch publishes through.
- *
- * A pad only reaches the guest once a player resolves to it, and a player
- * resolves only from an explicit transient assignment or a persisted
- * reservation. On a phone neither exists on a first run, so every touch was
- * routed into a pad no player was reading: the probe reported the game
- * polling buttons that were never down, while SDL's own touch-to-mouse
- * emulation carried presses to menus and nothing to gameplay.
- *
- * A controller the player already chose keeps player one, so plugging a real
- * pad in still wins; this only fills the vacancy.
- */
-/*
- * The pad the overlay publishes through.
- *
- * dinput_pad_virtual_set/release are the only way a touch press reaches the
- * guest, and for most of this port's life nothing attached that pad except
- * the X2_VIRTUAL_PAD diagnostic and the Android bridge doing it by hand. So
- * touch was dead on every other platform: the overlay drew, the zones lit up,
- * and each press was refused with "this run has no synthetic pad to press".
- * The touch owner attaches its own.
- *
- * Attempted once. A failure is not retried on every contact -- it would say
- * the same thing sixty times a second -- but it is counted, so the census
- * reports a live overlay with nowhere to publish rather than a tidy row of
- * refusals with no cause.
- */
-void ensure_pad() {
-  static bool attempted = false;
-  if (attempted) {
-    return;
-  }
-  attempted = true;
-  if (dinput_pad_virtual_attach_for_touch()) {
-    census.pad_attached++;
-    return;
-  }
-  census.pad_attach_refused++;
-  x2_log_error("touch: no synthetic gamepad could be attached, so the "
-               "on-screen controls cannot reach gameplay in this run\n");
-}
-
-void claim_player_one() {
-  static bool attempted = false;
-  if (attempted)
-    return;
-  if (x2_transient_controller_has_assignment(0)) {
-    census.player_one_held_by_transient++;
-    return;
-  }
-  /*
-   * A STORED reservation only holds player one while the controller it names
-   * is actually here.
-   *
-   * This used to test that the setting existed at all, which is not what
-   * holds a player: x2_player_input_sync resolves a reservation through
-   * dinput_pad_for_persistent_id and leaves the player unassigned when that
-   * device is absent. So a phone whose owner had once paired a Bluetooth pad
-   * kept a reservation nothing could satisfy, player one ended up with no
-   * controller whatsoever, and touch declined to fill the vacancy it exists
-   * to fill. Same resolver, same answer.
-   */
-  const char *const reserved =
-      x2_settings_player_controller(x2_settings_store(), 0);
-  if (reserved && dinput_pad_for_persistent_id(reserved) >= 0) {
-    census.player_one_held_by_setting++;
-    return;
-  }
-  const int slot = dinput_pad_virtual_slot();
-  if (slot < 0) {
-    census.player_one_no_slot++;
-    return; /* Not opened yet; try again on the next contact. */
-  }
-  attempted = true;
-  if (x2_transient_controller_assign(slot, 0)) {
-    census.player_one_claimed++;
-  } else {
-    census.player_one_refused++;
-    x2_log_error("touch: could not assign the touch pad (slot %d) "
-                 "to player 1; touch will not reach gameplay\n",
-                 slot);
-  }
-}
-
 void publish(const std::vector<x2::input::ActionEvent> &events) {
   using x2::input::TouchAction;
   if (events.empty())
     return;
-  ensure_pad();
-  claim_player_one();
+  x2::input::touch_pad::ensure();
+  x2::input::touch_pad::claim_player_one();
   for (const auto &event : portrait_pointer.route(events)) {
     const bool release = event.phase == lucent::touch::Phase::ended ||
                          event.phase == lucent::touch::Phase::canceled;
@@ -263,6 +179,7 @@ void x2_touch_runtime_window(SDL_Window *new_window) {
   window = new_window;
   if (!window)
     return;
+  x2::input::touch_pad::prepare_for_host();
   int width = 0;
   int height = 0;
   if (!SDL_GetWindowSizeInPixels(window, &width, &height) || width <= 0 ||
@@ -456,5 +373,6 @@ int x2_touch_runtime_overlay_visible(void) {
 }
 
 void x2_touch_runtime_report(const char *tag) {
-  x2_touch_census_report(tag, window != nullptr);
+  x2_touch_census_report(tag, window != nullptr,
+                         x2::input::touch_pad::host_devices());
 }

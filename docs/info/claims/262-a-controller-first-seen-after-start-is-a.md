@@ -1,7 +1,8 @@
 ---
 id: 262
 kind: claim
-status: holds
+status: falsified
+falsified_on: 2026-09-19
 created: 2026-08-25
 tags: input,pad,hotswap,controller
 depends: src/native/dinput8_hotplug.c#dinput8_hotplug_pump, src/native/dinput8_hotplug.c#dinput8_check_controller_table, src/native/dinput_pad_virtual.c#dinput_pad_virtual_from_env, src/input/player_input.c#resolve_pads
@@ -32,3 +33,13 @@ resolution stays keyboard/none despite a matching stored id, or whose Start
 press the game never reads -- on a boot that has not loaded a save. (After a
 SAVE load the poll side does not resume: that is issue #117, explicitly
 outside this claim.)
+
+## Falsified 2026-09-19
+
+`tools/live_case.py pad-late` fails "hotswap re-entered the game's
+enumeration" and "the presented frame changed after Start" on the current
+revision. The named falsifier -- "a hotswap run whose HOTSWAP line never
+appears" / "x86_native_entry_containing naming a function other than
+FUN_00628e20" -- is met in its stronger form: it names nothing at all, because
+XMen2.exe has an empty export table and the generated-corpus symbol table that
+used to answer was retired with the corpus itself (commit 89de118). Issue #173.

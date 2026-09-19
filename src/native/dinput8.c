@@ -313,10 +313,8 @@ static void m_EnumDevices(CPU *C) {
      * code writes guest state; the game admits the controller by its own
      * rules.
      */
-    const char *nm = NULL;
-    uint32_t here = x86_native_entry_containing(RD32(C->reg[kX86pEsp]), &nm);
     dinput8_controller_slots_set_manager(pvref);
-    dinput8_hotplug_note_game_enumeration(cb, pvref, here, nm);
+    dinput8_hotplug_note_game_enumeration(cb, pvref, RD32(C->reg[kX86pEsp]));
   }
 
   /* DI8DEVCLASS_ALL is 0. GAMECTRL is the only class with anything in it

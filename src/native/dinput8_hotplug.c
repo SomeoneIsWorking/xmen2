@@ -136,13 +136,37 @@ void dinput8_check_controller_table(void) {
 
 void dinput8_hotplug_note_game_enumeration(unsigned int callback,
                                            unsigned int manager_ref,
-                                           unsigned int routine,
-                                           const char *routine_name) {
+                                           unsigned int return_address) {
+  const char *name = NULL;
+  const uint32_t routine = x86_native_entry_containing(return_address, &name);
   g_pad_cb = callback;
   g_pad_ref = manager_ref;
   if (routine && routine != g_pad_enum) {
     g_pad_enum = routine;
-    g_pad_enum_name = routine_name;
+    g_pad_enum_name = name;
+    return;
+  }
+  if (routine) {
+    return;
+  }
+  /*
+   * Said here, where the return address is still in hand. Storing a 0 and
+   * letting the pump report "never identified the routine" hides which half
+   * failed: an address in no mapped module is a boundary defect, and one
+   * inside the image with nothing at or below it is an empty export table.
+   */
+  {
+    static int told;
+    X86Module *const m = x86_module_for(return_address);
+    if (told++) {
+      return;
+    }
+    x2_log_error("DINPUT8: EnumDevices(GAMECTRL) returns to 0x%08x, %s%s, and "
+                 "no exported entry sits at or below it -- so the game's own "
+                 "re-enumeration routine cannot be named, and a pad that "
+                 "arrives later cannot be admitted by the game's rules.\n",
+                 return_address, m ? "in " : "in NO mapped module",
+                 m ? m->name : "");
   }
 }
 

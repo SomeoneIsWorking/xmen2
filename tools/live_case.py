@@ -636,6 +636,54 @@ def case_pad_late(case: Case) -> None:
                "(mean |delta| %.1f > 8)" % worst, responded)
 
 
+def case_touch_pad(case: Case) -> None:
+    """The overlay's pad exists BEFORE the guest enumerates controllers, so
+    the game offers it to its own callback and then polls it.
+
+    This is the whole reason touch does anything. A pad attached on the first
+    finger is attached after the one enumeration this port can observe, and
+    the game never polls a controller it was not offered -- measured in a
+    browser as 48 contacts published to a pad read 0 times. touch_controls is
+    forced ALWAYS so the case does not need a touchscreen; the pad's timing,
+    not the finger, is what is under test.
+    """
+    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
+    case.launch({"X2_BOOT_MAP": TUTORIAL_MAP})
+    case.wait_control(60)
+
+    case.check("the overlay attached its own pad, with no X2_VIRTUAL_PAD",
+               case.wait_log("DINPUT-PAD: pad 0 connected", 120))
+    offered = case.wait_log("EnumDevices(class=4 GAMECTRL, flags=0x1) offered",
+                            120)
+    case.check("the game enumerated controllers and was offered that pad",
+               offered,
+               "" if offered else "the enumeration found NO device, so the "
+               "pad was attached too late for the guest to see it")
+
+    reached = reach_authored_conversation(case, 240)
+    case.check("authored conversation reached (gameplay context)", reached)
+    if not reached:
+        return
+    case.http("/key?name=Escape&hold=0.4")
+    case.check("controls unlocked after the skip",
+               wait_controls_unlocked(case, 180))
+    case.check("pad assigned to player 1",
+               case.http("/assignment?player=1&pad=0")[0] == 200)
+    time.sleep(1.0)
+
+    before = case.shot("before-start")
+    case.check("Start press delivered to the pad",
+               case.http("/pad?button=start&hold=2.0")[0] == 200)
+    responded, worst = False, 0.0
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline and not responded:
+        worst = png_mean_diff(before, case.shot("after-start"))
+        responded = worst > 8.0
+        time.sleep(1.0)
+    case.check("the presented frame changed after Start "
+               "(mean |delta| %.1f > 8)" % worst, responded)
+
+
 def case_pad_after_load(case: Case) -> None:
     """Issue #117: a controller attached AFTER a save load. pad-late proves
     the same pad works when the run never loaded a payload, so this case
@@ -1084,6 +1132,7 @@ CASES = {
     "cutscene-skip-early": case_cutscene_skip_early,
     "boot-continue": case_boot_continue,
     "pad-late": case_pad_late,
+    "touch-pad": case_touch_pad,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,

@@ -69,7 +69,10 @@ void x2_touch_census_read(X2TouchCensus *out);
    added to, which can tear a single number across a line. That is a
    diagnostic's risk and not a correctness one: the alternative is a lock on
    the input path for the benefit of a printout. */
-void x2_touch_census_report(const char *tag, int has_window);
+/* `touch_devices` is what the host reported, or -1 if it was never asked:
+   a run with no contacts means something different on a host with no
+   touchscreen than on one with three. */
+void x2_touch_census_report(const char *tag, int has_window, int touch_devices);
 
 #ifdef __cplusplus
 }

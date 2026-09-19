@@ -249,6 +249,7 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_runtime.cpp
                src/input/directinput_controller_sample.c
                src/input/touch_census.cpp
+               src/input/touch_pad.cpp
                src/input/touch_controls.cpp
                src/input/touch_source.c
                src/input/gameplay_control.c
@@ -1607,6 +1608,7 @@ set(X2_NATIVE_SOURCES
     src/input/touch_controls.cpp
     src/input/touch_runtime.cpp
     src/input/touch_census.cpp
+    src/input/touch_pad.cpp
     src/input/touch_source.c
     src/presentation/touch_layout.c
     src/input/gameplay_control.c

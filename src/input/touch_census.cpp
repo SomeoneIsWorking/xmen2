@@ -23,7 +23,8 @@ void x2_touch_census_read(X2TouchCensus *out) {
     *out = g_census;
 }
 
-void x2_touch_census_report(const char *tag, int has_window) {
+void x2_touch_census_report(const char *tag, int has_window,
+                            int touch_devices) {
   const char *const prefix = tag ? tag : "";
   const unsigned long contacts_seen =
       g_census.contacts_down + g_census.contacts_moved + g_census.contacts_up +
@@ -48,11 +49,13 @@ void x2_touch_census_report(const char *tag, int has_window) {
     lucent_log_info(
         "touch",
         "%sno contact reached the port this run -- touch_controls=%s, "
-        "source says %s, gate %s, %s. Nothing was dropped; nothing arrived",
+        "source says %s, gate %s, %s, and this host reports %d touch "
+        "device(s). Nothing was dropped; nothing arrived",
         prefix, mode_name, x2_touch_source_is_touch() ? "touch" : "not touch",
         x2_gameplay_control_name(
             (int)x2_gameplay_control_state(guest_clock_now_s())),
-        has_window ? "a window was present" : "there was NO window");
+        has_window ? "a window was present" : "there was NO window",
+        touch_devices);
     return;
   }
   lucent_log_info(

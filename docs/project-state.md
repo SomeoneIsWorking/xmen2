@@ -730,6 +730,22 @@ stopped, not looping") while the engine's own counter showed it looping; it now
 names all three possibilities and points at the block-entry line that
 discriminates them.
 
+A touch press now reaches the game itself, which it never had. The overlay
+published to the pad, player one was claimed, and the game read a button from
+that pad **0 times** — because the guest enumerates game controllers once,
+about two seconds after the window exists, and a pad attached on the first
+finger can only ever be later than that. The port cannot make it enumerate
+again: that path resolves the game's own re-enumeration routine through the PE
+export table, and XMen2.exe exports nothing, so controller hotswap has been
+dead since the generated corpus and its symbol table were retired (issue #173, claims
+C161 and C262 falsified). `x2::input::touch_pad` now attaches the overlay's pad
+when the window arrives, before the enumeration, for any host that reports a
+touch device or whose setting forces the controls on. Measured by
+`tools/live_case.py touch-pad`, 7/7: the game is offered the pad by its own
+enumeration, reads a button from it 27,700 times with 43 coming back DOWN, and
+the presented frame moves by 9.2 under a Start press. A controller plugged in
+mid-game is still never polled; that is issue #173's own gate.
+
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
 The browser artifact loads and rejects a malformed ZIP through its native

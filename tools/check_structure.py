@@ -39,7 +39,7 @@ LEGACY_LIMITS = {
     "src/native/dinput_device.c": 611,        # was 524
     "src/native/advapi32.c": 710,             # was 599
     "src/d3d8/d3d8_com.c": 620,               # was 609
-    "src/native/dinput8.c": 539,              # was 516
+    "src/native/dinput8.c": 533,              # was 516
     "src/native/heartbeat.c": 458,            # JIT snapshot policy stays in x86_engine.c
 }
 

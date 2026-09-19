@@ -1,7 +1,8 @@
 ---
 id: C161
 kind: claim
-status: holds
+status: falsified
+falsified_on: 2026-09-19
 created: 2026-08-12
 tags: input,controller,hotswap
 reconfirmed: 2026-08-22
@@ -24,3 +25,13 @@ A hotswap run where the report shows the pad acquired but with a state-read coun
 ## Re-confirmed 2026-08-22
 
 The original late-attach/detach live run remains the production observation. The changed admission policy still calls the same runtime-discovered FUN_00628e20(TRUE); test_controller_hotplug now proves one admission per inventory generation through twelve attach/detach cycles, while unchanged polls admit zero.
+
+## Falsified 2026-09-19
+
+`tools/live_case.py pad-late` fails "hotswap re-entered the game's
+enumeration" and "the presented frame changed after Start" on the current
+revision. The named falsifier -- "a hotswap run whose HOTSWAP line never
+appears" / "x86_native_entry_containing naming a function other than
+FUN_00628e20" -- is met in its stronger form: it names nothing at all, because
+XMen2.exe has an empty export table and the generated-corpus symbol table that
+used to answer was retired with the corpus itself (commit 89de118). Issue #173.
