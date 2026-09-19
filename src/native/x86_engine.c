@@ -308,7 +308,10 @@ int x2_engine_call(uint32_t addr, CPU *C) {
       x86_engine_run_host_at(cpu, &call_frame);
       continue;
     }
-    char why[192];
+    /* The runtime's refusals carry their denominators -- how many modules were
+       live, of how many, published and released. At 192 that sentence was cut
+       off exactly where the numbers start. */
+    char why[512];
     why[0] = '\0';
     jit = x86_engine_jit_pool_current(g_engine.jit, why, sizeof why);
     if (!jit)
