@@ -812,7 +812,7 @@ this device." on three consecutive loads. Firefox-family GAMEPLAY remains
 unverified.
 
 The browser artifact loads and rejects a malformed ZIP through its native
-installer. Source run `35441451781` built the asset-free package at `a6e2c78`;
+installer. Source run `35476098695` built the asset-free package at `8e0cabb`, which is what the live route now serves;
 the central Pages route at `https://someoneisworking.github.io/xmen2/` serves
 releases with `publication.json` source provenance. WebLua verified the central
 setup page with `crossOriginIsolated=true`, a WASM runtime, a canvas, and no
