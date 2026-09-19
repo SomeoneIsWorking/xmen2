@@ -664,7 +664,7 @@ unit-verified". Measured phone evidence remains S018's gate. The web target
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
 The browser artifact loads and rejects a malformed ZIP through its native
-installer. Source run `34694009495` built the asset-free package at `612d850`;
+installer. Source run `35439280148` built the asset-free package at `295fba4`;
 the central Pages route at `https://someoneisworking.github.io/xmen2/` serves
 releases with `publication.json` source provenance. WebLua verified the central
 setup page with `crossOriginIsolated=true`, a WASM runtime, a canvas, and no
@@ -1045,6 +1045,24 @@ cleared, the draw dump above named the real cause.
   real title has executed tens of millions of guest instructions with zero
   refusals or fallback, but no interactive gameplay is established and
   667 ms/frame is not playable.
+
+  That 667 ms/frame has since come down by roughly an order of magnitude on the
+  same driven browser route. Measured as medians over about fifty steady
+  five-second windows -- not means over the last N windows, which span different
+  parts of a route that is not uniform -- the route now presents **14.40
+  frames/s (72 per five seconds, IQR 71-73), about 69 ms/frame**. The ladder is
+  recorded in the issues rather than repeated here: guest memory operands got a
+  flat window and a page table (#158), the frustum cull and the SSE, condition
+  and x87 paths stopped crossing the import boundary per operation (#165, #167,
+  #168, #162), the most-crossed import was ranked by time rather than call count
+  (#169), and x87 arithmetic was answered by encoding-level rules proven against
+  hardware, then fused into the register file, for +2.9% and +4.3% against the
+  same baseline (#162, x86port `c38c5ad`). A multiply-only control build
+  reproduced the baseline exactly, so those two gains belong to the change and
+  not to the machine. **This is measured frame progress on a driven route, not
+  qualified interactive gameplay**, and 69 ms/frame is still not playable; the
+  next measured lever is block chaining, whose ceiling #166 puts at about 9%
+  with 65.4% of dispatches going somewhere the block already knows.
 - **W2, rendering: verified in the browser; the picture is correct and the
   frame rate is not (issue #152 closed 2026-09-19).** The defect below was an
   indexed-strip pipeline validation failure in the SDL fork's WebGPU backend
