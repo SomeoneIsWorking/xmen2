@@ -45,6 +45,9 @@ static const GpuSelftestEntry kBattery[] = {
     /* Issue #152: the D3DFVF_XYZ + lighting branch, which the draw check
        never reaches (it uses D3DFVF_XYZRHW). */
     {"lit/MVP draw", gpu_lit_mvp_selftest},
+    /* Issue #152 again: the production frame path, which every check
+       above replaces with a private off-screen target. */
+    {"frame draw", gpu_frame_draw_selftest},
 };
 
 int gpu_host_selftest(void) {

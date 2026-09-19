@@ -239,3 +239,48 @@ with `present_luma` on and read whether `scene` finally moves.** If it does,
 this issue is the sampler bug and closes; if it does not, the defect is
 downstream of every check that exists, and the next instrument has to be a
 same-command-buffer content read rather than another self-test.
+
+### Update (2026-09-19, later): the browser's production frame path delivers a real draw into the scene texture -- so the renderer is not the defect
+
+Every pixel check this battery had drove `gpu_offscreen_begin`, which renders
+into a texture the test makes itself. That is why all of them could pass on a
+host whose real frames came back black: none of them touched the scene texture
+the game's own `[LUMA]` probe reads. `gpu_frame_draw_selftest` (new,
+`src/gpu/gpu_frame_draw_selftest.c`, entry 15 in the battery) closes that hole.
+It creates a window, attaches the device, sizes the logical backbuffer, and
+drives `gpu_frame_begin` / `gpu_frame_clear` / `gpu_draw` / `gpu_frame_end` the
+way the engine drives them, then reads the scene texture through
+`gpu_present_scene` and checks two pixels: the middle of the triangle, and a
+corner that must still hold the clear colour.
+
+It needs a window on purpose. The first version ran headless and failed
+natively, which turned out to be a fact worth keeping rather than a bug in the
+test: **`gpu_frame_begin` in headless mode draws straight into the headless
+target and never touches the scene texture at all**, so a headless run is
+structurally a different frame path from the one the browser and the desktop
+product use. A host with no display skips this check and says so.
+
+The check discriminates: with the `gpu_draw` call suppressed, the centre comes
+back as the clear colour and it fails. With it, on both hosts:
+
+```
+gpu frame-draw selftest: PASSED -- a triangle drawn through the production frame path reached the scene texture (1 frame attempt(s))
+gpu selftests: 15 of 15 passed, 0 skipped, 0 failed.
+```
+
+**This removes the renderer from suspicion.** On WebGPU, in the browser, a draw
+issued through the production frame path lands in the exact texture the game's
+frames leave black. Whatever is wrong is in what the engine asks the renderer
+to do -- the draw's own parameters, the state around it, or the geometry it
+points at -- not in the path that carries the request. Combined with the
+previous update (uniform packing refuted, sampler LOD fixed, 15 of 15 on both
+hosts), no check this project can write against the renderer will find it.
+
+**The next instrument is therefore a comparison, not a self-test:** dump the
+draw parameters of one busy frame on each host (`X2_FRAME_DUMP=busy:100`,
+already implemented in `src/gpu/gpu_draw_trace.c`) and diff the browser's
+against native's on the same route. The obstacle is access, not capability --
+the browser has no environment, and no argument routes an `X2_*` override into
+it, so that instrument cannot currently be armed on the one host that needs it.
+Giving the port a portable way to set those overrides is the first step of the
+next session's work on this issue.

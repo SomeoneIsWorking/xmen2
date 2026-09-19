@@ -20,6 +20,7 @@
 int gpu_device_selftest(void);
 int gpu_present_selftest(void);
 int gpu_draw_selftest(void);
+int gpu_frame_draw_selftest(void);
 int gpu_lit_mvp_selftest(void);
 int gpu_frame_init_selftest(void);
 int gpu_midframe_clear_selftest(void);
