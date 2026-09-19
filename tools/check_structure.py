@@ -27,7 +27,7 @@ LEGACY_LIMITS = {
     "src/native/crt.c": 1535,                 # was 1353
     "src/gpu/gpu_draw.c": 1369,               # was 1250
     "src/d3d8/d3d8_report.c": 1530,           # was 1395
-    "src/native/threads.c": 842,              # was 1070; igThreadManager report -> threads_engine_report.c
+    "src/native/threads.c": 719,              # was 1070, then 842; the reports -> thread_report.c
     "src/gpu/gpu_device.c": 841,              # was 810
     "src/d3d8/d3d8_resource.c": 1050,         # was 924
     "src/native/dinput_pad.c": 397,           # sampler split into dinput_pad_sample.c

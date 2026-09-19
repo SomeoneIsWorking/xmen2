@@ -1652,6 +1652,7 @@ set(X2_NATIVE_SOURCES
     src/native/ws2_32.c
     src/native/shell32.c
     src/native/winmm.c
+    src/native/thread_report.c
     src/native/threads.c
     src/native/threads_engine_report.c
     src/native/threads_yield.c

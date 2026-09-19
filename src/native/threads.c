@@ -43,6 +43,7 @@
 #include "guest_memory.h"
 #include "pe_map.h"
 #include "threads.h"
+#include "threads_internal.h"
 #include "threads_yield.h"
 #include "x86_engine.h"
 #include "x86rt.h"
@@ -69,24 +70,6 @@ uint32_t k32_tls_peek(int slot, uint32_t index);
 int k32_tls_slot_count(void);
 /* ---- what each guest thread is doing ------------------------------------ */
 
-enum {
-  TS_NEW = 0,
-  TS_RUNNING,
-  TS_LOCK,
-  TS_COND,
-  TS_BLOCKING,
-  TS_SUSPENDED,
-  TS_DONE
-};
-static const char *const TS_NAME[] = {"new",
-                                      "running guest code",
-                                      "runnable, waiting its turn",
-                                      "in a WAIT (condition variable)",
-                                      "in a blocking host call",
-                                      "SUSPENDED",
-                                      "finished"};
-
-#define MAX_THREADS 16
 #define MAIN_SLOT MAX_THREADS /* the main thread's TLS slot */
 /* kernel32.c has to know it too, and before this file gets to run. */
 #if MAIN_SLOT != GUEST_MAIN_TLS_SLOT
@@ -98,38 +81,6 @@ static const char *const TS_NAME[] = {"new",
 
 #define HSTACK_BYTES (8u * 1024u * 1024u)
 
-typedef struct {
-  int used, finished, suspended;
-  int slot; /* index in g_thread; also the TLS slot */
-  int is_main;
-  uint32_t handle; /* the kernel32 handle the guest holds */
-  uint32_t tid;
-  uint32_t start, arg;
-  uint32_t stack_base, stack_bytes;
-  uint32_t tib;
-  uint32_t exit_code;
-  /* Per-thread, because the totals were misleading in exactly the way that
-     matters: a run with 3,000,045 resumes and 43 suspends reads as a wildly
-     active suspend/resume protocol, and is in fact one thread being resumed
-     in a spin while ANOTHER sits parked and is never named. */
-  unsigned long n_suspend, n_resume, n_ran;
-  int reaped; /* its handle was closed and its memory freed */
-  /*
-   * WHAT THIS THREAD IS DOING RIGHT NOW, and since when.
-   *
-   * Three mechanisms were proposed for issue #57's intermittent stall and
-   * all three were guesses -- a hand-off, a quantum, a lost pulse -- because
-   * nothing here could answer "what is the other thread blocked ON?". The
-   * totals could not: a thread parked in a condition wait and a thread
-   * spinning in guest code both show up as "1 still running".
-   */
-  int state;
-  double state_since;
-
-  pthread_t thread;
-  int depth;        /* guest_lock nesting, for guest_quantum */
-  int32_t priority; /* SetThreadPriority, per thread */
-} GuestThread;
 static GuestThread g_thread[MAX_THREADS + 1]; /* +1: the main thread */
 static __thread GuestThread *g_self;
 /* Declared in x86rt.h and naturally separated by the host pthreads. */
@@ -140,6 +91,16 @@ extern __thread uint32_t g_fsbase, g_gsbase;
    elapsed time, so any two of them disagreeing is a timing bug wearing a
    gameplay bug's clothes. */
 static double now_s(void) { return guest_clock_now_s(); }
+
+void guest_thread_note_crossing(const char *what, uint32_t guest_addr,
+                                double at) {
+  if (!g_self) {
+    return;
+  }
+  g_self->last_cross = what;
+  g_self->last_cross_addr = guest_addr;
+  g_self->last_cross_at = at;
+}
 
 static void state_set(int st) {
   if (!g_self)
@@ -395,36 +356,6 @@ void guest_sleep_ms(uint32_t ms) {
   }
   guest_cond_wait_ms(ms);
   guest_suspend_point();
-}
-
-/*
- * One line per live guest thread: what it is doing and for how long.
- *
- * Printed from the heartbeat, because a stall is a thing you watch happen --
- * a report at shutdown arrives after a SIGKILL has already ended the argument.
- * The denominator is printed too: a run whose threads are all "running guest
- * code" is a different claim from a run that has no threads to report.
- */
-void guest_thread_state_report(void) {
-  /* A duration that keeps reading ~0.0s is not a thread that just changed
-     state -- it is a thread that keeps WAKING, which is the difference
-     between a poll loop and a park and is the thing worth seeing. */
-  double t = now_s();
-  int i, live = 0;
-  for (i = 0; i <= MAX_THREADS; i++) {
-    GuestThread *g = &g_thread[i];
-    if (!g->used || g->finished)
-      continue;
-    live++;
-    x2_log_error("[HB]           %s%u start 0x%08x: %s for %.1fs%s\n",
-                 g->is_main ? "MAIN tid " : "tid ", g->tid, g->start,
-                 TS_NAME[g->state < 0 || g->state > TS_DONE ? 0 : g->state],
-                 t - g->state_since, g == g_self ? "  <- running" : "");
-  }
-  if (!live)
-    x2_log_error("[HB]           no live guest thread at all, not even "
-                 "the main one -- which cannot happen while this line "
-                 "is being printed, so the table is wrong\n");
 }
 
 /* ---- creating and ending threads ---------------------------------------- */
@@ -766,69 +697,23 @@ void guest_thread_exit(uint32_t code) {
   pthread_exit(NULL);
 }
 
-void guest_thread_report(void) {
-  int i, live = 0;
-  for (i = 0; i < MAX_THREADS; i++)
-    if (g_thread[i].used && !g_thread[i].finished)
-      live++;
-  if (!g_created) {
-    x2_log_info(
-        "  threads: no guest thread was ever created; everything ran on "
-        "the main thread.\n");
-  } else {
-    x2_log_info(
-        "  threads: %lu created, %lu exited, %lu reaped (handle closed, "
-        "stacks freed), %d still running; %lu suspend(s), %lu resume(s)\n",
-        g_created, g_exited, g_reaped, live, g_suspends, g_resumes);
-    if (g_resume_noop)
-      x2_log_info("         %lu resume(s) were of a thread that was NOT "
-                  "suspended -- Win32 no-ops those, and a loop doing them is "
-                  "waiting for something else.\n",
-                  g_resume_noop);
-    if (g_resume_unknown || g_suspend_unknown)
-      x2_log_info("         %lu resume(s) and %lu suspend(s) named NO live "
-                  "thread -- a handle whose thread had already been reaped. A "
-                  "loop doing that is waiting for something that cannot "
-                  "happen.\n",
-                  g_resume_unknown, g_suspend_unknown);
-    for (i = 0; i < MAX_THREADS; i++) {
-      GuestThread *t = &g_thread[i];
-      /* Reaped slots are printed too, until they are reused: their
-         counters are the only record of where a spin loop's resumes
-         went, and skipping them is what made 9,000,634 of them
-         invisible. */
-      if (!t->used && !t->tid)
-        continue;
-      x2_log_info("         tid %u  start 0x%08x  %lu suspend(s) %lu "
-                  "resume(s) %lu turn(s)%s%s\n",
-                  t->tid, t->start, t->n_suspend, t->n_resume, t->n_ran,
-                  !t->used      ? "  REAPED"
-                  : t->finished ? "  EXITED"
-                                : "",
-                  t->suspended ? "  SUSPENDED NOW -- if the run stalled, this "
-                                 "is a thread waiting for a ResumeThread that "
-                                 "never came"
-                               : "");
-    }
-  }
-  /* Flushed, because this now runs from the abort paths too and an unflushed
-     stdout buffer is discarded by abort() -- the report was written, and
-     vanished, on exactly the stall it exists to explain. */
-  /*
-   * Printed even when they are ZERO, with their denominators. "0
-   * preemptions" and "preemption is not compiled in" are different facts and
-   * a line that only appears when the number is non-zero cannot tell them
-   * apart -- and zero here is itself the answer to "why did two spinning
-   * threads not take turns".
-   */
-  x2_log_info(
-      "         %lu condition/mutex hand-off(s), %lu of them preemptions at a "
-      "quantum of %lu boundary crossing(s)%s\n",
-      g_switches, g_quanta, g_quantum,
-      g_quanta ? ""
-               : " -- NO preemption happened: either no second guest "
-                 "thread was ever runnable, or the quantum is larger "
-                 "than this run");
-  x2_log_info("         the guest mutex was contended %lu time(s)\n",
-              g_contended);
+/* ---- what a report may see (threads_internal.h) ------------------------- */
+
+GuestThread *guest_thread_table(void) { return g_thread; }
+
+const GuestThread *guest_thread_self_record(void) { return g_self; }
+
+void guest_thread_totals(GuestThreadTotals *out) {
+  out->created = g_created;
+  out->exited = g_exited;
+  out->reaped = g_reaped;
+  out->suspends = g_suspends;
+  out->resumes = g_resumes;
+  out->resume_noop = g_resume_noop;
+  out->resume_unknown = g_resume_unknown;
+  out->suspend_unknown = g_suspend_unknown;
+  out->switches = g_switches;
+  out->quanta = g_quanta;
+  out->quantum = g_quantum;
+  out->contended = g_contended;
 }

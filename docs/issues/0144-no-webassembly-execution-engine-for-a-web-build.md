@@ -1,12 +1,38 @@
 ---
 id: 144
 title: No WebAssembly execution engine for a web build
-status: open
+status: fixed
 symptom: a guest block now lowers to a WebAssembly module and runs in an engine, but nothing in a browser instantiates or enters one
 tags: web,wasm,jit,x86port,blocker
 created: 2026-09-07
-updated: 2026-09-07
+updated: 2026-09-19
 ---
+
+## Closed 2026-09-19
+
+The criterion this issue set for itself is met. `scratch/web/wasmgoal/verify18`,
+an Emscripten build of this port driven through gameplay in Chromium:
+
+```
+[engine] [HB] JIT: 1965647737 blocks entered (177041578 re-entered the block
+just left, 9.0%), 64883 translated (496125 instructions); 65856612 native
+hand-backs; 0 refusals of 64883 translation attempts; 0 cache flushes,
+111518588 bytes code; 36949 of 38414 condition(s) lowered inline; 1369 of 1429
+x87 load(s) widened in the block; 1 of 1 SIMD instruction(s) emitted as host
+SIMD
+```
+
+Nonzero translated blocks executed in a browser, hand-backs and refusals each
+against their denominator. The web build compiles `emit_wasm.c` and
+`jit_storage_wasm.c` (`build/web/x86port/CMakeFiles/x86port_runtime.dir/`), and
+`x86p_jit_wasm_publish` is the publication edge whose absence this issue was
+opened for. The pinned x86port is `c38c5ad`.
+
+The instruction set is no longer a first slice either: the run reports x87
+loads widened, x87 stores narrowed and SIMD emitted as host SIMD, with no
+refusals across 64,883 translations.
+
+The remainder below is the account as it stood when the issue was open.
 
 ## Causes and ownership
 

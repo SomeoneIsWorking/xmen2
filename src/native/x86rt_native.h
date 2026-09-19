@@ -257,6 +257,19 @@ void x86_diag_dump(void);
 unsigned long x86_crossings(void);
 const char *x86_crossings_what(void);
 
+/*
+ * Tell the thread table what this thread just crossed into.
+ *
+ * The ring is one shared record, and on a wedged run it is filled by whichever
+ * thread is still busy -- a 60 Hz timer thread produced 3,582 crossings per
+ * five seconds while the thread that was actually stuck had not crossed in
+ * minutes, so its last act was long gone from the ring (issue #158). Per
+ * thread, the answer survives. Implemented by threads.c, which owns the
+ * records the heartbeat walks.
+ */
+void guest_thread_note_crossing(const char *what, uint32_t guest_addr,
+                                double at);
+
 /* How many thunk slots the table has claimed so far. Which imports an
    interval spent its calls and its time in is x86_thunk_probe.h's question. */
 unsigned int x86_thunk_count(void);

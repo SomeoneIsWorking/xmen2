@@ -5,6 +5,7 @@
  * See x86rt_native.h for why dispatch keys on the mapped address rather than
  * the guest entry point.
  */
+#include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
 #include "host_imports.h"
@@ -1289,6 +1290,9 @@ const char *x86_crossings_what(void) {
 static void ring_note(const char *what, uint32_t addr, uint32_t base,
                       uint32_t in, uint32_t out, uint32_t ret) {
   unsigned long i;
+  /* The owner of the thread table stamps its own record: the ring is one
+     shared history and the thread that is stuck is not the one filling it. */
+  guest_thread_note_crossing(what, addr, guest_clock_now_s());
   if (g_ring_n) {
     i = (g_ring_n - 1) % RING;
     if (g_ring[i].addr == addr && g_ring[i].base == base &&
