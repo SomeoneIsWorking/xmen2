@@ -949,3 +949,36 @@ chaining's whole ceiling is (#166, about 9%). **The next x87 work is emitting
 these rules into the block, not making them faster.** They are already proven
 against hardware and against Bochs, which is exactly what such an emitter needs
 to match.
+
+## And the plumbing gives up most of what it costs: +4.3% in total
+
+The fused entry point (x86port `c38c5ad`) does the ordinary operation in the
+format the rules take, reading and writing the register file's fields in place
+instead of copying `X86pX87Reg` values through `x86p_x87_get_raw` and
+`x86p_x87_set_raw`. The memory form also skips `x86p_x87_reg_from_operand_bits`
+by widening the operand straight into the encoding. The long path is untouched
+and still answers everything the rules refuse.
+
+Medians over about fifty steady five-second windows each:
+
+| build | median presents/5s | IQR | presents/s | against baseline |
+|---|---|---|---|---|
+| baseline | 69 | 68-69 | 13.80 | — |
+| multiply only (the control) | 69 | 68-70 | 13.80 | 0% |
+| the rules inside `arith_raw` | 71 | | 14.20 | +2.9% |
+| **the rules through the fused path** | **72** | **71-73** | **14.40** | **+4.3%** |
+
+The interquartile ranges of the first and last rows do not overlap.
+
+**What a fused path gets wrong is the tag and the padding, not the answer.**
+The register file is compared as memory by the WASM differential, so a write
+that left the six padding bytes of an `X86pX87Reg` alone would differ from the
+long path on bytes no value depends on. `tests/test_x87.c` therefore runs both
+paths from an identical state and compares the whole `X86pX87` with memcmp, and
+asserts four cases taken and two refused -- a version that always returned 0
+would make every value comparison pass while proving nothing.
+
+The census had to move with it, and this is the general point rather than a
+detail: it lived inside `arith_raw`, which the fused path bypasses, so counting
+only there would have made the instrument quietly under-report the moment this
+landed. An instrument on one of two paths is an instrument that lies.
