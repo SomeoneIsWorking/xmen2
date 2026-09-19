@@ -250,6 +250,8 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/directinput_controller_sample.c
                src/input/touch_census.cpp
                src/input/touch_pad.cpp
+               src/native/host_touch.c
+               src/native/dinput_pad_report.c
                src/input/touch_controls.cpp
                src/input/touch_source.c
                src/input/gameplay_control.c
@@ -258,6 +260,7 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/presentation/touch_layout.c
                src/native/dinput_pad.c
                src/native/dinput_pad_identity.c
+               src/native/dinput_pad_sample.c
                src/native/dinput_pad_virtual.c
                src/native/dinput_pad_virtual_actions.c
                src/native/dinput_pad_virtual_device.c
@@ -769,6 +772,8 @@ add_custom_target(x2_prompt_glyph_atlas
 # other -- so it links straight into a test binary.
 add_executable(test_dinput_pad tests/test_dinput_pad.c src/native/dinput_pad.c
                src/native/dinput_pad_identity.c
+               src/native/dinput_pad_sample.c
+               src/native/dinput_pad_report.c
         src/native/dinput_pad_virtual.c src/native/dinput_pad_virtual_actions.c
         src/native/dinput_pad_virtual_device.c src/native/guest_clock.c)
 target_include_directories(test_dinput_pad PRIVATE src/native)
@@ -1582,6 +1587,7 @@ set(X2_NATIVE_SOURCES
     src/native/dinput_joystick.c
     src/native/dinput_pad.c
     src/native/dinput_pad_identity.c
+    src/native/dinput_pad_sample.c
     src/native/dinput_pad_virtual.c
     src/native/dinput_pad_virtual_actions.c
     src/native/dinput_pad_virtual_device.c
@@ -1664,6 +1670,8 @@ set(X2_NATIVE_SOURCES
     src/native/heartbeat.c
     src/native/heartbeat_reports.c
     src/native/heartbeat_stall.c
+    src/native/host_touch.c
+    src/native/dinput_pad_report.c
     src/d3d8/d3d8_com.c
     src/d3d8/d3d8_caps.c
     src/d3d8/d3d8_state.c

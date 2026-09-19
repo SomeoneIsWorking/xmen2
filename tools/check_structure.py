@@ -30,7 +30,7 @@ LEGACY_LIMITS = {
     "src/native/threads.c": 842,              # was 1070; igThreadManager report -> threads_engine_report.c
     "src/gpu/gpu_device.c": 841,              # was 810
     "src/d3d8/d3d8_resource.c": 1050,         # was 924
-    "src/native/dinput_pad.c": 651,           # was 619
+    "src/native/dinput_pad.c": 397,           # sampler split into dinput_pad_sample.c
     "src/native/win32_sdl.c": 1025,           # was 930
     "src/native/conversation.c": 968,         # was 958
     "src/native/dsound.c": 1073,              # was 763

@@ -14,6 +14,7 @@
  * inventory returns too.
  */
 #include "dinput_pad.h"
+#include "dinput_pad_report.h"
 
 #include <SDL3/SDL.h>
 #include <assert.h>

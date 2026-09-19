@@ -1,6 +1,7 @@
 #include "x2_log.h"
 /* Synthetic gamepad lifecycle and input injection; see dinput_pad_virtual.h. */
 #include "dinput_pad.h"
+#include "dinput_pad_report.h"
 #include "dinput_pad_virtual.h"
 #include "dinput_pad_virtual_internal.h"
 #include "guest_clock.h"
@@ -64,6 +65,11 @@ const char *const g_vbtn_name[X2_VIRTUAL_BUTTON_COUNT] = {"a",
 /* A press held until `until` (guest seconds), so a press survives the game's
    per-frame poll the way a real thumb does. 0 = not held. */
 double g_vbtn_until[X2_VIRTUAL_BUTTON_COUNT];
+unsigned long g_vbtn_reads_at_set[X2_VIRTUAL_BUTTON_COUNT];
+unsigned long g_vaxis_reads_at_set[X2_VIRTUAL_AXIS_COUNT];
+int g_vbtn_release_pending[X2_VIRTUAL_BUTTON_COUNT];
+int g_vaxis_release_pending[X2_VIRTUAL_AXIS_COUNT];
+unsigned long g_vpad_releases_deferred;
 double g_vaxis_until[6];
 short g_vaxis_value[6];
 
@@ -237,6 +243,12 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
          physical touch contacts. Zero retains the control-channel's
          historical short-press default. */
       g_vbtn_until[i] = hold < 0.0 ? 0.0 : now + (hold > 0.0 ? hold : 0.30);
+      {
+        X2PadPollCounts counts;
+        dinput_pad_poll_counts(&counts);
+        g_vbtn_reads_at_set[i] = counts.button_reads;
+        g_vbtn_release_pending[i] = 0;
+      }
       g_vpad_presses++;
       /*
        * READ IT BACK, through the same call the game uses.
@@ -331,6 +343,12 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
       }
       g_vaxis_value[i] = raw;
       g_vaxis_until[i] = hold > 0.0 ? now + hold : 0.0;
+      {
+        X2PadPollCounts counts;
+        dinput_pad_poll_counts(&counts);
+        g_vaxis_reads_at_set[i] = counts.axis_reads;
+        g_vaxis_release_pending[i] = 0;
+      }
       g_vpad_axis_sets++;
       SDL_UpdateJoysticks();
       SDL_UpdateGamepads();
@@ -399,4 +417,8 @@ void dinput_pad_virtual_counts(unsigned long *presses, unsigned long *axis_sets,
     *axis_sets = g_vpad_axis_sets;
   if (clears)
     *clears = g_vbtn_clears;
+}
+
+unsigned long dinput_pad_virtual_deferred_releases(void) {
+  return g_vpad_releases_deferred;
 }

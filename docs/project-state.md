@@ -746,6 +746,29 @@ enumeration, reads a button from it 27,700 times with 43 coming back DOWN, and
 the presented frame moves by 9.2 under a Start press. A controller plugged in
 mid-game is still never polled; that is issue #173's own gate.
 
+In a browser the same press was still never read DOWN — 167,890 guest reads,
+none of them pressed, with the overlay reporting the gamepad DOWN at the
+moment it published. A browser delivers finger down and finger up in one pump
+and the guest polls between pumps, so the press existed for about a
+millisecond. Two causes, both fixed. The virtual pad now holds a press until a
+reader has actually seen it, bounded at 0.30 s, and releases it on the first
+poll after that; a withdrawn (cancelled) contact still releases immediately,
+because nothing is owed to a press the player took back. And the diagnostic
+that prints what is held was reading the pad through the counted entry points,
+so the probe's own reads made the press look already seen and it was dropped
+straight away: `dinput_pad_button_uncounted` and `dinput_pad_axis_uncounted`
+now serve every diagnostic, and "the game read a button N time(s)" means the
+game. `tests/test_touch_runtime` covers both, and the probe check was shown to
+fail (`buttons bitmap 0`) when pointed at the counted read.
+
+The pad sampler moved out of the inventory: `dinput_pad.c` (397 lines) owns
+when a device exists, `dinput_pad_sample.c` owns what the guest reads out of
+one, and they meet at `dinput_pad_handle`, which distinguishes an empty slot
+from a device SDL gave no handle for — two different defects that used to
+return the same "not pressed" silently.
+
+Gap: the browser fix is unit-proven and not yet measured in a browser run.
+
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
 The browser artifact loads and rejects a malformed ZIP through its native

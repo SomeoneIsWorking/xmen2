@@ -6,6 +6,7 @@
 #include "../config/settings_store.h"
 #include "../native/dinput_pad.h"
 #include "../native/dinput_pad_virtual.h"
+#include "../native/host_touch.h"
 #include "../native/x2_log.h"
 #include "transient_controller_assignment.h"
 
@@ -17,6 +18,7 @@ namespace {
 /* Touch devices this host reported when asked; -1 means it never was. A
    precondition nobody can read is one nobody can disprove. */
 int g_host_devices = -1;
+int g_host_capable = -1;
 } // namespace
 
 /*
@@ -36,15 +38,13 @@ int g_host_devices = -1;
  * so the layout is reachable without a touchscreen -- still gets its pad.
  */
 void prepare_for_host() {
-  int count = 0;
-  SDL_TouchID *const devices = SDL_GetTouchDevices(&count);
   const unsigned mode = x2_settings_store()->touch_controls;
-  SDL_free(devices);
-  g_host_devices = count;
+  g_host_devices = x2_host_touch_devices();
+  g_host_capable = x2_host_touch_capable();
   if (mode == X2_TOUCH_CONTROLS_OFF) {
     return;
   }
-  if (mode != X2_TOUCH_CONTROLS_ALWAYS && count <= 0) {
+  if (mode != X2_TOUCH_CONTROLS_ALWAYS && !g_host_capable) {
     return;
   }
   ensure();
@@ -145,5 +145,7 @@ void claim_player_one() {
 }
 
 int host_devices() { return g_host_devices; }
+
+int host_capable() { return g_host_capable; }
 
 } // namespace x2::input::touch_pad

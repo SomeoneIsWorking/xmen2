@@ -125,7 +125,19 @@ SDL_Gamepad *open_the_synthetic_pad() {
   return pad;
 }
 
+/*
+ * Poll the way the GAME polls, before asking SDL what it holds.
+ *
+ * The pad keeps a press until the guest has read it -- a finger down and up
+ * inside one pump is otherwise invisible. A test that reads SDL directly is
+ * not the reader that release is waiting for, so without this the pad is
+ * right and the assertion is wrong. Defined below, next to the other
+ * guest-facing helpers.
+ */
+void sample_as_the_guest_does();
+
 bool button_down(SDL_Gamepad *pad, const char *name) {
+  sample_as_the_guest_does();
   SDL_UpdateJoysticks();
   SDL_UpdateGamepads();
   const SDL_GamepadButton button = SDL_GetGamepadButtonFromString(name);
@@ -190,7 +202,14 @@ int guest_button_byte(int slot, int button) {
   return state[kButtonsOffset + static_cast<unsigned>(button)];
 }
 
+void sample_as_the_guest_does() {
+  X2DirectInputControllerSample sample;
+  x2_directinput_controller_capture(dinput_pad_virtual_slot(), kAxisLo, kAxisHi,
+                                    &sample);
+}
+
 float axis_value(SDL_Gamepad *pad, const char *name) {
+  sample_as_the_guest_does();
   SDL_UpdateJoysticks();
   SDL_UpdateGamepads();
   const SDL_GamepadAxis axis = SDL_GetGamepadAxisFromString(name);
@@ -345,6 +364,36 @@ int main() {
         "buttons bitmap " + std::to_string(guest_buttons(slot)));
   check(guest_button_byte(slot, kDirectInputButtonY) == 0,
         "the guest's own button byte reads released", "finger up");
+
+  /*
+   * A tap the game had no chance to see. This is the browser's ordinary case,
+   * not an edge: a finger down and the same finger up arrive in one pump, and
+   * the guest polls between pumps, so without a deferred release every press
+   * is published and invisible. Nothing is read between these two calls on
+   * purpose -- reading is what the release is waiting for.
+   */
+  send_finger(SDL_EVENT_FINGER_DOWN, 9, jump_x, jump_y, width, height);
+  send_finger(SDL_EVENT_FINGER_UP, 9, jump_x, jump_y, width, height);
+  check(guest_buttons(slot) == (1 << kDirectInputButtonY),
+        "a press and release inside one pump still reaches the guest",
+        "buttons bitmap " + std::to_string(guest_buttons(slot)));
+  dinput_pad_virtual_tick(0);
+  check(guest_buttons(slot) == 0, "and it lets go once the guest has read it",
+        "buttons bitmap " + std::to_string(guest_buttons(slot)));
+
+  /*
+   * And a DIAGNOSTIC read must not satisfy that wait. The probe that prints
+   * what is held reads the same pad; when its reads counted, they made the
+   * press look already seen and it was dropped a millisecond after it was
+   * published -- 167,890 guest reads in a browser run, not one of them DOWN.
+   */
+  send_finger(SDL_EVENT_FINGER_DOWN, 11, jump_x, jump_y, width, height);
+  (void)dinput_pad_button_uncounted(slot, kDirectInputButtonY);
+  send_finger(SDL_EVENT_FINGER_UP, 11, jump_x, jump_y, width, height);
+  check(guest_buttons(slot) == (1 << kDirectInputButtonY),
+        "a probe reading the pad does not count as the guest having read it",
+        "buttons bitmap " + std::to_string(guest_buttons(slot)));
+  dinput_pad_virtual_tick(0);
 
   /* The stick is the control a scroll steals first in a browser and the one a
      player uses constantly, so it gets the same treatment as a button. */

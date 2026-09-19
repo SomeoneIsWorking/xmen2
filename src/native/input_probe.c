@@ -575,7 +575,7 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
           "down:",
           pad, nm, nb, dinput_pad_pov(pad));
       for (b = 0; b < nb; b++)
-        if (dinput_pad_button(pad, b)) {
+        if (dinput_pad_button_uncounted(pad, b)) {
           put(out, n, &at, " %d", b);
           held++;
         }
@@ -583,12 +583,12 @@ size_t input_probe_report(CPU *cpu, unsigned controller, char *out, size_t n) {
       put(out, n, &at,
           "host pad %d axes (game range -1000..1000): X %d Y %d Z %d "
           "RX %d RY %d RZ %d\n",
-          pad, dinput_pad_axis(pad, DINPUT_PAD_AXIS_X, -1000, 1000),
-          dinput_pad_axis(pad, DINPUT_PAD_AXIS_Y, -1000, 1000),
-          dinput_pad_axis(pad, DINPUT_PAD_AXIS_Z, -1000, 1000),
-          dinput_pad_axis(pad, DINPUT_PAD_AXIS_RX, -1000, 1000),
-          dinput_pad_axis(pad, DINPUT_PAD_AXIS_RY, -1000, 1000),
-          dinput_pad_axis(pad, DINPUT_PAD_AXIS_RZ, -1000, 1000));
+          pad, dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_X, -1000, 1000),
+          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_Y, -1000, 1000),
+          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_Z, -1000, 1000),
+          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RX, -1000, 1000),
+          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RY, -1000, 1000),
+          dinput_pad_axis_uncounted(pad, DINPUT_PAD_AXIS_RZ, -1000, 1000));
     }
     if (!pads)
       put(out, n, &at,

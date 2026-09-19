@@ -32,6 +32,10 @@ void claim_player_one();
 /* Touch devices this host reported when asked, or -1 if it never was. */
 int host_devices();
 
+/* What the capability probe answered when the window arrived, or -1 if it was
+   never asked. */
+int host_capable();
+
 } // namespace x2::input::touch_pad
 
 #endif /* X2_TOUCH_PAD_H */

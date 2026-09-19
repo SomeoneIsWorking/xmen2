@@ -40,6 +40,16 @@ int dinput_pad_virtual_set(const char *what, double value, double hold,
                            char *why, int whyn);
 int dinput_pad_virtual_release(const char *what);
 
+/* Release WITHOUT waiting for the game to read it. For a press being taken
+   back -- a lost window, a rotation, the controls turned off -- where a
+   completed press is not what is being expressed. */
+int dinput_pad_virtual_release_now(const char *what);
+
+/* Releases held back until the game had read the press. Reported so "the
+   press was too short to see" and "the deferral never engaged" cannot look
+   alike. */
+unsigned long dinput_pad_virtual_deferred_releases(void);
+
 /* The persistent identity the synthetic pad reports, when the pad with this
    live joystick id is the synthetic one and an override was given; NULL
    otherwise. */

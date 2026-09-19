@@ -89,6 +89,18 @@ uint32_t dinput_pad_device_id(int pad);
  */
 int32_t dinput_pad_axis(int pad, int axis, int32_t lo, int32_t hi);
 int dinput_pad_button(int pad, int button); /* 0 or 1 */
+/*
+ * The same two reads, NOT counted.
+ *
+ * "The game read a button N time(s)" has to mean the game. A diagnostic that
+ * reads the pad to print what is held moves that counter too, and the
+ * deferred release keys on it: the virtual pad holds a press until a reader
+ * has seen it, and the probe's own read made the press look already seen, so
+ * it was dropped a millisecond after it was made. Measured in a browser run:
+ * 167,890 reads, not one of them DOWN, with the press still held.
+ */
+int dinput_pad_button_uncounted(int pad, int button);
+int32_t dinput_pad_axis_uncounted(int pad, int axis, int32_t lo, int32_t hi);
 int dinput_pad_button_count(int pad);
 /* Independent trigger pressure survives beside DirectInput's intentionally
    combined Z axis so a native Alchemy controller keeps the richer state. */
@@ -112,8 +124,6 @@ void dinput_pad_virtual_from_env(void);
 /* Drives X2_VIRTUAL_PAD's frame-scheduled forms (attach at frame N, unplug at
    M). Called once a frame; an int compare until the frame arrives. */
 void dinput_pad_virtual_tick(unsigned long frame);
-
-void dinput_pad_report(void);
 
 /*
  * Press a button ("a", "start", ...) or set an axis ("leftx", -1.0..1.0) on
@@ -139,7 +149,6 @@ int dinput_pad_open_gamepad_axis(int pad, int gamepad_axis);
 /* Did the game ASK for pad state, and did any answer come back pressed?
    Reported with its denominator: "0 of 0" and "0 of 480000" are different
    findings and silence cannot distinguish them. */
-void dinput_pad_poll_report(void);
 
 /* Refresh SDL's latched pad state. Call ONCE per device poll, before
    reading axes and buttons -- they report what SDL last latched, and only
@@ -147,6 +156,14 @@ void dinput_pad_poll_report(void);
    equivalent; the pad path did not, so every button read came back
    released. */
 void dinput_pad_refresh_state(void);
+
+/* What the report module formats; see dinput_pad_report.h. Kept as accessors
+   so the counters stay owned by the code that increments them. */
+struct X2PadPollCounts;
+void dinput_pad_poll_counts(struct X2PadPollCounts *out);
+void dinput_pad_device_counts(unsigned long *opens, unsigned long *closes);
+int dinput_pad_describe(int slot, const char **name, int *buttons,
+                        int *xbox_glyphs);
 
 #ifdef __cplusplus
 }

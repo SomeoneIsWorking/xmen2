@@ -72,7 +72,8 @@ void x2_touch_census_read(X2TouchCensus *out);
 /* `touch_devices` is what the host reported, or -1 if it was never asked:
    a run with no contacts means something different on a host with no
    touchscreen than on one with three. */
-void x2_touch_census_report(const char *tag, int has_window, int touch_devices);
+void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
+                            int touch_capable);
 
 #ifdef __cplusplus
 }

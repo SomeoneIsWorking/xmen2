@@ -17,6 +17,7 @@
 #include "alchemy_controller_bridge.h"
 #include "boot_blackout.h"
 #include "dialog_selection_scale.h"
+#include "dinput_pad_report.h"
 #include "gpu_prompt_glyphs.h"
 #include "heartbeat.h"
 #include "input_record.h"
@@ -42,7 +43,7 @@ void x2_interrupt_reports(int killed) {
   extern void guest_thread_report(void);
   extern void k32_critsec_report(void);
   extern void dinput_device_report(void);
-  extern void dinput_pad_report(void), pad_glyphs_report(void);
+  extern void pad_glyphs_report(void);
   extern void dialog_prompts_report(void);
   extern void x2_ui_text_scale_report(void);
   x2_texture_probe_report();

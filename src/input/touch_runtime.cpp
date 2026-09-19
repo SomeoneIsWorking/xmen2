@@ -9,6 +9,7 @@ extern "C" {
 #include "../config/settings.h"
 #include "../config/settings_store.h"
 #include "../native/dinput_pad.h"
+#include "../native/dinput_pad_report.h"
 #include "../native/dinput_pad_virtual.h"
 #include "touch_census.h"
 #include "touch_controls.h"
@@ -85,16 +86,42 @@ const char *button_name(x2::input::TouchAction action) {
   }
 }
 
+/* Set at the first published press: the value of the game's button-read
+   counter at that moment, plus one so that zero still means "no press yet". */
+unsigned long first_press_reads = 0;
+bool told_first_release = false;
+
 void publish_button(const x2::input::ActionEvent &event) {
-  const bool release = event.phase == lucent::touch::Phase::ended ||
-                       event.phase == lucent::touch::Phase::canceled;
+  const bool withdrawn = event.phase == lucent::touch::Phase::canceled;
+  const bool release = event.phase == lucent::touch::Phase::ended || withdrawn;
   const char *button = button_name(event.action);
   char reason[256];
   if (!button)
     return;
   if (release) {
-    if (dinput_pad_virtual_release(button)) {
+    /* A cancelled press is taken back, not completed, so it does not wait for
+       the game to read it. */
+    if (withdrawn ? dinput_pad_virtual_release_now(button)
+                  : dinput_pad_virtual_release(button)) {
       census.buttons_published++;
+      /*
+       * How many times did the game ASK while that press was held?
+       *
+       * "Published and never seen" has two causes that look identical in a
+       * total: the state was not visible to the reader, or the reader never
+       * ran while it was set. Only a count taken across the press itself
+       * tells them apart.
+       */
+      if (first_press_reads && !told_first_release) {
+        X2PadPollCounts counts;
+        told_first_release = true;
+        dinput_pad_poll_counts(&counts);
+        x2_log_error("touch: first press of \"%s\" released -- the game read "
+                     "a button %lu time(s) while it was held, %lu of them "
+                     "DOWN\n",
+                     button, counts.button_reads - (first_press_reads - 1),
+                     counts.buttons_down);
+      }
     } else {
       census.buttons_refused++;
       x2_log_error("touch: could not release virtual button %s\n", button);
@@ -102,6 +129,22 @@ void publish_button(const x2::input::ActionEvent &event) {
   } else if (dinput_pad_virtual_set(button, event.value, -1.0, reason,
                                     sizeof reason)) {
     census.buttons_published++;
+    /*
+     * The FIRST press says what reading it back found, once.
+     *
+     * "Published" only means the set was accepted. Whether the game can see
+     * it is a different layer, and the pad's own read-back already knows --
+     * it was being computed and thrown away here. A browser run published
+     * every press and the game read a button 109,780 times with none ever
+     * down; this is the line that would have said which layer lost it.
+     */
+    if (!first_press_reads) {
+      X2PadPollCounts counts;
+      dinput_pad_poll_counts(&counts);
+      first_press_reads = counts.button_reads + 1;
+      x2_log_error("touch: first press of \"%s\" published -- %s\n", button,
+                   reason);
+    }
   } else {
     census.buttons_refused++;
     x2_log_error("touch: could not press virtual button %s: %s\n", button,
@@ -374,5 +417,6 @@ int x2_touch_runtime_overlay_visible(void) {
 
 void x2_touch_runtime_report(const char *tag) {
   x2_touch_census_report(tag, window != nullptr,
-                         x2::input::touch_pad::host_devices());
+                         x2::input::touch_pad::host_devices(),
+                         x2::input::touch_pad::host_capable());
 }

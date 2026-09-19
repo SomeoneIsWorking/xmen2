@@ -3,6 +3,7 @@
 #include "../input/touch_runtime.h"
 #include "control.h"
 #include "dinput_pad.h"
+#include "dinput_pad_report.h"
 #include "guest_clock.h"
 #include "winmm.h"
 #include "x86rt_native.h"

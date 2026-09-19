@@ -17,6 +17,16 @@ extern unsigned long g_vpad_axis_sets;
 extern const char *const g_vbtn_name[X2_VIRTUAL_BUTTON_COUNT];
 extern const char *const g_vaxis_name[X2_VIRTUAL_AXIS_COUNT];
 extern double g_vbtn_until[X2_VIRTUAL_BUTTON_COUNT];
+/* The game's button- and axis-read counters at the moment each was set, and
+   whether a release is waiting for the game to look. A press the game never
+   read is a press that did not happen; see virtual_expire. */
+extern unsigned long g_vbtn_reads_at_set[X2_VIRTUAL_BUTTON_COUNT];
+extern unsigned long g_vaxis_reads_at_set[X2_VIRTUAL_AXIS_COUNT];
+extern int g_vbtn_release_pending[X2_VIRTUAL_BUTTON_COUNT];
+extern int g_vaxis_release_pending[X2_VIRTUAL_AXIS_COUNT];
+extern unsigned long g_vpad_releases_deferred;
+/* The longest a deferred release may wait for a poll that never comes. */
+#define X2_VIRTUAL_RELEASE_CEILING_S 0.30
 extern double g_vaxis_until[X2_VIRTUAL_AXIS_COUNT];
 extern short g_vaxis_value[X2_VIRTUAL_AXIS_COUNT];
 

@@ -6,10 +6,65 @@
 #include "dinput_pad_virtual_internal.h"
 
 #include "dinput_pad.h"
+#include "dinput_pad_report.h"
 #include "guest_clock.h"
 
 #include <stdio.h>
 #include <string.h>
+
+/*
+ * A press the game never READ did not happen.
+ *
+ * A finger down and the same finger up can arrive in one pump -- the browser
+ * queues them and SDL hands both over before the guest polls again. Measured:
+ * a touch press and its release were logged in the same millisecond with the
+ * game reading a button 0 times in between, so all 48 published contacts were
+ * invisible. A real thumb is slower than one poll; this makes the synthetic
+ * one no faster, without inventing a duration. The ceiling in virtual_expire
+ * bounds a press whose reader never comes.
+ *
+ * `wait_for_a_reader` is 0 for a press being WITHDRAWN -- a lost window, a
+ * rotation, the controls being turned off. Nothing is owed to a reader there:
+ * the press is being taken back, not completed.
+ */
+static int release_button(int i, int wait_for_a_reader) {
+#ifdef X2_WITH_SDL
+  X2PadPollCounts counts;
+  dinput_pad_poll_counts(&counts);
+  if (wait_for_a_reader && counts.button_reads == g_vbtn_reads_at_set[i]) {
+    g_vbtn_release_pending[i] = 1;
+    g_vbtn_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
+    g_vpad_releases_deferred++;
+    return 1;
+  }
+  if (!SDL_SetJoystickVirtualButton(g_virt_js, i, false))
+    return 0;
+  g_vbtn_release_pending[i] = 0;
+  g_vbtn_until[i] = 0.0;
+  SDL_UpdateJoysticks();
+  SDL_UpdateGamepads();
+  return 1;
+#else
+  (void)i;
+  (void)wait_for_a_reader;
+  return 0;
+#endif
+}
+
+int dinput_pad_virtual_release_now(const char *what) {
+#ifdef X2_WITH_SDL
+  int i;
+  if (!g_virt_js || !what)
+    return 0;
+  for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
+    if (!strcmp(what, g_vbtn_name[i]))
+      return release_button(i, 0);
+  return dinput_pad_virtual_release(what);
+#else
+  (void)what;
+  return 0;
+#endif
+}
 
 int dinput_pad_virtual_release(const char *what) {
 #ifdef X2_WITH_SDL
@@ -18,12 +73,7 @@ int dinput_pad_virtual_release(const char *what) {
     return 0;
   for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++) {
     if (!strcmp(what, g_vbtn_name[i])) {
-      if (!SDL_SetJoystickVirtualButton(g_virt_js, i, false))
-        return 0;
-      g_vbtn_until[i] = 0.0;
-      SDL_UpdateJoysticks();
-      SDL_UpdateGamepads();
-      return 1;
+      return release_button(i, 1);
     }
   }
   if (!strcmp(what, "up") || !strcmp(what, "down") || !strcmp(what, "left") ||
@@ -37,6 +87,16 @@ int dinput_pad_virtual_release(const char *what) {
   for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++) {
     if (!strcmp(what, g_vaxis_name[i])) {
       const short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
+      X2PadPollCounts counts;
+      dinput_pad_poll_counts(&counts);
+      if (counts.axis_reads == g_vaxis_reads_at_set[i]) {
+        /* Same rule as a button: a stick the game never sampled was never
+           moved. */
+        g_vaxis_release_pending[i] = 1;
+        g_vaxis_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
+        g_vpad_releases_deferred++;
+        return 1;
+      }
       if (!SDL_SetJoystickVirtualAxis(g_virt_js, i, rest))
         return 0;
       g_vaxis_value[i] = rest;
@@ -61,10 +121,33 @@ void virtual_expire(void) {
   int i;
   if (!g_virt_js)
     return;
+  {
+    /* A deferred release lands as soon as the game has looked, which is what
+       it was waiting for; the deadline below is only its ceiling. */
+    X2PadPollCounts counts;
+    dinput_pad_poll_counts(&counts);
+    for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
+      if (g_vbtn_release_pending[i] &&
+          counts.button_reads != g_vbtn_reads_at_set[i]) {
+        g_vbtn_release_pending[i] = 0;
+        g_vbtn_until[i] = 0.0;
+        SDL_SetJoystickVirtualButton(g_virt_js, i, false);
+      }
+    for (i = 0; i < X2_VIRTUAL_AXIS_COUNT; i++)
+      if (g_vaxis_release_pending[i] &&
+          counts.axis_reads != g_vaxis_reads_at_set[i]) {
+        const short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
+        g_vaxis_release_pending[i] = 0;
+        g_vaxis_until[i] = 0.0;
+        g_vaxis_value[i] = rest;
+        SDL_SetJoystickVirtualAxis(g_virt_js, i, rest);
+      }
+  }
   for (i = 0; i < X2_VIRTUAL_BUTTON_COUNT; i++)
     if (g_vbtn_until[i] != 0.0 && now >= g_vbtn_until[i]) {
       double held = now - g_vbtn_until[i];
       g_vbtn_until[i] = 0.0;
+      g_vbtn_release_pending[i] = 0;
       g_vbtn_clears++;
       if (g_vbtn_clears <= 4)
         x2_log_error("DINPUT-PAD: releasing button %d, %.3fs past "
@@ -76,6 +159,7 @@ void virtual_expire(void) {
     if (g_vaxis_until[i] != 0.0 && now >= g_vaxis_until[i]) {
       short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
       g_vaxis_until[i] = 0.0;
+      g_vaxis_release_pending[i] = 0;
       g_vaxis_value[i] = rest;
       SDL_SetJoystickVirtualAxis(g_virt_js, i, rest);
     }
