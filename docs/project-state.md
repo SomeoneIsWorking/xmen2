@@ -776,7 +776,7 @@ thread that does the reading; in its first form it printed nothing at all,
 which was its own defect, not evidence, and it now reports on the first
 refresh after each press whatever it finds. The two halves of the transport
 disagree across threads, and naming which one loses the press is the next
-measurement.
+measurement (issue #174).
 
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
