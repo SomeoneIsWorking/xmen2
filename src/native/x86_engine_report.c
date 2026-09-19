@@ -3,6 +3,7 @@
 #include "guest_memory.h"
 #include "x86rt_native.h"
 
+#include "jit_chain_census.h"
 #include "jit_engine.h"
 #include "jit_profile.h"
 
@@ -77,6 +78,54 @@ static void report_invalidation(const X86pJitEngineStats *js) {
                   (unsigned long long)js->evictions,
                   (unsigned long long)js->eviction_blocks_dropped,
                   (unsigned long long)js->blocks_translated);
+}
+
+/*
+ * Issue #166. The static exit census says how many of a block's exits NAME a
+ * constant successor; this says how many of the dispatches actually paid went
+ * to one the block just left had already emitted. That second number is the
+ * population general block chaining would remove, and it is the only one worth
+ * sizing the work from.
+ *
+ * `unrecorded` is printed beside it rather than folded into the complement,
+ * because a backend that emits no constant successors at all -- which is every
+ * machine-code backend here -- would otherwise report a run in which nothing
+ * is chainable, and that reads exactly like a run in which chaining is
+ * pointless.
+ */
+void x86_engine_report_chain_census(const X86EngineJitPool *jit,
+                                    const char *tag) {
+  const X86pJitChainCensus *census =
+      jit ? x86p_jit_engine_chain_census(x86_engine_jit_pool_primary(jit))
+          : NULL;
+  uint64_t entries;
+  if (!census) {
+    return;
+  }
+  entries = x86p_jit_chain_census_entries(census);
+  if (entries == 0u) {
+    lucent_log_info("engine",
+                    "%sJIT chaining: the census is armed and counted no block "
+                    "entry at all, so this run says nothing about chaining",
+                    tag);
+    return;
+  }
+  lucent_log_info(
+      "engine",
+      "%sJIT chaining: %llu of %llu dispatch(es) went to an address the "
+      "previous block already knew (%.1f%%); %llu had no recorded "
+      "predecessor (%.1f%%) -- a backend that emits no constant successors "
+      "reports every entry here; %u block(s) recorded, %llu key(s) dropped, "
+      "%llu successor(s) past the per-block cap",
+      tag, (unsigned long long)x86p_jit_chain_census_chainable(census),
+      (unsigned long long)entries,
+      100.0 * (double)x86p_jit_chain_census_chainable(census) / (double)entries,
+      (unsigned long long)x86p_jit_chain_census_unrecorded(census),
+      100.0 * (double)x86p_jit_chain_census_unrecorded(census) /
+          (double)entries,
+      x86p_jit_chain_census_blocks(census),
+      (unsigned long long)x86p_jit_chain_census_dropped_keys(census),
+      (unsigned long long)x86p_jit_chain_census_overflowed(census));
 }
 
 void x86_engine_report_hot_blocks(const X86EngineJitPool *jit,
@@ -168,6 +217,7 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.x87_stores_inline,
       (unsigned long long)js.x87_stores_translated);
   report_invalidation(&js);
+  x86_engine_report_chain_census(jit, "[HB] ");
   x86_engine_report_hot_blocks(jit, "[HB] ");
 }
 
@@ -288,5 +338,6 @@ void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
         (unsigned long long)js.simd_translated,
         100.0 * (double)js.simd_inline / (double)js.simd_translated,
         (unsigned long long)(js.simd_translated - js.simd_inline));
+  x86_engine_report_chain_census(jit, "");
   x86_engine_report_hot_blocks(jit, "");
 }

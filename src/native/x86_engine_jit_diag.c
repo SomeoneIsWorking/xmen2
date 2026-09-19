@@ -25,5 +25,18 @@ int x86_engine_jit_diag_configure(struct X86pJitEngine *jit, char *reason,
                       slots);
     }
   }
+  {
+    long slots = lucent_cvar_number("jit.chain", 0);
+    if (slots > 0) {
+      if (!x86p_jit_engine_set_chain_census(jit, 1, (uint32_t)slots, reason,
+                                            reason_len))
+        return 0;
+      lucent_log_info("engine",
+                      "jit.chain=%ld: the runtime chain census is armed; how "
+                      "many dispatches went to an address the block just left "
+                      "already knew prints at shutdown",
+                      slots);
+    }
+  }
   return 1;
 }

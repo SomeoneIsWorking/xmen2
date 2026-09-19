@@ -203,3 +203,43 @@ Guest worker, Dead Zone route, 25s, 96,169 samples:
 Up from 12.4%, which is what happens to a share when something else in the
 denominator gets cheaper. It is now the largest single item after
 `x86p_x87_arith_raw`.
+
+## The bigger measurement is now taken: 65.4% of dispatches are chainable
+
+The runtime chain census (x86port `f72fa95`, armed here with
+`--set jit.chain=65536`) records each translated block's constant successor
+addresses as the backend emits them, and compares every dispatch actually paid
+against the set belonging to the block just left. Dead Zone route, `#test-play`,
+200s, 560.9M dispatches:
+
+| where the dispatch went | share |
+|---|---|
+| to an address the previous block already emitted | **65.4%** |
+| no recorded predecessor (the previous block emitted no constant successor at all — an indirect jump or a `RET`) | 28.4% |
+| predecessor knew successors, took none of them | 6.2% |
+
+61,234 blocks recorded, 0 keys dropped, 1,206 successors past the per-block cap
+of 6 — so the table saw the whole population and the 65.4% is not a sample.
+
+This is the number the static census could not produce. 67.2% of *exits* named a
+constant address; 65.4% of *entries* went to one. The two agreeing is worth
+something on its own: the statically chainable exits are not the rarely-taken
+ones.
+
+**What it sizes.** Dispatch is 13-14% of the guest worker, so removing 65.4% of
+it caps the win at roughly 9% of guest worker time, before whatever the chain
+check itself costs. Real, and the largest single lever left after x87. Not a
+2x.
+
+**What it rules out.** The 28.4% with no recorded predecessor is not a
+measurement gap — 0 keys were dropped and the WebAssembly backend does record
+its successors (`tests/test_wasm_runtime.c` reports 199 of 200 chainable on a
+two-block guest loop). It is blocks ending in an indirect branch or a return,
+which static chaining cannot follow at all. Whatever is built for the 65.4% will
+leave that 28.4% paying the dispatch, so an indirect-branch target cache is a
+separate question with its own separate lever.
+
+The x86-64 backend emits no constant successors, so a native run reports every
+entry as unrecorded and none as chainable — asserted in x86port's
+`tests/test_jit_engine.c` precisely so a run like that cannot be read as "nothing
+here is chainable".

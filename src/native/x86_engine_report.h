@@ -42,6 +42,11 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
  */
 void x86_engine_report_jit_totals(const X86EngineJitPool *jit);
 
+/* Issue #166: of the dispatches actually paid, how many a chaining backend
+   would have removed. Silent unless jit.chain armed the census. */
+void x86_engine_report_chain_census(const X86EngineJitPool *jit,
+                                    const char *tag);
+
 /*
  * The hottest translated blocks, when `jit.profile` armed the histogram.
  *

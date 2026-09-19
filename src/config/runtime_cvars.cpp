@@ -76,6 +76,14 @@ lucent::cvar::Var<bool> g_x86_import_fastpath{"engine.import_fastpath", true};
  * "where does in-game guest time go" now that the crossing cost is gone. */
 lucent::cvar::Var<long> g_jit_profile{"jit.profile", 0};
 
+/* >0: arm x86port's runtime chain census, sized for that many distinct block
+ * addresses. It answers issue #166's open question: of the dispatches the run
+ * actually paid, how many went to an address the block just left had already
+ * emitted as a constant -- the population general block chaining removes, and
+ * a strictly bigger question than the static exit counts. Prints at shutdown.
+ */
+lucent::cvar::Var<long> g_jit_chain{"jit.chain", 0};
+
 /* The JIT code arena's two independent limits, in blocks and in megabytes.
  * Either can be the one that binds, and which one it is decides what to fix,
  * so they are two knobs rather than one. 0 or negative keeps the built-in
@@ -141,6 +149,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_cache);
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
+  lucent::cvar::register_var(g_jit_chain);
   lucent::cvar::register_var(g_jit_blocks);
   lucent::cvar::register_var(g_jit_code_mb);
   lucent::cvar::register_var(g_hotep);
