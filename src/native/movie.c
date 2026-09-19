@@ -7,6 +7,7 @@
 #include "fmv_player.h"
 #include "fmv_probe.h"
 #include "guest_memory.h"
+#include "movie.h"
 #include "movie_audio.h"
 #include "movie_image_layout.h"
 #include "pe_map.h"
@@ -38,6 +39,71 @@ typedef struct {
 } NativeMovie;
 
 static NativeMovie g_native_movie;
+
+/*
+ * How many times the guest asked for each of the entry points this file
+ * answers, and what the movie it was asking about is doing.
+ *
+ * A movie that stops advancing stops the whole product: the title waits for
+ * its cutscene to report itself finished, and there is no timeout on that
+ * wait. Without these numbers a wedged boot cannot say whether the GUEST
+ * stopped asking or the PORT stopped answering, and the two are opposite
+ * defects. Printed on every beat once anything has been asked, including the
+ * beat where nothing moved.
+ */
+static struct {
+  unsigned long load, unload, play, pause, check, next, frames;
+} g_movie_calls;
+
+static const char *movie_state_name(X2FmvState state) {
+  switch (state) {
+  case X2_FMV_READY:
+    return "READY";
+  case X2_FMV_PLAYING:
+    return "PLAYING";
+  case X2_FMV_PAUSED:
+    return "PAUSED";
+  case X2_FMV_FINISHED:
+    return "FINISHED";
+  case X2_FMV_FAILED:
+    return "FAILED";
+  default:
+    return "?";
+  }
+}
+
+void x2_movie_beat_report(void) {
+  static unsigned long p_load, p_unload, p_play, p_check, p_next, p_frames;
+  if (!g_movie_calls.load) {
+    return;
+  }
+  x2_log_error(
+      "[HB]           movie: %lu load(s) (+%lu), %lu unload(s) (+%lu), "
+      "%lu play(s) (+%lu), %lu state poll(s) (+%lu), %lu frame "
+      "ask(s) (+%lu), %lu frame(s) copied (+%lu)\n",
+      g_movie_calls.load, g_movie_calls.load - p_load, g_movie_calls.unload,
+      g_movie_calls.unload - p_unload, g_movie_calls.play,
+      g_movie_calls.play - p_play, g_movie_calls.check,
+      g_movie_calls.check - p_check, g_movie_calls.next,
+      g_movie_calls.next - p_next, g_movie_calls.frames,
+      g_movie_calls.frames - p_frames);
+  if (g_native_movie.player) {
+    x2_log_error("[HB]             the movie the guest holds is %s, and the "
+                 "guest's own state word reads %u\n",
+                 movie_state_name(x2_fmv_state(g_native_movie.player)),
+                 g_native_movie.info ? RD32(g_native_movie.info + INFO_STATE)
+                                     : 0u);
+  } else {
+    x2_log_error("[HB]             no movie is loaded, so nothing here is "
+                 "waiting on this owner\n");
+  }
+  p_load = g_movie_calls.load;
+  p_unload = g_movie_calls.unload;
+  p_play = g_movie_calls.play;
+  p_check = g_movie_calls.check;
+  p_next = g_movie_calls.next;
+  p_frames = g_movie_calls.frames;
+}
 
 static int native_fmv_enabled(void) {
   static int enabled = -1;
@@ -97,6 +163,7 @@ static void x2_movie_load(CPU *C) {
   X2FmvPlayer *player;
   char error[256];
   int first_frame, replaced;
+  g_movie_calls.load++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10001ab0u);
     return;
@@ -151,6 +218,7 @@ static void x2_movie_load(CPU *C) {
 
 static void x2_movie_unload(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
+  g_movie_calls.unload++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10001fa0u);
     return;
@@ -166,6 +234,7 @@ static void x2_movie_unload(CPU *C) {
 static void x2_movie_play(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   X2FmvPlayer *player;
+  g_movie_calls.play++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10002040u);
     return;
@@ -185,6 +254,7 @@ static void x2_movie_pause(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t state = RD32(C->reg[kX86pEsp] + 8u);
   X2FmvPlayer *player;
+  g_movie_calls.pause++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x100020c0u);
     return;
@@ -204,6 +274,7 @@ static void x2_movie_check_state(CPU *C) {
   uint32_t info = RD32(C->reg[kX86pEsp] + 4u);
   X2FmvPlayer *player;
   X2FmvState state;
+  g_movie_calls.check++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x10002140u);
     return;
@@ -227,6 +298,7 @@ static void x2_movie_next_frame(CPU *C) {
   uint32_t image, data, bytes;
   size_t pitch;
   int changed;
+  g_movie_calls.next++;
   if (!native_fmv_enabled()) {
     x86_guest_body(C, "libCriMovie.dll", 0x100021c0u);
     return;
@@ -264,6 +336,9 @@ static void x2_movie_next_frame(CPU *C) {
     WR32(info + INFO_STATE, 2u);
   else if (changed < 0 || x2_fmv_state(player) == X2_FMV_FAILED)
     WR32(info + INFO_STATE, 3u);
+  if (changed > 0) {
+    g_movie_calls.frames++;
+  }
   movie_return(C, changed > 0, 1);
 }
 

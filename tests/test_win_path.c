@@ -1,3 +1,4 @@
+#include "runtime_cvars.h"
 #include "win_path.h"
 
 #include "host_dir_cache.h"
@@ -33,6 +34,10 @@ int main(void) {
   char expected[1024];
   char actual[1024];
   int failures = 0;
+  /* win_path reads the `files` trace CVar; registering the runtime set is
+     what makes this test exercise the shipping resolver rather than a
+     variant with the trace compiled out. */
+  x2_runtime_config_init(0, NULL);
   unlink(X2_TEST_WIN_PATH_ROOT "/Data/Foo.SFD");
   unlink(X2_TEST_WIN_PATH_ROOT "/pack/movies/cine01.sfd");
   rmdir(X2_TEST_WIN_PATH_ROOT "/Data");

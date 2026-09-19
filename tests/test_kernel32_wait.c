@@ -1,5 +1,6 @@
 #include "guest_memory.h"
 #include "kernel32_handles.h"
+#include "kernel32_wait.h"
 #include "threads.h"
 #include "winmm.h"
 #include "x86rt.h"
@@ -33,6 +34,7 @@ void winmm_timers_pump(void) {
   if (signal_at > 0 && elapsed >= signal_at)
     handles[0].count = handles[1].count = 1;
 }
+void guest_sleep_ms(uint32_t ms) { guest_cond_wait_ms(ms); }
 void guest_thread_state_report(void) { abort(); }
 void x86_diag_dump(void) { abort(); }
 
@@ -100,8 +102,26 @@ int main(void) {
     expect(before_sleeps == 0, "nothing is counted before a wait happens");
     expect(sleeps > 0, "the waits' sleeps are counted");
     expect(asked > 0, "the deadlines the waits asked for are counted");
-    expect(slept > 0 && slept <= asked,
-           "the sleep each wait got is recorded, and never exceeds what it asked");
+    expect(
+        slept > 0 && slept <= asked,
+        "the sleep each wait got is recorded, and never exceeds what it asked");
+  }
+  /* Sleep is a blocking wait and is counted with the others. It was not,
+     and the heartbeat's wait line read "+0" through a browser stall that
+     spent 99% of its wall time inside exactly this call. */
+  {
+    unsigned long before = 0, after = 0;
+    unsigned long long asked_before = 0, asked_after = 0;
+    CPU cpu;
+    kernel32_wait_counts(&before, &asked_before, NULL, NULL);
+    memset(&cpu, 0, sizeof cpu);
+    cpu.reg[kX86pEsp] = 0x2000u;
+    WR32(0x2000u + 4u, 25u);
+    imp_KERNEL32_Sleep(&cpu);
+    kernel32_wait_counts(&after, &asked_after, NULL, NULL);
+    expect(after == before + 1, "Sleep is counted as a wait");
+    expect(asked_after == asked_before + 25u,
+           "Sleep's requested milliseconds reach the wait counters");
   }
   printf("%u wait checks, %u failures\n", checks, failures);
   return failures ? 1 : 0;

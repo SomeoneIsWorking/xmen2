@@ -243,18 +243,6 @@ void imp_KERNEL32_GetCurrentProcessId(CPU *C) {
 void imp_KERNEL32_GetCurrentThreadId(CPU *C) {
   ret_std(C, guest_current_tid(), 0);
 }
-void imp_KERNEL32_Sleep(CPU *C) {
-  /* The other pump point, and the one that matters most: a guest that sleeps
-     waiting for a timer callback would otherwise sleep forever. Pumped
-     AFTER the sleep, so a callback due during it fires as soon as it can. */
-  /* Through the scheduler, not usleep: a usleep here stopped every guest
-     thread for the duration -- including whichever one this sleep is
-     waiting for. */
-  guest_sleep_ms(A(0));
-  winmm_timers_pump();
-  ret_std(C, 0, 1);
-}
-
 void imp_KERNEL32_GetVersionExA(CPU *C) {
   /* OSVERSIONINFOA: report Windows XP (5.1.2600). The game branches on this
      for feature checks, and the honest answer is the OS whose API this layer

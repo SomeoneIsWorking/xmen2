@@ -61,12 +61,16 @@ class Marionette:
     def navigate(self, url: str) -> None:
         self.command("WebDriver:Navigate", {"url": url})
 
-    def script(self, body: str, timeout_ms: int = 60000) -> Any:
-        """Run an async script; the page calls ``resolve(value)`` when done."""
+    def script(self, body: str, timeout_ms: int = 60000, *args: Any) -> Any:
+        """Run an async script; the page calls ``resolve(value)`` when done.
+
+        Extra positional arguments reach the script as ``arguments[0..]``,
+        ahead of the resolve callback the page calls last.
+        """
         self.command("WebDriver:SetTimeouts", {"script": timeout_ms})
         return self.command(
             "WebDriver:ExecuteAsyncScript",
-            {"script": body, "args": [], "newSandbox": False},
+            {"script": body, "args": list(args), "newSandbox": False},
         )
 
     def screenshot(self) -> str:

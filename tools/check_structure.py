@@ -19,7 +19,7 @@ DEFAULT_LIMIT = 500
 # would have failed 26 files that nobody touched. Each entry records what it
 # was, so the ratchet is still auditable.
 LEGACY_LIMITS = {
-    "src/native/kernel32.c": 3664,            # waits extracted into kernel32_wait.c
+    "src/native/kernel32.c": 3624,            # waits extracted into kernel32_wait.c
     "src/native/x86rt_native.c": 1865,        # checked memory probes extracted
     "src/native/x2native.c": 2329,            # was 2152
     "src/d3d8/d3d8_drawcall.c": 1815,         # was 1650
@@ -27,20 +27,20 @@ LEGACY_LIMITS = {
     "src/native/crt.c": 1349,                 # was 1353, then 1535; stdio -> crt_stdio.c
     "src/gpu/gpu_draw.c": 1369,               # was 1250
     "src/d3d8/d3d8_report.c": 1530,           # was 1395
-    "src/native/threads.c": 719,              # was 1070, then 842; the reports -> thread_report.c
+    "src/native/threads.c": 717,              # was 1070, then 842; the reports -> thread_report.c
     "src/gpu/gpu_device.c": 841,              # was 810
     "src/d3d8/d3d8_resource.c": 1050,         # was 924
     "src/native/dinput_pad.c": 397,           # sampler split into dinput_pad_sample.c
     "src/native/win32_sdl.c": 1025,           # was 930
     "src/native/conversation.c": 968,         # was 958
-    "src/native/dsound.c": 1073,              # was 763
+    "src/native/dsound.c": 745,               # was 1097 before the mixer split
     "src/gpu/gpu_selftest.c": 223,            # was 354; lit/mvp -> gpu_lit_mvp_selftest.c
     "src/native/input_probe.c": 606,          # was 568
     "src/native/dinput_device.c": 611,        # was 524
     "src/native/advapi32.c": 710,             # was 599
     "src/d3d8/d3d8_com.c": 620,               # was 609
     "src/native/dinput8.c": 533,              # was 516
-    "src/native/heartbeat.c": 458,            # JIT snapshot policy stays in x86_engine.c
+    "src/native/heartbeat.c": 429,            # JIT snapshot policy stays in x86_engine.c
 }
 
 

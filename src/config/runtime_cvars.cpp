@@ -133,6 +133,15 @@ lucent::cvar::Var<bool> g_native_fmv{"native_fmv", true};
 lucent::cvar::Var<bool> g_prompt_glyphs{"prompt_glyphs", true};
 lucent::cvar::Var<std::string> g_text_scale{"text_scale", ""};
 lucent::cvar::Var<std::string> g_boot_map{"boot_map", ""};
+/* The heartbeat's guest-memory peek. A registered knob rather than a raw
+   environment read, so the browser -- which has no environment -- reaches it
+   with --set peek=... exactly as a desktop reaches it with X2_PEEK=..., which
+   Lucent's X2_ prefix still answers. */
+lucent::cvar::Var<std::string> g_peek{"peek", ""};
+/* The file-operation trace. Registered for the same reason as `peek`: a
+   browser has no environment to put X2_FILES in, and the one place a stalled
+   loader can be seen is what it asked the filesystem for. */
+lucent::cvar::Var<bool> g_files{"files", false};
 lucent::cvar::Var<bool> g_unpaced{"unpaced", false};
 lucent::cvar::Var<bool> g_unbounded{"unbounded", false};
 lucent::cvar::Var<long> g_quantum{"quantum", 20000};
@@ -181,6 +190,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_prompt_glyphs);
   lucent::cvar::register_var(g_text_scale);
   lucent::cvar::register_var(g_boot_map);
+  lucent::cvar::register_var(g_peek);
+  lucent::cvar::register_var(g_files);
   lucent::cvar::register_var(g_unpaced);
   lucent::cvar::register_var(g_unbounded);
   lucent::cvar::register_var(g_quantum);

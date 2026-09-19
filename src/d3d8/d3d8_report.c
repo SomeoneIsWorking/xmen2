@@ -1,3 +1,4 @@
+#include "../native/dsound.h"
 #include "../native/x2_log.h"
 /*
  * What the layer says about itself at shutdown, and what it proves about
@@ -1505,7 +1506,6 @@ static int cube_selftest(void) {
 int d3d8_host_selftest(void) {
   int fails = 0;
   extern int kernel32_thread_alias_selftest(void);
-  extern int dsound_selftest(void);
 
   fails += kernel32_thread_alias_selftest();
   fails += dsound_selftest();

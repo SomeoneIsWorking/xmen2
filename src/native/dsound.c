@@ -16,6 +16,7 @@
  * Every interface method not implemented aborts by its published name.
  */
 #include "dsound.h"
+#include "dsound_mixer.h"
 #include "guest_clock.h"
 #include "guest_heap.h"
 #include "guest_memory.h"
@@ -42,25 +43,6 @@
 #define DSBPLAY_LOOPING 0x00000001u
 #define DSBSTATUS_PLAYING 0x00000001u
 #define DSBSTATUS_LOOPING 0x00000004u
-typedef struct SampleData {
-  uint32_t guest_data;
-  uint32_t bytes;
-  unsigned refs;
-} SampleData;
-typedef struct DSBuffer {
-  int used, primary;
-  uint32_t guest;
-  unsigned refs;
-  uint32_t flags;
-  uint16_t format_tag, channels, block_align, bits;
-  uint32_t sample_rate, avg_bytes;
-  SampleData *data;
-  double cursor_frames;
-  uint32_t frequency;
-  int32_t volume, pan;
-  int playing, looping, locked;
-  unsigned long plays, locks;
-} DSBuffer;
 
 typedef struct {
   uint32_t guest;
@@ -68,24 +50,11 @@ typedef struct {
 } DSObject;
 
 static DSObject g_ds;
-static DSBuffer *g_buf;
-static int g_nbuf, g_capbuf;
 static uint32_t g_ds_vtable, g_buf_vtable;
 static unsigned long g_creates, g_secondary_created, g_duplicates;
-static unsigned long g_mix_callbacks, g_mix_frames, g_silent_advances;
-static unsigned long g_mix_nonzero, g_buffer_plays, g_buffer_locks;
+static unsigned long g_buffer_plays, g_buffer_locks;
 static unsigned long g_buffer_releases;
-static float g_mix_peak;
 static uint32_t g_coop_hwnd, g_coop_level;
-static int g_primary_rate = 22050;
-static int g_audio_attempted, g_audio_silent;
-static double g_silent_time;
-
-#ifdef X2_WITH_SDL
-static SDL_AudioStream *g_stream;
-static float *g_mix_scratch;
-static int g_mix_scratch_frames;
-#endif
 
 enum {
   DSVT_QueryInterface,
@@ -153,12 +122,6 @@ static const char *const BVT_NAME[BVT_COUNT] = {"QueryInterface",
                                                 "Unlock",
                                                 "Restore"};
 
-/* The guest's clock, not a private one: see guest_clock.h. Five copies of
-   this read CLOCK_MONOTONIC directly, and the guest gates real logic on
-   elapsed time, so any two of them disagreeing is a timing bug wearing a
-   gameplay bug's clothes. */
-static double now_s(void) { return guest_clock_now_s(); }
-
 static void ret_std(CPU *C, uint32_t value, int nargs) {
   C->reg[kX86pEax] = value;
   C->reg[kX86pEsp] += 4u + (uint32_t)nargs * 4u;
@@ -168,16 +131,8 @@ static void ret_com(CPU *C, uint32_t value, int nargs) {
   ret_std(C, value, nargs + 1);
 }
 
-static DSBuffer *buffer_of(uint32_t guest) {
-  int i;
-  for (i = 0; i < g_nbuf; ++i)
-    if (g_buf[i].used && g_buf[i].guest == guest)
-      return &g_buf[i];
-  return NULL;
-}
-
 static DSBuffer *this_buffer(CPU *C) {
-  DSBuffer *b = buffer_of(THIS);
+  DSBuffer *b = dsound_mixer_voice_of(THIS);
   if (!b) {
     x2_log_error("DSOUND: IDirectSoundBuffer method on unknown object "
                  "0x%08x\n",
@@ -187,218 +142,9 @@ static DSBuffer *this_buffer(CPU *C) {
   return b;
 }
 
-static void audio_lock(void) {
-#ifdef X2_WITH_SDL
-  if (g_stream && SDL_WasInit(SDL_INIT_AUDIO))
-    SDL_LockAudioStream(g_stream);
-#endif
-}
+void dsound_movie_audio_begin(void) { dsound_mixer_open_device(); }
 
-static void audio_unlock(void) {
-#ifdef X2_WITH_SDL
-  if (g_stream && SDL_WasInit(SDL_INIT_AUDIO))
-    SDL_UnlockAudioStream(g_stream);
-#endif
-}
-
-static float sample_at(const DSBuffer *b, uint64_t frame, int channel) {
-  const unsigned char *p;
-  uint64_t frames;
-  int srcch;
-  if (!b->data || !b->data->guest_data || !b->block_align)
-    return 0.0f;
-  frames = b->data->bytes / b->block_align;
-  if (!frames)
-    return 0.0f;
-  frame %= frames;
-  srcch = b->channels == 1 ? 0 : channel;
-  if (srcch >= b->channels)
-    srcch = b->channels - 1;
-  p = (const unsigned char *)guest_memory_const_pointer(b->data->guest_data) +
-      frame * b->block_align + (uint64_t)srcch * (b->bits / 8u);
-  if (b->bits == 8)
-    return ((float)p[0] - 128.0f) / 128.0f;
-  if (b->bits == 16) {
-    int16_t s;
-    memcpy(&s, p, sizeof s);
-    return (float)s / 32768.0f;
-  }
-  return 0.0f;
-}
-
-static void advance_buffer(DSBuffer *b, double out_frames, double out_rate,
-                           float *mix) {
-  uint64_t nsrc;
-  double step;
-  float gain, gl, gr;
-  int i;
-  if (!b->playing || b->primary || !b->data || !b->block_align)
-    return;
-  nsrc = b->data->bytes / b->block_align;
-  if (!nsrc) {
-    b->playing = 0;
-    return;
-  }
-  step = (double)(b->frequency ? b->frequency : b->sample_rate) / out_rate;
-  gain = b->volume <= -10000 ? 0.0f : powf(10.0f, (float)b->volume / 2000.0f);
-  gl = gr = gain;
-  if (b->pan > 0)
-    gl *= powf(10.0f, -(float)b->pan / 2000.0f);
-  if (b->pan < 0)
-    gr *= powf(10.0f, (float)b->pan / 2000.0f);
-  for (i = 0; i < (int)out_frames; ++i) {
-    uint64_t pos = (uint64_t)b->cursor_frames;
-    if (pos >= nsrc) {
-      if (!b->looping) {
-        b->playing = 0;
-        break;
-      }
-      b->cursor_frames = fmod(b->cursor_frames, (double)nsrc);
-      pos = (uint64_t)b->cursor_frames;
-    }
-    if (mix) {
-      uint64_t next = pos + 1u;
-      float frac = (float)(b->cursor_frames - (double)pos);
-      float l0, l1, r0, r1;
-      if (next >= nsrc)
-        next = b->looping ? 0u : pos;
-      l0 = sample_at(b, pos, 0);
-      l1 = sample_at(b, next, 0);
-      r0 = sample_at(b, pos, 1);
-      r1 = sample_at(b, next, 1);
-      mix[i * 2 + 0] += (l0 + (l1 - l0) * frac) * gl;
-      mix[i * 2 + 1] += (r0 + (r1 - r0) * frac) * gr;
-    }
-    b->cursor_frames += step;
-  }
-}
-
-static void mix_frames(float *mix, int frames, int rate) {
-  int i;
-  if (mix)
-    memset(mix, 0, (size_t)frames * 2u * sizeof(float));
-  for (i = 0; i < g_nbuf; ++i)
-    if (g_buf[i].used)
-      advance_buffer(&g_buf[i], frames, rate, mix);
-  movie_audio_mix(mix, frames, rate);
-  if (mix) {
-    for (i = 0; i < frames * 2; ++i) {
-      if (mix[i] > 1.0f)
-        mix[i] = 1.0f;
-      if (mix[i] < -1.0f)
-        mix[i] = -1.0f;
-      if (fabsf(mix[i]) > g_mix_peak)
-        g_mix_peak = fabsf(mix[i]);
-      if (mix[i] != 0.0f)
-        g_mix_nonzero++;
-    }
-  }
-}
-#ifdef X2_WITH_SDL
-static void SDLCALL audio_more(void *userdata, SDL_AudioStream *stream,
-                               int additional_amount, int total_amount) {
-  int frames = additional_amount / (int)(2u * sizeof(float));
-  float *mix;
-  (void)userdata;
-  (void)total_amount;
-  if (frames <= 0)
-    return;
-  if (frames > g_mix_scratch_frames) {
-    float *next =
-        (float *)realloc(g_mix_scratch, (size_t)frames * 2u * sizeof(float));
-    if (!next)
-      return;
-    g_mix_scratch = next;
-    g_mix_scratch_frames = frames;
-  }
-  mix = g_mix_scratch;
-  mix_frames(mix, frames, g_primary_rate);
-  SDL_PutAudioStreamData(stream, mix, frames * 2 * (int)sizeof(float));
-  g_mix_callbacks++;
-  g_mix_frames += (unsigned long)frames;
-}
-#endif
-static void open_audio(void) {
-  if (g_audio_attempted)
-    return;
-  g_audio_attempted = 1;
-  /*
-   * A run with no window is a run nobody is listening to: an automated or
-   * observational run should not seize the machine's speakers and talk over
-   * whatever the user is actually doing.
-   *
-   * This takes the SILENT-BUT-TIMED device rather than skipping audio, and
-   * the difference matters. The game drives real logic off buffer play
-   * cursors -- a cutscene advances when its stream reports itself finished --
-   * so a device whose cursors never move does not make the run quiet, it
-   * makes the run hang. The silent device below advances every cursor on the
-   * wall clock at the buffer's own rate, so the guest sees audio complete on
-   * schedule and hears nothing.
-   */
-  if (win32_sdl_windows_hidden()) {
-    x2_log_error("DSOUND: --no-window, so no host playback device is "
-                 "opened -- using the timed SILENT device. Play cursors "
-                 "still advance at %d Hz, so audio-gated logic (cutscene "
-                 "advance, stream-complete waits) runs exactly as it "
-                 "does with sound.\n",
-                 g_primary_rate);
-    g_audio_silent = 1;
-    g_silent_time = now_s();
-    return;
-  }
-#ifdef X2_WITH_SDL
-  {
-    SDL_AudioSpec spec;
-    if (!SDL_WasInit(SDL_INIT_AUDIO) && !SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-      x2_log_error("DSOUND: SDL audio init failed: %s -- using a "
-                   "timed SILENT device; cursors still advance.\n",
-                   SDL_GetError());
-      g_audio_silent = 1;
-      g_silent_time = now_s();
-      return;
-    }
-    SDL_zero(spec);
-    spec.format = SDL_AUDIO_F32;
-    spec.channels = 2;
-    spec.freq = g_primary_rate;
-    g_stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-                                         &spec, audio_more, NULL);
-    if (!g_stream || !SDL_ResumeAudioStreamDevice(g_stream)) {
-      x2_log_error("DSOUND: no host playback stream: %s -- using a "
-                   "timed SILENT device; cursors still advance.\n",
-                   SDL_GetError());
-      if (g_stream)
-        SDL_DestroyAudioStream(g_stream);
-      g_stream = NULL;
-      g_audio_silent = 1;
-      g_silent_time = now_s();
-      return;
-    }
-    x2_log_error("DSOUND: SDL3 playback opened at %d Hz, stereo F32; "
-                 "the game supplies PCM through DirectSound buffers.\n",
-                 g_primary_rate);
-  }
-#else
-  x2_log_error("DSOUND: built without SDL audio -- using a timed SILENT "
-               "device; cursors still advance.\n");
-  g_audio_silent = 1;
-  g_silent_time = now_s();
-#endif
-}
-void dsound_movie_audio_begin(void) { open_audio(); }
-static void silent_advance(void) {
-  double t, elapsed;
-  if (!g_audio_silent)
-    return;
-  t = now_s();
-  elapsed = t - g_silent_time;
-  if (elapsed <= 0.0)
-    return;
-  g_silent_time = t;
-  mix_frames(NULL, (int)(elapsed * g_primary_rate), g_primary_rate);
-  g_silent_advances++;
-}
-void dsound_movie_audio_tick(void) { silent_advance(); }
+void dsound_movie_audio_tick(void) { dsound_mixer_tick_silent(); }
 static int read_waveformat(uint32_t p, DSBuffer *b) {
   if (!p)
     return 0;
@@ -432,45 +178,18 @@ static void write_waveformat(uint32_t p, const DSBuffer *b) {
 }
 
 static DSBuffer *alloc_buffer(void) {
-  int i;
-  for (i = 0; i < g_nbuf; ++i)
-    if (!g_buf[i].used) {
-      DSBuffer *b = &g_buf[i];
-      memset(b, 0, sizeof *b);
-      b->guest = guest_malloc(8u);
-      if (!b->guest)
-        return NULL;
-      b->used = 1;
-      b->refs = 1;
-      b->volume = 0;
-      WR32(b->guest + 0u, g_buf_vtable);
-      WR32(b->guest + 4u, 1u);
-      return b;
-    }
-  if (g_nbuf == g_capbuf) {
-    int cap = g_capbuf ? g_capbuf * 2 : 64;
-    DSBuffer *next = (DSBuffer *)realloc(g_buf, (size_t)cap * sizeof *next);
-    if (!next)
-      return NULL;
-    memset(next + g_capbuf, 0, (size_t)(cap - g_capbuf) * sizeof *next);
-    g_buf = next;
-    g_capbuf = cap;
+  DSBuffer *b = dsound_mixer_alloc_voice();
+  if (!b) {
+    return NULL;
   }
-  {
-    DSBuffer *b = &g_buf[g_nbuf++];
-    memset(b, 0, sizeof *b);
-    b->guest = guest_malloc(8u);
-    if (!b->guest) {
-      g_nbuf--;
-      return NULL;
-    }
-    b->used = 1;
-    b->refs = 1;
-    b->volume = 0;
-    WR32(b->guest + 0u, g_buf_vtable);
-    WR32(b->guest + 4u, 1u);
-    return b;
+  b->guest = guest_malloc(8u);
+  if (!b->guest) {
+    dsound_mixer_free_voice(b);
+    return NULL;
   }
+  WR32(b->guest + 0u, g_buf_vtable);
+  WR32(b->guest + 4u, 1u);
+  return b;
 }
 
 static void b_unimplemented(CPU *C) {
@@ -499,18 +218,18 @@ static void b_AddRef(CPU *C) {
 }
 
 int dsound_buffer_is_playing(uint32_t guest) {
-  DSBuffer *b = buffer_of(guest);
+  DSBuffer *b = dsound_mixer_voice_of(guest);
   if (!b)
     return 0;
-  silent_advance();
+  dsound_mixer_tick_silent();
   return b->playing ? 1 : 0;
 }
 
 unsigned dsound_buffer_release_guest(uint32_t guest) {
-  DSBuffer *b = buffer_of(guest);
+  DSBuffer *b = dsound_mixer_voice_of(guest);
   if (!b)
     return 0;
-  audio_lock();
+  dsound_mixer_lock();
   unsigned n = b->refs ? --b->refs : 0;
   WR32(b->guest + 4u, n);
   if (!n) {
@@ -521,15 +240,9 @@ unsigned dsound_buffer_release_guest(uint32_t guest) {
                        ? " (shared PCM remains through a duplicate)"
                        : "");
     g_buffer_releases++;
-    if (b->data && --b->data->refs == 0) {
-      if (b->data->guest_data)
-        guest_free(b->data->guest_data);
-      free(b->data);
-    }
-    b->playing = 0;
-    b->used = 0;
+    dsound_mixer_free_voice(b);
   }
-  audio_unlock();
+  dsound_mixer_unlock();
   return n;
 }
 
@@ -554,7 +267,7 @@ static void b_GetCaps(CPU *C) {
 static void b_GetCurrentPosition(CPU *C) {
   DSBuffer *b = this_buffer(C);
   uint32_t play = A(1), write = A(2), pos = 0, bytes = 0;
-  silent_advance();
+  dsound_mixer_tick_silent();
   if (b->data && b->block_align) {
     bytes = b->data->bytes;
     pos = ((uint32_t)b->cursor_frames * b->block_align) % (bytes ? bytes : 1u);
@@ -605,7 +318,7 @@ static void b_GetFrequency(CPU *C) {
 static void b_GetStatus(CPU *C) {
   DSBuffer *b = this_buffer(C);
   uint32_t status;
-  silent_advance();
+  dsound_mixer_tick_silent();
   status = b->playing ? DSBSTATUS_PLAYING : 0u;
   if (b->playing && b->looping)
     status |= DSBSTATUS_LOOPING;
@@ -620,14 +333,14 @@ static void b_Lock(CPU *C) {
            flags = A(7);
   uint32_t total, first;
   (void)flags;
-  audio_lock();
+  dsound_mixer_lock();
   if (b->locked) {
-    audio_unlock();
+    dsound_mixer_unlock();
     ret_com(C, DSERR_INVALIDCALL, 7);
     return;
   }
   if (!b->data || !b->data->bytes || off >= b->data->bytes) {
-    audio_unlock();
+    dsound_mixer_unlock();
     ret_com(C, DSERR_INVALIDPARAM, 7);
     return;
   }
@@ -655,12 +368,12 @@ static void b_Lock(CPU *C) {
 
 static void b_Play(CPU *C) {
   DSBuffer *b = this_buffer(C);
-  audio_lock();
+  dsound_mixer_lock();
   b->playing = 1;
   b->looping = (A(3) & DSBPLAY_LOOPING) != 0;
   b->plays++;
   g_buffer_plays++;
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 3);
 }
 
@@ -671,9 +384,9 @@ static void b_SetCurrentPosition(CPU *C) {
     ret_com(C, DSERR_INVALIDPARAM, 1);
     return;
   }
-  audio_lock();
+  dsound_mixer_lock();
   b->cursor_frames = byte / b->block_align;
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 
@@ -684,8 +397,8 @@ static void b_SetFormat(CPU *C) {
     return;
   }
   if (b->primary) {
-    g_primary_rate = (int)b->sample_rate;
-    open_audio();
+    dsound_mixer_set_rate((int)b->sample_rate);
+    dsound_mixer_open_device();
   }
   ret_com(C, DS_OK, 1);
 }
@@ -697,9 +410,9 @@ static void b_SetVolume(CPU *C) {
     v = 0;
   if (v < -10000)
     v = -10000;
-  audio_lock();
+  dsound_mixer_lock();
   b->volume = v;
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 static void b_SetPan(CPU *C) {
@@ -709,9 +422,9 @@ static void b_SetPan(CPU *C) {
     v = 10000;
   if (v < -10000)
     v = -10000;
-  audio_lock();
+  dsound_mixer_lock();
   b->pan = v;
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 static void b_SetFrequency(CPU *C) {
@@ -719,16 +432,16 @@ static void b_SetFrequency(CPU *C) {
   uint32_t v = A(1);
   if (!v)
     v = b->sample_rate;
-  audio_lock();
+  dsound_mixer_lock();
   b->frequency = v;
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 1);
 }
 static void b_Stop(CPU *C) {
   DSBuffer *b = this_buffer(C);
-  audio_lock();
+  dsound_mixer_lock();
   b->playing = 0;
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 0);
 }
 static void b_Unlock(CPU *C) {
@@ -738,7 +451,7 @@ static void b_Unlock(CPU *C) {
     return;
   }
   b->locked = 0;
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 4);
 }
 static void b_Restore(CPU *C) {
@@ -785,10 +498,10 @@ static void ds_CreateSoundBuffer(CPU *C) {
   flags = RD32(desc + 4u);
   bytes = RD32(desc + 8u);
   fmt = RD32(desc + 16u);
-  audio_lock();
+  dsound_mixer_lock();
   b = alloc_buffer();
   if (!b) {
-    audio_unlock();
+    dsound_mixer_unlock();
     WR32(out, 0);
     ret_com(C, DSERR_OUTOFMEMORY, 3);
     return;
@@ -801,7 +514,7 @@ static void ds_CreateSoundBuffer(CPU *C) {
                    "flags=0x%x bytes=%u format=0x%08x\n",
                    desc, flags, bytes, fmt);
       b->used = 0;
-      audio_unlock();
+      dsound_mixer_unlock();
       WR32(out, 0);
       ret_com(C, DSERR_INVALIDPARAM, 3);
       return;
@@ -810,7 +523,7 @@ static void ds_CreateSoundBuffer(CPU *C) {
     if (!data || !(data->guest_data = guest_malloc(bytes))) {
       free(data);
       b->used = 0;
-      audio_unlock();
+      dsound_mixer_unlock();
       WR32(out, 0);
       ret_com(C, DSERR_OUTOFMEMORY, 3);
       return;
@@ -828,7 +541,7 @@ static void ds_CreateSoundBuffer(CPU *C) {
                    b->bits, b->channels == 1 ? "mono" : "stereo");
   }
   WR32(out, b->guest);
-  audio_unlock();
+  dsound_mixer_unlock();
   ret_com(C, DS_OK, 3);
 }
 
@@ -849,21 +562,19 @@ static void ds_GetCaps(CPU *C) {
 }
 
 static void ds_DuplicateSoundBuffer(CPU *C) {
-  DSBuffer *src = buffer_of(A(1)), *b;
+  DSBuffer *src = dsound_mixer_voice_of(A(1)), *b;
+  DSBuffer source;
   if (!src || src->primary || !A(2)) {
     ret_com(C, DSERR_INVALIDPARAM, 2);
     return;
   }
-  audio_lock();
-  /* realloc may move the registry, so retain the source index rather than
-     a host pointer across alloc_buffer. */
-  {
-    int src_index = (int)(src - g_buf);
-    b = alloc_buffer();
-    src = &g_buf[src_index];
-  }
+  dsound_mixer_lock();
+  /* Allocating a voice may move the registry, so take the source by value
+     rather than carrying a host pointer across the allocation. */
+  source = *src;
+  b = alloc_buffer();
   if (!b) {
-    audio_unlock();
+    dsound_mixer_unlock();
     WR32(A(2), 0);
     ret_com(C, DSERR_OUTOFMEMORY, 2);
     return;
@@ -871,7 +582,7 @@ static void ds_DuplicateSoundBuffer(CPU *C) {
   {
     uint32_t guest = b->guest;
     unsigned refs = b->refs;
-    *b = *src;
+    *b = source;
     b->guest = guest;
     b->refs = refs;
     b->used = 1;
@@ -884,12 +595,13 @@ static void ds_DuplicateSoundBuffer(CPU *C) {
   WR32(b->guest, g_buf_vtable);
   WR32(b->guest + 4, b->refs);
   WR32(A(2), b->guest);
-  audio_unlock();
+  dsound_mixer_unlock();
   g_duplicates++;
-  if (g_duplicates <= 12)
+  if (g_duplicates <= 12) {
     x2_log_error("DSOUND: duplicate %lu of 0x%08x -> 0x%08x, out "
                  "0x%08x (shared PCM, independent cursor)\n",
-                 g_duplicates, src->guest, b->guest, A(2));
+                 g_duplicates, source.guest, b->guest, A(2));
+  }
   ret_com(C, DS_OK, 2);
 }
 
@@ -985,89 +697,49 @@ void dsound_install(void) {
 
 void dsound_report(void) {
   static int done;
-  int i, live = 0, playing = 0;
-  if (done++)
+  DsoundMixerStats mixer;
+  int live, playing;
+  if (done++) {
     return;
-  for (i = 0; i < g_nbuf; i++)
-    if (g_buf[i].used) {
-      live++;
-      if (g_buf[i].playing)
-        playing++;
-    }
+  }
+  dsound_mixer_voice_counts(&live, &playing);
+  dsound_mixer_stats(&mixer);
   x2_log_info("  dsound: %lu DirectSoundCreate, %lu secondary buffer(s), %lu "
               "duplicate(s); %d live / %d playing, %lu Play, %lu Lock\n",
               g_creates, g_secondary_created, g_duplicates, live, playing,
               g_buffer_plays, g_buffer_locks);
   x2_log_info("          mixer: %lu callback(s), %lu frame(s), %lu nonzero "
               "sample(s), peak %.4f, %lu silent-clock advance(s)%s\n",
-              g_mix_callbacks, g_mix_frames, g_mix_nonzero, g_mix_peak,
-              g_silent_advances,
-              g_audio_silent ? " -- NO HOST AUDIO DEVICE" : "");
+              mixer.callbacks, mixer.frames, mixer.nonzero, mixer.peak,
+              mixer.silent_advances,
+              mixer.silent ? " -- NO HOST AUDIO DEVICE" : "");
   movie_audio_report();
 }
 
-int dsound_selftest(void) {
-  DSBuffer a, b;
-  SampleData d;
-  unsigned char pcm[8] = {0, 0, 0, 64, 0, 128, 0, 192};
-  float mix[8];
-  int fails = 0, i;
-  memset(&a, 0, sizeof a);
-  memset(&b, 0, sizeof b);
-  memset(&d, 0, sizeof d);
-  d.guest_data = guest_malloc(sizeof pcm);
-  d.bytes = sizeof pcm;
-  d.refs = 2;
-  if (!d.guest_data) {
-    x2_log_info("DSOUND mixer selftest: FAILED -- no guest PCM allocation\n");
-    return 1;
+void dsound_audio_beat_report(void) {
+  static unsigned long p_cb, p_frames, p_silent;
+  DsoundMixerStats mixer;
+  dsound_mixer_stats(&mixer);
+  if (!mixer.attempted) {
+    return;
   }
-  memcpy(guest_memory_pointer(d.guest_data), pcm, sizeof pcm);
-  a.used = b.used = 1;
-  a.data = b.data = &d;
-  a.channels = b.channels = 1;
-  a.bits = b.bits = 16;
-  a.block_align = b.block_align = 2;
-  a.sample_rate = b.sample_rate = 4;
-  a.frequency = b.frequency = 4;
-  a.playing = b.playing = 1;
-  a.looping = b.looping = 1;
-  b.volume = -10000;
-  memset(mix, 0, sizeof mix);
-  advance_buffer(&a, 4, 4, mix);
-  advance_buffer(&b, 4, 4, mix);
-  if (a.cursor_frames != 4.0 || b.cursor_frames != 4.0 ||
-      fabsf(mix[0]) > 0.0001f || mix[2] < 0.49f || mix[4] > -0.99f ||
-      mix[6] > -0.49f)
-    fails++;
-  a.cursor_frames = 3.0;
-  a.playing = 1;
-  a.looping = 0;
-  advance_buffer(&a, 2, 4, NULL);
-  if (a.playing || a.cursor_frames != 4.0)
-    fails++;
-  guest_free(d.guest_data);
-  /* Loading the tutorial uses more than 256 COM buffer objects. This drives
-     the exact old failure class instead of testing a tiny happy path. */
-  if (g_nbuf != 0)
-    fails++;
-  for (i = 0; i < 300; i++)
-    if (!alloc_buffer()) {
-      fails++;
-      break;
-    }
-  if (g_nbuf != 300 || g_capbuf < 300)
-    fails++;
-  for (i = 0; i < g_nbuf; i++)
-    if (g_buf[i].guest)
-      guest_free(g_buf[i].guest);
-  free(g_buf);
-  g_buf = NULL;
-  g_nbuf = g_capbuf = 0;
-  x2_log_info(
-      "DSOUND mixer selftest: %s -- shared PCM voices have independent "
-      "cursors, mute and one-shot stop semantics; the registry grows past "
-      "256 objects\n",
-      fails ? "FAILED" : "PASSED");
-  return fails;
+  x2_log_error("[HB]           audio: %s device, %lu mixer callback(s) (+%lu), "
+               "%lu frame(s) (+%lu), %lu silent advance(s) (+%lu)\n",
+               mixer.silent ? "timed SILENT" : "host", mixer.callbacks,
+               mixer.callbacks - p_cb, mixer.frames, mixer.frames - p_frames,
+               mixer.silent_advances, mixer.silent_advances - p_silent);
+  if (!mixer.silent && mixer.callbacks == 0u) {
+    x2_log_error("[HB]             the host stream is open and its callback "
+                 "has NEVER run, so no play cursor is advancing and every "
+                 "audio-gated wait in the guest is stopped\n");
+  }
+  x2_log_error("[HB]             movie clock: %.3fs played, %.3fs queued, "
+               "%s\n",
+               movie_audio_played_seconds(), movie_audio_queued_seconds(),
+               movie_audio_active() ? "ACTIVE" : "idle");
+  p_cb = mixer.callbacks;
+  p_frames = mixer.frames;
+  p_silent = mixer.silent_advances;
 }
+
+int dsound_selftest(void) { return dsound_mixer_selftest(); }

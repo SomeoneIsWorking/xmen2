@@ -5,6 +5,7 @@
 #include "x86rt_native.h"
 
 #include "cpu.h"
+#include "guest_inspect.h"
 #include "guest_memory.h"
 
 #include <lucent/cvar_c.h>
@@ -48,67 +49,24 @@ static void watch_report(void *user, uint32_t addr, uint32_t previous,
   lucent_log_error("engine", "jit.watch:   esp=%08x ebp=%08x esi=%08x edi=%08x",
                    cpu->reg[kX86pEsp], cpu->reg[kX86pEbp], cpu->reg[kX86pEsi],
                    cpu->reg[kX86pEdi]);
+  /*
+   * The stack above ESP, in full. Every word is printed and the ones that can
+   * be named are named: a return address into a mapped image, or a pointer to
+   * something carrying a vtable, which is how the OBJECT behind a failure gets
+   * identified. Issue #158 is why the raw words are printed too -- the failing
+   * size there came from an object that appears on the stack as a bare heap
+   * pointer, and a report that showed only mapped words threw it away.
+   */
+  guest_inspect_stack(cpu->reg[kX86pEsp], X2_WATCH_STACK_WORDS, "jit.watch:  ");
   {
-    /*
-     * The return addresses on the stack above ESP, as module + linked
-     * address.
-     *
-     * The immediate frame names the caller; it does not name who called THAT,
-     * and a wedge usually wants the chain. There is no frame pointer to walk
-     * here -- issue #158's run reached its fatal handler with EBP holding a
-     * data value -- so this scans and prints every word that lands inside a
-     * mapped image. Some of those are data that happens to look like code,
-     * which is why they are printed as candidates and counted, rather than
-     * presented as a backtrace. Said either way: a scan that finds nothing
-     * says so.
-     */
-    const uint32_t *stack =
-        (const uint32_t *)guest_memory_const_pointer(cpu->reg[kX86pEsp]);
-    unsigned found = 0;
-    unsigned i;
-    if (stack) {
-      for (i = 0; i < X2_WATCH_STACK_WORDS; i++) {
-        X86Module *m = x86_module_for(stack[i]);
-        if (!m) {
-          continue;
-        }
-        found++;
-        lucent_log_error(
-            "engine", "jit.watch:   [esp+%02x] %08x -> %s + 0x%08x", i * 4u,
-            stack[i], m->name, m->preferred + (stack[i] - *m->base));
-      }
-    }
-    lucent_log_error("engine",
-                     "jit.watch:   %u of %u stack word(s) land in a mapped "
-                     "image%s",
-                     found, (unsigned)X2_WATCH_STACK_WORDS,
-                     found ? ""
-                           : " -- none, so this frame has no caller on "
-                             "the stack this report can see");
-  }
-  {
-    /*
-     * The words at ESP. A __stdcall or __thiscall callee's arguments are
-     * there and nowhere else, and they are what a report like this is usually
-     * after: measured (issue #158), the register file named the FUNCTION that
-     * failed but not the size or the reason code it was told, which were
-     * argument one and two. Printed as raw words because whether [esp+0] is a
-     * return address or an argument depends on where the watched address sits
-     * in the callee, and guessing would be worse than showing.
-     */
-    const uint32_t *stack =
-        (const uint32_t *)guest_memory_const_pointer(cpu->reg[kX86pEsp]);
-    if (stack) {
-      lucent_log_error("engine",
-                       "jit.watch:   [esp+00..1c] %08x %08x %08x %08x %08x "
-                       "%08x %08x %08x",
-                       stack[0], stack[1], stack[2], stack[3], stack[4],
-                       stack[5], stack[6], stack[7]);
-    } else {
-      lucent_log_error("engine",
-                       "jit.watch:   esp 0x%08x is not mapped guest memory, so "
-                       "there are no argument words to show",
-                       cpu->reg[kX86pEsp]);
+    /* One address to follow, for the run after the one that named a pointer
+       worth reading. Zero means nothing was asked for. */
+    long peek = lucent_cvar_number("jit.peek", 0);
+    if (peek > 0) {
+      long peek_words = lucent_cvar_number("jit.peekn", 16);
+      guest_inspect_words((uint32_t)peek,
+                          peek_words > 0 ? (unsigned)peek_words : 16u,
+                          "jit.peek:  ");
     }
   }
   if (guest_thread_last_crossing(&what, &import_at, &ago)) {

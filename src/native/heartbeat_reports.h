@@ -20,4 +20,7 @@ void heartbeat_subsystem_reports(void);
    has ever existed, so silence is never a missing counter. */
 void heartbeat_winmm_report(void);
 
+/* The blocking waits, the lock hand-offs, and which guest code called Sleep. */
+void heartbeat_wait_report(void);
+
 #endif /* X2_HEARTBEAT_REPORTS_H */

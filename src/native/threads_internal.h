@@ -55,6 +55,20 @@ typedef struct {
    */
   int state;
   double state_since;
+  /*
+   * WHEN a TS_COND thread becomes able to run again, and whether something
+   * has already made it able.
+   *
+   * "Is anyone waiting?" and "is anyone READY" are different questions, and
+   * conflating them cost the browser its frame rate: a thread parked in an
+   * 83 ms Sleep is TS_COND, so every quantum yield handed the guest lock
+   * into a promise that could not be kept until that deadline passed, and
+   * the run advanced at the sleeper's 12 Hz. A deadline in the future means
+   * not ready; a deadline that has passed, or a broadcast that has already
+   * reached this thread, means ready.
+   */
+  double cond_deadline;
+  int cond_ready;
   /* What it last crossed the host boundary into, and when. See
      guest_thread_note_crossing. */
   const char *last_cross;

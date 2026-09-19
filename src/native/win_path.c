@@ -5,6 +5,8 @@
  * media decode cannot disagree on drive mapping or case folding. */
 #include "win_path.h"
 
+#include <lucent/cvar_c.h>
+
 #include "host_dir_cache.h"
 #include "save_trace_runtime.h"
 #include "shell32.h"
@@ -30,11 +32,10 @@ static unsigned long g_opens_total, g_opens_failed, g_replaced;
 static int files_traced(void) {
   static int on = -1;
   if (on < 0) {
-    const char *value = x2_config_override_get(kX2ConfigFiles);
-    on = value && *value && *value != '0';
+    on = lucent_cvar_flag("files", 0) != 0;
     if (on)
       x2_log_error(
-          "[FILE] tracing file operations (X2_FILES). What this DOES "
+          "[FILE] tracing file operations (files=1). What this DOES "
           "show: every CreateFile-family call with its answer, and the "
           "FIRST open of each distinct name from any path including the "
           "CRT's fopen. What it does NOT show: repeat opens of a name "

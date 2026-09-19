@@ -1,5 +1,6 @@
 #include "../config/environment.h"
 #include "x2_log.h"
+#include <lucent/cvar_c.h>
 /*
  * The title's native runtime: dispatch across every mapped guest module.
  * See x86rt_native.h for why dispatch keys on the mapped address rather than
@@ -1392,7 +1393,7 @@ static int args_string_at(uint32_t a, char *out, size_t cap) {
  * cross-module data bug reduces to, and one the boundary ring cannot answer
  * because it records control flow, not state.
  *
- *   X2_PEEK=libIGCore+0x15f3fc:1,0x0067f708:4
+ *   peek=libIGCore+0x15f3fc:1,0x0067f708:4
  *
  * A bare 0x… is a GUEST/mapped address as-is; <module>+0x… is an offset from
  * that module's LINKED base, resolved through wherever it actually got mapped,
@@ -1433,7 +1434,7 @@ static void peek_string(uint32_t addr, unsigned max) {
 }
 
 /*
- * X2_PEEK=<place>[:<how>],...
+ * peek=<place>[:<how>],...   (X2_PEEK=... on a host with an environment)
  *
  *   <place>  0xABS                  a guest/mapped address as-is
  *            <module>+0xOFF         offset from that module's LINKED base,
@@ -1453,7 +1454,7 @@ static void peek_string(uint32_t addr, unsigned max) {
  * crash and the report would be lost.
  */
 void x86_peek_report(void) {
-  const char *spec = x2_config_override_get(kX2ConfigPeek);
+  const char *spec = lucent_cvar_text("peek");
   /* 2 KB: a whole-object sweep is ~64 items and 512 bytes silently TRUNCATED
      the spec, so the tail of the sweep was simply not read. */
   char buf[2048], *p, *save;
@@ -1464,7 +1465,7 @@ void x86_peek_report(void) {
        spec every time would bury the values it exists to show */
     static int banner;
     if (!banner) {
-      x2_log_error("[PEEK] X2_PEEK=%s\n", spec);
+      x2_log_error("[PEEK] peek=%s\n", spec);
       banner = 1;
     }
   }

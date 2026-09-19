@@ -1,6 +1,7 @@
 /* Win32 waits consume signaled objects and honor guest-clock deadlines.
  * Timer/condition-variable wakeups are opportunities to recheck, not timeouts.
  */
+#include "kernel32_wait.h"
 #include "guest_clock.h"
 #include "kernel32_handles.h"
 #include "threads.h"
@@ -60,6 +61,64 @@ void kernel32_wait_counts(unsigned long *sleeps, unsigned long long *asked_ms,
     *slept_ms = g_wait_slept_ms;
   if (worst_oversleep_ms)
     *worst_oversleep_ms = g_wait_worst_oversleep_ms;
+}
+
+/*
+ * WHO is sleeping, not just how much.
+ *
+ * A stalled run whose wall clock is 99% Sleep has one question left: which
+ * guest code is in the wait loop. The return address on entry answers it, so
+ * a small census of call sites carries the answer into the heartbeat. Bounded
+ * on purpose, and a site that does not fit is COUNTED rather than dropped in
+ * silence -- a census that can quietly lose the hot site is not evidence.
+ */
+#define SLEEP_SITES 8
+
+static struct {
+  uint32_t site;
+  unsigned long calls;
+  unsigned long long asked_ms;
+} g_sleep_site[SLEEP_SITES];
+static unsigned long g_sleep_sites_refused;
+
+static void sleep_site_note(uint32_t site, uint32_t ms) {
+  int i;
+  for (i = 0; i < SLEEP_SITES; ++i) {
+    if (g_sleep_site[i].calls != 0u && g_sleep_site[i].site != site) {
+      continue;
+    }
+    if (g_sleep_site[i].calls == 0u) {
+      g_sleep_site[i].site = site;
+    }
+    g_sleep_site[i].calls++;
+    g_sleep_site[i].asked_ms += ms;
+    return;
+  }
+  g_sleep_sites_refused++;
+}
+
+void kernel32_sleep_site_report(void) {
+  int i;
+  int printed = 0;
+  for (i = 0; i < SLEEP_SITES; ++i) {
+    if (g_sleep_site[i].calls == 0u) {
+      continue;
+    }
+    printed++;
+    x2_log_error("[HB]             Sleep from guest 0x%08x: %lu call(s), "
+                 "%llu ms asked\n",
+                 g_sleep_site[i].site, g_sleep_site[i].calls,
+                 g_sleep_site[i].asked_ms);
+  }
+  if (printed == 0) {
+    x2_log_error("[HB]             no guest code has called Sleep at all\n");
+  }
+  if (g_sleep_sites_refused != 0u) {
+    x2_log_error("[HB]             %lu Sleep call(s) came from a site beyond "
+                 "the %d this census holds, so the ranking above may miss "
+                 "the hot one\n",
+                 g_sleep_sites_refused, SLEEP_SITES);
+  }
 }
 
 /* Try to take one object. Returns 1 if it was signalled (and consumes it). */
@@ -160,8 +219,7 @@ void imp_KERNEL32_WaitForSingleObject(CPU *C) {
       uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
       double slept_at = guest_clock_now_s();
       guest_cond_wait_ms(asked);
-      wait_note(asked,
-                (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
+      wait_note(asked, (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
     }
     /*
      * A PUMP POINT, and the one the movie player needs (issue #49).
@@ -304,8 +362,7 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
       uint32_t asked = winmm_next_due_ms(wait_remaining_ms(t0, ms));
       double slept_at = guest_clock_now_s();
       guest_cond_wait_ms(asked);
-      wait_note(asked,
-                (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
+      wait_note(asked, (uint32_t)((guest_clock_now_s() - slept_at) * 1000.0));
     }
     winmm_timers_pump();
     if (all) {
@@ -357,4 +414,29 @@ void imp_KERNEL32_WaitForMultipleObjects(CPU *C) {
     }
     guest_thread_state_report();
   }
+}
+
+/*
+ * Sleep.
+ *
+ * It lives with the other blocking waits because it IS one, and because the
+ * counters above are what the heartbeat reports: measured in the browser, a
+ * stalled retail boot spent 4,948 ms of every 5,000 in this call, and the
+ * wait line beside it read "+0" because Sleep was not counted anywhere. A
+ * sleep report that cannot see the dominant sleeper is worse than none.
+ */
+void imp_KERNEL32_Sleep(CPU *C) {
+  uint32_t ms = A(0);
+  double began = guest_clock_now_s();
+  /* Through the scheduler, not usleep: a usleep here stopped every guest
+     thread for the duration -- including whichever one this sleep is
+     waiting for. */
+  sleep_site_note(RD32(C->reg[kX86pEsp]), ms);
+  guest_sleep_ms(ms);
+  wait_note(ms, (uint32_t)((guest_clock_now_s() - began) * 1000.0 + 0.5));
+  /* The other pump point, and the one that matters most: a guest that sleeps
+     waiting for a timer callback would otherwise sleep forever. Pumped
+     AFTER the sleep, so a callback due during it fires as soon as it can. */
+  winmm_timers_pump();
+  ret_std(C, 0, 1);
 }

@@ -39,7 +39,6 @@ static const char *const k_override_names[kX2ConfigOverrideCount] = {
     [kX2ConfigMaxFrames] = "X2_MAX_FRAMES",
     [kX2ConfigNativeFmv] = "X2_NATIVE_FMV",
     [kX2ConfigPadGlyphProbe] = "X2_PAD_GLYPH_PROBE",
-    [kX2ConfigPeek] = "X2_PEEK",
     [kX2ConfigPhysicalMemoryMb] = "X2_PHYS_MB",
     [kX2ConfigProfile] = "X2_PROFILE",
     [kX2ConfigPromptGlyphs] = "X2_PROMPT_GLYPHS",

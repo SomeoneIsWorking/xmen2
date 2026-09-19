@@ -383,6 +383,7 @@ add_test(NAME movie_image_layout COMMAND test_movie_image_layout)
 add_executable(test_win_path tests/test_win_path.c src/native/win_path.c
     src/native/host_dir_cache.c)
 target_include_directories(test_win_path PRIVATE src/native src/save)
+target_link_libraries(test_win_path PRIVATE x2_runtime_config)
 target_compile_definitions(test_win_path PRIVATE
     X2_TEST_WIN_PATH_ROOT="${CMAKE_BINARY_DIR}/test-win-path")
 add_test(NAME win_path COMMAND test_win_path)
@@ -899,6 +900,11 @@ target_link_libraries(test_guest_memory PRIVATE pthread)
 foreach(_granule IN ITEMS 4096 16384 -1 0 2048 12288)
     add_test(NAME guest_memory_${_granule} COMMAND test_guest_memory ${_granule})
 endforeach()
+
+add_executable(test_threads_ready tests/test_threads_ready.c
+               src/native/threads_ready.c)
+target_include_directories(test_threads_ready PRIVATE src/native)
+add_test(NAME threads_ready COMMAND test_threads_ready)
 
 add_executable(test_kernel32_wait tests/test_kernel32_wait.c
                src/native/kernel32_wait.c tests/native_stubs.c)
@@ -1502,6 +1508,7 @@ set(X2_NATIVE_SOURCES
     src/native/attr_stack.c
     src/native/attr_stack_verify.c
     src/native/x86_engine_jit_diag.c
+    src/native/guest_inspect.c
     src/native/x86_engine_x87_census.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c
@@ -1631,6 +1638,7 @@ set(X2_NATIVE_SOURCES
     src/presentation/hud_layout.c
     src/native/xbox_defaults.c
     src/native/dsound.c
+    src/native/dsound_mixer.c
     src/audio/movie_audio.c
     src/media/fmv_audio_decode.c
     src/media/fmv_decoder_drain.c
@@ -1658,6 +1666,7 @@ set(X2_NATIVE_SOURCES
     src/native/winmm.c
     src/native/thread_report.c
     src/native/threads.c
+    src/native/threads_ready.c
     src/native/threads_engine_report.c
     src/native/threads_yield.c
     src/native/x86_hotep.c

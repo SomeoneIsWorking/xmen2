@@ -223,7 +223,7 @@ uint32_t x86_native_thunk(const char *mod, const char *sym);
 uint32_t x86_native_thunk_at(const char *mod, const char *sym,
                              uint32_t ordinal);
 
-/* Dump guest memory named by X2_PEEK (see the definition for the format).
+/* Dump guest memory named by the `peek` setting (see the definition for the format).
    Safe from a signal handler: reads via process_vm_readv, so an unmapped
    address reports itself instead of faulting again. */
 void x86_peek_report(void);

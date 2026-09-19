@@ -43,7 +43,6 @@ typedef enum X2ConfigOverride {
   kX2ConfigMaxFrames,
   kX2ConfigNativeFmv,
   kX2ConfigPadGlyphProbe,
-  kX2ConfigPeek,
   kX2ConfigPhysicalMemoryMb,
   kX2ConfigProfile,
   kX2ConfigPromptGlyphs,

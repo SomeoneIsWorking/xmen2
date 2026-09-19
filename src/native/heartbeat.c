@@ -117,36 +117,7 @@ static void *heartbeat_thread(void *arg) {
     have_dev = d3d8_device_counts(&scenes, &presents, &clears, &draws);
     gpu_draw_counts(&gpu_draws, &gpu_refused);
     heartbeat_winmm_report();
-    { /* The waits, next to the timers they pump: "the sleep asked for 16 ms
-         and returned after 178" and "the game ran at 2 fps" are the same
-         statement, and only these two numbers can tell them apart. HOW each
-         park ended rides with them: timed-out next to slept >> asked indicts
-         the lock's re-acquisition, signalled indicts the browser's wake
-         path; the parks print at zeroes, so silence is never a missing
-         counter. */
-      static unsigned long p_waits, p_sig, p_tmo, p_handoff;
-      static unsigned long long p_asked, p_slept;
-      unsigned long waits, oversleep, sig, tmo, handoffs, handoff_worst_ms;
-      unsigned long long asked, slept;
-      kernel32_wait_counts(&waits, &asked, &slept, &oversleep);
-      guest_yield_counts(&handoffs, &handoff_worst_ms, &sig, &tmo);
-      if (waits)
-        x2_log_error("[HB]           wait sleeps %lu (+%lu), asked %llu ms "
-                     "(+%llu), slept %llu ms (+%llu), worst oversleep "
-                     "%lu ms\n",
-                     waits, waits - p_waits, asked, asked - p_asked, slept,
-                     slept - p_slept, oversleep);
-      x2_log_error("[HB]           parks %lu signalled (+%lu), %lu timed out "
-                   "(+%lu); hand-offs waited %lu (+%lu), longest %lu ms\n",
-                   sig, sig - p_sig, tmo, tmo - p_tmo, handoffs,
-                   handoffs - p_handoff, handoff_worst_ms);
-      p_waits = waits;
-      p_asked = asked;
-      p_slept = slept;
-      p_sig = sig;
-      p_tmo = tmo;
-      p_handoff = handoffs;
-    }
+    heartbeat_wait_report();
     {
       /*
        * Preemptions, HERE and not only at shutdown.

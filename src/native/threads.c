@@ -44,6 +44,7 @@
 #include "pe_map.h"
 #include "threads.h"
 #include "threads_internal.h"
+#include "threads_ready.h"
 #include "threads_yield.h"
 #include "x86_engine.h"
 #include "x86rt.h"
@@ -165,15 +166,14 @@ static uint32_t g_next_tid = 1000;
 static void guest_suspend_point(void);
 int scheduler_has_waiter(void) {
   int i;
+  double now = now_s();
   if (g_waiters)
     return 1;
   for (i = 0; i <= MAX_THREADS; i++) {
     GuestThread *t = &g_thread[i];
-    if (!t->used || t->finished || t == g_self)
+    if (t == g_self)
       continue;
-    if (t->state == TS_COND ||
-        (t->state == TS_SUSPENDED && t->suspended == 0) ||
-        (t->state == TS_NEW && t->suspended == 0))
+    if (guest_thread_ready_to_run(t, now))
       return 1;
   }
   return 0;
@@ -300,25 +300,22 @@ void guest_cond_wait_ms(uint32_t ms) {
     sched_attach_main();
     t = g_self;
   }
+  guest_thread_enter_cond_wait(t, ms, now_s());
   state_set(TS_COND);
   g_switches++;
   g_cond_waiters++;
   if (ms == 0xFFFFFFFFu) {
     pthread_cond_wait(&g_cond, &g_lock);
   } else {
-    struct timespec ts;
+    struct timespec now, ts;
     int rc;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += (time_t)(ms / 1000u);
-    ts.tv_nsec += (long)(ms % 1000u) * 1000000L;
-    if (ts.tv_nsec >= 1000000000L) {
-      ts.tv_sec++;
-      ts.tv_nsec -= 1000000000L;
-    }
+    clock_gettime(CLOCK_REALTIME, &now);
+    guest_thread_wait_deadline(&now, ms, &ts);
     rc = pthread_cond_timedwait(&g_cond, &g_lock, &ts);
     guest_yield_note_park(rc == ETIMEDOUT);
   }
   g_cond_waiters--;
+  guest_thread_leave_cond_wait(t);
   /* The wait re-acquired the lock inside pthread_cond_timedwait; that is a
      fresh turn, and the hand-off promise has to hear about it. */
   guest_yield_turn_taken();
@@ -327,11 +324,12 @@ void guest_cond_wait_ms(uint32_t ms) {
   guest_suspend_point();
 }
 
-/* Wake everything waiting. Called whenever a guest-visible object is
-   signalled -- a thread exiting, an event set, a critical section left. Does
-   NOT switch: the caller is in the middle of guest code and Win32's SetEvent
-   does not yield either. */
+/* Wake everything waiting -- a thread exiting, an event set, a critical
+   section left. Does NOT switch: the caller is in the middle of guest code
+   and Win32's SetEvent does not yield either. */
 void guest_cond_broadcast(void) {
+  /* The broadcast is what makes a parked thread READY: see threads_ready.h. */
+  guest_thread_mark_cond_ready(g_thread, MAX_THREADS + 1);
   if (g_cond_waiters > 0)
     pthread_cond_broadcast(&g_cond);
 }

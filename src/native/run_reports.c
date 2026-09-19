@@ -22,6 +22,7 @@
 #include "heartbeat.h"
 #include "input_record.h"
 #include "live_session.h"
+#include "movie.h"
 #include "prompt_glyph_batch.h"
 #include "prompt_glyph_draw.h"
 #include "prompt_glyph_metrics.h"
@@ -84,7 +85,7 @@ void x2_interrupt_reports(int killed) {
   pad_glyphs_report();
   dialog_prompts_report();
   {
-    extern void dsound_report(void), x2_movie_report(void);
+    extern void dsound_report(void);
     dsound_report();
     x2_movie_report();
   }
