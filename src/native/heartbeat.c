@@ -3,6 +3,7 @@
 /* See heartbeat.h. */
 #include "heartbeat.h"
 #include "heartbeat_reports.h"
+#include "heartbeat_stall.h"
 #include "kernel32_handles.h"
 #include "threads.h"
 #include "threads_yield.h"
@@ -68,7 +69,7 @@ int heartbeat_running(void) { return g_running; }
 static void *heartbeat_thread(void *arg) {
   unsigned long p_cross = 0, p_scenes = 0, p_presents = 0, p_clears = 0,
                 p_draws = 0, p_gpu = 0, p_ref = 0;
-  int first = 1, stalled = 0, dumped = 0;
+  int first = 1;
   (void)arg;
   for (;;) {
     struct timespec req;
@@ -115,21 +116,7 @@ static void *heartbeat_thread(void *arg) {
     cross = x86_crossings();
     have_dev = d3d8_device_counts(&scenes, &presents, &clears, &draws);
     gpu_draw_counts(&gpu_draws, &gpu_refused);
-    { /* Multimedia timers: a stall whose cause is "the callback that
-         would have ended this wait never ran" looks exactly like any
-         other stall until these are on the line. */
-      extern void winmm_counts(unsigned long *, unsigned long *, int *);
-      static unsigned long p_fire, p_pump;
-      unsigned long fire, pump;
-      int live;
-      winmm_counts(&fire, &pump, &live);
-      if (fire || pump || live)
-        x2_log_error("[HB]           winmm %lu fire(s) (+%lu), "
-                     "%lu pump(s) (+%lu), %d timer(s) live\n",
-                     fire, fire - p_fire, pump, pump - p_pump, live);
-      p_fire = fire;
-      p_pump = pump;
-    }
+    heartbeat_winmm_report();
     { /* The waits, next to the timers they pump: "the sleep asked for 16 ms
          and returned after 178" and "the game ran at 2 fps" are the same
          statement, and only these two numbers can tell them apart. HOW each
@@ -270,6 +257,11 @@ static void *heartbeat_thread(void *arg) {
                        (double)gn * 1e-6, 100.0 * (double)gn / total);
       }
     }
+    /* Before any branch that can end this beat early: a stopped guest is
+       the case whose subsystem accounts matter most, and the stall
+       branch's `continue` used to silence every one of them. */
+    heartbeat_subsystem_reports();
+
     if (first) {
       first = 0;
       p_cross = cross;
@@ -288,14 +280,9 @@ static void *heartbeat_thread(void *arg) {
       continue;
     }
 
-    if (cross == p_cross) {
-      /* The one case that IS a hang, and it has to be said in words: a
-         guest that executed nothing is not slow, it is stopped. */
-      x2_log_error("[HB] %6.1fs  the guest executed NOTHING in the "
-                   "last %.1fs (crossings unchanged at %lu) -- it is "
-                   "blocked inside host code or stopped, not "
-                   "looping.\n",
-                   t, g_period, cross);
+    if (heartbeat_stall_observe(t, g_period, cross, cross != p_cross, have_dev,
+                                presents != p_presents)) {
+      p_presents = presents;
       continue;
     }
 
@@ -413,35 +400,6 @@ static void *heartbeat_thread(void *arg) {
         p_gen = gen;
       }
     }
-    /*
-     * A stall -- executing, not presenting -- dumps the ring, ONCE.
-     *
-     * This is the state issue #35 was: 1051 frames at 60fps and then the
-     * frame function is never entered again while the guest keeps running
-     * millions of crossings a second. Everything that could say what it is
-     * doing (the ring) used to be reachable only by killing the run, and
-     * the kill path is a signal handler where stdio deadlocks. From this
-     * thread it is an ordinary call.
-     *
-     * The guest is still writing the ring while it is read, so an entry
-     * can be torn. That is stated in the header rather than prevented: a
-     * lock here would let a diagnostic stall the run it is measuring.
-     */
-    if (have_dev && presents == p_presents && cross != p_cross) {
-      if (++stalled == 2 && !dumped) {
-        dumped = 1;
-        x2_log_error("[HB] the guest is EXECUTING but has presented "
-                     "nothing for %.1fs. Dumping the boundary ring "
-                     "as a snapshot -- the guest is still running, "
-                     "so a line may be torn. Reported once.\n",
-                     2 * g_period);
-        x86_ring_dump();
-      }
-    } else {
-      stalled = 0;
-    }
-
-    heartbeat_subsystem_reports();
 
     p_cross = cross;
     p_scenes = scenes;
@@ -458,6 +416,8 @@ void heartbeat_start(void) {
   const char *e = x2_config_override_get(kX2ConfigHeartbeat);
   pthread_t th;
   int rc;
+
+  heartbeat_stall_reset();
 
   if (e && *e)
     g_period = strtod(e, NULL);

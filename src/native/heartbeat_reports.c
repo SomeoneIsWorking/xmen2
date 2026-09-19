@@ -4,7 +4,10 @@
 #include "control.h"
 #include "dinput_pad.h"
 #include "guest_clock.h"
+#include "winmm.h"
 #include "x86rt_native.h"
+
+#include "x2_log.h"
 
 void heartbeat_subsystem_reports(void) {
   /* Whatever X2_PEEK names, on EVERY beat -- a spin is a loop over
@@ -26,4 +29,21 @@ void heartbeat_subsystem_reports(void) {
      finger has landed yet" and "fingers landed and were dropped" are the two
      answers this feature has actually given on a device. */
   x2_touch_runtime_report("[HB] ");
+}
+
+void heartbeat_winmm_report(void) {
+  /* Multimedia timers: a stall whose cause is "the callback that would have
+     ended this wait never ran" looks exactly like any other stall until
+     these are on the line. */
+  static unsigned long p_fire, p_pump;
+  unsigned long fire, pump;
+  int live;
+  winmm_counts(&fire, &pump, &live);
+  if (fire || pump || live) {
+    x2_log_error("[HB]           winmm %lu fire(s) (+%lu), "
+                 "%lu pump(s) (+%lu), %d timer(s) live\n",
+                 fire, fire - p_fire, pump, pump - p_pump, live);
+  }
+  p_fire = fire;
+  p_pump = pump;
 }

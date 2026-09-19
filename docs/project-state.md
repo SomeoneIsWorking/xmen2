@@ -707,6 +707,29 @@ deliberately not pinned, because no browser available here can emulate a
 non-zero inset and a run of all zeroes cannot tell a correct reader from a
 broken one (issue #170).
 
+An Android emulator run of the same revision cannot yet exercise any of this,
+and the reason is upstream of touch. On the API 35 x86_64 emulator the run
+reaches D3D8 device creation and then the guest spins inside one compiled
+block — 570,985,925 block entries, 98.4% of them re-entering the block just
+left, while host-boundary crossings stay frozen at 25,154. SDL is pumped only
+from the guest's `PeekMessageA`/`GetMessageA`, so 25 dispatched taps reached
+nothing: the census reports "no contact reached the port this run ... Nothing
+was dropped; nothing arrived" (issue #172). This is a boot defect, not a touch
+one; touch activation has no platform conditional in `src/input/` and the same
+code publishes to the pad in a browser.
+
+Reading any of that on Android required fixing the heartbeat first. Its
+subsystem roll-call — touch census, pad, control channel, guest clock — sat
+after a `continue` taken whenever crossings were unchanged, so a stalled run,
+the case whose accounts matter most, printed none of them: `grep -c "[touch]"`
+over a full logcat returned **0**. The roll-call now runs before any branch
+that can end the beat early, and the same `continue` had been suppressing the
+boundary-ring dump, whose tail is what identified the spin. The frozen-crossing
+line also asserted a cause it had not observed ("blocked inside host code or
+stopped, not looping") while the engine's own counter showed it looping; it now
+names all three possibilities and points at the block-entry line that
+discriminates them.
+
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 
 The browser artifact loads and rejects a malformed ZIP through its native

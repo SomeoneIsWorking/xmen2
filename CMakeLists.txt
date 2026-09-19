@@ -1661,6 +1661,7 @@ set(X2_NATIVE_SOURCES
     src/native/entity_spawn_probe.c
     src/native/heartbeat.c
     src/native/heartbeat_reports.c
+    src/native/heartbeat_stall.c
     src/d3d8/d3d8_com.c
     src/d3d8/d3d8_caps.c
     src/d3d8/d3d8_state.c

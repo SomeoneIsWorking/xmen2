@@ -16,4 +16,8 @@
  */
 void heartbeat_subsystem_reports(void);
 
+/* The multimedia-timer line on the beat; prints nothing only when no timer
+   has ever existed, so silence is never a missing counter. */
+void heartbeat_winmm_report(void);
+
 #endif /* X2_HEARTBEAT_REPORTS_H */
