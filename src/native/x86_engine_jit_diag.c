@@ -5,6 +5,7 @@
 #include "x86rt_native.h"
 
 #include "cpu.h"
+#include "guest_memory.h"
 
 #include <lucent/cvar_c.h>
 #include <lucent/log_c.h>
@@ -43,6 +44,31 @@ static void watch_report(void *user, uint32_t addr, uint32_t previous,
   lucent_log_error("engine", "jit.watch:   esp=%08x ebp=%08x esi=%08x edi=%08x",
                    cpu->reg[kX86pEsp], cpu->reg[kX86pEbp], cpu->reg[kX86pEsi],
                    cpu->reg[kX86pEdi]);
+  {
+    /*
+     * The words at ESP. A __stdcall or __thiscall callee's arguments are
+     * there and nowhere else, and they are what a report like this is usually
+     * after: measured (issue #158), the register file named the FUNCTION that
+     * failed but not the size or the reason code it was told, which were
+     * argument one and two. Printed as raw words because whether [esp+0] is a
+     * return address or an argument depends on where the watched address sits
+     * in the callee, and guessing would be worse than showing.
+     */
+    const uint32_t *stack =
+        (const uint32_t *)guest_memory_const_pointer(cpu->reg[kX86pEsp]);
+    if (stack) {
+      lucent_log_error("engine",
+                       "jit.watch:   [esp+00..1c] %08x %08x %08x %08x %08x "
+                       "%08x %08x %08x",
+                       stack[0], stack[1], stack[2], stack[3], stack[4],
+                       stack[5], stack[6], stack[7]);
+    } else {
+      lucent_log_error("engine",
+                       "jit.watch:   esp 0x%08x is not mapped guest memory, so "
+                       "there are no argument words to show",
+                       cpu->reg[kX86pEsp]);
+    }
+  }
   if (guest_thread_last_crossing(&what, &import_at, &ago)) {
     lucent_log_error("engine",
                      "jit.watch:   this thread last crossed into %s (thunk "
