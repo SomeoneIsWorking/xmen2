@@ -241,6 +241,28 @@ int main() {
 
   x2_settings_store_init();
   x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
+  /*
+   * THE WHOLE RUN BELOW HAPPENS UNDER A STALE CONTROLLER RESERVATION.
+   *
+   * This is the ordinary state of a phone whose owner once paired a
+   * Bluetooth pad: the stored assignment survives, the device does not. It
+   * used to stop touch claiming player one -- while x2_player_input_sync,
+   * which resolves the reservation through dinput_pad_for_persistent_id,
+   * left player one unassigned because no such device is here. Player one
+   * ended up with no controller at all and touch declined to fill the
+   * vacancy it exists to fill.
+   *
+   * Setting it here rather than in a case of its own means every check that
+   * follows -- the claim, the presses, the axes, the guest's own buffer --
+   * is made in its presence.
+   */
+  check(x2_settings_assign_controller(x2_settings_store(),
+                                      "a-pad-that-is-not-here", 0) != 0,
+        "a stale reservation for an absent controller is stored",
+        "the ordinary state of a phone that once saw a Bluetooth pad");
+  check(x2_settings_player_controller(x2_settings_store(), 0) != nullptr,
+        "and player one's stored reservation names it",
+        "so the run below is made under one");
   x2_touch_runtime_window(window);
 
   /* The census's OTHER branch, printed before anything has been touched.
@@ -302,8 +324,8 @@ int main() {
   check(button_down(pad, "y"), "Jump reaches the pad the game reads",
         "gamepad button y is down");
   check(x2_transient_controller_has_assignment(0) != 0,
-        "the touch pad is claimed by player one",
-        "a pad no player reads is a pad the guest never polls");
+        "the touch pad is claimed by player one despite the stale reservation",
+        "the reserved controller is not here, so it holds nothing");
 
   /* Past SDL, into the buffer the game actually reads. */
   const int slot = dinput_pad_virtual_slot();

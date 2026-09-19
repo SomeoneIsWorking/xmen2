@@ -8,6 +8,7 @@ extern "C" {
 
 #include "../config/settings.h"
 #include "../config/settings_store.h"
+#include "../native/dinput_pad.h"
 #include "../native/dinput_pad_virtual.h"
 #include "touch_census.h"
 #include "touch_controls.h"
@@ -186,7 +187,21 @@ void claim_player_one() {
     census.player_one_held_by_transient++;
     return;
   }
-  if (x2_settings_player_controller(x2_settings_store(), 0)) {
+  /*
+   * A STORED reservation only holds player one while the controller it names
+   * is actually here.
+   *
+   * This used to test that the setting existed at all, which is not what
+   * holds a player: x2_player_input_sync resolves a reservation through
+   * dinput_pad_for_persistent_id and leaves the player unassigned when that
+   * device is absent. So a phone whose owner had once paired a Bluetooth pad
+   * kept a reservation nothing could satisfy, player one ended up with no
+   * controller whatsoever, and touch declined to fill the vacancy it exists
+   * to fill. Same resolver, same answer.
+   */
+  const char *const reserved =
+      x2_settings_player_controller(x2_settings_store(), 0);
+  if (reserved && dinput_pad_for_persistent_id(reserved) >= 0) {
     census.player_one_held_by_setting++;
     return;
   }
