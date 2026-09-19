@@ -83,6 +83,7 @@ lucent::cvar::Var<long> g_jit_profile{"jit.profile", 0};
  * a strictly bigger question than the static exit counts. Prints at shutdown.
  */
 lucent::cvar::Var<long> g_jit_chain{"jit.chain", 0};
+lucent::cvar::Var<bool> g_x87_census{"x87.census", false};
 
 /* The JIT code arena's two independent limits, in blocks and in megabytes.
  * Either can be the one that binds, and which one it is decides what to fix,
@@ -150,6 +151,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_inline_dispatch);
   lucent::cvar::register_var(g_jit_profile);
   lucent::cvar::register_var(g_jit_chain);
+  lucent::cvar::register_var(g_x87_census);
   lucent::cvar::register_var(g_jit_blocks);
   lucent::cvar::register_var(g_jit_code_mb);
   lucent::cvar::register_var(g_hotep);

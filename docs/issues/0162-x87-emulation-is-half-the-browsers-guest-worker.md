@@ -802,3 +802,109 @@ What this does NOT rule out: a register file that keeps values in binary64
 while they stay exact, which would remove the per-operation conversion rather
 than the arithmetic. That idea inherits the same acceptance question and must
 measure it FIRST -- the number above says the answer is probably no.
+
+## The softfloat itself is close to its floor on this target
+
+Before writing a specialised ext80 multiply, it was benchmarked against the one
+Bochs ships, under node, on the shapes this title actually multiplies:
+
+| operands | Bochs `extF80_mul` | a hand-written normal-operand multiply | ratio |
+|---|---|---|---|
+| binary32-derived | 13.6 ns | 10.6 ns | 1.28x |
+| full 64-bit significands | 14.0 ns | 7.6 ns | 1.85x |
+
+The hand-written arm agreed with Bochs on every value; it differed only by not
+setting the rounding-up bit, which is a line to add rather than a reason.
+
+1.28x on the operands the game supplies is not the lever it looked like. The
+reason is structural and worth writing down so it is not re-derived: **WebAssembly
+has no 64x64 to 128 multiply**, so the one instruction an x87 unit spends on a
+significand product becomes about twenty, and that cost is in both arms. A
+scalar ext80 multiply on this target has a floor near 8 ns whoever writes it.
+
+Per-operation cost of the shipping path, same conditions: add 16.5 ns, sub
+20.4 ns, mul 15.6 ns, div 19.5 ns. Of that, about 3.5 ns is the adapter
+building a `softfloat_status_t` per call rather than the arithmetic.
+
+So the remaining x87 work is the PLUMBING, not the arithmetic: the profile
+puts `x86p_wasm_x87_arith_mem_bits` at 2.12% of the guest worker,
+`x86p_x87_reg_from_operand_bits` at 1.87%, `x86p_wasm_x87_arith_reg` at 1.01%
+and `x86p_wasm_x87_copy` at 0.53% -- about six points spent moving operands
+into and around a computation that costs twenty-two.
+
+## What the route's x87 arithmetic actually IS, counted
+
+Every figure above about which cases matter was an inference from a static
+population or from a bench's own operands. x86port `91bdfa5` counts the real
+thing: an op census on the x87 unit, off by default, armed with
+`--set x87.census=1`, which records each arithmetic operation the run performs
+and asks the encoding-level rules themselves whether they can answer it.
+
+Dead Zone route, `#test-play`, 158.0M operations:
+
+| operation | share of the route's arithmetic |
+|---|---|
+| FADD | 52.5% |
+| FMUL | 35.9% |
+| FSUB | 11.5% |
+| FDIV | 0.2% |
+
+**FDIV is 0.2%.** Every per-operation cost in the table above weighted them
+equally, and a divide costs the most of the four; it is worth nothing here.
+
+And why an operation could not be answered by an integer rule, which is the
+number that decided what to build:
+
+| | share |
+|---|---|
+| both operands normal | 54.4% |
+| **at least one operand a ZERO** | **44.6%** |
+| a control word the rules do not handle (RC or PC) | 1.1% |
+| a subnormal, unnormal, infinity or NaN | **3 operations in 158 million** |
+
+The last row is the one to read twice. This title's x87 arithmetic contains
+essentially no special values at all -- the softfloat's entire handling of
+subnormals, infinities and NaNs is being paid for, per operation, by a route
+that reaches it three times in a hundred and fifty-eight million.
+
+A zero operand needs no arithmetic: times anything finite it is a zero of the
+combined sign, added it is the other operand exactly. Taking zeros moves what
+an integer rule can answer from 54.4% to **99%** of the route, which is what
+x86port `ded8126` does.
+
+The census counts what it can ANSWER rather than what merely looks eligible:
+it calls the rules instead of repeating their preconditions, because a second
+copy of those is how a census comes to report headroom that does not exist.
+The gap it leaves -- eligible and unanswered -- is the work not done, and it
+names FDIV explicitly so a missing rule cannot read as a refusal.
+
+## The rules in the shipping path: +2.9%, and the control is what proves it
+
+x86port `93de3e9` sends the ordinary cases to the encoding rules and leaves
+everything else on the Bochs call. Three builds over the same route, medians
+across about forty steady five-second windows each:
+
+| build | rule coverage of the route's arithmetic | median presents/5s | IQR | presents/s |
+|---|---|---|---|---|
+| baseline | 0 | 69 | 68-69 | 13.80 |
+| multiply only | 12.5% of operations | 69 | 68-70 | 13.80 |
+| **mul + add + sub + zeros** | **99% of operations** | **71** | **70-72** | **14.20** |
+
+**Medians, not means, and the reason is a mistake worth not repeating.** The
+first reading of this run used the mean of the last thirty windows and reported
+12.21 presents/s -- a large regression -- because the run had a seven-window
+stall in the middle from unrelated load on the machine, and because a run of a
+different length puts "the last thirty windows" over a different part of a route
+that is not uniform. The per-window sequence showed it immediately: 70-73
+throughout, 24-30 for seven windows, 70-73 again.
+
+**The middle row is the control.** The same change at an eighth of the coverage
+reproduces the baseline exactly. That is what says the gain belongs to the added
+coverage rather than to the machine, and it is also why the multiply-only
+attempt was recorded here as a null result rather than as a small win -- it was
+one.
+
+What is left for x87 is the plumbing, unchanged by this: the call, the operand
+conversion and the register-file bookkeeping around an arithmetic that no longer
+dominates its own path. That wants the rules emitted into the block, and these
+rules are what such an emitter must match.

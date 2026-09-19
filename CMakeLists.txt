@@ -443,7 +443,8 @@ target_link_libraries(test_x86_engine_diagnostic PRIVATE x86port_runtime)
 add_test(NAME x86_engine_diagnostic COMMAND test_x86_engine_diagnostic)
 
 add_executable(test_engine_hot_blocks tests/test_engine_hot_blocks.cpp
-               src/native/x86_engine_report.c)
+               src/native/x86_engine_report.c
+               src/native/x86_engine_x87_census.c)
 target_include_directories(test_engine_hot_blocks PRIVATE src/native
                        src/runtime/x86_abi)
 target_link_libraries(test_engine_hot_blocks PRIVATE x86port_runtime)
@@ -1446,6 +1447,7 @@ set(X2_NATIVE_SOURCES
     src/native/attr_stack.c
     src/native/attr_stack_verify.c
     src/native/x86_engine_jit_diag.c
+    src/native/x86_engine_x87_census.c
     src/native/x86_dispatch_report.c
     src/presentation/aspect_fit.c
     src/presentation/boot_blackout.c

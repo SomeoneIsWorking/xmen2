@@ -1,6 +1,7 @@
 #include "x86_engine_report.h"
 
 #include "guest_memory.h"
+#include "x86_engine_x87_census.h"
 #include "x86rt_native.h"
 
 #include "jit_chain_census.h"
@@ -218,6 +219,7 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.x87_stores_translated);
   report_invalidation(&js);
   x86_engine_report_chain_census(jit, "[HB] ");
+  x86_engine_x87_census_report("[HB] ");
   x86_engine_report_hot_blocks(jit, "[HB] ");
 }
 
@@ -339,5 +341,6 @@ void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
         100.0 * (double)js.simd_inline / (double)js.simd_translated,
         (unsigned long long)(js.simd_translated - js.simd_inline));
   x86_engine_report_chain_census(jit, "");
+  x86_engine_x87_census_report("");
   x86_engine_report_hot_blocks(jit, "");
 }

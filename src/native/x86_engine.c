@@ -7,6 +7,7 @@
 #include "x86_engine_dispatch.h"
 #include "x86_engine_intercept.h"
 #include "x86_engine_jit_pool.h"
+#include "x86_engine_x87_census.h"
 #include "x86_engine_private.h"
 #include "x86_engine_report.h"
 #include "x86_guest_call_stack.h"
@@ -184,6 +185,15 @@ int x2_engine_call(uint32_t addr, CPU *C) {
 
   if (!g_engine.ready)
     return 0;
+
+  /*
+   * Every CPU that runs guest code passes through here, and one that does not
+   * performs no x87 arithmetic to count, so this is where an optional x87
+   * instrument is attached. Putting it in cpu_reset would have been one line
+   * fewer and would have given a header included almost everywhere a link
+   * dependency on the engine.
+   */
+  x86_engine_x87_census_attach(cpu);
 
   /*
    * A thread with no TEB cannot run guest code correctly, and the
