@@ -767,16 +767,31 @@ one, and they meet at `dinput_pad_handle`, which distinguishes an empty slot
 from a device SDL gave no handle for — two different defects that used to
 return the same "not pressed" silently.
 
-Gap: in a browser the press still never reaches the guest. Three browser runs
-after the fixes above: the overlay reports the gamepad DOWN at the moment it
-publishes, the release is deferred rather than taken, every guest read reaches
-a real device with a real handle (the new empty-slot counter stays at zero) --
-and 0 of 39,850 reads come back DOWN. A reader-side view was added to the
-thread that does the reading; in its first form it printed nothing at all,
-which was its own defect, not evidence, and it now reports on the first
-refresh after each press whatever it finds. The two halves of the transport
-disagree across threads, and naming which one loses the press is the next
-measurement (issue #174).
+A touch press now reaches the guest in a browser too. It never had: the
+overlay publishes through an SDL virtual joystick, SDL announces every button
+it sets as an ordinary joystick and gamepad event, and the input-source owner
+read those as a controller arriving -- so it flipped away from touch and
+cancelled every held zone about a millisecond after the press was made. Every
+run had said so in its own beat, `source says not touch` printed beside
+arriving contacts, while the counter next to it claimed cancellations for "a
+lost window, rotation or layout change", three causes it had never observed.
+The pad owner now tells the source owner which joystick id is the port's own,
+the same way the SDL_TOUCH_MOUSEID checks already handled the synthetic mouse
+events a touchscreen produces, and the four cancellation causes are counted
+apart. Measured in `scratch/web/wasmgoal/verify18`: 30 of 31,840 guest reads
+came back DOWN and 14 axis reads off centre, against 0 of 167,890 before; the
+first press was held across 20 reads, 2 of which saw it down.
+
+Three defects were fixed on the way and are covered by
+`tests/test_touch_runtime` (44 checks) and `tests/test_touch_source` (18): the
+diagnostic probe's reads counted as the game's, a deferred release that landed
+was never latched into SDL, and a press waiting for its reader was released on
+the read of a different button.
+
+Gap: no run on a real desktop touchscreen or an Android device (issue #172
+blocks Android). A press on "start" is still reported as taken back; opening
+the pause menu hides the overlay, so that may be correct, and the new
+per-cause counts will say.
 
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 

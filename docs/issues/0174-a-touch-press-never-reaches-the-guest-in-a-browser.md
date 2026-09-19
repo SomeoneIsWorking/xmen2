@@ -1,9 +1,11 @@
 # 0174 — a touch press never reaches the guest in a browser
 
 State items: S020 (platform-neutral touch play), S021 (web product)
-Status: open. The same press reaches the guest natively (`tools/live_case.py
-touch-pad`, 7/7) and in `tests/test_touch_runtime` (44 checks); only the
-browser loses it.
+Status: FIXED. The overlay's own virtual pad was flipping the input source
+away from touch, which cancelled every held zone about a millisecond after the
+press was made. Measured after the fix (`scratch/web/wasmgoal/verify18`): 30
+of 31,840 guest reads came back DOWN and 14 axis reads off centre, against 0
+of 167,890 before.
 
 ## Symptom
 
@@ -40,7 +42,27 @@ stay at zero -- never see it.
 - **The wait was satisfied by another value's reader.** The wait is per button
   and per axis, not on a total.
 
-## The open question
+## The cause
+
+The on-screen controls publish through an SDL virtual joystick, and SDL
+announces every button and axis they set as an ordinary joystick and gamepad
+event. `x2_touch_source_note` read those as a controller arriving, flipped the
+source away from touch, and `x2_touch_runtime_cancel` let go of every held
+zone -- so the release arrived as a cancellation, took the press back instead
+of completing it, and never waited for a reader.
+
+The tell was in every run's own beat: `source says not touch` printed in the
+same line as arriving contacts. The counter beside it was reported as
+"cancellation(s) for a lost window, rotation or layout change" -- three causes
+it had never observed, none of them this one.
+
+The fix is the same one the `SDL_TOUCH_MOUSEID` checks already applied to the
+synthetic mouse events a touchscreen produces: that pad is the same finger.
+`x2::input::touch_pad` tells `touch_source` which joystick id is the port's
+own, joystick axis events gained the deflection test gamepad ones already had,
+and the four cancellation causes are counted apart.
+
+## The question it took to get there
 
 Whether the reading thread can see the virtual joystick state the setting
 thread wrote at all. `dinput_pad_virtual_report_reader_view` reports, on the
@@ -49,10 +71,17 @@ button, gamepad button, and the pending flag -- and says so when it finds
 nothing. Its first form only spoke when it found a button held and was
 therefore silent for a whole run, which was its own defect and not evidence.
 
-## Next measurement
+## What the measurements said, in order
 
-One browser run carrying the reader view in its press-triggered form, and the
-per-button wait. If the reader thread reports the button up while the setter
-reported it down, the two threads disagree about the same SDL device and the
-transport is the defect; if it reports the button down, the loss is between
-the joystick layer and what the guest assembles into DIJOYSTATE2.
+The reader-side view reported, on the first pad refresh after each press, that
+nothing was down and nothing was awaiting a reader -- on the same thread that
+set it. The hold never printed, so the release's guard was refusing; its
+negative then named the term: `taken back 1`. That is `wait_for_a_reader == 0`,
+which only a cancelled contact produces, while the contact census counted zero
+cancelled fingers. The cancellation was coming from the port itself.
+
+## Still open
+
+A press on "start" is still reported `taken back 1`. Opening the pause menu
+hides the overlay, so that cancellation may be correct; the per-cause counts
+now in the census will say which cause fires.
