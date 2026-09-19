@@ -242,6 +242,41 @@ target_include_directories(test_touch_controls PRIVATE src/input)
 target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
 add_test(NAME touch_controls COMMAND test_touch_controls)
 
+# The only touch owner that reaches the pad the game reads, so it is the only
+# one whose failure is invisible to the others' tests. Needs SDL for the window
+# and the synthetic joystick, so it SKIPs (77) where neither exists.
+add_executable(test_touch_runtime tests/test_touch_runtime.cpp
+               src/input/touch_runtime.cpp
+               src/input/touch_census.cpp
+               src/input/touch_controls.cpp
+               src/input/touch_source.c
+               src/input/gameplay_control.c
+               src/input/transient_controller_assignment.c
+               src/input/controller_instance.c
+               src/presentation/touch_layout.c
+               src/native/dinput_pad.c
+               src/native/dinput_pad_identity.c
+               src/native/dinput_pad_virtual.c
+               src/native/dinput_pad_virtual_actions.c
+               src/native/guest_clock.c
+               src/native/x2_log.c
+               src/config/settings.c
+               src/config/settings_store.c
+               src/config/config_directory.c
+               src/config/directory_create.c
+               src/config/environment.c
+               src/config/hud_settings.c
+               src/config/input_assignments.c
+               src/config/boot_mode.c)
+target_include_directories(test_touch_runtime PRIVATE
+                           src/input src/native src/config src/presentation)
+target_compile_definitions(test_touch_runtime PRIVATE X2_WITH_SDL
+    X2_TEST_TOUCH_RUNTIME_ROOT="${CMAKE_BINARY_DIR}/test-touch-runtime")
+target_link_libraries(test_touch_runtime PRIVATE lucent::lucent ${X2_SDL})
+add_test(NAME touch_runtime COMMAND test_touch_runtime)
+set_tests_properties(touch_runtime PROPERTIES SKIP_RETURN_CODE 77
+    ENVIRONMENT "SDL_VIDEODRIVER=dummy;SDL_AUDIODRIVER=dummy")
+
 add_executable(test_hud_portrait_position tests/test_hud_portrait_position.c
                src/native/hud_portrait_position.c)
 target_include_directories(test_hud_portrait_position PRIVATE src/native)
@@ -1559,6 +1594,7 @@ set(X2_NATIVE_SOURCES
     src/native/input_probe.c
     src/input/touch_controls.cpp
     src/input/touch_runtime.cpp
+    src/input/touch_census.cpp
     src/input/touch_source.c
     src/presentation/touch_layout.c
     src/input/gameplay_control.c

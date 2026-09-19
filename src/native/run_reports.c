@@ -25,6 +25,7 @@
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyph_quads.h"
 #include "threads.h"
+#include "../input/touch_runtime.h"
 #include "touch_hud_runtime.h"
 #include "ui_transform.h"
 #include "x2_log.h"
@@ -73,6 +74,7 @@ void x2_interrupt_reports(int killed) {
   x2_ui_text_scale_report();
   x2_dialog_selection_scale_report();
   x2_touch_hud_report();
+  x2_touch_runtime_report();
   dinput_device_report();
   dinput_pad_report();
   x2_alchemy_controller_report();

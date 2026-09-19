@@ -78,6 +78,11 @@ size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity);
  * placement asks this one, because it is laid out before the frame that would
  * report that control. */
 int x2_touch_runtime_active(void);
+
+/* This run's account of the feature, for the every-ending roll-call. The
+   counts and their text are owned by touch_census.h. */
+void x2_touch_runtime_report(void);
+
 /* Records which kind of device produced an event. Every host event goes past
  * here, including the ones touch never handles -- that is how a key press
  * puts the on-screen pad away. */

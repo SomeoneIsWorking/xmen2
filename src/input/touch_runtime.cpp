@@ -9,6 +9,7 @@ extern "C" {
 #include "../config/settings.h"
 #include "../config/settings_store.h"
 #include "../native/dinput_pad_virtual.h"
+#include "touch_census.h"
 #include "touch_controls.h"
 #include "touch_source.h"
 #include "transient_controller_assignment.h"
@@ -38,6 +39,10 @@ std::set<std::uint32_t> active_zones;
 x2::input::PortraitPointer portrait_pointer;
 std::deque<X2TouchPointer> pending_pointers;
 SDL_Window *window;
+
+/* The run's counts belong to touch_census, which owns the text made from
+   them; this only adds to them at the points where each outcome is decided. */
+X2TouchCensus &census = *x2_touch_census();
 /* The one viewport both the control zones and the HUD relocation lay out
    from. Set with the window, so neither owner computes its own. */
 X2LayoutViewport viewport;
@@ -86,10 +91,17 @@ void publish_button(const x2::input::ActionEvent &event) {
   if (!button)
     return;
   if (release) {
-    if (!dinput_pad_virtual_release(button))
+    if (dinput_pad_virtual_release(button)) {
+      census.buttons_published++;
+    } else {
+      census.buttons_refused++;
       x2_log_error("touch: could not release virtual button %s\n", button);
-  } else if (!dinput_pad_virtual_set(button, event.value, -1.0, reason,
-                                     sizeof reason)) {
+    }
+  } else if (dinput_pad_virtual_set(button, event.value, -1.0, reason,
+                                    sizeof reason)) {
+    census.buttons_published++;
+  } else {
+    census.buttons_refused++;
     x2_log_error("touch: could not press virtual button %s: %s\n", button,
                  reason);
   }
@@ -109,10 +121,16 @@ void publish_axis(std::span<const x2::input::ActionEvent> events,
       });
   char reason[256];
   if (released) {
-    if (!dinput_pad_virtual_release(name))
+    if (dinput_pad_virtual_release(name)) {
+      census.axes_published++;
+    } else {
+      census.axes_refused++;
       x2_log_error("touch: could not release virtual axis %s\n", name);
-  } else if (!dinput_pad_virtual_set(name, *value, 0.0, reason,
-                                     sizeof reason)) {
+    }
+  } else if (dinput_pad_virtual_set(name, *value, 0.0, reason, sizeof reason)) {
+    census.axes_published++;
+  } else {
+    census.axes_refused++;
     x2_log_error("touch: could not move virtual axis %s: %s\n", name, reason);
   }
 }
@@ -141,10 +159,14 @@ void claim_player_one() {
   if (slot < 0)
     return; /* Not opened yet; try again on the next contact. */
   attempted = true;
-  if (!x2_transient_controller_assign(slot, 0))
+  if (x2_transient_controller_assign(slot, 0)) {
+    census.player_one_claimed++;
+  } else {
+    census.player_one_refused++;
     x2_log_error("touch: could not assign the touch pad (slot %d) "
                  "to player 1; touch will not reach gameplay\n",
                  slot);
+  }
 }
 
 void publish(const std::vector<x2::input::ActionEvent> &events) {
@@ -219,17 +241,44 @@ int x2_touch_runtime_viewport(X2LayoutViewport *out) {
 }
 
 int x2_touch_runtime_event(const SDL_Event *event) {
-  if (!window || !event)
+  if (!event)
     return 0;
+  const bool is_finger = event->type == SDL_EVENT_FINGER_DOWN ||
+                         event->type == SDL_EVENT_FINGER_MOTION ||
+                         event->type == SDL_EVENT_FINGER_UP ||
+                         event->type == SDL_EVENT_FINGER_CANCELED;
+  /* Counted before the gates, because "no contact ever arrived" and "contacts
+     arrived and were dropped" are the two answers the report has to tell
+     apart, and only this side of the gates can see the second one. */
+  if (is_finger) {
+    switch (event->type) {
+    case SDL_EVENT_FINGER_DOWN:
+      census.contacts_down++;
+      break;
+    case SDL_EVENT_FINGER_MOTION:
+      census.contacts_moved++;
+      break;
+    case SDL_EVENT_FINGER_UP:
+      census.contacts_up++;
+      break;
+    default:
+      census.contacts_canceled++;
+      break;
+    }
+  }
+  if (!window) {
+    if (is_finger)
+      census.ignored_no_window++;
+    return 0;
+  }
   if (!x2_touch_runtime_overlay_visible()) {
+    if (is_finger)
+      census.ignored_overlay_hidden++;
     if (!contacts.empty())
       x2_touch_runtime_cancel();
     return 0;
   }
-  if (event->type != SDL_EVENT_FINGER_DOWN &&
-      event->type != SDL_EVENT_FINGER_MOTION &&
-      event->type != SDL_EVENT_FINGER_UP &&
-      event->type != SDL_EVENT_FINGER_CANCELED)
+  if (!is_finger)
     return 0;
   int width = 0;
   int height = 0;
@@ -255,6 +304,7 @@ int x2_touch_runtime_event(const SDL_Event *event) {
            {value.x, value.y},
            id == finger.fingerID ? phase : lucent::touch::Phase::moved});
   const auto actions = controls.route(active);
+  census.zone_presses += actions.size();
   publish(actions);
   if (!contact.active)
     contacts.erase(finger.fingerID);
@@ -276,6 +326,7 @@ void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
 }
 
 void x2_touch_runtime_cancel(void) {
+  census.cancellations++;
   publish(controls.cancel());
   publish(controls.set_portraits({}, 0));
   contacts.clear();
@@ -349,4 +400,8 @@ int x2_touch_runtime_active(void) {
 int x2_touch_runtime_overlay_visible(void) {
   return window != nullptr && x2_touch_runtime_active() &&
          x2_gameplay_control_active(guest_clock_now_s());
+}
+
+void x2_touch_runtime_report(void) {
+  x2_touch_census_report(window != nullptr);
 }
