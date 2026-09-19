@@ -36,7 +36,9 @@
 #include <lucent/cvar.hpp>
 
 extern "C" {
+#include "dinput_pad.h"
 #include "dinput_pad_virtual.h"
+#include "directinput_controller_sample.h"
 #include "gameplay_control.h"
 #include "guest_clock.h"
 #include "settings.h"
@@ -129,6 +131,63 @@ bool button_down(SDL_Gamepad *pad, const char *name) {
   const SDL_GamepadButton button = SDL_GetGamepadButtonFromString(name);
   return button != SDL_GAMEPAD_BUTTON_INVALID &&
          SDL_GetGamepadButton(pad, button);
+}
+
+/*
+ * What the GUEST reads.
+ *
+ * Everything above this line stops at SDL. The game does not read SDL: it
+ * reads a DIJOYSTATE2 buffer that x2_directinput_controller_write fills from
+ * a capture of the pad in the DirectInput inventory. A press that reaches the
+ * SDL gamepad and not this buffer is a press the game never sees, and the two
+ * are separated by the DirectInput button order -- the exact place a mapping
+ * lands every press one button off.
+ */
+constexpr int32_t kAxisLo = -32768;
+constexpr int32_t kAxisHi = 32767;
+/* DIJOYSTATE2 puts the button array at +48, one byte each, 0x80 for down.
+   BTN[] in dinput_pad.c fixes the order: 3 is Y, which is what Jump
+   publishes. */
+constexpr uint32_t kButtonsOffset = 48;
+constexpr int kDirectInputButtonY = 3;
+
+int guest_buttons(int slot) {
+  SDL_UpdateJoysticks();
+  SDL_UpdateGamepads();
+  X2DirectInputControllerSample sample;
+  if (!x2_directinput_controller_capture(slot, kAxisLo, kAxisHi, &sample)) {
+    return -1; /* No device at that slot at all -- distinct from "none down". */
+  }
+  return sample.buttons;
+}
+
+/* The byte at the guest's own button offset, or -1 when the slot has no
+   device. Written through the shipping serializer, not reconstructed here. */
+/* One guest-facing axis in the range the game asks for, or the range's
+   midpoint when the slot has no device -- which is what dinput_pad_axis
+   itself returns for a missing pad, so a caller cannot read "no device" as
+   "hard left". The callers below check the device separately. */
+int32_t guest_axis(int slot, int axis) {
+  SDL_UpdateJoysticks();
+  SDL_UpdateGamepads();
+  X2DirectInputControllerSample sample;
+  if (!x2_directinput_controller_capture(slot, kAxisLo, kAxisHi, &sample)) {
+    return 0;
+  }
+  return sample.axes[axis];
+}
+
+int guest_button_byte(int slot, int button) {
+  SDL_UpdateJoysticks();
+  SDL_UpdateGamepads();
+  X2DirectInputControllerSample sample;
+  if (!x2_directinput_controller_capture(slot, kAxisLo, kAxisHi, &sample)) {
+    return -1;
+  }
+  unsigned char state[64];
+  std::memset(state, 0, sizeof state);
+  x2_directinput_controller_write(&sample, state, sizeof state);
+  return state[kButtonsOffset + static_cast<unsigned>(button)];
 }
 
 float axis_value(SDL_Gamepad *pad, const char *name) {
@@ -246,11 +305,24 @@ int main() {
         "the touch pad is claimed by player one",
         "a pad no player reads is a pad the guest never polls");
 
+  /* Past SDL, into the buffer the game actually reads. */
+  const int slot = dinput_pad_virtual_slot();
+  check(guest_buttons(slot) == (1 << kDirectInputButtonY),
+        "Jump arrives at the guest as DirectInput button 3 and nothing else",
+        "buttons bitmap " + std::to_string(guest_buttons(slot)));
+  check(guest_button_byte(slot, kDirectInputButtonY) == 0x80,
+        "the guest's own button byte reads pressed",
+        "DIJOYSTATE2+" + std::to_string(kButtonsOffset + kDirectInputButtonY));
+
   send_finger(SDL_EVENT_FINGER_UP, 1, jump_x, jump_y, width, height);
   check(!zone_is_active(TouchAction::Jump),
         "releasing clears the drawn control", "finger up");
   check(!button_down(pad, "y"), "releasing clears the pad button",
         "gamepad button y is up");
+  check(guest_buttons(slot) == 0, "and the guest sees no button held",
+        "buttons bitmap " + std::to_string(guest_buttons(slot)));
+  check(guest_button_byte(slot, kDirectInputButtonY) == 0,
+        "the guest's own button byte reads released", "finger up");
 
   /* The stick is the control a scroll steals first in a browser and the one a
      player uses constantly, so it gets the same treatment as a button. */
@@ -278,11 +350,23 @@ int main() {
   check(axis_value(pad, "leftx") > 0.5F,
         "dragging the stick right moves the pad's left axis right",
         "leftx " + std::to_string(axis_value(pad, "leftx")));
+  check(guest_axis(slot, DINPUT_PAD_AXIS_X) > kAxisHi / 2,
+        "the guest's own X axis reads right",
+        "DIJOYSTATE2 lX " +
+            std::to_string(guest_axis(slot, DINPUT_PAD_AXIS_X)));
+  check(SDL_abs(guest_axis(slot, DINPUT_PAD_AXIS_Y)) < kAxisHi / 4,
+        "and its Y axis is not dragged along with it",
+        "DIJOYSTATE2 lY " +
+            std::to_string(guest_axis(slot, DINPUT_PAD_AXIS_Y)));
 
   send_finger(SDL_EVENT_FINGER_UP, 2, edge_x, centre_y, width, height);
   check(SDL_fabsf(axis_value(pad, "leftx")) < 0.2F,
         "lifting off the stick returns the axis to rest",
         "leftx " + std::to_string(axis_value(pad, "leftx")));
+  check(SDL_abs(guest_axis(slot, DINPUT_PAD_AXIS_X)) < kAxisHi / 4,
+        "and the guest's own X axis returns to centre",
+        "DIJOYSTATE2 lX " +
+            std::to_string(guest_axis(slot, DINPUT_PAD_AXIS_X)));
 
   /* THE CHORD. The documented layout reaches the four ability actions by
    * holding Powers with the left thumb and pressing an action button with the

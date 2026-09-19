@@ -247,6 +247,7 @@ add_test(NAME touch_controls COMMAND test_touch_controls)
 # and the synthetic joystick, so it SKIPs (77) where neither exists.
 add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_runtime.cpp
+               src/input/directinput_controller_sample.c
                src/input/touch_census.cpp
                src/input/touch_controls.cpp
                src/input/touch_source.c
