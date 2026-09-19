@@ -109,6 +109,13 @@ class Case:
         env["X2_SAVE_DIR"] = str(self.profile)
         env["SDL_AUDIODRIVER"] = "dummy"
         cmd = [str(binary), "--d3d8", "--control=%d" % self.port]
+        # --set is the binary's highest-precedence cvar source, above
+        # x2native-runtime.conf and the X2_* environment. It is NOT the same
+        # file as the profile's x2native.conf, which is the player settings
+        # store and ignores a runtime cvar written into it.
+        for setting in EXTRA_SETTINGS:
+            cmd.append("--set")
+            cmd.append(setting)
         if not visible:
             cmd.insert(1, "--no-window")
         if PACING in ("uncapped", "fast"):
@@ -1098,6 +1105,9 @@ CASES.update({
 })
 
 
+EXTRA_SETTINGS: list[str] = []
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("case", nargs="?", choices=sorted(CASES))
@@ -1105,6 +1115,11 @@ def main() -> int:
     ap.add_argument("--binary", type=Path, default=BINARY,
                     help="which x2native build to run (A/B against an older "
                          "binary)")
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    dest="settings",
+                    help="extra runtime cvar, repeatable (e.g. --set "
+                         "jit.profile=65536). Passed to x2native as --set, "
+                         "which outranks the conf file and the environment.")
     ap.add_argument("--boot-continue", action="store_true",
                     help="pad-persisted: boot through Continue first")
     ap.add_argument("--pacing", choices=("paced", "uncapped", "fast"),
@@ -1117,6 +1132,10 @@ def main() -> int:
         return 2
     global PACING
     PACING = args.pacing
+    for setting in args.settings:
+        if "=" not in setting:
+            refuse("--set wants KEY=VALUE, got %r" % setting)
+        EXTRA_SETTINGS.append(setting)
     Case.boot_continue = args.boot_continue
     if not args.binary.is_file():
         refuse("%s does not exist" % args.binary)

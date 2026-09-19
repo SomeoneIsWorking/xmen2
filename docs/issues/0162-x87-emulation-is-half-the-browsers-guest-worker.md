@@ -1,9 +1,11 @@
 # 0162 — x87 emulation is half the browser's guest worker
 
 - **State items:** S021
-- **Status:** measured and attributed. The guest runs at PC=extended on 100% of
-  operations, so the narrowing idea below is closed; the cost is the plumbing
-  around the arithmetic, not the arithmetic.
+- **Status:** measured and attributed, and both escapes are now closed by
+  count. The guest runs at PC=extended on 100% of operations, and computing in
+  f64 instead changes 14.57% of results, so x86port must keep producing 80-bit
+  answers. What remains is making the 80-bit path cheaper: the storage change
+  is measured at 1.62x on the arithmetic path, ~1.15x overall.
 - **Follows:** #157 and #161, each of which removed the cost that was hiding
   this one
 
@@ -197,6 +199,56 @@ that is not a property a noisy run produces.
 Any future frame claim on this route needs repeated runs with the spread
 reported, or a measurement that is not wall-clock paced at all.
 
+## Every x87 instruction is a helper call, which is why this is 47%
+
+`jit_wasm_x87.c` emits `x86p_wasm_call_import` for *every* x87 form -- load,
+store, arithmetic against memory, arithmetic against a register, compare,
+copy, exchange, the constants, the status word. Not one x87 instruction is
+lowered to inline WebAssembly.
+
+So x87 is the one instruction class the JIT does not actually compile. The
+game's translated integer code is 12% of the worker; its floating-point code
+is a sequence of calls into C, each of which reads the register file,
+classifies a value, converts a format and calls softfloat. That is the shape
+of the 47%, and it is also why the desktop build of the same JIT runs this
+route at 7.42 ms/frame while the browser needs 150: on desktop `x86p_x87_arith`
+uses the host's real 80-bit FPU and never enters any of this.
+
+## The obvious escape is measured and closed: f64 is not equivalent
+
+If the arithmetic could be done in the host's `f64` -- one WebAssembly
+instruction instead of a helper call into softfloat -- the whole category
+would collapse. It cannot, and this is a count rather than an argument.
+
+A probe on the `deadzone-render` case computed each operation both ways and
+compared, over **90,000,000 arithmetic operations**:
+
+| | operations | share |
+|---|---|---|
+| both operands exactly representable in f64 | 81,765,989 | 90.85% |
+| the ext80 result exactly representable in f64 | 81,092,372 | 90.10% |
+| computing in f64 gives the **same** value | 76,887,116 | 85.43% |
+| computing in f64 gives a **different** value | 13,112,884 | **14.57%** |
+
+One operation in seven changes. That is not a rounding-noise argument to wave
+through; it is a different game state. **So an unguarded f64 path is a fidelity
+change, not an optimization, and it is not being taken.**
+
+The instrument is trusted because it was made to show both answers before any
+count was read: it runs a must-agree case (1.5 x 2.0) and a must-differ case
+(1 / 3, where ext80 keeps eleven significand bits f64 does not) *through the
+same comparison* the counts are made with, and prints UNTRUSTED above the
+table if either comes out wrong. It also prints its totals unconditionally, so
+"0 would agree" and "the probe never ran" are different lines -- which earned
+its keep immediately, because the first version reported only at exit, the
+harness kills the process, and a whole run produced no output at all.
+
+**What the probe could not answer:** the operand-width table came back empty.
+`x87_memory.c` is the WASM path; the desktop x64 backend lowers x87 memory
+operands itself, so a desktop run never reaches it. Whether the guest mostly
+stores f32 -- which would mean an ext80 intermediate is unobservable in most
+cases -- is still unmeasured, and it needs a browser-side count.
+
 ## Cause 1 is not a small change, and here is its size
 
 The register file would have to hold `floatx80` — the guest's own format, two
@@ -218,6 +270,35 @@ review, not to start from a profile.
 The two exact converters are already cheap bit shuffles
 (`x86p_x87_f128_to_ext80_exact` is a handful of shifts and masks), so what
 this would remove is the value traffic around them, not the conversions.
+
+### And here is what it is worth, measured before writing it
+
+x86port `c959f50` adds `tests/bench_x87_arith.cpp`, which runs the same three
+operations three ways on a binary128 host and is not registered as a test
+because it reports a ratio of wall-clock times. Under node on the wasm build,
+four runs agreeing to within 0.03:
+
+| | share of the path |
+|---|---|
+| converting into and out of the storage type | **38%** |
+| the ext80 arithmetic itself | 38% |
+| the register file's own tags, stack and status | 23% |
+
+**So changing the storage is worth about 1.62x on the arithmetic path.** Across
+the x87 frames the profile names, that projects to roughly 13% of the guest
+worker, or about 1.15x overall -- real, worth taking, and not a framerate fix.
+
+The benchmark needed three arms rather than two, and the reason is worth
+keeping. With only "through the register file" against "already in ext80", the
+answer came out 2.43x -- but that difference charges the storage for the tag
+and stack work a storage change does not remove. The middle arm separates them.
+
+The first middle arm was also wrong, in a way that would have closed this
+question in the wrong direction: it used `x86p_x87_arith_portable`, which is
+native `+ - * /` on binary128 followed by a re-round -- a different algorithm,
+not arm A with a layer removed. It reported the conversion at 12% and the
+register file at 44%, i.e. "the storage is not the problem". Using the function
+arm A actually calls on this host, `x86p_x87_software_arith`, reverses that.
 
 ## What would falsify the attribution
 
