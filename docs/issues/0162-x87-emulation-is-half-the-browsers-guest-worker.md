@@ -908,3 +908,44 @@ What is left for x87 is the plumbing, unchanged by this: the call, the operand
 conversion and the register-file bookkeeping around an arithmetic that no longer
 dominates its own path. That wants the rules emitted into the block, and these
 rules are what such an emitter must match.
+
+## The profile after the change, and it re-ranks what is left
+
+Guest worker, Dead Zone route, 150s sample, the landed build:
+
+| frame | share |
+|---|---|
+| `x86p_jit_engine_run` | 12.48% |
+| **`x86p_x87_arith_raw`** | **12.24%** |
+| `x86p_ext80_add_ordinary` | 4.15% |
+| `x86p_wasm_x87_arith_mem_bits` | 2.75% |
+| `x86p_flag_cf` | 2.38% |
+| `x86p_x87_reg_from_operand_bits` | 2.27% |
+| `x86_engine_jit_intercept` | 1.65% |
+| `x86p_wasm_x87_arith_reg` | 1.54% |
+| `x86p_ext80_mul_ordinary` | 1.14% |
+| `x86p_wasm_x87_load_bits` | 0.73% |
+
+**Bochs is gone from the profile.** Its frames were 5.25% before and do not
+appear in the top twenty-two now. x87 arithmetic as a whole went from about
+22.0% to about 17.5% -- a 4.5-point drop in the guest worker, which is the
+shape a 2.9% frame-rate gain should have, since the worker is not all of frame
+time.
+
+**The number that decides what comes next is the 12.24%.** The arithmetic now
+sits in two named frames totalling 5.3%. What is left in `x86p_x87_arith_raw`
+is the operand fetch, the reverse swap, the tag and status bookkeeping, and the
+register-file read and write -- with `arith_mem_bits`, `reg_from_operand_bits`
+and `arith_reg` adding 6.6% more of the same. Call it **about 19% of the guest
+worker spent moving operands around a computation that now costs 5.3%.**
+
+The plumbing is three and a half times the arithmetic. Be careful with the
+precise figure -- some of the rules may be inlined into `arith_raw`, so 12.24%
+is an upper bound on its bookkeeping rather than an exact split -- but the
+ranking does not depend on the precision.
+
+That is what an inline emitter removes, and it is roughly twice what block
+chaining's whole ceiling is (#166, about 9%). **The next x87 work is emitting
+these rules into the block, not making them faster.** They are already proven
+against hardware and against Bochs, which is exactly what such an emitter needs
+to match.
