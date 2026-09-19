@@ -12,10 +12,12 @@ updated: 2026-09-19
 # 0158 — the browser's retail boot wedges at the "Loading..." prompt
 
 - **State items:** S021
-- **Status:** the wedged thread is located exactly — it is spinning on a `JMP $`
-  the title itself contains, at guest `0x403210`. What sent it there is not yet
-  known. This supersedes the earlier localization to thread suspension; see
-  "Where the wedged thread actually is".
+- **Status:** the wedged thread is located exactly -- it is spinning on a
+  `JMP $` the title itself contains, at guest `0x403210` -- and its last host
+  crossing is now known to be `Present`, which is not a noreturn. So what sent
+  it there is one of the two conditional branches in that tail, or a `call edi`
+  into guest code. This supersedes the earlier localization to thread
+  suspension; see "Where the wedged thread actually is".
 - **Not** #157: the same source passes the same route on the desktop, and the
   browser's Dead Zone route runs to 1,200 presents on the same build.
 
@@ -109,14 +111,43 @@ not see this because **a worker spinning in guest code never answers CDP**, so
 "blocked, not sampled" was read as a blocking wait when for this thread it was a
 busy loop. An idle profile and a hard spin look identical from outside.
 
+### The last import the main thread crossed was `Present`
+
+Answered 2026-09-19. The boundary ring could not say it: the ring is one
+shared record and on this route it is filled by the 60 Hz timer thread, 3,582
+crossings per five seconds, so the wedged thread's last act was long gone from
+it. The crossing is now stamped into the crossing thread's own record and the
+heartbeat prints it. On the retail `#play` route:
+
+```
+tid 1000 ... in a WAIT (condition variable) for 0.0s
+  last crossed into ResumeThread at guest 0x000c0fd0, 0.0s ago
+tid 1001 ... in a WAIT (condition variable) for 0.0s
+  last crossed into WaitForSingleObject at guest 0x000c0f80, 0.0s ago
+tid 1002 ... SUSPENDED for 0.0s
+  last crossed into SuspendThread at guest 0x000c0fb0, 0.0s ago
+MAIN tid 999 start 0x00000000: running guest code for 0.0s
+  last crossed into Present at guest 0x000c19a0, 398.9s ago
+```
+
+The three auxiliary threads keep crossing every beat; the main thread crossed
+into `Present` once and never crossed again, for the whole 399-second run.
+
+**`Present` is not a noreturn.** So the first branch of the dichotomy above is
+closed: no import of ours returned from something the title declared it would
+not return from. What remains is one of the two conditional branches -- the
+null pointer at `[esp+0x18]` or the reference count that did not reach zero --
+or the `call edi` fall-through with EDI pointing at guest code rather than an
+import.
+
 ### What to do next with it
 
-`call edi` is the lead: EDI's value is not known statically, so log the import
-the main thread last crossed into before the block at `0x403210` is first
-entered. If it names a noreturn (`ExitProcess`, `ExitThread`, `abort`,
-`_purecall`), the fix is that import, and the guest is behaving correctly. If no
-import was called, one of the two conditional branches took it and the null
-pointer or the reference count is the thing to find.
+`--set jit.watch=4207120 --set jit.watchn=6` (0x403210) reports the first
+entries to the block: the block just left, the register file on arrival, and
+that thread's last crossing. `EAX` decides between the two branches -- it is
+the pointer tested at `4031eb`, so zero means the `je` was taken and non-zero
+means the `jne` was, with `ESI` then holding the decremented count. A previous
+block of `0x004031f5` or `0x00403208` distinguishes the fall-through.
 
 ## What it is not
 
