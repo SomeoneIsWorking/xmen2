@@ -1,4 +1,5 @@
 import {prepareApplication} from "./isolation.mjs";
+import {claimCanvasGestures} from "./canvas.mjs";
 import {FileStager, persistentStorage} from "./storage.mjs";
 
 const archive = document.querySelector("#archive");
@@ -92,6 +93,12 @@ function launch(importing, gameplayTest = false) {
   script.onerror = () => report("The game runtime could not be loaded. Reload to try again.", true);
   document.body.append(script);
 }
+
+/* A browser owns scroll, pinch, long-press and overscroll on any element the
+ * page has not claimed, and the virtual pad lives on this canvas. Claim it
+ * before the game can start rather than when it becomes visible, so no early
+ * contact is spent teaching the page whose gesture it is. */
+claimCanvasGestures(canvas);
 
 reload.addEventListener("click", () => location.reload());
 play.addEventListener("click", () => launch(false));

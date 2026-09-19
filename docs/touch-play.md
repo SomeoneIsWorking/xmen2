@@ -133,3 +133,20 @@ presentation evidence, not Android touchscreen or performance qualification.
   construction, but "a Windows tablet was played on" is not a claim this
   repository can make yet. Measured device evidence for phones is separately
   gated in `docs/android-release.md`.
+
+## The browser
+
+Touch play ships on the web target with no title code of its own: the same
+owners decide the vocabulary, the layout and the routing there. What the browser
+adds is that the *page* must give the canvas its gestures first. A browser owns
+scroll, pinch, long-press and overscroll on any element the page has not
+claimed, and the pad lives on the canvas, so a thumb drag on the virtual stick
+scrolls the document instead — measured at 551 px before this was fixed (issue
+#170). `shared/web-port`'s `claimCanvasGestures`, called from `web/app.mjs`,
+takes them, and `tools/web_touch_probe.py` drives a real emulated touch device
+to check that it still does.
+
+Two things remain untrue in a browser and are recorded in issue #170: no run has
+yet shown a touch on a drawn control moving the game, and `SDL_GetWindowSafeArea`
+still reports the whole canvas there, so a control against the edge can sit under
+a notch or the home indicator.

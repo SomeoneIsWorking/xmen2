@@ -655,11 +655,29 @@ portrait-selection path remains an explicit native pointer publication. The
 native build and touch regression suite cover this boundary; installed-APK
 finger input verification remains open.
 
+The web target is now reachable by a finger at all, which it was not. A browser
+owns scroll, pinch, long-press and overscroll on any element the page has not
+claimed, and the pad lives on the canvas: measured on the shipping page at
+390x844, one twelve-step drag up the middle of the canvas — a thumb on the
+virtual stick — scrolled the document **551 px** and the application received
+nothing (issue #170). `shared/web-port`'s `claimCanvasGestures` now takes those
+gestures for the application, and the same probe over the same route reports
+**0 px** scrolled with `touch-action` and `user-select` at `none`. The canvas is
+also sized with `100dvh` rather than `100vh`, which had put the stick and the
+action cluster under the mobile address bar.
+
 Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this
 repository can make — only "the path is platform-neutral by construction and
-unit-verified". Measured phone evidence remains S018's gate. The web target
-(S021) will be the third consumer of this capability.
+unit-verified". Measured phone evidence remains S018's gate. On the web target
+(S021) a contact now reaches the application, but no run has yet shown a touch
+on a drawn control moving the game, and the browser safe area is still the whole
+canvas: `SDL_GetWindowSafeArea` falls back to the window because SDL's
+Emscripten backend never set the insets, so a control against the edge can sit
+under a notch or the home indicator. SDL fork `70f8057` addresses it and is
+deliberately not pinned, because no browser available here can emulate a
+non-zero inset and a run of all zeroes cannot tell a correct reader from a
+broken one (issue #170).
 
 ### S021 — web (WASM + PWA) product with browser-side install: partial
 

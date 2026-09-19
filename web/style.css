@@ -11,6 +11,6 @@ input[type=file] { width: 1px; height: 1px; position: absolute; opacity: 0; }
 progress { width: 100%; }
 #storage-note { color: #bbbcc5; font-size: .85rem; }
 #status[data-failed=true] { color: #ffaba1; }
-canvas { display: none; width: 100vw; height: 100vh; object-fit: contain; background: black; }
+canvas { display: none; width: 100vw; width: 100dvw; height: 100vh; height: 100dvh; object-fit: contain; background: black; }
 body.playing main { display: none; }
 body.playing canvas { display: block; }
