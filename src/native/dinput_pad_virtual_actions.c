@@ -31,7 +31,12 @@ static int release_button(int i, int wait_for_a_reader) {
 #ifdef X2_WITH_SDL
   X2PadPollCounts counts;
   dinput_pad_poll_counts(&counts);
-  if (wait_for_a_reader && counts.button_reads == g_vbtn_reads_at_set[i]) {
+  /* Only a button that is actually down is owed a look. A release for one
+     nobody pressed used to take this branch too, which both left a deadline
+     armed for a press that never happened and inflated the deferral count the
+     beat reports -- 4 waited releases from 2 presses. */
+  if (wait_for_a_reader && SDL_GetJoystickButton(g_virt_js, i) &&
+      counts.button_reads == g_vbtn_reads_at_set[i]) {
     g_vbtn_release_pending[i] = 1;
     g_vbtn_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
     g_vpad_releases_deferred++;
