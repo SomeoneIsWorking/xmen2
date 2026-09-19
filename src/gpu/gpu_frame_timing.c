@@ -100,16 +100,41 @@ void gpu_frame_timing_note(unsigned long long now_ns, unsigned long frame) {
  */
 static unsigned long long g_swapchain_wait_ns;
 static unsigned long g_swapchain_waits;
+/*
+ * The shape of that wait, not just its mean.
+ *
+ * A mean of 49 ms a frame is two different defects wearing the same number:
+ * every acquisition paying a fixed event-loop round trip, or most returning at
+ * once and a few stalling for half a second. The first is structural and the
+ * fix is in the wait; the second is a stall and the fix is wherever it comes
+ * from. These two say which without a profile.
+ */
+static unsigned long g_swapchain_prompt;
+static unsigned long long g_swapchain_worst_ns;
+
+/* Under this, the acquisition did not wait on anything: no browser turn fits
+   in it. */
+enum { kSwapchainPromptNs = 1000000ull };
 
 void gpu_frame_timing_note_swapchain_wait(unsigned long long wait_ns) {
   g_swapchain_wait_ns += wait_ns;
   g_swapchain_waits++;
+  if (wait_ns < kSwapchainPromptNs) {
+    g_swapchain_prompt++;
+  }
+  if (wait_ns > g_swapchain_worst_ns) {
+    g_swapchain_worst_ns = wait_ns;
+  }
 }
 
 void gpu_frame_timing_swapchain_wait(unsigned long long *wait_ns,
-                                     unsigned long *waits) {
+                                     unsigned long *waits,
+                                     unsigned long *prompt,
+                                     unsigned long long *worst_ns) {
   *wait_ns = g_swapchain_wait_ns;
   *waits = g_swapchain_waits;
+  *prompt = g_swapchain_prompt;
+  *worst_ns = g_swapchain_worst_ns;
 }
 
 void gpu_frame_timing_perf(unsigned long long *frame_ns,

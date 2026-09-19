@@ -20,8 +20,14 @@ void gpu_frame_timing_reset(void);
 /* One gpu_frame_begin swapchain acquisition and how long it blocked. A frame
    limited by the GPU or the compositor waits here, not in draw or upload. */
 void gpu_frame_timing_note_swapchain_wait(unsigned long long wait_ns);
+/* `prompt` counts the acquisitions that returned in under a millisecond --
+   too short for a browser turn, so they waited on nothing -- and `worst_ns` is
+   the longest single one. A mean alone cannot tell a fixed per-frame round
+   trip from a handful of stalls. */
 void gpu_frame_timing_swapchain_wait(unsigned long long *wait_ns,
-                                     unsigned long *waits);
+                                     unsigned long *waits,
+                                     unsigned long *prompt,
+                                     unsigned long long *worst_ns);
 
 void gpu_frame_timing_perf(unsigned long long *frame_ns,
                            unsigned long long *frame_ns_min,

@@ -18,6 +18,17 @@
 #include <stdint.h>
 
 /*
+ * How many frames this renderer may have submitted but not yet presented.
+ *
+ * SDL's own default is two. In a browser the swapchain acquisition blocks
+ * until the frame before last has been reported presented, and that report
+ * arrives about a frame later than the work itself finishes, so two leaves the
+ * renderer waiting on nearly every frame. Three lets the report arrive during
+ * the guest's own CPU work instead.
+ */
+enum { kGpuFramesInFlight = 3u };
+
+/*
  * Create the GPU device. Returns 1 on success, 0 on failure.
  *
  * Failure is loud and immediate rather than deferred: a renderer with no

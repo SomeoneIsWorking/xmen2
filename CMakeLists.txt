@@ -1720,6 +1720,7 @@ set(X2_NATIVE_SOURCES
     src/vulkan/igvk_ark.c
     src/vulkan/igvk_probe.c
     src/vulkan/igvk_context.c
+    src/gpu/gpu_depth.c
     src/gpu/gpu_device.c
     src/gpu/gpu_capture.c
     src/gpu/gpu_present_luma.c

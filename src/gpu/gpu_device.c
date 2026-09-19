@@ -24,6 +24,7 @@
 #include "boot_blackout.h"
 #include "gpu_capture.h"
 #include "gpu_capture_internal.h"
+#include "gpu_depth.h"
 #include "gpu_depth_binding.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
@@ -55,8 +56,6 @@ static uint32_t g_output_w, g_output_h;
 /* Where the frame goes when it is not going to the swapchain: the self-test
    and, later, the engine's off-screen render destinations. */
 static SDL_GPUTexture *g_offscreen;
-
-static SDL_GPUTextureFormat g_depth_fmt;
 
 static SDL_Window *(*g_window_provider)(void);
 
@@ -166,7 +165,7 @@ void gpu_device_destroy(void) {
 #ifdef X2_WITH_SDL
   if (!g_gpu)
     return;
-  g_depth_fmt = SDL_GPU_TEXTUREFORMAT_INVALID;
+  gpu_depth_forget();
   if (g_win)
     SDL_ReleaseWindowFromGPUDevice(g_gpu, g_win);
   SDL_DestroyGPUDevice(g_gpu);
@@ -249,7 +248,25 @@ int gpu_device_attach_window(struct SDL_Window *w) {
     return 0;
   }
   g_win = win;
-  x2_log_info("gpu: swapchain claimed on window %p\n", (void *)win);
+  /*
+   * How far ahead of the presented frame this renderer may get.
+   *
+   * SDL's default is two, and in a browser two is not enough to hide the
+   * latency of a presented frame being reported done. Measured on the retail
+   * route in Firefox: 1,591 of 1,603 swapchain acquisitions blocked, 58 ms a
+   * frame on average, against 2.65 ms of host draw recording -- the wait is
+   * not the GPU's work, it is waiting for the compositor to have taken the
+   * frame before last. A third frame in flight gives that report a whole
+   * extra frame of the guest's own CPU work to arrive in.
+   */
+  if (!SDL_SetGPUAllowedFramesInFlight(g_gpu, kGpuFramesInFlight)) {
+    x2_log_error("gpu: SDL_SetGPUAllowedFramesInFlight(%u) failed: %s\n"
+                 "  The renderer keeps its default depth; frames will block "
+                 "on the swapchain more often than they need to.\n",
+                 kGpuFramesInFlight, SDL_GetError());
+  }
+  x2_log_info("gpu: swapchain claimed on window %p, %u frame(s) in flight\n",
+              (void *)win, kGpuFramesInFlight);
   return 1;
 #endif
 }
@@ -383,46 +400,6 @@ void gpu_device_frame_percentiles(unsigned long long *p50_ns,
                                   unsigned long long *p99_ns,
                                   unsigned long *samples) {
   gpu_frame_timing_percentiles(p50_ns, p95_ns, p99_ns, samples);
-}
-
-SDL_GPUTextureFormat gpu_depth_format(void) {
-  static const SDL_GPUTextureFormat WANT[] = {
-      SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
-      SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT,
-      SDL_GPU_TEXTUREFORMAT_D24_UNORM,
-      SDL_GPU_TEXTUREFORMAT_D32_FLOAT,
-      SDL_GPU_TEXTUREFORMAT_D16_UNORM,
-  };
-  unsigned i;
-
-  if (g_depth_fmt != SDL_GPU_TEXTUREFORMAT_INVALID)
-    return g_depth_fmt;
-  if (!g_gpu)
-    return SDL_GPU_TEXTUREFORMAT_INVALID;
-  for (i = 0; i < sizeof WANT / sizeof WANT[0]; i++) {
-    if (SDL_GPUTextureSupportsFormat(
-            g_gpu, WANT[i], SDL_GPU_TEXTURETYPE_2D,
-            SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
-      g_depth_fmt = WANT[i];
-      return g_depth_fmt;
-    }
-  }
-  {
-    static int told;
-    if (!told++)
-      x2_log_error("gpu: this device supports NONE of the five depth "
-                   "formats asked for, so there is no depth buffer "
-                   "and everything draws in submission order.\n");
-  }
-  return SDL_GPU_TEXTUREFORMAT_INVALID;
-}
-
-SDL_GPUTexture *gpu_depth_target(uint32_t w, uint32_t h) {
-  if (!g_gpu || !w || !h)
-    return NULL;
-  if (gpu_depth_format() == SDL_GPU_TEXTUREFORMAT_INVALID)
-    return NULL;
-  return gpu_present_depth_target(g_gpu, w, h, g_depth_fmt);
 }
 
 /*

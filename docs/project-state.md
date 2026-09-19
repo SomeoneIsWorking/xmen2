@@ -1092,7 +1092,24 @@ against the shipping storage and reports `OutOfSlots` where the old comparison
 reported `Room`. The heartbeat now shows that path working: evictions
 attributed `252 the module slots, 133 the live-module ceiling`, where the record
 limit had never asked before. **The frame rate on that route is still far short
-of playable: 124.5 ms a frame, of which 49.3 ms is the swapchain wait.**
+of playable, but the largest single line in it has been cut.** The frame was
+124.5 ms with 49.3 ms of it inside `SDL_WaitAndAcquireGPUSwapchainTexture`, on a
+renderer recording 2.65 ms of host draw -- and the frame timing now counts the
+acquisitions that returned in under a millisecond, which no browser turn fits
+in, so a fixed per-frame cost can be told from a few stalls: **12 of 1,603
+returned promptly**, so 99.3% of frames blocked. SDL's WebGPU backend allows two
+frames in flight by default, and in a browser the report that a submitted frame
+is done arrives about a frame after the work does, so at a depth of two it is
+always still outstanding when the next frame starts. `kGpuFramesInFlight = 3`,
+set where the swapchain is claimed, gives that report a frame of the guest's own
+CPU work to arrive in. Measured on the same route: **122.9 ms a frame became
+94.3 and 96.1 across two runs, the swapchain wait 52.1 ms became 36-40 ms, the
+acquisitions that did not block went from 0.6% to 22%, and the run carried about
+30% more frames.** A depth of five measured identically to three, so the depth
+is no longer what bounds it; 78% of acquisitions still block for about 36 ms and
+issue #178 records what was tested and retired on the way, including a
+reordering of the SDL fork's wait loop that measured inside this route's own
+spread and was not landed.
 
 The frame rate is still short of playable. The route a player actually takes
 used to be worse than the gameplay test, and **that is fixed**: the packaged product started from its saved

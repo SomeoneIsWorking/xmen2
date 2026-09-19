@@ -36,9 +36,10 @@ void gpu_frame_timing_report_interval(void) {
   unsigned long long fns, fmin, fmax, esub;
   const unsigned long *hist;
   unsigned long long dns, uns, una, unsb, tc, swns;
-  unsigned long up, sb, intervals, swn;
+  unsigned long up, sb, intervals, swn, swprompt;
+  unsigned long long swworst;
   gpu_device_perf(&fns, &fmin, &fmax, &esub, &intervals, &hist);
-  gpu_frame_timing_swapchain_wait(&swns, &swn);
+  gpu_frame_timing_swapchain_wait(&swns, &swn, &swprompt, &swworst);
   gpu_draw_perf(&dns, &uns, &una, &unsb, &tc, &up, &sb);
   x2_log_error("[HB]           perf: frame wall avg %.1f ms "
                "min %.1f max %.1f (of %lu intervals) -- host "
@@ -46,7 +47,8 @@ void gpu_frame_timing_report_interval(void) {
                "ms/frame (alloc %.2f + record %.2f), %lu "
                "uploads and %lu transfer-buffer alloc(s) batched into %lu copy "
                "command buffer(s), swapchain wait %.2f ms/frame over %lu "
-               "acquisition(s)\n",
+               "acquisition(s), %lu of which returned in under 1 ms and the "
+               "longest took %.1f ms\n",
                fns && intervals ? (double)fns * 1e-6 / (double)intervals : 0.0,
                fmin ? (double)fmin * 1e-6 : 0.0, (double)fmax * 1e-6, intervals,
                intervals ? (double)dns * 1e-6 / (double)intervals : 0.0,
@@ -54,7 +56,8 @@ void gpu_frame_timing_report_interval(void) {
                intervals ? (double)una * 1e-6 / (double)intervals : 0.0,
                intervals ? (double)unsb * 1e-6 / (double)intervals : 0.0,
                (unsigned long)up, (unsigned long)tc, sb,
-               swn ? (double)swns * 1e-6 / (double)swn : 0.0, swn);
+               swn ? (double)swns * 1e-6 / (double)swn : 0.0, swn, swprompt,
+               (double)swworst * 1e-6);
   (void)esub;
   (void)hist;
 }
