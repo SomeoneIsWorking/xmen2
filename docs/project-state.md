@@ -1326,6 +1326,33 @@ title's own standard output -- a diagnostic gap of its own. This supersedes the
 earlier localizations of that wedge to thread suspension and to the guest
 memory window, both of which were wrong.
 
+**Firefox-family gameplay now renders, and three separate defects had to go
+first.** On Zen 1.22.2b (Firefox 156) the run aborted about four seconds in
+(issue #176). (1) The runtime published one WebAssembly module per translated
+block, and Firefox refuses new modules long before the arena's 65,536 slots are
+used; blocks are now re-lowered 32 at a time into one shared module, with each
+block's indirect-table entry ADOPTED so its address never changes and the
+singles released. (2) Emscripten's Dawn binding handed the whole wasm heap to
+`setBindGroup`, which Firefox rejects once that heap passes its 2 GB
+ArrayBufferView limit, killing the render thread; fixed in the maintained fork
+`SomeoneIsWorking/emdawnwebgpu` (`500f12c`, a bounded `HEAPU32.subarray` at
+three call sites) and wired through SDL and `shared/web-port` rather than
+carried as a patch. (3) Eviction dropped ONE block, which frees nothing when 32
+share a module, so the engine flushed the whole cache instead -- 94 flushes, a
+14.4 MB working set down to 50 KB; x86port now evicts a module at a time.
+With those three the game renders and presents. A fourth then bounded the frame
+rate: a refusal taught a permanent live-module ceiling, and the refusal Firefox
+actually gives is memory pressure, not a count -- measured, it refused a
+121,950-byte module with **863** modules live, and a page that releases is
+accepted again at once. x86port `9201965` retires a ceiling once the arena has
+backed off below it, so the engine gets to answer again. Re-measured on the same
+route: **evictions fell from 1,641 to 135 and dropped blocks from 51,664 to
+3,335**, with the run reporting `2 ceiling(s) in force, 2 of which did not
+survive the back-off`. Frame rate is unchanged by it at about 8.4 presents/s
+(frame wall avg 119.6 ms, host draw 5.39 ms, host upload 1.30 ms, swapchain
+wait 25.10 ms), so what bounds Firefox gameplay now is guest execution and the
+submit, not the module arena.
+
 Gap: build/link progress and shared synthetic tests are not browser gameplay or
 performance evidence. The acceptance contracts and current build entry point are
 in [web-release.md](web-release.md). A deployed artifact, explicit fallback denominators, representative interaction,

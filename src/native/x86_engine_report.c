@@ -38,6 +38,59 @@ int x86_engine_report_request(void) {
  * They are printed apart because a single combined figure accused the wrong
  * one: measured on the Dead Zone route, 500 of 106,000 were this port's.
  */
+/*
+ * Whether the translated blocks are sharing modules, or the run is holding
+ * one engine module per block.
+ *
+ * The count alone cannot say that: zero compactions reads the same on a
+ * backend that emits machine code and has no modules to gather, on a run too
+ * short to fill one batch, and on a compactor that is wired in but never
+ * fires. So the translated-block total is the denominator, and the three
+ * cases are worded apart.
+ */
+/* The primary engine's last refusal. A pool has one per guest thread and only
+   a counter can be summed, so this names the engine it came from rather than
+   pretending to speak for all of them. */
+static const char *refusal_reason(const X86EngineJitPool *jit) {
+  const X86pJitEngine *primary = x86_engine_jit_pool_primary(jit);
+  return primary ? x86p_jit_engine_compaction_refusal_reason(primary) : "";
+}
+
+static void report_compaction(const X86pJitEngineStats *js, const char *why,
+                              const char *prefix) {
+  if (js->blocks_translated == 0u) {
+    lucent_log_info("engine",
+                    "%sJIT modules: no block was translated, so this run says "
+                    "nothing about module sharing",
+                    prefix);
+  } else if (js->compactions == 0u) {
+    lucent_log_info("engine",
+                    "%sJIT modules: none of the %llu translated block(s) were "
+                    "gathered, so this run holds one module per block "
+                    "(%llu gathering(s) refused)",
+                    prefix, (unsigned long long)js->blocks_translated,
+                    (unsigned long long)js->compaction_refusals);
+  } else {
+    lucent_log_info("engine",
+                    "%sJIT modules: %llu translated block(s) were gathered "
+                    "into %llu shared module(s), %llu gathering(s) refused; "
+                    "%llu block(s) waiting for a batch and %llu engine(s) "
+                    "have stopped gathering for good",
+                    prefix, (unsigned long long)js->blocks_translated,
+                    (unsigned long long)js->compactions,
+                    (unsigned long long)js->compaction_refusals,
+                    (unsigned long long)js->compaction_pending,
+                    (unsigned long long)js->compaction_stopped);
+  }
+  /* What a refusal SAID, not only that there was one. The gathering that a
+     browser run refused is also the one that taught the arena a ceiling that
+     did not exist, and its words were counted and then thrown away. */
+  if (js->compaction_refusals > 0u && why && why[0]) {
+    lucent_log_info("engine", "%s  the last refused gathering: %s", prefix,
+                    why);
+  }
+}
+
 static void report_invalidation(const X86pJitEngineStats *js) {
   const GuestMemoryRemapCounts remaps = guest_memory_remap_counts();
   char by_cause[128];
@@ -72,13 +125,38 @@ static void report_invalidation(const X86pJitEngineStats *js) {
                   js->evictions
                       ? "[HB] the engine evicted: %llu time(s) dropping %llu "
                         "block(s) of %llu translated -- the code arena is too "
-                        "small for the working set by exactly that much"
+                        "small for the working set by exactly that much "
+                        "(holding %llu KiB of %llu KiB across %llu block "
+                        "record(s), so the caps a run was started with are "
+                        "beside what it reached)"
                       : "[HB] the engine evicted: %llu time(s), %llu block(s), "
                         "of %llu translated -- the code arena holds the whole "
-                        "working set reached so far",
+                        "working set reached so far (%llu KiB of %llu KiB, "
+                        "%llu block record(s))",
                   (unsigned long long)js->evictions,
                   (unsigned long long)js->eviction_blocks_dropped,
-                  (unsigned long long)js->blocks_translated);
+                  (unsigned long long)js->blocks_translated,
+                  (unsigned long long)(js->code_bytes_used / 1024u),
+                  (unsigned long long)(js->code_bytes_limit / 1024u),
+                  (unsigned long long)js->block_records);
+  if (js->evictions > 0u) {
+    lucent_log_info("engine",
+                    "[HB]   asked for by: %llu the byte budget, %llu the "
+                    "module slots, %llu the live-module ceiling the engine "
+                    "has shown",
+                    (unsigned long long)js->evictions_out_of_bytes,
+                    (unsigned long long)js->evictions_out_of_slots,
+                    (unsigned long long)js->evictions_at_engine_limit);
+    /* The ceiling is a hypothesis about a limit the engine will not state, so
+       a run has to say whether its refusals survived the back-off. Retiring
+       as many as it learns is a host that refuses under momentary pressure;
+       learning one and keeping it is a limit that really holds. */
+    lucent_log_info("engine",
+                    "[HB]   the engine's refusals put %llu ceiling(s) in "
+                    "force, %llu of which did not survive the back-off",
+                    (unsigned long long)js->ceilings_learned,
+                    (unsigned long long)js->ceilings_retired);
+  }
 }
 
 /*
@@ -217,6 +295,7 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.simd_translated,
       (unsigned long long)js.x87_stores_inline,
       (unsigned long long)js.x87_stores_translated);
+  report_compaction(&js, refusal_reason(jit), "[HB] ");
   report_invalidation(&js);
   x86_engine_report_chain_census(jit, "[HB] ");
   x86_engine_x87_census_report("[HB] ");
@@ -340,6 +419,7 @@ void x86_engine_report_jit_totals(const X86EngineJitPool *jit) {
         (unsigned long long)js.simd_translated,
         100.0 * (double)js.simd_inline / (double)js.simd_translated,
         (unsigned long long)(js.simd_translated - js.simd_inline));
+  report_compaction(&js, refusal_reason(jit), "");
   x86_engine_report_chain_census(jit, "");
   x86_engine_x87_census_report("");
   x86_engine_report_hot_blocks(jit, "");
