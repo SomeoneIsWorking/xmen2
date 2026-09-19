@@ -94,9 +94,11 @@ int dinput_pad_virtual_release(const char *what) {
       const short rest = axis_is_trigger(i) ? trigger_raw(0.0) : 0;
       X2PadPollCounts counts;
       dinput_pad_poll_counts(&counts);
-      if (counts.axis_reads == g_vaxis_reads_at_set[i]) {
-        /* Same rule as a button: a stick the game never sampled was never
-           moved. */
+      if (g_vaxis_value[i] != rest &&
+          counts.axis_reads == g_vaxis_reads_at_set[i]) {
+        /* Same rule as a button, including its guard: a stick the game never
+           sampled was never moved, and a stick already at rest is owed
+           nothing. */
         g_vaxis_release_pending[i] = 1;
         g_vaxis_until[i] = guest_clock_now_s() + X2_VIRTUAL_RELEASE_CEILING_S;
         g_vpad_releases_deferred++;
