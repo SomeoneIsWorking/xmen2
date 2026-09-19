@@ -79,3 +79,45 @@ counted against the helper. If a call-tree attribution shows dispatch is largely
 inside a few hot blocks that chaining would not reach, the estimate is wrong.
 The same attribution is what issue #165 needs to be re-ranked, so it is one
 piece of work answering two questions.
+
+## The falsifier above is the wrong question, and here is the right one
+
+Written down, it does not survive reading. "A helper called from a block is
+counted against the helper" is true and is not a problem: **self time IS time.**
+The 11.76% now sitting in `x86p_jit_engine_run` is time spent in the dispatch
+loop's own instructions, whoever called it and whatever it called. No call-tree
+attribution can make that number smaller or larger.
+
+What a call tree would answer is a different question, and not the one that
+decides this: which *blocks* are hot. Issue #165 needs that. This one does not.
+
+**What decides this is what fraction of block exits have a statically known
+successor**, because that is exactly the fraction chaining can remove the hash
+lookup and the second indirect call from. A block ending in a conditional
+branch has two candidates; one ending in a computed jump or a return has none
+that the translator knows.
+
+That is a question for the engine, not the profiler: count exits by whether the
+translator recorded a successor, and count how often the successor actually
+taken was the one predicted. The counter must be able to report a low number --
+a run that reports "95% predictable" without being able to report anything else
+is not evidence -- so it wants a polymorphic-successor case to show the other
+answer.
+
+`X86pJitBlock` currently publishes `ends_in_branch` and no successor address,
+so the translator would have to start recording one. That is the first piece of
+this work and it is measurement, not chaining.
+
+## The numbers, refreshed after #162's pop fusion
+
+Guest worker, Dead Zone route, 25s, 96,169 samples:
+
+| frame | share |
+|---|---|
+| `x86p_jit_engine_run` | 11.76% |
+| `x86_engine_jit_intercept` | 1.35% |
+| **dispatch, total** | **13.11%** |
+
+Up from 12.4%, which is what happens to a share when something else in the
+denominator gets cheaper. It is now the largest single item after
+`x86p_x87_arith_raw`.

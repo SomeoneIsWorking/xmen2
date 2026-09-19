@@ -823,11 +823,31 @@ measured and small: `_emscripten_get_now` 4.19% to 3.88%, so the pump's second
 reading was a minority of the clock cost and the rest is the guest's own call
 rate. The correctness half is why it stays.
 
-**None of this is the frame rate.** The route presents about 6.7 frames a
-second. x87 is 47% of the busy worker, so removing every cent of it is a
-ceiling of 1.9x, to roughly 13/s — the largest single item available and not
-enough on its own. Browser playability remains unproven and the frame rate is still
-short of playable. The route a player actually takes is worse than the gameplay
+**None of this is the frame rate.** The route presents **11.552 +/- 0.011 per
+second**, measured over 1042 presents in a 90.2 s plateau at load average 5.0;
+`tools/web_presents.py` reports that steady rate because a per-heartbeat one
+quantises at 1.75% on this route and cannot resolve the changes now being made.
+
+The guest worker's own census, 25 s and 96,169 samples, is what the remaining
+work is ranked on:
+
+| cluster | share | issue |
+|---|---|---|
+| x87 emulation | ≈33% | #162 |
+| dispatch (`x86p_jit_engine_run` + the intercept) | 13.11% | #166 |
+| SSE through a scalar C helper | 3.23% | #167 |
+| flags and ALU helpers | ≈4.3% | — |
+
+x87 has come from 47% to about 33% across four landed x86port changes, the last
+two being the exact ext80 widening (`70e6536`) and the pop fusion (`30ad283`).
+Frames track that worker one for one — proved when the host took half of it
+away mid-capture and block entries and presents/s both fell 47% in the same
+windows — so the census is a roadmap and not just accounting. It is also not
+enough on its own: zeroing every row above leaves the route short of playable,
+and the translated guest code underneath them is 21.9%.
+
+Browser playability remains unproven and the frame rate is still short of
+playable. The route a player actually takes is worse than the gameplay
 test: **the packaged product started from its saved installation reaches the
 retail "Loading..." prompt and wedges there** (issue #158), with three guest
 threads created by the intro, one of them SUSPENDED, 99% of every interval in
