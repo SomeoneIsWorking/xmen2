@@ -53,7 +53,7 @@ SHARED_REPOS = (
                "329d066cf0de17d47bae74a47880e4170c2ef39b",
                "src/jitcommon/block_cache.h"),
     SharedRepo("x86port", "https://github.com/SomeoneIsWorking/x86port.git",
-               "08aa4c4069d48dbb1a46da7cba12f269d7714e05",
+               "d7b8719b2985a90dfe51a21c5fadecba2dbc5185",
                "src/x86port/jit_engine.h"),
 )
 

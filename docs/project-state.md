@@ -536,8 +536,16 @@ stack fault, a differing control word, a zero divisor or an armed census
 `process_vm_readv`: `x86_peek` is a syscall per read, kept only for signal
 handlers, and every ordinary caller now reads through
 `guest_memory_try_read` (36.2 -> 28.2 ms/frame, 20.6 -> 35.5 fps overall).
-Translated code is now about 60% of the profile; `x86p_jit_engine_run` is
-13%, half of it the block-cache hash probe missing on every block.
+x86port `d7b8719` then lowers 99.3% of Jcc/SETcc conditions onto the host's
+own flags instead of calling `x86p_cond`: 5.1% fewer host instructions per
+frame (225 -> 213.6 M) but no measurable change in cycles per frame (best
+120.4 M before, 120.2 M after, on a shared machine). Translated code is now
+67% of cycles and has no single hot spot; `x86p_jit_engine_run` plus the
+per-block intercept are about 12.7%, every one of ~290k block dispatches per
+frame paying the intercept callback, the cache probe and an indirect call.
+The remaining levers are both x86port backend projects: block chaining for
+constant successors, and keeping guest registers in host registers across a
+block instead of loading and storing `X86pCpu` for every access.
 
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
