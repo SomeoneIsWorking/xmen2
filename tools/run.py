@@ -236,6 +236,11 @@ def run_native() -> int:
                  f"-DCMAKE_C_COMPILER={toolchain.cc}",
                  f"-DCMAKE_CXX_COMPILER={toolchain.cxx}",
                  f"-DPython3_EXECUTABLE={sys.executable}",
+                 # The clang-tidy gate reads this tree's compile_commands.json.
+                 # Without it the only entries are the dependencies' own, and the
+                 # gate refuses with "no first-party units" -- a required check
+                 # that cannot run in the tree everything else is built in.
+                 "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
                  "-DCMAKE_BUILD_TYPE=RelWithDebInfo"]
     print(f"run: configuring x2native in {build} with {toolchain.cxx}")
     subprocess.run(configure, cwd=ROOT, check=True)
