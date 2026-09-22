@@ -6,7 +6,7 @@ symptom: the guest runs at PC=extended on 100% of operations and f64 changes 14.
 state_items: S021
 tags: web,browser,wasm,x87,x86port,performance
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-22
 ---
 
 # 0162 — x87 emulation is half the browser's guest worker
@@ -993,3 +993,68 @@ The census had to move with it, and this is the general point rather than a
 detail: it lived inside `arith_raw`, which the fused path bypasses, so counting
 only there would have made the instrument quietly under-report the moment this
 landed. An instrument on one of two paths is an instrument that lies.
+
+## The desktop's own number, and what it is made of (2026-09-22)
+
+The browser is where this started; the native product is on the same helpers,
+and the Dead Zone gameplay route says so. A 60 s profile of the shipping
+binary attributes **58% of cycles** to the x87 family:
+
+```
+21.4%  x86p_x87_arith_raw      7.2%  x86p_x87_push
+ 7.2%  x86p_x87_to_f32         7.2%  x86p_x87_get
+ 4.2%  jit_x87_arith           3.0%  jit_x87_push
+ 2.4%  jit_x87_arith_reg       2.0%  jit_x87_to_f32
+ 1.7%  x86p_x87_set            1.6%  x86p_x87_pop
+```
+
+The `jit_x87_*` entries -- 12% between them -- are the trampolines the x64
+backend calls. The route performs **750,000-820,000 guest x87 arithmetic
+operations per frame** (the op census, armed) against **~305 M host
+instructions per frame**, so an x87 arithmetic operation costs on the order of
+a hundred host instructions before anything else is counted.
+
+Read the fast path in the shipping binary rather than guessed at:
+
+* The control word is **not** the cost. `x86p_x87_arith_raw` compares the
+  guest's word against `fnstcw` and takes a plain `faddp`/`fmulp` when they
+  agree; the `fldcw` sandwich is the other arm. The census says the guest runs
+  at 64-bit extended, round-to-nearest on **99.6%** of operations, which is
+  the host's own default -- so that arm is essentially never taken. A change
+  to hold the host word at the guest's value would have bought nothing, which
+  is why it was read before it was written.
+* What the path does pay, per operation: a call from translated code, two
+  `fldt` ten-byte loads, a branchless operand swap for the reverse forms, a
+  `fucomi` invalid-operand check, the arithmetic, an `fstpt` into the register
+  file, a SECOND `fstpt` to a stack slot purely so the tag can be read back
+  out of the bytes, and -- because the ABI wants the x87 stack empty at a
+  return -- four `fldz` and four `fstp` on the way out.
+
+**The tag is not where the money is either, measured.** Keeping the class
+lazily and computing it only in the packer (which is the only place the
+architecture can observe it) removes that second `fstpt` and the loads that
+follow it. On this route it moved nothing that could be told from run-to-run
+spread: 285.3 and 306.7 M instructions/frame against 306.5 and 303.8 for the
+current code, with the profile shares unmoved. The change was reverted; the
+test it showed was missing was kept (x86port `9c8a2d7`).
+
+**What remains is the call itself.** The x64 backend emits a call per x87
+instruction; the WASM backend already inlines the load form
+(`jit_wasm_x87_load.c`, and the heartbeat's `x87 load(s) widened in the block`
+counter). Inlining the arithmetic and store forms on x64 -- keeping ST(0) in a
+host x87 register across a block rather than storing it to the file and
+reloading it for the next instruction -- is the next real step, and it is the
+one thing in the list above that removes the per-operation constant rather
+than shaving it.
+
+### The harness cannot see a 5% change on this route
+
+Recorded because two sessions have now read per-frame numbers as if they were
+repeatable. Same binary, same route, 30 s windows after 300 presented frames:
+306.5 and 303.8 M instructions/frame on one arm, 285.3 and 306.7 on another
+that differs by a change the profile says is not there. Normalising by the
+guest's own work does not rescue it: instructions per x87 arithmetic operation
+came out 439.5 and 415.5 on two runs of the SAME binary, and those runs had
+the census armed, which puts four `fstpt`/`fldt` pairs into the hot function
+and inflates the figure besides. A change worth less than about 7% on this
+route needs a deterministic workload, not this one.
