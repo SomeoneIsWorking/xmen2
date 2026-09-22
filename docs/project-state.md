@@ -779,13 +779,40 @@ old arithmetic; the run publishes the ring and its deflection through the new
 `GET /controls` so the case keeps no second copy of the layout (issue #181).
 User-reported from their own phone.
 
+A finger now reaches the game itself, and the last link is read out of the
+guest rather than inferred. On the Dead Zone route with `input.touch_controls`
+at ALWAYS, the `/input` probe reads the game's own DirectInput wrapper:
+`joystick answer mask 0x00000001`, and while a contact holds the ATTACK
+control, `device 0 block 0x7120c9b8 buttons down: 0(code 0x15)` — the guest's
+own device state, one link before its binding table reads it. Held four
+seconds on the stick at full deflection, the hero walks out of the clearing
+and the camera follows; released, the block reads `none of 32`. The stick's
+own arithmetic, driven through `/touch` on the published ring: landing
+off-centre publishes `0.000, 0.000`, a radius of travel up publishes
+`0.000, -1.000`, a radius right `1.000, 0.000`, and the corner of the box
+`0.707, -0.707` rather than 1 in both.
+
+The same run measured what issue #173 costs when the pad is late. In AUTO on
+a host reporting no touch device, `prepare_for_host` attaches nothing, so the
+pad arrives with the first contact — after the guest has enumerated — and the
+probe reads `joystick answer mask 0x00000000`, "NO joystick device answered
+this frame, so every pad binding reads 0 by construction", while the census
+cheerfully reports 12 axis changes published and 0 refused. Both halves are
+true and only the pair says anything: publication is not delivery.
+
+Gap: a retail dialogue's footer is drawn as TWO strings — the key cap
+`[Enter]`, and `continue...` separately — and `x2_prompt_action_label_match`
+requires words after the cap in the same string, so neither is claimed and
+`/prompts` answers "no action prompt is pressable" on a screen plainly
+drawing one. The screen is not stuck: it draws no control, so a contact goes
+to the retail pointer, and a tap anywhere advanced the Dead Zone opening
+dialogue line by line. What is missing is the button on the words the game
+named, not a way past the screen.
+
 Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this
 repository can make — only "the path is platform-neutral by construction and
-unit-verified". Measured phone evidence remains S018's gate. No run has yet
-shown the character visibly moving under a touch: the census sees as far as
-the pad, and the link past it is covered by `test_touch_runtime` reading the
-presses back off a real SDL gamepad, not by an observed game. The browser safe
+unit-verified". Measured phone evidence remains S018's gate. The browser safe
 area is still the whole canvas: `SDL_GetWindowSafeArea` falls back to the window because SDL's
 Emscripten backend never set the insets, so a control against the edge can sit
 under a notch or the home indicator. SDL fork `70f8057` addresses it and is
