@@ -29,7 +29,10 @@ body {
     background-color: rgba(10, 18, 29, 32%);
 }
 
+/* Positioned from the live deflection by the document each frame, so the
+   knob shows where the thumb has pushed the stick. */
 .touch-stick-knob {
+    position: absolute;
     width: 38%;
     height: 38%;
     border: 2dp rgba(224, 242, 254, 90%);

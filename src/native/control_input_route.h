@@ -16,5 +16,6 @@ void control_route_assignment(x2_socket_t fd, const char *query);
    it starts, and a guess that drifts onto the wrong screen still reports a
    tap. */
 void control_route_prompts(x2_socket_t fd);
+void control_route_controls(x2_socket_t fd);
 
 #endif

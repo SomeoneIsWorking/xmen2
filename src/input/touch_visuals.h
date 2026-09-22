@@ -27,6 +27,7 @@ namespace x2::input {
  */
 std::size_t overlay_visuals(std::span<const TouchControls::ZoneVisual> zones,
                             const std::set<std::uint32_t> &active,
+                            ThumbStick::Deflection stick,
                             std::span<const PromptButton> prompts,
                             X2TouchVisual *out, std::size_t capacity);
 

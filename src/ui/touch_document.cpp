@@ -169,6 +169,37 @@ void set_percent(Rml::Element *element, Rml::PropertyId property, float value) {
   element->SetProperty(property, Rml::Property(value, Rml::Unit::PERCENT));
 }
 
+/*
+ * The knob sits where the thumb has pushed the stick.
+ *
+ * It used to be drawn dead centre whatever the player did, so the one
+ * control with a continuous value was the only one that never showed its
+ * value: a thumb sliding to a stop against the dead zone and a thumb at
+ * full deflection looked identical. The knob's travel is the ring's own
+ * radius less its size, so full deflection puts it against the inside of
+ * the ring rather than outside it.
+ */
+void place_knob(Rml::Element *zone, const X2TouchVisual &visual) {
+  Rml::Element *knob = zone->GetChild(0);
+  if (!knob) {
+    return;
+  }
+  /* The stylesheet owns how big the knob is; this reads that size back
+     rather than keeping a second copy of it, so restyling the ring cannot
+     silently move the knob's travel out of it. */
+  const Rml::Vector2f ring = zone->GetBox().GetSize();
+  const Rml::Vector2f size = knob->GetBox().GetSize();
+  if (ring.x <= 0.0F || ring.y <= 0.0F) {
+    return;
+  }
+  const float span_x = (ring.x - size.x) * 0.5F;
+  const float span_y = (ring.y - size.y) * 0.5F;
+  set_percent(knob, Rml::PropertyId::Left,
+              (span_x + visual.deflect_x * span_x) * 100.0F / ring.x);
+  set_percent(knob, Rml::PropertyId::Top,
+              (span_y + visual.deflect_y * span_y) * 100.0F / ring.y);
+}
+
 } // namespace
 
 bool touch_document_load(Rml::Context *context) {
@@ -268,6 +299,9 @@ void touch_document_update() {
     set_percent(element, Rml::PropertyId::Height,
                 (visual.bottom - visual.top) * 100.0F / height);
     element->SetClass("active", visual.active != 0);
+    if (visual.kind == X2_TOUCH_VISUAL_STICK) {
+      place_knob(element, visual);
+    }
   }
 }
 

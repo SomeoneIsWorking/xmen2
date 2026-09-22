@@ -237,10 +237,16 @@ add_test(NAME web_request COMMAND test_web_request)
 
 add_executable(test_touch_controls tests/test_touch_controls.cpp
                src/input/touch_controls.cpp
+               src/input/thumb_stick.cpp
                src/presentation/touch_layout.c)
 target_include_directories(test_touch_controls PRIVATE src/input)
 target_link_libraries(test_touch_controls PRIVATE lucent::lucent)
 add_test(NAME touch_controls COMMAND test_touch_controls)
+
+add_executable(test_thumb_stick tests/test_thumb_stick.cpp
+               src/input/thumb_stick.cpp)
+target_link_libraries(test_thumb_stick PRIVATE lucent::lucent)
+add_test(NAME thumb_stick COMMAND test_thumb_stick)
 
 # The only touch owner that reaches the pad the game reads, so it is the only
 # one whose failure is invisible to the others' tests. Needs SDL for the window
@@ -257,6 +263,7 @@ add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/native/host_touch.c
                src/native/dinput_pad_report.c
                src/input/touch_controls.cpp
+               src/input/thumb_stick.cpp
                src/input/touch_source.c
                src/input/gameplay_control.c
                src/input/transient_controller_assignment.c
@@ -1668,6 +1675,7 @@ set(X2_NATIVE_SOURCES
     src/native/cutscene_player.c
     src/native/input_probe.c
     src/input/touch_controls.cpp
+    src/input/thumb_stick.cpp
     src/input/touch_runtime.cpp
     src/input/touch_pad_publisher.cpp
     src/input/touch_pointer.cpp

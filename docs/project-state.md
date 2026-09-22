@@ -733,6 +733,21 @@ and the census counts the press with no refusal from the keyboard injector
 (issue #180). The main menu draws no prompt and publishes none, which is what
 proves a control does not outlive the screen that drew it.
 
+The stick steers from the thumb, not from the ring. It measured its axes from
+the ring's geometric centre, so where the thumb happened to land was itself an
+input: measured in the running game with a contact landing 0.45 of a radius
+right and 0.5 down, a thumb that had not moved at all published `0.431, 0.479`
+-- the character walked off diagonally the moment the screen was touched --
+and a full radius of travel upward reached only `-0.479` while still steering
+right. Travel is now measured from the contact's own landing point, clamped to
+the unit circle rather than per axis, with an 8% dead zone; the same three
+probes now read `0.000, 0.000`, `0.000, -1.000` and `-1.000, 0.000`. The knob
+is drawn at that deflection instead of dead centre. `tools/live_case.py
+stick-travel` is the falsifier, 9 of 9, and it fails three checks against the
+old arithmetic; the run publishes the ring and its deflection through the new
+`GET /controls` so the case keeps no second copy of the layout (issue #181).
+User-reported from their own phone.
+
 Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this
 repository can make — only "the path is platform-neutral by construction and

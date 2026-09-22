@@ -210,6 +210,34 @@ int main() {
     return 1;
   }
 
+  /* A THUMB DOES NOT LAND ON THE MIDDLE OF A CIRCLE IT CANNOT SEE.
+     Every check above lands exactly on the ring's centre, which is the one
+     landing that cannot tell a stick measured from the ring apart from one
+     measured from the contact. This lands where a thumb actually does. */
+  const float stick_radius =
+      (slots[kX2SlotStick].right - slots[kX2SlotStick].left) * 0.5F;
+  const lucent::touch::Point thumb{stick_centre.x + stick_radius * 0.45F,
+                                   stick_centre.y + stick_radius * 0.5F};
+  const auto off_centre =
+      controls.route({{{3, thumb, lucent::touch::Phase::began}}});
+  if (has_value(off_centre, x2::input::TouchAction::Backward, 0.01F) ||
+      has_value(off_centre, x2::input::TouchAction::MoveRight, 0.01F)) {
+    std::cerr << "a thumb landing off the ring's centre steered the game "
+                 "before it moved\n";
+    return 1;
+  }
+  const auto pushed = controls.route(
+      {{{3, {thumb.x, thumb.y - stick_radius}, lucent::touch::Phase::moved}}});
+  const auto pushed_y =
+      x2::input::touch_axis_value(pushed, x2::input::TouchAction::Forward,
+                                  x2::input::TouchAction::Backward);
+  if (!pushed_y || *pushed_y > -0.95F) {
+    std::cerr << "a full radius of travel from an off-centre landing was not "
+                 "full deflection\n";
+    return 1;
+  }
+  controls.route({{{3, thumb, lucent::touch::Phase::ended}}});
+
   const float stick_reach =
       (slots[kX2SlotStick].right - slots[kX2SlotStick].left) * 0.4F;
   const std::vector<lucent::touch::Contact> stick_up = {

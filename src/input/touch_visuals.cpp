@@ -13,6 +13,7 @@ constexpr std::uint32_t kPromptVisualId = 1000;
 
 std::size_t overlay_visuals(std::span<const TouchControls::ZoneVisual> zones,
                             const std::set<std::uint32_t> &active,
+                            ThumbStick::Deflection stick,
                             std::span<const PromptButton> prompts,
                             X2TouchVisual *out, std::size_t capacity) {
   std::size_t count = 0;
@@ -29,12 +30,13 @@ std::size_t overlay_visuals(std::span<const TouchControls::ZoneVisual> zones,
     emit({zone.zone.id, zone.zone.left, zone.zone.top, zone.zone.right,
           zone.zone.bottom, static_cast<int>(zone.action),
           active.contains(zone.zone.id) ? 1 : 0,
-          zone.stick ? X2_TOUCH_VISUAL_STICK : X2_TOUCH_VISUAL_BUTTON});
+          zone.stick ? X2_TOUCH_VISUAL_STICK : X2_TOUCH_VISUAL_BUTTON,
+          zone.stick ? stick.x : 0.0F, zone.stick ? stick.y : 0.0F});
   }
   for (const auto &prompt : prompts) {
     emit({kPromptVisualId + prompt.dik, prompt.target.left, prompt.target.top,
           prompt.target.right, prompt.target.bottom, 0, 0,
-          X2_TOUCH_VISUAL_PROMPT});
+          X2_TOUCH_VISUAL_PROMPT, 0.0F, 0.0F});
   }
   return count;
 }

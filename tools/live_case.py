@@ -1260,9 +1260,14 @@ def case_menu_touch(case: Case) -> None:
 
 
 
-def live_viewport(case: Case) -> tuple[float, float] | None:
-    """The surface the run published its prompt rectangles in."""
-    for line in case.get_text("/prompts").splitlines():
+def live_viewport(case: Case, route: str = "/prompts") -> tuple[float, float] | None:
+    """The surface the run published these rectangles in.
+
+    Whichever route is asked reports its own, so a caller never divides a
+    rectangle by a window size it learned somewhere else -- the mistake that
+    once sent a tap off the bottom of the window.
+    """
+    for line in case.get_text(route).splitlines():
         found = re.match(r"viewport ([\d.]+)x([\d.]+)", line)
         if found:
             return (float(found.group(1)), float(found.group(2)))
@@ -1314,6 +1319,120 @@ def tap_prompt(case: Case, prompt, window: tuple[float, float]) -> bool:
     return case.http("/touch?x=%g&y=%g" % ((left + width * 0.5) / window[0],
                                            (top + height * 0.5) / window[1])
                      )[0] == 200
+
+
+def live_stick(case: Case) -> tuple[tuple[float, float, float, float],
+                                    tuple[float, float]] | None:
+    """The movement ring the overlay is drawing, and its live deflection.
+
+    Read from the run, not recomputed here: a case that works out where the
+    ring ought to be keeps a second copy of the layout and stops testing the
+    control the player actually touches.
+    """
+    for line in case.get_text("/controls").splitlines():
+        parts = line.split()
+        if len(parts) < 6 or parts[1] != "stick":
+            continue
+        left, top = (float(v) for v in parts[2].split(","))
+        width, height = (float(v) for v in parts[3].split("x"))
+        dx, dy = (float(v) for v in parts[5].split(","))
+        return ((left, top, width, height), (dx, dy))
+    return None
+
+
+def case_stick_travel(case: Case) -> None:
+    """A thumb steers from where it LANDS, not from where the ring is drawn.
+
+    A thumb does not arrive on the middle of a circle it cannot see. Measured
+    from the ring's centre, that landing offset is itself an input: the
+    character walks off the moment the screen is touched, in whatever
+    direction the thumb happened to land, and full deflection is a short push
+    one way against a long reach the other. The user reported it as the stick
+    not working right.
+    """
+    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
+    case.launch({"X2_BOOT_MAP": TUTORIAL_MAP})
+    case.wait_control(60)
+    reached = reach_authored_conversation(case, 240)
+    case.check("gameplay reached", reached)
+    if not reached:
+        return
+    case.http("/key?name=Escape&hold=0.4")
+    case.check("controls unlocked after the skip",
+               wait_controls_unlocked(case, 180))
+
+    # The overlay follows the retail HUD's own decision, which is a heartbeat
+    # per drawn frame: it is not up the instant a skip returns control.
+    deadline = time.monotonic() + 120
+    found = live_stick(case)
+    while not found and time.monotonic() < deadline and case.alive():
+        time.sleep(2.0)
+        found = live_stick(case)
+    if not found:
+        print("  /controls: %r" % case.get_text("/controls")[:400])
+    case.check("the overlay draws its movement ring in gameplay",
+               found is not None)
+    if not found:
+        return
+    (left, top, width, height), _ = found
+    viewport = live_viewport(case, "/controls")
+    case.check("and which surface it is in", viewport is not None)
+    if not viewport:
+        return
+    print("  ring: %g,%g %gx%g in %gx%g" % (left, top, width, height,
+                                            viewport[0], viewport[1]))
+
+    def contact(px: float, py: float, phase: str) -> None:
+        case.http("/touch?x=%g&y=%g&phase=%s"
+                  % (px / viewport[0], py / viewport[1], phase))
+
+    # Where a thumb lands: inside the ring, nowhere near its centre.
+    radius = min(width, height) * 0.5
+    thumb_x = left + width * 0.5 + radius * 0.45
+    thumb_y = top + height * 0.5 + radius * 0.5
+    contact(thumb_x, thumb_y, "down")
+    time.sleep(0.5)
+    rested = live_stick(case)
+    print("  deflection on touch-down: %s" % (rested[1] if rested else None,))
+    case.check("a thumb that has not moved steers nothing",
+               rested is not None and max(abs(v) for v in rested[1]) < 0.01,
+               "" if rested is None or max(abs(v) for v in rested[1]) < 0.01
+               else "deflected %s before the thumb moved" % (rested[1],))
+
+    # One ring radius of travel from THERE is full deflection, whichever way.
+    contact(thumb_x, thumb_y - radius, "motion")
+    time.sleep(0.5)
+    pushed = live_stick(case)
+    print("  deflection after a radius of travel: %s"
+          % (pushed[1] if pushed else None,))
+    case.check("a radius of travel from where it landed is full deflection",
+               pushed is not None and pushed[1][1] < -0.95,
+               "" if pushed is None or pushed[1][1] < -0.95
+               else "deflected only %s" % (pushed[1],))
+
+    # The same push the other way reaches full too. Measured from the ring
+    # this is the short side, and it used to saturate well before this.
+    contact(thumb_x, thumb_y, "motion")
+    contact(thumb_x - radius, thumb_y, "motion")
+    time.sleep(0.5)
+    opposite = live_stick(case)
+    print("  deflection pushing the other way: %s"
+          % (opposite[1] if opposite else None,))
+    case.check("and so is the same travel in the opposite direction",
+               opposite is not None and opposite[1][0] < -0.95,
+               "" if opposite is None or opposite[1][0] < -0.95
+               else "deflected only %s" % (opposite[1],))
+
+    contact(thumb_x - radius, thumb_y, "up")
+    time.sleep(0.5)
+    lifted = live_stick(case)
+    case.check("lifting the thumb leaves the ring centred",
+               lifted is not None and max(abs(v) for v in lifted[1]) < 0.01,
+               "" if lifted is None or max(abs(v) for v in lifted[1]) < 0.01
+               else "still deflected %s" % (lifted[1],))
+
+    case.check("and the game is still running",
+               case.alive() and case.http("/status")[0] == 200)
 
 
 def case_prompt_touch(case: Case) -> None:
@@ -1415,6 +1534,7 @@ CASES = {
     "touch-pad": case_touch_pad,
     "menu-touch": case_menu_touch,
     "prompt-touch": case_prompt_touch,
+    "stick-travel": case_stick_travel,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,

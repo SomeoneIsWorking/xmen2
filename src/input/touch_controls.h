@@ -2,6 +2,7 @@
 #define X2_TOUCH_CONTROLS_H
 
 #include "../presentation/touch_layout.h"
+#include "thumb_stick.h"
 
 #include <array>
 #include <cstdint>
@@ -120,12 +121,17 @@ public:
   route(std::span<const lucent::touch::Contact> contacts);
   std::vector<ActionEvent> cancel();
   std::span<const ZoneVisual> zones() const { return zones_; }
+  // What the movement ring should draw: its live deflection, -1..1 per axis.
+  ThumbStick::Deflection stick_deflection() const {
+    return stick_.deflection();
+  }
 
 private:
   void rebuild_zones();
   std::vector<ActionEvent>
-  translate(std::span<const lucent::touch::Event> events) const;
+  translate(std::span<const lucent::touch::Event> events);
 
+  ThumbStick stick_;
   Viewport viewport_;
   std::array<X2Rect, 4> portraits_{};
   unsigned portraits_visible_ = 0;

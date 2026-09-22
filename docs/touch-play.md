@@ -111,7 +111,7 @@ document uses the action meanings proven by `binding_rows.c` and
 
 | Zone | Action mapping |
 |---|---|
-| Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight` |
+| Left virtual stick | `Forward`, `Backward`, `MoveLeft`, `MoveRight`, from the contact's own capture origin |
 | Bottom-right action diamond | Attack below, Smash outside, Use above, Jump inside; while Powers is held these are the four retained ability actions |
 | Above the left stick | Hold Powers with the left thumb and choose an ability with the right |
 | Retail party portraits, top-right | Pointer press/release through the existing Win32 mouse-message path; the retail click handler selects the tapped hero |
@@ -119,6 +119,18 @@ document uses the action meanings proven by `binding_rows.c` and
 | Top button beside vitals | `Pause` |
 | Open playfield swipe | Relative camera movement from the contact's Lucent capture origin; no second visible stick |
 | Retail health/energy HUD, top-left | The retained CHud draw path, relocated only while touch mode is active |
+
+The stick steers from where the thumb landed, not from where the ring is
+drawn (`src/input/thumb_stick.{h,cpp}`). A thumb does not arrive on the middle
+of a circle it cannot see, and measured from the ring that landing offset is
+itself an input: the character used to walk off the moment the screen was
+touched, with a short push one way against a long reach the other
+([issue 181](issues/0181-the-movement-stick-steers-from-the-ring-not-the-thumb.md)).
+One ring radius of travel from the contact is full deflection, the result is
+clamped to the unit circle rather than per axis so the diagonals cannot outrun
+every other direction, and travel inside 8% of full is the thumb resting.
+The knob is drawn at that live deflection, so the one control with a value
+rather than a state shows its value.
 
 The movement stick is smaller than the original overlay to leave more of the
 playfield visible. Jump is on the opposite hand from movement, so a player can
@@ -158,6 +170,7 @@ already chose keeps player one.
 
 | Check | What it pins |
 |---|---|
+| `ctest -R thumb_stick` | The stick's own policy: an off-centre landing steering nothing, equal travel in every direction, the circular clamp, the dead zone and its rescale, release, and a ring with no size |
 | `ctest -R touch_source` | The device classification, including the `SDL_TOUCH_MOUSEID` synthetic pointer and the resting-stick threshold |
 | `ctest -R touch_controls` | Action vocabulary, independent four-ability modifier chords, zone routing, portrait pointer arbitration, cancellation on layout change |
 | `ctest -R touch_runtime` | The whole chain on the real synthetic pad: a press at the drawn control's own coordinates reaching the gamepad the game reads, the player-one claim, a contact outside every zone pressing nothing, stick rest/drag/release, the Powers chord staying whole under a second thumb, cancellation on focus loss, the census the report is made of, and — with no control drawn — a contact becoming a retail pointer press at its own position, pressing no pad button, refusing a second finger, and releasing when the first lifts |

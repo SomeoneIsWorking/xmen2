@@ -14,6 +14,7 @@
  */
 #include "control_input_route.h"
 
+#include "../input/gameplay_control.h"
 #include "../input/touch_inject.h"
 #include "../input/touch_prompt_buttons.h"
 #include "../input/touch_runtime.h"
@@ -23,6 +24,7 @@
 #include "dinput_pad.h"
 #include "dinput_system.h"
 #include "gpu_device.h"
+#include "guest_clock.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,6 +34,10 @@ enum { REASON_BYTES = 192 };
 /* Every prompt a screen can offer fits; the cap exists so the reply cannot be
    written past the end of its buffer, not to hide any of them. */
 #define X2_TOUCH_PROMPT_MAX_LISTED X2_TOUCH_PROMPTS_MAX
+/* Every zone the layout can draw plus every prompt beside it. The cap bounds
+   the reply buffer; it is not a filter, and a longer overlay would be a
+   layout change, not a reason to hide controls. */
+#define X2_TOUCH_CONTROLS_MAX_LISTED (kX2SlotCount + X2_TOUCH_PROMPTS_MAX)
 
 /*
  * One shape of answer for every route here.
@@ -269,4 +275,72 @@ void control_route_assignment(x2_socket_t fd, const char *query) {
     return;
   }
   control_reply_text(fd, 200, "OK", "player %d: %s\n", player_number, reason);
+}
+
+/*
+ * WHERE THE OVERLAY'S CONTROLS ARE, AND WHAT THE STICK IS DOING.
+ *
+ * A caller that wants to press an on-screen control has to know where it is,
+ * and computing that outside the process means keeping a second copy of the
+ * layout -- which is exactly how a test stops testing the control the player
+ * touches. The zones come from the same owner that draws them.
+ *
+ * The stick's deflection is here for the same reason: it is the only control
+ * with a value rather than a state, and without it "the thumb is down" and
+ * "the thumb is pushing" cannot be told apart from outside.
+ */
+void control_route_controls(x2_socket_t fd) {
+  X2TouchVisual visuals[X2_TOUCH_CONTROLS_MAX_LISTED];
+  size_t count =
+      x2_touch_runtime_visuals(visuals, X2_TOUCH_CONTROLS_MAX_LISTED);
+  size_t listed = count < X2_TOUCH_CONTROLS_MAX_LISTED
+                      ? count
+                      : X2_TOUCH_CONTROLS_MAX_LISTED;
+  X2LayoutViewport viewport;
+  char body[1024];
+  size_t i;
+  int at = 0;
+
+  /* Four different things produce an empty overlay and they send a reader to
+     four different places, so the empty answer names which one it is rather
+     than leaving "(none)" to mean any of them. */
+  if (!count) {
+    control_reply_text(fd, 200, "OK",
+                       "the overlay is drawing no control at this moment.\n"
+                       "  touch play: %s\n"
+                       "  gameplay controls: %s\n"
+                       "  overlay: %s\n"
+                       "Controls are drawn in gameplay only; a menu draws "
+                       "action prompts instead -- see /prompts.\n",
+                       x2_touch_runtime_active() ? "ACTIVE" : "NOT active",
+                       x2_gameplay_control_name(
+                           x2_gameplay_control_state(guest_clock_now_s())),
+                       x2_touch_runtime_overlay_visible()
+                           ? "visible, but it published no zone"
+                           : "NOT visible");
+    return;
+  }
+  if (x2_touch_runtime_viewport(&viewport)) {
+    at += snprintf(body + at, sizeof body - (size_t)at, "viewport %gx%g\n",
+                   viewport.width, viewport.height);
+  }
+  for (i = 0; i < listed && at < (int)sizeof body; i++) {
+    const X2TouchVisual *visual = &visuals[i];
+    at += snprintf(body + at, sizeof body - (size_t)at, "%u %s %g,%g %gx%g",
+                   visual->id,
+                   visual->kind == X2_TOUCH_VISUAL_STICK    ? "stick"
+                   : visual->kind == X2_TOUCH_VISUAL_PROMPT ? "prompt"
+                                                            : "button",
+                   (double)visual->left, (double)visual->top,
+                   (double)(visual->right - visual->left),
+                   (double)(visual->bottom - visual->top));
+    if (visual->kind == X2_TOUCH_VISUAL_STICK && at < (int)sizeof body) {
+      at += snprintf(body + at, sizeof body - (size_t)at, " deflect %.3f,%.3f",
+                     (double)visual->deflect_x, (double)visual->deflect_y);
+    }
+    if (at < (int)sizeof body) {
+      at += snprintf(body + at, sizeof body - (size_t)at, "\n");
+    }
+  }
+  control_reply_text(fd, 200, "OK", "%s", body);
 }

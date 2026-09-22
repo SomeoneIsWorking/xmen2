@@ -1,6 +1,7 @@
 #include "touch_controls.h"
 
 #include "../presentation/touch_layout.h"
+#include "thumb_stick.h"
 
 #include <algorithm>
 #include <array>
@@ -27,23 +28,15 @@ void add_button_events(std::vector<ActionEvent> &out,
 }
 
 void add_stick_events(std::vector<ActionEvent> &out,
-                      const lucent::touch::Event &event,
+                      const lucent::touch::Event &event, ThumbStick &stick,
                       const lucent::touch::Zone &zone,
                       const std::array<TouchAction, 4> &actions) {
-  const float center_x = (zone.left + zone.right) * 0.5F;
-  const float center_y = (zone.top + zone.bottom) * 0.5F;
-  const float radius_x = (zone.right - zone.left) * 0.5F;
-  const float radius_y = (zone.bottom - zone.top) * 0.5F;
-  const float horizontal = clamp_axis((event.position.x - center_x) / radius_x);
-  const float vertical = clamp_axis((event.position.y - center_y) / radius_y);
-  const bool release = event.phase == lucent::touch::Phase::ended ||
-                       event.phase == lucent::touch::Phase::canceled;
-  const std::array<float, 4> values =
-      release
-          ? std::array<float, 4>{0.0F, 0.0F, 0.0F, 0.0F}
-          : std::array<float, 4>{clamp_unit(-vertical), clamp_unit(vertical),
-                                 clamp_unit(-horizontal),
-                                 clamp_unit(horizontal)};
+  stick.set_travel(std::min(zone.right - zone.left, zone.bottom - zone.top) *
+                   0.5F);
+  const ThumbStick::Deflection deflection = stick.track(event);
+  const std::array<float, 4> values = {
+      clamp_unit(-deflection.y), clamp_unit(deflection.y),
+      clamp_unit(-deflection.x), clamp_unit(deflection.x)};
   for (std::size_t index = 0; index < actions.size(); ++index)
     out.push_back({event.contact_id, event.zone_id, actions[index],
                    values[index], event.position, event.phase});
@@ -256,7 +249,7 @@ std::vector<ActionEvent> TouchControls::cancel() {
 }
 
 std::vector<ActionEvent>
-TouchControls::translate(std::span<const lucent::touch::Event> events) const {
+TouchControls::translate(std::span<const lucent::touch::Event> events) {
   std::vector<ActionEvent> actions;
   actions.reserve(events.size() * 4);
   for (const auto &event : events) {
@@ -267,7 +260,7 @@ TouchControls::translate(std::span<const lucent::touch::Event> events) const {
       continue;
     if (found->stick) {
       if (event.zone_id == left_stick) {
-        add_stick_events(actions, event, found->zone,
+        add_stick_events(actions, event, stick_, found->zone,
                          {TouchAction::Forward, TouchAction::Backward,
                           TouchAction::MoveLeft, TouchAction::MoveRight});
       }

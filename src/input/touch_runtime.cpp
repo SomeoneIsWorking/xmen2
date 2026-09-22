@@ -409,7 +409,7 @@ std::size_t TouchRuntime::visuals(X2TouchVisual *out,
   const auto zones = overlay_visible()
                          ? controls_.zones()
                          : std::span<const TouchControls::ZoneVisual>{};
-  return overlay_visuals(zones, active_zones_,
+  return overlay_visuals(zones, active_zones_, controls_.stick_deflection(),
                          std::span{live.data(), std::min(prompts, live.size())},
                          out, capacity);
 }

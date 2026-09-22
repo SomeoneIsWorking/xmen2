@@ -66,6 +66,12 @@ typedef struct X2TouchVisual {
   int action;
   int active;
   int kind;
+  /* A stick's live deflection, -1..1 per axis and never outside the unit
+     circle, so the ring can draw where its thumb has pushed it. Zero for
+     every other kind. A stick that does not show its deflection tells the
+     player nothing about what the game is being sent. */
+  float deflect_x;
+  float deflect_y;
 } X2TouchVisual;
 
 /* The viewport the touch layout is currently built from -- the window's pixel
