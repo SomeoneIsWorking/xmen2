@@ -1016,6 +1016,13 @@ def png_water_stats(a: Path, b: Path) -> tuple[float, float]:
                     - (0.299 * y[0] + 0.587 * y[1] + 0.114 * y[2]))
                 for x, y in pairs) / len(pairs)
     return spread, delta
+# Top of NEW GAME's default selected difficulty row as a share of output
+# height, measured at 800x600 where the title's own layout runs uncorrected.
+SELECTED_ROW_RETAIL_TOP_SHARE = 0.2996
+# A row pitch is ~0.021 of the output; this admits rounding, not a row.
+SELECTED_ROW_TOP_TOLERANCE = 0.005
+
+
 def case_selector_dialog(case: Case) -> None:
     """Reach New Game's difficulty dialog and record the untextured
     eight-primitive draw class containing its selected-row geometry."""
@@ -1077,6 +1084,19 @@ def case_selector_dialog(case: Case) -> None:
     case.check("the selected row keeps its retail-relative height",
                bool(row_heights) and max(row_heights) >= height * 0.025,
                "max %.2f px of %d" % (max(row_heights, default=0.0), height))
+    # The title derives the row's translation from the same scale #133
+    # corrects; correcting only the scale left a row of the right height one
+    # full row below its text at 2160 lines (#185). 800x600 applies no
+    # correction, so its measured top IS the retail placement, and this same
+    # check pins it there.
+    row_tops = [item["min_y"] / height for item in row_candidates]
+    case.check("the selected row sits where the retail 800x600 layout puts it",
+               bool(row_tops) and all(
+                   abs(top - SELECTED_ROW_RETAIL_TOP_SHARE)
+                   < SELECTED_ROW_TOP_TOLERANCE for top in row_tops),
+               "tops %s of %d, retail %.4f" % (
+                   sorted({round(top, 4) for top in row_tops}), height,
+                   SELECTED_ROW_RETAIL_TOP_SHARE))
 
     expected_mode = "%dx%d" % (width, height)
     cold_log = case.log_text()

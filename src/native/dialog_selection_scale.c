@@ -8,6 +8,10 @@
  * The row is still submitted; its scene-graph transform has collapsed before
  * D3D8 sees it. Keep the exact retail curve through the 800x600 UI reference,
  * then hold that reference share for larger outputs.
+ *
+ * The caller also derives the row's translation from the same scale: the
+ * vector it passes is (row + 1, -720, top + 7 * scale). Its third component
+ * moves with the corrected scale, or the row is drawn below its text (#185).
  */
 #include "dialog_selection_scale.h"
 #include "dialog_selection_scale_policy.h"
@@ -26,6 +30,10 @@ enum {
   SELECTION_CALLER = 0x005ead9bu,
   TITLE_OUTPUT_HEIGHT = 0x00a0a000u
 };
+
+/* The recovered middle component of the caller's translation vector; any
+   other value means this is not the layout the correction was derived for. */
+#define SELECTION_TRANSLATION_DEPTH (-720.0f)
 
 static unsigned long g_calls, g_selected, g_corrected, g_refused;
 
@@ -49,6 +57,7 @@ static void x2_dialog_selection_transform(CPU *C) {
   d3d8_selector_probe_title_builder_enter(C);
   if (caller == SELECTION_CALLER) {
     uint32_t height = RD32(TITLE_OUTPUT_HEIGHT);
+    uint32_t translation = RD32(C->reg[kX86pEsp] + 4u);
     float supplied_y = stack_float(C->reg[kX86pEsp] + 16u);
     float supplied_z = stack_float(C->reg[kX86pEsp] + 20u);
     float retail = x2_dialog_selection_retail_scale(height);
@@ -56,9 +65,13 @@ static void x2_dialog_selection_transform(CPU *C) {
 
     g_selected++;
     if (height && fabsf(supplied_y - retail) < 0.00001f &&
-        fabsf(supplied_z - retail) < 0.00001f) {
+        fabsf(supplied_z - retail) < 0.00001f &&
+        stack_float(translation + 4u) == SELECTION_TRANSLATION_DEPTH) {
       write_stack_float(C->reg[kX86pEsp] + 16u, extended);
       write_stack_float(C->reg[kX86pEsp] + 20u, extended);
+      write_stack_float(translation + 8u,
+                        stack_float(translation + 8u) +
+                            x2_dialog_selection_offset_correction(height));
       if (extended != supplied_y)
         g_corrected++;
     } else {

@@ -374,7 +374,7 @@ row back from D3D8 through its world-matrix ancestry to a title-side linear
 scale that crosses zero at high output heights. The scoped extension preserves
 the exact retail formula through 800x600 and holds its retail-relative share
 above that reference; 800x600, 1280x720, and 3840x2160 cold-plus-warm live cases
-each pass 15/15 with row heights of 20.04, 24.04, and 72.14 pixels (C275).
+each pass 16/16 with row heights of 20.04, 24.04, and 72.14 pixels and the row top within 0.002 of the 800x600 share; issue #185 records the scale-derived translation that had left the 4K row one row below its text (C275).
 
 Native CHud presentation adapters intercept party draw (`0x005a43d0`),
 vitals draw (`0x005a3320`), inventory draw (`0x005a5170`), and portrait draw
