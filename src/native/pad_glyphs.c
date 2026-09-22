@@ -9,7 +9,9 @@
  *   kinds 3..0xc       gamepad slots 0..9
  *   codes 0x15..0x31  "Btn N" (the active DirectInput order is in
  *                       dinput_pad.c)
- *   codes 1..0x10     signed axes; Z+ (5) / Z- (6) are LT / RT
+ *   codes 1..0x10     signed axes: X+ X- Y+ Y- (1..4, left stick),
+ *                       Z+ (5) / Z- (6) are LT / RT, RX+ RX- RY+ RY-
+ *                       (7..10, right stick)
  *   codes 0x11..0x14  POV directions -- X+ X- Y+ Y-, i.e. right, left,
  *                       down, up, and each gets its OWN glyph
  *
@@ -109,8 +111,22 @@ uint8_t pad_glyph_code(uint32_t code) {
     return X2_PAD_GLYPH_LT;
   if (code == 6u)
     return X2_PAD_GLYPH_RT;
+  /* The sticks, one glyph per DIRECTION, in DirectInput's signed-axis order:
+     X+ X- Y+ Y- for the left stick at 1..4 and for the right at 7..10, Y+
+     being down. Menu footers bind them ("Scroll", "Rotate"), and a name
+     like "Axis LY-" in a keycap is no picture of a pad (#184). */
+  static const uint8_t left_stick[] = {
+      X2_PAD_GLYPH_LS_RIGHT, X2_PAD_GLYPH_LS_LEFT, X2_PAD_GLYPH_LS_DOWN,
+      X2_PAD_GLYPH_LS_UP};
+  static const uint8_t right_stick[] = {
+      X2_PAD_GLYPH_RS_RIGHT, X2_PAD_GLYPH_RS_LEFT, X2_PAD_GLYPH_RS_DOWN,
+      X2_PAD_GLYPH_RS_UP};
   if (code >= 0x11u && code < 0x11u + sizeof pov)
     return pov[code - 0x11u];
+  if (code >= 1u && code < 1u + sizeof left_stick)
+    return left_stick[code - 1u];
+  if (code >= 7u && code < 7u + sizeof right_stick)
+    return right_stick[code - 7u];
   if (code == 0x1du)
     return X2_PAD_GLYPH_LS;
   if (code == 0x1eu)

@@ -836,6 +836,7 @@ add_executable(test_prompt_glyph_draw tests/test_prompt_glyph_draw.c
                src/native/prompt_glyph_draw.c src/native/prompt_glyphs.c
                src/native/prompt_glyph_atlas.c
                src/native/prompt_glyph_metrics.c
+               src/native/text_put.c
                src/native/prompt_glyph_quads.c
                src/native/prompt_action_labels.c
                src/native/guest_memory.c
@@ -868,6 +869,7 @@ add_executable(test_prompt_touch_buttons tests/test_prompt_touch_buttons.c
                src/native/prompt_glyph_draw.c src/native/prompt_glyphs.c
                src/native/prompt_glyph_atlas.c
                src/native/prompt_glyph_metrics.c
+               src/native/text_put.c
                src/native/prompt_glyph_quads.c
                src/presentation/aspect_fit.c
                src/native/guest_memory.c
@@ -885,6 +887,7 @@ add_test(NAME prompt_touch_buttons COMMAND test_prompt_touch_buttons)
 
 add_executable(test_prompt_glyph_metrics tests/test_prompt_glyph_metrics.c
                src/native/prompt_glyph_metrics.c
+               src/native/text_put.c
                src/native/prompt_glyphs.c
                src/native/prompt_glyph_atlas.c src/native/guest_memory.c
                tests/native_stubs.c)
@@ -899,7 +902,8 @@ target_link_libraries(test_prompt_glyph_metrics PRIVATE m pthread)
 add_test(NAME prompt_glyph_metrics COMMAND test_prompt_glyph_metrics)
 
 add_executable(test_prompt_glyph_batch tests/test_prompt_glyph_batch.c
-               src/native/prompt_glyph_batch.c tests/native_stubs.c)
+               src/native/prompt_glyph_batch.c src/native/prompt_glyph_quads.c
+               tests/native_stubs.c)
 target_include_directories(test_prompt_glyph_batch
                            PRIVATE src/runtime/x86_abi src/native src/gpu)
 add_test(NAME prompt_glyph_batch COMMAND test_prompt_glyph_batch)

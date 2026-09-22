@@ -43,7 +43,6 @@ static int prompt_codepoint(uint16_t c) {
 
 static unsigned long g_strings, g_with_prompts, g_prompt_codepoints;
 static unsigned long g_super_called;
-static unsigned g_examples;
 /* The NEAR MISS denominator. A prompt codepoint is 0x80..0x93 -- inside the
    byte range, not up in a private plane -- so "no prompt codepoint arrived"
    and "no non-ASCII arrived at all" are different answers and the report has
@@ -296,6 +295,16 @@ static struct PromptStringPlan plan_string(uint32_t s) {
   return plan;
 }
 
+/* Every string the loop lays out enters the layout record, ours or not: a
+   draw submits a window of adjacent strings, and a window can only be summed
+   over the strings that are in it (prompt_glyph_quads.c). */
+static void record_stock_string(uint32_t s) {
+  if (!s ||
+      !x2_prompt_quads_begin_run(wide_hash(s, NULL), plan_string(s).emitted))
+    return;
+  x2_prompt_quads_end_run();
+}
+
 void x2_override_005ee780(CPU *C) {
   uint32_t s = glyph_loop_string(C);
   unsigned i;
@@ -311,10 +320,11 @@ void x2_override_005ee780(CPU *C) {
       if (prompt_codepoint(c))
         g_prompt_codepoints++;
     }
-    if (g_examples < 8) {
-      g_examples++;
+    /* Every DISTINCT prompt string, like the branch below: the first eight
+       of a run were eight copies of the loading screen's Enter cap, and the
+       footers a player asks about were never shown. */
+    if (first_sighting(wide_hash(s, NULL)))
       log_example(s);
-    }
   } else if (s) {
     /* Diagnostic denominator: WHAT is being drawn, if not prompts?
        Every string carrying a non-ASCII wchar is COUNTED for the whole
@@ -345,6 +355,7 @@ void x2_override_005ee780(CPU *C) {
     unsigned length = 0;
     (void)wide_hash(s, &length);
     if (x2_prompt_touch_begin(s, length)) {
+      record_stock_string(s);
       g_cursor_string = s;
       g_cursor_index = 0;
       g_touch_mode = 1;
@@ -371,23 +382,32 @@ void x2_override_005ee780(CPU *C) {
        every precondition first, including the one-glyph case. */
     if (plan.unavailable || !plan.native) {
       g_unavailable_refused++;
+      record_stock_string(s);
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
     if (!guest_memory_try_read32(batch + 8u, &color)) {
       g_color_refused++;
+      record_stock_string(s);
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
     if (x2_prompt_quads_available() < plan.native) {
       g_queue_refused++;
+      record_stock_string(s);
       g_super_called++;
       x86_guest_body(C, "XMen2.exe", 0x005ee780u);
       return;
     }
 
+    if (!x2_prompt_quads_begin_run(wide_hash(s, NULL), plan.emitted)) {
+      x2_log_error("PROMPT DRAW: a string run could not open because "
+                   "another was still open; atomic interception cannot "
+                   "continue.\n");
+      abort();
+    }
     g_predicted += plan.emitted;
     g_emitted_seen_before = g_emitted_seen;
     g_cursor_string = s;
@@ -396,6 +416,7 @@ void x2_override_005ee780(CPU *C) {
     g_super_called++;
     x86_guest_body(C, "XMen2.exe", 0x005ee780u);
     g_cursor_string = 0;
+    x2_prompt_quads_end_run();
     if (g_emitted_seen - g_emitted_seen_before != plan.emitted) {
       g_desync++;
       x2_log_error("PROMPT DRAW: quad/wchar DESYNC -- predicted %u "
@@ -406,6 +427,7 @@ void x2_override_005ee780(CPU *C) {
     }
     return;
   }
+  record_stock_string(s);
   g_super_called++;
   x86_guest_body(C, "XMen2.exe", 0x005ee780u);
 }

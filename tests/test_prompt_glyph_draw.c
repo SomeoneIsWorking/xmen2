@@ -313,15 +313,16 @@ int main(void) {
        from glyph-loop arg2+8, not the emitter's unrelated ECX. */
     static const uint16_t one[] = {X2_PAD_GLYPH_FACE_A};
     CPU cpu;
-    const struct X2PromptQuad *quads;
-    unsigned count = 0;
+    struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
+    unsigned count;
     unsigned long emit_before = g_emitter_calls;
     uint32_t entry;
 
     x2_prompt_quads_reset();
     entry = g_stack - 32u;
     call_glyph_loop(&cpu, guest_wide(one, 1));
-    quads = x2_prompt_quads(&count);
+    /* One emitted glyph: the draw that submits it declares 6*1-2. */
+    count = x2_prompt_quads_take_run(x2_prompt_draw_glyphs(4u), quads);
     if (cpu.reg[kX86pEsp] != entry + 32u)
       fail("the retail glyph loop did not own its RET 0x1c ABI");
     else
@@ -353,7 +354,7 @@ int main(void) {
     g_batch = 0x23456780u;
     x2_prompt_quads_reset();
     call_glyph_loop(&cpu, guest_wide(two, 2));
-    x2_prompt_quads(&count);
+    x2_prompt_quads_pending(&count);
     if (count || g_emitter_calls != emit_before + 2u ||
         !rect_has_area((unsigned)emit_before) ||
         !rect_has_area((unsigned)emit_before + 1u))
@@ -376,12 +377,15 @@ int main(void) {
     unsigned i, count = 0;
     unsigned long emit_before;
     x2_prompt_quads_reset();
+    if (!x2_prompt_quads_begin_run(1u, X2_PROMPT_QUADS_MAX - 1u))
+      fail("the store refused a filler run");
     for (i = 0; i + 1u < X2_PROMPT_QUADS_MAX; i++)
       if (!x2_prompt_quads_add(&filler))
         fail("the queue refused a filler before its stated capacity");
+    x2_prompt_quads_end_run();
     emit_before = g_emitter_calls;
     call_glyph_loop(&cpu, guest_wide(two, 2));
-    x2_prompt_quads(&count);
+    x2_prompt_quads_pending(&count);
     if (count != X2_PROMPT_QUADS_MAX - 1u ||
         g_emitter_calls != emit_before + 2u ||
         !rect_has_area((unsigned)emit_before) ||

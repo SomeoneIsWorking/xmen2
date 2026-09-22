@@ -85,17 +85,17 @@ void gpu_prompt_glyphs_frame_begin(void) {
     g_frames_ready++;
 }
 
-int gpu_prompt_glyphs_render(const float mvp[16]) {
+int gpu_prompt_glyphs_render(const struct X2PromptQuad *quads, unsigned count,
+                             const float mvp[16]) {
   struct PromptVertex vertices[X2_PROMPT_QUADS_MAX * 6u];
-  const struct X2PromptQuad *quads;
   GpuDraw draw;
-  unsigned count, i;
+  unsigned i;
 
   g_render_calls++;
-  quads = x2_prompt_quads(&count);
   if (!count)
     return 1;
-  if (!mvp || !g_atlas || !g_vertices || !gpu_frame_in_progress()) {
+  if (!quads || count > X2_PROMPT_QUADS_MAX || !mvp || !g_atlas ||
+      !g_vertices || !gpu_frame_in_progress()) {
     g_refused += count;
     return 0;
   }
@@ -133,7 +133,6 @@ int gpu_prompt_glyphs_render(const float mvp[16]) {
     return 0;
   }
   g_drawn += count;
-  x2_prompt_quads_consume();
   return 1;
 }
 
@@ -173,6 +172,7 @@ int gpu_prompt_glyphs_selftest(void) {
   };
   struct X2PromptQuad half = full;
   struct PromptVertex check[6];
+  struct X2PromptQuad quads[2];
   unsigned i, changed = 0;
   unsigned full_red = 0, half_red = 0;
   int failed = 0;
@@ -196,9 +196,10 @@ int gpu_prompt_glyphs_selftest(void) {
   if (!gpu_device_create())
     return 1;
   gpu_prompt_glyphs_frame_begin();
-  if (!x2_prompt_quads_add(&full) || !x2_prompt_quads_add(&half) ||
-      !gpu_offscreen_begin(96, 64, 0.0f, 0.0f, 1.0f, 1.0f) ||
-      !gpu_prompt_glyphs_render(pixel_mvp) ||
+  quads[0] = full;
+  quads[1] = half;
+  if (!gpu_offscreen_begin(96, 64, 0.0f, 0.0f, 1.0f, 1.0f) ||
+      !gpu_prompt_glyphs_render(quads, 2u, pixel_mvp) ||
       !gpu_offscreen_read(pixels, sizeof pixels)) {
     x2_log_info("prompt GPU selftest: FAILED -- the production atlas draw "
                 "could not be read back.\n");

@@ -47,7 +47,7 @@ int main(void) {
   uint32_t font = GUEST_BASE;
   uint32_t empty_font = GUEST_BASE + 0x2000u;
   uint32_t later_font = GUEST_BASE + 0x4000u;
-  uint32_t face_b, rewind, occupied, empty_cell;
+  uint32_t face_b, rewind, occupied, empty_cell, retail;
   void *page;
   if (guest_memory_init() != 0 ||
       guest_memory_map_fixed(GUEST_BASE, MAP_BYTES, PROT_READ | PROT_WRITE) !=
@@ -73,7 +73,21 @@ int main(void) {
   WR16(occupied + GL_ADVANCE, 3u);
   WR16(occupied + GL_OFFSET, 4u);
   WR32(occupied + GL_BASELINE, 5u);
+  /* A byte the manifest leaves to the retail font (0x99, the trademark
+     sign) draws in this font by design: it has no published cell, so it is
+     neither a collision nor overwritten -- #184. */
+  retail = glyph(font, 0x99u);
+  WR16(retail + GL_WIDTH, 6u);
   x2_prompt_glyph_publish_metrics(font, 2.0f);
+  check(RD16(retail + GL_WIDTH) == 6u && RD16(retail + GL_ADVANCE) == 0u &&
+            !x2_prompt_glyph_cell(0x99u) && !x2_prompt_glyph_cell(0x8Cu) &&
+            !x2_prompt_glyph_cell(0x9Cu),
+        "retail-font bytes inside the run carry no port cell");
+  check(X2_KEYCAP_GLYPH_LEFT != 0x99u && X2_KEYCAP_GLYPH_MIDDLE != 0x99u &&
+            X2_PAD_GLYPH_DPAD_UP != 0x8Cu && X2_KEYCAP_GLYPH_REWIND != 0x9Cu &&
+            X2_KEYCAP_GLYPH_RIGHT != 0x9Cu && x2_prompt_glyph_cell(0x8Du) &&
+            x2_prompt_glyph_cell(X2_KEYCAP_GLYPH_RIGHT),
+        "the codepoint assignment skips the retail bytes");
 
   face_b = glyph(font, X2_PROMPT_GLYPH_FIRST + 1u);
   check((int16_t)RD16(face_b + GL_WIDTH) == 38 &&

@@ -204,6 +204,15 @@ int main(int argc, char **argv) {
        check_call(3, 0x12, X2_PAD_GLYPH_DPAD_LEFT, 0) &&
        check_call(3, 0x13, X2_PAD_GLYPH_DPAD_DOWN, 0) &&
        check_call(3, 0x14, X2_PAD_GLYPH_DPAD_UP, 0) &&
+       /* The stick directions, one glyph each; Y+ is DOWN (#184). */
+       check_call(3, 1, X2_PAD_GLYPH_LS_RIGHT, 0) &&
+       check_call(3, 2, X2_PAD_GLYPH_LS_LEFT, 0) &&
+       check_call(3, 3, X2_PAD_GLYPH_LS_DOWN, 0) &&
+       check_call(3, 4, X2_PAD_GLYPH_LS_UP, 0) &&
+       check_call(3, 7, X2_PAD_GLYPH_RS_RIGHT, 0) &&
+       check_call(3, 8, X2_PAD_GLYPH_RS_LEFT, 0) &&
+       check_call(3, 9, X2_PAD_GLYPH_RS_DOWN, 0) &&
+       check_call(3, 10, X2_PAD_GLYPH_RS_UP, 0) &&
        check_call(3, 0x1d, X2_PAD_GLYPH_LS, 0) &&
        check_call(3, 0x1e, X2_PAD_GLYPH_RS, 0) &&
        check_call(4, 0x15, 0, 1) && /* generic host pad */

@@ -36,6 +36,7 @@
  * the font-mediated route this direction exists to replace.
  */
 #include "prompt_glyph_metrics.h"
+#include "text_put.h"
 
 #include "pad_glyph_codes.h"
 #include "prompt_glyph_atlas.h"
@@ -44,6 +45,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 /* The exe's font record, from FUN_00596af0 -- same field map as
    ui_text_scale.c, which owns the authority for these offsets. */
@@ -67,7 +69,7 @@ const struct x2_prompt_cell *x2_prompt_glyph_cell(uint16_t codepoint) {
   if (!x2_prompt_glyph_available(codepoint))
     return NULL;
   index = (unsigned)(codepoint - X2_PROMPT_GLYPH_FIRST);
-  if (index >= X2_PROMPT_CELL_COUNT)
+  if (index >= X2_PROMPT_CELL_COUNT || !x2_prompt_cells[index].published)
     return NULL;
   return &x2_prompt_cells[index];
 }
@@ -115,27 +117,35 @@ static int font_baseline(uint32_t font_record, int32_t *result) {
 void x2_prompt_glyph_publish_metrics(uint32_t font_record, float scale) {
   uint16_t code;
   unsigned published = 0, occupied = 0;
+  char named[(X2_PROMPT_GLYPH_LAST - X2_PROMPT_GLYPH_FIRST + 1u) * 5u + 1u];
+  size_t at = 0;
   int32_t baseline;
 
   if (!font_record)
     return;
   g_records++;
+  named[0] = 0;
   /* Occupancy is authoritative even for a font whose baseline cannot be
      used for publication. A drawing record makes that byte non-private;
-     baseline quality does not give the port permission to ignore it. */
+     baseline quality does not give the port permission to ignore it. The
+     retail-font bytes the manifest already skips have no published cell and
+     are not a collision. */
   for (code = X2_PROMPT_GLYPH_FIRST; code <= X2_PROMPT_GLYPH_LAST; code++) {
     uint32_t g = font_record + GLYPH_FIRST + (uint32_t)code * GLYPH_STRIDE;
+    if (!x2_prompt_cells[code - X2_PROMPT_GLYPH_FIRST].published)
+      continue;
     if (RD16(g + GL_WIDTH) || RD16(g + GL_HEIGHT)) {
       x2_prompt_glyph_mark_unavailable(code);
+      text_put(named, sizeof named, &at, " 0x%02x", code);
       occupied++;
     }
   }
   if (occupied) {
     g_records_occupied++;
     x2_log_error("PROMPT METRICS: %u of the port's codepoints already "
-                 "draw in this font -- left alone and globally "
+                 "draw in this font (%s ) -- left alone and globally "
                  "unavailable to native prompt labels.\n",
-                 occupied);
+                 occupied, named);
   }
   if (!font_baseline(font_record, &baseline)) {
     g_records_without_baseline++;

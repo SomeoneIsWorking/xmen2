@@ -365,7 +365,11 @@ Alchemy finalizers, with zero desync, unavailable-byte, colour, capacity,
 transform, cross-context, GPU, or unfinalized-boundary refusals; its capture
 shows the native controller icon beside `CONTINUE...`. Issue #120 records the
 font-baseline root cause and issue #121 records the pure-glyph finalizer and
-atomicity root cause. Issue #133 traces the retail dialog's untextured selected
+atomicity root cause. Issue #184 records why footer prompts drawn by
+a later draw lost their art (every quad went out with the first draw's
+transform); each finalized draw now takes only the contiguous window of
+laid-out strings its glyph count names, and the pause, team and conversation
+prompts render for pad and keyboard at 1280x720. Issue #133 traces the retail dialog's untextured selected
 row back from D3D8 through its world-matrix ancestry to a title-side linear
 scale that crosses zero at high output heights. The scoped extension preserves
 the exact retail formula through 800x600 and holds its retail-relative share

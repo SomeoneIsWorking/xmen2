@@ -28,12 +28,10 @@ static unsigned g_nonindexed_depth;
 static uint32_t g_nonindexed_primitives;
 static unsigned long g_calls, g_finalizer_calls, g_nested_finalizers;
 static unsigned long g_with_prompts, g_drawn;
-static unsigned long g_transform_refused, g_gpu_refused, g_unfinalized_refused;
+static unsigned long g_transform_refused, g_gpu_refused;
 static unsigned long g_unreadable_count;
 
 void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
-  unsigned count;
-
   g_calls++;
   g_nonindexed_depth++;
   /* CHECKED, not dereferenced: this count decides which retained prompt a
@@ -46,16 +44,6 @@ void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
   }
   x86_guest_body(C, "libIGGfx.dll", 0x100352d0u);
   g_nonindexed_depth--;
-
-  /* updateContextState is the only evidenced point where this batch has a
-     finalized transform. If the original body returned without a nested
-     finalizer consuming the harvest, refuse it here; leaving it pending
-     would attach this text to a later, unrelated draw. */
-  (void)x2_prompt_quads(&count);
-  if (count) {
-    g_unfinalized_refused += count;
-    x2_prompt_quads_consume();
-  }
 }
 
 /* The touch prompts' view of this finalizer's transform. */
@@ -63,7 +51,15 @@ static int batch_transform(void *owner, float mvp[16]) {
   return x2_ui_transform_current(*(const uint32_t *)owner, mvp);
 }
 
+/*
+ * updateContextState is the only evidenced point where a batch has a
+ * finalized transform. A text pass lays all of its strings out before it
+ * draws any, so what is pending here may belong to later draws: this draw
+ * takes only the string run whose glyph count its primitive count declares,
+ * and the rest wait for their own draws (issue #184).
+ */
 void x2_prompt_glyph_batch_update_context_state(CPU *C) {
+  struct X2PromptQuad quads[X2_PROMPT_QUADS_MAX];
   uint32_t context = C->reg[kX86pEcx];
   float mvp[16];
   unsigned count;
@@ -73,23 +69,18 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C) {
   if (!g_nonindexed_depth)
     return;
   g_nested_finalizers++;
-  (void)x2_prompt_quads(&count);
-  if (!count) {
-    x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
-    return;
+  count = x2_prompt_quads_take_run(
+      x2_prompt_draw_glyphs(g_nonindexed_primitives), quads);
+  if (count) {
+    g_with_prompts++;
+    if (!x2_ui_transform_current(context, mvp))
+      g_transform_refused += count;
+    else if (!gpu_prompt_glyphs_render(quads, count, mvp))
+      g_gpu_refused += count;
+    else
+      g_drawn += count;
   }
-  g_with_prompts++;
-  if (!x2_ui_transform_current(context, mvp)) {
-    g_transform_refused += count;
-    x2_prompt_quads_consume();
-  } else if (!gpu_prompt_glyphs_render(mvp)) {
-    g_gpu_refused += count;
-    x2_prompt_quads_consume();
-    x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
-  } else {
-    g_drawn += count;
-    x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
-  }
+  x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
 }
 
 __attribute__((constructor)) static void x2_prompt_glyph_batch_register(void) {
@@ -105,11 +96,9 @@ void x2_prompt_glyph_batch_report(void) {
               "%lu nested finalizer(s) carried prompt quads; %lu glyph quad(s) "
               "submitted, %lu refused because the matching engine transform "
               "was unavailable, "
-              "%lu refused by the GPU path, %lu refused because the draw "
-              "returned without consuming them at a finalized boundary\n",
+              "%lu refused by the GPU path\n",
               g_calls, g_finalizer_calls, g_nested_finalizers, g_with_prompts,
-              g_drawn, g_transform_refused, g_gpu_refused,
-              g_unfinalized_refused);
+              g_drawn, g_transform_refused, g_gpu_refused);
   if (g_unreadable_count)
     x2_log_info("        %lu draw(s) had an unreadable primitive count -- no "
                 "retained touch prompt could be attributed to them\n",

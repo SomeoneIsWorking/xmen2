@@ -19,16 +19,27 @@ player-number images.
 Prompt delivery no longer edits or derives a game font.
 `tools/render_prompt_glyphs.py` rasterises the shared `port-assets` SVGs at
 build time into a generated, port-owned GPU atlas. The input-name and prompt
-label overrides publish private byte codepoints `0x80..0x93` according to the
-active assigned input source. After the retail loader has populated a font
+label overrides publish private byte codepoints `0x80..0x9E` according to the
+active assigned input source: 24 pad icons (faces, shoulders, triggers,
+Start/Back, stick clicks, d-pad, and the four directions of each stick) then
+four keycap parts, in `assets/buttons/glyphs.json` order, skipping
+`retail_font_codepoints` 0x8C, 0x99 and 0x9C. Those are the only bytes of
+`0x80..0x9F` any retail font record draws; from `0xA0` up the Latin-1 letters
+are dense, and the manifest refuses a run that reaches them (#184). After the retail loader has populated a font
 record, the port publishes only width, height, advance and baseline metrics for
 unused private cells in memory. It writes no prompt pixels or UVs into a font
 record or an on-disk font asset.
 
 The retail text measurer and layout code position those cells. At the RE'd
 Alchemy non-indexed text-batch boundary the port harvests their quads with the
-exact UI transform and batch colour, queues the native art, and calls the
-retail glyph emitter with a zero-area rectangle. The collapsed call preserves
+exact UI transform and batch colour, records each prompt string's quads as
+one laid-out run, and calls the retail glyph emitter with a zero-area
+rectangle. A text pass lays every string out before drawing any of them, and
+one draw submits a contiguous window of laid-out strings (a conversation's
+speaker, line and `A` label are one draw); every other string is recorded as
+an empty run so the window can be matched. The draw that finalizes takes the
+earliest window whose glyph count equals its own (`6 * glyphs - 2`
+primitives) and renders exactly those quads with its own transform (#184). The collapsed call preserves
 the engine's vertex/batch/finalizer behavior without sampling a stock-font
 pixel. Ordinary text and the stock batch/state-finalizer paths continue
 through their supercalls. Whole strings fall back before interception if any
