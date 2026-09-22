@@ -806,10 +806,11 @@ code publishes to the pad in a browser.
 
 That block is now named: **cg.dll + 0xe2d5**, a string-hash loop whose exit
 condition subtracts a per-step bit count from 32. On the emulator that count is
-zero, so it cannot terminate; on desktop the same block runs with a count of 10
-and a mask of 1,023 and exits after four iterations. The difference is in guest
-DATA — a hash-table descriptor built for two entries instead of 1,024 — not in
-generated code, and which call sizes it is the open question. The engine now
+zero, so it cannot terminate. The string it is hashing is `"texture unit 0"`,
+so this is a Cg parameter lookup against a table sized for two entries. The
+difference is in guest DATA — a heap descriptor — not in generated code; which
+call built it is open, and both known constructors were watched without being
+entered. The engine now
 publishes its last block entry and the frozen-crossing beat prints it, because
 the block-entry histogram could not: on that run it dropped 1,761,478,604 of
 1,761,605,419 entries and ranked a block with 11,630 hits first.

@@ -135,27 +135,51 @@ on arrival, and the two hosts disagree exactly there:
 | `ecx` — bits per step | `0x0000000a` | `0x00000000` |
 | `edi` — mask | `0x000003ff` | `0x00000001` |
 | `esi` — counter | `0x16` (32-10) | `0x20`, and it never moves |
+| `edx` — the hash so far | `0` | `0x361` |
 
-So the descriptor at `[esp+0x10]` — a heap object, `0x40000340` in the wedged
-run — was built for a 1,024-entry table on desktop and left with a mask of 1
-and a step of 0 on the emulator. This is a difference in guest DATA, not in
-generated code: the same backend emits the same block on both hosts, and the
-block is correct for the desktop operands.
+**These are each host's FIRST arrival at that block, not the same lookup** —
+the differing `edx` says the strings differ — so the table is not the desktop
+run's same table gone wrong. What the pair does establish is the shape of the
+defect: the loop is correct and terminates for a table whose step is 10, and
+on the emulator it is handed one whose step is 0 and cannot. The descriptor is
+a heap object (`0x40000340` in the wedged run), so this is a difference in
+guest DATA, not in generated code: the same backend emits the same block on
+both hosts.
 
-What is still unknown is which earlier call sized that table, and what this
-port answers differently there. That is the next step, and it is now a bounded
-one.
+The string being looked up is named on the stack: `cg.dll + 0x79494`, which in
+the file is the ASCII `"texture unit 0"`. So this is a Cg parameter lookup, and
+the table it searches has room for two entries — consistent with a Cg program
+whose parameters were never populated.
+
+Two constructors write these four fields, and neither fired under a watch
+during the wedged run:
+
+* `cg.dll + 0xdc20` sizes the table properly. It clamps the requested count to
+  at least 2 and then computes the bit count **in x87** — `fldln2`, `fild`,
+  `fyl2x`, a second `fyl2x` against a constant, `fdivp`, i.e. `log2(count)` —
+  before converting to an integer and storing it at `+8`. A zero out of that
+  sequence is exactly the observed state.
+* `cg.dll + 0xe1f0` writes `+4` and `+8` as literal zero.
+
+So the next step is to find which one built THIS table and with what argument.
+Neither entry address was reached while the watch was armed, which means the
+table predates engine-diagnostic setup or a third path builds it.
 
 ## Next
 
 1. ~~Resolve `0x000c1060`~~ — it is `memmove`'s own import thunk, not a caller.
 2. ~~Name the spinning block~~ — cg.dll + 0xe2d5, a string-hash loop that
    subtracts a step count of zero from 32. See above.
-3. Find which call sizes that hash table, and what this port answers
-   differently there. The descriptor is a heap object; the mask is 1 rather
-   than 1,023, so it was built for a table of two entries. Aim `jit.watch`
-   at the constructor once it is identified, and compare the two hosts at
-   the same point, which is what settled step 2.
+3. Find which call sizes THIS table. Both known constructors
+   (`cg.dll + 0xdc20`, `cg.dll + 0xe1f0`) were watched and neither was
+   entered during the wedged run, so either the table is built before the
+   engine diagnostics arm or a third path writes those fields. Widen the
+   search before aiming another watch.
+   If it is `+0xdc20`, its bit count comes out of an x87 `fyl2x` pair and
+   the integer conversion after it, and a zero there is an x87 defect
+   rather than a Cg one — check that sequence against the host FPU first,
+   since it is cheap and it is the only floating-point arithmetic in the
+   path.
 4. The thread question from before stands but is now secondary: the spin is
    not waiting for another thread, it is arithmetic that cannot terminate.
    `0 preemption(s)` on the frozen beat is consistent with that -- no other
