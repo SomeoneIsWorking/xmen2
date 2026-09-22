@@ -21,7 +21,6 @@ static const char *const k_override_names[kX2ConfigOverrideCount] = {
     [kX2ConfigFrameDump] = "X2_FRAME_DUMP",
     [kX2ConfigFrameTable] = "X2_FRAME_TABLE",
     [kX2ConfigGpuDebug] = "X2_GPU_DEBUG",
-    [kX2ConfigGuestWatch] = "X2_GUEST_WATCH",
     [kX2ConfigHeartbeat] = "X2_HEARTBEAT",
     [kX2ConfigHotEp] = "X2_HOTEP",
     [kX2ConfigInputFifo] = "X2_INPUT_FIFO",
@@ -84,7 +83,6 @@ static const char *const k_override_names[kX2ConfigOverrideCount] = {
     [kX2ConfigFault] = "X2_FAULT",
     [kX2ConfigFaultStack] = "X2_FAULT_STACK",
     [kX2ConfigFaultSelftest] = "X2_FAULT_SELFTEST",
-    [kX2ConfigWriteWatch] = "X2_WRITE_WATCH",
 };
 
 const char *x2_config_override_name(X2ConfigOverride variable) {

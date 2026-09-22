@@ -195,7 +195,7 @@ void x86_profiler_start(const char *arg);
 void x86_profiler_report(void);
 
 /*
- * X2_WRITE_WATCH=<guest-addr>: report the running body the instant any guest
+ * write_watch=<guest-addr>: report the running body the instant any guest
  * WR32 touches the address (the definitive catch for a stack overrun whose
  * writer is a DIRECT call, invisible to the dispatch-boundary ring). WR32
  * checks x2_write_watch_addr; unarmed it is one predictable compare.

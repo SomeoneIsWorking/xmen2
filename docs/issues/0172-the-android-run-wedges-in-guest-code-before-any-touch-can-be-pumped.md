@@ -165,31 +165,79 @@ So the next step is to find which one built THIS table and with what argument.
 Neither entry address was reached while the watch was armed, which means the
 table predates engine-diagnostic setup or a third path builds it.
 
+## The table, read (2026-09-22)
+
+`jit.peek` dumps guest memory beside a `jit.watch` report, so the descriptor
+itself is readable now. At the wedge, 0x40000340 holds:
+
+```
++00 00000001   size      (1 bucket)
++04 00000001   mask
++08 00000000   bits per step   <-- the zero
++0c 40000330   the bucket array
+```
+
+The constructor at `cg.dll + 0xdc20`, read from the player's own DLL rather
+than paraphrased, makes all four from one number:
+
+```
+  ecx = arg1                     ; the requested entry count
+  if (ecx < 2) arg1 = 2          ; clamped, so log2 of it is never below 1
+  fldln2 / fild arg1 / fyl2x     ; ln(count)
+  fldln2 / fld qword 0x10072188  ; that constant is 2.0
+  fyl2x / fdivp                  ; ln(count)/ln(2) = log2(count)
+  call 0x1000e0b0                ; -> ceil
+  call 0x10068ca0                ; -> _ftol: FNSTCW, OR AH,0Ch, FLDCW, FISTP
+  [esi+8] = eax                  ; bits
+  [esi+4] = (1<<bits)-1          ; mask, built a bit at a time
+  [esi]   = 1<<bits              ; size
+```
+
+**The observed state is not reachable from that code.** `bits = 0` gives
+`size = 1` and `mask = 0`, and the mask here is 1. A `bits` of 0 beside a mask
+of 1 is not any output of this constructor, for any argument.
+
+And `--set jit.watch=0x2000dc20` **never fired** across a full wedged run, so
+this constructor is not merely producing the wrong answer -- it is not running
+at all. Something else writes those fields. Finding it is the next step, and
+the tool below is what it needs.
+
+## The write watch cannot answer this (2026-09-22)
+
+The previous Next said `write_watch=0x40000348:0` would name the writer. It
+cannot, and this is the second time the issue has planned around it.
+
+`x2_write_watch_fire` is called from `src/runtime/x86_abi/x86rt.h` -- the WR8/
+WR16/WR32 macros -- which are the accessors **hand-written native overrides**
+use, plus the CRT's `memcpy`/`memmove` destinations. JIT-translated guest code
+stores straight to the mapped page and calls nothing. So the watch sees writes
+made by this port's own C and is blind to every write the guest makes, which is
+the only kind this question is about. Armed at `0x40000348:0` through the
+runtime conf on the wedged emulator run it reported, correctly and uselessly,
+nothing.
+
+It is now armable where the bug reproduces at least: `write_watch` and
+`guest_watch` are registered CVars rather than `getenv` reads, so the Android
+runtime conf reaches them. That removes the packaging blocker and leaves the
+real one.
+
+**What is needed is a guest-store watch in the JIT**: an address compared in
+emitted store code, with translations flushed when it is armed so an unarmed
+run emits no compare at all. That belongs in x86port beside the block cache,
+and it is the tool this issue has now been blocked on twice.
+
 ## Next
+
 
 1. ~~Resolve `0x000c1060`~~ — it is `memmove`'s own import thunk, not a caller.
 2. ~~Name the spinning block~~ — cg.dll + 0xe2d5, a string-hash loop that
    subtracts a step count of zero from 32. See above.
-3. Find which call sizes THIS table. Both known constructors
-   (`cg.dll + 0xdc20`, `cg.dll + 0xe1f0`) were watched and neither was
-   entered during the wedged run, so either the table is built before the
-   engine diagnostics arm or a third path writes those fields. Widen the
-   search before aiming another watch.
-   If it is `+0xdc20`, its bit count comes out of an x87 `fyl2x` pair and
-   the integer conversion after it, and a zero there is an x87 defect
-   rather than a Cg one — check that sequence against the host FPU first,
-   since it is cheap and it is the only floating-point arithmetic in the
-   path.
-   The tool for this is the existing write watch: `X2_WRITE_WATCH` reports
-   every write to a guest address, with an optional `:<value>` filter that
-   narrows a hot slot to "who writes ZERO here", which is exactly the
-   question. `X2_WRITE_WATCH=0x40000348:0` names the writer.
-   **It cannot be armed on Android.** `x2_config_override_get` is `getenv`
-   and a packaged app has no environment, so this diagnostic exists only on
-   the host where the bug does not reproduce. Either route it through the
-   runtime conf that `jit.watch` already uses, or reproduce the wedge on
-   desktop first. The heap address is also not guaranteed stable between
-   runs, so read it from a `jit.watch` report in the same run.
+3. Find what writes `[0x40000340 + 4]` and `+8`, given that
+   `cg.dll + 0xdc20` never runs and its output cannot produce the observed
+   pair. Both known writers are accounted for; a third path sets these
+   fields, or the object is not what this reading assumes. This needs the
+   guest-store watch described above -- the existing write watch is blind to
+   guest stores, which is the whole question.
 4. The thread question from before stands but is now secondary: the spin is
    not waiting for another thread, it is arithmetic that cannot terminate.
    `0 preemption(s)` on the frozen beat is consistent with that -- no other

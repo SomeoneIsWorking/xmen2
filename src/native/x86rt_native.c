@@ -290,7 +290,7 @@ volatile uint32_t g_sample_ep;
 uint32_t g_guest_watch_addr;
 static uint32_t g_last_dispatch_ep;
 
-/* X2_WRITE_WATCH=<guest-addr>[:<value>]: armed by x86_write_watch_arm;
+/* write_watch=<guest-addr>[:<value>]: armed by x86_write_watch_arm;
    WR8/16/32 call x2_write_watch_fire the moment the watched guest address is
    written.
 
@@ -363,17 +363,17 @@ void x86_write_watch_arm(const char *arg) {
     g_ww_value = (uint32_t)strtoul(colon + 1, NULL, 0);
   }
   if (!x2_write_watch_addr) {
-    x2_log_error("X2_WRITE_WATCH=%s parsed to address 0; the watch is "
+    x2_log_error("write_watch=%s parsed to address 0; the watch is "
                  "NOT armed and nothing will be reported.\n",
                  arg);
     return;
   }
   if (g_ww_filter)
-    x2_log_error("X2_WRITE_WATCH=0x%08x:0x%08x: every guest write of "
+    x2_log_error("write_watch=0x%08x:0x%08x: every guest write of "
                  "that value to that address is reported, all of them.\n",
                  x2_write_watch_addr, g_ww_value);
   else
-    x2_log_error("X2_WRITE_WATCH=0x%08x: the first %d guest write(s) to "
+    x2_log_error("write_watch=0x%08x: the first %d guest write(s) to "
                  "this address are reported, plus every /GS cookie store "
                  "and every write of ZERO.\n",
                  x2_write_watch_addr, WW_REPORT_FIRST);

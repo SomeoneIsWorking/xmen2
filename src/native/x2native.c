@@ -2111,14 +2111,16 @@ int main(int argc, char **argv) {
         x86_profiler_start(x2_config_override_get(kX2ConfigProfile));
       }
       {
+        /* Registered settings, not environment reads: a packaged Android app
+           has no environment, and issue #172 needs these armed where the bug
+           reproduces. Lucent still answers X2_GUEST_WATCH / X2_WRITE_WATCH
+           for a desktop shell. */
         extern uint32_t g_guest_watch_addr;
-        const char *gw = x2_config_override_get(kX2ConfigGuestWatch);
-        if (gw && *gw)
+        const char *gw = lucent_cvar_text("guest_watch");
+        if (gw && *gw) {
           g_guest_watch_addr = (uint32_t)strtoul(gw, NULL, 0);
-      }
-      {
-        extern void x86_write_watch_arm(const char *);
-        x86_write_watch_arm(x2_config_override_get(kX2ConfigWriteWatch));
+        }
+        x86_write_watch_arm(lucent_cvar_text("write_watch"));
       }
       dinput_script_start();
       {

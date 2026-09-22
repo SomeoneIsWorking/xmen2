@@ -167,6 +167,23 @@ lucent::cvar::Var<std::string> g_movie_spin{"spin", ""};
 lucent::cvar::Var<std::string> g_virtual_pad{"virtual_pad", ""};
 lucent::cvar::Var<std::string> g_virtual_pad_id{"virtual_pad_id", ""};
 
+/*
+ * THE TWO GUEST-MEMORY WATCHES, registered rather than read from the
+ * environment.
+ *
+ * `guest_watch=<addr>` reports the running body each time that address is
+ * read; `write_watch=<addr>[:<value>]` reports who WRITES it, and the optional
+ * value narrows a hot slot to "who writes zero here", which is usually the
+ * question. Issue #172 is exactly that question -- a Cg hash table whose step
+ * count is zero on the emulator and ten on the desktop -- and the diagnostic
+ * could not be armed where the bug reproduces: a packaged Android app has no
+ * environment for X2_WRITE_WATCH to live in. Lucent's X2_ prefix still answers
+ * for a desktop shell, and the same name now works in the runtime conf an
+ * Android run reads and in --set.
+ */
+lucent::cvar::Var<std::string> g_guest_watch{"guest_watch", ""};
+lucent::cvar::Var<std::string> g_write_watch{"write_watch", ""};
+
 void apply_set_token(const char *token) {
   const char *eq = std::strchr(token, '=');
   if (eq == nullptr || eq == token) {
@@ -219,6 +236,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_movie_spin);
   lucent::cvar::register_var(g_virtual_pad);
   lucent::cvar::register_var(g_virtual_pad_id);
+  lucent::cvar::register_var(g_guest_watch);
+  lucent::cvar::register_var(g_write_watch);
 
   const std::string path =
       std::string(x2_config_directory()) + "/x2native-runtime.conf";

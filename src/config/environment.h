@@ -25,7 +25,6 @@ typedef enum X2ConfigOverride {
   kX2ConfigFrameDump,
   kX2ConfigFrameTable,
   kX2ConfigGpuDebug,
-  kX2ConfigGuestWatch,
   kX2ConfigHeartbeat,
   kX2ConfigHotEp,
   kX2ConfigInputFifo,
@@ -85,7 +84,6 @@ typedef enum X2ConfigOverride {
   kX2ConfigFault,
   kX2ConfigFaultStack,
   kX2ConfigFaultSelftest,
-  kX2ConfigWriteWatch,
   kX2ConfigOverrideCount
 } X2ConfigOverride;
 
