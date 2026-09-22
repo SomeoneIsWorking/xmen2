@@ -93,6 +93,16 @@ lucent::cvar::Var<long> g_jit_chain{"jit.chain", 0};
  * how the run got there. */
 lucent::cvar::Var<long> g_jit_watch{"jit.watch", 0};
 lucent::cvar::Var<long> g_jit_watch_reports{"jit.watchn", 4};
+/* One guest address a watch report should also dump, and how many words of it.
+ * The report names the pointers it finds on the stack; this is the run after
+ * that, following one of them. Zero asks for nothing.
+ *
+ * REGISTERED BECAUSE THEY ARE READ. x86_engine_jit_diag.c read both names
+ * unconditionally on every watch report, and an unregistered name is refused
+ * -- so arming jit.watch killed the run on its first report, which is the one
+ * thing a diagnostic must never do to what it is diagnosing. */
+lucent::cvar::Var<long> g_jit_peek{"jit.peek", 0};
+lucent::cvar::Var<long> g_jit_peek_words{"jit.peekn", 16};
 lucent::cvar::Var<bool> g_x87_census{"x87.census", false};
 
 /* The JIT code arena's two independent limits, in blocks and in megabytes.
@@ -172,6 +182,8 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_chain);
   lucent::cvar::register_var(g_jit_watch);
   lucent::cvar::register_var(g_jit_watch_reports);
+  lucent::cvar::register_var(g_jit_peek);
+  lucent::cvar::register_var(g_jit_peek_words);
   lucent::cvar::register_var(g_x87_census);
   lucent::cvar::register_var(g_jit_blocks);
   lucent::cvar::register_var(g_jit_code_mb);

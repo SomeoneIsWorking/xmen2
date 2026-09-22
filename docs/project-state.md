@@ -510,6 +510,17 @@ tutorial window measured 17.78 ms median over 2,265 frame intervals with zero
 JIT refusals in the live run. This measures a faster copy operation and
 continued gameplay operation, not a proven whole-game FPS increase.
 
+Issue #183 removed the x87 arithmetic path's memory round trips: on a host
+with a real x87 unit the operation is now performed with its operands in
+registers whenever the host control word already equals the guest's, which the
+new mode census shows is 98.3% of this title's operations (all 98,792,279 of
+them at 64-bit precision). `x86p_x87_arith_raw` fell from 15.20% to 4.64% of
+the `deadzone-render` case and the case's total cycles from 56.3 G to 50.9 G.
+x86port `1c30243`; both arms are held equal over 3,145,728 operand pairs in
+value and in status word. The remaining x87 cost is the emission around it --
+a register-operand FMUL still makes three indirect calls -- and
+`x86p_jit_engine_run` is now the largest single symbol at 21.8%.
+
 Gap: no target frame-time or load-time budget defines "fast enough." The later
 unpaced results are targeted diagnostic cases, not bounded representative
 product evidence; the roughly 500 ms load hitch remains visible, asset I/O has
@@ -792,6 +803,16 @@ nothing: the census reports "no contact reached the port this run ... Nothing
 was dropped; nothing arrived" (issue #172). This is a boot defect, not a touch
 one; touch activation has no platform conditional in `src/input/` and the same
 code publishes to the pad in a browser.
+
+That block is now named: **cg.dll + 0xe2d5**, a string-hash loop whose exit
+condition subtracts a per-step bit count from 32. On the emulator that count is
+zero, so it cannot terminate; on desktop the same block runs with a count of 10
+and a mask of 1,023 and exits after four iterations. The difference is in guest
+DATA — a hash-table descriptor built for two entries instead of 1,024 — not in
+generated code, and which call sizes it is the open question. The engine now
+publishes its last block entry and the frozen-crossing beat prints it, because
+the block-entry histogram could not: on that run it dropped 1,761,478,604 of
+1,761,605,419 entries and ranked a block with 11,630 hits first.
 
 Reading any of that on Android required fixing the heartbeat first. Its
 subsystem roll-call — touch census, pad, control channel, guest clock — sat

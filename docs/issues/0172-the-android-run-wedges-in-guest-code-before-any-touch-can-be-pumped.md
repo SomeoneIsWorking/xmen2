@@ -6,7 +6,7 @@ symptom: on the API 35 emulator the run reaches D3D8 device creation and then sp
 state_items: S020
 tags: android,emulator,wedge,threads,touch,jit
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-22
 ---
 
 # 0172 — the Android run wedges in guest code before any touch can be pumped
@@ -89,15 +89,74 @@ The same revision reaches gameplay on desktop and in the browser. Whether the
 spin is Android-specific or a timing window that the emulator's scheduling
 makes reliable is unknown; no desktop run has shown it.
 
+## The block, named (2026-09-22)
+
+The engine already tracked the last block entry for `blocks_reentered` and did
+not publish it; it does now (`x86p_jit_engine_last_block_entry`, x86port
+`3fa2f45`), and the frozen-crossing beat prints it. The block-entry histogram
+could never have answered this: it refuses new keys once its table is full, so
+a spin that begins after that is absent from it entirely. Armed at 4,096 slots
+the wedged run reported **1,761,478,604 of 1,761,605,419 entries dropped** and
+a top entry with 11,630 hits at 0.0% -- a confident ranking that did not
+contain the spinning block. That report now refuses to present itself as a
+ranking when the drops exceed what was kept.
+
+The address is stable across every beat:
+
+```
+the primary engine's last block entry was 0x2000e2d5 (unnamed). With 99.6% of
+entries re-entering the block just left, that is where this run is looping
+```
+
+`0x2000e2d5` is **cg.dll + 0xe2d5** (mapped at 0x20000000, relocated from
+0x10000000 -- identically on desktop, so the relocation is not the difference).
+Disassembled from the player's own cg.dll, it is the tail of a string-hash
+function:
+
+```
+  mov  edi, [ecx+0x4]      ; mask
+  mov  ecx, [ecx+0x8]      ; bits per step
+loop:
+  mov  ebx, edi
+  sub  esi, ecx            ; esi starts at 32
+  and  ebx, edx
+  xor  eax, ebx
+  shr  edx, cl
+  test esi, esi
+  jg   loop
+```
+
+**The loop terminates by subtracting the step count from 32. A step count of
+zero never terminates.** `--set jit.watch=0x2000e2d5` reports the register file
+on arrival, and the two hosts disagree exactly there:
+
+| | desktop (reaches gameplay) | API 35 x86_64 emulator (wedges) |
+|---|---|---|
+| `ecx` — bits per step | `0x0000000a` | `0x00000000` |
+| `edi` — mask | `0x000003ff` | `0x00000001` |
+| `esi` — counter | `0x16` (32-10) | `0x20`, and it never moves |
+
+So the descriptor at `[esp+0x10]` — a heap object, `0x40000340` in the wedged
+run — was built for a 1,024-entry table on desktop and left with a mask of 1
+and a step of 0 on the emulator. This is a difference in guest DATA, not in
+generated code: the same backend emits the same block on both hosts, and the
+block is correct for the desktop operands.
+
+What is still unknown is which earlier call sized that table, and what this
+port answers differently there. That is the next step, and it is now a bounded
+one.
+
 ## Next
 
-1. ~~Resolve `0x000c1060`~~ — done: it is `memmove`'s own import thunk, not a
-   caller. What is still missing is the guest code that calls it, which the
-   ring cannot give because it records no return address for an import
-   crossing. `--set jit.watch=<addr>` (issue #158) reports the block just left
-   and the register file for a named guest address, which is the tool for this
-   once the spinning block's address is known from `jit.profile`.
-2. Establish which guest thread is spinning and what it is waiting for. The
-   interval's top imports before the freeze were `WaitForMultipleObjects`
-   (9857 calls) and `ReleaseSemaphore` (9858), so a worker handshake is the
-   first place to look.
+1. ~~Resolve `0x000c1060`~~ — it is `memmove`'s own import thunk, not a caller.
+2. ~~Name the spinning block~~ — cg.dll + 0xe2d5, a string-hash loop that
+   subtracts a step count of zero from 32. See above.
+3. Find which call sizes that hash table, and what this port answers
+   differently there. The descriptor is a heap object; the mask is 1 rather
+   than 1,023, so it was built for a table of two entries. Aim `jit.watch`
+   at the constructor once it is identified, and compare the two hosts at
+   the same point, which is what settled step 2.
+4. The thread question from before stands but is now secondary: the spin is
+   not waiting for another thread, it is arithmetic that cannot terminate.
+   `0 preemption(s)` on the frozen beat is consistent with that -- no other
+   guest thread was waiting for the lock.

@@ -177,6 +177,21 @@ class Case:
     def alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
 
+    def signal(self, sig: int) -> None:
+        """Send `sig` to the run, or say the run is gone.
+
+        `if case.proc:` is not the question -- a Popen whose child has exited
+        is still truthy, so the bare os.kill raised ProcessLookupError out of
+        the case and the traceback replaced the report. A run that died is a
+        result, and a case that cannot say so leaves a crash where a FAIL and
+        a log path belong."""
+        if not self.alive():
+            refuse("the run exited before it could be signalled (rc=%s); "
+                   "log: %s"
+                   % (self.proc.returncode if self.proc else "never started",
+                      self.log_path))
+        os.kill(self.proc.pid, sig)
+
     def wait_control(self, timeout: float) -> None:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -917,10 +932,9 @@ def case_deadzone_render(case: Case) -> None:
     # Blue-pixel selection below excludes the rocks and foliage crossing it.
     time.sleep(2.0)
     first = case.shot("water-a")
-    if case.proc:
-        os.kill(case.proc.pid, signal.SIGUSR1)
-        case.check("a full visible-frame draw table completed",
-                   case.wait_log("[FRAME TABLE] end of frame", 30))
+    case.signal(signal.SIGUSR1)
+    case.check("a full visible-frame draw table completed",
+               case.wait_log("[FRAME TABLE] end of frame", 30))
     time.sleep(1.0)
     second = case.shot("water-b")
     spread, delta = png_water_stats(first, second)
@@ -1035,10 +1049,9 @@ def case_selector_dialog(case: Case) -> None:
     dialog = case.shot("difficulty-dialog")
     case.check("difficulty capture is a PNG",
                dialog.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
-    if case.proc:
-        os.kill(case.proc.pid, signal.SIGUSR1)
-        case.check("the dialog has a complete frame draw table",
-                   case.wait_log("[FRAME TABLE] end of frame", 30))
+    case.signal(signal.SIGUSR1)
+    case.check("the dialog has a complete frame draw table",
+               case.wait_log("[FRAME TABLE] end of frame", 30))
 
     from selector_probe import parse_records, summarize
     try:

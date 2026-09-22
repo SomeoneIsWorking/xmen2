@@ -14,6 +14,10 @@ static X86pX87OpCensus g_census;
 static int g_armed = -1;
 
 static const char *const kOpNames[X86P_X87_OPS] = {"FADD", "FSUB", "FMUL", "FDIV"};
+/* The control word's own field encodings, in its own order. */
+static const char *const kPrecisionNames[4] = {"24-bit (single)", "reserved", "53-bit (double)",
+                                               "64-bit (extended)"};
+static const char *const kRoundingNames[4] = {"nearest-even", "down", "up", "toward zero"};
 
 static int armed(void) {
   if (g_armed < 0) {
@@ -54,6 +58,27 @@ void x86_engine_x87_census_report(const char *tag) {
                     "guest code that does",
                     tag);
     return;
+  }
+  /*
+   * THE MODE FIRST, because it can rule the rest out. An encoding-level rule
+   * that only performs 80-bit round-to-nearest cannot answer one operation of
+   * a title running at 53-bit precision, however ordinary its operands are --
+   * and on a host with a real x87 unit the per-operand refusal columns below
+   * are not measured at all, so this is the only column that says so.
+   */
+  for (i = 0; i < 4u; i++) {
+    if (g_census.by_precision[i] != 0u) {
+      lucent_log_info("engine", "%sx87 census: precision control %s on %llu operation(s) (%.1f%%)",
+                      tag, kPrecisionNames[i], (unsigned long long)g_census.by_precision[i],
+                      100.0 * (double)g_census.by_precision[i] / (double)total);
+    }
+  }
+  for (i = 0; i < 4u; i++) {
+    if (g_census.by_rounding[i] != 0u) {
+      lucent_log_info("engine", "%sx87 census: rounding %s on %llu operation(s) (%.1f%%)", tag,
+                      kRoundingNames[i], (unsigned long long)g_census.by_rounding[i],
+                      100.0 * (double)g_census.by_rounding[i] / (double)total);
+    }
   }
   for (i = 0; i < X86P_X87_OPS; i++) {
     const unsigned long long ops = (unsigned long long)g_census.total[i];

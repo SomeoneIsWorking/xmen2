@@ -218,6 +218,7 @@ void x86_engine_report_hot_blocks_from(const X86pJitProfile *profile,
                                        const char *tag) {
   X86pJitProfileEntry top[40];
   uint64_t total;
+  uint64_t dropped;
   uint32_t count;
   uint32_t i;
   if (!profile) {
@@ -233,13 +234,37 @@ void x86_engine_report_hot_blocks_from(const X86pJitProfile *profile,
     return;
   }
   count = x86p_jit_profile_top(profile, top, 40u);
-  lucent_log_info(
-      "engine",
-      "%sJIT hot blocks: %u distinct, %llu entries total, %llu "
-      "key(s) dropped (table full; tail under-counted), top %u "
-      "follows",
-      tag, x86p_jit_profile_distinct(profile), (unsigned long long)total,
-      (unsigned long long)x86p_jit_profile_dropped_keys(profile), count);
+  dropped = x86p_jit_profile_dropped_keys(profile);
+  /*
+   * A DROPPED KEY IS NOT A SHORTER TAIL. The table refuses new keys once it is
+   * full, so a block first entered after that point is absent from the
+   * histogram however often it runs -- and the list below is then a ranking of
+   * whatever was early, not of what is hot. Measured on the API 35 emulator: a
+   * wedged run reported 1,761,605,419 entries with 1,761,478,604 dropped, and
+   * its top entry had 11,630 hits and 0.0%. The spinning block was not in the
+   * list at all.
+   *
+   * So the list is printed either way -- it is still what the table holds --
+   * and the line above it says which of the two it is.
+   */
+  if (dropped > total - dropped) {
+    lucent_log_info(
+        "engine",
+        "%sJIT hot blocks: NOT A RANKING -- %llu of %llu entrie(s) were "
+        "dropped because the %u-slot table was full, so a block first entered "
+        "after it filled is absent whatever it costs. Raise jit.profile past "
+        "the block count to rank this run. The %u block(s) the table did hold "
+        "follow",
+        tag, (unsigned long long)dropped, (unsigned long long)total,
+        x86p_jit_profile_distinct(profile), count);
+  } else {
+    lucent_log_info("engine",
+                    "%sJIT hot blocks: %u distinct, %llu entries total, %llu "
+                    "key(s) dropped, top %u follows",
+                    tag, x86p_jit_profile_distinct(profile),
+                    (unsigned long long)total, (unsigned long long)dropped,
+                    count);
+  }
   for (i = 0; i < count; i++) {
     const char *name = x86_native_name_at(top[i].guest_eip);
     lucent_log_info("engine", "%s%2u. 0x%08x %-40s %10llu %5.1f%%", tag, i + 1u,
@@ -247,6 +272,42 @@ void x86_engine_report_hot_blocks_from(const X86pJitProfile *profile,
                     (unsigned long long)top[i].entries,
                     100.0 * (double)top[i].entries / (double)total);
   }
+}
+
+/*
+ * WHICH block the run is going round on -- the one thing the share above
+ * cannot say.
+ *
+ * A high re-entry share is the signature of both a healthy tight loop and a
+ * wedge, and neither the share nor the block-entry histogram names the block:
+ * the histogram refuses new keys once its table is full, so a spin that starts
+ * after that is absent from it entirely. This is the last address the engine
+ * dispatched to, which on a run that has stopped making progress IS the
+ * spinning block, and it is the address `jit.watch` takes.
+ *
+ * It is one sample from the primary engine, so it is printed only when the
+ * share says a loop is what the run is doing -- on an ordinary beat it would
+ * be a random block dressed up as a finding.
+ */
+static void report_last_block_entry(const X86EngineJitPool *jit,
+                                    const X86pJitEngineStats *js) {
+  uint32_t last;
+  const char *name;
+  if (!jit || js->blocks_entered == 0u ||
+      js->blocks_reentered * 2u < js->blocks_entered) {
+    return;
+  }
+  last = x86p_jit_engine_last_block_entry(x86_engine_jit_pool_primary(jit));
+  name = x86_native_name_at(last);
+  lucent_log_info("engine",
+                  "[HB] the primary engine's last block entry was 0x%08x (%s)."
+                  " With %.1f%% of entries re-entering the block just left, "
+                  "that is where this run is looping; --set jit.watch=0x%08x "
+                  "reports its register file.",
+                  last, name ? name : "unnamed",
+                  100.0 * (double)js->blocks_reentered /
+                      (double)js->blocks_entered,
+                  last);
 }
 
 void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
@@ -295,6 +356,7 @@ void x86_engine_report_live_if_requested(const X86EngineJitPool *jit,
       (unsigned long long)js.simd_translated,
       (unsigned long long)js.x87_stores_inline,
       (unsigned long long)js.x87_stores_translated);
+  report_last_block_entry(jit, &js);
   report_compaction(&js, refusal_reason(jit), "[HB] ");
   report_invalidation(&js);
   x86_engine_report_chain_census(jit, "[HB] ");
