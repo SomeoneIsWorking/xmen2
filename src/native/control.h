@@ -9,7 +9,8 @@
  * draws a plausible picture and reports success. Runs of that shape were read
  * as evidence twice before a file gate caught them.
  *
- * So: a socket. `--control[=port]` (or X2_CONTROL=<port>) starts an HTTP/1.1
+ * So: a socket. `--control[=port]` (or the `control.port` CVar, which is how
+ * a packaged run with no environment asks) starts an HTTP/1.1
  * server on 127.0.0.1 that can press keys, read where the game thinks it is,
  * capture the frame and sample performance WHILE the run continues. Off unless
  * asked for, loopback only, and it never blocks the guest: requests are queued
@@ -26,10 +27,16 @@
 #include "platform_socket.h"
 #include <stddef.h>
 
-/* Start the server. Port from the argument, else X2_CONTROL, else off.
-   REFUSES loudly (and returns 0) if a port was asked for and cannot be bound --
-   a control channel that silently failed to listen is a run that ignores every
-   command while looking healthy. */
+/* Start the server, returning the port it listens on or 0 for "nobody asked".
+
+   Port from the argument, else the `control.port` CVar, else OFF -- and off is
+   the product's state. A launch that was not asked for a channel opens no
+   socket and says nothing, so a maintainer session holding a port can never
+   stop a player's game from starting.
+
+   A port that WAS asked for and cannot be bound exits the process. The run is
+   about to be driven through a channel that is not there, and carrying on
+   would turn that into the driving tool's timeout half a minute later. */
 int control_start(int port);
 
 /* Guest-state commands are drained on each keyboard poll, from the thread that

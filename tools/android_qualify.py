@@ -119,7 +119,11 @@ def control_status(port: int) -> dict[str, Any]:
                 raise RuntimeError(f"control /status returned HTTP {response.status}")
             payload = json.loads(response.read())
     except urllib.error.URLError as error:
-        raise RuntimeError(f"cannot reach forwarded game control port {port}: {error.reason}") from error
+        raise RuntimeError(
+            f"cannot reach forwarded game control port {port}: {error.reason}. "
+            "A packaged run opens no control channel unless asked: put control.port="
+            f"{port} in the app's x2native-runtime.conf and restart it."
+        ) from error
     if not isinstance(payload, dict):
         raise RuntimeError("control /status returned a non-object JSON payload")
     fields = ("frames_presented", "renderer_ready", "renderer_backend",
@@ -145,7 +149,11 @@ def reset_frame_timing(port: int) -> None:
             f"{error.read().decode(errors='replace').strip()}"
         ) from error
     except urllib.error.URLError as error:
-        raise RuntimeError(f"cannot reach forwarded game control port {port}: {error.reason}") from error
+        raise RuntimeError(
+            f"cannot reach forwarded game control port {port}: {error.reason}. "
+            "A packaged run opens no control channel unless asked: put control.port="
+            f"{port} in the app's x2native-runtime.conf and restart it."
+        ) from error
 
 
 def build_report(device: dict[str, str], tier: str, scenarios: list[str],

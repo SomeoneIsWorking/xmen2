@@ -1,5 +1,6 @@
 #include "control.h"
-#include "../config/environment.h"
+
+#include <lucent/cvar_c.h>
 #include "control_command_bridge.h"
 #include "control_http.h"
 #include "control_input_route.h"
@@ -424,11 +425,31 @@ static void serve(x2_socket_t fd) {
 
 /* ---------------------------------------------------------------- start --- */
 
+/*
+ * THE CONTROL CHANNEL IS NOT PART OF THE PRODUCT.
+ *
+ * It is a maintainer facility: a loopback HTTP server that presses keys, moves
+ * the pad, takes screenshots and reads engine state. A player never uses it,
+ * and a player's launch must not depend on it.
+ *
+ * It used to. The product path opened one on 8420 whether or not anyone asked,
+ * and a port already in use called exit(2) -- so an ordinary AppImage launch
+ * REFUSED TO START while a maintainer's debug session held that port. Reported
+ * by the user, whose game would not open.
+ *
+ * So: no request, no server, and not a word about it. An EXPLICIT request
+ * keeps the hard refusal, because a run that was told to open a channel and
+ * could not is about to be driven through one that is not there, and silently
+ * carrying on would make the next tool's timeout the first sign of it.
+ *
+ * `control.port` is a registered CVar rather than a bare environment read, so
+ * it can be asked for where a packaged app has no environment to set -- the
+ * Android runtime conf, which is how the JIT diagnostics are already armed.
+ */
 int control_start(int port) {
 
   if (!port) {
-    const char *e = x2_config_override_get(kX2ConfigControl);
-    port = (e && *e) ? atoi(e) : 0;
+    port = (int)lucent_cvar_number("control.port", 0);
   }
   if (!port)
     return 0;
@@ -447,7 +468,7 @@ int control_start(int port) {
 
 void control_report(void) {
   if (!g_port) {
-    x2_log_error("  control: not started (no --control / X2_CONTROL), "
+    x2_log_error("  control: not started (no --control / control.port), "
                  "so this run took no live commands.\n");
     return;
   }

@@ -1696,9 +1696,9 @@ int main(int argc, char **argv) {
        valid browser launch into a startup refusal. */
     const int control_port = 0;
 #else
-    int control_port = control_start(options.control);
-    if (options.product && !control_port)
-      control_port = control_start(8420);
+    /* Only when asked. See control_start: the product used to force one open
+       on 8420, and a port already held refused the launch outright. */
+    const int control_port = control_start(options.control);
 #endif
     /* A package does not own its working directory -- on Android it is not
        even writable -- so its recordings belong with its other user data
@@ -1717,8 +1717,10 @@ int main(int argc, char **argv) {
       return 2;
     }
 #if !defined(__EMSCRIPTEN__)
-    if (options.product &&
-        !live_session_start(control_port, input_record_path()))
+    /* The live session publishes THIS run's control port for tools/x2ctl.py to
+       discover. With no channel open there is nothing to discover and nothing
+       has gone wrong, so a player's launch does not depend on it either. */
+    if (control_port && !live_session_start(control_port, input_record_path()))
       return 2;
 #else
     (void)control_port;

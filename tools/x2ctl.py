@@ -104,10 +104,11 @@ def call(port, path, timeout=15.0):
     except urllib.error.URLError as e:
         raise SystemExit(  # noqa: B904 -- the reason IS the message below
             "x2ctl: nothing is listening on 127.0.0.1:%d (%s).\n"
-            "  The run needs --control (or X2_CONTROL=%d); without it the game "
-            "takes no live commands.\n"
+            "  The run needs --control=%d (or control.port=%d in the runtime "
+            "conf, for a packaged run); without it the game takes no live "
+            "commands.\n"
             "  A run that is merely BUSY still answers -- this means no server, "
-            "not a slow game." % (port, e.reason, port))
+            "not a slow game." % (port, e.reason, port, port))
 
 
 def cmd_status(args):

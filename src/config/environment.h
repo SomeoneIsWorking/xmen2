@@ -15,7 +15,6 @@ typedef enum X2ConfigOverride {
   kX2ConfigAssets,
   kX2ConfigBootCmdTrace,
   kX2ConfigBootMap,
-  kX2ConfigControl,
   kX2ConfigDrawObj,
   kX2ConfigDrawRange,
   kX2ConfigDrawTextures,

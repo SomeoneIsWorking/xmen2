@@ -180,6 +180,16 @@ table predates engine-diagnostic setup or a third path builds it.
    rather than a Cg one — check that sequence against the host FPU first,
    since it is cheap and it is the only floating-point arithmetic in the
    path.
+   The tool for this is the existing write watch: `X2_WRITE_WATCH` reports
+   every write to a guest address, with an optional `:<value>` filter that
+   narrows a hot slot to "who writes ZERO here", which is exactly the
+   question. `X2_WRITE_WATCH=0x40000348:0` names the writer.
+   **It cannot be armed on Android.** `x2_config_override_get` is `getenv`
+   and a packaged app has no environment, so this diagnostic exists only on
+   the host where the bug does not reproduce. Either route it through the
+   runtime conf that `jit.watch` already uses, or reproduce the wedge on
+   desktop first. The heap address is also not guaranteed stable between
+   runs, so read it from a `jit.watch` report in the same run.
 4. The thread question from before stands but is now secondary: the spin is
    not waiting for another thread, it is arithmetic that cannot terminate.
    `0 preemption(s)` on the frozen beat is consistent with that -- no other

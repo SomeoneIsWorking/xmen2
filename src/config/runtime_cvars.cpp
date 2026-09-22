@@ -101,6 +101,13 @@ lucent::cvar::Var<long> g_jit_watch_reports{"jit.watchn", 4};
  * unconditionally on every watch report, and an unregistered name is refused
  * -- so arming jit.watch killed the run on its first report, which is the one
  * thing a diagnostic must never do to what it is diagnosing. */
+/* The maintainer control channel's loopback port, 0 for none.
+ *
+ * A CVar and not a bare environment read, because an Android package has no
+ * environment: this is how a device run asks for the channel, through the same
+ * runtime conf the JIT diagnostics use. `--control=N` still outranks it. It is
+ * OFF by default and the product never turns it on -- see control_start. */
+lucent::cvar::Var<long> g_control_port{"control.port", 0};
 lucent::cvar::Var<long> g_jit_peek{"jit.peek", 0};
 lucent::cvar::Var<long> g_jit_peek_words{"jit.peekn", 16};
 lucent::cvar::Var<bool> g_x87_census{"x87.census", false};
@@ -182,6 +189,7 @@ void x2_runtime_config_init(int argc, char **argv) {
   lucent::cvar::register_var(g_jit_chain);
   lucent::cvar::register_var(g_jit_watch);
   lucent::cvar::register_var(g_jit_watch_reports);
+  lucent::cvar::register_var(g_control_port);
   lucent::cvar::register_var(g_jit_peek);
   lucent::cvar::register_var(g_jit_peek_words);
   lucent::cvar::register_var(g_x87_census);

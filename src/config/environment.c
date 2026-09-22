@@ -11,7 +11,6 @@ static const char *const k_override_names[kX2ConfigOverrideCount] = {
     [kX2ConfigAssets] = "X2_ASSETS",
     [kX2ConfigBootCmdTrace] = "X2_BOOT_CMD_TRACE",
     [kX2ConfigBootMap] = "X2_BOOT_MAP",
-    [kX2ConfigControl] = "X2_CONTROL",
     [kX2ConfigDrawObj] = "X2_DRAW_OBJ",
     [kX2ConfigDrawRange] = "X2_DRAW_RANGE",
     [kX2ConfigDrawTextures] = "X2_DRAW_TEXTURES",
