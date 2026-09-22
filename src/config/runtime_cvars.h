@@ -23,6 +23,13 @@ extern "C" {
  * from this configuration surface. */
 void x2_runtime_config_init(int argc, char **argv);
 
+/* One `NAME=VALUE` token, applied to the registered CVars. Non-zero when the
+ * name was one of them; zero when nothing answers to it, which the launch
+ * path above turns into a refusal rather than a silent no-op. Exposed so that
+ * refusal is provable without running a process to its exit status: the test
+ * drives the same function the command line does. */
+int x2_runtime_config_apply_set_token(const char *token);
+
 #ifdef __cplusplus
 }
 #endif

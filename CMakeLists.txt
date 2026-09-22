@@ -211,6 +211,14 @@ target_include_directories(test_config_directory PRIVATE src/config)
 target_link_libraries(test_config_directory PRIVATE lucent::lucent)
 add_test(NAME config_directory COMMAND test_config_directory)
 
+add_executable(test_runtime_cvars tests/test_runtime_cvars.cpp
+               src/config/runtime_cvars.cpp src/config/config_directory.c)
+target_include_directories(test_runtime_cvars PRIVATE src/config)
+target_link_libraries(test_runtime_cvars PRIVATE lucent::lucent)
+add_test(NAME runtime_cvars COMMAND test_runtime_cvars)
+set_tests_properties(runtime_cvars PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 add_executable(test_install_picker tests/test_install_picker.c
                src/native/install_picker.cpp src/native/install_archive.cpp
                src/native/install_validation.cpp src/native/pe_header.c

@@ -7,8 +7,11 @@
 #include <lucent/cvar.hpp>
 #include <lucent/log_c.h>
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -184,14 +187,48 @@ lucent::cvar::Var<std::string> g_virtual_pad_id{"virtual_pad_id", ""};
 lucent::cvar::Var<std::string> g_guest_watch{"guest_watch", ""};
 lucent::cvar::Var<std::string> g_write_watch{"write_watch", ""};
 
-void apply_set_token(const char *token) {
-  const char *eq = std::strchr(token, '=');
-  if (eq == nullptr || eq == token) {
-    lucent_log_error("config", "--set expects NAME=VALUE, got '%s'", token);
-    return;
+/*
+ * A NAME NOTHING ANSWERS TO IS A REFUSAL, NOT A SETTING.
+ *
+ * lucent stashes an override for a CVar that has not registered yet, because
+ * a file is read before the consumer's variables exist. Every one of this
+ * port's variables is registered below, before the command line is walked, so
+ * a --set name that is still unclaimed at that point is one no run will ever
+ * answer to -- a typo, or a key belonging to the OTHER configuration system
+ * (the player settings in x2native.conf, whose names are read by
+ * x2_settings_store and never by a CVar).
+ *
+ * Measured: `--set input.touch_controls=2` was accepted in silence and did
+ * nothing, and the run it produced -- the overlay's pad attached too late for
+ * the guest to enumerate it -- was read as evidence about touch for as long
+ * as it took to notice the setting had not applied. A maintainer switch that
+ * quietly does nothing turns a measurement into a story.
+ */
+bool name_is_registered(const std::string &name) {
+  bool found = false;
+  lucent::cvar::enumerate([&](lucent::cvar::VarBase &var) {
+    if (var.name() == name) {
+      found = true;
+    }
+  });
+  return found;
+}
+
+void report_unknown_name(const std::string &name) {
+  std::vector<std::string> names;
+  lucent::cvar::enumerate(
+      [&](lucent::cvar::VarBase &var) { names.push_back(var.name()); });
+  std::sort(names.begin(), names.end());
+  std::string known;
+  for (const std::string &each : names) {
+    known += known.empty() ? "" : " ";
+    known += each;
   }
-  lucent::cvar::set_arg(std::string(token, static_cast<size_t>(eq - token)),
-                        eq + 1);
+  lucent_log_error("config",
+                   "--set %s: no such setting. The player settings in "
+                   "x2native.conf are a different system and are not "
+                   "reachable here. Known: %s",
+                   name.c_str(), known.c_str());
 }
 
 } // namespace
@@ -243,10 +280,33 @@ void x2_runtime_config_init(int argc, char **argv) {
       std::string(x2_config_directory()) + "/x2native-runtime.conf";
   lucent::cvar::load_file(path.c_str());
 
+  int refused = 0;
   for (int i = 1; i < argc; i++) {
-    if (std::strcmp(argv[i], "--set") == 0 && i + 1 < argc)
-      apply_set_token(argv[++i]);
-    else if (std::strncmp(argv[i], "--set=", 6) == 0)
-      apply_set_token(argv[i] + 6);
+    if (std::strcmp(argv[i], "--set") == 0 && i + 1 < argc) {
+      refused += !x2_runtime_config_apply_set_token(argv[++i]);
+    } else if (std::strncmp(argv[i], "--set=", 6) == 0) {
+      refused += !x2_runtime_config_apply_set_token(argv[i] + 6);
+    }
   }
+  /* Every bad name is named first, then the launch stops: a maintainer who
+     mistyped two of them should not have to relaunch twice to learn so. */
+  if (refused != 0) {
+    std::exit(2);
+  }
+}
+
+int x2_runtime_config_apply_set_token(const char *token) {
+  const char *eq = token != nullptr ? std::strchr(token, '=') : nullptr;
+  if (eq == nullptr || eq == token) {
+    lucent_log_error("config", "--set expects NAME=VALUE, got '%s'",
+                     token != nullptr ? token : "");
+    return 0;
+  }
+  const std::string name(token, static_cast<size_t>(eq - token));
+  if (!name_is_registered(name)) {
+    report_unknown_name(name);
+    return 0;
+  }
+  lucent::cvar::set_arg(name, eq + 1);
+  return 1;
 }
