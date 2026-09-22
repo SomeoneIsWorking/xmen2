@@ -12,10 +12,21 @@
 
 #include <stdio.h>
 
+/*
+ * The game's controller enumeration, as recovered metadata: XMen2.exe
+ * FUN_00628e20, __thiscall(BOOL bRecordNew) on the input manager, whose
+ * EnumDevices(GAMECTRL) call returns to 0x00628e57 (claim C161). The image
+ * exports nothing, so no runtime lookup can name it (issue #173); the entry
+ * is declared here and admitted only when the game's own call is observed
+ * returning to the declared site.
+ */
+#define PAD_ENUM_IMAGE "XMen2.exe"
+#define PAD_ENUM_ENTRY 0x00628e20u
+#define PAD_ENUM_RETURN 0x00628e57u
+
 /* The game's enumeration identity, remembered from its first GAMECTRL
    EnumDevices; the pump re-enters the guest through it. */
 static uint32_t g_pad_cb, g_pad_ref, g_pad_enum;
-static const char *g_pad_enum_name;
 static X2ControllerHotplug g_hotplug;
 
 void dinput8_check_controller_table(void);
@@ -137,36 +148,37 @@ void dinput8_check_controller_table(void) {
 void dinput8_hotplug_note_game_enumeration(unsigned int callback,
                                            unsigned int manager_ref,
                                            unsigned int return_address) {
-  const char *name = NULL;
-  const uint32_t routine = x86_native_entry_containing(return_address, &name);
+  char why[160];
+  uint32_t entry = 0, site = 0;
   g_pad_cb = callback;
   g_pad_ref = manager_ref;
-  if (routine && routine != g_pad_enum) {
-    g_pad_enum = routine;
-    g_pad_enum_name = name;
+  if (x86_override_resolve_check(PAD_ENUM_IMAGE, PAD_ENUM_ENTRY, &entry, why,
+                                 sizeof why) ||
+      x86_override_resolve_check(PAD_ENUM_IMAGE, PAD_ENUM_RETURN, &site, why,
+                                 sizeof why)) {
+    x2_log_error("DINPUT8: the game's controller enumeration cannot be "
+                 "mapped (%s), so a pad that arrives later cannot be "
+                 "admitted.\n",
+                 why);
     return;
   }
-  if (routine) {
+  if (return_address == site) {
+    g_pad_enum = entry;
     return;
   }
   /*
-   * Said here, where the return address is still in hand. Storing a 0 and
-   * letting the pump report "never identified the routine" hides which half
-   * failed: an address in no mapped module is a boundary defect, and one
-   * inside the image with nothing at or below it is an empty export table.
+   * A GAMECTRL enumeration from anywhere else is not the routine whose
+   * contract the pump relies on: calling the declared entry would then be
+   * calling a guest routine with a fabricated argument. Keep whatever was
+   * admitted before and say which address disagreed.
    */
   {
-    static int told;
     X86Module *const m = x86_module_for(return_address);
-    if (told++) {
-      return;
-    }
-    x2_log_error("DINPUT8: EnumDevices(GAMECTRL) returns to 0x%08x, %s%s, and "
-                 "no exported entry sits at or below it -- so the game's own "
-                 "re-enumeration routine cannot be named, and a pad that "
-                 "arrives later cannot be admitted by the game's rules.\n",
+    x2_log_error("DINPUT8: EnumDevices(GAMECTRL) returns to 0x%08x (%s%s), "
+                 "not to the enumeration routine's call site 0x%08x -- this "
+                 "caller is not admitted as the hotswap routine.\n",
                  return_address, m ? "in " : "in NO mapped module",
-                 m ? m->name : "");
+                 m ? m->name : "", site);
   }
 }
 

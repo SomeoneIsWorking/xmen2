@@ -1,11 +1,10 @@
 ---
 id: 262
 kind: claim
-status: falsified
-falsified_on: 2026-09-19
+status: holds
 created: 2026-08-25
 tags: input,pad,hotswap,controller
-depends: src/native/dinput8_hotplug.c#dinput8_hotplug_pump, src/native/dinput8_hotplug.c#dinput8_check_controller_table, src/native/dinput_pad_virtual.c#dinput_pad_virtual_from_env, src/input/player_input.c#resolve_pads
+depends: src/native/dinput8_hotplug.c#dinput8_hotplug_note_game_enumeration, src/native/dinput8_hotplug.c#dinput8_hotplug_pump, src/native/dinput8_hotplug.c#dinput8_check_controller_table, src/native/dinput_pad_virtual.c#dinput_pad_virtual_from_env, src/input/player_input.c#resolve_pads
 ---
 
 ## Claim
@@ -34,12 +33,7 @@ press the game never reads -- on a boot that has not loaded a save. (After a
 SAVE load the poll side does not resume: that is issue #117, explicitly
 outside this claim.)
 
-## Falsified 2026-09-19
+## Restored 2026-09-22
 
-`tools/live_case.py pad-late` fails "hotswap re-entered the game's
-enumeration" and "the presented frame changed after Start" on the current
-revision. The named falsifier -- "a hotswap run whose HOTSWAP line never
-appears" / "x86_native_entry_containing naming a function other than
-FUN_00628e20" -- is met in its stronger form: it names nothing at all, because
-XMen2.exe has an empty export table and the generated-corpus symbol table that
-used to answer was retired with the corpus itself (commit 89de118). Issue #173.
+Issue #173's fix restores the admission this claim depends on; see C161.
+`tools/live_case.py pad-late` 8/8 and `pad-persisted` 9/9 on a boot with no save.

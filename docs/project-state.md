@@ -418,7 +418,9 @@ DirectInput 7/8 paths; axes, buttons, triggers, assignments, Start/Pause joins,
 late attach, detach, reconnect, post-save-load polling, and active-source
 switching have end-to-end evidence. C222 proves full-scale trigger delivery;
 C224 proves RT+A reaches a gameplay power; C262 and C264 prove late attach both
-before and after loading a save. The host also translates SDL pointer events
+before and after loading a save. Hotswap names the game's re-enumeration routine
+from declared recovered metadata checked against its observed call site
+(issue #173), since XMen2.exe exports nothing. The host also translates SDL pointer events
 through an ordered Win32 message queue into the retained Alchemy WndProc,
 mapping physical coordinates through inverse aspect fit to the active logical
 backbuffer and giving focused retail content one game-drawn cursor. Pure tests
@@ -804,7 +806,8 @@ off-centre publishes `0.000, 0.000`, a radius of travel up publishes
 `0.000, -1.000`, a radius right `1.000, 0.000`, and the corner of the box
 `0.707, -0.707` rather than 1 in both.
 
-The same run measured what issue #173 costs when the pad is late. In AUTO on
+The same run measured what issue #173 cost, before it was resolved, when the
+pad is late. In AUTO on
 a host reporting no touch device, `prepare_for_host` attaches nothing, so the
 pad arrives with the first contact — after the guest has enumerated — and the
 probe reads `joystick answer mask 0x00000000`, "NO joystick device answered
@@ -879,8 +882,9 @@ when the window arrives, before the enumeration, for any host that reports a
 touch device or whose setting forces the controls on. Measured by
 `tools/live_case.py touch-pad`, 7/7: the game is offered the pad by its own
 enumeration, reads a button from it 27,700 times with 43 coming back DOWN, and
-the presented frame moves by 9.2 under a Start press. A controller plugged in
-mid-game is still never polled; that is issue #173's own gate.
+the presented frame moves by 9.2 under a Start press. Issue #173 has since
+restored hotswap itself, so a controller plugged in mid-game is admitted by
+the game's own enumeration again (`pad-late` 8/8, `pad-persisted` 9/9).
 
 In a browser the same press was still never read DOWN — 167,890 guest reads,
 none of them pressed, with the overlay reporting the gamepad DOWN at the

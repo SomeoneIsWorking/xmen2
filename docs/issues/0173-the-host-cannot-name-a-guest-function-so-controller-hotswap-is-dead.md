@@ -1,21 +1,18 @@
 ---
 id: 173
 title: the host cannot name a guest function, so controller hotswap is dead
-status: open
+status: resolved
 symptom: XMen2.exe's export directory is RVA 0 size 0, so x86_native_entry_containing cannot name the game's re-enumeration routine
 state_items: S020,S006
 tags: input,pad,hotswap,pe,symbols
 created: 2026-09-19
-updated: 2026-09-19
+updated: 2026-09-22
 ---
 
 # 0173 — the host cannot name a guest function, so controller hotswap is dead
 
 State items: S020 (platform-neutral touch play), S006 (input and controllers)
-Status: open for hotswap itself. The touch product no longer depends on it
-(the overlay's pad is attached before the guest enumerates, issue #171 / this
-issue's "Worked around, for touch only" below), but any controller plugged in
-after the game starts is still never polled.
+Status: resolved by option 2 below (see Resolution).
 
 ## Symptom
 
@@ -89,3 +86,19 @@ options, in the order they should be considered:
 Whichever is chosen, the negative must stay loud: acting on a wrong answer
 means calling an arbitrary guest routine with a fabricated argument, which is
 what C161's own falsifier warns about.
+
+## Resolution
+
+Option 2. `dinput8_hotplug.c` declares the routine (XMen2.exe FUN_00628e20)
+and its EnumDevices(GAMECTRL) call site (0x00628e57) as recovered metadata,
+maps both through the module's actual base, and admits the entry only when the
+game's own enumeration is observed returning to that site. A GAMECTRL
+enumeration from anywhere else is refused with its address and never admitted.
+The identity of the image itself is already pinned by `GAME_MODULE_SHA256`.
+
+`tools/live_case.py pad-late` passes 8/8 (it failed the HOTSWAP and Start
+checks above), and `pad-persisted` 9/9: a pad attached 600 frames after start
+whose stored id names Player 1 is admitted by the game (guest slot -1 -> 0)
+and its Start press moves the frame. A late pad with NO stored or session
+assignment is still not bound to a player; that is the assignment policy, not
+admission. Claims C161 and C262 hold again.
