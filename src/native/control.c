@@ -2,8 +2,10 @@
 #include "../config/environment.h"
 #include "control_command_bridge.h"
 #include "control_http.h"
+#include "control_input_route.h"
 #include "x2_log.h"
 
+#include "../input/touch_runtime.h"
 #include "autosave_runtime.h"
 #include "control_performance_route.h"
 #include "control_query.h"
@@ -49,6 +51,7 @@ enum {
   CMD_INPUT,
   CMD_SAVE,
   CMD_ASSIGNMENT,
+  CMD_TOUCH,
   CMD_PERFORMANCE_RESET
 };
 
@@ -60,6 +63,8 @@ static int g_cmd;
 static char g_cmd_key[32];
 static unsigned g_cmd_controller;
 static double g_cmd_hold, g_cmd_value;
+static double g_cmd_x, g_cmd_y; /* normalized contact position */
+static int g_cmd_phase;
 static int g_cmd_ok;
 static char g_cmd_why[192];
 static char *g_probe; /* input snapshot, server-thread owned */
@@ -121,6 +126,18 @@ void control_pump(CPU *cpu, double now) {
                g_cmd_ok ? "session assignment applied"
                         : "that live pad cannot be assigned to that player");
     }
+  } else if (cmd == CMD_TOUCH) {
+    /* Goes through the runtime's own injector, which takes the same
+       note-source and routing calls the host event pump takes. A separate
+       copy here could only agree with the shipping path by luck. */
+    g_cmd_ok = x2_touch_runtime_inject(1, (float)g_cmd_x, (float)g_cmd_y,
+                                       (X2TouchPhase)g_cmd_phase);
+    /* What the contact then DID is the touch census's account, not a second
+       tally here that could disagree with it. */
+    snprintf(g_cmd_why, sizeof g_cmd_why,
+             g_cmd_ok ? "the contact was routed"
+                      : "NOTHING routed it: there is no window, or the "
+                        "contact was not a finger event");
   } else if (cmd == CMD_INPUT) {
     if (!g_probe)
       g_probe = (char *)malloc(PROBE_BYTES);
@@ -238,112 +255,51 @@ int control_command_performance_reset(char *reason, size_t reason_capacity) {
   return g_cmd_ok;
 }
 
-/* -------------------------------------------------------------- serving --- */
-
-static void route_key(x2_socket_t fd, const char *query) {
-  char name[32] = "", hold[16] = "";
-
-  if (!control_query_arg(query, "name", name, sizeof name) || !name[0]) {
-    control_reply_text(
-        fd, 400, "Bad Request",
-        "no key named. Use /key?name=Return[&hold=0.3].\n"
-        "Names are SDL scancode names: Return, Escape, Up, Down,\n"
-        "Left, Right, Space, A, 1, F1 ...\n");
-    return;
-  }
-  g_cmd_hold =
-      control_query_arg(query, "hold", hold, sizeof hold) ? atof(hold) : 0.0;
+/* The counts belong here, with the queue that performs the work, and not with
+   the route that parsed the request: /status reports them. */
+int control_command_key(const char *name, double hold, char *reason,
+                        size_t reason_capacity) {
+  g_cmd_hold = hold;
   snprintf(g_cmd_key, sizeof g_cmd_key, "%s", name);
-
-  if (!submit(CMD_KEY, 5.0)) {
-    control_reply_text(
-        fd, 504, "Gateway Timeout",
-        "the guest did not poll its keyboard within 5s, so \"%s\" "
-        "was NOT pressed.\nThat is a statement about the RUN, not "
-        "about this channel: the game is stuck, still loading, or "
-        "has not reached its input loop.\n",
-        name);
-    return;
-  }
-  if (!g_cmd_ok) {
-    control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why);
-    return;
-  }
-  control_reply_text(fd, 200, "OK", "pressed \"%s\" for %.2fs at frame %lu\n",
-                     name, g_cmd_hold > 0.0 ? g_cmd_hold : 0.30,
-                     gpu_frames_presented());
+  if (!submit(CMD_KEY, 5.0))
+    return -1;
+  snprintf(reason, reason_capacity, "%s", g_cmd_why);
+  return g_cmd_ok;
 }
 
-static void route_pad(x2_socket_t fd, const char *query) {
-  char what[32] = "", hold[16] = "", value[16] = "";
-
-  if (!control_query_arg(query, "button", what, sizeof what) &&
-      !control_query_arg(query, "axis", what, sizeof what)) {
-    control_reply_text(
-        fd, 400, "Bad Request",
-        "no button or axis named.\n"
-        "  /pad?button=a[&hold=0.3]\n"
-        "  /pad?axis=leftx&value=-1[&hold=0.5]\n"
-        "Buttons: a b x y back start leftstick rightstick "
-        "leftshoulder rightshoulder\n"
-        "Axes: leftx lefty rightx righty lefttrigger righttrigger, "
-        "value -1..1\n");
-    return;
-  }
-  g_cmd_hold =
-      control_query_arg(query, "hold", hold, sizeof hold) ? atof(hold) : 0.0;
-  g_cmd_value = control_query_arg(query, "value", value, sizeof value)
-                    ? atof(value)
-                    : 1.0;
+int control_command_pad(const char *what, double value, double hold,
+                        char *reason, size_t reason_capacity) {
+  g_cmd_hold = hold;
+  g_cmd_value = value;
   snprintf(g_cmd_key, sizeof g_cmd_key, "%s", what);
-
-  if (!submit(CMD_PAD, 5.0)) {
-    control_reply_text(
-        fd, 504, "Gateway Timeout",
-        "the guest did not poll within 5s, so \"%s\" was NOT set.\n", what);
-    return;
-  }
-  if (!g_cmd_ok) {
-    control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why);
-    return;
-  }
-  control_reply_text(fd, 200, "OK", "pad \"%s\" set at frame %lu -- %s\n", what,
-                     gpu_frames_presented(), g_cmd_why);
+  if (!submit(CMD_PAD, 5.0))
+    return -1;
+  snprintf(reason, reason_capacity, "%s", g_cmd_why);
+  return g_cmd_ok;
 }
 
-static void route_assignment(x2_socket_t fd, const char *query) {
-  char player[8] = "", pad[8] = "", clear[8] = "";
-  int player_number, pad_number;
-  if (!control_query_arg(query, "player", player, sizeof player) ||
-      !bounded_number(player, 1, 4, &player_number)) {
-    control_reply_text(fd, 400, "Bad Request",
-                       "use /assignment?player=1..4&pad=N or &clear=1\n");
-    return;
-  }
-  g_cmd_controller = (unsigned)(player_number - 1);
-  if (control_query_arg(query, "clear", clear, sizeof clear) && atoi(clear))
-    g_cmd_value = -1.0;
-  else if (control_query_arg(query, "pad", pad, sizeof pad) &&
-           bounded_number(pad, 0, DINPUT_PAD_MAX - 1, &pad_number))
-    g_cmd_value = (double)pad_number;
-  else {
-    control_reply_text(fd, 400, "Bad Request",
-                       "no live pad or clear requested\n");
-    return;
-  }
-  if (!submit(CMD_ASSIGNMENT, 5.0)) {
-    control_reply_text(
-        fd, 504, "Gateway Timeout",
-        "the guest did not poll within 5s; assignment unchanged\n");
-    return;
-  }
-  if (!g_cmd_ok) {
-    control_reply_text(fd, 409, "Conflict", "%s\n", g_cmd_why);
-    return;
-  }
-  control_reply_text(fd, 200, "OK", "player %d: %s\n", player_number,
-                     g_cmd_why);
+int control_command_touch(double x, double y, int phase, char *reason,
+                          size_t reason_capacity) {
+  g_cmd_x = x;
+  g_cmd_y = y;
+  g_cmd_phase = phase;
+  if (!submit(CMD_TOUCH, 5.0))
+    return -1;
+  snprintf(reason, reason_capacity, "%s", g_cmd_why);
+  return g_cmd_ok;
 }
+
+int control_command_assignment(unsigned player_index, double pad_or_clear,
+                               char *reason, size_t reason_capacity) {
+  g_cmd_controller = player_index;
+  g_cmd_value = pad_or_clear;
+  if (!submit(CMD_ASSIGNMENT, 5.0))
+    return -1;
+  snprintf(reason, reason_capacity, "%s", g_cmd_why);
+  return g_cmd_ok;
+}
+
+/* -------------------------------------------------------------- serving --- */
 
 static void route_shot(x2_socket_t fd) {
   const unsigned char *png;
@@ -413,15 +369,17 @@ static void serve(x2_socket_t fd) {
     control_status_route(fd, g_requests, g_keys_pressed, g_keys_refused,
                          g_shots);
   else if (!strcmp(path, "/key"))
-    route_key(fd, query ? query : "");
+    control_route_key(fd, query ? query : "");
   else if (!strcmp(path, "/ui/key"))
     control_ui_key_route(fd, query ? query : "");
   else if (!strcmp(path, "/ui/click"))
     control_ui_click_route(fd, query ? query : "");
   else if (!strcmp(path, "/pad"))
-    route_pad(fd, query ? query : "");
+    control_route_pad(fd, query ? query : "");
+  else if (!strcmp(path, "/touch"))
+    control_route_touch(fd, query ? query : "");
   else if (!strcmp(path, "/assignment"))
-    route_assignment(fd, query ? query : "");
+    control_route_assignment(fd, query ? query : "");
   else if (!strcmp(path, "/screenshot"))
     route_shot(fd);
   else if (!strcmp(path, "/input"))
@@ -442,6 +400,8 @@ static void serve(x2_socket_t fd) {
         "  GET /ui/click?x=X&y=Y  click at the PORT's own UI\n"
         "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"
         "  GET /pad?axis=leftx&value=-1   move an axis\n"
+        "  GET /touch?x=0.5&y=0.9  press the screen where a finger would "
+        "(&phase=down|motion|up|cancel)\n"
         "  GET /assignment?player=P&pad=N session-only ownership\n"
         "  GET /screenshot   the current frame, as a PNG\n"
         "  GET /input[?controller=N]  the GAME's binding table "

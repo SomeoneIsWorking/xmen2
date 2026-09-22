@@ -15,6 +15,7 @@ then talk to it while it runs:
     tools/x2ctl.py uikey F2               # the PORT's own UI, not the game
     tools/x2ctl.py uiclick 279,97         # ... and its pointer
     tools/x2ctl.py pad a start             # synthetic pad buttons
+    tools/x2ctl.py touch 0.2,0.73          # tap the screen, as a finger does
     tools/x2ctl.py pad leftx=-1            # ... and axes
     tools/x2ctl.py assignment 2 --pad 0    # session-only pad -> Player 2
     tools/x2ctl.py assignment 2 --clear    # remove that eligibility
@@ -232,6 +233,35 @@ def cmd_pad(args):
     return 1 if bad else 0
 
 
+def cmd_touch(args):
+    """Press the screen where a finger would, at fractions of the window.
+
+    A host with no touchscreen cannot otherwise reach the on-screen controls
+    or, on the screens that draw none, the retail GUI that a tap now moves.
+    The default is a whole tap -- press and release -- because a run that sent
+    only the press would leave a finger down on the screen for the rest of it.
+    """
+    bad = 0
+    for spot in args.spots:
+        x, _, y = spot.partition(",")
+        if not y:
+            print("  REFUSED %r: a spot is X,Y as fractions of the window, "
+                  "e.g. 0.5,0.9" % spot)
+            bad += 1
+            continue
+        path = "/touch?x=%s&y=%s" % (x.strip(), y.strip())
+        if args.phase:
+            path += "&phase=%s" % args.phase
+        code, _, body = call(args.port, path)
+        text = body.decode(errors="replace").strip()
+        print(("  " if code == 200 else "  REFUSED(%d) " % code) + text)
+        if code != 200:
+            bad += 1
+        elif args.gap:
+            time.sleep(args.gap)
+    return 1 if bad else 0
+
+
 def cmd_assignment(args):
     """Assign one exact live pad for this process, without persisting it."""
     path = "/assignment?player=%d&" % args.player
@@ -439,6 +469,14 @@ def main():
     d.add_argument("--hold", type=float, default=0.0)
     d.add_argument("--gap", type=float, default=0.4)
     d.set_defaults(fn=cmd_pad)
+
+    t = sub.add_parser("touch", help="press the screen at X,Y as fractions of "
+                                     "the window (0.5,0.9)")
+    t.add_argument("spots", nargs="+", metavar="X,Y")
+    t.add_argument("--phase", choices=("down", "motion", "up", "cancel"),
+                   help="one half of a tap, instead of press-and-release")
+    t.add_argument("--gap", type=float, default=0.4)
+    t.set_defaults(fn=cmd_touch)
 
     assignment = sub.add_parser(
         "assignment", help="assign a session-only live pad to a player")

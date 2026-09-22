@@ -57,9 +57,17 @@ class Census:
     """
 
     DROPPED = re.compile(
-        r"\[touch\] (?:\[HB\] )?(\d+) of (\d+) dropped before routing: "
-        r"(\d+) with no window, (\d+) with the overlay hidden "
-        r"\(touch_controls=(\S+), source says ([^,]+), gate ([^)]+)\)"
+        r"\[touch\] (?:\[HB\] )?(\d+) of (\d+) dropped before routing, all "
+        r"with no window \(touch_controls=(\S+), source says ([^,]+), "
+        r"gate ([^)]+)\)"
+    )
+    # Where a contact goes when no control is drawn -- the intro, the menus,
+    # the loading screens. A browser run that reports these and no zone action
+    # has reached the product but not gameplay, which is a different answer
+    # from touch being broken.
+    POINTER = re.compile(
+        r"\[touch\] (?:\[HB\] )?(\d+) contact\(s\) became the retail GUI "
+        r"pointer because no control was drawn \(gate ([^)]+)\); (\d+) refused"
     )
     CONTACTS = re.compile(r"\[touch\] (?:\[HB\] )?(\d+) contact event\(s\)")
     NOTHING = re.compile(
@@ -85,6 +93,8 @@ class Census:
         self.beats = 0
         self.contacts = None
         self.dropped = None
+        self.pointer = None
+        self.pointer_refused = None
         self.gate = None
         self.source = None
         self.mode = None
@@ -110,7 +120,13 @@ class Census:
         match = self.DROPPED.search(line)
         if match:
             self.dropped = int(match.group(1))
-            self.mode, self.source, self.gate = match.group(5, 6, 7)
+            self.mode, self.source, self.gate = match.group(3, 4, 5)
+            return
+        match = self.POINTER.search(line)
+        if match:
+            self.pointer = int(match.group(1))
+            self.gate = match.group(2)
+            self.pointer_refused = int(match.group(3))
             return
         match = self.ZONES.search(line)
         if match:
@@ -312,6 +328,8 @@ def main() -> int:
     print(f"  refused by the pad: {census.buttons_refused} button(s), "
           f"{census.axes_refused} axis change(s)")
     print(f"  dropped before routing, cumulative: {census.dropped} of {census.contacts}")
+    print(f"  became the retail GUI pointer (no control drawn): {census.pointer}"
+          f", {census.pointer_refused} refused")
     print(f"  player one: {census.player_one}")
 
     contacts, zones, buttons, axes = (now - was for was, now in zip(before, after, strict=True))

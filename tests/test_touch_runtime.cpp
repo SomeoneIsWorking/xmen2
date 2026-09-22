@@ -28,6 +28,7 @@
  */
 #include <SDL3/SDL.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -516,11 +517,9 @@ int main() {
                              census.contacts_up + census.contacts_canceled;
   check(seen > 0, "the census counted the contacts this test sent",
         std::to_string(seen) + " contact event(s)");
-  check(census.ignored_overlay_hidden == 0 && census.ignored_no_window == 0,
+  check(census.ignored_no_window == 0,
         "no contact was dropped before routing in this run",
-        std::to_string(census.ignored_no_window) + " with no window, " +
-            std::to_string(census.ignored_overlay_hidden) +
-            " with the overlay hidden");
+        std::to_string(census.ignored_no_window) + " with no window");
   check(census.buttons_published > 0 && census.buttons_refused == 0,
         "the census counted the presses that reached the pad",
         std::to_string(census.buttons_published) + " published, " +
@@ -539,18 +538,53 @@ int main() {
             std::to_string(census.cancelled_source_changed) +
             " for a changed source");
 
-  /* A contact that arrives while the overlay is hidden must be counted as
-     dropped, not lost silently -- that is the case the report exists to tell
-     apart from "nothing was touched", and a run that never produces one would
-     leave the distinction untested. */
+  /*
+   * A CONTACT WITH NO DRAWN CONTROL UNDER IT IS THE RETAIL POINTER.
+   *
+   * This is the case the player meets first and the one nothing covered: the
+   * intro and the main menu draw no overlay, so every finger there was
+   * counted and discarded and a phone could not leave the title screen. The
+   * check is that the contact becomes a pointer press at its own position and
+   * presses no pad button, because those screens are the retail GUI.
+   */
   x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_OFF;
-  const unsigned long dropped_before = census.ignored_overlay_hidden;
+  const unsigned long pointer_before = census.pointer_events;
+  X2TouchPointer pointer{};
+  while (x2_touch_runtime_take_pointer(&pointer)) {
+  }
   send_finger(SDL_EVENT_FINGER_DOWN, 6, jump_x, jump_y, width, height);
   x2_touch_census_read(&census);
-  check(census.ignored_overlay_hidden == dropped_before + 1,
-        "a contact arriving with the overlay off is counted as dropped",
-        std::to_string(census.ignored_overlay_hidden) + " dropped");
-  check(!button_down(pad, "y"), "and it presses nothing", "touch_controls=OFF");
+  check(census.pointer_events == pointer_before + 1,
+        "a contact with no control drawn becomes the retail pointer",
+        std::to_string(census.pointer_events) + " pointer event(s)");
+  check(x2_touch_runtime_take_pointer(&pointer) && pointer.button_change == 1,
+        "and it is published as a pointer PRESS",
+        "button_change " + std::to_string(pointer.button_change));
+  check(std::abs(pointer.x - jump_x) < 1.0F &&
+            std::abs(pointer.y - jump_y) < 1.0F,
+        "at the position the finger was at, not a control's centre",
+        std::to_string(pointer.x) + "," + std::to_string(pointer.y) +
+            " against " + std::to_string(jump_x) + "," +
+            std::to_string(jump_y));
+  check(!button_down(pad, "y"),
+        "and it presses no pad button: that screen is the retail GUI",
+        "touch_controls=OFF");
+
+  /* A second finger must not take retail's one mouse button off the first. */
+  const unsigned long refused_before = census.pointer_refused;
+  send_finger(SDL_EVENT_FINGER_DOWN, 7, jump_x + 4.0F, jump_y, width, height);
+  x2_touch_census_read(&census);
+  check(census.pointer_refused == refused_before + 1,
+        "a second finger does not take the one mouse button off the first",
+        std::to_string(census.pointer_refused) + " refused");
+
+  send_finger(SDL_EVENT_FINGER_UP, 6, jump_x, jump_y, width, height);
+  bool released = false;
+  while (x2_touch_runtime_take_pointer(&pointer)) {
+    released = released || pointer.button_change == 0;
+  }
+  check(released, "lifting the owning finger releases the button",
+        "a press with no release would leave retail's button down");
   x2_settings_store()->touch_controls = X2_TOUCH_CONTROLS_ALWAYS;
 
   /* Runs it for real: a report that throws or prints nothing is not an

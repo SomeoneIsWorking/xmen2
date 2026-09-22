@@ -14,8 +14,10 @@ from tools.web_touch_play import Census
 
 GATE_ACTIVE = (
     "log     [touch] [HB] 32 contact event(s): 16 down, 0 moved, 16 up, 0 canceled",
-    "log     [touch] [HB] 0 of 32 dropped before routing: 0 with no window, "
-    "0 with the overlay hidden (touch_controls=AUTO, source says touch, gate active)",
+    "log     [touch] [HB] 0 of 32 dropped before routing, all with no window "
+    "(touch_controls=AUTO, source says touch, gate active)",
+    "log     [touch] [HB] 0 contact(s) became the retail GUI pointer because no "
+    "control was drawn (gate active); 0 refused, held by another finger",
     "log     [touch] [HB] 9 zone action(s) routed; 0 cancellation(s) for a lost "
     "window, rotation or layout change",
     "log     [touch] [HB] published to the pad: 14 button change(s) (0 refused), "
@@ -23,10 +25,16 @@ GATE_ACTIVE = (
     "log     [touch] [HB] the touch pad was claimed for player one",
 )
 
-EVERYTHING_DROPPED = (
+# The run a phone player actually meets first: every contact reaches the port
+# and goes to the retail GUI pointer because the title screen draws no control.
+# Nothing is dropped and nothing reaches the pad, and those are different
+# answers from each other and from touch being broken.
+EVERYTHING_TO_THE_POINTER = (
     "log     [touch] [HB] 32 contact event(s): 16 down, 0 moved, 16 up, 0 canceled",
-    "log     [touch] [HB] 32 of 32 dropped before routing: 0 with no window, "
-    "32 with the overlay hidden (touch_controls=AUTO, source says touch, gate never-seen)",
+    "log     [touch] [HB] 0 of 32 dropped before routing, all with no window "
+    "(touch_controls=AUTO, source says touch, gate never-seen)",
+    "log     [touch] [HB] 32 contact(s) became the retail GUI pointer because no "
+    "control was drawn (gate never-seen); 0 refused, held by another finger",
     "log     [touch] [HB] 0 zone action(s) routed; 0 cancellation(s) for a lost "
     "window, rotation or layout change",
     "log     [touch] [HB] published to the pad: 0 button change(s) (0 refused), "
@@ -58,6 +66,7 @@ class CensusReaderTest(unittest.TestCase):
         self.assertIsNone(census.contacts)
         self.assertIsNone(census.gate)
         self.assertIsNone(census.buttons)
+        self.assertIsNone(census.pointer)
         self.assertEqual(census.beats, 0)
 
     def test_a_run_that_reached_the_pad(self):
@@ -73,10 +82,16 @@ class CensusReaderTest(unittest.TestCase):
         self.assertEqual((census.axes, census.axes_refused), (4, 0))
         self.assertEqual(census.player_one, "claimed")
 
-    def test_a_run_whose_contacts_were_all_dropped(self):
-        census = read(EVERYTHING_DROPPED)
+    def test_a_run_whose_contacts_all_went_to_the_retail_pointer(self):
+        """The title screen. Nothing was dropped and nothing reached the pad:
+        every contact became the retail GUI's pointer because no control was
+        drawn. A reader that could not tell this from a dropped contact would
+        report a working menu tap as a broken one."""
+        census = read(EVERYTHING_TO_THE_POINTER)
         self.assertEqual(census.contacts, 32)
-        self.assertEqual(census.dropped, 32)
+        self.assertEqual(census.dropped, 0)
+        self.assertEqual(census.pointer, 32)
+        self.assertEqual(census.pointer_refused, 0)
         self.assertEqual(census.gate, "never-seen")
         self.assertEqual(census.zones, 0)
         self.assertEqual(census.buttons, 0)
@@ -85,10 +100,12 @@ class CensusReaderTest(unittest.TestCase):
     def test_the_two_runs_are_told_apart_by_the_gate_and_the_pad(self):
         """The whole point: both saw 32 contacts. Only the gate, the zone
         count and the pad say which one was playable."""
-        good, bad = read(GATE_ACTIVE), read(EVERYTHING_DROPPED)
+        good, bad = read(GATE_ACTIVE), read(EVERYTHING_TO_THE_POINTER)
         self.assertEqual(good.contacts, bad.contacts)
+        self.assertEqual(good.dropped, bad.dropped)
         self.assertNotEqual(good.gate, bad.gate)
         self.assertNotEqual(good.buttons, bad.buttons)
+        self.assertNotEqual(good.pointer, bad.pointer)
 
     def test_a_run_in_which_nothing_was_touched(self):
         """Distinct from a run whose contacts were dropped: zero arrived."""
@@ -103,7 +120,7 @@ class CensusReaderTest(unittest.TestCase):
         self.assertEqual(census.source, "not touch")
 
     def test_beats_count_only_the_line_that_opens_a_block(self):
-        census = read(GATE_ACTIVE + EVERYTHING_DROPPED + NOTHING_TOUCHED)
+        census = read(GATE_ACTIVE + EVERYTHING_TO_THE_POINTER + NOTHING_TOUCHED)
         self.assertEqual(census.beats, 3)
 
     def test_unrelated_console_output_is_not_read_as_a_census(self):
@@ -207,8 +224,9 @@ class ShippingCensusTest(unittest.TestCase):
         # Two blocks: the C test reports before it touches anything and again
         # at the end, so both branches of the shipping census are checked.
         self.assertEqual(census.beats, 2, f"expected two census blocks in {lines}")
-        for field in ("contacts", "dropped", "gate", "source", "mode",
-                      "zones", "buttons", "axes", "player_one"):
+        for field in ("contacts", "dropped", "pointer", "pointer_refused",
+                      "gate", "source", "mode", "zones", "buttons", "axes",
+                      "player_one"):
             self.assertIsNotNone(
                 getattr(census, field),
                 f"the reader did not find '{field}' in the shipping census: {lines}",

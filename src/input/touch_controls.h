@@ -68,16 +68,32 @@ std::optional<float> touch_axis_value(std::span<const ActionEvent> events,
                                       TouchAction negative,
                                       TouchAction positive);
 
-// Retail has one mouse button: the first portrait finger owns that pointer
-// until released or canceled. Other held fingers never take over implicitly;
-// they must lift and begin again. Every selected transition is returned in
-// order.
+// Retail draws one cursor and has one mouse button, so one contact owns the
+// pointer at a time: the first to begin, until it ends or is canceled. A
+// finger arriving while it is held never takes over implicitly; it must lift
+// and begin again. Both things that move retail's pointer -- a portrait tap
+// in gameplay and a tap on the retail GUI when no control is drawn -- obey
+// this one rule rather than each keeping its own copy of it.
+class PointerOwner {
+public:
+  // True when this contact may move the pointer in this phase. An ending or
+  // canceled phase is accepted and gives ownership up.
+  bool accepts(std::int64_t contact_id, lucent::touch::Phase phase);
+  bool held() const { return contact_.has_value(); }
+  void release() { contact_.reset(); }
+
+private:
+  std::optional<std::int64_t> contact_;
+};
+
+// The portrait taps, which select a hero through that same pointer. Every
+// selected transition is returned in order.
 class PortraitPointer {
 public:
   std::vector<ActionEvent> route(std::span<const ActionEvent> events);
 
 private:
-  std::optional<std::int64_t> contact_;
+  PointerOwner owner_;
 };
 
 // Title-specific virtual controls. Layout and action vocabulary live here;

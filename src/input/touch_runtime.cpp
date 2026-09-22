@@ -1,5 +1,4 @@
 #include "touch_runtime.h"
-#include "../native/x2_log.h"
 
 extern "C" {
 #include "../native/guest_clock.h"
@@ -8,341 +7,322 @@ extern "C" {
 
 #include "../config/settings.h"
 #include "../config/settings_store.h"
-#include "../native/dinput_pad.h"
-#include "../native/dinput_pad_report.h"
-#include "../native/dinput_pad_virtual.h"
 #include "touch_census.h"
 #include "touch_controls.h"
 #include "touch_pad.h"
+#include "touch_pad_publisher.h"
+#include "touch_pointer.h"
 #include "touch_source.h"
-#include "transient_controller_assignment.h"
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
-#include <cstdio>
-#include <deque>
+#include <cstdint>
 #include <map>
 #include <set>
 #include <span>
-#include <string>
 #include <vector>
 
+namespace x2::input {
 namespace {
 
-struct ContactState {
-  float x = 0.0F;
-  float y = 0.0F;
-  bool active = false;
-};
-
-x2::input::TouchControls controls;
-std::map<SDL_FingerID, ContactState> contacts;
-std::set<std::uint32_t> active_zones;
-x2::input::PortraitPointer portrait_pointer;
-std::deque<X2TouchPointer> pending_pointers;
-SDL_Window *window;
-
-/* The run's counts belong to touch_census, which owns the text made from
-   them; this only adds to them at the points where each outcome is decided. */
-X2TouchCensus &census = *x2_touch_census();
-/* The one viewport both the control zones and the HUD relocation lay out
-   from. Set with the window, so neither owner computes its own. */
-X2LayoutViewport viewport;
-
-const char *button_name(x2::input::TouchAction action) {
-  using x2::input::TouchAction;
-  switch (action) {
-  case TouchAction::LightAttack:
-    return "a";
-  case TouchAction::HeavyAttack:
-    return "b";
-  case TouchAction::Jump:
-    return "y";
-  case TouchAction::Use:
-    return "x";
-  case TouchAction::Powers:
-    return "righttrigger";
-  case TouchAction::EnergyPack:
-    return "lefttrigger";
-  case TouchAction::HealthPack:
-    return "rightshoulder";
-  case TouchAction::NextHero:
-    return "up";
-  case TouchAction::PreviousHero:
-    return "down";
-  case TouchAction::DecreaseAggr:
-    return "left";
-  case TouchAction::IncreaseAggr:
-    return "right";
-  case TouchAction::MapToggle:
-    return "rightstick";
-  case TouchAction::Pause:
-    return "start";
-  case TouchAction::Stats:
-    return "back";
+lucent::touch::Phase phase_of(Uint32 event_type) {
+  switch (event_type) {
+  case SDL_EVENT_FINGER_DOWN:
+    return lucent::touch::Phase::began;
+  case SDL_EVENT_FINGER_MOTION:
+    return lucent::touch::Phase::moved;
+  case SDL_EVENT_FINGER_UP:
+    return lucent::touch::Phase::ended;
   default:
-    return nullptr;
+    return lucent::touch::Phase::canceled;
   }
 }
 
-/* Set at the first published press: the value of the game's button-read
-   counter at that moment, plus one so that zero still means "no press yet". */
-unsigned long first_press_reads = 0;
-bool told_first_release = false;
-
-void publish_button(const x2::input::ActionEvent &event) {
-  const bool withdrawn = event.phase == lucent::touch::Phase::canceled;
-  const bool release = event.phase == lucent::touch::Phase::ended || withdrawn;
-  const char *button = button_name(event.action);
-  char reason[256];
-  if (!button)
-    return;
-  if (release) {
-    /* A cancelled press is taken back, not completed, so it does not wait for
-       the game to read it. */
-    if (withdrawn ? dinput_pad_virtual_release_now(button)
-                  : dinput_pad_virtual_release(button)) {
-      census.buttons_published++;
-      /*
-       * How many times did the game ASK while that press was held?
-       *
-       * "Published and never seen" has two causes that look identical in a
-       * total: the state was not visible to the reader, or the reader never
-       * ran while it was set. Only a count taken across the press itself
-       * tells them apart.
-       */
-      if (first_press_reads && !told_first_release) {
-        X2PadPollCounts counts;
-        told_first_release = true;
-        dinput_pad_poll_counts(&counts);
-        x2_log_error("touch: first press of \"%s\" released -- the game read "
-                     "a button %lu time(s) while it was held, %lu of them "
-                     "DOWN\n",
-                     button, counts.button_reads - (first_press_reads - 1),
-                     counts.buttons_down);
-      }
-    } else {
-      census.buttons_refused++;
-      x2_log_error("touch: could not release virtual button %s\n", button);
-    }
-  } else if (dinput_pad_virtual_set(button, event.value, -1.0, reason,
-                                    sizeof reason)) {
-    census.buttons_published++;
-    /*
-     * The FIRST press says what reading it back found, once.
-     *
-     * "Published" only means the set was accepted. Whether the game can see
-     * it is a different layer, and the pad's own read-back already knows --
-     * it was being computed and thrown away here. A browser run published
-     * every press and the game read a button 109,780 times with none ever
-     * down; this is the line that would have said which layer lost it.
-     */
-    if (!first_press_reads) {
-      X2PadPollCounts counts;
-      dinput_pad_poll_counts(&counts);
-      first_press_reads = counts.button_reads + 1;
-      x2_log_error("touch: first press of \"%s\" published -- %s\n", button,
-                   reason);
-    }
-  } else {
-    census.buttons_refused++;
-    x2_log_error("touch: could not press virtual button %s: %s\n", button,
-                 reason);
-  }
+bool is_finger(Uint32 event_type) {
+  return event_type == SDL_EVENT_FINGER_DOWN ||
+         event_type == SDL_EVENT_FINGER_MOTION ||
+         event_type == SDL_EVENT_FINGER_UP ||
+         event_type == SDL_EVENT_FINGER_CANCELED;
 }
 
-void publish_axis(std::span<const x2::input::ActionEvent> events,
-                  const char *name, x2::input::TouchAction negative,
-                  x2::input::TouchAction positive) {
-  const auto value = x2::input::touch_axis_value(events, negative, positive);
-  if (!value)
-    return;
-  const bool released = std::any_of(
-      events.begin(), events.end(), [negative, positive](const auto &event) {
-        return (event.action == negative || event.action == positive) &&
-               (event.phase == lucent::touch::Phase::ended ||
-                event.phase == lucent::touch::Phase::canceled);
-      });
-  char reason[256];
-  if (released) {
-    if (dinput_pad_virtual_release(name)) {
-      census.axes_published++;
-    } else {
-      census.axes_refused++;
-      x2_log_error("touch: could not release virtual axis %s\n", name);
-    }
-  } else if (dinput_pad_virtual_set(name, *value, 0.0, reason, sizeof reason)) {
-    census.axes_published++;
-  } else {
-    census.axes_refused++;
-    x2_log_error("touch: could not move virtual axis %s: %s\n", name, reason);
-  }
-}
-
-void publish(const std::vector<x2::input::ActionEvent> &events) {
-  using x2::input::TouchAction;
-  if (events.empty())
-    return;
-  x2::input::touch_pad::ensure();
-  x2::input::touch_pad::claim_player_one();
-  for (const auto &event : portrait_pointer.route(events)) {
-    const bool release = event.phase == lucent::touch::Phase::ended ||
-                         event.phase == lucent::touch::Phase::canceled;
-    pending_pointers.push_back({1, event.position.x, event.position.y,
-                                release ? 0
-                                : event.phase == lucent::touch::Phase::began
-                                    ? 1
-                                    : -1,
-                                static_cast<uint32_t>(SDL_GetTicks())});
-  }
-  for (const auto &event : events) {
-    if (event.phase == lucent::touch::Phase::ended ||
-        event.phase == lucent::touch::Phase::canceled)
-      active_zones.erase(event.zone_id);
-    else
-      active_zones.insert(event.zone_id);
-  }
-  for (const auto &event : events)
-    publish_button(event);
-  publish_axis(events, "lefty", TouchAction::Forward, TouchAction::Backward);
-  publish_axis(events, "leftx", TouchAction::MoveLeft, TouchAction::MoveRight);
-  publish_axis(events, "righty", TouchAction::CameraUp,
-               TouchAction::CameraDown);
-  publish_axis(events, "rightx", TouchAction::CameraLeft,
-               TouchAction::CameraRight);
+bool is_release(lucent::touch::Phase phase) {
+  return phase == lucent::touch::Phase::ended ||
+         phase == lucent::touch::Phase::canceled;
 }
 
 } // namespace
 
-void x2_touch_runtime_window(SDL_Window *new_window) {
-  publish(controls.cancel());
-  contacts.clear();
-  publish(controls.set_portraits({}, 0));
-  window = new_window;
-  if (!window)
-    return;
-  x2::input::touch_pad::prepare_for_host();
-  int width = 0;
-  int height = 0;
-  if (!SDL_GetWindowSizeInPixels(window, &width, &height) || width <= 0 ||
-      height <= 0)
-    return;
-  SDL_Rect safe{0, 0, width, height};
-  if (!SDL_GetWindowSafeArea(window, &safe))
-    safe = {0, 0, width, height};
-  viewport = {static_cast<float>(width),
-              static_cast<float>(height),
-              static_cast<float>(safe.x),
-              static_cast<float>(safe.y),
-              static_cast<float>(width - safe.x - safe.w),
-              static_cast<float>(height - safe.y - safe.h)};
-  /* One viewport, two consumers: the controls and the relocated HUD read
-     the same numbers, which is what stops the drawn HUD and the touchable
-     zones from disagreeing about where the screen is. */
-  controls.set_viewport({viewport.width,
-                         viewport.height,
-                         {viewport.safe_left, viewport.safe_top,
-                          viewport.safe_right, viewport.safe_bottom}});
+/*
+ * WHERE A CONTACT GOES, AND NOTHING ELSE.
+ *
+ * SDL contact acquisition on every platform -- a desktop touchscreen, a phone
+ * and a browser reach this the same way -- and the one decision that follows:
+ * a finger under a drawn control is a pad press, and a finger on a screen
+ * that draws none is the retail GUI's pointer. The vocabulary and the layout
+ * belong to TouchControls, the pad to PadPublisher, the Win32 pointer to
+ * RetailPointer, and the account of what happened to the census. This
+ * composes them and owns only the window, the live contacts, and the gate.
+ */
+class TouchRuntime {
+public:
+  void set_window(SDL_Window *window);
+  bool viewport(X2LayoutViewport &out) const;
+
+  // True when the event was this owner's to handle.
+  bool handle(const SDL_Event &event);
+  void handle_lifecycle(const SDL_Event &event);
+  void note_source(const SDL_Event &event);
+
+  void cancel(X2TouchCancelCause cause);
+  void set_hud_regions(const X2Rect portraits[4], unsigned visible_mask);
+  bool take_pointer(X2TouchPointer &out);
+  std::size_t visuals(X2TouchVisual *out, std::size_t capacity) const;
+
+  bool has_window() const { return window_ != nullptr; }
+  // The setting can force either end on every platform. ALWAYS is what makes
+  // the layout reachable on a desktop with no touchscreen -- a layout nobody
+  // can look at until it is on a phone is a layout that ships wrong.
+  static bool active();
+  bool overlay_visible() const;
+
+private:
+  struct Contact {
+    float x = 0.0F;
+    float y = 0.0F;
+    bool active = false;
+  };
+
+  // A finger under a drawn control: zones, then the pad.
+  bool route_to_controls(const SDL_Event &event);
+  // A finger with no drawn control under it: the retail GUI's pointer.
+  bool route_to_pointer(const SDL_Event &event);
+  void publish(std::span<const ActionEvent> actions);
+  void count_contact(Uint32 event_type) const;
+  bool window_size(int &width, int &height) const;
+
+  TouchControls controls_;
+  PadPublisher pad_;
+  PortraitPointer portraits_;
+  RetailPointer pointer_;
+  std::map<SDL_FingerID, Contact> contacts_;
+  std::set<std::uint32_t> active_zones_;
+  SDL_Window *window_ = nullptr;
+  /* The one viewport both the control zones and the relocated HUD lay out
+     from, so neither owner computes its own and they cannot disagree about
+     where the screen is. */
+  X2LayoutViewport viewport_{};
+};
+
+namespace {
+/* One owner, not a drawer of loose state. The C entry points below are a shim
+   over this object and hold nothing of their own. */
+TouchRuntime runtime;
+} // namespace
+
+bool TouchRuntime::active() {
+  const unsigned mode = x2_settings_store()->touch_controls;
+  return mode == X2_TOUCH_CONTROLS_ALWAYS ||
+         (mode == X2_TOUCH_CONTROLS_AUTO && x2_touch_source_is_touch());
 }
 
-int x2_touch_runtime_viewport(X2LayoutViewport *out) {
-  if (!out || !window)
-    return 0;
-  *out = viewport;
-  return 1;
+bool TouchRuntime::overlay_visible() const {
+  return window_ != nullptr && active() &&
+         x2_gameplay_control_active(guest_clock_now_s());
 }
 
-int x2_touch_runtime_event(const SDL_Event *event) {
-  if (!event)
-    return 0;
-  const bool is_finger = event->type == SDL_EVENT_FINGER_DOWN ||
-                         event->type == SDL_EVENT_FINGER_MOTION ||
-                         event->type == SDL_EVENT_FINGER_UP ||
-                         event->type == SDL_EVENT_FINGER_CANCELED;
-  /* Counted before the gates, because "no contact ever arrived" and "contacts
-     arrived and were dropped" are the two answers the report has to tell
-     apart, and only this side of the gates can see the second one. */
-  if (is_finger) {
-    switch (event->type) {
-    case SDL_EVENT_FINGER_DOWN:
-      census.contacts_down++;
-      break;
-    case SDL_EVENT_FINGER_MOTION:
-      census.contacts_moved++;
-      break;
-    case SDL_EVENT_FINGER_UP:
-      census.contacts_up++;
-      break;
-    default:
-      census.contacts_canceled++;
-      break;
+bool TouchRuntime::window_size(int &width, int &height) const {
+  width = 0;
+  height = 0;
+  return SDL_GetWindowSizeInPixels(window_, &width, &height) && width > 0 &&
+         height > 0;
+}
+
+void TouchRuntime::publish(std::span<const ActionEvent> actions) {
+  if (actions.empty()) {
+    return;
+  }
+  /* Selection belongs to the retail mouse handler, so a portrait tap leaves
+     by the pointer and the rest by the pad. */
+  for (const auto &event : portraits_.route(actions)) {
+    pointer_.resolved(event.position, event.phase);
+  }
+  for (const auto &event : actions) {
+    if (is_release(event.phase)) {
+      active_zones_.erase(event.zone_id);
+    } else {
+      active_zones_.insert(event.zone_id);
     }
   }
-  if (!window) {
-    if (is_finger)
-      census.ignored_no_window++;
-    return 0;
+  pad_.publish(actions);
+}
+
+void TouchRuntime::set_window(SDL_Window *window) {
+  publish(controls_.cancel());
+  contacts_.clear();
+  publish(controls_.set_portraits({}, 0));
+  window_ = window;
+  if (!window_) {
+    return;
   }
-  if (!x2_touch_runtime_overlay_visible()) {
-    if (is_finger)
-      census.ignored_overlay_hidden++;
-    if (!contacts.empty())
-      x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
-    return 0;
-  }
-  if (!is_finger)
-    return 0;
+  touch_pad::prepare_for_host();
   int width = 0;
   int height = 0;
-  if (!SDL_GetWindowSizeInPixels(window, &width, &height))
-    return 1;
-  const auto &finger = event->tfinger;
-  auto &contact = contacts[finger.fingerID];
+  if (!window_size(width, height)) {
+    return;
+  }
+  SDL_Rect safe{0, 0, width, height};
+  if (!SDL_GetWindowSafeArea(window_, &safe)) {
+    safe = {0, 0, width, height};
+  }
+  viewport_ = {static_cast<float>(width),
+               static_cast<float>(height),
+               static_cast<float>(safe.x),
+               static_cast<float>(safe.y),
+               static_cast<float>(width - safe.x - safe.w),
+               static_cast<float>(height - safe.y - safe.h)};
+  controls_.set_viewport({viewport_.width,
+                          viewport_.height,
+                          {viewport_.safe_left, viewport_.safe_top,
+                           viewport_.safe_right, viewport_.safe_bottom}});
+}
+
+bool TouchRuntime::viewport(X2LayoutViewport &out) const {
+  if (!window_) {
+    return false;
+  }
+  out = viewport_;
+  return true;
+}
+
+void TouchRuntime::count_contact(Uint32 event_type) const {
+  X2TouchCensus &census = *x2_touch_census();
+  switch (event_type) {
+  case SDL_EVENT_FINGER_DOWN:
+    census.contacts_down++;
+    break;
+  case SDL_EVENT_FINGER_MOTION:
+    census.contacts_moved++;
+    break;
+  case SDL_EVENT_FINGER_UP:
+    census.contacts_up++;
+    break;
+  default:
+    census.contacts_canceled++;
+    break;
+  }
+}
+
+bool TouchRuntime::route_to_pointer(const SDL_Event &event) {
+  X2TouchCensus &census = *x2_touch_census();
+  int width = 0;
+  int height = 0;
+  if (!window_size(width, height)) {
+    return true;
+  }
+  const SDL_TouchFingerEvent &finger = event.tfinger;
+  const lucent::touch::Point at{finger.x * static_cast<float>(width),
+                                finger.y * static_cast<float>(height)};
+  if (!pointer_.contact(static_cast<std::int64_t>(finger.fingerID), at,
+                        phase_of(event.type))) {
+    census.pointer_refused++;
+    return true;
+  }
+  census.pointer_events++;
+  return true;
+}
+
+bool TouchRuntime::route_to_controls(const SDL_Event &event) {
+  X2TouchCensus &census = *x2_touch_census();
+  int width = 0;
+  int height = 0;
+  if (!window_size(width, height)) {
+    return true;
+  }
+  const SDL_TouchFingerEvent &finger = event.tfinger;
+  const lucent::touch::Phase phase = phase_of(event.type);
+  Contact &contact = contacts_[finger.fingerID];
   contact.x = finger.x * static_cast<float>(width);
   contact.y = finger.y * static_cast<float>(height);
-  contact.active = event->type != SDL_EVENT_FINGER_UP &&
-                   event->type != SDL_EVENT_FINGER_CANCELED;
+  contact.active = !is_release(phase);
+
   std::vector<lucent::touch::Contact> active;
-  active.reserve(contacts.size());
-  const auto phase =
-      event->type == SDL_EVENT_FINGER_DOWN     ? lucent::touch::Phase::began
-      : event->type == SDL_EVENT_FINGER_MOTION ? lucent::touch::Phase::moved
-      : event->type == SDL_EVENT_FINGER_UP     ? lucent::touch::Phase::ended
-                                               : lucent::touch::Phase::canceled;
-  for (const auto &[id, value] : contacts)
-    if (value.active || id == finger.fingerID)
+  active.reserve(contacts_.size());
+  for (const auto &[id, value] : contacts_) {
+    if (value.active || id == finger.fingerID) {
       active.push_back(
           {static_cast<std::int64_t>(id),
            {value.x, value.y},
            id == finger.fingerID ? phase : lucent::touch::Phase::moved});
-  const auto actions = controls.route(active);
+    }
+  }
+  const auto actions = controls_.route(active);
   census.zone_presses += actions.size();
   publish(actions);
-  if (!contact.active)
-    contacts.erase(finger.fingerID);
-  return 1;
+  if (!contact.active) {
+    contacts_.erase(finger.fingerID);
+  }
+  return true;
 }
 
-void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
-  if (!window || !event)
+bool TouchRuntime::handle(const SDL_Event &event) {
+  const bool finger = is_finger(event.type);
+  /* Counted before the gates, because "no contact ever arrived" and "contacts
+     arrived and went somewhere" are the two answers the report has to tell
+     apart, and only this side of the gates can see the second one. */
+  if (finger) {
+    count_contact(event.type);
+  }
+  if (!window_) {
+    if (finger) {
+      x2_touch_census()->ignored_no_window++;
+    }
+    return false;
+  }
+  if (!overlay_visible()) {
+    if (!contacts_.empty()) {
+      cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
+    }
+    return finger ? route_to_pointer(event) : false;
+  }
+  /* Gameplay has begun under a held menu tap: retail's button must not be
+     left down at a position nothing will press again. */
+  if (pointer_.release_if_held()) {
+    x2_touch_census()->pointer_events++;
+  }
+  if (!finger) {
+    return false;
+  }
+  return route_to_controls(event);
+}
+
+void TouchRuntime::handle_lifecycle(const SDL_Event &event) {
+  if (!window_) {
     return;
-  if (event->type == SDL_EVENT_WINDOW_FOCUS_LOST ||
-      event->type == SDL_EVENT_WINDOW_HIDDEN ||
-      event->type == SDL_EVENT_WINDOW_MINIMIZED) {
-    x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_WINDOW_GONE);
-  } else if (event->type == SDL_EVENT_WINDOW_RESIZED ||
-             event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
-             event->type == SDL_EVENT_WINDOW_SAFE_AREA_CHANGED) {
-    x2_touch_runtime_window(window);
+  }
+  if (event.type == SDL_EVENT_WINDOW_FOCUS_LOST ||
+      event.type == SDL_EVENT_WINDOW_HIDDEN ||
+      event.type == SDL_EVENT_WINDOW_MINIMIZED) {
+    cancel(X2_TOUCH_CANCEL_WINDOW_GONE);
+  } else if (event.type == SDL_EVENT_WINDOW_RESIZED ||
+             event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED ||
+             event.type == SDL_EVENT_WINDOW_SAFE_AREA_CHANGED) {
+    set_window(window_);
   }
 }
 
-void x2_touch_runtime_cancel(void) {
-  x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_WINDOW_CHANGED);
+void TouchRuntime::note_source(const SDL_Event &event) {
+  const bool was_touch = x2_touch_source_is_touch() != 0;
+  x2_touch_source_note(&event);
+  if (was_touch && !x2_touch_source_is_touch()) {
+    /* Whatever was under a finger is not held any more: the zones that were
+       down would otherwise stay down with the overlay gone. */
+    cancel(X2_TOUCH_CANCEL_SOURCE_CHANGED);
+  }
 }
 
-void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
+void TouchRuntime::cancel(X2TouchCancelCause cause) {
+  X2TouchCensus &census = *x2_touch_census();
   switch (cause) {
   case X2_TOUCH_CANCEL_OVERLAY_HIDDEN:
     census.cancelled_overlay_hidden++;
@@ -357,42 +337,50 @@ void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
     census.cancelled_window_changed++;
     break;
   }
-  publish(controls.cancel());
-  publish(controls.set_portraits({}, 0));
-  contacts.clear();
-  active_zones.clear();
+  /* A lost window or a layout change lets go of the retail button too: the
+     zones and the pointer are two routes out of one finger, and leaving
+     either held is the same defect. The overlay merely being hidden is not
+     one of them -- that is the state in which the pointer is IN USE. */
+  if (cause != X2_TOUCH_CANCEL_OVERLAY_HIDDEN && pointer_.release_if_held()) {
+    census.pointer_events++;
+  }
+  publish(controls_.cancel());
+  publish(controls_.set_portraits({}, 0));
+  contacts_.clear();
+  active_zones_.clear();
 }
 
-void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
-                                  unsigned visible_mask) {
-  if (!portraits || !x2_touch_runtime_overlay_visible())
-    publish(controls.set_portraits({}, 0));
-  else
-    publish(controls.set_portraits(std::span{portraits, 4}, visible_mask));
+void TouchRuntime::set_hud_regions(const X2Rect portraits[4],
+                                   unsigned visible_mask) {
+  if (!portraits || !overlay_visible()) {
+    publish(controls_.set_portraits({}, 0));
+  } else {
+    publish(controls_.set_portraits(std::span{portraits, 4}, visible_mask));
+  }
 }
 
-int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {
-  if (!x2_touch_runtime_overlay_visible() && !contacts.empty())
-    x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
-  if (!pointer || pending_pointers.empty())
-    return 0;
-  *pointer = pending_pointers.front();
-  pending_pointers.pop_front();
-  return 1;
+bool TouchRuntime::take_pointer(X2TouchPointer &out) {
+  if (!overlay_visible() && !contacts_.empty()) {
+    cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
+  }
+  return pointer_.take(out);
 }
 
-size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {
-  const auto zones = controls.zones();
-  const size_t visible_count = static_cast<size_t>(
-      std::count_if(zones.begin(), zones.end(),
-                    [](const auto &zone) { return zone.visible; }));
-  if (!out)
+std::size_t TouchRuntime::visuals(X2TouchVisual *out,
+                                  std::size_t capacity) const {
+  const auto zones = controls_.zones();
+  const auto visible_count = static_cast<std::size_t>(std::count_if(
+      zones.begin(), zones.end(),
+      [](const TouchControls::ZoneVisual &zone) { return zone.visible; }));
+  if (!out) {
     return visible_count;
-  size_t output_index = 0;
+  }
+  std::size_t output_index = 0;
   for (const auto &visual : zones) {
-    if (!visual.visible)
+    if (!visual.visible) {
       continue;
-    if (output_index < capacity)
+    }
+    if (output_index < capacity) {
       out[output_index] = {
           visual.zone.id,
           visual.zone.left,
@@ -400,40 +388,103 @@ size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {
           visual.zone.right,
           visual.zone.bottom,
           static_cast<int>(visual.action),
-          active_zones.contains(visual.zone.id) ? 1 : 0,
+          active_zones_.contains(visual.zone.id) ? 1 : 0,
           visual.stick ? 1 : 0,
       };
+    }
     ++output_index;
   }
   return visible_count;
 }
 
-void x2_touch_runtime_note_source(const SDL_Event *event) {
-  const bool was_touch = x2_touch_source_is_touch() != 0;
-  x2_touch_source_note(event);
-  if (was_touch && !x2_touch_source_is_touch()) {
-    /* Whatever was under a finger is not held any more: the zones that were
-       down would otherwise stay down with the overlay gone. */
-    x2_touch_runtime_cancel_because(X2_TOUCH_CANCEL_SOURCE_CHANGED);
+} // namespace x2::input
+
+/* ------------------------------------------------------------------------ */
+/* The C surface the host event pump, the HUD and the renderer call. It holds
+   no state: every entry point below forwards to the one owner above. */
+
+using x2::input::TouchRuntime;
+
+void x2_touch_runtime_window(SDL_Window *new_window) {
+  x2::input::runtime.set_window(new_window);
+}
+
+int x2_touch_runtime_viewport(X2LayoutViewport *out) {
+  return out && x2::input::runtime.viewport(*out) ? 1 : 0;
+}
+
+int x2_touch_runtime_event(const SDL_Event *event) {
+  return event && x2::input::runtime.handle(*event) ? 1 : 0;
+}
+
+int x2_touch_runtime_inject(int64_t contact_id, float x, float y,
+                            X2TouchPhase phase) {
+  SDL_Event event{};
+  switch (phase) {
+  case X2_TOUCH_PHASE_DOWN:
+    event.type = SDL_EVENT_FINGER_DOWN;
+    break;
+  case X2_TOUCH_PHASE_MOTION:
+    event.type = SDL_EVENT_FINGER_MOTION;
+    break;
+  case X2_TOUCH_PHASE_UP:
+    event.type = SDL_EVENT_FINGER_UP;
+    break;
+  default:
+    event.type = SDL_EVENT_FINGER_CANCELED;
+    break;
+  }
+  event.tfinger.fingerID = static_cast<SDL_FingerID>(contact_id);
+  event.tfinger.x = x;
+  event.tfinger.y = y;
+  /* The source verdict is part of what a contact does, and the real pump
+     notes it before routing. An injected contact that skipped this would
+     leave AUTO reporting "not touch" while touch was being driven. */
+  x2_touch_runtime_note_source(&event);
+  return x2_touch_runtime_event(&event);
+}
+
+void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
+  if (event) {
+    x2::input::runtime.handle_lifecycle(*event);
   }
 }
 
-int x2_touch_runtime_active(void) {
-  /* The setting can force either end on every platform. ALWAYS is what makes
-     the layout reachable on a desktop with no touchscreen -- a layout nobody
-     can see until it is on a phone is a layout that gets shipped wrong. */
-  const unsigned mode = x2_settings_store()->touch_controls;
-  return mode == X2_TOUCH_CONTROLS_ALWAYS ||
-         (mode == X2_TOUCH_CONTROLS_AUTO && x2_touch_source_is_touch());
+void x2_touch_runtime_note_source(const SDL_Event *event) {
+  if (event) {
+    x2::input::runtime.note_source(*event);
+  }
 }
 
+void x2_touch_runtime_cancel(void) {
+  x2::input::runtime.cancel(X2_TOUCH_CANCEL_WINDOW_CHANGED);
+}
+
+void x2_touch_runtime_cancel_because(X2TouchCancelCause cause) {
+  x2::input::runtime.cancel(cause);
+}
+
+void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
+                                  unsigned visible_mask) {
+  x2::input::runtime.set_hud_regions(portraits, visible_mask);
+}
+
+int x2_touch_runtime_take_pointer(X2TouchPointer *pointer) {
+  return pointer && x2::input::runtime.take_pointer(*pointer) ? 1 : 0;
+}
+
+size_t x2_touch_runtime_visuals(X2TouchVisual *out, size_t capacity) {
+  return x2::input::runtime.visuals(out, capacity);
+}
+
+int x2_touch_runtime_active(void) { return TouchRuntime::active() ? 1 : 0; }
+
 int x2_touch_runtime_overlay_visible(void) {
-  return window != nullptr && x2_touch_runtime_active() &&
-         x2_gameplay_control_active(guest_clock_now_s());
+  return x2::input::runtime.overlay_visible() ? 1 : 0;
 }
 
 void x2_touch_runtime_report(const char *tag) {
-  x2_touch_census_report(tag, window != nullptr,
+  x2_touch_census_report(tag, x2::input::runtime.has_window() ? 1 : 0,
                          x2::input::touch_pad::host_devices(),
                          x2::input::touch_pad::host_capable());
 }

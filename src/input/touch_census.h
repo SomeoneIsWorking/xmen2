@@ -10,9 +10,9 @@ extern "C" {
  * Two platforms that ship this feature cannot run the host suite that proves
  * it: a phone and a browser. On both, every way it fails looks the same from
  * outside -- the player touches a control and nothing happens -- while the
- * causes are entirely different: the contacts never arrived, they arrived
- * while the overlay was hidden, they landed on no zone, or they reached the
- * pad and the guest was not reading it.
+ * causes are entirely different: the contacts never arrived, they landed on
+ * no zone, they went to the retail pointer and the GUI did not want them, or
+ * they reached the pad and the guest was not reading it.
  *
  * This owns those counts and the text made from them, apart from the runtime
  * that routes the contacts. A run in which nothing happened says WHICH
@@ -24,7 +24,18 @@ typedef struct X2TouchCensus {
   unsigned long contacts_up;
   unsigned long contacts_canceled;
   unsigned long ignored_no_window;
-  unsigned long ignored_overlay_hidden;
+  /*
+   * WHERE A CONTACT WENT WHEN NO CONTROL WAS DRAWN.
+   *
+   * Outside gameplay -- the intro, the main menu, the pause and save screens
+   * -- there is no overlay to press, and these contacts used to be counted
+   * and thrown away. That is the whole of what a phone player met: a title
+   * screen no finger could leave. They now become the retail GUI's own
+   * pointer, and a refusal is a second finger arriving while the first still
+   * holds retail's one mouse button.
+   */
+  unsigned long pointer_events;
+  unsigned long pointer_refused;
   unsigned long zone_presses;
   unsigned long buttons_published;
   unsigned long buttons_refused;

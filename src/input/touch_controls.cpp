@@ -103,6 +103,18 @@ std::vector<ActionEvent> TouchControls::set_viewport(Viewport viewport) {
   return released;
 }
 
+bool PointerOwner::accepts(std::int64_t contact_id,
+                           lucent::touch::Phase phase) {
+  if (!contact_ && phase == lucent::touch::Phase::began)
+    contact_ = contact_id;
+  if (contact_ != contact_id)
+    return false;
+  if (phase == lucent::touch::Phase::ended ||
+      phase == lucent::touch::Phase::canceled)
+    contact_.reset();
+  return true;
+}
+
 std::vector<ActionEvent>
 PortraitPointer::route(std::span<const ActionEvent> events) {
   std::vector<ActionEvent> selected;
@@ -110,14 +122,8 @@ PortraitPointer::route(std::span<const ActionEvent> events) {
     if (event.action < TouchAction::SelectHero1 ||
         event.action > TouchAction::SelectHero4)
       continue;
-    if (!contact_ && event.phase == lucent::touch::Phase::began)
-      contact_ = event.contact_id;
-    if (contact_ != event.contact_id)
-      continue;
-    selected.push_back(event);
-    if (event.phase == lucent::touch::Phase::ended ||
-        event.phase == lucent::touch::Phase::canceled)
-      contact_.reset();
+    if (owner_.accepts(event.contact_id, event.phase))
+      selected.push_back(event);
   }
   return selected;
 }

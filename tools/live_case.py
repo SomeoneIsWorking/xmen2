@@ -1127,12 +1127,145 @@ def png_mean_diff(a: Path, b: Path) -> float:
     return sum(abs(pa[i] - pb[i]) for i in range(0, n, step)) / count
 
 
+INTRO_TAP_SECONDS = 6.0
+# The OPTIONS row, as fractions of the window. Read off the drawn menu, not
+# computed: the retail menu is authored art and not a layout this port owns.
+MENU_OPTIONS_ROW = (0.195, 0.728)
+# What the game itself does when that row is activated. The menu animates --
+# its idle frame-to-frame difference measures LARGER than the change a working
+# tap makes -- so a pixel delta cannot answer this and the game's own first
+# open of the package can.
+OPTIONS_PACKAGE = "menus/options.pkgb"
+
+
+def wait_movie_end(case: Case, seen: int, timeout: float) -> float | None:
+    """When the (seen+1)-th movie printed its end summary, or None.
+
+    The frame counters in that summary cannot say whether a movie was skipped:
+    the decoder runs ahead and the summary is printed at unload, so a skipped
+    movie still reports what it had already decoded -- measured at 312 frames
+    either way. WHEN it ended is the measure that separates them.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if len(re.findall(r"native FMV: \d+ video decoded",
+                          case.log_text())) > seen:
+            return time.monotonic()
+        time.sleep(0.5)
+    return None
+
+
+def keyboard_past_the_intro(case: Case, timeout: float) -> bool:
+    """Reach the main menu by key, which is what a phone player cannot do.
+
+    Getting there is not what this case tests; what a finger does once there
+    is. Returns whether the movies stopped coming.
+    """
+    deadline = time.monotonic() + timeout
+    loads, quiet = case.log_text().count("movie: loaded native"), 0
+    while time.monotonic() < deadline and quiet < 4:
+        case.http("/key?name=Escape&hold=0.3")
+        time.sleep(1.0)
+        case.http("/key?name=Return&hold=0.3")
+        time.sleep(2.0)
+        now = case.log_text().count("movie: loaded native")
+        quiet = quiet + 1 if now == loads else 0
+        loads = now
+    case.http("/key?name=Escape&hold=0.3")
+    time.sleep(3.0)
+    return quiet >= 4
+
+
+def case_menu_touch(case: Case) -> None:
+    """Issue #179: a finger on the screens BEFORE gameplay.
+
+    The overlay is deliberately not drawn during the intro and the menus, and
+    every contact there used to be counted and discarded -- so a phone player
+    met an intro no tap could skip and a menu no tap could press. Those
+    screens are the retail GUI, which takes a mouse, so a contact with no
+    drawn control under it is now that pointer.
+
+    Both halves are checked against a control that must come out the other
+    way: an untouched movie runs its full length where a tapped one ends when
+    the tap happened, and a tap on empty sky opens nothing where a tap on a
+    menu row opens the package that row names.
+    """
+    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+
+    # -- the intro, timed from the movie's own load line.
+    case.check("an intro movie loaded",
+               case.wait_log("movie: loaded native", 180))
+    ended = len(re.findall(r"native FMV: \d+ video decoded", case.log_text()))
+    loaded_at = time.monotonic()
+    time.sleep(INTRO_TAP_SECONDS)
+    case.check("the tap was routed", case.http("/touch?x=0.5&y=0.5")[0] == 200)
+    tapped = wait_movie_end(case, ended, 90)
+    case.check("the tapped movie ended at all", tapped is not None)
+    if tapped is None:
+        return
+    elapsed = tapped - loaded_at
+    case.check("a tap ended the intro movie when the tap happened, not when "
+               "the movie would have",
+               elapsed < INTRO_TAP_SECONDS + 3.0,
+               "%.1fs after it loaded, tapped at %.1fs; untouched this movie "
+               "runs 10.0s" % (elapsed, INTRO_TAP_SECONDS))
+
+    # -- the main menu.
+    case.check("the run reached the main menu",
+               keyboard_past_the_intro(case, 300))
+    case.shot("menu")
+
+    # The negative FIRST, so a run in which every tap "works" cannot pass.
+    opened_before = case.log_text().count(OPTIONS_PACKAGE)
+    case.http("/touch?x=0.80&y=0.10")
+    time.sleep(3.0)
+    case.check("a tap on empty sky activates nothing",
+               case.log_text().count(OPTIONS_PACKAGE) == opened_before,
+               "no menu package was opened")
+
+    pointer_beats = len(re.findall(
+        r"contact\(s\) became the retail GUI pointer", case.log_text()))
+    case.http("/touch?x=%g&y=%g" % MENU_OPTIONS_ROW)
+    case.check("a tap on the OPTIONS row opens the Options screen",
+               case.wait_log(OPTIONS_PACKAGE, 20),
+               "the game's own first open of %s" % OPTIONS_PACKAGE)
+    case.shot("after-options-tap")
+
+    # The census is the only account a phone or a browser gets of this, so it
+    # is asserted against the run that just happened rather than trusted. It
+    # is read from the periodic heartbeat, so the read waits for one printed
+    # AFTER the last tap: reading immediately gets the beat before it and
+    # undercounts a working run.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        if len(re.findall(r"contact\(s\) became the retail GUI pointer",
+                          case.log_text())) > pointer_beats:
+            break
+        time.sleep(1.0)
+    report = case.log_text()
+    pointers = [int(n) for n in re.findall(
+        r"(\d+) contact\(s\) became the retail GUI pointer", report)]
+    dropped = [int(n) for n in re.findall(
+        r"(\d+) of \d+ dropped before routing", report)]
+    case.check("the census counted the contacts reaching the retail pointer",
+               bool(pointers) and max(pointers) >= 6,
+               "%d at most, against 3 taps of 2 events each"
+               % max(pointers, default=0))
+    case.check("and reported none of them dropped",
+               bool(dropped) and max(dropped) == 0,
+               "%d at most" % max(dropped, default=-1))
+
+
+
 CASES = {
     "cutscene-skip": case_cutscene_skip,
     "cutscene-skip-early": case_cutscene_skip_early,
     "boot-continue": case_boot_continue,
     "pad-late": case_pad_late,
     "touch-pad": case_touch_pad,
+    "menu-touch": case_menu_touch,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,

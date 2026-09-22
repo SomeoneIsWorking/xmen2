@@ -247,6 +247,8 @@ add_test(NAME touch_controls COMMAND test_touch_controls)
 # and the synthetic joystick, so it SKIPs (77) where neither exists.
 add_executable(test_touch_runtime tests/test_touch_runtime.cpp
                src/input/touch_runtime.cpp
+               src/input/touch_pad_publisher.cpp
+               src/input/touch_pointer.cpp
                src/input/directinput_controller_sample.c
                src/input/touch_census.cpp
                src/input/touch_pad.cpp
@@ -1626,6 +1628,8 @@ set(X2_NATIVE_SOURCES
     src/native/input_probe.c
     src/input/touch_controls.cpp
     src/input/touch_runtime.cpp
+    src/input/touch_pad_publisher.cpp
+    src/input/touch_pointer.cpp
     src/input/touch_census.cpp
     src/input/touch_pad.cpp
     src/input/touch_source.c
@@ -1652,6 +1656,7 @@ set(X2_NATIVE_SOURCES
     src/native/control_http.c
     src/native/control_save_route.c
     src/native/control_ui_route.c
+    src/native/control_input_route.c
     src/native/macos_bundle.c
     src/native/control_performance_route.c
     src/native/control_status_route.c

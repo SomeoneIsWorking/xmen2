@@ -238,5 +238,5 @@ void x2_win32_pointer_translate_touch(const X2TouchPointer *pointer,
     queued = x2_win32_mouse_button(
         mouse, hwnd, X2_WIN32_MOUSE_LEFT, pointer->button_change != 0, client_x,
         client_y, screen_x, screen_y, pointer->time_ms, modifiers());
-  require_queued(queued, "touch portrait click");
+  require_queued(queued, "touch pointer");
 }

@@ -655,6 +655,35 @@ portrait-selection path remains an explicit native pointer publication. The
 native build and touch regression suite cover this boundary; installed-APK
 finger input verification remains open.
 
+A contact reaches the guest by one of two routes, decided by whether a control
+is drawn under it. Until 2026-09-22 only the first existed: every contact
+before gameplay — the legal splash, the intro movies, the main menu, the load
+and save screens, every cutscene — was counted and discarded, because routing
+was gated on the gameplay HUD having drawn. With touch-to-mouse synthesis
+deliberately off there was no second route either, so a phone player met an
+intro no tap could skip and a menu no tap could press, reported from a real
+session (issue #179). Those screens are the retail GUI, which takes a mouse,
+so a contact with no drawn control under it is now that pointer at its own
+position — the route the portrait tap already used. `x2::input::PointerOwner`
+is retail's one-button rule, shared by both rather than copied.
+
+Measured by `tools/live_case.py menu-touch`, 9 of 9, each half against a
+control that comes out the other way: a tap ended the first intro movie 6.5s
+in having been made at 6.0s, where the untouched movie runs 10.0s; a tap on
+empty sky opened nothing while a tap on the OPTIONS row produced the game's
+own first open of `menus/options.pkgb`; the census counted 6 contacts to the
+retail pointer and 0 dropped. Neither obvious measure would have worked: a
+skipped movie still reports its full 312 decoded frames, and the menu's idle
+frame-to-frame difference (11–19) is larger than the change a working tap
+makes (27).
+
+Every earlier touch measurement had reached gameplay by keyboard first --
+`tools/web_touch_play.py` presses Escape and Enter while waiting for the gate
+-- so the harness was doing on the player's behalf the one thing the player
+could not do. A host with no touchscreen also could not press its own screen;
+the control channel now carries a contact through `/touch?x=&y=`, routed by
+the runtime's own injector rather than a second copy of the event path.
+
 The web target is now reachable by a finger at all, which it was not. A browser
 owns scroll, pinch, long-press and overscroll on any element the page has not
 claimed, and the pad lives on the canvas: measured on the shipping page at
@@ -693,7 +722,9 @@ overlay is gated on that HUD, so no browser run could ever show a control.
 `--test-map=<path>` makes the route selectable; the default is unchanged
 (issue #171).
 
-Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
+Gap: the retail footer prompts still name keys -- `ESC BACK`, `SPACE ADVANCED
+OPTIONS` -- to a player who has no keyboard, and are not tappable controls.
+No run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this
 repository can make — only "the path is platform-neutral by construction and
 unit-verified". Measured phone evidence remains S018's gate. No run has yet

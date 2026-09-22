@@ -39,6 +39,33 @@ layout that ships wrong.
 HUD relocation. The HUD moving while no pad is drawn would be the HUD making
 room for nothing.
 
+## Where a contact goes
+
+A finger reaches the guest by one of two routes, and which one is decided by
+whether there is a drawn control under it.
+
+**With the overlay up**, the contact goes to its zone and the zone to the
+virtual DirectInput pad — the whole of the table below. The one exception is
+the party portraits, which belong to the retail mouse handler.
+
+**With no overlay drawn — the legal splash, the intro movies, the main menu,
+the load and save screens, every cutscene — the contact IS the retail GUI's
+pointer**, at its own position. Those screens are the retail GUI and the
+retail GUI takes a mouse (issue #132 put `igWin32Window::getEvents` back in
+the loop), so a tap is a click on what the player can see.
+
+Contacts there used to be counted and discarded, which is the whole of what a
+phone player met: an intro no tap could skip and a menu no tap could press
+(issue #179). They had no second route either, deliberately — `x2native.c`
+sets `SDL_HINT_TOUCH_MOUSE_EVENTS=0` so that an action-pad tap cannot also
+reach the retail world-click handler.
+
+Retail draws one cursor and has one button, so one contact owns it at a time:
+`x2::input::PointerOwner` is that rule, shared by the portrait tap and the
+menu tap rather than copied into each. A button pressed by a finger is always
+released by something — a lifted finger, a lost window, or gameplay starting
+underneath it.
+
 ## The layout and the action vocabulary
 
 The title owns the safe-area-aware layout and action vocabulary in
@@ -106,7 +133,7 @@ already chose keeps player one.
 |---|---|
 | `ctest -R touch_source` | The device classification, including the `SDL_TOUCH_MOUSEID` synthetic pointer and the resting-stick threshold |
 | `ctest -R touch_controls` | Action vocabulary, independent four-ability modifier chords, zone routing, portrait pointer arbitration, cancellation on layout change |
-| `ctest -R touch_runtime` | The whole chain on the real synthetic pad: a press at the drawn control's own coordinates reaching the gamepad the game reads, the player-one claim, a contact outside every zone pressing nothing, stick rest/drag/release, the Powers chord staying whole under a second thumb, cancellation on focus loss, and the census the report is made of |
+| `ctest -R touch_runtime` | The whole chain on the real synthetic pad: a press at the drawn control's own coordinates reaching the gamepad the game reads, the player-one claim, a contact outside every zone pressing nothing, stick rest/drag/release, the Powers chord staying whole under a second thumb, cancellation on focus loss, the census the report is made of, and — with no control drawn — a contact becoming a retail pointer press at its own position, pressing no pad button, refusing a second finger, and releasing when the first lifts |
 | `ctest -R touch_layout` | Safe-area-aware placement across nine phone/tablet/desktop shapes, opposite-thumb reach, nonoverlapping HUD/control bounds, and at least 48 output-pixel action targets in those cases |
 | `ctest -R hud_layout` | The pure HUD edge-relocation policy |
 | `ctest -R hud_portrait_position` | The portrait bounds the portrait taps are routed against |
@@ -114,6 +141,23 @@ already chose keeps player one.
 
 These run in the ordinary suite on the ordinary host build, on every platform,
 because the feature ships on every platform. None of them needs a device.
+
+### The screens before gameplay, 2026-09-22
+
+`tools/live_case.py menu-touch` drives real contacts into a real boot through
+the control channel's `/touch` route and checks both halves of issue #179
+against a control that must come out the other way. A tap ended the first
+intro movie 6.5s in, having been made at 6.0s, where the untouched movie runs
+10.0s; a tap on empty sky opened nothing and a tap on the OPTIONS row produced
+the game's own first open of `menus/options.pkgb`. The census reported 6
+contacts reaching the retail pointer and none dropped.
+
+Neither measure is the obvious one, and the obvious ones are both wrong here.
+The frame counts in a movie's end summary cannot say whether it was skipped —
+the decoder runs ahead and the summary is printed at unload, so a skipped
+movie reports the same 312 decoded frames. A pixel delta cannot say whether a
+menu responded — the menu animates, and its idle frame-to-frame difference
+measured 11–19 against the 27 a working tap produced.
 
 ### Native presentation observation, 2026-09-08
 
@@ -126,6 +170,15 @@ leaves the retail center notifications clear, and the vitals, potions, and party
 portraits remain visible. The live JIT report counted 383,048,017 block entries,
 94,546 translations, and zero refusals in 94,546 attempts. This is native UI
 presentation evidence, not Android touchscreen or performance qualification.
+
+## Driving it without a touchscreen
+
+A host with no touchscreen cannot press its own screen, so the control channel
+carries a contact: `/touch?x=&y=` (`tools/x2ctl.py touch 0.2,0.73`), with a
+whole tap by default and `&phase=down|motion|up|cancel` for one half of one.
+It goes through `x2_touch_runtime_inject`, which takes the same note-source
+and routing calls the host event pump takes — a second copy of that sequence
+could only agree with the shipping one by luck.
 
 ## Not established
 

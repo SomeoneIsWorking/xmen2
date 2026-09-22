@@ -64,16 +64,27 @@ void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
       "%s%lu contact event(s): %lu down, %lu moved, %lu up, %lu canceled",
       prefix, contacts_seen, g_census.contacts_down, g_census.contacts_moved,
       g_census.contacts_up, g_census.contacts_canceled);
+  lucent_log_info("touch",
+                  "%s%lu of %lu dropped before routing, all with no window "
+                  "(touch_controls=%s, source says %s, gate %s)",
+                  prefix, g_census.ignored_no_window, contacts_seen, mode_name,
+                  x2_touch_source_is_touch() ? "touch" : "not touch",
+                  x2_gameplay_control_name(
+                      (int)x2_gameplay_control_state(guest_clock_now_s())));
+  /*
+   * The two destinations, side by side. A contact reaches exactly one of
+   * them, so a run whose zone actions and pointer events are both zero has
+   * had every finger land somewhere that wanted nothing -- which is a
+   * different fault from either route being broken.
+   */
   lucent_log_info(
       "touch",
-      "%s%lu of %lu dropped before routing: %lu with no window, %lu with the "
-      "overlay hidden (touch_controls=%s, source says %s, gate %s)",
-      prefix, g_census.ignored_no_window + g_census.ignored_overlay_hidden,
-      contacts_seen, g_census.ignored_no_window,
-      g_census.ignored_overlay_hidden, mode_name,
-      x2_touch_source_is_touch() ? "touch" : "not touch",
+      "%s%lu contact(s) became the retail GUI pointer because no control was "
+      "drawn (gate %s); %lu refused, held by another finger",
+      prefix, g_census.pointer_events,
       x2_gameplay_control_name(
-          (int)x2_gameplay_control_state(guest_clock_now_s())));
+          (int)x2_gameplay_control_state(guest_clock_now_s())),
+      g_census.pointer_refused);
   lucent_log_info(
       "touch",
       "%s%lu zone action(s) routed; held zones let go %lu time(s): %lu with "

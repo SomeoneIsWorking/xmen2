@@ -48,9 +48,12 @@ the platform the binary was built for: an Android player holding a controller
 wants neither, and a desktop player on a touchscreen wants both. The answer is
 observed from the host event stream (`src/input/touch_source.c`) and forced at
 either end by one setting (`input.touch_controls`: OFF / AUTO / ALWAYS), on
-every platform. Touch events feed the same virtual DirectInput pad as every
-other controller path. Nothing about the feature may be compiled out, gated on
-`__ANDROID__`, or documented as belonging to a package.
+every platform. A contact under a drawn control feeds the same virtual
+DirectInput pad as every other controller path; a contact with no drawn
+control under it -- the intro, the menus, every cutscene -- is the retail
+GUI's own mouse pointer, because those screens are the retail GUI. Nothing
+about the feature may be compiled out, gated on `__ANDROID__`, or documented
+as belonging to a package.
 
 ## Build and run
 
