@@ -135,6 +135,17 @@ static int host_pad_for_kind(uint32_t kind) {
   return dinput8_controller_host_pad_for_slot((int)kind - 3);
 }
 
+static uint32_t g_named_kind, g_named_code;
+static int g_named;
+
+int x2_pad_glyph_last_named(uint32_t *kind, uint32_t *code) {
+  if (!g_named || !kind || !code)
+    return 0;
+  *kind = g_named_kind;
+  *code = g_named_code;
+  return 1;
+}
+
 void x2_override_006281f0(CPU *C) {
   uint32_t kind = RD32(C->reg[kX86pEsp] + 4u);
   uint32_t code = RD32(C->reg[kX86pEsp] + 8u);
@@ -142,6 +153,9 @@ void x2_override_006281f0(CPU *C) {
   uint32_t out;
   int host_pad;
 
+  g_named_kind = kind;
+  g_named_code = code;
+  g_named = 1;
   glyph = pad_glyph_code(code);
   host_pad = host_pad_for_kind(kind);
   if (!x2_prompt_glyphs_enabled() || host_pad < 0 || !glyph ||

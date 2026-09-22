@@ -16,6 +16,8 @@
 
 #include "guest_heap.h"
 #include "pad_glyph_codes.h"
+#include "pad_glyphs.h"
+#include "prompt_action_labels.h"
 #include "prompt_glyphs.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
@@ -26,10 +28,14 @@
 
 #define LABEL_BUFFER_BYTES 512u
 #define MAX_RETAIL_LABEL 127u
+/* FUN_006281f0's device kinds; see input_bindings.h. */
+#define KEYBOARD_DEVICE_KIND 1u
 
 static unsigned long g_unchanged, g_pad_labels, g_keycap_labels;
 static unsigned long g_buffer_failures;
 static uint32_t g_styled_label;
+
+uint32_t x2_prompt_label_buffer(void) { return g_styled_label; }
 
 /* WHO asks for these labels? The composed label is handed back as a return
    value, and nothing in this file knows whether the caller draws it, stores
@@ -44,46 +50,6 @@ static uint32_t g_sites[MAX_LABEL_SITES];
 static unsigned long g_site_counts[MAX_LABEL_SITES];
 static unsigned g_n_sites;
 static unsigned long g_site_overflow;
-
-/* One hop further out. FUN_004bd720 is the token resolver that asks for the
-   label: it takes a token, calls FUN_00619e30 for its display string and
-   RETURNS that pointer to its own caller (L_004bd7ff). Knowing who consumes
-   that return is what separates "our label is never drawn" from "our label
-   is drawn somewhere we have not looked" -- the question C267 left open.
-   Recorded only when the resolver actually hands back OUR buffer, so a hit
-   here is the port's own bytes leaving the resolver, not merely traffic. */
-static uint32_t g_resolver_sites[MAX_LABEL_SITES];
-static unsigned long g_resolver_counts[MAX_LABEL_SITES];
-static unsigned g_n_resolver_sites;
-static unsigned long g_resolver_calls, g_resolver_ours, g_resolver_overflow;
-
-static void note_resolver(uint32_t ret) {
-  unsigned i;
-  for (i = 0; i < g_n_resolver_sites; i++)
-    if (g_resolver_sites[i] == ret) {
-      g_resolver_counts[i]++;
-      return;
-    }
-  if (g_n_resolver_sites == MAX_LABEL_SITES) {
-    g_resolver_overflow++;
-    return;
-  }
-  g_resolver_sites[g_n_resolver_sites] = ret;
-  g_resolver_counts[g_n_resolver_sites] = 1;
-  g_n_resolver_sites++;
-}
-
-void x2_probe_004bd720(CPU *C) {
-  uint32_t ret = RD32(C->reg[kX86pEsp]);
-  g_resolver_calls++;
-  x86_guest_body(C, "XMen2.exe", 0x004bd720u);
-  /* The resolver returns the display string in EAX. Ours is the one guest
-     buffer prompt_label_rewrite publishes. */
-  if (g_styled_label && C->reg[kX86pEax] == g_styled_label) {
-    g_resolver_ours++;
-    note_resolver(ret);
-  }
-}
 
 static void note_caller(uint32_t ret) {
   unsigned i;
@@ -161,8 +127,8 @@ enum PromptLabelStyle prompt_label_rewrite(const uint8_t *input,
 void x2_override_00619e30(CPU *C) {
   uint8_t retail[MAX_RETAIL_LABEL + 1u];
   uint8_t styled[LABEL_BUFFER_BYTES];
-  uint32_t out;
-  size_t length;
+  uint32_t out, kind = 0, code = 0;
+  size_t length, name_length;
   enum PromptLabelStyle style;
 
   /* Before the super-call: the retail body pops its own return address. */
@@ -182,6 +148,9 @@ void x2_override_00619e30(CPU *C) {
     g_unchanged++;
     return;
   }
+  /* Kept before `length` is reused for the styled bytes: the name inside the
+     cap is what the drawn string is recognised by. */
+  name_length = length > 2u ? length - 2u : 0u;
   style = prompt_label_rewrite(retail, styled, sizeof styled);
   if (style == PROMPT_LABEL_UNCHANGED) {
     g_unchanged++;
@@ -197,16 +166,22 @@ void x2_override_00619e30(CPU *C) {
   for (size_t i = 0; i < length; i++)
     WR8(g_styled_label + (uint32_t)i, styled[i]);
   C->reg[kX86pEax] = g_styled_label;
-  if (style == PROMPT_LABEL_PAD_GLYPH)
+  if (style == PROMPT_LABEL_PAD_GLYPH) {
     g_pad_labels++;
-  else
-    g_keycap_labels++;
+    return;
+  }
+  g_keycap_labels++;
+  /* A keycap is the only label a finger can be offered instead of: a pad
+     glyph already names a device the player is holding. Retained with the
+     binding the namer just used, so the drawn string can be matched back to
+     the key it describes. */
+  if (x2_pad_glyph_last_named(&kind, &code) && kind == KEYBOARD_DEVICE_KIND)
+    x2_prompt_action_label_note(retail + 1u, (unsigned)name_length, code);
 }
 
 __attribute__((constructor)) static void
 x2_prompt_labels_register_override(void) {
   x86_register_override("XMen2.exe", 0x00619e30, x2_override_00619e30);
-  x86_register_override("XMen2.exe", 0x004bd720, x2_probe_004bd720);
 }
 
 void prompt_labels_report(void) {
@@ -232,19 +207,4 @@ void prompt_labels_report(void) {
   if (g_site_overflow)
     x2_log_info("           %lu call(s) from sites past the table\n",
                 g_site_overflow);
-  x2_log_info("        token resolver FUN_004bd720: %lu call(s), %lu of which "
-              "handed OUR buffer back to the caller\n",
-              g_resolver_calls, g_resolver_ours);
-  if (!g_resolver_calls)
-    x2_log_info("           the resolver was never entered, so this run says "
-                "NOTHING about where a resolved label goes.\n");
-  else if (!g_resolver_ours)
-    x2_log_info("           the resolver ran but never returned our buffer -- "
-                "the label we compose is not what it hands out.\n");
-  for (i = 0; i < g_n_resolver_sites; i++)
-    x2_log_info("           consumed at 0x%08x  x%lu\n", g_resolver_sites[i],
-                g_resolver_counts[i]);
-  if (g_resolver_overflow)
-    x2_log_info("           %lu consumer(s) past the table\n",
-                g_resolver_overflow);
 }

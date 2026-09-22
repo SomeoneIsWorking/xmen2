@@ -5,7 +5,7 @@
 #include "control_input_route.h"
 #include "x2_log.h"
 
-#include "../input/touch_runtime.h"
+#include "../input/touch_inject.h"
 #include "autosave_runtime.h"
 #include "control_performance_route.h"
 #include "control_query.h"
@@ -130,8 +130,8 @@ void control_pump(CPU *cpu, double now) {
     /* Goes through the runtime's own injector, which takes the same
        note-source and routing calls the host event pump takes. A separate
        copy here could only agree with the shipping path by luck. */
-    g_cmd_ok = x2_touch_runtime_inject(1, (float)g_cmd_x, (float)g_cmd_y,
-                                       (X2TouchPhase)g_cmd_phase);
+    g_cmd_ok = x2_touch_inject(1, (float)g_cmd_x, (float)g_cmd_y,
+                               (X2TouchPhase)g_cmd_phase);
     /* What the contact then DID is the touch census's account, not a second
        tally here that could disagree with it. */
     snprintf(g_cmd_why, sizeof g_cmd_why,
@@ -378,6 +378,8 @@ static void serve(x2_socket_t fd) {
     control_route_pad(fd, query ? query : "");
   else if (!strcmp(path, "/touch"))
     control_route_touch(fd, query ? query : "");
+  else if (!strcmp(path, "/prompts"))
+    control_route_prompts(fd);
   else if (!strcmp(path, "/assignment"))
     control_route_assignment(fd, query ? query : "");
   else if (!strcmp(path, "/screenshot"))
@@ -398,6 +400,7 @@ static void serve(x2_socket_t fd) {
         "  GET /key?name=X   press a key (&hold=<seconds>)\n"
         "  GET /ui/key?name=F2  press a key at the PORT's own UI\n"
         "  GET /ui/click?x=X&y=Y  click at the PORT's own UI\n"
+        "  GET /prompts      the action prompts a finger can press now\n"
         "  GET /pad?button=a press a SYNTHETIC pad button (&hold=)\n"
         "  GET /pad?axis=leftx&value=-1   move an axis\n"
         "  GET /touch?x=0.5&y=0.9  press the screen where a finger would "

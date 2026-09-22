@@ -107,8 +107,9 @@ which takes the same note-source and routing calls the host event pump takes,
 so it exercises the shipping path and not a second copy of it. `x2ctl.py
 touch 0.2,0.73` is the client.
 
-## Still open
+## Followed by
 
-The retail footer still prompts `ESC BACK` and `SPACE ADVANCED OPTIONS` —
-key names, to a player with no keyboard. In touch mode those should read
-`BACK` and `ADVANCED OPTIONS` on a tappable control. Separate issue.
+The retail footer prompted `ESC BACK` and `SPACE ADVANCED OPTIONS` — key
+names, to a player with no keyboard. They read `BACK` and `ADVANCED OPTIONS`
+on tappable controls in
+[#180](0180-a-footer-prompt-names-a-key-a-phone-does-not-have.md).

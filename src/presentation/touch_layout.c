@@ -26,6 +26,8 @@ static const float kHudPotionsHeight = 0.10F;
 static const float kHudPortraitsWidth = 0.24F;
 static const float kHudPortraitsHeight = 0.22F;
 static const float kHudGap = 0.02F;
+static const float kTouchTargetMinimum = 0.075F; /* of the short edge */
+static const float kTouchTargetPadding = 0.012F;
 
 static const char *const kSlotNames[] = {
     "vitals",       "potions", "portraits", "stick",  "light-attack",
@@ -62,6 +64,28 @@ static X2Rect centred(float x, float y, float size) {
   const float half = size * 0.5F;
   X2Rect r = {x - half, y - half, x + half, y + half};
   return r;
+}
+
+X2Rect x2_layout_touch_target(X2LayoutViewport v, X2Rect drawn) {
+  float shortest, minimum, pad_x, centre_y, half;
+  X2Rect out;
+
+  if (!finite_viewport(v) || !isfinite(drawn.left) || !isfinite(drawn.top) ||
+      !isfinite(drawn.right) || !isfinite(drawn.bottom) ||
+      drawn.right < drawn.left || drawn.bottom < drawn.top)
+    return drawn;
+  shortest = v.width < v.height ? v.width : v.height;
+  minimum = shortest * kTouchTargetMinimum;
+  pad_x = shortest * kTouchTargetPadding;
+  centre_y = (drawn.top + drawn.bottom) * 0.5F;
+  half = (drawn.bottom - drawn.top) * 0.5F + pad_x;
+  if (half * 2.0F < minimum)
+    half = minimum * 0.5F;
+  out.left = drawn.left - pad_x;
+  out.right = drawn.right + pad_x;
+  out.top = centre_y - half;
+  out.bottom = centre_y + half;
+  return out;
 }
 
 int x2_layout_build(X2LayoutViewport v, X2Rect *out) {

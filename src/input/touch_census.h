@@ -36,6 +36,18 @@ typedef struct X2TouchCensus {
    */
   unsigned long pointer_events;
   unsigned long pointer_refused;
+  /*
+   * THE PROMPTS THE RETAIL UI DRAWS AT THE FOOT OF ITS SCREENS.
+   *
+   * "Esc Back" names a key a phone does not have. In touch play the key is
+   * taken off what is drawn and the remaining words become a control; a
+   * contact inside one presses the key the prompt named. A refusal is the
+   * keyboard injector saying so -- every slot held, or a binding that is not
+   * a key -- and is the difference between "the button did nothing" and
+   * "there was no button there".
+   */
+  unsigned long prompt_presses;
+  unsigned long prompt_refused;
   unsigned long zone_presses;
   unsigned long buttons_published;
   unsigned long buttons_refused;

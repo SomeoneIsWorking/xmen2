@@ -424,7 +424,7 @@ int main() {
      player uses constantly, so it gets the same treatment as a button. */
   const X2TouchVisual *stick = nullptr;
   for (const auto &visual : drawn)
-    if (visual.stick) {
+    if (visual.kind == X2_TOUCH_VISUAL_STICK) {
       stick = &visual;
       break;
     }

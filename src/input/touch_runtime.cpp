@@ -12,11 +12,14 @@ extern "C" {
 #include "touch_pad.h"
 #include "touch_pad_publisher.h"
 #include "touch_pointer.h"
+#include "touch_prompt_buttons.h"
 #include "touch_source.h"
+#include "touch_visuals.h"
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -80,6 +83,9 @@ public:
   std::size_t visuals(X2TouchVisual *out, std::size_t capacity) const;
 
   bool has_window() const { return window_ != nullptr; }
+  // Is there anything for the overlay document to draw -- the gameplay
+  // controls, or a prompt button on a screen that draws none?
+  bool has_visuals() const;
   // The setting can force either end on every platform. ALWAYS is what makes
   // the layout reachable on a desktop with no touchscreen -- a layout nobody
   // can look at until it is on a phone is a layout that ships wrong.
@@ -97,6 +103,8 @@ private:
   bool route_to_controls(const SDL_Event &event);
   // A finger with no drawn control under it: the retail GUI's pointer.
   bool route_to_pointer(const SDL_Event &event);
+  // A finger on a rewritten action prompt: the key that prompt named.
+  bool route_to_prompt(const SDL_TouchFingerEvent &finger);
   void publish(std::span<const ActionEvent> actions);
   void count_contact(Uint32 event_type) const;
   bool window_size(int &width, int &height) const;
@@ -213,6 +221,18 @@ void TouchRuntime::count_contact(Uint32 event_type) const {
   }
 }
 
+bool TouchRuntime::route_to_prompt(const SDL_TouchFingerEvent &finger) {
+  int width = 0;
+  int height = 0;
+  if (!window_size(width, height)) {
+    return false;
+  }
+  return prompt_buttons().press(static_cast<std::int64_t>(finger.fingerID),
+                                finger.x * static_cast<float>(width),
+                                finger.y * static_cast<float>(height),
+                                phase_of(finger.type), guest_clock_now_s());
+}
+
 bool TouchRuntime::route_to_pointer(const SDL_Event &event) {
   X2TouchCensus &census = *x2_touch_census();
   int width = 0;
@@ -283,7 +303,13 @@ bool TouchRuntime::handle(const SDL_Event &event) {
     if (!contacts_.empty()) {
       cancel(X2_TOUCH_CANCEL_OVERLAY_HIDDEN);
     }
-    return finger ? route_to_pointer(event) : false;
+    if (!finger) {
+      return false;
+    }
+    /* A prompt button first: it sits ON the retail GUI, and a contact that
+       reached the pointer as well would both press the key and click
+       whatever the words happen to be drawn over. */
+    return route_to_prompt(event.tfinger) || route_to_pointer(event);
   }
   /* Gameplay has begun under a held menu tap: retail's button must not be
      left down at a position nothing will press again. */
@@ -348,6 +374,7 @@ void TouchRuntime::cancel(X2TouchCancelCause cause) {
   publish(controls_.set_portraits({}, 0));
   contacts_.clear();
   active_zones_.clear();
+  prompt_buttons().release();
 }
 
 void TouchRuntime::set_hud_regions(const X2Rect portraits[4],
@@ -366,35 +393,25 @@ bool TouchRuntime::take_pointer(X2TouchPointer &out) {
   return pointer_.take(out);
 }
 
+bool TouchRuntime::has_visuals() const {
+  return overlay_visible() ||
+         prompt_buttons().live(nullptr, 0, guest_clock_now_s()) != 0;
+}
+
 std::size_t TouchRuntime::visuals(X2TouchVisual *out,
                                   std::size_t capacity) const {
-  const auto zones = controls_.zones();
-  const auto visible_count = static_cast<std::size_t>(std::count_if(
-      zones.begin(), zones.end(),
-      [](const TouchControls::ZoneVisual &zone) { return zone.visible; }));
-  if (!out) {
-    return visible_count;
-  }
-  std::size_t output_index = 0;
-  for (const auto &visual : zones) {
-    if (!visual.visible) {
-      continue;
-    }
-    if (output_index < capacity) {
-      out[output_index] = {
-          visual.zone.id,
-          visual.zone.left,
-          visual.zone.top,
-          visual.zone.right,
-          visual.zone.bottom,
-          static_cast<int>(visual.action),
-          active_zones_.contains(visual.zone.id) ? 1 : 0,
-          visual.stick ? 1 : 0,
-      };
-    }
-    ++output_index;
-  }
-  return visible_count;
+  std::array<PromptButton, X2_TOUCH_PROMPTS_MAX> live{};
+  const std::size_t prompts =
+      prompt_buttons().live(live.data(), live.size(), guest_clock_now_s());
+  /* The gameplay controls only where they are drawn. They used to be reported
+     always and merely hidden by the document; a prompt button now makes that
+     document visible on the menus, and the zones would have come with it. */
+  const auto zones = overlay_visible()
+                         ? controls_.zones()
+                         : std::span<const TouchControls::ZoneVisual>{};
+  return overlay_visuals(zones, active_zones_,
+                         std::span{live.data(), std::min(prompts, live.size())},
+                         out, capacity);
 }
 
 } // namespace x2::input
@@ -415,33 +432,6 @@ int x2_touch_runtime_viewport(X2LayoutViewport *out) {
 
 int x2_touch_runtime_event(const SDL_Event *event) {
   return event && x2::input::runtime.handle(*event) ? 1 : 0;
-}
-
-int x2_touch_runtime_inject(int64_t contact_id, float x, float y,
-                            X2TouchPhase phase) {
-  SDL_Event event{};
-  switch (phase) {
-  case X2_TOUCH_PHASE_DOWN:
-    event.type = SDL_EVENT_FINGER_DOWN;
-    break;
-  case X2_TOUCH_PHASE_MOTION:
-    event.type = SDL_EVENT_FINGER_MOTION;
-    break;
-  case X2_TOUCH_PHASE_UP:
-    event.type = SDL_EVENT_FINGER_UP;
-    break;
-  default:
-    event.type = SDL_EVENT_FINGER_CANCELED;
-    break;
-  }
-  event.tfinger.fingerID = static_cast<SDL_FingerID>(contact_id);
-  event.tfinger.x = x;
-  event.tfinger.y = y;
-  /* The source verdict is part of what a contact does, and the real pump
-     notes it before routing. An injected contact that skipped this would
-     leave AUTO reporting "not touch" while touch was being driven. */
-  x2_touch_runtime_note_source(&event);
-  return x2_touch_runtime_event(&event);
 }
 
 void x2_touch_runtime_lifecycle_event(const SDL_Event *event) {
@@ -481,6 +471,10 @@ int x2_touch_runtime_active(void) { return TouchRuntime::active() ? 1 : 0; }
 
 int x2_touch_runtime_overlay_visible(void) {
   return x2::input::runtime.overlay_visible() ? 1 : 0;
+}
+
+int x2_touch_runtime_has_visuals(void) {
+  return x2::input::runtime.has_visuals() ? 1 : 0;
 }
 
 void x2_touch_runtime_report(const char *tag) {

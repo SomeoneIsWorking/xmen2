@@ -1259,6 +1259,127 @@ def case_menu_touch(case: Case) -> None:
 
 
 
+def live_viewport(case: Case) -> tuple[float, float] | None:
+    """The surface the run published its prompt rectangles in."""
+    for line in case.get_text("/prompts").splitlines():
+        found = re.match(r"viewport ([\d.]+)x([\d.]+)", line)
+        if found:
+            return (float(found.group(1)), float(found.group(2)))
+    return None
+
+
+def live_prompts(case: Case) -> list[tuple[str, float, float, float, float]]:
+    """What the run says is pressable right now: key, left, top, width, height.
+
+    Read from the run rather than decided before it: a coordinate chosen in
+    advance answers whatever screen the run drifted onto, and two earlier
+    measurements were read as evidence that way.
+    """
+    out = []
+    for line in case.get_text("/prompts").splitlines():
+        parts = line.split()
+        if len(parts) != 3 or "," not in parts[1] or "x" not in parts[2]:
+            continue
+        left, top = (float(v) for v in parts[1].split(","))
+        width, height = (float(v) for v in parts[2].split("x"))
+        out.append((parts[0], left, top, width, height))
+    return out
+
+
+def tap_prompt(case: Case, prompt, window: tuple[float, float]) -> bool:
+    """Tap the centre of a published prompt, in fractions of ITS surface."""
+    _, left, top, width, height = prompt
+    return case.http("/touch?x=%g&y=%g" % ((left + width * 0.5) / window[0],
+                                           (top + height * 0.5) / window[1])
+                     )[0] == 200
+
+
+def case_prompt_touch(case: Case) -> None:
+    """The retail footer prompts, as controls a finger can press.
+
+    "Esc Back" names a key a phone does not have. In touch play the key comes
+    off what is drawn, the words slide into its place, and the control the
+    port draws around them presses the key the prompt named.
+
+    The discriminator is the screen the game is on, not the census: a tap on
+    Back must leave the Options screen and land back where it started, so the
+    picture after it must resemble the menu BEFORE Options was opened and not
+    the Options screen it was taken from.
+    """
+    case.prepare_profile(["boot.mode=normal", "input.touch_controls=2"])
+    case.launch({"X2_FILES": "1"})
+    case.wait_control(60)
+    case.check("the run reached the main menu",
+               keyboard_past_the_intro(case, 300))
+
+
+    menu = case.shot("menu")
+    prompts = live_prompts(case)
+    print("  prompts on the menu: %s" % (prompts,))
+    # The main menu draws no action prompt -- its rows ARE the actions -- so
+    # nothing may be pressable here. This is the check that catches a control
+    # outliving the screen that drew it: the difficulty dialog's "Esc Back"
+    # was published a few seconds earlier and stays pressable for two.
+    case.check("no prompt outlives the screen that drew it",
+               not prompts, "%d still published on a menu that draws none"
+               % len(prompts))
+
+    opened_before = case.log_text().count(OPTIONS_PACKAGE)
+    case.http("/touch?x=%g&y=%g" % MENU_OPTIONS_ROW)
+    case.check("the Options screen opened",
+               case.wait_log(OPTIONS_PACKAGE, 20) and
+               case.log_text().count(OPTIONS_PACKAGE) > opened_before)
+    time.sleep(2.0)
+    options = case.shot("options")
+    print("  menu vs options: %.2f" % png_mean_diff(menu, options))
+
+    prompts = live_prompts(case)
+    print("  prompts on Options: %s" % (prompts,))
+    back = [p for p in prompts if p[0].lower() in ("escape", "esc")]
+    case.check("Options offers a Back prompt to press", bool(back),
+               "%d published" % len(prompts))
+    if not back:
+        return
+    viewport = live_viewport(case)
+    print("  viewport: %s" % (viewport,))
+    case.check("the run says which surface its prompts are in",
+               viewport is not None)
+    case.check("the Back prompt was tapped",
+               viewport is not None and tap_prompt(case, back[0], viewport))
+    # The menu slides back in, and a prompt stays pressable for two seconds
+    # after the last frame that drew it, so a screen read too early is the
+    # transition rather than the screen.
+    time.sleep(6.0)
+    after = case.shot("after-back")
+    print("  options vs after: %.2f; menu vs after: %.2f"
+          % (png_mean_diff(options, after), png_mean_diff(menu, after)))
+
+    # Not a pixel delta, and not the menu's own layout either: this menu
+    # animates, its idle frame-to-frame difference is the same order as the
+    # change a working tap makes (40.96 against 42.54 in a run where the tap
+    # HAD worked), and the rows it slides back in are not where they were.
+    # What the run can state exactly is which prompts the screen it is on now
+    # draws, and the Options screen's pair is Escape and Space.
+    remaining = {p[0] for p in live_prompts(case)}
+    print("  prompts after Back: %s" % (sorted(remaining) or "none",))
+    case.check("the screen that drew the Back prompt is gone",
+               "Space" not in remaining,
+               "the screen now draws %s, against Options' own Escape+Space"
+               % (sorted(remaining) or "no prompt",))
+
+    census = case.log_text()
+    presses = [int(n) for n in re.findall(
+        r"(\d+) press\(es\) on a rewritten action prompt", census)]
+    refused = [int(n) for n in re.findall(
+        r"rewritten action prompt \((\d+) refused", census)]
+    case.check("the run counted the prompt press",
+               bool(presses) and max(presses) >= 1,
+               "%d at most" % max(presses, default=0))
+    case.check("and the keyboard refused none of them",
+               bool(refused) and max(refused) == 0,
+               "%d at most" % max(refused, default=-1))
+
+
 CASES = {
     "cutscene-skip": case_cutscene_skip,
     "cutscene-skip-early": case_cutscene_skip_early,
@@ -1266,6 +1387,7 @@ CASES = {
     "pad-late": case_pad_late,
     "touch-pad": case_touch_pad,
     "menu-touch": case_menu_touch,
+    "prompt-touch": case_prompt_touch,
     "pad-after-load": case_pad_after_load,
     "pad-persisted": case_pad_persisted,
     "manual-continue": case_manual_continue,

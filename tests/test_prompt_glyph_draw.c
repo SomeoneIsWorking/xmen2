@@ -20,6 +20,33 @@
 #include "x86rt_native.h"
 
 #include <stdint.h>
+#include <stdlib.h>
+
+/*
+ * The touch-prompt rewrite is a SEPARATE owner with its own test
+ * (test_prompt_touch_buttons). This test is about the glyph loop's own
+ * behaviour, so it answers "not a touch prompt" to every string: begin()
+ * returning 0 is the same answer the shipping owner gives whenever touch
+ * play is not active, which is the state this test is measuring.
+ */
+unsigned x2_prompt_touch_begin(uint32_t string_guest, unsigned length) {
+  (void)string_guest;
+  (void)length;
+  return 0;
+}
+
+int x2_prompt_touch_glyph(unsigned emit_index, float *x0, float *y0, float *x1,
+                          float *y1) {
+  (void)emit_index;
+  (void)x0;
+  (void)y0;
+  (void)x1;
+  (void)y1;
+  abort(); /* Never armed: begin() above never claims a string. */
+}
+
+void x2_prompt_touch_end(void) { abort(); }
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

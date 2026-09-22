@@ -60,6 +60,23 @@ phone player met: an intro no tap could skip and a menu no tap could press
 sets `SDL_HINT_TOUCH_MOUSE_EVENTS=0` so that an action-pad tap cannot also
 reach the retail world-click handler.
 
+**Where the screen offers an action by naming a key** — the footer's `Esc
+Back`, `[Space] Advanced Options` — the key is taken off what is drawn and
+what remains becomes a control. The key's glyphs are collapsed where the
+emitter writes them, the words slide into the space they left, and the
+rectangle they landed in is published; a contact inside it presses the
+DirectInput code the prompt named, retained when the cap was composed and the
+binding had just been named. The control draws no art: the words retail
+already drew ARE the button, and the port's own outline would cover them.
+
+Which draw places a prompt is decided by that draw's own glyph count, not by
+the order prompts arrive in. A frame lays every prompt out and only then
+draws them, one element per draw with its own world matrix; a glyph occupies
+six vertices and a draw declares two fewer primitives than vertices, so the
+draw of a 15-glyph `Back` declares 88 and the draw of a 32-glyph `Advanced
+Options` declares 190. Pairing them by arrival instead drew `Back` on top of
+`Advanced Options` (issue #180).
+
 Retail draws one cursor and has one button, so one contact owns it at a time:
 `x2::input::PointerOwner` is that rule, shared by the portrait tap and the
 menu tap rather than copied into each. A button pressed by a finger is always
@@ -159,6 +176,29 @@ movie reports the same 312 decoded frames. A pixel delta cannot say whether a
 menu responded — the menu animates, and its idle frame-to-frame difference
 measured 11–19 against the 27 a working tap produced.
 
+### The footer prompts as controls, 2026-09-22
+
+`tools/live_case.py prompt-touch` opens Options, reads `/prompts` for what the
+run says is pressable and in which surface, taps the Back control it names,
+and requires the screen afterwards to be a different one — stated by which
+prompts it draws, Options' own pair being Escape and Space. The census must
+also count the press and report no refusal from the keyboard injector. 9 of
+9, three runs in a row.
+
+A pixel delta cannot make that call, for the same reason it could not in
+issue #179: the menu animates, and a run in which the tap HAD worked measured
+40.96 from the Options screen against 42.54 from the menu it returned to.
+
+The main-menu check is the negative one: that screen draws no action prompt,
+so nothing may be pressable on it. It is what would catch a control outliving
+the screen that drew it, the difficulty dialog's own `Esc Back` having been
+published seconds earlier and staying pressable for two.
+
+`/prompts` reports the viewport its rectangles are in, because a caller that
+divides by a window size learned somewhere else taps a fraction of the wrong
+surface: that is how a tap aimed at `Back` in a 1280x720 window went off the
+bottom of it.
+
 ### Native presentation observation, 2026-09-08
 
 The [actual RmlUi/game capture](screenshots/touch-controls.png) shows the shared
@@ -176,9 +216,15 @@ presentation evidence, not Android touchscreen or performance qualification.
 A host with no touchscreen cannot press its own screen, so the control channel
 carries a contact: `/touch?x=&y=` (`tools/x2ctl.py touch 0.2,0.73`), with a
 whole tap by default and `&phase=down|motion|up|cancel` for one half of one.
-It goes through `x2_touch_runtime_inject`, which takes the same note-source
-and routing calls the host event pump takes — a second copy of that sequence
+It goes through `x2_touch_inject`, which takes the same note-source and
+routing calls the host event pump takes — a second copy of that sequence
 could only agree with the shipping one by luck.
+
+`/prompts` (`tools/x2ctl.py` reads it too) lists the action prompts that are
+pressable right now, their rectangles, and the viewport those rectangles are
+in, so a run driving itself taps what the game is drawing rather than a
+coordinate chosen before the run started. An empty answer says which empty it
+is: no prompt is on screen, or touch play is not on and none ever will be.
 
 ## Not established
 

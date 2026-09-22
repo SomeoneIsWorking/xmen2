@@ -23,6 +23,7 @@
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyph_quads.h"
 #include "prompt_glyphs.h"
+#include "prompt_touch_buttons.h"
 #include "x86rt.h"
 #include "x86rt_native.h"
 
@@ -157,10 +158,16 @@ static uint32_t g_cursor_string;
 static unsigned g_cursor_index;
 static uint32_t g_cursor_color;
 static unsigned long g_intercepted, g_emitted_seen, g_predicted, g_desync;
+/* The cursor is armed for one of two reasons: to swap prompt art in, or to
+   take a key off a touch prompt and slide its words over. They never overlap
+   -- a rewritten prompt draws no native glyph -- so one cursor serves both
+   and the emitter cannot be asked to do both to the same quad. */
+static int g_touch_mode;
+static unsigned g_touch_emits;
 static unsigned long g_unavailable_refused, g_color_refused, g_queue_refused;
 static unsigned long g_emitted_seen_before;
 
-static int wchar_emits_quad(uint16_t c) {
+int x2_glyph_loop_emits_quad(uint16_t c) {
   if (c >= 256u)
     return 0; /* colour tokens, pen sets, markup */
   if (c == ' ' || c == '\t')
@@ -175,7 +182,7 @@ static uint16_t cursor_take(void) {
     if (!c)
       return 0;
     g_cursor_index++;
-    if (wchar_emits_quad(c))
+    if (x2_glyph_loop_emits_quad(c))
       return c;
   }
   return 0;
@@ -187,7 +194,36 @@ static uint16_t cursor_take(void) {
  * zero-area rectangle. The call and its RET 0x20 remain the retail body's
  * responsibility; bypassing it removed the sole vertex from one-glyph labels
  * and therefore removed the drawNonIndexed finalizer we render through. */
+/* The emitter's four engine-plane corners, at ESP+4..ESP+16. */
+static void read_corners(const CPU *C, float corners[4]) {
+  unsigned i;
+  for (i = 0; i < 4u; i++) {
+    uint32_t bits = RD32(C->reg[kX86pEsp] + (uint32_t)(i + 1u) * 4u);
+    memcpy(&corners[i], &bits, 4);
+  }
+}
+
+static void write_corners(CPU *C, const float corners[4]) {
+  unsigned i;
+  for (i = 0; i < 4u; i++) {
+    uint32_t bits;
+    memcpy(&bits, &corners[i], 4);
+    WR32(C->reg[kX86pEsp] + (uint32_t)(i + 1u) * 4u, bits);
+  }
+}
+
 void x2_override_005ee400(CPU *C) {
+  if (g_cursor_string && g_touch_mode) {
+    float corners[4];
+    (void)cursor_take();
+    g_emitted_seen++;
+    read_corners(C, corners);
+    if (x2_prompt_touch_glyph(g_touch_emits++, &corners[0], &corners[1],
+                              &corners[2], &corners[3]))
+      write_corners(C, corners);
+    x86_guest_body(C, "XMen2.exe", 0x005ee400u);
+    return;
+  }
   if (g_cursor_string) {
     uint16_t c = cursor_take();
     const struct x2_prompt_cell *cell = x2_prompt_glyph_cell(c);
@@ -247,7 +283,7 @@ static struct PromptStringPlan plan_string(uint32_t s) {
     uint16_t c = RD16(s + (uint32_t)i * 2u);
     if (!c)
       break;
-    if (wchar_emits_quad(c))
+    if (x2_glyph_loop_emits_quad(c))
       plan.emitted++;
     if (!prompt_codepoint(c))
       continue;
@@ -300,6 +336,25 @@ void x2_override_005ee780(CPU *C) {
       g_with_non_ascii++;
     if (first_sighting(wide_hash(s, NULL)))
       log_example(s);
+  }
+  /* A touch prompt is rewritten instead of decorated: its key comes off and
+     its words slide into the space, so the native keycap art it would
+     otherwise carry is exactly what must not be drawn. */
+  if (s) {
+    unsigned length = 0;
+    (void)wide_hash(s, &length);
+    if (x2_prompt_touch_begin(s, length)) {
+      g_cursor_string = s;
+      g_cursor_index = 0;
+      g_touch_mode = 1;
+      g_touch_emits = 0;
+      g_super_called++;
+      x86_guest_body(C, "XMen2.exe", 0x005ee780u);
+      g_cursor_string = 0;
+      g_touch_mode = 0;
+      x2_prompt_touch_end();
+      return;
+    }
   }
   /* The cursor is armed only for a string carrying our codepoints, so
      every other string's quads take the untouched path. */

@@ -28,27 +28,6 @@ typedef struct X2TouchPointer {
 
 int x2_touch_runtime_event(const union SDL_Event *event);
 
-/* Contact phases, for the injector below. They are the SDL finger events by
-   another name, kept separate so a caller needs no SDL headers. */
-typedef enum {
-  X2_TOUCH_PHASE_DOWN,
-  X2_TOUCH_PHASE_MOTION,
-  X2_TOUCH_PHASE_UP,
-  X2_TOUCH_PHASE_CANCEL
-} X2TouchPhase;
-
-/*
- * Drive a contact as if the host had reported one, at a position normalized
- * to the window.
- *
- * A machine with no touchscreen cannot press an on-screen control, and a run
- * driven by a script written before it started answers whatever screen it
- * drifted onto. This goes through the SAME note-source and routing calls the
- * real host event takes, so what it exercises is the shipping path and not a
- * second copy of it. Returns what the routing returned.
- */
-int x2_touch_runtime_inject(int64_t contact_id, float x, float y,
-                            X2TouchPhase phase);
 void x2_touch_runtime_lifecycle_event(const union SDL_Event *event);
 /* Why a held zone is being let go. Counted apart, because one number
    reported as three causes it had never observed is what hid the real one. */
@@ -69,6 +48,15 @@ void x2_touch_runtime_hud_regions(const X2Rect portraits[4],
  * including cancellation when no SDL event is pending. */
 int x2_touch_runtime_take_pointer(X2TouchPointer *pointer);
 
+/* What the overlay is being asked to draw. A prompt is the retail UI's own
+   footer action with its key taken off: the game still draws the words, so
+   the port draws the control around them and nothing inside. */
+typedef enum {
+  X2_TOUCH_VISUAL_BUTTON = 0,
+  X2_TOUCH_VISUAL_STICK,
+  X2_TOUCH_VISUAL_PROMPT
+} X2TouchVisualKind;
+
 typedef struct X2TouchVisual {
   uint32_t id;
   float left;
@@ -77,7 +65,7 @@ typedef struct X2TouchVisual {
   float bottom;
   int action;
   int active;
-  int stick;
+  int kind;
 } X2TouchVisual;
 
 /* The viewport the touch layout is currently built from -- the window's pixel
@@ -124,6 +112,12 @@ void x2_touch_runtime_report(const char *tag);
  * puts the on-screen pad away. */
 void x2_touch_runtime_note_source(const union SDL_Event *event);
 int x2_touch_runtime_overlay_visible(void);
+
+/* Is there anything for the overlay document to draw at all? The gameplay
+   controls answer x2_touch_runtime_overlay_visible; a rewritten action prompt
+   is drawn on the screens where that is deliberately false, so a document
+   shown only on the first answer would draw no prompt anywhere. */
+int x2_touch_runtime_has_visuals(void);
 
 #ifdef __cplusplus
 }

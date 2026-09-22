@@ -27,6 +27,8 @@
 #include "prompt_glyph_draw.h"
 #include "prompt_glyph_metrics.h"
 #include "prompt_glyph_quads.h"
+#include "prompt_tokens.h"
+#include "prompt_touch_buttons.h"
 #include "threads.h"
 #include "touch_hud_runtime.h"
 #include "ui_transform.h"
@@ -52,6 +54,8 @@ void x2_interrupt_reports(int killed) {
   x2_prompt_glyph_metrics_report();
   x2_prompt_quads_report();
   x2_prompt_glyph_batch_report();
+  x2_prompt_touch_report();
+  x2_prompt_tokens_report();
   x2_ui_transform_report();
   gpu_prompt_glyphs_report();
   {

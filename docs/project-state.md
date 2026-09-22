@@ -722,9 +722,18 @@ overlay is gated on that HUD, so no browser run could ever show a control.
 `--test-map=<path>` makes the route selectable; the default is unchanged
 (issue #171).
 
-Gap: the retail footer prompts still name keys -- `ESC BACK`, `SPACE ADVANCED
-OPTIONS` -- to a player who has no keyboard, and are not tappable controls.
-No run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
+In touch play the retail footer prompts are controls. The key's glyphs are
+collapsed where the emitter writes them, the action's words slide into the
+space they left, and the rectangle they landed in is published as a control
+that presses the DirectInput code the prompt named -- so `Esc Back` reads
+`Back` and is tappable, and `[Space] Advanced Options` reads `Advanced
+Options`. Measured by `tools/live_case.py prompt-touch`, 9 of 9: the Options
+screen publishes both, a tap on Back returns to the menu it was opened from,
+and the census counts the press with no refusal from the keyboard injector
+(issue #180). The main menu draws no prompt and publishes none, which is what
+proves a control does not outlive the screen that drew it.
+
+Gap: no run on a real desktop touchscreen (Windows tablet, Linux 2-in-1) has
 been recorded, so "played by touch on a desktop" is not yet a claim this
 repository can make — only "the path is platform-neutral by construction and
 unit-verified". Measured phone evidence remains S018's gate. No run has yet

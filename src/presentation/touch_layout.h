@@ -92,6 +92,22 @@ int x2_layout_slot_is_hud(int slot);
  */
 int x2_layout_build(X2LayoutViewport viewport, X2Rect *out);
 
+/*
+ * Grow a drawn rectangle to something a finger can actually hit.
+ *
+ * A retail footer prompt is one line of text a few pixels tall. The port
+ * makes it pressable, and a control the size of the letters is a control
+ * nobody can press: a thumb covers roughly a centimetre. The minimum is a
+ * fraction of the viewport rather than a pixel count, exactly as every other
+ * rectangle here is, so it holds at a phone's resolution and a desktop's.
+ *
+ * The result is ONE rectangle, used both to test a contact and to draw the
+ * control's outline -- the portraits already proved what happens when the
+ * drawn thing and the touchable thing are computed separately. Returns the
+ * input unchanged when the viewport has no usable area.
+ */
+X2Rect x2_layout_touch_target(X2LayoutViewport viewport, X2Rect drawn);
+
 /* Whether two placed rectangles overlap. Exposed because the invariant that
    the HUD and the controls do not sit on top of each other is worth asserting
    in a test at every aspect ratio, not just believing at one. */

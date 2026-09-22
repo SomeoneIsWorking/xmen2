@@ -87,6 +87,11 @@ void x2_touch_census_report(const char *tag, int has_window, int touch_devices,
       g_census.pointer_refused);
   lucent_log_info(
       "touch",
+      "%s%lu press(es) on a rewritten action prompt (%lu refused by the "
+      "keyboard injector)",
+      prefix, g_census.prompt_presses, g_census.prompt_refused);
+  lucent_log_info(
+      "touch",
       "%s%lu zone action(s) routed; held zones let go %lu time(s): %lu with "
       "the overlay hidden, %lu with the window gone, %lu because the input "
       "source stopped being touch, %lu on a window or layout change",

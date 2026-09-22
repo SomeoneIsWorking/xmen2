@@ -1,6 +1,7 @@
 /* The shipping Alchemy draw override, with its collaborators observed. */
 #include "prompt_glyph_batch.h"
 #include "prompt_glyph_quads.h"
+#include "prompt_touch_buttons.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -26,7 +27,7 @@ static void note(char event) {
 
 static void check(int condition, const char *what) {
   if (!condition) {
-    printf("  FAIL  %s\n", what);
+    printf("  FAIL  %s (events \"%s\")\n", what, events);
     failures++;
   } else {
     printf("  pass  %s\n", what);
@@ -56,6 +57,20 @@ int x2_ui_transform_current(uint32_t context, float mvp[16]) {
   for (i = 0; i < 16; i++)
     mvp[i] = (float)(i + 1u);
   return 1;
+}
+
+/* The touch-prompt owner is tested separately; what matters at this boundary
+   is that the draw's own primitive count reaches it, because that is how a
+   prompt is matched to the draw that places it. */
+static unsigned long touch_publishes;
+static uint32_t touch_primitives;
+
+void x2_prompt_touch_publish(X2PromptTransform transform, void *owner,
+                             uint32_t primitives) {
+  (void)transform;
+  (void)owner;
+  touch_publishes++;
+  touch_primitives = primitives;
 }
 
 int gpu_prompt_glyphs_render(const float mvp[16]) {
@@ -94,6 +109,8 @@ static void reset_case(unsigned count) {
   gpu_ok = 1;
   super_runs_finalizer = 1;
   transform_calls = gpu_calls = consume_calls = super_calls = 0;
+  touch_publishes = 0;
+  touch_primitives = 0;
   transform_context = 0;
   event_count = 0;
   memset(events, 0, sizeof events);
@@ -114,6 +131,9 @@ int main(void) {
         "a draw with no prompt batch is an untouched super-call");
   check(transform_calls == 0 && gpu_calls == 0 && consume_calls == 0,
         "an empty draw does not snapshot, submit, or consume");
+  check(touch_publishes == 1,
+        "every finalized draw is offered to the touch prompts, whether or not "
+        "it carries prompt art");
 
   reset_case(7);
   cpu.reg[kX86pEcx] = 0x12345678u;
@@ -124,6 +144,9 @@ int main(void) {
         "the engine matrix, GPU path, and super each run once");
   check(transform_context == 0x12345678u,
         "the matrix lookup stays keyed to the finalizer's input context");
+  check(touch_publishes == 1 && touch_primitives == 0u,
+        "the finalized draw offers its own primitive count to the touch "
+        "prompts, and an unreadable one is offered as none");
 
   reset_case(3);
   transform_ok = 0;
@@ -156,6 +179,8 @@ int main(void) {
   check(pending == 0 && consume_calls == 1 && transform_calls == 0 &&
             gpu_calls == 0 && super_calls == 1,
         "unfinalized quads cannot leak into a later unrelated draw");
+  check(touch_publishes == 0,
+        "a draw that never finalized offers nothing to the touch prompts");
 
   x2_prompt_glyph_batch_update_context_state(&cpu);
   check(!strcmp(events, "DCU") && consume_calls == 1,
@@ -173,6 +198,16 @@ int main(void) {
  * symbol per function -- and an entry point this test does not model is a
  * FAILURE that names itself, never a silent return.
  */
+/* The draw's arguments are not modelled: this test drives the overrides with
+   a zero stack pointer, so the primitive count is unreadable and the touch
+   prompts are offered none. That is the same answer the shipping code gives
+   for a draw whose argument it cannot read. */
+int x86_peek32(uint32_t addr, uint32_t *out) {
+  (void)addr;
+  (void)out;
+  return 0;
+}
+
 void x86_guest_body(CPU *C, const char *module, uint32_t linked_ep) {
   if (linked_ep == 0x100352d0u && !strcmp(module, "libIGGfx.dll")) {
     guest_body_100352d0(C);

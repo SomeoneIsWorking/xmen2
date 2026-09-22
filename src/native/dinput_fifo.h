@@ -27,4 +27,15 @@ void dinput_fifo_apply(struct X86pCpu *cpu, uint32_t out, uint32_t size,
 int dinput_inject_press(const char *name, double now, double hold,
                         const char *via, char *why, int whyn);
 
+/*
+ * The same press, by the DirectInput code itself.
+ *
+ * A caller that already HOLDS the binding -- a touch prompt knows the exact
+ * key the label it replaced named -- must not go back out through a key name
+ * and a scancode table to say so. Round-tripping an unnamed or oddly named
+ * DIK through that table is how a working binding becomes "no such key".
+ */
+int dinput_inject_code(unsigned char dik, double now, double hold,
+                       const char *via, char *why, int whyn);
+
 #endif /* DINPUT_FIFO_H */

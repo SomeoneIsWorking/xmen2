@@ -148,6 +148,34 @@ int main(void) {
     CHECK("null destination", !x2_layout_build(ok, NULL));
   }
 
+  /* A prompt is one line of retail text; the control around it has to be
+     something a thumb can hit, and the same rectangle has to be the one that
+     gets drawn. The negative is a viewport with no layout at all: it must
+     hand the rectangle back untouched rather than invent a control. */
+  {
+    const X2LayoutViewport phone = {2340.0f, 1080.0f, 0, 0, 0, 0};
+    const X2Rect words = {820.0f, 1000.0f, 900.0f, 1014.0f};
+    const X2Rect target = x2_layout_touch_target(phone, words);
+    const X2Rect wide = {100.0f, 500.0f, 900.0f, 560.0f};
+    const X2Rect kept = x2_layout_touch_target(phone, wide);
+    X2LayoutViewport broken = {NAN, 100.0f, 0, 0, 0, 0};
+    X2Rect unchanged = x2_layout_touch_target(broken, words);
+
+    CHECK("a prompt control is at least a thumb tall",
+          target.bottom - target.top >= 1080.0f * 0.07f);
+    CHECK("it is wider than the words it encloses",
+          target.left < words.left && target.right > words.right);
+    CHECK("and stays centred on them",
+          fabsf((target.top + target.bottom) * 0.5f -
+                (words.top + words.bottom) * 0.5f) < 0.01f);
+    CHECK("a rectangle already tall enough is not shrunk to the minimum",
+          kept.bottom - kept.top >= wide.bottom - wide.top);
+    CHECK("no viewport, no control invented",
+          unchanged.left == words.left && unchanged.top == words.top &&
+              unchanged.right == words.right &&
+              unchanged.bottom == words.bottom);
+  }
+
   /* The names are the denominator of every exhaustive check above. */
   {
     int i;

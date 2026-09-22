@@ -9,6 +9,8 @@
  * separate jobs: one is a recording, the other is a keyboard.
  */
 #include "dinput_fifo.h"
+
+#include "../input/touch_prompt_buttons.h"
 #include "guest_memory.h"
 
 #include "control.h"
@@ -92,13 +94,52 @@ static void fifo_open_if_due(double now) {
  * key and saw no effect must be able to tell "the game ignored it" from "it was
  * never pressed", and that distinction is the whole value of a live channel.
  */
+int dinput_inject_code(unsigned char dik, double now, double hold,
+                       const char *via, char *why, int whyn) {
+#ifdef X2_WITH_SDL
+  const char *name;
+  int i, slot = -1;
+  if (!dik) {
+    snprintf(why, (size_t)whyn,
+             "DirectInput key code 0 is not a key; NOT pressed.");
+    x2_log_error("DINPUT8: %s [%s]\n", why, via);
+    return 0;
+  }
+  name = dinput_system_dik_name(dik);
+  for (i = 0; i < FIFO_MAX_KEYS; i++)
+    if (!g_fifo[i].down && (slot < 0 || g_fifo[i].until < g_fifo[slot].until))
+      slot = i;
+  if (slot < 0) {
+    snprintf(why, (size_t)whyn,
+             "all %d injection slots are currently held down; DIK 0x%02x "
+             "was NOT pressed. Wait for a hold to expire.",
+             FIFO_MAX_KEYS, dik);
+    return 0;
+  }
+  g_fifo[slot].dik = dik;
+  g_fifo[slot].until = now + (hold > 0.0 ? hold : FIFO_HOLD_S);
+  g_fifo[slot].via = via;
+  snprintf(g_fifo[slot].name, sizeof g_fifo[slot].name, "%s",
+           name ? name : "unnamed key");
+  return 1;
+#else
+  (void)dik;
+  (void)now;
+  (void)hold;
+  (void)via;
+  snprintf(why, (size_t)whyn,
+           "built without SDL, so there is no key table and nothing can be "
+           "pressed.");
+  return 0;
+#endif
+}
+
 int dinput_inject_press(const char *name, double now, double hold,
                         const char *via, char *why, int whyn) {
 #ifdef X2_WITH_SDL
-  int scancode, i, slot = -1;
-  unsigned char dik;
-  scancode = (int)SDL_GetScancodeFromName(name);
-  dik = scancode == SDL_SCANCODE_UNKNOWN ? 0 : dinput_system_dik(scancode);
+  const int scancode = (int)SDL_GetScancodeFromName(name);
+  const unsigned char dik =
+      scancode == SDL_SCANCODE_UNKNOWN ? 0 : dinput_system_dik(scancode);
   if (!dik) {
     snprintf(why, (size_t)whyn,
              "\"%s\" has no DirectInput mapping (SDL knows no such key "
@@ -107,31 +148,36 @@ int dinput_inject_press(const char *name, double now, double hold,
     x2_log_error("DINPUT8: %s [%s]\n", why, via);
     return 0;
   }
-  for (i = 0; i < FIFO_MAX_KEYS; i++)
-    if (!g_fifo[i].down && (slot < 0 || g_fifo[i].until < g_fifo[slot].until))
-      slot = i;
-  if (slot < 0) {
-    snprintf(why, (size_t)whyn,
-             "all %d injection slots are currently held down; \"%s\" was "
-             "NOT pressed. Wait for a hold to expire.",
-             FIFO_MAX_KEYS, name);
-    return 0;
-  }
-  g_fifo[slot].dik = dik;
-  g_fifo[slot].until = now + (hold > 0.0 ? hold : FIFO_HOLD_S);
-  g_fifo[slot].via = via;
-  snprintf(g_fifo[slot].name, sizeof g_fifo[slot].name, "%s", name);
-  return 1;
+  return dinput_inject_code(dik, now, hold, via, why, whyn);
 #else
   (void)name;
   (void)now;
   (void)hold;
   (void)via;
   snprintf(why, (size_t)whyn,
-           "built without SDL, so there is no key name "
-           "table and nothing can be pressed.");
+           "built without SDL, so there is no key name table and nothing can "
+           "be pressed.");
   return 0;
 #endif
+}
+
+/*
+ * The touch overlay's rewritten action prompts press keys through here.
+ *
+ * Registered rather than called: the prompt owns a rectangle and a DIK, and
+ * this file owns the one injection table the game's single keyboard has.
+ */
+static int touch_prompt_press(unsigned dik, double now) {
+  char why[192] = "";
+  if (dinput_inject_code((unsigned char)dik, now, 0.0, "touch", why,
+                         (int)sizeof why))
+    return 1;
+  x2_log_error("DINPUT8: a touch prompt could not be pressed: %s\n", why);
+  return 0;
+}
+
+__attribute__((constructor)) static void dinput_fifo_register_touch(void) {
+  x2_touch_prompt_key_press(touch_prompt_press);
 }
 
 static void fifo_press(const char *name, double now) {

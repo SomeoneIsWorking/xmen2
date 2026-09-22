@@ -226,8 +226,10 @@ extern "C" void x2_ui_render(SDL_GPUDevice *device,
     }
   }
   const bool settings_visible = x2_settings_overlay_visible();
+  /* Not the gameplay overlay's own gate: a rewritten action prompt is drawn
+     on exactly the screens where that gate is deliberately false. */
   const bool touch_visible =
-      x2_touch_runtime_overlay_visible() && !settings_visible;
+      x2_touch_runtime_has_visuals() && !settings_visible;
   if ((!settings_visible && !touch_visible) || !device || !command_buffer ||
       !swapchain || !window)
     return;

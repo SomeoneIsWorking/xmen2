@@ -123,6 +123,19 @@ const char *zone_action_class(int action) {
   }
 }
 
+/* The kind decides the element's style, and a prompt has no action of its
+   own: it is the retail UI's own word with a control drawn round it. */
+const char *visual_class(const X2TouchVisual &visual) {
+  switch (visual.kind) {
+  case X2_TOUCH_VISUAL_STICK:
+    return " stick";
+  case X2_TOUCH_VISUAL_PROMPT:
+    return " prompt";
+  default:
+    return zone_action_class(visual.action);
+  }
+}
+
 std::string resource(const std::string &relative) {
   return x2_ui_resource_path(relative.c_str());
 }
@@ -134,10 +147,10 @@ void rebuild() {
   std::ostringstream rml;
   for (const auto &visual : visuals) {
     rml << "<div id='touch-zone-" << visual.id << "' class='touch-zone"
-        << (visual.stick ? " stick" : zone_action_class(visual.action)) << "'>";
-    if (visual.stick) {
+        << visual_class(visual) << "'>";
+    if (visual.kind == X2_TOUCH_VISUAL_STICK) {
       rml << "<div class='touch-stick-knob'></div>";
-    } else {
+    } else if (visual.kind != X2_TOUCH_VISUAL_PROMPT) {
       const char *icon = icon_relative_path(visual.action, last_powers_mode);
       if (icon[0]) {
         rml << "<img id='icon-" << visual.id << "' class='touch-icon' src='"
@@ -223,7 +236,7 @@ void touch_document_update() {
     if (root)
       root->SetClass("powers-active", powers_active);
     for (const auto &visual : visuals) {
-      if (visual.stick)
+      if (visual.kind != X2_TOUCH_VISUAL_BUTTON)
         continue;
       if (auto *icon_elem =
               document->GetElementById("icon-" + std::to_string(visual.id))) {

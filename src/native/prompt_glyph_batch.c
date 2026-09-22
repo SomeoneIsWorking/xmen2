@@ -16,6 +16,7 @@
 
 #include "gpu_prompt_glyphs.h"
 #include "prompt_glyph_quads.h"
+#include "prompt_touch_buttons.h"
 #include "ui_transform.h"
 #include "x86rt_native.h"
 
@@ -23,15 +24,24 @@
 #include <stdio.h>
 
 static unsigned g_nonindexed_depth;
+static uint32_t g_nonindexed_primitives;
 static unsigned long g_calls, g_finalizer_calls, g_nested_finalizers;
 static unsigned long g_with_prompts, g_drawn;
 static unsigned long g_transform_refused, g_gpu_refused, g_unfinalized_refused;
+static unsigned long g_unreadable_count;
 
 void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
   unsigned count;
 
   g_calls++;
   g_nonindexed_depth++;
+  /* CHECKED, not dereferenced: this count decides which retained prompt a
+     draw places, and a draw whose argument cannot be read places none rather
+     than placing the wrong one. */
+  if (!x86_peek32(C->reg[kX86pEsp] + 8u, &g_nonindexed_primitives)) {
+    g_nonindexed_primitives = 0;
+    g_unreadable_count++;
+  }
   x86_guest_body(C, "libIGGfx.dll", 0x100352d0u);
   g_nonindexed_depth--;
 
@@ -46,6 +56,11 @@ void x2_prompt_glyph_batch_draw_nonindexed(CPU *C) {
   }
 }
 
+/* The touch prompts' view of this finalizer's transform. */
+static int batch_transform(void *owner, float mvp[16]) {
+  return x2_ui_transform_current(*(const uint32_t *)owner, mvp);
+}
+
 void x2_prompt_glyph_batch_update_context_state(CPU *C) {
   uint32_t context = C->reg[kX86pEcx];
   float mvp[16];
@@ -57,17 +72,21 @@ void x2_prompt_glyph_batch_update_context_state(CPU *C) {
     return;
   g_nested_finalizers++;
   (void)x2_prompt_quads(&count);
-  if (count) {
-    g_with_prompts++;
-    if (!x2_ui_transform_current(context, mvp)) {
-      g_transform_refused += count;
-      x2_prompt_quads_consume();
-    } else if (!gpu_prompt_glyphs_render(mvp)) {
-      g_gpu_refused += count;
-      x2_prompt_quads_consume();
-    } else {
-      g_drawn += count;
-    }
+  if (!count) {
+    x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
+    return;
+  }
+  g_with_prompts++;
+  if (!x2_ui_transform_current(context, mvp)) {
+    g_transform_refused += count;
+    x2_prompt_quads_consume();
+  } else if (!gpu_prompt_glyphs_render(mvp)) {
+    g_gpu_refused += count;
+    x2_prompt_quads_consume();
+    x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
+  } else {
+    g_drawn += count;
+    x2_prompt_touch_publish(batch_transform, &context, g_nonindexed_primitives);
   }
 }
 
@@ -89,6 +108,10 @@ void x2_prompt_glyph_batch_report(void) {
               g_calls, g_finalizer_calls, g_nested_finalizers, g_with_prompts,
               g_drawn, g_transform_refused, g_gpu_refused,
               g_unfinalized_refused);
+  if (g_unreadable_count)
+    x2_log_info("        %lu draw(s) had an unreadable primitive count -- no "
+                "retained touch prompt could be attributed to them\n",
+                g_unreadable_count);
   if (!g_calls)
     x2_log_info("        ZERO calls at libIGGfx.dll 0x100352d0 -- the "
                 "engine's non-indexed draw boundary was not reached.\n");
