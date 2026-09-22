@@ -252,6 +252,26 @@ the probe attributes 71% of crossing time to host imports, against ~1,490
 `SetVertexShaderConstant` and ~1,200 `SetTextureStageState` calls per frame.
 That boundary is the next target and the gate remains unmet.
 
+Upload staging no longer allocates per upload. Each resource kept its own
+transfer buffer and every upload cycled it, which SDL must answer with a new
+allocation when the open command buffer has already referenced the old one --
+so a buffer uploaded twice in a frame paid for two. Measured on the Dead Zone
+map: 308,362 uploads had asked the driver for 57,856 transfer buffers, about
+31 new GPU allocations a frame for roughly 550 KB of data, and `perf` put
+35.6% of all cycles in the driver's virtual-address allocator
+(`amdgpu_vamgr_find_va`) beneath `gpu_upload_stage`. `src/gpu/gpu_staging_ring.c`
+writes every upload at its own offset in a shared page, which SDL states
+needs no cycling, and cycles a page once a frame at the batch submit. Same map,
+same route: frame wall 88.4 -> 49.6 ms, p50 82.0 -> 48.6 ms, host upload 85.04
+-> 0.09 ms/frame, host draw 5.1 -> 1.0 ms/frame, and one transfer-buffer
+allocation for the whole run. The picture is unchanged -- `deadzone-render` 6
+of 6 and all 15 GPU selftests pass, including the two-generation upload-order
+check (issue #182). This is desktop evidence for work removed, not Android
+performance evidence; the same driver path is what a device pays for too. The
+remaining frame is about 62% x87 softfloat in `shared/x86port`, and the JIT
+reports its x87-widening, x87-narrowing and host-SIMD lowering as `0 of 0` on
+this title, so those levers are dormant rather than exhausted.
+
 Gap: x86port now has an ARM64 emitter and runtime backend, but Android
 executable-memory, ABI, instruction-cache, and representative gameplay
 qualification are still incomplete; neither the test interpreter nor bounded

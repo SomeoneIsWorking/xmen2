@@ -2,6 +2,7 @@
 #include "gpu_upload_batch.h"
 
 #include "../native/x2_log.h"
+#include "gpu_staging_ring.h"
 
 #include <SDL3/SDL.h>
 
@@ -47,6 +48,10 @@ void gpu_upload_batch_flush(SDL_GPUDevice *device) {
                  SDL_GetError());
   g_command = NULL;
   g_batches++;
+  /* Every byte these copies read is referenced now, so the ring's pages are
+     cycled before they are written again rather than overwritten under a
+     copy that has not run yet. */
+  gpu_staging_ring_submitted();
 }
 
 unsigned long gpu_upload_batch_submits(void) { return g_batches; }

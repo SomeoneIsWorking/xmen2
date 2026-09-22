@@ -7,8 +7,8 @@
 #include "gpu_pipeline.h"
 #include "gpu_readback.h"
 #include "gpu_shadow.h"
+#include "gpu_staging_ring.h"
 #include "gpu_texture_format.h"
-#include "gpu_upload.h"
 #include "gpu_upload_batch.h"
 
 #include <stdio.h>
@@ -115,7 +115,6 @@ void gpu_offscreen_end(void) {}
 typedef struct {
   SDL_GPUBuffer *buf;
   SDL_GPUTexture *tex;
-  GpuUploadStaging upload;
   uint32_t bytes;
   uint32_t w, h;
   GpuFormat fmt;
@@ -258,8 +257,6 @@ static unsigned long long g_upload_alloc_ns; /* reserve+Map+memcpy+Unmap */
 static unsigned long long
     g_upload_record_ns; /* recording the copy into the frame's batch */
 static unsigned long g_uploads;
-static unsigned long long
-    g_transfer_creates; /* how often the upload path allocated */
 /* Copy command buffers, owned by gpu_upload_batch and read back here so the
    report can say whether the frame's uploads actually shared one. */
 
@@ -267,22 +264,21 @@ static unsigned long long
  * Upload through the destination resource's retained transfer buffer.
  *
  * SDL_GPU has no "write straight into a GPU buffer": the data goes into a
- * mapped transfer buffer and a copy pass moves it. gpu_upload_stage owns the
- * reuse/cycling rule; this owner records the copy command and its timing.
+ * mapped transfer buffer and a copy pass moves it. gpu_staging_ring owns
+ * where those bytes go and the cycling rule; this owner records the copy
+ * command and its timing.
  */
 static int upload_bytes(Res *r, uint32_t offset, const void *data,
                         uint32_t bytes) {
-  SDL_GPUTransferBuffer *tb;
+  GpuStagingWrite staged;
   SDL_GPUCopyPass *cp;
   SDL_GPUTransferBufferLocation src;
   SDL_GPUBufferRegion dr;
   unsigned long long t0 = gpu_perf_now_ns(), t1;
-  int created;
 
-  tb = gpu_upload_stage(g_gpu, &r->upload, r->bytes, data, bytes, &created);
-  if (!tb)
+  staged = gpu_staging_write(g_gpu, data, bytes);
+  if (!staged.buffer)
     return 0;
-  g_transfer_creates += (unsigned long long)created;
   t1 = gpu_perf_now_ns();
   g_upload_alloc_ns += t1 - t0;
 
@@ -291,7 +287,8 @@ static int upload_bytes(Res *r, uint32_t offset, const void *data,
     return 0;
   memset(&src, 0, sizeof src);
   memset(&dr, 0, sizeof dr);
-  src.transfer_buffer = tb;
+  src.transfer_buffer = staged.buffer;
+  src.offset = staged.offset;
   dr.buffer = r->buf;
   dr.offset = offset;
   dr.size = bytes;
@@ -341,7 +338,6 @@ void gpu_buffer_destroy(GpuBuffer b) {
   Res *r = res_get(b, 0, "buffer destroy");
   if (!r)
     return;
-  gpu_upload_staging_destroy(g_gpu, &r->upload);
   SDL_ReleaseGPUBuffer(g_gpu, r->buf);
   r->live = 0;
 }
@@ -506,7 +502,7 @@ int gpu_texture_is_cube(GpuTexture t) {
 
 int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
                             const void *data, uint32_t bytes) {
-  SDL_GPUTransferBuffer *tb;
+  GpuStagingWrite staged;
   SDL_GPUCopyPass *cp;
   SDL_GPUTextureTransferInfo src;
   SDL_GPUTextureRegion dr;
@@ -516,7 +512,6 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   uint32_t upload_bytes = bytes;
   uint8_t *expanded = NULL;
   unsigned long long t0, t1;
-  int created;
 
   if (!r)
     return 0;
@@ -553,12 +548,10 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
   }
   t0 = gpu_perf_now_ns();
 
-  tb = gpu_upload_stage(g_gpu, &r->upload, r->bytes, upload_data, upload_bytes,
-                        &created);
+  staged = gpu_staging_write(g_gpu, upload_data, upload_bytes);
   free(expanded);
-  if (!tb)
+  if (!staged.buffer)
     return 0;
-  g_transfer_creates += (unsigned long long)created;
   t1 = gpu_perf_now_ns();
   g_upload_alloc_ns += t1 - t0;
 
@@ -567,7 +560,8 @@ int gpu_texture_upload_face(GpuTexture t, uint32_t face, uint32_t level,
     return 0;
   memset(&src, 0, sizeof src);
   memset(&dr, 0, sizeof dr);
-  src.transfer_buffer = tb;
+  src.transfer_buffer = staged.buffer;
+  src.offset = staged.offset;
   dr.texture = r->tex;
   dr.mip_level = level;
   dr.layer = face;
@@ -594,7 +588,6 @@ void gpu_texture_destroy(GpuTexture t) {
   Res *r = res_get(t, 1, "texture destroy");
   if (!r)
     return;
-  gpu_upload_staging_destroy(g_gpu, &r->upload);
   SDL_ReleaseGPUTexture(g_gpu, r->tex);
   r->live = 0;
 }
@@ -1121,9 +1114,18 @@ void gpu_draw_perf(unsigned long long *draw_ns, unsigned long long *upload_ns,
   *upload_ns = g_upload_ns;
   *upload_alloc_ns = g_upload_alloc_ns;
   *upload_record_ns = g_upload_record_ns;
-  *transfer_creates = g_transfer_creates;
+  /* The ring owns the allocation count, so the report cannot drift from what
+     the driver was actually asked for. */
+  gpu_staging_ring_stats(NULL, transfer_creates, NULL);
   *uploads = g_uploads;
   *submits = gpu_upload_batch_submits();
+}
+
+/* What the driver was asked to allocate for staging, from its owner. */
+static unsigned long staging_allocs(void) {
+  unsigned long long allocs = 0;
+  gpu_staging_ring_stats(NULL, &allocs, NULL);
+  return (unsigned long)allocs;
 }
 
 void gpu_draw_report(void) {
@@ -1140,8 +1142,8 @@ void gpu_draw_report(void) {
                 "%lu command buffer(s)\n",
                 (double)g_draw_ns * 1e-9, (double)g_upload_ns * 1e-9,
                 (double)g_upload_alloc_ns * 1e-9,
-                (double)g_upload_record_ns * 1e-9, g_uploads,
-                (unsigned long)g_transfer_creates, batches);
+                (double)g_upload_record_ns * 1e-9, g_uploads, staging_allocs(),
+                batches);
   if (!g_draws)
     x2_log_info("        NOTHING was drawn. Either no draw call reached this "
                 "backend, or every one was refused above.\n");
@@ -1292,9 +1294,12 @@ void gpu_draw_shutdown(void) {
   gpu_shadow_shutdown();
   gpu_offscreen_end();
   gpu_pipeline_shutdown();
+  /* The staging pages belong to the device that is going away, and this is
+     the upload owner: the device teardown does not need to know they
+     exist. */
+  gpu_staging_ring_destroy(g_gpu);
   for (i = 0; i < g_nres; i++)
     if (g_res[i].live) {
-      gpu_upload_staging_destroy(g_gpu, &g_res[i].upload);
       if (g_res[i].buf)
         SDL_ReleaseGPUBuffer(g_gpu, g_res[i].buf);
       if (g_res[i].tex)

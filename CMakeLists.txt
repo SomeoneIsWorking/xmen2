@@ -1800,7 +1800,7 @@ set(X2_NATIVE_SOURCES
     src/gpu/gpu_multistage_selftest.c
     src/gpu/gpu_matrix.c
     src/gpu/gpu_frame_init_selftest.c
-    src/gpu/gpu_upload.c
+    src/gpu/gpu_staging_ring.c
     src/gpu/gpu_upload_batch.c
     src/gpu/gpu_upload_selftest.c
     src/gpu/gpu_headless.c

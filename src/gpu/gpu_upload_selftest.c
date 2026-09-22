@@ -2,51 +2,81 @@
 #include "../native/x2_log.h"
 #include "gpu_device.h"
 #include "gpu_draw.h"
+#include "gpu_internal.h"
 #include "gpu_selftests.h"
+#include "gpu_upload_batch.h"
 
 #include <stdio.h>
 #include <string.h>
 
 int gpu_upload_reuse_selftest(void) {
+  enum { kBuffers = 8, kUploadsEach = 8 };
   unsigned char data[64];
   unsigned long long draw_ns, upload_ns, alloc_ns, submit_ns;
-  unsigned long long creates_before, creates_after;
+  unsigned long long allocs_before, allocs_after, allocs_second_frame;
   unsigned long uploads_before, uploads_after, submits;
-  GpuBuffer buffer;
-  int ok;
+  GpuBuffer buffers[kBuffers];
+  int ok = 1;
+  int i, pass;
 
-  x2_log_info("\n=== gpu upload selftest: one resource retains its staging "
-              "allocation ===\n");
+  x2_log_info("\n=== gpu upload selftest: the frame's uploads share one "
+              "staging page ===\n");
   if (!gpu_device_create()) {
     x2_log_info("gpu upload selftest: FAILED -- no GPU device.\n");
     return 1;
   }
   memset(data, 0x5a, sizeof data);
-  buffer = gpu_buffer_create(GPU_BUF_VERTEX, sizeof data);
-  if (!buffer) {
-    x2_log_info("gpu upload selftest: FAILED -- no buffer.\n");
-    gpu_device_destroy();
-    return 1;
+  for (i = 0; i < kBuffers; i++) {
+    buffers[i] = gpu_buffer_create(GPU_BUF_VERTEX, sizeof data);
+    if (!buffers[i]) {
+      x2_log_info("gpu upload selftest: FAILED -- no buffer.\n");
+      gpu_device_destroy();
+      return 1;
+    }
   }
-  gpu_draw_perf(&draw_ns, &upload_ns, &alloc_ns, &submit_ns, &creates_before,
+  gpu_draw_perf(&draw_ns, &upload_ns, &alloc_ns, &submit_ns, &allocs_before,
                 &uploads_before, &submits);
-  ok = gpu_buffer_upload(buffer, 0, data, 16) &&
-       gpu_buffer_upload(buffer, 16, data + 16, 32);
-  gpu_draw_perf(&draw_ns, &upload_ns, &alloc_ns, &submit_ns, &creates_after,
-                &uploads_after, &submits);
-  gpu_buffer_destroy(buffer);
+
+  /*
+   * Two frames, because the interesting failure is in the second. A page
+   * whose used offset survives its frame looks full the moment it is reused,
+   * and the ring quietly allocates another one every frame -- the exact cost
+   * it exists to remove, with a counter that still reads one.
+   */
+  for (pass = 0; pass < 2; pass++) {
+    int upload;
+    for (upload = 0; upload < kUploadsEach; upload++) {
+      for (i = 0; i < kBuffers; i++) {
+        ok = ok && gpu_buffer_upload(buffers[i], 0, data, sizeof data);
+      }
+    }
+    gpu_draw_perf(&draw_ns, &upload_ns, &alloc_ns, &submit_ns, &allocs_after,
+                  &uploads_after, &submits);
+    if (!pass) {
+      allocs_second_frame = allocs_after;
+    }
+    gpu_upload_batch_flush(g_gpu);
+  }
+  for (i = 0; i < kBuffers; i++) {
+    gpu_buffer_destroy(buffers[i]);
+  }
   gpu_device_destroy();
 
-  if (!ok || creates_after - creates_before != 1 ||
-      uploads_after - uploads_before != 2) {
-    x2_log_info("gpu upload selftest: FAILED -- two uploads made %llu "
-                "transfer allocation(s) and %lu successful upload(s); "
-                "expected one retained allocation and two uploads.\n",
-                creates_after - creates_before, uploads_after - uploads_before);
+  if (!ok || uploads_after - uploads_before != kBuffers * kUploadsEach * 2 ||
+      allocs_second_frame - allocs_before != 1 ||
+      allocs_after != allocs_second_frame) {
+    x2_log_info(
+        "gpu upload selftest: FAILED -- %lu upload(s) took %llu "
+        "staging allocation(s) in the first frame and %llu more in "
+        "the second; expected %d upload(s), one page, and no second "
+        "allocation.\n",
+        uploads_after - uploads_before, allocs_second_frame - allocs_before,
+        allocs_after - allocs_second_frame, kBuffers * kUploadsEach * 2);
     return 1;
   }
-  x2_log_info("gpu upload selftest: PASSED -- two uploads reused one retained "
-              "transfer allocation.\n");
+  x2_log_info("gpu upload selftest: PASSED -- %lu upload(s) across two frames "
+              "shared one staging page.\n",
+              uploads_after - uploads_before);
   return 0;
 }
 
