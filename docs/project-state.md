@@ -561,7 +561,11 @@ largest single cost: every inline x87 result was stored as ten bytes and read
 back to compute its tag, a store that cannot forward to the narrower loads,
 about a third of translated-code samples. x86port `d5e0533` tags a host
 result with FXAM before storing it (best 112.0 -> 103.5 M cycles per frame,
--7.6%, over four alternating pairs).
+-7.6%, over four alternating pairs), which left FNSTSW's latency as the new
+third. Only the FSTENV/FSAVE tag word reads the zero/special class, so x86port
+`15fa144` keeps just empty/occupied per register and derives the class when
+that word is written, as the hardware does (best 99.9 -> 91.9 M cycles per
+frame, -8.0%; 190.6 -> 175.5 M instructions, three alternating pairs).
 The other lever is an x86port backend project: keeping guest registers in
 host registers across a block instead of loading and storing `X86pCpu` for
 every access.
